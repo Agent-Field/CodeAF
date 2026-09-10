@@ -381,15 +381,16 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 	// engine's own first option and home's hint for the row are the two ways
 	// that screen says so.
 	//
-	// AND THE SWITCHER IS ONE OF THOSE SURFACES. A launch into a project that
-	// already holds a conversation opens on the ranked list rather than on the
-	// resting home foot or a greeting, so a scenario that opens a SECOND window
-	// on one project — which is what answering from another window takes — was
-	// declared dead at forty-five seconds while looking at a perfectly live one.
+	// AND HOME'S PANELS ARE ONE OF THOSE SURFACES. A launch into a project that
+	// already holds a conversation opens on home with that row pointed at rather
+	// than on the resting foot or a greeting, so a scenario that opens a SECOND
+	// window on one project — which is what answering from another window takes —
+	// was declared dead at forty-five seconds while looking at a perfectly live
+	// one. `where you were` is drawn on every desktop home, whatever it holds.
 	if hit, _ := r.waitForAny(45*time.Second, say(t, "homeFootWord"), say(t, "placeRestWord"),
 		say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "setupSkipWord"),
 		say(t, "landingKeysWord"), say(t, "welcomeStarterKeysWord"),
-		say(t, "answersAllowOnce"), say(t, "homeAnswerHint"), say(t, "switcherSectionWord")); hit == "" {
+		say(t, "answersAllowOnce"), say(t, "homeAnswerHint"), say(t, "homePanelRecent")); hit == "" {
 		t.Fatal("the terminal never reached an interactive surface")
 	}
 	return r

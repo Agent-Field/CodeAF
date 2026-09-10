@@ -23,13 +23,13 @@ package e2e
 //
 // ── TWO WIDTHS, AND THE REASON IS IN THE PRODUCT ────────────────────────────
 //
-// Home has two shapes and the width chooses between them (internal/tui3's
-// homebridge.go): below a hundred and sixty cells the switcher takes the whole
-// frame and THERE IS NO CARD AT ALL, and at or above it the card stands beside
-// the list. So a subtest that reads a card runs at [tuiWide] and a subtest that
-// is about the plain list runs at [tuiPlain] — and a card assertion at a hundred
-// and twenty cells is not a failure, it is a test asking the product for
-// something it correctly does not draw there.
+// Home at rest is seven panels, and the width chooses the columns
+// (internal/tui3's homegrid.go): two from a hundred and ten cells, three from a
+// hundred and seventy. There is NO CARD AT REST at any width; the one card left
+// stands beside a SEARCH, from a hundred and thirty-six cells (homebridge.go).
+// So a subtest that reads that card types first and runs at [tuiWide], and a
+// subtest about the panels runs at [tuiPlain], where the left column holds
+// `needs you`, `where you were` and `projects` and nothing is cut at [tuiCardAt].
 
 import (
 	"encoding/json"
@@ -37,6 +37,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -49,13 +50,14 @@ const modelPatience = 90 * time.Second
 
 // The two frames this suite drives, and why each is the width it is.
 const (
-	// tuiPlain is an ordinary terminal: home is one flat ranked list and the
-	// right-hand note on each row carries the one fact the card was for.
+	// tuiPlain is an ordinary terminal: home is two columns of panels, the
+	// person's on the left and the machine's on the right.
 	tuiPlain = 120
-	// tuiWide is past internal/tui3's homeCardMin, where the width is genuinely
-	// spare and the card stands beside the list.
+	// tuiWide is past internal/tui3's homeCardMin, where a search has a card
+	// beside its matches, and past homeGridThreeAt, where the panels are three
+	// columns.
 	tuiWide = 180
-	// tuiCardAt is the card's first column at tuiWide: the current card uses
+	// tuiCardAt is the search card's first column at tuiWide: the card uses
 	// 56 cells and the list and gutter occupy the remaining 124. Assertions
 	// below require complete card labels so a moved boundary fails visibly.
 	tuiCardAt = 124
@@ -77,15 +79,15 @@ const tuiShortRows = 14
 func TestTUIE2E(t *testing.T) {
 	requireTmuxAndKey(t)
 
-	t.Run("home_opens_on_launch_as_the_ranked_switcher", testHomeShape)
-	t.Run("a_real_conversation_and_its_home_card", testRealConversation)
+	t.Run("home_opens_on_launch_as_seven_panels", testHomeShape)
+	t.Run("a_real_conversation_on_the_panels_and_its_search_card", testRealConversation)
 	t.Run("ask_here_end_to_end", testAskHere)
 	t.Run("the_firing_reaches_the_person", testFiringReachesThePerson)
 	t.Run("answer_from_home_across_two_windows", testAnswerFromHome)
-	t.Run("hover_previews_the_row_under_the_pointer", testHover)
-	t.Run("the_fold_at_the_foot_opens_and_shuts", testFold)
+	t.Run("hover_previews_the_match_under_the_pointer", testHover)
+	t.Run("a_panel_folds_and_typing_sees_through_it", testFold)
 	t.Run("narrow_window_ask_here", testNarrow)
-	t.Run("alt_g_groups_the_list_by_project", testGrouped)
+	t.Run("the_projects_panel_is_the_view_by_project", testGrouped)
 	t.Run("one_figure_on_every_spend_surface", testOneSpendFigure)
 	t.Run("a_nested_landing_asks_and_a_key_answers_it", testNestedGate)
 	t.Run("a_refused_landing_is_incomplete", testRefusedLanding)
@@ -245,18 +247,15 @@ func testRefusedLanding(t *testing.T) {
 // ── 1 ───────────────────────────────────────────────────────────────────────
 
 // testHomeShape opens the product with five projects on the machine and reads
-// the shape home has TODAY: one flat ranked list of conversations, the project
-// demoted to a tag on the row, the foot's three verbs, and the two doors in and
-// out of the screen.
+// the shape home has TODAY (docs/design/home-mission-control/DESIGN.md): seven
+// panels under a four-word bar, every seeded conversation on `where you were`,
+// an empty panel keeping its heading and its whisper, the foot's three verbs, and
+// the two doors in and out of the screen.
 //
-// WHAT THIS SUBTEST USED TO ASSERT AND NO LONGER CAN. It waited for `aforge`
-// and `esc close` in the head, a dim `─ elsewhere` rule, and two `▸ delta` /
-// `▸ epsilon` folded project lines under it. All three went with the home
-// rethink (internal/tui3/place_home.go, "HOME IS A SWITCHER, NOT A DIRECTORY"):
-// the tree of projects became one flat ranked list, so there is no elsewhere
-// rule and nothing on the desktop builds a folded project row at all. The two
-// tiers the old name promised are gone; what is left is the list, and the fold
-// at its foot, which subtest 7 is about.
+// WHAT THIS SUBTEST USED TO ASSERT AND NO LONGER CAN. It read one flat ranked
+// list with a `what wants you first` section line and a fold at its foot, and
+// before that a tree of projects under an `─ elsewhere` rule. Both went: what a
+// person has at a glance now is one panel per question, so that is what is read.
 func testHomeShape(t *testing.T) {
 	home := newHome(t, nil)
 	for i, name := range []string{"alpha", "beta", "gamma", "delta", "epsilon"} {
@@ -265,11 +264,35 @@ func testHomeShape(t *testing.T) {
 	ws := newWorkspace(t, "shapews", false)
 	r := start(t, "afe2e_shape", home, ws, tuiPlain, 40)
 
-	screen := r.waitFor(20*time.Second, say(t, "homeFootWord"), say(t, "placeRestWord"))
+	screen := r.waitFor(20*time.Second, say(t, "homeFootWord"), say(t, "placeRestWord"), say(t, "homePanelRecent"))
 	t.Logf("home greeted on launch:\n%s", screen)
 
-	// EVERY SEEDED CONVERSATION IS ON THE LIST, whichever project it belongs to,
-	// because the list is the switcher now and reaches all of them.
+	// EVERY PANEL IS ON THE PAGE. Forty rows is room for all seven at their
+	// floors in two columns, so a heading missing here is a panel the grid lost
+	// rather than one a short frame squeezed out.
+	for _, name := range []string{"homePanelNeeds", "homePanelRecent", "homePanelProjects",
+		"homePanelRunning", "switcherSinceLeft", "homePanelSpend", "homePanelNext"} {
+		if !strings.Contains(screen, say(t, name)) {
+			t.Errorf("home has no %q panel:\n%s", say(t, name), screen)
+		}
+	}
+	// AN EMPTY PANEL WHISPERS. Nothing runs on a machine of seeded transcripts,
+	// so `running` keeps its heading and says what arrives there — never that it
+	// is empty.
+	if !strings.Contains(screen, say(t, "homeRunningWhisper")) {
+		t.Errorf("the empty `running` panel does not whisper %q:\n%s", say(t, "homeRunningWhisper"), screen)
+	}
+	// THE BAR IS FOUR WORDS. Standing, memory and search are places reached by
+	// command and by alt+5…7, and a bar that still named them is the seven-word
+	// bar this wave retired.
+	want := []string{say(t, "barHomeWord"), say(t, "barTasksWord"), say(t, "homePanelSpend"), say(t, "barSettingsWord")}
+	if got := barWords(screen, want[0], want[len(want)-1]); strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("the tab bar reads %q, want %q:\n%s", got, want, screen)
+	}
+
+	// EVERY SEEDED CONVERSATION IS ON `where you were`, whichever project it
+	// belongs to — five of them and this launch's own is inside the panel's
+	// growth budget on a forty-row frame.
 	for _, want := range []string{"Seed Alpha", "Seed Beta", "Seed Gamma", "Seed Delta", "Seed Epsilon"} {
 		if !strings.Contains(screen, want) {
 			t.Errorf("home is missing %q", want)
@@ -287,9 +310,9 @@ func testHomeShape(t *testing.T) {
 		t.Errorf("home's foot is not the resting sentence:\n%s", firstMatch(screen, say(t, "homeFootWord")))
 	}
 
-	// THE LIST NEVER TOUCHES THE RULE ABOVE THE BOX (internal/tui3's home_test.go
+	// THE PANELS NEVER TOUCH THE RULE ABOVE THE BOX (internal/tui3's home_test.go
 	// pins it at every height): the row above the foot's rule is blank whatever
-	// the list did.
+	// the columns did, because the air a tall frame has left sits under them.
 	lines := r.lines()
 	// THE RULE ABOVE HOME'S BOX CARRIES WORDS NOW — `─ → new conversation in
 	// … · model ──── alt+w folder · alt+o model ─` (internal/tui3's
@@ -307,7 +330,7 @@ func testHomeShape(t *testing.T) {
 		t.Fatalf("no foot rule on the screen:\n%s", screen)
 	}
 	if got := strings.TrimSpace(lines[foot-1]); got != "" {
-		t.Errorf("the list touches the foot: the row above the rule is %q", got)
+		t.Errorf("the panels touch the foot: the row above the rule is %q", got)
 	}
 	t.Logf("padding row above the foot rule (row %d) is blank", foot-1)
 
@@ -336,24 +359,15 @@ func testHomeShape(t *testing.T) {
 
 // ── 2 ───────────────────────────────────────────────────────────────────────
 
-// testRealConversation asks the model one question and then reads the CARD that
-// conversation gets beside the list — which is why this one runs at [tuiWide].
+// testRealConversation asks the model one question and then reads what home
+// says about that conversation: at rest on the panels, and on the one card left,
+// the one beside a search — which is why this one runs at [tuiWide].
 //
-// WHAT WENT, AND WHERE IT WENT. The card used to carry sixteen registered bands
-// and now carries five (internal/tui3/place_home.go states the selection rule
-// and lists every casualty). Two of them were this subtest's:
-//
-//   - the LEFT-OFF band, the person's last message as one muted `› ` line. The
-//     row's own note carries that now, one column over, so a card drawing it
-//     again would be the wide frame reading the same fact twice.
-//   - the KEYS band, `enter open · n new chat here`. The legend became the
-//     `→ verbs` line, because a letter is a verb only while the strip naming it
-//     is on screen and a card printing `n new chat here` advertises a keystroke
-//     the composer is about to eat.
-//
-// The repository band did not go — it folded into the card's place line, where
-// the address it is about already stood, with its clauses joined by a comma. So
-// that assertion is kept and respelled rather than dropped.
+// WHAT WENT, AND WHERE IT WENT. The resting card is gone (DESIGN.md §1, "what is
+// retired"): the person's last words are the line under the `here` row, and the
+// repository clause is on the project's row of `projects`. The card beside a
+// search still carries the place line, the facts line and the `→ verbs` line,
+// so those assertions are kept and reached by typing.
 func testRealConversation(t *testing.T) {
 	home := newHome(t, nil)
 	// The card caps its width, so widening the terminal cannot make an
@@ -376,53 +390,58 @@ func testRealConversation(t *testing.T) {
 	hit, screen := r.waitForAny(modelPatience, "\n4", " 4\n", "four", "Four")
 	t.Logf("the model answered (%q):\n%s", hit, screen)
 
-	r.lit("/home")
-	time.Sleep(700 * time.Millisecond)
-	r.keys("Enter")
-	// THE CURSOR OPENS ON THE CONVERSATION THIS WINDOW HOLDS, which is the only
-	// one on this machine, so the card beside the list is this conversation's
-	// without anything being walked to.
-	// The repository reading arrives asynchronously after the first card.
-	card := r.waitFor(20*time.Second, say(t, "homeFootWord"), say(t, "homeVerbsWord"), "main, 1 file dirty")
-	t.Logf("home, with the conversation's card up:\n%s", card)
-	pane := rightPane(card)
-
-	// The repository, on the card's place line. It must agree with the
-	// repository, so the count is taken from git at the moment of the assertion
-	// rather than assumed — and the clauses inside it are joined with a comma,
+	// The repository must agree with git, so the count is taken at the moment of
+	// the assertion rather than assumed — and its clauses are joined with a comma,
 	// because `main, 1 file dirty` is one clause about one repository.
 	dirty := dirtyFiles(t, ws)
 	want := fmt.Sprintf("main, %d %s dirty", len(dirty), plural("file", len(dirty)))
-	if !strings.Contains(pane, want) {
-		t.Errorf("the card's place line does not read %q — it reads %q (git says %v)",
-			want, firstMatch(pane, "main"), dirty)
-	} else {
-		t.Logf("the place line agrees with git: %q (%v)", want, dirty)
-	}
 	// AND WHAT MADE IT DIRTY. The test changed exactly one tracked file; a
 	// second entry is something the product itself dropped in the person's
 	// working directory, which is worth naming rather than absorbing.
 	for _, name := range dirty {
 		if !strings.HasSuffix(name, "README.md") {
-			t.Logf("FINDING: the run left %q in the person's workspace and the place line counts it", name)
+			t.Logf("FINDING: the run left %q in the person's workspace and the repository clause counts it", name)
 		}
+	}
+
+	r.lit("/home")
+	time.Sleep(700 * time.Millisecond)
+	r.keys("Enter")
+	// THE PANELS, AT REST. This window's conversation is the `here` row of
+	// `where you were` with the person's own last words under it, and its
+	// folder is the first row of `projects` with the repository clause beside
+	// it. The reading of `git status` arrives a beat after the first frame.
+	panels := r.waitFor(20*time.Second, say(t, "homeFootWord"), say(t, "homePanelRecent"), want)
+	t.Logf("home at rest, with this conversation on the panels:\n%s", panels)
+	if !strings.Contains(panels, "what is 2+2?") {
+		t.Errorf("the `here` row does not carry the person's own last words:\n%s", panels)
+	}
+	if strings.Contains(rightPane(panels), say(t, "homeVerbsWord")) {
+		t.Errorf("a card is standing beside the panels at rest:\n%s", panels)
+	}
+
+	// THE CARD BESIDE A SEARCH. Typing the project's name keeps every
+	// conversation in it, and the cursor rests on the action row, whose card is
+	// empty — one `↑` is `ask here`, the second is the match.
+	r.lit(filepath.Base(ws))
+	time.Sleep(700 * time.Millisecond)
+	r.keys("Up")
+	r.keys("Up")
+	card := r.waitFor(20*time.Second, say(t, "homeVerbsWord"), say(t, "homeFactsActive"))
+	t.Logf("the card beside the match:\n%s", card)
+	pane := rightPane(card)
+	if !strings.Contains(pane, want) {
+		t.Errorf("the card's place line does not read %q — it reads %q (git says %v)",
+			want, firstMatch(pane, "main"), dirty)
 	}
 	// The facts line. `last active` is always true of a conversation somebody
 	// just spoke in; `spent` is drawn from the whole rollup (home.go's
 	// homeFacts), so it is recorded rather than demanded.
-	if !strings.Contains(pane, say(t, "homeFactsActive")) {
-		t.Errorf("the card has no facts line:\n%s", pane)
-	}
 	if strings.Contains(pane, "spent $") {
 		t.Logf("the facts line drew a `spent $…` clause: %s", firstMatch(pane, "spent $"))
 	} else {
 		t.Logf("FINDING: no `spent $…` clause on a conversation that really spent money. "+
 			"The facts line reads: %s", firstMatch(pane, say(t, "homeFactsActive")))
-	}
-	// And the card's last line, which names what can be done and never which
-	// letter does it.
-	if !strings.Contains(pane, say(t, "homeVerbsWord")) {
-		t.Errorf("the card has no verbs line:\n%s", pane)
 	}
 	// The same cached reading must give way whole on a narrow card, then
 	// return when the person widens the terminal again.
@@ -433,7 +452,6 @@ func testRealConversation(t *testing.T) {
 	}
 	r.resize(tuiWide, 40)
 	r.waitFor(10*time.Second, want, say(t, "homeFactsActive"), say(t, "homeVerbsWord"))
-
 }
 
 // ── 3 ───────────────────────────────────────────────────────────────────────
@@ -888,7 +906,7 @@ func testFiringReachesThePerson(t *testing.T) {
 	}
 
 	// AND HOME'S OWN ACCOUNT OF IT IS DEMANDED. What happened while nobody was
-	// looking is a block at the top of the list, built from every standing item
+	// looking is the `since you left` panel, built from every standing item
 	// whose last firing is later than the look stamp — the ones that still stand
 	// AND the ones that stood down (internal/tui3/switcher.go's addLedger).
 	//
@@ -902,11 +920,12 @@ func testFiringReachesThePerson(t *testing.T) {
 	openHome(t, r2)
 	time.Sleep(3 * time.Second)
 	news := r2.capture()
+	// THE HEADING ALONE PROVES NOTHING NOW: an empty `since you left` keeps its
+	// heading and its whisper (DESIGN §4), so the firing's own line is the claim.
 	if !strings.Contains(news, say(t, "switcherSinceLeft")) {
-		t.Errorf("a watch fired while no window was open and home drew no `%s` block at all:\n%s",
-			say(t, "switcherSinceLeft"), news)
+		t.Errorf("home drew no `%s` panel at all:\n%s", say(t, "switcherSinceLeft"), news)
 	} else if !strings.Contains(news, say(t, "standingFiredWord")) {
-		t.Errorf("home drew a `%s` block that does not say the watch fired:\n%s",
+		t.Errorf("a watch fired while no window was open and home's `%s` panel does not say so:\n%s",
 			say(t, "switcherSinceLeft"), news)
 	} else {
 		t.Logf("home's `since you left` block names the firing:\n%s", firstMatch(news, say(t, "standingFiredWord")))
@@ -974,24 +993,15 @@ func testAnswerFromHome(t *testing.T) {
 	// from there. So B opens its own project, and A's conversation is a row on
 	// B's list like any other.
 	b := start(t, "afe2e_b", home, newWorkspace(t, "consentws-b", false), tuiPlain, 40)
-	// THE SECTION LINE IS WHAT SAYS A's ROW HAS ARRIVED. It is drawn only while
-	// a row of the ranked list is asking or moving ([switcherReading.hasAttention]),
-	// so waiting for it waits for exactly the fact this subtest is about rather
-	// than for a title no fixture chose.
-	b.waitFor(40*time.Second, say(t, "switcherSectionWord"))
-	// AND THE CURSOR IS WALKED ONTO IT, because the answer band belongs to the
-	// row UNDER THE CURSOR (homeband_answer.go) and B lands on its own project's
-	// row — the one it is sitting in. THE BAND IS THE ORACLE AND NOT A HINT: a
-	// row another window is holding wears that window in its tail rather than
-	// `waiting on you`, and the chips are the one thing on the frame that says
-	// the cursor is on a question this screen can answer.
-	if !walkTo(b, say(t, "answersAllowOnce"), "Up") {
-		t.Fatalf("window B's home never offered the answers to the conversation A is waiting in:\n%s", b.capture())
-	}
-	row := b.capture()
+	// A's QUESTION ARRIVES ON B's `needs you` WITH ITS ANSWERS ON ITS OWN ROW.
+	// The top question that has answers draws them, and a digit answers it from
+	// ANYWHERE on home with no cursor move (DESIGN §1 law 7) — so there is nothing
+	// to walk to, and the chips are the oracle for both facts at once: the row has
+	// arrived, and this screen can answer it.
+	row := b.waitFor(40*time.Second, say(t, "answersAllowOnce"))
 	t.Logf("window B's home offers the answers to the question A is stopped on:\n%s", row)
 	if !strings.Contains(row, "1 ") {
-		t.Errorf("home's answer band is missing the first chip's key:\n%s", row)
+		t.Errorf("home's answers are missing the first chip's key:\n%s", row)
 	}
 	t.Logf("the chips home offered: %s", firstMatch(row, say(t, "answersAllowOnce")))
 
@@ -1008,18 +1018,15 @@ func testAnswerFromHome(t *testing.T) {
 		t.Errorf("home's row wrote its own grammar around the gate's sentence:\n%s", firstMatch(row, say(t, "consentRowLine")))
 	}
 
-	// AND WITH SOMETHING ASKING, THE LIST WEARS ITS SECTION LINE — the one
-	// heading over the flat ranked list, with the two keys that change its shape
-	// out at the right margin. It is drawn only while a row of the list is asking
-	// or moving ([switcherReading.hasAttention]), and window A's conversation,
-	// stopped on a consent card, is exactly such a row.
-	for _, want := range []string{
-		say(t, "switcherSectionWord"), say(t, "switcherGroupWord"), say(t, "switcherQuietWord"),
-	} {
-		if !strings.Contains(row, want) {
-			t.Errorf("the section line is missing %q while a conversation is asking:\n%s", want, row)
-		}
-	}
+	// AND THE PULSE INSIDE A CHAT COUNTS IT. On home the top line is the budget
+	// and the clock, because the panels are the counts; in a conversation it keeps
+	// `1 want you` (DESIGN §1 law 11), read on the chat's own ten-second beat. So
+	// B steps into its own conversation, reads its head, and comes back.
+	b.keys("Escape")
+	inChat := b.waitFor(30*time.Second, say(t, "homeDoorWord"), say(t, "pulseWantWord"))
+	t.Logf("window B's own conversation counts the question on its top line:\n%s", firstMatch(inChat, say(t, "pulseWantWord")))
+	openHome(t, b)
+	b.waitFor(20*time.Second, say(t, "answersAllowOnce"))
 
 	b.lit("1")
 	time.Sleep(1500 * time.Millisecond)
@@ -1058,9 +1065,14 @@ func testAnswerFromHome(t *testing.T) {
 
 // ── 6 ───────────────────────────────────────────────────────────────────────
 
-// testHover drives the pointer over home's left column with the SGR motion
-// reports the all-motion mode asks for, and reads the card beside it. It runs at
-// [tuiWide] because below that width there is no card for a hover to move.
+// testHover drives the pointer over the matches of a search with the SGR motion
+// reports the all-motion mode asks for, and reads the card beside them. It runs
+// at [tuiWide] because below that width there is no card for a hover to move.
+//
+// IT TYPES FIRST BECAUSE THE RESTING HOME HAS NO CARD (DESIGN.md §1, "what is
+// retired"): at rest the pointer only lights the row it is on, and the one card
+// left is the one beside a search, about the match under the pointer while it is
+// on one and the cursor's otherwise.
 func testHover(t *testing.T) {
 	home := newHome(t, nil)
 	for i, name := range []string{"alpha", "beta", "gamma"} {
@@ -1068,8 +1080,12 @@ func testHover(t *testing.T) {
 	}
 	ws := newWorkspace(t, "hoverws", false)
 	r := start(t, "afe2e_hover", home, ws, tuiWide, 40)
-	screen := r.waitFor(25*time.Second, say(t, "homeFootWord"), "Seed Beta")
+	r.waitFor(25*time.Second, say(t, "homeFootWord"), "Seed Beta")
 
+	// The seeds share a word, so typing it lists all three; the cursor rests on
+	// the action row, whose card is empty because that chat does not exist yet.
+	r.lit("Seed")
+	screen := r.waitFor(15*time.Second, say(t, "homeStartWord"), "Seed Beta")
 	rows := r.lines()
 	target := -1
 	for i, line := range rows {
@@ -1079,53 +1095,48 @@ func testHover(t *testing.T) {
 		}
 	}
 	if target < 0 {
-		t.Fatalf("no `Seed Beta` row to hover:\n%s", screen)
+		t.Fatalf("no `Seed Beta` match to hover:\n%s", screen)
 	}
 	before := rightPane(screen)
 	t.Logf("before hovering, the card is about the cursor's row:\n%s", before)
 
 	r.mouseTo(10, target)
-	hovered := r.waitFor(15*time.Second, "Seed Beta")
-	pane := rightPane(hovered)
-	if !strings.Contains(pane, "Seed Beta") {
+	time.Sleep(1500 * time.Millisecond)
+	hovered := r.capture()
+	if !strings.Contains(rightPane(hovered), "Seed Beta") {
 		t.Errorf("hovering `Seed Beta` did not move the card onto it:\n%s", hovered)
 	} else {
-		t.Logf("the pointer previews the row under it:\n%s", hovered)
+		t.Logf("the pointer previews the match under it:\n%s", hovered)
 	}
 
-	// Off the column, into the card's own half: the card goes back to the
+	// Off the list, into the card's own half: the card goes back to the
 	// cursor's row.
 	r.mouseTo(tuiWide-4, target)
 	time.Sleep(1500 * time.Millisecond)
 	off := rightPane(r.capture())
 	if strings.Contains(off, "Seed Beta") && !strings.Contains(before, "Seed Beta") {
-		t.Errorf("moving the pointer off the column left the card on the hovered row:\n%s", r.capture())
+		t.Errorf("moving the pointer off the list left the card on the hovered match:\n%s", r.capture())
 	}
-	t.Logf("pointer off the column, the card is the cursor's again:\n%s", r.capture())
+	t.Logf("pointer off the list, the card is the cursor's again:\n%s", r.capture())
 }
 
 // ── 7 ───────────────────────────────────────────────────────────────────────
 
-// testFold seeds more conversations than the list draws and works the one fold
-// at its foot with the two arrows.
+// testFold seeds more conversations than `where you were` draws and reads the
+// fold at the foot of that panel.
 //
-// THIS SUBTEST REPLACES `m_toggles_the_folds_on_a_card`, which drove a card band
-// and a key that both went with the home rethink. The `news` band — `◆ 4 things
-// since you left` with its own `▸ …N more` door — is not on the card any more
-// (internal/tui3/place_home.go lists it among the eleven bands that became
-// ledger lines), and `m` belongs to the box now: typing it at home filters the
-// list. What survived, and what a person actually meets, is ONE fold at the foot
-// of the list, opened with `→` and shut with `←` (home.go binds both, and the
-// hint under the box says which way it goes).
+// THE FOLD IS NOT A DOOR ANY MORE, AND THAT IS WHAT IS TESTED. The old list had
+// one fold at its foot — `▸ 15 more, quiet since 6d` — that `→` opened and `←`
+// shut. Every panel folds inside itself now (DESIGN.md §1 law 9), and the fold
+// under `where you were` is an instruction rather than a place: `N more · type to
+// find one`. So the claim is the fold's words, a row it stands over being off the
+// screen, and typing reaching that row anyway.
 func testFold(t *testing.T) {
 	home := newHome(t, nil)
-	// MORE CONVERSATIONS THAN THE FRAME HAS ROWS, WHICH IS WHAT MAKES A FOLD NOW.
-	// The list drew eight rows whatever the terminal was until #518; it draws as
-	// many as the column can hold and never fewer than eight
-	// ([switcherReading.capAtRest] against [switcherView.room]), so twelve rows on
-	// a forty-five-row terminal is a list with nothing left over and no fold at
-	// all. Twenty rows in a twenty-row window is a fold with ten behind it, and
-	// the eleven rows above it are a walk [walkTo] can still finish.
+	// MORE CONVERSATIONS THAN THE PANEL'S BUDGET, WHICH IS WHAT MAKES A FOLD.
+	// `where you were` grows to ten rows in a tall frame and no further; twenty
+	// seeds on a twenty-row terminal is a panel squeezed to what fits, with most
+	// of them behind the fold.
 	for i, name := range []string{
 		"a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
 		"k", "l", "m", "n", "o", "p", "q", "r", "s", "t",
@@ -1135,43 +1146,37 @@ func testFold(t *testing.T) {
 	ws := newWorkspace(t, "foldws", false)
 	r := start(t, "afe2e_fold", home, ws, tuiWide, 20)
 
-	screen := r.waitFor(25*time.Second, say(t, "homeFootWord"), say(t, "foldMoreWord"))
-	t.Logf("the list with a fold at its foot:\n%s", screen)
-	if !strings.Contains(screen, say(t, "switcherQuietSince")) {
-		t.Errorf("the fold does not say when the rows under it went quiet:\n%s",
-			firstMatch(screen, say(t, "foldMoreWord")))
+	screen := r.waitFor(25*time.Second, say(t, "homeFootWord"), say(t, "homeFindWord"))
+	t.Logf("`where you were` with a fold at its foot:\n%s", screen)
+	if fold := firstMatch(screen, say(t, "homeFindWord")); !strings.Contains(fold, say(t, "foldMoreWord")) {
+		t.Errorf("the fold does not count what it stands over: %q", fold)
 	}
-	// THE OLDEST SEED IS BEHIND THE FOLD. The list is ranked and the twelfth
-	// project is the quietest, so it is the one the cap drops.
-	if strings.Contains(screen, "Seed L") {
-		t.Errorf("a row the fold stands over is drawn before the fold was opened:\n%s", screen)
+	// THE OLDEST SEED IS BEHIND THE FOLD. The panel is the most recent first, and
+	// the twentieth project is the quietest, so it is the one the fold stands over.
+	if strings.Contains(screen, "Seed T") {
+		t.Errorf("a row the fold stands over is drawn:\n%s", screen)
 	}
 
-	if !walkTo(r, say(t, "homeFoldOpenHint"), "Down") {
-		t.Fatalf("could not put the cursor on the fold:\n%s", r.capture())
+	// AND TYPING SEES STRAIGHT THROUGH IT: a search matches every conversation on
+	// the machine, including the ones no panel is drawing.
+	r.lit("Seed T")
+	found := r.waitFor(15*time.Second, say(t, "homeStartWord"))
+	deadline := time.Now().Add(15 * time.Second)
+	for matchRow(found, "Seed T") == "" && time.Now().Before(deadline) {
+		time.Sleep(500 * time.Millisecond)
+		found = r.capture()
 	}
-	r.keys("Right")
-	opened := r.waitFor(15*time.Second, "Seed L")
-	t.Logf("`→` opened the fold:\n%s", opened)
-
-	// AND THE FOLD IS STILL THERE, because it is the way back: an opened fold
-	// still says how many rows it is the door over, AND IT SAYS IT THE OTHER WAY
-	// ROUND. `12 more` over a list already showing all twelve is a sentence that
-	// is not true, so since #518 an open fold reads `12 fewer` — what pressing it
-	// does rather than what it hides (internal/tui3's [foldWords]).
-	if !strings.Contains(opened, say(t, "foldFewerWord")) {
-		t.Errorf("the fold vanished when it was opened, so there is no way back:\n%s", opened)
+	if row := matchRow(found, "Seed T"); row == "" {
+		t.Errorf("typing did not find the conversation behind the fold:\n%s", found)
+	} else {
+		t.Logf("typing found the row behind the fold: %q", row)
 	}
-	if !walkTo(r, say(t, "homeFoldShutHint"), "Down") {
-		t.Fatalf("could not put the cursor back on the opened fold:\n%s", r.capture())
-	}
-	r.keys("Left")
+	r.keys("Escape")
 	time.Sleep(1500 * time.Millisecond)
-	closed := r.capture()
-	if strings.Contains(closed, "Seed L") {
-		t.Errorf("`←` did not shut the fold again:\n%s", closed)
+	back := r.capture()
+	if !strings.Contains(back, say(t, "homeFindWord")) {
+		t.Errorf("esc did not put the panels back with their fold:\n%s", back)
 	}
-	t.Logf("`←` shut it again:\n%s", closed)
 }
 
 // ── 8 ───────────────────────────────────────────────────────────────────────
@@ -1219,56 +1224,107 @@ func testNarrow(t *testing.T) {
 
 // ── 9 ───────────────────────────────────────────────────────────────────────
 
-// testGrouped turns the flat list into one block per project and reads the
-// blocks back.
+// testGrouped reads the machine's work arranged by project, which is the
+// `projects` panel now, and checks that `alt+g` — the key that used to group the
+// flat list — does nothing.
 //
-// THIS SUBTEST REPLACES `the_project_card`. That one put the pointer on a folded
-// `▸ delta` line and read the card a whole project got. Both went with the home
-// rethink: the project is a TAG ON THE ROW now, nothing on the desktop builds a
-// project line, and no cursor stop carries a project's card. What the surface
-// kept is the other half of the same idea — `alt+g` groups the list by project,
-// and each block wears its project's name as its heading (internal/tui3's
-// switcher.go, addGrouped). So the test asks the surviving question: can a person
-// still see this machine's work arranged by project.
+// THE PROJECTS PANEL IS THE VIEW BY PROJECT (DESIGN.md §3 G4): every folder with
+// a conversation in it, this window's own first, each row its path, its counts
+// and its repository. It runs at [tuiPlain] because that is two columns, where
+// `projects` stands in the left one and [panelColumn] can read it whole.
 func testGrouped(t *testing.T) {
 	home := newHome(t, nil)
 	for i, name := range []string{"alpha", "beta", "gamma"} {
 		seedProject(t, home, name, i, time.Duration(10*(i+1))*time.Minute)
 	}
 	ws := newWorkspace(t, "groupws", false)
-	r := start(t, "afe2e_group", home, ws, tuiWide, 40)
-	flat := r.waitFor(25*time.Second, say(t, "homeFootWord"), "Seed Beta")
-	t.Logf("the flat list:\n%s", flat)
+	r := start(t, "afe2e_group", home, ws, tuiPlain, 40)
+	screen := r.waitFor(25*time.Second, say(t, "homeFootWord"), say(t, "homePanelProjects"), "Seed Beta")
+	t.Logf("home with three seeded projects:\n%s", screen)
 
-	// The key is named on the list's own section line while anything is asking
-	// or moving; with nothing to triage the line is not drawn, so the key is
-	// pressed rather than read. alt+g arrives as ESC g, which is what every
-	// terminal sends for it.
-	r.lit("\x1bg")
-	grouped := r.waitFor(15*time.Second, "alpha")
-	t.Logf("after alt+g, the list is grouped by project:\n%s", grouped)
-
-	for _, name := range []string{"alpha", "beta", "gamma", "groupws"} {
-		if !headingRow(grouped, name) {
-			t.Errorf("no heading of its own for the project %q:\n%s", name, grouped)
+	projects := panelColumn(screen, say(t, "homePanelProjects"), tuiPlain/2)
+	for _, name := range []string{"groupws", "alpha", "beta", "gamma"} {
+		if !strings.Contains(projects, name) {
+			t.Errorf("the `projects` panel has no row for %q:\n%s", name, projects)
 		}
 	}
-	// AND THE ROWS ARE STILL THE CONVERSATIONS, under the heading that owns
-	// them: the grouping is a view of one list and never a second reading.
-	for _, want := range []string{"Seed Alpha", "Seed Beta", "Seed Gamma"} {
-		if !strings.Contains(grouped, want) {
-			t.Errorf("grouping lost the conversation %q:\n%s", want, grouped)
-		}
+	// THIS WINDOW'S FOLDER IS THE FIRST ROW, which is why the panel is never
+	// empty.
+	if first := strings.SplitN(strings.TrimSpace(projects), "\n", 3); len(first) < 2 || !strings.Contains(first[1], "groupws") {
+		t.Errorf("this window's folder is not the first row of `projects`:\n%s", projects)
 	}
 
-	// And the same key puts it back.
+	// AND alt+g IS UNBOUND ON HOME: there is no list left to group. It arrives
+	// as ESC g, which is what every terminal sends for it, and nothing moves.
 	r.lit("\x1bg")
 	time.Sleep(1500 * time.Millisecond)
-	back := r.capture()
-	if headingRow(back, "alpha") {
-		t.Errorf("alt+g a second time did not put the flat list back:\n%s", back)
+	after := r.capture()
+	if headingRow(after, "alpha") {
+		t.Errorf("alt+g drew a project heading on home:\n%s", after)
 	}
-	t.Logf("alt+g again, back to the flat list:\n%s", back)
+	if !strings.Contains(after, say(t, "homePanelRecent")) {
+		t.Errorf("alt+g took the panels away:\n%s", after)
+	}
+}
+
+// matchRow is the first line naming a conversation as a MATCH of a search —
+// not the box the words were typed into, and not the two rows that quote them
+// back (`ask here: "…"`, `start a new conversation: "…"`), each of which holds
+// the typed words whether or not anything matched.
+func matchRow(screen, title string) string {
+	for _, line := range strings.Split(screen, "\n") {
+		if strings.Contains(line, title) && !strings.Contains(line, "\""+title) && !strings.Contains(line, "› "+title) {
+			return strings.TrimSpace(line)
+		}
+	}
+	return ""
+}
+
+// panelColumn is one panel of the LEFT column, from its heading down to the
+// blank row under it, each line cut at the column's right edge — the rows of
+// that panel and nothing from the column beside it.
+func panelColumn(screen, heading string, edge int) string {
+	var b strings.Builder
+	in := false
+	for _, line := range strings.Split(screen, "\n") {
+		runes := []rune(line)
+		if len(runes) > edge {
+			runes = runes[:edge]
+		}
+		left := strings.TrimRight(string(runes), " ")
+		if !in {
+			in = strings.HasPrefix(strings.TrimSpace(left), heading)
+		} else if strings.TrimSpace(left) == "" {
+			break
+		}
+		if in {
+			b.WriteString(left)
+			b.WriteString("\n")
+		}
+	}
+	return b.String()
+}
+
+// barWords is the tab bar's words: the first row holding both its first and its
+// last word, with any count a tab wears (`tasks 1`) left out.
+func barWords(screen, first, last string) []string {
+	for _, line := range strings.Split(screen, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 || fields[0] != first {
+			continue
+		}
+		var words []string
+		for _, field := range fields {
+			if _, err := strconv.Atoi(field); err == nil {
+				continue
+			}
+			words = append(words, field)
+		}
+		if words[len(words)-1] == last {
+			return words
+		}
+	}
+	return nil
 }
 
 // headingRow answers whether a project's name stands ALONE on a line of the
