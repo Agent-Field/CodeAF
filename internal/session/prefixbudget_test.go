@@ -242,6 +242,27 @@ import (
 // left exactly where it already was rather than restated here. The page went
 // 16,671 → 16,897, the tool block is unmoved at 22,823, and the prefix is
 // 39,720 — 8,280 under.
+// ATTRIBUTION COST 863 BYTES AND 333 OF THEM ARE THE FEATURE (2026-09-10). Lane
+// I of the prompt diet gave the chat the law the resident has had all along, and
+// a third case with it: aforge signs the git work it does in somebody's name —
+// one trailer on a commit, one footer line on a pull request or issue body, and
+// one small `<sub>` line on the FIRST comment it leaves in a thread and no later
+// one. It is a law this page did not state at all, so nothing was deleted for it;
+// there was no second copy to delete.
+//
+// THE FLOOR IS THE CONSTANTS AND THE FLOOR IS 333 BYTES. The trailer, the pull
+// footer and the comment line are constants because the exact bytes are what
+// attributes — a footer the model half-remembers counts as nothing — so this is
+// the one law on the belt that cannot be paraphrased down. What IS paid for: the
+// issue footer is named by the single utm parameter that differs rather than
+// spelled a second time (145 bytes), and the law is four sentences, three places
+// and one nowhere-else, with no example and no reasoning.
+//
+// It is also CONDITIONAL — off with the row off, off in a hand whose bash cannot
+// commit — so this figure is the widest page and not everybody's. On dev alone
+// the page was 22,714 → 23,577; landing after lanes A, C, D and F it is
+// 16,898 → 17,761, the tool block is unmoved by this lane at 22,823, and the
+// prefix is 40,584 — 7,416 under, and the cap is untouched.
 // AND THE RESULT CAPS PAID 652 BYTES ON THE WAY TO FIXING A DEFECT (2026-09-10).
 // Lane B (§5 item 1) made every result cap a share of the model's window instead
 // of a flat 2000 lines / 50KB, which meant the figures had to be rendered from
