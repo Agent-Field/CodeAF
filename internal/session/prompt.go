@@ -101,6 +101,15 @@ var fanoutPrompt string
 // quick worker's, and a page teaching a verb that is not on the belt is the
 // prompt lying.
 //
+// AND IT OPENS BY SAYING THE PAGE ABOVE IT IS NOT ABOUT IT, which is
+// [handToolTail]'s shape and is here for [handToolTail]'s reason. A quick worker still
+// reads [workerPrompt] — it is a task, it owns its outcome, directions still
+// reach it, and there is nobody to ask — but three of that page's sentences are
+// plainly false of it: the acceptance it was handed, the task folder, and the
+// branch its work comes home on. A page that contradicted them silently would
+// leave the model holding two accounts of where it is working, and it would act
+// on whichever it read last.
+//
 // AND IT IS THE ONLY PLACE THESE LAWS ARE WRITTEN. The node's opening message
 // carries the job and the record it came out of and no rules at all
 // ([quickBrief] says why), so there is one page saying what a quick worker is
