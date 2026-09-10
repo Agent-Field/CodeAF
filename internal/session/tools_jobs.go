@@ -263,8 +263,18 @@ const (
 // and what did it last say" is answered without a call at all. The measured cost
 // of the old wording was a model that answered `sleep 30 && tail` nine times to
 // an empty log and then killed the work.
-var jobsDescription = "Background work: bash background:true commands and watches. Completions come to you: when a job ends, its exit code and closing output arrive in the conversation on their own, and every running job's elapsed time and last line ride at the foot of every tool result — so never sleep, tail or poll to wait for one. list: this session's jobs (id, kind, command, status, elapsed). output: the tail of one job's last " +
-	strconv.Itoa(jobRingBytes>>10) + "KB (a watch's is its accumulated ticks), for an intermediate look and not for waiting. kill: SIGTERM the process group, SIGKILL " +
+//
+// AND THAT LAW IS NOW STATED ON THE PAGE AND NOT HERE (2026-09-10, the prompt
+// diet). This description carried it TWICE — once as "completions come to you"
+// and once as "for an intermediate look and not for waiting" — while `watch` and
+// `propose_task` each carried a third and a fourth copy. It is one law about
+// everything handed off, so prompts/system.md states it once for all of them and
+// the belt states none of it; the manual's own page answers it at length ("Does
+// aforge poll a background job, or does it get told", what-i-can-do.md). What
+// this description keeps is the contract: which two kinds of work are here, what
+// each op does, what comes back, and where the whole log lives.
+var jobsDescription = "Background work: bash background:true commands and watches. list: this session's jobs (id, kind, command, status, elapsed). output: the tail of one job's last " +
+	strconv.Itoa(jobRingBytes>>10) + "KB (a watch's is its accumulated ticks). kill: SIGTERM the process group, SIGKILL " +
 	strconv.Itoa(int(jobTermGrace/time.Second)) + "s later; stops watches. Each job's whole log is a file on disk, named when it started; read it when the tail is short. A running job also shows on their screen."
 
 var jobsSchemaJSON = `{"type":"object","properties":{"action":{"type":"string","description":"The op.","enum":["list","output","kill"]},"id":{"type":"integer","description":"Job id (output and kill need one)"},"tail":{"type":"integer","description":"Lines returned (default: ` +
