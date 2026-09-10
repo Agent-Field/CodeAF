@@ -533,23 +533,6 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// expansion; this span keeps the command under the pointer, so it wins
 			// its own columns before the whole-block arm below.
 			return hoverAt{kind: hoverKeep, entry: r.entry}
-		case r.hit == hitSettle:
-			// NARROWER THAN ITS ROW, with four of them on one line: which chip the
-			// pointer is
-			// on is a question about the column, and a row that lit as a whole would
-			// promise that pressing anywhere on it did something (tasksettle.go).
-			//
-			// A ROOM'S FOOT IS THE SAME ROW WITH NO ENTRY UNDER IT, so the card is
-			// asked for through the seam that knows which of the two it is
-			// (tasksettle.go's [app.settleCardOf]).
-			if card := a.settleCardOf(r.entry); card != nil {
-				for i, chip := range card.chips {
-					if chip.span.holds(x) {
-						return hoverAt{kind: hoverSettle, entry: r.entry, index: i}
-					}
-				}
-			}
-			return hoverAt{}
 		case r.hit == hitFold:
 			return hoverAt{kind: hoverFold, turn: r.turn}
 		case r.hit == hitCaption:

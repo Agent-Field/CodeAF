@@ -639,7 +639,7 @@ func TestAcceptingWorkOverAMergeConflictStillNeedsALook(t *testing.T) {
 	node.setTree(tree)
 	node.finish("edited the shared file", []string{"shared.txt"}, tree.branch, tree.merge)
 
-	if err := agent.acceptTask(node, "I read it myself"); err != nil {
+	if err := agent.acceptTask(node, "I read it myself", TaskAskOwnerPerson); err != nil {
 		t.Fatalf("acceptTask: %v", err)
 	}
 
@@ -684,7 +684,7 @@ func TestATreeThatIsNoRepositorySettlesTheAcceptWhereItStands(t *testing.T) {
 	node.setTree(tree)
 	node.finish("wrote the parser", []string{"parser.py"}, tree.branch, tree.merge)
 
-	if err := agent.acceptTask(node, "I read it myself"); err != nil {
+	if err := agent.acceptTask(node, "I read it myself", TaskAskOwnerPerson); err != nil {
 		t.Fatalf("acceptTask: %v", err)
 	}
 
@@ -726,7 +726,7 @@ func TestAnAcceptWithNothingToCommitStillComesHome(t *testing.T) {
 	node.setTree(tree)
 	node.finish("read the parser and found nothing to change", nil, tree.branch, tree.merge)
 
-	if err := agent.acceptTask(node, "I read it myself"); err != nil {
+	if err := agent.acceptTask(node, "I read it myself", TaskAskOwnerPerson); err != nil {
 		t.Fatalf("acceptTask: %v", err)
 	}
 

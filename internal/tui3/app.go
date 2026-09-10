@@ -6136,12 +6136,6 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		// the same gesture answering the same question about the same object one
 		// state later (taskdone.go).
 		a.toggleDoneAt(r.entry)
-	case hitSettle:
-		// EXCEPT ON THE ONE ROW OF THAT CARD THAT IS A QUESTION. Four answers
-		// share the line, so which of them was pressed is a question about x, and
-		// a press that missed them all is swallowed rather than expanding the card
-		// under somebody who was reaching for one (tasksettle.go).
-		a.settlePress(r.entry, x)
 	case hitHarness:
 		a.harnessCardPress(r.entry, x)
 		// The middle column of that card opens the design's ROOM now

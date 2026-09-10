@@ -143,7 +143,7 @@ func TestCheckerAfterMergeReceivesResolversConclusion(t *testing.T) {
 	node := resolvableTestNode(t, "edit the shared file")
 	node.keepResult("OLD-CONCLUSION")
 	detail := conflictSentence(tree.branch, []string{"shared.txt"}, "")
-	state := a.landConflicted(context.Background(), node, tree, []string{"shared.txt"}, "OLD-CONCLUSION", mergeConflicted, detail, io.Discard)
+	state := a.landConflicted(context.Background(), node, tree, []string{"shared.txt"}, "OLD-CONCLUSION", mergeConflicted, detail, refusedByTheWork, io.Discard)
 	if !seen || state != TaskDone {
 		t.Fatalf("resolved work did not reach and pass its check: seen=%v, state=%s", seen, state)
 	}

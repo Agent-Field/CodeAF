@@ -1746,14 +1746,10 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if a.roomApprovalKey(msg) {
 		return nil, true
 	}
-	// AND THE FOUR LETTERS THAT DECIDE ABOUT A NODE THAT NEEDS A LOOK, under the
-	// guard for the same reason, and only ever over an EMPTY box: the box in here
-	// steers the worker, and a letter that decided somebody's work was finished
-	// on the first keystroke of a sentence would be unforgivable
-	// (tasksettle.go's [app.roomSettleKey] holds every guard `x` has).
-	if a.roomSettleKey(msg) {
-		return nil, true
-	}
+	// THE LETTERS THAT DECIDE ABOUT A NODE THAT NEEDS A LOOK ARE NOT TAKEN HERE.
+	// A landed `your call` is a question, and the question block above the box
+	// answers it on every page with the one key grammar — which is read before
+	// this file is reached (input.go's key order, tasksettle.go says why).
 	// AND A RUN'S PAGE IS READ BEFORE THE ROOM'S OWN TWO KEYS (roomorch.go),
 	// because it has more levels than a room does: esc walks out of a chip's card
 	// and out of a nested run before it walks out of the page at all, and enter
@@ -1904,19 +1900,17 @@ func (a *app) roomHint() string {
 		// person reaching for esc actually wants. It is drawn only while there is
 		// something to stop, which is the emptiness law applied to a hint.
 		return roomStopHint
-	case a.roomSettleAsking():
+	case a.roomLandingAsking():
 		// THE ROOM'S ANSWER TO "IT SAYS LOOK IT OVER, NOW WHAT". The node has
-		// landed, so nothing above this is live, and the three answers are
-		// printed on the foot as well — but the foot is at the far end of a page
-		// somebody is reading, and this slot is the one place on the frame a
-		// person looks for the next keystroke (tasksettle.go).
+		// landed, so nothing above this is live, and the answers are on the
+		// question block above the box — but that block is at the other end of a
+		// page somebody is reading, and this slot is the one place on the frame a
+		// person looks for the next keystroke.
 		//
-		// AND IT IS SPELLED TO THE FRAME. The slot takes a line whole or not at
-		// all ([app.legend]), so the full sentence — four cells too long at sixty
-		// columns — left the narrowest terminal naming none of the keys that
-		// answer the question it was standing on. [app.settleHintAt] is the
-		// ranked prefix of it that fits, spelled from the card's own chips.
-		return a.settleHintAt(a.roomSettleCard(), a.width, "")
+		// AND IT IS SPELLED FROM THE QUESTION'S OWN ANSWERS, so the block, this
+		// slot and the roster's cannot name three different letters for one
+		// question ([app.landingHintAt]).
+		return a.landingHintAt(a.room.id, a.width, "")
 	}
 	return ""
 }
@@ -3313,13 +3307,13 @@ func (a *app) roomRows(width int) []row {
 		if closed && len(out) > 0 {
 			out = append(out, row{entry: -1})
 		}
-		// A NODE THAT NEEDS A LOOK ASKS HERE, in the place the foot would have
-		// said "finished": the same two rows its landed card draws, answering to
-		// the same keys and the same pointer, and the same receipt once answered
-		// (tasksettle.go's [app.roomSettleRows]). Every other landing keeps the
-		// foot it has.
-		var asked bool
-		if out, asked = a.roomSettleRows(out, inner); !asked {
+		// A NODE THAT NEEDS A LOOK DOES NOT SAY `finished` HERE. Its question is
+		// standing on the block above the box, in this room as on every other
+		// page (tasksettle.go), and a foot that read `this task has finished —
+		// say it to main` over it told a person the one thing that was not true
+		// about the page they were looking at (#767). Every other landing keeps
+		// the foot it has.
+		if !a.roomLandingAsking() {
 			// AND IT NAMES A DOOR (roomrefusal.go). `task finished — esc to
 			// return` was the whole of what this row said for a year, and esc is
 			// already on the legend and on the focus header above it; where the
@@ -3335,7 +3329,6 @@ func (a *app) roomRows(width int) []row {
 	// its answers with no entry to hang them on, so the deck walk cannot reach it.
 	gutterPass(out, width)
 	a.gutterCards(room.deck(), width)
-	gutDoneCard(a.roomSettleCard(), textGutterCols(width))
 	// THE POINTER, LAST, exactly as in the conversation (render.go's layout).
 	a.hoverPass(out, width)
 	a.restoreRoomAnchor(reading, out)
