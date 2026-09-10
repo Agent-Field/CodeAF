@@ -1238,6 +1238,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		if rung != effort.None {
 			attemptCtx = provider.WithConfiguredEffortRung(ctx, rung)
 		}
+		recordEffort(attemptCtx, model, rung)
 		// What this call is FOR, for the model-call log. A conversation's own
 		// turn and a task child's turn run the identical loop, and the one thing
 		// that tells them apart is whether this agent IS a node — so the word
@@ -1793,6 +1794,12 @@ type toolResult struct {
 	// on [Event.HarnessMade], and every counter that judges the model by its
 	// steps skips it — the harness's failures are the harness's steps.
 	harness bool
+	// refusedBy names the pre-action citizen that said no, and is empty on
+	// every result that is not a veto. Nobody is shown it: it exists so the
+	// debug record can say WHO refused a call, because a refusal recorded as a
+	// failure sends somebody debugging the tool instead of the gate
+	// (internal/trace's ToolEvent).
+	refusedBy string
 }
 
 // ── the early-start law ─────────────────────────────────────────────────────
@@ -2270,7 +2277,19 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 // been found to carry the tool: a call for a tool that does not exist is
 // answered "Unknown tool", never asked about. A question about a tool nobody
 // has is a question with no right answer.
+// AND IT IS WHERE THE DEBUG RECORD LEARNS ABOUT TOOLS. Everything a call can
+// become — it ran, it failed, a door refused it before it ran, the hand was not
+// on the belt at all — comes back through this one function, so the record is
+// written around it rather than inside the four exits below (debugrecord.go).
 func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
+	started := time.Now()
+	result := a.dispatchTool(ctx, ep, hub, call, rendered)
+	recordToolCall(ctx, call, result, started, time.Since(started))
+	return result
+}
+
+// dispatchTool is the dispatch itself: find the hand, ask the doors, run it.
+func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
 	for _, tool := range a.beltTools() {
 		if tool.Name != call.Function.Name {
 			continue
