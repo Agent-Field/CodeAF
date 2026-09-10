@@ -67,6 +67,7 @@ package tui3
 //     keeps [sessionBusyWord] there and says nothing about moving anything.
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -346,6 +347,16 @@ func (a *app) takeoverTick(msg takeoverTickMsg) tea.Cmd {
 		}
 		return a.takeoverBeat()
 	}
+	// THE REQUEST COMES OFF THE DISK ON THE WAY IN, and this is not tidying.
+	// The lock frees because the holder let go — and the holder only removes the
+	// request when it is the one that answered it ([session.drainTakeover]
+	// returns without taking it when the session was already closing, or had
+	// been asked once before). So a claim can succeed against a lock that freed
+	// for its own reasons with this window's question still lying in the folder
+	// it is about to open — and the session opened on it would find that
+	// question on its own beat and let go of a conversation nobody asked it to.
+	// A window that has what it asked for has no question left to leave behind.
+	session.CancelTakeover(a.takeover.dir)
 	line, about := a.takeover.line, a.takeover.file
 	a.takeover = takeoverWait{gen: a.takeover.gen}
 	a.syncHomeClaim()
@@ -488,6 +499,80 @@ func (a *app) takeOver() tea.Cmd {
 // flock this whole exchange exists to release, and the window waiting for it
 // would wait for ever.
 func (a *app) takeOverFresh() tea.Cmd { return a.freshAfterLeaving(a.endAgent) }
+
+// ── the arriving window: a question nobody answered ─────────────────────────
+
+// turnResumer is the agent door onto A QUESTION THIS CONVERSATION WAS NEVER
+// ANSWERED (session's [Agent.ResumeStoppedTurn]). It asks the person's last
+// message again — once, through the ordinary turn door — when the journal this
+// conversation was opened on ends in their words and then this machine stopping
+// the turn that was answering them, which is the shape a takeover mid-thought
+// leaves behind (session's resume.go).
+//
+// It is asserted rather than added to [Agent] for [attachable]'s reason: a
+// scripted agent in this package's tests has never heard of one, and a surface
+// driven by one must stay representable. A hosted conversation answers no such
+// door either, which is honest — over a connection the engine is running the
+// turn and nothing stopped it.
+type turnResumer interface {
+	ResumeStoppedTurn(ctx context.Context) (<-chan session.Event, bool)
+}
+
+// resumedTurnMsg is that door's answer on its way back to the loop, and it is
+// sent only when a turn really started.
+type resumedTurnMsg struct {
+	gen int
+	ch  <-chan session.Event
+}
+
+// resumeStoppedTurn is the one line [app.attachConversation] spends on this: ask
+// the conversation being taken up whether it is sitting on a question nobody
+// answered, and if it is, let it ask again.
+//
+// IT GOES THROUGH A COMMAND because the door takes the agent's lock and may
+// reach a provider, and the Update loop is not a place to wait. Nothing on the
+// screen moves until the answer lands, so a conversation that is NOT owed one —
+// which is nearly every conversation ever opened — costs one lock read and draws
+// nothing at all.
+//
+// A TURN ALREADY ON SCREEN IS NEVER ASKED. The atomic replay above this may have
+// handed the surface a turn that is still running; the engine would refuse
+// anyway (a resume needs an idle session), and asking would spend a lock to be
+// told so.
+func (a *app) resumeStoppedTurn() tea.Cmd {
+	door, ok := a.agent.(turnResumer)
+	if !ok || a.stream != nil {
+		return nil
+	}
+	gen, ctx := a.gen, a.ctx
+	return func() tea.Msg {
+		events, resumed := door.ResumeStoppedTurn(ctx)
+		if !resumed {
+			return nil
+		}
+		return resumedTurnMsg{gen: gen, ch: events}
+	}
+}
+
+// tookResumedTurn is the surface taking up that turn.
+//
+// THE SENTENCE IS SAID HERE AND THE TURN IS TAKEN THE ORDINARY WAY. What the
+// person sees is their own question — already on the page, put there by the
+// replay a moment ago — one dim line saying the reply is being asked for again
+// ([session.ResumedWord]), and then the answer streaming under it. There is no
+// second copy of their words, because nothing wrote one.
+//
+// A WINDOW THAT MOVED ON IN THE MEANTIME LETS IT GO. The generation is the one
+// the ask was made under, and a conversation switched away from between the two
+// is a turn this surface is no longer drawing; the engine goes on running it and
+// the journal keeps its answer, which is what every other detached turn does.
+func (a *app) tookResumedTurn(msg resumedTurnMsg) tea.Cmd {
+	if msg.ch == nil || msg.gen != a.gen || a.stream != nil {
+		return nil
+	}
+	a.note(session.ResumedWord)
+	return a.takeStream(msg.ch)
+}
 
 // movedFresh is the same landing on the ENGINE ROAD, and it differs in the one
 // line [app.stepBackFront] differs in: the conversation is detached rather than

@@ -2335,6 +2335,11 @@ func TestTheVanishedReplyQuestionsReachTheAnswer(t *testing.T) {
 		{"my answer disappeared when I opened the conversation in another window", "models-and-cost", "ask again to pick it up"},
 		{"it thought for two minutes and then said nothing", "lanes", "a ceiling on a still wire"},
 		{"is a model that is thinking treated as a stall", "lanes", "a ceiling on a still wire"},
+		// And the half the repair owes them: after a conversation moves, the
+		// question is asked again for them rather than by them.
+		{"do I have to type my question again after moving a conversation here", "models-and-cost", "asks your question again by itself"},
+		{"the reply stopped when this conversation moved", "models-and-cost", "asking again"},
+		{"why did the answer start again on its own when I moved the conversation", "home", "asks your question again for you"},
 	} {
 		found := false
 		for _, section := range Chat().Search(probe.asked, DefaultResults) {

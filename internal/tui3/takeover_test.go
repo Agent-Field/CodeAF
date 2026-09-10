@@ -9,7 +9,9 @@ package tui3
 // against that lock and a flag standing in for it would test nothing.
 
 import (
+	"context"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -836,5 +838,103 @@ func TestNoDoorOnTheMarginWhereEnterWouldRefuse(t *testing.T) {
 		if row.door {
 			t.Fatalf("%q was offered a move on another machine's home", row.title)
 		}
+	}
+}
+
+// ── the arriving window: a question nobody answered ─────────────────────────
+
+// resumingAgent is a conversation whose journal ends on a question this machine
+// stopped answering (session's resume.go). It answers the one door the surface
+// asks about that, and counts how many times it was asked.
+type resumingAgent struct {
+	*switchAgent
+	asked  int
+	answer string
+}
+
+func (r *resumingAgent) ResumeStoppedTurn(context.Context) (<-chan session.Event, bool) {
+	r.asked++
+	if r.asked > 1 {
+		return nil, false
+	}
+	out := make(chan session.Event, 4)
+	out <- session.Event{Kind: session.EventTextDelta, Text: r.answer}
+	out <- session.Event{Kind: session.EventTurnDone}
+	close(out)
+	return out, true
+}
+
+// A CONVERSATION THAT ARRIVES ON A QUESTION NOBODY ANSWERED ASKS IT AGAIN HERE.
+// This is the whole of the repair a person sees: they moved the conversation,
+// and the reply they were waiting for starts in front of them without a
+// keystroke. Nothing of their question is typed or drawn a second time.
+func TestAConversationArrivingOnAnUnansweredQuestionAsksItAgain(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	where := lab.project("-tmp-alpha")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", where, now)
+	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", where, now.Add(-time.Hour))
+	release := lab.holdUntil(theirs)
+
+	a := lab.app(mine)
+	arriving := &resumingAgent{
+		switchAgent: &switchAgent{fakeAgent: &fakeAgent{model: "m"}},
+		answer:      "the answer nobody had to ask for twice",
+	}
+	a.open = func(workspace, transcript string) (Conversation, error) {
+		return Conversation{Agent: arriving, SessionFile: transcript, Workspace: workspace, Resumed: true}, nil
+	}
+	a.openHome()
+	a.home.point(theirs)
+	a.homeKey(key("enter"))
+	a.homeKey(key("enter"))
+	release()
+	drive(t, a, takeoverTickMsg{gen: a.takeover.gen})
+
+	if a.file != theirs {
+		t.Fatalf("the window landed on %q, want %q", a.file, theirs)
+	}
+	if arriving.asked != 1 {
+		t.Fatalf("the arriving conversation was asked to resume %d times, want once", arriving.asked)
+	}
+	// ONE DIM LINE SAYS WHY A REPLY STARTED ON ITS OWN, and it is the engine's
+	// sentence rather than a second spelling of it.
+	said := noteTexts(a)
+	if !slices.Contains(said, session.ResumedWord) {
+		t.Fatalf("nothing said why the reply started again; the notes were %q", said)
+	}
+	// AND THE ANSWER ARRIVED.
+	if !strings.Contains(transcriptText(a), arriving.answer) {
+		t.Fatalf("the resumed reply never reached the page:\n%s", transcriptText(a))
+	}
+}
+
+// AND THE REQUEST COMES OFF THE DISK WHEN THE CLAIM SUCCEEDS. A lock can free
+// for its own reasons — the other window quit, or went to another conversation —
+// with this window's question still lying in the folder it is about to open; the
+// session opened on it would find that question on its own beat and let go of a
+// conversation nobody asked it to.
+func TestAClaimThatSucceedsLeavesNoQuestionBehind(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	where := lab.project("-tmp-alpha")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", where, now)
+	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", where, now.Add(-time.Hour))
+	release := lab.holdUntil(theirs)
+
+	a := lab.app(mine)
+	a.openHome()
+	a.home.point(theirs)
+	a.homeKey(key("enter"))
+	a.homeKey(key("enter"))
+	if _, err := os.Stat(session.TakeoverPath(homeSessionDirOf(theirs))); err != nil {
+		t.Fatalf("no request was left for the other window: %v", err)
+	}
+
+	release()
+	a.takeoverTick(takeoverTickMsg{gen: a.takeover.gen})
+
+	if _, err := os.Stat(session.TakeoverPath(homeSessionDirOf(theirs))); !os.IsNotExist(err) {
+		t.Fatal("the window opened the conversation and left its own question in the folder")
 	}
 }

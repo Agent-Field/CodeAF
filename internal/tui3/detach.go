@@ -565,6 +565,12 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	if joined != nil {
 		cmds = append(cmds, joined)
 	}
+	// AND A QUESTION THIS CONVERSATION WAS NEVER ANSWERED IS ASKED AGAIN. It is
+	// last because it is the one thing here that can START work rather than draw
+	// what is already there, and it must see the screen exactly as the replay
+	// above left it — including whether that replay handed this window a turn
+	// that is still running (takeover.go's [app.resumeStoppedTurn]).
+	cmds = append(cmds, a.resumeStoppedTurn())
 	a.touch()
 	return tea.Batch(cmds...)
 }

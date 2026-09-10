@@ -3245,6 +3245,11 @@ into repetition or jumbled text. A dim line lands in the conversation saying whi
   the reply lost its thread — that text was dropped, asking again
 ```
 
+One more line reads the same way and is not a cut request: `the reply stopped when this
+conversation moved — asking again` is a whole turn being asked again, in the window a
+conversation was moved to, because the turn it left behind had said nothing at all.
+
+
 The model is **not** named on `trying again`. The name was on the line that was just cut,
 and the retry still asks that same model. When the router identified an endpoint that went
 quiet, the retry avoids that endpoint and may reach another one serving the model. There is
@@ -3591,6 +3596,11 @@ reply taken away rather than a reply misfiled — you stopped it, or the convers
 opened in another window, closed, or left under the turn — and aforge names which, in one
 sentence, unless it was your own stop. *Models and cost* has the list under "My reply just
 stopped and nothing was said".
+
+**One of those endings repairs itself.** A conversation you moved to another window whose
+reply had said nothing at all is asked again in the window it arrived in, without you
+retyping anything — one dim line, `the reply stopped when this conversation moved — asking
+again`, and then the answer under the question you already asked.
 
 ## `<think>` showed up in my answer
 

@@ -3857,6 +3857,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case submittedMsg:
 		return a, a.adopt(msg)
 
+	case resumedTurnMsg:
+		// A question this conversation was never answered, being answered
+		// (takeover.go's [app.tookResumedTurn]). It is beside the submit above
+		// because it is the same shape of answer to the same shape of question —
+		// a door that took the agent's lock off the Update loop and is reporting
+		// back with a turn to draw.
+		return a, a.tookResumedTurn(msg)
+
 	case steeredMsg:
 		// What the session did with a sentence sent INTO the running turn
 		// (steer.go). It is beside the submit above because it is the same shape of

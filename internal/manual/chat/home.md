@@ -1103,6 +1103,15 @@ now stops where it is and hands the conversation over on its next look — four 
 second — so `enter` and the conversation arriving are one gesture. The reply it had written
 so far is in the transcript that arrives with it.
 
+**And if it had written nothing yet, this window asks your question again for you.** A model
+that has been thinking for a minute has said nothing that can be kept, so a move used to
+land you on your own question with nothing under it and a line telling you to ask again.
+Now the question is asked again here, by itself, the moment the conversation arrives: one
+dim line — `the reply stopped when this conversation moved — asking again` — and then the
+answer. Nothing is typed twice and nothing is on the page twice. A reply that had already
+started is *not* asked again: what it wrote came with it, and its tasks resume from their
+checkpoints rather than running a second time.
+
 Past fifteen seconds with nothing happening over there, the card says `that window has not
 answered yet` and stops at that: a window wedged on a disk, one whose machine went to sleep
 and one on an older build all look identical from here, so it states the fact and invents no

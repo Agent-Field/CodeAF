@@ -76,6 +76,55 @@ func TestATakeoverMidReplyIsAnsweredWithoutWaiting(t *testing.T) {
 	}
 }
 
+// A REQUEST THAT WAS ALREADY LYING THERE WHEN THE TURN OPENED DOES NOT END IT.
+//
+// THE HAZARD IS REAL AND IT IS THE MIRROR OF THE ONE ABOVE. A request is good
+// for ten minutes and the beat answers one in a quarter of a second, so a
+// request still on the disk when a LATER turn opens is one nobody is sitting
+// waiting for — the window that wrote it died, or it got the conversation by
+// another road and left its question behind. Answering it would take a reply
+// away from somebody who typed their question after it was written, on the
+// strength of a file nobody is reading.
+//
+// IT IS HELD AND NOT DROPPED: the request stays live, so a window that really is
+// waiting is answered on the first beat after this turn ends.
+func TestARequestOlderThanTheRunningTurnWaitsForIt(t *testing.T) {
+	agent, dir := questionSession(t, "takeover", nil)
+	lane, stop := agent.WatchTaskUpdates()
+	defer stop()
+	drainRoster(lane)
+
+	if err := AskTakeover(dir); err != nil {
+		t.Fatal(err)
+	}
+	agent.mu.Lock()
+	agent.running, agent.turnBegan = true, time.Now().Add(time.Second)
+	agent.mu.Unlock()
+
+	agent.drainTakeover()
+	if agent.TakeoverAsked() {
+		t.Fatal("a request written before this turn opened ended it")
+	}
+	select {
+	case ev := <-lane:
+		t.Fatalf("the lane carried %v for a request nobody is waiting on", ev.Kind)
+	case <-time.After(200 * time.Millisecond):
+	}
+	if _, err := os.Stat(TakeoverPath(dir)); err != nil {
+		t.Fatalf("the held request was taken off the disk: %v", err)
+	}
+
+	// AND THE FIRST BEAT AFTER THE TURN ANSWERS IT, so a window that really is
+	// waiting loses nothing but the rest of one reply.
+	agent.mu.Lock()
+	agent.running, agent.turnBegan = false, time.Time{}
+	agent.mu.Unlock()
+	agent.drainTakeover()
+	if !agent.TakeoverAsked() {
+		t.Fatal("the held request was never answered after the turn ended")
+	}
+}
+
 // A REQUEST NOBODY IS WAITING ON ANY MORE IS NOT ANSWERED: one withdrawn, and
 // one left by a window that died asking.
 func TestAWithdrawnOrStaleTakeoverIsIgnored(t *testing.T) {

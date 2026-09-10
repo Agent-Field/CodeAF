@@ -236,6 +236,11 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// session that wrote the file.
 		agent.messages = append(agent.messages, restored...)
 		agent.messageReasoning = append(agent.messageReasoning, replayed.reasoning...)
+		// AND WHETHER THE CONVERSATION ENDS ON A QUESTION NOBODY ANSWERED. It is
+		// carried off the journal rather than derived from the transcript because
+		// the fact lives on a line the transcript does not keep — which door
+		// stopped the turn (resume.go).
+		agent.stoppedTurn = replayed.stopped
 		// AND WHICH OF THOSE LINES THE PERSON ACTUALLY TYPED, which the messages
 		// alone cannot say (admission_compile.go). Work handed out of a reopened
 		// session would otherwise carry none of the conversation that preceded
@@ -1058,6 +1063,21 @@ type userMessage struct {
 	// [sessionEntry.Note]).
 	authored bool
 
+	// resumed marks THE PERSON'S OWN WORDS, ALREADY IN THE RECORD: a question
+	// this session is asking again because the turn that was answering it ended
+	// with nothing said (resume.go). It is set by one door and read by one line
+	// of [Agent.startTurnLocked] — the record is skipped, and everything else a
+	// turn does with the message it opened on happens exactly as it always does,
+	// because the words really are the words the person typed.
+	//
+	// IT IS NOT [userMessage.empty]. An empty message is a turn about something
+	// on the steering queue and has no words at all; this one has the words and
+	// they are already written down. Spelling it as empty would take the
+	// person's question out of everything a turn reasons about it with — what
+	// work handed out of here would carry (task_brief.go), what the turn was
+	// woken to answer (wakecause.go) — to avoid one append.
+	resumed bool
+
 	// steered marks A LINE SAID INTO A RUNNING NODE FROM OUTSIDE IT
 	// (task_room.go's [Agent.SteerTask] and [Agent.relayToTask]). Such lines ride
 	// this queue because a node's turns are its runner's to start and this is the
@@ -1513,7 +1533,11 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// below, after the turn's last message is journaled.
 	done := make(chan struct{})
 	a.done = done
-	if !user.empty() {
+	// AND WHEN IT OPENED, which is the one fact the takeover beat needs to tell a
+	// request somebody is waiting on from one that was already lying on the disk
+	// before this turn existed (takeover.go).
+	a.turnBegan = time.Now()
+	if !user.empty() && !user.resumed {
 		a.recordUserLocked(user)
 		// AND THE SESSION STARTS NAMING ITSELF NOW, on the person's own words,
 		// beside the answer rather than behind it (title.go). The message is in
