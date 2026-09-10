@@ -39,10 +39,20 @@ import os
 import statistics
 import sys
 
-# The outcome vocabulary, worst to best. `incomplete` sits below `fail` because
+# The outcome vocabulary, worst to best. `incomplete` sits at the bottom because
 # a test that never reported is less informative than one that reported badly.
-RANK = {"incomplete": 0, "unsupported": 1, "skip": 2, "crash": 3, "timeout": 3,
-        "fail": 4, "pass": 5}
+#
+# FAIL, TIMEOUT AND CRASH SHARE ONE RANK, and that is deliberate. It is tempting
+# to score a cell that used to time out and now fails as an improvement — it
+# finished, it cost less, it said something — and this bench met exactly that on
+# its first real comparison: `followup-while-working` timed out at 423s on the
+# baseline and failed its assertion at 112s on the candidate, for a fifth of the
+# tokens. But neither of those is the cell passing, and ranking one above the
+# other would let a genuine behaviour regression walk in wearing the word
+# "better" because it got there faster. A move inside the not-a-pass band is
+# SAME, and the token and wall columns beside it say what actually changed.
+RANK = {"incomplete": 0, "unsupported": 1, "skip": 2,
+        "crash": 4, "timeout": 4, "fail": 4, "pass": 5}
 
 
 def load(path, default=None):
