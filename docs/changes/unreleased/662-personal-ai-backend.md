@@ -7,6 +7,7 @@ invalidates:
   - "Collections used to contain bare references reachable only through the CLI. Chats can now find and organize collections and resolve members through their existing owners."
   - "There was no durable sourced-context record or turn integration. Schema v2 adds immutable revisions, withdrawal and explicit targets; chats and ordinary task workers refresh bounded information independently of learned memory."
   - "The completion reader previously judged report fields from a clipped write label and a byte-count receipt, and its objection was presented as fact. The newest bounded exact write/edit input now accompanies its result; missing evidence is explicit and objections must be checked against current work before editing."
+  - "A finishing standing check or action could overwrite a concurrent pause, stop or configuration edit. Revision-aware owner operations and runtime-only writeback now preserve newer intent and completed occurrence progress."
   - "Organization opens no longer reserve the writer for a current schema, and reads cannot recreate a missing database. Task workers can inspect but cannot reorganize or revise shared context."
 ---
 
@@ -51,3 +52,16 @@ watch-recovery findings alongside passing isolation checks. Its exploratory
 fixtures remain on a separate audit branch; they do not establish autonomous
 global watching or alter the existing `/land` contract. No audit findings are
 claimed fixed by this documentation update.
+
+The current-dev baseline `996117314` is integrated while retaining the draft's
+organization/context foundation and newer upstream completion, history and
+control behavior. Grooming/design records and the live checklist are consolidated
+into this draft; superseded #663 is closed only after its history is retained.
+
+Standing item schema 2 adds stale-write detection and atomic narrow controls.
+Runtime writeback preserves configuration, while schedule-specific reconciliation
+consumes completed occurrences even after unrelated edits. Old engines/tickers
+must be stopped and restarted together before using schema 2; mixed-version writers
+are unsupported. This is not external cancellation, rollback or exactly-once effects.
+The user has deferred expensive tui3/broad UI acceptance; the checklist records
+focused functional Spark receipts and remaining target capabilities separately.
