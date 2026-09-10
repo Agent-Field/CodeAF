@@ -1846,6 +1846,14 @@ the card in the window writes that from the command it has in front of it, and h
 only the one line the session is stopped on. The handful of shapes aforge always asks
 about — the ones that wipe a disk — are asked about again whatever you press here.
 
+**When that row is also held open in another window, the answers come first and the move
+waits.** A launch that finds its conversation open elsewhere lands on that row (*Continue a
+conversation from another terminal*); if the row is stopped on a question, it lands on the
+question's own chips and asks nothing about moving — `1` is `1 publish it`, not a cursor on
+`move it here`. `enter` on the row still raises `Move this conversation here?`, and while
+that card stands the row's chips step aside, because one screen cannot have two `1`s: `esc`
+puts the card down and the chips are back.
+
 The digits are keys **only while nothing is typed and the cursor is on a row that is
 waiting**. Every other moment a `1` is a `1` going into the box, which is a search and a
 new conversation at the same time.
