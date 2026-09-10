@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: A model picked while a task is being checked is the next run's, not a rewrite of what ran
-pr: 800
+pr: 802
 surface: [chat, engine]
 invalidates:
   - "`RetargetTask` decided what a pick could move from the node's STATE alone. A node is `TaskRunning` across three lives — its own worker, the check reading what that worker left, and every repair round — so a pick made during the check rewrote the frozen spec of work that had already finished. It now reads the node's phase, the same way the steering door already did."
