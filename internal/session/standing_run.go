@@ -61,6 +61,8 @@ package session
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -463,7 +465,13 @@ func (r *standingRunner) deliver(item standing.Item, kind, text, run string) {
 	// so a note written into it is a note no screen in this product ever opens.
 	// The project's inbox is the address that IS read: home draws it under the
 	// project, and the next ordinary conversation opened there folds it in.
-	if strings.TrimSpace(item.Origin.Exchange) != "" && r.root != "" {
+	//
+	// AND AN ITEM WITH NO CONVERSATION BEHIND IT IS THE SAME CASE. One the
+	// person wrote whole at the terminal (`aforge standing add`) was never
+	// asked for in a room, so it has no origin inbox at all — and a note with
+	// no address is a firing nobody reads, which this file's header forbids.
+	// The project's inbox is where its news waits.
+	if (strings.TrimSpace(item.Origin.Exchange) != "" || standingSessionDir(item) == "") && r.root != "" {
 		_ = standing.DeliverProject(r.root, item.Workspace, note)
 		return
 	}
@@ -556,9 +564,34 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 	if err != nil {
 		return standing.Outcome{}, err
 	}
+	// THE CAUSE THE PASS WROTE BEFORE THIS RUN BEGAN (internal/standing's
+	// occurrence.go), carried into the run's own journal so the first thing it
+	// records says what started it. A folder with no record — a pass from an
+	// older build, a test driving the runner directly — records no cause
+	// rather than one guessed from timing.
+	occurrence, occurred := standingOccurrence(runDir)
+	if occurred {
+		cfg.cause = &executionCause{
+			Kind:    causeStandingOccurrence,
+			ID:      occurrence.ID,
+			Owner:   cfg.OrganizationRef,
+			Spec:    occurrence.Spec,
+			Receipt: filepath.Join(runDir, standing.OccurrenceFile),
+		}
+		if !occurrence.Due.IsZero() {
+			due := occurrence.Due
+			cfg.cause.Due = &due
+		}
+	}
 	brief := standingEvidence(item.Does.Brief, evidence)
 	if acceptance := strings.TrimSpace(item.Does.Acceptance); acceptance != "" {
 		brief += "\n\nDONE WHEN: " + acceptance
+	}
+	if occurred {
+		brief += "\n\n" + standingOccurrenceBlock(occurrence)
+	}
+	if report := strings.TrimSpace(item.Does.Report); report != "" {
+		brief += "\n\n" + standingReportBlock(item, report)
 	}
 	// THE BRIEF IS BUILT BEFORE THE SESSION IS, because whether this firing may
 	// discover it is wide is read off the brief and has to be settled while the
@@ -710,6 +743,26 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 			outcome.Text = needs
 		}
 	}
+	// THE REPORT IS PUBLISHED BY THE OWNER, and only a run that came to
+	// something clean publishes one: a run that stopped on a question or said
+	// nothing leaves the last good report where it was rather than replacing
+	// it with a refusal or an empty page (internal/standing's Action.Report).
+	if report := strings.TrimSpace(item.Does.Report); report != "" && outcome.Kind == "landed" && needs == "" && strings.TrimSpace(reply) != "" {
+		published, err := publishStandingReport(item.Workspace, report, reply)
+		if err != nil {
+			outcome.Kind = standing.OutcomeFailed
+			outcome.Text = "could not publish the report to " + report + ": " + err.Error()
+		} else {
+			outcome.Published = published
+			if occurred {
+				// Recorded the moment it exists, so a process that dies before
+				// the pass finishes still leaves the receipt behind.
+				occurrence.Published = published
+				_ = standing.WriteOccurrence(runDir, occurrence)
+			}
+			outcome.Text = clip("report updated: "+report+" — "+reply, standingOutcomeClip)
+		}
+	}
 	if outcome.Kind == standing.OutcomeNothing {
 		// A RUN THAT CAME TO NOTHING TELLS NOBODY, because there is nothing to
 		// tell: no line, no landing, nothing waiting. Walking the delivery roads
@@ -756,6 +809,112 @@ func standingCameTo(saved bool, report, needs string) string {
 		return "landed"
 	}
 	return standing.OutcomeNothing
+}
+
+// standingOccurrence reads the record the pass wrote into this run folder.
+func standingOccurrence(runDir string) (standing.Occurrence, bool) {
+	occurrence, err := standing.ReadOccurrence(runDir)
+	if err != nil {
+		return standing.Occurrence{}, false
+	}
+	return occurrence, true
+}
+
+// standingOccurrenceBlock is what this run is told about why it is running:
+// which version of the instructions, what woke it, when the last occurrence
+// ran and what it came to, and whether an earlier attempt was cut off. It is
+// the owner's record read back, never the model's guess about its own history.
+func standingOccurrenceBlock(occurrence standing.Occurrence) string {
+	var out strings.Builder
+	out.WriteString("THIS OCCURRENCE:\n")
+	if occurrence.Spec > 0 {
+		fmt.Fprintf(&out, "- instructions: version %d\n", occurrence.Spec)
+	}
+	if because := strings.TrimSpace(occurrence.Because); because != "" {
+		out.WriteString("- woken because: " + because + "\n")
+	}
+	if !occurrence.Due.IsZero() {
+		out.WriteString("- scheduled for: " + occurrence.Due.Local().Format(time.RFC3339) + "\n")
+	}
+	if occurrence.PreviousFired.IsZero() {
+		out.WriteString("- previous occurrence: none; this is the first\n")
+	} else {
+		out.WriteString("- previous occurrence: " + occurrence.PreviousFired.Local().Format(time.RFC3339) + "\n")
+	}
+	if occurrence.Attempt > 1 {
+		fmt.Fprintf(&out, "- attempt %d: an earlier attempt at this same occurrence was interrupted before it finished; do the whole occurrence again\n", occurrence.Attempt)
+	}
+	return strings.TrimRight(out.String(), "\n")
+}
+
+// standingReportBlock is the one instruction a run with a report is given: its
+// final reply IS the report, and aforge writes it. It says where the previous
+// version is so the run can carry forward what still holds, and it says that
+// the run must not write the file itself — an unattended write would be refused
+// anyway, and a run that tried would spend its steps on the refusal.
+func standingReportBlock(item standing.Item, report string) string {
+	path := filepath.Join(item.Workspace, report)
+	line := "REPORT: your FINAL REPLY is the complete report. aforge publishes it to " + report +
+		" in the project, replacing the previous version. Write the whole report as your final reply, in Markdown; do not write that file yourself."
+	if _, err := os.Stat(path); err == nil {
+		line += " The previous version is at " + report + "; read it if you need what it said."
+	}
+	return line
+}
+
+// publishStandingReport writes a run's report to its declared path inside the
+// workspace, atomically, and answers the receipt.
+//
+// THE PATH IS RE-CHECKED AGAINST THE WORKSPACE HERE, not only at admission:
+// the report's folder is resolved through the filesystem as it is NOW, and a
+// symlink planted since the item was made must not carry the write outside the
+// project the person pointed it at.
+func publishStandingReport(workspace, report, text string) (*standing.Publication, error) {
+	root, err := filepath.EvalSymlinks(workspace)
+	if err != nil {
+		return nil, err
+	}
+	target := filepath.Join(root, filepath.Clean(report))
+	dir := filepath.Dir(target)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, err
+	}
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return nil, err
+	}
+	if rel, err := filepath.Rel(root, resolved); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return nil, errors.New("the report folder resolves outside the project")
+	}
+	if info, err := os.Lstat(target); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("the report path is a symbolic link")
+	}
+	body := strings.TrimSpace(text) + "\n"
+	temp, err := os.CreateTemp(dir, ".report-*")
+	if err != nil {
+		return nil, err
+	}
+	name := temp.Name()
+	defer func() { _ = os.Remove(name) }()
+	if _, err := temp.WriteString(body); err != nil {
+		_ = temp.Close()
+		return nil, err
+	}
+	if err := temp.Sync(); err != nil {
+		_ = temp.Close()
+		return nil, err
+	}
+	if err := temp.Close(); err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(name, 0o644); err != nil {
+		return nil, err
+	}
+	if err := os.Rename(name, target); err != nil {
+		return nil, err
+	}
+	sum := sha256.Sum256([]byte(body))
+	return &standing.Publication{Path: report, SHA256: hex.EncodeToString(sum[:]), Bytes: len(body), At: time.Now().UTC()}, nil
 }
 
 // standingRunConfig is the run's own session: the parent launch, pointed at a
