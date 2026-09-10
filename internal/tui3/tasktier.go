@@ -159,11 +159,6 @@ func (a *app) tierMark(status session.TaskStatus) string {
 	return a.icon(tierSlot(status))
 }
 
-// tierCell is that mark in its own hue: the whole of what one cell says.
-func (a *app) tierCell(status session.TaskStatus) string {
-	return tierInk(a.pal, status)(a.tierMark(status))
-}
-
 // tierSep joins the two halves of a row, and it is the surface's own joiner
 // (task.go's [railSep]): one punctuation down every list of work there is.
 const tierSep = railSep

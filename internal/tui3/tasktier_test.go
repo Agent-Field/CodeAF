@@ -291,12 +291,12 @@ func TestAFoldedFamilyWearsItsLoudestChild(t *testing.T) {
 	}
 }
 
-// ── the roster, the record and home ─────────────────────────────────────────
+// ── the roster and the record ───────────────────────────────────────────────
 
-// ONE VOCABULARY ACROSS THE THREE LISTS. The roster row, the record's word and
-// home's cell are three drawings of one reading, and this walks every shape past
-// all three.
-func TestTheRosterTheRecordAndHomeAgreeOnEveryShape(t *testing.T) {
+// ONE VOCABULARY ACROSS THE TWO LISTS. The roster row and the record's word are
+// two drawings of one reading, and this walks every shape past both. Home drew a
+// third until its grid retired every mark but two (DESIGN.md law 8).
+func TestTheRosterAndTheRecordAgreeOnEveryShape(t *testing.T) {
 	a, _, _ := taskApp(t)
 	for _, tc := range []struct {
 		what  string
@@ -315,9 +315,6 @@ func TestTheRosterTheRecordAndHomeAgreeOnEveryShape(t *testing.T) {
 		glyph, _ := tasksGlyph(tasksItem{entry: tc.entry}, a.pal)
 		if glyph != tc.glyph {
 			t.Errorf("%s: the roster draws %q, want %q", tc.what, glyph, tc.glyph)
-		}
-		if got := plain(a.homeTaskGlyph(tc.entry, session.SessionRow{})); got != tc.glyph {
-			t.Errorf("%s: home draws %q, want %q", tc.what, got, tc.glyph)
 		}
 	}
 

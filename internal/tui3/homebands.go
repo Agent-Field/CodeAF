@@ -287,10 +287,12 @@ const (
 	bandOrderKeys        = 100 // what the keyboard does here, always last
 )
 
-// OWED: lane P — the resting card that assembled most of these bands is retired
-// (the grid, homegrid.go); what still draws them is the typed search's card, the
-// standing item's card and the phone sheet. Lane P's panels take over the band
-// readings they need, and the registry goes when nothing asks it.
+// THE REGISTRY OUTLIVED THE RESTING CARD THAT ASSEMBLED MOST OF THESE BANDS.
+// The grid (homegrid.go) retired that card, and the panels take what they need
+// from the reading rather than from here; but three surfaces still draw every
+// band a subject has — the card beside the typed search ([app.homeCardRows]),
+// the standing item's card ([StandingItemCard]) and the phone sheet
+// ([app.homeSheetBody]) — so it stays for as long as one of them asks.
 var (
 	homeBandRegistry []homeBand
 	homeBandsSorted  bool
