@@ -1,14 +1,9 @@
-// Package tokens is the derived token layer for the v2 chat surface: the one
-// place a colour, a glyph, a breakpoint, or a formatted live cell is named.
+// Package tokens is the shared token layer for the chat surfaces: the one
+// place a colour, a glyph, or a formatted live cell is named.
 //
-// It is very nearly a leaf. It imports the standard library and, in exactly one
-// file (styler.go), internal/tui2/blocks — for the two enum types that package
-// declares on its [blocks.Styler] seam, so that the assembly wave can plug this
-// package into the block engine without an adapter in between. The edge runs
-// tokens → blocks and never the other way; blocks itself imports nothing from
-// here, by its own design. Nothing in this package imports internal/tui or the
-// internal/tui2 shell, so every surface above may depend on it and none of it
-// may depend on a surface.
+// It is a leaf over the standard library. Nothing in this package imports a
+// surface, so every surface above may depend on it and none of it may depend on
+// a surface.
 //
 // Everything here is pure data or a pure function. There is no init function,
 // no mutable global, and no I/O. The colour table is built once, at package
@@ -50,12 +45,11 @@
 //
 // # What the surface packages consume
 //
-//	tokens.NewStyler(profile, tokens.FocusNormal)  // implements blocks.Styler
+//	tokens.NewStyler(profile, tokens.FocusNormal)
 //	tokens.Amber.Fg(profile, tokens.FocusNormal)   // an SGR string, precomputed
 //	tokens.Amber.Hex(tokens.FocusNormal)           // "#EECE96", for lipgloss
 //	tokens.ResolveToken(tokens.HueBroken, tokens.StateSettled)
 //	tokens.GlyphWaitsOn, tokens.Gauge(0.62), tokens.GlyphCut
-//	tokens.RailAtWidth, tokens.FitFooter(cols, width)
 //	tokens.AppendElapsedCell(buf[:0], d)           // zero allocations
 //	sanitize.TextWithPalette(s, sanitize.Table(tokens.ANSI16Remap))
 //

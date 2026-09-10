@@ -68,10 +68,9 @@ const (
 	// grounds, on the same ground→band axis every other rung is derived along.
 	//
 	// §4 gives the delivery card "a distinct ground + `▎` accent left edge" and
-	// says nothing else may wear that treatment. Until now the ground half of it
-	// did not exist: [blocks.CardBlock] asks for it through an optional
-	// interface, nothing implemented the interface, and the card was carried by
-	// its edge alone. These are the plane it stands on.
+	// says nothing else may wear that treatment. These are the planes the two
+	// card states stand on; without them the card would be carried by its edge
+	// alone.
 	//
 	// WHY TWO. A task in the conversation has two states a reader must tell
 	// apart at a glance — the one just made, and the one that came back — and
@@ -531,8 +530,8 @@ func All() []Token {
 	return out
 }
 
-// Identity returns the identity token for a wheel index, wrapping. Callers
-// normally get one from [IdentityFor] rather than by index.
+// Identity returns the identity token for a wheel index, wrapping. It keeps the
+// eight-pastel band total when a caller's index falls outside one turn.
 func Identity(i int) Token {
 	return Identity0 + Token(((i%IdentityCount)+IdentityCount)%IdentityCount)
 }

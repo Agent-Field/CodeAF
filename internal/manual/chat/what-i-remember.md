@@ -105,7 +105,7 @@ and every field on the row is joined by the one separator this surface joins fac
 
 ```
 · tests live beside the file they test · lesson · helped 19 · bore on 3      2w ago
-· tui2 is the live tree; tui is dead code · quirk · new, learned 3h ago      3h
+· releases go out before lunch · quirk · new, learned 3h ago                 3h
 · the rail owns the cursor · fact · let go                                   6d ago
 · deploys on Fridays · fact · replaced                                       3d ago
 ```

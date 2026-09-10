@@ -6,66 +6,20 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"golang.org/x/text/width"
-
-	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 )
 
 // The motion gate. 11 says three things move; motion.go says how fast and
 // through which frames; this file is what makes those numbers a contract
 // instead of a comment.
 
-// TestTheHouseCadenceIsOneNumber pins the cadence twins. blocks cannot import
-// tokens (the edge runs tokens → blocks), so the interval is spelled in both
-// packages, and two spellings of one number is a drift waiting to happen unless
-// something holds them equal.
+// TestTheHouseCadenceIsOneNumber keeps the one cadence inside its stated calm
+// band, so a later edit cannot turn a breathe into noise or a visible step.
 func TestTheHouseCadenceIsOneNumber(t *testing.T) {
-	if MotionInterval != blocks.DefaultInterval {
-		t.Errorf("two house cadences: tokens says %v, blocks says %v — every "+
-			"animated cell in the product moves on ONE grid or the rows drift apart "+
-			"and the shell wakes on two schedules (8.1.3)",
-			MotionInterval, blocks.DefaultInterval)
-	}
 	if MotionInterval < MotionIntervalMin || MotionInterval > MotionIntervalMax {
 		t.Errorf("the house cadence %v is outside its stated band %v..%v: below the "+
 			"floor a braille cycle reads as noise and costs wakeups nobody can see, "+
 			"above the ceiling it visibly steps",
 			MotionInterval, MotionIntervalMin, MotionIntervalMax)
-	}
-}
-
-// TestTheKeyframeTwinsAgree pins every other number spelled on both sides of
-// the tokens → blocks edge.
-func TestTheKeyframeTwinsAgree(t *testing.T) {
-	for _, pin := range []struct {
-		what   string
-		tokens any
-		blocks any
-	}{
-		{"the spinner's rotation", SpinnerPeriod, blocks.SpinnerPeriod},
-		{"the breathe's step count", PulseSteps, blocks.PulseSteps},
-		{"the breathe's period", PulsePeriod, blocks.DefaultPulsePeriod},
-		{"the breathe's dwell bend", PulseEase, blocks.DefaultPulseEase},
-	} {
-		if pin.tokens != pin.blocks {
-			t.Errorf("two values for %s: tokens %v, blocks %v", pin.what, pin.tokens, pin.blocks)
-		}
-	}
-	if len(PulseFrames) != len(blocks.DefaultPulse.Frames) {
-		t.Fatalf("two breathe cycles: tokens has %d frames, blocks has %d",
-			len(PulseFrames), len(blocks.DefaultPulse.Frames))
-	}
-	for i, frame := range PulseFrames {
-		if blocks.DefaultPulse.Frames[i] != frame {
-			t.Errorf("breathe frame %d parted: tokens %q, blocks %q",
-				i, frame, blocks.DefaultPulse.Frames[i])
-		}
-	}
-	// The shipped pulse must carry the house period explicitly rather than
-	// relying on the zero-value fallback, so a reader of the var sees what it
-	// does without chasing period().
-	if blocks.DefaultPulse.Period != PulsePeriod {
-		t.Errorf("the shipped pulse breathes at %v, not the house period %v",
-			blocks.DefaultPulse.Period, PulsePeriod)
 	}
 }
 
@@ -249,37 +203,6 @@ func TestGaugeLadderIsATable(t *testing.T) {
 	}
 }
 
-// TestTheAmberRuleIsTheGaugesOnlyColourJudgement pins the separation the gauge
-// depends on: the CELL says how full, the TOKEN says whether a human is needed,
-// and the token is amber past the warn point and chrome before it — never a
-// third colour, and never a sixth cell.
-func TestTheAmberRuleIsTheGaugesOnlyColourJudgement(t *testing.T) {
-	const window = 200_000
-	warn := ContextWarnPoint(window)
-	if got := ContextToken(warn-1, window); got != TextTertiary {
-		t.Errorf("below the warn point the gauge is %s, want the chrome tier: a window "+
-			"with room left is not asking anyone for anything", got)
-	}
-	if got := ContextToken(warn, window); got != Amber {
-		t.Errorf("at the warn point the gauge is %s, want amber", got)
-	}
-	if got := ContextToken(window, window); got != Amber {
-		t.Errorf("a full window is %s, want amber", got)
-	}
-	// The dual rule: a huge window warns on the absolute count, not on 75% of
-	// an enormous number.
-	if got, want := ContextWarnPoint(1_000_000), int64(ContextWarnTokens); got != want {
-		t.Errorf("a 1M window warns at %d, want %d — 75%% of a million is still more "+
-			"headroom than most models have in total (8.2.17)", got, want)
-	}
-	if got, want := ContextWarnPoint(100_000), int64(float64(100_000)*ContextWarnFraction); got != want {
-		t.Errorf("a 100k window warns at %d, want %d", got, want)
-	}
-	if ContextAlarm(1, 0) {
-		t.Error("a window of unknown size cannot be past its warn point")
-	}
-}
-
 // TestEverySemanticHueHasExactlyOneToken is the colour half of 18: the five-word
 // vocabulary resolves to five distinct tokens and nothing shares a slot. A hue
 // that resolved to the same token as another hue would mean two words for one
@@ -317,9 +240,8 @@ func TestEverySemanticHueHasExactlyOneToken(t *testing.T) {
 			}
 		}
 	}
-	// Amber is the ONLY token that means "a human is needed", so nothing else
-	// in the package may resolve to it. The two doors are HueAttention and
-	// ContextToken past the warn point; CutToken is deliberately not one.
+	// Amber is the ONLY token that means "a human is needed", so a cut must not
+	// resolve to it. CutToken is deliberately not an attention signal.
 	for c := CutKind(0); c < cutKindCount; c++ {
 		if CutToken(c) == Amber {
 			t.Errorf("a %s cut is amber; a cut turn is not a question — the head "+

@@ -12,13 +12,9 @@
 //	rows := prose.Render(reply, prose.Options{Width: w, Styler: st})
 //
 // Every returned string is ONE screen row: it contains no newline, and its
-// printable width is at most [Options.Width] cells. That is the same contract
-// [blocks.Block] states for Rows, so a caller can hand these straight to the
-// transcript — but this package deliberately does not import blocks. The import
-// edge in this tree runs tokens → blocks, and a renderer that imported both
-// would close a cycle the moment blocks wanted to draw prose. The line builder
-// here is small enough to own (see line.go), and owning it keeps the edge
-// one-way: prose → tokens → blocks.
+// printable width is at most [Options.Width] cells. A caller can hand these
+// straight to a transcript. The line builder here is small enough to own (see
+// line.go), which keeps this renderer independent of any surface package.
 //
 // # What it does NOT do
 //

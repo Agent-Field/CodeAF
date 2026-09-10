@@ -191,8 +191,8 @@ var vocabulary = []GlyphBinding{
 		// Deliberately not upgraded, for two reasons that each suffice on their
 		// own. First, the tier's ellipsis icon is already spent on GTruncated,
 		// and two slots upgrading to one icon would erase the distinction the
-		// plain tier draws. Second, this mark lands INSIDE prose — it is what
-		// blocks.Truncate leaves at the end of a sentence somebody wrote — so a
+		// plain tier draws. Second, this mark lands INSIDE prose — it is what a
+		// width-bounded renderer leaves at the end of a sentence somebody wrote — so a
 		// repertoire swap here would read as an edit, which is the same finding
 		// that dropped 12.7 D.2's rule (b).
 		Plain: GlyphEllipsis, UsualTint: TextTertiary, PlainAmbiguous: true, Geometry: true,
@@ -203,13 +203,10 @@ var vocabulary = []GlyphBinding{
 		// nf-fa-scissors U+F0C4 for this slot. Three reasons, in the order the
 		// glyph audit found them:
 		//
-		//  1. Nothing could draw it. The only renderer of the cut is
-		//     blocks.CutRule, which spells blocks.CutMark — a raw byte in a leaf
-		//     package that cannot import this one and never consults the tier —
-		//     and the rail spells the tier-blind [GlyphCut] constant. The parity
-		//     golden records the consequence in plain sight: the cut row is
-		//     byte-identical in both tiers. An icon nothing draws is a lie in
-		//     the table and a row in the width gate that gates nothing.
+		//  1. The cut is drawn as the tier-blind [GlyphCut] geometry slot. The
+		//     parity golden records the consequence in plain sight: the cut row
+		//     is byte-identical in both tiers. An icon nothing draws would be a
+		//     lie in the table and a row in the width gate that gates nothing.
 		//  2. The mark is line geometry, which is B.2's own rule. `╌` is a
 		//     dashed rule FRAGMENT that tiles with the `─` run it leads
 		//     ("╌ cut off — output cap ──────"); a pictograph in that cell
