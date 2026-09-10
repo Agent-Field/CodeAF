@@ -58,10 +58,20 @@ A checked item means completed with the evidence named here, not merely discusse
 - [x] T12b — Read-only governing context across chat, workers, independent checking and scheduled runs.
 - [x] T12c — Consumed-context records for journaled turns and bounded in-aforge inspection (C24); gaps remain below.
 - [ ] T12d — Exact automatic source-backed retention, clause-specific exceptions, action-boundary re-admission, ephemeral fork receipts and complete causal handoffs.
-- [ ] T13 — Complete the daily Slack journey, including setup, delivery, edits,
-  unanswered questions, pause/stop and restart.
+  Partial (wave 03): standing task runs record their occurrence as `parent_cause`;
+  tasks, forks and other executions still record `not_recorded`.
+- [x] T13 — Re-scoped by the owner on 2026-09-10 to **local files only** (no Slack,
+  real or simulated; no connector). The ongoing inbox-report journey passed:
+  setup, delivery (report plus project inbox note), edits, a report held for the
+  person, pause/stop, and restart after a kill. Evidence is in BUILD-WAVE-03.md
+  and the "Local-files ongoing-work wave" section below. The Slack version is
+  withdrawn, not done.
 - [ ] T14 — Complete cross-work Product-to-Marketing impact, including worker
   publication, duplicate suppression, authority and no-manual-reopen activation.
+  Partial (wave 03): a local spec change wakes a Marketing review through an
+  explicit file watch. The review's report is owner-published and checked against
+  the Marketing rule, it is not rerun on an idle pass, and a reference does not
+  govern. Impact between works without an explicit watch is not built.
 - [ ] T15 — Extend proven seams to persistent roles, handoffs, reusable profiles,
   additional adapters and compound triggers; tick each supported journey only
   against its own real acceptance evidence.
@@ -224,3 +234,32 @@ recorded after combined integration. All local builds/tests are prohibited (C25)
 - Next: T12d authority/source and cause propagation, then T13 complete daily Slack
   journey and T14 cross-work impact. A source selection is not proof that the
   model complied; journal windows are not a complete cause/effect graph.
+
+## Local-files ongoing-work wave — completed
+
+- Lane `codex/personal-e2e-opus`, base `72660bf57`, destination #662 through
+  `codex/personal-ai-backend`. Final source revision `9cc7b638c`; plan and
+  receipts are in [BUILD-WAVE-03.md](BUILD-WAVE-03.md).
+- Focused Spark validation: [receipt](validation/wave03-validate.log) (revision,
+  host, per-step PASS/FAIL). Deterministic binary journey `TestLocalWorkJourney`
+  ran with a scripted loopback model; that is not live-model acceptance.
+- Live, on `deepseek/deepseek-v4-flash`, one call at a time, well under $0.10 in total:
+  - live5 at `9cc7b638c`: `DEMO PASSED` ([log](validation/wave03-live5.log)).
+  - live4 at `d73ce259a`: the report correction was observed live, then the demo
+    failed on a refused self-write ([log](validation/wave03-live4.log)), which was fixed.
+  - live2 at `b427dde07`: the privacy violation ([log](validation/wave03-live2.log));
+    not acceptance.
+  - Real-model rules check on that violation: PASS ([log](validation/wave03-rules-check-live.log)).
+- An independent review found blockers 1–2 and issues 3–5, and the symlinked-parent
+  `MkdirAll` problem. All are fixed, each with a regression test; the blocker-1,
+  publish-crash and own-report-write tests fail on the old logic.
+- Boundaries kept open:
+  - The rule check is a model's reading of the published report, not proof and
+    not general enforcement.
+  - A failed run is not retried by itself.
+  - Stop mid-run withholds only aforge's report and note; started effects are
+    not cancelled.
+  - Terminal-made items do not install the timer.
+- Not run: tui3, broad UI/E2E, full session/cmd suites, the chat-card setup path,
+  Slack or any connector. No merge into dev, no deployment, no change to the
+  person's live state.
