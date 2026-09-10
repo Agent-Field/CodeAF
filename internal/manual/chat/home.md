@@ -5,8 +5,10 @@
 Type `/home`. It takes the whole screen and shows **every conversation on this machine,
 from every project**, not just the folder this window was started in.
 
-The top line reads `aforge` on the left, with the machine's own vital signs on the
-right — `2 want you · 4 moving · $0.55 / $500.00 · tue 1:11pm` (its own section below).
+The top line reads `aforge` on the left, with the day's budget and the clock on the right
+— `$0.55 / $500 · tue 1:11pm` (its own section below). Home leaves the two counts to the
+list under it; inside a chat the same line carries them as well:
+`2 want you · 4 moving · $0.55 / $500 · tue 1:11pm`.
 `esc` puts you back in exactly the chat you came from, untouched — nothing was closed and
 nothing was sent while you were looking. The resting foot does not spend a cell naming it:
 it reads exactly `type to search or start something new · ↑↓ pick · enter open · tab next
@@ -104,7 +106,7 @@ stands beside it only on a frame **136 columns or wider** (see *Why is there no 
 the right*). Top to bottom:
 
 ```
- aforge                            2 want you · 4 moving · $0.55 / $500.00 · tue 1:11pm
+ aforge                                                             $0.55 / $500 · tue 1:11pm
   home   tasks 1   standing   memory 2   spend   search   settings
  ─────────────────────────────────────────────────────────────────────────────────────────
  since you left · 3h
@@ -119,7 +121,7 @@ the right*). Top to bottom:
  ▸ 15 more, quiet since 6d
 ```
 
-1. **the pulse line**, the machine's own vital signs (its own section below);
+1. **the pulse line** — on home, the day's budget and the clock (its own section below);
 2. **the seven-place tab bar** and a dim rule under it — that is the router's frame, and
    *Places* describes it;
 3. **the `since you left` ledger**, drawn only when something happened on its own while you
@@ -640,12 +642,19 @@ refresh — folding is something you did, not something the data said.
 
 ## The line at the top of home — the pulse, want you, moving, spend and allowance, the clock
 
-The top line of home is the program's name and, right-aligned, what is true of the
-**whole machine** right now:
+The top line is the program's name and, right-aligned, what is true of the **whole
+machine** right now. It is the first row of **every** frame — home, every place, and the
+chat itself, where it sits over the tab strip (` Home  <your chats>`), a rule and a blank:
+the same four rows at the top wherever you are standing. Inside a chat and on every place
+but home it reads:
 
 ```
- aforge              2 want you · 4 moving · $0.55 / $500.00 · tue 1:11pm
+ aforge              2 want you · 4 moving · $0.55 / $500 · tue 1:11pm
 ```
+
+**On home it drops the two counts** and keeps the budget and the clock —
+` aforge                              $0.55 / $500 · tue 1:11pm` — because home's own list is
+those counts, row by row, and the same number twice on one screen is noise.
 
 - `2 want you` — how many things have **stopped on you**: a conversation waiting for an
   answer, a standing order that will not fire until you say so, an errand holding a
@@ -658,7 +667,7 @@ The top line of home is the program's name and, right-aligned, what is true of t
   are, and a conversation with three tasks out counts as three. It is drawn in **cyan**,
   the in-flight colour. It shows from **one** — one hand working is worth knowing — and
   disappears entirely at nothing, never `0 moving`.
-- `$0.55 / $500.00` — what the machine has spent **since midnight** against what it is
+- `$0.55 / $500` — what the machine has spent **since midnight** against what it is
   allowed to spend today: **every model call written down since midnight** — the chat in
   front of you, work running behind it, a standing order that fired at six — then your
   daily allowance. It is drawn in **green**, which is the money colour and is never spent
@@ -670,7 +679,10 @@ no `want you` at all — never `0 want you` — and a day that has cost nothing 
 about money. The clock always draws. A quiet morning on an idle machine really is just
 `aforge` and the time.
 
-The counts on this line are **one reading**, taken once every three seconds.
+The counts on this line are **one reading** of the whole machine, taken once every three
+seconds while home is open and once every **ten seconds** inside a chat — so a question
+another window asks can take up to ten seconds to reach `want you` on a chat's top line.
+The line itself never reads a file when it is drawn; it shows the last reading.
 
 **The money on this line is the money on the spend place**, to the cent — one reading of
 one file, not two that happen to agree. Press `alt+5` and the pointer line there reads
@@ -734,7 +746,7 @@ its own that says it in full:
 |---|---|
 | `keeping an eye on` | the **standing** place — `alt+3`, or type `standing` |
 | `since you left` | the **`since you left` ledger** at the top of home's own list, where each line is a door into the place it happened in (*What is since you left*) |
-| `today` — chats, tasks, money | the **pulse line** at the top of every place says `$0.55 / $500.00`; the **spend** place — `alt+5` — has the days, the models and what each thing was for |
+| `today` — chats, tasks, money | the **pulse line** at the top of every place and every chat says `$0.55 / $500`; the **spend** place — `alt+5` — has the days, the models and what each thing was for |
 | `agents` — the little chart | the pulse line's `4 moving`, which is the figure the chart was the shape of |
 | `thinking` — the install's rung | the `thinking` row of `/settings`, which is where that setting has always been written |
 

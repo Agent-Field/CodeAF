@@ -797,20 +797,6 @@ type homeView struct {
 	// instead of the door.
 	cardHover string
 	repos     map[string]homeRepoReading
-	// machine is the MEMO of what this machine has to say about ITSELF — the
-	// reading the pulse line at the top of every place draws, taken at most once
-	// per [homeEvery] (homemachine.go's [app.machineFactsAt]) — and machineAt
-	// when it was taken.
-	//
-	// IT IS A MEMO AND NOT A SOURCE, and the difference is the whole of issue
-	// #525. Every figure in it is read from the MACHINE — the usage ledger, the
-	// person's own daily row — so closing home costs the next place one more
-	// reading and never a different answer. It used to be read from what this
-	// screen was holding, which made the day's spend on the top line a function
-	// of which rooms you had walked through: `$1.85` on home, `$0.37` on tasks.
-	// A memo may die with the screen; a fact about the machine may not.
-	machine   machineFacts
-	machineAt time.Time
 	// week is what the standing ledger says about the last seven days, by item
 	// id, and weekAt when it was read. ONE READING SERVES EVERY CARD on the
 	// screen (homestanding.go's [app.standWeek]): the ledger is a file per day,
@@ -1365,8 +1351,9 @@ func (a *app) refreshHome() {
 	// reason above it: the pulse line's counts are derived from these bands, and
 	// a reading taken on its own clock would be a top line describing a machine
 	// the column below it had already moved past (homemachine.go's
-	// [app.machineFactsAt] takes it again on the next paint).
-	a.home.machineAt = time.Time{}
+	// [app.readMachine]). Home's own line leaves the counts out; the next frame
+	// out of home draws them, and draws these.
+	a.readMachine(a.now(), a.home.world.Sessions(), a.home.items)
 	// AND THE FOLDERS ARE RE-STATTED ON THIS BEAT AND ONLY ON IT. A repository
 	// deleted in another terminal while home is up shows up here, three seconds
 	// later, and never sooner and never oftener ([homeView.gone]).

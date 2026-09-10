@@ -73,7 +73,7 @@ func TestManyTabsRemainReadableWhileArrowsBrowseWithoutSwitching(t *testing.T) {
 			break
 		}
 		right := tabScrollTarget(t, a, tabScrollRight)
-		cmd, took := a.tabPress(right.span.to-1, a.tabsLineRow())
+		cmd, took := a.tabPress(right.span.to-1, placeTabRow)
 		if !took || cmd != nil {
 			t.Fatal("scroll arrow opened or started something")
 		}
@@ -104,7 +104,7 @@ func TestTabStripWheelBrowsesBothAxesWithoutTouchingTheTranscript(t *testing.T) 
 	for _, button := range []tea.MouseButton{tea.MouseWheelRight, tea.MouseWheelDown, tea.MouseWheelLeft, tea.MouseWheelUp} {
 		_ = a.tabsRow(a.width)
 		from := a.tabView.from
-		drive(t, a, tea.MouseWheelMsg{X: 20, Y: a.tabsLineRow(), Button: button})
+		drive(t, a, tea.MouseWheelMsg{X: 20, Y: placeTabRow, Button: button})
 		if a.tabView.from == from {
 			t.Fatalf("wheel %v did not browse tabs", button)
 		}
@@ -136,7 +136,7 @@ func TestTabViewportFitsUnicodePlainAndCompactFramesAfterBrowsing(t *testing.T) 
 							t.Fatalf("overlapping or offscreen target at %d: %+v", width, hit)
 						}
 						for x := hit.span.from; x < hit.span.to; x++ {
-							got, ok := a.tabAt(x, a.tabsLineRow())
+							got, ok := a.tabAt(x, placeTabRow)
 							if !ok || got.kind != hit.kind || got.tab.key != hit.tab.key {
 								t.Fatalf("drawn target disagrees with hit at %d", x)
 							}
@@ -212,7 +212,7 @@ func TestNewChatAndChatsFollowTheLastVisibleTab(t *testing.T) {
 	}
 	for _, hit := range []tabHit{plus, chats} {
 		for x := hit.span.from; x < hit.span.to; x++ {
-			got, ok := a.tabAt(x, a.tabsLineRow())
+			got, ok := a.tabAt(x, placeTabRow)
 			if !ok || got.kind != hit.kind {
 				t.Fatalf("adjacent control has wrong hit ownership: %+v", got)
 			}

@@ -1062,10 +1062,26 @@ func (a *app) readStandBands() {
 		a.home.items, a.home.bare, a.home.fired = nil, nil, nil
 		return
 	}
-	bands := make(map[string][]StandingItemView, len(a.home.world.Projects))
-	known := make(map[string]bool, len(a.home.world.Projects))
-	var fired []StandingItemView
-	for _, project := range a.home.world.Projects {
+	bands, known, fired := a.standBandsOf(a.home.world)
+	a.home.items = bands
+	bare, bareFired := a.readBareBands(bands, known)
+	a.home.bare, a.home.fired = bare, append(fired, bareFired...)
+}
+
+// standBandsOf is every project's items in one world, keyed by bucket
+// directory, with the real paths it asked about and the one-offs that fired and
+// retired on the way.
+//
+// IT TAKES THE WORLD AND NOT HOME'S VIEW OF IT, because home is not the only
+// reader: the pulse counts these bands inside a conversation, where no home is
+// open (pulsebeat.go).
+func (a *app) standBandsOf(world session.World) (bands map[string][]StandingItemView, known map[string]bool, fired []StandingItemView) {
+	if a.stands.Items == nil {
+		return nil, nil, nil
+	}
+	bands = make(map[string][]StandingItemView, len(world.Projects))
+	known = make(map[string]bool, len(world.Projects))
+	for _, project := range world.Projects {
 		// THE PROJECT'S REAL PATH IS THE KEY THE STORE ANSWERS TO
 		// ([standing.Item.Workspace] is the resolved workspace, never the bucket),
 		// and a project nothing ever recorded a path for has nothing to ask about.
@@ -1083,9 +1099,7 @@ func (a *app) readStandBands() {
 		}
 		fired = append(fired, gone...)
 	}
-	a.home.items = bands
-	bare, bareFired := a.readBareBands(bands, known)
-	a.home.bare, a.home.fired = bare, append(fired, bareFired...)
+	return bands, known, fired
 }
 
 // readBareBands is the OTHER kind of project: a workspace this machine holds

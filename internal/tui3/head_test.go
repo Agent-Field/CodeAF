@@ -1,0 +1,186 @@
+package tui3
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
+)
+
+// ── THE ONE HEAD ────────────────────────────────────────────────────────────
+//
+// A conversation and every place draw the same four rows at the top of the
+// frame — the pulse, the strip or the bar, the rule, a blank (head.go) — so a
+// person walking from home into a chat and back sees the head stay still and
+// only its middle row change.
+
+// headSizes are the three frames the one head is pinned at: the classic
+// terminal, a tall one, and a wide one.
+var headSizes = []struct{ w, h int }{{80, 24}, {80, 40}, {120, 45}}
+
+// headLab is a window standing in a conversation on a machine with something
+// to say: two things waiting on a person, one moving, fourteen cents spent of
+// a twenty-dollar day, on a Thursday morning.
+func headLab(t *testing.T) *app {
+	t.Helper()
+	a := placeApp(t)
+	now := time.Date(2026, 9, 10, 9, 49, 0, 0, time.Local)
+	a.clock = func() time.Time { return now }
+	a.title = "Understanding Hash Tables"
+	a.showPage(pageNone)
+	seedHeadFacts(a)
+	return a
+}
+
+// seedHeadFacts puts the lab's facts into the memo the pulse draws. It is
+// called after every door, because a door takes the day's money off the real
+// ledger ([app.showPage]) and the subject here is the head, not the reading.
+func seedHeadFacts(a *app) {
+	a.machine = machineFacts{wants: 2, hands: 1, spent: 0.14, ceiling: 20}
+}
+
+// headOf is the first [placeHeadRows] rows of the frame, as a reader sees them.
+func headOf(t *testing.T, a *app) []string {
+	t.Helper()
+	rows := strings.Split(frame(a), "\n")
+	if len(rows) < placeHeadRows {
+		t.Fatalf("a %d-row frame has no room for the head", len(rows))
+	}
+	head := make([]string, placeHeadRows)
+	for i := range head {
+		head[i] = strings.TrimRight(plain(rows[i]), " ")
+	}
+	return head
+}
+
+// headPulseWhole is the pulse the lab should draw inside a chat, clause for
+// clause: the counts AND the budget.
+func headPulseWhole() string {
+	return "2 want you · 1 moving · $0.14 / " + railFigure(20) + " · thu 9:49am"
+}
+
+// THE CONVERSATION WEARS THE PLACES' HEAD, AT EVERY SIZE THE STRIP IS DRAWN.
+// The pulse on row 0, the strip on the bar's row, the rule, a blank — and the
+// body starts under exactly those four rows.
+func TestTheConversationWearsThePlacesHead(t *testing.T) {
+	a := headLab(t)
+	for _, size := range headSizes {
+		a.width, a.height = size.w, size.h
+		a.touch()
+		head := headOf(t, a)
+		if !strings.HasPrefix(head[0], " "+product) || !strings.HasSuffix(head[0], headPulseWhole()) {
+			t.Fatalf("at %dx%d the chat's first row is not the pulse with its counts and budget:\n%q", size.w, size.h, head[0])
+		}
+		if !strings.Contains(head[placeTabRow], "Home") || !strings.Contains(head[placeTabRow], a.chatDisplayName()) {
+			t.Fatalf("at %dx%d the strip is not under the pulse:\n%q", size.w, size.h, head[placeTabRow])
+		}
+		if head[2] != strings.Repeat("─", size.w) || head[3] != "" {
+			t.Fatalf("at %dx%d the head does not close with a rule and a blank:\n%q\n%q", size.w, size.h, head[2], head[3])
+		}
+		if a.headHeight() != placeHeadRows || a.bodyTop() != placeHeadRows+a.stripHeight() {
+			t.Fatalf("at %dx%d the head draws %d rows and is charged %d, body at %d",
+				size.w, size.h, placeHeadRows, a.headHeight(), a.bodyTop())
+		}
+		if size.w == 80 && size.h == 24 || size.w == 120 {
+			t.Logf("the chat head at %dx%d:\n%s", size.w, size.h, strings.Join(head, "\n"))
+		}
+	}
+}
+
+// AND THE PULSE IS ONE LINE, NOT TWO THAT AGREE. The tasks place and the
+// conversation draw it from one function over one memo, so over the same
+// machine they draw the same characters.
+func TestThePulseOverAChatIsThePulseOverAPlace(t *testing.T) {
+	a := headLab(t)
+	a.width, a.height = 120, 45
+	a.touch()
+	chat := headOf(t, a)[0]
+	walkTo(t, a, pageTasks)
+	seedHeadFacts(a)
+	place := headOf(t, a)
+	if place[0] != chat {
+		t.Fatalf("the pulse over the tasks place is not the pulse over the chat:\n%q\n%q", place[0], chat)
+	}
+	if !strings.Contains(place[placeTabRow], "home") || !strings.Contains(place[placeTabRow], "tasks") {
+		t.Fatalf("the bar is not on the strip's row: %q", place[placeTabRow])
+	}
+}
+
+// HOME'S PULSE LEAVES ITS COUNTS TO THE PANELS. The budget and the clock stay;
+// `2 want you · 1 moving` is what home's own panels are, and above them it
+// would be the same news twice (DESIGN.md's law 11).
+func TestHomesPulseIsTheBudgetAndTheClock(t *testing.T) {
+	a := headLab(t)
+	a.width, a.height = 120, 45
+	walkTo(t, a, pageHome)
+	seedHeadFacts(a)
+	pulse := headOf(t, a)[0]
+	if !strings.HasSuffix(pulse, "$0.14 / "+railFigure(20)+" · thu 9:49am") || strings.Contains(pulse, pulseWantWord) || strings.Contains(pulse, pulseMovingWord) {
+		t.Fatalf("home's pulse should be the budget and the clock alone:\n%q", pulse)
+	}
+}
+
+// THE STRIP AND THE BAR ANSWER THE POINTER ON THE SAME ROW, and the pulse above
+// them answers nothing. A press resolved against the old head — the strip on
+// row zero, or on row one only on tall terminals — would open a chat for a
+// click on the pulse.
+func TestTheStripAndTheBarAnswerOnTheSameRow(t *testing.T) {
+	a := headLab(t)
+	for _, size := range headSizes {
+		a.width, a.height = size.w, size.h
+		a.touch()
+		frame(a)
+		home := headerHomeTarget(t, a)
+		if _, ok := a.tabAt(home.span.from, placeTabRow); !ok {
+			t.Fatalf("at %dx%d the strip does not answer on row %d", size.w, size.h, placeTabRow)
+		}
+		if cmd, took := a.tabPress(home.span.from, 0); !took || cmd != nil || a.at(pageHome) {
+			t.Fatalf("at %dx%d a press on the pulse leaked into the strip", size.w, size.h)
+		}
+	}
+	walkTo(t, a, pageTasks)
+	frame(a)
+	if a.tabRow != placeTabRow {
+		t.Fatalf("the bar was drawn on row %d, the strip on row %d", a.tabRow, placeTabRow)
+	}
+	for _, span := range a.tabs {
+		if span.id != pageHome {
+			continue
+		}
+		cmd, took := a.placeTabPress(span.from, placeTabRow)
+		runCmd(cmd)
+		if !took || !a.at(pageHome) {
+			t.Fatal("a press on the bar's `home` did not open home")
+		}
+		return
+	}
+	t.Fatal("the bar drew no `home`")
+}
+
+// INSIDE A CHAT THE COUNTS COME OFF THE PULSE'S OWN BEAT. No home is open to
+// read the world, so the beat walks it off the loop and counts what comes back
+// (pulsebeat.go) — and while home IS open, a walk that lands late is dropped
+// rather than laid over home's fresher reading.
+func TestTheChatPulseCountsWhatItsOwnBeatWalked(t *testing.T) {
+	a := headLab(t)
+	a.machine = machineFacts{}
+	world := session.World{Projects: []session.Project{{Sessions: []session.SessionRow{
+		{Live: true, Presence: session.SessionPresence{State: session.PresenceWaiting}},
+		{Live: true, Presence: session.SessionPresence{State: session.PresenceWorking}},
+		{Tasks: session.TaskRollup{Running: 2}},
+	}}}}
+	if a.pulseBeat() == nil {
+		t.Fatal("the beat asked for nothing inside a chat")
+	}
+	a.pulseCounted(pulseWorldMsg{world: world, known: true})
+	if pulse := headOf(t, a)[0]; !strings.Contains(pulse, "1 want you · 3 moving") {
+		t.Fatalf("the chat's pulse did not count the walked world:\n%q", pulse)
+	}
+	walkTo(t, a, pageHome)
+	a.machine = machineFacts{}
+	a.pulseCounted(pulseWorldMsg{world: world, known: true})
+	if a.machine.wants != 0 || a.machine.hands != 0 {
+		t.Fatalf("a walk landing on home overwrote home's own reading: %+v", a.machine)
+	}
+}

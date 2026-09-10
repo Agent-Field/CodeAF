@@ -1084,16 +1084,18 @@ func placeFrameWithBar(a *app, width, height int,
 		hits = append(hits, hit)
 	}
 
-	add(a.pulseLine(width, pal), nil)
+	// THE HEAD IS THE CONVERSATION'S HEAD, drawn by the same function with the
+	// bar as its middle row (head.go).
+	//
 	// THE BAR IS ROW ONE AND THE POINTER IS TOLD SO HERE. A press arrives as a
 	// row of the terminal, and the only honest way to know which row the bar
 	// ended up on is to record it where it was drawn — the clamp below can cut
 	// it off a frame too short for its own contents, and a press resolved
 	// against a constant would then open a place for a click on a body row.
 	a.tabRow = placeTabRow
-	add(a.placeTabBar(width, a.mapShowing, pal), nil)
-	add(pal.dim(rule(width)), nil)
-	add("", nil)
+	for _, row := range a.headRows(width, a.placeTabBar(width, a.mapShowing, pal), pal) {
+		add(row, nil)
+	}
 
 	box := a.placeBox()
 	var draftRows []string
@@ -1907,6 +1909,11 @@ func (a *app) showPage(id page) (cmd tea.Cmd) {
 	// ([app.closeModals] names the ten and says where the bug was seen).
 	a.closeModals()
 	a.pageMsg = ""
+	// AND THE TOP LINE'S MONEY IS READ AT THE DOOR, before the room's first
+	// frame: the pulse draws a memo and never a file, so a room walked into
+	// between two beats would otherwise open under yesterday's figure
+	// (homemachine.go's [app.readMachineMoney]).
+	a.readMachineMoney(a.now())
 	next := placeFor(id)
 	if next == nil {
 		// THE CONVERSATION IS A PAGE ID LIKE ANY OTHER, and it is the one with no

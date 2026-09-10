@@ -447,21 +447,14 @@ func (a *app) chatFrameLines(width, height int) ([]string, int, int) {
 
 	rows := make([]string, 0, height)
 	if tabs != "" {
-		if a.tabsLineRow() > 0 {
-			rows = append(rows, "")
-		}
-		rows = append(rows, tabs)
-		if a.tabsBottomPad() > 0 {
-			rows = append(rows, "")
-		}
-		// AND THE SEAM UNDER THEM OUT IN THE CONVERSATION, where there is no trail
-		// and no facts row to close the panel off (chattabs.go's
-		// [app.chatRuleHeight]). It is charged for by [app.headHeight] on the same
-		// floor, so the row the frame draws and the row the scrolling subtracts are
-		// the same row.
-		if a.chatRuleHeight(width) > 0 {
-			rows = append(rows, a.rule(width))
-		}
+		// THE HEAD IS THE PLACES' HEAD — the pulse, the strip, the rule and the
+		// blank — drawn by the one function both frames call (head.go). A room
+		// takes it down to the strip and lays its trail under that instead of the
+		// rule (chattabs.go's [app.headSealHeight]). The prefix is cut at exactly
+		// the count [app.headHeight] charges, so the rows the frame draws and the
+		// rows the scrolling subtracts are the same rows by construction.
+		head := a.headRows(width, tabs, a.pal)
+		rows = append(rows, head[:a.tabsHeight(width)+a.headSealHeight(width)]...)
 	}
 	if len(head) > 0 {
 		rows = append(rows, head...)
@@ -1167,10 +1160,11 @@ func (a *app) topHeight() int { return a.headHeight() + a.stripHeight() }
 // through, rather than at the frame — a header the frame drew and the scrolling
 // did not know about would put the room's last row under the input box.
 func (a *app) headHeight() int {
-	// THE TAB STRIP IS THE FIRST OF THOSE ROWS AND IS CHARGED FOR HERE, on its
-	// own two floors (chattabs.go's [app.tabsHeight]): it is drawn over the
-	// conversation and over every page inside it, because which conversation this
-	// is stays true wherever you have walked to inside one.
+	// THE PULSE AND THE TAB STRIP ARE THE FIRST OF THOSE ROWS AND ARE CHARGED
+	// FOR HERE, on the strip's own two floors (chattabs.go's [app.tabsHeight]):
+	// they are drawn over the conversation and over every page inside it,
+	// because which conversation this is stays true wherever you have walked to
+	// inside one.
 	width, _ := a.size()
 	head := a.tabsHeight(width)
 	if a.room == nil {
@@ -1178,11 +1172,12 @@ func (a *app) headHeight() int {
 		// it is the tab above it said twice, and the emptiness law is exactly this:
 		// a row that carries no news is a row that is not drawn.
 		//
-		// WHAT IT DOES HAVE IS THE SEAM UNDER THE TABS, which is what closes the
-		// header panel off from the transcript and from the roster beside it on a
+		// WHAT IT DOES HAVE IS THE SEAM UNDER THE STRIP — the rule and the blank
+		// that are the head's last two rows on every frame — which is what closes
+		// the head off from the transcript and from the roster beside it on a
 		// terminal whose background this program does not control
-		// (chattabs.go's [app.chatRuleHeight]).
-		return head + a.chatRuleHeight(width)
+		// (chattabs.go's [app.headSealHeight]).
+		return head + a.headSealHeight(width)
 	}
 	// A ROOM'S OWN ROWS ARE CHARGED FOR THROUGH THEIR OWN LADDER, which knows the
 	// two floors the header stands on — too narrow for a trail and a way out, too

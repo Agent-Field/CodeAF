@@ -40,7 +40,7 @@ func headPanel(a *app) string { return headRow(a) + "\n" + headFactsRow(a) }
 // tabsRowOf reads the tab labels inside the header's optional vertical padding.
 func tabsRowOf(a *app) string {
 	rows := strings.Split(frame(a), "\n")
-	at := a.tabsLineRow()
+	at := placeTabRow
 	if at >= len(rows) {
 		return ""
 	}
@@ -87,10 +87,10 @@ func TestARoomPinsAFocusHeader(t *testing.T) {
 	// room's — the task's name, its state and its exit.
 	drive(t, a, key("esc"))
 	head = plain(tabsRowOf(a))
-	// What is left over a conversation is the strip and the low-contrast rule
-	// under it, which is the seam between the header panel and the transcript
-	// (chattabs.go's [app.chatRuleHeight]).
-	if a.headHeight() != a.tabsHeight(a.width)+a.chatRuleHeight(a.width) || !strings.Contains(head, a.chatDisplayName()) {
+	// What is left over a conversation is the places' head — the pulse, the
+	// strip, the rule and the blank — which is the seam between the head and the
+	// transcript (head.go).
+	if a.headHeight() != placeHeadRows || !strings.Contains(head, a.chatDisplayName()) {
 		t.Fatalf("the conversation's strip is %d rows and reads:\n%q", a.headHeight(), head)
 	}
 	for _, gone := range []string{"Fix the nil-map", roomBackWord, roomCrumbSep} {
