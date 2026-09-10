@@ -758,6 +758,16 @@ Whatever you send goes with everything you did on the way:
 - anything you asked back and what came of it
 - how long the answer lasts, where the question offered a choice of that
 
+## It asked me in plain text instead of a question block — numbered options in the reply, no keys
+
+The model is told that every question it puts to you goes through its `ask` tool and never
+as prose: a question typed out as a numbered list has no keys under it, leaves no record in
+`decisions.jsonl`, and cannot be answered from home or another window. A model can still
+disobey that, and when it does the reply is only words — type your answer as you would any
+message. If it loaded the tool and then stopped without calling it, the turn is sent back
+once (`it loaded a tool and stopped before using it · asking it to go on`); see *Why did it
+say "loaded" before making a picture* on **what I can do**.
+
 ## Which questions draw this way
 
 **The approval question does** — the one aforge asks before it runs a tool. It
