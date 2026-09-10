@@ -84,7 +84,7 @@ func ledgerLanded(world session.World, seen time.Time) []switcherRow {
 		if entry.Cost > 0 {
 			margin = dollars(entry.Cost)
 		}
-		out = append(out, switcherRow{kind: switcherLedger, session: landed.Session, title: ledgerTaskLine(entry),
+		out = append(out, switcherRow{kind: switcherLedger, session: landed.Session, title: ledgerTaskLine(entry, landed.Session),
 			place: pageTasks.word(), at: entry.EndedAt, task: &entry, margin: margin})
 	}
 	return out
@@ -96,10 +96,16 @@ func ledgerLanded(world session.World, seen time.Time) []switcherRow {
 // sentence of a report is what the work came to only when the work finished;
 // for a run the wire cut or a worker that went in circles, the ending is the
 // news, in the rail's own words for it ([endingWord]).
-func ledgerTaskLine(entry session.TaskIndexEntry) string {
+//
+// A ROW WITH NO NAME OF ITS OWN IS NAMED FOR ITS CONVERSATION rather than drawn
+// as a bare outcome, so every line still says whose work it was.
+func ledgerTaskLine(entry session.TaskIndexEntry, row session.SessionRow) string {
 	label := strings.TrimSpace(entry.Label)
 	if label == "" {
 		label = strings.TrimSpace(entry.Title)
+	}
+	if label == "" {
+		label = homeName(row)
 	}
 	outcome := endingWord(entry.Ending)
 	if outcome == "" {

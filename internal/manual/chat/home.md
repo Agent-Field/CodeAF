@@ -169,19 +169,23 @@ project*). Nothing else about the list changes when you do.
 
 ## What is since you left — the ledger at the top of home
 
-**Things that happened on their own while you were not looking**, above the list, under
-one heading that says how long ago that was:
+**Things that happened on their own while you were not looking**, in a panel of its own on
+home's right-hand side, under a heading that says how long you were away:
 
 ```
- since you left · 3h
- a watch fired at 6am — nothing had changed, and it says so                      standing
- 2 tasks landed                                                                     tasks
+ since you left · 12h
+   Spark Fleet Ssh Audit · 2 hosts up, 1 not                                     $0.42
+   made apartments-minto.md                                             Pricing Site
+   fired at 6am — nothing had changed
 ```
 
-Three kinds of line, newest first:
+Four kinds of line, newest first, four of them and then `N more · tasks`:
 
+- **a task that landed** — its name and what it came to, the first sentence of its report,
+  with its cost at the right when it cost anything. A task that stopped without finishing
+  says why instead: `lost the connection`, `went in circles`, `out of steps`;
+- **a file a conversation made** — `made <name>`, with that conversation's name at the right;
 - **a standing item that fired** — its own last-look line, in its own words;
-- **`N tasks landed`** — work that finished anywhere on the machine since your last look;
 - **what memory learned or let go** — `learned 2 things, let go of 1`.
 
 **A one-off that fired and stood down is here too.** `remind me in 1 minute to drink
@@ -190,15 +194,13 @@ anything, so it is on no list and in no band — and it is still the commonest t
 happens while nobody is looking. Its line reads the way any firing's does: `fired 3 minutes
 ago — it told you`. What is over is not on the list; what happened is in this block.
 
-**Every line is a door.** The lowercase word out at the right of the line is the place it
-goes to — `standing`, `tasks`, `memory` — and `enter` takes you there. That is the whole
-of how you find these pages: you meet `memory` on the day it has something to tell you,
-rather than being told a list of places exists. The hint under the box says
-`enter opens the place this happened in · esc close`.
+**Every line is a door.** `enter` on a task opens that task's record, on a file opens the
+file, on a firing opens standing and on memory's line opens memory — you meet a page on
+the day it has something to tell you.
 
-**It is drawn only when there is something in it.** A machine that did nothing while you
-were away has no `since you left` heading at all — it is not a section that stands empty.
-The look stamp it measures from is when you last **closed** home.
+**With nothing to report it keeps its heading and one dim line**: `what watches and tasks
+did while the terminal was shut`. The look stamp it measures from is when you last
+**closed** home; the very first look has no "since" and reports nothing.
 
 **The memory line is not wired yet.** The figures behind `learned … , let go of …` come
 through a seam this surface does not have a memory store on, so they read zero and, under
@@ -283,8 +285,9 @@ A row is there when something has stopped and cannot go on without you:
 
 - a conversation in another window stopped on a question — a command to approve, a task to
   approve, a card about something standing;
-- a reminder, watch or rule that stopped and wants an answer;
-- an `ask here` errand holding a card.
+- a task the record marks as `your call` — it opens on the task's record, where its two
+  answers are;
+- a reminder, watch or rule that stopped and wants an answer.
 
 The note on the row is **what it is asking**, in the question's own words — `asks: add a
 --report-only mode?`, or `needs your ok to run bash` for a tool it needs permission to use
@@ -295,10 +298,10 @@ is stopped writes one sentence — `needs your ok to run ` and the tool's name �
 row is that sentence, whole. It reads as a clause about the conversation named beside it,
 so nothing on this screen puts a `wants to` in front of it.
 
-**You can answer most of them without going anywhere.** With the cursor on the row, the
-question and its answers are drawn on the line above the box and the digits answer it
-(*Answer a question from home*), and `→` opens the row's verbs in the question's own words
-(*How do I answer without opening the chat*).
+**You can answer the top one without going anywhere.** Its answers are drawn on its own
+row — `1 allow once  2 always  3 deny`, three at most — and a digit answers it **from
+anywhere on home**, wherever the cursor is. The rows under it say `enter` instead, so one
+`1` is never on the screen twice, and a question with a paragraph shows only its first line.
 
 Amber is spent on the `?` mark and on the answers under the list, and on nothing else. A
 machine with nothing waiting has no accent on it at all.
@@ -313,9 +316,8 @@ the conversation you were in left running behind it.
 Work that landed reaches home two other ways instead, and neither is a row named after a
 task:
 
-- **the `since you left` ledger** says `2 tasks landed`, and `enter` on that line opens the
-  **tasks** place, which is the record of every piece of work and where one waiting for you
-  is named;
+- **the `since you left` panel** has a line per task that landed, and `enter` on that
+  line opens that task's record in the **tasks** place;
 - **the conversation's own row** carries it in the note — `3 files made` — and its card,
   on a wide frame, has the work band with what each task came to.
 
@@ -344,22 +346,27 @@ Three ways to settle it, and they are the same door:
 Accepting merges the task's branch and unblocks everything queued behind it. The tasks page
 has the whole of it under *Why is the task waiting for me*.
 
-**Home is not where it is settled.** It is where you find it: the ledger line `N tasks
-landed` opens the tasks place, and the conversation's row opens the chat the work ran in.
+**Home is not where it is settled.** It is where you find it: the `needs you` row opens
+the conversation on the task's record, and its `since you left` line opens the record.
 
 ## What is running everywhere — the ◐ rows, and what goes in the moving column
 
-**The `◐` rows, straight under the ones that are asking you something.** There is no
-`moving` strip and no moving column any more; being in flight is a rank in the one list
-rather than a place on the screen.
+**The `running` panel, at the top of home's right-hand side.** One row per piece of work
+out anywhere on the machine — every task and adaptive run, and every background job a
+conversation started — the most recently started first:
 
-A row is `◐` when it has tasks running, and also when it is simply **mid-turn** — the model
-thinking or a tool out, with no task ever made. Conversations this terminal is holding open
-behind the one on screen count, and so does a watch that is firing this instant.
+```
+ running · 2
+ ◐ Generate and Display First 200 Primes                                     4m
+     bash · 12s · 2 of 5
+   npm run dev · pricing-site · a background job                           up 3h
+```
 
-They are ordered **busiest first** — most tasks running — with the longest-running settling
-a tie, and the note says what is actually happening: `2 tasks running · reading filings`,
-or `· checking what it left` while a node is being looked at, wherever it is being run.
+The line under a task is what its worker is doing, or `checking what it left` while it is
+being looked at, and `2 of 5` is how far a run has got. Only the first row turns; four rows
+and then `N more · tasks`. A row another terminal holds says `another window`, and `enter`
+brings its conversation here. **`→` then `s stop` ends a task this window is running**,
+asking you first; another window's work offers no such verb.
 
 Two other places say the same thing more briefly:
 

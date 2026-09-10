@@ -168,6 +168,12 @@ func (a *app) runningVerbs(line homeLine) []verb {
 		return nil
 	}
 	return []verb{{key: 's', word: homeItemStopWord, do: func() tea.Cmd {
+		// HOME STEPS ASIDE FOR THE CARD. The block draws every question above the
+		// conversation's box (question.go), and home's frame has no such block —
+		// so a card raised over home was a question nobody could see, holding the
+		// keyboard. The task is this window's own conversation's, which is the
+		// frame the card is read in and where the stop's receipt lands.
+		a.closeHome()
 		a.raiseStop(target)
 		return nil
 	}}}

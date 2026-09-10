@@ -193,12 +193,12 @@ func TestAClickResolvesTheColumnItLandedIn(t *testing.T) {
 	a := newSwitchLab(t).open(120, 45)
 	lines := strings.Split(homeText(a), "\n")
 	for y, line := range lines {
-		if x := strings.Index(line, "Bounty Reward Companies"); x >= 0 {
+		if x := strings.Index(line, "read 40 filings"); x >= 0 {
 			a.homePress(len([]rune(line[:x])), y)
 			break
 		}
 	}
-	if got := focusedTitle(a); got != "Bounty Reward Companies" {
+	if got := focusedTitle(a); got != "read 40 filings" {
 		t.Fatalf("the click selected %q", got)
 	}
 }
