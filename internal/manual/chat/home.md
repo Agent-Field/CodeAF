@@ -21,7 +21,10 @@ project name would be asking you to type out the very thing home exists to show 
 Under the tab bar it is **panels** — one column under 110 cells, two under 170, three
 past that: `needs you`, `where you were` and `projects` on the left, `running`,
 `since you left`, `spend` and `next up` on the right. An empty panel keeps its heading and
-one dim line naming what arrives there. `↑↓` walk a panel, `←` `→` cross columns, and a digit
+the dim words naming what arrives there, wrapped onto a second line rather than cut. A
+tall window grows the panels — `needs you`, `running`, `since you left` and `projects` to
+eight rows, `where you were` to ten, `next up` to five; `spend` never grows — and a short
+one squeezes them, `next up` and `spend` first. `↑↓` walk a panel, `←` `→` cross columns, and a digit
 answers the top question in `needs you`. On a project row `enter` starts a chat in that
 folder, and `→` offers `its chats` and `open folder`.
 
@@ -184,7 +187,8 @@ home's right-hand side, under a heading that says how long you were away:
    fired at 6am — nothing had changed
 ```
 
-Four kinds of line, newest first, four of them and then `N more · tasks`:
+Four kinds of line, newest first, four of them — up to eight in a tall window — and then
+`N more · tasks`:
 
 - **a task that landed** — its name and what it came to, the first sentence of its report,
   with its cost at the right when it cost anything. A task that stopped without finishing
@@ -225,8 +229,9 @@ project's name into the box, so the search lists every conversation in it — an
 
 **You cannot any more, and `alt+q` does nothing.** The panels already keep the quiet
 ones out of the way: `needs you` and `running` hold what wants you or is moving, and
-`where you were` shows this window's conversation and the four most recent, folding the
-rest behind `N more · type to find one`. Typing finds any conversation on the machine.
+`where you were` shows this window's conversation — the last thing you typed in it on the
+line under it — and the four most recent, nine in a tall window, folding the rest behind
+`N more · type to find one`. Typing finds any conversation on the machine.
 
 ## Where did the rest of my chats go — the list fills the window, then one fold
 
@@ -344,7 +349,7 @@ conversation started — the most recently started first:
 
 The line under a task is what its worker is doing, or `checking what it left` while it is
 being looked at, and `2 of 5` is how far a run has got. Only the first row turns; four rows
-and then `N more · tasks`. A row another terminal holds says `another window`, and `enter`
+— eight in a tall window — and then `N more · tasks`. A row another terminal holds says `another window`, and `enter`
 brings its conversation here. **`→` then `s stop` ends a task this window is running**,
 asking you first; another window's work offers no such verb.
 
@@ -2506,6 +2511,13 @@ the card **while you are searching**. What is coming up across the whole machine
 **standing** place — `alt+5`, or type `standing`.
 
 ## What has this conversation cost — the spend band on home
+
+**On home's panels, `spend` is three dim lines.** The heading says `today $6.51 of $500`,
+the allowance spelled the way the top line spells it. From a twentieth of the allowance a
+thin meter follows, `━━━━━╌╌╌╌╌╌╌╌╌ 34%`. Then the fortnight, a block cell a day with today
+at the right, and `14 days $204.36 · loudest sun $88.10`; then `glm-5.3 55% · opus 31%  ·
+3 chats and 1 task today`. With nothing on the ledger it is its heading and `every chat and
+task is priced here`. `enter` on any line opens the spend place.
 
 The dim facts line at the foot of a conversation's card reads `touched 12 files · spent
 $1.25 · 34k tokens · last active 12m`. Each clause is independent: zero or unknown files,
