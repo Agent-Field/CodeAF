@@ -69,6 +69,9 @@ type spendPage struct {
 	// unfolded is whether the subjects' fold is open. It lasts while the place
 	// is up and a fresh visit starts it shut, as every fold on a place does.
 	unfolded bool
+	// woke is whether focus has been put at the page's centre of mass yet on
+	// this visit; after that the cursor is the person's.
+	woke bool
 	// read is the instant the lines were read, and every figure and age on the
 	// page is measured from it rather than from a fresh clock.
 	read time.Time
@@ -111,7 +114,6 @@ func (a *app) openSpend() tea.Cmd {
 		win: session.LastDays(now, spendWindowDays), hover: -1,
 		world: a.readWorld()}
 	a.readSpendLines(now)
-	a.spend.cursor = a.spendCenterOfMass()
 	return a.armPlaceClock()
 }
 
@@ -293,6 +295,13 @@ func (a *app) rebuildSpend() {
 	// opened this place and has not painted yet.
 	_, p.stops = p.reading.body(a.width, a.pal)
 	p.cursor = a.nearestSpendStop(p.cursor)
+	// FOCUS WAKES ONCE, on the first reading that has anything to wake on —
+	// which is not always the one taken on the way in: a far machine's ledger
+	// answers a beat later ([app.spendCenterOfMass]).
+	if !p.woke && len(p.reading.subjects) > 0 {
+		p.cursor = a.spendCenterOfMass()
+		p.woke = true
+	}
 }
 
 // spendNames is the join the ledger cannot make: an id against the word a
