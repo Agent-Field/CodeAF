@@ -347,10 +347,15 @@ front of the conversation.
   name, keeps the existing order and appends the arrivals into fresh arrays;
   `armPrearmed` is one of its callers, so a lean belt's handed-over groups ride
   the same door. A load costs the tool block's tail once and nothing after that.
-- **The clock is the only mover in the `# Project` footer**, and only past
-  `clockRefresh` (10 minutes), which is longer than any of these providers keeps
-  an untouched entry — so the re-render is free by construction. Inside the
-  threshold `refreshClockLocked` returns without touching `a.system`.
+- **Nothing in the `# Project` footer moves on its own except the clock**, and it
+  moves only past `clockRefresh` (10 minutes), which is longer than any of these
+  providers keeps an untouched entry — so the re-render is free by construction.
+  Inside the threshold `refreshClockLocked` returns without touching `a.system`
+  at all. The footer quotes `AGENTS.md` and `CLAUDE.md`, so an edit to one of
+  those does move the page — on the next clock refresh, which is to say at the
+  moment the prefix was going cold anyway. The attached-folder block is the same
+  shape: `publishAttached` compares the composed text and does not touch
+  `message[0]` when a re-resolve produced the same bytes.
 - **The caps and the profile settle once per agent.** `bare.CapsFor(a.window())`
   and the prompt profile are both read out of `Config` when the belt and the page
   are built, and the belt is rebuilt exactly twice in a conversation's life: at

@@ -374,7 +374,7 @@ def share_text(value):
     return "-" if value is None else f"{value:.1%}"
 
 
-def table(label, results):
+def table(label, results, belt_only=True):
     """The per-request table, and the roll-up under it."""
     lines = [f"### {label}", ""]
     lines.append("| # | cell | tag | tools | bytes | stable | share | kind | where | cause |")
@@ -387,7 +387,8 @@ def table(label, results):
     broken = [row for row in results if row["kind"] == "broken"]
     append = [row for row in results if row["kind"] == "append"]
     opener = [row for row in results if row["kind"] == "opener"]
-    lines.append(f"{len(results)} belt-carrying requests · {len(opener)} openers · "
+    kind = "belt-carrying requests" if belt_only else "requests, asides included"
+    lines.append(f"{len(results)} {kind} · {len(opener)} openers · "
                  f"{len(append)} append-only · {len(broken)} with a moved prefix")
     carried = [row for row in results if row["kind"] != "opener"]
     if carried:
@@ -438,7 +439,7 @@ def main():
             print(f"### {label}\n\nNo request bodies in {root} — the run needs "
                   f"AFORGE_CALL_LOG_BODIES=1.\n")
             continue
-        print(table(label, results))
+        print(table(label, results, belt_only=not args.all))
         for row in results:
             row["run"] = label
         written.extend(results)
