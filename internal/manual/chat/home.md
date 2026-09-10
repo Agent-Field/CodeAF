@@ -273,7 +273,7 @@ A row is there when something has stopped and cannot go on without you:
 - a conversation in another window stopped on a question — a command to approve, a task to
   approve, a card about something standing;
 - a task the record marks as `your call` — it opens on the task's record, where its two
-  answers are. It is a row for two days after it landed; after that the panel's last line
+  answers are; work nobody could check reads `landed unchecked · enter to look`. It is a row for two days after it landed; after that the panel's last line
   counts it instead — `3 older · tasks` — and `enter` there opens tasks;
 - a reminder, watch or rule that stopped and wants an answer.
 

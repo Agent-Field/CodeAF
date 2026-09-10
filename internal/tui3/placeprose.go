@@ -96,6 +96,16 @@ const (
 	standNotOursWord = "that one does not stand over this conversation"
 )
 
+// needsUncheckedWord is the line under a `needs you` row for work that landed
+// and that nobody could check (homepanel_needs.go's [needsCall]).
+//
+// IT SAYS WHAT THE PERSON CAN DO, NOT WHAT THE MACHINE COULD NOT. The engine's
+// own reason, `nobody could check it`, is the right sentence on the task's
+// record, where the two answers stand beside it; on home, under a title and an
+// age, it read as a shrug (owner, 2026-09-10). The line names its own door, so
+// the row draws no second `enter` beside it.
+const needsUncheckedWord = "landed unchecked · enter to look"
+
 // ── THE FIVE-LEVEL SCALE (SCREEN 2a) ────────────────────────────────────────
 //
 // A terminal has no font sizes, so a place's hierarchy is five levels built

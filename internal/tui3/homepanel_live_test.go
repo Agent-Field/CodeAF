@@ -120,17 +120,20 @@ func TestNeedsYouOrdersTheWaitsAndDrawsAnswersOnTheTopRowOnly(t *testing.T) {
 	}
 }
 
-// A TASK THE RECORD MARKS AS YOUR CALL IS A ROW OF ITS OWN, with the engine's
-// reason under it, and enter aims at the task rather than at the conversation's
-// live edge.
+// A TASK THE RECORD MARKS AS YOUR CALL IS A ROW OF ITS OWN, and enter aims at
+// the task rather than at the conversation's live edge. Work nobody could check
+// says what the person can do about it, and draws no second `enter` beside that.
 func TestNeedsYouCarriesATaskWaitingOnYourCall(t *testing.T) {
 	l := newLiveLab(t)
 	l.task("-alpha", session.TaskIndexEntry{ID: "4", SessionID: "aaaa000000000002", Label: "fix the flaky sieve",
 		Title: "fix the flaky sieve", Status: string(session.TaskUnverified), EndedAt: l.now.Add(-30 * time.Minute)})
 	a := l.open()
 	rows := panelRows(a, panelNeeds)
-	if len(rows) != 1 || rows[0].title != "fix the flaky sieve" || rows[0].sub == "" || rows[0].subRight != needsOpenWord {
-		t.Fatalf("the task's call is not a row of needs you: %+v", rows)
+	if len(rows) != 1 || rows[0].title != "fix the flaky sieve" || rows[0].sub != needsUncheckedWord || rows[0].subRight != "" {
+		t.Fatalf("the task's call is not a row of needs you that says what to do: %+v", rows)
+	}
+	if frame := homeText(a); !strings.Contains(frame, "landed unchecked · enter to look") || strings.Contains(frame, "nobody could check it") {
+		t.Fatalf("the row under the call does not say what to do:\n%s", frame)
 	}
 	for _, line := range panelLines(a, panelNeeds) {
 		if line.cell.kind == cellRow && (line.task == nil || line.task.ID != "4") {
