@@ -267,6 +267,11 @@ var tuiWords = map[string]tuiWord{
 		screen: "keeping watch",
 		why:    "/status's line about whether anything checks the world with no window open",
 	},
+	"consentRowLine": {
+		screen: "needs your ok to run ",
+		pkg:    "internal/session",
+		why:    "the whole sentence a consent gate hands another window — written once by the engine, repeated on home's row with nothing added to it",
+	},
 	"standSaidTag": {
 		screen: "said: ",
 		why:    "the clause a firing's own row wears in the conversation it lands in",
