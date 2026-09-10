@@ -311,6 +311,43 @@ func TestTheSketchIsTheFirstLineAndEverythingUnderItIsTheLegend(t *testing.T) {
 	}
 }
 
+// WHAT IS DONE IS NOT WHAT IS LEFT, and BOTH writers of the handover document
+// are told so.
+//
+// THE DEFECT THIS PINS. The sketch's legend becomes the brief's opening
+// paragraph under the words "WHAT IS LEFT, AS PARTS" ([checkpointSketch.head]),
+// and the prose half under it is the mastermind's. A reader that drew work the
+// turn had ALREADY FINISHED therefore wrote the loudest, earliest instruction in
+// a document whose evidence section (admission.go) said, correctly and further
+// down, that the same work was done. Measured 2026-09-10: a worker opened on
+// that brief and spent its first minutes redoing it. Neither ask said the thing
+// that would have stopped it, so both say it now and this test is why they
+// cannot quietly stop.
+func TestBothHandoverAsksSayFinishedWorkIsNotWhatIsLeft(t *testing.T) {
+	// THE DRAWING HALF. It is the one that becomes the parts, so it is the one
+	// the worker obeys first.
+	const drawn = "Work that is already done is not a part either: what the account above shows finished is not " +
+		"what remains, and drawing it sends somebody to do it a second time."
+	if !strings.Contains(checkpointSketchAsk, drawn) {
+		t.Errorf("the mark's ask never says finished work is not a part:\n%s", checkpointSketchAsk)
+	}
+	// THE PROSE HALF, which asks for the same four things and now draws the same
+	// line between the first two of them.
+	const written = "Nothing that is already done goes under what is left to do: what has already been read, run or " +
+		"found out is what they already know, and putting it under what is left sends them to do it again."
+	if !strings.Contains(checkpointHandoffWriteAsk, written) {
+		t.Errorf("the handoff writer is never told to keep finished work out of what is left:\n%s",
+			checkpointHandoffWriteAsk)
+	}
+	// AND THE CLAUSE IS ON THE RIGHT SIDE OF THE FOUR THINGS. It has to be read
+	// as a rule about the first of them rather than as an afterthought behind
+	// the manners at the end.
+	if strings.Index(checkpointHandoffWriteAsk, written) > strings.Index(checkpointHandoffWriteAsk, "Do not greet them") {
+		t.Errorf("the clause sits behind the closing manners, where it reads as an aside:\n%s",
+			checkpointHandoffWriteAsk)
+	}
+}
+
 // AND THE SKETCH HEADS THE BRIEF THE WORKER OPENS ON.
 func TestTheSketchStandsAtTheHeadOfTheDowry(t *testing.T) {
 	sketch := parseCheckpointSketch(checkpointSplitSketch)

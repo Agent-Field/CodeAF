@@ -2262,11 +2262,17 @@ func (n *TaskNode) instructionOn(tree taskTree) string {
 func taskCopyFor(tree taskTree) taskCopy {
 	switch tree.mode {
 	case TaskModeWorktree, TaskModeMirror:
-		// AND THE TWO FOLDERS ARE SPELLED ONE WAY, by the constructor rather
+		// AND THE THREE FOLDERS ARE SPELLED ONE WAY, by the constructor rather
 		// than here: a tree's fields are whatever resolved them, and
 		// [newTaskCopy] is where a folder becomes the one spelling everything
 		// downstream reads.
-		return newTaskCopy(tree.ground, tree.dir)
+		//
+		// THE THIRD ONE IS THE CONVERSATION'S OWN, and the tree already carries
+		// the session it belongs to, so nothing has to be threaded to reach it.
+		// It is empty for a borrowed session, which keeps no work/ at all, and
+		// for the legacy layout, whose tree carries the zero Place — both of
+		// which are the same document this composed before.
+		return newTaskCopy(tree.ground, tree.dir, tree.place.Work())
 	}
 	return taskCopy{}
 }

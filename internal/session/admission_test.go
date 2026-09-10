@@ -373,6 +373,56 @@ func TestTheWorkerIsToldQuotesAreSaidAndNotSettled(t *testing.T) {
 	}
 }
 
+// A DOCUMENT THAT CONTRADICTS ITSELF SAYS WHICH HALF WINS.
+//
+// THE MEASURED FAILURE. A conversation hit its ceiling, a sidecar drew what was
+// left, and the drawing named reading the parent had ALREADY FINISHED. The brief
+// therefore opened on "WHAT IS LEFT, AS PARTS" listing that reading as work,
+// while this section, further down the same document, listed the same calls as
+// already run and pointed at what came back. The worker obeyed the first and
+// louder statement and spent its first minutes re-reading and re-deriving. The
+// two writers upstream are told not to compose that document at all
+// (checkpoint.go), and this is the rule for the worker that gets one anyway.
+//
+// IT MOVES NO BYTES. The precedence sends the worker to the pointer the line
+// already carries — the body of a successful result is still deliberately absent
+// — so nothing here spends the budget this whole context is bounded by.
+func TestTheEvidenceSectionOutranksPartsThatNameACallAlreadyRun(t *testing.T) {
+	compiled := AdmissionContext{Version: AdmissionContextVersion, Evidence: []AdmissionHandle{{
+		Call: "c1", Tool: "read", Input: `{"path":"prechat.md"}`,
+		Outcome: AdmissionOK, Result: "/tmp/results/c1.txt",
+	}}}
+	// The brief as a handover composes it: the parts at the top naming the very
+	// reading the section below says is done.
+	opening := composeBrief(briefWhole, "groom the prechat questions",
+		"WHAT IS LEFT, AS PARTS: A | B\nA is reading prechat.md, B is the grooming pass.",
+		"a groomed list", "the list is groomed", "", compiled, taskOrigin{}, taskCopy{})
+
+	for _, want := range []string{
+		"AND THIS SECTION IS WHAT HAS ALREADY HAPPENED",
+		"it has been made already",
+		"read it through its pointer instead of running it again",
+		"run it again only where the line says it failed",
+		// AND THE POINTER IT SENDS THEM TO IS ON THE LINE.
+		"read {\"path\":\"prechat.md\"} — came back; read /tmp/results/c1.txt",
+	} {
+		if !strings.Contains(opening, want) {
+			t.Fatalf("the worker's document is missing %q:\n%s", want, opening)
+		}
+	}
+	// AND THE RULE IS UNDER THE PARTS IT SETTLES. A precedence sentence printed
+	// above the statement it overrules is one the reader meets before it has
+	// anything to apply it to.
+	if strings.Index(opening, "WHAT IS LEFT, AS PARTS") > strings.Index(opening, admissionEvidenceRule) {
+		t.Fatalf("the evidence rule was printed above the parts it settles:\n%s", opening)
+	}
+	// AND NO RESULT BODY CAME WITH IT. The bytes stay where they are; the worker
+	// fetches what it needs.
+	if strings.Contains(opening, "prechat.md says") {
+		t.Fatalf("a result's body was carried into the document:\n%s", opening)
+	}
+}
+
 // AN IDENTIFIER NO TOOL CAN RESOLVE IS WORSE THAN NO POINTER. A quote the
 // journal could not place says the file alone, and one with no journal at all
 // says nothing rather than a hash.
