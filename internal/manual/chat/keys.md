@@ -1975,17 +1975,16 @@ line · home opens with the cursor on **the conversation this window is holding*
 off the top of the list walks up onto **the tab bar**, from where the first `down` lands
 back on the row you left (*The tab bar is a row the cursor can stand on*) ·
 `pgup`/`pgdown` jump a screenful · `enter`
-acts on the row under the cursor · **`tab` is the next place** — home is one column now and
-there is nothing on it for `tab` to cycle · **`alt+g`** groups the list by project and
-**`alt+q`** hides everything that is neither asking nor moving, both remembered for as long
-as aforge is running and neither written to disk · `backspace`,
+acts on the row under the cursor · **`tab` is the next place** — `←` `→` are what cross
+home's columns · `backspace`,
 `ctrl+u`, `ctrl+w`, `ctrl+b`, `ctrl+f` edit the box · with the box empty and the cursor on
 a conversation that is **waiting on you**, the digits on its chips answer that question
 where it stands (`1 allow once · 2 always · 3 deny`, and the like for the other two kinds
 — home's own page has the table) · **anything else you type goes into the box**, which
 searches the whole machine and offers to start a new conversation at the same time.
 
-**`→` opens the row's verbs** on a strip drawn **directly under that row**, pushing the rest
+**`←` `→` cross home's columns first**; where no column with rows lies to the right, **`→`
+opens the row's verbs** on a strip drawn **directly under that row**, pushing the rest
 of the list down by its own height, and while that strip is drawn its letters are the verbs
 and the box is asleep — `y`/`n` in a question's own words, `a put it away`, `t new chat here`,
 `o open folder`, `c copy path`, `p pause it` or `r resume it` on a standing item. `esc` or
