@@ -23,7 +23,6 @@ var lockedPackages = []string{
 	"internal/provider",
 	"internal/resident",
 	"internal/store",
-	"internal/tui",
 }
 
 // lockAllowlist names critical sections that may unlock without a defer, keyed
