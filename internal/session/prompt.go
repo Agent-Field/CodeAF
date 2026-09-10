@@ -91,6 +91,24 @@ var revisePrompt string
 //go:embed prompts/fanout.md
 var fanoutPrompt string
 
+// quickPrompt is what a QUICK task's worker is told about being one: that it
+// works in the caller's own folder rather than a copy, that it ticks its list
+// as it goes, that nothing is going to check it, and that its last message is
+// the answer (task_quick.go).
+//
+// It is its own page on [revisePrompt]'s law rather than a paragraph inside
+// prompts/worker.md: it names `items`, which is absent from every belt but a
+// quick worker's, and a page teaching a verb that is not on the belt is the
+// prompt lying.
+//
+// AND IT IS THE ONLY PLACE THESE LAWS ARE WRITTEN. The node's opening message
+// carries the job and the record it came out of and no rules at all
+// ([quickBrief] says why), so there is one page saying what a quick worker is
+// and it cannot disagree with a second copy of itself.
+//
+//go:embed prompts/quick.md
+var quickPrompt string
+
 // shapePrompt is what the BRIEF-SHAPER is told (task_shape.go): how to reason
 // its way from the words a person typed after /task to the brief a worker with
 // nobody to ask is actually given.
@@ -223,6 +241,13 @@ func renderSystemAt(config Config, now time.Time) string {
 	if config.mayDivide() {
 		out.WriteString("\n\n")
 		out.WriteString(strings.TrimRight(dividePrompt, "\n"))
+	}
+	// AND THE PAGE ABOUT BEING A QUICK TASK, on exactly the predicate that puts
+	// `items` on this belt, for the reason the two pages above are conditional:
+	// it names a verb only a quick worker carries (task_quick.go).
+	if config.mayTickItems() {
+		out.WriteString("\n\n")
+		out.WriteString(strings.TrimRight(quickPrompt, "\n"))
 	}
 
 	out.WriteString("\n\n# Project\n")

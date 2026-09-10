@@ -4441,16 +4441,19 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 	}
 
 	// WHICH BODY THIS NODE HAS. Everything above and below is the same for all
-	// three kinds — the deadline, the job row, the settle — and the middle is
+	// four kinds — the deadline, the job row, the settle — and the middle is
 	// what a node of this spec IS: a worker in a worktree, a subharness being
-	// written in a room (harness_task.go), or a subharness being RUN in one
-	// (subharness_run.go).
+	// written in a room (harness_task.go), a subharness being RUN in one
+	// (subharness_run.go), or a quick task working where its caller works
+	// (task_quick.go).
 	work := a.workTaskNode
 	switch {
 	case node.spec.design != nil:
 		work = a.designHarnessNode
 	case node.spec.run != nil:
 		work = a.runSubharnessNode
+	case node.spec.quick != nil:
+		work = a.runQuickNode
 	}
 	state := work(ctx, node, listed)
 	if state == "" {
@@ -6902,6 +6905,22 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// reading it — so a line steered at it has to START one or it is a
 		// question nothing ever answers (agent.go's wakeLocked, harness_task.go).
 		roomThread: node.kind == TaskKindHarness,
+		// ── THE TWO THINGS A QUICK WORKER HAS THAT NOTHING ELSE DOES ─────────
+		//
+		// THE CLAIM IT MADE ABOUT FILES, armed as the ordinary write bound: this
+		// worker shares the person's own copy — there is no worktree to isolate it
+		// — so what stands in for the isolation is the scope it declared, enforced
+		// by the guard that is already a citizen of every agent's control plane
+		// (orchestrate.go's [writeGuard]). EMPTY IS UNRESTRICTED, which is that
+		// guard's own law and is what a quick task that named no files gets.
+		//
+		// AND THE LIST, wired here for [Config.reviseDesign]'s reason: a belt is
+		// assembled once, when the agent is constructed (agent.go), so a door
+		// handed over afterwards would be a verb the model is never told it has.
+		// It is nil for every other node — there is no list to tick — which is
+		// what keeps `items` off every other belt in this build (task_quick.go).
+		writeScope: node.quickScope(),
+		quickItems: node.quickDoor(),
 		// AND THE DESIGN THREAD'S ONE EXTRA HAND, wired here for roomThread's
 		// reason: a belt is assembled once, when the agent is constructed
 		// (agent.go), so a door handed over after this call would be a verb the
