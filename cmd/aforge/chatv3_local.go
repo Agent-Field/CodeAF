@@ -28,6 +28,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/enginehost"
 	"github.com/Agent-Field/aforge-v2/internal/remote"
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui3"
 )
 
@@ -254,7 +255,12 @@ func openChatV3Local(launch localLaunch) error {
 	// errand's own folder and standing store live on. Over --host the folder
 	// would be made on the laptop and the work would run against the wrong
 	// machine, so there the seam stays absent and home says so once.
-	options.Errand = localErrandDoor(launch, welcome)
+	errand, closeErrands := localErrandDoor(launch, welcome)
+	// AND WHATEVER IT OPENED IS CLOSED HOWEVER THIS SURFACE RETURNS, beside the
+	// fleet's own close above: an errand is a real session with a real journal,
+	// and a Run that leaves by any other road than /quit still owes it a flush.
+	defer closeErrands()
+	options.Errand = errand
 	options.StandingRoot = v3StandingRoot()
 	// AND THE TASKS PAGE CAN LOOK INTO THE CONVERSATIONS NEXT DOOR. It is bound
 	// here rather than inside [hostOptions] because it is a second DIAL of this
@@ -502,13 +508,14 @@ func localBesideHello(ask engineAsk, launch localLaunch) remote.Hello {
 // errand may do to a project a daemon is sitting in. Nothing here takes that
 // journal's flock — only [openV3Agent] does — and the config is immediately
 // pointed somewhere else ([v3Errand] hands it the errand's own folder).
-func localErrandDoor(launch localLaunch, welcome remote.Welcome) func(tui3.ErrandOrders) (tui3.Agent, error) {
+func localErrandDoor(launch localLaunch, welcome remote.Welcome) (func(tui3.ErrandOrders) (tui3.Agent, error), func()) {
 	var (
 		once  sync.Once
+		held  *v3Process
 		open  func(tui3.ErrandOrders) (tui3.Agent, error)
 		fault error
 	)
-	return func(orders tui3.ErrandOrders) (tui3.Agent, error) {
+	door := func(orders tui3.ErrandOrders) (tui3.Agent, error) {
 		once.Do(func() {
 			proc, err := openV3ProcessWith("chat", true)
 			if err != nil {
@@ -525,6 +532,7 @@ func localErrandDoor(launch localLaunch, welcome remote.Welcome) func(tui3.Erran
 				fault = err
 				return
 			}
+			held = proc
 			// AND IT IS SHAPED THE WAY AN INTERACTIVE DOOR SHAPES ONE, which is
 			// two facts [openV3Launch] deliberately does not settle. Every lane is
 			// a channel here because the errand's session and this screen are one
@@ -541,6 +549,23 @@ func localErrandDoor(launch localLaunch, welcome remote.Welcome) func(tui3.Erran
 		if fault != nil {
 			return nil, fault
 		}
-		return open(orders)
+		agent, err := open(orders)
+		if err != nil {
+			return nil, err
+		}
+		// THE PROCESS OWNS EVERY CONVERSATION IT OPENED, this one included, so a
+		// surface that returns by any road flushes the errand's journal and lets
+		// go of its flock ([v3Process.closeAll]). The type assertion is how the
+		// tracked list stays *session.Agent rather than the surface's interface;
+		// [v3Errand] only ever answers one of those.
+		if real, ok := agent.(*session.Agent); ok {
+			held.track(real)
+		}
+		return agent, nil
+	}
+	return door, func() {
+		if held != nil {
+			held.closeAll()
+		}
 	}
 }
