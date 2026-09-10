@@ -1458,3 +1458,22 @@ func TestTheFrameDrawsThePageThatWasOpenedLast(t *testing.T) {
 		}
 	}
 }
+
+// A SAVING TOO SMALL TO SPELL IS NOT SPELLED. On 2026-09-10 a fresh conversation
+// on a model priced in millionths drew `⟲ saved $0.0000 · 4% cached` after its
+// first turn: the saving was real and the figure for it was nothing, which is
+// the one sentence THE EMPTINESS LAW keeps off the screen. The share alone is
+// still true of that session.
+func TestASavingUnderTheSmallestFigureKeepsOnlyTheShare(t *testing.T) {
+	a, _, _ := hudApp(t)
+	a.inputTokens = 15000
+	a.cacheRead = 600
+	a.cacheSaved = 0.00004
+	if got := a.warmSegment(); got != "⟲ 4% cached" {
+		t.Fatalf("the cache segment spelled a saving of nothing: %q", got)
+	}
+	a.cacheSaved = 0.0004
+	if got := a.warmSegment(); got != "⟲ saved $0.0004 · 4% cached" {
+		t.Fatalf("a saving with a figure lost it: %q", got)
+	}
+}

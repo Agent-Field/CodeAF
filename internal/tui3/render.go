@@ -3281,11 +3281,20 @@ func (a *app) warmSegment() string {
 	// the same subject ("⟲ 9.8k cached"), so the running share and the turn
 	// that explains it stay one vocabulary.
 	rate := itoa(int(share*100)) + "% cached"
-	if a.cacheSaved > 0 {
-		return "⟲ saved " + savedWord(a.cacheSaved) + " · " + rate
+	// THE CASH IS SAID ONLY WHEN THE WORD FOR IT IS NOT ZERO. A saving that is
+	// real but under a hundredth of a cent — a few thousand cached tokens on a
+	// model priced in millionths — is `$0.0000` once spelled, which reads as
+	// "there is no saving" and is exactly the sentence THE EMPTINESS LAW keeps
+	// off the screen. The share alone is still true of it.
+	if word := savedWord(a.cacheSaved); a.cacheSaved > 0 && word != savedNothing {
+		return "⟲ saved " + word + " · " + rate
 	}
 	return "⟲ " + rate
 }
+
+// savedNothing is what [savedWord] spells for a saving too small to have a
+// figure, and the one spelling the cache segment refuses to draw.
+const savedNothing = "$0.0000"
 
 // warmSegmentShort is the cache segment's shorter true spelling — the hit rate
 // without the cash — which is the rung a narrow row takes before giving the
