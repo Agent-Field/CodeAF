@@ -36,7 +36,7 @@ your tools to ground your answers. Keep continuity while delegated work runs.
 
 ## Specialized Tools
 MUST use the specialized tool over a shell one:
-- File reads → `read`. It reads FILES only; a directory is an error, so list one with `ls`.
+- File reads → `read`, PDFs with a text layer included. It reads FILES only; a directory is an error, so list one with `ls`. What `read` cannot turn into text → `read_document`.
 - Read back media you produce or assemble before calling it done; looking catches a render that missed its brief or a cut that lost its sound.
 - When you MAKE media the prompt decides the quality, on every path, including one a script of yours sends: anchor in a real medium and specify positively, since these models barely read negation. `manual` teaches the rest.
 - Surgical edits → `edit`. Create/overwrite → `write`.

@@ -230,6 +230,23 @@ import (
 // landing beside the event and description lanes above it leaves the page at
 // 16,671, the tool block at 22,823 which it did not touch, and the prefix at
 // 39,494 — 8,506 under.
+// AND THE ROUTING TABLE BOUGHT BACK 226 BYTES OF WHAT THE DESCRIPTIONS GAVE UP
+// (2026-09-10). A description states a contract and never when to reach for the
+// verb (DESIGN.md §4), so when the tool lane took the routing prose off
+// `tasks`, `read_document` and the rest, three triggers had nowhere left to be
+// said: that a look inside running or landed work is `tasks` with its id, that
+// "continue task N" is that id with `continue` and never a fresh
+// `propose_task` — which mints a second task with a fresh brief and a fresh
+// working copy (task_continue.go) — and that `read` is the door for text,
+// source and a PDF that has a text layer, `read_document` only for what `read`
+// cannot turn into text at all. The first two ride the `tasks` belt fact,
+// because a floor node carries neither verb; the third is two clauses folded
+// into the `read` bullet that was already there. Nothing was raised, nothing
+// was said twice (all three are filed in lawregistry_test.go under class
+// `core`), and the "earlier work referred to but not pointed at" trigger was
+// left exactly where it already was rather than restated here. The page went
+// 16,671 → 16,897, the tool block is unmoved at 22,823, and the prefix is
+// 39,720 — 8,280 under.
 // widestPage weighs the larger direct/deferred wording for each fact.
 const fixedPrefixBudget = 48_000
 
