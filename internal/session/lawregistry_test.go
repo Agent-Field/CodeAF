@@ -142,7 +142,14 @@ var lawRegistry = []lawUnit{
 	// task and a quick task all report themselves; lanes deleting a tool's own
 	// copy of that rule are deleting it on the strength of THIS line, so its
 	// wording is a fixture and not a draft.
-	{id: "handoff.reports-itself", class: lawCore, key: "never sleep, tail or poll for it"},
+	// AND THE KEY IS THE FAMILY FRAGMENT RATHER THAN THE WHOLE SENTENCE (lane F,
+	// 2026-09-10). `jobs` said this twice in its own description and `watch`
+	// said it once more; all three are deleted now on the strength of the page's
+	// line, and `watch.instead-of-polling` went with them because the law it
+	// filed no longer has a verb-class home. Matching on the shorter fragment is
+	// what makes a re-addition anywhere in the belt fail here instead of going
+	// unnoticed until the next audit.
+	{id: "handoff.reports-itself", class: lawCore, key: "never sleep, tail or poll"},
 
 	// ── the working laws that other tests pin by substring, registered here so
 	// that a second copy of one is caught at the same moment as a first edit.
@@ -163,7 +170,6 @@ var lawRegistry = []lawUnit{
 	// along, in more words and with the field names beside it.
 	{id: "write.in-parts", class: lawVerb, tool: "write", key: "Write very large files in parts"},
 	{id: "read.offset-limit", class: lawVerb, tool: "read", key: "Use offset/limit for large files"},
-	{id: "watch.instead-of-polling", class: lawVerb, tool: "watch", key: "instead of polling it every turn"},
 	{id: "capabilities.continue-this-turn", class: lawVerb, tool: loadCapabilityToolName, key: "Full schemas arrive on the next model request; continue in this same turn"},
 	{id: "task.lands-as-a-turn", class: lawVerb, tool: "propose_task", key: "starts a turn here when it lands, so never wait or poll"},
 	{id: "tasks.stop-ends-work", class: lawVerb, tool: "tasks", key: "To END running work use stop"},
