@@ -554,3 +554,25 @@ func TestHeldQuestionsCrossAsTheSurfacesOwnShape(t *testing.T) {
 		t.Fatal("a refused reading came back as nothing waiting")
 	}
 }
+
+// THE ARROWS SURVIVE A SECOND CONVERSATION. The recall store is this machine's
+// and every conversation the fleet opens beside the first — from home, from
+// /new, from the target on home's rule — has to be handed the same door, or
+// its box scrolls the transcript where it should recall the last thing typed.
+// Until 2026-09-09 [engineFleet.bundle] left it nil.
+func TestAConversationOpenedBesideKeepsTheRecallStore(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	client := hostedClient(t)
+	fleet := onePipeFleet("devbox", client)
+	options := hostOptions(fleet, remote.Welcome{Version: remote.Version, Workspace: "/srv/app"}, false)
+	if options.History == nil {
+		t.Fatal("the surface opened with no recall store")
+	}
+	if fleet.machine.history == nil {
+		t.Fatal("the fleet was not handed the recall store the surface got")
+	}
+	conv := fleet.bundle(fleet.boot, remote.Welcome{Version: remote.Version, Workspace: "/srv/app"})
+	if conv.History != fleet.machine.history {
+		t.Fatal("a conversation opened beside carries a different recall store from the first")
+	}
+}

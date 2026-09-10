@@ -162,6 +162,14 @@ type machineReadings struct {
 	// draft is where a conversation in this workspace keeps its unsent
 	// sentence, and empty is a window that keeps none.
 	draft string
+	// history is the recall store every conversation on this connection walks
+	// with the up arrow. IT IS PER MACHINE AND NOT PER CONVERSATION — the store
+	// is this laptop's `history.jsonl`, keyed by workspace — so a conversation
+	// opened beside the first one has to be handed the same door the first one
+	// got, or its box scrolls the transcript where it should recall the last
+	// thing typed (internal/tui3's recall.go). It was left nil here until
+	// 2026-09-09, and every conversation started from home lost the arrows.
+	history tui3.History
 }
 
 // newEngineFleet is the fleet around a connection that has already said hello.
@@ -306,6 +314,7 @@ func (f *engineFleet) bundle(conn *engineConn, welcome remote.Welcome) tui3.Conv
 		Resumed:     welcome.Resumed,
 		Notice:      hostEntryNotice(welcome),
 		DraftFile:   f.machine.draft,
+		History:     f.machine.history,
 		Link:        &link,
 		TaskRoom:    agent.TaskRoom,
 	}
