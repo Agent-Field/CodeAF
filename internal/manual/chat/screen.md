@@ -627,7 +627,7 @@ The left, in order: the machine on a `--host` session (`devbox · …`), the con
 it has named itself, so it is never empty), the **model** as its basename
 (`glm-5.3-flash`), the **thinking rung** this conversation is running at (`⠿ high`, `~
 high` on a plain terminal — `⠿ auto` until something is dialled, which is what a fresh
-install says), a `· via deepinfra` rider naming the endpoint that answered,
+install says), a `· via deepinfra` rider naming the endpoint that answered (the name alone, never a timing: the last answer's wait and speed are the `served` row of `/status`),
 and the git **branch** with a `*` when the tree has uncommitted work. In a directory that
 is not a repository there is no branch. It never says "untitled" and never invents a
 placeholder.
