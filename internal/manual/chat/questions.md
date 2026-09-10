@@ -139,6 +139,17 @@ A window attached over `--host` draws a question the far machine raises, but
 cannot yet answer one — answering across the link is not built (see *What is not
 built yet*). Answer it in a window on the machine holding the conversation.
 
+## The row on home shows the question but my key does nothing over it
+
+A question the model raised with `ask` is drawn on the row like any other — the
+mark, the conversation's name, what was asked, and the count in the band at the
+top — and no key pressed over that row takes it. The lanes that wrote their own
+card before questions became one object are the ones a row still takes a key for:
+a permission, a task proposal, a standing offer.
+
+Press `enter` on the row instead. It brings that conversation here, and the
+question is above the box where it was raised, with its own keys on it.
+
 ## The other window answered it, or two windows answered at the same time
 
 The first answer is the decision. A window that finds out somebody else answered
@@ -239,7 +250,8 @@ beside it, `?` is one still waiting.
   answer, and `g` will not treat them as one
 - `s` sends everything you answered and lets each remaining question take its
   own recommended answer. Anything nobody recommended an answer for stays open,
-  and one line says `still needs you`
+  and one line says `still needs you`. Every answer it sends leaves the same dim
+  `decided …` line one answered on its own would
 - `esc` puts the whole sheet off; nothing is answered, the count does not drop,
   and the chip's key brings it back
 
@@ -408,6 +420,21 @@ without you, and nothing that cannot be taken back ever will.
 If an answer was not yours, the line left behind names whoever gave it, so you
 can always tell by reading it — see "What stays behind after you answer" below.
 
+## Nobody to ask — a question in `--once`, an errand or a task lane
+
+With nobody at a keyboard there is no block to draw, so what the settings decide
+is printed rather than shown:
+
+```
+asked: which store should the ledger sit on? → 1 (default · nobody to ask)
+```
+
+It goes to the error stream beside the `tool:` lines and never into the reply, so
+a run whose output you are piping somewhere still says what was taken in your
+absence. Where the asker recommended nothing there is nothing to take: the line
+reads `your call: <what was asked> (nobody to ask)` and the work stops there
+rather than guessing.
+
 ## What stays behind after you answer
 
 Answering leaves one dim line where the question was:
@@ -455,6 +482,10 @@ all.
 
 `c` is on the receipt after you answer, spelled `c change` on the line. It shows
 what unwinding would cost before it reopens the question.
+
+Today `u` is never drawn: nothing yet tells a ratify row that the work behind it
+can still be put back, so the row reads `✓ <what was done> · [esc] later ·
+[c] change` and `c` is the way back.
 
 A decision that cannot be taken back says `cannot change` on its receipt and
 offers neither. Those are the ones that were never on a clock and that nobody
@@ -682,9 +713,20 @@ off.
 `.aforge/autonomy.json` beside the project AND answers the question in front of
 you; a conversation with no project to keep it in says so.
 
-**Answering over `--host` is not built.** A window attached to another machine
-draws a question that machine raises, but the answer does not cross the link, so
-it has to be given in a window on the machine holding the conversation.
+**A question does not cross the session-host link.** An ordinary `aforge` or
+`aforge chat` in a project does not keep the conversation in the terminal — it
+attaches this machine's session host, so the work goes on when the window closes.
+Questions do not travel that link in either direction: one raised behind it
+reaches no screen, nothing counts it, and the turn waits. Open a conversation you
+want to be asked in with `aforge chat --no-host`, which keeps it here; `--once`
+and `--debug` keep it here too.
+
+**Answering over `--host` is not built either.** A window attached to another
+machine draws a question that machine raises, but the answer does not cross the
+link, so it has to be given in a window on the machine holding the conversation.
+
+**A row on home shows a question the model raised and does not take a key for
+it** — see *The row on home shows the question but my key does nothing over it*.
 
 The count of open questions in the status line IS built: that is the chip
 described above. So is the sheet, and so is the per-project setting that answers

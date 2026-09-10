@@ -71,6 +71,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// together, one vanishing, two windows racing, and the setting that
 		// governs the whole thing.
 		{"how do I answer from home", "questions"},
+		// The proof wave: four sentences somebody says at the screen when what
+		// the wave built does not reach them. Each is a limit the corpus now
+		// states rather than a thing they have to find out by pressing.
+		{"I pressed the key on the home row and nothing happened", "questions"},
+		{"why is there no question when I run aforge normally", "questions"},
+		{"it printed asked with nobody to ask", "questions"},
+		{"there is no undo on the line saying what it did", "questions"},
 		{"it asked while I was away", "questions"},
 		{"why did several questions arrive at once", "questions"},
 		{"answer a whole batch of questions at once", "questions"},
