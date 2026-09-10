@@ -415,6 +415,8 @@ func (s taskSpec) kind() TaskKind {
 		return TaskKindHarness
 	case s.run != nil:
 		return TaskKindSubharness
+	case s.quick != nil:
+		return TaskKindQuick
 	}
 	return ""
 }

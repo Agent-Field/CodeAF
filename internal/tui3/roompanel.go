@@ -353,5 +353,12 @@ func taskSetupAvailable(node *taskNode) bool {
 	if node.state == session.TaskRunning || node.state == session.TaskQueued {
 		return !node.stopped
 	}
-	return taskSetupLater(node) && node.kind != session.TaskKindHarness && node.kind != session.TaskKindSubharness
+	// AND ONLY OVER WORK THERE IS SOMETHING TO SET UP FOR. A saved shape being
+	// made, a saved shape being run and a quick node are three kinds with no
+	// second attempt behind them: a quick node ran where the person works and
+	// its last message was the whole of it (session's TaskKindQuick), so a
+	// picker offering to point it at another model would be offering to redo
+	// work that has no shape left to redo.
+	return taskSetupLater(node) && node.kind != session.TaskKindHarness &&
+		node.kind != session.TaskKindSubharness && node.kind != session.TaskKindQuick
 }

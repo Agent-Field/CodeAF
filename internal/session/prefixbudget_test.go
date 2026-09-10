@@ -83,7 +83,7 @@ import (
 // prompts/system.md lost the media-making essay (the manual's own
 // making-pictures-audio-and-video page teaches all of it, and `manual` is a
 // tool the model can call), the paragraphs restating `bash`, `jobs`, `tasks`,
-// `fork`, `manual`, `build_harness` and `change_setting`'s own descriptions
+// `manual`, `build_harness` and `change_setting`'s own descriptions
 // back at the model, and the three-part propose_task contract its own schema
 // fields spell out field by field. It went 23,954 → 20,589; the tool block went
 // 26,678 → 26,579; the prefix is 47,168, which is 832 under.
@@ -140,6 +140,40 @@ import (
 // discovery carries 26,740, including its 708-byte loader. Measure whole JSON
 // arrays rather than adding separately encoded array sizes.
 // widestPage weighs the larger direct/deferred wording for each fact.
+// AND THE QUICK TASK IS THE FIRST WAVE SINCE THIS FILE WAS WRITTEN THAT RAISED
+// IT (2026-09-10), which is worth saying plainly rather than burying under the
+// ledger above: every entry there paid for itself out of a sentence said twice,
+// and this one could not, because it is not a sentence — it is a VERB the
+// product did not have.
+//
+// `quick_task` encodes to 1,196 bytes and the belt's own bullet for it is 129
+// more, and both were cut to the bone before this line moved. The description is
+// the judge and nothing else — the six sentences that decide between a task, a
+// quick task and doing the thing yourself (task_quick.go) — with the "the id
+// returns at once, so never poll" sentence left off because [taskDescription]
+// carries it and the two verbs are on a belt together or on neither. The schema
+// is six fields whose descriptions are one clause each, and `depends_on` and
+// `model` give up their rules entirely to `propose_task`'s copies of the same
+// two fields. For comparison, `propose_task` encodes to 5,720.
+//
+// AND THE CHOICE WAVE PAID IT BACK THE NEXT DAY (2026-09-10), so the cap is
+// 48,000 again and the measured prefix is 46,245, which is 1,755 under. Two
+// things happened in one commit. The belt's hand-off section stopped being a
+// list of bullets that sorted work by WIDTH and became one picture of what the
+// model HAS and what each thing COSTS (beltfacts.go says why, and what a real
+// model did with the list); the picture is a net saving on the three rule lists
+// it replaced, and it states "never poll" once for every road rather than per
+// verb. And `propose_task`'s schema went on the same diet its description went
+// on: one clause per field, the dowry prose dropped from `brief` because
+// prompts/system.md teaches it and a test pins it there, and the em dashes
+// taken out of every description string, small models tokenising them badly.
+// The tool block went 23,369 → 21,808 and the page reads 24,437.
+//
+// WHAT IS STILL OWED. The planner rule is in the prefix twice —
+// `taskDescription`'s "do not reach for a planner" and prompts/system.md's own
+// `THERE IS NO PLANNER ON YOUR BELT` paragraph — and both are pinned by
+// TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner, so paying it back is a
+// change to that test's mind and not only to the bytes.
 const fixedPrefixBudget = 48_000
 
 // widestPage is the page at its heaviest: prompts/system.md with every one of

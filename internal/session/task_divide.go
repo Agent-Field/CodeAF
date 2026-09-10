@@ -486,8 +486,10 @@ func (a *Agent) armDivision(spec taskSpec) string {
 	// THREE SIGNALS ARE. A harness DESIGN is two model calls producing one JSON
 	// page, in a room, with no worktree and nothing to hand out
 	// (harness_task.go); a saved program's RUN has its steps written down
-	// already (subharness_run.go). Neither has parts, and neither has a worker's
-	// belt to put the verb on.
+	// already (subharness_run.go); a QUICK task's parts are its items, worked in
+	// order in the caller's own copy, and handing them to workers in worktrees
+	// would be the one thing it promised not to do (task_quick.go). None of the
+	// three has parts, and none has a worker's belt to put the verb on.
 	//
 	// IT MATTERS BECAUSE THE THIRD SIGNAL READS TEXT. A design goal saying "a
 	// harness that checks the 8 endpoint files" enumerates enough items for

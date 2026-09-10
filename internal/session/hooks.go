@@ -248,14 +248,6 @@ func (a *Agent) controlPlaneFor() *controlPlane {
 	// already refused is a call there is nothing left to say about — and it is a
 	// no-op on every agent that is not inside a task, which is every conversation.
 	plane.register(taskGitGuard{agent: a})
-	// AND A HAND'S ROUND BUDGET, which is a citizen only on a hand (fork.go). It
-	// is registered conditionally rather than made a no-op on every agent because
-	// post-feedback is on the step boundary of every turn this program runs, and
-	// a citizen that did nothing there would still be a lock taken and a slice
-	// walked on each of them.
-	if a.config.handLeash != nil {
-		plane.register(a.config.handLeash)
-	}
 	return plane
 }
 

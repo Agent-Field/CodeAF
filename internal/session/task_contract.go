@@ -64,6 +64,19 @@ const TaskKindHarness TaskKind = "harness"
 // — the row, the room, the id, the stop — it has for free.
 const TaskKindSubharness TaskKind = "subharness"
 
+// TaskKindQuick is a task that runs WHERE ITS CALLER WORKS (task_quick.go): the
+// caller's own workspace, no worktree, no branch, no merge, no check and no
+// landing card. Its last message is its result, and the row goes `done`.
+//
+// IT IS THE KIND WITH NOTHING UNDER IT, and that is what a surface has to know
+// about it. Every other kind of node has something a card can point at — a
+// branch coming home, a page waiting on a yes, a program's typed output — and
+// this one has an answer and, when it wrote, the files it wrote. A card that
+// promised "the branch it wrote on is kept" over a quick node would be pointing
+// at work that does not exist, which is exactly what [TaskKind] exists to
+// prevent.
+const TaskKindQuick TaskKind = "quick"
+
 // TaskKindJob is a piece of BACKGROUND WORK this session started that is not an
 // agent at all (jobrow.go): a command running under `bash background:true`, a
 // foreground command that reached its bound and was promoted (promote.go), a
@@ -123,6 +136,12 @@ func TaskKindWord(kind TaskKind) string {
 		return "making a saved shape"
 	case TaskKindJob:
 		return "background job"
+	case TaskKindQuick:
+		// AND THIS ONE IS THE PERSON'S OWN WORD ALREADY. `quick` is what the tool
+		// is called, what the manual calls it and what somebody says out loud when
+		// they ask for one, so there is no translation to make — which is the
+		// happy case this function is written for rather than an exception to it.
+		return quickWord
 	}
 	return ""
 }

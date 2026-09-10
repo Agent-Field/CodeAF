@@ -12,7 +12,7 @@ import (
 var ErrLaunchBudget = errors.New("session: launch limit reached")
 
 func (a *Agent) interactiveBudget() Budget {
-	if !a.config.Interactive || a.config.InTask || a.config.Errand || a.config.inHand {
+	if !a.config.Interactive || a.config.InTask || a.config.Errand {
 		return Budget{}
 	}
 	return a.config.Budget

@@ -63,9 +63,6 @@ const (
 	// JobKindRender is a provider call that makes a file — a video, a piece of
 	// music — and is a job for as long as it renders.
 	JobKindRender JobKind = "render"
-	// JobKindHand is one hand of a fork: a side errand this conversation sent off
-	// and will hear back from on its own lane.
-	JobKindHand JobKind = "hand"
 	// JobKindTask is a task node's own worker. It is in the registry for the id
 	// space, the log and the kill, and it is NEVER published as a job: the work
 	// already has a roster row of its own, and a second row would be the same
@@ -311,8 +308,6 @@ func jobKindWord(kind jobKind) JobKind {
 		return JobKindWatch
 	case jobKindRender:
 		return JobKindRender
-	case jobKindHand:
-		return JobKindHand
 	case jobKindTask:
 		return JobKindTask
 	}

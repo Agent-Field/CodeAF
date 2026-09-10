@@ -53,14 +53,14 @@ func (a *Agent) awaitableOperations() []ownedOperation {
 	return out
 }
 
-// awaitableKind is the whole of the kind policy. A background command and a fork
-// hand each have one ending that is owed to this session and queued to wake it
-// (agent.go wires the registry's announce to [Agent.enqueueJobNote]). A watch is
-// a command re-run on a timer with no such ending, and a task node already ends
-// a turn by its own road ([Agent.turnHandedItsAskOff]); widening this set is a
-// ruling rather than a refactor.
+// awaitableKind is the whole of the kind policy. A background command has one
+// ending that is owed to this session and queued to wake it (agent.go wires the
+// registry's announce to [Agent.enqueueJobNote]). A watch is a command re-run on
+// a timer with no such ending, and a task node already ends a turn by its own
+// road ([Agent.turnHandedItsAskOff]); widening this set is a ruling rather than
+// a refactor.
 func awaitableKind(kind jobKind) bool {
-	return kind == jobKindBash || kind == jobKindHand
+	return kind == jobKindBash
 }
 
 // ── the ground a decision stands on ─────────────────────────────────────────

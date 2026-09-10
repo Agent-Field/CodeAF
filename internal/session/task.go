@@ -105,7 +105,7 @@ import (
 // returns at once, the fan-out a node may make, and the line about files another
 // window is already writing. It is short because it is expensive, never because
 // a rule was dropped — the rules all still stand, in one place each.
-var taskDescription = "Hand self-contained work to a task outside this conversation: work that would flood it or wants a clean context, never work needing back-and-forth. WIDE WORK IS ONE PROPOSAL with `wide`, never several, and do not reach for a planner. The person may redirect or wave it off during a short countdown; silence starts it. The id returns at once; its report starts a turn here when it lands, so never wait or poll. A task may call this for genuinely independent parts of its own work, up to " + strconv.Itoa(taskFanLimit) + ", one level deep; sequential or context-sharing parts are faster in your own hands. Files another aforge window is already writing come back on their own line: nothing is blocked, so plan around them."
+var taskDescription = "Hand self-contained work to a task outside this conversation: work that would flood it or wants a clean context, never work needing back-and-forth. A WIDE CHANGE IS ONE PROPOSAL with `wide`, never several, and do not reach for a planner. The person may redirect or wave it off during a short countdown; silence starts it. The id returns at once; its report starts a turn here when it lands, so never wait or poll. A task may call this for genuinely independent parts of its own work, up to " + strconv.Itoa(taskFanLimit) + ", one level deep; sequential or context-sharing parts are faster in your own hands. Files another aforge window is already writing come back on their own line: nothing is blocked, so plan around them. If you will read the result yourself and carry on, and it does not need its own check or its own branch, use quick_task instead — it starts now and costs nothing to land."
 
 // taskSchemaJSON is the wire schema. depends_on is on it from the first day
 // even though a one-node graph can never fill it: the field is the edge, the
@@ -177,18 +177,18 @@ var taskDescription = "Hand self-contained work to a task outside this conversat
 var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"title":{"type":"string","description":"One line naming the work as a person would say it"},` +
 	`"summary":{"type":"string","description":"Two or three lines the person reads to decide whether to redirect it"},` +
-	`"brief":{"type":"string","description":"THE WORK, self-contained: what to do, the material and the names in it, conventions, constraints, what was tried. It gets quoted lines of this conversation, never the whole of it, and cannot ask you anything, so settle here everything it would stop and ask. Constrain THIS job, not work in general: name the lazy but plausible-looking answer here and forbid it, in the terms this kind of work is judged by. \"Be accurate\" constrains nothing; every line must be one the worker could disobey. WHERE YOU ARE ALREADY MID-WORK, WHAT YOU HAVE LEARNED IS PART OF THE BRIEF: what you found, what you ruled out and why, what you would have done next — whoever takes this sees which calls you made, never what they returned, so anything left out is learned again from nothing. IF THIS REPLACES A FAILED TASK, carry its useful findings here; the new worker inherits neither its transcript nor its report."},` +
-	`"deliverable":{"type":"string","description":"WHAT MUST EXIST at the end, and where: the file and its path, the branch, the answer and its shape. Name the thing, not the activity"},` +
+	`"brief":{"type":"string","description":"THE WORK, self-contained: what to do, the material and the names in it, constraints, and what you have already found and ruled out. It cannot ask you anything, so settle here everything it would stop and ask. Name the plausible-looking wrong answer and forbid it; every line must be one the worker could disobey. Replacing a failed task, carry its findings here: the new worker inherits neither its transcript nor its report."},` +
+	`"deliverable":{"type":"string","description":"What must exist at the end, and where. Name the thing, not the activity"},` +
 	`"where":{"type":"string","description":"Path the person named, or 'in place'; never guess"},` +
-	`"ground":{"type":"string","description":"Optional absolute path: the repository or folder THE WORK IS ABOUT, when it is not this conversation's own. Left out, it is resolved from what this conversation read and edited"},` +
-	`"acceptance":{"type":"string","description":"DONE WHEN: the observable condition somebody else could check without taking the task's word for it. \"It is finished\" is not this"},` +
+	`"ground":{"type":"string","description":"Optional absolute path: the repository or folder the work is about, when it is not this conversation's own"},` +
+	`"acceptance":{"type":"string","description":"Done when: the observable condition somebody else could check without taking the task's word for it"},` +
 	expectsSchemaJSON + `,` +
 	checksSchemaJSON + `,` +
-	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids that must finish first, only ids propose_task itself returned in this session, never a job, adaptive-run or step number. Its brief is given their reports. An unknown or failed id refuses the proposal rather than queueing it"},` +
-	`"wide":{"type":"boolean","description":"Optional. Set it when the work is WIDER THAN ONE PAIR OF HANDS: many files, many sources, one change repeating over many independent items. Say true whenever you judged the work broad, even with no count in hand: a wrong true costs nothing, the worker being refused unless what it finds names enough items"},` +
-	`"model":{"type":"string","description":"Optional, ONLY when the person asked for a particular model or class: a catalog id (\"anthropic/claude-opus-5\") or a part of one (\"opus-5\"), never a class word — resolve \"fast\" to a concrete model. Otherwise the configured model is used. A word fitting several is shown to the person to settle"},` +
-	`"max_steps":{"type":"integer","description":"Optional. Finished tool calls per progress checkpoint (default ` + strconv.Itoa(taskMaxSteps) + `); work still advancing is given further allowances, circling work gets one landing turn and stops."},` +
-	`"no_progress":{"type":"integer","description":"Optional. How many tool calls in a row may add nothing — no new file, no question the work has not asked, no answer it has not been given — before it is stopped as stuck (default ` + strconv.Itoa(taskNoProgress) + `). Raise it when the work must read a great deal before it produces anything"}` +
+	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids that must finish first, only ones propose_task returned in this session. Its brief is given their reports; an unknown or failed id refuses the proposal"},` +
+	`"wide":{"type":"boolean","description":"Optional. True when the work is wider than one pair of hands. Say true whenever you judged it broad; a wrong true costs nothing"},` +
+	`"model":{"type":"string","description":"Optional, only where the person asked for one: a catalog id or part of one, never a class word, so resolve \"fast\" to a concrete model. A word fitting several is shown to the person to settle"},` +
+	`"max_steps":{"type":"integer","description":"Optional. Finished tool calls per progress checkpoint (default ` + strconv.Itoa(taskMaxSteps) + `); work still advancing is given more."},` +
+	`"no_progress":{"type":"integer","description":"Optional. Tool calls in a row that may add nothing before it is stopped as stuck (default ` + strconv.Itoa(taskNoProgress) + `). Raise it for work that must read a great deal first"}` +
 	`},"required":["title","summary","brief","deliverable","acceptance"],"additionalProperties":false}`
 
 // taskArguments is the wire form.
@@ -368,6 +368,26 @@ type taskSpec struct {
 	// nothing about a half-finished program is worth spending money to guess at
 	// twice.
 	run *subharnessRunSpec
+	// quick is set on a node that runs WHERE ITS CALLER WORKS: no worktree, no
+	// check and no landing, its last message its result (task_quick.go). It is
+	// nil on every ordinary task, on every design and on every run, and where it
+	// is set [Agent.runTaskNode] hands the node to the quick body — same graph,
+	// same room, same stop, a fourth middle.
+	//
+	// IT IS NOT IN THE CHECKPOINT EITHER, for the reason [taskSpec.design] and
+	// [taskSpec.run] both state about themselves, and task_store.go's [interrupt]
+	// is what makes that safe: a quick node interrupted mid-work settles before
+	// the graph ever holds it, so there is nothing to re-enter. A quick node put
+	// back on the frontier without this field would be handed to an ordinary
+	// worker in a worktree with its one line as a brief — a copy of the folder, a
+	// branch and a check, for work whose whole promise was that it had none of
+	// those.
+	//
+	// IT IS NEVER SET BESIDE [taskSpec.drawn]. A drawing is an instruction to
+	// divide this work into children; the items ARE the division, done in order
+	// by one worker, so a spec carrying both would hand the same parts out twice
+	// (checkpoint_quick.go).
+	quick *quickTaskSpec
 	// parent, depth and owner are THE FAMILY this proposal was made in, and they
 	// are the whole of what nesting adds to the spec: 0, 0 and nil for the work
 	// a conversation grooms, and the proposing node's id, its depth plus one and

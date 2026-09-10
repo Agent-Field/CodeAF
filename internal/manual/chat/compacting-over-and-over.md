@@ -42,7 +42,7 @@ Two things used to make a big model fold like a small one, and both are fixed:
 - aforge refused to believe any claim above 256,000 tokens, for every model alike. That
   ceiling is gone; what can lower a claim now is an endpoint actually **refusing** a request
   for being too long, which aforge writes down and never trusts that model past again.
-- work that left the conversation — a task's worker, an adaptive run's worker, a fork, the
+- work that left the conversation — a task's worker, an adaptive run's worker, the
   reader that checks a task — was handed nothing at all when its model differed from yours,
   and so folded against the conservative 128,000-token default whatever its own model held.
   Each of those now asks the catalog for its own model.

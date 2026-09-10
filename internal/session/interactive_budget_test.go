@@ -63,7 +63,7 @@ func TestInteractiveLaunchLimitScopeAndRunCap(t *testing.T) {
 	}
 	a.config.SpendRailUSD = 0
 	a.usage.CostUSD = 2
-	for _, field := range []*bool{&a.config.InTask, &a.config.Errand, &a.config.inHand} {
+	for _, field := range []*bool{&a.config.InTask, &a.config.Errand} {
 		*field = true
 		if err := a.railBlockLocked(); err != nil {
 			t.Fatal("copied parent launch limit applied to worker", err)

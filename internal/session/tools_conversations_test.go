@@ -308,23 +308,6 @@ func TestTaskSearchMissNamesConversationSearchOnlyWhenItExists(t *testing.T) {
 	}
 }
 
-func TestForkedHandsInheritOnlyConversationReads(t *testing.T) {
-	parent, brain := brainAgent(t, &scriptedCompleter{}, nil)
-	post(t, brain, "elsewhere", store.RoleUser, "the shared receipt is FIR-555")
-	seed, system := parent.forkSeed()
-	hand, err := parent.newHandAgent(forkPart{Role: "read the sources", Scope: []string{}}, seed, system, &handLeash{limit: forkRounds})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer hand.Close()
-	if !historyCarriesTool(hand, "search_conversations") || historyCarriesTool(hand, "remember") || hand.config.Memory != nil {
-		t.Fatal("fork did not inherit only history reads")
-	}
-	if got := searchConversations(t, hand, `{"query":"FIR"}`); !strings.Contains(got, "FIR-555") {
-		t.Fatal(got)
-	}
-}
-
 func TestTaskCheckerCanReadConversationEvidenceWithoutWriters(t *testing.T) {
 	parent, brain := brainAgent(t, &scriptedCompleter{}, nil)
 	post(t, brain, "earlier", store.RoleUser, "the checked receipt is BIRCH-333")
