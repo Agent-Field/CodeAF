@@ -130,6 +130,9 @@ const (
 
 	// needChecklist is a question answered by ticking several rows.
 	needChecklist
+	// needTicked is a checklist with at least one row ticked, which is the
+	// moment `enter` has something to send.
+	needTicked
 	// needBlanks is a sentence with holes in it. It is a condition of its own
 	// rather than a shape the room simply draws, because `tab` walks BETWEEN
 	// holes and a form with none of them would be offering a key that moves
@@ -257,7 +260,13 @@ var questionKeys = []questionVerb{
 	// the only verb that works it and drew as an ordinary list. Measured on a
 	// real screen: four answers, no marks anybody could act on, and `[c] change`
 	// kept in its place.
-	{key: questionToggleKey, word: "tick it", forms: formsRoom, needs: needChecklist},
+	{key: questionToggleKey, word: "tick it", forms: formsCard | formsRoom, needs: needChecklist},
+	// A CHECKLIST IN THE CARD SENDS ON ENTER, once something is ticked. The
+	// card's rows carry the ticks themselves now, so the block is where a
+	// checklist is answered and not only where it is read; the row is offered
+	// only when there is something to send, because `enter` over an empty
+	// checklist would send nothing and say it sent.
+	{key: questionEnterKey, word: "send what is ticked", forms: formsCard, needs: needTicked},
 	// The room's own four. `a` is the one collision in the grammar — "take its
 	// suggestion" on a checklist and "the first one" on a pair — and it is two
 	// rows here rather than one key with two words, because the offer row prints
@@ -406,6 +415,16 @@ func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 		return true
 	case needChecklist:
 		return q.question.Input.Kind == session.InputChecklist
+	case needTicked:
+		if q.holes.kind != session.InputChecklist {
+			return false
+		}
+		for _, ticked := range q.holes.ticks {
+			if ticked {
+				return true
+			}
+		}
+		return false
 	case needBlanks:
 		return q.question.Input.Kind == session.InputBlanks && len(q.question.Input.Blanks) > 1
 	case needOrdered:

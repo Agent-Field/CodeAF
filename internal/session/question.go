@@ -1391,7 +1391,12 @@ func questionGoneReason(q Question) string {
 	case QuestionFuel:
 		return "the run is no longer at its gate"
 	}
-	return "it is no longer needed"
+	// The model's own question and everything else: the turn that raised it
+	// has ended — interrupted, or finished around it — which is the one way a
+	// question with no subject of its own stops being asked. It is the consent
+	// line's sentence because it is the consent line's fact, and a row that
+	// said `no longer needed · it is no longer needed` said nothing twice.
+	return "the turn moved on without it"
 }
 
 // ── the one door ────────────────────────────────────────────────────────────

@@ -162,3 +162,36 @@ func TestAnExplainedOverrideBecomesAForgettablePreference(t *testing.T) {
 		t.Fatalf("preference was not forgettable: %+v", memories)
 	}
 }
+
+// THE KEY GRAMMAR IS THE SURFACE'S AND NOT THE ASKER'S. A model that names its
+// answers `landscape` and `still-life` gets them renumbered `1`, `2`, … for the
+// person, and reads its answer back in the names it wrote, with the labels.
+func TestAnAskWithWordKeysIsRenumberedAndAnsweredInTheAskersOwnKeys(t *testing.T) {
+	options := []AnswerOption{{Key: "landscape", Label: "Landscapes & seascapes"}, {Key: "still-life", Label: "Still life"}, {Key: "abstract", Label: "Abstract"}}
+	pick := &Pick{Key: "still-life"}
+	theirs := askDigitKeys(options, pick)
+	for i, want := range []string{"1", "2", "3"} {
+		if options[i].Key != want {
+			t.Fatalf("option %d is keyed %q, want %q", i, options[i].Key, want)
+		}
+	}
+	if pick.Key != "2" {
+		t.Fatalf("the pick was not renumbered with its option · %q", pick.Key)
+	}
+	q := Question{Options: options}
+	answer := askInTheirKeys(Answer{Key: "3", Picked: []string{"3", "1"}}, q, theirs)
+	if answer.Key != "abstract" || strings.Join(answer.Picked, ",") != "abstract,landscape" {
+		t.Fatalf("the asker reads %q / %v, want its own names", answer.Key, answer.Picked)
+	}
+	if strings.Join(answer.Labels, "|") != "Abstract|Landscapes & seascapes" {
+		t.Fatalf("the labels do not ride beside the keys · %v", answer.Labels)
+	}
+	// AND KEYS THAT FOLLOWED THE GRAMMAR ARE LEFT EXACTLY AS THEY CAME.
+	plain := []AnswerOption{{Key: "1", Label: "yes"}, {Key: "2", Label: "no"}}
+	if theirs := askDigitKeys(plain, nil); theirs != nil {
+		t.Fatalf("digit keys were renumbered · %v", theirs)
+	}
+	if got := askInTheirKeys(Answer{Key: "2", Picked: []string{"2"}}, Question{Options: plain}, nil); got.Key != "2" || got.Labels[0] != "no" {
+		t.Fatalf("a plain answer came back changed · %+v", got)
+	}
+}
