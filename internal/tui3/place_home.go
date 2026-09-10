@@ -958,7 +958,9 @@ func (placeHome) body(a *app, width, room int) []placeRow {
 		a.home.room, a.home.cols = room, cols
 		a.home.build()
 	}
-	if a.home.gridOn() {
+	// AN ERRAND HOLDING THE KEYBOARD STACKS OVER THE GRID, which has no pane
+	// column to draw it in ([app.homeStacked]); [app.homeBody] draws that shape.
+	if _, stacked := a.homeStacked(); a.home.gridOn() && !stacked {
 		return a.homeGridRows(width, room, a.pal)
 	}
 	left, right := homeColumns(width)

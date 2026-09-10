@@ -83,6 +83,9 @@ func homeGridZip(columns [][]homeCellLine, y int, xs []int) placeRow {
 		b.WriteString(column[y].text)
 		used = max(used, xs[c]) + ansi.StringWidth(column[y].text)
 	}
+	// AND THE ROW'S ONE LINE, for every reader that asks a row for one line, is
+	// the first column's — the column a one-column home is entirely.
+	mark.line = mark.cells[0]
 	return placeRow{text: b.String(), hit: mark}
 }
 
@@ -112,7 +115,7 @@ func (a *app) homeLineRows(line homeLine, at, width int, pal palette, heading bo
 	case cellSpark:
 		texts = []string{homeCellBand(homeCellLeadBlank+homeSpendSpark(cell, width-homeGridLead, pal), width, pal, lit)}
 	default:
-		texts = a.homeCellRow(cell, at, width, pal, lit)
+		texts = a.homeCellRow(line, at, width, pal, lit)
 	}
 	out := make([]homeCellLine, 0, len(texts))
 	for _, text := range texts {
@@ -155,11 +158,12 @@ func homeCellBand(text string, width int, pal palette, lit bool) string {
 }
 
 // homeCellRow paints a row and the line under it.
-func (a *app) homeCellRow(cell *homeCell, at, width int, pal palette, lit bool) []string {
-	body := homeCellBody(cell, width-homeGridLead, pal, lit)
+func (a *app) homeCellRow(line homeLine, at, width int, pal palette, lit bool) []string {
+	cell := line.cell
+	body := homeCellBody(a.homeCellDoor(cell, at, width-homeGridLead), width-homeGridLead, pal, lit)
 	rows := []string{homeCellBand(a.homeCellLead(cell, at, pal)+body, width, pal, lit)}
 	if cell.sub != "" {
-		under := switcherSides(max(1, width-homeGridLead), cell.sub, cell.subRight, pal.dim, pal.muted)
+		under := switcherSides(max(1, width-homeGridLead), cell.sub, a.homeRowAnswers(line), pal.dim, pal.muted)
 		rows = append(rows, homeCellLeadBlank+under)
 	}
 	return rows
@@ -195,14 +199,18 @@ func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 		return ""
 	}
 	title, note, tag, right := cell.title, cell.note, cell.tag, cell.right
-	for _, fact := range []*string{&note, &tag, &right} {
+	facts := []*string{&note, &tag, &right}
+	if cell.hold {
+		facts = facts[:2]
+	}
+	for _, fact := range facts {
 		if homeCellWidth(title, cell.pad, note, tag, right) <= width {
 			break
 		}
 		*fact = ""
 	}
-	if homeCellWidth(title, cell.pad, note, tag, right) > width {
-		title = fit(title, width)
+	if over := homeCellWidth(title, cell.pad, note, tag, right) - width; over > 0 {
+		title = fit(title, max(1, ansi.StringWidth(title)-over))
 	}
 	titleInk, factInk := pal.ink, pal.dim
 	if cell.bold || lit {
@@ -223,6 +231,23 @@ func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 		return line
 	}
 	return line + strings.Repeat(" ", max(1, width-used-ansi.StringWidth(tail))) + factInk(tail)
+}
+
+// homeCellDoor is the row UNDER THE CURSOR growing its held word into the door
+// it offers — `another window · enter brings it here` — where the whole title
+// still fits beside the whole clause, and never while a question this window
+// raised about the row is already on the screen (takeovervoice.go's
+// [takeoverHeldDoorWord], the list's own rule before the grid).
+func (a *app) homeCellDoor(cell *homeCell, at, width int) *homeCell {
+	if cell.door == "" || at != a.home.cursor || a.home.ask != nil {
+		return cell
+	}
+	grown := *cell
+	grown.right = cell.door
+	if homeCellWidth(grown.title, grown.pad, "", grown.tag, grown.right) > width {
+		return cell
+	}
+	return &grown
 }
 
 // homeCellGap is the air between two clauses of one row that are not joined by
