@@ -44,6 +44,7 @@ func (s *Store) Create(item Item) (Item, error) {
 	}
 	item.Schema = Schema
 	item.Revision = 1
+	item.SpecRevision = 1
 	item.Status = StatusActive
 	item.RetiredWhy = ""
 	item.Created = now

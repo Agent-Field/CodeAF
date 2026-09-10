@@ -342,6 +342,9 @@ func usageForCommand(name string) string {
 	if name == "collections" {
 		return collectionsUsage
 	}
+	if name == "standing" {
+		return standingUsage
+	}
 	lines := strings.Split(usageText, "\n")
 	var blocks []string
 	for index := 0; index < len(lines); index++ {
