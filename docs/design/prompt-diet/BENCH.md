@@ -111,7 +111,7 @@ to say whether the one-endpoint pin is deliberate here.
 `dev` at `6aa6a946e` against `prompt-diet/integrate` at `2a90be7e8` (its tip when
 the run fetched it; the branch has moved since). Same rig, same pin, same cells,
 back to back on the Spark so the provider's weather fell on both. Layers A, C
-and D; **layer B is owed** — see §7.
+and D at first; layer B followed and is folded in below.
 
 ### The prefix
 
@@ -164,10 +164,54 @@ load-bearing.
 Recorded and not ruled on: total spend $0.0372 → $0.0085, summed cell wall 947s
 → 236s, median call 9,473ms → 8,144ms.
 
+### Suite outcomes (layer B) — and this is where parity actually failed
+
+44 subtests a side, run afterwards on the same two builds:
+
+| suite | dev | diet |
+| --- | --- | --- |
+| `TestTUIE2E` | 15 pass | 14 pass · **1 fail** |
+| `TestQuestionsE2E` | 16 pass · 1 fail | 15 pass · 2 fail |
+| `TestStandingE2E` | 11 pass | 11 pass |
+
+`TestQuestionsE2E/ASentenceWithHolesIsFilledIn` fails on **both** sides — a
+pre-existing red on `dev`, not this wave's, and not a regression.
+
+Two are regressions, and **neither was visible in layer C**:
+
+- **`TestTUIE2E/space_in_the_task_room_pages_the_card`** — passed on `dev` in
+  71.7s, failed on the diet in 249.3s. The trace says why and it is not the
+  feature the subtest is named for: the task landed
+  `your call · landed 1m ago · ran 2m 8s` where on `dev` it landed
+  `done · landed moments ago · ran 10s`, so two 30-second waits ahead of the
+  paging assertion blew before the thing under test was ever reached. Twelve
+  times slower and escalating to `your call` where it used to finish is a
+  behaviour difference; it may equally be the model taking a different road on a
+  nondeterministic flash model.
+- **`TestQuestionsE2E/TheOrdinaryRoadCarriesAQuestionAndItsAnswer`** — passed on
+  `dev`, failed on the diet asserting `the screen never said " · you · "`. The
+  captured screen says `· another window ·` in that position — and contains
+  `· you ·` elsewhere in the same dump — while the road itself plainly worked:
+  `They picked "delete it" (key 1). The build directory will be deleted.` This
+  is a **person-facing string**, which makes it lane I's neighbourhood (the
+  attribution row) rather than a byte-cut anywhere, and it may be a frame race
+  rather than a respelling.
+
+**Both are candidates, not verdicts.** One red on a suite that drives a real
+model against a real provider is not yet a regression, and this bench's own rule
+is #176's: reproduce it, do not rerun it in isolation and move on. Two more runs
+a side of each are queued (`~/bench-diet-repeat.sh`, results at
+`~/bench-diet-out/repeat-<name>-<side>-<n>.log`).
+
 ### The ruling
 
-**Parity: yes** — every outcome equal or better, on the cells that ran.
-**Efficiency: yes** — median prompt tokens per turn 17,815 → 13,962, −21.6%.
+**Parity: NO.** Two subtests that pass on `dev` fail on the diet — both in layer
+B, neither reachable by any cell in layer C. That is the whole reason layer B is
+in this bench, and it is the reason a wave cannot be signed off on the cells
+alone.
+
+**Efficiency: yes.** Median prompt tokens per turn 17,815 → 13,962, −21.6%, with
+every layer-C outcome equal or better.
 
 Two honest qualifications. The prefix fell 15.8% and the per-turn prompt fell
 21.6%, so the diet is doing slightly better on the wire than on the scale — the
@@ -206,26 +250,70 @@ code that fixes them: a parent test counted beside its own children turned one
 broken subtest into two failures, and a `wall_s` that travelled as a JSON string
 was silently dropped by a numeric filter and printed as an em dash.
 
-## 1c. Cache — did the diet move the prefix
+## 1c. Cache — does the prefix hold still, and did the diet move it
 
-§1a ends on the one number it would not rule on: *"the cached share fell 40.6%,
-which is the frontier-bill risk DESIGN.md §0 names"*. DESIGN.md §0's first
-priority is **never bust the prefix**, so that line had to be settled before
-anything about this wave was settled, and a charge cannot settle it. A cached
-share can fall because the bytes moved, or because the MIX of requests changed —
-nineteen turn-requests instead of sixty-nine means a much larger fraction of them
-are turn-openers, which by definition cache nothing they wrote themselves. The
-two want opposite responses.
+Two questions were open here and they are answered together, because the first
+one's evidence is the second one's instrument.
 
-### The instrument
+§1a would not rule on the cached share and was right not to: a charge is an
+outcome. And byte-stability is a different question from size — DESIGN.md §0
+opens on it, because on a frontier model a prefix one byte different from the
+last request's re-prices the whole conversation cold.
 
-`bench/prompt-diet/prefixdiff.py` reads the REQUEST BODIES — the ones
-`internal/calllog` keeps under `AFORGE_CALL_LOG_BODIES=1`, which `run.sh`
-already sets — and asks the question directly. For each request it serialises
-`[tools][system][messages]`, groups requests into conversations by their opening
-human message, and reports how many leading bytes each shared with the one
-before it, where the sharing stopped, which block and field that offset lands
-in, sixty bytes of old against new, and a one-word cause.
+### The first measurement, and the question it left open
+
+`lib/wire.py` fingerprints each request's system message and tool block out of
+the bodies the call log already keeps. Over the **turn** calls of §1a's two runs:
+
+| | dev | diet |
+| --- | --- | --- |
+| turn calls fingerprinted | 69 | 19 |
+| distinct system prompts | 5 | 4 |
+| distinct tool blocks | 3 | 2 |
+| system bytes seen | 20,406 · 20,412 · 23,027 · 23,029 · 38,696 | 17,229 · 17,235 · 17,787 · 17,789 |
+| tool-block bytes seen | 30,938 · 40,660 · 53,028 | 29,047 · 38,769 |
+
+The sizes that differ by thousands are the honest ones — a shelf loaded, a
+project instruction file folded in, a task's own page. **The pairs two and six
+bytes apart look like a prefix that wobbles**, and `23,027` against `23,029`
+covers 51 of dev's 69 turn calls. A prefix that moved by two bytes between
+requests inside one conversation would be a cold re-price every time it moved
+and would be invisible in every size column this bench prints, so it had to be
+run down before anything else here was worth reading.
+
+**It is not a wobble.** A fingerprint pooled over a whole RUN cannot answer a
+question about one CONVERSATION, and that is the whole of it. Counted per
+conversation, every cell on both branches sent exactly one system prompt, by
+digest, for its entire life:
+
+| conversation | dev: distinct system prompts | diet: distinct system prompts |
+| --- | ---: | ---: |
+| `47a6a473` | 1 (×5 calls) | 1 (×5) |
+| `60c39ef4` | 1 (×20) | 1 (×4) |
+| `b97e23ca` | 1 (×31) | 1 (×7) |
+| `bc3edd99` | 1 (×3) | 1 (×3) |
+| `44015c4b` task | 1 (×10) | — |
+
+The 20 and the 31 that make up "51 of 69" are two different cells. The two bytes
+between them are in the footer's own `- Working directory:` line —
+`work-result-recalled-aforge` against `followup-while-working-aforge` — and the
+six-byte pair is `code-fix-aforge` against `research-brief-aforge`. They are the
+names of the bench's scratch directories, and they differ between conversations
+exactly as they should.
+
+That is worth writing down rather than deleting, because the shape of the error
+is one this bench has now made twice: §1b averaged over a mix of request kinds,
+and this pooled over a mix of conversations. **A statistic about a prefix has to
+be taken inside the thing that has a prefix.**
+
+### The instrument that settles it
+
+`bench/prompt-diet/prefixdiff.py` asks the question directly rather than
+inferring it from sizes. For each request it serialises `[tools][system]
+[messages]`, groups requests into conversations by their opening human message,
+and reports how many leading bytes each shared with the one before it, where the
+sharing stopped, which block and field that offset lands in, sixty bytes of old
+against new, and a one-word cause.
 
 The serialisation order is the Anthropic assembly order and the conservative
 reading of the other: whatever a server does with the tool block, a client that
@@ -250,29 +338,19 @@ Run against §1a's own two captures, unchanged.
 | **requests that moved the prefix** | **0** | **0** |
 | median stable share of the request | 98.6% | 98.3% |
 
-Per conversation, and the two captures pair cell for cell because the opening
-message is the key:
-
-| conversation | dev requests | dev moved | diet requests | diet moved | worst stable share |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| `47a6a473` turn | 5 | 0 | 5 | 0 | 96.3% |
-| `60c39ef4` turn | 20 | 0 | 4 | 0 | 98.7% |
-| `b97e23ca` turn | 31 | 0 | 7 | 0 | 93.5% |
-| `bc3edd99` turn | 3 | 0 | 3 | 0 | 95.4% |
-| `44015c4b` task | 10 | 0 | — | — | 76.3% |
-
 Every non-opening request on both branches was an APPEND: everything the request
 before it sent was still there, byte for byte, in the same order, at the head.
-The worst row in the table (76.3%) is a task node that appended a very large
-tool result — a big append, not a small break.
+The worst single row in either run shares 76.3% of its bytes with the request
+before it — a task node that appended a very large tool result, which is a big
+append and not a small break.
 
 Two mechanisms that could have shown up here and did not. **No history was
 rewritten**: the stubbing pass (`stub.go`, `stubKeepTurns` = 4) replaces old tool
 outputs in place, which re-bills everything after the rewrite point, and it fired
 **zero times** across both captures — 0 of 69 dev requests and 0 of 19 diet
-requests carry a `[tool:` stub line, and no request broke at a `messages[i]`
-either. **No tool block moved**: nothing was armed, re-armed or reordered
-mid-conversation on either side.
+requests carry a `[tool:` stub line, and nothing broke at a `messages[i]` either.
+**No tool block moved**: nothing was armed, re-armed or reordered mid-conversation
+on either side, which is `armFamily`'s append-and-dedupe law holding in the wild.
 
 ### The number that said otherwise was a ratio of two medians
 
@@ -524,6 +602,41 @@ report. `bench/conversation` bills at its own guard, which is the same
 measurement for every model, and never at an account-level credit delta on a
 shared key.
 
+## 4a. The lean cell — planned, and blocked on lane G
+
+DESIGN.md §3's verdict on the lean profile is explicit: it "exists only if
+`prefixbudget_test` weighs it and a local-model bench cell runs it". This is
+that cell. Lane G has landed `internal/session/promptprofile.go`, so the switch
+now exists: `AFORGE_PROMPT_PROFILE`, taking `full` or `lean`. The cell has not
+been run — it is next after the two candidate regressions in §1a are settled,
+because a lean profile measured against an unsettled baseline proves nothing.
+
+```sh
+ssh spark 'export PATH=$HOME/.local/bin:$PATH; set -a; . ~/.config/fleet/secrets.env; set +a
+  AFORGE_PROMPT_PROFILE=lean CONV_PASS_ENV=AFORGE_PROMPT_PROFILE \
+    ~/bench-diet/rig/bench/prompt-diet/run.sh prompt-diet/integrate diet-lean \
+      --layers a,c,d'
+ssh spark '~/bench-diet/rig/bench/prompt-diet/compare.py diet diet-lean --out-root ~/bench-diet-out'
+```
+
+`CONV_PASS_ENV` is not optional: `bench/conversation` hands a harness only the
+variables it is told to carry, so a profile set in the caller's shell and not
+named there reaches nothing and the cell silently measures the full profile
+instead — which would read as a lean profile that saved nothing.
+
+**It is recorded separately and never averaged with the full-profile rows.** The
+two are different products with different belts, and one number over both would
+describe no run that ever happened. The comparison to make is `diet` against
+`diet-lean` on the same branch and the same cells, not `dev` against
+`diet-lean`: the question the lean profile has to answer is whether it keeps
+parity while paying Pi-sized, and that is a claim about the profile, not about
+the diet.
+
+The open-weight pin is already this bench's default
+(`deepseek/deepseek-v4-flash-0731`), so no `--model` is needed; a genuinely
+small local model is the harder follow-up and needs a window that
+`ContextWindowFor` actually reads as small.
+
 ## 5. The ablation — prepared, not run
 
 DESIGN.md §3 calls ablation "the arbiter", and it is the only instrument that
@@ -591,20 +704,17 @@ as a pass nor as a regression.
 
 ## 7. What is owed
 
-- **Layer B has not been run on either side.** It is the layer that decides
-  parity properly — `TestTUIE2E`'s fifteen subtests, `TestQuestionsE2E`'s
-  sixteen, `TestStandingE2E`'s seven — and it is the only coverage the question
-  and standing roads have at all. Budget about forty minutes a side plus a few
-  cents, sequentially and never beside another suite:
+- **The two candidate regressions in §1a need their repeats read.** Queued on
+  the Spark as `~/bench-diet-repeat.sh`, two runs a side of each, logs at
+  `~/bench-diet-out/repeat-{taskroom,askroad}-{dev,diet}-{1,2}.log`. Two greens
+  a side clears one; a second red confirms it. Nothing merges past a confirmed
+  one.
 
-  ```sh
-  ssh spark 'export PATH=$HOME/.local/bin:$PATH; set -a; . ~/.config/fleet/secrets.env; set +a
-    ~/bench-diet/rig/bench/prompt-diet/run.sh 6aa6a946e dev --layers b --reuse-worktree
-    ~/bench-diet/rig/bench/prompt-diet/run.sh prompt-diet/integrate diet --layers b --reuse-worktree'
-  ```
-
-  Until it has run, the ruling in §1a is parity **on the cells that ran** and not
-  parity on the wave.
+- **The diet side was measured at `2a90be7e8`,** which is behind the integration
+  branch — deliberately, so that layers A, C and D and layer B are all one
+  revision pair. A run on the current tip is labelled `diet-tip` and queued
+  behind layer B (`~/bench-diet-tip.sh`); compare it with
+  `compare.py diet diet-tip` to see what the later lanes moved.
 
 - **The frontier arm (§4) has not been run.** The cached share fell 40.6% on the
   open-weight pin, and that is precisely the number DESIGN.md §0's first bill is
@@ -632,6 +742,34 @@ as a pass nor as a regression.
 
 - **`AFORGE_PROMPT_ABLATE`**, from lane C or lane G. Without it, two of the ten
   largest law units — standing and accounts — cannot be ablated at all (§5).
+
+- **The lean cell in §4a has not been run.** `AFORGE_PROMPT_PROFILE` exists now
+  that lane G has landed, so nothing blocks it but time — and the order matters:
+  settle §1a's two candidate regressions first, because a lean profile measured
+  against an unsettled baseline proves nothing. DESIGN.md §3 says the profile
+  should not ship without this cell.
+
+- **The raw wire evidence** is on the Spark and needs no re-capture. This is
+  what §1c was run against and what a re-run of `prefixdiff.py` reads.
+  Per label — `dev` and `diet`:
+
+  | what | path |
+  | --- | --- |
+  | normalised, one row per request | `~/bench-diet-out/<label>/wire.jsonl` |
+  | whole request bodies | `~/bench-diet-out/<label>/cells/conversation.calllog.jsonl` |
+  | the guard's own token and cost ledger | `~/bench-diet-out/<label>/cells/conversation/<scenario>-aforge/guard-usage.jsonl` |
+
+  The call logs are 14 MB (dev, 190 rows) and 2.4 MB (diet, 80 rows), and EVERY
+  row carries its whole `request_body` — system, tools and messages — because
+  the cells run under `AFORGE_CALL_LOG_BODIES=1`. `wire.jsonl` deliberately does
+  not copy those bytes; it carries the fingerprints computed from them
+  (`system_bytes`, `system_sha`, `tool_block_bytes`, `tools_sha`, `prefix_sha`)
+  and a `body_source` naming the log beside it. **The thread has been pulled**:
+  the two-byte pair across 51 of dev's 69 turn calls is two different cells whose
+  scratch directories are named two characters apart, not one conversation whose
+  prefix moved, and §1c has the per-conversation digests that settle it. What is
+  still owed there is a FRONTIER capture: every body here is DeepSeek, which
+  sends no `cache_control` at all.
 
 - **An issue about the one-endpoint pin.** §1's model-pin note has the evidence:
   an endpoint excluded by account policy ends a turn instead of hopping, while
