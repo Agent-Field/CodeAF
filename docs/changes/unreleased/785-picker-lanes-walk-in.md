@@ -1,6 +1,6 @@
 ---
 kind: changed
-title: → walks into a model's lanes in the picker, a fold always opens, and a pinned lane is written on the model's name
+title: → walks into a model's lanes, a fold always opens, and a pinned lane rides the model's name
 pr: 785
 surface: [chat, docs]
 invalidates:
