@@ -217,7 +217,7 @@ func TestDecodeToolArgumentsTakesTheLooseFormsAndRefusesTheRestInWordsAModelCanA
 		{
 			name:    "but a swallowed tail followed by anything else is not guessed at",
 			args:    `{"depends_on":"[7], \"limit\": 2} trailing words"}`,
-			refusal: `depends_on takes a list; it arrived as text, "[7], \"limit\": 2} trailin… — send the value itself, not a string holding it`,
+			refusal: `depends_on takes a list; it arrived as text, "[7], \"limit\": 2} trai… — send the value itself, not a string holding it`,
 		},
 		{
 			name:    "a string that is a swallowed tail of the WRONG object is not spliced in",
