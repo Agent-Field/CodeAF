@@ -4715,8 +4715,8 @@ words. Its reply should say what it forwarded and to which task.
 `tasks` with `say` remains a message from the model. It cannot authorize an assignment
 revision. Task workers cannot use `forward`, and it cannot address another session.
 It cannot be combined with `say`, `continue`, `resolve`, or `stop` — and neither can
-`stop` be combined with any of them, since it ends the task the others act on. A result arriving by itself
-does not authorize forwarding an old message of yours.
+`stop` be combined with any of them, since it ends the task the others act on.
+A result arriving by itself does not authorize forwarding an old message of yours.
 
 Repeating the same forward to the same task is acknowledged without sending twice.
 Typing the same sentence again is a new message. A receipt means the direction was
