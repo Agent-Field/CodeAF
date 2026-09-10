@@ -560,3 +560,30 @@ func transcriptCarries(agent *Agent, needle string) bool {
 	}
 	return false
 }
+
+// ── (6) a session that closed under it ──────────────────────────────────────
+
+// A QUICK TASK CAUGHT BY THE CLOSE SETTLES AND NEVER COMES BACK.
+//
+// What tells the runner to hand a node to the quick body is `taskSpec.quick`,
+// and that field is not in the checkpoint — so a quick node put back on the
+// frontier is one the next session would run as an ORDINARY WORKER: a copy of
+// the folder, a branch and a check, for work whose whole promise was that it
+// had none of those. It is the design's and the run's own law
+// (task_store.go's [interrupt]) and it is pinned here because the fall-through
+// under it is what an unlisted kind silently gets.
+func TestAQuickTaskCaughtByTheCloseSettlesRatherThanResuming(t *testing.T) {
+	settled, branch := interrupt(taskRecord{Kind: TaskKindQuick, State: TaskRunning}, "")
+	if settled.State != TaskFailed {
+		t.Fatalf("an interrupted quick task came back %q — the next session would run it as a worker in a worktree", settled.State)
+	}
+	if settled.Report != quickInterruptedReport {
+		t.Fatalf("it settled saying %q, want %q", settled.Report, quickInterruptedReport)
+	}
+	if settled.EndedAt.IsZero() {
+		t.Fatal("a quick task that settles on the close carries no ending time, so its row rebuilds undated")
+	}
+	if branch != "" {
+		t.Fatalf("an interrupted quick task named branch %q, and it has none to name", branch)
+	}
+}

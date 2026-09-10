@@ -138,6 +138,13 @@ func quickDoing(spec *quickTaskSpec) string {
 	return clip(line, hintLimit)
 }
 
+// quickInterruptedReport is what a quick task that was still working when the
+// process died settles with. It says the two things somebody coming back to it
+// needs: it did not finish, and — because it was never in a copy — what it
+// managed is in their own folder rather than anywhere they have to go and find
+// (task_store.go's [interrupt] states why it settles rather than resuming).
+const quickInterruptedReport = "the quick task did not finish before aforge closed; whatever it wrote is in your folder"
+
 // ── the door ────────────────────────────────────────────────────────────────
 
 // quickTaskDescription is what the model reads before it calls, and the middle
