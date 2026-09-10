@@ -269,9 +269,19 @@ type taskCopy struct {
 // folder that does not exist. The question is asked with [withinDir] because
 // "at or under" is exactly what it answers, and it answers it about `/x/repo`
 // and `/x/repo-old` the way the rest of this file does.
+//
+// THE COPY SITTING UNDER THE SESSION FOLDER IS DROPPED TOO. The two checks
+// above ask whether work/ is inside the ground or the copy. They do not ask
+// the other way: a folder of `/s` with a copy at `/s/trees/1` is a parent,
+// not a child, so it used to be kept. Binding it after the ground rule had
+// already written `/s/trees/1/…` into the contract then rewrote those
+// addresses a second time — the worker followed a path inside a folder that
+// does not exist, and [taskGroundGuard] answered "is outside your copy"
+// about a write that was meant to be inside. "At or under" runs both ways
+// because both directions are one folder swallowing the other.
 func newTaskCopy(ground, dir, work string) taskCopy {
 	own := taskCopy{ground: cleanFolder(ground), dir: cleanFolder(dir), work: cleanFolder(work)}
-	if own.work == "/" || withinDir(own.ground, own.work) || withinDir(own.dir, own.work) {
+	if own.work == "" || own.work == "/" || withinDir(own.ground, own.work) || withinDir(own.dir, own.work) || withinDir(own.work, own.dir) {
 		own.work = ""
 	}
 	return own
@@ -325,12 +335,15 @@ func (c taskCopy) real() bool {
 // whole-path rule. Without it a contract naming the ground through an alias
 // bound nothing, and the worker was left pointing at the person's checkout.
 //
-// AND THE CONVERSATION'S OWN FOLDER MOVES BY THE SAME RULE, second, into a
+// AND THE CONVERSATION'S OWN FOLDER MOVES BY THE SAME RULE, first, into a
 // folder of its own name at the copy's root ([taskCopy.workInCopy]). It is
-// second rather than first because it is the narrower of the two and because the
-// ground rule has already taken every address the copy genuinely mirrors; the
-// two folders cannot overlap, since a work/ at or under either of them was
-// dropped by the constructor.
+// first rather than second because it is the narrower of the two: park those
+// addresses inside the copy before the ground rule writes the copy's own
+// spelling into the text. Applying it second — after `/x/repo/a` has become
+// `/s/trees/1/a` — rewrites the copy the moment the work folder is an
+// ancestor of it, and the worker is then handed a path [taskGroundGuard]
+// will refuse. The constructor drops that overlap; the order is the second
+// lock on the same door.
 //
 // THE PERSON'S OWN WORDS DO NOT COME THROUGH HERE AT ALL, and that is what makes
 // both rules safe: [composeBrief] binds the model-authored half and hands the
@@ -341,8 +354,8 @@ func (c taskCopy) bind(text string) string {
 	if !c.real() {
 		return text
 	}
-	text = bindFolder(text, c.ground, c.dir)
-	return bindFolder(text, c.work, c.workInCopy())
+	text = bindFolder(text, c.work, c.workInCopy())
+	return bindFolder(text, c.ground, c.dir)
 }
 
 // bindFolder rewrites one folder — its own spelling and every alias of it — into
