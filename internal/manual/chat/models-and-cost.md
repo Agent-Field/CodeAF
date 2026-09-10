@@ -888,11 +888,14 @@ off → low → medium → high → off; it does not offer `xhigh` or `max`.
 
 How hard the model thinks is one dial with five rungs, cheapest first: `low`, `medium`,
 `high`, `xhigh`, `max`. There is also **auto**, which is the dial left alone — aforge asks
-for nothing and the model thinks however it thinks.
+for nothing and the model thinks however it thinks. Auto is the **shipped** setting, and
+`⠿ auto` is what the line above the message box reads until something is dialled; no rung
+is the shipped one.
 
 **The default is `auto`.** It is the **thinking** row in `/settings`, among the model rows
-beside the model you talk to, and its choices are `auto, low, medium, high, xhigh, max`. The
-row is written to the profile as `effort`. Existing explicit settings remain in force.
+beside the model you talk to, and its choices are `auto, low, medium, high, xhigh, max` —
+the same six the `/effort` ladder offers this conversation. The row is written to the
+profile as `effort`. Existing explicit settings remain in force.
 Move it down to make the model think less, which is what gives you faster and cheaper
 answers; move it to `xhigh` or `max` when you would rather wait and get the careful one.
 
@@ -916,7 +919,8 @@ Several things can name a rung, and the most specific one wins:
 inside — it moves that task's rung. On home with the cursor on no row at all, it moves the
 **thinking** row itself, the machine-wide default. On a standing item's card it moves that
 item's. The rung climbs one step each press and wraps from `max` back to `low`; it never
-goes back to "nobody said". The **thinking** row in `/settings` stays what it is: the
+goes back to "nobody said" — for this conversation, `/effort auto` and the top row of
+`/effort` are what do that. The **thinking** row in `/settings` stays what it is: the
 answer for every conversation that has not been dialled by hand. The keys page has the
 whole of it — see *The thinking chip above the message box* and *ctrl+v — how hard the
 thing you are looking at thinks*.
@@ -927,17 +931,19 @@ thing you are looking at thinks*.
 |---|---|
 | `ctrl+v` | one step up the ladder, wrapping off the top |
 | press the rung on the line above the box | the same one step, and it lights under the pointer first |
-| `/effort` (or `/thinking`, `/think`) | the five rungs as a list, with what each one buys and the one in force marked |
+| `/effort` (or `/thinking`, `/think`) | six rows — `auto` and the five rungs — with what each one buys and the one in force marked |
 | `/effort max` | that rung, outright |
+| `/effort auto` (or `/effort off`) | clears this conversation's rung and hands it back to whatever stands over it |
 
-A word that is not one of the five changes nothing and prints the five. This is
+A word that is none of the six changes nothing and prints them all. This is
 **this conversation's** rung in every one of those forms, and it reaches the work this
 conversation hands out: a task worker starts at it.
 
 **It works over `--host` too.** The rung is set on the machine the conversation is running
-on and the word on your line is the one that machine resolved. Against an engine too old
-to know the ladder there is no rung on the line and neither the chord nor `/effort` offers
-one — a capability that cannot work is absent rather than broken.
+on and the word on your line is the one that machine resolved — `⠿ auto` included, on a
+hosted conversation nobody has dialled. Against an engine too old to know the ladder there
+is no rung on the line and neither the chord nor `/effort` offers one — a capability that
+cannot work is absent rather than broken.
 
 ## Auto reasoning — use OpenRouter defaults instead of forcing high
 

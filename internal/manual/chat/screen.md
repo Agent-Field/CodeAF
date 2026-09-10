@@ -21,12 +21,11 @@ answer to finish, another gap, the tray row above the box, the draft box where y
 any open list (picker, menu, completion), and the status line last.
 
 **The tray row** carries what the next message takes with it besides its words —
-a picked sub-harness, an attached picture, an attached file — and, at its right end, the
-**thinking chip** (`⠿ high`), which names how hard the model will think about your next
-turn. `ctrl+v` walks that rung and clicking the chip opens the five-rung ladder; see
-*The thinking chip above the message box* on the keys page. The tray is drawn only when
-it has something on it: with nothing attached and thinking set to `off`, the row is not
-there and the box sits straight under the gap.
+a picked sub-harness, an attached picture, an attached file. The **thinking rung** is not
+on it: it moved onto the rule above the box, beside the model, on 2026-09-09 (see *The
+line above the message box* below, and *The thinking chip above the message box* on the
+keys page). The tray is drawn only when it has something on it: with nothing attached, the
+row is not there and the box sits straight under the gap.
 
 Beside the conversation, on the right, the column — the right-hand bar, sidebar, task
 panel, whatever you call it — takes 30 columns (24 on a narrower frame)
@@ -627,7 +626,8 @@ The left, in order: the machine on a `--host` session (`devbox · …`), the con
 **name** (the one the session chose for itself, falling back to the folder's name until
 it has named itself, so it is never empty), the **model** as its basename
 (`glm-5.3-flash`), the **thinking rung** this conversation is running at (`⠿ high`, `~
-high` on a plain terminal), a `· via deepinfra` rider naming the endpoint that answered,
+high` on a plain terminal — `⠿ auto` until something is dialled, which is what a fresh
+install says), a `· via deepinfra` rider naming the endpoint that answered,
 and the git **branch** with a `*` when the tree has uncommitted work. In a directory that
 is not a repository there is no branch. It never says "untitled" and never invents a
 placeholder.
@@ -635,7 +635,8 @@ placeholder.
 **Two of those are doors.** Press the model's name and the model picker opens, exactly as
 typing `/model` does. Press the thinking rung and it walks one step up the ladder —
 low → medium → high → xhigh → max, and round again — which is the same thing `ctrl+v`
-does and the same thing pressing a task's thinking row does inside a task. Each brightens
+does and the same thing pressing a task's thinking row does inside a task. From `auto` the
+first press lands on `low`; the way back to `auto` is `/effort auto`, never the wheel. Each brightens
 under the pointer over exactly its own cells, so you can see which of the two you are
 about to press. With the mouse turned off (`ui.mouse`), `/model`, `/effort` and `ctrl+v`
 do all three jobs. See "The thinking chip above the message box" on the keys page.

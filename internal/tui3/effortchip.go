@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 )
 
@@ -52,6 +53,31 @@ import (
 // the number the machine is running at, so the chip is drawn from the resolver
 // and the scope that decided it is nobody's business up here.
 //
+// ── AND ABSENCE IS A STATE, SO IT IS SAID: `⠿ auto` ────────────────────────
+//
+// THE SHIPPED SETTING IS ABSENCE — [effort.Ship] is [effort.None], nothing is
+// asked for and the model thinks however it thinks — so on an install nobody
+// has dialled the resolver answers "" and this cell, drawn from that word
+// alone, WAS ABSENT ON EVERY FRESH CONVERSATION. Which is to say: on a shipped
+// install it was absent always, on the in-process road and the hosted one
+// alike, and the only person who ever saw a rung was one who already knew there
+// was a dial to turn. The tray chip this replaced had the same hole, and that
+// is exactly why the owner never learned the dial existed and asked for one to
+// be built.
+//
+// A CONTROL THAT IS INVISIBLE UNTIL YOU HAVE ALREADY USED IT IS NOT A CONTROL
+// (CLAUDE.md's discoverability law). So absence is drawn, by name — `⠿ auto`,
+// the word the `thinking` settings row has offered for this state since the
+// ladder landed ([effortAutoWord]).
+//
+// THIS IS NOT A BREACH OF THE EMPTINESS LAW. That law refuses a word for a
+// number nobody has — `$0.00`, `0 tok` — and auto is not zero thinking. It is a
+// decision about WHO DECIDES, it is the decision this install shipped with, and
+// a state somebody chose the shape of is a fact to state. The cell is still
+// absent where there is no dial at all — no agent, or a far engine whose
+// welcome does not carry one ([app.effortDial]) — because that is the state the
+// absence law is actually about.
+//
 // The one place that costs something is the chord: setting the conversation's
 // rung cannot move a resolved rung the TURN scope is deciding (the model
 // picker's ctrl+t, or `--reasoning`). That is a knob doing nothing, which is
@@ -76,13 +102,18 @@ import (
 // taskeffort.go's [app.cycleNodeEffort]). One verb, one gesture, every scope —
 // the same rule effortscope.go states about the chord.
 //
-// THE LADDER KEPT ITS DOOR AND IT IS A COMMAND NOW. The five rows with their
+// THE LADDER KEPT ITS DOOR AND IT IS A COMMAND NOW. The rows with their
 // sentences used to open from a click on the tray chip, which is the gesture
 // this ruling spends on the wheel; so `/effort` opens them and `/effort <rung>`
 // picks one outright ([app.runEffort]). A capability whose only door was taken
 // away is a capability that has been deleted by accident, and this one is worth
-// keeping: five words with what each one buys is how a person decides between
+// keeping: the words with what each one buys is how a person decides between
 // them, and the wheel alone can only be walked blind.
+//
+// AND THE WAY BACK TO auto IS BY NAME, NEVER BY THE WHEEL. The wheel has five
+// stops and wraps off the top ([app.cycleEffort] states why absence is not a
+// sixth), so `/effort auto` — and the ladder's own top row — is what hands the
+// scope back to whatever stands above it.
 
 // effortKey is the chord that walks the ladder, written down once: the router
 // binds it, the manual prints it and the menu's foot names it, and a surface
@@ -107,6 +138,16 @@ const (
 	glyphEffort      = glyphThought
 	glyphEffortASCII = "~"
 )
+
+// effortAutoWord is what this surface calls absence: the dial left alone, with
+// nothing asked for and the model thinking however it thinks.
+//
+// IT IS THE SETTINGS ROW'S OWN WORD, taken from internal/config rather than
+// spelled again here (CLAUDE.md's one-source-of-truth law). The `thinking` row
+// in /settings has offered `auto` at the head of its choices since the ladder
+// landed, and the seam calling the same state something else would be two names
+// for one answer on one screen — the defect the colon suffix already made once.
+var effortAutoWord = config.EffortWord(effort.None)
 
 // effortFlashFor is how long the chip wears its change.
 //
@@ -162,13 +203,15 @@ func (a *app) effortDial() (effortDialer, bool) {
 	return dial, ok
 }
 
-// effortWord is the rung the chip names: what the next turn will ask for.
+// effortWord is the rung the resolver has settled on: what the next turn will
+// ask for, and "" for a conversation nobody has dialled on an install that has
+// chosen nothing either — which is what a shipped install answers.
 //
-// THE EMPTINESS LAW: a session that asks for no thinking at all — the `effort`
-// settings row set to `off`, with nothing nearer to the work saying otherwise —
-// has nothing to report and this is "", which is a cell the seam never draws.
-// The chord still works from there and puts the rung back on the first step,
-// because a key costs nothing to keep.
+// IT IS THE LADDER'S OWN VOCABULARY AND NOT THE CELL'S. "" is [effort.None]
+// here, which is what the chooser opens its cursor on and what [effort.Rung]
+// round-trips; the word a PERSON reads for that state is [effortAutoWord] and
+// it is put on only at the two places a person reads one ([app.effortChipText]
+// and the chooser's rows).
 //
 // It asks the agent on every frame that draws the seam, which is a lock and two
 // map reads (internal/session's effortLocked) — and over a connection a read of
@@ -187,11 +230,20 @@ func (a *app) effortWord() string {
 
 // effortChipText is the chip unpainted — the mark and the word beside it, which
 // is what docs/DESIGN-LANGUAGE.md's refusal of icon-only minimalism demands of
-// every mark on this surface. "" when there is no rung to name.
+// every mark on this surface.
+//
+// "" ONLY WHERE THERE IS NO DIAL, never where there is a dial nobody has turned:
+// that one says `⠿ auto`, for the reason the header gives at length. The two
+// states were one string until 2026-09-09 and the cell was therefore missing on
+// every conversation of a shipped install, which is the whole defect.
 func (a *app) effortChipText() string {
-	word := a.effortWord()
-	if word == "" {
+	dial, ok := a.effortDial()
+	if !ok {
 		return ""
+	}
+	word := dial.ResolvedEffort()
+	if word == "" {
+		word = effortAutoWord
 	}
 	mark := glyphEffort
 	if a.pal.ascii || a.pal.linear {
@@ -262,10 +314,17 @@ func (a *app) effortFlashing() bool {
 // before every rung. Stepping from what is drawn is the only reading under which
 // one press means one step.
 //
-// THE CYCLE HAS FIVE STOPS AND "off" IS NOT ONE OF THEM. Off is absence rather
-// than a rung (internal/effort's [None]), it belongs to the settings row that
-// owns the install's default, and a five-key walk with a sixth state hidden in
-// it is a walk people lose their place in.
+// AND FROM `auto` THE FIRST PRESS LANDS ON `low`, which is [effortNext]'s own
+// law: absence is where the wheel starts and never a stop on it (effortscope.go
+// states it in full). So the cell a fresh conversation draws is the beginning of
+// the walk and not a rung in the middle of one.
+//
+// THE CYCLE HAS FIVE STOPS AND absence IS NOT ONE OF THEM. A five-key walk with
+// a sixth state hidden in it is a walk people lose their place in, and clearing
+// a rung somebody paid for by pressing a key once too often is a move no wheel
+// should be able to make. The way back to auto is by NAME — `/effort auto` and
+// the ladder's own top row ([app.runEffort]) — which is a deliberate act, as
+// handing the scope back to whatever stands above it ought to be.
 func (a *app) cycleEffort() tea.Cmd {
 	dial, ok := a.effortDial()
 	if !ok {
@@ -312,17 +371,25 @@ func (a *app) setEffortRung(dial effortDialer, rung effort.Rung) tea.Cmd {
 		}
 		a.noteFacts("thinking stays "+got+" · "+on+
 			" decides this conversation — ctrl+t in /model changes it", facts...)
+	} else if rung == effort.None {
+		// CLEARING THE DIAL IS THE ONE MOVE WHOSE RESULT IS NOT A RUNG, so it is
+		// the one move that says something. The five leave a word on the seam that
+		// answers "what did that do" by itself; `auto` leaves a word that reads
+		// like the dial went away, and a person who has just handed the scope back
+		// deserves to be told what now decides. It is said in the flat dotted
+		// grammar the other notes on this surface are written in.
+		a.noteFacts("thinking · "+effortAutoWord+" · the model decides", effortAutoWord)
 	}
 	return tea.Tick(effortFlashFor, func(time.Time) tea.Msg { return effortFlashMsg{} })
 }
 
 // ── the menu ────────────────────────────────────────────────────────────────
 
-// effortMenu is the five-row chooser the chip opens: the whole ladder, cheapest
-// first, with the rung in force marked.
+// effortMenu is the six-row chooser the chip opens: auto and then the whole
+// ladder, cheapest first, with the rung in force marked.
 //
 // Its zero value is closed, like [crewPicker], whose shape this is — a fixed,
-// bottom-anchored list with no filter, because five words is a thing you read
+// bottom-anchored list with no filter, because six words is a thing you read
 // rather than a thing you search.
 type effortMenu struct {
 	open   bool
@@ -333,9 +400,20 @@ type effortMenu struct {
 	current effort.Rung
 }
 
+// effortMenuRungs is the chooser's rows: ABSENCE FIRST, then the ladder as
+// internal/effort holds it.
+//
+// IT IS THE LADDER PLUS ONE AND NEVER A SECOND COPY OF IT (CLAUDE.md's
+// one-source-of-truth law), so a rung that displaces another in [effort.Rungs]
+// moves this list, the refusal that names the words, and the heights all at
+// once. Auto leads because the rows are cheapest first and it is the cheapest
+// thing there is — nothing is asked for — and because it is what the install
+// ships at, which is the row most people opening this list are standing on.
+var effortMenuRungs = append([]effort.Rung{effort.None}, effort.Rungs...)
+
 func (m *effortMenu) start(current effort.Rung) {
 	*m = effortMenu{open: true, current: current}
-	for at, rung := range effort.Rungs {
+	for at, rung := range effortMenuRungs {
 		if rung == current {
 			m.cursor = at
 			return
@@ -346,11 +424,11 @@ func (m *effortMenu) start(current effort.Rung) {
 func (m *effortMenu) close() { *m = effortMenu{} }
 
 func (m *effortMenu) move(delta int) {
-	m.cursor = (m.cursor + delta + len(effort.Rungs)) % len(effort.Rungs)
+	m.cursor = (m.cursor + delta + len(effortMenuRungs)) % len(effortMenuRungs)
 }
 
-// The chooser's fixed lines around the five rungs, spelled once so the height
-// and the rows cannot count them differently.
+// The chooser's fixed lines around the rows, spelled once so the height and the
+// rows cannot count them differently.
 const (
 	// effortScopeLine is the header: what the rows below move, and what they do
 	// not. It is the sentence the whole control exists to make plain, because the
@@ -363,20 +441,27 @@ const (
 	// scope line and the closing note.
 	effortFrameRows = 2
 	// effortWordWidth is the column the rung words are padded to, so the
-	// sentences after them line up. "medium" is the longest of the five and this
-	// is its width; a loop to find the longest of five literals is machinery for
+	// sentences after them line up. "medium" is the longest of the six and this
+	// is its width; a loop to find the longest of six literals is machinery for
 	// nothing (crew.go's [crewClassWidth] made the same trade).
 	effortWordWidth = 6
 )
 
-// effortLines is what each rung buys, in a person's words rather than the
+// effortLines is what each row buys, in a person's words rather than the
 // adapter's. The two top rungs say the shape of what they ask for — a deeper
 // pass, paid for in time — because "more than high" is the only honest reading
 // of a ladder whose provider vocabulary stops at high (internal/effort).
+//
+// AUTO'S LINE NAMES IT AS THE SHIPPED SETTING AND `high`'S NO LONGER DOES. That
+// sentence sat on `high` and was simply false: [effort.Ship] is [effort.None],
+// so an install nobody has touched asks for nothing at all — and a person
+// reading the ladder to find out where they started was being pointed at the
+// wrong row.
 var effortLines = map[effort.Rung]string{
+	effort.None:   "the model decides — the shipped setting",
 	effort.Low:    "answers quickly and barely deliberates",
 	effort.Medium: "a short think before it answers",
-	effort.High:   "thinks before it answers — the shipped rung",
+	effort.High:   "thinks before it answers",
 	effort.XHigh:  "a deeper pass, and it takes the time that costs",
 	effort.Max:    "the deepest pass there is",
 }
@@ -385,7 +470,7 @@ func (m *effortMenu) height() int {
 	if !m.open {
 		return 0
 	}
-	return effortFrameRows + len(effort.Rungs)
+	return effortFrameRows + len(effortMenuRungs)
 }
 
 // rows is the chooser drawn, in the bottom-overlay row vocabulary every other
@@ -403,7 +488,7 @@ func (m *effortMenu) rows(width, n int, pal palette, hover int) []string {
 	}
 	out := make([]string, 0, m.height())
 	out = append(out, pal.dim(fit(effortScopeLine, width)))
-	for at, rung := range effort.Rungs {
+	for at, rung := range effortMenuRungs {
 		oncursor, current := at == m.cursor, rung == m.current
 		hovered := hover == len(out)
 		lead := "  "
@@ -413,7 +498,9 @@ func (m *effortMenu) rows(width, n int, pal palette, hover int) []string {
 		case hovered:
 			lead = pal.accent("· ")
 		}
-		word := rung.String()
+		// The top row is absence, and it is named rather than left blank — a row
+		// with an empty first column is a row nobody can tell is selectable.
+		word := config.EffortWord(rung)
 		for len(word) < effortWordWidth {
 			word += " "
 		}
@@ -445,12 +532,22 @@ func (m *effortMenu) rows(width, n int, pal palette, hover int) []string {
 // runEffort is `/effort`, and it is the LADDER'S DOOR now that the pointer's
 // gesture on the cell is the wheel ([app.cycleEffort]).
 //
-// Bare, it opens the five rows. With a rung after it, it sets that rung outright
-// — through the one path the chord and the ladder already share, so a rung typed
+// Bare, it opens the rows. With a word after it, it sets that row outright —
+// through the one path the chord and the ladder already share, so a rung typed
 // and a rung picked cannot mean slightly different things, and the note about a
 // level on the model winning is the same sentence in all three.
 //
-// AN UNKNOWN WORD CHANGES NOTHING AND SAYS THE FIVE, which is the shape every
+// `/effort auto` IS THE WAY BACK, and `off` is its legacy alias — the two words
+// internal/effort's [effort.Parse] already lands on [effort.None]. This door
+// used to refuse both with the words that are not rungs at all, on the grounds
+// that absence belonged to the settings row; that reading was wrong in the one
+// direction that matters. The wheel must not reach absence (a rung cleared by
+// one press too many is a rung cleared by accident) but a person must be able
+// to GET THERE — the shipped setting is absence, so a conversation dialled up
+// once had no way back to what it started at, and the seam now names that state
+// on every fresh conversation.
+//
+// AN UNKNOWN WORD CHANGES NOTHING AND SAYS THE SIX, which is the shape every
 // choice this surface refuses takes (crew.go's [app.runCrew]): a refusal that
 // only said no would leave a person guessing at a word they were one letter
 // away from.
@@ -466,12 +563,9 @@ func (a *app) runEffort(arg string) tea.Cmd {
 		return nil
 	}
 	rung, parsed := effort.Parse(arg)
-	if !parsed || rung == effort.None {
-		// `off` parses as a rung nobody can be at, and it is refused here with
-		// every other word that is not one of the five: absence is the settings
-		// row's to hand out, never this dial's (effortscope.go's wheel law).
-		a.noteFacts("/effort "+arg+" · not one of the five · "+
-			strings.Join(effortRungWords(), " · "), effortRungWords()...)
+	if !parsed {
+		a.noteFacts("/effort "+arg+" · not a thinking level · "+
+			strings.Join(effortMenuWords(), " · "), effortMenuWords()...)
 		return nil
 	}
 	return a.setEffortRung(dial, rung)
@@ -481,18 +575,20 @@ func (a *app) runEffort(arg string) tea.Cmd {
 // shape [taskEffortUnavailableWord] says the same thing about one task.
 const effortUnavailableWord = "how hard this conversation thinks is unavailable — this session has no dial onto it"
 
-// effortRungWords is the ladder as a sentence lists it, read off the ladder
-// rather than repeated (CLAUDE.md's one-source-of-truth law: a rung added or
-// dropped in internal/effort moves every refusal that names them).
-func effortRungWords() []string {
-	words := make([]string, 0, len(effort.Rungs))
-	for _, rung := range effort.Rungs {
-		words = append(words, rung.String())
+// effortMenuWords is every word this door takes, as a sentence lists them: auto
+// and then the five. It is read off [effortMenuRungs] rather than repeated
+// (CLAUDE.md's one-source-of-truth law: a rung added or dropped in
+// internal/effort moves every refusal that names them), and each row is spelled
+// by the same function the chooser spells it with.
+func effortMenuWords() []string {
+	words := make([]string, 0, len(effortMenuRungs))
+	for _, rung := range effortMenuRungs {
+		words = append(words, config.EffortWord(rung))
 	}
 	return words
 }
 
-// openEffortMenu opens the five rows, and it TOGGLES: a door that opened a list
+// openEffortMenu opens the rows, and it TOGGLES: a door that opened a list
 // and then ignored the same word typed again would be a door with no way back
 // through the gesture that got you there.
 func (a *app) openEffortMenu() {
@@ -537,12 +633,14 @@ func (a *app) effortMenuKey(msg tea.KeyPressMsg) tea.Cmd {
 }
 
 // pickEffortRow is enter on the chooser, and the click that means the same
-// thing: that rung becomes the conversation's, and the list closes.
+// thing: that row becomes the conversation's, and the list closes. The top row
+// is absence and is picked like any other — it is the ladder's one door back to
+// auto, since the wheel deliberately has none.
 func (a *app) pickEffortRow(at int) tea.Cmd {
-	if at < 0 || at >= len(effort.Rungs) {
+	if at < 0 || at >= len(effortMenuRungs) {
 		return nil
 	}
-	rung := effort.Rungs[at]
+	rung := effortMenuRungs[at]
 	a.effPick.close()
 	dial, ok := a.effortDial()
 	if !ok {
@@ -564,9 +662,9 @@ func (a *app) effortMenuPress(y int) (tea.Cmd, bool) {
 		return nil, false
 	}
 	// The header is row zero and the closing note is the last row; neither is a
-	// rung, and a press on a sentence does nothing at all.
+	// row of the ladder, and a press on a sentence does nothing at all.
 	at := mark.index - 1
-	if at < 0 || at >= len(effort.Rungs) {
+	if at < 0 || at >= len(effortMenuRungs) {
 		return nil, true
 	}
 	a.effPick.cursor = at
