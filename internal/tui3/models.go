@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	modelcatalog "github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/home"
 )
 
@@ -93,6 +94,12 @@ type Model struct {
 	// Empty is "nobody said" here too, and the two sides read their silence
 	// separately: see [readsText] and [seesImages].
 	Input []string `json:"input_modalities,omitempty"`
+
+	// Group is the connected service heading this row sits under. It is empty
+	// on the single-service path, which keeps that picker's output unchanged.
+	Group       string `json:"-"`
+	GroupOrder  int    `json:"-"`
+	Unavailable bool   `json:"-"`
 }
 
 // modelCacheName is the file under the aforge state root. It is v3's own list
@@ -106,11 +113,22 @@ var modelCacheName = []string{"v3", "models.json"}
 // the way every other file aforge writes is.
 func ModelCachePath() string { return home.Join(modelCacheName...) }
 
+// ModelCachePathFor returns the cache owned by one service-and-base pair. The
+// default pair keeps the legacy path so an ordinary upgrade stays warm.
+func ModelCachePathFor(source, base string) string {
+	key := modelcatalog.CacheKey(source, base)
+	if key == "" {
+		return ModelCachePath()
+	}
+	return home.Join("v3", "models-"+key+".json")
+}
+
 // modelCache is the file's shape. The list is wrapped in an object so a field
 // can be added later without the file becoming unreadable by the build that
 // wrote it.
 type modelCache struct {
 	Models []Model `json:"models"`
+	Owner  string  `json:"owner,omitempty"`
 }
 
 // CachedModels reads the cache, and answers nil for every way that can fail —
@@ -118,12 +136,26 @@ type modelCache struct {
 // no cache falls through to the built-ins; a picker that reported a parse error
 // would be answering "which model" with a filesystem complaint.
 func CachedModels() []Model {
-	raw, err := os.ReadFile(ModelCachePath())
+	return CachedModelsFor("", modelcatalog.DefaultBaseURL)
+}
+
+// CachedModelsFor reads only the cache owned by the requested service and
+// base. An unstamped legacy file belongs only to the default pair.
+func CachedModelsFor(source, base string) []Model {
+	owner := modelcatalog.CacheKey(source, base)
+	raw, err := os.ReadFile(ModelCachePathFor(source, base))
 	if err != nil {
 		return nil
 	}
 	var cached modelCache
 	if json.Unmarshal(raw, &cached) != nil {
+		return nil
+	}
+	if cached.Owner == "" {
+		if owner != "" {
+			return nil
+		}
+	} else if cached.Owner != owner {
 		return nil
 	}
 	return cleanModels(cached.Models)
@@ -135,17 +167,22 @@ func CachedModels() []Model {
 // process that dies mid-write leaves the previous list readable rather than
 // half a JSON document.
 func WriteModelCache(models []Model) error {
+	return WriteModelCacheFor("", modelcatalog.DefaultBaseURL, models)
+}
+
+// WriteModelCacheFor replaces the cache for one service-and-base pair.
+func WriteModelCacheFor(source, base string, models []Model) error {
 	models = cleanModels(models)
 	if len(models) == 0 {
 		// Refusing to write an empty list is what keeps a bad fetch from
 		// erasing a good cache.
 		return nil
 	}
-	path := ModelCachePath()
+	path := ModelCachePathFor(source, base)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	raw, err := json.Marshal(modelCache{Models: models})
+	raw, err := json.Marshal(modelCache{Models: models, Owner: modelcatalog.CacheKey(source, base)})
 	if err != nil {
 		return err
 	}

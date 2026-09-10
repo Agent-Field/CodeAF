@@ -1,9 +1,8 @@
 package catalog
 
 import (
+	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -24,14 +23,14 @@ func failedCatalogClient() *http.Client {
 	})}
 }
 
-func expectedCacheFile(dir, normalizedBase string) string {
-	if normalizedBase == DefaultBaseURL {
+func expectedCacheFile(dir, source, normalizedBase string) string {
+	key := CacheKey(source, normalizedBase)
+	if key == "" {
 		return filepath.Join(dir, cacheName)
 	}
-	digest := sha256.Sum256([]byte(normalizedBase))
 	extension := filepath.Ext(cacheName)
 	stem := strings.TrimSuffix(cacheName, extension)
-	return filepath.Join(dir, stem+"-"+hex.EncodeToString(digest[:8])+extension)
+	return filepath.Join(dir, stem+"-"+key+extension)
 }
 
 func assertCatalogHasNoBaseARow(t *testing.T, models *Catalog) {
@@ -99,17 +98,76 @@ func TestACatalogCachedForOneBaseIsNeverServedToAnother(t *testing.T) {
 			BaseURL: baseA, Dir: dir, Now: func() time.Time { return day },
 			HTTPClient: catalogClient(t, http.StatusOK, baseACatalogPayload, nil),
 		})
-		raw, err := os.ReadFile(expectedCacheFile(dir, baseA))
+		raw, err := os.ReadFile(expectedCacheFile(dir, "", baseA))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(expectedCacheFile(dir, baseB), raw, 0o600); err != nil {
+		if err := os.WriteFile(expectedCacheFile(dir, "", baseB), raw, 0o600); err != nil {
 			t.Fatal(err)
 		}
 		models := Load(context.Background(), Options{
 			BaseURL: baseB, Dir: dir, HTTPClient: failedCatalogClient(),
 		})
 		assertCatalogHasNoBaseARow(t, models)
+	})
+}
+
+func TestACatalogFetchedForOneServiceIsNeverServedToAnother(t *testing.T) {
+	const base = "https://shared.example/v1"
+	day := time.Date(2026, 9, 9, 10, 0, 0, 0, time.UTC)
+
+	t.Run("fresh cache", func(t *testing.T) {
+		dir := t.TempDir()
+		Load(context.Background(), Options{Source: "deepseek", BaseURL: base, Dir: dir, Now: func() time.Time { return day }, HTTPClient: catalogClient(t, http.StatusOK, baseACatalogPayload, nil)})
+		models := Load(context.Background(), Options{Source: "z-ai", BaseURL: base, Dir: dir, Now: func() time.Time { return day.Add(time.Hour) }, HTTPClient: catalogClient(t, http.StatusOK, baseBCatalogPayload, nil)})
+		assertCatalogHasNoBaseARow(t, models)
+	})
+
+	t.Run("successful fetch", func(t *testing.T) {
+		dir := t.TempDir()
+		Load(context.Background(), Options{Source: "deepseek", BaseURL: base, Dir: dir, HTTPClient: catalogClient(t, http.StatusOK, baseACatalogPayload, nil)})
+		foreignPath := expectedCacheFile(dir, "deepseek", base)
+		foreignBefore, err := os.ReadFile(foreignPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		models := Load(context.Background(), Options{Source: "z-ai", BaseURL: base, Dir: dir, HTTPClient: catalogClient(t, http.StatusOK, baseBCatalogPayload, nil)})
+		assertCatalogHasNoBaseARow(t, models)
+		foreignAfter, err := os.ReadFile(foreignPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(foreignAfter, foreignBefore) {
+			t.Fatal("a successful fetch overwrote the foreign service's artifact")
+		}
+		if _, err := os.Stat(expectedCacheFile(dir, "z-ai", base)); err != nil {
+			t.Fatalf("successful fetch did not write its own service artifact: %v", err)
+		}
+	})
+
+	t.Run("stale foreign cache after failed fetch", func(t *testing.T) {
+		dir := t.TempDir()
+		Load(context.Background(), Options{Source: "deepseek", BaseURL: base, Dir: dir, Now: func() time.Time { return day }, HTTPClient: catalogClient(t, http.StatusOK, baseACatalogPayload, nil)})
+		models := Load(context.Background(), Options{Source: "z-ai", BaseURL: base, Dir: dir, Now: func() time.Time { return day.Add(TTL + time.Hour) }, HTTPClient: failedCatalogClient()})
+		assertCatalogHasNoBaseARow(t, models)
+	})
+
+	t.Run("no cache has no foreign fallbacks", func(t *testing.T) {
+		models := Load(context.Background(), Options{Source: "deepseek", BaseURL: DefaultBaseURL, Dir: t.TempDir(), HTTPClient: failedCatalogClient()})
+		if len(models.ModelsNow()) != 0 {
+			t.Fatalf("non-default service got %d built-in rows", len(models.ModelsNow()))
+		}
+	})
+
+	t.Run("panic recovery has no foreign fallbacks", func(t *testing.T) {
+		models := Load(context.Background(), Options{Source: "deepseek", BaseURL: DefaultBaseURL, Dir: t.TempDir(), Now: func() time.Time { panic("clock") }, HTTPClient: catalogClient(t, http.StatusOK, baseACatalogPayload, nil)})
+		if len(models.ModelsNow()) != 0 {
+			t.Fatalf("non-default service panic got %d built-in rows", len(models.ModelsNow()))
+		}
+		defaults := Load(context.Background(), Options{BaseURL: DefaultBaseURL, Dir: t.TempDir(), Now: func() time.Time { panic("clock") }, HTTPClient: catalogClient(t, http.StatusOK, baseACatalogPayload, nil)})
+		if len(defaults.ModelsNow()) != 11 {
+			t.Fatalf("default service panic got %d built-in rows, want 11", len(defaults.ModelsNow()))
+		}
 	})
 }
 
@@ -187,19 +245,25 @@ func TestALegacyCacheFileIsTheDefaultBasesCache(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// THE CLOCK IS THE FIXTURE'S, NOT THE MACHINE'S. "Fresh" here means inside
+	// [TTL] of the moment this cache says it was fetched, and a test that let
+	// the wall clock answer that would pass on the day it was written and fail
+	// every day after — which is exactly what it did.
+	anHourLater := func() time.Time { return day.Add(time.Hour) }
+
 	neverFetch := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		t.Fatal("a fresh legacy cache performed a fetch")
 		return nil, errors.New("offline")
 	})}
 	for _, base := range []string{DefaultBaseURL, ""} {
-		models := Load(context.Background(), Options{BaseURL: base, Dir: dir, HTTPClient: neverFetch})
+		models := Load(context.Background(), Options{BaseURL: base, Dir: dir, Now: anHourLater, HTTPClient: neverFetch})
 		if _, ok := models.Model("legacy/model"); !ok {
 			t.Errorf("legacy cache was not served for base %q", base)
 		}
 	}
 
 	custom := Load(context.Background(), Options{
-		BaseURL: "https://another-provider.example/v1", Dir: dir, HTTPClient: failedCatalogClient(),
+		BaseURL: "https://another-provider.example/v1", Dir: dir, Now: anHourLater, HTTPClient: failedCatalogClient(),
 	})
 	if _, ok := custom.Model("legacy/model"); ok {
 		t.Fatal("legacy default-base cache was served to a custom base")
@@ -213,7 +277,7 @@ func TestACacheRecordsItsNormalizedBase(t *testing.T) {
 		BaseURL: "  HTTPS://VENDOR.EXAMPLE/Case/v1///  ", Dir: dir,
 		HTTPClient: catalogClient(t, http.StatusOK, baseACatalogPayload, nil),
 	})
-	raw, err := os.ReadFile(expectedCacheFile(dir, normalized))
+	raw, err := os.ReadFile(expectedCacheFile(dir, "", normalized))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +305,7 @@ func TestACacheRecordsItsNormalizedBase(t *testing.T) {
 	if fetches.Load() != 0 {
 		t.Fatalf("equivalent normalized base performed %d fetches, want none", fetches.Load())
 	}
-	if got := filepath.Base(expectedCacheFile(dir, DefaultBaseURL)); got != cacheName {
+	if got := filepath.Base(expectedCacheFile(dir, "", DefaultBaseURL)); got != cacheName {
 		t.Fatalf("default cache name = %q, want %q", got, cacheName)
 	}
 }

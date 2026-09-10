@@ -92,7 +92,7 @@ func TestLoadFetchesParsesCachesAndQueriesModalities(t *testing.T) {
 func TestStaleCacheWinsOverOfflineAndEmptyUsesDefaults(t *testing.T) {
 	dir := t.TempDir()
 	old := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
-	if err := writeCache(cachePath(dir, DefaultBaseURL), cache{FetchedAt: old, Base: DefaultBaseURL, Models: []Model{{
+	if err := writeCache(cachePath(dir, "", DefaultBaseURL), cache{FetchedAt: old, Base: DefaultBaseURL, Models: []Model{{
 		ID: "stale/image", OutputModalities: []string{"image"},
 	}}}); err != nil {
 		t.Fatal(err)

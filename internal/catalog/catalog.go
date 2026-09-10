@@ -216,12 +216,16 @@ func (m Model) accepts(parameter string) bool {
 type cache struct {
 	FetchedAt time.Time `json:"fetched_at"`
 	Models    []Model   `json:"models"`
+	Source    string    `json:"source,omitempty"`
 	Base      string    `json:"base,omitempty"`
 }
 
 // Options describes the one catalog fetch. Dir is the Aforge configuration
 // directory (AFORGE_PROFILE_DIR when configured, ~/.aforge otherwise).
 type Options struct {
+	// Source is the stable service identity. AN EMPTY SOURCE IS THE DEFAULT
+	// SERVICE, whose ids are the only ones the compiled fallbacks describe.
+	Source     string
 	BaseURL    string
 	APIKey     string
 	Dir        string
@@ -288,7 +292,7 @@ func loadOrFallback(ctx context.Context, options Options) (resolved *rows) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			_ = guard.Note("catalog/load", recovered)
-			if normalizeBase(options.BaseURL) == DefaultBaseURL {
+			if strings.TrimSpace(options.Source) == "" && normalizeBase(options.BaseURL) == DefaultBaseURL {
 				resolved = newRows(hardcodedFallbacks())
 			} else {
 				resolved = newRows(nil)
@@ -322,8 +326,9 @@ func load(ctx context.Context, options Options) *rows {
 		now = options.Now
 	}
 	base := normalizeBase(options.BaseURL)
-	path := cachePath(options.Dir, base)
-	cached, cachedOK := readCache(path, base)
+	source := strings.TrimSpace(options.Source)
+	path := cachePath(options.Dir, source, base)
+	cached, cachedOK := readCache(path, source, base)
 	if cachedOK && !options.Refresh && now().Before(cached.FetchedAt.Add(TTL)) {
 		return newRowsAt(cached.Models, cached.FetchedAt)
 	}
@@ -332,7 +337,7 @@ func load(ctx context.Context, options Options) *rows {
 	if err == nil && len(models) > 0 {
 		fetchedAt := now().UTC()
 		if path != "" {
-			_ = writeCache(path, cache{FetchedAt: fetchedAt, Models: models, Base: base})
+			_ = writeCache(path, cache{FetchedAt: fetchedAt, Models: models, Source: source, Base: base})
 		}
 		return newRowsAt(models, fetchedAt)
 	}
@@ -343,7 +348,7 @@ func load(ctx context.Context, options Options) *rows {
 		// empty one it cannot explain.
 		return newRowsAt(cached.Models, cached.FetchedAt)
 	}
-	if base == DefaultBaseURL {
+	if source == "" && base == DefaultBaseURL {
 		return newRows(hardcodedFallbacks())
 	}
 	// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN — handing eleven
@@ -1209,22 +1214,34 @@ func normalizeBase(raw string) string {
 	return parsed.String()
 }
 
-func cachePath(dir, base string) string {
+func cachePath(dir, source, base string) string {
 	dir = strings.TrimSpace(dir)
 	if dir == "" {
 		dir = home.Dir()
 	}
 	base = normalizeBase(base)
-	if base == DefaultBaseURL {
+	key := CacheKey(source, base)
+	if key == "" {
 		return filepath.Join(dir, cacheName)
 	}
-	digest := sha256.Sum256([]byte(base))
 	extension := filepath.Ext(cacheName)
 	stem := strings.TrimSuffix(cacheName, extension)
-	return filepath.Join(dir, stem+"-"+hex.EncodeToString(digest[:8])+extension)
+	return filepath.Join(dir, stem+"-"+key+extension)
 }
 
-func readCache(path, base string) (cache, bool) {
+// CacheKey is the shared service-and-base ownership key. Empty is the legacy
+// default-service/default-base case; every other pair gets sixteen hex digits.
+func CacheKey(source, base string) string {
+	source = strings.TrimSpace(source)
+	base = normalizeBase(base)
+	if source == "" && base == DefaultBaseURL {
+		return ""
+	}
+	digest := sha256.Sum256([]byte(source + "\x00" + base))
+	return hex.EncodeToString(digest[:8])
+}
+
+func readCache(path, source, base string) (cache, bool) {
 	if path == "" {
 		return cache{}, false
 	}
@@ -1237,17 +1254,18 @@ func readCache(path, base string) (cache, bool) {
 		return cache{}, false
 	}
 	askedBase := normalizeBase(base)
-	if cached.Base == "" {
+	askedSource := strings.TrimSpace(source)
+	if cached.Base == "" && cached.Source == "" {
 		// Legacy caches have no ownership mark. They remain usable for the
 		// default base so ordinary installs pay no cold fetch during the
 		// upgrade. A custom-base legacy cache can therefore be read once as the
 		// default base's cache, bounded by the TTL; the first successful fetch
 		// stamps it. Discarding every legacy cache would make every ordinary
 		// install pay for the rarer custom-base case.
-		if askedBase != DefaultBaseURL {
+		if askedSource != "" || askedBase != DefaultBaseURL {
 			return cache{}, false
 		}
-	} else if normalizeBase(cached.Base) != askedBase {
+	} else if cached.Base == "" || strings.TrimSpace(cached.Source) != askedSource || normalizeBase(cached.Base) != askedBase {
 		return cache{}, false
 	}
 	// The one cleaning pass for the cached path — an older cache may predate a
