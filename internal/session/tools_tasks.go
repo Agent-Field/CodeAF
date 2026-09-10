@@ -226,7 +226,7 @@ func (a *Agent) tasksTool() bare.Tool {
 func (a *Agent) taskSearchText(query string, limit int, scope string) string {
 	out := taskRowsTextLimit(a.taskRows(), query, limit)
 	if !a.tellsElsewhere() {
-		return out
+		return a.taskConversationHint(out)
 	}
 	now := time.Now()
 	if section := taskElsewhereText(a.Elsewhere().Tasks(), query, now); section != "" {
@@ -238,10 +238,19 @@ func (a *Agent) taskSearchText(query string, limit int, scope string) string {
 	// world.go's reading of the machine, cheap enough to take on a keystroke
 	// and still not a thing to take on a turn nobody asked the question in.
 	if scope != taskScopeEverywhere {
-		return out
+		return a.taskConversationHint(out)
 	}
 	if section := taskEverywhereText(a.OtherProjects(now), query, now); section != "" {
 		out += "\n" + section
+	}
+	return a.taskConversationHint(out)
+}
+
+// A miss in this project is not a miss everywhere. Only a final empty result
+// points at conversations, and only when that reader is on the caller's belt.
+func (a *Agent) taskConversationHint(out string) string {
+	if a.config.hasConversationHistory() && strings.HasPrefix(out, "No task matches ") && !strings.Contains(out, "\n") {
+		out += " If this was a conversation rather than handed-off work, search_conversations searches saved chats across places. A saved memory may suggest the answer but does not locate the original conversation; look up the source before answering."
 	}
 	return out
 }
