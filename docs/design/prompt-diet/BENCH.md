@@ -415,8 +415,10 @@ shared key.
 
 DESIGN.md §3's verdict on the lean profile is explicit: it "exists only if
 `prefixbudget_test` weighs it and a local-model bench cell runs it". This is
-that cell, and it is not runnable yet — `AFORGE_PROMPT_PROFILE` does not exist
-in the merged tree, so there is nothing to switch on. When lane G lands it:
+that cell. Lane G has landed `internal/session/promptprofile.go`, so the switch
+now exists: `AFORGE_PROMPT_PROFILE`, taking `full` or `lean`. The cell has not
+been run — it is next after the two candidate regressions in §1a are settled,
+because a lean profile measured against an unsettled baseline proves nothing.
 
 ```sh
 ssh spark 'export PATH=$HOME/.local/bin:$PATH; set -a; . ~/.config/fleet/secrets.env; set +a
@@ -550,9 +552,11 @@ as a pass nor as a regression.
 - **`AFORGE_PROMPT_ABLATE`**, from lane C or lane G. Without it, two of the ten
   largest law units — standing and accounts — cannot be ablated at all (§5).
 
-- **`AFORGE_PROMPT_PROFILE`**, from lane G, for the lean cell in §4a. Until it
-  exists the lean profile has no bench cell, and DESIGN.md §3 says it should not
-  ship without one.
+- **The lean cell in §4a has not been run.** `AFORGE_PROMPT_PROFILE` exists now
+  that lane G has landed, so nothing blocks it but time — and the order matters:
+  settle §1a's two candidate regressions first, because a lean profile measured
+  against an unsettled baseline proves nothing. DESIGN.md §3 says the profile
+  should not ship without this cell.
 
 - **The raw wire evidence for lane K** is on the Spark and needs no re-capture.
   Per label — `dev` and `diet`:
