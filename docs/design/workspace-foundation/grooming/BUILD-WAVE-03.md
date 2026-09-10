@@ -80,7 +80,7 @@ Source commits: `63609b5a4`, `3afdba568`, `b427dde07`, `62bd2f9fc`, `178db0eed`,
 `f651acd9a`, `d73ce259a`, `9cc7b638c`; docs and receipts follow in their own commits.
 
 Deterministic, scripted model (not live-model acceptance):
-- Final focused validation: `validation/wave03-validate.log`. It records the revision, host, per-step PASS/FAIL and time for each step:
+- Final focused validation: `validation/wave03-validate.log` (script `validation/wave03-validate.sh.txt`). **All 11 steps passed, STATUS 0, with 0 skips**, at `7c3312539`: tracked tree clean, source identical to `9cc7b638c`, 2026-09-10 20:49:33–20:51:17 UTC, host `spark`, aarch64, go1.26.5. The journey logged `firings=9 rule checks=11`. It records the revision, host, per-step PASS/FAIL and time for each step:
   - vet;
   - the standing, workspace, workspaceview and manual suites;
   - selected session and cmd tests;

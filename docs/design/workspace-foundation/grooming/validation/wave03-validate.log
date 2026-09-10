@@ -1,0 +1,186 @@
+REVISION 7c331253944932031ee30d9f946e71214a0941af
+TRACKED-CLEAN 0 modified tracked files
+HOST spark aarch64 go version go1.26.5 linux/arm64
+STARTED 2026-09-10T20:49:33Z
+=== STEP vet: go vet ./internal/standing/ ./internal/session/ ./cmd/aforge/ ./internal/workspace/ ./internal/workspaceview/ ./internal/manual/
+=== RESULT vet PASS 7s
+=== STEP vet-e2e: go vet -tags e2e ./internal/e2e/ ./internal/session/
+=== RESULT vet-e2e PASS 2s
+=== STEP small-suites: go test -count=1 ./internal/standing/ ./internal/workspace/ ./internal/workspaceview/ ./internal/manual/
+ok  	github.com/Agent-Field/aforge-v2/internal/standing	0.168s
+ok  	github.com/Agent-Field/aforge-v2/internal/workspace	6.066s
+ok  	github.com/Agent-Field/aforge-v2/internal/workspaceview	0.235s
+ok  	github.com/Agent-Field/aforge-v2/internal/manual	1.373s
+=== RESULT small-suites PASS 6s
+=== STEP session-selected: go test -count=1 -timeout 15m -run Standing|Stand|ContextTrace|Governing|Organization|Trace|Firing|Inbox|Manual|Answer|Report|Rule|Finding|StopWhile ./internal/session/
+ok  	github.com/Agent-Field/aforge-v2/internal/session	39.880s
+=== RESULT session-selected PASS 48s
+=== STEP cmd-selected: go test -count=1 -timeout 15m -run Help|Usage|Collections|Width|Tick|Command|Unknown|Doors|Vocabulary|Plain|Standing|Emptiness|Launch|Concept|Flag ./cmd/aforge/
+ok  	github.com/Agent-Field/aforge-v2/cmd/aforge	3.475s
+=== RESULT cmd-selected PASS 6s
+=== STEP e2e-untagged: go test -count=1 ./internal/e2e/
+ok  	github.com/Agent-Field/aforge-v2/internal/e2e	0.240s
+=== RESULT e2e-untagged PASS 0s
+=== STEP laws: make test-laws
+./scripts/laws.sh
+laws: 64 files in 19 packages
+ok  	github.com/Agent-Field/aforge-v2/cmd/aforge	1.215s
+ok  	github.com/Agent-Field/aforge-v2/internal/ci	0.383s
+ok  	github.com/Agent-Field/aforge-v2/internal/config	0.040s
+ok  	github.com/Agent-Field/aforge-v2/internal/e2e	0.293s
+ok  	github.com/Agent-Field/aforge-v2/internal/exec	1.249s
+ok  	github.com/Agent-Field/aforge-v2/internal/guard	0.129s
+ok  	github.com/Agent-Field/aforge-v2/internal/head	0.035s
+ok  	github.com/Agent-Field/aforge-v2/internal/iconlaw	0.174s
+ok  	github.com/Agent-Field/aforge-v2/internal/lane	0.293s
+ok  	github.com/Agent-Field/aforge-v2/internal/manual	0.936s
+ok  	github.com/Agent-Field/aforge-v2/internal/provider	1.500s
+ok  	github.com/Agent-Field/aforge-v2/internal/registry	0.051s
+ok  	github.com/Agent-Field/aforge-v2/internal/relay	0.053s
+ok  	github.com/Agent-Field/aforge-v2/internal/session	2.635s
+ok  	github.com/Agent-Field/aforge-v2/internal/thread	0.399s
+ok  	github.com/Agent-Field/aforge-v2/internal/tui2/tokens	0.024s
+ok  	github.com/Agent-Field/aforge-v2/internal/tui3	10.278s
+ok  	github.com/Agent-Field/aforge-v2/internal/workspace	0.013s
+ok  	github.com/Agent-Field/aforge-v2/internal/workspaceview	0.028s
+=== RESULT laws PASS 28s
+=== STEP changelog: make changelog-check
+docs/changes/unreleased: 412 entries, all well formed.
+=== RESULT changelog PASS 0s
+=== STEP build: make build
+# Generators execute on the build host, even when aforge targets another OS.
+env -u GOOS -u GOARCH go generate ./internal/manual
+go build -tags=aforge_packed_manual -trimpath -ldflags="-s -w -X github.com/Agent-Field/aforge-v2/internal/buildinfo.rev=7c3312539 -X github.com/Agent-Field/aforge-v2/internal/buildinfo.dirty=true -X github.com/Agent-Field/aforge-v2/internal/buildinfo.builtAt=2026-09-10T20:51:10Z" -o bin/aforge ./cmd/aforge
+=== RESULT build PASS 2s
+=== STEP packed-manual: make test-packed-manual
+# Generators execute on the build host, even when aforge targets another OS.
+env -u GOOS -u GOARCH go generate ./internal/manual
+go test -tags=aforge_packed_manual ./internal/manual
+ok  	github.com/Agent-Field/aforge-v2/internal/manual	1.415s
+=== RESULT packed-manual PASS 2s
+=== STEP localwork-journey: env AFORGE_LOCALWORK_KEEP=/tmp/opus-localwork/final-keep-7c3312539 go test -tags e2e -count=1 -timeout 10m -run ^TestLocalWorkJourney$ -v ./internal/e2e/
+=== RUN   TestLocalWorkJourney
+    localwork_e2e_test.go:86: check: 1 checked
+    localwork_e2e_test.go:91: check: 1 checked · 1 ran
+    localwork_e2e_test.go:121: check: 1 checked
+    localwork_e2e_test.go:130: check: 1 checked · 1 ran
+    localwork_e2e_test.go:143: check: nothing was due
+    localwork_e2e_test.go:146: check: 1 checked · 1 ran
+    localwork_e2e_test.go:167: check: 1 checked · 1 ran
+    localwork_e2e_test.go:180: check: 1 checked
+    localwork_e2e_test.go:207: check: 1 checked · 1 ran
+    localwork_e2e_test.go:221: check: 2 checked
+    localwork_e2e_test.go:225: check: 2 checked · 2 ran
+    localwork_e2e_test.go:248: check: 1 checked
+    localwork_e2e_test.go:270: SHOW inbox work:
+        4413a6cd2686a7b0  retired  Keep an eye on the inbox folder and keep reports/inbox-report.md current.
+          retired: stopped by you
+          wakes when inbox/* changes
+          workspace: /tmp/opus-localwork/final-keep-7c3312539/project
+          instructions (version 2): Read the changed files in inbox/ and list who owns each open request. FOCUS: owners
+          report: reports/inbox-report.md
+          set up by: person, through the terminal
+          folder: cf7fc7af6dce216bc5ac4b74cebf2f3b Launch (placed directly)
+          rule reaching it: 5fc913d29354c67d RULE-LAUNCH-7: inbox reports never quote email addresses; write [redacted] instead.
+          ran 7 time(s); last came to landed
+        runs, newest first:
+          0008  finished · landed · instructions v2 · Sep 10 16:51:17
+              woken: the files you are watching changed
+              added inbox/d.md
+              came to: report updated: reports/inbox-report.md — # Report FOCUS: owners - added inbox/d.md rules seen: RULE-LAUNCH-7 read: Decision: keep the Friday date.
+              checked against 1 rule(s): kept
+              published reports/inbox-report.md (107 bytes, sha256 758db1ee620e)
+              journal: /tmp/opus-localwork/final-keep-7c3312539/home/v3/standing/4413a6cd2686a7b0/runs/0008/transcript.jsonl
+          0007  finished · landed · instructions v2 · Sep 10 16:51:17
+              woken: the files you are watching changed
+              added inbox/f.md
+              added inbox/g.md
+              came to: report updated: reports/inbox-report.md — # Report FOCUS: owners - added inbox/f.md - added inbox/g.md rules seen: RULE-LAUNCH-7 read: Request: ask Bob for th…
+              checked against 1 rule(s): kept
+              published reports/inbox-report.md (125 bytes, sha256 52d13181832b)
+              journal: /tmp/opus-localwork/final-keep-7c3312539/home/v3/standing/4413a6cd2686a7b0/runs/0007/transcript.jsonl
+          0006  finished · needs-you · instructions v2 · Sep 10 16:51:16
+              woken: the files you are watching changed
+              added inbox/f.md
+              came to: report held back, not published: it breaks a rule placed on this work — “RULE-LAUNCH-7”: the report says “bob@example.com” — it quotes an email addr…
+              checked against 1 rule(s): broken after one correction
+              sent back once: “RULE-LAUNCH-7”: the report says “bob@example.com” — it quotes an email address
+              still breaks: “RULE-LAUNCH-7” — the report said “bob@example.com”
+              held back, not published; draft: /tmp/opus-localwork/final-keep-7c3312539/home/v3/standing/4413a6cd2686a7b0/runs/0006/held-report.md
+              journal: /tmp/opus-localwork/final-keep-7c3312539/home/v3/standing/4413a6cd2686a7b0/runs/0006/transcript.jsonl
+          0005  finished · landed · instructions v2 · attempt 2 · Sep 10 16:51:16
+              woken: the files you are watching changed
+              added inbox/c.md
+              retries interrupted run 0004
+              came to: report updated: reports/inbox-report.md — # Report FOCUS: owners - added inbox/c.md rules seen: RULE-LAUNCH-7 read: Request: legal review by Tuesday.
+              checked against 1 rule(s): kept
+              published reports/inbox-report.md (109 bytes, sha256 de6f9d2c9fef)
+              journal: /tmp/opus-localwork/final-keep-7c3312539/home/v3/standing/4413a6cd2686a7b0/runs/0005/transcript.jsonl
+          0004  interrupted · instructions v2 · Sep 10 16:51:16
+              woken: the files you are watching changed
+              added inbox/c.md
+              interrupted; retried as 4413a6cd2686a7b0/0005
+              journal: /tmp/opus-localwork/final-keep-7c3312539/home/v3/standing/4413a6cd2686a7b0/runs/0004/transcript.jsonl
+          0003  finished · landed · instructions v2 · Sep 10 16:51:16
+              woken: the files you are watching changed
+              added inbox/b.md
+              came to: report updated: reports/inbox-report.md — # Report FOCUS: owners - added inbox/b.md rules seen: RULE-LAUNCH-7 read: Decision: budget capped at 5k.
+              checked against 1 rule(s): kept
+              published reports/inbox-report.md (106 bytes, sha256 c4a4aad34735)
+              journal: /tmp/opus-localwork/final-keep-7c3312539/home/v3/standing/4413a6cd2686a7b0/runs/0003/transcript.jsonl
+          0002  finished · landed · instructions v2 · Sep 10 16:51:15
+              woken: the files you are watching changed
+              modified inbox/a.md
+              came to: report updated: reports/inbox-report.md — # Report FOCUS: owners - modified inbox/a.md rules seen: RULE-LAUNCH-7 read: Decision: ship Friday. Ask [redacted] t…
+              checked against 1 rule(s): kept after one correction
+              sent back once: “RULE-LAUNCH-7”: the report says “alice@example.com” — it quotes an email address
+              published reports/inbox-report.md (138 bytes, sha256 79ffc27cc9c2)
+              journal: /tmp/opus-localwork/final-keep-7c3312539/home/v3/standing/4413a6cd2686a7b0/runs/0002/transcript.jsonl
+          0001  finished · landed · instructions v1 · Sep 10 16:51:15
+              woken: the files you are watching changed
+              added inbox/a.md
+              came to: report updated: reports/inbox-report.md — # Report FOCUS: decisions - added inbox/a.md rules seen: RULE-LAUNCH-7 read: Decision: ship Friday. Ask [redacted] t…
+              checked against 1 rule(s): kept after one correction
+              sent back once: “RULE-LAUNCH-7”: the report says “alice@example.com” — it quotes an email address
+              published reports/inbox-report.md (138 bytes, sha256 d43ef6f4051f)
+              journal: /tmp/opus-localwork/final-keep-7c3312539/home/v3/standing/4413a6cd2686a7b0/runs/0001/transcript.jsonl
+        log:
+          2026-09-10T16:51:15-04:00  set up at the terminal
+          2026-09-10T16:51:15-04:00  the files you are watching changed — landed: report updated: reports/inbox-report.md — # Report  FOCUS: decisions - added inbox/a.md rules seen: RULE-LAUNCH-7 read: Decision: ship Friday. Ask [redacted] to confirm the venue.
+          2026-09-10T16:51:15-04:00  revised at the terminal to version 2: instructions
+          2026-09-10T16:51:16-04:00  the files you are watching changed — landed: report updated: reports/inbox-report.md — # Report  FOCUS: owners - modified inbox/a.md rules seen: RULE-LAUNCH-7 read: Decision: ship Friday. Ask [redacted] to confirm the venue.
+          2026-09-10T16:51:16-04:00  paused at the terminal
+          2026-09-10T16:51:16-04:00  resumed at the terminal
+          2026-09-10T16:51:16-04:00  the files you are watching changed — landed: report updated: reports/inbox-report.md — # Report  FOCUS: owners - added inbox/b.md rules seen: RULE-LAUNCH-7 read: Decision: budget capped at 5k.
+          2026-09-10T16:51:16-04:00  the files you are watching changed — landed: report updated: reports/inbox-report.md — # Report  FOCUS: owners - added inbox/c.md rules seen: RULE-LAUNCH-7 read: Request: legal review by Tuesday.
+          2026-09-10T16:51:16-04:00  the files you are watching changed — needs-you: report held back, not published: it breaks a rule placed on this work — “RULE-LAUNCH-7”: the report says “bob@example.com” — it quotes an email address. The previous report is unchanged; t…
+          2026-09-10T16:51:17-04:00  the files you are watching changed — landed: report updated: reports/inbox-report.md — # Report  FOCUS: owners - added inbox/f.md - added inbox/g.md rules seen: RULE-LAUNCH-7 read: Request: ask Bob for the keys.
+          2026-09-10T16:51:17-04:00  the files you are watching changed — landed: report updated: reports/inbox-report.md — # Report  FOCUS: owners - added inbox/d.md rules seen: RULE-LAUNCH-7 read: Decision: keep the Friday date.
+          2026-09-10T16:51:17-04:00  stopped at the terminal
+    localwork_e2e_test.go:271: SHOW review work:
+        41d6921508496a57  active  When the product spec changes, review the launch copy against it.
+          wakes when product/* changes
+          workspace: /tmp/opus-localwork/final-keep-7c3312539/project
+          instructions (version 1): Compare marketing/launch-copy.md with the changed product files and list claims they no longer support. Do not edit the copy. FOCUS: claims
+          report: marketing/review-notes.md
+          set up by: person, through the terminal
+          folder: 4aa444e2fed7ae561d5f766b83cf7c27 Marketing (placed directly)
+          rule reaching it: 19000ac9a51769a1 RULE-MKT-9: marketing notes must not promise offline support unless product/spec.md says it is supported.
+          ran 1 time(s); last came to landed
+        runs, newest first:
+          0001  finished · landed · instructions v1 · Sep 10 16:51:17
+              woken: the files you are watching changed
+              modified product/spec.md
+              came to: report updated: marketing/review-notes.md — # Report FOCUS: claims - modified product/spec.md rules seen: RULE-MKT-9 read: Offline support: removed in this re…
+              checked against 1 rule(s): kept
+              published marketing/review-notes.md (122 bytes, sha256 19fa8609c9e4)
+              journal: /tmp/opus-localwork/final-keep-7c3312539/home/v3/standing/41d6921508496a57/runs/0001/transcript.jsonl
+        log:
+          2026-09-10T16:51:17-04:00  set up at the terminal
+          2026-09-10T16:51:17-04:00  the files you are watching changed — landed: report updated: marketing/review-notes.md — # Report  FOCUS: claims - modified product/spec.md rules seen: RULE-MKT-9 read: Offline support: removed in this release.
+    localwork_e2e_test.go:272: LOCALWORK RECEIPT scripted model firings=9 rule checks=11 (scripted model, not live-model acceptance)
+--- PASS: TestLocalWorkJourney (2.22s)
+PASS
+ok  	github.com/Agent-Field/aforge-v2/internal/e2e	2.237s
+=== RESULT localwork-journey PASS 3s
+FINISHED 2026-09-10T20:51:17Z STATUS 0

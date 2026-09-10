@@ -240,8 +240,9 @@ recorded after combined integration. All local builds/tests are prohibited (C25)
 - Lane `codex/personal-e2e-opus`, base `72660bf57`, destination #662 through
   `codex/personal-ai-backend`. Final source revision `9cc7b638c`; plan and
   receipts are in [BUILD-WAVE-03.md](BUILD-WAVE-03.md).
-- Focused Spark validation: [receipt](validation/wave03-validate.log) (revision,
-  host, per-step PASS/FAIL). Deterministic binary journey `TestLocalWorkJourney`
+- Focused Spark validation at `7c3312539`: **PASS, STATUS 0**, 11 of 11 steps,
+  0 skips, 20:49:33–20:51:17 UTC ([receipt](validation/wave03-validate.log), which
+  records the revision, host and per-step PASS/FAIL). Deterministic binary journey `TestLocalWorkJourney`
   ran with a scripted loopback model; that is not live-model acceptance.
 - Live, on `deepseek/deepseek-v4-flash`, one call at a time, well under $0.10 in total:
   - live5 at `9cc7b638c`: `DEMO PASSED` ([log](validation/wave03-live5.log)).
