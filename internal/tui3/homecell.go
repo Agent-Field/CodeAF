@@ -17,11 +17,13 @@ import (
 // were built — only what the cursor, the pointer and the one moving cell look
 // like this frame.
 
-// homeCellLine is one screen row of one column, and the line of home's list a
-// pointer on it means (-1 for a row that opens nothing).
+// homeCellLine is one screen row of one column, the line of home's list a
+// pointer on it means (-1 for a row that opens nothing), and the heading line
+// it is (-1 for every row that is not a panel's heading).
 type homeCellLine struct {
 	text string
 	at   int
+	head int
 }
 
 // homeGridGeometry is where each column starts and how wide it is. The columns
@@ -66,7 +68,7 @@ func (a *app) homeGridRows(width, room int, pal palette) []placeRow {
 func homeGridZip(columns [][]homeCellLine, y int, xs []int) placeRow {
 	mark := homeMark{line: -1, pane: -1, grid: true}
 	for c := range mark.cells {
-		mark.cells[c] = -1
+		mark.cells[c], mark.heads[c] = -1, -1
 	}
 	var b strings.Builder
 	used := 0
@@ -74,7 +76,7 @@ func homeGridZip(columns [][]homeCellLine, y int, xs []int) placeRow {
 		if y >= len(column) {
 			continue
 		}
-		mark.cells[c] = column[y].at
+		mark.cells[c], mark.heads[c] = column[y].at, column[y].head
 		if column[y].text == "" {
 			continue
 		}
@@ -98,15 +100,16 @@ func (a *app) homeLineRows(line homeLine, at, width int, pal palette, heading bo
 	lit := at == h.cursor || at == h.hover
 	if line.cell == nil {
 		if line.kind == homeExchangeRow {
-			return []homeCellLine{{text: a.exchangeRowLine(line, at, width, pal), at: hit}}
+			return []homeCellLine{{text: a.exchangeRowLine(line, at, width, pal), at: hit, head: -1}}
 		}
-		return []homeCellLine{{at: -1}}
+		return []homeCellLine{{at: -1, head: -1}}
 	}
 	cell := line.cell
+	head := -1
 	var texts []string
 	switch cell.kind {
 	case cellHead:
-		texts = []string{homeCellHead(cell, width, pal, heading)}
+		texts, head = []string{homeCellHead(cell, width, pal, heading)}, at
 	case cellWhisper, cellFold:
 		texts = []string{homeCellQuiet(cell, width, pal, lit)}
 	case cellBar:
@@ -120,7 +123,7 @@ func (a *app) homeLineRows(line homeLine, at, width int, pal palette, heading bo
 	}
 	out := make([]homeCellLine, 0, len(texts))
 	for _, text := range texts {
-		out = append(out, homeCellLine{text: text, at: hit})
+		out = append(out, homeCellLine{text: text, at: hit, head: head})
 	}
 	return out
 }
@@ -141,15 +144,18 @@ func (h *homeView) marksPanel(at int) bool {
 // homeCellLeadBlank is the lead of a row that wears no mark.
 var homeCellLeadBlank = strings.Repeat(" ", homeGridLead)
 
-// homeCellHead is a panel's heading: its word in the muted tier, its clause at
-// the right margin dim.
+// homeCellHead is a panel's heading: its word in the places' one heading ink
+// (placeprose.go's [placeHeadingInk]), its clause at the right margin dim.
+// HOME AND THE PLACES READ THEIR HEADINGS FROM ONE LINE, because `tab` from home
+// into a place crosses no seam only while a section word is the same furniture
+// on both sides of it.
 //
 // A HEADING IS NEVER LIT. The panel the cursor is standing in says so with the
 // cursor step's ground on its heading, and the words stay where they were
 // (docs/DESIGN-LANGUAGE.md, "the section holding the cursor marks its own
 // heading") — one heading per frame, following the keyboard only.
 func homeCellHead(cell *homeCell, width int, pal palette, marked bool) string {
-	text := switcherSides(width, cell.title, cell.right, pal.muted, homeCellMoneyInk(cell.money, pal))
+	text := switcherSides(width, cell.title, cell.right, placeHeadingInk(pal), homeCellMoneyInk(cell.money, pal))
 	if marked {
 		return pal.cursor(text, width)
 	}

@@ -572,6 +572,13 @@ bold inside it; every other row is dim. Exactly one row on the frame wears that 
 the row under your mouse pointer wears the same one while the pointer is on it — whether
 you arrived with `↓` or with the mouse, the row you are on is the row you are on.
 
+**One click is `enter`.** A click on a row opens it, and a click on a fold that names a
+place opens that place. A click on a panel's **heading** opens the place the heading names:
+`needs you`, `running` and `since you left` open tasks, `spend` opens spend, `next up` opens
+standing, `where you were` opens search, and `projects` opens nothing. A click never starts
+a paid turn, so on the row of what you typed, on `ask here` and on a `/` command it only
+puts the cursor there, and `enter` does the rest.
+
 There is **no `›` lead mark** on the row. The state mark already sits in the first cell of
 every row, and two more cells for a pointer would push every name two columns right for
 something the ground already says.

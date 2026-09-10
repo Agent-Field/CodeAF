@@ -415,9 +415,9 @@ func TestTheLedgerLineAboutLandedWorkOpensTheTasksPlace(t *testing.T) {
 }
 
 // ONE DOOR, BOTH HANDS. A click on a row arrives exactly where enter did,
-// because the pointer's second press is [app.homeEnter] and not a second
-// spelling of it — the first press puts the cursor on the row and the second
-// opens it ([app.homePress]).
+// because the press is [app.homeEnter] and not a second spelling of it — ONE
+// press puts the cursor on the row and opens it ([app.homePress]), as it does
+// on every place.
 func TestAClickOnARowArrivesWhereEnterDoes(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
@@ -440,9 +440,8 @@ func TestAClickOnARowArrivesWhereEnterDoes(t *testing.T) {
 		t.Fatalf("the other conversation has no row to press:\n%s", homeText(a))
 	}
 	homeClickAt(t, a, at)
-	homeClickAt(t, a, at)
 	if a.at(pageHome) {
-		t.Fatalf("two presses left home up saying %q", a.home.msg)
+		t.Fatalf("a press left home up saying %q", a.home.msg)
 	}
 	if a.file != other {
 		t.Fatalf("a click opened %q, want the row's own conversation %q", a.file, other)

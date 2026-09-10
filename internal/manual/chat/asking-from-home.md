@@ -183,8 +183,9 @@ it:
 - **`esc`** in the pane hands the keyboard to the list. One layer at a time: if you have
   half a follow-up typed, the first `esc` clears that and the second one leaves.
 - **`enter`** on the exchange's row in the list hands the keyboard to its pane.
-- **clicking** puts the keyboard where the pointer is. A click on a list row selects that
-  row *and* takes the keyboard to the column; a click anywhere in the pane brings it back.
+- **clicking** puts the keyboard where the pointer is. A click on a list row opens that
+  row, as `enter` would, *and* takes the keyboard to the column; a click anywhere in the
+  pane brings it back.
 - **answering `1`** on a card hands it back by itself. The thing you asked for is being
   made, and the list is where you go next.
 
@@ -226,12 +227,13 @@ Resizing between the two shapes costs nothing: it is the same exchange and the s
 keyboard, drawn in whichever geometry fits. Drag a window narrow with the pane open and the
 pane fills the frame; drag it wide again and it goes back beside the list.
 
-## Why can't I click a row while asking — you can, and it selects it
+## Why can't I click a row while asking — you can, and it opens it
 
-You can, and it does. A click on any row of the left column puts the cursor on it and gives
-the keyboard to the column, so the next `↑` or `↓` walks from there. A second click on the
-same row opens it, which is home's ordinary two-step — one click that switched conversations
-would make a mis-aimed pointer close the session you are in.
+You can, and it does. A click on any row of the left column puts the cursor on it, gives
+the keyboard to the column and opens the row, exactly as `enter` on it would — one click,
+the same as on every place. A click on the exchange's own row gives its pane the keyboard,
+and a click on `ask here` or on the row of what you typed only puts the cursor there,
+because a click never starts a paid turn.
 
 A click on one of the card's answers in the pane answers the card, the same way clicking one
 answers it in a conversation. Each answer owns its whole row, so there is no gap between two

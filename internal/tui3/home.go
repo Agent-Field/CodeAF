@@ -3856,11 +3856,9 @@ func (a *app) homeDoorPress(x, y int) (tea.Cmd, bool) {
 // first thing it answers.
 //
 // A press in the right pane while an exchange is up belongs to the exchange
-// (homeexchange.go's [app.exchangePress]); everything else belongs to the left
-// column, where the first click puts the cursor on a row and the second opens
-// it. That two-step is the settings panel's and it is here for its reason — a
-// single click that switched conversations would make a mis-aimed pointer close
-// somebody's session.
+// (homeexchange.go's [app.exchangePress]); everything else belongs to the
+// list, where a press on a row is `enter` on it and a press on a panel's
+// heading opens the place the heading names.
 //
 // AND A CLICK ON A ROW SELECTS IT, WHICH MEANS TAKING THE KEYBOARD. It used to
 // move the cursor and leave the hand in the pane, so the row lit up and then the
@@ -3914,6 +3912,12 @@ func (a *app) homePress(x, y int) tea.Cmd {
 	if row, column, ok := a.homePane(x, y); ok {
 		return a.exchangePress(column, row)
 	}
+	// A PANEL'S HEADING IS A DOOR INTO THE PLACE IT NAMES (homegrid.go's
+	// [app.homeHeadPress]). It is read before the rows because a heading is no
+	// stop, so the row map below has nothing to say about it.
+	if cmd, took := a.homeHeadPress(x, y); took {
+		return cmd
+	}
 	at := a.homeHitAt(x, y, hits)
 	if at < 0 || at >= len(a.home.lines) || !a.home.lines[at].stop() {
 		return nil
@@ -3922,40 +3926,39 @@ func (a *app) homePress(x, y int) tea.Cmd {
 	// out to be. It is done before the row is acted on so that a fold, an open
 	// and a plain selection all leave the hand in the same place.
 	a.homeTakeList()
-	// A FOLDED TAIL OPENS ON ONE CLICK. The two-step below is there so a
-	// mis-aimed pointer cannot switch somebody's conversation; unfolding a
-	// project costs nothing and undoes itself, so making a person click it
-	// twice would be ceremony guarding against no risk.
-	if a.home.lines[at].kind == homeQuiet {
-		a.home.cursor = at
-		a.home.picked = true
-		a.home.fold(a.home.lines[at].dir, a.home.lines[at].folded)
-		a.touch()
-		return nil
-	}
-	if a.home.lines[at].kind == homeItemFold {
-		a.home.cursor = at
-		a.home.picked = true
-		a.home.foldItems(a.home.lines[at].dir, a.home.lines[at].folded)
-		a.touch()
-		return nil
-	}
-	if a.home.lines[at].kind == homeProject {
-		a.home.cursor = at
-		a.home.picked = true
-		a.home.foldProject(a.home.lines[at].dir, a.home.lines[at].folded)
-		a.touch()
-		return nil
-	}
-	if a.home.cursor == at {
-		return a.homeEnter()
-	}
 	a.home.cursor = at
 	if a.home.lines[at].kind != homeAction {
 		a.home.picked = true
 	}
 	a.touch()
-	return nil
+	// A CLICK ON A ROW IS `enter` ON IT, the one grammar every place keeps
+	// (pages.go's [place.press]): the pointer resting is the preview, and the
+	// press is the choice. It used to take two — the first to select, the
+	// second to open — against a mis-aimed pointer switching somebody's
+	// conversation; `esc` puts them straight back, and one screen that wanted
+	// two clicks among six that want one was the gesture a person could not
+	// trust.
+	//
+	// A CLICK NEVER SPENDS. The rows whose `enter` sends words to a model lose
+	// only the second half: the press lands the cursor, and the key does the
+	// rest ([homeClickSpends]).
+	if homeClickSpends(a.home.lines[at]) {
+		return nil
+	}
+	return a.homeEnter()
+}
+
+// homeClickSpends reports the rows of home whose `enter` would start a paid
+// turn on a person's behalf: the typed line itself, `ask here`, and a command
+// — which may be one that asks the model something. A press lands on them and
+// stops there, for [place.press]'s reason: a click that starts a paid turn is a
+// gesture nobody can take back.
+func homeClickSpends(line homeLine) bool {
+	switch line.kind {
+	case homeAction, homeAskHere, homeCommand:
+		return true
+	}
+	return false
 }
 
 // homeTakeList hands the keyboard to the left column, leaving whatever is in
@@ -4218,6 +4221,11 @@ type homeMark struct {
 	// [homeGridZip]); cells is those lines, -1 where a column drew nothing.
 	grid  bool
 	cells [homeGridMaxCols]int
+	// heads is the panel heading each column drew on this row, -1 where it drew
+	// none. A heading is no stop — the cursor never rests on it — but it is a
+	// door the pointer can press ([app.homeHeadPress]), so it is kept apart
+	// from cells, which every reader takes to mean "a row the cursor can reach".
+	heads [homeGridMaxCols]int
 }
 
 // homeDrawn is one screen line, the column line it belongs to, and — while an
