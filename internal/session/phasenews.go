@@ -35,6 +35,12 @@ import (
 // this package's own name, so a surface imports one package rather than two.
 type PhaseNews = provider.PhaseNews
 
+// Phase is the word for what is happening, and it is [provider.Phase] under
+// this package's own name for [PhaseNews]'s reason: ONE VOCABULARY, and a
+// reader that has to import two packages to name a phase and the news carrying
+// it is two spellings waiting to happen.
+type Phase = provider.Phase
+
 // The phases a turn has that a request does not. They are spelled in
 // internal/provider for the reason above — one vocabulary — and named here so a
 // reader of this package can see the whole list in one place.
@@ -383,12 +389,13 @@ func (a *Agent) tellPhase(phase provider.Phase, detail string, since time.Time) 
 	// its clock reset to zero by every beat, which reads as a stage restarting
 	// over and over rather than one that is lasting.
 	news := PhaseNews{
-		Phase:  phase,
-		Since:  since,
-		Detail: detail,
-		Model:  model,
-		Role:   a.laneRole(),
-		At:     now,
+		Phase:   phase,
+		Since:   since,
+		Detail:  detail,
+		Model:   model,
+		Role:    a.laneRole(),
+		Session: a.newsKey(),
+		At:      now,
 	}
 	a.phase.mu.Lock()
 	defer a.phase.mu.Unlock()
@@ -410,7 +417,7 @@ func (a *Agent) endPhase() {
 	a.mu.Lock()
 	model := a.model
 	a.mu.Unlock()
-	over := PhaseNews{Model: model, Role: a.laneRole()}
+	over := PhaseNews{Model: model, Role: a.laneRole(), Session: a.newsKey()}
 	a.phase.mu.Lock()
 	defer a.phase.mu.Unlock()
 	a.dropHeldPhaseLocked()
