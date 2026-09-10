@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: A question crosses the engine link, so the road an ordinary aforge takes has one
-pr: 766
+pr: 768
 surface: [chat, remote]
 invalidates:
   - "Questions did not cross the session-host link, which is the road a plain `aforge` or `aforge chat` in a project takes: internal/remote.Agent had ResolveQuestion and neither WatchQuestions nor OpenQuestions, internal/tui3 asserts the three as ONE seam, so no question was ever drawn there and every `ask` stopped the turn with nothing on any screen. They cross now, on wire version 14's `question` lane, and the answer crosses whole. Anything that says questions need `aforge chat --no-host`, or that answering over `--host` is not built, is stale — internal/manual/chat/questions.md carried both denials and no longer does."
