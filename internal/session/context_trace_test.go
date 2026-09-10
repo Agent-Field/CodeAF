@@ -64,12 +64,17 @@ func TestContextTraceDoesNotGuessOverlappingExecutionsOrDuplicateCalls(t *testin
 		`{"type":"message","role":"assistant","toolCalls":[{"id":"same","function":{"name":"read"}},{"id":"same","function":{"name":"read"}}]}`,
 		`{"type":"message","role":"tool","toolCallId":"same"}`,
 		`{"type":"message","role":"tool","toolCallId":"same"}`,
+		`{"type":"context_exposure","context_exposure":{"execution_id":"a","phase":"loop_returned"}}`,
+		`{"type":"message","role":"assistant","toolCalls":[{"id":"late","function":{"name":"read"}}]}`,
 	)
 	page, err := readContextTrace(context.Background(), path, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, row := range page.Rows[2:] {
+		if row.Exposure != nil {
+			continue
+		}
 		if row.ExecutionID != "" || row.Association != "overlapping_executions" || row.CallLine != 0 {
 			t.Errorf("ambiguous evidence attributed: %+v", row)
 		}

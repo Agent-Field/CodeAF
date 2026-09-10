@@ -173,6 +173,7 @@ func readContextTrace(ctx context.Context, path string, from int) (contextTraceP
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 64*1024), contextTraceScanLimit)
 	active := map[string]bool{}
+	interleaved := map[string]bool{}
 	pending := map[string][]int{}
 	line := 0
 	replayedMessages := 0
@@ -207,6 +208,11 @@ func readContextTrace(ctx context.Context, path string, from int) (contextTraceP
 			row.Kind, row.Exposure = entry.Type, entry.Exposure
 			if entry.Exposure.Phase == "selected" {
 				active[entry.Exposure.ExecutionID] = true
+				if len(active) > 1 {
+					for id := range active {
+						interleaved[id] = true
+					}
+				}
 			}
 			if entry.Exposure.Phase == "loop_returned" {
 				delete(active, entry.Exposure.ExecutionID)
@@ -244,9 +250,15 @@ func readContextTrace(ctx context.Context, path string, from int) (contextTraceP
 				row.Association = "unassigned"
 				if len(active) == 1 {
 					for id := range active {
-						row.ExecutionID = id
+						if interleaved[id] {
+							row.Association = "overlapping_executions"
+						} else {
+							row.ExecutionID = id
+						}
 					}
-					row.Association = "journal_window"
+					if row.ExecutionID != "" {
+						row.Association = "journal_window"
+					}
 				}
 				if len(active) > 1 {
 					row.Association = "overlapping_executions"
