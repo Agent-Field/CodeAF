@@ -1296,10 +1296,11 @@ func (s *sessionFile) appendTook(callID string, took time.Duration) {
 		return
 	}
 	callID = strings.TrimSpace(callID)
-	if callID == "" || took <= 0 {
+	ms := took.Milliseconds()
+	if callID == "" || ms <= 0 {
 		return
 	}
-	mark := journalTook{CallID: callID, DurationMS: took.Milliseconds()}
+	mark := journalTook{CallID: callID, DurationMS: ms}
 	s.mu.Lock()
 	if s.tooks == nil {
 		s.tooks = make(map[string]journalTook, 4)
