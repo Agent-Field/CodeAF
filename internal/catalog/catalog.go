@@ -6,10 +6,13 @@ package catalog
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -28,6 +31,10 @@ const (
 	TTL             = 24 * time.Hour
 	maxCatalogBytes = 16 << 20
 	cacheName       = "model-catalog.json"
+	// DefaultBaseURL lives beside the compiled-in fallback rows because those
+	// rows are this service's ids, so the package that serves them has to be
+	// able to recognise its own base.
+	DefaultBaseURL = "https://openrouter.ai/api/v1"
 )
 
 // Model is the small, durable part of one OpenRouter catalog row. Pricing is
@@ -209,6 +216,7 @@ func (m Model) accepts(parameter string) bool {
 type cache struct {
 	FetchedAt time.Time `json:"fetched_at"`
 	Models    []Model   `json:"models"`
+	Base      string    `json:"base,omitempty"`
 }
 
 // Options describes the one catalog fetch. Dir is the Aforge configuration
@@ -265,7 +273,8 @@ type rows struct {
 }
 
 // Load fetches at most once. A fresh cache avoids I/O; a failed fetch degrades
-// to a stale cache, then to a very small set of known modality defaults.
+// to a stale cache, then on the default base to a very small set of known
+// modality defaults.
 func Load(ctx context.Context, options Options) *Catalog {
 	return &Catalog{ready: loadOrFallback(ctx, options)}
 }
@@ -279,7 +288,11 @@ func loadOrFallback(ctx context.Context, options Options) (resolved *rows) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			_ = guard.Note("catalog/load", recovered)
-			resolved = newRows(hardcodedFallbacks())
+			if normalizeBase(options.BaseURL) == DefaultBaseURL {
+				resolved = newRows(hardcodedFallbacks())
+			} else {
+				resolved = newRows(nil)
+			}
 		}
 	}()
 	return load(ctx, options)
@@ -308,8 +321,9 @@ func load(ctx context.Context, options Options) *rows {
 	if options.Now != nil {
 		now = options.Now
 	}
-	path := cachePath(options.Dir)
-	cached, cachedOK := readCache(path)
+	base := normalizeBase(options.BaseURL)
+	path := cachePath(options.Dir, base)
+	cached, cachedOK := readCache(path, base)
 	if cachedOK && !options.Refresh && now().Before(cached.FetchedAt.Add(TTL)) {
 		return newRowsAt(cached.Models, cached.FetchedAt)
 	}
@@ -318,7 +332,7 @@ func load(ctx context.Context, options Options) *rows {
 	if err == nil && len(models) > 0 {
 		fetchedAt := now().UTC()
 		if path != "" {
-			_ = writeCache(path, cache{FetchedAt: fetchedAt, Models: models})
+			_ = writeCache(path, cache{FetchedAt: fetchedAt, Models: models, Base: base})
 		}
 		return newRowsAt(models, fetchedAt)
 	}
@@ -329,7 +343,13 @@ func load(ctx context.Context, options Options) *rows {
 		// empty one it cannot explain.
 		return newRowsAt(cached.Models, cached.FetchedAt)
 	}
-	return newRows(hardcodedFallbacks())
+	if base == DefaultBaseURL {
+		return newRows(hardcodedFallbacks())
+	}
+	// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN — handing eleven
+	// OpenRouter ids to a service that never published them puts four verbs on
+	// the belt that cannot succeed.
+	return newRows(nil)
 }
 
 // FetchedAt is when this catalog's rows left the provider, or the zero time
@@ -1175,15 +1195,36 @@ func parsePrice(raw string) (float64, bool) {
 	return price, true
 }
 
-func cachePath(dir string) string {
+func normalizeBase(raw string) string {
+	base := strings.TrimRight(strings.TrimSpace(raw), "/")
+	if base == "" {
+		return DefaultBaseURL
+	}
+	parsed, err := url.Parse(base)
+	if err != nil {
+		return base
+	}
+	parsed.Scheme = strings.ToLower(parsed.Scheme)
+	parsed.Host = strings.ToLower(parsed.Host)
+	return parsed.String()
+}
+
+func cachePath(dir, base string) string {
 	dir = strings.TrimSpace(dir)
 	if dir == "" {
 		dir = home.Dir()
 	}
-	return filepath.Join(dir, cacheName)
+	base = normalizeBase(base)
+	if base == DefaultBaseURL {
+		return filepath.Join(dir, cacheName)
+	}
+	digest := sha256.Sum256([]byte(base))
+	extension := filepath.Ext(cacheName)
+	stem := strings.TrimSuffix(cacheName, extension)
+	return filepath.Join(dir, stem+"-"+hex.EncodeToString(digest[:8])+extension)
 }
 
-func readCache(path string) (cache, bool) {
+func readCache(path, base string) (cache, bool) {
 	if path == "" {
 		return cache{}, false
 	}
@@ -1193,6 +1234,20 @@ func readCache(path string) (cache, bool) {
 	}
 	var cached cache
 	if json.Unmarshal(raw, &cached) != nil || cached.FetchedAt.IsZero() {
+		return cache{}, false
+	}
+	askedBase := normalizeBase(base)
+	if cached.Base == "" {
+		// Legacy caches have no ownership mark. They remain usable for the
+		// default base so ordinary installs pay no cold fetch during the
+		// upgrade. A custom-base legacy cache can therefore be read once as the
+		// default base's cache, bounded by the TTL; the first successful fetch
+		// stamps it. Discarding every legacy cache would make every ordinary
+		// install pay for the rarer custom-base case.
+		if askedBase != DefaultBaseURL {
+			return cache{}, false
+		}
+	} else if normalizeBase(cached.Base) != askedBase {
 		return cache{}, false
 	}
 	// The one cleaning pass for the cached path — an older cache may predate a
@@ -1228,8 +1283,9 @@ func writeCache(path string, cached cache) error {
 	return os.Rename(name, path)
 }
 
-// hardcodedFallbacks is written already cleaned — unique ids, lowercase
-// modalities — so it satisfies newRows without a cleaning pass of its own.
+// hardcodedFallbacks describes the default base and no other. It is written
+// already cleaned — unique ids, lowercase modalities — so it satisfies
+// newRows without a cleaning pass of its own.
 //
 // Every row is PriceUnknown, and that is worth writing out rather than letting
 // the zero value speak: these are names this build happens to remember, not

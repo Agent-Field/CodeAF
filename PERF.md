@@ -1716,12 +1716,16 @@ against a catalog endpoint that refuses immediately.
   constructor, shared with the headless doors where waiting is correct. What
   `chatv3_subharness.go` asks for itself is zero — it reads the window through
   `catalog.Catalog.ModelsNow`, which answers nil while the catalog warms.
-- **The whole launch asks sixteen**, and that figure is a ratchet, not a law.
-  Fifteen of them come from `v3RunHarness` building the harness tool bridge
-  eagerly, which arms the media hands, each of which asks which model would
-  draw, see, speak or sing. Nothing in the first frame reads any of those
-  answers. It is written down so it is a known debt rather than a discovery, and
-  the only direction it may move without a conversation is down.
+- **The whole launch asks eleven** against this fixture's empty custom-base
+  catalog, and that figure is a ratchet, not a law. Ten of them come from
+  `v3RunHarness` building the harness tool bridge eagerly and asking the
+  capability questions that leave all five media hands off the belt. This pin
+  no longer covers the extra catalog reads paid when a listing advertises the
+  media models and arms that family; those reads occur only on a machine whose
+  catalog says the tools can work. Nothing in the first frame reads any of
+  those answers. The smaller figure is written down as the known lower bound
+  this refusing fixture measures, and the only direction it may move without a
+  conversation is down.
 
 `catalog.Catalog.BlockingReads` and `packed.Unpacks` exist for these pins and
 for nothing else. Each is one atomic counter behind a door that already existed,

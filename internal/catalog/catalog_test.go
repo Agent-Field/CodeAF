@@ -92,7 +92,7 @@ func TestLoadFetchesParsesCachesAndQueriesModalities(t *testing.T) {
 func TestStaleCacheWinsOverOfflineAndEmptyUsesDefaults(t *testing.T) {
 	dir := t.TempDir()
 	old := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
-	if err := writeCache(cachePath(dir), cache{FetchedAt: old, Models: []Model{{
+	if err := writeCache(cachePath(dir, DefaultBaseURL), cache{FetchedAt: old, Base: DefaultBaseURL, Models: []Model{{
 		ID: "stale/image", OutputModalities: []string{"image"},
 	}}}); err != nil {
 		t.Fatal(err)
@@ -101,7 +101,7 @@ func TestStaleCacheWinsOverOfflineAndEmptyUsesDefaults(t *testing.T) {
 		return nil, errors.New("offline")
 	})}
 	c := Load(context.Background(), Options{
-		BaseURL: "https://openrouter.example/api/v1", Dir: dir, HTTPClient: offline,
+		BaseURL: DefaultBaseURL, Dir: dir, HTTPClient: offline,
 		Now: func() time.Time { return old.Add(48 * time.Hour) },
 	})
 	if got := c.ModelsWithOutput("image"); len(got) != 1 || got[0].ID != "stale/image" {
@@ -109,7 +109,7 @@ func TestStaleCacheWinsOverOfflineAndEmptyUsesDefaults(t *testing.T) {
 	}
 
 	empty := Load(context.Background(), Options{
-		BaseURL: "https://openrouter.example/api/v1", Dir: t.TempDir(), HTTPClient: offline,
+		BaseURL: DefaultBaseURL, Dir: t.TempDir(), HTTPClient: offline,
 	})
 	if len(empty.ModelsWithOutput("image")) == 0 || len(empty.ModelsWithOutput("speech")) == 0 {
 		t.Fatal("hardcoded offline defaults were not available")

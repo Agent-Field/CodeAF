@@ -32,7 +32,7 @@ func deepseekCatalog(t *testing.T, target string) *Catalog {
 	t.Helper()
 	body := strings.Replace(deepseekRows, "%s", target, 1)
 	return Load(context.Background(), Options{
-		BaseURL: "https://openrouter.ai/api/v1", Dir: t.TempDir(),
+		BaseURL: DefaultBaseURL, Dir: t.TempDir(),
 		HTTPClient: catalogClient(t, http.StatusOK, body, nil),
 	})
 }

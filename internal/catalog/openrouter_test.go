@@ -28,7 +28,7 @@ func fixtureCatalog(t *testing.T, dir string, options Options) *Catalog {
 	if err != nil {
 		t.Fatal(err)
 	}
-	options.BaseURL = "https://openrouter.ai/api/v1"
+	options.BaseURL = DefaultBaseURL
 	options.Dir = dir
 	if options.HTTPClient == nil {
 		options.HTTPClient = catalogClient(t, http.StatusOK, string(raw), nil)
@@ -184,7 +184,7 @@ func TestARowThatDriftsIsSkippedAndTheRestSurvive(t *testing.T) {
 	  {"id":"good/second","architecture":{"input_modalities":["text"],"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0"}}
 	]}`
 	c := Load(context.Background(), Options{
-		BaseURL: "https://openrouter.ai/api/v1", Dir: t.TempDir(),
+		BaseURL: DefaultBaseURL, Dir: t.TempDir(),
 		HTTPClient: catalogClient(t, http.StatusOK, drifted, nil),
 	})
 	if _, ok := c.Model("good/first"); !ok {
@@ -275,7 +275,7 @@ func TestAFailedRefreshServesTheCacheWithItsOwnDate(t *testing.T) {
 		return nil, errors.New("offline")
 	})}
 	stale := Load(context.Background(), Options{
-		BaseURL: "https://openrouter.ai/api/v1", Dir: dir, HTTPClient: offline, Refresh: true,
+		BaseURL: DefaultBaseURL, Dir: dir, HTTPClient: offline, Refresh: true,
 		Now: func() time.Time { return day.Add(72 * time.Hour) },
 	})
 	if _, ok := stale.Model("anthropic/claude-opus-5"); !ok {
@@ -288,7 +288,7 @@ func TestAFailedRefreshServesTheCacheWithItsOwnDate(t *testing.T) {
 	// With no cache at all there is nothing to date, and the built-in
 	// fallbacks say so by carrying no date and no prices.
 	bare := Load(context.Background(), Options{
-		BaseURL: "https://openrouter.ai/api/v1", Dir: t.TempDir(), HTTPClient: offline,
+		BaseURL: DefaultBaseURL, Dir: t.TempDir(), HTTPClient: offline,
 	})
 	if !bare.FetchedAt().IsZero() {
 		t.Errorf("the built-in fallbacks claim a fetch date of %v", bare.FetchedAt())
