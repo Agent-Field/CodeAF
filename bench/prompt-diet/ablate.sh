@@ -68,8 +68,11 @@ WHERE="$(cut -f4 <<< "$row")"
 PINNED="$(cut -f6 <<< "$row")"
 
 LABEL="ablate-$UNIT"
-OUT="$DIET_ROOT/out/$LABEL"
-mkdir -p "$OUT"
+# The same two roots run.sh uses, and for the same reason: a cell workspace
+# nested inside a checkout hands the model the harness instead of the fixture.
+OUT="${DIET_OUT_ROOT:-$HOME/bench-diet-out}/$LABEL"
+WORKTREE="${DIET_BUILD_ROOT:-$HOME/bench-diet-build}/$LABEL"
+mkdir -p "$OUT" "$(dirname "$WORKTREE")"
 
 # Whether the env hook exists is a question about the tree, not about the
 # binary: the registry is a Go symbol and grepping for it is both cheaper and
@@ -107,7 +110,6 @@ fi
 # --reuse-worktree so it rebuilds rather than resetting the tree. The edit is
 # never made anywhere but here: `git worktree remove --force` at the end takes
 # the whole thing, and nothing in the caller's checkout is touched.
-WORKTREE="$OUT/src"
 rm -rf "$WORKTREE"
 git -C "$RIG_ROOT" fetch -q origin "$BRANCH" 2>/dev/null || true
 RESOLVED=""

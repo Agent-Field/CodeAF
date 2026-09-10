@@ -142,6 +142,17 @@ ssh spark 'export PATH=$HOME/.local/bin:$PATH
   git -C ~/src/aforge-v2 worktree add -f --detach ~/bench-diet/rig origin/prompt-diet/h'
 ```
 
+**The evidence and the build live outside every checkout** — `~/bench-diet-out/<label>`
+and `~/bench-diet-build/<label>`, movable with `DIET_OUT_ROOT` and
+`DIET_BUILD_ROOT`. That is a correctness rule and it was learned the expensive
+way. The first baseline run put the evidence under `bench/prompt-diet/out/`, so
+a cell's scratch workspace sat inside the rig's own git checkout; the `code-fix`
+cell handed the model a two-file Go module to repair, and the model walked up
+out of it, found the aforge repository around it, and ran `cd <rig> && go test
+./...` — a full-tree build of aforge on a shared box, inside a cell whose wall
+clock was supposed to be measuring a two-file fix. That run was killed and
+thrown away. `run.sh` now refuses an `--out` inside a checkout.
+
 Then, per label:
 
 ```sh

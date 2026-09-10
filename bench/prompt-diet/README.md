@@ -61,17 +61,26 @@ bench/prompt-diet/compare.py dev diet
 ```
 
 `compare.py` exits non-zero when an outcome got worse, so it is usable as a
-gate. Evidence lands in `bench/prompt-diet/out/<label>/`, which is gitignored:
+gate.
+
+**Evidence lands OUTSIDE the checkout**, at `~/bench-diet-out/<label>/` by
+default (`DIET_OUT_ROOT` or `--out`), and the build goes to a second root at
+`~/bench-diet-build/<label>` (`DIET_BUILD_ROOT`). That is a correctness rule and
+not tidiness: a cell's scratch workspace sits inside the evidence tree, and the
+first baseline run put it inside the rig's own git checkout — whereupon the
+`code-fix` cell's model walked up out of its two-file fixture, found the aforge
+repository around it, and ran `go test ./...` on a shared box. `run.sh` now
+refuses an `--out` inside a checkout.
 
 ```
-out/<label>/meta.json                       label, revision, model, layers, clock
-out/<label>/prefix.log                      layer A, whole
-out/<label>/suites/<suite>.log              layer B, whole — the screens are too wide to pipe
-out/<label>/suites/outcomes.json            one word per subtest
-out/<label>/cells/conversation/…            bench/conversation's own evidence tree
-out/<label>/cells/e2e.csv                   bench/e2e's append-only row per cell
-out/<label>/wire.jsonl                      one normalised row per request
-out/<label>/summary.md                      one page about this run alone
+<out-root>/<label>/meta.json                       label, revision, model, layers, clock
+<out-root>/<label>/prefix.log               layer A, whole
+<out-root>/<label>/suites/<suite>.log       layer B, whole — the screens are too wide to pipe
+<out-root>/<label>/suites/outcomes.json     one word per subtest
+<out-root>/<label>/cells/conversation/…     bench/conversation's own evidence tree
+<out-root>/<label>/cells/e2e.csv            bench/e2e's append-only row per cell
+<out-root>/<label>/wire.jsonl               one normalised row per request
+<out-root>/<label>/summary.md               one page about this run alone
 ```
 
 ### Knobs
@@ -84,7 +93,7 @@ out/<label>/summary.md                      one page about this run alone
 | `--cells` | `lookup,bundle3` | `bench/e2e` cells, or `none` |
 | `--suites` | `TestTUIE2E,TestQuestionsE2E,TestStandingE2E` | layer B, or `none` |
 | `--allowlist` | — | extra ids the run may legitimately have billed (a fallback model) |
-| `--out` | `out/<label>` | where evidence lands |
+| `--out` | `~/bench-diet-out/<label>` | where evidence lands; must be outside every checkout |
 | `--keep-worktree` | off | leave the build for a follow-up run |
 | `--dry-run` | off | compose everything, spend nothing |
 

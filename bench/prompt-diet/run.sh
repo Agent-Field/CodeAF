@@ -41,7 +41,8 @@
 #   --scenarios <list> conversation scenarios (comma-separated, or "none")
 #   --cells <list>     bench/e2e cells (comma-separated, or "none")
 #   --suites <list>    tagged Go suites for layer B (comma-separated, or "none")
-#   --out <dir>        where evidence lands (default bench/prompt-diet/out/<label>)
+#   --out <dir>        where evidence lands (default ~/bench-diet-out/<label>, and
+#                      it must be outside every checkout — see the note below)
 #   --allowlist <ids>  extra catalog ids the run may legitimately have billed
 #   --keep-worktree    leave the built worktree behind for a follow-up run
 #   --reuse-worktree   build into an existing worktree instead of creating one
@@ -124,8 +125,30 @@ done
 
 has_layer() { case ",$LAYERS," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 
-OUT="${OUT:-$DIET_ROOT/out/$LABEL}"
+# THE EVIDENCE ROOT LIVES OUTSIDE EVERY AFORGE CHECKOUT, and this is a
+# correctness rule rather than tidiness.
+#
+# MEASURED, 2026-09-10, the first baseline run: with the evidence under
+# `bench/prompt-diet/out/`, a cell's scratch workspace sat inside the rig's own
+# git checkout. The `code-fix` cell handed the model a small Go module to fix;
+# the model walked up out of it, found the aforge repository around it, and ran
+# `cd <rig> && go test ./...` — a full-tree build of aforge, on a shared box,
+# inside a cell whose wall clock was supposed to be measuring a two-file fix.
+# The cell was thrown away and the run started again from here.
+#
+# The bench batteries have always had this exposure — `bench-results/` is inside
+# the repository too — and it has never bitten because nothing else pointed a
+# model at a workspace nested that deep. This bench does, so this bench moves
+# out. DIET_OUT_ROOT or --out can put it anywhere; anywhere inside a checkout is
+# a mistake, and the run says so rather than only recording the consequences.
+OUT="${OUT:-${DIET_OUT_ROOT:-$HOME/bench-diet-out}/$LABEL}"
 mkdir -p "$OUT" || { warn "cannot write $OUT"; exit 1; }
+if git -C "$OUT" rev-parse --show-toplevel >/dev/null 2>&1; then
+  warn "$OUT is inside a git checkout, so a cell's workspace will be too — and a"
+  warn "model that walks up out of its fixture finds the repository instead."
+  warn "Set DIET_OUT_ROOT or --out to somewhere outside every checkout."
+  exit 1
+fi
 
 # GO IS NOT ON THE SPARK'S NON-INTERACTIVE PATH. Finding it here rather than
 # asking every caller to export it is what keeps the ssh recipes in BENCH.md to
@@ -142,11 +165,16 @@ fi
 #
 # The worktree is DETACHED at the revision, so the run records a sha rather than
 # a branch name that will have moved by the time anybody reads the table.
-WORKTREE="${DIET_WORKTREE:-$OUT/src}"
+# THE BUILD IS NOT UNDER THE EVIDENCE, for the same reason the evidence is not
+# under a checkout: a cell's workspace sits inside the evidence tree, and a
+# model that walks up out of its fixture must not arrive in an aforge checkout.
+# Two roots, and the only thing between them is the label.
+WORKTREE="${DIET_WORKTREE:-${DIET_BUILD_ROOT:-$HOME/bench-diet-build}/$LABEL}"
 if [ "$REUSE_WORKTREE" = "1" ] && [ -e "$WORKTREE/.git" ]; then
   say "reusing worktree $WORKTREE"
 else
   rm -rf "$WORKTREE"
+  mkdir -p "$(dirname "$WORKTREE")"
   if [ "$DRY_RUN" != "1" ]; then
     # A branch that only exists on the remote is fetched by name first; a bare
     # revision that is already in the object store needs no fetch and must not
