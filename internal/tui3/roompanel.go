@@ -41,11 +41,12 @@ func (a *app) roomPanelView(height int) ([]railLine, int) {
 	a.railCramped = false
 	lines := a.railLines(entries, width)
 	controls := a.roomControlRows(width)
-	foot, hint, door, more := a.railFootRows(width, height)
+	foot, marks := a.railFootRows(width, height)
 	// Column navigation retains its existing doors and their exact hit targets.
 	footer := make([]railLine, len(foot))
 	for i, s := range foot {
-		footer[i] = railLine{text: s, entry: -1, hint: i == hint, stow: i == door, more: i == more}
+		footer[i] = railLine{text: s, entry: -1, hint: i == marks.hint, stow: i == marks.door,
+			more: i == marks.more, keeping: i == marks.keeping}
 	}
 	available := height - len(controls) - len(footer)
 	detailHeight := min(roomDetailsMax, max(available/3, 3))

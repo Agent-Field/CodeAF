@@ -36,9 +36,9 @@ import (
 // spent, so the rail it is measured against is this conversation's.
 
 // markMoneyDoor records where the money segment landed, so the press that may
-// follow resolves against this frame rather than the one before it. It is
-// [app.markKeepingDoor] for the other segment on the row and keeps that
-// function's law: written AS THE ROW IS LAID OUT, never guessed at afterwards.
+// follow resolves against this frame rather than the one before it. It keeps
+// the law every door on this row keeps (foot.go's [app.markDoors]): written AS
+// THE ROW IS LAID OUT, never guessed at afterwards.
 func (a *app) markMoneyDoor(parts []hudPart, base, row int) {
 	at := base
 	for i, part := range parts {

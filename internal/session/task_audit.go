@@ -1547,7 +1547,7 @@ func checkerConclusion(node *TaskNode, fallback string) string {
 // auditQuestion is what the auditor is asked: the frozen acceptance, the work's
 // own claim, and where to look.
 //
-// The BRIEF IS NOT HERE, and that is deliberate. The brief is the executor's
+// The BRIEF IS NOT HERE for an explicit acceptance, and that is deliberate. The brief is the executor's
 // instruction — its goal, its constraints, the conventions it was told to
 // follow — and an auditor reading it starts grading effort and intention. The
 // acceptance is the contract (Argus's two-tier goal contract,
@@ -1555,6 +1555,10 @@ func checkerConclusion(node *TaskNode, fallback string) string {
 // it is the SAME frozen text the node was finished against. The node's own last
 // words are included as a CLAIM, labelled as one: it is the thing under audit,
 // not evidence about it.
+//
+// The unshaped fallback is the one exception: its acceptance explicitly says
+// to complete the brief. Omitting that referenced contract makes a checker
+// reconstruct the request from the worker's claim or from unrelated history.
 //
 // AND IT NAMES THE DOOR. The auditor's bash will run the checks this work
 // declares or ran and nothing else (task_checks.go), so the packet says which
@@ -1565,7 +1569,15 @@ func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door audit
 	var out strings.Builder
 	out.WriteString("The work: " + node.title() + "\n\n")
 	out.WriteString("ACCEPTANCE (this is the contract; judge against this and nothing else):\n")
-	out.WriteString(node.acceptance() + "\n\n")
+	node.graph.mu.Lock()
+	acceptance := node.assignmentLocked().acceptance
+	brief := node.spec.brief
+	node.graph.mu.Unlock()
+	out.WriteString(acceptance + "\n\n")
+	if acceptance == taskPersonAcceptance {
+		out.WriteString("THE BRIEF REFERENCED BY THAT ACCEPTANCE (the requested deliverable, not the worker's claim):\n")
+		out.WriteString(brief + "\n\n")
+	}
 	// AND WHERE THE PERSON MOVED IT, THE PACKET SAYS SO AND SAYS WHICH ONE WINS.
 	// A revised task has two done-conditions in its history and exactly one it is
 	// judged by (assignment.go); an auditor handed both without being told that
@@ -1580,6 +1592,9 @@ func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door audit
 	if claim = strings.TrimSpace(claim); claim != "" {
 		out.WriteString("What it CLAIMS it did — this is the claim under audit, not evidence:\n")
 		out.WriteString(claim + "\n\n")
+		// A retained answer can be the requested deliverable without a file.
+		// Its persistence is a runtime fact; its factual claims still need checks.
+		out.WriteString("The task's final response is retained in its task record. When the acceptance asks for an answer or report in the final response, that retained text is the deliverable; do not invent a requirement to create a file. A file is required when the acceptance requires one or the work claims to have created one. The answer's factual claims still require independent evidence.\n\n")
 	}
 	if len(files.own) > 0 {
 		out.WriteString("Files it wrote: " + strings.Join(files.own, ", ") + "\n")
@@ -2900,6 +2915,9 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 		judge = named
 	}
 	auditor, err := newAgent(Config{
+		// A checker can independently read the source a worker cited, without
+		// gaining the writable memory store or any additional mutation tool.
+		ConversationHistory: parent.conversationHistory(),
 		// The auditor reads rather than writes, but reading is what makes a
 		// dropping: a long file it looks at is stubbed on its way out of the live
 		// context (stub.go), and with nothing here those bytes landed in the
@@ -2950,6 +2968,9 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 	// the auditor's belt unless somebody remembered this rule. Composed here,
 	// a new tool reaches the auditor only when this list names it.
 	tools := auditBelt(dir, door, parent.droppingsPlace())
+	for _, tool := range auditor.conversationTools() {
+		tools = append(tools, boundedResult(tool, parent.droppingsPlace(), dir))
+	}
 	definitions, err := toolDefinitions(tools)
 	if err != nil {
 		_ = auditor.Close()

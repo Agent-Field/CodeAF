@@ -186,6 +186,12 @@ const (
 	// of its own for [hoverRailDoor]'s reason: it belongs to no node, and it does
 	// something different from every other line of the footer.
 	hoverRailMore
+	// hoverRailStanding is the footer's standing count — `◦ 2 standing orders`,
+	// a door onto /standing (standdoor.go). It is a kind of its own for
+	// [hoverRailDoor]'s reason and one more: it was a segment of the status row
+	// until 2026-09-09, and what lights has to be what the press acts on
+	// wherever the line is drawn.
+	hoverRailStanding
 	// hoverTaskSheet is one row of the task page; index is its item
 	// (taskview.go). It is a kind of its own rather than another [hoverSheet]
 	// because the two pages number their rows out of different lists, and a
@@ -206,17 +212,24 @@ const (
 	// where the press would do nothing, the render records no span and this
 	// answers nothing (room.go's [app.roomModelMovable]).
 	hoverStatusModel
-	// hoverKeeping is the `keeping an eye on N` segment of the status row, which
-	// is a door onto /standing (standdoor.go). It is a kind of its own rather
-	// than a second reading of [hoverStatusModel] for the reason that one covers
-	// both of ITS subjects with one kind: what lights has to be what the press
-	// acts on, and these two segments open two different things.
-	hoverKeeping
+	// hoverEffort is the THINKING RUNG on the seam, the cell drawn immediately
+	// after the model's name (effortchip.go). It is a kind of its own rather than
+	// a second reading of [hoverStatusModel] for [hoverKeeping]'s reason: two
+	// cells side by side that do two different things — one opens the picker, one
+	// walks the ladder a step — and what lights has to be what the press acts on.
+	hoverEffort
 	// hoverMoney is the money segment of the status row, which is a door onto
-	// the Spending tab (moneydoor.go). It is a kind of its own for
-	// [hoverKeeping]'s reason: three doors on one row that open three different
-	// things, and what lights has to be what the press acts on.
+	// the Spending tab (moneydoor.go). It is a kind of its own rather than a
+	// second reading of [hoverStatusModel] for the reason that one covers both of
+	// ITS subjects with one kind: what lights has to be what the press acts on,
+	// and two doors on one row open two different things.
 	hoverMoney
+	// hoverMeter and hoverPosture are two more doors the status row grew when it
+	// became a ledger (foot.go): the context meter onto /status, the YOLO badge
+	// onto /permissions. The open count was a third and is off the row entirely;
+	// the standing count was a fourth and is [hoverRailStanding] now.
+	hoverMeter
+	hoverPosture
 	// hoverTable is the foot under a markdown table that was cut (mdtable.go);
 	// entry is the answer it belongs to and index is which of that answer's
 	// tables. It is a kind of its own rather
@@ -461,6 +474,12 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	if a.railDoorAt(x, y) {
 		return hoverAt{kind: hoverRailDoor}
 	}
+	// AND THE FOOTER'S STANDING COUNT, on exactly those terms: it is a line of
+	// the footer, it belongs to no node, and it answers to a click
+	// (standdoor.go's [app.railStandingAt]).
+	if a.railStandingAt(x, y) {
+		return hoverAt{kind: hoverRailStanding}
+	}
 	// AND THE MARGIN'S OWN LINES, asked on the same terms as the footer's above
 	// them: a `+` row and a standing order's row belong to no node, and both
 	// answer to a click (margin.go).
@@ -612,6 +631,23 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			if a.jumpSpan.holds(x) {
 				return hoverAt{kind: hoverJump}
 			}
+		case chromeLegend:
+			// THE MODEL'S NAME ON THE SEAM, out of a room (foot.go). The home door
+			// at the other end of the same line lights through its own reading
+			// (home.go's [app.hoverHomeDoor]).
+			if a.roomOpen() || a.copy.on || a.pick.open {
+				return hoverAt{}
+			}
+			if a.seamModelSpan.holds(x) {
+				return hoverAt{kind: hoverStatusModel}
+			}
+			// AND THE THINKING RUNG BESIDE IT, on its own columns and its own
+			// kind: pressing it walks the ladder rather than opening the picker
+			// (effortchip.go), and this file's law is that the two cannot share
+			// one light.
+			if a.seamEffortSpan.holds(x) {
+				return hoverAt{kind: hoverEffort}
+			}
 		case chromeStatus:
 			// THE SAME THREE QUESTIONS [app.statusPress] ASKS, IN THE SAME ORDER,
 			// because this file's law is that the set which lights is the set the
@@ -630,16 +666,15 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			if width, _ := a.size(); layoutTier(width) == tierPhone {
 				return hoverAt{kind: hoverDeck, index: mark.index}
 			}
-			// The two doors on this row, in the order [app.press] reads them
-			// (app.go): the keeping segment onto /standing, then the model's name
-			// onto the picker (standdoor.go).
-			if mark.index == a.keepRow && a.keepSpan.holds(x) {
-				return hoverAt{kind: hoverKeeping}
+			// The doors on this row, in the order [app.press] reads them (app.go):
+			// the ledger's table first (foot.go), then the room chip's model.
+			if door, ok := a.doorAt(x, mark.index); ok {
+				if door.kind == segKeeping && a.at(pageStanding) {
+					return hoverAt{}
+				}
+				return hoverAt{kind: doorHover(door.kind)}
 			}
-			if mark.index == a.moneyRow && a.moneySpan.holds(x) {
-				return hoverAt{kind: hoverMoney}
-			}
-			if mark.index == 0 && a.modelSpan.holds(x) {
+			if a.roomOpen() && mark.index == 0 && a.modelSpan.holds(x) {
 				return hoverAt{kind: hoverStatusModel}
 			}
 		}
@@ -695,7 +730,7 @@ func (a *app) hoveringRailMore() bool { return a.hot.kind == hoverRailMore }
 // hoveringRailArea reports whether the pointer is anywhere over the roster.
 func (a *app) hoveringRailArea() bool {
 	switch a.hot.kind {
-	case hoverRail, hoverRailArea, hoverRailSeam, hoverRailMore:
+	case hoverRail, hoverRailArea, hoverRailSeam, hoverRailMore, hoverRailStanding:
 		return true
 	}
 	return false

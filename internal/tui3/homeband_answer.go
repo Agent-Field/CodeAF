@@ -144,11 +144,27 @@ func drawAnswerBand(a *app, ctx bandContext) []string {
 	if a.leaveAnswer == nil && !a.answeringHere(row) {
 		return nil
 	}
+	if a.answersStepAside(row) {
+		return nil
+	}
 	lines := a.answerChipLines(question, ctx.width, pal)
 	if len(lines) == 0 {
 		return nil
 	}
 	return lines
+}
+
+// answersStepAside is whether the row's own answers stay off the screen for now
+// — the card band's chips and the foot's strip both ask it, so the two cannot
+// come to disagree.
+//
+// NOT WHILE HOME'S OWN CARD IS UP ON THIS ROW. Enter on a held row raises `Move
+// this conversation here?` beside it (homeconfirm.go), and that card takes the
+// digits first — so chips promising `1 publish it` under a card where `1` is
+// `move it here` would be two questions on one keyboard. The chips step aside
+// while the card stands and are back the moment it is answered or put down.
+func (a *app) answersStepAside(row session.SessionRow) bool {
+	return a.home.ask != nil && a.home.armed == row.Transcript
 }
 
 // answerChip is one chip as it is drawn and as it is pressed: the key and its

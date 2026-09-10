@@ -673,9 +673,9 @@ cost-oriented working set. With an unknown context size no larger line is invent
 
 ## Can a task change my settings — can a task look up an old conversation, can a task start a watch, my task said it cannot do that from here
 
-No, to all three, and a task is now TOLD so rather than left to find out by
-calling a tool that is not there. Four things a conversation can do are absent
-from a worker's belt, and its instructions say what to do instead:
+A task can search earlier conversations when its parent has history access.
+Settings changes and watches still require the conversation. The worker's
+instructions describe the tools it actually carries:
 
 - **Change a setting.** `settings` and `change_setting` are off inside a task. A
   worker runs in a copy of its own with nobody watching, and a permanent change
@@ -683,9 +683,15 @@ from a worker's belt, and its instructions say what to do instead:
   be able to make. A task asked to change a preference says it cannot from a
   task and points you at `/settings`; it is told never to edit a config file instead.
 - **Look up an earlier conversation.** `search_conversations` reads the index in
-  the memory store, and a task is handed no store, so what was said in other
-  conversations cannot be looked up from inside one. A worker answers out of the
-  brief it was given.
+  its parent's history through a read-only interface, including in nested tasks
+  and forked hands. The task's checker can independently read the same source.
+  It can search all indexed places and open an exchange by
+  an opaque source reference. It cannot write memories through that interface.
+  If the parent has memory off and no history source, the tool remains absent.
+  If task preparation falls back to "Complete the brief and report the result and checks run.",
+  the checker receives that referenced brief so it can check the actual request.
+  A requested final answer is kept as the task's result; checking it does not
+  require an extra file unless the request or the work's own claim requires one.
 - **Start a watch.** `watch` delivers its news into a conversation and a task has
   none. A worker waits with an ordinary foreground `bash` call.
 - **See the work that already ran** — but only at the bottom of the tree. A task
@@ -1076,8 +1082,8 @@ nothing.
 you have switched away from holds it for as long as you are away, and coming back
 gives you the reading time you had left — see the permissions page.
 
-All three say `waiting on you` while they wait: on home, on the status line's
-`2 open · 1 waiting`, and in a desktop notification the moment the question goes
+All three say `waiting on you` while they wait: on home, on the tab strip and in
+`/status`'s `2 open · 1 waiting`, and in a desktop notification the moment the question goes
 up — which now fires for a conversation this terminal is holding behind the
 screen even while the terminal is focused, because a focused terminal is no
 longer evidence that anybody is looking at *that* conversation.

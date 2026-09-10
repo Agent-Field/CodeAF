@@ -174,6 +174,13 @@ var vocabulary = []GlyphBinding{
 		Plain: GlyphScopeUp, UsualTint: TextTertiary, Geometry: true,
 	},
 	{
+		ID: GTarget, Name: "Target", Meaning: "where the next thing goes — the destination of a draft",
+		// Tinted with the identity of the room the draft will land in, exactly as
+		// the steer prompt is: both of them are about somewhere that does not
+		// exist yet.
+		Plain: GlyphTarget, UsualTint: Identity0, PlainAmbiguous: true, Geometry: true,
+	},
+	{
 		ID: GTruncated, Name: "Truncated", Meaning: "clickable overflow — there is more, ask for it",
 		Plain: GlyphTruncated, NerdFont: "\uF141", NFName: "nf-fa-ellipsis_h",
 		ASCII:     ">",

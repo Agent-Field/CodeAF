@@ -804,6 +804,19 @@ func (c *Client) read() {
 			// lane is the one subscription which outlives every turn, and a move
 			// happens most often in the middle of one.
 			c.movedFrame(frame.Payload)
+		case "phase":
+			// WHAT THE TURN IN FLIGHT IS DOING RIGHT NOW — connecting, waiting
+			// for the first word, thinking, writing, paced, switching — and how
+			// fast the machine answering is writing. It is handed to this
+			// process's own phase desk so the surface's registered reader fires
+			// exactly as it does for a turn measured in this process (news.go).
+			c.phaseFrame(frame.Payload)
+		case "lane":
+			// AND WHICH MACHINE ANSWERED, once one has. It is the sighting the
+			// `via <machine>` rider on the seam and the `served` row in
+			// /status are drawn from, and neither had anything to draw from on
+			// a conversation whose engine is another process (news.go).
+			c.laneNewsFrame(frame.Payload)
 		case "facts":
 			// The engine stating something nobody asked for. It is taken on the
 			// reader goroutine before the surface is notified of a changed name.
@@ -1549,6 +1562,30 @@ func (a *Agent) Interrupt() { a.InterruptFor(session.StopByPerson) }
 // always saw.
 func (a *Agent) InterruptFor(door session.StopDoor) {
 	_, _ = a.c.call(nil, MethodInterrupt, InterruptArgs{Door: string(door)})
+}
+
+// AnswerLaneOffer answers the question a stalled PINNED lane raises: the
+// machine this person named has gone quiet, there is somewhere else to go, and
+// a pin is asked rather than overridden. The `y` they pressed takes this road
+// home (wire.go's [MethodAnswerLaneOffer]).
+//
+// FALSE IS A REAL ANSWER AND NOT A FAILURE — the lane came good while the
+// person was reaching for the key, the request finished, or the question aged
+// out ([provider.AnswerOffer] states it) — so a call that could not be made at
+// all reads as false too, and the surface draws nothing either way. That is
+// what lets this door ride a wire version that predates it: an older engine
+// answers "no such method" and the key does what it did before the door
+// existed, which is nothing.
+func (a *Agent) AnswerLaneOffer(yes bool) bool {
+	out, err := a.c.call(nil, MethodAnswerLaneOffer, yes)
+	if err != nil {
+		return false
+	}
+	var answered bool
+	if json.Unmarshal(out, &answered) != nil {
+		return false
+	}
+	return answered
 }
 
 // StopWork asks the engine to end all work in this conversation and suppress wakes.

@@ -189,6 +189,13 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// would be a place whose view moved when somebody was aiming at a
 		// destination. The layer is read above this function, so a press that
 		// reaches here has no layer up and there is nothing to do.
+		//
+		// WITH ONE PLACE CLAIMING THEM BEFORE THIS LINE, and it is the place they
+		// already mean something on: home's rule states where the next
+		// conversation opens and what it will run on, and these are the two chords
+		// that move those two facts — the same pair, moving the same kind of
+		// thing, one row from the hand. [placeHome.owns] takes them above this
+		// function, so the other six places are exactly as they were.
 		return nil, true
 
 	case "shift+left", "shift+right", "shift+up", "shift+down":

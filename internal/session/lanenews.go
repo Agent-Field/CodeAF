@@ -98,6 +98,20 @@ type LaneNews struct {
 	Role lane.Role
 
 	At time.Time
+
+	// Session is the conversation this answer belongs to, and it is EMPTY IN
+	// EVERY BUILD THAT NEEDS NO ANSWER: one process with one window has nothing
+	// to disambiguate. An engine that is a separate process from its surfaces
+	// (internal/enginehost) reads it to decide which connection this sighting
+	// belongs on — see [Agent.newsKey].
+	Session string
+
+	// Relayed says this news arrived over a connection from the engine that
+	// produced it, rather than off this process's own stream. It is
+	// [provider.PhaseNews.Relayed]'s twin and exists for its reason: a build
+	// that is both serving and watching must not forward what it just received
+	// back out of the door it came in.
+	Relayed bool
 }
 
 var (
@@ -179,6 +193,7 @@ func (a *Agent) tellLaneNews(model string, facts laneFacts, report *provider.Hed
 	}
 	news := laneNewsFrom(model, facts, report)
 	news.Role = a.laneRole()
+	news.Session = a.newsKey()
 	postLaneNews(news)
 }
 
@@ -200,12 +215,13 @@ func (a *Agent) watchLaneRescue(model string, report *provider.HedgeReport) {
 func (a *Agent) laneRescueStarted(model string) func(provider.RescueNews) {
 	return func(news provider.RescueNews) {
 		postLaneNews(LaneNews{
-			Model:  model,
-			Alt:    news.Alt,
-			Reason: news.Reason,
-			Failed: news.Failed,
-			Trying: !news.Failed,
-			Role:   a.laneRole(),
+			Model:   model,
+			Alt:     news.Alt,
+			Reason:  news.Reason,
+			Failed:  news.Failed,
+			Trying:  !news.Failed,
+			Role:    a.laneRole(),
+			Session: a.newsKey(),
 		})
 	}
 }

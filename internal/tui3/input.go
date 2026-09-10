@@ -949,12 +949,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// carries no text of its own, and everything above this line has already
 		// had its say — so a person mid-sentence can dial the conversation up and
 		// keep typing into the same words. It sits beside ctrl+, because the two
-		// are the surface's two dials and the chip above the box is this one's
+		// are the surface's two dials and the rung on the seam is this one's
 		// visible door, exactly as the panel is that one's.
 		//
 		// The chord does nothing at all on a session that cannot say how hard it
-		// thinks, which is the design law about a capability with nothing behind
-		// it rather than a guard: there is no chip on that frame either.
+		// thinks — a `--host` connection to an engine with no dial among them,
+		// which says so at the door (internal/remote's effort.go). That is the
+		// design law about a capability with nothing behind it rather than a
+		// guard: there is no rung on that frame either.
 		return a.cycleEffort()
 
 	case "pgup":
@@ -1523,12 +1525,6 @@ func (a *app) completePath() tea.Cmd {
 // inputBlock renders the draft — or the picker's filter box in its place — and
 // says where the caret sits inside it.
 func (a *app) inputBlock(width int) ([]string, int, int) {
-	// THE TRAY BELONGS TO THE MAIN DRAFT AND TO NOTHING THAT STANDS IN ITS
-	// POSITION, so the dial's recorded columns are cleared here rather than only
-	// in [app.chipStrip] (effortchip.go): every early return below draws a box
-	// with no tray above it, and a span left over from the frame before would let
-	// a click on a filter box open the thinking ladder.
-	a.effortSpan = hudSpan{}
 	// The box may not take the frame. Two rows are spoken for whatever happens
 	// — the status line and the blank under it — and what is left over, up to
 	// the ceiling, is the box's: a six-line paste into a four-line window shows

@@ -247,7 +247,7 @@ func TestGlyphInventoryIsComplete(t *testing.T) {
 	declared := []string{
 		GlyphQueued, GlyphWorking, GlyphSettled, GlyphFailed, GlyphPaused,
 		GlyphNeedsHuman, GlyphWaitsOn, GlyphWithdrawn, GlyphCollapsed, GlyphExpanded,
-		GlyphScopeUp, GlyphTruncated, GlyphCut, GlyphPromptChat, GlyphPromptSteer,
+		GlyphScopeUp, GlyphTarget, GlyphTruncated, GlyphCut, GlyphPromptChat, GlyphPromptSteer,
 		GlyphReplyIn,
 		GlyphThought, GlyphShell, GlyphSearch, GlyphWrite,
 		GlyphBoosted, GlyphSeparator, GlyphMissing, GlyphEstimate,

@@ -2,9 +2,10 @@ package tui3
 
 // THE SPARKLINE MACHINERY — ONE PLACE THAT TURNS A RUN OF READINGS INTO A SHAPE.
 //
-// The status line's context spark ([app.ctxSpark]) stands inside a sentence
-// beside the figure it belongs to: a row of block bars, and the arithmetic that
-// turns a reading, a ceiling and a number of steps into a height.
+// The context spark ([app.ctxSpark]) stands inside a sentence beside the figure
+// it belongs to — on the status sheet and /status, since the row gave it up on
+// 2026-09-09: a row of block bars, and the arithmetic that turns a reading, a
+// ceiling and a number of steps into a height.
 //
 // IT HAD A SECOND CALLER AND THE SURFACE IT DREW ON IS GONE. Home's machine card
 // carried a `hands` chart — the shape of what this machine had had in flight over
