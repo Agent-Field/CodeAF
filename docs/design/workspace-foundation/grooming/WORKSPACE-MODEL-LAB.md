@@ -75,3 +75,7 @@ shapes from chat authoring actions, and identifies existing standing scope,
 exceptions and unattended session/child-task navigation missing from this mock.
 It also records the next proposed issue-to-completion grooming case. The prototype
 covers the simplified logical diagram, not every serialized runtime field.
+
+[Memory and context review](MEMORY-AND-CONTEXT-REVIEW.md) checks dev after #769,
+separates learned memory from conversation history and the organization draft,
+and identifies the applicability and instruction overlap to groom next.
