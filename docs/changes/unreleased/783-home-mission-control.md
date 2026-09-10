@@ -23,6 +23,7 @@ invalidates:
   - "`TestWalkingPastTheWindowScrollsEveryPlacesList` covered home. The grid has no window to scroll — it squeezes, grows and folds — so the test leaves home to the places that scroll."
   - "A part that asked `your call` on its card and was then decided stayed `your call` in the conversation; only the task column knew (since #776). It lands a second time, as done or incomplete, where the question was, and a folded batch counts work rather than landings."
   - "On a window opened on the engine host — a bare `aforge` — Settings → Spending's `this one` read only the conversation's own books, because the tree reading needed a ledger path that door never sets. A cut errand's receipt banked after the turn ended (a naming call past its patience, a route judge the turn finished in front of) reached `today` and never `this one`, so one conversation read $0.0056 and $0.0044 side by side. The tree now reads through the same ledger seam `today` does (internal/tui3's treespend.go, `app.treeLines`); over a connection it sums the spend place's fortnight."
+  - "On the engine host's door Settings→Spending's `this one` fell back to the conversation's own books, which move only when the frame clock asks the agent, so a provider receipt banked after the turn ended (a cut route judge, a title call past its patience) counted in `today` and never in `this one`. The tree now reads through the same ledger seam `today` reads, and over a connection sums the spend place's fortnight."
 ---
 
 The ruling is `docs/design/home-mission-control/DESIGN.md`. Home answers the
