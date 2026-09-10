@@ -35,7 +35,7 @@ package session
 // A Place belongs to a SESSION, and only a session has one. Every other agent
 // this package runs is deliberately not a second session and carries no Place at
 // all: a task node's worker (task_run.go's [Agent.newTaskAgent]), a part's
-// worker under that one, a fork's hand (fork.go), an adaptive run's child
+// worker under that one, an adaptive run's child
 // (orchestrate.go), an auditor (task_audit.go), a standing item's probe
 // (standing_run.go). That is the right decision about identity — a Place is a
 // meta.json to stamp, a work/ to paint into and an id to file a transcript

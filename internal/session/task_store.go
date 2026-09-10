@@ -1914,6 +1914,27 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 		return record, ""
 	}
 
+	if record.Kind == TaskKindQuick {
+		// A QUICK TASK IS NEVER RE-RUN EITHER, and this is the line that makes it
+		// true. The argument is the two above it, arrived at from a third side.
+		//
+		// What tells [Agent.runTaskNode] to hand a node to the quick body rather
+		// than to a worker is [taskSpec.quick], and that field is not in the
+		// checkpoint: the list it carries is being ticked while the node runs, and
+		// there is no finished record here that could rebuild it. So a quick node
+		// put back on the frontier is a node the next session would run as an
+		// ORDINARY WORKER — a copy of the folder, a branch and a check, for work
+		// whose whole promise was that it had none of those.
+		//
+		// It settles instead, saying the one thing that is true of it: it did not
+		// finish, and because it was working in the person's own folder rather
+		// than a copy, whatever it managed is already in front of them.
+		record.State = TaskFailed
+		record.Report = quickInterruptedReport
+		record.EndedAt = interruptedAt(record)
+		return record, ""
+	}
+
 	// A process exit pauses ordinary work; it does not make a finding about it.
 	// Put the node back on the frontier so the next session resumes it once.
 	record.State = TaskQueued

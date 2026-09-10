@@ -63,19 +63,6 @@ func TestTheAttributionRowIsOnTheBeltOnlyWhenTheRowIsOn(t *testing.T) {
 	}
 }
 
-// A HAND IS TOLD NOTHING EITHER, and it is the one shape where the row is off
-// with the setting ON. Its `bash` is rebuilt read-only (fork.go's [forkBelt]),
-// so a hand that signed a commit would first have to be allowed to make one.
-func TestAHandIsNotToldHowToSignACommitItCannotMake(t *testing.T) {
-	hand := Config{Workspace: t.TempDir(), Model: "test/model", Attribution: true, inHand: true}
-	if hand.signsGitWork() {
-		t.Fatal("a hand carries the attribution law, and its bash cannot commit")
-	}
-	if page := promptWithBeltFacts(hand); strings.Contains(page, exec.AttributionTrailer) {
-		t.Fatal("a hand's page spells the trailer")
-	}
-}
-
 // TestALandedCommitCarriesTheTrailer is the harness half: the commit nobody was
 // asked about. It is the one attribution nothing else can catch — no model saw
 // this message, so a missing trailer here is silent forever.

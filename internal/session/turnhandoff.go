@@ -140,3 +140,92 @@ func (g *TaskGraph) liveWorkFromEpoch(admitter *Agent, now requestEpoch) bool {
 	}
 	return false
 }
+
+// ── and work that is still out from an EARLIER turn ─────────────────────────
+//
+// THE LAW: A TURN THAT ENDED WITH WORK OF ITS OWN STILL RUNNING IS WAITING, NOT
+// STOPPED SHORT.
+//
+// [Agent.turnHandedItsAskOff] above is qualified to the turn that made the
+// handoff, and it has to be: a person who types a new ask while something runs
+// is owed a reading of THAT ask. But a turn nobody typed is a different animal.
+//
+// ── THE MEASURED FAILURE ────────────────────────────────────────────────────
+//
+// 2026-09-10, 16:19, deepseek-v4.1-flash. A chat started two quick tasks in one
+// batch and ended its turn saying they would land on their own. The first landed
+// at 19:22, its note woke a turn, and the chat answered it. That woken turn
+// stopped — correctly, with nothing to do until the second task returned — and
+// the carry-on road read it, was told the second task had not come back, and
+// re-opened it. Three times, at 19:51, 20:05 and 20:11, each one a reader call
+// and a `tasks` poll of the very node that was about to report, each one
+// answered "still running, no gap to fix", until [checkpointCarryOnCap] stopped
+// it. The same fired in a second drive over a task that was landing in the same
+// second.
+//
+// So the gate is the one above with the epoch taken out and the PERSON put in
+// its place: work this conversation started, still queued or running, and
+// nothing of the person's own in the turn that is ending.
+//
+// ── THE PERSON VETOES AND NOTHING ELSE DOES ─────────────────────────────────
+//
+// It is [Agent.deliveringOwnedResult]'s rule, for its reason. A landing, a job
+// exiting, a watch firing are the session talking to itself; the ask they are
+// answering is the one the work was started under, and its ending is already on
+// its way. A sentence the PERSON typed or steered in is a new request, is owed a
+// reading of its own, and takes this gate away — which is what keeps the three
+// cases below (an old task, a handoff before their next sentence) answering
+// exactly as they did.
+
+// turnIsWaitingOnItsOwnTasks reports that this conversation has a task of its
+// own — quick or ordinary, from this turn or any earlier one — that is still
+// queued or running, in a turn the person has said nothing in. It names the
+// first such node so the journal can say which ending the turn is waiting for.
+func (a *Agent) turnIsWaitingOnItsOwnTasks() (uint64, bool) {
+	// A NODE'S OWN TURN IS NEVER GATED, for [Agent.turnHandedItsAskOff]'s
+	// reason: a worker owes its own deliverable whatever its pieces are doing.
+	// The carry-on road does not run inside one anyway ([Agent.checkpoints]);
+	// saying so keeps the reading true on its own.
+	if a.config.InTask {
+		return 0, false
+	}
+	a.mu.Lock()
+	for _, owed := range a.owedAsks {
+		if owed.from == owedByPerson {
+			a.mu.Unlock()
+			return 0, false
+		}
+	}
+	a.mu.Unlock()
+	return a.tasker().liveWorkOf(a)
+}
+
+// liveWorkOf names one node this agent's work is out with, if any is.
+//
+// OWN IS THE ADMITTER OR THE RUNNER, which is [TaskGraph.resultsThisAgentOwns]'s
+// reading of the same fact and is stated there: admitBy is whose request handed
+// the work out, owner is who runs it, and for a root this conversation proposed
+// they are the same agent. A node rehydrated from a checkpoint has neither and
+// is claimed by nobody.
+//
+// THE WALK IS IN ADMISSION ORDER so the id a journal line carries is the oldest
+// piece still out rather than whichever one a map handed back first.
+func (g *TaskGraph) liveWorkOf(owner *Agent) (uint64, bool) {
+	if g == nil || owner == nil {
+		return 0, false
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for _, id := range g.order {
+		node := g.nodes[id]
+		if node == nil || (node.admitBy != owner && node.owner != owner) {
+			continue
+		}
+		// Queued or running is what the graph knows and is not a liveness
+		// proof; the header above says what bounds both.
+		if node.state == TaskQueued || node.state == TaskRunning {
+			return node.id, true
+		}
+	}
+	return 0, false
+}
