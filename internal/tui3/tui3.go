@@ -43,6 +43,7 @@ package tui3
 import (
 	"context"
 	"io"
+	"os"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -1255,7 +1256,8 @@ func Run(ctx context.Context, opts Options) error {
 	if opts.Width > 0 && opts.Height > 0 {
 		program = append(program, tea.WithWindowSize(opts.Width, opts.Height))
 	}
-	p := tea.NewProgram(newApp(ctx, opts), program...)
+	surface := newApp(ctx, opts)
+	p := tea.NewProgram(surface, program...)
 	// AND THE ENGINE IS GIVEN SOMEWHERE TO PUT THE LANE NEWS. Which machine
 	// answered, and whether a rescue went out while somebody was waiting, are
 	// facts only the layer that sent the request can see, and the arrow between
@@ -1304,6 +1306,13 @@ func Run(ctx context.Context, opts Options) error {
 	defer session.OnPhaseNews(previousPhaseReader)
 	defer forwardSignals(p)()
 	_, err := p.Run()
+	// THE TAB IS HANDED BACK ON EVERY ROAD OUT, after the program has stopped
+	// writing and whatever stopped it (title.go's [titleFarewell]).
+	out := opts.Output
+	if out == nil {
+		out = os.Stdout
+	}
+	titleFarewell(out, surface)
 	return err
 }
 

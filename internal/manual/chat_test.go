@@ -272,6 +272,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what is the question mark on my tab", "screen"},
 		{"why does one of my tabs have a half circle on it", "screen"},
 		{"which tab is waiting on me", "screen"},
+		// AND THE TERMINAL'S OWN TAB, OUTSIDE THE FRAME, asked by somebody who
+		// saw it change — or saw the program's path there instead of a name.
+		{"what does the terminal tab say", "screen"},
+		{"why does my terminal title change", "screen"},
+		{"my terminal tab just shows the path to aforge", "screen"},
 		// And the tasks page's tree, asked by somebody looking at a page that is
 		// hiding rows from them on purpose.
 		{"where did the workers go on the task page", "tasks"},
