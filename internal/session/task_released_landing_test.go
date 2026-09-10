@@ -76,7 +76,7 @@ func TestAcceptingAfterTheCopyWasGivenBackLandsTheRenamedBranch(t *testing.T) {
 	repo := newTestRepo(t)
 	tree := settledNeedingALook(t, agent, node, repo, "fix/dutylog-pipeline")
 
-	if err := agent.acceptTask(node, "I read it myself"); err != nil {
+	if err := agent.acceptTask(node, "I read it myself", TaskAskOwnerPerson); err != nil {
 		t.Fatalf("acceptTask: %v", err)
 	}
 
@@ -115,7 +115,7 @@ func TestAcceptingAfterTheCopyWasGivenBackKeepsAProtectedCheckout(t *testing.T) 
 	mustGit(t, repo, "checkout", "-b", "main")
 	tree := settledNeedingALook(t, agent, node, repo, "fix/dutylog-pipeline")
 
-	if err := agent.acceptTask(node, "I read it myself"); err != nil {
+	if err := agent.acceptTask(node, "I read it myself", TaskAskOwnerPerson); err != nil {
 		t.Fatalf("acceptTask: %v", err)
 	}
 
@@ -226,7 +226,7 @@ func TestReleasedPickupWithMissingBranchStaysAnswerableAndKeepsFiles(t *testing.
 	repo := newTestRepo(t)
 	tree := settledNeedingALook(t, agent, node, repo, "fix/deleted-branch")
 	mustGit(t, repo, "branch", "-D", "fix/deleted-branch")
-	if err := agent.acceptTask(node, "I read it"); err != nil {
+	if err := agent.acceptTask(node, "I read it", TaskAskOwnerPerson); err != nil {
 		t.Fatal(err)
 	}
 	report, _, _, merge := node.leavings()

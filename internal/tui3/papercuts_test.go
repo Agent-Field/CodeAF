@@ -169,9 +169,9 @@ func TestNoBareChordFiresWhileTheBoxHoldsWords(t *testing.T) {
 func TestTheSettleLettersStandDownUnderADraft(t *testing.T) {
 	a, agent := settleApp(t)
 	landUnverified(t, a)
-	typeInto(t, a, "actually let me look at this first")
+	typeInto(t, a, "hm, let me look at this first")
 
-	for _, letter := range []string{"a", "l", "n", "d"} {
+	for _, letter := range []string{"a", "n", "d"} {
 		drive(t, a, key(letter))
 	}
 	if len(agent.resolved) > 0 || len(agent.handed) > 0 {

@@ -145,12 +145,13 @@ func testStatesYourCall(t *testing.T) {
 	t.Logf("a landing that is the person's call, asking in one frame:\n%s", screen)
 	statesNoDeletedWords(t, screen)
 
-	// AND THE HAND-OVER IS DRAWN BESIDE THEM, dimmer, as the one-time offer it
-	// is. It is the row that replaced `decide these for me`, which was a standing
-	// preference disguised as an answer.
-	if !strings.Contains(screen, say(t, "settleHandRow")) {
-		t.Errorf("the answers row does not offer %q:\n%s", say(t, "settleHandRow"), screen)
-	}
+	// AND THE HAND-OVER IS NOT ON THE ROW. `[d]` still reaches it — the door
+	// takes it like every other landing key — but docs/design/questions/DESIGN.md
+	// is explicit that `LandingDecideKey` `d`, `LandingAgainKey` `r` and
+	// `LandingTakeBackKey` `u` are "reachable through the door but not on the
+	// row", and the row this suite waits for is the task-states row unchanged.
+	// What has to be beside the answers is the REASON, which is the sentence
+	// waited for above.
 
 	// THE KEY, ON THE SELECTED CARD, over an empty box — the guards `x` has.
 	if !statesAnswerKey(t, r, "a", say(t, "settleTookLine")) {
@@ -364,10 +365,13 @@ func testStatesAutoFloor(t *testing.T) {
 
 	switch found {
 	case say(t, "taskAutoDecidingWord"):
-		// THE CARD SAYS WHO IS HOLDING IT AND HOW TO TAKE IT BACK. One row, no
-		// chips, and never a second prompt.
-		held := r.waitFor(60*time.Second, say(t, "taskAutoDecidingWord"), say(t, "taskTakeItBackWord"))
-		t.Logf("aforge is deciding, and the way back is on the row:\n%s", held)
+		// THE ROW SAYS WHO IS HOLDING IT AND STILL OFFERS THE ANSWERS. A card
+		// with a sentence and no handle is the shape #767 was filed about: the
+		// floor hands an unanswered landing back at the end of the turn anyway,
+		// so the answers stay drawn while the model reads, and ANSWERING ONE IS
+		// TAKING THE DECISION BACK.
+		held := r.waitFor(60*time.Second, say(t, "taskAutoDecidingWord"), say(t, "settleAnswersRow"))
+		t.Logf("aforge is deciding, and the answers are still on the row:\n%s", held)
 		if line := statesReasonLine(held, say(t, "taskAutoDecidingWord")); line != "" {
 			t.Logf("AUTO ROW · %s", line)
 		}

@@ -436,6 +436,25 @@ type taskRecord struct {
 	// seconds after it is recorded, said about a second momentary fact.
 	Decider TaskAskOwner `json:"decider,omitempty"`
 
+	// Clashing, Shifted and GroundHeld are WHAT A YOUR-CALL LANDING IS ASKING
+	// ABOUT, and they are on the record for the same reason [taskRecord.Decider]
+	// is: nothing can work them out again.
+	//
+	// The names were read out of git's index while the refused merge still stood
+	// and the merge was then abandoned, so the index no longer holds them; which
+	// of the three roads to a conflicted landing this was is a fact about a merge
+	// that has already happened. A checkpoint without them came back with the
+	// question intact and the sentence hollowed out — `conflicts with your branch`
+	// with no files, on a road that was not a branch conflict at all — and a
+	// surface reading the road back out of the report's prose is this program
+	// reading its own writing (task_run.go's [TaskNode.shiftedBy] states the law).
+	//
+	// THE EMPTINESS LAW HOLDS on all three: absent is an absence and never a
+	// claim that nothing clashed.
+	Clashing   []string `json:"clashing,omitempty"`
+	Shifted    bool     `json:"shifted,omitempty"`
+	GroundHeld bool     `json:"groundHeld,omitempty"`
+
 	// Kind is what sort of node this was ([TaskKind]), and empty is the ordinary
 	// one: work in a worktree. It is on the record for ONE reader — the recovery
 	// that has to say what an interrupted node left behind — because the two
@@ -1056,6 +1075,9 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Attempt:        n.attempt,
 		Interrupted:    n.interrupted,
 		Decider:        n.decider,
+		Clashing:       n.clashing,
+		Shifted:        n.shifted,
+		GroundHeld:     n.groundHeld,
 		Kind:           n.kind,
 		Offer:          n.offer,
 		Assignment:     recordedAssignment(n.assignment),
@@ -1656,7 +1678,12 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		// Restoring it faithfully and handing it back deliberately is the whole
 		// point: the alternative — dropping it here — is the right answer with no
 		// act behind it, which is what nothing could seed and nothing could watch.
-		decider:    record.Decider,
+		decider: record.Decider,
+		// AND WHAT ITS LANDING WAS ASKING ABOUT, faithfully: the files, and which
+		// of the three roads put them there ([taskRecord.Clashing]).
+		clashing:   record.Clashing,
+		shifted:    record.Shifted,
+		groundHeld: record.GroundHeld,
 		offer:      record.Offer,
 		assignment: restoredAssignment(record.Assignment),
 	}
