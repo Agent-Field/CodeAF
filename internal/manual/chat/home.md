@@ -1141,7 +1141,8 @@ its tasks keep running, it keeps its lock — and the new one is built on **its 
 workspace, with that project's approval rules, its crew, its spend ceiling and its saved
 shapes of work. Nothing is carried across, because nothing crosses.
 
-The status line then reads `2 open`, and `tab` over an empty message box goes back.
+The **tab strip** above the transcript then shows both, and `tab` over an empty message
+box goes back.
 
 One refusal is still possible and it leaves home standing: the project's folder is gone —
 `that folder is gone · <path>`, and nothing is opened. Home already knew — the row reads
@@ -1176,8 +1177,10 @@ alive over every door — and where that conversation is still working, the pres
 (`keep running`, `stop work`, `cancel`). Selecting another tab ends nothing: each
 conversation has its own connection. Closing an inactive tab does not switch.
 
-`2 open · 1 waiting` on the status line is the count, and `ctrl+k` shows the first twelve as
-rows. Home is the page that shows every one of them.
+`ctrl+k` shows the first twelve as rows, and home is the page that shows every one of them.
+`/status` and the phone sheet carry the count as `2 open · 1 waiting`; it was a segment of
+the status row until 2026-09-09, and came off it because the tab strip names every
+conversation the terminal is holding.
 
 ## Enter does nothing on a row — the folder is gone
 
@@ -1290,8 +1293,9 @@ All of the following holds over the ordinary engine socket, `--host`, `--at` and
   this one. Press it again and you are back. It is `cd -`.
 - **`/new`** adds a conversation in this project — unless the one on screen is fresh and
   empty, in which case it takes its place.
-- **the status line** reads `2 open · 1 waiting`: how many this terminal holds, and how many
-  of them are stopped on a question. It is absent when only one is open.
+- **the tab strip** above the transcript draws one tab per open conversation, and marks the
+  ones stopped on a question. It is absent when only one is open, and so is the
+  `2 open · 1 waiting` count `/status` and the phone sheet report.
 - **`/quit`** closes the one in front and brings the previous one forward. It leaves aforge
   only when that was the last one.
 - **`ctrl+c` twice** closes all of them, and the warm line says how many:
@@ -1310,8 +1314,8 @@ held and it keeps writing itself to disk. A desktop notification tells you when 
 a turn or stops on a question — even while the terminal is focused, because a focused
 terminal is no longer evidence that anybody is looking at *that* conversation.
 
-The status line says how many are open and how many want you: `2 open · 1 waiting`. Home
-says it per row: a conversation this terminal holds reads `open`, or `waiting on you` when
+`/status` says how many are open and how many want you: `2 open · 1 waiting`, and the tab
+strip above the transcript draws them. Home says it per row: a conversation this terminal holds reads `open`, or `waiting on you` when
 it is stopped on a question, and those two are read from the conversation itself rather than
 from a file, so they are never a few seconds behind.
 

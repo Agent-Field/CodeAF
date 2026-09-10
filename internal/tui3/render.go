@@ -1554,9 +1554,10 @@ const (
 // app.go, which the event loop anchors on both edges).
 //
 // IT IS ONE FUNCTION BECAUSE TWO ROWS ASK IT. The pulse says "waiting for
-// kimi-k3 · 12s" from it ([app.waitingWords]); the status line's rate says how
-// much output this turn has averaged ([app.burnSegment]), while the served
-// rider carries its separate provider rate. Those were two readings of one moment, taken from different signals —
+// kimi-k3 · 12s" from it ([app.waitingWords]); the status line's right edge
+// keeps its live rate silent through the same moment ([app.liveRiderAt]), and
+// so do the per-turn burn on the sheet ([app.burnSegment]) and the served
+// rider. Those were two readings of one moment, taken from different signals —
 // the rate counts a whole turn's output tokens over the whole turn's wall time,
 // so a turn that wrote a paragraph and then went quiet kept drawing `30 tok/s`
 // two rows under this surface saying nothing had come back. A person watching a
@@ -1879,17 +1880,18 @@ const (
 	// model across the gap (crew.go's [app.crewSegment] says why it is one word).
 	segCrew hudSeg = iota
 	// segOpen is how many conversations this terminal is holding, and how many
-	// of them want a person (keeper.go). It comes first among the run's own
-	// facts — only the crew word, which belongs beside the model, stands ahead of
-	// it — because it is the only segment that is not about the conversation in
-	// front.
+	// of them want a person (keeper.go). It is OFF THE LINE (foot.go's
+	// [groupOff]): the tab strip above the transcript draws every open
+	// conversation by name, so the count was the same fact said twice and the
+	// weaker of the two. The phone sheet and /status still carry it.
 	segOpen
 	segAmbient
 	// segKeeping is the standing side's own presence: how many things are
-	// keeping an eye on this project (homestanding.go). It sits beside segAmbient
-	// because they answer one question — what is alive out there that nobody is
-	// watching — and it is separate because they are two mechanisms with two
-	// lifetimes: a background job dies with the window, and an item does not.
+	// keeping an eye on this project (homestanding.go). It is OFF THE LINE as
+	// well, and unlike the open count it went somewhere: it is a line at the
+	// foot of the task column now (task.go's [app.railFootRows]), beside the
+	// counts of what that column is holding, which is where the rest of this
+	// project's live work is already written down.
 	segKeeping
 	segDelta
 	segCost
@@ -1898,10 +1900,11 @@ const (
 	segBurn
 	segETA
 	segYolo
-	// segRate is the live rate — `92 tok/s` — or the lane's phase words while
-	// a turn is in one (`thinking · 12s · deepinfra 38 t/s`). It stands beside
-	// the state word because it is a claim about NOW, and it is the rider the
-	// seam's model segment used to carry ([app.liveRiderAt]).
+	// segRate is the live rate — `38 tok/s`, what the stream is producing at
+	// this moment — or the phase's own words while the turn is in one of the
+	// phases that is not writing (`connecting · 1.2s`, `paced · retry in 6s`).
+	// It stands beside the state word because it is a claim about NOW, and it is
+	// the rider the seam's model segment used to carry ([app.liveRiderAt]).
 	segRate
 	// segLink is the connection under a --host session: `devbox · 3ms` after
 	// its first measured round trip, or `reconnecting to devbox — trying for up
@@ -1972,7 +1975,6 @@ func (a *app) statusRows(width int) []string {
 	// THEY LANDED, so a span is its own answer to "was it drawn on this frame"
 	// (foot.go). Every early return below is a row with no door on it.
 	a.doors = a.doors[:0]
-	a.keepSpan, a.keepRow = hudSpan{}, 0
 	a.moneySpan, a.moneyRow = hudSpan{}, 0
 	if a.startingChat() {
 		a.modelSpan = hudSpan{}
@@ -2467,10 +2469,21 @@ func (a *app) servedRiderAt(width int) string {
 // for this model — and it rides the model's name on the seam:
 //
 //	glm-5.3-flash · via deepinfra
+//	glm-5.3-flash · via z-ai
 //	glm-5.3-flash · slow · trying coreweave…
 //
 // It never carries a rate. How fast the machine is writing is a claim about now
 // and stands beside the state word instead ([app.liveRiderAt]).
+//
+// IT IS DRAWN WHOEVER SERVED, AND THAT IS THE OWNER'S OWN RULING (2026-09-09).
+// It used to go silent when the server's name was already inside the model id —
+// `z-ai/glm-5.3-flash` answered by z-ai — on the argument that the reader
+// already had the word. On this line they do not: the seam spells the model as
+// its BASENAME ([modelBase]), so the vendor half of the id is not on the screen
+// at all, and a rider that appeared for one endpoint and vanished for another
+// read as the sighting having been lost rather than as the vendor having served
+// its own model. The sheet's `served` row keeps the old rule, because the row
+// above it there is the model's WHOLE routing address (statusdeck.go).
 func (a *app) modelRiderAt(width int) string {
 	room := width
 	if room >= 0 {
@@ -2493,9 +2506,6 @@ func (a *app) modelRiderAt(width int) string {
 		return ""
 	}
 	served := strings.ToLower(sighting.Provider)
-	if strings.Contains(strings.ToLower(a.model), served) {
-		return ""
-	}
 	if words := rowLed([]rowField{rowSay("via "+served, served)}, roomFor(room)); words != "" {
 		return riderLead + words
 	}
@@ -2505,27 +2515,52 @@ func (a *app) modelRiderAt(width int) string {
 // liveRiderAt is the half of the rider that is ABOUT NOW, drawn beside the
 // state word while a turn is running:
 //
-//	92 tok/s                             the served rate, while the turn writes
-//	thinking · 12s · deepinfra 38 t/s    the lane's phase, while it is in one
+//	38 tok/s                     while the answer is being thought or written
+//	connecting · 1.2s            while the turn is in a phase that is neither
+//	first word · 3.1s → parasail at 4.4s
+//	paced · retry in 6s
 //
-// THE RATE RIDES ONLY WHILE A TURN IS RUNNING, and not while this surface is
-// saying nothing has come back ([app.burnSegment]'s reason): a rate from the
-// last turn on an idle line read as a live figure nobody was producing.
+// THE RATE IS WHAT THE STREAM IS PRODUCING RIGHT NOW, and nothing else is
+// allowed on the right edge under that name. It is [PhaseNews.Rate] — tokens
+// over elapsed, measured on the live stream by the layer holding it
+// (internal/provider's phase.go) and posted again every second while it lasts —
+// so it is drawn ONLY while it is being measured, and the line is empty the
+// moment it is not.
+//
+// TWO OTHER FIGURES WERE HERE AND BOTH WERE ABOUT THE PAST. The served
+// sighting's rate is what SOME answer within the last ten minutes averaged, and
+// it sat on an idle line as a live figure nobody was producing; the per-turn
+// burn ([app.burnSegment]) is a turn's whole output over a turn's whole wall
+// time, waits and tool calls included, which is a different quantity from "how
+// fast is this writing" and reads low by a factor of several on any turn that
+// ran a tool. The owner rejected both on 2026-09-09. The burn is still on
+// /status and the phone sheet under its own label, where it is not claiming to
+// be now.
+//
+// WHILE IT WRITES, THE RATE IS THE WHOLE SEGMENT. `writing · 4s · friendli 61
+// t/s` said three things a person already had: the state word two runs to the
+// right says `⠹ working · 4s`, and who is serving is on the seam. What the row
+// has that nothing else does is the speed. Every OTHER phase keeps its words,
+// because in those the turn is not producing anything and the phase is the only
+// thing on the frame saying it is alive at all.
 func (a *app) liveRiderAt(width int) string {
-	if news, ok := a.livePhase(); ok && !a.pulseHoldsThePhase(news) {
-		if a.state != stateWorking {
-			news.Rate = 0
+	news, ok := a.livePhase()
+	if !ok || a.pulseHoldsThePhase(news) {
+		return ""
+	}
+	switch news.Phase {
+	case provider.PhaseThinking, provider.PhaseWriting:
+		// AND NOT WHILE THIS SURFACE IS SAYING NOTHING HAS COME BACK
+		// ([app.awaitingReply] states the whole of why): one moment, one reading,
+		// and a rate quoted beside the pulse's own silence is this program
+		// contradicting itself out loud. The emptiness law does the rest — a rate
+		// nobody has measured yet is nothing, never `0 tok/s`.
+		if a.state != stateWorking || a.awaitingReply() || news.Rate <= 0 {
+			return ""
 		}
-		return rowLed(phaseFields(news, a.now()), roomFor(width))
+		return rowLed([]rowField{rowSay(tokenWord(int(news.Rate)) + " tok/s")}, roomFor(width))
 	}
-	if a.state != stateWorking || a.awaitingReply() {
-		return ""
-	}
-	sighting, ok := servedSighting(a.model)
-	if !ok || sighting.Rate <= 0 || a.now().Sub(sighting.At) > servedWindow {
-		return ""
-	}
-	return tokenWord(int(sighting.Rate)) + " tok/s"
+	return rowLed(phaseFields(news, a.now()), roomFor(width))
 }
 
 // roomFor turns this file's "below zero is no bound" into rowfit.go's own
@@ -2601,7 +2636,6 @@ func splitReserve(text string) (room, figure string) {
 // telemetry assembles the right cluster IN ORDER, and the order is the question
 // each segment answers about the run:
 //
-//	2 open · 1 waiting   how many conversations this terminal is holding
 //	2 jobs · 1 watch     what is still alive out there
 //	Σ +128 −14           what this session has written
 //	$0.14                what it has cost
@@ -2610,6 +2644,7 @@ func splitReserve(text string) (room, figure string) {
 //	1.2k tok/s avg       output over this turn's elapsed time
 //	compaction in ~3     what is about to happen to it
 //	YOLO                 the gate is open (and nothing when it is not)
+//	38 tok/s             what the stream is producing right now
 //	⠹ working · 4s       what it is DOING — always last, because it is the one
 //	                     segment that is true of the whole line
 func (a *app) telemetry(width int) []hudPart {
@@ -2634,16 +2669,17 @@ func (a *app) telemetry(width int) []hudPart {
 		add(segCtx, context)
 	}
 	add(segETA, a.etaSegment())
-	add(segOpen, a.openSegment())
 	add(segAmbient, a.ambientSegment())
-	add(segKeeping, a.keepingSegment())
 	add(segYolo, a.yoloSegment())
-	// THE FACTS OFF THE LINE. The crew word, the session delta and the per-turn
-	// burn are no longer drawn on the status row (foot.go's [groupOff]) — the
-	// phone sheet and /status still say them, and this list is where both read.
+	// THE FACTS OFF THE LINE. The crew word, the session delta, the per-turn
+	// burn, the open count and the standing count are not drawn on the status
+	// row (foot.go's [groupOff]) — the phone sheet and /status still say all
+	// five, and this list is where both read.
 	add(segCrew, a.crewSegment())
 	add(segDelta, a.deltaSegment())
 	add(segBurn, a.burnSegment())
+	add(segOpen, a.openSegment())
+	add(segKeeping, a.keepingSegment())
 	add(segRate, a.liveRiderAt(-1))
 	// A LINK THAT HAS STOPPED WORKING OUTRANKS EVERY NUMBER ON THIS LINE, and
 	// says so by never being dropped: it is not in [dropOrder], so a narrow
@@ -2735,22 +2771,10 @@ func (a *app) paintPart(part hudPart) string {
 	if part.paint != "" {
 		return part.paint
 	}
+	// The standing count is not here any more: it is a line at the foot of the
+	// task column, and it is painted where it is drawn (task.go's
+	// [app.railStandingLine]).
 	switch part.kind {
-	case segKeeping:
-		// DIM, ALWAYS, AND THE ONE SEGMENT THAT MOVES WITHOUT CHANGING. It is
-		// re-derived here rather than taken from part.text because its glyph
-		// breathes while a firing is in flight and its TEXT must not, or the fade
-		// ramp would paint it bright forever (homestanding.go's [app.keepingWord]
-		// says the whole of it).
-		//
-		// AND IT BRIGHTENS UNDER THE POINTER, because it is a door: pressing it
-		// opens /standing, and a label that is also a control has to say so
-		// (standdoor.go, and [app.paintIdentity] for the same decision about the
-		// model's name).
-		if a.hoveringKeeping() {
-			return a.pal.accent(a.keepingWord())
-		}
-		return a.pal.dim(a.keepingWord())
 	case segCost:
 		// MONEY IS A DOOR AND A BOUND, and this is the only segment on the line
 		// that can be both (moneydoor.go).
@@ -2799,10 +2823,6 @@ func (a *app) paintPart(part hudPart) string {
 		// THE CACHE IS THE OTHER HALF OF THE MONEY DOOR: it brightens with the
 		// bill beside it, because pressing either opens the same tab.
 		if a.hoveringMoney() {
-			return a.pal.accent(part.text)
-		}
-	case segOpen:
-		if a.hoveringOpen() {
 			return a.pal.accent(part.text)
 		}
 	case segETA:
@@ -3233,11 +3253,12 @@ func (a *app) contextSegment() (string, bool) {
 // statistic about a mechanism they never asked about. The dollars are the
 // answer, and they lead because money is the part a person recognizes on sight.
 //
-// The cash appears only when it is real (app.go's cacheSaved, which grows only
-// where a prompt price AND a cache-read price were both published): a session on
-// a model that publishes neither, or publishes only the first, keeps exactly the
-// segment it had, rather than learning to say "saved $0.00" — or, worse, to
-// count the whole prompt price as a saving the cache never made.
+// The cash appears only when it is real (app.go's cacheSaved, which is derived
+// from the session's cache reads only where a prompt price AND a cache-read
+// price are both published): a session on a model that publishes neither, or
+// publishes only the first, keeps exactly the segment it had, rather than
+// learning to say "saved $0.00" — or, worse, to count the whole prompt price as
+// a saving the cache never made.
 //
 // It is a share rather than a count because a count of cached tokens says
 // nothing on its own: 40k cached is excellent against 50k sent and a rounding

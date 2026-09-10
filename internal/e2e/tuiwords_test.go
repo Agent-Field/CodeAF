@@ -258,7 +258,7 @@ var tuiWords = map[string]tuiWord{
 	// ── what stands, and what it costs ───────────────────────────────────────
 	"homeKeepingWord": {
 		screen: " standing order",
-		why:    "the status line's own segment while something stands, and a door onto the standing place — `◦ 2 standing orders`, respelled from `keeping an eye on 2` on 2026-09-09 because that named nothing a person could type",
+		why:    "the count at the foot of the task column while something stands, and a door onto the standing place — `◦ 2 standing orders`, respelled from `keeping an eye on 2` on 2026-09-09 because that named nothing a person could type, and moved off the status row on the same day",
 	},
 	"homeWatchLabel": {
 		screen: "keeping watch",

@@ -530,7 +530,13 @@ func (a *app) deckItems() []deckItem {
 var deckSegWords = [segCount]string{
 	// The crew's word is here so the array is complete, and [app.deckItems] never
 	// reads it: the crew is written under the model in full instead.
-	segCrew:    "crew",
+	segCrew: "crew",
+	// The open count had NO word here either, for [segKeeping]'s reason and with
+	// the same result — an empty label with a figure hanging in the value column
+	// under nothing. It matters more now: the segment came off the status row on
+	// 2026-09-09 (foot.go's [groupOff]), so this page and /status are the only
+	// two places it is written down at all.
+	segOpen:    "open",
 	segAmbient: "background",
 	// phone lane: the standing side had NO word at all here, so its segment came
 	// out of the loop above with an empty label and hung in the value column

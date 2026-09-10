@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
@@ -97,6 +98,102 @@ func TestTheRateIsSilentWhileThePulseSaysNothingHasComeBack(t *testing.T) {
 	a.awaited = time.Time{}
 	if got := a.burnSegment(); got == "" {
 		t.Fatal("the rate never came back after the stream spoke again")
+	}
+}
+
+// THE RATE ON THE ROW IS THE STREAM'S OWN, AND THE WRITING PHASE IS THE RATE
+// ALONE. `38 tok/s` is [PhaseNews.Rate] — tokens over elapsed, measured on the
+// live stream — and nothing else on this row is allowed to wear that spelling:
+// not the last sighting's average, and not the per-turn burn, which counts a
+// whole turn's waits and tool calls in its denominator and therefore reads low
+// by a factor of several on any turn that ran one.
+func TestTheRightEdgeSaysWhatTheStreamIsProducingRightNow(t *testing.T) {
+	now := time.Date(2026, 9, 9, 9, 0, 0, 0, time.UTC)
+	a := phaseApp(t, now)
+	answerArriving(a)
+	// A sighting from the last answer, which used to be what this segment drew.
+	pinSighting(t, provider.Sighting{
+		Model: phaseModel, Provider: "quicksilver", Rate: 92, At: now.Add(-time.Second),
+	}, true)
+
+	PostPhaseNews(PhaseNews{
+		Phase: provider.PhaseWriting, Since: now.Add(-4 * time.Second), Lane: "Friendli", Rate: 38,
+		Model: phaseModel, Role: lane.RoleTalk, At: now,
+	})
+	if got := a.liveRiderAt(-1); got != "38 tok/s" {
+		t.Fatalf("the right edge reads %q, want the stream's own rate alone", got)
+	}
+	line := plain(a.status(200))
+	if !strings.Contains(line, "38 tok/s") {
+		t.Fatalf("the row is missing the live rate:\n%q", line)
+	}
+	// NOT THE SIGHTING'S FIGURE, and not the phase's own words either: the state
+	// word two runs to the right already says `working · 4s`, and who is serving
+	// is on the seam.
+	for _, gone := range []string{"92 tok/s", "writing", "friendli"} {
+		if strings.Contains(line, gone) {
+			t.Fatalf("the right edge still says %q:\n%q", gone, line)
+		}
+	}
+
+	// A THINKING PASS IS THE SAME SEGMENT, because it is the same claim: the
+	// stream is producing tokens and this is how fast.
+	PostPhaseNews(PhaseNews{
+		Phase: provider.PhaseThinking, Since: now.Add(-12 * time.Second), Lane: "Friendli", Rate: 61,
+		Model: phaseModel, Role: lane.RoleTalk, At: now,
+	})
+	if got := a.liveRiderAt(-1); got != "61 tok/s" {
+		t.Fatalf("a thinking pass reads %q", got)
+	}
+
+	// AND A PHASE THAT IS NOT PRODUCING ANYTHING KEEPS ITS WORDS. In those the
+	// clock is the only thing on the frame saying the turn is alive at all.
+	PostPhaseNews(PhaseNews{
+		Phase: provider.PhasePaced, Since: now.Add(-6 * time.Second),
+		Model: phaseModel, Role: lane.RoleTalk, At: now,
+	})
+	if got := a.liveRiderAt(-1); got != "paced · 6s" {
+		t.Fatalf("a paced wait reads %q, want the phase words", got)
+	}
+}
+
+// AND A RATE NOBODY IS MEASURING IS NOTHING. Not the last answer's, not a zero,
+// and not a figure carried through a wait: the emptiness law, and the one
+// reading two rows of this surface take of one moment ([app.awaitingReply]).
+func TestTheLiveRateIsDrawnOnlyWhileItIsBeingMeasured(t *testing.T) {
+	now := time.Date(2026, 9, 9, 9, 0, 0, 0, time.UTC)
+	a := phaseApp(t, now)
+	answerArriving(a)
+	pinSighting(t, provider.Sighting{
+		Model: phaseModel, Provider: "quicksilver", Rate: 92, At: now.Add(-time.Second),
+	}, true)
+
+	// No phase at all: the last answer's sighting is not a claim about now.
+	if got := a.liveRiderAt(-1); got != "" {
+		t.Fatalf("an idle right edge reads %q", got)
+	}
+	if line := plain(a.status(200)); strings.Contains(line, "tok/s") {
+		t.Fatalf("a rate rides a row with no live phase:\n%q", line)
+	}
+
+	// A writing phase that has not measured a rate yet says nothing rather than
+	// `0 tok/s`.
+	PostPhaseNews(PhaseNews{
+		Phase: provider.PhaseWriting, Since: now.Add(-time.Second), Lane: "Friendli",
+		Model: phaseModel, Role: lane.RoleTalk, At: now,
+	})
+	if got := a.liveRiderAt(-1); got != "" {
+		t.Fatalf("an unmeasured rate drew %q", got)
+	}
+
+	// And a rate is not quoted through a wait this surface is naming two rows up.
+	PostPhaseNews(PhaseNews{
+		Phase: provider.PhaseWriting, Since: now.Add(-4 * time.Second), Lane: "Friendli", Rate: 38,
+		Model: phaseModel, Role: lane.RoleTalk, At: now,
+	})
+	a.awaited = now.Add(-20 * time.Second)
+	if got := a.liveRiderAt(-1); got != "" {
+		t.Fatalf("the row quotes %q while the pulse says nothing has come back", got)
 	}
 }
 

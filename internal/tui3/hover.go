@@ -183,6 +183,12 @@ const (
 	// of its own for [hoverRailDoor]'s reason: it belongs to no node, and it does
 	// something different from every other line of the footer.
 	hoverRailMore
+	// hoverRailStanding is the footer's standing count — `◦ 2 standing orders`,
+	// a door onto /standing (standdoor.go). It is a kind of its own for
+	// [hoverRailDoor]'s reason and one more: it was a segment of the status row
+	// until 2026-09-09, and what lights has to be what the press acts on
+	// wherever the line is drawn.
+	hoverRailStanding
 	// hoverTaskSheet is one row of the task page; index is its item
 	// (taskview.go). It is a kind of its own rather than another [hoverSheet]
 	// because the two pages number their rows out of different lists, and a
@@ -203,22 +209,17 @@ const (
 	// where the press would do nothing, the render records no span and this
 	// answers nothing (room.go's [app.roomModelMovable]).
 	hoverStatusModel
-	// hoverKeeping is the `keeping an eye on N` segment of the status row, which
-	// is a door onto /standing (standdoor.go). It is a kind of its own rather
-	// than a second reading of [hoverStatusModel] for the reason that one covers
-	// both of ITS subjects with one kind: what lights has to be what the press
-	// acts on, and these two segments open two different things.
-	hoverKeeping
 	// hoverMoney is the money segment of the status row, which is a door onto
-	// the Spending tab (moneydoor.go). It is a kind of its own for
-	// [hoverKeeping]'s reason: three doors on one row that open three different
-	// things, and what lights has to be what the press acts on.
+	// the Spending tab (moneydoor.go). It is a kind of its own rather than a
+	// second reading of [hoverStatusModel] for the reason that one covers both of
+	// ITS subjects with one kind: what lights has to be what the press acts on,
+	// and two doors on one row open two different things.
 	hoverMoney
-	// hoverMeter, hoverOpen and hoverPosture are the three doors the status row
-	// grew when it became a ledger (foot.go): the context meter onto /status,
-	// the open count onto the switcher, the YOLO badge onto /permissions.
+	// hoverMeter and hoverPosture are two more doors the status row grew when it
+	// became a ledger (foot.go): the context meter onto /status, the YOLO badge
+	// onto /permissions. The open count was a third and is off the row entirely;
+	// the standing count was a fourth and is [hoverRailStanding] now.
 	hoverMeter
-	hoverOpen
 	hoverPosture
 	// hoverTable is the foot under a markdown table that was cut (mdtable.go);
 	// entry is the answer it belongs to and index is which of that answer's
@@ -463,6 +464,12 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	// space beside it (task.go's [app.railDoorAt]).
 	if a.railDoorAt(x, y) {
 		return hoverAt{kind: hoverRailDoor}
+	}
+	// AND THE FOOTER'S STANDING COUNT, on exactly those terms: it is a line of
+	// the footer, it belongs to no node, and it answers to a click
+	// (standdoor.go's [app.railStandingAt]).
+	if a.railStandingAt(x, y) {
+		return hoverAt{kind: hoverRailStanding}
 	}
 	// AND THE MARGIN'S OWN LINES, asked on the same terms as the footer's above
 	// them: a `+` row and a standing order's row belong to no node, and both
@@ -748,7 +755,7 @@ func (a *app) hoveringRailMore() bool { return a.hot.kind == hoverRailMore }
 // hoveringRailArea reports whether the pointer is anywhere over the roster.
 func (a *app) hoveringRailArea() bool {
 	switch a.hot.kind {
-	case hoverRail, hoverRailArea, hoverRailSeam, hoverRailMore:
+	case hoverRail, hoverRailArea, hoverRailSeam, hoverRailMore, hoverRailStanding:
 		return true
 	}
 	return false

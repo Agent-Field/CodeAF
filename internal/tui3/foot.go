@@ -12,21 +12,30 @@ import (
 //	─ porting the parser · glm-5.3-flash · via deepinfra ──── space space home · / commands ─
 //	 › your sentence
 //
-//	$0.27 · ⟲ saved $0.0038 · 58% cached   66.8k/1.3M · 5%   2 jobs   YOLO        92 tok/s · ⠹ working · 12s
+//	$0.27 · ⟲ saved $0.0038 · 58% cached   66.8k/1.3M · 5%   2 jobs   YOLO        38 tok/s · ⠹ working · 12s
 //
 // THE SEAM IS WHO AND WHERE. The rule above the box carries the conversation's
 // name and the model answering it on the left, and the keys that work right now
 // on the right. It is the line a person's eye crosses on the way into the box,
 // which is why the two facts they most often want to change — which
-// conversation, which model — are written on it and pressable there.
+// conversation, which model — are written on it and pressable there. The `via
+// <machine>` rider is ALWAYS on it while a sighting is fresh, whoever served:
+// the model is spelled there as its basename, so the vendor half of the id is
+// not on the screen for the rider to repeat.
 //
 // THE STATUS ROW IS NUMBERS AND ALIVENESS. The ledger on the left is grouped by
 // the question each group answers, three cells of air between groups and a dot
 // only inside one: the bill (what it cost, and what the cache gave back), the
-// meter (what it is carrying), what is alive elsewhere (other conversations,
-// background jobs, standing orders), and the posture (YOLO, drawn only when the
-// gate is open). The right edge is the one segment true of the whole line — the
-// state word and its clock — with the live rate beside it while a turn writes.
+// meter (what it is carrying), what is alive elsewhere (background jobs), and
+// the posture (YOLO, drawn only when the gate is open). The right edge is the
+// one segment true of the whole line — the state word and its clock — with the
+// live rate beside it while a turn writes.
+//
+// THE RATE IS THE STREAM'S OWN AND NEVER AN AVERAGE. `38 tok/s` is what the
+// wire is producing at this moment ([PhaseNews.Rate], measured on the live
+// stream), drawn only while it is being measured; the per-turn burn — output
+// over the turn's whole wall time, waits included — is on `/status` and the
+// phone sheet and is not a claim about now.
 //
 // Until 2026-09-09 the name and model were on the status row's left and every
 // figure sat in one dotted run beside them, so a long title pushed the numbers
@@ -45,8 +54,10 @@ const (
 	groupBill hudGroup = iota
 	// groupMeter is what the conversation is carrying, and the forecast about it.
 	groupMeter
-	// groupElse is what is alive somewhere other than this conversation: other
-	// conversations in this terminal, background jobs, standing orders.
+	// groupElse is what is alive somewhere other than this conversation. It is
+	// background jobs alone now: the tab strip above says how many conversations
+	// are open, and the standing count is a line at the foot of the task column
+	// (task.go's [app.railFootRows]).
 	groupElse
 	// groupPosture is the gate, drawn only when it is open.
 	groupPosture
@@ -54,8 +65,9 @@ const (
 	// runs on answers, whose move it is, and what it is doing.
 	groupAlive
 	// groupOff is the facts that are NOT on the line at all any more — the
-	// session delta, the crew word, the per-turn burn — kept in the telemetry
-	// list so the phone sheet and /status still say them.
+	// session delta, the crew word, the per-turn burn, the open count and the
+	// standing count — kept in the telemetry list so the phone sheet and /status
+	// still say them.
 	groupOff
 )
 
@@ -75,7 +87,7 @@ func segGroup(kind hudSeg) hudGroup {
 		return groupBill
 	case segCtx, segETA:
 		return groupMeter
-	case segOpen, segAmbient, segKeeping:
+	case segAmbient:
 		return groupElse
 	case segYolo:
 		return groupPosture
@@ -185,9 +197,7 @@ type hudRung struct {
 // dropOrder is what the line gives up, first to last, and it is ordered by how
 // actionable each thing is:
 //
-//	open      other conversations — true, and about somewhere else
 //	ambient   a job holding a port is a thing a person acts on, but rarely now
-//	keeping   the standing count; /standing says it in full
 //	eta       a forecast, and the meter beside it is already painted the warning
 //	cache ↓   the cash half of the cache goes and the hit rate stays
 //	rate      the live rate; the clock on the state word already says it is alive
@@ -198,8 +208,12 @@ type hudRung struct {
 // The state word, the posture and the link are not on it at all: one is why a
 // person is looking at the line, one is why they should be, and the third is
 // the reason nothing else on the line is moving.
+//
+// The open count and the standing count were the first two rungs until
+// 2026-09-09 and are off the line entirely now, so there is nothing left for
+// the ladder to spend before it reaches the jobs.
 var dropOrder = []hudRung{
-	{segOpen, false}, {segAmbient, false}, {segKeeping, false}, {segETA, false},
+	{segAmbient, false}, {segETA, false},
 	{segCache, true}, {segRate, false}, {segCache, false}, {segCost, false}, {segCtx, false},
 }
 
@@ -207,7 +221,18 @@ var dropOrder = []hudRung{
 // while a room is open and the row's left is the room chip: everything above it
 // on [dropOrder] goes before the chip is asked for a shorter spelling, and
 // everything from it down survives until the chip has given one.
-const riderRung = 5
+//
+// IT IS THE RATE'S RUNG, FOUND RATHER THAN COUNTED. A literal here is a second
+// place the ladder's order is written down, and the two drifted the moment two
+// segments came off the line.
+var riderRung = func() int {
+	for i, rung := range dropOrder {
+		if rung.kind == segRate {
+			return i
+		}
+	}
+	return len(dropOrder)
+}()
 
 // shrink takes one rung off the two runs, and reports whether it found one.
 // A rung marked shorten replaces the segment with its shorter true spelling
@@ -271,12 +296,16 @@ func dropKind(parts *[]hudPart, kind hudSeg) bool {
 //
 //	$0.27 · ⟲ saved …   the Spending tab of /settings   (moneydoor.go)
 //	66.8k/1.3M · 5%     /status, one fact per line
-//	2 open · 1 waiting  the switcher, ctrl+k             (hop.go)
-//	◦ 2 standing orders /standing                        (standdoor.go)
 //	YOLO                /permissions                     (permissions.go)
 //
 // Jobs and watches have no page of their own and are not a door; the rate, the
 // link and the state word are readings, not controls.
+//
+// TWO DOORS LEFT THIS ROW ON 2026-09-09 AND ONE OF THEM IS STILL A DOOR. The
+// open count is gone because the tab strip already names every conversation;
+// the standing count moved to the foot of the task column, where it is drawn
+// dim, brightens under the pointer and opens /standing exactly as it did here
+// (task.go's [app.railFootRows], standdoor.go).
 
 // statusDoor is one pressable segment on the status row.
 type statusDoor struct {
@@ -288,7 +317,7 @@ type statusDoor struct {
 // doorKinds is which segments are doors at all.
 func doorKind(kind hudSeg) bool {
 	switch kind {
-	case segCost, segCache, segCtx, segETA, segOpen, segKeeping, segYolo:
+	case segCost, segCache, segCtx, segETA, segYolo:
 		return true
 	}
 	return false
@@ -297,8 +326,8 @@ func doorKind(kind hudSeg) bool {
 // markDoors walks one run as it was drawn and records every door on it. base is
 // the column the run starts at and row which of the status row's rows it is on.
 //
-// The legacy spans ([app.keepSpan], [app.moneySpan]) are written beside the
-// table because the paint and the tests of those two doors read them by name.
+// The legacy span ([app.moneySpan]) is written beside the table because the
+// paint and the tests of that door read it by name.
 func (a *app) markDoors(parts []hudPart, base, row int) {
 	at := base
 	for i, part := range parts {
@@ -307,10 +336,7 @@ func (a *app) markDoors(parts []hudPart, base, row int) {
 		if doorKind(part.kind) {
 			a.doors = append(a.doors, statusDoor{kind: part.kind, span: hudSpan{from: at, to: at + width}, row: row})
 		}
-		switch part.kind {
-		case segKeeping:
-			a.keepSpan, a.keepRow = hudSpan{from: at, to: at + width}, row
-		case segCost:
+		if part.kind == segCost {
 			// The reservation in front of the figure is space, not a door.
 			room, _ := splitReserve(part.text)
 			a.moneySpan, a.moneyRow = hudSpan{from: at + len(room), to: at + width}, row
@@ -334,12 +360,8 @@ func doorHover(kind hudSeg) hoverKind {
 	switch kind {
 	case segCost, segCache:
 		return hoverMoney
-	case segKeeping:
-		return hoverKeeping
 	case segCtx, segETA:
 		return hoverMeter
-	case segOpen:
-		return hoverOpen
 	case segYolo:
 		return hoverPosture
 	}
@@ -351,13 +373,8 @@ func (a *app) doorPress(door statusDoor) (tea.Cmd, bool) {
 	switch door.kind {
 	case segCost, segCache:
 		return a.openSpending(spendTodayKey), true
-	case segKeeping:
-		return a.openStanding(), true
 	case segCtx, segETA:
 		return a.runStatusNote(), true
-	case segOpen:
-		a.hopOpen()
-		return nil, true
 	case segYolo:
 		a.openPermissions()
 		return nil, true
@@ -383,16 +400,12 @@ func (a *app) statusDoorPress(x, y int) (tea.Cmd, bool) {
 	if !ok {
 		return nil, false
 	}
-	if door.kind == segKeeping && a.at(pageStanding) {
-		return nil, false
-	}
 	return a.doorPress(door)
 }
 
-// hoveringMeter, hoveringOpen and hoveringPosture are the pointer over those
-// three doors, for the paint.
+// hoveringMeter and hoveringPosture are the pointer over those two doors, for
+// the paint.
 func (a *app) hoveringMeter() bool   { return a.hot.kind == hoverMeter }
-func (a *app) hoveringOpen() bool    { return a.hot.kind == hoverOpen }
 func (a *app) hoveringPosture() bool { return a.hot.kind == hoverPosture }
 
 // runStatusNote prints /status into the conversation, which is what pressing

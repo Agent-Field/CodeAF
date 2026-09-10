@@ -999,17 +999,28 @@ type app struct {
 	inputTokens int
 	cacheRead   int
 	cacheWrite  int
-	// cacheSaved is what those reads have been WORTH, in dollars, summed over
-	// every turn whose model published BOTH a prompt price and a cache-read
-	// price to work the difference out from (see [app.cacheNote], which is the
-	// one place it grows). It is what turns the
-	// warm share from a statistic into a fact about the bill: the percentage is
-	// the hit RATE, this is what the rate MEANT.
+	// cacheSaved is what those reads have been WORTH, in dollars: cacheRead ×
+	// (prompt price − cache-read price) for the model this conversation is on,
+	// worked out from the totals every time they move ([app.repriceCache], the
+	// one place it is written). It is what turns the warm share from a statistic
+	// into a fact about the bill: the percentage is the hit RATE, this is what
+	// the rate MEANT.
 	//
-	// It is deliberately NOT derivable from the totals beside it. The price is a
-	// property of the model that was answering at the time, and a session that
-	// switched models halfway cannot be re-priced afterwards from one number —
-	// so it is accumulated per turn, at the moment the price is known.
+	// IT IS DERIVED RATHER THAN ACCUMULATED, and that is a fix rather than a
+	// simplification. It used to be summed per turn as each turn landed, which
+	// meant a RESUMED conversation — whose cache reads are restored whole from
+	// the journal and whose turns are all in the past — read `⟲ 28% cached` with
+	// no `saved $…` beside it until the next turn happened to land. The share
+	// was restored and the money was not, on the one figure a person opens a
+	// resumed session to check.
+	//
+	// A MIXED-MODEL SESSION IS PRICED AT THE MODEL IT IS ON NOW. The price is a
+	// property of whoever was answering at the time, and one total of cache
+	// reads cannot be split back out over the models that made them — so the
+	// current model's price is applied to all of them. That is the honest
+	// approximation a resume can make: every alternative is either a figure
+	// nobody can reconstruct or no figure at all, and the second was what this
+	// surface used to draw.
 	cacheSaved float64
 
 	// outputTokens is what the session has WRITTEN, and it is held apart from
@@ -1119,17 +1130,12 @@ type app struct {
 	// doors is every pressable segment of the status row, recorded as the row
 	// is laid out and cleared before it (foot.go).
 	doors []statusDoor
-	// keepSpan is where the `keeping an eye on N` segment was last drawn, and
-	// keepRow which of the status row's rows it landed on — the same bargain
-	// modelSpan makes, for the same reason and one more: that cluster is
-	// right-aligned, so where a segment sits depends on every segment beside it
-	// and on the frame's width, and only the layout can answer it
-	// (standdoor.go, render.go's [app.statusRows]).
-	keepSpan hudSpan
-	keepRow  int
 	// moneySpan is where the money segment was last drawn, and moneyRow which of
-	// the status row's rows it landed on — the same bargain keepSpan makes, for
-	// the same reason. It is the door onto the Spending tab (moneydoor.go).
+	// the status row's rows it landed on — the same bargain modelSpan makes, for
+	// the same reason and one more: that cluster is right-aligned, so where a
+	// segment sits depends on every segment beside it and on the frame's width,
+	// and only the layout can answer it. It is the door onto the Spending tab
+	// (moneydoor.go, render.go's [app.statusRows]).
 	moneySpan hudSpan
 	moneyRow  int
 	// stripSpans is where the task strip's chips were last drawn, and stripMore
@@ -3622,16 +3628,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.standingPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
-			// AND THE `keeping an eye on N` SEGMENT IS A DOOR ONTO /standing,
-			// read directly before the model's name because they are two segments
-			// of the same row and neither swallows the other's columns
-			// (standdoor.go).
-			if a.keepingPress(msg.Mouse().X, msg.Mouse().Y) {
-				return a, nil
-			}
 			// AND THE MONEY SEGMENT IS A DOOR ONTO THE SPENDING TAB, read here
-			// for the same reason and in the same way: three segments of one row,
-			// none of them swallowing another's columns (moneydoor.go).
+			// for the same reason and in the same way: two segments of one row,
+			// neither of them swallowing the other's columns (moneydoor.go). The
+			// standing count was a third and is a line at the foot of the task
+			// column now, answered by that column's own press (standdoor.go).
 			if cmd := a.moneyPress(msg.Mouse().X, msg.Mouse().Y); cmd != nil {
 				return a, cmd
 			}
@@ -5409,6 +5410,13 @@ func (a *app) take(u session.Usage) {
 	if u.CacheWrite > a.cacheWrite {
 		a.cacheWrite = u.CacheWrite
 	}
+	// AND WHAT THE CACHE GAVE BACK IS RE-DERIVED FROM THE TOTAL THAT JUST MOVED,
+	// which is what carries the figure across a RESUME: this is the one door
+	// every reading of the session's cache reads comes through — a turn landing,
+	// /status, and the first frame of a reopened conversation ([app.refreshUsage],
+	// called from the boot) — so the money and the share can never again be
+	// restored one without the other.
+	a.repriceCache()
 	// THE CONVERSATION'S COLUMN READS ITS BOOKS HERE, turn-scoped: what the
 	// session has been billed since this turn opened its clock ([app.startClock]
 	// takes both marks). A room's column is fed by its own lane instead
@@ -8106,6 +8114,12 @@ func (a *app) priceFor(id string) (Model, bool) {
 // cache read is never free) — and treating that absence as a zero books the
 // WHOLE prompt price as a saving, which is this surface claiming the cache made
 // those tokens free. The token count alone is what it actually knows.
+//
+// THIS LINE IS THIS TURN'S AND NOTHING ELSE'S. It used to bank its figure into
+// the session's running total on the way past, which made the total a thing
+// only a turn landing could build — and therefore a thing a resumed
+// conversation did not have ([app.repriceCache] owns that total now, derived
+// from the reads themselves).
 func (a *app) cacheNote(u session.Usage) {
 	if u.CacheRead <= 0 {
 		return
@@ -8113,15 +8127,35 @@ func (a *app) cacheNote(u session.Usage) {
 	line := "⟲ " + tokenWord(u.CacheRead) + " cached"
 	if model, known := a.priceFor(a.model); known && model.CacheReadPrice > 0 {
 		if saved := float64(u.CacheRead) * (model.PromptPrice - model.CacheReadPrice); saved > 0 {
-			// The same figure, twice: once for this turn, and once into the
-			// session's running total behind the status line's warm share. It is
-			// summed HERE — under the same price guard — so the total can never
-			// contain a turn the note itself could not price.
-			a.cacheSaved += saved
 			line += " · saved " + savedWord(saved)
 		}
 	}
 	a.note(line)
+}
+
+// repriceCache is what the session's cache reads have been worth, worked out
+// from the totals rather than remembered from the turns that made them
+// ([app.cacheSaved] states the bargain, the resume it fixes and the mixed-model
+// approximation it accepts). It is called wherever [app.cacheRead] moves.
+//
+// BOTH PRICES OR NO MONEY, which is [app.cacheNote]'s own guard said again at
+// the second site that spends it: around two rows in five publish a prompt
+// price and no cache-read price at all, and treating that absence as a zero
+// books the WHOLE prompt price as a saving — this surface claiming the cache
+// made those tokens free. Nothing is what it actually knows, and the segment
+// beside it degrades to the hit rate alone (render.go's [app.warmSegment]).
+func (a *app) repriceCache() {
+	a.cacheSaved = 0
+	if a.cacheRead <= 0 {
+		return
+	}
+	model, known := a.priceFor(a.model)
+	if !known || model.CacheReadPrice <= 0 {
+		return
+	}
+	if saved := float64(a.cacheRead) * (model.PromptPrice - model.CacheReadPrice); saved > 0 {
+		a.cacheSaved = saved
+	}
 }
 
 // ── WHAT CHANGED ────────────────────────────────────────────────────────────

@@ -1076,8 +1076,8 @@ nothing.
 you have switched away from holds it for as long as you are away, and coming back
 gives you the reading time you had left — see the permissions page.
 
-All three say `waiting on you` while they wait: on home, on the status line's
-`2 open · 1 waiting`, and in a desktop notification the moment the question goes
+All three say `waiting on you` while they wait: on home, on the tab strip and in
+`/status`'s `2 open · 1 waiting`, and in a desktop notification the moment the question goes
 up — which now fires for a conversation this terminal is holding behind the
 screen even while the terminal is focused, because a focused terminal is no
 longer evidence that anybody is looking at *that* conversation.

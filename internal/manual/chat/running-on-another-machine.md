@@ -526,8 +526,9 @@ all work over `--host`. What to know is **whose machine they are on**:
 **Home and the standing place both work, and both are about the far machine.** Home lists
 that machine's projects with each one's `◦` item band under it and the `p`/`s` keys live on
 them; the standing place lists both what stands on this conversation and what stands anywhere
-else on that machine. The status line's `◦ 2 standing orders` counts the far machine's items
-for the workspace this window is on, because over `--host` that path is the far machine's own.
+else on that machine. The `◦ 2 standing orders` count at the foot of the task column counts
+the far machine's items for the workspace this window is on, because over `--host` that path
+is the far machine's own.
 
 Two readings are absent over a connection, and each says nothing rather than guessing:
 

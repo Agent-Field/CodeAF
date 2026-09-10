@@ -626,17 +626,24 @@ legend on a fieldset:
 The left, in order: the machine on a `--host` session (`devbox · …`), the conversation's
 **name** (the one the session chose for itself, falling back to the folder's name until
 it has named itself, so it is never empty), the **model** as its basename with its
-reasoning level (`glm-5.3-flash`, `gpt-4.1-mini:high`), a `· via deepinfra` rider when the
-endpoint that answered is not already named by the model id, and the git **branch** with
-a `*` when the tree has uncommitted work. In a directory that is not a repository there is
+reasoning level (`glm-5.3-flash`, `gpt-4.1-mini:high`), a `· via deepinfra` rider naming
+the endpoint that answered, and the git **branch** with a `*` when the tree has
+uncommitted work. In a directory that is not a repository there is
 no branch. It never says "untitled" and never invents a placeholder.
 
 **The model's name is a door.** Press it and the model picker opens, exactly as typing
 `/model` does; it brightens under the pointer to say so. With the mouse turned off
 (`ui.mouse`), only the command works. The rate the endpoint is writing at is *not* on
 this line — while a turn runs it stands beside the state word on the status row
-(`92 tok/s · ⠹ working · 12s`), because how fast is a claim about now and who is
+(`38 tok/s · ⠹ working · 12s`), because how fast is a claim about now and who is
 attribution.
+
+**The `via` rider is drawn whoever served**, including a vendor serving its own model
+(`glm-5.3-flash · via z-ai`). It was hidden in that case until 2026-09-09, on the
+argument that the id already said it — but the model is spelled here as its basename,
+so the vendor half of the address is not on the screen at all, and a rider that came and
+went with the endpoint read as a lost sighting. It goes quiet only when no endpoint has
+been timed in the last ten minutes.
 
 **When the line is too narrow, it says less rather than cutting.** The left end gives
 things up in this order, and each step is a shorter *true* sentence:
@@ -812,7 +819,7 @@ long. The conversation's name and model are *not* on this row: they are on the l
 line above the box (see "The line above the message box").
 
 ```
-$0.27 · ⟲ saved $0.0038 · 58% cached   66.8k/1.3M · 5%   2 jobs   YOLO        92 tok/s · ⠹ working · 12s
+$0.27 · ⟲ saved $0.0038 · 58% cached   66.8k/1.3M · 5%   2 jobs   YOLO        38 tok/s · ⠹ working · 12s
 ```
 
 Inside a group the parts are joined by ` · `; between groups there are three cells of
@@ -823,15 +830,19 @@ nothing. Space is the separator — no pipe, no bracket, no rule. The groups, le
   share beside it says which of the two percentages on the row is the cache's.
 - **the meter** — tokens carried over the model's window and the percentage,
   `66.8k/1.3M · 5%`, and `compaction in ~3 turns` when that is close.
-- **elsewhere** — what is alive somewhere other than this conversation: `2 open · 1
-  waiting` when this terminal holds more than one conversation, `2 jobs · 1 watch` for
-  background work, `◦ 2 standing orders` for the orders reaching this project. Each is
-  absent when its count is zero.
+- **elsewhere** — what is alive somewhere other than this conversation: `2 jobs · 1 watch`
+  for background work, absent when both counts are zero. The open-conversation count and
+  the standing count were in this group until 2026-09-09 and are not on the row at all
+  now: the **tab strip** above the transcript names every open conversation, and
+  `◦ 2 standing orders` is a line at the foot of the **task column** (see *The column on
+  the right*).
 - **the posture** — `YOLO`, drawn only when the gate is open. Absence is the safe state.
 
-Across the gap, at the right edge: the live rate `92 tok/s` while a turn is writing (or
-the lane's phase, `thinking · 12s · deepinfra 38 t/s`), the connection on a `--host`
-session (`devbox · 3ms`), and last the state word with its clock — `idle`,
+Across the gap, at the right edge: the live rate `38 tok/s` while the answer is being
+thought or written (or the phase's own words while the turn is in one that is producing
+nothing yet — `connecting · 1.2s`, `first word · 3.1s → parasail at 4.4s`, `paced · retry
+in 6s`), the connection on a `--host` session (`devbox · 3ms`), and last the state word
+with its clock — `idle`,
 `⠹ working · 4s`, `waiting · your call`, `stopping`, `interrupted`.
 
 **Most of the ledger is a door**, and each brightens under the pointer to say so:
@@ -840,8 +851,6 @@ session (`devbox · 3ms`), and last the state word with its clock — `idle`,
 | --- | --- |
 | `$0.27` or `⟲ saved …` | the **Spending** tab of `/settings` (`/budget` is the keyboard door) |
 | `66.8k/1.3M · 5%` or `compaction in …` | `/status`, one fact per line |
-| `2 open · 1 waiting` | the conversation switcher, `ctrl+k` |
-| `◦ 2 standing orders` | `/standing` |
 | `YOLO` | `/permissions` |
 
 Jobs and watches are not a door — the column's `jobs` section is where they are read —
@@ -862,12 +871,15 @@ row at 60 columns. If even the emptied row will not fit, the state word is what 
 
 Until 2026-09-09 the name and the model were the left half of this row and every figure
 sat in one dotted run beside them; the crew word, the `Σ +128 −14` session delta, the
-`tok/s avg` burn and the context sparkline were on it too. Those four are off the line
-now and `/status` still prints them.
+`tok/s avg` burn, the context sparkline, `2 open · 1 waiting` and `◦ 2 standing orders`
+were on it too. None of those is on the line now — `/status` and the phone sheet still
+print all six, and the standing count is drawn at the foot of the task column.
 
 ## What each part of the status line means
 
-Eleven segments, in a fixed order, grouped as the previous heading describes:
+Nine segments, in a fixed order, grouped as the previous heading describes. Two more —
+`open` and `standing` — are still built and still reach `/status` and the phone sheet,
+and are listed here with the row they left:
 
 | # | segment | example | what the number is | when it is empty |
 | --- | --- | --- | --- | --- |
@@ -875,13 +887,13 @@ Eleven segments, in a fixed order, grouped as the previous heading describes:
 | 2 | cache | `⟲ saved $0.02 · 89% cached` | what the cache gave back in cash, and the session's cache hit rate. The same door as the cost | empty until there is a cached share; on an unpriced model the cash half goes, leaving `⟲ 89% cached` |
 | 3 | context | `12.4k/128k · 10%` | tokens the conversation is carrying, the model's window, the percentage. **A door onto `/status`** | empty when nobody has said what the window is, or tokens are 0; the percentage is dropped below 1% |
 | 4 | eta | `compaction in ~3 turns` | forecast from average growth; the same door | empty when the conversation is not growing, when the answer is more than 5 turns out, or when compaction is already due |
-| 5 | open | `2 open · 1 waiting` | how many conversations **this terminal** is holding, and how many of them are stopped on a question. **A door onto the switcher** (`ctrl+k`) | absent whenever only one is open; the `· N waiting` clause is absent when none is waiting |
-| 6 | ambient | `2 jobs · 1 watch` | background work this screen saw start and has not seen killed — a `bash` with `background:true`, a `watch` call | zero of both draws nothing |
-| 7 | standing | `◦ 2 standing orders` | the active standing orders reaching this project; the mark moves while one is being acted on. **A door onto `/standing`** | absent when nothing stands here |
-| 8 | yolo | `YOLO` | the `tools.approvalMode` row in your profile is `allow`, or the session was launched with `--yolo`, which forces that posture for the session without writing the row — over `--host` it is the far machine's row, carried once when the connection opens. **A door onto `/permissions`** | empty in every other posture — absence is the safe state |
-| 9 | rate | `92 tok/s` | how fast the endpoint is writing **this** turn; or the lane's phase words while it is in one (`thinking · 12s · deepinfra 38 t/s`, `slow · trying coreweave…`) | empty unless a turn is running and something has come back |
-| 10 | connection | `devbox · 3ms` | a rolling estimate of one empty round trip to the machine a `--host` conversation runs on; while the link is down this is replaced by `reconnecting to devbox — trying for up to 5 minutes` | empty on every local session and on a hosted one until the first measurement answers; never `0ms` |
-| 11 | state | `⠹ working · 4s` | what the screen is doing, and for how long | never empty |
+| — | open | `2 open · 1 waiting` | how many conversations **this terminal** is holding, and how many of them are stopped on a question. **Off the row since 2026-09-09** — the tab strip names them all — and on `/status` and the phone sheet | absent whenever only one is open; the `· N waiting` clause is absent when none is waiting |
+| 5 | ambient | `2 jobs · 1 watch` | background work this screen saw start and has not seen killed — a `bash` with `background:true`, a `watch` call | zero of both draws nothing |
+| — | standing | `◦ 2 standing orders` | the active standing orders reaching this project; the mark moves while one is being acted on. **Off the row since 2026-09-09**: it is a line at the foot of the task column, still dim, still pressable, still opening `/standing` | absent when nothing stands here |
+| 6 | yolo | `YOLO` | the `tools.approvalMode` row in your profile is `allow`, or the session was launched with `--yolo`, which forces that posture for the session without writing the row — over `--host` it is the far machine's row, carried once when the connection opens. **A door onto `/permissions`** | empty in every other posture — absence is the safe state |
+| 7 | rate | `38 tok/s` | what the stream is producing **right now** — tokens over elapsed, measured on the live stream by the layer holding it — while the answer is being thought or written; or the phase's own words while the turn is in a phase that is producing nothing (`connecting · 1.2s`, `paced · retry in 6s`, `slow · trying coreweave…`) | empty unless that rate is being measured this instant: never the last answer's average, never the per-turn burn, and never `0 tok/s` |
+| 8 | connection | `devbox · 3ms` | a rolling estimate of one empty round trip to the machine a `--host` conversation runs on; while the link is down this is replaced by `reconnecting to devbox — trying for up to 5 minutes` | empty on every local session and on a hosted one until the first measurement answers; never `0ms` |
+| 9 | state | `⠹ working · 4s` | what the screen is doing, and for how long | never empty |
 
 The `N jobs` figure means "what you started". A background job that exited on its own is
 still counted, because nothing on the wire says otherwise. For the state of one job rather
@@ -894,11 +906,13 @@ are looking at a different one is counted in `N waiting` on the next frame. `tab
 empty box goes to the last one — see the keys page, and home's *Switch between projects
 without leaving*.
 
-**Four facts are on `/status` and the phone sheet but not on the row:** `crew` (the preset the five models aforge uses on its own behalf are on), `changes` (`Σ +128 −14`,
-lines added and removed by this session), `rate` (`1.2k tok/s avg`, output over the wall
-time of the last turn) and the compaction sparkline's readings. They were on the row until
-2026-09-09 and were the first things a narrow frame dropped; none of them is something
-you act on from the line.
+**Six facts are on `/status` and the phone sheet but not on the row:** `crew` (the preset
+the five models aforge uses on its own behalf are on), `changes` (`Σ +128 −14`, lines
+added and removed by this session), `rate` (`1.2k tok/s avg`, this turn's output over
+this turn's whole wall time, waits and tool calls included — which is why it is not the
+figure at the right edge of the row), the compaction sparkline's readings, `open` and
+`watching` (the standing count, which is drawn at the foot of the task column). They were
+all on the row until 2026-09-09; none of them is something you act on from the line.
 
 ## How fast is the connection — host latency and round-trip time in the status line
 
@@ -1071,12 +1085,13 @@ When the segments do not fit, they are removed one at a time in a fixed order, b
 actionable each one is:
 
 ```
-open → jobs → standing orders → compaction eta → the cache's cash half → rate → cache → cost → context
+jobs → compaction eta → the cache's cash half → rate → cache → cost → context
 ```
 
-`open` goes first because it is the one segment that is not about the conversation in
-front: at sixty columns what you need is what **this** conversation is doing. The cache
-segment has a shorter true spelling before it goes — `⟲ saved $0.02 · 89% cached` becomes
+`jobs` goes first because it is the one segment left that is not about the conversation in
+front: at sixty columns what you need is what **this** conversation is doing. (The open
+count and the standing count were the first two rungs until 2026-09-09 and are off the row
+entirely now.) The cache segment has a shorter true spelling before it goes — `⟲ saved $0.02 · 89% cached` becomes
 `⟲ 89% cached` — and the live rate goes before the cache's hit rate because the clock on
 the state word already says the turn is alive.
 
@@ -2789,8 +2804,9 @@ session, with the filter, the cards and the mention. Home (`/home`, or space twi
 empty box) is the other place old work is listed. Running work belonging to *other*
 windows is not on the column at all, and never was; `/history` carries that too.
 
-The footer is up to three dim lines of totals — `Σ $1.42 · 312k tok`, `3 running · 1 needs
-you` — and then up to three more dim lines, each of which is a button as well as a key:
+The footer is up to three dim lines of counts — `3 running · 1 needs you`, `148 parked ·
+12 done` — then the standing count `◦ 2 standing orders` when anything stands over this
+project, and then up to three more dim lines, each of which is a button as well as a key:
 
 ```
 ctrl+. earlier
@@ -2882,7 +2898,8 @@ standing
 
 ▸ jobs · 1 running · 4m12s
 
-Σ $1.42 · 312k tok
+1 running · 1 needs you
+◦ 2 standing orders
 ctrl+. earlier
 ❯ ctrl+g hide
 ```
@@ -3125,10 +3142,12 @@ tell you; everything else is read in whole seconds.
 
 **The phase is on exactly one row at a time, and never on two.** While the working line is
 drawn it owns the words; the moment it goes — an answer is streaming, a call is spinning,
-the turn has ended — the status line beside your model takes them up, where they stand in
-place of `via <machine>` (see *Models, context, and what it costs*). Before this the same
-sentence was drawn twice on one screen, verbatim, two rows apart, and the second copy was
-spending the cells the bill, the context meter and the watch count needed.
+the turn has ended — the **right edge of the status row** takes them up, where they stand
+in the live rate's own place: while the answer is being thought or written that spot is
+`38 tok/s` and nothing else, and in every phase that is producing nothing yet it is the
+phase's own words. Before this the same sentence was drawn twice on one screen, verbatim,
+two rows apart, and the second copy was spending the cells the bill and the context meter
+needed.
 
 **A turn also has waits of its own, between requests**, and they use the same line and the
 same clock:

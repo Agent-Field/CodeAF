@@ -323,7 +323,7 @@ with a fresh agent and a fresh session file.
 
 **It adds one rather than closing this one.** The conversation you were in is left open
 behind it — still streaming its turn, still running its tasks — and `tab` over an empty
-message box goes back. The status line then reads `2 open`.
+message box goes back. The **tab strip** above the transcript then shows both.
 
 **The one exception is a conversation nobody has used yet**: no transcript, no turn ever
 run, nothing out and nothing waiting. That one is closed and replaced, because closing it
@@ -643,10 +643,17 @@ session holds right now.
 
 The labels come in this order, and each is dropped when its value is empty: `session`,
 `task` (only inside a task room), `model` (the full routing address, with `:level` when a
-reasoning level is set), `crew`, `task model` (only in a room), `served`, then the telemetry
-words — `search`, `background`, `changes`, `spend`, `context`, `compacts at`, `cache`,
-`rate`, `compaction`, `approvals`, `connection`, `state` — then `tasks`, `keeping watch`,
-`place`, `keys`, and last `build` and `file`. Labels are padded into two aligned columns.
+reasoning level is set), `crew`, `task model` (only in a room), `served`, `search`, then the
+telemetry words — `spend`, `cache`, `context`, `compacts at`, `compaction`, `background`,
+`approvals`, `changes`, `rate`, `open`, `watching`, `speed`, `connection`, `state` — then
+`tasks`, `keeping watch`, `place`, `keys`, and last `build` and `file`. Labels are padded
+into two aligned columns.
+
+Four of those words are facts this command and the phone's sheet carry and the status row
+does not: `changes` (`Σ +128 −14`), `rate` (`1.2k tok/s avg`, this turn's output over its
+whole wall time — the right edge of the row shows the live `38 tok/s` instead), `open`
+(`2 open · 1 waiting`) and `watching` (the standing count, which is drawn at the foot of the
+task column). `crew` is a fifth and has its own line above.
 
 The `crew` line sits directly under `model` and reads the preset word — or `custom` — and
 the three classes:

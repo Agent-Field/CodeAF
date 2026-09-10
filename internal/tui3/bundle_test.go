@@ -17,6 +17,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -1624,8 +1625,10 @@ func TestTheContextMeterClimbsAThreeRungRamp(t *testing.T) {
 }
 
 // CACHE SPEAKS CASH: the percentage is the hit RATE, and the dollars are what
-// the rate MEANT. The total is summed per turn, under the same price guard the
-// per-turn note uses.
+// the rate MEANT. The figure is DERIVED from the session's own cache reads at
+// the price of the model it is on, so it is there on the first frame of a
+// resumed conversation and not only after the next turn lands
+// (app.go's [app.repriceCache]).
 func TestTheWarmShareSaysWhatTheCacheWasWorth(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "vendor/priced"})
 	a.models = func() []Model {
@@ -1635,26 +1638,28 @@ func TestTheWarmShareSaysWhatTheCacheWasWorth(t *testing.T) {
 		}}
 	}
 	a.model = "vendor/priced"
-	a.inputTokens, a.cacheRead = 100_000, 89_000
 
-	// Before a turn has been priced there is nothing to claim: the rate alone.
-	if got := a.warmSegment(); got != "⟲ 89% cached" {
-		t.Fatalf("the segment reads %q before any priced turn, want ⟲ 89%% cached", got)
-	}
-
-	// Two turns, each 9,800 cached tokens at a nine-dollar-per-million gap:
-	// $0.0882 apiece, and the segment carries the SUM.
-	a.cacheNote(session.Usage{Input: 12_000, CacheRead: 9_800})
-	a.cacheNote(session.Usage{Input: 12_000, CacheRead: 9_800})
-	if want := 2 * 0.0882; a.cacheSaved < want-1e-9 || a.cacheSaved > want+1e-9 {
-		t.Fatalf("cacheSaved = %v after two turns, want %v", a.cacheSaved, want)
+	// One reading of the session's totals — which is what a resume folds in
+	// ([app.refreshUsage] on the first frame) — and both halves are there at
+	// once: 89,000 reads at a nine-dollar-per-million gap is $0.801.
+	a.take(session.Usage{Input: 100_000, CacheRead: 89_000})
+	if want := 0.801; a.cacheSaved < want-1e-9 || a.cacheSaved > want+1e-9 {
+		t.Fatalf("cacheSaved = %v off the totals, want %v", a.cacheSaved, want)
 	}
 	got := a.warmSegment()
-	if got != "⟲ saved $0.1764 · 89% cached" {
+	if got != "⟲ saved $0.8010 · 89% cached" {
 		t.Fatalf("the segment reads %q, want the cash then the rate", got)
 	}
 	if line := plain(a.status(120)); !strings.Contains(line, got) {
 		t.Fatalf("the status line is missing the warm segment:\n%s", line)
+	}
+
+	// AND THE PER-TURN NOTE BANKS NOTHING. It says what ONE turn read and what
+	// that turn was worth; the running total is the reads', not the notes'.
+	before := a.cacheSaved
+	a.cacheNote(session.Usage{Input: 12_000, CacheRead: 9_800})
+	if a.cacheSaved != before {
+		t.Fatalf("the per-turn note moved the session total: %v, was %v", a.cacheSaved, before)
 	}
 
 	// AN UNPRICED SESSION KEEPS THE SEGMENT IT HAD. "saved $0.00" is not a true
@@ -1662,10 +1667,9 @@ func TestTheWarmShareSaysWhatTheCacheWasWorth(t *testing.T) {
 	bare := newTestApp(&fakeAgent{model: "vendor/unpriced"})
 	bare.models = func() []Model { return []Model{{ID: "vendor/unpriced", ContextLength: 128_000}} }
 	bare.model = "vendor/unpriced"
-	bare.inputTokens, bare.cacheRead = 100_000, 89_000
-	bare.cacheNote(session.Usage{Input: 12_000, CacheRead: 9_800})
+	bare.take(session.Usage{Input: 100_000, CacheRead: 89_000})
 	if bare.cacheSaved != 0 {
-		t.Fatalf("an unpriced turn banked %v", bare.cacheSaved)
+		t.Fatalf("an unpriced session priced its reads: %v", bare.cacheSaved)
 	}
 	if got := bare.warmSegment(); got != "⟲ 89% cached" {
 		t.Fatalf("the unpriced segment reads %q, want ⟲ 89%% cached", got)
@@ -1840,6 +1844,30 @@ func TestAnUnnamedSessionPutsNoPlaceholderOnTheLegend(t *testing.T) {
 	}
 	if ansi.StringWidth(line) != 100 {
 		t.Fatalf("the legend is %d cells wide, want the frame's 100", ansi.StringWidth(line))
+	}
+}
+
+// `VIA <MACHINE>` IS ON THE SEAM WHOEVER SERVED, which is the owner's ruling of
+// 2026-09-09. The rider used to go silent when the server's name was already
+// inside the model id — `z-ai/glm-5.3-flash` answered by z-ai — on the argument
+// that the reader already had the word. On this line they do not: the model is
+// spelled as its BASENAME, so the vendor half of the id is not on the screen at
+// all, and a rider that appeared for one endpoint and vanished for another read
+// as the sighting having been lost.
+func TestTheSeamNamesTheMachineEvenWhereTheVendorServesItsOwnModel(t *testing.T) {
+	a, _, now := hudApp(t)
+	a.title = "porting the parser"
+	pinSighting(t, provider.Sighting{
+		Model: "deepseek/deepseek-v4-flash", Provider: "DeepSeek", Rate: 92, At: now.Add(-time.Second),
+	}, true)
+
+	if line := plain(a.legend(140)); !strings.Contains(line, "deepseek-v4-flash · via deepseek") {
+		t.Fatalf("the seam dropped the rider because the vendor served: %q", line)
+	}
+	// AND THE SHEET'S `served` ROW KEEPS THE OLD RULE, because the line above it
+	// there is the model's WHOLE routing address, vendor and all (statusdeck.go).
+	if got := a.servedRider(); got != "" {
+		t.Fatalf("the sheet's served row repeated the vendor: %q", got)
 	}
 }
 
@@ -3729,19 +3757,23 @@ func TestTheRosterOrdersItsFamiliesByUrgencyAndCountsTheWhole(t *testing.T) {
 		t.Fatalf("the node's id is not the trailing meta of its row:\n%s", rail)
 	}
 	// AND THE FOOTER SAYS THE WHOLE, in the group vocabulary.
-	for _, want := range []string{railSigma + "1 running", "1 needs you",
+	for _, want := range []string{"1 running", "1 needs you",
 		"1 queued", "1 waiting", "2 done"} {
 		if !strings.Contains(rail, want) {
 			t.Fatalf("the footer does not say %q:\n%s", want, rail)
 		}
 	}
+	// AND IT COUNTS RATHER THAN SUMS. The `Σ` led the foot's first line while
+	// that line was the session's bill; the bill left for the status row and the
+	// sign went with it — a mathematician's mark in front of a row of counts is
+	// furniture claiming to be structure (task.go's [app.railFootRows]).
 	// AND IT COUNTS WHAT THE COLUMN HOLDS AND NOTHING ELSE. The bill and the
 	// token total were on this foot until 2026-09-09, and both are the SESSION's
 	// — the same two figures the status row two lines down already draws. One
 	// number drawn twice on one frame is one of them wrong the moment they
 	// disagree, and the second copy cost this column two of its three lines
 	// (task.go's [app.railFootRows]).
-	for _, gone := range []string{"$1.42", "312k tok"} {
+	for _, gone := range []string{"$1.42", "312k tok", "Σ"} {
 		if strings.Contains(rail, gone) {
 			t.Fatalf("the footer repeats the status row's %q:\n%s", gone, rail)
 		}

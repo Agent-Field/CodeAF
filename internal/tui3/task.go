@@ -3371,6 +3371,11 @@ type railLine struct {
 	// know whether it was asked to widen the column, to hide it, or to leave it
 	// for a page that holds work this session never ran.
 	more bool
+	// keeping says this line is the footer's standing count, whose door is
+	// /standing (standdoor.go). It is a fourth flag for the third one's reason:
+	// every one of these lines can be on the frame at once, and a press has to
+	// know which of the four it landed on.
+	keeping bool
 	// door is the slash word this line TYPES INTO THE DRAFT when it is pressed —
 	// the `+` row at the foot of each section (margin.go). It is the word itself
 	// rather than a flag because there are two of them and they type two different
@@ -3461,10 +3466,10 @@ func (a *app) railView(height int) ([]railLine, int) {
 	// nothing exists, while the emptiness law spends no pixels naming absence.
 	head := a.marginHead(room, len(entries) > 0)
 	lines := a.railLines(entries, room)
-	foot, hint, door, more := a.railFootRows(room, height)
+	foot, marks := a.railFootRows(room, height)
 	body := height - len(foot)
 	if body < 1 {
-		body, foot, hint, door, more = height, nil, -1, -1, -1
+		body, foot, marks = height, nil, noRailFoot
 	}
 
 	// ── THE COLUMN IS A BUDGET AND NOT A STACK ────────────────────────────────
@@ -3572,7 +3577,8 @@ func (a *app) railView(height int) ([]railLine, int) {
 	}
 	for i, text := range foot {
 		out = append(out, railLine{
-			text: text, entry: -1, hint: i == hint, stow: i == door, more: i == more})
+			text: text, entry: -1, hint: i == marks.hint, stow: i == marks.door,
+			more: i == marks.more, keeping: i == marks.keeping})
 	}
 	return out, focus
 }
@@ -3742,6 +3748,12 @@ func (a *app) railRows(height int) []string {
 			// AND THE COLUMN'S OWN DOOR TAKES IT TOO, on the terms every other
 			// pressable line here takes it on: it answers to a click, so the pointer
 			// says so ([app.railDoorLine]).
+			text = a.hoverRow(text, room)
+		case line.keeping && a.hoveringRailStanding():
+			// AND THE STANDING COUNT, which is a door onto /standing and says so
+			// twice for the margin door's reason: its own ink comes up
+			// ([app.railStandingLine]) and the row's ground comes up here, because
+			// the ground is what tells a hand the WHOLE line answers.
 			text = a.hoverRow(text, room)
 		case line.door != "" && a.hoveringMarginDoor(line.door):
 			// AND THE MARGIN'S TWO `+` ROWS, on the same terms and for the same
@@ -4302,28 +4314,43 @@ func (a *app) railEnter() tea.Cmd {
 // because a total is read as a state of the session.
 var railFootOrder = [railGroupCount]railGroup{railRunning, railAttention, railIdle, railParked, railDone}
 
-// railFootMax is how many lines the footer may spend. Three is the whole
-// aggregate at the full width; a fourth would be the column reporting on itself.
+// railFootMax is how many lines the footer may spend on the COUNTS. Three is
+// the whole aggregate at the full width; a fourth would be the column reporting
+// on itself. The standing line, the doors and the offer are each measured
+// against the height on their own.
 const railFootMax = 3
+
+// railFootMarks is where the footer's pressable lines landed, as indices into
+// the rows it returns, or -1 for a line this frame did not draw.
+//
+// IT IS A STRUCT AND NOT FOUR RETURNED INTEGERS because there are four of them
+// now: a caller unpacking `foot, hint, door, more, keeping :=` is four
+// positional ints nobody can read at the call site, and the fourth was added by
+// putting the standing count at the foot of the column (standdoor.go).
+type railFootMarks struct {
+	// hint is the widen offer, door the column's own way out, more the door onto
+	// the task page, and keeping the standing count.
+	hint, door, more, keeping int
+}
+
+// noRailFoot is the answer for a frame with no footer at all: every line
+// missing.
+var noRailFoot = railFootMarks{hint: -1, door: -1, more: -1, keeping: -1}
 
 // railFootRows is the aggregate: what the window cannot show, said once at the
 // bottom of the column.
 //
-//	Σ $1.42 · 312k tok
 //	3 running · 1 needs you
 //	148 parked · 12 done
+//	◦ 2 standing orders
 //
-// THE MONEY IS THE SESSION'S, AND THAT IS THE HONEST SUM. Per-node spend is not
-// on the seam and cannot be: internal/session folds a finished node's usage into
-// the session's own auxiliary total the moment its child closes (task_run.go's
-// foldTaskUsage), so the figure beside the Σ ALREADY CONTAINS every node in this
-// column, plus the conversation that proposed them. It is therefore drawn as the
-// whole and never per row — a per-row share is the one number this surface would
-// have to invent — and the Σ is what says so.
+// THE Σ IS GONE WITH THE MONEY IT LED. It meant "this is a SUM, including what
+// the column folded away", and it earned that while the first line was
+// `Σ $1.42 · 312k tok`. The bill left this foot for the status row on
+// 2026-09-09 — one number drawn twice on one frame — and a sigma in front of a
+// row of counts is a mathematician's mark on a tally: the counts are counts,
+// they say so in words, and nothing about them needs a symbol to be believed.
 //
-// The two figures are drawn only when they are not zero. A session that has been
-// told nothing about what it spent says nothing, rather than reporting $0.00
-// beside a hundred and forty-eight nodes.
 // AND THE GROUP WORDS OUTLIVED THE GROUPS. The column stopped filing nodes under
 // five headings ([app.railEntries] draws families now), and the five words are
 // still the vocabulary a person has for what a session is doing — so the count
@@ -4342,9 +4369,17 @@ const railFootMax = 3
 // promotable foreground command takes ctrl+g first. Widening is an offer the
 // column makes about itself when a title is being cut; hiding remains a pointer
 // answer at every moment and a keyboard answer whenever no command can be kept.
-func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
+//
+// AND THE STANDING COUNT IS A LINE OF IT SINCE 2026-09-09 ([app.railStandingLine],
+// standdoor.go). It was a segment of the status row; it belongs here, under the
+// counts of what this column is holding, because it is the same question those
+// counts answer — what is alive on this project — and because this column is
+// where a person already looks for it. It keeps everything it had: it is drawn
+// only when something stands here, its mark breathes while a pass has one of
+// those orders in its hands, and pressing it opens /standing.
+func (a *app) railFootRows(width, height int) ([]string, railFootMarks) {
 	if width < 8 || height < 4 {
-		return nil, -1, -1, -1
+		return nil, noRailFoot
 	}
 	var segs []string
 	// THE BOOKS DECIDE WHETHER A FIGURE IS DRAWN AND THE CLOCK DECIDES WHAT IT
@@ -4396,13 +4431,21 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 		viewText = taskSheetPastHint
 	}
 	view := ansi.StringWidth(viewText) <= width && (record || a.railFoldedAny())
-	if len(segs) == 0 && !offer && !stow && !view {
-		return nil, -1, -1, -1
+	// THE STANDING LINE IS DRAWN ONLY WHERE SOMETHING STANDS, which is the
+	// emptiness law the segment already kept on the status row: a permanent
+	// `0 standing orders` is a permanent reminder of the absence of a thing
+	// (homestanding.go's [app.keepingSegment]).
+	standWord := a.keepingSegment()
+	if ansi.StringWidth(standWord) > width {
+		standWord = ""
+	}
+	if len(segs) == 0 && standWord == "" && !offer && !stow && !view {
+		return nil, noRailFoot
 	}
 	// The footer never takes more than a third of the column: a roster that is
 	// mostly its own summary has stopped being a roster.
 	rooms := min(railFootMax, height/3)
-	lines := railPack(segs, width, rooms, railSigma)
+	lines := railPack(segs, width, rooms)
 	out := make([]string, 0, len(lines)+2)
 	// ONE BLANK ABOVE IT, when the column can lend one — whitespace is how this
 	// surface separates blocks, and a rule across a two-cell column would be a
@@ -4412,6 +4455,14 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 	}
 	for _, line := range lines {
 		out = append(out, a.pal.dim(line))
+	}
+	marks := noRailFoot
+	// THE STANDING COUNT GOES DIRECTLY UNDER THE TALLY, because it is the last of
+	// the counts: three lines saying what this project is holding, and then the
+	// doors and the offers about the column itself.
+	if standWord != "" && len(out)+1 < height {
+		marks.keeping = len(out)
+		out = append(out, a.railStandingLine())
 	}
 	// THE PAGE'S DOOR GOES DIRECTLY UNDER THE TALLY, above the two lines about the
 	// column itself. The order is what the lines are ABOUT: the counts say what
@@ -4423,24 +4474,42 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 	// footnoted record rows used to. A door onto a month of other people's
 	// afternoons is not a thing this column should raise its voice about; it is a
 	// thing it should never fail to mention.
-	more := -1
 	if view && len(out)+1 < height {
-		more = len(out)
+		marks.more = len(out)
 		out = append(out, paintHint(viewText, a.pal, a.pal.dim))
 	}
-	hint := -1
 	if offer && len(out)+1 < height {
-		hint = len(out)
+		marks.hint = len(out)
 		out = append(out, paintHint(hintText, a.pal, a.pal.dim))
 	}
 	// The door goes UNDER the width offer, at the very bottom of the column, which
 	// is where a person looks for the way out of anything.
-	door := -1
 	if stow && len(out)+1 < height {
-		door = len(out)
+		marks.door = len(out)
 		out = append(out, a.railDoorLine())
 	}
-	return out, hint, door, more
+	return out, marks
+}
+
+// railStandingLine is the standing count as the foot of the column draws it:
+//
+//	◦ 2 standing orders
+//
+// DIM LIKE THE TALLY ABOVE IT, AND BRIGHT UNDER THE POINTER, which is this
+// column's own spelling of "this line answers to a click" ([app.railDoorLine]
+// and the margin's `+` rows make the same bargain). Pressing it opens /standing
+// (room.go's [app.railPress]); the keyboard door is unchanged and is still
+// /standing or /orders typed into the box.
+//
+// THE WORD IS [app.keepingWord] AND NOT THE SEGMENT, because the mark breathes
+// while a pass has one of this place's orders in its hands and the two are the
+// same width by construction — that function swaps the glyph and nothing else
+// (homestanding.go).
+func (a *app) railStandingLine() string {
+	if a.hoveringRailStanding() {
+		return a.pal.accent(a.keepingWord())
+	}
+	return a.pal.dim(a.keepingWord())
 }
 
 // railDoorLine is the standing column's own door as it is drawn: the chevron
@@ -4530,37 +4599,36 @@ func (a *app) railOffersResize() bool {
 	return a.roomOrganized() || a.railCramped || a.railHold || a.hoveringRailArea()
 }
 
-// railSigma opens the footer's first line, and it is the whole of what makes the
-// figures behind it readable: this is the sum of everything, including what the
-// column folded away.
-const railSigma = "Σ "
-
 // railPack folds the footer's segments into at most rooms lines of at most width
 // cells, joined by this surface's own separator.
 //
 // A segment that will not fit is DROPPED and the fold is said out loud with the
 // ellipsis this surface truncates everything with: a footer that silently stops
 // counting is a footer that claims the session is smaller than it is.
-func railPack(segs []string, width, rooms int, lead string) []string {
+//
+// IT TAKES NO LEAD ANY MORE. It had one — `Σ `, on the first line only — for as
+// long as the first line was the session's bill; the counts that are left say
+// what they are in words ([app.railFootRows] says why the sigma went).
+func railPack(segs []string, width, rooms int) []string {
 	if rooms < 1 || width < 1 {
 		return nil
 	}
 	out := make([]string, 0, rooms)
-	line := lead
+	line := ""
 	for _, seg := range segs {
 		add := seg
-		if line != lead {
+		if line != "" {
 			add = railSep + seg
 		}
 		if ansi.StringWidth(line)+ansi.StringWidth(add) <= width {
 			line += add
 			continue
 		}
-		// THE FIRST SEGMENT KEEPS THE Σ whatever the width: a column too narrow
-		// for "Σ $1.42" is a column that has to choose, and the sign is what says
-		// the figure is a total rather than a row's.
-		if line == lead {
-			line = fit(lead+seg, width)
+		// A FIRST SEGMENT TOO WIDE FOR THE COLUMN IS CUT RATHER THAN DROPPED: a
+		// count is still worth reading with its tail folded, and dropping it would
+		// leave the line under it claiming to be the first thing this session has.
+		if line == "" {
+			line = fit(seg, width)
 			continue
 		}
 		out = append(out, line)
@@ -4572,7 +4640,7 @@ func railPack(segs []string, width, rooms int, lead string) []string {
 	}
 	// The loop returns the moment the last line is spoken for, so what reaches
 	// here is a line with room left in the block.
-	if line != lead {
+	if line != "" {
 		out = append(out, line)
 	}
 	return out

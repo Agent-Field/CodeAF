@@ -215,14 +215,19 @@ func TestTheHintIsAbsentWhereTheChordWouldRefuse(t *testing.T) {
 
 // ── the visible door ────────────────────────────────────────────────────────
 
-// standDoorLab is a conversation with one order standing over it: the segment
-// is drawn, and the page behind the door has a row to show.
+// standDoorLab is a conversation with one order standing over it: the line is
+// drawn at the foot of the task column, and the page behind the door has a row
+// to show.
+//
+// THE FRAME IS THE FULL COLUMN'S because that is where the line lives now
+// (task.go's [app.railFootRows]): a column too narrow or too short for a footer
+// draws no footer, which is a fact about the frame and not about this door.
 func standDoorLab(t *testing.T) (*app, *standBand) {
 	t.Helper()
 	item := bandItem("one", "remind me on Fridays", "/tmp/lab", standing.WhenEvery, "Fridays")
 	agent := &standingPlaceFake{fakeAgent: &fakeAgent{model: "m"}, stand: []standing.Item{item}}
 	a := newTestApp(agent)
-	a.width = 120
+	a.width, a.height = 140, 24
 	a.workspace = "/tmp/lab"
 	now := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
 	a.clock = func() time.Time { return now }
@@ -231,36 +236,85 @@ func standDoorLab(t *testing.T) (*app, *standBand) {
 	return a, band
 }
 
-// THE SEGMENT IS A DOOR. Pressing `keeping an eye on N` opens /standing, which
-// is the page a person reading that number is trying to find.
-func TestPressingTheKeepingSegmentOpensTheStandingPage(t *testing.T) {
+// THE COUNT IS A DOOR. Pressing `◦ 1 standing order` at the foot of the task
+// column opens /standing, which is the page a person reading that number is
+// trying to find.
+func TestPressingTheStandingCountOpensTheStandingPage(t *testing.T) {
 	a, _ := standDoorLab(t)
-	x, y := standDoorAt(t, a)
-	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	_, y := standDoorAt(t, a)
+	pressMargin(t, a, y)
 	if !a.at(pageStanding) {
 		t.Fatalf("the door did not open the page:\n%s", plain(frame(a)))
 	}
 }
 
-// A press anywhere else on that row falls through, because the rest of it is
-// telemetry — figures, not controls.
-func TestPressingBesideTheKeepingSegmentOpensNothing(t *testing.T) {
+// AND IT SAYS SO UNDER THE POINTER, which is this column's own spelling of
+// "this line answers to a click": what LIGHTS has to be what the press acts on
+// (hover.go's law).
+func TestTheStandingCountBrightensUnderThePointer(t *testing.T) {
 	a, _ := standDoorLab(t)
 	_, y := standDoorAt(t, a)
-	drive(t, a, tea.MouseClickMsg{X: 0, Y: y, Button: tea.MouseLeft})
-	if a.at(pageStanding) {
-		t.Fatal("the whole status row acted as the door")
+	still := a.railStandingLine()
+	drive(t, a, tea.MouseMotionMsg{X: a.railLeft() + 3, Y: y})
+	if !a.hoveringRailStanding() {
+		t.Fatalf("the pointer on the count is not on the door: %+v", a.hot)
+	}
+	if lit := a.railStandingLine(); lit == still {
+		t.Fatalf("the count did not brighten under the pointer: %q", plain(lit))
+	}
+	if plain(a.railStandingLine()) != plain(still) {
+		t.Fatalf("brightening changed the words: %q", plain(a.railStandingLine()))
+	}
+	// AND THE ROW'S GROUND COMES UP WITH IT — the other half of the law, which the
+	// column applies in its own layout pass (task.go's [app.railRows]): the ground
+	// is what tells a hand that the whole line answers.
+	var grounded bool
+	for _, row := range a.railRows(a.viewHeight()) {
+		if strings.Contains(plain(row), homeKeepingWord) && strings.Contains(row, hoverBg()) {
+			grounded = true
+		}
+	}
+	if !grounded {
+		t.Fatalf("the count under the pointer wears no ground:\n%s",
+			strings.Join(a.railRows(a.viewHeight()), "\n"))
 	}
 }
 
-// AND THERE IS NO DOOR WHERE THERE IS NO SEGMENT — the emptiness law applied to
-// a hit box: nothing stands here, so nothing on that row is pressable.
-func TestThereIsNoDoorWhileNothingStandsHere(t *testing.T) {
+// A press on the counts above it opens nothing. Those lines are a tally —
+// figures, not controls — exactly as the rest of the status row was.
+func TestPressingTheTallyAboveTheStandingCountOpensNothing(t *testing.T) {
+	a, _ := standDoorLab(t)
+	_, y := standDoorAt(t, a)
+	pressMargin(t, a, y-1)
+	if a.at(pageStanding) {
+		t.Fatal("the whole footer acted as the door")
+	}
+}
+
+// AND THERE IS NO LINE WHERE NOTHING STANDS — the emptiness law applied to a
+// hit box: nothing stands here, so the footer grows no row for it.
+func TestThereIsNoStandingLineWhileNothingStandsHere(t *testing.T) {
 	a, _, _ := standMarkLab(t)
+	a.width, a.height = 140, 24
 	a.workspace = "/tmp/lab"
 	frame(a)
-	if a.keepSpan.pressable() {
-		t.Fatalf("a row with no keeping segment recorded a door: %+v", a.keepSpan)
+	view, _ := a.railView(a.viewHeight())
+	for _, line := range view {
+		if line.keeping {
+			t.Fatalf("a column with nothing standing drew a count: %q", plain(line.text))
+		}
+	}
+}
+
+// AND IT IS NOT ON THE STATUS ROW ANY MORE. The row is the conversation's own
+// numbers; what stands over the project is the column's (foot.go).
+func TestTheStandingCountIsNotOnTheStatusRow(t *testing.T) {
+	a, _ := standDoorLab(t)
+	if got := a.keepingSegment(); got == "" {
+		t.Fatal("the fixture has nothing standing over it")
+	}
+	if line := plain(a.status(200)); strings.Contains(line, "standing order") {
+		t.Fatalf("the standing count is back on the status row:\n%s", line)
 	}
 }
 
@@ -292,20 +346,11 @@ func TestTheDoorBreathesOnlyWhileAnOrderIsInHand(t *testing.T) {
 	}
 }
 
-// standDoorAt paints one frame and answers where the door landed, failing rather
-// than guessing when it was not drawn.
-func standDoorAt(t *testing.T, a *app) (int, int) {
+// standDoorAt paints one frame and answers where the door landed — the line
+// itself, and the SCREEN ROW a press has to land on, which only the layout
+// knows (margin_test.go's [marginLine] asks the column the same question).
+func standDoorAt(t *testing.T, a *app) (railLine, int) {
 	t.Helper()
 	frame(a)
-	if !a.keepSpan.pressable() {
-		t.Fatalf("the keeping segment was never drawn:\n%s", plain(frame(a)))
-	}
-	_, height := a.size()
-	for y := height - 1; y >= 0; y-- {
-		if mark, ok := a.chromeAt(y); ok && mark.kind == chromeStatus && mark.index == a.keepRow {
-			return a.keepSpan.from, y
-		}
-	}
-	t.Fatal("the status row the door was drawn on is not on the frame")
-	return 0, 0
+	return marginLine(t, a, func(line railLine) bool { return line.keeping })
 }

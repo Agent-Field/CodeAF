@@ -166,8 +166,9 @@ running underneath cannot make the names jump, and the `▲0.5s` and `58t/s` nex
 stay still too. Close the list and open it again to see the latest.
 
 The `via` beside the model above the message box is a different fact: that one is who is
-answering the turn that is in flight, and it is allowed to move. Its rate — `92 tok/s` —
-stands at the right of the status line beside the state word while the turn writes.
+answering the turn that is in flight, and it is allowed to move. It carries no rate: how
+fast the stream is producing stands at the right of the status line beside the state word
+while the turn writes, as `38 tok/s`.
 
 ## Why does the model picker keep jumping
 
@@ -2359,25 +2360,32 @@ they combine:
 substring, then subsequence over the model id — so `ds v4` and `claude 4.5` work exactly
 as before, and a word this grammar does not know is simply a word to search for.
 
-## Why did it say via cloudflare — the lane named on the status line
+## Why did it say via cloudflare — the lane named beside your model
 
-Beside your model on the status line, `via <name>` is the lane that actually answered,
-and it is a fact rather than a decision: it is the name that came back on the answer. When
-aforge knows the timings it reads `via cloudflare · 0.6s · 61 t/s` — the wait before the
-first word, and how fast it was writing. The rate is only there **while a turn is
-running**, because a rate is a claim about now; the name alone goes quiet after ten
-minutes.
+Beside your model on the line above the message box, `via <name>` is the lane that
+actually answered, and it is a fact rather than a decision: it is the name that came back
+on the answer. It goes quiet when no answer has been timed in the last ten minutes, and
+at no other moment.
 
-It is left off entirely when the lane's name is already in the model id: `gpt-4.1 ·
-via openai` is a row saying the same thing twice.
+**It is drawn whoever served, the vendor's own machines included.** `glm-5.3-flash · via
+z-ai` is not a line saying the same thing twice: the model is spelled there as its
+basename, so the vendor half of its address (`z-ai/`) is not on the screen at all. Until
+2026-09-09 the rider was hidden in exactly that case, and what it produced was a name
+that came and went as the router moved between a vendor's own machines and everybody
+else's — which reads as aforge having lost track of who is answering. The `served` row on
+`/status` and the phone sheet still leaves it out, because the line above it there is the
+model's whole routing address.
 
-**While a turn is running you usually see something better than `via`.** The connection
-reports what it is doing right now, and that outranks both readings under it, so the same
-spot reads `thinking · 12s · friendli 38 t/s` or `first word · 3.1s → parasail at 4.4s`
-until the request ends. The ranking is by tense: the phase is what this request is doing,
-`via <name>` is what the **last** answer did, and the older sighting under that is what
-some answer did in the last ten minutes. Drawing the older one under a request that has
-been stalled for a minute is exactly the thing this ordering exists to stop.
+**The rate is not on that rider.** How fast the stream is producing is a claim about now
+and stands at the right edge of the status row instead, as `38 tok/s`, while the answer
+is being thought or written.
+
+**While a turn is running the right edge says what the connection is doing.** The phase
+outranks the older readings, so that spot reads `first word · 3.1s → parasail at 4.4s` or
+`paced · retry in 6s` until something starts arriving, and then the rate alone. The
+ranking is by tense: the phase is what this request is doing, `via <name>` is who
+answered, and a sighting's own rate is what some answer did in the last ten minutes —
+which is why no such rate is ever drawn as though it were now.
 
 ## What "rescued" means on the status line, and "slow · trying …" and "refused"
 

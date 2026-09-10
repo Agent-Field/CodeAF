@@ -1231,6 +1231,39 @@ func TestTheSavingsNoteSaysNoMoneyWhenOnlyThePromptPriceIsPublished(t *testing.T
 	}
 }
 
+// A RESUMED CONVERSATION READS ITS OWN CACHE ON THE FIRST FRAME.
+//
+// THE DEFECT THIS FIXES, measured: the cache reads are restored from the
+// journal whole and the money beside them was built up turn by turn, so a
+// reopened chat drew `⟲ 28% cached` with no `saved $…` until the next turn
+// happened to land — the share restored and the money not, on one of the two
+// figures a person opens a resumed session to check. The saving is derived from
+// the reads now (app.go's [app.repriceCache]), through the one door every
+// reading of them comes past.
+func TestAResumedConversationDrawsWhatItsCacheSavedOnTheFirstFrame(t *testing.T) {
+	agent := &fakeAgent{model: "vendor/priced"}
+	// What the engine restores from the journal: a conversation with a bill, a
+	// weight and a warm prefix, and no turn of this session behind any of it.
+	agent.usage = session.Usage{Input: 100_000, Output: 4_000, CacheRead: 28_000, CostUSD: 0.42}
+	a := newTestApp(agent)
+	a.models = func() []Model {
+		return []Model{{
+			ID: "vendor/priced", ContextLength: 128_000,
+			PromptPrice: 0.00001, CacheReadPrice: 0.000001,
+		}}
+	}
+	a.model = "vendor/priced"
+
+	// The boot's own synchronous reading, on the frame the conversation opens.
+	a.refreshUsage()
+	if got := a.warmSegment(); got != "⟲ saved $0.2520 · 28% cached" {
+		t.Fatalf("a resumed conversation reads %q, want the cash and the rate", got)
+	}
+	if line := plain(a.status(200)); !strings.Contains(line, "⟲ saved $0.2520 · 28% cached") {
+		t.Fatalf("the first frame is missing what the cache saved:\n%s", line)
+	}
+}
+
 // The two formatters the whole meter is written in.
 func TestTokenAndSavedWords(t *testing.T) {
 	for _, test := range []struct {
