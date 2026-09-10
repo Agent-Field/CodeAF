@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Nested landing accept banks the question and writes `you took this as done`
-pr: 822
+pr: 823
 surface: [chat, engine]
 invalidates:
   - "Landing questions were raised without banking their words, so ResolveQuestion often saw said=false and emitted no EventQuestionAnswered. They bank on raise now, and a resolving landing answer still emits the answered event when nothing was banked — so a --host surface that only drops questions on answered or withdrawn cannot keep a settled landing open."
