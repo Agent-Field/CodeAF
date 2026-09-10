@@ -53,13 +53,23 @@ func (m *Model) iconSet() tokens.GlyphSet {
 // [Model.icon] reads it there, so two rows of one frame cannot come out of two
 // different repertoires.
 //
-// The help modal's laid-out lines are dropped because its glyph legend draws
-// through this door too: a legend still showing the old tier's shapes beside the
-// new tier's marks would be the one screen on which the vocabulary contradicts
-// itself.
+// AND IT DROPS EVERY CACHE OF ALREADY-DRAWN LINES, because the repertoire is the
+// one thing a cached block depends on that its key does not say. A settled
+// message, a card, a brief and the help modal are all kept as the bytes they
+// rendered to, so a person who changes the Display row would otherwise watch the
+// new tier arrive on the live tail while the conversation above it stayed in the
+// old one — a screen showing both answers at once, which is precisely the
+// mixed-repertoire frame this law exists to prevent. [Model.renderMessages]
+// already drops the thread's caches whole when the pane's width no longer
+// matches, so the tier borrows that door rather than opening a second one.
 func (m *Model) settleIcons() {
 	m.icons = m.iconSet()
 	m.helpLines = nil
+	m.blockWidth = -1
+	m.chatBlocksValid = false
+	m.invalidateDock()
+	m.graphPaneStale = true
+	m.selfPaneStale = true
 }
 
 // adoptIcons re-reads the Display row and settles the tier. It runs when the

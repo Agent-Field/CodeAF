@@ -119,6 +119,42 @@ func TestEveryMarkOnOneFrameComesFromOneRepertoire(t *testing.T) {
 	}
 }
 
+// TestAThreadAlreadyDrawnIsRedrawnInTheNewTier is the cache half of the same
+// promise, driven through the real render. A settled message is kept as the
+// BYTES it rendered to and only the pane's width is outside its key, so a person
+// who changed the Display row would otherwise watch the new tier arrive on the
+// live tail while the conversation above it stayed in the old one.
+func TestAThreadAlreadyDrawnIsRedrawnInTheNewTier(t *testing.T) {
+	model, _, _ := newSettingsModel(t)
+	seq := int64(7)
+	model.messages = []store.Message{{
+		Seq: seq, Role: store.RoleAgent, Body: "While you were away.",
+		Brief: &store.Brief{Items: []store.BriefItem{
+			{Kind: store.BriefDone, Body: "The market report landed."},
+		}},
+	}}
+	model.briefExpanded[seq] = true
+	model.refreshChat()
+	if drawn := ansi.Strip(model.renderMessages()); !strings.Contains(drawn, tokens.GlyphSettled) {
+		t.Fatalf("the plain floor's settled mark is not on the first draw:\n%s", drawn)
+	}
+
+	row, ok := model.settingsRegistry.Row(config.KeyIcons)
+	if !ok {
+		t.Fatal("no step-icons row")
+	}
+	if cmd := model.applySetting(row, config.IconsRich); cmd != nil {
+		t.Fatalf("applying the row returned a command: %v", cmd)
+	}
+	drawn := ansi.Strip(model.renderMessages())
+	if strings.Contains(drawn, tokens.GlyphSettled) {
+		t.Fatalf("the conversation kept the old tier's settled mark after the row moved:\n%s", drawn)
+	}
+	if !strings.Contains(drawn, tokens.NerdFont.Glyph(tokens.GSettled)) {
+		t.Fatalf("the conversation did not take the new tier's settled mark:\n%s", drawn)
+	}
+}
+
 func mediaSlotOf(t *testing.T, path string) tokens.GlyphID {
 	t.Helper()
 	slot, ok := mediaSlot(path)
