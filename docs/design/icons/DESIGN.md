@@ -1,8 +1,18 @@
 # Icons — one vocabulary, three tiers, one door
 
-Owner ruling 2026-09-09. Every mark a person sees in the chat comes from ONE
-table, in whichever of three spellings their terminal can draw. This page is the
-copy of record: the law, the table as it landed, and how to add a mark.
+Owner ruling 2026-09-09. Every mark a person sees in **every surface package**
+comes from ONE table, in whichever of three spellings their terminal can draw.
+This page is the copy of record: the law, the table as it landed, and how to add
+a mark.
+
+**Scope: every surface package.** `internal/tui3` (the live chat),
+`internal/tui` (v1, and the visual north star), `internal/head` and
+`internal/resident` (the resident). It landed covering `internal/tui3` alone,
+which left the other three free to spell marks for themselves — and v1 did, with
+its own dotted circle for work waiting on a sibling, its own cross for failure,
+and its own flag for work waiting on a PERSON, which is the character this table
+keeps for the other kind of waiting. `internal/iconlaw` walks all four on one
+list now, and a fifth surface joins the law by being added to that list.
 
 ## The law
 
@@ -19,8 +29,15 @@ copy of record: the law, the table as it landed, and how to add a mark.
    plain floor forever, because a literal cannot know which repertoire the
    terminal is on. That is not a style point: it is how a person with a patched
    font came to see proper icons beside their tool calls and bare geometric
-   shapes beside their tasks. `internal/tui3/iconvocab_test.go` fails the build
-   on one, and it runs on every pull request through `make test-laws`.
+   shapes beside their tasks. `internal/iconlaw`'s
+   `TestNoSurfaceSpellsAnIconItself` fails the build on one, in any surface
+   package, and it runs on every pull request through `make test-laws`. Its one
+   carve-out is `resident.NoteMark`: a job-board note is written with `⚑` and
+   read back by prefix, so that byte is a PROTOCOL byte in the journal rather
+   than a cell on a screen, and routing it through the tier would make stored
+   bytes depend on the terminal that wrote them.
+   `TestEveryExemptionIsStillReal` fails if that carve-out ever stops naming a
+   real line.
 4. **The shape says the state, with no colour.** Two readings may not share a
    cell in any tier. The roster is read by people who have turned colour off and
    by people who cannot see it; a vocabulary that needed its hues would have
@@ -36,13 +53,28 @@ copy of record: the law, the table as it landed, and how to add a mark.
    a variation selector, the media-control pictographs (`⏸ ⏵ ⏹`), the
    hourglasses, and the powerline separators. A rune not on the list still has
    to pass the ruler.
-7. **The tier is chosen once.** `tokens.DetectGlyphSet` vetoes the terminals and
-   locales that cannot be trusted with private use — no `TERM`, `TERM=linux`,
-   Apple Terminal, a CJK locale, legacy conhost — and the Display row (`step
-   icons`: `auto` · `rich` · `plain`) is the person's own say. `app.iconSet`
-   folds the two together; `palette.glyph` and `app.icon` are the surface's only
-   doors, and the ASCII tier is `palette.ascii`'s answer (the linear,
-   screen-reader option sets it).
+7. **The tier is chosen once, and one terminal shows one tier everywhere.**
+   `tokens.DetectGlyphSet` vetoes the terminals and locales that cannot be
+   trusted with private use — no `TERM`, `TERM=linux`, Apple Terminal, a CJK
+   locale, legacy conhost — and the Display row (`step icons`: `auto` · `rich` ·
+   `plain`, read with `config.IconsAt`) is the person's own say. Every surface
+   folds the same two facts the same way:
+
+   | Surface | Folds them in | Draws through | Detects at |
+   | --- | --- | --- | --- |
+   | `internal/tui3` | `app.iconSet` | `palette.glyph`, `app.icon` | `newApp` |
+   | `internal/tui` | `Model.iconSet` (icons.go) | `Model.icon` | `RunWithCommander` |
+
+   v3's ASCII tier is `palette.ascii`'s answer, set by the linear screen-reader
+   option; v1 has no linear option, so it resolves `Plain` or `NerdFont` and the
+   third tier reaches it the day it grows one. v1 detects **at the door that
+   opens a real terminal** rather than at construction, so a window an embedder
+   or a test builds keeps the designed plain floor — the tier is on by default
+   for anything `DetectGlyphSet` cannot rule out, and a suite that detected would
+   assert against private-use codepoints it cannot print.
+   `internal/head` and `internal/resident` draw no marks of their own at all
+   (their one `⚑` is the protocol byte above), so they hold no tier: they are on
+   the law's list to keep it that way.
 
 ## The table as it landed
 
@@ -86,6 +118,27 @@ The gutter says what family a step is and NEVER how it went: `test` draws a
 flask and never a checkmark, because the family is the act of checking and not
 its verdict.
 
+### File kinds (internal/tui's attachment and media chips)
+
+| Kind | Slot | Plain | Nerd font | ASCII |
+| --- | --- | --- | --- | --- |
+| a document — a page of text | `GFileDocument` | `▤` | nf-fa-file_text | `d` |
+| an image | `GFileImage` | `⌾` | nf-fa-file_image_o | `i` |
+| a sound | `GFileAudio` | `♪` | nf-fa-file_audio_o | `a` |
+| a moving picture | `GFileVideo` | `▷` | nf-fa-file_video_o | `v` |
+
+One chip, four kinds, and the set is closed because it is the set a person can
+hand this program. They are one block rather than four scattered slots for the
+reason the block exists at all: a row of chips that upgraded three kinds and left
+the fourth on the plain floor would draw the exact mixed-repertoire line the tier
+was built to end.
+
+`GFileDocument` is `GActionRead`'s byte AND its icon on purpose — a page of text
+is a page of text whether a call opened it or a person dragged it in — and
+`glyphvocab_test.go`'s named-exceptions table carries the pair. The video mark is
+the OUTLINE triangle and not the filled `▶` a chip used to spell: the filled one
+is `GQueuePill`'s, and one plain glyph may upgrade exactly one way.
+
 The rest of the vocabulary — disclosure, prompts, the place line, the status
 line, the spawn tree, the gauges, the prose slots — is in
 `internal/tui2/tokens/nerdfont.go`, one binding each, with its argument at its
@@ -121,6 +174,22 @@ than pictographs, so they are geometry and neither tier swaps the byte.
    flags are wrong, if a non-ASCII slot forgot to auto-upgrade, or if the icon
    is outside BMP private use.
 5. Draw it through `palette.glyph(id)` or `app.icon(id)`. Never as a character.
+
+## What v1 was drawing before
+
+The window kept as the visual north star had five marks of its own, and two of
+them contradicted the table:
+
+| v1 drew | For | Now |
+| --- | --- | --- |
+| `◌` | a pending node waiting on a sibling | `GWaitsOn` — `⚑`, the mark every other surface already used for that reading |
+| `⚑` | a card or brief row waiting on a PERSON | `GNeedsHuman` — `?`, which is what the flag was standing in the way of |
+| `✗` | failure, in five places | `GFailed` — `✕` |
+| `–` | cancelled, so it would not read as broken | `GStopped` — `■`, which says stopped-by-the-person outright |
+| `⚙ $ ✎ ⌕ ⌾ ♪ ▶ ▤` | the tool-call gutter in the activity feed | the action-family and file-kind slots, the bucket on `GActionWork` (whose icon is the cog it was spelling) |
+
+Its hues did not move: the mint, rose, peach and butter styles under every call
+site are exactly what they were, because hue is a second, independent axis.
 
 ## What this replaced
 
