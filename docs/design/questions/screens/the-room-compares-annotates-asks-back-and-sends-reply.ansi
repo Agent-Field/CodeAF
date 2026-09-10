@@ -1,0 +1,36 @@
+
+  [38;5;243m Home    [1m[38;5;237m[48;5;252m ◐ schema choice  × [0m[38;5;243m  + [39m
+
+[38;5;243m────────────────────────────────────────────────────────────────────────────────────────────────────
+‹ back[39m
+[38;5;140m?[39m [38;5;252mwhich store should the ledger sit on?[39m
+  [38;5;243maforge · a schema change is next and it is cheaper before rows exist[39m
+  [38;5;243mthe turn waits on it[39m
+
+  [38;5;243m▾[39m [38;5;252m1 Postgres[39m                                                                             [38;5;243mmy pick[39m
+      [38;5;252mshared cluster with reporting, existing connection pool, pg_dump backups[39m
+      [38;5;243mschema migration on the reporting DB, one more table[39m
+      [38;5;243mthe reporting job already reads it[39m
+      [38;5;243mwould switch if the ledger ever has to run without a server[39m
+      [38;5;243m› [38;5;252mthe backup story matters more than speed[39m
+      [38;5;140m? [38;5;252mdoes the reporting job read it directly[39m
+      [38;5;243m↳ You, earlier at 21:23 — the answer just came[39m                                               [38;5;252m❮
+[39m[48;5;235m  [38;5;243m▾[39m [1m[38;5;140m2 SQLite[0m[48;5;235m                                                                                      [49m
+      [38;5;252msingle file on the app server, WAL mode, rqlite for read replicas[39m
+      [38;5;243mnew backup procedure, no cross-table joins with reporting[39m
+  [38;5;243m▸[39m [38;5;252m3 file per day[39m
+
+  [38;5;243mwhat it would look like
+[39m  [38;5;252mPostgres: same cluster as reporting, already connected. SQLite: a file in /data/ledger.db,[39m
+  [38;5;252maccessed via rqlite or direct. File-per-day: JSON rows in /data/ledger/2026-09-09.ndjson,[39m
+  [38;5;252mrotated at midnight.[39m
+
+
+
+
+[38;5;243m─ main ───────────────────────────────────────────────────────────────────────────── [38;5;116mesc[38;5;243m interrupt ─
+  decided which store should the ledger sit on? → SQLite · with: but keep the sqlite file as the so…
+decided which store should the ledger sit on? · → 2 SQLite · with but keep the sqlite file as the s…
+
+[39m [38;5;243m› [39m
+[38;5;243mledger store decision with three options · deepseek-v4-flash[39m   [38;5;243m5.5k/1M · 1% · [38;5;173mYOLO[38;5;243m · [38;5;146m⠸[39m [38;5;146mworking[38;5;243m · [38;5;146m36s
