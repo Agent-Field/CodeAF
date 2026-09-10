@@ -453,8 +453,18 @@ func TestTheHarnessOverlapsEveryWaiterItNames(t *testing.T) {
 	if got := d.run(tick); len(got) != 1 {
 		t.Fatalf("the harness clock delivered %d messages, want one", len(got))
 	}
-	if got := d.run(harnessTick(cmdBudget, func(time.Time) tea.Msg { return frameMsg{} })); len(got) != 0 {
+	long := harnessTick(cmdBudget, func(time.Time) tea.Msg { return frameMsg{} })
+	if got := d.run(long); len(got) != 0 {
 		t.Fatalf("a tick outside the old tick budget delivered %d messages", len(got))
+	}
+
+	// A test that waits a long tick out on purpose gets its message, and the
+	// budget is back where it was for the very next command.
+	if _, ok := waitOut(long).(frameMsg); !ok {
+		t.Fatal("waitOut did not deliver a tick longer than the harness budget")
+	}
+	if got := d.run(long); len(got) != 0 {
+		t.Fatalf("after waitOut the harness delivered %d messages for a long tick, want none", len(got))
 	}
 }
 

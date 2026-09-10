@@ -135,6 +135,14 @@ type dropFold struct {
 	// wakeup compares itself against to decide whether the sender has stopped.
 	typedAt time.Time
 
+	// stirred says a character of the run arrived AFTER the wakeup in flight was
+	// armed. A wakeup that finds it false has nothing to compare: it lands a
+	// whole [dropQuiet] after the last character by construction, so the quiet
+	// window is over whatever the surface's clock reads. Only a stirred wakeup
+	// asks the clock, and that is what keeps a clock that delivers the wakeup
+	// without moving — the test harness's — from waiting again forever.
+	stirred bool
+
 	// watched counts the keys this fold was asked about, armed counts the
 	// wakeups it asked for, looked counts the paths it asked the disk about and
 	// took counts the drops it converted. They exist so the tests can state
@@ -193,12 +201,21 @@ func (a *app) dropWatch(box *editor, chips *[]chip, at int, text string) tea.Cmd
 		// is halfway through is — while somebody typing `/help` touches no clock
 		// at all.
 		if a.drop.settling {
-			a.drop.typedAt = a.now()
+			a.dropArrived()
 		}
 		return nil
 	}
-	a.drop.typedAt = a.now()
+	a.dropArrived()
 	return a.dropWake()
+}
+
+// dropArrived notes that the run moved: when, and whether a wakeup already in
+// flight is now landing on a burst that is still arriving ([dropFold.stirred]).
+func (a *app) dropArrived() {
+	a.drop.typedAt = a.now()
+	if a.drop.settling {
+		a.drop.stirred = true
+	}
 }
 
 // dropWake asks for the one wakeup a whole burst gets.
@@ -206,7 +223,7 @@ func (a *app) dropWake() tea.Cmd {
 	if a.drop.settling {
 		return nil
 	}
-	a.drop.settling = true
+	a.drop.settling, a.drop.stirred = true, false
 	a.drop.armed++
 	return surfaceTick(dropQuiet, func(time.Time) tea.Msg { return dropMsg{} })
 }
@@ -219,7 +236,7 @@ func (a *app) dropSettled() tea.Cmd {
 		a.ptr.still = true
 		return nil
 	}
-	if a.now().Sub(a.drop.typedAt) < dropQuiet {
+	if a.drop.stirred && a.now().Sub(a.drop.typedAt) < dropQuiet {
 		// Still arriving. Waiting again changes nothing on the screen, so the
 		// frame Bubble Tea is about to ask for is the frame it already has.
 		a.ptr.still = true

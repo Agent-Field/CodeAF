@@ -152,8 +152,11 @@ func TestEnterConnectsOpenRouterInTheBrowserAndHandsTheKeyToThisProcess(t *testi
 	if next == nil {
 		t.Fatal("arriving on the controls armed no beat for the example panel")
 	}
-	if _, ok := next().(setupDemoMsg); !ok {
-		t.Fatalf("the key started something other than the panel's beat: %T", next())
+	// The beat is longer than the harness clock's budget, so it is waited out
+	// deliberately rather than asked of a clock that answers polls with nothing.
+	beat := waitOut(next)
+	if _, ok := beat.(setupDemoMsg); !ok {
+		t.Fatalf("the key started something other than the panel's beat: %T", beat)
 	}
 	if got := config.PersistedAPIKey(dir); got != flow.key {
 		t.Fatalf("profile key = %q, want browser key", got)

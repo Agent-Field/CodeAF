@@ -1549,6 +1549,13 @@ func (a *app) waitingWords() string {
 	switch {
 	case a.retrying:
 		word = retryWord
+		// AND IT SAYS WHICH TRY, out of the struct the feed's own row was
+		// composed from (failurerow.go's [failureDetail]). It is empty until the
+		// engine's retry event carries the arithmetic, and an empty detail draws
+		// nothing rather than an empty slot — the emptiness law.
+		if detail := failureDetail(a.lastAsk); detail != "" {
+			word += partDot + detail
+		}
 	case modelBase(a.model) != "":
 		word = waitForWord + modelBase(a.model)
 	}
