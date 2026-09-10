@@ -105,7 +105,7 @@ type Expectation struct {
 //
 // IT IS WRITTEN FOR DENSITY, like everything else that rides in front of every
 // request: each rule is stated once, in the field it governs.
-const expectsSchemaJSON = `"expects":{"type":"array","description":"Optional. WHAT THIS BRIEF ASSUMES IS ALREADY TRUE of the folder the worker gets, checked before it spends anything. One entry per assumption the brief leans on, never a survey of the folder; a miss lands the work at once naming what was missing","items":{"type":"object","properties":` +
+const expectsSchemaJSON = `"expects":{"type":"array","description":"Optional. What this brief assumes is already true of the folder the worker gets, checked before it spends anything. One entry per assumption it leans on, never a survey of the folder","items":{"type":"object","properties":` +
 	`{"path":{"type":"string","description":"Where to look: a path relative to the folder the work is about, or absolute"},` +
 	`"holds":{"type":"string","description":"Optional text that must be findable there. Left out, only the path itself is checked"},` +
 	`"absent":{"type":"boolean","description":"Optional. true when this path must NOT be there, which is how you say a file has been deleted"},` +

@@ -178,15 +178,15 @@ var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"title":{"type":"string","description":"One line naming the work as a person would say it"},` +
 	`"summary":{"type":"string","description":"Two or three lines the person reads to decide whether to redirect it"},` +
 	`"brief":{"type":"string","description":"THE WORK, self-contained: what to do, the material and the names in it, constraints, and what you have already found and ruled out. It cannot ask you anything, so settle here everything it would stop and ask. Name the plausible-looking wrong answer and forbid it; every line must be one the worker could disobey."},` +
-	`"deliverable":{"type":"string","description":"WHAT MUST EXIST at the end, and where. Name the thing, not the activity"},` +
+	`"deliverable":{"type":"string","description":"What must exist at the end, and where. Name the thing, not the activity"},` +
 	`"where":{"type":"string","description":"Path the person named, or 'in place'; never guess"},` +
-	`"ground":{"type":"string","description":"Optional absolute path: the repository or folder THE WORK IS ABOUT, when it is not this conversation's own"},` +
-	`"acceptance":{"type":"string","description":"DONE WHEN: the observable condition somebody else could check without taking the task's word for it"},` +
+	`"ground":{"type":"string","description":"Optional absolute path: the repository or folder the work is about, when it is not this conversation's own"},` +
+	`"acceptance":{"type":"string","description":"Done when: the observable condition somebody else could check without taking the task's word for it"},` +
 	expectsSchemaJSON + `,` +
 	checksSchemaJSON + `,` +
 	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids that must finish first, only ones propose_task returned in this session. Its brief is given their reports; an unknown or failed id refuses the proposal"},` +
-	`"wide":{"type":"boolean","description":"Optional. True when the work is WIDER THAN ONE PAIR OF HANDS. Say true whenever you judged it broad; a wrong true costs nothing"},` +
-	`"model":{"type":"string","description":"Optional, ONLY when the person asked for a particular model or class: a catalog id (\"anthropic/claude-opus-5\") or a part of one (\"opus-5\"), never a class word; resolve \"fast\" to a concrete model. Otherwise the configured model is used. A word fitting several is shown to the person to settle"},` +
+	`"wide":{"type":"boolean","description":"Optional. True when the work is wider than one pair of hands. Say true whenever you judged it broad; a wrong true costs nothing"},` +
+	`"model":{"type":"string","description":"Optional, only where the person asked for one: a catalog id or part of one, never a class word, so resolve \"fast\" to a concrete model. A word fitting several is shown to the person to settle"},` +
 	`"max_steps":{"type":"integer","description":"Optional. Finished tool calls per progress checkpoint (default ` + strconv.Itoa(taskMaxSteps) + `); work still advancing is given more."},` +
 	`"no_progress":{"type":"integer","description":"Optional. Tool calls in a row that may add nothing before it is stopped as stuck (default ` + strconv.Itoa(taskNoProgress) + `). Raise it for work that must read a great deal first"}` +
 	`},"required":["title","summary","brief","deliverable","acceptance"],"additionalProperties":false}`

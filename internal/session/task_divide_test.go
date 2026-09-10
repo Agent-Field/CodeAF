@@ -1636,7 +1636,7 @@ func TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner(t *testing.T) {
 	}
 	// AND THE CLOCK, which is a decision and not a rule: a model that is never
 	// told what a hand-off buys does independent pieces one after another.
-	if !strings.Contains(rendered, "handed out in one breath cost the") {
+	if !strings.Contains(rendered, "cost the longest of them alone") {
 		t.Error("prompts/system.md never tells the model what handing pieces out in one breath buys")
 	}
 	// AND THE PROMPT SAYS THE ABSENCE OUTRIGHT. The page used to argue that the
