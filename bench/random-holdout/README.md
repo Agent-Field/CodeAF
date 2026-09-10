@@ -57,6 +57,12 @@ Node 24.12.0 / Pi 0.84.2 toolchain with networking disabled and checks versions.
 This step makes no model calls and does not start scoring; the actual-client
 preflight and final manifest still follow.
 
+`preflight_clients.py <staged-runners> <new-output-directory>` exercises the
+native mini and Pi clients, both frozen Aforge binaries through protocol 13,
+and the strict request guard against a loopback fake provider. It checks model
+identity, omitted generation controls and guard seed enforcement without a real
+API key. This does not replace the separate scheduler and usage-watch checks.
+
 The external evidence directory is
 `/home/santosh/bench-artifacts/af-random-holdout-20260910`, outside fleet's rsync
 destination. Submit from the repository root with `fleet run --cpu --rsync`.

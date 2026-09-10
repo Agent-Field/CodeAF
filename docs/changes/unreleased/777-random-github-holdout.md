@@ -27,3 +27,5 @@ rule excluded such feature requests. Failed reference tests still reject a
 fixture, and scored patches still need the complete reference test outcomes.
 The reassessment preserves and hashes the original controls in a separate tree;
 Pi receives the same frozen toolchain on each calibrated runtime image.
+An offline client preflight checks the frozen binaries and native clients
+against a fake provider before any paid holdout trial.
