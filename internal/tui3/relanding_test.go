@@ -141,3 +141,43 @@ func TestTheRailRowDropsTheFileListRatherThanCuttingIt(t *testing.T) {
 		}
 	}
 }
+
+// THE COLUMN SAYS WHICH ROAD IT IS ON, and it is the same road the card says.
+//
+// All three of the your-call questions that name files ask the same two answers
+// and differ only in the sentence between them, so a row that read `conflicts
+// with your branch` about a folder with no branch of theirs in it told a person
+// to go looking for a merge that was never the problem. The rail built its
+// reading without the two facts that pick the road (taskstatus.go).
+func TestTheColumnNamesTheRoadTheCardNames(t *testing.T) {
+	a, _ := settleApp(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Emails for the leads",
+		session.TaskUnverified, session.TaskNotice{
+			Elapsed: 400 * time.Second, Merge: mergeWordConflicted, Branch: "task/emails",
+			GroundHeld: true, Conflicts: []string{"leads.md"},
+		})})
+	node := a.tasks[7]
+	if node == nil {
+		t.Fatal("the roster has no node to draw")
+	}
+	said := plain(strings.Join(a.railUnder(node, 60), "\n"))
+	if !strings.Contains(said, askGroundReason) {
+		t.Fatalf("the column does not name the road the landing is on:\n%s", said)
+	}
+	if strings.Contains(said, askConflictReason) {
+		t.Fatalf("the column calls it a branch clash when no branch of theirs is in it:\n%s", said)
+	}
+	// AND A REAL BRANCH CLASH IS STILL A BRANCH CLASH.
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(8, "Port the parser",
+		session.TaskUnverified, session.TaskNotice{
+			Elapsed: 400 * time.Second, Merge: mergeWordConflicted, Branch: "task/parser",
+			Conflicts: []string{"parser.go"},
+		})})
+	plainNode := a.tasks[8]
+	if plainNode == nil {
+		t.Fatal("the roster lost the second node")
+	}
+	if said := plain(strings.Join(a.railUnder(plainNode, 60), "\n")); !strings.Contains(said, askConflictReason) {
+		t.Fatalf("an ordinary conflict stopped saying so:\n%s", said)
+	}
+}
