@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -241,6 +242,95 @@ func TestTheApprovalGateComesBackOutAsAQuestion(t *testing.T) {
 	// THE EMPTINESS LAW: a session that has decided nothing carries no heading.
 	if section := DecisionsSection(nil); section != "" {
 		t.Fatalf("an empty record rendered %q", section)
+	}
+}
+
+// THE RECORD IS A PREAMBLE, NOT AN ARCHIVE. It rides in message[0], which every
+// request of every turn pays for, so it is bounded to the newest few and says
+// how many older ones the file still holds — and the gate is asked against the
+// WHOLE record, which is not bounded at all.
+func TestTheRecordTheModelCarriesIsBoundedAndSaysWhatItLeftOnDisk(t *testing.T) {
+	made := make([]DecisionRecord, 0, decisionsSectionMost+3)
+	for at := 0; at < decisionsSectionMost+3; at++ {
+		made = append(made, DecisionRecord{
+			Head:   "decision " + strconv.Itoa(at),
+			Picked: []string{"yes"},
+			By:     DecidedByPerson,
+		})
+	}
+	section := DecisionsSection(made)
+	rows := strings.Split(section, "\n")
+	if rows[0] != "the record" {
+		t.Fatalf("the section lost its heading: %q", section)
+	}
+	// The heading, the bounded rows, and the one line about the rest.
+	if len(rows) != decisionsSectionMost+2 {
+		t.Fatalf("the section carries %d rows, want %d:\n%s", len(rows), decisionsSectionMost+2, section)
+	}
+	// THE NEWEST ARE THE ONES KEPT: the three oldest are the ones that went.
+	for at := 0; at < 3; at++ {
+		if strings.Contains(section, "decision "+strconv.Itoa(at)+" →") {
+			t.Fatalf("decision %d should have been left on disk:\n%s", at, section)
+		}
+	}
+	if !strings.Contains(section, "decision "+strconv.Itoa(decisionsSectionMost+2)+" →") {
+		t.Fatalf("the newest decision is not in the section:\n%s", section)
+	}
+	if !strings.Contains(section, "and 3 older, in "+decisionsName) {
+		t.Fatalf("the section does not say what it left on disk:\n%s", section)
+	}
+	// AND A RECORD THAT FITS SAYS NOTHING ABOUT OLDER ONES.
+	if short := DecisionsSection(made[:2]); strings.Contains(short, "older") {
+		t.Fatalf("a record that fits still talked about older ones: %q", short)
+	}
+}
+
+// THE RECORD IS READ FROM DISK ONCE PER CHANGE, NOT ONCE PER REBUILD OF
+// message[0]. Seven things rebuild that message and none of them is a decision;
+// each one used to open decisions.jsonl and unmarshal every line of it.
+func TestTheRecordIsNotReReadWhenNothingHasDecided(t *testing.T) {
+	agent, dir := questionSession(t, "rrrr1111rrrr1111", nil)
+	agent.recordDecision(DecisionRecord{Head: "the first", Picked: []string{"yes"}, By: DecidedByPerson})
+
+	agent.mu.Lock()
+	agent.refreshSystemLocked()
+	if agent.recordKey == "" {
+		t.Fatal("the record was rendered with no key to hold it against")
+	}
+	// Poisoning the held text is the only proof that stays true: if the file is
+	// read again the sentinel cannot survive, and if it is not, it must.
+	agent.recordText = "the record\n- a sentinel nothing on disk says"
+	agent.refreshSystemLocked()
+	carried := messageText(agent.messages[0])
+	agent.mu.Unlock()
+	if !strings.Contains(carried, "a sentinel nothing on disk says") {
+		t.Fatalf("message[0] was rebuilt by re-reading the file:\n%s", carried)
+	}
+
+	// AND A DECISION MADE ANYWHERE — this window or another one — moves the file
+	// and is picked up, because the key is the file's own size and time.
+	line, err := json.Marshal(DecisionRecord{Head: "another window decided", Picked: []string{"no"}, By: DecidedByWindow})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	file, err := os.OpenFile(DecisionsPath(dir), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatalf("open the record: %v", err)
+	}
+	if _, err := file.Write(append(line, '\n')); err != nil {
+		t.Fatalf("append to the record: %v", err)
+	}
+	_ = file.Close()
+
+	agent.mu.Lock()
+	agent.refreshSystemLocked()
+	carried = messageText(agent.messages[0])
+	agent.mu.Unlock()
+	if strings.Contains(carried, "a sentinel nothing on disk says") {
+		t.Fatalf("the record went stale behind another window's decision:\n%s", carried)
+	}
+	if !strings.Contains(carried, "another window decided") {
+		t.Fatalf("the other window's decision never reached message[0]:\n%s", carried)
 	}
 }
 

@@ -3544,7 +3544,7 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 		return
 	}
 	a.recordTaskIndex(node)
-	note := taskNote(notice, taskURI(node.journalPath()), a.settlePolicy(), a.addressLanding(notice))
+	note := landingNoteLead(notice) + taskNote(notice, taskURI(node.journalPath()), a.settlePolicy(), a.addressLanding(notice))
 	// WHETHER IT IS WORTH A TURN OF ITS OWN depends on whether anybody is waiting
 	// for a sentence about it. An ordinary task was handed off and forgotten: it
 	// lands minutes later on a silent session, and the answer the person asked
@@ -3862,6 +3862,47 @@ func settleClause(id uint64, settle TaskSettle) string {
 type landingAddress struct {
 	brief  string
 	person bool
+}
+
+// landingNoteLead is the one sentence a landed task's note opens with, and it
+// is what lets the page stop explaining a message it may never see.
+//
+// A HARNESS-AUTHORED MESSAGE CARRIES ITS OWN READING INSTRUCTION. That is the
+// pattern [checkpointCarryOnLead] and [standingNewsRule] were already written
+// in, and docs/design/prompt-diet/DESIGN.md §2 files it as a delivery class of
+// its own: what to do about an event is needed only on the turn it happens, so
+// it rides the event and costs nothing on the thousands of turns where no task
+// lands. The paragraphs prompts/system.md used to spend on the woken turn and on
+// the four words were the same law, paid for on every request of every turn.
+//
+// IT SAYS WHO IS SPEAKING, in [volatileNoteOpening]'s register and for its
+// reason. This note can START A TURN with nobody having typed, and a small model
+// handed `task 7 done: Port the parser` cold reads it as the person asking for a
+// status report — which is exactly the answer it must not give.
+//
+// THE WORD IS INTERPOLATED AND NEVER SPELLED HERE. It is the tier's own word,
+// read off the same [ProjectTask] projection the head under it is built from
+// (task_status.go), so the lead and the head can never name two different
+// landings and there is no second list of four words in this file to drift from
+// the four every surface draws.
+//
+// WHAT IT DELIBERATELY DOES NOT SAY is what the rest of this same note already
+// says: the moves a `your call` takes are [settleClause]'s, interpolated from
+// [TaskResolutions] so the note can never offer a word the schema would reject,
+// and a clash with the person's own branch is [conflictNotYours]'s or
+// [shiftNotYours]'s. Repeating them in the lead would be one law said twice
+// inside one message, which is the defect this pass exists to remove.
+func landingNoteLead(notice TaskNotice) string {
+	word := ProjectTask(notice.StatusFacts()).Word
+	if word == "" {
+		// A landing with no tier word has nothing to say back, and a lead that
+		// left a hole where the word goes would be the emptiness law broken in
+		// the one message that most needs to be read literally.
+		return ""
+	}
+	return "A note from the session, not from the person: work you handed off landed `" + word +
+		"` — say that word back and no other, then answer the request it was for in its latest wording. " +
+		"Do not say again that it landed, and do not grade it.\n"
 }
 
 func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address landingAddress) string {

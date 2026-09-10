@@ -144,6 +144,92 @@ import (
 // saved procedure configured, the complete tool block is 40,595 bytes and
 // discovery carries 26,740, including its 708-byte loader. Measure whole JSON
 // arrays rather than adding separately encoded array sizes.
+// THE DIET'S DELETE PASS TOOK 677 BYTES AND ADDED A LAW (2026-09-10). Lane C of
+// the prompt diet (docs/design/prompt-diet/DESIGN.md §1) deleted the SECOND and
+// THIRD copies of five rules and put ONE new sentence in their place, and the
+// new sentence is the reason the deletions are safe rather than merely cheap:
+// "anything handed off — a job, a watch, a task, a quick task — reports itself
+// into this conversation; never sleep, tail or poll for it" is 142 bytes that
+// says once what ten per-tool sentences were saying separately. Against it,
+// 819 bytes came out of text that stated a law already stated: the ask law was
+// on the page twice and in the belt fact under it a third time, so the ladder
+// bullet keeps it and the other two are gone; `# Critical`'s informed-action
+// bullet was the second telling of "never ask what the record answers";
+// prompts/system.md taught `write`'s append and `read`'s offset/limit, which
+// tools_write.go's [appendSentence] and bare's readDescription own word for
+// word; "Start ONE `watch`" contradicted [watchDescription]'s own count and is
+// gone; and the ask and settings belt facts gave up the two sentences about
+// what `load_capability` does once it is called, which is that tool's own
+// description. Nothing was raised. The page went 23,391 → 22,714, the tool
+// block is unmoved at 24,044, and the prefix is 46,758 — 1,242 under.
+// lawregistry_test.go is what keeps it there: every law above is filed under an
+// id and a class, and a second copy of one is now a build failure rather than a
+// thing the next audit finds.
+// AND THE EVENT LANE PAID NOTHING AND TOOK 2,189 BYTES BACK (2026-09-10). The
+// prompt diet's WITH THE EVENT pass (docs/design/prompt-diet/DESIGN.md §2): a
+// harness-authored message now carries its own reading instruction, so the page
+// stopped explaining messages it may never see. A landed task's note opens on
+// [landingNoteLead] — 234 bytes on the turn a task lands, with the tier word
+// interpolated — and a job's ending carries [jobExitNewsRule]. In exchange
+// `# Interrupts and steering` lost the woken-turn and `[carry on]` paragraphs
+// (the messages say all of it, and [checkpointCarryOnLead] has said its own
+// half since it was written), `# Session facts` lost the four-words, `your
+// call` and saying-stop bullets, and the belt's `tasks` fact lost its second
+// copy of the four words and the resolve verbs — [settleClause] interpolates
+// those from [TaskResolutions] on the note itself, and `tasks` own description
+// owns "To END running work use stop". Nothing was raised and no law left the
+// build. On dev alone it was 23,391 → 21,202; landing after lane C's delete
+// pass it is 22,714 → 20,525, and the two together leave the prefix at 44,569,
+// which is 3,431 under. Neither raised the budget.
+// AND THE TOOL DESCRIPTIONS GAVE BACK 1,221 BYTES AND ADDED A LAW (2026-09-10,
+// the prompt diet, lane F). The tool block went 24,044 → 22,823 and nothing was
+// raised; the prompt is untouched by this lane, so the prefix went 47,435 →
+// 46,214. Every byte came out of text that said something a SECOND time. The
+// handed-off-work-reports-itself law was written four times across the belt —
+// twice in `jobs`, once in `watch`, once in `propose_task` — and is now on the
+// page once; `read`'s senses sentence enumerated what a picture, a recording and
+// a video each come back as, where "described, never as bytes" is the whole rule
+// (322 → 95); and the routing sentences left `tasks` (three of them),
+// `read_document` and `recall` for the page's routing table, which states each
+// once for the whole belt rather than once per tool. Per tool: tasks 2,738 →
+// 2,272, read 1,169 → 952, jobs 1,103 → 802, watch 1,495 → 1,396, read_document
+// 819 → 754, recall 324 → 269, manual 616 → 603, commit 330 → 325, track 787
+// unchanged. schemalaw_test.go is the gate that keeps it: a parameter
+// description past 200 bytes, or shouting, or reaching for a dash, now fails the
+// build instead of waiting for this number to notice it. Merged with the page
+// passes above, the prefix is 43,348 — page 20,525 and tools 22,823, which is
+// 4,652 under a cap no lane of this wave moved. And `watch.instead-of-polling`
+// left lawregistry_test.go with the sentence it filed: `handoff.reports-itself`
+// now matches on "never sleep, tail or poll", so putting any of the four
+// per-tool copies back fails that gate wherever it is put.
+// THE DIET'S ON-DEMAND LANE PAID 3,854 BYTES BACK AND ASKED FOR NOTHING
+// (2026-09-10). Four runs of prose came off prompts/system.md and message[0]
+// stopped carrying any of them, because each one is already delivered by
+// whoever needs it and only then (docs/design/prompt-diet/DESIGN.md §2):
+//   - the standing section, 2,482 bytes, is one existence line. Its mechanics
+//     are tools_standing.go's [standDescription] and [standSchemaJSON], beside
+//     the field each governs; its `[something you set up fired]` frame is
+//     standing_run.go's [standingNewsRule], already under the firing's own line;
+//     the rest is the chat manual's keeping-an-eye page.
+//   - the two paragraphs defining a saved recipe and a saved program are the
+//     `harnesses` group's own prose (tools_capabilities.go), emitted under the
+//     `Loaded:` line by the load that fetches the four verbs. The page keeps the
+//     routing line that names `list_harnesses` and `build_harness`.
+//   - the accounts block, 1,142 bytes over three bullets, is one existence line.
+//     [serviceRequestDescription] already names the address and says which half
+//     the person turned off; the send verbs already say they are asked about
+//     first and cannot be called back.
+//   - the media-making essay is the `media` group's prose, and the page keeps
+//     one line: anchor in a real medium, specify positively, `manual` for the
+//     rest. `generate_image` and `generate_video` state it a third time in the
+//     `prompt` field, where it is read at the call.
+//
+// Nothing was raised and no law was dropped, and each of the four is filed in
+// lawregistry_test.go under class `demand` with the place that now owns it. On
+// its own, on top of lane C's delete pass, it took the page 22,714 → 18,860;
+// landing beside the event and description lanes above it leaves the page at
+// 16,671, the tool block at 22,823 which it did not touch, and the prefix at
+// 39,494 — 8,506 under.
 // widestPage weighs the larger direct/deferred wording for each fact.
 const fixedPrefixBudget = 48_000
 
