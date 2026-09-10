@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: reopened rooms keep each call's duration; e2e suite isolation and budget
-pr: 814
+pr: 819
 surface: [chat, engine, docs]
 invalidates:
   - "A finished tool call's own duration used to live only on the live EventToolFinished stream. A task room opened after the landing — or rebuilt from the journal — drew the rows with Args and Output and no figure. The journal now writes a `took` line per finished call (keyed by call id, the same anchor the live event carries), DisplayEntry.Took carries it, and replayBlocks puts it on the row so a reopen still says `3.0s` and `7.0s`."
