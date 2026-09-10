@@ -209,6 +209,12 @@ const (
 	// where the press would do nothing, the render records no span and this
 	// answers nothing (room.go's [app.roomModelMovable]).
 	hoverStatusModel
+	// hoverEffort is the THINKING RUNG on the seam, the cell drawn immediately
+	// after the model's name (effortchip.go). It is a kind of its own rather than
+	// a second reading of [hoverStatusModel] for [hoverKeeping]'s reason: two
+	// cells side by side that do two different things — one opens the picker, one
+	// walks the ladder a step — and what lights has to be what the press acts on.
+	hoverEffort
 	// hoverMoney is the money segment of the status row, which is a door onto
 	// the Spending tab (moneydoor.go). It is a kind of its own rather than a
 	// second reading of [hoverStatusModel] for the reason that one covers both of
@@ -670,8 +676,18 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// THE MODEL'S NAME ON THE SEAM, out of a room (foot.go). The home door
 			// at the other end of the same line lights through its own reading
 			// (home.go's [app.hoverHomeDoor]).
-			if !a.roomOpen() && !a.copy.on && !a.pick.open && a.seamModelSpan.holds(x) {
+			if a.roomOpen() || a.copy.on || a.pick.open {
+				return hoverAt{}
+			}
+			if a.seamModelSpan.holds(x) {
 				return hoverAt{kind: hoverStatusModel}
+			}
+			// AND THE THINKING RUNG BESIDE IT, on its own columns and its own
+			// kind: pressing it walks the ladder rather than opening the picker
+			// (effortchip.go), and this file's law is that the two cannot share
+			// one light.
+			if a.seamEffortSpan.holds(x) {
+				return hoverAt{kind: hoverEffort}
 			}
 		case chromeStatus:
 			// THE SAME THREE QUESTIONS [app.statusPress] ASKS, IN THE SAME ORDER,

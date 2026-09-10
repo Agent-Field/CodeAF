@@ -9,10 +9,10 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 )
 
-// THE THINKING CHIP — how hard this conversation thinks, said where the person
-// is typing.
+// THE THINKING CHIP — how hard this conversation thinks, said beside the model
+// that is doing the thinking.
 //
-//	                                                              ⠿ high
+//	─ porting the parser · glm-5.3-flash · ⠿ high · via deepinfra · main* ──── / commands ─
 //	› what changed in the relay this week
 //
 // internal/effort landed the ladder and internal/session landed the dial, and
@@ -22,10 +22,26 @@ import (
 // conversation in front of them, and it was answerable only by changing what
 // every other conversation on the machine would do afterwards.
 //
-// So the conversation's own rung gets a chip, a chord and a five-row menu, and
-// all three read and write ONE scope — [session.Agent.SetConversationEffort],
-// which is sticky in this session's meta.json and reaches every turn and every
-// task this conversation hands out.
+// So the conversation's own rung gets a cell on the seam, a chord and a
+// five-row ladder, and all of them read and write ONE scope —
+// [session.Agent.SetConversationEffort], which is sticky in this session's
+// meta.json and reaches every turn and every task this conversation hands out.
+//
+// ── IT SITS BESIDE THE MODEL BECAUSE IT IS A FACT ABOUT THE MODEL ──────────
+//
+// Until 2026-09-09 this was a chip at the right end of the TRAY, and the seam
+// said the rung as a colon suffix on the model id — `glm-5.3-flash:high` — so
+// one ladder was spelled two ways on one frame, in two places, and the tray row
+// existed on most sessions only because the dial was on it. The seam is where
+// the answer belongs: the model, how hard it is being asked to think, and who is
+// serving it are one sentence about the next turn, and a person reads them
+// left to right on the line their eye already crosses on the way into the box.
+//
+// AND IT IS ANCHORED TO THE MODEL, NOT TO THE END OF THE LINE. The `via` rider
+// comes and goes on a sighting's own clock ([app.modelRiderAt]) and the branch
+// comes and goes with the width, so a rung drawn after either of them would
+// slide sideways under a hand that had just learned where it was. It is drawn
+// immediately after the model's name, which moves only when the name does.
 //
 // ── WHAT THE CHIP SAYS IS WHAT WILL HAPPEN ─────────────────────────────────
 //
@@ -46,21 +62,27 @@ import (
 //
 // THE ACCENT BUDGET is one lit element per screen and this is not it: a rung
 // that sat lit above the box forever would spend the budget on a fact that
-// changes once a week. So the chip is dim, like every other cell on the tray.
-// The exception is the moment it CHANGES, when it is briefly the one live thing
-// on the frame and takes THE EMPHASIS LAW's two moves — the selected ground and
-// the accent on its leading glyph — and then settles back, the same shape the
-// copied rows keep for three seconds after a sweep (dragselect.go).
+// changes once a week. So the cell is dim, like the rest of the seam. The
+// exception is the moment it CHANGES, when it is briefly the one live thing on
+// the frame and takes THE EMPHASIS LAW's two moves — the selected ground and the
+// accent on its leading glyph — and then settles back, the same shape the copied
+// rows keep for three seconds after a sweep (dragselect.go).
 //
-// ── AND IT SITS AT THE RIGHT END OF THE TRAY ───────────────────────────────
+// ── THE PRESS WALKS IT, THE WAY THE PRESS ON A TASK WALKS THAT TASK'S ──────
 //
-// The tray's other cells are CARGO — a picked harness, a picture, a file — and
-// every one of them is a thing a click takes OFF the message. The rung is not
-// cargo, it is a dial, so it does not stand in their queue: it is right-aligned
-// and the cargo grows from the left, which also means the chip is in the same
-// columns whether the tray is empty or carrying four screenshots. A control
-// that moved sideways with what else was on the row would be a control nobody's
-// hand can learn.
+// A click on the cell is [app.cycleEffort] and not a list, which is the gesture
+// a person already met on a task: the room panel's thinking row steps the node's
+// rung one place and says so in a note (roompanel.go's [app.roomPanelTake],
+// taskeffort.go's [app.cycleNodeEffort]). One verb, one gesture, every scope —
+// the same rule effortscope.go states about the chord.
+//
+// THE LADDER KEPT ITS DOOR AND IT IS A COMMAND NOW. The five rows with their
+// sentences used to open from a click on the tray chip, which is the gesture
+// this ruling spends on the wheel; so `/effort` opens them and `/effort <rung>`
+// picks one outright ([app.runEffort]). A capability whose only door was taken
+// away is a capability that has been deleted by accident, and this one is worth
+// keeping: five words with what each one buys is how a person decides between
+// them, and the wheel alone can only be walked blind.
 
 // effortKey is the chord that walks the ladder, written down once: the router
 // binds it, the manual prints it and the menu's foot names it, and a surface
@@ -85,12 +107,6 @@ const (
 	glyphEffort      = glyphThought
 	glyphEffortASCII = "~"
 )
-
-// effortTrayGap is the least air between the cargo at the left of the tray and
-// the dial at its right. It is the clause step said sideways — two cells, the
-// same distance [chipGap] puts between two chips — because a dial one cell off
-// the last screenshot's name reads as part of it.
-const effortTrayGap = 2
 
 // effortFlashFor is how long the chip wears its change.
 //
@@ -127,11 +143,22 @@ type effortDialer interface {
 }
 
 // effortDial is the session's dial, and false where there is none.
+//
+// AND A CONNECTION ANSWERS FOR THE MACHINE AT THE OTHER END. A *remote.Agent
+// always has these three methods on it, so the assertion alone says yes for
+// every `--host` session whatever the far engine can do — and the answer cannot
+// be read off the rung either, because "" is a real rung here (a conversation
+// asking for no thinking at all). The engine states the capability at the door
+// and this asks it, exactly as [app.taskEffortDoors] asks about a task's own
+// rung (taskeffort.go).
 func (a *app) effortDial() (effortDialer, bool) {
 	if a.agent == nil {
 		return nil, false
 	}
 	dial, ok := a.agent.(effortDialer)
+	if host, hosted := a.agent.(interface{ EffortSupported() bool }); hosted {
+		ok = ok && host.EffortSupported()
+	}
 	return dial, ok
 }
 
@@ -139,15 +166,17 @@ func (a *app) effortDial() (effortDialer, bool) {
 //
 // THE EMPTINESS LAW: a session that asks for no thinking at all — the `effort`
 // settings row set to `off`, with nothing nearer to the work saying otherwise —
-// has nothing to report and this is "", which is a chip the tray never draws.
-// The chord still works from there and puts the chip back on the first rung,
+// has nothing to report and this is "", which is a cell the seam never draws.
+// The chord still works from there and puts the rung back on the first step,
 // because a key costs nothing to keep.
 //
-// It asks the agent on every frame that draws a tray, which is a lock and two
-// map reads (internal/session's effortLocked). That is deliberately unlike the
-// context meter, which is measured where the answer changes and never on the
-// frame clock (app.go's [app.measureContext]): the difference is that measuring
-// a conversation walks it and this does not.
+// It asks the agent on every frame that draws the seam, which is a lock and two
+// map reads (internal/session's effortLocked) — and over a connection a read of
+// the fact set the engine states unasked, never a call (internal/remote's
+// effort.go). That is deliberately unlike the context meter, which is measured
+// where the answer changes and never on the frame clock (app.go's
+// [app.measureContext]): the difference is that measuring a conversation walks
+// it and this does not.
 func (a *app) effortWord() string {
 	dial, ok := a.effortDial()
 	if !ok {
@@ -171,14 +200,17 @@ func (a *app) effortChipText() string {
 	return mark + " " + word
 }
 
-// paintEffortChip is the chip's one cell of colour, in the three states it has.
+// paintEffortChip is the chip's one cell of colour, in the two states that are
+// not the resting one.
 //
-// At rest it is dim, with the tray's other cells, because it is furniture. Under
-// the pointer it takes the ground ladder's cursor step behind exactly its own
-// cells, which is what the harness cell beside it does and for hover.go's law:
+// At rest it is dim, with the rest of the seam, because it is furniture — and
+// that state is not drawn here at all: the seam paints its whole cluster in one
+// tier and lifts this cell out of it only while there is something to lift
+// (foot.go's [paintSpan] takes this as its lift). Under the pointer it takes the
+// ground ladder's cursor step behind exactly its own cells, for hover.go's law:
 // what lights is what the press acts on. And in the moment after a change it
 // takes THE EMPHASIS LAW's two moves and no third — the selected ground, and the
-// accent on the leading glyph — because that is the one moment this chip is the
+// accent on the leading glyph — because that is the one moment this cell is the
 // live thing on the screen.
 func (a *app) paintEffortChip(text string) string {
 	if a.effortFlashing() {
@@ -186,11 +218,24 @@ func (a *app) paintEffortChip(text string) string {
 		lit := a.pal.accent(mark) + a.pal.ink(" "+word)
 		return a.pal.background(lit, 0, a.pal.ramp.selected)
 	}
-	if a.hoveringChip(trayEffortChip) {
-		return a.pal.cursor(a.pal.dim(text), 0)
-	}
-	return a.pal.dim(text)
+	return a.pal.cursor(a.pal.dim(text), 0)
 }
+
+// effortSeamLit reports whether the seam's rung is wearing anything other than
+// the line's own tier this frame — the flash it takes after a change, or the
+// pointer.
+//
+// THE FLASH WINS WHERE BOTH ARE TRUE, and one of them has to: the cell is
+// painted by a single lift closure and a hue inside a hue ends at the inner
+// one's reset (styles.go's [palette.paint]). It is the flash because the press
+// that lights it is made WITH THE POINTER ON THE CELL — a hover that outranked
+// it would mean a click on the rung was the one gesture that never showed the
+// change it made. Two seconds later the pointer's own step comes back.
+func (a *app) effortSeamLit() bool { return a.hoveringEffort() || a.effortFlashing() }
+
+// hoveringEffort is the pointer over the seam's rung, for the paint and for
+// nothing else — the press asks [app.seamEffortSpan] itself.
+func (a *app) hoveringEffort() bool { return a.hot.kind == hoverEffort }
 
 // effortFlashing reports whether the chip is still wearing its last change.
 //
@@ -397,9 +442,59 @@ func (m *effortMenu) rows(width, n int, pal palette, hover int) []string {
 	return out
 }
 
-// openEffortMenu is the click on the chip, and it TOGGLES: a control that opened
-// a list and then ignored the second press on the same cell would be a control
-// with no way back through the gesture that got you there.
+// runEffort is `/effort`, and it is the LADDER'S DOOR now that the pointer's
+// gesture on the cell is the wheel ([app.cycleEffort]).
+//
+// Bare, it opens the five rows. With a rung after it, it sets that rung outright
+// — through the one path the chord and the ladder already share, so a rung typed
+// and a rung picked cannot mean slightly different things, and the note about a
+// level on the model winning is the same sentence in all three.
+//
+// AN UNKNOWN WORD CHANGES NOTHING AND SAYS THE FIVE, which is the shape every
+// choice this surface refuses takes (crew.go's [app.runCrew]): a refusal that
+// only said no would leave a person guessing at a word they were one letter
+// away from.
+func (a *app) runEffort(arg string) tea.Cmd {
+	dial, ok := a.effortDial()
+	if !ok {
+		a.note(effortUnavailableWord)
+		return nil
+	}
+	arg = strings.ToLower(strings.TrimSpace(arg))
+	if arg == "" {
+		a.openEffortMenu()
+		return nil
+	}
+	rung, parsed := effort.Parse(arg)
+	if !parsed || rung == effort.None {
+		// `off` parses as a rung nobody can be at, and it is refused here with
+		// every other word that is not one of the five: absence is the settings
+		// row's to hand out, never this dial's (effortscope.go's wheel law).
+		a.noteFacts("/effort "+arg+" · not one of the five · "+
+			strings.Join(effortRungWords(), " · "), effortRungWords()...)
+		return nil
+	}
+	return a.setEffortRung(dial, rung)
+}
+
+// effortUnavailableWord is what a conversation with no dial answers, in the
+// shape [taskEffortUnavailableWord] says the same thing about one task.
+const effortUnavailableWord = "how hard this conversation thinks is unavailable — this session has no dial onto it"
+
+// effortRungWords is the ladder as a sentence lists it, read off the ladder
+// rather than repeated (CLAUDE.md's one-source-of-truth law: a rung added or
+// dropped in internal/effort moves every refusal that names them).
+func effortRungWords() []string {
+	words := make([]string, 0, len(effort.Rungs))
+	for _, rung := range effort.Rungs {
+		words = append(words, rung.String())
+	}
+	return words
+}
+
+// openEffortMenu opens the five rows, and it TOGGLES: a door that opened a list
+// and then ignored the same word typed again would be a door with no way back
+// through the gesture that got you there.
 func (a *app) openEffortMenu() {
 	if a.effPick.open {
 		a.effPick.close()

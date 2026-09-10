@@ -592,17 +592,12 @@ func chipLabels(chips []chip, pal palette) []string {
 // kind of fact — something the next message carries besides its words — and the
 // tray is the one place this surface keeps those. Its own cell is INK rather
 // than dim, because it is the one thing up here that changes what enter does.
-// AND THE THINKING DIAL RIDES THE SAME ROW, LAST AND RIGHT-ALIGNED
-// (effortchip.go). It is the one cell up here that is not cargo — nothing comes
-// off the message when it is pressed — so it does not stand in the cargo's
-// queue: it keeps the same columns whether the tray is empty or carrying four
-// screenshots, which is what lets a hand learn where it is.
+// THE THINKING DIAL USED TO RIDE THIS ROW, last and right-aligned, and it is on
+// the seam beside the model now (effortchip.go). It was the one cell up here
+// that was not cargo — nothing came off the message when it was pressed — and
+// it kept most sessions' tray rows alive on their own, for a fact about the
+// model that belongs on the line the model is written on.
 func (a *app) chipStrip(width int) string {
-	// The dial's columns are recorded where the row is laid out, which is what
-	// keeps the press and the paint in step (jumpchip.go's [app.jumpChip] makes
-	// the same bargain for the same reason). Cleared first, so a frame that draws
-	// no dial cannot be pressed against the last frame that did.
-	a.effortSpan = hudSpan{}
 	cells := a.harnessTrayCells()
 	// AND THE FOLDERS THIS CONVERSATION IS ABOUT RIDE THE SAME ROW, between the
 	// harness and the cargo (folderchip.go). They are the same kind of fact —
@@ -610,15 +605,7 @@ func (a *app) chipStrip(width int) string {
 	// one place on the surface those are kept.
 	places := a.placeTrayCells()
 	labels := chipLabels(a.chips, a.pal)
-	dial := a.effortChipText()
-	dialCells := ansi.StringWidth(dial)
-	// A CHIP THAT DOES NOT FIT IS DROPPED RATHER THAN TRUNCATED, which is
-	// pickrow.go's law about an answer and is the same law here: half a rung word
-	// is a word somebody reads as another rung.
-	if dial != "" && dialCells+effortTrayGap > width {
-		dial, dialCells = "", 0
-	}
-	if len(cells) == 0 && len(places) == 0 && len(labels) == 0 && dial == "" {
+	if len(cells) == 0 && len(places) == 0 && len(labels) == 0 {
 		return ""
 	}
 	painted := make([]string, 0, len(cells)+len(places)+len(labels))
@@ -655,18 +642,8 @@ func (a *app) chipStrip(width int) string {
 		}
 		painted = append(painted, a.pal.dim(label))
 	}
-	// The cargo is fitted to what is left after the dial, so a long file name
-	// ellipsizes rather than pushing the dial off the end of the row.
-	room := width
-	if dial != "" {
-		room = width - dialCells - effortTrayGap
-	}
-	cargo, cargoCells := fitWidth(strings.Join(painted, chipGap), room)
-	if dial == "" {
-		return cargo
-	}
-	a.effortSpan = hudSpan{from: width - dialCells, to: width}
-	return cargo + strings.Repeat(" ", width-cargoCells-dialCells) + a.paintEffortChip(dial)
+	cargo, _ := fitWidth(strings.Join(painted, chipGap), width)
+	return cargo
 }
 
 // chipAt resolves a column to the chip drawn on it, or -1.
@@ -702,15 +679,6 @@ func (a *app) chipPress(x, y int) (tea.Cmd, bool) {
 		a.dropHarnessChip()
 		return nil, true
 	}
-	// THE DIAL IS THE ONE CELL UP HERE THAT OPENS SOMETHING rather than taking
-	// something off (effortchip.go). It is the self-teaching door beside the
-	// chord, which docs/DESIGN-LANGUAGE.md requires of every chord on this
-	// surface: a person who never pressed ctrl+v can still find the five rungs,
-	// click one, and read the key off the list.
-	if at == trayEffortChip {
-		a.openEffortMenu()
-		return nil, true
-	}
 	// AND A FOLDER'S CELL TAKES THE FOLDER OFF THE CONVERSATION — not off the
 	// message, which is what every other cargo cell up here does. It is the same
 	// gesture over a longer-lived object, and the work goes off the loop because
@@ -725,12 +693,6 @@ func (a *app) chipPress(x, y int) (tea.Cmd, bool) {
 // trayHarnessChip is what [app.chipTrayTarget] answers for the picked harness's
 // own cell, which is not one of [app.chips] and has a different thing done to it.
 const trayHarnessChip = -1
-
-// trayEffortChip is what [app.chipTrayTarget] answers for the thinking dial at
-// the right end of the row (effortchip.go). It is not one of [app.chips] either,
-// and what is done to it is the opposite of what is done to them: a press opens
-// the ladder rather than taking anything off the message.
-const trayEffortChip = -2
 
 // trayPlaceChip is what [app.chipTrayTarget] answers for the FIRST folder this
 // conversation is about, and the ones after it count DOWNWARD from here —
@@ -758,16 +720,12 @@ const trayPlaceChip = -3
 func (a *app) chipTrayTarget(x, y int) (int, bool) {
 	cells := a.harnessTrayCells()
 	places := a.placeTrayCells()
-	// THE DIAL KEEPS THIS ROW ALIVE ON A TRAY WITH NO CARGO ON IT
-	// (effortchip.go), so the field test asks about it too — and asks the cheap
-	// half first, because a session whose model wants no thinking at all draws no
-	// dial and should pay nothing for the question.
 	// AND A PLACE TAKING THE FRAME IS NOT THIS ROW AT ALL. Home draws a tray of
 	// its own over its own box (placebodies.go's [app.placeTray]) and resolves
 	// every press against its own two maps (homemouse.go); the geometry below is
 	// the CONVERSATION's, so a press answered here while a place is up would be a
 	// click on a chip the frame never drew.
-	if (len(a.chips) == 0 && len(cells) == 0 && len(places) == 0 && a.effortChipText() == "") ||
+	if (len(a.chips) == 0 && len(cells) == 0 && len(places) == 0) ||
 		a.at(pageSettings) || a.at(pageHome) || a.pick.open {
 		return 0, false
 	}
@@ -794,13 +752,6 @@ func (a *app) chipTrayTarget(x, y int) (int, bool) {
 		return 0, false
 	}
 	column := x - len(inputPad)
-	// THE DIAL IS ASKED FIRST BECAUSE IT IS THE ONE CELL WHOSE COLUMNS THE
-	// LAYOUT RECORDED, and laying the chrome out directly above is what wrote
-	// them — the same order [app.jumpPress] and [app.statusPress] keep. The
-	// cargo's own offsets are counted from the left and cannot reach this far.
-	if a.effortSpan.holds(column) {
-		return trayEffortChip, true
-	}
 	// THE HARNESS CELL IS ASKED FIRST BECAUSE IT IS DRAWN FIRST, and the
 	// pictures start after it — the offset is computed from the same cells the
 	// row was built from, so what is drawn and what a click resolves against

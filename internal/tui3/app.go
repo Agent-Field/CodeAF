@@ -1127,6 +1127,12 @@ type app struct {
 	// now (foot.go's [app.seamIdentity]). modelSpan above is the room chip's
 	// door on the status row; the two are never both drawn.
 	seamModelSpan hudSpan
+	// seamEffortSpan is the thinking rung's own columns on that same line, drawn
+	// immediately after the model and pressed to walk the ladder one step
+	// (effortchip.go). It is a second span rather than a wider one because the
+	// two cells do two different things, and hover.go's law is that what lights
+	// is what the press acts on.
+	seamEffortSpan hudSpan
 	// doors is every pressable segment of the status row, recorded as the row
 	// is laid out and cleared before it (foot.go).
 	doors []statusDoor
@@ -1379,15 +1385,10 @@ type app struct {
 	// crewPick is the three-row /crew chooser (crew.go). It is separate from the
 	// model picker because it has no filter and every item always takes two lines.
 	crewPick crewPicker
-	// effPick is the five-row thinking chooser the tray's dial opens
-	// (effortchip.go). It is the crew chooser's shape for the crew chooser's
-	// reason: a fixed ladder is a thing you read rather than a thing you search.
+	// effPick is the five-row thinking chooser `/effort` opens (effortchip.go).
+	// It is the crew chooser's shape for the crew chooser's reason: a fixed
+	// ladder is a thing you read rather than a thing you search.
 	effPick effortMenu
-	// effortSpan is where the thinking dial was last drawn on the tray, in
-	// columns from the box's own left edge — the same bargain [app.jumpSpan]
-	// makes, because the layout is the only thing that knows where a
-	// right-aligned cell landed.
-	effortSpan hudSpan
 	// wait is the forming block a task command is standing in — its verbatim
 	// brief, present phase, and clock (taskcommand.go). It keeps that live region
 	// out of the notes lane while driving its shared spinner and count-up.
@@ -3566,6 +3567,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// it opens the picker (foot.go's [app.legendModelPress]).
 			if a.legendModelPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
+			}
+			// AND THE THINKING RUNG BESIDE IT IS THE FIFTH, on its own columns:
+			// pressing it walks the ladder one step, the way pressing a task's
+			// thinking row walks that task's (foot.go's [app.legendEffortPress]).
+			if cmd, took := a.legendEffortPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
 			}
 			// THE STOP TARGETS ARE READ BEFORE EVERY OTHER COLUMN-AWARE PRESS
 			// (stop.go). The card's answers sit over the draft, and the ✕ sits at
@@ -6610,6 +6617,13 @@ func (a *app) slash(line string) tea.Cmd {
 		// shape every choice row on this surface refuses in.
 		a.runCrew(rest)
 		return nil
+
+	case "effort":
+		// How hard THIS conversation thinks (effortchip.go). The bare form opens
+		// the five rungs with what each one buys; a rung after it sets that rung
+		// outright. An unknown word shows the five and changes nothing, which is
+		// the shape every choice row on this surface refuses in.
+		return a.runEffort(rest)
 
 	case "task":
 		return a.runTaskCommand(rest)

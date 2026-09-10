@@ -3491,7 +3491,7 @@ func (a *app) legend(width int) string {
 	// not cleared down there).
 	a.homeDoor = hudSpan{}
 	if !a.roomOpen() {
-		a.seamModelSpan = hudSpan{}
+		a.seamModelSpan, a.seamEffortSpan = hudSpan{}, hudSpan{}
 	}
 	right := a.legendRight(width)
 	// EACH RUNG IS BUILT ONCE, SPAN AND ALL. The left label and the columns its
@@ -3505,8 +3505,8 @@ func (a *app) legend(width int) string {
 	// and measures again, preserving the fixed order rather than inventing a
 	// second short sentence. Every other state has one rung and stops here.
 	for rung := right; rung != ""; {
-		if left, span, named := a.legendLeftSpan(width, legendRoom(width, rung)); named {
-			attempts = append(attempts, legendAttempt{left: left, right: rung, span: span})
+		if left, span, dial, named := a.legendLeftSpan(width, legendRoom(width, rung)); named {
+			attempts = append(attempts, legendAttempt{left: left, right: rung, span: span, dial: dial})
 		}
 		next := a.hintShorter(rung)
 		if next == "" {
@@ -3514,44 +3514,61 @@ func (a *app) legend(width int) string {
 		}
 		rung = next
 	}
-	bare, bareSpan, _ := a.legendLeftSpan(width, legendRoom(width, ""))
-	attempts = append(attempts, legendAttempt{left: bare, right: "", span: bareSpan})
-	// THE MODEL IS A DOOR ON THIS LINE. Its columns are those the chosen attempt
-	// drew it at, offset by the border's own two cells, and it brightens under
-	// the pointer to say so (foot.go's [app.legendModelPress]). The lift closure
-	// reads the attempt being tried through this one variable rather than being
-	// built again inside the loop, for the allocation law's sake.
-	seam := hudSpan{}
+	bare, bareSpan, bareDial, _ := a.legendLeftSpan(width, legendRoom(width, ""))
+	attempts = append(attempts, legendAttempt{left: bare, right: "", span: bareSpan, dial: bareDial})
+	// TWO CELLS ON THIS LINE ARE DOORS. The model's columns and the thinking
+	// rung's are those the chosen attempt drew them at, offset by the border's
+	// own two cells, and each brightens under the pointer to say so (foot.go's
+	// [app.legendModelPress] and [app.legendEffortPress]). The lift closure reads
+	// the attempt being tried through these two variables rather than being built
+	// again inside the loop, for the allocation law's sake.
+	//
+	// ONE OF THE TWO IS LIFTED PER FRAME AND NEVER BOTH, because these hues are
+	// raw SGR with an explicit reset and a second lift inside the first would end
+	// at that reset ([paintSpan] states it). They cannot both want it: the model
+	// lifts only under the pointer, and the pointer is on one cell at a time.
+	seam, dial := hudSpan{}, hudSpan{}
 	lift := func(text string) string {
+		if a.effortSeamLit() && dial.pressable() {
+			return paintSpan(text, dial, paint, a.paintEffortChip, true)
+		}
 		return paintSpan(text, seam, paint, a.pal.accent, a.hoveringStatusModel())
 	}
 	for _, attempt := range attempts {
-		seam = hudSpan{}
+		seam, dial = hudSpan{}, hudSpan{}
 		if !a.roomOpen() {
-			seam = attempt.span
-			span := attempt.span
-			if span.pressable() {
-				span.from += 2
-				span.to += 2
-			}
-			a.seamModelSpan = span
+			seam, dial = attempt.span, attempt.dial
+			a.seamModelSpan, a.seamEffortSpan = shiftIntoBorder(attempt.span), shiftIntoBorder(attempt.dial)
 		}
 		if line, ok := a.legendLine(attempt.left, attempt.right, width, lift); ok {
 			return line
 		}
 		if !a.roomOpen() {
-			a.seamModelSpan = hudSpan{}
+			a.seamModelSpan, a.seamEffortSpan = hudSpan{}, hudSpan{}
 		}
 	}
 	return a.rule(width)
 }
 
+// shiftIntoBorder moves a span from the label's own columns to the frame's: the
+// legend sets its labels into the rule two cells in, and a door is pressed at
+// the column it was DRAWN at.
+func shiftIntoBorder(span hudSpan) hudSpan {
+	if !span.pressable() {
+		return span
+	}
+	span.from += 2
+	span.to += 2
+	return span
+}
+
 // legendAttempt is one rung of the ladder above: the two labels it would draw,
-// and where the model segment fell inside the left one.
+// and where the model segment and the thinking rung fell inside the left one.
 type legendAttempt struct {
 	left  string
 	right string
 	span  hudSpan
+	dial  hudSpan
 }
 
 // legendGap is the shortest run of rule the two labels will leave between them.
@@ -3676,14 +3693,14 @@ func (a *app) branchWord() string {
 // THE TIGHT FRAME DROPS THE BRANCH. The status line below keeps identity, and a
 // branch a person can recover from the shell prompt does not outrank it.
 func (a *app) legendLeft(width, room int) (string, bool) {
-	left, _, named := a.legendLeftSpan(width, room)
+	left, _, _, named := a.legendLeftSpan(width, room)
 	return left, named
 }
 
-// legendLeftSpan is that label AND the columns its model segment occupies
-// within it, which is what [app.legend] needs to make the model pressable
-// without building the cluster a second time.
-func (a *app) legendLeftSpan(width, room int) (string, hudSpan, bool) {
+// legendLeftSpan is that label AND the columns its two doors occupy within it —
+// the model's name, then the thinking rung — which is what [app.legend] needs to
+// make both pressable without building the cluster a second time.
+func (a *app) legendLeftSpan(width, room int) (string, hudSpan, hudSpan, bool) {
 	// THE PLACE IS THE ROOM while one is open, and the name and branch go with
 	// the path: none of them is a fact about the page on screen, and the one
 	// thing a person in here needs from this slot is the key that gets them out
@@ -3695,20 +3712,20 @@ func (a *app) legendLeftSpan(width, room int) (string, hudSpan, bool) {
 		// person's own draft comes back (room.go's [app.roomKey], recall.go). The
 		// slot is here to promise the NEXT keystroke, so it has to move with it.
 		if a.recalling() {
-			return roomLegendRecallWord, hudSpan{}, true
+			return roomLegendRecallWord, hudSpan{}, hudSpan{}, true
 		}
 		if a.roomOrganized() {
-			return "", hudSpan{}, true
+			return "", hudSpan{}, hudSpan{}, true
 		}
-		return roomLegendWord, hudSpan{}, true
+		return roomLegendWord, hudSpan{}, hudSpan{}, true
 	}
 	if room < 1 {
-		return "", hudSpan{}, true
+		return "", hudSpan{}, hudSpan{}, true
 	}
-	// THE NAME AND THE MODEL ARE HERE NOW, and the branch rides after them
-	// (foot.go's [app.seamIdentity] holds the ladder).
-	cluster, span := a.seamIdentity(width, room)
-	return cluster, span, true
+	// THE NAME, THE MODEL AND ITS THINKING RUNG ARE HERE NOW, and the branch
+	// rides after them (foot.go's [app.seamIdentity] holds the ladder).
+	cluster, span, dial := a.seamIdentity(width, room)
+	return cluster, span, dial, true
 }
 
 // legendJoin is the separator between the legend's facts, and dotted threads any
