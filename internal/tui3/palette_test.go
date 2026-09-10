@@ -181,11 +181,17 @@ func TestThePickerIsBottomAnchoredAndMarksTheCurrentModel(t *testing.T) {
 			t.Fatalf("row %d is %q, want %s", i, tail[i], model.ID)
 		}
 	}
-	box := lines[len(lines)-len(pickerCatalog)-2]
+	// The blank the box breathes on is BELOW it since 2026-09-09 (view.go's
+	// [app.chrome]), so the filter box is two rows above the list rather than
+	// one, with that blank between them.
+	if blank := lines[len(lines)-len(pickerCatalog)-2]; strings.TrimSpace(blank) != "" {
+		t.Fatalf("the row under the filter box is %q, want the blank", blank)
+	}
+	box := lines[len(lines)-len(pickerCatalog)-3]
 	if !strings.Contains(box, pickerHint) {
 		t.Fatalf("the filter box is %q, want the hint", box)
 	}
-	if caretY != a.height-2-len(pickerCatalog) || caretX != len(inputPad)+2 {
+	if caretY != a.height-3-len(pickerCatalog) || caretX != len(inputPad)+2 {
 		t.Fatalf("the caret is at %d,%d — it belongs in the filter box", caretX, caretY)
 	}
 	// Windows are shown where they are known and nowhere else.

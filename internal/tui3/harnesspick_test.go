@@ -256,10 +256,11 @@ func TestClickingTheHarnessChipDropsIt(t *testing.T) {
 	typeInto(t, a, "/harness ")
 	drive(t, a, key("enter"))
 
-	_, height := a.size()
-	rows, _, _, _ := a.chrome(a.width)
-	at := len(rows) - 1 - a.overlayHeight() - a.inputHeight()
-	if _, took := a.chipPress(len(inputPad), height-len(rows)+at); !took {
+	// The tray is the input block's FIRST row, read off the layout's own marks
+	// rather than counted back from the foot of the chrome: the breathing blank
+	// moved under the box on 2026-09-09 and a count would be a row out
+	// (attach.go's [app.chipTrayTarget] says the whole of it).
+	if _, took := a.chipPress(len(inputPad), trayRow(a)); !took {
 		t.Fatal("the tray row did not answer a press on the chip")
 	}
 	if a.harnChip != "" {

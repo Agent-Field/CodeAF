@@ -181,6 +181,10 @@ func TestTheRailIsStillTheDoorUnderTheHeader(t *testing.T) {
 
 // PRESSING THE MODEL'S NAME OPENS THE PICKER, and the sentence being written
 // survives the whole round trip: opening it, and switching with it.
+//
+// THE NAME IS ON THE SEAM from 2026-09-09 — the rule above the box — and so is
+// its door (foot.go's [app.legendModelPress]). It was the left of the status
+// row until then, where a long title pushed the numbers off the frame.
 func TestPressingTheModelNameOpensThePickerAndKeepsTheDraft(t *testing.T) {
 	agent := &fakeAgent{model: "openai/gpt-4.1-mini"}
 	a := newTestApp(agent)
@@ -188,12 +192,12 @@ func TestPressingTheModelNameOpensThePickerAndKeepsTheDraft(t *testing.T) {
 	a.input.setText("half a sentence")
 	a.touch()
 
-	// The name's own columns, as the row that drew it recorded them.
+	// The name's own columns, as the line that drew it recorded them.
 	_ = frame(a)
-	if !a.modelSpan.pressable() {
-		t.Fatal("the status row recorded no columns for the model")
+	if !a.seamModelSpan.pressable() {
+		t.Fatal("the seam recorded no columns for the model")
 	}
-	x, y := a.modelSpan.from+1, a.height-1
+	x, y := a.seamModelSpan.from+1, markedRowY(a, chromeLegend, 0)
 	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 

@@ -291,9 +291,14 @@ func testHomeShape(t *testing.T) {
 	// pins it at every height): the row above the foot's rule is blank whatever
 	// the list did.
 	lines := r.lines()
+	// THE RULE ABOVE HOME'S BOX CARRIES WORDS NOW — `─ → new conversation in
+	// … · model ──── alt+w folder · alt+o model ─` (internal/tui3's
+	// homedraft.go, 2026-09-09) — so the foot is the last row that begins as a
+	// rule, whether or not it runs on as dashes; a finder that wanted four
+	// dashes walked up to the header's rule and read the nav row as the list.
 	foot := -1
 	for i := len(lines) - 1; i >= 0; i-- {
-		if strings.HasPrefix(strings.TrimSpace(lines[i]), "────") {
+		if row := strings.TrimSpace(lines[i]); strings.HasPrefix(row, "────") || strings.HasPrefix(row, "─ ") {
 			foot = i
 			break
 		}
@@ -696,9 +701,9 @@ func testFiringReachesThePerson(t *testing.T) {
 	// having a number for.
 	keepingAt := time.Now()
 	if _, ok := r.glimpse(time.Minute, say(t, "homeKeepingWord")); !ok {
-		t.Errorf("the status line never grew a `keeping an eye on N` segment while an item stands:\n%s", r.capture())
+		t.Errorf("the status line never grew a `◦ N standing orders` segment while an item stands:\n%s", r.capture())
 	} else {
-		t.Logf("the `keeping an eye on N` segment arrived %s after the item stood", time.Since(keepingAt).Round(time.Second))
+		t.Logf("the `◦ N standing orders` segment arrived %s after the item stood", time.Since(keepingAt).Round(time.Second))
 	}
 	r.lit("/status")
 	time.Sleep(700 * time.Millisecond)
@@ -706,7 +711,7 @@ func testFiringReachesThePerson(t *testing.T) {
 	status := r.waitFor(20*time.Second, say(t, "homeWatchLabel"))
 	t.Logf("/status while something stands:\n%s", status)
 	if !strings.Contains(status, say(t, "homeKeepingWord")) {
-		t.Errorf("/status says nothing about what is being kept an eye on:\n%s", status)
+		t.Errorf("/status says nothing about the orders standing here:\n%s", status)
 	}
 
 	// WHAT THE ITEM ITSELF SAYS IT WILL SAY. The model names the standing order

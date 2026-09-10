@@ -63,6 +63,11 @@ on the tray above the message box, and it goes with the next thing you send.
 /attach                     the browser, so you can find the file and look at it first
 ```
 
+**On the home screen a bare `/attach` does not open that sheet** — it says
+`type the path after /attach · or drop the file here`, and `/folder` is the browser there.
+Everything below is about `/attach` inside a conversation; *Attaching a file from home* has
+the home half.
+
 **With nothing after it, `/attach` opens the add context sheet.** It is the same framed
 window `/folder` opens, in the same place and already browsing — the conversation stays
 visible behind it, dimmed, and does not answer a click while it is up. It stands in the
@@ -408,8 +413,26 @@ know its path. See "Choosing a folder".
 
 **A folder is not on this list any more.** `/attach ~/code/thing` used to answer
 `<name> is a folder · attach a file`; it now goes to the folder door and says
-`folder · ~/code/thing`. Dropping a folder on the window still refuses with that old
-sentence — see "Choosing a folder".
+`folder · ~/code/thing`. On home it pins the next conversation's folder instead and says
+`next conversation opens in ~/code/thing`, because there is no conversation there to attach
+one to. Dropping a folder on the window still refuses with that old sentence — see
+"Choosing a folder".
+
+## Attaching a file from home — /attach on the home screen, before there is a conversation
+
+**Home has a tray of its own and `/attach <path>` fills it.** No conversation is opened for
+it: the chip appears above home's box, home says
+`attached · server.log · rides with the next conversation`, and the file is attached to the
+first message of whatever conversation you start next. `/image <path>` is the same for a
+picture, and a drop or a paste onto home does it with no command at all.
+
+**A bare `/attach` there asks for the path** — `type the path after /attach · or drop the file
+here` — rather than opening the browser. `/folder` is the browser on home, and it is aimed at
+which folder the next conversation opens in (see "Choosing a folder").
+
+**The tray survives the walk.** Attach a file on home, go into a conversation, come back: it
+is still there. Home's tray row cannot be clicked; a chip comes off on a conversation's own
+tray, where the `✕` is.
 
 A few refusals come from the far machine instead and arrive with `engine:` in front of
 them — the file arrived with no usable name, or with a name that was really a path:

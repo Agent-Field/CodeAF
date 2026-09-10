@@ -192,7 +192,9 @@ var tuiWords = map[string]tuiWord{
 	// ── asking from home ─────────────────────────────────────────────────────
 	"homeAskHereWord": {
 		screen: "ask here",
-		why:    "what ctrl+enter starts, drawn as the row's own heading over the pane",
+		why: "what one ↑ off the action row starts, drawn as the row's own heading over the pane. " +
+			"`ctrl+enter` is still bound and is no longer advertised — most terminals cannot send it " +
+			"and `alt+enter` belongs to the task layer (home.go's [app.homeHintWords])",
 	},
 	"notifyAskWord": {
 		screen: "waiting on you",
@@ -260,8 +262,8 @@ var tuiWords = map[string]tuiWord{
 
 	// ── what stands, and what it costs ───────────────────────────────────────
 	"homeKeepingWord": {
-		screen: " keeping an eye on ",
-		why:    "the status line's own segment while something stands, and a door onto the standing place",
+		screen: " standing order",
+		why:    "the count at the foot of the task column while something stands, and a door onto the standing place — `◦ 2 standing orders`, respelled from `keeping an eye on 2` on 2026-09-09 because that named nothing a person could type, and moved off the status row on the same day",
 	},
 	"homeWatchLabel": {
 		screen: "keeping watch",

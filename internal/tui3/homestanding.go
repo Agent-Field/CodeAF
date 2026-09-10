@@ -104,8 +104,10 @@ const (
 	// in the person's own terms ([standing.Item.RetiredWhy] names this exact
 	// spelling as one of its cases).
 	homeStoppedWhy = "stopped by you"
-	// homeKeepingWord is the status line's segment, with the count after it.
-	homeKeepingWord = " keeping an eye on "
+	// homeKeepingWord is what follows the count at the foot of the task column:
+	// `◦ 2 standing orders`. It said `keeping an eye on 2` until 2026-09-09,
+	// which named nothing a person could type — the page it opens is /standing.
+	homeKeepingWord = " standing order"
 	// homeWatchLabel is /status's line, and the things it can say.
 	homeWatchLabel     = "keeping watch"
 	homeWatchInstalled = "installed"
@@ -847,9 +849,14 @@ func (a *app) keepingCount() (int, bool) {
 // the disk to redraw something that changes on the order of minutes".
 const keepEvery = homeEvery
 
-// keepingSegment is the status line's ambient segment for the standing side:
+// keepingSegment is the standing side's own presence, drawn at the foot of the
+// task column and carried by /status and the phone sheet:
 //
-//	◦ keeping an eye on 2
+//	◦ 2 standing orders
+//
+// IT WAS A SEGMENT OF THE STATUS ROW until 2026-09-09, which is why it is built
+// as one and still reaches [app.telemetry] — the sheet and /status read that
+// list. The column draws it through [app.railStandingLine] (task.go).
 //
 // NOTHING AT ALL WHEN THERE IS NOTHING, which is the emptiness law applied to a
 // whole segment and the same call [app.ambientSegment] makes about jobs: a line
@@ -869,7 +876,7 @@ func (a *app) keepingSegment() string {
 	if a.pal.ascii {
 		glyph = standWaitASCII
 	}
-	return glyph + homeKeepingWord + itoa(count)
+	return glyph + " " + itoa(count) + plural(homeKeepingWord, count)
 }
 
 // keepingWord is that segment as it is DRAWN: the same width, with the glyph
@@ -895,7 +902,7 @@ func (a *app) keepingWord() string {
 	if a.linear || a.pal.ascii {
 		glyph = glyphRunASCII
 	}
-	return glyph + homeKeepingWord + itoa(count)
+	return glyph + " " + itoa(count) + plural(homeKeepingWord, count)
 }
 
 // watchLine is /status's `keeping watch` fact, derived and never asserted.

@@ -195,6 +195,20 @@ type folderPick struct {
 	// the row is rebuilt on every keystroke that moves the cursor.
 	held map[string]bool
 
+	// forTarget is this sheet opened FROM HOME, about the conversation home is
+	// ABOUT TO OPEN rather than about the one this window is holding
+	// (homedraft.go's target). It changes three things and nothing else: the
+	// verb on the action row, what a confirmed folder does (it pins
+	// [homeTarget.where] instead of being referred to a conversation), and where
+	// `esc` lands — back on home, which is where the sheet was opened from.
+	//
+	// A FOLDER IS NEVER `held` ON THIS SHEET. `held` means "the conversation is
+	// already about this", and the conversation this sheet is about does not
+	// exist yet — so every folder on it is one that can be chosen, and the row
+	// never offers to remove one ([app.openTargetFolderPick] leaves the map
+	// empty for exactly that reason).
+	forTarget bool
+
 	// hidden reveals the dot-directories and the names the `@` walk prunes.
 	// It is off by default and it is a person's own act — alt+h, or a name
 	// beginning with a dot typed into the box, which is what somebody reaching
@@ -1414,6 +1428,12 @@ func (g folderGeom) actionAt() int { return g.action }
 // matters most here (folderact.go's header).
 func (f *folderPick) actionWord(path string, dir bool) string {
 	switch {
+	case dir && f.forTarget:
+		// THE SHEET OPENED FROM HOME IS ABOUT A CONVERSATION THAT DOES NOT EXIST
+		// YET, and `add this folder` would be a promise about the one behind home
+		// — the invisible effect this wave exists to end. The row says what enter
+		// actually does, in the words home's own rule says it in (homedraft.go).
+		return folderTargetWord
 	case dir && f.held[path]:
 		return folderDropWord
 	case dir:
@@ -1443,6 +1463,9 @@ const (
 	folderDropWord    = "remove this folder · "
 	folderFileWord    = "attach this file · "
 	folderPictureWord = "attach this picture · "
+	// folderTargetWord is the verb on the sheet home opened: this folder is
+	// where the NEXT conversation opens, and nothing behind home is touched.
+	folderTargetWord = "open the next conversation in · "
 	// folderTakeWord leads the row once several things are chosen, where there
 	// is no one path to draw after it.
 	folderTakeWord = "enter · "
@@ -1468,7 +1491,12 @@ func (f *folderPick) markWord() string {
 		files++
 	}
 	var parts []string
-	if folders > 0 {
+	switch {
+	case folders > 0 && f.forTarget:
+		// ONE FOLDER IS ALL A TARGET CAN BE ([folderPick.mark] keeps it to one),
+		// so this says the act rather than a count nobody needs.
+		parts = append(parts, folderTargetMarkWord)
+	case folders > 0:
 		parts = append(parts, "add "+itoa(folders)+plural(" folder", folders))
 	}
 	if files > 0 {
@@ -1484,6 +1512,9 @@ func (f *folderPick) markWord() string {
 // folder chosen is one the conversation already holds. Saying so is the honest
 // answer; a row reading `add 0 folders` would be arithmetic in a person's face.
 const folderHeldOnlyWord = "these folders are already here"
+
+// folderTargetMarkWord is the marked-folder clause on the sheet home opened.
+const folderTargetMarkWord = "open the next conversation there"
 
 // folderFactsGap is the least clear space between the action and the facts
 // beside it.

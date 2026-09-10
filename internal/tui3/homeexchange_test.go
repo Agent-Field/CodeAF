@@ -223,10 +223,15 @@ func TestTypingAtHomeOffersAskHereDirectlyAboveStartingAConversation(t *testing.
 	if !strings.Contains(frame, homeStartWord+`: "remind me at 6"`) {
 		t.Fatalf("the action row is gone:\n%s", frame)
 	}
-	// The hint under the box names both readings of the same characters.
-	if hint := errandRows(a)[len(errandRows(a))-1]; !strings.Contains(hint, "ctrl+enter ask here") ||
+	// The hint under the box names both readings of the same characters, and it
+	// names the ask by the ARROW that reaches it rather than by a chord most
+	// terminals cannot send (home.go's [app.homeHintWords] holds the argument).
+	if hint := errandRows(a)[len(errandRows(a))-1]; !strings.Contains(hint, "↑ ask here") ||
 		!strings.Contains(hint, "enter starts a new conversation") {
 		t.Fatalf("the hint does not say both things enter can do:\n%s", hint)
+	}
+	if hint := errandRows(a)[len(errandRows(a))-1]; strings.Contains(hint, "ctrl+enter") {
+		t.Fatalf("the foot still advertises a chord most terminals cannot send:\n%s", hint)
 	}
 }
 

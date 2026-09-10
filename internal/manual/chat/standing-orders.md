@@ -171,17 +171,27 @@ just say them. The hint is also absent wherever the chord would refuse — a tra
 pictures on it, a picked shape of work, a build with no ambient side.
 
 To check afterwards whether anything actually stands, open `/standing`, or read the
-`◦ keeping an eye on N` count at the foot of the screen.
+`◦ N standing orders` count at the foot of the task column.
 
-## keeping an eye on 2 — the count at the foot of the screen opens the page
+## 2 standing orders — the count at the foot of the task column opens the page
 
-The status line's `◦ keeping an eye on N` segment is a **door**. Click it and the standing
-orders page opens — the same page `/standing` and `/orders` open, showing which N those
-are. It brightens under the pointer, the way the model's name beside it does.
+`◦ N standing orders` (`◦ 1 standing order` for one) is drawn dim at the **foot of the
+task column**, under that column's own counts of what is running, waiting, parked and
+done. It is a **door**: click it and the standing orders page opens — the same page
+`/standing` and `/orders` open, showing which N those are. It brightens under the pointer,
+the way the column's other pressable lines do.
+
+**It moved there on 2026-09-09**, from the status line at the very bottom of the frame. It
+had been a segment of that row, between the background-job count and the `YOLO` badge. The
+row is the numbers about the conversation in front of you; what stands over the project is
+what the column beside the conversation is already for, and the count now sits directly
+under the tally of that project's other live work. Before that again it read
+`◦ keeping an eye on N`, which named nothing a person could type; the words are the
+command that opens it.
 
 It counts the active orders reaching **this** window's project, so it is the fastest
-answer to "did that actually stand?". Nothing standing here means no segment at all and
-nothing to press.
+answer to "did that actually stand?". Nothing standing here means no line at all and
+nothing to press, and a column too short or too narrow for a footer draws none of it.
 
 Its mark moves while an order of this place is being acted on right now, and is still
 otherwise — so movement there means one of your orders is working, out of the corner of
@@ -216,8 +226,8 @@ standing
   twenty-four cells rather than thirty, the tail gives way so the order's own name keeps
   its room. `/standing` says the reach in full whatever the width.
 - **A row breathes while its order is being checked or fired right now** — its mark becomes
-  the spinner, exactly as the `keeping an eye on 2` chip on the status line does. It is
-  still every other moment.
+  the spinner, exactly as the `◦ 2 standing orders` count at the foot of the same column
+  does. It is still every other moment.
 - **Orders with a next occasion coming are listed first**, and the rules that merely
   `holds` sit under them: a rule has no "next", so it does not belong in a queue of what
   happens next.

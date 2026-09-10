@@ -1524,9 +1524,10 @@ const (
 // app.go, which the event loop anchors on both edges).
 //
 // IT IS ONE FUNCTION BECAUSE TWO ROWS ASK IT. The pulse says "waiting for
-// kimi-k3 · 12s" from it ([app.waitingWords]); the status line's rate says how
-// much output this turn has averaged ([app.burnSegment]), while the served
-// rider carries its separate provider rate. Those were two readings of one moment, taken from different signals —
+// kimi-k3 · 12s" from it ([app.waitingWords]); the status line's right edge
+// keeps its live rate silent through the same moment ([app.liveRiderAt]), and
+// so do the per-turn burn on the sheet ([app.burnSegment]) and the served
+// rider. Those were two readings of one moment, taken from different signals —
 // the rate counts a whole turn's output tokens over the whole turn's wall time,
 // so a turn that wrote a paragraph and then went quiet kept drawing `30 tok/s`
 // two rows under this surface saying nothing had come back. A person watching a
@@ -1763,16 +1764,17 @@ func (a *app) compactRow(e *entry, width int) string {
 // ── THE BOTTOM HUD ──────────────────────────────────────────────────────────
 //
 // The bottom of this surface is TWO ROWS, and every element on them has exactly
-// one job:
+// one job (foot.go states the whole law):
 //
-//	─ ~/s/aforge-v2 · chat-v3-task* ──────────────── @ files · / commands ─
-//	porting the parser · gpt-4.1-mini    2 jobs · $0.14 · 12.4k/128k ▁▂▃▅ · ⠹ working · 4s
+//	─ porting the parser · gpt-4.1-mini · via deepinfra ──── space space home · / commands ─
+//	$0.14 · ⟲ saved $0.02 · 89% cached   12.4k/128k · 10%   2 jobs   YOLO      92 tok/s · ⠹ working · 4s
 //
-// LEFT IS IDENTITY — who you are talking to and where. RIGHT IS TELEMETRY AND
-// ALIVENESS — how much it has cost, how full it is, how fast it is going, and
-// whether it is going at all. Nothing crosses: a number never appears on the
-// left, and a name never appears on the right, so a person learns ONE place to
-// look for each question instead of scanning a line of alternating kinds.
+// THE SEAM IS IDENTITY — which conversation, what is answering it, and the keys
+// that work now. THE STATUS ROW IS NUMBERS AND ALIVENESS — the ledger on the
+// left, grouped by the question each group answers, and what it is DOING on the
+// right. Nothing crosses: a name never appears on the status row (a room's chip
+// is the one exception, because a room renames where you are), and a number
+// never appears on the seam.
 //
 // THE PAINT LAW: dim by default. Paint is spent on three things and nothing
 // else — ALIVENESS (the spinner and its clock), DECISIONS (a question waiting,
@@ -1782,8 +1784,8 @@ func (a *app) compactRow(e *entry, width int) string {
 //
 // THE PRODUCT NAME IS GONE from this line. It was here for the screenshot —
 // a terminal photograph that names everything except the program — and the
-// identity cluster below carries the conversation's own name, which identifies
-// a pane far better than a word that is the same in every one of them.
+// conversation's own name on the seam identifies a pane far better than a word
+// that is the same in every one of them.
 //
 // The two rows are drawn by [app.legend] (the input's top border) and
 // [app.statusRows] (the status row, which becomes two rows on a narrow frame).
@@ -1848,17 +1850,18 @@ const (
 	// model across the gap (crew.go's [app.crewSegment] says why it is one word).
 	segCrew hudSeg = iota
 	// segOpen is how many conversations this terminal is holding, and how many
-	// of them want a person (keeper.go). It comes first among the run's own
-	// facts — only the crew word, which belongs beside the model, stands ahead of
-	// it — because it is the only segment that is not about the conversation in
-	// front.
+	// of them want a person (keeper.go). It is OFF THE LINE (foot.go's
+	// [groupOff]): the tab strip above the transcript draws every open
+	// conversation by name, so the count was the same fact said twice and the
+	// weaker of the two. The phone sheet and /status still carry it.
 	segOpen
 	segAmbient
 	// segKeeping is the standing side's own presence: how many things are
-	// keeping an eye on this project (homestanding.go). It sits beside segAmbient
-	// because they answer one question — what is alive out there that nobody is
-	// watching — and it is separate because they are two mechanisms with two
-	// lifetimes: a background job dies with the window, and an item does not.
+	// keeping an eye on this project (homestanding.go). It is OFF THE LINE as
+	// well, and unlike the open count it went somewhere: it is a line at the
+	// foot of the task column now (task.go's [app.railFootRows]), beside the
+	// counts of what that column is holding, which is where the rest of this
+	// project's live work is already written down.
 	segKeeping
 	segDelta
 	segCost
@@ -1867,6 +1870,12 @@ const (
 	segBurn
 	segETA
 	segYolo
+	// segRate is the live rate — `38 tok/s`, what the stream is producing at
+	// this moment — or the phase's own words while the turn is in one of the
+	// phases that is not writing (`connecting · 1.2s`, `paced · retry in 6s`).
+	// It stands beside the state word because it is a claim about NOW, and it is
+	// the rider the seam's model segment used to carry ([app.liveRiderAt]).
+	segRate
 	// segLink is the connection under a --host session: `devbox · 3ms` after
 	// its first measured round trip, or `reconnecting to devbox — trying for up
 	// to 5 minutes` when that condition wins (hostlink.go). It sits immediately
@@ -1932,11 +1941,10 @@ func (a *app) status(width int) string {
 // row on chrome, and it spends it exactly where the alternative is truncating
 // the numbers a person opened the terminal to read.
 func (a *app) statusRows(width int) []string {
-	// THE DOOR IS CLEARED BEFORE THE ROW IS LAID OUT AND WRITTEN ONLY WHERE IT
-	// LANDED, so a span is its own answer to "was it drawn on this frame"
-	// (standdoor.go). Every early return below is a row with no keeping segment
-	// on it, and each of them leaves this cleared.
-	a.keepSpan, a.keepRow = hudSpan{}, 0
+	// THE DOORS ARE CLEARED BEFORE THE ROW IS LAID OUT AND WRITTEN ONLY WHERE
+	// THEY LANDED, so a span is its own answer to "was it drawn on this frame"
+	// (foot.go). Every early return below is a row with no door on it.
+	a.doors = a.doors[:0]
 	a.moneySpan, a.moneyRow = hudSpan{}, 0
 	if a.startingChat() {
 		a.modelSpan = hudSpan{}
@@ -1947,80 +1955,61 @@ func (a *app) statusRows(width int) []string {
 		return []string{""}
 	}
 	// AND AT PHONE WIDTH IT IS A DECK, deterministically two rows, because the
-	// ladder above has nothing left to give: at forty-four columns the identity
+	// ladder above has nothing left to give: at forty-four columns the ledger
 	// alone is wider than the frame and every number would be dropped before the
 	// first segment is drawn. The deck keeps the two facts a phone can answer at
 	// a glance and moves the rest into a sheet one tap away (statusdeck.go).
 	if layoutTier(width) == tierPhone {
 		return a.statusDeck(width)
 	}
-	left, parts, wrapped := a.statusLayout(width)
-	right, plainRight := a.paintParts(parts)
-	// THE CLUSTER GOES ACCENT IN A ROOM, and it is the one condition under which
-	// it is painted at all: the chip is a statement about which page the keyboard
-	// is pointed at, and it wears the accent at both ends of the frame — here and
-	// in the pinned header (room.go).
-	paint := a.pal.dim
-	if a.roomOpen() {
-		paint = a.pal.accent
+	left, ledger, alive, wrapped := a.statusLayout(width)
+	// THE ROOM CHIP GOES ACCENT, and it is the one condition under which the
+	// left is painted at all: the chip is a statement about which page the
+	// keyboard is pointed at, and it wears the accent at both ends of the frame
+	// — here and in the pinned header (room.go).
+	head := ""
+	if left != "" {
+		head = paintSpan(left, a.modelSpan, a.pal.accent, a.pal.ink, a.hoveringStatusModel())
 	}
-	// The right cluster is right-aligned in both shapes below, so where the
-	// keeping segment landed is one piece of arithmetic said once.
-	base := width - ansi.StringWidth(plainRight)
-	if wrapped {
-		a.markKeepingDoor(parts, base, 1)
-		a.markMoneyDoor(parts, base, 1)
-		return []string{
-			fit(a.paintIdentity(left, paint), width),
-			rightAlign(right, plainRight, width),
+	ledgerPainted, ledgerPlain := a.paintParts(ledger)
+	alivePainted, alivePlain := a.paintParts(alive)
+	// The ledger starts after the chip, when there is one, and its doors are
+	// recorded from where it actually starts.
+	at := 0
+	if left != "" {
+		at = ansi.StringWidth(left)
+		if ledgerPlain != "" {
+			at += hudGap
 		}
 	}
-	gap := width - ansi.StringWidth(left) - ansi.StringWidth(plainRight)
-	if gap < 1 {
-		// Nothing fits, even emptied: the telemetry is the half that survives,
-		// because what is HAPPENING outranks what it is called. The identity is
-		// not drawn, so nothing on this row is pressable either.
+	row := head
+	if ledgerPlain != "" {
+		if left != "" {
+			row += strings.Repeat(" ", hudGap)
+		}
+		row += ledgerPainted
+	}
+	if wrapped {
+		a.markDoors(ledger, at, 0)
+		return []string{
+			fit(row, width),
+			rightAlign(alivePainted, alivePlain, width),
+		}
+	}
+	used := at + ansi.StringWidth(ledgerPlain)
+	gap := width - used - ansi.StringWidth(alivePlain)
+	if alivePlain == "" {
+		gap = 0
+	}
+	if gap < 0 {
+		// Nothing fits, even emptied: the right edge is what survives, because
+		// what is HAPPENING outranks everything else. Nothing on the row is a
+		// door then.
 		a.modelSpan = hudSpan{}
-		return []string{fit(right, width)}
+		return []string{fit(alivePainted, width)}
 	}
-	a.markKeepingDoor(parts, base, 0)
-	a.markMoneyDoor(parts, base, 0)
-	return []string{a.paintIdentity(left, paint) + strings.Repeat(" ", gap) + right}
-}
-
-// paintIdentity paints the left cluster, BRIGHTENING THE MODEL SEGMENT while the
-// pointer is on it.
-//
-// Every interactive thing on this surface answers the pointer before it is
-// clicked (hover.go), and this one never did: the model's name has been the door
-// to the picker for a wave now, and it looked exactly like the telemetry it sits
-// beside. A label that is also a control has to say so.
-//
-// IT IS A BRIGHTENING AND NOT A BACKGROUND BAND, which is the jump chip's own
-// decision for the jump chip's own reason (jumpchip.go): the segment is three
-// words at the end of a line, not a row of a list, and a highlighted rectangle
-// around them would be the one boxed thing on a surface with no boxes. One step
-// up from wherever the cluster already is — accent from the conversation's dim,
-// ink from a room's accent — so the step reads the same in both.
-//
-// THE PIECES ARE PAINTED SEPARATELY RATHER THAN NESTED. These hues are raw SGR
-// with an explicit reset (styles.go's [palette.paint]), so a colour inside a
-// colour would end the outer one at the inner one's reset and leave the tail of
-// the cluster unpainted. The cluster is plain text at this point and the span was
-// measured against it, so cutting it in cells is exact.
-func (a *app) paintIdentity(left string, paint func(string) string) string {
-	span := a.modelSpan
-	if !span.pressable() || !a.hoveringStatusModel() || span.to > ansi.StringWidth(left) {
-		return paint(left)
-	}
-	lift := a.pal.accent
-	if a.roomOpen() {
-		lift = a.pal.ink
-	}
-	head := ansi.Cut(left, 0, span.from)
-	segment := ansi.Cut(left, span.from, span.to)
-	tail := ansi.Cut(left, span.to, ansi.StringWidth(left))
-	return paint(head) + lift(segment) + paint(tail)
+	a.markDoors(ledger, at, 0)
+	return []string{row + strings.Repeat(" ", gap) + alivePainted}
 }
 
 // hudGap is the smallest barrier the two clusters will stand next to each
@@ -2041,14 +2030,17 @@ const hudGap = 3
 //	        name and a quiet session fits on one row at sixty columns, and
 //	        spending a row of the conversation on a gap nobody needed is the
 //	        cost this law exists to avoid.
-func (a *app) statusLayout(width int) (string, []hudPart, bool) {
-	// THE MODEL'S COLUMNS ARE RECORDED WHERE THE ROW IS LAID OUT, which is what
-	// keeps the press and the paint in step: this function is what the frame, the
-	// chrome height and the hit-testing all resolve through, so a segment drawn
-	// here and a segment pressed there cannot be at two different offsets
-	// (app.go's [app.statusPress]). A cluster the width pressure then drops
-	// clears it again — see [app.statusRows].
-	left, span := a.identityParts(0)
+func (a *app) statusLayout(width int) (string, []hudPart, []hudPart, bool) {
+	// THE ROOM CHIP'S COLUMNS ARE RECORDED WHERE THE ROW IS LAID OUT, which is
+	// what keeps the press and the paint in step: this function is what the
+	// frame, the chrome height and the hit-testing all resolve through, so a
+	// segment drawn here and a segment pressed there cannot be at two different
+	// offsets (app.go's [app.statusPress]). Out of a room the left is empty: the
+	// conversation's name and model are on the seam ([app.seamIdentity]).
+	left, span := "", hudSpan{}
+	if a.roomOpen() {
+		left, span = a.identityParts(0)
+	}
 	a.modelSpan = span
 	parts := a.telemetry(width)
 	// The quiet row loses its bill and its meter BEFORE the clocks are stamped:
@@ -2061,50 +2053,82 @@ func (a *app) statusLayout(width int) (string, []hudPart, bool) {
 	// width pressure is applied: a number that moved has moved whether or not
 	// this frame had room to say so.
 	a.freshen(parts)
+	ledger, alive := lineParts(parts)
 
-	if room := width - ansi.StringWidth(left) - hudGap; hudWidth(parts) <= room {
-		return left, parts, false
+	// What the one-row shape needs: the chip, its gap, the ledger, the gap, and
+	// the right edge.
+	need := func() int {
+		n := ansi.StringWidth(left)
+		if l := hudWidth(ledger); l > 0 {
+			if n > 0 {
+				n += hudGap
+			}
+			n += l
+		}
+		if r := hudWidth(alive); r > 0 {
+			if n > 0 {
+				n += hudGap
+			}
+			n += r
+		}
+		return n
 	}
-	// AND UNDER REAL PRESSURE THE CLUSTER IS SAID SHORTER, NEVER CLIPPED. Both
-	// branches below used to hand a cluster that had already overrun to
-	// something that cut it — [fit]'s ellipsis on the wrapped row, and the whole
-	// identity dropped on the row that did not wrap ([app.statusRows]). Asking
-	// for it again with the columns it actually has lets the served rider give
-	// up a spelling instead of a fact ([app.identityParts]).
+	if need() <= width {
+		return left, ledger, alive, false
+	}
+	// AND UNDER REAL PRESSURE THE ROW IS SAID SHORTER, NEVER CLIPPED. Below
+	// [hudWrap] the right edge takes a row of its own rather than eating the
+	// ledger's, and each row then gives up its own rungs until it fits.
 	if width < hudWrap {
-		for hudWidth(parts) > width && dropSegment(&parts) {
-		}
-		left, span = a.identityParts(width)
-		a.modelSpan = span
-		return left, parts, true
-	}
-	// THE LADDER RUNS THROUGH THE LEFT CLUSTER AND NOT ONLY ALONG THE RIGHT ONE
-	// ([riderRung]). Each turn of this loop gives up the cheapest thing left:
-	// the segments ranked under the rider, then the rider's own widest spelling,
-	// then the segments above it. The identity is asked with the columns the row
-	// ACTUALLY has left, and only when there are some — [app.identityParts]
-	// reads a width of zero or less as "no bound at all" and would hand back the
-	// longest rider there is.
-	for hudWidth(parts) > width-ansi.StringWidth(left)-hudGap {
-		if dropSegmentUnder(&parts, riderRung) {
-			continue
-		}
-		if room := width - hudWidth(parts) - hudGap; room > 0 {
-			if shorter, shorterSpan := a.identityParts(room); ansi.StringWidth(shorter) < ansi.StringWidth(left) {
-				left, span = shorter, shorterSpan
-				a.modelSpan = span
-				continue
+		for ansi.StringWidth(left)+hudGap*b2i(left != "" && len(ledger) > 0)+hudWidth(ledger) > width {
+			if !a.shrink(&ledger, &alive, len(dropOrder)) {
+				break
 			}
 		}
-		if !dropSegment(&parts) {
+		if room := width - hudGap - hudWidth(ledger); left != "" && ansi.StringWidth(left) > room {
+			left, span = a.identityParts(max(room, 0))
+			a.modelSpan = span
+		}
+		for hudWidth(alive) > width && dropKind(&alive, segRate) {
+		}
+		return left, ledger, alive, true
+	}
+	// THE LADDER RUNS THROUGH THE CHIP AS WELL AS ALONG THE LEDGER ([riderRung]).
+	// Each turn of this loop gives up the cheapest thing left: the rungs under
+	// the chip's own shorter spelling, then the chip's spelling, then the rungs
+	// above it.
+	for need() > width {
+		if a.shrink(&ledger, &alive, riderRung) {
+			continue
+		}
+		if left != "" {
+			if room := width - need() + ansi.StringWidth(left); room > 0 {
+				if shorter, shorterSpan := a.identityParts(room); ansi.StringWidth(shorter) < ansi.StringWidth(left) {
+					left, span = shorter, shorterSpan
+					a.modelSpan = span
+					continue
+				}
+			}
+		}
+		if !a.shrink(&ledger, &alive, len(dropOrder)) {
 			break
 		}
 	}
-	if room := width - hudWidth(parts) - hudGap; ansi.StringWidth(left) > room {
-		left, span = a.identityParts(room)
-		a.modelSpan = span
+	if left != "" {
+		if room := width - need() + ansi.StringWidth(left); ansi.StringWidth(left) > room {
+			left, span = a.identityParts(max(room, 0))
+			a.modelSpan = span
+		}
 	}
-	return left, parts, false
+	return left, ledger, alive, false
+}
+
+// b2i is one or zero, for the width arithmetic above.
+func b2i(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // statusHeight is how many rows the HUD's status takes: the frame, the chrome
@@ -2124,7 +2148,7 @@ func (a *app) statusHeight(width int) int {
 	if layoutTier(width) == tierPhone {
 		return deckHeight
 	}
-	if _, _, wrapped := a.statusLayout(width); wrapped {
+	if _, _, _, wrapped := a.statusLayout(width); wrapped {
 		return 2
 	}
 	return 1
@@ -2375,7 +2399,7 @@ func (a *app) servedRiderAt(width int) string {
 	// are assembled in lanes.go, which this wave does not own; the rebase that
 	// lands internal/tui3/rowfit.go is where it becomes a [phaseSegment] like
 	// the two around it.
-	if rider := a.laneRider(); rider != "" {
+	if rider := a.laneRider(true); rider != "" {
 		return rider
 	}
 	sighting, ok := servedSighting(a.model)
@@ -2409,6 +2433,104 @@ func (a *app) servedRiderAt(width int) string {
 		return riderLead + words
 	}
 	return ""
+}
+
+// modelRiderAt is the half of the rider that is ATTRIBUTION — who is answering
+// for this model — and it rides the model's name on the seam:
+//
+//	glm-5.3-flash · via deepinfra
+//	glm-5.3-flash · via z-ai
+//	glm-5.3-flash · slow · trying coreweave…
+//
+// It never carries a rate. How fast the machine is writing is a claim about now
+// and stands beside the state word instead ([app.liveRiderAt]).
+//
+// IT IS DRAWN WHOEVER SERVED, AND THAT IS THE OWNER'S OWN RULING (2026-09-09).
+// It used to go silent when the server's name was already inside the model id —
+// `z-ai/glm-5.3-flash` answered by z-ai — on the argument that the reader
+// already had the word. On this line they do not: the seam spells the model as
+// its BASENAME ([modelBase]), so the vendor half of the id is not on the screen
+// at all, and a rider that appeared for one endpoint and vanished for another
+// read as the sighting having been lost rather than as the vendor having served
+// its own model. The sheet's `served` row keeps the old rule, because the row
+// above it there is the model's WHOLE routing address (statusdeck.go).
+func (a *app) modelRiderAt(width int) string {
+	room := width
+	if room >= 0 {
+		room -= ansi.StringWidth(riderLead)
+		if room < 0 {
+			room = 0
+		}
+	}
+	if rider := a.laneRider(false); rider != "" {
+		if width < 0 || ansi.StringWidth(rider) <= width {
+			return rider
+		}
+		return ""
+	}
+	sighting, ok := servedSighting(a.model)
+	if !ok || sighting.Provider == "" {
+		return ""
+	}
+	if a.now().Sub(sighting.At) > servedWindow {
+		return ""
+	}
+	served := strings.ToLower(sighting.Provider)
+	if words := rowLed([]rowField{rowSay("via "+served, served)}, roomFor(room)); words != "" {
+		return riderLead + words
+	}
+	return ""
+}
+
+// liveRiderAt is the half of the rider that is ABOUT NOW, drawn beside the
+// state word while a turn is running:
+//
+//	38 tok/s                     while the answer is being thought or written
+//	connecting · 1.2s            while the turn is in a phase that is neither
+//	first word · 3.1s → parasail at 4.4s
+//	paced · retry in 6s
+//
+// THE RATE IS WHAT THE STREAM IS PRODUCING RIGHT NOW, and nothing else is
+// allowed on the right edge under that name. It is [PhaseNews.Rate] — tokens
+// over elapsed, measured on the live stream by the layer holding it
+// (internal/provider's phase.go) and posted again every second while it lasts —
+// so it is drawn ONLY while it is being measured, and the line is empty the
+// moment it is not.
+//
+// TWO OTHER FIGURES WERE HERE AND BOTH WERE ABOUT THE PAST. The served
+// sighting's rate is what SOME answer within the last ten minutes averaged, and
+// it sat on an idle line as a live figure nobody was producing; the per-turn
+// burn ([app.burnSegment]) is a turn's whole output over a turn's whole wall
+// time, waits and tool calls included, which is a different quantity from "how
+// fast is this writing" and reads low by a factor of several on any turn that
+// ran a tool. The owner rejected both on 2026-09-09. The burn is still on
+// /status and the phone sheet under its own label, where it is not claiming to
+// be now.
+//
+// WHILE IT WRITES, THE RATE IS THE WHOLE SEGMENT. `writing · 4s · friendli 61
+// t/s` said three things a person already had: the state word two runs to the
+// right says `⠹ working · 4s`, and who is serving is on the seam. What the row
+// has that nothing else does is the speed. Every OTHER phase keeps its words,
+// because in those the turn is not producing anything and the phase is the only
+// thing on the frame saying it is alive at all.
+func (a *app) liveRiderAt(width int) string {
+	news, ok := a.livePhase()
+	if !ok || a.pulseHoldsThePhase(news) {
+		return ""
+	}
+	switch news.Phase {
+	case provider.PhaseThinking, provider.PhaseWriting:
+		// AND NOT WHILE THIS SURFACE IS SAYING NOTHING HAS COME BACK
+		// ([app.awaitingReply] states the whole of why): one moment, one reading,
+		// and a rate quoted beside the pulse's own silence is this program
+		// contradicting itself out loud. The emptiness law does the rest — a rate
+		// nobody has measured yet is nothing, never `0 tok/s`.
+		if a.state != stateWorking || a.awaitingReply() || news.Rate <= 0 {
+			return ""
+		}
+		return rowLed([]rowField{rowSay(tokenWord(int(news.Rate)) + " tok/s")}, roomFor(width))
+	}
+	return rowLed(phaseFields(news, a.now()), roomFor(width))
 }
 
 // roomFor turns this file's "below zero is no bound" into rowfit.go's own
@@ -2484,7 +2606,6 @@ func splitReserve(text string) (room, figure string) {
 // telemetry assembles the right cluster IN ORDER, and the order is the question
 // each segment answers about the run:
 //
-//	2 open · 1 waiting   how many conversations this terminal is holding
 //	2 jobs · 1 watch     what is still alive out there
 //	Σ +128 −14           what this session has written
 //	$0.14                what it has cost
@@ -2493,60 +2614,52 @@ func splitReserve(text string) (room, figure string) {
 //	1.2k tok/s avg       output over this turn's elapsed time
 //	compaction in ~3     what is about to happen to it
 //	YOLO                 the gate is open (and nothing when it is not)
+//	38 tok/s             what the stream is producing right now
 //	⠹ working · 4s       what it is DOING — always last, because it is the one
 //	                     segment that is true of the whole line
 func (a *app) telemetry(width int) []hudPart {
-	var parts []hudPart
+	// THE ROW'S OWN CAPACITY, TAKEN ONCE. There are [segCount] kinds and never
+	// more, and growing this slice a segment at a time is three allocations on
+	// a line rebuilt every frame — which the scroll's law counts
+	// (inputsmooth_test.go's
+	// [TestOneScreenScrollOfFourThousandLinesStaysInsideTheAllocationLaw]).
+	parts := make([]hudPart, 0, segCount)
 	add := func(kind hudSeg, text string) {
 		if text != "" {
 			parts = append(parts, hudPart{kind: kind, text: text})
 		}
-	}
-	// THE TWO DIALS READ AS A PAIR. The identity cluster ends with the model the
-	// conversation talks to, and the telemetry begins with the crew word, so a
-	// frame wide enough for both shows `… · deepseek-v4-flash      crew max · …`:
-	// two facts, one gap, and no way to read `/crew max` as having moved the
-	// model beside it. It is the first thing after the delta to go when the row
-	// is short ([dropOrder]) — /status and the model picker's hint slot both say
-	// it in full — and it is nothing at all on a door with no profile.
-	add(segCrew, a.crewSegment())
-	add(segOpen, a.openSegment())
-	add(segAmbient, a.ambientSegment())
-	add(segKeeping, a.keepingSegment())
-	// THE DELTA IS THE LOWEST PRIORITY ON THE LINE and it says so twice: it is
-	// drawn only on a comfortable frame, and it is the first thing [dropSegment]
-	// takes when even that frame turns out to be full.
-	if width >= hudWide {
-		add(segDelta, a.deltaSegment())
 	}
 	// THE BILL IS THE WHOLE TREE'S and not the conversation's own half of it: the
 	// work this conversation started is spending its money, and a segment that
 	// waited for each task to close said `$2.53` for two hours over a family
 	// burning $51.05 (treespend.go's [app.spendShown]).
 	add(segCost, costCell(a.spendDrawn()))
+	add(segCache, a.warmSegment())
 	if context, _ := a.contextSegment(); context != "" {
-		if spark := a.ctxSpark(); spark != "" && width >= hudTight {
-			context += " " + spark
-		}
 		add(segCtx, context)
 	}
-	add(segCache, a.warmSegment())
-	add(segBurn, a.burnSegment())
 	add(segETA, a.etaSegment())
+	add(segAmbient, a.ambientSegment())
 	add(segYolo, a.yoloSegment())
+	// THE FACTS OFF THE LINE. The crew word, the session delta, the per-turn
+	// burn, the open count and the standing count are not drawn on the status
+	// row (foot.go's [groupOff]) — the phone sheet and /status still say all
+	// five, and this list is where both read.
+	add(segCrew, a.crewSegment())
+	add(segDelta, a.deltaSegment())
+	add(segBurn, a.burnSegment())
+	add(segOpen, a.openSegment())
+	add(segKeeping, a.keepingSegment())
+	add(segRate, a.liveRiderAt(-1))
 	// A LINK THAT HAS STOPPED WORKING OUTRANKS EVERY NUMBER ON THIS LINE, and
 	// says so by never being dropped: it is not in [dropOrder], so a narrow
-	// frame gives up the telemetry around it rather than the one segment that
+	// frame gives up the ledger around it rather than the one segment that
 	// explains why none of those numbers are moving (hostlink.go).
 	add(segLink, a.linkSegment())
 	// AND A DECISION WAITING ON A PERSON OUTRANKS EVERY NUMBER ON IT for the
 	// link's own reason said one rung louder: the numbers are not moving, and
 	// this is the segment that says whose move it is (question.go).
 	add(segQuestions, a.questionSegment())
-	// THE STATE WORD IS TAKEN PLAIN AND PAINTED IN ONE READING. Asking for the
-	// painting again at paint time is asking the clock again, and the two
-	// answers are not always the same width ([hudPart] states the defect that
-	// cost).
 	if word, painted := a.stateSegment(); word != "" {
 		parts = append(parts, hudPart{kind: segState, text: word, paint: painted})
 	}
@@ -2618,124 +2731,6 @@ func (a *app) openSegment() string {
 	return word
 }
 
-// dropOrder is what the line gives up, first to last, when it does not fit,
-// and it is ordered by how ACTIONABLE each segment is:
-//
-//	delta    what the session wrote — the only fact here about the past
-//	crew     which preset aforge's own calls are on — a setting, not a
-//	         measurement; it changes only when the person changes it, and
-//	         /status, the picker's hint and bare /crew all say it in full
-//	cache    an accounting nicety; the cost segment already carries the bill
-//	eta      a forecast, and the meter beside it is already painted the warning
-//	burn     nice to watch, but the clock on the state word says it is alive
-//	ambient  a server holding a port is a thing a person acts on
-//	cost     the bill
-//	ctx      what the conversation is carrying, which is the decision it forces
-//
-// The state word, the safety posture and the link are not in this list at all:
-// one is why a person is looking at the line, one is why they should be, and
-// the third is the reason nothing else on the line is moving.
-//
-//	open     how many other conversations this terminal holds — true, and about
-//	         somewhere else; at forty columns what a person needs is what THIS
-//	         conversation is doing
-var dropOrder = []hudSeg{segDelta, segCrew, segOpen, segCache, segETA, segBurn, segKeeping, segAmbient, segCost, segCtx}
-
-// riderRung is where THE IDENTITY CLUSTER'S OWN RIDER stands on [dropOrder].
-//
-// It is not a [hudSeg] and it cannot be one — it is part of the left cluster,
-// not a segment of the right — so it is named by the rung it sits immediately
-// under: everything below [segKeeping] on the ladder goes before the rider is
-// asked for a shorter spelling, and everything from [segKeeping] up survives
-// until it has given one. That places it exactly where the evidence put it: the
-// watch count, the bill and the context meter each vanished and came back
-// mid-turn as the phase words on the left grew and shrank, on the one row whose
-// stillness is the whole reason it keeps a `$0.00`. A rider has a shorter TRUE
-// spelling to fall back on ([app.identityParts] ladders it, and drops it
-// outright at the bottom); a number has only presence or absence, so the
-// spelling goes first.
-const riderRung = segKeeping
-
-// dropSegment removes the least important segment still present, and reports
-// whether it found one to remove.
-func dropSegment(parts *[]hudPart) bool {
-	for _, kind := range dropOrder {
-		if dropKind(parts, kind) {
-			return true
-		}
-	}
-	return false
-}
-
-// dropSegmentUnder is the same walk stopped at a rung: the least important
-// segment still present that is ranked BELOW it, and false once everything
-// under that rung is already gone.
-func dropSegmentUnder(parts *[]hudPart, rung hudSeg) bool {
-	for _, kind := range dropOrder {
-		if kind == rung {
-			return false
-		}
-		if dropKind(parts, kind) {
-			return true
-		}
-	}
-	return false
-}
-
-// dropKind removes one named segment if the row is carrying it.
-func dropKind(parts *[]hudPart, kind hudSeg) bool {
-	for i, part := range *parts {
-		if part.kind == kind {
-			*parts = append((*parts)[:i], (*parts)[i+1:]...)
-			return true
-		}
-	}
-	return false
-}
-
-// hudWidth is what a set of segments measures, joined, unpainted.
-func hudWidth(parts []hudPart) int {
-	if len(parts) == 0 {
-		return 0
-	}
-	width := 3 * (len(parts) - 1)
-	for _, part := range parts {
-		width += ansi.StringWidth(part.text)
-	}
-	return width
-}
-
-// paintParts joins the cluster, painted and plain. The plain string is what
-// every width decision above is made from: measuring a painted string is
-// measuring escape sequences.
-func (a *app) paintParts(parts []hudPart) (string, string) {
-	if len(parts) == 0 {
-		return "", ""
-	}
-	// TWO BUILDERS AND ONE SEPARATOR, because this runs on every frame and the
-	// row it builds is the only thing on a scrolling screen that is rebuilt from
-	// nothing each time. Appending with `+=` allocated a fresh string per segment
-	// AND per join — four a segment — and painted the same three-cell separator
-	// over and over; the separator is one value for the whole row, and each
-	// builder is sized once from the plain width the caller is about to measure
-	// anyway. [TestOneScreenScrollOfFourThousandLinesStaysInsideTheAllocationLaw]
-	// is the law this is written against.
-	sep := a.pal.dim(" · ")
-	var painted, plain strings.Builder
-	room := hudWidth(parts)
-	plain.Grow(room)
-	painted.Grow(room + len(sep)*len(parts))
-	for i, part := range parts {
-		if i > 0 {
-			painted.WriteString(sep)
-			plain.WriteString(" · ")
-		}
-		painted.WriteString(a.paintPart(part))
-		plain.WriteString(part.text)
-	}
-	return painted.String(), plain.String()
-}
-
 // paintPart is where the hue budget is spent, and the order of these branches
 // IS the priority of the three things paint is allowed to mean.
 func (a *app) paintPart(part hudPart) string {
@@ -2746,22 +2741,10 @@ func (a *app) paintPart(part hudPart) string {
 	if part.paint != "" {
 		return part.paint
 	}
+	// The standing count is not here any more: it is a line at the foot of the
+	// task column, and it is painted where it is drawn (task.go's
+	// [app.railStandingLine]).
 	switch part.kind {
-	case segKeeping:
-		// DIM, ALWAYS, AND THE ONE SEGMENT THAT MOVES WITHOUT CHANGING. It is
-		// re-derived here rather than taken from part.text because its glyph
-		// breathes while a firing is in flight and its TEXT must not, or the fade
-		// ramp would paint it bright forever (homestanding.go's [app.keepingWord]
-		// says the whole of it).
-		//
-		// AND IT BRIGHTENS UNDER THE POINTER, because it is a door: pressing it
-		// opens /standing, and a label that is also a control has to say so
-		// (standdoor.go, and [app.paintIdentity] for the same decision about the
-		// model's name).
-		if a.hoveringKeeping() {
-			return a.pal.accent(a.keepingWord())
-		}
-		return a.pal.dim(a.keepingWord())
 	case segCost:
 		// MONEY IS A DOOR AND A BOUND, and this is the only segment on the line
 		// that can be both (moneydoor.go).
@@ -2800,8 +2783,22 @@ func (a *app) paintPart(part hudPart) string {
 		return a.pal.warn(part.text)
 	case segYolo:
 		// The one segment that is loud because of what it MEANS rather than
-		// because of when it changed.
+		// because of when it changed. It is a door onto /permissions and it
+		// brightens under the pointer to say so, one step up from its own hue.
+		if a.hoveringPosture() {
+			return a.pal.ink(part.text)
+		}
 		return a.pal.bad(part.text)
+	case segCache:
+		// THE CACHE IS THE OTHER HALF OF THE MONEY DOOR: it brightens with the
+		// bill beside it, because pressing either opens the same tab.
+		if a.hoveringMoney() {
+			return a.pal.accent(part.text)
+		}
+	case segETA:
+		if a.hoveringMeter() {
+			return a.pal.accent(part.text)
+		}
 	case segLink:
 		// THE SECOND SEGMENT THE AGE RAMP HAS NOTHING TO SAY ABOUT. It is true
 		// for as long as it is drawn and false the instant it is not, so "this
@@ -2819,7 +2816,11 @@ func (a *app) paintPart(part hudPart) string {
 	case segCtx:
 		// The meter's three-rung ramp outranks its age: a conversation about to
 		// compact is a decision a person can still act on, and "this number is
-		// four seconds old" is not.
+		// four seconds old" is not. The pointer outranks both, because while
+		// somebody is about to press it the fact worth saying is that it opens.
+		if a.hoveringMeter() {
+			return a.pal.accent(part.text)
+		}
 		switch a.ctxHeat() {
 		case ctxDue:
 			return a.pal.bad(part.text)
@@ -2930,7 +2931,13 @@ func (a *app) deltaSegment() string {
 
 // ctxSpark is the last few turn-end context readings, as one glyph each:
 //
-//	12.4k/128k · 10% ▁▂▂▃▅▆
+//	context   12.4k/128k · 10% ▁▂▂▃▅▆
+//
+// IT RIDES THE METER ON THE SHEET AND ON /status, NOT ON THE ROW. It was beside
+// the meter on the status line until 2026-09-09, where it was six cells of
+// trend on a line that is read at a glance and acted on segment by segment —
+// nothing on the row does anything with a shape. It is on the one page a person
+// opens BECAUSE they want the shape (statusdeck.go's [app.deckItems]).
 //
 // It answers the question the number cannot: a conversation at 60% that has sat
 // at 60% for six turns and one that arrived there from 20% are the same figure
@@ -3216,11 +3223,12 @@ func (a *app) contextSegment() (string, bool) {
 // statistic about a mechanism they never asked about. The dollars are the
 // answer, and they lead because money is the part a person recognizes on sight.
 //
-// The cash appears only when it is real (app.go's cacheSaved, which grows only
-// where a prompt price AND a cache-read price were both published): a session on
-// a model that publishes neither, or publishes only the first, keeps exactly the
-// segment it had, rather than learning to say "saved $0.00" — or, worse, to
-// count the whole prompt price as a saving the cache never made.
+// The cash appears only when it is real (app.go's cacheSaved, which is derived
+// from the session's cache reads only where a prompt price AND a cache-read
+// price are both published): a session on a model that publishes neither, or
+// publishes only the first, keeps exactly the segment it had, rather than
+// learning to say "saved $0.00" — or, worse, to count the whole prompt price as
+// a saving the cache never made.
 //
 // It is a share rather than a count because a count of cached tokens says
 // nothing on its own: 40k cached is excellent against 50k sent and a rounding
@@ -3243,10 +3251,30 @@ func (a *app) warmSegment() string {
 	// the same subject ("⟲ 9.8k cached"), so the running share and the turn
 	// that explains it stay one vocabulary.
 	rate := itoa(int(share*100)) + "% cached"
-	if a.cacheSaved > 0 {
-		return "⟲ saved " + savedWord(a.cacheSaved) + " · " + rate
+	// THE CASH IS SAID ONLY WHEN THE WORD FOR IT IS NOT ZERO. A saving that is
+	// real but under a hundredth of a cent — a few thousand cached tokens on a
+	// model priced in millionths — is `$0.0000` once spelled, which reads as
+	// "there is no saving" and is exactly the sentence THE EMPTINESS LAW keeps
+	// off the screen. The share alone is still true of it.
+	if word := savedWord(a.cacheSaved); a.cacheSaved > 0 && word != savedNothing {
+		return "⟲ saved " + word + " · " + rate
 	}
 	return "⟲ " + rate
+}
+
+// savedNothing is what [savedWord] spells for a saving too small to have a
+// figure, and the one spelling the cache segment refuses to draw.
+const savedNothing = "$0.0000"
+
+// warmSegmentShort is the cache segment's shorter true spelling — the hit rate
+// without the cash — which is the rung a narrow row takes before giving the
+// segment up (foot.go's [dropOrder]).
+func (a *app) warmSegmentShort() string {
+	share, ok := session.Usage{Input: a.inputTokens, CacheRead: a.cacheRead}.CachedShare()
+	if !ok {
+		return ""
+	}
+	return "⟲ " + itoa(int(share*100)) + "% cached"
 }
 
 // stateWord is the state itself, plain and painted — what [app.stateSegment]
@@ -3441,14 +3469,23 @@ func (a *app) legend(width int) string {
 	// decides whether the door is drawn at all ([app.legendLine] says why it is
 	// not cleared down there).
 	a.homeDoor = hudSpan{}
+	if !a.roomOpen() {
+		a.seamModelSpan, a.seamEffortSpan = hudSpan{}, hudSpan{}
+	}
 	right := a.legendRight(width)
-	attempts := make([]struct{ left, right string }, 0, 6)
+	// EACH RUNG IS BUILT ONCE, SPAN AND ALL. The left label and the columns its
+	// model segment occupies come out of the same call, because building the
+	// cluster twice — once to measure the attempt and once to paint it — is
+	// twice the work on a line redrawn every frame, and the scroll's allocation
+	// law counts it (inputsmooth_test.go's
+	// [TestOneScreenScrollOfFourThousandLinesStaysInsideTheAllocationLaw]).
+	attempts := make([]legendAttempt, 0, 6)
 	// THE RUNNING SLOT IS A LADDER OF CLAUSES. Each pass drops its last clause
 	// and measures again, preserving the fixed order rather than inventing a
 	// second short sentence. Every other state has one rung and stops here.
 	for rung := right; rung != ""; {
-		if left, named := a.legendLeft(width, legendRoom(width, rung)); named {
-			attempts = append(attempts, struct{ left, right string }{left, rung})
+		if left, span, dial, named := a.legendLeftSpan(width, legendRoom(width, rung)); named {
+			attempts = append(attempts, legendAttempt{left: left, right: rung, span: span, dial: dial})
 		}
 		next := a.hintShorter(rung)
 		if next == "" {
@@ -3456,14 +3493,61 @@ func (a *app) legend(width int) string {
 		}
 		rung = next
 	}
-	bare, _ := a.legendLeft(width, legendRoom(width, ""))
-	attempts = append(attempts, struct{ left, right string }{bare, ""})
+	bare, bareSpan, bareDial, _ := a.legendLeftSpan(width, legendRoom(width, ""))
+	attempts = append(attempts, legendAttempt{left: bare, right: "", span: bareSpan, dial: bareDial})
+	// TWO CELLS ON THIS LINE ARE DOORS. The model's columns and the thinking
+	// rung's are those the chosen attempt drew them at, offset by the border's
+	// own two cells, and each brightens under the pointer to say so (foot.go's
+	// [app.legendModelPress] and [app.legendEffortPress]). The lift closure reads
+	// the attempt being tried through these two variables rather than being built
+	// again inside the loop, for the allocation law's sake.
+	//
+	// ONE OF THE TWO IS LIFTED PER FRAME AND NEVER BOTH, because these hues are
+	// raw SGR with an explicit reset and a second lift inside the first would end
+	// at that reset ([paintSpan] states it). They cannot both want it: the model
+	// lifts only under the pointer, and the pointer is on one cell at a time.
+	seam, dial := hudSpan{}, hudSpan{}
+	lift := func(text string) string {
+		if a.effortSeamLit() && dial.pressable() {
+			return paintSpan(text, dial, paint, a.paintEffortChip, true)
+		}
+		return paintSpan(text, seam, paint, a.pal.accent, a.hoveringStatusModel())
+	}
 	for _, attempt := range attempts {
-		if line, ok := a.legendLine(attempt.left, attempt.right, width, paint); ok {
+		seam, dial = hudSpan{}, hudSpan{}
+		if !a.roomOpen() {
+			seam, dial = attempt.span, attempt.dial
+			a.seamModelSpan, a.seamEffortSpan = shiftIntoBorder(attempt.span), shiftIntoBorder(attempt.dial)
+		}
+		if line, ok := a.legendLine(attempt.left, attempt.right, width, lift); ok {
 			return line
+		}
+		if !a.roomOpen() {
+			a.seamModelSpan, a.seamEffortSpan = hudSpan{}, hudSpan{}
 		}
 	}
 	return a.rule(width)
+}
+
+// shiftIntoBorder moves a span from the label's own columns to the frame's: the
+// legend sets its labels into the rule two cells in, and a door is pressed at
+// the column it was DRAWN at.
+func shiftIntoBorder(span hudSpan) hudSpan {
+	if !span.pressable() {
+		return span
+	}
+	span.from += 2
+	span.to += 2
+	return span
+}
+
+// legendAttempt is one rung of the ladder above: the two labels it would draw,
+// and where the model segment and the thinking rung fell inside the left one.
+type legendAttempt struct {
+	left  string
+	right string
+	span  hudSpan
+	dial  hudSpan
 }
 
 // legendGap is the shortest run of rule the two labels will leave between them.
@@ -3588,6 +3672,14 @@ func (a *app) branchWord() string {
 // THE TIGHT FRAME DROPS THE BRANCH. The status line below keeps identity, and a
 // branch a person can recover from the shell prompt does not outrank it.
 func (a *app) legendLeft(width, room int) (string, bool) {
+	left, _, _, named := a.legendLeftSpan(width, room)
+	return left, named
+}
+
+// legendLeftSpan is that label AND the columns its two doors occupy within it —
+// the model's name, then the thinking rung — which is what [app.legend] needs to
+// make both pressable without building the cluster a second time.
+func (a *app) legendLeftSpan(width, room int) (string, hudSpan, hudSpan, bool) {
 	// THE PLACE IS THE ROOM while one is open, and the name and branch go with
 	// the path: none of them is a fact about the page on screen, and the one
 	// thing a person in here needs from this slot is the key that gets them out
@@ -3599,21 +3691,20 @@ func (a *app) legendLeft(width, room int) (string, bool) {
 		// person's own draft comes back (room.go's [app.roomKey], recall.go). The
 		// slot is here to promise the NEXT keystroke, so it has to move with it.
 		if a.recalling() {
-			return roomLegendRecallWord, true
+			return roomLegendRecallWord, hudSpan{}, hudSpan{}, true
 		}
 		if a.roomOrganized() {
-			return "", true
+			return "", hudSpan{}, hudSpan{}, true
 		}
-		return roomLegendWord, true
+		return roomLegendWord, hudSpan{}, hudSpan{}, true
 	}
 	if room < 1 {
-		return "", true
+		return "", hudSpan{}, hudSpan{}, true
 	}
-	branch := a.branchWord()
-	if width < hudTight {
-		branch = ""
-	}
-	return fit(dotted(a.host, branch), room), true
+	// THE NAME, THE MODEL AND ITS THINKING RUNG ARE HERE NOW, and the branch
+	// rides after them (foot.go's [app.seamIdentity] holds the ladder).
+	cluster, span, dial := a.seamIdentity(width, room)
+	return cluster, span, dial, true
 }
 
 // legendJoin is the separator between the legend's facts, and dotted threads any

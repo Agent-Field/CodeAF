@@ -672,7 +672,8 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 
 	// THE CHIP RIDES THE FIRST ROW OF THE GAP, which is the row nearest the
 	// conversation it is about: above the rule where the window is airy enough
-	// to have a row up there, and the old blank above the draft where it is not.
+	// to have a row up there, and — since the blank moved under the box on
+	// 2026-09-09 — the row directly beneath the draft where it is not.
 	// It is drawn into a row that ALREADY EXISTS rather than onto the last line
 	// of the transcript, and that is the whole reason it composes: a conversation
 	// row is cached per entry (render.go's entryRows) and shortened by the rail's
@@ -786,9 +787,6 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	for i, line := range a.parkedRows(width) {
 		add(line, a.parkedMark(i, width))
 	}
-	if roomy && !greeted {
-		addGap()
-	}
 
 	// THE CARET IS IN THE UNIT WHILE THE UNIT HOLDS THE BOX, and at the foot
 	// otherwise. Both are a row counted from the head of this block — the unit's
@@ -821,6 +819,16 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 			add(inputPad+line, chromeRow{kind: chromeDraft, index: i})
 		}
 	}
+	// THE BLANK IS UNDER THE BOX, NOT OVER IT. The prompt sits on the row
+	// directly beneath the seam, so a person starts writing at the top of the
+	// room the box has rather than at the bottom of it, and the draft grows
+	// DOWN into the blank as it wraps. Until 2026-09-09 the blank stood between
+	// the legend and the prompt, and the cursor rested one row above the status
+	// line. On a window with a single breathing row the jump chip rides this
+	// one, which puts it directly under what you are typing.
+	if roomy && !greeted {
+		addGap()
+	}
 	// AND WHAT THE DRAFT WOULD MEAN SITS DIRECTLY UNDER THE BOX (spellout.go).
 	// Below, because it is not part of the message and being under the sentence
 	// is how a person reads that at a glance; and above the open list, because a
@@ -839,13 +847,13 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 }
 
 // statusRow is the HUD's status row — one row, or two on a narrow frame where
-// the telemetry stops sharing with the identity (render.go's [app.statusRows])
-// — with the reasoning level on the model segment:
-// "anthropic/claude-sonnet-4.5:high" where a level has been dialled, and the
-// bare model id — the line exactly as it was — where none has.
+// the right edge stops sharing with the ledger (render.go's [app.statusRows]),
+// and a two-row deck at phone width — with the reasoning level on whatever
+// model segment that shape has: "claude-sonnet-4.5:high" where a level has been
+// dialled, and the bare model id where none has.
 //
-// The level belongs on that line because it is a fact about what the next
-// request will cost and how long it will take, and the model segment is where a
+// The level belongs beside the model because it is a fact about what the next
+// request will cost and how long it will take, and the model's name is where a
 // person already looks for both. It is spelled with a colon rather than a fourth
 // segment for the same reason it is spelled that way on the picker row: it is
 // not a thing beside the model, it is how this model is being run.
@@ -855,6 +863,11 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 // drawn on the model goroutine one row at a time, and the alternative is a
 // second copy of the status line's segment layout — width budget, narrow-frame
 // dropping and all — kept in step with the first by nothing but attention.
+//
+// WHAT IT REACHES IS THE PHONE DECK'S ROW 2 ([app.deckModelRow]). The wide row
+// carries no model of its own since 2026-09-09 — the conversation's is on the
+// seam, which builds its own levelled word (foot.go's [app.seamIdentity]), and a
+// room's chip names the NODE's model, which is not this field at all.
 func (a *app) statusRow(width int) []string {
 	level := a.reasoningFor(a.model)
 	if level == "" || a.model == "" {

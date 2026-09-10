@@ -70,14 +70,19 @@ func TestTheStatusLineNamesTheOpenRoomsModel(t *testing.T) {
 	}
 
 	// AND ESC GIVES EVERYTHING BACK. The window is the conversation again, so the
-	// name on the line is the conversation's again.
+	// chip goes off the row entirely — and the conversation's own model is where
+	// it always is out of a room: on the seam above the box, which is the only
+	// place it is written since 2026-09-09 (foot.go's [app.seamIdentity]).
 	a.closeRoom()
 	line = statusText(a)
-	if !strings.Contains(line, "deepseek-v4-flash") {
-		t.Fatalf("closing the room did not restore the conversation's model:\n%q", line)
-	}
 	if strings.Contains(line, roomModelLead) || strings.Contains(line, "glm-5.2") {
 		t.Fatalf("the closed room's model is still on the line:\n%q", line)
+	}
+	if strings.Contains(line, "deepseek") {
+		t.Fatalf("the conversation's model moved onto the status row:\n%q", line)
+	}
+	if seam := plain(a.legend(a.width)); !strings.Contains(seam, "deepseek-v4-flash") {
+		t.Fatalf("closing the room did not restore the conversation's model to the seam:\n%q", seam)
 	}
 }
 
@@ -128,10 +133,12 @@ func TestANodeWithNoPublishedModelNamesNoModelAtAll(t *testing.T) {
 	}
 }
 
-// THE DIAL IS THE CONVERSATION'S. The reasoning level is spliced onto the model
-// segment by lending a.model its suffixed form (view.go's [app.statusRow]), and
-// a task model must never wear it — a knob the person turned for this session,
-// printed on a node that was never run with it, is a fact invented on screen.
+// THE DIAL IS THE CONVERSATION'S. The reasoning level rides the conversation's
+// own model wherever that is written — the seam's word builds it (foot.go's
+// [app.seamIdentity]) and the phone deck's row is lent it (view.go's
+// [app.statusRow]) — and a task model must never wear it: a knob the person
+// turned for this session, printed on a node that was never run with it, is a
+// fact invented on screen.
 func TestATaskModelNeverWearsTheConversationsReasoningSuffix(t *testing.T) {
 	a, fake := roomModelApp(t, "z-ai/glm-5.2")
 	fake.levels = map[string]string{"deepseek/deepseek-v4-flash": "high"}
@@ -141,11 +148,18 @@ func TestATaskModelNeverWearsTheConversationsReasoningSuffix(t *testing.T) {
 	if strings.Contains(line, ":high") {
 		t.Fatalf("the task's model is wearing the conversation's reasoning level:\n%q", line)
 	}
-	// And the level is real: it is on the line the moment the window is the
-	// conversation again, which is what makes the absence above a decision.
+	// And the level is real: it is the conversation's, held against the
+	// conversation's own model, and the sheet spells it there whole
+	// (statusdeck.go). THE SEAM DOES NOT SPELL IT AT ALL SINCE 2026-09-09 — that
+	// line carries one thinking rung and it is the resolved one, which this level
+	// is folded into (effortchip.go) — so the absence above is a decision about
+	// the ROOM's model rather than about the level having gone.
 	a.closeRoom()
-	if line := statusText(a); !strings.Contains(line, "deepseek-v4-flash:high") {
-		t.Fatalf("the conversation's own level went missing with the room:\n%q", line)
+	if got := a.reasoningFor("deepseek/deepseek-v4-flash"); got != "high" {
+		t.Fatalf("the conversation's own level went missing with the room: %q", got)
+	}
+	if seam := plain(a.legend(a.width)); strings.Contains(seam, ":high") {
+		t.Fatalf("the seam still spells a level onto the model id:\n%q", seam)
 	}
 }
 
@@ -213,11 +227,14 @@ func TestPressingTheConversationsModelStillOpensTheSessionsPicker(t *testing.T) 
 	a.closeRoom()
 	_ = frame(a)
 
-	if !a.modelSpan.pressable() {
+	// Out of a room the door is the SEAM's, at the left of the legend above the
+	// box (foot.go's [app.legendModelPress]).
+	if !a.seamModelSpan.pressable() {
 		t.Fatal("closing the room did not give the model segment its columns back")
 	}
-	drive(t, a, tea.MouseClickMsg{X: a.modelSpan.from + 1, Y: a.height - 1, Button: tea.MouseLeft})
-	drive(t, a, tea.MouseReleaseMsg{X: a.modelSpan.from + 1, Y: a.height - 1, Button: tea.MouseLeft})
+	x, y := a.seamModelSpan.from+1, markedRowY(a, chromeLegend, 0)
+	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 	if !a.pick.open {
 		t.Fatal("the conversation's model stopped opening the picker after a room closed")
 	}
@@ -261,10 +278,11 @@ func TestASettledTasksModelOpensItsContinuationPicker(t *testing.T) {
 	}
 }
 
-// THE SET THAT LIGHTS IS THE SET THE PRESS ACTS ON (hover.go). The model segment
-// is pressable at both subjects, so it lights at both — and where it is only a
-// fact, it does not.
-func TestTheStatusRowsModelSegmentLightsUnderThePointer(t *testing.T) {
+// THE SET THAT LIGHTS IS THE SET THE PRESS ACTS ON (hover.go). The model's name
+// is pressable at both subjects, so it lights at both — the room's node on the
+// status row, the conversation's on the seam above the box — and where it is
+// only a fact, it does not.
+func TestTheModelSegmentLightsUnderThePointerAtBothItsHomes(t *testing.T) {
 	a, _ := roomModelApp(t, "z-ai/glm-5.2")
 	a.width, a.height = 120, 24
 	_ = frame(a)
@@ -279,13 +297,19 @@ func TestTheStatusRowsModelSegmentLightsUnderThePointer(t *testing.T) {
 		t.Fatal("the model segment lights from outside its own columns")
 	}
 
-	// Out in the conversation, the same segment and the same light.
+	// Out in the conversation, the same light on the seam's own columns.
 	a.closeRoom()
 	_ = frame(a)
-	a.setHover(a.modelSpan.from+1, a.height-1)
+	seamRow := markedRowY(a, chromeLegend, 0)
+	a.setHover(a.seamModelSpan.from+1, seamRow)
 	if !a.hoveringStatusModel() {
 		t.Fatal("the conversation's model segment does not light under the pointer")
 	}
+	a.setHover(a.seamModelSpan.from-1, seamRow)
+	if a.hoveringStatusModel() {
+		t.Fatal("the seam's model segment lights from outside its own columns")
+	}
+	a.setHover(a.seamModelSpan.from+1, seamRow)
 	// And the hovered row is drawn differently from the resting one, which is what
 	// a person actually sees.
 	hot := frame(a)

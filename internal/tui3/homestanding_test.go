@@ -428,9 +428,15 @@ func (h *homeView) pointItemForTest(id string) {
 	h.picked = true
 }
 
-// THE SEGMENT EXISTS ONLY WHEN THERE IS SOMETHING TO SAY, and it moves only
+// THE COUNT EXISTS ONLY WHEN THERE IS SOMETHING TO SAY, and it moves only
 // while one of them is actually firing.
-func TestTheKeepingAnEyeSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
+//
+// IT IS READ OFF THE SEGMENT RATHER THAN OFF A ROW, because the two surfaces
+// that draw it are tested where they draw it: the count came off the status row
+// on 2026-09-09 and is a line at the foot of the task column now
+// (standmark_test.go's own door tests, task.go's [app.railFootRows]). What this
+// test owns is the FACT — the words, the emptiness law and the breathing.
+func TestTheStandingOrdersSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.width = 200
 	// THE READING IS CACHED ON HOME'S OWN BEAT ([app.keepingCount]), so the
@@ -441,8 +447,12 @@ func TestTheKeepingAnEyeSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 	a.clock = func() time.Time { return now }
 	stale := func() { now = now.Add(keepEvery + time.Second) }
 
-	if strings.Contains(plain(a.status(200)), "keeping an eye") {
-		t.Fatalf("a surface with the ambient side off grew a segment:\n%s", plain(a.status(200)))
+	if got := a.keepingSegment(); got != "" {
+		t.Fatalf("a surface with the ambient side off grew a segment: %q", got)
+	}
+	// AND IT IS NOT ON THE STATUS ROW AT ANY WIDTH ANY MORE (foot.go's [groupOff]).
+	if line := plain(a.status(200)); strings.Contains(line, homeKeepingWord) {
+		t.Fatalf("the standing count is back on the status row:\n%s", line)
 	}
 
 	band := &standBand{items: []standing.Item{
@@ -451,13 +461,19 @@ func TestTheKeepingAnEyeSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 	}}
 	band.wire(a)
 	stale()
-	want := standWaitGlyph + homeKeepingWord + "2"
-	if !strings.Contains(plain(a.status(200)), want) {
-		t.Fatalf("the status row is missing %q:\n%s", want, plain(a.status(200)))
+	// THE SEGMENT NAMES THE PAGE IT OPENS. It read `keeping an eye on 2` until
+	// 2026-09-09, which named nothing a person could type — the door is
+	// /standing, so the segment says `◦ 2 standing orders` (homestanding.go).
+	want := standWaitGlyph + " 2" + homeKeepingWord + "s"
+	if got := a.keepingSegment(); got != want {
+		t.Fatalf("the count reads %q, want %q", got, want)
+	}
+	if line := plain(a.status(200)); strings.Contains(line, homeKeepingWord) {
+		t.Fatalf("the standing count is back on the status row:\n%s", line)
 	}
 
 	// AT REST THE GLYPH IS STILL. It breathes only while a firing is in flight.
-	if strings.Contains(plain(a.status(200)), "keeping an eye on 2") && a.keepingWord() != want {
+	if a.keepingWord() != want {
 		t.Fatalf("a quiet band is animating: %q", a.keepingWord())
 	}
 	band.running = map[string]standing.RunningMark{
@@ -467,7 +483,7 @@ func TestTheKeepingAnEyeSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 	if a.keepingWord() == want {
 		t.Fatalf("a firing band is not breathing: %q", a.keepingWord())
 	}
-	if !strings.HasSuffix(a.keepingWord(), homeKeepingWord+"2") {
+	if !strings.HasSuffix(a.keepingWord(), " 2"+homeKeepingWord+"s") {
 		t.Fatalf("the breathing segment lost its count: %q", a.keepingWord())
 	}
 
@@ -475,8 +491,8 @@ func TestTheKeepingAnEyeSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 	band.items[0].Status = standing.StatusPaused
 	band.items[1].Status = standing.StatusPaused
 	stale()
-	if strings.Contains(plain(a.status(200)), "keeping an eye") {
-		t.Fatalf("a band of paused items still claims to be watching:\n%s", plain(a.status(200)))
+	if got := a.keepingSegment(); got != "" {
+		t.Fatalf("a band of paused items still claims to be watching: %q", got)
 	}
 }
 

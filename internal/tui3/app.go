@@ -1002,17 +1002,28 @@ type app struct {
 	inputTokens int
 	cacheRead   int
 	cacheWrite  int
-	// cacheSaved is what those reads have been WORTH, in dollars, summed over
-	// every turn whose model published BOTH a prompt price and a cache-read
-	// price to work the difference out from (see [app.cacheNote], which is the
-	// one place it grows). It is what turns the
-	// warm share from a statistic into a fact about the bill: the percentage is
-	// the hit RATE, this is what the rate MEANT.
+	// cacheSaved is what those reads have been WORTH, in dollars: cacheRead ×
+	// (prompt price − cache-read price) for the model this conversation is on,
+	// worked out from the totals every time they move ([app.repriceCache], the
+	// one place it is written). It is what turns the warm share from a statistic
+	// into a fact about the bill: the percentage is the hit RATE, this is what
+	// the rate MEANT.
 	//
-	// It is deliberately NOT derivable from the totals beside it. The price is a
-	// property of the model that was answering at the time, and a session that
-	// switched models halfway cannot be re-priced afterwards from one number —
-	// so it is accumulated per turn, at the moment the price is known.
+	// IT IS DERIVED RATHER THAN ACCUMULATED, and that is a fix rather than a
+	// simplification. It used to be summed per turn as each turn landed, which
+	// meant a RESUMED conversation — whose cache reads are restored whole from
+	// the journal and whose turns are all in the past — read `⟲ 28% cached` with
+	// no `saved $…` beside it until the next turn happened to land. The share
+	// was restored and the money was not, on the one figure a person opens a
+	// resumed session to check.
+	//
+	// A MIXED-MODEL SESSION IS PRICED AT THE MODEL IT IS ON NOW. The price is a
+	// property of whoever was answering at the time, and one total of cache
+	// reads cannot be split back out over the models that made them — so the
+	// current model's price is applied to all of them. That is the honest
+	// approximation a resume can make: every alternative is either a figure
+	// nobody can reconstruct or no figure at all, and the second was what this
+	// surface used to draw.
 	cacheSaved float64
 
 	// outputTokens is what the session has WRITTEN, and it is held apart from
@@ -1114,17 +1125,26 @@ type app struct {
 	// the layout, read by the click (render.go's [app.identityParts], and
 	// [app.statusPress] below). An empty span means there is nothing to press.
 	modelSpan hudSpan
-	// keepSpan is where the `keeping an eye on N` segment was last drawn, and
-	// keepRow which of the status row's rows it landed on — the same bargain
-	// modelSpan makes, for the same reason and one more: that cluster is
-	// right-aligned, so where a segment sits depends on every segment beside it
-	// and on the frame's width, and only the layout can answer it
-	// (standdoor.go, render.go's [app.statusRows]).
-	keepSpan hudSpan
-	keepRow  int
+	// seamModelSpan is where the model's name was last drawn on the SEAM — the
+	// legend above the box — which is where the conversation's identity lives
+	// now (foot.go's [app.seamIdentity]). modelSpan above is the room chip's
+	// door on the status row; the two are never both drawn.
+	seamModelSpan hudSpan
+	// seamEffortSpan is the thinking rung's own columns on that same line, drawn
+	// immediately after the model and pressed to walk the ladder one step
+	// (effortchip.go). It is a second span rather than a wider one because the
+	// two cells do two different things, and hover.go's law is that what lights
+	// is what the press acts on.
+	seamEffortSpan hudSpan
+	// doors is every pressable segment of the status row, recorded as the row
+	// is laid out and cleared before it (foot.go).
+	doors []statusDoor
 	// moneySpan is where the money segment was last drawn, and moneyRow which of
-	// the status row's rows it landed on — the same bargain keepSpan makes, for
-	// the same reason. It is the door onto the Spending tab (moneydoor.go).
+	// the status row's rows it landed on — the same bargain modelSpan makes, for
+	// the same reason and one more: that cluster is right-aligned, so where a
+	// segment sits depends on every segment beside it and on the frame's width,
+	// and only the layout can answer it. It is the door onto the Spending tab
+	// (moneydoor.go, render.go's [app.statusRows]).
 	moneySpan hudSpan
 	moneyRow  int
 	// stripSpans is where the task strip's chips were last drawn, and stripMore
@@ -1368,15 +1388,10 @@ type app struct {
 	// crewPick is the three-row /crew chooser (crew.go). It is separate from the
 	// model picker because it has no filter and every item always takes two lines.
 	crewPick crewPicker
-	// effPick is the five-row thinking chooser the tray's dial opens
-	// (effortchip.go). It is the crew chooser's shape for the crew chooser's
-	// reason: a fixed ladder is a thing you read rather than a thing you search.
+	// effPick is the five-row thinking chooser `/effort` opens (effortchip.go).
+	// It is the crew chooser's shape for the crew chooser's reason: a fixed
+	// ladder is a thing you read rather than a thing you search.
 	effPick effortMenu
-	// effortSpan is where the thinking dial was last drawn on the tray, in
-	// columns from the box's own left edge — the same bargain [app.jumpSpan]
-	// makes, because the layout is the only thing that knows where a
-	// right-aligned cell landed.
-	effortSpan hudSpan
 	// wait is the forming block a task command is standing in — its verbatim
 	// brief, present phase, and clock (taskcommand.go). It keeps that live region
 	// out of the notes lane while driving its shared spinner and count-up.
@@ -2045,6 +2060,24 @@ type app struct {
 	// pointer — the same arrangement the model segment and the jump chip use
 	// (render.go's [hudSpan]).
 	homeDoor hudSpan
+	// echoHome is raised around the one dispatch home makes on its own behalf
+	// ([app.homeSlash]), and it is what tells a command's answer apart from every
+	// other note this surface writes ([app.noteWritten] holds the argument).
+	echoHome bool
+	// target is the draft home's box is FOR: which folder the next conversation
+	// opens in and which model it answers on (homedraft.go). It lives on the app
+	// rather than on [homeView] because both pins survive `esc` and a reopen of
+	// home — the owner's ruling, and homeView is rebuilt every time the screen is
+	// raised.
+	target homeTarget
+	// targetRow is which row of the frame home's rule was drawn on, and
+	// targetFolderSpan and targetModelSpan are the columns its two doors landed
+	// in. All three are written by the draw and read by the pointer, on
+	// [app.homeDoor]'s own bargain: a press resolves against what was PAINTED,
+	// never against a second computation of what should have been.
+	targetRow        int
+	targetFolderSpan hudSpan
+	targetModelSpan  hudSpan
 	// homeRoot is where that screen looks for the projects, and "" means the
 	// state root under this machine's home ([app.placesRoot]). It exists for
 	// tests, which build a projects directory in a temp dir; nothing on the door
@@ -3426,6 +3459,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.placeTabPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
+			// AND HOME'S RULE IS READ BEFORE HOME'S OWN ROWS, on the tab bar's
+			// argument exactly: it is a row of the FRAME rather than of the list,
+			// and the two facts written into it are doors (placemouse.go's
+			// [app.placeTargetPress]).
+			if cmd, took := a.placeTargetPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
 			// AND THE COMPOSER AT THE FOOT IS READ BEFORE EVERY PLACE'S OWN ROWS
 			// FOR THE SAME REASON: it is the router's row, drawn by the same
 			// frame on all seven places, and a press on the box is a press on
@@ -3589,6 +3629,18 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.homeDoorPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
+			// AND THE MODEL'S NAME IS THE FOURTH, at the left end of the same
+			// legend: the conversation's model is written on the seam and pressing
+			// it opens the picker (foot.go's [app.legendModelPress]).
+			if a.legendModelPress(msg.Mouse().X, msg.Mouse().Y) {
+				return a, nil
+			}
+			// AND THE THINKING RUNG BESIDE IT IS THE FIFTH, on its own columns:
+			// pressing it walks the ladder one step, the way pressing a task's
+			// thinking row walks that task's (foot.go's [app.legendEffortPress]).
+			if cmd, took := a.legendEffortPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
 			// THE STOP TARGETS ARE READ BEFORE EVERY OTHER COLUMN-AWARE PRESS
 			// (stop.go). The card's answers sit over the draft, and the ✕ sits at
 			// the right end of the room's pinned header with a hit box three rows
@@ -3642,16 +3694,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.standingPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
-			// AND THE `keeping an eye on N` SEGMENT IS A DOOR ONTO /standing,
-			// read directly before the model's name because they are two segments
-			// of the same row and neither swallows the other's columns
-			// (standdoor.go).
-			if a.keepingPress(msg.Mouse().X, msg.Mouse().Y) {
-				return a, nil
-			}
 			// AND THE MONEY SEGMENT IS A DOOR ONTO THE SPENDING TAB, read here
-			// for the same reason and in the same way: three segments of one row,
-			// none of them swallowing another's columns (moneydoor.go).
+			// for the same reason and in the same way: two segments of one row,
+			// neither of them swallowing the other's columns (moneydoor.go). The
+			// standing count was a third and is a line at the foot of the task
+			// column now, answered by that column's own press (standdoor.go).
 			if cmd := a.moneyPress(msg.Mouse().X, msg.Mouse().Y); cmd != nil {
 				return a, cmd
 			}
@@ -5465,6 +5512,13 @@ func (a *app) take(u session.Usage) {
 	if u.CacheWrite > a.cacheWrite {
 		a.cacheWrite = u.CacheWrite
 	}
+	// AND WHAT THE CACHE GAVE BACK IS RE-DERIVED FROM THE TOTAL THAT JUST MOVED,
+	// which is what carries the figure across a RESUME: this is the one door
+	// every reading of the session's cache reads comes through — a turn landing,
+	// /status, and the first frame of a reopened conversation ([app.refreshUsage],
+	// called from the boot) — so the money and the share can never again be
+	// restored one without the other.
+	a.repriceCache()
 	// THE CONVERSATION'S COLUMN READS ITS BOOKS HERE, turn-scoped: what the
 	// session has been billed since this turn opened its clock ([app.startClock]
 	// takes both marks). A room's column is fed by its own lane instead
@@ -5514,6 +5568,40 @@ const shapingPreviewField = "brief"
 func shapingPreview(text string) string {
 	preview, _ := session.PartialString(text, shapingPreviewField)
 	return preview
+}
+
+// note is the conversation's own [feed.note] WITH ONE MORE PLACE TO SAY IT, and
+// it shadows the embedded method deliberately: `a.note(…)` is what four hundred
+// call sites already spell, and a second verb for "say this where the person is
+// standing" would be four hundred chances to pick the wrong one.
+func (a *app) note(text string) { a.noteWritten(text, false, nil) }
+
+// noteWritten is the one body behind all three of the app's note doors, and the
+// only thing it adds to the feed's own is THE ECHO ONTO HOME'S MESSAGE LINE.
+//
+// A COMMAND'S ANSWER MUST BE VISIBLE WHERE IT WAS TYPED. Home takes the frame
+// whole, so a note written into the conversation behind it is written where
+// nobody can read it — and the answers that landed there were the ones a person
+// most needed: `there is no command called /x · / lists them`, /help's key
+// sheet, /status, /cost, `crew · frugal`, a budget that was set. Home has had a
+// line for exactly this since it was built (pages.go's [app.placeMsgLine]) and
+// the dispatcher never reached it.
+//
+// IT IS THE FIRST LINE AND NOT THE WHOLE NOTE. The line under the box is one
+// row; a key sheet is thirty. The first line says what happened and the note
+// itself is still in the transcript, whole, one `esc` away.
+//
+// AND ONLY A NOTE THE PERSON ASKED FOR IS ECHOED ([app.echoHome]). Notes arrive
+// on this surface for a dozen reasons that have nothing to do with home — a
+// launch notice, a task landing, a connection dropping — and a line under home's
+// box that filled itself with whichever of those was most recent would be the
+// foot of the resting screen replaced by news, which is exactly what it is not
+// for. The flag is raised around the ONE dispatch home makes on its own behalf.
+func (a *app) noteWritten(text string, block bool, facts []string) {
+	a.feed.noteWritten(text, block, facts)
+	if a.echoHome && a.at(pageHome) {
+		a.home.say(firstLine(text), "")
+	}
 }
 
 // noteFacts is [feed.note] with THE PAYLOAD RULE's data named: the words inside
@@ -6151,9 +6239,11 @@ func (a *app) statusPress(x, y int) bool {
 	if width, _ := a.size(); layoutTier(width) == tierPhone {
 		return a.deckPress(x, mark.index)
 	}
-	// Index zero is the identity's row in both status layouts — the shared row,
-	// and the first of the two when the telemetry wraps onto its own (render.go).
-	if mark.index != 0 || !a.modelSpan.holds(x) {
+	// Index zero is the chip's row in both status layouts — the shared row, and
+	// the first of the two when the right edge wraps onto its own (render.go).
+	// OUT OF A ROOM THERE IS NO NAME ON THIS ROW AT ALL: the conversation's
+	// model is on the seam, and its door is [app.legendModelPress].
+	if !a.roomOpen() || mark.index != 0 || !a.modelSpan.holds(x) {
 		return false
 	}
 	// A ROOM POINTS THE SAME DOOR AT THE NODE THE ROW NAMES, and it does so
@@ -6587,6 +6677,13 @@ func (a *app) slash(line string) tea.Cmd {
 		// shape every choice row on this surface refuses in.
 		a.runCrew(rest)
 		return nil
+
+	case "effort":
+		// How hard THIS conversation thinks (effortchip.go). The bare form opens
+		// the five rungs with what each one buys; a rung after it sets that rung
+		// outright. An unknown word shows the five and changes nothing, which is
+		// the shape every choice row on this surface refuses in.
+		return a.runEffort(rest)
 
 	case "task":
 		return a.runTaskCommand(rest)
@@ -8091,6 +8188,12 @@ func (a *app) priceFor(id string) (Model, bool) {
 // cache read is never free) — and treating that absence as a zero books the
 // WHOLE prompt price as a saving, which is this surface claiming the cache made
 // those tokens free. The token count alone is what it actually knows.
+//
+// THIS LINE IS THIS TURN'S AND NOTHING ELSE'S. It used to bank its figure into
+// the session's running total on the way past, which made the total a thing
+// only a turn landing could build — and therefore a thing a resumed
+// conversation did not have ([app.repriceCache] owns that total now, derived
+// from the reads themselves).
 func (a *app) cacheNote(u session.Usage) {
 	if u.CacheRead <= 0 {
 		return
@@ -8098,15 +8201,35 @@ func (a *app) cacheNote(u session.Usage) {
 	line := "⟲ " + tokenWord(u.CacheRead) + " cached"
 	if model, known := a.priceFor(a.model); known && model.CacheReadPrice > 0 {
 		if saved := float64(u.CacheRead) * (model.PromptPrice - model.CacheReadPrice); saved > 0 {
-			// The same figure, twice: once for this turn, and once into the
-			// session's running total behind the status line's warm share. It is
-			// summed HERE — under the same price guard — so the total can never
-			// contain a turn the note itself could not price.
-			a.cacheSaved += saved
 			line += " · saved " + savedWord(saved)
 		}
 	}
 	a.note(line)
+}
+
+// repriceCache is what the session's cache reads have been worth, worked out
+// from the totals rather than remembered from the turns that made them
+// ([app.cacheSaved] states the bargain, the resume it fixes and the mixed-model
+// approximation it accepts). It is called wherever [app.cacheRead] moves.
+//
+// BOTH PRICES OR NO MONEY, which is [app.cacheNote]'s own guard said again at
+// the second site that spends it: around two rows in five publish a prompt
+// price and no cache-read price at all, and treating that absence as a zero
+// books the WHOLE prompt price as a saving — this surface claiming the cache
+// made those tokens free. Nothing is what it actually knows, and the segment
+// beside it degrades to the hit rate alone (render.go's [app.warmSegment]).
+func (a *app) repriceCache() {
+	a.cacheSaved = 0
+	if a.cacheRead <= 0 {
+		return
+	}
+	model, known := a.priceFor(a.model)
+	if !known || model.CacheReadPrice <= 0 {
+		return
+	}
+	if saved := float64(a.cacheRead) * (model.PromptPrice - model.CacheReadPrice); saved > 0 {
+		a.cacheSaved = saved
+	}
 }
 
 // ── WHAT CHANGED ────────────────────────────────────────────────────────────

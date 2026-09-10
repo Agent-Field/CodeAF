@@ -1838,23 +1838,31 @@ func TestTheSurfaceBootsAndQuitsHeadlessly(t *testing.T) {
 		})
 	}()
 
-	// THE STATUS ROW NAMES THE MODEL WITHOUT ITS VENDOR, and that row is what
-	// this test is waiting for. It used to wait for the full routing address,
-	// which reached the frame twice — once on the status row and once on the
-	// greeting's own model line — and the greeting's copy went when the first
-	// conversation stopped repeating what the setup screen had just asked
-	// (welcome.go). The status row is the surface's own claim that it is up.
-	shown := agent.model[strings.LastIndex(agent.model, "/")+1:]
-	deadline := time.Now().Add(10 * time.Second)
-	for !strings.Contains(out.String(), shown) {
-		if time.Now().After(deadline) {
-			t.Fatalf("the surface never drew its status line:\n%q", out.String())
+	// THE ALT SCREEN IS THE FIRST CLAIM THAT IT IS UP, and the seam under the
+	// box is the second: the model's name, without its vendor, on the legend
+	// line above the prompt (foot.go's [app.seamIdentity]).
+	//
+	// A first sentence is sent before that second claim is waited for, because
+	// an untouched conversation draws neither the seam nor any model at all —
+	// the greeting holds the box, and the status row under it carries only
+	// `idle` (welcome.go, and the empty-screen page). Until 2026-09-09 the model
+	// was on the status row under the greeting too, and this test waited for it
+	// there without typing anything.
+	waitFor := func(what, needle string) {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for !strings.Contains(out.String(), needle) {
+			if time.Now().After(deadline) {
+				t.Fatalf("the surface never drew %s:\n%q", what, out.String())
+			}
+			time.Sleep(5 * time.Millisecond)
 		}
-		time.Sleep(5 * time.Millisecond)
 	}
-	if wire := out.String(); !strings.Contains(wire, "\x1b[?1049h") {
-		t.Fatal("the surface did not enter the alt screen")
+	waitFor("the alt screen", "\x1b[?1049h")
+	if _, err := keyboard.Write([]byte("hi\r")); err != nil {
+		t.Fatalf("write to the surface: %v", err)
 	}
+	waitFor("the model on its seam", agent.model[strings.LastIndex(agent.model, "/")+1:])
 
 	if _, err := keyboard.Write([]byte("/quit\r")); err != nil {
 		t.Fatalf("write to the surface: %v", err)

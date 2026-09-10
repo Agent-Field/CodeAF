@@ -494,6 +494,14 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// rather than a second opinion about the same fact (internal/provider's
 	// roles.go).
 	ctx = provider.WithRole(ctx, a.laneRole())
+	// AND WHOSE ERRAND IT IS, beside what kind of errand it is, for the reason
+	// internal/provider's roles.go states: an engine that is a separate process
+	// from the surface registers ONE phase reader for every conversation it is
+	// running, and news that could not name its own conversation would be drawn
+	// on every window at once. This is the one place it is stamped, because
+	// every request a turn makes — the talk turn itself and every node under it
+	// — descends from this context (newskey.go's [Agent.newsKey]).
+	ctx = provider.WithSession(ctx, a.newsKey())
 	if a.config.InTask {
 		ctx = provider.WithRoutingIntent(ctx, provider.IntentBackground)
 	}

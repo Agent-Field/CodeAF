@@ -766,7 +766,7 @@ func TestAHiddenRolesAnswerNeverTakesTheServedSegment(t *testing.T) {
 	}
 
 	PostLaneNews(LaneNews{Model: flash, Lane: "CoreWeave", Role: lane.RoleAuxiliary, TTFT: 90 * time.Millisecond, Rate: 400})
-	if got := a.laneRider(); got != "" {
+	if got := a.laneRider(true); got != "" {
 		t.Fatalf("a naming errand took the status line: %q", got)
 	}
 }
@@ -947,7 +947,7 @@ func TestARefusedLaneIsDrawnRefusedAndNotSlow(t *testing.T) {
 		Model: flash, Lane: "Cloudflare", Alt: "CoreWeave",
 		Role: lane.RoleTalk, Trying: true, Reason: provider.RescueRefused,
 	})
-	if got := a.laneRider(); got != " · refused · trying coreweave…" {
+	if got := a.laneRider(true); got != " · refused · trying coreweave…" {
 		t.Fatalf("a refusal in flight reads %q", got)
 	}
 
@@ -957,13 +957,13 @@ func TestARefusedLaneIsDrawnRefusedAndNotSlow(t *testing.T) {
 		Model: flash, Lane: "Cloudflare", Alt: "CoreWeave",
 		Role: lane.RoleTalk, Trying: true, Reason: provider.RescueSlow,
 	})
-	if got := a.laneRider(); got != " · slow · trying coreweave…" {
+	if got := a.laneRider(true); got != " · slow · trying coreweave…" {
 		t.Fatalf("a slow lane reads %q", got)
 	}
 	// A rescue posted before anything classified it keeps the sentence it has
 	// always had.
 	PostLaneNews(LaneNews{Model: flash, Lane: "Cloudflare", Alt: "CoreWeave", Role: lane.RoleTalk, Trying: true})
-	if got := a.laneRider(); got != " · slow · trying coreweave…" {
+	if got := a.laneRider(true); got != " · slow · trying coreweave…" {
 		t.Fatalf("an unclassified rescue reads %q", got)
 	}
 }
@@ -981,7 +981,7 @@ func TestTheTryingLineIsRetractedWhenTheRescueItNamedFails(t *testing.T) {
 		Model: flash, Lane: "Cloudflare", Alt: "CoreWeave",
 		Role: lane.RoleTalk, Trying: true, Reason: provider.RescueRefused,
 	})
-	if got := a.laneRider(); !strings.Contains(got, "trying coreweave…") {
+	if got := a.laneRider(true); !strings.Contains(got, "trying coreweave…") {
 		t.Fatalf("the claim was never made: %q", got)
 	}
 
@@ -989,7 +989,7 @@ func TestTheTryingLineIsRetractedWhenTheRescueItNamedFails(t *testing.T) {
 		Model: flash, Lane: "Cloudflare", Alt: "CoreWeave",
 		Role: lane.RoleTalk, Failed: true, Reason: provider.RescueRefused,
 	})
-	got := a.laneRider()
+	got := a.laneRider(true)
 	if strings.Contains(got, "trying") {
 		t.Fatalf("a rescue that failed is still promised: %q", got)
 	}
@@ -1017,7 +1017,7 @@ func TestARetiredPinSaysWhereTheRequestsGoNow(t *testing.T) {
 		Role: lane.RoleTalk, Failed: true, Reason: provider.RescueRetired,
 	})
 	want := " · CoreWeave cannot serve this model; routing on auto for this model until you pin again"
-	if got := a.laneRider(); got != want {
+	if got := a.laneRider(true); got != want {
 		t.Fatalf("a retired pin reads %q, want %q", got, want)
 	}
 }
