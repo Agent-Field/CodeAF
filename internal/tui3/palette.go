@@ -195,6 +195,9 @@ func (p *picker) relist() {
 	p.list = p.list[:0]
 	for at, hit := range p.hits {
 		p.list = append(p.list, pickRow{hit: at, lane: laneNone})
+		if p.all[hit].Unavailable {
+			continue
+		}
 		if p.unfold == "" || p.all[hit].ID != p.unfold {
 			continue
 		}
@@ -266,7 +269,13 @@ func (p *picker) rank() {
 		p.hits = append(p.hits, i)
 	}
 	if len(tokens) > 0 {
-		sort.SliceStable(p.hits, func(a, b int) bool { return p.score[p.hits[a]] < p.score[p.hits[b]] })
+		sort.SliceStable(p.hits, func(a, b int) bool {
+			left, right := p.all[p.hits[a]], p.all[p.hits[b]]
+			if left.GroupOrder != right.GroupOrder {
+				return left.GroupOrder < right.GroupOrder
+			}
+			return p.score[p.hits[a]] < p.score[p.hits[b]]
+		})
 	}
 	p.orderByLanes(terms, now)
 	// A changed query is a changed list, and a cursor left at row nine of the
@@ -401,8 +410,38 @@ func subsequenceAt(id, token string) (int, bool) {
 // move walks the list, clamping at both ends rather than wrapping: a list that
 // wraps makes "hold ↓ until it stops" an infinite gesture.
 func (p *picker) move(delta int) {
-	p.cursor = moveCursor(p.cursor, delta, len(p.list))
+	if len(p.list) == 0 {
+		return
+	}
+	step := 1
+	if delta < 0 {
+		step = -1
+	}
+	at := p.cursor
+	for n := 0; n < abs(delta); n++ {
+		next := at
+		for {
+			next += step
+			if next < 0 || next >= len(p.list) {
+				next = at
+				break
+			}
+			if !p.rowUnavailable(next) {
+				break
+			}
+		}
+		at = next
+	}
+	p.cursor = at
 	p.follow(pickerRows)
+}
+
+func (p *picker) rowUnavailable(at int) bool {
+	if at < 0 || at >= len(p.list) {
+		return true
+	}
+	row := p.list[at]
+	return p.all[p.hits[row.hit]].Unavailable
 }
 
 // follow scrolls the window by the least that keeps the cursor inside it.
@@ -1097,7 +1136,8 @@ func (p *picker) choice() (Model, bool) {
 	if !p.open || p.cursor < 0 || p.cursor >= len(p.list) {
 		return Model{}, false
 	}
-	return p.all[p.hits[p.list[p.cursor].hit]], true
+	model := p.all[p.hits[p.list[p.cursor].hit]]
+	return model, !model.Unavailable
 }
 
 // height is how many LIST rows the picker wants, not counting the filter box —
@@ -1120,6 +1160,9 @@ func (p *picker) height(width int) int {
 	// way: one line, inside the ceiling, and never half of a pair.
 	lines := 0
 	for at := p.top; at < len(p.list) && lines < pickerRows; at++ {
+		if p.groupBefore(at) != "" {
+			lines++
+		}
 		_, note := p.entryText(at, width, nil)
 		take := overlayItemLines(width, note)
 		if p.whyAt(at) != "" {
@@ -1159,6 +1202,18 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 	p.follow(overlayItems(n, width))
 	fill := newOverlayFill(width, n, pal, hover)
 	for at := p.top; at < len(p.list) && fill.room(); at++ {
+		if group := p.groupBefore(at); group != "" {
+			if !fill.plain(pal.dim(fit("  "+group, width))) {
+				break
+			}
+		}
+		if p.rowUnavailable(at) {
+			model := p.all[p.hits[p.list[at].hit]]
+			if !fill.plain(pal.dim(fit("  "+model.ID, width))) {
+				break
+			}
+			continue
+		}
 		label, note := p.entryText(at, width, level)
 		if !fill.add(at, label, note, at == p.cursor, p.marked(at)) {
 			break
@@ -1195,6 +1250,9 @@ func (p *picker) pinnedLane() string {
 // — inside an open fold — the lane this conversation is actually held to, which
 // is the pin when there is one and the `auto` row when there is not.
 func (p *picker) marked(at int) bool {
+	if p.rowUnavailable(at) {
+		return false
+	}
 	row := p.list[at]
 	model := p.all[p.hits[row.hit]]
 	switch {
@@ -1208,6 +1266,31 @@ func (p *picker) marked(at int) bool {
 		return strings.EqualFold(p.pin, config.LaneOpenRouter)
 	}
 	return strings.EqualFold(p.pin, p.lanes[row.lane].Name)
+}
+
+// groupBefore is the dim service heading before a model row. Folded lane rows
+// stay under their model, and a scrolled window repeats the heading at its top
+// so a service name is never left above the viewport.
+func (p *picker) groupBefore(at int) string {
+	if at < 0 || at >= len(p.list) || p.list[at].lane != laneNone {
+		return ""
+	}
+	model := p.all[p.hits[p.list[at].hit]]
+	if model.Group == "" {
+		return ""
+	}
+	if at == p.top || at == 0 {
+		return model.Group
+	}
+	previous := p.list[at-1]
+	if previous.lane != laneNone {
+		return ""
+	}
+	before := p.all[p.hits[previous.hit]]
+	if before.Group != model.Group {
+		return model.Group
+	}
+	return ""
 }
 
 // entryText is one drawn row as the row's two halves. level may be nil, which
@@ -1511,6 +1594,42 @@ func (a *app) modelList() []Model { return a.modelsFor(chatModel) }
 // model at all falls through to the cache, exactly as a catalog with no chat
 // model falls through for /model.
 func (a *app) modelsFor(keep modelFilter) []Model {
+	services := a.sources.All()
+	if len(services) < 2 {
+		return a.modelsForDefault(keep)
+	}
+	grouped := make([]Model, 0)
+	for order, service := range services {
+		var models []Model
+		if order == 0 {
+			models = a.modelsForDefault(keep)
+		} else {
+			models = keepModels(a.sourceModels[service.Source.ID], keep)
+		}
+		group := strings.ToLower(strings.TrimSpace(service.Source.Written))
+		if group == "" {
+			group = strings.ToLower(strings.TrimSpace(service.Source.Name))
+		}
+		if len(models) == 0 {
+			grouped = append(grouped, Model{
+				ID: noServiceModelListWord, Group: group, GroupOrder: order, Unavailable: true,
+			})
+			continue
+		}
+		for _, model := range models {
+			if order > 0 {
+				model.ID = service.Qualify(model.ID)
+			}
+			model.Group, model.GroupOrder = group, order
+			grouped = append(grouped, model)
+		}
+	}
+	return grouped
+}
+
+// modelsForDefault is the exact pre-service ladder. Keeping it whole makes the
+// one-service path and each slot's fallback byte-for-byte what they were.
+func (a *app) modelsForDefault(keep modelFilter) []Model {
 	if a.models != nil {
 		if list := keepModels(a.models(), keep); len(list) > 0 {
 			return list

@@ -11,6 +11,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/connect"
+	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
@@ -833,6 +835,9 @@ type sheetItem struct {
 	// them: an item is an item, and only what DRAWS it and what ANSWERS it ask
 	// which kind this one is.
 	conn *connRow
+	// service is one connected model service on Providers. It draws through
+	// the settings row grammar while its value remains in model_sources.
+	service *modelServiceRow
 	// role is set on the rows of the roles section, on exactly those terms.
 	role *roleRow
 	// read is set on a row of the Spending tab that is a RECEIPT and not a
@@ -863,7 +868,9 @@ type sheet struct {
 	// conns is the door onto the accounts, for the Connections tab. It is the
 	// surface's own door (app.conns) and not a second one: two readings of "is
 	// this connected" is how a tab and a panel disagree about somebody's mail.
-	conns Connections
+	conns     Connections
+	modelRows func() []connect.Status
+	sources   modelsource.Set
 	// conn is what that tab remembers between builds (connectcaps.go).
 	conn connTab
 	rows []config.Setting
@@ -1132,6 +1139,8 @@ func (a *app) raiseSettings() {
 		registry:     a.registry(),
 		profileDir:   a.profileDir,
 		conns:        a.conns,
+		modelRows:    a.modelConnectionRows,
+		sources:      a.sources,
 		defaults:     settingDefaults(),
 		sessionModel: a.model,
 		today:        a.todayReading(),
@@ -1230,6 +1239,15 @@ func (s *sheet) build() {
 		for _, row := range s.tabRows() {
 			meta, _ := s.metaFor(row)
 			s.items = append(s.items, sheetItem{row: row, meta: meta})
+			if row.Key == config.KeyAPIKey {
+				services := modelServiceRows(s.profileDir, s.sources)
+				if len(services) > 0 {
+					s.items = append(s.items, sheetItem{head: "services"})
+					for _, service := range services {
+						s.items = append(s.items, sheetItem{service: service})
+					}
+				}
+			}
 			// THE ROLES SECTION HANGS OFF THE ROW IT WRITES. Every pin those rows
 			// set lands in "pinned roles" and nowhere else, so it is drawn
 			// directly under it: a person reading one is reading the other, and a
@@ -1854,6 +1872,13 @@ func (a *app) activate() tea.Cmd {
 	}
 	if item.conn != nil {
 		return a.connAct(item.conn)
+	}
+	if item.service != nil {
+		source, ok := a.modelSource(item.service.id)
+		if !ok {
+			return nil
+		}
+		return a.startModelConnect(modelConnectionStatus(source, true), true)
 	}
 	s.msg = ""
 	if item.role != nil {
@@ -2682,6 +2707,9 @@ func (s *sheet) rowLines(item sheetItem, selected, hovered bool, width int, pal 
 func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, boxRows int, pal palette) []string {
 	if item.conn != nil {
 		return s.connRowLines(item.conn, selected, hovered, width, boxRows, pal)
+	}
+	if item.service != nil {
+		return overlayLines(item.service.name, item.service.value, selected, false, hovered, width, pal)
 	}
 	if item.role != nil {
 		return s.roleRowLines(item.role, selected, hovered, width, pal)

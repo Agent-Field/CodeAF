@@ -14,6 +14,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/connect"
+	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -750,6 +751,13 @@ type (
 		service string
 		name    string
 		status  connect.Status
+		err     error
+	}
+	modelConnectResultMsg struct {
+		service string
+		name    string
+		outcome modelsource.Outcome
+		models  []Model
 		err     error
 	}
 	// The two messages the default model provider's browser connection takes
@@ -1565,6 +1573,14 @@ type app struct {
 	connTaps  []connTap
 	conns     Connections
 	connPanel connectPanel
+	// sources and sourceModels are the live model-service side of /connect.
+	// The default catalog still comes through models; only additional services
+	// live in sourceModels, keyed by their stable persisted id.
+	sources          modelsource.Set
+	modelCatalog     []modelsource.Source
+	sourceModels     map[string][]Model
+	modelDraft       *modelConnectDraft
+	modelSuggestions map[string]string
 	// harn is the subharness registry (Options.Harnesses) and harnPanel the
 	// list /harness opens over it (harnesspanel.go). A nil harn is a surface
 	// that cannot show harnesses and says so; nothing about the OFFER depends on
@@ -2357,7 +2373,8 @@ type app struct {
 	// launch — on the setup screen or in the settings row — so the running
 	// session's next request rides it ([Options.ApplyAPIKey]). Nil is a surface
 	// whose key lands on the next launch.
-	applyAPIKey func(key string) error
+	applyAPIKey       func(key string) error
+	applyModelSources func(modelsource.Set)
 	// routerConnect is the browser half of that same handover, available on
 	// a local interactive launch using the default provider. authSerial gives
 	// every attempt a name, so a listener that came up after esc can be closed
@@ -2467,6 +2484,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		build:               strings.TrimSpace(opts.Build),
 		resumed:             opts.Resumed,
 		models:              opts.Models,
+		sources:             opts.Sources,
 		history:             opts.History,
 		draftFile:           opts.DraftFile,
 		artifacts:           opts.ArtifactsIndex,
@@ -2478,6 +2496,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		saveBashApproval:    opts.SaveBashApproval,
 		saveModel:           opts.SaveModel,
 		applyAPIKey:         opts.ApplyAPIKey,
+		applyModelSources:   opts.ApplyModelSources,
 		routerConnect:       opts.ConnectOpenRouter,
 		applyApprovals:      opts.ApplyApprovals,
 		recentSessions:      opts.RecentSessions,
@@ -2524,6 +2543,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		lastQuestionKey: time.Now(),
 		questionReach:   newQuestionDeliveryRule(),
 	}
+	a.prepareModelServices()
 	a.copy.mark = -1
 	// AND THE REDUCER IS BUILT WITH WHAT THIS PAGE IS, which is the whole of the
 	// difference between a chat's transcript and any other (feed.go states the
@@ -4176,6 +4196,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case connectResultMsg:
 		a.adoptConnectResult(msg)
+		return a, nil
+
+	case modelConnectResultMsg:
+		a.adoptModelConnectResult(msg)
 		return a, nil
 
 	case openRouterFlowMsg:

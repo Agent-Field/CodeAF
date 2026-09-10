@@ -50,6 +50,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/leave"
+	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
@@ -719,6 +720,11 @@ type Options struct {
 	// ~/.aforge/v3/models.json and then to [BuiltinModels] (see models.go).
 	Models func() []Model
 
+	// Sources is the ordered set of places the model picker can read from. The
+	// default service is first. Empty preserves the old single-service picker;
+	// a local surface can rebuild the set from ProfileDir after a connection.
+	Sources modelsource.Set
+
 	// ProfileDir is the profile the settings panel reads and writes — the same
 	// directory internal/config resolves every other row out of. Empty is the
 	// default profile (~/.aforge), which is what the door passes when it has
@@ -946,6 +952,11 @@ type Options struct {
 	// nothing different: the profile is still the record. A test, and a door
 	// with no process behind it, are that surface.
 	ApplyAPIKey func(key string) error
+
+	// ApplyModelSources hands a freshly connected or disconnected service set
+	// to the process and its live conversations. Nil keeps the profile as the
+	// record and applies the change on the next launch.
+	ApplyModelSources func(modelsource.Set)
 
 	// ConnectOpenRouter starts the default model provider's browser connection.
 	// It is present only on a local interactive launch using aforge's built-in
