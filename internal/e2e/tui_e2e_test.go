@@ -685,8 +685,20 @@ func testFiringReachesThePerson(t *testing.T) {
 	// cache that refreshes behind itself — the seam's stated law rather than an
 	// optimization (cmd/aforge's hostStanding) — and an item that stood a second
 	// ago reaches it on the next beat.
-	if _, ok := r.glimpse(20*time.Second, say(t, "homeKeepingWord")); !ok {
+	//
+	// AND THERE ARE THREE BEATS BETWEEN THE DISK AND THAT SEGMENT, not one, so
+	// the wait is a minute rather than the twenty seconds that caught it on a
+	// quiet machine and missed it on a loaded one: the item is written by the
+	// ERRAND's process, read back by the ENGINE, held by the surface's own
+	// far-side cache on hostStandingEvery, and read off THAT by a count the
+	// status row keeps for keepEvery. How long it actually took is logged,
+	// because a segment that takes half a minute to appear is a papercut worth
+	// having a number for.
+	keepingAt := time.Now()
+	if _, ok := r.glimpse(time.Minute, say(t, "homeKeepingWord")); !ok {
 		t.Errorf("the status line never grew a `keeping an eye on N` segment while an item stands:\n%s", r.capture())
+	} else {
+		t.Logf("the `keeping an eye on N` segment arrived %s after the item stood", time.Since(keepingAt).Round(time.Second))
 	}
 	r.lit("/status")
 	time.Sleep(700 * time.Millisecond)
