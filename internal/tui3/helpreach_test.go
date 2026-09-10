@@ -297,9 +297,10 @@ func TestTheSearchTeachingWrapsAndHangsFromTheBodysColumn(t *testing.T) {
 				// THE WHISPER HANGS UNDER ITS HEADING, one gutter in, exactly as
 				// home hangs a panel's (placeprose.go's [placeWhisperLead]); every
 				// other row hangs from the body's own column.
-				whisper := r.query == "" && strings.HasPrefix(text, placeWhisperLead) &&
-					!strings.HasPrefix(text, placeWhisperLead+" ")
-				if !whisper && (!strings.HasPrefix(text, " ") || strings.HasPrefix(text, "  ")) {
+				// A RESULT hangs its title after the row's two-cell lead, which is
+				// the same column (searchplace.go's [searchLead]).
+				gutter := strings.HasPrefix(text, placeWhisperLead) && !strings.HasPrefix(text, placeWhisperLead+" ")
+				if !gutter && (!strings.HasPrefix(text, " ") || strings.HasPrefix(text, "  ")) {
 					t.Fatalf("row %d at %d columns hangs from the wrong column: %q", i, width, text)
 				}
 				if strings.HasSuffix(strings.TrimRight(text, " "), "…") {

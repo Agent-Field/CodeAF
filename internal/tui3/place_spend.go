@@ -547,7 +547,8 @@ func (placeSpend) body(a *app, width, room int) []placeRow {
 		a.spend.stops, a.spend.top, a.spend.shown = nil, 0, 0
 		return rows
 	}
-	body, stops := a.spend.reading.body(width, a.pal)
+	lit := func(i int) bool { return (i == a.spend.cursor || i == a.spend.hover) && a.spendStopAt(i).ok }
+	body, stops := a.spend.reading.paint(width, a.pal, lit)
 	a.spend.stops = stops
 	// THE WINDOW FOLLOWS THE CURSOR. A body cut at the room and never moved
 	// loses the cursor off the bottom of the screen the moment the ledger is
@@ -559,8 +560,8 @@ func (placeSpend) body(a *app, width, room int) []placeRow {
 			break
 		}
 		text := body[i]
-		if (i == a.spend.cursor || i == a.spend.hover) && a.spendStopAt(i).ok {
-			text = a.pal.selected(text, width)
+		if lit(i) {
+			text = placeBand(text, width, a.pal)
 		}
 		rows = append(rows, placeRow{text: text, hit: i})
 	}

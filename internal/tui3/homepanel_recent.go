@@ -4,11 +4,13 @@ package tui3
 // bold, with the last thing said in it on the line under it; then the most
 // recently active of the rest; then `N more · type to find one`.
 //
-// IT IS THE QUIET CONVERSATIONS. A conversation waiting on a person is on
-// `needs you` and one with work out is on `running`, and a row drawn twice is
-// the same reading said twice — so this panel is what is left, with one
-// exception: this window's own conversation is always its first row, because
-// `where you were` without the place you were is not an answer.
+// IT IS EVERY CONVERSATION NOT WAITING ON A PERSON. One that is waiting is on
+// `needs you`, and a row drawn twice is the same reading said twice. One that is
+// mid-turn or coming here stays: `running` lists the work a conversation sent
+// out (tasks and jobs), never the conversation itself, so a chat dropped from
+// here for moving would be on no panel at all. And this window's own
+// conversation is always the first row, because `where you were` without the
+// place you were is not an answer.
 //
 // AND THE ERRANDS STAND OVER IT. An `ask here` exchange is a conversation this
 // window started a minute ago, with no row in the world at all
@@ -25,7 +27,7 @@ func (recentPanel) rows(in *homeGridInput) homePanelRows {
 		case row.here:
 			mine := row
 			own = &mine
-		case !row.needs && !row.moving:
+		case !row.needs:
 			rest = append(rest, row)
 		}
 	}

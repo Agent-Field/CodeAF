@@ -296,6 +296,11 @@ func TestEveryPlaceTakesExactlyTheWholeFrameAtEveryWidth(t *testing.T) {
 // — and moved again inside tasks the moment its first piece of work landed
 // (PLACES-AUDIT.md finding 1). One loop over the registry and over every place
 // that can be empty, at three sizes, and every edge has to be on the same row.
+//
+// placeFootRows is that foot at rest, counted: the blank over the rule, the rule
+// with the note on it, the composer and the hint.
+const placeFootRows = 4
+
 func TestEveryPlaceSpendsTheSameHeadAndFoot(t *testing.T) {
 	type edges struct{ bar, headRule, blank, footRule, box, hint int }
 	sizes := [][2]int{{80, 24}, {120, 45}, {180, 45}}
@@ -304,7 +309,7 @@ func TestEveryPlaceSpendsTheSameHeadAndFoot(t *testing.T) {
 	for _, size := range sizes {
 		height := size[1]
 		want[size] = edges{bar: placeTabRow, headRule: 2, blank: placeHeadRows - 1,
-			footRule: height - 3, box: height - 2, hint: height - 1}
+			footRule: height - placeFootRows + 1, box: height - 2, hint: height - 1}
 	}
 	for _, lab := range labs {
 		for _, size := range sizes {

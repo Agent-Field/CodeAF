@@ -908,6 +908,7 @@ func (a *app) raiseHome() tea.Cmd {
 		claim:     a.takeover.file,
 		tier:      a.homeTierNow(),
 		cols:      a.homeColsNow(),
+		gridWidth: a.homeGridWidthNow(),
 		tilde:     a.tilde,
 		hover:     -1,
 		last:      map[string]session.Summary{},
@@ -1270,6 +1271,7 @@ func (a *app) newHomeView(world session.World, known bool) homeView {
 		launch:    a.workspace,
 		tier:      a.homeTierNow(),
 		cols:      a.homeColsNow(),
+		gridWidth: a.homeGridWidthNow(),
 		tilde:     a.tilde,
 		hover:     -1,
 		last:      map[string]session.Summary{},
@@ -1752,17 +1754,6 @@ func (h *homeView) buildWorld() {
 	h.lines = append(h.lines, homeLine{kind: homeAskHere})
 	h.lines = append(h.lines, homeLine{kind: homeAction})
 }
-
-// homeEmptyLines is [homeEmptyWord] as the rows of the places column: the
-// sentence split at its dash, one clause to a row.
-//
-// A NARROW COLUMN IS NARROWER THAN THE SENTENCE. At [tierPhone] the column is
-// under forty cells and the sentence is fifty; a sentence fitted to it would end
-// in `this f…`, and a screen whose only words are cut off is the broken page this
-// row exists to not be. Two short dim rows read as one sentence, and the constant
-// stays the one place the words are spelled — the manual quotes it whole, and so
-// does the phone tier ([app.homePhoneList]).
-func homeEmptyLines() []string { return strings.SplitN(homeEmptyWord, " — ", 2) }
 
 // homeHit is one project and the conversations of it that survived the box.
 // score is the best rank any of those rows scored, and zero for every project
@@ -3976,15 +3967,6 @@ func (a *app) homePress(x, y int) tea.Cmd {
 			a.touch()
 			return nil
 		}
-		// AND A ROW THAT NAMES A PIECE OF WORK OPENS IT, which is the other thing
-		// the card draws that a person can aim at (place_home.go's [app.cardTaskAt]
-		// says why it is the paint that recorded the row). It is the record card
-		// the phone's tap and the tasks place's enter both open, so one gesture
-		// means one thing wherever it is made.
-		if entry, ok := a.cardTaskAt(ansi.Strip(lines[y])); ok {
-			a.touch()
-			return a.openTaskRecord(&entry)
-		}
 	}
 	if row, column, ok := a.homePane(x, y); ok {
 		return a.exchangePress(column, row)
@@ -5413,12 +5395,6 @@ func (a *app) homeHint() string {
 // is SCREEN 3a's whole clause. The foot does not say it: `alt+.` draws the map
 // that does ([placeMapWords]), and the resting foot is four keys exactly.
 const homeVerbsWord = "→ verbs"
-
-// homeVerbsHang is how far the second row of the verbs list hangs in: exactly
-// under the first word, which is the width of the lead the first row carries.
-// It is derived from that lead rather than typed beside it, so the two can
-// never disagree.
-var homeVerbsHang = ansi.StringWidth(homeVerbsWord + ": ")
 
 // homeHintWords is that line before the tier's own key is put on it.
 func (a *app) homeHintWords() string {

@@ -688,7 +688,7 @@ func (placeMemory) body(a *app, width, room int) []placeRow {
 	case p.reading.bare():
 		return placeWhisperRows(pageMemory, width, room, a.pal)
 	default:
-		body = p.reading.rows(width, a.pal)
+		body = p.reading.paint(width, a.pal, func(i int) bool { return i == p.cursor || i == p.hover })
 	}
 	// THE WINDOW FOLLOWS THE CURSOR, and a card standing open is not a list:
 	// it is one line's provenance, drawn from its top, so it has no cursor to
@@ -705,7 +705,7 @@ func (placeMemory) body(a *app, width, room int) []placeRow {
 		}
 		text := body[i]
 		if _, stop := p.reading.at(i); stop && p.expanded == "" && (i == p.cursor || i == p.hover) {
-			text = a.pal.selected(text, width)
+			text = placeBand(text, width, a.pal)
 		}
 		rows = append(rows, placeRow{text: text, hit: i})
 	}

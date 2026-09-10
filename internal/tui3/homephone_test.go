@@ -536,8 +536,9 @@ func TestRotatingAPhoneKeepsWhatWasTyped(t *testing.T) {
 	}
 }
 
-// NOTHING CHANGES AT EIGHTY COLUMNS AND UP. The wide frame is the one it always
-// was: two columns, a card, and no sections.
+// NOTHING OF THE PHONE'S REACHES EIGHTY COLUMNS AND UP. The wide frame is the
+// grid (homegrid.go), whose `since you left` is a panel of its own — so the
+// phone's shape is asked for by its sheet and its flag, not by that word.
 func TestNothingAboutHomeChangesAtEightyColumns(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
@@ -547,7 +548,7 @@ func TestNothingAboutHomeChangesAtEightyColumns(t *testing.T) {
 	a.width, a.height = 100, 30
 	a.openHome()
 	text := phoneText(a)
-	if strings.Contains(text, homePhoneNewsWord) || strings.Contains(text, homeSheetBackWord) {
+	if strings.Contains(text, homeSheetBackWord) || !a.home.gridOn() {
 		t.Fatalf("the phone's shapes reached a wide frame:\n%s", text)
 	}
 	if a.home.phone {

@@ -487,12 +487,10 @@ type tasksLine struct {
 	kids int
 }
 
-// tasksBareLead is the two cells in front of every row of work. On the row a
-// person is on they carry the mark in the accent — `›` where the keyboard is and
-// `·` where the pointer is — which is what every other list on this surface
-// leads with ([overlayLead]); the lead is chosen by the frame and passed in,
-// because the reading does not know where anybody is standing.
-const tasksBareLead = "  "
+// tasksBareLead is the cell in front of every row of work: the place's one left
+// edge ([placeLead]), where the row's state glyph stands. It carries no mark —
+// the band says which row a hand is on.
+const tasksBareLead = placeLead
 
 // lay is the one walk of the reading: what line the page draws, in order, and
 // which of them a person can act on.
@@ -766,9 +764,6 @@ type tasksChat struct {
 	// shut fold says out loud. Work nested under those is behind their own folds
 	// and is counted by the section's heading instead ([tasksSectionHead]).
 	kids int
-	// runs says a worker is in one of them, which is the hue the row wears — the
-	// same claim a live piece of work's own title makes ([tasksLabelInk]).
-	runs bool
 	// at is the newest thing in it THAT ANYBODY CAN DATE, and the zero time where
 	// nothing can be. It is deliberately not the stamp the conversation SORTS by:
 	// live work is dated `now` for ranking and says nothing at all about when
@@ -931,7 +926,7 @@ func tasksTreeOf(items []tasksItem, now time.Time, chats ...session.SessionRow) 
 			if g.chat.row.NeedsPerson() {
 				g.section = tasksNeeds
 			} else if g.chat.row.Live && g.chat.row.Presence.State == session.PresenceWorking {
-				g.section, g.chat.runs = tasksRunning, true
+				g.section = tasksRunning
 			}
 		}
 		for _, root := range g.roots {
@@ -945,9 +940,6 @@ func tasksTreeOf(items []tasksItem, now time.Time, chats ...session.SessionRow) 
 				}
 				if stamp := tasksEntryStamp(item, now); stamp.After(g.chat.at) {
 					g.chat.at = stamp
-				}
-				if item.runs {
-					g.chat.runs = true
 				}
 			})
 		}
@@ -1101,18 +1093,18 @@ func (r tasksReading) rows(width int, pal palette) []string {
 	lines := r.lay(width)
 	out := make([]string, len(lines))
 	for i := range lines {
-		out[i] = r.paint(lines, i, width, pal, tasksBareLead)
+		out[i] = r.paint(lines, i, width, pal, false)
 	}
 	return out
 }
 
-// paint draws ONE line of the layout behind the lead the frame chose. Every line
-// it returns is at most width cells, at every width.
-func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lead string) string {
+// paint draws ONE line of the layout, lit where the cursor or the pointer is on
+// it. Every line it returns is at most width cells, at every width.
+func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bool) string {
 	if i < 0 || i >= len(lines) || width <= 0 {
 		return ""
 	}
-	line := lines[i]
+	line, lead := lines[i], tasksBareLead
 	room := width - ansi.StringWidth(lead)
 	if room < 1 {
 		room = 1
@@ -1127,23 +1119,23 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lead s
 			// →`, the control and the reading at once. Before it, this place bound
 			// all four arrow keys and drew nothing that named them, which is the
 			// exact defect verbstrip.go's law was written against.
-			return placeHeadRow(width, line.text, pal.muted(line.text), r.win, pal)
+			return placeHeadRow(width, line.text, placeHeading(line.text, pal), r.win, pal)
 		}
-		return pal.dim(fit(line.text, width))
+		return placeLead + placeHeading(fit(line.text, width-len(placeLead)), pal)
 	case tasksLineChat:
 		kin := pal.dim(line.kin)
 		room -= ansi.StringWidth(line.kin)
 		if room < 1 {
 			room = 1
 		}
-		return lead + kin + tasksChatRow(line, room, r.now, pal)
+		return lead + kin + tasksChatRow(line, room, r.now, pal, lit)
 	case tasksLineTail:
 		indent := strings.Repeat(" ", taskSheetPhoneIndent)
 		tail := room - taskSheetPhoneIndent - ansi.StringWidth(line.kin)
 		if tail < 1 {
 			tail = 1
 		}
-		return lead + pal.dim(line.kin) + indent + pal.dim(fit(tasksCardTail(line.item, r.now), tail))
+		return lead + pal.dim(line.kin) + indent + placeFactInk(lit, pal)(fit(tasksCardTail(line.item, r.now), tail))
 	}
 	// THE FAMILY COLUMN IS PAINTED HERE AND CHOSEN IN THE LAYOUT. It is dim
 	// everywhere — a connector is the surface's own furniture, not the row's
@@ -1154,9 +1146,9 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lead s
 		room = 1
 	}
 	if layoutTier(width) == tierPhone {
-		return lead + kin + tasksCardHead(line.item, room, pal)
+		return lead + kin + tasksCardHead(line.item, room, pal, lit)
 	}
-	return lead + kin + tasksRow(line, room, r.now, pal)
+	return lead + kin + tasksRow(line, room, r.now, pal, lit)
 }
 
 // tasksUnderWord is what a shut fold says about the work it is holding.
@@ -1445,7 +1437,7 @@ func tasksLabel(entry session.TaskIndexEntry) string {
 // AND IT NAMES ITS PROJECT ONCE. That fact used to be repeated on every row of
 // work the conversation ran, twenty-odd cells a row, on the rows whose names
 // were being cut to make room for it ([tasksFacts] drops it under here).
-func tasksChatRow(line tasksLine, width int, now time.Time, pal palette) string {
+func tasksChatRow(line tasksLine, width int, now time.Time, pal palette, lit bool) string {
 	chat := line.chat
 	facts := make([]rowField, 0, 3)
 	if !line.open && chat.kids > 0 {
@@ -1460,20 +1452,14 @@ func tasksChatRow(line tasksLine, width int, now time.Time, pal palette) string 
 	}
 	plan := rowPlan{primary: chat.title, fields: facts}
 	label, tail := plan.fit(width)
-	// THE HUE IS THE CLAIM, exactly as it is on a row of work ([tasksLabelInk]):
-	// a conversation with a worker in it is live, and the record is dulled.
-	ink := pal.muted
-	if chat.runs {
-		ink = pal.ink
-	}
 	if tail == "" {
-		return fit(ink(label), width)
+		return fit(placeSubject(label, lit, pal), width)
 	}
 	pad := width - ansi.StringWidth(label) - ansi.StringWidth(tail)
 	if pad < 1 {
 		pad = 1
 	}
-	return fit(ink(label)+strings.Repeat(" ", pad)+pal.dim(tail), width)
+	return fit(placeSubject(label, lit, pal)+strings.Repeat(" ", pad)+placeFactInk(lit, pal)(tail), width)
 }
 
 // tasksRow is one piece of work on a wide frame, laid out by the law rowfit.go
@@ -1507,7 +1493,7 @@ func tasksChatRow(line tasksLine, width int, now time.Time, pal palette) string 
 // fold it is holding shut, and the root above it that has already named their
 // conversation — and the layout is where both were decided
 // ([tasksReading.lay]); the paint may not re-derive either.
-func tasksRow(line tasksLine, width int, now time.Time, pal palette) string {
+func tasksRow(line tasksLine, width int, now time.Time, pal palette, lit bool) string {
 	item := line.item
 	glyph, glyphInk := tasksGlyph(item, pal)
 	lead := glyph + " "
@@ -1532,7 +1518,7 @@ func tasksRow(line tasksLine, width int, now time.Time, pal palette) string {
 	}
 	plan := rowPlan{primary: tasksLabel(item.entry), fields: tasksFields(facts)}
 	label, tail := plan.fit(room)
-	left := glyphInk(glyph) + " " + tasksLabelInk(item, pal)(label)
+	left := glyphInk(glyph) + " " + placeSubject(label, lit, pal)
 	if tail == "" {
 		return fit(left, width)
 	}
@@ -1540,7 +1526,7 @@ func tasksRow(line tasksLine, width int, now time.Time, pal palette) string {
 	if pad < 1 {
 		pad = 1
 	}
-	return fit(left+strings.Repeat(" ", pad)+tasksPaintTail(tail, facts, pal), width)
+	return fit(left+strings.Repeat(" ", pad)+tasksPaintTail(tail, facts, placeFactInk(lit, pal), pal), width)
 }
 
 // tasksFact is one fact on a row: what it can say, in the spellings the fitter
@@ -1659,7 +1645,7 @@ func tasksFields(facts []tasksFact) []rowField {
 // tail carrying a money figure may not be painted whole. Anything the fitter
 // spelled that no fact answers to — the halves of a detail sentence that had a
 // ` · ` of its own inside it — is the dim every other fact wears.
-func tasksPaintTail(tail string, facts []tasksFact, pal palette) string {
+func tasksPaintTail(tail string, facts []tasksFact, rest func(string) string, pal palette) string {
 	if tail == "" {
 		return ""
 	}
@@ -1672,7 +1658,7 @@ func tasksPaintTail(tail string, facts []tasksFact, pal palette) string {
 				return fact.ink(said)
 			}
 		}
-		return pal.dim(said)
+		return rest(said)
 	}
 	said := strings.Split(tail, rowSep)
 	for i := range said {
@@ -1754,14 +1740,14 @@ func tasksMiddleField(entry session.TaskIndexEntry) rowField {
 
 // tasksCardHead is the first line of a phone card: the state and the name, in
 // the same hue the wide row paints them.
-func tasksCardHead(item tasksItem, width int, pal palette) string {
+func tasksCardHead(item tasksItem, width int, pal palette, lit bool) string {
 	glyph, glyphInk := tasksGlyph(item, pal)
 	lead := glyphInk(glyph) + " "
 	room := width - ansi.StringWidth(lead)
 	if room < 1 {
 		room = 1
 	}
-	return lead + tasksLabelInk(item, pal)(fit(tasksLabel(item.entry), room))
+	return lead + placeSubject(fit(tasksLabel(item.entry), room), lit, pal)
 }
 
 // tasksCardTail is the second line of a phone card: what the work came to, where
@@ -1781,17 +1767,6 @@ func tasksCardTail(item tasksItem, now time.Time) string {
 		segs = append(segs, age)
 	}
 	return strings.Join(segs, railSep)
-}
-
-// tasksLabelInk is THE HUE AS THE CLAIM: dulled means this is the record, and a
-// row that is genuinely running is not the record. The ink is the one a running
-// node's title wears in the column ([app.railTitle]), so a person who has
-// watched work run recognizes it here without learning a second signal.
-func tasksLabelInk(item tasksItem, pal palette) func(string) string {
-	if item.runs {
-		return pal.ink
-	}
-	return pal.muted
 }
 
 // tasksNote is what one row says about WHERE the work is, or about a claim of

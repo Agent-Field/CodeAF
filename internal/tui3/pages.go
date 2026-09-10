@@ -1131,6 +1131,7 @@ func placeFrameWithBar(a *app, width, height int,
 	// a place does not do is draw the question's violet or the tick's olive.
 	was := a.pal
 	a.pal = was.onPlaces()
+	a.pal.placeRows = !a.at(pageHome)
 	defer func() { a.pal = was }()
 	pal := a.pal
 	lines := make([]string, 0, height)

@@ -394,6 +394,10 @@ type homeGridPanel struct {
 	dropped bool
 }
 
+// natural is how many rows the panel shows at its natural height: its rest,
+// or all it holds when that is fewer.
+func (p homeGridPanel) natural() int { return min(p.slot.rest, len(p.read.lines)) }
+
 // empty reports a panel with no rows at all, which draws its whisper instead.
 func (p homeGridPanel) empty() bool { return len(p.read.lines) == 0 && p.read.more == 0 }
 
@@ -465,21 +469,44 @@ func byKeep(column []*homeGridPanel) []*homeGridPanel {
 // shrunk to its floor first, then the next, and only when every panel is at its
 // floor are panels dropped, lowest first.
 func squeezeColumn(column []*homeGridPanel, room int) {
-	if room <= 0 {
+	if room <= 0 || homeColumnHeight(column) <= room {
 		return
 	}
 	order := byKeep(column)
 	for _, p := range order {
 		if homeColumnHeight(column) <= room {
-			return
+			break
 		}
 		p.shrink()
 	}
 	for _, p := range order {
 		if homeColumnHeight(column) <= room {
-			return
+			break
 		}
 		p.dropped = true
+	}
+	regrowColumn(order, column, room)
+}
+
+// regrowColumn hands back what the squeeze did not need, a row at a time, to
+// the panels it cut, the most important first. A floor is a whole step, and a
+// drop frees a whole panel, so the squeeze can overshoot — and air under a
+// column while `where you were` is folded is the squeeze spending the wrong
+// panel's rows.
+//
+// IT GIVES BACK ONLY UP TO A PANEL'S NATURAL HEIGHT. A squeezed column is a
+// short frame, and growth past the resting fold is for a column with room once
+// every panel has its natural height ([growColumn]).
+func regrowColumn(order, column []*homeGridPanel, room int) {
+	for i := len(order) - 1; i >= 0; i-- {
+		p := order[i]
+		for !p.dropped && p.shown < p.natural() {
+			p.shown++
+			if homeColumnHeight(column) > room {
+				p.shown--
+				break
+			}
+		}
 	}
 }
 
@@ -535,7 +562,8 @@ func homeGridLayout(in *homeGridInput, cols, width, room int) [][]*homeGridPanel
 	for _, slot := range homePanelOrder {
 		read := slot.panel.rows(in)
 		at := slot.column(cols)
-		p := &homeGridPanel{slot: slot, read: read, shown: min(slot.rest, len(read.lines))}
+		p := &homeGridPanel{slot: slot, read: read}
+		p.shown = p.natural()
 		if p.empty() {
 			p.whisper = homeWhisperLines(slot.panel.whisper(), widths[at])
 		}
@@ -738,8 +766,8 @@ func (h *homeView) rowOf(at int) int {
 
 // gridCross moves the cursor into the neighbouring column, onto the stop whose
 // row is nearest the one it left — the same rank a person's eye was at. It
-// reports false when there is no column that way, so the arrow keeps whatever
-// else it means at the edge (the verb strip, on the rightmost column).
+// reports false when there is no column that way, or none with a row in it, so
+// the arrow keeps whatever else it means at the edge (the verb strip).
 func (h *homeView) gridCross(dir int) bool {
 	next := h.columnOf(h.cursor) + dir
 	if next < 0 || next >= h.grid.cols {
@@ -756,9 +784,12 @@ func (h *homeView) gridCross(dir int) bool {
 			best, gap = at, d
 		}
 	}
-	if best >= 0 {
-		h.cursor, h.picked = best, true
+	// A COLUMN WITH NOTHING TO STAND ON IS NO COLUMN THAT WAY: every panel in
+	// it is whispering, and the arrow keeps its other meaning.
+	if best < 0 {
+		return false
 	}
+	h.cursor, h.picked = best, true
 	return true
 }
 
@@ -818,6 +849,15 @@ func (h *homeView) pointGrid(want homeLine) bool {
 func (a *app) homeColsNow() int {
 	width, _ := a.size()
 	return homeGridCols(width)
+}
+
+// homeGridWidthNow is the frame width the grid lays out for, asked when home
+// opens for the same reason: a whisper wraps at its column's width, and a
+// build before the first frame that wrapped it at no width would move every
+// line under it the moment the frame arrived.
+func (a *app) homeGridWidthNow() int {
+	width, _ := a.size()
+	return width
 }
 
 // ── the pointer ────────────────────────────────────────────────────────────

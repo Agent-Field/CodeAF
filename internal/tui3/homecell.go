@@ -46,14 +46,12 @@ func (a *app) homeGridRows(width, room int, pal palette) []placeRow {
 	xs, widths := homeGridGeometry(width, h.grid.cols)
 	h.gridX = xs
 	columns := make([][]homeCellLine, len(xs))
-	marked, hasMark := h.cursorPanel()
 	for at, line := range h.lines {
 		if at >= len(h.grid.col) {
 			break
 		}
 		c := min(h.grid.col[at], len(xs)-1)
-		heading := hasMark && line.cell != nil && line.cell.kind == cellHead && line.cell.panel == marked
-		columns[c] = append(columns[c], a.homeLineRows(line, at, widths[c], pal, heading)...)
+		columns[c] = append(columns[c], a.homeLineRows(line, at, widths[c], pal, h.marksPanel(at))...)
 	}
 	rows := make([]placeRow, room)
 	for y := range rows {
@@ -124,6 +122,19 @@ func (a *app) homeLineRows(line homeLine, at, width int, pal palette, heading bo
 	return out
 }
 
+// marksPanel reports that the line at `at` is the heading of the panel the
+// cursor is standing in — THE ONE HEADING A FRAME MARKS (docs/DESIGN-LANGUAGE.md,
+// "the section holding the cursor marks its own heading"). It follows the
+// keyboard only: [homeView.hover] never enters into it.
+func (h *homeView) marksPanel(at int) bool {
+	if at < 0 || at >= len(h.lines) {
+		return false
+	}
+	cell := h.lines[at].cell
+	panel, ok := h.cursorPanel()
+	return ok && cell != nil && cell.kind == cellHead && cell.panel == panel
+}
+
 // homeCellLeadBlank is the lead of a row that wears no mark.
 var homeCellLeadBlank = strings.Repeat(" ", homeGridLead)
 
@@ -173,8 +184,13 @@ func (a *app) homeCellRow(line homeLine, at, width int, pal palette, lit bool) [
 //
 // TWO MARKS AND NO OTHER (law 8). The question mark in the warn hue on a row
 // waiting for a person, and the ONE moving cell on the first running row — the
-// spinner where the frame animates, the still working mark where it does not.
+// spinner where the frame animates, the still working mark where it does not —
+// or on the conversation being moved here, which takes it outright
+// ([homeView.spinAt]).
 func (a *app) homeCellLead(cell *homeCell, at int, pal palette) string {
+	if spin := a.homeSpinCell(at); spin != "" && cell.mark != cellMarkNeeds {
+		return pal.accent(spin) + " "
+	}
 	switch cell.mark {
 	case cellMarkNeeds:
 		return pal.warn(pal.glyph(tokens.GNeedsHuman)) + " "

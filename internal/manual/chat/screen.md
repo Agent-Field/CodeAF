@@ -3597,8 +3597,11 @@ would be the one boxed thing on a surface with no boxes.
 
 **The pointer and the cursor share one background; the chosen thing gets the louder
 one.** Whether you reached a row with the mouse or with `↓`, the row you are on looks the
-same — it does not change appearance depending on which hand you used. What tells the two
-apart is the mark in front: `›` where enter would act, `·` where the pointer is.
+same — it does not change appearance depending on which hand you used. In a list the
+conversation opens over you, what tells the two apart is the mark in front: `›` where
+enter would act, `·` where the pointer is. On the places (tasks, standing, memory, spend,
+search, settings) there is no mark at all: the row under either hand wears the same ground
+with its name in bold, the way a row on home does.
 
 The step above that is for the thing you have actually **chosen**, and it stays drawn
 when nobody is touching the list: the roster row and the strip chip of the room you are

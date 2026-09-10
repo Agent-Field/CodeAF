@@ -369,42 +369,52 @@ func sameDay(a, b time.Time) bool {
 
 // rows paints only through the palette and fits every completed line with the
 // same cell-width ruler the rest of the surface uses.
-func (r memoryReading) rows(width int, pal palette) []string {
+func (r memoryReading) rows(width int, pal palette) []string { return r.paint(width, pal, nil) }
+
+// paint is [memoryReading.rows] with the rows the cursor or the pointer is on
+// lit (placeprose.go's THE FIVE-LEVEL SCALE); a nil lit lights nothing.
+//
+// EVERY ROW HANGS FROM THE BODY'S OWN COLUMN, one cell in, where every place and
+// home hang theirs: a shelf's `▸` and a line's `·` stand in the lead, and the
+// words start two cells after them (PLACES-AUDIT.md finding 12). This page
+// started at column 0, so walking the bar left to right the body stepped aside.
+func (r memoryReading) paint(width int, pal palette, lit func(row int) bool) []string {
 	rows := make([]string, 0, len(r.lines))
+	room := width - 1
 	for _, line := range r.lines {
+		on := lit != nil && lit(len(rows))
 		switch line.kind {
 		case memoryReadingProse:
-			// THE PROSE HANGS FROM THE BODY'S OWN COLUMN, which is one cell in —
-			// where tasks, standing and spend all hang theirs (placebodies.go's
-			// [placeTeachRows]). This page started at column 1, so walking the bar
-			// left to right the body stepped sideways.
-			rows = append(rows, " "+pal.dim(fit(line.label, width-1)))
+			rows = append(rows, " "+pal.dim(fit(line.label, room)))
 		case memoryReadingBlank:
 			if len(rows) > 0 && rows[len(rows)-1] != "" {
 				rows = append(rows, "")
 			}
 		case memoryReadingHeader:
+			// THE HEAD COUNTS WHAT IS HELD AND IS NOT A SUBJECT, so it wears the
+			// heading's ink: it was the reading ink, the one heading on the bar
+			// lit like a row (PLACES-AUDIT.md finding 9).
 			left := memoryCounts(r.held, r.shelves, r.letGo, r.replaced)
-			rows = append(rows, memoryJoin(pal.ink(left), pal.dim(memoryFilterWord), memoryFilterWord, width))
+			rows = append(rows, " "+memoryJoin(placeHeading(left, pal), pal.dim(memoryFilterWord), memoryFilterWord, room))
 		case memoryReadingSection:
 			// THE HEADING IS WHOLE AND THE LEGEND IS A PREFIX OF ITSELF. The
 			// legend is fitted to what the heading leaves rather than the other
 			// way round, so a kind falls off the end before the two words that
 			// say what the section is lose a cell (rowfit's law 1).
-			legend := rowTail(line.facts, width-ansi.StringWidth(line.label)-memoryGutter)
-			rows = append(rows, memoryJoin(pal.muted(line.label), pal.dim(legend), legend, width))
+			legend := rowTail(line.facts, room-ansi.StringWidth(line.label)-memoryGutter)
+			rows = append(rows, " "+memoryJoin(placeHeading(line.label, pal), pal.dim(legend), legend, room))
 		case memoryReadingShelf:
-			rows = append(rows, memoryRow(pal.muted, line, pal, width))
+			rows = append(rows, " "+memoryRow(placeSubjectInk(on, pal), line, on, pal, room))
 		case memoryReadingMemory:
-			paintLabel := pal.ink
+			paintLabel := placeSubjectInk(on, pal)
 			if line.memory != nil && line.memory.Status != store.MemoryActive {
 				// There is no strike paint in this palette, so history takes the
 				// documented fallback and recedes instead of borrowing a raw style.
 				paintLabel = pal.dim
 			}
-			rows = append(rows, memoryRow(paintLabel, line, pal, width))
+			rows = append(rows, " "+memoryRow(paintLabel, line, on, pal, room))
 		case memoryReadingFold:
-			rows = append(rows, pal.dim(fit(line.label, width)))
+			rows = append(rows, " "+pal.dim(fit(line.label, room)))
 		}
 	}
 	return rows
@@ -485,7 +495,8 @@ func memoryJoin(left, paintedRight, plainRight string, width int) string {
 // one separator, then the age at the right. A fact that will not fit is dropped
 // whole — which is also how the help clause stopped needing a `width >= 80` of
 // its own.
-func memoryRow(paintLabel func(string) string, line memoryReadingLine, pal palette, width int) string {
+func memoryRow(paintLabel func(string) string, line memoryReadingLine, lit bool, pal palette, width int) string {
+	facts := placeFactInk(lit, pal)
 	room := width
 	age := ansi.StringWidth(line.age)
 	if age > 0 {
@@ -494,13 +505,13 @@ func memoryRow(paintLabel func(string) string, line memoryReadingLine, pal palet
 	name, tail := memoryHalves(line.label, line.facts, room)
 	painted, spent := paintLabel(name), ansi.StringWidth(name)
 	if tail != "" {
-		painted += pal.dim(rowSep + tail)
+		painted += facts(rowSep + tail)
 		spent += ansi.StringWidth(rowSep) + ansi.StringWidth(tail)
 	}
 	if line.age == "" {
 		return painted
 	}
-	return painted + strings.Repeat(" ", max(1, width-spent-age)) + pal.dim(line.age)
+	return painted + strings.Repeat(" ", max(1, width-spent-age)) + facts(line.age)
 }
 
 // memoryHalves is [rowPlan.fit] with this page's own gutter: the identity, cut

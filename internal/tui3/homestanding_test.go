@@ -7,7 +7,6 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // ── THE AMBIENT BAND ON HOME ────────────────────────────────────────────────
@@ -119,78 +118,6 @@ func bandOfSix(t *testing.T) (*standBand, *homeLab, string) {
 		}
 	}
 	return band, lab, transcript
-}
-
-// AN ITEM TAKES ITS PLACE IN THE ONE TRIAGE ORDER, AND ONLY THE ONES THAT WANT
-// SOMETHING TAKE A PLACE AT ALL.
-//
-// ── WHAT DIED AND WHERE IT WENT ─────────────────────────────────────────────
-//
-// THE PER-PROJECT BAND IS GONE FROM THE RESTING LIST. It used to be every item
-// this machine holds, drawn under its own project's heading, three of them and
-// then a door saying how many more there were — and the resting screen has no
-// project headings to hang a band under any more (switcher.go, place_home.go).
-// An item earns a row on the flat ranked list exactly when it NEEDS SOMEBODY or
-// is FIRING ([readSwitcher] takes those two and nothing else); the ones still
-// waiting for their time, and the door over them, are the standing place's
-// business now. [TestTheStandingBandKeepsItsThreeRowsAndItsDoorOnAPhone] pins
-// them where they still stand.
-//
-// WHAT SURVIVED IS THE ORDER, and it is the half that mattered: one ladder
-// across BOTH kinds of row, so an item stopped on a question can never sort
-// under conversations that want nothing. The glyph and the position are one
-// claim made twice, and this pins them together.
-func TestAStandingItemTakesItsPlaceInTheOneTriageOrder(t *testing.T) {
-	band, lab, transcript := bandOfSix(t)
-	a := lab.app(transcript)
-	band.wire(a)
-	openHomeOn(a, transcript)
-
-	lines := homeLines(a)
-	joined := strings.Join(lines, "\n")
-
-	// EACH ROW IS FOUND BY ITS MARK AND ITS WORDS TOGETHER, which is how the
-	// order and the glyphs are pinned in one reading: a row sorted to the top
-	// under a mark that says "at rest" would simply not be found here.
-	ask := homeRowAt(lines, tokens.GlyphNeedsHuman+" keep main green")
-	run := homeRowAt(lines, "check the deploy")
-	chat := homeRowAt(lines, tokens.GlyphQueued+" Pricing Research")
-	for name, at := range map[string]int{"needs-you": ask, "running": run, "quiet chat": chat} {
-		if at < 0 {
-			t.Fatalf("home never drew the %s row:\n%s", name, joined)
-		}
-	}
-	if !(ask < run && run < chat) {
-		t.Fatalf("the list is not in triage order (ask %d, run %d, chat %d):\n%s", ask, run, chat, joined)
-	}
-	// AND EACH SAYS WHY IT IS WHERE IT IS. The note is the reading's own
-	// ([switcherStandingNote]) and it is the whole of what the band's rollup was
-	// for on a row.
-	if !strings.Contains(lines[ask], "the fix touches migrations") {
-		t.Fatalf("the row that needs somebody does not say what for:\n%s", joined)
-	}
-	if !strings.Contains(lines[run], standing.RunningChecking+" now") {
-		t.Fatalf("the row a pass is on does not say so:\n%s", joined)
-	}
-	// AND ITS MARK AGREES WITH ITS POSITION. It is the only moving thing on this
-	// machine, so it is also the one row the frame gives the turning cell to
-	// (homespinner.go) — which is why the mark is asked for as "the still one or
-	// the turning one" rather than as one glyph.
-	if !strings.ContainsAny(lines[run], tokens.GlyphWorking+"⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {
-		t.Fatalf("the row a pass is on does not wear a moving mark:\n%s", joined)
-	}
-	// THE FOUR THAT WANT NOTHING ARE NOT ON THIS SCREEN, and neither is a door
-	// over them. Four items with nothing to say for themselves used to cost five
-	// rows of a twenty-row screen — that is the whole reason this changed.
-	for _, quiet := range []string{"tell me when the cert expires", "remind me on Fridays",
-		"remind me on Sundays", "remind me on Tuesdays"} {
-		if strings.Contains(joined, quiet) {
-			t.Fatalf("an item that wants nothing took a row on the resting list (%q):\n%s", quiet, joined)
-		}
-	}
-	if strings.Contains(joined, homeItemsFoldWord) {
-		t.Fatalf("the resting list still draws the band's door:\n%s", joined)
-	}
 }
 
 // AND THE BAND ITSELF IS STILL DRAWN WHERE IT STILL LIVES: the phone's inbox,
@@ -571,47 +498,6 @@ func TestStatusSaysNothingAboutWatchingWithNoStandingSeam(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	if text := a.statusText(); strings.Contains(text, homeWatchLabel) || strings.Contains(text, homeWatchNobody) {
 		t.Fatalf("a surface with no ambient side talked about checking:\n%s", text)
-	}
-}
-
-// A FRAME THAT IS NOT WIDE ENOUGH DROPS THE CARD AND KEEPS THE INDEX, which is
-// home's own law applied to the other kind of row: an index somebody can read
-// beats a preview nobody can.
-//
-// THE FLOOR MOVED AND THE LAW DID NOT. The everyday card tier went with the
-// strips, and there is exactly one width at which a card appears now —
-// [homeCardMin], which is what the list and the card and the gutter add up to
-// (homebridge.go). So the two frames this test uses are that floor and the cell
-// below it, which is the honest way to pin a boundary: a round number beside it
-// would stop meaning anything the day one of the columns changed.
-func TestANarrowHomeDropsTheItemCard(t *testing.T) {
-	lab := newHomeLab(t)
-	transcript := lab.session("alpha", "s1", "Pricing Research", "/w/alpha", time.Now().Add(-time.Hour))
-	band := &standBand{items: []standing.Item{stuckItem()}}
-	a := lab.app(transcript)
-	band.wire(a)
-	a.openHome()
-	a.home.pointItemForTest("one")
-
-	// The card's second band is `project · path`, and it is the one string on
-	// the frame that only the card draws — the hint line at the foot names the
-	// same keys the card's last band does, so a test that looked for those would
-	// be finding the hint.
-	const place = "alpha · /w/alpha"
-
-	a.width, a.height = homeCardMin-1, 24
-	narrow := strings.Join(homeLines(a), "\n")
-	if !strings.Contains(narrow, "remind me on Fridays") {
-		t.Fatalf("the narrow frame lost the row itself:\n%s", narrow)
-	}
-	if strings.Contains(narrow, place) {
-		t.Fatalf("the narrow frame kept the card:\n%s", narrow)
-	}
-
-	a.width = homeCardMin
-	wide := strings.Join(homeLines(a), "\n")
-	if !strings.Contains(wide, place) {
-		t.Fatalf("the frame at the card's own floor lost the card:\n%s", wide)
 	}
 }
 
@@ -1044,7 +930,9 @@ func TestTheRetiredHalfOfTheReadingPaysTheFirstLookLaw(t *testing.T) {
 	if len(a.home.fired) != 0 {
 		t.Fatalf("a first look carried a year of firings into the reading: %+v", a.home.fired)
 	}
-	if text := homeText(a); strings.Contains(text, "since you left") {
+	// THE `since you left` PANEL KEEPS ITS HEADING AND WHISPERS (DESIGN.md §4),
+	// and no line of it counts a firing.
+	if text := homeText(a); !strings.Contains(text, homeWhisper[panelLeft]) {
 		t.Fatalf("a first look drew a ledger:\n%s", text)
 	}
 }
