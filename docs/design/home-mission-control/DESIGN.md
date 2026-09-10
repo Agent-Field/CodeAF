@@ -219,12 +219,19 @@ useful.
 
 ## 6. Ruled 2026-09-10 (every default taken)
 
-1. **Jobs in `running`.** E1 publishes them; P2 draws them. Yes, or leave jobs
-   to the conversation that owns them.
-2. **`something is wrong` in wave 2**, with memos written where the ladder moves
-   and where a host dial fails. Agreed to defer?
-3. **No `receipt` role**; the prompt law instead (E5). Agreed?
-4. **The emptiness law narrowing** in law 4 is a written change to
-   `docs/DESIGN-LANGUAGE.md` and CLAUDE.md's design-laws list. Agreed?
-5. **Cross-window stop** stays absent, not broken (law: a capability that cannot
-   work is absent). The row says `another window`. Agreed?
+1. **Jobs in `running`** — yes. E1 publishes them; P2 draws them.
+2. **`something is wrong`** — wave 2, once the ladder and the host dial write memos.
+3. **No `receipt` role** — the prompt law (E5) instead.
+4. **The emptiness law narrows for panels** — written into `docs/DESIGN-LANGUAGE.md`
+   ("presence over labels") and CLAUDE.md's design-laws list in this branch.
+5. **Cross-window stop stays absent**, not broken; the row says `another window`.
+
+## 7. Where the work runs
+
+Lanes E, G and K run as Claude Code instances on the Spark under fleet
+(`af-home-e`, `af-home-g`, `af-home-k`; worktrees `~/af-home-<lane>` on the
+Spark, branches `home/mc-<lane>`, briefs in `spark:~/af-home-briefs/`, logs
+`spark:~/af-home-<lane>.log`, reports `spark:~/af-home-<lane>.report.md`).
+The integrator merges each into `home/mission-control`, builds `bin/aforge`
+for the owner after every viewable step, and runs the full suites once, at
+the end, on the Spark.
