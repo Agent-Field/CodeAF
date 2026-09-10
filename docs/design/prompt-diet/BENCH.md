@@ -200,6 +200,35 @@ code that fixes them: a parent test counted beside its own children turned one
 broken subtest into two failures, and a `wall_s` that travelled as a JSON string
 was silently dropped by a numeric filter and printed as an em dash.
 
+## 1c. The prefix does not hold still, on either branch
+
+Byte-stability is a different question from size, and DESIGN.md §0 opens on it:
+on a frontier model a prefix one byte different from the last request's
+re-prices the whole conversation cold. Nothing in this bench could see that
+until `lib/wire.py` started fingerprinting each request's system message and
+tool block from the bodies the call log already keeps. Over the **turn** calls
+of the same two runs:
+
+| | dev | diet |
+| --- | --- | --- |
+| turn calls fingerprinted | 69 | 19 |
+| distinct system prompts | 5 | 4 |
+| distinct tool blocks | 3 | 2 |
+| system bytes seen | 20,406 · 20,412 · 23,027 · 23,029 · 38,696 | 17,229 · 17,235 · 17,787 · 17,789 |
+| tool-block bytes seen | 30,938 · 40,660 · 53,028 | 29,047 · 38,769 |
+
+The sizes that differ by thousands are the honest ones — a shelf loaded, a
+project instruction file folded in, a task's own page. **The pairs two and six
+bytes apart are not.** `23,027` against `23,029` covers 51 of dev's 69 turn
+calls: a prefix that moves by two bytes between requests inside one
+conversation, which is a cold re-price every time it moves and is invisible in
+every size column this bench prints. The diet has the same wobble at the same
+scale (`17,787` / `17,789`, `17,229` / `17,235`) — it neither introduced it nor
+fixed it.
+
+Nothing here says which two bytes. That is lane K's question, and §7 hands it
+the evidence.
+
 ## 2. What is not covered, and why that is stated rather than fixed
 
 The wave brief asked for cells exercising a conversation turn, a task handoff, a
@@ -338,6 +367,39 @@ report. `bench/conversation` bills at its own guard, which is the same
 measurement for every model, and never at an account-level credit delta on a
 shared key.
 
+## 4a. The lean cell — planned, and blocked on lane G
+
+DESIGN.md §3's verdict on the lean profile is explicit: it "exists only if
+`prefixbudget_test` weighs it and a local-model bench cell runs it". This is
+that cell, and it is not runnable yet — `AFORGE_PROMPT_PROFILE` does not exist
+in the merged tree, so there is nothing to switch on. When lane G lands it:
+
+```sh
+ssh spark 'export PATH=$HOME/.local/bin:$PATH; set -a; . ~/.config/fleet/secrets.env; set +a
+  AFORGE_PROMPT_PROFILE=lean CONV_PASS_ENV=AFORGE_PROMPT_PROFILE \
+    ~/bench-diet/rig/bench/prompt-diet/run.sh prompt-diet/integrate diet-lean \
+      --layers a,c,d'
+ssh spark '~/bench-diet/rig/bench/prompt-diet/compare.py diet diet-lean --out-root ~/bench-diet-out'
+```
+
+`CONV_PASS_ENV` is not optional: `bench/conversation` hands a harness only the
+variables it is told to carry, so a profile set in the caller's shell and not
+named there reaches nothing and the cell silently measures the full profile
+instead — which would read as a lean profile that saved nothing.
+
+**It is recorded separately and never averaged with the full-profile rows.** The
+two are different products with different belts, and one number over both would
+describe no run that ever happened. The comparison to make is `diet` against
+`diet-lean` on the same branch and the same cells, not `dev` against
+`diet-lean`: the question the lean profile has to answer is whether it keeps
+parity while paying Pi-sized, and that is a claim about the profile, not about
+the diet.
+
+The open-weight pin is already this bench's default
+(`deepseek/deepseek-v4-flash-0731`), so no `--model` is needed; a genuinely
+small local model is the harder follow-up and needs a window that
+`ContextWindowFor` actually reads as small.
+
 ## 5. The ablation — prepared, not run
 
 DESIGN.md §3 calls ablation "the arbiter", and it is the only instrument that
@@ -446,6 +508,28 @@ as a pass nor as a regression.
 
 - **`AFORGE_PROMPT_ABLATE`**, from lane C or lane G. Without it, two of the ten
   largest law units — standing and accounts — cannot be ablated at all (§5).
+
+- **`AFORGE_PROMPT_PROFILE`**, from lane G, for the lean cell in §4a. Until it
+  exists the lean profile has no bench cell, and DESIGN.md §3 says it should not
+  ship without one.
+
+- **The raw wire evidence for lane K** is on the Spark and needs no re-capture.
+  Per label — `dev` and `diet`:
+
+  | what | path |
+  | --- | --- |
+  | normalised, one row per request | `~/bench-diet-out/<label>/wire.jsonl` |
+  | whole request bodies | `~/bench-diet-out/<label>/cells/conversation.calllog.jsonl` |
+  | the guard's own token and cost ledger | `~/bench-diet-out/<label>/cells/conversation/<scenario>-aforge/guard-usage.jsonl` |
+
+  The call logs are 14 MB (dev, 190 rows) and 2.4 MB (diet, 80 rows), and EVERY
+  row carries its whole `request_body` — system, tools and messages — because
+  the cells run under `AFORGE_CALL_LOG_BODIES=1`. `wire.jsonl` deliberately does
+  not copy those bytes; it carries the fingerprints computed from them
+  (`system_bytes`, `system_sha`, `tool_block_bytes`, `tools_sha`, `prefix_sha`)
+  and a `body_source` naming the log beside it. §1c is what those fields already
+  say, and the two-byte wobble across 51 of dev's 69 turn calls is the thread to
+  pull.
 
 - **An issue about the one-endpoint pin.** §1's model-pin note has the evidence:
   an endpoint excluded by account policy ends a turn instead of hopping, while
