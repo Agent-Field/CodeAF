@@ -120,14 +120,16 @@ func TestHomeDrawsTheAnswersToAnotherWindowsQuestion(t *testing.T) {
 			t.Fatalf("the card does not offer %q:\n%s", chip, text)
 		}
 	}
-	// AND THEY STAY ON THEIR ROW WHEREVER THE CURSOR IS (DESIGN §1 law 7): a
-	// digit answers the top question from anywhere on home, so the key it sends
-	// is drawn where the question is and never follows the cursor. Only the top
-	// question draws them, which is what keeps one `1` on the screen
-	// (homepanel_needs.go).
+	// AND ONCE, ON THE ROW, WHEREVER THE CURSOR IS. The grid draws a question's
+	// answers on its `needs you` row and a digit answers the top one from
+	// anywhere (homegrid.go's [app.homeGridAnswer]) — so the chips neither
+	// follow the cursor off the row nor appear a second time at the foot.
+	if n := strings.Count(text, "3 deny"); n != 1 {
+		t.Fatalf("the chips are drawn %d times with the cursor on their row:\n%s", n, text)
+	}
 	lab.a.home.point(lab.a.file)
-	if text := homeText(lab.a); !strings.Contains(text, "3 deny") {
-		t.Fatalf("the chips left the question when the cursor moved:\n%s", text)
+	if n := strings.Count(homeText(lab.a), "3 deny"); n != 1 {
+		t.Fatalf("the chips are drawn %d times with the cursor elsewhere:\n%s", n, homeText(lab.a))
 	}
 }
 

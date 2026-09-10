@@ -32,6 +32,17 @@ func placeApp(t *testing.T) *app {
 	return a
 }
 
+// placeAppOneColumn is [placeApp] on a home one column wide, where `→` has no
+// column to cross into and opens the row's verbs (homegrid.go's
+// [app.homeGridCross]).
+func placeAppOneColumn(t *testing.T) *app {
+	t.Helper()
+	a := placeApp(t)
+	a.width = homeGridTwoAt - 1
+	placeFrameText(a)
+	return a
+}
+
 // placeFrameText is whatever place is up, as a reader sees it.
 func placeFrameText(a *app) string {
 	f, _, _ := a.frame()
@@ -324,7 +335,7 @@ func TestALetterIsAVerbOnlyWhileTheStripIsDrawn(t *testing.T) {
 // to open (switcher.go's [switcherVerbsFor]) — so a row the world recorded no
 // workspace for offers nothing, and the arrow goes on meaning what it meant.
 func TestTheArrowOnlyOpensAStripWhereTheRowHasVerbs(t *testing.T) {
-	a := placeApp(t)
+	a := placeAppOneColumn(t)
 	a.home.box.reset()
 	a.home.build()
 	drive(t, a, key("right"))
@@ -359,7 +370,7 @@ func TestTheArrowOnlyOpensAStripWhereTheRowHasVerbs(t *testing.T) {
 // cursor's, the row above them is the one the verbs act on, and the frame is
 // exactly as tall as it was before `→` was pressed.
 func TestTheVerbStripIsDrawnUnderTheRowAndPushesTheListDown(t *testing.T) {
-	a := placeApp(t)
+	a := placeAppOneColumn(t)
 	a.home.box.reset()
 	a.home.build()
 	before := strings.Split(placeFrameText(a), "\n")
@@ -428,7 +439,7 @@ func TestTheVerbStripIsDrawnUnderTheRowAndPushesTheListDown(t *testing.T) {
 // AND THE COMPOSER IS ASLEEP WHILE THE STRIP IS UP: every printable is a verb or
 // nothing, and none of them is a character.
 func TestTheComposerIsAsleepWhileTheStripIsUp(t *testing.T) {
-	a := placeApp(t)
+	a := placeAppOneColumn(t)
 	a.home.box.reset()
 	a.home.build()
 	drive(t, a, key("right"))

@@ -120,17 +120,21 @@ func TestWhereYouWereLeadsWithThisWindowsOwnConversation(t *testing.T) {
 	if !strings.Contains(lines[own], homeHereWord) || !strings.Contains(lines[own+1], "explain open addressing") {
 		t.Fatalf("the own row does not say here with its last words under it:\n%s", frame)
 	}
-	if !strings.Contains(frame, "5 more · "+homeFindWord) {
+	if !strings.Contains(frame, "6 more · "+homeFindWord) {
 		t.Fatalf("the quiet tail is not folded behind one line:\n%s", frame)
 	}
 	// AND A ROW FROM ANOTHER FOLDER SAYS WHICH, where one from this folder does
-	// not.
-	if quiet := lines[own+2]; !strings.Contains(quiet, "Quiet Chat a") || !strings.Contains(quiet, "beta") {
+	// not. The conversation mid-turn is here too: `running` lists the work a
+	// conversation sent out and never the conversation, so this is its panel.
+	if moving := lines[own+2]; !strings.Contains(moving, "Bounty Reward Companies") || !strings.Contains(moving, "beta") {
 		t.Fatalf("a row from another folder does not carry its project:\n%s", frame)
 	}
-	// AND THE TWO ROWS THAT ARE ON OTHER PANELS ARE NOT HERE A SECOND TIME.
-	if strings.Count(frame, "Swarm Task Splitting") != 1 || strings.Count(frame, "Bounty Reward Companies") != 1 {
-		t.Fatalf("a conversation is drawn on two panels:\n%s", frame)
+	if quiet := lines[own+3]; !strings.Contains(quiet, "Quiet Chat a") {
+		t.Fatalf("the quiet rows do not follow in recency order:\n%s", frame)
+	}
+	// AND THE ROW WAITING ON A PERSON IS NOT HERE A SECOND TIME.
+	if strings.Count(frame, "Swarm Task Splitting") != 1 {
+		t.Fatalf("a conversation waiting on you is drawn on two panels:\n%s", frame)
 	}
 }
 

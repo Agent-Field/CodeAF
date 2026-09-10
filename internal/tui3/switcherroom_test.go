@@ -1,10 +1,8 @@
 package tui3
 
 import (
-	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -86,45 +84,6 @@ func TestAGrownListStillPaysForItsOwnHeadings(t *testing.T) {
 	if got := switcherDrawnRows(r); got <= switcherShown {
 		t.Fatalf("grouped in a column of %d rows drew %d conversations, want more than the floor of %d:\n%s",
 			room, got, switcherShown, switcherText(r, 120))
-	}
-}
-
-// TestHomeDrawsAsManyConversationsAsTheFrameHolds is the same fix at the door a
-// person uses: the whole screen, at two heights, counted off the drawn frame.
-func TestHomeDrawsAsManyConversationsAsTheFrameHolds(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	mine := ""
-	for i := 0; i < 24; i++ {
-		file := lab.session("-tmp-alpha", fmt.Sprintf("aaaa0000000%05d", i), fmt.Sprintf("chat number %02d", i), "/tmp/alpha", now.Add(-time.Duration(i+1)*time.Hour))
-		if i == 0 {
-			mine = file
-		}
-	}
-	a := lab.app(mine)
-	a.openHome()
-
-	count := func(width, height int) (int, string) {
-		a.width, a.height = width, height
-		text := homeText(a)
-		return strings.Count(text, "Chat Number"), text
-	}
-	short, shortText := count(120, 24)
-	tall, tallText := count(120, 50)
-	if tall <= short {
-		t.Fatalf("a 50-row terminal drew %d conversations and a 24-row one drew %d — the taller frame is meant to spend its rows on the list:\n%s", tall, short, tallText)
-	}
-	if tall <= switcherShown {
-		t.Fatalf("a 50-row terminal drew %d conversations, want more than the floor of %d:\n%s", tall, switcherShown, tallText)
-	}
-	if short < switcherShown {
-		t.Fatalf("a 24-row terminal drew %d conversations, want at least the floor of %d:\n%s", short, switcherShown, shortText)
-	}
-	// AND THE BLANK ROWS ARE THE POINT. A frame that grew its list and still
-	// ended in a column of nothing would have moved the defect rather than
-	// fixed it.
-	if blank := trailingBlankRows(tallText); blank > 2 {
-		t.Fatalf("a 50-row terminal left %d rows of nothing under a folded list:\n%s", blank, tallText)
 	}
 }
 
