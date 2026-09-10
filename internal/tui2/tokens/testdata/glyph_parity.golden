@@ -4,10 +4,10 @@
 # because a private-use character is invisible in a diff.
 
 --- card line 1 ---
-plain    "◐ navigate: read src/navigate.rs [?2] · 12s · $0.04"
-         width 51/51  marks U+25D0 U+00B7 U+00B7
-nerdfont "\uf042 navigate: read src/navigate.rs [\uf29c2] · 12s · $0.04"
-         width 51/51  marks U+F042 U+F29C U+00B7 U+00B7
+plain    "◐ navigate  read src/navigate.rs  ? 2  12s  $0.04"
+         width 49/49  marks U+25D0
+nerdfont "\uf042 navigate  read src/navigate.rs  \uf29c 2  12s  $0.04"
+         width 49/49  marks U+F042 U+F29C
 
 --- place line ---
 plain    "~/a/v2 · ⌂ /tmp/wisp-parity · ⋔ main · / src/navigate.rs"
@@ -46,10 +46,10 @@ nerdfont "▾"
          width 1/1  marks U+25BE
 
 --- cut row ---
-plain    "╌ cut off — output cap ─────────────────────"
-         width 44/44  marks U+254C U+2014 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500
-nerdfont "╌ cut off — output cap ─────────────────────"
-         width 44/44  marks U+254C U+2014 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500
+plain    "────────────────────────────────────────── ╌"
+         width 44/44  marks U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+254C
+nerdfont "────────────────────────────────────────── ╌"
+         width 44/44  marks U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+254C
 
 --- step dots ---
 plain    "●●◐⚑○  3/5"
