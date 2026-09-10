@@ -855,6 +855,9 @@ type Outcome struct {
 	// Published is the receipt for the report the runner wrote, when the item
 	// has one ([Action.Report]) and the firing came to something to publish.
 	Published *Publication
+	// Withheld is the code of the one reason the runner did not publish the
+	// report ([Occurrence.Withheld]); "" when it published, or keeps none.
+	Withheld string
 }
 
 // OutcomeNothing is the [Outcome.Kind] of a run that delivered nothing at all:

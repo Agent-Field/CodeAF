@@ -677,6 +677,13 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 					end.capped = true
 					agent.InterruptFor(StopByWorkStopped)
 				}
+			case EventTurnDone:
+				// THE TURN SAYS HOW IT ENDED. An answer the loop stopped asking the
+				// rest of at the output limit ends its turn like any other, so it
+				// is this mark and not the turn's ending that says the answer is
+				// partial ([Event.Truncated]). The last turn's ending is the one
+				// that counts, as the last turn's words are.
+				end.truncated = event.Truncated
 			case EventToolFailed:
 				// A REFUSED WRITE OF THE RUN'S OWN REPORT IS NOT A QUESTION FOR
 				// THE PERSON. aforge publishes that one path itself, so there is
@@ -795,10 +802,10 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		// THE ANSWER IS READ AGAIN after the correction, which may itself
 		// have been stopped at a limit, cut off, or left its report unclosed.
 		if w := end.withheld(true, ctx.Err()); w != notWithheld {
-			publish = false
+			publish, withheld = false, w
 			outcome = end.outcome(w, ctx.Err())
 		} else if held != "" {
-			publish = false
+			publish, withheld = false, withheldByRules
 			outcome.Kind = standing.OutcomeNeedsYou
 			outcome.NeedsPerson = clip(held, standingOutcomeClip)
 			outcome.Text = outcome.NeedsPerson
@@ -830,11 +837,13 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		if report != "" {
 			outcome.Text = "stopped while it ran: its report was not published and no note was sent; the previous report is unchanged"
 		}
+		recordWithheld(&outcome, withheldStopped, report != "")
 		return outcome, nil
 	}
 	if publish {
 		published, err := publishStandingReport(item.Workspace, report, final)
 		if err != nil {
+			withheld = withheldUnwritten
 			outcome.Kind = standing.OutcomeFailed
 			outcome.Text = "could not publish the report to " + report + ": " + err.Error()
 		} else {
@@ -850,6 +859,9 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 			outcome.Text = clip("report updated: "+report+" — "+final, standingOutcomeClip)
 		}
 	}
+	// The answer is recorded beside the outcome, as a code (occurrence.json's
+	// "withheld"), for whatever reads the record rather than the line.
+	recordWithheld(&outcome, withheld, report != "")
 	if outcome.Kind == standing.OutcomeNothing {
 		// A RUN THAT CAME TO NOTHING TELLS NOBODY, because there is nothing to
 		// tell: no line, no landing, nothing waiting. Walking the delivery roads

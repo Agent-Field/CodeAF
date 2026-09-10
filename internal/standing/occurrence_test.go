@@ -16,6 +16,8 @@ type occurrenceRunner struct {
 	seen   []Occurrence
 	during func(Item)
 	calls  int
+	// withholding is the code every failed run comes back withheld with.
+	withholding string
 	// failing is how many of the next runs come back failed, unpublished.
 	failing int
 }
@@ -36,7 +38,7 @@ func (r *occurrenceRunner) Run(_ context.Context, item Item, runDir, evidence st
 	}
 	if r.failing > 0 {
 		r.failing--
-		return Outcome{Kind: OutcomeFailed, Text: "the run was cut off before it finished"}, nil
+		return Outcome{Kind: OutcomeFailed, Text: "the run was cut off before it finished", Withheld: r.withholding}, nil
 	}
 	return Outcome{Kind: "landed", Text: evidence, Published: &Publication{Path: item.Does.Report, SHA256: "abc", Bytes: 3}}, nil
 }
@@ -114,9 +116,38 @@ func TestAFiringRecordsItsCauseBeforeItRunsAndWhatChanged(t *testing.T) {
 	if done.Phase != PhaseFinished || done.Outcome != "landed" || done.Published == nil || done.Published.Path != "reports/inbox.md" {
 		t.Fatalf("the finished record is %+v", done)
 	}
+	// A run that published carries no withheld code at all, so the record reads
+	// exactly as one written before the code existed.
+	if raw, _ := os.ReadFile(filepath.Join(done.RunDir, OccurrenceFile)); strings.Contains(string(raw), `"withheld"`) {
+		t.Fatalf("a published run was recorded as withheld:\n%s", raw)
+	}
 	item, _ := store.Get(made.ID)
 	if done.Reading == "" || done.Reading != item.Fingerprint || item.LastRun != done.RunDir {
 		t.Fatalf("the item and its record disagree: reading %q item %q lastRun %q", done.Reading, item.Fingerprint, item.LastRun)
+	}
+}
+
+// A RUN WHOSE REPORT WAS WITHHELD SAYS WHY IN ITS RECORD, as the code the
+// runner answered with, beside the outcome and the line a person reads.
+func TestAWithheldRunIsRecordedWithItsCode(t *testing.T) {
+	now := time.Date(2026, 9, 10, 9, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+	made, workspace := watching(t, store)
+	runner := &occurrenceRunner{withholding: "at-a-limit", failing: 1}
+	mustTick(t, newTicker(store, runner, now)) // the baseline
+	writeFile(t, filepath.Join(workspace, "inbox", "new.md"), "new")
+	store.clock = held(now.Add(time.Minute))
+	mustTick(t, newTicker(store, runner, now.Add(time.Minute)))
+	records, err := store.Occurrences(made.ID, 0)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("records %+v %v", records, err)
+	}
+	done := records[0]
+	if done.Outcome != OutcomeFailed || done.Published != nil || done.Withheld != "at-a-limit" {
+		t.Fatalf("the withheld run was recorded as %+v", done)
+	}
+	if raw, _ := os.ReadFile(filepath.Join(done.RunDir, OccurrenceFile)); !strings.Contains(string(raw), `"withheld": "at-a-limit"`) {
+		t.Fatalf("occurrence.json does not carry the code:\n%s", raw)
 	}
 }
 

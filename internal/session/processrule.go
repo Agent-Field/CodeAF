@@ -461,7 +461,7 @@ func (a *Agent) stopForProcessRule(ctx context.Context, hub *eventHub, calls []a
 	a.journalProcessRule(hold.rule, ruleStopped)
 	hub.send(Event{Kind: EventNotice, Text: landing})
 	a.record(textMessage("assistant", landing))
-	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(*turn, started, model)})
+	hub.send(a.turnDone(a.sealTurn(*turn, started, model)))
 	a.maybeTitle(ctx, hub)
 	return true
 }

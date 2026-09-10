@@ -860,7 +860,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			a.tellPhase(provider.PhaseChecking, "whether that should be work", time.Now())
 			a.routeJudge(ctx, hub, user, usedTools, response.Text())
 			a.endPhase()
-			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
+			hub.send(a.turnDone(a.sealTurn(turn, started, model)))
 			// The name comes after the turn is done and before the hub closes:
 			// the person is not kept waiting on a title, and the event still has
 			// a stream to land on (title.go).
@@ -1106,7 +1106,7 @@ func (a *Agent) endStoppedTurn(ctx context.Context, hub *eventHub, partial *part
 			hub.send(Event{Kind: EventNotice, Text: said})
 		}
 	}
-	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
+	hub.send(a.turnDone(a.sealTurn(turn, started, model)))
 }
 
 // keepSteeredPartial records the legal assistant half of a cut generation.

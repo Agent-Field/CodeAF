@@ -2280,6 +2280,14 @@ func (a *Agent) markTurnTruncated() {
 	a.mu.Unlock()
 }
 
+// turnDone is the event that ends a turn: its usage, and whether its last
+// answer was cut at the output limit ([Event.Truncated]). EVERY TURN THAT ENDS
+// THROUGH THE MODEL LOOP ENDS THROUGH THIS, so the stream says what the flag
+// says.
+func (a *Agent) turnDone(usage Usage) Event {
+	return Event{Kind: EventTurnDone, Usage: usage, Truncated: a.turnTruncated()}
+}
+
 // turnTruncated is the reporting side of [Agent.markTurnTruncated].
 func (a *Agent) turnTruncated() bool {
 	a.mu.Lock()

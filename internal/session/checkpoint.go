@@ -3901,7 +3901,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// pull request still owed, in the order they were drawn. Without it the
 	// reduction would be a harness quietly dropping half of what was asked for.
 	a.record(textMessage("assistant", line+"\n"+said+heldRestRecord(read.ownRemainder)))
-	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(*turn, started, model)})
+	hub.send(a.turnDone(a.sealTurn(*turn, started, model)))
 	// And the name, on the terms every other turn shape takes it (title.go).
 	a.maybeTitle(ctx, hub)
 	return checkpointHandover{moved: true, decision: checkpointCeilingMoved, taskID: id, carry: carried}
@@ -4082,7 +4082,7 @@ func (a *Agent) endTurnUnderSteward(ctx context.Context, hub *eventHub, turn *Us
 	}
 	hub.send(Event{Kind: EventNotice, Text: note})
 	a.record(textMessage("assistant", note))
-	hub.send(Event{Kind: EventTurnDone, Usage: usage})
+	hub.send(a.turnDone(usage))
 	// And the name, on the terms every other turn shape takes it (title.go).
 	a.maybeTitle(ctx, hub)
 	return stewardReading{read: true, decision: decision},

@@ -109,7 +109,7 @@ func (a *Agent) routeHarness(ctx context.Context, hub *eventHub, user userMessag
 	if err != nil {
 		// The turn died under the question — an interrupt, a closed agent. The
 		// turn ends the way every interrupted turn ends, and nothing ran.
-		hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{}, started, a.Model())})
+		hub.send(a.turnDone(a.sealTurn(Usage{}, started, a.Model())))
 		return true, false
 	}
 	if !answer.run {
@@ -169,7 +169,7 @@ func (a *Agent) runHarnessRoute(ctx context.Context, hub *eventHub, route harnes
 	// went through the auxiliary door above ([Agent.foldHarnessUsage]), which is
 	// the same shape the image turn keeps (image.go). Counting it here as well
 	// would bill the person twice for one run.
-	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{Turns: 1}, started, a.Model())})
+	hub.send(a.turnDone(a.sealTurn(Usage{Turns: 1}, started, a.Model())))
 	// And the name, on the same terms the ordinary turn takes it (title.go): a
 	// session whose first turn was a harness run is still a session with a
 	// subject.

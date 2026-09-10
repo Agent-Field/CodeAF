@@ -281,7 +281,7 @@ func TestAReportThatStillBreaksARuleIsHeldBackAndThePreviousOneStays(t *testing.
 		t.Fatal(err)
 	}
 	raw, _ := os.ReadFile(filepath.Join(workspace, "reports", "r.md"))
-	if string(raw) != previous || outcome.Published != nil || outcome.Kind != standing.OutcomeNeedsYou || !strings.Contains(outcome.NeedsPerson, "held back") {
+	if string(raw) != previous || outcome.Published != nil || outcome.Kind != standing.OutcomeNeedsYou || !strings.Contains(outcome.NeedsPerson, "held back") || outcome.Withheld != "held-by-rules" {
 		t.Fatalf("a still-broken report: outcome %+v report %q", outcome, raw)
 	}
 	held, err := os.ReadFile(filepath.Join(runDir, heldReportFile))
@@ -361,10 +361,10 @@ func TestAStopWhileARunIsWorkingWithholdsItsReportButAPauseDoesNot(t *testing.T)
 				t.Fatal(err)
 			}
 			_, statErr := os.Stat(filepath.Join(workspace, "reports", "r.md"))
-			if (statErr == nil) != c.published || (outcome.Published != nil) != c.published {
+			if (statErr == nil) != c.published || (outcome.Published != nil) != c.published || (c.published && outcome.Withheld != "") {
 				t.Fatalf("%s mid-run: published=%v outcome %+v", c.status, statErr == nil, outcome)
 			}
-			if !c.published && (outcome.Kind != standing.OutcomeNothing || !strings.Contains(outcome.Text, "stopped while it ran")) {
+			if !c.published && (outcome.Kind != standing.OutcomeNothing || !strings.Contains(outcome.Text, "stopped while it ran") || outcome.Withheld != "stopped") {
 				t.Fatalf("a stopped run's outcome: %+v", outcome)
 			}
 		})
@@ -374,7 +374,9 @@ func TestAStopWhileARunIsWorkingWithholdsItsReportButAPauseDoesNot(t *testing.T)
 // THE REPORT IS WHAT IS BETWEEN ITS LINES. The live journey's reports opened
 // with the model's own sentence on the way to writing them, in the same turn;
 // a delimited report is published without it. A report opened and never closed
-// is no report at all: its end is wherever the run stopped writing.
+// is no report at all: its end is wherever the run stopped writing. Nor is one
+// closed and never opened, whose start nobody can tell; and an empty one is
+// read as the empty body it is, for the decision to refuse.
 func TestAReportIsWhatIsBetweenItsLinesAndNotTheSentenceBeforeIt(t *testing.T) {
 	for text, want := range map[string]struct {
 		body  string
@@ -387,6 +389,9 @@ func TestAReportIsWhatIsBetweenItsLinesAndNotTheSentenceBeforeIt(t *testing.T) {
 		"<report>\nfirst\n</report>\na second try\n<report>\nhalf of it":                            {"", unclosedReport},
 		"<report>\n# Report\n- x</report>I cannot write the file myself.":                           {"# Report\n- x", closedReport},
 		"I will put it between <report> and </report>.\n<report>\n# R\n</report>":                   {"# R", closedReport},
+		"<report>\n</report>":                   {"", closedReport},
+		"<report>\n  \n</report>":               {"", closedReport},
+		"Here it is.\n# Report\n- x\n</report>": {"", unopenedReport},
 	} {
 		if body, lines := delimitedReport(text); body != want.body || lines != want.lines {
 			t.Errorf("delimitedReport(%q) = %q, %d; want %q, %d", text, body, lines, want.body, want.lines)

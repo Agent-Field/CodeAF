@@ -599,6 +599,7 @@ func (t *Ticker) finishOccurrence(runDir string, admitted Occurrence, outcome Ou
 	if outcome.Published != nil {
 		record.Published = outcome.Published
 	}
+	record.Withheld = outcome.Withheld
 	if failure != nil {
 		record.Outcome = OutcomeFailed
 		record.Error = oneLine(failure.Error())

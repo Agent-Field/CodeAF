@@ -639,6 +639,17 @@ type Event struct {
 	Usage         Usage
 	TaskReplyTags []TaskReplyTag
 
+	// Truncated is set on EventTurnDone when the turn's last answer stopped at
+	// the provider's output limit and its continuations ran out
+	// ([truncationContinuations]): the words that streamed are the start of an
+	// answer, not an answer. It is read off the same bit
+	// [Agent.markTurnTruncated] sets ([Agent.turnDone]), so the event and the
+	// flag cannot disagree about one turn, and a reader of the stream — an
+	// unattended run deciding whether it may publish (standing_publish.go) —
+	// learns it without reaching into the agent. It rides the wire behind a tag
+	// of its own for the same reason [Event.Category] does.
+	Truncated bool `json:"Truncated,omitempty"`
+
 	// Category is the FAMILY OF WORK an EventCaption's sentence is about — one
 	// word from the closed list in actioncategory.go — and it is zero on every
 	// other kind.
@@ -2344,7 +2355,10 @@ type Agent struct {
 	// lastTurnTruncated is the honest takeover from the model loop to headless
 	// node reporters. The finish reason is response metadata and is not part of
 	// the transcript, so without this bit a digest can only repeat the cut-off
-	// prose and falsely make the node look complete.
+	// prose and falsely make the node look complete. It leaves the agent on the
+	// turn's closing event ([Agent.turnDone]), which is how a standing run's
+	// reader learns it: a reader that watched the stream and a reader that asked
+	// the flag cannot disagree, because the event is built from the flag.
 	lastTurnTruncated bool
 	// memoryText is the <memory> block message[0] currently carries: what the
 	// router asked for at the start of this turn, or the block a task node was

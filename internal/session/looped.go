@@ -896,7 +896,7 @@ func (a *Agent) handOverLoopingTurn(ctx context.Context, hub *eventHub, user use
 	}
 	hub.send(Event{Kind: EventNotice, Text: loopLeftUndoneNote})
 	a.record(textMessage("assistant", loopLeftUndoneNote))
-	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(*turn, started, model)})
+	hub.send(a.turnDone(a.sealTurn(*turn, started, model)))
 	a.maybeTitle(ctx, hub)
 	return true
 }
