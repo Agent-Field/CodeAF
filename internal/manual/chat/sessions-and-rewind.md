@@ -595,6 +595,25 @@ were in stays open. The lock the door would otherwise meet is our own.
 A conversation another *terminal* is holding open is reported rather than worked around. See
 the section on two terminals in the same folder.
 
+## Long research and tool results — what the model keeps
+
+A long turn can shorten older tool results after the model has seen them and
+they leave its recent working window. This applies to research and shell output
+as well as work that edits files; it does not require a file change.
+
+The model keeps the beginning and end of each shortened result, how much was
+omitted, and a path or transcript reference for reading the complete original.
+Your request and the commands it ran remain. Recent results and results the
+model has not yet seen stay whole. Images and other non-text observations are
+not removed by this text reduction.
+
+The middle of a shortened result may need to be read again to answer a detailed
+question. The original bytes remain available, and scrolling back still shows
+the original conversation. A result with nowhere to preserve its original is
+left whole. Small savings that would repeatedly invalidate the model's cached
+context are left alone; a useful reduction can happen even if protected recent
+work keeps the conversation above its cleanup target.
+
 ## Two terminals in the same folder — continue a chat in another terminal
 
 **Yes, you can run more than one aforge at once in the same workspace.** What you usually

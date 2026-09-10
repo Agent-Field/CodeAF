@@ -369,11 +369,23 @@ func compactLeaveVerbatim(text string) bool {
 }
 
 func replaceToolText(message ai.Message, text string) ai.Message {
-	return ai.Message{
-		Role:       message.Role,
-		ToolCallID: message.ToolCallID,
-		Content:    []ai.ContentPart{{Type: "text", Text: text}},
+	// A textual view must not silently discard an image or another non-text
+	// observation. Copy the parts before replacing text so retained snapshots
+	// continue to hold the original evidence.
+	parts := make([]ai.ContentPart, 0, len(message.Content))
+	replaced := false
+	for _, part := range message.Content {
+		if part.Type == "text" {
+			if !replaced {
+				parts = append(parts, ai.ContentPart{Type: "text", Text: text})
+				replaced = true
+			}
+			continue
+		}
+		parts = append(parts, part)
 	}
+	message.Content = parts
+	return message
 }
 
 // toolResultBytes is the weight of a set of results, recomputed from scratch. The

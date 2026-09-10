@@ -21,8 +21,8 @@ const (
 	// turnWorkingSetTokens is the largest tool-working transcript one turn is
 	// allowed to carry before old results become pointers. Sixty-four thousand
 	// tokens holds the recent 20k-token work window plus several substantial tool
-	// rounds, while stopping the measured 100k–150k request loop long before the
-	// 256k trusted-window ceiling. Smaller windows use half their trusted size, so
+	// rounds, while allowing reductions before the
+	// model's full context window is exhausted. Smaller windows use half their trusted size, so
 	// this bound never claims most of a model's context for tool history alone.
 	turnWorkingSetTokens = 64_000
 )
@@ -64,12 +64,12 @@ type turnFoldReplacement struct {
 	message ai.Message
 }
 
-// foldTurnOutputs replaces consumed read results from the CURRENT turn with
-// pointers, oldest complete batch first, until the tool-output working set
-// reaches its headroom target. An observation becomes consumed only after work
-// made from it lands. Assistant text, calls and their arguments, mutating tool
-// batches, and every observation not yet acted upon remain verbatim.
-func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[*ai.ToolCall]bool, hub *eventHub) {
+// foldTurnOutputs reduces old observations from the CURRENT turn, oldest
+// complete batch first, towards its headroom target. A result must have reached
+// a model request and left the protected recent window. Research and shell
+// observations follow the same rule as any other tool; no later file change is
+// needed. Assistant text, calls, arguments and unseen results remain verbatim.
+func (a *Agent) foldTurnOutputs(seenThrough int, hub *eventHub) {
 	line := turnWorkingSet(a.window())
 	if line <= 0 {
 		return
@@ -86,8 +86,8 @@ func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[*ai.ToolCall]
 	selected := 0
 	if total > line*bytesPerToken {
 		limit := a.turnFoldLimitLocked(seenThrough)
-		batches := turnFoldBatches(a.messages, a.turnFloor, limit, consumedReads)
-		selected = turnFoldSelection(a.messages, batches, total, turnWorkingTarget(a.window())*bytesPerToken)
+		batches := turnFoldBatches(a.messages, a.turnFloor, limit)
+		selected = len(batches)
 	}
 	a.mu.Unlock()
 	if total <= line*bytesPerToken || selected == 0 {
@@ -117,16 +117,11 @@ func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[*ai.ToolCall]
 	earlier := shapeEntries(a.messages, a.file)
 	place := a.resultPlaceLocked()
 	target := turnWorkingTarget(a.window()) * bytesPerToken
-	batches := turnFoldBatches(a.messages, a.turnFloor, limit, consumedReads)
-	// A pass that cannot buy the whole headroom does not run. Every rewrite
-	// invalidates the provider cache from that point onward; repeatedly replacing
-	// one tiny result while protected observations hold the working set above the
-	// line is strictly worse than retaining the original context.
-	selected = turnFoldSelection(a.messages, batches, total, target)
-	if selected == 0 {
-		a.mu.Unlock()
-		return
-	}
+	batches := turnFoldBatches(a.messages, a.turnFloor, limit)
+	// The target buys headroom, but a protected remainder must not veto useful
+	// savings. The exact cold-suffix share below rejects trivial rewrites even
+	// when there are eligible observations.
+	calls := toolResultCalls(a.messages[:limit])
 	replacements := make([]turnFoldReplacement, 0, 16)
 	foldedBytes := 0
 	results := 0
@@ -148,14 +143,14 @@ func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[*ai.ToolCall]
 				complete = false
 				break
 			}
-			stub := ai.Message{
-				Role:       message.Role,
-				ToolCallID: message.ToolCallID,
-				Content: []ai.ContentPart{{Type: "text", Text: stubLine(
-					toolNameFor(a.messages, index), text, pointer)}},
+			view := reducedResultView(toolResultName(calls[index]), text, pointer)
+			stub := replaceToolText(message, view)
+			saved := messageBytes(message) - messageBytes(stub)
+			if saved <= 0 {
+				continue
 			}
 			prepared = append(prepared, turnFoldReplacement{index: index, message: stub})
-			batchSaved += messageBytes(message) - messageBytes(stub)
+			batchSaved += saved
 		}
 		if !complete {
 			continue
@@ -165,7 +160,16 @@ func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[*ai.ToolCall]
 		results += len(prepared)
 	}
 
-	if results == 0 || total-foldedBytes > target {
+	if results == 0 {
+		a.mu.Unlock()
+		return
+	}
+	// REWRITING A PREFIX MAKES ITS WHOLE SUFFIX COLD. Reuse the ordinary
+	// stubbing pass's worth test with actual savings, including view headers and
+	// paths. A large partial reclamation can pay; a tiny rewrite every round
+	// cannot. The model's next request is byte-stable when this test declines.
+	cold := transcriptBytes(a.messages[replacements[0].index:])
+	if foldedBytes*stubPrefixShare < cold {
 		a.mu.Unlock()
 		return
 	}
@@ -217,24 +221,6 @@ func (a *Agent) turnFoldLimitLocked(seenThrough int) int {
 	return limit
 }
 
-// turnFoldSelection reports how many oldest eligible batches are needed to
-// reach the target, or zero when all eligible observations together cannot buy
-// that headroom. It deliberately overestimates savings by the small pointer
-// bodies; the materialization pass below checks the exact bytes before writing
-// anything into the live transcript.
-func turnFoldSelection(messages []ai.Message, batches []turnFoldBatch, total, target int) int {
-	reclaimable := 0
-	for batchIndex, batch := range batches {
-		for _, index := range batch.indices {
-			reclaimable += messageBytes(messages[index])
-		}
-		if total-reclaimable <= target {
-			return batchIndex + 1
-		}
-	}
-	return 0
-}
-
 // turnToolBytes is the current turn's actual tool-observation working set. The
 // provider's prompt count also includes the system prompt, tool schemas,
 // assistant prose and call arguments; using that number as this pass's trigger
@@ -267,39 +253,34 @@ func transcriptBytes(messages []ai.Message) int {
 // partial batch at the horizon is left whole, because rewriting one sibling and
 // not another would make one model decision carry two different histories of
 // the observation it received.
-func turnFoldBatches(messages []ai.Message, start, limit int, consumedReads map[*ai.ToolCall]bool) []turnFoldBatch {
+func turnFoldBatches(messages []ai.Message, start, limit int) []turnFoldBatch {
 	var batches []turnFoldBatch
+	calls := toolResultCalls(messages[:limit])
 	for index := start; index < limit; index++ {
 		if messages[index].Role != "assistant" || len(messages[index].ToolCalls) == 0 {
-			continue
-		}
-		readBatch := true
-		for callIndex := range messages[index].ToolCalls {
-			call := &messages[index].ToolCalls[callIndex]
-			if !earlyTools[call.Function.Name] || !consumedReads[call] {
-				readBatch = false
-				break
-			}
-		}
-		if !readBatch {
 			continue
 		}
 		end := index + 1
 		for end < len(messages) && messages[end].Role == "tool" {
 			end++
 		}
-		if end > limit || end == index+1 {
+		if end > limit || end-index-1 != len(messages[index].ToolCalls) {
 			continue
 		}
 		batch := turnFoldBatch{indices: make([]int, 0, end-index-1)}
+		complete := true
 		for cursor := index + 1; cursor < end; cursor++ {
+			if calls[cursor] == nil {
+				complete = false
+				break
+			}
 			text := messageContentText(messages[cursor])
-			if strings.HasPrefix(strings.TrimSpace(text), stubMarker) {
+			if compactLeaveVerbatim(text) {
 				continue
 			}
 			batch.indices = append(batch.indices, cursor)
 		}
-		if len(batch.indices) > 0 {
+		if complete && len(batch.indices) > 0 {
 			batches = append(batches, batch)
 		}
 		index = end - 1

@@ -1263,20 +1263,33 @@ repeated writes to one file still hand over at the fifth call.
 
 ## The in-turn working-set ceiling
 
-A single tool-heavy turn starts folding already-seen tool results at **64,000
-tokens**, or half the trusted context window when that is smaller. It preserves
-the recent **20,000-token** tail (already the compaction tail law) and folds to
-the midpoint between that tail and the trigger. The lower target is part of the
-performance contract: rewriting one result makes the provider cache cold from
-that byte onward, so a pass that stopped just under the trigger would repay the
-whole cold prefix one tool round later.
+A single tool-heavy turn starts reducing old tool results at **64,000 tokens**,
+or half the trusted context window when that is smaller. A result must already
+have been presented to the model and be outside the recent **20,000-token**
+window (the existing compaction tail law). Research, shell commands and other
+tools follow the same rule; a later file change is no longer required.
 
-The pass changes only tool-result messages, in whole oldest-first batches. The
-person's message, assistant text and the newest batch the model has not seen are
-never candidates; every replaced result remains readable through its stub path.
-`TestALongTurnsToolWorkingSetStaysBounded` pins the 60-round request ceiling and
-the readable bytes, while the other `turnfold_test.go` cases pin the no-op below
-the line and the unseen-result horizon.
+The pass keeps whole completed batches and moves oldest-first towards the
+midpoint between the recent window and the trigger. That target buys headroom,
+not a condition that can veto all savings: a protected remainder may keep a pass
+above its target. Actual reclaimed bytes must still cover at least **1/8** of
+the suffix made cold by the first rewrite (`stubPrefixShare`, shared with the
+ordinary stubbing pass). This is a cache-cost heuristic, not a promise about the
+number or price of later model calls. No new threshold is introduced.
+
+Only tool-result text changes. The original ask, assistant text and call
+arguments, unseen results, recent context and non-text observations remain.
+Each view retains the existing **200-byte head and 400-byte tail**, its elision
+count and a retrievable full original. A batch without retrievable originals
+stays intact. Already-reduced views and short results are not reduced again.
+Arbitrary evidence in the middle remains recoverable, not necessarily visible
+in the shortened view; no output classifier declares it successful.
+
+`TestObservedContextFoldsResearchThroughSubmitAndReplay` pins the real research
+loop, mixed shell/read batches, repeated IDs, artifact recovery and journal
+replay. `TestObservedContextAcceptsUsefulPartialReclamation` covers useful
+savings with an unreachable target. The other turn-fold tests protect unseen
+and recent evidence, complete batches, no-op cache behavior and idempotence.
 
 ## The frozen tool history, rebuilt per request
 

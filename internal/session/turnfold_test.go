@@ -28,20 +28,6 @@ func turnFoldScript(rounds int) []step {
 	steps := make([]step, 0, rounds+3)
 	for round := 0; round < rounds; round++ {
 		round := round
-		// A successful edit is the consumption boundary: everything the model
-		// had read before deciding to write has now produced work and may become
-		// a recoverable pointer. Repeating the boundary keeps a genuinely long
-		// edit/read turn bounded without declaring untouched research disposable.
-		if round == 24 || round == 44 {
-			steps = append(steps, func(context.Context, []ai.Message) (*ai.Response, error) {
-				return toolResponseWithText(
-					fmt.Sprintf("save-%d", round),
-					"write",
-					fmt.Sprintf(`{"path":"checkpoint-%d.txt","content":"saved"}`, round),
-					fmt.Sprintf("saving checkpoint %d", round),
-				), nil
-			})
-		}
 		steps = append(steps, func(context.Context, []ai.Message) (*ai.Response, error) {
 			return toolResponseWithText(
 				fmt.Sprintf("call-%d", round),
@@ -65,22 +51,6 @@ func installTurnFoldReader(t *testing.T, agent *Agent, output string) {
 		}
 	}
 	t.Fatal("test agent has no read tool to replace")
-}
-
-func consumedTurnReads(messages []ai.Message, start, end int) map[*ai.ToolCall]bool {
-	consumed := make(map[*ai.ToolCall]bool)
-	if end > len(messages) {
-		end = len(messages)
-	}
-	for _, message := range messages[start:end] {
-		for index := range message.ToolCalls {
-			call := &message.ToolCalls[index]
-			if earlyTools[call.Function.Name] {
-				consumed[call] = true
-			}
-		}
-	}
-	return consumed
 }
 
 // SIXTY SMALL RESULTS STAY BOUNDED INSIDE ONE TURN. Each result is well below
@@ -129,7 +99,7 @@ func TestALongTurnsToolWorkingSetStaysBounded(t *testing.T) {
 	markers := 0
 	for _, message := range messages {
 		text := messageContentText(message)
-		if message.Role == "tool" && strings.HasPrefix(text, stubMarker) && stub == "" {
+		if message.Role == "tool" && strings.HasPrefix(text, compactReducedMarker) && stub == "" {
 			stub = text
 		}
 		if strings.HasPrefix(text, foldMarkerPrefix) {
@@ -151,7 +121,8 @@ func TestALongTurnsToolWorkingSetStaysBounded(t *testing.T) {
 		}
 	}
 
-	path := stubPathIn(t, stub)
+	header, _, _ := strings.Cut(stub, "\n")
+	path := stubPathIn(t, header)
 	full := path
 	if !filepath.IsAbs(full) {
 		full = filepath.Join(workspace, full)
@@ -212,7 +183,7 @@ func TestTurnFoldDoesNothingBelowTheWorkingSetLine(t *testing.T) {
 	collect(t, events)
 
 	for _, text := range toolTexts(agent) {
-		if strings.HasPrefix(text, stubMarker) {
+		if strings.HasPrefix(text, compactReducedMarker) {
 			t.Fatalf("a result below the line was folded: %.80q", text)
 		}
 	}
@@ -247,10 +218,9 @@ func TestTurnFoldNeverRewritesAnUnseenResult(t *testing.T) {
 	}
 	seenThrough := len(agent.messages) - 2
 	newest := len(agent.messages) - 1
-	consumed := consumedTurnReads(agent.messages, agent.turnFloor, len(agent.messages))
 	agent.mu.Unlock()
 
-	agent.foldTurnOutputs(seenThrough, consumed, nil)
+	agent.foldTurnOutputs(seenThrough, nil)
 
 	agent.mu.Lock()
 	got := messageContentText(agent.messages[newest])
@@ -281,12 +251,11 @@ func TestTurnFoldIgnoresNonObservationContextPressure(t *testing.T) {
 		)
 	}
 	horizon := len(agent.messages)
-	consumed := consumedTurnReads(agent.messages, agent.turnFloor, horizon)
 	agent.contextTokens = turnWorkingSet(agent.window()) + 10_000
 	before := append([]ai.Message(nil), agent.messages...)
 	agent.mu.Unlock()
 
-	agent.foldTurnOutputs(horizon, consumed, nil)
+	agent.foldTurnOutputs(horizon, nil)
 
 	agent.mu.Lock()
 	after := append([]ai.Message(nil), agent.messages...)
@@ -296,9 +265,9 @@ func TestTurnFoldIgnoresNonObservationContextPressure(t *testing.T) {
 	}
 }
 
-// Reading is not consumption. Until a successful file change proves the model
-// used those observations, even an oversized research pass remains verbatim.
-func TestTurnFoldKeepsUnactedResearchVerbatim(t *testing.T) {
+// Research uses the same observation horizon as other work. Old results can
+// shrink without a write; the recent working set remains verbatim.
+func TestTurnFoldReducesOldResearchAndKeepsRecentEvidence(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.ContextWindow = bigTestWindow
 	})
@@ -317,15 +286,19 @@ func TestTurnFoldKeepsUnactedResearchVerbatim(t *testing.T) {
 		)
 	}
 	horizon := len(agent.messages)
+	recent := agent.cutPointLocked()
 	before := append([]ai.Message(nil), agent.messages...)
 	agent.mu.Unlock()
 
-	agent.foldTurnOutputs(horizon, nil, nil)
+	agent.foldTurnOutputs(horizon, nil)
 
 	agent.mu.Lock()
 	after := append([]ai.Message(nil), agent.messages...)
 	agent.mu.Unlock()
-	if !reflect.DeepEqual(after, before) {
-		t.Fatal("research that had not produced work was folded")
+	if reflect.DeepEqual(after, before) {
+		t.Fatal("old observed research never folded without a file change")
+	}
+	if !reflect.DeepEqual(after[recent:len(before)], before[recent:]) {
+		t.Fatal("recent research was not preserved verbatim")
 	}
 }

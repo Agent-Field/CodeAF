@@ -279,11 +279,6 @@ type episode struct {
 	// request carried. A result at or beyond it has not been seen by the model and
 	// may not be folded, however full the turn has become (turnfold.go).
 	seenThrough int
-	// consumedReads names the read occurrences the model had received when it
-	// last successfully changed a file. Retained messages share their ToolCalls
-	// backing slices even when compaction moves them. Provider IDs can repeat,
-	// so an ID must never let a later observation inherit this consumption.
-	consumedReads map[*ai.ToolCall]bool
 
 	// watch is the loop detector's window over this turn's calls (looped.go).
 	watch *loopWatch
@@ -395,42 +390,8 @@ func (ep *episode) postFeedback(ctx context.Context, hub *eventHub, calls []ai.T
 	if ep == nil {
 		return
 	}
-	for index, call := range calls {
-		if index < len(results) && !results[index].isError && !results[index].harness &&
-			producedAFile(call.Function.Name, call.Function.Arguments) {
-			ep.markSeenReadsConsumed()
-			break
-		}
-	}
 	for _, hook := range ep.plane.postFeedback {
 		hook.PostFeedback(ctx, ep, hub, calls, results, visibleText)
-	}
-}
-
-// markSeenReadsConsumed records the stable identities of every read call in
-// the request that produced a successful file change. Merely appearing in a
-// request is not enough; the later mutation is the evidence that work was made
-// from that context.
-func (ep *episode) markSeenReadsConsumed() {
-	if ep.agent == nil {
-		return
-	}
-	ep.agent.mu.Lock()
-	defer ep.agent.mu.Unlock()
-	end := ep.seenThrough
-	if end > len(ep.agent.messages) {
-		end = len(ep.agent.messages)
-	}
-	if ep.consumedReads == nil {
-		ep.consumedReads = make(map[*ai.ToolCall]bool)
-	}
-	for index := ep.agent.turnFloor; index < end; index++ {
-		for callIndex := range ep.agent.messages[index].ToolCalls {
-			call := &ep.agent.messages[index].ToolCalls[callIndex]
-			if call.ID != "" && earlyTools[call.Function.Name] {
-				ep.consumedReads[call] = true
-			}
-		}
 	}
 }
 
@@ -453,7 +414,7 @@ type turnFoldPass struct{ agent *Agent }
 func (turnFoldPass) Name() string { return "turn-fold" }
 
 func (f turnFoldPass) PreDecision(_ context.Context, ep *episode) {
-	f.agent.foldTurnOutputs(ep.seenThrough, ep.consumedReads, ep.hub)
+	f.agent.foldTurnOutputs(ep.seenThrough, ep.hub)
 }
 
 // approvalGate is the consent gate (consent.go), with the guardian inside it

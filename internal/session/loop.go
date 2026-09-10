@@ -977,7 +977,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// The ordinary stub citizen remains an end-of-turn pass: running it here
 		// would rewrite old turns in the middle of this one and change its cache
 		// economics. Only the current-turn fold belongs at every step boundary.
-		a.foldTurnOutputs(episode.seenThrough, episode.consumedReads, hub)
+		a.foldTurnOutputs(episode.seenThrough, hub)
 		a.maybeCompact(ctx, hub)
 	}
 }
@@ -3456,7 +3456,7 @@ func compactionHint(pass compactionPass, before, after int) string {
 //     they asked and never got answered has to still be in front of the model;
 //   - the RUNNING TURN, because its assistant notes, exact calls and results are
 //     working memory rather than conversation history; turnfold.go alone may
-//     replace consumed read results while leaving that structure intact;
+//     reduce old observed results while leaving that structure intact;
 //   - the verbatim tail below [Agent.cutPointLocked], which is the work in hand.
 //
 // An assistant message and the tool results answering it go TOGETHER, always. A
@@ -3498,7 +3498,7 @@ func (a *Agent) foldLocked() (int, string) {
 		}
 		// THE RUNNING TURN IS NOT CONVERSATION HISTORY. It is the model's working
 		// memory: its own notes, what it tried, the exact arguments and what came
-		// back. Current-turn result pressure has a narrower use-aware pass in
+		// back. Current-turn result pressure has a narrower observation-only pass in
 		// turnfold.go; the general fold must not turn active work into a pointer.
 		if protectTurn && index >= a.turnFloor {
 			index = batch

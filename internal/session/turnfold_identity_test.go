@@ -14,47 +14,39 @@ func repeatedReadBatch() []ai.Message {
 	}
 }
 
-// A later observation is still unconsumed even when the provider repeats the
-// earlier call's ID, arguments and output. The real folding gates must preserve
-// that observation until another successful change uses it.
-func TestTurnFoldRepeatedCallDoesNotInheritConsumption(t *testing.T) {
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
-		config.ContextWindow = bigTestWindow
-	})
+// A repeated ID, command and result cannot make an unseen occurrence observed.
+// The horizon belongs to this transcript rather than to a provider's ID map.
+func TestTurnFoldRepeatedCallDoesNotInheritObservation(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) { config.ContextWindow = bigTestWindow })
 	agent.running = true
 	agent.turnFloor = len(agent.messages)
 	agent.messages = append(agent.messages, repeatedReadBatch()...)
-	ep := &episode{agent: agent, seenThrough: len(agent.messages)}
-	ep.markSeenReadsConsumed()
+	horizon := len(agent.messages)
 	for round := 1; round < 24; round++ {
 		agent.messages = append(agent.messages, repeatedReadBatch()...)
 	}
 	before := append([]ai.Message(nil), agent.messages...)
-	agent.foldTurnOutputs(len(agent.messages), ep.consumedReads, nil)
+	agent.foldTurnOutputs(horizon, nil)
 	if !reflect.DeepEqual(agent.messages, before) {
-		t.Fatal("a repeated call inherited an earlier observation's consumption and was folded")
+		t.Fatal("an unseen repeated call was folded or a trivial saving broke the cache")
 	}
-
-	// Once a later change has used all of these observations, ordinary folding
-	// still reclaims the working set rather than disabling compaction altogether.
-	ep.seenThrough = len(agent.messages)
-	ep.markSeenReadsConsumed()
-	agent.foldTurnOutputs(len(agent.messages), ep.consumedReads, nil)
+	agent.foldTurnOutputs(len(agent.messages), nil)
 	if reflect.DeepEqual(agent.messages, before) {
-		t.Fatal("consumed observations no longer fold above the working-set limit")
+		t.Fatal("observed results no longer fold above the working-set limit")
 	}
 }
 
-// Moving retained messages must not move their consumption to a different
-// occurrence. General compaction can rebuild the slice around its kept tail.
-func TestTurnFoldConsumptionSurvivesRetainedMessageMovement(t *testing.T) {
-	agent := &Agent{messages: repeatedReadBatch()}
-	ep := &episode{agent: agent, seenThrough: len(agent.messages)}
-	ep.markSeenReadsConsumed()
-	agent.messages = append([]ai.Message{{Role: "user"}}, agent.messages...)
-	agent.messages = append(agent.messages, repeatedReadBatch()...)
-	batches := turnFoldBatches(agent.messages, 0, len(agent.messages), ep.consumedReads)
+// Moving retained messages cannot attach an old result to a later call with the
+// same ID. Only complete batches inside the current observation horizon qualify.
+func TestTurnFoldBatchIdentitySurvivesRetainedMessageMovement(t *testing.T) {
+	messages := append([]ai.Message{{Role: "user"}}, repeatedReadBatch()...)
+	messages = append(messages, repeatedReadBatch()...)
+	batches := turnFoldBatches(messages, 0, 3)
 	if len(batches) != 1 || !reflect.DeepEqual(batches[0].indices, []int{2}) {
-		t.Fatalf("consumption followed an ID or index instead of the retained call: %+v", batches)
+		t.Fatalf("wrong observed occurrence: %+v", batches)
+	}
+	messages[1].ToolCalls = append(messages[1].ToolCalls, ai.ToolCall{ID: "missing", Function: ai.ToolCallFunction{Name: "bash"}})
+	if batches := turnFoldBatches(messages, 0, 3); len(batches) != 0 {
+		t.Fatalf("incomplete batch folded: %+v", batches)
 	}
 }
