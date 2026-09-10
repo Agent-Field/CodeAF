@@ -579,6 +579,16 @@ func (it Item) validateReport() error {
 		if matched, err := filepath.Match(pattern, target); err == nil && matched {
 			return errors.New("the report would be one of the files it watches, so every report would wake it again; keep the report outside " + pattern)
 		}
+		// A WATCHED FOLDER WAKES IT TOO. The reading records a matched
+		// folder's modification time ([fingerprint]), and publishing writes a
+		// temporary file beside the report and renames it into place, which
+		// moves the time of the folder it lands in — so `*` watching `reports`
+		// would read its own report as a change on every pass.
+		for dir := filepath.Dir(target); dir != "." && dir != string(filepath.Separator) && dir != filepath.Dir(dir); dir = filepath.Dir(dir) {
+			if matched, err := filepath.Match(pattern, dir); err == nil && matched {
+				return errors.New("the report would land in a folder it watches, so every report would wake it again; keep the report outside " + pattern)
+			}
+		}
 	}
 	return nil
 }
@@ -960,8 +970,11 @@ type Pass struct {
 	Fired    int
 	Said     int
 	NeedsYou int
-	Skipped  int
-	Errors   int
+	// Failed is how many firings came back failed: cut off, ended without the
+	// report they owed, or could not publish it.
+	Failed  int
+	Skipped int
+	Errors  int
 	// Tidied is how many remembered lines the consolidation pass moved, which
 	// is zero on all but a handful of passes a day (see [Tidy]).
 	Tidied int

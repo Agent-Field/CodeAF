@@ -782,7 +782,48 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 	// something clean publishes one: a run that stopped on a question or said
 	// nothing leaves the last good report where it was rather than replacing
 	// it with a refusal or an empty page (internal/standing's Action.Report).
-	if report := strings.TrimSpace(item.Does.Report); report != "" && outcome.Kind == "landed" && needs == "" && final != "" {
+	report := strings.TrimSpace(item.Does.Report)
+	publish := report != "" && outcome.Kind == "landed" && needs == "" && final != ""
+	if publish {
+		// AND IT IS READ AGAINST THE RULES THAT REACHED THE RUN FIRST
+		// (standing_rules.go). A report that still breaks one after its one
+		// correction is held back, and the run waits on the person instead.
+		if held := r.checkAgainstRules(ctx, agent, runDir, &final, drain, &cut, capped, item); held != "" {
+			publish = false
+			outcome.Kind = standing.OutcomeNeedsYou
+			outcome.NeedsPerson = clip(held, standingOutcomeClip)
+			outcome.Text = outcome.NeedsPerson
+		}
+		if occurred {
+			// The check's record was written into the folder by the check;
+			// this copy must not write over it.
+			if current, err := standing.ReadOccurrence(runDir); err == nil {
+				occurrence = current
+			}
+		}
+	}
+	outcome.USD = agent.Usage().CostUSD
+	// ── STOPPED WHILE IT RAN ──
+	//
+	// A stop does not reach into a run that has already started: what the run
+	// did with its own tools has been done, and nothing here undoes it. What
+	// aforge has NOT done yet is its own last two acts — replacing the report
+	// and delivering the note — and the person who said stop was told the work
+	// will not run again, so neither happens now. A PAUSE IS NOT A STOP: work
+	// admitted before a pause finishes as it was admitted, report and all, and
+	// the pause holds back the next occurrence (currentAdmission, in the pass).
+	if r.stoppedSince(item) {
+		outcome.NeedsPerson = ""
+		if !saved {
+			outcome.Kind = standing.OutcomeNothing
+		}
+		outcome.Text = "stopped while it ran: no note was sent"
+		if report != "" {
+			outcome.Text = "stopped while it ran: its report was not published and no note was sent; the previous report is unchanged"
+		}
+		return outcome, nil
+	}
+	if publish {
 		published, err := publishStandingReport(item.Workspace, report, final)
 		if err != nil {
 			outcome.Kind = standing.OutcomeFailed
@@ -791,7 +832,9 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 			outcome.Published = published
 			if occurred {
 				// Recorded the moment it exists, so a process that dies before
-				// the pass finishes still leaves the receipt behind.
+				// the pass finishes still leaves the receipt behind — and the
+				// pass that finds it records the occurrence rather than running
+				// it again (internal/standing's finishedOccurrence).
 				occurrence.Published = published
 				_ = standing.WriteOccurrence(runDir, occurrence)
 			}
@@ -813,6 +856,92 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 	}
 	r.deliver(item, outcome.Kind, outcome.Text, runDir)
 	return outcome, nil
+}
+
+// heldReportFile is the run-folder file a draft is kept in when the report was
+// held back rather than published.
+const heldReportFile = "held-report.md"
+
+// checkAgainstRules reads the run's final report against the rules that reached
+// the run (standing_rules.go) and answers "" when it may be published, or the
+// line the run waits on the person with when it may not. On a finding the run
+// is sent back ONCE, in the same session, and final becomes what it answered;
+// drain is the run's own event reader, so the correction's steps, spend and
+// refusals are counted exactly as the first turn's were. The check is written
+// into the occurrence record, found or not.
+func (r *standingRunner) checkAgainstRules(ctx context.Context, agent *Agent, runDir string, final *string, drain func(<-chan Event), cut *error, capped bool, item standing.Item) string {
+	rules := agent.standingRules()
+	if len(rules) == 0 {
+		return ""
+	}
+	check := &standing.RuleCheck{}
+	for _, rule := range rules {
+		check.Rules = append(check.Rules, rule.ID)
+	}
+	draft := *final
+	verdict := agent.checkStandingReport(ctx, rules, draft)
+	overRail := item.Rails.PerRunUSD > 0 && agent.Usage().CostUSD >= item.Rails.PerRunUSD
+	if verdict.answered && !verdict.kept && !capped && !overRail && ctx.Err() == nil {
+		check.First = verdict.finding()
+		check.Rewrote = true
+		next, err := agent.Submit(ctx, standingCorrection(verdict))
+		if err != nil {
+			verdict = standingRuleVerdict{trouble: "the run could not be sent back to correct it: " + oneLine(err.Error())}
+		} else {
+			*final, *cut = "", nil
+			drain(next)
+			if *final != "" {
+				draft = *final
+			}
+			if *cut != nil || ctx.Err() != nil || *final == "" {
+				verdict = standingRuleVerdict{trouble: "the corrected report did not arrive"}
+			} else {
+				verdict = agent.checkStandingReport(ctx, rules, draft)
+			}
+		}
+	}
+	held := ""
+	switch {
+	case verdict.answered && verdict.kept:
+		check.Verdict = "kept"
+	case verdict.answered:
+		check.Verdict, check.Rule, check.Quote, check.Why = "broken", verdict.rule, verdict.quote, verdict.why
+		held = "it breaks a rule placed on this work — " + verdict.finding()
+	default:
+		check.Verdict, check.Why = "no answer", verdict.trouble
+		held = "its check against the rules placed on this work gave no answer: " + verdict.trouble
+	}
+	if held != "" {
+		path := filepath.Join(runDir, heldReportFile)
+		if err := os.WriteFile(path, []byte(strings.TrimSpace(draft)+"\n"), 0o600); err == nil {
+			check.Held = path
+		}
+		held = "report held back, not published: " + held + ". The previous report is unchanged"
+		if check.Held != "" {
+			held += "; the draft is in " + check.Held
+		}
+	}
+	if occurrence, err := standing.ReadOccurrence(runDir); err == nil {
+		occurrence.RuleCheck = check
+		_ = standing.WriteOccurrence(runDir, occurrence)
+	}
+	return held
+}
+
+// stoppedSince answers whether the person stopped this item while the run was
+// working. It reads the item's document as it is NOW; a store that cannot be
+// read, or an item it does not hold, is not a stop — a runner driven without a
+// store has nobody who could have said one.
+func (r *standingRunner) stoppedSince(item standing.Item) bool {
+	if r.root == "" || item.ID == "" {
+		return false
+	}
+	store, err := standing.Open(r.root)
+	if err != nil {
+		return false
+	}
+	current, err := store.Get(item.ID)
+	return err == nil && current.Status == standing.StatusRetired
 }
 
 // standingCameTo decides what one firing's work came to, from the three things
@@ -911,15 +1040,26 @@ func publishStandingReport(workspace, report, text string) (*standing.Publicatio
 	}
 	target := filepath.Join(root, filepath.Clean(report))
 	dir := filepath.Dir(target)
+	// THE CHECK COMES BEFORE THE FOLDERS ARE MADE. The deepest part of the
+	// report's folder that already exists is resolved first, so a symlinked
+	// parent pointing out of the project refuses the write before a single
+	// folder is created on the far side of it.
+	existing := dir
+	for {
+		if _, err := os.Lstat(existing); err == nil || existing == root || filepath.Dir(existing) == existing {
+			break
+		}
+		existing = filepath.Dir(existing)
+	}
+	if err := insideProject(root, existing); err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	resolved, err := filepath.EvalSymlinks(dir)
-	if err != nil {
+	// And once more after, for whatever changed between the two.
+	if err := insideProject(root, dir); err != nil {
 		return nil, err
-	}
-	if rel, err := filepath.Rel(root, resolved); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return nil, errors.New("the report folder resolves outside the project")
 	}
 	if info, err := os.Lstat(target); err == nil && info.Mode()&os.ModeSymlink != 0 {
 		return nil, errors.New("the report path is a symbolic link")
@@ -950,6 +1090,19 @@ func publishStandingReport(workspace, report, text string) (*standing.Publicatio
 	}
 	sum := sha256.Sum256([]byte(body))
 	return &standing.Publication{Path: report, SHA256: hex.EncodeToString(sum[:]), Bytes: len(body), At: time.Now().UTC()}, nil
+}
+
+// insideProject refuses a folder that resolves, through the filesystem as it
+// is now, anywhere but inside root.
+func insideProject(root, dir string) error {
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return err
+	}
+	if rel, err := filepath.Rel(root, resolved); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return errors.New("the report folder resolves outside the project")
+	}
+	return nil
 }
 
 // standingRunConfig is the run's own session: the parent launch, pointed at a

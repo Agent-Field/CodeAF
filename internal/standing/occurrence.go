@@ -29,6 +29,7 @@ package standing
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -71,19 +72,22 @@ type Occurrence struct {
 	// Because is the one plain line the look said.
 	Because string `json:"because,omitempty"`
 	// Due is the scheduled moment for a rhythm; zero for a watch.
-	Due time.Time `json:"due,omitempty"`
+	Due time.Time `json:"due,omitzero"`
 	// Changes are the files a watch saw change since its previous reading.
 	// ChangesUnknown is set when the previous reading could not be read, so an
 	// empty list is never mistaken for "nothing changed".
 	Changes        []Change `json:"changes,omitempty"`
 	ChangesUnknown bool     `json:"changesUnknown,omitempty"`
 	// Reading is the watch's file reading this occurrence was admitted with,
-	// which is what the item moves to once the occurrence is recorded.
+	// which is what the item moves to once the occurrence is recorded. Since is
+	// the reading its change list was measured from: the one before, or further
+	// back when the run before this one did not finish ([Store.unreportedSince]).
 	Reading string `json:"reading,omitempty"`
+	Since   string `json:"since,omitempty"`
 	// PreviousRun and PreviousFired are the item's last recorded firing before
 	// this one, which is the "since when" a report is written against.
 	PreviousRun   string    `json:"previousRun,omitempty"`
-	PreviousFired time.Time `json:"previousFired,omitempty"`
+	PreviousFired time.Time `json:"previousFired,omitzero"`
 
 	Admitted time.Time `json:"admitted"`
 	PID      int       `json:"pid"`
@@ -93,13 +97,16 @@ type Occurrence struct {
 	Supersedes []string `json:"supersedes,omitempty"`
 
 	Phase        string       `json:"phase"`
-	Finished     time.Time    `json:"finished,omitempty"`
+	Finished     time.Time    `json:"finished,omitzero"`
 	Outcome      string       `json:"outcome,omitempty"`
 	OutcomeText  string       `json:"outcomeText,omitempty"`
 	USD          float64      `json:"usd,omitempty"`
 	Published    *Publication `json:"published,omitempty"`
 	Error        string       `json:"error,omitempty"`
 	SupersededBy string       `json:"supersededBy,omitempty"`
+	// RuleCheck is the check of the report against the rules that reached the
+	// run, made before it was published, when any rules reached it.
+	RuleCheck *RuleCheck `json:"ruleCheck,omitempty"`
 
 	// RunDir is where the record was read from. It is filled by the reader and
 	// never written, because a folder is its own address.
@@ -113,6 +120,30 @@ type Publication struct {
 	SHA256 string    `json:"sha256"`
 	Bytes  int       `json:"bytes"`
 	At     time.Time `json:"at"`
+}
+
+// RuleCheck is what the check of a run's report against the rules placed on
+// its work found, before aforge published it (internal/session's
+// standing_rules.go). It is A MODEL'S READING and is recorded as one: which
+// rules it was given, what it answered, the words it quoted, whether the run
+// was sent back once to correct the report, and whether the report was held.
+type RuleCheck struct {
+	// Rules are the ids of the rules the report was checked against — the
+	// rules that reached the run's own instructions, not a second selection.
+	Rules []string `json:"rules"`
+	// Verdict is "kept", "broken", or "no answer" for the last check made.
+	Verdict string `json:"verdict"`
+	// Rule, Quote and Why are the last finding when the verdict is broken.
+	Rule  string `json:"rule,omitempty"`
+	Quote string `json:"quote,omitempty"`
+	Why   string `json:"why,omitempty"`
+	// First is the finding the run was sent back with, when it was.
+	First string `json:"first,omitempty"`
+	// Rewrote says the run was given its one correction turn.
+	Rewrote bool `json:"rewrote,omitempty"`
+	// Held is the run-folder file the draft was kept in when it was not
+	// published; the published report is then the previous one, unchanged.
+	Held string `json:"held,omitempty"`
 }
 
 // Change is one file a watch saw change between two readings.
@@ -189,44 +220,78 @@ func (s *Store) Occurrences(id string, limit int) ([]Occurrence, error) {
 // occurrenceKey is the item state a firing is admitted from. It is read off
 // the document as it was BEFORE the look moved it on, because that is the
 // state a crashed attempt leaves behind and the retry finds again.
+//
+// THE RUN COUNT IS PART OF THE STATE. A folder's reading can come back to a
+// digest it had before — it empties, a file arrives, it empties again — and a
+// key made of the reading alone matched an occurrence the item had long since
+// recorded: the pass took the old record for an unrecorded one, moved the watch
+// back to what that run saw, and did the same with the next old record on the
+// next pass, for ever, while the new file was never reported. A recorded firing
+// always moves [Item.Runs] on and a crashed one never does, so "after run N"
+// is exactly the difference between the two.
 func occurrenceKey(before Item, now time.Time) string {
+	var state string
 	switch before.When.Kind {
 	case WhenEvery:
-		return "due " + before.NextDue.UTC().Format(time.RFC3339)
+		state = "due " + before.NextDue.UTC().Format(time.RFC3339)
 	case WhenFile:
-		return "files " + before.Fingerprint
+		state = "files " + before.Fingerprint
 	case WhenAt:
-		return "at " + before.When.At.UTC().Format(time.RFC3339)
+		state = "at " + before.When.At.UTC().Format(time.RFC3339)
+	default:
+		// A probe or an idle item has no durable before-state that a retry
+		// would find again, so each check is its own occurrence.
+		state = "checked " + now.UTC().Format(time.RFC3339Nano)
 	}
-	// A probe or an idle item has no durable before-state that a retry would
-	// find again, so each check is its own occurrence.
-	return "checked " + now.UTC().Format(time.RFC3339Nano)
+	return fmt.Sprintf("%s after run %d", state, before.Runs)
 }
 
-// finishedOccurrence answers a finished record admitted from this same item
+// finishedOccurrence answers an ended record admitted from this same item
 // state. Finding one means the process recorded the occurrence's end but
 // stopped before the item's document said so; running it again would deliver
 // and publish the same occurrence twice.
+//
+// A PUBLISHED REPORT IS THE END OF THE WORK. The runner writes the receipt into
+// the record the moment the report exists (internal/session's standing_run.go),
+// and what is left after it — the note, closing the session, this record's own
+// last write — is bookkeeping. So an admitted record whose process is gone and
+// which carries a receipt is recovered like a finished one: running it again
+// would pay for the work twice, rewrite the report and deliver a second note.
 func (s *Store) finishedOccurrence(id, key string) (Occurrence, bool) {
 	records, err := s.Occurrences(id, 64)
 	if err != nil {
 		return Occurrence{}, false
 	}
 	for _, record := range records {
-		if record.Key == key && record.Phase == PhaseFinished && record.Error == "" {
+		if record.Key != key {
+			continue
+		}
+		if record.Phase == PhaseFinished && record.Error == "" {
+			return record, true
+		}
+		if record.Phase == PhaseAdmitted && record.Published != nil && !s.stillRunning(record) {
 			return record, true
 		}
 	}
 	return Occurrence{}, false
 }
 
+// stillRunning answers whether an admitted record's process may yet finish it.
+// It is only asked under the tick lock, where no other pass can be mid-firing;
+// the liveness check is the belt-and-braces half, for a process id this one
+// holds.
+func (s *Store) stillRunning(record Occurrence) bool {
+	return record.PID == os.Getpid() || (record.PID > 0 && pidAlive(record.PID) && s.now().Sub(record.Admitted) <= TickWindow)
+}
+
 // interruptedAttempts marks every admitted record of this item that can no
 // longer finish as interrupted, and answers the run folders whose key matches
 // the occurrence about to be tried, with the highest attempt number among them.
 //
-// IT RUNS UNDER THE TICK LOCK, so no other pass can be mid-firing: an admitted
-// record found here belongs to a process that stopped before recording it. The
-// liveness check is the belt-and-braces half, for a process id this one holds.
+// A RECORD THAT PUBLISHED IS NOT INTERRUPTED. Its work ended; only the
+// bookkeeping after it did not ([Store.finishedOccurrence]), so it is left for
+// the recovery that reads it rather than written down as work that never got
+// there.
 func (s *Store) interruptedAttempts(id, key, supersededBy string) ([]string, int) {
 	records, err := s.Occurrences(id, 64)
 	if err != nil {
@@ -241,7 +306,7 @@ func (s *Store) interruptedAttempts(id, key, supersededBy string) ([]string, int
 			}
 			continue
 		}
-		if record.PID == os.Getpid() || (record.PID > 0 && pidAlive(record.PID) && s.now().Sub(record.Admitted) <= TickWindow) {
+		if record.Published != nil || s.stillRunning(record) {
 			continue
 		}
 		record.Phase = PhaseInterrupted

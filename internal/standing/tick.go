@@ -276,6 +276,8 @@ type sighting struct {
 	// previous reading could not be read — never the same as "none changed".
 	changes        []Change
 	changesUnknown bool
+	// since is the reading the change list was measured from.
+	since string
 }
 
 // look decides whether an item wants to fire, and updates the parts of the item
@@ -323,7 +325,11 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 		first := previous == ""
 		changed := !first && digest != previous
 		item.Fingerprint = digest
-		t.Store.keepReading(item.ID, digest, previous, files)
+		since := previous
+		if item.Does.Kind == ActionTask {
+			since = t.Store.unreportedSince(item.ID, previous)
+		}
+		t.Store.keepReading(item.ID, digest, files, previous, since)
 		switch {
 		case first:
 			// THE FIRST READING IS THE BASELINE AND IS SILENT. Everything on
@@ -334,11 +340,11 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 		case !changed:
 			return sighting{state: stateQuiet, line: "nothing has changed"}, nil
 		}
-		changes, readErr := t.Store.changesSince(item.ID, previous, files)
+		changes, readErr := t.Store.changesSince(item.ID, since, files)
 		found = sighting{
 			state: stateReady, line: "the files you are watching changed",
-			evidence: changesText(changes, readErr != nil) + "\nALL MATCHING FILES:\n" + listing,
-			changes:  changes, changesUnknown: readErr != nil,
+			evidence: changesText(changes, readErr != nil, since != previous) + "\nALL MATCHING FILES:\n" + listing,
+			changes:  changes, changesUnknown: readErr != nil, since: since,
 		}
 
 	case WhenIdle:
@@ -535,6 +541,13 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, before, item Item, now ti
 	}
 	if item.NeedsPerson != "" {
 		pass.NeedsYou++
+		pass.Notes = append(pass.Notes, shorten(item.Words, 60)+": "+oneLine(shorten(item.NeedsPerson, 240)))
+	} else if outcome.Kind == OutcomeFailed {
+		// A RUN THAT DID NOT FINISH IS SAID, by name and in its own words, so
+		// whoever ran the pass by hand learns it from the pass rather than from
+		// a report that silently stayed as it was.
+		pass.Failed++
+		pass.Notes = append(pass.Notes, shorten(item.Words, 60)+": "+oneLine(shorten(outcome.Text, 240)))
 	}
 	ledgerErr := t.Store.Append(Entry{At: now, ItemID: item.ID, Kind: string(item.Does.Kind), USD: outcome.USD, Run: runDir})
 	logErr := t.Store.Log(item.ID, firingLine(found, outcome))
@@ -555,7 +568,7 @@ func (t *Ticker) admit(before, item Item, now time.Time, found sighting, key, ru
 		Spec: before.SpecRevision, Revision: before.Revision,
 		Words: item.Words, Brief: item.Does.Brief, Report: item.Does.Report,
 		Trigger: item.When, Because: oneLine(found.line),
-		Changes: found.changes, ChangesUnknown: found.changesUnknown,
+		Changes: found.changes, ChangesUnknown: found.changesUnknown, Since: found.since,
 		PreviousRun: before.LastRun, PreviousFired: before.LastFired,
 		Admitted: now, PID: os.Getpid(),
 		Attempt: attempts + 1, Supersedes: supersedes,
@@ -597,9 +610,21 @@ func (t *Ticker) finishOccurrence(runDir string, admitted Occurrence, outcome Ou
 // document said so: the firing is counted once, the watch moves to the reading
 // that occurrence reported on, and nothing is run, published or delivered.
 func (t *Ticker) recoverFinished(before, item Item, done Occurrence) error {
-	at := done.Finished
+	if done.Phase == PhaseAdmitted {
+		// ITS REPORT WAS PUBLISHED AND ITS PROCESS STOPPED BEFORE THE REST WAS
+		// WRITTEN ([Store.finishedOccurrence]). It landed — the receipt is the
+		// proof — and the record says so now, with what was lost: the note that
+		// would have followed, and the run's cost, which only that process knew.
+		done.Phase = PhaseFinished
+		done.Finished = t.clock()
+		done.Outcome = "landed"
+		done.OutcomeText = "report published to " + done.Published.Path + "; its process stopped before the rest was recorded, so no note was delivered and its cost is not known"
+		_ = WriteOccurrence(done.RunDir, done)
+	}
+	// The firing is dated when it was admitted, as [Ticker.fire] dates one.
+	at := done.Admitted
 	if at.IsZero() {
-		at = done.Admitted
+		at = done.Finished
 	}
 	item.Runs++
 	item.LastFired = at

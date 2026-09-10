@@ -94,7 +94,9 @@ func (s *Store) Revise(id string, expected uint64, change func(*Item) error) (It
 }
 
 // specChanges names the specification parts that differ, in a fixed order so
-// a log line reads the same way every time.
+// a log line reads the same way every time. THE NAMES ARE READ BY THE PERSON —
+// in the item's log and in the terminal's receipt — so they are the words a
+// person would use for each part, never the field names.
 func specChanges(before, after Item) []string {
 	var changed []string
 	add := func(name string, differs bool) {
@@ -102,13 +104,14 @@ func specChanges(before, after Item) []string {
 			changed = append(changed, name)
 		}
 	}
-	add("words", before.Words != after.Words)
-	add("when", !reflect.DeepEqual(before.When, after.When))
-	add("brief", before.Does.Brief != after.Does.Brief || before.Does.Say != after.Does.Say || before.Brief != after.Brief)
-	add("action", before.Does.Kind != after.Does.Kind || before.Does.Acceptance != after.Does.Acceptance ||
+	add("your words", before.Words != after.Words)
+	add("what wakes it", !reflect.DeepEqual(before.When, after.When))
+	add("instructions", before.Does.Brief != after.Does.Brief || before.Does.Say != after.Does.Say || before.Brief != after.Brief)
+	add("how it runs", before.Does.Kind != after.Does.Kind || before.Does.Acceptance != after.Does.Acceptance ||
 		before.Does.Model != after.Does.Model || before.Does.MaxSteps != after.Does.MaxSteps || before.Does.Effort != after.Does.Effort)
-	add("rails", before.Rails != after.Rails)
-	add("grant", before.Grant != after.Grant)
-	add("reach", before.Altitude != after.Altitude || !reflect.DeepEqual(before.Scope, after.Scope))
+	add("report", before.Does.Report != after.Does.Report)
+	add("limits", before.Rails != after.Rails)
+	add("what it may do", before.Grant != after.Grant)
+	add("which rules reach it", before.Altitude != after.Altitude || !reflect.DeepEqual(before.Scope, after.Scope))
 	return changed
 }

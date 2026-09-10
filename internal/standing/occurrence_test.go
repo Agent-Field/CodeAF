@@ -16,6 +16,8 @@ type occurrenceRunner struct {
 	seen   []Occurrence
 	during func(Item)
 	calls  int
+	// failing is how many of the next runs come back failed, unpublished.
+	failing int
 }
 
 func (r *occurrenceRunner) Probe(context.Context, Item) (string, error) { return "", nil }
@@ -32,7 +34,20 @@ func (r *occurrenceRunner) Run(_ context.Context, item Item, runDir, evidence st
 	if r.during != nil {
 		r.during(item)
 	}
+	if r.failing > 0 {
+		r.failing--
+		return Outcome{Kind: OutcomeFailed, Text: "the run was cut off before it finished"}, nil
+	}
 	return Outcome{Kind: "landed", Text: evidence, Published: &Publication{Path: item.Does.Report, SHA256: "abc", Bytes: 3}}, nil
+}
+
+// changeList is an occurrence's changes as "kind path" lines.
+func changeList(occurrence Occurrence) string {
+	var got []string
+	for _, change := range occurrence.Changes {
+		got = append(got, change.Kind+" "+change.Path)
+	}
+	return strings.Join(got, ",")
 }
 
 // watching is a task item watching inbox/* in its own workspace.
@@ -215,7 +230,7 @@ func TestReviseIsFencedOnTheInstructionsVersion(t *testing.T) {
 		t.Fatalf("an empty revision: %v", err)
 	}
 	revised, changed, err := store.Revise(made.ID, 1, func(it *Item) error { it.When.Glob = "notes/*"; return nil })
-	if err != nil || revised.SpecRevision != 2 || revised.Fingerprint != "" || strings.Join(changed, ",") != "when" {
+	if err != nil || revised.SpecRevision != 2 || revised.Fingerprint != "" || strings.Join(changed, ",") != "what wakes it" {
 		t.Fatalf("revised %+v changed %v err %v", revised, changed, err)
 	}
 	if _, _, err := store.Revise(made.ID, 1, func(it *Item) error { it.Words = "stale"; return nil }); !errors.Is(err, ErrConflict) {
@@ -266,5 +281,154 @@ func TestAMissingPreviousReadingIsUnknownNotNothing(t *testing.T) {
 	mustTick(t, newTicker(store, runner, now.Add(time.Minute)))
 	if len(runner.seen) != 1 || !runner.seen[0].ChangesUnknown || len(runner.seen[0].Changes) != 0 {
 		t.Fatalf("a lost reading was not reported as unknown: %+v", runner.seen)
+	}
+}
+
+// A FOLDER THAT COMES BACK TO A STATE IT WAS IN BEFORE IS NOT AN OLD
+// OCCURRENCE. Empty, a file, empty again, a new file: the third reading equals
+// the first, and a key made of the reading alone took run 0001's record for an
+// unrecorded occurrence, moved the watch back, and then did the same with 0002
+// on the next pass — for ever, while the new file was never reported (review
+// blocker 1, 2026-09-10).
+func TestAFolderThatReturnsToAnEarlierStateStillReportsTheNextChange(t *testing.T) {
+	now := time.Date(2026, 9, 10, 9, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+	made, workspace := watching(t, store)
+	runner := &occurrenceRunner{}
+	tick := func(minutes int) Pass {
+		at := now.Add(time.Duration(minutes) * time.Minute)
+		store.clock = held(at)
+		return mustTick(t, newTicker(store, runner, at))
+	}
+	tick(0) // the baseline: an empty folder
+	path := filepath.Join(workspace, "inbox", "a.md")
+	writeFile(t, path, "a")
+	tick(1)
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	tick(2)
+	writeFile(t, filepath.Join(workspace, "inbox", "c.md"), "c")
+	if pass := tick(3); pass.Fired != 1 || runner.calls != 3 {
+		t.Fatalf("the new file after an emptied folder did not run: %+v calls %d", pass, runner.calls)
+	}
+	records, _ := store.Occurrences(made.ID, 0)
+	if len(records) != 3 || changeList(records[0]) != "added inbox/c.md" || changeList(records[1]) != "removed inbox/a.md" {
+		t.Fatalf("records: %d, newest %q, before it %q", len(records), changeList(records[0]), changeList(records[1]))
+	}
+	for _, record := range records {
+		if record.Attempt != 1 || len(record.Supersedes) != 0 {
+			t.Fatalf("an old occurrence was counted as an earlier attempt: %+v", record)
+		}
+	}
+	// And it settles, with the count and the dates moving forward only.
+	item, _ := store.Get(made.ID)
+	if pass := tick(4); pass.Fired != 0 || runner.calls != 3 {
+		t.Fatalf("the settled watch ran again: %+v", pass)
+	}
+	after, _ := store.Get(made.ID)
+	if item.Runs != 3 || after.Runs != 3 || after.LastFired.Before(item.LastFired) || after.LastRun != records[0].RunDir {
+		t.Fatalf("the item moved backwards: before %d %v, after %d %v %s", item.Runs, item.LastFired, after.Runs, after.LastFired, after.LastRun)
+	}
+}
+
+// A RUN THAT PUBLISHED AND THEN DIED IS NOT RUN AGAIN. The receipt is written
+// the moment the report exists; a process stopped after that and before the
+// record said finished must not pay for the work twice, rewrite the report or
+// deliver a second note (review issue 4).
+func TestAnOccurrenceThatPublishedBeforeItsProcessDiedIsRecordedNotRerun(t *testing.T) {
+	now := time.Date(2026, 9, 10, 9, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+	made, workspace := watching(t, store)
+	runner := &occurrenceRunner{}
+	mustTick(t, newTicker(store, runner, now))
+	writeFile(t, filepath.Join(workspace, "inbox", "a.md"), "a")
+	before, _ := store.Get(made.ID)
+	digest, _, _, err := fingerprint(workspace, "inbox/*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	published, _ := store.newRunDir(made.ID)
+	receipt := &Publication{Path: "reports/inbox.md", SHA256: "abc", Bytes: 3, At: now}
+	if err := WriteOccurrence(published, Occurrence{ID: made.ID + "/0001", ItemID: made.ID, Key: occurrenceKey(before, now), Spec: 1, Attempt: 1, Phase: PhaseAdmitted, PID: 1 << 30, Admitted: now, Reading: digest, Published: receipt}); err != nil {
+		t.Fatal(err)
+	}
+	store.clock = held(now.Add(time.Minute))
+	if pass := mustTick(t, newTicker(store, runner, now.Add(time.Minute))); runner.calls != 0 || pass.Fired != 0 {
+		t.Fatalf("a published occurrence ran again: calls %d pass %+v", runner.calls, pass)
+	}
+	records, _ := store.Occurrences(made.ID, 0)
+	if len(records) != 1 || records[0].Phase != PhaseFinished || records[0].Outcome != "landed" || records[0].Published == nil || !strings.Contains(records[0].OutcomeText, "no note was delivered") {
+		t.Fatalf("the published record was not recovered as landed: %+v", records)
+	}
+	item, _ := store.Get(made.ID)
+	if item.Runs != 1 || item.Fingerprint != digest || item.LastOutcome != "landed" {
+		t.Fatalf("the item did not record it: %+v", item)
+	}
+}
+
+// THE CHANGES A FAILED RUN NEVER REPORTED ARE LISTED AGAIN. The watch moves on
+// at every look, so the run after a failure used to be told only about what
+// changed since the failure.
+func TestTheRunAfterAFailedOneIsToldWhatTheFailedOneMissed(t *testing.T) {
+	now := time.Date(2026, 9, 10, 9, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+	made, workspace := watching(t, store)
+	runner := &occurrenceRunner{failing: 1}
+	tick := func(minutes int) Pass {
+		at := now.Add(time.Duration(minutes) * time.Minute)
+		store.clock = held(at)
+		return mustTick(t, newTicker(store, runner, at))
+	}
+	tick(0)
+	writeFile(t, filepath.Join(workspace, "inbox", "a.md"), "a")
+	if pass := tick(1); pass.Failed != 1 || len(pass.Notes) == 0 {
+		t.Fatalf("a failed run was not counted and said: %+v", pass)
+	}
+	tick(2) // nothing changed; the failed run's baseline must survive this
+	writeFile(t, filepath.Join(workspace, "inbox", "b.md"), "b")
+	tick(3)
+	records, _ := store.Occurrences(made.ID, 0)
+	if len(records) != 2 || changeList(records[0]) != "added inbox/a.md,added inbox/b.md" || records[0].Since != records[1].Since {
+		t.Fatalf("the run after a failure was told %q (since %q, failed since %q)", changeList(records[0]), records[0].Since, records[1].Since)
+	}
+	// Once one lands, the list is measured from its reading again.
+	writeFile(t, filepath.Join(workspace, "inbox", "c.md"), "c")
+	tick(4)
+	records, _ = store.Occurrences(made.ID, 0)
+	if changeList(records[0]) != "added inbox/c.md" {
+		t.Fatalf("after a landed run the list reached back: %q", changeList(records[0]))
+	}
+}
+
+// AN EDIT OF THE REPORT PATH ALONE IS AN EDIT (review blocker 2), and a
+// report landing in a folder the watch matches is refused, because publishing
+// moves that folder's modification time and the watch would read its own
+// report as a change (review issue 3).
+func TestTheReportPathIsPartOfTheInstructionsAndStaysOutOfWatchedFolders(t *testing.T) {
+	now := time.Date(2026, 9, 10, 9, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+	made, _ := watching(t, store)
+	revised, changed, err := store.Revise(made.ID, 1, func(it *Item) error { it.Does.Report = "reports/weekly.md"; return nil })
+	if err != nil || strings.Join(changed, ",") != "report" || revised.Does.Report != "reports/weekly.md" || revised.SpecRevision != 2 {
+		t.Fatalf("a report-only edit: %v %v %+v", changed, err, revised.Does)
+	}
+	base := Item{Words: "w", Workspace: "/tmp/project", Does: Action{Kind: ActionTask, Brief: "b"}, Rails: Rails{MaxPerDay: 1}}
+	for _, c := range []struct {
+		glob, report string
+		ok           bool
+	}{
+		{"*", "reports/weekly.md", false},
+		{"notes/*", "notes/out/summary.md", false},
+		{"reports", "reports/x.md", false},
+		{"inbox/*", "reports/x.md", true},
+		{"inbox/*.md", "inbox-report.md", true},
+	} {
+		item := base
+		item.When = When{Kind: WhenFile, Glob: c.glob}
+		item.Does.Report = c.report
+		if err := item.validateReport(); (err == nil) != c.ok {
+			t.Errorf("watch %q report %q: err %v, want ok=%v", c.glob, c.report, err, c.ok)
+		}
 	}
 }
