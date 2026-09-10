@@ -14,7 +14,7 @@ import (
 
 // Constructor coverage uses real child assembly, while the model remains inert.
 func TestGoverningWorkersAndCheckersInheritReadsOnly(t *testing.T) {
-	parent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	parent, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) { cfg.SessionFile = filepath.Join(t.TempDir(), "owner.jsonl") })
 	store, err := standing.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -131,5 +131,12 @@ func TestGoverningInputLimitStopsInsteadOfTruncating(t *testing.T) {
 				t.Fatalf("partial governing execution admitted: %d records, %q, %q", len(agent.governingRecords), block, agent.governingReadError)
 			}
 		})
+	}
+}
+
+func TestGoverningUnfiledTaskDoesNotInventSharedIdentity(t *testing.T) {
+	agent := &Agent{}
+	if ref := agent.workOrganizationRefLocked(1); ref.Kind != "" {
+		t.Fatalf("invented cross-session task identity: %+v", ref)
 	}
 }

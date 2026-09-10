@@ -97,7 +97,7 @@ func (a *Agent) workOrganizationRefLocked(id uint64) workspace.Ref {
 	if root == "" {
 		root = a.sessionID()
 	}
-	if root == "" {
+	if root == "" || root == "unfiled" {
 		return workspace.Ref{}
 	}
 	return workspace.Ref{Kind: workspace.TaskKind, ID: fmt.Sprint(id), SessionID: root}
