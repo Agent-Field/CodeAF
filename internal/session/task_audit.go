@@ -985,25 +985,10 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	ground := auditGroundFor(node, tree, files.all(), log)
 	defer ground.drop()
 
-	// ── THE LANDING'S CLAIMS ARE ITS CHECKLIST ──
-	//
-	// Read before anybody is paid to think, because the two shapes settled here
-	// are settled by LOOKING and looking is free (task_claims.go). A landing that
-	// says a string is gone while the string is still in the tree it would merge
-	// has been answered already: the search is the whole of the evidence, the
-	// finding names the sentence that is not so, and there is nothing a model
-	// could add to it that the person would rather read.
-	//
-	// IT IS HUNTED IN THE GROUND AND NOT IN THE WORKING COPY, which is the same
-	// argument the restore itself rests on: what a claim is about is what would
-	// ship, never what the run happened to leave lying around it.
-	checklist := checklistFor(ground.dir, files.all(), claim)
-	if broken := checklist.broken(); len(broken) > 0 {
-		answer := brokenClaimAnswer(broken)
-		fmt.Fprintf(log, "check: the landing says something the work does not do — %s\n",
-			strings.Join(answer.evidence, " · "))
-		return answer
-	}
+	// Claims in changed notes are source context for the existing checker.
+	// The full worker report travels in the same packet. Neither keyword matches
+	// nor the presence of quoted text can establish what that prose means.
+	claims := landingNoteClaims(ground.dir, files.all())
 
 	// AND THE DOOR IS READ OFF THE WORK, ONCE, FOR BOTH ATTEMPTS. What this audit
 	// may run is the current verification contract's declared checks, including
@@ -1022,15 +1007,11 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 			pace.window)
 	}
 
-	// A CHECK THAT CAME BACK HOLDING STILL OWES THE CLAIMS NOBODY SETTLED. That is
-	// the other half of the law: a claim is a finding, or it holds, or it is said
-	// out loud — never silently passed ([withOpenClaims]).
-	open := checklist.open()
-	verdict, again := a.auditOnce(ctx, node, tree, ground, pace, door, checks, files, claim, open, "", log)
+	verdict, again := a.auditOnce(ctx, node, tree, ground, pace, door, checks, files, claim, claims, "", log)
 	verdict.alreadyRed = checks.alreadyRed()
 	switch {
 	case verdict.answered, !again:
-		return withOpenClaims(verdict, open)
+		return verdict
 	case ctx.Err() != nil:
 		// The NODE was killed, not the audit. There is nobody to ask again and
 		// nothing to ask about; the caller reads ctx itself and tells that story.
@@ -1043,7 +1024,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// a person nobody was asked, when somebody was asked and abandoned.
 	if _, worthAsking := pace.bound(time.Now()); !worthAsking {
 		fmt.Fprintf(log, "audit: %s\n", checkerWindowClosed)
-		return withOpenClaims(verdict.andTheWindowClosed(), open)
+		return verdict.andTheWindowClosed()
 	}
 	// AND THE SECOND ASK GOES SOMEWHERE ELSE WHERE THERE IS SOMEWHERE ELSE. A
 	// model that read the diff, ran the verification and then said neither word
@@ -1059,14 +1040,14 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	} else {
 		fmt.Fprintf(log, "audit: no verdict — asking a fresh auditor\n")
 	}
-	retried, _ := a.auditOnce(ctx, node, tree, ground, pace, door, checks, files, claim, open, elsewhere, log)
+	retried, _ := a.auditOnce(ctx, node, tree, ground, pace, door, checks, files, claim, claims, elsewhere, log)
 	retried.alreadyRed = checks.alreadyRed()
 	if retried.answered {
 		// AND THE LANDING SAYS WHICH TRY ANSWERED. A verdict the first call did
 		// not produce is the same verdict — nothing about the work is different —
 		// but a person reading a card wants to know that the first call was
 		// abandoned rather than skipped ([checkedOnTheSecondTry]).
-		return withOpenClaims(retried.onTheSecondTry(), open)
+		return retried.onTheSecondTry()
 	}
 	return retried.twice()
 }
@@ -1085,7 +1066,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 // ([auditPace]) and the check is asked again inside what is left — where before
 // it, one hung call spent the whole five minutes and the node landed on a
 // sentence claiming nobody could check it (#513).
-func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ground auditGround, pace auditPace, door auditDoor, checks checkGround, files landingFiles, claim string, open []claimFinding, on string, log io.Writer) (auditVerdict, bool) {
+func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ground auditGround, pace auditPace, door auditDoor, checks checkGround, files landingFiles, claim string, claims []declaredClaim, on string, log io.Writer) (auditVerdict, bool) {
 	auditor, err := a.newAuditAgent(ground.dir, node, door, on)
 	if err != nil {
 		return noVerdict("the checker could not start: "+err.Error(), ""), true
@@ -1122,7 +1103,7 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	defer done()
 
 	fmt.Fprintf(log, "audit: verifying against the acceptance\n")
-	events, err := auditor.Submit(auditCtx, auditQuestion(node, tree, ground, door, checks, files, claim, open))
+	events, err := auditor.Submit(auditCtx, auditQuestion(node, tree, ground, door, checks, files, claim, claims))
 	if err != nil {
 		return noVerdict("the checker could not be asked: "+err.Error(), ""), true
 	}
@@ -1565,7 +1546,7 @@ func checkerConclusion(node *TaskNode, fallback string) string {
 // those are — or says plainly that there are none and that reading is the whole
 // of the job. A model that has not been told where the door is spends its
 // window looking for one, which is exactly what was measured.
-func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door auditDoor, checks checkGround, files landingFiles, claim string, open []claimFinding) string {
+func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door auditDoor, checks checkGround, files landingFiles, claim string, claims []declaredClaim) string {
 	var out strings.Builder
 	out.WriteString("The work: " + node.title() + "\n\n")
 	out.WriteString("ACCEPTANCE (this is the contract; judge against this and nothing else):\n")
@@ -1611,7 +1592,7 @@ func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door audit
 	if len(files.own) > 0 || files.divided() {
 		out.WriteString("\n")
 	}
-	out.WriteString(claimsBlock(open))
+	out.WriteString(claimsBlock(claims))
 	out.WriteString(auditReceiptBlock(node.lastReceipts(), ground.restored))
 
 	// The current directory and the worker's old addresses are different facts.

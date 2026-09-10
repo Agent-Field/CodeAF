@@ -801,8 +801,12 @@ func treeStateNow(tree string) string {
 	return verify.TreeState(tree, treeRecord(tree))
 }
 
-// treeRecord lists the tree's own files for [treeStateNow], bounded by the same
-// ceiling a claim hunt uses ([claimScanFiles]).
+// treeRecordLimit keeps a baseline snapshot bounded even when a working tree
+// contains generated files. This preserves the existing 8,000-file ceiling.
+const treeRecordLimit = 8000
+
+// treeRecord lists the tree's own files for [treeStateNow], bounded by
+// [treeRecordLimit].
 //
 // ── WHAT IT LEAVES OUT IS THE WHOLE OF WHETHER THIS WORKS ───────────────────
 //
@@ -846,7 +850,7 @@ func treeRecord(tree string) []string {
 			}
 			return nil
 		}
-		if len(record) >= claimScanFiles {
+		if len(record) >= treeRecordLimit {
 			return fs.SkipAll
 		}
 		if verify.SkipTree(entry.Name()) {
@@ -871,7 +875,7 @@ func treeRecordFromGit(tree string) ([]string, bool) {
 		if name == "" {
 			continue
 		}
-		if len(record) >= claimScanFiles {
+		if len(record) >= treeRecordLimit {
 			break
 		}
 		record = append(record, name)

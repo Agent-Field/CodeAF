@@ -1395,33 +1395,20 @@ and how its `--json` result names it.
 
 ## What the work SAYS it did is checked too — claims, and the ones nothing could settle
 
-**A landing's claims are its checklist.** Everything the work asserts about the world is a
-claim: a clause under `invalidates:` in a note it wrote, and every line of its own account of
-what it did. The check hunts each one against the tree that would land — not against the copy
-the run left lying around it.
+The checker receives the work's report, its acceptance, the files that would land,
+and any `invalidates:` declarations in changed notes. Statements in the report or
+notes are claims to examine, not proof. The checker reads their meaning in context
+and compares them with the actual work and the available check results.
 
-Two shapes are settled by looking, and cost nothing:
+A quoted phrase appearing in a file does not, by itself, contradict a report:
+“no entries were deleted” and “the entries were deleted” mean different things.
+The harness does not turn deletion or update keywords into an automatic failure,
+or infer that a claim passed because a search found nothing.
 
-- **a claim that some exact text is gone** — quoted in backticks or quotes, in the same
-  clause as the absence — is a search of everything that would land. The landing's own notes
-  are not searched: a note saying `` `$0.00` `` is gone contains `$0.00` in the act of saying
-  so;
-- **a claim that things under a named place were updated** is a question about which files the
-  landing wrote. Nothing written there, and the claim is false.
-
-A claim that a **behaviour** changed cannot be settled by looking, so it is handed to the
-checker as a written list, with the instruction to name any it could not settle.
-
-**A claim the tree contradicts fails the check**, and the finding quotes the sentence back:
-`it says "That exception is gone: ``$0.00`` is rendered nowhere." — but $0.00 is still in
-status.go:4`, or `… — but nothing under docs/guide was written`. It reads on the card under
-`incomplete —` like any other gap, and the work goes back for another go with it in front of
-it. No model is asked for this one: the search is the whole of the evidence.
-
-**A claim nothing settled is said out loud rather than passed over.** A check that comes back
-holding, on a landing whose written note declared something nobody examined, adds
-`nothing checked this claim:` and the sentence. Lines of the work's own prose are hunted and
-put to the checker but never named this way — otherwise every card would carry the line.
+Material contradictions and claims the checker could not examine belong in its
+account. The harness preserves that account; it does not guess which claims were
+checked from shared words in the answer. A supported negative result can still
+send the work back for repair through the ordinary task check.
 
 **A task that handed parts out is checked on the whole tree its parts came home into.** Its
 own files and its parts' files are both staged, both restored, and both named to the checker —
