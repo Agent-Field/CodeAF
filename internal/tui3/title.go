@@ -107,10 +107,11 @@ func titleWhere(a *app) titleParts {
 	case a.setup.open:
 		return titleParts{}
 	case a.at(pageHome):
-		// THE PULSE'S OWN COUNT AND ITS OWN WORDS, read through the same memo
-		// the top line draws from ([app.machineFactsAt]), so the tab and the
-		// line under it are one reading and never two counts.
-		if wants := a.machineFactsAt(a.now()).wants; wants > 0 {
+		// THE PULSE'S OWN COUNT AND ITS OWN WORDS, read off the same reading
+		// the top line draws from ([app.machine], taken on a beat by
+		// [app.readMachine]), so the tab and the line under it are one reading
+		// and never two counts.
+		if wants := a.machine.wants; wants > 0 {
 			return titleParts{name: itoa(wants) + pulseWantWord}
 		}
 		return titleParts{}

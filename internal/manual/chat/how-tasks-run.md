@@ -2487,7 +2487,7 @@ anyway.
 
 Append-only, one row per landed task: id, name, label, title, status, the first sentence
 of the outcome, file count, cost, the model it ran on, its tokens in and out as one sum,
-duration, when it ended, the session id, and two URIs — where the work is and where the
+duration, when it started and when it ended, the session id, and two URIs — where the work is and where the
 transcript is. Never the content: it is an index, not an archive. A read keeps the newest
 2000 rows.
 

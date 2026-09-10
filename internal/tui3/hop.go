@@ -224,7 +224,7 @@ type hopCard struct {
 	// mixed the two was the thing that could not be read — every row looked the
 	// same and nothing said which of them were alive — so the ring is the open
 	// ones, and `→` is how you reach anything else. It is a door and not a
-	// setting ([switcherView.all] holds the same law for home's own fold): a
+	// setting (home's own folds hold the same law, [homeQuietWord]): a
 	// line that says rows are being hidden and cannot be asked to stop hiding
 	// them is a dead end somebody hits and gives up at.
 	all bool

@@ -16,23 +16,10 @@ import (
 // owns the cursor whatever kind of section that is, there is never more than one
 // of it, and there is none of it at rest or under a search.
 //
-// THE SECTIONS ARE THE SWITCHER'S NOW. They used to be two strips and a heading
-// per project; the resting column is one flat ranked list, and the lines over it
-// that NAME rows rather than being one are all [homeSwitchHead] — the `since you
-// left` heading, the claim over the ranked rows, and a project's name while
-// `alt+g` is grouping. [headingKind] was widened to take them and [sectionEnd]
-// is the blank row alone, so the walk is unchanged: the nearest heading that owns
-// the cursor's row, stopping at the first block boundary above it.
-//
-// ── WHAT THE PAINT DOES NOT YET DO ──────────────────────────────────────────
-//
-// [app.homeLine] hands every line of the reading to [switcherReading.paint],
-// which draws a heading dim and never asks [homeView.sectionInk] — so the ink
-// step the law is about does not reach the screen on the resting list today.
-// What is asserted below is therefore the WALK and the paint's own two channels
-// ([homeView.sectionInk]'s answer, and that a heading takes no ground), which is
-// as close to the screen as this law can honestly be tested until the switcher's
-// painter asks the same question the project heading's painter does.
+// THE SECTIONS ARE THE GRID'S PANELS NOW (homegrid.go), and the mark is the
+// one docs/DESIGN-LANGUAGE.md states: the heading of the panel the cursor is
+// standing in wears the cursor step's ground, its words stay muted, and one
+// heading per frame wears it ([homeView.marksPanel]).
 
 // cursorGround is the escape sequence THE GROUND LADDER's cursor step opens
 // with, asked of the painter itself ([palette.cursor]) so this file names a STEP
@@ -42,66 +29,40 @@ func cursorGround(pal palette) string {
 	return lead
 }
 
-// selectedGround is the same question of the step one rung up, which is what
-// tells a heading's ground from the ground the conversation this terminal is in
-// already wears.
-func selectedGround(pal palette) string {
-	lead, _, _ := strings.Cut(pal.selected(" ", 1), " ")
-	return lead
-}
-
-// headingWord is what one heading line says, whichever kind of heading it is.
-// The claim over the ranked rows carries no word of its own — it is assembled
-// from the chat count at paint time — so it answers by the one clause that is
-// always in it.
-func headingWord(line homeLine) string {
-	switch {
-	case line.sw != nil && line.sw.section:
-		return "what wants you first"
-	case line.sw != nil:
-		return line.sw.heading
-	}
-	return line.project
-}
-
-// markedHeadings is every heading on the built column the frame is MARKING,
-// named by the word it carries — the assertion this whole file is about, and a
-// slice rather than a single value so "exactly one" is a thing a test can see
-// fail.
+// markedHeadings is every panel heading on the built grid the frame is
+// MARKING, named by its word — a slice rather than a single value so "exactly
+// one" is a thing a test can see fail.
 func markedHeadings(a *app) []string {
 	var out []string
+	if !a.home.gridOn() {
+		return out
+	}
 	for at, line := range a.home.lines {
-		if !headingKind(line.kind) {
-			continue
-		}
-		if a.home.marksSection(at) {
-			out = append(out, headingWord(line))
+		if a.home.marksPanel(at) {
+			out = append(out, line.cell.title)
 		}
 	}
 	return out
 }
 
-// standInList puts the cursor on the first conversation of one project's block,
-// and answers the line it landed on. It walks the built lines rather than
-// counting, because how many rows a ledger and a claim put above the first block
-// is not a number a test may know.
-func standInList(t *testing.T, a *app, name string) int {
+// standInPanel puts the cursor on the first row of one panel and answers the
+// line it landed on.
+func standInPanel(t *testing.T, a *app, panel homePanelID) int {
 	t.Helper()
 	for at, line := range a.home.lines {
-		if line.kind == homeSession && line.sw != nil && line.sw.row != nil && line.sw.row.project == name {
+		if line.stop() && line.cell != nil && line.cell.panel == panel {
 			a.home.cursor = at
 			return at
 		}
 	}
-	t.Fatalf("no conversation of %q is on the list:\n%s", name, homeText(a))
+	t.Fatalf("panel %d has no row to stand on:\n%s", panel, homeText(a))
 	return homeNoLine
 }
 
 // sectionLab is a machine with two projects, something stopped, something
-// running, and work that landed while nobody was looking — enough for the
-// ledger, the claim and a heading per project to be on one column at once, which
-// is where the question this file answers is asked hardest. It is grouped by
-// `alt+g` for that last one.
+// running, and work that landed while nobody was looking — enough for every
+// panel with a row in it to be on the grid at once, which is where the question
+// this file answers is asked hardest.
 func sectionLab(t *testing.T) *app {
 	t.Helper()
 	lab := newHomeLab(t)
@@ -121,43 +82,24 @@ func sectionLab(t *testing.T) *app {
 	a.width, a.height = 200, 34
 	a.openHome()
 	a.home.seen = now.Add(-30 * time.Minute)
-	if !a.placeAlt('g') {
-		t.Fatal("alt+g did nothing, so this column has no project headings on it")
-	}
+	a.home.build()
 	if !strings.Contains(homeText(a), "since you left") {
 		t.Fatalf("nothing landed while nobody was looking, so the ledger proves nothing:\n%s", homeText(a))
 	}
 	return a
 }
 
-// A CURSOR IN A BLOCK MARKS THAT BLOCK'S HEADING AND NOTHING ELSE, whatever kind
-// of block it is — and it marks the one the cursor is actually in, not the first
-// one on the column.
-func TestACursorMarksTheHeadingOfTheSectionItIsIn(t *testing.T) {
+// A CURSOR IN A PANEL MARKS THAT PANEL'S HEADING AND NOTHING ELSE, whatever
+// kind of panel it is — and the one the cursor is actually in, not the first
+// on the grid.
+func TestACursorMarksTheHeadingOfThePanelItIsIn(t *testing.T) {
 	a := sectionLab(t)
-	for _, name := range []string{"alpha", "beta"} {
-		standInList(t, a, name)
-		if got := markedHeadings(a); len(got) != 1 || got[0] != name {
-			t.Fatalf("standing in %q marks %v, want just %q:\n%s", name, got, name, homeText(a))
+	for _, panel := range []homePanelID{panelNeeds, panelRecent, panelLeft} {
+		standInPanel(t, a, panel)
+		want := homeSlotOf(panel).word
+		if got := markedHeadings(a); len(got) != 1 || !strings.HasPrefix(got[0], want) {
+			t.Fatalf("standing in %q marks %v, want just it:\n%s", want, got, homeText(a))
 		}
-	}
-	// AND THE LEDGER IS A SECTION LIKE ANY OTHER. Its heading names what the
-	// lines under it are about — the time you were away — so a cursor on one of
-	// them marks it and neither project.
-	at := homeNoLine
-	for i, line := range a.home.lines {
-		if line.kind == homeLedger {
-			at = i
-			break
-		}
-	}
-	if at == homeNoLine {
-		t.Fatalf("the ledger has no lines under it:\n%s", homeText(a))
-	}
-	a.home.cursor = at
-	got := markedHeadings(a)
-	if len(got) != 1 || !strings.HasPrefix(got[0], "since you left") {
-		t.Fatalf("standing on a ledger line marks %v, want the `since you left` heading:\n%s", got, homeText(a))
 	}
 }
 
@@ -199,19 +141,14 @@ func TestASearchingHomeMarksNoHeading(t *testing.T) {
 // where the cursor put it.
 func TestAHoverDoesNotMoveTheMarkedHeading(t *testing.T) {
 	a := sectionLab(t)
-	standInList(t, a, "alpha")
+	hovered := standInPanel(t, a, panelNeeds)
+	standInPanel(t, a, panelRecent)
 	want := markedHeadings(a)
 	if len(want) != 1 {
 		t.Fatalf("the cursor marks %v to begin with, so the hover proves nothing", want)
 	}
-
-	// The pointer goes to a row in the OTHER block — a different section under a
-	// different heading.
-	hovered := standInList(t, a, "beta")
-	a.home.cursor = homeNoLine
-	standInList(t, a, "alpha")
+	// The pointer goes to a row in ANOTHER panel.
 	a.home.hover = hovered
-
 	if got := markedHeadings(a); strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("the pointer moved the marked heading from %v to %v:\n%s", want, got, homeText(a))
 	}
@@ -233,51 +170,30 @@ func TestEveryCursorStopMarksExactlyOneHeadingOrNone(t *testing.T) {
 	}
 }
 
-// THE HEADING BRIGHTENS AND WEARS NO GROUND. Its word steps up from dim to the
-// body ink, and no band goes under it: a ground on this screen means where a
-// person's hands are, and a frame with the cursor's band on a row AND an
-// identical band on the heading read as two selections — the exact confusion this
-// mark exists to end (homesection.go argues it in full).
-//
-// THE INK STEP IS ASKED OF [homeView.sectionInk] RATHER THAN OF THE DRAWN ROW,
-// because the switcher's own painter does not yet consult it (this file's header
-// says so); the no-ground half is asked of the row as it is really drawn, which
-// is where it can be.
-func TestTheMarkedHeadingBrightensAndWearsNoGround(t *testing.T) {
+// THE HEADING WEARS THE CURSOR STEP'S GROUND AND ITS WORDS DO NOT MOVE. The
+// ground alone carries the fact; the words stay muted, never lit — THE ACCENT
+// BUDGET forbids it (docs/DESIGN-LANGUAGE.md).
+func TestTheMarkedHeadingWearsTheGroundAndKeepsItsWords(t *testing.T) {
 	a := sectionLab(t)
-	at := standInList(t, a, "alpha")
-	heading := homeNoLine
-	for i := at; i >= 0; i-- {
-		if headingKind(a.home.lines[i].kind) {
-			heading = i
-			break
+	standInPanel(t, a, panelRecent)
+	head := homeNoLine
+	for at := range a.home.lines {
+		if a.home.marksPanel(at) {
+			head = at
 		}
 	}
-	if heading == homeNoLine || headingWord(a.home.lines[heading]) != "alpha" {
-		t.Fatalf("the alpha block has no heading of its own:\n%s", homeText(a))
+	if head == homeNoLine {
+		t.Fatalf("standing in where you were marks no heading:\n%s", homeText(a))
 	}
-	if got := a.home.sectionInk(heading, a.pal)("alpha"); got != a.pal.ink("alpha") {
-		t.Fatalf("the marked heading's word did not step up to the body ink: %q", got)
+	cell := a.home.lines[head].cell
+	marked := homeCellHead(cell, 40, a.pal, true)
+	if !strings.HasPrefix(marked, cursorGround(a.pal)) {
+		t.Fatalf("the marked heading wears no ground: %q", marked)
 	}
-	// AND EVERY OTHER HEADING STAYS DIM, which is what makes one step up mean
-	// something at all.
-	for i, line := range a.home.lines {
-		if i == heading || !headingKind(line.kind) {
-			continue
-		}
-		if got := a.home.sectionInk(i, a.pal)("x"); got != a.pal.dim("x") {
-			t.Fatalf("heading %q is lit while the cursor is elsewhere: %q", headingWord(line), got)
-		}
+	if !strings.Contains(marked, a.pal.muted(cell.title)) || strings.Contains(marked, a.pal.accent(cell.title)) {
+		t.Fatalf("the marked heading's words changed ink: %q", marked)
 	}
-	// AND NOT THE ACCENT: brighter is not lit, and the budget stands.
-	if sgrOf(a.pal.ink) == sgrOf(a.pal.accent) {
-		t.Fatal("the body ink and the accent are the same paint, so a marked heading spends the budget")
-	}
-	// AND THE HEADING TAKES NEITHER GROUND ON THE FRAME. A heading is not a
-	// cursor stop, so no band can reach it — and this is the assertion that says
-	// so about the pixels rather than about the predicate.
-	drawn := a.homeLine(a.home.lines[heading], heading, 120, a.pal)
-	if strings.HasPrefix(drawn, cursorGround(a.pal)) || strings.HasPrefix(drawn, selectedGround(a.pal)) {
-		t.Fatalf("the marked heading wears a ground, which is the hand's channel: %q", drawn)
+	if rest := homeCellHead(cell, 40, a.pal, false); strings.HasPrefix(rest, cursorGround(a.pal)) {
+		t.Fatalf("an unmarked heading wears the ground: %q", rest)
 	}
 }

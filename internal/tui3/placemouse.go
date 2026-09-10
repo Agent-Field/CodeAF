@@ -11,7 +11,9 @@ import (
 // seven places:
 //
 //	a press on a tab word   goes to that place
-//	a press on a body row   moves that place's cursor, and never acts
+//	a press on a body row   is `enter` on it: the cursor lands and the row
+//	                        opens, and a click never spends (pages.go's
+//	                        [place.press])
 //	the pointer resting     previews the row it is over, and moves nothing —
 //	                        over a tab word, that preview is the word's own ink
 //	the wheel               walks the cursor, three rows a tick, and over the

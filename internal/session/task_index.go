@@ -274,6 +274,17 @@ type TaskIndexEntry struct {
 	// row rebuilt from a record that never carried the landing instant. Every
 	// ordering in this file is on it (see [taskIndexAt]).
 	EndedAt time.Time `json:"endedAt"`
+	// StartedAt is when the node began running — the node's own start, which
+	// the checkpoint restores with it (task_store.go's taskRecord), so a row
+	// rebuilt tomorrow carries the real instant rather than the moment a window
+	// happened to meet it. It is zero for a queued node and for every row
+	// written by a build older than this field, and a surface draws no age for
+	// either (the emptiness law).
+	//
+	// THE SPELLING IS THE INDEX'S OWN AND THE CHECKPOINT'S: camelCase, as
+	// `endedAt` beside it, and omitzero because a time is a struct and omitempty
+	// never leaves one out.
+	StartedAt time.Time `json:"startedAt,omitzero"`
 	// SessionID is the conversation that ran it — the id in the journal's
 	// header, which is also the directory a node's own transcript sits under.
 	SessionID string `json:"sessionId"`
@@ -331,8 +342,19 @@ func (e TaskIndexEntry) Live() bool {
 	return e.Status == string(TaskRunning) || e.Status == string(TaskQueued)
 }
 
-// Duration is DurationMS as a duration.
+// Duration is how long the work ran: DurationMS for a row that has landed, and
+// the time since [TaskIndexEntry.StartedAt] for a LIVE row that knows its start.
+//
+// A LIVE ROW'S DurationMS IS A STALE CLOCK. It is the node's age at the instant
+// the row was built, so a row held in a cache for a minute says the work had run
+// a minute less than it has; the start does not go stale. A row that is not live
+// keeps its frozen figure even with no landing instant on it — a record rebuilt
+// from an older build — because counting up from a start there would measure a
+// run that ended long ago as though it were still going.
 func (e TaskIndexEntry) Duration() time.Duration {
+	if e.EndedAt.IsZero() && e.Live() && !e.StartedAt.IsZero() {
+		return time.Since(e.StartedAt)
+	}
 	return time.Duration(e.DurationMS) * time.Millisecond
 }
 
@@ -761,6 +783,7 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 		RepairedOn:    n.repaired,
 		Tokens:        n.input + n.output,
 		DurationMS:    elapsed.Milliseconds(),
+		StartedAt:     n.started,
 		SessionID:     session,
 		ArtifactURI:   taskArtifactURI(n.worktree, n.branch, n.merge),
 		TranscriptURI: taskURI(n.journal),

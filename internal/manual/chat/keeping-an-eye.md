@@ -728,7 +728,8 @@ everything you set up from it:
   checks` row turns devbox's. Neither ever touches this machine.
 
 **Home and the standing place both work over a connection**, and both are about the far
-machine: home lists that machine's projects with each one's `◦` band under it, and the
+machine: home's panels are that machine's — its questions, its running work, its
+`next up` — and the
 standing place lists both what stands on this conversation and what stands anywhere else on
 that machine. `p` and `s` write to the far machine's store and the refusal, if the store
 refuses, is that store's own. The status line counts too — `◦ 2 standing orders` is about
@@ -886,9 +887,9 @@ reasons, in the order worth checking:
   chat that set it up was closed, the line went to another chat of the same
   project that was open — including one in a different pane or a different
   terminal. It is never delivered into the `ask here` pane on home.
-- **Nothing was open when it fired**, so it is waiting: home shows the project
-  with `◆ N things since you left`, and the rows appear the moment you open a
-  conversation there. Home's own `since you left` block names the firing as well
+- **Nothing was open when it fired**, so it is waiting, and the rows appear the
+  moment you open a conversation in that project. Home's `since you left` panel names
+  the firing
   — `fired 3 minutes ago — it told you` — and it does so for a one-off too, which
   is over and off every list by the time you get back.
 - **It has not fired yet.** A window checks its items every five minutes, the
