@@ -8,6 +8,12 @@ invalidates:
   - "`decided … · another window ·` on a question you answered yourself was never proof that another window answered it. Until now the block read `the question is still open here` as `somebody else decided it`, which is wrong for the one window whose answer crossed the wire and whose reply did not come back."
 ---
 
+Measured to the millisecond: six copies of the ordinary road's own e2e at once,
+and the one that failed spent exactly ten seconds — `internal/remote`'s
+`callDeadline` — before its answer came back as `the connection to the engine is
+gone`, while the engine had applied it and the model had already said `They
+picked "delete it"`. The five that passed round-tripped in one millisecond.
+
 `internal/tui3`'s question block wrote its receipt only after
 `ResolveQuestion` came back. The engine runs in its own process even on this
 machine, so that call applies the answer, emits `EventQuestionAnswered`, and

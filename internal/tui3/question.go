@@ -2347,9 +2347,20 @@ func (a *app) answerQuestion(q questionShown, answer session.Answer) tea.Cmd {
 		// busy, a pipe that went — leaves this window holding a question the
 		// engine has already settled, and the news of that settling then comes
 		// down the questions lane looking exactly like somebody else's answer.
-		// Measured on a real terminal (2026-09-10, the ordinary road's own e2e):
-		// a key pressed HERE drew `decided … · another window ·` on its own
-		// receipt, roughly one run in nine.
+		// MEASURED, ON A REAL TERMINAL AND TO THE MILLISECOND. Six copies of the
+		// ordinary road's own e2e at once on 2026-09-10, and the one that failed
+		// logged this and nothing else:
+		//
+		//	19:41:57.279  sending token=ask:1 keys=[1] by=person
+		//	19:42:07.279  REFUSED  err=the connection to the engine is gone
+		//	19:42:07.280  the lane's news, with the question still open here
+		//
+		// Ten seconds to the millisecond is [remote.callDeadline], and the engine
+		// had applied the answer regardless — the model's next sentence was
+		// `They picked "delete it"`. The five that passed round-tripped in one
+		// millisecond. So the receipt said `decided … · another window ·` over a
+		// key pressed on that very screen, and it is the box being busy that
+		// decides which run it happens on.
 		a.markQuestionSent(q.token(), answer.Keys())
 		if err := door.ResolveQuestion(answer); err != nil {
 			return nil
