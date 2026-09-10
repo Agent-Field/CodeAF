@@ -890,7 +890,7 @@ func standingOccurrenceBlock(occurrence standing.Occurrence) string {
 func standingReportBlock(item standing.Item, report string) string {
 	path := filepath.Join(item.Workspace, report)
 	line := "REPORT: your FINAL REPLY is the complete report. aforge publishes it to " + report +
-		" in the project, replacing the previous version. Write the whole report as your final reply, in Markdown; do not write that file yourself."
+		" in the project, replacing the previous version. Write the whole report as your final reply, in Markdown, and nothing else — no preface about what you read or did; do not write that file yourself."
 	if _, err := os.Stat(path); err == nil {
 		line += " The previous version is at " + report + "; read it if you need what it said."
 	}

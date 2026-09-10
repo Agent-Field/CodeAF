@@ -1970,6 +1970,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// for one before they learn that stopping is what it is called.
 		{"delete a standing order", "standing-orders"},
 		{"get rid of a standing order", "standing-orders"},
+		{"how do I set up ongoing work from the terminal without the chat", "standing-orders"},
+		{"watch a folder and keep a report current", "standing-orders"},
+		{"what woke this run and what did it make", "standing-orders"},
+		{"a standing order run was killed midway, is it retried", "standing-orders"},
+		{"edit a standing order after it is set up", "standing-orders"},
 		{"how do I make this permanent", "standing-orders"},
 		{"it didn't notice this was a rule and did it once", "standing-orders"},
 		{"can I click keeping an eye on 2", "standing-orders"},

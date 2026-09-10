@@ -682,3 +682,78 @@ items have no new approval receipt; the system does not reconstruct one. A recei
 records acceptance of the proposed text, not proof of a verbatim original quote.
 Folder bindings and rules change inputs at subsequent context refreshes; they do
 not cancel an already-running external action or rewrite existing outputs.
+
+## Set up ongoing work without the chat — aforge standing add, edit, pause, resume, stop
+
+`aforge standing` is the terminal's door onto the same orders the card makes. There
+you write the order whole, so there is no card and no model reading your sentence:
+the command is your yes, and the order's receipt says `set up by: person, through the
+terminal`.
+
+```
+aforge standing add --words "<your sentence>" --brief "<the work>" --watch 'inbox/*' \
+    [--report reports/inbox-report.md] [--workspace <dir>] [--place <folder-id>]
+aforge standing add --hold --words "<a rule>" [--scope <folder-id>] [--descendants]
+aforge standing edit <id> --brief "..."       # or --words, --watch, --every, --report
+aforge standing pause|resume|stop <id>
+aforge standing list | show <id> | check
+```
+
+`--every` takes a cron line or a duration instead of `--watch`. `--place` files the
+work in a folder as a **placement**, so that folder's rules reach it; `--scope` is a
+rule's folder. `aforge collections place|unplace <folder> standing <id>` changes
+placement later, while `aforge collections add` only files a reference.
+
+**An edit is a new version of the instructions.** `edit` prints `revised <id> to
+version N`; the next run uses it, a run already under way keeps what it started with,
+and each run's record keeps the brief it ran on. `--version N` refuses the edit if
+someone changed the instructions since you read version N. A stopped order cannot be
+resumed or edited: `a stopped item must be set up afresh`.
+
+This door never turns on the background timer. Its orders are checked when a window
+is open, when the timer is already on, or when you run `aforge standing check`. News
+from an order with no conversation behind it waits in its project's inbox.
+
+## Watch a folder and keep a report current — --watch, --report and what changed
+
+A `--watch` order reads the files its glob matches on every pass. The first reading is
+the baseline and runs nothing. After that a run starts only when a matching file was
+added, changed or removed, and the run is told exactly which: `added inbox/a.md`,
+`modified inbox/a.md`. Modified means its size or modification time moved; contents are
+not compared. If the earlier reading is missing the run is told the changes are
+unknown, never that nothing changed.
+
+`--report <path>` names one file inside the workspace. The run's **final answer** is the
+report: aforge writes it there, replacing the previous version, and the run is told
+where the previous version is so it can carry things forward. The run does not write
+the file itself — an unattended run may only do what your approval rules allow without
+asking, and reading is allowed; shell commands are not. Only a run that came back
+clean publishes. A run cut off mid-answer says `the run was cut off before it finished`
+and one that ended without an answer says `the run ended without a report; the previous
+report is unchanged` — either way the last good report stays.
+
+A report inside its own watch is refused when you set it up, because every report
+would wake it again. Nothing here uses an account or a connector: the order reads
+local files and writes one local file.
+
+## What woke each run and what it made — aforge standing show, check, and a run killed midway
+
+`aforge standing check` runs one pass now — the same pass the timer runs — and prints
+what it did: `2 checked · 1 ran`, or `nothing was due`. A pass may last up to 5 minutes.
+
+`aforge standing show <id>` prints the order, its folder, the rules that reach it, and
+every run newest first: which instructions version it ran on, what woke it, which
+files changed, the report it published with its size and sha256, its cost, and the
+run's journal. `--json` prints the same records. Each run folder holds
+`occurrence.json`, written **before** the run starts, and the run's own journal names
+that occurrence as its cause (`parent_cause: standing_occurrence`), so you can go from
+the order to the run and from the run back to the order.
+
+**If aforge is killed mid-run**, nothing is lost and nothing doubles. The next pass
+finds the half-done run, marks it `interrupted`, and retries the same change as
+`attempt 2`, naming the run it replaces. A run that finished but was not yet recorded
+is recorded, not run again.
+
+A run that fails is recorded as failed and is not retried by itself; the next change
+starts a new run. The record shows which rules were in front of a run, not that the
+model followed them.
