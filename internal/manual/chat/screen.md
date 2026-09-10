@@ -3586,6 +3586,12 @@ is the reply.** It arrives as the answer, it is rendered as markdown like any ot
 and it is what a resumed conversation shows you later. A turn that called a tool and said
 nothing is untouched — that is a model behaving, not a lost reply.
 
+**A turn that ends with no answer at all is a different thing, and it says so.** That is a
+reply taken away rather than a reply misfiled — you stopped it, or the conversation was
+opened in another window, closed, or left under the turn — and aforge names which, in one
+sentence, unless it was your own stop. *Models and cost* has the list under "My reply just
+stopped and nothing was said".
+
 ## `<think>` showed up in my answer
 
 It does not any more. Some endpoints — anything reached through `AFORGE_BASE_URL`, and any

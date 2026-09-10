@@ -59,8 +59,11 @@ type fakeAgent struct {
 	levels map[string]string
 
 	interrupts int
-	compacts   int
-	closes     int
+	// stopDoor is the door the last stop named, so a test can tell a person's
+	// own stop from machinery closing the conversation (stopcause.go).
+	stopDoor session.StopDoor
+	compacts int
+	closes   int
 
 	consents  []string
 	standings []session.StandingAnswer
@@ -211,10 +214,13 @@ func (f *fakeAgent) finish(stream chan session.Event) {
 	}
 }
 
-func (f *fakeAgent) Interrupt() {
+func (f *fakeAgent) Interrupt() { f.InterruptFor(session.StopByPerson) }
+
+func (f *fakeAgent) InterruptFor(door session.StopDoor) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.interrupts++
+	f.stopDoor = door
 }
 
 func (f *fakeAgent) Compact(context.Context) error {

@@ -2434,7 +2434,13 @@ type Agent struct {
 	// Explicit conversation stops suppress autonomous wakes until fresh input.
 	workStopped  bool
 	workStopping bool
-	cancel       context.CancelFunc
+	// cancel ends the turn in flight AND SAYS WHICH DOOR IT CAME THROUGH. It is
+	// a [context.CancelCauseFunc] rather than a plain one because a turn that
+	// ends with nothing said has to be able to account for itself afterwards —
+	// on the row, in the journal and in one sentence to the person
+	// (stopcause.go). Every caller passes a cause; nil is reserved for the
+	// turn's own cleanup, which cancels a context nothing is waiting on.
+	cancel context.CancelCauseFunc
 	// interrupt is ONE ESC'S WORTH of planner and title spend (interrupt_fan.go).
 	// It sits outside mu and holds its own lock: Interrupt is the one call that
 	// must always be answerable, and the handlers it serializes must never need

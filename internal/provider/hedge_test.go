@@ -1233,3 +1233,64 @@ func TestAFencedRunOfThoughtIsHiddenToTheController(t *testing.T) {
 			"and this test proved nothing about the seam")
 	}
 }
+
+// ── WHAT "REFUSED" MAY CLAIM ON A ROW (D3) ──────────────────────────────────
+
+// TestARefusalOnlyNamesWhatTheQuestionWasLeftWithout pins the whole of the rule
+// stated over [hedgeRace.rememberRefusal].
+//
+// The word used to be written wherever any gate anywhere said no, which made it
+// the commonest word in the model-call log and the least informative: a race
+// that put three arms on the wire and was then declined a fourth carried
+// `hedged arms=3 refused=budget`, and a question answered while a stall rescue
+// was still being priced carried the same word for a rescue nobody needed.
+func TestARefusalOnlyNamesWhatTheQuestionWasLeftWithout(t *testing.T) {
+	one := func() *hedgeRace {
+		return &hedgeRace{winner: -1, arms: []*hedgeArm{{index: 0}}}
+	}
+	t.Run("a question left with nothing says so", func(t *testing.T) {
+		race := one()
+		race.rememberRefusal("budget")
+		if _, _, _, why := race.spend(0); why != "budget" {
+			t.Fatalf("a refused rescue on a single-armed question says %q, want budget", why)
+		}
+	})
+	t.Run("a rescue that went out is not a rescue refused", func(t *testing.T) {
+		race := one()
+		race.rememberRefusal("budget")
+		// The walk deliberately ignores an earlier purse refusal, so a question
+		// can be refused a hedge and still put another machine on the wire.
+		race.arms = append(race.arms, &hedgeArm{index: 1})
+		if _, _, _, why := race.spend(0); why != "" {
+			t.Fatalf("a two-armed question claims it was refused a rescue: %q", why)
+		}
+		if _, _, _, why := race.spend(1); why != "" {
+			t.Fatalf("the rescue's own row claims it was refused: %q", why)
+		}
+	})
+	t.Run("a gate that closed beside a running rescue is not remembered", func(t *testing.T) {
+		race := one()
+		race.arms = append(race.arms, &hedgeArm{index: 1})
+		race.rememberRefusal("budget")
+		race.arms = race.arms[:1]
+		if _, _, _, why := race.spend(0); why != "" {
+			t.Fatalf("a fourth arm nobody needed was remembered as a refusal: %q", why)
+		}
+	})
+	t.Run("a gate that closed after the answer is not remembered", func(t *testing.T) {
+		race := one()
+		race.winner = 0
+		race.rememberRefusal("budget")
+		if _, _, _, why := race.spend(0); why != "" {
+			t.Fatalf("a rescue priced after the answer arrived was remembered as a refusal: %q", why)
+		}
+	})
+	t.Run("the first word wins", func(t *testing.T) {
+		race := one()
+		race.rememberRefusal("no alt")
+		race.rememberRefusal("budget")
+		if _, _, _, why := race.spend(0); why != "no alt" {
+			t.Fatalf("the row's reason moved with the beats: %q", why)
+		}
+	})
+}

@@ -472,7 +472,7 @@ func (a *app) takeOver() tea.Cmd {
 		// conversation arriving brings its own draft file with it.
 		a.draftFile = ""
 	}
-	cmd, moved := a.closeFront()
+	cmd, moved := a.closeFrontFor(session.StopByTakeover)
 	if !moved {
 		cmd = a.takeOverFresh()
 	}

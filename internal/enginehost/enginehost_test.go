@@ -36,6 +36,7 @@ func (stubAgent) SubmitImage(context.Context, string, []session.Image) (<-chan s
 func (stubAgent) FollowUp(string) (<-chan session.Event, error)             { return nil, nil }
 func (stubAgent) Steer(string) (<-chan session.Event, error)                { return nil, nil }
 func (stubAgent) Interrupt()                                                {}
+func (stubAgent) InterruptFor(session.StopDoor)                             {}
 func (stubAgent) Compact(context.Context) error                             { return nil }
 func (stubAgent) Close() error                                              { return nil }
 func (stubAgent) Model() string                                             { return "openai/gpt-5" }

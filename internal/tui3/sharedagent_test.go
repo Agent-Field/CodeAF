@@ -59,9 +59,11 @@ type sharedHandle struct {
 }
 
 func (h *sharedHandle) Title() string { return h.e.names[h.e.at] }
-func (h *sharedHandle) Interrupt() {
+func (h *sharedHandle) Interrupt()    { h.InterruptFor(session.StopByPerson) }
+
+func (h *sharedHandle) InterruptFor(door session.StopDoor) {
 	h.e.stopped = append(h.e.stopped, h.e.at)
-	h.fakeAgent.Interrupt()
+	h.fakeAgent.InterruptFor(door)
 }
 func (h *sharedHandle) Close() error {
 	h.e.shut = append(h.e.shut, h.e.at)

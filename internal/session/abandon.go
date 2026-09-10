@@ -147,7 +147,7 @@ func (a *Agent) Abandon(reason AbandonReason) (Usage, bool) {
 		close(gone)
 	}
 	if cancel != nil {
-		cancel()
+		cancel(stopFor(StopByAbandoned))
 	}
 	// AND EVERY FORKED HAND WITH IT, on [Agent.Interrupt]'s own reasoning: a hand
 	// runs on a context of its own, so the cancel above does not reach it, and a

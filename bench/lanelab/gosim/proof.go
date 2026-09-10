@@ -1510,7 +1510,10 @@ func (p *prover) sawToken(out *trial, seen sight) {
 func (p *prover) mark(out *trial, act control.Act, asked time.Time, late time.Duration) {
 	out.acted, out.kind, out.reason = true, act.Kind, act.Reason
 	out.silence = act.Silence.Seconds()
-	out.wait, out.cost = act.Wait, act.Cost
+	// A FIGURE THE CONTROLLER COULD NOT PRICE IS LEFT AT ZERO on the proof row,
+	// which is what every other unmeasured column of one already is.
+	out.wait, _ = act.Wait.Get()
+	out.cost, _ = act.Cost.Get()
 	out.action = asked.Sub(p.at).Seconds()
 	out.late = float64(late) / float64(time.Millisecond)
 }

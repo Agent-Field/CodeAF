@@ -328,6 +328,7 @@ func (s *stubAgent) Steer(text string) (<-chan session.Event, error) {
 }
 
 func (s *stubAgent) Interrupt()                          {}
+func (s *stubAgent) InterruptFor(session.StopDoor)       {}
 func (s *stubAgent) Compact(ctx context.Context) error   { return errors.New("not here") }
 func (s *stubAgent) Close() error                        { return nil }
 func (s *stubAgent) Model() string                       { return "a-model" }
