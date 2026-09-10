@@ -452,9 +452,9 @@ func TestAConversationMidTurnIsMovingWithNoTasksAtAll(t *testing.T) {
 // replaced it. A `needs you` row named after a landing used to open the bare
 // conversation, which put a person on the live edge of a transcript with no
 // trace of the thing they had pressed. There is no such row now — work that
-// landed is a LINE OF THE LEDGER at the top of the list — and the same law holds
-// over it: the line says how many tasks landed, and enter goes to the place that
-// holds them rather than to a conversation that happens to have run one.
+// landed is a LINE OF THE LEDGER — and the same law holds over it: the line
+// names the task that landed, and enter goes to the place that holds it rather
+// than to a conversation that happens to have run it.
 func TestTheLedgerLineAboutLandedWorkOpensTheTasksPlace(t *testing.T) {
 	lab := newSwitchLab(t)
 	now := lab.now
@@ -475,8 +475,8 @@ func TestTheLedgerLineAboutLandedWorkOpensTheTasksPlace(t *testing.T) {
 	if at == homeNoLine {
 		t.Fatalf("nothing on the ledger is about work that landed:\n%s", homeText(a))
 	}
-	// AND IT COUNTS IN A PERSON'S WORDS: one task landed, never `1 tasks`.
-	if !strings.Contains(homeText(a), "1 task landed") {
+	// AND IT NAMES THE WORK, one line per task (homepanel_left.go).
+	if !strings.Contains(homeText(a), "toy-scale validation") {
 		t.Fatalf("the ledger does not say what landed:\n%s", homeText(a))
 	}
 	// THE WORD IN THE MARGIN IS THE DOOR, which is why the two are one field

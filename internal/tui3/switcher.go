@@ -87,6 +87,9 @@ type switcherView struct {
 type switcherLedgerInput struct {
 	learned int
 	letGo   int
+	// made is the files conversations made since the look stamp, read on home's
+	// beat and never on a draw (place_home.go's [app.readSwitchLedger]).
+	made []session.Artifact
 }
 
 type switcherKind uint8
@@ -133,6 +136,13 @@ type switcherRow struct {
 	fold     bool
 	foldWord string
 	options  []session.AnswerOption
+	// task is the landed piece of work a `since you left` line names, and path
+	// the file one names; each is the line's door (place_home.go's
+	// [app.homeLedgerEnter]). margin is what such a line carries at its right —
+	// a task's cost, the conversation a file was made in.
+	task   *session.TaskIndexEntry
+	path   string
+	margin string
 }
 
 type switcherLine struct {
@@ -520,14 +530,8 @@ func (r *switcherReading) addLedger(items map[string][]StandingItemView, fired [
 	for _, view := range fired {
 		add(view)
 	}
-	landed := 0
-	for _, row := range world.Sessions() {
-		for _, entry := range row.Tasks.Rows {
-			if entry.EndedAt.After(seen) && entry.Status != string(session.TaskRunning) && entry.Status != string(session.TaskQueued) {
-				landed++
-			}
-		}
-	}
+	events = append(events, ledgerLanded(world, seen)...)
+	events = append(events, ledgerMade(world, input.made)...)
 	if input.learned > 0 || input.letGo > 0 {
 		parts := []string{}
 		if input.learned > 0 {
@@ -537,11 +541,6 @@ func (r *switcherReading) addLedger(items map[string][]StandingItemView, fired [
 			parts = append(parts, fmt.Sprintf("let go of %d", input.letGo))
 		}
 		events = append(events, switcherRow{kind: switcherLedger, title: strings.Join(parts, ", "), place: "memory", at: r.now})
-	}
-	if landed > 0 {
-		events = append(events, switcherRow{kind: switcherLedger,
-			title: fmt.Sprintf("%d %s landed", landed, switcherPlural(landed, "task", "tasks")),
-			place: "tasks", at: r.now})
 	}
 	if len(events) == 0 {
 		return

@@ -820,6 +820,11 @@ type homeView struct {
 	tilde     string
 	gridX     []int
 	gridMarks []homeMark
+
+	// made is the last reading of the files made since the look stamp, which
+	// `since you left` draws a line each for (homepanel_left.go's
+	// [app.madeSince]); it is kept so a quiet beat costs a stat and no parse.
+	made homeMadeIndex
 }
 
 // say replaces the refusal on screen, together with the directory it names.
@@ -1973,7 +1978,8 @@ func (h *homeView) searching() bool { return !h.box.empty() || h.carrying }
 // gets its case here in the same change that gives it its case in
 // [homeLine.stop].
 //
-// The identity is whatever the row is ABOUT — a conversation is its transcript,
+// The identity is whatever the row is ABOUT — a conversation is its transcript
+// (and on the grid, which of its pieces of work the row names: [homeCell.key]),
 // a project or a fold is its directory, a place or a `since you left` line is
 // its place word, a command is its entry in the one command table
 // (homeslash.go), an errand is the live exchange itself. The two rows that
@@ -1985,7 +1991,7 @@ func (l homeLine) sameRow(other homeLine) bool {
 	}
 	switch l.kind {
 	case homeSession:
-		return l.row.Transcript != "" && l.row.Transcript == other.row.Transcript
+		return l.row.Transcript != "" && l.row.Transcript == other.row.Transcript && l.cellKey() == other.cellKey()
 	case homeItem:
 		return l.item.ID != "" && l.item.ID == other.item.ID
 	case homeQuiet, homeItemFold, homeProject:

@@ -155,7 +155,7 @@ func (a *app) homeCellRow(cell *homeCell, at, width int, pal palette, lit bool) 
 	body := homeCellBody(cell, width-homeGridLead, pal, lit)
 	rows := []string{homeCellBand(a.homeCellLead(cell, at, pal)+body, width, pal, lit)}
 	if cell.sub != "" {
-		under := switcherSides(max(1, width-homeGridLead), cell.sub, cell.subRight, pal.dim, pal.muted)
+		under := switcherSides(max(1, width-homeGridLead), cell.sub, a.cellSubRight(cell), pal.dim, pal.muted)
 		rows = append(rows, homeCellLeadBlank+under)
 	}
 	return rows

@@ -202,7 +202,7 @@ func TestSinceYouLeftLinesAreDoorsIntoTheirPlaces(t *testing.T) {
 	a.home.seen = now.Add(-30 * time.Minute)
 	a.home.build()
 	text := switchFrame(a)
-	if !strings.Contains(text, "since you left") || !strings.Contains(text, "1 task landed") {
+	if !strings.Contains(text, "since you left") || !strings.Contains(text, "toy-scale validation") {
 		t.Fatalf("no ledger:\n%s", text)
 	}
 	doors := map[string]bool{}
@@ -334,7 +334,7 @@ func TestTheLedgersMemoryFiguresComeThroughOneSeam(t *testing.T) {
 	if a.memory != nil {
 		t.Fatal("this test is about a window with no memory store")
 	}
-	if a.home.ledger != (switcherLedgerInput{}) {
+	if a.home.ledger.learned != 0 || a.home.ledger.letGo != 0 {
 		t.Fatalf("the ledger input was not read from the seam: %+v", a.home.ledger)
 	}
 	if strings.Contains(switchFrame(a), "learned") {
