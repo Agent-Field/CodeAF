@@ -14,6 +14,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -585,5 +586,129 @@ func TestAQuickTaskCaughtByTheCloseSettlesRatherThanResuming(t *testing.T) {
 	}
 	if branch != "" {
 		t.Fatalf("an interrupted quick task named branch %q, and it has none to name", branch)
+	}
+}
+
+// ── (7) the list's own invariant ────────────────────────────────────────────
+
+// DONE IS PARALLEL TO ITEMS, AND THE SPEC HOLDS IT ITSELF.
+//
+// A spec whose ticks were shorter than its list used to be a spec that took the
+// session down on the first tick: the ceiling road built its own literal and
+// left `done` nil (checkpoint_quick.go), so `items {"done": 1}` indexed off the
+// end of a slice of length zero. The invariant is now the spec's, so a road
+// that forgets — including one nobody has written yet — starts the list
+// untickled instead of faulting.
+func TestASpecWhoseTicksAreShortOfItsItemsGrowsRatherThanFaulting(t *testing.T) {
+	// A spec assembled the way a road that forgot the field assembles one.
+	spec := &quickTaskSpec{line: "walk the three", items: []string{"one", "two", "three"}}
+	spec.growDoneLocked()
+	if len(spec.done) != len(spec.items) {
+		t.Fatalf("done is %d long against %d items, want them parallel", len(spec.done), len(spec.items))
+	}
+	if spec.doneCountLocked() != 0 {
+		t.Fatalf("a list nobody has ticked counts %d done, want none", spec.doneCountLocked())
+	}
+
+	// AND IT NEVER THROWS A TICK AWAY. Growing is the only move: a shorter
+	// `done` would be the harness deciding the worker had not done work it said
+	// it had done.
+	spec.done[2] = true
+	spec.items = append(spec.items, "four")
+	spec.growDoneLocked()
+	if len(spec.done) != 4 || !spec.done[2] {
+		t.Fatalf("done = %v after the list grew, want the third tick kept and a fourth slot added", spec.done)
+	}
+
+	// AND THE CONSTRUCTOR HOLDS IT FROM THE FIRST MOMENT, which is what every
+	// road is now made to come through.
+	made := newQuickTaskSpec("walk the two", []string{"one", "two"}, nil)
+	if len(made.done) != 2 {
+		t.Fatalf("a spec straight from the constructor has %d ticks against 2 items", len(made.done))
+	}
+	if made.nextItemLocked() != "one" {
+		t.Fatalf("the constructor's spec is on %q, want the first item", made.nextItemLocked())
+	}
+}
+
+// A FAULT UNDER THE LIST DOOR DOES NOT KEEP THE GRAPH'S LOCK.
+//
+// This is the difference between a tool that faults and a session that stops. A
+// panicking tool is survivable by design — [Agent.runToolsWarm] seeds every slot
+// with a refusal and recovers into it, and the model reads it and carries on —
+// but the door's unlock used to be written at the bottom of the body, so a fault
+// on the way past kept `graph.mu` for good. The node's heartbeat, its row and
+// its landing all take that lock, which is why the measured run showed no
+// further model call and a row left `running` until the window was killed.
+//
+// The fault is induced through a node with no quick spec at all, because after
+// the invariant above no ordinary tick can fault any more. What is asserted is
+// not the panic — it is that the lock is free afterwards.
+func TestAFaultUnderTheListDoorDoesNotKeepTheGraphsLock(t *testing.T) {
+	graph := &TaskGraph{}
+	node := &TaskNode{graph: graph}
+
+	func() {
+		// The fault itself is not the assertion — a door that answered this
+		// instead of faulting would be fine too. What is asserted is what the
+		// lock looks like on the way out either way.
+		defer func() { _ = recover() }()
+		node.quickItemChange(1, nil)
+	}()
+
+	if !graph.mu.TryLock() {
+		t.Fatal("the graph's lock is still held after a fault under the list door: every later reader of the graph — the node's beat, its row, its landing — would block for the life of the session")
+	}
+	graph.mu.Unlock()
+}
+
+// A QUICK TASK WHOSE TURN ENDS ON AN ERROR LANDS, AND SAYS SO IN WORDS.
+//
+// The row must never be left running: whatever ends the child's turn, the node
+// settles and the card carries an account a person can read. Pinned because the
+// measured failure was the other thing entirely — a node that neither finished
+// nor failed, still `running` a quarter of an hour later.
+func TestAQuickTaskWhoseTurnEndsOnAnErrorLandsRatherThanHanging(t *testing.T) {
+	completer := newQuickLanes([]step{
+		quickCall("q1", "read the ledger", "read the ERRAND-SIDE ledger and say what it holds", []string{"open it", "say what it holds"}, nil),
+		finalText("asked for it"),
+	})
+	// The worker's every call fails. The script is long enough that no retry
+	// ladder can walk off the end of it and be answered by the fixture's own
+	// unscripted reply.
+	failing := func(context.Context, []ai.Message) (*ai.Response, error) {
+		return nil, errors.New("provider returned error: 502 bad gateway")
+	}
+	worker := make([]step, 0, 24)
+	for round := 0; round < 24; round++ {
+		worker = append(worker, failing)
+	}
+	completer.lane("ERRAND-SIDE", worker...)
+
+	agent, graph, _ := quickAgent(t, completer)
+	collect(t, mustSubmit(t, agent, "read the ledger for me"))
+	node := quickNodeSaying(t, graph, "ERRAND-SIDE")
+	waitDoneNode(t, node)
+
+	notice := node.notice()
+	if notice.State == TaskRunning || notice.State == "" {
+		t.Fatalf("a quick task whose turn ended is still %q", notice.State)
+	}
+	if notice.State != TaskFailed {
+		t.Fatalf("it landed %q, want %q — nothing about its work is known", notice.State, TaskFailed)
+	}
+	// A LANDED ROW HAS NO DOING LINE, whatever ended it.
+	if notice.Doing != "" {
+		t.Errorf("a landed quick task still says %q", notice.Doing)
+	}
+	// AND THE CARD LEADS WITH WHAT HAPPENED, in the person's words. No
+	// machinery: whatever the harness caught, the card is what somebody reads.
+	if !strings.HasPrefix(notice.Report, "the quick task ended on an error") {
+		t.Fatalf("the card reads %q, want it to open on what happened", notice.Report)
+	}
+	for _, banned := range []string{"panic", "goroutine", "nil pointer", "index out of range"} {
+		if strings.Contains(strings.ToLower(notice.Report), banned) {
+			t.Errorf("the card says %q, and %q is machinery a person is never shown", notice.Report, banned)
+		}
 	}
 }

@@ -92,6 +92,48 @@ type quickClaim struct {
 	path string
 }
 
+// newQuickTaskSpec is THE ONE DOOR EVERY QUICK SPEC COMES THROUGH, on every
+// road, and it exists because the second road forgot a field.
+//
+// A spec assembled with a composite literal is a spec whose `done` is whatever
+// that literal happened to say, and the ceiling road's literal said nothing
+// (checkpoint_quick.go) — so a node handed a drawing arrived with three items
+// and no ticks to put against them, and the first `items {"done": 1}` its
+// worker made indexed past the end of a slice of length zero. A nil check at
+// the index would have answered that one call; a constructor answers every road
+// that is ever written, including the ones that do not exist yet.
+//
+// `waits` is deliberately not a parameter. It is admission's own finding and is
+// hung on the spec by the door that admits ([Agent.newQuickSpec]); the ceiling
+// road has no admission of that kind and would only ever pass nil.
+func newQuickTaskSpec(line string, items, files []string) *quickTaskSpec {
+	spec := &quickTaskSpec{line: line, items: items, files: files}
+	spec.growDoneLocked()
+	return spec
+}
+
+// growDoneLocked holds the spec's one invariant: DONE IS PARALLEL TO ITEMS.
+//
+// IT IS HELD BY THE SPEC AND NOT BY ITS CALLERS, which is the whole point. Both
+// readers of `done` already tolerate a short slice — [quickTaskSpec.nextItemLocked]
+// bounds its index and [quickTaskSpec.doneCountLocked] ranges over what is there
+// — so the only place the parallel could ever be broken loudly is the WRITE, and
+// the write is one line in one function. Growing here means a spec restored from
+// a checkpoint, built by a road nobody has written yet, or decoded from a store
+// that dropped the field cannot take a turn down with it: the worst it can do is
+// start the list untickled, which is exactly what a fresh node looks like.
+//
+// It never shrinks. A `done` longer than `items` would mean items were removed,
+// which nothing does, and throwing ticks away to make a slice fit would be the
+// harness deciding the worker had not done work it said it had done. Called
+// with the graph's lock held — or before the spec is shared, which is the
+// constructor's case and is the same thing.
+func (s *quickTaskSpec) growDoneLocked() {
+	for len(s.done) < len(s.items) {
+		s.done = append(s.done, false)
+	}
+}
+
 // nextItemLocked is the item the worker is on: the first one nothing has ticked.
 // It answers "" for a list that is finished and for a node with no list at all,
 // which the emptiness law then draws as nothing. Called with the graph's lock
@@ -138,6 +180,16 @@ func quickDoing(spec *quickTaskSpec) string {
 		line += " · " + next
 	}
 	return clip(line, hintLimit)
+}
+
+// quickWordUnder is [quickDoing] with the graph's lock taken around it, for the
+// callers that hold nothing yet. The unlock is deferred for [TaskNode.quickListChange]'s
+// reason: a lock this one dropped would take the node's heartbeat, its row and
+// its landing with it.
+func quickWordUnder(graph *TaskGraph, spec *quickTaskSpec) string {
+	graph.mu.Lock()
+	defer graph.mu.Unlock()
+	return quickDoing(spec)
 }
 
 // quickInterruptedReport is what a quick task that was still working when the
@@ -382,7 +434,7 @@ func (a *Agent) newQuickSpec(line string, items, files []string, dependsOn []uin
 	if missing, failed := a.graph().doomedDependencies(dependsOn); len(missing)+len(failed) > 0 {
 		return taskSpec{}, dependencyRefusal(missing, failed)
 	}
-	quick := &quickTaskSpec{line: line, items: kept, files: scope, done: make([]bool, len(kept))}
+	quick := newQuickTaskSpec(line, kept, scope)
 	quick.waits = a.graph().quickClaimsOn(a.config.Workspace, scope)
 	for _, claim := range quick.waits {
 		dependsOn = append(dependsOn, claim.id)
@@ -545,8 +597,37 @@ func (n *TaskNode) quickDoor() func(int, []string) string {
 // list is held still and said afterwards, which is this package's ordinary
 // shape for "read a fact, then tell the world about it".
 func (n *TaskNode) quickItemChange(done int, add []string) string {
+	reply, word := n.quickListChange(done, add)
+	n.doingNow(word)
+	return reply
+}
+
+// quickListChange is the half of the change that happens under the graph's
+// lock: it ticks, it appends, and it composes the row's new word. It answers
+// the reply and that word, and the caller says the word once the lock is gone.
+//
+// A PANIC UNDER THE GRAPH'S LOCK MUST NOT KEEP THE LOCK. This is its own
+// function, with its own deferred unlock, because that is the whole of the
+// difference between a tool that faults and a session that stops. A tool
+// panicking is an ordinary, survivable thing — [Agent.runToolsWarm] seeds every
+// slot with a refusal and recovers into it, and the model reads "tool panicked:
+// items did not return a result" and carries on — but an unlock written at the
+// bottom of the body is skipped on the way past, and `graph.mu` is the lock the
+// node's own heartbeat, its row, and its landing all take. So the fault that
+// should have cost one call cost the node everything: no further model call, no
+// landing, a row left `running` for as long as the window stayed open. Measured
+// on a real run, 2026-09-10.
+//
+// The tick itself can no longer fault ([quickTaskSpec.growDoneLocked] holds the
+// parallel), and the defer stands anyway: the law is that NOTHING taken under
+// this lock is allowed to keep it, not that this particular line is safe today.
+func (n *TaskNode) quickListChange(done int, add []string) (string, string) {
 	spec := n.spec.quick
 	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	// The list is made whole before it is written to, so a spec that reached
+	// here from a road that built it by hand ticks rather than faults.
+	spec.growDoneLocked()
 	var reply string
 	switch {
 	case done >= 1 && done <= len(spec.items):
@@ -567,16 +648,13 @@ func (n *TaskNode) quickItemChange(done int, add []string) string {
 			continue
 		}
 		spec.items = append(spec.items, item)
-		spec.done = append(spec.done, false)
+		spec.growDoneLocked()
 		reply = fmt.Sprintf("items: %d now", len(spec.items))
 	}
 	if reply == "" {
 		reply = "nothing to do: say `done` with the item you finished, or `add` with the steps to append."
 	}
-	word := quickDoing(spec)
-	n.graph.mu.Unlock()
-	n.doingNow(word)
-	return reply
+	return reply, quickDoing(spec)
 }
 
 // ── the body ────────────────────────────────────────────────────────────────
@@ -665,10 +743,7 @@ func (a *Agent) runQuickNode(ctx context.Context, node *TaskNode, listed *job) T
 	// been written yet would draw as an ordinary task working — which is the one
 	// thing a quick row must never look like, because a task has a branch coming
 	// home and this has nothing of the kind.
-	node.graph.mu.Lock()
-	word := quickDoing(quick)
-	node.graph.mu.Unlock()
-	node.doingNow(word)
+	node.doingNow(quickWordUnder(node.graph, quick))
 
 	// IT WORKS WHERE THE CALLER WORKS. No worktree is prepared and none is
 	// wanted: the whole difference between this and a task is that what it writes
