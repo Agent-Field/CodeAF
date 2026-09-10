@@ -511,7 +511,7 @@ func (a *Agent) runVision(ctx context.Context, hub *eventHub, live ai.Message, s
 			partial.reset()
 		}
 		if ctx.Err() != nil {
-			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{}, started, a.Model())})
+			hub.send(a.turnDone(a.sealTurn(Usage{}, started, a.Model())))
 			return false
 		}
 		if err == nil {
@@ -530,7 +530,7 @@ func (a *Agent) runVision(ctx context.Context, hub *eventHub, live ai.Message, s
 	}
 	partial.reset()
 	a.record(textMessage("assistant", note+answer))
-	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{}, started, a.Model())})
+	hub.send(a.turnDone(a.sealTurn(Usage{}, started, a.Model())))
 	// The session may name itself off this exchange like any other: a
 	// conversation that opened with a photograph is still a conversation about
 	// something (title.go).

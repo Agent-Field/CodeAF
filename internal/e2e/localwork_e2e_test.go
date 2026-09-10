@@ -192,13 +192,13 @@ func TestLocalWorkJourney(t *testing.T) {
 		t.Fatalf("a held report did not make the check exit unanswered (4): code %d\n%s", code, out)
 	}
 	runs = j.expectRuns(inbox, 6)
-	if o := runs[0]; o.Phase != "finished" || o.Outcome != "needs-you" || o.Published != nil || o.RuleCheck == nil || o.RuleCheck.Verdict != "broken" || o.RuleCheck.Held == "" || !o.RuleCheck.Rewrote {
+	if o := runs[0]; o.Phase != "finished" || o.Outcome != "needs-you" || o.Published != nil || o.Withheld != "held-by-rules" || o.RuleCheck == nil || o.RuleCheck.Verdict != "broken" || o.RuleCheck.Held == "" || !o.RuleCheck.Rewrote {
 		t.Fatalf("the held run: %+v checked %+v", o.occurrenceView, o.RuleCheck)
 	}
 	if got := j.read("reports/inbox-report.md"); got != kept || strings.Contains(got, "bob@example.com") {
 		t.Fatalf("a held report replaced the last good one:\n%s", got)
 	}
-	if show := j.ok("standing", "show", inbox); !strings.Contains(show, "held back, not published") || !strings.Contains(show, "waiting on you:") {
+	if show := j.ok("standing", "show", inbox); !strings.Contains(show, "held back, not published") || !strings.Contains(show, "waiting on you:") || !strings.Contains(show, "· withheld: held-by-rules") {
 		t.Fatalf("show does not say the report was held:\n%s", show)
 	}
 	// The person fixes the note; a new note arrives. The run lists both.
@@ -295,6 +295,7 @@ type occurrenceView struct {
 	Phase        string   `json:"phase"`
 	Outcome      string   `json:"outcome"`
 	SupersededBy string   `json:"supersededBy"`
+	Withheld     string   `json:"withheld"`
 	Changes      []struct {
 		Path string `json:"path"`
 		Kind string `json:"kind"`
@@ -429,8 +430,8 @@ func (j *journey) expectRun(run runRecord, want runExpect) {
 func (j *journey) expectPublished(run runRecord, path string) {
 	j.t.Helper()
 	p := run.Published
-	if p == nil || p.Path != path {
-		j.t.Fatalf("run %s published %+v, want %s", run.ID, p, path)
+	if p == nil || p.Path != path || run.Withheld != "" {
+		j.t.Fatalf("run %s published %+v (withheld %q), want %s", run.ID, p, run.Withheld, path)
 	}
 	sum := sha256.Sum256([]byte(j.read(path)))
 	if hex.EncodeToString(sum[:]) != p.SHA256 {

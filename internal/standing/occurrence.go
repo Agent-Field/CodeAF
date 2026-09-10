@@ -96,14 +96,19 @@ type Occurrence struct {
 	Attempt    int      `json:"attempt"`
 	Supersedes []string `json:"supersedes,omitempty"`
 
-	Phase        string       `json:"phase"`
-	Finished     time.Time    `json:"finished,omitzero"`
-	Outcome      string       `json:"outcome,omitempty"`
-	OutcomeText  string       `json:"outcomeText,omitempty"`
-	USD          float64      `json:"usd,omitempty"`
-	Published    *Publication `json:"published,omitempty"`
-	Error        string       `json:"error,omitempty"`
-	SupersededBy string       `json:"supersededBy,omitempty"`
+	Phase       string       `json:"phase"`
+	Finished    time.Time    `json:"finished,omitzero"`
+	Outcome     string       `json:"outcome,omitempty"`
+	OutcomeText string       `json:"outcomeText,omitempty"`
+	USD         float64      `json:"usd,omitempty"`
+	Published   *Publication `json:"published,omitempty"`
+	// Withheld is why a firing that keeps a report did not publish it, as a
+	// stable code a front end can read ("at-a-limit", "empty-report", …; the
+	// one table is internal/session's withheldCodes). It is present ONLY on a
+	// withheld run, so a record written before it existed reads the same.
+	Withheld     string `json:"withheld,omitempty"`
+	Error        string `json:"error,omitempty"`
+	SupersededBy string `json:"supersededBy,omitempty"`
 	// RuleCheck is the check of the report against the rules that reached the
 	// run, made before it was published, when any rules reached it.
 	RuleCheck *RuleCheck `json:"ruleCheck,omitempty"`

@@ -50,6 +50,9 @@ const (
 	closedReport
 	// unclosedReport: its last report was opened and never closed.
 	unclosedReport
+	// unopenedReport: it closed a report it never opened — a closing tag with
+	// no opening line anywhere before it.
+	unopenedReport
 )
 
 // firingEnd is what a firing's turns came to, gathered by the run's one event
@@ -69,8 +72,10 @@ type firingEnd struct {
 	cut error
 	// saved: a call saved something. capped: the step or spending limit
 	// stopped the run. ownReportWrite: a write of its own report path was
-	// refused, as every unattended write is.
-	saved, capped, ownReportWrite bool
+	// refused, as every unattended write is. truncated: the last turn's answer
+	// stopped at the output limit and its continuations ran out, as that
+	// turn's own ending said ([Event.Truncated]).
+	saved, capped, ownReportWrite, truncated bool
 }
 
 // readReport records the report lines in one reader's worth of text. Text that
@@ -85,7 +90,7 @@ func (e *firingEnd) readReport(said string) {
 // beginCorrection clears what decides the report before the run's one
 // correction turn (standing_rules.go), which is judged on its own words.
 func (e *firingEnd) beginCorrection() {
-	e.final, e.report, e.lines, e.cut, e.ownReportWrite = "", "", noReportLines, nil, false
+	e.final, e.report, e.lines, e.cut, e.ownReportWrite, e.truncated = "", "", noReportLines, nil, false, false
 }
 
 // reportWithheld is the answer. The zero value withholds nothing; every other
@@ -98,16 +103,54 @@ const (
 	withheldForAPerson
 	// withheldCutOff: a turn ended on an error or on the pass's deadline.
 	withheldCutOff
+	// withheldOutputLimit: its answer stopped at the model's output limit and
+	// the continuations ran out.
+	withheldOutputLimit
 	// withheldAtALimit: the step or spending limit stopped the run.
 	withheldAtALimit
 	// withheldUnclosed: its last report was opened and never closed.
 	withheldUnclosed
+	// withheldUnopened: it closed a report it never opened.
+	withheldUnopened
+	// withheldEmpty: its report between both lines had nothing in it.
+	withheldEmpty
 	// withheldSelfWrite: it tried to write its report file and replied with no
 	// report between the lines.
 	withheldSelfWrite
 	// withheldNoReport: it ended on a tool call, with nothing said after it.
 	withheldNoReport
+
+	// The three below are decided after the turns, by the gates that own them,
+	// and are the same answer carried on: the rules check held the report
+	// (standing_rules.go), the person stopped the item while it ran, or the
+	// report could not be written.
+	withheldByRules
+	withheldStopped
+	withheldUnwritten
 )
+
+// withheldCodes is the one table of the codes a withheld run is recorded with
+// (internal/standing's Occurrence.Withheld). THEY ARE IDENTIFIERS, NOT WORDS:
+// a front end reads them instead of parsing the line a person reads, so a code
+// is never renamed in passing — a test pins this exact set, and changing it is
+// a deliberate act with a change entry.
+var withheldCodes = map[reportWithheld]string{
+	withheldForAPerson:  "waiting-on-person",
+	withheldCutOff:      "cut-off",
+	withheldOutputLimit: "output-limit",
+	withheldAtALimit:    "at-a-limit",
+	withheldUnclosed:    "unclosed-report",
+	withheldUnopened:    "unopened-report",
+	withheldEmpty:       "empty-report",
+	withheldSelfWrite:   "self-write",
+	withheldNoReport:    "no-report",
+	withheldByRules:     "held-by-rules",
+	withheldStopped:     "stopped",
+	withheldUnwritten:   "not-written",
+}
+
+// code is the answer as it is recorded; "" for a run nothing withheld.
+func (w reportWithheld) code() string { return withheldCodes[w] }
 
 // withheld answers whether this firing's report may be published, and why not
 // when it may not. owesReport says the item keeps a report; deadline is the
@@ -117,13 +160,16 @@ const (
 // everything, because it is work waiting on them rather than work that failed;
 // an error outranks the rest, because nothing after it was finished. Past
 // those, a firing with no report to keep has nothing to withhold. For one that
-// has, A LIMIT WITHHOLDS EVEN A CLOSED REPORT: the run was stopped before it
-// said it was done, and a report written before later tool work may be about a
-// state that work had not yet reached. A FINISHED REPORT BETWEEN THE LINES
-// STANDS even when the run also tried to write the file (the live review of
-// 2026-09-10). WITHOUT ONE, a refused write of the report is the run trying to
-// publish on its own authority, and what it said next is not a report. A run
-// that said nothing and saved nothing came to nothing, as it always has.
+// has, AN ANSWER CUT AT THE OUTPUT LIMIT IS NOT AN ANSWER, whatever lines it
+// holds, and A LIMIT WITHHOLDS EVEN A CLOSED REPORT: the run was stopped before
+// it said it was done, and a report written before later tool work may be about
+// a state that work had not yet reached. A report's lines must be whole and
+// hold something — AN EMPTY REPORT IS NO REPORT, and publishing one would erase
+// the last good page. A FINISHED REPORT BETWEEN THE LINES STANDS even when the
+// run also tried to write the file (the live review of 2026-09-10). WITHOUT
+// ONE, a refused write of the report is the run trying to publish on its own
+// authority, and what it said next is not a report. A run that said nothing and
+// saved nothing came to nothing, as it always has.
 func (e firingEnd) withheld(owesReport bool, deadline error) reportWithheld {
 	switch {
 	case e.needs != "":
@@ -132,10 +178,16 @@ func (e firingEnd) withheld(owesReport bool, deadline error) reportWithheld {
 		return withheldCutOff
 	case !owesReport:
 		return notWithheld
+	case e.truncated:
+		return withheldOutputLimit
 	case e.capped:
 		return withheldAtALimit
 	case e.lines == unclosedReport:
 		return withheldUnclosed
+	case e.lines == unopenedReport:
+		return withheldUnopened
+	case e.lines == closedReport && e.report == "":
+		return withheldEmpty
 	case e.lines == closedReport:
 		return notWithheld
 	case e.ownReportWrite:
@@ -162,10 +214,16 @@ func (e firingEnd) why(w reportWithheld, deadline error) string {
 			cause = errors.New("the turn ended abnormally")
 		}
 		return "the run was cut off before it finished: " + oneLine(cause.Error())
+	case withheldOutputLimit:
+		return "the run's answer was cut off at the model's output limit; the previous report is unchanged"
 	case withheldAtALimit:
 		return "the run reached its step or spending limit before it finished; the previous report is unchanged"
 	case withheldUnclosed:
 		return "the run's report was never finished — it has no closing line; the previous report is unchanged"
+	case withheldUnopened:
+		return "the run's report has a closing line but no opening line; the previous report is unchanged"
+	case withheldEmpty:
+		return "the run's report was empty; the previous report is unchanged"
 	case withheldSelfWrite:
 		return "the run tried to write its report instead of replying with it; the previous report is unchanged"
 	case withheldNoReport:
@@ -195,6 +253,16 @@ func (e firingEnd) outcome(w reportWithheld, deadline error) standing.Outcome {
 		outcome.Text = e.why(w, deadline)
 	}
 	return outcome
+}
+
+// recordWithheld writes the answer onto an outcome for a firing that keeps a
+// report. A firing with no report has nothing to withhold, so its record never
+// carries a code (the emptiness law, for a field a front end reads).
+func recordWithheld(outcome *standing.Outcome, w reportWithheld, owesReport bool) {
+	outcome.Withheld = ""
+	if owesReport {
+		outcome.Withheld = w.code()
+	}
 }
 
 // body is the report to publish when nothing withheld it: the closed report,
@@ -227,6 +295,13 @@ func delimitedReport(text string) (string, reportLines) {
 		}
 	}
 	if open < 0 {
+		// A CLOSING TAG WITH NO OPENING LINE IS NOT "NO LINES". The run meant
+		// to delimit a report and did not open it, so there is no telling where
+		// the report began; taking the whole answer would publish the narration
+		// in front of it and the tag itself.
+		if strings.Contains(text, standingReportClose) {
+			return "", unopenedReport
+		}
 		return "", noReportLines
 	}
 	body := strings.Join(lines[open+1:], "\n")

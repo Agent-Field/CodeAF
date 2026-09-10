@@ -733,23 +733,49 @@ unknown, never that nothing changed.
 `--report <path>` names one file inside the workspace. The run's **final answer** is the
 report, and aforge — not the run — writes it there, replacing the previous version; the
 run is told where the previous version is so it can carry things forward. The run is
-asked to put the report between a line `<report>` and a line `</report>`, and only that
-is published; an answer with neither line is published whole. An unattended run may
-only do what your approval rules allow without asking — reading, not writing or shell
+asked to put the report between a line `<report>` and a line `</report>`, and only what
+is between them is published. An answer with no `<report>` line and no `</report>`
+anywhere is published whole; one with a `</report>` but no `<report>` line is not
+published, because nobody can tell where its report began. An unattended run may only
+do what your approval rules allow without asking — reading, not writing or shell
 commands — so a run that tries to write the report file itself is refused, and that is
-not a question for you.
-
-**Only a run that came back clean publishes.** Each of these fails the run and leaves
-the last good report where it was, with the line that says why: `the run was cut off
-before it finished`, `the run reached its step or spending limit before it finished`,
-`the run's report was never finished — it has no closing line`, `the run tried to write
-its report instead of replying with it`, and `the run ended without a report`.
+not a question for you. If it also replied with a finished report between the lines,
+that report is published; if not, nothing is. **Only a run that came back clean
+publishes** — the next section lists every reason a report is not.
 
 A report inside its own watch, or inside a folder the watch matches (`*` watching
 `reports`), is refused when you set it up, because every report would wake it again.
 A run that failed or was held back does not use up its changes: the next run is told
 about them again. Nothing here uses an account or a connector: the order reads local
 files and writes one local file.
+
+## Why wasn't my report published — the reason, and the withheld code in the record
+
+Only a run that came back clean publishes. Anything else fails the run, or waits on
+you, and leaves the last good report exactly where it was. `aforge standing show <id>`
+prints the reason on the run's `came to:` line followed by `· withheld: <code>`; the
+same code is `"withheld"` in the run's `occurrence.json` and in `--json`. A run that
+published, and an order with no `--report`, carry no code.
+
+| Code | The line |
+|---|---|
+| `waiting-on-person` | the call it stopped on, which only you can allow |
+| `cut-off` | `the run was cut off before it finished` |
+| `output-limit` | `the run's answer was cut off at the model's output limit` |
+| `at-a-limit` | `the run reached its step or spending limit before it finished` |
+| `unclosed-report` | `the run's report was never finished — it has no closing line` |
+| `unopened-report` | `the run's report has a closing line but no opening line` |
+| `empty-report` | `the run's report was empty` |
+| `self-write` | `the run tried to write its report instead of replying with it` |
+| `no-report` | `the run ended without a report` |
+| `held-by-rules` | `report held back, not published: …` |
+| `stopped` | `stopped while it ran` |
+| `not-written` | `could not publish the report to …` |
+
+An answer is cut at the output limit only after aforge has asked for the rest twice. A
+finished report is still withheld when the run was then stopped at a limit, because it
+was written before the work that was stopped. All of it holds for the one correction
+the rules check asks for, too. The codes are fixed names to search or script against.
 
 ## What woke each run and what it made — aforge standing show, check, and a run killed midway
 
