@@ -139,11 +139,12 @@ func TestAnErrandRungStillAnsweringIsNotCutByTheLaddersOwnShare(t *testing.T) {
 	if len(calls) != 1 {
 		t.Fatalf("the ladder made %d calls, want the one rung that answered: %+v", len(calls), calls)
 	}
-	// THE FIRST RUNG WAS HANDED THE WHOLE ERRAND'S CLOCK. Under the even split it
-	// was handed budget/2 — one second — and the answer above, which takes 1.2s,
-	// was cut. Anything at or under half is that arithmetic still in place.
-	if calls[0].left < budget-300*time.Millisecond {
-		t.Fatalf("the first rung was handed %s of a %s errand, want nearly the whole of it",
+	// THE FIRST RUNG WAS HANDED THE ERRAND'S CLOCK LESS THE FLOOR'S RESERVE — four
+	// fifths of it ([errandReserve]) — and not the even split's half. The answer
+	// above takes 1.2s, which the half would have cut and the reserve does not.
+	// Anything at or under half is that arithmetic still in place.
+	if calls[0].left <= budget/2 {
+		t.Fatalf("the first rung was handed %s of a %s errand, want everything but the floor's reserve",
 			calls[0].left, budget)
 	}
 }
@@ -182,7 +183,7 @@ func TestASilentErrandRungLeavesTheNextOneTheRestOfThePatience(t *testing.T) {
 	// was handed what was left divided by one — which looks the same here — but
 	// the FIRST rung was handed half, and the fact this asserts is that neither
 	// of them was.
-	if calls[1].left < budget-600*time.Millisecond {
+	if calls[1].left < budget-700*time.Millisecond {
 		t.Fatalf("the fall-through rung was handed %s of a %s errand, want what the first rung did not spend",
 			calls[1].left, budget)
 	}

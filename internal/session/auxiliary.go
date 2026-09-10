@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/lane"
@@ -165,9 +166,21 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 	// reached with nearly the whole budget still on the clock, which is more time
 	// than an even share ever gave it.
 	//
-	// So the tier's patience bounds the ERRAND, once. Every rung and every retry
-	// runs on whatever is left of it, and a caller with a nearer deadline of its
-	// own still wins, because [context.WithTimeout] keeps the nearer of the two.
+	// So the tier's patience bounds the ERRAND, once. Every rung runs on whatever
+	// is left of it, and a caller with a nearer deadline of its own still wins,
+	// because [context.WithTimeout] keeps the nearer of the two.
+	//
+	// EXCEPT FOR WHAT THE RUNGS BELOW ARE OWED, which is [errandReserve] and is
+	// the one piece of the old arithmetic worth keeping. The guard cuts a rung
+	// that is not working — but there is one shape it cannot see, a gateway that
+	// takes `stream: true` and answers a whole completion in one piece
+	// (internal/provider's [Client.completionInOnePiece] arms no stall watch), and
+	// a wedged endpoint behind one of those would eat the whole errand and leave
+	// the ladder's floor unasked. A fifth held back is enough that the floor —
+	// the model already answering the person's own turns — is always reachable,
+	// and far enough above the guard's own wall that it never cuts a stream the
+	// guard was happy with. That is the difference between a reserve and the even
+	// split it replaces.
 	errandCtx, endErrand := context.WithTimeout(ctx, patience)
 	defer endErrand()
 	tell := errandWatchFrom(ctx)
@@ -237,8 +250,10 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 		// somebody else must not be billed to the endpoint that failed.
 		served := &provider.ServedEndpoint{}
 		callCtx = provider.WithServedEndpoint(callCtx, served)
+		callCtx, releaseRung := errandRungContext(callCtx, len(rungs)-attempt-1)
 		response, callErr := client.CompleteWithMessages(callCtx, messages,
 			append(append([]ai.Option{}, options...), ai.WithModel(rung.Model))...)
+		releaseRung()
 		if callErr == nil && response != nil {
 			// AND THE ERRAND WRITES ITS OWN CALL LINE, exactly as a step of the
 			// turn does (loop.go's [Agent.addUsage]). Without it the journal's
@@ -319,6 +334,35 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 		}
 	}
 	return nil, "", lastErr
+}
+
+// errandReserve is the fraction of what is left of an errand that is held back
+// for EACH rung still below the one being asked. A fifth: enough that the floor
+// is always reachable, small enough that it is never the thing that ends a rung
+// which is answering.
+//
+// IT IS NOT THE OLD EVEN SPLIT. That divided the whole budget by the rungs
+// remaining and handed the first one half of it, which is why a stream still
+// writing at ninety seconds of its hundred and eighty died. This hands the first
+// rung four fifths and keeps a fifth for the floor.
+const errandReserve = 5
+
+// errandRungContext bounds one rung at what it may spend: everything left except
+// what the `below` rungs under it are owed.
+//
+// A rung with nothing under it is handed the errand's own context unchanged,
+// which is the ordinary case and pays nothing.
+func errandRungContext(ctx context.Context, below int) (context.Context, context.CancelFunc) {
+	deadline, ok := ctx.Deadline()
+	if below <= 0 || !ok {
+		return ctx, func() {}
+	}
+	left := time.Until(deadline)
+	owed := time.Duration(below) * (left / errandReserve)
+	if owed <= 0 || owed >= left {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, left-owed)
 }
 
 // errandNews is one moment of an errand's ladder, for a caller that has somebody
