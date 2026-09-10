@@ -2034,10 +2034,11 @@ func TestASplitIsNeverDroppedByTheRunningModelsDeclaration(t *testing.T) {
 // EVERY VERB'S ARGUMENTS RENDER, AND THE LEDGER KNOWS NO VERB'S NAME FOR
 // ANYTHING.
 //
-// The old rule was a list of five anticipated keys, and `fork` — which takes
-// `parts` — drew as a bare line reading `fork`. So a measured turn that had
-// already fanned out twice was described to the reader as two steps that touched
-// nothing, and the reader sketched serial work over the top of it three times.
+// The old rule was a list of five anticipated keys, and a verb that fans work
+// out — which takes `parts` rather than any of them — drew as a bare line
+// carrying its own name. So a measured turn that had already fanned out twice
+// was described to the reader as two steps that touched nothing, and the reader
+// sketched serial work over the top of it three times.
 func TestEveryVerbsArgumentsRenderInTheLedger(t *testing.T) {
 	for _, shape := range []struct {
 		name      string
@@ -2046,7 +2047,7 @@ func TestEveryVerbsArgumentsRenderInTheLedger(t *testing.T) {
 		absent    string
 	}{
 		{
-			name:      "a fork renders its parts",
+			name:      "a fan-out renders its parts",
 			arguments: `{"parts":[{"role":"the parser","scope":["p.go"]},{"role":"the handlers","scope":["h.go"]}]}`,
 			want:      []string{"the parser", "the handlers"},
 		},

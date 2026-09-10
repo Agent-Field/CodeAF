@@ -126,12 +126,6 @@ func (c Config) hasConnect() bool { return newConnectHub(c) != nil }
 // standing section is composed from.
 func (c Config) mayStand() bool { return c.standingStore() != nil }
 
-// mayFork says whether `fork` belongs on this belt (fork.go). It is off in a
-// hand and nowhere else, which is the whole of the depth-one law: a chat turn
-// and a task worker are both minds mid-work with a context worth copying, and a
-// hand is not, because the fork is one deep.
-func (c Config) mayFork() bool { return !c.inHand }
-
 // mayDesignHarness says whether the two harness hands belong on this belt
 // (tools_harness.go): a store to write the page into, a runner to run what was
 // written, and somebody watching who can answer the card. A design nobody can
@@ -294,25 +288,17 @@ var handoffFacts = []beltFact{{
 		"change over many items is work you open and carry yourself, in the order that\n" +
 		"finishes it.",
 }, {
-	tools: []string{"fork"},
-	holds: Config.mayFork,
-	present: "  - SEVERAL PARTS OF THE REPLY YOU ARE ALREADY WRITING, on files that do not\n" +
-		"    touch: `fork`, mid-work only, once you can name the slices.",
-	// A hand is told nothing, because the fork is one deep and there is no
-	// second-best road to point it at (fork.go's forkTools).
-	absent: "",
-}, {
 	// AND THE LIGHTEST ROAD OF ALL, which is not a hand-off at all in the sense
-	// the two above it are: nothing is copied, nothing is checked, and the answer
+	// the one above it is: nothing is copied, nothing is checked, and the answer
 	// comes back to be read. The judge that decides between this and a task is
 	// written once, in `quick_task`'s own description (task_quick.go), so this
 	// line says only which verb it is and what it does.
 	tools:   []string{quickTaskToolName},
 	holds:   Config.mayQuickTask,
 	present: "  - Work you will read the result of and carry on: `quick_task` — it starts now, where you are, and lands as its last message.",
-	// A node on the floor of the tree is told nothing, for the reason the fork's
-	// own row is silent: there is no second-best road to point it at, and the
-	// `WORK IS YOURS TO DO HERE` sentence above has already said so.
+	// A node on the floor of the tree is told nothing: there is no second-best
+	// road to point it at, and the `WORK IS YOURS TO DO HERE` sentence above has
+	// already said so.
 	absent: "",
 }, {
 	tools:   []string{"build_harness", loadCapabilityToolName},

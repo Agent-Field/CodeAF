@@ -83,7 +83,7 @@ import (
 // prompts/system.md lost the media-making essay (the manual's own
 // making-pictures-audio-and-video page teaches all of it, and `manual` is a
 // tool the model can call), the paragraphs restating `bash`, `jobs`, `tasks`,
-// `fork`, `manual`, `build_harness` and `change_setting`'s own descriptions
+// `manual`, `build_harness` and `change_setting`'s own descriptions
 // back at the model, and the three-part propose_task contract its own schema
 // fields spell out field by field. It went 23,954 → 20,589; the tool block went
 // 26,678 → 26,579; the prefix is 47,168, which is 832 under.

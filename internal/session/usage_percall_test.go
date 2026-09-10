@@ -43,7 +43,7 @@ func priced(response *ai.Response, usd float64) *ai.Response {
 // foldInto brings a child's whole tally home the way a closing node does: into
 // the parent's books through the fold door, which writes no ledger line because
 // the child already wrote one per call as it spent (usage_ledger.go's second
-// rule; [Agent.foldTaskUsage] and [Agent.foldHandUsage] are the two callers).
+// rule; [Agent.foldTaskUsage] is the caller).
 func foldInto(parent, child *Agent) {
 	used := child.Usage()
 	cost := used.CostUSD

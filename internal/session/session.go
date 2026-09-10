@@ -1527,27 +1527,10 @@ type Config struct {
 	// agent it built — and it is set in exactly one place: the executor that
 	// runs one node of an adaptive run, from that node's own declared scope.
 	//
-	// EMPTY IS NO BOUND, which is every agent in this build but a scoped node
-	// and a fork's hand (fork.go), which is the second citizen this bound got and
-	// the reason it is stated in the agent's own voice rather than a node's.
+	// EMPTY IS NO BOUND, which is every agent in this build but a scoped node —
+	// stated in the agent's own voice rather than a node's, because the bound
+	// belongs to the agent that is held to it.
 	writeScope []string
-
-	// inHand says this agent IS one of a fork's hands (fork.go), and it exists to
-	// take one verb away: a hand may not fork again. It is a flag rather than a
-	// belt decision made at the fork because a belt is assembled once, inside
-	// [newAgent], so a verb withheld afterwards would be a verb the model was
-	// already told it had.
-	//
-	// It is unexported for writeScope's reason: it is not a caller's choice but a
-	// fact about an agent this package built.
-	inHand bool
-
-	// handLeash is a hand's round budget, as a citizen of the control plane
-	// (fork.go, hooks.go). It is a pointer because the budget is state that the
-	// running turn writes and the fork reads afterwards, and it is nil for every
-	// agent that is not a hand — which is what leaves the plane exactly as it was
-	// for everybody else.
-	handLeash *handLeash
 
 	// pacing is how a node hears that its own calls have parked on the
 	// provider's rate limiting, and it is unexported for connectHub's reason: it
@@ -2453,14 +2436,8 @@ type Agent struct {
 	// workspace, and the whole of the write seam's state (writeseam.go). It is
 	// minted at episode-init and read at the step boundary, and it is nil in a
 	// session that has never opened an episode.
-	writes *writeMeter
-	// handWrites is every landed write call a hand has brought home since the
-	// write seam last took them. Hands can outlive the turn that forked them, so
-	// these groups belong to the session until whichever turn next reaches the
-	// seam drains them into its own meter. Each group is one call, because calls
-	// as well as distinct paths spend the allowance (writeseam.go).
-	handWrites [][]string
-	running    bool
+	writes  *writeMeter
+	running bool
 	// turnFloor is where the running turn's WORK begins in a.messages: the
 	// index just past the message that opened the turn, stamped by
 	// [Agent.startTurnLocked] and meaningful only while running is true. It is

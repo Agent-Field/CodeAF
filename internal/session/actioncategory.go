@@ -250,7 +250,7 @@ func ActionCategoryForTool(tool string) ActionCategory {
 		return ActionCommunicate
 
 	// Work handed out, or this mind copied to run beside itself.
-	case "propose_task", "quick_task", "divide_work", "fork", "workspace_fork", "stand":
+	case "propose_task", "quick_task", "divide_work", "workspace_fork", "stand":
 		return ActionCoordinate
 
 	// Keeping the account of the work rather than doing it. `items` is a quick
