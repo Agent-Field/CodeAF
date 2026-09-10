@@ -276,8 +276,9 @@ type episode struct {
 	// watching this turn. It is nil in the small hook tests that have no surface.
 	hub *eventHub
 	// seenThrough is the exclusive end of the transcript the last decision
-	// request carried. A result at or beyond it has not been seen by the model and
-	// may not be folded, however full the turn has become (turnfold.go).
+	// request carried. CRITICAL: results beyond this observed horizon stay whole,
+	// however full the turn becomes; a file change or a reused call ID cannot
+	// make an unseen result eligible for folding (turnfold.go).
 	seenThrough int
 
 	// watch is the loop detector's window over this turn's calls (looped.go).
