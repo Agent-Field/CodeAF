@@ -41,9 +41,10 @@ package session
 //
 // WHAT IS DONE, BECAUSE IT WAS OBSERVED — every loose form below was sent by a
 // model on this build, and each is taken only because the value it carries is
-// the value that was meant, spelled another way. A number where text is wanted
-// is that number's spelling (coerceText). A list or an object that arrives AS A
-// JSON STRING holding its own JSON text — `"options":"[{\"key\":\"1\",…}]"` — is
+// the value that was meant, spelled another way. A number in a cell of a text
+// table is that number's spelling (coerceMap) — and only there: a number where a
+// named text argument was wanted is still refused. A list or an object that
+// arrives AS A JSON STRING holding its own JSON text — `"options":"[{\"key\":\"1\",…}]"` — is
 // unwrapped once and read as the list it holds. deepseek-v4-flash sent `ask` that
 // way three calls running on 2026-09-10, every one refused with "options takes a
 // list", and the turn ended on the loop guard with the person never shown a
@@ -304,7 +305,19 @@ func coerceMap(raw json.RawMessage, text string, t reflect.Type, path string) (j
 	sortStrings(names)
 	rebuilt := make(map[string]json.RawMessage, len(entries))
 	for _, name := range names {
-		fixed, err := coerceArgument(entries[name], t.Elem(), joinArgPath(path, name))
+		value := entries[name]
+		// A CELL OF A TEXT TABLE TAKES A NUMBER AS ITS OWN SPELLING. `ask`'s
+		// comparison axes are a map of text values, and a model that writes
+		// `"complexity": 1` there has answered in the only way a number can be
+		// written (2026-09-10, deepseek-v4-flash, `Complexity takes text … not
+		// 1`); "1" is exactly what it meant, and the keys are its own, so there
+		// is no named argument here for a number to be the wrong type of.
+		if t.Elem().Kind() == reflect.String {
+			if cell := strings.TrimSpace(string(value)); cell != "" && shape(cell) == shapeNumber {
+				value = json.RawMessage(strconv.Quote(cell))
+			}
+		}
+		fixed, err := coerceArgument(value, t.Elem(), joinArgPath(path, name))
 		if err != nil {
 			return nil, err
 		}
@@ -401,22 +414,18 @@ func coerceFraction(raw json.RawMessage, text, path string) (json.RawMessage, er
 	return nil, &toolArgumentError{field: path, repair: leafName(path) + " takes a number; " + text + " is not one"}
 }
 
-// coerceText guards a string argument. A NUMBER SENT WHERE WORDS WERE WANTED
-// IS TAKEN AS ITS OWN SPELLING: `ask`'s comparison axes are declared an object
-// of text values and a model that writes `"complexity": 1` has answered in the
-// only way a number can be written, and nothing is lost by reading it as "1"
-// (2026-09-10, deepseek-v4-flash, `Complexity takes text … not 1`). This is the
-// mirror of the whole-number case above and rests on the same fact: the
-// quoted form IS the value the model meant. A truth sent where words were
-// wanted is still refused, because "true" the word and true the answer are
-// not the same thing and the tool cannot tell which was meant.
+// coerceText guards a string argument. A number or a bell sent where words were
+// wanted gets the quoted form back as the corrected call — and that stays a
+// refusal for a NAMED text argument, because `bash {"command":17}` is not a
+// command spelled oddly, it is a call that meant nothing, and running "17" after
+// asking the person's permission for it would be worse than saying so
+// (invalid_shell_consent_test.go). The one place a number IS its own spelling
+// is a cell of a text table, and coerceMap takes it there.
 func coerceText(raw json.RawMessage, text, path string) (json.RawMessage, error) {
 	switch shape(text) {
 	case shapeString:
 		return raw, nil
-	case shapeNumber:
-		return json.RawMessage(strconv.Quote(text)), nil
-	case shapeBool:
+	case shapeNumber, shapeBool:
 		return nil, &toolArgumentError{
 			field:  path,
 			repair: leafName(path) + ` takes text: send {"` + leafName(path) + `":"` + text + `"}, not ` + text,

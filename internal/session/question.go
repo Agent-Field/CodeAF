@@ -417,9 +417,9 @@ type Pick struct {
 // `"pick":{"key":"1"}` has sent `"pick":1` and `"pick":"1"` (deepseek-v4-flash,
 // 2026-09-10), and both say exactly one thing: the first answer. A type that
 // decodes itself decides its own grammar (toolargs.go), so the bare forms are
-// read here; the object form goes back through the one decoder, so that a key
-// written as a number inside it is corrected by the same rule as everywhere
-// else and refused in the same words when it cannot be.
+// read here; the object form goes back through the one decoder, so that what
+// is inside it is read, and refused, by the same rules and in the same words as
+// every other argument on the belt.
 func (p *Pick) UnmarshalJSON(raw []byte) error {
 	text := strings.TrimSpace(string(raw))
 	if text == "" || text == "null" {

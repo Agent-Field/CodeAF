@@ -30,6 +30,8 @@ type argumentsForTest struct {
 	Rails     struct {
 		MaxPerDay int `json:"max_per_day"`
 	} `json:"rails"`
+	// Dimensions is the shape of an answer's comparison axes: a text table.
+	Dimensions map[string]string `json:"dimensions"`
 	// Pick is `ask`'s own pick, a type that decodes itself.
 	Pick *Pick `json:"pick"`
 	// Options is the shape of `ask`'s answers — a list of objects that each carry
@@ -185,13 +187,18 @@ func TestDecodeToolArgumentsTakesTheLooseFormsAndRefusesTheRestInWordsAModelCanA
 			},
 		},
 		{
-			name: "a pick's own key written as a number is corrected by the one rule",
-			args: `{"pick":{"key":3,"reason":"why"}}`,
+			name: "a pick's object form is walked by the one decoder",
+			args: `{"pick":{"key":"3","reason":"why"}}`,
 			check: func(t *testing.T, got argumentsForTest) {
 				if got.Pick == nil || got.Pick.Key != "3" || got.Pick.Reason != "why" {
 					t.Fatalf("pick: want key 3 with its reason, got %+v", got.Pick)
 				}
 			},
+		},
+		{
+			name:    "and a key written as a number inside it is refused by the one rule, in the decoder's words",
+			args:    `{"pick":{"key":3}}`,
+			refusal: `key takes text: send {"key":"3"}, not 3`,
 		},
 		{
 			name:    "a pick's confidence written as a number is refused in the decoder's words",
@@ -238,19 +245,23 @@ func TestDecodeToolArgumentsTakesTheLooseFormsAndRefusesTheRestInWordsAModelCanA
 			},
 		},
 		{
-			name:  "THE AXIS DEFECT: a number where text belongs is that number's spelling",
-			args:  `{"query":7}`,
-			check: func(t *testing.T, got argumentsForTest) { equalText(t, "query", got.Query, "7") },
+			name:    "a number where a named text argument belongs says how to quote it",
+			args:    `{"query":7}`,
+			refusal: `query takes text: send {"query":"7"}, not 7`,
 		},
 		{
-			name:  "and a fraction where text belongs keeps every digit it was sent with",
-			args:  `{"query":0.50}`,
-			check: func(t *testing.T, got argumentsForTest) { equalText(t, "query", got.Query, "0.50") },
+			name: "THE AXIS DEFECT: a number in a cell of a text table is that number's spelling",
+			args: `{"dimensions":{"complexity":1,"cost":0.50,"speed":"fast"}}`,
+			check: func(t *testing.T, got argumentsForTest) {
+				equalText(t, "complexity", got.Dimensions["complexity"], "1")
+				equalText(t, "cost", got.Dimensions["cost"], "0.50")
+				equalText(t, "speed", got.Dimensions["speed"], "fast")
+			},
 		},
 		{
-			name:    "a truth where text belongs says how to quote it",
-			args:    `{"query":true}`,
-			refusal: `query takes text: send {"query":"true"}, not true`,
+			name:    "but a truth in a cell is still refused, in the cell's own name",
+			args:    `{"dimensions":{"cheap":true}}`,
+			refusal: `cheap takes text: send {"cheap":"true"}, not true`,
 		},
 		{
 			name:    "a word where a truth belongs",

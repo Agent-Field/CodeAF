@@ -432,14 +432,23 @@ func questionsBlocksUnderAnswers(t *testing.T) {
 	// green screen. One `ask` in the journal, carrying blocks, and no refusal at
 	// all is the whole of what the fix promised.
 	asks, blocks, refusals := 0, 0, 0
+	var refused []string
 	for _, journal := range sessionTranscripts(t, r.home) {
 		asks += strings.Count(journal, `"function":{"name":"ask"`)
 		blocks += strings.Count(journal, `blocks`)
 		refusals += strings.Count(journal, "Invalid arguments: ")
+		// The refusal's own words are the evidence: a shape this decoder does
+		// not yet read is named there, and the journal is gone with the rig.
+		for _, line := range strings.Split(journal, "\n") {
+			if at := strings.Index(line, "Invalid arguments: "); at >= 0 {
+				refused = append(refused, clip(line[at:], 240))
+			}
+		}
 	}
 	if asks != 1 || refusals != 0 || blocks == 0 {
 		t.Errorf("the first ask did not arrive whole: %d ask calls, %d argument refusals, blocks mentioned %d times "+
-			"in the journal; want one call carrying blocks and none refused", asks, refusals, blocks)
+			"in the journal; want one call carrying blocks and none refused.\nRefused with:\n  %s",
+			asks, refusals, blocks, strings.Join(refused, "\n  "))
 	}
 
 	press(t, r, "o")
