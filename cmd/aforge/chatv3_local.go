@@ -28,6 +28,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/enginehost"
 	"github.com/Agent-Field/aforge-v2/internal/remote"
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui3"
 )
 
@@ -216,6 +217,21 @@ func openChatV3Local(launch localLaunch) error {
 	// own defer hands the job over rather than closing the client twice.
 	closeClient = fleet.closeAll
 	options := hostOptions(fleet, welcome, launch.pick)
+	// AND A PLAIN LAUNCH IS STILL GREETED BY HOME ON THIS ROAD. Whether somebody
+	// is being greeted is one fact — a person opened aforge with no particular
+	// conversation in mind — and [tui3.Options.Landing] is the only place the
+	// surface reads it (internal/tui3's [app.landHome]). It was set on the
+	// in-process door alone, so the day THIS road became the ordinary one for an
+	// interactive launch ([v3TakeHostRoad] stopped requiring a host that was
+	// already answering), every plain `aforge` stopped being greeted and sat down
+	// in a conversation instead: the same launch, two roads, two behaviours.
+	//
+	// It is spelled here rather than inside [hostOptions] for [Options.EngineAnswers]'
+	// reason — the road knows what --host cannot. A remote launch is not greeted
+	// at all (its world is not an answer yet by the first frame, which is what
+	// [app.landHome] refuses on), and a launch that NAMED a conversation or asked
+	// for the picker means that one, exactly as the in-process door reads it.
+	options.Landing = strings.TrimSpace(launch.session) == "" && !launch.pick
 	// AND THE CONVERSATION THIS LAUNCH COULD NOT HAVE, POINTED AT AND ARMED.
 	// It is "" on every ordinary launch; it is set only by the refusal above,
 	// and the surface lands on home with that row under the cursor
@@ -226,6 +242,38 @@ func openChatV3Local(launch localLaunch) error {
 	// rather than inside that function because it is a fact about THIS ROAD's
 	// dial and not about the conversation the engine opened.
 	options.Notice = joinNotice(options.Notice, link.said())
+	// AND HOME CAN ASK SOMETHING WITHOUT OPENING A CONVERSATION. `ask here` is
+	// the second action row on home, and it is answered by an agent this process
+	// builds against a folder under the standing root ([localErrandDoor],
+	// chatv3_exchange.go) — so before this line, every launch that took the
+	// engine road met `this window cannot ask from home`, which since #653 made
+	// this road the ordinary one was every ordinary launch.
+	//
+	// IT IS BOUND ON THIS ROAD AND NO OTHER, like [tui3.Options.EngineAnswers]
+	// above it, and for the same fact: the engine here is a process on THIS
+	// machine, so a session opened in this terminal writes to the disk the
+	// errand's own folder and standing store live on. Over --host the folder
+	// would be made on the laptop and the work would run against the wrong
+	// machine, so there the seam stays absent and home says so once.
+	errand, closeErrands := localErrandDoor(launch, welcome)
+	// AND WHATEVER IT OPENED IS CLOSED HOWEVER THIS SURFACE RETURNS, beside the
+	// fleet's own close above: an errand is a real session with a real journal,
+	// and a Run that leaves by any other road than /quit still owes it a flush.
+	defer closeErrands()
+	options.Errand = errand
+	options.StandingRoot = v3StandingRoot()
+	// AND A QUESTION IN ANOTHER WINDOW CAN BE ANSWERED FROM HOME. The answer is
+	// left in that session's OWN FOLDER and the session picks it up on its
+	// presence heartbeat (internal/session's answers.go), and home draws the chips
+	// only where there is a door to leave one through ([app.answeringHere] covers
+	// this window's own conversation and nothing else). It was set on the
+	// in-process door alone, so on this road home said which conversation was
+	// stopped on somebody and offered no way to answer it — the sign post without
+	// the other half of the band it is written beside.
+	//
+	// THIS ROAD AND NO OTHER, for [tui3.Options.EngineAnswers]' reason: the folder
+	// is on this machine's disk, which over --host it would not be.
+	options.Answer = session.WriteAnswer
 	// AND THE TASKS PAGE CAN LOOK INTO THE CONVERSATIONS NEXT DOOR. It is bound
 	// here rather than inside [hostOptions] because it is a second DIAL of this
 	// road and not a use of this client's connection, and this is the door that
@@ -452,4 +500,90 @@ func v3MachineIsSetUp() bool {
 // localBesideHello carries the ordinary terminal's settings to a sibling chat.
 func localBesideHello(ask engineAsk, launch localLaunch) remote.Hello {
 	return remote.Hello{Workspace: ask.workspace, Session: ask.session, New: ask.mint, Model: launch.model, Level: launch.level, Launch: launch.shape}
+}
+
+// localErrandDoor is [tui3.Options.Errand] on the engine road: home's `ask here`,
+// answered by a session THIS process opens against the folder the surface made.
+//
+// THE BOOT HALF IS OPENED ON THE FIRST ASK AND NEVER AT LAUNCH. Everything
+// [v3Errand] needs — the profile, the catalog, the crew rows, the harness
+// registry, the gate — is what [openV3ProcessWith] and [openV3Launch] assemble,
+// and this road exists precisely so that a launch does not pay for them: the
+// engine on the other end of the socket has already done all of it. So the
+// assembly hangs off a sync.Once behind the closure, where it is paid for by the
+// one keystroke that needs it and by no other launch — and a machine whose
+// profile has since broken says so on home's own line rather than at the door.
+//
+// IT RESOLVES THE CONVERSATION THE ENGINE IS ALREADY HOLDING, by name, rather
+// than asking for "this workspace's latest". A launch resolution with no session
+// named mints or reaps folders ([v3ResolveSession]), and neither is anything an
+// errand may do to a project a daemon is sitting in. Nothing here takes that
+// journal's flock — only [openV3Agent] does — and the config is immediately
+// pointed somewhere else ([v3Errand] hands it the errand's own folder).
+func localErrandDoor(launch localLaunch, welcome remote.Welcome) (func(tui3.ErrandOrders) (tui3.Agent, error), func()) {
+	var (
+		once  sync.Once
+		held  *v3Process
+		open  func(tui3.ErrandOrders) (tui3.Agent, error)
+		fault error
+	)
+	door := func(orders tui3.ErrandOrders) (tui3.Agent, error) {
+		once.Do(func() {
+			proc, err := openV3ProcessWith("chat", true)
+			if err != nil {
+				fault = err
+				return
+			}
+			boot, err := openV3Launch(proc, v3Options{
+				Model:       launch.model,
+				Interactive: true,
+				Workspace:   welcome.Workspace,
+				Session:     welcome.SessionFile,
+				// AND THIS PROCESS DOES NOT KEEP TIME. The engine on the other end
+				// of the socket holds this project's conversations, so it is the
+				// one whose pass can put a firing into the conversation somebody is
+				// sitting in rather than into the project's inbox
+				// ([v3Options.NoStandingTicks] carries the whole of why).
+				NoStandingTicks: true,
+			})
+			if err != nil {
+				fault = err
+				return
+			}
+			held = proc
+			// AND IT IS SHAPED THE WAY AN INTERACTIVE DOOR SHAPES ONE, which is
+			// two facts [openV3Launch] deliberately does not settle. Every lane is
+			// a channel here because the errand's session and this screen are one
+			// program (chatv3_lanes.go's [v3LanesHere]), and the gate may ASK,
+			// because there is a surface and it answers — chatv3.go states both
+			// beside the same pair of lines. Without the second the errand's
+			// `stand` refused every proposal with `nobody is here to say yes —
+			// this can only be set up in a conversation`, which is the honest
+			// answer for a headless run and a lie about a card on somebody's home.
+			cfg, _ := v3Shape(boot.Config, v3LanesHere())
+			cfg.AskConsent = true
+			open = v3Errand(cfg, welcome.Workspace, boot.Settings.ProfileDir, launch.shape != nil && launch.shape.Yolo)
+		})
+		if fault != nil {
+			return nil, fault
+		}
+		agent, err := open(orders)
+		if err != nil {
+			return nil, err
+		}
+		// THE PROCESS OWNS EVERY CONVERSATION IT OPENED, this one included, so a
+		// surface that returns by any road flushes the errand's journal and lets
+		// go of its flock ([v3Process.closeAll]). The type assertion is how the
+		// tracked list stays *session.Agent rather than the surface's interface;
+		// [v3Errand] only ever answers one of those.
+		if real, ok := agent.(*session.Agent); ok {
+			held.track(real)
+		}
+		return agent, nil
+	}
+	return door, func() {
+		if held != nil {
+			held.closeAll()
+		}
+	}
 }

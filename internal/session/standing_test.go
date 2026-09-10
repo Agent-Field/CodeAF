@@ -1554,31 +1554,43 @@ func TestAnExpiryBeforeTheItemsOwnMomentIsRefused(t *testing.T) {
 	}
 }
 
-// THE EDGE IS THE MOMENT ITSELF, because the pass asks about the end before it
-// asks whether anything is due: an end at exactly when.at retires the item in
-// the same instant it becomes deliverable, so it is refused with everything
-// earlier, and one second later is an ordinary end and is kept.
+// THE EDGE IS ONE CHECK PAST THE MOMENT, not the moment itself, because the
+// pass that would deliver the item is the same pass that asks about the end and
+// it only comes around every [standing.Interval]. An end at exactly when.at
+// retires the item in the instant it becomes deliverable; an end a second later
+// is the identical death arriving a minute after, since the pass that lands
+// between them finds the item out of time and retires it unsaid. So everything
+// short of a whole check past the firing is refused, and the two refusals are
+// spelled differently — one says the end stands before the firing, the other
+// names the cadence — because the fix is different: move the end, or accept
+// that a near end and a near firing cannot both be had.
 func TestTheEndHasToBeLaterThanTheMomentItOutlives(t *testing.T) {
 	now := time.Date(2026, 8, 31, 23, 10, 11, 0, time.Local)
 	due := time.Date(2026, 8, 31, 23, 11, 11, 0, time.Local)
 	for _, probe := range []struct {
-		name    string
-		end     time.Time
-		refused bool
+		name string
+		end  time.Time
+		says string
 	}{
-		{name: "eleven seconds before the moment", end: due.Add(-11 * time.Second), refused: true},
-		{name: "one second before the moment", end: due.Add(-time.Second), refused: true},
-		{name: "the moment itself", end: due, refused: true},
-		{name: "one second after the moment", end: due.Add(time.Second)},
+		{name: "eleven seconds before the moment", end: due.Add(-11 * time.Second), says: "so it would retire before it ever fired"},
+		{name: "one second before the moment", end: due.Add(-time.Second), says: "so it would retire before it ever fired"},
+		{name: "the moment itself", end: due, says: "so it would retire before it ever fired"},
+		{name: "one second after the moment", end: due.Add(time.Second), says: "is less than one check after"},
+		{name: "twenty-five seconds after the moment", end: due.Add(25 * time.Second), says: "is less than one check after"},
+		{name: "a second short of a whole check", end: due.Add(standing.Interval - time.Second), says: "is less than one check after"},
+		{name: "exactly one check after the moment", end: due.Add(standing.Interval)},
 		{name: "an hour after the moment", end: due.Add(time.Hour)},
 	} {
 		t.Run(probe.name, func(t *testing.T) {
 			var parsed standArguments
 			parsed.Rails.Expires = probe.end.Format("2006-01-02T15:04:05")
 			rails, problem := standingRails(parsed, standing.When{Kind: standing.WhenAt, At: due}, now)
-			if probe.refused {
-				if !strings.Contains(problem, "so it would retire before it ever fired") {
+			if probe.says != "" {
+				if !strings.Contains(problem, probe.says) {
 					t.Fatalf("an end at %s was taken: problem = %q", probe.end.Format(time.RFC3339), problem)
+				}
+				if !rails.Expires.IsZero() {
+					t.Fatalf("a refused end at %s was kept anyway", probe.end.Format(time.RFC3339))
 				}
 				return
 			}
