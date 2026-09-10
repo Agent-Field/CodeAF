@@ -23,13 +23,14 @@ const contextTraceScanLimit = 16 * 1024 * 1024
 // Standing documents replace earlier revisions, so the effective words belong
 // here; shared context already has immutable revision history in its owner.
 type contextExposure struct {
-	ExecutionID string             `json:"execution_id"`
-	Phase       string             `json:"phase"`
-	Owner       workspace.Ref      `json:"owner,omitempty"`
-	ParentCause string             `json:"parent_cause,omitempty"`
-	Standing    []standingExposure `json:"standing,omitempty"`
-	Shared      []sharedExposure   `json:"shared,omitempty"`
-	ReadError   string             `json:"read_error,omitempty"`
+	ExecutionID          string             `json:"execution_id"`
+	Phase                string             `json:"phase"`
+	Owner                workspace.Ref      `json:"owner,omitempty"`
+	ParentCause          string             `json:"parent_cause,omitempty"`
+	Standing             []standingExposure `json:"standing,omitempty"`
+	Shared               []sharedExposure   `json:"shared,omitempty"`
+	ReadError            string             `json:"read_error,omitempty"`
+	GoverningCollections map[string]int     `json:"governing_collections,omitempty"`
 }
 
 type standingExposure struct {
@@ -41,6 +42,8 @@ type standingExposure struct {
 	Workspace  string               `json:"workspace,omitempty"`
 	Altitude   standing.Altitude    `json:"altitude,omitempty"`
 	Exceptions []standing.Exception `json:"exceptions,omitempty"`
+	Scope      *standing.Scope      `json:"scope,omitempty"`
+	Adoption   *standing.Adoption   `json:"adoption,omitempty"`
 }
 
 type sharedExposure struct {
@@ -55,7 +58,7 @@ type sharedExposure struct {
 // revision if a person edited it between selection and the journal write.
 // The caller holds a.mu; receipt identifiers are independent of process-local
 // turn counters and therefore cannot be reused after reopening a conversation.
-func (a *Agent) recordContextExposureLocked(owner workspace.Ref, records []workspace.ContextRecord, holds []standing.Item, readError string) string {
+func (a *Agent) recordContextExposureLocked(owner workspace.Ref, records []workspace.ContextRecord, holds []standing.Item, readError string, placements ...map[string]int) string {
 	if a.file == nil {
 		return ""
 	}
@@ -64,8 +67,15 @@ func (a *Agent) recordContextExposureLocked(owner workspace.Ref, records []works
 		return ""
 	}
 	receipt := contextExposure{ExecutionID: hex.EncodeToString(random[:]), Phase: "selected", Owner: owner, ParentCause: "not_recorded", ReadError: readError}
+	if len(placements) > 0 {
+		receipt.GoverningCollections = placements[0]
+	}
 	for _, item := range holds {
-		receipt.Standing = append(receipt.Standing, standingExposure{ID: item.ID, Revision: item.Revision, Origin: item.Origin, Prompt: item.Prompt(), Grant: item.Grant, Workspace: item.Workspace, Altitude: item.Level(), Exceptions: item.Exceptions})
+		altitude := item.Level()
+		if item.Scope != nil {
+			altitude = ""
+		}
+		receipt.Standing = append(receipt.Standing, standingExposure{ID: item.ID, Revision: item.Revision, Origin: item.Origin, Prompt: item.Prompt(), Grant: item.Grant, Workspace: item.Workspace, Altitude: altitude, Exceptions: item.Exceptions, Scope: item.Scope, Adoption: item.Adoption})
 	}
 	for _, record := range records {
 		receipt.Shared = append(receipt.Shared, sharedExposure{ID: record.ID, Revision: record.Revision, Source: record.Source, Truncated: len([]rune(record.Text)) > organizationTextLimit})
@@ -178,8 +188,14 @@ func readContextTrace(ctx context.Context, path string, from int) (contextTraceP
 	line := 0
 	replayedMessages := 0
 	pageBytes := 0
+	scannedBytes := 0
 	for scanner.Scan() {
 		line++
+		scannedBytes += len(scanner.Bytes()) + 1
+		if scannedBytes > contextTraceScanLimit {
+			page.Unreadable = fmt.Sprintf("Trace scan stopped at line %d after its %d-byte budget; inspect the original journal for later evidence.", line, contextTraceScanLimit)
+			break
+		}
 		if err := ctx.Err(); err != nil {
 			return page, err
 		}

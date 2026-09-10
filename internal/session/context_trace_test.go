@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/aforge-v2/internal/workspace"
 )
 
 func traceFixture(t *testing.T, lines ...string) string {
@@ -118,5 +121,39 @@ func TestContextTraceRetainsSelectedSnapshotAndReportsUnreadableTail(t *testing.
 	}
 	if page.Rows[0].Exposure.Standing[0].Prompt != "Keep original instruction" || page.Rows[0].Exposure.Shared[0].Revision != 2 {
 		t.Errorf("snapshot lost: %+v", page.Rows[0])
+	}
+}
+
+func TestContextTraceRecordsScopeAndAnswerFromSelectedSnapshot(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "transcript.jsonl")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	agent := &Agent{file: &sessionFile{file: file}}
+	item := standing.Item{ID: "rule", Revision: 7, Words: "Keep the API compatible", Scope: &standing.Scope{CollectionIDs: []string{"product"}, Descendants: true}, Adoption: &standing.Adoption{Actor: "person", ProposalID: 12}}
+	owner := workspace.Ref{Kind: workspace.ConversationKind, ID: "conversation"}
+	execution := agent.recordContextExposureLocked(owner, nil, []standing.Item{item}, "", map[string]int{"product": 1, "implementation": 0})
+	if execution == "" {
+		t.Fatal("selected receipt did not reach disk")
+	}
+	agent.finishContextExposure(execution)
+	page, err := readContextTrace(context.Background(), path, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Rows) != 2 {
+		t.Fatalf("missing receipt boundary: %+v", page)
+	}
+	got := page.Rows[0].Exposure
+	if got.Owner != owner || got.GoverningCollections["product"] != 1 || got.Standing[0].Scope == nil || got.Standing[0].Adoption == nil || got.Standing[0].Adoption.ProposalID != 12 || got.Standing[0].Altitude != "" {
+		t.Fatalf("scope or actual answer provenance was lost or replaced by legacy altitude: %+v", got)
+	}
+	if got.Standing[0].Prompt != item.Words || got.Standing[0].Revision != 7 {
+		t.Errorf("selected instruction not retained: %+v", got.Standing[0])
+	}
+	if page.Rows[1].Exposure.ExecutionID != execution || page.Rows[1].Exposure.Phase != "loop_returned" {
+		t.Errorf("end misidentified: %+v", page.Rows[1])
 	}
 }
