@@ -106,6 +106,19 @@ type LaneNews struct {
 	// belongs on — see [Agent.newsKey].
 	Session string
 
+	// Subject is WHAT THIS SIGHTING IS ABOUT, and it is [provider.PhaseNews.Subject]
+	// under this seam's own name — the same spelling on both, because they are
+	// twins and a surface that had to remember which of them called it what is
+	// a surface that will key one desk differently from the other.
+	//
+	// EMPTY MEANS THE CONVERSATION, and that is the whole of the compatibility
+	// story: every producer that names no subject is talking about the
+	// conversation, so absence behaves exactly as it did before the field
+	// existed. A node's own sighting names the node ([Agent.newsSubject]), so
+	// its room can say which machine answered IT rather than showing whichever
+	// answer on the same model id landed last.
+	Subject string
+
 	// Relayed says this news arrived over a connection from the engine that
 	// produced it, rather than off this process's own stream. It is
 	// [provider.PhaseNews.Relayed]'s twin and exists for its reason: a build
@@ -194,6 +207,9 @@ func (a *Agent) tellLaneNews(model string, facts laneFacts, report *provider.Hed
 	news := laneNewsFrom(model, facts, report)
 	news.Role = a.laneRole()
 	news.Session = a.newsKey()
+	// AND WHAT THE SIGHTING IS ABOUT, beside whose it is: a node's answer names
+	// the node, so its room can say which machine served IT ([Agent.newsSubject]).
+	news.Subject = a.newsSubject()
 	postLaneNews(news)
 }
 
@@ -222,6 +238,7 @@ func (a *Agent) laneRescueStarted(model string) func(provider.RescueNews) {
 			Trying:  !news.Failed,
 			Role:    a.laneRole(),
 			Session: a.newsKey(),
+			Subject: a.newsSubject(),
 		})
 	}
 }

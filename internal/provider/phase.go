@@ -209,6 +209,32 @@ type PhaseNews struct {
 	// belongs on, and news that names no conversation is news it cannot place.
 	Session string
 
+	// Subject is WHAT THIS NEWS IS ABOUT, and it is a different question from
+	// Session, which is whose it is. A conversation runs a talk turn and a tree
+	// of task nodes under it; all of them are one Session, and each of them is
+	// its own subject.
+	//
+	// A NEWS ITEM BELONGS TO A SUBJECT, AND A WINDOW DRAWS ITS OWN SUBJECT'S
+	// NEWS. That is the law this field exists for, and it is stated here rather
+	// than at a drawing site because a surface cannot invent an identity that
+	// never left the engine. Until it existed a surface's news desks were keyed
+	// by MODEL, which is an address and not an identity: two task nodes running
+	// on one model id overwrote each other's phase, and a node's room could
+	// never be asked what its own node was doing — the row it drew was
+	// whichever of the two had posted last.
+	//
+	// EMPTY MEANS THE CONVERSATION. Every producer that names no subject, and
+	// every older peer across a connection, is talking about the conversation
+	// itself, so absence must behave exactly as it did before this field
+	// existed — which is what internal/tui3's desks do with it: a subject-less
+	// piece of news is filed under its model, as it always was.
+	//
+	// It is carried on the context ([WithNode]) rather than passed down the
+	// call chain for the role's and the session's reason: it belongs to the
+	// ERRAND, so it survives a completer wrapper, a retry, a relax rung and a
+	// hedge arm without anybody re-stating it.
+	Subject string
+
 	// Relayed says this news arrived over a connection from the engine that
 	// produced it, rather than off this process's own stream.
 	//
@@ -302,6 +328,12 @@ type phaseClock struct {
 	// (roles.go's [WithSession]). It is empty in a build where there is only
 	// one window to put it on.
 	session string
+	// subject is what this clock is ABOUT — a task node's own identity, empty
+	// for the conversation (roles.go's [WithNode]). It is carried beside the
+	// session rather than derived from it because a conversation and every node
+	// under it share one session and each of them is a subject of its own; a
+	// window draws its own subject's news and nothing else's.
+	subject string
 	// phase is what was last posted, since when, and when it was last said out
 	// loud.
 	phase Phase
@@ -344,6 +376,7 @@ func (c *Client) newPhaseClock(ctx context.Context, model string) *phaseClock {
 		model:   strings.TrimSpace(model),
 		role:    RoleFrom(ctx),
 		session: SessionFrom(ctx),
+		subject: NodeFrom(ctx),
 		now:     c.clock,
 	}
 }
@@ -440,7 +473,7 @@ func (p *phaseClock) done() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.phase = ""
-	postPhase(PhaseNews{Model: p.model, Role: p.role, Session: p.session, At: p.now()})
+	postPhase(PhaseNews{Model: p.model, Role: p.role, Session: p.session, Subject: p.subject, At: p.now()})
 }
 
 // say posts the phase as it stands. IT IS CALLED WITH THE LOCK HELD, from every
@@ -459,6 +492,7 @@ func (p *phaseClock) say(detail string, now time.Time) {
 		Model:    p.model,
 		Role:     p.role,
 		Session:  p.session,
+		Subject:  p.subject,
 		At:       now,
 	}
 	// THE RATE IS THE ONE THIS PHASE MEASURED, and never the last answer's. A
@@ -485,6 +519,7 @@ func notePhase(ctx context.Context, model string, phase Phase, detail string, si
 		Model:    strings.TrimSpace(model),
 		Role:     RoleFrom(ctx),
 		Session:  SessionFrom(ctx),
+		Subject:  NodeFrom(ctx),
 	})
 }
 

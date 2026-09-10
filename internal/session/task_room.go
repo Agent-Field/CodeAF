@@ -670,6 +670,11 @@ func (a *Agent) spoken(text string, waiting bool, origin messageOrigin, directio
 // Settled ordinary tasks save a separate continuation choice. Their historical
 // model and state stay unchanged until ContinueTask starts the next attempt.
 //
+// SO DOES A RUNNING NODE WHOSE WORK IS BEING CHECKED, for the reason spelled out
+// at the read below: the worker's reading is over, there is no turn left for the
+// pick to reach, and moving the frozen id would make the row name a model that
+// never ran the work.
+//
 // THE WORD RESOLVES THROUGH ADMISSION'S OWN LADDER (taskmodel.go), so a room and
 // a proposal cannot disagree about what "opus 5" means. A word that fits more
 // than one model is a QUESTION and this door has nobody to ask — the shortlist is
@@ -700,12 +705,41 @@ func (a *Agent) RetargetTask(id uint64, model string) error {
 	case len(choice.options) > 0:
 		return errors.New(taskModelVague(model, choice.options))
 	}
+	// THE CHECK HAS NO READER, SO A PICK IT CANNOT BE SHOWN IS THE NEXT RUN'S AND
+	// NOT THIS ONE'S. Read before the graph lock, because [TaskNode.lifeNow] takes
+	// it.
+	//
+	// A node is TaskRunning across three lives — its own worker, the gate reading
+	// what that worker left, and every repair round — and the state is honest
+	// about the NODE, never about who is inside it. The worker's reading is over
+	// the moment [runTaskChild] returns, which on a checked node is minutes before
+	// anything settles. This door used to read the state alone, so a pick made in
+	// that window rewrote the FROZEN SPEC of work that had already finished: the
+	// row, the checkpoint and the card all named a model that never ran a token of
+	// it, while the bill named the one that did. It was measured on a real run —
+	// a node admitted on the worker tier with all nineteen of its calls billed
+	// there, and a card claiming the low tier because the pick landed during the
+	// check.
+	//
+	// IT IS THE SAME READING THE STEERING DOOR ALREADY MAKES OFF THE SAME WORD
+	// ([Agent.deliverTaskDirection]), which is why this is one condition rather
+	// than a second mechanism: both doors are asking "is there a turn left to take
+	// this", and until now only one of them knew that the state could not answer.
+	//
+	// AND IT LANDS WHERE A SETTLED NODE'S PICK ALREADY LANDS, so no surface learns
+	// a new word for it: the room draws "next model <id>" and the panel heads
+	// itself "Next run setup" (internal/tui3's roomModelWord, roompanel.go), and
+	// the model the work actually ran on keeps the row.
+	checking := node.lifeNow() == TaskPhaseChecking
+
 	node.graph.mu.Lock()
-	running := node.state == TaskRunning
-	switch node.state {
-	case TaskRunning, TaskQueued:
+	// live is "there is a turn left for this pick to reach", which is the question
+	// the spec may be moved on — never the bare state.
+	live := node.state == TaskRunning && !checking
+	switch {
+	case live, node.state == TaskQueued:
 		node.retargetLocked(choice.model)
-	case TaskDone, TaskFailed, TaskUnverified:
+	case node.state == TaskRunning, node.state == TaskDone, node.state == TaskFailed, node.state == TaskUnverified:
 		if node.kind == TaskKindHarness || node.kind == TaskKindSubharness {
 			node.graph.mu.Unlock()
 			return fmt.Errorf("task %d cannot be continued", id)
@@ -726,7 +760,11 @@ func (a *Agent) RetargetTask(id uint64, model string) error {
 	// the only reason a nil child here is silence rather than the error
 	// [Agent.SteerTask] returns for it: there is nobody to talk to, but there is
 	// something to change, and it has just been changed.
-	if child := node.openRoom().speaker(); running && child != nil {
+	//
+	// THE THIRD MOMENT — a worker whose reading is already over — never reaches
+	// here at all any more: it was the one case where a nil child meant the pick
+	// had nowhere to go, and it is answered above as the next run's model.
+	if child := node.openRoom().speaker(); live && child != nil {
 		child.SetModel(choice.model)
 	}
 	// The checkpoint is what makes the pick survive the session, exactly as the

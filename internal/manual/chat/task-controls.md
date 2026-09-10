@@ -125,7 +125,11 @@ on its own while opening would be spending your money on a decision you did not 
 `/model` and the model row under Task setup target the open ordinary task.
 A running task changes on its next turn. A queued task takes the new model when
 it starts. A settled task saves the choice under `Next run setup`; continuing
-applies it to the next attempt. Choosing a model alone does not continue work. They do not change the conversation or sibling tasks. A model that cannot
+applies it to the next attempt. Choosing a model alone does not continue work.
+Once the gate is reading what a worker left, the choice is saved under `Next run
+setup` instead of moving, because the worker it would have moved has stopped. The
+tasks page explains that under "Changing the model for one task while it is
+running". They do not change the conversation or sibling tasks. A model that cannot
 be changed is shown as a fact without a clickable control. The model picker
 continues to be available in the task status line on compact terminals.
 

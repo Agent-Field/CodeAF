@@ -1326,11 +1326,20 @@ type FactsPush struct {
 // IT CARRIES NO CONVERSATION AND NO OFFER TOKEN. The engine files its news by
 // conversation to decide WHICH connection each piece goes down (news.go), and
 // once it is on a connection the connection IS the conversation — a name on the
-// frame would be a second answer to a question already settled, and it would
-// put a room's id on a wire that has no use for one. The offer token stays
-// behind for the same reason: the token is the engine's own bookkeeping, and
-// the surface answers by pressing `y` at the conversation it is sitting in
+// frame would be a second answer to a question already settled. The offer token
+// stays behind for the same reason: the token is the engine's own bookkeeping,
+// and the surface answers by pressing `y` at the conversation it is sitting in
 // ([MethodAnswerLaneOffer]), never by naming a token it was handed.
+//
+// IT DOES CARRY THE SUBJECT, AND THAT IS NOT THE CONVERSATION SAID TWICE. The
+// conversation is WHOSE this news is, which the connection answers; the subject
+// is WHAT IT IS ABOUT — the conversation itself, or one task node inside it —
+// which nothing on this side of the pipe can answer. A surface holds one desk
+// for every window it draws, so a node's phase and its parent conversation's
+// arrive down one connection and have to be told apart at the desk
+// (internal/tui3's phase.go). Until this field crossed, a node's room over a
+// connection could draw no clock at all, and two nodes on one model id
+// overwrote each other's.
 //
 // THE MOMENTS ARE ELAPSED TIMES AND NEVER WALL CLOCKS. A surface ages a phase
 // out fifteen seconds after it was said ([provider.PhaseWindow]) and counts a
@@ -1353,6 +1362,13 @@ type PhaseWire struct {
 	// the same question.
 	Model string `json:"model,omitempty"`
 	Role  string `json:"role,omitempty"`
+	// Subject is which piece of work this news is about: empty for the
+	// conversation, and one node's own name for a node
+	// ([session.NewsSubject]). AN OLDER PEER SENDS NONE, WHICH READS AS THE
+	// CONVERSATION — the same absence every producer that predates the field
+	// means, so a surface talking to a build without it behaves exactly as it
+	// always did.
+	Subject string `json:"subject,omitempty"`
 	// Lane is the machine answering when one has named itself, and Rate how
 	// fast it is writing in tokens a second. Zero for both is "not measured",
 	// never "nothing" — the emptiness law, carried across the wire intact.
@@ -1408,6 +1424,11 @@ type LaneWire struct {
 	// Role is who the answer was for. It crosses unfiltered for [PhaseWire.Role]'s
 	// reason.
 	Role string `json:"role,omitempty"`
+	// Subject is which piece of work the sighting is about, and it crosses for
+	// [PhaseWire.Subject]'s reason and with its reading of absence: empty is the
+	// conversation. It is spelled the same on both wire shapes because they are
+	// twins, and a surface keys both desks with one function.
+	Subject string `json:"subject,omitempty"`
 }
 
 type StreamRef struct {

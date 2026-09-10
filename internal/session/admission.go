@@ -167,11 +167,29 @@ func restoredAdmission(record *AdmissionContext) AdmissionContext {
 // work. It deliberately does not rank quotes against the contract — a quoted
 // line that contradicts the brief is news for the report, not a precedence rule
 // for a worker to apply alone.
+//
+// THE EVIDENCE RULE DOES RANK, AND THE TWO ARE NOT INCONSISTENT. A quote is
+// somebody's SENTENCE and can be wrong about the world; a handle is a call that
+// this harness watched run, so it is not an opinion about what is left to do —
+// it is a fact about what has happened, and a document holding a fact beside a
+// contradicting instruction owes its reader the order to read them in. Nothing
+// said it, and the measured cost was a worker that read "WHAT IS LEFT, AS PARTS"
+// naming reads this section already listed as done, obeyed the louder and earlier
+// of the two, and spent its first minutes doing finished work again. The two
+// writers upstream are told not to make that document in the first place
+// (checkpoint.go's [checkpointSketchAsk] and [checkpointHandoffWriteAsk]); this
+// is what the worker does when one reaches it anyway.
+//
+// AND IT MOVES NO BYTES TO SAY SO. A successful result's body is still absent by
+// the law stated at the head of this file — the precedence sends the worker to
+// the POINTER it was already given, which is the cheapest possible way for it to
+// find out what a call meant and is the road [AdmissionHandle.line] already
+// renders.
 const (
 	admissionQuotesHeading   = "SOME OF WHAT WAS SAID AROUND THIS WORK"
 	admissionQuotesRule      = "A FEW LINES FROM THE CONVERSATION THIS CAME OUT OF, OLDEST FIRST — a bounded selection, not the whole record and not a list of your requirements. They are what was SAID, not what is true: check anything you are about to depend on, and grep the record named on the line for the whole of it. A later line may have replaced an earlier one. Where one of them plainly contradicts the work above, say so in your report rather than quietly choosing."
 	admissionEvidenceHeading = "CALLS THAT HAVE ALREADY RUN"
-	admissionEvidenceRule    = "The opening of what each one was called with — cut where you see a `…`, never the whole arguments — and what is known about how it ended. \"outcome unknown\" means nobody recorded the outcome, not that it went well. Nothing here says what a result MEANT: read the full-result pointer when present; otherwise grep the call id in the record and match the call arguments, because IDs can repeat."
+	admissionEvidenceRule    = "The opening of what each one was called with — cut where you see a `…`, never the whole arguments — and what is known about how it ended. \"outcome unknown\" means nobody recorded the outcome, not that it went well. Nothing here says what a result MEANT: read the full-result pointer when present; otherwise grep the call id in the record and match the call arguments, because IDs can repeat. AND THIS SECTION IS WHAT HAS ALREADY HAPPENED, which is what settles a disagreement with the work above: where the parts or the brief read as though one of these calls were still to be made, it has been made already — read it through its pointer instead of running it again, and run it again only where the line says it failed or where what you read disagrees with the brief."
 )
 
 // admissionQuotesSection and admissionEvidenceSection are the two lists as the

@@ -96,7 +96,10 @@ func TestAWorktreeTaskBindsContractPathsToItsPrivateCopy(t *testing.T) {
 	mustGit(t, source, "add", "-A")
 	mustGit(t, source, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "the widget")
 
-	place := Place{Dir: t.TempDir(), Workspace: source}
+	// OWNED so the conversation's work/ folder is a real third bind, the
+	// shape #804 added. An unowned place leaves that folder empty and this
+	// test would not see a rewrite of an already-bound copy path.
+	place := Place{Dir: t.TempDir(), Workspace: source, Owned: true}
 	// The copy the engine will cut, named the way the session names it. It is
 	// worked out up front because A LANDED TASK'S WORKTREE IS REMOVED: by the
 	// time the run is over there is nothing at this path to read, so what the

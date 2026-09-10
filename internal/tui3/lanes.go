@@ -94,6 +94,16 @@ type LaneNews struct {
 	// last said about it is no longer true.
 	Failed bool
 
+	// Subject is WHAT THIS SIGHTING IS ABOUT — the conversation, or one task
+	// node of it — and it is [provider.PhaseNews.Subject]'s twin, spelled the
+	// same way for the same reason: a window draws its own subject's news, and
+	// the two desks in this package must not key differently ([newsDeskKey]).
+	//
+	// EMPTY MEANS THE CONVERSATION, which is what every producer that predates
+	// the field and every older peer across a connection sends — so a sighting
+	// with no subject is filed under its model exactly as it always was.
+	Subject string
+
 	// Role is who the answer was for (internal/lane's roles.go), carried from
 	// the seam that already knows it (internal/session's lanenews.go).
 	//
@@ -130,11 +140,20 @@ const laneSightings = 8
 
 // laneDesk is what this process has been TOLD, as opposed to what it believes.
 //
-// It is two small things: the latest news per model, which is what the status
+// It is two small things: the latest news per SUBJECT, which is what the status
 // line draws, and a ring of our own recent first-token waits per lane, which is
 // what the sparkline draws. Neither is a belief and neither pretends to be —
 // the ledger owns believing, and it publishes no history, so the ring lives
 // here rather than being re-derived from a posterior that has forgotten it.
+//
+// THE TWO HALVES ARE KEYED BY DIFFERENT THINGS ON PURPOSE. The latest news is a
+// claim about one piece of WORK — this conversation, or this node — so it is
+// filed under its subject (phase.go's [newsDeskKey] and the law above it): a
+// desk keyed by model let two nodes on one model id overwrite each other. The
+// ring is a claim about one MACHINE serving one model, which is what the
+// sparkline is drawn from and what the ledger's own belief is about, so it
+// stays keyed by the pair it measures. A subject in that key would split one
+// machine's history across every node that ever used it.
 type laneDesk struct {
 	mu     sync.RWMutex
 	latest map[string]LaneNews
@@ -150,6 +169,7 @@ var desk = laneDesk{latest: map[string]LaneNews{}, rings: map[string][]int{}}
 func PostLaneNews(news LaneNews) {
 	news.Model = strings.TrimSpace(news.Model)
 	news.Lane = strings.TrimSpace(news.Lane)
+	news.Subject = strings.TrimSpace(news.Subject)
 	if news.Model == "" {
 		return
 	}
@@ -158,7 +178,7 @@ func PostLaneNews(news LaneNews) {
 	}
 	desk.mu.Lock()
 	defer desk.mu.Unlock()
-	desk.latest[news.Model] = news
+	desk.latest[newsDeskKey(news.Subject, news.Model)] = news
 	if news.Lane == "" || news.TTFT <= 0 {
 		return
 	}
@@ -170,11 +190,13 @@ func PostLaneNews(news LaneNews) {
 	desk.rings[key] = ring
 }
 
-// laneNewsFor is the latest news about one model, false when none has arrived.
-func laneNewsFor(model string) (LaneNews, bool) {
+// laneNewsFor is the latest news about one subject, false when none has
+// arrived. The key is phase.go's [newsDeskKey], so this desk and the phase desk
+// cannot come to two ideas of what a piece of news is called.
+func laneNewsFor(key string) (LaneNews, bool) {
 	desk.mu.RLock()
 	defer desk.mu.RUnlock()
-	news, ok := desk.latest[strings.TrimSpace(model)]
+	news, ok := desk.latest[strings.TrimSpace(key)]
 	return news, ok
 }
 
@@ -1180,13 +1202,59 @@ func (a *app) openPickerFromChip() {
 // the LAST answer's average. Who served is attribution and belongs beside the
 // model; how fast is a claim about now and has one place on the frame.
 func (a *app) laneRider(timed bool) string {
-	news, ok := laneNewsFor(a.model)
+	return a.laneRiderFor(a.talkSubject(), a.model, timed, a.state == stateWorking)
+}
+
+// roomLaneRider is that rider for THE OPEN ROOM'S NODE: which machine answered
+// the node's own last request, beside the node's own model.
+//
+// IT IS ATTRIBUTION ONLY AND CARRIES NO FIGURES, which is the seam's own rule
+// said in the one place a node's model is drawn ([app.identityParts]): who
+// served rides the model, and how fast it is writing right now has one home on
+// the frame — the right edge ([app.liveRiderAt]).
+//
+// It was impossible before the subject existed. The desk was keyed by model, so
+// the only sighting this row could find was whichever answer on that model id
+// landed last — the conversation's, most often — and a node's room drawing the
+// conversation's machine is exactly the lie [app.roomModelWord] refused to
+// tell by drawing nothing at all.
+func (a *app) roomLaneRider() string {
+	subject := a.roomSubject()
+	if subject == "" {
+		return ""
+	}
+	node := a.roomNode()
+	if node == nil {
+		return ""
+	}
+	return a.laneRiderFor(subject, strings.TrimSpace(node.model), false, false)
+}
+
+// laneRiderFor is that rider for one SUBJECT: the piece of work the window
+// asking is a window onto (phase.go's law and [newsDeskKey]).
+//
+// model is the id the row beside it already NAMES, and it is a parameter rather
+// than `a.model` because the two windows name two different models: out here it
+// is the conversation's, and in a room it is the node's. It is read for one
+// thing only — the rule that a lane the id already carries is not said twice —
+// and reading the conversation's model beside a node's name would suppress a
+// machine the row had never mentioned.
+//
+// working says whether the work this rider is about is RUNNING, because that is
+// what decides whether the rate may ride along. It is the caller's answer and
+// not `a.state`: the session's state is the conversation's liveness, and a
+// window onto a node must not go quiet because the conversation it was launched
+// from is idle.
+func (a *app) laneRiderFor(subject, model string, timed, working bool) string {
+	news, ok := laneNewsFor(subject)
 	if !ok || a.now().Sub(news.At) > servedWindow {
 		return ""
 	}
 	// A ROLE NOBODY IS READING DOES NOT MOVE THIS LINE. See [LaneNews.Role]:
 	// the errands that run beside a talk turn each finish on some lane, and the
-	// last of them to finish is not the one the person is waiting on.
+	// last of them to finish is not the one the person is waiting on. They share
+	// the CONVERSATION's subject, so the subject key cannot tell them apart and
+	// this test is still the only thing that does.
 	if !news.Role.Visible() {
 		return ""
 	}
@@ -1232,7 +1300,7 @@ func (a *app) laneRider(timed bool) string {
 	// spends a cell a frame on a word the reader already has. A rescue is
 	// exempt above, because THAT is news whoever the vendor is.
 	served := strings.ToLower(news.Lane)
-	if strings.Contains(strings.ToLower(a.model), served) {
+	if strings.Contains(strings.ToLower(model), served) {
 		return ""
 	}
 	rider := " · via " + served
@@ -1242,10 +1310,10 @@ func (a *app) laneRider(timed bool) string {
 	if word := laneSecondsWord(news.TTFT.Seconds()); word != "" {
 		rider += " · " + word
 	}
-	// THE RATE RIDES ONLY WHILE A TURN IS RUNNING, exactly as it does on the
+	// THE RATE RIDES ONLY WHILE THE WORK IS RUNNING, exactly as it does on the
 	// rider this one extends ([app.servedRider]): who served is attribution and
 	// stays; how fast they were writing is a claim about now.
-	if word := laneRateWord(news.Rate); word != "" && a.state == stateWorking {
+	if word := laneRateWord(news.Rate); word != "" && working {
 		rider += " · " + word
 	}
 	return rider

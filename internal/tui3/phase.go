@@ -41,6 +41,25 @@ import (
 // defect this file exists for. So a phase from a hidden role is dropped HERE, at
 // the door, and never reaches a drawing site to be filtered by whoever
 // remembered to.
+//
+// AND A NEWS ITEM BELONGS TO A SUBJECT, AND A WINDOW DRAWS ITS OWN SUBJECT'S
+// NEWS. That is the second law, and it is the one this desk was missing.
+//
+// THE DEFECT IT FIXES, measured: inside a task room the status line showed no
+// machine and no tok/s where the conversation showed both, and a stale `running
+// ask · 4m 55s` where the node was writing. The desk was keyed BY MODEL — an
+// address, not an identity — so two nodes on one model id overwrote each
+// other's stage, and [app.livePhase] then dropped every leaf role on the floor
+// at draw time because the only row it could be drawing was the conversation's.
+// A room could never be asked about itself.
+//
+// The fix is to take the wrong key away rather than to guess around it. A phase
+// is filed under its SUBJECT (internal/provider's [PhaseNews.Subject]) — the
+// conversation, or one node of it — and each window asks for the subject it is
+// a window onto: the conversation for the transcript, that node for its room.
+// A heuristic in its place ("if a room is open, accept a leaf role") would be a
+// new lie in the shape of the old one, because two nodes on one model would
+// then show each other's rate.
 
 // PhaseNews is one moment of one turn's life. It is [session.PhaseNews] under
 // this package's own name, and that type is in turn internal/provider's — ONE
@@ -71,15 +90,39 @@ const phaseWindow = provider.PhaseWindow
 // own shape (lanes.go's [laneNewsMsg]) said again for the other seam.
 type phaseNewsMsg struct{}
 
-// phaseDesk is the latest phase per model, and nothing else.
+// newsDeskKey is the name one piece of news is filed under on either of this
+// package's two desks — this file's phases and lanes.go's sightings.
 //
-// It is one entry per model rather than a history because a phase is a claim
+// IT IS THE SUBJECT, AND THE MODEL ONLY WHERE THERE IS NO SUBJECT. The subject
+// is an identity — this conversation, or this one node of it — and it is what
+// both desks are keyed by; the model is an address, which is why keying by it
+// let two nodes on one model id overwrite each other (see the header).
+//
+// THE FALLBACK IS THE COMPATIBILITY BARGAIN AND NOT A SECOND OPINION. Every
+// producer that names no subject, and every older peer across a connection, is
+// talking about the conversation ([provider.PhaseNews.Subject]), and before
+// this field existed the conversation's news was filed under its model — so a
+// subject-less piece of news goes exactly where it has always gone, and the
+// conversation's row is byte-for-byte what it was.
+//
+// It is one function because two desks must not key differently: a room that
+// found its node's phase and not its node's lane would draw half a truth.
+func newsDeskKey(subject, model string) string {
+	if subject = strings.TrimSpace(subject); subject != "" {
+		return subject
+	}
+	return strings.TrimSpace(model)
+}
+
+// phaseDesk is the latest phase per subject, and nothing else.
+//
+// It is one entry per subject rather than a history because a phase is a claim
 // about NOW: the one before it is not a smaller truth, it is a former one, and
 // keeping it would only give a drawing site something wrong to fall back on.
 type phaseDesk struct {
 	mu     sync.RWMutex
 	latest map[string]PhaseNews
-	// waits is when the WAIT a model is currently inside began — the moment a
+	// waits is when the WAIT a subject is currently inside began — the moment a
 	// person asked for something and nothing of it has come back since. It is
 	// kept beside the phase rather than inside it because a phase is one stage
 	// of that wait and the wait outlives every one of them ([phaseWaiting]).
@@ -115,18 +158,26 @@ func phaseWaiting(phase provider.Phase) bool {
 //
 // THREE THINGS ARE DECIDED HERE AND NOWHERE ELSE. A phase for a model nobody
 // named belongs to nobody and is dropped. A phase from a role a person is not
-// reading is dropped, per the law in the header. And an EMPTY phase is the end
-// of the story rather than a phase called "": the turn posts one when it stops,
-// and it clears that model's entry so the surface stops drawing a clock for work
-// that is over.
+// reading is dropped, per the first law in the header. And an EMPTY phase is the
+// end of the story rather than a phase called "": the turn posts one when it
+// stops, and it clears that SUBJECT's entry so the surface stops drawing a clock
+// for work that is over.
+//
+// EVERY VISIBLE ROLE IS KEPT, INCLUDING A NODE'S. It always was — the door has
+// only ever asked [lane.Role.Visible] — and what changed is that the news now
+// says which subject it is about, so keeping a leaf role no longer means a node
+// can overwrite the row a person is reading. Deciding it here rather than at a
+// drawing site is the second law's half of the first one's argument.
 func PostPhaseNews(news PhaseNews) {
 	news.Model = strings.TrimSpace(news.Model)
 	news.Lane = strings.TrimSpace(news.Lane)
 	news.Detail = strings.TrimSpace(news.Detail)
 	news.Then = strings.TrimSpace(news.Then)
+	news.Subject = strings.TrimSpace(news.Subject)
 	if news.Model == "" || !news.Role.Visible() {
 		return
 	}
+	key := newsDeskKey(news.Subject, news.Model)
 	if news.At.IsZero() {
 		news.At = time.Now()
 	}
@@ -136,8 +187,8 @@ func PostPhaseNews(news PhaseNews) {
 	phases.mu.Lock()
 	defer phases.mu.Unlock()
 	if news.Phase == "" {
-		delete(phases.latest, news.Model)
-		delete(phases.waits, news.Model)
+		delete(phases.latest, key)
+		delete(phases.waits, key)
 		return
 	}
 	// ONE INSTANT FOR THE WHOLE WAIT, AND THE CLOCK NEVER RUNS BACKWARDS.
@@ -162,25 +213,25 @@ func PostPhaseNews(news PhaseNews) {
 	// poster that knows an EARLIER start than the desk does wins: internal
 	// provider's allSlow deliberately keeps the wait's own instant, and this
 	// must never round that forward.
-	switch began := phases.waits[news.Model]; {
+	switch began := phases.waits[key]; {
 	case !phaseWaiting(news.Phase):
-		delete(phases.waits, news.Model)
+		delete(phases.waits, key)
 	case began.IsZero() || news.Since.Before(began):
-		phases.waits[news.Model] = news.Since
+		phases.waits[key] = news.Since
 	default:
 		news.Since = began
 	}
-	phases.latest[news.Model] = news
+	phases.latest[key] = news
 }
 
-// phaseNewsFor is the latest phase of one model, false when none is running. It
-// does not judge freshness — [app.livePhase] does, because staleness is a
-// question about the moment a frame is painted and not about the moment the news
-// arrived.
-func phaseNewsFor(model string) (PhaseNews, bool) {
+// phaseNewsFor is the latest phase of one subject, false when none is running.
+// It does not judge freshness — [app.livePhase] and [app.roomPhase] do, because
+// staleness is a question about the moment a frame is painted and not about the
+// moment the news arrived.
+func phaseNewsFor(key string) (PhaseNews, bool) {
 	phases.mu.RLock()
 	defer phases.mu.RUnlock()
-	news, ok := phases.latest[strings.TrimSpace(model)]
+	news, ok := phases.latest[strings.TrimSpace(key)]
 	return news, ok
 }
 
@@ -193,21 +244,66 @@ func forgetPhases() {
 	phases.waits = map[string]time.Time{}
 }
 
-// livePhase is the phase this conversation's model is in right now, false when
-// there is none or when the one on the desk has gone stale ([phaseWindow]).
+// ── WHICH SUBJECT A WINDOW IS A WINDOW ONTO ─────────────────────────────────
+
+// talkSubject is the conversation's own place on the desks: no subject at all,
+// which files it under its model ([newsDeskKey]) exactly as it has always been
+// filed.
+//
+// It is a method rather than a bare `a.model` so that the two desks ask the
+// same question in the same words, and so that the one place the conversation's
+// key is decided is the one place a reader has to look.
+func (a *app) talkSubject() string { return newsDeskKey("", a.model) }
+
+// roomSubject is the subject the OPEN ROOM is a window onto, and "" when there
+// is no room or when nothing here can name its conversation.
+//
+// THE NAME IS THE ENGINE'S OWN SPELLING, ASKED FOR RATHER THAN REBUILT
+// (internal/session's [session.NewsSubject]). Both sides of this seam have to
+// agree about what a node's news is called, and a second hand-written spelling
+// would not fail a test — it would make every room quietly draw nothing for
+// ever, which is exactly the symptom this whole change is about.
+//
+// THE CONVERSATION HALF IS THE ROOM'S OWNER AND NOT ALWAYS THIS WINDOW'S. A
+// guest room is a view onto work running in ANOTHER conversation, whose node 7
+// is not this conversation's node 7 — the guest lane's own comment says a
+// per-task key must be built from its session id for that reason
+// (taskowner.go's [taskGuest]), and this is that key.
+//
+// A CONVERSATION WITH NO JOURNAL NAMES NOTHING, and a room over one draws no
+// clock. That is the emptiness law rather than a gap: an unscoped node id is an
+// id that would collide with somebody else's, and a row that might be about
+// another piece of work is worse than a row that says nothing.
+func (a *app) roomSubject() string {
+	if !a.roomOpen() {
+		return ""
+	}
+	conversation := a.taskSheetSelfID()
+	if guest := a.room.guest; guest != nil {
+		conversation = guest.sessionID
+	}
+	return session.NewsSubject(conversation, a.room.id)
+}
+
+// livePhase is the phase THE CONVERSATION is in right now, false when there is
+// none or when the one on the desk has gone stale ([phaseWindow]).
 func (a *app) livePhase() (PhaseNews, bool) {
-	news, ok := phaseNewsFor(a.model)
+	news, ok := phaseNewsFor(a.talkSubject())
 	if !ok {
 		return PhaseNews{}, false
 	}
-	// AND ONLY THIS WINDOW'S OWN WORK IS DRAWN ON THIS WINDOW'S ROW. The desk is
-	// keyed by MODEL, which is the right key for "what is that model doing" and
-	// the wrong one for "what is this conversation doing": a task node running
-	// on the same model id posts phases of its own, and they are somebody
-	// else's errand however visible their role is. The row a person reads here
-	// is the conversation's, so the conversation's role is the one it takes. A
-	// node's own phases are drawn where a node is drawn — its room — which
-	// reaches this row through [app.roomChip] and never through here.
+	// AND ONLY THIS WINDOW'S OWN WORK IS DRAWN ON THIS WINDOW'S ROW. The row a
+	// person reads here is the conversation's, so the conversation's role is the
+	// one it takes: a task node running on the same model id posts phases of its
+	// own, and they are somebody else's errand however visible their role is. A
+	// node's own phases are drawn where a node is drawn — its room, through
+	// [app.roomPhase] — and never here.
+	//
+	// THE ROLE TEST SURVIVES THE SUBJECT KEY RATHER THAN BEING REPLACED BY IT,
+	// and both are needed. The subject stops a node's news reaching this row;
+	// the role stops the errands that share the CONVERSATION's subject — a
+	// naming errand, a memory reflex, a route question — from taking the clock
+	// away from the answer somebody is waiting for.
 	if news.Role != lane.RoleTalk {
 		return PhaseNews{}, false
 	}
@@ -215,6 +311,73 @@ func (a *app) livePhase() (PhaseNews, bool) {
 		return PhaseNews{}, false
 	}
 	return news, true
+}
+
+// roomPhase is the phase the OPEN ROOM's node is in right now, false when there
+// is no room, no news for its subject, or news that has gone stale.
+//
+// IT ACCEPTS ANY VISIBLE ROLE, and that is the difference between this reading
+// and the conversation's. A node's work is a leaf role by definition
+// (internal/session's [Agent.laneRole]), so the row that draws a node has to be
+// allowed to read one — and it is safe to allow because the subject already
+// says the news is THIS node's. It is not a heuristic about rooms being open:
+// the door is the subject, and the role test that remains is the same emptiness
+// the desk itself keeps.
+func (a *app) roomPhase() (PhaseNews, bool) {
+	subject := a.roomSubject()
+	if subject == "" {
+		return PhaseNews{}, false
+	}
+	news, ok := phaseNewsFor(subject)
+	if !ok || !news.Role.Visible() {
+		return PhaseNews{}, false
+	}
+	if a.now().Sub(news.At) > phaseWindow {
+		return PhaseNews{}, false
+	}
+	return news, true
+}
+
+// windowPhase is the phase THIS WINDOW is a window onto: the open room's node,
+// or the conversation when no room is open.
+//
+// IT IS THE ONE PLACE THE QUESTION "WHOSE CLOCK IS ON THIS FRAME" IS ANSWERED,
+// so the right edge and the words beside the model cannot come to two answers.
+// A room is not a second session — the bill, the context meter and the watch
+// count on that same row are still the conversation's (render.go's
+// [app.identityParts]) — but a PHASE is not a measurement of a session, it is
+// what one piece of work is doing, and while a room is open the work in front
+// of the person is that node.
+func (a *app) windowPhase() (PhaseNews, bool) {
+	if a.roomOpen() {
+		return a.roomPhase()
+	}
+	return a.livePhase()
+}
+
+// windowWorking reports whether the work THIS WINDOW is a window onto is
+// running right now, which is what decides whether a rate may be drawn.
+//
+// THE DEFECT THIS FIXES. Every rate on this surface was gated on
+// `a.state != stateWorking` and [app.awaitingReply] — the CONVERSATION's
+// liveness — so a room drew no throughput whenever the conversation that
+// launched the work was idle, which is nearly always: a person hands a task
+// out, the turn ends, and the node runs for ten minutes with nothing on the
+// line. The node was writing the whole time.
+//
+// A ROOM'S OWN LIVENESS IS ITS SUBJECT'S NEWS BEING FRESH, and that is a real
+// answer rather than an optimistic one. A held phase says itself again every
+// third of [phaseWindow] for as long as it is true (internal/session's
+// phaseHeldBeat) and a streaming one once a second (internal/provider's
+// phaseBeat), so news inside the window is work that is still going — and
+// [app.roomPhase] has already refused anything past it. Where the news has aged
+// out there is no phase to draw a rate from at all, which is the emptiness law
+// closing the other half.
+func (a *app) windowWorking() bool {
+	if a.roomOpen() {
+		return true
+	}
+	return a.state == stateWorking && !a.awaitingReply()
 }
 
 // ── THE WORDS ───────────────────────────────────────────────────────────────

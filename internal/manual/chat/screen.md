@@ -901,14 +901,26 @@ with its clock — `idle`,
 Jobs and watches are not a door — the column's `jobs` section is where they are read —
 and the rate, the connection and the state word are readings, not controls.
 
-While a task **room** is open the row's left grows the room chip and the room's model —
-`⠋ Ship the parser fix · task glm-5.2` — in front of the ledger, and **pressing that name
-moves the task**, not the conversation: the same picker opens aimed at that node, and the
-task switches from its next turn onward. One `esc` restores the row. Where the pick could
-not land the name is drawn and simply does not react: a task that has finished, failed,
-been stopped or needs your look, one that has not started, an adaptive run's page, or a
-node inside a run. The tasks page says the whole of it under "Changing the model for one
-task while it is running".
+While a task **room** is open the row's left grows the room chip, the room's model and the
+machine answering for it — `⠋ Ship the parser fix · task glm-5.2 · via friendli` — in
+front of the ledger, and **pressing that name moves the task**, not the conversation: the
+same picker opens aimed at that node, and the task switches from its next turn onward. One
+`esc` restores the row. Where the pick could not land the name is drawn and simply does
+not react: a task that has finished, failed, been stopped or needs your look, one that has
+not started, an adaptive run's page, or a node inside a run. The tasks page says the whole
+of it under "Changing the model for one task while it is running".
+
+**And the right edge is that task's too.** The rate and the phase words belong to whatever
+this window is a window onto, so inside a room they are the node's — `38 tok/s` while it
+writes, `running go test · 41s` while it is in a call — and they are drawn **whether or
+not the conversation is doing anything**, which is the usual case: handing a task out ends
+your turn, and the node goes on working for minutes with the conversation idle. The
+ledger, the meter and the job counts on the same row stay the conversation's, because
+those are measurements of a session. A node that has said nothing for a while draws
+nothing rather than the conversation's clock; `esc` gives the conversation's own reading
+back. Until 2026-09-10 a room drew no rate and no machine at all and could show a stale
+line left over from the conversation — the news said which model it was about but not
+which piece of work.
 
 Below width **100** the right edge may take a row of its own, still right-aligned, and
 only when it would otherwise collide with the ledger — a quiet session still fits on one
@@ -936,7 +948,7 @@ and are listed here with the row they left:
 | 5 | ambient | `2 jobs · 1 watch` | background work this screen saw start and has not seen killed — a `bash` with `background:true`, a `watch` call | zero of both draws nothing |
 | — | standing | `◦ 2 standing orders` | the active standing orders reaching this project; the mark moves while one is being acted on. **Off the row since 2026-09-09**: it is a line at the foot of the task column, still dim, still pressable, still opening `/standing` | absent when nothing stands here |
 | 6 | yolo | `YOLO` | the `tools.approvalMode` row in your profile is `allow`, or the session was launched with `--yolo`, which forces that posture for the session without writing the row — over `--host` it is the far machine's row, carried once when the connection opens. **A door onto `/permissions`** | empty in every other posture — absence is the safe state |
-| 7 | rate | `38 tok/s` | what the stream is producing **right now** — tokens over elapsed, measured on the live stream by the layer holding it — while the answer is being thought or written; or the phase's own words while the turn is in a phase that is producing nothing (`connecting · 1.2s`, `paced · retry in 6s`, `slow · trying coreweave…`) | empty unless that rate is being measured this instant: never the last answer's average, never the per-turn burn, and never `0 tok/s` |
+| 7 | rate | `38 tok/s` | what the stream is producing **right now** — tokens over elapsed, measured on the live stream by the layer holding it — while the answer is being thought or written; or the phase's own words while the turn is in a phase that is producing nothing (`connecting · 1.2s`, `paced · retry in 6s`, `slow · trying coreweave…`). It is about **whichever work this window is a window onto**: the conversation out here, and the open room's task inside one | empty unless that rate is being measured this instant, for this window's own work: never the last answer's average, never the per-turn burn, never another task's, and never `0 tok/s` |
 | 8 | connection | `devbox · 3ms` | a rolling estimate of one empty round trip to the machine a `--host` conversation runs on; while the link is down this is replaced by `reconnecting to devbox — trying for up to 5 minutes` | empty on every local session and on a hosted one until the first measurement answers; never `0ms` |
 | 9 | state | `⠹ working · 4s` | what the screen is doing, and for how long | never empty |
 

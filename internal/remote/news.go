@@ -394,13 +394,14 @@ func phaseWireOf(news session.PhaseNews) PhaseWire {
 		at = time.Now()
 	}
 	wire := PhaseWire{
-		Phase:  string(news.Phase),
-		Model:  news.Model,
-		Role:   string(news.Role),
-		Lane:   news.Lane,
-		Rate:   news.Rate,
-		Detail: news.Detail,
-		Then:   news.Then,
+		Phase:   string(news.Phase),
+		Model:   news.Model,
+		Role:    string(news.Role),
+		Subject: news.Subject,
+		Lane:    news.Lane,
+		Rate:    news.Rate,
+		Detail:  news.Detail,
+		Then:    news.Then,
 	}
 	if !news.Since.IsZero() {
 		if lasted := at.Sub(news.Since); lasted > 0 {
@@ -423,6 +424,7 @@ func phaseNewsOf(wire PhaseWire, at time.Time) session.PhaseNews {
 		Phase:   session.Phase(wire.Phase),
 		Model:   wire.Model,
 		Role:    lane.Role(wire.Role),
+		Subject: wire.Subject,
 		Lane:    wire.Lane,
 		Rate:    wire.Rate,
 		Detail:  wire.Detail,
@@ -451,6 +453,10 @@ func laneWireOf(news session.LaneNews) LaneWire {
 		Reason: news.Reason,
 		Failed: news.Failed,
 		Role:   string(news.Role),
+		// AND WHICH PIECE OF WORK IT WAS ABOUT, without which every node's
+		// answer lands on the conversation's row on the far surface
+		// ([PhaseWire.Subject] states the whole of why).
+		Subject: news.Subject,
 	}
 }
 
@@ -469,6 +475,7 @@ func laneNewsOf(wire LaneWire, at time.Time) session.LaneNews {
 		Reason:  wire.Reason,
 		Failed:  wire.Failed,
 		Role:    lane.Role(wire.Role),
+		Subject: wire.Subject,
 		At:      at,
 		Relayed: true,
 	}

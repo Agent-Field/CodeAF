@@ -388,6 +388,12 @@ func (a *Agent) tellPhase(phase provider.Phase, detail string, since time.Time) 
 	// clock counts the whole stage; a held phase with no start on it would have
 	// its clock reset to zero by every beat, which reads as a stage restarting
 	// over and over rather than one that is lasting.
+	// AND IT CARRIES WHAT THE STAGE IS ABOUT AS WELL AS WHOSE IT IS. The session
+	// names the conversation, which a node shares with its parent and with every
+	// sibling; the subject names THIS node ([Agent.newsSubject]). Without it a
+	// surface had nothing to key a desk by but the model, so two nodes on one
+	// model id overwrote each other's stage and a node's own room could never be
+	// asked what its own node was doing.
 	news := PhaseNews{
 		Phase:   phase,
 		Since:   since,
@@ -395,6 +401,7 @@ func (a *Agent) tellPhase(phase provider.Phase, detail string, since time.Time) 
 		Model:   model,
 		Role:    a.laneRole(),
 		Session: a.newsKey(),
+		Subject: a.newsSubject(),
 		At:      now,
 	}
 	a.phase.mu.Lock()
@@ -417,7 +424,11 @@ func (a *Agent) endPhase() {
 	a.mu.Lock()
 	model := a.model
 	a.mu.Unlock()
-	over := PhaseNews{Model: model, Role: a.laneRole(), Session: a.newsKey()}
+	// THE END OF A STAGE NAMES THE SAME SUBJECT THE START DID, or it would clear
+	// somebody else's clock: a surface files an empty phase by removing that
+	// subject's entry, and an unnamed end would take the conversation's row down
+	// while a node stopped.
+	over := PhaseNews{Model: model, Role: a.laneRole(), Session: a.newsKey(), Subject: a.newsSubject()}
 	a.phase.mu.Lock()
 	defer a.phase.mu.Unlock()
 	a.dropHeldPhaseLocked()

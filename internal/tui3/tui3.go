@@ -1278,7 +1278,11 @@ func Run(ctx context.Context, opts Options) error {
 			Reason: news.Reason,
 			Failed: news.Failed,
 			Role:   news.Role,
-			At:     news.At,
+			// AND WHAT THE SIGHTING IS ABOUT, without which every node's answer
+			// lands on the conversation's row: the desk keys on this
+			// (lanes.go's [PostLaneNews], phase.go's [newsDeskKey]).
+			Subject: news.Subject,
+			At:      news.At,
 		})
 		// A status line that has changed is a frame that has to be drawn, and
 		// nothing else on this surface is going to ask for one: the news arrives
