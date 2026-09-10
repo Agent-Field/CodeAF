@@ -188,3 +188,27 @@ func TestANodeSettledElsewhereStopsAskingInTheRoom(t *testing.T) {
 		t.Fatalf("the settled room lost its foot:\n%s", page)
 	}
 }
+
+// AND ITS BOX GOES ON POINTING AT THE TASK. The room's foot stopped saying
+// `this task has finished` over a standing question and the composer went on
+// saying it in the placeholder — which is worse, because the placeholder is the
+// row a person is looking at when they decide where their words go. `[s] tell
+// it` is one of the three answers on the block above it, and what it does is
+// point THIS box at THIS task (#767).
+func TestTheBoxOfANodeThatNeedsALookStillPointsAtIt(t *testing.T) {
+	a, _ := roomLandingApp(t, session.TaskUnverified)
+
+	box, _, _ := a.inputBlock(120)
+	lane := plain(strings.Join(a.roomSteerLaneRows(box, 120), ""))
+	if strings.Contains(lane, roomFinishedRefusal.what) {
+		t.Fatalf("the composer says %q under a question the page is asking: %q", roomFinishedRefusal.what, lane)
+	}
+
+	// AND A LANDING NOBODY IS WAITING ON KEEPS THE SENTENCE. The refusal is
+	// right about a node that is genuinely over.
+	done, _ := roomLandingApp(t, session.TaskDone)
+	dbox, _, _ := done.inputBlock(120)
+	if said := plain(strings.Join(done.roomSteerLaneRows(dbox, 120), "")); !strings.Contains(said, roomFinishedRefusal.what) {
+		t.Fatalf("a finished room's composer lost its refusal: %q", said)
+	}
+}

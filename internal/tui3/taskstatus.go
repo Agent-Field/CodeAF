@@ -37,6 +37,16 @@ func (a *app) taskStatus(node *taskNode) session.TaskStatus {
 		Held:      node.producedHeld,
 		Conflicts: node.conflicts,
 		Decider:   node.decider,
+		// AND WHICH OF THE THREE ROADS PUT THOSE FILES THERE, because the names
+		// alone do not say it: a branch of the person's that moved the same files,
+		// their own uncommitted copies sitting in the folder, or a branch that
+		// would not fasten. All three name files and all three ask the same two
+		// answers, and the sentence between them is the only thing that tells a
+		// person which. The column read the third one over all three until #767,
+		// so a rail row said `conflicts with your branch` about a folder with no
+		// branch of theirs in it while the card beside it said otherwise.
+		Shifted:    node.shifted,
+		GroundHeld: node.groundHeld,
 	}
 	if !node.restored {
 		facts.Liveness = session.TaskLivenessHeld
