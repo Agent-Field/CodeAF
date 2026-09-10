@@ -2004,7 +2004,7 @@ func (l homeLine) sameRow(other homeLine) bool {
 		return l.row.Transcript != "" && l.row.Transcript == other.row.Transcript
 	case homeItem:
 		return l.item.ID != "" && l.item.ID == other.item.ID
-	case homeQuiet, homeItemFold, homeProject:
+	case homeQuiet, homeItemFold, homeProject, homeProjectRow:
 		return l.dir != "" && l.dir == other.dir
 	case homeExchangeRow:
 		return l.ex != nil && l.ex == other.ex
@@ -2313,7 +2313,7 @@ func (h *homeView) itemLine(project session.Project, view StandingItemView) home
 func (l homeLine) stop() bool {
 	switch l.kind {
 	case homeSession, homeQuiet, homeAction, homeItem, homeItemFold, homeAskHere,
-		homeProject, homeExchangeRow:
+		homeProject, homeExchangeRow, homeProjectRow:
 		return true
 	// the router's lane: an offered place is a door like every other door on this
 	// column (homeplaces.go), and an offered command is one too (homeslash.go).
@@ -3115,6 +3115,9 @@ func (a *app) homeEnter() tea.Cmd {
 	case homeSwitchFold:
 		h.foldSwitch(line.folded)
 		return nil
+	case homeProjectRow:
+		// A PROJECT ON THE GRID STARTS A CONVERSATION THERE (homepanel_projects.go).
+		return a.homeProjectEnter(line)
 	case homeItem:
 		// THE DOOR AN ITEM OFFERS IS ITS PROVENANCE and not itself: "why did I
 		// get this?" opens the conversation that asked for it

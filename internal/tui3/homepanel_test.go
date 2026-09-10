@@ -172,3 +172,81 @@ func TestTypingOnHomeStillRaisesTheSearch(t *testing.T) {
 		t.Fatalf("the query did not find its rows:\n%s", frame)
 	}
 }
+
+// homeLineOf puts the cursor on the first line a test predicate names.
+func homeLineOf(t *testing.T, a *app, want func(homeLine) bool) {
+	t.Helper()
+	for at, line := range a.home.lines {
+		if want(line) {
+			a.home.cursor = at
+			return
+		}
+	}
+	t.Fatal("no line on home is the one the test wants")
+}
+
+// PROJECTS: this window's folder first, each with its chats and what is running
+// in it, and the repository's state at the right.
+func TestProjectsListsThisFolderFirstWithItsCountsAndRepository(t *testing.T) {
+	lab := newSwitchLab(t)
+	a := lab.open(120, 45)
+	beta := lab.workspace("beta")
+	a.home.tilde = lab.work
+	a.home.repos = map[string]homeRepoReading{beta: {line: "master · 2 files dirty"}}
+	a.home.build()
+	frame := homeText(a)
+	head, _ := homeRowOf(frame, "projects")
+	lines := strings.Split(frame, "\n")
+	if head < 0 || head+2 >= len(lines) {
+		t.Fatalf("projects is not drawn:\n%s", frame)
+	}
+	if !strings.Contains(lines[head+1], "~/alpha") || !strings.Contains(lines[head+1], "2 chats") {
+		t.Fatalf("this window's folder is not the first project:\n%s", frame)
+	}
+	second := lines[head+2]
+	for _, want := range []string{"beta", "10 chats · 1 running", "master, 2 files dirty"} {
+		if !strings.Contains(second, want) {
+			t.Fatalf("the beta row does not say %q:\n%s", want, frame)
+		}
+	}
+}
+
+// ENTER ON A PROJECT STARTS A CONVERSATION THERE, and home steps aside for it.
+func TestEnterOnAProjectStartsAConversationInThatFolder(t *testing.T) {
+	lab := newSwitchLab(t)
+	a := lab.open(120, 45)
+	beta := lab.workspace("beta")
+	homeLineOf(t, a, func(l homeLine) bool { return l.kind == homeProjectRow && l.proj.Path == beta })
+	a.homeKey(key("enter"))
+	if a.at(pageHome) || a.workspace != beta {
+		t.Fatalf("enter on the beta project left home=%v in %q, want a conversation in %q", a.at(pageHome), a.workspace, beta)
+	}
+}
+
+// AND ITS VERBS ARE ITS CHATS AND ITS FOLDER.
+func TestAProjectOffersItsChatsAndItsFolder(t *testing.T) {
+	a := newSwitchLab(t).open(120, 45)
+	homeLineOf(t, a, func(l homeLine) bool { return l.kind == homeProjectRow && l.project == "beta" })
+	verbs := a.homeRowVerbs()
+	if len(verbs) != 2 || verbs[0].word != homeProjectChatsWord || verbs[1].word != homeProjectFolderWord {
+		t.Fatalf("a project offers %+v", verbs)
+	}
+	verbs[0].do()
+	if a.home.box.String() != "beta" || a.home.gridOn() {
+		t.Fatalf("its chats did not search the project: box %q", a.home.box.String())
+	}
+}
+
+// `~` IS NEVER A PROJECT NAME: the home directory's row draws nothing where a
+// name would be, and so does a project that recorded no folder.
+func TestTheHomeDirectoryIsNotAProjectName(t *testing.T) {
+	if got := projectWord(session.Project{Name: "~", Path: "/home/pat"}, "/home/pat"); got != "" {
+		t.Fatalf("the home directory is called %q", got)
+	}
+	if got := projectWord(session.Project{Name: "-bucket"}, "/home/pat"); got != "" {
+		t.Fatalf("a folderless project is called %q", got)
+	}
+	if got := projectWord(session.Project{Name: "site", Path: "/home/pat/site"}, "/home/pat"); got != "~/site" {
+		t.Fatalf("a project under home is called %q, want ~/site", got)
+	}
+}
