@@ -55,6 +55,10 @@ from its next turn onward. Nothing else moves: not the conversation, not any oth
 See "Changing the model for one task while it is running" on the tasks page. Inside a
 task that has finished the name is still there to read and cannot be pressed.
 
+If the task's work is being checked when you press, there is no next turn left to move:
+the pick is saved for the next run and the row keeps naming the model the work actually
+ran on. The room shows `next model <id>` while that choice is held.
+
 The picker is a filter box in the input line's place with a short list of models under it.
 It is bottom-anchored: the conversation shrinks above it, so nothing pops up over what you
 were reading.
