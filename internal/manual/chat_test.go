@@ -2300,19 +2300,49 @@ func TestC14TheChatManualNamesEveryProtectedBranch(t *testing.T) {
 	}
 }
 
-// #334: a row of the model-call log may be short of a number JSON cannot spell,
-// and it says which one in its note. The page-level probe above is not enough
-// to hold that: the whole page is about calls and costs, so it reaches
-// models-and-cost with or without the sentence. This pins the sentence itself
-// to the section a person asking the question is actually handed.
+// #334, as it stands after the thinking-turn fix: a row of the model-call log
+// may be short of a figure, and the page has to say why a missing one is honest
+// rather than broken. The page-level probe above is not enough to hold that:
+// the whole page is about calls and costs, so it reaches models-and-cost with
+// or without the explanation. This pins the explanation itself to the section a
+// person asking the question is actually handed.
 func TestTheCallLogPageSaysWhyAFigureIsMissingFromARow(t *testing.T) {
-	const said = "cost_s was +Inf"
+	const said = "there is none to price on a call with nowhere else"
 	for _, section := range Chat().Search("why is cost_s missing on a call log row", DefaultResults) {
 		if section.Page == "models-and-cost" && strings.Contains(section.Body, said) {
 			return
 		}
 	}
 	t.Fatalf("the question does not reach a section that says %q; a row missing a figure reads as a broken row", said)
+}
+
+// A person whose reply vanished asks in their own words, and there is exactly
+// one page that can say who ended it. The pins are the two halves the fix owes
+// them: that a stop of their own is the only silent door, and that a thinking
+// model is not a silence at all.
+func TestTheVanishedReplyQuestionsReachTheAnswer(t *testing.T) {
+	for _, probe := range []struct {
+		asked string
+		page  string
+		says  string
+	}{
+		{"my reply just stopped with no error and no note", "models-and-cost", "ask again to pick it up"},
+		{"my answer disappeared when I opened the conversation in another window", "models-and-cost", "ask again to pick it up"},
+		{"it thought for two minutes and then said nothing", "lanes", "a ceiling on a still wire"},
+		{"is a model that is thinking treated as a stall", "lanes", "a ceiling on a still wire"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			if section.Page == probe.page && strings.Contains(section.Body, probe.says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach a section that says %q; a reply that vanished has nowhere to be explained",
+				probe.asked, probe.says)
+		}
+	}
 }
 
 // #161: a person asking about the bill for a cut reply must reach the receipt

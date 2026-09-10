@@ -20,11 +20,11 @@ func quiet(t *testing.T) *strings.Builder {
 	var said strings.Builder
 	previousStderr, previousMarshal := stderr, marshalJSON
 	stderr = &said
-	unspellable = sync.Once{}
+	unspellable, unspellableField = sync.Once{}, sync.Once{}
 	t.Cleanup(func() {
 		stderr = previousStderr
 		marshalJSON = previousMarshal
-		unspellable = sync.Once{}
+		unspellable, unspellableField = sync.Once{}, sync.Once{}
 	})
 	return &said
 }
@@ -51,25 +51,28 @@ func TestAnInfiniteFieldStillLeavesItsRow(t *testing.T) {
 	}
 }
 
-func TestANumberJSONCannotSpellIsTakenOffTheRowAndSaidInWords(t *testing.T) {
+// #334 asked for the row to be kept and the missing figure to be named in the
+// row's own `note`. Half of that is now wrong. Nothing in the request path can
+// produce one of these figures — [control.Seconds] carries "nothing" and "past
+// pricing" as themselves — so a value reaching this repair is a builder defect,
+// and under the emptiness law a row with no number carries nothing rather than
+// a sentence about a float.
+func TestANumberJSONCannotSpellIsTakenOffTheRowAndTheRowStaysWhole(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "calls.jsonl")
 	fresh(t, path)
+	quiet(t)
 
-	rows := []struct {
-		id     string
-		record Record
-		says   string
-	}{
-		{"inf", Record{CostS: math.Inf(1)}, "cost_s was +Inf and is not on this row."},
-		{"neg", Record{WaitS: math.Inf(-1)}, "wait_s was -Inf and is not on this row."},
-		{"nan", Record{Cost: math.NaN()}, "cost was NaN and is not on this row."},
-		{"waste", Record{WasteUSD: math.NaN()}, "waste_usd was NaN and is not on this row."},
+	rows := []Record{
+		{ID: "inf", CostS: math.Inf(1)},
+		{ID: "neg", WaitS: math.Inf(-1)},
+		{ID: "nan", Cost: math.NaN()},
+		{ID: "waste", WasteUSD: math.NaN()},
 	}
 	for _, row := range rows {
 		Append(Record{
-			Time: "2026-09-02T09:00:00.000Z", ID: row.id, Model: "m", Status: 200,
-			Finish: "stop", CompletionTokens: 466, Cost: row.record.Cost,
-			CostS: row.record.CostS, WaitS: row.record.WaitS, WasteUSD: row.record.WasteUSD,
+			Time: "2026-09-02T09:00:00.000Z", ID: row.ID, Model: "m", Status: 200,
+			Finish: "stop", CompletionTokens: 466, Cost: row.Cost,
+			CostS: row.CostS, WaitS: row.WaitS, WasteUSD: row.WasteUSD,
 		})
 	}
 
@@ -78,8 +81,11 @@ func TestANumberJSONCannotSpellIsTakenOffTheRowAndSaidInWords(t *testing.T) {
 		t.Fatalf("every row is written whatever it carries: %d of %d", len(records), len(rows))
 	}
 	for index, record := range records {
-		if record.Note != rows[index].says {
-			t.Errorf("row %d should say what went missing: %q, want %q", index, record.Note, rows[index].says)
+		if record.Note != "" {
+			t.Errorf("row %d explains a float to somebody who asked about a call: %q", index, record.Note)
+		}
+		if record.CostS != 0 || record.WaitS != 0 || record.Cost != 0 || record.WasteUSD != 0 {
+			t.Errorf("row %d kept a figure JSON cannot write: %+v", index, record)
 		}
 		// The rest of the row is what the log exists for, and it survives whole.
 		if record.Status != 200 || record.Finish != "stop" || record.CompletionTokens != 466 {
@@ -88,33 +94,40 @@ func TestANumberJSONCannotSpellIsTakenOffTheRowAndSaidInWords(t *testing.T) {
 	}
 }
 
-func TestSeveralNonFiniteNumbersAreAllNamedAfterWhateverTheCallAlreadyNoted(t *testing.T) {
+func TestSeveralNonFiniteNumbersLeaveTheCallsOwnSentenceAloneAndAreSaidOnceOnStderr(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "calls.jsonl")
 	fresh(t, path)
-	Append(Record{
-		Time: "2026-09-02T09:00:00.000Z", Model: "m", Status: 200,
-		Note:  "pinned lane coreweave was silent for 10s.",
-		WaitS: 12.5, CostS: math.Inf(1), WasteUSD: math.NaN(),
-	})
+	said := quiet(t)
+	for range 3 {
+		Append(Record{
+			Time: "2026-09-02T09:00:00.000Z", Model: "m", Status: 200,
+			Note:  "pinned lane coreweave was silent for 10s.",
+			WaitS: 12.5, CostS: math.Inf(1), WasteUSD: math.NaN(),
+		})
+	}
 
 	records := readLines(t, path)
-	if len(records) != 1 {
-		t.Fatalf("one row: %d", len(records))
+	if len(records) != 3 {
+		t.Fatalf("three rows: %d", len(records))
 	}
-	note := records[0].Note
-	if !strings.HasPrefix(note, "pinned lane coreweave was silent for 10s.") {
-		t.Errorf("the call's own sentence comes first and is kept: %q", note)
-	}
-	for _, want := range []string{"waste_usd was NaN", "cost_s was +Inf"} {
-		if !strings.Contains(note, want) {
-			t.Errorf("the note should name %s: %q", want, note)
-		}
+	if note := records[0].Note; note != "pinned lane coreweave was silent for 10s." {
+		t.Errorf("the call's own sentence is the whole note: %q", note)
 	}
 	if records[0].WaitS != 12.5 {
 		t.Errorf("a number JSON can spell stays on the row: %v", records[0].WaitS)
 	}
 	if records[0].CostS != 0 || records[0].WasteUSD != 0 {
 		t.Errorf("the numbers it cannot spell are off the row: %+v", records[0])
+	}
+	// A DEFECT IS SAID WHERE A DEFECT BELONGS, and once: three rows carrying two
+	// such figures each would otherwise be six lines of stderr per second.
+	if lines := strings.Count(said.String(), "\n"); lines != 1 {
+		t.Fatalf("the complaint is made exactly once; it said:\n%s", said.String())
+	}
+	for _, want := range []string{"cost_s", "+Inf"} {
+		if !strings.Contains(said.String(), want) {
+			t.Errorf("the complaint should name %s: %q", want, said.String())
+		}
 	}
 }
 

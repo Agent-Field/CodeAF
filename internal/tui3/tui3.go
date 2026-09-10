@@ -80,8 +80,16 @@ type Agent interface {
 	// session's standing_mark.go). It refuses — with an error and no stream —
 	// where this build has no ambient side to hold one.
 	SubmitStanding(ctx context.Context, text string) (<-chan session.Event, error)
-	// Interrupt cancels the in-flight turn, keeping its partial reply.
+	// Interrupt cancels the in-flight turn, keeping its partial reply. It is
+	// THE PERSON'S OWN STOP and nothing else.
 	Interrupt()
+	// InterruptFor is the same stop for a door that is not a person: this
+	// conversation being taken over by another window, left for another
+	// conversation, or closed under a turn that was still running. The engine
+	// writes the door down and says one sentence about a reply that never
+	// arrived, which a person's own stop is owed neither of (internal/session's
+	// stopcause.go).
+	InterruptFor(door session.StopDoor)
 	// Compact runs a compaction pass now.
 	Compact(ctx context.Context) error
 	// Close flushes the session file.

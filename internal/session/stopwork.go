@@ -48,7 +48,7 @@ func (a *Agent) StopWork() error {
 	a.mu.Unlock()
 	a.interrupt.begin()
 	if cancel != nil {
-		cancel()
+		cancel(stopFor(StopByWorkStopped))
 	}
 	for _, live := range runs {
 		live.run.Cancel()
