@@ -100,12 +100,28 @@ endpoint, that endpoint is tried before repeating the failed request. Rate
 limits still respect their retry delay. Without an affordable alternative, the
 existing bounded retries and wait reporting remain.
 
-## Pinning one lane yourself — does aforge do use the lane I pinned, and is my pinned provider used from a terminal
+## Pinning one lane yourself — how to change the provider for a model, left and right arrows in the model picker, the @ after the model name, and whether aforge do uses the lane I pinned
 
-You can name the lane yourself. In the model picker, the lanes under a model are
-its endpoints; picking one pins it, and every request for that model goes
-there until you say otherwise. There is a plain `openrouter` row too, which
-means "no opinion from me — let the router balance it".
+You can name the lane yourself. Open `/model` and press `→` (or `tab`) on the model:
+its lanes — the endpoints serving it — open under it, the cursor **moves into them**,
+onto the lane you pinned or onto `auto` when you have not, and the list scrolls so the
+model and every lane are in view. `enter` pins the lane under the cursor — every request
+for that model goes there until you say otherwise — and `←` (or `tab`) walks back out.
+The hint slot says which: `→ lanes · enter switch · esc` on a model,
+`enter choose · ← back · esc` inside. The `openrouter` row means "no opinion from me —
+let the router balance it".
+
+**A model nobody has measured still opens**, onto `auto` and `openrouter`, with one
+line where the machines would be:
+`no machine has been measured for this model yet — they show up after its first answer`.
+Opening it asks for that model's list of machines in the background. With the routing
+row at `off` nothing opens at all.
+
+**The lane you are pinned to is written on the model's name** — `deepseek-v4-flash@cloudflare`
+on the line above the box and on a phone's status deck — with the same `@` you would
+type in `/model @cloudflare`. `/status` says it on a `lane` line under `model`. On `auto`
+and `openrouter` there is no `@`, and none once a pin has been retired. Pressing the
+name opens the picker with the cursor on the pinned lane.
 
 A pin is an instruction, so aforge keeps it. It does not quietly send your work
 somewhere else because it thinks it knows better.
@@ -264,6 +280,7 @@ it is asking you to sit through.
 | what you see | what happened |
 | --- | --- |
 | `via cloudflare · 0.6s · 61 t/s` | an ordinary answer, and who wrote it |
+| `deepseek-v4-flash@cloudflare` | you pinned cloudflare, and every request for the model goes there |
 | `slow · trying parasail…` | a machine was late or its visible answer had slowed to a crawl; a second request is out and the first to answer wins |
 | `refused · trying parasail…` | a machine said it will not serve this model; the answer has already moved |
 | `parasail refused` | the machine that second request went to said no as well |

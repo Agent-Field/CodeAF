@@ -97,8 +97,8 @@ Type to filter. The keys:
 | pgup / pgdown | move 12 rows |
 | left, right, home, end, ctrl+u, ctrl+w | edit the filter text |
 | ctrl+t | walk the reasoning effort of the model under the cursor |
-| tab, → | open the lanes — the providers serving the model under the cursor |
-| tab, ← | close them again |
+| tab, → | open the lanes — the providers serving the model under the cursor — and move the cursor into them |
+| tab, ← | close them again, back on the model |
 | enter | switch to the row under the cursor — or, on an open lane, pin it |
 | esc | cancel, changing nothing |
 
@@ -2376,7 +2376,8 @@ left to aforge, `pinned: cloudflare` when it is not, `openrouter` when you have 
 no endpoint at all. A session that has measured nothing shows the model id alone.
 
 In the model picker — `/model`, or `enter` on that **your model** row — press `→` or
-`tab` on a row and the model's lanes open underneath it:
+`tab` on a row and the model's lanes open underneath it, with the cursor already on the
+lane in force (`auto` when nothing is pinned):
 
 ```
  deepseek-v4-flash   via cloudflare · ▲0.8s · $0.09/$0.18 per M · 1M · 58t/s
@@ -2409,14 +2410,18 @@ means you want that name served from there.
 `enter` on the **lane** row opens that same fold directly, on the model you are talking
 to, with the cursor already on the lane in force — so choosing an endpoint is reading
 the measured numbers and pressing enter, never guessing at a word. When nothing has been
-measured there are no machines to list, and the row walks between the only two honest
-answers instead: `auto` and `openrouter`.
+measured it opens all the same, onto the only two honest answers: `auto` and `openrouter`.
 
 From the keyboard alone: `/model @cloudflare` pins, `/model auto` un-pins.
 
-**A model nobody has measured has no lanes to open, and `→` does nothing on it.** There
-is nothing truthful to put under it, so nothing is drawn — the same rule that leaves the
-speed off its row.
+**A model nobody has measured opens onto its two answers and no machines.** `→` shows
+`auto` and `openrouter`, and in the machines' place one line —
+`no machine has been measured for this model yet — they show up after its first answer`
+— with no number anywhere, the same rule that leaves the speed off its row. Opening it
+asks for that model's list of machines in the background.
+
+A pinned lane is written on the model's name as `model@lane` — see *Lanes → Pinning one
+lane yourself*.
 
 ## What the note on a lane row means — no tools, out ≤ 65k, tail 12s, fp4
 
