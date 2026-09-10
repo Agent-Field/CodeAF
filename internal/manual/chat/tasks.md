@@ -1406,7 +1406,7 @@ row per task under it. Any failure in the batch swaps the header to `✕ N tasks
 warning on the batch and its individual row. The header's span is wall-clock, first
 spawn to last landing, not the sum of the parts, because tasks run at the same time.
 
-## Where is the story my task wrote — what an expanded landing card shows, why the task answer is in asterisks, Markdown, the delivery warning, the facts
+## Where is the story my task wrote — expanded landing cards, Markdown and asterisks
 
 Click a landing card, or press `ctrl+o` with it selected, to expand it. The order is
 **delivery status**, **the answer**, then **supporting details**.
