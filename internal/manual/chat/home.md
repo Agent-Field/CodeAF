@@ -598,8 +598,14 @@ goes empty on the `start a new conversation` row, which is a chat that does not 
 
 ## Switch between sessions — enter on home
 
-`↑`/`↓` (or `ctrl+p`/`ctrl+n`) walk a column and `←`/`→` cross between columns. Clicking a
-row puts the cursor on it; clicking the row the cursor is already on opens it.
+`↑`/`↓` (or `ctrl+p`/`ctrl+n`) walk a column and `←`/`→` cross between columns.
+
+**One click is `enter`.** A click on a row opens it, and a click on a fold that names a
+place opens that place. A click on a panel's **heading** opens the place the heading names:
+`needs you`, `running` and `since you left` open tasks, `spend` opens spend, `next up` opens
+standing, `where you were` opens search, and `projects` opens nothing. A click never starts
+a paid turn, so on the row of what you typed, on `ask here` and on a `/` command it only
+puts the cursor there, and `enter` does the rest.
 
 `enter` opens the session under the cursor — **any row on the screen, in any project.**
 The chosen journal is opened and replayed, and **the conversation you were in stays open

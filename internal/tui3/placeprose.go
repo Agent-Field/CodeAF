@@ -120,13 +120,19 @@ const needsUncheckedWord = "landed unchecked · enter to look"
 //	margin    the same ink as a note, flushed right
 //
 // and one ground for both hands, [placeBand]. SECTIONS ARE MUTED AND NOT DIM,
-// which is where this departs from the screen's own mock: home's panel headings
-// wear muted (homecell.go's [homeCellHead]), DESIGN-LANGUAGE's accent budget
-// says headings wear muted, and one heading ink across the bar is the law this
-// scale exists for. The accent is spent on the live thing and nothing here.
+// which is where this departs from the screen's own mock: DESIGN-LANGUAGE's
+// accent budget says headings, band labels and wordmarks wear muted, and one
+// heading ink across the bar is the law this scale exists for. The accent is
+// spent on the live thing and nothing here.
 
 // placeHeading is a section heading on a place.
-func placeHeading(text string, pal palette) string { return pal.muted(text) }
+func placeHeading(text string, pal palette) string { return placeHeadingInk(pal)(text) }
+
+// placeHeadingInk is THE ONE HEADING INK, for every place's section words and
+// every one of home's panel headings (homecell.go's [homeCellHead]). Moving
+// headings between muted and dim is this line and nothing else, so home and
+// the places can never be moved apart by a change that remembered one of them.
+func placeHeadingInk(pal palette) func(string) string { return pal.muted }
 
 // placeSubject is the thing a row is about. COLOUR IS STROKE, NEVER FILL: the
 // row's glyph carries its state and the words beside it keep the ordinary ink

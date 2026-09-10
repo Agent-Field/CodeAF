@@ -335,8 +335,8 @@ func TestTheArrowsWalkAColumnAndCrossToTheNext(t *testing.T) {
 	}
 }
 
-// A CLICK IN THE RIGHT COLUMN SELECTS THE ROW DRAWN THERE, not the left
-// column's row that shares its screen line.
+// A CLICK IN THE RIGHT COLUMN LANDS ON THE ROW DRAWN THERE, not the left
+// column's row that shares its screen line — and opens it, as `enter` would.
 func TestAClickResolvesTheColumnItLandedIn(t *testing.T) {
 	a := newSwitchLab(t).open(120, 45)
 	lines := strings.Split(homeText(a), "\n")

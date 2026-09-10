@@ -150,8 +150,9 @@ Three gestures, the same on all seven places:
   search the first press puts the cursor there and opens what the row names. **A click
   never spends**: on memory, where `enter` on a line asks the model about it, the press
   opens the line's card instead, and on a shelf it folds the shelf. The verbs stay keys.
-  Home is the exception it always was — the first press chooses the row, a second on the
-  same row opens it — and settings only chooses, because its `enter` changes a value.
+  Home keeps the same grammar — one click on a row or a fold opens it, and a panel's
+  heading opens the place it names — and settings only chooses, because its `enter`
+  changes a value.
 - **the wheel walks the list**, three rows a turn, on every place. There is no separate
   scroll offset: the window follows the cursor, so scrolling and choosing are one gesture.
   Walking off the bottom with `↓` scrolls the same way.

@@ -131,6 +131,12 @@ type homePanelSlot struct {
 	rest, most int
 	// place is where the fold line opens; the zero page opens nothing.
 	place page
+	// head is where a press on the heading goes: THE PLACE THE HEADING NAMES
+	// (law 10, home is the summary of the tabs). It is its own column rather
+	// than the fold's, because `where you were` has a place to name — the typed
+	// search — and a fold that says `type to find one`, and the two are
+	// different answers. The zero page is a heading that names only its panel.
+	head page
 	// more is what the fold says after its count when it is not a place's
 	// word — the recent panel's fold is an instruction rather than a door.
 	more string
@@ -147,14 +153,16 @@ type homePanelSlot struct {
 // hands them out in, and rest and most are each panel's natural height and its
 // growth budget (owner, 2026-09-10: a fifty-five-row terminal was two short
 // columns over thirty rows of air). Spend's budget is its rest: it never grows.
+// The head column is where a press on each heading goes; `projects` names no
+// place but itself, so its heading opens nothing.
 var homePanelOrder = []homePanelSlot{
-	{panel: needsPanel{homePanelBase{panelNeeds}}, word: "needs you", col2: 0, col3: 0, keep: 6, least: 4, rest: 4, most: 8, place: pageTasks},
-	{panel: recentPanel{homePanelBase{panelRecent}}, word: "where you were", col2: 0, col3: 0, keep: 5, least: 4, rest: 5, most: 10, more: homeFindWord},
+	{panel: needsPanel{homePanelBase{panelNeeds}}, word: "needs you", col2: 0, col3: 0, keep: 6, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
+	{panel: recentPanel{homePanelBase{panelRecent}}, word: "where you were", col2: 0, col3: 0, keep: 5, least: 4, rest: 5, most: 10, more: homeFindWord, head: pageSearch},
 	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", col2: 0, col3: 2, keep: 4, least: 3, rest: 5, most: 8, more: homeFindWord},
-	{panel: runningPanel{homePanelBase{panelRunning}}, word: "running", col2: 1, col3: 1, keep: 3, least: 4, rest: 4, most: 8, place: pageTasks},
-	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", col2: 1, col3: 1, keep: 2, least: 3, rest: 4, most: 8, place: pageTasks},
-	{panel: spendPanel{homePanelBase{panelSpend}}, word: "spend", col2: 1, col3: 2, keep: 1, least: 3, rest: 3, most: 3, place: pageSpend},
-	{panel: nextPanel{homePanelBase{panelNext}}, word: "next up", col2: 1, col3: 1, keep: 0, least: 3, rest: 3, most: 5, place: pageStanding},
+	{panel: runningPanel{homePanelBase{panelRunning}}, word: "running", col2: 1, col3: 1, keep: 3, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
+	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", col2: 1, col3: 1, keep: 2, least: 3, rest: 4, most: 8, place: pageTasks, head: pageTasks},
+	{panel: spendPanel{homePanelBase{panelSpend}}, word: "spend", col2: 1, col3: 2, keep: 1, least: 3, rest: 3, most: 3, place: pageSpend, head: pageSpend},
+	{panel: nextPanel{homePanelBase{panelNext}}, word: "next up", col2: 1, col3: 1, keep: 0, least: 3, rest: 3, most: 5, place: pageStanding, head: pageStanding},
 }
 
 // homeFindWord is what a fold says where the rest are reached by typing rather
@@ -946,6 +954,35 @@ func (a *app) homeHitAt(x, y int, hits []int) int {
 		return marks[y].cells[a.home.gridColumnAt(x)]
 	}
 	return hits[y]
+}
+
+// homeHeadPress is a press on a panel's heading: THE PLACE THE HEADING NAMES
+// (the order table's head column), exactly as a press on that place's tab
+// word would go. It reports whether the press landed on a heading at all, and
+// takes one that names no place and does nothing with it — a heading is not a
+// row, and letting the press fall through would act on whatever the map says
+// is under it.
+//
+// IT READS THE HEADINGS THE FRAME DREW ([homeMark.heads]), never a second
+// count of where the panels ended up: a squeeze drops whole panels, and a
+// heading worked out apart from the draw would open the wrong place on exactly
+// the frame a person could not tell why.
+func (a *app) homeHeadPress(x, y int) (tea.Cmd, bool) {
+	marks := a.home.gridMarks
+	if y < 0 || y >= len(marks) || !marks[y].grid {
+		return nil, false
+	}
+	at := marks[y].heads[a.home.gridColumnAt(x)]
+	if at < 0 || at >= len(a.home.lines) || a.home.lines[at].cell == nil {
+		return nil, false
+	}
+	// The registry answers whether the heading names a place at all, which keeps
+	// this file from asking a page id what it is (placelaws_test.go, law 1).
+	id := homeSlotOf(a.home.lines[at].cell.panel).head
+	if placeFor(id) == nil {
+		return nil, true
+	}
+	return a.showPage(id), true
 }
 
 // gridColumnAt is the column an x falls in: the last one starting at or before
