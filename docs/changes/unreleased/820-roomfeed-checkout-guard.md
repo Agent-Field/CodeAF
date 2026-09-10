@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: roomfeed waits for the room's way back; reopened rooms keep each call's duration
-pr: 815
+pr: 820
 surface: [chat, engine]
 invalidates:
   - "The roomfeed e2e twins waited for `room ·` to decide a task room was open. At their 120×40 frame with the rail showing, the organized layout draws `esc/← main` on the focus header and leaves the legend empty — so that needle never fired on a real open page. They wait for `esc/← main` (tuiwords' roomBackWord) now, the one string every room shape shares, opened by a rail click that does not compete with the settle strip's Enter."
