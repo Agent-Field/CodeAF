@@ -125,8 +125,9 @@ func CurrentLanePin() LanePin {
 }
 
 // PinnedFor is the machine a request for model is held to RIGHT NOW, and empty
-// when it is held to none — `auto`, `openrouter`, or a pin the wire has already
-// retired for this model ([retirePinnedLane]).
+// when it is held to none — `auto`, `openrouter`, a pin the wire has already
+// retired for this model ([retirePinnedLane]), or a pin on a base that has said
+// it will not carry a routing preference at all ([BaseTakesLaneChoice]).
 //
 // It is the pin as the transport will act on it, which is the only thing a
 // surface naming the pin may say: a status line still reading `@coreweave`
@@ -134,7 +135,7 @@ func CurrentLanePin() LanePin {
 // next request does not ask for. It is memory only and cheap when nothing is
 // pinned, because the chrome asks it on every frame.
 func PinnedFor(model string) string {
-	if CurrentLanePin().pinned() == "" {
+	if CurrentLanePin().pinned() == "" || !BaseTakesLaneChoice() {
 		return ""
 	}
 	pin, retired := lanePinFor(model)
