@@ -266,7 +266,13 @@ func (a *Agent) refreshMemory(ctx context.Context, hub *eventHub, cue string) {
 
 	a.mu.Lock()
 	a.memoryText = block
-	a.refreshSystemLocked()
+	// AND IT LANDS AT THE TAIL, not in message[0]. The drain immediately before
+	// the first request would land it anyway (loop.go), and it is landed here as
+	// well so that this pass is complete on its own: what it routed is in front
+	// of the model the moment it has routed it, on any road that reaches here.
+	// The lander does nothing at all when the block has not moved, which on a
+	// conversation whose subject is holding still is every turn after the first.
+	a.landVolatileLocked()
 	a.mu.Unlock()
 }
 
@@ -990,47 +996,50 @@ func (a *Agent) memoryTools() []bare.Tool {
 	}}
 }
 
-// refreshSystemLocked rebuilds message[0] from the base prompt, the person's
-// standing orders and the memory block this turn was routed. It is called at
-// construction — where the block is empty, or is the one a task node opened with
-// — and again once the router has answered, at the start of every turn.
+// refreshSystemLocked rebuilds message[0] from the base prompt, the folders
+// somebody attached, the person's standing orders and this session's record of
+// what it has decided.
 //
 // message[0] is REPLACED rather than appended to: a.system stays the base, so
-// every refresh renders base + current blocks instead of stacking one turn's
-// memories on top of the last one's.
+// every refresh renders base + current blocks instead of stacking one act's
+// block on top of the last one's.
 //
 // THE ATTACHED FOLDERS ARE THE THIRD BLOCK and they are here for the standing
 // orders' reason exactly: a folder somebody attached holds for the life of the
 // conversation until they remove it, so it moves once per deliberate act and
 // otherwise renders byte for byte (placescontext.go).
 //
-// WHAT LIVES HERE IS WHAT HOLDS FOR THE LIFE OF THE CONVERSATION, and that is
-// the whole rule. message[0] sits in front of every message there is, so one
-// changed byte in it re-prices the entire transcript at the uncached rate — five
-// times the cached one — on the very next request. The base prompt never moves.
-// An order was agreed on a card and holds until the person says otherwise, and a
-// conversation may run all day without one moving (standing_world.go). The
-// memory block is the one thing in here that is not free, and it was measured
-// rather than assumed: it is routed per turn, so it moves when the SUBJECT
-// moves, and [renderMemoryBlock] stamps each line with an age label whose
-// granularity is hourly for a memory learned today and daily after that
-// (store.AgeLabel) — so a set that did not change re-renders byte for byte for
-// a session's whole length unless it is carrying something learned this
-// morning. It stays because it is REPLACED and never stacked: a turn's memories
-// are that turn's, superseded lines are the one thing the memory store works to
-// keep out of a prompt, and a tail note that appended each turn's set would put
-// them all back. What it costs when it does move is the same cold prefix the
-// clock costs when it is brought forward (prompt.go's clockRefresh), and for the
+// WHAT LIVES HERE IS WHAT MOVES ONLY ON A DELIBERATE ACT, and that is the whole
+// rule. message[0] sits in front of every message there is, so one changed byte
+// in it re-prices the entire transcript at the uncached rate — five times the
+// cached one — on the very next request. The base prompt never moves. A folder
+// somebody attached holds until they remove it. An order was agreed on a card
+// and holds until the person says otherwise, and a conversation may run all day
+// without one moving (standing_world.go). A decision is recorded when a question
+// is answered and never again. Each of those is a thing a person did, at most a
+// handful of times in a session, and what it costs is the same cold prefix the
+// clock costs when it is brought forward (prompt.go's clockRefresh), for the
 // same reason: a model reasoning from a stale standing fact is worse than a
 // re-priced conversation.
 //
-// THE TWO BLOCKS THAT MOVE WITH THE WORK ARE NOT HERE. The state card is
-// rewritten by the post-turn pass every time a delta lands, and the other
-// windows' work is re-read at the start of every turn; both used to ride at the
-// end of this string, and between them they re-priced the whole conversation on
-// most turns of a working session. They ride at the TAIL of the transcript now,
-// as one appended note ([Agent.landVolatileLocked]), where a change costs the
-// note and nothing behind it.
+// THE BLOCKS THAT MOVE ON A TURN ARE NOT HERE, and the memory block was the last
+// of them to leave. The state card is rewritten by the post-turn pass every time
+// a delta lands and the other windows' work is re-read at the start of every
+// turn; the routed memory block is re-chosen against the person's own words at
+// the start of every turn, and [renderMemoryBlock] re-stamps every line it keeps
+// with an age label whose granularity is hourly for anything learned today
+// (store.AgeLabel), so it can move on a turn where the router chose identically.
+// All three ride at the TAIL of the transcript now, as appended notes
+// ([Agent.landVolatileLocked]), where a change costs the note and nothing behind
+// it. What that buys is stated as a law and pinned as one: message[0] is
+// byte-identical from one turn to the next unless somebody did something
+// (prefixcache_test.go).
+//
+// WHAT MOVING THE MEMORY BLOCK COSTS is a superseded line left standing in the
+// transcript where it was said, which is why the note it rides in says the last
+// one holds ([memoryNoteOpening]). That is the trade, and it is the right way
+// round: a stale line the model is told is stale is cheaper than re-pricing
+// every token of a working session's conversation on the turn the subject moved.
 func (a *Agent) refreshSystemLocked() {
 	if len(a.messages) == 0 {
 		return
@@ -1039,7 +1048,7 @@ func (a *Agent) refreshSystemLocked() {
 	if record != "" {
 		record = "\n\n" + record + "\n"
 	}
-	a.messages[0] = textMessage("system", a.system+a.placesText+a.standingText+a.memoryText+record)
+	a.messages[0] = textMessage("system", a.system+a.placesText+a.standingText+record)
 }
 
 // recordSectionLocked is [DecisionsSection] over this session's own record, held

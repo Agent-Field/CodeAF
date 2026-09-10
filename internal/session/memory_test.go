@@ -680,9 +680,14 @@ func TestATaskNodeOpensWithTheMemoryItsBriefNeeded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newAgent: %v", err)
 	}
+	// The block rides at the TAIL, in its own note, and lands on the drain
+	// immediately before the first request (agent.go's memoryNoteOpening) — so
+	// what a node opens with is read out of the transcript rather than out of
+	// message[0], which the wave that moved it made byte-stable for the session.
 	child.mu.Lock()
-	opening := messageText(child.messages[0])
+	child.landVolatileLocked()
 	child.mu.Unlock()
+	opening := transcriptText(child)
 	if !strings.Contains(opening, "prefers tabs over spaces in Go") {
 		t.Fatalf("the node did not open with the block:\n%s", opening)
 	}
@@ -690,9 +695,7 @@ func TestATaskNodeOpensWithTheMemoryItsBriefNeeded(t *testing.T) {
 	// refresh has nothing to replace the block with — clearing it would take
 	// away the one thing the node was given.
 	collect(t, mustSubmit(t, child, "start on the first file"))
-	child.mu.Lock()
-	working := messageText(child.messages[0])
-	child.mu.Unlock()
+	working := transcriptText(child)
 	if !strings.Contains(working, "prefers tabs over spaces in Go") {
 		t.Fatalf("the node's first turn dropped the block:\n%s", working)
 	}
