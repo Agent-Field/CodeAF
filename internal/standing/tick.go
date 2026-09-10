@@ -68,7 +68,6 @@ func (t *Ticker) Tick(ctx context.Context) (Pass, error) {
 		if err := t.one(ctx, &pass, item); err != nil {
 			pass.Errors++
 			pass.Notes = append(pass.Notes, shorten(item.Words, 60)+": "+oneLine(err.Error()))
-			t.noteFailure(item, err)
 		}
 	}
 	// THE TIDY GOES LAST AND IS NOT AN ITEM. Everything the person actually
@@ -139,8 +138,24 @@ func (t *Ticker) clock() time.Time {
 }
 
 // one is a single item's whole pass: the rails, the look, and the firing.
-func (t *Ticker) one(ctx context.Context, pass *Pass, item Item) error {
+func (t *Ticker) one(ctx context.Context, pass *Pass, item Item) (failure error) {
+	before := item
+	ownedByFire := false
 	now := t.clock()
+	// Keep the observed spend and schedule changes on failure too. The outer
+	// list's stale copy cannot describe what this check actually consumed.
+	defer func() {
+		if failure != nil && !ownedByFire {
+			t.noteFailure(before, item, failure)
+		}
+	}()
+	admitted, err := t.Store.currentAdmission(before)
+	if err != nil {
+		return err
+	}
+	if !admitted {
+		return nil
+	}
 
 	// RAIL ONE: it ran out of time.
 	if deadline, has := expiryOf(item); has && !now.Before(deadline) {
@@ -148,10 +163,19 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item Item) error {
 		item.RetiredWhy = "expired"
 		item.LastChecked = now
 		item.LastCheckLine = "its time ran out"
-		pass.Skipped++
-		pass.Notes = append(pass.Notes, shorten(item.Words, 60)+": its time ran out")
-		_ = t.Store.Log(item.ID, "its time ran out — no longer watching")
-		return t.Store.Save(item)
+		if err := t.Store.recordRuntime(before, item); err != nil {
+			return err
+		}
+		current, err := t.Store.Get(item.ID)
+		if err != nil {
+			return err
+		}
+		if current.Status == StatusRetired && current.RetiredWhy == "expired" {
+			pass.Skipped++
+			pass.Notes = append(pass.Notes, shorten(item.Words, 60)+": its time ran out")
+			_ = t.Store.Log(item.ID, "its time ran out — no longer watching")
+		}
+		return nil
 	}
 
 	// AND A HOLD IS WALKED PAST IN SILENCE. It has no moment, no rhythm and no
@@ -174,7 +198,7 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item Item) error {
 	}
 	if item.Rails.MaxPerDay > 0 && mine.Fired >= item.Rails.MaxPerDay {
 		pass.Skipped++
-		return t.quiet(item, now, "it has already run today as often as you allowed")
+		return t.quiet(before, item, now, "it has already run today as often as you allowed")
 	}
 
 	// RAIL THREE: everything standing has spent what the day allows.
@@ -186,7 +210,7 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item Item) error {
 		if all.USD >= t.DailyRailUSD {
 			pass.Skipped++
 			pass.Notes = append(pass.Notes, "today's spending limit is reached; nothing standing runs again until tomorrow")
-			return t.quiet(item, now, "today's spending limit is reached")
+			return t.quiet(before, item, now, "today's spending limit is reached")
 		}
 	}
 
@@ -216,10 +240,18 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item Item) error {
 		return nil
 	case stateQuiet:
 		pass.Checked++
-		return t.quiet(item, now, found.line)
+		return t.quiet(before, item, now, found.line)
 	}
 	pass.Checked++
-	return t.fire(ctx, pass, item, now, found)
+	admitted, err = t.Store.currentAdmission(before)
+	if err != nil {
+		return err
+	}
+	if !admitted {
+		return t.quiet(before, item, now, "the item changed while it was being checked")
+	}
+	ownedByFire = true
+	return t.fire(ctx, pass, before, item, now, found)
 }
 
 // state is what one look at the world came to. The names are spelled out
@@ -248,6 +280,11 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 	found := sighting{}
 	switch item.When.Kind {
 	case WhenAt:
+		// A one-shot that finished while paused is still consumed when resumed.
+		// Preserve the pause, without delivering that same moment twice.
+		if !item.LastFired.IsZero() && !item.LastFired.Before(item.When.At) {
+			return sighting{state: stateAsleep}, nil
+		}
 		if now.Before(item.When.At) {
 			return sighting{state: stateAsleep}, nil
 		}
@@ -320,6 +357,13 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 		if err != nil {
 			return sighting{}, err
 		}
+		admitted, admissionErr := t.Store.currentAdmission(*item)
+		if admissionErr != nil {
+			return sighting{}, admissionErr
+		}
+		if !admitted {
+			return sighting{state: stateQuiet, line: "the item changed while it was being checked"}, nil
+		}
 		evidence = clipTail(evidence, ProbeClip)
 		yes, line, err := t.judge(ctx, item, now, evidence)
 		if err != nil {
@@ -375,14 +419,20 @@ func (t *Ticker) judge(ctx context.Context, item *Item, now time.Time, evidence 
 
 // quiet is the whole of a check that found nothing: the item remembers it
 // looked, and NOTHING ELSE IS WRITTEN ANYWHERE.
-func (t *Ticker) quiet(item Item, now time.Time, line string) error {
+func (t *Ticker) quiet(before, item Item, now time.Time, line string) error {
 	item.LastChecked = now
 	item.LastCheckLine = oneLine(line)
-	return t.Store.Save(item)
+	return t.Store.recordRuntime(before, item)
 }
 
 // fire is the firing and everything it leaves behind.
-func (t *Ticker) fire(ctx context.Context, pass *Pass, item Item, now time.Time, found sighting) error {
+func (t *Ticker) fire(ctx context.Context, pass *Pass, before, item Item, now time.Time, found sighting) (failure error) {
+	recorded := false
+	defer func() {
+		if failure != nil && !recorded {
+			t.noteFailure(before, item, failure)
+		}
+	}()
 	if t.Runner == nil {
 		return errors.New("there is nothing in this build to run it with")
 	}
@@ -459,7 +509,9 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item Item, now time.Time,
 	}
 	ledgerErr := t.Store.Append(Entry{At: now, ItemID: item.ID, Kind: string(item.Does.Kind), USD: outcome.USD, Run: runDir})
 	logErr := t.Store.Log(item.ID, firingLine(found, outcome))
-	return errors.Join(ledgerErr, logErr, t.Store.Save(item))
+	runtimeErr := t.Store.recordRuntime(before, item)
+	recorded = runtimeErr == nil
+	return errors.Join(ledgerErr, logErr, runtimeErr)
 }
 
 // writeCameTo leaves [CameTo] in the run folder: one word saying what this run
@@ -509,11 +561,11 @@ func firingLine(found sighting, outcome Outcome) string {
 
 // noteFailure writes a failure onto the item so the card can say what went
 // wrong, rather than showing a watch that silently stopped working weeks ago.
-func (t *Ticker) noteFailure(item Item, failure error) {
+func (t *Ticker) noteFailure(before, item Item, failure error) {
 	now := t.clock()
 	item.LastChecked = now
 	item.LastCheckLine = "could not check: " + shorten(oneLine(failure.Error()), 200)
-	_ = t.Store.Save(item)
+	_ = t.Store.recordRuntime(before, item)
 	_ = t.Store.Log(item.ID, item.LastCheckLine)
 }
 

@@ -119,8 +119,7 @@ func (a *Agent) StandingExcept(id string) error {
 	if item.ExceptedFrom(except.Workspace, except.SessionID) {
 		return nil
 	}
-	item.Exceptions = append(item.Exceptions, except)
-	return store.Save(item)
+	return store.AddException(item.ID, except)
 }
 
 // StandingStandDown retires the named item, at its own altitude, recording

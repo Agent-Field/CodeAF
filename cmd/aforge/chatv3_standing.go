@@ -337,7 +337,10 @@ func v3StandingSeam(seam *session.Standing) tui3.StandingSeam {
 			}
 			return items
 		},
-		Save: store.Save,
+		Save: func(item standing.Item) error {
+			_, err := store.SetStatus(item.ID, item.Status, item.RetiredWhy)
+			return err
+		},
 		// AND THE RUNG ONE ITEM THINKS AT, through the store's own door and never
 		// through Save above: the rung is a read-modify-write under the item's
 		// lock, so a card that had been on screen for a beat cannot write back the

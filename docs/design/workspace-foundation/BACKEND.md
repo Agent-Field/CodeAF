@@ -85,3 +85,20 @@ Forked hands, adaptive-run nodes and the separate task checker do not receive
 the new organization seam. The conversation completion reader does receive its
 turn's bounded snapshot, without another database lookup.
 Those are separate acceptance slices, not hidden claims of these tests.
+
+## Standing control writeback compatibility
+
+Standing item schema 2 adds a document revision. Whole-document `Save` rejects
+stale revisions; control, exception, origin-filing and effort changes use atomic
+owner operations. Ticker results apply runtime deltas without replacing current
+control or configuration. Schedule fields are reconciled separately so unrelated
+edits do not replay an already consumed occurrence. A late expiration uses the
+current deadline. An already entered external action may finish; this change does
+not provide external cancellation, rollback or exactly-once delivery.
+
+Existing schema 1 documents remain readable and become schema 2 on their next
+write. **Stop existing engines and operating-system tickers before upgrading,
+then restart them together.** Older readers refuse newly written schema 2 items,
+but an older process already holding a document could still overwrite its old
+copy. Mixed old/new writers are not supported, and downgrading after writes needs
+a compatible restore rather than manually lowering the schema stamp.
