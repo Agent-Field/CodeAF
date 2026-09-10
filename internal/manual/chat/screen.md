@@ -17,7 +17,7 @@ conversation tabs, the pinned room header (only while a task room is open), the 
 strip, the conversation, a breathing
 gap, the rule with the legend in it, the approval question, the connect offer, the
 sub-harness offer, the steer guard, the follow-up row, any message waiting for the
-answer to finish, another gap, the tray row above the box, the draft box where you type,
+answer to finish, the tray row above the box, the draft box where you type,
 any open list (picker, menu, completion), and the status line last.
 
 **The tray row** carries what the next message takes with it besides its words —
@@ -465,7 +465,7 @@ borders anywhere else. The draft box is inset one cell.
 If the frame is taller than your terminal, rows are lost from the **top**, never from
 the bottom. The chrome is the tail, and the tail survives.
 
-## Blank rows, the gap above the message box, and the blank row under it
+## Blank rows, the gap above the message box, and why there is no blank row under it
 
 Four rules decide every blank line in the conversation. One blank before a tool cluster
 that follows text; none between the lines of a cluster; one blank after a cluster; one
@@ -478,17 +478,19 @@ older messages you have not scrolled back into yet. Nothing else goes there.
 
 The resting whitespace around the draft box is a **height** ladder, not a width one:
 
-| terminal height | breathing rows |
+| terminal height | what it keeps |
 | --- | --- |
-| 16 rows or more | 2 |
-| 6 to 15 rows | 1 |
-| under 6 rows | 0 |
+| 16 rows or more | one blank above the rule, and the four rows of the head at the top |
+| 6 to 15 rows | one blank above the rule; no head |
+| under 6 rows | nothing |
 
-**The prompt sits directly under the rule, and the blank row is under the prompt.** The
-`›` is the first row beneath the legend line, so you start writing at the top of the room
-the box has and a draft grows *down* into the blank as it wraps, rather than pushing the
-conversation up from the bottom. The cursor therefore rests two rows above the status
-line, not one. On a window with two breathing rows the second one is above the rule.
+**The prompt sits directly under the rule, and the status line directly under the
+prompt.** The `›` is the first row beneath the legend line, so you start writing at the
+top of the room the box has, and the one blank is above the rule, where the conversation
+stops. That is the same foot every place draws — a blank, the rule, the box, the hint
+line — so going from a chat to home or tasks and back moves neither the rule nor the box.
+A draft that wraps takes its extra rows from the conversation above. Until 2026-09-10 a
+tall window kept a second blank under the box, which no place had.
 
 Below 6 rows the rule, the gap, the pinned room header and the task strip all go,
 leaving the conversation, the box and the status line. The ladder steps down, never up.

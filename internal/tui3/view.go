@@ -641,8 +641,7 @@ func (a *app) frameLines(rows, chrome []string, height, caretX, caretRow, lift, 
 // [app.chromeAt] resolves a pointer to one of them — three questions that must
 // never be able to disagree about where the input line is.
 func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
-	gap := a.breathingRows()
-	roomy := gap > 0
+	roomy := a.breathingRows() > 0
 
 	rows := make([]string, 0, 8)
 	marks := make([]chromeRow, 0, 8)
@@ -651,10 +650,8 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 		marks = append(marks, mark)
 	}
 
-	// THE CHIP RIDES THE FIRST ROW OF THE GAP, which is the row nearest the
-	// conversation it is about: above the rule where the window is airy enough
-	// to have a row up there, and — since the blank moved under the box on
-	// 2026-09-09 — the row directly beneath the draft where it is not.
+	// THE CHIP RIDES THE FOOT'S CLEARANCE, the blank above the rule, which is the
+	// row nearest the conversation it is about ([app.footClearance]).
 	// It is drawn into a row that ALREADY EXISTS rather than onto the last line
 	// of the transcript, and that is the whole reason it composes: a conversation
 	// row is cached per entry (render.go's entryRows) and shortened by the rail's
@@ -687,9 +684,9 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	for i, line := range unit {
 		add(line, chromeRow{kind: chromeWelcome, index: i})
 	}
-	// The rows above the rule are the SECOND helping of breathing room, so there
-	// is one of them or none (see [app.breathingRows]).
-	for i := 1; i < gap && !greeted; i++ {
+	// THE FOOT'S ONE BLANK IS ABOVE THE RULE, where the conversation stops —
+	// the clearance a place keeps over its own rule ([app.footClearance]).
+	for i := 0; i < a.footClearance() && !greeted; i++ {
 		addGap()
 	}
 	if roomy && !greeted {
@@ -781,16 +778,11 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 			add(inputPad+line, chromeRow{kind: chromeDraft, index: i})
 		}
 	}
-	// THE BLANK IS UNDER THE BOX, NOT OVER IT. The prompt sits on the row
-	// directly beneath the seam, so a person starts writing at the top of the
-	// room the box has rather than at the bottom of it, and the draft grows
-	// DOWN into the blank as it wraps. Until 2026-09-09 the blank stood between
-	// the legend and the prompt, and the cursor rested one row above the status
-	// line. On a window with a single breathing row the jump chip rides this
-	// one, which puts it directly under what you are typing.
-	if roomy && !greeted {
-		addGap()
-	}
+	// AND NO BLANK UNDER THE BOX. The prompt sits on the row directly beneath
+	// the seam, so a person starts writing at the top of the room the box has
+	// (the 2026-09-09 law), and the status line sits directly under the box as a
+	// place's hint does under its own — so the box and the rule are on the same
+	// rows in a chat and on every place ([app.footClearance] has the history).
 	// AND WHAT THE DRAFT WOULD MEAN SITS DIRECTLY UNDER THE BOX (spellout.go).
 	// Below, because it is not part of the message and being under the sentence
 	// is how a person reads that at a glance; and above the open list, because a
@@ -930,21 +922,37 @@ func (a *app) chromeHeight() int {
 	if !a.welcomeHolds() {
 		n += a.inputHeight() + a.roomRecipientHeight()
 	}
-	if gap := a.breathingRows(); gap > 0 && a.welcomeHeight() == 0 {
-		n += gap + 1 // the breathing room, and the rule standing in it
+	if clear := a.footClearance(); clear > 0 && a.welcomeHeight() == 0 {
+		n += clear + 1 // the clearance, and the rule under it
 	}
 	return n
 }
 
-// breathingRows is the resting gap between the conversation and the box, in
-// rows. It is the ONE ladder both halves of the frame read — [app.chrome] spends
-// these rows and [app.chromeHeight] charges the conversation for them — because
-// a gap the layout drew and the geometry did not count is a caret one row below
-// where the terminal puts its cursor.
+// footClearance is the air between the conversation's last row and the foot's
+// rule: the rows [app.chrome] spends there and [app.chromeHeight] charges for,
+// asked of one function because a gap the layout drew and the geometry did not
+// count is a caret one row below where the terminal puts its cursor.
 //
-// THE LADDER STEPS DOWN, NEVER UP. Two rows is the resting state of a window
-// with the height to lend them; the everyday window keeps the single blank above
-// the draft it has always had; and below [roomyFloor] the surface stops drawing
+// THE CONVERSATION'S FOOT IS A PLACE'S FOOT — one blank, the rule, the box and
+// the status line, where a place draws one blank, its rule, its box and its hint
+// on the same clearance ([spacingRuleClearance], pages.go's [placeFrame]). It
+// used to keep a second blank under the box that no place has, so `esc` from
+// home into a chat moved the box and the rule up a row (PLACES-AUDIT.md, lane K).
+func (a *app) footClearance() int {
+	if a.breathingRows() == 0 {
+		return 0
+	}
+	return spacingRuleClearance
+}
+
+// breathingRows is the frame's height ladder, in rungs. The foot's rule and its
+// clearance stand on the first ([app.footClearance]); the head, the room's kin
+// rows and the rest of the pinned chrome above the conversation stand on the
+// second (chattabs.go's [app.tabsHeight]).
+//
+// THE LADDER STEPS DOWN, NEVER UP. Two rungs is the resting state of a window
+// with the height to lend them; the everyday short window keeps the foot and
+// gives up the head; and below [roomyFloor] the surface stops drawing
 // whitespace altogether, along with the rule, the pinned header and the strip.
 // A short window never pays for the wave that made a tall one roomier.
 func (a *app) breathingRows() int {

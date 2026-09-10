@@ -800,10 +800,10 @@ func TestTheStatusLineIsTheLastRowAndCarriesEverySegment(t *testing.T) {
 }
 
 // The rule sits between the conversation and the input, and the draft is inset
-// one cell DIRECTLY under it, with the blank row below the box. The blank was
-// above the prompt until 2026-09-09; it moved so that a person starts writing
-// at the top of the room the box has rather than at the bottom of it, and the
-// draft grows down into the blank as it wraps (view.go's [app.chrome]).
+// one cell DIRECTLY under it, with the status line directly under the box. The
+// blank was above the prompt until 2026-09-09 and under it until the place foot
+// was made the chat's foot; its one blank is above the rule now, as a place's
+// is (view.go's [app.footClearance]).
 func TestTheInputAreaSitsUnderARuleWithItsOwnBreathingRoom(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	// Named, because the border's label is the conversation's name and an
@@ -825,8 +825,8 @@ func TestTheInputAreaSitsUnderARuleWithItsOwnBreathingRoom(t *testing.T) {
 	if got := lines[draft]; !strings.HasPrefix(got, inputPad+prompt) {
 		t.Fatalf("the draft is not inset one cell behind its prompt: %q", got)
 	}
-	if strings.TrimSpace(lines[draft+1]) != "" {
-		t.Fatalf("the row under the draft is not blank: %q", lines[draft+1])
+	if strings.TrimSpace(lines[draft-2]) != "" {
+		t.Fatalf("the row above the rule is not blank: %q", lines[draft-2])
 	}
 	// The rule directly above the box is the LEGEND (render.go), and the
 	// conversation's name is written into it: the seam is where identity lives
@@ -838,8 +838,8 @@ func TestTheInputAreaSitsUnderARuleWithItsOwnBreathingRoom(t *testing.T) {
 	if !strings.Contains(rule, "trimming the parser") {
 		t.Fatalf("the seam is not carrying the conversation's name: %q", rule)
 	}
-	if draft != len(lines)-3 {
-		t.Fatalf("the draft is %d rows from the bottom, want 2 (the blank and the status line)",
+	if draft != len(lines)-2 {
+		t.Fatalf("the draft is %d rows from the bottom, want 1 (the status line)",
 			len(lines)-1-draft)
 	}
 	// The caret is in the box, one cell right of where it used to be.

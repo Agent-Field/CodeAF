@@ -136,6 +136,65 @@ func TestATaskRoomSpendsThePlacesHeadAboveItsBody(t *testing.T) {
 	}
 }
 
+// ── THE ONE FOOT ────────────────────────────────────────────────────────────
+
+// footEdges is where a frame's foot stands: the rule, the composer's row, and
+// the last row — the status line in a chat, the hint on a place.
+type footEdges struct{ rule, box, status int }
+
+// footOf reads those rows off a drawn frame, from the bottom up: the composer
+// is the lowest row that opens on the prompt, and the rule is the row over it.
+func footOf(rows []string) footEdges {
+	got := footEdges{rule: -1, box: -1, status: -1}
+	for i := len(rows) - 1; i >= 0 && got.box < 0; i-- {
+		if strings.HasPrefix(rows[i]+" ", inputPad+prompt) {
+			got.box = i
+		}
+	}
+	if got.box > 0 && strings.HasPrefix(rows[got.box-1], "─") {
+		got.rule = got.box - 1
+	}
+	if last := len(rows) - 1; last >= 0 && strings.TrimSpace(rows[last]) != "" {
+		got.status = last
+	}
+	return got
+}
+
+// THE CONVERSATION'S FOOT IS A PLACE'S FOOT: a blank, the rule, the box, and
+// the status line where a place draws its hint. The chat used to keep a second
+// blank between the box and the status line, so `esc` from home into a chat
+// moved the rule and the box up a row and walking back moved them down again
+// (PLACES-AUDIT.md, lane K). Walked chat → home → tasks → chat at three sizes,
+// and the rule, the box and the last row never move.
+func TestWalkingBetweenAChatAndThePlacesMovesNothingAtTheFoot(t *testing.T) {
+	a := headLab(t)
+	for _, size := range headFrameSizes {
+		a.width, a.height = size.w, size.h
+		want := footEdges{rule: size.h - placeFootRows + 1, box: size.h - 2, status: size.h - 1}
+		for _, to := range []page{pageNone, pageHome, pageTasks, pageNone} {
+			if to == pageNone {
+				a.showPage(pageNone)
+			} else {
+				walkTo(t, a, to)
+			}
+			a.touch()
+			rows := strings.Split(plain(frame(a)), "\n")
+			if got := footOf(rows); got != want || strings.TrimSpace(rows[want.rule-1]) != "" {
+				t.Fatalf("at %dx%d %s puts its foot at %+v, and every frame puts it at %+v under a blank:\n%s",
+					size.w, size.h, pageName(to), got, want, strings.Join(rows[len(rows)-placeFootRows-1:], "\n"))
+			}
+		}
+	}
+}
+
+// pageName is what a failure calls the frame it was standing on.
+func pageName(id page) string {
+	if id == pageNone {
+		return "the conversation"
+	}
+	return "the " + id.word() + " place"
+}
+
 // AND THE PULSE IS ONE LINE, NOT TWO THAT AGREE. The tasks place and the
 // conversation draw it from one function over one memo, so over the same
 // machine they draw the same characters.
