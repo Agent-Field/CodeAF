@@ -2232,6 +2232,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// The wait nothing can end, and the row that turns it off.
 		{"what does all lanes slow still waiting mean", "lanes"},
 		{"how do I turn off endpoint routing", "lanes"},
+		// The picker's lanes, asked by somebody who pressed the arrows and saw
+		// nothing move, and by somebody reading `@cloudflare` on the name
+		// (docs/design/lanes-picker/DESIGN.md).
+		{"how do I change the provider for a model", "lanes"},
+		{"which provider am I pinned to", "lanes"},
+		{"left and right arrows in the model picker do nothing", "lanes"},
+		{"what does the @ after the model name mean", "lanes"},
+		{"the model picker says no machine has been measured for this model yet", "lanes"},
 		{"how do I read the manual", "commands"},
 		{"is there a help page", "commands"},
 		{"show me the page about a command", "commands"},

@@ -474,7 +474,11 @@ func (a *app) seamPieces(width int) seamPieces {
 	// The id is BUILT here rather than lent through [app.model] the way the phone
 	// deck's row is (view.go's [app.statusRow]), because a lent id no longer
 	// matches the endpoint sighting the `via` rider is looked up by.
-	pieces := seamPieces{host: a.host, name: name, model: modelBase(a.model)}
+	//
+	// AND A PINNED LANE RIDES THE ID AS `@lane` ([app.modelWord]), which is the
+	// one place the pin is written on the chrome: the status row and the phone
+	// deck take the same word from the same function.
+	pieces := seamPieces{host: a.host, name: name, model: a.modelWord()}
 	if pieces.model != "" {
 		// A rung with no model beside it has nothing to be about, and the ladder
 		// it belongs to is reached by name (`/effort`) rather than from a cell
@@ -624,7 +628,7 @@ func (a *app) legendModelPress(x, y int) bool {
 	if !ok || mark.kind != chromeLegend || !a.seamModelSpan.holds(x) {
 		return false
 	}
-	a.openPicker()
+	a.openPickerFromChip()
 	return true
 }
 
