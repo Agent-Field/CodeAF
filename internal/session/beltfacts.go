@@ -168,8 +168,8 @@ type beltFact struct {
 var beltFacts = []beltFact{{
 	tools:   []string{"ask", loadCapabilityToolName},
 	holds:   Config.mayAsk,
-	present: "- Use `ask` only as the last rung of the decision ladder.",
-	shelved: "- `ask` waits in the `questions` group. When the decision ladder reaches its last rung, call `load_capability`; its full schema arrives on the next request, this same turn.",
+	present: "- Use `ask` only as the last rung of the decision ladder — and when you do ask, ask through `ask`, never in prose; a question typed out has no keys and no record.",
+	shelved: "- `ask` waits in the `questions` group. When the decision ladder reaches its last rung — or the person asks you to ask them something — call `load_capability`, then `ask` in this same turn; a question typed out in prose has no keys and no record.",
 }, {
 	// THE CLOCK, whose second sentence is the one place the session facts named a
 	// conditional verb for everybody. The first sentence is true of every shape —
