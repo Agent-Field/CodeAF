@@ -52,12 +52,13 @@ func TestConversationSearchLive(t *testing.T) {
 	scenarios := []struct {
 		name, ask, want string
 		maxSearch       int
+		displayLabel    bool
 	}{
-		{"correction", "What launch code did we finally choose in our earlier amber conversation?", "MAPLE-92", 2},
-		{"other_project", "What badge did I pick in our earlier harbour dashboard conversation?", "violet-kestrel-47", 2},
-		{"task_or_chat", "Find my recent harbour dashboard task and tell me which badge I picked.", "violet-kestrel-47", 2},
-		{"open_by_id", fmt.Sprintf("Open this conversation source and tell me the corrected choice in that exchange: %s", session.ConversationReference(alpha.ID(), anchor)), "MAPLE-92", 2},
-		{"missing", "Search our saved conversations for quasar-zebra-995. If there is no match, say you could not find it; do not guess.", "", 2},
+		{"correction", "What launch code did we finally choose in our earlier amber conversation?", "MAPLE-92", 2, false},
+		{"other_project", "What badge did I pick in our earlier harbour dashboard conversation?", "violet-kestrel-47", 2, true},
+		{"task_or_chat", "Find my recent harbour dashboard task and tell me which badge I picked.", "violet-kestrel-47", 2, true},
+		{"open_by_id", fmt.Sprintf("Open this conversation source and tell me the corrected choice in that exchange: %s", session.ConversationReference(alpha.ID(), anchor)), "MAPLE-92", 2, false},
+		{"missing", "Search our saved conversations for quasar-zebra-995. If there is no match, say you could not find it; do not guess.", "", 2, false},
 	}
 	for _, sc := range scenarios {
 		t.Run(sc.name, func(t *testing.T) {
@@ -93,7 +94,13 @@ func TestConversationSearchLive(t *testing.T) {
 			if searches < 1 || searches > sc.maxSearch {
 				t.Errorf("search calls=%d, want 1..%d", searches, sc.maxSearch)
 			}
-			if sc.want != "" && (!strings.Contains(out.Reply, sc.want) || !strings.Contains(evidence, sc.want)) {
+			answerMatches := strings.Contains(out.Reply, sc.want)
+			if sc.displayLabel {
+				// A badge label may start a sentence with a capital. Codes and
+				// the original source receipt still require exact spelling.
+				answerMatches = strings.Contains(strings.ToLower(out.Reply), strings.ToLower(sc.want))
+			}
+			if sc.want != "" && (!answerMatches || !strings.Contains(evidence, sc.want)) {
 				t.Errorf("answer or receipt missed %q: %s", sc.want, out.Reply)
 			}
 			if sc.want == "" && !strings.Contains(evidence, "Nothing said in any earlier conversation matches") {
