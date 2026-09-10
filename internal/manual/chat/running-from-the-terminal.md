@@ -10,7 +10,8 @@ talk to it              chat · resume
 hand it work            do "<task>" · exec "<prompt>" · run <program>
 look at what happened   why self · why <task-id> · notebook · competence · services ·
                         logs · models · doctor · manual · version
-housekeeping            cache · cache clean · rebuild · wake · serve · devices · help env
+housekeeping            cache · cache clean · rebuild · wake · serve · devices · help env ·
+                        collections · standing
 plan work by hand       plan new "<goal>" · plan show <plan.json> ·
                         plan revise <plan.json> "…" · plan run <plan.json>
 ```
@@ -538,7 +539,9 @@ safe in a shell prompt, a CI step or a bug report.
 model catalog, but spends nothing of yours.
 
 **These spend**, because all of them call a model: `chat`, `do`, `exec`, `run`,
-`plan new`, `plan revise`, `plan run` and `wake`. Without a key each fails at the door with the same two lines:
+`plan new`, `plan revise`, `plan run` and `wake` — and `standing check` whenever an
+order it checks runs (`standing list` and `show` only read; `standing add`, `edit`,
+`pause`, `resume` and `stop` change state without spending). Without a key each fails at the door with the same two lines:
 
 ```
 aforge needs a model to work with.

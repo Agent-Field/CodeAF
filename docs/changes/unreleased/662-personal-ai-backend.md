@@ -9,6 +9,13 @@ invalidates:
   - "The completion reader previously judged report fields from a clipped write label and a byte-count receipt, and its objection was presented as fact. The newest bounded exact write/edit input now accompanies its result; missing evidence is explicit and objections must be checked against current work before editing."
   - "A finishing standing check or action could overwrite a concurrent pause, stop or configuration edit. Revision-aware owner operations and runtime-only writeback now preserve newer intent and completed occurrence progress."
   - "Organization opens no longer reserve the writer for a current schema, and reads cannot recreate a missing database. Task workers can inspect but cannot reorganize or revise shared context."
+  - "Ongoing work could only be set up, changed or inspected through the chat card. `aforge standing add|edit|show|pause|resume|stop|check` does it from a terminal, and `aforge collections place|unplace` sets governing folders there."
+  - "A standing order could not be edited after it stood; a change meant stop and a new card. `aforge standing edit` makes a new instructions version (`specRevision`) that the next run uses."
+  - "A standing run's journal recorded `parent_cause: not_recorded`. Task firings now write `occurrence.json` before they run and their journal names that occurrence as the cause."
+  - "A file watch told its run the whole listing. It now says which files were added, modified or removed since the previous reading."
+  - "A process killed mid-firing re-fired the same change with no link to the half-done run. The retry is `attempt 2` of the same occurrence and names the interrupted run; a finished but unrecorded run is not run again."
+  - "One standing pass could last 120 seconds. It may now last one interval (5 minutes), and a run cut off mid-answer is failed rather than landed."
+  - "Standing item documents are schema 4 (specification revision and report path). Older engines refuse them; stop old tickers and windows before upgrading."
 ---
 
 `collections` and `shared_context` are wired through the production binary.
@@ -80,3 +87,15 @@ original journal evidence; missing parent causal links and ambiguous overlaps
 remain explicit. It does not claim complete causality, instruction compliance or
 external-effect verification. All builds/tests in this wave run on Spark, including
 targeted checks; no local compilation or tui3 tests are authorized.
+
+The local-files wave adds the terminal door onto standing work and the causes
+behind each firing. `--report <path>` names one workspace file the runner
+publishes a task firing's final answer to, with a sha256 receipt in the run's
+`occurrence.json`; the firing gets no wider write approval, a run that stops on a
+question or is cut off leaves the previous report, and a report inside its own
+watch is refused. Terminal-made orders deliver their notes to the project inbox.
+The declining answer on a standing card no longer carries an adoption receipt.
+Rule exposure per run is recorded, not enforced: a live run quoted an address a
+folder rule forbade. `make test-local-work` drives `bin/aforge` with a scripted
+model and `make demo-local-work` runs the same journey with a real model in a
+disposable `AFORGE_HOME`. No connector or account is used.

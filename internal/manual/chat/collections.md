@@ -159,9 +159,10 @@ Use action `governing` to inspect current governing folders and their depths:
 zero means direct, higher values mean ancestors through governing placements.
 Folder rules reach those ancestors' descendants only when explicitly declared.
 Workers and unattended sessions can inspect these bindings but cannot change them.
-These actions are on the chat tool; the local collections command retains its
-existing reference operations. Existing reference memberships are never promoted
-into governing bindings when the database upgrades.
+The terminal has the same two verbs: `aforge collections place|unplace
+<folder> <kind> <id>`, beside `add|remove`, which only file a reference.
+Existing reference memberships are never promoted into governing bindings when
+the database upgrades.
 
 ## Why did this run use those instructions or call that tool
 
@@ -176,9 +177,11 @@ Pages contain at most 40 rows with a bounded preview. Continue with `next_line`;
 when detail is omitted, the original journal line contains it. Tool arguments,
 reply bodies and model reasoning are not duplicated in this view. A returned
 loop is not a successful outcome, and a tool reply is not proof of an external
-effect. Overlapping execution windows are marked ambiguous. Parent causal links
-are not yet recorded; this is local execution evidence, not a complete history
-of why every background decision happened. Journals written before this feature
+effect. Overlapping execution windows are marked ambiguous. A run started by a
+standing order records its cause (`parent_cause: standing_occurrence`, with the
+order, its instructions version and its `occurrence.json`); every other
+execution says `not_recorded`. This is local execution evidence, not a complete
+history of why every background decision happened. Journals written before this feature
 have no retrospective context selection receipts.
 
 Recording requires a writable journal. A journaled turn reports when its context receipt could not be saved. Missing
