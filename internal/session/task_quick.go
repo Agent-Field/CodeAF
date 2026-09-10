@@ -235,7 +235,11 @@ func (a *Agent) quickTools() []bare.Tool {
 // missing field.
 func (a *Agent) startQuickTask(_ context.Context, args json.RawMessage) (string, bool, error) {
 	var parsed quickArguments
-	if err := json.Unmarshal(args, &parsed); err != nil {
+	// THROUGH THE ONE DECODER, like every other tool on this belt (toolargs.go):
+	// a model that sent a string where a list belongs gets a sentence naming the
+	// field and the repair rather than encoding/json's own words, and a law test
+	// holds every door to it.
+	if err := decodeToolArguments(args, &parsed); err != nil {
 		return "Invalid arguments: " + err.Error(), true, nil
 	}
 	// THE LOOK AND THE ADMIT ARE ONE MOVE. The write claim is read out of the
@@ -443,6 +447,12 @@ const quickItemsSchemaJSON = `{"type":"object","properties":{` +
 	`"add":{"type":"array","items":{"type":"string"},"description":"Steps to append to the end of the list"}` +
 	`},"additionalProperties":false}`
 
+// quickItemsArguments is the wire form of one `items` call.
+type quickItemsArguments struct {
+	Done int      `json:"done"`
+	Add  []string `json:"add"`
+}
+
 // itemsTool is the verb a QUICK WORKER carries and nothing else does.
 //
 // It hangs off a door wired from the node ([TaskNode.quickDoor]) rather than off
@@ -471,11 +481,8 @@ func (a *Agent) tickQuickItems(_ context.Context, args json.RawMessage) (string,
 		// belt at the wrong moment must not take the turn down with it.
 		return "there is no list here", true, nil
 	}
-	var parsed struct {
-		Done int      `json:"done"`
-		Add  []string `json:"add"`
-	}
-	if err := json.Unmarshal(args, &parsed); err != nil {
+	var parsed quickItemsArguments
+	if err := decodeToolArguments(args, &parsed); err != nil {
 		return "Invalid arguments: " + err.Error(), true, nil
 	}
 	return door(parsed.Done, parsed.Add), false, nil
