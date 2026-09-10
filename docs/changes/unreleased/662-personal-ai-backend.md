@@ -18,6 +18,7 @@ invalidates:
   - "Standing item documents are schema 4 (specification revision and report path). Older engines refuse them; stop old tickers and windows before upgrading."
   - "A rule placed on a folder only reached a standing run's instructions; nothing checked what the run published. A report is now read against the rules that reached its run before it is published, sent back once on a quoted finding, and held back (draft kept, previous report unchanged, the item waiting on the person) if it still breaks one. It is a model's reading, not a proof."
   - "`aforge standing check` exited 0 whatever its runs came to. It exits 2 when a run did not finish and 4 when one is waiting on the person."
+  - "A standing run stopped at its step or spending limit ended its turn normally and published whatever report it had written, and a report opened and never closed was published to wherever it stopped. Both now fail and publish nothing, as does a run that tried to write its own report file and never replied with one; the previous report stays."
   - "A stop while a standing run was working still let it replace its report and send a note. A stopped item's in-flight run now publishes nothing and sends nothing; what it already did is not undone, and a pause still lets it finish."
 ---
 
@@ -111,7 +112,10 @@ folders are contained before they are made, and a failed or held run's changes
 are listed again. The live reports opened with the model's own narration, so a
 run now writes its report between a `<report>` line and a `</report>` line and only
 that is published (an answer without them is still published whole); a refused
-attempt to write its own report file no longer leaves it waiting on the person.
+attempt to write its own report file no longer leaves it waiting on the person, but
+without a closed report it publishes nothing. Whether a run may publish is one
+decision read from everything its turns came to (`standing_publish.go`), so a limit,
+an unclosed report, a cut-off and a self-write each withhold it with their own line.
 `make test-local-work` drives `bin/aforge` with a scripted
 model and `make demo-local-work` runs the same journey with a real model in a
 disposable `AFORGE_HOME`, failing on the first step that does not hold. No

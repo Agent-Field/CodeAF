@@ -731,17 +731,19 @@ not compared. If the earlier reading is missing the run is told the changes are
 unknown, never that nothing changed.
 
 `--report <path>` names one file inside the workspace. The run's **final answer** is the
-report: aforge writes it there, replacing the previous version, and the run is told
-where the previous version is so it can carry things forward. The run is asked to put
-the report between a line `<report>` and a line `</report>`, and only that is
-published; an answer without them is published whole. A run that also tries to write
-the report file itself is refused, as every unattended write is, but that does not
-make it wait on you. The run does not write
-the file itself — an unattended run may only do what your approval rules allow without
-asking, and reading is allowed; shell commands are not. Only a run that came back
-clean publishes. A run cut off mid-answer says `the run was cut off before it finished`
-and one that ended without an answer says `the run ended without a report; the previous
-report is unchanged` — either way the last good report stays.
+report, and aforge — not the run — writes it there, replacing the previous version; the
+run is told where the previous version is so it can carry things forward. The run is
+asked to put the report between a line `<report>` and a line `</report>`, and only that
+is published; an answer with neither line is published whole. An unattended run may
+only do what your approval rules allow without asking — reading, not writing or shell
+commands — so a run that tries to write the report file itself is refused, and that is
+not a question for you.
+
+**Only a run that came back clean publishes.** Each of these fails the run and leaves
+the last good report where it was, with the line that says why: `the run was cut off
+before it finished`, `the run reached its step or spending limit before it finished`,
+`the run's report was never finished — it has no closing line`, `the run tried to write
+its report instead of replying with it`, and `the run ended without a report`.
 
 A report inside its own watch, or inside a folder the watch matches (`*` watching
 `reports`), is refused when you set it up, because every report would wake it again.

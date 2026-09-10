@@ -373,19 +373,23 @@ func TestAStopWhileARunIsWorkingWithholdsItsReportButAPauseDoesNot(t *testing.T)
 
 // THE REPORT IS WHAT IS BETWEEN ITS LINES. The live journey's reports opened
 // with the model's own sentence on the way to writing them, in the same turn;
-// a delimited report is published without it, and an answer with no delimiter
-// is still taken whole.
+// a delimited report is published without it. A report opened and never closed
+// is no report at all: its end is wherever the run stopped writing.
 func TestAReportIsWhatIsBetweenItsLinesAndNotTheSentenceBeforeIt(t *testing.T) {
-	for final, want := range map[string]string{
-		"Now let me check the standing order.\n<report>\n# Report\n- ship Friday\n</report>\nDone.": "# Report\n- ship Friday",
-		"<report>\n# Report\n- cut before the close":                                                "# Report\n- cut before the close",
-		"# Report\nno delimiter at all":                                                             "# Report\nno delimiter at all",
-		"a draft\n<report>\nfirst\n</report>\nthen again\n<report>\nsecond\n</report>":              "second",
-		"<report>\n# Report\n- x</report>I cannot write the file myself.":                           "# Report\n- x",
-		"I will put it between <report> and </report>.\n<report>\n# R\n</report>":                   "# R",
+	for text, want := range map[string]struct {
+		body  string
+		lines reportLines
+	}{
+		"Now let me check the standing order.\n<report>\n# Report\n- ship Friday\n</report>\nDone.": {"# Report\n- ship Friday", closedReport},
+		"<report>\n# Report\n- cut before the close":                                                {"", unclosedReport},
+		"# Report\nno delimiter at all":                                                             {"", noReportLines},
+		"a draft\n<report>\nfirst\n</report>\nthen again\n<report>\nsecond\n</report>":              {"second", closedReport},
+		"<report>\nfirst\n</report>\na second try\n<report>\nhalf of it":                            {"", unclosedReport},
+		"<report>\n# Report\n- x</report>I cannot write the file myself.":                           {"# Report\n- x", closedReport},
+		"I will put it between <report> and </report>.\n<report>\n# R\n</report>":                   {"# R", closedReport},
 	} {
-		if got := standingReportBody(final); got != want {
-			t.Errorf("standingReportBody(%q) = %q, want %q", final, got, want)
+		if body, lines := delimitedReport(text); body != want.body || lines != want.lines {
+			t.Errorf("delimitedReport(%q) = %q, %d; want %q, %d", text, body, lines, want.body, want.lines)
 		}
 	}
 	root, workspace := t.TempDir(), t.TempDir()

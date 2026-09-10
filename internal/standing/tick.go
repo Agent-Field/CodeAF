@@ -613,12 +613,13 @@ func (t *Ticker) recoverFinished(before, item Item, done Occurrence) error {
 	if done.Phase == PhaseAdmitted {
 		// ITS REPORT WAS PUBLISHED AND ITS PROCESS STOPPED BEFORE THE REST WAS
 		// WRITTEN ([Store.finishedOccurrence]). It landed — the receipt is the
-		// proof — and the record says so now, with what was lost: the note that
-		// would have followed, and the run's cost, which only that process knew.
+		// proof — and the record says so now, with what cannot be known: the
+		// note is delivered after the report and may or may not have gone, and
+		// the run's cost was known only to that process.
 		done.Phase = PhaseFinished
 		done.Finished = t.clock()
 		done.Outcome = "landed"
-		done.OutcomeText = "report published to " + done.Published.Path + "; its process stopped before the rest was recorded, so no note was delivered and its cost is not known"
+		done.OutcomeText = "report published to " + done.Published.Path + "; its process stopped before the rest was recorded, so whether its note was delivered, and what it cost, is not known"
 		_ = WriteOccurrence(done.RunDir, done)
 	}
 	// The firing is dated when it was admitted, as [Ticker.fire] dates one.
