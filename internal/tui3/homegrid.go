@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -752,6 +753,8 @@ func (a *app) refreshGridReadings(now time.Time) tea.Cmd {
 	var asked []tea.Cmd
 	for _, line := range a.home.lines {
 		switch {
+		case line.kind == homeProjectRow:
+			asked = append(asked, a.refreshRepoOf(strings.TrimSpace(line.proj.Path), now))
 		case line.cell != nil && line.cell.bold:
 			asked = append(asked, a.askHomeLeftOff(line.row.Transcript))
 		}
