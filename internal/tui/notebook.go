@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -42,7 +43,7 @@ func (m *Model) renderNotebookSurface(width, atLine int, track bool) string {
 		}
 		prefix := mutedStyle.Faint(true).Render(disclosure + " " + strconv.Itoa(index+1) + " ")
 		age := store.AgeLabel(fact.Time, time.Now())
-		row := prefix + notebookFactLine(fact, time.Now(), max(1, width-lipgloss.Width(prefix)))
+		row := prefix + notebookFactLine(m.icons, fact, time.Now(), max(1, width-lipgloss.Width(prefix)))
 		lines = append(lines, truncate(row, width))
 		if track {
 			m.chatExpandRows = append(m.chatExpandRows, chatExpandRow{
@@ -99,9 +100,9 @@ func (m *Model) renderNotebookSurface(width, atLine int, track bool) string {
 // glyph, body, then credibility, age, and status. The Self place's belief
 // drill-in renders through this same function rather than growing a second
 // opinion about how a belief reads.
-func notebookFactLine(fact store.Fact, now time.Time, width int) string {
+func notebookFactLine(g tokens.GlyphSet, fact store.Fact, now time.Time, width int) string {
 	glyph := notebookKindGlyph(fact.Kind)
-	meta := notebookFactMeta(fact, now)
+	meta := notebookFactMeta(g, fact, now)
 	available := max(1, width-lipgloss.Width(glyph)-1)
 	if meta != "" {
 		available = max(1, available-lipgloss.Width(meta)-3)
@@ -117,7 +118,7 @@ func notebookFactLine(fact store.Fact, now time.Time, width int) string {
 // it is, and whether it still stands. Age is the aging the store already
 // carries on the row, so no surface has to recompute activation to know what
 // has gone quiet.
-func notebookFactMeta(fact store.Fact, now time.Time) string {
+func notebookFactMeta(g tokens.GlyphSet, fact store.Fact, now time.Time) string {
 	parts := make([]string, 0, 3)
 	if fact.Channel != "" {
 		parts = append(parts, store.CredibilityWord(fact.Confidence))
@@ -125,7 +126,7 @@ func notebookFactMeta(fact store.Fact, now time.Time) string {
 	if age := store.AgeLabel(fact.Time, now); age != "" {
 		parts = append(parts, age)
 	}
-	if status := notebookStatusMark(fact.Status); status != "" {
+	if status := notebookStatusMark(g, fact.Status); status != "" {
 		parts = append(parts, status)
 	}
 	return strings.Join(parts, " · ")
@@ -165,14 +166,14 @@ func notebookFactStyle(fact store.Fact) lipgloss.Style {
 	}
 }
 
-func notebookStatusMark(status string) string {
+func notebookStatusMark(g tokens.GlyphSet, status string) string {
 	switch status {
 	case store.FactCandidate:
 		return "candidate"
 	case store.FactSuperseded:
 		return "superseded"
 	case store.FactQuarantined:
-		return "✗"
+		return g.Glyph(tokens.GFailed)
 	default:
 		return ""
 	}

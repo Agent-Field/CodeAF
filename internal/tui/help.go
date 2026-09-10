@@ -7,11 +7,33 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/Agent-Field/aforge-v2/internal/manual"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 type helpRow struct {
 	key     string
 	meaning string
+	// slot names a row whose KEY is a mark rather than a keystroke. The guide's
+	// glyph legend is the one place on this surface that teaches the vocabulary
+	// out loud, so it may not spell it: the row carries the slot and the
+	// renderer resolves it in whatever repertoire this terminal draws
+	// (icons.go). A legend showing shapes the rows beside it no longer use is
+	// the one screen on which the vocabulary contradicts itself.
+	slot    tokens.GlyphID
+	hasSlot bool
+}
+
+// glyphRow is a legend row whose key is a vocabulary slot.
+func glyphRow(slot tokens.GlyphID, meaning string) helpRow {
+	return helpRow{meaning: meaning, slot: slot, hasSlot: true}
+}
+
+// keyIn is the row's key as this terminal spells it.
+func (r helpRow) keyIn(g tokens.GlyphSet) string {
+	if r.hasSlot {
+		return g.Glyph(r.slot)
+	}
+	return r.key
 }
 
 type helpCategory struct {
@@ -63,7 +85,7 @@ func buildHelpCategories() []helpCategory {
 		}},
 		{title: "moving around", rows: []helpRow{
 			{key: keyBindings.thread + " / " + keyBindings.board + " / " + keyBindings.self, meaning: "open thread / board / self"},
-			{key: "tab", meaning: "cycle input, questions/tasks, thread, task list, header; in a task, field ⇄ feed"},
+			{key: "tab", meaning: "cycle input, questions/tasks, thread, task list, header; in a task, between the field and the feed"},
 			{key: "?", meaning: "open this guide only when the current draft is empty"},
 			{key: "ctrl+c", meaning: "stop a reply in flight; quits at once when nothing is in flight"},
 			{key: "↑/↓ · j/k", meaning: "move the selected row; j/k only where no field takes letters"},
@@ -118,21 +140,21 @@ func buildHelpCategories() []helpCategory {
 		}},
 		{title: "slash commands", rows: slashRows},
 		{title: "glyphs", rows: []helpRow{
-			{key: "▸", meaning: "expand or open"},
-			{key: "▾", meaning: "collapse"},
-			{key: "⋯", meaning: "more content"},
+			glyphRow(tokens.GCollapsed, "expand or open"),
+			glyphRow(tokens.GExpanded, "collapse"),
+			glyphRow(tokens.GTruncated, "more content"),
 			{key: "⟨×⟩", meaning: "dismiss or close"},
 			{key: "⌄", meaning: "open a picker"},
 			{key: "⚙", meaning: "open settings"},
-			{key: "»", meaning: "boosted answer"},
+			glyphRow(tokens.GActionCommunicate, "boosted answer"),
 			{key: "⏱", meaning: "standing work"},
 			{key: "⚒", meaning: "skill"},
 			{key: "⚖", meaning: "experiment"},
-			{key: "⌾", meaning: "image"},
-			{key: "♪", meaning: "audio"},
-			{key: "▶", meaning: "video"},
-			{key: "↳", meaning: "jump to the task that produced an answer"},
-			{key: "‹", meaning: "go back one surface"},
+			glyphRow(tokens.GFileImage, "image"),
+			glyphRow(tokens.GFileAudio, "audio"),
+			glyphRow(tokens.GFileVideo, "video"),
+			glyphRow(tokens.GReplyIn, "jump to the task that produced an answer"),
+			glyphRow(tokens.GScopeUp, "go back one surface"),
 		}},
 	}
 }
@@ -269,26 +291,26 @@ func (m *Model) helpContentLines(width int) []string {
 func (m *Model) layOutHelp(width int, narrow bool) []string {
 	categories := helpCategories()
 	if narrow {
-		keyWidth := helpKeyWidth(categories, width)
+		keyWidth := helpKeyWidth(m.icons, categories, width)
 		lines := make([]string, 0)
 		for index, category := range categories {
 			if index > 0 {
 				lines = append(lines, "")
 			}
-			lines = append(lines, renderHelpCategory(category, keyWidth, width)...)
+			lines = append(lines, renderHelpCategory(m.icons, category, keyWidth, width)...)
 		}
 		return lines
 	}
 
 	gap := 2
 	columnWidth := max(18, (width-gap)/2)
-	keyWidth := helpKeyWidth(categories, columnWidth)
+	keyWidth := helpKeyWidth(m.icons, categories, columnWidth)
 	lines := make([]string, 0)
 	for index := 0; index < len(categories); index += 2 {
-		left := renderHelpCategory(categories[index], keyWidth, columnWidth)
+		left := renderHelpCategory(m.icons, categories[index], keyWidth, columnWidth)
 		right := []string(nil)
 		if index+1 < len(categories) {
-			right = renderHelpCategory(categories[index+1], keyWidth, columnWidth)
+			right = renderHelpCategory(m.icons, categories[index+1], keyWidth, columnWidth)
 		}
 		height := max(len(left), len(right))
 		for row := 0; row < height; row++ {
@@ -310,17 +332,17 @@ func (m *Model) layOutHelp(width int, narrow bool) []string {
 
 // helpKeyWidth is measured once across every category so the key column lines
 // up down the whole modal instead of stepping in and out per category.
-func helpKeyWidth(categories []helpCategory, width int) int {
+func helpKeyWidth(g tokens.GlyphSet, categories []helpCategory, width int) int {
 	widest := 0
 	for _, category := range categories {
 		for _, row := range category.rows {
-			widest = max(widest, lipgloss.Width(row.key))
+			widest = max(widest, lipgloss.Width(row.keyIn(g)))
 		}
 	}
 	return max(1, min(widest, max(8, width/3)))
 }
 
-func renderHelpCategory(category helpCategory, keyWidth, width int) []string {
+func renderHelpCategory(g tokens.GlyphSet, category helpCategory, keyWidth, width int) []string {
 	lines := []string{helpTitleStyle.Render(padANSI(category.title, width))}
 	meaningWidth := max(8, width-keyWidth-2)
 	for _, row := range category.rows {
@@ -331,7 +353,7 @@ func renderHelpCategory(category helpCategory, keyWidth, width int) []string {
 		for index, meaning := range wrapped {
 			key := ""
 			if index == 0 {
-				key = truncate(row.key, keyWidth)
+				key = truncate(row.keyIn(g), keyWidth)
 			}
 			lines = append(lines, helpKeyStyle.Render(padANSI(key, keyWidth))+
 				helpMeaningStyle.Render("  "+padANSI(meaning, meaningWidth)))

@@ -92,6 +92,9 @@ func TestOneGlyphOneMeaning(t *testing.T) {
 		GlyphShell:       "a dollar: the spend mark's byte, told apart by what follows it",
 		GlyphActionCreate: "a plus: the diffstat's byte, and the step gutter's mark for a thing " +
 			"that was not there — one is bound to a number, the other stands alone in a gutter",
+		GlyphFileDocument: "a page of text, at two scales: a call that read one, and one on an " +
+			"attachment chip — and the tier draws BOTH as nf-fa-file_text, so nothing the floor " +
+			"draws apart is collapsed",
 	}
 	plainOwner := map[string]string{}
 	for _, b := range Vocabulary() {

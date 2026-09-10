@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -672,7 +673,8 @@ func (m *Model) renderLegacyActivityBar() string {
 			fmt.Sprintf("%s %d working", frame, running)))
 	}
 	if queued > 0 {
-		segments = append(segments, mutedStyle.Render(fmt.Sprintf("○ %d queued", queued)))
+		segments = append(segments, mutedStyle.Render(
+			fmt.Sprintf("%s %d queued", m.icon(tokens.GQueued), queued)))
 	}
 	if failed > 0 {
 		segments = append(segments, roseStyle.Render(fmt.Sprintf("%d failed", failed)))
@@ -981,7 +983,7 @@ func (m *Model) renderInput() string {
 	m.attachmentBounds = m.attachmentBounds[:0]
 	chipLines := make([]string, 0, len(m.attachments)+1)
 	for index, path := range m.attachments {
-		glyph := attachmentGlyph(path)
+		glyph := m.icon(attachmentSlot(path))
 		prefix := glyph + " " + truncate(filepath.Base(path), max(1, innerWidth-lipgloss.Width(glyph+"  ⟨×⟩"))) + " "
 		line := mutedStyle.Faint(true).Render(prefix + "⟨×⟩")
 		chipLines = append(chipLines, line)
@@ -2598,7 +2600,10 @@ func (m *Model) renderTree(width, height int) string {
 			glyph, active := m.nodeGlyphStyled(node, now, dimmed)
 			waiting := waitsOn[node.ID]
 			if node.Status == store.Pending && len(waiting) > 0 && !dimmed {
-				glyph = mutedStyle.Render("◌")
+				// A pending node with an edge into a sibling is not merely
+				// queued: it is waiting on that sibling, which is the one
+				// meaning the vocabulary keeps its flag for.
+				glyph = mutedStyle.Render(m.icon(tokens.GWaitsOn))
 			}
 			selected := node.ID == m.selectedNodeID
 			marker := "  "
@@ -3022,7 +3027,7 @@ func (m *Model) nodeGlyphStyled(node store.Node, now time.Time, dimmed bool) (st
 		}
 		return style.Render("●"), false
 	default:
-		return pendingGlyphStyle.Render("○"), false
+		return pendingGlyphStyle.Render(m.icon(tokens.GQueued)), false
 	}
 }
 
