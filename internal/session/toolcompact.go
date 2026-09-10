@@ -122,9 +122,10 @@ func compactToolHistory(messages []ai.Message, frozen int, source resultSource) 
 		text := messageContentText(messages[index])
 		if !compactLeaveVerbatim(text) {
 			view := reducedResultView(toolResultName(calls[index]), text, source.of(messages[index]))
-			// A reduction that is not smaller is not a reduction: it would spend
-			// a rewrite, and the cold prefix behind it, to save nothing.
-			if len(view) < len(text) {
+			// A reduction that does not reclaim enough is not a reduction: it
+			// would spend a rewrite, and the cold prefix behind it, to save
+			// almost nothing. See [compactViewEarnsItsRewrite].
+			if compactViewEarnsItsRewrite(len(text), len(view)) {
 				out[index] = replaceToolText(messages[index], view)
 			}
 		}
@@ -151,7 +152,7 @@ func compactToolHistory(messages []ai.Message, frozen int, source resultSource) 
 		line := reducedOutcomeLine(toolResultName(calls[index]), original, source.of(messages[index]))
 		reduced := replaceToolText(out[index], line)
 		before, after := messageBytes(out[index]), messageBytes(reduced)
-		if after >= before {
+		if !compactViewEarnsItsRewrite(before, after) {
 			continue
 		}
 		out[index] = reduced
@@ -375,6 +376,38 @@ func compactLeaveVerbatim(text string) bool {
 		return true
 	}
 	return len(text) <= compactViewBytes
+}
+
+// compactViewEarnsItsRewrite weighs a composed view against the result it would
+// replace, and is the second half of [compactLeaveVerbatim]'s question.
+//
+// A REWRITE IN THE MIDDLE OF THE TRANSCRIPT IS NOT FREE. [compactLeaveVerbatim]
+// bounds the RESULT — under [compactViewBytes] nothing is touched at all — but
+// what decides whether a rewrite PAYS is the reclaim, and the reclaim is the
+// result minus the head, minus the tail, and minus the pointer. The pointer is
+// the part nobody sized: a 934-byte result was replaced by an 843-byte view
+// whose `full:` clause was a ninety-character absolute path into a temporary
+// home. Ninety-one bytes saved; five thousand two hundred and sixty bytes of
+// conversation behind it re-billed at the uncached rate on that request and
+// every one after it until the next break. It was measured on this wave's own
+// branch and is written up with its numbers in
+// docs/design/prompt-diet/BENCH.md §1c.
+//
+// So a reclaim smaller than a [stubPrefixShare] share of what it disturbs is
+// declined and the result is left exactly as it is. That is stub.go's law, and
+// stub.go's constant is read from there rather than typed again. The two weigh
+// the share against different quantities — the stubbing pass holds the whole
+// transcript and measures the cold tail it is about to make, while this one is
+// composing a view a message at a time and has only the message in hand — and
+// what they share is the discipline: A SAVING SMALLER THAN A SHARE OF WHAT IT
+// TOUCHES IS A SAVING NOT WORTH HAVING.
+//
+// A result declined here is not lost and is not decided forever. It is looked at
+// again on the next request, and the pass that has to hold the digest budget
+// still reduces it to a line when the transcript's weight actually demands one.
+func compactViewEarnsItsRewrite(was, now int) bool {
+	reclaim := was - now
+	return reclaim > 0 && reclaim*stubPrefixShare >= was
 }
 
 func replaceToolText(message ai.Message, text string) ai.Message {

@@ -433,6 +433,63 @@ func lastLineOf(text string) string {
 	return lines[len(lines)-1]
 }
 
+// A REWRITE IN THE MIDDLE OF THE TRANSCRIPT HAS TO EARN THE COLD PREFIX BEHIND
+// IT. Measured on this wave's own branch: a 934-byte result was replaced by an
+// 843-byte reduced view whose `full:` clause was a ninety-character absolute
+// path, so ninety-one bytes were reclaimed and 5,260 bytes of conversation
+// behind it were re-billed uncached (BENCH.md §1c). The bound that let it
+// through was on the result's size; what decides whether it pays is the reclaim,
+// and the pointer is part of what eats it.
+func TestAMarginalReducedViewIsDeclinedWhenItsPointerEatsTheSaving(t *testing.T) {
+	// A pointer as long as the one the bench captured, and a result just over
+	// the size at which a view is composed at all.
+	pointer := "/tmp/afconv-home." + strings.Repeat("q", 135) + "/droppings/9c2f0a41b7de.txt"
+	source := resultSource(func(ai.Message) string { return pointer })
+	marginal := strings.Repeat("s", 913) + "\nBUILD-FINISHED-CLEAN"
+
+	messages := []ai.Message{
+		textMessage("system", "SYSTEM-PROMPT-MUST-NOT-MOVE"),
+		textMessage("user", "do the work"),
+		ai.Message{Role: "assistant", ToolCalls: []ai.ToolCall{{
+			ID: "call-0", Function: ai.ToolCallFunction{Name: "bash", Arguments: "{}"},
+		}}},
+		ai.Message{Role: "tool", ToolCallID: "call-0",
+			Content: []ai.ContentPart{{Type: "text", Text: marginal}}},
+		ai.Message{Role: "assistant", ToolCalls: []ai.ToolCall{{
+			ID: "call-1", Function: ai.ToolCallFunction{Name: "bash", Arguments: "{}"},
+		}}},
+		ai.Message{Role: "tool", ToolCallID: "call-1",
+			Content: []ai.ContentPart{{Type: "text", Text: "the newest batch, untouched"}}},
+	}
+
+	// The view IS composed and IS smaller — which is exactly why the old
+	// "smaller than what it replaces" test let it through.
+	view := reducedResultView("bash", marginal, pointer)
+	if len(view) >= len(marginal) {
+		t.Fatalf("the fixture is not marginal: a %d-byte result composed a %d-byte view",
+			len(marginal), len(view))
+	}
+	if reclaim := len(marginal) - len(view); reclaim*stubPrefixShare >= len(marginal) {
+		t.Fatalf("the fixture reclaims %d of %d bytes, which the law allows — "+
+			"make the pointer longer or the result larger", reclaim, len(marginal))
+	}
+
+	got := compactToolHistory(messages, len(messages), source)
+	if text := toolTextsOf(got)[0]; text != marginal {
+		t.Fatalf("a rewrite worth %d bytes was made anyway:\n%.200q",
+			len(marginal)-len(view), text)
+	}
+
+	// AND THE GUARD IS NOT AN OFF SWITCH. The same long pointer against a result
+	// that genuinely has something to give back is still reduced.
+	heavy := append([]ai.Message(nil), messages...)
+	heavy[3] = ai.Message{Role: "tool", ToolCallID: "call-0",
+		Content: []ai.ContentPart{{Type: "text", Text: toolCompactOutput(0)}}}
+	if text := toolTextsOf(compactToolHistory(heavy, len(heavy), source))[0]; !strings.HasPrefix(text, compactReducedMarker) {
+		t.Fatalf("a %d-byte result was left verbatim:\n%.200q", len(toolCompactOutput(0)), text)
+	}
+}
+
 // A SESSION THAT CAN NAME NOWHERE SAYS SO. A pointer at a store this session
 // never had, or a journal it is not writing, costs the model a call and returns
 // nothing — the one failure stub.go's law forbids.
