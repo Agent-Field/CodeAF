@@ -1173,7 +1173,23 @@ func (a *app) roomEvent(ev session.Event) tea.Cmd {
 		room.col.down += ev.Usage.Output
 
 	case session.EventError:
-		a.roomNote("error: " + errText(ev.Err))
+		// THE NODE'S OWN FAILURES ARE ROWS ON ITS PAGE, in the conversation's
+		// words for the same thing: a request that was asked again draws its
+		// reason as it happens ([feed.retry], which this page's reducer takes
+		// through [feed.ingest] above), and a step that ran out of tries ends on
+		// `gave up after 2 tries · …` rather than on a page that goes on saying
+		// nothing has arrived yet ([roomYetWord]).
+		//
+		// AND IT CANNOT SAY THE SAME THING TWICE AS THE PHASE LINE. The line
+		// under the phase word (taskphase.go) is an ERRAND's ladder — a sizing
+		// reading, a review — which asks a DIFFERENT model at each rung and
+		// reports on the node's phase notice, never on its event stream
+		// (internal/session's auxiliary.go sends no event at all). These rows are
+		// the node's OWN turn being asked again. The two vocabularies are one
+		// vocabulary read against that difference: an errand says `asking
+		// <model>` because the model changes, and a turn says `asking again`
+		// because it does not.
+		a.roomNote(a.room.failureNote(ev.Err))
 	}
 	a.touch()
 	return tea.Batch(after, waitRoom(room.lane, room.gen), a.wake())

@@ -1695,6 +1695,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the reply was full of tool markup and angle brackets", "models-and-cost"},
 		{"the model kept writing its own internal markup", "models-and-cost"},
 
+		// The 2026-09-10 incident, asked the ways a person describes what they
+		// saw: one 502 and three 429s inside seventy-five seconds ended a turn
+		// while a second model in the same session answered everything put to
+		// it. They ask about the status codes they saw, about the models they
+		// wrote down and were never asked, and about the turn that simply died.
+		{"I keep getting 429 and my turn just died", "models-and-cost"},
+		{"does a rate limit reach my fallback models", "models-and-cost"},
+		{"the model kept refusing and aforge moved to another one", "models-and-cost"},
+		{"why did my turn give up when another model was working fine", "models-and-cost"},
+		{"the request failed asking again over and over", "models-and-cost"},
+
 		// /model while a task runs: the task keeps its model, and the person
 		// who watched the old voice continue asks why.
 		{"I changed the model but my task is still on the old one", "models-and-cost"},

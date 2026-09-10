@@ -482,18 +482,26 @@ result comes back: calls in a batch run together and the result waits for the
 slowest of them, so the figure is the call's own and not the batch's. A call
 too quick to be worth a number gets none.
 
-**A retry inside a task** now shows. When the model's reply is cut and the step
-asks again, the half-answer that was cut is taken off the page — it belongs to
-a reply that will never exist — and a dim line says what happened:
-`the model went quiet mid-reply — asking again`, or, where the step gives up on
-that model and finishes on another, `the reply kept losing its thread —
-finishing this one on <model>`. Before this, a task's page kept the dead
-half-answer above the live one with nothing to explain it.
+**A retry inside a task** shows, in the same words the conversation uses. When
+the model's reply is cut and the step asks again, the half-answer that was cut is
+taken off the page — it belongs to a reply that will never exist — and a dim row
+says what happened, that it is being asked again, and which try this is:
+`the model went quiet mid-reply · asking again · 2 of 3`. Where the step gives up
+on that model and finishes on another, the row names where the rest is coming
+from instead of counting: `the reply lost its thread · moving to gpt-5-mini`.
+Before this, a task's page kept the dead half-answer above the live one with
+nothing to explain it.
 
 A failed connection or retryable request also replaces its partial answer before
-trying again, with `the request failed — asking again`. The failed attempt does
-not stay above the replacement. Stopping during the retry wait still keeps the
-partial reply you saw; a retry that never starts discards nothing.
+trying again, with `the model would not take the request · asking again · 2 of 4`
+or whichever reason applies. The failed attempt does not stay above the
+replacement. Stopping during the retry wait still keeps the partial reply you
+saw; a retry that never starts discards nothing.
+
+**And a step that runs out of tries says so** rather than leaving the page
+looking as though nothing has arrived: `gave up after 4 tries · <what the
+provider said>`. A step that failed once and was never asked again draws
+`error: <what went wrong>` — "gave up" is a claim about a struggle.
 
 **The dim `· ` lines between calls** are the page saying what its own machinery
 did. Three of them reach a task now:

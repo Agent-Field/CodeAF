@@ -94,8 +94,8 @@ const (
 	// "there is more, click for it", and a cut ([GlyphCut]) says "this stopped
 	// and should not have". Three marks, three sentences.
 	//
-	// It was the most-drawn mark in the product with no name here: blocks,
-	// prose, placeline, modelui, palette, footer and composer each spelled the
+	// It was the most-drawn mark in the product with no name here: prose,
+	// placeline, modelui, palette, footer and composer each spelled the
 	// byte themselves, and three of them wrote a comment explaining which of
 	// the other two marks they did NOT mean. The slot ends the explaining.
 	//
@@ -315,9 +315,8 @@ var SparklineCells = [7]string{"⣀", "⣄", "⣤", "⣦", "⣶", "⣷", "⣿"}
 // render, and a reading that does not exist (NaN) reads empty rather than
 // guessing (16's EMPTINESS).
 //
-// The cell says HOW FULL. It never says whether that is a problem — that
-// judgement is [ContextToken]'s, and it is amber-past-the-warn-point, dual
-// (percentage AND absolute tokens), and deliberately not a sixth cell.
+// The cell says HOW FULL. It never says whether that is a problem; colour is a
+// separate judgement and deliberately not a sixth cell.
 func Gauge(fraction float64) string {
 	switch {
 	case !(fraction > 0): // also catches NaN
