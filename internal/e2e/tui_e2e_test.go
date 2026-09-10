@@ -1509,11 +1509,16 @@ func testOneSpendFigure(t *testing.T) {
 
 	// ── the /spend place ──────────────────────────────────────────────────
 	//
-	// `alt+5` and not `/spend`: the place's doors are the chord, `tab`, and the
+	// `alt+3` and not `/spend`: the place's doors are the chord, `tab`, and the
 	// word typed at home — `/spend` is an alias of `/cost`, which is this
 	// conversation's own note rather than the machine's page. The chord arrives
-	// as esc-then-5, which is what internal/tui3's placeDigit reads.
-	r.lit("\x1b5")
+	// as esc-then-3, which is what internal/tui3's placeDigit reads.
+	//
+	// THE DIGIT IS THE PLACE'S RANK IN internal/tui3's placeOrder, and the bar of
+	// four (`home tasks spend settings`) made spend the third. It was `alt+5` on
+	// the seven-word bar, and on the four-word one `alt+5` opens standing — which
+	// this subtest then read as a spend place with no figure on it.
+	r.lit("\x1b3")
 	place := r.waitFor(25*time.Second, say(t, "spendRailsHint"))
 	t.Logf("the spend place after the interrupted turn:\n%s", place)
 	fromPlace := moneyOn(t, place, say(t, "spendRailsHint"))
