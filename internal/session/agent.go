@@ -3689,6 +3689,19 @@ type DisplayEntry struct {
 	Caption         string
 	CaptionCategory ActionCategory
 
+	// Took is HOW LONG THIS CALL'S OWN WORK RAN, from begin to end of its
+	// Execute — the same figure EventToolFinished carries live.
+	//
+	// IT IS WHY A REOPENED PAGE STILL SAYS WHAT A CALL TOOK. The live stream
+	// writes the figure onto the row as the call finishes; a page built out of
+	// the record after the batch has no stream to watch, and without this field
+	// the row came back with Args and Output but no duration. Zero when the
+	// journal never recorded one (every file written before the `took` line, a
+	// call that never finished), which a surface reads as "say nothing" by the
+	// emptiness law — the same reading toolview.go's [elapsedWord] already makes
+	// of a live row that never got EventToolFinished.
+	Took time.Duration
+
 	// ImageRefs are the paths of the pictures a person's message carried, in the
 	// order they sit in it — what the journal wrote where the bytes would have
 	// been (see [journalPart]). It is what lets a replayed message mark its
@@ -3881,6 +3894,10 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 				Args:     argsText(*call),
 				Output:   capOutput(result),
 				Answered: answered,
+				// And the call's own duration, off the journal's `took` line —
+				// the same figure EventToolFinished carried while the window was
+				// open. Zero when the file never recorded one.
+				Took: journal.took(call.ID),
 			})
 		}
 	}

@@ -713,6 +713,12 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 				// and falls back exactly as it always did.
 				caption:    e.Caption,
 				captionCat: e.CaptionCategory,
+				// AND THE CALL'S OWN DURATION COMES BACK WITH IT. The live stream
+				// wrote EventToolFinished onto the row; the journal kept the same
+				// figure on a `took` line (session's DisplayEntry.Took), so a
+				// page opened after the batch still says what each call took —
+				// rather than drawing finished rows with no figure at all.
+				ran: e.Took,
 				// The detail is carried through UNPARSED, which is what makes a
 				// replayed row the same row: everything the expansion shows — the
 				// diff, the content preview, the highlighted command and its

@@ -517,7 +517,10 @@ second copy of the conversation's wiring, and the copy had fallen behind.
 the moment the task reports *that* call finished, which is usually before its
 result comes back: calls in a batch run together and the result waits for the
 slowest of them, so the figure is the call's own and not the batch's. A call
-too quick to be worth a number gets none.
+too quick to be worth a number gets none. The same figure comes back when you
+open the page after the work has landed — the journal keeps each call's own
+duration, so a finished room still says `3.0s` and `7.0s` on the right rows
+rather than drawing the calls with no clock at all.
 
 **A retry inside a task** shows, in the same words the conversation uses. When
 the model's reply is cut and the step asks again, the half-answer that was cut is

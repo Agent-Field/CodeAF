@@ -3,6 +3,7 @@ package tui3
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -308,5 +309,38 @@ func TestAnEmptyReplayedMessageDrawsNothing(t *testing.T) {
 		if e.kind == entryUser {
 			t.Fatalf("an empty message was drawn: %+v", e)
 		}
+	}
+}
+
+// A REPLAYED CALL CARRIES THE DURATION THE JOURNAL KEPT — the figure
+// EventToolFinished wrote live, so a page opened after the batch still says
+// what each call took rather than drawing finished rows with no clock.
+func TestAReplayedCallSaysWhatItTook(t *testing.T) {
+	a := resumedApp(t,
+		session.DisplayEntry{Role: "user", Text: "run both probes"},
+		session.DisplayEntry{
+			Role: "tool", Tool: "bash", CallID: "a", Hint: "bash sleep 3; echo A",
+			Args: `{"command":"sleep 3; echo A"}`, Output: "A", Answered: true,
+			Took: 3 * time.Second,
+		},
+		session.DisplayEntry{
+			Role: "tool", Tool: "bash", CallID: "b", Hint: "bash sleep 7; echo B",
+			Args: `{"command":"sleep 7; echo B"}`, Output: "B", Answered: true,
+			Took: 7 * time.Second,
+		},
+	)
+	got := map[string]time.Duration{}
+	for _, e := range a.entries {
+		if e.kind != entryTool {
+			continue
+		}
+		got[e.callID] = e.ran
+	}
+	if got["a"] != 3*time.Second || got["b"] != 7*time.Second {
+		t.Fatalf("replayed Took figures: %v, want a=3s b=7s", got)
+	}
+	frame := strings.Join(plainRows(a), "\n")
+	if !strings.Contains(frame, "3.0s") || !strings.Contains(frame, "7.0s") {
+		t.Fatalf("the figures never reached the frame:\n%s", frame)
 	}
 }
