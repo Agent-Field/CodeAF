@@ -691,10 +691,10 @@ the command is your yes, and the order's receipt says `set up by: person, throug
 terminal`.
 
 ```
-aforge standing add --words "<your sentence>" --brief "<the work>" --watch 'inbox/*' \
+aforge standing add --words "<your sentence>" --instructions "<the work>" --watch 'inbox/*' \
     [--report reports/inbox-report.md] [--workspace <dir>] [--place <folder-id>]
 aforge standing add --hold --words "<a rule>" [--scope <folder-id>] [--descendants]
-aforge standing edit <id> --brief "..."       # or --words, --watch, --every, --report
+aforge standing edit <id> --instructions "..."       # or --words, --watch, --every, --report
 aforge standing pause|resume|stop <id>
 aforge standing list | show <id> | check
 ```

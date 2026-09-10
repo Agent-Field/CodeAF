@@ -72,7 +72,7 @@ func TestLocalWorkJourney(t *testing.T) {
 	j.ok("standing", "add", "--hold", "--words", ruleMarketing+": marketing notes must not promise offline support unless product/spec.md says it is supported.", "--scope", marketing, "--workspace", project)
 
 	// A report inside its own watch is refused before anything stands.
-	if out, err := j.run("standing", "add", "--words", "loop", "--brief", "x", "--watch", "reports/*", "--report", "reports/x.md", "--workspace", project); err == nil || !strings.Contains(out, "would wake it again") {
+	if out, err := j.run("standing", "add", "--words", "loop", "--instructions", "x", "--watch", "reports/*", "--report", "reports/x.md", "--workspace", project); err == nil || !strings.Contains(out, "would wake it again") {
 		t.Fatalf("a self-waking report was not refused: err=%v\n%s", err, out)
 	}
 
@@ -111,7 +111,7 @@ func TestLocalWorkJourney(t *testing.T) {
 	}
 
 	// ── an edit reaches the NEXT occurrence, and history keeps the old one ─
-	j.ok("standing", "edit", inbox, "--brief", "Read the changed files in inbox/ and list who owns each open request. FOCUS: owners")
+	j.ok("standing", "edit", inbox, "--instructions", "Read the changed files in inbox/ and list who owns each open request. FOCUS: owners")
 	j.append("inbox/a.md", "Request: Bob owns the press release.\n")
 	j.check()
 	runs := j.expectRuns(inbox, 2)
@@ -283,7 +283,7 @@ func (j *journey) addWork(words, brief, watch, report, folder string) string {
 	var made struct {
 		ID string `json:"id"`
 	}
-	out := j.ok("standing", "add", "--json", "--words", words, "--brief", brief, "--watch", watch, "--report", report, "--place", folder, "--workspace", j.project, "--per-run-usd", "0.5")
+	out := j.ok("standing", "add", "--json", "--words", words, "--instructions", brief, "--watch", watch, "--report", report, "--place", folder, "--workspace", j.project, "--per-run-usd", "0.5")
 	must(j.t, json.Unmarshal([]byte(strings.SplitN(out, "\n", 2)[0]), &made))
 	return made.ID
 }
