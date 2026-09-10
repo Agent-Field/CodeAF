@@ -91,6 +91,16 @@ row carry the ground and how the task stood on it.
 
 ## Does a task touch my working copy? — where does my task work, what the card calls the task's directory
 
+**A quick task is the exception, and not a small one.** It has no checkout and no branch
+at all: it works in the folder this conversation is standing in — your own working copy —
+which is what lets it start the instant it is asked for and finish with nothing to merge.
+**It does not take the folder off you while it runs.** You keep editing and the chat keeps
+writing; what a quick task holds is only the files it named when it started and the ones
+it has already written, and a write of one of those is refused with the task named until
+it finishes. Two quick tasks that name the same file run one after the other rather than
+at once. The *tasks* page has it under *What a quick task is*. Everything below is about
+the ordinary kind.
+
 By default, no. Each code task gets its own checkout of **the repository the work is about**
 — its ground, resolved from what this conversation has been reading and editing (above) — on
 its own branch, so you can keep working in yours while it runs. If your request explicitly

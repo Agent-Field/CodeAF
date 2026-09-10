@@ -1556,6 +1556,29 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did commit become a task", "tasks"},
 		{"undo started a task", "tasks"},
 		{"fix this one line became a task", "tasks"},
+
+		// The quick task (docs/design/quick-task/DESIGN.md), asked the ten ways
+		// somebody meets it. Nobody types the word `quick_task`: they describe
+		// the shape of what they wanted or read the row back off the screen, so
+		// each probe is the sentence somebody actually says at the surface —
+		// the one that asks for the road, the one that reads the row, the one
+		// that reads the waiting line, and the four limits they run into.
+		{"can you do something quickly without making a branch", "tasks"},
+		{"start a small task in this folder", "tasks"},
+		{"do it here instead of on a branch", "tasks"},
+		{"is there a slash command for a quick task", "tasks"},
+		{"what does quick mean next to the task", "tasks"},
+		{"what does 2/4 mean on a task row", "tasks"},
+		{"why did it say waits for task 5", "tasks"},
+		{"why is one task waiting for another to finish with a file", "tasks"},
+		{"can I add a step to a running quick task", "tasks"},
+		{"how do I tick off an item myself", "tasks"},
+		{"I stopped a quick task and there is no branch", "tasks"},
+		{"the quick task left the file half written", "tasks"},
+		{"does a quick task get checked", "tasks"},
+		{"why did it make a quick task instead of a real one", "tasks"},
+		{"can a quick task start another quick task", "tasks"},
+		{"a quick task appeared under my task", "tasks"},
 		// And the other end of the same day: the task finished, and the reply
 		// that was delivering its work became a second task with none of the
 		// first one's staged files. Asked by somebody looking at the commit
