@@ -22,6 +22,7 @@ package session
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -959,6 +960,48 @@ func TestAStalledCallSurvivesAWindowThatClosedBeforeASecond(t *testing.T) {
 	}
 }
 
+// AND THE SAME FACT UNDER LOAD MUST NOT BE RETOLD AS "ASKED TWICE" (#803).
+//
+// The measured race: the first call stalls inside its share; building the second
+// checker then spends what is left of a short window; auditOnce returns
+// [checkerRanOut] with again=false without ever submitting. Folding that into
+// [twice] claimed two calls when only one ran, and erased the stall sentence the
+// posture landing asserts. [secondAuditOutcome] keeps the first account.
+func TestASecondAttemptThatNeverRanDoesNotClaimTwoCalls(t *testing.T) {
+	window := 40 * time.Millisecond
+	first := noVerdict(checkerStalled(window/auditCallShare), "")
+	// What auditOnce returns when the bound check fails after (or before) the
+	// second checker is built: a ran-out sentence, and again=false.
+	second := noVerdict(checkerRanOut(window), "")
+
+	got := secondAuditOutcome(first, second, false, io.Discard)
+	account := strings.Join(got.evidence, " · ")
+	if !strings.Contains(account, "without answering and was abandoned") {
+		t.Fatalf("the stall was erased:\n%s", account)
+	}
+	if !strings.Contains(account, checkerWindowClosed) {
+		t.Fatalf("the window closing was not said:\n%s", account)
+	}
+	if strings.Contains(account, "asked twice") {
+		t.Fatalf("a call that was never made was counted as a second ask:\n%s", account)
+	}
+	if strings.Contains(account, checkerRanOut(window)) {
+		t.Fatalf("the landing says nobody was asked, and the first call was:\n%s", account)
+	}
+	// AND THE WORK TAKEN AS IT STANDS STILL NAMES THE STALL.
+	stands := takenAsItStands(got)
+	for _, want := range []string{
+		takenAsItStandsLead,
+		"without answering and was abandoned",
+		checkerWindowClosed,
+		takenAsItStandsTail,
+	} {
+		if !strings.Contains(stands, want) {
+			t.Fatalf("taken as it stands is missing %q:\n%s", want, stands)
+		}
+	}
+}
+
 // AND WHAT THE LANDING SAYS THEN IS THAT THE WINDOW CLOSED.
 //
 // A window too small to hold a call at all is the same shape as a retry that
@@ -1059,7 +1102,12 @@ func TestAWindowOneStallClosedIsDecidedByThePosture(t *testing.T) {
 				config.Workspace = repo
 				config.AskConsent = false
 				config.TaskAutoApproveSeconds = 0
-				config.auditWindow = 40 * time.Millisecond
+				// Two seconds, not forty milliseconds: under load the short window
+				// was spent building the second checker before either hang could
+				// register as a stall, which is a fixture weather report rather
+				// than the posture claim (#803). The sibling abandoned-and-retry
+				// test uses ten seconds for the same reason.
+				config.auditWindow = 2 * time.Second
 				if unattended {
 					config.Unattended = true
 					config.Budget = Budget{Wall: time.Hour}
