@@ -33,6 +33,12 @@ type Config struct {
 	APIKey  string
 	BaseURL string
 	Model   string
+	// Direct says this account is a connected service with one road rather than
+	// a router with a set of serving lanes. It suppresses every lane preference,
+	// sheet and probe at the transport boundary; a direct service must never be
+	// asked for OpenRouter's endpoints document merely because another account
+	// in the process uses it.
+	Direct bool
 	// KeyOptional is true only for a service such as a local Ollama runner that
 	// explicitly accepts an empty key. The ordinary keyless client remains the
 	// first-run state and refuses before the wire.
@@ -223,9 +229,11 @@ func NewClient(config Config) (*Client, error) {
 	// AND THE LANE SHEET LEARNS WHERE THE ROUTER IS, here and nowhere else
 	// (lanes.go). It opens no connection: it hands `internal/lane` the base, the
 	// bearer and the one thing that package may not own, and the fetching is a
-	// beat the session starts and stops. A client pointed somewhere that is not
-	// a router wires nothing, because there is no sheet there to read.
-	client.wireLaneSheet()
+	// beat the session starts and stops. A connected direct service is explicitly
+	// absent from this process-wide seam because it has no sheet to read.
+	if !config.Direct {
+		client.wireLaneSheet()
+	}
 	return client, nil
 }
 

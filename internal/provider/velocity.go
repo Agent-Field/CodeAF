@@ -177,6 +177,12 @@ func StaticRouting(strategy RoutingStrategy) RoutingSource { return staticRoutin
 // a different fact from "somebody said latency", and the whole of what lets the
 // default below depend on who is waiting while an explicit row still wins.
 func (c *Client) routingChoice() (RoutingStrategy, bool) {
+	if c.config.Direct {
+		// A connected direct service has one road. Treating the absence of a
+		// person's router setting as latency routing would synthesize a provider
+		// object and hand router vocabulary to an endpoint that has no lanes.
+		return RoutingOff, true
+	}
 	if c.config.Routing == nil {
 		return RoutingLatency, false
 	}

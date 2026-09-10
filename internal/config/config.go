@@ -855,6 +855,7 @@ func ClientConfigFor(sources modelsource.Set, model string) provider.Config {
 		APIKey:      service.Key,
 		BaseURL:     service.Address,
 		Model:       bare,
+		Direct:      !strings.EqualFold(strings.TrimSpace(service.Source.ID), modelsource.DefaultID),
 		KeyOptional: service.Source.KeyOptional,
 		Effort:      effort,
 	}
