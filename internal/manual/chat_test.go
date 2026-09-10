@@ -1632,6 +1632,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I make this one chat think harder", "keys"},
 		{"set effort to max", "keys"},
 		{"can I click the thinking level", "keys"},
+		// And the word the cell says before anybody has dialled anything, which
+		// is what a shipped install draws — asked first by somebody reading it
+		// off the screen for the first time, and then by somebody who dialled a
+		// rung and wants the shipped state back. The wheel cannot get there, so
+		// the second one is a question the manual has to answer or the person is
+		// stuck pressing a key.
+		{"what does auto mean next to the model", "keys"},
+		{"how do I put thinking back to auto", "keys"},
 
 		// The eleventh wave: the ambient side — the things a conversation leaves
 		// behind that keep working after the window is closed. Every one of
