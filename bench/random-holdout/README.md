@@ -101,3 +101,10 @@ Pi runtime overlays, the actual-client preflight and the final scoring manifest
 still have to be assembled and verified on Spark. The already queued fixture
 and grader jobs do not exercise these additional files. No holdout inference
 may start until that separate validation passes.
+
+`run_campaign.py` preserves issue/seed blocks and runs at most two trials at once.
+Each block contains every arm exactly once in its preregistered rotated order;
+the next issue waits for the entire block. An exclusive reservation prevents
+reruns. Infrastructure failures are retained and stop later blocks, while scored
+wrong answers remain in the comparison. This scheduler is also pending Spark
+validation; it has not launched any model calls.

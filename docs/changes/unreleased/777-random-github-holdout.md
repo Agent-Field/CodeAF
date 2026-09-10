@@ -17,3 +17,6 @@ test identities and outcomes as the calibrated reference, including skips.
 The holdout also has a per-trial adapter for the frozen native runners and a
 scoped copy of the native mini usage collector. Both remain unvalidated until
 the separate Spark preflight; their presence does not mean scoring has begun.
+
+A bounded block scheduler preserves the preregistered arm order and all failed
+trials; it refuses duplicate launches and never retries scored work.
