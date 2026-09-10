@@ -134,7 +134,10 @@ func (a *Agent) quickFromDrawing(read checkpointRead, asked string) *quickTaskSp
 	if len(items) < checkpointSketchParts {
 		return nil
 	}
-	return &quickTaskSpec{line: line, items: items}
+	// THROUGH THE CONSTRUCTOR, never a literal of its own. This road built the
+	// struct by hand once and left `done` nil, and the first item its worker
+	// ticked indexed off the end of it ([newQuickTaskSpec] carries the account).
+	return newQuickTaskSpec(line, items, nil)
 }
 
 // turnWroteNothing reports that this turn has not landed a single write-shaped

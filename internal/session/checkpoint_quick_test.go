@@ -15,6 +15,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -247,6 +248,62 @@ func TestATurnWithNoWriteCounterIsNeverTakenAsWriteFree(t *testing.T) {
 	if meter.past() {
 		t.Error("one write spent the whole allowance")
 	}
+}
+
+// A QUICK NODE HANDED A DRAWING CAN TICK ITS OWN LIST.
+//
+// THIS ROAD BUILT ITS SPEC WITH A LITERAL OF ITS OWN AND LEFT THE TICKS OUT,
+// which nothing noticed until a worker used them: `items {"done": 1}` indexed
+// off the end of a slice of length zero, the fault was recovered into the
+// model's result as "tool panicked: items did not return a result", and the
+// node never landed. Measured on a real run, 2026-09-10.
+//
+// The door the `items` tool calls is driven here directly, on a node this road
+// actually admitted, because that is the whole of what was broken: the spec
+// that arrived, and the first tick against it.
+func TestAQuickNodeFromADrawingTicksItsListRatherThanFaulting(t *testing.T) {
+	const asked = "work through the four things I listed and report back"
+	const dowry = "Finish the four pieces\nwhat is left, and everything this turn already found out"
+
+	completer := &scriptedCompleter{steps: grindingSteps(checkpointMarkAt(1)+6, checkpointSplitSketch, dowry)}
+	agent := checkpointAgent(t, completer, func(config *Config) { config.Divide = true })
+	ran := make(ranNodes, 2)
+	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
+
+	events, err := agent.Submit(context.Background(), asked)
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+	node := ran.await(t)
+	if node.spec.quick == nil {
+		t.Fatal("a write-free turn with parts was not handed to a quick node")
+	}
+
+	// THE TICKS ARRIVE PARALLEL TO THE ITEMS, whatever road built the spec.
+	graph.mu.Lock()
+	items, done := len(node.spec.quick.items), len(node.spec.quick.done)
+	graph.mu.Unlock()
+	if done != items {
+		t.Fatalf("the node arrived with %d items and %d ticks; its worker's first tick would fault", items, done)
+	}
+
+	// AND THE FIRST TICK IS ANSWERED WITH THE COUNT, which is the only way the
+	// worker can tell how far down its list it is.
+	if reply := node.quickItemChange(1, nil); reply != fmt.Sprintf("items 1/%d done", items) {
+		t.Fatalf("the first tick answered %q, want the count", reply)
+	}
+	// AND THE ROW A PERSON IS WATCHING MOVES TO THE NEXT PART.
+	want := fmt.Sprintf("quick · 1/%d · the arithmetic module", items)
+	if doing := node.notice().Doing; doing != want {
+		t.Fatalf("the row reads %q one tick in, want %q", doing, want)
+	}
+	// AND THE GRAPH'S LOCK IS FREE AFTERWARDS. A door that kept it would leave
+	// the node's beat, its row and its landing all blocked (task_quick.go).
+	if !graph.mu.TryLock() {
+		t.Fatal("the list door left the graph's lock held")
+	}
+	graph.mu.Unlock()
 }
 
 // linesSaying is every notice that opens on one line.

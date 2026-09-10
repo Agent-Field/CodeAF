@@ -88,7 +88,7 @@ func livePiece(t *testing.T, agent *Agent, title string, quick bool) *TaskNode {
 		acceptance:  "the paragraph names every type in it",
 	}
 	if quick {
-		spec.quick = &quickTaskSpec{line: "walk " + title + " and say what it owns"}
+		spec.quick = newQuickTaskSpec("walk "+title+" and say what it owns", nil, nil)
 	}
 	graph.admit(id, spec)
 	node := graph.node(id)
