@@ -76,7 +76,7 @@ type capabilityGroup struct {
 // stays carried and the other making verbs do not: looking at something the
 // person has just put in front of you is ordinary work, and making a film is not.
 var capabilityGroups = []capabilityGroup{{
-	name:    "questions",
+	name:    questionsGroup,
 	members: []string{"ask"},
 }, {
 	name:    "media",
@@ -134,23 +134,43 @@ func (a *Agent) shelveDeferred(built []bare.Tool) []bare.Tool {
 	if !a.config.shelvesCapabilities() {
 		return built
 	}
+	// THE PARTITION IS THIS SHAPE'S AND NOT THE PACKAGE'S. A lean prefix shelves
+	// four more groups than a full one (promptprofile.go's
+	// [Config.capabilityShelf]), and it is asked of the config for the reason
+	// every other question on this road is: the page was composed from the same
+	// answer a moment ago, and the two must not be able to differ.
+	partition := a.config.capabilityShelf()
 	// Where each shelved name belongs, resolved once. A name in two groups would
 	// land in the first, which capabilities_test.go proves cannot happen.
 	group := make(map[string]string, 16)
-	for _, candidate := range capabilityGroups {
+	for _, candidate := range partition {
 		for _, member := range candidate.members {
 			if _, taken := group[member]; !taken {
 				group[member] = candidate.name
 			}
 		}
 	}
+	// AND THE GROUPS THIS SHAPE IS HANDED RATHER THAN ASKED TO FETCH. They are
+	// partitioned off here — not carried, not shelved — so that the loading
+	// verb's catalog never offers a group already on its way onto the belt, and
+	// armed at construction through the one arming door (agent.go's newAgent,
+	// [Agent.armPrearmed]).
+	prearmed := make(map[string]bool, 2)
+	for _, name := range a.config.prearmedGroups() {
+		prearmed[name] = true
+	}
 
-	shelf := make(map[string][]bare.Tool, len(capabilityGroups))
+	shelf := make(map[string][]bare.Tool, len(partition))
 	carried := make([]bare.Tool, 0, len(built))
+	var waiting []bare.Tool
 	for _, tool := range built {
 		name, shelved := group[tool.Name]
 		if !shelved {
 			carried = append(carried, tool)
+			continue
+		}
+		if prearmed[name] {
+			waiting = append(waiting, tool)
 			continue
 		}
 		shelf[name] = append(shelf[name], tool)
@@ -158,8 +178,8 @@ func (a *Agent) shelveDeferred(built []bare.Tool) []bare.Tool {
 
 	// Only the groups that actually have something on them, in the table's
 	// order: a group whose every member was gated off does not exist.
-	order := make([]string, 0, len(capabilityGroups))
-	for _, candidate := range capabilityGroups {
+	order := make([]string, 0, len(partition))
+	for _, candidate := range partition {
 		if len(shelf[candidate.name]) > 0 {
 			order = append(order, candidate.name)
 		}
@@ -167,6 +187,7 @@ func (a *Agent) shelveDeferred(built []bare.Tool) []bare.Tool {
 
 	a.armMu.Lock()
 	a.shelf, a.shelfOrder = shelf, order
+	a.prearm = waiting
 	a.armMu.Unlock()
 
 	// NOTHING SHELVED IS NO VERB: a model handed a loader over an empty shelf
@@ -185,6 +206,30 @@ func (a *Agent) clearShelf() {
 	a.armMu.Lock()
 	defer a.armMu.Unlock()
 	a.shelf, a.shelfOrder = nil, nil
+	// AND WHAT WAS WAITING TO BE HANDED OVER GOES WITH IT. A belt replaced
+	// wholesale is a belt somebody narrowed on purpose; arming a group into it
+	// afterwards would widen it again behind their back.
+	a.prearm = nil
+}
+
+// armPrearmed puts the groups this shape is HANDED onto the belt, and it is
+// called wherever a live conversation's belt is built or rebuilt from
+// [Agent.belt] — construction (agent.go's newAgent) and the anchoring rebuild
+// (tools_anchor_workspace.go). Anywhere else the belt is replaced wholesale by a
+// narrowing that must not be widened again ([Agent.clearShelf]).
+//
+// It is [Agent.armFamily] and nothing else: the same dedupe, the same append law,
+// the same refusal of a schema that will not parse. A group already carried
+// costs nothing here, which is what makes calling it after a rebuild safe.
+func (a *Agent) armPrearmed() error {
+	a.armMu.Lock()
+	waiting := append([]bare.Tool(nil), a.prearm...)
+	a.armMu.Unlock()
+	if len(waiting) == 0 {
+		return nil
+	}
+	_, err := a.armFamily(waiting)
+	return err
 }
 
 // shelvedNames and shelvedTools are the construction-time partition: what this
@@ -361,9 +406,23 @@ func (a *Agent) rearmLoadedCapabilities(restored []ai.Message) {
 }
 
 // capabilityGroupOf answers which group a tool name belongs to, for the tests
-// and gates that need the mapping without building a belt. Empty means carried.
+// and gates that need the mapping without building a belt. Empty means the name
+// is in no group at all and is therefore carried by every shape.
+//
+// IT WALKS BOTH TABLES because the mapping is a fact about the name and not
+// about the shape: `propose_task` is in the `tasks` group whether or not this
+// shape shelves that group. Whether it is actually held back is
+// [Config.shelvesTool], which is the question with a config behind it. The two
+// tables may not claim the same name, which promptprofile_test.go refuses.
 func capabilityGroupOf(tool string) string {
 	for _, group := range capabilityGroups {
+		for _, member := range group.members {
+			if member == tool {
+				return group.name
+			}
+		}
+	}
+	for _, group := range leanCapabilityGroups {
 		for _, member := range group.members {
 			if member == tool {
 				return group.name

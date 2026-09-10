@@ -61,7 +61,20 @@ const (
 
 // hasStore controls writable memory and its prompt extraction. Conversation
 // search has its own read-only predicate so workers can inherit just that door.
-func (c Config) hasStore() bool { return c.Memory != nil }
+//
+// AND A LEAN PREFIX HAS NO WRITABLE MEMORY (promptprofile.go). The reflex is two
+// model calls on every turn on top of the one the person is waiting for, which
+// on a small open-weight seat is the most expensive thing in the turn that
+// nobody asked for — so the brain is not built (agent.go's newAgent), `remember`
+// is not on the belt, and the page's own "Without `remember`, say plainly that
+// memory is off" clause becomes the truth rather than a fallback.
+//
+// THE STORE ITSELF IS UNTOUCHED, and that distinction is the whole of this line.
+// Config.Memory is also the conversation's own RECORD — the chat log every
+// session writes and `search_conversations` reads — and taking that away would
+// be a session that forgets what was said, which is not what "the reflex is off"
+// means and is not what any window is short of.
+func (c Config) hasStore() bool { return c.Memory != nil && !c.promptProfile().lean() }
 
 // maySeeSettings says whether the settings pair belongs on this belt
 // (tools_settings.go). It comes off inside a task for the sharpest reason on
@@ -559,12 +572,15 @@ func renderBeltFacts(config Config, facts []beltFact, join string) string {
 		text := fact.absent
 		if fact.holds(config) {
 			text = fact.present
-			// AND THE SHELVED WORDING ONLY WHERE THE SHAPE ACTUALLY SHELVES.
-			// A worker or a task node carries these tools directly, so telling
-			// it to call `load_capability` — which is not on its belt at all —
-			// would be the very defect this file exists to prevent, written the
-			// other way round.
-			if fact.shelved != "" && config.shelvesCapabilities() {
+			// AND THE SHELVED WORDING ONLY WHERE THE SHAPE ACTUALLY SHELVES
+			// THESE TOOLS. A worker or a task node carries them directly, so
+			// telling it to call `load_capability` — which is not on its belt at
+			// all — would be the very defect this file exists to prevent,
+			// written the other way round. The question is asked per FACT rather
+			// than per shape because a lean prefix is handed the `questions`
+			// group at construction (promptprofile.go's [Config.shelvesFact]):
+			// it shelves plenty and carries `ask`.
+			if fact.shelved != "" && config.shelvesFact(fact) {
 				text = fact.shelved
 			}
 		}

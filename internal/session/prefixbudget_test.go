@@ -34,11 +34,16 @@ package session
 // is.
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 	"testing"
+	"time"
+
+	configpkg "github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/subharness"
 )
 
 // fixedPrefixBudget bounds the system prompt plus the marshalled tool block of
@@ -315,6 +320,55 @@ import (
 // change to that test's mind and not only to the bytes.
 const fixedPrefixBudget = 48_000
 
+// THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane
+// G). promptprofile.go added a second shape of prefix for a model with a small
+// window or the crew's open-weight worker seat: two sections come off the page,
+// four more groups wait on the shelf, `ask` is handed over rather than fetched,
+// the memory reflex does not run and the project's instruction file rides under
+// 2 KiB. Nothing above it moved — the full arm renders byte for byte what it
+// rendered before, which [TestAFrontierShapeIsUntouchedByTheProfile] asserts at
+// every door — so this is a second number and not a raised one.
+//
+// WHAT IT MEASURES AND WHERE IT HAS TO GET TO. On a 16k window the lean prefix
+// is what this test prints. On the profile's own branch it was 34,343 bytes
+// against the full arm's 47,435; merged onto the rest of the diet — lane C's
+// delete pass and routing table, lane D's self-describing messages, lane E's
+// pulled mechanics, lane F's contract-only descriptions, lane B's window-scaled
+// caps and the quick-task wave that took `fork` off the belt — it is 31,006
+// against 38,742: page 16,825 plus tool block 14,181 over twelve tools.
+//
+// THE BELT IT WEIGHS IS THE SHAPE THE DESIGN ASKED FOR: the seven pi tools,
+// `quick_task`, `jobs`, `manual`, `load_capability` and `ask`, with
+// `propose_task`, `tasks`, `watch`, `track`, `commit`, `recall` and
+// `read_document` one call away.
+//
+// The diet's target for this arm is 12,000 bytes
+// (docs/design/prompt-diet/DESIGN.md §6) and nothing in this wave reaches it,
+// which is worth saying plainly rather than rounding away. The two numbers that
+// would move it are both named: `ask`'s schema is 4,277 bytes — thirty percent
+// of the whole lean tool block, and the one carried verb nobody has been through
+// — and the page's 16,825 is the shared CORE minus one section, so it comes down
+// when CORE does and not before.
+//
+// AND IT CARRIES A LITTLE HEADROOM, DELIBERATELY. Pinned to the exact
+// measurement it was the one number in the tree that made the shared page
+// unmovable: the routing-table commit added 226 bytes of CORE, which both arms
+// read, and a lean budget with no slack failed a change the full budget waved
+// through with thousands to spare. So the figure it LANDS at is about three
+// percent over what it measured on landing — room for a few moves of that size,
+// and not room for a paragraph.
+//
+// THEREAFTER IT ONLY EVER RATCHETS DOWN, in the ledger discipline the full
+// budget above is kept under: a lane that takes bytes out lowers it in the same
+// commit, and nothing ever raises it again.
+const leanPrefixBudget = 32_500
+
+// leanWindow is the window the lean budget is weighed at. Sixteen thousand
+// tokens is the shape the profile was written for — a local open-weight model —
+// and it is comfortably under [leanWindowThreshold], so the shape this measures
+// is the shape a person on such a model actually gets.
+const leanWindow = 16_000
+
 // widestPage is the page at its heaviest: prompts/system.md with every one of
 // its tool-naming facts in the PRESENT case (beltfacts.go).
 //
@@ -399,4 +453,152 @@ func TestTheFixedPrefixStaysUnderItsBudget(t *testing.T) {
 	}
 	t.Fatalf("%severy byte here is sent again on every request of every turn, so take the "+
 		"addition back out of something that already says it rather than raising the budget", report)
+}
+
+// ── the lean arm ────────────────────────────────────────────────────────────
+
+// leanShapedAgent is the shipping conversation door on a small window: the same
+// config [v3ShapedAgent] builds, with the window a local open-weight model
+// actually has. Everything else about the shape is deliberately identical, so
+// the difference between the two numbers below is the profile and nothing else.
+func leanShapedAgent(t *testing.T) *Agent {
+	t.Helper()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.System = ""
+		config.ContextWindow = leanWindow
+		config.AskConsent = true
+		config.BashBackgroundAfterSeconds = configpkg.DefaultBashBackgroundAfter
+		config.HarnessStore = subharness.At(t.TempDir())
+		config.RunHarness = func(context.Context, string, string, string, func(subharness.Trail)) (string, subharness.Usage, error) {
+			return "", subharness.Usage{}, nil
+		}
+		config.OrchestrateRunner = func(context.Context, string, string, float64) (string, error) {
+			return "", nil
+		}
+	})
+	return agent
+}
+
+// TestTheLeanPrefixStaysUnderItsBudget weighs the other arm.
+//
+// IT WEIGHS THE PAGE THE SHAPE ACTUALLY READS and not the widest one, which is
+// the difference between the two budgets and is deliberate: the full budget
+// bounds the most any agent can be handed, because one page is read by every
+// shape and a lane adding a sentence must see the worst case. The lean arm is
+// one shape — a conversation on a small window — and what it costs that person
+// is what it renders for them.
+func TestTheLeanPrefixStaysUnderItsBudget(t *testing.T) {
+	agent := leanShapedAgent(t)
+	if !agent.config.promptProfile().lean() {
+		t.Fatalf("a %d-token window did not resolve to the lean profile, so this test is weighing the wrong arm", leanWindow)
+	}
+
+	definitions := agent.beltDefinitions()
+	if len(definitions) == 0 {
+		t.Fatal("the belt is empty, so this test would pass on nothing")
+	}
+	block, err := json.Marshal(definitions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// AND `ask` IS IN THE BLOCK, because it is pre-armed rather than shelved
+	// (promptprofile.go's [Config.prearmedGroups]). A lean belt that had to load
+	// its way to a question would be measured lighter here and be unable to ask
+	// one, which is the one regression this number could hide.
+	if !agent.hasTool("ask") {
+		t.Fatal("`ask` is not carried on a lean belt: a one-call-per-message model cannot load-then-ask")
+	}
+	prompt := len(renderSystemAt(agent.config, time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)))
+	tools := len(block)
+	total := tools + prompt
+	t.Logf("the lean prefix is %d bytes (~%d tokens): prompt %d + tools %d over %d tools",
+		total, total/4, prompt, tools, len(definitions))
+
+	if total <= leanPrefixBudget {
+		return
+	}
+	heaviest := make([]struct {
+		name  string
+		bytes int
+	}, 0, len(definitions))
+	for _, definition := range definitions {
+		encoded, err := json.Marshal(definition)
+		if err != nil {
+			t.Fatal(err)
+		}
+		heaviest = append(heaviest, struct {
+			name  string
+			bytes int
+		}{definition.Function.Name, len(encoded)})
+	}
+	sort.Slice(heaviest, func(i, j int) bool { return heaviest[i].bytes > heaviest[j].bytes })
+	report := fmt.Sprintf("the lean prefix is %d bytes (~%d tokens), over its %d budget by %d\n"+
+		"  the page            %6d\n"+
+		"  the tool block      %6d over %d tools\n"+
+		"the heaviest tools:\n",
+		total, total/4, leanPrefixBudget, total-leanPrefixBudget, prompt, tools, len(definitions))
+	for index, tool := range heaviest {
+		if index == 8 {
+			break
+		}
+		report += fmt.Sprintf("  %-20s%6d\n", tool.name, tool.bytes)
+	}
+	t.Fatalf("%sthis arm's number only ever comes down: shelve the verb, cut the law that is stated twice, "+
+		"or leave it — never raise the budget", report)
+}
+
+// TestAFrontierShapeIsUntouchedByTheProfile is the other half of the deal.
+//
+// A DIET THAT MOVED THE DEFAULT ARM WOULD BE A DIET NOBODY MEASURED. The lean
+// profile is a second shape and not a change to the shipped one, so every door
+// promptprofile.go opens is asserted to be the IDENTITY on a frontier window —
+// including the page door itself, which is proved on bytes: the composed page
+// enters [renderSystemAt]'s output untouched, exactly as it did before there was
+// a profile at all.
+func TestAFrontierShapeIsUntouchedByTheProfile(t *testing.T) {
+	agent := v3ShapedAgent(t)
+	config := agent.config
+	if config.promptProfile().lean() {
+		t.Fatalf("the shipping conversation shape resolved to the lean profile, so every assertion below is about the wrong arm")
+	}
+	if window := config.promptWindow(); window < leanWindowThreshold {
+		t.Fatalf("the frontier shape's window is %d, under the %d threshold: this test is not weighing a frontier shape", window, leanWindowThreshold)
+	}
+
+	// THE PAGE DOOR, ON BYTES. What the composer built is what the render
+	// carries: no section dropped, no line added.
+	composed := strings.TrimRight(promptWithBeltFacts(config), "\n")
+	page := renderSystemAt(config, time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC))
+	if !strings.HasPrefix(page, composed) {
+		t.Error("a frontier page is no longer the composed page byte for byte: the profile's cut is reaching the full arm")
+	}
+	if pointer := config.leanShelfPointer(); pointer != "" {
+		t.Errorf("a frontier page is handed the lean shelf line %q", pointer)
+	}
+
+	// THE SHELF DOOR. The partition is the shipped table and nothing else, and
+	// nothing is handed over rather than fetched.
+	shelf := config.capabilityShelf()
+	if len(shelf) != len(capabilityGroups) {
+		t.Fatalf("a frontier belt partitions %d groups, want the shipped %d", len(shelf), len(capabilityGroups))
+	}
+	for index, group := range shelf {
+		if group.name != capabilityGroups[index].name {
+			t.Errorf("the frontier partition's group %d is %q, want %q", index, group.name, capabilityGroups[index].name)
+		}
+	}
+	if armed := config.prearmedGroups(); len(armed) != 0 {
+		t.Errorf("a frontier belt pre-arms %v; every group waits on the shelf as it always did", armed)
+	}
+	if !config.shelvesFact(beltFacts[0]) {
+		t.Error("`ask` is no longer shelved on a frontier belt, so the page stopped telling it how to fetch one")
+	}
+
+	// AND THE TWO NUMBERS prompt.go reads through the profile.
+	if got := config.instructionLimit(); got != agentsFileLimit {
+		t.Errorf("a frontier prefix bounds the project's instructions at %d, want %d", got, agentsFileLimit)
+	}
+	if config.onlyOneInstructionFile() {
+		t.Error("a frontier prefix quotes one instruction file; both have always ridden")
+	}
 }
