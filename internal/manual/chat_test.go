@@ -1352,6 +1352,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// and the ones who meet it before it fires ask the question that names the
 		// old defect, which is why it stopped with the job half done.
 		{"the ask is not finished carrying on", "tasks"},
+		{"it carried on over a finished task with green checks", "tasks"},
+		{"it kept saying the ask was not finished over a done task", "tasks"},
 		{"my reply stopped halfway through what I asked for", "tasks"},
 		{"it said it would do the rest and then stopped", "tasks"},
 		{"why did it keep going without me after it finished answering", "tasks"},
