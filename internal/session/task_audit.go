@@ -2779,6 +2779,7 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 		Model:     judge,
 		APIKey:    parent.APIKey,
 		BaseURL:   parent.BaseURL,
+		Sources:   parent.Sources,
 		// The window of the model the AUDITOR runs, which the roles ladder has
 		// very often made a different one from the node's
 		// (loop.go's [Agent.childWindow]).

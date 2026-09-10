@@ -12,7 +12,9 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -44,46 +46,29 @@ const jobShutdownGrace = 2 * time.Second
 // network request: the client is constructed, the prompt rendered, and the
 // session file — if configured and present — replayed into the transcript.
 func New(config Config) (*Agent, error) {
-	settings := config.clientConfig(config.Model, providerTimeout)
-	// The session passes its current model on every request, so it keeps the
-	// assembled bare slug too; otherwise that per-call choice would put the
-	// thinking suffix back after the client door had split it off.
-	config.Model = settings.Model
-	// The routing row, already resolved. It is handed down as a source rather
-	// than as a path so that nothing under here ever reads a settings file to
-	// decide how a request is routed.
-	settings.Routing = provider.StaticRouting(config.Routing)
-	// The two answers to "what else could serve this?" when no endpoint will
-	// take the request at all (internal/provider's endpoints.go) are seams the
-	// surface resolves; a caller that hands over neither keeps today's behaviour
-	// exactly — a refusal ends in the diagnosis rather than on another model.
-	settings.Fallbacks = config.ModelFallbacks
-	settings.NearestModels = config.NearestModels
-	client, err := provider.NewClient(settings)
+	// The session keeps the service-qualified identity a person chose, with only
+	// the thinking level removed. The client keeps the bare wire slug. Folding
+	// both into settings.Model would make a later disconnect unable to tell
+	// which service this conversation was using.
+	launchModel := config.Model
+	config.Model, _ = roles.SplitEffort(config.Model)
+	client, err := newProviderClient(config, launchModel)
 	if err != nil {
 		return nil, err
 	}
-	// AND THE PROBE'S TRANSPORT IS WIRED HERE, at the one moment a real client
-	// exists and nothing has been sent through it (internal/provider's
-	// probe.go). It starts nothing: a prober with a transport still sends
-	// nothing until somebody starts typing, and everything about whether a probe
-	// is worth buying — is anybody waiting, has one been bought in the last
-	// twenty seconds, is the pool already pacing — is asked at that moment
-	// rather than here. A build against a base that is not a router refuses and
-	// the registry keeps the empty prober, which is the tested empty state.
-	//
-	// The gate is this session's own reading of "is anybody waiting on this
-	// model": a probe is bought for a person about to send something, and a
-	// process with no window open is a process where nobody is
-	// ([someoneIsWatching]).
-	provider.InstallLaneProber(client, func(string) bool { return someoneIsWatching() })
 	// AND THE OFFER DESK IS POINTED AT THE SIDE THAT HOLDS THE OPEN QUESTIONS,
 	// at the same moment and for the same reason: this is where a real transport
 	// exists. A pinned lane that goes quiet raises `coreweave is slow · switch to
 	// auto? (y)` on the phase channel; `y` comes back through this package, and
 	// without this line it would come back to nobody (phasenews.go).
 	SetOfferAnswerer(answerOffer(provider.AnswerOffer))
-	return newAgent(config, client)
+	agent, err := newAgent(config, client)
+	if err != nil {
+		return nil, err
+	}
+	agent.managedClient = true
+	agent.clientAccount = accountFor(config, config.Model)
+	return agent, nil
 }
 
 // newAgent is the seam New and the tests share: everything except which
@@ -607,6 +592,9 @@ func (a *Agent) SetModel(model string) {
 	}
 	a.mu.Lock()
 	a.model = model
+	if !a.running {
+		a.rebindClientLocked(model)
+	}
 	if a.config.ContextWindowFor != nil {
 		if window := a.config.ContextWindowFor(model); window > 0 {
 			a.contextWindow.Store(int64(window))
@@ -622,6 +610,23 @@ func (a *Agent) SetModel(model string) {
 	// session's own state; this is about a fetch somebody else will do, and a
 	// lock held across a hand-off is a lock held for no reason.
 	a.noteLaneModel(model)
+}
+
+// SetSources replaces the live service set used by this conversation and by
+// every child it opens later. If the current model's account moved or was
+// removed, the retained provider client is replaced before another request can
+// use the old address or bearer. A running turn keeps the client it started on;
+// startTurnLocked performs the pending replacement for the next turn.
+func (a *Agent) SetSources(sources modelsource.Set) {
+	if a == nil || sources.Empty() {
+		return
+	}
+	a.mu.Lock()
+	a.config.Sources = sources
+	if !a.running {
+		a.rebindClientLocked(a.model)
+	}
+	a.mu.Unlock()
 }
 
 // noteLaneModel tells the sheet beat about a model this session has moved to.
@@ -675,6 +680,8 @@ func (a *Agent) SetAPIKey(key string) error {
 		}
 	}
 	a.config.APIKey = key
+	a.config.Sources = a.config.Sources.WithDefaultKey(key)
+	a.clientAccount = accountFor(a.config, a.model)
 	return nil
 }
 
@@ -1456,6 +1463,7 @@ func (u userMessage) text() string { return messageContentText(u.message) }
 // it is about is already on the steering queue, and the loop's first drain
 // writes it (see [Agent.wakeLocked]).
 func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *eventStream, extra ...*eventStream) <-chan Event {
+	a.rebindClientLocked(a.model)
 	a.running = true
 	a.lastTurnTruncated = false
 	// AND ANOTHER WINDOW HEARS ABOUT IT NOW rather than at the next heartbeat

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -152,6 +153,60 @@ func establishClientDoorRouter(t *testing.T, baseURL string) {
 	if !lanes.PrefsProven(baseURL) {
 		t.Fatal("the provider stub was not established as a router")
 	}
+}
+
+func directClientDoorSources(server *clientDoorServer, key string) modelsource.Set {
+	return modelsource.NewSet(
+		modelsource.Connected{Source: modelsource.DefaultSource("http://127.0.0.1:1"), Key: "default-key", Address: "http://127.0.0.1:1"},
+		modelsource.Connected{Source: modelsource.Source{ID: "direct", Written: "direct"}, Key: key, Address: server.URL},
+	)
+}
+
+func TestTheSessionReachesTheSourceThatServesItsModel(t *testing.T) {
+	server := newClientDoorServer(t, "done")
+	agent, err := New(Config{Workspace: t.TempDir(), Model: "direct/stub/conversation", Sources: directClientDoorSources(server, "direct-conversation-key")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = agent.Close() })
+	drainTurn(t, agent, "hello")
+	if agent.Model() != "direct/stub/conversation" {
+		t.Fatalf("session model = %q, want its service-qualified identity", agent.Model())
+	}
+	assertOrdinaryClientDoorCall(t, server.call(t, 0), "direct-conversation-key", "stub/conversation")
+}
+
+func TestTheDocumentReadReachesTheSourceThatServesItsModel(t *testing.T) {
+	server := newClientDoorServer(t, "extracted text")
+	client, err := newDocClient(Config{Model: "direct/stub/document", Sources: directClientDoorSources(server, "direct-document-key")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.ParseDocument(context.Background(), provider.DocumentRequest{Filename: "note.txt", MediaType: "text/plain", Data: []byte("note"), Engine: provider.DocumentParseNative}); err != nil {
+		t.Fatal(err)
+	}
+	assertOrdinaryClientDoorCall(t, server.call(t, 0), "direct-document-key", "stub/document")
+}
+
+func TestTheStandingRunReachesTheSourceThatServesItsModel(t *testing.T) {
+	server := newClientDoorServer(t, "no — nothing changed")
+	sentinel := NewStandingSentinel(Config{Model: "direct/stub/standing", Sources: directClientDoorSources(server, "direct-standing-key")})
+	if _, _, _, err := sentinel(context.Background(), standing.Judgment{Item: standing.Item{Words: "tell me when it changes"}, Evidence: "unchanged"}); err != nil {
+		t.Fatal(err)
+	}
+	assertOrdinaryClientDoorCall(t, server.call(t, 0), "direct-standing-key", "stub/standing")
+}
+
+func TestTheMemoryConsolidationReachesTheSourceThatServesItsModel(t *testing.T) {
+	server := newClientDoorServer(t, `{"ops":[]}`)
+	root := t.TempDir()
+	brainPath := filepath.Join(root, "brain.db")
+	addClientDoorMemories(t, brainPath)
+	tidy := NewMemoryTidy(Config{Model: "direct/stub/memory", Sources: directClientDoorSources(server, "direct-memory-key")}, brainPath, root, func(_ time.Duration) bool { return true })
+	if _, err := tidy(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	assertOrdinaryClientDoorCall(t, server.call(t, 0), "direct-memory-key", "stub/memory")
 }
 
 // A conversation built by the public session door sends the account it was
@@ -342,4 +397,36 @@ func TestTheSessionClientDoorsLeaveAnOrdinaryRequestAlone(t *testing.T) {
 		}
 		assertOrdinaryClientDoorCall(t, server.call(t, 0), "plain-memory-key", "stub/plain-memory")
 	})
+}
+
+func TestAFirstRunKeyReachesATaskSpawnedAfterItLands(t *testing.T) {
+	server := newClientDoorServer(t, "child done")
+	defaultSource := modelsource.DefaultSource(server.URL)
+	agent, err := New(Config{
+		Workspace: t.TempDir(), Model: "stub/conversation",
+		Sources: modelsource.NewSet(modelsource.Connected{Source: defaultSource, Address: server.URL}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer agent.Close()
+	if err := agent.SetAPIKey("first-run-key"); err != nil {
+		t.Fatal(err)
+	}
+	graph := agent.graph()
+	graph.run = func(*TaskNode) {}
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "later child", brief: "answer", acceptance: "done"})
+	child, err := agent.newTaskAgent(context.Background(), t.TempDir(), graph.node(id), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer child.Close()
+	drainTurn(t, child, "answer now")
+	if got := server.call(t, 0).authorization; got != "Bearer first-run-key" {
+		t.Fatalf("child request authorization = %q", got)
+	}
+	if got := child.config.Sources.Default().Key; got != "first-run-key" {
+		t.Fatalf("child inherited stale default-service key %q", got)
+	}
 }

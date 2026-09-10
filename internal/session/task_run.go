@@ -6748,6 +6748,7 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		Model:         model,
 		APIKey:        parent.APIKey,
 		BaseURL:       parent.BaseURL,
+		Sources:       parent.Sources,
 		ContextWindow: window,
 		// AND THE CATALOG ITSELF, so a node that switches its own model later
 		// learns that model's window rather than keeping this one (agent.go's

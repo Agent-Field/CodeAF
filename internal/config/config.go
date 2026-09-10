@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
+	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/router"
@@ -219,6 +220,9 @@ const (
 type Config struct {
 	APIKey  string
 	BaseURL string
+	// Sources is the resolved service set. Empty preserves every scalar
+	// construction that predates services through [modelsource.Set.OrDefault].
+	Sources modelsource.Set
 	Model   string
 	// PlanModel is the model that structures work — the task graph, replans,
 	// contracts, the delivery gate. Empty means the work model plans too, which
@@ -349,9 +353,16 @@ func Load() (Config, error) { return load(true) }
 func LoadKeyless() (Config, error) { return load(false) }
 
 func load(requireKey bool) (Config, error) {
+	profileDir := ProfileDir()
+	// The default key and model_sources live in the same object. Read that
+	// object once here, then resolve both facts from the snapshot so adding an
+	// empty model_sources field does not add a launch-path read.
+	profileValues, _ := readProfileConfig(profileDir)
+	apiKey := apiKeyFrom(profileValues)
+	baseURL := firstNonEmpty(os.Getenv("AFORGE_BASE_URL"), DefaultBaseURL)
 	config := Config{
-		APIKey:            APIKeyAt(ProfileDir()),
-		BaseURL:           firstNonEmpty(os.Getenv("AFORGE_BASE_URL"), DefaultBaseURL),
+		APIKey:            apiKey,
+		BaseURL:           baseURL,
 		Model:             firstNonEmpty(os.Getenv(ModelEnv), DefaultModel),
 		PlanModel:         strings.TrimSpace(os.Getenv(PlanModelEnv)),
 		Timeout:           DefaultTimeout,
@@ -365,8 +376,9 @@ func load(requireKey bool) (Config, error) {
 		PracticeIdle:      DefaultPracticeIdle,
 		BriefAfter:        DefaultBriefAfter,
 		Swarm:             DefaultSwarm,
-		ProfileDir:        ProfileDir(),
+		ProfileDir:        profileDir,
 	}
+	config.Sources = resolveSources(config.APIKey, config.BaseURL, persistedSourcesFrom(profileValues), sourceKeyFromRow)
 	if config.APIKey == "" && requireKey {
 		return Config{}, ErrNoAPIKey
 	}
@@ -747,9 +759,11 @@ func (c Config) ExecContext(ctx context.Context) context.Context {
 // interface, so nothing above this line changes.
 func (c Config) Client() (router.Client, error) {
 	if len(c.Panel.Models) == 0 {
-		return provider.NewClient(c.ClientConfig(c.Model))
+		return c.Adapter(c.Model)
 	}
-	return router.New(c.Panel, c.ClientConfig(c.Model), c.ProfileDir)
+	panel := c.Panel
+	panel.ClientConfig = c.ClientConfig
+	return router.New(panel, c.ClientConfig(c.Model), c.ProfileDir)
 }
 
 // PlanModelResolved is the model planning-class calls run on: the plan slot
@@ -775,8 +789,17 @@ func (c Config) ClientFor(model string) (router.Client, error) {
 	// publishes never opens on the model it was pinned to.
 	bare, _ := roles.SplitEffort(model)
 	if len(c.Panel.Models) > 0 {
-		return router.NewPinned(c.Panel, c.ClientConfig(model), c.ProfileDir, bare)
+		panel := c.Panel
+		panel.ClientConfig = c.ClientConfig
+		return router.NewPinned(panel, c.ClientConfig(model), c.ProfileDir, bare)
 	}
+	return c.Adapter(model)
+}
+
+// Adapter is the ONE place a model client is built. The model id decides the
+// source; the source decides the key and the address. Nothing above this line
+// knows either.
+func (c Config) Adapter(model string) (*provider.Client, error) {
 	return provider.NewClient(c.ClientConfig(model))
 }
 
@@ -801,16 +824,17 @@ func (c Config) DocumentClient() (*provider.Client, error) {
 	return provider.NewClient(WithoutSeatPin(c.ClientConfig(c.Model)))
 }
 
-// ClientConfigFor assembles the provider settings for one model out of an
-// account a caller already holds.
+// ClientConfigFor assembles the provider settings for one model out of the
+// services a caller already holds.
 //
 // IT IS THE ONE PLACE A KEY AND A BASE URL BECOME A provider.Config, and that
 // is the law rather than a convenience: six sites used to compose that literal
 // themselves, so a level that belongs beside the slug travelled inside it and
 // a second service would have reached none of them. A caller that holds a whole
 // profile wants [Config.ClientConfig]; this door is for internal/session, whose
-// own Config carries the account and nothing else.
-func ClientConfigFor(apiKey, baseURL, model string) provider.Config {
+// own Config carries the account and nothing else. THE MODEL ID NOW DECIDES THE
+// ACCOUNT, and nothing above this line chooses a key or a base URL.
+func ClientConfigFor(sources modelsource.Set, model string) provider.Config {
 	// THE THINKING LEVEL IS NOT PART OF A MODEL ID, and this is the one place
 	// that has to know it. `moonshotai/kimi-k3:low` is how a tier row, a
 	// --plan-model flag and AFORGE_PLAN_MODEL all say "that model, thinking a
@@ -826,11 +850,13 @@ func ClientConfigFor(apiKey, baseURL, model string) provider.Config {
 	// without putting the suffix back onto the provider's model id.
 	model, level := roles.SplitEffort(model)
 	effort, _ := provider.ParseEffort(level)
+	service, bare := sources.For(model)
 	return provider.Config{
-		APIKey:  apiKey,
-		BaseURL: baseURL,
-		Model:   model,
-		Effort:  effort,
+		APIKey:      service.Key,
+		BaseURL:     service.Address,
+		Model:       bare,
+		KeyOptional: service.Source.KeyOptional,
+		Effort:      effort,
 	}
 }
 
@@ -854,7 +880,7 @@ func WithoutSeatPin(configured provider.Config) provider.Config {
 // what legitimately differs — a timeout, a routing strategy, or seams its own
 // surface owns — never APIKey and never BaseURL.
 func (c Config) ClientConfig(model string) provider.Config {
-	configured := ClientConfigFor(c.APIKey, c.BaseURL, model)
+	configured := ClientConfigFor(c.Sources.OrDefault(c.APIKey, c.BaseURL), model)
 	configured.Timeout = c.Timeout
 	// The published answer to "does this model take this field", from rows
 	// already in memory. A nil catalog and a catalog still warming both say

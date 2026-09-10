@@ -93,7 +93,9 @@ type DocumentParser interface {
 // can say which thing is missing instead of "not configured".
 var newDocClient = func(config Config) (DocumentParser, error) {
 	settings := config.documentConfig(providerTimeout)
-	if strings.TrimSpace(settings.APIKey) == "" {
+	service := config.serviceFor(config.Model)
+	wantsKey := service.Source.KeyShape == nil || !service.Source.KeyShape("")
+	if wantsKey && strings.TrimSpace(settings.APIKey) == "" {
 		return nil, errors.New("this session has no API key")
 	}
 	client, err := provider.NewClient(settings)

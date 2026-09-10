@@ -1022,6 +1022,9 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 				return
 			}
 			settings := parent.clientConfig(model, providerTimeout)
+			// The request carries the chosen model explicitly, so keep the bare id
+			// the service door resolved instead of restoring its service prefix.
+			model = settings.Model
 			settings.Routing = provider.StaticRouting(parent.Routing)
 			client, built = provider.NewClient(settings)
 		})

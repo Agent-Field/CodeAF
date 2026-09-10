@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 )
@@ -158,6 +159,46 @@ func runV3SubharnessClientDoor(t *testing.T, server *v3ClientDoorServer, model, 
 	}
 }
 
+func v3DirectServiceSettings(server *v3ClientDoorServer, key string) config.Config {
+	return config.Config{
+		APIKey: "default-key", BaseURL: "http://127.0.0.1:1",
+		Sources: modelsource.NewSet(
+			modelsource.Connected{Source: modelsource.DefaultSource("http://127.0.0.1:1"), Key: "default-key", Address: "http://127.0.0.1:1"},
+			modelsource.Connected{Source: modelsource.Source{ID: "direct", Written: "direct"}, Key: key, Address: server.URL},
+		),
+	}
+}
+
+func TestTheHarnessReachesTheSourceThatServesItsModel(t *testing.T) {
+	server := newV3ClientDoorServer(t)
+	store := subharness.At(t.TempDir())
+	saveV3ClientDoorHarness(t, store)
+	run := v3RunHarness(store, v3DirectServiceSettings(server, "direct-harness-key"), "direct/stub/harness", t.TempDir(), session.HarnessBeltSeams{})
+	if run == nil {
+		t.Fatal("the harness run door was not built")
+	}
+	if _, _, err := run(context.Background(), "client-door", "say done", "", func(subharness.Trail) {}); err != nil {
+		t.Fatal(err)
+	}
+	assertV3ClientDoorCall(t, server.call(t, 0), "direct-harness-key", "stub/harness", "")
+}
+
+func TestTheSubharnessReachesTheSourceThatServesItsModel(t *testing.T) {
+	server := newV3ClientDoorServer(t)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("AFORGE_HOME", t.TempDir())
+	wiring := v3Subharnesses(v3DirectServiceSettings(server, "direct-subharness-key"), nil, "direct/stub/subharness", t.TempDir(), nil)
+	runner, err := wiring.Registry.Subharness(exec.LinearSubharness)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, _ := json.Marshal(exec.TaskInput{Brief: "say done"})
+	if _, err := runner.Run(context.Background(), input, nil); err != nil {
+		t.Fatal(err)
+	}
+	assertV3ClientDoorCall(t, server.call(t, 0), "direct-subharness-key", "stub/subharness", "")
+}
+
 // The offer-card harness runner inherits the profile account and splits a
 // thinking level off the model before its first node reaches the provider.
 func TestAHarnessRunSendsTheBareSlugThroughTheProfilesAccount(t *testing.T) {
@@ -188,4 +229,21 @@ func TestTheHarnessClientDoorsLeaveAnOrdinaryRequestAlone(t *testing.T) {
 		runV3SubharnessClientDoor(t, server, "stub/plain-subharness", "plain-subharness-key")
 		assertV3ClientDoorCall(t, server.call(t, 0), "plain-subharness-key", "stub/plain-subharness", "")
 	})
+}
+
+func TestAConversationOpenedAfterFirstRunGetsTheLiveDefaultKey(t *testing.T) {
+	defaultSource := modelsource.DefaultSource(config.DefaultBaseURL)
+	sources := modelsource.NewSet(modelsource.Connected{Source: defaultSource, Address: config.DefaultBaseURL})
+	process := &v3Process{Settings: config.Config{Sources: sources}}
+	seam := &v3Seam{proc: process, boot: &v3Launch{Config: session.Config{Sources: sources}}}
+	if err := process.setAPIKey("first-run-key"); err != nil {
+		t.Fatal(err)
+	}
+	launch, err := seam.launch("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if launch.Config.APIKey != "first-run-key" || launch.Config.Sources.Default().Key != "first-run-key" {
+		t.Fatalf("later conversation inherited stale account: scalar=%q source=%q", launch.Config.APIKey, launch.Config.Sources.Default().Key)
+	}
 }

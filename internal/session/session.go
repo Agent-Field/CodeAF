@@ -30,6 +30,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/search"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -1002,6 +1003,7 @@ type Config struct {
 	Model     string
 	APIKey    string
 	BaseURL   string
+	Sources   modelsource.Set
 
 	// There is no app-attribution field here any more. The three that used to
 	// be forwarded to the provider client — a referer, a title, a category
@@ -1888,6 +1890,11 @@ type Config struct {
 type Agent struct {
 	config Config
 	client Completer
+	// managedClient distinguishes the provider adapter built by New from a test
+	// completer handed to newAgent. clientAccount is the resolved account the
+	// adapter holds, so a service-set change can replace it before another call.
+	managedClient bool
+	clientAccount modelAccount
 	// limits are the response boundary's three numbers — how many times the wire
 	// is forgiven, how many measured failures buy a stronger tier, and what that
 	// tier may cost one piece of work (taxonomy_boundary.go). They are resolved

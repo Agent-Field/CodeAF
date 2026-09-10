@@ -479,7 +479,8 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// Asked at the moment the picker opens, never at boot: a catalog that
 		// resolved while the person was reading is a catalog the picker can
 		// use, and one that has not resolved answers nil instead of waiting.
-		Models: func() []tui3.Model { return v3Models(models) },
+		Models:  func() []tui3.Model { return v3Models(models) },
+		Sources: settings.Sources,
 		// The same deliverables index the session's config carries, so the
 		// surface's /export rows and the session's own land in one file.
 		ArtifactsIndex: artifactsIndexPath(),
@@ -582,7 +583,8 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// And the key arriving after the door: every conversation this process
 		// holds starts talking with it on its next request, and every one opened
 		// later is built with it (chatv3_process.go's [v3Process.setAPIKey]).
-		ApplyAPIKey: proc.setAPIKey,
+		ApplyAPIKey:       proc.setAPIKey,
+		ApplyModelSources: proc.setModelSources,
 		// With no endpoint named, OpenRouter is the model provider and a missing
 		// key has a direct browser door. A custom OpenAI-compatible endpoint gets
 		// no OpenRouter offer, and a non-interactive launch has nobody to finish
@@ -803,19 +805,28 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// has a good answer without it, and an unknown window leaves the session on
 	// its conservative default.
 	models := proc.Models
+	activeModels, activeModel, activeListsModels := v3CatalogForModel(context.Background(), settings, chosen, models)
 	harnesses := proc.Harnesses
 
 	// The typed programs this conversation can reach, and the two stores they are
 	// found in (chatv3_subharness.go). It is assembled BEFORE the config because
 	// all four seams below are fields of it, and the zero value is subharnesses
 	// off — so nothing here has to ask whether the wiring worked.
-	subharnesses := v3Subharnesses(settings, models, chosen, workspace, harnesses)
+	subharnesses := v3Subharnesses(settings, activeModels, chosen, workspace, harnesses)
+	mediaSettings := settings
+	mediaSettings.Model = chosen
+	mediaSettings.Models = activeModels
+	var media session.MediaGenerator
+	if activeListsModels {
+		media = v3ImageGen(mediaSettings)
+	}
 
 	cfg := session.Config{
 		Workspace:      workspace,
 		Model:          chosen,
 		APIKey:         settings.APIKey,
 		BaseURL:        settings.BaseURL,
+		Sources:        settings.Sources,
 		CompactEnabled: !opts.NoCompact,
 		SessionFile:    transcript,
 		// The folder this conversation keeps everything in (Decision 26). It is
@@ -854,35 +865,35 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// anybody can say so without waiting. Zero keeps session's own
 		// conservative default, and [warmV3Models] corrects it in place the
 		// moment the catalog resolves.
-		ContextWindow:    v3Window(models, chosen),
-		ContextWindowFor: models.ContextLength,
+		ContextWindow:    v3Window(activeModels, activeModel),
+		ContextWindowFor: activeModels.ContextLength,
 		// Whether the model in use can LOOK at a picture, from the catalog's
 		// published input modalities. It is a closure rather than a value
 		// because the answer is about the model the NEXT turn rides, and this
 		// session's model changes under /model (see [v3SeesImages]).
-		SupportsImages: v3SeesImages(models),
+		SupportsImages: v3SeesImages(activeModels),
 		// The published answer to "may this call carry this knob", which the
 		// adapter asks before it lets an optional field travel. It was wired to
 		// nothing on this path, so a reasoning level set with ctrl+t or
 		// --reasoning went to every model blind — and on a router, a knob no
 		// endpoint publishes is not a 400 but a 404 with no endpoints left to
 		// serve the request (internal/provider's endpoints.go).
-		SupportsParameter: models.SupportsParameter,
-		ReasoningProfile:  config.ReasoningProfileSeam(models),
+		SupportsParameter: activeModels.SupportsParameter,
+		ReasoningProfile:  config.ReasoningProfileSeam(activeModels),
 		// And the model's own published price, which is what bounds the latency
 		// ask: this session wants the fastest endpoint, not the dearest one
 		// wearing the model's name (internal/provider's latencyPriceCeiling).
-		ModelPrice: models.PriceNow,
+		ModelPrice: activeModels.PriceNow,
 		// Where a conversation goes when nothing serving its model will take the
 		// request at all. Closures again, and for the same reason as the vision
 		// gate: the question is about the model the failing turn was ON, which
 		// /model moves.
-		NearestModels: v3NearestModels(models),
+		NearestModels: v3NearestModels(activeModels),
 		// The models a task may be handed to, asked at the moment a proposal
 		// names one and never at boot — the picker's own bargain, because both
 		// questions are about a catalog that may still be warming and neither of
 		// them may wait for it.
-		TaskModels: v3TaskModels(models),
+		TaskModels: v3TaskModels(activeModels),
 		// The two halves of the harness offer (internal/session's harness.go):
 		// what a turn is matched against, and what a yes reaches. They are
 		// filled together because either one alone is detection off — a
@@ -924,7 +935,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// The media client, on the contract's terms: nil keeps every
 		// generation verb off the belt. The RESOLVER (MediaModel) is wired
 		// after governance lands, because its pin rung reads RolesSource.
-		Media: v3ImageGen(settings),
+		Media: media,
 		// THE AMBIENT SIDE (chatv3_standing.go). It is filled for every door
 		// that is a CONVERSATION — chat, resume, engine — and taken away again
 		// on the --once path below, because nothing unwatched may set up
@@ -972,9 +983,11 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// and a nil one keeps every generation tool off the belt rather than on it
 	// and failing. The resolver is nil for nobody: it answers "" per modality,
 	// which is the same absence at a finer grain.
-	cfg.Media = v3MediaClient(settings)
-	cfg.MediaModel = v3MediaModel(models, settings.ProfileDir, cfg.RolesSource)
-	cfg.MediaPick = v3MediaPick(models)
+	if activeListsModels {
+		cfg.Media = v3MediaClient(mediaSettings)
+		cfg.MediaModel = v3MediaModel(activeModels, settings.ProfileDir, cfg.RolesSource)
+		cfg.MediaPick = v3MediaPick(activeModels)
+	}
 
 	// AND THE RUN DOOR IS BUILT FROM THE SAME PAIR. A saved harness may name a
 	// media verb on its whitelist, and the node that reaches for it at run time
@@ -1008,7 +1021,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 
 	return &v3Launch{
 		Settings:     settings,
-		Models:       models,
+		Models:       activeModels,
 		Harnesses:    harnesses,
 		Config:       cfg,
 		Model:        chosen,

@@ -33,6 +33,10 @@ type Config struct {
 	APIKey  string
 	BaseURL string
 	Model   string
+	// KeyOptional is true only for a service such as a local Ollama runner that
+	// explicitly accepts an empty key. The ordinary keyless client remains the
+	// first-run state and refuses before the wire.
+	KeyOptional bool
 	// Effort is the operator's own pin carried by the model value this client
 	// was built from, such as `vendor/model:high`. It belongs to this client
 	// rather than a context because one run holds several differently pinned
@@ -262,7 +266,7 @@ func (c *Client) SetAPIKey(key string) error {
 func (c *Client) apiKeyNow() (string, error) {
 	c.keyMu.RLock()
 	defer c.keyMu.RUnlock()
-	if c.apiKey == "" {
+	if c.apiKey == "" && !c.config.KeyOptional {
 		return "", ErrNoAPIKey
 	}
 	return c.apiKey, nil
@@ -313,7 +317,7 @@ func (c *Client) ExecuteToolCallLoop(
 	// the loop is a fact about the SHIPPED ROUTER's own dialect — the
 	// categories header, the refusal ladder — and not about whether some base
 	// carries a `provider` object (prefcarry.go).
-	if c.shippedRouterHint() {
+	if c.shippedRouterHint() || c.config.KeyOptional {
 		return c.executeOwnToolCallLoop(ctx, messages, tools, config, call, options...)
 	}
 	base := c.sdkClient()
@@ -2042,7 +2046,9 @@ func (c *Client) newHTTPRequest(ctx context.Context, request *ai.Request, body [
 		return nil, err
 	}
 	httpRequest.Header.Set("Content-Type", "application/json")
-	httpRequest.Header.Set("Authorization", "Bearer "+apiKey)
+	if apiKey != "" {
+		httpRequest.Header.Set("Authorization", "Bearer "+apiKey)
+	}
 	if stream {
 		httpRequest.Header.Set("Accept", "text/event-stream")
 	}

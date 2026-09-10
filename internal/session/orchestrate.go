@@ -1080,6 +1080,7 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 		Model:         model,
 		APIKey:        parent.APIKey,
 		BaseURL:       parent.BaseURL,
+		Sources:       parent.Sources,
 		ContextWindow: window,
 		// And the catalog with it, for the reason newTaskAgent hands it down:
 		// a worker that switches its own model has to be able to learn that

@@ -938,6 +938,7 @@ func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, le
 		Model:     model,
 		APIKey:    parent.APIKey,
 		BaseURL:   parent.BaseURL,
+		Sources:   parent.Sources,
 		// THE WINDOW OF THE MODEL THIS HAND WILL ACTUALLY RUN, which is the
 		// caller's own except where a careful part lifted it onto another tier
 		// — and then it is that model's card and not this one's

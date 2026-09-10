@@ -231,6 +231,9 @@ func NewMemoryTidy(parent Config, brainPath, root string, idle standing.Idle) st
 				return
 			}
 			settings := parent.clientConfig(model, providerTimeout)
+			// The pass carries its model explicitly; use the bare id chosen by the
+			// service door so the prefix never reaches the vendor's wire.
+			model = settings.Model
 			settings.Routing = provider.StaticRouting(parent.Routing)
 			client, built = provider.NewClient(settings)
 		})

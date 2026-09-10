@@ -52,14 +52,35 @@ package main
 // sound is a speaker rather than a listener.
 
 import (
+	"context"
 	"log"
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
+
+// v3CatalogForModel resolves published capabilities from the service that
+// serves model. A listing-less service gets an empty catalog without a fetch,
+// which keeps every media verb absent. A listing-capable direct service gets
+// its own source-scoped lazy catalog rather than borrowing OpenRouter's rows.
+func v3CatalogForModel(ctx context.Context, settings config.Config, model string, defaults *catalog.Catalog) (*catalog.Catalog, string, bool) {
+	set := settings.Sources.OrDefault(settings.APIKey, settings.BaseURL)
+	service, bare := set.For(model)
+	if strings.EqualFold(service.Source.ID, modelsource.DefaultID) {
+		return defaults, bare, true
+	}
+	if service.Source.Listing == modelsource.ListingNone {
+		return &catalog.Catalog{}, bare, false
+	}
+	return catalog.LoadLazy(ctx, catalog.Options{
+		Source: service.Source.ID, BaseURL: service.Address, APIKey: service.Key,
+		Dir: settings.ProfileDir,
+	}), bare, true
+}
 
 // v3MediaSlot is the settings slot each modality's first rung reads. Vision is
 // the one that is not a capability slot: "looking" has always been its own
