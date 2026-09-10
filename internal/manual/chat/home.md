@@ -22,9 +22,11 @@ Under the tab bar it is **one flat list**, ranked by what wants you first, with 
 demoted to a tag out at the right of each row. There is no project tree and no folded block
 of other projects; `alt+g` groups the same list by project when you want that shape.
 
-Home is the **first of seven places** — home, tasks, standing, memory, spend, search,
-settings — drawn as a tab bar under the top line, with `tab` and `alt+1`…`alt+7` between
-them. See **Places**.
+Home is the **first of the four places on the tab bar** — `home  tasks  spend  settings`,
+drawn under the top line, with `tab` and `alt+1`…`alt+4` between them. Standing, memory and
+search are places too, off the bar: `/standing`, `/memory`, `/search` and `alt+5`…`alt+7`
+reach them — the three digits past the bar still open a place rather than doing nothing.
+See **Places**.
 
 It still does nothing on its own: no notifications, no charts, no history graphs. You open
 it, you see where things stand, and you either act on something or leave.
@@ -61,7 +63,7 @@ effect the launch is the launch you always had, with home already open on top of
 **The cursor starts on the conversation this window is holding** — the row `esc` drops
 back into, visibly selected, wearing the one band on the screen. So the first frame already
 answers "where am I". `↑` off the top of the list walks up onto the **tab bar** — the row of
-seven words over the list, which the cursor can stand on and walk along (see *Where the
+place words over the list, which the cursor can stand on and walk along (see *Where the
 cursor starts*, and *How do I move between the tabs with the arrow keys* on the `places`
 page); `esc` goes on with what you were doing.
 
@@ -107,7 +109,7 @@ the right*). Top to bottom:
 
 ```
  aforge                                                             $0.55 / $500 · tue 1:11pm
-  home   tasks 1   standing   memory 2   spend   search   settings
+  home   tasks 1   spend   settings
  ─────────────────────────────────────────────────────────────────────────────────────────
  since you left · 3h
  a watch fired at 6am — nothing had changed, and it says so                      standing
@@ -122,7 +124,7 @@ the right*). Top to bottom:
 ```
 
 1. **the pulse line** — on home, the day's budget and the clock (its own section below);
-2. **the seven-place tab bar** and a dim rule under it — that is the router's frame, and
+2. **the four-place tab bar** and a dim rule under it — that is the router's frame, and
    *Places* describes it;
 3. **the `since you left` ledger**, drawn only when something happened on its own while you
    were away, each line a door into the place it names;
@@ -394,7 +396,7 @@ the pulse, the tab bar, the rule, the rows and the fold:
 
 ```
  aforge                                                                   tue 8:04am
-  home   tasks   standing   memory   spend   search   settings
+  home   tasks   spend   settings
  ────────────────────────────────────────────────────────────────────────────────────
  ○ Swarm Task Splitting Ideation     aforge-v2                                    2h
  ○ Bounty Reward Companies           leadgen                                      3h
@@ -685,7 +687,7 @@ another window asks can take up to ten seconds to reach `want you` on a chat's t
 The line itself never reads a file when it is drawn; it shows the last reading.
 
 **The money on this line is the money on the spend place**, to the cent — one reading of
-one file, not two that happen to agree. Press `alt+5` and the pointer line there reads
+one file, not two that happen to agree. Press `alt+3` and the pointer line there reads
 `today $0.55 of $500` over the same total, and Settings→Spending's `today` row says it
 a third time. It is also the same figure **wherever you are standing**: home, tasks,
 standing, memory, spend, search and settings all draw the day the machine actually had.
@@ -710,9 +712,9 @@ on the first keystroke means something safe: back into your own conversation.
 A window whose own conversation is not on the list falls to the **first row the cursor can
 stand on**.
 
-**`↑` off the top row of the list walks up onto the tab bar** — the row of seven words over
+**`↑` off the top row of the list walks up onto the tab bar** — the row of four words over
 the list. The word you are standing in wears the cursor's band there instead of its usual
-mark, `←` and `→` walk along the seven without opening anything, `enter` or `↓` goes into
+mark, `←` and `→` walk along the four without opening anything, `enter` or `↓` goes into
 the one under the cursor, and `esc` puts the cursor back on the row it came from. The
 *places* page has the whole of it under *How do I move between the tabs with the arrow
 keys*.
@@ -744,9 +746,9 @@ its own that says it in full:
 
 | What the card said | Where it is now |
 |---|---|
-| `keeping an eye on` | the **standing** place — `alt+3`, or type `standing` |
+| `keeping an eye on` | the **standing** place — `alt+5`, or type `standing` |
 | `since you left` | the **`since you left` ledger** at the top of home's own list, where each line is a door into the place it happened in (*What is since you left*) |
-| `today` — chats, tasks, money | the **pulse line** at the top of every place and every chat says `$0.55 / $500`; the **spend** place — `alt+5` — has the days, the models and what each thing was for |
+| `today` — chats, tasks, money | the **pulse line** at the top of every place and every chat says `$0.55 / $500`; the **spend** place — `alt+3` — has the days, the models and what each thing was for |
 | `agents` — the little chart | the pulse line's `4 moving`, which is the figure the chart was the shape of |
 | `thinking` — the install's rung | the `thinking` row of `/settings`, which is where that setting has always been written |
 
@@ -1885,8 +1887,9 @@ from the first minute on this machine, whatever it holds, and stay there through
 
 ## Is there a key for home?
 
-Three of them. **`alt+1`** goes straight there from anywhere — home is the first of seven
-places, and each answers to its own position on the tab bar, `alt+1` through `alt+7`.
+Three of them. **`alt+1`** goes straight there from anywhere — home is the first of the
+four places on the tab bar, and each answers to its own position, `alt+1` through `alt+4`
+(the three places off the bar answer `alt+5` through `alt+7`).
 **Space twice on an empty box** goes there from inside a conversation, and **`tab`** walks to
 it from any other place. `/home` opens it too.
 
@@ -2120,7 +2123,7 @@ running, and `=` when it is paused. The note is what it is asking or what it is 
 `keeping an eye on` band under a project any more — the resting list is what wants you now,
 and a watch due on Monday wants nothing. Three places have those:
 
-- **the standing place** (`alt+3`, `/standing`), which is every promise this machine has
+- **the standing place** (`alt+5`, `/standing`), which is every promise this machine has
   made, with how much rope each has — and which is where the `keeping an eye on` list lives
   in full;
 - **the `since you left` ledger**, on the morning one of them has actually fired.
@@ -2515,7 +2518,7 @@ a dim `▸ …N more items` door. Paused, stopped and absent items draw nothing.
 **It is not on the resting card.** The card beside the flat list is the bands that act
 (*Why is there no preview on the right*); `next up` is drawn on the **phone sheet** and on
 the card **while you are searching**. What is coming up across the whole machine is the
-**standing** place — `alt+3`, or type `standing`.
+**standing** place — `alt+5`, or type `standing`.
 
 ## What has this conversation cost — the spend band on home
 

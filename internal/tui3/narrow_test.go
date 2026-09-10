@@ -31,11 +31,16 @@ import (
 // count. The air is what goes now.
 func TestTheNarrowBarStillSaysWhereElseYouCanGo(t *testing.T) {
 	a := placeApp(t)
-	for _, width := range []int{60, 80, 120, 160} {
+	// THE WIDTH WHERE THE AIR GOES is one cell under the bar's own width: the
+	// words still fit there once the gaps between them are given up. It is read
+	// off the bar rather than typed, because the bar is four words now and a
+	// literal sixty was a width measured against seven.
+	tight := ansi.StringWidth(plain(a.placeTabBar(200, false, a.pal))) - 1
+	for _, width := range []int{tight, 60, 80, 120, 160} {
 		bar := plain(a.placeTabBar(width, false, a.pal))
-		for _, id := range pages() {
+		for _, id := range barPages(a.page, false) {
 			if !strings.Contains(bar, id.word()) {
-				t.Fatalf("at %d columns the bar drew\n\t%q\nand a person cannot reach %q from it; every one of the seven places should be on the row:\n\t%q",
+				t.Fatalf("at %d columns the bar drew\n\t%q\nand a person cannot reach %q from it; every one of its places should be on the row:\n\t%q",
 					width, bar, id.word(), plain(a.placeTabBar(200, false, a.pal)))
 			}
 		}
@@ -50,11 +55,11 @@ func TestTheNarrowBarStillSaysWhereElseYouCanGo(t *testing.T) {
 	wide := plain(a.placeTabBar(120, false, a.pal))
 	if !strings.Contains(wide, "home   tasks") {
 		t.Fatalf("at 120 columns the bar drew\n\t%q\nand the air between two chips is gone; it should read\n\t%q",
-			wide, "  home   tasks   standing …")
+			wide, "  home   tasks   spend   settings")
 	}
-	if narrow := plain(a.placeTabBar(60, false, a.pal)); !strings.Contains(narrow, "home  tasks") {
-		t.Fatalf("at 60 columns the bar drew\n\t%q\nand it should carry every word with the air between the chips given up:\n\t%q",
-			narrow, "  home  tasks  standing  memory  spend  search  settings")
+	if narrow := plain(a.placeTabBar(tight, false, a.pal)); !strings.Contains(narrow, "home  tasks") {
+		t.Fatalf("at %d columns the bar drew\n\t%q\nand it should carry every word with the air between the chips given up:\n\t%q",
+			tight, narrow, "  home  tasks  spend  settings")
 	}
 }
 
@@ -67,14 +72,14 @@ func TestTheNarrowBarStillSaysWhereElseYouCanGo(t *testing.T) {
 // reaches them is on the foot of every place.
 func TestABarTooNarrowForEveryWordSaysHowManyItDropped(t *testing.T) {
 	a := placeApp(t)
-	for _, tc := range []struct{ width int }{{40}, {24}} {
+	for _, tc := range []struct{ width int }{{28}, {24}} {
 		bar := plain(a.placeTabBar(tc.width, false, a.pal))
 		if !strings.Contains(bar, a.page.word()) {
 			t.Fatalf("at %d columns the bar drew\n\t%q\nand dropped the place you are standing in (%q)", tc.width, bar, a.page.word())
 		}
 		if !strings.Contains(bar, tokens.GlyphCollapsed) {
 			t.Fatalf("at %d columns the bar drew\n\t%q\nand said nothing about the places it could not carry; it should end in a marked count, as in\n\t%q",
-				tc.width, bar, "  home  tasks  "+tokens.GlyphCollapsed+" 5")
+				tc.width, bar, "  home  tasks  "+tokens.GlyphCollapsed+" 2")
 		}
 		if got := ansi.StringWidth(bar); got > tc.width {
 			t.Fatalf("at %d columns the bar is %d cells wide and runs past the frame:\n\t%q", tc.width, got, bar)
@@ -83,7 +88,7 @@ func TestABarTooNarrowForEveryWordSaysHowManyItDropped(t *testing.T) {
 		// is one the count has to stand for, or the row is a second way of
 		// hiding them.
 		missing := 0
-		for _, id := range pages() {
+		for _, id := range barPages(a.page, false) {
 			if !strings.Contains(bar, id.word()) {
 				missing++
 			}
@@ -103,7 +108,8 @@ func TestABarTooNarrowForEveryWordSaysHowManyItDropped(t *testing.T) {
 		}
 	}
 	// AND A COUNT NEVER APPEARS ON A BAR THAT CARRIED EVERYTHING. A `+0` beside
-	// seven words would be furniture, and furniture is what people stop seeing.
+	// four words would be furniture, and furniture is what people stop seeing —
+	// and the three places reached by command are not a count the bar owes.
 	for _, width := range []int{60, 80, 120, 160} {
 		if bar := plain(a.placeTabBar(width, false, a.pal)); strings.Contains(bar, "+") {
 			t.Fatalf("at %d columns every place is on the bar and it still counts something:\n\t%q", width, bar)
