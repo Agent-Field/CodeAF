@@ -620,7 +620,7 @@ func TestTheTaskNameIsWholeBeforeAnyFactGetsACell(t *testing.T) {
 	// row, because a row that has already spent the one thing it was drawn to
 	// say may not spend cells on a figure as well.
 	item := reading.items[0]
-	narrow := plain(tasksRow(tasksLine{kind: tasksLineTask, item: item}, 30, now, newPalette(tokens.NoColor, false)))
+	narrow := plain(tasksRow(tasksLine{kind: tasksLineTask, item: item}, 30, now, newPalette(tokens.NoColor, false), false))
 	if strings.Contains(narrow, "$") || strings.Contains(narrow, rowSep) {
 		t.Fatalf("a frame too narrow for the name alone drew\n  %s\nwant the cut name and no facts beside it", narrow)
 	}

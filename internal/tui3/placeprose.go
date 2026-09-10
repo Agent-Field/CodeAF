@@ -96,6 +96,53 @@ const (
 	standNotOursWord = "that one does not stand over this conversation"
 )
 
+// ── THE FIVE-LEVEL SCALE (SCREEN 2a) ────────────────────────────────────────
+//
+// A terminal has no font sizes, so a place's hierarchy is five levels built
+// from brightness, weight, case and air — and each is spelled ONCE, here, so a
+// place cannot light a heading or bold a fact without saying so in this file:
+//
+//	page      the tab bar alone, bold, and nowhere in a body
+//	section   [placeHeading] — lowercase, muted, one blank row above it
+//	subject   [placeSubject] — the reading ink, bold inside the band
+//	note      [placeFactInk] — dim, lifted to the reading ink inside the band
+//	margin    the same ink as a note, flushed right
+//
+// and one ground for both hands, [placeBand]. SECTIONS ARE MUTED AND NOT DIM,
+// which is where this departs from the screen's own mock: home's panel headings
+// wear muted (homecell.go's [homeCellHead]), DESIGN-LANGUAGE's accent budget
+// says headings wear muted, and one heading ink across the bar is the law this
+// scale exists for. The accent is spent on the live thing and nothing here.
+
+// placeHeading is a section heading on a place.
+func placeHeading(text string, pal palette) string { return pal.muted(text) }
+
+// placeSubject is the thing a row is about. COLOUR IS STROKE, NEVER FILL: the
+// row's glyph carries its state and the words beside it keep the ordinary ink
+// (docs/DESIGN-LANGUAGE.md), so a finished task and a running one are told
+// apart by their marks rather than by a second ink on their titles.
+func placeSubject(text string, lit bool, pal palette) string {
+	if lit {
+		return pal.bold(pal.ink(text))
+	}
+	return pal.ink(text)
+}
+
+// placeFactInk is the ink of what is true about a row and of its margin: dim,
+// and the reading ink inside the band — dim grey on a raised ground is grey on
+// grey, and the facts are the half of the row a person stopped on it to read.
+func placeFactInk(lit bool, pal palette) func(string) string {
+	if lit {
+		return pal.ink
+	}
+	return pal.dim
+}
+
+// placeBand is the ground under the row the cursor or the pointer is on. They
+// are ONE step (THE GROUND LADDER): a place has nothing open, so nothing on it
+// wears the selected step.
+func placeBand(text string, width int, pal palette) string { return pal.cursor(text, width) }
+
 // ── a place with nothing in it ──────────────────────────────────────────────
 
 // placeBlank is what one place says while it holds nothing: the heading its
@@ -145,7 +192,7 @@ func placeWhisperLines(id page, width int, pal palette) []string {
 		heading = id.word()
 	}
 	return []string{
-		" " + pal.muted(fit(heading, width-1)),
+		" " + placeHeading(fit(heading, width-1), pal),
 		placeWhisperLead + pal.dim(noteFit(blank.whisper, width-len(placeWhisperLead))),
 	}
 }

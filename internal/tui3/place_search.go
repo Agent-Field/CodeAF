@@ -398,7 +398,8 @@ func (placeSearch) remote(a *app) string {
 }
 
 func (placeSearch) body(a *app, width, room int) []placeRow {
-	body := a.search.reading.rows(width, a.pal)
+	lit := func(i int) bool { return i == a.search.cursor || i == a.search.hover }
+	body := a.search.reading.paint(width, a.pal, lit)
 	// THE WINDOW FOLLOWS THE CURSOR, which is what makes `↓` past the last
 	// visible result scroll rather than walking the selection off the screen.
 	a.search.top = placeTop(a.search.top, a.search.cursor, len(body), room)
@@ -408,8 +409,8 @@ func (placeSearch) body(a *app, width, room int) []placeRow {
 			break
 		}
 		text := body[i]
-		if _, ok := a.search.reading.at(i); ok && (i == a.search.cursor || i == a.search.hover) {
-			text = a.pal.selected(text, width)
+		if _, ok := a.search.reading.at(i); ok && lit(i) {
+			text = placeBand(text, width, a.pal)
 		}
 		rows = append(rows, placeRow{text: text, hit: i})
 	}

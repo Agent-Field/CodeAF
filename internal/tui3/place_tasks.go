@@ -1205,35 +1205,21 @@ func (p *tasksPlace) body(a *app, width, room int) []placeRow {
 			more = true
 			break
 		}
-		hit, lead, lit := taskSheetHit{}, tasksBareLead, false
+		hit, lit := taskSheetHit{}, false
 		if owner := lines[at].owner; owner >= 0 {
 			if r.picks(lines, owner) {
 				hit = taskSheetHit{kind: taskSheetHitRow, index: owner}
-				oncursor := owner == p.cursor
-				hovered := a.hot.kind == hoverTaskSheet && a.hot.index == owner
-				lit = oncursor || hovered
-				// THE TWO CELLS IN FRONT OF EVERY ROW ARE THE LEAD, and on the row a
-				// person is on they carry the mark in the accent — `›` where the
-				// keyboard is and `·` where the pointer is, the same two marks every
-				// other list on this surface leads with ([overlayLead]). Only the
-				// FIRST line of a card takes it: the line under it is the same row
-				// continued, and a second mark would read as a second row.
-				if lines[at].kind == tasksLineTask || lines[at].kind == tasksLineChat {
-					switch {
-					case oncursor:
-						lead = a.pal.accent("› ")
-					case hovered:
-						lead = a.pal.accent("· ")
-					}
-				}
+				// THE KEYBOARD AND THE POINTER ARE ONE FACT ARRIVED AT BY TWO HANDS,
+				// and the row says it the one way every place does: the band, and
+				// the subject bold inside it — no accent mark in the lead, which was
+				// a second accent on a screen whose one accent is the live thing
+				// (placeprose.go's THE FIVE-LEVEL SCALE).
+				lit = owner == p.cursor || (a.hot.kind == hoverTaskSheet && a.hot.index == owner)
 			}
 		}
-		text := r.paint(lines, at, width, a.pal, lead)
-		// NOTHING ON THIS PAGE IS OPEN, so nothing on it wears the selected step.
-		// The keyboard cursor and the pointer are the same fact arrived at by two
-		// hands and THE GROUND LADDER gives them ONE rung.
+		text := r.paint(lines, at, width, a.pal, lit)
 		if lit {
-			text = a.pal.cursor(text, width)
+			text = placeBand(text, width, a.pal)
 		}
 		rows = append(rows, placeRow{text: text, hit: hit})
 		bare = append(bare, !lit)
