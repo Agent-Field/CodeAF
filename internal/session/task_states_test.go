@@ -799,3 +799,103 @@ func TestTheLandingQuestionTakesItsPolicyFromWhoIsDeciding(t *testing.T) {
 		t.Fatal("the floor is the end of a turn and not a clock, and a second timer was started for it")
 	}
 }
+
+// A MERGE ROUND THAT DIED WITH THE PROCESS IS SAID OUT LOUD, AND NOTHING RESTARTS.
+//
+// On 2026-09-09 a person pressed `resolve it` on a conflict card at 03:08:52; the
+// round's worker opened, its journal stops mid-read ten seconds later with no
+// ending, and the checkpoint still said `merge: conflicted`. The resume drew the
+// same card with the same three answers and said nothing at all — which reads as
+// a press that never happened. It says so now, the claim is dropped so the next
+// press is taken, and no round is spent on the way up.
+func TestARecoveredMergeRoundSaysItWasCutAndTheCardStillAsks(t *testing.T) {
+	graph := &TaskGraph{}
+	recovery := graph.rehydrate(taskDocument{
+		Type: taskDocumentType, Version: taskFileVersion, Seq: 1,
+		Nodes: []taskRecord{{
+			ID: 1, Title: "Hidden rental digs", Brief: "find them", Acceptance: "a list",
+			State: TaskUnverified, Merge: mergeConflicted, Branch: "task/rentals",
+			Changed: []string{"notes.md"}, Resolving: true,
+		}},
+	}, t.TempDir(), TaskSettleAsk)
+
+	if recovery.cutRounds != 1 {
+		t.Fatalf("the recovery counted %d cut rounds, want the one", recovery.cutRounds)
+	}
+	if note := recovery.note(); !strings.Contains(note, "1 "+taskWordYourCall+" (its merge round was cut)") {
+		t.Fatalf("the resumed session says %q, and never that the round was cut", note)
+	}
+	// THE CLAIM IS GONE, so the next press is taken rather than refused for a
+	// worker that stopped existing when the process did.
+	node := graph.node(1)
+	if node == nil {
+		t.Fatal("the node did not come back at all")
+	}
+	if !node.claimResolving() {
+		t.Fatal("a round nothing is running still holds the node's claim")
+	}
+	node.releaseResolving()
+	// AND THE CARD IS ASKING THE SAME QUESTION IT ASKED BEFORE THE PRESS: the
+	// node is exactly where it was, so the three answers are exactly the three.
+	status := ProjectTask(node.notice().StatusFacts())
+	if status.Ask.Kind != TaskAskConflict {
+		t.Fatalf("the restored card asks %q, want the conflict question", status.Ask.Kind)
+	}
+	if status.Ask.Owner != TaskAskOwnerPerson {
+		t.Fatalf("the restored conflict is held by %q", status.Ask.Owner)
+	}
+	if node.state != TaskUnverified || node.merge != mergeConflicted {
+		t.Fatalf("the recovery moved the node to %q/%q; a cut round changes nothing about the work", node.state, node.merge)
+	}
+}
+
+// AND AN ORDINARY YOUR-CALL LANDING GAINS NO CLAUSE. The parenthetical is for
+// the press that bought nothing, and a resume that hung it on every unchecked
+// landing would be telling people about rounds nobody ever asked for.
+func TestARecoveredYourCallWithNoRoundSaysNothingAboutRounds(t *testing.T) {
+	graph := &TaskGraph{}
+	recovery := graph.rehydrate(taskDocument{
+		Type: taskDocumentType, Version: taskFileVersion, Seq: 1,
+		Nodes: []taskRecord{{
+			ID: 1, Title: "Hidden rental digs", Brief: "find them", Acceptance: "a list",
+			State: TaskUnverified, Merge: mergeConflicted, Branch: "task/rentals",
+		}},
+	}, t.TempDir(), TaskSettleAsk)
+	if recovery.cutRounds != 0 {
+		t.Fatalf("a landing nobody pressed anything on counted %d cut rounds", recovery.cutRounds)
+	}
+	if note := recovery.note(); strings.Contains(note, "merge round") {
+		t.Fatalf("the resumed session says %q about a round that never ran", note)
+	}
+}
+
+// AND THE CLAIM REACHES THE DISK, which is the whole of why the sentence above
+// is possible: it is taken in memory to stop two workers sharing one working
+// copy, and a fact that never reached the checkpoint could not be read back.
+func TestTakingAMergeRoundsClaimIsWrittenToTheCheckpoint(t *testing.T) {
+	graph := &TaskGraph{}
+	graph.rehydrate(taskDocument{
+		Type: taskDocumentType, Version: taskFileVersion, Seq: 1,
+		Nodes: []taskRecord{{
+			ID: 1, Title: "Hidden rental digs", Brief: "find them", Acceptance: "a list",
+			State: TaskUnverified, Merge: mergeConflicted, Branch: "task/rentals",
+		}},
+	}, t.TempDir(), TaskSettleAsk)
+	node := graph.node(1)
+	if !node.claimResolving() {
+		t.Fatal("the claim was refused on a node with no round in flight")
+	}
+	graph.mu.Lock()
+	record := node.recordLocked()
+	graph.mu.Unlock()
+	if !record.Resolving {
+		t.Fatal("the checkpoint does not say a round was in flight, so a resume cannot say it was cut")
+	}
+	node.releaseResolving()
+	graph.mu.Lock()
+	record = node.recordLocked()
+	graph.mu.Unlock()
+	if record.Resolving {
+		t.Fatal("a round that landed left its claim on the record")
+	}
+}

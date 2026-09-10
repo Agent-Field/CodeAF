@@ -776,6 +776,20 @@ type TaskNode struct {
 	// decision it was — a flag written afterwards would be a flag the update
 	// announcing the end raced past.
 	stopped bool
+	// handed is the receipt for THIS SESSION'S own hand-over press: the person
+	// asked aforge to decide this one card, and the note that asks it has been
+	// put in front of the model. It is not the same fact as [TaskNode.decider]
+	// being the model — a landing under `task.settle = auto` writes that by
+	// policy and presses nothing — and it travels with the owner through
+	// [TaskNode.givesBackLocked] so a hand-back leaves no receipt behind
+	// (task_audit.go's [TaskNode.wasHandedOver] states the whole rule).
+	handed bool
+	// stopReason is what whoever pulled the stop said they were stopping it FOR,
+	// and "" for every stop that came with no words — which is every one a person
+	// pulls, their card being a decision and not a sentence (cancel.go). It is
+	// written beside the flag and for the same reason: the landing this stop
+	// causes is the one place the reason can still be put on the record.
+	stopReason string
 	// ending is why this node stopped where it did, once it has (task_contract.go's
 	// [TaskEnding]), and "" until then and forever on a node that finished. THE
 	// FIRST CAUSE WINS: [TaskNode.end] refuses to overwrite one already written,
@@ -1983,6 +1997,14 @@ func (n *TaskNode) wasStopped() bool {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	return n.stopped
+}
+
+// stoppedLead is the first line of a stopped node's report: the word, and after
+// it the reason whoever pulled the stop gave, where there was one.
+func (n *TaskNode) stoppedLead() string {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return stopBecause(taskStoppedWord, n.stopReason)
 }
 
 func (n *TaskNode) markStopped() {
@@ -4048,7 +4070,7 @@ func (a *Agent) handBackUnsettled() {
 		if node == nil || node.decider != TaskAskOwnerModel || !a.readsTheDecisionLocked(node) {
 			continue
 		}
-		node.decider = TaskAskOwnerPerson
+		node.givesBackLocked()
 		// A NODE THAT WAS ACTUALLY SETTLED IS NOT NEWS. The model spent its verb,
 		// the resolution published its own landing, and a second update saying the
 		// question is back with the person would put a card up over work that has
@@ -4099,7 +4121,7 @@ func (g *TaskGraph) handBackOnLoad() []*TaskNode {
 		if node == nil || node.decider != TaskAskOwnerModel {
 			continue
 		}
-		node.decider = TaskAskOwnerPerson
+		node.givesBackLocked()
 		if node.state == TaskUnverified {
 			handed = append(handed, node)
 		}
@@ -4802,7 +4824,7 @@ func (a *Agent) settleUnfinished(ctx context.Context, node *TaskNode, tree taskT
 		if node.wasStopped() {
 			merge, changed := keepHome(node, tree, changed)
 			node.end(TaskEndingStopped)
-			node.finish(withReport("stopped", report), changed, tree.branch, merge)
+			node.finish(withReport(node.stoppedLead(), report), changed, tree.branch, merge)
 			return TaskFailed, true
 		}
 		// Lifecycle cancellation is an interruption, never a finding about the

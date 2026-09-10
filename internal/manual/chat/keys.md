@@ -2345,10 +2345,13 @@ it with `↑`/`↓`, which steps through tool calls, proposals and landed cards 
 message box must be **empty**, with no panel, picker or copy mode up. A letter typed into a
 sentence stays a letter, always.
 
-Once answered the letters go away and one dim line takes their place saying what you chose:
-`you took this as done`, `you said it is not finished`, `sent to be resolved`, or
-`handed to aforge for this one`. The same columns are clickable on the card. See the tasks
-page for what each answer does to the work.
+Once answered the letters go away and the receipt every question leaves takes their place,
+`decided <the card's head> → accept · you · 14:02 · c change`: the answer in the card's own
+words (`accept`, `not right`, `resolve it`, `drop it`), who decided and when (the questions
+page has the shape). The task's report then leads `you took this as done` or
+`incomplete — you said it is not finished`. `d` decides nothing yet: the answers stay drawn
+and the reason row reads `aforge is deciding`. The same columns are clickable on the card.
+See the tasks page for what each answer does to the work.
 
 **Inside the task's room the same keys need no selection.** The room is the task, so
 `a`, `n`, `s` and `d` over an empty message box answer it directly, the answers row stands

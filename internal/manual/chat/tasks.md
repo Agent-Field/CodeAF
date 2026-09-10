@@ -4150,8 +4150,15 @@ press `esc`.
 Pressing `x` twice, or on work that has already landed, does nothing but say so — the
 second press answers `task 7 (Fix the parser) is already stopping`.
 
-**You can still ask in words instead** — "stop task 7" — and the model has the door
-through its `tasks` tool. The key is faster and does not spend a turn.
+**You can still ask in words instead** — "stop task 7", "cancel task 7" — and the model has
+a real stop of its own: it calls `tasks` with that id and `stop`, which is this same door,
+so the ending is identical. It asks no confirmation card, because the sentence you typed is
+already the answer to that question, and your reason goes onto the task's record beside the
+word `stopped`. The key is faster and does not spend a turn. **A line sent INTO a task is
+never a stop** — the model's `say`, or your own words in its room, are messages the worker
+may ignore or answer while carrying on, and a worker that then delivers nothing is read as
+unfinished work and handed back for a round of `closing gaps` while it goes on spending.
+`Asking the chat to stop a task` on the task-controls page has the whole of it.
 
 What else you can do yourself, on a task that is running:
 
@@ -4314,11 +4321,14 @@ not drawn, and its letter does nothing rather than failing when you press it.
 MOVE the question rather than answering it, so a row that offered only those would have
 stopped being a question — the card draws them beside an answer or not at all.
 
-**Answered means the chips are gone, not greyed.** They are replaced by one dim line in
-your own voice saying what you did: `you took this as done`, `you said it is not finished`,
-`sent to be resolved` for a conflict handed to the merge round, `handed to aforge for this
-one` after `[d]`, or `already answered` when somebody got there first — the model's own
-settling, or another window.
+**Answered means the chips are gone, not greyed.** They are replaced by the one receipt
+line every question leaves, `decided <the card's head> → accept · you · 14:02 · c change`:
+the pick in the card's own words (`accept`, `not right`, `resolve it`, `drop it`), who
+decided — `you`, `aforge, on your settings` when the model settled it, `another window`
+when somebody else got there first — and when. The report under the second card then
+leads `you took this as done` or `incomplete — you said it is not finished`. After `[d]`
+nothing is decided yet: the answers stay drawn and the reason row reads `aforge is
+deciding`.
 
 The card's own head is **not** rewritten — it is the record of how the work came home, kept
 branch and all. What follows is a **second** card, when the task re-settles into `done` or
@@ -4757,8 +4767,9 @@ words. Its reply should say what it forwarded and to which task.
 
 `tasks` with `say` remains a message from the model. It cannot authorize an assignment
 revision. Task workers cannot use `forward`, and it cannot address another session.
-It cannot be combined with `say`, `continue`, or `resolve`. A result arriving by itself
-does not authorize forwarding an old message of yours.
+It cannot be combined with `say`, `continue`, `resolve`, or `stop` — and neither can
+`stop` be combined with any of them, since it ends the task the others act on.
+A result arriving by itself does not authorize forwarding an old message of yours.
 
 Repeating the same forward to the same task is acknowledged without sending twice.
 Typing the same sentence again is a new message. A receipt means the direction was
