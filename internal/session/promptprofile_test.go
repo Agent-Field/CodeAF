@@ -161,8 +161,6 @@ func TestEveryRuledSectionIsAHeadingThePageHas(t *testing.T) {
 // AND THE CUT TAKES WHAT IT NAMES AND LEAVES WHAT IT DOES NOT.
 func TestALeanPageDropsExactlyTheSectionsTheTableNames(t *testing.T) {
 	config := windowConfig(t, leanWindow)
-	config.Standing = &Standing{}
-	config.standingItems = &fakeStanding{}
 	full := strings.TrimRight(promptWithBeltFacts(config), "\n")
 	lean := leanPage(full)
 
@@ -308,13 +306,22 @@ func TestTheQuestionsGroupIsPreArmedAndNotOffered(t *testing.T) {
 	if strings.Contains(string(loader.Schema), `"`+questionsGroup+`"`) {
 		t.Errorf("the loading verb's enum still takes %q", questionsGroup)
 	}
-	// AND THE PAGE SAYS `ask` IS THERE rather than telling the model to fetch it.
+	// AND THE PAGE DOES NOT SEND IT TO FETCH WHAT IT IS HOLDING. The shelved
+	// wording is composed from [Config.shelvesFact], so a lean page renders the
+	// present case for this row — which the diet left EMPTY, because the routing
+	// table already says when to reach for `ask` — and never the loading line.
 	page := renderSystemAt(agent.config, time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC))
 	if strings.Contains(page, "`ask` waits in the `"+questionsGroup+"` group") {
 		t.Error("a lean page tells the model to load `ask`, which is already in its tool list")
 	}
-	if !strings.Contains(page, "ask through `ask`, never in prose") {
-		t.Error("a lean page no longer carries the present-case wording for `ask`")
+	if !strings.Contains(page, "`ask`") {
+		t.Error("a lean page never names `ask`, so the verb it is carrying is one it has not been told about")
+	}
+	// AND A FULL PAGE STILL DOES send it, which is the other half of the same
+	// predicate.
+	full := renderSystemAt(v3ShapedAgent(t).config, time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC))
+	if !strings.Contains(full, "`ask` waits in the `"+questionsGroup+"` group") {
+		t.Error("a full page stopped telling the model how to fetch `ask`")
 	}
 }
 

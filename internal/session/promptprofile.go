@@ -250,14 +250,12 @@ var leanPageSections = []leanSection{{
 		"also the one page a worker and a conversation read byte-identically " +
 		"(taskprompt_test.go), so a profile that trimmed it here would break that pin " +
 		"as well as the outcome.",
-}, {
-	heading: "Things that keep working after this window",
-	keeps:   false,
-	why: "It is `stand`'s section from its heading down, and a lean belt is a belt " +
-		"whose rare verbs wait on a shelf: the mechanics of `when.in` and `when.at` " +
-		"ride WITH the verb, in its own description, and what to do when one fires " +
-		"rides with the message that says one fired. What is left on the page is the " +
-		"third copy.",
+	// THE STANDING SECTION USED TO BE A ROW HERE and is not one any more: the
+	// diet took `# Things that keep working after this window` off the page for
+	// EVERY shape, leaving one sentence composed from [standingFacts] and no
+	// heading at all. A row naming it would now decide nothing, which
+	// promptprofile_test.go refuses — and it is the right outcome: a law the lean
+	// arm did not need turned out to be a law nobody needed on the page.
 }, {
 	heading: "Interrupts and steering",
 	keeps:   false,

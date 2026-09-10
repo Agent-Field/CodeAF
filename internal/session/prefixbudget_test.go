@@ -243,16 +243,24 @@ const fixedPrefixBudget = 48_000
 // every door — so this is a second number and not a raised one.
 //
 // WHAT IT MEASURES AND WHERE IT HAS TO GET TO. On a 16k window the lean prefix
-// is what this test prints: about 34.3 KB against the full arm's 47.4 KB, which
-// is the page's two dropped sections and the four shelved groups and nothing
-// else. The diet's target for this arm is 12,000 bytes
-// (docs/design/prompt-diet/DESIGN.md §6), and lane G cannot reach it alone: of
-// what is left, `ask`'s schema is 4,277 bytes and `fork`'s 2,157 — both lane
-// F's — and the page's remaining 18 KB is the text lanes C, D and E are cutting.
-// So this number STARTS where the profile put it and only ever ratchets DOWN, in
-// the ledger discipline the full budget above is kept under: the lane that lands
-// C's law registry lowers it, and nothing ever raises it.
-const leanPrefixBudget = 34_500
+// is what this test prints. On the profile's own branch it was 34,343 bytes
+// against the full arm's 47,435; merged onto the rest of the diet — lane C's
+// delete pass, lane D's self-describing messages, lane E's pulled mechanics and
+// lane F's contract-only descriptions — it is 31,238 against 39,494, which is
+// page 15,553 plus tool block 15,685.
+//
+// The diet's target for this arm is 12,000 bytes
+// (docs/design/prompt-diet/DESIGN.md §6) and nothing in this wave reaches it. Of
+// the 15,685 bytes of tool block left, `ask`'s schema is 4,277 and `fork`'s
+// 2,157; the seven pi tools are 7,038 of the rest and are not aforge's to trim.
+// So the honest reading is that lean is HALF WAY, and the two things that would
+// close it are a terser `ask` and a ruling on whether a one-call-per-message
+// model should be carrying `fork` at all.
+//
+// THIS NUMBER ONLY EVER RATCHETS DOWN, in the ledger discipline the full budget
+// above is kept under: a lane that takes bytes out lowers it in the same commit,
+// and nothing ever raises it.
+const leanPrefixBudget = 31_300
 
 // leanWindow is the window the lean budget is weighed at. Sixteen thousand
 // tokens is the shape the profile was written for — a local open-weight model —

@@ -954,7 +954,7 @@ picks one before anything is written.
 While a beat is up, the digits belong to it — `3` is the third shape and not the
 third answer — and `esc` backs out of the beat rather than putting the question
 off.
-## Questions on another machine, and on the engine behind an ordinary aforge
+## Questions over the session host and on another machine — do questions work over --host, and on the engine behind an ordinary aforge
 
 **A question reaches you wherever the conversation is, and you answer it where
 you are standing.** That is true on all three roads and there is nothing to turn

@@ -3006,36 +3006,33 @@ speed because the local outage was not time spent generating an answer.
 
 On a model with a small context window, aforge sends a smaller set of
 instructions and a smaller tool list. Nothing is turned off by a setting and
-nobody is asked to choose: it is decided from two facts aforge already has —
-the window the model's own card claims, and whether you are talking to the
-crew's `worker` model. Under 32,000 tokens of window, or on that seat, the
-conversation runs "lean".
+nobody is asked to choose: it is decided from the window the model's own card
+claims, and from whether you are talking to the crew's `worker` model. Under
+32,000 tokens, or on that seat, aforge runs "lean".
 
-Lean changes four things and nothing else:
+Lean changes four things:
 
-- Two sections come off the page: the one about things left to run after the
-  window closes, and the one about interrupts and steering. Everything they say
-  is said again by the tool that does it or by the message that announces it.
-- Six more verbs wait one call away instead of riding in front of every
-  request: `propose_task`, `tasks`, `watch`, `track`, `commit`, `recall` and
-  `read_document`. They are all still here — asking for one costs a single
-  `load_capability` call and the tools arrive on the next request, in the same
-  turn.
+- `# Interrupts and steering` comes off the page. What it explains, each
+  interrupting message now says in its own first words.
+- Seven verbs wait one call away instead of riding in front of every request:
+  `propose_task`, `tasks`, `watch`, `track`, `commit`, `recall` and
+  `read_document`. They are all still here — `load_capability` fetches a group
+  and the schemas arrive on the next request, in the same turn.
 - `ask` is put straight in the tool list rather than waiting to be fetched, so
-  a model that makes one call per message can still ask you a question.
-- Saved memories are off for that conversation. There is no `remember` verb and
-  no `<memory>` block, and the reply says so plainly if you ask. Your memories
-  are untouched — switch back to a larger model and they come back.
+  a model that makes one call per message can still put a question to you.
+- Saved memories are off. There is no `remember` verb and no `<memory>` block,
+  and the reply says so plainly if you ask. Nothing is deleted, and a larger
+  model brings them back. The record of what was said is untouched, and still
+  searchable.
 
 The project's own instructions still ride, cut at 2KiB instead of 8KiB, and
 only the first file found of `AGENTS.md` and `CLAUDE.md`. The reply says the
-file was cut and the rest is on disk.
+file was cut and where the rest is.
 
 Why: everything in front of a request is re-sent on every round of every turn.
 On a 128,000-token window that is a few percent; on a 16,000-token one it is
-most of the room the model has to think in, and every instruction it does not
-need is one more thing to get wrong.
+most of the room the model has to think in.
 
 `AFORGE_PROMPT_PROFILE=lean` or `AFORGE_PROMPT_PROFILE=full` in front of the
-command pins it, which is there for measuring the two against each other. Any
-other value is not a pin at all and the window decides as usual.
+command pins it, which is there for measuring the two arms against each other.
+Any other value is not a pin at all and the window decides as usual.
