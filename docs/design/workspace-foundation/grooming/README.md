@@ -144,3 +144,11 @@ An alternative places decisions/memory in the contents list instead of the
 inspector. The study is not a finalized TUI layout, implemented capability or
 confirmation of scope inheritance. Selection, both placements, light/dark and
 narrow/wide layouts were checked locally. No product E2E claim follows from that.
+
+## Current record model and navigation study
+
+[Logical shapes](DATA-MODEL.md) and their [SVG](DATA-MODEL.svg) distinguish owned
+sequences from typed references. The [workspace model lab](WORKSPACE-MODEL-LAB.md)
+adds Browse, Connections and Records representations over one synthetic fixture,
+with inspectable details, relationship directions and logical fields. It is a
+separate grooming study, not a finalized product surface or new backend contract.
