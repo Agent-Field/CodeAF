@@ -90,6 +90,7 @@ func TestQuestionsE2E(t *testing.T) {
 	t.Run("ALineAsksAndTheKeysAnswerIt", questionsLine)
 	t.Run("ACardCountsDownToItsPickAndEnterTakesIt", questionsCard)
 	t.Run("TheRoomComparesAnnotatesAsksBackAndSends", questionsRoom)
+	t.Run("ACardWithABlockUnderEachAnswerArrivesWhole", questionsBlocksUnderAnswers)
 	t.Run("ASentenceWithHolesIsFilledIn", questionsBlanks)
 	t.Run("AChecklistTicksSeveralAnswers", questionsChecklist)
 	t.Run("PairsAreAnsweredOneRowAtATime", questionsPairs)
@@ -396,6 +397,59 @@ func questionsCard(t *testing.T) {
 	receipt := r.waitFor(30*time.Second, say(t, "questionReceiptWord"), "rewrite the packer?")
 	screenSays(t, receipt, "start it", "the receipt names the pick enter took")
 	screenSays(t, receipt, say(t, "questionReceiptYouWord"), "enter is a person's key and the record says so")
+	shot(t, r, "taken")
+}
+
+// questionsBlocksUnderAnswers is the call a model could not make. On 2026-09-10
+// deepseek-v4-flash was asked, in prose, for a question with a block of evidence
+// under each answer, and three calls running it sent the answers list as a JSON
+// STRING holding the list; every one was refused with `options takes a list`,
+// the turn ended on the loop guard and the person never saw a question. Two
+// things changed (session/toolargs.go, session/tools_ask.go), and this is the
+// scenario that says whether they were enough: the message is PROSE, not the
+// argument object spelled out, because the shape the model reaches for on its
+// own is the thing under test. The law is read off the journal, where the tool
+// calls actually are — one `ask`, no refusal — and off the room, where the
+// blocks stand under the answers they belong to.
+func questionsBlocksUnderAnswers(t *testing.T) {
+	r := questionRig(t, "q-blocks", nil)
+	steer(t, r, `Call the ask tool now, exactly once, and run nothing else. `+
+		`Ask me which index the ledger table should get: a card, kind choice, stakes reversible, `+
+		`the reason being that the migration is written next and an index is cheaper before rows exist. `+
+		`Offer three answers, keyed 1 to 3, labelled "a btree on day", "a hash on account" and "none yet", `+
+		`each with a one-line consequence, and under EACH answer attach one table block titled `+
+		`"rows read per query" whose rows compare a cold read and a warm read for that index. `+
+		`Your pick is the btree, because the reporting job groups by day. `+
+		`When the answer comes back, say in one sentence which answer was taken.`)
+
+	card := awaitQuestion(t, r, "which index", say(t, "questionOpenKeyWord"))
+	screenEchoes(t, card, "btree", "the card lists the answers, and the room behind them is on offer")
+	shot(t, r, "card")
+
+	// THE JOURNAL IS WHERE THE LAW IS READ. The screen can only say a question
+	// arrived; it cannot say how many calls it took, and a question that arrives
+	// on the third try after two argument refusals is the defect wearing a
+	// green screen. One `ask` in the journal and no refusal at all is the whole
+	// of what the fix promised.
+	asks, refusals := 0, 0
+	for _, journal := range sessionTranscripts(t, r.home) {
+		asks += strings.Count(journal, `"function":{"name":"ask"`)
+		refusals += strings.Count(journal, "Invalid arguments: ")
+	}
+	if asks != 1 || refusals != 0 {
+		t.Errorf("the first ask did not arrive whole: %d ask calls and %d argument refusals in the journal, "+
+			"want one call and none refused", asks, refusals)
+	}
+
+	press(t, r, "o")
+	room := r.waitFor(20*time.Second, say(t, "questionRoomBackWord"), say(t, "questionRoomPickWord"))
+	screenSays(t, room, "rows read per query", "the block stands under its answer")
+	screenSays(t, room, "warm", "and it is the table the asker wrote, not its title alone")
+	shot(t, r, "open")
+
+	press(t, r, "Enter")
+	receipt := r.waitFor(30*time.Second, say(t, "questionReceiptWord"), "which index")
+	screenSays(t, receipt, "btree", "the receipt names the answer enter took")
 	shot(t, r, "taken")
 }
 

@@ -30,6 +30,12 @@ type argumentsForTest struct {
 	Rails     struct {
 		MaxPerDay int `json:"max_per_day"`
 	} `json:"rails"`
+	// Options is the shape of `ask`'s answers — a list of objects that each carry
+	// a list — because that is the argument a provider was seen wrap in a string.
+	Options []struct {
+		Key    string   `json:"key"`
+		Blocks []string `json:"blocks"`
+	} `json:"options"`
 }
 
 func TestDecodeToolArgumentsTakesTheLooseFormsAndRefusesTheRestInWordsAModelCanAct(t *testing.T) {
@@ -114,6 +120,47 @@ func TestDecodeToolArgumentsTakesTheLooseFormsAndRefusesTheRestInWordsAModelCanA
 					t.Fatalf("depends_on: want [7 8], got %v", got.DependsOn)
 				}
 			},
+		},
+		{
+			name: "THE ASK DEFECT: a list sent as a JSON string holding the list is that list",
+			args: `{"options":"[{\"key\":\"1\",\"blocks\":[\"a\"]},{\"key\":\"2\"}]"}`,
+			check: func(t *testing.T, got argumentsForTest) {
+				if len(got.Options) != 2 || got.Options[0].Key != "1" || got.Options[1].Key != "2" {
+					t.Fatalf("options: want two answers keyed 1 and 2, got %+v", got.Options)
+				}
+				if len(got.Options[0].Blocks) != 1 || got.Options[0].Blocks[0] != "a" {
+					t.Fatalf("options[0].blocks: want [a], got %v", got.Options[0].Blocks)
+				}
+			},
+		},
+		{
+			name:  "an object sent as a JSON string holding the object is that object, leaves and all",
+			args:  `{"rails":"{\"max_per_day\": 3.0}"}`,
+			check: func(t *testing.T, got argumentsForTest) { equalInt(t, "max_per_day", got.Rails.MaxPerDay, 3) },
+		},
+		{
+			name: "a string wrapped inside a list that was itself wrapped is unwrapped at each level it asks for",
+			args: `{"options":"[{\"key\":\"1\",\"blocks\":\"[\\\"a\\\",\\\"b\\\"]\"}]"}`,
+			check: func(t *testing.T, got argumentsForTest) {
+				if len(got.Options) != 1 || len(got.Options[0].Blocks) != 2 || got.Options[0].Blocks[1] != "b" {
+					t.Fatalf("options: want one answer with blocks [a b], got %+v", got.Options)
+				}
+			},
+		},
+		{
+			name:    "a string that is not holding a list is refused, and the refusal says it arrived as text",
+			args:    `{"depends_on":"seven and eight"}`,
+			refusal: `depends_on takes a list; it arrived as text, "seven and eight" — send the value itself, not a string holding it`,
+		},
+		{
+			name:    "a string holding an object where a list was wanted is not unwrapped into the wrong shape",
+			args:    `{"depends_on":"{\"first\":7}"}`,
+			refusal: `depends_on takes a list; it arrived as text, "{\"first\":7}" — send the value itself, not a string holding it`,
+		},
+		{
+			name:    "a number where a list was wanted still reads as it always did",
+			args:    `{"depends_on":7}`,
+			refusal: `depends_on takes a list`,
 		},
 		{
 			name:  "a nested object is walked to its leaves",
@@ -309,6 +356,34 @@ func TestNoWholeNumberArgumentIsDeclaredANumber(t *testing.T) {
 			t.Fatalf(`%s declares %q as "type":"number". An argument decoded into a whole `+
 				`number is declared "type":"integer", or a provider that renders every number `+
 				`as a float sends a form the schema invited (toolargs.go)`, filepath.Base(path), name)
+		}
+	}
+}
+
+// NO SCHEMA ON THE BELT CARRIES A REFERENCE. `$ref` into `$defs` is legal JSON
+// Schema and it is the one shape a provider is free to flatten, ignore or
+// mis-render, because nothing else on this belt ever used it and the models are
+// steered by what the belt has always looked like. `ask` was the only tool that
+// did, and it was the only tool deepseek-v4-flash could not call: three calls
+// running on 2026-09-10 arrived with the answers list rendered as a string,
+// every one refused, and the person never saw a question. A shape used in one
+// place is written out in full at every place it stands (askBlockSchemaJSON),
+// which costs bytes on the wire and nothing else.
+func TestNoBeltSchemaCarriesAReference(t *testing.T) {
+	agent := &Agent{config: Config{Workspace: t.TempDir(), ProfileDir: t.TempDir()}}
+	agent.tools = agent.belt()
+	tools := agent.offeredTools()
+	if len(tools) == 0 {
+		t.Fatal("the belt is empty")
+	}
+	for _, tool := range tools {
+		schema := string(tool.Schema)
+		for _, mark := range []string{`"$ref"`, `"$defs"`, `"definitions"`} {
+			if strings.Contains(schema, mark) {
+				t.Errorf("%s's schema carries %s — write the shape out in full where it stands "+
+					"(see askBlockSchemaJSON); a reference is the one schema shape a provider has "+
+					"been seen fail to follow", tool.Name, mark)
+			}
 		}
 	}
 }

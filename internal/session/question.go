@@ -710,6 +710,17 @@ var (
 // errQuestionUnknownPick is the refusal for a pick naming an answer nobody
 // offered. It names the key, because the asker's own list is right in front of
 // it and the fix is one word.
+// errQuestionUnlabelledOption is the refusal for an answer with nothing on it a
+// person can read. The key is never the problem — an asker's keys are
+// renumbered to digits on the way in (askDigitKeys) — but a row with no label is
+// a row the person is asked to choose blind, and the asker is the only one who
+// knows what it was for. Answers are counted from one, the way the keys read.
+func errQuestionUnlabelledOption(nth int) error {
+	return fmt.Errorf(
+		"every answer needs a label a person can read, and answer %d has none: write one, or drop that answer",
+		nth)
+}
+
 func errQuestionUnknownPick(key string) error {
 	return fmt.Errorf(
 		"the pick names %q, which is not one of the answers this question offers: pick one of them, or add it to the list",
@@ -762,6 +773,11 @@ func (q Question) Check(records []DecisionRecord) error {
 		return errQuestionChecklistWithoutOptions
 	case q.Ask.needsOptions() && len(q.Options) < 2:
 		return errQuestionTooFewOptions
+	}
+	for at, option := range q.Options {
+		if strings.TrimSpace(option.Label) == "" {
+			return errQuestionUnlabelledOption(at + 1)
+		}
 	}
 	if q.Pick != nil {
 		if _, ok := q.Option(q.Pick.Key); !ok {

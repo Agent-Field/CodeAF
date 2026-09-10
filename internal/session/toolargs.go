@@ -39,6 +39,16 @@ package session
 // decoder inventing a dialect. The refusal names the corrected call, which is
 // all a model that did send one would need.
 //
+// WHAT IS DONE, BECAUSE IT WAS OBSERVED: a list or an object that arrives AS A
+// JSON STRING holding its own JSON text — `"options":"[{\"key\":\"1\",…}]"` — is
+// unwrapped once and read as the list it holds. deepseek-v4-flash sent `ask` that
+// way three calls running on 2026-09-10, every one refused with "options takes a
+// list", and the turn ended on the loop guard with the person never shown a
+// question. The text inside was the right list; only its wrapping was wrong, and
+// a decoder that can see the right list and refuses it anyway is a decoder that
+// prefers its grammar to the person's question. A string whose contents are NOT
+// the wanted shape is still refused, in a sentence that says it arrived as text.
+//
 // Unknown fields stay ignored, exactly as they were: DisallowUnknownFields is
 // off here as it was at all thirty-nine sites this replaced, and a key with no
 // field behind it is passed through untouched rather than refused.
@@ -228,7 +238,10 @@ func decodesItself(t reflect.Type) bool {
 // stay ignored.
 func coerceObject(raw json.RawMessage, text string, t reflect.Type, path string) (json.RawMessage, error) {
 	if !strings.HasPrefix(text, "{") {
-		return nil, &toolArgumentError{field: path, repair: objectRepair(path)}
+		if inner, held := unwrapEncoded(raw, text, '{'); held {
+			return coerceObject(inner, string(inner), t, path)
+		}
+		return nil, &toolArgumentError{field: path, repair: objectRepair(path) + arrivedAsText(text)}
 	}
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &fields); err != nil {
@@ -262,7 +275,10 @@ func coerceObject(raw json.RawMessage, text string, t reflect.Type, path string)
 // type, and the keys are the model's own.
 func coerceMap(raw json.RawMessage, text string, t reflect.Type, path string) (json.RawMessage, error) {
 	if !strings.HasPrefix(text, "{") {
-		return nil, &toolArgumentError{field: path, repair: objectRepair(path)}
+		if inner, held := unwrapEncoded(raw, text, '{'); held {
+			return coerceMap(inner, string(inner), t, path)
+		}
+		return nil, &toolArgumentError{field: path, repair: objectRepair(path) + arrivedAsText(text)}
 	}
 	var entries map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &entries); err != nil {
@@ -293,7 +309,10 @@ func coerceList(raw json.RawMessage, text string, t reflect.Type, path string) (
 		return raw, nil
 	}
 	if !strings.HasPrefix(text, "[") {
-		return nil, &toolArgumentError{field: path, repair: listRepair(path)}
+		if inner, held := unwrapEncoded(raw, text, '['); held {
+			return coerceList(inner, string(inner), t, path)
+		}
+		return nil, &toolArgumentError{field: path, repair: listRepair(path) + arrivedAsText(text)}
 	}
 	var items []json.RawMessage
 	if err := json.Unmarshal(raw, &items); err != nil {
@@ -425,6 +444,43 @@ func listRepair(path string) string {
 		return "the arguments must be one JSON object"
 	}
 	return leafName(path) + " takes a list"
+}
+
+// unwrapEncoded reads a JSON string that holds JSON text of the wanted shape —
+// `"[{...}]"` where a list was asked for — and hands back the text it holds,
+// trimmed, so the caller can read it as the list or object it always was. It
+// unwraps ONCE: the text inside is read by the same coercion that asked, so a
+// string inside a string is refused there in the ordinary way, and a string
+// holding anything but the wanted opener is not touched at all.
+func unwrapEncoded(raw json.RawMessage, text string, opener byte) (json.RawMessage, bool) {
+	if !strings.HasPrefix(text, `"`) {
+		return nil, false
+	}
+	var held string
+	if err := json.Unmarshal(raw, &held); err != nil {
+		return nil, false
+	}
+	held = strings.TrimSpace(held)
+	if held == "" || held[0] != opener || !json.Valid([]byte(held)) {
+		return nil, false
+	}
+	return json.RawMessage(held), true
+}
+
+// arrivedAsText is the clause added to a list or object refusal when what
+// arrived was a JSON string, because "takes a list" alone reads as a lie to a
+// model that can see a list right there inside the quotes. It shows the model
+// the opening of what it sent and says the one thing to change.
+func arrivedAsText(text string) string {
+	if !strings.HasPrefix(text, `"`) {
+		return ""
+	}
+	const glimpse = 24
+	shown := text
+	if runes := []rune(shown); len(runes) > glimpse {
+		shown = string(runes[:glimpse]) + "…"
+	}
+	return "; it arrived as text, " + shown + " — send the value itself, not a string holding it"
 }
 
 // argumentRepair reads a tool result back and answers the repair sentence the
