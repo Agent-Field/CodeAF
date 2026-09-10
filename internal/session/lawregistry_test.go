@@ -111,8 +111,8 @@ var lawRegistry = []lawUnit{
 	// ── and the laws the page gave up to the verb that owns them. Each of
 	// these was a page sentence until the diet; the description had said it all
 	// along, in more words and with the field names beside it.
-	{id: "write.in-parts", class: lawVerb, tool: "write", key: "Write very large files in parts"},
-	{id: "read.offset-limit", class: lawVerb, tool: "read", key: "Use offset/limit for large files"},
+	{id: "write.in-parts", class: lawVerb, tool: "write", key: "Write a very large file in parts"},
+	{id: "read.offset-limit", class: lawVerb, tool: "read", key: "page the rest with offset/limit"},
 	{id: "watch.instead-of-polling", class: lawVerb, tool: "watch", key: "instead of polling it every turn"},
 	{id: "capabilities.continue-this-turn", class: lawVerb, tool: loadCapabilityToolName, key: "Full schemas arrive on the next model request; continue in this same turn"},
 	{id: "task.lands-as-a-turn", class: lawVerb, tool: "propose_task", key: "starts a turn here when it lands, so never wait or poll"},

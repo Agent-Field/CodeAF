@@ -160,6 +160,20 @@ import (
 // lawregistry_test.go is what keeps it there: every law above is filed under an
 // id and a class, and a second copy of one is now a build failure rather than a
 // thing the next audit finds.
+// AND THE RESULT CAPS PAID 652 BYTES ON THE WAY TO FIXING A DEFECT (2026-09-10).
+// Lane B (§5 item 1) made every result cap a share of the model's window instead
+// of a flat 2000 lines / 50KB, which meant the figures had to be rendered from
+// the caps in force rather than typed — and a description built at belt time is
+// a description that can be weighed. So the same pass cut `read` and `bash` to
+// their contract: `bash` gave up the routing sentence naming `propose_task`
+// (which road work belongs on is `## Work or words`, and the manual's own "a job
+// is the wrong door for work whose result is a deliverable"), and the arrival
+// law's three copies — the sentence, the timeout sentence and the `background`
+// argument — went to nought, on the strength of the page's new
+// `handoff.reports-itself`. `write`'s append and salvage clause says the same
+// two rules in 165 fewer bytes. Nothing was raised: the tool block went
+// 24,044 → 23,392 and the page is unmoved, so the prefix is 46,106 — 1,894
+// under.
 // widestPage weighs the larger direct/deferred wording for each fact.
 const fixedPrefixBudget = 48_000
 

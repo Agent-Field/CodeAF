@@ -36,15 +36,15 @@ cut is announced so paging is possible:
 the end is an error: `Offset 900 is beyond end of file (120 lines total)`.
 A single line over the size cap is reported, not shown.
 
-## How much of a file does one read give me, and what is the limit?
+## How much of a file does one read return — what is the truncation limit
 
 **The limit follows the model's context window: a tenth of it, and never more
 than 2000 lines or 50KB.** That default pair is what a 128,000-token window gets
 and what every larger model gets, so on the frontier models nothing has changed.
-A smaller model gets proportionally less — a 16k model is cut at 250 lines or
-6.25KB — because one file may not fill most of what the model can hold. The
-description of each tool quotes the pair actually in force, and the cut always
-says how to continue.
+A smaller model is cut proportionally sooner — a 16k model at 250 lines or
+6.25KB — because one file may not fill most of what the model can hold. Every
+tool description quotes the pair actually in force, and a cut always says how to
+continue.
 
 `read` also opens **PDFs** — it extracts the text layer locally and for free,
 with the same line and size caps.

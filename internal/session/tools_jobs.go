@@ -36,12 +36,15 @@ import (
 // front of every request of every turn, which is 200 bytes of routing policy
 // billed sixty times a task.
 //
-// AND THE ARRIVAL IS SAID ONCE. That a finished job reports itself and must
-// never be polled for was in this sentence, in the timeout sentence and in the
-// background argument's own description — three copies of one law, all three
-// billed on every request. It is stated here, and `jobs` own description
-// carries it for the tool that would otherwise be the way to poll.
-const backgroundSentence = " Run long-lived commands (servers, watchers, long builds) with background:true and ask the jobs tool about them; a job leaves its log and an exit code and nothing else. Its exit and closing output arrive in this conversation on their own when it ends, so never poll or wait for one."
+// AND THE ARRIVAL IS NOT SAID HERE AT ALL. That a finished job reports itself
+// and must never be polled for was in this sentence, in the timeout sentence
+// and in the background argument's own description — three copies of one law,
+// all three billed on every request. The page now states it once for the whole
+// family (prompts/system.md's `Anything handed off — a job, a watch, a task, a
+// quick task — reports itself into this conversation; never sleep, tail or poll
+// for it`, registered as `handoff.reports-itself`), so this tool states only
+// what is its own.
+const backgroundSentence = " Run long-lived commands (servers, watchers, long builds) with background:true and ask the jobs tool about them; a job leaves its log and an exit code and nothing else."
 
 // timeoutSentence states the v3 foreground law pi leaves unstated: a call the
 // model did not bound is bounded by the harness, because one hung command
