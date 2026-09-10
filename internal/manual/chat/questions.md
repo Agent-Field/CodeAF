@@ -17,13 +17,12 @@ The model can raise one through its `ask` tool. Questions reach home, another wi
 `--host` as the same question object. Every surface draws the answers that object
 offered; it never substitutes positional yes/no keys.
 
-Nearly every question is drawn by one thing now — the **question block**,
-described under "How a question looks" below. It never takes the keyboard, the
-answers are numbered, and `esc` on it means *later*. The approval question before
-a command runs, a task proposal, a standing card, an offer to run a saved
-program and a finished harness design are all on it. **A connect offer is the
-last one that is not**: it still draws itself the way it always did, with its own
-keys.
+Every question is drawn by one thing now — the **question block**, described
+under "How a question looks" below. It never takes the keyboard, the answers are
+numbered, and `esc` on it means *later*. The approval question before a command
+runs, a task proposal, a standing card, a connect offer, an offer to run a saved
+program and a finished harness design are all on it, and so are the two cards you
+raise yourself.
 
 A question with more behind it than the block draws **opens out into a page of
 its own** — `o` opens it, `esc` closes it, and the sections below say what you
@@ -660,6 +659,13 @@ nothing is lost: the question folds to the chip, the card stays open, and the
 count goes on counting it. The outright no is `0 no`, which is drawn on the card
 as an answer you can see and click — where `esc` never was.
 
+**So does the connect offer** — `connect your <Name> account?` with `1 connect`
+and `2 not now`. A service connected by a KEY has no `1`: a bare yes to one of
+those connects nothing, so the question asks for the key in the message box under
+it, masked to a bullet a character with the count beside it, and `enter` sends it.
+The one answer it keeps is `2 not now`, because a question the turn is waiting on
+with no visible no is a question nobody can end.
+
 **So does the harness lane's pair.** An offer to run a saved program is one line —
 `run harness "research"?` with `1 run it` and `2 not now`. A finished harness
 design is a card — `wrote a program: <name>` with `1 save it`, `2 change it` and
@@ -715,5 +721,8 @@ The count of open questions in the status line IS built: that is the chip
 described above. So is the sheet, and so is the per-project setting that answers
 a whole kind of question while you are away (`/autonomy`, and `D` on a row).
 
-One older block has not moved onto this one yet and keeps its own keys until it
-does: a connect offer.
+**Every question the block draws is drawn only by the block now.** The last of the
+older blocks — the connect offer, with its own answers row and its own keys — is
+gone. The one card in this program that still answers to keys of its own is the
+intake form `/subharness` opens for a saved program, which is a fullscreen page
+with fields to fill in rather than a question above the box.

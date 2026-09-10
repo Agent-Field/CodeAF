@@ -166,7 +166,7 @@ func TestHomeKeepsItsLettersOverEveryQuestionAboveIt(t *testing.T) {
 		// answered.
 		start func(t *testing.T) (*app, session.Event, func() bool)
 	}{
-		{"the connect offer", "y", func(t *testing.T) (*app, session.Event, func() bool) {
+		{"the connect offer", "1", func(t *testing.T) (*app, session.Event, func() bool) {
 			agent, a, _ := connectApp(t)
 			return a, askConnectEvent("c1", "notion", "Notion"),
 				func() bool { return len(agent.resolved) > 0 }

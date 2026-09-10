@@ -909,6 +909,19 @@ func (a *app) questionCardBody(q questionShown, width int) []string {
 			row: row, span: hudSpan{from: 0, to: width}, at: i,
 		})
 	}
+	// AND THE ONE LINE OVER A FREE-TEXT BOX IS THE LAST ROW OF THE CARD, because
+	// the box it is about is the row under the card ([session.InputShape.Prompt]
+	// calls it "the one line above a free-text box"). It is the asker saying what
+	// to type — "paste your Notion key", "the domain in your Datadog address" —
+	// and a question that asked for words with nothing saying which words is a
+	// box a person guesses at.
+	if q.question.Input.Kind == session.InputText {
+		if prompt := strings.TrimSpace(q.question.Input.Prompt); prompt != "" {
+			for _, wrapped := range wrap(prompt, max(1, width-2)) {
+				out = append(out, a.pal.dim("  "+wrapped))
+			}
+		}
+	}
 	return out
 }
 
@@ -3013,6 +3026,13 @@ func (a *app) questionDrawnHere(q session.Question) bool {
 		// in its room (harnesscard.go, roomapproval.go). All three are deleted.
 		// What is left is the PAGE in the transcript, which is what is being
 		// judged, and the one line it keeps afterwards saying what became of it.
+		return true
+	case session.QuestionConnect:
+		// THE ACCOUNT OFFER, whose own three-row block, answers row, click
+		// targets and key router are deleted (connect.go). What is left there is
+		// the lane's own facts — the service id, the catalog's sentence, whether
+		// the answer is a secret — and the browser flow an answer raises, which is
+		// a REPORT and not a question.
 		return true
 	}
 	return false

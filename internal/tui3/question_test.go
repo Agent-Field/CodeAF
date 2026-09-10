@@ -809,13 +809,17 @@ func TestTheLaneRaisesOnlyWhatThisBlockHasTakenOver(t *testing.T) {
 		// grammars and three drawings (harness.go's row, harnesscard.go's card
 		// columns, roomapproval.go's pinned chords); all three are deleted.
 		session.QuestionHarness,
+		// AND THE ACCOUNT OFFER, whose own block, answers row, click targets and
+		// key router are deleted: connect.go keeps the lane's facts and the
+		// browser flow, which is a report and not a question.
+		session.QuestionConnect,
 	} {
 		if !a.questionDrawnHere(session.Question{Kind: kind}) {
 			t.Fatalf("%s has no other block and is not drawn here either", kind)
 		}
 	}
 	for _, kind := range []session.QuestionKind{
-		session.QuestionConnect, session.QuestionSubharness,
+		session.QuestionSubharness,
 	} {
 		if a.questionDrawnHere(session.Question{Kind: kind}) {
 			t.Fatalf("%s is drawn here AND by its own block; one decision, two rows", kind)

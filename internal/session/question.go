@@ -365,6 +365,14 @@ type InputShape struct {
 	// Prompt is the one line above a free-text box, and "" draws nothing above
 	// it at all.
 	Prompt string `json:"prompt,omitempty"`
+	// Secret says the answer is a CREDENTIAL and is never drawn back. A surface
+	// that honours it masks the box a character at a time and shows how many
+	// characters arrived, which is what a person pasting a key needs to know and
+	// the whole of what they need to know. It is on the question rather than
+	// decided by each surface because the asker is the only thing that knows a
+	// key from a folder name, and a box drawn in the clear once is a secret on
+	// somebody's screen.
+	Secret bool `json:"secret,omitempty"`
 }
 
 // ── the asker's own pick ────────────────────────────────────────────────────
@@ -1860,27 +1868,73 @@ const ConsentFallbackReason = "it will not run this without your word"
 // to one of those is read as a decline (connect.go) and a chip that means no
 // while reading yes is worse than no chip.
 func (a *Agent) connectQuestion(id string, ask connectAsk) Question {
+	return a.said(QuestionConnect, id, ConnectQuestion(id, "", ask.needsKey, "", false))
+}
+
+// ConnectQuestion is that object, and it is ONE BUILDER for the two roads it
+// arrives by: this lane's own [Agent.OpenQuestions], and the surface, which has
+// the event a moment before the questions lane reaches it and builds the same
+// question from it (tui3's connect.go). The block keys a question by its lane
+// and its token, so two builders would be two questions replacing each other on
+// screen while somebody read one of them.
+//
+// The surface knows three things this engine does not — the word a person owns
+// the account by, the service's own sentence over the box, and whether what it
+// wants is a secret or the part of an address — so they are arguments with
+// honest defaults rather than facts invented here.
+//
+// AN ACCOUNT THAT NEEDS A TYPED ANSWER IS A QUESTION WITH A BOX RATHER THAN A
+// PICK, because a bare yes to one of those is read as a decline (connect.go) and
+// an answer that means no while reading yes is worse than no answer.
+func ConnectQuestion(id, name string, needsKey bool, keyAsk string, secret bool) Question {
+	head := ConnectAskHead
+	if name = strings.TrimSpace(name); name != "" {
+		head = "connect your " + name + " account?"
+	}
 	built := Question{
 		Ref:      id,
 		Kind:     QuestionConnect,
 		Ask:      AskPermission,
-		Form:     FormLine,
+		Form:     FormCard,
 		Asker:    Asker{Kind: AskerEngine},
-		Head:     "connect your account?",
-		Reason:   "the turn asked for something only that account can answer",
+		Head:     head,
+		Reason:   ConnectAskReason,
 		Subject:  SubjectRef{Kind: SubjectAccount, Ref: id},
 		Options:  AnswerOptions(QuestionConnect),
 		Stakes:   StakesReversible,
 		Blocking: Blocking{Turn: true},
 		Scope:    []AnswerScope{ScopeOnce},
 	}
-	if ask.needsKey {
-		built.Options = nil
+	if needsKey {
+		// AND THE WAY OUT SURVIVES THE BOX. A question whose only answer is words
+		// has no way to say no, and the turn is waiting: `esc` is *later* on this
+		// block and decides nothing, so the decline has to be an answer a person
+		// can see. The engine reads a bare pick on a key question as a no
+		// ([Agent.ResolveConnect] says why a yes cannot be one), so this is the
+		// one option it keeps.
+		built.Options = []AnswerOption{{Key: "2", Label: "not now", Safe: true}}
 		built.Ask = AskClarification
-		built.Input = InputShape{Kind: InputText, Prompt: "the key, or the part of the address it is missing"}
+		if keyAsk = strings.TrimSpace(keyAsk); keyAsk == "" {
+			keyAsk = ConnectKeyPrompt
+		}
+		built.Input = InputShape{Kind: InputText, Prompt: keyAsk, Secret: secret}
 	}
-	return a.said(QuestionConnect, id, built)
+	return built
 }
+
+// The three sentences a connect offer is spelled with. They are constants
+// because the surface builds the same question and the two must not drift.
+const (
+	// ConnectAskHead is the head where the session named the account only by an
+	// id nobody would recognize, which is the one case there is no better word
+	// for.
+	ConnectAskHead = "connect your account?"
+	// ConnectAskReason is why it is being asked now.
+	ConnectAskReason = "the turn asked for something only that account can answer"
+	// ConnectKeyPrompt is the line over the box where the service said nothing
+	// of its own about what it wants.
+	ConnectKeyPrompt = "the key, or the part of the address it is missing"
+)
 
 // harnessQuestion is a sub-harness offer, or a written design waiting to be
 // approved, as a question.

@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // prompt is the input line's mark. Two cells, and the only furniture below the
@@ -344,9 +345,12 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
-	// Pending permission and account input hold their work, not navigation.
-	// These chords never answer either question or edit a partly typed key.
-	if (a.asking() && !a.shaping()) || a.asksConnect() {
+	// A pending permission holds its work, not navigation. These chords never
+	// answer the question or edit a partly typed key. The connect offer used to
+	// be on this line beside it and is not any more: it is a card on the block
+	// now (connect.go), the block is not modal, and a rung that holds keys back
+	// is a rung only a modal needs.
+	if a.asking() && !a.shaping() {
 		switch msg.String() {
 		case closeTabChord:
 			cmd, _ := a.closeTabKey(msg)
@@ -392,14 +396,6 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	if cmd, taken := a.taskKey(msg); taken {
 		return cmd
 	}
-	// The connect offer is the next rung down, and it is modal for the same
-	// reason at a lower urgency: the session is waiting on this answer too, and
-	// a key that is not one of the two answers is a key that does nothing rather
-	// than a key that types into a conversation that cannot move (connect.go).
-	if cmd, taken := a.connectAskKey(msg); taken {
-		return cmd
-	}
-
 	// And a LANDED card that is still asking, on the same rung and for the same
 	// reason: a card in the transcript with a question on it answers its own
 	// keys while it is the selected block (tasksettle.go). Every guard `x` has is
@@ -1607,7 +1603,10 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 	// own prompt (room.go's [app.roomLead]). It is the main draft's alone: the
 	// filter boxes above stand in this position while an overlay has the keyboard,
 	// and none of them sends a word anywhere.
-	block, caretX, caretRow := a.pasteDraftBlock(width, rows)
+	block, caretX, caretRow := a.secretDraftBlock(width)
+	if block == nil {
+		block, caretX, caretRow = a.pasteDraftBlock(width, rows)
+	}
 	// THE TRAY IS PART OF THE BOX, not a fifth thing the frame has to know about
 	// (attach.go). It is one row above the draft, so it is one row of this
 	// block: every geometric question below the conversation already goes
@@ -1618,6 +1617,37 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 		caretRow++
 	}
 	return block, caretX, caretRow
+}
+
+// secretDraftBlock is the message box while the question above it asked for a
+// CREDENTIAL, and nil on every other frame.
+//
+// THE SECRET IS NEVER DRAWN BACK. Not once, not while it is being typed, not
+// behind a "show" toggle: what is on the row is a bullet per character and how
+// many of them there are ([keyLine] draws exactly that, and the /connect panel
+// and the settings sheet's row draw it the same way — one way of entering a key
+// on this surface, and a second one that looked almost like it would be a second
+// thing to trust).
+//
+// THE COUNT IS THE ONLY TELEMETRY, and it is there for the paste. A key is forty
+// or two hundred characters, the bullets run off the end of the row long before
+// that, and the count is what tells a person the whole thing arrived.
+//
+// It is ONE ROW and never the draft's six: a credential is not a paragraph, and
+// a masked box that grew would be a row of bullets nobody can read moving the
+// conversation up the screen. The box is still [app.input] — the same box, with
+// the same keys, answered by the same `enter` ([app.questionEnter]) — so nothing
+// about how the answer is given changes with how it is drawn.
+func (a *app) secretDraftBlock(width int) ([]string, int, int) {
+	head, ok := a.questionHead()
+	if !ok || !head.question.Input.Secret || head.question.Input.Kind != session.InputText {
+		return nil, 0, 0
+	}
+	// The hint is EMPTY because the card above the box is already saying what to
+	// type ([app.questionCardBody] draws the prompt as its last row), and the one
+	// instruction said twice is the two-renderings defect one size smaller.
+	line, caretX := keyLine(&a.input, "", true, a.pal, width)
+	return []string{line}, caretX, 0
 }
 
 // inputHeight is how many rows the input block is taking. Every geometric

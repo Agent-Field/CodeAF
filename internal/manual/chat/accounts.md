@@ -95,7 +95,8 @@ makes the same browser trip.
 
 Some accounts ask one thing before they open. **Datadog asks which Datadog site your
 account is on**, shows the seven commercial sites it accepts, and refuses anything
-else before making a connection. That answer is kept beside the keys so later calls
+else before making a connection. That question arrives with a box like a key's, and
+the answer stays visible while you type it — a site name is not a secret. That answer is kept beside the keys so later calls
 and renewals return to the same site.
 
 **With a key.** Nothing opens and nothing renews; the key is as good as the day it
@@ -234,21 +235,77 @@ the one it was called on — and that next request is still part of the same tur
 request that needs an account takes a beat: aforge picks up the account, then uses it,
 without waiting for you to say anything else.
 
-If `use_service` names an account you have not connected, aforge raises a quiet
-question: `? <Name>` / `  <product> wants to connect your <Name> account` /
-`  [enter] connect · [esc] not now`. There is deliberately no "always" — an account is
-connected once and stays connected. Declining is "not now": nothing is remembered,
-nothing is written to the transcript either way, and the next time the account is
-needed you are asked again.
+If `use_service` names an account you have not connected, aforge raises a question on
+the question block above the message box, like every other question it asks:
 
-A yes on a key service opens a masked box reading `paste your <Name> key`. The key is
-never drawn: one bullet per character plus a dim count, so you can tell a whole paste
-arrived. An empty box is a decline.
+```
+? connect your Notion account?
+  the turn asked for something only that account can answer
+
+  1  connect
+  2  not now
+```
+
+`1` connects, `2` is not now, and `esc` means **later** — nothing is decided, the
+question folds to the chip on the status line, and it is still there to answer. There
+is deliberately no "always": an account is connected once and stays connected.
+Declining is "not now": nothing is remembered, nothing is written to the transcript
+either way, and the next time the account is needed you are asked again.
+
+**`enter` and `y` no longer answer it, and `esc` is no longer the no.** The offer used
+to have a block of its own with `[enter] connect · [esc] not now` on it, and it took
+every key on the screen while it was up. It does not: the block is not modal, so
+everything it has not drawn falls through to the message box, and you can keep typing
+under a question you have not answered.
+
+**A key service asks for the key in that same message box.** There is no yes step —
+a bare yes to one of these is read as a decline anyway — so the question arrives with
+what to type written under it and the box below it collecting the answer:
+
+```
+? connect your Notion account?
+  the turn asked for something only that account can answer
+
+  2  not now
+  paste your Notion key
+› ••••••••••••••••••••  56
+```
+
+The key is never drawn: one bullet per character plus a dim count, so you can tell a
+whole paste arrived. `enter` sends it. `2` is the way out. `esc` is later, and what you
+typed stays in the box. An empty box and `enter` answers nothing at all — it used to be
+a decline, and now the way out is the answer that says so.
+
+Where a service names its own instruction — Chargebee's `Give the site name and then
+the key, one space between them.` — that sentence is what the card says over the box,
+in place of the generic paste hint.
 
 The question waits **5 minutes**, and silence is a no. When nobody is watching the
 conversation, the tool answers instead: `Connecting <Name> needs the person to say
 yes, and nobody is watching this conversation. Do what you can without their <Name>
 account and say plainly that you could not reach it.`
+
+## How do I say not now to an account it wants a key for
+
+`2`. That is the whole answer, and it is drawn on the card as an answer you can see and
+click:
+
+```
+  2  not now
+```
+
+A key question has no `1 connect` — a bare yes connects nothing, so there is no yes to
+press — and `2` is the only answer beside the key itself. It reaches the session as a
+plain decline: nothing is remembered, nothing is written into the conversation, and the
+next time that account is needed you are asked again.
+
+**`esc` is not the no.** It means *later*: the question folds to the `? N questions`
+chip on the status line, whatever you had typed stays in the box, and nothing has been
+decided. An empty box and `enter` answers nothing either — `enter` sends what is in the
+box, and there is nothing in it.
+
+**And silence is a no after 5 minutes**, which is the one road out that is not a
+keystroke. See *The services and use_service tools* above for what the tool is told.
 
 ## Connecting while the conversation is idle
 
@@ -426,9 +483,9 @@ connecting an account is not available over --host yet — the sign-in opens a b
 ```
 
 When the model raises the connect question over `--host`, a browser service says
-`connecting an account is not available over --host yet` and offers only
-`[esc] not now`. `enter` and `y` do nothing there, rather than being turned quietly
-into a no.
+`connecting an account is not available over --host yet` as its reason and offers only
+`2 not now`. The `1 connect` answer is not drawn at all, rather than drawn as an
+affordance that answers as a failure.
 
 **A key sign-in works fine over `--host`** — pasting a key needs no browser.
 

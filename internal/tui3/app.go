@@ -1496,11 +1496,11 @@ type app struct {
 	// it. Zero is the ordinary case and means "stamp the whole clock".
 	askResume       time.Duration
 	askResumePaused bool
-	// THE CONNECT SIDE (connect.go). connAsks are the offers waiting for an
-	// answer, oldest first — a question about an ACCOUNT rather than about a
-	// call, drawn one slot under the approval question and owning the keyboard
-	// on the same terms. connTaps is where that offer's two answers were last
-	// drawn, in columns, which is the bargain [app.questionBands] makes one block up.
+	// THE CONNECT SIDE (connect.go). connAsks are the LANE'S OWN FACTS about the
+	// offers still open — the service id the transcript is keyed by, the
+	// catalog's sentence over the box, and whether the answer is a secret. The
+	// question itself is on the block with every other question this engine asks
+	// (question.go); this is what the block does not carry.
 	//
 	// conns is the door onto the accounts themselves (Options.Connections) and
 	// connPanel the list /connect opens over it. Nil conns is a surface that
@@ -1538,7 +1538,6 @@ type app struct {
 	orchGen  int
 
 	connAsks  []connAsk
-	connTaps  []connTap
 	conns     Connections
 	connPanel connectPanel
 	// harn is the subharness registry (Options.Harnesses) and harnPanel the
@@ -3500,13 +3499,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// against it would answer a question nobody could see. It claims the
 			// answers it drew and nothing else — a press on any other row falls
 			// straight through, exactly as a key does (question.go).
-			// THE CONNECT OFFER IS READ NEXT, one rung under the approval
-			// question for the reason it is drawn one row under it: both are
-			// blocks the session is waiting on, and a call parked mid-batch is
-			// the more urgent of the two (connect.go).
-			if a.connectPress(msg.Mouse().X, msg.Mouse().Y) {
-				return a, nil
-			}
 			// AND THE TWO REGISTRY PANELS TAKE EVERY PRESS WHILE THEY ARE UP,
 			// which is what modal means for a pointer: a press on a row acts on
 			// that row, and a press anywhere else closes the list

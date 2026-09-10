@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	tea "charm.land/bubbletea/v2"
-
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
@@ -172,54 +170,39 @@ func TestConnectSaysWhyItCannotOverHost(t *testing.T) {
 func TestABrowserSignInOffersOnlyNotNow(t *testing.T) {
 	a, _ := hostLab(t)
 	a.askConnect(session.Event{Kind: session.EventConnectAsk, ConnectID: "1", Service: "google", ServiceName: "Google"})
-	rows := a.connectAskRows(a.width)
-	block := plain(strings.Join(rows, "\n"))
+	block := strings.Join(connectBlock(a), "\n")
 	if !strings.Contains(block, connectAskRemoteWord) {
 		t.Fatalf("the card does not say what is wrong: %s", block)
 	}
-	if strings.Contains(block, "[enter]") {
-		t.Fatalf("the card still offers a key that cannot work: %s", block)
+	if strings.Contains(block, "1  connect") {
+		t.Fatalf("the card still offers an answer that cannot work: %s", block)
 	}
-	// And the key itself does nothing rather than answering in somebody's name.
-	a.connectAskKey(tea.KeyPressMsg{Code: 'y', Text: "y"})
-	if len(a.connAsks) != 1 {
-		t.Fatal("y answered a browser sign-in over --host")
-	}
-	a.connectAskKey(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if len(a.connAsks) != 0 {
-		t.Fatal("esc did not decline")
+	if !strings.Contains(block, "2  not now") {
+		t.Fatalf("the card left no way out at all: %s", block)
 	}
 }
 
 func TestAKeySignInStillWorksOverHost(t *testing.T) {
 	a, _ := hostLab(t)
 	a.askConnect(session.Event{Kind: session.EventConnectAsk, ConnectID: "1", Service: "notion", ServiceName: "Notion", NeedsKey: true})
-	block := plain(strings.Join(a.connectAskRows(a.width), "\n"))
+	block := strings.Join(connectBlock(a), "\n")
 	if strings.Contains(block, connectAskRemoteWord) {
 		t.Fatalf("a key sign-in was refused, and a key needs no browser: %s", block)
 	}
-	if !strings.Contains(block, "[enter]") {
-		t.Fatalf("a key sign-in lost its offer: %s", block)
-	}
-	a.connectAskKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if !a.entering() {
-		t.Fatal("enter did not open the key box over --host")
+		t.Fatal("a key sign-in over --host is not collecting a key")
 	}
 }
 
 func TestABrowserSignInWithAnAddressAnswerIsStillRefusedOverHost(t *testing.T) {
 	a, _ := hostLab(t)
 	a.askConnect(askDatadogEvent("1"))
-	block := plain(strings.Join(a.connectAskRows(a.width), "\n"))
+	block := strings.Join(connectBlock(a), "\n")
 	if !strings.Contains(block, connectAskRemoteWord) {
 		t.Fatalf("the browser sign-in was offered over --host: %s", block)
 	}
-	if strings.Contains(block, "[enter]") {
-		t.Fatalf("the refused trip still offers enter: %s", block)
-	}
-	a.connectAskKey(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if a.entering() {
-		t.Fatal("enter opened the site box for a browser trip over --host")
+	if strings.Contains(block, "1  connect") {
+		t.Fatalf("the refused trip still offers a way to start it: %s", block)
 	}
 }
 

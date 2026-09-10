@@ -53,31 +53,29 @@ func askDatadogEvent(id string) session.Event {
 
 // ── 1. the offer, and the box it opens ──────────────────────────────────────
 
-// SAYING YES OPENS A BOX IN THE OFFER'S OWN ROW, and says nothing to the session
-// yet: there is no browser to hand off to, so the answer is not given until the
-// key is.
-func TestAKeyOfferOpensABoxWhereTheAnswersWere(t *testing.T) {
+// A KEY OFFER IS A QUESTION WITH A BOX RATHER THAN A PICK, and the box is the
+// MESSAGE BOX ([questionOwnsBox]). There is no browser to hand off to, so
+// nothing is said to the session until the key is given.
+//
+// IT USED TO BE TWO PRESSES: `enter` said yes, and the yes opened a box inside
+// the offer's own row. A bare yes to one of these is read as a decline by the
+// engine ([session.Agent.ResolveConnect] says why), so the middle step was a key
+// that meant nothing on its own — and it is gone.
+func TestAKeyOfferAsksForTheKeyInTheBox(t *testing.T) {
 	agent, a, opened := keyOfferApp(t)
 	drive(t, a, streamOf(a, askKeyEvent("c1", "notion", "Notion")))
 
-	// Before the yes it is the offer, unchanged: the question is the same
-	// question whichever way the connecting happens.
-	rows := connectBlock(a)
-	if !strings.Contains(rows[connectOfferRow], "[enter]") {
-		t.Fatalf("a key offer is not the offer: %q", rows[connectOfferRow])
+	block := strings.Join(connectBlock(a), "\n")
+	if !strings.Contains(block, "connect your Notion account?") {
+		t.Fatalf("a key offer does not name the account:\n%s", block)
 	}
-
-	drive(t, a, key("enter"))
-	rows = connectBlock(a)
-	if len(rows) != 3 {
-		t.Fatalf("the box changed the block's height: %d rows\n%s", len(rows),
-			strings.Join(rows, "\n"))
+	if !strings.Contains(block, "paste your Notion key") {
+		t.Fatalf("the card does not say what to put in the box:\n%s", block)
 	}
-	if got := a.connectAskHeight(); got != len(rows) {
-		t.Fatalf("the block is %d rows and counts itself as %d", len(rows), got)
-	}
-	if !strings.Contains(rows[connectOfferRow], "paste your Notion key") {
-		t.Fatalf("the box does not say what to put in it: %q", rows[connectOfferRow])
+	// THE WAY OUT SURVIVES THE BOX: a question the turn is waiting on with no
+	// visible no would be a question nobody can end.
+	if !strings.Contains(block, "2  not now") {
+		t.Fatalf("a key offer offers no way out:\n%s", block)
 	}
 	if len(agent.resolved) != 0 {
 		t.Fatalf("the session was answered before the key was given: %+v", agent.resolved)
@@ -90,30 +88,39 @@ func TestAKeyOfferOpensABoxWhereTheAnswersWere(t *testing.T) {
 	}
 }
 
+// keyRow is the message box as a reader sees it, which is where a typed answer
+// to a question is drawn.
+func keyRow(a *app) string {
+	rows, _, _ := a.inputBlock(a.width)
+	out := make([]string, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, plain(row))
+	}
+	return strings.Join(out, "\n")
+}
+
 // A site is a typed answer on the same road, but it is not a secret: the
 // question names every allowed value and what the person types stays visible.
 func TestAnAddressBlankUsesTheUnmaskedTypedAnswerBox(t *testing.T) {
 	agent, a, opened := connectApp(t)
 	a.width = 80
-	drive(t, a, streamOf(a, askDatadogEvent("c1")), key("enter"))
+	drive(t, a, streamOf(a, askDatadogEvent("c1")))
 
 	if !a.entering() {
-		t.Fatal("enter did not open the site box")
+		t.Fatal("the site question is not collecting an answer")
 	}
 	block := strings.Join(connectBlock(a), "\n")
 	if strings.Count(block, datadogAsk) != 1 {
 		t.Fatalf("the site question appears %d times, want once:\n%s", strings.Count(block, datadogAsk), block)
 	}
-	if !strings.Contains(block, "your site") {
-		t.Fatalf("the box does not say what to put in it:\n%s", block)
-	}
 	drive(t, a, tea.PasteMsg{Content: "datadoghq.eu"})
-	if row := connectBlock(a)[connectOfferRow]; !strings.Contains(row, "datadoghq.eu") {
+	if row := keyRow(a); !strings.Contains(row, "datadoghq.eu") {
 		t.Fatalf("the site was masked: %q", row)
 	}
 	if len(*opened) != 0 {
 		t.Fatalf("a browser opened before the site was submitted: %v", *opened)
 	}
+	connectSettled(t, a)
 	drive(t, a, key("enter"))
 	if len(agent.resolved) != 1 || agent.resolved[0].key != "datadoghq.eu" {
 		t.Fatalf("the session received %+v", agent.resolved)
@@ -123,9 +130,11 @@ func TestAnAddressBlankUsesTheUnmaskedTypedAnswerBox(t *testing.T) {
 	}
 
 	declined, b, _ := connectApp(t)
-	drive(t, b, streamOf(b, askDatadogEvent("c2")), key("enter"), key("esc"))
-	if len(declined.resolved) != 1 || declined.resolved[0].key != "" {
-		t.Fatalf("esc answered %+v, want not now", declined.resolved)
+	drive(t, b, streamOf(b, askDatadogEvent("c2")))
+	connectSettled(t, b)
+	drive(t, b, key("2"))
+	if len(declined.resolved) != 1 || declined.resolved[0].approve {
+		t.Fatalf("not now answered %+v, want a decline", declined.resolved)
 	}
 }
 
@@ -185,10 +194,10 @@ func TestAKeyedOfferWithABlankStillMasksItsAnswer(t *testing.T) {
 		ID: "keyed", Name: "Keyed", Auth: connect.AuthKey,
 		Blank: "Workspace", KeyAsk: "Which workspace and key should be used?",
 	}}}}
-	drive(t, a, streamOf(a, askKeyEvent("c1", "keyed", "Keyed")), key("enter"))
+	drive(t, a, streamOf(a, askKeyEvent("c1", "keyed", "Keyed")))
 	drive(t, a, tea.PasteMsg{Content: "recognizable-secret"})
 
-	row := connectBlock(a)[connectOfferRow]
+	row := keyRow(a)
 	if strings.Contains(row, "recognizable-secret") {
 		t.Fatalf("the keyed answer is visible: %q", row)
 	}
@@ -200,19 +209,24 @@ func TestAKeyedOfferWithABlankStillMasksItsAnswer(t *testing.T) {
 	}
 }
 
-// A keyed service's extra instruction stays off the fixed-height card: the
-// card keeps its purpose sentence and its ordinary paste hint.
-func TestAKeyOfferWithAnExtraInstructionKeepsItsPurposeAndPasteHint(t *testing.T) {
+// A KEYED SERVICE'S OWN INSTRUCTION IS WHAT THE CARD SAYS OVER THE BOX, and the
+// generic paste hint stands down for it. The catalog's sentence knows what this
+// particular account wants — "Give the site name and then the key" — and a card
+// that said both would be asking the same question twice in two voices.
+func TestAKeyOfferWithAnExtraInstructionKeepsItsPurposeAndItsOwnAsk(t *testing.T) {
 	_, a, _ := connectApp(t)
 	a.width = 80
-	drive(t, a, streamOf(a, askKeyEvent("c1", "chargebee", "Chargebee")), key("enter"))
+	drive(t, a, streamOf(a, askKeyEvent("c1", "chargebee", "Chargebee")))
 
 	block := strings.Join(connectBlock(a), "\n")
-	if !strings.Contains(block, connectPurpose("Chargebee")) {
-		t.Fatalf("the purpose sentence is missing:\n%s", block)
+	if !strings.Contains(block, "connect your Chargebee account?") {
+		t.Fatalf("the card does not name the account:\n%s", block)
 	}
-	if !strings.Contains(block, "paste your Chargebee key") {
-		t.Fatalf("the box lost its paste hint:\n%s", block)
+	if !strings.Contains(block, "Give the site name and then the key") {
+		t.Fatalf("the card lost the service's own instruction:\n%s", block)
+	}
+	if strings.Contains(block, "paste your Chargebee key") {
+		t.Fatalf("the card says what to type twice:\n%s", block)
 	}
 }
 
@@ -221,10 +235,10 @@ func TestAKeyOfferWithAnExtraInstructionKeepsItsPurposeAndPasteHint(t *testing.T
 func TestAKeyNeverReachesTheScreen(t *testing.T) {
 	_, a, _ := keyOfferApp(t)
 	a.width = 100
-	drive(t, a, streamOf(a, askKeyEvent("c1", "notion", "Notion")), key("enter"))
+	drive(t, a, streamOf(a, askKeyEvent("c1", "notion", "Notion")))
 	drive(t, a, tea.PasteMsg{Content: theKey + "\n"})
 
-	row := connectBlock(a)[connectOfferRow]
+	row := keyRow(a)
 	if strings.Contains(row, "secret") || strings.Contains(row, theKey) {
 		t.Fatalf("the key is on screen: %q", row)
 	}
@@ -247,10 +261,10 @@ func TestAKeyNeverReachesTheScreen(t *testing.T) {
 func TestALongKeyKeepsItsCountWhenTheMaskIsCut(t *testing.T) {
 	_, a, _ := keyOfferApp(t)
 	a.width = 40
-	drive(t, a, streamOf(a, askKeyEvent("c1", "notion", "Notion")), key("enter"))
+	drive(t, a, streamOf(a, askKeyEvent("c1", "notion", "Notion")))
 	drive(t, a, tea.PasteMsg{Content: theKey})
 
-	row := connectBlock(a)[connectOfferRow]
+	row := keyRow(a)
 	if strings.Count(row, "•") >= len(theKey) {
 		t.Fatalf("the mask was not cut to the frame: %q", row)
 	}
@@ -264,7 +278,8 @@ func TestALongKeyKeepsItsCountWhenTheMaskIsCut(t *testing.T) {
 func TestSubmittingAKeyAnswersTheSessionAndWaits(t *testing.T) {
 	agent, a, _ := keyOfferApp(t)
 	a.width = 100
-	drive(t, a, streamOf(a, askKeyEvent("c1", "notion", "Notion")), key("enter"))
+	drive(t, a, streamOf(a, askKeyEvent("c1", "notion", "Notion")))
+	connectSettled(t, a)
 	drive(t, a, tea.PasteMsg{Content: theKey}, key("enter"))
 
 	if a.asksConnect() {
@@ -290,38 +305,57 @@ func TestSubmittingAKeyAnswersTheSessionAndWaits(t *testing.T) {
 	}
 }
 
-// AN EMPTY BOX IS A DECLINE and not a complaint, and it writes nothing down —
-// the same law the browser offer's "not now" keeps.
-func TestAnEmptyKeyBoxIsADecline(t *testing.T) {
+// AN EMPTY BOX IS NOT AN ANSWER AT ALL, which is what changed here.
+//
+// It used to be a decline: `enter` on a box nobody had typed into sent an empty
+// key, and an empty key is a no. On the block `enter` over an empty box is the
+// key that takes a PICK, and this question has no pick — so it does nothing, the
+// offer stands, and the way out is the answer that says so.
+func TestAnEmptyBoxAnswersNothingAndTheWayOutStillDoes(t *testing.T) {
 	agent, a, _ := keyOfferApp(t)
 	before := len(a.entries)
-	drive(t, a, streamOf(a, askKeyEvent("c1", "notion", "Notion")), key("enter"), key("enter"))
+	drive(t, a, streamOf(a, askKeyEvent("c1", "notion", "Notion")))
+	connectSettled(t, a)
+	drive(t, a, key("enter"))
 
-	if a.asksConnect() {
-		t.Fatal("the block is still up")
+	if !a.asksConnect() {
+		t.Fatal("enter on an empty box answered the offer")
 	}
-	if len(agent.resolved) != 1 || !agent.resolved[0].keyed || agent.resolved[0].key != "" {
+	if len(agent.resolved) != 0 {
 		t.Fatalf("an empty box answered %+v", agent.resolved)
+	}
+	drive(t, a, key("2"))
+	if a.asksConnect() {
+		t.Fatal("the way out left the offer on screen")
+	}
+	if len(agent.resolved) != 1 || agent.resolved[0].approve {
+		t.Fatalf("not now answered %+v, want a decline", agent.resolved)
 	}
 	if len(a.entries) != before {
 		t.Fatalf("a decline wrote %d rows into the transcript", len(a.entries)-before)
 	}
 }
 
-// ESC BACKS OUT TO NOT NOW, in one press, and what was typed goes with it.
-func TestEscBacksOutOfTheKeyBox(t *testing.T) {
+// ESC IS LATER AND NOT A DECLINE, and what was typed is left where it was.
+//
+// It used to back out to "not now" in one press. On the block `esc` means
+// *later* on every question, so the offer folds to the chip and the session
+// hears nothing — the answer is still to be given.
+func TestEscOnAKeyOfferPutsItOffRatherThanDecliningIt(t *testing.T) {
 	agent, a, _ := keyOfferApp(t)
-	drive(t, a, streamOf(a, askKeyEvent("c1", "notion", "Notion")), key("enter"))
-	drive(t, a, tea.PasteMsg{Content: theKey}, key("esc"))
+	drive(t, a, streamOf(a, askKeyEvent("c1", "notion", "Notion")))
+	connectSettled(t, a)
+	drive(t, a, tea.PasteMsg{Content: theKey})
+	drive(t, a, key("esc"))
 
-	if a.asksConnect() {
-		t.Fatal("esc left the offer on screen")
+	if len(agent.resolved) != 0 {
+		t.Fatalf("esc answered %+v, want nothing at all", agent.resolved)
 	}
-	if len(agent.resolved) != 1 || !agent.resolved[0].keyed || agent.resolved[0].key != "" {
-		t.Fatalf("esc answered %+v, want a decline with no key", agent.resolved)
+	if !a.asksConnect() {
+		t.Fatal("esc threw the offer away instead of putting it off")
 	}
 	if len(a.entries) != 0 {
-		t.Fatal("backing out wrote something down")
+		t.Fatal("putting a question off wrote something down")
 	}
 }
 
@@ -330,7 +364,8 @@ func TestEscBacksOutOfTheKeyBox(t *testing.T) {
 // one somebody typed by hand.
 func TestTheKeyBoxTakesTheOffersOwnLetters(t *testing.T) {
 	agent, a, _ := keyOfferApp(t)
-	drive(t, a, streamOf(a, askKeyEvent("c1", "notion", "Notion")), key("enter"))
+	drive(t, a, streamOf(a, askKeyEvent("c1", "notion", "Notion")))
+	connectSettled(t, a)
 	drive(t, a, key("y"), key("n"), key("z"))
 
 	if !a.entering() {
@@ -345,12 +380,31 @@ func TestTheKeyBoxTakesTheOffersOwnLetters(t *testing.T) {
 	}
 }
 
+// AND SO DOES A DIGIT ONCE THERE IS A SENTENCE IN THE BOX, which is this
+// surface's own law about printable keys: `2` is the way out over an empty box
+// and the second character of a key inside one.
+func TestADigitInsideAHalfTypedKeyIsPartOfTheKey(t *testing.T) {
+	agent, a, _ := keyOfferApp(t)
+	drive(t, a, streamOf(a, askKeyEvent("c1", "notion", "Notion")))
+	connectSettled(t, a)
+	drive(t, a, key("s"), key("2"))
+
+	if len(agent.resolved) != 0 {
+		t.Fatalf("a digit typed into a key answered the offer: %+v", agent.resolved)
+	}
+	drive(t, a, key("enter"))
+	if len(agent.resolved) != 1 || agent.resolved[0].key != "s2" {
+		t.Fatalf("the box collected %+v", agent.resolved)
+	}
+}
+
 // A KEY THAT DID NOT WORK SAYS SO, in the key's own words: nothing was
 // abandoned in a browser, so nothing claims one was.
 func TestAKeyThatDidNotWorkSaysSoQuietly(t *testing.T) {
 	_, a, _ := keyOfferApp(t)
 	a.width = 100
-	drive(t, a, streamOf(a, askKeyEvent("c1", "notion", "Notion")), key("enter"))
+	drive(t, a, streamOf(a, askKeyEvent("c1", "notion", "Notion")))
+	connectSettled(t, a)
 	drive(t, a, tea.PasteMsg{Content: theKey}, key("enter"))
 	drive(t, a, streamOf(a, session.Event{
 		Kind: session.EventConnectDone, Service: "notion", Failed: true,
@@ -374,7 +428,8 @@ func TestAKeyThatDidNotWorkSaysSoQuietly(t *testing.T) {
 func TestAKeyThatWorkedSettlesIntoTheTickLine(t *testing.T) {
 	_, a, _ := keyOfferApp(t)
 	a.width = 100
-	drive(t, a, streamOf(a, askKeyEvent("c1", "notion", "Notion")), key("enter"))
+	drive(t, a, streamOf(a, askKeyEvent("c1", "notion", "Notion")))
+	connectSettled(t, a)
 	drive(t, a, tea.PasteMsg{Content: theKey}, key("enter"))
 	drive(t, a, streamOf(a, session.Event{
 		Kind: session.EventConnectDone, Service: "notion", Account: "jane@example.com",

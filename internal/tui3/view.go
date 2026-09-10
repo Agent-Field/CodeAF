@@ -102,10 +102,6 @@ const (
 	// its foot — and the press resolves the row before the column, so one kind
 	// with an honest index is what lets it hit-test either.
 	chromeQuestion
-	// chromeConnectAsk is the connect offer's answers row, which is interactive
-	// by keyboard and hoverable by pointer — the approval question's arrangement
-	// one block down (connect.go).
-	chromeConnectAsk
 	// chromeOverlay is one row of whichever list is open; index is its position
 	// in that list's own rows.
 	chromeOverlay
@@ -718,15 +714,12 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	for i, line := range a.questionRows(width) {
 		add(line, a.questionRowMark(i))
 	}
-	// AND THE CONNECT OFFER SITS DIRECTLY UNDER IT, because it is the same kind
-	// of thing one rung quieter: a question the session is waiting on, drawn
-	// where this surface draws everything it wants answered (connect.go). The
-	// two STACK rather than share a slot — an approval question is about a call
-	// and this is about an account, and either can be raised while the other is
-	// up — and the block above keeps the keyboard while it is there.
-	for i, line := range a.connectAskRows(width) {
-		add(line, a.connectMark(i))
-	}
+	// THE CONNECT OFFER USED TO SIT DIRECTLY UNDER IT, in a block of its own with
+	// its own answers row, its own click targets and a key router that took every
+	// keystroke while it was up. It is a card ON the block now (connect.go), so
+	// there is nothing to stack: one question about a call and one about an
+	// account are two questions in one queue, and the block already says how many
+	// are behind the one being read.
 	// AND A QUESTION'S OWN FOOT UNDER THAT, which is DESIGN.md's alignment law
 	// said as geometry: "the room's foot is pinned above the box exactly where
 	// every other question sits". It STACKS rather than sharing for the reason
@@ -922,7 +915,6 @@ func (a *app) chromeHeight() int {
 	// whatever the two optional blocks, the open list and the welcome box are
 	// holding.
 	n := a.statusHeight(width) + a.overlayHeight() + a.questionHeight() +
-		a.connectAskHeight() +
 		a.questionFootHeight() + a.guardHeight() +
 		a.followHeight() + a.landHeight() + a.parkedHeight() + a.welcomeHeight() + a.spellHeight()
 	// THE GREETING'S ROWS ALREADY HOLD THE BOX while it holds the box, and the

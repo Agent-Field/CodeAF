@@ -342,7 +342,8 @@ func (a *app) clearConversation() {
 	// door left to answer it, because the answer comes back on a lane this
 	// session no longer reads.
 	a.waits, a.waitAt = nil, 0
-	a.connAsks, a.connPanel = nil, connectPanel{}
+	a.dropConnectAsks()
+	a.connPanel = connectPanel{}
 	// The harness offer's own question goes with the conversation that raised it
 	// (harness.go); what is left here is the panel and the live step row, which
 	// are drawings rather than questions.

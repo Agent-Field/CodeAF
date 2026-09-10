@@ -626,6 +626,23 @@ func resolveThroughLanes(agent any, answer session.Answer) error {
 		}
 		door.ResolveHarness(answer.ID, key == session.HarnessSaveKey, answer.Comments[session.HarnessModelNote])
 		return nil
+	case session.QuestionConnect:
+		door, ok := agent.(interface {
+			ResolveConnect(id string, approve bool)
+			ResolveConnectKey(id string, key string)
+		})
+		if !ok {
+			return errNoSuchLane
+		}
+		// A YES TO A QUESTION THAT WANTED A TYPED ANSWER IS NOT AN ANSWER
+		// (session's applyToLane says it first): words go through the typed door
+		// and a bare pick through the other one.
+		if words := strings.TrimSpace(answer.Words()); words != "" {
+			door.ResolveConnectKey(answer.Ref, words)
+			return nil
+		}
+		door.ResolveConnect(answer.Ref, key == "1")
+		return nil
 	case session.QuestionStanding:
 		door, ok := agent.(standingAgent)
 		if !ok {

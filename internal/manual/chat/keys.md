@@ -1459,9 +1459,11 @@ box only**, fetches this answer from somewhere else. There is no key to decline 
 question takes itself down when an answer starts arriving — and with anything typed in the
 box a `y` is a `y`.
 
-**A connect offer:** `enter` or `y` yes · `esc` or `n` no. While its key box is open,
-every key goes into that box except `enter`, which submits, and `esc`, which
-declines.
+**A connect offer:** `1` connect · `2` not now · `esc` **later**. It is on the question
+block, so everything else falls through to the message box. A service connected by a
+KEY has no `1` at all — a bare yes to one of those is read as a decline — and asks for
+the key in the message box itself, masked: `enter` sends it, `2` is the way out, and
+`esc` puts the question off with what you typed still in the box.
 
 **A harness offer:** `1` run it · `2` not now · `esc` **later**. It is on the question
 block, so everything else falls through to the message box rather than doing nothing, and a

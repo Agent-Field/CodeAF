@@ -634,6 +634,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what key runs the harness it offered", "saved-shapes-of-work"},
 		{"how do I approve a design without leaving its room", "saved-shapes-of-work"},
 		{"what happened to ctrl+k and ctrl+x on a design", "saved-shapes-of-work"},
+		// The connect offer after it moved onto the block, asked by somebody who
+		// learned the keys that are gone and by somebody meeting the key box for
+		// the first time.
+		{"what key connects the account it is asking about", "accounts"},
+		{"enter does not connect the account any more", "accounts"},
+		{"where do I paste the key it is asking for", "accounts"},
+		{"how do I say not now to a key it wants", "accounts"},
 		{"how do I start aforge", "starting-aforge"},
 		{"why did it refuse to run git stash", "starting-aforge"},
 		{"it would not stash my changes on an unattended run", "starting-aforge"},
