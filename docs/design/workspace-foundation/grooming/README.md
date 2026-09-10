@@ -27,6 +27,10 @@ services, or a claim that every shown path works today.
 records the current implementation checkpoint and groups the remaining product
 and engineering questions without introducing a new delivery roadmap.
 
+[Logical data shapes](DATA-MODEL.md) defines the structures beneath the view:
+ordered memberships, chat journals, task relations, ongoing records and context
+revisions, plus the implications for existing storage.
+
 [Containment and links](CONTAINMENT-AND-LINKS.md) and its [SVG](CONTAINMENT-AND-LINKS.svg)
 are the latest minimal structure explanation: what folders list, what work owns,
 how an unfiled chat still connects, and the scope question exposed by sharing.
