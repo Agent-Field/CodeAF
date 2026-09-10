@@ -419,6 +419,45 @@ The fixed prefix is unchanged by the move: **38,742 bytes (prompt 18,807 + tools
 19,935)** before and after. Nothing left the page or the belt; one block left the
 front of the conversation.
 
+### And the run after it caught a second one, which is lane A's
+
+The same four cells were run again on `prompt-diet/integrate` at `2ce3b3abc`,
+after the move, as `diet-k`. Nineteen turn calls, four conversations, **one
+system prompt per conversation by digest**, fourteen append-only requests — and
+**one broken prefix**, which the earlier captures did not have because the code
+that causes it had not landed yet.
+
+```
+history-rewritten at messages[3] tool, 56,718 of 61,978 bytes stable
+  was: content":"#!/bin/sh\n# Stands in for a build: it takes a while and the
+  now: content":"[reduced view: bash · 933 bytes · full: /tmp/afconv-home.P
+```
+
+The reduced view of `toolcompact.go` replaced a **934-byte** tool result with an
+**843-byte** view. It reclaimed **91 bytes** and cost **5,260** — every byte
+after `messages[3]`, re-billed uncached, on that request and on the ones that
+follow it until the next break.
+
+The cause is a threshold on the wrong quantity. `compactLeaveVerbatim` leaves a
+result alone when `len(text) <= compactViewBytes`, which is 600 (`compactHeadBytes`
+200 + `checkpointResultBytes` 400) and is a bound on the RESULT. What decides
+whether a rewrite pays is the RECLAIM, and the reclaim is the result minus the
+head, the tail AND the pointer — and the pointer here was a 90-character absolute
+path into a temporary home, which ate almost the whole saving.
+
+`stub.go` already has this law and already has the test that pins it
+(`TestStubbingLeavesTheCachedPrefixAloneForATrivialReclaim`: "the pass replaces
+an old result only when the reclaim is worth it"). The reduced view wants the
+same guard — compose the view first, then keep it only if it is smaller than what
+it replaces by more than some margin — and `toolcompact.go` belongs to lane A, so
+this is written down here with its numbers rather than changed from outside it.
+
+Zero of dev's 69 requests and zero of the §1a diet's 19 carry a `[reduced view:`
+line; four of `diet-k`'s do. It is new in the wave, and it is small — 91 bytes
+against 5,260, once in nineteen requests — but it is the exact shape DESIGN.md §0
+says must never be paid, and it will be paid on every long result whose pointer
+is long.
+
 ### What was checked and found already correct
 
 - **Arming appends and never reorders.** `armFamily` (connect.go) dedupes by
@@ -770,6 +809,11 @@ as a pass nor as a regression.
   prefix moved, and §1c has the per-conversation digests that settle it. What is
   still owed there is a FRONTIER capture: every body here is DeepSeek, which
   sends no `cache_control` at all.
+
+- **The reduced view's rewrite guard**, from lane A (`toolcompact.go`). §1c has
+  the capture and the arithmetic: 91 bytes reclaimed for 5,260 re-billed, because
+  `compactLeaveVerbatim` bounds the RESULT rather than the RECLAIM and takes no
+  account of the pointer's own length. `stub.go` has the law and the test to copy.
 
 - **An issue about the one-endpoint pin.** §1's model-pin note has the evidence:
   an endpoint excluded by account policy ends a turn instead of hopping, while
