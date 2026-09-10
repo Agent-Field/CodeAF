@@ -666,11 +666,20 @@ Some settings are a dial rather than a choice:
 
     how much may it decide on its own here?
     ask me everything · [ tell me, then act ] · just do it
-    it will tell me, then act
+    tell me, then act
 
-`←` and `→` move it, and the line underneath says what the setting you are on
-actually does. On a screen reader it is drawn as `2 of 3 · tell me, then act`
-instead of as a picture, and the same two keys move it.
+`←` and `→` move it. The row of words is the SCALE — every notch this dial has —
+and the line under it is the READING, which is where it is standing right now.
+
+**The reading is whatever wrote the dial called that notch, word for word.**
+Nothing builds a sentence around it, because not every label is a verb phrase: a
+how-many dial reading `once · three times · five times` came out as
+`it will five times` when it did.
+
+On a screen reader the scale is drawn as `2 of 3 · tell me, then act` instead of
+as a picture, and the same two keys move it. A dial with no words on it at all is
+a bar with its number beside it, and has no reading underneath — the number is
+already there.
 
 ## What an answer carries
 
