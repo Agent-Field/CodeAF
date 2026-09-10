@@ -2,7 +2,8 @@
 
 ## Which surface is which
 
-Three chat surfaces live here. Getting this wrong wastes a whole recon pass, so check
+One chat surface lives here, beside the resident that shares its binary and the
+component library it draws with. Getting this wrong wastes a whole recon pass, so check
 before you read.
 
 | Path | What it is |
