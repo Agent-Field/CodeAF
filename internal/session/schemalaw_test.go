@@ -90,7 +90,7 @@ var schemaLawAllowed = map[string]schemaLawException{
 	// cutting it in this same wave and two lanes editing one string is a merge
 	// conflict for no gain. The quick-task wave's fields came into line on
 	// its own branch and their entries left with it; `fork` left with the verb.
-	"bash.background":            {bytes: 260, reason: schemaFieldOwnedElsewhere + " (lane B, internal/exec/bare)"},
+	"bash.background": {bytes: 260, reason: schemaFieldOwnedElsewhere + " (lane B, internal/exec/bare)"},
 }
 
 func TestEverySchemaStringIsAContractInOneClause(t *testing.T) {
