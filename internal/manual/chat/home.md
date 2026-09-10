@@ -1069,7 +1069,7 @@ anything. See *Moving a conversation from a window with no engine*.
 laptop and the journal is on the other machine, so there is nobody to ask, and the row says
 `open in another window — go there, or start a new conversation here`.
 
-## Moving a conversation from a window with no engine — why is moving a conversation slow, it says coming here and nothing happens, how do I cancel the move, that window did not answer
+## Moving a conversation from a window with no engine asks first — the move card, enter moves nothing, the cursor starts on leave it there
 
 This is the road a window takes when there is no engine holding the conversation —
 `--no-host`, `--debug`, a test. On the ordinary `aforge chat` you will not meet it: see
@@ -1109,6 +1109,8 @@ question and `esc leave it there`.
 It used to be two enters, with the offer on a foot line thirty rows from the row it was
 about and the second `enter` doing the move — so leaning on `enter` down a list of
 conversations ended another window with it.
+
+## Moving a conversation from a window with no engine — why is moving a conversation slow, it says coming here and nothing happens, how do I cancel the move, that window did not answer
 
 **Answering `move it here` asks the other window, and the row says it is coming.** The right margin stops saying
 `another window` and says `coming here`, the row takes the page's one turning cell, and the

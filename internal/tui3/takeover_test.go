@@ -11,8 +11,8 @@ package tui3
 import (
 	"context"
 	"os"
-	"slices"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
