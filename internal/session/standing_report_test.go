@@ -1,15 +1,19 @@
 package session
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 func TestAStandingReportIsPublishedInsideItsProjectOnly(t *testing.T) {
@@ -72,5 +76,76 @@ func TestAFiringIsToldWhyItRunsAndWhereItsReportGoes(t *testing.T) {
 	}
 	if first := standingOccurrenceBlock(standing.Occurrence{Spec: 1}); !strings.Contains(first, "none; this is the first") {
 		t.Fatalf("a first occurrence claims a previous one:\n%s", first)
+	}
+}
+
+// reporting is a watch whose final reply is published to reports/r.md.
+func reporting(workspace string) standing.Item {
+	item := nightly(workspace)
+	item.When = standing.When{Kind: standing.WhenFile, Glob: "inbox/*", Words: "when inbox/* changes"}
+	item.Does.Report = "reports/r.md"
+	return item
+}
+
+// THE REPORT IS THE ANSWER, NOT THE NARRATION BEFORE THE READING. The words a
+// model says before it calls a tool are about what it is about to do; only the
+// last turn's words after its last tool call are published.
+func TestAReportIsTheFinalAnswerNotTheNarration(t *testing.T) {
+	root, workspace := t.TempDir(), t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workspace, "inbox"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "inbox", "a.md"), []byte("Decision: ship Friday\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]string{"path": "inbox/a.md"})
+	model := &scriptedCompleter{steps: []step{
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			provider.Emit(ctx, provider.StreamDelta, "Let me read the inbox first.")
+			return toolResponseWithText("call_1", "read", string(args), "Let me read the inbox first."), nil
+		},
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			provider.Emit(ctx, provider.StreamDelta, "# Report\n- Decision: ship Friday")
+			return textResponse("# Report\n- Decision: ship Friday"), nil
+		},
+	}}
+	outcome, err := standingChildRunner(t, root, model).Run(context.Background(), reporting(workspace), filepath.Join(root, "runs", "0001"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(workspace, "reports", "r.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != "# Report\n- Decision: ship Friday\n" || outcome.Kind != "landed" || outcome.Published == nil || !strings.HasPrefix(outcome.Text, "report updated: reports/r.md") {
+		t.Fatalf("published %q outcome %+v", raw, outcome)
+	}
+}
+
+// A RUN CUT OFF MID-ANSWER DID NOT LAND, AND THE LAST GOOD REPORT STAYS. The
+// live journey found this: a pass deadline arrived while the final answer was
+// streaming, and half a report was published as landed.
+func TestARunCutOffMidAnswerPublishesNothing(t *testing.T) {
+	root, workspace := t.TempDir(), t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workspace, "reports"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	previous := "# Report\nthe last good one\n"
+	if err := os.WriteFile(filepath.Join(workspace, "reports", "r.md"), []byte(previous), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	model := &scriptedCompleter{steps: []step{
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			provider.Emit(ctx, provider.StreamDelta, "# Report\n- Decision: ship Fri")
+			return nil, context.DeadlineExceeded
+		},
+	}}
+	outcome, err := standingChildRunner(t, root, model).Run(context.Background(), reporting(workspace), filepath.Join(root, "runs", "0001"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(filepath.Join(workspace, "reports", "r.md"))
+	if outcome.Kind != standing.OutcomeFailed || outcome.Published != nil || string(raw) != previous || !strings.Contains(outcome.Text, "cut off") {
+		t.Fatalf("a cut-off run: outcome %+v report %q", outcome, raw)
 	}
 }

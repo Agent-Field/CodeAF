@@ -621,13 +621,28 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		limit = standingRunSteps
 	}
 	reply := ""
+	// final is what the LAST turn said after its last tool call — the answer,
+	// without the "let me read the files first" that came before the reading.
+	// It is what a report is published from. cut is the error a turn ended on,
+	// if one did: a reply streamed up to a deadline is half a report.
+	final := ""
+	var cut error
 	needs, saved, capped := "", false, false
 	drain := func(events <-chan Event) {
-		var said strings.Builder
+		var said, since strings.Builder
 		for event := range events {
 			switch event.Kind {
 			case EventTextDelta:
 				said.WriteString(event.Text)
+				since.WriteString(event.Text)
+			case EventToolBegin, EventToolAnnounced:
+				since.Reset()
+			case EventError:
+				if event.Err != nil {
+					cut = event.Err
+				} else {
+					cut = errors.New("the turn ended abnormally")
+				}
 			case EventToolEnd:
 				// A CALL THAT SAVED SOMETHING IS THE LANDING, and [producedAFile]
 				// is the one place this build says which calls those are
@@ -673,6 +688,7 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		// whose last re-entry was wordless still came to what it said before it.
 		if words := strings.TrimSpace(said.String()); words != "" {
 			reply = words
+			final = strings.TrimSpace(since.String())
 		}
 	}
 	drain(events)
@@ -734,6 +750,25 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		Text: clip(reply, standingOutcomeClip),
 		USD:  agent.Usage().CostUSD,
 	}
+	if needs == "" && (cut != nil || ctx.Err() != nil) {
+		// A RUN CUT OFF MID-ANSWER DID NOT LAND. The words that streamed before
+		// the deadline or the failure are the start of an answer, and reporting
+		// them as what the work came to — or publishing them over the last good
+		// report — would be the truncated page this law exists to prevent.
+		why := ctx.Err()
+		if cut != nil {
+			why = cut
+		}
+		outcome.Kind = standing.OutcomeFailed
+		outcome.Text = "the run was cut off before it finished: " + oneLine(why.Error())
+	}
+	if strings.TrimSpace(item.Does.Report) != "" && outcome.Kind == "landed" && final == "" {
+		// A RUN THAT OWES A REPORT AND ENDED ON A TOOL CALL OR ON NARRATION
+		// wrote no report. The last good one stays where it is, and the run says
+		// so rather than landing on words that were never the answer.
+		outcome.Kind = standing.OutcomeFailed
+		outcome.Text = "the run ended without a report; the previous report is unchanged"
+	}
 	if needs != "" {
 		// NOTHING PRETENDS THIS LANDED. A run that stopped on something only a
 		// person can allow is not a failure and is not a success; it is work
@@ -747,8 +782,8 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 	// something clean publishes one: a run that stopped on a question or said
 	// nothing leaves the last good report where it was rather than replacing
 	// it with a refusal or an empty page (internal/standing's Action.Report).
-	if report := strings.TrimSpace(item.Does.Report); report != "" && outcome.Kind == "landed" && needs == "" && strings.TrimSpace(reply) != "" {
-		published, err := publishStandingReport(item.Workspace, report, reply)
+	if report := strings.TrimSpace(item.Does.Report); report != "" && outcome.Kind == "landed" && needs == "" && final != "" {
+		published, err := publishStandingReport(item.Workspace, report, final)
 		if err != nil {
 			outcome.Kind = standing.OutcomeFailed
 			outcome.Text = "could not publish the report to " + report + ": " + err.Error()
@@ -760,7 +795,7 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 				occurrence.Published = published
 				_ = standing.WriteOccurrence(runDir, occurrence)
 			}
-			outcome.Text = clip("report updated: "+report+" — "+reply, standingOutcomeClip)
+			outcome.Text = clip("report updated: "+report+" — "+final, standingOutcomeClip)
 		}
 	}
 	if outcome.Kind == standing.OutcomeNothing {

@@ -103,7 +103,14 @@ const Interval = 5 * time.Minute
 // needs a third reading of the same figure — how long a pass may last is how
 // long a marker may be believed. Three copies of a ceiling is three chances for
 // one of them to move.
-const TickWindow = 120 * time.Second
+//
+// IT IS ONE INTERVAL, NOT TWO MINUTES, since ongoing work began publishing
+// reports. A firing that reads a folder and writes a report on a real model
+// took from under a minute to past two on 2026-09-10, and the old 120 seconds
+// cut one while its final answer was still streaming. A pass may now last as
+// long as the gap before the next one; a pass still running when the next tick
+// comes is simply held ([ErrHeld]), which was already the design.
+const TickWindow = Interval
 
 // RunKeep is how long a run that delivered nothing is kept before the sweep
 // reaps it. A run that delivered something — a note, a task landing, a
