@@ -1,5 +1,11 @@
 package tui3
 
+import (
+	"os"
+	"path/filepath"
+	"strings"
+)
+
 // recentPanel is `where you were`: this window's own conversation first, in
 // bold, with the last thing said in it on the line under it; then the most
 // recently active of the rest; then `N more · type to find one`.
@@ -58,7 +64,7 @@ func recentOwnCell(row switcherRow, in *homeGridInput) *homeCell {
 // recentCell is any other row: its age, or the one fact that decides what enter
 // will do, at the margin — and its project's name beside that only when it is
 // not this window's own folder, where the tag would be the same word on every
-// row.
+// row, and only when the folder has a name ([chatProjectTag]).
 func recentCell(row switcherRow, in *homeGridInput) *homeCell {
 	cell := &homeCell{panel: panelRecent, title: row.title, right: switcherMarginWord(row)}
 	cell.hold = cell.right != row.age
@@ -66,7 +72,43 @@ func recentCell(row switcherRow, in *homeGridInput) *homeCell {
 		cell.door = takeoverHeldDoorWord
 	}
 	if homeBucketOf(row.session.Transcript) != in.bucket {
-		cell.tag = row.project
+		cell.tag = chatProjectTag(row, in.tilde)
 	}
 	return cell
+}
+
+// chatProjectTag is the project word a chat row wears, and NOTHING FOR A
+// FOLDER THAT IS NOT A PROJECT: the home directory, whose word is a lone `~`,
+// and a scratch folder at the top of the temporary directory, whose word is a
+// name somebody made up for a minute (DESIGN §1, "what is retired"). The
+// projects panel still lists both, as the paths they are.
+func chatProjectTag(row switcherRow, tilde string) string {
+	if row.project == "~" || homeScratchFolder(row.session.Workspace, tilde) {
+		return ""
+	}
+	return row.project
+}
+
+// homeScratchRoots are the directories a throwaway folder is made at the top
+// of: the system's temporary directory, and `/tmp` spelled as people type it.
+var homeScratchRoots = []string{filepath.Clean(os.TempDir()), "/tmp"}
+
+// homeScratchFolder reports a workspace that is the home directory itself or
+// a folder directly inside a temporary root — `/tmp/af-stop-ws` is scratch,
+// `/tmp/build/site` is somebody's checkout.
+func homeScratchFolder(path, tilde string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return false
+	}
+	clean := filepath.Clean(path)
+	if tilde != "" && clean == filepath.Clean(tilde) {
+		return true
+	}
+	for _, root := range homeScratchRoots {
+		if clean == root || filepath.Dir(clean) == root {
+			return true
+		}
+	}
+	return false
 }

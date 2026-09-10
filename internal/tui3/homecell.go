@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -255,18 +256,27 @@ func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 		return ""
 	}
 	title, note, tag, right := cell.title, cell.note, cell.tag, cell.right
+	pad := cell.pad
+	if cell.path {
+		title, pad = homeCellPathTitle(cell, width)
+	}
 	facts := []*string{&note, &tag, &right}
 	if cell.hold {
 		facts = facts[:2]
 	}
 	for _, fact := range facts {
-		if homeCellWidth(title, cell.pad, note, tag, right) <= width {
+		if homeCellWidth(title, pad, note, tag, right) <= width {
 			break
 		}
 		*fact = ""
 	}
-	if over := homeCellWidth(title, cell.pad, note, tag, right) - width; over > 0 {
-		title = fit(title, max(1, ansi.StringWidth(title)-over))
+	if over := homeCellWidth(title, pad, note, tag, right) - width; over > 0 {
+		keep := max(1, ansi.StringWidth(title)-over)
+		if cell.path {
+			title = homeFitPathLeft(title, keep)
+		} else {
+			title = fit(title, keep)
+		}
 	}
 	titleInk, factInk := pal.ink, pal.dim
 	if cell.bold || lit {
@@ -278,7 +288,7 @@ func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 	line := titleInk(title)
 	used := ansi.StringWidth(title)
 	if note != "" {
-		gap := max(0, cell.pad-used) + len(homeCellGap)
+		gap := max(0, pad-used) + len(homeCellGap)
 		line += strings.Repeat(" ", gap) + factInk(note)
 		used += gap + ansi.StringWidth(note)
 	}
@@ -287,6 +297,43 @@ func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 		return line
 	}
 	return line + strings.Repeat(" ", max(1, width-used-ansi.StringWidth(tail))) + factInk(tail)
+}
+
+// homeCellPathTitle is a path title fitted into what its row's facts leave,
+// and the pad cut to match.
+//
+// A PATH GIVES WAY BEFORE ITS FACTS, from the left. `~/Documents/agentfield/
+// code/aforge-v2` pushed `61 chats` off its row in the owner's first binary,
+// and the part of a path that tells two folders apart is its end — so the path
+// is cut to `…/code/aforge-v2` while the count and the repository keep their
+// cells. It is cut to the panel's pad as well, so every path on the panel ends
+// at or before one column and the counts beside them stand in one line. Only
+// where even the folder's own name would not fit do the facts give way, in the
+// row's ordinary order.
+func homeCellPathTitle(cell *homeCell, width int) (string, int) {
+	room := width - homeCellWidth("", 0, cell.note, cell.tag, cell.right)
+	if cell.pad > 0 {
+		room = min(room, cell.pad)
+	}
+	if room < ansi.StringWidth(glyphMore+"/"+filepath.Base(cell.title)) {
+		return cell.title, cell.pad
+	}
+	return homeFitPathLeft(cell.title, room), min(cell.pad, room)
+}
+
+// homeFitPathLeft is [fitLeft] for a path: cut from the left, and then on to
+// the next separator, so what is left starts at a folder — `…/code/aforge-v2`
+// and never `…ield/code/aforge-v2`.
+func homeFitPathLeft(path string, width int) string {
+	cut := fitLeft(path, width)
+	rest := strings.TrimPrefix(cut, glyphMore)
+	if rest == cut {
+		return cut
+	}
+	if at := strings.Index(rest, "/"); at > 0 && at < len(rest)-1 {
+		return glyphMore + rest[at:]
+	}
+	return cut
 }
 
 // homeCellDoor is the row UNDER THE CURSOR growing its held word into the door

@@ -36,7 +36,7 @@ func (projectsPanel) rows(in *homeGridInput) homePanelRows {
 	}
 	var lines []homeLine
 	for _, project := range ordered[:shown] {
-		cell := &homeCell{panel: panelProjects, title: projectWord(project, in.tilde), pad: pad,
+		cell := &homeCell{panel: panelProjects, title: projectWord(project, in.tilde), pad: pad, path: true,
 			note: projectCounts(project), right: projectRepo(project, in.repos)}
 		lines = append(lines, homeLine{kind: homeProjectRow, project: project.Name, dir: project.Dir, proj: project, cell: cell})
 	}

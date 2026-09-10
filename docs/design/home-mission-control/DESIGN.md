@@ -96,7 +96,10 @@ own keys, each a door to the place that owns it. The chat list is one panel.
   panel needs it takes from the reading; the registry goes.
 - `ctrl+t` as the way to start in another folder. Enter on a project row is.
 - Per-panel key hints, project tags on rows in this window's own folder, and
-  `~` as a project name.
+  `~` as a project name. A chat whose workspace is the home directory or a
+  scratch folder at the top of `/tmp` wears no tag at all; the projects panel
+  still lists both, as the paths `~` and `/tmp/af-stop-ws`, and cuts any path
+  from the left (`…/code/aforge-v2`) so its counts stay on the row.
 
 ## 2. What the engine knows today, panel by panel
 

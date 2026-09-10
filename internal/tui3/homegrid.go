@@ -345,6 +345,10 @@ type homeCell struct {
 	note, tag, right string
 	// bold is this window's own conversation.
 	bold bool
+	// path says the title is a folder's path, which is cut FROM THE LEFT —
+	// `…/code/aforge-v2` — so the folder's own name and the facts beside it
+	// stay on the row ([homeCellPathTitle]).
+	path bool
 	// hold says the right-hand word is a fact about the DOOR — `folder gone`,
 	// `another window`, `coming here`, `here` — and is cut around rather than
 	// dropped, because it is what enter will do; door is the longer sentence a

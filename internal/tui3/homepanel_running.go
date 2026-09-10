@@ -59,7 +59,7 @@ func (runningPanel) rows(in *homeGridInput) homePanelRows {
 			items = append(items, runningItem{task.StartedAt, runningTaskLine(row, task, in.now)})
 		}
 		for _, job := range row.session.Presence.Jobs {
-			items = append(items, runningItem{job.StartedAt, runningJobLine(row, job, in.now)})
+			items = append(items, runningItem{job.StartedAt, runningJobLine(row, job, chatProjectTag(row, in.tilde), in.now)})
 		}
 	}
 	sort.SliceStable(items, func(i, j int) bool { return runningNewer(items[i].started, items[j].started) })
@@ -135,11 +135,12 @@ func runningDoing(task session.PresenceTask) string {
 }
 
 // runningJobLine is one background job: one line, because a dev server has no
-// activity to report — only where it is and how long it has been up.
-func runningJobLine(row switcherRow, job session.PresenceJob, now time.Time) homeLine {
+// activity to report — only where it is ([chatProjectTag]'s word for its
+// folder) and how long it has been up.
+func runningJobLine(row switcherRow, job session.PresenceJob, project string, now time.Time) homeLine {
 	title := strings.TrimSpace(job.Title)
-	if row.project != "" {
-		title += rowSep + row.project
+	if project != "" {
+		title += rowSep + project
 	}
 	clock := ""
 	if age := sinceAt(job.StartedAt, now); age != "" {
