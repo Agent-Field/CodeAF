@@ -706,12 +706,12 @@ func (p *orchestratePlanner) think(ctx context.Context, messages []ai.Message) (
 // sees.
 func (p *orchestratePlanner) ask(ctx context.Context, messages []ai.Message) (string, error) {
 	ctx = p.call.context(ctx)
-	response, err := p.agent.client.CompleteWithMessages(
+	response, err := p.agent.completeWithModel(
 		// The plan a run is steered by: nobody reads it arriving, and it has to
 		// be right rather than soon (internal/lane's roles.go).
 		provider.WithRole(provider.WithoutStream(ctx), lane.RoleDesign),
 		messages,
-		ai.WithModel(p.call.model))
+		p.call.model)
 	if err != nil {
 		return "", err
 	}

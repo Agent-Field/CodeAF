@@ -1254,8 +1254,8 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			func(message ai.Message) string { return a.fullResultPointer(message, place) })
 		attemptCtx = provider.WithMessageReasoning(attemptCtx, carried)
 		attemptCtx, generation := a.beginGeneration(attemptCtx)
-		response, err := a.client.CompleteWithMessages(attemptCtx, messages,
-			ai.WithModel(a.config.wireModel(model)), ai.WithTools(a.beltDefinitions()))
+		response, err := a.completeWithModel(attemptCtx, messages, model,
+			ai.WithTools(a.beltDefinitions()))
 		cause := a.endGeneration(generation)
 		if errors.Is(cause, errSteerCut) {
 			return response, model, errSteerCut

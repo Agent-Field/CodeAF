@@ -201,9 +201,9 @@ func (a *Agent) shapeBrief(ctx context.Context, request string) shapedBrief {
 		// accumulation from nothing: the second answer replaces the first, and a
 		// watcher handed the two concatenated would be reading a document that
 		// was never written.
-		response, callErr := a.client.CompleteWithMessages(
+		response, callErr := a.completeWithModel(
 			provider.WithRole(watchedShapeContext(ctx, watch), lane.RoleAuxiliary), messages,
-			ai.WithModel(call.Model))
+			call.Model)
 		if callErr != nil || response == nil {
 			// A SHAPER THAT RAN AND WAS CUT IS NOT THE SILENT PASS-THROUGH. The
 			// no-shaper paths above are the documented absence of the capability

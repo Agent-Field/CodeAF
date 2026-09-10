@@ -1026,10 +1026,10 @@ func (a *Agent) harnessComplete(ctx context.Context, messages []ai.Message, mode
 	// What this call is FOR, in the vocabulary the router and the phase clock
 	// share: a craft pass on a harness page, watched through the progress above
 	// rather than through its token stream (internal/lane's roles.go).
-	response, err := a.client.CompleteWithMessages(
+	response, err := a.completeWithModel(
 		provider.WithRole(streamCtx, lane.RoleDesign),
 		messages,
-		ai.WithModel(model))
+		model)
 	close(done)
 	if err != nil {
 		call.seat.broke(err)

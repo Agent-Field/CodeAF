@@ -68,6 +68,9 @@ func New(config Config) (*Agent, error) {
 	}
 	agent.managedClient = true
 	agent.clientAccount = accountFor(config, config.Model)
+	if wrapper, ok := agent.client.(sessionCompleter); ok {
+		agent.clientsByAccount = map[modelAccount]Completer{agent.clientAccount: wrapper.inner}
+	}
 	return agent, nil
 }
 
@@ -679,7 +682,9 @@ func (a *Agent) SetAPIKey(key string) error {
 	// left the first model request on the empty bearer it opened with. Reach the
 	// same underlying client task children use, then update it before recording
 	// the key for workers spawned later.
-	if keyed, ok := unwrapCompleter(a.client).(interface{ SetAPIKey(string) error }); ok {
+	oldAccount := a.clientAccount
+	inner := unwrapCompleter(a.client)
+	if keyed, ok := inner.(interface{ SetAPIKey(string) error }); ok {
 		if err := keyed.SetAPIKey(key); err != nil {
 			return err
 		}
@@ -687,6 +692,10 @@ func (a *Agent) SetAPIKey(key string) error {
 	a.config.APIKey = key
 	a.config.Sources = a.config.Sources.WithDefaultKey(key)
 	a.clientAccount = accountFor(a.config, a.model)
+	if a.clientsByAccount != nil {
+		delete(a.clientsByAccount, oldAccount)
+		a.clientsByAccount[a.clientAccount] = inner
+	}
 	return nil
 }
 

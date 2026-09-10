@@ -4415,9 +4415,9 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 	// answer rather than the answer itself, so it is priced and drawn as the
 	// errand it is: a person is reading the turn this ends, and the clock over
 	// their answer is not this call's to move (internal/lane's roles.go).
-	response, err := a.client.CompleteWithMessages(
+	response, err := a.completeWithModel(
 		provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary), messages,
-		ai.WithModel(model))
+		model)
 	if err != nil || response == nil {
 		// AND THE FAULT IS CARRIED OUT OF HERE RATHER THAN SPELLED AS SILENCE. This
 		// rung answering "" used to be indistinguishable from a rung that answered

@@ -141,13 +141,13 @@ func (a *Agent) guardianAllows(ctx context.Context, hub *eventHub, call ai.ToolC
 	// speed is worth little — and nobody is reading its stream, which is what
 	// keeps it off the status line of the answer it is standing in front of
 	// (internal/lane's roles.go).
-	response, err := a.client.CompleteWithMessages(
+	response, err := a.completeWithModel(
 		provider.WithRole(provider.WithoutStream(judgeCtx), lane.RoleJudge),
 		[]ai.Message{
 			textMessage("system", guardianPrompt),
 			textMessage("user", guardianQuestion(call, decision)),
 		},
-		ai.WithModel(judge))
+		judge)
 	if err != nil || response == nil {
 		return false
 	}

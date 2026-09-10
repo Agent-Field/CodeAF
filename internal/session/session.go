@@ -1920,6 +1920,12 @@ type Agent struct {
 	// adapter holds, so a service-set change can replace it before another call.
 	managedClient bool
 	clientAccount modelAccount
+	// clientsByAccount holds the provider adapters this conversation has already
+	// built, keyed by the service facts that make one account distinct. Auxiliary
+	// roles may belong to a different service than the conversation, and building
+	// one adapter per call would turn a routing correction into connection churn.
+	// The map is guarded by mu with client and clientAccount.
+	clientsByAccount map[modelAccount]Completer
 	// limits are the response boundary's three numbers — how many times the wire
 	// is forgiven, how many measured failures buy a stronger tier, and what that
 	// tier may cost one piece of work (taxonomy_boundary.go). They are resolved

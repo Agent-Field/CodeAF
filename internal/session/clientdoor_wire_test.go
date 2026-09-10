@@ -14,8 +14,10 @@ import (
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 type clientDoorCall struct {
@@ -88,6 +90,12 @@ func (s *clientDoorServer) call(t *testing.T, index int) clientDoorCall {
 		t.Fatalf("provider received %d requests, want request %d", len(s.calls), index+1)
 	}
 	return s.calls[index]
+}
+
+func (s *clientDoorServer) allCalls() []clientDoorCall {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]clientDoorCall(nil), s.calls...)
 }
 
 func clientDoorModel(t *testing.T, call clientDoorCall) string {
@@ -174,6 +182,54 @@ func TestTheSessionReachesTheSourceThatServesItsModel(t *testing.T) {
 		t.Fatalf("session model = %q, want its service-qualified identity", agent.Model())
 	}
 	assertOrdinaryClientDoorCall(t, server.call(t, 0), "direct-conversation-key", "stub/conversation")
+}
+
+// Every model chooses its own service before its slug is put on the request.
+// This drives the real Agent through the three tier families that made the
+// hand-run leak visible: reflex, worker, and mastermind.
+func TestTheCrewReachesItsOwnServiceWhileTheChatIsElsewhere(t *testing.T) {
+	defaultServer := newClientDoorServer(t, "done")
+	directServer := newClientDoorServer(t, "done")
+	defaultSource := modelsource.DefaultSource(defaultServer.URL)
+	directSource := modelsource.Source{ID: "direct", Written: "localhost", Address: directServer.URL}
+	agent, err := New(Config{
+		Workspace: t.TempDir(), Model: "localhost/fake-small",
+		Sources: modelsource.NewSet(
+			modelsource.Connected{Source: defaultSource, Key: "default-crew-key", Address: defaultServer.URL},
+			modelsource.Connected{Source: directSource, Key: "direct-chat-key", Address: directServer.URL},
+		),
+		RolesSource: tierSettings(map[string]string{
+			roles.TierKey(roles.TierReflex):     "crew/reflex",
+			roles.TierKey(roles.TierWorker):     "crew/worker",
+			roles.TierKey(roles.TierMastermind): "crew/mastermind",
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = agent.Close() })
+
+	for _, role := range []roles.Role{roles.RoleReflex, roles.RoleWorker, roles.RolePlanner} {
+		if _, _, err := agent.callRole(t.Context(), role, agent.Model(), []ai.Message{textMessage("user", "answer")}); err != nil {
+			t.Fatalf("%s call: %v", role, err)
+		}
+	}
+	drainTurn(t, agent, "chat here")
+
+	crew := defaultServer.allCalls()
+	if len(crew) != 3 {
+		t.Fatalf("default service received %d crew calls, want 3: %+v", len(crew), crew)
+	}
+	for index, want := range []string{"crew/reflex", "crew/worker", "crew/mastermind"} {
+		if crew[index].authorization != "Bearer default-crew-key" || clientDoorModel(t, crew[index]) != want {
+			t.Fatalf("crew call %d = bearer %q model %q, want default bearer and %q", index+1,
+				crew[index].authorization, clientDoorModel(t, crew[index]), want)
+		}
+	}
+	chat := directServer.allCalls()
+	if len(chat) != 1 || chat[0].authorization != "Bearer direct-chat-key" || clientDoorModel(t, chat[0]) != "fake-small" {
+		t.Fatalf("direct service calls = %+v, want only the chat model on its own bearer", chat)
+	}
 }
 
 func TestTheDocumentReadReachesTheSourceThatServesItsModel(t *testing.T) {

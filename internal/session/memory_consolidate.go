@@ -358,8 +358,7 @@ func consolidateAsk(ctx context.Context, client Completer, model string, batch [
 		[]ai.Message{
 			textMessage("system", consolidatePrompt),
 			textMessage("user", consolidateListing(batch)),
-		},
-		ai.WithModel(model))
+		})
 	if err != nil {
 		return consolidatePlan{}, 0, err
 	}

@@ -1072,8 +1072,7 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 			[]ai.Message{
 				textMessage("system", standingSentinelPrompt),
 				textMessage("user", standingSentinelQuestion(judgment)),
-			},
-			ai.WithModel(model))
+			})
 		if err != nil {
 			return false, "", 0, err
 		}

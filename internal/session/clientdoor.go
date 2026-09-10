@@ -54,12 +54,18 @@ func (a *Agent) rebindClientLocked(model string) {
 	if want == a.clientAccount {
 		return
 	}
-	var inner Completer
-	client, err := newProviderClient(a.config, model)
-	if err != nil {
-		inner = unavailableCompleter{err: err}
-	} else {
-		inner = client
+	inner, ok := a.clientsByAccount[want]
+	if !ok {
+		client, err := newProviderClient(a.config, model)
+		if err != nil {
+			inner = unavailableCompleter{err: err}
+		} else {
+			inner = client
+		}
+		if a.clientsByAccount == nil {
+			a.clientsByAccount = make(map[modelAccount]Completer)
+		}
+		a.clientsByAccount[want] = inner
 	}
 	if wrapper, ok := a.client.(sessionCompleter); ok {
 		wrapper.inner = inner
@@ -68,6 +74,61 @@ func (a *Agent) rebindClientLocked(model string) {
 		a.client = inner
 	}
 	a.clientAccount = want
+}
+
+// completerFor resolves the account from the model being called, not from the
+// model the conversation happens to be using. The retained client is reused
+// when those are the same account; another service gets one cached adapter of
+// its own, wrapped with this session's cache lineage and patience.
+//
+// THIS IS THE ONLY DOOR THAT MAY PUT A MODEL OVERRIDE ON A SESSION REQUEST. An
+// override changes only the slug in the request; choosing the client here first
+// is what changes the address and bearer with it.
+func (a *Agent) completerFor(model string) (Completer, string, error) {
+	if a == nil {
+		return nil, "", errNoCompleter
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.client == nil {
+		return nil, "", errNoCompleter
+	}
+	configured := a.config.clientConfig(model, providerTimeout)
+	if !a.managedClient {
+		return a.client, configured.Model, nil
+	}
+	want := accountFor(a.config, model)
+	if want == a.clientAccount {
+		return a.client, configured.Model, nil
+	}
+	inner, ok := a.clientsByAccount[want]
+	if !ok {
+		client, err := newProviderClient(a.config, model)
+		if err != nil {
+			return nil, "", err
+		}
+		inner = client
+		if a.clientsByAccount == nil {
+			a.clientsByAccount = make(map[modelAccount]Completer)
+		}
+		a.clientsByAccount[want] = inner
+	}
+	if wrapper, ok := a.client.(sessionCompleter); ok {
+		wrapper.inner = inner
+		return wrapper, configured.Model, nil
+	}
+	return inner, configured.Model, nil
+}
+
+// completeWithModel is [Agent.completerFor] joined to the one wire-model
+// option. Keeping the two operations inseparable makes it impossible to change
+// a slug while accidentally retaining another service's address and bearer.
+func (a *Agent) completeWithModel(ctx context.Context, messages []ai.Message, model string, options ...ai.Option) (*ai.Response, error) {
+	client, wire, err := a.completerFor(model)
+	if err != nil {
+		return nil, err
+	}
+	return client.CompleteWithMessages(ctx, messages, append(options, ai.WithModel(wire))...)
 }
 
 type unavailableCompleter struct{ err error }
