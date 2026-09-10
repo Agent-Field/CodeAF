@@ -5316,6 +5316,11 @@ func (a *app) homeHolding(row session.SessionRow) string {
 // screen is not called something else on the next one. What belongs to home is
 // the LIVENESS QUESTION: this screen judges a row against the conversation that
 // wrote it, and the task page judges it against the windows that are open.
+//
+// OWED: lane P — this, [app.homeTaskGlyph] and tasktier.go's [app.tierCell]
+// were drawn by the resting card's work band, which the grid retired; only
+// their tests call them now. `running`'s task rows are where a task's state
+// would go if the panel wants it, and they are deleted with their tests if not.
 func homeTaskWord(entry session.TaskIndexEntry, row session.SessionRow) string {
 	return taskStateWord(entry, row.Runs(entry))
 }
