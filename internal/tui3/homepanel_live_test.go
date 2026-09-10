@@ -139,6 +139,42 @@ func TestNeedsYouCarriesATaskWaitingOnYourCall(t *testing.T) {
 	}
 }
 
+// A YOUR-CALL OLDER THAN TWO DAYS IS HISTORY, NOT A QUESTION: two fresh calls
+// are the panel's rows and its count, and the three that landed days ago are
+// one door into tasks under them.
+func TestNeedsYouAgesOldCallsOntoTheFold(t *testing.T) {
+	l := newLiveLab(t)
+	for i, ago := range []time.Duration{30 * time.Minute, 5 * time.Hour, 3 * 24 * time.Hour, 8 * 24 * time.Hour, 9 * 24 * time.Hour} {
+		id := itoa(i + 1)
+		l.task("-alpha", session.TaskIndexEntry{ID: id, SessionID: "aaaa000000000002", Label: "call " + id, Title: "call " + id,
+			Status: string(session.TaskUnverified), EndedAt: l.now.Add(-ago)})
+	}
+	a := l.open()
+	if rows := panelRows(a, panelNeeds); len(rows) != 2 || rows[0].title != "call 2" || rows[1].title != "call 1" {
+		t.Fatalf("needs you is not the two fresh calls: %+v", rows)
+	}
+	frame := homeText(a)
+	if !strings.Contains(frame, "needs you · 2") || !strings.Contains(frame, "3 older · tasks") {
+		t.Fatalf("the heading does not count what is listed, or the fold does not count what aged:\n%s", frame)
+	}
+}
+
+// A LIVE QUESTION IS NEVER AGED OUT, however long it has waited.
+func TestNeedsYouKeepsALiveQuestionPastTwoDays(t *testing.T) {
+	l := newLiveLab(t)
+	l.live("-beta", "bbbb000000000001", session.SessionPresence{State: session.PresenceWaiting,
+		Question: consentQuestionAt(7, "needs your ok to run bash", l.now.Add(-5*24*time.Hour))})
+	a := l.open()
+	if rows := panelRows(a, panelNeeds); len(rows) != 1 || rows[0].title != "Pricing Site" {
+		t.Fatalf("a question five days old is not on needs you: %+v", rows)
+	}
+	for _, line := range panelLines(a, panelNeeds) {
+		if line.cell.kind == cellFold {
+			t.Fatalf("a live question was counted as history: %q", line.cell.title)
+		}
+	}
+}
+
 // AN EMPTY PANEL WHISPERS what arrives there, and never that it is empty.
 func TestNeedsYouWhispersWhenNothingWaits(t *testing.T) {
 	a := newLiveLab(t).open()
