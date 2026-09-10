@@ -1,6 +1,10 @@
 package session
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/exec"
+)
 
 // THE PROMPT NAMES EXACTLY THE TOOLS THE CALL CARRIES.
 //
@@ -115,6 +119,19 @@ func (c Config) mayStand() bool { return c.standingStore() != nil }
 // and a task worker are both minds mid-work with a context worth copying, and a
 // hand is not, because the fork is one deep.
 func (c Config) mayFork() bool { return !c.inHand }
+
+// signsGitWork says whether the attribution law belongs on this belt: the
+// person has the `attribution` row on ([Config.Attribution]), AND this shape's
+// `bash` is one that could make a commit.
+//
+// THE SECOND HALF IS NOT PEDANTRY. `bash` is on every belt this package builds,
+// so a law naming it would pass the belt test for every shape — but a hand's
+// bash is REBUILT READ-ONLY (fork.go's [forkBelt]: a fixed list of commands
+// that look at what the repository already says about itself, and everything
+// else refused). Telling a hand how to sign a commit is telling it about a
+// commit it will never be allowed to write, on a prefix it pays for on every
+// request of its short life.
+func (c Config) signsGitWork() bool { return c.Attribution && !c.inHand }
 
 // mayDesignHarness says whether the two harness hands belong on this belt
 // (tools_harness.go): a store to write the page into, a runner to run what was
@@ -247,6 +264,28 @@ var beltFacts = []beltFact{{
 	present: "- A preference changed goes through `settings` for the row and `change_setting` for the write, never `edit` or `write` on a config file. Relay a refusal as written and point at `/settings`.",
 	shelved: "- A preference changed goes through `settings` for the row and `change_setting` for the write, never `edit` or `write` on a config file. Both wait in the `settings` group, so call `load_capability` and carry straight on: they are in your tool list on your next request, this same turn. Relay a refusal as written and point at `/settings`.",
 	absent:  "- YOU CANNOT CHANGE A PREFERENCE FROM INSIDE A TASK: say so and point at `/settings`, and never `edit` or `write` a config file instead.",
+}, {
+	// THE ATTRIBUTION LAW, AND IT IS THE RESIDENT'S OWN WORDING RATHER THAN A
+	// SECOND ONE (internal/exec's [exec.AttributionLaw]). Both surfaces do git
+	// work in the same person's name into the same history, and two paragraphs
+	// about the same four bytes would drift into two laws — the trailer is
+	// provenance, so a trailer spelled differently in a task than in the
+	// conversation is provenance that cannot be counted.
+	//
+	// IT NAMES `bash` BECAUSE `bash` IS WHERE IT HAPPENS. This is the only place
+	// the model can commit or open a pull request at all; the mechanical commit
+	// a landing writes is not the model's and carries the same trailer without
+	// being told (task_run.go's [commitTaskWorkAs]).
+	//
+	// AND THE ABSENT CASE IS EMPTY ON PURPOSE. Attribution off is not a limit
+	// anybody needs told about — the ordinary commit with no trailer IS the
+	// answer — and a sentence saying "do not sign" would spend the prefix
+	// teaching the model to think about signing on every turn of a person who
+	// switched it off.
+	tools:   []string{"bash"},
+	holds:   Config.signsGitWork,
+	present: "- " + exec.AttributionLaw,
+	absent:  "",
 }}
 
 // handoffFacts is `## Work or words`: the ways work leaves this turn, one row

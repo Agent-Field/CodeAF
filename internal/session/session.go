@@ -1174,6 +1174,28 @@ type Config struct {
 	TaskAudit bool
 	Guardian  bool
 
+	// Attribution is the person's `attribution` row (internal/config's
+	// KeyAttribution, env AFORGE_ATTRIBUTION), and it says whether aforge signs
+	// the git work it does in their name: one trailer on a commit, one footer
+	// line on a pull request or an issue. It reaches both readers there are —
+	// the belt fact the model is told (beltfacts.go's [Config.signsGitWork]) and
+	// the mechanical commit a landing writes without asking anybody
+	// (task_run.go's [commitTaskWorkAs]).
+	//
+	// IT IS A RESOLVED BOOL AND NOT A PROFILE PATH, for the reason [TaskAudit]
+	// beside it is: a task node is handed no ProfileDir at all (see the field
+	// below, and the settings tools that come off the belt because of it), so a
+	// node that re-read the row itself would read the DEFAULT — which is on —
+	// and sign work for somebody who had turned signing off. The row is resolved
+	// once at the door and travels down with the work.
+	//
+	// FALSE IS THE ONLY VALUE A CALLER THAT SAID NOTHING MAY GET. The product
+	// default is on ([config.DefaultAttribution]) and the door resolves it, but a
+	// test, a harness leaf or a --once run that never mentioned attribution must
+	// not start putting a stranger's name in somebody's git history because a
+	// field was left blank.
+	Attribution bool
+
 	// ReplyGuardOff turns off the watch on replies that stop being language
 	// (internal/provider's streamguard.go). The config row (reply.guard)
 	// defaults ON, and this field is spelled as the OFF state so that a Config

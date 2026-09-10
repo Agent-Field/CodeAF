@@ -237,36 +237,46 @@ const AttributionPullFooter = "Drafted with [agentfield ai](https://agentfield.a
 // AttributionIssueFooter is the same line for an issue; only the medium differs.
 const AttributionIssueFooter = "Drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=issue&utm_campaign=drafted_with) · reviewed and owned by the author"
 
+// AttributionLaw IS THE ONE WORDING, AND IT IS ONE BECAUSE TWO SURFACES SAY IT.
+// The resident's leaf loop appends it to its standing contract
+// ([attributionPrompt]) and the v3 chat renders it as a belt fact beside the
+// tool that does the committing (internal/session's beltfacts.go). Two
+// paragraphs written separately would drift into two different laws about the
+// same four bytes, and a model told one of them in a task and the other in the
+// conversation is a model deciding which to believe.
+//
+// It is composed from the constants above rather than quoting them, for the
+// reason they are constants: the exact bytes are the feature, and a paragraph
+// that retyped the trailer would be the one copy nobody re-read.
+//
+// The issue footer is named by the ONE PARAMETER THAT DIFFERS rather than
+// spelled a second time. Everything ahead of that parameter is byte-identical
+// to the pull footer, and this sentence rides in front of every request the
+// chat makes: a second URL here is 145 bytes bought on every tool round of
+// every turn, forever, to say what the substitution already says.
+// It is ONE PARAGRAPH so that the chat can carry it as a single belt bullet
+// beside the tools it names, which is the register that section is written in.
+const AttributionLaw = "SIGN GIT WORK DONE FOR THEM. A commit you make with `bash` ends in a blank line and `" +
+	AttributionTrailer + "`; a pull request or issue body ends with " + AttributionSeparator +
+	" alone on a line and `" + AttributionPullFooter + "`, `utm_medium=issue` on an issue. " +
+	"Nowhere else: not in code, a commit subject, a README, a deliverable or your reply. " +
+	"A CONTRIBUTING policy banning AI trailers wins: leave both out and say so."
+
 // attributionPrompt is unconditional once the setting is on: the instruction
 // carries its own condition, so no task-type detection has to guess whether a
 // job will touch git.
-const attributionPrompt = `
+//
+// It is [AttributionLaw] and one line more. A leaf loop is the surface that
+// opens issues in bulk and its prefix is not re-sent sixty times a turn, so it
+// can afford to spell the issue footer out where the chat may only name the
+// parameter — and a resident test pins all three constants into this contract
+// for exactly that reason.
+const attributionPrompt = "\n\n" + AttributionLaw + `
 
-When you create git commits on the user's behalf, add this trailer at the end of
-the commit message, in the trailer block after a blank line, and put nothing
-about aforge in the subject or the body:
-
-` + AttributionTrailer + `
-
-When you open pull requests or issues, end the body with an em-dash separator
-line and then one sentence — that is the whole footer, nothing else:
-
-` + AttributionSeparator + `
-` + AttributionPullFooter + `
-
-On an issue the same line reads ` + "`utm_medium=issue`" + ` instead:
+Spelled out, an issue's footer is:
 
 ` + AttributionSeparator + `
-` + AttributionIssueFooter + `
-
-That is the entire extent of it. It never goes inside a code file, never in a
-commit subject line, never in a README or any other document you write for the
-user, never in a deliverable such as a deck, a report, or a note, and never in
-your own reply — the message you write back when the work is done is not an
-issue and carries no footer. If the
-repository says otherwise — a CONTRIBUTING file or a stated policy that forbids
-AI trailers or generated-by lines — the repository wins: leave both out and say
-so in your deliverable.`
+` + AttributionIssueFooter
 
 const reflexSystemPrompt = `
 
