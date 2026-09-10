@@ -181,6 +181,9 @@ are not yet recorded; this is local execution evidence, not a complete history
 of why every background decision happened. Journals written before this feature
 have no retrospective context selection receipts.
 
-Recording requires a writable journal. Missing or failed journal writes do not
-create a retrospective receipt; absence is not proof that no work ran. Inspection
+Recording requires a writable journal. A journaled turn reports when its context receipt could not be saved. Missing
+or failed journal writes do not create a retrospective receipt; absence is not proof that no work ran. Inspection
 stops after a bounded 16 MiB scan and reports the limitation explicitly.
+
+Forked hands receive fresh governing context but have no separate journaled
+selection receipt yet. Their parent retains its existing fork call and result.

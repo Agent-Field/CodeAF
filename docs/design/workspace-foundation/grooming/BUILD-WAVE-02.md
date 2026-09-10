@@ -37,7 +37,7 @@ a completed product goal. Do not store private reasoning as an explanation.
 
 The first implementation identifies execution windows and selected inputs. It
 must label absent parent-cause links and overlapping execution windows explicitly.
-It does not promise a complete global event graph, external exactly-once effects,
+Ephemeral forked hands currently have no independent selection journal; their parent retains its existing fork call/result. Recording failures are disclosed for journaled turns. It does not promise a complete global event graph, external exactly-once effects,
 or recording silent background decisions that never enter a session. Those gaps
 remain visible in T12d/T13/T14 instead of being hidden by a new generic audit store.
 

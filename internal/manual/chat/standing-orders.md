@@ -648,7 +648,7 @@ Honest limits, so you do not rely on something that is not built:
   What is **not** built is the other direction: nothing re-reads your orders *after* a
   change lands and starts work to put it right, so a change that slipped past one is
   still yours to catch. That half is a later wave.
-- **Rules are never silently omitted.** All governing holds are retained within the execution limit; optional appointments fill the remaining room up to eight ordinary rows. Oversized governing inputs stop execution with an explicit error.
+- **Rules are never silently omitted.** All governing holds are retained (up to 64 holds and 64 KiB of rendered governing text); optional appointments fill the remaining room up to eight ordinary rows. Oversized governing inputs stop execution with an explicit error.
 - **Money is not per order.** The card says it shares the day's allowance — the same
   machine-wide `daily_budget_usd` setting everything standing uses. If you named a
   per-run or per-day limit yourself, the card says your limit back instead.

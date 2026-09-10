@@ -2309,9 +2309,11 @@ tasks grants reads only and introduces no background memory calls or writes.
 Explicit governing bindings use the existing organization database, schema 3.
 The ancestry query deduplicates equal-depth paths and returns each collection at
 its nearest depth; it never traverses reference memberships. A rule's explicit
-folder scope accepts at most 32 distinct collection IDs. A context receipt is
+folder scope accepts at most 32 distinct collection IDs. Governing input is capped at 64 holds and
+64 KiB of rendered text; exceeding either stops execution instead of dropping
+a mandatory condition. A context receipt is
 written at an execution boundary to the existing journal, retaining effective
 standing text and immutable shared-context revision references. The inspection
-tool returns at most 40 rows and approximately 24 KiB per page; oversized detail
+tool returns at most 40 rows and approximately 24,000 encoded row bytes per page; oversized detail
 is omitted with its source line retained. This wave's compilation and checks run
 on Spark only; local editing/formatting is not performance acceptance.
