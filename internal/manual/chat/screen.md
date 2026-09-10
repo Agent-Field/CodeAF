@@ -620,23 +620,34 @@ talking to and where** on the left, and the keys that work now on the right, lik
 legend on a fieldset:
 
 ```
-─ porting the parser · glm-5.3-flash · via deepinfra · main* ──── space space home · / commands ─
+─ porting the parser · glm-5.3-flash · ⠿ high · via deepinfra · main* ──── space space home · / commands ─
 ```
 
 The left, in order: the machine on a `--host` session (`devbox · …`), the conversation's
 **name** (the one the session chose for itself, falling back to the folder's name until
-it has named itself, so it is never empty), the **model** as its basename with its
-reasoning level (`glm-5.3-flash`, `gpt-4.1-mini:high`), a `· via deepinfra` rider naming
-the endpoint that answered, and the git **branch** with a `*` when the tree has
-uncommitted work. In a directory that is not a repository there is
-no branch. It never says "untitled" and never invents a placeholder.
+it has named itself, so it is never empty), the **model** as its basename
+(`glm-5.3-flash`), the **thinking rung** this conversation is running at (`⠿ high`, `~
+high` on a plain terminal), a `· via deepinfra` rider naming the endpoint that answered,
+and the git **branch** with a `*` when the tree has uncommitted work. In a directory that
+is not a repository there is no branch. It never says "untitled" and never invents a
+placeholder.
 
-**The model's name is a door.** Press it and the model picker opens, exactly as typing
-`/model` does; it brightens under the pointer to say so. With the mouse turned off
-(`ui.mouse`), only the command works. The rate the endpoint is writing at is *not* on
-this line — while a turn runs it stands beside the state word on the status row
-(`38 tok/s · ⠹ working · 12s`), because how fast is a claim about now and who is
-attribution.
+**Two of those are doors.** Press the model's name and the model picker opens, exactly as
+typing `/model` does. Press the thinking rung and it walks one step up the ladder —
+low → medium → high → xhigh → max, and round again — which is the same thing `ctrl+v`
+does and the same thing pressing a task's thinking row does inside a task. Each brightens
+under the pointer over exactly its own cells, so you can see which of the two you are
+about to press. With the mouse turned off (`ui.mouse`), `/model`, `/effort` and `ctrl+v`
+do all three jobs. See "The thinking chip above the message box" on the keys page.
+
+Until 2026-09-09 the rung was spelled onto the model id with a colon
+(`glm-5.3-flash:high`) and there was a second chip for it at the right end of the tray
+row. That was one ladder said two ways on one screen; there is one cell now, and it names
+the rung that will **actually** be asked for whichever setting decided it.
+
+The rate the endpoint is writing at is *not* on this line — while a turn runs it stands
+beside the state word on the status row (`38 tok/s · ⠹ working · 12s`), because how fast
+is a claim about now and who is attribution.
 
 **The `via` rider is drawn whoever served**, including a vendor serving its own model
 (`glm-5.3-flash · via z-ai`). It was hidden in that case until 2026-09-09, on the
@@ -650,9 +661,11 @@ things up in this order, and each step is a shorter *true* sentence:
 
 1. the branch goes — the shell prompt behind this pane still says it;
 2. the `via` rider goes;
-3. the name is cut with one `…`, never to fewer than 12 cells;
-4. the model goes — the name is what tells two panes apart;
-5. the name goes — on a `--host` session the machine is the last thing standing.
+3. the thinking rung goes, **whole** — half a rung word is a word you would read as
+   another rung, and `/effort` says it in full;
+4. the name is cut with one `…`, never to fewer than 12 cells;
+5. the model goes — the name is what tells two panes apart;
+6. the name goes — on a `--host` session the machine is the last thing standing.
 
 Under 70 columns the branch is dropped outright. Only a frame with no room for a label
 at either end falls back to the plain rule. Until 2026-09-09 this line carried only the

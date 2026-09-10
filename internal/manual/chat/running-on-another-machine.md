@@ -335,6 +335,27 @@ emptying out — which is the truth, because the conversation is not moving eith
 `connection` segment says what is happening, and everything comes back up to date the
 moment the link does.
 
+## Make a hosted conversation think harder — ctrl+v, /effort and the thinking rung over --host
+
+**It works, and the rung is set on the machine the conversation is running on.** The line
+above your message box names it beside the model — `glm-5.3-flash · ⠿ high` — and all
+three doors reach across: `ctrl+v` walks it a step, pressing it walks it a step, and
+`/effort` opens the five rungs or takes one outright (`/effort max`).
+
+The word you see is the rung **that machine** resolved, not the one this one would have
+picked: the ladder is decided where the turn is made, so a level dialled onto the model
+over there still wins over there. Setting it is one trip across; drawing it is none — it
+rides the same fact set the model and the money ride down on.
+
+An engine too old to know the ladder says so when the connection opens, and then there is
+**no rung on the line at all**, the chord does nothing, and `/effort` says
+`how hard this conversation thinks is unavailable — this session has no dial onto it`.
+That is the absence law rather than a knob that silently fails: update the engine on that
+machine and reconnect.
+
+A task's own rung is separate and also crosses — see "Change the model or thinking inside
+a task".
+
 ## What does not work over --host
 
 This is the first half of the whole list, so you know before you rely on it, with the

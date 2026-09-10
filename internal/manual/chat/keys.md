@@ -1139,13 +1139,13 @@ remembered as well.
 With history not wired up (`--no-history`), `up` takes nothing and keeps its other
 meanings.
 
-## The thinking chip above the message box — `ctrl+v`, and making this chat think harder
+## The thinking chip above the message box — `ctrl+v`, `/effort`, and making this chat think harder
 
-The row above the message box carries a small chip naming how hard the model will think
-about your next turn:
+The line above the message box — the legend — names how hard the model will think about
+your next turn, immediately after the model that will be doing the thinking:
 
 ```
-                                                                      ⠿ high
+─ porting the parser · glm-5.3-flash · ⠿ high · via deepinfra · main* ──── / commands ─
 › what changed in the relay this week
 ```
 
@@ -1160,11 +1160,25 @@ low → medium → high → xhigh → max → low. It works with a sentence half
 chord, it carries no text of its own, and it leaves your draft and your caret exactly
 where they were. Ordinary letters keep typing.
 
-**Clicking the chip opens the ladder**: five rows, cheapest first, with the rung you are
-on marked. `↑`/`↓` walk it, `enter` applies, `esc` closes, and `ctrl+v` moves the cursor
+**Pressing the rung walks it too**, one step per press, which is the same gesture as
+pressing a task's thinking row inside that task. It brightens under the pointer over
+exactly its own cells first, and the press never moves the caret in your draft. It does
+not open a list: the list is `/effort`.
+
+**`/effort` opens the ladder**: five rows, cheapest first, with the rung you are on
+marked. `↑`/`↓` walk it, `enter` applies, `esc` closes, and `ctrl+v` moves the cursor
 down a row while the list is up. While the list is up **every key belongs to it** — a
-plain letter does not type into the message box underneath. Clicking the chip a second
-time puts the list away, and a click on the chip never moves the caret in your draft.
+plain letter does not type into the message box underneath. Typing `/effort` again puts
+the list away. `/thinking` and `/think` are the same command.
+
+**`/effort <rung>` sets one outright** — `/effort max`, `/effort low` — without opening
+anything. A word that is not one of the five changes nothing and prints the five;
+`/effort off` is refused with them, because `off` belongs to the **thinking** row of
+`/settings` and not to this dial.
+
+Until 2026-09-09 the rung was a chip at the right end of the tray row above the box, and
+clicking *that* opened the ladder. The rung is on the legend now, beside the model it is
+about, and the click walks it.
 
 What it changes and what it does not:
 
@@ -1173,20 +1187,24 @@ What it changes and what it does not:
 - The rung reaches the work this conversation hands out: task workers start at it too.
 - It does **not** change other conversations. The default for those is the **thinking**
   row in `/settings`, which ships at `auto` (the provider default).
-- **`auto` is not on the chip or in the list.** The five rungs are the ladder; the
+- **`auto` is not on the legend or in the list.** The five rungs are the ladder; the
   **thinking** settings row offers `auto` to use provider defaults. It does not disable thinking.
-- With thinking set to `auto` and no more specific level chosen, there is **no chip at all** —
-  there is nothing to report. `ctrl+v` still works and puts the chip back at `low`.
+- With thinking set to `auto` and no more specific level chosen, there is **no rung on the
+  line at all** — there is nothing to report. `ctrl+v` still works and puts it back at `low`.
+- **It works on a `--host` conversation.** The rung is set on the engine machine, where
+  the conversation lives, and the word on your legend is the one that machine resolved.
+  An engine too old to know the ladder says so at the door and there is then no rung on
+  the line, no press, and no chord — rather than a knob that does nothing.
 
-**When the chip will not move.** A thinking level dialled onto the model itself — the
+**When the rung will not move.** A thinking level dialled onto the model itself — the
 model picker's `ctrl+t`, or `--reasoning` at launch — beats this conversation's rung. Press
 `ctrl+v` there and aforge says so in a note, naming the model and pointing at `ctrl+t`:
 *thinking stays low · the level set on \<model\> decides this conversation — ctrl+t in
-/model changes it*. Clear that level and the chip moves again.
+/model changes it*. Clear that level and the rung moves again.
 
-The chip is dim, like the rest of that row. It brightens for about two seconds after it
-changes, so you can see the new word without looking away from what you are typing, and
-then it goes quiet again.
+The rung is dim, like the rest of that line. It brightens for about two seconds after it
+changes — the cell takes a lit ground and its `⠿` goes cyan — so you can see the new word
+without looking away from what you are typing, and then it goes quiet again.
 
 ## Attaching a picture
 
@@ -2276,8 +2294,8 @@ Only the left button acts. A press is resolved in this order:
 3. The harness panel, the permissions panel, the connections panel — a press on a row
    acts, and a press anywhere else **closes** the list.
 4. The row above the message box: an **attachment chip** or a picked harness's chip
-   removes it, and the **thinking chip** at the right end of that row opens the five-rung
-   ladder (pressing it again closes it). Neither moves the caret in your draft.
+   removes it. Neither moves the caret in your draft. The **thinking rung** is not on that
+   row any more — it is on the legend above it, where a press walks it one step.
 5. The jump-to-latest chip.
 6. A stop target: the confirmation card's two answers while it is up, and the `Stop`
    at the right end of a room's **facts row** — the second row of its header, under the
@@ -2300,7 +2318,8 @@ Only the left button acts. A press is resolved in this order:
    which open the **Spending** tab of `/settings`; and the **context meter**
    (`66.8k/1.3M · 5%`) and the compaction forecast, which print `/status`. Each brightens
    under the pointer over its own cells to say it is a door. The model's name is on the
-   line **above** the message box and opens the model picker; the `◦ N standing orders`
+   line **above** the message box and opens the model picker, and the **thinking rung**
+   beside it walks one rung up the ladder; the `◦ N standing orders`
    count is at the foot of the task column and opens the standing orders page. A press
    elsewhere on the status row falls through — the rest of it is readings, not controls.
    On a narrow terminal the whole two-row deck answers.
@@ -2645,14 +2664,15 @@ and it moves the rung of **the thing you are standing on**. One chord, three sco
 
 | Where you are | What moves |
 |---|---|
-| The message box, typing or empty | **This conversation's** rung — the chip above the box, see *The thinking chip above the message box* |
+| The message box, typing or empty | **This conversation's** rung — the one on the legend above the box, beside the model, see *The thinking chip above the message box* |
 | The task roster holds the keyboard (`alt+t`) and the cursor is on a task | That task's rung |
 | You are inside a task's page | That task's rung |
 | Home, with the cursor on a `◦` standing item row or its card | That item's rung |
 
 Everywhere else it does nothing at all. A conversation row on home is deliberately not on
 the list: a conversation's rung belongs to the window that conversation is open in, where
-the chip above its message box moves it.
+the rung on the legend above its message box moves it — by this chord, by a press on it, or
+by `/effort`.
 
 **The machine's own default is not one of the scopes.** It used to be — home had a state
 where the cursor stood on no row at all and the right-hand side became a card about the

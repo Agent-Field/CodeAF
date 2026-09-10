@@ -874,7 +874,9 @@ Each press walks it round: off → low → medium → high → off.
 - The level lives on the session, **per model id**. It survives switching away to another
   model and back. `/new` forgets it.
 - Where the level is set, it is shown after the id as `<id>:<level>` — in the picker row, and
-  on the `model` line of `/status`.
+  on the `model` line of `/status`. It is **not** spelled that way on the line above the
+  message box: that line carries one thinking rung, and that rung is the resolved one —
+  the level you dialled here is folded into it, because a level on the model wins.
 
 **A level set here wins over everything else that asks for thinking.** It is the most
 specific thing anybody said about how hard this model should work, so it beats the
@@ -909,15 +911,33 @@ Several things can name a rung, and the most specific one wins:
 5. **The default** — the **thinking** row, which is `auto` until somebody chooses otherwise.
 
 **`ctrl+v` moves the rung of whatever you are standing on.** In the message box it moves
-**this conversation's** rung, which has a chip above the box naming it. On a task — the
-roster row under the cursor, or the page you are inside — it moves that task's rung. On
-home with the cursor on no row at all, it moves the **thinking** row itself, the
-machine-wide default. On a standing item's card it moves that item's. The rung climbs one
-step each press and wraps from `max` back to `low`; it never goes back to "nobody said".
-The **thinking** row in `/settings` stays what it is: the answer for every conversation
-that has not been dialled by hand. The keys page has the whole of it — see *The thinking
-chip above the message box* and *ctrl+v — how hard the thing you are looking at thinks*.
-There is no slash command for it.
+**this conversation's** rung, which is named on the line above the box, beside the model:
+`glm-5.3-flash · ⠿ high`. On a task — the roster row under the cursor, or the page you are
+inside — it moves that task's rung. On home with the cursor on no row at all, it moves the
+**thinking** row itself, the machine-wide default. On a standing item's card it moves that
+item's. The rung climbs one step each press and wraps from `max` back to `low`; it never
+goes back to "nobody said". The **thinking** row in `/settings` stays what it is: the
+answer for every conversation that has not been dialled by hand. The keys page has the
+whole of it — see *The thinking chip above the message box* and *ctrl+v — how hard the
+thing you are looking at thinks*.
+
+**Three doors, one rung.** `ctrl+v`, a press on the rung itself, and `/effort`:
+
+| What you do | What happens |
+|---|---|
+| `ctrl+v` | one step up the ladder, wrapping off the top |
+| press the rung on the line above the box | the same one step, and it lights under the pointer first |
+| `/effort` (or `/thinking`, `/think`) | the five rungs as a list, with what each one buys and the one in force marked |
+| `/effort max` | that rung, outright |
+
+A word that is not one of the five changes nothing and prints the five. This is
+**this conversation's** rung in every one of those forms, and it reaches the work this
+conversation hands out: a task worker starts at it.
+
+**It works over `--host` too.** The rung is set on the machine the conversation is running
+on and the word on your line is the one that machine resolved. Against an engine too old
+to know the ladder there is no rung on the line and neither the chord nor `/effort` offers
+one — a capability that cannot work is absent rather than broken.
 
 ## Auto reasoning — use OpenRouter defaults instead of forcing high
 

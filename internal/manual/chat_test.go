@@ -308,6 +308,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I connect my Slack workspace", "accounts"},
 		{"which services can you connect to", "accounts"},
 		{"can I run this on my dev box over ssh", "running-on-another-machine"},
+		{"can I make a hosted conversation think harder", "running-on-another-machine"},
 		{"why is the task roster empty over host", "running-on-another-machine"},
 		{"can I start a task on the other machine", "running-on-another-machine"},
 		{"task says no task door", "running-on-another-machine"},
@@ -1606,6 +1607,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// somebody who has met a rung name in the settings row and wants to know
 		// what it costs them.
 		{"how do I make it think less", "models-and-cost"},
+		{"is there a command for the effort level", "models-and-cost"},
 		{"how do I make it think deeper", "models-and-cost"},
 		{"how do I get faster answers from the model", "models-and-cost"},
 		{"what does xhigh mean", "models-and-cost"},
@@ -1618,13 +1620,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what temperature do you use", "models-and-cost"},
 		{"can I change the sampling settings", "models-and-cost"},
 
-		// And the CONVERSATION's own rung, which is a chip and a chord rather
-		// than a setting — so it is asked about as a thing on the screen ("what
-		// is that symbol above the box") and as a key somebody pressed by
-		// accident, neither of which reaches a page about models and cost.
+		// And the CONVERSATION's own rung, which is a cell on the seam, a chord
+		// and a command rather than a setting — so it is asked about as a thing
+		// on the screen ("what is that symbol above the box") and as a key
+		// somebody pressed by accident, neither of which reaches a page about
+		// models and cost. The last three are the doors that landed with the
+		// move onto the seam: the command, the rung typed straight in, and the
+		// press somebody tried because the model beside it is pressable.
 		{"what is the chip above the message box", "keys"},
 		{"what does ctrl+v do", "keys"},
 		{"how do I make this one chat think harder", "keys"},
+		{"set effort to max", "keys"},
+		{"can I click the thinking level", "keys"},
 
 		// The eleventh wave: the ambient side — the things a conversation leaves
 		// behind that keep working after the window is closed. Every one of
