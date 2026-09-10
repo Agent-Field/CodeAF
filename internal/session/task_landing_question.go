@@ -73,24 +73,20 @@ func (a *Agent) landingAsking(id uint64, kind QuestionKind) {
 // ([questionGoneReason] says `the work settled`). The withdrawal is drawn only
 // where the question was actually on screen; a window that never saw it prints
 // nothing (internal/tui3's [app.withdrawQuestion]).
+//
+// AND THE WORDS ARE BANKED ON THE RAISE. Landing questions used to emit without
+// [Agent.rememberQuestion], so [Agent.ResolveQuestion] saw `said=false` and
+// emitted no [EventQuestionAnswered] — fine for the window that closes itself
+// the moment it sends ([app.closeQuestion]), silent for a `--host` replica that
+// only drops questions on answered or withdrawn. Banking here is what makes the
+// answer event reachable, and [Agent.retireLandingQuestion] clears it on settle.
 func (a *Agent) publishLandingQuestion(notice TaskNotice) {
 	if notice.ID == 0 {
 		return
 	}
 	standing := a.landingAsked(notice.ID)
 	if notice.State != TaskUnverified {
-		if standing == "" {
-			return
-		}
-		a.landingAsking(notice.ID, "")
-		gone := a.landingQuestion(PendingDecision{Notice: notice})
-		gone.Kind = standing
-		gone.Withdrawn = &Withdrawal{
-			Reason: questionGoneReason(gone),
-			By:     gone.Asker.Kind,
-			At:     time.Now(),
-		}
-		a.emitQuestion(EventQuestionWithdrawn, gone, nil)
+		a.retireLandingQuestion(notice, standing)
 		return
 	}
 	q := a.landingQuestion(PendingDecision{Notice: notice})
@@ -99,6 +95,10 @@ func (a *Agent) publishLandingQuestion(notice TaskNotice) {
 	// unchecked and is then refused a merge would otherwise leave the first
 	// question standing beside the second, which is two accounts of one node.
 	if standing != "" && standing != q.Kind {
+		token := strconv.FormatUint(notice.ID, 10)
+		a.mu.Lock()
+		delete(a.questionWords, questionToken(standing, token))
+		a.mu.Unlock()
 		stale := q
 		stale.Kind = standing
 		stale.Withdrawn = &Withdrawal{
@@ -109,7 +109,45 @@ func (a *Agent) publishLandingQuestion(notice TaskNotice) {
 		a.emitQuestion(EventQuestionWithdrawn, stale, nil)
 	}
 	a.landingAsking(notice.ID, q.Kind)
+	// Bank without deferring the forget: settle and answer own retirement
+	// ([Agent.retireLandingQuestion], [Agent.claimQuestion]). A deferred forget
+	// would race the graph's next move.
+	_ = a.rememberQuestion(q)
 	a.emitQuestion(EventQuestion, q, nil)
+}
+
+// retireLandingQuestion takes a settled node's question back.
+//
+// THE STANDING MAP IS NOT THE ONLY SOURCE. A restored graph, or a window that
+// only heard the question through [Agent.WatchQuestions]'s OpenQuestions replay,
+// can have banked words (or a drawn question) with landingAsked empty — and the
+// old early return left that question on screen forever after the work settled.
+func (a *Agent) retireLandingQuestion(notice TaskNotice, standing QuestionKind) {
+	token := strconv.FormatUint(notice.ID, 10)
+	a.landingAsking(notice.ID, "")
+	kind := standing
+	if kind == "" {
+		if _, ok := a.questionSaid(QuestionLanding, token); ok {
+			kind = QuestionLanding
+		} else if _, ok := a.questionSaid(QuestionConflict, token); ok {
+			kind = QuestionConflict
+		}
+	}
+	if kind == "" {
+		return
+	}
+	gone := a.landingQuestion(PendingDecision{Notice: notice})
+	gone.Kind = kind
+	if _, said := a.questionSaid(kind, token); said {
+		a.WithdrawQuestion(kind, token, questionGoneReason(gone))
+		return
+	}
+	gone.Withdrawn = &Withdrawal{
+		Reason: questionGoneReason(gone),
+		By:     gone.Asker.Kind,
+		At:     time.Now(),
+	}
+	a.emitQuestion(EventQuestionWithdrawn, gone, nil)
 }
 
 // landingQuestionToken is the string one landing question is known by, for a
