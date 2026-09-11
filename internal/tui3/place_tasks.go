@@ -1295,9 +1295,14 @@ func (p *tasksPlace) body(a *app, width, room int) []placeRow {
 	// frame). It is reserved BEFORE the window is placed rather than squeezed in
 	// after: a line added afterwards would push the last row of the list off the
 	// frame, and the row it pushes off is sometimes the cursor's own.
-	grown := ""
+	grown, grownIndent := "", ""
 	if item, ok := r.at(lines, p.cursor); ok && tasksReasonShowing(a) {
-		grown = tasksReasonLine(item, width-len(tasksBareLead)-taskSheetPhoneIndent, a.pal)
+		// AND IT STARTS WHERE THE ROW'S NAME STARTS. It is the row's own second
+		// line, not a line of the page: drawn flush left under a worker five
+		// levels down a family it reads as a peer of the section heading, which
+		// is the one thing about it a person has to get right at a glance.
+		grownIndent = tasksBareLead + strings.Repeat(" ", ansi.StringWidth(lines[p.cursor].kin)+taskSheetPhoneIndent)
+		grown = tasksReasonLine(item, width-ansi.StringWidth(grownIndent), a.pal)
 	}
 	// The grown line costs the LIST a row and costs the FRAME nothing: the window
 	// holds one line less of the record, and the row it gives up is spent on the
@@ -1352,10 +1357,7 @@ func (p *tasksPlace) body(a *app, width, room int) []placeRow {
 		// AND THE GROWN LINE BELONGS TO THE ROW ABOVE IT. It answers to the same
 		// press and it is never faded, because it is part of the row the cursor is
 		// standing on rather than a row of its own.
-		rows = append(rows, placeRow{
-			text: tasksBareLead + strings.Repeat(" ", taskSheetPhoneIndent) + grown,
-			hit:  hit,
-		})
+		rows = append(rows, placeRow{text: grownIndent + grown, hit: hit})
 		bare = append(bare, false)
 	}
 	for i := range bare {

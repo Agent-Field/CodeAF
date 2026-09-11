@@ -300,6 +300,21 @@ func TestAPressOnTheCostLabelSortsTheListByCost(t *testing.T) {
 	if !a.taskSheet.order.back {
 		t.Fatal("a press on the column already sorted did not turn it round")
 	}
+	// AND THE SECOND LABEL IS THE SORT KEY'S OWN COLUMN WHATEVER IT IS SHOWING:
+	// walked round to cost, a press on `cost ↓` is a press on cost.
+	for i := 0; i < int(tasksSortKeyCount)+1 && a.taskSheet.order.key != tasksByCost; i++ {
+		drive(t, a, key(tasksSortKeyChord))
+	}
+	if _, second := tasksControlLabels(a.taskSheet.order); second != "cost "+tasksSortDown {
+		t.Fatalf("the page is not on cost: the second label reads %q", second)
+	}
+	a.taskSheetPress(x, y)
+	if now := a.taskSheet.order; now.key != tasksByCost || !now.back {
+		t.Fatalf("a press on the cost label left the page on %q back=%v", now.key.word(), now.back)
+	}
+	a.taskSheetSortBy(tasksByAge)
+	a.taskSheetSortBy(tasksByAge)
+
 	// AND THE STATE LABEL BESIDE IT IS ITS OWN COLUMN.
 	a.taskSheetPress(len(tasksBareLead)+nameCells, y)
 	if a.taskSheet.order.key != tasksByState {
