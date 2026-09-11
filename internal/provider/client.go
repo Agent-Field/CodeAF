@@ -465,6 +465,12 @@ func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs call
 	// on every call after the sentence has been said.
 	tellRetiredPins(ctx)
 	tellUncarriedPins(ctx)
+	// AND THE MODEL IS WRITTEN DOWN BEFORE THE REQUEST LEAVES. This is the one
+	// door every send passes through, and since the adapter stopped changing the
+	// model (endpoints.go) every attempt below this line is on the model named
+	// here — so the record is exact. What reads it is the layer that owns the one
+	// remaining model hop, which used to index a chain blind (modelstried.go).
+	noteModelTried(ctx, c.modelFor(request))
 	response, err := c.sendRecovered(ctx, request, knobs, stream)
 	if err != nil || (response != nil && response.StatusCode >= 400) {
 		c.releaseEndpoint(ctx, c.modelFor(request))
@@ -488,7 +494,11 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	}
 	response, err := c.sendRepaired(ctx, request, knobs, stream)
 	if err != nil {
-		return c.recoverFromPacing(ctx, request, knobs, stream, err)
+		// AND IT TRAVELS BACK WHOLE. A 429 the attempt loop ran out of patience
+		// on used to be answered here by walking the fallback models, silently,
+		// on a budget nobody above could see (endpoints.go's deleted
+		// recoverFromPacing). The layer that owns the turn owns the model.
+		return nil, err
 	}
 	if !endpointRefusalStatus(response.StatusCode) {
 		return response, nil
@@ -586,17 +596,22 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	// That is rungs two and three of the ladder in docs/ARCHITECTURE.md, in the
 	// order they are written down.
 	//
-	// AND THE HAND-OFF IS WRITTEN DOWN ON THE RACE, because it is a promise and
-	// until 2026-09-10 nobody held it. `canWalk` is a PREDICTION that the walk
-	// will carry this refusal; the walk can still decline, and a later arm can
-	// die of something that never reaches this door — the measured race's last
-	// arm died of a 429 — so the ladder the prediction deferred was skipped and
-	// the person got the router's sentence. The race now owns that question:
-	// when every arm is dead and nobody committed, a ladder this door deferred
-	// and nobody ran is run by the race itself (hedge.go's [hedgeRace.exhausted]).
+	// AND THE HAND-OFF IS A COMMITMENT, IN ONE CALL. It used to be two: `canWalk`,
+	// a PREDICTION that the walk would carry this refusal, and then `deferLadder`,
+	// a note saying this door had relied on one. The walk could still decline, and
+	// a later arm could die of something that never reaches this door — the
+	// measured race's last arm died of a 429 — so the ladder the prediction
+	// deferred was skipped and the person got the router's own sentence.
+	//
+	// [streamWatch.takeRefusal] answers and records together, and what it answers
+	// is not "the walk will do it" but "the race OWNS this now": it makes its own
+	// moves, and if every arm ends with nobody committed it climbs the ladder it
+	// took here (hedge.go's [hedgeRace.exhausted]). A door whose race takes the
+	// refusal returns the refusal's own body with the status stripped, so the arm
+	// unwinds without a second request; a door whose race declines — a race already
+	// won, a ladder already climbed, or no controller at all — climbs it itself.
 	watch := streamWatchFrom(ctx)
-	if watch.canWalk() {
-		watch.deferLadder(peek)
+	if watch.takeRefusal(peek) {
 		return &http.Response{
 			StatusCode: response.StatusCode,
 			Header:     response.Header,

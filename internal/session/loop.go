@@ -207,6 +207,12 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// children from it, so every streamed request can hand that late fact back to
 	// this agent without making the turn wait for it.
 	ctx = provider.WithReconcile(ctx, a.reconciled)
+	// AND THE MODELS THIS TURN IS PUT TO ARE RECORDED ON IT. One record per turn,
+	// opened here so that every call and errand derived from this context writes
+	// to the same one — which is what makes "has this model already been asked"
+	// a fact the one model hop can read rather than a count it keeps
+	// (internal/provider's modelstried.go, [Agent.nextFallback]).
+	ctx = provider.WithModelsTried(ctx)
 	started := time.Now()
 	var turn Usage
 
@@ -752,9 +758,32 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			if turnBroke(response) {
 				a.journalFailedCall(ctx, model, "", errEmptyAnswer, emptyReplies+1, a.requestEstimate())
 				emptyReplies++
+				// AND IT GOES THROUGH THE SAME VERDICT ROAD AS EVERY OTHER FAILED
+				// CALL, SAYING SO. This was the second retry road in the turn: the
+				// boundary decided it, the wait was taken, and the surface was told
+				// NOTHING — no [EventRetrying], no [RetryNews], no phase — so a
+				// person watched a clock counting a request that had already come
+				// back empty (docs/design/recovery/DESIGN.md §2.8, one of the four
+				// silent waits). The verdict is the same one a refusal earns, the
+				// allowance is the same allowance, and now the line is the same
+				// line.
 				if verdict := a.readEmptyReply(model, emptyReplies); verdict.Retries() {
 					partial.reset()
-					if waitErr := backoffWait(ctx, verdict.Backoff); waitErr == nil {
+					if verdict.Backoff > 0 {
+						a.tellPhase(provider.PhaseRetrying,
+							fmt.Sprintf("%d of %d", emptyReplies+1, verdict.Attempts), time.Now())
+					}
+					waitErr := backoffWait(ctx, verdict.Backoff)
+					if verdict.Backoff > 0 {
+						a.endPhase()
+					}
+					if waitErr == nil {
+						// SAID ONLY AFTER THE WAIT SUCCEEDS, on the ladder's own rule
+						// and for its reason: a stop during the wait keeps whatever
+						// the person was already reading rather than announcing a
+						// replacement that will never be asked for.
+						hub.send(Event{Kind: EventRetrying, Text: emptyReplyNotice,
+							Retry: retryNews(model, emptyReplies, verdict, nil, "")})
 						continue
 					}
 				}
@@ -1344,7 +1373,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// invisible from the other. One 502 and three 429s inside seventy-five
 		// seconds ended a turn on 2026-09-10 with two other models sitting
 		// unasked in the same session, and that is the road this is.
-		next, haveFallback := a.nextFallback(origin, hopped)
+		next, haveFallback := a.nextFallback(ctx, origin, hopped)
 		verdict := a.readLadderFailure(err, model, "", transportLadder{
 			attempt:    attempt + 1,
 			cuts:       cuts,
@@ -1466,6 +1495,12 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 	return nil, model, fmt.Errorf("after %d retries: %w", attempts-1, lastErr)
 }
 
+// emptyReplyNotice is the dim line for a 200 that carried nothing. It says what
+// happened rather than "the request failed", because from the person's side
+// nothing failed: the model answered, and the answer was empty — which is the
+// one transport shape they can actually see the shape of.
+const emptyReplyNotice = "nothing came back from the model — asking again"
+
 // retryNotice is the dim line for a request that FAILED and is being sent again.
 // It says nothing about the shape of the failure, which is the honest register
 // for something the person can neither hurry nor answer; [RetryNews.Reason] on
@@ -1564,7 +1599,23 @@ func retryNews(model string, spent int, verdict taxonomy.Verdict, cut *provider.
 // It is asked about `origin`, the model the STEP STARTED ON, so a second hop
 // walks the same list rather than deriving a fresh chain from the fallback —
 // which is how a bounded chain of two becomes an unbounded walk.
-func (a *Agent) nextFallback(origin string, hopped []string) (string, bool) {
+//
+// ── IT READS WHAT WAS TRIED AND NO LONGER COUNTS ITS OWN HOPS ───────────────
+//
+// It used to index the chain blind: `options[len(hopped)]`, where `hopped` was a
+// list this loop kept itself. That is only right while this loop is the ONLY
+// thing that changes a model, and until 2026-09-10 it was not — the adapter's
+// endpoint ladder walked the same `FallbackModels` at its foot and neither knew
+// the other had been there, so a turn could pay for one fallback twice and skip
+// another entirely (docs/design/recovery/DESIGN.md §2.2). The adapter's walk is
+// deleted and this is the one model hop in the build; what it reads is the FACT
+// of which models the dispatcher has actually put on the wire for this turn
+// ([provider.ModelsTried]), folded with this loop's own record, and it answers
+// with the first model on the chain that is on neither.
+//
+// A context with no record answers nothing, and the fold is what makes that
+// safe: `hopped` alone still bounds the walk exactly as it always did.
+func (a *Agent) nextFallback(ctx context.Context, origin string, hopped []string) (string, bool) {
 	// AND `--one-model` IS A PERSON SAYING NO TO THIS, in the one file that has
 	// to honour it rather than only in the door that empties the chain. The flag
 	// already leaves the adapter with no fallbacks to offer, so this is belt and
@@ -1582,10 +1633,34 @@ func (a *Agent) nextFallback(origin string, hopped []string) (string, bool) {
 		return "", false
 	}
 	options := chain.FallbackModels(origin)
+	// AND THE CHAIN IS STILL BOUNDED BY ITS OWN LENGTH. A turn may move as many
+	// times as the chain is long and no further — the cap is the adapter's
+	// (internal/provider's maxFallbackModels) and is not re-decided here — so a
+	// question whose every fallback has been asked has nowhere left to go, which
+	// is what makes the difference between moving on and giving up.
 	if len(hopped) >= len(options) {
 		return "", false
 	}
-	return options[len(hopped)], true
+	tried := map[string]bool{normalizeHop(origin): true}
+	for _, model := range hopped {
+		tried[normalizeHop(model)] = true
+	}
+	for _, model := range provider.ModelsTried(ctx) {
+		tried[normalizeHop(model)] = true
+	}
+	for _, model := range options {
+		if !tried[normalizeHop(model)] {
+			return model, true
+		}
+	}
+	return "", false
+}
+
+// normalizeHop folds a model id the way a comparison between two records of it
+// has to be folded: this loop's own list is written from the chain, and the
+// adapter's is written from whatever spelling actually reached the wire.
+func normalizeHop(model string) string {
+	return strings.ToLower(strings.TrimSpace(model))
 }
 
 // cutShortNotice is the dim line for a request that was cut out from under a

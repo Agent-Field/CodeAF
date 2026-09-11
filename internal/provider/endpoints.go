@@ -293,11 +293,29 @@ func (c *Client) catalogKnowsModel(model string) bool {
 // The sheet clause is here for [Client.routingRefusal]'s reason word for word: a
 // plain OpenAI-compatible endpoint has no SET behind a model and no catalog row
 // in this build, so its first 404 must not be read as a model going away.
+//
+// ── IT DEMANDS POSITIVE EVIDENCE, WHICH IS THE OPPOSITE OF ITS NEIGHBOUR ────
+//
+// [Client.catalogKnowsModel] answers false for two different things: a catalog
+// that has no row for this model, and a build with no catalog at all. For
+// [Client.routingRefusal] those are safely the same — it uses the answer to
+// WITHHOLD a ladder, so knowing nothing declines — and here they are opposites,
+// because this uses the answer to declare a model gone. So a client with no
+// price resolver answers false: it has no opinion, and a fact nobody can testify
+// to is not a fact.
+//
+// AND A LIST THAT EMPTIED THE SET IS NOT A MODEL GOING AWAY. The two arrive
+// under the same 404 from the same envelope; the list has machines behind it and
+// this has none, so `listEmptied` is asked first and its answer wins
+// (refusalobject.go reads the two as one object).
 func (c *Client) withdrawnModel(model string, status int, payload []byte) bool {
-	if !endpointRefusalStatus(status) || !c.baseServesLanes() {
+	if !endpointRefusalStatus(status) || !c.baseServesLanes() || c.config.ModelPrice == nil {
 		return false
 	}
 	if upstream, ok := routerErrorEnvelope(payload); !ok || upstream != "" {
+		return false
+	}
+	if listEmptied(payload) {
 		return false
 	}
 	return !c.catalogKnowsModel(model)
@@ -569,8 +587,30 @@ func dropAttachments(messages []ai.Message) []ai.Message {
 // and let them pick, rather than to walk a list on their behalf.
 const maxFallbackModels = 2
 
-// recoverFromRefusal climbs the ladder and then the fallback chain, narrating
-// each attempt, and ends in an error a person can act on.
+// ── THE ADAPTER NEVER CHANGES THE MODEL ─────────────────────────────────────
+//
+// It used to. This ladder walked [Client.fallbackChain] after its relaxation
+// rungs, and internal/session's turn loop walks the SAME chain when a model's
+// transport budget is spent — two mechanisms drawing from one list, neither
+// knowing the other had already tried a model. A turn could pay for the same
+// fallback twice, and the session's `nextFallback` indexed the list blind: it
+// counted its OWN hops and read `options[len(hopped)]`, so a chain the adapter
+// had already walked was re-walked from the top.
+//
+// ONE MODEL HOP, AND IT BELONGS TO THE SESSION (docs/design/recovery §4, "what
+// the session keeps"). The adapter owns the request's SHAPE — which machine,
+// which knobs, which ceiling — and hands back a refusal naming what it tried; the
+// layer that owns the turn decides whether a different model is worth asking,
+// because it is the only layer that knows what the turn has already spent and
+// what the person asked for. What the adapter still owes is the FACT: every
+// model it put on the wire is recorded on the call's own context
+// ([ModelsTried]), so the session's hop reads what was tried instead of counting.
+//
+// The relaxation rungs stay exactly where they were. They are about the request
+// and nobody above this layer can compose one.
+
+// recoverFromRefusal climbs the relaxation ladder, narrating each rung, and ends
+// in an error a person can act on.
 //
 // The first attempt has already happened and been refused — its body is `first`
 // — so every attempt this function makes is numbered from one as a RETRY, which
@@ -584,15 +624,13 @@ func (c *Client) recoverFromRefusal(
 ) (*http.Response, error) {
 	model := c.modelFor(request)
 	plan := c.relaxationPlan(request, knobs, model)
-	fallbacks := c.fallbackChain(model)
-	total := len(plan) + len(fallbacks)
+	total := len(plan)
 	if total == 0 {
 		return nil, c.refusalError(request, knobs, model, nil, nil, 1, first)
 	}
 
 	last := first
 	stripped := make([]string, 0, len(plan))
-	tried := make([]string, 0, len(fallbacks))
 	attempt := 0
 
 	// The relaxations ACCUMULATE. Each rung is climbed on top of the last,
@@ -628,37 +666,7 @@ func (c *Client) recoverFromRefusal(
 		last = payload
 	}
 
-	for _, next := range fallbacks {
-		attempt++
-		tried = append(tried, next)
-		Emit(ctx, StreamNotice, fmt.Sprintf("Retry %d/%d: Falling back to %s", attempt, total, next))
-		// AND THIS IS THE ONE RUNG THAT CHANGES THE ANSWER'S MODEL, so it is
-		// the one rung whose phase says so by name: a person who asked one model
-		// and is being answered by another is owed that sentence while it
-		// happens rather than in the transcript afterwards (the ladder, in
-		// docs/ARCHITECTURE.md).
-		notePhase(ctx, c.modelFor(request), PhaseSwitchingModel,
-			"", c.clock(), time.Time{}, next)
-		// A NEW MODEL IS TRIED AS CONFIGURED. The strips above were evidence
-		// about the endpoints serving the old model and say nothing about these
-		// ones; carrying them over would silently answer on a fallback model with
-		// no tools because a different model's endpoints had no room for them.
-		candidate := *request
-		candidate.Model = next
-		response, payload, err := c.attemptShaped(ctx, &candidate, knobs, stream)
-		if err != nil {
-			return nil, err
-		}
-		if response != nil {
-			// The caller's request now names the model that actually answered, so
-			// the streamed response, the velocity ledger and the reply's
-			// attribution all agree about which one it was.
-			request.Model = next
-			return response, nil
-		}
-		last = payload
-	}
-	return nil, c.refusalError(request, knobs, model, stripped, tried, attempt+1, last)
+	return nil, c.refusalError(request, knobs, model, stripped, nil, attempt+1, last)
 }
 
 // widenPastTheUncarriedPreference is the ONE retry that finds out whether a
@@ -816,80 +824,23 @@ func (c *Client) attemptShaped(
 	return nil, peek, nil
 }
 
-// ── the second door: patience spent on pacing ───────────────────────────────
+// ── the second door that was: patience spent on pacing ──────────────────────
 //
 // A 429 that never clears is the other way a model runs out of ability to
 // answer, and the answer to it is the same one: ask a different model. The
-// retry loop's patience is the whole of what this waits for — six attempts and
-// two minutes for a watched call, sixty and ten minutes for a task node's
-// (retry.go's outOfPatience) — and when that is spent the call has today's
-// choice between an error and another model. This offers the model.
+// retry loop's patience is the whole of what the call waits for — six attempts
+// and two minutes for a watched call, sixty and ten minutes for a task node's
+// (retry.go's outOfPatience) — and when that is spent the call has a choice
+// between an error and another model.
 //
-// It is DELIBERATELY the same chain and the same narration as the refusal
-// ladder above. Two ways of spelling "the next model" would drift, and a person
-// watching a retry line does not care which of the two doors it came through:
-// the sentence they need is the same either way.
-
-// pacingExhausted reports whether an error is the retry loop giving up on a
-// provider that would not stop pacing us. Only a 429 reaches this shape — every
-// other retryable status breaks out on maxAttempts long before patience is a
-// question, and a 4xx is never retried at all (retry.go).
-func pacingExhausted(err error) bool {
-	var api *APIError
-	for err != nil {
-		if decoded, ok := err.(*APIError); ok {
-			api = decoded
-			break
-		}
-		unwrapped, ok := err.(interface{ Unwrap() error })
-		if !ok {
-			return false
-		}
-		err = unwrapped.Unwrap()
-	}
-	return api != nil && api.Status == http.StatusTooManyRequests
-}
-
-// recoverFromPacing offers the chain to a call the provider paced into the
-// ground, and hands back the original error untouched when there is nothing to
-// offer — no chain configured, or a failure that was never about pacing.
-//
-// A fallback attempt goes through [Client.sendRepaired] rather than back
-// through [Client.sendShaped]: the refusal ladder is the FIRST door's business,
-// and re-entering it here would let one exhausted 429 walk two more models
-// through six relaxations each while a person waits on a turn that has already
-// been slow.
-func (c *Client) recoverFromPacing(
-	ctx context.Context,
-	request *ai.Request,
-	knobs callKnobs,
-	stream bool,
-	paced error,
-) (*http.Response, error) {
-	if !pacingExhausted(paced) {
-		return nil, paced
-	}
-	model := c.modelFor(request)
-	fallbacks := c.fallbackChain(model)
-	if len(fallbacks) == 0 {
-		return nil, paced
-	}
-	for index, next := range fallbacks {
-		Emit(ctx, StreamNotice, fmt.Sprintf("Retry %d/%d: Falling back to %s", index+1, len(fallbacks), next))
-		candidate := *request
-		candidate.Model = next
-		response, err := c.sendRepaired(ctx, &candidate, knobs, stream)
-		if err != nil {
-			continue
-		}
-		// The caller's request now names the model that actually answered, for
-		// the reason the refusal chain rewrites it: attribution, the ledger and
-		// the reply have to agree about which model this was.
-		request.Model = next
-		return response, nil
-	}
-	return nil, paced
-}
+// THAT CHOICE IS NOT THIS LAYER'S TO MAKE AND NO LONGER IS. `recoverFromPacing`
+// walked [Client.fallbackChain] here, silently, on a budget nobody above could
+// see, while internal/session's turn loop walked the same list for the same
+// reason — the second of the two model-hop mechanisms docs/design/recovery §2.2
+// counts. The paced error now travels back whole: the boundary reads it as the
+// wire ([taxonomy.Transport]), the turn spends its own budget on it, and if that
+// budget runs out the ONE model hop in this build takes it to the next model,
+// knowing what has already been tried ([ModelsTried]).
 
 // ── which model to fall back to ─────────────────────────────────────────────
 

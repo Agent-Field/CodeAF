@@ -404,30 +404,37 @@ func (w *streamWatch) consequence() (time.Time, string) {
 	return w.deadline, alt
 }
 
-// canWalk reports whether this request will start another machine behind the
-// same model when its refusal reaches the race.
+// walkAvailable reports whether this request would start another machine behind
+// the same model if its refusal reached the race.
 //
-// It is what stops the relax ladder from running too early: a refusal is
-// evidence about ONE endpoint, and the ladder's rungs are about the request
-// itself. See [Client.sendRecovered] for the whole argument.
-func (w *streamWatch) canWalk() bool {
+// IT IS A READING AND NOT A HANDOFF ([hedgeRace.walkAvailable] states the
+// difference and why the two must not share a call). Its one caller is the
+// attempt loop deciding whether to keep replaying an encoded body.
+func (w *streamWatch) walkAvailable() bool {
 	if w == nil || w.race == nil {
 		return false
 	}
-	return w.race.canWalk()
+	return w.race.walkAvailable()
 }
 
-// deferLadder tells the race that this arm's refusal door handed a routing
-// refusal to the walk instead of climbing the ladder, and what the router said.
-// It is the PROMISE half of [streamWatch.canWalk]: the prediction was that the
-// walk would carry it, and the race is the only thing that can find out whether
-// it did ([hedgeRace.exhausted]). A call with no race has nobody to hand to and
-// never gets here — its door answered false and climbed.
-func (w *streamWatch) deferLadder(body []byte) {
+// takeRefusal hands this arm's routing refusal to the race and reports whether
+// the race took it.
+//
+// IT IS ONE CALL BECAUSE IT IS ONE DECISION. The pair it replaces — ask whether
+// the walk can carry this, then record that you relied on the answer — was a
+// prediction and a promise about it, and everything that can change between two
+// lock acquisitions could make the second false. What comes back now is a
+// commitment: the race owns this refusal and will either answer it or climb the
+// ladder this call just deferred ([hedgeRace.takeRefusal]).
+//
+// A call with no race has nobody to hand to and answers false — its door climbs
+// the ladder itself, which is the legal empty state of a build with no
+// controller installed.
+func (w *streamWatch) takeRefusal(body []byte) bool {
 	if w == nil || w.race == nil {
-		return
+		return false
 	}
-	w.race.deferLadder(body)
+	return w.race.takeRefusal(body)
 }
 
 // ranLadder tells the race that this arm's door climbed the ladder itself, so

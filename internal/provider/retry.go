@@ -599,7 +599,7 @@ func (c *Client) handBack(ctx context.Context, knobs callKnobs, refused string, 
 	if rateLimited {
 		return false
 	}
-	return streamWatchFrom(ctx).canWalk()
+	return streamWatchFrom(ctx).walkAvailable()
 }
 
 // retryAfterIn is the comeback a refusal named in its BODY, zero when it named

@@ -206,12 +206,15 @@ type hedgeRace struct {
 	// switch path. One notice per question: a second line about the same stall
 	// is nagging.
 	firstPromptTold bool
-	// ladderOwed says an arm's refusal door handed a ROUTING refusal to the walk
+	// ladderOwed says an arm's refusal door handed a ROUTING refusal to this race
 	// rather than climbing the endpoint ladder itself (client.go's
 	// [Client.sendRecovered]), and ladderFirst is what the router said, kept so
 	// the ladder's last words can quote it. ladderRan says some door — or this
 	// race — has climbed it, which is what stops a question climbing it twice.
-	// See [hedgeRace.exhausted] for why the race holds these at all.
+	//
+	// THEY ARE A COMMITMENT THIS RACE MADE, not a note about somebody else's
+	// guess: [hedgeRace.takeRefusal] sets them in the same critical section that
+	// answers the door, and [hedgeRace.exhausted] is where the race keeps them.
 	ladderOwed  bool
 	ladderRan   bool
 	ladderFirst []byte
@@ -1293,7 +1296,17 @@ func (r *hedgeRace) emit(arm int, event StreamEvent) {
 	r.observer(event)
 }
 
-// canWalk reports whether the walk's next claim will start another request.
+// walkAvailable reports whether the walk's next claim would start another
+// request behind the same model.
+//
+// IT IS A READING AND NEVER A HANDOFF, and the distinction is the whole of what
+// this wave changed. Its one caller is the attempt loop asking whether to keep
+// replaying an encoded body or to hand the fault to the race instead
+// (retry.go's retryElsewhere) — a question about how to spend the NEXT few
+// seconds, which a stale answer costs nothing. The refusal door used to ask the
+// same method a different question — "will the walk carry this refusal, so that
+// I need not climb the ladder?" — and that one a stale answer cost a whole turn:
+// see [hedgeRace.takeRefusal] for the race that measured it.
 //
 // IT READS THE SAME LANE THE WALK WILL CLAIM. A name in the frontier is not a
 // walk when the wire has since struck that lane, the arm cap is full, or the
@@ -1304,7 +1317,7 @@ func (r *hedgeRace) emit(arm int, event StreamEvent) {
 // THE WALK DELIBERATELY IGNORES r.refused. A refusal to fund a hedge against
 // slowness does not deny the rescue owed after a lane actually fails, which is
 // the same `past=true` rule [hedgeRace.claim] applies.
-func (r *hedgeRace) canWalk() bool {
+func (r *hedgeRace) walkAvailable() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.winner >= 0 || len(r.arms) >= maxArms {
@@ -1320,14 +1333,50 @@ func (r *hedgeRace) canWalk() bool {
 	return false
 }
 
-// deferLadder records that an arm's door handed a routing refusal to the walk
-// ([streamWatch.deferLadder]). The latest body is kept: it is the router's most
-// recent account of this question, which is what a ladder that runs out quotes.
-func (r *hedgeRace) deferLadder(body []byte) {
+// takeRefusal is a refusal door handing this refusal to the race, and the race
+// TAKING it — in one call, under one lock. It reports whether it did.
+//
+// ── IT REPLACES A PREDICTION AND ITS PROMISE ────────────────────────────────
+//
+// The door used to ask two questions in two calls: `canWalk()`, a PREDICTION
+// that the walk would carry this refusal, and then `deferLadder(body)`, a note
+// recording that it had relied on one. Between them the race could have found a
+// winner, struck the lane the prediction was about, or spent the purse — and
+// even when it had not, the prediction was about the WALK, which answers only
+// the refusals that reach this door. On 2026-09-10 three arms died: two doors
+// predicted a walk and deferred, and the third arm died of a 429, which is not a
+// routing refusal and reaches no door at all. The ladder two doors had deferred
+// was run by nobody and the person read the router's own 404.
+//
+// ── WHAT IT COMMITS TO ──────────────────────────────────────────────────────
+//
+// THE RACE OWNS THIS REFUSAL UNTIL IT IS ANSWERED OR THE QUESTION IS SPENT. Not
+// "the walk will carry it" — the race makes no claim about which of its moves
+// will — but that it will make them: the walk when an arm's failure reaches the
+// loop, and, if every arm ends with nobody committed, the ladder this call just
+// took ([hedgeRace.exhausted], which is now the FULFILMENT of this promise
+// rather than a repair of a wrong guess).
+//
+// So there is nothing here about lanes, arms or the purse. A door that can hand
+// a refusal to an open race hands it over; whether another machine is worth
+// asking is the race's question and it is asked at the moment it is acted on.
+// The only refusals it declines are the ones nobody can answer: a race that has
+// already won, and a ladder that has already been climbed.
+//
+// The latest body is kept: it is the router's most recent account of this
+// question, which is what a ladder that runs out quotes.
+func (r *hedgeRace) takeRefusal(body []byte) bool {
+	if r == nil || r.base == nil || r.base.Err() != nil {
+		return false
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.winner >= 0 || r.ladderRan {
+		return false
+	}
 	r.ladderOwed = true
 	r.ladderFirst = append([]byte(nil), body...)
+	return true
 }
 
 // ranLadder records that a door climbed the ladder itself.
@@ -1361,6 +1410,16 @@ func (r *hedgeRace) ranLadder() {
 // exhaustion climbs what was deferred. ONCE — [hedgeRace.ranLadder] is set by a
 // door that climbed it itself and by this — and never on a dead context, where
 // nothing is waiting for the answer.
+//
+// ── AND IT IS NOW THE FULFILMENT RATHER THAN THE REPAIR ─────────────────────
+//
+// It was written as a compensating guarantee: the door predicted a walk, the
+// prediction could be wrong, and this caught the misses. Both halves existed and
+// either could be read as the owner. Since [hedgeRace.takeRefusal] the door makes
+// no prediction at all — it hands the refusal over and the race takes it — so
+// this is the promise being kept, and it is the one code path that remains of
+// the pair. It is not a second answer to a question somebody else already
+// answered; it is the only answer, asked at the one moment it can be.
 func (r *hedgeRace) exhausted() bool {
 	if r == nil || r.base == nil || r.base.Err() != nil {
 		return false
