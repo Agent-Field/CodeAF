@@ -323,9 +323,19 @@ type callProgress struct {
 	end    CallEnd
 	err    error
 	ending int
-	// open is set by the first request going out and cleared by the ending, so
-	// that nothing speaks after the last word.
-	open bool
+	// open is set by the first request going out, and spent by the ending.
+	//
+	// SPENT IS NOT THE SAME AS "NOT OPEN", AND THE DIFFERENCE IS A REAL RACE. A
+	// race's losers are cancelled by the deferred stop in
+	// [hedgeRace.run] and are STILL RUNNING when the door above it says the
+	// question is over: a frame already sitting in a loser's SSE decoder reaches
+	// this a moment later, and a late [callProgress.note] would repaint a settled
+	// row as running while a late [callProgress.opened] would re-open a report
+	// nothing will ever close again. So the ending latches, and every seam is
+	// closed behind it — which is what makes "said exactly once" true under the
+	// concurrency this build actually runs.
+	open  bool
+	spent bool
 }
 
 // callAttempt is one request's state.
@@ -373,6 +383,9 @@ func (p *callProgress) opened(attempt int, at time.Time) {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.spent {
+		return
+	}
 	p.attempts[attempt] = &callAttempt{started: at, phase: CallStarted}
 	p.open = true
 	p.say(attempt, at)
@@ -387,6 +400,9 @@ func (p *callProgress) serving(attempt int, lane string) {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.spent {
+		return
+	}
 	row := p.state(attempt)
 	if row.served == lane {
 		return
@@ -438,6 +454,9 @@ func (p *callProgress) note(attempt int, at time.Time, visible, hidden int) {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.spent {
+		return
+	}
 	row := p.state(attempt)
 	first := row.firstToken.IsZero()
 	if first {
@@ -509,6 +528,14 @@ func (p *callProgress) finished() {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.spent {
+		return
+	}
+	// SPENT WHETHER OR NOT ANYTHING WAS EVER OPENED. A question that reached no
+	// machine at all — the encoder refused the request, the limiter's context was
+	// already gone — has nothing to report, and it must still close the seam so
+	// that a straggler from a cancelled arm cannot open one behind it.
+	p.spent = true
 	if !p.open {
 		return
 	}
@@ -516,14 +543,21 @@ func (p *callProgress) finished() {
 	if p.end == "" {
 		p.end = CallEndCut
 	}
-	p.state(p.ending).phase = CallEnded
-	p.say(p.ending, p.state(p.ending).started)
+	// AND THE ENDING IS DRAWN FROM THE ATTEMPT THAT ENDED IT, which is attempt 0
+	// when nothing ever landed: the report then carries the primary's own row,
+	// empty or part-written, which is the honest picture of a question that
+	// stopped without anybody coming back.
+	row := p.state(p.ending)
+	row.phase = CallEnded
+	p.say(p.ending, row.started)
 }
 
-// say hands the report over. It runs with the lock held, which is what keeps two
-// goroutines' events in the order they happened — the read loop's deltas and a
-// race's cancel are genuinely concurrent, and a reader shown the ending before
-// the last token would draw a call that finished before it wrote.
+// say hands the report over. IT RUNS WITH THE LOCK HELD, AND THE LOCK IS WHAT
+// KEEPS THE ORDER — not the law in callprogress_law_test.go, which only says
+// where the seam may be fed FROM. The read loop's deltas, the beat, a race's
+// cancel and the door that ends the question are genuinely concurrent, and a
+// reader shown the ending before the last token would draw a call that finished
+// before it wrote.
 //
 // It is also why the watcher may not do work: this lock is on the read loop's
 // own path. See [WithCallProgress].

@@ -414,6 +414,52 @@ func TestALatchedEndingIsNotAnEndingYet(t *testing.T) {
 	}
 }
 
+// TestAStragglerFromACancelledArmCannotSpeakAfterTheEnding is the race the
+// reporter really runs in, and the reason the ending LATCHES rather than merely
+// clearing a flag.
+//
+// A race's losers are cancelled by the deferred stop in [hedgeRace.run] and are
+// still running when the door above says the question is over. A frame already
+// sitting in a loser's SSE decoder reaches this a moment later: a late note
+// would repaint a settled row as running, and a late opened would re-open a
+// report nothing will ever close again — so "said exactly once" would be true of
+// the code and false of the build.
+func TestAStragglerFromACancelledArmCannotSpeakAfterTheEnding(t *testing.T) {
+	log := &progressLog{}
+	progress := newCallProgress(log.watch, "openrouter/x")
+	began := time.Now()
+	progress.opened(0, began)
+	progress.note(0, began.Add(time.Second), 4, 0)
+	progress.landed(0, CallEndAnswered, nil)
+	progress.finished()
+
+	settled := len(log.all())
+	// Everything a loser's goroutine could still do on its way down.
+	progress.note(1, began.Add(2*time.Second), 9, 0)
+	progress.serving(1, "B")
+	progress.opened(1, began.Add(3*time.Second))
+	progress.paced(1, true, began.Add(4*time.Second))
+	progress.landed(1, CallEndCancelled, nil)
+	progress.finished()
+
+	if after := len(log.all()); after != settled {
+		t.Fatalf("a straggler spoke %d times after the ending", after-settled)
+	}
+	last, _ := log.last()
+	if last.Phase != CallEnded || last.End != CallEndAnswered {
+		t.Fatalf("the last word is %q/%q, want the ending to have stood", last.Phase, last.End)
+	}
+	endings := 0
+	for _, report := range log.all() {
+		if report.Phase == CallEnded {
+			endings++
+		}
+	}
+	if endings != 1 {
+		t.Fatalf("%d endings, want exactly one — that is the promise the seam makes", endings)
+	}
+}
+
 // TestACallThatWalksToAnotherMachineEndsOnce is the same law through the wire,
 // and it is the one a reader of this seam would otherwise get wrong: the log
 // writes a closing row for every attempt, so a call refused by its first machine
