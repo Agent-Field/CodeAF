@@ -2528,6 +2528,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"fetch the newest models", "commands"},
 		{"could not fetch the model list", "commands"},
 		{"I pressed 1 on the stop card and it did not stop", "keys"},
+		// The one case where the key looked broken and was not: a bare `x` with
+		// several rows on screen. The keys page is the page that holds the rule,
+		// and the probe is the sentence said at the screen in the moment.
+		{"I pressed x and it just typed x", "keys"},
+		{"how do I stop a task from the chat without opening it", "keys"},
 		{"why does the stop card need enter as well as the number", "keys"},
 		{"where did my chat go after I closed its tab", "screen"},
 		{"how do I stop just this chat without touching the others", "screen"},
