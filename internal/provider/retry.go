@@ -462,17 +462,6 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			named = retryAfterIn(peek)
 			providerWait = named
 		}
-		c.record(recordFacts{
-			ctx: ctx, request: request, knobs: knobs, stream: stream,
-			attempt: attempts, began: attemptBegan,
-			status: response.StatusCode, err: lastErr, responseBody: peek,
-			// THE COMEBACK TIME GOES ON THE ROW, because it is the only thing
-			// that makes a repeated send to a refusing machine legal
-			// (docs/design/recovery/DESIGN.md §3). It was never recorded until
-			// 2026-09-10, so eleven hundred paced refusals could not be checked
-			// against what the provider itself had asked for.
-			retryAfter: named,
-		})
 		// EVERY REFUSAL THIS LOOP DRAWS GOES THROUGH THE ONE DOOR, and what is
 		// done about it is decided there from what the refusal says rather than
 		// here from the status this loop happens to be holding (velocity.go's
@@ -489,6 +478,28 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// which is the narrower and shorter-lived question. A refusal that
 		// implicated no machine adds nothing.
 		fresh := knobs.refused.add(refusal.Lane)
+		// AND THE ROW IS WRITTEN FROM WHAT THE DOOR WORKED OUT, which is why it
+		// is here and not above the door.
+		//
+		// The classification is the only thing that can name the machine on a
+		// refusal that never opened a stream: `refusal.Lane` is the pool the
+		// router said was full, and it is the same name the ledger is now keyed
+		// on (velocity.go). Recording the row first and then classifying would
+		// be the two reading one refusal twice, which is the shape #123 closed —
+		// and the row would fall back to the demand on every refusal that named
+		// a machine we had not demanded.
+		//
+		// THE COMEBACK TIME GOES ON IT TOO, because it is the only thing that
+		// makes a repeated send to a refusing machine legal
+		// (docs/design/recovery/DESIGN.md §3). It was recorded on not one row in
+		// the ten days to 2026-09-10, so eleven hundred paced refusals could not
+		// be checked against what the provider itself had asked for.
+		c.record(recordFacts{
+			ctx: ctx, request: request, knobs: knobs, stream: stream,
+			attempt: attempts, began: attemptBegan,
+			status: response.StatusCode, err: lastErr, responseBody: peek,
+			served: refusal.Lane, retryAfter: named,
+		})
 		// ── "NOT YET" IS ANSWERED BY GOING SOMEWHERE ELSE ───────────────────
 		//
 		// THE OWNER'S RULING, 2026-09-10: a person must never work around a 429
