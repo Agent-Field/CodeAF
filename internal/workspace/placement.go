@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"context"
+	"fmt"
 	"strings"
 )
 
@@ -172,32 +173,64 @@ GROUP BY c.id,c.name,c.seq ORDER BY MIN(g.depth),c.seq`, args...)
 	return result, rows.Err()
 }
 
+// PlacedWindow names one read of a folder's placements, in the placements
+// key's order: the rows after After (the zero Ref is the start), less the first
+// Skip of those, at most Limit of them.
+//
+// AFTER IS A CURSOR AND SKIP IS AN OFFSET, AND ONLY THE CURSOR IS STABLE. A
+// placement written below an offset between two reads shifts every row after
+// it, so the next page repeats one or skips one; a cursor names the last key
+// already read, and a write elsewhere cannot move it. The terminal pages a
+// whole folder by the cursor. The chat's show still counts an offset, because
+// its next_offset runs across two lists and a cursor there would be a second
+// paging vocabulary on the tool.
+type PlacedWindow struct {
+	After       Ref
+	Skip, Limit int
+}
+
 // Placed lists what is placed directly in a collection — the work its rules
-// reach without passing through another folder — in key order. It reads the
-// placements key's own prefix, so it costs what it returns.
-func (s *Store) Placed(ctx context.Context, collectionID string) ([]Ref, error) {
+// reach without passing through another folder — for one window, and whether
+// more follows it.
+//
+// A WINDOW, BECAUSE A FOLDER VIEW IS INTERACTIVE (L6). The chat's show asks for
+// the rows one page has room for, and the terminal's show, which prints a
+// whole folder, pages through the same read rather than keeping a second one.
+// The window is a seek on the placements key, so a page costs its skip and its
+// size and never the rest of the folder.
+func (s *Store) Placed(ctx context.Context, collectionID string, w PlacedWindow) ([]Ref, bool, error) {
+	if w.Skip < 0 || w.Limit < 0 {
+		return nil, false, fmt.Errorf("%w: a window cannot be negative", ErrInvalid)
+	}
 	var exists bool
 	if err := s.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM collections WHERE id=?)", collectionID).Scan(&exists); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if !exists {
-		return nil, ErrNotFound
+		return nil, false, ErrNotFound
 	}
-	rows, err := s.db.QueryContext(ctx, placedQuery, collectionID)
+	// One row past the window says whether more follows without a count.
+	rows, err := s.db.QueryContext(ctx, placedQuery, collectionID, w.After.Kind, w.After.ID, w.After.SessionID, w.Limit+1, w.Skip)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer rows.Close()
 	result := make([]Ref, 0)
 	for rows.Next() {
 		var ref Ref
 		if err := rows.Scan(&ref.Kind, &ref.ID, &ref.SessionID); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		result = append(result, ref)
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	if len(result) > w.Limit {
+		return result[:w.Limit], true, nil
+	}
+	return result, false, nil
 }
 
 // placedQuery is [Store.Placed]'s one read, named so its plan can be pinned.
-const placedQuery = "SELECT kind,ref_id,session_id FROM placements WHERE collection_id=? ORDER BY kind,ref_id,session_id"
+const placedQuery = "SELECT kind,ref_id,session_id FROM placements WHERE collection_id=? AND (kind,ref_id,session_id)>(?,?,?) ORDER BY kind,ref_id,session_id LIMIT ? OFFSET ?"
