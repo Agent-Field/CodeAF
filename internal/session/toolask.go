@@ -23,12 +23,9 @@ package session
 //     a name on it and nothing else. Every ask says what it is doing, in words —
 //     `looking at shot.png`, `listening to memo.m4a` — for as long as it lasts
 //     ([Agent.tellPhase] keeps saying it).
-//  3. THE ANSWER WAS UNBOUNDED IN LENGTH. The undirected look runs 588 to 1,256
-//     completion tokens, and the caller then PAGES it: every one of these
-//     answers goes back through pi's law and is cut to what a tool result may
-//     be. So the ceiling is derived from that cap rather than chosen — asking a
-//     model for more text than the belt will ever show is paying for tokens
-//     nobody reads, and waiting while they arrive.
+//  3. THE ANSWER LOOKED UNBOUNDED IN LENGTH, and the answer to that is NOT a
+//     ceiling on this request. See [toolAskSendsNoOutputCeiling], which is the
+//     one piece of reasoning in this file that ends in "so we do nothing".
 //  4. THE WAIT WAS A SECOND BUDGET. `view_image` carried its own ten-minute
 //     window, spelled as [providerTimeout], beside the deadline the dispatcher
 //     already builds from the call's role (internal/provider's dispatch.go,
@@ -128,10 +125,11 @@ func (a *Agent) askModel(ctx context.Context, question toolAsk) (string, error) 
 	asked, stop := context.WithTimeout(asked, toolAskWindow)
 	defer stop()
 
+	// NO OUTPUT CEILING TRAVELS WITH IT ([toolAskSendsNoOutputCeiling]).
 	response, err := a.completeWithModel(asked, []ai.Message{{
 		Role:    "user",
 		Content: []ai.ContentPart{{Type: "text", Text: question.prompt}, question.part},
-	}}, question.model, ai.WithMaxTokens(a.toolAnswerCeiling()))
+	}}, question.model)
 	// Accounted BEFORE the answer is judged: the ask was paid for whether or not
 	// it said anything useful.
 	if response != nil {
@@ -175,23 +173,28 @@ func toolCallTag(tool string) string {
 	return "tool:" + tool
 }
 
-// toolAnswerCeiling is the most an asked model may write, IN TOKENS, and it is
-// derived from the one number that already bounds what the answer can become:
-// the cap a tool result is cut to on this belt ([Agent.resultCaps], which sizes
-// itself from the context window).
+// toolAskSendsNoOutputCeiling is why this door does NOT put a `max_tokens` on a
+// hand's request, written down because "bound the answer's length" is the
+// obvious next thing to reach for and it is wrong here.
 //
-// EVERY ONE OF THESE ANSWERS IS PAGED. A description, a transcript, a look —
-// each goes back through pi's law and is shown to the model within that cap
-// (tools_pdf.go's piReadLaw), with an offset to read on from. So a model asked
-// for four thousand tokens about a screenshot when the belt will show eight
-// hundred of them is a model being paid to write text that is thrown away, and a
-// person watching a tool row while it happens.
+// THE ONLY PRINCIPLED CEILING IS THE ONE THE BELT ALREADY IMPOSES, and it does
+// not bind. Every one of these answers is paged through pi's law to
+// [Agent.resultCaps] — 50KB on a frontier window, which is about twelve and a
+// half thousand tokens — while the measured answers run 588 to 1,256. A ceiling
+// an order of magnitude above the distribution buys nothing.
 //
-// SO THE CEILING IS THE CAP AND NOTHING TIMES THE CAP. There is no headroom
-// factor here on purpose: a factor would be a number nobody could derive, and
-// what the belt shows is exactly what a tool result may weigh. A zero window
-// answers zero, which is "no ceiling" — the same thing a belt with no caps
-// means everywhere else (bare's DefaultCaps).
-func (a *Agent) toolAnswerCeiling() int {
-	return a.resultCaps().MaxBytes / bytesPerToken
-}
+// AND SENDING IT WOULD COST THE SERVING SET. `max_tokens` is not only a cap on
+// the reply: internal/lane's gate rules a machine OUT when its published
+// `MaxOut` is below what the request asked for (frontier.go's `capable`). A
+// twelve-and-a-half-thousand-token ask would quietly strike every vision machine
+// that publishes less than that, on a tool whose whole problem was being slow —
+// so the ceiling would thin the set that makes it fast in exchange for cutting a
+// paragraph nobody was going to read.
+//
+// A NUMBER FROM THE MEASUREMENT WOULD BE A MAGIC NUMBER. "1,500 tokens, because
+// that is yesterday's ninety-fifth percentile" is a constant nobody can derive
+// tomorrow, and it would cut exactly the long transcript this ladder exists to
+// produce. What actually bounds the wait is the ROLE ([toolAskWindow]) and what
+// makes it visible is the phase; the length is the lane layer's business,
+// because the lane layer is the only place that knows what each machine can do.
+const toolAskSendsNoOutputCeiling = "the belt's own cap does not bind, and sending it would thin the serving set"

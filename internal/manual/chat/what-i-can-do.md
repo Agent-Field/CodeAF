@@ -639,10 +639,12 @@ longer does. When the wait runs out you get a sentence naming the model and the
 file — `<model> did not answer about <path> within 1m30s — try again, or ask
 about a smaller picture` — rather than a row that keeps spinning.
 
-**The answer is bounded too.** The asked model is told it may write at most what
-a tool result can show, which is the same 2000 lines or 50KB cap every read is
-paged to. Nothing is cut that you would have seen; what it stops is paying for a
-page of description that would have been thrown away.
+**The answer is paged, not cut short.** It comes back through the same 2000
+lines or 50KB cap every read is paged to, with `Use offset=… to continue.` for
+the rest. aforge deliberately does **not** ask the looking model for a shorter
+answer: the ceiling it could name is far above anything these answers run to,
+and naming one would rule out every machine that publishes a smaller output
+limit — making the look slower, to shorten a paragraph nobody was reading.
 
 **A re-read costs nothing.** The description is remembered against the file's
 own bytes for the conversation, so reading the same picture twice — or paging

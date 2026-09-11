@@ -212,17 +212,34 @@ func TestAHandsCallIsTaggedWithItsOwnName(t *testing.T) {
 	}
 }
 
-// THE ANSWER IS BOUNDED BY WHAT THE BELT WILL SHOW. A model asked for more text
-// than a tool result may weigh is a model being paid to write text nobody reads,
-// and a person watching a tool row while it arrives.
-func TestAnAskedModelMayNotWriteMoreThanTheBeltShows(t *testing.T) {
-	agent := &Agent{}
-	caps := agent.resultCaps()
-	if caps.MaxBytes <= 0 {
-		t.Fatal("a belt with no result cap cannot bound an answer")
+// A HAND SENDS NO OUTPUT CEILING, and this is the law rather than an omission
+// ([toolAskSendsNoOutputCeiling]). internal/lane's gate rules a machine out when
+// its published MaxOut is below the request's max_tokens (frontier.go's
+// `capable`), so a ceiling taken from the belt's result cap — an order of
+// magnitude above every measured answer — would strike vision machines off the
+// serving set of the very tool it was meant to speed up.
+func TestAHandSendsNoOutputCeiling(t *testing.T) {
+	set := token.NewFileSet()
+	file, err := parser.ParseFile(set, "toolask.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got, want := agent.toolAnswerCeiling(), caps.MaxBytes/bytesPerToken; got != want {
-		t.Fatalf("an asked model may write %d tokens, want the tool-result cap in tokens (%d)", got, want)
+	ast.Inspect(file, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if selector, ok := call.Fun.(*ast.SelectorExpr); ok && selector.Sel.Name == "WithMaxTokens" {
+			t.Errorf("toolask.go:%d sends an output ceiling with a hand's question. "+
+				"The belt's own cap is the only principled one and it does not bind; sending it "+
+				"rules every machine with a smaller MaxOut off the serving set (frontier.go's "+
+				"capable). The bound that matters is the role's window", set.Position(call.Pos()).Line)
+		}
+		return true
+	})
+	// And the reasoning is written down where the next person will look for it.
+	if toolAskSendsNoOutputCeiling == "" {
+		t.Fatal("the reason a hand sends no ceiling is not stated anywhere")
 	}
 }
 
