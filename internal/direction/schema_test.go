@@ -101,3 +101,21 @@ func TestOpenExistingDoesNotCreateAStore(t *testing.T) {
 		t.Fatal("a read created the directory")
 	}
 }
+
+// WHAT A RESOLVE DELIVERS CARRIES NO PERMISSION AND NO ATTENTION (design §5).
+// A direction record is a constraint, never a grant, and who is told what is
+// the report policy's; a field for either on the delivered types is the start
+// of a second owner.
+func TestWhatAResolveDeliversCarriesNoGrantOrAttention(t *testing.T) {
+	forbidden := []string{"grant", "capabil", "permission", "allow", "notify", "priority", "urgent"}
+	for _, typ := range []reflect.Type{reflect.TypeOf(Effective{}), reflect.TypeOf(Applied{}), reflect.TypeOf(Revision{}), reflect.TypeOf(Path{})} {
+		for i := 0; i < typ.NumField(); i++ {
+			name := strings.ToLower(typ.Field(i).Name)
+			for _, word := range forbidden {
+				if strings.Contains(name, word) {
+					t.Errorf("%s.%s looks like a %s; direction constrains work and never permits or alerts", typ.Name(), typ.Field(i).Name, word)
+				}
+			}
+		}
+	}
+}

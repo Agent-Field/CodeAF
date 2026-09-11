@@ -1,0 +1,3 @@
+SCAN CONSTANT ROW
+SCALAR SUBQUERY 1
+  SEARCH direction_revisions USING COVERING INDEX direction_revisions_rejected (text_sha256=?)

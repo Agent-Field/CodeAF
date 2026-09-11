@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/workspace"
@@ -92,10 +93,19 @@ func current(ctx context.Context, q querier, id string) (Revision, error) {
 	return load(ctx, q, id, revision)
 }
 
-// revisionColumns is the column list every body read uses, in scanRevision's order.
-const revisionColumns = `record_id,revision,seq,kind,state,state_reason,title,text,text_sha256,quote,quote_origin,
- source_class,source_id,source_session,source_hint,source_sha256,author_class,author_ref,
- receipt_actor,receipt_door,receipt_ref,receipt_at,written_at`
+// revisionColumnNames is the column list every body read uses, in
+// scanRevision's order.
+var revisionColumnNames = []string{"record_id", "revision", "seq", "kind", "state", "state_reason", "title", "text",
+	"text_sha256", "quote", "quote_origin", "source_class", "source_id", "source_session", "source_hint", "source_sha256",
+	"author_class", "author_ref", "receipt_actor", "receipt_door", "receipt_ref", "receipt_at", "written_at"}
+
+// revisionColumns spells the list, qualified by a table alias when given.
+func revisionColumns(alias string) string {
+	if alias == "" {
+		return strings.Join(revisionColumnNames, ",")
+	}
+	return alias + "." + strings.Join(revisionColumnNames, ","+alias+".")
+}
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -119,7 +129,7 @@ func scanRevision(row scanner) (Revision, error) {
 
 // load reads one revision with its targets, exclusions and links.
 func load(ctx context.Context, q querier, id string, revision int) (Revision, error) {
-	r, err := scanRevision(q.QueryRowContext(ctx, "SELECT "+revisionColumns+
+	r, err := scanRevision(q.QueryRowContext(ctx, "SELECT "+revisionColumns("")+
 		" FROM direction_revisions WHERE record_id=? AND revision=?", id, revision))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Revision{}, fmt.Errorf("%w: %s revision %d", ErrNotFound, id, revision)

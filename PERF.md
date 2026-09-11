@@ -2317,3 +2317,41 @@ standing text and immutable shared-context revision references. The inspection
 tool returns at most 40 rows and approximately 24,000 encoded row bytes per page; oversized detail
 is omitted with its source line retained. This wave's compilation and checks run
 on Spark only; local editing/formatting is not performance acceptance.
+
+## The direction resolver's cost
+
+`direction.Resolve` (`internal/direction/resolve.go`) answers "what governs this
+work" on every turn in every door, so **its cost must not grow with the lifetime
+number of direction records.** It reads one snapshot. It walks placements upward
+from the subject over at most **256** edges (`MaxClosureEdges`), and a subject past
+that is stopped with `ErrClosureTooLarge`. It then seeks the derived `direction_live`
+index once per probed place and reads bodies only for what it returns: at most
+**64** governing records and **64 KiB** of their wording (`MaxGoverning`,
+`MaxGoverningBytes`; past either, `ErrGoverningTooLarge` names the heaviest target),
+**20** proposals (`MaxPending`) and a page of **50** findings (`MaxInformational`).
+
+The gate counts work, not time:
+
+- **At most 10 statements per resolve** (`maxResolveStatements`), over the whole
+  load model. `TestResolvingTheLoadModelSendsABoundedNumberOfStatements` enforces it.
+- **No plan scans a table that grows.** Every statement a resolve sends, and the
+  write path's hot lookups, is planned against the load model and against an empty
+  store without statistics. The plans are checked in under
+  `internal/direction/testdata/explain`.
+  `TestTheResolversPlansSeekAndNeverScanAGrowingTable` enforces both. After a
+  reviewed plan change, regenerate the goldens with `-args -update-explain`.
+
+The load model is 50,000 records (10,000 live), a 2,000-folder DAG with two
+parents per folder, 100,000 placements and 20,000 chats. The wall-clock number is
+measured, never gated:
+
+```sh
+AFORGE_DIRECTION_MEASURE=1 go test -run TestMeasureResolveLatency -v ./internal/direction/
+```
+
+On Spark (2026-09-10, three runs), each of 1,000 random subjects paid its own store
+open, resolve and close:
+- **p99 was 7.8–8.1 ms** and p50 4.0–4.3 ms;
+- the resolve alone had a p99 of 6.2–6.3 ms.
+
+The design's budget is 50 ms at p99, and its hard requirement is sub-second.

@@ -1,0 +1,4 @@
+CO-ROUTINE q
+  SCAN 71 CONSTANT ROWS
+SCAN q
+SEARCH l USING PRIMARY KEY (target_kind=? AND ref_id=? AND session_id=? AND lane=?)

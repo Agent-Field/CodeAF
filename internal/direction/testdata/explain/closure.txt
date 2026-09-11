@@ -1,0 +1,10 @@
+CO-ROUTINE up
+  SETUP
+    CO-ROUTINE q
+      SCAN 2 CONSTANT ROWS
+    SCAN q
+    SEARCH p USING INDEX placements_reference (kind=? AND ref_id=? AND session_id=?)
+  RECURSIVE STEP
+    SCAN u
+    SEARCH p USING INDEX placements_reference (kind=? AND ref_id=? AND session_id=?)
+SCAN up

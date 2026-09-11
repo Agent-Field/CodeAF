@@ -1,0 +1,4 @@
+CO-ROUTINE c
+  SCAN 2 CONSTANT ROWS
+SCAN c
+SEARCH g USING INDEX direction_legacy_record (record_id=?)
