@@ -165,10 +165,18 @@ done. Quick tasks that claim different paths — or claim nothing at all — run
 time.
 
 This is a promise made in advance, and naming nothing does not make a free-for-all: a
-quick task that named no files may write anywhere in your folder, but the first one to
-write a file owns that file until it finishes, and a second one aiming at the same path is
-refused with the holder named. What naming files up front buys is the *waiting* — the two
-never start together at all, so neither one has to find out halfway through.
+quick task that named no files may write anywhere in your folder, but **the first one to
+write a file owns that file until it finishes**. Anything else aiming at the same path — a
+second quick task, a task's worker, the conversation's own `edit` or `write` — is refused
+with the holder named:
+
+```
+notes.md is held by task 7 (draft the note), so nothing was written.
+```
+
+The hold is on files it has **written**, not on files it only named. What naming files up
+front buys is the *waiting* — the two never start together at all, so neither one has to
+find out halfway through.
 
 ## Stopping a quick task — where the half-made work goes, and why there is no branch to go back to
 
@@ -189,7 +197,7 @@ through.
 
 ## What a quick task cannot do — no check of its own, nothing to inspect, and it goes when the window goes
 
-Five limits, and they are the price of there being no ceremony:
+Six limits, and they are the price of there being no ceremony:
 
 - **Nothing checks the work.** No check reads what it did against what was asked. A quick
   task is never `your call` and never waits for your approval — what you get is what it
@@ -200,6 +208,9 @@ Five limits, and they are the price of there being no ceremony:
   closed is an ordinary task. Its **row** does come back — a quick task you ran last week
   is on the column with its answer when you reopen that conversation, see *A quick task
   after a restart* below — but the working stops when the window does.
+- **It cannot be continued.** `continue task 7` on a quick task is refused —
+  `task 7 is quick, not a run that can be continued` — because there is no copy to pick up
+  from and no brief a finding could join. Ask for it again; it starts at once.
 - **It cannot be divided.** A quick task never splits itself into parts. Work too wide for
   one worker was never quick.
 - **It cannot land anything.** No merge, no branch kept, no conflict to resolve — those
@@ -222,13 +233,19 @@ What each one does depends on where it had got to:
   `the quick task did not finish before aforge closed; whatever it wrote is in your folder`.
   It is **not** started again, and that is deliberate: it was writing in your own folder
   rather than a copy, so a second worker walking a half-done checklist over the top of the
-  first one's edits would not be a resume. `git diff` is the account of what it managed.
+  first one's edits would not be a resume. Under that sentence its card lists the checklist
+  as it left it — `ticked 2 of 4: …` and `not ticked: …` — and the files it wrote are its
+  changed list; `git diff` has the rest.
 - **Still waiting its turn** — behind another quick task that claimed the same file, say —
-  it never started, and it does not start now. Its checklist is not written down anywhere,
-  so there is nothing to start it from, and starting it as an ordinary task would give work
-  that asked for none of it a copy of your folder, a branch and a check. The row says so:
+  it never started, and it does not start now: the turn that asked for it is over, and work
+  arriving on its own in a conversation that has moved on is not what anybody asked for.
+  The row says so:
   `the quick task never started before aforge closed, and it does not resume — ask for it again`.
   Asking again costs a sentence.
+
+The line you read on reopening counts them under their own clause —
+`recovered task graph: 3 done · 2 quick tasks did not finish` — never as `interrupted`,
+because nothing about them resumes.
 
 **If you remember a conversation reopening with an EMPTY column after quick tasks had run
 in it, that was a fault and it is fixed.** A quick task is checked by nobody, so it is
@@ -1579,9 +1596,9 @@ nothing was written.
 **A quick task is in your folder and does not hold it.** It has no copy of its own, so it
 writes where you are — but the folder stays yours: keep editing, and the chat's `edit` and
 `write` go on working everywhere else in it. Its claim is **files, not the directory**: a
-file it named at the start, or one it has written, is held by it and refused with its name
-on it, the first case above. Two quick tasks that name one file never write it at once
-either — the second waits (*Why it said waits for task 5*).
+file it has written is held by it and refused with its name on it, the first case above. A
+file it only named at the start is not held against you; what naming does is make a second
+quick task that names the same file wait (*Why it said waits for task 5*).
 
 Either hold ends when the task lands, fails or is stopped. *How work runs* has the whole of
 it, under *A task that has written a file holds that file* and *A task working in place
@@ -2791,6 +2808,8 @@ recently landed in other windows:
   Added the guard and the regression test; the parser suite passes.
 running in another window now:
 - Sweep the call sites · window "docs pass" · internal/session/agent.go
+- Survey the config loaders · window "docs pass" · 3 quick parts running · internal/config/load.go
+- Compare the two lockfiles · quick · window "release"
 </elsewhere>
 ```
 
@@ -2799,7 +2818,9 @@ running in another window now:
   full. Each row names the task, how it ended, and the files it wrote.
 - **`running in another window now:`** is what those windows have out at this moment, with
   the files each run has already written. Written, not planned: nothing is reserved and
-  nothing is locked by it.
+  nothing is locked by it. **A task's parts ride on its row** (`3 quick parts running`,
+  with the family's files), and `quick` on a row means that window's quick task is writing
+  in its folder right now.
 - It is **facts, never instructions.** Nothing another window writes can tell this
   conversation what to do; the chat reads it to you or works around it, and that is all.
 - It is **silent when there is nothing to say** — no block at all, never a line saying

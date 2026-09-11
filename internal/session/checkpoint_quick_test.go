@@ -19,7 +19,11 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // A WRITE-FREE TURN WHOSE DRAWING HAS PARTS IS TAKEN BY A QUICK TASK.
@@ -315,4 +319,114 @@ func linesSaying(said []string, opening string) []string {
 		}
 	}
 	return found
+}
+
+// ── the errand the quick road does not run ──────────────────────────────────
+
+// A QUICK CARRY-ON ASKS NOBODY FOR A NAME.
+//
+// The two roads that start work nobody typed ask for the row's name the moment
+// they decide to, ahead of the node (taskname.go's [nameAhead]), and the ask used
+// to stand ABOVE the branch that chooses this road — so every write-free carry-on
+// sent a real request to a real model and cancelled it microseconds later, for a
+// row that is never renamed ([Agent.newQuickSpec] admits a quick node `named`).
+// The ask is under the branch now, and this is the pair that says so: the quick
+// road runs no namer at all, and the full road still runs exactly one, which is
+// what keeps this from passing by having broken naming everywhere.
+func TestAQuickCarryOnAsksForNoNameAndTheFullRoadStillDoes(t *testing.T) {
+	const asked = "work through the four things I listed and report back"
+	const dowry = "Finish the four pieces\nwhat is left, and everything this turn already found out"
+
+	// namesAsked drives one carry-on and answers every namer off the queue,
+	// counting them. It is the fixture's own aside rather than
+	// [answerTheNamerOffTheQueue] because the count IS the assertion, and it is
+	// installed after [checkpointAgent], which installs that one.
+	namesAsked := func(t *testing.T, steps []step) (*scriptedCompleter, *TaskNode, *int64) {
+		t.Helper()
+		completer := &scriptedCompleter{steps: steps}
+		agent := checkpointAgent(t, completer, func(config *Config) { config.Divide = true })
+		var names int64
+		completer.mu.Lock()
+		completer.aside = func(messages []ai.Message) (*ai.Response, bool) {
+			if !isNameCall(messages) {
+				return nil, false
+			}
+			atomic.AddInt64(&names, 1)
+			return textResponse("the four pieces"), true
+		}
+		completer.mu.Unlock()
+		ran := make(ranNodes, 2)
+		stubbedGraph(agent, func(node *TaskNode) { ran <- node })
+		events, err := agent.Submit(context.Background(), asked)
+		if err != nil {
+			t.Fatalf("Submit: %v", err)
+		}
+		collect(t, events)
+		return completer, ran.await(t), &names
+	}
+
+	// THE QUICK ROAD: a turn that wrote nothing, whose drawing has parts.
+	_, quick, quickNames := namesAsked(t, grindingSteps(checkpointMarkAt(1)+6, checkpointSplitSketch, dowry))
+	if quick.spec.quick == nil {
+		t.Fatal("the write-free turn was not handed to a quick node")
+	}
+	if !quick.spec.named {
+		t.Fatal("a quick node was admitted unnamed, so the graph's own namer would ask for one")
+	}
+	// The node has been admitted and its turn is sealed, so any namer this road
+	// was going to start has been started. A cancelled call is still a call.
+	if asked := atomic.LoadInt64(quickNames); asked != 0 {
+		t.Fatalf("a quick carry-on asked a model for %d name(s) it can never use", asked)
+	}
+
+	// THE FULL ROAD: the same drawing out of a turn that wrote one file, which is
+	// the one turn the watched road still takes ([writingGrindSteps]).
+	_, full, fullNames := namesAsked(t, writingGrindSteps(checkpointMarkAt(1)+6, checkpointSplitSketch, dowry))
+	if full.spec.quick != nil {
+		t.Fatal("a turn that wrote was handed to a quick node")
+	}
+	// It is asked on a goroutine of its own, so it is waited for rather than read
+	// once: what would be wrong is no namer at all, not one a moment late.
+	waitFor(t, "the watched road to ask for its name", func() bool {
+		return atomic.LoadInt64(fullNames) >= 1
+	})
+	if asked := atomic.LoadInt64(fullNames); asked != 1 {
+		t.Fatalf("the watched road asked for %d names, want exactly one", asked)
+	}
+}
+
+// THE TWO REFUSALS THIS ROAD CAN MEET ARE WRITTEN DOWN AS TWO DIFFERENT THINGS.
+//
+// A carry-on inside a task hands the turn to a CHILD of that task, so the fan cap
+// can refuse it ([TaskGraph.claimChild]) where a conversation's own carry-on has no
+// parent to be refused for. That ending used to be journalled as
+// `dropped:no-brief`, which sent whoever read the session file looking for a brief
+// that was never the problem.
+func TestAFullFanIsWrittenDownAsAFullFanAndNotAsNoBrief(t *testing.T) {
+	const parent = uint64(7)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.InTask = true
+		config.taskID = parent
+	})
+	graph := agent.graph()
+	graph.mu.Lock()
+	graph.claims = map[uint64]int{parent: taskFanLimit}
+	graph.mu.Unlock()
+
+	ask := quickAsk{line: "check the three call sites and report", items: []string{"one", "two", "three"}}
+	handed := agent.handOverAsQuick(context.Background(), nil, &Usage{}, time.Now(), "test/model", ask)
+	if handed.moved || handed.decision != checkpointCeilingFanFull {
+		t.Fatalf("a carry-on refused by the fan cap ended as moved=%v %q, want %q",
+			handed.moved, handed.decision, checkpointCeilingFanFull)
+	}
+	if nodes := graph.children(parent); len(nodes) != 0 {
+		t.Fatalf("%d node(s) were born under a parent whose fan was full", len(nodes))
+	}
+	// AND THE OTHER REFUSAL KEEPS ITS OWN WORD, which is what makes the one above
+	// a distinction rather than a rename.
+	empty := agent.handOverAsQuick(context.Background(), nil, &Usage{}, time.Now(), "test/model", quickAsk{})
+	if empty.moved || empty.decision != checkpointCeilingNoBrief {
+		t.Fatalf("a carry-on with nothing on it ended as moved=%v %q, want %q",
+			empty.moved, empty.decision, checkpointCeilingNoBrief)
+	}
 }

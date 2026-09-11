@@ -78,13 +78,25 @@ import (
 // started.
 const checkpointQuickNote = "this has parts · a quick task is taking them here, in this folder: "
 
+// checkpointCeilingFanFull is the ending this road takes when a carry-on INSIDE a
+// task would be one child too many for that task ([TaskGraph.claimChild]). It is
+// spelled `dropped:` like every other non-moving ending and belongs to
+// checkpoint.go's register of them; it is declared beside the only road that takes
+// it because it is the only road that can be refused that way — a conversation's
+// own carry-on has no parent to be the child of, and the full road takes no fan
+// slot at all.
+const checkpointCeilingFanFull = "dropped:parent-fan-full"
+
 // checkpointQuickLine is that line with the node's name on the end of it.
 func checkpointQuickLine(title string) string {
 	return checkpointQuickNote + title
 }
 
-// quickFromDrawing answers the quick node this handover should start, or nil
-// where this is not that road.
+// quickFromDrawing answers the quick node this handover should ask for, or nil
+// where this is not that road. It answers an ASK and never a spec: what the
+// node is beyond its line and its items is decided by the one door every quick
+// node comes through ([Agent.admitQuick]), and this road only says what it
+// knows.
 //
 // EVERY CLAUSE IS A FACT THE HARNESS ALREADY HOLDS, and none of them is a reading
 // of anybody's words:
@@ -108,7 +120,7 @@ func checkpointQuickLine(title string) string {
 //     nobody here writes them; a node started on an empty line is a worker
 //     started on a blank page, which is the ending the full road spells
 //     [checkpointCeilingNoBrief].
-func (a *Agent) quickFromDrawing(read checkpointRead, asked string) *quickTaskSpec {
+func (a *Agent) quickFromDrawing(read checkpointRead, asked string) *quickAsk {
 	if !read.sketch.split() {
 		return nil
 	}
@@ -134,10 +146,11 @@ func (a *Agent) quickFromDrawing(read checkpointRead, asked string) *quickTaskSp
 	if len(items) < checkpointSketchParts {
 		return nil
 	}
-	// THROUGH THE CONSTRUCTOR, never a literal of its own. This road built the
-	// struct by hand once and left `done` nil, and the first item its worker
-	// ticked indexed off the end of it ([newQuickTaskSpec] carries the account).
-	return newQuickTaskSpec(line, items, nil)
+	// NO FILES ARE CLAIMED, because a turn that wrote nothing has named nothing
+	// it is going to write, and no title is given, because the line is the
+	// person's own sentence and its first line is the row's name on this road as
+	// on the tool's.
+	return &quickAsk{line: line, items: items}
 }
 
 // turnWroteNothing reports that this turn has not landed a single write-shaped
@@ -191,13 +204,23 @@ func sketchItems(sketch checkpointSketch) []string {
 // sealed, and the conversation is named. What it drops is the two model calls
 // and the three rungs.
 //
-// THE VERDICT IS NARROWED ON THE WAY THROUGH. `Work` says a node is being
-// started; `Wide` is cleared and [Agent.rememberDivisible] is not called, because
-// a quick node does not divide — the items ARE the division and task_divide.go
-// refuses the kind outright. Arming it would put a verb on a belt that has
-// nothing to do with it.
+// AND THE NODE IS ADMITTED THROUGH THE TOOL'S OWN DOOR ([Agent.admitQuick]),
+// not through the route judge's launcher. That launcher starts ORDINARY work a
+// judge wrote a goal for — a done-condition, a place on the ground ladder, a
+// name asked for, a width to arm — and every one of those is a thing a quick
+// node does not have. Borrowing it made the ceiling's quick node a different
+// object from the tool's; asking the one door makes it the same one. Nothing is
+// armed to divide either: the door never arms a quick node, because the items
+// ARE the division and task_divide.go refuses the kind outright.
+//
+// AND NO NAME IS ASKED FOR ON THIS ROAD AT ALL. A quick node is admitted named
+// ([Agent.newQuickSpec]), so [Agent.handOverRunningTurn] asks for the other road's
+// name UNDER the branch that comes here rather than over it — for as long as it
+// asked above, every write-free carry-on paid a model for a row nothing renames
+// (taskname.go's [nameAhead], and
+// [TestAQuickCarryOnAsksForNoNameAndTheFullRoadStillDoes] holds the line).
 func (a *Agent) handOverAsQuick(ctx context.Context, hub *eventHub, turn *Usage, started time.Time,
-	model string, verdict routeVerdict, asked string, quick *quickTaskSpec, ahead *nameAhead) checkpointHandover {
+	model string, ask quickAsk) checkpointHandover {
 	// THE CLOCK COMES OFF FIRST. The briefing stage the person is watching ends
 	// here rather than after a writer that is never called, and a phase left
 	// standing is the surface drawing work nobody is doing.
@@ -205,16 +228,35 @@ func (a *Agent) handOverAsQuick(ctx context.Context, hub *eventHub, turn *Usage,
 	if ctx.Err() != nil {
 		return checkpointHandover{decision: checkpointCeilingAbandoned}
 	}
-	verdict.Work, verdict.Wide = true, false
-	verdict.Goal = quick.line
-	said, id := a.launchRouteTask(hub, verdict, asked, drawnDivision{}, ahead, quick)
-	if id == 0 {
-		// THE FLOOR REFUSED IT, on its own reading of the person's request
-		// (spawnfloor.go). Nothing started, so nothing is sealed and nothing is
-		// written into the transcript; the turn carries on exactly as it does when
-		// the full road's floor answers the same way.
-		return checkpointHandover{decision: checkpointCeilingTrivial}
+	id, spec, refusal := a.admitQuick(ask)
+	if refusal.said != "" {
+		// THE DOOR DECLINED, AND WHICH REFUSAL IT WAS IS WRITTEN DOWN AS ITSELF.
+		//
+		// Two of the door's refusals can reach this road and no more:
+		// [Agent.quickFromDrawing] hands over neither files nor dependencies nor a
+		// model, so what is left is a line with nothing in it — which is the full
+		// road's no-brief ending and means the same thing here — and the fan cap.
+		//
+		// THE FAN CAP IS NOT "NO BRIEF", and saying so was the one dishonest word
+		// on this road. A ceiling reached inside a task carries on to a CHILD of
+		// that task ([Agent.newQuickSpec] takes the parent from the config), so
+		// [TaskGraph.claimChild] can refuse it where a conversation's own carry-on
+		// is never refused — and a session file saying `dropped:no-brief` about a
+		// turn that had a perfectly good list to hand over sends whoever reads it
+		// looking for the wrong bug.
+		//
+		// EITHER WAY NOTHING IS SEALED and nothing is written into the transcript,
+		// and the turn carries on holding its own work.
+		if refusal.fanFull {
+			return checkpointHandover{decision: checkpointCeilingFanFull}
+		}
+		return checkpointHandover{decision: checkpointCeilingNoBrief}
 	}
+	// THE TOLD-AFTER LINE, and it is the one line a person reads about this
+	// event — the split's own and the started-task line both stand behind it
+	// ([checkpointQuickNote]).
+	said := checkpointQuickLine(spec.title)
+	hub.send(Event{Kind: EventNotice, Text: said})
 	// THE GAP IS SPENT for [Agent.handOverRunningTurn]'s reason: the person has
 	// just been interrupted by work appearing over their conversation, and it does
 	// not matter to them which door it came through.

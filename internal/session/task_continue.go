@@ -36,8 +36,8 @@ const continueFindingLead = "What the last attempt found"
 const continueAskedLead = "What they asked this time"
 
 // ContinueTask re-arms a settled node so the frontier runs it again. Unknown
-// id, a node that is still going, and a design or a saved-shape run are each
-// an error naming which.
+// id, a node that is still going, and a design, a saved-shape run or a quick
+// task are each an error naming which.
 //
 // THE ASSIGNMENT NEVER CHANGES. words, if any, arrive under
 // [continueAskedLead] as this round's finding, beside the last report. The
@@ -71,8 +71,15 @@ func (g *TaskGraph) reopen(node *TaskNode, words string) error {
 		g.mu.Unlock()
 		return fmt.Errorf("no task %d in this session", node.id)
 	}
+	// ONLY WORK THAT IS HANDED A FINDING CAN BE CONTINUED, and three kinds are
+	// not. A design and a saved shape's run have no worker that reads one, and a
+	// quick task has no brief a finding could join ([quickBrief] is its line and
+	// its list) and no copy for the next attempt to stand in — so a quick node
+	// re-queued here would run its line again from nothing, in the folder the
+	// first attempt already wrote in. Asking for it again is the honest door, and
+	// the refusal says which kind it is in the same words for all three.
 	switch node.kind {
-	case TaskKindHarness, TaskKindSubharness:
+	case TaskKindHarness, TaskKindSubharness, TaskKindQuick:
 		kind := TaskKindWord(node.kind)
 		g.mu.Unlock()
 		return fmt.Errorf("task %d is %s, not a run that can be continued", node.id, kind)

@@ -78,7 +78,6 @@ const theCeiling = 15
 var complexityDebt = map[string]int{
 	"decodeTasks":           28,
 	"taskSegments":          26,
-	"TaskGraph.rehydrate":   18,
 	"TaskGraph.runFrontier": 19,
 	"Agent.workTaskNode":    21,
 	"declaredInvalidations": 21,
@@ -98,8 +97,6 @@ var whyTheDebtIsStillThere = map[string]string{
 	"decodeTasks": "the checkpoint's own validator: every field of every node record is " +
 		"refused by name, and the refusals are the point (task_store.go). It is a table " +
 		"waiting to be written as one.",
-	"TaskGraph.rehydrate": "the other half of the same road — one restored record turned back " +
-		"into a live node, field by field, with a default per absent field.",
 	"TaskGraph.runFrontier": "the scheduler. #381 took the reasons a ready node may not " +
 		"start yet out of it — they are [TaskGraph.holdOnStartingLocked] now, where the order " +
 		"that is itself the policy can be read on one screen — and paid for the quit's own " +
