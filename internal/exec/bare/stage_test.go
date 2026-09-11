@@ -3,6 +3,11 @@ package bare
 import (
 	"context"
 	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -125,5 +130,56 @@ func TestOnlyAStagedToolStages(t *testing.T) {
 	nothing.Withdraw()
 	if text, isError, _ := RunStaged(context.Background(), Settled("no: refused", true)); text != "no: refused" || !isError {
 		t.Fatalf("a settled stage answered %q, %v", text, isError)
+	}
+}
+
+// ONLY StagedTool MAKES A TOOL STAGE, AS A LAW OVER THE SOURCE. Outside this
+// package the compiler already forbids it — the field is unexported — so the one
+// place a tool could come to answer [Tool.Stages] without being cut in two is
+// inside this package: a second constructor, or an assignment to the field,
+// that sets it beside an Execute nothing holds. This walks every file here and
+// allows exactly one writer.
+func TestOnlyStagedToolSetsTheStagedField(t *testing.T) {
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fset := token.NewFileSet()
+	writers := 0
+	for _, name := range files {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(fset, name, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, decl := range file.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Body == nil {
+				continue
+			}
+			ast.Inspect(fn.Body, func(node ast.Node) bool {
+				switch n := node.(type) {
+				case *ast.KeyValueExpr:
+					if key, ok := n.Key.(*ast.Ident); ok && key.Name == "staged" {
+						if fn.Name.Name != "StagedTool" {
+							t.Errorf("%s: %s sets the staged field; only StagedTool may", fset.Position(n.Pos()), fn.Name.Name)
+						}
+						writers++
+					}
+				case *ast.AssignStmt:
+					for _, lhs := range n.Lhs {
+						if sel, ok := lhs.(*ast.SelectorExpr); ok && sel.Sel.Name == "staged" {
+							t.Errorf("%s: %s assigns the staged field; only StagedTool's literal may set it", fset.Position(n.Pos()), fn.Name.Name)
+						}
+					}
+				}
+				return true
+			})
+		}
+	}
+	if writers != 1 {
+		t.Fatalf("the staged field is set in %d places, want exactly one (StagedTool)", writers)
 	}
 }
