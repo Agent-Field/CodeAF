@@ -460,10 +460,19 @@ to say why.
 Saying "work in it directly" always wins, even said afterwards. Because a folder
 has to be chosen before you can say anything about it, the copy has usually
 already been taken by then — so it is given back: the branch and the working copy
-go, and the folder is edited directly from that moment. The one thing that is
-never given back is a copy something has already been written into; that work is
-in there and nowhere else, so it stays, and `changes for <name> · /land` still
-leads to it.
+go, and the folder is edited directly from that moment. The giving back happens
+beside you rather than while you wait, so it can take a second or two longer than
+the reply; nothing waits on it, because the next write already goes where you
+said.
+
+**A copy that holds anything at all is never given back.** Not only what the
+model's `write` and `edit` put there — a file a shell command made, something a
+script left, a change a task working in that copy committed, all of it counts.
+The copy is kept exactly where it is, its branch with it, and
+`changes for <name> · /land` still leads to it; only the folder you write into
+from then on changes. For a repository, git itself is asked and a copy it will
+not part with is kept; for a plain folder, the copy is compared with the folder
+it was made from.
 
 If the copy cannot be made at all, nothing is refused: the write goes to the real
 folder, exactly as it would have before you chose one.
