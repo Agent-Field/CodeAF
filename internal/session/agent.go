@@ -2068,6 +2068,14 @@ func (a *Agent) Close() error {
 	// still sitting on the queue goes with this process and is said again by the
 	// next one ([durableDelivery]).
 	a.settleDeliveries()
+	// AND SO IS EVERY WRITE THIS SESSION STILL OWES A FILE behind a person's path
+	// — the meta.json stamp, the fix shelf's counters, the working copy of a folder
+	// referred but not yet cut. A deferred write's whole risk is a process that
+	// stops while one is owed, and this is the answer to it ([Agent.SettleWrites],
+	// placemeta.go). IT IS HERE AND NOT PAST THE LOCK BELOW: every write it waits
+	// on takes `a.mu` to read or replace what it is writing, so a call from inside
+	// the lock would wait forever on work waiting for this goroutine.
+	a.SettleWrites()
 	a.mu.Lock()
 	if a.closed {
 		// A SECOND CLOSE WAITS FOR THE FIRST, AND DOES NOT ANSWER OVER THE TOP
