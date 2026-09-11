@@ -76,6 +76,10 @@ type spendReading struct {
 	// unbilled is how many charged calls ended without either a wire price or a
 	// provider receipt ([session.UnbilledCalls]). Zero is absent from the line.
 	unbilled int64
+	// source is EVERY LINE the place is holding, window filter not applied — the
+	// Year lens asks about the year, not about the fortnight on the head, and
+	// must not rebuild from a slice that already threw the year away.
+	source []session.UsageLine
 }
 
 // lost hands the reading the count of rows that never reached the file. It
@@ -209,6 +213,9 @@ type spendStop struct {
 	// fold marks the fold line under `what it was for`, whose `enter` opens the
 	// rest of the subjects or folds them back.
 	fold bool
+	// day marks a Days-lens row: `enter` drills the window onto that bucket and
+	// returns to the Rhythm lens (spendlens.go).
+	day session.DaySpend
 }
 
 // unfolding is this reading with the subjects' fold open or shut. It answers a
@@ -257,7 +264,7 @@ func readSpend(lines []session.UsageLine, win session.UsageWindow, now time.Time
 		}
 	}
 	if len(priced) == 0 {
-		return spendReading{window: win, now: now, unbilled: unbilled}
+		return spendReading{window: win, now: now, unbilled: unbilled, source: lines}
 	}
 	r := spendReading{
 		unbilled: unbilled,
@@ -266,6 +273,7 @@ func readSpend(lines []session.UsageLine, win session.UsageWindow, now time.Time
 		totals:   session.UsageTotals(priced),
 		days:     session.UsageByDay(priced, win),
 		models:   session.UsageByModel(priced),
+		source:   lines,
 	}
 	// A subject exists only when the ledger names one of its addresses. The
 	// grouping reader's default conversation bucket is useful arithmetic, but

@@ -536,6 +536,8 @@ func (a *app) composerSend() tea.Cmd {
 func (a *app) openComposerPicker() {
 	a.composer.pick.startFor(a.modelsFor(filterFor(config.ModelSettingKey(composerSlot))),
 		a.composerModel(), filterFor(config.ModelSettingKey(composerSlot)))
+	a.armSpendHistory(&a.composer.pick)
+	a.composer.pick.rank()
 	a.touch()
 }
 

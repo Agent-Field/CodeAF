@@ -929,6 +929,10 @@ const (
 	// termFast and termCheap order what is left.
 	termFast
 	termCheap
+	// termUsed keeps models this machine has spent on in the last fortnight
+	// (pickerspend.go). The spend snapshot lives on the picker; the term only
+	// names the filter so `/model used` opens the same list every door shares.
+	termUsed
 )
 
 // laneTerm is one parsed token.
@@ -951,6 +955,8 @@ func parseLaneTerm(token string) (laneTerm, bool) {
 		return laneTerm{kind: termSees}, true
 	case "draws":
 		return laneTerm{kind: termDraws}, true
+	case "used":
+		return laneTerm{kind: termUsed}, true
 	case "fast":
 		return laneTerm{kind: termFast}, true
 	case "cheap":
@@ -1071,6 +1077,9 @@ func (t laneTerm) keeps(model Model, views []laneView) bool {
 		return hasModality(model.Input, "image")
 	case termDraws:
 		return hasModality(model.Output, "image")
+	case termUsed:
+		// Answered by the picker's spend snapshot in [picker.rank], not here.
+		return true
 	}
 	return true
 }
