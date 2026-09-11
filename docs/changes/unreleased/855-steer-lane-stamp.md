@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: a correction that fell through still gets its turn drawn — the steer lane is stamped with the conversation, not the turn
+title: a correction that fell through gets its turn drawn — the steer lane is stamped by conversation
 pr: 855
 surface: [chat]
 invalidates:
