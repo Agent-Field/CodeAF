@@ -88,11 +88,3 @@ func halted(ending session.TaskEnding) bool {
 // docs/design/task-states/DESIGN.md). The same cell in both glyph tiers,
 // because ! is already a character a screen with no Unicode has.
 const glyphHalted = "!"
-
-// refused says the task reached a check and the check did not accept its claim.
-// The engine still settles that node as failed so dependencies and delivery do
-// not advance; the surface calls the person's state incomplete because the
-// report names work still to do rather than a runtime fault.
-func refused(ending session.TaskEnding) bool {
-	return ending == session.TaskEndingRefused
-}
