@@ -2901,9 +2901,14 @@ func (a *Agent) settleDeliveries() {
 	a.mu.Unlock()
 	// A SENDER IS TOLD ONLY WHAT THE DISK HOLDS. Settling may consume the file
 	// the news came from (standing_run.go's [Agent.drainStandingInbox]), so the
-	// record it points at is synced first (the scale audit's F4).
-	if len(settling) > 0 {
-		file.sync()
+	// record it points at is synced first (the scale audit's F4) — AND A SYNC
+	// THAT FAILED SETTLES NOTHING (the third review, B4). The deliveries are
+	// dropped unsettled rather than kept for a later try, because a journal
+	// whose sync failed never settles again ([sessionFile.sync]): their senders
+	// keep what they sent, and the next open, reading the record the disk
+	// holds, either finds each line and settles it or tells it again.
+	if len(settling) > 0 && file.sync() != nil {
+		return
 	}
 	for _, delivery := range settling {
 		if delivery.settled != nil {

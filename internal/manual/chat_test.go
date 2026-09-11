@@ -1989,6 +1989,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is the work told which folder it is placed in", "standing-orders"},
 		{"collections show does not list the work placed in the folder", "collections"},
 		{"I edited the report file and aforge did not publish over it", "standing-orders"},
+		// Round 3b: the one window a replacement still has, the fence that
+		// cannot read the stop, and an answer that survives a crash.
+		{"can aforge still overwrite an edit I save to the report file", "standing-orders"},
+		{"standing show says withheld: stop-unknown", "standing-orders"},
+		{"if aforge is killed right after I answer from home is my answer lost", "home"},
 		{"edit a standing order after it is set up", "standing-orders"},
 		{"how do I make this permanent", "standing-orders"},
 		{"it didn't notice this was a rule and did it once", "standing-orders"},

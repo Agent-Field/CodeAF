@@ -87,7 +87,7 @@ type standingRuleVerdict struct {
 
 // standingRuleFinding is the check's answer for one rule.
 type standingRuleFinding struct {
-	rule                       standing.Item
+	rule                      standing.Item
 	kind, verdict, quote, why string
 }
 

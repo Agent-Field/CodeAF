@@ -1163,8 +1163,9 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 	a.mu.Unlock()
 	a.file.appendUsage(turn, model, false, "")
 	// ONE SYNC PER TURN (the scale audit's F4): this is the turn's last journal
-	// write, and what the turn wrote survives a power cut from here.
-	a.file.sync()
+	// write, and what the turn wrote survives a power cut from here. A failed
+	// sync is kept by the file, and what reads it is the settlement.
+	_ = a.file.sync()
 	// AND THE SESSION'S RUNNING TOTAL IS STAMPED BESIDE IT, for the reason this
 	// function is the one place the journal is written: what a conversation has
 	// cost is a fact every reader of the machine wants and only the transcript

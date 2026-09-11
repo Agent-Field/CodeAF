@@ -797,29 +797,39 @@ comes to `failed`, never `landed`, with its code. A clean run carries none.
 | `stopped` | `stopped while it ran` |
 | `not-written` | `could not publish the report to …` |
 | `report-changed` | `report held back, not published: … is not what aforge last published there …` |
+| `stop-unknown` | `the report was not published: aforge could not read whether this work was stopped (…)` |
 
 An answer is cut at the output limit only after aforge has asked for the rest twice,
 and a report counts only if the turn that wrote it was not cut: a later turn stands in
 for it only by writing a new report. A report is withheld when the run was then stopped
 at a limit, and all of it holds for the rules check's one correction too.
 
-## I edited the report file — aforge never writes over your changes
+## I edited the report file — aforge does not write over your changes
 
 The report is a file in your project, and you may open and annotate it. Just before
 aforge replaces it, it compares the file with what it last published there (the sha256
-in that run's receipt). It replaces the file only if it is still exactly that, or is
+of its last receipt). It replaces the file only if it is still exactly that, or is
 gone. If you changed it — or it was there before aforge first published — nothing is
 written over it: the run waits on you, its new report is kept as `held-report.md` in
 the run's folder, and the line is `report held back, not published: … is not what
 aforge last published there … Move your copy aside to let the next run publish`, code
-`report-changed`. Move or delete your copy and the next run publishes. The compare is
-made at the moment of the write, so an edit saved while a run works is safe; only one
-saved in the same instant as the write can slip past it.
+`report-changed`. Move or delete your copy and the next run publishes. If the draft
+itself could not be kept, the line says `the draft could not be kept (…)` instead.
 
-A stop and the end of the pass are checked at that same moment, and again just before
+**What is certain, and the one window that is not.** A *first* report is created, never
+renamed over anything: a file that appears at that path at any moment before it lands
+is kept and the run waits on you. A *replacement* is compared a few microseconds before
+the file is swapped, so an edit saved while a run works is safe; an editor's save that
+lands inside those microseconds can still be written over. Nothing on an ordinary disk
+swaps a file only if its contents are unchanged.
+
+A stop and the end of the pass are read at that same moment, and again just before
 the note is sent. A stop before the write means the report is not written and no note
 is sent; a stop after it leaves the report published and sends no note
-(`stopped while it ran: its report was published before the stop`).
+(`stopped while it ran: its report was published before the stop`). A pass that ends
+there withholds the report (`cut-off`); one that ends after it keeps the run `landed`
+and says `the pass was cut off before its note was delivered`. If aforge cannot read
+whether the order was stopped, it does neither act: `stop-unknown`.
 
 ## What woke each run and what it made — aforge standing show, check, and a run killed midway
 

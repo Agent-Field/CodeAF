@@ -18,7 +18,7 @@ import (
 )
 
 // openFence is a fence with nothing behind it: a live pass and no store.
-func openFence() effectFence { return effectFence{ctx: context.Background(), live: true} }
+func openFence() effectFence { return effectFence{ctx: context.Background()} }
 
 func TestAStandingReportIsPublishedInsideItsProjectOnly(t *testing.T) {
 	workspace := t.TempDir()

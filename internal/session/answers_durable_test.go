@@ -1,0 +1,182 @@
+package session
+
+// answers_durable_test.go holds round 3b for the answers doorstep (the third
+// review, B3): an answer left from another window was applied and its file
+// removed in one breath, with no record of the answer anywhere durable and no
+// way for a replay to tell an answer already taken from a new one — and every
+// refusal a resolver gave was dropped. The law is the inbox's (L3): the answer
+// is recorded under its own delivery id and that record synced BEFORE the
+// doorstep is cleared, and a replay is deduplicated by that id.
+
+import (
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// askWaiting puts a model question with id on the ask lane, the way the ask
+// tool does before it blocks ([Agent.askWaits]), and answers the channel the
+// answer arrives on.
+func askWaiting(agent *Agent, id uint64) chan Answer {
+	wait := make(chan Answer, 1)
+	agent.mu.Lock()
+	if agent.askWaits == nil {
+		agent.askWaits = make(map[uint64]chan Answer)
+	}
+	agent.askWaits[id] = wait
+	agent.mu.Unlock()
+	return wait
+}
+
+// answered reports whether an answer reached wait, without blocking.
+func answered(wait chan Answer) bool {
+	select {
+	case <-wait:
+		return true
+	default:
+		return false
+	}
+}
+
+// doorstep is every answers file in dir, live or staged.
+func doorstep(dir string) []string {
+	files, _ := filepath.Glob(AnswersPath(dir) + "*")
+	return files
+}
+
+// B3, THE CRASH BETWEEN THE RESOLVE AND THE RECORD LOSES NOTHING. The answer
+// reached its lane, and the record of it never reached the disk: the sync
+// failed, and a power cut took the unsynced tail of the journal with it. The
+// doorstep used to be cleared the moment the answer was applied, so the answer
+// was gone with the process. It is kept until the record is durable now, and
+// the next life — whose question is waiting again — applies it.
+func TestAnAnswerWhoseRecordNeverReachedTheDiskIsAppliedAfterTheCrash(t *testing.T) {
+	first, dir := questionSession(t, "dddd1111dddd2222", nil)
+	journal := filepath.Join(dir, placeTranscript)
+	wait := askWaiting(first, 9)
+	if err := WriteAnswer(dir, QuestionAsk, 9, "1"); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restore := syncJournal
+	syncJournal = func(*os.File) error { return errors.New("injected: the disk would not sync") }
+	first.drainAnswers()
+	syncJournal = restore
+	if !answered(wait) {
+		t.Fatal("the answer never reached its lane")
+	}
+	if len(doorstep(dir)) == 0 {
+		t.Fatal("the doorstep was cleared although the answer's record never reached the disk")
+	}
+	_ = first.Close()
+	// The power cut: whatever the journal gained after the last sync is gone.
+	if err := os.Truncate(journal, before.Size()); err != nil {
+		t.Fatal(err)
+	}
+	next, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Place = Place{Dir: dir, Workspace: t.TempDir()}
+		config.SessionFile = journal
+		config.AskConsent = true
+	})
+	again := askWaiting(next, 9)
+	next.drainAnswers()
+	if !answered(again) {
+		t.Fatal("an answer whose record was lost in the crash was not applied after it")
+	}
+	if files := doorstep(dir); len(files) != 0 {
+		t.Fatalf("the doorstep outlived the durable record: %v", files)
+	}
+}
+
+// B3, A REPLAY IS DEDUPLICATED BY THE ANSWER'S OWN ID. The record reached the
+// disk and the process died before the doorstep was cleared. The next life
+// finds the staged file again and a question waiting under the same token —
+// and must not hand it the same answer a second time: the journal says that
+// delivery was already taken.
+func TestAnAnswerAlreadyRecordedIsNotAppliedAgainAfterACrash(t *testing.T) {
+	first, dir := questionSession(t, "eeee1111eeee2222", nil)
+	journal := filepath.Join(dir, placeTranscript)
+	wait := askWaiting(first, 9)
+	if err := WriteAnswer(dir, QuestionAsk, 9, "1"); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(AnswersPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first.drainAnswers()
+	if !answered(wait) {
+		t.Fatal("the answer never reached its lane")
+	}
+	_ = first.Close()
+	// The crash, after the record and before the removal: the staged file is
+	// back where the drain left it.
+	if err := os.WriteFile(AnswersPath(dir)+".crashed.draining", raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	next, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Place = Place{Dir: dir, Workspace: t.TempDir()}
+		config.SessionFile = journal
+		config.AskConsent = true
+	})
+	again := askWaiting(next, 9)
+	next.drainAnswers()
+	if answered(again) {
+		t.Fatal("an answer the record already held was applied a second time")
+	}
+	if files := doorstep(dir); len(files) != 0 {
+		t.Fatalf("a staged answer the record already held was left behind: %v", files)
+	}
+}
+
+// B3, A REFUSAL IS SAID. A resolver that would not take an answer used to be
+// dropped in silence, and the doorstep cleared with it; nothing anywhere said
+// the answer had been given or why it did nothing. The refusal is in the
+// conversation's record now, beside the answer it refused.
+func TestARefusedAnswerIsRecordedWithItsReason(t *testing.T) {
+	agent, dir := questionSession(t, "ffff1111ffff2222", nil)
+	// A key the consent lane does not take, as a window of another build
+	// might write it.
+	line := `{"at":"2026-09-11T10:00:00Z","kind":"consent","id":3,"key":"9","from":"home"}` + "\n"
+	if err := os.WriteFile(AnswersPath(dir), []byte(line), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	agent.drainAnswers()
+	raw, _ := os.ReadFile(filepath.Join(dir, placeTranscript))
+	var found map[string]any
+	for _, row := range strings.Split(string(raw), "\n") {
+		var entry map[string]any
+		if json.Unmarshal([]byte(row), &entry) == nil && entry["type"] == "answer" {
+			found = entry
+		}
+	}
+	if found == nil {
+		t.Fatalf("the refused answer left no record:\n%s", raw)
+	}
+	record, _ := found["answer"].(map[string]any)
+	if refused, _ := record["refused"].(string); refused == "" || record["kind"] != "consent" {
+		t.Fatalf("the record does not say what refused the answer: %v", found)
+	}
+	if files := doorstep(dir); len(files) != 0 {
+		t.Fatalf("a refused answer, once recorded, was left on the doorstep: %v", files)
+	}
+}
+
+// And the drain answers the refusal to whoever called it.
+func TestDrainAnswersReturnsTheRefusals(t *testing.T) {
+	dir := t.TempDir()
+	if err := WriteAnswer(dir, QuestionConsent, 3, "1"); err != nil {
+		t.Fatal(err)
+	}
+	refusal := errors.New("nobody took it")
+	_, err := DrainAnswers(dir, func(Answer) error { return refusal })
+	if !errors.Is(err, refusal) {
+		t.Fatalf("the drain swallowed the refusal: %v", err)
+	}
+}

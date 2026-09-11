@@ -157,15 +157,17 @@ const (
 	// withheldNoReport: it ended on a tool call, with nothing said after it.
 	withheldNoReport
 
-	// The four below are decided after the turns, by the gates that own them,
+	// The five below are decided after the turns, by the gates that own them,
 	// and are the same answer carried on: the rules check held the report
 	// (standing_rules.go), the person stopped the item while it ran, the report
-	// could not be written, or the report file was not what aforge last wrote
-	// there ([publishStandingReport]).
+	// could not be written, the report file was not what aforge last wrote
+	// there ([publishStandingReport]), or whether the item was stopped could not
+	// be read at the act ([effectFence]).
 	withheldByRules
 	withheldStopped
 	withheldUnwritten
 	withheldReportChanged
+	withheldStopUnknown
 )
 
 // withheldCodes is the one table of the codes a withheld run is recorded with
@@ -189,6 +191,10 @@ var withheldCodes = map[reportWithheld]string{
 	// withheldReportChanged: the report file is not what aforge last published
 	// there — somebody changed it, or it was there before aforge ever wrote it.
 	withheldReportChanged: "report-changed",
+	// withheldStopUnknown: the item's store could not be opened or its lock
+	// taken at the moment of aforge's act, so whether the person had stopped it
+	// was unknown — and the act did not happen.
+	withheldStopUnknown: "stop-unknown",
 }
 
 // code is the answer as it is recorded; "" for a run nothing withheld.
@@ -204,49 +210,134 @@ func (w reportWithheld) code() string { return withheldCodes[w] }
 // in between still published. The fence asks both questions again at the act,
 // and asks the stop under the item's own lock ([standing.Store.UnlessStopped]),
 // so a stop lands wholly before the act or wholly after it.
+//
+// ── THE CONTEXT IS READ AT THE ACT, AND NOTHING ABOUT IT IS KEPT ──
+//
+// The fence used to carry whether the pass was still running WHEN THE FENCE
+// WAS MADE, which was a third moment after the decision and before the act:
+// a pass cancelled between the decision and that moment made a fence that took
+// the decision for one already cut off, and it published (the third review,
+// B1). And the context was read before the act's own look at the file, never
+// after it, so a cancellation during that look was renamed over anyway. So
+// nothing is sampled: the context is read inside the item's lock, after every
+// other check the act makes, immediately before the effect.
+//
+// ── A FENCE THAT CANNOT BE READ HOLDS ──
+//
+// A store that could not be opened, or an item lock that could not be taken,
+// used to fall through to the act with no fence at all — "nobody could say"
+// read as "nobody said stop". It withholds now ([withheldStopUnknown]): the act
+// does not happen, and the line says why.
 type effectFence struct {
 	ctx context.Context
-	// live says the decision was taken while the pass was still running, so a
-	// cancellation seen at the act came between the two. A decision already cut
-	// off has said so, and the note that says so is not held back by it.
-	live bool
 	// store and id are the item the stop is read from; a runner with no store
 	// has nobody who could have said stop.
 	store *standing.Store
 	id    string
+	// unreadable is why the item's store could not be opened, when it could
+	// not. It is not the same as having no store: an item that has one and
+	// cannot be read may have been stopped.
+	unreadable error
 }
 
-// do runs act unless the pass was cancelled since the decision or the item was
-// stopped, answering which held it back. act answers a reason of its own when
-// it declines ([publishStandingReport] on a changed file); a nil act only asks.
-// A store whose lock cannot be taken is read as a store that cannot be read,
-// which has never been a stop.
-func (f effectFence) do(act func() (reportWithheld, error)) (reportWithheld, error) {
+// act runs effect unless the item was stopped, whether it was could not be
+// read, check declined, or the pass was cancelled, answering which held it
+// back. In that order and under the item's lock: the stop; check, the act's own
+// reason to decline ([publishStandingReport] on a changed file); then the
+// pass's context, read at that moment; then the effect. A nil effect only asks
+// the stop — a firing that came to nothing has no note to hold back.
+func (f effectFence) act(check func() reportWithheld, effect func() error) (reportWithheld, error) {
+	return f.run(true, check, effect)
+}
+
+// tell is [effectFence.act] for the note of a firing whose decision was
+// already cut off: that note is the account of the cut, and the cut does not
+// hold it back. Only a stop, or a stop that cannot be read, does.
+func (f effectFence) tell(effect func() error) (reportWithheld, error) {
+	return f.run(false, nil, effect)
+}
+
+func (f effectFence) run(cancelHolds bool, check func() reportWithheld, effect func() error) (reportWithheld, error) {
+	if f.unreadable != nil {
+		return withheldStopUnknown, f.unreadable
+	}
 	var (
 		held   reportWithheld
 		failed error
 	)
 	gate := func() error {
-		switch {
-		case f.live && f.ctx.Err() != nil:
-			held = withheldCutOff
-		case act != nil:
-			held, failed = act()
+		if check != nil {
+			if held = check(); held != notWithheld {
+				return nil
+			}
 		}
+		if effect == nil {
+			return nil
+		}
+		if cancelHolds && f.ctx.Err() != nil {
+			held = withheldCutOff
+			return nil
+		}
+		failed = effect()
 		return nil
 	}
 	if f.store == nil || f.id == "" {
 		_ = gate()
 		return held, failed
 	}
+	// The gate always answers nil, so an error here is the store's own — its
+	// lock or its document — and the gate did not run.
 	stopped, err := f.store.UnlessStopped(f.id, gate)
 	switch {
 	case stopped:
 		return withheldStopped, nil
 	case err != nil:
-		_ = gate()
+		return withheldStopUnknown, err
 	}
 	return held, failed
+}
+
+// heldAtTheNote is what a firing came to when its note was held back by
+// something other than a stop — the pass cut off at the note, or the stop
+// unreadable there — and it is where the kind and the code are made to agree.
+//
+// THE THIRD REVIEW FOUND THEM APART (B1): a note held by a cancellation added a
+// sentence and a code to a run whose kind still said landed. So:
+//   - a run that already did not come back clean keeps its own reason, and its
+//     kind already says so — the line says the note did not go;
+//   - a run whose report was placed LANDED: the receipt is the end of the work,
+//     the rule the pass's recovery keeps (internal/standing's
+//     finishedOccurrence), and what it did not do is tell anybody. It keeps no
+//     code, because every code says why a run did not come back clean;
+//   - any other clean run did not finish telling anybody, and a run whose
+//     account never reached its person is recorded as not finished, with the
+//     reason that held its note.
+func heldAtTheNote(outcome standing.Outcome, withheld, held reportWithheld, cause error, published bool) (standing.Outcome, reportWithheld) {
+	why := "the pass was cut off before its note was delivered"
+	if held == withheldStopUnknown {
+		why = "its note was not delivered: " + stopUnknownWhy(cause)
+	}
+	if text := strings.TrimSpace(outcome.Text); text != "" {
+		why = text + "; " + why
+	}
+	outcome.Text = clip(why, standingOutcomeClip)
+	switch {
+	case withheld != notWithheld, published:
+	default:
+		withheld = held
+		outcome.Kind = standing.OutcomeFailed
+		outcome.NeedsPerson = ""
+	}
+	return outcome, withheld
+}
+
+// stopUnknownWhy is the clause a person reads for [withheldStopUnknown].
+func stopUnknownWhy(cause error) string {
+	line := "aforge could not read whether this work was stopped"
+	if cause != nil {
+		line += " (" + oneLine(cause.Error()) + ")"
+	}
+	return line
 }
 
 // withheld answers whether this firing came back clean — for one that keeps a
