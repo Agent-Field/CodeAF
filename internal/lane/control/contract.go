@@ -158,7 +158,21 @@ type Seconds struct {
 }
 
 // Measured is a real number of seconds.
-func Measured(seconds float64) Seconds { return Seconds{seconds: seconds, reach: figure} }
+//
+// A FIGURE THAT IS NOT A NUMBER IS PAST PRICING AND NEVER A FIGURE. The three
+// states above exist because two of the arithmetic's answers are not numbers,
+// and an overflow is the third way to reach the same place: an exponential that
+// ran off the end of a float is a cost nobody could state, which is exactly
+// what [PastPricing] means. Answering it here rather than letting the value
+// through is what keeps the one thing JSON cannot spell out of the model-call
+// log by construction rather than by the rescue in internal/calllog's finite.go
+// — which is the last line of defence and not the road.
+func Measured(seconds float64) Seconds {
+	if math.IsNaN(seconds) || math.IsInf(seconds, 0) {
+		return PastPricing()
+	}
+	return Seconds{seconds: seconds, reach: figure}
+}
 
 // PastPricing is a wait past anything its belief can put a number on.
 func PastPricing() Seconds { return Seconds{reach: pastPricing} }

@@ -182,6 +182,21 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 	// guard was happy with. That is the difference between a reserve and the even
 	// split it replaces.
 	errandCtx, endErrand := context.WithTimeout(ctx, patience)
+	// AND THE ERRAND SAYS WHAT IT IS FOR, ON EVERY ROW IT WRITES.
+	//
+	// The model-call log names a call by its tag, and a tag is either set here
+	// or derived from a routing slot the planning packages open — and this
+	// package opens none. So every errand this session makes, from every one of
+	// the ten callers below, landed in the log with no tag at all: 2,309 of the
+	// 2,839 untagged finishes in the ten days to 2026-09-10, and with them the
+	// answer to "what was this build spending deepseek-v4-flash on all night"
+	// (docs/design/recovery/census-20260910.md §8, finding 9).
+	//
+	// THE ROLE IS THE TAG, because the role is what the errand IS — naming a
+	// conversation, judging a route, writing a caption — and it is the same word
+	// internal/lane's roles.go and the journal's own call line already use, so
+	// three records of one call agree about what to call it.
+	errandCtx = provider.WithCallTag(errandCtx, string(role))
 	defer endErrand()
 	tell := errandWatchFrom(ctx)
 

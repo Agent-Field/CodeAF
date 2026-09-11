@@ -310,7 +310,7 @@ func TestALaneRowSeparatesTheQueueFromTheWriting(t *testing.T) {
 	Append(Record{
 		Time: "2026-08-30T10:00:00.000Z", ID: "abcd1234", Tag: "turn",
 		Model: "deepseek/deepseek-v4-flash", Served: "CoreWeave", Lane: "Cloudflare",
-		Status: 200, Millis: 4768, TTFTms: 768, DeadlineMs: 1200, Hedged: true,
+		Status: 200, Millis: 4768, TTFTms: 768, HazardCeilingMs: 1200, Hedged: true,
 		Finish: "stop",
 	})
 
@@ -319,7 +319,7 @@ func TestALaneRowSeparatesTheQueueFromTheWriting(t *testing.T) {
 		t.Fatalf("wrote %d rows, want 1", len(rows))
 	}
 	row := rows[0]
-	if row.TTFTms != 768 || row.DeadlineMs != 1200 {
+	if row.TTFTms != 768 || row.HazardCeilingMs != 1200 {
 		t.Fatalf("the timings came back as %+v", row)
 	}
 	// The two names are the whole point: the preference asked for one machine
@@ -336,7 +336,7 @@ func TestALaneRowSeparatesTheQueueFromTheWriting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the log: %v", err)
 	}
-	for _, field := range []string{`"ttft_ms":768`, `"deadline_ms":1200`, `"lane":"Cloudflare"`, `"hedged":true`} {
+	for _, field := range []string{`"ttft_ms":768`, `"hazard_ceiling_ms":1200`, `"lane":"Cloudflare"`, `"hedged":true`} {
 		if !strings.Contains(string(raw), field) {
 			t.Fatalf("the line does not carry %s: %s", field, raw)
 		}
@@ -361,7 +361,7 @@ func TestACallWithNoLaneNamesNone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the log: %v", err)
 	}
-	for _, word := range []string{"ttft_ms", "deadline_ms", "lane", "hedged"} {
+	for _, word := range []string{"ttft_ms", "hazard_ceiling_ms", "lane", "hedged"} {
 		if strings.Contains(string(raw), word) {
 			t.Fatalf("the row names %q with nothing to say: %s", word, raw)
 		}
@@ -391,7 +391,7 @@ func TestARowWrittenBeforeLanesExistedStillDecodes(t *testing.T) {
 	if row.Served != "quicksilver" || row.Millis != 1400 || row.Cost != 0.42 {
 		t.Fatalf("the old row lost its figures: %+v", row)
 	}
-	if row.TTFTms != 0 || row.DeadlineMs != 0 || row.Lane != "" || row.Hedged {
+	if row.TTFTms != 0 || row.HazardCeilingMs != 0 || row.Lane != "" || row.Hedged {
 		t.Fatalf("a row from before lanes existed came back believing something: %+v", row)
 	}
 }

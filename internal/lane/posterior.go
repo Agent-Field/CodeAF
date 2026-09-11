@@ -86,13 +86,49 @@ func (p Posterior) Quantile(z float64) float64 {
 // which is why there is no penalty box and no cooldown timer anywhere in this
 // package. The ledger clamps P at the prior's variance so that ageing can make
 // a belief worthless but never worse than the public sheet.
+//
+// ── AND IT IS BOUNDED, BECAUSE DOUBLING FOREVER REACHES INFINITY (2026-09-10)
+//
+// The doubling above is unbounded in dt, and a belief left alone long enough
+// overflows: P starts near σ² = 0.36 and 2^(dt/10 min) passes the largest float
+// there is after about seven days. Nothing stopped it. Every caller that ages a
+// pair the sheet publishes no spread for went through [age] with a ceiling of
+// zero — so the clamp there was skipped — and the scorer ages beliefs by calling
+// this function directly with no clamp at all.
+//
+// What that cost is written down twice. `+Inf` reached [Posterior.Update],
+// where the gain is P/(P+R) — infinity over infinity — and the belief became
+// NaN; NaN passes every `> ceiling` test as false, so nothing repaired it, and
+// the belief file then refused to compact for days on `json: unsupported value:
+// NaN`. On the way to that, a P of about 673 — eleven half-lives of a lane
+// nobody sent to — priced acting at exp(μ + P/2) and put 1.99e+146 in the
+// `cost_s` column of the model-call log.
+//
+// SO WIDENING STOPS WHERE A BELIEF STOPS SAYING ANYTHING. Past [MaxSpread] the
+// tail is already wider than any decision could use, and every further doubling
+// buys nothing but a bigger number for the arithmetic downstream to break on.
 func (p Posterior) Predict(dt, halfLife time.Duration) Posterior {
 	if !p.Known() || dt <= 0 || halfLife <= 0 {
 		return p
 	}
 	p.P *= math.Exp2(dt.Seconds() / halfLife.Seconds())
+	if p.P > MaxSpread || math.IsInf(p.P, 1) {
+		p.P = MaxSpread
+	}
 	return p
 }
+
+// MaxSpread is the widest a belief is ever allowed to become: sixteen times the
+// variance of a lane nobody has ever measured.
+//
+// IT IS A FLOOR UNDER THE ARITHMETIC AND NOT A JUDGEMENT. Every ceiling that
+// decides anything is tighter than this one — [age] clamps at the sheet's own
+// weight and [ledger.stale] at each level's — and this is only what stops the
+// one unbounded expression in the package from reaching a number no reader of
+// it can hold. At σ ≈ 2.4 the p90 of a belief is already twenty-one times its
+// median, which is the formal spelling of "this says nothing"; sixteen times
+// further would say nothing sixteen times louder.
+const MaxSpread = 16 * defaultSpread * defaultSpread
 
 // Update folds one observation z — already in the log domain — with observation
 // noise R, and returns the posterior that results.
@@ -109,15 +145,30 @@ func (p Posterior) Predict(dt, halfLife time.Duration) Posterior {
 // would be discarded, which is the one thing a first measurement must not be.
 // An unknown belief is an infinitely wide prior, and the limit of the update
 // there is to adopt the observation outright.
+//
+// AND A BELIEF THAT IS NOT A NUMBER IS NO BELIEF. [Posterior.Known] is P > 0,
+// which is TRUE of +Inf and FALSE of NaN — so an overflowed belief used to walk
+// straight into the gain below as if it were measured, come out NaN, and then
+// read as unknown everywhere forever without any path ever repairing it. It is
+// read here as what it is: nothing was known, so the observation is adopted
+// outright, exactly as it is for a lane this process has never sent to.
 func (p Posterior) Update(z, R float64) Posterior {
-	if R <= 0 {
+	if R <= 0 || math.IsNaN(z) || math.IsInf(z, 0) {
 		return p
 	}
-	if !p.Known() {
+	if !p.Known() || !finite(p.P) || !finite(p.X) {
 		return Posterior{X: z, P: R}
 	}
 	gain := p.P / (p.P + R)
 	return Posterior{X: p.X + gain*(z-p.X), P: (1 - gain) * p.P}
+}
+
+// finite reports whether a number is one. It is here rather than at the three
+// call sites because "is this a figure" is asked of beliefs, of what is written
+// to the belief file (store.go) and of what a controller prices with, and the
+// three must agree about the answer.
+func finite(value float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0)
 }
 
 // Innovation is how surprising an observation is, in standard deviations of

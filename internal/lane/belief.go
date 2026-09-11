@@ -1013,9 +1013,18 @@ func (l *ledger) weigh(o Outcome) {
 // a design whose whole claim is that there is no penalty box. At the honest
 // clamp a fully forgotten belief and a fresh sheet weigh the same, which is
 // what "worth about as much as anybody can look up" has to mean.
+//
+// AND THE CLAMP IS UNCONDITIONAL. It used to be skipped whenever `floor` was
+// zero — which is every pair the public sheet publishes no percentiles for —
+// so precisely the lanes with the least known about them were the ones whose
+// ageing was unbounded. That is where the overflow in [Posterior.Predict] was
+// reached from, and it is why a belief file went days refusing to compact on a
+// NaN. The floor a lane with no published spread ages to is the same one a
+// first measurement of it would be weighed against ([variance]): the honest
+// default, not nothing at all.
 func age(p Posterior, elapsed time.Duration, floor float64) Posterior {
 	p = p.Predict(elapsed, HalfLife)
-	if ceiling := SheetWeight * floor; ceiling > 0 && p.P > ceiling {
+	if ceiling := SheetWeight * variance(floor); p.P > ceiling {
 		p.P = ceiling
 	}
 	return p

@@ -31,7 +31,7 @@ type streamWatch struct {
 	// reading and the beat is kicked only when it MOVES.
 	deadline time.Time
 	// armed is the first deadline this arm was given, as a duration from when
-	// it went out. It is what the call log's `deadline_ms` records: the rows
+	// it went out. It is what the call log's `hazard_ceiling_ms` records: the rows
 	// where a deadline was set and not reached are what say the deadline was
 	// set in the right place.
 	armed time.Duration

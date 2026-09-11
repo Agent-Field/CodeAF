@@ -392,11 +392,140 @@ func (s *store) hold(fold func(storeState, []record, int) (storeState, bool)) er
 // writeState stamps and writes one state atomically.
 func writeState(path string, held storeState) error {
 	held.Version, held.At = stateVersion, time.Now().UTC()
+	held = spellable(held)
 	data, err := json.Marshal(held)
 	if err != nil {
 		return err
 	}
 	return writeAtomic(path, data)
+}
+
+// ── A NUMBER JSON CANNOT SPELL MAY NOT COST THE WHOLE FILE ──────────────────
+//
+// THE LAW: THIS STORE NEVER WRITES A FLOAT THAT IS NOT A NUMBER.
+//
+// encoding/json refuses the entire document on one NaN or one infinity, and
+// what it refuses here is not a row but the whole of what this process has
+// learned. On 2026-09-10 that had been happening for days —
+// `the belief file could not be compacted: json: unsupported value: NaN` —
+// which meant every compaction failed, the journal beside the file kept
+// growing, and every load replayed all of it.
+//
+// THE ARITHMETIC IS FIXED AT THE SOURCE and this is the guard behind it
+// ([Posterior.Predict] bounds the widening, [Posterior.Update] refuses to fold
+// an observation into a belief that is not a number, [age] clamps
+// unconditionally). The guard is kept anyway, for the reason internal/calllog
+// keeps finite.go: a defect in one of a dozen float-bearing structures must
+// cost the value it is about and never the file it is in.
+//
+// A BELIEF THAT IS NOT A NUMBER IS DROPPED WHOLE, exactly as a belief that
+// names no lane is ([attributed]). Repairing half of one would leave a record
+// asserting a mean nobody measured with a certainty nobody computed, and the
+// honest state of a filter whose arithmetic went wrong is that it knows
+// nothing about that pair.
+func spellable(held storeState) storeState {
+	held.Beliefs = keepFinite(held.Beliefs, Belief.spellable)
+	held.Priors = keepFinite(held.Priors, func(p spread) bool {
+		return finite(p.TTFT) && finite(p.Rate)
+	})
+	held.Workloads = keepFinite(held.Workloads, func(w workloadEstimate) bool {
+		return finite(w.Visible) && finite(w.Hidden) && finite(w.Weight)
+	})
+	held.Wait = spellableChains(held.Wait)
+	held.Rate = spellableChains(held.Rate)
+	held.Think = spellableChains(held.Think)
+	held.Judged = spellableTallies(held.Judged)
+	return held
+}
+
+// NOTHING HERE WRITES INTO WHAT IT WAS GIVEN. The state handed to a compaction
+// is a shallow copy of the ledger's own ([ledger.snapshot]), so its maps and
+// slices are the LIVE ones — deleting an entry here would reach into a
+// hierarchy another goroutine is folding observations into, which is a data
+// race and a belief silently removed from a running process. So a value that
+// cannot be written is dropped by building a new container, and the ordinary
+// case — nothing wrong, which is every compaction — allocates nothing and hands
+// back exactly what it was given.
+
+// keepFinite is one slice with the values that can be written, and the same
+// slice untouched when they all can.
+func keepFinite[T any](values []T, spellable func(T) bool) []T {
+	for index, value := range values {
+		if spellable(value) {
+			continue
+		}
+		kept := make([]T, 0, len(values)-1)
+		kept = append(kept, values[:index]...)
+		for _, later := range values[index+1:] {
+			if spellable(later) {
+				kept = append(kept, later)
+			}
+		}
+		return kept
+	}
+	return values
+}
+
+// spellable reports whether every number this belief carries is one.
+func (b Belief) spellable() bool {
+	return finite(b.TTFT.X) && finite(b.TTFT.P) &&
+		finite(b.Rate.X) && finite(b.Rate.P) &&
+		finite(b.Quality.A) && finite(b.Quality.B)
+}
+
+// spellableChains drops the levels of a hierarchy whose numbers stopped being
+// numbers. A level that is dropped is a level the next load rebuilds from the
+// beliefs it replays, which is the same road a fresh machine takes.
+func spellableChains(held chains) chains {
+	if !finite(held.Pace) {
+		held.Pace = 0
+	}
+	if !spellableNode(held.World) {
+		held.World = node{}
+	}
+	held.Lane = keepFiniteIn(held.Lane, spellableNode)
+	held.Model = keepFiniteIn(held.Model, spellableNode)
+	held.Pair = keepFiniteIn(held.Pair, spellableNode)
+	held.Drift = keepFiniteIn(held.Drift, func(d drift) bool {
+		return finite(d.Up) && finite(d.Down)
+	})
+	held.Spread = keepFiniteIn(held.Spread, func(s spreadStat) bool {
+		return finite(s.Mean) && finite(s.M2)
+	})
+	return held
+}
+
+// keepFiniteIn is [keepFinite] for a map, and the same map untouched when every
+// value in it can be written.
+func keepFiniteIn[V any](held map[string]V, spellable func(V) bool) map[string]V {
+	sound := true
+	for _, value := range held {
+		if !spellable(value) {
+			sound = false
+			break
+		}
+	}
+	if sound {
+		return held
+	}
+	kept := make(map[string]V, len(held))
+	for key, value := range held {
+		if spellable(value) {
+			kept[key] = value
+		}
+	}
+	return kept
+}
+
+func spellableNode(held node) bool { return finite(held.X) && finite(held.P) }
+
+// spellableTallies drops the quality evidence whose counts stopped being
+// numbers, by the same rule.
+func spellableTallies(held tallies) tallies {
+	sound := func(t tally) bool { return finite(t.A) && finite(t.B) }
+	held.Lane = keepFiniteIn(held.Lane, sound)
+	held.Model = keepFiniteIn(held.Model, sound)
+	return held
 }
 
 // lockSuffix names the file that serialises writers of the belief file.

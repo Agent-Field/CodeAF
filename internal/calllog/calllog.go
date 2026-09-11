@@ -165,6 +165,23 @@ type Record struct {
 	Status int    `json:"status,omitempty"`
 	Millis int64  `json:"ms,omitempty"`
 	Finish string `json:"finish,omitempty"`
+	// Ended is on the row NOBODY ON THE PATH WROTE.
+	//
+	// EVERY START ROW GETS A ROW UNDER IT. That is the law this field exists to
+	// keep, and it was not kept: 527 of 16,921 attempts over the ten days to
+	// 2026-09-10 had a start row and nothing beside it, which every reader of
+	// this file — a person, `aforge logs`, the census — reads as a call that is
+	// still in flight. Six of them were one turn on a model the catalog holds no
+	// endpoints for, where the ladder ran out and returned without writing
+	// anything.
+	//
+	// So the transport closes whatever it left open, and this word says who
+	// closed it and why: "hopped" when another attempt began before this one's
+	// row was written, "cancelled" and "deadline" when the caller's own context
+	// ended the call, and "abandoned" when the call simply returned and nothing
+	// wrote the row. It is ABSENT on every row a path wrote for itself, which is
+	// almost all of them.
+	Ended string `json:"ended,omitempty"`
 
 	// ── the lane, and the wait it made (docs/ARCHITECTURE.md, Decision 10)
 	//
@@ -184,12 +201,51 @@ type Record struct {
 	// token and the last arrive together and no endpoint's queue is separable
 	// from its writing — and absent is honest there rather than instant.
 	TTFTms int64 `json:"ttft_ms,omitempty"`
-	// DeadlineMs is when the watch was going to start thinking about a second
-	// request, derived at send time from the belief about the lane expected to
-	// serve rather than from any constant. It is on the row because a hedge
-	// that fired is only half a story: the rows where the deadline was set and
-	// NOT reached are what say the deadline was set in the right place.
-	DeadlineMs int64 `json:"deadline_ms,omitempty"`
+	// HazardCeilingMs is when the watch was going to start thinking about a
+	// second request, derived at send time from the belief about the lane
+	// expected to serve rather than from any constant. It is on the row because
+	// a hedge that fired is only half a story: the rows where the ceiling was
+	// set and NOT reached are what say it was set in the right place.
+	//
+	// IT WAS CALLED `deadline_ms` UNTIL 2026-09-10 AND IT WAS NEVER A DEADLINE.
+	// Nothing ends a call when it passes; it is the moment the wait controller
+	// starts pricing a rescue. Under the old name the census read it as the
+	// bound that applied to the attempt and found the field "fiction" — 7,937
+	// rows saying 10,000 beside an `ms` that ran to 937,777, and 2,720 finishes
+	// apparently running past twice their own deadline. Every one of those was
+	// a healthy call outliving a hazard ceiling, which is the ordinary case. The
+	// figure was right and the NAME was the lie, so the name moved
+	// (docs/design/recovery/DESIGN.md §7, wave R0).
+	HazardCeilingMs int64 `json:"hazard_ceiling_ms,omitempty"`
+	// AppliedMs is THE BOUND THAT ACTUALLY ENDED THIS ATTEMPT and AppliedWord is
+	// what to call it. HazardCeilingMs above says what was PLANNED; these two say
+	// what HAPPENED, and the row may honestly carry both.
+	//
+	// They are the other half of the `deadline_ms` repair. Separating them is
+	// what lets a reader ask the only question that matters about a cut call —
+	// which bound cut it — instead of inferring one from a ceiling that never
+	// cut anything. Six hundred rows in the 2026-09-10 census were cut by a
+	// bound set OUTSIDE the provider package and were read as the stream wall
+	// cutting live streams, which the wall never did.
+	//
+	// BOTH ARE ABSENT ON EVERY ATTEMPT NO BOUND OF OURS ENDED — an answer, a
+	// refusal, the caller leaving — because absent is the honest reading of
+	// "nothing here cut this". The guard fills them in when one of its bounds
+	// fires (internal/provider, wave R4).
+	AppliedMs   int64  `json:"applied_ms,omitempty"`
+	AppliedWord string `json:"applied,omitempty"`
+	// Exhaust marks the row of an arm that was cancelled because another arm of
+	// the same hedge answered first.
+	//
+	// IT IS THE DIFFERENCE BETWEEN EXHAUST AND FAILURE, and no reading of this
+	// file could tell them apart before it existed. A losing arm's request
+	// really was made and really was cut off, so its row says `context
+	// canceled` like any abandoned call: 1,204 of 3,906 bad rows in the
+	// 2026-09-10 census, the single largest cause family in it, and not one of
+	// them is a thing that went wrong. They are the price of a race this build
+	// chose to run and WON. A census that counts them as failures is measuring
+	// its own hedging policy and calling it provider health.
+	Exhaust bool `json:"exhaust,omitempty"`
 	// Lane is the machine the preference named — the first entry of the
 	// `provider.order` this request carried, or the pin it carried instead.
 	// Empty for a call to an endpoint that is not a router, and for one sent
@@ -199,6 +255,17 @@ type Record struct {
 	// another lane. Both halves of the pair leave their own rows; this is what
 	// says they were a pair.
 	Hedged bool `json:"hedged,omitempty"`
+	// RetryAfterS is the comeback instruction a refusal carried, in seconds —
+	// the `Retry-After` header, or the wait the router named in its own body.
+	//
+	// IT IS THE ONE NUMBER THAT MAKES A SAME-MACHINE RETRY LEGAL. The rule the
+	// recovery design states is that the same bytes go back to the same machine
+	// only when there is nowhere else to send them and then only for as long as
+	// that machine itself asked — so a log that never recorded what was asked
+	// for could not say whether a single one of eleven hundred paced retries
+	// obeyed it. Over the ten days to 2026-09-10 the field was never present on
+	// any row, because nothing wrote it.
+	RetryAfterS float64 `json:"retry_after,omitempty"`
 
 	// ── why it waited, and what was done about it
 	//

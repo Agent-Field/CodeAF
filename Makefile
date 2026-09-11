@@ -376,5 +376,28 @@ changelog:
 	@test -n "$(VERSION)" || { echo 'usage: make changelog VERSION=v0.2.0'; exit 1; }
 	@go run $(CHANGES) roll $(VERSION)
 
+# ── THE CALL CENSUS ─────────────────────────────────────────────────────────
+#
+# `make census` reads the model-call log this build always writes and prints
+# docs/design/recovery/DESIGN.md §1 as markdown. It is the instrument that
+# design's §8 asks for: five waves of recovery work each move a number in that
+# table, and without a committed measurement every one of them is an argument
+# about anecdotes.
+#
+#   make census                          this machine's own log
+#   make census LOG=/path/to/calls.jsonl a log synced from somewhere else
+#   make census OUT=/tmp/census.md       write it to a file instead of stdout
+#   make census TOP=40 DAYS=7            widen the signature list and the window
+#
+# NIGHTLY IT IS THE SAME COMMAND. The Spark's cron syncs the laptop's log and
+# runs `make census LOG=… OUT=…`; bench/README.md has the recipe and the one
+# thing the cron owns that this target does not.
+census:
+	@go run ./cmd/aforge-census \
+	  $(if $(TOP),-top $(TOP)) $(if $(DAYS),-days $(DAYS)) \
+	  $(if $(MIN),-min $(MIN)) $(if $(CHAINS),-chains $(CHAINS)) \
+	  $(LOG) $(if $(OUT),> $(OUT))
+	@$(if $(OUT),echo "the census is in $(OUT)")
+
 clean:
 	rm -rf bin
