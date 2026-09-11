@@ -2564,6 +2564,9 @@ func TestTheVanishedReplyQuestionsReachTheAnswer(t *testing.T) {
 		{"do I have to type my question again after moving a conversation here", "models-and-cost", "asks your question again by itself"},
 		{"the reply stopped when this conversation moved", "models-and-cost", "asking again"},
 		{"why did the answer start again on its own when I moved the conversation", "home", "asks your question again for you"},
+		{"it said nobody was left watching but I was sitting right here", "models-and-cost", "still watching"},
+		{"which window did it think had gone", "models-and-cost", "names the window"},
+		{"the engine holding this conversation was stopped", "models-and-cost", "engine holding this conversation was stopped"},
 	} {
 		found := false
 		for _, section := range Chat().Search(probe.asked, DefaultResults) {

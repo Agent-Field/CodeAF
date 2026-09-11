@@ -371,6 +371,13 @@ func TestClosingTheConversationEndsItWhereACutDoesNot(t *testing.T) {
 // [remote.Session.IdleSince] and the policy is [Host.sweepOnce]; this drives both
 // rather than trusting either on its own.
 func TestASweepKeepsAConversationThatIsStillWorking(t *testing.T) {
+	// This test asks whether the idle CLOCK starts when the work lands, not
+	// whether a stalled road is still watched, so the grace that covers a
+	// torn pipe is left off (remote.WatchFor).
+	was := remote.WatchFor
+	remote.WatchFor = 0
+	t.Cleanup(func() { remote.WatchFor = was })
+
 	far := &workingAgent{}
 	shortHome(t)
 	workspace := "/home/somebody/api"
@@ -455,6 +462,11 @@ func TestTheIdleSweepDoesNotRetireAConversationWhoseTaskIsStillRunning(t *testin
 	was := sessionIdle
 	sessionIdle = 20 * time.Millisecond
 	t.Cleanup(func() { sessionIdle = was })
+	// Same reason as the sweep test above: the span under test is the
+	// idle policy, not the stalled-road grace.
+	hold := remote.WatchFor
+	remote.WatchFor = 0
+	t.Cleanup(func() { remote.WatchFor = hold })
 
 	far := &workingAgent{}
 	far.work = []session.WorkNode{{ID: "task:4", Title: "port the parser", State: session.WorkRunning}}

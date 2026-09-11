@@ -1429,3 +1429,12 @@ func TestServeSaysWhenTheStandingDoorIsMissing(t *testing.T) {
 		t.Error("Standing.Save answered without a store behind it")
 	}
 }
+
+// door is the door the last stop named, read the way every other reading of
+// this double is: under its own lock, because the stop arrives on whichever
+// goroutine ended the conversation.
+func (f *fakeAgent) door() session.StopDoor {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.stopDoor
+}

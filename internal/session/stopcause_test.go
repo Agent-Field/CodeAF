@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -61,7 +62,7 @@ func TestATurnEndedByMachineryIsWrittenDownAndSaidOutLoud(t *testing.T) {
 	if !told {
 		t.Fatalf("a turn taken away by machinery said nothing at all; events were %v", kinds(collected))
 	}
-	if want := stopSentence(StopByTakeover); note.Text != want {
+	if want := stopSentence(StopByTakeover, ""); note.Text != want {
 		t.Fatalf("the person was told %q, want %q", note.Text, want)
 	}
 	for _, banned := range []string{"context", "cancel", "takeover.json"} {
@@ -121,7 +122,7 @@ func TestATurnThePersonStoppedSaysNothingAboutIt(t *testing.T) {
 func TestEveryDoorNamesItselfAndOnlyThePersonsIsSilent(t *testing.T) {
 	doors := []StopDoor{
 		StopByPerson, StopByTakeover, StopByLeaving, StopByClosing,
-		StopByAbandoned, StopByWorkStopped, StopByRetired,
+		StopByAbandoned, StopByWorkStopped, StopByRetired, StopByEngineStopped,
 	}
 	seen := map[string]StopDoor{}
 	for _, door := range doors {
@@ -132,7 +133,7 @@ func TestEveryDoorNamesItselfAndOnlyThePersonsIsSilent(t *testing.T) {
 			t.Fatalf("%q and %q are the same word", door, other)
 		}
 		seen[string(door)] = door
-		said := stopSentence(door)
+		said := stopSentence(door, "")
 		if door == StopByPerson {
 			if said != "" {
 				t.Errorf("the person's own stop was explained back to them: %q", said)
@@ -174,5 +175,34 @@ func TestEveryDoorNamesItselfAndOnlyThePersonsIsSilent(t *testing.T) {
 	stop()
 	if door, stopped := stopCause(plain); !stopped || door != StopByClosing {
 		t.Errorf("an unnamed cancellation read as %q (%v)", door, stopped)
+	}
+}
+
+// A STOP THE UNATTENDED DOOR TAKES NAMES THE WINDOW IT BELIEVED HAD GONE.
+// Without a name the sentence is the one it has always been, so a retirement
+// that never knew a window does not grow a clause out of nothing.
+func TestARetiredStopNamesTheWindowItBelievedHadGone(t *testing.T) {
+	unnamed := stopSentence(StopByRetired, "")
+	if unnamed != "nobody was left watching this conversation, so the reply stopped — ask again to pick it up" {
+		t.Fatalf("an unnamed retirement said %q", unnamed)
+	}
+	named := stopSentence(StopByRetired, "studio")
+	if named != "nobody was left watching this conversation from studio, so the reply stopped — ask again to pick it up" {
+		t.Fatalf("a named retirement said %q", named)
+	}
+	// AND THE NAME DOES NOT CHANGE THE DOOR. StoppedBy, stopCause and a
+	// plain cancellation check must keep the answers they have always had.
+	cause := stopAs(StopByRetired, "studio")
+	if door, ok := StoppedBy(cause); !ok || door != StopByRetired {
+		t.Fatalf("a named cause read back as %q (%v)", door, ok)
+	}
+	if !errors.Is(cause, context.Canceled) {
+		t.Fatal("a named cause is no longer a cancellation")
+	}
+	if stopName(cause) != "studio" {
+		t.Fatalf("the cause forgot the window: %q", stopName(cause))
+	}
+	if stopName(stopFor(StopByRetired)) != "" {
+		t.Fatal("a door with no window grew a name")
 	}
 }
