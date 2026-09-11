@@ -94,6 +94,36 @@ const (
 	tabNeedsPerson
 )
 
+// signal is what this conversation is doing, as the watcher that was already
+// watching it saw it last.
+//
+// IT IS THE ONE READING OF A HELD CONVERSATION'S STATE. The strip draws it on
+// every frame and the card a person opens with ctrl+k reads it too, so the two
+// surfaces cannot answer the same question differently on one frame. The
+// watcher recomputes these cached facts after every event the conversation
+// produces (keeper.go), without opening a file or crossing a wire.
+func (w *behindWatch) signal() tabSignal {
+	if w == nil {
+		// A conversation this window remembers but does not hold — one closed, one
+		// the engine ended on a swap over a shared handle, one that was only ever
+		// a name on the recency stack. NOTHING IS KNOWN ABOUT IT, and the strip
+		// says nothing rather than guessing that a tab somebody visited an hour
+		// ago is still live.
+		return tabIdle
+	}
+	switch {
+	case w.waits.Load():
+		return tabNeedsPerson
+	case w.turning.Load(), w.tasking.Load(), w.jobbing.Load():
+		// A TURN IN FLIGHT, OR WORK THAT OUTLIVED ONE. The second is the whole
+		// reason this is two loads rather than one: the watcher's turn flag goes
+		// false the moment the conversation's own stream ends, and the nodes it
+		// started keep running afterwards (keeper.go's [behindWatch.tasking]).
+		return tabWorking
+	}
+	return tabIdle
+}
+
 // tabSignalFor is one conversation's state, by its canonical key ([app.convKey])
 // and whether it is the one in front.
 //
@@ -104,25 +134,10 @@ func (a *app) tabSignalFor(key string, here bool) tabSignal {
 		return a.frontSignal()
 	}
 	held := a.behind[key]
-	if held == nil || held.watch == nil {
-		// A conversation this window remembers but does not hold — one closed, one
-		// the engine ended on a swap over a shared handle, one that was only ever
-		// a name on the recency stack. NOTHING IS KNOWN ABOUT IT, and the strip
-		// says nothing rather than guessing that a tab somebody visited an hour
-		// ago is still live.
+	if held == nil {
 		return tabIdle
 	}
-	switch {
-	case held.watch.waits.Load():
-		return tabNeedsPerson
-	case held.watch.turning.Load(), held.watch.tasking.Load(), held.watch.jobbing.Load():
-		// A TURN IN FLIGHT, OR WORK THAT OUTLIVED ONE. The second is the whole
-		// reason this is two loads rather than one: the watcher's turn flag goes
-		// false the moment the conversation's own stream ends, and the nodes it
-		// started keep running afterwards (keeper.go's [behindWatch.tasking]).
-		return tabWorking
-	}
-	return tabIdle
+	return held.watch.signal()
 }
 
 // frontSignal is the same question about the conversation on screen, which has

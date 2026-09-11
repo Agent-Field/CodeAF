@@ -133,9 +133,8 @@ func titleWhere(a *app) titleParts {
 }
 
 // titleConversation is the conversation's name as the tab strip spells it
-// ([app.chatTabDisplayName]) — except before it has one, where the strip's
-// `Untitled` is a word for a column of tabs and the tab outside the window
-// says what the rest of the surface says about the same fact.
+// ([app.chatTabDisplayName]). Before naming finishes, it uses the same
+// placeholder every other conversation-name surface uses.
 func titleConversation(a *app) string {
 	if strings.TrimSpace(a.shortTitle) == "" && a.sessionName() == "" {
 		return unnamedConversationWord

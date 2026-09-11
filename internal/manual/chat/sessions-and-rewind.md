@@ -490,7 +490,7 @@ Each ask is bounded to twenty seconds so a slow cheap endpoint yields to the exi
 fallback promptly. Temporary provider failures are asked again for as long as the
 two-minute parent window lasts, with a wait that doubles in front of each ask; nothing
 counts the asks. Closing the session cancels this work. Failed or invalid naming
-leaves the conversation usable with its existing placeholder; an existing name is never
+leaves the conversation usable with its existing `new conversation` placeholder; an existing name is never
 overwritten. Title calls remain billed to the session and cost history, separately from
 an unrelated turn that happens to be running when the name arrives.
 
