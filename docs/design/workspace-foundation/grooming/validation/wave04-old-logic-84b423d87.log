@@ -1,0 +1,128 @@
+# Wave 4 old-logic proofs, run in /tmp/opus-w4-old detached at 84b423d87 (tracked tree clean before and after).
+# Session proofs: the committed standing_grant_test.go, standing_reach_test.go, standing_obligation_test.go,
+# and wave04-proof-placed.go.txt (the first test of standing_placed_test.go).
+
+######## internal/session (items 1, 2a, 2b, 3a, 3b)
+=== RUN   TestAnUnattendedRunCarriesOnlyWhatItIsGrantedAndItsReportPublishes
+    standing_grant_test.go:84: a run whose ungranted calls failed did not publish: {Kind:needs-you Text:<report>
+        # Inbox
+        - Decision: ship Friday
+        </report> USD:0 NeedsPerson:refused in a task: default — nobody to ask Published:<nil> Withheld:waiting-on-person}
+--- FAIL: TestAnUnattendedRunCarriesOnlyWhatItIsGrantedAndItsReportPublishes (0.02s)
+=== RUN   TestAGrantedToolMeetingItsBoundaryStillWaitsOnThePerson
+--- PASS: TestAGrantedToolMeetingItsBoundaryStillWaitsOnThePerson (0.01s)
+=== RUN   TestAnAbsentWriteOfItsOwnReportWithNoReportPublishesNothing
+--- PASS: TestAnAbsentWriteOfItsOwnReportWithNoReportPublishesNothing (0.01s)
+=== RUN   TestAnOmittedObligationIsFoundAndSentBackNotRecordedAsKept
+    standing_obligation_test.go:97: a report that omitted an obligation was published: "- press kit done\n- legal review pending\nSCOPE-LAUNCH\n" (outcome {Kind:landed Text:report updated: reports/r.md — - press kit done
+        - legal review pending
+        SCOPE-LAUNCH USD:0 NeedsPerson: Published:0x23f5800e6340 Withheld:})
+--- FAIL: TestAnOmittedObligationIsFoundAndSentBackNotRecordedAsKept (0.03s)
+=== RUN   TestAnObligationStillOmittedAfterItsCorrectionHoldsTheReport
+    standing_obligation_test.go:124: a report still omitting an obligation was not held: {Kind:landed Text:report updated: reports/r.md — - press kit done
+        SCOPE-LAUNCH USD:0 NeedsPerson: Published:0x23f580028fc0 Withheld:}
+--- FAIL: TestAnObligationStillOmittedAfterItsCorrectionHoldsTheReport (0.03s)
+=== RUN   TestAFiringIsToldTheFoldersItsWorkIsPlacedIn
+    standing_placed_test.go:68: the run was not told "This work is placed in the folders Travel, Launch.":
+        SYSTEM
+        <standing>
+        Standing orders:
+        
+        These are the person's own conditions over this place. They were set before this work and they hold until the person says otherwise — they are not suggestions. Work within every compatible condition. Never use recency or folder order to silently discard a condition. An explicit exception changes only its identified scope or clause. If conditions materially conflict, ask one focused question when the person is present; otherwise report that the affected work needs the person. Continue unaffected work within the compatible conditions.
+        
+        - Reports for Travel work start with the exact first line: SCOPE-TRAVEL
+        - Reports for Launch work end with the exact last line: SCOPE-LAUNCH
+        </standing>
+    standing_placed_test.go:68: the run was not told "[Travel] Reports for Travel work start with the exact first line: SCOPE-TRAVEL":
+        SYSTEM
+        <standing>
+        Standing orders:
+        
+        These are the person's own conditions over this place. They were set before this work and they hold until the person says otherwise — they are not suggestions. Work within every compatible condition. Never use recency or folder order to silently discard a condition. An explicit exception changes only its identified scope or clause. If conditions materially conflict, ask one focused question when the person is present; otherwise report that the affected work needs the person. Continue unaffected work within the compatible conditions.
+        
+        - Reports for Travel work start with the exact first line: SCOPE-TRAVEL
+        - Reports for Launch work end with the exact last line: SCOPE-LAUNCH
+        </standing>
+    standing_placed_test.go:68: the run was not told "[Launch] Reports for Launch work end with the exact last line: SCOPE-LAUNCH":
+        SYSTEM
+        <standing>
+        Standing orders:
+        
+        These are the person's own conditions over this place. They were set before this work and they hold until the person says otherwise — they are not suggestions. Work within every compatible condition. Never use recency or folder order to silently discard a condition. An explicit exception changes only its identified scope or clause. If conditions materially conflict, ask one focused question when the person is present; otherwise report that the affected work needs the person. Continue unaffected work within the compatible conditions.
+        
+        - Reports for Travel work start with the exact first line: SCOPE-TRAVEL
+        - Reports for Launch work end with the exact last line: SCOPE-LAUNCH
+        </standing>
+    standing_placed_test.go:68: the run was not told "never decide from its wording whether it applies":
+        SYSTEM
+        <standing>
+        Standing orders:
+        
+        These are the person's own conditions over this place. They were set before this work and they hold until the person says otherwise — they are not suggestions. Work within every compatible condition. Never use recency or folder order to silently discard a condition. An explicit exception changes only its identified scope or clause. If conditions materially conflict, ask one focused question when the person is present; otherwise report that the affected work needs the person. Continue unaffected work within the compatible conditions.
+        
+        - Reports for Travel work start with the exact first line: SCOPE-TRAVEL
+        - Reports for Launch work end with the exact last line: SCOPE-LAUNCH
+        </standing>
+--- FAIL: TestAFiringIsToldTheFoldersItsWorkIsPlacedIn (0.08s)
+=== RUN   TestAnUnattendedReadOutsideItsProjectIsRefusedAndTheRunGoesOn
+    standing_reach_test.go:86: a firing read outside its project:
+        Decision: ship Friday
+        
+        ---
+        SECRET-FROM-ANOTHER-CONVERSATION
+        
+        ---
+        SECRET-FROM-ANOTHER-CONVERSATION
+        
+        ---
+        project/
+        ---
+        transcript.jsonl:1: SECRET-FROM-ANOTHER-CONVERSATION
+        ---
+        No files found matching pattern
+--- FAIL: TestAnUnattendedReadOutsideItsProjectIsRefusedAndTheRunGoesOn (0.02s)
+=== RUN   TestAnUnattendedRunMayReadItsFolders
+    standing_reach_test.go:124: reading the folders held the run: {Kind:needs-you Text:<report>
+        # Upgrades
+        - NO POLICY
+        </report> USD:0 NeedsPerson:refused in a task: default — nobody to ask Published:<nil> Withheld:waiting-on-person}
+--- FAIL: TestAnUnattendedRunMayReadItsFolders (0.03s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/session	0.400s
+FAIL
+
+######## internal/standing limit proof (item 3c): wave04-proof-limit.go.txt
+=== RUN   TestARunThatSpentPastItsLimitSaysSoInItsRecord
+    limit_proof_test.go:40: the record does not carry both the spend and the limit it went past:
+--- FAIL: TestARunThatSpentPastItsLimitSaysSoInItsRecord (0.08s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/standing	0.080s
+FAIL
+
+######## internal/standing watch proofs (items 4, 5): wave04-proof-watch.go.txt
+=== RUN   TestANestedEditWakesARecursiveWatch
+    watch_proof_test.go:59: an edit two folders down did not wake the watch: {At:2026-09-10 09:01:00 +0000 UTC Examined:1 Checked:1 Fired:0 Said:0 NeedsYou:0 Failed:0 Skipped:0 Errors:0 Tidied:0 Notes:[]}
+--- FAIL: TestANestedEditWakesARecursiveWatch (0.04s)
+=== RUN   TestAWatchPastItsLimitIsRefusedAtSetup
+    watch_proof_test.go:94: a watch past its limit was set up: <nil>
+--- FAIL: TestAWatchPastItsLimitIsRefusedAtSetup (0.18s)
+=== RUN   TestATouchedOrIdenticallyRewrittenFileIsNotAChange
+    watch_proof_test.go:131: a touched file woke a run: {At:2026-09-10 09:01:00 +0000 UTC Examined:1 Checked:1 Fired:1 Said:0 NeedsYou:0 Failed:0 Skipped:0 Errors:0 Tidied:0 Notes:[]}
+--- FAIL: TestATouchedOrIdenticallyRewrittenFileIsNotAChange (0.12s)
+=== RUN   TestAReportDeepInsideARecursiveWatchIsRefused
+    watch_proof_test.go:168: a report deep inside a recursive watch was admitted: <nil>
+--- FAIL: TestAReportDeepInsideARecursiveWatchIsRefused (0.00s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/standing	0.346s
+FAIL
+
+######## cmd/aforge collections proof (item 6): wave04-proof-collections.go.txt
+=== RUN   TestPlacedWorkIsShownInItsFolderUnderItsOwnLabel
+    placed_show_proof_test.go:17: show Alpha does not show the work placed in it:
+        This collection has no references yet.
+    placed_show_proof_test.go:20: find does not name the folder the work is placed in:
+        3c2a1defa4b99d4e6f7ca856c8f9a87b  Beta
+--- FAIL: TestPlacedWorkIsShownInItsFolderUnderItsOwnLabel (0.05s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/cmd/aforge	0.077s
+FAIL

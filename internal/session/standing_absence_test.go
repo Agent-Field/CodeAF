@@ -74,7 +74,10 @@ func TestTheSectionWithSchedulingStillTeachesTheMechanics(t *testing.T) {
 		"A CARD OFFERS",
 		"NOTHING STANDS UNTIL THEY SAY",
 		"WHERE A FIRING ARRIVES",
-		"BACKGROUND CHECKS ARE ON AND NOBODY IS ASKED",
+		// Conditional since the chat door (2026-09-11): a host with no timer
+		// has no background checks, so the page may not say they are on.
+		"BACKGROUND CHECKS: where this machine has a timer",
+		"The\nline under the card says whether it did",
 		"[something you set up fired]",
 	} {
 		if !strings.Contains(present, want) {

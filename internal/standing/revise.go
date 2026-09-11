@@ -83,6 +83,9 @@ func (s *Store) Revise(id string, expected uint64, change func(*Item) error) (It
 			}
 			current.NextDue = due
 			current.Fingerprint = ""
+			if err := current.CheckWatch(); err != nil {
+				return err
+			}
 		}
 		current.SpecRevision = expected + 1
 		return nil

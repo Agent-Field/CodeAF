@@ -28,7 +28,10 @@ or stop the task; its original conversation still owns its execution.
 Run `aforge collections` or `aforge collections list` to list collections.
 `aforge collections create "Marketing"` prints the new ID and name.
 Use that ID with `aforge collections rename <collection-id> "Launch"`.
-`aforge collections show <collection-id>` lists that collection's direct references.
+`aforge collections show <collection-id>` lists that collection's direct references,
+then any work placed in it under its own line, `Placed here, so this folder's rules
+reach it:` — a placement is not a reference, and only a placement gives the folder's
+rules reach. `--json` answers `{"references": [...], "placed": [...]}`.
 Order follows creation and insertion, rather than inferred relevance.
 Reading a fresh home does not create a database. `create` initializes it when needed.
 
@@ -61,7 +64,9 @@ These commands list references, not current execution status or record contents.
 
 `aforge collections find <kind> <record-id>` lists direct memberships; use the
 same `--session` when finding a task. A record in none answers `No collection
-references this record.` `aforge collections remove <collection-id> <kind>
+references this record.` Folders whose rules reach it follow under `Placed in, so these
+folders' rules reach it:`, each `(placed directly)` or `(placed 1 folder(s) below)`;
+`--json` answers `{"references": [...], "placed": [...]}`. `aforge collections remove <collection-id> <kind>
 <record-id>` removes only that membership, answering `This collection no longer
 references it; the original record is unchanged.` It neither deletes the original
 record nor stops ongoing work. Repeating add or remove is harmless, and removing
@@ -80,7 +85,8 @@ availability. It does not resume a closed conversation or start its work.
 Unavailable sources remain listed. Find accepts a case-insensitive name fragment
 or a member reference. Omitting both finds collections containing this chat;
 name and reference cannot be combined. Results are paged with `next_offset`.
-The local `aforge collections show` command still prints references only.
+In chat, show lists references and `governing` answers which folders' rules reach a
+record; the local `aforge collections show` also prints what is placed in the folder.
 Task workers can inspect collections but cannot reorganize them.
 
 ## How do I share a decision or finding across chats

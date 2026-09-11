@@ -494,6 +494,13 @@ rules first and the appointments under them, because the rules are the half that
 change what the work does. A task also gets one closing line the conversation does not:
 if it cannot honour one of these, it says so in its report.
 
+**Work placed in folders is told which.** A rule that reaches work through a folder is
+marked with that folder's name — `[Travel] Reports start with SCOPE-TRAVEL` — and the
+section opens `This work is placed in the folder Travel.` (a folder above it reads
+`(inside Company)`), then says the marked rules apply to all of it: *never decide from
+its wording whether it applies.* Which rules apply was decided when they were chosen, so
+the work is not left to guess it again from a rule's words.
+
 Why it matters: told that "remind me at 6 to check the deploy" was a condition to work
 within, a worker will hedge everything it does for a sentence that was never about it.
 
@@ -608,6 +615,19 @@ Two honest limits. The count starts at zero for every order that existed before 
 keeping it — nothing on disk says those old firings were clean, so they are not counted.
 And **the rung is a label, never a permission**: what a firing is allowed to do is your
 banked approval rules and only those. Nothing widens because a count went up.
+
+**What an unattended run is given.** A run that fires with nobody watching carries only
+the tools your approval rules allow without asking. The rest are **not on its list at
+all**, not refused one by one: with the default rules it has no `write`, `edit` or
+`bash`, and is told there is nothing here that changes a file and no shell, so it says in
+its report what should change instead of stopping on a question nobody is there to
+answer. Allow a tool, or a shell pattern, and the next run has it. Its reading tools —
+`read`, `ls`, `grep`, `find` and the document and image readers — reach **only the
+order's workspace**, links included; anything else is refused with `<path> is outside
+this work's project (<workspace>): work that runs while nobody is watching reads only
+inside the project it was set up in.` and the run goes on. It may read the folders:
+`collections` list, show, find and governing, and `shared_context` list, read and
+history.
 
 ## When it fired — the time window on the standing orders page
 
@@ -730,12 +750,19 @@ terminal`. An edit to either is `aforge standing edit`, whichever door made it.
 
 ## Watch a folder and keep a report current — --watch, --report and what changed
 
-A `--watch` order reads the files its glob matches on every pass. The first reading is
-the baseline and runs nothing. After that a run starts only when a matching file was
-added, changed or removed, and the run is told exactly which: `added inbox/a.md`,
-`modified inbox/a.md`. Modified means its size or modification time moved; contents are
-not compared. If the earlier reading is missing the run is told the changes are
-unknown, never that nothing changed.
+A `--watch` order reads the files its glob matches on every pass. `*` stays inside one
+folder; a whole `**` segment reaches down through every folder below, so
+`inbox/**/*.md` watches Markdown at any depth under `inbox` (links to folders are not
+followed). A watch that reaches more than **10000** files and folders is refused when
+you set it up or edit it: `inbox/** reaches more than 10000 files and folders, and a
+watch reads every one of them on every pass; watch a narrower pattern`. The first
+reading is the baseline and runs nothing. After that a run starts only when a matching
+file was added, changed or removed, and the run is told exactly which: `added
+inbox/a.md`, `modified inbox/a.md`. **A file touched, or saved again with the same
+text, is not a change**: when its size or time moves, its contents are compared with
+the last reading's, and only different contents count. A file over 4 MiB, and a folder
+the pattern matches, is compared by size and time alone. If the earlier reading is
+missing the run is told the changes are unknown, never that nothing changed.
 
 `--report <path>` names one file inside the workspace. The run's **final answer** is the
 report, and aforge — not the run — writes it there, replacing the previous version
@@ -743,12 +770,9 @@ unless you changed it; the run is told where it is so it can carry things forwar
 asked to put the report between a line `<report>` and a line `</report>` — whole lines,
 outside any fenced code block — and only what is between them is published. An answer
 with neither line is published whole; one with a `</report>` line but no `<report>`
-line is not published, since nobody can tell where its report began. An unattended run may only
-do what your approval rules allow without asking — reading, not writing or shell
-commands — so a run that tries to write the report file itself is refused, and that is
-not a question for you. If it also replied with a finished report between the lines,
-that report is published; if not, nothing is. **Only a run that came back clean
-publishes** — the next section lists every reason a report is not.
+line is not published, since nobody can tell where its report began. **Only a run that
+came back clean publishes** — the next section lists every reason a report is not.
+What an unattended run may do is in *What an unattended run is given*.
 
 A report inside its own watch, or inside a folder the watch matches (`*` watching
 `reports`), is refused when you set it up, because every report would wake it again. So
@@ -845,7 +869,10 @@ It exits 0 only when every run it started finished: **2** when a run did not fin
 `aforge standing show <id>` prints the order, its folder, the rules that reach it, and
 every run newest first: which instructions version it ran on, what woke it, which
 files changed, what it came to, its check against the rules, the report it published
-with its size and sha256, its cost, and the run's journal. `--json` prints the same records. Each run folder holds
+with its size and sha256, its cost, and the run's journal. A run that spent past its
+per-run limit says by how much — `· $0.0120 over its $0.0600 limit: the limit is checked
+between requests, and one request went past it` — and its record keeps the limit as
+`perRunUsd`. `--json` prints the same records. Each run folder holds
 `occurrence.json`, written **before** the run starts, and the run's own journal names
 that occurrence as its cause (`parent_cause: standing_occurrence`), so you can go from
 the order to the run and from the run back to the order.
@@ -865,16 +892,22 @@ starts a new run.
 
 When rules reach an order's work, its report is **checked against them before aforge
 publishes it**. A model in a fresh context, with no tools, is shown only those rules
-and the report. To say a rule is broken it has to quote the words in the report that
-break it; a finding that quotes nothing in the report is not taken.
+and the report, and answers **each rule on its own**: a rule that asks for something
+is kept only if it quotes where the report does it, and one that forbids something is
+broken only if it quotes the words that break it. A rule no report could show — how the
+work was done — is `not checkable`, never kept. An answer that skips a rule, or quotes
+words the report does not have, is no answer.
 
-On a finding the run is sent back **once**, told the rule and the quoted words, and
-asked for the whole corrected report, which is checked again. If it still breaks the
-rule, or the check gave no answer twice, nothing is published: the previous report
-stays, the draft is kept as `held-report.md` in the run's folder, and the order waits
-on you — `report held back, not published: it breaks a rule placed on this work`.
-`aforge standing show` prints `checked against 1 rule(s): kept after one correction`,
-or `held back, not published` with the draft's path.
+On a broken rule the run is sent back **once**, told each broken rule with what the
+report says or that it does not do what the rule asks, and asked for the whole
+corrected report, which is checked again. If a rule is still broken, or the check gave
+no answer twice, nothing is published: the previous report stays, the draft is kept as
+`held-report.md` in the run's folder, and the order waits on you — `report held back,
+not published: it does not keep a rule placed on this work — …`. `aforge standing show`
+prints `checked against 2 rule(s): 1 kept, 1 not checkable`, then one line per rule:
+`rule <id> “<words>” (obligation): kept — the report says “SCOPE-TRAVEL”`. The run's
+record keeps each rule by id with its kind, `obligation` or `prohibition`, and what
+the check found: `kept`, `broken` or `not-checkable`.
 
 What it is not: a proof. It is a model's reading, and it can miss a breach or see one
 that is not there. It reads the report aforge publishes, not what the run did with its

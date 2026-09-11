@@ -45,16 +45,20 @@ func TestRealRulesCheckOnTheLiveViolation(t *testing.T) {
 - Who should own the press release? It has no assignee and won't move without one.`
 	launch := standing.Item{ID: "5777cd193915f9d2", Words: "Inbox reports for Launch never quote email addresses or phone numbers; write [redacted].", When: standing.When{Kind: standing.WhenHold}}
 	marketing := standing.Item{ID: "d9bd6c94674e37cb", Words: "Marketing review notes cite the spec line behind every finding and never edit the copy itself.", When: standing.When{Kind: standing.WhenHold}}
+	travel := standing.Item{ID: "a1a1a1a1a1a1a1a1", Words: "Reports for Travel work start with the exact first line: SCOPE-TRAVEL", When: standing.When{Kind: standing.WhenHold}}
 	for _, c := range []struct {
 		name   string
 		rules  []standing.Item
 		report string
-		kept   bool
+		broken bool
 		quotes []string
 	}{
-		{"live violation", []standing.Item{launch}, violating, false, []string{"priya@example.com", "555 0100"}},
-		{"same report redacted", []standing.Item{launch}, strings.Replace(violating, "(priya@example.com, +1 555 0100). [redacted]", "([redacted]).", 1), true, nil},
-		{"a rule a report cannot show", []standing.Item{marketing}, "# Review notes\n- The copy says \"works offline\"; the spec says \"Offline support: removed in this release.\"", true, nil},
+		{"live violation", []standing.Item{launch}, violating, true, []string{"priya@example.com", "555 0100"}},
+		{"same report redacted", []standing.Item{launch}, strings.Replace(violating, "(priya@example.com, +1 555 0100). [redacted]", "([redacted]).", 1), false, nil},
+		{"a rule a report cannot wholly show", []standing.Item{marketing}, "# Review notes\n- The copy says \"works offline\"; the spec says \"Offline support: removed in this release.\"", false, nil},
+		// Validator S11: an obligation the report leaves out is broken, with
+		// nothing to quote — the check before wave 4 said "kept".
+		{"an omitted obligation", []standing.Item{travel}, "- press kit done\n- legal review pending\nSCOPE-LAUNCH", true, nil},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			client, err := provider.NewClient(provider.Config{APIKey: key, BaseURL: "https://openrouter.ai/api/v1", Model: model})
@@ -63,18 +67,18 @@ func TestRealRulesCheckOnTheLiveViolation(t *testing.T) {
 			}
 			agent, _ := newTestAgent(t, client, func(cfg *Config) { cfg.Model = model })
 			verdict := agent.checkStandingReport(context.Background(), c.rules, c.report)
-			t.Logf("RULES CHECK model=%s answered=%v kept=%v rule=%q quote=%q why=%q trouble=%q spend=$%.6f",
-				model, verdict.answered, verdict.kept, verdict.rule, verdict.quote, verdict.why, verdict.trouble, agent.Usage().CostUSD)
-			if !verdict.answered || verdict.kept != c.kept {
-				t.Fatalf("the check read %q as kept=%v (answered=%v), want kept=%v", c.name, verdict.kept, verdict.answered, c.kept)
+			t.Logf("RULES CHECK model=%s answered=%v summary=%s findings=%+v trouble=%q spend=$%.6f",
+				model, verdict.answered, verdict.summary(), verdict.recorded(), verdict.trouble, agent.Usage().CostUSD)
+			if broken := len(verdict.broken()) > 0; !verdict.answered || broken != c.broken {
+				t.Fatalf("the check read %q as broken=%v (answered=%v), want broken=%v", c.name, broken, verdict.answered, c.broken)
 			}
 			if len(c.quotes) > 0 {
 				found := false
 				for _, quote := range c.quotes {
-					found = found || strings.Contains(verdict.quote, quote)
+					found = found || strings.Contains(verdict.finding(), quote)
 				}
 				if !found {
-					t.Fatalf("the finding quotes %q, not the contact details", verdict.quote)
+					t.Fatalf("the finding %q does not quote the contact details", verdict.finding())
 				}
 			}
 			if agent.Usage().CostUSD > 0.05 {

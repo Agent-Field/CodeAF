@@ -1,0 +1,22 @@
+package main
+
+import (
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// Validator S27b on the old logic: placed in Alpha and referenced in Beta,
+// the work must be visible from Alpha and find must name Alpha.
+func TestPlacedWorkIsShownInItsFolderUnderItsOwnLabel(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "collections.db")
+	alpha, beta := collectionCreate(t, db, "Alpha"), collectionCreate(t, db, "Beta")
+	collectionCommand(t, db, "place", alpha.ID, "standing", "f15796736d0826e5")
+	collectionCommand(t, db, "add", beta.ID, "standing", "f15796736d0826e5")
+	if got := collectionPlain(t, db, "show", alpha.ID); !strings.Contains(got, "standing  f15796736d0826e5") {
+		t.Errorf("show Alpha does not show the work placed in it:\n%s", got)
+	}
+	if got := collectionPlain(t, db, "find", "standing", "f15796736d0826e5"); !strings.Contains(got, alpha.ID+"  Alpha") {
+		t.Errorf("find does not name the folder the work is placed in:\n%s", got)
+	}
+}

@@ -243,9 +243,7 @@ func TestAChatCardForWorkThatRunsSaysWhatAYesAgreesTo(t *testing.T) {
 	}
 	// AND THE RULES THE CARD QUOTED ARE THE RULES THE RUN WILL READ, from the
 	// placement the yes wrote rather than the one the card imagined.
-	collections := map[string]int{}
-	nearestDepths(collections, placed)
-	applies, err := d.store.ApplicableScope(item.Workspace, item.Origin.SessionID, collections)
+	applies, err := d.store.ApplicableScope(item.Workspace, item.Origin.SessionID, placementDepths(nearestPlaces(nil, placed)))
 	if err != nil {
 		t.Fatal(err)
 	}

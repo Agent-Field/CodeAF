@@ -1,0 +1,63 @@
+# Replay of superseded live8 run05's held check: the same rule, the same held report, the same prompt,
+# on qwen/qwen3.8-27b, twice (throwaway e2e test, not committed; its source follows the log).
+=== RUN   TestZZReplayRun05Check
+    zz_replay_e2e_test.go:44: REPLY 0: 
+        
+        {"rules": [{"rule": 1, "kind": "obligation", "verdict": "kept", "quote": "## Marketing copy vs. product spec — claims unsupported by spec\n\n### 1. \"Works offline, anywhere\"\n- **Copy claim:** \"Works offline, anywhere\"\n- **Spec says:** \"Offline support: removed in this release.\"\n- **Finding:** The spec explicitly states offline support is removed. The claim that the product works offline is false for this release.\n\n### 2. \"Export to CSV, PDF and Excel in one click\"\n- **Copy claim:** Export to CSV, PDF *and* Excel\n- **Spec says:** \"Export: CSV only.\"\n- **Finding:** The spec limits export to CSV alone. The claims of PDF export and Excel export are unsupported.\n\n---\n\n**Summary:** The launch copy makes two claims — offline operation and multi-format export — that the current product spec directly contradicts. Every cited claim should be removed or revised to match the spec before publication.", "why": "Each finding is paired with a quoted spec line, and the report only recommends changes rather than rewriting the marketing copy."}]}
+    zz_replay_e2e_test.go:45: READ 0: answered=true trouble="" spend=$0.00000
+    zz_replay_e2e_test.go:44: REPLY 1: 
+        
+        {"rules":[{"rule":1,"kind":"obligation","verdict":"kept","quote":"### 1. \"Works offline, anywhere\"\n- **Copy claim:** \"Works offline, anywhere\"\n- **Spec says:** \"Offline support: removed in this release.\"\n- **Finding:** The spec explicitly states offline support is removed. The claim that the product works offline is false for this release.\n\n### 2. \"Export to CSV, PDF and Excel in one click\"\n- **Copy claim:** Export to CSV, PDF *and* Excel\n- **Spec says:** \"Export: CSV only.\"","why":"Each numbered finding is backed by a quoted spec line, and the report presents the copy as claims rather than rewriting it."}]}
+    zz_replay_e2e_test.go:45: READ 1: answered=true trouble="" spend=$0.00000
+--- PASS: TestZZReplayRun05Check (364.94s)
+PASS
+ok  	github.com/Agent-Field/aforge-v2/internal/session	364.989s
+
+######## source
+//go:build e2e
+
+package session
+
+import (
+	"context"
+	"os"
+	"testing"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
+
+	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
+)
+
+// A throwaway replay of live8 run05's held check: the same rule, the same
+// report, the same prompt, printing the checker's raw reply. Not committed.
+func TestZZReplayRun05Check(t *testing.T) {
+	key := os.Getenv("OPENROUTER_API_KEY")
+	if key == "" {
+		t.Skip("no key")
+	}
+	model := os.Getenv("AFORGE_RULES_CHECK_MODEL")
+	raw, err := os.ReadFile("/tmp/opus-w4/run05-held-report.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules := []standing.Item{{ID: "500683211e22c8c1", Words: "Marketing review notes cite the spec line behind every finding and never edit the copy itself.", When: standing.When{Kind: standing.WhenHold}}}
+	for attempt := 0; attempt < 2; attempt++ {
+		client, err := provider.NewClient(provider.Config{APIKey: key, BaseURL: "https://openrouter.ai/api/v1", Model: model})
+		if err != nil {
+			t.Fatal(err)
+		}
+		agent, _ := newTestAgent(t, client, func(cfg *Config) { cfg.Model = model })
+		response, _, err := agent.callRole(context.Background(), roles.RoleAuditor, model, []ai.Message{
+			textMessage("system", standingRulesPrompt),
+			textMessage("user", standingRulesQuestion(rules, string(raw))),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		verdict := parseStandingRuleVerdict(response.Text(), string(raw), rules)
+		t.Logf("REPLY %d: %s", attempt, response.Text())
+		t.Logf("READ %d: answered=%v trouble=%q spend=$%.5f", attempt, verdict.answered, verdict.trouble, agent.Usage().CostUSD)
+	}
+}

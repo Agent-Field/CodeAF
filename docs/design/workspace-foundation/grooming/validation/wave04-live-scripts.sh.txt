@@ -1,0 +1,226 @@
+# Wave 4 live reruns. lib.sh is the validator's own with three lines changed:
+5,7c5,7
+< BIN=/home/santosh/af-pai-validate/bin/aforge
+< MODEL="${MODEL:-deepseek/deepseek-v4.1-flash}"
+< D=/tmp/pai-validate/$SCEN
+---
+> BIN="${BIN:-/home/santosh/src/aforge-personal-e2e/bin/aforge}"
+> MODEL="${MODEL:-deepseek/deepseek-v4-flash}"
+> D=/tmp/opus-w4/live/$SCEN
+
+######## s02.sh (validator's own; only the source line differs)
+SCEN=s02-P3-nested-miss; source /tmp/opus-w4/live/lib.sh
+mkdir -p "$P/inbox/clients/acme"
+echo "- Open: send Acme the renewal quote." > "$P/inbox/clients/acme/thread.md"
+echo "top-level note" > "$P/inbox/readme.md"
+say "the person says 'keep an eye on the inbox folder' and writes the natural glob inbox/*"
+a=$("$BIN" standing add --json --workspace "$P" --words "Keep an eye on the inbox folder." --watch 'inbox/*' --report out/a.md --per-run-usd 0.05 --instructions "Summarize what changed under inbox/ (read tool only)." | sid)
+say "and a second item with the recursive-looking glob inbox/**/*.md"
+b=$("$BIN" standing add --json --workspace "$P" --words "Keep an eye on everything under inbox." --watch 'inbox/**/*.md' --report out/b.md --per-run-usd 0.05 --instructions "Summarize what changed under inbox/ (read tool only)." | sid)
+echo "a=$a b=$b"
+check
+say "a nested client thread is edited in place (the common case: a reply appended)"
+sleep 1; echo "- URGENT: Acme says the quote is wrong, reply today." >> "$P/inbox/clients/acme/thread.md"
+check
+runs $a; runs $b
+"$BIN" standing show $a --json | python3 -c 'import json,sys; print("a line:", json.load(sys.stdin)["item"].get("lastCheckLine"))'
+"$BIN" standing show $b --json | python3 -c 'import json,sys; print("b line:", json.load(sys.stdin)["item"].get("lastCheckLine"))'
+say "stop both before any further change"
+"$BIN" standing stop $a; "$BIN" standing stop $b
+spend
+
+######## s09c.sh (validator's own; only the source line differs)
+SCEN=s09c-X5-rule-hold-path; source /tmp/opus-w4/live/lib.sh
+mkdir -p "$P/ops" "$P/out"
+echo "Server web-1 rebooted at 03:10 after a kernel update. Disk on db-2 is at 91 percent." > "$P/ops/log.txt"
+printf 'LAST GOOD (seeded)\n' > "$P/out/ops.md"; good=$(sha "$P/out/ops.md")
+f=$(cid Ops)
+af standing add --hold --scope "$f" --workspace "$P" --words "Ops reports never contain the letter e (upper or lower case) anywhere in the text."
+id=$("$BIN" standing add --json --workspace "$P" --place "$f" --words "Keep the ops summary current." --watch 'ops/*' --report out/ops.md --per-run-usd 0.08 \
+  --instructions "Read ops/log.txt with the read tool. Reply with a three-sentence summary of what happened and what needs attention, naming each server." | sid)
+check
+echo "Backup job on db-2 failed twice overnight; retry scheduled for 09:00." >> "$P/ops/log.txt"
+check; runs $id
+echo "--- published (should be the seeded last-good if held)"; cat "$P/out/ops.md"
+[[ "$(sha "$P/out/ops.md")" == "$good" ]] && echo "report unchanged" || echo "report replaced"
+held=$(ls "$AFORGE_HOME/v3/standing/$id/runs/"*/held-report.md 2>/dev/null); [[ -n "$held" ]] && { echo "--- held draft $held"; cat "$held"; }
+"$BIN" standing show $id --json --runs 1 | python3 -c 'import json,sys; o=json.load(sys.stdin)["occurrences"][0]; print(json.dumps(o.get("ruleCheck"),indent=1)[:2500]); print("needs:", json.load(open("/dev/null")) if False else "")'
+"$BIN" standing show $id | sed -n 1,40p
+audit $id 1
+spend; models
+
+######## s11.sh (validator's own; only the source line differs)
+SCEN=s11-O13-two-placements; source /tmp/opus-w4/live/lib.sh
+mkdir -p "$P/launch"
+echo "Launch checklist: pricing page draft done; press kit pending; legal review pending." > "$P/launch/checklist.md"
+travel=$(cid Travel); launch=$(cid Launch)
+af standing add --hold --scope "$travel" --workspace "$P" --words "Reports for Travel work start with the exact first line: SCOPE-TRAVEL"
+af standing add --hold --scope "$launch" --workspace "$P" --words "Reports for Launch work end with the exact last line: SCOPE-LAUNCH"
+id=$("$BIN" standing add --json --workspace "$P" --place "$launch" --words "Keep the launch-trip status current." --watch 'launch/*' --report status.md --per-run-usd 0.06 \
+  --instructions "Read launch/checklist.md with the read tool; do not run shell commands. Reply with a short status list: done and pending items." | sid)
+af collections place "$travel" standing "$id"
+"$BIN" standing show $id | grep -E 'folder|rule'
+check
+echo "Update: press kit done." >> "$P/launch/checklist.md"
+check; runs $id | head -2
+echo "--- status.md"; cat "$P/status.md"
+head -1 "$P/status.md" | grep -q 'SCOPE-TRAVEL' && ok "Travel rule (first line) honored" || bad "Travel marker not first line"
+tail -1 "$P/status.md" | grep -q 'SCOPE-LAUNCH' && ok "Launch rule (last line) honored" || bad "Launch marker not last line"
+audit $id 1
+"$BIN" standing show $id --json --runs 1 | python3 -c 'import json,sys; o=json.load(sys.stdin)["occurrences"][0]; print("ruleCheck", o.get("ruleCheck"))'
+"$BIN" standing stop $id >/dev/null
+spend; models
+
+######## s12.sh (validator's own; only the source line differs)
+SCEN=s12-J22-descendants-reference; source /tmp/opus-w4/live/lib.sh
+mkdir -p "$P/acme"
+echo "Acme renewal: contract value up 8%, signature expected Oct 12." > "$P/acme/notes.md"
+clients=$(cid Clients); acme=$(cid Acme); beta=$(cid Beta); archive=$(cid Archive)
+af collections place "$clients" collection "$acme"     # governing nesting
+af collections add "$clients" collection "$beta"       # reference-only nesting
+af standing add --hold --scope "$clients" --workspace "$P" --words "Every Clients report includes the line MARK-P."
+af standing add --hold --scope "$clients" --descendants --workspace "$P" --words "Every Clients-family report includes the line MARK-D."
+af standing add --hold --scope "$acme" --workspace "$P" --words "Every Acme report includes the line MARK-C."
+af standing add --hold --scope "$archive" --workspace "$P" --words "Every Archive report includes the line MARK-O."
+id=$("$BIN" standing add --json --workspace "$P" --place "$acme" --words "Keep the Acme account note current." --watch 'acme/*' --report acme-status.md --per-run-usd 0.06 \
+  --instructions "Read acme/notes.md with the read tool; do not run shell commands. Reply with a two-line account status." | sid)
+af collections add "$archive" standing "$id"
+b=$("$BIN" standing add --json --workspace "$P" --place "$beta" --words "Keep the Beta note current." --watch 'beta/*' --report beta.md --per-run-usd 0.06 --instructions "Summarize beta/ (read tool only)." | sid)
+say "rules reaching the Acme item (expect MARK-C and MARK-D only)"; "$BIN" standing show $id | grep 'rule reaching'
+say "rules reaching the Beta item (reference-nested under Clients; expect none)"; "$BIN" standing show $b | grep 'rule reaching' || echo "(no rule reaches Beta item)"
+"$BIN" standing stop $b >/dev/null
+check
+echo "Update: legal asked for a new indemnity clause." >> "$P/acme/notes.md"
+check; runs $id | head -2
+echo "--- acme-status.md"; cat "$P/acme-status.md"
+for m in MARK-C MARK-D; do grep -q $m "$P/acme-status.md" && ok "$m present (should apply)" || bad "$m missing (should apply)"; done
+for m in MARK-P MARK-O; do grep -q $m "$P/acme-status.md" && bad "$m present (must NOT apply)" || ok "$m absent (must not apply)"; done
+audit $id 1
+"$BIN" standing stop $id >/dev/null
+spend; models
+
+######## s17.sh (validator's own; only the source line differs)
+SCEN=s17-O2-regression-and-touch; source /tmp/opus-w4/live/lib.sh
+mkdir -p "$P/results"
+printf 'suite: checkout\npassed: 12\nfailed: 0\n' > "$P/results/summary.txt"
+id=$("$BIN" standing add --json --workspace "$P" --words "Keep an eye on regressions here." --watch 'results/*' --report regressions.md --per-run-usd 0.05 \
+  --instructions "Read results/summary.txt with the read tool; do not run shell commands. Reply with 'REGRESSION:' and the failing test names if anything fails, otherwise 'No regressions.'" | sid)
+check
+say "a test starts failing"
+printf 'suite: checkout\npassed: 11\nfailed: 1\nfailing: TestCheckoutTotalsRounding\n' > "$P/results/summary.txt"
+check; runs $id | head -2
+cat "$P/regressions.md"; grep -q 'TestCheckoutTotalsRounding' "$P/regressions.md" && ok "regression named" || bad "regression not named"
+inbox1=$(cat "$AFORGE_HOME"/v3/standing/projects/*/inbox.jsonl | wc -l); s1=$(sha "$P/regressions.md"); spend
+say "the CI job rewrites the same results (identical bytes, new mtime) — a no-change"
+sleep 1; touch "$P/results/summary.txt"
+check; runs $id | head -2
+inbox2=$(cat "$AFORGE_HOME"/v3/standing/projects/*/inbox.jsonl | wc -l)
+echo "inbox notes: after regression=$inbox1 after touch=$inbox2"; [[ "$(sha "$P/regressions.md")" == "$s1" ]] && echo "report bytes unchanged" || echo "report rewritten"
+"$BIN" standing stop $id >/dev/null
+spend
+
+######## s25.sh (validator's own; only the source line differs)
+SCEN=s25-R3-shared-policy-in-scheduled-run; source /tmp/opus-w4/live/lib.sh
+mkdir -p "$P/deps"
+echo "libfoo current: 2.4.1" > "$P/deps/available.txt"
+maint=$(cid Maint); echo "Maint=$maint"
+id=$("$BIN" standing add --json --workspace "$P" --words "Keep dependency upgrades triaged." --watch 'deps/*' --report upgrades.md --per-run-usd 0.06 \
+  --instructions "Read deps/available.txt with the read tool; do not run shell commands. For each available upgrade, say ELIGIBLE or NOT ELIGIBLE under any upgrade policy you have been given, citing the policy record id and revision if one applies; if you have no policy, say NO POLICY." | sid)
+af collections add "$maint" standing "$id"
+check
+say "a chat retains the upgrade policy as shared context for the Maint folder"
+cd "$P" && "$BIN" chat --no-host --once "Use the shared_context tool to create one record. title: 'Upgrade policy'. text: 'Upgrade policy set by the owner on 2026-09-10: never upgrade a dependency across a major version without owner sign-off. libfoo is pinned to 2.x.' targets: exactly one collection, id $maint. Do nothing else and reply with the record id and revision." 2>&1 | tail -5
+cd - >/dev/null
+sqlite3 -readonly "$AFORGE_HOME/v3/collections.db" ".tables" 2>&1 | head -3
+say "libfoo 3.0 is released"
+echo "libfoo available: 3.0.0 (major)" >> "$P/deps/available.txt"
+check; runs $id | head -2
+echo "--- upgrades.md (r1)"; cat "$P/upgrades.md"
+grep -q 'NOT ELIGIBLE' "$P/upgrades.md" && ok "r1 applied policy: NOT ELIGIBLE" || bad "r1 did not apply the policy"
+audit $id 1
+cp "$P/upgrades.md" "$D/r1.md"; spend
+
+######## s27.sh (validator's own; only the source line differs)
+SCEN=s27-P3-setup-guards-and-find; source /tmp/opus-w4/live/lib.sh
+mkdir -p "$P/reports" "$P/inbox"
+say "report inside its own watch"; "$BIN" standing add --workspace "$P" --words w --watch 'reports/*' --report reports/x.md --instructions i; echo "exit=$?"
+say "watch * with the report in a matched folder"; "$BIN" standing add --workspace "$P" --words w --watch '*' --report reports/x.md --instructions i; echo "exit=$?"
+say "report escaping the workspace"; "$BIN" standing add --workspace "$P" --words w --watch 'inbox/*' --report ../escape.md --instructions i; echo "exit=$?"
+say "report as an absolute path elsewhere"; "$BIN" standing add --workspace "$P" --words w --watch 'inbox/*' --report /tmp/pai-validate/abs-escape.md --instructions i; echo "exit=$?"
+say "a trigger that must NOT fire: glob inbox/*.md, a .tmp file arrives"
+id=$("$BIN" standing add --json --workspace "$P" --words "Watch markdown notes." --watch 'inbox/*.md' --report reports/notes.md --per-run-usd 0.03 --instructions "Read changed inbox notes (read tool only)." | sid)
+check; echo junk > "$P/inbox/scratch.tmp"; check; runs $id | head -1
+say "O10: find the responsibility later"
+a=$(cid Alpha); b=$(cid Beta)
+af collections place "$a" standing "$id"; af collections add "$b" standing "$id"
+af collections find standing "$id"
+af collections show "$a"
+af collections show "$b"
+"$BIN" standing list | grep -A1 "$id"
+"$BIN" standing show "$id" | grep folder
+"$BIN" standing stop $id > /dev/null
+spend
+
+######## s09c3.sh (wave-4 variant)
+SCEN=s09c3-X5-rule-hold-noseed; source /tmp/opus-w4/live/lib.sh
+mkdir -p "$P/ops" "$P/out"
+echo "Server web-1 rebooted at 03:10 after a kernel update. Disk on db-2 is at 91 percent." > "$P/ops/log.txt"
+good=none
+f=$(cid Ops)
+af standing add --hold --scope "$f" --workspace "$P" --words "Ops reports never contain the letter e (upper or lower case) anywhere in the text."
+id=$("$BIN" standing add --json --workspace "$P" --place "$f" --words "Keep the ops summary current." --watch 'ops/*' --report out/ops.md --per-run-usd 0.08 \
+  --instructions "Read ops/log.txt with the read tool. Reply with a three-sentence summary of what happened and what needs attention, naming each server." | sid)
+check
+echo "Backup job on db-2 failed twice overnight; retry scheduled for 09:00." >> "$P/ops/log.txt"
+check; runs $id
+echo "--- published (should be the seeded last-good if held)"; cat "$P/out/ops.md"
+[[ "$(sha "$P/out/ops.md")" == "$good" ]] && echo "report unchanged" || echo "report replaced"
+held=$(ls "$AFORGE_HOME/v3/standing/$id/runs/"*/held-report.md 2>/dev/null); [[ -n "$held" ]] && { echo "--- held draft $held"; cat "$held"; }
+"$BIN" standing show $id --json --runs 1 | python3 -c 'import json,sys; o=json.load(sys.stdin)["occurrences"][0]; print(json.dumps(o.get("ruleCheck"),indent=1)[:2500]); print("needs:", json.load(open("/dev/null")) if False else "")'
+"$BIN" standing show $id | sed -n 1,40p
+audit $id 1
+spend; models
+
+######## s25p.sh (wave-4 variant)
+SCEN=s25p-R3-policy-present; source /tmp/opus-w4/live/lib.sh
+mkdir -p "$P/deps"
+echo "libfoo current: 2.4.1" > "$P/deps/available.txt"
+maint=$(cid Maint); echo "Maint=$maint"
+id=$("$BIN" standing add --json --workspace "$P" --words "Keep dependency upgrades triaged." --watch 'deps/*' --report upgrades.md --per-run-usd 0.06 \
+  --instructions "Read deps/available.txt with the read tool; do not run shell commands. For each available upgrade, say ELIGIBLE or NOT ELIGIBLE under any upgrade policy you have been given, citing the policy record id and revision if one applies; if you have no policy, say NO POLICY." | sid)
+af collections add "$maint" standing "$id"
+check
+say "a chat retains the upgrade policy as shared context for the Maint folder"
+cd "$P" && "$BIN" chat --no-host --yolo --max-cost 0.03 --once "Use the shared_context tool to create one record. title: 'Upgrade policy'. text: 'Upgrade policy set by the owner on 2026-09-10: never upgrade a dependency across a major version without owner sign-off. libfoo is pinned to 2.x.' targets: exactly one collection, id $maint. Do nothing else and reply with the record id and revision." 2>&1 | tail -5
+cd - >/dev/null
+sqlite3 -readonly "$AFORGE_HOME/v3/collections.db" ".tables" 2>&1 | head -3
+say "libfoo 3.0 is released"
+echo "libfoo available: 3.0.0 (major)" >> "$P/deps/available.txt"
+check; runs $id | head -2
+echo "--- upgrades.md (r1)"; cat "$P/upgrades.md"
+grep -q 'NOT ELIGIBLE' "$P/upgrades.md" && ok "r1 applied policy: NOT ELIGIBLE" || bad "r1 did not apply the policy"
+audit $id 1
+cp "$P/upgrades.md" "$D/r1.md"; spend
+
+######## s25x.sh (wave-4 variant)
+SCEN=s25x-X3-reach-probe; source /tmp/opus-w4/live/lib.sh
+mkdir -p "$P/deps"
+echo "libfoo current: 2.4.1" > "$P/deps/available.txt"
+id=$("$BIN" standing add --json --workspace "$P" --words "Keep dependency upgrades triaged." --watch 'deps/*' --report upgrades.md --per-run-usd 0.03 \
+  --instructions "Read deps/available.txt. Then look for any upgrade policy anywhere on this machine: read ../home/v3/config.json and list ../home/v3/standing with ls. Report each dependency with ELIGIBLE, NOT ELIGIBLE or NO POLICY, and say what you could not read." | sid)
+check
+echo "libfoo available: 3.0.0 (major)" >> "$P/deps/available.txt"
+check; runs $id | head -2
+echo "--- upgrades.md"; cat "$P/upgrades.md"
+python3 - "$AFORGE_HOME" "$id" <<'PY'
+import json,sys,glob
+for p in glob.glob(f'{sys.argv[1]}/v3/standing/{sys.argv[2]}/runs/*/transcript.jsonl'):
+    for l in open(p):
+        r=json.loads(l)
+        if r.get('type')!='message': continue
+        for c in r.get('toolCalls') or []: print('CALL', c['function']['name'], c['function']['arguments'][:200])
+        if r.get('role')=='tool': print('  ->', (r.get('content') or '')[:260].replace('\n',' | '))
+PY
+"$BIN" standing stop $id >/dev/null
+spend
+

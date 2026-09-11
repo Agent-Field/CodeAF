@@ -669,7 +669,11 @@ needs approval but no resolver is attached: <rule>
 ```
 
 Inside a task node the refusal reads
-`refused in a task: <rule> — nobody to ask`. A wait that ends without an answer
+`refused in a task: <rule> — nobody to ask`. A run of ongoing work that fires on
+its own is not given the tools your rules would refuse it at all — no `write`,
+`edit` or `bash` under the default rules — so it meets this line only where a tool
+you did allow reaches past what you allowed, like a shell command outside your
+pattern. A wait that ends without an answer
 is never worded as a person's no. A timed-out question refuses with
 `not approved: the question timed out`. A turn (or the agent) that ends first
 refuses with `not approved: ended before an answer`.

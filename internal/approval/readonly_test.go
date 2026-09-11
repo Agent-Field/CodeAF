@@ -141,3 +141,72 @@ func TestCheckReadOnlyYieldsToABashPattern(t *testing.T) {
 		t.Errorf("CheckBash(git status) beside an unrelated pattern = %+v, want prompt", decision)
 	}
 }
+
+// The folder verbs' reads are looks; their writes still ask. They were a
+// question in a conversation and a refusal in unattended work (validator S25a).
+func TestTheFolderVerbsReadsAreLooksAndTheirWritesAsk(t *testing.T) {
+	policy := Policy{Default: ActionPrompt}
+	for tool, actions := range map[string][]string{
+		"collections":    {"list", "show", "find", "governing"},
+		"shared_context": {"list", "read", "history"},
+	} {
+		for _, action := range actions {
+			if got := policy.Check(tool, json.RawMessage(`{"action":"`+action+`"}`)); got.Action != ActionAllow {
+				t.Errorf("%s %s asks: %v", tool, action, got)
+			}
+		}
+	}
+	for _, call := range []struct{ tool, args string }{
+		{"collections", `{"action":"place","id":"c"}`},
+		{"collections", `{"action":"create","name":"x"}`},
+		{"shared_context", `{"action":"create","title":"x"}`},
+		{"shared_context", `{"action":"withdraw","id":"x"}`},
+		{"shared_context", `not json`},
+	} {
+		if got := policy.Check(call.tool, json.RawMessage(call.args)); got.Action != ActionPrompt {
+			t.Errorf("%s %s no longer asks: %v", call.tool, call.args, got)
+		}
+	}
+}
+
+// Grants is what an unattended belt is built from: a tool is carried there
+// when some call of it can run with nobody to ask. The shipped floor's shape —
+// a prompt default with the reads allowed by name — grants the looks and the
+// named tools, and not the shell, the writes or commit.
+func TestGrantsIsWhatCanRunWithNobodyToAsk(t *testing.T) {
+	floor := Policy{Default: ActionPrompt, Tools: map[string]Action{
+		"read": ActionAllow, "grep": ActionAllow, "find": ActionAllow, "ls": ActionAllow,
+		"track": ActionAllow, "recall": ActionAllow, "manual": ActionAllow,
+	}}
+	for tool, want := range map[string]bool{
+		"read": true, "grep": true, "track": true, "manual": true,
+		"collections": true, "shared_context": true, "tasks": true,
+		"bash": false, "write": false, "edit": false, "commit": false, "ask": false,
+	} {
+		if got := floor.Grants(tool); got != want {
+			t.Errorf("floor grants %s = %v, want %v", tool, got, want)
+		}
+	}
+	// An allow pattern somebody wrote grants the shell, for what it names.
+	patterned := floor
+	patterned.BashPatterns = []Rule{{Match: "go test *", Action: ActionAllow}}
+	if !patterned.Grants("bash") {
+		t.Error("an allow pattern did not grant bash")
+	}
+	// A deny pattern grants nothing; a named rule outranks the look.
+	denied := floor
+	denied.BashPatterns = []Rule{{Match: "*", Action: ActionDeny}}
+	denied.Tools = map[string]Action{"read": ActionPrompt}
+	if denied.Grants("bash") || denied.Grants("read") {
+		t.Error("a deny pattern or read:prompt still granted")
+	}
+	// A blanket allow grants everything except what acts in the person's name.
+	open := Policy{Default: ActionAllow}
+	if !open.Grants("write") || !open.Grants("bash") || open.Grants("gmail_send") {
+		t.Error("the blanket allow's grant is wrong")
+	}
+	// The zero policy and a deny blanket lift nothing.
+	if (Policy{}).Grants("read") || (Policy{Default: ActionDeny}).Grants("read") {
+		t.Error("a zero or deny policy granted a look")
+	}
+}
