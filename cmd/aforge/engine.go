@@ -199,11 +199,24 @@ func attachEngineHost(workspaceFlag string) (net.Conn, error) {
 	})
 }
 
-// clearStaleEngineHost is the question and what is done with the answer. A nil
+// clearStaleEngineHost asks on behalf of the build that is running, which is the
+// only caller there has ever been. The yardstick is a parameter one layer down
+// because a test needs two builds of one source and a test binary is linked once.
+func clearStaleEngineHost(workspace string) (string, error) {
+	return clearStaleEngineHostFor(workspace, buildinfo.Identity())
+}
+
+// clearStaleEngineHostFor is the question and what is done with the answer. A nil
 // error means "go ahead and attach": either nothing is holding this workspace,
 // or what is holding it is this build, or what was holding it has gone — or it
 // is an older build of the SAME WIRE that would not let go, which is the one
 // case that answers with a sentence AND a nil error.
+//
+// WHAT MAKES TWO BUILDS THE SAME ONE IS THE SOURCE THEY WERE BUILT FROM, and
+// [buildinfo.Identity] is where that is decided. Rebuilding a commit does not
+// make an older aforge, and while the moment of the build was part of the answer
+// every window opened after a `make build` told somebody their own engine was
+// behind (#730).
 //
 // ── A BUSY OLD HOST IS ATTACHED TO, NOT REFUSED ─────────────────────────────
 //
@@ -221,7 +234,7 @@ func attachEngineHost(workspaceFlag string) (net.Conn, error) {
 // back one line for the entry notice saying which state the machine is in. A
 // DIFFERENT wire version keeps the refusal it has always had, because there is
 // no attaching to a peer whose frames this build cannot read.
-func clearStaleEngineHost(workspace string) (string, error) {
+func clearStaleEngineHostFor(workspace, thisBuild string) (string, error) {
 	host, err := enginehost.Ask(workspace, remote.WhoIs{})
 	switch {
 	case errors.Is(err, remote.ErrNoHostThere):
@@ -234,7 +247,7 @@ func clearStaleEngineHost(workspace string) (string, error) {
 		// Nothing answered at all: no host, or one that has stopped reading.
 		// Both are the ordinary road — Attach starts one.
 		return "", nil
-	case host.Version == remote.Version && host.Build == buildinfo.Identity():
+	case host.Version == remote.Version && host.Build == thisBuild:
 		return "", nil
 	}
 	// Another build, and it is answering, so it can be asked to go.
