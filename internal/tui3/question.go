@@ -416,7 +416,28 @@ func (a *app) questioning() bool {
 // purpose: `esc` is later and not cancelled, so a question a person put off is
 // still a question the work is waiting on, and a count that dropped when they
 // pressed esc would be the surface telling them they had finished.
-func (a *app) questionCount() int { return len(a.questions) + a.sheetOpen() }
+//
+// AND A SHAPE THAT WAITS ON NOBODY IS NOT COUNTED, because the chip's whole
+// sentence is "something is waiting on you". A ratify is the model saying what
+// it has already done; nothing is parked on the answer, and
+// [session.AskKind.Waits] is the engine's own reading of exactly that — the same
+// term [session.Question.Waiting] uses for the waiting desk, the presence file
+// and the open-question cap. A chip reading `? 1 question` over a ratify sends
+// somebody to a screen where there is nothing for them to decide, which is the
+// surface promising work that is not there.
+//
+// THE BLOCK STILL DRAWS IT. What is settled here is what the STATUS ROW claims
+// across every page, not whether the row exists: a ratify is still shown, still
+// answerable, and still carries its own keys where it is drawn.
+func (a *app) questionCount() int {
+	n := a.sheetOpen()
+	for _, q := range a.questions {
+		if q.question.Ask.Waits() {
+			n++
+		}
+	}
+	return n
+}
 
 // ── raising one ─────────────────────────────────────────────────────────────
 
@@ -3094,11 +3115,7 @@ func (a *app) questionWritingKey(head questionShown, key string) (tea.Cmd, bool)
 		open.writing = ""
 		a.input.reset()
 		if writing == questionAskBackKey {
-			// THE QUESTION STAYS OPEN WHILE THE ASKER ANSWERS, which is the
-			// room's own seam ([app.askBackCmd]): the sentence goes to the model
-			// as the next thing said, the reply lands in the conversation, and
-			// the block is still there to answer afterwards.
-			return a.submit(words), true
+			return a.askBack(*open, "", words), true
 		}
 		answer := session.Answer{Change: words}
 		if questionChangeCarriesThePointer(open.question) && open.pick >= 0 && open.pick < len(open.question.Options) {
@@ -3108,6 +3125,42 @@ func (a *app) questionWritingKey(head questionShown, key string) (tea.Cmd, bool)
 		return a.answerQuestion(*open, answer), true
 	}
 	return nil, false
+}
+
+// askBack sends one sentence to the asker WITH THE QUESTION STILL OPEN, down
+// whichever of the two roads the question's own lane has.
+//
+// THE ENGINE'S DOOR IS THE ONE TO USE WHERE IT EXISTS. [session.Answer.AskedBack]
+// returns the parked call with the person's words and a lead that tells the
+// asker the question is still on their screen and not to ask it again
+// (tools_ask.go's `askedBackLead`), so the reply comes back knowing what it is
+// about. The old road sent the sentence as an ordinary new message, which
+// reached the model with none of that and left the call parked behind it.
+//
+// THE OPTION IS WHICH ANSWER THE QUESTION IS ABOUT, and "" is a question about
+// the question itself ([session.Exchange.Option]). The block asks about the
+// whole question; the page asks from whichever section the reader is standing
+// on, which is the one thing it knows that the block does not.
+//
+// AND WHICH LANES HAVE IT IS ASKED OF [session.AnswerResolves] RATHER THAN
+// LISTED HERE. That function is the one reading of "does this answer END the
+// question", at both ends of the wire, and today it says an ask-back leaves a
+// question open on the model's own lane and nowhere else. A consent or a task
+// answered with nothing but words asked back would be RESOLVED by that door —
+// approved with no key — so those keep the ordinary turn until their lane grows
+// the same seam. Asking the predicate means this function is already right on
+// the day one of them does.
+func (a *app) askBack(q questionShown, option, words string) tea.Cmd {
+	exchange := session.Exchange{Option: option, Asked: words, At: a.now()}
+	answer := session.Answer{AskedBack: []session.Exchange{exchange}}
+	// The two fields the predicate reads, dressed exactly as [app.answerQuestion]
+	// would dress them a moment later.
+	asked := answer
+	asked.Kind, asked.Ask = q.question.Kind, q.question.Ask
+	if session.AnswerResolves(asked) {
+		return a.submit(words)
+	}
+	return a.answerQuestion(q, answer)
 }
 
 // questionWriting reports whether the box under the block is a question's

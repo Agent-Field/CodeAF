@@ -488,7 +488,7 @@ the row.
 | `esc` | later. Nothing is cancelled |
 | `o` | open it out into its own page, where there is more to see. Inside the page it opens and folds the answer you are on |
 | `c` | change — take an answer, but say what you want different. The answers row becomes `change: say what you want different, then enter · it goes with [2] …`; type in the box below, `enter` sends the words with the pointed answer, `esc` gives the box back |
-| `?` | ask back before answering. The row becomes `ask back: type your question, then enter · the question stays open`; the question is still there to answer, and the reply lands in the conversation when the work can read it — after you answer, if the work is parked on this question |
+| `?` | ask back before answering. The row becomes `ask back: type your question, then enter · the question stays open`; the question is still there to answer. On a question the model itself asked, the reply comes back while you are still deciding; on a permission, a task proposal or a standing card it reaches the model after you answer |
 | `d` | you decide |
 | `D` | decide questions like this from now on |
 | `r` | make it a rule |
@@ -812,8 +812,10 @@ waiting for itself: you would type, and the screen would sit there. Your words
 end the wait instead.
 
 If you meant to say something *beside* the question and keep it open, `?` is the
-key for that — but read the limit on it below first: while the work is parked on
-the question, an ask-back reaches the model only once you have answered.
+key for that. On a question the model itself asked you get an answer back while
+the question stays open; on a permission, a task proposal or a standing card the
+ask-back reaches the model only once you have answered, and the section on `?`
+below says why.
 
 ## Comment on one option
 
@@ -832,8 +834,8 @@ beside your pick — the foot shows the difference before you press enter.
 
 `?` puts one question back to whoever asked, with the question still open.
 
-Type what you want to know and press enter. The sentence goes to the model as an
-ordinary message and the question stays exactly where it was; the reply is drawn
+Type what you want to know and press enter. The question stays exactly where it
+was; the reply is drawn
 in place under the answer you asked about, led by `↳`, and the whole exchange is
 saved with your answer. Nothing is decided by asking and no line is written to
 the record. Your answer, when you give it, reaches the model as the result of the
@@ -841,14 +843,18 @@ call it asked from, or as a message where that turn has already moved on. While
 a question is still open nothing asks it again: a second copy of it is refused
 with `already asked and still open:`.
 
-**A limit worth knowing before you use it.** When the work is PARKED ON THIS
-QUESTION — the foot says `running ask` and nothing else is moving — the sentence
-you ask back with is queued behind that question, and the question is waiting for
-you. So no reply comes until you answer. There is no error and nothing is lost:
-answer the question and the ask-back reaches the model with it. When the work is
-doing something else beside the question — a command, a file, another step — the
-reply comes back while you are still deciding, which is what this key was written
-for.
+**On a question the model itself asked, the reply comes back while you are still
+deciding — even when the work is parked on it.** The sentence goes back as the
+result of the call the model is waiting on, carrying a note that the question is
+still on your screen and not to ask it again, so the model answers you and the
+answers stay exactly where they were. Nothing is decided by asking.
+
+**A limit worth knowing, and it is now only about the OTHER questions.** A
+permission, a task proposal and a standing card are not asked by a call the model
+is parked on, so a sentence asked back on one of those goes in as an ordinary
+message and is queued behind the question — which is waiting for you. No reply
+comes until you answer. There is no error and nothing is lost: answer the
+question and the ask-back reaches the model with it.
 
 **One exchange per answer.** A second `?` on the same answer says `already asked
 about this one` rather than doing nothing. A question that turned into a
