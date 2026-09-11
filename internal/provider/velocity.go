@@ -1241,7 +1241,7 @@ func (c *Client) refuseUpstream(request *ai.Request, knobs callKnobs, err error,
 // CONFIGURED. A base that is not a router gets a ledger with one row in it, not
 // no ledger. Nothing reaches the wire that was not already allowed to:
 // [Client.providerPreferences] returns nil for `routing off` and for a base that
-// does not carry a preference, and [Client.laneChoiceFor] answers no choice for
+// does not carry a preference, and [Client.drawLaneChoice] answers no choice for
 // the first — so the reading is kept and the steering is not. What it buys is
 // that a refusal is still a fact anybody can act on: the retry loop's own
 // exclusions, the stream cut's [StreamCut.Rerouted], the wall, the frontier.

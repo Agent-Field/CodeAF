@@ -524,7 +524,13 @@ func (c *Client) drawLaneChoice(knobs callKnobs, model string, request *ai.Reque
 	}
 	if named != "" && !pin.Borrow {
 		// The candidate set survives and the ranking does not: see above.
-		return lanes.Choice{Only: []string{named}, Frontier: choice.Frontier}, true
+		//
+		// AND THIS IS THE ONE PLACE `Pinned` IS WRITTEN, because this is the one
+		// place that knows a PERSON named the machine. Every other call demands a
+		// set too ([lane.demandOf]), and a set we admitted is ours to relax while
+		// a machine somebody typed is not: the difference decides whether a stall
+		// is rescued or asked about ([control.Plan.Pinned]).
+		return lanes.Choice{Only: []string{named}, Frontier: choice.Frontier, Pinned: true}, true
 	}
 	// AND A PIN THAT MAY BE BORROWED IS A PREFERENCE, so it goes in front of
 	// the belief's own ranking rather than replacing it: the named machine is

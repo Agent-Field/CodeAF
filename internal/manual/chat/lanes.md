@@ -53,6 +53,11 @@ needs — and then ranks what is left by the only thing you actually feel: how l
 you will be sitting there, plus what it costs, with the money converted into
 seconds by how much your waiting is worth.
 
+**The machines that survive all that are asked for by name, and the provider may
+not go outside them.** It is not a ranking the provider is free to put aside; it
+is a closed set with the ranking applied inside it. The section below says what
+that costs when every machine in the set is busy at once.
+
 Nothing is waiting on this when nobody is waiting on you. A background errand is
 ranked on price, because a second saved for a machine is a second nobody spends.
 
@@ -265,6 +270,12 @@ Press **y** and the answer is fetched from somewhere else, at once, from the
 endpoint that was already ranked second — no new decision made at the worst
 possible moment. The question is asked **once** per answer, and it disappears
 the moment your answer starts arriving, because by then it is moot.
+
+**You are only ever asked about a machine you pinned yourself.** On auto, aforge
+also asks for machines by name — the closed set above — but that set is its own,
+so a slow machine in it is simply left: the answer is started somewhere else and
+you are told what is happening (`trying another machine`) rather than asked to
+decide anything. The question is what your own instruction earns.
 
 **`y` is the only key the question takes.** There is nothing to press to say no, because
 there is nothing to decline — the wait is happening either way, and refusing would only
