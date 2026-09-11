@@ -1776,6 +1776,15 @@ the task's row on the roster.
 The head is what happened. The muted line under it is what came of it, in the task's own
 first sentence, quoted because they are its words and not aforge's.
 
+**The quoted sentence is the first line of the report that says something**, not its
+literal first line. Work that ran a command, produced a diff or answered in JSON often
+opens its report with the code fence around that — the fence is how the answer is spelled,
+not a sentence — so a fence marker, three backticks or three tildes with or without a
+language word after it, is passed over the way a blank line is. The first line that is
+neither is what the card quotes, which for a report that is nothing but a fenced block is
+the first line inside it. A report with no line to quote draws no quotation marks at all,
+only the start stamp.
+
 **Every fact on the head is joined by ` · `, the state word included.** It used to read
 `done 4m12s`, with the state and the clock fused into one phrase while `3 files` beside
 them was properly separated — so on a card asking for a hand, the word and the clock ran

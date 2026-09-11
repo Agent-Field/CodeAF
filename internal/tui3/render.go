@@ -4321,3 +4321,47 @@ func firstLine(s string) string {
 	}
 	return s
 }
+
+// firstProseLine is the first line of a report that says something, and it is
+// what the quoted half of a card is built from.
+//
+// A REPORT IS THE MODEL'S OWN MARKDOWN, and a model that has just run a command
+// or produced a diff opens with the fence around it rather than with a sentence
+// — the fence is not a defect in the report, it is how the answer is spelled.
+// The literal first line of such a report is ``` or ~~~, which is a row of
+// punctuation and says nothing at all; quoting it spends the one line the card
+// exists to draw on the wrapper around the answer.
+//
+// SO THE WHOLE LAW IS ONE SENTENCE: a blank line says nothing, a fence marker
+// says nothing, and the first line that is neither is what the work came to.
+// The markers are read by [mdFenceOpen], the same door the renderer reads them
+// through, so a marker with a language word after it — go, sh, diff, json —
+// is a marker here for exactly the reason it is one there: a line this surface
+// would DRAW as prose is quoted as prose, and there is no second opinion about
+// what a fence is.
+//
+// THAT MEANS A REPORT THAT IS NOTHING BUT A FENCED BLOCK QUOTES THE FIRST LINE
+// INSIDE IT, which is the point rather than an exception to it: the work's
+// answer IS the block's contents, and a reading that stepped over the whole
+// block to look for prose underneath would quote nothing at all — the emptiness
+// law doing the opposite of its job, going silent where there was something to
+// say.
+//
+// AND A REPORT WITH NO PROSE AT ALL RETURNS NOTHING, which hands the row to the
+// emptiness law where it does belong: the card falls back to its subtitle and,
+// failing that, draws the start stamp alone rather than an empty pair of
+// quotation marks claiming the work said something ([app.doneUnder] does that
+// already, and nothing here has to learn it twice).
+func firstProseLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if _, _, fence := mdFenceOpen(trimmed); fence {
+			continue
+		}
+		return trimmed
+	}
+	return ""
+}

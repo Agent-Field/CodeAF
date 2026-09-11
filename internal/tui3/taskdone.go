@@ -231,7 +231,7 @@ func (a *app) landedCard(node *taskNode) {
 		span:        node.elapsed,
 		started:     node.spawnedAt(),
 		landed:      landed,
-		outcome:     strings.TrimSpace(firstLine(node.report)),
+		outcome:     firstProseLine(node.report),
 		report:      strings.TrimSpace(node.report),
 		result:      strings.TrimSpace(node.produced),
 		resultWhole: strings.TrimSpace(node.producedWhole),
@@ -762,8 +762,9 @@ func (card *taskDone) hasDetail() bool {
 //     account to draw. This is every ordinary two-line landing, and it is
 //     byte-for-byte what this card drew before the split existed.
 //   - It did not: the report LEADS with the sentence saying so (the engine
-//     composes it that way, and [taskDone.outcome] is already that first line),
-//     so that sentence is the account and the rest of the report is the answer.
+//     composes it that way, and [taskDone.outcome] is already that first line
+//     that says something), so that sentence is the account and the rest of the
+//     report is the answer.
 //
 // Nothing here reads the wording of a report. The question asked is the card's
 // own settled state, which is the same rule internal/session's
