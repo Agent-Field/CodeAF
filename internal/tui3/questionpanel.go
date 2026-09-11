@@ -201,6 +201,15 @@ func (a *app) questionPanelBody(q questionShown, inner int) []string {
 	// them because it is not an answer: it says how far the answer above it
 	// reaches, and a row a person could land the pointer on would make `enter`
 	// mean two things.
+	//
+	// THIS IS WHERE A QUESTION'S OWN DIM LINES GO, and the reason is the second
+	// key tier. The row UNDER the frame carries the quieter keys and nothing
+	// else — the owner's hints ruling put exactly `↑↓ choose · enter take it ·
+	// esc later` in the bottom edge and the dropped keys on one dim row below —
+	// so a sentence mixed in there is the "no hierarchy in the hints" that ruling
+	// exists to prevent. A line about the question belongs inside the object: one
+	// blank row, then `questionPanelGap + a.pal.dim(fit(line, room))`, which
+	// framed.draw then sets to the frame's one width.
 	if row := a.questionScopeRow(q, room); row != "" {
 		rows = append(rows, "", row)
 	}
