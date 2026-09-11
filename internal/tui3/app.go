@@ -1582,11 +1582,10 @@ type app struct {
 	// sources and sourceModels are the live model-service side of /connect.
 	// The default catalog still comes through models; only additional services
 	// live in sourceModels, keyed by their stable persisted id.
-	sources          modelsource.Set
-	modelCatalog     []modelsource.Source
-	sourceModels     map[string][]Model
-	modelDraft       *modelConnectDraft
-	modelSuggestions map[string]string
+	sources      modelsource.Set
+	modelCatalog []modelsource.Source
+	sourceModels map[string][]Model
+	modelDraft   *modelConnectDraft
 	// harn is the subharness registry (Options.Harnesses) and harnPanel the
 	// list /harness opens over it (harnesspanel.go). A nil harn is a surface
 	// that cannot show harnesses and says so; nothing about the OFFER depends on

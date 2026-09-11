@@ -410,7 +410,6 @@ const (
 	OutcomeAccountCannotPay
 	OutcomeUnanswered
 	OutcomeWrongShape
-	OutcomeCollides
 )
 
 // Outcome is what a connect attempt learned, in facts rather than a sentence:
@@ -432,5 +431,4 @@ type Outcome struct {
 	PlanPaused bool
 	PlanReset  string
 	Overflow   *Door
-	Suggestion string
 }

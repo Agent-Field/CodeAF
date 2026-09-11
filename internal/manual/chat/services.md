@@ -5,10 +5,10 @@
 Open `/connect` or `/connections`. The `models` group lists DeepSeek, Z.ai, Moonshot,
 MiniMax, Alibaba Qwen, Ollama and **Something else**, followed by any service already
 connected. Pick a row and answer its fields. A successful listed service says
-`deepseek is connected · 6 models`; one without a list says only
-`deepseek is connected`. A service with more than one billing door names the one it
-bound: `z-ai is connected · coding plan · 4 models` or
-`z-ai is connected · pay-as-you-go · 10 models`. The Providers tab in `/settings`
+`deepseek-direct is connected · 6 models`; one without a list says only
+`deepseek-direct is connected`. A service with more than one billing door names the one it
+bound: `z-ai-direct is connected · coding plan · 4 models` or
+`z-ai-direct is connected · pay-as-you-go · 10 models`. The Providers tab in `/settings`
 then shows the service, door, safe spelling of its key, region and order.
 
 The default service remains first. With two or more services, `/model` groups models by
@@ -48,9 +48,18 @@ claim because its plan and metered traffic currently have no wire-level differen
 aforge can use to prove which balance answered.
 
 A service name cannot be confused with the author part of a model already on the default
-service. For example, `deepseek` collides, so aforge says
-`deepseek is a model author on openrouter · connect this as deepseek-direct`. Connect it with that written name; its
-models then read `deepseek-direct/<model id>`.
+service. When `deepseek` is already an author there, aforge connects the direct service
+under `deepseek-direct` in that same attempt. The region and key are not asked for twice,
+and its models read `deepseek-direct/<model id>`.
+
+## Why is my service called z-ai-direct — I connected Z.ai, the name changed
+
+A service may not be written with a name the default service already uses for a model
+author. Aforge appends `-direct` and finishes the connection in the same attempt, so the
+region and key are not asked for twice. The connect line tells you the name it used, for
+example `z-ai-direct is connected · coding plan · 4 models`, and those models read
+`z-ai-direct/<model id>`. DeepSeek follows the same rule: it becomes `deepseek-direct`,
+and its models read `deepseek-direct/<model id>`.
 
 ## Connect a service — what is asked for, and what aforge checks before it saves anything
 

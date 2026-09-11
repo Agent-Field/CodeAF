@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestAServiceNameThatCollidesWithAModelAuthorIsRefusedWithASuggestion(t *testing.T) {
+func TestAServiceNameThatCollidesWithAModelAuthorGetsASuggestion(t *testing.T) {
 	suggestion, collided := Collides(" DeepSeek ", []string{"openrouter"}, []string{"deepseek", "qwen"})
 	if !collided || suggestion != "DeepSeek-direct" {
 		t.Fatalf("collision = %t, suggestion = %q", collided, suggestion)

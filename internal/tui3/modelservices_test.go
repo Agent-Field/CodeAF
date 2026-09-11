@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -355,7 +357,6 @@ func TestTheModelServiceWordsAreExactAndVendorWordsStopAtAWordBoundary(t *testin
 		{modelsource.Outcome{Kind: modelsource.OutcomeAccountCannotPay, VendorSaid: "Insufficient balance or no resource package. Please recharge."}, "deepseek accepted the key but the account cannot pay — Insufficient balance or no resource package. Please recharge."},
 		{modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, "deepseek did not answer · nothing was saved"},
 		{modelsource.Outcome{Kind: modelsource.OutcomeWrongShape}, "that is not the shape of a deepseek key — they start with sk-"},
-		{modelsource.Outcome{Kind: modelsource.OutcomeCollides, Suggestion: "deepseek-direct"}, "deepseek is a model author on openrouter · connect this as deepseek-direct"},
 	}
 	for _, testCase := range tests {
 		if got := serviceOutcomeWord("deepseek", testCase.outcome); got != testCase.want {
@@ -389,6 +390,54 @@ func TestTheModelServiceWordsAreExactAndVendorWordsStopAtAWordBoundary(t *testin
 	got := truncateVendorWords(words, 120)
 	if len(got) > 120 || strings.HasSuffix(got, "wor") {
 		t.Fatalf("vendor words were not cut at a word boundary: %q", got)
+	}
+}
+
+func TestACollidingServiceNameConnectsOnTheFirstAttemptUnderTheSuggestedName(t *testing.T) {
+	plan := sourcestub.New("too-wide")
+	metered := sourcestub.New("metered")
+	defer plan.Close()
+	defer metered.Close()
+	source := modelsource.Vendored()[1]
+	source.Doors[0].Address = plan.URL()
+	source.Doors[1].Address = metered.URL()
+	dir := t.TempDir()
+	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
+		modelsource.NewSet(testDefaultService("default-test-key")),
+		[]Model{{ID: "openai/gpt-4.1-mini"}, {ID: "z-ai/glm-5.3"}})
+	message := a.beginModelConnect(modelConnectDraft{
+		source: source,
+		row: config.PersistedSource{
+			ID: source.ID, Written: source.Written, Region: "intl", Key: "plan-test-key", Order: 1,
+		},
+	})()
+	if _, follow := a.Update(message); follow != nil {
+		t.Fatal("the settled connection unexpectedly started another command")
+	}
+	if got := noteSaying(t, a, "is connected"); got != "z-ai-direct is connected · coding plan · 4 models" {
+		t.Fatalf("connection note = %q", got)
+	}
+}
+
+func TestNoSourceAsksForASecondAttemptAfterAServiceNameCollision(t *testing.T) {
+	err := filepath.WalkDir("../..", func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(raw), "connect this as") {
+			t.Errorf("%s still asks the person to connect a colliding name twice", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

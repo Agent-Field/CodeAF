@@ -242,7 +242,10 @@ func ConnectService(ctx context.Context, profileDir string, row PersistedSource,
 		}
 	}
 	if suggestion, collides := modelsource.Collides(row.Written, taken, authors); collides {
-		return modelsource.Outcome{Kind: modelsource.OutcomeCollides, Suggestion: suggestion}, nil
+		// A NAME THAT CANNOT BE USED IS NOT A QUESTION TO ASK A PERSON TWICE.
+		// The program knows the available spelling, so the first attempt takes it
+		// and the connection line says which name it used.
+		row.Written = suggestion
 	}
 	if written := strings.TrimSpace(row.Written); written != "" {
 		src.Written = written

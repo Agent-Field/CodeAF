@@ -400,21 +400,69 @@ func TestDisconnectServiceRemovesTheRowAndItsKey(t *testing.T) {
 	}
 }
 
-func TestACollidingServiceWritesNothing(t *testing.T) {
+func TestACollidingServiceConnectsUnderTheSuggestedName(t *testing.T) {
+	t.Setenv("DEEPSEEK_API_KEY", "")
 	dir := t.TempDir()
-	if err := WriteAPIKey(dir, "sk-default-1234567890"); err != nil {
-		t.Fatal(err)
-	}
-	before, _ := os.ReadFile(BudgetConfigPath(dir))
+	server := sourcestub.New("deepseek-chat", "deepseek-reasoner")
+	defer server.Close()
 	source := vendoredSource(t, "deepseek")
+	source.Address = server.URL()
 	row := PersistedSource{ID: source.ID, Written: "deepseek", Key: "sk-direct-1234567890", Order: 1}
 	outcome, err := ConnectService(context.Background(), dir, row, source, []string{"deepseek"})
-	if err != nil || outcome.Kind != modelsource.OutcomeCollides || outcome.Suggestion != "deepseek-direct" {
-		t.Fatalf("collision = %+v, %v", outcome, err)
+	if err != nil || outcome.Kind != modelsource.OutcomeConnected {
+		t.Fatalf("connection = %+v, %v", outcome, err)
 	}
-	after, _ := os.ReadFile(BudgetConfigPath(dir))
-	if string(after) != string(before) {
-		t.Fatal("a collision changed the profile")
+	rows := PersistedSources(dir)
+	if len(rows) != 1 || rows[0].Written != "deepseek-direct" {
+		t.Fatalf("connected rows = %+v", rows)
+	}
+}
+
+func TestACollidingServicesModelsUseTheSuggestedName(t *testing.T) {
+	t.Setenv("DEEPSEEK_API_KEY", "")
+	dir := t.TempDir()
+	server := sourcestub.New("deepseek-chat", "deepseek-reasoner")
+	defer server.Close()
+	source := vendoredSource(t, "deepseek")
+	source.Address = server.URL()
+	outcome, err := ConnectService(context.Background(), dir, PersistedSource{
+		ID: source.ID, Written: "deepseek", Key: "sk-direct-1234567890", Order: 1,
+	}, source, []string{"deepseek"})
+	if err != nil || outcome.Kind != modelsource.OutcomeConnected {
+		t.Fatalf("connection = %+v, %v", outcome, err)
+	}
+	connected, ok := ResolveSources(dir, "", DefaultBaseURL).ByID("deepseek")
+	if !ok {
+		t.Fatal("the connected service was not resolved")
+	}
+	got := make([]string, 0, len(outcome.ModelIDs))
+	for _, id := range outcome.ModelIDs {
+		got = append(got, connected.Qualify(id))
+	}
+	want := []string{"deepseek-direct/deepseek-chat", "deepseek-direct/deepseek-reasoner"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("qualified models = %v, want %v", got, want)
+	}
+}
+
+func TestReconnectingACollidingServiceKeepsTheFirstSuggestedName(t *testing.T) {
+	t.Setenv("DEEPSEEK_API_KEY", "")
+	dir := t.TempDir()
+	server := sourcestub.New("deepseek-chat")
+	defer server.Close()
+	source := vendoredSource(t, "deepseek")
+	source.Address = server.URL()
+	row := PersistedSource{ID: source.ID, Written: "deepseek", Key: "sk-direct-1234567890", Order: 1}
+	if outcome, err := ConnectService(context.Background(), dir, row, source, []string{"deepseek"}); err != nil || outcome.Kind != modelsource.OutcomeConnected {
+		t.Fatalf("first connection = %+v, %v", outcome, err)
+	}
+	row = PersistedSources(dir)[0]
+	if outcome, err := ConnectService(context.Background(), dir, row, source, []string{"deepseek"}); err != nil || outcome.Kind != modelsource.OutcomeConnected {
+		t.Fatalf("reconnection = %+v, %v", outcome, err)
+	}
+	rows := PersistedSources(dir)
+	if len(rows) != 1 || rows[0].Written != "deepseek-direct" {
+		t.Fatalf("reconnected rows = %+v", rows)
 	}
 }
 

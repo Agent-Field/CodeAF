@@ -60,12 +60,10 @@ func (a *app) prepareModelServices() {
 		// Local v3 launches always pass the resolved set; hosted and older seams
 		// pass nothing and must keep their connection surface byte-identical.
 		a.sourceModels = make(map[string][]Model)
-		a.modelSuggestions = make(map[string]string)
 		return
 	}
 	a.modelCatalog = modelsource.Vendored()
 	a.sourceModels = make(map[string][]Model)
-	a.modelSuggestions = make(map[string]string)
 	for _, service := range a.sources.All() {
 		if strings.EqualFold(service.Source.ID, modelsource.DefaultID) || service.Source.Listing != modelsource.ListingModels {
 			continue
@@ -211,12 +209,11 @@ func (a *app) startModelConnect(row connect.Status, fromSheet bool) tea.Cmd {
 	persisted := config.PersistedSource{ID: source.ID, Written: source.Written, Order: a.nextModelServiceOrder()}
 	for _, existing := range config.PersistedSources(a.profileDir) {
 		if strings.EqualFold(existing.ID, source.ID) {
+			// A reconnect starts with the row that actually landed, so an automatic
+			// name such as z-ai-direct stays put instead of being suggested again.
 			persisted = existing
 			break
 		}
-	}
-	if suggestion := a.modelSuggestions[strings.ToLower(source.ID)]; suggestion != "" {
-		persisted.Written = suggestion
 	}
 	draft := &modelConnectDraft{source: source, row: persisted, sheet: fromSheet}
 	a.modelDraft = draft
@@ -501,9 +498,6 @@ func (a *app) adoptModelConnectResult(msg modelConnectResultMsg) {
 		if msg.outcome.Kind == modelsource.OutcomeConnected && a.engineRoad && strings.TrimSpace(msg.keyEnv) != "" {
 			line += " · " + engineVariableWord(msg.keyEnv)
 		}
-	case modelsource.OutcomeCollides:
-		a.modelSuggestions[strings.ToLower(msg.service)] = msg.outcome.Suggestion
-		line = serviceOutcomeWord(service, msg.outcome)
 	default:
 		line = serviceOutcomeWord(service, msg.outcome)
 	}
@@ -535,8 +529,6 @@ func serviceOutcomeWord(service string, outcome modelsource.Outcome) string {
 		return service + " did not answer · nothing was saved"
 	case modelsource.OutcomeWrongShape:
 		return "that is not the shape of a " + service + " key — they start with sk-"
-	case modelsource.OutcomeCollides:
-		return service + " is a model author on openrouter · connect this as " + outcome.Suggestion
 	}
 	return ""
 }
