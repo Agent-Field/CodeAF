@@ -122,7 +122,7 @@ func TestC4NeedsAPersonOutranksWorkingOnTabsAndSwitcherRows(t *testing.T) {
 	t.Run("front", func(t *testing.T) {
 		a := newTestApp(&fakeAgent{})
 		a.state = stateWorking
-		a.asks = []ask{{id: 1}}
+		raiseAsk(a, 1, "bash")
 
 		row := a.hopFront(a.now())
 		assertHopSignalAgrees(t, a.frontSignal(), row)
