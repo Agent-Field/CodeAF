@@ -543,7 +543,11 @@ over an empty ledger only the way out is named.
 
 On a machine that has spent nothing the place is its heading `spend` over one line:
 `every chat and task is priced here as it runs`. A window paged onto a quiet fortnight is a
-different thing — its head row stays, with the arrows that page it back.
+different thing — its head row stays, with the arrows that page it back, and a dim guide
+under it: `this stretch is quiet · shift+←→ moves the days · [ ] another reading`. While the
+ledger is still arriving (over `--host`, before the far cache answers) the place draws a
+skeleton instead — heading `spend`, the line `reading what this machine has spent`, and dim
+ghost rows with no dollars — never the empty-machine whisper and never `$0.00`.
 
 ## search — finding anything said or run
 

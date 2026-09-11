@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // ── THE SPEND PLACE ─────────────────────────────────────────────────────────
@@ -95,9 +96,15 @@ type spendPage struct {
 	// and the right answer to each is the opposite of the other: a machine that
 	// has spent nothing wants the frame to say what arrives here
 	// ([placeWhisper]), while a window paged onto a quiet fortnight wants the
-	// HEADER — the control that pages it back — above nothing at all. Drawing the
-	// whisper in both cases swallowed the only way out of the second.
+	// HEADER — the control that pages it back — above a dim guide naming the
+	// keys that leave ([spendQuietGuide]). Drawing the whisper in both cases
+	// swallowed the only way out of the second.
 	held bool
+	// known is whether the ledger seam has answered. A far cache warms a beat
+	// later; until then the body draws a skeleton ([spendWarmingRows]) rather
+	// than the empty-machine whisper, which would lie about a bill still on the
+	// wire. Local reads are known the moment they return.
+	known bool
 	// world is THIS PLACE'S OWN SCAN of the projects root, taken on the way in
 	// and again on the beat. It is what `what it was for` joins its ids against
 	// ([app.spendNames] says why it is not home's).
@@ -236,10 +243,16 @@ func (a *app) readSpendLines(now time.Time) {
 		var known bool
 		lines, held, known = a.ledger(a.spend.win.From)
 		if !known {
+			// KEEP THE LAST ANSWER where we had one. A warm miss after a real
+			// reading must not flash the skeleton over a fortnight somebody was
+			// already looking at; the first visit with no answer yet stays
+			// unknown and draws [spendWarmingRows].
 			return
 		}
+		a.spend.known = true
 	} else {
 		lines, _ = a.spend.cache.Read(time.Time{})
+		a.spend.known = true
 	}
 
 	a.spend.lines, a.spend.read = lines, now
@@ -573,8 +586,10 @@ func (a *app) readSpendFrom(from time.Time) {
 			a.touch()
 			return
 		}
+		a.spend.known = true
 	} else {
 		lines, _ = a.spend.cache.Read(from)
+		a.spend.known = true
 	}
 	a.spend.lines, a.spend.read = lines, now
 	a.spend.world = a.readWorld()
@@ -725,19 +740,21 @@ func (placeSpend) remote(a *app) string {
 }
 
 func (placeSpend) body(a *app, width, room int) []placeRow {
+	// A LEDGER STILL ON THE WIRE is a skeleton, not the empty-machine whisper:
+	// whispering "priced as it runs" over a bill that has not arrived yet is a
+	// lie about an unknown, and the emptiness law draws unknown as absent —
+	// here the honest absent is the warming line, never `$0.00`.
+	if !a.spend.known {
+		return spendWarmingRows(width, room, a.pal)
+	}
 	if a.spend.reading.empty() && a.spend.lens != spendLensYear {
 		if !a.spend.held {
 			return placeWhisperRows(pageSpend, width, room, a.pal)
 		}
 		// THE HEADER STAYS, because it is the only thing on this frame naming the
 		// window the four arrow keys move ([spendPage.held] holds the argument).
-		rows := make([]placeRow, 0, room)
-		rows = append(rows, placeRow{text: a.spend.reading.windowHeaderRow(width, a.pal), hit: -1})
-		for len(rows) < room {
-			rows = append(rows, placeRow{text: "", hit: -1})
-		}
-		a.spend.stops, a.spend.top, a.spend.shown = nil, 0, 0
-		return rows
+		// Under it sits the quiet guide — how to leave — not blank air.
+		return spendQuietWindowRows(a, width, room)
 	}
 	if a.spend.lens == spendLensYear && !a.spend.held && a.spend.reading.empty() {
 		return placeWhisperRows(pageSpend, width, room, a.pal)
@@ -837,6 +854,11 @@ const (
 // surface advertising a key that does nothing.
 func (placeSpend) hint(a *app) string {
 	var parts []string
+	// A WARMING LEDGER HAS NO KEYS TO CYCLE. The foot used to name `[ ] lenses`
+	// over a skeleton with nothing behind it.
+	if !a.spend.known {
+		return "esc"
+	}
 	// AN EMPTY MACHINE HAS NO LENS TO CYCLE. The foot used to name `[ ] lenses`
 	// over a whisper with nothing behind it, which advertised a key that moved
 	// nothing a person could see.
@@ -899,3 +921,65 @@ func (placeSpend) wheel(a *app, delta int) (tea.Cmd, bool) {
 // key is this place's own reading of a key the router did not take
 // (pages.go's [place] states the split).
 func (placeSpend) key(a *app, msg tea.KeyPressMsg) tea.Cmd { return a.spendKey(msg) }
+
+// spendWarmingRows is the skeleton while the ledger seam has not answered.
+//
+// HEADING + HONEST STATUS + GHOST STRUCTURE. The ghosts are floor spark cells
+// and dim bullets with no labels and no dollars — presence of the page's shape
+// without inventing a bill. Never `$0.00`, never `0 tok`.
+func spendWarmingRows(width, room int, pal palette) []placeRow {
+	rows := make([]placeRow, 0, room)
+	if width >= len(placeLead)+1 {
+		rows = append(rows, placeRow{
+			text: placeLead + placeHeading(fit(pageSpend.word(), width-len(placeLead)), pal),
+			hit:  -1,
+		})
+	}
+	for _, words := range homeWhisperLines(spendWarmingWord, width-len(placeLead)) {
+		if width < len(placeWhisperLead)+1 {
+			break
+		}
+		rows = append(rows, placeRow{text: placeWhisperLead + pal.dim(words), hit: -1})
+	}
+	if len(rows) < room {
+		rows = append(rows, placeRow{text: "", hit: -1})
+	}
+	inner := width - len(placeLead)
+	if inner >= spendWindowDays && len(rows) < room {
+		ghost := strings.Repeat(tokens.Sparkline(0), spendWindowDays)
+		rows = append(rows, placeRow{text: placeLead + pal.dim(fit(ghost, inner)), hit: -1})
+	}
+	bullet := tokens.GlyphProseBullet
+	for i := 0; i < 3 && len(rows) < room; i++ {
+		rows = append(rows, placeRow{text: placeLead + pal.dim(bullet), hit: -1})
+	}
+	for len(rows) < room {
+		rows = append(rows, placeRow{text: "", hit: -1})
+	}
+	return rows
+}
+
+// spendQuietWindowRows is a held ledger paged onto a stretch that spent
+// nothing: rails pointer, lens-named head with the window control, and the
+// quiet guide — how to leave — rather than blank air under the head.
+func spendQuietWindowRows(a *app, width, room int) []placeRow {
+	rows := make([]placeRow, 0, room)
+	inner := width - len(placeLead)
+	r := a.spend.reading
+	rails := placeLead + r.railsRowIn(inner, a.pal.dim)
+	rows = append(rows, placeRow{text: rails, hit: 0})
+	rows = append(rows, placeRow{text: r.windowHeaderRowFor(a.spend.lens, width, a.pal), hit: -1})
+	if inner > 0 {
+		rows = append(rows, placeRow{text: "", hit: -1})
+		rows = append(rows, placeRow{text: placeLead + a.pal.dim(fit(spendQuietGuide, inner)), hit: -1})
+	}
+	a.spend.stops = make([]spendStop, len(rows))
+	if len(a.spend.stops) > 0 {
+		a.spend.stops[0] = spendStop{ok: true, rails: true}
+	}
+	a.spend.top, a.spend.shown = 0, len(rows)
+	for len(rows) < room {
+		rows = append(rows, placeRow{text: "", hit: -1})
+	}
+	return rows
+}

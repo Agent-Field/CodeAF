@@ -626,6 +626,23 @@ func spendSpanWord(win session.UsageWindow) string {
 // wants the control that pages it back (place_spend.go's [spendPage.held]).
 const spendNothingWord = "nothing spent"
 
+// spendWarmingWord is the one honest line while the ledger seam has not
+// answered. It names the read, never a dollar — unknown is absent, not `$0.00`.
+const spendWarmingWord = "reading what this machine has spent"
+
+// spendQuietGuide is the dim line under a quiet window's head. It keeps the
+// control that pages back and names the lens cycle — the two ways out of a
+// stretch that spent nothing — without saying the place is empty.
+const spendQuietGuide = "this stretch is quiet · shift+←→ moves the days · [ ] another reading"
+
+// spendModelsQuietWord is the Models lens when the window holds no priced
+// model row. It says what lands here and how to leave, never "nothing spent".
+const spendModelsQuietWord = "priced models land here as calls run · shift+←→ moves the days"
+
+// spendYearQuietWord is under a year heatmap that has no streak, peak or
+// favorite yet — facts arrive as days price, and the guide never invents zeros.
+const spendYearQuietWord = "streak · peak · favorite arrive as days are priced"
+
 // paintedHead is [spendReading.headWords] in its own inks — the money in the
 // money hue, the token count in the reading tier, and the words that say what
 // they are dim.

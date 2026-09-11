@@ -374,6 +374,9 @@ func TestAnEmptySpendWindowKeepsTheControlThatPagesItBack(t *testing.T) {
 	if !strings.Contains(text, "shift+←") {
 		t.Fatalf("an empty window lost the control that pages it back:\n%s", text)
 	}
+	if !strings.Contains(text, spendQuietGuide) {
+		t.Fatalf("an empty window lost the quiet guide that names how to leave:\n%s", text)
+	}
 	if strings.Contains(text, "$0.00") {
 		t.Fatalf("an empty window drew the figure the emptiness law forbids:\n%s", text)
 	}
@@ -381,6 +384,39 @@ func TestAnEmptySpendWindowKeepsTheControlThatPagesItBack(t *testing.T) {
 	b := spendLab(t, nil)
 	if !strings.Contains(placeFrameText(b), whisperOf(pageSpend)) {
 		t.Fatalf("an empty machine does not say what arrives here:\n%s", placeFrameText(b))
+	}
+}
+
+// A LEDGER STILL ON THE WIRE DRAWS A SKELETON, never the empty-machine whisper
+// and never a invented zero bill.
+func TestAWarmingSpendLedgerDrawsASkeleton(t *testing.T) {
+	a := placeApp(t)
+	a.clock = func() time.Time { return spendTestNow }
+	a.ledger = func(time.Time) ([]session.UsageLine, bool, bool) {
+		return nil, false, false
+	}
+	a.showPage(pageSpend)
+	text := placeFrameText(a)
+	if !strings.Contains(text, spendWarmingWord) {
+		t.Fatalf("a warming ledger does not say it is reading:\n%s", text)
+	}
+	if strings.Contains(text, whisperOf(pageSpend)) {
+		t.Fatalf("a warming ledger drew the empty-machine whisper:\n%s", text)
+	}
+	if strings.Contains(text, "$0.00") || strings.Contains(text, "0 tok") {
+		t.Fatalf("a warming ledger invented a figure:\n%s", text)
+	}
+	// AND WHEN THE SEAM ANSWERS, THE SKELETON YIELDS.
+	a.ledger = func(time.Time) ([]session.UsageLine, bool, bool) {
+		return spendFixture(), true, true
+	}
+	a.readSpendLines(spendTestNow)
+	got := placeFrameText(a)
+	if strings.Contains(got, spendWarmingWord) {
+		t.Fatalf("a known ledger still draws the skeleton:\n%s", got)
+	}
+	if !strings.Contains(got, "what ran it") {
+		t.Fatalf("a known ledger did not draw the reading:\n%s", got)
 	}
 }
 

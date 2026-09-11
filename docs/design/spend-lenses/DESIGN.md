@@ -95,7 +95,19 @@ do not:
 
 No share card, no "wrapped", no social sentence. A year with nothing spent is the place's
 empty reading (`every chat and task is priced here as it runs`) — not a hollow grid of
-zeros.
+zeros. A year that has priced days but not yet a streak, peak or favorite keeps a dim
+guide under the plane: `streak · peak · favorite arrive as days are priced`.
+
+### Empty, quiet and warming states
+
+| state | what the person sees |
+|---|---|
+| machine never priced a call | place heading + whisper `every chat and task is priced here as it runs` |
+| ledger still arriving | skeleton: heading + `reading what this machine has spent` + dim ghost spark/rows — never `$0.00` |
+| window paged onto a quiet stretch | lens-named head with `nothing spent` and the window control; dim guide `this stretch is quiet · shift+←→ moves the days · [ ] another reading`; rails pointer still opens the Spending tab |
+| Models lens, no priced model in window | `priced models land here as calls run · shift+←→ moves the days` |
+| `/model used` with no fortnight spenders | `no models used this fortnight · drop used for the full list` |
+| model list fetching with no rows yet | `fetching the newest list…` plus dim ghost rows so the sheet keeps its shape |
 
 ### 5. `/model` — framed sheet, `used lately`, the fortnight chip, `/model used`
 

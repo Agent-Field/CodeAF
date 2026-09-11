@@ -107,3 +107,23 @@ func TestUsedSectionHeading(t *testing.T) {
 		t.Fatalf("sectionLabel(all) = %q, want a count of one", got)
 	}
 }
+
+// `/model used` ON A QUIET MACHINE SAYS HOW TO LEAVE, not a bare "no model matches".
+func TestUsedFilterEmptyCopy(t *testing.T) {
+	p := picker{}
+	p.start([]Model{{ID: "a/model"}}, "a/model")
+	p.filter.setText("used")
+	p.rank()
+	if got := p.emptyLine(); got != noModelsUsedLately {
+		t.Fatalf("emptyLine = %q, want %q", got, noModelsUsedLately)
+	}
+	// AND A TYPED FILTER THAT MATCHES NOTHING KEEPS THE ORDINARY LINE once spenders exist.
+	p.spent = map[string]session.ModelSpend{
+		spendModelKey("a/model"): {Model: "a/model", USD: 1, Tokens: 10},
+	}
+	p.filter.setText("usedzzzz")
+	p.rank()
+	if got := p.emptyLine(); got == noModelsUsedLately {
+		t.Fatalf("a misspelled filter used the quiet-machine copy: %q", got)
+	}
+}

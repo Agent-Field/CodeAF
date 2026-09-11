@@ -224,7 +224,7 @@ func (r spendReading) paintModelsLens(group spendGroup, sort spendSort, width in
 		out = append(out, placeLead+r.modelsLensRow(row, inner, pal))
 	}
 	if len(rows) == 0 {
-		out = append(out, placeLead+pal.dim(fit("nothing spent on a model in this window", inner)))
+		out = append(out, placeLead+pal.dim(fit(spendModelsQuietWord, inner)))
 	}
 	stops := make([]spendStop, len(out))
 	stops[rails] = spendStop{ok: true, rails: true}
@@ -455,13 +455,20 @@ func (r spendReading) paintYearLens(width int, pal palette, lit func(int) bool) 
 
 	year := yearWindow(r.now)
 	days := session.UsageByDay(r.yearLines(), year)
-	if heat := spendHeatmap(days, inner, pal); heat != "" {
+	heat := spendHeatmap(days, inner, pal)
+	if heat != "" {
 		for _, line := range strings.Split(heat, "\n") {
 			out = append(out, placeLead+line)
 		}
 	}
-	for _, fact := range r.yearFacts(days) {
+	facts := r.yearFacts(days)
+	for _, fact := range facts {
 		out = append(out, placeLead+pal.dim(fit(fact, inner)))
+	}
+	// NO FACTS YET: keep a dim guide under the plane (or in its place) so a year
+	// that has not priced a day is not a blank under the heading.
+	if len(facts) == 0 {
+		out = append(out, placeLead+pal.dim(fit(spendYearQuietWord, inner)))
 	}
 	stops := make([]spendStop, len(out))
 	stops[rails] = spendStop{ok: true, rails: true}

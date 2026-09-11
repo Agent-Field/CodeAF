@@ -1968,7 +1968,10 @@ drawing a fraction with nothing under the line.
 place says what it is for and nothing else, which is what every place with nothing to draw
 does. Paged onto a fortnight nothing was spent in, it keeps its head row — `nothing spent`
 on the left and the control on the right — because that control is the only thing on the
-frame naming the window the arrows move.
+frame naming the window the arrows move, and a dim guide under it names how to leave:
+`this stretch is quiet · shift+←→ moves the days · [ ] another reading`. While the ledger is
+still arriving the place draws a skeleton (`reading what this machine has spent` under the
+heading, dim ghost rows, no dollars) rather than pretending the machine has never spent.
 
 ## used lately in the model picker — models I have run recently
 
@@ -2023,8 +2026,8 @@ has run in the recent fortnight. Typing still narrows inside that set.
 
 `used` is a filter word, not a refuse. A slug you have never run is still accepted by
 `/model <slug>` the way a bare switch already works. If nothing has been run yet,
-`/model used` opens an empty used list and says so the way an empty filter already does
-— it does not invent rows.
+`/model used` opens an empty used list and says
+`no models used this fortnight · drop used for the full list` — it does not invent rows.
 
 ## spend lenses — rhythm, models, days, year on the spend place
 

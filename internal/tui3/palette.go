@@ -1299,6 +1299,11 @@ func (p *picker) height(width int) int {
 	case !p.open:
 		return 0
 	case len(p.list) == 0:
+		// A FETCH WITH NO ROWS YET keeps a short skeleton so the sheet does not
+		// collapse to one line and jump when the catalog lands.
+		if p.fetching {
+			return min(4, pickerRows)
+		}
 		return 1
 	}
 	// The why line rides with the row it explains, so it is counted the same
@@ -1344,7 +1349,23 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 		return nil, nil
 	}
 	if len(p.list) == 0 {
-		return []string{pal.dim("  " + p.emptyLine())}, []int{-1}
+		line := pal.dim("  " + p.emptyLine())
+		if !p.fetching || n <= 1 {
+			return []string{line}, []int{-1}
+		}
+		// SKELETON WHILE THE FETCH IS OUT: the status line, then dim ghost rows
+		// so the sheet keeps the shape of a list rather than collapsing to one
+		// line and jumping when models arrive.
+		out := make([]string, 0, n)
+		hits := make([]int, 0, n)
+		out = append(out, line)
+		hits = append(hits, -1)
+		ghost := pal.dim(fit("  "+tokens.GlyphProseBullet+"  "+tokens.GlyphProseBullet+"  "+tokens.GlyphProseBullet, width))
+		for len(out) < n {
+			out = append(out, ghost)
+			hits = append(hits, -1)
+		}
+		return out, hits
 	}
 	fill := newOverlayFill(width, n, pal, hover)
 	if p.headLines() > 0 {

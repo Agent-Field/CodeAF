@@ -51,6 +51,10 @@ const (
 	// list.
 	noModelMatches      = "no model matches"
 	noModelMatchesFetch = noModelMatches + " · " + refreshModelsKey + " fetches the newest list"
+	// noModelsUsedLately is `/model used` (or a `used` filter) on a machine that
+	// has not priced any model call this fortnight. It says what the filter asked
+	// for and how to leave — never invents rows.
+	noModelsUsedLately = "no models used this fortnight · drop used for the full list"
 	// modelsFetching stands at the head of the list while the fetch is out. It
 	// is ONE PLACE and it is the list's rather than the placeholder's, because
 	// the placeholder is gone the moment anything is typed and the list line is
@@ -106,10 +110,22 @@ func (p *picker) emptyLine() string {
 	switch {
 	case p.fetching:
 		return modelsFetching
+	case p.usedFilterEmpty():
+		return noModelsUsedLately
 	case p.offersRefresh():
 		return noModelMatchesFetch
 	}
 	return noModelMatches
+}
+
+// usedFilterEmpty is whether this empty list is the `used` filter on a machine
+// that has no fortnight spenders — a different sentence from "no model matches".
+func (p *picker) usedFilterEmpty() bool {
+	if p == nil || len(p.spent) > 0 {
+		return false
+	}
+	_, terms := splitQuery(p.filter.String())
+	return hasUsedTerm(terms)
 }
 
 // armRefresh tells a freshly opened picker what it may offer. It is called
