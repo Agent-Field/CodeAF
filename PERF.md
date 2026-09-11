@@ -2117,6 +2117,16 @@ unexercised behaviours reported on every gate, and thirteen of the fourteen
 briefs naming neither. Pinned by `internal/resident/lineage_test.go` and
 `cmd/aforge/openfindings_test.go`.
 
+## The session's memory of declared checks
+
+`rememberedSessionChecks` bounds one session's check memory to 32 command/tree
+entries. The oldest entry is evicted at the bound. Reuse requires the same
+non-empty tree photograph and a process that started and finished without
+changing that tree; cancelled or unstarted processes provide neither an answer
+nor a reusable execution time. `TestACheckAlreadyRunOverAnUnchangedTreeIsNotRunAgain`,
+`TestACheckThatMovedTheTreeIsNeverRemembered` and
+`TestACancelledCheckDoesNotPoisonTheNextReading` cover those reuse conditions.
+
 ## Conversation trees on Home and Tasks
 
 Tasks builds its conversation and parent index once per reading and reuses it
