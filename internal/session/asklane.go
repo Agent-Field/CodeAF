@@ -20,33 +20,24 @@ package session
 // starts a turn on an idle conversation. There is no second delivery path, and
 // the bytes are the same either way (asklane_test.go holds it).
 //
-// ── THE FOUR WAYS AN ASK ENDS ──
+// ── THERE IS ONE BOOK, AND IT IS NOT THIS FILE ──
 //
-// This book absorbed the one that held only the wait (`askwait.go`, #870), whose
-// three endings are kept here word for word because the rule in them is the same
-// rule and two books for one question was the defect that file's own doc warned
-// about:
+// The book of what the model has asked is [askedOfThePerson] in `askwait.go`
+// (#870), and this wave did not write a second beside it: two books holding one
+// question was the defect that file's own doc warned about, and the lane's
+// account of a question was folded INTO it rather than the other way round. So
+// `askwait.go` keeps the map, the channels, the four ways an ask ends and the
+// ownership rule that makes them safe; what lives here is everything an answer
+// needs AFTER somebody has given one — the rendering, the delivery, the lane's
+// clock, the hold, and the revision.
 //
-//	ANSWERED    somebody chose ([Agent.answerAsk], from the one resolver every
-//	            surface calls). The call parked on it reads the answer.
-//	TALKED PAST they said something else instead of answering
-//	            ([Agent.asksTalkedPastLocked], from the splice — steerquestion.go
-//	            says what was measured). The call reads a CLOSED channel, the one
-//	            shape that cannot be mistaken for a choice they made.
-//	LET GO      the call itself stopped waiting ([Agent.askLetGo]): the turn was
-//	            stopped, or the question was never drawn at all.
-//	CARRIED ON  the call never waited ([askBlocking]), so there is no channel and
-//	            the answer is a message whenever it comes. This is the ending the
-//	            three above had no room for, and the one this wave is about.
-//
-// ── THE CLAIM IS THE OWNERSHIP ──
-//
-// Every road takes the channel out of the entry ([modelAsk.claimParkedLocked])
-// under a.mu BEFORE it touches it, so at most one road can ever hold it. That is
-// what makes closing it safe rather than a send-on-closed waiting to happen. It
-// is `askwait.go`'s own law, moved from the map entry to the field because the
-// entry now OUTLIVES the wait: a settled question is kept so its answer can be
-// changed, so the map entry can no longer be the token.
+// Two of that file's rules are worth knowing at this end, because this file is
+// where they are felt. The fourth ending is CARRIED ON: the call never waited
+// ([askBlocking]), so there is no channel and the answer is a message whenever
+// it comes — the ending the other three had no room for, and the one this wave
+// is about. And the ownership moved down one field: a settled entry is KEPT so
+// its answer can be changed, so the answer claims `open.wait` rather than the
+// map entry ([askedOfThePerson.answerLocked]).
 
 import (
 	"encoding/json"
