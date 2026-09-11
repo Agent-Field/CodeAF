@@ -30,20 +30,21 @@ package tui3
 // WHAT IT DOES NOT WALK, SAID OUT LOUD, because a law whose reach a reader
 // cannot predict is a law that lies by omission:
 //
-//   - A PACKAGE FUNCTION THAT TAKES THE SURFACE AS A PARAMETER, which is the
-//     biggest hole in this law and the one to close next. The walk makes a
-//     surface edge out of `x.method()` only where `x` is spelled the same as the
-//     enclosing method's own receiver, so the body of `placeFrameWithBar(a, …)`
-//     is walked — it is a package function — while every `a.…` call INSIDE it is
-//     read as a call on some other value and dropped. The reviewer of this PR
-//     traced a live one: `app.View → app.placeDraw → placeFrameWithBar(a, …)` ⊘
-//     `a.composerRows → a.composerWhereLine → a.composerWhere →
-//     a.composerOpensAt → a.errandPlace → errandHomeDir → os.Getwd`, a call in
-//     this file's own forbidden set that this file cannot see. Closing it is
-//     about eight lines — treat a parameter of type `*app` as a second receiver
-//     name — and it is issue #898 rather than done here because it will turn
-//     things up, and a law that grows an allowlist in the same commit that grows
-//     its reach teaches nobody anything.
+//   - A PACKAGE FUNCTION THAT TAKES THE SURFACE AS A PARAMETER — SEEN NOW, and
+//     it was the biggest hole in this law until #898. The walk used to make a
+//     surface edge out of `x.method()` only where `x` was spelled the same as
+//     the enclosing method's own receiver, so the body of `placeFrameWithBar(a,
+//     …)` was walked — it is a package function — while every `a.…` call INSIDE
+//     it was read as a call on some other value and dropped. The reviewer of #875
+//     traced the live one that made this a defect: `app.View → app.placeDraw →
+//     placeFrameWithBar(a, …)` ⊘ `a.composerRows → a.composerWhereLine →
+//     a.composerWhere → a.composerOpensAt → a.errandPlace → errandHomeDir →
+//     os.Getwd`, a call in this file's own forbidden set that this file could
+//     not see. [surfaceNames] is the fix: every parameter typed `*app` is a
+//     second spelling of the surface, and a call on any of those names is the
+//     same edge as a call on the receiver,
+//     [TestTheLawSeesEveryShapeOfIndirectionItClaims] plants the shape so
+//     deleting the branch turns it red.
 //   - A METHOD ON SOME OTHER VALUE the frame happens to hold — `p.rows()`,
 //     `e.word()`, `r.ref()`. Following those by name alone drags in every
 //     same-named method in an eleven-thousand-line package and turns this law
@@ -219,6 +220,52 @@ func receiverName(fn *ast.FuncDecl) string {
 		return ""
 	}
 	return fn.Recv.List[0].Names[0].Name
+}
+
+// surfaceNames is every name one body spells the surface by, each mapped to the
+// receiver type its edges resolve to — ONE LIST, not two spellings of the same
+// edge. A method contributes its own receiver name, and a PACKAGE FUNCTION THAT
+// TAKES THE SURFACE AS A PARAMETER contributes every parameter typed `*app`,
+// which is the shape #898 is about: `placeFrameWithBar(a, …)` is not the method
+// `app.placeFrameWithBar` and spells the surface `a` nowhere its receiver would,
+// yet its whole body draws the frame, so a call on that `a` is the node `app.…`
+// and not an edge dropped on the floor.
+//
+// THE TYPE DECIDES AND THE SPELLING ONLY KEYS THE LOOKUP. A parameter named `a`
+// of any other type contributes nothing, so a helper that happens to call its
+// own value `a` cannot manufacture a surface edge out of a shared string. A
+// func literal the seam reader filed is skipped: it has a body and no signature
+// at all, because there is nothing to know about it but what it does.
+func surfaceNames(fn *ast.FuncDecl) map[string]string {
+	names := map[string]string{}
+	if recv := receiverName(fn); recv != "" {
+		names[recv] = receiverType(fn)
+	}
+	if fn.Type == nil || fn.Type.Params == nil {
+		return names
+	}
+	for _, field := range fn.Type.Params.List {
+		if !appPointer(field.Type) {
+			continue
+		}
+		for _, name := range field.Names {
+			if name.Name != "_" {
+				names[name.Name] = "app"
+			}
+		}
+	}
+	return names
+}
+
+// appPointer is whether one expression is the surface by the only fact that
+// settles it — its TYPE, never the spelling of the name that holds it.
+func appPointer(expr ast.Expr) bool {
+	star, ok := expr.(*ast.StarExpr)
+	if !ok {
+		return false
+	}
+	ident, ok := star.X.(*ast.Ident)
+	return ok && ident.Name == "app"
 }
 
 func newSurfaceGraph() *surfaceGraph {
@@ -413,7 +460,11 @@ func (g *surfaceGraph) readSeams(file *ast.File) {
 // elsewhere ([handedOff]).
 func (g *surfaceGraph) callsIn(fn *ast.FuncDecl, forbidden map[string]map[string]bool,
 	intoClosures bool) (names []string, bad []string) {
-	self, recv := receiverName(fn), receiverType(fn)
+	// A PACKAGE FUNCTION MAY TAKE THE SURFACE RATHER THAN BE ONE. [surfaceNames]
+	// gives the receiver and every `*app` parameter as ONE list, so an edge
+	// through either resolves to the same declaration — the head of this file
+	// says why leaving the parameter out was the law's biggest hole.
+	surface := surfaceNames(fn)
 	off := handedOff(fn.Body)
 	commands := commandNames(fn.Body)
 	var walk func(ast.Node)
@@ -455,8 +506,12 @@ func (g *surfaceGraph) callsIn(fn *ast.FuncDecl, forbidden map[string]map[string
 					return true
 				}
 				// A CALL ON THE SURFACE ITSELF IS AN EDGE; a call on some other
-				// value it is holding is not (this file's head says why).
-				if self != "" && ident.Name == self {
+				// value it is holding is not (this file's head says why). The
+				// surface arrives two ways — the method's own receiver name, and a
+				// parameter this function declared of type `*app` — and both are
+				// one list, so both key their edges on the type the name was
+				// declared with rather than on how the name is spelled.
+				if recv, onSurface := surface[ident.Name]; onSurface {
 					names = append(names, nodeName(recv, fun.Sel.Name))
 					// AND IT MAY BE A FUNC-TYPED FIELD RATHER THAN A METHOD, which
 					// is the same call to read and a different thing to resolve.
@@ -573,6 +628,12 @@ type app struct{ probe func(); door func() }
 // A field assigned a function: a.gitProbe = gitHead.
 func fieldTarget() { os.Stat("field") }
 
+// A package function that takes the surface as a PARAMETER — placeFrameWithBar(a,
+// …). The sin lives behind the parameter, so nothing but a walk that treats an
+// *app parameter as a second spelling of the receiver ever reaches it.
+func planted(a *app) { a.draw() }
+func (a *app) draw() { os.Stat("param") }
+
 // A package-level var holding a function: var processOpener = startOpener.
 var viaVar = varTarget
 func varTarget() { exec.Command("var").Run() }
@@ -590,6 +651,7 @@ func (a *app) View() {
 	a.door()
 	inlineLiteral()
 	a.other()
+	planted(a)
 }
 
 // The constructor that installs the door, as newApp installs every Options seam.
@@ -619,6 +681,7 @@ func (a *app) Update() {
 		{"a field assigned a function", ".fieldTarget"},
 		{"a package-level var holding a function", ".varTarget"},
 		{"a composite-literal key", ".literalKeyTarget"},
+		{"a package function taking the surface as a parameter", "app.draw"},
 	} {
 		if len(frame[want.node]) == 0 {
 			t.Errorf("the walk is blind to %s: %s was not reached", want.shape, want.node)
