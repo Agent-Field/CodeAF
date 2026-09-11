@@ -83,6 +83,12 @@ func TestEveryBindingMeasuresOneCellInBothTiers(t *testing.T) {
 func TestOneGlyphOneMeaning(t *testing.T) {
 	deliberate := map[string]string{
 		GlyphStepPending: "queued, at two scales",
+		GlyphPointer: "a small right triangle: the row your key goes into — the fold you open, and " +
+			"the answer your enter takes on a question. Two slots so the question's pointer can be " +
+			"amber and move under a hand while a fold mark stays a dim fact",
+		GlyphFrameEdge: "a straight horizontal run: the spawn tree's, and the frame's top and bottom edge " +
+			"— both are line geometry the tier never touches",
+		GlyphFrameSide: "a straight vertical run: the spawn tree's trunk, and the frame's sides",
 		GlyphStepRunning: "working, at two scales",
 		GlyphStepBlocked: "blocked on something else, at two scales",
 		GlyphProseBullet: "a middle dot: the telemetry separator's byte, a different slot",
