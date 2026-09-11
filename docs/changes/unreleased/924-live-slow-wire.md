@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: a live wire below its promised pace is rescued out of the call's own budget, and every attempt is watched
-pr: 907
+pr: 924
 surface: [chat, engine, docs]
 invalidates:
   - "Rescues were bounded by a rolling PROCESS-WIDE allowance — at most two in any twenty requests and at most a tenth of the last hour's bill (`lane.Budget`, `provider.SetHedgeBudget`). That whole mechanism is deleted. A count spread over twenty requests cannot tell the one that needs rescuing from the nineteen that do not, so it refused by arrival order: on 2026-09-11 the controller reached its ceiling, asked for a second machine, and was told no on behalf of requests that had already finished — while one endpoint wrote 604 tokens in 86 seconds with a person watching. What a call may spend rescuing itself is now its own: `control.Plan.SpendUSD`, derived as `Role.GiveUp() / λ` (the longest wait it can still have, converted at what a second of that wait is worth), asked through the same `control.Purse`. How many arms one question may run at once is still `maxArms = 4` and is now the ONLY thing that counts arms."
