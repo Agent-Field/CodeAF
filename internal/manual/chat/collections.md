@@ -29,7 +29,8 @@ Run `aforge collections` or `aforge collections list` to list collections.
 Use that ID with `aforge collections rename <collection-id> "Launch"`.
 `aforge collections show <collection-id>` lists that collection's direct references.
 Order follows creation and insertion, rather than inferred relevance.
-Reading a fresh home does not create a database. `create` initializes it when needed.
+Reading a fresh home or an existing empty file does not create a database.
+`create` initializes it when needed.
 
 All commands accept `--json` for structured output and `--db <path>` to choose a
 separate collection database. The default is `~/.aforge/v3/collections.db`;
@@ -38,6 +39,21 @@ or optional learned memory. Pointing `--db` at a database that already belongs
 to another feature is refused, and so is a database written by an incompatible
 version; neither is reset. With no collections yet, listing answers `No
 collections found. Create one with aforge collections create <name>.`
+
+## Database is locked, busy, two windows or another aforge command at the same time
+
+Several aforge commands and windows may use one collections database at the same
+time. A write waits up to ten seconds for another one to finish rather than
+being dropped. If that wait
+runs out, it answers `the collections database is busy being written by something
+else (waited 10s)`. Nothing was changed, and running the command again is safe.
+
+Listing, showing and finding never wait for a writer and never create the
+database, including when `--db` names an existing empty file. If the selected
+path cannot be opened, the command says which path and why: `is not a regular
+database file` for a directory or other non-file, `permission denied` when it
+cannot be written, and `is not a collections database` when its contents do not
+belong to collections.
 
 ## Adding, removing and finding a chat or work reference
 

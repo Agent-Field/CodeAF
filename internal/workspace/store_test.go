@@ -201,6 +201,8 @@ func TestInvalidAndMissingReferencesDoNotMutateCollections(t *testing.T) {
 	}
 }
 
+// C7 — Future, foreign and corrupt files must remain distinguishable from an
+// empty store, because accepting one would let collections rewrite another owner.
 func TestOpenRefusesFutureForeignAndDamagedDatabases(t *testing.T) {
 	for _, fixture := range []struct{ name, sql string }{
 		{"future", "PRAGMA application_id=1095123788; PRAGMA user_version=99"},
@@ -241,6 +243,8 @@ func TestOpenRefusesFutureForeignAndDamagedDatabases(t *testing.T) {
 	}
 }
 
+// C4 — A real write that exhausts the configured wait must return ErrBusy in
+// the same stable sentence while preserving everything committed before it.
 func TestBusyWriterReturnsWithoutLosingPriorState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "db")
 	s, other := openTestStore(t, path), openTestStore(t, path)
@@ -250,8 +254,12 @@ func TestBusyWriterReturnsWithoutLosingPriorState(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tx.Rollback()
-	if err := other.Add(context.Background(), c.ID, Ref{Kind: ConversationKind, ID: "blocked"}); err == nil {
-		t.Fatal("write passed another writer")
+	err = other.Add(context.Background(), c.ID, Ref{Kind: ConversationKind, ID: "blocked"})
+	if !errors.Is(err, ErrBusy) {
+		t.Fatalf("write passed or misreported another writer: %v", err)
+	}
+	if want := ErrBusy.Error() + " (waited " + busyTimeout.String() + ")"; err.Error() != want {
+		t.Fatalf("busy answer %q, want %q", err, want)
 	}
 	if err := tx.Rollback(); err != nil {
 		t.Fatal(err)

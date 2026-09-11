@@ -252,6 +252,29 @@ func TestCollectionsColdReadsAndMissingEditsDoNotInitializeStorage(t *testing.T)
 	}
 }
 
+// C3 — The command door must treat an existing empty database exactly like a
+// fresh home: list answers with the established sentence and leaves it empty.
+func TestCollectionsListLeavesAnExistingEmptyDatabaseAlone(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "empty.db")
+	if err := os.WriteFile(path, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := runCollectionsTo([]string{"list", "--db", path}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if want := "No collections found. Create one with aforge collections create <name>.\n"; out.String() != want {
+		t.Fatalf("list output %q, want %q", out.String(), want)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("list could not stat the empty database: %v", err)
+	}
+	if info.Size() != 0 {
+		t.Fatalf("list changed the empty database to %d bytes", info.Size())
+	}
+}
+
 func TestCollectionsNestedMembershipRoundTrip(t *testing.T) {
 	db := filepath.Join(t.TempDir(), "collections.db")
 	a, b := collectionCreate(t, db, "A"), collectionCreate(t, db, "B")
