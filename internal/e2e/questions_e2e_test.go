@@ -98,7 +98,8 @@ func TestQuestionsE2E(t *testing.T) {
 	t.Run("ADialIsMovedWithTheArrows", questionsDial)
 	t.Run("ARatifiedActSaysWhatItDidAndHowToUndoIt", questionsRatify)
 	t.Run("AssumptionsStandUntilOneIsStruck", questionsAssumption)
-	t.Run("TwoQuestionsInOneStepArriveAsASheet", questionsSheet)
+	t.Run("TwoQuestionsInOneStepAreOnePanelWithTabs", questionsTabs)
+	t.Run("FourReadsInOneBatchAreOnePermissionFrame", questionsGroup)
 	t.Run("AnotherWindowAnswersAndTheFirstSaysWho", questionsReach)
 	t.Run("AQuestionWhoseSubjectWentAwayIsWithdrawn", questionsWithdrawn)
 	t.Run("AProjectRuleDecidesAChoiceAndTheRowWearsIt", questionsAutonomy)
@@ -822,8 +823,8 @@ func questionsAssumption(t *testing.T) {
 // questionsSheet is BATCHED AT THE BOUNDARY: two questions raised inside one
 // step arrive together, `g` gives the answer just given to every row like it,
 // and `s` sends what is answered.
-func questionsSheet(t *testing.T) {
-	r := questionRig(t, "q-sheet", nil)
+func questionsTabs(t *testing.T) {
+	r := questionRig(t, "q-tabs", nil)
 	steer(t, r, `Call the ask tool TWICE IN THE SAME MESSAGE — two tool calls at once, `+
 		`not one after the other — and run nothing else. `+
 		`The first: head "read package.json?", kind permission, form line, `+
@@ -833,26 +834,83 @@ func questionsSheet(t *testing.T) {
 		`reason "the module path decides the import", stakes reversible, `+
 		`options [{"key":"1","label":"allow once"},{"key":"2","label":"skip it"}].`)
 
-	screen := awaitQuestion(t, r, say(t, "questionSheetTogetherWord"))
-	screenSays(t, screen, "read package.json?", "the first row")
-	screenSays(t, screen, "read go.mod?", "the second row")
-	screenSays(t, screen, say(t, "questionSheetSendWord"), "the key that sends the batch")
+	// ONE PANEL, A TAB EACH: the first question in the body, the second one's
+	// words in the top edge, and the key between them on the bottom edge.
+	screen := awaitQuestion(t, r, say(t, "questionTabKeyWord"))
+	screenSays(t, screen, "read package.json?", "the tab on screen")
+	screenSays(t, screen, "go.mod", "the second question's tab")
 	shot(t, r, "raised")
 
+	press(t, r, "Right")
+	press(t, r, "Right")
+	review := r.capture()
+	screenSays(t, review, say(t, "questionNotAnsweredWord"),
+		"the review names a question with nothing held for it")
+	shot(t, r, "review-empty")
+
+	press(t, r, "Left")
+	press(t, r, "Left")
 	press(t, r, "1")
-	answered := r.capture()
-	screenSays(t, answered, say(t, "questionSheetSameWord"),
-		"an answered row is what makes `same answer for all like this` mean anything")
-	shot(t, r, "answered")
+	press(t, r, "1")
+	held := r.capture()
+	screenSays(t, held, say(t, "questionSetSendWord"), "both answers held, and the review offers to send them")
+	shot(t, r, "review-held")
 
-	press(t, r, "g")
-	spread := r.capture()
-	screenSays(t, spread, say(t, "questionSheetSpreadWord"), "how many rows took the same answer")
-	shot(t, r, "spread")
-
-	press(t, r, "s")
+	press(t, r, "Enter")
 	sent := r.waitFor(30*time.Second, say(t, "questionReceiptWord"))
 	screenSays(t, sent, "allow once", "the receipt of what was sent")
+	shot(t, r, "sent")
+}
+
+// questionsGroup is PERMISSIONS FROM ONE STEP ARE ONE FRAME: four reads the
+// model asked for in one message are one frame listing what each wants, with
+// `allow all 4 · one by one · deny all`; `one by one` opens the same four as
+// tabs, and the review sends what was held — an allow and a deny mixed — in one
+// command.
+//
+// ONLY `read` ASKS, so nothing else in the turn puts a question of its own in
+// front of the four. The files are named by their whole path because the
+// model's working folder is not always the project it was opened on, and a read
+// that failed for want of the file would still have asked.
+func questionsGroup(t *testing.T) {
+	r := questionRig(t, "q-group", map[string]any{"tools.approvalMode": "allow", "tools.approval": "read:prompt"})
+	paths := make([]string, 0, 4)
+	for _, name := range []string{"e", "f", "g", "h"} {
+		path := filepath.Join(r.ws, name+".txt")
+		if err := os.WriteFile(path, []byte("the "+name+" line\n"), 0o644); err != nil {
+			t.Fatalf("seed %s: %v", name, err)
+		}
+		paths = append(paths, path)
+	}
+	steer(t, r, `Read `+strings.Join(paths, ", ")+` with the read tool — all four read calls `+
+		`in the same message, at once, not one after another — and run nothing else. `+
+		`Then tell me each file's first line.`)
+
+	screen := awaitQuestion(t, r, say(t, "questionGroupAllowWord"))
+	for _, name := range []string{"e.txt", "f.txt", "g.txt", "h.txt"} {
+		screenSays(t, screen, name, "the frame lists what each call wants")
+	}
+	screenSays(t, screen, say(t, "questionGroupApartWord"), "the way to answer them one at a time")
+	shot(t, r, "raised")
+
+	press(t, r, "2")
+	tabs := r.capture()
+	screenSays(t, tabs, say(t, "questionTabKeyWord"), "one by one opens the same four as tabs")
+	shot(t, r, "one-by-one")
+
+	// Allow the first three and deny the last: the review holds a mix, and the
+	// deny goes through the same door as the allows.
+	press(t, r, "1")
+	press(t, r, "1")
+	press(t, r, "1")
+	press(t, r, "3")
+	review := r.capture()
+	screenSays(t, review, "send all 4", "all four held, and the review offers to send them")
+	shot(t, r, "review")
+
+	press(t, r, "Enter")
+	sent := r.waitFor(60*time.Second, say(t, "questionReceiptWord"))
+	screenSays(t, sent, "deny", "the receipt of the one that was denied")
 	shot(t, r, "sent")
 }
 

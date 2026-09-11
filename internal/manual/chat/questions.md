@@ -365,41 +365,62 @@ receipt reads `aforge, on your settings` — and what the model is told says in
 so many words that the answer is provisional and you may still change it. That is
 the next section.
 
-## Several questions at once — the sheet, and the same answer for all of them
+## Several questions at once — tabs, go back to the previous question, answer them all at once
 
-Quiet questions raised while one step is running do not land on top of each
-other. They wait for that step to end — the moment the model speaks again, or the
-turn finishes — and arrive together, grouped by the kind of decision each one is:
+When one step of the work raises more than one question — the model asks two or
+three things in the same breath, or a batch of calls each needs your ok — they
+are **one panel with a tab each**, not a pile. The questions that belong
+together are the ones the same step raised; a question from another step waits
+behind the panel as `N more`.
 
 ```
-? 4 questions raised together
-  asking permission
-  ▸ ✓  1  read vendor/modernc.org?          allow once
-      ?  2  read vendor/golang.org/x?
-      ?  3  write to .github/workflows?
-  choosing
-      ?  4  which index should this use?
-  enter open it · s send what is answered · g same answer for all like this · esc later
+╭─ ● storage   ○ naming   ○ tests   ✓ review ────────────── 1 of 3 ─╮
+│                                                                   │
+│ ? Which storage for the session index?                            │
+│                                                                   │
+│ ▸ 1  SQLite       one file beside the conversation  ◆ recommended │
+│   2  JSONL        append-only, no new dependency                  │
+│   3  something else…                                              │
+│                                                                   │
+╰─ ←→ question · ↑↓ choose · enter take it · esc later ─────────────╯
 ```
 
-`▸` is where you are, `✓` is a row you have answered with the answer you gave
-beside it, `?` is one still waiting.
+`●` is the question on screen, `○` one still waiting, `✓` one you have
+answered. Everything a single question does works on its tab.
 
-- `1`–`9` move to that row
-- `enter` opens that one on its own, with everything a question normally draws
-- `g` gives the row you are on the same answer as every other row of that kind
-  **that offers that same answer** — and says how many it reached. Two questions
-  whose second answer is `deny` on one and `always` on the other are not the same
-  answer, and `g` will not treat them as one
-- `s` sends everything you answered and lets each remaining question take its
-  own recommended answer. Anything nobody recommended an answer for stays open,
-  and one line says `still needs you`. Every answer it sends leaves the same dim
-  `decided …` line one answered on its own would
-- `esc` puts the whole sheet off; nothing is answered, the count does not drop,
-  and the chip's key brings it back
+- **`←` and `→` go to the previous or next question.** They stop at the ends.
+- **`enter` or a digit holds that answer** — nothing is sent yet — and moves to
+  the next question still waiting. To change one, go back to its tab and pick
+  again.
+- **The last tab is the review**, and it sends everything at once:
 
-A question something is blocked on never waits for a boundary. It arrives at
-once, on its own.
+```
+╭─ ✓ storage   ✓ naming   ○ tests   ● review ────────────── review ─╮
+│                                                                   │
+│ ✓ storage       SQLite                                            │
+│ ✓ naming        session-index.db                                  │
+│ ○ tests         not answered — ← to go back                       │
+│                                                                   │
+│ ▸ send the 2 answered · 1 stays open                              │
+│                                                                   │
+╰─ enter send · ← back · esc later ─────────────────────────────────╯
+```
+
+`enter` on the review sends every held answer in one go, in tab order — `send
+all 3` when everything is answered. **A question you did not answer stays open**;
+nothing is picked for you, and with nothing answered the review offers no send.
+
+**`esc` puts the whole set off**: it folds to one rule, `? 3 questions · storage,
+naming, tests`, what you had answered stays held, and `space` or the chip brings
+every tab back. **Only a key on the panel holds an answer** — answer one from
+home, another window or its own page (`o`) and it goes at once, and its tab
+disappears.
+
+**What never joins a set:** anything irreversible, anything asking you to
+confirm, and a question whose `←` `→` move something (a dial, a choice inside a
+sentence). There is no "same answer for all of these" key on tabs; for
+permissions there is `allow all`, on permissions.md's grouped frame. Under sixty
+columns the questions come one at a time.
 
 ## The question disappeared — it vanished without me answering, withdrawal
 
@@ -411,11 +432,9 @@ dim line stays where it was:
   ⊘ allow this? — no longer needed · the turn moved on without it
 ```
 
-The count in the chip drops, and an open sheet loses that row and re-flows —
+The count in the chip drops, and an open set of tabs loses that tab —
 **without moving anybody else's answer**, because an answer belongs to its
-question and not to the position it was drawn in. A question still gathering
-inside a step is dropped from that batch too, so a boundary never delivers a
-decision that stopped needing to be made.
+question and not to the position it was drawn in.
 
 It is never called cancelled: nothing failed, and nobody decided anything. The
 decision simply stopped needing to be made.
@@ -603,13 +622,11 @@ the row.
 | `D` | decide questions like this from now on |
 | `r` | make it a rule |
 | `u` | undo, while what was done is still real |
-| `←` `→` | walk the two answers of a confirmation, or change what is in the hole where the question has one |
-| `s` | on a sheet: send what you answered, and let the rest take their own picks |
-| `g` | on a sheet: same answer for all like this |
+| `←` `→` | walk the two answers of a confirmation, or change what is in the hole where the question has one. On **tabs** — several questions from one step — they go to the previous or next question |
+| `enter` | on the **review** tab: send every answer you gave, at once |
 
-On a **sheet** — several questions that arrived together — `1`–`9` move to a row
-instead of answering, because the numbers on screen are the rows; `enter` opens
-the row you are on, and `s` and `g` are the two keys about the whole batch.
+On **tabs**, `enter` and the digits answer the question on screen and hold the
+answer until the review sends them all; `esc` puts the whole set off.
 
 **Typing is answering.** The box under the block stays live. While there are
 words in it every ordinary key belongs to the box, and pressing `enter` sends
@@ -1264,7 +1281,7 @@ picks one before anything is written.
 While a beat is up, the digits belong to it — `3` is the third shape and not the
 third answer — and `esc` backs out of the beat rather than putting the question
 off.
-## Questions over the session host and on another machine — do questions work over --host, and on the engine behind an ordinary aforge
+## Questions over the session host and on another machine — do questions work over --host, and on the engine behind an ordinary aforge when I run it normally
 
 **A question reaches you wherever the conversation is, and you answer it where
 you are standing.** That is true on all three roads and there is nothing to turn
@@ -1322,7 +1339,8 @@ you; a conversation with no project to keep it in says so.
 it** — see *The row on home shows the question but my key does nothing over it*.
 
 The count of open questions in the status line IS built: that is the chip
-described above. So is the sheet, and so is the per-project setting that answers
+described above. So are the tabs for several questions from one step, and so is
+the per-project setting that answers
 a whole kind of question while you are away (`/autonomy`, and `D` on a row).
 
 **Every question the block draws is drawn only by the block now.** The last of the

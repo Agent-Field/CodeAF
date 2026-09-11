@@ -111,8 +111,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"stop asking me this kind of thing", "questions"},
 		{"none of the answers it offered are right", "questions"},
 		// Reach (docs/design/questions/DESIGN.md's PRESENCE-AWARE DELIVERY,
-		// BATCHED AT THE BOUNDARY, WITHDRAWN WITH A REASON and FIRST ANSWER
-		// WINS), asked the way somebody meets each of them: answering somewhere
+		// ONE STEP ONE PANEL, WITHDRAWN WITH A REASON and FIRST ANSWER WINS), asked the way somebody meets each of them: answering somewhere
 		// else, coming back to a window nobody was at, a pile of them arriving
 		// together, one vanishing, two windows racing, and the setting that
 		// governs the whole thing.
@@ -128,6 +127,16 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did several questions arrive at once", "questions"},
 		{"answer a whole batch of questions at once", "questions"},
 		{"same answer for all of these", "questions"},
+		// Several questions from one step are tabs with a review (lane T of the
+		// question-views wave), asked the ways somebody meets them: moving
+		// between them, sending them together, and a batch of approvals.
+		{"go back to the previous question", "questions"},
+		{"answer them all at once", "questions"},
+		{"it asked me three questions as tabs", "questions"},
+		{"how do I send all my answers", "questions"},
+		{"approve all of these", "permissions"},
+		{"allow all the reads at once", "permissions"},
+		{"deny all of them", "permissions"},
 		{"the question disappeared", "questions"},
 		{"a question vanished without me answering", "questions"},
 		{"I typed a sentence instead of pressing a key and the question disappeared", "questions"},

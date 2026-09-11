@@ -221,22 +221,24 @@ for it) and a sentence about assumptions — the row borrows the task proposal's
 ![one struck](screens/assumptions-stand-until-one-is-struck-struck.png)
 *`2`.*
 
-## Several at once — the sheet
+## Several at once — tabs
 
-![two questions raised together](screens/two-questions-in-one-step-arrive-as-a-sheet-raised.png)
-*Two `ask` calls in one step, grouped by shape, each row carrying that question's own
-keys. `▸` is the cursor, `?` is a row still waiting.*
+![two questions raised together](screens/two-questions-in-one-step-are-one-panel-with-tabs-raised.png)
+*Two `ask` calls in one step are one panel. The top edge is a tab per question — each
+called by the words that tell it apart, the words both heads share taken off — and the
+review last; the bottom edge adds `←→ question`.*
 
-![one answered](screens/two-questions-in-one-step-arrive-as-a-sheet-answered.png)
-*`1`. The row wears `✓` and the answer beside it, the cursor walks on, and `[g] same
-answer for all like this` is offered now that there is an answer to spread.*
+![the review, nothing held](screens/two-questions-in-one-step-are-one-panel-with-tabs-review-empty.png)
+*`→ →`. The review names each question with `not answered — ← to go back`, and with
+nothing held it offers no send at all — `enter` is off the edge.*
 
-![spread](screens/two-questions-in-one-step-arrive-as-a-sheet-spread.png)
-*`g`. Both rows answered, and `[s] send what is answered (2)`.*
+![the review, both held](screens/two-questions-in-one-step-are-one-panel-with-tabs-review-held.png)
+*`← ← 1 1`. `enter` (or a digit) on a tab holds the answer and moves on; nothing has
+gone to the engine yet. The review lists what is held and offers `send all 2`.*
 
-![sent](screens/two-questions-in-one-step-arrive-as-a-sheet-sent.png)
-*`s`. One record per row — which this wave added; before it, a batch you sent vanished
-without a line.*
+![sent](screens/two-questions-in-one-step-are-one-panel-with-tabs-sent.png)
+*`enter`. Both answers go through the one door in tab order, in one command, and each
+leaves its own receipt.*
 
 ## Two windows
 

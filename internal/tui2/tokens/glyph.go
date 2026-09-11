@@ -88,6 +88,14 @@ const (
 	// question, and it is a filled shape where the pointer is a triangle so the
 	// two can stand on one row and never be read as each other.
 	GlyphRecommended = "◆"
+	// GlyphTabHere and GlyphTabOpen are THE TABS OF A SET — several questions
+	// one step raised, drawn as one panel with a tab each (internal/tui3's
+	// questionset.go). The filled dot is the question the panel is showing and
+	// the hollow one a question still waiting for its answer; a question already
+	// answered in the set wears the settled tick. They are circles and not the
+	// pointer because the pointer is an ANSWER's mark, and a tab is a question.
+	GlyphTabHere = "●"
+	GlyphTabOpen = "○"
 
 	// The one frame (internal/tui3/frame.go): a rounded, dim edge around the
 	// one object on the surface that is waiting for a person (a question), and
@@ -430,6 +438,8 @@ func Glyphs() []GlyphInfo {
 		{"ScopeUp", GlyphScopeUp, '‹', false},
 		{"Pointer", GlyphPointer, '▸', false},
 		{"Recommended", GlyphRecommended, '◆', true},
+		{"TabHere", GlyphTabHere, '●', true},
+		{"TabOpen", GlyphTabOpen, '○', true},
 		{"FrameTopLeft", GlyphFrameTopLeft, '╭', true},
 		{"FrameTopRight", GlyphFrameTopRight, '╮', true},
 		{"FrameBottomLeft", GlyphFrameBottomLeft, '╰', true},

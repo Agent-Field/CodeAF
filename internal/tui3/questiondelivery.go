@@ -34,20 +34,22 @@ package tui3
 //
 //	decided allow rm -rf build? → allow once · the rule · 14:02
 //
-// AND AT A STEP'S BOUNDARY, where several quiet questions were raised inside one
-// piece of work, they arrive together as the sheet (questionsheet.go) instead of
-// one at a time on top of each other.
+// AND NOTHING IS HELD BACK. Several questions raised by one step used to be
+// gathered here until "the model spoke again" and released as a sheet; the
+// engine now names the step on every question it raises inside one
+// ([session.Question.Batch]), so they go onto the block the moment they arrive
+// and are drawn there as ONE panel (questionset.go). Holding them bought
+// nothing but a delay — and once a deadlock: two `ask` calls waiting on
+// answers to questions held for a boundary that could not come until they
+// were answered.
 //
-// ── THE TWO LAWS THIS FILE IS THE ENFORCEMENT OF ────────────────────────────
+// ── THE LAW THIS FILE IS THE ENFORCEMENT OF ─────────────────────────────────
 //
 //   - PRESENCE-AWARE DELIVERY. docs/design/questions/DESIGN.md: "On the page:
 //     pinned now. On home or another page: in the row, plus the chip. Away
 //     ([awayAfter], 10m without a key): dial resolves what it may and records
 //     DecidedBy: dial; the rest go to home and the phone; the terminal bell
 //     rings once for a blocking question only."
-//   - BATCHED AT THE BOUNDARY. "Non-blocking questions raised inside one step
-//     arrive together as a sheet at the step's end; a blocking one arrives at
-//     once with the count of what is behind it."
 
 import (
 	"strings"
@@ -101,19 +103,10 @@ type questionDelivery struct {
 	// Bell is the terminal bell, and it is true at most once per question and
 	// only for one something is blocked on.
 	Bell bool
-	// Gather is a question held for its step's boundary. The caller arms the
-	// boundary's own clock on it ([app.gatherQuestions]).
-	Gather bool
 }
 
-// questionDeliveryRule owns presence, the boundary batch and the bell's memory.
-//
-// pending is keyed by a STEP TOKEN because only questions born inside the same
-// step batch together: two steps' questions arriving as one sheet would be a
-// sheet about two different pieces of work, which is the thing the sheet exists
-// to stop being.
+// questionDeliveryRule owns presence and the bell's memory.
 type questionDeliveryRule struct {
-	pending map[string][]session.Question
 	// rung is every question that has already had its bell. A question is
 	// re-emitted whenever a surface attaches ([session.Agent.WatchQuestions]
 	// replays), and a terminal that rang on every reattach would be a terminal
@@ -122,11 +115,11 @@ type questionDeliveryRule struct {
 }
 
 func newQuestionDeliveryRule() questionDeliveryRule {
-	return questionDeliveryRule{pending: map[string][]session.Question{}, rung: map[string]bool{}}
+	return questionDeliveryRule{rung: map[string]bool{}}
 }
 
 // questionToken is the one string a question is known by across this file and
-// the sheet: the lane and the lane's own id, because two lanes may both be
+// home: the lane and the lane's own id, because two lanes may both be
 // waiting on id 7 ([questionShown.token] is the same string from the block's
 // side).
 func questionToken(q session.Question) string { return string(q.Kind) + ":" + q.Token() }
@@ -148,7 +141,7 @@ func (a *app) questionPresenceNow() questionPresence {
 }
 
 // deliver places one question, and is the whole of the rule.
-func (d *questionDeliveryRule) deliver(q session.Question, step string, presence questionPresence, now time.Time) questionDelivery {
+func (d *questionDeliveryRule) deliver(q session.Question, presence questionPresence, now time.Time) questionDelivery {
 	if q.Withdrawn != nil {
 		// A WITHDRAWN QUESTION IS NEVER DELIVERED. Its one dim line is the
 		// block's ([app.withdrawQuestion]); arriving here it is simply not a
@@ -177,61 +170,10 @@ func (d *questionDeliveryRule) deliver(q session.Question, step string, presence
 		}
 		return out
 	}
-	if step != "" && !q.Blocking.Blocks() {
-		// BATCHED AT THE BOUNDARY. A quiet question raised inside a step is
-		// held for [questionDeliveryRule.boundary]; nothing is drawn now,
-		// because a question landing on top of the last one is the thing the
-		// sheet replaces.
-		d.pending[step] = appendQuestionOnce(d.pending[step], q)
-		return questionDelivery{Gather: true}
-	}
 	if presence == questionOtherPage {
 		return questionDelivery{Pin: &q, Note: questionWaitingLine(q)}
 	}
 	return questionDelivery{Pin: &q}
-}
-
-// boundary releases every quiet question one step gathered, oldest first. The
-// caller turns two or more of them into the sheet and one of them into the
-// ordinary block ([app.questionBoundary]).
-func (d *questionDeliveryRule) boundary(step string) []session.Question {
-	held := d.pending[step]
-	delete(d.pending, step)
-	return held
-}
-
-// forget drops a withdrawn question from whatever step is still gathering, so a
-// boundary cannot release a decision that stopped needing to be made.
-func (d *questionDeliveryRule) forget(q session.Question) {
-	token := questionToken(q)
-	for step, held := range d.pending {
-		kept := held[:0]
-		for _, one := range held {
-			if questionToken(one) == token {
-				continue
-			}
-			kept = append(kept, one)
-		}
-		if len(kept) == 0 {
-			delete(d.pending, step)
-			continue
-		}
-		d.pending[step] = kept
-	}
-}
-
-// appendQuestionOnce replaces by token rather than appending, for
-// [app.raiseQuestion]'s reason: the engine re-emits an open question whenever a
-// surface attaches, and a batch that grew a row on every reattach would arrive
-// as a sheet with one decision on it four times.
-func appendQuestionOnce(questions []session.Question, q session.Question) []session.Question {
-	for i := range questions {
-		if questionToken(questions[i]) == questionToken(q) {
-			questions[i] = q
-			return questions
-		}
-	}
-	return append(questions, q)
 }
 
 // dialAnswer is what the project's rule may take while nobody is here, and it
@@ -295,7 +237,7 @@ func questionWaitingLine(q session.Question) string {
 
 // deliverQuestion is the ONE place the rule's facts become acts.
 func (a *app) deliverQuestion(q session.Question) tea.Cmd {
-	out := a.questionReach.deliver(q, a.questionStep(), a.questionPresenceNow(), a.now())
+	out := a.questionReach.deliver(q, a.questionPresenceNow(), a.now())
 	var cmds []tea.Cmd
 	if out.Answer != nil {
 		// THE RULE'S ANSWER GOES THROUGH THE ONE DOOR, exactly as a person's
@@ -320,24 +262,6 @@ func (a *app) deliverQuestion(q session.Question) tea.Cmd {
 	if out.Note != "" {
 		a.sayWhereQuestionWent(out.Note)
 	}
-	if out.Gather {
-		// AND THE BOUNDARY GETS A CLOCK, WHICH IS NOT BELT AND BRACES BUT THE
-		// ONLY THING THAT MAKES HOLDING SAFE AT ALL.
-		//
-		// A question can be holding open the very tool call whose return would
-		// have been the boundary — the `ask` tool blocks its turn until it is
-		// answered (session's tools_ask.go), so a question held for "the model
-		// speaking again" would be held until the model speaks, which cannot
-		// happen until somebody answers the question nobody can see. That
-		// deadlock was observed on a real run: two `ask` calls waiting, the
-		// status line honestly saying `2 open`, and nothing above the box.
-		//
-		// So the hold is bounded by [questionGatherFor] and the boundary fires
-		// on whichever comes first. Batching is a claim that several questions
-		// arrived AT ONCE, and a few seconds is exactly the window in which
-		// that is true.
-		cmds = append(cmds, a.gatherQuestions())
-	}
 	if out.Phone {
 		cmds = append(cmds, a.notifyAsk())
 	}
@@ -357,28 +281,3 @@ func (a *app) sayWhereQuestionWent(note string) {
 	}
 	a.pageMsg = note
 }
-
-// questionStep is the token quiet questions gather under, and "" when there is
-// no step to gather inside.
-//
-// NOTHING BATCHES OUTSIDE A LIVE TURN, and that is the boundary rule read
-// literally: a question raised while nothing is running has no boundary coming,
-// so holding it would be holding it forever.
-//
-// AND THE STEP THIS SURFACE CAN HONESTLY SEE IS "UNTIL THE MODEL SPEAKS AGAIN".
-// The engine has no step event, and what a person experiences as one step is a
-// batch of tool calls between two things the model said — so that is what is
-// counted ([app.questionStepEnded] is called from the reducer on the first text
-// of the next reply and on the turn ending). It is coarser than the engine's own
-// idea of a step and it is named for what it actually measures rather than for
-// what would have been convenient.
-func (a *app) questionStep() string {
-	if a.stream == nil {
-		return ""
-	}
-	return "step:" + itoa(a.questionStepAt)
-}
-
-// questionStepEnded moves the token on, so the next quiet question gathers into
-// a new batch rather than into the one that has just been handed over.
-func (a *app) questionStepEnded() { a.questionStepAt++ }

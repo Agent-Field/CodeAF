@@ -12,7 +12,7 @@ import (
 //
 // It used to be four decisions in four places, each keyed on a different thing:
 // [app.questionForm] read the asker's `Form` word and the count of its options,
-// [app.questionNarrowed] read the width, the batch drew itself whenever it had
+// [app.questionNarrowed] read the width, the sheet drew itself whenever it had
 // rows, and home and the errand pane each called a renderer by name. A person
 // could not predict which shape a question would take, and neither could a lane.
 //
@@ -32,13 +32,10 @@ const (
 	// viewPhone is the bottom sheet a phone-width frame gets
 	// (questionnarrow.go).
 	viewPhone
-	// AND THE RUNG FOR TABS IS NOT HERE YET. Two or more questions from one step
-	// are one decision taken in parts and the owner ruled they become one panel
-	// with a tab each (2026-09-11, several-questions pick A) — but that drawing
-	// is a lane of its own and nothing raises it today. A rung whose `when` can
-	// only answer false is a ladder that lies about what it can produce, so the
-	// view and its rung arrive together with the panel that draws them.
-	//
+	// viewTabs is two or more questions from one step, drawn as one panel with
+	// a tab per question and a review tab, or as one permission frame where
+	// every one of them is a permission (questionset.go).
+	viewTabs
 	// viewPanel is the framed panel a question hangs in above the box
 	// (questionpanel.go). It is the ordinary answer.
 	viewPanel
@@ -78,6 +75,15 @@ var questionLadder = []questionRung{
 			"keyboard to press a digit with: every answer becomes a band a thumb can land on",
 		when: func(a *app, q questionShown, width int) bool {
 			return a.questionNarrowed(q, width)
+		},
+	},
+	{
+		view: viewTabs,
+		why: "two or more questions from one step are one decision taken in parts, so they are one " +
+			"panel with a tab each — and where every one of them is a permission, one frame that " +
+			"answers all of them at once",
+		when: func(a *app, q questionShown, width int) bool {
+			return a.questionTabbed(q)
 		},
 	},
 	{

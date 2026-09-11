@@ -910,23 +910,31 @@ var tuiWords = map[string]tuiWord{
 		screen: "only what differs is here",
 		why:    "the compare table, built on the asker's own dimensions rather than on anything invented",
 	},
-	"questionSheetTogetherWord": {
-		screen: " raised together",
-		why: "BATCHED AT THE BOUNDARY: the one thing about a sheet that is not visible from its rows " +
-			"is that they arrived at the same moment, from one piece of work",
+	"questionTabKeyWord": {
+		screen: "←→ question",
+		source: "question",
+		why: "SEVERAL QUESTIONS FROM ONE STEP ARE ONE PANEL: the key that moves between them is the one " +
+			"thing a set's bottom edge says that a panel of one does not (questionset.go)",
 	},
-	"questionSheetSendWord": {
-		screen: "send what is answered",
-		why:    "a batch answered row by row and then not sent is a batch nobody answered",
+	"questionNotAnsweredWord": {
+		screen: "not answered — ← to go back",
+		why: "the review names a question with nothing held for it and where it is answered, rather than " +
+			"sending a pick nobody pressed",
 	},
-	"questionSheetSameWord": {
-		screen: "same answer for all like this",
-		why: "`g` spreads the answer just given across the rows in front of you and writes nothing down " +
-			"— which is a different act from the room's `=`, that writes a rule about the future",
+	"questionSetSendWord": {
+		screen: "send all 2",
+		source: "send all ",
+		why:    "the review's one answer: every held answer, in tab order, through the one door in one command",
 	},
-	"questionSheetSpreadWord": {
-		screen: " answered the same way",
-		why:    "and it says how many rows took it, because a spread nobody can count is a spread nobody can check",
+	"questionGroupAllowWord": {
+		screen: "allow all 4",
+		source: "allow all ",
+		why: "PERMISSIONS FROM ONE STEP ARE ONE FRAME: approving all of them is one answer on it, with " +
+			"the count of what it approves (questionset.go)",
+	},
+	"questionGroupApartWord": {
+		screen: "one by one",
+		why:    "the frame's way back to answering each permission on its own, which opens them as tabs",
 	},
 	"consentOldOfferWord": {
 		screen: "enter take it",

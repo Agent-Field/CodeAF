@@ -193,6 +193,23 @@ var vocabulary = []GlyphBinding{
 		ASCII:     "*",
 		UsualTint: Amber, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true,
 	},
+	{
+		// THE TABS OF A SET OF QUESTIONS are the step dots' shapes for the step
+		// dots' reason — filled is where you are, hollow is still to come — and
+		// they are slots of their own because the meaning is not a plan's: a
+		// tab is one question of several one step raised, and the dot says
+		// which of them the panel is showing (internal/tui3's questionset.go).
+		ID: GTabHere, Name: "TabHere", Meaning: "the question of several that the panel is showing",
+		Plain: GlyphTabHere, NerdFont: "\uF111", NFName: "nf-fa-circle",
+		ASCII:     "@",
+		UsualTint: Amber, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true,
+	},
+	{
+		ID: GTabOpen, Name: "TabOpen", Meaning: "a question of several still waiting for its answer",
+		Plain: GlyphTabOpen, NerdFont: "\uF10C", NFName: "nf-fa-circle_o",
+		ASCII:     "o",
+		UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true,
+	},
 
 	// -- the one frame (geometry: box drawing IS the right character) --------
 	//
