@@ -88,3 +88,30 @@ func TestTheQuestionIsAnsweredAgainOnceTheStartPageIsClosed(t *testing.T) {
 		t.Fatal("the question would not take its own key once the page was gone")
 	}
 }
+
+// AND THE PAGE IS NOT REFUSED OVER THE ROWS IT WAS ABOUT TO RECLAIM.
+//
+// WHAT WAS MEASURED, on a merge of this branch with lane P's. A permission was
+// waiting on a twenty-row terminal, and `ctrl+t` did nothing at all — no page,
+// no word. [app.openChatStart] asks whether there is a body region to stand the
+// page in, and it was asking [app.viewHeight], which is charged for the question
+// block; a consent drawn as a card rather than a line took the body to zero and
+// the page refused itself. But the block COMES DOWN when the page goes up
+// ([app.questionRows] answers nothing while [app.startingChat]), so those rows
+// were the page's own. The guard now measures [app.startPageBody].
+//
+// The frame here is ten rows for exactly that reason: it is a frame with no body
+// region left while the question stands, and a body region once it does not.
+func TestTheStartPageOpensOverAQuestionThatHasEatenTheFrame(t *testing.T) {
+	lab := newStartLab(t)
+	a := lab.app()
+	a.resized(60, 10)
+	drive(t, a, streamOf(a, consentEvent(7, "bash", "sleep 300", `bash pattern "sleep *"`)))
+	if a.viewHeight() != 0 {
+		t.Fatalf("the fixture no longer measures what it is for: the question leaves %d rows of body, so the old guard would have opened the page anyway", a.viewHeight())
+	}
+	drive(t, a, key(newChatChord))
+	if !a.startingChat() {
+		t.Fatal("ctrl+t did nothing and said nothing: the page was refused over the rows the question block was holding, and the question block comes down with the page")
+	}
+}

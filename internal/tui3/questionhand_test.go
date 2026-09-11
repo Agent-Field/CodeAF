@@ -311,6 +311,16 @@ func TestTheFirstLetterOfASentenceIsNotAVerbOnTheBlock(t *testing.T) {
 // AND THE SAME KEY WORKS THE MOMENT SOMEBODY AIMS AT THE BLOCK. One arrow is
 // the whole of it — the grammar the block is drawn with, read in the order a
 // hand uses it.
+//
+// WHAT IS HELD HERE IS WHERE THE KEY WENT, AND DELIBERATELY NOT WHAT IT THEN
+// DID. The hand law is about one thing: a letter goes to the box until somebody
+// aims at the block, and to the block afterwards. What `c` MEANS once it gets
+// there is the block's own business and has already moved once — the owner's
+// ruling of 2026-09-11 made it a shortcut to the `something else…` row wherever
+// a question has one, where it used to point the message box — and a test that
+// asserted the old meaning here would go red for a reason with nothing to do
+// with the hand. So this asserts the two halves of the law itself: the block
+// took the key, and the box did not.
 func TestAVerbWorksOnceTheBlockHasBeenAimedAt(t *testing.T) {
 	lab := handLab(t)
 	if !lab.press("down") {
@@ -319,8 +329,8 @@ func TestAVerbWorksOnceTheBlockHasBeenAimedAt(t *testing.T) {
 	if !lab.press(questionCommentKey) {
 		t.Fatal("`c` did not reach the block after the person aimed at it")
 	}
-	if !lab.a.questionWriting() {
-		t.Fatal("`c` reached the block and did not point the box at the question")
+	if typed := lab.a.input.String(); typed != "" {
+		t.Fatalf("`c` was taken by the block and typed into the box as well: the box holds %q", typed)
 	}
 }
 
@@ -574,10 +584,20 @@ func TestThePhoneSheetDrawsThePointerTheArrowsMove(t *testing.T) {
 	if want := strings.TrimSpace(head.question.Options[head.pick].Label); !strings.Contains(start, want) {
 		t.Fatalf("the pointer is drawn on %q and enter would take %q", start, want)
 	}
-	lab.press("up")
+	// THE ARROW PRESSED IS THE ONE WITH SOMEWHERE TO GO, and which one that is
+	// depends on where this kind of question opens its pointer — which is
+	// [questionPointerStart]'s business, not this law's, and has moved before.
+	// The ends do not wrap, so a fixed direction would make this test go red for
+	// a change in where the pointer STARTS rather than in whether the sheet draws
+	// where it IS.
+	arrow := "up"
+	if head.pick <= 0 {
+		arrow = "down"
+	}
+	lab.press(arrow)
 	moved := pointed()
 	if moved == start {
-		t.Fatalf("the arrow moved the cursor and the sheet drew it in the same place: %q", moved)
+		t.Fatalf("%q moved the cursor and the sheet drew it in the same place: %q", arrow, moved)
 	}
 	head, _ = lab.a.questionHead()
 	if want := strings.TrimSpace(head.question.Options[head.pick].Label); !strings.Contains(moved, want) {

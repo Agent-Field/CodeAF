@@ -191,12 +191,17 @@ func (a *app) openChatStart() tea.Cmd {
 		a.note(newUnavailableWord)
 		return nil
 	}
-	if a.viewHeight() <= 0 {
+	if a.startPageBody() <= 0 {
 		// There is no body region at all on this frame — a terminal two rows tall
 		// — so there is nowhere to put the page and nothing it could say. A frame
 		// that is merely too small for the UNIT is fine: the box falls back to the
 		// foot of the frame where it lives on every other screen, and
 		// [startTinyWord] says which page it belongs to (view.go's [app.bodyRows]).
+		//
+		// IT IS MEASURED AS THE PAGE WOULD FIND IT AND NOT AS THE FRAME IS NOW,
+		// which is what [app.startPageBody] is for: the question block comes down
+		// when this page goes up, so asking [app.viewHeight] here would refuse the
+		// page over the rows the page itself was about to reclaim.
 		return nil
 	}
 	if a.boxTaken() {
