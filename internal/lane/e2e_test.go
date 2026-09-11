@@ -67,6 +67,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/lane/control"
 	"github.com/Agent-Field/aforge-v2/internal/lane/lanestub"
 )
 
@@ -709,7 +710,7 @@ func TestS5NoFetchOnTheSendPath(t *testing.T) {
 type e2eRouter struct {
 	stub   *lanestub.Server
 	ledger Ledger
-	budget *Budget
+	purse  control.Purse
 	client *http.Client
 	// at is the moment in the WORLD, which advances by what each request
 	// actually took plus the time somebody spends reading the answer. The
@@ -737,11 +738,12 @@ func newE2ERouter(stub *lanestub.Server, ledger Ledger) *e2eRouter {
 	return &e2eRouter{
 		stub:   stub,
 		ledger: ledger,
-		// THE DESIGN'S OWN BUDGET, and it is the shipped one rather than a
-		// figure written here: two hedges in any twenty requests and a tenth of
-		// recent spend ([DefaultBudget]). A scenario that picked its own
-		// allowance would be a scenario measuring a router nobody ships.
-		budget: DefaultBudget(),
+		// THE DESIGN'S OWN RAIL, and it is the shipped one rather than a figure
+		// written here: what a call may spend rescuing itself is its own patience
+		// converted through λ, which [PlanFor] derives and [Spending] reads. A
+		// scenario that picked its own allowance would be a scenario measuring a
+		// router nobody ships.
+		purse:  Spending(PlanFor(Choice{}, Pace{}, RoleTalk, e2eMoment)),
 		client: &http.Client{},
 		at:     e2eMoment,
 	}
@@ -790,14 +792,6 @@ func (r *e2eRouter) send(t *testing.T, pinned string, pin bool) {
 	if err != nil {
 		t.Fatalf("send: %v", err)
 	}
-	// THE BUDGET'S DENOMINATOR IS REQUESTS, so it is told about every one of
-	// them and not only about the ones that needed rescuing. That is the whole
-	// of the correction the simulator forced (Part III, C4): a bucket counted in
-	// minutes refills itself while a slow batch runs, and the same policy then
-	// hedges one request in a hundred on one seed and nineteen in twenty on
-	// another.
-	r.budget.NoteRequest(r.at)
-	r.budget.NoteSpend(answer.cost, r.at)
 	r.answers = append(r.answers, answer.total)
 	r.firsts = append(r.firsts, answer.first)
 	if answer.hedged {
@@ -873,16 +867,10 @@ func (r *e2eRouter) race(ctx context.Context, choice Choice, request Request) (e
 			// The estimate a hedge is judged against: what a second whole
 			// answer on the alternative would cost.
 			estimate := e2eEstimate(rescue, request)
-			if !r.budget.Allow(r.at, estimate) {
+			if r.purse != nil && !r.purse.Allows(estimate, r.at) {
 				continue
 			}
 			answer.hedged = true
-			// A hedge is charged when it is FIRED and at the estimate it was
-			// allowed on, because the stream that loses is cancelled and never
-			// reports what it cost. Counting only the waste that was observed
-			// would let the mechanism spend without limit as long as it kept
-			// being right.
-			r.budget.NoteHedge(estimate, r.at)
 			alternate = r.start(ctx, nil, []string{rescue}, nil, request)
 
 		case result := <-primary.done:
@@ -1333,12 +1321,13 @@ func TestTheInstrumentInThisFileWorksBeforeAnySeamDoes(t *testing.T) {
 	Default().SetSheet(e2eServeSheet(stub))
 
 	router := newE2ERouter(stub, ledger)
-	// AND NO ALLOWANCE, so that eight requests are eight asks. Every call is
+	// AND NOTHING TO SPEND, so that eight requests are eight asks. Every call is
 	// watched now — a plan with a ceiling is built whether or not the chooser
 	// had an opinion — and this test is about the instrument rather than about
-	// the rescue: a budget of nothing is how the second request is switched off
-	// (hedge.go), and it keeps the count below an assertion about plumbing.
-	router.budget = NewBudget(0, 0)
+	// the rescue: a purse that refuses everything is how the second request is
+	// switched off (hedge.go), and it keeps the count below an assertion about
+	// plumbing.
+	router.purse = NoSpending()
 
 	router.run(t, 8, "Cloudflare", false)
 

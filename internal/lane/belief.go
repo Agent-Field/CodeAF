@@ -975,6 +975,38 @@ func (l *ledger) folded(of *chains, id ID, held Posterior, z, noise float64, at 
 // posterior far too certain to move. Adopting the observation outright is
 // exactly what [Posterior.Update] already does for a belief that knows nothing,
 // which is what a belief whose subject has just changed IS.
+//
+// ── AND IT ONLY RUNS WHEN THE ALARM FIRES, WHICH ON A COLLAPSE LIKE THAT ONE
+// IT DOES NOT ────────────────────────────────────────────────────────────────
+//
+// This is a measured seam, left open on purpose. Replayed on 2026-09-11 from
+// the sighting series above (see the replay in belief_test.go), the CUSUM peaks
+// at 3.40 against [cusumAlarm]'s 4.0 and then DECAYS, so the reset below never
+// runs and the flat belief goes on crawling: by the fifth collapsed sighting the
+// chain was at 7.4 tokens a second and the flat belief the chooser ranks on was
+// still at 17.1.
+//
+// The cause is structural rather than a knob set wrong. The test rides on the
+// residual of [chains.fold], and the chain absorbs about four fifths of a
+// surprise in ONE observation — its gain is (ΣP)/(ΣP+R) over all four levels,
+// and [levelSpread] squared and summed is 2.86 against an observation noise of
+// [defaultSpread] squared, which is 0.36, so the gain is about nine tenths — so a
+// genuine step leaves one large residual and then a run of small ones, which is
+// the opposite of the persistent offset a CUSUM exists to accumulate. Lowering
+// the alarm would trade this for false steps on ordinary noise, and giving the
+// flat belief its own change point would be a third account of one number. The
+// fix belongs where the two accounts are reconciled, and it moves how every lane
+// is ranked, so it is a bench question and not a lane's.
+//
+// AND THE OBVIOUS ANSWER — PROCESS NOISE — HAS BEEN MEASURED AND IS NOT IT. The
+// filter freezes because a run of consistent sightings shrinks P toward R/n with
+// nothing to inflate it between them, so the textbook repair is a Q added on
+// every step, or a floor under P. Replayed offline over ten days of the call log
+// (3,605 requests, 1,157 of them with a person watching), a floored P moved
+// watched regret by 0.9% — inside the estimator's own 24% median error, so not a
+// measurement of anything — and made UNATTENDED regret 17% worse while switching
+// machines 9–10% more often, and at all three of the 2026-09-11 incidents it
+// asked for the same machine this code already asks for. Do not re-derive it.
 func stepTo(z, noise float64) Posterior { return Posterior{}.Update(z, noise) }
 
 // stepped records that a change point has reset one pair's own component toward

@@ -75,14 +75,16 @@ const (
 	// ahead of the lanes it does not — the one draw that can disprove a published
 	// claim, because a lane that is never asked can never prove the sheet wrong.
 	//
-	// IT IS THE HEDGE PURSE'S OWN RATE, WRITTEN AS A PERIOD. [DefaultBudget]
-	// allows two rescues in any twenty requests, and a probe is bought for
-	// exactly the same reason a rescue is: one request in ten pays a little to
-	// find out something every request after it spends better. The purse itself
-	// cannot be asked here — it is spent in DOLLARS and answers against a clock,
-	// and this file may read neither (see the note in choose.go) — so the rate is
-	// stated and the draw is the chooser's own sampler, which is seeded per
-	// request and therefore reproducible.
+	// IT IS AN EXPLORATION RATE AND IT NOW STANDS ON ITS OWN. It used to be
+	// written as the hedge purse's own rate — two rescues in any twenty requests
+	// — and that purse is deleted (hedge.go): what a call may spend rescuing
+	// itself is its own budget now, and there is no per-window count anywhere to
+	// borrow. What is left is the plain statement: one request in ten pays a
+	// little to find out something every request after it spends better, which is
+	// enough draws that a doubted lane is re-asked several times in an afternoon
+	// and few enough that nine people in ten never meet one. It is a prior to be
+	// fitted in the simulator, like the change-point's own two. The draw is the
+	// chooser's own sampler, seeded per request and therefore reproducible.
 	probeInEvery = 10
 
 	// PriceCeilingMultiple is how far above the cheapest acceptable lane's own

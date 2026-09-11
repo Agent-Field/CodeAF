@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/lane/lanestub"
 )
 
@@ -26,7 +25,6 @@ func TestAStalledFirstPromptLaneShowsARescueSwitch(t *testing.T) {
 	)
 	// THE LEDGER IS LEFT EMPTY. That is a first prompt: nothing believed, the
 	// shipped default still on the talk slot.
-	SetHedgeBudget(lanes.NewBudget(1, 0))
 	rig.patience(t, 150*time.Millisecond)
 
 	watched := &notices{}

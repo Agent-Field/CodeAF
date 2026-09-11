@@ -114,7 +114,7 @@ type Pace struct {
 // and not twice.
 func PlanFor(choice Choice, pace Pace, role Role, now time.Time) control.Plan {
 	head := HeadOf(choice)
-	return control.Plan{
+	plan := control.Plan{
 		Lane:    head,
 		Ceiling: role.Ceiling(),
 		Floor:   ActionFloor,
@@ -135,7 +135,71 @@ func PlanFor(choice Choice, pace Pace, role Role, now time.Time) control.Plan {
 		Deadline: now.Add(role.GiveUp()),
 		Role:     string(role),
 		Moves:    control.NewMoveLog(),
+		// AND THE MONEY IS THE SAME SENTENCE SAID IN DOLLARS: the longest wait
+		// still in front of this call, priced at what one second of it is worth
+		// to whoever is waiting ([spendable]). It is derived here, once, for the
+		// reason the deadline is: a second place that named a figure would be a
+		// second answer to "what may this call spend rescuing itself" (see
+		// [control.Plan.SpendUSD]).
+		SpendUSD: spendable(role),
 	}
+	plan.Purse = Spending(plan)
+	return plan
+}
+
+// spendable is [control.Plan.SpendUSD] for one role: what the wait this call may
+// still be kept in is worth to whoever is waiting through it, in dollars.
+//
+// ── TWO FACTORS, AND THE SECOND ONE USED TO POINT THE WRONG WAY ─────────────
+//
+// HOW LONG is [Role.GiveUp]: the longest wait still in front of this call, which
+// is the most a rescue could ever buy back.
+//
+// WHAT A SECOND OF IT IS WORTH is the other factor, and it is the one this got
+// backwards until 2026-09-11. [AttentionValue] is stated in SECONDS PER DOLLAR —
+// a dollar buys ninety seconds of somebody's attention back — so a second of a
+// watched wait is worth `1 / AttentionValue` dollars, about a hundredth of a
+// cent, and that is the rate at the TOP of the scale. [UnattendedValue] is a
+// quarter of it because a second nobody is sitting through is worth a quarter of
+// one somebody is ([Lambda]'s own account of why zero was measured wrong). So
+// the discount for being unwatched is the RATIO `λ / AttentionValue`, and a
+// second's worth is:
+//
+//	dollars per second = (λ / AttentionValue) / AttentionValue
+//
+// Dividing the wait by λ, which is what this did, used that ratio upside down:
+// the smaller λ of an unwatched call made its seconds four times DEARER than a
+// watched person's, so a conversation somebody was reading was allowed $1.00 to
+// rescue itself and a background task node $12.00 — the one rail in front of a
+// rescue, sized in the opposite order to who is waiting. It is the shape the
+// deleted process-wide allowance had (refusing the request that needed it) with
+// the priority order reversed rather than removed.
+//
+// WHAT THIS DOES AND DOES NOT ORDER. It orders the RATE: no second of a watched
+// wait is ever worth less than a second of an unwatched one, which is the law
+// beside this in watch_test.go. It does not order the total, and must not —
+// a standing pass really does tolerate nine minutes where a conversation
+// tolerates ninety seconds, and six times the wait at a quarter the rate is
+// worth more than one times the wait at the full rate. What the wait is worth is
+// the product; what nobody is allowed to say is that an unwatched SECOND is
+// worth more.
+//
+// A ROLE NOBODY WAITS ON SPENDS NOTHING, and that is λ at zero rather than a
+// case here — the controller already refuses to act for such a role below its
+// ceiling ([hazard.reachable]), and saying it again would be the same rule
+// written twice. Today no role answers zero ([Lambda]'s floor is
+// [UnattendedValue]), so the guard is against a plan somebody builds by hand.
+func spendable(role Role) float64 {
+	return worth(role.GiveUp(), role.Lambda())
+}
+
+// worth is a wait in dollars: how long, times what a second of it is worth to
+// whoever is waiting. It is the one place that arithmetic is written.
+func worth(wait time.Duration, lambda float64) float64 {
+	if lambda <= 0 {
+		return 0
+	}
+	return wait.Seconds() * (lambda / AttentionValue) / AttentionValue
 }
 
 // PaceFor is what THIS PROCESS believes about one pair right now.
@@ -293,28 +357,6 @@ func alternatives(choice Choice, head string) []control.Alternative {
 	}
 	return alts
 }
-
-// Spending is a budget as the rail the controller asks before it acts.
-//
-// It is a small adapter and not a method on [Budget] because the direction of
-// the dependency matters: the controller may not know what a budget is, and the
-// budget may not know what a controller is. A nil budget refuses, which is how
-// hedging is switched off and has always been.
-func Spending(budget *Budget) control.Purse { return purse{budget} }
-
-type purse struct{ budget *Budget }
-
-// Allows ASKS AND DOES NOT SPEND, which is [Budget.Affordable] and deliberately
-// not [Budget.Allow].
-//
-// The two halves of a rescue are two different moments. The controller asks
-// whether an arm is affordable while it is still deciding — a reading, and one
-// it may take several times over one silence — and the race takes the allowance
-// at the instant the arm really goes out, which is the decision. A controller
-// that reserved would leave allowances held by every request that recovered on
-// its own, and one that counted here as well would charge the budget twice for
-// one arm.
-func (p purse) Allows(usd float64, now time.Time) bool { return p.budget.Affordable(now, usd) }
 
 // ── DRIVING IT ──────────────────────────────────────────────────────────────
 

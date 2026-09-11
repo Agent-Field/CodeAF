@@ -65,6 +65,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/lane/control"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -297,12 +298,12 @@ func TestRealRouterServesASheetAndHonoursAPreference(t *testing.T) {
 	pin.Only, pin.Order, pin.Ignore = []string{slow.ID.Lane}, nil, nil
 	belief, _ := ledger.Belief(slow.ID)
 	watch := lane.NewWatch(pin, belief, time.Now())
-	// The shipped budget, so that this test is measuring the router somebody
-	// gets rather than an allowance written here: two hedges in any twenty
-	// requests and a tenth of recent spend. One request needs one of them.
-	budget := lane.DefaultBudget()
+	// The shipped rail, so that this test is measuring the router somebody gets
+	// rather than an allowance written here: what one call may spend rescuing
+	// itself, which is its own patience converted through λ ([lane.PlanFor]).
+	purse := lane.Spending(lane.PlanFor(lane.Choice{}, lane.Pace{}, lane.RoleTalk, time.Now()))
 
-	rescue, err := streamPinned(ctx, key, pin, watch, budget, ledger)
+	rescue, err := streamPinned(ctx, key, pin, watch, purse, ledger)
 	if err != nil {
 		t.Fatalf("the pinned call: %v", err)
 	}
@@ -321,9 +322,8 @@ func TestRealRouterServesASheetAndHonoursAPreference(t *testing.T) {
 				"a rescue that does not beat the wait is a second bill for nothing",
 				rescue.wall.Round(time.Millisecond), expected.Round(time.Millisecond))
 		}
-	case !budget.Allow(time.Now(), 0.001):
-		t.Logf("no rescue was attempted: the hedge budget refuses everything " +
-			"(lane watch and hedge budget not landed yet, wave 1 L-C)")
+	case !purse.Allows(0.001, time.Now()):
+		t.Logf("no rescue was attempted: this call's own budget refuses everything")
 	case rescue.wall <= expected:
 		t.Logf("no rescue was needed: %s answered in %v against the %v its own sheet row "+
 			"predicted, so the watch was right not to spend a second request on it",
@@ -333,7 +333,7 @@ func TestRealRouterServesASheetAndHonoursAPreference(t *testing.T) {
 		// slower than its own sheet row predicted and no second request went
 		// out — which is the watch missing exactly the case it exists for. It
 		// is logged rather than failed because on a real router it is also what
-		// a budget that has already been spent looks like, and a live test that
+		// a call with nothing to spend looks like, and a live test that
 		// failed on somebody else's traffic would be a test nobody could run.
 		// The deterministic version of this claim is S2 in e2e_test.go, which
 		// does fail.
@@ -504,12 +504,12 @@ type realRescue struct {
 }
 
 // streamPinned sends the pinned request, drives [lane.Watch] over it, and
-// spends at most one hedge under the budget.
+// spends at most one hedge under the call's own budget.
 //
 // It talks to the router directly rather than through `internal/provider`
 // because the thing being tested is the WATCH — the contract in this package —
 // and the transport's own half of it is tested where the transport lives.
-func streamPinned(ctx context.Context, key string, choice lane.Choice, watch *lane.Watch, budget *lane.Budget, ledger lane.Ledger) (realRescue, error) {
+func streamPinned(ctx context.Context, key string, choice lane.Choice, watch *lane.Watch, purse control.Purse, ledger lane.Ledger) (realRescue, error) {
 	streamCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -582,7 +582,7 @@ func streamPinned(ctx context.Context, key string, choice lane.Choice, watch *la
 			if verdict := watch.Silence(time.Now()); !verdict.Hedge {
 				continue
 			}
-			if !budget.Allow(time.Now(), 0.001) {
+			if !purse.Allows(0.001, time.Now()) {
 				continue
 			}
 			hedged = true

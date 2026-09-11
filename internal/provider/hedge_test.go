@@ -141,7 +141,6 @@ func newLaneRigWithPrice(
 	ledger := &scriptedLedger{beliefs: map[lanes.ID]lanes.Belief{}}
 	registry := lanes.Default()
 	registry.SetLedger(ledger)
-	SetHedgeBudget(lanes.NewBudget(6, 0))
 	// THE CONTROLLER IS INSTALLED THROUGH THE ONE SEAM, exactly as a shipped
 	// build installs it, so that what these tests exercise is the wiring and
 	// not a second arrangement built for them.
@@ -172,7 +171,6 @@ func newLaneRigWithPrice(
 		// all.
 		lanes.SetController(shipped)
 		rigLanes.Delete(model)
-		SetHedgeBudget(nil)
 		// The package's learners go back too, beside the registry and the
 		// controller: see resetSharedLearners for why they are a restoration
 		// and not an extra.
@@ -576,7 +574,7 @@ func TestAnExhaustedBudgetRefusesTheRescueAndTheAnswerArrivesLate(t *testing.T) 
 	)
 	rig.believes("A", 20, 2000)
 	// A budget with no bucket is how hedging is switched off.
-	SetHedgeBudget(lanes.NewBudget(0, 0))
+	noRescues(t)
 
 	report := &HedgeReport{}
 	ctx := WithHedgeReport(talking(), report)
@@ -1334,4 +1332,18 @@ func TestARefusalOnlyNamesWhatTheQuestionWasLeftWithout(t *testing.T) {
 			t.Fatalf("the row's reason moved with the beats: %q", why)
 		}
 	})
+}
+
+// noRescues switches the second request off for one test and puts it back
+// afterwards.
+//
+// IT IS THE PERSON'S OWN SWITCH and not a rail of its own ([SetLaneGuard]),
+// because there is no process-wide allowance left to zero: what a call may spend
+// rescuing itself is its own budget, and the only thing that can refuse every
+// rescue outright is somebody saying so.
+func noRescues(t *testing.T) {
+	t.Helper()
+	before := LaneGuardOn()
+	t.Cleanup(func() { SetLaneGuard(before) })
+	SetLaneGuard(false)
 }

@@ -135,7 +135,7 @@ func TestASecondArmCannotDemandAMachineTheFirstOneTried(t *testing.T) {
 	plan := lanes.PlanFor(lanes.Choice{}, lanes.Pace{}, lanes.RoleTalk, time.Now())
 	plan.Lane = "DeepInfra"
 	plan.Alts = []control.Alternative{{Lane: "Fireworks"}, {Lane: "GMICloud"}}
-	race := &hedgeRace{model: "openrouter/pool", winner: -1, plan: plan, budget: lanes.DefaultBudget()}
+	race := &hedgeRace{model: "openrouter/pool", winner: -1, plan: plan}
 
 	// The first arm is on Fireworks — written down by the dispatcher under it,
 	// which is the only writer the race can see and the point of a shared log.

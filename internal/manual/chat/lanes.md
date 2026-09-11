@@ -131,7 +131,7 @@ Text arriving in a batch earns progress for its approximate token count, so a
 provider that sends whole phrases is not judged as though each phrase were one
 token. Tool-only replies also teach the first-token and generation clocks.
 
-When a watched request fails and its recovery allowance can fund another
+When a watched request fails and this call's own budget can pay for another
 endpoint, that endpoint is tried before repeating the failed request. Rate
 limits still respect their retry delay. Without an affordable alternative, the
 existing bounded retries and wait reporting remain.
@@ -298,15 +298,29 @@ and a second request costs money. They are never silent either — the same
 sentence is on their row.
 
 **Ten seconds always does something, even when a second request is too
-expensive.** aforge only runs a small number of rescues — a second request to
-another machine costs real money, so it keeps a small allowance and spends it
-where it helps most. When the allowance is gone and the machine has sent nothing
-at all, not one byte, aforge stops that attempt instead and asks somewhere else.
-Before 2026-09-10 it did neither: four tasks that evening sat on one machine for
-six and seven minutes after the ten seconds were up, because the only way to act
-was the one aforge could not afford. If the machine IS sending something — the
-router is talking, or the model is writing where you cannot see it — nothing is
-stopped, because nine such calls in ten turn out to be seconds from an answer.
+expensive.** A second request to another machine costs real money, so every
+rescue is priced before it goes out — against what THIS call may spend, which is
+how long it is allowed to keep trying converted into money at what a second of
+your waiting is worth. A rescue costing a couple of cents against a minute and a
+half of your time is afforded; one costing more than the whole wait is worth is
+not. When a rescue is refused and the machine has sent nothing at all, not one
+byte, aforge stops that attempt instead and asks somewhere else. Before
+2026-09-10 it did neither: four tasks that evening sat on one machine for six and
+seven minutes after the ten seconds were up, because the only way to act was the
+one aforge could not afford. If the machine IS sending something — the router is
+talking, or the model is writing where you cannot see it — nothing is stopped,
+because nine such calls in ten turn out to be seconds from an answer.
+
+**There is no per-session rescue quota.** There used to be: at most two rescues
+in any twenty requests, and at most a tenth of the last hour's bill, shared by
+everything running in aforge at once. That is gone, and it is gone because it
+answered the wrong question — a count spread over twenty requests cannot tell the
+one that needs rescuing from the nineteen that do not, so it refused whichever
+asked last. On 2026-09-11 that is exactly what happened: a machine wrote 604
+words in 86 seconds with somebody watching, the rescue was called for, and the
+quota said no on behalf of requests that had already finished. What bounds a
+rescue now is this call's own budget and how many requests one question may have
+running at once, which is four.
 
 **A conversation turn gives up after ninety seconds** of not reaching any model
 at all, and tells you so in one line. It is the point where every model in the
@@ -484,6 +498,35 @@ countdown, and there is nothing behind it about when the answer will come: it is
 that a line which cannot promise you anything can at least be honest about the size of what
 it is asking you to sit through.
 
+## When the answer is arriving too slowly to read
+
+This is not the same thing as the line above, and it took a real afternoon to
+learn the difference. `all lanes slow · still waiting` is about a **silence** —
+nothing is arriving. Sometimes words ARE arriving and the wait is just as real,
+because they are arriving at a crawl:
+
+```
+answering slowly · nowhere faster · 1m 26s
+```
+
+That line means aforge measured the words appearing against the pace the machine
+it asked for was expected to write at, found the stream far under it, and has
+nowhere better to send the question — every other machine has been tried, or
+this call cannot pay for a second request. The answer is still coming and the
+words still appear as they arrive; the line is there so that the wait has a name.
+
+On 2026-09-11 the same call showed one nudge and then nothing for eighty-six
+seconds, because neither of the two lines aforge had was true: it was not
+writing at any speed a person would call writing, and it was not silent either.
+
+**A machine is judged against the pace its question was sent expecting**, not
+against its own recent form. That distinction is the whole fix: as aforge learned
+that one machine had slowed to a seventh of its usual speed, every stream it
+served started to look normal *for that machine*, and the guard quietly stopped
+firing. What it is held to now is the machine the routing choice named — the
+reason the request went out at all — so a router that quietly hands your question
+to something ten times slower is noticed.
+
 ## What the status line is telling you
 
 | what you see | what happened |
@@ -497,6 +540,7 @@ it is asking you to sit through.
 | `coreweave is slow · switch to auto? (y)` | your pinned machine is quiet, and you can end the wait |
 | `coreweave cannot serve this model; routing on auto for this model until you pin again` | the machine you pinned said no, so the pin is retired for this model |
 | `all lanes slow · still waiting · 12s` | everywhere is slow; nothing to be done but tell you, and how long you have waited |
+| `answering slowly · nowhere faster · 1m 26s` | words ARE arriving, too slowly to be worth reading, and there is no faster machine to move to |
 
 ## When a machine refuses to serve the model
 

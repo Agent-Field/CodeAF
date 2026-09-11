@@ -407,3 +407,63 @@ func TestEightStreamsFinishingAtOnceIsOneLedger(t *testing.T) {
 		}
 	}
 }
+
+// ── THE 2026-09-11 COLLAPSE, REPLAYED ───────────────────────────────────────
+
+// morphRow is the sheet's account of the machine in that day's evidence: sixty
+// tokens a second, which is what it really did all morning.
+func morphRow() Row {
+	return Row{
+		ID: ID{Model: "deepseek/deepseek-v4.1-flash", Lane: "Morph"},
+		Facts: Facts{
+			Tools: true, Quant: "fp8", MaxOut: 32_000, Context: 345_000,
+			Uptime5m: 100, PriceIn: 0.0000009, PriceOut: 0.00000132, Caches: true,
+		},
+		TTFTp50: 1900, TTFTp75: 2400, TTFTp90: 3100, TTFTp99: 5000,
+		Ratep50: 60, Ratep75: 70, Ratep90: 84, Ratep99: 110,
+	}
+}
+
+// TestACollapsedRateIsLearnedInOneSightingByTheChainTheControllerWaitsAgainst
+// is the replay of the 09:33 series and the 14:29 sighting: a morning at sixty
+// tokens a second, then 604 tokens in 82 seconds.
+//
+// IT IS THE CHAIN THAT IS ASSERTED, because the chain is what decides whether a
+// live stream is abnormal, and the 2026-09-11 evidence turned on the chain
+// having the collapse right. The two accounts of this one number do not agree
+// afterwards and this test does not pretend they do — the flat [Belief.Rate] the
+// chooser ranks on is a single filter that a run of consistent sightings makes
+// confident (P fell to 0.011 against an observation noise of 0.36 in this very
+// series, a gain of three per cent), and its one escape hatch is [stepTo], which
+// only runs when the chain's change point fires. THAT is the seam, measured and
+// written down at [stepTo]; it is not closed here, because closing it moves how
+// every lane is ranked and that is a question for the bench.
+func TestACollapsedRateIsLearnedInOneSightingByTheChainTheControllerWaitsAgainst(t *testing.T) {
+	l := newLedger()
+	row := morphRow()
+	l.Prime(row, SheetWeight)
+	at := noon
+	// The morning: 600 tokens in ten seconds, over and over.
+	for range 10 {
+		l.Note(Sighting{ID: row.ID, TTFT: 1900 * time.Millisecond, Gen: 10 * time.Second, Tokens: 600, At: at})
+		at = at.Add(2 * time.Minute)
+	}
+	morning, _ := l.Rate(row.ID, at).Predict()
+	if math.Abs(math.Exp(morning)-60) > 6 {
+		t.Fatalf("a morning at sixty tokens a second was waited against at %.1f", math.Exp(morning))
+	}
+	// And the collapse, in the numbers the row carried: ttft 3993, 82.19s of
+	// generation, 604 completion tokens.
+	l.Note(Sighting{ID: row.ID, TTFT: 3993 * time.Millisecond, Gen: 82190 * time.Millisecond, Tokens: 604, At: at})
+
+	// AND THE FIGURE IS THE ANSWER'S OWN, never one written here. 604 tokens in
+	// 82.19 seconds is 7.35 a second; a controller still waiting against a rate
+	// nearer the morning's sixty than the afternoon's seven is a controller that
+	// will not call this stream abnormal until its ceiling does it for free.
+	measured := 604 / 82.19
+	collapsed, _ := l.Rate(row.ID, at).Predict()
+	if math.Exp(collapsed) > 2*measured {
+		t.Fatalf("after 604 tokens in 82 seconds the machine was still waited against at %.1f t/s, against the %.1f it measured",
+			math.Exp(collapsed), measured)
+	}
+}

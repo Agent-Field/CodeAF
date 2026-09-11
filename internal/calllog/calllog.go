@@ -321,7 +321,15 @@ type Record struct {
 	// absent when nothing was acted on.
 	Reason string `json:"reason,omitempty"`
 	// Refused is why a hedge the controller called for never reached the wire:
-	// "budget", "no alt" or "no room". It is absent when nothing was refused.
+	// "plan cannot pay", "no alt" or "no room". It is absent when nothing was
+	// refused.
+	//
+	// IT USED TO SAY `budget` AND THAT NAMED THE WRONG THING. The rail was a
+	// rolling process-wide allowance until 2026-09-11 — two rescues in any twenty
+	// requests — so the word said "some other request spent this one's rescue",
+	// which is a fact about arrival order and not about this call. What may
+	// refuse now is the call's own budget (internal/lane/control's
+	// Plan.SpendUSD), and the word names it.
 	Refused string `json:"refused,omitempty"`
 	// Arms is how many requests this one question put on the wire, counting the
 	// original. One is the ordinary case and is left off the row.

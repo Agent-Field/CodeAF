@@ -186,8 +186,8 @@ func TestTheGuardOffRefusesEveryHedgeAndEveryProbe(t *testing.T) {
 	t.Cleanup(func() { SetLaneGuard(before) })
 
 	SetLaneGuard(false)
-	if currentHedgeBudget().Allow(client.clock(), 0.0001) {
-		t.Fatal("the budget allowed a rescue with the guard off")
+	if plan := client.planFor(context.Background(), lanes.Choice{}, model, 0); plan.Purse.Allows(0.0001, client.clock()) {
+		t.Fatal("the purse allowed a rescue with the guard off")
 	}
 	if !InstallLaneProber(client, nil) {
 		t.Fatal("the prober refused a router client")
@@ -198,10 +198,10 @@ func TestTheGuardOffRefusesEveryHedgeAndEveryProbe(t *testing.T) {
 		t.Fatalf("%d requests went out with the guard off, want none", got)
 	}
 
-	// And back on, the same budget answers the same question the other way.
+	// And back on, the same plan answers the same question the other way.
 	SetLaneGuard(true)
-	if !currentHedgeBudget().Allow(client.clock(), 0.0001) {
-		t.Fatal("the budget refused a rescue with the guard on")
+	if plan := client.planFor(context.Background(), lanes.Choice{}, model, 0); !plan.Purse.Allows(0.0001, client.clock()) {
+		t.Fatal("the purse refused a rescue with the guard on")
 	}
 }
 

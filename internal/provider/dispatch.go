@@ -579,6 +579,11 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			cancelAttempt()
 			return nil, err
 		}
+		// AND THIS ATTEMPT GETS ITS OWN CONTROLLER. Every send of every request is
+		// watched, and it is watched from the moment its own bytes leave — see
+		// EVERY ATTEMPT IS WATCHED in armwatch.go for the 363-second attempt whose
+		// row said nothing because its arm's first attempt had already spoken.
+		streamWatchFrom(ctx).attempt(dispatchNow())
 		attemptBegan := logNow()
 		// THE ROW THAT SAYS A CALL IS IN FLIGHT, written before the wait rather
 		// than after it. Without it a planning call four minutes into a
