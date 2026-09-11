@@ -203,19 +203,18 @@ func answerChips(question session.PresenceQuestion) []answerChip {
 	return chips
 }
 
-// answerChipLines paints them: the key bold in the question's own hue, the word
-// beside it in the same hue. Whole chips move to following rows when needed;
-// a card never hides an answer merely because the answers cannot share a row.
+// answerChipLines paints them: the KEY in the payload hue and the word beside it
+// in ordinary ink. Whole chips move to following rows when needed; a card never
+// hides an answer merely because the answers cannot share a row.
 //
-// IT IS THE CARD'S INK AND NOT THE CARD'S HELPER. consent.go's [app.paintOffer]
-// draws the same shape and cannot be borrowed — it asks whether the pointer is
-// over the block it belongs to, and there is no block here, only a card in a
-// column. What is shared is the thing that matters, which is that a key on this
-// surface is bold and AMBER wherever it is offered ON THIS SCREEN. These chips
-// are the answer to a question that has stopped a conversation, which is home's
-// one meaning of "waiting on you", and the places wave moved every reading of it
-// onto the one hue ([hueWarn]). consent.go's block, inside a conversation, keeps
-// the violet.
+// IT IS THE PANEL'S GRAMMAR ON A CARD (owner ruling 2026-09-11, colour pick C).
+// The whole chip used to be amber, on the argument that home's one meaning of
+// "waiting on you" is the warn hue — and the result was a card where the words a
+// person has to READ were the same colour as the mark that says to read them.
+// The amber stays on the marks: home's `?` on the row, the pointer, the pick.
+// consent.go's [app.paintOffer] draws the same shape and cannot be borrowed — it
+// asks whether the pointer is over the block it belongs to, and there is no
+// block here, only a card in a column.
 func (a *app) answerChipLines(question session.PresenceQuestion, width int, pal palette) []string {
 	chips := answerChips(question)
 	if len(chips) == 0 {
@@ -223,7 +222,7 @@ func (a *app) answerChipLines(question session.PresenceQuestion, width int, pal 
 	}
 	painted := make([]string, 0, len(chips))
 	for _, chip := range chips {
-		painted = append(painted, pal.warnBold(chip.key)+pal.warn(" "+chip.label))
+		painted = append(painted, pal.data(chip.key)+pal.ink(" "+chip.label))
 	}
 	return bandClauses(width, 0, func(s string) string { return s }, painted...)
 }

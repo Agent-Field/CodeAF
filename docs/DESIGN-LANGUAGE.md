@@ -81,6 +81,14 @@ No new colour arrives for the emphasized state. No run of bolding spreads across
 the row. And above all **no outline is added** — emphasis is a step UP this
 ladder, never a ring drawn around a thing.
 
+A QUESTION'S FRAME IS NOT EMPHASIS (owner ruling, 2026-09-11). The dim frame a
+question hangs in (WHAT WE REFUSED → Borders, amended) says "this is one object,
+and it is asking you" — a claim about what the thing IS, drawn once, the same
+way whatever row inside it is focused. It never lights, never thickens and never
+follows the cursor. Emphasis inside it is still exactly this law: the focused
+answer's ground steps up to `selected` and its leading mark turns; nothing else
+changes, and no ring is ever drawn around a row.
+
 Two moves, both already in the palette. The ground says which band of pixels is
 being spoken about; the accent on the leading glyph or word says what it is. A
 lane that finds itself reaching for a third move has found a state the ladder
@@ -279,10 +287,15 @@ brick red, one clear step from `bad`'s 173. The obvious alternative, L 62, lands
 on **168**, which is a pink; a diff whose minus lines went pink on every
 256-colour terminal would have been the fallback nobody looked at, again.
 
-**`ask` is untouched and untouchable.** `#C08FE8` is spent on the moment the
-agent is waiting for a person and on nothing else — its whole value is that
-seeing it anywhere means exactly one thing. It sits at L 73.5, comfortably in
-band, and nothing in this wave had a reason to go near it.
+**`ask` was untouched and untouchable — until the owner retired it (2026-09-11).**
+`#C08FE8` (light `#6F3FA8`) was spent on the moment the agent is waiting for a
+person and on nothing else. What was true: it was also spent on every WORD of that
+moment — the head, each answer, each key — while home, the places and the chip
+said the same "waiting on you" in `warn`'s amber, so the one meaning wore two
+colours. What is true now (colour pick C, COLOUR IS STROKE, NEVER FILL): the role
+is gone from both ladders, `palette.ask` paints with `warn`, and a question's
+amber touches its three marks (`?`, `▸`, `◆`) and nothing else. The two rows above
+keep the old values as history; neither is on any ladder any more.
 
 ## THE PLACE LADDER — the same table, with three roles re-pointed
 
@@ -321,7 +334,8 @@ second palette, no second ceiling, no second band, and no page ground on any sur
 > greys is made with bold, case, indent or air.
 
 So `placeRampFrom` retires three of the conversation's roles and re-points nothing
-else: the question's violet onto the amber (home said one thing in two colours), the
+else: the question's violet onto the amber (home said one thing in two colours — and
+since 2026-09-11 the conversation says it in amber too, so that re-point is gone), the
 payload cyan onto the body ink (a datum lifts by being the subject), and the finished
 tick's olive onto the second voice (the `✓` already says it landed, and the one green
 on a place is money). It takes the ramp the palette is ALREADY HOLDING, so adaptive.go's
@@ -451,8 +465,21 @@ Restated from the existing law, because it is the one most easily lost.
 Saturated colour on this surface touches **glyph strokes and single characters**.
 The ground is enormous and quiet; the colour is hairline. A task's identity hue
 paints exactly one cell — the glyph at the head of its row — and the title beside
-it keeps the ordinary ink. A needs-you row's violet is on the `▲` and not on the
+it keeps the ordinary ink. A needs-you row's amber is on the `?` and not on the
 sentence.
+
+A QUESTION WEARS AMBER ON ITS MARKS AND NOWHERE ELSE (owner ruling, 2026-09-11,
+colour pick C). Until that day the conversation painted a question's head, every
+answer label, every key and every separator in a violet of its own (`#C08FE8`)
+while home and the places said the same "waiting on you" in amber — two hues for
+one meaning, and whole rows in a status colour, which is this law broken on the
+one object a person must act on. Now the question's three marks — `?` the
+question, `▸` the pointer, `◆` the recommended answer — are amber, the home
+page's question hue, in chat, in the question's page, on home, in the task room
+and on the status line alike; every word is ordinary ink, every aside dim, the
+frame's edge dim, and the focused row sits on the `selected` ground. The violet
+is retired: `palette.ask` paints with the amber, and no row is ever painted in
+it (a law test walks the question renderers' paints).
 
 **The glyph carries the hue; the text stays calm.** A whole row in a status
 colour is a row that shouts, and a screen of shouting rows is a screen with no
@@ -573,6 +600,22 @@ of typography, alignment and at most a hairline rule. A border is a claim that
 two regions are different kinds of thing, and on a conversation surface they
 mostly are not. This is also why the emphasis law forbids adding a ring: rings
 are borders arriving one row at a time.
+
+*Amended 2026-09-11, owner ruling (question views, frame pick A):* **a question
+hangs above the box in a frame.** What was true: no border anywhere, with three
+dim rounded boxes that shipped anyway as argued exceptions (the `/folder`
+chooser, the `ctrl+k` switcher card, the onboarding panel), each with its own
+copy of the corner pieces. What is true now: a question IS a different kind of
+thing from the conversation around it — it is the one object on the surface
+that is waiting for the person, it is answered and then gone, and borderless it
+read as more transcript with the answers somewhere inside it. So a question
+hangs above the input as ONE framed object: a rounded, dim edge; its title in
+the top edge and a right-aligned aside beside it; its keys in the bottom edge;
+and on a terminal refused box drawing, two plain rules and no sides. There is
+exactly one frame on this surface (`internal/tui3/frame.go`), its pieces are
+vocabulary slots like every other mark, and the three older boxes are drawn by
+it. Everything else is still one continuous surface: a frame is for an object
+that asks, or a sheet raised over the page on purpose, and never for a zone.
 
 **Icon-only minimalism.** Their status bar renders four glyphs and no digits, and
 the most consistent complaint about it — from people who otherwise admire the

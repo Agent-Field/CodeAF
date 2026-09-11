@@ -278,7 +278,7 @@ Declining is "not now": nothing is remembered, nothing is written to the transcr
 either way, and the next time the account is needed you are asked again.
 
 **`enter` and `y` no longer answer it, and `esc` is no longer the no.** The offer used
-to have a block of its own with `[enter] connect · [esc] not now` on it, and it took
+to have a block of its own with `enter connect · esc not now` on it, and it took
 every key on the screen while it was up. It does not: the block is not modal, so
 everything it has not drawn falls through to the message box, and you can keep typing
 under a question you have not answered.

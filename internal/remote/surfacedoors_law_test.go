@@ -85,10 +85,6 @@ var doorsThatHaveNotCrossed = map[string]absentDoor{
 		says:  "nothing is waiting · what this conversation writes in the folder it is standing in is already there",
 		loses: "/land; and the `changes for … · /land` row above the box goes quiet too",
 	},
-	"autonomyAgent": {
-		says:  "this conversation has no project to keep question rules in",
-		loses: "reading the autonomy a project has set — the write half (SetAutonomy) crosses, so the sheet can be changed and not shown",
-	},
 	"subharnessAgent": {
 		says:  "no subharnesses here yet — a subharness is a saved program for work that comes round again.",
 		loses: "the subharness list, its intake form and running one",
@@ -131,7 +127,7 @@ var doorsThatHaveNotCrossed = map[string]absentDoor{
 // surfaceDoorLedger is the ratchet: the ledger above may shrink and may never
 // grow, and shrinking it without lowering this number in the same commit is a
 // red as well ([ratchetComplaint]).
-const surfaceDoorLedger = 23
+const surfaceDoorLedger = 22
 
 // TestEverySurfaceDoorTheEngineHasCrossesTheWire is the law above.
 func TestEverySurfaceDoorTheEngineHasCrossesTheWire(t *testing.T) {

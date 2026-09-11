@@ -161,7 +161,7 @@ task that says `your call`; what changes is **who is holding the question**, and
 says that rather than renaming the state. The room's header now reads the reading's own
 sentence, `your call · nobody could check it`, whoever is deciding it.
 
-After you press `[d] you decide` — or when `task.settle` is `auto` — the row reads
+After you press `d you decide` — or when `task.settle` is `auto` — the row reads
 
 ```
 nobody could check it · aforge is deciding

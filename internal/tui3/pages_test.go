@@ -641,14 +641,21 @@ func TestAnAmbiguousPrefixOffersNoPlaceAtAll(t *testing.T) {
 
 // ── the palette ─────────────────────────────────────────────────────────────
 
-// WAITING ON YOU IS ONE COLOUR ON THIS SCREEN. Home used to say it in two — the
+// WAITING ON YOU IS ONE COLOUR ON EVERY SCREEN. Home used to say it in two — a
 // violet question hue on the strip and the amber on the finished-needs-your-look
-// glyph — and the wave settled both on the amber (styles.go's [hueWarn]).
+// glyph — and it settled on the amber; since the owner's colour ruling of
+// 2026-09-11 the CONVERSATION says it in the same amber too, so `ask` and `warn`
+// are one hue wherever either is asked for (styles.go's [palette.ask]).
 func TestWaitingOnYouIsOneColourOnHome(t *testing.T) {
 	a := placeApp(t)
 	pal := a.pal
-	if pal.warnBold(homeAskGlyph) == pal.askBold(homeAskGlyph) {
-		t.Fatal("the two hues are the same colour, so this test proves nothing")
+	if pal.warnBold(homeAskGlyph) != pal.askBold(homeAskGlyph) {
+		t.Fatal("the question hue and the waiting hue have come apart again")
+	}
+	// And on the conversation's own palette, which is the one that carried the
+	// violet: the place ramp is not what makes them one.
+	if chat := newPalette(tokens.TrueColor, false); chat.ask("x") != chat.warn("x") {
+		t.Fatalf("in a conversation a question is painted %q and a wait %q", chat.ask("x"), chat.warn("x"))
 	}
 	// The one place the mark is painted now is a grid row's lead, where a row
 	// that needs a person wears the amber and nothing else on the screen does

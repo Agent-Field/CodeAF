@@ -87,14 +87,36 @@ type autonomyAgent interface {
 	Autonomy() map[session.AskKind]session.Policy
 }
 
-// autonomySheetText is the whole sheet as one block of prose, which is how a
-// slash command answers on this surface.
-func (a *app) autonomySheetText() string {
+// sayAutonomy is `/autonomy` with nothing after it: the rows read off the loop
+// and then written into the conversation as one block.
+//
+// THE READ IS THE COMMAND'S WHOLE WORK, so there is nothing to draw
+// optimistically and nothing to put back if it refuses — unlike a keystroke that
+// changes a row, which decides what a person sees immediately and repairs itself
+// on a refusal (offloop.go). A command that has not answered yet has simply not
+// printed yet, which is what every other slash command that asks the engine does.
+func (a *app) sayAutonomy() tea.Cmd {
 	agent, ok := a.agent.(autonomyAgent)
 	if !ok {
-		return autonomyNoProjectWord
+		a.noteBlock(autonomyNoProjectWord)
+		return nil
 	}
-	rules := agent.Autonomy()
+	return a.offLoop(func() func(bool) tea.Cmd {
+		rules := agent.Autonomy()
+		return func(here bool) tea.Cmd {
+			if !here {
+				return nil
+			}
+			a.noteBlock(a.autonomySheetText(rules))
+			return nil
+		}
+	})
+}
+
+// autonomySheetText is the whole sheet as one block of prose, which is how a
+// slash command answers on this surface. The rows are handed in because reading
+// them is a door ([app.sayAutonomy]).
+func (a *app) autonomySheetText(rules map[session.AskKind]session.Policy) string {
 	lines := make([]string, 0, len(autonomyKinds)+2)
 	lines = append(lines, autonomyHeadWord)
 	for _, kind := range autonomyKinds {
@@ -168,9 +190,11 @@ func (a *app) changeAutonomy(words string) tea.Cmd {
 				a.noteBlock(strings.TrimSpace(err.Error()))
 				return nil
 			}
-			a.autonomyChanged()
 			a.noteBlock(string(kind) + " · " + autonomyRuleWord(rule) + " · for this project")
-			return nil
+			// AND THE READING IS TAKEN AGAIN, as a command of its own: the rule
+			// that now exists is what the NEXT question raised must wear on its
+			// clock, and a fold may not ask a door itself (offloop.go).
+			return a.autonomyChanged()
 		}
 	})
 }
@@ -237,10 +261,16 @@ func autonomyKindNamed(word string) session.AskKind {
 // shape of question. It is what puts `· your rule` on a running clock
 // ([app.questionClockWord]).
 //
-// IT IS READ WHEN A QUESTION IS RAISED AND NEVER ON THE DRAW PATH. The rows
-// live in a file, and the draw path is rebuilt from nothing on every frame; a
-// read per frame would be a file opened sixty times a second to answer a
-// question whose answer changes when somebody types a slash command.
+// IT READS THE CACHE AND NEVER THE DOOR. The rules are a call to another
+// process — bare `aforge` talks to its engine over a socket like every hosted
+// window does — and this is asked from the update loop, where a surface may not
+// wait on a network (offloop.go's law, and its structural test). So the ask is
+// [app.readAutonomy], fired once on [app.Init] and again whenever a rule is
+// written, and this line only ever reads what came back.
+//
+// AND IT IS READ WHEN A QUESTION IS RAISED AND NEVER ON THE DRAW PATH. The draw
+// path is rebuilt from nothing on every frame; the answer changes when somebody
+// types a slash command.
 //
 // AND AN ABSENT DOOR IS NO RULE RATHER THAN AN UNKNOWN ONE. A surface with no
 // autonomy door — a fake in a test, a conversation with no project — has no
@@ -249,21 +279,44 @@ func (a *app) autonomyRuled(kind session.AskKind) bool {
 	if kind == "" {
 		return false
 	}
-	if a.autonomyRules == nil {
-		agent, ok := a.agent.(autonomyAgent)
-		if !ok {
-			return false
-		}
-		rules := agent.Autonomy()
-		if rules == nil {
-			rules = map[session.AskKind]session.Policy{}
-		}
-		a.autonomyRules = rules
-	}
 	rule, ok := a.autonomyRules[kind]
 	return ok && rule.Kind != "" && rule.Kind != session.PolicyAsk
 }
 
-// autonomyChanged forgets the cached rows, so the next question raised reads
-// what was just written rather than what was there before it.
-func (a *app) autonomyChanged() { a.autonomyRules = nil }
+// readAutonomy asks this project's question rules off the update loop and folds
+// them in. It is [app.Init]'s and nothing else's to call on the way up.
+//
+// AND IT RE-STAMPS THE QUESTIONS ALREADY OPEN. `WatchQuestions` replays
+// everything still waiting the moment a surface attaches, so the ordinary resume
+// path raises questions BEFORE this answer lands — and [questionShown.ruled] is
+// consumed as the tail of a running countdown (`start it in 9s · your rule`). A
+// question that drew without that tail is a clock a person cannot see the reason
+// for, which is the one thing DESIGN.md calls NEVER A HIDDEN RULE. So the fold
+// stamps what is already on screen rather than only what arrives next.
+func (a *app) readAutonomy() tea.Cmd {
+	agent, ok := a.agent.(autonomyAgent)
+	if !ok {
+		return nil
+	}
+	return a.offLoop(func() func(bool) tea.Cmd {
+		rules := agent.Autonomy()
+		return func(here bool) tea.Cmd {
+			if !here {
+				return nil
+			}
+			if rules == nil {
+				rules = map[session.AskKind]session.Policy{}
+			}
+			a.autonomyRules = rules
+			for i := range a.questions {
+				a.questions[i].ruled = a.autonomyRuled(a.questions[i].question.Ask)
+			}
+			a.touch()
+			return nil
+		}
+	})
+}
+
+// autonomyChanged reads the rows again, so the next question raised wears what
+// was just written rather than what was there before it.
+func (a *app) autonomyChanged() tea.Cmd { return a.readAutonomy() }

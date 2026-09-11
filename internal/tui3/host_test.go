@@ -187,10 +187,10 @@ func TestABrowserSignInOffersOnlyNotNow(t *testing.T) {
 	if !strings.Contains(block, connectAskRemoteWord) {
 		t.Fatalf("the card does not say what is wrong: %s", block)
 	}
-	if strings.Contains(block, "1  connect") {
+	if strings.Contains(block, "1 connect") {
 		t.Fatalf("the card still offers an answer that cannot work: %s", block)
 	}
-	if !strings.Contains(block, "2  not now") {
+	if !strings.Contains(block, "2 not now") {
 		t.Fatalf("the card left no way out at all: %s", block)
 	}
 }
@@ -214,7 +214,7 @@ func TestABrowserSignInWithAnAddressAnswerIsStillRefusedOverHost(t *testing.T) {
 	if !strings.Contains(block, connectAskRemoteWord) {
 		t.Fatalf("the browser sign-in was offered over --host: %s", block)
 	}
-	if strings.Contains(block, "1  connect") {
+	if strings.Contains(block, "1 connect") {
 		t.Fatalf("the refused trip still offers a way to start it: %s", block)
 	}
 }

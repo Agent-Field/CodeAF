@@ -235,7 +235,7 @@ func TestTheSignalHuesAreIsoluminant(t *testing.T) {
 			name: "dark",
 			signals: map[string]hue{
 				"accent": hueAccent, "add": hueAdd, "del": hueDel,
-				"bad": hueBad, "ask": hueAsk, "warn": hueWarn, "data": hueData,
+				"bad": hueBad, "warn": hueWarn, "data": hueData,
 				// money joined the band in the places wave: it is a signal like
 				// the rest, so it answers to the band like the rest.
 				"money": hueMoney,
@@ -246,7 +246,7 @@ func TestTheSignalHuesAreIsoluminant(t *testing.T) {
 			name: "light",
 			signals: map[string]hue{
 				"accent": lightAccent, "add": lightAdd, "del": lightDel,
-				"bad": lightBad, "ask": lightAsk, "warn": lightWarn, "data": lightData,
+				"bad": lightBad, "warn": lightWarn, "data": lightData,
 				"money": lightMoney,
 			},
 			reading: map[string]hue{"ink": lightInk, "muted": lightMuted, "narr": lightNarr, "dim": lightDim},
@@ -296,7 +296,7 @@ func TestTheSignalHuesAreIsoluminant(t *testing.T) {
 // NO TWO ROLES ON ONE LADDER RESOLVE TO THE SAME xterm-256 INDEX.
 //
 // styles.go asks for this check on every line it authors, and it was asked for
-// one line at a time: the accent's own note names 146, [hueAsk]'s names 140 and
+// one line at a time: the accent's own note names 146, the retired question violet's named 140 and
 // why 146 would have been a disaster, [hueDel]'s names 167 against [hueBad]'s
 // 173. Every one of those checks was done. What nobody did was ASK THE WHOLE
 // TABLE AT ONCE — and the table had an answer: [hueMuted] and [hueData] both
@@ -324,7 +324,7 @@ func TestNoTwoRolesShareA256Index(t *testing.T) {
 		{"dark", map[string]hue{
 			"ink": hueInk, "live": hueLive, "accent": hueAccent, "muted": hueMuted,
 			"narr": hueNarr, "dim": hueDim, "add": hueAdd, "del": hueDel, "bad": hueBad,
-			"ask": hueAsk, "warn": hueWarn, "data": hueData, "violet": hueViolet,
+			"warn": hueWarn, "data": hueData, "violet": hueViolet,
 			"money": hueMoney,
 			// THE PLACE LADDER ADDS NOTHING TO THIS WALK, and after 2026-08-25 that
 			// is a fact about the palette rather than a gap in the test: a place
@@ -335,7 +335,7 @@ func TestNoTwoRolesShareA256Index(t *testing.T) {
 		{"light", map[string]hue{
 			"ink": lightInk, "live": lightLive, "accent": lightAccent, "muted": lightMuted,
 			"narr": lightNarr, "dim": lightDim, "add": lightAdd, "del": lightDel, "bad": lightBad,
-			"ask": lightAsk, "warn": lightWarn, "data": lightData, "violet": hueViolet,
+			"warn": lightWarn, "data": lightData, "violet": hueViolet,
 			"money": lightMoney,
 		}},
 	} {

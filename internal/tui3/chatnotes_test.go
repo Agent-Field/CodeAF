@@ -220,7 +220,15 @@ func TestTheHintSlotNamesTheAlwaysKeyOnlyWhereItWouldAct(t *testing.T) {
 	_, a := wired([]session.Event{toolBegin("bash", "bash make test"), ask})
 	typeLine(t, a, "go on")
 
-	hint := a.legendRight(a.width)
+	// The words are read off the ONE derivation, which is what the slot says
+	// where the question is not on screen and what home's narrow foot draws
+	// (question.go's [app.questionHintOn]); the slot itself is quiet while the
+	// block above the box draws its own keys (hints pick A).
+	head, ok := a.questionHead()
+	if !ok {
+		t.Fatal("the question is not open")
+	}
+	hint := a.questionHintOn(head)
 	if strings.Contains(hint, "always") {
 		t.Fatalf("the slot promised a key the block above it refused: %q", hint)
 	}
@@ -235,7 +243,11 @@ func TestTheHintSlotNamesTheAlwaysKeyOnlyWhereItWouldAct(t *testing.T) {
 	memo.Memo = true
 	_, b := wired([]session.Event{toolBegin("bash", "bash make vet"), memo})
 	typeLine(t, b, "go on")
-	if hint := b.legendRight(b.width); !strings.Contains(hint, "2 always") {
+	other, ok := b.questionHead()
+	if !ok {
+		t.Fatal("the second question is not open")
+	}
+	if hint := b.questionHintOn(other); !strings.Contains(hint, "2 always") {
 		t.Fatalf("an ordinary question lost its always key: %q", hint)
 	}
 }

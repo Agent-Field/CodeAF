@@ -684,22 +684,22 @@ func (a *app) taskRecordLanding(entry session.TaskIndexEntry) (questionShown, bo
 	return questionShown{}, false
 }
 
-// taskRecordLandingRows is the question as the card draws it: its head with
-// the block's own mark, its reason dim under it, and the answers row the block
-// would draw — the same words and keys, the pointed answer banded — so what a
-// person learns here is what the conversation's block will show them next.
+// taskRecordLandingRows is the question as the card draws it, and it is the
+// block's own rows: the head with the question's mark on it, the reason dim
+// under it, one row per answer with the pointer, `◆ recommended` where the asker
+// named a pick, and what each answer costs — so what a person learns here is
+// exactly what the conversation's own panel shows them next.
+//
+// IT IS THE PANEL'S BODY AND NOT THE PANEL. The card has a frame of its own and
+// a foot of its own ([taskCardAskingKeys] names the keys), so a second frame
+// inside it would be a box inside a box and a second row of keys under the first.
 func (a *app) taskRecordLandingRows(q questionShown, width int) []string {
-	rows := make([]string, 0, 4)
-	head := strings.TrimSpace(q.question.Head)
-	if head != "" {
-		rows = append(rows, fit(a.questionMarkFor(q.question)+" "+a.pal.askBold(head), width))
+	rows := make([]string, 0, 6)
+	if head := strings.TrimSpace(q.question.Head); head != "" {
+		rows = append(rows, fit(a.questionMarkFor(q.question)+" "+a.pal.ink(head), width))
 	}
-	if why := strings.TrimSpace(q.question.Reason); why != "" {
-		rows = append(rows, fit("  "+a.pal.dim(why), width))
-	}
-	parts, _, pointed := a.questionAnswerParts(q, "", formsLine, false)
-	if len(parts) > 0 {
-		rows = append(rows, fit(a.questionPaint(q, parts, "", formsCard, pointed), width))
+	for _, row := range a.questionPanelBody(q, width) {
+		rows = append(rows, fit(row, width))
 	}
 	return rows
 }

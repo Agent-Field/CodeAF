@@ -86,8 +86,10 @@ func TestSwitcherSurfaceUsesTheAsciiFloor(t *testing.T) {
 	a.pal = newPalette(tokens.NoColor, true)
 	a.hot = hoverAt{kind: hoverHop, index: 0}
 	lines := a.hopCardLines(40, 16, a.pal)
-	if !strings.HasPrefix(lines[0], "+---") || !strings.HasPrefix(lines[a.hop.spots[0].row], "|>. 1") {
-		t.Fatal("ASCII outline, selection or hover marker was lost")
+	// THE ASCII FLOOR IS THE ONE FRAME'S (frame.go): two plain rules and no
+	// sides, so a side is a blank cell and the rows keep their columns.
+	if !strings.HasPrefix(lines[0], "----") || !strings.HasPrefix(lines[a.hop.spots[0].row], " >. 1") {
+		t.Fatalf("ASCII outline, selection or hover marker was lost:\n%s", strings.Join(lines, "\n"))
 	}
 }
 

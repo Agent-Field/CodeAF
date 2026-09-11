@@ -1862,6 +1862,27 @@ func (a *Agent) SetAutonomy(kind session.AskKind, policy session.Policy) error {
 	return err
 }
 
+// Autonomy is this project's question rules, read back over the same wire
+// [Agent.SetAutonomy] writes them down. It is the half of the pair that was
+// missing, and its absence was not a remote-only fault: the ordinary launch
+// talks to its own engine through this client, so `/autonomy` and the settings
+// rows that read it answered "no project" on every machine.
+//
+// A CONNECTION THAT CANNOT ANSWER RETURNS NIL, which is the same answer every
+// other read on this agent gives and the honest one: rules that cannot be
+// fetched are not drawn as rules that are.
+func (a *Agent) Autonomy() map[session.AskKind]session.Policy {
+	payload, err := a.c.call(nil, MethodAutonomy, nil)
+	if err != nil {
+		return nil
+	}
+	var rules map[session.AskKind]session.Policy
+	if err := json.Unmarshal(payload, &rules); err != nil {
+		return nil
+	}
+	return rules
+}
+
 // ResolveHarness answers one sub-harness offer.
 func (a *Agent) ResolveHarness(id uint64, run bool, model string) {
 	_, _ = a.c.call(nil, MethodHarness, HarnessArgs{ID: id, Run: run, Model: model})

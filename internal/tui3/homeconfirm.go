@@ -92,18 +92,19 @@ func (a *app) homeAsking() (questionShown, bool) {
 	return *a.home.ask, true
 }
 
-// homeAskRows is the card, drawn by the block's own renderer.
+// homeAskRows is the question, drawn by the block's own renderer.
 //
-// IT IS [app.questionCardRows] AND NOT A SECOND DRAWING OF THE SAME FACTS. The
-// mark, the head, the reason under it, the answers in a column with what each
-// one costs, the cursor, and the offer row are all the block's — so a person who
-// has learnt one card on this surface has learnt this one.
+// IT IS [app.questionPanelRows] AND NOT A SECOND DRAWING OF THE SAME FACTS. The
+// frame, the mark, the head in its top edge, the answers in a column with what
+// each one costs, the pointer, `◆ recommended`, and the two tiers of keys are
+// all the block's — so a person who has learnt one question on this surface has
+// learnt this one.
 func (a *app) homeAskRows(width int) []string {
 	ask, ok := a.homeAsking()
 	if !ok || width < 1 {
 		return nil
 	}
-	return a.questionCardRows(ask, width)
+	return a.questionPanelRows(ask, width)
 }
 
 // homeAskFoot is the whole question on ONE ROW, for the frames that have no card

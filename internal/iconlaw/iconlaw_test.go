@@ -78,6 +78,15 @@ var ownedRunes = map[rune]string{
 	'✎': "tokens.GWrite",
 	'⌾': "tokens.GFileImage",
 	'♪': "tokens.GFileAudio",
+	// THE RIGHT-HAND CORNERS ARE THE ONE FRAME'S (internal/tui3/frame.go). A
+	// right-hand corner is a box CLOSING, and there is one box on these
+	// surfaces: three shipped with a copy of the pieces each before the
+	// question views wave drew all of them with one frame (owner ruling
+	// 2026-09-11). The left-hand corners are not claimed, because a half-open
+	// bracket down a block's left edge (a task's `╭─`, a call's `╰─▶`) is a
+	// connector and not a box.
+	'╮': "tokens.GFrameTopRight (internal/tui3/frame.go draws the one frame)",
+	'╯': "tokens.GFrameBottomRight (internal/tui3/frame.go draws the one frame)",
 	'◌': "tokens.GWaitsOn (retired: v1's own dotted circle for work waiting on a sibling)",
 	'⊘': "tokens.GStopped (retired: a surface's own stop mark)",
 	'✗': "tokens.GFailed (retired: a surface's own cross)",

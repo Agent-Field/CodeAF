@@ -83,7 +83,7 @@ func TestARelandedNodesQuestionReplacesTheFirst(t *testing.T) {
 	// three separate searches would pass on a block that drew the columns on
 	// three rows, or in the other order, or without the third — and the third is
 	// the one docs/design/task-states/DESIGN.md is emphatic about.
-	if !strings.Contains(block, "[a] resolve it · [n] drop it · [s] tell it") {
+	if !strings.Contains(block, "a resolve it   n drop it   s tell it") {
 		t.Fatalf("the block does not draw the task-states row:\n%s", block)
 	}
 	if !strings.Contains(block, askGroundReason) {

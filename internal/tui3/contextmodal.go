@@ -68,6 +68,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // The sheet's own numbers.
@@ -321,7 +323,17 @@ func contextGlyphs(pal palette) contextGlyph {
 	if pal.ascii {
 		return contextGlyph{"+", "+", "+", "+", "-", "-", "|"}
 	}
-	return contextGlyph{"╭", "╮", "╰", "╯", "─", "─", "│"}
+	// THE PIECES ARE THE VOCABULARY'S, through this surface's one glyph door.
+	// They were literals until the frame primitive claimed the same six slots
+	// (frame.go), and a literal cannot know which repertoire the terminal is on
+	// — which is the whole of docs/design/icons/DESIGN.md's law, and what
+	// internal/iconlaw walks this package for.
+	return contextGlyph{
+		pal.glyph(tokens.GFrameTopLeft), pal.glyph(tokens.GFrameTopRight),
+		pal.glyph(tokens.GFrameBottomLeft), pal.glyph(tokens.GFrameBottomRight),
+		pal.glyph(tokens.GFrameEdge), pal.glyph(tokens.GFrameEdge),
+		pal.glyph(tokens.GFrameSide),
+	}
 }
 
 // contextHeadRule is the sheet's top edge with its title in it: what this sheet

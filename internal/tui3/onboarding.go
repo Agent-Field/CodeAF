@@ -1693,30 +1693,20 @@ func (a *app) setupBackWord() string {
 
 // ── the demonstration panel on the right ────────────────────────────────────
 //
-// THE ONE BORDER ON THIS SURFACE, AND IT IS THERE TO SAY "NOT YOURS".
+// A FRAME THAT IS THERE TO SAY "NOT YOURS".
 //
-// v3 does not draw boxes; restraint and dim telemetry are the north star and
-// nothing about the form on the left has an edge. This panel is the deliberate
-// exception, and the reason is the one thing a border is actually good at: it
-// separates a thing from its surroundings. Unboxed, the right-hand column read
-// as a SECOND COLUMN OF THE FORM — more instructions, in the same voice, about
-// the fields on the left. A frame with a label on its top edge cannot be read
-// that way. Everything inside it is an illustration, and the frame is what says
-// so before a word is read.
+// Nothing about the form on the left has an edge. This panel is framed, and the
+// reason is the one thing a frame is actually good at: it separates a thing
+// from its surroundings. Unframed, the right-hand column read as a SECOND
+// COLUMN OF THE FORM — more instructions, in the same voice, about the fields
+// on the left. A frame with a label on its top edge cannot be read that way.
+// Everything inside it is an illustration, and the frame is what says so before
+// a word is read.
 //
-// It is the panel and nothing else. No control on this screen is boxed, and
-// none of the rest of the surface changes.
-
-// showBox is the six pieces of the frame and the ascii floor under them, the
-// same shape hop.go and contextmodal.go use for theirs.
-type showBox struct{ tl, tr, bl, br, h, v string }
-
-func showBoxOf(pal palette) showBox {
-	if pal.ascii {
-		return showBox{tl: "+", tr: "+", bl: "+", br: "+", h: "-", v: "|"}
-	}
-	return showBox{tl: "╭", tr: "╮", bl: "╰", br: "╯", h: "─", v: "│"}
-}
+// It is drawn by the one frame (frame.go), which is also what a question hangs
+// in and what the two sheets raised over the page wear — this panel's header
+// used to call it "the one border on this surface" while two others shipped
+// beside it, each with its own copy of the corner pieces.
 
 // The panel's own words.
 //
@@ -1763,8 +1753,7 @@ func (a *app) setupShowcase(width, height int) []string {
 	}
 	at := clampIndex(a.setup.example, len(setupExamples))
 	example := setupExamples[at]
-	box := showBoxOf(pal)
-	inner := width - 4 // the two edges and one cell of air inside each
+	inner := frameInner(width) - 2 // one cell of air inside each edge
 
 	body := a.showcaseBody(example, inner)
 	// The frame comes off the top of what the window has left, whole rows at a
@@ -1778,12 +1767,14 @@ func (a *app) setupShowcase(width, height int) []string {
 		return nil
 	}
 
-	block := make([]string, 0, len(body)+2)
-	block = append(block, pal.dim(showcaseHead(box, showcaseTitleWord, pal, width)))
+	rows := make([]string, 0, len(body))
 	for _, line := range body {
-		block = append(block, pal.dim(box.v)+" "+padTo(line, inner)+" "+pal.dim(box.v))
+		rows = append(rows, " "+padTo(line, inner)+" ")
 	}
-	block = append(block, pal.dim(showcaseFoot(box, setupShowcaseCount(at, len(setupExamples)), width)))
+	block, _ := framed{
+		title:     pal.dim(showcaseTitle(pal)),
+		keysAside: pal.dim(setupShowcaseCount(at, len(setupExamples))),
+	}.draw(pal, width, rows)
 
 	// showcaseTop is where the panel begins: level with the first field, which is
 	// three rows into the form (heading, lead, blank). A short window has dropped
@@ -1867,26 +1858,16 @@ func (a *app) showcaseBody(example setupExample, inner int) []string {
 	return rows
 }
 
-// showcaseHead is the top edge with the panel's label written into it, and
-// showcaseFoot the bottom edge with the position among the four written into
-// its middle. A label on an edge is a label that cannot be mistaken for content.
-func showcaseHead(box showBox, title string, pal palette, width int) string {
-	mark := pal.glyph(tokens.GQueued)
+// showcaseTitle is the panel's label, written into its top edge by the frame,
+// behind the one mark on it. A label on an edge is a label that cannot be
+// mistaken for content.
+func showcaseTitle(pal palette) string {
 	// THE MARK IS THIS SURFACE'S OWN GLYPH FOR "NOTHING IS TURNING"
 	// (tokens.GQueued, the empty circle that is deliberately not a spinner), which
 	// is exactly what this panel is. Borrowing it rather than inventing a shape
 	// keeps one vocabulary, and it means the one glyph on the frame agrees with
 	// the sentence at its foot.
-	label := box.h + " " + mark + " " + title + " "
-	room := max(width-2-ansi.StringWidth(label), 0)
-	return box.tl + fit(label, max(width-2, 1)) + strings.Repeat(box.h, room) + box.tr
-}
-
-func showcaseFoot(box showBox, count string, width int) string {
-	room := max(width-2-ansi.StringWidth(count)-2, 0)
-	left := room / 2
-	return box.bl + strings.Repeat(box.h, left) + " " + count + " " +
-		strings.Repeat(box.h, room-left) + box.br
+	return pal.glyph(tokens.GQueued) + " " + showcaseTitleWord
 }
 
 // setupShowcaseCount is the position line on the panel's bottom edge —

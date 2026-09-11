@@ -3490,9 +3490,10 @@ func (a *app) legend(width int) string {
 		return ""
 	}
 	// THE ONE MOMENT THE LEGEND MAY SHOUT: while a person is being asked
-	// something, the place goes violet along with the state word. The question
-	// is bottom-anchored and so is this border — the two of them framing the
-	// question is the surface pointing at it with both hands (consent.go).
+	// something, the place takes the waiting hue along with the state word — the
+	// amber [palette.ask] has painted with since the question violet was retired
+	// (styles.go). The question is bottom-anchored and so is this border — the two
+	// of them framing the question is the surface pointing at it with both hands.
 	paint := a.pal.dim
 	if a.asking() || a.awaitingTask() || a.awaitingStanding() {
 		paint = a.pal.ask
@@ -4019,7 +4020,13 @@ func (a *app) hintWord() string {
 		// beat (question.go): the numbers bank a shape and esc puts the question
 		// back exactly as it was.
 		return "1-3 shape · esc never mind"
-	case a.asking() || a.awaitingDecision():
+	case (a.asking() || a.awaitingDecision()) && a.questionHint() != "":
+		// IT IS A CASE WITH A CONDITION because a question that draws its own
+		// keys says nothing here (hints pick A, 2026-09-11), and a slot that
+		// returned an empty string from this rung would have spent the row: the
+		// note under it — "this question has been waiting 4 hours" — is the
+		// sentence that rung is for.
+		//
 		// THE KEYS THE BLOCK ACTUALLY DRAWS, read off the question itself. This
 		// line said "a allow · t always" for a year after the answers took their
 		// own first letters, so the hint under the box named `a` as allow while

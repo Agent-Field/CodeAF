@@ -168,7 +168,7 @@ func TestTheLiveTierIsTheReadingLaddersStepAboveTheBody(t *testing.T) {
 	}
 	for name, h := range map[string]hue{
 		"accent": hueAccent, "muted": hueMuted, "dim": hueDim, "add": hueAdd,
-		"del": hueDel, "bad": hueBad, "ask": hueAsk, "warn": hueWarn,
+		"del": hueDel, "bad": hueBad, "warn": hueWarn,
 		"data": hueData, "violet": hueViolet,
 	} {
 		if h.idx == hueLive.idx {

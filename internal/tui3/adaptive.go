@@ -713,13 +713,12 @@ func adaptRampFrom(base ramp, m measuredGround) ramp {
 	// gathered in does not matter — the answer is a single step for all of them —
 	// but the LIST does: every hue that answers "what KIND of thing is this" is
 	// in it, and the reading tiers and the identity ring are not.
-	signals := []hue{base.accent, base.add, base.del, base.bad, base.ask, base.warn, base.data}
+	signals := []hue{base.accent, base.add, base.del, base.bad, base.warn, base.data}
 	if lift := signalLift(signals, ground, up); lift != 0 {
 		out.accent = liftedBy(base.accent, lift, up)
 		out.add = liftedBy(base.add, lift, up)
 		out.del = liftedBy(base.del, lift, up)
 		out.bad = liftedBy(base.bad, lift, up)
-		out.ask = liftedBy(base.ask, lift, up)
 		out.warn = liftedBy(base.warn, lift, up)
 		out.data = liftedBy(base.data, lift, up)
 	}

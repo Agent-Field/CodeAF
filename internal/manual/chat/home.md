@@ -200,10 +200,10 @@ two days after it landed it leaves `needs you` for the count on the panel's last
 
 Three ways to settle it, and they are the same door:
 
-- **the landing card in the conversation** — `[a] <yes>` and `[n] <no>`, whose words are
+- **the landing card in the conversation** — `a <yes>` and `n <no>`, whose words are
   whatever that row is asking (`accept`/`not right`, `resolve it`/`drop it`), plus
-  `[s] tell it`, which opens the task's page rather than answering, and a dimmer
-  `[d] let aforge decide this one`;
+  `s tell it`, which opens the task's page rather than answering, and a dimmer
+  `d let aforge decide this one`;
 - **home** — walk onto its row in `to check` and press `1` or `2`. The conversation applies
   it on its own beat; if it is not running, the answer waits on its doorstep and is applied
   the next time that conversation runs, and the row says

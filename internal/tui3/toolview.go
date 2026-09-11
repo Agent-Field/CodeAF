@@ -1447,7 +1447,12 @@ func countUpRungs(big int, bigUnit string, small int, smallUnit string) string {
 // waiting on a person, in which case the whole row is the question.
 func (a *app) paintName(e *entry, name string) string {
 	if e.status == toolConsent {
-		return a.pal.askBold(name)
+		// THE WORDS ARE INK AND THE MARK IS THE AMBER (owner ruling 2026-09-11,
+		// colour pick C). A row waiting on a person already wears `?` in the
+		// gutter; painting its name and its target in the question hue as well
+		// was the same claim made three times, and it made the transcript shout
+		// at the exact moment a person was trying to READ a command.
+		return a.pal.ink(name)
 	}
 	return a.pal.muted(name)
 }
@@ -1460,7 +1465,9 @@ func (a *app) paintName(e *entry, name string) string {
 // recognized, which is the safe way round.
 func (a *app) paintTarget(e *entry, target string) string {
 	if e.status == toolConsent {
-		return a.pal.askBold(target)
+		// Ink, for [app.paintName]'s reason: the mark says a person is being
+		// waited on and the command is there to be read.
+		return a.pal.ink(target)
 	}
 	switch e.tool {
 	case "bash":
@@ -1630,13 +1637,13 @@ func (a *app) formingRows(e *entry, width, window int) []string {
 func (a *app) previewHead(e *entry) string {
 	switch e.status {
 	case toolConsent:
-		return a.pal.ask(previewPending)
+		return a.pal.dim(previewPending)
 	case toolRunning:
 		return a.pal.dim(previewApplying)
 	default:
 		// Queued: nothing has started, and the header says exactly that in the
 		// hue this surface uses for things that are about to need a person.
-		return a.pal.ask(previewPending)
+		return a.pal.dim(previewPending)
 	}
 }
 

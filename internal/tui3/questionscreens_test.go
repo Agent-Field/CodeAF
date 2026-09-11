@@ -241,7 +241,8 @@ func TestTheChipIsDrawnOnTheStatusRowWhereEveryPageCanSeeIt(t *testing.T) {
 	lab.rows()
 	lab.press("esc")
 	got := plain(strings.Join(lab.a.statusRows(lab.a.width), "\n"))
-	if !strings.Contains(got, "1 question · "+questionChipKey) {
+	// ONE QUESTION IS SAID IN ITS OWN WORDS, and only a queue is counted.
+	if !strings.Contains(got, "allow this? · "+questionChipKey) {
 		t.Fatalf("the chip is not on the status row:\n%s", got)
 	}
 	if dir := strings.TrimSpace(os.Getenv("AFORGE_SCREENS")); dir != "" {

@@ -120,7 +120,7 @@ func TestTheShellHighlightUsesOnlyReadingTiers(t *testing.T) {
 	if !strings.Contains(pal.shell("sleep 30"), sgr256(hueDim)+"30") {
 		t.Fatalf("a bare number is not dim: %q", pal.shell("sleep 30"))
 	}
-	for _, hue := range []hue{hueAccent, hueAdd, hueViolet, hueAsk} {
+	for _, hue := range []hue{hueAccent, hueAdd, hueViolet, hueWarn} {
 		if strings.Contains(painted, sgr256(hue)) {
 			t.Fatalf("a command line took signal hue %v:\n%q", hue, painted)
 		}
@@ -778,7 +778,7 @@ func TestTheLightLadderIsAuthoredAndDistinct(t *testing.T) {
 	seen := map[uint8]string{}
 	for name, h := range map[string]hue{
 		"ink": lightInk, "accent": lightAccent, "muted": lightMuted, "dim": lightDim,
-		"add": lightAdd, "del": lightDel, "bad": lightBad, "ask": lightAsk,
+		"add": lightAdd, "del": lightDel, "bad": lightBad,
 		"warn": lightWarn, "data": lightData, "hover": lightCursor, "violet": hueViolet,
 		// The streaming step is a role on this ladder like any other, and it owes
 		// the same rounding check — see [lightLive], and settle_test.go for what it
@@ -790,9 +790,10 @@ func TestTheLightLadderIsAuthoredAndDistinct(t *testing.T) {
 		}
 		seen[h.idx] = name
 	}
-	// The question hue must not collide with the operator violet on EITHER
-	// ladder — that is the whole reason there are two violets (styles.go).
-	if hueAsk.idx == hueViolet.idx || lightAsk.idx == hueViolet.idx {
+	// The question hue is the amber now (styles.go's [palette.ask]), and it owes
+	// the same distinctness the retired violet owed: a question's mark and the
+	// operator violet may not resolve to one index on either ladder.
+	if hueWarn.idx == hueViolet.idx || lightWarn.idx == hueViolet.idx {
 		t.Fatal("the question hue and the operator violet resolve to one index")
 	}
 }
@@ -2286,13 +2287,23 @@ func TestTheHintSlotFollowsTheStateAndIsEmptyAtRest(t *testing.T) {
 	}
 	a.pick.open = false
 
-	// A call parked on a person offers the keys that answer it — the SAME keys
-	// the question block draws, which is what makes the hint safe to act on and
-	// is why the slot is DERIVED from the question rather than spelled here
-	// (question.go's [app.questionHint]).
+	// A call parked on a person says NOTHING here while the block above the box
+	// is drawing its own keys (owner ruling 2026-09-11, hints pick A): the slot
+	// three rows under the panel repeating the panel's keys, in its own order,
+	// was the owner's "the hint line names keys that are not there".
 	a.entries = append(a.entries, entry{kind: entryTool, tool: "bash", status: toolConsent})
 	raiseAsk(a, 7, "bash")
-	hint := a.hintWord()
+	if hint := a.hintWord(); strings.Contains(hint, "allow once") {
+		t.Fatalf("the slot is re-listing the answers the block draws: %q", hint)
+	}
+	// AND THE DERIVATION IS STILL ONE DERIVATION, for the places that DO say the
+	// answers from outside the block — home's narrow foot, and a question the
+	// chip alone is carrying (question.go's [app.questionHintOn]).
+	head, ok := a.questionHead()
+	if !ok {
+		t.Fatal("the question is not open")
+	}
+	hint := a.questionHintOn(head)
 	for _, want := range []string{"1 allow once", "3 deny", "2 always", "esc later"} {
 		if !strings.Contains(hint, want) {
 			t.Fatalf("the consent hint %q is missing %q", hint, want)
@@ -2836,8 +2847,8 @@ func TestATaskProposalRendersTheDecisionAndHidesTheBrief(t *testing.T) {
 			break
 		}
 	}
-	if !strings.Contains(painted, sgr256(hueAsk)) {
-		t.Fatalf("the proposal is not painted in the question hue:\n%q", painted)
+	if !strings.Contains(painted, sgr256(hueWarn)) {
+		t.Fatalf("the proposal carries no mark in the question hue:\n%q", painted)
 	}
 	// This proposal has a clock: it starts automatically unless redirected.
 	if word, _ := a.stateWord(); word != taskStartingWord {
@@ -3167,7 +3178,7 @@ func TestTheProposalChoicesAnswerByPointerAndByKey(t *testing.T) {
 	}
 	// AND THE RECEIPT IS ABOVE THE BOX, in the words the engine writes into
 	// decisions.jsonl (question.go's [app.recordQuestion]).
-	if !strings.Contains(taskAsk(a), "decided "+session.TaskProposalLead+"Fix the nil-map crash") {
+	if !strings.Contains(taskAsk(a), session.TaskProposalLead+"Fix the nil-map crash → start it") {
 		t.Fatalf("the answer left no receipt:\n%s", taskAsk(a))
 	}
 
@@ -3332,7 +3343,7 @@ func TestEscFoldsTheProposalRatherThanDecliningItOrTheTurn(t *testing.T) {
 	if strings.Contains(taskAsk(a), "1  start it") {
 		t.Fatalf("the folded question is still drawing its answers:\n%s", taskAsk(a))
 	}
-	if seg := plain(a.questionSegment()); !strings.Contains(seg, "1 question") {
+	if seg := plain(a.questionSegment()); !strings.Contains(seg, "wants to start a task") {
 		t.Fatalf("the chip does not carry the folded question: %q", seg)
 	}
 	// And the decline is the digit the row draws.

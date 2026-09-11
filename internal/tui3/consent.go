@@ -494,7 +494,7 @@ func (a *app) answerWith(allow bool, scope session.ConsentScope) tea.Cmd {
 	}
 	head := *open
 	return a.answerQuestion(head, session.Answer{
-		Key: key, Picked: []string{key}, Scope: questionScopeOf(head.question, key),
+		Key: key, Picked: []string{key}, Scope: questionScopeOf(head, key),
 	})
 }
 

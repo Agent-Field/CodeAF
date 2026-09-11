@@ -73,7 +73,7 @@ The offer is asked where every decision on this surface is asked: on the questio
 directly above the message box.
 
 ```
-? run harness "research"? · [1] run it · [2] not now · [esc] later · waiting
+? run harness "research"? · 1 run it · 2 not now · esc later · waiting
   model: claude-opus-5 · finds an answer across sources
 ```
 
@@ -682,8 +682,8 @@ ever names the machinery behind it.
 draw its own picture — `[plan]──▶[fetch]──▶[verify]`, a bullet per step, and two rows
 reading `verify: report` and `tools: read · grep` — inside a bordered frame. All of that is
 gone: those were names from inside aforge, shown to somebody who has never seen inside it,
-and what stands there now is exactly the block below with `[enter] save   [e] change it
-[esc] drop` under it.
+and what stands there now is exactly the block below with `enter save   e change it
+esc drop` under it.
 
 ```
 triage-flake · v2 · chase a flaky test to a fix

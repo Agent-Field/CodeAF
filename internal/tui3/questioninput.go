@@ -586,7 +586,7 @@ func (a *app) questionHole(in *questionInput, i int, hole questionBlank) string 
 	}
 	text := "[" + body + "]"
 	if i == in.focus {
-		return a.pal.askBold(text)
+		return a.pal.bold(a.pal.ink(text))
 	}
 	return a.pal.dim(text)
 }
@@ -668,7 +668,7 @@ func (a *app) questionChecklistRows(width int) []string {
 		text := mark + " " + opt.Key + " " + strings.TrimSpace(opt.Label)
 		line := questionIndent + a.pal.ink(text)
 		if i < len(in.ticks) && in.ticks[i] {
-			line = questionIndent + a.pal.askBold(text)
+			line = questionIndent + a.pal.bold(a.pal.ink(text))
 		}
 		if at == in.focus {
 			line = a.pal.cursor(fit(line, width), width)
@@ -698,9 +698,9 @@ func (a *app) questionPairRows(width int) []string {
 	}
 	side := func(key, word string) string {
 		if pair.answer == key {
-			return a.pal.askBold(key + "  " + word)
+			return a.pal.data(key) + "  " + a.pal.bold(a.pal.ink(word))
 		}
-		return a.pal.ask(key) + "  " + a.pal.ink(word)
+		return a.pal.data(key) + "  " + a.pal.ink(word)
 	}
 	out = append(out, fit(questionIndent+side("a", pair.a)+"    "+side("b", pair.b), width))
 	// The count is what makes a run of pairs bearable: a person answering four
@@ -745,16 +745,19 @@ func (a *app) questionDialRows(width int) []string {
 func (a *app) questionDialFace(width int) string {
 	in := a.qroom.input
 	if a.pal.linear || a.pal.ascii {
-		return a.pal.ask(strconv.Itoa(in.notch+1) + " of " + strconv.Itoa(in.notches) +
+		return a.pal.ink(strconv.Itoa(in.notch+1) + " of " + strconv.Itoa(in.notches) +
 			questionSep + in.dialWord())
 	}
-	// With words, the dial IS its words: the one it is on in the question hue and
-	// the rest dim, which reads at a glance and needs no legend.
+	// With words, the dial IS its words: the one it is on wears the POINTER and
+	// the weight, the rest are dim. The brackets it used to wear were punctuation
+	// standing in for a mark this surface has ([tokens.GPointer], the same one
+	// every answer's row uses for "here"), and the amber they were painted in
+	// belongs to that mark now (owner ruling 2026-09-11, colour pick C).
 	if len(in.dial.Labels) > 0 {
 		parts := make([]string, 0, len(in.dial.Labels))
 		for i, label := range in.dial.Labels {
 			if i == in.notch {
-				parts = append(parts, a.pal.askBold("["+label+"]"))
+				parts = append(parts, a.pal.warnBold(a.icon(tokens.GPointer))+" "+a.pal.bold(a.pal.ink(label)))
 				continue
 			}
 			parts = append(parts, a.pal.dim(label))
