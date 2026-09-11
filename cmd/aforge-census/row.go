@@ -179,6 +179,28 @@ var classesInOrder = []statusClass{
 	classRouting, classMalformed, classOther, classUnwritten, classNote,
 }
 
+// refusalColumns is the ONE place in this program that a refusal's status turns
+// into a column of the table, and it is a table because that is all it is.
+//
+// IT IS NOT A FOURTH CLASSIFIER, and the difference is worth stating because the
+// module has a law against those (internal/taxonomy's
+// `TestOnlyTheTaxonomyTurnsAStatusIntoAMove`). A classifier reads a live error
+// and DECIDES — retry, hop, give the turn back. This program reads a JSON line
+// off a finished day and decides nothing: there is no error value to hand
+// `taxonomy.Classify`, no evidence internal/provider could have stamped, and
+// nothing downstream of it but a markdown cell. The columns are the ones
+// docs/design/recovery/DESIGN.md §1 asks for, which is where the three numbers
+// come from; if the design's table changes, this changes with it and nothing
+// else in the build moves.
+var refusalColumns = map[int]struct {
+	class  statusClass
+	family causeFamily
+}{
+	429: {classPaced, causePaced},
+	404: {classRouting, causeRouting},
+	400: {classMalformed, causeMalformed},
+}
+
 func (r row) statusClass() statusClass {
 	failing := strings.TrimSpace(r.Error) != ""
 	switch {
@@ -193,12 +215,11 @@ func (r row) statusClass() statusClass {
 		return classClean
 	case r.Status == 200:
 		return classInStream
-	case r.Status == 429:
-		return classPaced
-	case r.Status == 404:
-		return classRouting
-	case r.Status == 400:
-		return classMalformed
+	}
+	if column, refused := refusalColumns[r.Status]; refused {
+		return column.class
+	}
+	switch {
 	case r.Status == 0 && failing:
 		return classTransport
 	case r.Status == 0:
@@ -294,12 +315,18 @@ func (r row) cause() (causeFamily, bool) {
 			return causeWall, true
 		}
 		return causeCaller, true
-	case r.Status == 429 || apiErrorStatus(said) == 429:
-		return causePaced, true
-	case r.Status == 404 || apiErrorStatus(said) == 404:
-		return causeRouting, true
-	case r.Status == 400 || apiErrorStatus(said) == 400:
-		return causeMalformed, true
+	}
+	// THE SENTENCE'S OWN STATUS IS READ BEFORE THE COLUMN'S, which is the law
+	// this comment's header states: a refusal that names a 429 inside an opened
+	// 200 is a 429, and the status column is where it was read rather than what
+	// it says.
+	if column, refused := refusalColumns[apiErrorStatus(said)]; refused {
+		return column.family, true
+	}
+	if column, refused := refusalColumns[r.Status]; refused {
+		return column.family, true
+	}
+	switch {
 	case containsAny(said, networkPhrases):
 		return causeNetwork, true
 	case apiErrorStatus(said) >= 500:
