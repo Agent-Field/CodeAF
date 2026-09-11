@@ -441,53 +441,61 @@ type Completer interface {
 // exactly" — an intention where the repository's one-source-of-truth law wants
 // an interpolation. A promise in a comment is how two numbers drift.
 //
-// IT IS TOO SMALL FOR REAL REPOSITORY WORK, AND IT CANNOT SIMPLY BE RAISED.
-// Both halves of that are measurements, and they are written here because the
-// next person to reach for this number needs the second half as much as the
-// first.
+// IT IS 220,000 BECAUSE THAT IS WHAT REAL REPOSITORY WORK MEASURED, AND
+// BECAUSE TWO INVARIANTS IN THIS PACKAGE BOUND IT FROM ABOVE. Both halves are
+// measurements, and the next person to reach for this number needs the second
+// half as much as the first.
 //
 // The measurement against real work: issue #898 — the frame law widened to see
 // a package function taking the surface as a parameter — run headless on
 // z-ai/glm-5.3 on 2026-09-11, run 04c2404b26072e41. Neither half of the
-// calibration above held. The median call carried 14.2k prompt tokens, not 11k,
-// and the leaves that did the work ran 14 to 41 turns, not 8 to 16. Every one
-// of them was landed mid-edit by this grant:
+// original calibration above held. The median call carried 14.2k prompt tokens,
+// not 11k, and the leaves that did the work ran 14 to 41 turns, not 8 to 16. At
+// 150,000 every one of them was landed mid-edit:
 //
-//	leaf                        turns   spent    of grant
+//	leaf                        turns   spent    grant then
 //	Issue 898 frame law fix        14   184,411   150,000
 //	finish-issue-898               41   190,524   164,462
 //	Answer remaining offenders     14   268,971   211,852
 //
 // (A grant above this constant is this constant plus the dependency term
 // gatheringGrant adds — it is cmd/aforge's, in subharness.go, which this package
-// cannot link to; the overshoot past each is the landing reserve doing its
-// job at landingTokenShare of the grant.) The run then re-planned around every
+// cannot link to; the overshoot past each is the landing reserve doing its job
+// at landingTokenShare of the grant.) The run then re-planned around every
 // landing — five rounds and seven nodes for one issue, 43 minutes, $2.11, and a
-// delivery gate that refused at the end for want of time — while the WORK
-// itself was correct and committed after the first two leaves. Every split is
-// paid for twice: once in a fresh planning round, and once in the context the
-// next leaf has to be told again.
+// delivery gate that refused at the end for want of time — while the WORK itself
+// was correct and committed after the first two leaves. Every split is paid for
+// twice: once in a fresh planning round, and once in the context the next leaf
+// has to be told again. 220,000 covers the first two leaves outright with room
+// over. The third, which had already been lifted to 211,852 by its dependency
+// term and spent 268,971, is a job that wants splitting and is not an argument
+// for a larger number.
 //
-// The measurement against this package's own invariants: two of them bound this
-// number from above, and neither is a test that should be moved to let a figure
-// through. Raising the grant to 250,000 turns both red; a third reading, from
-// inside the second of them, closes the gap between them.
+// THE CEILING, AND WHY IT IS NOT 250,000. Two invariants bound this from above
+// and neither may be moved to let a figure through. The band is 200,000 to about
+// 241,000, measured by sweeping the constant and running them:
 //
-//   - TestObservationWindowIsSizedFromContextNotSpend pins that the observation
-//     window comes from the model's context and beats what the old spend-derived
-//     arithmetic bought. It compares the 32,768-byte window against
-//     DefaultLeafTokens/6, so the grant may not reach 196,608 without the window
-//     being re-derived first. Moving the comparison instead would un-pin the
-//     category error the test exists for.
 //   - TestACacheDiscountedRunawayLandsOnItsMoney pins that a 98%-cached runaway
 //     runs out of money before the 1.4M raw tokens the audited melt-downs
-//     reached. At the discount the raw count is about 5.8× the grant, so 250,000
-//     pushed 1,442,112 and reached exactly what the grant forestalls.
-//   - And the gap between those two is not open either. The same runaway test
-//     closes by asserting that cost alone would have bought the leaf several
-//     times the work it did, and at 190,000 the simulated cost bound and the
-//     real run both land at 85 turns, so the comparison stops separating and the
-//     test says so. (At 250,000 it never runs: the raw check above fails first.)
+//     reached. At the discount the raw count is about 5.8× the grant, so 242,000
+//     is where it arrives and 250,000 pushed 1,442,112 — exactly what the grant
+//     forestalls. 220,000 reaches about 1.28M.
+//   - The same test closes by asserting that cost alone would have bought the
+//     leaf several times the work it did, and at 190,000 the simulated cost bound
+//     and the real run both land at 85 turns, so the comparison stops separating
+//     and the test says so. That is the floor, and it is why this is not 190,000
+//     even though the work only demanded that much.
+//
+// THE THIRD BOUND WAS NEVER REAL AND IS NOW CUT.
+// TestObservationWindowIsSizedFromContextNotSpend appeared to pin the grant
+// under 196,608, because it compared the context-derived window against
+// DefaultLeafTokens/6. But the window has not read this constant since
+// observationWindow became ctxbudget.ObservationBytes of the model's OWN
+// context; the division was the test recomputing a historical figure — what the
+// spend ceiling used to buy — from a number that had since moved. So it failed
+// whenever the grant ROSE, which is backwards, since a larger grant does not
+// shrink the memory a leaf is given. That constant is frozen at the 25,000 it
+// actually was, and the assertion it supports is unweakened.
 //
 // AND THE ORIGINAL LESSON STILL STANDS, because three comments in this file
 // rest on it. It was set at 400k once, which permitted around 37 turns, and
@@ -498,12 +506,13 @@ type Completer interface {
 // figures they cite are the ORIGINAL calibration above, and the measurement in
 // this comment is the reason both of them want re-reading when the grant moves.
 //
-// So this number is not a knob. It is load-bearing, and moving it means moving
-// the observation window's derivation with it and re-measuring the runaway
-// bound. #920 carries that work and this evidence; until it is done, a lane that
-// needs a bigger grant for one run passes `--token-budget` to `aforge exec` or
+// So this number is not a knob. It is load-bearing: it sits inside a band 41,000
+// wide, with a measurement under it and two invariants over it, and moving it
+// again means re-running the sweep in #920's replication and rewriting this
+// comment, PERF.md and the manual page that quotes it. A lane that needs a
+// bigger grant for one run passes `--token-budget` to `aforge exec` or
 // `aforge run` rather than editing this.
-const DefaultLeafTokens = 150_000
+const DefaultLeafTokens = 220_000
 
 // rawTokenCeilingMultiple WAS the leaf's second bound and is now pressure on
 // the wrap-up warning, for the reason set out at length against reuseCeiling in

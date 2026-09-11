@@ -1987,8 +1987,7 @@ the `usage` table, so both now see an interrupted leaf's spend. Pinned by
 Written against ink s9 of 2026-08-29, where three leaves were landed early by a
 bound the record could not name.
 
-**Measured 2026-09-11: the grant is too small for real repository work, and
-three invariants pin it where it is (#920).** It is 150,000, calibrated from a
+**Recalibrated 2026-09-11 to 220,000 (#920).** It was 150,000, calibrated from a
 turn costing about 11k input tokens and a well-sized leaf finishing in 8 to 16
 of them. Against a real issue — #898, the frame law widened to see a package
 function that takes the surface as a parameter, run headless on `z-ai/glm-5.3`,
@@ -1996,7 +1995,7 @@ run `04c2404b26072e41` — neither half held: the median call carried 14.2k prom
 tokens and the leaves that did the work ran 14 to 41 turns. Every one was landed
 mid-edit.
 
-| leaf | turns | spent | of grant |
+| leaf | turns | spent | grant then |
 | --- | --- | --- | --- |
 | Issue 898 frame law fix | 14 | 184,411 | 150,000 |
 | finish-issue-898 | 41 | 190,524 | 164,462 |
@@ -2010,15 +2009,26 @@ that refused at the end for want of time — while the work itself was correct a
 committed after the first two leaves. **Every split is paid for twice**, once in
 a fresh planning round and once in the context the next leaf must be told again.
 
-It cannot simply be raised, and that is the more useful half of the reading.
-Raising it to 250,000 turns three tests red, none of which should be moved to
-let a number through: `TestObservationWindowIsSizedFromContextNotSpend` compares
-the 32,768-byte context-derived window against `DefaultLeafTokens/6`, so the
-grant may not reach 196,608 until the window is re-derived;
-`TestACacheDiscountedRunawayLandsOnItsMoney` holds a 98%-cached runaway under
-1.4M raw tokens, and at about 5.8× the grant 250,000 pushed 1,442,112; and that
-test's closing cost/raw separation coincides at 190,000. The grant is
-load-bearing rather than a knob, and #920 carries the work of moving it.
+**The band is 200,000 to about 241,000**, measured by sweeping the constant and
+running the invariants, and 220,000 sits inside it with room on both sides. The
+floor is `TestACacheDiscountedRunawayLandsOnItsMoney`'s closing comparison —
+that cost alone would have bought the leaf several times the work it did — which
+stops separating at 190,000, where the simulated cost bound and the real run
+both land at 85 turns. The ceiling is the same test's raw bound: a 98%-cached
+runaway costs about 5.8× the grant in raw tokens, so 242,000 reaches the 1.4M
+the audited melt-downs reached and 250,000 pushed 1,442,112. 220,000 reaches
+about 1.28M. Neither assertion was weakened to make room.
+
+A third bound looked real and was not.
+`TestObservationWindowIsSizedFromContextNotSpend` compared the context-derived
+window against `DefaultLeafTokens/6` and so appeared to pin the grant under
+196,608. But the window has not read the grant since `observationWindow` became
+`ctxbudget.ObservationBytes` of the model's own context; the division was the
+test recomputing a *historical* figure — what the spend ceiling used to buy —
+from a number that had since moved, which made it fail whenever the grant
+**rose**. That constant is frozen at the 25,000 it actually was. **Moving the
+grant again means re-running the sweep in #920's replication and rewriting this
+section, the constant's comment, and the manual page that quotes the figure.**
 
 `exec.DefaultLeafTokens` is now the only place the figure is written. `aforge
 exec`, `aforge run` and the chat surface read it; `internal/exec`'s
