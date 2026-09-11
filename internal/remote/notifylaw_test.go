@@ -2,7 +2,6 @@ package remote
 
 import (
 	"go/ast"
-	"go/token"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -29,7 +28,6 @@ func TestEveryNotifiedMethodOwesNobodyAnOrder(t *testing.T) {
 	root := repoRoot(t)
 	found := 0
 	walkGo(t, filepath.Join(root, "internal", "remote"), func(path string, file *ast.File) {
-		set := token.NewFileSet()
 		ast.Inspect(file, func(node ast.Node) bool {
 			call, ok := node.(*ast.CallExpr)
 			if !ok || len(call.Args) == 0 {
@@ -56,7 +54,6 @@ func TestEveryNotifiedMethodOwesNobodyAnOrder(t *testing.T) {
 				t.Errorf("%s: notify sends %s, which owes an order — a frame nobody waits for may not ride the ordered lane",
 					filepath.Base(path), name.Name)
 			}
-			_ = set
 			return true
 		})
 	})

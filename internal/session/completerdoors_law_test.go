@@ -59,6 +59,20 @@ func TestTheCompleterWrapperForwardsEveryDoorTheAdapterOffers(t *testing.T) {
 			// completer implements, and the wrapper owes it nothing.
 			continue
 		}
+		if !door.onCompleter {
+			// AN ASSERTION THIS LAW CANNOT PLACE IS NOT ONE IT MAY SKIP, which
+			// is internal/remote's surface-door law's rule said on this seam.
+			// The name list below ([completerNamed]) is the weak point of the
+			// whole thing: rename the field, or put the completer in a local
+			// first, and every door this law holds would quietly leave it. So a
+			// door the ADAPTER answers, asserted on something this law does not
+			// recognise as the completer, is a red — add the spelling, or say
+			// in the message why that value is not one.
+			t.Errorf("internal/session asserts %s on %q, *provider.Client answers it, and this law does not recognise that as the completer.\n"+
+				"Either the completer is now spelled something else — teach completerNamed — or this is a different value that happens to share a door's shape.",
+				door.name, door.receiver)
+			continue
+		}
 		if completerHolds(wrapper, door.methods) {
 			continue
 		}
@@ -132,6 +146,12 @@ func walkPackage(t *testing.T, dir string, visit func(string, *ast.File)) {
 type completerDoor struct {
 	name    string
 	methods map[string]bool
+	// receiver is what the assertion was written on, and onCompleter is whether
+	// [completerNamed] recognised it. They are carried rather than filtered on
+	// so that an assertion this law cannot place becomes a MESSAGE instead of a
+	// silence — see the loop in the law above.
+	receiver    string
+	onCompleter bool
 }
 
 // interfacesDeclaredIn is every interface a package declares, as a method set
@@ -206,19 +226,21 @@ func itoaSmall(n int) string {
 	return digits
 }
 
-// completerAssertionsIn is every `x.(T)` in the package where x is named
-// `client` or `inner` — the two spellings this package uses for "the completer
-// underneath" — and T is an interface it declares.
+// completerAssertionsIn is every `x.(T)` in the package where T is an interface
+// the package declares, carrying what x was spelled and whether that spelling is
+// one this law recognises as the completer.
+//
+// IT DOES NOT FILTER BY RECEIVER, and that is the change internal/remote's
+// surface-door law asked for. Filtering here would mean a renamed field or a
+// local alias took a door off the law with the gate green throughout; carrying
+// the spelling instead lets the law say so out loud, for the doors the adapter
+// actually answers.
 func completerAssertionsIn(t *testing.T, dir string, declared map[string]map[string]bool) []completerDoor {
-	var found []completerDoor
-	seen := map[string]bool{}
+	best := map[string]completerDoor{}
 	walkPackage(t, dir, func(_ string, file *ast.File) {
 		ast.Inspect(file, func(node ast.Node) bool {
 			asserted, ok := node.(*ast.TypeAssertExpr)
 			if !ok || asserted.Type == nil {
-				return true
-			}
-			if !completerNamed(asserted.X) {
 				return true
 			}
 			name, ok := asserted.Type.(*ast.Ident)
@@ -226,28 +248,39 @@ func completerAssertionsIn(t *testing.T, dir string, declared map[string]map[str
 				return true
 			}
 			methods, known := declared[name.Name]
-			if !known || len(methods) == 0 || seen[name.Name] {
+			if !known || len(methods) == 0 {
 				return true
 			}
-			seen[name.Name] = true
-			found = append(found, completerDoor{name: name.Name, methods: methods})
+			on, named := completerReceiver(asserted.X)
+			// A RECOGNISED SPELLING WINS wherever one door is asserted on both.
+			// The door IS on this law when any site asks it of the completer,
+			// and one local alias elsewhere must not turn that into a complaint
+			// that it is not.
+			if prior, already := best[name.Name]; already && (prior.onCompleter || !named) {
+				return true
+			}
+			best[name.Name] = completerDoor{name: name.Name, methods: methods, receiver: on, onCompleter: named}
 			return true
 		})
 	})
+	found := make([]completerDoor, 0, len(best))
+	for _, door := range best {
+		found = append(found, door)
+	}
 	sort.Slice(found, func(i, j int) bool { return found[i].name < found[j].name })
 	return found
 }
 
-// completerNamed reports whether an expression is one of the two names this
-// package gives the completer underneath.
-func completerNamed(expr ast.Expr) bool {
+// completerReceiver is what an assertion was written on, and whether that is one
+// of the two names this package gives the completer underneath.
+func completerReceiver(expr ast.Expr) (string, bool) {
 	switch shape := expr.(type) {
 	case *ast.Ident:
-		return shape.Name == "client" || shape.Name == "inner"
+		return shape.Name, shape.Name == "client" || shape.Name == "inner"
 	case *ast.SelectorExpr:
-		return shape.Sel.Name == "client" || shape.Sel.Name == "inner"
+		return shape.Sel.Name, shape.Sel.Name == "client" || shape.Sel.Name == "inner"
 	}
-	return false
+	return "an expression with no name", false
 }
 
 // methodsOfType is every method on a named type in one package, by either

@@ -2,8 +2,17 @@
 kind: changed
 title: A warm wire and a socket that never waits — the reader reads, and a keystroke crosses
 pr: 872
-surface: [engine, remote]
+surface: [engine, remote, chat]
 invalidates:
+  - "\"The manual describes the typing measurement, so a person can find out
+    about it.\" The page said what it sends and what it costs, and left out the
+    one thing somebody checking a bill needs: it appears in NO money figure
+    aforge draws. /cost, the status line, the spend place and the end-of-run
+    total are all sums over call-log rows, and the probe deliberately writes
+    none — it hangs up at the first word, so the provider's own token count
+    never arrives. models-and-cost.md now says so under `Spend that /cost does
+    not show`, and the /cost section's claim that it counts EVERY request is
+    corrected. #903 is whether that absence should end."
   - "\"Typing pre-warms the lane.\" It did not — anywhere, on any road, since
     the completer wrapper landed — and it was broken in TWO places, both mended
     here. The surface reaches for the capability through an optional interface
