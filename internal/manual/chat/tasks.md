@@ -4908,9 +4908,22 @@ Pressing `x` on a run that has already finished does nothing but say so.
 The **tasks** place lists main chats and their nested work across projects, grouped by what you do
 next: `your call`, `running`, `waiting`, `finished today`, then `earlier` — where
 `waiting` is admitted work nothing is doing, drawn with no age on it, and `finished today`
-is everything that ended today however it ended. The main chat names its project once. Child rows can include
-activity, age from the landing time their own records carry, and last their
-measured cost. The row's kind is not drawn. Zero or unknown cost is left
+is everything that ended today however it ended.
+
+**A main chat's row names its folder only where that folder is news.** A conversation in the
+folder this window is already sitting in wears no tag — the tag would be the same word on
+every row — and neither does one whose workspace is your home directory or a scratch folder
+at the top of `/tmp`. Another project's conversation keeps its name. The **projects** panel on
+home still lists all three, as the paths they are.
+
+**A row of work says its state once.** What a child row can carry is what it touched (`2
+files`), then its state and the reason behind it — `your call · nobody could check it`,
+`incomplete · lost the connection`, `stopped`, `done`, `working` — and last its measured
+cost. A row whose state needs no reason says the bare word; a row that stopped says
+`stopped` and not `stopped · stopped`, which is what it read while the page composed that
+pair itself instead of taking the engine's own spelling of it. The landing's own report
+sentence is **not** on the row: it is on the task's record, one keypress away through
+`enter`. The row's kind is not drawn. Zero or unknown cost is left
 blank, and so is an age whose older record never carried that landing time. A section with
 nothing in it is absent.
 
