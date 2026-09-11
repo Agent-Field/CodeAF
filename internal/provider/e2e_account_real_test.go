@@ -157,8 +157,6 @@ func TestRealRouterAccountExclusionIsPaidOnceForEveryModel(t *testing.T) {
 	// the race of 2026-09-10, a turn twenty-five messages into a conversation
 	// with a spending history. Six rescues in twenty and no share limit is what
 	// the stub rig states for the same reason (hedge_test.go's newLaneRig).
-	provider.SetHedgeBudget(lanes.NewBudget(6, 0))
-	t.Cleanup(func() { provider.SetHedgeBudget(nil) })
 
 	tally := &accountTally{inner: http.DefaultTransport}
 	newClient := func() *provider.Client {
@@ -283,8 +281,6 @@ func TestRealRouterTheMeasuredRaceLandsOnTheFirstAttempt(t *testing.T) {
 	}
 	lanes.ForgetRefusals()
 	t.Cleanup(lanes.ForgetRefusals)
-	provider.SetHedgeBudget(lanes.NewBudget(6, 0))
-	t.Cleanup(func() { provider.SetHedgeBudget(nil) })
 
 	tally := &accountTally{inner: http.DefaultTransport}
 	client, err := provider.NewClient(provider.Config{

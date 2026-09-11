@@ -4,15 +4,17 @@ import (
 	"testing"
 	"time"
 
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/lane/lanestub"
 )
 
-// TestARescueTheAllowanceRefusedSaysSoOnTheRow is C4: the row records both
-// that the wait was reported and that the second request the ceiling still
-// owed was refused for money. Those are different facts, which is why the
-// refusal has its own field.
-func TestARescueTheAllowanceRefusedSaysSoOnTheRow(t *testing.T) {
+// TestARescueTheCallCouldNotPayForSaysSoOnTheRow is C4: the row records both
+// that the wait was reported and that the second request the ceiling still owed
+// never went out. Those are different facts, which is why the refusal has its
+// own field — and the WORD is the rail that really refused. It used to be
+// `budget`, which named a rolling process-wide allowance and therefore said
+// "some other request spent this one's rescue"; [planCannotPay] names the only
+// rail there is.
+func TestARescueTheCallCouldNotPayForSaysSoOnTheRow(t *testing.T) {
 	read := loggingTo(t)
 	rig := newLaneRig(t, "row/budget-refusal",
 		lanestub.Lane{Name: "A", Profile: lanestub.Profile{TTFT: 60 * time.Millisecond, Rate: 2000, Tokens: 24}},
@@ -20,7 +22,7 @@ func TestARescueTheAllowanceRefusedSaysSoOnTheRow(t *testing.T) {
 	)
 	rig.believes("A", 20, 2000)
 	rig.patience(t, 50*time.Millisecond)
-	SetHedgeBudget(lanes.NewBudget(0, 0))
+	noRescues(t)
 
 	ctx := WithLaneChoice(talking(), choiceFor(rig.model, 12*time.Millisecond))
 	if _, err := rig.client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
@@ -37,8 +39,8 @@ func TestARescueTheAllowanceRefusedSaysSoOnTheRow(t *testing.T) {
 	if got := rows[0].Action; got != "report" {
 		t.Fatalf("action = %q, want the controller's report", got)
 	}
-	if got := rows[0].Refused; got != "budget" {
-		t.Fatalf("refused = %q, want budget", got)
+	if got := rows[0].Refused; got != planCannotPay {
+		t.Fatalf("refused = %q, want %q", got, planCannotPay)
 	}
 }
 

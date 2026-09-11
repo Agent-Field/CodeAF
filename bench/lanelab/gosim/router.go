@@ -49,6 +49,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/lane/control"
 	"github.com/Agent-Field/aforge-v2/internal/lane/lanestub"
 )
 
@@ -81,7 +82,7 @@ type router struct {
 	seed    int
 	stub    *lanestub.Server
 	ledger  lane.Ledger
-	budget  *lane.Budget
+	purse   control.Purse
 	client  *http.Client
 	speedup int
 	total   int
@@ -264,10 +265,6 @@ func (r *router) one(index int) (record, error) {
 			map[bool]string{true: "  HEDGED", false: ""}[out.hedged],
 			map[bool]string{true: "  BROKEN:" + broken, false: ""}[broken != ""])
 	}
-	// THE BUDGET'S DENOMINATOR IS REQUESTS, so it is told about every one of
-	// them and not only about the ones that needed rescuing (Part III, C4).
-	r.budget.NoteRequest(r.at)
-	r.budget.NoteSpend(out.usd, r.at)
 
 	// The world moves on by what this took plus the seconds somebody spends
 	// reading whatever of it they read.
@@ -344,7 +341,7 @@ func (r *router) plain(order, only, ignore []string, req lane.Request) (answered
 }
 
 // race is one request with the shipped rescue on it: the real [lane.Watch] over
-// the real [lane.Choice], and the real [lane.DefaultBudget].
+// the real [lane.Choice], and the call's own budget ([lane.Spending]).
 //
 // THE WINNER IS THE FIRST STREAM TO SPEAK, which is what the shipped transport
 // does (`internal/provider/hedge.go` picks the speaker). The loser is cancelled
@@ -403,14 +400,10 @@ func (r *router) race(choice lane.Choice, req lane.Request) (answered, error) {
 		case <-hedgeAt:
 			hedgeAt = nil
 			estimate := r.estimate(rescue)
-			if !r.budget.Allow(r.at, estimate) {
+			if r.purse != nil && !r.purse.Allows(estimate, r.at) {
 				continue
 			}
 			hedged = true
-			// A hedge is charged when it is FIRED and at the estimate it was
-			// allowed on, because the stream that loses is cancelled and never
-			// reports what it cost.
-			r.budget.NoteHedge(estimate, r.at)
 			altBegan = time.Now()
 			alt = r.start(ctx, nil, []string{rescue}, nil, req)
 			altFirst, altDone = alt.first, alt.done
@@ -495,7 +488,7 @@ func (r *router) priceOfServing(name string) float64 {
 }
 
 // estimate is what the alternative is expected to cost, which is what the
-// budget is asked about.
+// purse is asked about.
 func (r *router) estimate(name string) float64 { return r.priceOfServing(name) }
 
 // settle turns one finished stream into the answer, in the world's units.

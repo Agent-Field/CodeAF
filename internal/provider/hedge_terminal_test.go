@@ -30,7 +30,6 @@ func TestALaterAcceptedStreamCutOutranksThePrimaryRoutingRefusal(t *testing.T) {
 			PriceIn: 1.32e-6, PriceOut: 3.96e-6,
 		}},
 	)
-	SetHedgeBudget(lanes.NewBudget(6, 0))
 	choice := lanes.Choice{
 		Order: []string{"A", "B", "C"},
 		Frontier: []lanes.Scored{

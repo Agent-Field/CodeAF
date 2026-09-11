@@ -98,8 +98,6 @@ func TestWatchedFaultUsesFundedAlternativeBeforeRepeatingTheFailedRequest(t *tes
 		fmt.Fprint(w, "data: {\"provider\":\"B\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"The replacement answered normally.\"}}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
 	}))
 	client.wait = func(context.Context, time.Duration) error { waits.Add(1); return nil }
-	SetHedgeBudget(lanes.NewBudget(1, 0))
-	t.Cleanup(func() { SetHedgeBudget(nil) })
 	// This request overrides the client's default model. A refusal for that
 	// default must not take away an alternative serving the requested model.
 	const model = "vendor/override"
@@ -119,8 +117,6 @@ func TestStrictPinDoesNotWalkToAnotherEndpointAfterTransportFailure(t *testing.T
 	client, recorded := pinningClient(t, StaticRouting(RoutingLatency), 0, 0, false,
 		answering(reply{status: 503, body: `{"error":{"message":"temporarily unavailable","metadata":{"provider_name":"A"}}}`}))
 	client.wait = func(context.Context, time.Duration) error { return nil }
-	SetHedgeBudget(lanes.NewBudget(1, 0))
-	t.Cleanup(func() { SetHedgeBudget(nil) })
 	choice := choiceFor(client.config.Model, time.Second)
 	choice.Only, choice.Order = []string{"A"}, nil
 	ctx := WithLaneChoice(WithStreamObserver(talking(), func(StreamEvent) {}), choice)

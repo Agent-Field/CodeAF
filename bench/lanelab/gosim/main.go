@@ -591,11 +591,12 @@ func run(w *world, s scenario, policy string, seed, n, speedup int, trace bool) 
 	r := &router{
 		world: w, scen: s, policy: policy, seed: seed,
 		stub: stub, ledger: ledger,
-		// THE DESIGN'S OWN BUDGET, and it is the shipped one rather than a
-		// figure written here: two hedges in any twenty requests and a tenth of
-		// recent spend. An arm that picked its own allowance would be measuring
-		// a router nobody ships.
-		budget:  lane.DefaultBudget(),
+		// THE DESIGN'S OWN RAIL, and it is the shipped one rather than a figure
+		// written here: what a call may spend rescuing itself is its own patience
+		// converted through λ, which [lane.PlanFor] derives and [lane.Spending]
+		// reads. An arm that picked its own allowance would be measuring a router
+		// nobody ships.
+		purse:   lane.Spending(lane.PlanFor(lane.Choice{}, lane.Pace{}, proofRole, theMoment)),
 		client:  &http.Client{},
 		speedup: speedup,
 		total:   n,

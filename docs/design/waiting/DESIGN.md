@@ -247,9 +247,12 @@ anywhere in this design.
 
 `Hedge` may fire more than once. What bounds it is money, not a counter:
 
-- **Arms are bounded by the purse**, which is today's `lane.Budget` unchanged:
-  at most a tenth of the last hour's spend, counted in requests rather than in
-  minutes. `maxArms = 4` stays as the absolute cap on one question.
+- **Arms are bounded by the purse**, which since 2026-09-11 is the CALL'S OWN
+  budget (`control.Plan.SpendUSD`: its patience converted through λ) rather than
+  the rolling `lane.Budget` this section was written against — that one allowed
+  two rescues in any twenty requests and a tenth of the last hour's spend, and it
+  refused by arrival order. `maxArms = 4` stays as the absolute cap on one
+  question, and it is now the only thing that counts arms.
 - **First visible progress takes the voice.** Whichever arm writes the first
   word a person can read is the arm they hear; the others are held, exactly as
   today's one-voice rule holds them.
@@ -784,7 +787,8 @@ func PlanFor(Choice, Pace, Role, time.Time) control.Plan
 func PaceOf(Belief) Pace
 func PaceFor(ID, time.Time) Pace
 func HeadOf(Choice) string
-func Spending(*Budget) control.Purse   // asks Affordable; the race counts at send
+func Spending(control.Plan) control.Purse // asks Plan.SpendUSD; asks and never spends
+func NoSpending() control.Purse           // the guard off: refuses everything
 func Thinks(model, rung string, now time.Time) control.Survival
 func NoteThought(model, rung string, took time.Duration, at time.Time)
 
@@ -800,7 +804,7 @@ func (Role) Ceiling() time.Duration
 ```
 
 **Public names kept:** `lane.Choice`, `lane.Chooser`, `lane.Ledger`,
-`lane.Sighting`, `lane.Outcome`, `lane.Belief`, `lane.Budget`,
+`lane.Sighting`, `lane.Outcome`, `lane.Belief`, `lane.Spending`,
 `lane.PerceivedSeconds`, `lane.Lambda`, `provider.HedgeReport`,
 `provider.PhaseNews`, `provider.SetLanePin`.
 
@@ -1191,7 +1195,9 @@ for a change that can check every surface's reading of that event.
 
 - **It does not race every lane on every request.** Three to five arms is three
   to five times the bill for a p50 the hedge already captures at about 2%.
-  The purse is what bounds arms, and it is deliberately tight.
+  `maxArms` is what bounds arms, and since 2026-09-11 it is the ONLY thing that
+  counts them. The purse bounds MONEY, out of the call's own budget, and in
+  practice it refuses only an arm dearer than the whole wait it would buy back.
 - **It does not add a second escalation ladder.** `Escalate` hands the wait to
   the one that exists. A controller that changed a model would be answering a
   person's question with a model nobody chose for it.

@@ -590,85 +590,114 @@ func TestTheDeadlineIsNeverInThePastAndNeverPastTheCeiling(t *testing.T) {
 	}
 }
 
-// ── THE BUDGET ──────────────────────────────────────────────────────────────
+// ── THE PURSE ───────────────────────────────────────────────────────────────
 
-func TestTheAllowanceIsCountedInRequestsAndNotInMinutes(t *testing.T) {
+// TestTheCallsOwnPatienceIsWhatItMaySpendRescuingItself is the derivation in
+// [control.Plan.SpendUSD], read back off a plan the shipped door built. The
+// figure is never written here: a test that restated it would pass while the
+// build's own conversion drifted away from it.
+func TestTheCallsOwnPatienceIsWhatItMaySpendRescuingItself(t *testing.T) {
 	now := time.Now()
-	budget := NewBudget(2, 0)
-	if !budget.Allow(now, 0) || !budget.Allow(now, 0) {
-		t.Fatalf("a fresh budget refused one of its first two hedges")
-	}
-	if budget.Allow(now, 0) {
-		t.Fatalf("a third hedge went out inside the same twenty requests")
-	}
-	// TIME ALONE BUYS NOTHING. This is the correction the simulator forced: a
-	// slow batch of requests must not refill its own allowance while it runs.
-	if budget.Allow(now.Add(time.Hour), 0) {
-		t.Fatalf("an hour of waiting refilled an allowance that is counted in requests")
-	}
-	// Requests do. Nineteen of them still hold the first two hedges inside the
-	// window; the twentieth slides the first one out.
-	for range 19 {
-		budget.NoteRequest(now)
-	}
-	if budget.Allow(now, 0) {
-		t.Fatalf("a hedge went out with two still inside the last twenty requests")
-	}
-	budget.NoteRequest(now)
-	if !budget.Allow(now, 0) {
-		t.Fatalf("the oldest hedge never slid out of the window")
-	}
-}
-
-func TestTheAllowanceHoldsAtAboutOneHedgeInTen(t *testing.T) {
-	now := time.Now()
-	budget := NewBudget(2, 0)
-	hedges := 0
-	for range 200 {
-		if budget.Allow(now, 0) {
-			hedges++
+	for _, role := range []Role{RoleTalk, RoleLeafUnattended, RoleStanding} {
+		plan := PlanFor(Choice{}, Pace{}, role, now)
+		want := role.GiveUp().Seconds() * (role.Lambda() / AttentionValue) / AttentionValue
+		if math.Abs(plan.SpendUSD-want) > 1e-12 {
+			t.Fatalf("%s may spend $%.4f rescuing itself, want $%.4f", role, plan.SpendUSD, want)
 		}
-		budget.NoteRequest(now)
-	}
-	// Two in the first twenty and one in every ten after them.
-	if hedges < 18 || hedges > 22 {
-		t.Fatalf("%d hedges in two hundred requests, want about one in ten", hedges)
-	}
-}
-
-func TestAZeroAllowanceIsHowHedgingIsSwitchedOff(t *testing.T) {
-	if NewBudget(0, 0.5).Allow(time.Now(), 0) {
-		t.Fatalf("a budget of nothing allowed a hedge")
-	}
-	var nothing *Budget
-	if nothing.Allow(time.Now(), 0) {
-		t.Fatalf("a nil budget allowed a hedge")
+		if plan.Purse == nil {
+			t.Fatalf("%s built a plan with no purse on it", role)
+		}
+		// The rescue that was refused on 2026-09-11 cost about two cents. Every
+		// role this build has is asked whether it could have paid for it, because
+		// the answer that mattered was the same for all of them.
+		if !plan.Purse.Allows(0.02, now) {
+			t.Fatalf("%s refused a two-cent rescue against a $%.4f allowance", role, plan.SpendUSD)
+		}
 	}
 }
 
-func TestTheShareRefusesOnceHedgingHasHadItsTenthOfTheBill(t *testing.T) {
+// TestNoWatchedSecondIsWorthLessThanAnUnwatchedOne is the ordering the shipped
+// derivation got backwards, and it is stated PER SECOND because that is where it
+// is true.
+//
+// WHAT WAS WRONG. `SpendUSD = GiveUp / λ` divided by a figure that is smaller
+// for a call nobody is watching, so an unwatched second came out four times
+// dearer than a watched one: `talk` was allowed $1.00 to rescue itself and
+// `leaf.unattended` $12.00, `standing` $24.00. The one rail in front of a rescue
+// was sized in the opposite order to who is waiting, which is the deleted
+// window's own defect — refusing the request that needed it — with the priority
+// reversed rather than removed.
+//
+// WHY THE LAW IS NOT "EVERY WATCHED ROLE AFFORDS MORE THAN EVERY UNWATCHED
+// ONE". Patience varies thirty-fold WITHIN each group — `recall` waits 18
+// seconds and `talk` ninety, `probe` 45 and `standing` nine minutes — so no
+// per-second price can make the totals order that way, and a price that did
+// would be saying a nine-minute wait is worth less than an eighteen-second one.
+// What a wait is worth is how long it is TIMES what a second of it is worth; the
+// second factor is the one exposure decides, and it is the one asserted here,
+// across every role in the table rather than the three that were noticed.
+func TestNoWatchedSecondIsWorthLessThanAnUnwatchedOne(t *testing.T) {
 	now := time.Now()
-	budget := NewBudget(60, 0.10)
-	budget.NoteSpend(1.00, now)
-	if !budget.Allow(now, 0.05) {
-		t.Fatalf("refused a five-cent hedge against a dollar of spending")
+	cheapestWatched, dearestUnwatched := math.Inf(1), 0.0
+	var cheapest, dearest Role
+	for role := range roles {
+		if !role.Known() {
+			continue
+		}
+		plan := PlanFor(Choice{}, Pace{}, role, now)
+		seconds := role.GiveUp().Seconds()
+		if seconds <= 0 {
+			t.Fatalf("%s gives up after no time at all", role)
+		}
+		perSecond := plan.SpendUSD / seconds
+		if role.Facts().Interactive {
+			if perSecond < cheapestWatched {
+				cheapestWatched, cheapest = perSecond, role
+			}
+			continue
+		}
+		if perSecond > dearestUnwatched {
+			dearestUnwatched, dearest = perSecond, role
+		}
 	}
-	budget.NoteHedge(0.09, now)
-	if budget.Allow(now, 0.05) {
-		t.Fatalf("allowed a hedge that would take the share past a tenth")
+	if cheapestWatched < dearestUnwatched {
+		t.Fatalf("a second of %s (watched) is worth $%.6f and a second of %s (unwatched) $%.6f — the rail is sized in the opposite order to who is waiting",
+			cheapest, cheapestWatched, dearest, dearestUnwatched)
 	}
-	// And an hour later the window has rolled: neither the spending nor the
-	// hedging that was in it is judged any more.
-	later := now.Add(2 * time.Hour)
-	if !budget.Allow(later, 0.05) {
-		t.Fatalf("the share was still judging an hour-old bill")
+	// AND THE PAIR THAT WAS MEASURED WRONG, named so a reader can see it: a
+	// conversation somebody is reading may never buy less of its own wait back
+	// than a task node nobody is sitting in front of.
+	talk := PlanFor(Choice{}, Pace{}, RoleTalk, now)
+	leaf := PlanFor(Choice{}, Pace{}, RoleLeafUnattended, now)
+	if talk.SpendUSD/RoleTalk.GiveUp().Seconds() < leaf.SpendUSD/RoleLeafUnattended.GiveUp().Seconds() {
+		t.Fatalf("talk values a second of its own wait at $%.6f and leaf.unattended at $%.6f",
+			talk.SpendUSD/RoleTalk.GiveUp().Seconds(), leaf.SpendUSD/RoleLeafUnattended.GiveUp().Seconds())
 	}
 }
 
-func TestWithNothingSpentTheRequestAllowanceAloneGoverns(t *testing.T) {
+// TestAnArmDearerThanTheWholeWaitIsWorthIsRefused is the other side of the same
+// figure: the rail is money and it still says no to something.
+func TestAnArmDearerThanTheWholeWaitIsWorthIsRefused(t *testing.T) {
 	now := time.Now()
-	budget := NewBudget(2, 0.10)
-	if !budget.Allow(now, 0.02) {
-		t.Fatalf("refused the first hedge of a session that has billed nothing yet")
+	plan := PlanFor(Choice{}, Pace{}, RoleTalk, now)
+	if plan.Purse.Allows(plan.SpendUSD*2, now) {
+		t.Fatalf("an arm costing twice the call's whole allowance was afforded")
+	}
+}
+
+// TestAPlanNobodyPricedIsUnboundedAndNotEmpty is the law a zero has to keep.
+// Reading "nobody said" as "nothing may be spent" is how the deleted window's
+// refusal would come back by the other door.
+func TestAPlanNobodyPricedIsUnboundedAndNotEmpty(t *testing.T) {
+	if !Spending(control.Plan{}).Allows(1000, time.Now()) {
+		t.Fatalf("a plan nobody priced refused a rescue")
+	}
+}
+
+// TestTheSpeedGuardOffIsAPurseThatRefusesEverything is the one switch a person
+// has, and it is spelled as a purse rather than as a flag the race consults.
+func TestTheSpeedGuardOffIsAPurseThatRefusesEverything(t *testing.T) {
+	if NoSpending().Allows(0, time.Now()) {
+		t.Fatalf("a purse that spends nothing allowed a free rescue")
 	}
 }
