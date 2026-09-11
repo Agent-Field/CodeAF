@@ -121,10 +121,14 @@ func (r *taskRoom) takeRequests(books session.RequestBooks) {
 		added += call.Output
 	}
 	r.requests = append(r.requests[:0], books.Recent...)
-	// The mark is this page's writing at the moment of reading, which matters
-	// less here than anywhere: the page grows only when the next read lands, and
-	// the read that grows it brings its bill with it (tokencol.go).
-	r.col.bill(r.col.down+added, r.turnWritten(), r.turn)
+	// THE MARK MOVES ON EVERY READING, bill or no bill. Everything on this page
+	// came out of the same bytes the books did, so nothing on it is newer than
+	// they are; and the page is REBUILT from each tail, so a turn counted from
+	// the person's messages in the window can renumber as the window slides — a
+	// mark left on the old number would read the whole running turn as unbilled
+	// and add its estimate on top of the books that already hold it.
+	r.col.down += added
+	r.col.billedAt, r.col.billedTurn = r.turnWritten(), r.turn
 }
 
 // freshRequests is the part of `now` that `seen` did not already hold: the two
