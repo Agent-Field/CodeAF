@@ -574,7 +574,9 @@ func (a *Agent) standingReportAt(path string) (standing.Item, bool) {
 
 // standingReportTaken refuses work whose report is already another live
 // item's, before any card: the store refuses the same at the yes, for both
-// doors, and this says it while the model can still choose the edit.
+// doors, and this says it while the model can still choose the edit. It asks,
+// in the store's words, and never names a stop: "to replace it, stop it first"
+// was followed, and the person's order was gone (the review of cb53c18da).
 func (a *Agent) standingReportTaken(item standing.Item) string {
 	path := standing.ReportPath(item)
 	if path == "" {
@@ -585,7 +587,7 @@ func (a *Agent) standingReportTaken(item standing.Item) string {
 		return ""
 	}
 	return "Invalid arguments: " + item.Does.Report + " is already the report of " + strconv.Quote(owner.Words) + " (" + owner.ID +
-		"). To change that work, send op edit with its id; to replace it, stop it first."
+		"), which has not been stopped — two orders cannot keep one file: " + standing.OwnedRemedy + ". An edit is op edit with its id."
 }
 
 // standingNamedReport refuses work that runs whose call left does.report out

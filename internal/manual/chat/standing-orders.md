@@ -765,7 +765,9 @@ folder; a whole `**` segment reaches down through every folder below, so
 `inbox/**/*.md` watches Markdown at any depth under `inbox` (links to folders are not
 followed). Braces are not expanded, so `{inbox/*,notes/*}` is refused (`… uses braces,
 which a watch does not expand: one order watches one pattern …`): watch a folder they are
-all under, when the report is not inside it. A watch that reaches more than **10000** files and folders is refused when
+all under, when the report is not inside it. One set up with braces before that is quiet,
+not failing: `its pattern uses braces, which a watch does not expand, so it matches
+nothing — change its pattern`. A watch that reaches more than **10000** files and folders is refused when
 you set it up or edit it: `inbox/** reaches more than 10000 files and folders, and a
 watch reads every one of them on every pass; watch a narrower pattern`. **The baseline is
 taken the moment you say yes** (or `add` runs, or `edit` changes the pattern): each file's
@@ -917,9 +919,11 @@ says, change the work — stand op edit with that id.` A stopped order's file is
 A report file has one live owner. A second order on the same file is refused where it
 is written, whichever door asks — `aforge standing add --report`, `aforge standing edit
 --report`, the chat's card and its edit alike: `… is already the report of "…" (<id>),
-which has not been stopped — two orders cannot keep one file: edit that one, or stop it
-first`. The chat says so before any card. Paused still owns; stopped does not, so an
-order set up after the old one stopped publishes where it did.
+which has not been stopped — two orders cannot keep one file: edit that one to cover this,
+or ask the person — a stop is permanent`. The chat says so before any card, and it never
+stops the old order to make room: it widens that one with op edit, or asks you. Paused
+still owns; stopped does not, so an order set up after the old one stopped publishes
+where it did.
 
 Two orders that already shared a file are not left to take turns replacing each other's
 report: the one that last published keeps it, and the other's runs are held with the

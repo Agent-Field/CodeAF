@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -237,20 +238,29 @@ func (s *Store) Get(id string) (Item, error) {
 // one truncated by a full disk, must not be able to stop every other standing
 // thing a person owns from being checked.
 func (s *Store) List() ([]Item, error) {
+	items, _, err := s.listReadable()
+	return items, err
+}
+
+// listReadable is [Store.List] and the ids of the documents it skipped.
+func (s *Store) listReadable() ([]Item, []string, error) {
+	listReads.Add(1)
 	entries, err := os.ReadDir(s.root)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			return nil, nil, nil
 		}
-		return nil, err
+		return nil, nil, err
 	}
 	items := make([]Item, 0, len(entries))
+	var skipped []string
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
 		}
 		item, err := s.read(filepath.Join(s.root, entry.Name()))
 		if err != nil {
+			skipped = append(skipped, strings.TrimSuffix(entry.Name(), ".json"))
 			continue
 		}
 		items = append(items, item)
@@ -261,8 +271,17 @@ func (s *Store) List() ([]Item, error) {
 		}
 		return items[a].Created.After(items[b].Created)
 	})
-	return items, nil
+	return items, skipped, nil
 }
+
+// listReads counts the reads of every item this process has made, for the laws
+// that say a path which runs on every write never makes one (L6).
+var listReads atomic.Int64
+
+// ListReads is how many times this process has read every item ([Store.List]).
+// It is the figure a test of an interactive road reads before and after, so a
+// scan that crept back in is seen where it runs, not guessed from the code.
+func ListReads() int64 { return listReads.Load() }
 
 // ForWorkspace is List filtered to one project, the grouping home draws.
 func (s *Store) ForWorkspace(workspace string) ([]Item, error) {

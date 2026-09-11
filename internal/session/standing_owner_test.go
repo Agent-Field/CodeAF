@@ -104,8 +104,11 @@ func (c *listCountingStore) ForWorkspace(workspace string) ([]standing.Item, err
 
 // B2 (L6). THE WRITE GUARD READS ONE RECORD, NOT THE STORE. It read every item
 // on the machine on every write; now it reads the path's owner and that one
-// item. And a path spelled the ways bare's write accepts it — `@reports/…`,
-// `file://…` — is the same file to the guard (the review's non-blocking R11).
+// item, which the store's own count of full reads shows ([standing.ListReads])
+// as well as the door's. And a path spelled the ways bare's write accepts it —
+// `@reports/…`, `file://…`, `~/…` — is the same file to the guard (the
+// review's non-blocking R11). The guard is asked directly, because a turn reads
+// the rules that reach it, and that read is not the guard's.
 func TestTheWriteGuardReadsThePathsOwnerNotEveryItem(t *testing.T) {
 	var counting *listCountingStore
 	d := newChatDoor(t, &scriptedCompleter{steps: []step{standCall("s1", inboxWork(nil)), finalText("set up")}}, func(config *Config) {
@@ -115,30 +118,29 @@ func TestTheWriteGuardReadsThePathsOwnerNotEveryItem(t *testing.T) {
 	d.proposeInbox(t, d.yes)
 	item := d.only(t)
 	report := filepath.Join(d.project, "reports", "inbox-report.md")
-	for _, path := range []string{"reports/inbox-report.md", "@reports/inbox-report.md", "file://" + report, "notes/free.md"} {
+	// `~` is this process's home, so the project is put under it.
+	t.Setenv("HOME", filepath.Dir(d.project))
+	home := "~/" + filepath.Base(d.project) + "/reports/inbox-report.md"
+	guard := standingReportGuard{agent: d.agent}
+	for _, path := range []string{"reports/inbox-report.md", "@reports/inbox-report.md", "file://" + report, home, "notes/free.md"} {
 		counting.lists.Store(0)
+		listed := standing.ListReads()
 		args, _ := json.Marshal(map[string]string{"path": path, "content": "# by the chat\n"})
-		d.agent.client = &scriptedCompleter{steps: []step{
-			func(context.Context, []ai.Message) (*ai.Response, error) {
-				return toolResponse("w1", "write", string(args)), nil
-			},
-			finalText("done"),
-		}}
-		out := toolOutput(t, d.submitAnswering(t, "write it", nil), "write")
+		_, result, proceed := guard.PreAction(context.Background(), nil, nil, ai.ToolCall{ID: "w1", Type: "function", Function: ai.ToolCallFunction{Name: "write", Arguments: string(args)}})
 		if n := counting.lists.Load(); n != 0 {
-			t.Errorf("writing %s read every item %d time(s)", path, n)
+			t.Errorf("writing %s read every item %d time(s) through the door", path, n)
+		}
+		if n := standing.ListReads() - listed; n != 0 {
+			t.Errorf("writing %s read every item %d time(s) in the store", path, n)
 		}
 		if path == "notes/free.md" {
-			if strings.Contains(out, "is the report of") {
-				t.Errorf("a free path was refused: %q", out)
+			if !proceed {
+				t.Errorf("a free path was refused: %q", result.text)
 			}
 			continue
 		}
-		if !strings.Contains(out, item.ID) {
-			t.Errorf("%s slipped past the guard: %q", path, out)
-		}
-		if _, err := os.Stat(report); !os.IsNotExist(err) {
-			t.Fatalf("%s wrote the report aforge publishes", path)
+		if proceed || !strings.Contains(result.text, item.ID) {
+			t.Errorf("%s slipped past the guard (proceed %v): %q", path, proceed, result.text)
 		}
 	}
 }
@@ -323,5 +325,17 @@ func TestAnObjectSentAsAJSONStringIsTheObject(t *testing.T) {
 func TestTheRailsSayWhatTheCardQuotesWhenNoMoneyIsNamed(t *testing.T) {
 	if !strings.Contains(standSchemaJSON, "otherwise the card quotes the machine-wide daily allowance") {
 		t.Fatal("the rails description lost what the card quotes when nobody named money")
+	}
+}
+
+// THE CHAT'S OWN REFUSAL ASKS, IT NEVER SENDS THE MODEL TO A STOP (the second
+// review of this round): "to replace it, stop it first" was followed, twice,
+// in the live one-path run, and nothing kept the file after it.
+func TestTheChatsOwnerRefusalAsksRatherThanStops(t *testing.T) {
+	d := newChatDoor(t, &scriptedCompleter{steps: []step{standCall("s1", inboxWork(nil)), finalText("set up")}}, nil)
+	d.proposeInbox(t, d.yes)
+	text, failed, err := d.agent.standTool(context.Background(), json.RawMessage(inboxWork(map[string]any{"words": "keep my inbox digest in reports/inbox-report.md"})))
+	if err != nil || !failed || strings.Contains(text, "stop it first") || !strings.Contains(text, "edit that one to cover this, or ask the person — a stop is permanent") {
+		t.Fatalf("a second order on one report answered %q (failed %v, %v)", text, failed, err)
 	}
 }
