@@ -356,6 +356,13 @@ func TestTheTreeReadingCountsThisProcess(t *testing.T) {
 //     runFrontier the only caller of its observe.
 //
 // A node BORN running is not a start and is named below with its reason.
+//
+// What the walk cannot see, said so nobody reads it as more than it is: it
+// matches the constant TaskRunning on the right of a `.state` assignment and a
+// method called on a `.governor` field, so a state set through a variable or a
+// helper (a `node.setState(s)` that does not exist today) and a governor
+// reached through an alias (`gov := g.governor; gov.admits(n)`) pass it
+// unexamined, and those are for review to refuse.
 var bornRunning = map[string]string{
 	"standingWideWork": "the firing itself, already running in this process when its graph is built around it",
 }

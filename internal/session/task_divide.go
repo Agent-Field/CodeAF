@@ -1619,18 +1619,20 @@ func divisionNeedsPerson(why string) string {
 // AND IT SAYS WHEN THE PARTS ARE NOT STARTING YET. A machine that cannot carry
 // one more node holds it ([TaskGraph.runFrontier]), and a fan wider than the
 // machine starts as many as it can carry and holds the rest, so some parts are
-// admitted and waiting rather than working — and a receipt that said nothing about it would have a worker reading
-// "split into three parts" while three cards sat still. It lifts by itself
-// ([TaskGraph.armPoll]), which is the half worth saying: there is nothing for
-// the worker to do about it and nothing for it to come back and re-ask.
-func divisionDone(ids []uint64, titles []string, machineBusy bool) string {
+// admitted and waiting rather than working — and a receipt that said nothing
+// about it would have a worker reading "split into three parts" while three
+// cards sat still. partsHeld is the frontier's own answer for these parts
+// ([TaskGraph.machineHolds]). It lifts by itself ([TaskGraph.armPoll]), which is
+// the half worth saying: there is nothing for the worker to do about it and
+// nothing for it to come back and re-ask.
+func divisionDone(ids []uint64, titles []string, partsHeld bool) string {
 	var out strings.Builder
 	fmt.Fprintf(&out, "split into %d parts:", len(ids))
 	for i, id := range ids {
 		fmt.Fprintf(&out, "\n  %d — %s", id, titles[i])
 	}
 	out.WriteString("\nEach works from its own brief, in a copy of its own, and its branch comes home into yours. Keep working — do not wait for them; each report arrives here when it lands, and this work is not finished until you have folded them into one deliverable.")
-	if machineBusy {
+	if partsHeld {
 		out.WriteString("\nThis machine is busy right now, so some of the parts are waiting for it rather than working. They start themselves as it makes room; there is nothing for you to do about that and nothing to come back for.")
 	}
 	return out.String()
@@ -1662,8 +1664,9 @@ func divisionDone(ids []uint64, titles []string, machineBusy bool) string {
 // frontier already waits out and lifts by itself ([TaskGraph.armPoll]). Folding
 // the second one into this count made a division fail closed where the same
 // reading merely queues a proposal, and made the refusal say "no free hand" over
-// a session whose lanes were all empty. The machine is asked separately, by
-// [TaskGraph.machineBusy], and it is not a refusal.
+// a session whose lanes were all empty. The machine is not asked here at all:
+// [TaskGraph.machineHolds] reads what the frontier decided for the parts once
+// they are admitted, and a hold it finds is not a refusal.
 func (g *TaskGraph) freeHands() int {
 	if g == nil {
 		return 0

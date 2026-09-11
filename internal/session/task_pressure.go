@@ -105,7 +105,11 @@ import (
 // same process fanning out at the same moment as the first therefore reads
 // the first one's visible work as covering part of its own reservation. The
 // floor on the reading itself still holds for both, and the width that gap can
-// add is the first conversation's visible memory divided by one footprint.
+// add is the first conversation's visible memory divided by one footprint. The
+// same attribution can raise a graph's measured footprint from a reading taken
+// during the other conversation's build, and that figure only rises. Both close
+// with one account for the whole process rather than one per graph, which is
+// issue #907.
 
 const (
 	// taskPressureTTL bounds how often the host is asked. Load average is a

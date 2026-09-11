@@ -308,8 +308,12 @@ and Windows the governor still says "cannot say" and never holds, exactly as
 before. And each conversation's graph keeps its own governor and so its own
 reservation, while the visible half is this whole process: two conversations in
 one process fanning out at the same moment each read the other's visible work as
-covering part of its own reservation. The floor on the reading itself still
-holds for both.
+covering part of its own reservation, and one reading taken during the other's
+build can raise this graph's measured footprint for the rest of the session,
+because that figure only rises. The floor on the reading itself still holds for
+both. The fix is one account for the whole process, which needs every
+`TaskGraph.running` mutation behind one door; it is
+[#907](https://github.com/Agent-Field/aforge-v2/issues/907), not a clamp here.
 
 **Deleted.** `admissionGovernor.holds`, the once-per-pass `busy` bool and the
 `busy` parameter of `holdOnStartingLocked`; `TaskGraph.machineBusy`, which asked
