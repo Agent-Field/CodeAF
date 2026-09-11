@@ -336,6 +336,9 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// still streaming. It belongs to the turn and is emptied per attempt — see
 	// [warmBatch] for the law that decides what may start early at all.
 	warm := &warmBatch{}
+	// A turn that ends on any road — an answer, an interrupt, an error, a
+	// process rule's stop — takes back whatever it staged and never ran.
+	defer warm.reset()
 
 	// forming holds the calls this turn has watched ARRIVE but not yet finish
 	// (toolhint.go). It has the warm batch's lifetime and is emptied in the same
@@ -772,6 +775,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		a.tellLaneNews(model, facts, hedge)
 
 		calls := response.ToolCalls()
+		warm.keep(calls)
 
 		// Stop condition (pi spec §2): the loop ends when the assistant
 		// response has NO tool call.
@@ -2196,6 +2200,20 @@ type toolResult struct {
 // The names are the belt's four readers (bare/tools.go). Anything not named
 // here — write, edit, bash, a tool the workforce adds later, a tool a test
 // appends — waits for the response to complete, exactly as before this existed.
+//
+// ── AND THE ONE MUTATING SHAPE THAT MAY, BECAUSE IT IS HELD ──
+//
+// A call to a STAGED tool (internal/exec/bare's stage.go) starts early too, and
+// the safety law above still holds for it, because what starts early is only
+// the half of the call that can be taken back: a proposal's card and its clock,
+// never its admission. The call waits at its seam on a [bare.Hold] until the
+// response is whole; [warmBatch.take] releases it when the batch claims it,
+// [warmBatch.keep] withdraws it when the finished response does not carry it,
+// and every other road out of the attempt — a retry, a steer, a refused reply,
+// the end of the turn — withdraws it through [warmBatch.reset]. That class is a SHAPE and not a list ([Agent.stagesEarly]):
+// a tool cannot be staged without actually being cut in two where it stops
+// being safe, which is exactly what a flag about read-only-ness could not
+// promise and why the readers stay enumerated here.
 var earlyTools = map[string]bool{
 	"read": true,
 	"grep": true,
@@ -2279,6 +2297,23 @@ type warmCall struct {
 	call   ai.ToolCall
 	done   chan struct{}
 	result toolResult
+	// hold is where a staged call waits between its halves, and nil for a read,
+	// which has only one.
+	hold *bare.Hold
+}
+
+// withdraw takes a held call back and waits until it HAS been taken back — its
+// card settled, its question off every window — before returning. Waiting is
+// the point: the road that withdraws it may be the turn's last, and a
+// withdrawal still running on the call's own goroutine after the turn's lane
+// closed would leave a card on the person's screen that nothing is waiting on.
+// A read has no hold and nothing to take back, and is left to finish.
+func (w *warmCall) withdraw() {
+	if w.hold == nil {
+		return
+	}
+	w.hold.Withdraw()
+	<-w.done
 }
 
 // consider takes one provider.StreamToolCallReady payload and starts the call if
@@ -2293,7 +2328,8 @@ func (b *warmBatch) consider(ctx context.Context, a *Agent, ep *episode, hub *ev
 	if err := json.Unmarshal([]byte(payload), &call); err != nil {
 		return
 	}
-	if call.ID == "" || !earlyTools[call.Function.Name] {
+	staged := a.stagesEarly(call.Function.Name)
+	if call.ID == "" || !earlyTools[call.Function.Name] && !staged {
 		return
 	}
 	// A tool the belt does not have would only produce the dispatcher's miss —
@@ -2335,6 +2371,13 @@ func (b *warmBatch) consider(ctx context.Context, a *Agent, ep *episode, hub *ev
 			isError: true,
 		},
 	}
+	// A STAGED CALL RUNS ON A HELD CONTEXT, and the hold is minted here, with
+	// the entry, so that no road can reach the call without also reaching the
+	// hold that decides whether it goes ahead.
+	if staged {
+		warm.hold = bare.NewHold()
+		ctx = bare.WithHold(ctx, warm.hold)
+	}
 	b.started[call.ID] = warm
 	b.mu.Unlock()
 
@@ -2347,17 +2390,57 @@ func (b *warmBatch) consider(ctx context.Context, a *Agent, ep *episode, hub *ev
 	}()
 }
 
-// reset empties the batch. Goroutines already running are left to finish and
-// their results are dropped: cancelling them would buy nothing — the work is a
-// read — and the context they run on is the turn's, which ends when the turn
-// does.
+// reset empties the batch. Reads already running are left to finish and their
+// results are dropped: cancelling them would buy nothing — the work is a read —
+// and the context they run on is the turn's, which ends when the turn does.
+//
+// A HELD CALL IS WITHDRAWN, never left to finish, because what it would finish
+// is the half that cannot be taken back. This is every road out of an attempt
+// that does not run the batch — a retry, a steer, a reply the harness refused,
+// and (deferred in runTurn) the end of the turn itself — so it is the one place
+// a staged call's withdrawal has to be remembered.
 func (b *warmBatch) reset() {
 	if b == nil {
 		return
 	}
 	b.mu.Lock()
+	started := b.started
 	b.started, b.announced = nil, nil
 	b.mu.Unlock()
+	for _, warm := range started {
+		warm.withdraw()
+	}
+}
+
+// keep withdraws every held call the finished response does not carry.
+//
+// A RESPONSE CAN FINISH WITHOUT A CALL ITS STREAM ANNOUNCED. The transport may
+// rescue a stream by switching to a second request mid-answer (internal/
+// provider's hedge.go), and the call the first one closed is then in no
+// response at all; a response may also end in words alone. Neither goes
+// through a retry, so nothing else here would take the call back — and its card
+// would stand, counting down, over a turn that is no longer asking. It runs the
+// moment the response is in hand, before anything reads the calls.
+func (b *warmBatch) keep(calls []ai.ToolCall) {
+	if b == nil {
+		return
+	}
+	carried := make(map[string]bool, len(calls))
+	for _, call := range calls {
+		carried[call.ID] = true
+	}
+	var orphans []*warmCall
+	b.mu.Lock()
+	for id, warm := range b.started {
+		if warm.hold != nil && !carried[id] {
+			orphans = append(orphans, warm)
+			delete(b.started, id)
+		}
+	}
+	b.mu.Unlock()
+	for _, warm := range orphans {
+		warm.withdraw()
+	}
 }
 
 func (b *warmBatch) anyAnnounced() bool {
@@ -2382,16 +2465,22 @@ func (b *warmBatch) take(call ai.ToolCall) *warmCall {
 		return nil
 	}
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	warm, known := b.started[call.ID]
+	delete(b.started, call.ID)
+	b.mu.Unlock()
 	if !known {
 		return nil
 	}
-	delete(b.started, call.ID)
 	if warm.call.Function.Name != call.Function.Name ||
 		warm.call.Function.Arguments != call.Function.Arguments {
+		// The sighting is not the call, so a staged one is taken back and the
+		// batch runs the call the response carries — from its first half.
+		warm.withdraw()
 		return nil
 	}
+	// AND THIS IS WHERE A HELD CALL GOES AHEAD: the response is whole, the
+	// assistant message is in the transcript, and the batch is claiming it.
+	warm.hold.Release()
 	return warm
 }
 

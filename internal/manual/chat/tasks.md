@@ -561,6 +561,14 @@ partial block disappears because that attempt's half-arrived call was discarded;
 proposal fragment starts a new block. If the call is refused before it ever becomes a
 question, it settles as `not started · the call was refused` instead of moving forever.
 
+A proposal becomes a question the moment its own call has fully arrived, even while the
+model is still writing the rest of its reply — the second of two proposals, say. If that
+reply then does not go through — the connection drops and it is asked for again, or you
+stop or steer the turn — the question comes off with `the reply that proposed it did not go
+through` and the block settles as `withdrawn · its reply did not go through`, even if you
+had already answered it or its clock had run out. Nothing was started. When the reply is
+asked for again, its proposal arrives as a new block with a new number.
+
 ## Why a task started on its own — aforge started work I did not ask for, this looked like work, so task N started
 
 **Sometimes work starts without you asking for it, and you are told after.** After a turn
@@ -1473,6 +1481,7 @@ what you reached for and what it came to, joined by ` · `:
 | pressed `2` | `no · declined` |
 | let the clock run out | `approved · the clock` |
 | the turn ended under the question | `expired · the turn ended` |
+| the reply that proposed it did not go through | `withdrawn · its reply did not go through` |
 
 And one dim receipt is left above the message box, in the same words the answer is written
 into `decisions.jsonl` with:
@@ -1486,6 +1495,11 @@ into `decisions.jsonl` with:
 A proposal starts on silence only while its countdown is still moving. The default window
 is 15 seconds. Pressing any key the question reads stops that clock immediately, and
 deleting what you typed does not restart it. Press `2` to decline.
+
+The countdown starts when the question appears, and that can be before the model has
+finished its reply: a reply with two proposals shows the first while it is still writing
+the second. The work itself starts once the reply is complete, so a clock that runs out
+first starts it the moment the reply ends.
 
 If nothing was pressed before the clock reached zero, the work was already admitted and a
 later answer cannot pull it back. Use `task.autoapprove_seconds` in the Safety settings to
