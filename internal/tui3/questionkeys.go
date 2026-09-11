@@ -282,7 +282,7 @@ var questionKeys = []questionVerb{
 	// them, and the band on the pointed answer already says there is a
 	// pointer — a row that kept `choose` and lost the line form for it would
 	// have spent the small shape on its own legend.
-	{key: questionWalkKey, word: "choose", forms: formsLine | formsRatify, needs: needWalk, tier: keyPrimary, giveUp: 2},
+	{key: questionWalkKey, word: "choose", forms: formsLine, needs: needWalk, tier: keyPrimary, giveUp: 2},
 	// AND THE ROOM SPELLS ITS WALK DOWNWARDS BECAUSE ITS ANSWERS STAND IN A
 	// COLUMN OF SECTIONS. It said `←→ choose` and neither key moved anything on
 	// it — the pair that walks its sections is `↑↓`, and the side arrows there
@@ -290,7 +290,10 @@ var questionKeys = []questionVerb{
 	// that do nothing is worse than a row that names none: the owner pressed
 	// them, 2026-09-10, and reported "no arrow or click".
 	{key: questionWalkDownKey, word: "choose", forms: formsCard | formsRoom, needs: needWalk, tier: keyPrimary, giveUp: 2},
-	{key: questionEnterKey, word: "take it", forms: formsBlock | formsRoom | formsSheet, needs: needPick, tier: keyPrimary, giveUp: 1},
+	// `enter` IS NOT ON A RATIFY LINE. Nothing is waiting on it — the work
+	// already happened — so there is no pick for enter to take, and a line that
+	// offered `enter take it` beside `u undo` named a key that answers nothing.
+	{key: questionEnterKey, word: "take it", forms: formsLine | formsCard | formsRoom | formsSheet, needs: needPick, tier: keyPrimary, giveUp: 1},
 	// THE SHEET'S TWO SIT WHERE A PERSON REACHES FOR THEM — beside `enter`,
 	// because answering a batch is open-one, answer, send — and only `g` is ever
 	// given up: `s` is the reason the sheet exists (a batch answered row by row
@@ -298,7 +301,9 @@ var questionKeys = []questionVerb{
 	// `esc`.
 	{key: questionSendKey, word: questionSheetSendWord, forms: formsSheet, tier: keyPrimary},
 	{key: questionAlikeKey, word: questionSheetSameWord, forms: formsSheet, giveUp: 2},
-	{key: questionLaterKey, word: "later", forms: formsBlock | formsRoom | formsSheet, tier: keyPrimary},
+	// AND NEITHER IS `esc later`: a line that says what was already done is not a
+	// question to come back to.
+	{key: questionLaterKey, word: "later", forms: formsLine | formsCard | formsRoom | formsSheet, tier: keyPrimary},
 	// THE TWO KEYS OF THE `something else…` ROW. They are rows of their own
 	// rather than second words on `enter` and the walk, because a key that reads
 	// one way on one row and another way on the next is two keys as far as
