@@ -463,3 +463,60 @@ func TestTheReportPathIsPartOfTheInstructionsAndStaysOutOfWatchedFolders(t *test
 		}
 	}
 }
+
+// F7, PAST TEN THOUSAND. The run folders were read newest first by a string
+// sort, which put "9999" ahead of "10000": from the ten-thousandth run on, the
+// recovery window read the oldest records as the newest, and a finished
+// occurrence it should have found was run again.
+func TestRunsPastTenThousandAreStillReadNewestFirst(t *testing.T) {
+	now := time.Date(2026, 9, 10, 9, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+	made, _ := watching(t, store)
+	for _, name := range []string{"9998", "9999", "10000", "10001"} {
+		runDir := filepath.Join(store.RunsDir(made.ID), name)
+		if err := os.MkdirAll(runDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := WriteOccurrence(runDir, Occurrence{ID: made.ID + "/" + name, ItemID: made.ID, Phase: PhaseFinished}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	records, err := store.Occurrences(made.ID, 2)
+	if err != nil || len(records) != 2 {
+		t.Fatalf("records %+v (%v)", records, err)
+	}
+	if filepath.Base(records[0].RunDir) != "10001" || filepath.Base(records[1].RunDir) != "10000" {
+		t.Fatalf("newest first read %s, %s", filepath.Base(records[0].RunDir), filepath.Base(records[1].RunDir))
+	}
+}
+
+// F7, A NUMBER MINTED ONCE. The next run took the highest folder on disk plus
+// one, so when the sweep reaped the newest run for coming to nothing, the next
+// firing was handed its number — and every reference to the reaped run now
+// named a different one.
+func TestARunNumberIsNeverHandedOutTwice(t *testing.T) {
+	now := time.Date(2026, 9, 10, 9, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+	made, _ := watching(t, store)
+	var minted []string
+	for range 3 {
+		runDir, err := store.newRunDir(made.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		minted = append(minted, runDir)
+	}
+	// The sweep reaps the newest, which came to nothing.
+	if err := os.RemoveAll(minted[2]); err != nil {
+		t.Fatal(err)
+	}
+	next, err := store.newRunDir(made.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, earlier := range minted {
+		if filepath.Base(next) == filepath.Base(earlier) {
+			t.Fatalf("the next run was handed %s, a number already minted", filepath.Base(next))
+		}
+	}
+}

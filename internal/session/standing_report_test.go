@@ -17,11 +17,14 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
+// openFence is a fence with nothing behind it: a live pass and no store.
+func openFence() effectFence { return effectFence{ctx: context.Background(), live: true} }
+
 func TestAStandingReportIsPublishedInsideItsProjectOnly(t *testing.T) {
 	workspace := t.TempDir()
-	published, err := publishStandingReport(workspace, "reports/inbox.md", "  # Report\nall quiet  ")
-	if err != nil {
-		t.Fatal(err)
+	published, held, err := publishStandingReport(openFence(), workspace, "reports/inbox.md", "  # Report\nall quiet  ", "")
+	if err != nil || held != notWithheld {
+		t.Fatal(held, err)
 	}
 	raw, err := os.ReadFile(filepath.Join(workspace, "reports", "inbox.md"))
 	if err != nil {
@@ -37,11 +40,11 @@ func TestAStandingReportIsPublishedInsideItsProjectOnly(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(workspace, "escape")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := publishStandingReport(workspace, "escape/report.md", "x"); err == nil {
+	if _, _, err := publishStandingReport(openFence(), workspace, "escape/report.md", "x", ""); err == nil {
 		t.Fatal("a report was written through a symlink outside the project")
 	}
 	// Nor does it make folders on the far side before refusing.
-	if _, err := publishStandingReport(workspace, "escape/deeper/still/report.md", "x"); err == nil {
+	if _, _, err := publishStandingReport(openFence(), workspace, "escape/deeper/still/report.md", "x", ""); err == nil {
 		t.Fatal("a report was written through a symlinked parent")
 	}
 	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
@@ -51,7 +54,7 @@ func TestAStandingReportIsPublishedInsideItsProjectOnly(t *testing.T) {
 	if err := os.Symlink(filepath.Join(outside, "target.md"), filepath.Join(workspace, "reports", "linked.md")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := publishStandingReport(workspace, "reports/linked.md", "x"); err == nil {
+	if _, _, err := publishStandingReport(openFence(), workspace, "reports/linked.md", "x", ""); err == nil {
 		t.Fatal("a symlinked report path was followed")
 	}
 }
@@ -376,7 +379,8 @@ func TestAStopWhileARunIsWorkingWithholdsItsReportButAPauseDoesNot(t *testing.T)
 // a delimited report is published without it. A report opened and never closed
 // is no report at all: its end is wherever the run stopped writing. Nor is one
 // closed and never opened, whose start nobody can tell; and an empty one is
-// read as the empty body it is, for the decision to refuse.
+// read as the empty body it is, for the decision to refuse. A delimiter is a
+// whole line, outside any fenced code block.
 func TestAReportIsWhatIsBetweenItsLinesAndNotTheSentenceBeforeIt(t *testing.T) {
 	for text, want := range map[string]struct {
 		body  string
@@ -387,8 +391,18 @@ func TestAReportIsWhatIsBetweenItsLinesAndNotTheSentenceBeforeIt(t *testing.T) {
 		"# Report\nno delimiter at all":                                                             {"", noReportLines},
 		"a draft\n<report>\nfirst\n</report>\nthen again\n<report>\nsecond\n</report>":              {"second", closedReport},
 		"<report>\nfirst\n</report>\na second try\n<report>\nhalf of it":                            {"", unclosedReport},
-		"<report>\n# Report\n- x</report>I cannot write the file myself.":                           {"# Report\n- x", closedReport},
-		"I will put it between <report> and </report>.\n<report>\n# R\n</report>":                   {"# R", closedReport},
+		// A closing tag glued to other words is no closing line, so this report
+		// reads as unclosed (no model in the live runs wrote one that way).
+		"<report>\n# Report\n- x</report>I cannot write the file myself.": {"", unclosedReport},
+		// A leading byte-order mark is not part of the first line.
+		"\uFEFF<report>\nvalid body\n</report>": {"valid body", closedReport},
+		// A sentence that mentions the closing tag closes nothing and opens
+		// nothing: the answer has no report lines at all.
+		"Close a report with `</report>` on its own line.": {"", noReportLines},
+		// Tags inside a fenced code block are the report's content.
+		"<report>\n# R\n```\n</report>\n```\nafter\n</report>":                    {"# R\n```\n</report>\n```\nafter", closedReport},
+		"<report>\nA\n</report>\n~~~\n<report>\n~~~":                              {"A", closedReport},
+		"I will put it between <report> and </report>.\n<report>\n# R\n</report>": {"# R", closedReport},
 		"<report>\n</report>":                   {"", closedReport},
 		"<report>\n  \n</report>":               {"", closedReport},
 		"Here it is.\n# Report\n- x\n</report>": {"", unopenedReport},

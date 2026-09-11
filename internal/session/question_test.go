@@ -388,7 +388,7 @@ func TestAnAnswerFileWrittenByAnOlderWindowStillReads(t *testing.T) {
 	if err := os.WriteFile(AnswersPath(dir), []byte(line), 0o600); err != nil {
 		t.Fatalf("writing the old line: %v", err)
 	}
-	answers, err := DrainAnswers(dir)
+	answers, err := DrainAnswers(dir, nil)
 	if err != nil || len(answers) != 1 {
 		t.Fatalf("DrainAnswers = %+v, %v", answers, err)
 	}

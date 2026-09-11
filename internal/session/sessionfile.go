@@ -1437,6 +1437,18 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 	}
 	journal := &sessionFile{file: file, locked: locked}
 
+	// A TORN TAIL IS SET ASIDE BEFORE ANYTHING IS APPENDED (the scale audit's
+	// F4, law L4). A process that died mid-line, or a disk that filled, leaves a
+	// fragment with no newline; the replay below skips it, but the next line
+	// this journal writes would land glued to it and be skipped with it — a
+	// sound line lost to a broken one. So the fragment goes to a sidecar, where
+	// it can still be read, and the journal is cut back to its last whole line.
+	// It is done under the claim, so no other writer is mid-line.
+	if err := repairTornTail(path); err != nil {
+		_ = journal.Close()
+		return nil, replayedSession{}, fmt.Errorf("session file: %w", err)
+	}
+
 	// Creating the file above does not make it an existing session: existed is
 	// "this file has lines in it", and a file this call just created has none.
 	replayed, err := replaySessionFile(path)
@@ -1475,6 +1487,73 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 		})
 	}
 	return journal, replayed, nil
+}
+
+// tornSuffix names the sidecar a journal's torn tail is kept in.
+const tornSuffix = ".torn"
+
+// repairTornTail cuts a journal back to its last whole line, appending what it
+// cut to path+[tornSuffix]. A journal that ends in a newline, or is empty, is
+// left exactly as it is.
+func repairTornTail(path string) error {
+	file, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || info.Size() == 0 {
+		return err
+	}
+	last := make([]byte, 1)
+	if _, err := file.ReadAt(last, info.Size()-1); err != nil {
+		return err
+	}
+	if last[0] == '\n' {
+		return nil
+	}
+	// Walk back to the last newline, a block at a time: a torn line is at
+	// most one line, and the rest of the file is never read.
+	end := info.Size()
+	cut := int64(0)
+	block := make([]byte, 64*1024)
+	for at := end; at > 0 && cut == 0; {
+		from := at - int64(len(block))
+		if from < 0 {
+			from = 0
+		}
+		chunk := block[:at-from]
+		if _, err := file.ReadAt(chunk, from); err != nil {
+			return err
+		}
+		if index := bytes.LastIndexByte(chunk, '\n'); index >= 0 {
+			cut = from + int64(index) + 1
+		}
+		at = from
+	}
+	fragment := make([]byte, end-cut)
+	if _, err := file.ReadAt(fragment, cut); err != nil {
+		return err
+	}
+	torn, err := os.OpenFile(path+tornSuffix, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
+	if _, err := torn.Write(append(fragment, '\n')); err != nil {
+		_ = torn.Close()
+		return err
+	}
+	if err := torn.Sync(); err != nil {
+		_ = torn.Close()
+		return err
+	}
+	if err := torn.Close(); err != nil {
+		return err
+	}
+	if err := file.Truncate(cut); err != nil {
+		return err
+	}
+	return file.Sync()
 }
 
 // lockSessionFile claims the journal for this process with a non-blocking
@@ -2810,6 +2889,26 @@ func (s *sessionFile) writeLine(entry any) bool {
 		return false
 	}
 	return true
+}
+
+// sync makes every line written so far durable. Writes are unbuffered appends,
+// so they reach the kernel at once; what they do not reach without this is the
+// disk, and a power cut would take them back. It is called where something
+// beyond this file is told a line is recorded — a delivery settling, which may
+// consume the inbox that line came from ([Agent.settleDeliveries]) — and once
+// at each turn's end ([Agent.sealTurn]), not on every line.
+func (s *sessionFile) sync() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return
+	}
+	// A filesystem that cannot sync (a tmpfs, a pipe) has already done all it
+	// can, as Close says.
+	_ = s.file.Sync()
 }
 
 // Close flushes the file, releases the claim, and closes the descriptor.

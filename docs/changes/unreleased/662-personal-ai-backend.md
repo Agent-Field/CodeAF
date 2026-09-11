@@ -24,6 +24,14 @@ invalidates:
   - "A standing run whose answer ran out of output-limit continuations published the partial answer, and so did its one rules correction. The turn's ending now says it was cut (`Truncated` on the turn-done event), and the run fails with `the run's answer was cut off at the model's output limit`."
   - "A standing answer with a `</report>` but no `<report>` line was published whole, stray tag and all. It is no longer published (`the run's report has a closing line but no opening line`)."
   - "A withheld standing report said why only in words. `occurrence.json` now carries `withheld` — a fixed kebab-case code (`output-limit`, `at-a-limit`, `empty-report`, …) — on withheld runs only, and `aforge standing show` prints it on the `came to:` line. Older records without it stay valid."
+  - "A standing report written in a turn cut at the output limit was published if a later turn ended clean with no report of its own (a divided run's \"Acknowledged.\"). A report now carries how the turn that wrote it ended, and only a new report stands in for a cut one."
+  - "A standing order with no report was announced as landed when its run was stopped at a step or spending limit or its answer ran out of output. It now comes to failed with `at-a-limit` or `output-limit`, and `withheld` is recorded for any run that did not come back clean, report or not."
+  - "A stop or a pass ending between the publish decision and the write still published, because the writer read neither. The report's rename and the note's delivery each recheck both at the act, the stop under the item's own lock."
+  - "A standing report replaced the file whatever it held, losing edits a person saved during the run. It is replaced only if it is still what aforge last published there (the receipt's sha256) or is absent; otherwise the run waits on the person (`report-changed`) with its draft in `held-report.md`. A file that existed before aforge's first publication is treated the same way: move it aside to let aforge publish."
+  - "Report delimiters were matched anywhere: a `</report>` inside a code fence cut the report short, and an inline mention refused an undelimited answer. They are now whole lines outside fenced code blocks, a leading byte-order mark is ignored, and a closing tag glued to other words is not a closing line."
+  - "Standing run folders were numbered from the highest folder on disk plus one and read newest-first by string order, so a reaped newest run's number was reissued and past run 9999 recovery read the wrong records. Numbers now come from a recorded per-item counter (`last-run`), new folders are six digits, and runs are ordered by number; older four-digit folders read unchanged."
+  - "A session's and a project's inbox, and a session's answers file, were deleted the moment they were read, and a staged `*.draining` file left by a crash was never read again. Inbox notes now carry an id and are removed only once the conversation's journal records the fold; answers are removed after they are applied; staged files are re-read at the next open."
+  - "A torn last line in a conversation's journal swallowed the next line written after it, and the journal was synced only on close. A torn tail is now moved to `transcript.jsonl.torn` on open, and the journal is synced at each turn's end and before a delivery settles. Standing documents, receipts and the run counter are written with a file and folder sync."
 ---
 
 `collections` and `shared_context` are wired through the production binary.
@@ -124,6 +132,13 @@ A second review found two more ways past it, both closed inside that decision: a
 empty closed report, and an answer cut at the output limit after its continuations
 ran out, which the run now reads off the turn's own ending rather than a flag beside
 it. Every withheld run records its reason as a pinned code beside its outcome.
+A third round kept each report together with the ending of the turn that wrote it,
+held no-report orders to the same truthful outcomes, rechecked the stop and the pass
+at the moment of each of aforge's own acts, and made the report write a compare-and-swap
+against the last receipt, so a person's edit is never written over. The same round
+applied the scale audit's consume-after-commit law to the inbox and answers drains,
+repaired a journal's torn tail on open, and numbered run folders from a recorded
+counter.
 `make test-local-work` drives `bin/aforge` with a scripted
 model and `make demo-local-work` runs the same journey with a real model in a
 disposable `AFORGE_HOME`, failing on the first step that does not hold. No

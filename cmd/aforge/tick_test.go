@@ -106,7 +106,7 @@ func TestTickWalksTheItemsAndWritesAWakeLine(t *testing.T) {
 		t.Fatalf("the item's row reads %q, wanted %q", after.LastCheckLine, wanted)
 	}
 	// Nothing fired: a firing needs a yes, and nobody was able to say one.
-	if _, err := os.Stat(filepath.Join(store.RunsDir(made.ID), "0001")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(store.RunsDir(made.ID), standing.RunName(1))); !os.IsNotExist(err) {
 		t.Fatalf("a pass that could not judge ran something anyway: %v", err)
 	}
 }
