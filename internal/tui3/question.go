@@ -2645,9 +2645,27 @@ func (a *app) reopenQuestion(q questionShown, answer session.Answer, err error) 
 	// refused act on this surface uses — rewind, autonomy, a connect, a
 	// permission — so a question does not grow a second composer.
 	a.note(strings.TrimSpace(err.Error()))
+	if !session.AnswerResolves(answer) {
+		// AN ANSWER THAT NEVER CLOSED ANYTHING HAS NOTHING TO PUT BACK, and
+		// putting one back would take a LATER answer with it. `tell it` and
+		// `change it` send words and leave the question standing
+		// ([session.AnswerResolves]); a person can then answer it outright on
+		// the next keystroke, and a refusal of the WORDS arriving after that
+		// used to delete the real answer's receipt and re-raise a question that
+		// had been settled. The sentence above is still said — the words were
+		// refused, and that is the person's to read — and nothing is re-raised.
+		return
+	}
+	if a.questionSettledElsewhere(q.token()) {
+		// AND THE LANE OUTRANKS A REFUSAL THAT ARRIVED AFTER IT. A door that
+		// deadlined after the engine had already applied the answer refuses this
+		// window while the questions lane is carrying that very decision; the
+		// engine's word is the one that is true ([app.foldOthersAnswer]).
+		return
+	}
 	if a.questionIsOpen(q.token()) {
-		// An answer that never closed anything ([session.AnswerResolves] false):
-		// the question is still on the block and there is nothing to put back.
+		// Still on the block: the door refused something this window had not
+		// closed, so there is nothing to put back.
 		return
 	}
 	a.forgetQuestionRecord(q)
@@ -3840,6 +3858,10 @@ const questionRaceFor = time.Second
 //     second is a person finding out their key did not land.
 func (a *app) foldOthersAnswer(q session.Question, answer session.Answer) {
 	shown := questionShown{question: q}
+	// AND THE LANE'S WORD IS WHAT SETTLED MEANS. The engine said this question
+	// is decided, so nothing this window hears afterwards may raise it again
+	// ([app.reopenQuestion] reads this).
+	a.questionSettledByLane(shown.token())
 	if a.questionIsOpen(shown.token()) {
 		// UNLESS IT IS THIS WINDOW'S OWN ANSWER COMING BACK, which is a
 		// question still open here only because the door never said whether it
@@ -3881,6 +3903,28 @@ func (a *app) foldOthersAnswer(q session.Question, answer session.Answer) {
 // question at almost the same moment. It says which answer counted, because
 // that is the only thing they cannot see from the two rows above it.
 const questionRaceWord = "two windows answered that · the first one is the decision"
+
+// questionSettledByLane remembers that the ENGINE said a question is decided,
+// and questionSettledElsewhere reads it back.
+//
+// IT IS A SET AND NOT A LOOK AT THE RECEIPTS because a receipt is bounded and
+// faded ([app.questionRecordsShown]) — it is news, and news goes — while "the
+// engine has settled this" has to stay true for as long as anything could
+// arrive claiming otherwise. What arrives is a door's refusal from a call that
+// deadlined, and that can be ten seconds behind.
+func (a *app) questionSettledByLane(token string) {
+	if token == "" {
+		return
+	}
+	if a.questionDone == nil {
+		a.questionDone = map[string]bool{}
+	}
+	a.questionDone[token] = true
+}
+
+func (a *app) questionSettledElsewhere(token string) bool {
+	return token != "" && a.questionDone[token]
+}
 
 // questionIsOpen reports whether this block still holds one question.
 func (a *app) questionIsOpen(token string) bool {

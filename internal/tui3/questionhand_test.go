@@ -576,3 +576,50 @@ func TestThePhoneSheetDrawsThePointerTheArrowsMove(t *testing.T) {
 		t.Fatalf("after the arrow the pointer is on %q and enter would take %q", moved, want)
 	}
 }
+
+// ── A REFUSAL PUTS BACK ONLY WHAT IT ACTUALLY CLOSED ────────────────────────
+//
+// Review of #919, item 2. Two ways a refusal could undo a decision that was
+// nothing to do with it.
+
+// A WORDS ANSWER CLOSES NOTHING, so a refusal of it re-raises nothing. `tell it`
+// and `change it` send words and leave the question standing; the person can
+// then answer it outright on the next keystroke, and the refusal of the words
+// used to arrive afterwards, delete that answer's receipt and put a settled
+// question back.
+func TestARefusedWordsAnswerDoesNotUndoTheAnswerThatFollowedIt(t *testing.T) {
+	lab := handLab(t)
+	head, _ := lab.a.questionHead()
+	// `tell it` on a landing is the shape that sends words and settles nothing
+	// ([session.AnswerResolves] names it and the harness's `change it`).
+	words := session.Answer{
+		Kind: session.QuestionLanding, Ask: session.AskLanding,
+		Key: session.LandingTellKey, Picked: []string{session.LandingTellKey},
+		Change: "index both, actually",
+	}
+	lab.a.closeQuestion(head, session.Answer{Key: "1", Picked: []string{"1"}})
+	before := len(lab.a.questionRecords)
+	lab.a.reopenQuestion(head, words, errQuestionTest)
+	if lab.a.questioning() {
+		t.Fatal("a refusal of words that closed nothing put a settled question back on the block")
+	}
+	if got := len(lab.a.questionRecords); got != before {
+		t.Fatalf("the receipt count moved from %d to %d — the refusal took the real answer's receipt", before, got)
+	}
+}
+
+// AND THE ENGINE'S OWN WORD OUTRANKS A REFUSAL THAT ARRIVED AFTER IT: a door
+// that deadlined once the answer had already been applied.
+func TestADeadlinedRefusalDoesNotReRaiseWhatTheLaneAlreadySettled(t *testing.T) {
+	lab := handLab(t)
+	head, _ := lab.a.questionHead()
+	answer := session.Answer{Key: "1", Picked: []string{"1"}}
+	lab.a.foldOthersAnswer(head.question, answer)
+	if lab.a.questioning() {
+		t.Fatal("the lane's answer did not close the question")
+	}
+	lab.a.reopenQuestion(head, answer, errQuestionTest)
+	if lab.a.questioning() {
+		t.Fatal("a refusal that arrived after the engine had applied the answer re-raised the question")
+	}
+}

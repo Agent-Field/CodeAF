@@ -1499,6 +1499,14 @@ type app struct {
 	// not persisted — a rule offered on the strength of something somebody did
 	// last week is a rule offered about a habit they may not have.
 	questionYeses map[string]int
+	// doorLine is the one queue every engine door is asked through, in the order
+	// the keystrokes that caused them arrived (offloop.go).
+	doorLine *doorLine
+	// questionDone is every question token the ENGINE has said is decided. It is
+	// what stops a refusal from a call that deadlined — arriving after the
+	// engine already applied the answer — from putting a settled question back
+	// on the block ([app.reopenQuestion]).
+	questionDone map[string]bool
 	// questionHand is the TOKEN of the question the person has AIMED at: the one
 	// they have walked, taken something on, or clicked, rather than looking at
 	// the box under it. It is what lets a letter reach the block at all — until
@@ -2567,6 +2575,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	shown := placeShown(place, opts.Owned, host)
 	a := &app{
 		ctx:                 ctx,
+		doorLine:            newDoorLine(),
 		news:                newDoorbell(newsMsg{}),
 		leaving:             newDoorbell(sigQuitMsg{}),
 		agent:               opts.Agent,

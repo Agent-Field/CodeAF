@@ -727,10 +727,6 @@ func (a *app) sendSheet() (tea.Cmd, bool) {
 	if len(answers) == 0 {
 		return nil, false
 	}
-	doors, ok := a.questionDoors()
-	if !ok {
-		return nil, false
-	}
 	// THE ANSWER IS THE RECORD, AND A BATCH IS NOT AN EXCEPTION TO IT. Every
 	// other way of answering on this surface leaves the dim line where the
 	// question was ([app.closeQuestion]); the sheet was resolving through the
@@ -743,28 +739,22 @@ func (a *app) sendSheet() (tea.Cmd, bool) {
 	for _, q := range a.questionBatch.questions {
 		asked[sheetRow{kind: q.Kind, id: q.ID, ref: q.Ref}] = q
 	}
-	cmds := make([]tea.Cmd, 0, len(answers))
+	// AND A SHEET IS THE LIST DOOR'S OWN CASE. `s` is one gesture over several
+	// questions, which is exactly what [app.answerQuestions] is: one command,
+	// the doors asked IN ORDER on one goroutine, each row's receipt written on
+	// the keystroke and each refusal coming back against its own row. It used to
+	// batch one [app.offLoop] per answer — as many goroutines as rows, in
+	// whatever order they happened to finish — beside a hand-rolled copy of the
+	// record and the reopen.
+	sending := make([]questionAnswer, 0, len(answers))
 	for _, answer := range answers {
-		one := answer
-		shown := questionShown{question: asked[sheetRow{kind: one.Kind, id: one.ID, ref: one.Ref}]}
-		if shown.question.Kind != "" {
-			a.recordQuestion(shown, one)
-			a.countQuestionYes(shown, one)
+		q, found := asked[sheetRow{kind: answer.Kind, id: answer.ID, ref: answer.Ref}]
+		if !found {
+			continue
 		}
-		// THROUGH THE ONE MECHANISM, OFF THE LOOP (offloop.go). The sheet has
-		// already drawn each answer as taken; a door that refuses one says so
-		// through the same road every other refused answer takes.
-		cmds = append(cmds, a.offLoop(func() func(bool) tea.Cmd {
-			err := doors.ResolveQuestion(one)
-			return func(here bool) tea.Cmd {
-				if err == nil || !here {
-					return nil
-				}
-				a.reopenQuestion(shown, one, err)
-				return nil
-			}
-		}))
+		sending = append(sending, questionAnswer{q: questionShown{question: q}, answer: answer})
 	}
+	cmd := a.answerQuestions(sending)
 	a.questionBatch = nil
 	a.questionBatchFolded = false
 	if len(held) > 0 {
@@ -778,7 +768,7 @@ func (a *app) sendSheet() (tea.Cmd, bool) {
 		}
 	}
 	a.touch()
-	return tea.Batch(cmds...), true
+	return cmd, true
 }
 
 // sheetRow is one question's identity as both a [session.Question] and a

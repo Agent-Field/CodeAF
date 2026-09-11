@@ -1,12 +1,15 @@
 package tui3
 
 import (
+	tea "charm.land/bubbletea/v2"
+
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -132,4 +135,76 @@ func importedNames(file *ast.File) map[string]bool {
 		names[name] = true
 	}
 	return names
+}
+
+// ── THE WIRE SEES WHAT A PERSON DID, IN THE ORDER THEY DID IT ───────────────
+//
+// Review of #919, item 4. Every door used to be asked on the command's own
+// goroutine, and commands start in whatever order the runtime feels like — so
+// `D`, which writes the project's rule AND answers the question in one
+// keystroke, could have its answer reach the engine first, resume the turn and
+// re-ask the question before the rule it was meant to be written under existed.
+func TestTheDoorsAreAskedInTheOrderTheKeysWerePressed(t *testing.T) {
+	line := newDoorLine()
+	defer line.close()
+	var mu sync.Mutex
+	var order []int
+	waits := make([]chan func(bool) tea.Cmd, 0, 32)
+	first := make(chan struct{})
+	for i := 0; i < 32; i++ {
+		at := i
+		waits = append(waits, line.add(func() func(bool) tea.Cmd {
+			if at == 0 {
+				// THE FIRST ASK IS THE SLOW ONE, which is the whole test: a line
+				// that did not hold its order would let the thirty-one behind it
+				// past while this one was still on the wire.
+				<-first
+			}
+			mu.Lock()
+			order = append(order, at)
+			mu.Unlock()
+			return nil
+		}))
+	}
+	close(first)
+	for _, said := range waits {
+		<-said
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(order) != 32 {
+		t.Fatalf("the line asked %d of 32 doors", len(order))
+	}
+	for i, at := range order {
+		if at != i {
+			t.Fatalf("door %d was asked in position %d — the line does not hold the order: %v", at, i, order)
+		}
+	}
+}
+
+// AND WHAT IS ALREADY IN THE LINE IS STILL ASKED WHEN THE WINDOW CLOSES. The
+// last keystroke before a window goes is an answer somebody gave.
+func TestClosingTheLineStillAsksWhatIsInIt(t *testing.T) {
+	line := newDoorLine()
+	asked := make(chan int, 4)
+	hold := make(chan struct{})
+	waits := make([]chan func(bool) tea.Cmd, 0, 4)
+	for i := 0; i < 4; i++ {
+		at := i
+		waits = append(waits, line.add(func() func(bool) tea.Cmd {
+			if at == 0 {
+				<-hold
+			}
+			asked <- at
+			return nil
+		}))
+	}
+	line.close()
+	close(hold)
+	for _, said := range waits {
+		<-said
+	}
+	if len(asked) != 4 {
+		t.Fatalf("closing the line dropped %d asks that were already in it", 4-len(asked))
+	}
 }

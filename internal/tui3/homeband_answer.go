@@ -471,25 +471,15 @@ func (a *app) answerWholeQuestion(question session.PresenceQuestion, key string)
 	if _, ok := whole.Option(key); !ok {
 		return nil, false
 	}
-	doors, ok := a.questionDoors()
-	if !ok {
-		return nil, false
-	}
-	answer := session.Answer{
-		At: time.Now(), Kind: whole.Kind, ID: whole.ID, Ref: whole.Ref, Ask: whole.Ask,
-		Key: key, Picked: []string{key}, DecidedBy: session.DecidedByPerson,
-	}
-	// THE KEY IS TAKEN HERE AND THE DOOR IS ASKED FROM A COMMAND (offloop.go).
-	// A refusal is the engine's own sentence, said where home says everything
-	// else; there is no row on this page to put back, because the question was
-	// never drawn on it.
-	return a.offLoop(func() func(bool) tea.Cmd {
-		err := doors.ResolveQuestion(answer)
-		return func(here bool) tea.Cmd {
-			if err != nil && here {
-				a.note(strings.TrimSpace(err.Error()))
-			}
-			return nil
-		}
+	// AND IT GOES THROUGH THE ONE ANSWERING DOOR (question.go's
+	// [app.answerQuestions]). Home had its own copy of the road — its own
+	// [app.offLoop], its own refusal sentence — and a second copy of a road is a
+	// second set of rules about what an answer does: this one wrote no receipt,
+	// left no sent stamp, and so read its own answer coming back down the
+	// questions lane as another window's. The question was never drawn on this
+	// page, so there is no row here to put back; everything else about answering
+	// is the same act and is now the same code.
+	return a.answerQuestion(questionShown{question: *whole}, session.Answer{
+		Key: key, Picked: []string{key},
 	}), true
 }

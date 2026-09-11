@@ -1656,35 +1656,17 @@ func (a *app) questionAnswer(answer session.Answer) tea.Cmd {
 		})
 	}
 	room.input.fill(&answer)
-	door, ok := a.agent.(questionDoor)
-	if !ok {
+	if _, ok := a.agent.(questionDoor); !ok {
 		room.refused = questionNoDoorWord
 		a.questionRoomTouched()
 		return nil
 	}
-	if answer.DecidedBy == "" {
-		answer.DecidedBy = session.DecidedByPerson
-	}
-	// THE SENDING IS REMEMBERED BEFORE THE DOOR IS ASKED, exactly as the block
-	// remembers it (question.go's [app.markQuestionSent]). Without it an answer
-	// given on this page and echoed back down the questions lane was read as
-	// somebody else's, and the receipt under the closing page said
-	// `another window` about a key pressed on this one.
-	a.markQuestionSent(room.head.token(), answer.Keys())
-	head := room.head
-	// AND THE DOOR IS ASKED FROM A COMMAND (offloop.go). The page settles here,
-	// on the keystroke; a refusal puts the question back on the block with the
-	// engine's own sentence, which is where it can be answered again.
-	sent := a.offLoop(func() func(bool) tea.Cmd {
-		err := door.ResolveQuestion(answer)
-		return func(here bool) tea.Cmd {
-			if err == nil || !here {
-				return nil
-			}
-			a.reopenQuestion(head, answer, err)
-			return nil
-		}
-	})
+	// AND THE DOOR IS ASKED THROUGH THE ONE ANSWERING ROAD (question.go's
+	// [app.answerQuestions]), which is where the sent stamp, the record, the
+	// off-loop call and the reopen all live. This page had a copy of every one
+	// of those beside it, and a copy of a road is a second set of rules about
+	// what an answer does the first day one of them moves.
+	sent := a.answerQuestion(room.head, answer)
 	a.input.reset()
 	// THE ANSWER IS THE RECORD, AND THERE IS ONE RECORD.
 	//
@@ -1705,7 +1687,6 @@ func (a *app) questionAnswer(answer session.Answer) tea.Cmd {
 	// waiting underneath it. Measured on a real screen before either half of
 	// this landed: an answer given on this page, in this window, drew
 	// `another window` on its own receipt.
-	a.closeQuestion(room.head, answer)
 	a.closeQuestionRoom()
 	return sent
 }
