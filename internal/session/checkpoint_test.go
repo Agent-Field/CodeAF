@@ -502,19 +502,25 @@ func answerTheReadingsOffTheQueue(completer Completer) {
 		// taken without consuming anything. A generator that does NOT answer the
 		// drawing hands back a tool call, and this falls through to the queue so
 		// that fixture behaves exactly as it always did.
-		if !askedForSketch(messages) {
+		//
+		// IT RUNS UNDER THE COMPLETER'S OWN LOCK — [scriptedCompleter.CompleteWithMessages]
+		// consults the aside holding `mu`, before the queue is touched — so it reads
+		// the script without taking the lock again. Taking it was a self-deadlock:
+		// the mark's reading froze on its first drawing with the lock held, and every
+		// request the turn made after it froze behind that, which is what hung the
+		// whole handover family on #871's first CI run.
+		//
+		// AND THE STEP IS ASKED WITH A CONTEXT THAT IS ALREADY OVER. A generator
+		// that answers the drawing by its shape never looks at the context; a step
+		// written to WAIT on its request's context would otherwise wait here forever,
+		// under that same lock. Over, it answers at once with an error and this falls
+		// through to the queue, exactly as a step that answers with a tool call does.
+		if !askedForSketch(messages) || len(scripted.steps) == 0 {
 			return nil, false
 		}
-		scripted.mu.Lock()
-		var first step
-		if len(scripted.steps) > 0 {
-			first = scripted.steps[0]
-		}
-		scripted.mu.Unlock()
-		if first == nil {
-			return nil, false
-		}
-		drawn, err := first(context.Background(), messages)
+		over, cancel := context.WithCancel(context.Background())
+		cancel()
+		drawn, err := scripted.steps[0](over, messages)
 		if err != nil || drawn == nil || len(drawn.ToolCalls()) > 0 {
 			return nil, false
 		}
@@ -858,7 +864,9 @@ func TestTheSidecarIsAskedOncePerMarkAndNotBetween(t *testing.T) {
 	// Every round up to one short of the second mark: the first mark fires, the
 	// second does not.
 	rounds := checkpointMarkAt(2) - 1
-	steps := append(grindingSteps(rounds+1, checkpointChainSketch, ""), finalAnswer("done"))
+	// The drawing is answered off the queue and spends no step
+	// ([answerTheReadingsOffTheQueue]), so the script is exactly the rounds.
+	steps := append(grindingSteps(rounds, checkpointChainSketch, ""), finalAnswer("done"))
 	completer := &scriptedCompleter{steps: steps}
 	agent := checkpointAgent(t, completer)
 	stubbedGraph(agent, func(node *TaskNode) {})
@@ -908,9 +916,14 @@ func TestASplitSketchAtTheFirstMarkHandsTheTurnOver(t *testing.T) {
 	}
 	// AND IT STOPPED AT THE MARK. The script had six rounds left in it, and the
 	// ceiling stands three times further along. The slack past the mark is the
-	// calls the handover itself makes: the sketch, the draft, and the mastermind
-	// that writes the brief out of it.
-	if completer.requests() > checkpointMarkAt(1)+4 {
+	// calls the handover itself makes — the draft and the mastermind that writes
+	// the brief out of it — plus THE STEPS THE DRAWING RIDES BESIDE. The drawing
+	// is no longer a wait in front of the work (checkpoint.go's [markAside]): it
+	// is started at the boundary that crosses the mark and spent at the next one
+	// the turn reaches, so a turn that is about to be handed over pays for the
+	// step it was already taking. That is the trade this wave bought, and it is
+	// one round of a machine's time against eight seconds of a person's.
+	if completer.requests() > checkpointMarkAt(1)+5 {
 		t.Errorf("the turn made %d requests past a first mark standing at %d rounds",
 			completer.requests(), checkpointMarkAt(1))
 	}
