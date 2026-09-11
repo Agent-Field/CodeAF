@@ -49,7 +49,7 @@ func TestHandoffCarriesOnlyCurrentWholeRequestChecks(t *testing.T) {
 			}
 			taken := Decision{Verb: DecideCarryOn, Brief: "finish the repository changes"}
 			over := a.handOverRunningTurn(context.Background(), newEventHub(), &Usage{}, time.Now(), a.model,
-				checkpointSplitNote, checkpointSeamMark, 0, nil, verdict, read, &taken)
+				checkpointCeilingNote, checkpointSeamCeiling, 0, nil, verdict, read, &taken)
 			if !over.moved || over.taskID == 0 {
 				t.Fatalf("actual handoff did not create work: %+v", over)
 			}

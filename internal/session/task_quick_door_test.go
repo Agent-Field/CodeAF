@@ -187,7 +187,10 @@ func TestTheCeilingsQuickNodeHasTheToolsShape(t *testing.T) {
 	const asked = "work through the four things I listed and report back"
 	const dowry = "Finish the four pieces\nwhat is left, and everything this turn already found out"
 
-	completer := &scriptedCompleter{steps: grindingSteps(checkpointMarkAt(1)+6, checkpointSplitSketch, dowry)}
+	// A TURN GOING IN CIRCLES, because that is a road the net still takes a turn
+	// off: the rungs below the last one tell the turn and move nothing
+	// (inherit.go, [loopingGrindSteps]).
+	completer := &scriptedCompleter{steps: loopingGrindSteps(checkpointMarkAt(checkpointMarks), checkpointSplitSketch, dowry)}
 	agent := checkpointAgent(t, completer, func(config *Config) { config.Divide = true })
 	ran := make(ranNodes, 2)
 	stubbedGraph(agent, func(node *TaskNode) { ran <- node })

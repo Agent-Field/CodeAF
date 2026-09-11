@@ -61,7 +61,7 @@ func TestAHandoverWithWorkRunningCarriesOnAndHandsOver(t *testing.T) {
 	if count := admitted(graph); count != 2 {
 		t.Fatalf("%d nodes are in the graph, want the one still running and the one the handover started", count)
 	}
-	if !saidSomething(noticeTexts(collected), checkpointSplitNote) {
+	if !saidSomething(noticeTexts(collected), checkpointCeilingNote) {
 		t.Fatalf("the handover never said its line; notices were %q", noticeTexts(collected))
 	}
 	if saidSomething(noticeTexts(collected), checkpointStoppedNote) {
@@ -109,7 +109,7 @@ func TestAHandoverAtWhichTheGoalOwnerSaysDoneEndsTheRun(t *testing.T) {
 	if count := admitted(graph); count != 1 {
 		t.Fatalf("%d nodes are in the graph, want only the landed one: a finished ask started a task", count)
 	}
-	if saidSomething(noticeTexts(collected), checkpointSplitNote) {
+	if saidSomething(noticeTexts(collected), checkpointCeilingNote) {
 		t.Fatalf("the handover said its line over an ask the goal owner had just called done: %q", noticeTexts(collected))
 	}
 	if !saidSomething(noticeTexts(collected), checkpointDoneNote) {
@@ -323,7 +323,7 @@ func TestAHandoverDoesNotSealOverWorkThatIsMoving(t *testing.T) {
 	if saidSomething(noticeTexts(collected), checkpointStoppedNote) {
 		t.Fatal("the turn was sealed over a unit of work that was still running")
 	}
-	if !saidSomething(noticeTexts(collected), checkpointSplitNote) {
+	if !saidSomething(noticeTexts(collected), checkpointCeilingNote) {
 		t.Fatalf("the work did not move; notices were %q", noticeTexts(collected))
 	}
 	lines := closedJournal(t, agent, transcript)
@@ -400,7 +400,7 @@ func TestAPersonsHandoverStillMovesTheWork(t *testing.T) {
 	if count := admitted(graph); count != 1 {
 		t.Fatalf("%d tasks were started at the mark, want exactly the one the handover moved", count)
 	}
-	if !saidSomething(noticeTexts(collected), checkpointSplitNote) {
+	if !saidSomething(noticeTexts(collected), checkpointCeilingNote) {
 		t.Fatalf("a person's handover never said its line; notices were %q", noticeTexts(collected))
 	}
 	if saidSomething(noticeTexts(collected), checkpointStoppedNote) {
@@ -411,29 +411,24 @@ func TestAPersonsHandoverStillMovesTheWork(t *testing.T) {
 	}
 }
 
-// splitSketchSteps is a turn that grinds past the first mark with a sidecar
-// saying the work has parts — the shortest road to a handover there is.
+// splitSketchSteps is a turn that grinds until its context can no longer hold
+// another step — the runaway net's own rung (inherit.go), and the shortest road
+// to a handover there is. It used to be a turn that crossed the first mark with
+// a sidecar saying the work had parts; a mark moves nothing now.
 func splitSketchSteps() *scriptedCompleter {
 	return &scriptedCompleter{
-		steps: grindingSteps(checkpointMarkAt(1)+6, checkpointSplitSketch,
+		steps: grindingSteps(checkpointMarkAt(checkpointMarks)+checkpointSlack, checkpointSplitSketch,
 			"Finish the four pieces\nwhat is left, and everything this turn already found out"),
 	}
 }
 
 // writingSplitSketchSteps is [splitSketchSteps] for a turn that TOUCHED THE
-// DISK, which is the turn the full handover road still takes: a drawing with
-// parts out of a turn that only read is handed to a quick node instead
-// (checkpoint_quick.go's [Agent.quickFromDrawing]).
+// DISK. Both roads reach the same ceiling; what the disk decides is whether the
+// work is PROMOTED where it stands or handed to a worker in a copy of the folder
+// (checkpoint_quick.go's [Agent.promotedFromTurn]).
 func writingSplitSketchSteps() *scriptedCompleter {
-	// THE SCRIPT RUNS TO ONE SHORT OF THE SECOND MARK, which is slack rather than
-	// a figure: the drawing rides BESIDE the work now (checkpoint.go's [markAside])
-	// and is spent at the next boundary it has landed by, so a fixture cut to the
-	// rounds the handover needs on a quiet machine is a fixture that runs its
-	// script out on a loaded one and hands nothing over. One short of the second
-	// mark is as much room as this road can be given without changing which rung
-	// it is about.
 	return &scriptedCompleter{
-		steps: writingGrindSteps(checkpointMarkAt(2)-1, checkpointSplitSketch,
+		steps: writingGrindSteps(checkpointMarkAt(checkpointMarks)+checkpointSlack, checkpointSplitSketch,
 			"Finish the four pieces\nwhat is left, and everything this turn already found out"),
 	}
 }
@@ -568,7 +563,7 @@ func TestAHandoverTheGoalOwnerAsksForIsNeverDropped(t *testing.T) {
 // row against the ceiling at all.
 func TestTheCeilingUnderAStewardJournalsItsDecision(t *testing.T) {
 	rounds := checkpointMarkAt(checkpointMarks)
-	steps := grindingSteps(rounds+checkpointSlack, checkpointDoneSketch, checkpointNothingLeft)
+	steps := grindingSteps(rounds+checkpointClaimSlack, checkpointDoneSketch, checkpointNothingLeft)
 	agent, transcript := stewardCheckpointAgent(t, &scriptedCompleter{steps: steps}, nil)
 	ran := make(ranNodes, 2)
 	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })

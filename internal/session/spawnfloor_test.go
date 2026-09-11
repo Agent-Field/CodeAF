@@ -163,7 +163,7 @@ func assertAskNeverSpawns(t *testing.T, asked string) {
 			t.Fatalf("the checkpoint metered %q", asked)
 		}
 		over := agent.handOverRunningTurn(context.Background(), newEventHub(), &Usage{},
-			time.Time{}, agent.model, checkpointSplitNote, checkpointSeamMark, 0, nil,
+			time.Time{}, agent.model, checkpointCeilingNote, checkpointSeamCeiling, 0, nil,
 			routeVerdict{Work: true, Goal: asked}, checkpointRead{}, nil)
 		if over.moved {
 			t.Fatalf("the handover moved %q", asked)

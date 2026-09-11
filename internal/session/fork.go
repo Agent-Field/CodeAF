@@ -29,6 +29,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // normalizeScopePath is THE ONE READING OF A DECLARED WRITE SCOPE, and both
@@ -167,4 +168,48 @@ func forkScopesCollide(left, right []string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// ── AND ONE READING OF A TRANSCRIPT SOMEBODY ELSE IS ABOUT TO OPEN ON ────────
+
+// forkSeed is the copy a promoted worker opens with: the caller's transcript up
+// to this call, and the system message that stands in front of it.
+//
+// THE ASSISTANT MESSAGE CARRYING THIS VERY CALL LOSES ITS TOOL CALLS AND KEEPS
+// ITS WORDS. It has to lose them: a request whose last assistant message asks
+// for a tool nothing has answered is a shape providers refuse, and the answer
+// does not exist yet — this function is running inside it. It keeps the words
+// because those are the caller's own sentence about what it is about to do,
+// which is the most recent thing a worker could be told and the one thing it
+// would otherwise have to be told twice.
+//
+// THE SYSTEM MESSAGE IS HANDED OVER AS TEXT AS WELL AS RIDING AT seed[0], so the
+// worker's own [Agent.refreshSystemLocked] rewrites message[0] to what is
+// already there. Without it the worker's first request would carry a freshly
+// rendered prompt in front of a transcript built against the caller's, and the
+// shared prefix — the whole economic argument for inheriting anything — would
+// break on its first byte.
+//
+// IT IS THE FUNCTION #811 DELETED, RESTORED RATHER THAN REWRITTEN. `fork` left
+// the belt in that wave and took its only caller with it; the reading itself was
+// never wrong, and writing a second one beside the scope reader above would have
+// been two answers to one question (promote.go states the law it serves now).
+func (a *Agent) forkSeed() ([]ai.Message, string) {
+	seed := a.snapshot()
+	if len(seed) == 0 {
+		return nil, ""
+	}
+	if last := len(seed) - 1; len(seed[last].ToolCalls) > 0 {
+		stripped := seed[last]
+		stripped.ToolCalls = nil
+		if strings.TrimSpace(messageContentText(stripped)) == "" {
+			seed = seed[:last]
+		} else {
+			seed[last] = stripped
+		}
+	}
+	if len(seed) == 0 {
+		return nil, ""
+	}
+	return seed, messageContentText(seed[0])
 }

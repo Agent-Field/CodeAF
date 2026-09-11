@@ -58,7 +58,7 @@ import (
 
 // checkpointQuickNote is the ONE line a person reads when a write-free turn's
 // parts are taken by a quick node, and it stands in for BOTH lines the other
-// road writes — the split's own ([checkpointSplitNote]) and the started-task
+// road writes — the ceiling's own ([checkpointCeilingNote]) and the started-task
 // line under it (route_judge.go's [Agent.launchRouteTask]).
 //
 // IT IS ONE LINE BECAUSE THERE IS ONE EVENT. The two lines exist on the full
@@ -70,13 +70,14 @@ import (
 //
 // IT KEEPS THE REGISTER of the family it joins ([inTheHouseRegister]): an
 // observation, a middle dot, a promise, lowercase, no full stop, no machinery.
-// The observation is the same one the split makes, because the same reader saw
-// the same thing. The promise is the honest one for this node and is deliberately
-// narrower than the other two: not "watched", not "can split", but WHERE the
-// work is happening — here, in this folder — because that is the whole of what
-// distinguishes a quick node from the task the person might otherwise assume
-// started.
-const checkpointQuickNote = "this has parts · a quick task is taking them here, in this folder: "
+// The observation is the ceiling's own, because the ceiling is what moved this.
+// The promise is the honest one for this node and is deliberately narrower than
+// the other two: not "watched", not "can split", but WHERE the work is happening
+// and WHAT IT TOOK WITH IT — here, in this folder, holding the transcript — which
+// is the whole of what distinguishes a promotion from the task the person might
+// otherwise assume started, and the half a person could not otherwise see
+// (inherit.go).
+const checkpointQuickNote = "this is running long · carrying on here, in this folder, with everything already read: "
 
 // checkpointCeilingFanFull is the ending this road takes when a carry-on INSIDE a
 // task would be one child too many for that task ([TaskGraph.claimChild]). It is
@@ -92,39 +93,60 @@ func checkpointQuickLine(title string) string {
 	return checkpointQuickNote + title
 }
 
-// quickFromDrawing answers the quick node this handover should ask for, or nil
-// where this is not that road. It answers an ASK and never a spec: what the
-// node is beyond its line and its items is decided by the one door every quick
-// node comes through ([Agent.admitQuick]), and this road only says what it
-// knows.
+// promotedFromTurn answers the quick node this ending should PROMOTE the turn
+// into, or nil where this turn cannot be promoted and the brief road below must
+// carry it. It answers an ASK and never a spec: what the node is beyond its
+// line, its items and `inherit` is decided by the one door every quick node
+// comes through ([Agent.admitQuick]), and this road only says what it knows.
 //
-// EVERY CLAUSE IS A FACT THE HARNESS ALREADY HOLDS, and none of them is a reading
-// of anybody's words:
+// EVERY CLAUSE IS A FACT THE HARNESS ALREADY HOLDS, and none of them is a
+// reading of anybody's words:
 //
-//   - THE DRAWING HAS PARTS. The same reading that decided to hand the turn over
-//     at all ([checkpointSketch.split]), asked once so that the two cannot
-//     disagree.
 //   - THE TURN WROTE NOTHING. [writeMeter.untouched], the write seam's own
-//     counter, read for zero. A turn with no counter at all answers NO: a
-//     session that never ran an episode cannot prove it left the disk alone, and
-//     a doubt is not a proof (writeseam.go says the same of a delivery it cannot
-//     establish).
+//     counter, read for zero. It is the one question that decides between a
+//     worker in a copy of the folder and a worker where the person stands, and
+//     it is asked in exactly one place in this build — writeseam.go owns the
+//     isolation question and fires FIRST at every boundary, so a turn that has
+//     been changing things has already been taken down that road. A turn with no
+//     counter at all answers NO: a session that never ran an episode cannot prove
+//     it left the disk alone, and a doubt is not a proof.
 //   - NOTHING OF THIS CONVERSATION'S OWN IS MIXED INTO IT. Where the custody
 //     reduction took parts out of the drawing ([checkpointRead.ownRemainder]) or
 //     had a ledger to take them against ([checkpointRead.held]), the full road's
-//     two gates stand in front of the handover — the reduced drawing, and the
-//     bare ask that cannot tell the halves apart (checkpoint_custody.go). This
-//     road has no ladder for those gates to read, so it declines the shape
-//     outright and leaves the turn to the road that can weigh it.
+//     two gates stand in front of the handover (checkpoint_custody.go). This road
+//     has no ladder for those gates to read, so it declines the shape outright
+//     and leaves the turn to the road that can weigh it.
 //   - AND THERE IS A SENTENCE TO GIVE IT. The line is the person's own words and
 //     nobody here writes them; a node started on an empty line is a worker
 //     started on a blank page, which is the ending the full road spells
 //     [checkpointCeilingNoBrief].
-func (a *Agent) quickFromDrawing(read checkpointRead, asked string) *quickAsk {
-	if !read.sketch.split() {
+func (a *Agent) promotedFromTurn(read checkpointRead, asked string, meter *checkpointMeter) *quickAsk {
+	// AND THE ONE RUNG WHOSE MOVE CANNOT BE A PROMOTION IS ASKED FIRST. A turn
+	// the net took because its context could no longer hold another step would
+	// hand that same context to a worker on the same model with the same window,
+	// which is the identical trouble one step later. That reading was taken when
+	// the net fired and is carried rather than re-taken
+	// ([checkpointMeter.outOfRoom]).
+	if meter != nil && meter.outOfRoom {
 		return nil
 	}
 	if !a.turnWroteNothing() {
+		return nil
+	}
+	// AND WHAT A CONVERSATION DOES TO WORK IT HAS ALREADY HANDED OUT IS NOT WORK
+	// TO HAND OUT AGAIN. A drawing of "wait for the second | wait for the third"
+	// is three parts by the separator and no pairs of hands at all: every one of
+	// them is a verb this conversation owns and a worker cannot do
+	// ([checkpointSketch.handsBack], [checkpointHandBack]). The gate used to ride
+	// on [checkpointSketch.split], which asked the same question on the way to a
+	// different one; the count went with the split and this did not go with it.
+	//
+	// IT IS NOT COVERED BY THE WATCHING RULE ABOVE IT. A turn that only looked at
+	// work already out never climbs a rung at all ([checkpointMeter.round]), but
+	// a turn that WORKED and then spent its last rounds watching is a turn the
+	// net can take with a hand-back drawing in its hand, and that is the turn
+	// this refuses.
+	if read.sketch.handsBack {
 		return nil
 	}
 	if len(read.held) > 0 || strings.TrimSpace(read.ownRemainder) != "" {
@@ -137,20 +159,32 @@ func (a *Agent) quickFromDrawing(read checkpointRead, asked string) *quickAsk {
 	if line == "" {
 		return nil
 	}
-	items := sketchItems(read.sketch)
-	// THE PARTS ARE COUNTED AGAIN AFTER THEY ARE READ OUT, because the split was
-	// decided on the shape and the items are the shape AND the legend together. A
-	// drawing whose letters nothing could be made of leaves a node with a line
-	// and no list, which is a quick node that has lost the very thing that made
-	// this road better than the other one.
-	if len(items) < checkpointSketchParts {
+	// AND THE BOUND IS ASKED HERE TOO, though the door asks it again and would
+	// refuse for itself. The door's refusal is a sentence for a model to read;
+	// this road has no model to read it, and what it needs to know is whether to
+	// take the brief road INSTEAD — so it asks the same question, of the same
+	// model the door will settle on, before it decides which road the turn goes
+	// down ([Agent.workerModelFor], inherit.go).
+	if _, fits := a.inheritFits(a.workerModelFor("")); !fits {
 		return nil
 	}
 	// NO FILES ARE CLAIMED, because a turn that wrote nothing has named nothing
 	// it is going to write, and no title is given, because the line is the
 	// person's own sentence and its first line is the row's name on this road as
-	// on the tool's.
-	return &quickAsk{line: line, items: items}
+	// on the tool's. AND `inherit` IS THE WHOLE OF WHAT THIS ROAD ADDS: the node
+	// that carries a turn on is the node the model could have asked for itself.
+	//
+	// AND AN EMPTY CHECKLIST NO LONGER STOPS THE PROMOTION, WHICH IS THE POINT
+	// OF INHERITING. This road used to refuse a drawing with fewer than
+	// [checkpointSketchParts] parts in it, and the objection was real while the
+	// worker opened on a brief: a node with no items and a paragraph about
+	// somebody else's reading had lost the one thing that made this road better
+	// than the other one. A promoted node has not. It opens holding the whole
+	// transcript — every result, verbatim — so the checklist is a convenience on
+	// top of the work rather than the only description of it, and a reader that
+	// drew one part has said the remaining work is one job, which is a node with
+	// one thing to do and not a node with nothing.
+	return &quickAsk{line: line, items: sketchItems(read.sketch), inherit: true}
 }
 
 // turnWroteNothing reports that this turn has not landed a single write-shaped
@@ -233,7 +267,7 @@ func (a *Agent) handOverAsQuick(ctx context.Context, hub *eventHub, turn *Usage,
 		// THE DOOR DECLINED, AND WHICH REFUSAL IT WAS IS WRITTEN DOWN AS ITSELF.
 		//
 		// Two of the door's refusals can reach this road and no more:
-		// [Agent.quickFromDrawing] hands over neither files nor dependencies nor a
+		// [Agent.promotedFromTurn] hands over neither files nor dependencies nor a
 		// model, so what is left is a line with nothing in it — which is the full
 		// road's no-brief ending and means the same thing here — and the fan cap.
 		//

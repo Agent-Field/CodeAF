@@ -36,6 +36,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // quickWord is the word a quick node's row leads with, and it is the same word
@@ -83,7 +84,26 @@ type quickTaskSpec struct {
 	// moment: the edge itself lives on `dependsOn` like any other, and nothing
 	// past the receipt reads this.
 	waits []quickClaim
+	// seed is THE CALLER'S TRANSCRIPT, WHOLE, on a node that was PROMOTED rather
+	// than merely started — and nil on every other quick node there is
+	// (inherit.go). system is the page that stood in front of it.
+	//
+	// THEY ARE IN MEMORY AND THEY ARE NEVER WRITTEN DOWN, which is deliberate
+	// and is the reason they are unexported beside every other field here. A
+	// checkpoint record carrying a conversation's whole transcript for every
+	// promoted node would be a store that grows with the talking rather than
+	// with the work, and a promotion is a hand-off between two live agents in
+	// one process — there is no moment after this session ends at which it could
+	// be honoured. A promoted node that is resumed is resumed as an ordinary
+	// quick node on its line and items, which is what it would have been.
+	seed   []ai.Message
+	system string
 }
+
+// inherits reports that this node opens on its caller's transcript rather than
+// on a page about it. It is the one question every reader of the two fields
+// above asks, so it is asked in one place.
+func (s *quickTaskSpec) inherits() bool { return s != nil && len(s.seed) > 0 }
 
 // quickClaim is one collision found at admission: the node already claiming a
 // path, and the path both of them claim.
@@ -296,9 +316,18 @@ func quickReportOnClose(record taskRecord) string {
 // twice reasons from whichever copy drifted (design-law §ONE SOURCE OF TRUTH).
 // It is a var and not a const for that reason alone, exactly as
 // [taskDescription] is.
+// AND THE PAIR THAT CHOSE THE ROAD WAS CUT ON 2026-09-11, because the page had
+// come to say it word for word. "If you will read the result and carry on, it
+// is quick. If it must be checked and merged on its own, or survive the window
+// closing, it is a task." is beltfacts.go's "What must be checked and landed on
+// its own, or must survive you, is a task; what you will read and carry on with
+// is quick" — the same law in two places, paid for on every request of every
+// turn, and the page's copy is the one that renders wherever this verb does
+// ([Config.mayQuickTask] puts both verbs on a belt or neither). What is left
+// here is what only this string says: the two roads' shape in one sentence, the
+// step that is not a hand-off at all, and the grain.
 var quickTaskDescription = "A task gets its own copy of the folder, is checked, and lands. A quick task works " +
-	"where you are and its last message is its answer. If you will read the result and carry on, it is quick. " +
-	"If it must be checked and merged on its own, or survive the window closing, it is a task. One edit, one " +
+	"where you are and its last message is its answer. One edit, one " +
 	"read, one command is a step: do it yourself. Related steps that share what they learn are one quick " +
 	"task's items, not several quick tasks. KEEP ONE SMALL, a few files and a few minutes: reading is not " +
 	"progress, so " + strconv.Itoa(taskNoProgress) + " steps that only read end it."
@@ -318,6 +347,7 @@ const quickTaskSchemaJSON = `{"type":"object","properties":{` +
 	`"line":{"type":"string","description":"What to do, one sentence"},` +
 	`"items":{"type":"array","items":{"type":"string"},"description":"Ordered steps it works through and ticks off"},` +
 	`"files":{"type":"array","items":{"type":"string"},"description":"Paths it will write. Two claiming one path run one after the other; named none, it writes anywhere"},` +
+	`"inherit":{"type":"boolean","description":"Opens on this conversation"},` +
 	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids whose result it needs"},` +
 	`"title":{"type":"string","description":"Row title; the line is used without one"},` +
 	`"model":{"type":"string","description":"ONLY where the person named a model"}` +
@@ -328,6 +358,7 @@ type quickArguments struct {
 	Line      string   `json:"line"`
 	Items     []string `json:"items"`
 	Files     []string `json:"files"`
+	Inherit   bool     `json:"inherit"`
 	DependsOn []uint64 `json:"depends_on"`
 	Title     string   `json:"title"`
 	Model     string   `json:"model"`
@@ -338,7 +369,7 @@ type quickArguments struct {
 // it waits on, and the two names a caller may give it. It is the tool's wire
 // form with the wire taken off, and it is the whole of what either road knows —
 // the tool parses one out of a call ([Agent.startQuickTask]) and the ceiling
-// reads one out of a drawing ([Agent.quickFromDrawing]).
+// reads one out of a drawing ([Agent.promotedFromTurn]).
 //
 // IT IS DELIBERATELY NOT A SPEC. Everything a quick node IS beyond these six
 // fields — where it runs, how it stands on its ground, that nobody names it,
@@ -352,6 +383,12 @@ type quickAsk struct {
 	dependsOn []uint64
 	title     string
 	model     string
+	// inherit asks for a PROMOTION rather than a cold worker: the node opens on
+	// the caller's own transcript instead of on a sentence about it (inherit.go).
+	// It is a property of the ask rather than a second door, so both roads that
+	// grow a quick node — the tool and the ceiling's carry-on — ask for it the
+	// same way and neither can build a promotion the other could not.
+	inherit bool
 }
 
 // askOf is the wire form read as an ask. It is a function rather than a
@@ -359,7 +396,8 @@ type quickAsk struct {
 // this package's, and the two are allowed to drift apart.
 func (parsed quickArguments) askOf() quickAsk {
 	return quickAsk{line: parsed.Line, items: parsed.Items, files: parsed.Files,
-		dependsOn: parsed.DependsOn, title: parsed.Title, model: parsed.Model}
+		dependsOn: parsed.DependsOn, title: parsed.Title, model: parsed.Model,
+		inherit: parsed.Inherit}
 }
 
 // quickTools is the belt door for `quick_task`.
@@ -445,6 +483,7 @@ func (a *Agent) admitQuick(ask quickAsk) (uint64, taskSpec, quickRefusal) {
 	if refusal != "" {
 		return 0, taskSpec{}, quickRefusal{said: refusal}
 	}
+
 	if refused := graph.claimChild(spec.parent); refused != "" {
 		return 0, taskSpec{}, quickRefusal{said: refused, fanFull: true}
 	}
@@ -567,7 +606,32 @@ func (a *Agent) newQuickSpec(ask quickAsk) (taskSpec, string) {
 	if named := strings.TrimSpace(ask.title); named != "" {
 		title = clip(firstLine(named), titleLimit)
 	}
-	quick := newQuickTaskSpec(line, kept, scope)
+	// AND A PROMOTION IS BUILT BY THE ONE FUNCTION THAT BUILDS PROMOTIONS
+	// (inherit.go), under the one bound there is, AGAINST THE WINDOW THE WORK
+	// WILL ACTUALLY RUN IN. That is why it stands below the resolver rather than
+	// above it: a `task.model` pin or the crew's worker seat hands tasks to a
+	// cheaper model than the person is talking to, and a bound measured against
+	// this conversation's own window would be a promise this road cannot keep.
+	//
+	// THE REFUSAL IS A RESULT THE MODEL READS — it names the two figures and the
+	// road that is still open — rather than a silent downgrade to a cold worker,
+	// because a verb that quietly did something cheaper than it was asked for is a
+	// verb nobody can reason about.
+	//
+	// AND THE PROMOTED NODE IS BUILT INSTEAD OF THE PLAIN ONE, never after it:
+	// [Agent.promotedQuick] IS [newQuickTaskSpec] with the seed hung on it, so a
+	// branch that built the plain one first would build the same node twice and
+	// throw one of them away.
+	var quick *quickTaskSpec
+	if ask.inherit {
+		refusal, fits := a.inheritFits(model)
+		if !fits {
+			return taskSpec{}, refusal
+		}
+		quick = a.promotedQuick(line, kept, scope)
+	} else {
+		quick = newQuickTaskSpec(line, kept, scope)
+	}
 	quick.waits = a.graph().quickClaimsOn(a.config.Workspace, scope)
 	for _, claim := range quick.waits {
 		dependsOn = append(dependsOn, claim.id)
@@ -598,7 +662,14 @@ func (a *Agent) newQuickSpec(ask quickAsk) (taskSpec, string) {
 		owner:     a,
 		request:   a.taskRequest(),
 		origin:    a.taskOriginRef(),
-		admission: a.admissionContext(),
+		// AND AN INHERITED WORKER IS HANDED NO POINTERS, because it is holding the
+		// things they point AT. [AdmissionContext] exists to tell a cold worker
+		// where the calls it did not make ended up ("CALLS THAT HAVE ALREADY RUN",
+		// admission.go); a worker opening on the caller's own transcript has every
+		// one of those results in front of it in full, and a section of pointers
+		// beside them is an instruction to go and fetch what it already has. That
+		// is the 116 KB the measured worker re-read (inherit.go).
+		admission: admissionFor(quick, a),
 		// WHERE IT RUNS, SAID HONESTLY ON THE CARD. There is no worktree and no
 		// copy: the ground IS the workspace and the mode is the person's own "here",
 		// so the card's "where" line names the folder the work is actually
@@ -932,6 +1003,11 @@ func (a *Agent) runQuickNode(ctx context.Context, node *TaskNode, listed *job) T
 		node.finish("the quick task could not be started: "+err.Error(), nil, "", "")
 		return TaskFailed
 	}
+	// AND A PROMOTED NODE OPENS ON ITS CALLER'S TRANSCRIPT (inherit.go). It is
+	// installed here, after the child exists and before its first request, and it
+	// does nothing at all for the ordinary quick node — which is every node that
+	// was not promoted.
+	adoptSeed(child, quick)
 	defer func() {
 		_ = child.Close()
 		a.foldTaskUsage(node, child)
