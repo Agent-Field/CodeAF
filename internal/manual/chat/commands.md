@@ -857,9 +857,10 @@ switch mid-conversation is ever refused with "encrypted reasoning … produced u
 different model", the request is repaired and sent again on its own; nothing is lost.
 
 Moving in the picker: type to filter; ↑ / ctrl+p and ↓ / ctrl+n move; pgup/pgdown move
-12; left, right, home, end, ctrl+u and ctrl+w edit the filter. **ctrl+t** walks the model
-under the cursor through off → low → medium → high → off reasoning effort. enter
-switches.
+12; left, right, home, end, ctrl+u and ctrl+w edit the filter. **ctrl+t** walks the
+reasoning effort of the model under the cursor through
+`auto → low → medium → high → xhigh → max → auto`, which is the same walk a task's own
+thinking control takes. enter switches.
 
 **→ or tab on a model opens its lanes and walks the cursor into them**, onto the pinned
 lane or `auto`; enter pins, ← or tab walks back out. *Lanes → Pinning one lane yourself*

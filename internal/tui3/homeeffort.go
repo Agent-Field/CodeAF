@@ -47,13 +47,15 @@ func (a *app) cycleHomeEffort() tea.Cmd {
 
 // cycleItemEffort moves one standing item's rung one step up the wheel.
 //
-// SENTINELS STAY LOW UNLESS SOMEBODY SAYS OTHERWISE, and this key is that
-// somebody. An item with no rung of its own fires at the standing role's own
-// floor however deep the install is dialled (internal/effort's resolver), because
-// a check that repeats forever and answers to nobody must not be a deep pass. So
-// the first press on a card is a deliberate gesture raising ONE item off that
-// floor, and the card is where it is made because the card is where a person can
-// see what the item is before they decide it deserves thinking about.
+// AN ITEM'S OWN RUNG IS THE ONLY ONE THAT REACHES ITS FIRINGS, and this key is
+// how it gets one. Nothing else on the machine reaches them — a standing run
+// does not inherit the conversation's dial or the install's row
+// (internal/session's standing_run.go), so an item nobody has dialled asks for
+// nothing at all, and a check that repeats forever and answers to nobody is not
+// turned into a deep pass by a rung somebody set months ago in a conversation.
+// So the first press on a card is a deliberate gesture raising ONE item, and the
+// card is where it is made because the card is where a person can see what the
+// item is before they decide it deserves thinking about.
 func (a *app) cycleItemEffort(item standing.Item) tea.Cmd {
 	h := &a.home
 	if a.stands.SetEffort == nil {

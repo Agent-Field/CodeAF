@@ -139,7 +139,11 @@ func TestCtrlTCyclesTheLevelAndSkipsModelsThatTakeNone(t *testing.T) {
 	typeLine(t, a, "/model")
 	typeInto(t, a, "sonnet")
 
-	want := []string{"low", "medium", "high", ""}
+	// THE WALK IS THE LADDER'S, NOT THIS OVERLAY'S. It used to stop at `high`
+	// and clear on the fourth press, which is two rungs short of what the
+	// `thinking` settings row offers and what a task's own control walks —
+	// pickerladder_test.go holds the whole of that law.
+	want := []string{"low", "medium", "high", "xhigh", "max", ""}
 	for _, level := range want {
 		drive(t, a, ctrlT())
 		if got := agent.ReasoningFor("anthropic/claude-sonnet-4.5"); got != level {

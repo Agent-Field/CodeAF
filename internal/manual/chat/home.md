@@ -1490,10 +1490,9 @@ never became a conversation says `made from home — no conversation to open`.
 
 ## Make a reminder think harder — how hard a standing item thinks, and ctrl+v on its row
 
-**Standing things think at `low`, however deep you have dialled this machine.**
-A reminder, a watch and the sentinel check behind it are unattended and repeat
-forever, so they are held to the cheapest rung on purpose — an install set to
-`max` does not turn every check on the machine into a deep pass.
+The machine's **thinking** row does not reach a standing firing at all. An install
+dialled to `max` still does not turn every check on the machine into a deep pass,
+and an item nobody has dialled asks for nothing.
 
 **`ctrl+v` on an item's row is how you raise the one that deserves it.** Put the cursor on
 the standing item — on home at rest it has a row while it is firing (under `running`) or
@@ -1503,9 +1502,9 @@ press — `low`, `medium`, `high`, `xhigh`, `max`, then back to `low` — and ho
 `thinking high`, read straight back from the item's own document.
 
 An item nobody has dialled says **nothing** at all about it, which is not the same as
-`low`: it means nobody chose, and the standing floor is what applies. The rung is kept with
-the item, so it survives closing aforge, and it is what that item's firings **and** its
-checks ask for from then on.
+`low`: it means nobody chose and no rung is sent. The rung is kept with the item, so it
+survives closing aforge, and it is what that item's firings **and** its checks ask for
+from then on.
 
 `ctrl+v` does nothing on a conversation's row: that rung belongs to the window that
 conversation is open in, and the machine's own default is the `thinking` row of `/settings`.

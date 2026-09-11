@@ -128,11 +128,10 @@ func (a *app) cycleNodeEffort(node *taskNode) bool {
 		return true
 	}
 	current := a.taskRung(node.id)
-	next := effortNext(current)
-	// Auto clears this task's override and must remain reachable after a full cycle.
-	if current == effort.Rungs[len(effort.Rungs)-1] {
-		next = effort.None
-	}
+	// The wheel that CAN come back to absence (effortscope.go's
+	// [effortNextClearing]), because auto is what hands this task back to the
+	// conversation above it and the press after `max` is the only door to it.
+	next := effortNextClearing(current)
 	if err := door.SetTaskEffort(node.id, next.String()); err != nil {
 		// THE ENGINE'S OWN SENTENCE IS KEPT on a refusal, the way a stop's and a
 		// retarget's are: "task 7 is done, not running" is the answer, and a
