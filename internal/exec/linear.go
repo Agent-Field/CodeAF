@@ -459,7 +459,8 @@ type Completer interface {
 //	Answer remaining offenders     14   268,971   211,852
 //
 // (A grant above this constant is this constant plus the dependency term
-// gatheringGrant adds; the overshoot past each is the landing reserve doing its
+// gatheringGrant adds — it is cmd/aforge's, in subharness.go, which this package
+// cannot link to; the overshoot past each is the landing reserve doing its
 // job at landingTokenShare of the grant.) The run then re-planned around every
 // landing — five rounds and seven nodes for one issue, 43 minutes, $2.11, and a
 // delivery gate that refused at the end for want of time — while the WORK
@@ -467,9 +468,10 @@ type Completer interface {
 // paid for twice: once in a fresh planning round, and once in the context the
 // next leaf has to be told again.
 //
-// The measurement against this package's own invariants: raising it to 250,000
-// turns three tests red, and none of them is a test that should be moved to let
-// a number through.
+// The measurement against this package's own invariants: two of them bound this
+// number from above, and neither is a test that should be moved to let a figure
+// through. Raising the grant to 250,000 turns both red; a third reading, from
+// inside the second of them, closes the gap between them.
 //
 //   - TestObservationWindowIsSizedFromContextNotSpend pins that the observation
 //     window comes from the model's context and beats what the old spend-derived
@@ -481,13 +483,24 @@ type Completer interface {
 //     runs out of money before the 1.4M raw tokens the audited melt-downs
 //     reached. At the discount the raw count is about 5.8× the grant, so 250,000
 //     pushed 1,442,112 and reached exactly what the grant forestalls.
-//   - The same test's closing comparison — that cost alone would have bought the
-//     leaf several times the work it did — coincides at 190,000, where the
-//     simulated cost bound and the real run both land at 85 turns.
+//   - And the gap between those two is not open either. The same runaway test
+//     closes by asserting that cost alone would have bought the leaf several
+//     times the work it did, and at 190,000 the simulated cost bound and the
+//     real run both land at 85 turns, so the comparison stops separating and the
+//     test says so. (At 250,000 it never runs: the raw check above fails first.)
+//
+// AND THE ORIGINAL LESSON STILL STANDS, because three comments in this file
+// rest on it. It was set at 400k once, which permitted around 37 turns, and
+// every leaf ran to exactly that — the loop has no intrinsic reason to stop, so
+// the binding limit is not a safety net, it is what makes the loop converge.
+// Set it loosely and the model will spend all of it. maxTurnBackstop's own
+// calibration and landingTokenShare's sizing both cite this paragraph; the
+// figures they cite are the ORIGINAL calibration above, and the measurement in
+// this comment is the reason both of them want re-reading when the grant moves.
 //
 // So this number is not a knob. It is load-bearing, and moving it means moving
 // the observation window's derivation with it and re-measuring the runaway
-// bound. #919 carries that work and this evidence; until it is done, a lane that
+// bound. #920 carries that work and this evidence; until it is done, a lane that
 // needs a bigger grant for one run passes `--token-budget` to `aforge exec` or
 // `aforge run` rather than editing this.
 const DefaultLeafTokens = 150_000
@@ -540,7 +553,9 @@ const rawTokenCeilingMultiple = 3
 // discounted, a warm runaway could afford far more turns than any real leaf
 // needs, and 200 was the only thing left in its path — far too high to be in
 // anyone's path. The measured distribution is the calibration: a well-sized leaf
-// finishes in 8 to 16 turns (see DefaultLeafTokens), the profile's own spread
+// finishes in 8 to 16 turns (see DefaultLeafTokens, whose own measurement now
+// puts a real repository leaf at 14 to 41 and is the reason this backstop wants
+// re-reading when the grant moves), the profile's own spread
 // reports identical briefs landing at 9, 16 and 25, and the longest honest leaf
 // in the audit traces ran 25. Forty sits clear of every one of those.
 //
@@ -1875,11 +1890,19 @@ const wallPaceAt = 0.5
 const landingTurns = 4
 
 // landingTokenShare is what the landing reserve may spend, as a fraction of the
-// grant the leaf has already spent. At the measured honest turn cost — about
-// 11k input tokens against the cached discount described by DefaultLeafTokens —
-// a fifth of the default grant buys two to three turns: enough to make the tree
-// consistent, check it, repair it, and answer. On the trial's 30-39k turns it
-// buys one, which is the least a landing can be, and never a second grant.
+// grant the leaf has already spent. At the turn cost DefaultLeafTokens was
+// originally calibrated against — about 11k input tokens against the cached
+// discount — a fifth of the default grant buys two to three turns: enough to
+// make the tree consistent, check it, repair it, and answer. On the trial's
+// 30-39k turns it buys one, which is the least a landing can be, and never a
+// second grant.
+//
+// THAT CALIBRATION IS THE ORIGINAL ONE AND IT IS NO LONGER THE ONLY READING.
+// DefaultLeafTokens' own comment records a repository leaf whose median call
+// carried 14.2k prompt tokens, at which a fifth of the grant buys nearer two
+// turns than three — still a landing, and still never a second grant, which is
+// what this fraction is for. It is named here so that a lane moving the grant
+// re-reads this number rather than assuming it scales.
 const landingTokenShare = 0.2
 
 // landingAllowance is what a landing may add to what the leaf had spent when
