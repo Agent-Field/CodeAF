@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: a task card quotes the report's first line that says something, not its literal first line
-pr: 889
+pr: 930
 surface: [chat]
 invalidates:
   - "The landed card's quoted sentence was the report's literal first line (`firstLine(node.report)` in `internal/tui3/taskdone.go`), so a report that opened with a code fence drew \"```\" as its outcome. It is the first line that says something now: leading blank lines and fence markers — ``` and ~~~, with or without a language word — are skipped, a report that is nothing but a fenced block quotes the first line inside it, and a report with no prose at all draws the stamp alone rather than empty quotation marks. `internal/tui3`'s `firstProseLine` is the one reader, and every road that fills a card's quoted half goes through it."
