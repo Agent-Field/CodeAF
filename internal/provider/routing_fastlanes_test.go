@@ -17,7 +17,7 @@ import (
 // $0.75 ceiling that left one of them, and the account's data policy excluded
 // that one: 404, and the two fastest lanes for the model were reachable only
 // through a rescue arm.
-func TestTheBeliefsOrderRidesWithoutThePriceCeiling(t *testing.T) {
+func TestTheBeliefsOrderRidesUnderACeilingItFitsUnder(t *testing.T) {
 	client, recorded := pricedClient(t, nil, 0.0000002, 0.0000006, true)
 	lanes.HeardPrefsCarried(client.config.BaseURL)
 	const model = "vendor/fast-model"
@@ -37,8 +37,14 @@ func TestTheBeliefsOrderRidesWithoutThePriceCeiling(t *testing.T) {
 	if len(order) == 0 {
 		t.Fatalf("the belief's order did not reach the wire: %v", prefs)
 	}
-	if ceiling := ceilingOn(t, recorded, 0); ceiling != nil {
-		t.Fatalf("a belief-ordered request carried max_price %v, which vetoes the lanes the order names", ceiling)
+	ceiling := ceilingOn(t, recorded, 0)
+	if ceiling == nil {
+		t.Fatal("a belief-ordered request carried no ceiling at all; the ladder's price rung has nothing left to relax")
+	}
+	// The dearest lane the order names charges $1.20 per million out; the list
+	// price × 1.25 is $0.75, which would veto it before the order was read.
+	if got, _ := ceiling["completion"].(float64); got < 1.20 {
+		t.Fatalf("max_price.completion = %v, under the $1.20 the named lanes charge; the order is vetoed by its own request", got)
 	}
 }
 

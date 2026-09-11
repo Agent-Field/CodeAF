@@ -215,10 +215,13 @@ and after.
 
 ## What shipped
 
-The pull request after this one carries five of the six: the wire ceiling comes off
-a belief-ordered request, λ has a floor of a quarter of a person's attention
-(`lane.UnattendedValue`), a refusal is an `Outcome{Refused: true}` on a new
-availability axis that divides the expected wait, the quality gate reads the mean once
-a belief carries twelve observations, and a service floor (6 s first token, 15 tok/s,
+The pull request after this one carries four of the six: the wire ceiling on a
+belief-ordered request is raised until every lane the order names fits under it, λ
+has a floor of a quarter of a person's attention (`lane.UnattendedValue`), a paced pool
+is an `Outcome{Refused: true}` on a new availability axis that divides the expected
+wait, and a service floor (6 s first token, 15 tok/s,
 half of requests answered; the rate floor sits under the reading rate) refuses a lane the ledger is sure about without ever
-emptying the set. Censored timing for cut streams is still owed.
+emptying the set. Not shipped: the quality gate keeps its upper bound — measured
+again, a 0.65 mean on six observations already fails it, and the lanes that looked
+well-judged while failing were failing through refusals the availability axis now
+records — and censored timing for cut streams is still owed.

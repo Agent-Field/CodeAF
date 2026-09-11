@@ -92,19 +92,6 @@ func TestARefusingFastLaneRanksBehindAnAnsweringSlowerOne(t *testing.T) {
 	}
 }
 
-// ── THE QUALITY GATE CLOSES ONCE THERE IS EVIDENCE ──────────────────────────
-
-func TestTheQualityGateReadsTheMeanOnceJudgedEnough(t *testing.T) {
-	few := Beta{A: 5, B: 1}   // a mean of 0.83 on six observations
-	many := Beta{A: 10, B: 2} // the same mean on twelve
-	if qualityBound(few) < 0.9 {
-		t.Fatalf("a lane judged %v times was refused on its bound %.2f; the bound must stay open until there is evidence", few.A+few.B, qualityBound(few))
-	}
-	if qualityBound(many) >= 0.9 {
-		t.Fatalf("a lane judged %v times at a 0.65 mean cleared 0.9 on %.2f; the gate never closes", many.A+many.B, qualityBound(many))
-	}
-}
-
 // ── THE SERVICE FLOOR ───────────────────────────────────────────────────────
 
 func sureBelief(lane string, ttftMS, rate float64) Belief {

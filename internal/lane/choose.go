@@ -619,6 +619,7 @@ func (c *chooser) Choose(req Request) Choice {
 		return Choice{}
 	}
 	choice.Ignore = ignoredOf(scored, aged, choice.Order, lambda)
+	choice.Ignore = flooredInto(choice.Ignore, aged, choice.Order, lambda, req.Now)
 	// AND NOTHING ABOUT TIME. Where a rescue would go and when it would go
 	// there are [PlanFor]'s, built for every call out of the same frontier this
 	// carries — see the note on [Choice].
@@ -673,6 +674,32 @@ func orderOf(scored []Scored, aged map[ID]Belief) []string {
 // lane that starts three times slower and costs half as much is the RIGHT
 // answer, and putting it in `provider.ignore` would be this process refusing a
 // lane on an objective the request does not have.
+// flooredInto adds every lane surely under the service floor (frontier.go) to
+// the ignore list, under the same λ rule as ignoredOf: nobody waiting, nothing
+// vetoed. A lane the floor took out of the frontier is not in the order, and a
+// router with fallbacks on would otherwise still be free to land there.
+func flooredInto(ignore []string, aged map[ID]Belief, order []string, lambda float64, now time.Time) []string {
+	if lambda <= 0 {
+		return ignore
+	}
+	named := map[string]bool{}
+	for _, lane := range order {
+		named[lane] = true
+	}
+	for _, lane := range ignore {
+		named[lane] = true
+	}
+	var floored []string
+	for id, belief := range aged {
+		if named[id.Lane] || !underFloor(belief, now) {
+			continue
+		}
+		floored = append(floored, id.Lane)
+	}
+	sort.Strings(floored)
+	return append(ignore, floored...)
+}
+
 func ignoredOf(scored []Scored, aged map[ID]Belief, order []string, lambda float64) []string {
 	if lambda <= 0 {
 		return nil

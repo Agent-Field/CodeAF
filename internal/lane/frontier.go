@@ -184,31 +184,10 @@ func capable(belief Belief, req Request, opts gateOptions) bool {
 	// this lane be good enough", and a lane nobody has judged yet must answer
 	// yes, or the gate refuses the entire candidate set for lack of evidence
 	// and then never sends the request that would have supplied it.
-	if req.QualityNeed > 0 && belief.Quality.Known() && qualityBound(belief.Quality) < req.QualityNeed {
+	if req.QualityNeed > 0 && belief.Quality.Known() && belief.Quality.Upper(z90) < req.QualityNeed {
 		return false
 	}
 	return true
-}
-
-// qualityEvidence is how much weight a quality belief must carry before the gate
-// reads its mean rather than its upper bound. The sheet's prior is nine
-// pseudo-observations (belief.go's qualityPrior), so twelve is three real
-// outcomes on top of it — enough to stop asking "could it be good enough" and
-// start asking "is it".
-const qualityEvidence = 12.0
-
-// qualityBound is what the gate compares against the role's need. THE UPPER
-// BOUND UNTIL THERE IS EVIDENCE, THE MEAN AFTER. The bound is right for a lane
-// nobody has judged, which must answer yes or the gate refuses the whole set
-// for lack of evidence; it is wrong for a lane judged a dozen times, because
-// the bound of a Beta at a 0.83 mean on six observations still clears 0.9 and
-// on twelve it still clears 0.95, so a lane answering badly one time in six
-// was never gated on quality at all.
-func qualityBound(quality Beta) float64 {
-	if quality.A+quality.B >= qualityEvidence {
-		return quality.Mean()
-	}
-	return quality.Upper(z90)
 }
 
 // doubted reports whether the SHEET has something against this lane for this
