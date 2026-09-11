@@ -310,6 +310,11 @@ type questionRoom struct {
 // [app.roomOpen] is for a node's page.
 func (a *app) questionRoomOpen() bool { return a.qroom != nil }
 
+// questionPageShows reports whether the page is up over this very question.
+func (a *app) questionPageShows(q questionShown) bool {
+	return a.qroom != nil && a.qroom.head.token() == q.token()
+}
+
 // raiseQuestionRoom puts the page over the conversation.
 //
 // IT IS THE DOOR THE OTHER FORMS PROMOTE THROUGH (DESIGN.md: "Every form folds

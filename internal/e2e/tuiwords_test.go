@@ -759,10 +759,12 @@ var tuiWords = map[string]tuiWord{
 		why:    "`enter` is offered ONLY where the asker named a pick — the emptiness law on a key",
 	},
 	"questionOpenKeyWord": {
-		screen: "[o] open it",
-		source: "open it",
-		why: "the key to the room, drawn only where opening would show more than the block already " +
-			"does; a page that says what the row said is a page nobody should be sent to",
+		screen: "o open full",
+		source: "open full",
+		why: "the key to the page, drawn only where opening would show more than the block already " +
+			"does; a page that says what the row said is a page nobody should be sent to. It was " +
+			"`[o] open it` here for a wave after the surface stopped bracketing its keys, which is " +
+			"exactly the rot this gate exists for",
 	},
 	"questionChangeKeyWord": {
 		screen: "[c] change",
@@ -855,17 +857,19 @@ var tuiWords = map[string]tuiWord{
 		why: "the ratify line wears the SETTLED mark and not the attention one: nothing waits on it, so " +
 			"a `?` there would be the surface asking for something it has already had",
 	},
-	"questionRoomBackWord": {
-		screen: "‹ back",
-		source: "‹",
-		pkg:    tokensPkg,
-		why: "the room is a VIEW and not a modal, so it owes a crumb out. The mark is the vocabulary's " +
-			"scope-up and the word beside it is internal/tui3's",
+	"questionPageDetailWord": {
+		screen: "\u2192 detail",
+		source: "detail",
+		why: "the page's own key, and the one word that says it is the page and not the panel: two " +
+			"panes, and `\u2192` hands the arrows to the evidence beside the list. The page used to " +
+			"owe a `\u2039 back` crumb and to name the asker's answer `my pick`; it draws neither now " +
+			"(the recommendation wears `\u25c6 recommended` on its own row, in every view)",
 	},
-	"questionRoomPickWord": {
-		screen: "my pick",
-		why: "the asker saying which one it would take. It is a fact about the question and never a " +
-			"cursor, which is a fact about the person",
+	"questionPageScrollWord": {
+		screen: "back to the answers",
+		why: "and the other half of that: while the arrows are the evidence pane's, `\u2190` gives them " +
+			"back to the list. A page that took the arrows and never said how to get them back is a " +
+			"page a person is stuck in",
 	},
 	"questionRoomWaitsWord": {
 		screen: "the turn waits on it",

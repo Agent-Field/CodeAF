@@ -236,8 +236,10 @@ func (a *app) questionLayoutLines(block session.Block, width int) []string {
 	if len(panes) == 0 {
 		return a.questionDiagramLines(block, width)
 	}
+	// The seam costs a cell and the pane past it a cell of air, so what the
+	// right-hand drawing has is two fewer than the rest of the row.
 	half := (width - 1) / 2
-	if len(panes) == 1 || questionPaneWidest(panes[0]) > half || questionPaneWidest(panes[1]) > width-half-1 {
+	if len(panes) == 1 || questionPaneWidest(panes[0]) > half || questionPaneWidest(panes[1]) > width-half-2 {
 		// STACKED, WITH A BLANK BETWEEN THEM.
 		out := make([]string, 0, 16)
 		for i, pane := range panes {
@@ -258,7 +260,10 @@ func (a *app) questionLayoutLines(block session.Block, width int) []string {
 		lefts = append(lefts, a.pal.ink(expandTabs(line)))
 	}
 	for _, line := range panes[1] {
-		rights = append(rights, a.pal.ink(expandTabs(line)))
+		// ONE CELL OF AIR PAST THE SEAM. The left pane opens on the block's own
+		// left edge; a right pane written hard against the seam reads as a
+		// drawing with a wall through it.
+		rights = append(rights, a.pal.ink(" "+expandTabs(line)))
 	}
 	return besides(a.pal, lefts, rights, half, width)
 }

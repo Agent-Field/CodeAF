@@ -449,7 +449,7 @@ otherwise:
 
 The refusal always says what to do instead: choose, or say what is being assumed.
 
-## How a question looks
+## How a question looks — show me the options side by side
 
 The block sits directly above the box you type in, and it draws **one question
 at a time** with a count of anything behind it (`2 more`). It never covers the
@@ -487,6 +487,34 @@ the answer that loses nothing instead, and that answer says `safe answer`. So
 the note the asker wrote under it, and where it is the recommendation, why it
 would take it, how sure it is, and what would change its mind. Move the pointer
 and the lines move with it. `o` opens the page that has all of it.
+
+**Where the answers brought things to look at** — a diagram, a diff, a table, two
+layouts — the panel splits down the middle and shows them side by side: the
+answers on the left, and on the right the word of the answer you are standing on,
+what it means, its dim `then ·` / `why this one ·` / `would switch if` /
+`confidence ·` lines, and everything it drew. Walk the pointer and the right-hand
+side changes with it.
+
+```
+╭─ ? which store should the ledger sit on? ─────────────── aforge asks · waiting ─╮
+│ a schema change is next and it is cheaper before there are rows                 │
+│                                           │                                     │
+│  ▸ 1  postgres              ◆ recommended │ postgres                            │
+│    2  sqlite beside the project           │ Rows already carry a foreign key    │
+│    3  a file per day                      │ into it.                            │
+│    4  something else…                     │ then · one connection for both      │
+│                                           │ confidence · fairly sure            │
+╰─ ↑↓ choose · enter take it · esc later ─────────────────────────────────────────╯
+  o open full · c change · ? ask back · d you decide · 1–3 jump
+```
+
+**Narrower than about a hundred columns there is no room for two**, so the same
+lines unfold under the answer's own row instead — and the row gives its `then`
+line up to them rather than saying it twice and cutting it the first time.
+
+Either way **the panel never takes more than half the screen**; the conversation
+keeps the rest. Evidence longer than that is cut on a dim line that says what is
+left and the way to it: `… 4 more lines · o open full`.
 
 **The last answer is `something else…`.** Walk the pointer onto it and the row
 becomes a box you type your own answer into: `enter` sends what you wrote as the
@@ -563,12 +591,12 @@ the row.
 
 | key | what it does |
 | --- | --- |
-| `1`–`9` | take that answer — these work straight away |
+| `1`–`9` | take that answer — these work straight away, except on the page a question opens into, where a digit walks the pointer to that answer and `enter` takes it |
 | `enter` | take the answer the pointer is on — it starts on the recommended one, and on a permission it starts on the answer that loses nothing, so `enter` on a permission you have not moved the pointer on **denies** |
-| `↑` `↓` `←` `→` | move the pointer (`↑↓` on the panel, `←→` on a one-row question; both pairs work on both). On the **page** a question opens into, `↑↓` walk the answers and `←→` fold and open the one you are on |
+| `↑` `↓` `←` `→` | move the pointer (`↑↓` on the panel, `←→` on a one-row question; both pairs work on both). On the **page** a question opens into, `↑↓` walk the answers, `→` hands them to the evidence beside them and `←` takes them back |
 | `esc` | later. Nothing is cancelled — the question folds to one titled rule where it stood |
 | `space` | open a question that has been folded to its rule, while the box is empty |
-| `o` | open full: the page with everything the asker attached. Inside the page it opens and folds the answer you are on |
+| `o` | open full: the page with everything the asker attached. It is not a key on the page itself — the page IS what it opens |
 | `c` | change — take an answer, but say what you want different. It moves the pointer to the `something else…` row carrying the answer you were on; on a question that asked for words it points the message box at the question instead |
 | `?` | ask back before answering. The row becomes `ask back: type your question, then enter · the question stays open`; the question is still there to answer. On a question the model itself asked, the reply comes back while you are still deciding; on a permission, a task proposal or a standing card it reaches the model after you answer |
 | `d` | you decide |
@@ -812,7 +840,7 @@ again is refused in words, because what it allowed has already happened. Those
 are the ones that were never on a clock and that nobody but you was ever allowed
 to answer.
 
-## Open a question up and read it properly — the page a question opens into
+## Open a question up and read it properly — open it bigger, the page a question opens into
 
 A question that carries more than a card can hold — a body under each answer, a
 diagram, a diff, a table of what each one costs — opens into a page of its own,
@@ -823,15 +851,28 @@ taking words, and closing the page puts the conversation back exactly where it
 was, scrolled where you left it. **Closing it is not answering it**: `esc` means
 later, the question folds away, and whatever was waiting on it is still waiting.
 
+**Wide enough, the page is two panes with a rule across the top of them.** The
+answers stand on the left; the answer you are standing on has its evidence on the
+right, and the right-hand side follows the pointer. Narrower than about a hundred
+columns the page is one column and that answer unfolds under its own row instead
+— the same lines, stacked rather than beside. (The task column counts against the
+width: `ctrl+g` stows it and gives the page its cells back.)
+
 The page has, from the top:
 
 - the question in one sentence, with the amber `?`
-- who is asking and why now, dim
-- what is waiting on it and what carries on without it
+- who is asking and what is waiting on it, dim — `aforge asks · the turn waits on
+  it` — with the reason under it
+- the answers, one row each, `something else…` last, with `◆ recommended` on the
+  one the asker would take
 - anything it drew for the whole decision, under one dim heading `what it showed
   you`
-- one section per answer, folded shut except the one it would take
-- a foot pinned above the box saying what `enter` would send
+- the answer you are standing on, in full — beside the list, or under its row
+- a foot pinned above the box: what `enter` would send, then the keys in two
+  tiers, the ones that answer on the left and the quieter ones on the right
+
+There are no folding sections on the page and no `‹ back` row: one answer is open
+at a time and it is the one the pointer is on.
 
 **A key pressed in the first quarter second is dropped.** A page that appears
 under a hand already moving would otherwise turn your next keystroke into an
@@ -843,41 +884,57 @@ being text.
 
 ## Moving around the page — the arrows, and clicking an answer
 
-`↑` and `↓` walk down the answers. The one you are on wears a band, and the foot
-says `↑↓ choose`.
+`↑` and `↓` walk down the answers. The one you are on wears a band, the foot says
+`↑↓ choose`, and **the answer you are on is always on screen** — the list scrolls
+to it rather than leaving you standing on a row that has gone past the edge.
 
-`→` opens the answer you are on and `←` folds it again. They say what they want
-rather than toggling, so holding one down is safe.
+`→ detail` hands the arrows to the evidence: `↑↓ scroll` moves it, and `← back to
+the answers` gives them back to the list. The foot always says which of the two
+the arrows belong to.
 
-`enter` **takes** the answer you are on — that is the answer, sent. The page
-opens standing on the one it would take, so `enter` straight away still takes
-its recommendation. A digit `1`–`9` answers at once from anywhere, whichever
-answer you are standing on.
+`enter` **takes** the answer you are on — that is the answer, sent. The page opens
+standing on the one it would take, so `enter` straight away still takes its
+recommendation.
+
+**A digit moves the pointer here; it does not answer.** `1`–`9` walks to that
+answer and brings its evidence up, and `enter` takes it. On the block above the
+box a digit still answers at once — the page is what you opened in order to read
+before deciding, so nothing on it decides on one keystroke. (On a checklist a
+digit ticks that answer and ticks it off again.)
 
 **Clicking works too, and it takes two clicks to answer.** The first click on an
-answer's row moves onto it and opens it; a second click on that same row is
-`enter`. One press to read, one to decide — so a click on a page you have not
-finished reading cannot decide anything. Clicking a body, a diagram or a note of
-your own does nothing: only an answer's own row answers to the mouse, and it is
-the only row that lights up under the pointer.
+answer's row moves onto it and brings up its evidence; a second click on that
+same row is `enter`. One press to read, one to decide — so a click on a page you
+have not finished reading cannot decide anything. Clicking the evidence beside
+the list, a diagram, or a note of your own does nothing: only an answer's own row
+answers to the mouse, and it is the only row that lights up under the pointer.
 
-## What each line under an answer means
+The wheel scrolls whichever side it is over: the answers on the left, the
+evidence on the right.
 
-An open answer reads in three tiers, and every line says which it is:
+## What each line under an answer means — what does each option look like
 
-- the **label** — the digit and the word, bold and amber, the heading of that
-  section
+The answer you are standing on is drawn in full — beside the list where there is
+room for two panes, under its own row where there is not — and it reads in three
+tiers, every line saying which it is:
+
+- the **label** — the answer's own word, bold, at the head of the pane. Under its
+  own row there is no second label: the row above it is the label
 - what it **means** — the asker's own paragraph, in ordinary ink
 - the asides, dim, each with its own word in front:
   - `then ·` what taking it would leave true
   - `why this one ·` why the asker would take it, on the one it recommends
   - `would switch if` what would change the asker's mind, which is usually
     exactly what you disagree with if you disagree
-- anything it drew for that answer — a diagram, a diff, a table — under a dim
-  title of its own, a blank row above it
+  - `confidence ·` how sure the asker is — `sure`, `fairly sure`, `a guess`
+- anything it drew for that answer — a diagram, a diff, a table, two layouts side
+  by side — a blank row above each
 
-A blank row closes each open answer, so the next answer's label is not just a
-different indent.
+It is the same account of an answer everywhere it is drawn: beside the list, under
+its row, and in the panel above your box.
+
+The answers you are not on keep their row and nothing else. What one of them would
+leave true is said once, in its own evidence, when you walk to it.
 
 ## Compare the options
 

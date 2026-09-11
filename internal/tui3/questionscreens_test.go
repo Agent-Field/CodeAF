@@ -49,7 +49,11 @@ func TestQuestionScreens(t *testing.T) {
 		// `held` is the ONE case whose whole point is that the block draws
 		// nothing: a question waiting behind a half-typed sentence, counted in
 		// the status line and nowhere else.
-		if len(lab.rows()) == 0 && name != "held" {
+		drew := len(lab.rows()) > 0
+		if lab.a.questionRoomOpen() {
+			drew = len(lab.a.questionRoomRows(lab.a.width)) > 0
+		}
+		if !drew && name != "held" {
 			t.Fatalf("%s drew nothing", name)
 		}
 		if dir == "" {
@@ -227,6 +231,49 @@ func TestQuestionScreens(t *testing.T) {
 			local: func(session.Answer) tea.Cmd { return nil },
 		})
 		l.rows()
+	})
+
+	// THE EVIDENCE, AT THE THREE WIDTHS THE OWNER PICKED FOR (2026-09-11).
+	// Preview A beside the list at a hundred columns and wider, preview-narrow B
+	// unfolded under the pointer below that, and page A — the page `o` opens —
+	// as two panes where they fit and one column where they do not. Each is the
+	// same answer's evidence through the same renderer, so the six pictures are
+	// one account of it drawn at three widths.
+	for _, width := range []int{120, 96, 56} {
+		shot("evidence-"+itoa(width), func(l *questionLab) {
+			l.a.width, l.a.height = width, 40
+			l.raise(demoQuestionReading())
+			l.tick(questionSettle)
+		})
+		shot("page-"+itoa(width), func(l *questionLab) {
+			l.a.width, l.a.height = width, 40
+			// THE COLUMN STOWED (`ctrl+g`), so the page has the frame's width
+			// to split: the page is drawn in the body, beside the task column
+			// where one stands, and `page-120-column` is the same page with it up.
+			l.a.railAway = true
+			l.raise(demoQuestionReading())
+			l.tick(questionSettle)
+			l.press("o")
+		})
+	}
+	// THE PAGE BESIDE THE TASK COLUMN. A hundred and twenty columns less the
+	// column's own is a body under the width two panes need, so the page draws
+	// its one column — the evidence unfolded under the pointer — rather than
+	// two panes too narrow to read.
+	shot("page-120-column", func(l *questionLab) {
+		l.a.width, l.a.height = 120, 40
+		l.raise(demoQuestionReading())
+		l.tick(questionSettle)
+		l.press("o")
+	})
+	// AND A LAYOUT BLOCK ON THE PAGE, whose two panes stand side by side when
+	// each one's widest line fits its half and stack when one does not.
+	shot("page-layout-120", func(l *questionLab) {
+		l.a.width, l.a.height = 120, 40
+		l.a.railAway = true
+		l.raise(demoQuestionLayout())
+		l.tick(questionSettle)
+		l.press("o")
 	})
 }
 
