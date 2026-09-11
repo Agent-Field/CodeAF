@@ -37,6 +37,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // tuiWord is one literal the tmux suite waits for on a real screen.
@@ -807,10 +809,15 @@ var tuiWords = map[string]tuiWord{
 			"Never a hidden rule (DESIGN.md's RULES ARE OFFERED, VISIBLE, FORGETTABLE)",
 	},
 	"questionReceiptWord": {
-		screen: "decided ",
-		source: "  decided ",
+		screen: tokens.GlyphSettled + " ",
+		source: tokens.GlyphSettled,
+		pkg:    tokensPkg,
 		why: "THE ANSWER IS THE RECORD: a dim line stays exactly where the question was, because the " +
-			"transcript is what happened and `you were asked and said this` is part of it",
+			"transcript is what happened and `you were asked and said this` is part of it. It " +
+			"opened with the word `decided` until the owner's after-you-answer ruling " +
+			"(2026-09-11) made it the vocabulary's settled mark and the decision's own " +
+			"sentence — `✓ <head> → <answer> · you · 14:02` — so the mark is the needle and it " +
+			"is spelled where every mark on this surface is spelled",
 	},
 	"questionReceiptYouWord": {
 		screen: " · you · ",

@@ -17,8 +17,14 @@ import (
 // (contextmodal.go), the `ctrl+k` switcher card (hop.go) and the onboarding
 // panel (onboarding.go). The owner's ruling of 2026-09-11 made a fourth kind of
 // thing framed on purpose — a QUESTION hangs above the box as one object — and
-// said the fourth must not be a fourth copy. So there is one frame, this one, and
-// all four are drawn by it:
+// said the fourth must not be a fourth copy. So there is one frame, this one:
+//
+// THE QUESTION, THE SWITCHER CARD AND THE ONBOARDING PANEL ARE ON IT. The
+// `/folder` chooser is NOT, yet, and it is the one box still carrying its own
+// pieces: it grew a degradation ladder of its own the same week (a two-row
+// terminal drops the head, a three-row one drops the box, and this frame always
+// draws both edges), and moving it is a change to that ladder rather than a
+// change of drawing. It is named here rather than left to be discovered.
 //
 //	╭─ ? Which storage for the session index? ──────────── model asks ─╮
 //	│ ▸ 1  SQLite         one file beside the conversation  ◆ recommended │
