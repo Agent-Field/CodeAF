@@ -15,10 +15,14 @@ import (
 )
 
 // watchingPattern is a task item watching glob in its own workspace, with its
-// report outside it.
-func watchingPattern(t *testing.T, store *Store, glob string) (Item, string) {
+// report outside it. seed is the files already there when it is agreed to,
+// which its baseline — taken at the yes — reads as the way things were.
+func watchingPattern(t *testing.T, store *Store, glob string, seed map[string]string) (Item, string) {
 	t.Helper()
 	workspace := t.TempDir()
+	for name, text := range seed {
+		writeNested(t, filepath.Join(workspace, name), text)
+	}
 	made, err := store.Create(Item{
 		Words:     "keep an inbox report",
 		Workspace: workspace,
@@ -45,13 +49,12 @@ func writeNested(t *testing.T, path, text string) {
 func TestANestedEditWakesARecursiveWatch(t *testing.T) {
 	now := time.Date(2026, 9, 10, 9, 0, 0, 0, time.UTC)
 	store := openStore(t, now)
-	made, workspace := watchingPattern(t, store, "inbox/**/*.md")
+	made, workspace := watchingPattern(t, store, "inbox/**/*.md", map[string]string{
+		"inbox/2026/09/a.md": "first", "inbox/top.md": "top", "inbox/2026/notes.txt": "not watched",
+	})
 	deep := filepath.Join(workspace, "inbox", "2026", "09", "a.md")
-	writeNested(t, deep, "first")
-	writeNested(t, filepath.Join(workspace, "inbox", "top.md"), "top")
-	writeNested(t, filepath.Join(workspace, "inbox", "2026", "notes.txt"), "not watched")
 	runner := &occurrenceRunner{}
-	mustTick(t, newTicker(store, runner, now)) // the baseline
+	mustTick(t, newTicker(store, runner, now)) // nothing has changed since the yes
 
 	writeFile(t, deep, "first, edited")
 	writeFile(t, filepath.Join(workspace, "inbox", "2026", "notes.txt"), "not watched, edited")
@@ -117,11 +120,10 @@ func TestAWatchPastItsLimitIsRefusedAtSetup(t *testing.T) {
 func TestATouchedOrIdenticallyRewrittenFileIsNotAChange(t *testing.T) {
 	now := time.Date(2026, 9, 10, 9, 0, 0, 0, time.UTC)
 	store := openStore(t, now)
-	made, workspace := watchingPattern(t, store, "inbox/*")
+	made, workspace := watchingPattern(t, store, "inbox/*", map[string]string{"inbox/a.md": "ship Friday"})
 	file := filepath.Join(workspace, "inbox", "a.md")
-	writeNested(t, file, "ship Friday")
 	runner := &occurrenceRunner{}
-	mustTick(t, newTicker(store, runner, now)) // the baseline
+	mustTick(t, newTicker(store, runner, now)) // the first pass hashes what the yes only stated
 
 	later := time.Now().Add(time.Hour)
 	if err := os.Chtimes(file, later, later); err != nil {
@@ -160,9 +162,8 @@ func TestATouchedOrIdenticallyRewrittenFileIsNotAChange(t *testing.T) {
 func TestAReadingKeptBeforeContentsWereHashedIsQuiet(t *testing.T) {
 	now := time.Date(2026, 9, 10, 9, 0, 0, 0, time.UTC)
 	store := openStore(t, now)
-	made, workspace := watchingPattern(t, store, "inbox/*")
+	made, workspace := watchingPattern(t, store, "inbox/*", map[string]string{"inbox/a.md": "ship Friday"})
 	file := filepath.Join(workspace, "inbox", "a.md")
-	writeNested(t, file, "ship Friday")
 	info, err := os.Stat(file)
 	if err != nil {
 		t.Fatal(err)

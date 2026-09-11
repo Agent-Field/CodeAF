@@ -233,6 +233,7 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item Item) (failure error)
 	if err != nil {
 		return err
 	}
+	item.FailedChecks = 0
 	switch found.state {
 	case stateAsleep:
 		// Nothing was looked at, so nothing is written. An item that says it
@@ -273,6 +274,9 @@ type sighting struct {
 	state    state
 	line     string
 	evidence string
+	// summary is the evidence as the one line a say carries in place of
+	// [EvidencePlaceholder]: what changed, or what the check found.
+	summary string
 	// changes are the files a watch saw change, and changesUnknown says the
 	// previous reading could not be read — never the same as "none changed".
 	changes        []Change
@@ -318,9 +322,15 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 		found = sighting{state: stateReady, line: "it was the time you asked for"}
 
 	case WhenFile:
+		// A WATCH WHOSE LAST CHECKS COULD NOT BE MADE WAITS OUT ITS BACKOFF
+		// ([Ticker.noteFailure]); nothing else gives a file watch a moment.
+		if !item.NextDue.IsZero() && now.Before(item.NextDue) {
+			return sighting{state: stateAsleep}, nil
+		}
+		item.NextDue = time.Time{}
 		previous := item.Fingerprint
 		last, _ := t.Store.reading(item.ID, previous)
-		digest, listing, files, err := fingerprint(item.Workspace, item.When.Glob, last)
+		digest, listing, files, err := fingerprint(item.Workspace, item.When.Glob, last, true)
 		if err != nil {
 			return sighting{}, err
 		}
@@ -340,20 +350,45 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 		t.Store.keepReading(item.ID, digest, files, !maps.Equal(last, files), previous, since)
 		switch {
 		case first:
-			// THE FIRST READING IS THE BASELINE AND IS SILENT. Everything on
+			// A WATCH WITH NO BASELINE TAKES ONE HERE, SILENTLY. Everything on
 			// disk looks new to a watch that has never looked, and telling a
 			// person their whole repository just changed would be the last time
-			// they trusted one of these.
+			// they trusted one of these. A watch takes its baseline at the yes
+			// ([Store.baseline]); this is for one made before that, or whose
+			// reading could not be kept then.
 			return sighting{state: stateQuiet, line: "nothing has changed yet"}, nil
 		case !changed:
 			return sighting{state: stateQuiet, line: "nothing has changed"}, nil
 		}
-		changes, readErr := t.Store.changesSince(item.ID, since, files)
+		before, readErr := t.Store.reading(item.ID, since)
+		unknown := readErr != nil
+		var changes []Change
+		if !unknown {
+			changes = changesBetween(before, files)
+		}
 		found = sighting{
 			state: stateReady, line: "the files you are watching changed",
-			evidence: changesText(changes, readErr != nil, since != previous) + "\nALL MATCHING FILES:\n" + listing,
-			changes:  changes, changesUnknown: readErr != nil, since: since,
+			evidence: changesText(changes, unknown, since != previous) + "\nALL MATCHING FILES:\n" + listing,
+			summary:  changesSummary(changes, unknown),
+			changes:  changes, changesUnknown: unknown, since: since,
 		}
+		if strings.TrimSpace(item.When.Hint) == "" {
+			return found, nil
+		}
+		// A WATCH'S CONDITION IS JUDGED ON WHAT CHANGED (condition.go). A
+		// judgment that could not be made leaves the watch where it was, so the
+		// next pass asks about the same changes; a judgment that said no has
+		// seen them, and they are spent.
+		yes, line, err := t.judge(ctx, item, now, conditionEvidence(item.Workspace, changes, before, files, unknown, listing))
+		if err != nil {
+			item.Fingerprint = previous
+			return sighting{}, err
+		}
+		if !yes {
+			return sighting{state: stateQuiet, line: line}, nil
+		}
+		found.line = line
+		return found, nil
 
 	case WhenIdle:
 		if t.Idle == nil {
@@ -397,24 +432,19 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 		if !yes {
 			return sighting{state: stateQuiet, line: line}, nil
 		}
-		return sighting{state: stateReady, line: line, evidence: evidence}, nil
+		return sighting{state: stateReady, line: line, evidence: evidence, summary: probeSummary(line, evidence)}, nil
 
 	default:
 		return sighting{}, errors.New("standing: an unknown kind of watch: " + string(item.When.Kind))
 	}
 
-	// A hint on a kind that does not need judgment asks for it anyway: "every
-	// weekday at 8, IF there is anything worth saying". The sentinel is given no
-	// evidence, because there is none — only the person's words and the hint.
-	if item.When.Hint != "" {
-		yes, line, err := t.judge(ctx, item, now, "")
-		if err != nil {
-			return sighting{}, err
-		}
-		if !yes {
-			return sighting{state: stateQuiet, line: line}, nil
-		}
-		found.line = line
+	// A CONDITION IS NEVER JUDGED BLIND. A moment, a rhythm and a quiet machine
+	// gather nothing, and a sentinel asked "has it happened?" with nothing in
+	// front of it answers from the words alone — which is a guess, billed. Such
+	// a condition is refused at setup ([Item.CheckWatch]); one that stood
+	// before that refusal existed waits, and its check line says why.
+	if strings.TrimSpace(item.When.Hint) != "" {
+		return sighting{state: stateQuiet, line: conditionUnjudged}, nil
 	}
 	return found, nil
 }
@@ -472,7 +502,9 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, before, item Item, now ti
 	)
 	switch item.Does.Kind {
 	case ActionSay:
-		outcome, err = t.Runner.Say(ctx, item, strings.ReplaceAll(item.Does.Say, "{{evidence}}", found.evidence))
+		// A SAY IS ONE LINE A PERSON READS, so it carries the one-line summary
+		// and never the reading the work is handed (condition.go).
+		outcome, err = t.Runner.Say(ctx, item, strings.ReplaceAll(item.Does.Say, EvidencePlaceholder, found.summary))
 	case ActionTask:
 		key := occurrenceKey(before, now)
 		// AN OCCURRENCE THAT ALREADY FINISHED IS RECORDED, NOT RUN AGAIN. Its
@@ -701,12 +733,69 @@ func firingLine(found sighting, outcome Outcome) string {
 
 // noteFailure writes a failure onto the item so the card can say what went
 // wrong, rather than showing a watch that silently stopped working weeks ago.
+//
+// A FAILURE THAT KEEPS HAPPENING IS TRIED LESS OFTEN AND WRITTEN DOWN LESS
+// OFTEN (L9). A judge with no key fails on every pass, forever, and every
+// failure used to be tried again five minutes later and appended to the
+// item's log — a log with no end, growing by a line a pass. Now the wait
+// after each failure in a row doubles ([failureWait]) and the log takes a line
+// only when the wait grows: five lines on the way up to the ceiling, then
+// nothing more until a check is made. The check line always carries the
+// latest failure, so nothing about it is hidden.
+//
+// ONLY A FILE WATCH IS HELD BACK BY THE WAIT, because it alone has no moment of
+// its own: a rhythm and a probe are already asked no sooner than their next
+// moment, which the look moved on before it failed.
 func (t *Ticker) noteFailure(before, item Item, failure error) {
 	now := t.clock()
 	item.LastChecked = now
-	item.LastCheckLine = "could not check: " + shorten(oneLine(failure.Error()), 200)
+	item.LastCheckLine = CouldNotCheck + ": " + shorten(oneLine(failure.Error()), 200)
+	item.FailedChecks++
+	wait := failureWait(item, item.FailedChecks)
+	if item.When.Kind == WhenFile {
+		item.NextDue = now.Add(wait)
+	}
 	_ = t.Store.recordRuntime(before, item)
-	_ = t.Store.Log(item.ID, item.LastCheckLine)
+	if item.FailedChecks == 1 || wait > failureWait(item, item.FailedChecks-1) {
+		_ = t.Store.Log(item.ID, item.LastCheckLine)
+	}
+}
+
+// CouldNotCheck leads the check line of a check that could not be made, and is
+// the whole of what a row says about a watch waiting out failed checks.
+const CouldNotCheck = "could not check"
+
+// Appointment is the next moment this item is due, or zero when it has none.
+//
+// A WAIT AFTER FAILED CHECKS IS NOT AN APPOINTMENT. A file watch's next-due is
+// only ever that wait ([Ticker.noteFailure]) — nothing else gives a file watch
+// a moment — and a surface that drew it as "in 38m" and sorted it among the
+// reminders was presenting a watch whose judge has no key as something
+// scheduled.
+func (it Item) Appointment() time.Time {
+	if it.When.Kind == WhenFile {
+		return time.Time{}
+	}
+	return it.NextDue
+}
+
+// FailureCeiling is the longest a watch waits after checks that could not be
+// made, before it tries again.
+const FailureCeiling = time.Hour
+
+// failureWait is the wait after the nth check in a row that could not be made:
+// one [Interval], doubled for each failure before it, never past the item's
+// own rhythm where it has one (a probe's) or [FailureCeiling].
+func failureWait(item Item, failures int) time.Duration {
+	ceiling := FailureCeiling
+	if item.When.Kind == WhenProbe && item.When.ProbeEvery > 0 {
+		ceiling = min(ceiling, item.When.ProbeEvery)
+	}
+	wait := Interval
+	for n := 1; n < failures && wait < ceiling; n++ {
+		wait *= 2
+	}
+	return min(wait, ceiling)
 }
 
 // expiryOf answers when an item stops being watched. A WhenAt item expires a
@@ -735,7 +824,7 @@ func expiryOf(item Item) (time.Time, bool) {
 // times where it has none, so a file touched without being changed leaves it
 // the same. The listing beside it is what the firing is told, since a hash is
 // evidence of nothing to a model or to a person.
-func fingerprint(workspace, glob string, last map[string]fileEntry) (string, string, map[string]fileEntry, error) {
+func fingerprint(workspace, glob string, last map[string]fileEntry, read bool) (string, string, map[string]fileEntry, error) {
 	matches, err := watched(workspace, glob)
 	if err != nil {
 		return "", "", nil, err
@@ -756,7 +845,9 @@ func fingerprint(workspace, glob string, last map[string]fileEntry) (string, str
 			name = relative
 		}
 		entry := fileEntry{Size: info.Size(), MTime: info.ModTime().UnixNano()}
-		entry.Hash = contentHash(match, info, last[name])
+		if read {
+			entry.Hash = contentHash(match, info, last[name])
+		}
 		if entry.Hash != "" {
 			fmt.Fprintf(digest, "%s|%d|%s\n", name, entry.Size, entry.Hash)
 		} else {

@@ -461,6 +461,12 @@ type Item struct {
 	// honest one: nothing on disk says those firings were clean, and a column
 	// that assumed they were would be granting rope nobody measured.
 	CleanRuns int `json:"cleanRuns,omitempty"`
+	// FailedChecks is how many checks in a row could not be made — a judge
+	// with no key, a pattern grown past its limit. It is what the wait before
+	// the next try is doubled from ([failureWait]), and any check that is made
+	// puts it back to nothing. An item written before it existed reads as zero,
+	// which is a watch with no failures behind it.
+	FailedChecks int `json:"failedChecks,omitempty"`
 }
 
 // Validate is what [Store.Create] and [Store.Save] refuse on. It is the whole

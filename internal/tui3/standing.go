@@ -844,7 +844,7 @@ func (a *app) standBands(card *standingCard, width int) []string {
 	// ([standLevelWord]).
 	where := standLevelWord(card.item.Level())
 	if card.item.Scope != nil {
-		where = card.item.When.Words
+		where = card.item.When.CardWords()
 	}
 	for _, line := range wrap(standWhereTag+where, width) {
 		out = append(out, a.pal.dim(line))

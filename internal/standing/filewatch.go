@@ -34,6 +34,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // WatchLimit is the most files and folders one watch may read on a pass.
@@ -59,11 +60,25 @@ func (w WatchTooLarge) Error() string {
 	return fmt.Sprintf("%s reaches more than %d files and folders, and a watch reads every one of them on every pass; watch a narrower pattern", w.Glob, WatchLimit)
 }
 
-// CheckWatch refuses a file watch whose pattern cannot be read or reaches more
+// CheckWatch refuses what the pass could not honour as written: a condition
+// with nothing to judge it against, a say line with a placeholder nothing fills
+// (condition.go), and a file watch whose pattern cannot be read or reaches more
 // than [WatchLimit] entries. It is checked where an item is set up or its
-// waking changes ([Store.Create], [Store.Revise]), and by whoever asks a person
-// first, so the refusal is heard before a yes that could only fail.
+// waking or its line changes ([Store.Create], [Store.Revise]), and by whoever
+// asks a person first, so the refusal is heard before a yes that could only
+// fail.
+//
+// IT IS NOT PART OF [Item.Validate], ON PURPOSE. Validate runs on every write
+// of a document, a pause and a quiet check included, and an item made before
+// one of these refusals existed must still be pausable and stoppable. A
+// refusal about what an item SAYS belongs where the person says it.
 func (it Item) CheckWatch() error {
+	if err := it.checkCondition(); err != nil {
+		return err
+	}
+	if err := it.checkSay(); err != nil {
+		return err
+	}
 	if it.When.Kind != WhenFile {
 		return nil
 	}
@@ -178,7 +193,7 @@ func contentHash(path string, info fs.FileInfo, last fileEntry) string {
 	if last.Hash != "" && last.Size == info.Size() && last.MTime == info.ModTime().UnixNano() {
 		return last.Hash
 	}
-	file, err := os.Open(path)
+	file, err := openRegular(path, 0)
 	if err != nil {
 		return ""
 	}
@@ -188,4 +203,31 @@ func contentHash(path string, info fs.FileInfo, last fileEntry) string {
 		return ""
 	}
 	return hex.EncodeToString(hash.Sum(nil))
+}
+
+// errNotRegular is a path that turned out, once opened, not to be a file.
+var errNotRegular = errors.New("not a regular file")
+
+// openRegular opens a file to read ONLY IF IT IS A REGULAR FILE, and never
+// waits to find out.
+//
+// A PIPE OPENED TO READ WAITS FOR A WRITER, and the pass has nobody to give up
+// on it: one named pipe in a watched folder stopped every standing item behind
+// it, forever (wave 5 review). Every caller asks the file's kind before it
+// opens, and this closes the gap between that look and the open — a pipe put
+// in the file's place is opened without waiting (O_NONBLOCK is nothing to a
+// regular file) and refused by what the open handle says it is. flags adds to
+// the open: [noFollow] where the path was already resolved and a link in its
+// place is a swap, never a file.
+func openRegular(path string, flags int) (*os.File, error) {
+	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK|flags, 0)
+	if err != nil {
+		return nil, err
+	}
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		file.Close()
+		return nil, errNotRegular
+	}
+	return file, nil
 }

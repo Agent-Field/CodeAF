@@ -16,6 +16,7 @@ package standing
 // outcome, tick — reaches a screen through here.
 
 import (
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -330,3 +331,74 @@ func spanWords(span time.Duration) string {
 // watch whose card and record said nothing about when it wakes (the chat door's
 // first live run, 2026-09-11) is a watch nobody can check.
 func WatchWords(glob string) string { return "when " + glob + " changes" }
+
+// CardWords is the `when ·` line a card, a list and a record draw for what
+// wakes an item: its own words, and for a file watch with a condition, the
+// watch and the condition in one sentence — `whenever a file changes inside
+// inbox/clients/, only when: a .md file changed in a client's folder`. The
+// colon is what lets any condition follow, a clause or a noun phrase alike.
+//
+// A CONDITIONED WATCH IS SAID FROM THE RECORD, NOT FROM THE WORDS. The words
+// are the model's reading of the person's cadence, and "whenever a file
+// changes" on a watch that runs only when a condition says yes is the card the
+// nested case drew (chat scoreboard, 2026-09-11): a promise the item does not
+// keep. The condition is what decides, so the card names it.
+func (w When) CardWords() string {
+	condition := conditionWords(w.Hint)
+	if w.Kind != WhenFile || condition == "" {
+		return strings.TrimSpace(w.Words)
+	}
+	return "whenever " + watchSubject(w.Glob) + ", only when: " + condition
+}
+
+// conditionWords is a hint as the end of "only when: …": one line, without the
+// "yes when" the hint is written to its judge with.
+func conditionWords(hint string) string {
+	hint = oneLine(hint)
+	lower := strings.ToLower(hint)
+	for _, lead := range []string{"yes when ", "yes if ", "only when ", "when ", "if "} {
+		if strings.HasPrefix(lower, lead) {
+			return strings.TrimSpace(hint[len(lead):])
+		}
+	}
+	return hint
+}
+
+// watchSubject is what a file watch waits for, from its pattern: `a file
+// changes inside inbox/clients/` under a folder, `notes/spec.md changes` for
+// one file, `a file matching *.md changes` for a pattern with no folder.
+func watchSubject(glob string) string {
+	segments := strings.Split(filepath.ToSlash(glob), "/")
+	fixed := 0
+	for fixed < len(segments) && segments[fixed] != recursiveSegment && !hasMeta(segments[fixed]) {
+		fixed++
+	}
+	switch fixed {
+	case len(segments):
+		return glob + " changes"
+	case 0:
+		return "a file matching " + glob + " changes"
+	}
+	return "a file changes inside " + strings.Join(segments[:fixed], "/") + "/"
+}
+
+// SayWords is the line a say item delivers, as its card shows it before the
+// yes: the text itself, with [EvidencePlaceholder] said as what will stand
+// there. An item that runs work, or holds a rule, says nothing here.
+//
+// THE LINE IS SHOWN BEFORE THE YES because it is the only thing the person
+// will ever receive from the item; a card that hid it approved `{{file}}` and
+// a reading dump sight unseen (ruling R8).
+func (it Item) SayWords() string {
+	if it.Does.Kind != ActionSay {
+		return ""
+	}
+	stands := ""
+	switch it.When.Kind {
+	case WhenFile:
+		stands = "[which files changed]"
+	case WhenProbe:
+		stands = "[what the check found]"
+	}
+	return oneLine(strings.ReplaceAll(it.Does.Say, EvidencePlaceholder, stands))
+}
