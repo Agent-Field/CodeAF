@@ -778,9 +778,9 @@ func TestAQuickTaskComesBackFromTheCheckpoint(t *testing.T) {
 		quickCall("q1", "compare the pair", "compare the LEDGER-WALK pair", items, []string{"notes.md"}),
 		finalText("it is out"),
 	})
-	// The worker ticks the SECOND item and answers. Ticking the second rather
-	// than the first is deliberate: a `done` of [false true false] cannot be
-	// mistaken for a count that was rebuilt from how far the list had got.
+	// The worker ticks an item and answers, so the node reaching the checkpoint
+	// is one whose list was being written while it ran rather than a node that
+	// went straight from admitted to done.
 	completer.lane("LEDGER-WALK",
 		func(context.Context, []ai.Message) (*ai.Response, error) {
 			ticked, _ := json.Marshal(map[string]int{"done": 2})
