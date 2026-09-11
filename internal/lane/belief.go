@@ -997,6 +997,16 @@ func (l *ledger) folded(of *chains, id ID, held Posterior, z, noise float64, at 
 // flat belief its own change point would be a third account of one number. The
 // fix belongs where the two accounts are reconciled, and it moves how every lane
 // is ranked, so it is a bench question and not a lane's.
+//
+// AND THE OBVIOUS ANSWER — PROCESS NOISE — HAS BEEN MEASURED AND IS NOT IT. The
+// filter freezes because a run of consistent sightings shrinks P toward R/n with
+// nothing to inflate it between them, so the textbook repair is a Q added on
+// every step, or a floor under P. Replayed offline over ten days of the call log
+// (3,605 requests, 1,157 of them with a person watching), a floored P moved
+// watched regret by 0.9% — inside the estimator's own 24% median error, so not a
+// measurement of anything — and made UNATTENDED regret 17% worse while switching
+// machines 9–10% more often, and at all three of the 2026-09-11 incidents it
+// asked for the same machine this code already asks for. Do not re-derive it.
 func stepTo(z, noise float64) Posterior { return Posterior{}.Update(z, noise) }
 
 // stepped records that a change point has reset one pair's own component toward

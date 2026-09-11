@@ -34,3 +34,7 @@ observation leaves no run of surprises to accumulate. Lowering the alarm buys fa
 on ordinary noise and giving the flat belief its own change point is a third account of
 one number, so the fix belongs where the two accounts are reconciled — and that moves how
 every lane is ranked, which is a question for `bench/lanelab` and not for one afternoon.
+The textbook repair is measured and refused: an offline replay over ten days of the call
+log put a floored `P` through the same decisions and moved watched regret 0.9% (inside the
+estimator's own 24% median error) while making unattended regret 17% worse and switching
+machines 9–10% more. `lane.stepTo` says so, so the next reader does not re-derive it.
