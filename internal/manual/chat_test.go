@@ -35,6 +35,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why can't it make pictures any more", "services"},
 		{"how do I remove a key", "services"},
 		{"can I use ollama", "services"},
+		{"I exported the model service key after the engine started", "services"},
+		{"why does /connect say connections are unavailable", "accounts"},
+		{"connect says unavailable on my own machine", "accounts"},
+		{"credentials.json is damaged but where are my models", "accounts"},
 		// The questions object (docs/design/questions/DESIGN.md), asked the
 		// six ways somebody meets it: the shapes, the clock, the record, the
 		// refusals, answering from elsewhere, and what is not built.

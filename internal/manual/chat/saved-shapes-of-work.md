@@ -951,7 +951,9 @@ Limits worth knowing:
   missing.
 - The filtering is over the name and the description. Cues are not on the page (see *Why it
   stopped offering after a restart*), so they cannot be searched here either.
-- No registry wired here: `harnesses are unavailable here`.
+- No registry wired in a headless frame or over `--host` / `--at`:
+  `harnesses are unavailable here`. A plain launch on this machine and `--no-host`
+  both use this machine's registry.
 
 ## /harness — the list of what you have
 
@@ -1004,7 +1006,9 @@ Limits:
 
 - **The panel takes no argument.** A name typed after `/harness` is a filter for the picker
   above, not an instruction to this panel.
-- No registry wired here: `harnesses are unavailable here`.
+- No registry wired in a headless frame or over `--host` / `--at`:
+  `harnesses are unavailable here`. A plain launch on this machine and `--no-host`
+  both use this machine's registry.
 - An empty registry: `no harnesses are registered yet — build one in the conversation`.
 - A registry that cannot be read at all draws the empty list rather than an error.
 

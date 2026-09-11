@@ -405,6 +405,11 @@ type OpenRouterFlow interface {
 type Options struct {
 	// Agent is the conversation this surface shows. Required.
 	Agent Agent
+	// EngineRoad says the conversation is in a daemon on this machine. It is
+	// distinct from Host: both use a remote agent, but only this road shares the
+	// profile and must explain that a named key is read from the daemon's own
+	// environment.
+	EngineRoad bool
 
 	// Build names the aforge process holding the conversation. The door hands
 	// it in because a hosted surface and its conversation run on different

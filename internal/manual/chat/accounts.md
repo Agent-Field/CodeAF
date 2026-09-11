@@ -157,9 +157,25 @@ pinned first.
 
 Headings and gaps cannot be pressed.
 
-With no accounts layer the command says `connections are unavailable here`; with
-nothing to offer, `there is nothing to connect yet`; a filter that matches nothing
-says `nothing matches`.
+With no accounts layer in a headless frame the command says
+`connections are unavailable here`; with nothing to offer,
+`there is nothing to connect yet`; a filter that matches nothing says
+`nothing matches`.
+
+## "connections are unavailable here" — when you see it
+
+`connections are unavailable here` means this frame has no accounts store behind
+it. A plain launch on this machine and `--no-host` always open the panel over this
+machine's own store. Over `--host` or `--at`, the panel has no store it can safely
+write: the browser would open here while the account belongs to the other machine,
+so the command instead gives the longer `--host` sentence and leaves the panel out.
+
+Until 2026-09-11, a plain launch wrongly inherited that remote absence from the
+engine road and said `connections are unavailable here`. It now keeps this machine's
+store, connected rows, model-service group and browser door.
+
+If `credentials.json` is damaged, accounts are absent but the `models` group still
+draws; model-service settings live separately in the profile's `config.json`.
 
 ## What each account may be used for: yes, ask first, off
 

@@ -49,6 +49,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/connect"
 )
 
 // modelPatience is how long any one real turn is given. deepseek-v4-flash
@@ -97,11 +98,73 @@ func TestTUIE2E(t *testing.T) {
 	t.Run("narrow_window_ask_here", testNarrow)
 	t.Run("the_projects_panel_is_the_view_by_project", testGrouped)
 	t.Run("one_figure_on_every_spend_surface", testOneSpendFigure)
+	t.Run("plain_launch_opens_connections_and_harnesses", testPlainLaunchConnectionsAndHarnesses)
 	t.Run("a_nested_landing_asks_and_a_key_answers_it", testNestedGate)
 	t.Run("a_refused_landing_is_incomplete", testRefusedLanding)
 	t.Run("a_crew_older_than_the_work_seat_says_so_once", testInheritedWorkSeat)
 	t.Run("a_fresh_install_is_shown_the_setup", testFreshInstallSetup)
 	t.Run("space_in_the_task_room_pages_the_card", testTaskRoomKeepsSpace)
+}
+
+// testPlainLaunchConnectionsAndHarnesses is the engine-road regression: the
+// ordinary launch, with no --no-host escape hatch, keeps this machine's account
+// store and harness registry on the surface side of the local socket.
+func testPlainLaunchConnectionsAndHarnesses(t *testing.T) {
+	// The socket path includes AFORGE_HOME. Go's test directory carries this
+	// whole sentence and crosses the unix-socket limit, which would make the
+	// product honestly take its in-process floor and stop testing this road.
+	seed := newHome(t, nil)
+	home, err := os.MkdirTemp("", "afld")
+	if err != nil {
+		t.Fatalf("make a short state root: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(home) })
+	profile, err := os.ReadFile(filepath.Join(seed, "config.json"))
+	if err != nil {
+		t.Fatalf("read the copied profile: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "config.json"), profile, 0o600); err != nil {
+		t.Fatalf("write the copied profile: %v", err)
+	}
+	credential := map[string]any{
+		"stripe": map[string]any{
+			"account": "fixture account",
+			"auth":    connect.AuthKey,
+			"key":     "not-a-real-secret",
+		},
+	}
+	raw, err := json.MarshalIndent(credential, "", "  ")
+	if err != nil {
+		t.Fatalf("encode the connection fixture: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(home, connect.StoreFileName), append(raw, '\n'), 0o600); err != nil {
+		t.Fatalf("write the connection fixture: %v", err)
+	}
+	ws := newWorkspace(t, "localdoors", false)
+	r := start(t, "afe2e_local_doors", home, ws, tuiPlain, 40, "chat", "--one-model")
+	statesPastTheDoor(t, r)
+
+	r.lit("/connect")
+	r.keys("Enter")
+	connections := r.waitFor(20*time.Second,
+		say(t, "connectFilterHint"), say(t, "connectModelsGroup"), say(t, "taskDoneGlyph"))
+	if strings.Contains(connections, say(t, "connectUnavailableWord")) {
+		t.Fatalf("the plain launch lost this machine's connections:\n%s", connections)
+	}
+	if !strings.Contains(connections, say(t, "taskDoneGlyph")+" ") {
+		t.Fatalf("the copied connection is not drawn as connected:\n%s", connections)
+	}
+	t.Logf("the local engine road opened this machine's connection panel:\n%s", connections)
+
+	r.keys("Escape")
+	r.lit("/harness")
+	r.keys("Enter")
+	harnesses := r.waitFor(20*time.Second, say(t, "noHarnessWord"))
+	if strings.Contains(harnesses, say(t, "harnessUnavailableWord")) {
+		t.Fatalf("the plain launch lost this machine's harness registry:\n%s", harnesses)
+	}
+	t.Logf("the local engine road opened this machine's harness registry:\n%s", harnesses)
+	r.quit()
 }
 
 // ── 13 ──────────────────────────────────────────────────────────────────────

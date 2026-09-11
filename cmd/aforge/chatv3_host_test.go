@@ -194,6 +194,12 @@ func TestTheEngineDoorKeepsTheAmbientSideOnOverAConnection(t *testing.T) {
 	if engine.StandingItems == nil || engine.StandingSave == nil {
 		t.Fatal("the engine serves no standing doors, so a remote surface has no band and no pause key")
 	}
+	// These are production bindings on the engine returned by bootEngine, not
+	// callbacks supplied by a test fixture. Removing either binding makes a
+	// plain linked-local conversation retain its boot-time gate or source set.
+	if engine.RefreshModelSources == nil || engine.RefreshApprovals == nil {
+		t.Fatal("the production engine carries no live profile refresh doors")
+	}
 	// The seam the session itself proposes through. It is read back off the
 	// launch the engine assembles from, because bootEngine hands the config to
 	// the agent and keeps none of it. The engine's door word rides on the
@@ -255,7 +261,7 @@ func TestTheHostDoorWiresTheStandingSeamAndNothingAboutThisMachine(t *testing.T)
 	// recovered nil dereferences per run that the guard swallowed
 	// (chatv3_host_duty_test.go pins the seam that now refuses them).
 	client := hostedClient(t)
-	options := hostOptions(onePipeFleet("devbox", client), welcome, false)
+	options, _ := hostOptions(onePipeFleet("devbox", client), welcome, false)
 	if options.Build != welcome.Build {
 		t.Fatalf("the surface says build %q, want the engine's %q", options.Build, welcome.Build)
 	}
@@ -465,7 +471,7 @@ func TestTheConnectionSeamsReachTheSurface(t *testing.T) {
 		t.Fatal("a seam that is not filled is a seam nobody can wire")
 	}
 
-	options := hostOptions(onePipeFleet("devbox", client), remote.Welcome{Version: remote.Version, Workspace: "/srv/app"}, false)
+	options, _ := hostOptions(onePipeFleet("devbox", client), remote.Welcome{Version: remote.Version, Workspace: "/srv/app"}, false)
 	if options.Link.Note == nil || options.Link.Ping == nil || options.Link.Notice == nil || options.Link.Held == nil {
 		t.Fatalf("the surface was handed %+v — a seam left nil is a fact nobody is told", options.Link)
 	}
@@ -564,7 +570,7 @@ func TestAConversationOpenedBesideKeepsTheRecallStore(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	client := hostedClient(t)
 	fleet := onePipeFleet("devbox", client)
-	options := hostOptions(fleet, remote.Welcome{Version: remote.Version, Workspace: "/srv/app"}, false)
+	options, _ := hostOptions(fleet, remote.Welcome{Version: remote.Version, Workspace: "/srv/app"}, false)
 	if options.History == nil {
 		t.Fatal("the surface opened with no recall store")
 	}

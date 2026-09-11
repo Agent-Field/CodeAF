@@ -402,7 +402,7 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 		}
 		return modelConnectResultMsg{
 			service: draft.source.ID, name: draft.source.Name, written: draft.row.Written,
-			outcome: outcome, models: models, err: err,
+			keyEnv: draft.row.KeyEnv, outcome: outcome, models: models, err: err,
 		}
 	}
 }
@@ -493,6 +493,9 @@ func (a *app) adoptModelConnectResult(msg modelConnectResultMsg) {
 			a.sourceModels[msg.service] = cleanModels(msg.models)
 		}
 		line = serviceOutcomeWord(service, msg.outcome)
+		if msg.outcome.Kind == modelsource.OutcomeConnected && a.engineRoad && strings.TrimSpace(msg.keyEnv) != "" {
+			line += " · " + engineVariableWord(msg.keyEnv)
+		}
 	case modelsource.OutcomeCollides:
 		a.modelSuggestions[strings.ToLower(msg.service)] = msg.outcome.Suggestion
 		line = serviceOutcomeWord(service, msg.outcome)
@@ -539,6 +542,10 @@ func serviceConnectedWord(service string, outcome modelsource.Outcome) string {
 		return line
 	}
 	return line + " · " + itoa(outcome.Models) + " " + plural("model", outcome.Models)
+}
+
+func engineVariableWord(name string) string {
+	return "the engine process reads $" + strings.TrimSpace(name) + " from its own environment"
 }
 
 // serviceCannotPayWord is the ONE sentence for an authenticated account with no

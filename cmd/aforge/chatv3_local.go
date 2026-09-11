@@ -28,8 +28,10 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/enginehost"
+	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/remote"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/aforge-v2/internal/tui3"
 )
 
@@ -233,7 +235,8 @@ func openChatV3Local(launch localLaunch) error {
 	// The fleet owns every connection now, the boot one included, so the door's
 	// own defer hands the job over rather than closing the client twice.
 	closeClient = fleet.closeAll
-	options := hostOptions(fleet, welcome, launch.pick)
+	options, settings := hostOptions(fleet, welcome, launch.pick)
+	localDoors(&options, welcome, settings)
 	// AND A PLAIN LAUNCH IS STILL GREETED BY HOME ON THIS ROAD. Whether somebody
 	// is being greeted is one fact — a person opened aforge with no particular
 	// conversation in mind — and [tui3.Options.Landing] is the only place the
@@ -311,6 +314,58 @@ func openChatV3Local(launch localLaunch) error {
 		options.DraftFile = tui3.DraftFile(dir, welcome.Workspace)
 	}
 	return runSurface(context.Background(), options)
+}
+
+// localDoors puts this machine's stores back onto the surface assembled by the
+// connection road.
+//
+// [hostOptions] is deliberately conservative because its ordinary caller is a
+// surface looking at ANOTHER machine: a browser, profile write or registry read
+// in that process would land on the wrong disk. This road uses the same builder
+// but its engine, profile, registry and browser are all here. Keeping the patch
+// in one named function makes that difference reviewable and keeps --host and
+// --at on the absence they still require.
+func localDoors(options *tui3.Options, welcome remote.Welcome, settings config.Config) {
+	if options == nil {
+		return
+	}
+	profileDir := strings.TrimSpace(welcome.ProfileDir)
+	if profileDir == "" {
+		// An older engine cannot say which profile it resolved, so keep the
+		// surface's own answer. Linked-local launch already retires a daemon of
+		// another build, making this a compatibility floor rather than an
+		// ordinary split-profile road.
+		profileDir = settings.ProfileDir
+	}
+	options.ProfileDir = profileDir
+	options.EngineRoad = true
+	options.Connections = v3Connections(v3Connect(profileDir))
+	options.Harnesses = subharness.Default()
+	options.SaveApproval = func(tool string) error {
+		return saveToolApproval(profileDir, tool)
+	}
+	options.SaveBashApproval = func(command string) error {
+		return saveBashApproval(profileDir, command)
+	}
+	options.SaveModel = func(model string) error {
+		return config.WriteChatModel(profileDir, model)
+	}
+	if profileDir == settings.ProfileDir {
+		options.Sources = settings.Sources
+	} else {
+		// Keep the default account the surface already resolved, while reading
+		// every additional service from the engine's authoritative profile.
+		options.Sources = config.ResolveSources(profileDir, settings.APIKey, settings.BaseURL)
+	}
+	if options.Agent != nil {
+		// THE ENGINE RESOLVES THE PROFILE. A connected service is already on
+		// disk when this callback runs; setting the current model through the
+		// existing wire door makes the engine re-read that disk without sending
+		// a key or address through a second protocol.
+		options.ApplyModelSources = func(modelsource.Set) {
+			options.Agent.SetModel(options.Agent.Model())
+		}
+	}
 }
 
 // localAskAgainAfterRefusal is that decision, on its own so it can be asked

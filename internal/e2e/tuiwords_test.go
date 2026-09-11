@@ -84,6 +84,28 @@ var tuiWords = map[string]tuiWord{
 	"roomKinSpawnedWord": {screen: "handed out: ", why: "the waiting parent's child summary is visible"},
 	"roomBackWord":       {screen: "esc/← main", why: "the task room offers its way back"},
 
+	// ── this machine's doors on the ordinary engine road ────────────────────
+	"connectFilterHint": {
+		screen: "filter · ↑↓ · enter connect · esc close",
+		why:    "the local connection catalog opened as its searchable panel",
+	},
+	"connectModelsGroup": {
+		screen: "models",
+		why:    "the connection panel includes model services rather than only account rows",
+	},
+	"connectUnavailableWord": {
+		screen: "connections are unavailable here",
+		why:    "the refusal that must be absent from an ordinary launch and remain available to the hosted seam",
+	},
+	"noHarnessWord": {
+		screen: "no harnesses are registered yet — build one in the conversation",
+		why:    "an empty local registry still opens and says what may arrive there",
+	},
+	"harnessUnavailableWord": {
+		screen: "harnesses are unavailable here",
+		why:    "the refusal that must be absent from an ordinary launch and remain available to the hosted seam",
+	},
+
 	// ── the bounded stop ─────────────────────────────────────────────────────
 	"stoppingWord": {
 		screen: "stopping",

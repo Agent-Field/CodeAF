@@ -428,6 +428,10 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	if err != nil {
 		return nil, err
 	}
+	// EVERY HELLO GETS THE PROFILE AS IT STANDS NOW. The daemon outlives the
+	// surface that may have connected a model service, so its process snapshot
+	// is not evidence that the rows on disk have stood still.
+	proc.refreshModelSources()
 	// THE MODEL IS BUILT INTO THE SESSION AND NOT SET ON IT A MOMENT LATER,
 	// which is the whole of what carrying it in the hello bought. The surface
 	// used to open the conversation and then switch it (chatv3_host.go's old
@@ -439,7 +443,8 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	// approval floor, the compaction posture and the one-model settlement are
 	// built INTO the session rather than switched on after it has opened
 	// ([engineLaunchOptions] holds the mapping).
-	launch, err := openV3Launch(proc, engineLaunchOptions(hello, workspace, sessionFlag))
+	launchOptions := engineLaunchOptions(hello, workspace, sessionFlag)
+	launch, err := openV3Launch(proc, launchOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -533,7 +538,19 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	guard.Go("engine/models", func() { warmV3Models(launch.Models, agent, launch.Model) })
 
 	return &remote.Engine{
-		Agent:       agent,
+		Agent: agent,
+		// A model picked through a linked-local surface arrives on the existing
+		// model-set call. Re-read the engine's profile immediately before it is
+		// applied, so that model's address and key are live for the next turn.
+		RefreshModelSources: proc.refreshModelSources,
+		// A linked-local surface writes a banked approval into this profile and
+		// carries ConsentRule on the answer already crossing the wire. Rebuild
+		// this conversation's gate at that door, using this conversation's own
+		// workspace and launch posture, before the waiting call is released.
+		RefreshApprovals: func() {
+			refreshV3Policy(agent, workspace, proc.ProfileDir, launchOptions.Yolo)
+		},
+		ProfileDir:  proc.ProfileDir,
 		Workspace:   workspace,
 		SessionFile: transcript,
 		Resumed:     resumed,

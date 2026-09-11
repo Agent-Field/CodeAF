@@ -757,6 +757,7 @@ type (
 		service string
 		name    string
 		written string
+		keyEnv  string
 		outcome modelsource.Outcome
 		models  []Model
 		err     error
@@ -2370,6 +2371,10 @@ type app struct {
 	// construction — see host.go for the whole law.
 	host      string
 	localRoot string
+	// engineRoad distinguishes this machine's daemon from a hosted agent. The
+	// model-service receipt uses it to say whose environment resolves a named
+	// key; host cannot answer that because both roads carry a remote agent.
+	engineRoad bool
 	// owned says the workspace is this session's own work/ directory rather
 	// than a project somebody opened aforge inside of (Options.Owned). It is
 	// read by [app.placeWord] and [app.contextStart].
@@ -2543,6 +2548,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		standingRoot:        opts.StandingRoot,
 		leaveAnswer:         opts.Answer,
 		host:                host,
+		engineRoad:          opts.EngineRoad,
 		handedApproval:      strings.TrimSpace(opts.ApprovalMode),
 		bashBackgroundAfter: opts.BashBackgroundAfterSeconds,
 		owned:               opts.Owned,

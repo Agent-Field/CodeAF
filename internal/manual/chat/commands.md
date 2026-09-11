@@ -1159,10 +1159,11 @@ harnesses are unavailable here
 no harnesses are registered yet — build one in the conversation
 ```
 
-The first is what you get with no registry wired — a headless frame, and **every `--host`
-session**, because the registry lives on the far machine. The second is drawn as the
-panel's only row, and it is also what a registry that cannot be read at all shows, rather
-than an error.
+The first is what you get with no registry wired — a headless frame, and every
+`--host` or `--at` session, because the registry lives on the other machine. A plain
+launch on this machine and `--no-host` both wire this machine's registry and open the
+panel. The second is drawn as the panel's only row, and it is also what a registry that
+cannot be read at all shows, rather than an error.
 
 ## /subharness — the command's two forms, bare and with a name after it
 
@@ -1512,8 +1513,9 @@ connections are unavailable here
 there is nothing to connect yet
 ```
 
-The first is the `--host` answer. The second means no connections seam is wired. The
-third means the catalog came back empty.
+The first is the `--host` or `--at` answer. The second means a headless frame has no
+connections seam wired; a plain launch on this machine and `--no-host` always wire one.
+The third means the catalog came back empty.
 
 The settings panel has a `Connections` tab over the same accounts. It is a different
 surface from `/connect`, not a second copy of it.

@@ -222,7 +222,7 @@ func openChatV3At(launch atLaunch) error {
 	// belongs to the far machine comes off the welcome and what belongs to this
 	// one is resolved here; the only thing that differs between the two doors is
 	// the pipe, so anything that differed in the surface would be a bug.
-	options := hostOptions(fleet, client.Welcome(), launch.pick)
+	options, _ := hostOptions(fleet, client.Welcome(), launch.pick)
 	return runSurface(context.Background(), options)
 }
 

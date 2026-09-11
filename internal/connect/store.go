@@ -8,9 +8,10 @@ import (
 	"strings"
 	"sync"
 
-	"golang.org/x/oauth2"
-
+	"github.com/Agent-Field/aforge-v2/internal/filelock"
 	"github.com/Agent-Field/aforge-v2/internal/home"
+
+	"golang.org/x/oauth2"
 )
 
 // StoreFileName is the file every connection lives in, named here so that a
@@ -134,11 +135,12 @@ func (s stored) covers(wanted []string) bool {
 // half of a new one.
 type store struct {
 	path string
-	// mu serialises this process's own writes. Two sessions in two
-	// processes are still safe because of the rename, but they can lose each
-	// other's last change; that is an acceptable trade for a file a person
-	// touches a handful of times a year.
+	// mu serialises this manager's own writes. The sidecar lock in replace
+	// extends the same critical section across managers and processes.
 	mu sync.Mutex
+	// afterLoad is a test seam for holding two independent stores between the
+	// read and replace that have to become one cross-process critical section.
+	afterLoad func()
 }
 
 // newStore names the file under profileDir, or under aforge's state root when
@@ -200,18 +202,31 @@ func (s *store) replace(id string, edit func(map[string]stored)) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	directory := filepath.Dir(s.path)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return fmt.Errorf("save connection %s: %w", id, err)
+	}
+	lock, err := os.OpenFile(s.path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return fmt.Errorf("save connection %s: lock store: %w", id, err)
+	}
+	defer lock.Close()
+	if err := filelock.Lock(lock, true, false); err != nil {
+		return fmt.Errorf("save connection %s: lock store: %w", id, err)
+	}
+	defer func() { _ = filelock.Unlock(lock) }()
+
 	entries, err := s.load()
 	if err != nil {
 		return fmt.Errorf("save connections: preserve existing file: %w", err)
+	}
+	if s.afterLoad != nil {
+		s.afterLoad()
 	}
 	edit(entries)
 
 	encoded, err := json.MarshalIndent(entries, "", "  ")
 	if err != nil {
-		return fmt.Errorf("save connection %s: %w", id, err)
-	}
-	directory := filepath.Dir(s.path)
-	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return fmt.Errorf("save connection %s: %w", id, err)
 	}
 	temporary, err := os.CreateTemp(directory, ".credentials-*.json")

@@ -616,6 +616,7 @@ func engineOn(agent *fakeAgent) *Engine {
 		Resumed:                    true,
 		Note:                       "session open elsewhere — started a new one",
 		BashBackgroundAfterSeconds: 47,
+		ProfileDir:                 "/srv/profile",
 	}
 }
 
@@ -644,6 +645,9 @@ func TestServeWelcomesAHello(t *testing.T) {
 	}
 	if welcome.BashBackgroundAfterSeconds != 47 {
 		t.Errorf("welcome background clock %d, want the engine's 47", welcome.BashBackgroundAfterSeconds)
+	}
+	if welcome.ProfileDir != "/srv/profile" {
+		t.Errorf("welcome profile dir %q, want the engine's", welcome.ProfileDir)
 	}
 	if !strings.Contains(welcome.Note, "started a new one") {
 		t.Errorf("welcome note %q — the locked-file sentence has to travel", welcome.Note)
