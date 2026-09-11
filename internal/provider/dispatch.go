@@ -596,6 +596,10 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// [Client.sendRepaired] a layer up, and walking it would spend a machine
 		// to discover a fact the memo already answers.
 		var peek []byte
+		// relayed says this pass is here because a machine NAMED ITSELF on a
+		// status that is not otherwise retryable. It is a flag of its own and not
+		// `peek != nil`, because every refusal below reads a peek.
+		relayed := false
 		if !retryableStatus(response.StatusCode) {
 			if !relayedByAMachine(response.StatusCode) || c.repairable(c.modelFor(request), knobs) ||
 				len(knobs.reasoning) > 0 {
@@ -606,7 +610,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				response.Body = rewound(read, response.Body)
 				return response, nil
 			}
-			peek = read
+			peek, relayed = read, true
 		}
 		if rateLimited {
 			providerWait = named
@@ -738,7 +742,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		//
 		// A 429 IS NOT THIS: the pool's own hold is read by [Client.pacedOut]
 		// above, which knows about windows this loop does not.
-		if peek != nil && !fresh {
+		if relayed && !fresh {
 			return nil, lastErr
 		}
 		// AND THE SHORTER PATIENCE FOR A FAULT IS GONE WITH THE LONGER ONE FOR A
