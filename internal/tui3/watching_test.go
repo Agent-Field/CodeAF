@@ -306,3 +306,76 @@ func TestAHostedTurnWaitsForThePreviousStreamTail(t *testing.T) {
 		t.Fatalf("queued hosted turn was not drawn:\n%s", got)
 	}
 }
+
+// A WAKE ARRIVING AFTER THIS WINDOW'S OWN TURN IS STILL DRAWN, AND SO IS THE
+// NEXT ONE. The follow wait armed at boot used to carry the TURN generation and
+// compare it on arrival, so the first turn this window ran itself — which bumps
+// that generation — made the next wake read as a turn from a connection the
+// window had walked away from: discarded, and the wait never armed again. On a
+// hosted conversation every wake after that was invisible: the task card said
+// done, the engine wrote its sentence about it to the journal, and the screen
+// showed nothing until the conversation was reopened. Three quick tasks landing
+// and three `whats up` answered into the void, on 2026-09-10.
+func TestAHostedWakeAfterThisWindowsOwnTurnIsStillDrawn(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.host = "devbox"
+	turns := make(chan Following, 2)
+	a.link = LinkSeam{Follow: func() <-chan Following { return turns }}
+	armed := a.watchFollowing()
+
+	own := make(chan session.Event, 2)
+	own <- session.Event{Kind: session.EventTextDelta, Text: "this window's own answer"}
+	own <- session.Event{Kind: session.EventTurnDone}
+	close(own)
+	drive(t, a, runCmd(a.takeStream(own))...)
+
+	first := make(chan session.Event, 2)
+	first <- session.Event{Kind: session.EventTextDelta, Text: "the first woken answer"}
+	first <- session.Event{Kind: session.EventTurnDone}
+	close(first)
+	second := make(chan session.Event, 2)
+	second <- session.Event{Kind: session.EventTextDelta, Text: "the second woken answer"}
+	second <- session.Event{Kind: session.EventTurnDone}
+	close(second)
+	turns <- Following{Events: first}
+	turns <- Following{Events: second}
+	drive(t, a, runCmd(armed)...)
+
+	got := plain(frame(a))
+	for _, want := range []string{"this window's own answer", "the first woken answer", "the second woken answer"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q after this window ran a turn of its own:\n%s", want, got)
+		}
+	}
+}
+
+// AND THE KEYBOARD LANE HAS THE SAME LAW: a hand-over after this window's own
+// turn is heard, and the wait is armed again for the next one.
+func TestAHandOverAfterThisWindowsOwnTurnIsStillHeard(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.host = "devbox"
+	asked := 0
+	a.link = LinkSeam{
+		Driving: func() Driving { return Driving{Yours: true} },
+		DrivingChanged: func() <-chan struct{} {
+			asked++
+			ch := make(chan struct{}, 1)
+			if asked == 1 {
+				ch <- struct{}{}
+			}
+			return ch
+		},
+	}
+	armed := a.watchDriving()
+
+	own := make(chan session.Event, 2)
+	own <- session.Event{Kind: session.EventTextDelta, Text: "this window's own answer"}
+	own <- session.Event{Kind: session.EventTurnDone}
+	close(own)
+	drive(t, a, runCmd(a.takeStream(own))...)
+
+	drive(t, a, runCmd(armed)...)
+	if asked < 2 {
+		t.Fatalf("the keyboard wait was not armed again after this window's own turn: asked %d", asked)
+	}
+}

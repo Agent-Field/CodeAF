@@ -1671,18 +1671,21 @@ type app struct {
 	// replaced must not start a turn in the one that replaced it.
 	wakeLane <-chan (<-chan session.Event)
 	wakeGen  int
-	// steerGen is the STEER LANE's generation, and it is its own counter for one
-	// reason: a fallen-through steer's news is answered long after it was sent,
-	// and the turn generation has usually moved on by then. [app.gen] counts
-	// TURNS — it is bumped by every submit, every adopted stream and every
-	// drained follow-up — so a lane checked against it discarded the turn a
-	// person's own words had started merely because another turn had begun in
-	// the meantime, and the answer the engine wrote reached nobody
-	// (steerelbow.go's [app.steerFell]). THIS ONE MOVES ONLY WHEN THE
-	// CONVERSATION IS REPLACED (detach.go), which is the question the check is
-	// actually asking: is the session these words were said into still the one
-	// on screen.
-	steerGen int
+	// convGen is THE CONVERSATION'S generation, and it is its own counter beside
+	// [app.gen] because that one counts TURNS — it is bumped by every submit,
+	// every adopted stream and every drained follow-up — while three lanes ask a
+	// different question: is the session these words were said into still the
+	// one on screen. The steer lane asks it of a correction that fell through
+	// into a turn of its own, answered long after the turn generation moved on
+	// (steerelbow.go's [app.steerFell]); the connection lanes ask it of who holds
+	// the keyboard and of every turn another window or the engine itself started
+	// (watching.go's [followingMsg]). Each of the three checked [app.gen] once,
+	// and each discarded a turn the engine had answered — a fallen-through
+	// correction, or every wake after the first typed turn — for having the wrong
+	// turn number on it. THIS ONE MOVES ONLY WHEN THE CONVERSATION IS REPLACED
+	// (detach.go), and it is ONE number for the three lanes because two counters
+	// bumped in the same place is the drift the one-source-of-truth law names.
+	convGen int
 
 	// THE TASK SIDE (task.go). task is the proposal that owns the answer lane,
 	// or nil; tasks and taskOrder are the rail's nodes, keyed by id and kept in
