@@ -82,9 +82,26 @@ func (it Item) CheckWatch() error {
 	if it.When.Kind != WhenFile {
 		return nil
 	}
+	// BRACES ARE NOT EXPANDED, SO THEY ARE REFUSED HERE, where an item is
+	// written. `{inbox/*,notes/*}` reads as those characters and matches
+	// nothing, and a watch that can never fire says nothing about it (the live
+	// one-path case, 2026-09-11). The ticker does not refuse an item written
+	// before this: it reads it as a watch that matches nothing ([bracedQuiet]).
+	if hasBraces(it.When.Glob) {
+		return fmt.Errorf("standing: the pattern %q uses braces, which a watch does not expand: one order watches one pattern. Watch a folder they are all under, if its report is not inside it; otherwise tell the person one order cannot watch those folders into one report, since two orders cannot keep one file", it.When.Glob)
+	}
 	_, err := watched(it.Workspace, it.When.Glob)
 	return err
 }
+
+// hasBraces says glob spells a set of alternatives a watch does not expand.
+func hasBraces(glob string) bool {
+	return strings.Contains(glob, "{") && strings.Contains(glob, ",") && strings.Contains(glob, "}")
+}
+
+// bracedQuiet is the check line of a watch written with braces before they
+// were refused: it matches nothing, which the item's page says plainly.
+const bracedQuiet = "its pattern uses braces, which a watch does not expand, so it matches nothing — change its pattern"
 
 // watched answers every path the pattern reaches, absolute, or the one line
 // saying why it cannot.
@@ -92,12 +109,6 @@ func watched(workspace, glob string) ([]string, error) {
 	pattern := glob
 	if !filepath.IsAbs(pattern) {
 		pattern = filepath.Join(workspace, pattern)
-	}
-	// BRACES ARE NOT EXPANDED, SO THEY ARE REFUSED. `{inbox/*,notes/*}` reads
-	// as those characters and matches nothing, and a watch that can never fire
-	// says nothing about it (the live one-path case, 2026-09-11).
-	if strings.Contains(glob, "{") && strings.Contains(glob, ",") && strings.Contains(glob, "}") {
-		return nil, fmt.Errorf("standing: the pattern %q uses braces, which a watch does not expand: one order watches one pattern. Watch a folder they are all under, if its report is not inside it; otherwise tell the person one order cannot watch those folders into one report, since two orders cannot keep one file", glob)
 	}
 	segments := strings.Split(filepath.ToSlash(pattern), "/")
 	for _, segment := range segments {

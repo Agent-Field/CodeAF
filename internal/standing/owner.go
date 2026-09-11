@@ -34,14 +34,18 @@ package standing
 //   - FANNED OUT (L7). reports/<two hex>/<sha256 of the path>.owner.json, the
 //     receipts' own layout.
 //   - RETENTION DECLARED (L9). One record per report path that has a live
-//     owner. It is removed when that owner is stopped or moves its report
-//     elsewhere; a stopped owner's record left behind by a crash is ignored,
-//     because an owner is only an owner while its item is not stopped.
+//     owner. It is removed when that owner retires — stopped, out of time, or
+//     a reminder that fired — or moves its report elsewhere. A record left
+//     behind by a crash is ignored: an owner is only an owner while its item
+//     is not stopped and its report is still that path.
 //   - ONE-TIME COST DECLARED. The first store that meets this file reads every
 //     item ONCE ([Store.ensureOwners]) to record the owners of the paths that
 //     already had live items, and to move a stopped predecessor's receipt to its
 //     path, so its successor publishes where it did. A marker then makes every
-//     later call one stat.
+//     later call one stat. AN ITEM IT CANNOT READ IS SKIPPED, NOT WAITED ON:
+//     the marker is written with the count and the ids, and a skipped item's
+//     report path stays unguarded until its next edit or stop records or
+//     releases it.
 
 import (
 	"crypto/sha256"
@@ -51,6 +55,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -78,8 +83,17 @@ type ReportOwnedError struct {
 
 func (e *ReportOwnedError) Error() string {
 	return e.Report + " is already the report of " + strconv.Quote(e.Owner.Words) + " (" + e.Owner.ID +
-		"), which has not been stopped — two orders cannot keep one file: edit that one, or stop it first"
+		"), which has not been stopped — two orders cannot keep one file: " + OwnedRemedy
 }
+
+// OwnedRemedy is what a refusal of a second owner asks for, at both doors and
+// in the chat's own refusal before a card.
+//
+// IT NEVER SENDS ANYBODY TO A STOP. "edit that one, or stop it first" was read
+// by the model as the thing to do: in the live one-path run it stopped the
+// person's order twice, and nothing kept the file after it (the second review
+// of cb53c18da). A stop is permanent and nobody asked for one.
+const OwnedRemedy = "edit that one to cover this, or ask the person — a stop is permanent"
 
 // Is makes every ReportOwnedError an [ErrReportOwned].
 func (e *ReportOwnedError) Is(target error) bool { return target == ErrReportOwned }
@@ -195,7 +209,10 @@ func (s *Store) liveOwner(path, except string, last *Receipt) (Item, bool) {
 			continue
 		case err != nil:
 			return Item{ID: id}, true
-		case item.Status != StatusRetired:
+		case item.Status != StatusRetired && ReportPath(item) == CanonicalPath(path):
+			// A record or receipt naming an item whose report is elsewhere
+			// now is a leftover — a crash between a revision and the release
+			// of the path it left, or a restore that failed — and frees it.
 			return item, true
 		}
 	}
@@ -260,6 +277,11 @@ func (s *Store) releaseReport(path, id string) {
 		if err != nil || owner == nil || owner.Item != id {
 			return nil
 		}
+		// READ AGAIN, UNDER THE LOCK: an edit that moved the report back here
+		// between the release being asked and its lock is keeping the path.
+		if item, err := s.Get(id); err == nil && item.Status != StatusRetired && ReportPath(item) == CanonicalPath(path) {
+			return nil
+		}
 		return s.keepOwner(path, "")
 	})
 }
@@ -267,10 +289,27 @@ func (s *Store) releaseReport(path, id string) {
 // ownersMarker says this store's owners were recorded once from its items.
 const ownersMarker = "owners.v1"
 
+// ownersRecorded is the marker's body: when the one-time record was made, and
+// what it could not record.
+type ownersRecorded struct {
+	Schema  int       `json:"schema"`
+	At      time.Time `json:"at"`
+	Skipped int       `json:"skipped"`
+	Items   []string  `json:"items,omitempty"`
+	Paths   []string  `json:"paths,omitempty"`
+}
+
 // ensureOwners records, once per store, the owners of the report paths items
 // already kept before owners were recorded, and moves a predecessor's
 // receipt to its path. It is called before any path's lock is taken, never
 // under one. Every call after the first is one stat.
+//
+// IT FINISHES WHATEVER IT SKIPS. An item whose document cannot be read, or a
+// path whose receipt or record cannot be, is skipped and named in the marker
+// — and in the item's own log — and the marker is written all the same: one
+// that was never written brought the whole read back on every guarded write.
+// A skipped item's path stays unguarded until its next edit or stop, which
+// record or release it as any other.
 func (s *Store) ensureOwners() {
 	marker := filepath.Join(s.root, receiptsDir, ownersMarker)
 	if _, err := os.Stat(marker); err == nil {
@@ -283,9 +322,13 @@ func (s *Store) ensureOwners() {
 		if _, err := os.Stat(marker); err == nil {
 			return nil
 		}
-		items, err := s.List()
+		items, unreadable, err := s.listReadable()
 		if err != nil {
 			return err
+		}
+		recorded := ownersRecorded{Schema: OwnerSchema, At: s.now(), Items: unreadable}
+		for _, id := range unreadable {
+			_ = s.Log(id, "not recorded as its report's owner: its document could not be read, so its report file is unguarded until it is edited or stopped")
 		}
 		keepers := map[string][]Item{}
 		for at := len(items) - 1; at >= 0; at-- { // oldest first
@@ -294,11 +337,17 @@ func (s *Store) ensureOwners() {
 			}
 		}
 		for path, holders := range keepers {
-			if err := s.recordOwner(path, holders); err != nil {
-				return err
+			if s.recordOwner(path, holders) != nil {
+				recorded.Paths = append(recorded.Paths, path)
 			}
 		}
-		return writeAtomic(marker, []byte("1\n"))
+		sort.Strings(recorded.Paths)
+		recorded.Skipped = len(recorded.Items) + len(recorded.Paths)
+		data, err := json.MarshalIndent(recorded, "", "  ")
+		if err != nil {
+			return err
+		}
+		return writeAtomic(marker, append(data, '\n'))
 	})
 }
 
