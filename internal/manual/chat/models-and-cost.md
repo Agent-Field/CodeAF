@@ -2830,7 +2830,7 @@ later does not wait on it, and a probe that fails teaches nothing and changes no
 you for it, and aforge's own figures do not include it. The next section says why, what
 it adds up to, and where to see it.
 
-## Spend that /cost does not show — why the typing measurement is missing from the figures
+## Spend that /cost does not show — why the typing measurement is missing from the figures, and how to stop aforge sending requests you did not ask for
 
 There is exactly one request aforge makes that its own money figures do not count: the
 **one-token measurement** it sends while you are typing, to warm the connection and time
