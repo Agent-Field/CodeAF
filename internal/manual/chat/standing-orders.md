@@ -113,6 +113,13 @@ that it shares the day's allowance — and, for work that runs, what one run doe
 report file and who writes it (or that it keeps none), the folder it goes in, and the rules that reach it. `esc` or `0` declines, and a card left unanswered
 when the turn ends sets nothing up: `the card was left unanswered — nothing was set up`.
 
+**What the yes agreed to is said back word for word.** After a yes the chat's answer
+carries the card's own `when ·`, `rule ·`, `costs ·`, `report ·` and `folder ·` lines,
+so what it tells you and what you answered cannot differ. Everything that wakes has a
+`when ·` line: when the model sent no words for it, the card says the timing the item
+holds — `every 30 minutes`, `when inbox/* changes`, `when this machine has been quiet
+for 2 hours`, `checks every 5 minutes: gh run list`, `at 18:00 on Fri 11 Sep`.
+
 Nothing is ever armed because a phrase looked like a rule. There is no matcher, no
 inference from your files, and no order aforge made up on your behalf.
 
@@ -748,7 +755,8 @@ Saying it in a conversation makes **the same order as far as a run can tell**
 (*Keep a report current from the chat*); its log opens `set up in the chat` and `show`
 says `through the chat`. Its record also keeps the conversation it came from, writes its
 reach `project` where the terminal leaves it empty (read as project), and may word when
-it wakes the chat's way. `aforge standing edit` edits either.
+it wakes the chat's way. `aforge standing edit` edits either, and so does the chat's
+edit, which is the same revision.
 
 ## Watch a folder and keep a report current — --watch, --report and what changed
 
@@ -816,6 +824,63 @@ after your yes and before the work exists — at the terminal too; if that fails
 is set up: `nothing was set up: could not be placed in …`. Afterwards `aforge standing
 show` says `set up by: person, through the chat`.
 
+## Change ongoing work from the chat — edit what stands, keep what it read and published
+
+Say what is different — "also list who owns each request", "make it every hour" — and
+the chat changes the work that stands instead of setting up another beside it: `stand`
+with `op: edit`, the item's id (or your words for it) and only what changes. It is the
+change `aforge standing edit` makes, through the same store: a new version of the SAME
+item, which keeps what it has read and the report it publishes. The card leads with
+what changes and writes each changed line old → new; every other line is drawn as it is:
+
+```
+changes · instructions — the same work; what it has read and published stays
+report · reports/inbox-report.md — aforge publishes this file; the run never writes it
+```
+
+It has no `just once`. Nothing changes until the yes; then the answer is `revised <id>
+to version 2: instructions`, the card's lines, and `the next run uses it; a run already
+under way keeps what it started with`. The item's log keeps `revised in the chat to
+version 2: instructions — "<your words>"`, and your first sentence stays its name.
+
+What it will not do, each naming the road that does:
+
+- `nothing to change: send only what is different`
+- `nothing was changed: it was changed elsewhere after the card was drawn — read it
+  again with op list and send the edit again` — a yes on a card someone else's edit
+  overtook.
+- `an edit does not move work — collections place and unplace do`. How far a rule
+  reaches, and whether it is a rule, a line to say or work that runs, are kept: stop it
+  and propose the other.
+- A stopped order is set up afresh; there is no edit of it.
+
+There is no op called `change`: `no op called "change" — propose, list, edit, pause,
+resume or stop`.
+
+## A file already at the report path — the card says so, and the chat never writes it
+
+If the report file you name is already there and aforge never published it, the card's
+report line says so, and so does the answer after the yes:
+
+```
+report · reports/inbox-report.md — this file already exists (11 bytes, written 3m ago); aforge will replace it
+```
+
+That yes is informed: aforge records the file as `adopted` (its sha256, in the path's
+receipt), and the first report replaces it. If the file changed after the card was
+drawn it is not adopted — `report · … was not adopted: it changed after the card was
+drawn — the first report will wait for them until the file is moved aside` — and the
+first run is held as for any file you edited (`report-changed`).
+
+**The run never writes the report file and neither do you** — that is the chat's own
+rule. Its `write` and `edit` refuse the report of active work: `<path> is the report of
+"<words>" (<id>): aforge publishes this file, and neither the run nor you writes it. To
+change what it says, change the work — stand op edit with that id.`
+
+Two active orders cannot keep one file: `… is already the report of "…" (<id>). To
+change that work, send op edit with its id; to replace it, stop it first.` An order set
+up after the old one stopped publishes where it did.
+
 ## Why wasn't my report published — the reason, and the withheld code in the record
 
 Only a run that came back clean publishes. Anything else fails the run, or waits on
@@ -853,8 +918,8 @@ The report is a file in your project, and you may open and annotate it. Just bef
 aforge replaces it, it compares the file with what aforge last put at that path (the
 sha256 of the path's own receipt, whichever of your orders put it there — so an order
 set up afresh at the same path carries on publishing where the stopped one did). It
-replaces the file only if it is still exactly that, or is gone. If you changed it — or it was there before aforge first published — nothing is
-written over it: the run waits on you, its new report is kept as `held-report.md` in
+replaces the file only if it is still exactly that, or is gone. If you changed it — or it
+appeared after the card that set the order up — nothing is written over it: the run waits on you, its new report is kept as `held-report.md` in
 the run's folder, and the line is `report held back, not published: … is not what
 aforge last published there … Move your copy aside to let the next run publish`, code
 `report-changed`. Move or delete your copy and the next run publishes. If the draft

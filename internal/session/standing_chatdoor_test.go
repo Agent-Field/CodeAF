@@ -260,7 +260,7 @@ func TestAChatCardForWorkThatRunsSaysWhatAYesAgreesTo(t *testing.T) {
 	if log := string(raw); !strings.Contains(log, "set up in the chat") || !strings.Contains(log, "placed in folder "+launch.ID) {
 		t.Fatalf("the item's log does not say which door or folder:\n%s", log)
 	}
-	if out := toolOutput(t, events, "stand"); !strings.Contains(out, "report: reports/inbox-report.md — "+standingReportWho) || !strings.Contains(out, "placed in: Launch") {
+	if out := toolOutput(t, events, "stand"); !strings.Contains(out, "\nreport · reports/inbox-report.md — "+standingReportWho+"\n") || !strings.Contains(out, "\nfolder · Launch, where this conversation is placed") {
 		t.Fatalf("the model was not told where the report goes or where the work is placed: %q", out)
 	}
 }
@@ -579,7 +579,7 @@ func TestLimitsThePersonDidNotNameAreDroppedAndTheCardSaysWhatBinds(t *testing.T
 		t.Fatalf("the card's costs line = %q, want %q", card.CostWords, defaults)
 	}
 	out := toolOutput(t, events, "stand")
-	if !strings.Contains(out, "\ncosts: "+defaults+"\n") || !strings.Contains(out, "\nlimits not kept, because cost_words quoted no limit the person named: rails.per_run_usd 0.5, rails.max_per_day 24 — say only what costs: says\n") {
+	if !strings.Contains(out, "\ncosts · "+defaults+"\n") || !strings.Contains(out, "\nlimits not kept, because cost_words quoted no limit the person named: rails.per_run_usd 0.5, rails.max_per_day 24 — say only what costs · says\n") {
 		t.Fatalf("the model was not told what binds and what was dropped: %q", out)
 	}
 
@@ -711,15 +711,21 @@ func toolOutputs(events []Event, tool string) []string {
 	return out
 }
 
-// A NAMED COUNT OF RUNS STANDS ON ITS OWN WORDS, AND A DROPPED LIMIT IS NAMED.
-// The review of round 2 found "no more than 3 runs a day" silently becoming the
-// default 10: cost_words spoke only of money, so a model that followed the
-// schema sent max_per_day with no cost_words, the count was dropped as
-// unnamed, and neither the card nor the model heard about it. cost_words now
-// covers a count of runs as well as money; a count quoted there stands and
-// leads the costs line; and a count sent with nothing quoting the person is
-// dropped with the card saying the default that stands and the tool's answer
-// naming exactly what was not kept.
+// A NAMED COUNT OF RUNS STANDS ON ITS OWN WORDS, AND ONE SENT WITHOUT THEM IS
+// REFUSED. The review of round 2 found "no more than 3 runs a day" silently
+// becoming the default 10: cost_words spoke only of money, so a model that
+// followed the schema sent max_per_day with no cost_words, the count was
+// dropped as unnamed, and neither the card nor the model heard about it.
+// cost_words now covers a count of runs as well as money, and a count quoted
+// there stands and leads the costs line.
+//
+// ROUND 3 DROPPED THE COUNT SENT WITHOUT ITS WORDS AND NAMED THE DROP; RULING R5
+// REFUSES IT WHEN THEIR SENTENCE NAMES ONE. This test pinned the drop for the
+// count the person named, and the live rails case showed what that costs: the
+// person said yes to `at most 10 runs a day (the default)` over their own "more
+// than once a day", because a card was drawn before the call was right. A wrong
+// card is worse than a second call, so a count their sentence names is refused
+// with cost_words named, and the drop-and-name stays for a limit nobody named.
 func TestANamedCountOfRunsStandsOnItsOwnWordsAndADroppedOneIsNamed(t *testing.T) {
 	var schema struct {
 		Properties map[string]struct {
@@ -745,18 +751,31 @@ func TestANamedCountOfRunsStandsOnItsOwnWordsAndADroppedOneIsNamed(t *testing.T)
 		t.Fatalf("a named count's costs line = %q", card.CostWords)
 	}
 
+	// The count their sentence names, sent without its words: refused, and no
+	// card is drawn.
+	counted := "keep an eye on my inbox folder and keep reports/inbox-report.md current, no more than 3 runs a day"
+	refused := newChatDoor(t, &scriptedCompleter{steps: []step{
+		standCall("s1", inboxWork(map[string]any{"words": counted, "rails": map[string]any{"max_per_day": 3}})),
+		finalText("no"),
+	}}, nil)
+	events := refused.submitAnswering(t, counted, func(Event) { t.Fatal("a card was drawn for a named count sent without its words") })
+	if out := toolOutput(t, events, "stand"); !strings.Contains(out, "rails.max_per_day 3") || !strings.Contains(out, "cost_words") || !strings.Contains(out, "3 runs a day") {
+		t.Fatalf("the named count was not refused by name: %q", out)
+	}
+
+	// A count nobody named: dropped, and the drop is named.
 	unquoted := newChatDoor(t, &scriptedCompleter{steps: []step{
 		standCall("s1", inboxWork(map[string]any{"rails": map[string]any{"max_per_day": 3}})),
 		finalText("set up"),
 	}}, nil)
-	card, events := unquoted.proposeInbox(t, unquoted.yes)
+	card, events = unquoted.proposeInbox(t, unquoted.yes)
 	if n := unquoted.only(t).Rails.MaxPerDay; n != standDefaultMaxPerDay {
 		t.Fatalf("an unquoted count stood at %d a day", n)
 	}
 	if want := fmt.Sprintf("at most %d runs a day (the default) · shares the day's allowance", standDefaultMaxPerDay); card.CostWords != want {
 		t.Fatalf("the card hides the default that replaced the count: %q, want %q", card.CostWords, want)
 	}
-	if out := toolOutput(t, events, "stand"); !strings.Contains(out, "\nlimits not kept, because cost_words quoted no limit the person named: rails.max_per_day 3 — say only what costs: says\n") {
+	if out := toolOutput(t, events, "stand"); !strings.Contains(out, "\nlimits not kept, because cost_words quoted no limit the person named: rails.max_per_day 3 — say only what costs · says\n") {
 		t.Fatalf("the model was not told the count was dropped: %q", out)
 	}
 }

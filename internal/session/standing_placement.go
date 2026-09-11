@@ -43,6 +43,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/Agent-Field/aforge-v2/internal/standing"
@@ -52,6 +53,8 @@ import (
 // The words the card's terms and the tool's answer are spelled with, each
 // ONCE. The manual quotes them exactly (internal/manual/chat/standing-orders.md).
 const (
+	standingWhenTag   = "when · "
+	standingCostsTag  = "costs · "
 	standingDoesTag   = "does · "
 	standingReportTag = "report · "
 	standingFolderTag = "folder · "
@@ -211,16 +214,13 @@ const standingPlacementLaw = "placing work in a folder needs the person's answer
 // standingTerms is the card's lines about work that runs: what one run does,
 // the report and who writes it, the folder, and the rules that reach it now.
 // A line to say and a rule carry none (the card's own bands say all of them).
-func (a *Agent) standingTerms(ctx context.Context, item standing.Item, place standingPlacement) []string {
+// found is what the report path holds that aforge did not put there.
+func (a *Agent) standingTerms(ctx context.Context, item standing.Item, place standingPlacement, found standingReportFile) []string {
 	if item.Does.Kind != standing.ActionTask {
 		return nil
 	}
 	terms := []string{standingDoesTag + clip(oneLine(item.Does.Brief), standingCardClip)}
-	report := standingReportNone
-	if item.Does.Report != "" {
-		report = item.Does.Report + " — " + standingReportWho
-	}
-	terms = append(terms, standingReportTag+report)
+	terms = append(terms, standingReportTag+found.said(item.Does.Report))
 	folder := standingFolderNone
 	if len(place.folders) > 0 {
 		folder = place.names()
@@ -379,6 +379,197 @@ func (a *Agent) placeInFolders(ctx context.Context, id string, place standingPla
 		}
 	}
 	return nil
+}
+
+// ── what the card says about the report path, and what the yes does with it ──
+
+// standingCardLines is the card the person answered, said back to the model
+// line for line: `when ·`, every term but what one run does (which the model
+// wrote itself), and `costs ·` (ruling R7).
+//
+// THE MODEL QUOTES WHAT IT IS HANDED. move replied "Work folder has no
+// conditions of its own on record" right after a card that named the Work rule,
+// and nested quoted $0.75 a run over a card that said $5.00 (the chat protocol,
+// 2026-09-11): told only "set up", a model writes its one line from what it
+// remembers sending. The card is already bounded ([standingCardRules],
+// [standingCardClip]), so saying it back is too.
+func standingCardLines(notice StandingNotice) string {
+	var lines []string
+	if when := strings.TrimSpace(notice.WhenWords); when != "" {
+		// A rule over folders says where it applies in that band, which is not
+		// a moment; its words stand alone as they always have.
+		if notice.Item.Scope == nil {
+			when = standingWhenTag + when
+		}
+		lines = append(lines, when)
+	}
+	for _, term := range notice.Terms {
+		if !strings.HasPrefix(term, standingDoesTag) {
+			lines = append(lines, term)
+		}
+	}
+	if costs := strings.TrimSpace(notice.CostWords); costs != "" {
+		lines = append(lines, standingCostsTag+costs)
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return "\n" + strings.Join(lines, "\n")
+}
+
+// standingReportFile is a file at a report path that aforge did not put there,
+// as a card describes it and the yes adopts it. The zero value is a path that
+// holds nothing, or holds exactly what aforge last put there.
+type standingReportFile struct {
+	target  string
+	sum     string
+	bytes   int
+	written time.Time
+}
+
+// said is the card's report line for report, by what the path holds.
+//
+// A FILE aforge NEVER WROTE IS SAID BEFORE THE YES (ruling R3). h2-spec and
+// permission both drew `aforge publishes this file` over a file that was already
+// there — one the chat had seeded, one the person's own — and every run was
+// then held `report-changed`, a question nobody had been warned of.
+func (f standingReportFile) said(report string) string {
+	switch {
+	case report == "":
+		return standingReportNone
+	case f.sum != "":
+		return fmt.Sprintf("%s — this file already exists (%d bytes, written %s ago); aforge will replace it",
+			report, f.bytes, TaskAgeWord(time.Since(f.written)))
+	}
+	return report + " — " + standingReportWho
+}
+
+// standingReceipts opens the store report paths' receipts are kept in: the
+// conversation's own standing root, opened as the runner opens it
+// ([standingRunner.fenceFor]), so the card, the yes and the run read one
+// receipt.
+func (a *Agent) standingReceipts() (*standing.Store, error) {
+	store := a.standingItems()
+	if store == nil || strings.TrimSpace(store.Root()) == "" {
+		return nil, errors.New("there is no standing store here")
+	}
+	return standing.Open(store.Root())
+}
+
+// standingForeignReport answers what item's report path holds that aforge did
+// not put there: a regular file whose bytes are not the path's receipt. A path
+// that holds nothing, or what aforge last put there, answers the zero value.
+func (a *Agent) standingForeignReport(item standing.Item) standingReportFile {
+	if item.Does.Report == "" {
+		return standingReportFile{}
+	}
+	_, target, err := reportTarget(item.Workspace, item.Does.Report)
+	if err != nil {
+		return standingReportFile{}
+	}
+	info, err := os.Lstat(target)
+	if err != nil || !info.Mode().IsRegular() {
+		return standingReportFile{}
+	}
+	raw, err := os.ReadFile(target)
+	if err != nil {
+		return standingReportFile{}
+	}
+	sum := sha256Hex(string(raw))
+	if receipts, err := a.standingReceipts(); err == nil {
+		if last, err := receipts.Receipt(target); err == nil && last != nil && last.SHA256 == sum {
+			return standingReportFile{}
+		}
+	}
+	return standingReportFile{target: target, sum: sum, bytes: len(raw), written: info.ModTime()}
+}
+
+// standingAdopt records, after the yes, that the file the card described is
+// aforge's to replace — a receipt of class adopted with its bytes' sha256 — so
+// the first report publishes over it rather than waiting on the person. It
+// answers the line the tool's result carries when the file could not be
+// adopted, and "" otherwise.
+//
+// THE FILE IS LOOKED AT AGAIN AT THE YES (the scale audit's L2). The person
+// agreed to replace the bytes the card described; a file saved again between
+// the card and the yes is not what they agreed to, so it is not adopted and the
+// first report waits for them. A file gone by then needs no adopting: the first
+// report creates it.
+func (a *Agent) standingAdopt(store standingStore, item standing.Item, found standingReportFile) string {
+	if found.sum == "" {
+		return ""
+	}
+	receipts, err := a.standingReceipts()
+	if err == nil {
+		err = receipts.AtReport(found.target, "", "", func(*standing.Receipt) (*standing.Receipt, error) {
+			raw, err := os.ReadFile(found.target)
+			switch {
+			case errors.Is(err, os.ErrNotExist):
+				return nil, nil
+			case err != nil:
+				return nil, err
+			case sha256Hex(string(raw)) != found.sum:
+				return nil, errors.New("it changed after the card was drawn")
+			}
+			return &standing.Receipt{Class: standing.ReceiptAdopted, Item: item.ID, SHA256: found.sum, Bytes: found.bytes, At: time.Now().UTC()}, nil
+		})
+	}
+	if err != nil {
+		return "\n" + standingReportTag + item.Does.Report + " was not adopted: " + oneLine(err.Error()) +
+			" — the first report will wait for them until the file is moved aside"
+	}
+	_ = store.Log(item.ID, fmt.Sprintf("report %s was already there (%d bytes); adopted at the yes, so the first report replaces it", item.Does.Report, found.bytes))
+	return ""
+}
+
+// standingReportAt answers the standing work whose report is the file at path,
+// among what stands here and has not been stopped: the one owner a report path
+// has. Paths are compared as the filesystem resolves them now.
+func (a *Agent) standingReportAt(path string) (standing.Item, bool) {
+	items, err := a.standingHere()
+	if err != nil {
+		return standing.Item{}, false
+	}
+	want := resolvedFile(path)
+	for _, item := range items {
+		if item.Status != standing.StatusRetired && item.Does.Report != "" &&
+			resolvedFile(filepath.Join(item.Workspace, item.Does.Report)) == want {
+			return item, true
+		}
+	}
+	return standing.Item{}, false
+}
+
+// standingReportTaken refuses work whose report is already another standing
+// item's. Two items publishing one file would each replace the other's report
+// on every run, and a person who wanted the first one different wants it edited.
+func (a *Agent) standingReportTaken(item standing.Item) string {
+	if item.Does.Report == "" {
+		return ""
+	}
+	owner, taken := a.standingReportAt(filepath.Join(item.Workspace, item.Does.Report))
+	if !taken || owner.ID == item.ID {
+		return ""
+	}
+	return "Invalid arguments: " + item.Does.Report + " is already the report of " + strconv.Quote(owner.Words) + " (" + owner.ID +
+		"). To change that work, send op edit with its id; to replace it, stop it first."
+}
+
+// resolvedFile is path with its folder resolved through the filesystem as it is
+// now — the deepest part of it that exists — so one file reached two ways
+// compares equal.
+func resolvedFile(path string) string {
+	dir := filepath.Dir(filepath.Clean(path))
+	existing := deepestExisting(dir)
+	real, err := filepath.EvalSymlinks(existing)
+	if err != nil {
+		return filepath.Clean(path)
+	}
+	rest, err := filepath.Rel(existing, dir)
+	if err != nil {
+		return filepath.Clean(path)
+	}
+	return filepath.Join(real, rest, filepath.Base(path))
 }
 
 // standingNamedReport refuses work that runs whose call left does.report out
