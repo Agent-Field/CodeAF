@@ -114,10 +114,14 @@ func (a *app) taskSheetListWidth() int {
 // ── one row of the split ────────────────────────────────────────────────────
 
 // taskPaneVerb is one clause of the pane's verb line as it was DRAWN: the key it
-// presses, the word it spells, and the cells it occupies.
+// presses, the whole clause it spells, and the cells it occupies.
+//
+// THE CLAUSE OPENS WITH THE KEY, by construction at the one place these are made
+// ([app.taskPaneVerbs]), which is what lets the paint find the key inside it
+// without a second copy of the string to keep in step.
 type taskPaneVerb struct {
 	key      string
-	word     string
+	text     string
 	from, to int
 }
 
@@ -247,6 +251,13 @@ func (a *app) taskPaneRows(width, room int) []taskPaneRow {
 		} else if item, ok := a.taskSheetCurrent(); ok {
 			rows = a.taskPaneRecord(item, width)
 		}
+	}
+	// A FRAME TOO SHORT FOR THE WHOLE PREVIEW KEEPS ITS HEAD AND ITS VERBS: what
+	// this row is, and what can be done about it. It is [app.taskCardFrame]'s own
+	// trim, and it matters more here — the verb line is the LAST band, so a pane
+	// cut from the bottom would drop the two answers and keep the file paths.
+	if len(rows) > room && room > 1 {
+		rows = append(rows[:1], rows[len(rows)-(room-1):]...)
 	}
 	for len(rows) < room {
 		rows = append(rows, taskPaneRow{})
@@ -423,13 +434,11 @@ const (
 	// already said what is being counted.
 	taskPaneMoreWord = " more"
 	// taskPaneOpenWord is what `enter` does from the list: the whole record card,
-	// with this row's report scrollable under it. It is the WORD alone, because
-	// the key in front of it is drawn from [taskPaneVerb.key] like every other
-	// clause on the line.
-	taskPaneOpenWord = "open"
+	// with this row's report scrollable under it.
+	taskPaneOpenWord = "enter open"
 	// taskPaneChatWord is that same key over a CONVERSATION's row, where it opens
 	// the conversation rather than a record.
-	taskPaneChatWord = "open the chat"
+	taskPaneChatWord = "enter open the chat"
 	// taskPaneWorkWord counts what one conversation asked for, and the money
 	// beside it is what the whole of that came to. It is the head line's own
 	// count of the same thing, spelled the one way ([tasksReading.head]).
@@ -481,7 +490,7 @@ func (a *app) taskPaneChat(chat tasksChat, width int) []taskPaneRow {
 	}
 	bands = append(bands, rows)
 
-	verbs := []taskPaneVerb{{key: questionEnterKey, word: taskPaneChatWord}}
+	verbs := []taskPaneVerb{{key: questionEnterKey, text: taskPaneChatWord}}
 	return taskPaneDraw(taskRecordBands(bands), a.taskPaneVerbLine(verbs, width))
 }
 
@@ -506,10 +515,10 @@ func (a *app) taskPaneVerbs(item tasksItem) []taskPaneVerb {
 	var verbs []taskPaneVerb
 	if q, ok := a.taskRecordLanding(item.entry); ok {
 		for _, verb := range taskRecordVerbs(q, a.taskRecordAsk(item.entry)) {
-			verbs = append(verbs, taskPaneVerb{key: verb.digit, word: verb.word})
+			verbs = append(verbs, taskPaneVerb{key: verb.digit, text: verb.digit + " " + verb.word})
 		}
 	}
-	return append(verbs, taskPaneVerb{key: questionEnterKey, word: taskPaneOpenWord})
+	return append(verbs, taskPaneVerb{key: questionEnterKey, text: taskPaneOpenWord})
 }
 
 // taskPaneVerbGap is what separates two clauses of the verb line. It is wider
@@ -534,7 +543,7 @@ func (a *app) taskPaneVerbLine(verbs []taskPaneVerb, width int) *taskPaneRow {
 			line += taskPaneVerbGap
 			at += len(taskPaneVerbGap)
 		}
-		text := verb.key + " " + verb.word
+		text := verb.text
 		if at+ansi.StringWidth(text) > width {
 			// A CLAUSE THAT WOULD NOT FIT IS NOT DRAWN AND IS NOT PRESSABLE. The
 			// spans are what the pointer resolves against, so a clause cut by [fit]
@@ -544,7 +553,7 @@ func (a *app) taskPaneVerbLine(verbs []taskPaneVerb, width int) *taskPaneRow {
 		}
 		verb.from, verb.to = at, at+ansi.StringWidth(text)
 		spans = append(spans, verb)
-		line += pal.warnBold(verb.key) + pal.warn(" "+verb.word)
+		line += pal.warnBold(verb.key) + pal.warn(strings.TrimPrefix(text, verb.key))
 		at = verb.to
 	}
 	if len(spans) == 0 {

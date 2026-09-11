@@ -504,6 +504,14 @@ var tuiWords = map[string]tuiWord{
 		why: "the roster's other door, over work no window is holding any more — it is the one that opens the " +
 			"record card, which is the mode `space` pages and the door home had to give the key back to",
 	},
+	"tasksPaneOpenWord": {
+		screen: "enter open",
+		why: "the verb line of the RECORD PANE beside the tasks list (taskpane.go), which is drawn on " +
+			"every frame 110 columns or wider — the suite runs at 120. It is the one clause of that line " +
+			"every row has, whatever state it landed in, so waiting for it proves the body actually split " +
+			"and the pane found the cursor's row. The two answers beside it belong to a row that is the " +
+			"person's call and are not waited for here",
+	},
 	"taskRoomFootWord": {
 		screen: "m puts it in your message · ↑↓ scroll",
 		why: "the record's own foot, and the one sentence that says a person is still standing in the room — " +

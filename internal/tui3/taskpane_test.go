@@ -477,3 +477,30 @@ func TestThePaneNamesFiveFilesAndCountsTheRest(t *testing.T) {
 		t.Fatalf("the band counted the rest as %q", last)
 	}
 }
+
+// A SHORT FRAME KEEPS THE HEAD AND THE VERBS. The verb line is the last band, so
+// a pane cut from the bottom would drop the two answers and keep the file paths —
+// which is the one part of a preview nobody can act on.
+func TestAShortFrameKeepsThePanesTitleAndItsVerbs(t *testing.T) {
+	a, _ := paneLandingLab(t, taskPaneFloor+12)
+	item, ok := a.taskSheetCurrent()
+	if !ok {
+		t.Fatal("no row under the cursor")
+	}
+	cols := taskPaneCols(a.width)
+	short := a.taskPaneRows(cols, 4)
+	if len(short) != 4 {
+		t.Fatalf("a four-row pane drew %d rows", len(short))
+	}
+	head := strings.TrimSpace(plain(short[0].text))
+	if want := strings.TrimSpace(plain(fit(taskRecordWords(item.entry), cols))); head != want {
+		t.Fatalf("the short pane's first row is %q, want the title %q", head, want)
+	}
+	last := plain(short[len(short)-1].text)
+	if !strings.Contains(last, "1 accept") {
+		t.Fatalf("the short pane's last row is %q, want the verbs", last)
+	}
+	if len(short[len(short)-1].hit.verbs) == 0 {
+		t.Fatal("the short pane's verb line answers nothing to a press")
+	}
+}

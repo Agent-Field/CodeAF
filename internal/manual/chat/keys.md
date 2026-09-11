@@ -1569,7 +1569,10 @@ family away): `esc` closes it — or clears the filter first, if one is being ty
 and `ctrl+.` closes it either way · `up`/`ctrl+p`, `down`/`ctrl+n` move, stepping
 over the `running` and `earlier` section words · `pgup`/`pgdown` move twelve · `home`/`end`
 first and last · `enter` opens the row · `backspace`, `ctrl+w` and `ctrl+u` edit the filter
-· **every other printable key, the space included, types into the filter**, which narrows
+· **`1` and `2` answer the row under the cursor, but only while the pane beside the list is
+drawing those two answers for it** — a frame at least 110 columns wide, over a task of this
+conversation's that is waiting on you; everywhere else a digit is typed · **every other
+printable key, the space included, types into the filter**, which narrows
 every section at once and is shown at the foot as `filter · port`. `→` opens the row's
 verbs, and this place has one: `s stop it`, over a task this conversation is holding that is
 still queued or running. Its foot is assembled from what is true of the row under the
@@ -1585,7 +1588,10 @@ says which window has it — and
 clause names the list because the message box is on the same frame two rows above, and while
 this page is up your keystrokes go to the filter and not to that box. On a machine that has run **nothing at all**,
 where the body is teaching what tasks are, the foot drops to `tab next place · esc` alone:
-there is no row to filter, none to open and no verb to press. Clicking a row acts on the first press; the wheel
+there is no row to filter, none to open and no verb to press. **Clicking a row moves the cursor
+to it and the pane follows; clicking the same row again opens it.** On a frame too narrow for
+the pane there is nothing for a first click to show, so one click opens as it always did. A
+click on one of the pane's own answers presses that answer and opens nothing. The wheel
 walks the cursor. The tasks pages describe what is on it.
 
 **Inside an old task's card** (`enter` on an `earlier` row): `esc` or `←` backs out to the

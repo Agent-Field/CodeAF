@@ -1898,6 +1898,14 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	roster := r.waitFor(30*time.Second, say(t, "tasksEnterInsideWord"))
 	t.Logf("the roster is offering the record of work nothing is holding:\n%s", roster)
 
+	// AND THE RECORD IS ALREADY BESIDE THE LIST. This terminal is [tuiPlain] wide,
+	// which is over the pane's floor, so the row under the cursor has its record
+	// drawn to the right of the seam without anything being opened (taskpane.go).
+	// Its verb line is the assertion: it is the one clause every row carries,
+	// whatever state the model's work landed in.
+	pane := r.waitFor(30*time.Second, say(t, "tasksPaneOpenWord"))
+	t.Logf("the pane is previewing the row under the cursor:\n%s", pane)
+
 	// THE ARMING PRESS, AND IT IS THE ORDINARY ONE. A single space on a place
 	// types itself into that place's filter and opens nothing — this is the first
 	// half of the gesture, done by hand, and it is what leaves the door loaded.
