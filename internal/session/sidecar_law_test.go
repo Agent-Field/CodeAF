@@ -468,6 +468,253 @@ func insideSpan(spans [][2]token.Pos, at token.Pos) bool {
 	return false
 }
 
+// ── THE SAME LAW READ FROM THE OTHER END ────────────────────────────────────
+//
+// A reading may not stand in front of the work; neither may a LISTENER. The
+// news doors of this package are told by the engine's own goroutine at the exit
+// of every model call, and the surface's reader asks Bubble Tea for a frame
+// down an unbuffered channel — so a straight call there put a whole draw on the
+// critical path of every call, which is loop.go's law broken from the far side
+// (the measured seam: `defer phase.done()` → postPhase → forwardPhase →
+// postPhaseNews → the surface's reader → `p.Send`).
+//
+// THE PROPERTY: A REGISTERED LISTENER IS ONLY EVER CALLED FROM A DESK. Not
+// "postPhaseNews uses a desk" — that is a fact about one function and it was
+// true of the doc comment while the code did the opposite. Whatever this
+// package hands a person's reader, it hands it through [desk.tell].
+//
+// AND THE WATCHED SET IS READ OFF THE TREE. Every package-level `…Reader` of
+// function type IS a listener, so a third news channel added tomorrow is on this
+// law the day it lands, with no edit here.
+func TestAListenerIsAlwaysToldFromADesk(t *testing.T) {
+	set := token.NewFileSet()
+	files := parsePackage(t, set)
+	listeners := listenersFrom(files)
+	if len(listeners) < 2 {
+		t.Fatalf("only %d registered listeners found (%v); the law is reading the wrong tree",
+			len(listeners), namesOf(listeners))
+	}
+	for _, name := range []string{"phaseReader", "laneNewsReader"} {
+		if !listeners[name] {
+			t.Errorf("%s is not among the listeners this law watches (%v) — it is supposed to be "+
+				"derived from the package's own reader variables", name, namesOf(listeners))
+		}
+	}
+	for _, file := range files {
+		for _, complaint := range deskLaw(set, file, listeners) {
+			t.Error(complaint)
+		}
+	}
+}
+
+// AND IT BITES. The shape below is what the code did before the desk, and it is
+// what a well-meaning edit puts back — the reader is resolved under the lock and
+// then simply called, which reads like nothing at all.
+func TestTheLawNamesAListenerCalledOnTheTurnsOwnGoroutine(t *testing.T) {
+	listeners := map[string]bool{"phaseReader": true}
+	for _, plant := range []struct {
+		what   string
+		source string
+		want   string
+	}{{
+		what: "the reader called straight down the caller's stack",
+		source: `package session
+func postPhaseNews(news PhaseNews) {
+	phaseMu.RLock()
+	reader := phaseReader
+	phaseMu.RUnlock()
+	if reader == nil {
+		return
+	}
+	reader(news)
+}`,
+		want: "postPhaseNews",
+	}, {
+		what: "the reader called by name, with no local to hide behind",
+		source: `package session
+func postPhaseNews(news PhaseNews) {
+	phaseMu.RLock()
+	defer phaseMu.RUnlock()
+	phaseReader(news)
+}`,
+		want: "postPhaseNews",
+	}, {
+		what: "a desk told to call it, and then it called anyway",
+		source: `package session
+func postPhaseNews(news PhaseNews) {
+	reader := phaseReader
+	phaseDesk.tell(func() { reader(news) })
+	reader(news)
+}`,
+		want: "postPhaseNews",
+	}} {
+		set := token.NewFileSet()
+		file, err := parser.ParseFile(set, "planted.go", plant.source, parser.SkipObjectResolution)
+		if err != nil {
+			t.Fatalf("%s: parsing the plant: %v", plant.what, err)
+		}
+		complaints := deskLaw(set, file, listeners)
+		if len(complaints) == 0 {
+			t.Errorf("%s: the law let it through — a listener called on the turn's own goroutine "+
+				"is the seam this desk exists for", plant.what)
+			continue
+		}
+		if !strings.Contains(strings.Join(complaints, "\n"), plant.want) {
+			t.Errorf("%s: the law complained but never named %s: %v", plant.what, plant.want, complaints)
+		}
+	}
+}
+
+// AND IT LETS THE HONEST SHAPE THROUGH, because a law nobody can satisfy is a
+// law somebody deletes.
+func TestTheLawLetsADeskCarryTheNews(t *testing.T) {
+	listeners := map[string]bool{"phaseReader": true, "laneNewsReader": true}
+	source := `package session
+func postPhaseNews(news PhaseNews) {
+	phaseMu.RLock()
+	reader := phaseReader
+	phaseMu.RUnlock()
+	if reader == nil {
+		return
+	}
+	phaseDesk.tell(func() { reader(news) })
+}
+
+func postLaneNews(news LaneNews) {
+	reader := laneNewsReader
+	laneNewsDesk.tell(func() { reader(news) })
+}`
+	set := token.NewFileSet()
+	file, err := parser.ParseFile(set, "honest.go", source, parser.SkipObjectResolution)
+	if err != nil {
+		t.Fatalf("parsing: %v", err)
+	}
+	if complaints := deskLaw(set, file, listeners); len(complaints) != 0 {
+		t.Errorf("the law refused the shape the package is written in: %v", complaints)
+	}
+}
+
+// listenersFrom is the watched set, derived: every package-level variable of
+// function type whose name says it is somebody's reader.
+func listenersFrom(files []*ast.File) map[string]bool {
+	listeners := map[string]bool{}
+	for _, file := range files {
+		for _, decl := range file.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || gen.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				value, ok := spec.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
+				if _, isFunc := value.Type.(*ast.FuncType); !isFunc {
+					continue
+				}
+				for _, name := range value.Names {
+					if strings.HasSuffix(name.Name, "Reader") {
+						listeners[name.Name] = true
+					}
+				}
+			}
+		}
+	}
+	return listeners
+}
+
+// deskLaw is the property itself, extracted so the plants above are judged by
+// the same code the package is.
+func deskLaw(set *token.FileSet, file *ast.File, listeners map[string]bool) []string {
+	var complaints []string
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Body == nil {
+			continue
+		}
+		// A LOCAL IS THE LISTENER UNDER ANOTHER NAME. Resolving the reader under
+		// the lock and calling the local is the shape the code actually had, so a
+		// law that only watched the package name would have watched nothing.
+		held := map[string]bool{}
+		ast.Inspect(fn.Body, func(node ast.Node) bool {
+			switch stmt := node.(type) {
+			case *ast.AssignStmt:
+				for at, rhs := range stmt.Rhs {
+					ident, ok := rhs.(*ast.Ident)
+					if !ok || !listeners[ident.Name] || at >= len(stmt.Lhs) {
+						continue
+					}
+					if to, ok := stmt.Lhs[at].(*ast.Ident); ok {
+						held[to.Name] = true
+					}
+				}
+			}
+			return true
+		})
+		for _, at := range calledOutsideADesk(fn.Body, listeners, held) {
+			complaints = append(complaints, fmt.Sprintf(
+				"%s: %s calls a registered listener on the turn's own goroutine. Every reader this "+
+					"package installs is told from a desk (sidecar.go's desk, loop.go's law read from "+
+					"the other end) — a surface's reader asks for a frame down an unbuffered channel, "+
+					"so a straight call here is a whole draw on the critical path of every model call",
+				set.Position(at).String(), fn.Name.Name))
+		}
+	}
+	return complaints
+}
+
+// calledOutsideADesk is every call of a listener that is not lexically inside
+// the closure handed to a [desk.tell].
+func calledOutsideADesk(body *ast.BlockStmt, listeners, held map[string]bool) []token.Pos {
+	var loose []token.Pos
+	var walk func(node ast.Node, onADesk bool)
+	walk = func(node ast.Node, onADesk bool) {
+		if node == nil {
+			return
+		}
+		if call, ok := node.(*ast.CallExpr); ok {
+			if isDeskTell(call) {
+				for _, arg := range call.Args {
+					walk(arg, true)
+				}
+				walk(call.Fun, onADesk)
+				return
+			}
+			if fun, ok := call.Fun.(*ast.Ident); ok && (listeners[fun.Name] || held[fun.Name]) && !onADesk {
+				loose = append(loose, call.Pos())
+			}
+		}
+		for _, child := range children(node) {
+			walk(child, onADesk)
+		}
+	}
+	walk(body, false)
+	return loose
+}
+
+func isDeskTell(call *ast.CallExpr) bool {
+	fun, ok := call.Fun.(*ast.SelectorExpr)
+	return ok && fun.Sel.Name == "tell"
+}
+
+// children is one level of the tree, which [ast.Inspect] will not give while a
+// walk is carrying state of its own.
+func children(node ast.Node) []ast.Node {
+	var kids []ast.Node
+	first := true
+	ast.Inspect(node, func(inner ast.Node) bool {
+		if first {
+			first = false
+			return true
+		}
+		if inner != nil {
+			kids = append(kids, inner)
+		}
+		return false
+	})
+	return kids
+}
+
 func parsePackage(t *testing.T, set *token.FileSet) []*ast.File {
 	t.Helper()
 	entries, err := os.ReadDir(".")
