@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: An answer's evidence stands beside the answers, and the page a question opens is two panes
-pr: 955
+pr: 972
 surface: [chat]
 invalidates:
   - "A question's panel drew no evidence at all — the diagram, the diff or the table an answer brought was reachable only through `o open full`. No longer true: where the answers carry blocks and the frame is a hundred columns or wider, the panel splits and the evidence of the answer the pointer is on stands beside the list; narrower, it unfolds under that answer's own row. `railSlimFloor` (100) is the one reading of `two columns fit`, for the task column and for a question alike."
