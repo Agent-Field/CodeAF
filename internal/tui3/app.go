@@ -4495,8 +4495,11 @@ func (a *app) paint() tea.Cmd {
 	}
 	// A TOOL THAT HAS JUST ENDED IS ASKED ABOUT ON THIS FRAME, not at the next
 	// tenth ([app.usageOwed]) — the ask alone, because nothing else on this
-	// beat has moved with it.
-	if a.usageOwed && !a.dueEvery(usageEvery) {
+	// beat has moved with it. ONLY WHILE THE WORK IS STILL RUNNING: the ask is
+	// for a column that is drawn only then, and a frame after the settle that
+	// asked anyway would be a wakeup spent on a figure nobody will see.
+	if a.usageOwed && !a.dueEvery(usageEvery) &&
+		(a.state == stateWorking || (a.room != nil && a.room.running())) {
 		kick = tea.Batch(kick, a.usageKick())
 	}
 	a.usageOwed = false
