@@ -1772,21 +1772,12 @@ type Config struct {
 	// (task_run.go's newTaskAgentOn).
 	quickItems func(done int, add []string) string
 
-	// memoryBrief is the <memory> block a task node OPENS WITH: the parent
-	// routed it against this node's brief at the spawn seam, because a node has
-	// no turn of its own to route against and no store of its own to route into
-	// (memory.go, task_run.go's newTaskAgent).
-	//
-	// It is private for roomThread's reason: no surface sets it, the executor
-	// does — and a node is handed the WORDS rather than the store, so a family
-	// of eight nodes cannot become eight writers on one brain.
-	memoryBrief string
 	// fixesDir is the project bucket the error→fix sidecar keeps its file in
 	// (fixstore.go), and it is set only when this agent is a NODE. A node's
 	// session file is a journal inside its parent's place rather than a place of
 	// its own, so it cannot derive the bucket for itself; handed one, a family of
 	// eight workers and the conversation that spawned them all learn from the
-	// same file. It is private for memoryBrief's reason: no surface sets it, the
+	// same file. It is private for roomThread's reason: no surface sets it, the
 	// executor does (task_run.go, orchestrate.go).
 	fixesDir string
 	// droppings is THE FAMILY'S SESSION FOLDER, carried by an agent that has no
@@ -1805,7 +1796,7 @@ type Config struct {
 	// deliverablesDir). This row carries the ONE fact a worker needs — where the
 	// harness keeps its own litter — and nothing else.
 	//
-	// It is private for memoryBrief's reason: no surface sets it, the constructor
+	// It is private for roomThread's reason: no surface sets it, the constructor
 	// that builds the worker does.
 	droppings Place
 	// ownSpace marks a worker standing in THE CONVERSATION'S OWN SPACE rather

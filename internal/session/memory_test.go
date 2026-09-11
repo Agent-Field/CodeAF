@@ -677,7 +677,8 @@ func TestTheOldMemoryFileIsImportedOnceAndRenamed(t *testing.T) {
 // ── what a task node opens with ─────────────────────────────────────────────
 
 // A node has no turn of its own to route against, so the conversation routes
-// for it — against the brief — and hands down the WORDS.
+// for it — against the brief — and hands down the WORDS ([Agent.takeMemory]),
+// whenever the reading beside its work answers.
 func TestATaskNodeOpensWithTheMemoryItsBriefNeeded(t *testing.T) {
 	script := &reflexScript{}
 	agent, brain := brainAgent(t, script, nil)
@@ -690,11 +691,12 @@ func TestATaskNodeOpensWithTheMemoryItsBriefNeeded(t *testing.T) {
 	}
 
 	child, err := newAgent(Config{
-		Workspace: t.TempDir(), Model: "test/model", System: "SYSTEM", memoryBrief: block,
+		Workspace: t.TempDir(), Model: "test/model", System: "SYSTEM",
 	}, script)
 	if err != nil {
 		t.Fatalf("newAgent: %v", err)
 	}
+	child.takeMemory(block)
 	// The block rides at the TAIL, in its own note, and lands on the drain
 	// immediately before the first request (agent.go's memoryNoteOpening) — so
 	// what a node opens with is read out of the transcript rather than out of

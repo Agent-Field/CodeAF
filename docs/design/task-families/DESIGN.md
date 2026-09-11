@@ -8,16 +8,18 @@ pull request.*
 
 A task family is one node that handed work out and the parts under it.
 `divide_work` is the mid-run verb (`internal/session/task_divide.go`'s
-`divideOnce`); `divideFromSketch` is the harness's own road, drawing parts out of
-a division a groom already named. Both mint into the same graph and, since #240,
-through the same door.
+`weighDivision` and `admitDivision`); `sizeBeside` is the harness's own road,
+drawing parts out of a division a groom already named. Both mint into the same
+graph and, since #240, through the same door.
 
 *Since 2026-09-11 (the task-start wave, `docs/design/task-start/DESIGN.md`):
 `divideOnce` is two steps, `weighDivision` and `admitDivision`, because the
 harness's road now weighs its drawing BESIDE the node's first worker
 (`sizeBeside`, which replaced `divideFromSketch`) and admits the parts only while
-that worker is still reading. The door is still one door; the names below are
-the ones this page was written against.*
+that worker is still reading. The door is still one door, and the pages below
+name the two steps rather than the one function they were written against: read
+`weighDivision` for everything up to and including the reviewer, and
+`admitDivision` for the claim, the freeze and the admission.*
 
 The six lanes under #228 were one redesign of how those parts share a world, a
 ledger and a brief. All six are on `dev`. Two more defects the same audit turned
@@ -161,7 +163,7 @@ function; what differs between the two askings is the ending and nothing else,
 because what differs is what has already been spent.
 
 - The **free gate** runs on the parts the worker wrote, above the paid reading:
-  gate three in `divideOnce`, ending `scopeSpentNothing` —
+  gate three in `weighDivision`, ending `scopeSpentNothing` —
   `nothing is cancelled and nothing is spent.` A division that was never going to
   be allowed to stand should not pay for an adjudication to find that out.
 - The **second asking** runs on the parts the reviewer settled, which are not the
@@ -211,8 +213,8 @@ line, and the part carries the freeze through `json.Marshal` → `decodeTasks` �
 `startTheParts` is the seam: the freeze and the admission are ONE operation, in
 that order, because `TaskGraph.admit` puts a node on the frontier and the frontier
 STARTS it — a freeze taken after the first admission is a freeze the first part may
-already have raced past. `divideOnce` holds none of the bookkeeping; it got about
-eighty lines shorter, and the fan cap moved into `divisionHands`, a value with one
+already have raced past. `admitDivision`, the step that calls it, holds none of
+the bookkeeping; the division body got about eighty lines shorter, and the fan cap moved into `divisionHands`, a value with one
 `release()` that every road out gives back through.
 
 Because the world is on a branch, the ground ladder's per-child seal is not asked
@@ -297,7 +299,7 @@ through the same door. The person's ask is still printed exactly once, by
 `composeBrief`; the composer never carries it, and drops the ground entirely where
 the parent's brief *is* the person's own sentence.
 
-In practice the briefs `divideOnce` hands `scopeCollisions` are never composed: both
+In practice the briefs `weighDivision` hands `scopeCollisions` are never composed: both
 roads put a bare scope into `parsed.Parts`. That is why this lane needed #231's
 `partScope` cut and not the other way around — the collision check must already know
 which half of a string is a claim, for the composed briefs that reach it from
@@ -380,7 +382,7 @@ second copier would be a second reading of what shipped.
 **Enforcing overlap only in the prompt.** Soft. The ledger stages once, so one
 version silently destroys the other before git ever sees a conflict. The reviewer
 fails open, and on a cheap crew one worker wrote both briefs. The refusal sits in
-`divideOnce`, twice, and `Two parts that edit the same file are not independent.`
+`weighDivision`, twice, and `Two parts that edit the same file are not independent.`
 remains true and is no longer the enforcement.
 
 **Reading the composed family-context as a part's claimed scope.** The harness draws
@@ -458,7 +460,8 @@ no business carrying twenty thousand of them.
 Landed on `dev` in this order. The design's dependency order put #229 first; the
 merge order put #239 first, because #236's commits rode in on it and #237's seam —
 one new file plus three insertions in the landing roads — did not touch
-`prepareTaskTreeOn` or `divideOnce`.
+`prepareTaskTreeOn` or the division body (today's `weighDivision` and
+`admitDivision`).
 
 | # | commit | pull request | issue | what landed |
 | --- | --- | --- | --- | --- |
@@ -495,8 +498,9 @@ where #281 was found. It is still in flight; see *Still open*.
   before the failing path already in the person's folder. PR #277 answers both
   halves and is in flight.
 - **#260** — complexity debt on the seams these four defects keep landing in.
-  `runTaskChild` at 56, `workTaskNode` at 35, `divideOnce` at 22 by gocyclo's rule.
-  No behaviour change; extract the endings and ratchet the ceiling.
+  `runTaskChild` at 56 and `workTaskNode` at 35 by gocyclo's rule, and the division
+  body beside them. No behaviour change; extract the endings and ratchet the
+  ceiling. `complexity_test.go`'s ledger carries what each of them stands at now.
 - **#261** — the ruling this page's *Testing depth-3 composition* refusal depends on:
   keep the family two levels deep, or raise it to three? The code and the manual
   agree with each other; #229's recipe asked for a generation that cannot exist.

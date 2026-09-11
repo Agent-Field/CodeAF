@@ -323,6 +323,22 @@ reading sees the worker withdrawn and drops — there is no instant in between. 
 hold covers one admission per node (a commit of the worker's own files and a few
 admits), so the tail's next read waits that long at most, once.
 
+**Two choices inside that seam.** *Work no worker can do* cancels the run's own
+context and lands through `landNeedsPerson`, not through the person's stop door
+(`TaskGraph.stopFor`), because the two settle differently: the stop door ends a
+node `TaskFailed` behind a `stopped` lead, which is the ending for work somebody
+called off, while this node's work was never called off — it turned out to need a
+person. So it takes the unverified ending (`landShifted`'s road): the branch is
+committed and kept, the report leads with `yourCallLead` and carries the worker's
+own account under the reader's sentence, and the row that asks the person —
+including the bubbling of a child still undecided — is machinery that was already
+there. And the receipt is
+a `briefNote`, which is not `steered`: it owes no answer and wakes nothing, so it
+cannot start a turn on a parked runner. It reaches the model only because
+`room.speaker()` has just answered that the worker is mid-turn and will drain the
+queue at its next step — the same fact `task_child_run.go`'s queued opening brief
+relies on.
+
 **The phase word.** `sizing the work` (`TaskPhaseSizing`) is drawn only where the
 asker waits on the reading (`divisionAsker.waits`, read by `sizingWait`): a worker
 inside its own `divide_work` call. The drawing weighed beside a working worker moves
