@@ -78,6 +78,18 @@ const (
 	// wait lands anyway, so clamping here changes nothing about a bounded call
 	// and makes an unbounded one arithmetic rather than undefined.
 	maxBackoffShift = 8
+	// freeMoves is how many times one call may go straight to another machine
+	// with no wait at all before it starts paying the backoff again.
+	//
+	// A MOVE IS FREE BECAUSE IT IS A DIFFERENT REQUEST, and that argument holds
+	// for the first few and stops holding somewhere. A patient call has sixty
+	// attempts and a router can have seventeen machines behind one model; a walk
+	// with no bound would let a bad minute spend all of them as fast as the
+	// connection allows, which is the traffic an account-wide limit is made of.
+	// Eight is past the point where another machine is likely to be the answer —
+	// the census's escaping chains all escaped on their first real move — and it
+	// still leaves the ordinary walk of three or four entirely unpaid for.
+	freeMoves = 8
 	// maxProviderWait caps what a Retry-After may ask for. The header may be an
 	// HTTP date, and a provider that names tomorrow morning is asking a call to
 	// sleep for hours inside a run the user is watching. A minute is already
@@ -141,6 +153,16 @@ func (r *refusedHere) add(name string) bool {
 	}
 	r.names = append(r.names, name)
 	return true
+}
+
+// count is how many machines have refused this call.
+func (r *refusedHere) count() int {
+	if r == nil {
+		return 0
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.names)
 }
 
 // list is a copy of what has refused so far, empty when nothing has.
@@ -492,7 +514,10 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				providerWait = wait
 			}
 		}
-		moved = fresh && !spent
+		// AND THE WALK IS NOT FREE FOREVER (see [freeMoves]). Past the eighth
+		// machine this call is no longer moving toward an answer, it is spending
+		// an account's allowance at connection speed.
+		moved = fresh && !spent && knobs.refused.count() <= freeMoves
 		// ONE RECOVERY OWNER, ASKED ONCE. Two exits used to answer this — the
 		// walk's for a fault and the full demanded pool's for a 429 (#835) — and
 		// keeping them apart is how the same question came to have two answers
