@@ -121,8 +121,11 @@ type homePanelSlot struct {
 	// panel is for, in the fewest words that answer it. It is drawn in the note
 	// ink beside the heading and GIVES WAY WHOLE: a column too narrow to hold it
 	// beside the heading drops it rather than cutting the heading for it
-	// ([homeCellHead]). The spend panel has none, because its right-hand clause
-	// already says what the panel is for.
+	// ([homeCellHead]). A panel has none where the heading already says what it
+	// is: spend carries its right-hand money clause, and needs you carries its
+	// own group line (`to check · 2 — finished, nobody has checked it`) — and its
+	// heading is the one that counts live questions, so a gloss there would
+	// repeat the panel and stack a third clause on the count.
 	explainer string
 	// col2 and col3 are the column this panel stands in at two and at three
 	// columns. One column is every panel in table order.
@@ -162,9 +165,9 @@ type homePanelSlot struct {
 // columns over thirty rows of air). Spend's budget is its rest: it never grows.
 // The head column is where a press on each heading goes; `projects` names no
 // place but itself, so its heading opens nothing. The explainer is the dim
-// clause every heading carries after its word — see [homePanelSlot.explainer].
+// clause a heading may carry after its word — see [homePanelSlot.explainer].
 var homePanelOrder = []homePanelSlot{
-	{panel: needsPanel{homePanelBase{panelNeeds}}, word: "needs you", explainer: "questions & checks", col2: 0, col3: 0, keep: 6, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
+	{panel: needsPanel{homePanelBase{panelNeeds}}, word: "needs you", col2: 0, col3: 0, keep: 6, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
 	{panel: recentPanel{homePanelBase{panelRecent}}, word: "where you were", explainer: "enter reopens one", col2: 0, col3: 0, keep: 5, least: 4, rest: 5, most: 10, more: homeFindWord, head: pageSearch},
 	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", explainer: "folders you've opened", col2: 0, col3: 2, keep: 4, least: 3, rest: 5, most: 8, more: homeFindWord},
 	{panel: runningPanel{homePanelBase{panelRunning}}, word: "running", explainer: "work you sent off", col2: 1, col3: 1, keep: 3, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
