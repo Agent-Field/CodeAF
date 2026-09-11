@@ -17,11 +17,14 @@ explain what happens to a reply that was still arriving.
 
 ## My wifi died in the middle of a reply — the internet dropped mid-answer, my connection went down while it was replying
 
-Which connection went down is the whole answer. In an ordinary chat on this machine, it
-is the model request: the line says `waiting for connection`, and aforge waits for up to
-two minutes, subject to the request's own deadline. You can cancel that wait. A
-conversation opened with `--host` has a second connection, and that link to the other
-machine is the one the surface redials for up to five minutes.
+Which connection went down is the whole answer. An ordinary chat on this machine has no
+second-machine link to redial. If its model request could not connect before it was sent,
+the line says `waiting for connection` and the two-minute recovery described above applies.
+If a model stream that was already writing breaks instead, the request follows the ordinary
+failure ladder: the conversation says `the request failed — asking again` and the live line
+says `trying again` while it waits. A conversation opened with `--host` has a second
+connection, and that link to the other machine is the one the surface redials for up to five
+minutes.
 
 Over `--host`, the surface redials the machine by itself. You do not have to do anything.
 
