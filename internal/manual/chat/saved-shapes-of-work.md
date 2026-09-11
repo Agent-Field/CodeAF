@@ -93,6 +93,10 @@ box, so you can keep typing while the offer stands. The one rule about letters i
 surface's own: a printable key belongs to the box the moment there are words in it, so an
 offer answers to `1` only over an empty box.
 
+If you open **New chat** while the offer is standing, the whole block stays with the chat
+behind that page and is not drawn over its first-message box. Every key on the start page
+belongs to that page; `esc` returns to the asking chat with the offer still unanswered.
+
 A click works too — **the whole answer row is one target**, the number and the words on it.
 A press anywhere the block did not draw an answer falls through to whatever is underneath.
 
