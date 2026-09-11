@@ -168,7 +168,7 @@ var homePanelOrder = []homePanelSlot{
 	{panel: recentPanel{homePanelBase{panelRecent}}, word: "where you were", explainer: "enter reopens one", col2: 0, col3: 0, keep: 5, least: 4, rest: 5, most: 10, more: homeFindWord, head: pageSearch},
 	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", explainer: "folders you've opened", col2: 0, col3: 2, keep: 4, least: 3, rest: 5, most: 8, more: homeFindWord},
 	{panel: runningPanel{homePanelBase{panelRunning}}, word: "running", explainer: "work you sent off", col2: 1, col3: 1, keep: 3, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
-	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", explainer: "while you were gone", col2: 1, col3: 1, keep: 2, least: 3, rest: 4, most: 8, place: pageTasks, head: pageTasks},
+	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", col2: 1, col3: 1, keep: 2, least: 3, rest: 4, most: 8, place: pageTasks, head: pageTasks},
 	{panel: spendPanel{homePanelBase{panelSpend}}, word: "spend", col2: 1, col3: 2, keep: 1, least: 3, rest: 3, most: 3, place: pageSpend, head: pageSpend},
 	{panel: nextPanel{homePanelBase{panelNext}}, word: "next up", explainer: "reminders & routines", col2: 1, col3: 1, keep: 0, least: 3, rest: 3, most: 5, place: pageStanding, head: pageStanding},
 }
