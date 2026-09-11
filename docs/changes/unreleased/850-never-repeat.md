@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: a retry goes to a different machine — the body is written per attempt, the ledger is keyed on who served, and the sheet's doubts rank rather than remove
+title: a retry goes to a different machine, and the ledger is keyed on who answered
 pr: 850
 surface: [chat, engine, docs]
 invalidates:
