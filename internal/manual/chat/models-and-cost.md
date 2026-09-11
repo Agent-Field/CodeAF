@@ -1424,7 +1424,8 @@ for it, and each door has its own sentence:
 | the conversation was closed or left under the turn | `the reply stopped when this conversation was left — ask again to pick it up` |
 | your stop took too long and was let go of | `the reply was let go of after the stop took too long` |
 | you stopped all the work in the conversation | `everything running here was stopped, the reply with it` |
-| nobody was left watching a conversation on another machine | `nobody was left watching this conversation, so the reply stopped — ask again to pick it up` |
+| nobody was left watching a conversation on another machine | `nobody was left watching this conversation, so the reply stopped — ask again to pick it up`. Only the unattended door says this. If the engine knew which window it thought had gone, the sentence names it: `nobody was left watching this conversation from studio, so the reply stopped — ask again to pick it up` |
+| the engine holding this conversation was stopped | `the engine holding this conversation was stopped, so the reply stopped — ask again to pick it up` |
 
 **You do not have to type your question again when a conversation moved.** If the
 reply had said *nothing at all* when another window took the conversation — which
@@ -1447,8 +1448,9 @@ so nothing is run a second time. This only ever fires on the one shape the
 conversation's own file ends in: your words, and then aforge stopping the turn
 that was answering them with nothing said. A turn **you** stopped is never asked
 again, and neither is one that ended any other way — a conversation you left, a
-window that closed, a session on another machine nobody was watching. Those keep
-their sentence and wait for you.
+window that closed, an engine that was stopped while you were still in it, or a
+session on another machine nobody was watching. Those keep their sentence and
+wait for you.
 
 Whatever the door, the ending is also written into the conversation's own file
 as a failed call naming the door — for whoever reads the file afterwards, not
@@ -1468,6 +1470,14 @@ Before 2026-09-09 none of this existed. A turn whose reply was taken away ended
 with no answer, no error, no note and an idle status line, and there was no way
 — on the screen, in the transcript, or in the log — to tell your own stop from a
 second window taking the conversation over.
+
+## It said nobody was left watching but I was sitting right here — the reply stopped, bash cancelled, which window did it think had gone, the engine was stopped
+
+`nobody was left watching this conversation, so the reply stopped — ask again to pick it up` is only what you read when the conversation was let go of because nobody was watching it. A goodbye of your own says `the reply stopped when this conversation was left — ask again to pick it up`. An engine stopped on somebody's word while a window is still in the room says `the engine holding this conversation was stopped, so the reply stopped — ask again to pick it up`.
+
+A window that just did something — pressed a key, answered a card — is still watching, even if its link dropped for a few seconds. That gap is a stalled call and the redial after it, not an empty room, and the reply is not stopped for want of a watcher.
+
+When the unattended door does take a stop, it names the window it believed had gone: `nobody was left watching this conversation from studio, so the reply stopped — ask again to pick it up`. Without a name the sentence is the one above, unchanged.
 
 ## Why did my task not move to a stronger model — trouble with the connection never buys a dearer model
 
