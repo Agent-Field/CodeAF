@@ -282,7 +282,50 @@ func TestThePagesFootReplacesTheLegend(t *testing.T) {
 // ([app.questionRoomBeside] reads [app.bodyWidth]).
 func TestTheColumnsOwnKeyStillWorksWhileThePageIsUp(t *testing.T) {
 	a, _ := standingInAQuestionAt(t, demoQuestionReading(), 120, 40)
-	if _, took := tapNamed(a, 'g', tea.ModCtrl); took {
+	if _, took := tapNamed(t, a, 'g', tea.ModCtrl); took {
 		t.Fatal("the page took ctrl+g: a key it never printed is a key the surface under it owes")
+	}
+}
+
+// A CLOCK THAT WILL ANSWER SAYS SO IN EVERY DRAWING, AND AT THE WIDTH IT WAS
+// WRITTEN FOR. #954 put that sentence inside the panel's frame, which is right;
+// the split and the page lay their own rows, so each has to place it — and
+// neither pane will do: a column half the panel wide cuts it mid-word, and the
+// pane beside the list is ONE answer's case, where a sentence about the whole
+// decision reads as that answer's. So it crosses the seam on the panel and
+// stands with the reason on the page.
+func TestTheClockSaysWhatCanBeDoneAboutItAtTheFramesOwnWidth(t *testing.T) {
+	clocked := func() session.Question {
+		q := demoQuestionReading()
+		q.Policy = session.Policy{Kind: session.PolicyRecommendThenAuto, After: 30 * time.Second}
+		return q
+	}
+	lab := newQuestionLab(t)
+	lab.a.width, lab.a.height = 140, 60
+	q := clocked()
+	q.Deadline = lab.a.now().Add(30 * time.Second)
+	lab.raise(q)
+	rows := questionPlainRows(lab.rows())
+	drawn := strings.Join(rows, "\n")
+	if !strings.Contains(drawn, questionClockAsideWord) {
+		t.Fatalf("the split dropped the clock's own line:\n%s", drawn)
+	}
+	// AND IT CROSSES THE SEAM, WHOLE. A row inside a pane carries three of the
+	// frame's sides — its own two edges and the seam between the panes — and
+	// this row has two, which is the sentence at the frame's own width.
+	for _, row := range rows {
+		if !strings.Contains(row, questionClockAsideWord) {
+			continue
+		}
+		if got := strings.Count(row, tokens.GlyphFrameSide); got != 2 {
+			t.Errorf("the clock's line is inside a pane (%d frame sides on the row): %q", got, row)
+		}
+	}
+
+	page, _ := standingInAQuestionAt(t, clocked(), 140, 40)
+	page.qroom.head.question.Deadline = page.now().Add(30 * time.Second)
+	page.questionRoomTouched()
+	if got := pageText(page); !strings.Contains(got, questionClockAsideWord) {
+		t.Errorf("the page dropped the clock's own line:\n%s", got)
 	}
 }

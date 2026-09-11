@@ -254,6 +254,14 @@ func (a *app) questionPageHead(width int) []string {
 			out = append(out, questionIndent+a.pal.dim(line))
 		}
 	}
+	// AND A CLOCK THAT WILL ANSWER SAYS WHAT A PERSON CAN DO ABOUT IT (#954).
+	// On the page it belongs with the reason and the attribution, above the
+	// panes: it is a fact about the QUESTION, so in the left pane it would be
+	// cut by a column half the page wide and in the right pane it would read as
+	// the pointer's own answer.
+	if clock := a.questionClockAside(a.qroom.head, inner); clock != "" {
+		out = append(out, questionIndent+clock)
+	}
 	return append(out, "")
 }
 

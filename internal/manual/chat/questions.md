@@ -885,12 +885,12 @@ being text.
 ## Moving around the page — the arrows, and clicking an answer
 
 `↑` and `↓` walk down the answers. The one you are on wears a band, the foot says
-`↑↓ choose`, and **the answer you are on is always on screen** — the list scrolls
-to it rather than leaving you standing on a row that has gone past the edge.
+`↑↓ choose`, and **the answer you are on stays on screen** — the list scrolls to
+it rather than leaving you standing on a row that has gone past the edge.
 
 `→ detail` hands the arrows to the evidence: `↑↓ scroll` moves it, and `← back to
-the answers` gives them back to the list. The foot always says which of the two
-the arrows belong to.
+the answers` gives them back to the list. The foot says which of the two the
+arrows belong to.
 
 `enter` **takes** the answer you are on — that is the answer, sent. The page opens
 standing on the one it would take, so `enter` straight away still takes its
