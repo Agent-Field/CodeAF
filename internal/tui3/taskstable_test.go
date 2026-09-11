@@ -428,12 +428,15 @@ func TestUnderTheePaneFloorTheCursorsRowGrowsItsReason(t *testing.T) {
 	if !strings.Contains(got, "your call") || !strings.Contains(got, "nobody could check it") {
 		t.Fatalf("the grown line over work nobody could check reads %q", got)
 	}
-	// AND IT IS DRAWN ONLY WHERE THERE IS NO PANE FOR IT.
+	// AND IT IS DRAWN ONLY WHERE THERE IS NO PANE FOR IT — asked of the pane
+	// itself, so the two can never disagree about one frame.
 	a := tasksTableApp(t)
-	if a.width = tasksPaneFloor; tasksReasonShowing(a) {
-		t.Fatalf("at %d cells the list grows a line the pane beside it is already saying", a.width)
-	}
-	if a.width = tasksPaneFloor - 1; !tasksReasonShowing(a) {
-		t.Fatalf("at %d cells the reason is on no line of the frame at all", a.width)
+	for width := 60; width <= 200; width++ {
+		a.width = width
+		if grows, pane := tasksReasonShowing(a), a.taskPaneShowing(); grows && pane {
+			t.Fatalf("at %d cells the list grows a line the pane beside it is already saying", width)
+		} else if !grows && !pane && layoutTier(width) != tierPhone {
+			t.Fatalf("at %d cells the reason is on no line of the frame at all", width)
+		}
 	}
 }

@@ -407,22 +407,16 @@ func taskFirstSentence(report string) string {
 	return report
 }
 
-// tasksReasonShowing reports whether the list should grow that line at all,
-// AND IT ASKS THE WHOLE FRAME RATHER THAN THE LIST'S OWN WIDTH.
+// tasksReasonShowing reports whether the list should grow that line at all: it
+// is drawn WHERE THERE IS NO PANE, and nowhere else.
 //
-// The difference is the whole of the trap. Once the record stands in a pane
-// beside the list, the list is drawn in the cells the pane leaves — 72 of 122 —
-// which is already under the width at which a pane appears. A predicate that
-// asked its own width would decide there is no pane on exactly the frames that
-// have one, and draw this line underneath the pane that already says it.
+// IT ASKS THE PANE ITSELF ([app.taskPaneShowing]) rather than measuring a floor
+// of its own. Two answers to "is the record already beside the list" is how a
+// frame ends up saying one thing twice, and the pane's predicate knows something
+// this file cannot: it asks the WHOLE FRAME, where a floor asked of the list's
+// own width would decide there is no pane on exactly the frames that have one —
+// the list is drawn in 72 of 122 cells while the pane stands beside it.
 func tasksReasonShowing(a *app) bool {
 	width, _ := a.size()
-	return layoutTier(width) != tierPhone && width < tasksPaneFloor
+	return layoutTier(width) != tierPhone && !a.taskPaneShowing()
 }
-
-// tasksPaneFloor is the frame at which the record moves off the cursor's row and
-// into a pane of its own beside the list (#884). It is named here because this
-// is the file that has to know the answer today; the pane's own lane replaces
-// the body of [tasksReasonShowing] with its predicate and this constant goes
-// with it.
-const tasksPaneFloor = 110
