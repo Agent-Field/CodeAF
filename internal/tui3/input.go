@@ -345,12 +345,11 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
-	// A pending permission holds its work, not navigation. These chords never
-	// answer the question or edit a partly typed key. The connect offer used to
-	// be on this line beside it and is not any more: it is a card on the block
-	// now (connect.go), the block is not modal, and a rung that holds keys back
-	// is a rung only a modal needs.
-	if a.asking() && !a.shaping() {
+	// A pending question holds its work, not navigation. These chords never
+	// answer the question or edit a partly typed key. Every lane is one card on
+	// the unified block now (question.go), and the block's answer grammar must
+	// not take a chord before the navigation door below can read it.
+	if a.questioning() {
 		switch msg.String() {
 		case closeTabChord:
 			cmd, _ := a.closeTabKey(msg)
