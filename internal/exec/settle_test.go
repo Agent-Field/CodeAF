@@ -123,7 +123,7 @@ func TestSettleWritesTheWholeEndingAndThenJournals(t *testing.T) {
 			Cost:             1.25,
 		},
 		Stop:    StopDone,
-		Verdict: provider.VerdictVerifiedSuccess,
+		Verdict: provider.ReadingVerifiedSuccess,
 		Account: &Account{
 			Files:  []FileChange{{Path: "answer.txt", Change: ChangeAdded, Added: 3}},
 			Checks: []Check{{Command: "go test ./...", Passed: true}},

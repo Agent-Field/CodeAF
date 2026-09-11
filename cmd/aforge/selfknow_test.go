@@ -47,7 +47,7 @@ func TestMeasureSelfKnowledgeReportsReflexBoundary(t *testing.T) {
 		measured.Add(profile.Record{
 			Title: "reflex", Size: profile.BucketReflex,
 			Turns: index, Tokens: index * 100, Cost: float64(index) / 100,
-			Promoted: index > 3, Verdict: provider.VerdictUnverifiedSuccess,
+			Promoted: index > 3, Verdict: provider.ReadingUnverifiedSuccess,
 		})
 	}
 	if err := measured.Save(); err != nil {
@@ -124,7 +124,7 @@ func TestTheMeasuredInvoiceIsEmptyUntilThereIsSomethingToInvoice(t *testing.T) {
 	}
 	for index := 0; index < profile.MinSamples; index++ {
 		measured.Add(profile.Record{Title: "a leaf", Size: "atomic", Turns: 6,
-			Tokens: 40_000, Cost: 0.05, Verdict: provider.VerdictVerifiedSuccess})
+			Tokens: 40_000, Cost: 0.05, Verdict: provider.ReadingVerifiedSuccess})
 	}
 	if err := measured.Save(); err != nil {
 		t.Fatal(err)

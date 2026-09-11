@@ -638,7 +638,7 @@ func (a *Agent) landCarried(node *TaskNode, tree taskTree, changed []string, rep
 	// check never answered on this node, nobody has read the work since, and the
 	// only new fact is that the branch is now home. The receipt says who
 	// (task_audit.go's [acceptedTookLine]).
-	node.checkSaid(provider.VerdictVerifiedSuccess, 0)
+	node.checkSaid(provider.ReadingVerifiedSuccess, 0)
 	node.finish(withReport(acceptedLine("", TaskAskOwnerPerson), withReport(report, detail)), landed, tree.branch, merge)
 	node.graph.resettle(node, TaskDone)
 }

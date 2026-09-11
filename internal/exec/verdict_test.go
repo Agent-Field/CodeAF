@@ -48,7 +48,7 @@ func TestRunawayTurnAbandonsTheLeafInsteadOfNudgingIt(t *testing.T) {
 	if outcome.Stop != StopEmpty {
 		t.Fatalf("stop = %s, want %s", outcome.Stop, StopEmpty)
 	}
-	if outcome.Verdict != provider.VerdictEmptyResponse {
+	if outcome.Verdict != provider.ReadingEmptyResponse {
 		t.Fatalf("verdict = %s, want the runaway-reasoning verdict", outcome.Verdict)
 	}
 	if client.calls != 1 {
@@ -82,14 +82,14 @@ func TestLeafVerdictsSeparateStoppingFromSucceeding(t *testing.T) {
 	tests := []struct {
 		name    string
 		outcome Outcome
-		want    provider.Verdict
+		want    provider.Reading
 	}{
-		{"finished", Outcome{Stop: StopDone, Text: "the deliverable"}, provider.VerdictUnverifiedSuccess},
-		{"out of budget", Outcome{Stop: StopBudget, Text: "half the deliverable"}, provider.VerdictBudgetStop},
-		{"out of turns", Outcome{Stop: StopTurnCap, Text: "still going"}, provider.VerdictTurnCap},
-		{"timed out", Outcome{Stop: StopDeadline, Text: "partial"}, provider.VerdictProviderFailure},
-		{"transport gave up", Outcome{Stop: StopError}, provider.VerdictProviderFailure},
-		{"said nothing", Outcome{Stop: StopDone}, provider.VerdictEmptyResponse},
+		{"finished", Outcome{Stop: StopDone, Text: "the deliverable"}, provider.ReadingUnverifiedSuccess},
+		{"out of budget", Outcome{Stop: StopBudget, Text: "half the deliverable"}, provider.ReadingBudgetStop},
+		{"out of turns", Outcome{Stop: StopTurnCap, Text: "still going"}, provider.ReadingTurnCap},
+		{"timed out", Outcome{Stop: StopDeadline, Text: "partial"}, provider.ReadingProviderFailure},
+		{"transport gave up", Outcome{Stop: StopError}, provider.ReadingProviderFailure},
+		{"said nothing", Outcome{Stop: StopDone}, provider.ReadingEmptyResponse},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -102,7 +102,7 @@ func TestLeafVerdictsSeparateStoppingFromSucceeding(t *testing.T) {
 			if positive {
 				t.Fatal("a general leaf has no verifier and must never claim a verified success")
 			}
-			if test.want == provider.VerdictProviderFailure && graded {
+			if test.want == provider.ReadingProviderFailure && graded {
 				t.Fatal("a transport failure is being read as evidence about the model")
 			}
 		})
@@ -146,8 +146,8 @@ func TestAFailedLeafIsRetriedOnceWhenThereIsSomewhereToGo(t *testing.T) {
 		graph := &plan.Graph{Goal: "g", Stages: []plan.Stage{{Title: "One"}}, NextID: 1}
 		graph.Add(plan.Node{Stage: 1, Title: "Leaf"})
 		return graph, &verdictExecutor{
-			first: Outcome{Stop: StopBudget, Text: "ran out", Turns: 9, Verdict: provider.VerdictBudgetStop},
-			then:  Outcome{Stop: StopDone, Text: "finished", Turns: 3, Verdict: provider.VerdictUnverifiedSuccess},
+			first: Outcome{Stop: StopBudget, Text: "ran out", Turns: 9, Verdict: provider.ReadingBudgetStop},
+			then:  Outcome{Stop: StopDone, Text: "finished", Turns: 3, Verdict: provider.ReadingUnverifiedSuccess},
 		}
 	}
 
@@ -164,7 +164,7 @@ func TestAFailedLeafIsRetriedOnceWhenThereIsSomewhereToGo(t *testing.T) {
 	if node.State != plan.StateDone || node.Result != "finished" {
 		t.Fatalf("node = %s %q, want the retry's result", node.State, node.Result)
 	}
-	if node.Verdict != provider.VerdictUnverifiedSuccess {
+	if node.Verdict != provider.ReadingUnverifiedSuccess {
 		t.Fatalf("verdict = %s, want the retry's", node.Verdict)
 	}
 
@@ -190,8 +190,8 @@ func TestAProviderFailureIsNotRetriedUpTheLadder(t *testing.T) {
 	graph := &plan.Graph{Goal: "g", Stages: []plan.Stage{{Title: "One"}}, NextID: 1}
 	graph.Add(plan.Node{Stage: 1, Title: "Leaf"})
 	fake := &verdictExecutor{
-		first: Outcome{Stop: StopError, Verdict: provider.VerdictProviderFailure},
-		then:  Outcome{Stop: StopDone, Text: "finished", Verdict: provider.VerdictUnverifiedSuccess},
+		first: Outcome{Stop: StopError, Verdict: provider.ReadingProviderFailure},
+		then:  Outcome{Stop: StopDone, Text: "finished", Verdict: provider.ReadingUnverifiedSuccess},
 	}
 	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 2).WithGovernor(NewGovernor())
 	scheduler.Escalations = 1

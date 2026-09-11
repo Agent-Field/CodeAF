@@ -296,7 +296,7 @@ func (a *Agent) turnSettledItsAsk() bool {
 		if node == nil || node.stateNow() != TaskDone {
 			return false
 		}
-		if node.checkAnswer() != provider.VerdictVerifiedSuccess {
+		if node.checkAnswer() != provider.ReadingVerifiedSuccess {
 			return false
 		}
 		settled[id] = true

@@ -66,6 +66,7 @@ func init() {
 	Register(transportPolicy{})
 	Register(capabilityPolicy{})
 	Register(workPolicy{})
+	Register(shapePolicy{})
 }
 
 // ── transport ───────────────────────────────────────────────────────────────
@@ -98,6 +99,33 @@ func (transportPolicy) Class() Class { return Transport }
 // and a model is not the last thing there is.
 func (transportPolicy) Decide(e Evidence, l Limits) Verdict {
 	spent, allowed := transportBudget(e, l)
+	// A MODEL THE ROUTER NO LONGER CARRIES HAS NO BUDGET TO SPEND. Every attempt
+	// buys the identical 404 — there is no machine to rotate to, because the id
+	// itself is gone — so the budget is declared spent at once and the move is
+	// the only one there is: another model, or an ending that says so (#838).
+	if e.Withdrawn {
+		if e.FallbackAvailable {
+			return Verdict{Action: ActionHop, Reason: ReasonWithdrawn, Attempts: spent}
+		}
+		return Verdict{Action: ActionGiveUp, Reason: ReasonWithdrawn, Attempts: spent}
+	}
+	// AND AN ACCOUNT THAT COULD NOT BE SERVED HAS NO MOVE AT ALL. Every machine,
+	// every shape and every model answer it identically, so there is nothing to
+	// buy with a retry and nothing to hop to; what is owed is the sentence. It
+	// stays TRANSPORT because it is still not evidence about the model or about
+	// the work, and [Verdict.EndsTurn] reads the ACTION for exactly this case.
+	if e.Unserved {
+		return Verdict{Action: ActionReport, Reason: ReasonUnauthorized, Attempts: spent}
+	}
+	// AND A SPENT SHAPE LADDER HAS NO ATTEMPTS LEFT TO SPEND EITHER. The transport
+	// has already sent this question in every shape it has; asking again buys the
+	// identical diagnosis, and the only move left is the caller's own chain.
+	if e.Spent {
+		if e.FallbackAvailable {
+			return Verdict{Action: ActionHop, Reason: ReasonUnservable, Attempts: spent}
+		}
+		return Verdict{Action: ActionGiveUp, Reason: ReasonUnservable, Attempts: spent}
+	}
 	if spent < allowed {
 		return Verdict{
 			Action:   ActionRetry,
@@ -222,6 +250,12 @@ func waitFor(e Evidence, attempt int, base time.Duration) time.Duration {
 // empty" four hundred times, not four hundred distinct sentences.
 func transportReason(e Evidence) string {
 	switch {
+	case e.Withdrawn:
+		return ReasonWithdrawn
+	case e.Unserved:
+		return ReasonUnauthorized
+	case e.Spent:
+		return ReasonUnservable
 	case e.Empty:
 		return ReasonEmpty
 	case e.Malformed:
@@ -255,16 +289,22 @@ func transportReason(e Evidence) string {
 // list rather than two — and the day a shape is added, every caller that did not
 // grow a case for it still compiles and falls to its own default.
 const (
-	ReasonEmpty      = "the reply arrived empty"
-	ReasonMalformed  = "the tool call did not parse"
-	ReasonTimeout    = "nobody answered in time"
-	ReasonIdle       = "it went silent and stopped working"
-	ReasonDegenerate = "the reply stopped being language"
-	ReasonCut        = "the reply stopped part-way"
-	ReasonWire       = "the connection did not hold"
-	ReasonRefused    = "the endpoint refused"
-	ReasonUnserved   = "the provider could not serve it"
-	ReasonUnreached  = "the request did not reach anybody"
+	ReasonEmpty        = "the reply arrived empty"
+	ReasonMalformed    = "the tool call did not parse"
+	ReasonTimeout      = "nobody answered in time"
+	ReasonIdle         = "it went silent and stopped working"
+	ReasonDegenerate   = "the reply stopped being language"
+	ReasonCut          = "the reply stopped part-way"
+	ReasonWire         = "the connection did not hold"
+	ReasonRefused      = "the endpoint refused"
+	ReasonUnserved     = "the provider could not serve it"
+	ReasonUnreached    = "the request did not reach anybody"
+	ReasonWithdrawn    = "the model is no longer carried"
+	ReasonUnauthorized = "this account could not be served"
+	ReasonUnservable   = "no shape of this request could be served"
+	ReasonOverflow     = "the request did not fit"
+	ReasonTooBig       = "the request did not fit even after it was shortened"
+	ReasonOurBytes     = "the request itself could not be served"
 )
 
 // ── capability ──────────────────────────────────────────────────────────────
@@ -335,4 +375,44 @@ func (workPolicy) Decide(e Evidence, _ Limits) Verdict {
 		reason = "the request itself was refused"
 	}
 	return Verdict{Action: ActionReport, Reason: reason}
+}
+
+// ── shape ───────────────────────────────────────────────────────────────────
+
+// shapePolicy answers the one class whose move is neither a machine nor a model
+// but the REQUEST, and it has exactly two moves because there are exactly two
+// things that can be wrong with one.
+//
+// ── IT DID NOT EXIST, AND A REGEX STOOD WHERE IT SHOULD HAVE ────────────────
+//
+// internal/session's turn loop computed a verdict and then, forty lines later,
+// asked `isContextOverflow(errMsg) || !isRetryable(errMsg)` over the provider's
+// prose and returned on it — so a string decided and the verdict was thrown
+// away. Both halves of that test are this class: an overflow is a request that
+// did not fit, and the whole reason `isRetryable` was consulted at all is that
+// nothing typed said "our own bytes". Both are facts now ([Evidence.Overflow],
+// [Evidence.OurBytes]) and both are decided here.
+type shapePolicy struct{}
+
+func (shapePolicy) Class() Class { return Shape }
+
+func (shapePolicy) Decide(e Evidence, _ Limits) Verdict {
+	if e.Overflow {
+		// COMPACTION IS OFFERED ONCE PER TURN AND THEN NEVER AGAIN. A request
+		// that still does not fit after it was made smaller is not going to fit,
+		// and offering the same move a second time is a loop with a person
+		// watching it. The second one comes back as WORK — the honest verdict,
+		// because there is nothing left for this package to sell.
+		if e.Compacted {
+			return Verdict{Class: Work, Action: ActionReport, Reason: ReasonTooBig}
+		}
+		return Verdict{Action: ActionCompact, Reason: ReasonOverflow}
+	}
+	// AND THE ROUTER READING OUR OWN BYTES IS THE OTHER HALF. No machine was
+	// asked, so no machine is the suspect and none of them is the answer; the
+	// transport's relaxation ladder is the reshaping and it has already run by
+	// the time this is read (internal/provider's endpoints.go). What is left is
+	// to end the request naming the SHAPE, which is neither the wire's fault nor
+	// the work's — and saying which is the whole of what this verdict buys.
+	return Verdict{Action: ActionReshape, Reason: ReasonOurBytes}
 }

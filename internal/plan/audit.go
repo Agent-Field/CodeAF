@@ -172,10 +172,10 @@ func auditStage(ctx context.Context, client Completer, shared string, graph *Gra
 	// that legitimately finds nothing missing returns an empty list and is right.
 	for _, check := range decoded.Checks {
 		if graph.Node(check.Node) == nil {
-			provider.Report(ctx, provider.VerdictSemanticFailure)
+			provider.Report(ctx, provider.ReadingSemanticFailure)
 			return decoded.Checks, usageOf(response), nil
 		}
 	}
-	provider.Report(ctx, provider.VerdictVerifiedSuccess)
+	provider.Report(ctx, provider.ReadingVerifiedSuccess)
 	return decoded.Checks, usageOf(response), nil
 }

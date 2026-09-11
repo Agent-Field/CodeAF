@@ -373,6 +373,19 @@ type phaseHeart struct {
 // a branch, and runTurn's own deferred end (loop.go) is the backstop that fires
 // even on a panic.
 func (a *Agent) tellPhase(phase provider.Phase, detail string, since time.Time) {
+	a.tellPhaseThen(phase, detail, "", since)
+}
+
+// tellPhaseThen is [Agent.tellPhase] with the one field only a MOVE has: the
+// thing being moved to.
+//
+// It exists for [provider.PhaseSwitchingModel], which lost its only producer
+// when the adapter stopped changing the model (internal/provider's endpoints.go,
+// docs/design/recovery/DESIGN.md §2.2). The word belongs to the layer that now
+// owns the hop, and it has to carry the target, because a status line that said
+// `switching model` without naming the model would be telling somebody their
+// answer is changing hands and refusing to say to whom.
+func (a *Agent) tellPhaseThen(phase provider.Phase, detail, then string, since time.Time) {
 	if a == nil {
 		return
 	}
@@ -398,6 +411,7 @@ func (a *Agent) tellPhase(phase provider.Phase, detail string, since time.Time) 
 		Phase:   phase,
 		Since:   since,
 		Detail:  detail,
+		Then:    strings.TrimSpace(then),
 		Model:   model,
 		Role:    a.laneRole(),
 		Session: a.newsKey(),

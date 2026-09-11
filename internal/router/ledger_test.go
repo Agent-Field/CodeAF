@@ -22,7 +22,7 @@ func TestLedgerPersistsAndReloads(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 5 {
-		first.Observe("a/one", provider.ClassPlanSpine, 0, provider.VerdictVerifiedSuccess)
+		first.Observe("a/one", provider.ClassPlanSpine, 0, provider.ReadingVerifiedSuccess)
 	}
 	first.Alias("~a/one-latest", "a/one-0731")
 	if err := first.Save(); err != nil {
@@ -50,13 +50,13 @@ func TestLedgerIgnoresUngradedVerdicts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, verdict := range []provider.Verdict{provider.VerdictProviderFailure, provider.VerdictUnverifiedSuccess} {
+	for _, verdict := range []provider.Reading{provider.ReadingProviderFailure, provider.ReadingUnverifiedSuccess} {
 		ledger.Observe("a/one", provider.ClassExecLeaf, 0, verdict)
 	}
 	if _, count := ledger.Rating("a/one", provider.ClassExecLeaf, 0); count != 0 {
 		t.Fatalf("ungraded verdicts produced %d observations", count)
 	}
-	for _, verdict := range []provider.Verdict{provider.VerdictBudgetStop, provider.VerdictTurnCap, provider.VerdictEmptyResponse} {
+	for _, verdict := range []provider.Reading{provider.ReadingBudgetStop, provider.ReadingTurnCap, provider.ReadingEmptyResponse} {
 		ledger.Observe("a/one", provider.ClassExecLeaf, 0, verdict)
 	}
 	rating, count := ledger.Rating("a/one", provider.ClassExecLeaf, 0)
@@ -75,8 +75,8 @@ func TestRatingsStayFiniteUnderOneSidedEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 2000 {
-		ledger.Observe("perfect/model", provider.ClassPlanSpine, 0, provider.VerdictVerifiedSuccess)
-		ledger.Observe("hopeless/model", provider.ClassPlanSpine, 0, provider.VerdictFormatFailure)
+		ledger.Observe("perfect/model", provider.ClassPlanSpine, 0, provider.ReadingVerifiedSuccess)
+		ledger.Observe("hopeless/model", provider.ClassPlanSpine, 0, provider.ReadingFormatFailure)
 	}
 	high, _ := ledger.Rating("perfect/model", provider.ClassPlanSpine, 0)
 	low, _ := ledger.Rating("hopeless/model", provider.ClassPlanSpine, 0)
@@ -89,7 +89,7 @@ func TestRatingsStayFiniteUnderOneSidedEvidence(t *testing.T) {
 	// A single observation may never swing a rating: that is what stops one
 	// unlucky call from rewriting what a hundred calls established.
 	before, _ := ledger.Rating("perfect/model", provider.ClassPlanSpine, 0)
-	ledger.Observe("perfect/model", provider.ClassPlanSpine, 0, provider.VerdictFormatFailure)
+	ledger.Observe("perfect/model", provider.ClassPlanSpine, 0, provider.ReadingFormatFailure)
 	after, _ := ledger.Rating("perfect/model", provider.ClassPlanSpine, 0)
 	if before-after > maxStep {
 		t.Fatalf("one observation moved a rating by %.3f, over the %.2f clamp", before-after, maxStep)
@@ -140,7 +140,7 @@ func TestConcurrentWritesDoNotCorruptTheLedger(t *testing.T) {
 				return
 			}
 			for range each {
-				ledger.Observe("shared/model", provider.ClassExecLeaf, 0, provider.VerdictVerifiedSuccess)
+				ledger.Observe("shared/model", provider.ClassExecLeaf, 0, provider.ReadingVerifiedSuccess)
 			}
 			if err := ledger.Save(); err != nil {
 				t.Error(err)
@@ -248,7 +248,7 @@ func TestAppendingAnEventRacesCleanlyWithClose(t *testing.T) {
 			defer writers.Done()
 			for range 50 {
 				events.Append(Event{Class: string(provider.ClassExecLeaf), Model: "a/one",
-					Verdict: provider.VerdictUnverifiedSuccess, Final: true})
+					Verdict: provider.ReadingUnverifiedSuccess, Final: true})
 			}
 		}()
 	}
@@ -277,8 +277,8 @@ func TestABudgetStopMovesARatingLessThanAWrongAnswer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ledger.Observe("a/one", provider.ClassExecLeaf, 0, provider.VerdictBudgetStop)
-	ledger.Observe("b/two", provider.ClassExecLeaf, 0, provider.VerdictSemanticFailure)
+	ledger.Observe("a/one", provider.ClassExecLeaf, 0, provider.ReadingBudgetStop)
+	ledger.Observe("b/two", provider.ClassExecLeaf, 0, provider.ReadingSemanticFailure)
 
 	stopped, _ := ledger.Rating("a/one", provider.ClassExecLeaf, 0)
 	wrong, _ := ledger.Rating("b/two", provider.ClassExecLeaf, 0)
@@ -307,7 +307,7 @@ func TestBudgetStopsStillCountTowardsTheGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range MinGraded {
-		ledger.Observe("a/one", provider.ClassExecLeaf, 0, provider.VerdictBudgetStop)
+		ledger.Observe("a/one", provider.ClassExecLeaf, 0, provider.ReadingBudgetStop)
 	}
 	if _, count := ledger.Rating("a/one", provider.ClassExecLeaf, 0); count != MinGraded {
 		t.Fatalf("count = %d after %d budget stops, want every one counted", count, MinGraded)
@@ -342,7 +342,7 @@ func TestAFlushBlockedOnTheFileLockDoesNotBlockRanking(t *testing.T) {
 	flushed := make(chan struct{})
 	go func() {
 		defer close(flushed)
-		ledger.Observe("a/one", provider.ClassPlanSpine, 0, provider.VerdictVerifiedSuccess)
+		ledger.Observe("a/one", provider.ClassPlanSpine, 0, provider.ReadingVerifiedSuccess)
 	}()
 
 	// The observation is in memory before the file work starts, so the reading
@@ -398,7 +398,7 @@ func TestReadRatesAWholePanelThroughItsAliases(t *testing.T) {
 	}
 	ledger.Alias("~vendor/model-latest", "vendor/model-0731")
 	for range MinGraded {
-		ledger.Observe("vendor/model-0731", provider.ClassPlanSpine, 0, provider.VerdictVerifiedSuccess)
+		ledger.Observe("vendor/model-0731", provider.ClassPlanSpine, 0, provider.ReadingVerifiedSuccess)
 	}
 	readings := ledger.Read(provider.ClassPlanSpine, []Query{
 		{Slug: "~vendor/model-latest"},
@@ -429,7 +429,7 @@ func TestAClosedLedgerAbandonsTheLockWait(t *testing.T) {
 	settled := make(chan time.Duration, 1)
 	go func() {
 		started := time.Now()
-		ledger.Observe("late/model", provider.ClassPlanSpine, 0, provider.VerdictVerifiedSuccess)
+		ledger.Observe("late/model", provider.ClassPlanSpine, 0, provider.ReadingVerifiedSuccess)
 		settled <- time.Since(started)
 	}()
 	select {
@@ -458,8 +458,8 @@ func TestABurstOfObservationsCostsOneWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 40 {
-		debounced.Observe("a/one", provider.ClassPlanSpine, 0, provider.VerdictVerifiedSuccess)
-		debounced.Observe("b/two", provider.ClassExecLeaf, 0, provider.VerdictBudgetStop)
+		debounced.Observe("a/one", provider.ClassPlanSpine, 0, provider.ReadingVerifiedSuccess)
+		debounced.Observe("b/two", provider.ClassExecLeaf, 0, provider.ReadingBudgetStop)
 	}
 	debounced.Alias("~a/one-latest", "a/one-0731")
 	if err := debounced.Save(); err != nil {
@@ -477,11 +477,11 @@ func TestABurstOfObservationsCostsOneWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 40 {
-		oneByOne.Observe("a/one", provider.ClassPlanSpine, 0, provider.VerdictVerifiedSuccess)
+		oneByOne.Observe("a/one", provider.ClassPlanSpine, 0, provider.ReadingVerifiedSuccess)
 		if err := oneByOne.Save(); err != nil {
 			t.Fatal(err)
 		}
-		oneByOne.Observe("b/two", provider.ClassExecLeaf, 0, provider.VerdictBudgetStop)
+		oneByOne.Observe("b/two", provider.ClassExecLeaf, 0, provider.ReadingBudgetStop)
 		if err := oneByOne.Save(); err != nil {
 			t.Fatal(err)
 		}
@@ -505,7 +505,7 @@ func TestAnObservationReachesTheFileWithoutASave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ledger.Observe("a/one", provider.ClassPlanSpine, 0, provider.VerdictVerifiedSuccess)
+	ledger.Observe("a/one", provider.ClassPlanSpine, 0, provider.ReadingVerifiedSuccess)
 
 	deadline := time.Now().Add(4 * ledgerDebounce)
 	for {
@@ -531,7 +531,7 @@ func TestSaveLandsTheQueueImmediately(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ledger.Observe("a/one", provider.ClassPlanSpine, 0, provider.VerdictVerifiedSuccess)
+	ledger.Observe("a/one", provider.ClassPlanSpine, 0, provider.ReadingVerifiedSuccess)
 	started := time.Now()
 	if err := ledger.Close(); err != nil {
 		t.Fatal(err)

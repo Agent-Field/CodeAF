@@ -55,7 +55,7 @@ type Event struct {
 	Explore    bool    `json:"explore,omitempty"`
 	Propensity float64 `json:"propensity,omitempty"`
 
-	Verdict provider.Verdict `json:"verdict"`
+	Verdict provider.Reading `json:"verdict"`
 	// Final marks the row that carries the settled verdict. An attempt is
 	// written when it returns, before the call site has had a chance to check
 	// the answer; when the check lands it is appended as a second, short row

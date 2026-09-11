@@ -138,10 +138,10 @@ func RequestMet(ctx context.Context, settings config.Config, client *pool.Client
 			Text: "The record of what the run changed:\n" + requestMetRecord(evidence, budget)}}},
 	}, requestMetSchema, &answer)
 	if err != nil || response == nil {
-		provider.Report(askCtx, provider.VerdictProviderFailure)
+		provider.Report(askCtx, provider.ReadingProviderFailure)
 		return false, "", false
 	}
-	provider.Report(askCtx, provider.VerdictVerifiedSuccess)
+	provider.Report(askCtx, provider.ReadingVerifiedSuccess)
 	// A yes that names something missing is the model disagreeing with itself,
 	// and the safe reading of a disagreement about whether to stop is that it
 	// did not say stop. It is plan.Satisfied's rule at the other end of the same

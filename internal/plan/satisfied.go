@@ -178,7 +178,7 @@ func Satisfied(ctx context.Context, client Completer, contextTokens int, criteri
 	if verdict.Complete && len(verdict.Uncovered) > 0 {
 		verdict.Complete = false
 	}
-	provider.Report(ctx, provider.VerdictVerifiedSuccess)
+	provider.Report(ctx, provider.ReadingVerifiedSuccess)
 	return verdict, usage, nil
 }
 

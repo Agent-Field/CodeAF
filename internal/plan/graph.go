@@ -191,7 +191,7 @@ type Node struct {
 	// still need whatever it produced. Verdict answers the other question, the
 	// one nothing could ask before: was that a success. Anything that learns
 	// from a run reads this field and never State.
-	Verdict provider.Verdict `json:"verdict,omitempty"`
+	Verdict provider.Reading `json:"verdict,omitempty"`
 
 	// FanIn is how many earlier results actually landed in this node, measured
 	// by whoever claimed it rather than counted off this document.

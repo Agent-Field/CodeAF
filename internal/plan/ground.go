@@ -310,9 +310,9 @@ func GroundWith(ctx context.Context, client Completer, goal, terrain string, ask
 	// a legitimate reading of a goal with no free variables; a list of points that
 	// bind nothing is not.
 	if unbound > 0 {
-		provider.Report(ctx, provider.VerdictSemanticFailure)
+		provider.Report(ctx, provider.ReadingSemanticFailure)
 	} else {
-		provider.Report(ctx, provider.VerdictVerifiedSuccess)
+		provider.Report(ctx, provider.ReadingVerifiedSuccess)
 	}
 	return Grounding{
 		Settled:  settled,

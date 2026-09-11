@@ -220,12 +220,20 @@ type Chooser interface {
 
 // ── WATCHING ONE ANSWER ARRIVE ──────────────────────────────────────────────
 
-// Verdict is what the watch says about a stream in flight.
+// Advice is what the watch says about a stream in flight.
+//
+// IT IS ADVICE AND NOT A VERDICT, and the word matters more than it looks.
+// `Verdict` names exactly one thing in this tree — the control answer to a
+// FAILED call, from internal/taxonomy — and this is a different kind of sentence
+// about a different kind of event: a stream that is still arriving, and whether
+// it is worth acting on. The watch advises; the controller decides
+// (internal/lane/control). A law holds the word to one meaning
+// (internal/taxonomy/classifier_law_test.go).
 //
 // Reason is a short machine word for the log — it is never shown to a person.
 // The only sentence a person sees about a slow stream is shown while something
 // is already being done about it.
-type Verdict struct {
+type Advice struct {
 	Hedge  bool
 	Reason string
 }

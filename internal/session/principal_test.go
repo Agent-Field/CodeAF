@@ -382,7 +382,14 @@ func TestAProviderRefusalIsToldFromAnErrorAndFromTheWire(t *testing.T) {
 	// THE SERVICE FAILING TO SERVE: no route left, a limit still refusing after
 	// the retries, an account that could not be served, the service itself down.
 	for _, err := range []error{
-		&provider.APIError{Status: 404, Message: "All providers have been ignored"},
+		// THE FIXTURE CARRIES THE DOOR'S OWN MARK, because that is what a refusal
+		// of this shape looks like by the time anything reads it: the transport
+		// decides "a list emptied the set" once, at its refusal door, and stamps
+		// it ([provider.APIError.Routing], refusalobject.go's markRefusal). A
+		// fixture without the mark is not a routing 404 that lost something on the
+		// way — it is the shape our OWN bytes arrive in, and reading it as a route
+		// with nothing left on it is precisely the confusion #835 measured.
+		&provider.APIError{Status: 404, Routing: true, Message: "All providers have been ignored"},
 		&provider.APIError{Status: 503, Message: "service unavailable"},
 		&provider.APIError{Status: 429, Message: "rate limit"},
 		&provider.APIError{Status: 401, Message: "no key"},

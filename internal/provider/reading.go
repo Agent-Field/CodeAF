@@ -1,6 +1,22 @@
 package provider
 
-// Verdict classifies how one unit of model work actually ended.
+// Reading is what one unit of model work TAUGHT US — the learning record, and
+// nothing whatever to do with what happens next.
+//
+// ── IT IS CALLED A READING BECAUSE IT IS NOT A VERDICT ──────────────────────
+//
+// It was called `Verdict` until 2026-09-10, and internal/taxonomy's control
+// answer is called [taxonomy.Verdict] too: one word, two types, in packages that
+// call each other. A reader holding one of them could not tell from the name
+// whether it was looking at the thing that decides what the harness DOES about a
+// failure or at the thing a rating is trained on, and the recovery census found
+// three separate rules deciding what a 404 meant partly because the vocabulary
+// let them all look like the same kind of answer.
+//
+// So `Verdict` now means exactly one thing in this tree — the control answer,
+// from [taxonomy.Classify] — and THIS is a reading: an observation about a piece
+// of finished work, filed against a model, read only by the ledgers that learn.
+// A law test holds the line (internal/provider/reading_law_test.go).
 //
 // It exists because every label the harness already had conflates two different
 // questions. The scheduler's StateDone means "a non-empty string came back",
@@ -10,48 +26,48 @@ package provider
 // there is — and for learning it is fatal, because anything trained on it would
 // be told that running out of money is a success.
 //
-// So the taxonomy sits alongside the state rather than replacing it. Nothing
-// here decides what runs next; it only decides what may be learned from.
-type Verdict string
+// So the reading sits alongside the state rather than replacing it. Nothing here
+// decides what runs next; it only decides what may be learned from.
+type Reading string
 
 const (
-	// VerdictVerifiedSuccess is the only positive evidence there is: something
+	// ReadingVerifiedSuccess is the only positive evidence there is: something
 	// checked the answer and it held. For a structured call the schema and the
 	// pass's own semantic test are that check; for a leaf it would be a test
 	// suite. The whole cascade design rests on this verdict being cheap to
 	// obtain — the router lab's winning policy beat every single model only
 	// because failure was detectable for free.
-	VerdictVerifiedSuccess Verdict = "verified_success"
+	ReadingVerifiedSuccess Reading = "verified_success"
 
-	// VerdictUnverifiedSuccess is output nobody could check. It is deliberately
+	// ReadingUnverifiedSuccess is output nobody could check. It is deliberately
 	// evidence in neither direction: the probe lab's lesson restated, which is
 	// that when you cannot verify an outcome you must not pretend to have.
-	VerdictUnverifiedSuccess Verdict = "unverified_success"
+	ReadingUnverifiedSuccess Reading = "unverified_success"
 
-	// VerdictFormatFailure is a reply that did not parse or did not carry the
+	// ReadingFormatFailure is a reply that did not parse or did not carry the
 	// fields the schema required. It is the cascade's escalation trigger.
-	VerdictFormatFailure Verdict = "format_failure"
+	ReadingFormatFailure Reading = "format_failure"
 
-	// VerdictSemanticFailure is a reply that parsed and was wrong — a cyclic
+	// ReadingSemanticFailure is a reply that parsed and was wrong — a cyclic
 	// dependency set, an empty stage list, a ruler too thin to use. Only the
 	// call site can know this, which is why it is reported back rather than
 	// inferred.
-	VerdictSemanticFailure Verdict = "semantic_failure"
+	ReadingSemanticFailure Reading = "semantic_failure"
 
-	VerdictBudgetStop Verdict = "budget_stop" // the leaf ran out of tokens
-	VerdictTurnCap    Verdict = "turn_cap"    // the leaf ran out of iterations
+	ReadingBudgetStop Reading = "budget_stop" // the leaf ran out of tokens
+	ReadingTurnCap    Reading = "turn_cap"    // the leaf ran out of iterations
 
-	// VerdictProviderFailure is a transport fact — a 429, a 5xx, a timeout — and
+	// ReadingProviderFailure is a transport fact — a 429, a 5xx, a timeout — and
 	// never ability evidence. Rating a model down because its provider was busy
 	// would make the most popular model look like the weakest one.
-	VerdictProviderFailure Verdict = "provider_failure"
+	ReadingProviderFailure Reading = "provider_failure"
 
-	// VerdictEmptyResponse is the runaway-reasoning mode: the whole completion
+	// ReadingEmptyResponse is the runaway-reasoning mode: the whole completion
 	// budget spent on private deliberation, zero visible text returned. The
 	// probe lab measured it at 15% of all failures and it is the single most
 	// expensive outcome available — full price, nothing delivered — so it is
 	// named rather than folded into "produced no result".
-	VerdictEmptyResponse Verdict = "empty_response"
+	ReadingEmptyResponse Reading = "empty_response"
 )
 
 // Graded reports whether a verdict may move an ability rating, and in which
@@ -63,12 +79,12 @@ const (
 // evidence: budget, turn-cap and empty-response verdicts can only come from a
 // leaf, and all three mean the model could not converge inside what it was
 // given, which is exactly what a rating is for.
-func (v Verdict) Graded() (positive bool, graded bool) {
+func (v Reading) Graded() (positive bool, graded bool) {
 	switch v {
-	case VerdictVerifiedSuccess:
+	case ReadingVerifiedSuccess:
 		return true, true
-	case VerdictFormatFailure, VerdictSemanticFailure,
-		VerdictBudgetStop, VerdictTurnCap, VerdictEmptyResponse:
+	case ReadingFormatFailure, ReadingSemanticFailure,
+		ReadingBudgetStop, ReadingTurnCap, ReadingEmptyResponse:
 		return false, true
 	default:
 		return false, false
@@ -92,9 +108,9 @@ func (v Verdict) Graded() (positive bool, graded bool) {
 // five budget stops on a single oversized task outvote a prior and reroute every
 // leaf on the panel. Weighted at a quarter those five move a rating about as far
 // as one wrong answer does, which is the right size for what they are.
-func (v Verdict) Weight() float64 {
+func (v Reading) Weight() float64 {
 	switch v {
-	case VerdictBudgetStop, VerdictTurnCap:
+	case ReadingBudgetStop, ReadingTurnCap:
 		return 0.25
 	default:
 		return 1
@@ -104,7 +120,7 @@ func (v Verdict) Weight() float64 {
 // Escalates reports whether a verdict is worth re-running on a stronger model.
 // A provider failure is not — the next rung would hit the same weather — and an
 // unverified success is not, because nothing said it was wrong.
-func (v Verdict) Escalates() bool {
+func (v Reading) Escalates() bool {
 	positive, graded := v.Graded()
 	return graded && !positive
 }

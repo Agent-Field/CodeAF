@@ -259,7 +259,7 @@ func fanOutStage(ctx context.Context, client Completer, shared string, stage int
 	}
 	nodes := fanOutNodes(stage, decoded.Parts)
 	if len(nodes) == 0 {
-		provider.Report(ctx, provider.VerdictSemanticFailure)
+		provider.Report(ctx, provider.ReadingSemanticFailure)
 		return nil, usage, annotate(fmt.Errorf("fan-out stage %d: no parts returned", stage), response)
 	}
 	if refusal := worthSplitting(nodes, enumerated); refusal != "" {
@@ -273,7 +273,7 @@ func fanOutStage(ctx context.Context, client Completer, shared string, stage int
 		usage.Add(usageOf(retry))
 		if retryErr == nil {
 			if retried := fanOutNodes(stage, again.Parts); len(retried) > 0 && worthSplitting(retried, enumerated) == "" {
-				provider.Report(ctx, provider.VerdictVerifiedSuccess)
+				provider.Report(ctx, provider.ReadingVerifiedSuccess)
 				return retried, usage, nil
 			}
 		}
@@ -282,10 +282,10 @@ func fanOutStage(ctx context.Context, client Completer, shared string, stage int
 		// calls correct — "return a single part when the stage is genuinely one
 		// piece of work". Running them instead is what produced six identical
 		// briefs, six workers and one job's worth of work done six times.
-		provider.Report(ctx, provider.VerdictSemanticFailure)
+		provider.Report(ctx, provider.ReadingSemanticFailure)
 		return []Node{wholeStage(stage, definition, nodes)}, usage, nil
 	}
-	provider.Report(ctx, provider.VerdictVerifiedSuccess)
+	provider.Report(ctx, provider.ReadingVerifiedSuccess)
 	return nodes, usage, nil
 }
 

@@ -251,7 +251,7 @@ func TestSingleLeafProfileCarriesPolishedGateVerdict(t *testing.T) {
 	settings := config.Config{Model: "configured/model", ProfileDir: dir}
 	node := store.Node{Brief: "deliver every requested section", Title: "Complete delivery"}
 	outcome := &exec.Outcome{
-		Turns: 6, Stop: exec.StopDone, Verdict: provider.VerdictSemanticFailure,
+		Turns: 6, Stop: exec.StopDone, Verdict: provider.ReadingSemanticFailure,
 		Usage: exec.Usage{PromptTokens: 120, CompletionTokens: 30},
 	}
 	recordSingleLeaf(settings, "polish/model", node, outcome)
@@ -260,7 +260,7 @@ func TestSingleLeafProfileCarriesPolishedGateVerdict(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(measured.Records) != 1 || measured.Records[0].Verdict != provider.VerdictSemanticFailure ||
+	if len(measured.Records) != 1 || measured.Records[0].Verdict != provider.ReadingSemanticFailure ||
 		measured.Records[0].Tokens != 150 || measured.Model != "polish/model" {
 		t.Fatalf("profile = %+v, want the polished worker and gate failure", measured)
 	}
@@ -414,7 +414,7 @@ func TestRecordReflexPersistsBoundaryEvidence(t *testing.T) {
 	settings := config.Config{Model: "configured/model", ProfileDir: dir}
 	node := store.Node{Brief: "quick local action", Title: "Quick action"}
 	outcome := &exec.Outcome{
-		Turns: 4, Stop: exec.StopBudget, Verdict: provider.VerdictBudgetStop,
+		Turns: 4, Stop: exec.StopBudget, Verdict: provider.ReadingBudgetStop,
 		Usage: exec.Usage{PromptTokens: 80, CompletionTokens: 20, Cost: 0.0125},
 	}
 	recordReflex(settings, "worker/model", node, outcome, true)
@@ -428,7 +428,7 @@ func TestRecordReflexPersistsBoundaryEvidence(t *testing.T) {
 	}
 	record := measured.Records[0]
 	if record.Size != profile.BucketReflex || !record.Promoted || record.Cost != 0.0125 ||
-		record.Tokens != 100 || record.Turns != 4 || record.Verdict != provider.VerdictBudgetStop {
+		record.Tokens != 100 || record.Turns != 4 || record.Verdict != provider.ReadingBudgetStop {
 		t.Fatalf("reflex profile record = %+v", record)
 	}
 }

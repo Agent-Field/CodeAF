@@ -109,8 +109,8 @@ func measureSelfKnowledge(settings config.Config, model string) string {
 		if record.Size == profile.BucketReflex {
 			if record.Promoted {
 				bucket.promotions++
-			} else if record.Verdict == provider.VerdictVerifiedSuccess ||
-				record.Verdict == provider.VerdictUnverifiedSuccess {
+			} else if record.Verdict == provider.ReadingVerifiedSuccess ||
+				record.Verdict == provider.ReadingUnverifiedSuccess {
 				bucket.successes++
 			}
 		}

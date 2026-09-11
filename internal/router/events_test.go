@@ -30,7 +30,7 @@ func TestEventRowsAreUnchangedByTheBuffering(t *testing.T) {
 		events.Append(Event{
 			Call: callID(), Class: string(provider.ClassExecLeaf), Rung: turn % 3,
 			Candidates: []string{"cheap/one", "middle/two", "dear/three"},
-			Model:      "cheap/one", Verdict: provider.VerdictUnverifiedSuccess,
+			Model:      "cheap/one", Verdict: provider.ReadingUnverifiedSuccess,
 			PromptTokens: turn * 10, CompletionTokens: turn, LatencyMS: int64(turn),
 		})
 	}
@@ -107,8 +107,8 @@ func TestASettledVerdictLandsWithoutWaitingForTheBuffer(t *testing.T) {
 	events, path := openTestEvents(t)
 	defer events.Close()
 
-	events.Append(Event{Call: "abc", Model: "cheap/one", Verdict: provider.VerdictUnverifiedSuccess})
-	events.Append(Event{Call: "abc", Model: "cheap/one", Verdict: provider.VerdictVerifiedSuccess, Final: true})
+	events.Append(Event{Call: "abc", Model: "cheap/one", Verdict: provider.ReadingUnverifiedSuccess})
+	events.Append(Event{Call: "abc", Model: "cheap/one", Verdict: provider.ReadingVerifiedSuccess, Final: true})
 
 	data, err := os.ReadFile(path)
 	if err != nil {

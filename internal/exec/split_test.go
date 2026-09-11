@@ -105,7 +105,7 @@ func TestRequestSplitEndsTheRunAndCarriesTheDivision(t *testing.T) {
 	if outcome.Overran() {
 		t.Fatal("a cooperative split reads as an overrun; both growth paths would fire on one settlement")
 	}
-	if outcome.Verdict != provider.VerdictUnverifiedSuccess {
+	if outcome.Verdict != provider.ReadingUnverifiedSuccess {
 		t.Fatalf("verdict = %s, want an unverified success — the leaf declined to converge on the wrong thing", outcome.Verdict)
 	}
 	if outcome.Verdict.Escalates() {

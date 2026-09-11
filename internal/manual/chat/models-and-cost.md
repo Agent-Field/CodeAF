@@ -1237,15 +1237,18 @@ that endpoint is avoided on every request after it, so the next attempt queues s
 else. And the wait itself is capped at a minute however long the provider asked for, so a
 provider naming tomorrow morning does not park your turn.
 
-**When that patience runs out, aforge tries the next model in your `fallback models` row**
-rather than handing you the refusal. It says so on the same line a refusal uses:
+**When that patience runs out, the refusal goes back to your turn**, which spends its own
+four tries and then moves to the next model in your `fallback models` row — the next
+section is what that looks like.
 
-```
-Retry 1/1: Falling back to openai/gpt-5-mini
-```
+There used to be a second, quieter move here: the call itself would switch models and say
+`Retry 1/1: Falling back to openai/gpt-5-mini`. That is gone. **Your model is changed in
+exactly one place now**, by the turn, out loud, and the line you read for it is the one in
+the next section. Two things moving one model meant a turn could pay for the same fallback
+twice and skip another entirely, and one of them carried the old model's pinned machine
+across to the new model, which the router then refused.
 
-With no chain to move to, you get the provider's own words and the status, which is what
-this did before:
+With no chain to move to, you get the provider's own words and the status:
 
 ```
 error: after 6 attempts: API error (429): rate limit exceeded
@@ -1298,6 +1301,36 @@ that was tried rather than advising a move you have already made:
 ```
 error: the model kept turning the request away: deepseek/deepseek-v4.1-flash was asked four times, and openai/gpt-5-mini could not finish it either. /model to pick another one yourself
 ```
+
+## A model with no machines, a key that was not accepted, a conversation too long — what aforge says instead of the router's error
+
+**You never read the router's own sentence about a failed turn.** `API error (404): 0
+endpoints out of 1 requested are available matching your guardrail restrictions and data
+policy` is a true thing to write in a log and a useless thing to hand somebody whose reply
+just stopped: it names machinery you have no access to, about a decision you did not make.
+So every ending is said in words about your conversation, with the provider's own text kept
+on the record for an autopsy.
+
+These are the sentences and what each one means.
+
+| what you read | what happened | what aforge does |
+| --- | --- | --- |
+| `that model is not being served any more` | the router has no machines behind that model id at all | moves to your next fallback model at once, with no tries wasted |
+| `your key was not accepted for this model` | a key that is missing, not permitted for this model, or out of balance | stops and tells you — no machine, shape or model changes this |
+| `this conversation got too long for the model` | the transcript is past the model's window | shortens the conversation once and asks the same question again |
+| `this conversation is too long for the model even after shortening it` | it still did not fit | stops; start a new conversation, or `/model` to one with a bigger window |
+| `the request could not be sent as it was` | the router read the request itself and refused it | the request was already retried with its optional parts taken off; nothing else will help |
+| `nothing came back from the model — asking again` | a reply arrived with no words and no tool call | asks again on the same budget as any other failure |
+
+**A model with no machines costs you nothing to discover twice.** The first turn that meets
+one moves on and aforge remembers it for as long as the program is running, so every later
+turn skips it before a single request goes out and never offers it as a fallback. An answer
+from that model clears the memory again — a model with no machines this afternoon often has
+some next week, and nothing is written to disk.
+
+**The overflow move fires whatever your compaction setting is.** That setting governs the
+automatic pass that keeps a long conversation trimmed; this is the recovery from a request
+a provider has already refused, and it runs either way.
 
 **Two things stop the move, and both make it absent rather than broken.** `--one-model`
 settles every call this run makes onto the model you named, so nothing is ever asked of

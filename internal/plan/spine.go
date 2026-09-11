@@ -364,10 +364,10 @@ func spineOnce(ctx context.Context, client Completer, goal, terrain string, aske
 		// Schema-valid and useless: the reply parsed, so nothing upstream of here
 		// could have caught it. This is the semantic half of verification and the
 		// only place it can be observed.
-		provider.Report(ctx, provider.VerdictSemanticFailure)
+		provider.Report(ctx, provider.ReadingSemanticFailure)
 		return nil, usageOf(response), annotate(errors.New("spine: no stages returned"), response)
 	}
-	provider.Report(ctx, provider.VerdictVerifiedSuccess)
+	provider.Report(ctx, provider.ReadingVerifiedSuccess)
 	return stages, usageOf(response), nil
 }
 

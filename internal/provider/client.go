@@ -147,6 +147,10 @@ type Client struct {
 	// now is the clock those measurements are taken against, seamed like wait
 	// so a test can state a two-second first token without waiting two seconds.
 	now func() time.Time
+	// withdrawn is which models this client has been told the router does not
+	// carry (withdrawn.go). It is beside `encodes` for the same reason: a fact
+	// about one router and one account, over the span of one conversation.
+	withdrawn withdrawnMemo
 	// encodes is what this client already knows its transcript and its tool
 	// block serialize to (memo.go). It changes nothing about the bytes and is
 	// carried per client because a transcript belongs to a conversation.
@@ -465,9 +469,31 @@ func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs call
 	// on every call after the sentence has been said.
 	tellRetiredPins(ctx)
 	tellUncarriedPins(ctx)
+	// AND THE MODEL IS WRITTEN DOWN BEFORE THE REQUEST LEAVES. This is the one
+	// door every send passes through, and since the adapter stopped changing the
+	// model (endpoints.go) every attempt below this line is on the model named
+	// here — so the record is exact. What reads it is the layer that owns the one
+	// remaining model hop, which used to index a chain blind (modelstried.go).
+	model := c.modelFor(request)
+	// AND A MODEL THIS PROCESS HAS ALREADY BEEN TOLD THE ROUTER DOES NOT CARRY IS
+	// NOT SENT AT ALL (withdrawn.go). The router answered for itself the first
+	// time; sending again buys the identical 404 and, worse, a whole shape ladder
+	// climbed on a request no shape can rescue — three start rows thirty
+	// milliseconds apart, measured on 2026-09-10 22:39, every turn. The refusal is
+	// handed back with the mark on it, so one verdict is read from one call site
+	// and the move is the one move there is.
+	if c.WithdrawnModel(model) {
+		return nil, withdrawnRefusal(model)
+	}
+	noteModelTried(ctx, model)
 	response, err := c.sendRecovered(ctx, request, knobs, stream)
+	// AN ANSWER MEANS IT IS CARRIED AGAIN. A memo nothing clears takes a model
+	// away for the life of the process on the strength of one bad minute.
+	if err == nil && response != nil && response.StatusCode < 400 {
+		c.withdrawn.carriedAgain(model)
+	}
 	if err != nil || (response != nil && response.StatusCode >= 400) {
-		c.releaseEndpoint(ctx, c.modelFor(request))
+		c.releaseEndpoint(ctx, model)
 	}
 	return response, err
 }
@@ -488,7 +514,11 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	}
 	response, err := c.sendRepaired(ctx, request, knobs, stream)
 	if err != nil {
-		return c.recoverFromPacing(ctx, request, knobs, stream, err)
+		// AND IT TRAVELS BACK WHOLE. A 429 the attempt loop ran out of patience
+		// on used to be answered here by walking the fallback models, silently,
+		// on a budget nobody above could see (endpoints.go's deleted
+		// recoverFromPacing). The layer that owns the turn owns the model.
+		return nil, err
 	}
 	if !endpointRefusalStatus(response.StatusCode) {
 		return response, nil
@@ -586,17 +616,22 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	// That is rungs two and three of the ladder in docs/ARCHITECTURE.md, in the
 	// order they are written down.
 	//
-	// AND THE HAND-OFF IS WRITTEN DOWN ON THE RACE, because it is a promise and
-	// until 2026-09-10 nobody held it. `canWalk` is a PREDICTION that the walk
-	// will carry this refusal; the walk can still decline, and a later arm can
-	// die of something that never reaches this door — the measured race's last
-	// arm died of a 429 — so the ladder the prediction deferred was skipped and
-	// the person got the router's sentence. The race now owns that question:
-	// when every arm is dead and nobody committed, a ladder this door deferred
-	// and nobody ran is run by the race itself (hedge.go's [hedgeRace.exhausted]).
+	// AND THE HAND-OFF IS A COMMITMENT, IN ONE CALL. It used to be two: `canWalk`,
+	// a PREDICTION that the walk would carry this refusal, and then `deferLadder`,
+	// a note saying this door had relied on one. The walk could still decline, and
+	// a later arm could die of something that never reaches this door — the
+	// measured race's last arm died of a 429 — so the ladder the prediction
+	// deferred was skipped and the person got the router's own sentence.
+	//
+	// [streamWatch.takeRefusal] answers and records together, and what it answers
+	// is not "the walk will do it" but "the race OWNS this now": it makes its own
+	// moves, and if every arm ends with nobody committed it climbs the ladder it
+	// took here (hedge.go's [hedgeRace.exhausted]). A door whose race takes the
+	// refusal returns the refusal's own body with the status stripped, so the arm
+	// unwinds without a second request; a door whose race declines — a race already
+	// won, a ladder already climbed, or no controller at all — climbs it itself.
 	watch := streamWatchFrom(ctx)
-	if watch.canWalk() {
-		watch.deferLadder(peek)
+	if watch.takeRefusal(peek) {
 		return &http.Response{
 			StatusCode: response.StatusCode,
 			Header:     response.Header,
@@ -2242,6 +2277,33 @@ type APIError struct {
 	// somewhere else" and "our own request is wrong", which [APIError.OurRequest]
 	// and internal/taxonomy both read.
 	Routing bool
+	// Account says the list that emptied the set is the ACCOUNT'S OWN — a
+	// privacy switch, a paid-training guardrail, a standing ignore list — which
+	// is true of every model rather than of this one. It is only ever set beside
+	// Routing: the MOVE is the same (somewhere else), and what it adds is which
+	// list, for the ledger and for the journal line.
+	Account bool
+	// Withdrawn says THE ROUTER NO LONGER CARRIES THIS MODEL. The machines are
+	// fine and the request is fine; the id is gone, so there is no machine to
+	// rotate to and no shape to relax, and the only move is another model.
+	//
+	// Before it, such a 404 was indistinguishable from an emptied set and spent
+	// the whole transport budget buying three more identical refusals (#838).
+	Withdrawn bool
+	// Overflow says the request DID NOT FIT the model's window.
+	//
+	// IT IS DECIDED FROM STRUCTURE AT THIS DOOR AND NOWHERE ELSE. A seven-branch
+	// regex over the provider's prose used to answer it in internal/session, and
+	// it ran AFTER the verdict was computed and returned before the verdict could
+	// be read — a string deciding what a typed classification had already
+	// answered. What sets it now is the request-too-large status and the error
+	// envelope's own `code`, with the sentence kept only as a hint for a body
+	// that carries neither ([overflowRefusal]).
+	Overflow bool
+	// Code is the error envelope's `code`, as text. The router types that field
+	// as a number, as a string, and sometimes omits it, so it is normalised here
+	// once rather than decoded at each reader.
+	Code string
 }
 
 // Error keeps the SDK's exact error phrasing, and names the upstream when the
@@ -2411,8 +2473,32 @@ func apiError(status int, payload []byte) error {
 		}
 		failure.Provider = strings.TrimSpace(decoded.Error.Metadata.ProviderName)
 		failure.Raw = clipRaw(decoded.Error.Metadata.Raw)
+		failure.Code = envelopeCode(decoded.Error.Code)
 	}
+	// THE ONE SHAPE THAT NEEDS NO DOOR. Every other structural fact on this error
+	// depends on what the CLIENT knows — whether this base routes, whether the
+	// catalog carries the model — and is stamped at the refusal door
+	// (refusalobject.go's [Client.markRefusal]). "It did not fit" depends on
+	// nothing but the refusal itself, so it is answered where the refusal is
+	// built and is therefore true of every APIError this build makes, including
+	// the ones a stream raises in-band.
+	failure.Overflow = overflowRefusal(status, failure.Code, failure.Message, failure.Raw)
 	return failure
+}
+
+// envelopeCode normalises the error envelope's `code` to text. The router types
+// it as a number, as a string, and sometimes omits it — which is why [errorBody]
+// takes it as raw JSON — so the three spellings are folded here, once, rather
+// than at each reader.
+func envelopeCode(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		return strings.TrimSpace(text)
+	}
+	return strings.TrimSpace(strings.Trim(string(raw), `"`))
 }
 
 // clipRaw reads the upstream's own body out of the metadata, whichever of the

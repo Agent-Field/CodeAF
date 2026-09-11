@@ -181,15 +181,15 @@ func Compose(ctx context.Context, settings config.Config, client router.Client, 
 		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body.String()}}},
 	})
 	if err != nil || response == nil {
-		provider.Report(composeCtx, provider.VerdictProviderFailure)
+		provider.Report(composeCtx, provider.ReadingProviderFailure)
 		return Composition{}
 	}
 	text := strings.TrimSpace(response.Text())
 	if text == "" {
-		provider.Report(composeCtx, provider.VerdictSemanticFailure)
+		provider.Report(composeCtx, provider.ReadingSemanticFailure)
 		return Composition{}
 	}
-	provider.Report(composeCtx, provider.VerdictUnverifiedSuccess)
+	provider.Report(composeCtx, provider.ReadingUnverifiedSuccess)
 	composition := Composition{Text: text, Model: workerModel}
 	if model := provider.CallFrom(composeCtx).Model(); model != "" {
 		composition.Model = model

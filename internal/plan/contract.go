@@ -373,11 +373,11 @@ func writeContract(ctx context.Context, client Completer, shared string, node No
 	}
 	contract := trim(decoded.Contract)
 	if contract == "" {
-		provider.Report(ctx, provider.VerdictSemanticFailure)
+		provider.Report(ctx, provider.ReadingSemanticFailure)
 		return "", usageOf(response), annotate(fmt.Errorf("contract %q: empty response", node.Title), response)
 	}
 	// The schema held and the field is not empty; whether the method it
 	// describes is a good one is not checkable without running the leaf.
-	provider.Report(ctx, provider.VerdictUnverifiedSuccess)
+	provider.Report(ctx, provider.ReadingUnverifiedSuccess)
 	return contract, usageOf(response), nil
 }

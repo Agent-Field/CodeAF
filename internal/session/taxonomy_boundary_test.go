@@ -341,7 +341,15 @@ func TestARunThatDiedOnTheWireDoesNotMoveTheNode(t *testing.T) {
 		t.Fatal("four bad responses moved a whole task onto a dearer model")
 	}
 	// A refusal the ROUTER made on its own account is our own bytes being read
-	// and rejected: no endpoint and no model will fix it, so it is the work's.
+	// and rejected: no endpoint will fix it, so the node moves rather than
+	// staying where it is.
+	//
+	// IT IS FILED AS A SHAPE AND NO LONGER AS THE WORK, which is the honest
+	// reading and the one a person gets a different sentence from. Nothing was
+	// learned about the job here; what could not be served is the request. The
+	// MOVE is unchanged — this is still not the wire, so the node does not stay —
+	// and that is why the assertion below is about the class rather than about
+	// the answer.
 	if !agent.movesForFailure(node, refusalOf(400, "no endpoints found that support tool use", "", ""), io.Discard) {
 		t.Fatal("a request no endpoint will ever serve was held on the same model")
 	}
@@ -349,8 +357,9 @@ func TestARunThatDiedOnTheWireDoesNotMoveTheNode(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("%d classification lines for two run failures: %+v", len(rows), rows)
 	}
-	if rows[0].Class != string(taxonomy.Transport) || rows[1].Class != string(taxonomy.Work) {
-		t.Fatalf("classes = %q, %q; want transport then work", rows[0].Class, rows[1].Class)
+	if rows[0].Class != string(taxonomy.Transport) || rows[1].Class != string(taxonomy.Shape) {
+		t.Fatalf("classes = %q, %q; want transport then the request's own shape",
+			rows[0].Class, rows[1].Class)
 	}
 }
 

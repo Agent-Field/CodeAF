@@ -2642,7 +2642,7 @@ func (a *Agent) acceptTask(node *TaskNode, why string, by TaskAskOwner) error {
 	// learn it and nobody guessed: somebody read the work and said it holds,
 	// which is the same kind of answer the gate gives and belongs in the same
 	// record (taskgrade.go).
-	node.checkSaid(provider.VerdictVerifiedSuccess, 0)
+	node.checkSaid(provider.ReadingVerifiedSuccess, 0)
 	report, changed, _, _ := node.leavings()
 	// AND IT LANDS THE FAMILY'S LEDGER, THROUGH THE ONE ROAD EVERY LANDING TAKES
 	// (task_ledger.go's [landHome]). An accept happens long after the run: the
@@ -2700,7 +2700,7 @@ func (a *Agent) refuteTask(node *TaskNode, why string, by TaskAskOwner) error {
 	defer node.releaseSettle()
 	// The same fact in the negative, and it is evidence of exactly the same
 	// weight: a person doing the check's job and finding the work does not hold.
-	node.checkSaid(provider.VerdictSemanticFailure, 0)
+	node.checkSaid(provider.ReadingSemanticFailure, 0)
 	report, changed, branch, merge := node.leavings()
 	node.end(TaskEndingRefused)
 	node.finish(withReport(refutedLine(why, by), report), changed, branch, merge)

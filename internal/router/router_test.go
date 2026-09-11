@@ -166,13 +166,13 @@ func TestPinnedOpenerKeepsLeafLearningAndEscalation(t *testing.T) {
 	if _, err := routed.CompleteWithMessages(first, userMessages("turn")); err != nil {
 		t.Fatal(err)
 	}
-	provider.Report(first, provider.VerdictSemanticFailure)
+	provider.Report(first, provider.ReadingSemanticFailure)
 
 	retry := provider.WithCallShape(context.Background(), provider.ClassExecLeaf, 1, "atomic")
 	if _, err := routed.CompleteWithMessages(retry, userMessages("turn")); err != nil {
 		t.Fatal(err)
 	}
-	provider.Report(retry, provider.VerdictVerifiedSuccess)
+	provider.Report(retry, provider.ReadingVerifiedSuccess)
 
 	if got := panel.calls(); len(got) != 2 || got[0] != "mid/two" || got[1] != "top/three" {
 		t.Fatalf("calls = %v, want the explicit opener then the ceiling", got)
@@ -301,7 +301,7 @@ func TestReportedVerdictSettlesTheCallSiteHalf(t *testing.T) {
 	if _, err := router.CompleteWithMessages(reported, userMessages("go"), ai.WithSchema(testSchema)); err != nil {
 		t.Fatal(err)
 	}
-	provider.Report(reported, provider.VerdictSemanticFailure)
+	provider.Report(reported, provider.ReadingSemanticFailure)
 	rating, count := router.ledger.Rating("cheap/one", provider.ClassPlanBind, 0)
 	if count != 1 || rating >= 0 {
 		t.Fatalf("rating = %.3f over %d, want one negative from the reported failure", rating, count)
@@ -309,7 +309,7 @@ func TestReportedVerdictSettlesTheCallSiteHalf(t *testing.T) {
 
 	// A second report about the same call is ignored: one unit of work is one
 	// observation, however many times an error path passes through Report.
-	provider.Report(reported, provider.VerdictVerifiedSuccess)
+	provider.Report(reported, provider.ReadingVerifiedSuccess)
 	if _, count := router.ledger.Rating("cheap/one", provider.ClassPlanBind, 0); count != 1 {
 		t.Fatalf("a repeated report was counted: %d observations", count)
 	}
@@ -364,8 +364,8 @@ func TestCascadeOrdersByExpectedSuccessPerDollar(t *testing.T) {
 		t.Fatalf("cold order = %v, want the cheapest model first", got)
 	}
 	for range 60 {
-		router.ledger.Observe("cheap/one", provider.ClassPlanSpine, 0, provider.VerdictFormatFailure)
-		router.ledger.Observe("mid/two", provider.ClassPlanSpine, 0, provider.VerdictVerifiedSuccess)
+		router.ledger.Observe("cheap/one", provider.ClassPlanSpine, 0, provider.ReadingFormatFailure)
+		router.ledger.Observe("mid/two", provider.ClassPlanSpine, 0, provider.ReadingVerifiedSuccess)
 	}
 	if got := slugs(router.order(provider.ClassPlanSpine)); got[0] != "mid/two" {
 		t.Fatalf("measured order = %v, want the model that keeps working first", got)
@@ -390,7 +390,7 @@ func TestTheStrongestModelIsSeatedLast(t *testing.T) {
 	// Measured strong but not cheap enough to open with: by value it ranks
 	// second, and it still has to be the rung of last resort.
 	for range 60 {
-		router.ledger.Observe("mid/two", provider.ClassPlanAudit, 0, provider.VerdictVerifiedSuccess)
+		router.ledger.Observe("mid/two", provider.ClassPlanAudit, 0, provider.ReadingVerifiedSuccess)
 	}
 	got := slugs(router.order(provider.ClassPlanAudit))
 	if got[0] != "cheap/one" {
@@ -517,7 +517,7 @@ func TestEventsRecordTheCandidatesNotJustTheChoice(t *testing.T) {
 	if _, err := router.CompleteWithMessages(ctx, userMessages("go"), ai.WithSchema(testSchema)); err != nil {
 		t.Fatal(err)
 	}
-	provider.Report(ctx, provider.VerdictVerifiedSuccess)
+	provider.Report(ctx, provider.ReadingVerifiedSuccess)
 	if err := router.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -534,14 +534,14 @@ func TestEventsRecordTheCandidatesNotJustTheChoice(t *testing.T) {
 	if err := json.Unmarshal([]byte(lines[0]), &first); err != nil {
 		t.Fatal(err)
 	}
-	if len(first.Candidates) != 3 || first.Model != "cheap/one" || first.Verdict != provider.VerdictFormatFailure {
+	if len(first.Candidates) != 3 || first.Model != "cheap/one" || first.Verdict != provider.ReadingFormatFailure {
 		t.Fatalf("first row = %+v", first)
 	}
 	var last Event
 	if err := json.Unmarshal([]byte(lines[2]), &last); err != nil {
 		t.Fatal(err)
 	}
-	if !last.Final || last.Verdict != provider.VerdictVerifiedSuccess || last.Model != "mid/two" {
+	if !last.Final || last.Verdict != provider.ReadingVerifiedSuccess || last.Model != "mid/two" {
 		t.Fatalf("last row = %+v, want the settled verdict against the winning rung", last)
 	}
 }
@@ -600,7 +600,7 @@ func TestAFewGradedOutcomesCannotOutvoteThePrior(t *testing.T) {
 	}
 
 	for range 5 {
-		router.ledger.Observe(flash, provider.ClassExecLeaf, 0, provider.VerdictBudgetStop)
+		router.ledger.Observe(flash, provider.ClassExecLeaf, 0, provider.ReadingBudgetStop)
 	}
 	rating, count := router.ledger.Rating(flash, provider.ClassExecLeaf, 0)
 	if count != 5 || rating >= 0 {
@@ -614,7 +614,7 @@ func TestAFewGradedOutcomesCannotOutvoteThePrior(t *testing.T) {
 	// And once the evidence is actually there, it counts. The gate delays a
 	// judgement; it does not refuse to make one.
 	for range 40 {
-		router.ledger.Observe(flash, provider.ClassExecLeaf, 0, provider.VerdictEmptyResponse)
+		router.ledger.Observe(flash, provider.ClassExecLeaf, 0, provider.ReadingEmptyResponse)
 	}
 	if got := slugs(router.order(provider.ClassExecLeaf))[0]; got != gemma {
 		t.Fatalf("opener = %s after sustained graded failure, want the gate to have opened", got)
@@ -632,7 +632,7 @@ func TestLeafRatingsAreKeyedByTheShapeOfLeaf(t *testing.T) {
 	atomic := Shaped(provider.ClassExecLeaf, "atomic")
 
 	for range 30 {
-		router.ledger.Observe(flash, oversized, 0, provider.VerdictEmptyResponse)
+		router.ledger.Observe(flash, oversized, 0, provider.ReadingEmptyResponse)
 	}
 	if got := slugs(router.order(oversized))[0]; got != gemma {
 		t.Fatalf("oversized opener = %s, want the lesson to apply where it was learned", got)
@@ -666,7 +666,7 @@ func TestSuccessCannotDemoteTheTerminalRung(t *testing.T) {
 
 	// Arm B's own record: plan.expand +2.31 over 48 observations.
 	for range 48 {
-		router.ledger.Observe(flash, provider.ClassPlanExpand, 0, provider.VerdictVerifiedSuccess)
+		router.ledger.Observe(flash, provider.ClassPlanExpand, 0, provider.ReadingVerifiedSuccess)
 	}
 	rating, count := router.ledger.Rating(flash, provider.ClassPlanExpand, 0)
 	if kimiRating, _ := router.ledger.Rating(kimi, provider.ClassPlanExpand, 1); rating <= kimiRating {
@@ -741,7 +741,7 @@ func TestARetriedLeafRecordsTheChainItClimbed(t *testing.T) {
 	if _, err := router.CompleteWithMessages(ctx, userMessages("turn")); err != nil {
 		t.Fatal(err)
 	}
-	provider.Report(ctx, provider.VerdictBudgetStop)
+	provider.Report(ctx, provider.ReadingBudgetStop)
 	if err := router.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -787,7 +787,7 @@ func TestExplorationMeasuresThePanelItChoosesAgainst(t *testing.T) {
 	// its own — that is, once the opener is past the gate. While the panel is
 	// cold the ordinary cheapest-first cascade is already the exploration.
 	for range MinGraded {
-		router.ledger.Observe(flash, provider.ClassPlanExpand, 0, provider.VerdictVerifiedSuccess)
+		router.ledger.Observe(flash, provider.ClassPlanExpand, 0, provider.ReadingVerifiedSuccess)
 	}
 
 	const runs = 200
@@ -797,7 +797,7 @@ func TestExplorationMeasuresThePanelItChoosesAgainst(t *testing.T) {
 		if _, err := router.CompleteWithMessages(ctx, userMessages("go"), ai.WithSchema(testSchema)); err != nil {
 			t.Fatalf("call %d: %v", index, err)
 		}
-		provider.Report(ctx, provider.VerdictVerifiedSuccess)
+		provider.Report(ctx, provider.ReadingVerifiedSuccess)
 	}
 
 	// Every member the router could otherwise never learn about. kimi is absent
@@ -826,7 +826,7 @@ func TestExplorationIsDeterministicForOneRun(t *testing.T) {
 		})
 		router := newRouter(t, server, armBPanel())
 		for range MinGraded {
-			router.ledger.Observe(flash, provider.ClassPlanExpand, 0, provider.VerdictVerifiedSuccess)
+			router.ledger.Observe(flash, provider.ClassPlanExpand, 0, provider.ReadingVerifiedSuccess)
 		}
 		var drawn []bool
 		for range 40 {
@@ -884,7 +884,7 @@ func TestExplorationNeverTouchesALeaf(t *testing.T) {
 	router := newRouter(t, server, armBPanel())
 	leafClass := Shaped(provider.ClassExecLeaf, "atomic")
 	for range MinGraded {
-		router.ledger.Observe(flash, leafClass, 0, provider.VerdictVerifiedSuccess)
+		router.ledger.Observe(flash, leafClass, 0, provider.ReadingVerifiedSuccess)
 	}
 	for range 60 {
 		ctx := provider.WithCallShape(context.Background(), provider.ClassExecLeaf, 0, "atomic")
@@ -916,11 +916,11 @@ func TestTheArmBCollapseCannotReproduce(t *testing.T) {
 	// Run 1 through run 3: five budget stops on the one task whose leaves are too
 	// big, and forty-eight successful planning calls on the incumbent.
 	for range 5 {
-		router.ledger.Observe(flash, oversized, 0, provider.VerdictBudgetStop)
+		router.ledger.Observe(flash, oversized, 0, provider.ReadingBudgetStop)
 	}
 	for range 48 {
-		router.ledger.Observe(flash, provider.ClassPlanSpine, 0, provider.VerdictVerifiedSuccess)
-		router.ledger.Observe(flash, provider.ClassPlanExpand, 0, provider.VerdictVerifiedSuccess)
+		router.ledger.Observe(flash, provider.ClassPlanSpine, 0, provider.ReadingVerifiedSuccess)
+		router.ledger.Observe(flash, provider.ClassPlanExpand, 0, provider.ReadingVerifiedSuccess)
 	}
 
 	t.Run("leaf ordering does not move", func(t *testing.T) {

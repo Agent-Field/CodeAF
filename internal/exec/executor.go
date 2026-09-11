@@ -306,7 +306,7 @@ type Outcome struct {
 	// the two part company in exactly the case that matters — a leaf that
 	// produced text and stopped because it was out of budget reads as "budget"
 	// and grades as a failure.
-	Verdict provider.Verdict
+	Verdict provider.Reading
 
 	// Ran is the tail of what the leaf actually did: the last calls it made,
 	// in order, with the arguments clipped. ToolCalls already counted them and

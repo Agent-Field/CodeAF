@@ -262,10 +262,10 @@ func bindStage(ctx context.Context, client Completer, shared string, graph *Grap
 	// difference between "this plan needs no edges" and "this model could not
 	// read the catalog" is still visible.
 	if bindNamesUnknownNodes(graph, reply) {
-		provider.Report(ctx, provider.VerdictSemanticFailure)
+		provider.Report(ctx, provider.ReadingSemanticFailure)
 		return reply, usageOf(response), nil
 	}
-	provider.Report(ctx, provider.VerdictVerifiedSuccess)
+	provider.Report(ctx, provider.ReadingVerifiedSuccess)
 	return reply, usageOf(response), nil
 }
 

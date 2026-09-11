@@ -122,10 +122,10 @@ func Recalibrate(ctx context.Context, client Completer, store *profile.Profile) 
 	// A ruler shorter than a sentence per anchor is not a ruler. Refusing it
 	// keeps a bad call from replacing a working prior with nothing.
 	if len(anchors) < 200 {
-		provider.Report(ctx, provider.VerdictSemanticFailure)
+		provider.Report(ctx, provider.ReadingSemanticFailure)
 		return "", "the rewritten ruler came back too thin to use", usage, nil
 	}
-	provider.Report(ctx, provider.VerdictVerifiedSuccess)
+	provider.Report(ctx, provider.ReadingVerifiedSuccess)
 	return anchors, reason, usage, nil
 }
 

@@ -336,7 +336,7 @@ func TestReflexExecutorPromotesWithUsefulPartial(t *testing.T) {
 		outcome.Text != "found two coupled migrations and preserved the schema notes" {
 		t.Fatalf("promotion outcome = %+v", outcome)
 	}
-	if outcome.Turns != 1 || outcome.Verdict != provider.VerdictUnverifiedSuccess {
+	if outcome.Turns != 1 || outcome.Verdict != provider.ReadingUnverifiedSuccess {
 		t.Fatalf("promotion turns/verdict = %d/%s", outcome.Turns, outcome.Verdict)
 	}
 	if len(client.seen) != 1 || len(client.seen[0]) == 0 ||
@@ -423,7 +423,7 @@ func TestABudgetLandingThatCompliesStillReportsWhatRanOut(t *testing.T) {
 	if !outcome.Overran() {
 		t.Fatal("Overran() is false, so re-decomposition never runs for a leaf that ran out of budget")
 	}
-	if outcome.Verdict != provider.VerdictBudgetStop {
+	if outcome.Verdict != provider.ReadingBudgetStop {
 		t.Fatalf("verdict = %s, want a budget stop so the leaf can escalate", outcome.Verdict)
 	}
 	if !outcome.Verdict.Escalates() {
@@ -446,7 +446,7 @@ func TestAnOrdinaryFinishRecordsNothingExhausted(t *testing.T) {
 	if outcome.Stop != StopDone || outcome.Exhausted != "" || outcome.Overran() {
 		t.Fatalf("outcome = stop %s, exhausted %q, overran %t", outcome.Stop, outcome.Exhausted, outcome.Overran())
 	}
-	if outcome.Verdict != provider.VerdictUnverifiedSuccess {
+	if outcome.Verdict != provider.ReadingUnverifiedSuccess {
 		t.Fatalf("verdict = %s, want the unchanged unverified success", outcome.Verdict)
 	}
 }
@@ -457,7 +457,7 @@ func TestAnOrdinaryFinishRecordsNothingExhausted(t *testing.T) {
 func TestAnEscalatedAttemptIsShownWhatTheFirstOneProduced(t *testing.T) {
 	graph := &plan.Graph{Goal: "ship it", Nodes: []plan.Node{{
 		ID: 1, Stage: 1, Kind: plan.KindWork, Title: "Investigate", Brief: "look into it",
-		State: plan.StatePending, Verdict: provider.VerdictBudgetStop,
+		State: plan.StatePending, Verdict: provider.ReadingBudgetStop,
 		Result: "the v2 endpoints are all 410 Gone", Artifacts: []string{"01-investigate.md"},
 	}}}
 	scheduler := &Scheduler{}

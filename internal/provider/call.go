@@ -64,7 +64,7 @@ type Call struct {
 
 	mutex    sync.Mutex
 	model    string
-	observer func(Verdict)
+	observer func(Reading)
 	reported bool
 }
 
@@ -138,24 +138,24 @@ func CallClassFrom(ctx context.Context) CallClass {
 }
 
 // Report records how a unit of work turned out. It is the call site's half of
-// the contract, and it is idempotent: the first verdict wins, so an error path
+// the contract, and it is idempotent: the first reading wins, so an error path
 // that reports and then falls through to a shared return cannot overwrite what
 // it already said. A call nobody reports on stays unverified, which is the
 // honest answer rather than a missing one.
-func Report(ctx context.Context, verdict Verdict) {
+func Report(ctx context.Context, reading Reading) {
 	call := CallFrom(ctx)
 	if call == nil {
 		return
 	}
 	observer, fire := call.claimReport()
 	if fire && observer != nil {
-		observer(verdict)
+		observer(reading)
 	}
 }
 
-// claimReport takes the first-verdict-wins flag and the observer together, so
+// claimReport takes the first-reading-wins flag and the observer together, so
 // the observer runs after the lock is given back rather than under it.
-func (c *Call) claimReport() (func(Verdict), bool) {
+func (c *Call) claimReport() (func(Reading), bool) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	observer, fire := c.observer, !c.reported
@@ -215,10 +215,10 @@ func (c *Call) Model() string {
 	return c.model
 }
 
-// Observe registers the router's side of the verdict contract. It is set after
+// Observe registers the router's side of the reading contract. It is set after
 // the call has been placed, because until then there is nothing to attribute a
-// verdict to.
-func (c *Call) Observe(observer func(Verdict)) {
+// reading to.
+func (c *Call) Observe(observer func(Reading)) {
 	if c == nil {
 		return
 	}

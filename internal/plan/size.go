@@ -413,15 +413,15 @@ func sizeStage(ctx context.Context, client Completer, shared string, graph *Grap
 	// of them, or judges one that does not exist, did not do the job. Sizes
 	// themselves are opinions and are not checkable here.
 	if len(decoded.Sizes) == 0 {
-		provider.Report(ctx, provider.VerdictSemanticFailure)
+		provider.Report(ctx, provider.ReadingSemanticFailure)
 		return decoded.Sizes, usageOf(response), nil
 	}
 	for _, verdict := range decoded.Sizes {
 		if graph.Node(verdict.Node) == nil {
-			provider.Report(ctx, provider.VerdictSemanticFailure)
+			provider.Report(ctx, provider.ReadingSemanticFailure)
 			return decoded.Sizes, usageOf(response), nil
 		}
 	}
-	provider.Report(ctx, provider.VerdictVerifiedSuccess)
+	provider.Report(ctx, provider.ReadingVerifiedSuccess)
 	return decoded.Sizes, usageOf(response), nil
 }
