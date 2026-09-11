@@ -478,21 +478,21 @@ func (o taskOrigin) empty() bool {
 // one field, the parent it is registered under. There is nobody in a worktree to
 // show a proposal to, so the countdown simply expires and the work starts —
 // which is what an unwatched proposal already did before nesting existed
-// ([Agent.askTask]).
+// ([Agent.openTask]).
 //
 // AT THE FLOOR THE TOOL IS ABSENT, NOT REFUSING. A node at taskDepthLimit has
 // nothing left worth handing out, so it is not given the verb — the law every
 // conditional family on this belt is built on (tools.go).
+//
+// AND IT IS A STAGED TOOL (internal/exec/bare's stage.go): the card and its clock
+// are the half of a proposal that can be taken back, and the admission is the
+// half that cannot, so a proposal may be put in front of the person while the
+// rest of the message that carries it is still arriving ([Agent.stageTask]).
 func (a *Agent) taskTools() []bare.Tool {
 	if !a.mayProposeTask() {
 		return nil
 	}
-	return []bare.Tool{{
-		Name:        "propose_task",
-		Description: taskDescription,
-		Schema:      json.RawMessage(taskSchemaJSON),
-		Execute:     a.proposeTask,
-	}}
+	return []bare.Tool{bare.StagedTool("propose_task", taskDescription, json.RawMessage(taskSchemaJSON), a.stageTask)}
 }
 
 // mayProposeTask says whether propose_task belongs on this agent's belt: always
@@ -517,23 +517,55 @@ func (c Config) mayFanOut() bool {
 	return c.InTask && c.tasker != nil && c.taskDepth < taskDepthLimit
 }
 
-// proposeTask is the tool's whole life: validate, ask, and admit.
+// proposeTask is the tool's whole life — validate, ask, and admit — for a call
+// nobody started early: the two halves ([Agent.stageTask] and
+// [stagedProposal.Commit]) run back to back through the one seam every staged
+// call passes ([bare.RunStaged]). It is what the belt's own Execute does, named
+// for the callers that hold an agent rather than a belt.
 //
 // Everything it can answer badly is an ordinary tool result rather than a Go
 // error, the way every other tool on this belt answers: a brief the model
 // forgot to write is a call it can make again, and an error would end the turn
 // over a missing field.
 func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, bool, error) {
+	return bare.RunStaged(ctx, a.stageTask(ctx, args))
+}
+
+// stageTask is the half of a proposal that can be taken back: the arguments
+// read, the door refusals asked, the ground resolved, a slot and an id taken,
+// and the card put in front of the person with its clock running.
+//
+// ── WHY THE CARD MAY GO UP BEFORE THE MESSAGE IS WHOLE ──
+//
+// THE CONSENT IS THE COMMIT. Nothing in this half starts any work: it asks, and
+// the person (or the clock) answers, and only [stagedProposal.Commit] admits the
+// node on that answer. So when the turn loop sees this call's arguments close
+// while the model is still writing the rest of its message — the second and
+// third proposals of a batch, typically, a brief of several paragraphs each —
+// it starts this half then, and the countdown the person reads runs beside the
+// stream instead of after it. If the message then fails to arrive whole, the
+// loop withdraws the call ([stagedProposal.Withdraw]) and every trace of it
+// goes: the card settles as withdrawn, the question comes off the block, the
+// slot is handed back. The id stays spent, as a declined proposal's does, and
+// the place the ground ladder resolved stays known (the note at
+// [Agent.keepGround]'s call below says why).
+//
+// WHAT THIS HALF MAY NOT READ is anything the finished message changes. The
+// transcript is one of those — the assistant message carrying this call is
+// recorded only once it is whole — so what was said around the work is compiled
+// in the other half, where it reads exactly what it would have read had nothing
+// started early (the quality law of an early start: the same brief, sooner).
+func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged {
 	spec, problem := parseTaskArguments(args)
 	if problem != "" {
-		return problem, true, nil
+		return bare.Settled(problem, true)
 	}
 	// THE DOOR REFUSALS, before a card or a slot. A trivial ask and a
 	// depends_on that can never resolve are both "do not start this"; they
 	// live in one helper so this road does not grow another ending
 	// (complexity_test.go's ratchet on this function).
 	if refusal := a.refuseProposedTask(spec); refusal != "" {
-		return refusal, true, nil
+		return bare.Settled(refusal, true)
 	}
 	// WHICH HANDS THE WORK LEAVES ON, settled before anybody is asked anything
 	// (taskmodel.go). A word that names no model this install has is a refusal
@@ -542,7 +574,7 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 	// person settles it in the same breath as the work.
 	choice := a.resolveTaskModel(spec.modelWord)
 	if choice.problem != "" {
-		return choice.problem, true, nil
+		return bare.Settled(choice.problem, true)
 	}
 	spec.model, spec.modelOptions = choice.model, choice.options
 
@@ -563,12 +595,6 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 	// so a nested worker still finds the person's turn, not its parent's
 	// journal.
 	spec.origin = a.taskOriginRef()
-	// AND WHAT WAS SAID AROUND THE WORK, compiled by the one compiler every door
-	// uses (admission.go). A proposal made mid-answer is where this matters most:
-	// the calls this turn has already made and the constraint the person typed
-	// two turns ago are both in hand here and in neither the brief nor the
-	// request.
-	spec.admission = a.admissionContext()
 	// AND WHERE THE WORK STANDS, resolved from the evidence this conversation
 	// already holds (taskstands.go) before anybody is asked anything, so the card
 	// the person answers names the project rather than a folder under a session.
@@ -578,9 +604,9 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 	stand := a.resolveTaskGround(spec)
 	switch {
 	case stand.refusal != "":
-		return stand.refusal, true, nil
+		return bare.Settled(stand.refusal, true)
 	case stand.ask != "":
-		return stand.ask + "\nAsk the person which, then propose this again with `ground` set to their answer.", true, nil
+		return bare.Settled(stand.ask+"\nAsk the person which, then propose this again with `ground` set to their answer.", true)
 	}
 	spec.ground, spec.mode = stand.dir, stand.mode
 	// AND THE CONVERSATION REMEMBERS WHERE IT IS ABOUT. A ground resolved here —
@@ -589,21 +615,20 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 	// conversation has plainly been working in — is written onto the session as a
 	// referred place (places.go), so the ladder's next climb finds it at SAID and
 	// nobody is asked the same question twice.
+	//
+	// A WITHDRAWN PROPOSAL LEAVES IT, and that is the one thing this half does
+	// that its withdrawal does not undo. The place is a fact about the
+	// conversation that the call merely noticed — it names where the work is
+	// about, never that any work was handed out — and the call that replaces a
+	// withdrawn one resolves the same ground from the same evidence.
 	a.keepGround(stand)
 	graph := a.graph()
 	// THE SLOT IS TAKEN BEFORE THE QUESTION and handed back by everything that
 	// is not an admission, so a batch of proposals cannot walk through the fan
 	// cap together ([TaskGraph.claimChild]).
 	if refusal := graph.claimChild(spec.parent); refusal != "" {
-		return refusal, true, nil
+		return bare.Settled(refusal, true)
 	}
-	admitted := false
-	defer func() {
-		if !admitted {
-			graph.releaseChild(spec.parent)
-		}
-	}()
-
 	id := graph.reserve()
 	// WHO ELSE IS ALREADY IN THESE FILES, ASKED BEFORE THE MONEY. It is one line
 	// or nothing at all (taskpreflight.go), it rides on the proposal so the person
@@ -613,12 +638,61 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 	// on, because a claim another window wrote is evidence and never an
 	// instruction.
 	elsewhere := a.taskPreflight(spec.title, spec.summary, spec.brief, spec.deliverable, spec.acceptance)
-	answer, err := a.askTask(ctx, id, spec, elsewhere)
+	wait, err := a.openTask(ctx, id, spec, elsewhere)
+	if err != nil {
+		// The session closed under the question. Nothing was asked and nothing
+		// admitted, so the proposal simply never became one.
+		graph.releaseChild(spec.parent)
+		return bare.Settled(taskNeverAnswered, true)
+	}
+	return &stagedProposal{agent: a, graph: graph, id: id, spec: spec, stand: stand, elsewhere: elsewhere, wait: wait}
+}
+
+// taskNeverAnswered is the result of a proposal whose turn ended under its
+// question: nothing was admitted, so there is no node to cancel.
+const taskNeverAnswered = "the task was never answered: the turn ended first"
+
+// stagedProposal is one proposal on the card with its clock running, and
+// everything its admission will need: the half [Agent.stageTask] built and the
+// half [stagedProposal.Commit] finishes.
+type stagedProposal struct {
+	agent     *Agent
+	graph     *TaskGraph
+	id        uint64
+	spec      taskSpec
+	stand     taskStand
+	elsewhere string
+	wait      *taskWait
+}
+
+// Withdraw takes the proposal back before anybody's answer admitted it: the card
+// and its question go with the reason, and the slot is handed back. It is the
+// other ending of [stagedProposal.Commit], and exactly one of the two runs.
+func (p *stagedProposal) Withdraw() {
+	p.wait.withdraw()
+	p.graph.releaseChild(p.spec.parent)
+}
+
+// Commit reads what the wait came to and admits on it. It runs once the message
+// that carried the call is whole and recorded — at once, for a call nobody
+// started early — so everything it reads about the conversation is what the
+// batch would have read. The answer may already be in: a person who said no, or
+// a clock that ran out, while the message was still arriving, is read here in
+// the order it happened ([Agent.openTask]).
+func (p *stagedProposal) Commit(context.Context) (string, bool, error) {
+	a, spec, graph, elsewhere := p.agent, p.spec, p.graph, p.elsewhere
+	admitted := false
+	defer func() {
+		if !admitted {
+			graph.releaseChild(spec.parent)
+		}
+	}()
+	answer, err := p.wait.answer()
 	if err != nil {
 		// The turn ended under the question. Nothing was admitted, so there is
 		// no node to cancel and nothing to clean up — the proposal simply never
 		// became one.
-		return "the task was never answered: the turn ended first", true, nil
+		return taskNeverAnswered, true, nil
 	}
 	if !answer.Approved {
 		// A DECLINE IS A RESULT, NOT AN ERROR. The model asked a reasonable
@@ -652,24 +726,37 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 	if len(spec.modelOptions) > 0 {
 		spec.model, spec.modelOptions = settleTaskModel(spec.modelOptions, answer.Model), nil
 	}
+	// AND WHAT WAS SAID AROUND THE WORK, compiled by the one compiler every door
+	// uses (admission.go), and compiled HERE, in the half that cannot run before
+	// the message is whole. A proposal made mid-answer is where this matters most:
+	// the calls this turn has already made, the words the model wrote above this
+	// very call, and the constraint the person typed two turns ago are all in
+	// the transcript by now and in neither the brief nor the request.
+	spec.admission = a.admissionContext()
 
-	state := graph.admit(id, spec)
+	state := graph.admit(p.id, spec)
 	admitted = true
-	// THE MODEL IS NAMED BACK ONLY WHEN IT WAS ASKED FOR. A word resolves to an
-	// id and a shortlist is settled by somebody else, so the one thing the model
-	// cannot know after this call is what its own argument came to; a task that
-	// named no model has nothing to be told, and a receipt reciting the default
-	// every time would be a line nobody reads.
+	return taskReceipt(p.id, spec, state, p.stand, elsewhere), false, nil
+}
+
+// taskReceipt is what an admitted proposal hands back to the model.
+//
+// THE MODEL IS NAMED BACK ONLY WHEN IT WAS ASKED FOR. A word resolves to an id
+// and a shortlist is settled by somebody else, so the one thing the model cannot
+// know after this call is what its own argument came to; a task that named no
+// model has nothing to be told, and a receipt reciting the default every time
+// would be a line nobody reads.
+func taskReceipt(id uint64, spec taskSpec, state TaskState, stand taskStand, elsewhere string) string {
 	on := ""
 	if spec.modelWord != "" && spec.model != "" {
 		on = " on " + spec.model
 	}
 	if state == TaskQueued {
 		result := fmt.Sprintf("task %d queued%s: %s\nIt starts when the work it waits on has finished and a slot is free. %s", id, on, spec.title, taskHandoffWakeSentence)
-		return withElsewhere(withReport(result, stand.redirect), elsewhere), false, nil
+		return withElsewhere(withReport(result, stand.redirect), elsewhere)
 	}
 	result := fmt.Sprintf("task %d started%s: %s\nIt works from the brief alone, in a copy of its own. %s", id, on, spec.title, taskHandoffWakeSentence)
-	return withElsewhere(withReport(result, stand.redirect), elsewhere), false, nil
+	return withElsewhere(withReport(result, stand.redirect), elsewhere)
 }
 
 // taskHandoffWakeSentence is what EVERY handoff receipt ends with, and it is one
@@ -812,8 +899,8 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 
 // ── the proposal's admission ────────────────────────────────────────────────
 
-// taskQuestion owns both ways a pending proposal can change while askTask is
-// blocked. Holding closes hold exactly once but keeps answer alive, because
+// taskQuestion owns both ways a pending proposal can change while its
+// [taskWait] is waiting. Holding closes hold exactly once but keeps answer alive, because
 // typing removes the clock rather than answering the question.
 type taskQuestion struct {
 	answer chan TaskAnswer
@@ -866,11 +953,13 @@ func (a *Agent) HoldTask(id uint64) {
 	}
 }
 
-// askTask emits one proposal and waits for the person, the clock, or the end of
-// the turn. It is three phases, and each is its own function below: the
-// admission, under the lock — the clock's law, the card, and the wait
-// registered where [Agent.ResolveTask] and [Agent.HoldTask] will find it; the
-// announcement, to the other windows and to this one; and the wait itself.
+// openTask puts one proposal in front of the person, starts its clock, and
+// starts waiting for its answer ([taskWait]). It is the half of a proposal that
+// can still be taken back: the admission, under the lock — the clock's law, the
+// card, and the wait registered where [Agent.ResolveTask] and [Agent.HoldTask]
+// will find it — the announcement, to the other windows and to this one, and
+// the wait itself, which runs from here. Reading what the wait came to is
+// [taskWait.answer], and taking it all back is [taskWait.withdraw].
 //
 // THE CLOCK IS THE DIFFERENCE from consent's ask, and where it applies is the
 // whole law:
@@ -883,13 +972,22 @@ func (a *Agent) HoldTask(id uint64) {
 //     included. There is no one to wait for, and a headless run blocked on a
 //     question nobody can see is a hang, not a safeguard.
 //
+// THE WAIT RUNS FROM THE MOMENT THE CARD GOES UP, and never from the moment
+// somebody reads its answer. The card can go up while the message carrying the
+// call is still arriving ([Agent.stageTask]), and the deadline on it is the one
+// the engine keeps: a wait that began only when the message was whole would
+// find the person's answer and the expired clock both waiting for it, and would
+// choose between them by chance rather than by which came first. So the order
+// the person acted in is the order the engine reads, exactly as it was when
+// nothing could start early.
+//
 // elsewhere is the preflight's one line about other windows already in these
 // files, or "" — a fact the card draws beside the work, not a reason to wait.
-func (a *Agent) askTask(ctx context.Context, id uint64, spec taskSpec, elsewhere string) (TaskAnswer, error) {
+func (a *Agent) openTask(ctx context.Context, id uint64, spec taskSpec, elsewhere string) (*taskWait, error) {
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
-		return TaskAnswer{}, errAgentClosed
+		return nil, errAgentClosed
 	}
 	// The turn's hub, read under the same lock that registers the wait: a tool
 	// runs inside a turn, and the turn's fan-out is where its question is seen.
@@ -921,15 +1019,151 @@ func (a *Agent) askTask(ctx context.Context, id uint64, spec taskSpec, elsewhere
 	// the line and two chips could not say so, and a person who left it alone
 	// was told nothing about what leaving it alone would do.
 	proposed := a.proposalAsk(id, question.notice)
-	defer a.presenceAskingWhole(proposed)()
-
+	forget := a.presenceAskingWhole(proposed)
 	a.announceTask(hub, question)
 	// AFTER the card that carries the brief, on EventQuestion's own ordering law.
 	a.emitQuestion(EventQuestion, proposed, nil)
-	return a.awaitTaskAnswer(ctx, id, question, clock, countdown)
+	wait := &taskWait{
+		agent: a, id: id, question: question, proposed: proposed,
+		settled:   make(chan taskSettled, 1),
+		withdrawn: make(chan struct{}),
+		finished:  make(chan struct{}),
+	}
+	var expiry <-chan time.Time
+	stopTimer := func() {}
+	if clock {
+		expiry, stopTimer = a.taskClockTimer(countdown)
+	}
+	go wait.run(ctx, expiry, stopTimer, forget)
+	return wait, nil
 }
 
-// taskClock is the clock's law from [Agent.askTask]'s comment, decided once
+// taskWait is one proposal standing in front of the person, and the wait for
+// its answer, which runs on a goroutine of its own from the moment the card
+// goes up ([taskWait.run]). It ends one of two ways — its answer is read
+// ([taskWait.answer]) or it is taken back ([taskWait.withdraw]) — and never
+// both, which is [bare.Staged]'s own contract passed down.
+//
+// THE GOROUTINE DOES NOT OUTLIVE THE PROPOSAL. It returns on the first of the
+// person's answer, the clock, the end of the turn and a withdrawal, and
+// [taskWait.withdraw] waits for it to have returned.
+type taskWait struct {
+	agent    *Agent
+	id       uint64
+	question *taskQuestion
+	proposed Question
+	// settled carries what the wait came to, once; a withdrawn wait sends
+	// nothing on it.
+	settled chan taskSettled
+	// withdrawn is closed by [taskWait.withdraw] and finished by
+	// [taskWait.run] as it returns.
+	withdrawn    chan struct{}
+	withdrawOnce sync.Once
+	finished     chan struct{}
+}
+
+// taskSettled is what one proposal's wait came to: the answer, or the end of
+// the turn under it.
+type taskSettled struct {
+	answer TaskAnswer
+	err    error
+}
+
+// run is the wait: the person's answer, the person's first typed rune, the
+// clock, the end of the turn, or the proposal being taken back, whichever
+// comes first. The clock is stopped exactly once however it ends, and the
+// presence row and the question's words come down with it.
+func (w *taskWait) run(ctx context.Context, expiry <-chan time.Time, stopTimer func(), forget func()) {
+	defer close(w.finished)
+	defer forget()
+	var stopOnce sync.Once
+	stop := func() { stopOnce.Do(stopTimer) }
+	defer stop()
+	hold := (<-chan struct{})(w.question.hold)
+
+	for {
+		select {
+		case answer := <-w.question.answer:
+			w.settled <- taskSettled{answer: answer}
+			return
+		case <-hold:
+			// A nil select case is disabled. Once a first rune holds the clock,
+			// expiry cannot admit the work and a deleted draft cannot restore it.
+			stop()
+			expiry = nil
+			hold = nil
+		case <-expiry:
+			if !w.agent.taskSilenceAdmits(w.id, w.question) {
+				stop()
+				expiry = nil
+				continue
+			}
+			// Silence is a yes, and it is a yes with no redirect: the person said
+			// nothing, so nothing is appended to the brief.
+			w.settled <- taskSettled{answer: TaskAnswer{Approved: true}}
+			return
+		case <-ctx.Done():
+			w.agent.forgetTask(w.id)
+			w.settled <- taskSettled{err: ctx.Err()}
+			return
+		case <-w.withdrawn:
+			return
+		}
+	}
+}
+
+// answer is what the wait came to, waiting for it if it has not come to
+// anything yet. The wait watches the turn's own context, so a turn that ends
+// under the question ends this too.
+func (w *taskWait) answer() (TaskAnswer, error) {
+	settled := <-w.settled
+	return settled.answer, settled.err
+}
+
+// taskWithdrawnReason is why a proposal stopped being a question when the call
+// that raised it was taken back: it went up while its message was still
+// arriving, and the message then did not go through — cut off and asked for
+// again, stopped or steered by the person, or held back by the harness
+// (internal/exec/bare's stage.go). It is the engine's sentence for the
+// question's withdrawal and the card's settling alike, so every window retires
+// the proposal in one set of words, and it names no cause because the card
+// cannot know which of those it was.
+const taskWithdrawnReason = "the reply that proposed it did not go through"
+
+// withdraw takes the proposal back before anybody's answer admitted it, and
+// returns once it is gone everywhere.
+//
+// THE ORDER IS THE POINT. The wait is forgotten first, so an answer that lands
+// a moment later finds nothing to answer and is dropped as any late answer is.
+// The question is withdrawn next, in this ending's own words, before the wait
+// lets go of it — letting go withdraws whatever is still standing, and would
+// say the clock started the work ([questionGoneReason]). Then the wait is
+// stopped and waited for, and only then is the card settled, so nothing the
+// wait does can arrive after the sentence that says it is over.
+//
+// A proposal the person had already answered, or whose clock had already run
+// out, is taken back all the same. The answer was about a call that is not
+// going ahead, and the call that replaces it will be put to them afresh;
+// admitting on the old answer would start work the conversation has no record
+// of anybody asking for.
+func (w *taskWait) withdraw() {
+	a := w.agent
+	a.forgetTask(w.id)
+	a.WithdrawQuestion(QuestionTask, w.proposed.Token(), taskWithdrawnReason)
+	w.withdrawOnce.Do(func() { close(w.withdrawn) })
+	<-w.finished
+	a.mu.Lock()
+	hub := a.hub
+	notice := w.question.notice
+	a.mu.Unlock()
+	notice.Deadline = time.Time{}
+	notice.Withdrawn = taskWithdrawnReason
+	if hub != nil {
+		hub.send(Event{Kind: EventTaskProposal, Tool: "propose_task", Task: &notice})
+	}
+}
+
+// taskClock is the clock's law from [Agent.openTask]'s comment, decided once
 // per proposal: whether this one has a deadline at all, and how long it runs.
 // Called with a.mu held, because whether anybody is watching is read off the
 // turn's hub under the same lock that registers the wait.
@@ -998,47 +1232,6 @@ func (a *Agent) announceTask(hub *eventHub, question *taskQuestion) {
 		Tool: "propose_task",
 		Task: &notice,
 	})
-}
-
-// awaitTaskAnswer is the wait: the person's answer, the person's first typed
-// rune, the clock, or the end of the turn, whichever comes first. The clock
-// runs only when [Agent.taskClock] said it does, and it is stopped exactly
-// once however the wait ends.
-func (a *Agent) awaitTaskAnswer(ctx context.Context, id uint64, question *taskQuestion, clock bool, countdown time.Duration) (TaskAnswer, error) {
-	var expiry <-chan time.Time
-	rawStopTimer := func() {}
-	if clock {
-		expiry, rawStopTimer = a.taskClockTimer(countdown)
-	}
-	var stopOnce sync.Once
-	stopTimer := func() { stopOnce.Do(rawStopTimer) }
-	defer stopTimer()
-	hold := (<-chan struct{})(question.hold)
-
-	for {
-		select {
-		case answer := <-question.answer:
-			return answer, nil
-		case <-hold:
-			// A nil select case is disabled. Once a first rune holds the clock,
-			// expiry cannot admit the work and a deleted draft cannot restore it.
-			stopTimer()
-			expiry = nil
-			hold = nil
-		case <-expiry:
-			if !a.taskSilenceAdmits(id, question) {
-				stopTimer()
-				expiry = nil
-				continue
-			}
-			// Silence is a yes, and it is a yes with no redirect: the person said
-			// nothing, so nothing is appended to the brief.
-			return TaskAnswer{Approved: true}, nil
-		case <-ctx.Done():
-			a.forgetTask(id)
-			return TaskAnswer{}, ctx.Err()
-		}
-	}
 }
 
 // taskSilenceAdmits is what an expired clock has to ask before it may approve

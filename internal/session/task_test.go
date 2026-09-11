@@ -371,7 +371,12 @@ func TestTaskProposalHoldSurvivesTheOldDeadline(t *testing.T) {
 	}
 	finished := make(chan result, 1)
 	go func() {
-		answer, err := agent.askTask(context.Background(), 41, taskSpec{title: "Hold this proposal"}, "")
+		wait, err := agent.openTask(context.Background(), 41, taskSpec{title: "Hold this proposal"}, "")
+		if err != nil {
+			finished <- result{err: err}
+			return
+		}
+		answer, err := wait.answer()
 		finished <- result{answer: answer, err: err}
 	}()
 

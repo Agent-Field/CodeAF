@@ -345,7 +345,11 @@ func TestTheTaskProposalComesBackOutWithItsClockAndItsPick(t *testing.T) {
 	asks, stopAsking := agent.WatchQuestions()
 	defer stopAsking()
 
-	go func() { _, _ = agent.askTask(context.Background(), 7, taskSpec{title: "port the resume picker"}, "") }()
+	go func() {
+		if wait, err := agent.openTask(context.Background(), 7, taskSpec{title: "port the resume picker"}, ""); err == nil {
+			_, _ = wait.answer()
+		}
+	}()
 
 	if proposal := <-events; proposal.Kind != EventTaskProposal {
 		t.Fatalf("the proposal lane sent %v", proposal.Kind)

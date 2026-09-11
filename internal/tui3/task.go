@@ -1154,6 +1154,21 @@ func (a *app) proposeTask(ev session.Event) {
 	// second time, raised the question a second time, and then wrote a second
 	// receipt when the engine's answer came back to a question that was open
 	// again. One proposal, two blocks, two receipts, all from one keystroke.
+	// A PROPOSAL TAKEN BACK SETTLES ITS CARD, and it outranks whatever this
+	// window's own clock has drawn there. The card went up while the reply that
+	// proposed it was still arriving, the reply did not go through, and the
+	// engine admitted nothing — so a card still counting, or one this window's
+	// clock already marked approved, would be a promise about work that is not
+	// going to start. One this window never drew leaves no card at all.
+	if notice.Withdrawn != "" {
+		if card := a.cardFor(notice.ID); card != nil {
+			card.verdict = taskWithdrawnWord
+			a.dropTaskQuestion(card.id, notice.Withdrawn)
+			a.markCardStale(card)
+			a.touch()
+		}
+		return
+	}
 	if card := a.cardFor(notice.ID); card != nil {
 		if card.settled() {
 			return
@@ -1353,6 +1368,10 @@ const (
 	taskDeclinedWord = "declined"
 	taskClockWord    = "approved · the clock"
 	taskExpiredWord  = "expired · the turn ended"
+	// taskWithdrawnWord is a card whose reply did not go through after the
+	// card went up (session's TaskNotice.Withdrawn). Nothing started, and a
+	// reply asked for again puts up a card of its own.
+	taskWithdrawnWord = "withdrawn · its reply did not go through"
 	// taskRedirectLane is what the empty box says while a proposal is open: the
 	// one thing the box is for at that moment.
 	//
