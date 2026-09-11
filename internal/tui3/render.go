@@ -4321,3 +4321,68 @@ func firstLine(s string) string {
 	}
 	return s
 }
+
+// firstProseLine is the first line of a report that says something, and it is
+// what every quoted half of a card is built from.
+//
+// A REPORT IS THE MODEL'S OWN MARKDOWN, and a model that has just run a command
+// or produced a diff opens with the fence around it rather than with a sentence
+// — the fence is not a defect in the report, it is how the answer is spelled.
+// The literal first line of such a report is ``` or ~~~, which is a line of
+// punctuation and says nothing at all; quoting it spends the one row the card
+// exists to draw on the wrapper around the answer. So leading blank lines and
+// fence markers are skipped — with or without a language word after them, the
+// way [mdFenceOpen] reads them for rendering (````go`, `~~~sh`) — and the first
+// line of prose beneath them is what is quoted.
+//
+// A REPORT THAT IS NOTHING BUT A FENCED BLOCK QUOTES ITS FIRST LINE INSIDE. The
+// work's answer is then the block's own contents, and the first line of it is
+// the closest thing to a sentence the report carries — a card that skipped the
+// whole fence would quote nothing, which is the emptiness law doing the opposite
+// of its job: there was something to say and the row went silent.
+//
+// AND A REPORT WITH NO PROSE AT ALL RETURNS NOTHING, which hands the row to the
+// emptiness law where it belongs: the card falls back to its subtitle and, if
+// that is gone too, draws the start stamp alone rather than an empty pair of
+// quotation marks claiming the work said something ([app.doneUnder] does that
+// already, and nothing here has to learn it twice).
+func firstProseLine(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		// A fence marker is skipped, and everything after it down to its closing
+		// fence is prose from the moment one line of it says something — the
+		// block IS the answer for a report that never leaves it.
+		if delim, _, ok := mdFenceOpen(trimmed); ok {
+			if inner := firstProseInFence(lines[i+1:], delim); inner != "" {
+				return inner
+			}
+			// AND AN UNCLOSED FENCE IS A FENCE STILL BEING WRITTEN. Nothing inside
+			// one yet has said anything, so the reading keeps going below it rather
+			// than treating the rest of the report as inside a block it cannot see
+			// the end of.
+			continue
+		}
+		return trimmed
+	}
+	return ""
+}
+
+// firstProseInFence is the first line inside a fenced block that says
+// something, or "" when the block is empty. It is [firstProseLine]'s case for
+// a report that is nothing but a fence, and it stops at the closing marker
+// because what follows the block is prose the caller has not reached yet.
+func firstProseInFence(lines []string, delim string) string {
+	for _, line := range lines {
+		if mdFenceClose(line, delim) {
+			return ""
+		}
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}

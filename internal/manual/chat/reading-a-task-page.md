@@ -36,6 +36,12 @@ Nothing here is thrown away — what is folded is one keypress from open.
 `started 14:02` only when the record carries the instant the work began. Reopening the
 conversation does not replace that instant with the time you sat down.
 
+**The quoted sentence above the stamp is the report's first line that says something.** A
+task that answers with a diff, a command's output or a JSON block opens its report with the
+fence around that answer, and the card quotes the first line of prose under the fence —
+never the fence marker itself, which says nothing. A report that is all fence quotes its
+first line inside; a report with no prose at all draws the stamp with no quotation marks.
+
 An older record may carry a duration but no start or landing instant. When that duration is
 at least one second, the settled task page shows it in the header — for example `12m` —
 while the completion card omits the entire `started 14:02` segment. A shorter or absent
