@@ -800,11 +800,11 @@ type ramp struct {
 	// that is still arriving ([hueLive]). It sits beside ink rather than in a
 	// table of its own because it is the same ladder — the body, said louder for
 	// as long as it is still being said.
-	live               hue
+	live          hue
 	add, del, bad hue
-	warn               hue
-	data               hue
-	violet             hue
+	warn          hue
+	data          hue
+	violet        hue
 	// money is what a thing cost ([hueMoney]). It is named apart from `add` for
 	// the reason that hue's own note gives: landing and paying are two events.
 	money hue

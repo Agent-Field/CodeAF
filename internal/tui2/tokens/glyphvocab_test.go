@@ -88,7 +88,7 @@ func TestOneGlyphOneMeaning(t *testing.T) {
 			"amber and move under a hand while a fold mark stays a dim fact",
 		GlyphFrameEdge: "a straight horizontal run: the spawn tree's, and the frame's top and bottom edge " +
 			"— both are line geometry the tier never touches",
-		GlyphFrameSide: "a straight vertical run: the spawn tree's trunk, and the frame's sides",
+		GlyphFrameSide:   "a straight vertical run: the spawn tree's trunk, and the frame's sides",
 		GlyphStepRunning: "working, at two scales",
 		GlyphStepBlocked: "blocked on something else, at two scales",
 		GlyphProseBullet: "a middle dot: the telemetry separator's byte, a different slot",

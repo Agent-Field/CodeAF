@@ -217,7 +217,7 @@ const (
 	// batch on one form and changed a lifetime on another is two keys as far as
 	// anybody learning it is concerned.
 	questionScopeKey = "t"
-	questionBlankKey   = "tab"
+	questionBlankKey = "tab"
 	// questionToggleKey IS `space` AND NOT `" "`, which the table's own contract
 	// demands: "key is the key as bubbletea spells it, which is what a comparison
 	// against tea.KeyPressMsg.String() has to match" — and that library spells a

@@ -98,7 +98,7 @@ var questionLadder = []questionRung{
 	},
 	{
 		view: viewPanel,
-		why: "an answer brought something to look at, and evidence sets the size of the drawing",
+		why:  "an answer brought something to look at, and evidence sets the size of the drawing",
 		when: func(a *app, q questionShown, width int) bool {
 			return questionCarriesBlocks(q.question)
 		},
@@ -121,7 +121,7 @@ var questionLadder = []questionRung{
 	},
 	{
 		view: viewRow,
-		why: "everything left is a question whose whole decision is its answers' own words",
+		why:  "everything left is a question whose whole decision is its answers' own words",
 		when: func(a *app, q questionShown, width int) bool { return true },
 	},
 }

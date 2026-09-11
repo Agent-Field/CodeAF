@@ -1163,14 +1163,14 @@ func (a *app) raiseSettings() {
 	// ([session.UsageCache]) and it happens once per visit, never on a draw.
 	a.readTreeSpend()
 	a.sheet = sheet{
-		registry:     a.registry(),
-		profileDir:   a.profileDir,
+		registry:   a.registry(),
+		profileDir: a.profileDir,
 		// AND WHAT THIS PROJECT DOES WITH A QUESTION WHILE NOBODY IS THERE, read
 		// once for the visit like every other live reading on this page: the rows
 		// are the engine's rather than the registry's (settingsautonomy.go), and
 		// a page that asked the engine per frame would be paying for an answer
 		// that changes only when somebody changes it.
-		autonomy: a.autonomyReading(),
+		autonomy:     a.autonomyReading(),
 		conns:        a.conns,
 		modelRows:    a.modelConnectionRows,
 		sources:      a.sources,
