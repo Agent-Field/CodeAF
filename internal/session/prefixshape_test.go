@@ -24,6 +24,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"testing"
 
 	configpkg "github.com/Agent-Field/aforge-v2/internal/config"
@@ -75,9 +76,25 @@ var prefixShapes = []prefixShape{{
 	},
 }}
 
-// conversationDoor wires what cmd/aforge's interactive door wires, including the
-// two seams that decide whole sections of the page: somebody watching who can
-// answer a card, and a store for `stand` to leave something in.
+// conversationDoor wires what cmd/aforge's interactive door ALWAYS wires,
+// including the seams that decide whole sections of the page and whole tools on
+// the belt: somebody watching who can answer a card, a store for `stand` to
+// leave something in, the collections database `collections` and
+// `shared_context` read and write, the conversation's own journal
+// (`context_trace`), the accounts hub (`services`, `use_service`) and the
+// memory store (`remember`, `search_conversations`). chatv3.go fills every one
+// of them for a door that is a conversation.
+//
+// WHAT IT LEAVES OUT IS WHAT THE DOOR CARRIES ONLY ON SOME MACHINES — web
+// search, `view_image`, furrow's verbs, `workspace` — because a tool on some
+// belts and not others is not what every request carries; prefixbudget_test.go's
+// ledger names each and what it means for the number.
+//
+// IT IS THE ONE DEFINITION OF THAT SHAPE. [v3ShapedAgent] and so the prefix
+// budget build through it, because the budget weighed a hand-assembled belt
+// with none of these for as long as two copies of this list existed, and so
+// never saw 19 KB the real door sent on every request (prefixbudget_test.go's
+// ledger).
 func conversationDoor(t *testing.T, config *Config) {
 	t.Helper()
 	config.AskConsent = true
@@ -89,6 +106,10 @@ func conversationDoor(t *testing.T, config *Config) {
 	config.OrchestrateRunner = func(context.Context, string, string, float64) (string, error) { return "", nil }
 	config.Standing = &Standing{}
 	config.standingItems = &fakeStanding{}
+	config.Organization = &Organization{Path: filepath.Join(t.TempDir(), "collections.db")}
+	config.SessionFile = filepath.Join(t.TempDir(), "transcript.jsonl")
+	config.connectHub = &fakeHub{}
+	config.Memory = openTestBrain(t)
 }
 
 // TestTheFixedPrefixOfEveryShapeIsMeasured prints the bill each door pays and

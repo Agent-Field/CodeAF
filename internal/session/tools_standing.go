@@ -240,6 +240,19 @@ func (a *Agent) standingWatch() standing.Watch {
 // times while this comment is free. So the reasoning stays and the repetition
 // went: the last paragraph used to walk every argument a second time, and every
 // one of those sentences is now said ONCE, in the schema field it governs.
+//
+// AND IT STAYS WHERE THE CALL IS MADE, WHICH WAS MEASURED (2026-09-11). A lane
+// moved recognition onto the page section built from the same predicate and cut
+// the schema below to one line a field. Ten live chat-door journeys per text
+// then passed 3, 4 and 7 of 10 against 10 of 10 for this text, because the
+// conversation began doing the work — writing the report file itself before
+// proposing — in 7, 6 and 2 of them and never with this text. The recipe for
+// exactly that sentence ("keep an eye on my inbox folder and keep
+// reports/inbox.md current" is file with does.kind task and does.report) and
+// "doing a standing sentence once instead of proposing it" have to be in front
+// of the model at the moment it chooses between the two, and so both this string
+// and [standSchemaJSON] are the measured text, byte for byte
+// (prefixbudget_test.go's ledger has the table).
 var standDescription = "Set up something that keeps working after this window is closed — a reminder, a watch on the world, a rule, or work that runs overnight — and manage the ones that already stand. THE PERSON NEVER NAMES THIS TOOL; you recognise it from what their sentence IS.\n\n" +
 	"THE DISCHARGE TEST decides it. Can this sentence be satisfied once and then forgotten? If it CAN, it is part of the work in front of you — an acceptance criterion, an instruction — and it does NOT stand, whatever words it is dressed in and even when it says \"make sure\": \"make sure this website you are building is 3 pages\" is discharged the moment the site has three pages. If it can NEVER be discharged — if work nobody has done yet could violate it tomorrow — it is standing: \"make sure the tests never break\".\n\n" +
 	"ANCHORING. A sentence about the artifact under construction RIGHT NOW binds the current work, whatever verbs it uses, and what anchors it is the GRAMMAR: a demonstrative pointing at the thing in front of you (\"this website you're building\"), or a present tense about work already under way (\"what you're doing\"). An \"always\", a \"never\" or an \"ensure\" inside such a sentence is EMPHASIS ON THIS WORK — a quality bar for the thing being built is acceptance, and acceptance is never a card.\n\n" +
