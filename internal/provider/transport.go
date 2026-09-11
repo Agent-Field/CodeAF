@@ -35,6 +35,89 @@ const (
 	streamIdleTimeout     = 2 * time.Minute
 )
 
+// ── THE POOL'S OWN TABLE: ONE VALUE, ONE REASON, ONE MEASUREMENT ────────────
+//
+// EVERY NUMBER HERE IS THIS BUILD'S ANSWER AND NOT THE STANDARD LIBRARY'S.
+// `http.DefaultTransport` is a sensible default for a program nobody measured;
+// it was measured here, and one of its answers was costing a person a TLS
+// handshake every time they stopped to read. A value inherited silently is a
+// decision nobody took, so each of the five below is set on purpose and says
+// why, and [TestTheSharedTransportStatesEveryValueItRelieson] fails the build
+// if one of them goes back to being inherited.
+//
+// ── THE MEASUREMENT, 2026-09-11, against the live router from the Spark ─────
+//
+// A connection was opened, held idle for a fixed interval, and used again with
+// `httptrace` watching `GotConn`. Each hold had a pool of its own, so the only
+// thing under test was the far end.
+//
+//	hold    keep-alive   rode the same socket
+//	30s     none         yes
+//	2m      none         yes
+//	5m      none         yes
+//	6m      none         yes
+//	7m      none         NO — DNS 3ms, connect 3ms, TLS 9ms
+//	8m      none         NO
+//	9m      none         NO
+//	15m     PING every 2m   yes
+//	20m     PING every 2m   yes
+//
+// TWO FACTS COME OUT OF IT AND BOTH ARE USED BELOW. The router's own idle
+// window is between six and seven minutes — so ninety seconds was throwing
+// away a connection the far end was still holding, four times over. And an
+// HTTP/2 PING keeps it open for as long as we care to: fifteen and twenty
+// minutes of silence both rode the same socket.
+//
+//   - idleConnTimeout is how long THIS END keeps a connection nobody is using,
+//     and it is the far end's own measured figure. Adopting the router's answer
+//     rather than inventing one means neither end is guessing: inside the window
+//     the router itself considers a connection live, a pause costs nothing;
+//     past it, a pause costs one handshake, which is what a connection nobody
+//     believes in any more is worth. The default was 90 seconds, which is
+//     shorter than a person reads for — so someone who took two minutes over an
+//     answer and then typed again paid DNS, TCP and TLS inside the next
+//     request's own `httpClient.Do`, invisibly, because `ttft_ms` cannot tell a
+//     handshake from a slow model (conntrace.go is what tells them apart now).
+//   - http2KeepAlive is what stops the far end closing first INSIDE that
+//     window. The window is known to be between six and seven minutes and not
+//     to the second, so a pool that simply waited out its own six would
+//     sometimes hand a request a socket the router had already dropped — a
+//     failure, which is the expensive way to learn the same thing. At least two
+//     pings must therefore land inside the shortest window the measurement
+//     proves, which puts the period at no more than three minutes; two is the
+//     figure the fifteen- and twenty-minute readings confirm. It is also the
+//     health check that closes a socket whose ping goes unanswered, which is
+//     what makes a pool held for minutes safe on a laptop that slept.
+//   - forceAttemptHTTP2 is why a warm pool is cheap at all against the router:
+//     one connection carries every request this process makes, so the pool that
+//     matters is one socket rather than [limiterCeiling] of them — and it is
+//     what makes the ping above possible, since HTTP/1.1 has no such frame. It
+//     is on in the standard library's default and off in a transport somebody
+//     built by hand, which is exactly the accident this states out loud.
+//   - tlsHandshakeTimeout bounds the part of a cold connection this file exists
+//     to stop paying for. Ten seconds is the standard library's figure and it
+//     is far too long for a handshake that is going to work — the measured ones
+//     above are nine to eleven MILLISECONDS. A lane that has not finished one
+//     in this long is a path to somewhere else, and the ladder above has
+//     somewhere else to go (dispatch.go).
+//   - expectContinueTimeout is stated to say that it never applies: nothing in
+//     this package sends `Expect: 100-continue`, so the wait it bounds is a
+//     wait no request of ours takes. It is kept at a second rather than
+//     disabled because a zero here means "wait forever" for the one request
+//     that might one day carry the header through a proxy at AFORGE_BASE_URL.
+const (
+	idleConnTimeout       = 6 * time.Minute
+	http2KeepAlive        = 2 * time.Minute
+	tlsHandshakeTimeout   = 10 * time.Second
+	expectContinueTimeout = time.Second
+	// pingAnswerTimeout is how long a health check waits for its answer before
+	// the connection is closed. It is generous beside the handshake it protects
+	// — a machine that cannot answer a PING in this long has nothing to do with
+	// a slow model — and it exists so that the number is ours rather than the
+	// standard library's fifteen seconds arrived at by default.
+	pingAnswerTimeout = 30 * time.Second
+)
+
 var (
 	transportOnce sync.Once
 	shared        *http.Transport
@@ -58,6 +141,18 @@ func buildTransports() {
 	shared.MaxIdleConnsPerHost = limiterCeiling
 	if shared.MaxIdleConns < 2*limiterCeiling {
 		shared.MaxIdleConns = 2 * limiterCeiling
+	}
+	// And the five the table above states. They are assigned here rather than
+	// left to the clone so that a base transport somebody replaces — the
+	// process-global this function is careful about above — cannot quietly
+	// change any of them.
+	shared.IdleConnTimeout = idleConnTimeout
+	shared.ForceAttemptHTTP2 = true
+	shared.TLSHandshakeTimeout = tlsHandshakeTimeout
+	shared.ExpectContinueTimeout = expectContinueTimeout
+	shared.HTTP2 = &http.HTTP2Config{
+		SendPingTimeout: http2KeepAlive,
+		PingTimeout:     pingAnswerTimeout,
 	}
 
 	streaming = shared.Clone()

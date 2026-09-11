@@ -8,16 +8,85 @@ package main
 // about them lives in this process: onboarding, --once, --debug, --no-host.
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/connect"
 	"github.com/Agent-Field/aforge-v2/internal/enginehost"
+	"github.com/Agent-Field/aforge-v2/internal/modelsource"
+	"github.com/Agent-Field/aforge-v2/internal/modelsource/sourcestub"
+	"github.com/Agent-Field/aforge-v2/internal/remote"
+	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui3"
 )
+
+// consentSource is an OpenAI-shaped fake whose turn always asks for the same
+// harmless bash command and then finishes after the tool result comes back.
+func consentSource(t *testing.T, command string) *httptest.Server {
+	t.Helper()
+	var call int
+	return httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var envelope struct {
+			Messages []struct {
+				Role string `json:"role"`
+			} `json:"messages"`
+			Tools  []json.RawMessage `json:"tools"`
+			Stream bool              `json:"stream"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&envelope); err != nil {
+			http.Error(writer, err.Error(), http.StatusBadRequest)
+			return
+		}
+		toolTurn := len(envelope.Tools) > 0 && (len(envelope.Messages) == 0 || envelope.Messages[len(envelope.Messages)-1].Role != "tool")
+		content := `"content":"done"`
+		finish := "stop"
+		if toolTurn {
+			call++
+			arguments, _ := json.Marshal(map[string]string{"command": command})
+			content = `"tool_calls":[{"index":0,"id":"call-` + strconv.Itoa(call) + `","type":"function","function":{"name":"bash","arguments":` + strconv.Quote(string(arguments)) + `}}]`
+			finish = "tool_calls"
+		}
+		body := `{"id":"consent-probe","choices":[{"index":0,"delta":{"role":"assistant",` + content + `},"finish_reason":"` + finish + `"}]}`
+		if envelope.Stream {
+			writer.Header().Set("Content-Type", "text/event-stream")
+			_, _ = writer.Write([]byte("data: " + body + "\n\ndata: [DONE]\n\n"))
+			return
+		}
+		_, _ = writer.Write([]byte(`{"choices":[{"index":0,"message":{"role":"assistant","content":"done"},"finish_reason":"stop"}]}`))
+	}))
+}
+
+func drainConsentRoad(t *testing.T, events <-chan session.Event, answer func(session.Event)) int {
+	t.Helper()
+	asked := 0
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case event, open := <-events:
+			if !open {
+				return asked
+			}
+			if event.Kind == session.EventConsentRequest {
+				asked++
+				answer(event)
+			}
+		case <-deadline:
+			t.Fatal("the consent probe did not finish")
+			return asked
+		}
+	}
+}
 
 // shortStateRoot is a state root a unix socket can be named in.
 //
@@ -68,6 +137,267 @@ func TestAnOrdinaryLaunchTakesTheHostRoad(t *testing.T) {
 	}
 	if v3TakeHostRoad("", v3HostChoice{}) {
 		t.Fatal("a workspace that could not be resolved sent the launch down the host road")
+	}
+}
+
+// The ordinary road borrows the remote surface builder, but its engine and
+// surface are on this machine. Every door backed by this machine's profile or
+// registry is therefore present, while the builder by itself keeps the far
+// road's deliberate absences.
+func TestAPlainLaunchKeepsThisMachinesDoorsWhileAHostLaunchDoesNot(t *testing.T) {
+	engineProfile := t.TempDir()
+	surfaceProfile := t.TempDir()
+	t.Setenv("AFORGE_HOME", surfaceProfile)
+	t.Setenv("AFORGE_PROFILE_DIR", surfaceProfile)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(config.APIKeyEnv, "not-a-real-key")
+	if err := config.WriteSources(engineProfile, []config.PersistedSource{{
+		ID: "custom", Written: "engine-service", Address: "https://engine.example/v1", Key: "engine-key", Order: 1,
+	}}); err != nil {
+		t.Fatalf("seed the engine profile's service: %v", err)
+	}
+	credential := []byte(`{"stripe":{"auth":"key","key":"not-a-real-key"}}`)
+	for _, dir := range []string{engineProfile, surfaceProfile} {
+		if err := os.WriteFile(filepath.Join(dir, connect.StoreFileName), credential, 0o600); err != nil {
+			t.Fatalf("seed credentials in %q: %v", dir, err)
+		}
+	}
+
+	client := hostedClient(t)
+	welcome := remote.Welcome{Version: remote.Version, Workspace: "/srv/app", ProfileDir: engineProfile}
+	local, settings := hostOptions(onePipeFleet("", client), welcome, false)
+	localDoors(&local, welcome, settings)
+
+	if local.Connections == nil || local.Harnesses == nil || local.SaveApproval == nil ||
+		local.SaveBashApproval == nil || local.SaveModel == nil || local.Sources.Empty() ||
+		local.ApplyModelSources == nil {
+		t.Fatalf("the plain launch was handed incomplete local doors: %+v", local)
+	}
+	if local.ApplyApprovals != nil {
+		t.Fatal("the local engine road claimed a take-back door it does not have")
+	}
+	if local.ProfileDir != engineProfile || settings.ProfileDir != surfaceProfile {
+		t.Fatalf("surface writes to %q and local settings resolved %q, want engine %q and terminal %q", local.ProfileDir, settings.ProfileDir, engineProfile, surfaceProfile)
+	}
+	if _, ok := local.Sources.ByID("custom"); !ok {
+		t.Fatalf("the surface read model services from its own profile instead of the engine's: %+v", local.Sources.All())
+	}
+	if err := local.SaveModel("vendor/remembered"); err != nil {
+		t.Fatalf("save model through the local door: %v", err)
+	}
+	if got := config.ChatModelAt(engineProfile); got != "vendor/remembered" {
+		t.Fatalf("the model was written through engine profile %q as %q", engineProfile, got)
+	}
+	if err := local.SaveApproval("read"); err != nil {
+		t.Fatalf("save a tool approval through the local door: %v", err)
+	}
+	if got := config.ToolApprovalsAt(engineProfile); got != "read:allow" {
+		t.Fatalf("the tool approval was written through engine profile %q as %q", engineProfile, got)
+	}
+	if err := local.SaveBashApproval("git status --short"); err != nil {
+		t.Fatalf("save a command approval through the local door: %v", err)
+	}
+	if got := config.BashApprovalsAt(engineProfile); got != "allow git status --short" {
+		t.Fatalf("the command approval was written through engine profile %q as %q", engineProfile, got)
+	}
+	if config.ChatModelAt(surfaceProfile) != "" || config.ToolApprovalsAt(surfaceProfile) != "" || config.BashApprovalsAt(surfaceProfile) != "" {
+		t.Fatal("a local write landed in the terminal's profile instead of the engine's")
+	}
+	if err := local.Connections.Disconnect("stripe"); err != nil {
+		t.Fatalf("disconnect through the local account door: %v", err)
+	}
+	for dir, wantStripe := range map[string]bool{engineProfile: false, surfaceProfile: true} {
+		raw, err := os.ReadFile(filepath.Join(dir, connect.StoreFileName))
+		if err != nil {
+			t.Fatalf("read credentials in %q: %v", dir, err)
+		}
+		var entries map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &entries); err != nil {
+			t.Fatalf("decode credentials in %q: %v", dir, err)
+		}
+		if _, gotStripe := entries["stripe"]; gotStripe != wantStripe {
+			t.Fatalf("credentials in %q have stripe=%t, want %t", dir, gotStripe, wantStripe)
+		}
+	}
+
+	hosted, _ := hostOptions(onePipeFleet("devbox", client), welcome, false)
+	if hosted.Connections != nil || hosted.Harnesses != nil || hosted.SaveApproval != nil ||
+		hosted.SaveBashApproval != nil || hosted.SaveModel != nil || !hosted.Sources.Empty() ||
+		hosted.ApplyModelSources != nil {
+		t.Fatalf("the --host builder grew this machine's doors: %+v", hosted)
+	}
+}
+
+// A DAMAGED ACCOUNT STORE TAKES AWAY ONLY THE ACCOUNTS. Model services live in
+// the profile's config.json, so their group still draws and the connection
+// panel has a useful, non-panicking shape.
+func TestADamagedCredentialsStoreLeavesAccountsAbsentAndModelsPresent(t *testing.T) {
+	profileDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(profileDir, connect.StoreFileName), []byte("{not json"), 0o600); err != nil {
+		t.Fatalf("write damaged credentials: %v", err)
+	}
+	sources := modelsource.NewSet(modelsource.Connected{
+		Source: modelsource.DefaultSource(config.DefaultBaseURL), Key: "default-key", Address: config.DefaultBaseURL,
+	})
+	options := tui3.Options{}
+	localDoors(&options, remote.Welcome{ProfileDir: profileDir}, config.Config{ProfileDir: profileDir, Sources: sources})
+	if options.Connections != nil {
+		t.Fatal("a damaged credentials.json was presented as an accounts store")
+	}
+	if options.Sources.Empty() {
+		t.Fatal("a damaged credentials.json took the models group away with the accounts")
+	}
+}
+
+// A service connected by the local surface is picked up by the real engine on
+// the model-set call already on the wire. The next turn must therefore reach
+// the new address with the new key, not the client the session opened on.
+func TestAConnectedModelServiceIsLiveInTheRunningEngineConversation(t *testing.T) {
+	defaultServer := sourcestub.New("openai/gpt-4.1-mini")
+	defer defaultServer.Close()
+	directServer := sourcestub.New("direct-chat")
+	defer directServer.Close()
+
+	profileDir := t.TempDir()
+	defaultSource := modelsource.DefaultSource(defaultServer.URL())
+	initial := modelsource.NewSet(modelsource.Connected{
+		Source: defaultSource, Key: "default-key", Address: defaultServer.URL(),
+	})
+	agent, err := session.New(session.Config{
+		Workspace: t.TempDir(), Model: "openai/gpt-4.1-mini", Sources: initial,
+	})
+	if err != nil {
+		t.Fatalf("open the real session agent: %v", err)
+	}
+	proc := &v3Process{
+		Settings:   config.Config{APIKey: "default-key", BaseURL: defaultServer.URL(), Sources: initial},
+		ProfileDir: profileDir,
+	}
+	proc.track(agent)
+	loop, err := remote.Loopback(remote.Hello{Version: remote.Version}, remote.Options{
+		Boot: func(remote.Hello) (*remote.Engine, error) {
+			return &remote.Engine{
+				Agent: agent, Workspace: t.TempDir(),
+				RefreshModelSources: proc.refreshModelSources,
+			}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("open the real engine road: %v", err)
+	}
+	t.Cleanup(func() { _ = loop.Close() })
+
+	options := tui3.Options{Agent: loop.Client.Agent(), ProfileDir: profileDir}
+	localDoors(&options, remote.Welcome{ProfileDir: profileDir}, config.Config{ProfileDir: profileDir, Sources: initial})
+	var custom modelsource.Source
+	for _, source := range modelsource.Vendored() {
+		if source.ID == "custom" {
+			custom = source
+			break
+		}
+	}
+	if custom.ID == "" {
+		t.Fatal("the model-service catalog has no Something else door")
+	}
+	outcome, err := config.ConnectService(context.Background(), profileDir, config.PersistedSource{
+		ID: custom.ID, Written: "localhost", Address: directServer.URL(), Key: "direct-key", Order: 1,
+	}, custom, nil)
+	if err != nil || outcome.Kind != modelsource.OutcomeConnected {
+		t.Fatalf("connect the direct service: outcome=%+v err=%v", outcome, err)
+	}
+	connected := config.ResolveSources(profileDir, "default-key", defaultServer.URL())
+	options.ApplyModelSources(connected)
+	options.Agent.SetModel("localhost/direct-chat")
+	events, err := options.Agent.Submit(context.Background(), "use the connected service")
+	if err != nil {
+		t.Fatalf("submit through the engine road: %v", err)
+	}
+	for range events {
+	}
+
+	var completions []sourcestub.Request
+	for _, request := range directServer.Requests() {
+		if request.Method == "POST" {
+			completions = append(completions, request)
+		}
+	}
+	if len(completions) != 1 {
+		t.Fatalf("direct service received %d completion requests: %+v", len(completions), directServer.Requests())
+	}
+	var body struct {
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal(completions[0].Body, &body); err != nil {
+		t.Fatalf("decode direct request: %v", err)
+	}
+	if completions[0].Bearer != "Bearer direct-key" || completions[0].Host == "" || body.Model != "direct-chat" {
+		t.Fatalf("direct request used bearer %q host %q model %q", completions[0].Bearer, completions[0].Host, body.Model)
+	}
+	for _, request := range defaultServer.Requests() {
+		if request.Method == "POST" {
+			t.Fatalf("the session's old service received the switched turn: %+v", request)
+		}
+	}
+}
+
+// A RULE BANKED BY THE LOCAL SURFACE REACHES THE RUNNING ENGINE'S GATE before
+// the answer releases the call. The next matching command therefore runs
+// without asking the person a second time.
+func TestABankedBashRuleReachesTheRunningEngineBeforeTheAnswer(t *testing.T) {
+	profileDir := t.TempDir()
+	workspace := t.TempDir()
+	command := "printf banked-rule-probe"
+	server := consentSource(t, command)
+	defer server.Close()
+	sources := modelsource.NewSet(modelsource.Connected{
+		Source: modelsource.DefaultSource(server.URL + "/v1"), Key: "test-key", Address: server.URL + "/v1",
+	})
+	policy, err := v3Policy(workspace, profileDir, false)
+	if err != nil {
+		t.Fatalf("build the initial approval gate: %v", err)
+	}
+	agent, err := session.New(session.Config{
+		Workspace: workspace, Model: "openai/gpt-4.1-mini", Sources: sources,
+		System: "SYSTEM", AskConsent: true, ApprovalPolicy: policy,
+	})
+	if err != nil {
+		t.Fatalf("open the real session agent: %v", err)
+	}
+	defer agent.Close()
+	loop, err := remote.Loopback(remote.Hello{Version: remote.Version}, remote.Options{
+		Boot: func(remote.Hello) (*remote.Engine, error) {
+			return &remote.Engine{
+				Agent: agent, Workspace: workspace,
+				RefreshApprovals: func() { refreshV3Policy(agent, workspace, profileDir, false) },
+			}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("open the real consent road: %v", err)
+	}
+	defer loop.Close()
+	options := tui3.Options{Agent: loop.Client.Agent(), ProfileDir: profileDir}
+	localDoors(&options, remote.Welcome{ProfileDir: profileDir}, config.Config{ProfileDir: profileDir, Sources: sources})
+
+	first, err := options.Agent.Submit(context.Background(), "run the probe")
+	if err != nil {
+		t.Fatalf("submit the first probe: %v", err)
+	}
+	asked := drainConsentRoad(t, first, func(event session.Event) {
+		if err := options.SaveBashApproval(command); err != nil {
+			t.Fatalf("bank the command: %v", err)
+		}
+		options.Agent.ResolveConsentRemember(event.ID, true, session.ConsentRule)
+	})
+	second, err := options.Agent.Submit(context.Background(), "run the probe again")
+	if err != nil {
+		t.Fatalf("submit the second probe: %v", err)
+	}
+	asked += drainConsentRoad(t, second, func(event session.Event) {
+		options.Agent.ResolveConsent(event.ID, true)
+	})
+	if asked != 1 {
+		t.Fatalf("the person was asked %d times, want once", asked)
 	}
 }
 

@@ -41,6 +41,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why are only four glm models listed", "services"},
 		{"is aforge supported by zhipu", "services"},
 		{"how do I reconnect a model service", "services"},
+		{"I exported the model service key after the engine started", "services"},
+		{"why does /connect say connections are unavailable", "accounts"},
+		{"connect says unavailable on my own machine", "accounts"},
+		{"credentials.json is damaged but where are my models", "accounts"},
 		// The questions object (docs/design/questions/DESIGN.md), asked the
 		// six ways somebody meets it: the shapes, the clock, the record, the
 		// refusals, answering from elsewhere, and what is not built.
@@ -202,6 +206,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// meet it: reading the figure, and finding it beside the call log.
 		{"what does the total at the end of aforge do include", "models-and-cost"},
 		{"why is the printed cost different from the call log", "models-and-cost"},
+		// THE ONE SEND THAT IS NOT IN THE MONEY FIGURES, asked the three ways
+		// somebody meets it: noticing the sending, doubting the total, and
+		// looking for the switch. A capability that spends without appearing in
+		// /cost has to be findable from a person's own suspicion, or the only
+		// place it exists is the code.
+		{"does aforge send anything while I am typing", "models-and-cost"},
+		{"my provider bill is higher than what /cost says", "models-and-cost"},
+		{"how do I stop aforge sending requests I did not ask for", "models-and-cost"},
 		// A refused headless run names the project it worked in, asked in the two
 		// ways somebody meets an empty file list after spending time and money.
 		{"the run finished and my directory is empty where did the work go", "running-from-the-terminal"},

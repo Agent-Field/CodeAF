@@ -382,6 +382,9 @@ func TestTheModelServiceWordsAreExactAndVendorWordsStopAtAWordBoundary(t *testin
 	if got := serviceStrandedWord("deepseek-direct/deepseek-v4-pro"); got != "this conversation was on deepseek-direct/deepseek-v4-pro and nothing else here can take it · connect a service or pick a model" {
 		t.Errorf("stranded word = %q", got)
 	}
+	if got := engineVariableWord("DEEPSEEK_API_KEY"); got != "the engine process reads $DEEPSEEK_API_KEY from its own environment" {
+		t.Errorf("engine variable word = %q", got)
+	}
 	words := strings.Repeat("word ", 30) + "tail"
 	got := truncateVendorWords(words, 120)
 	if len(got) > 120 || strings.HasSuffix(got, "wor") {
@@ -424,6 +427,27 @@ func TestThePlanCatalogDoesNotBelieveTheWiderListing(t *testing.T) {
 	}
 	if len(plan.Requests()) != 1 || len(metered.Requests()) != 0 {
 		t.Fatalf("catalog connection requests: plan=%d metered=%d", len(plan.Requests()), len(metered.Requests()))
+	}
+}
+
+func TestAnEngineRoadConnectionSaysWhoseEnvironmentReadsItsVariable(t *testing.T) {
+	base := testDefaultService("default-key")
+	engine := modelServiceTestApp(t, t.TempDir(), "openai/gpt-4.1-mini", modelsource.NewSet(base), []Model{{ID: "openai/gpt-4.1-mini"}})
+	engine.engineRoad = true
+	msg := modelConnectResultMsg{
+		service: "deepseek", written: "deepseek-direct", keyEnv: "DEEPSEEK_API_KEY",
+		outcome: modelsource.Outcome{Kind: modelsource.OutcomeConnected},
+	}
+	engine.adoptModelConnectResult(msg)
+	want := "deepseek-direct is connected · the engine process reads $DEEPSEEK_API_KEY from its own environment"
+	if got := noteSaying(t, engine, "engine process reads"); got != want {
+		t.Fatalf("engine-road receipt = %q, want %q", got, want)
+	}
+
+	inProcess := modelServiceTestApp(t, t.TempDir(), "openai/gpt-4.1-mini", modelsource.NewSet(base), []Model{{ID: "openai/gpt-4.1-mini"}})
+	inProcess.adoptModelConnectResult(msg)
+	if got := noteSaying(t, inProcess, "is connected"); got != "deepseek-direct is connected" {
+		t.Fatalf("in-process receipt grew an engine clause: %q", got)
 	}
 }
 

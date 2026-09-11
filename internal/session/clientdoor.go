@@ -292,7 +292,14 @@ func (a *Agent) modelFallbackChain(model string) ([]string, bool) {
 }
 
 // probeClientLanes asks the optional prober without exposing the conversation
-// completer. False means this client has no lane-probing capability.
+// completer. False means this completer has no probing DOOR at all — a test
+// double, a refusing completer, a build wired to no router.
+//
+// TRUE IS NOT "A PROBE WAS BOUGHT" AND NEVER WAS. Every gate that could refuse
+// one is inside the call — the speed guard, the routing row, the pool's own
+// pacing, the prober's budget, a frontier with nothing on it — and this returns
+// before any of them is asked. What it reports is whether there was anything to
+// ask (sessionCompleter forwards, so a built agent always has one).
 func (a *Agent) probeClientLanes(ctx context.Context, model string) bool {
 	if a == nil {
 		return false

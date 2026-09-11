@@ -493,6 +493,14 @@ func TestTheOtherWindowsAreReadOnceAndHeld(t *testing.T) {
 func awayRowWith(t *testing.T, page, title string) string {
 	t.Helper()
 	for _, line := range strings.Split(page, "\n") {
+		// THE LIST'S HALF OF THE ROW AND NOT THE PANE'S. On a frame wide enough to
+		// split, the record beside the list draws the cursor row's title as its own
+		// heading (taskpane.go) — so the title is on screen twice and the FIRST
+		// line holding it is the preview, which carries none of the row's facts
+		// this helper's callers go on to ask about.
+		if at := strings.Index(line, strings.TrimSpace(taskPaneSeam)); at >= 0 {
+			line = line[:at]
+		}
 		if strings.Contains(line, title) {
 			return line
 		}

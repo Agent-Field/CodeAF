@@ -14,6 +14,25 @@ then shows the service, door, safe spelling of its key, region and order.
 The default service remains first. With two or more services, `/model` groups models by
 service in that order; with only the default service, the picker remains ungrouped.
 
+## When a newly connected model service starts working in this conversation
+
+On a plain launch on this machine, a successful connection with a pasted key is live in
+the conversation that is already open. The surface writes the service to the engine's
+profile; the engine re-reads that profile through the model-setting door before it applies
+the chosen model. Pick one of the new service's models in `/model`, and the very next
+request uses that service's address and pasted key. Opening another conversation is not
+required.
+
+When the key is a variable, the receipt adds, for example,
+`the engine process reads $DEEPSEEK_API_KEY from its own environment`. The daemon keeps
+the environment it started with. If it started before that variable existed, run
+`aforge engine --stop --workspace <dir>` and launch aforge again so the new engine reads
+the variable.
+
+`--no-host` has the same immediate result inside its one process. Under `--host` or
+`--at`, connecting a service is absent because the profile behind the conversation is
+not the local profile the panel could write.
+
 ## Use my own DeepSeek key — connecting DeepSeek, GLM, Kimi, Qwen or MiniMax directly
 
 Open `/connect` and choose the vendor in the `models` group. DeepSeek and MiniMax open

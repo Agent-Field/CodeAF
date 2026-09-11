@@ -372,11 +372,32 @@ type Frame struct {
 const (
 	// Agent — payloads are the method's own argument struct below; results are
 	// the return values likewise.
-	MethodSubmit          = "Submit"                 // SubmitArgs → StreamRef, then "event" frames
-	MethodSubmitImage     = "SubmitImage"            // SubmitImageArgs → StreamRef, then "event" frames
-	MethodSubmitFiles     = "SubmitFiles"            // SubmitFilesArgs → StreamRef, then "event" frames
-	MethodFollowUp        = "FollowUp"               // SubmitArgs → StreamRef, then "event" frames
-	MethodSteer           = "Steer"                  // SubmitArgs → StreamRef, then "event" frames
+	MethodSubmit      = "Submit"      // SubmitArgs → StreamRef, then "event" frames
+	MethodSubmitImage = "SubmitImage" // SubmitImageArgs → StreamRef, then "event" frames
+	MethodSubmitFiles = "SubmitFiles" // SubmitFilesArgs → StreamRef, then "event" frames
+	MethodFollowUp    = "FollowUp"    // SubmitArgs → StreamRef, then "event" frames
+	MethodSteer       = "Steer"       // SubmitArgs → StreamRef, then "event" frames
+	// MethodTyping is a person having started writing, and it is the only frame
+	// on this wire that nobody waits for ([Agent.Typing]).
+	//
+	// IT IS ONE OF THE TWO HALVES THAT WERE MISSING FROM THE PROBE.
+	// internal/session's [session.Agent.Typing] buys a measurement of the two
+	// machines the next turn is most likely to use, and the second thing it
+	// buys is a WARM CONNECTION, so the real request's first token is not also
+	// paying for a handshake (internal/provider's probe.go says so in its own
+	// header). The surface asks for it through an optional interface, and until
+	// this door existed the assertion simply failed on the default road — which
+	// is every launch that is not `--no-host`. The other half was inside the
+	// engine and is mended in the same change (typing.go's header): the
+	// completer wrapper was swallowing the probing door, so the measurement had
+	// never been bought in process either.
+	//
+	// IT RIDES VERSION 14 RATHER THAN MOVING THE NUMBER, under the rule stated
+	// on [Version]: an engine that does not know it answers "no such method",
+	// the surface drops the answer it was never waiting for, and what is lost is
+	// a pre-warm nobody can see. Nothing goes dark, so nothing is refused at the
+	// door.
+	MethodTyping          = "Typing"                 // nothing → nothing, and nothing waits
 	MethodStopWork        = "StopWork"               // nothing → nothing; stop this conversation, retaining history
 	MethodInterrupt       = "Interrupt"              // InterruptArgs, or nothing → nothing
 	MethodCompact         = "Compact"                // nothing → nothing (error carries the failure)
@@ -814,6 +835,13 @@ type Welcome struct {
 	// POSTURE, NOT THE SURFACE'S PROFILE: zero is a real off answer, so absence
 	// cannot be filled from a local default without inventing a deadline.
 	BashBackgroundAfterSeconds int `json:"bashBackgroundAfterSeconds,omitempty"`
+	// ProfileDir is the engine process's resolved profile directory. A plain
+	// linked-local surface uses it for writes because the daemon may predate the
+	// terminal's current profile override. An older peer sends none and the
+	// surface falls back to its own resolved directory; linked-local launches
+	// retire a daemon whose build differs, so that compatibility reading is
+	// theoretical on the road that consumes it. No protocol version moves.
+	ProfileDir string `json:"profileDir,omitempty"`
 	// Encoding is the one frame payload encoding selected from Hello.Encodings,
 	// or empty when this connection stays on ordinary JSON payloads.
 	Encoding string `json:"encoding,omitempty"`
