@@ -101,6 +101,19 @@ func taskPaneList(width int) int {
 	return width - cols - ansi.StringWidth(railSeam)
 }
 
+// taskPaneShowing is THE ONE PREDICATE the list asks before it grows the cursor
+// row's own line: is the record already beside it?
+//
+// IT ASKS THE FRAME AND NEVER THE WIDTH IT WAS HANDED. [tasksPlace.body] is
+// given the cells the LIST is drawn in, which on a split frame is already short
+// of the floor — so a list that asked [taskPaneOpen] of its own width would
+// decide there is no pane on exactly the frames that have one, and draw the
+// grown line beside it. One question, one answer, asked of the whole frame.
+func (a *app) taskPaneShowing() bool {
+	width, _ := a.size()
+	return taskPaneOpen(width)
+}
+
 // taskSheetListWidth is that same answer asked of the frame this window is on,
 // which is what every "which row is the cursor on" question has to lay the
 // reading out at: a cursor that counted lines of a hundred-and-twenty-two-cell
