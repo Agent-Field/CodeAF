@@ -586,11 +586,11 @@ func compactTitle(raw string) string {
 // the name:"), the MARKUP it emphasises with, surrounding quotes, a trailing
 // full stop, and the separators of a name answered as a SLUG. Then it REFUSES an
 // answer that is not a name at all — the instruction handed back, an opener with
-// nothing behind it, or a SENTENCE ABOUT THE SPEAKER OR THE PLAN ([opensAsPreamble]).
-// The preamble refusal is what keeps a namer that answered its plan from being
-// shortened into a label: it runs HERE, before any caller cuts the answer to a
-// few words, because the front of "I'll start by creating the four bakery
-// landing pages" is not a name at any length.
+// nothing behind it, or A CLAUSE ABOUT THE SPEAKER RATHER THAN A NAME FOR THE
+// WORK ([opensAsPlan]). That last refusal is what keeps a namer that answered
+// its plan from being shortened into a label: it runs HERE, before any caller
+// cuts the answer to a few words, because the front of "I'll start by creating
+// the four bakery landing pages" is not a name at any length.
 //
 // The slug is the one worth explaining. The instruction asks for words, and a
 // model that has spent its life reading identifiers sometimes answers
@@ -625,7 +625,7 @@ func cleanTitle(raw string) string {
 		title = strings.Join(strings.Fields(title), " ")
 	}
 	title = clip(strings.TrimSpace(title), titleLimit)
-	if namesTheInstruction(title) || unusableName(title) || opensAsPreamble(title) {
+	if namesTheInstruction(title) || unusableName(title) || opensAsPlan(title) {
 		return ""
 	}
 	return title
@@ -819,7 +819,16 @@ func stripOpener(title string) string {
 func stripInterjection(title string) string {
 	if cut := strings.IndexAny(title, ",!"); cut > 0 && cut <= openerLimit {
 		if words := normalizedWords(title[:cut]); len(words) == 1 && isInterjection(words[0]) {
-			title = strings.TrimSpace(title[cut+1:])
+			return strings.TrimSpace(title[cut+1:])
+		}
+	}
+	// AND IT NEEDS NO PUNCTUATION WHEN "SO" IS CARRYING IT. A model writing the
+	// way somebody talks opens "okay so the bakery pages" with no comma at all,
+	// and `so` after an agreement is that comma spelled as a word. Something has
+	// to be left behind it, or this would strip an answer down to nothing.
+	if fields := strings.Fields(title); len(fields) > 2 && strings.EqualFold(fields[1], "so") {
+		if words := normalizedWords(fields[0]); len(words) == 1 && isInterjection(words[0]) {
+			return strings.Join(fields[2:], " ")
 		}
 	}
 	return title
@@ -851,94 +860,78 @@ func allOpenerWords(words []string) bool {
 
 // ── an answer that was never a name ─────────────────────────────────────────
 //
-// A REASONING MODEL NARRATES ITS PLAN BEFORE IT FOLLOWS ONE, and a "name this"
-// call does not stop it doing that. Measured in the field (#942): every
-// tier and role pinned to a reasoning model, and the namer answered
-// "I'll start by creating the four bakery landing pages one at a time." —
-// 264 completion tokens about what it was about to do. The name reader took
-// the first three words of that and a task was titled `I'll start by`, in a
-// column a person reads, while the node's own record still carried the
-// person's words beside it. The cut that makes a label out of any answer is
-// the defect: a sentence is not refused for being a sentence, it is shortened
-// until it is the right length to look like a name.
+// A REASONING MODEL NARRATES ITS PLAN BEFORE IT FOLLOWS ONE, and a call asking
+// for a name does not stop it doing that. Measured in the field (#942), with
+// every tier and role pinned to a reasoning model, the namer answered "I'll
+// start by creating the four bakery landing pages one at a time." — 264
+// completion tokens about what it was about to do. The reader took the first
+// three words of it and a task stood on the rail called `I'll start by`, while
+// the node's own record still carried the person's words right beside the name
+// it had been given.
 //
-// So a name is REFUSED BY ITS SHAPE AND NEVER BY ITS LENGTH: an answer that
-// opens as a sentence about the speaker or the plan — a first-person pronoun or
-// its contraction, `let me`, a sequencing adverb holding its comma — was never a
-// label at any length, where a noun phrase that merely ran long
-// (`launch post for existing users`) is cut to three and stays a name. The
-// refusal lives HERE, in the one hand both namers read through, so the session's
-// namer and the task's namer cannot drift apart on it.
+// THE CUT IS WHAT MADE A SENTENCE LOOK LIKE A LABEL. Nothing refused an answer
+// for being a sentence; it was shortened until it was the right length to pass
+// for a name. So an answer is refused BY ITS SHAPE AND AT ANY LENGTH: a name is
+// a noun phrase, and a clause about the speaker is not one. A noun phrase that
+// merely ran long ("launch post for existing users") is still cut to three
+// words and is still a name.
+//
+// THE TEST IS THE GRAMMAR AND NOT A LIST OF SENTENCES: a first-person subject,
+// followed by the word that makes it the subject of something about to happen —
+// an auxiliary, the remnant the fold in [normalizedWords] leaves of one written
+// as a contraction, or the person `let` is addressed about. BOTH HALVES ARE
+// REQUIRED, which is what keeps a real name that opens on one of those words
+// ("I/O error fix") out of it.
+//
+// The throat-clearing a plan opens on — "First, I will …", "Okay so I'll …" —
+// is NOT a second rule here. It is an opener, and [stripInterjection] is the one
+// place this file takes an opener off an answer, so it is taken off there and
+// this reads what is left.
 
-// preambleVocabulary is the words a sentence about the speaker or the plan opens
-// with. It is matched on the first words of the answer only, never on the whole
-// of it, so a name that merely contains one of these words ("a fix for my i o
-// error", "first pass on the brief") is untouched — the test is whether the
-// answer OPENS as narration, not whether narration appears in it. It sits beside
-// [openerVocabulary] because the two are the same kind of thing: the words a
-// model reaches for when it is not answering.
-var preambleVocabulary = map[string]bool{
-	// First-person pronouns and their contractions, in every spelling a
-	// normalizedWords fold can produce ("id" is "I'd", "ill" is "I'll").
-	"i": true, "id": true, "ill": true, "im": true, "ive": true, "i'm": true,
-	"i'll": true, "i've": true, "i'd": true, "we": true, "we've": true, "we're": true,
-	"we'll": true, "lets": true, "let": true, "me": true, "my": true, "myself": true,
-	"us": true, "our": true, "ours": true,
+// planSubjects is who a plan is about. The fold in [normalizedWords] reads every
+// mark as a space, so a contraction arrives as its stem and a remnant ("I'll" is
+// "i ll", "let's" is "let s") and the pronoun itself is the only spelling that
+// has to be written down. It sits beside [openerVocabulary] because the two are
+// the same kind of thing: the words a model reaches for when it is not
+// answering the question it was asked.
+var planSubjects = map[string]bool{"i": true, "we": true, "let": true, "lets": true}
+
+// planPredicates is the word that follows that subject when the sentence is
+// about what the speaker is about to do: the auxiliary or modal a finite clause
+// hangs on, the remnant a contraction leaves of one, or the person `let` is
+// addressed about. IT IS A CLOSED CLASS OF GRAMMAR AND NOT A LIST OF OBSERVED
+// SENTENCES, which is why it is this short and why a preamble nobody has met yet
+// is already refused.
+var planPredicates = map[string]bool{
+	"ll": true, "m": true, "ve": true, "d": true, "re": true, "s": true,
+	"will": true, "would": true, "shall": true, "should": true, "can": true,
+	"could": true, "may": true, "might": true, "must": true, "am": true,
+	"is": true, "are": true, "was": true, "were": true, "have": true,
+	"has": true, "had": true, "do": true, "does": true, "did": true,
+	"need": true, "going": true, "me": true, "us": true,
 }
 
-// preambleAdverbs are the sequencing openers a plan narrates itself with. They
-// are refused WITH THEIR COMMA — the adverb alone ("first pass on the brief")
-// is a noun phrase that begins a real name, where "First, I will write the four
-// pages" is a clause about what is about to happen.
-var preambleAdverbs = []string{"first", "next", "then", "now", "okay", "ok", "alright", "sure"}
-
-// opensAsPreamble reports whether an answer opens as a sentence about the
-// speaker or the plan rather than as a name. It runs on the REPAIRED answer,
-// before any caller cuts it, because the shape being refused is the front of a
-// sentence and a cut to three words would leave the check reading "I'll start
-// by" as though it were a label.
-func opensAsPreamble(title string) bool {
+// opensAsPlan reports whether an answer opens as a clause about the speaker
+// rather than as a name for the work. It runs on the REPAIRED answer and before
+// any caller cuts it, because the shape it refuses is the FRONT of a sentence:
+// read after the cut to three words it would be handed "I'll start by", which
+// is the same three words a label would have been.
+func opensAsPlan(title string) bool {
 	words := normalizedWords(title)
-	if len(words) == 0 {
-		return false
-	}
-	if preambleVocabulary[words[0]] {
-		return true
-	}
-	// "let me" is its own opener; a lone "let" or "me" above already covers the
-	// one-word case.
-	if len(words) > 1 && (words[0] == "let" || words[0] == "lets") && words[1] == "me" {
-		return true
-	}
-	// A sequencing adverb holding its comma opens a clause: "First, I will …".
-	// The comma is the test — "first pass on the brief" is a noun phrase that
-	// begins a real name, where the adverb in front of a comma is narrating the
-	// plan before doing it.
-	firstRaw := strings.IndexAny(title, ",")
-	if firstRaw > 0 {
-		if lead := strings.TrimSpace(title[:firstRaw]); len(strings.Fields(lead)) == 1 {
-			for _, adverb := range preambleAdverbs {
-				if strings.EqualFold(strings.TrimSpace(lead), adverb) {
-					return true
-				}
-			}
-		}
-	}
-	// "okay so" and its spellings — a plan clearing its throat in two words.
-	lower := strings.ToLower(strings.Join(words, " "))
-	for _, opener := range []string{"okay so", "ok so", "alright so"} {
-		if strings.HasPrefix(lower, opener+" ") {
-			return true
-		}
-	}
-	return false
+	return len(words) > 1 && planSubjects[words[0]] && planPredicates[words[1]]
 }
 
-// isInterjection is the handful of words a model agrees with the request in
-// before it answers it.
+// isInterjection is the handful of words a model clears its throat with before
+// it answers: the agreement it opens on, and the SEQUENCING ADVERB a plan
+// narrates itself with ("First, I will write the four pages"). They are one list
+// because they are one thing to a reader — a word about the answering rather
+// than about the work — and because the plan a reasoning namer opens on (#942)
+// has to have its opener taken off it HERE, before [opensAsPlan] reads what is
+// left, or the pronoun that decides it is never the first word.
 func isInterjection(word string) bool {
 	switch word {
-	case "sure", "ok", "okay", "certainly", "absolutely", "here", "heres":
+	case "sure", "ok", "okay", "certainly", "absolutely", "here", "heres",
+		"first", "next", "then", "now", "alright", "so":
 		return true
 	}
 	return false

@@ -71,6 +71,51 @@ func TestTheOpenerIsStrippedAndAnEmptyOneRefused(t *testing.T) {
 	}
 }
 
+// A NAMER THAT ANSWERED ITS PLAN HAS NOT NAMED ANYTHING EITHER, and #942 is
+// where that was measured: a reasoning model on the task namer's call wrote a
+// paragraph about what it was about to do, and the reader cut the first three
+// words of it into a task called `I'll start by`. A clause about the speaker is
+// refused at any length, in the ONE HAND BOTH NAMERS READ THROUGH — so the
+// session's name and a task's name cannot drift apart on what a name is.
+func TestANameThatIsAPlanIsRefusedByBothNamers(t *testing.T) {
+	for _, said := range []string{
+		// The three observed in the field.
+		"I'll start by creating the four bakery landing pages one at a time.",
+		"Let me first look at the brief.",
+		"First, I will write the four pages.",
+		// And the same shape in the spellings around them: the opener taken off
+		// by punctuation or by "so", the plural speaker, the bare auxiliary.
+		"Okay so I'll look at the brief.",
+		"We'll begin with the first page.",
+		"I am going to write the four pages.",
+		"Then, we can start on the pages.",
+	} {
+		if got := cleanTitle(said); got != "" {
+			t.Errorf("cleanTitle(%q) = %q, want a plan refused", said, got)
+		}
+		if got := cleanTaskName(said); got != "" {
+			t.Errorf("cleanTaskName(%q) = %q, want a plan refused", said, got)
+		}
+		if got := cleanConversationTitle(said); got.full != "" || got.short != "" {
+			t.Errorf("cleanConversationTitle(%q) = %+v, want a plan refused", said, got)
+		}
+	}
+	// AND THE CONTROLS, which are the whole difficulty: a label that merely ran
+	// long is a label, and a name that opens on one of those words is a name. The
+	// refusal is the grammar of the opening and never the length of the answer.
+	for _, row := range []struct{ said, want string }{
+		{"launch post for existing users", "launch post for existing users"},
+		{"nil-map crash fix", "nil-map crash fix"},
+		{"we chat cutover", "we chat cutover"},
+		{"first pass on the brief", "first pass on the brief"},
+		{"let go of the lock", "let go of the lock"},
+	} {
+		if got := cleanTitle(row.said); got != row.want {
+			t.Errorf("cleanTitle(%q) = %q, want %q", row.said, got, row.want)
+		}
+	}
+}
+
 // THE INSTRUCTION IS ASKED WHERE A SMALL MODEL READS IT: last in the user
 // message, after the exchange, with the system line saying only who is asked.
 func TestTheNamerAsksAtTheEndOfTheUserMessage(t *testing.T) {

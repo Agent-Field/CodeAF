@@ -87,17 +87,27 @@ func TestCleanTaskNameCutsToThreeWordsAndRefusesWhatIsNotAName(t *testing.T) {
 		{"", ""},
 		{"   ", ""},
 		{"/var/folders/j7/59f75dnd", ""},
-		// THE OBSERVED ANSWERS OF #942. A reasoning namer answered its plan instead
-		// of a label, and the reader used to take the first three words of it. A
-		// sentence about the speaker or the plan is refused BY ITS SHAPE and at ANY
-		// LENGTH — the refusal runs before the cut to three words, so the cut can
-		// never manufacture a label out of the front of a sentence.
+		// THE THREE ANSWERS OBSERVED IN #942, and the shapes beside them. A
+		// reasoning namer answered its plan instead of a label and the reader took
+		// the first three words of it. A clause about the speaker is refused BY ITS
+		// SHAPE AND AT ANY LENGTH — the refusal runs before the cut to three words,
+		// so the cut can never manufacture a label out of the front of a sentence.
 		{"I'll start by creating the four bakery landing pages one at a time.", ""},
 		{"Let me first look at the brief.", ""},
 		{"First, I will write the four pages.", ""},
 		{"I will write the four pages.", ""},
 		{"We'll begin with the first page.", ""},
-		{"Okay so first we look at the brief.", ""},
+		{"Okay so I'll look at the brief.", ""},
+		// AND A NAME THAT MERELY OPENS ON ONE OF THOSE WORDS IS NOT TOUCHED, which
+		// is what the second half of the test buys: the pronoun has to be the
+		// subject of something about to happen before the answer stops being a
+		// name. The four-word row above it is the other control — that answer was
+		// a label that ran long, so it is cut and kept.
+		{"we chat cutover", "we chat cutover"},
+		// AND A SEQUENCING ADVERB THAT IS PART OF A NAME KEEPS ITS PLACE. It is
+		// throat-clearing only where it stands in front of an answer, punctuated
+		// off or carried by "so", which is [stripInterjection]'s whole test.
+		{"first pass on the brief", "first pass on"},
 	} {
 		if got := cleanTaskName(c.raw); got != c.want {
 			t.Errorf("cleanTaskName(%q) = %q, want %q", c.raw, got, c.want)
@@ -127,12 +137,23 @@ func TestWorkAdmittedUnderASentenceIsNamedByTheCheapModel(t *testing.T) {
 		{"a namer that answers its plan", "I'll start by creating the four bakery landing pages one at a time.", sentence, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			client := &scriptedCompleter{steps: []step{func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			// EVERY RUNG THE LADDER HAS IS SCRIPTED, and the refusing row is why.
+			// An answer the reader refuses is not an answer, so the ladder asks the
+			// rung below it ([Agent.callRoleChecked]'s accept check) — a script one
+			// step long would be answered "(unscripted)" on that second ask and the
+			// fixture would be measuring the fixture. Both rungs say the same thing,
+			// which is what the model in the field did.
+			answer := func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
 				if !isNameCall(messages) {
-					t.Errorf("the first call was not the namer's: %q", messageContentText(messages[0]))
+					t.Errorf("a call that was not the namer's: %q", messageContentText(messages[0]))
 				}
 				return textResponse(c.answer), nil
-			}}}
+			}
+			steps := make([]step, roleFallThroughs+1)
+			for i := range steps {
+				steps[i] = answer
+			}
+			client := &scriptedCompleter{steps: steps}
 			agent, _ := newTestAgent(t, client, func(cfg *Config) { cfg.RolesSource = nameSettings() })
 			ran := make(chan uint64, 4)
 			graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node.id })
@@ -177,16 +198,12 @@ func TestWorkAdmittedUnderASentenceIsNamedByTheCheapModel(t *testing.T) {
 			if got := client.model(0); got != "cheap/model" {
 				t.Fatalf("the namer ran on %q, want the cheap tier", got)
 			}
-			// AND A REFUSAL IS A WINDOW IN WHICH A RENAME COULD STILL HAVE ARRIVED.
-			// The poll above can be satisfied before the answer has been read back,
-			// so the refused row waits out the answer's own latency and then holds
-			// the title: nothing arrives, and the person's words are what stays.
-			if !c.renames {
-				time.Sleep(200 * time.Millisecond)
-				if got := graph.node(id).title(); got != c.want {
-					t.Fatalf("a refused name moved the row to %q", got)
-				}
-			}
+			// AND A REFUSAL NEEDS NO WINDOW WAITED OUT. [TaskGraph.rename] is only
+			// ever reached with a name that is not the empty string, so once every
+			// answer this fixture can give is one the reader refuses, there is no
+			// later moment at which the row could still move. The poll above is
+			// what proves the call was made at all, which is the half a sleep
+			// could not have proved either way.
 		})
 	}
 }
