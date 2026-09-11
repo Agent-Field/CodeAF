@@ -3520,7 +3520,9 @@ The rest of the answer arrives from that model, at that model's price, and the w
 above it names it from then on. Your own model is unchanged and your next message goes back
 to it. See *Models, context, and what it costs* for which model it moves to and when.
 
-**Where the text went after a cut.** If the reply had started, what you were reading is
+## Where the text on screen went when it said trying again — the words disappeared, and a rescue takes them the same way
+
+If the reply had started when the request was cut or rescued, what you were reading is
 **removed from the screen**, and it is removed because it was removed everywhere: none of
 it is in the conversation, none of it is in the session file, and none of it is sent back
 to the model on the retry. Any tool call that was still arriving when the cut happened
