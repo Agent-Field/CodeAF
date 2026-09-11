@@ -254,6 +254,13 @@ type homeGridInput struct {
 	rows []switcherRow
 	// ledger is the `since you left` lines the switcher reads.
 	ledger []switcherRow
+	// calls is every landing whose check is the person's, as the `to check`
+	// group draws them, and older how many aged out of it. IT IS READ ONCE,
+	// HERE, because three readers need the same answer: the group's rows, the
+	// `since you left` line that steps aside for a landing already on the
+	// screen, and the pulse's count (homepanel_needs.go's [needsCallOf]).
+	calls      []needsItem
+	callsOlder int
 	// world is every project, the ones home knows only through a watch
 	// included ([homeView.everyProject]).
 	world session.World
@@ -283,7 +290,9 @@ func (h *homeView) gridInput() homeGridInput {
 	world.Projects = h.everyProject()
 	here := switcherHere{session: h.here, coming: h.claim, hosted: h.far}
 	reading := readSwitcher(world, h.items, h.fired, here, h.gone, h.seen, h.world.Read, h.ledger)
-	return homeGridInput{rows: reading.rows, ledger: reading.ledger, world: world, items: h.items,
+	calls, older := needsFresh(needsCalls(world, h.world.Read), h.world.Read)
+	return homeGridInput{rows: reading.rows, ledger: reading.ledger, calls: calls, callsOlder: older,
+		world: world, items: h.items,
 		errands: h.switchExchanges(), bucket: h.bucket, launch: h.launch, tilde: h.tilde, last: h.last,
 		repos: h.repos, spend: h.spend, seen: h.seen, now: h.world.Read}
 }
@@ -304,9 +313,40 @@ type homePanelRows struct {
 	// said is what the heading carries after its word — a count, an age — and
 	// "" for the word alone.
 	said string
+	// group is the run of rows at the FOOT of lines that stands under a dim line
+	// of its own and folds before any row above it, and nil for a panel whose
+	// rows are one list ([homePanelGroup]).
+	group *homePanelGroup
 	// right is a clause the heading carries at its right margin, and money the
 	// figure inside it drawn in the money ink — the day's spend on `spend`.
 	right, money string
+}
+
+// homePanelGroup is a SECOND HEADING INSIDE ONE PANEL: a run of the panel's own
+// rows, drawn under a dim line of their own, which folds to nothing before the
+// panel gives up a row above it.
+//
+// IT IS THE PANEL'S SHAPE SAID AGAIN ONE LEVEL DOWN, deliberately: a panel is a
+// heading, its rows and a fold, and a group is a line, its rows and the same
+// fold — so a squeeze needs no second rule. The rows sit at the FOOT of
+// [homePanelRows.lines], so the ordinary bottom-up cut already takes them first,
+// and when none of them is left on the screen the group's line goes and the
+// panel's own fold names the group instead of saying `more`
+// ([homeGridPanel.fold]).
+//
+// `needs you` is the only panel with one today: the landings a person has not
+// checked, under the live questions that stopped a conversation
+// (homepanel_needs.go).
+type homePanelGroup struct {
+	// at is where the group's rows begin in [homePanelRows.lines]; everything
+	// before it is the panel's own.
+	at int
+	// word is the group's name — the left of its line, and the word the panel's
+	// fold uses instead of `more` while the group is shut.
+	word string
+	// said is the count after the word, and right the dim clause the line
+	// carries at its margin.
+	said, right string
 }
 
 // homeCellKind is which shape one line of a panel is drawn in.
@@ -319,6 +359,10 @@ const (
 	cellHead
 	cellWhisper
 	cellFold
+	// cellGroup is a group's own line inside a panel: its word and count dim at
+	// the left, its clause dim at the right ([homePanelGroup]). It is not a
+	// stop and it is never lit.
+	cellGroup
 	// cellBar, cellSpark and cellFacts are the spend panel's three lines: the
 	// day against its allowance, the fortnight, and who it went to and what for
 	// (homepanel_spend.go).
@@ -365,8 +409,19 @@ type homeCell struct {
 	hold bool
 	door string
 	// sub is the line under the row, and subRight what that line carries at
-	// its right — the answers a digit sends.
+	// its right — the answers a key sends.
 	sub, subRight string
+	// answers is the clause of chips this row WOULD draw at the right of its
+	// second line — each key beside its own word — and "" for a row with no
+	// answer to offer. Whether they are actually drawn is the frame's to say:
+	// exactly one row draws them ([app.homeAnswerAt]).
+	answers string
+	// grows says the row draws that line ONLY WHILE THE CURSOR IS ON IT, which
+	// is how a landing is one line at rest and two under the cursor
+	// (homepanel_needs.go). The line it grows into is reserved by its panel
+	// ([homeGridPanel.height]) so the column does not change shape as the
+	// cursor walks over the rows.
+	grows bool
 	// share is how full the spend bar is, and spark the fortnight's days.
 	share float64
 	spark []float64
@@ -384,8 +439,14 @@ type homeCell struct {
 }
 
 // height is how many screen rows one line takes.
+//
+// A ROW THAT GROWS UNDER THE CURSOR IS ONE ROW HERE. The line it grows into is
+// the PANEL's reservation ([homeGridPanel.height]) rather than this row's
+// height, because exactly one row of a frame is under the cursor and a layout
+// that changed shape as the cursor walked over these rows would move every panel
+// under them on every arrow key ([homeCell.grows]).
 func (l homeLine) height() int {
-	if l.cell != nil && l.cell.sub != "" {
+	if l.cell != nil && l.cell.sub != "" && !l.cell.grows {
 		return 2
 	}
 	return 1
@@ -447,10 +508,42 @@ func (p homeGridPanel) height() int {
 	for _, line := range p.read.lines[:p.shown] {
 		n += line.height()
 	}
+	// A GROUP'S LINE AND THE AIR OVER IT ARE THE PANEL'S ROWS TOO, drawn only
+	// while the group has a row of its own left on the screen ([homeGridPanel.lines]).
+	if p.groupOpen() {
+		n++
+		if p.read.group.at > 0 {
+			n++
+		}
+	}
+	// AND ONE LINE IS KEPT FOR THE ROW THE CURSOR WILL GROW. Which row that is
+	// belongs to the paint; that one of them will grow is known here, and
+	// reserving it is what keeps the column the same height whichever row the
+	// cursor is standing on ([homeCell.grows]).
+	if p.growsARow() {
+		n++
+	}
 	if p.folds() {
 		n++
 	}
 	return n
+}
+
+// groupOpen reports that the panel is drawing its group's own line, which it
+// does while at least one of the group's rows is still shown.
+func (p homeGridPanel) groupOpen() bool {
+	return p.read.group != nil && p.shown > p.read.group.at
+}
+
+// growsARow reports that one of the rows on the screen will grow a line under
+// the cursor.
+func (p homeGridPanel) growsARow() bool {
+	for _, line := range p.read.lines[:p.shown] {
+		if line.cell != nil && line.cell.grows {
+			return true
+		}
+	}
+	return false
 }
 
 // homeColumnHeight is a column's height with one blank row between panels.
@@ -581,23 +674,18 @@ func growColumn(column []*homeGridPanel, room int) {
 	}
 }
 
-// shrink cuts a panel to its floor: the heading, as many whole rows as fit in
-// what the floor leaves after the fold line, and the fold. A panel already
-// inside its floor is left alone.
+// shrink cuts a panel to its floor: the heading, as many whole rows as fit under
+// it, and the fold. A panel already inside its floor is left alone.
+//
+// IT TAKES ROWS FROM THE BOTTOM, WHICH IS WHY A GROUP NEEDS NO RULE OF ITS OWN.
+// A group's rows sit at the foot of the panel's list ([homePanelGroup]), so the
+// walk down from the natural height spends them first and the group's line goes
+// with the last of them — the `to check` landings fold before a `needs you` row
+// is given up, without this function knowing that either exists.
 func (p *homeGridPanel) shrink() {
-	if p.height() <= p.slot.least {
-		return
+	for p.shown > 0 && p.height() > p.slot.least {
+		p.shown--
 	}
-	budget := p.slot.least - 2
-	kept, used := 0, 0
-	for _, line := range p.read.lines {
-		if used+line.height() > budget {
-			break
-		}
-		used += line.height()
-		kept++
-	}
-	p.shown = kept
 }
 
 // homeGridLayout reads every panel and fits each column: the panels in table
@@ -698,7 +786,20 @@ func (p homeGridPanel) lines() []homeLine {
 		}
 		return out
 	}
-	out = append(out, p.read.lines[:p.shown]...)
+	if group := p.read.group; group != nil && p.groupOpen() {
+		out = append(out, p.read.lines[:group.at]...)
+		// A GROUP STANDS OFF THE ROWS ABOVE IT with the same blank row that
+		// stands between two panels, and takes none when it is the panel's
+		// first line.
+		if group.at > 0 {
+			out = append(out, homeLine{kind: homeBlank})
+		}
+		out = append(out, homeLine{kind: homeSwitchHead, cell: &homeCell{kind: cellGroup,
+			panel: id, title: group.word + rowSep + group.said, right: group.right}})
+		out = append(out, p.read.lines[group.at:p.shown]...)
+	} else {
+		out = append(out, p.read.lines[:p.shown]...)
+	}
 	if p.folds() {
 		out = append(out, p.fold())
 	}
@@ -712,7 +813,7 @@ func (p homeGridPanel) lines() []homeLine {
 func (p homeGridPanel) fold() homeLine {
 	var counts []string
 	if n := p.hidden(); n > 0 {
-		counts = append(counts, groupedInt(n)+" more")
+		counts = append(counts, groupedInt(n)+" "+p.foldMoreWord())
 	}
 	if n := p.read.older; n > 0 {
 		counts = append(counts, groupedInt(n)+" "+homeFoldOlderWord)
@@ -727,6 +828,22 @@ func (p homeGridPanel) fold() homeLine {
 		return homeLine{kind: homeLedger, project: word, dir: homeFoldKey, cell: cell}
 	}
 	return homeLine{kind: homeSwitchHead, cell: cell}
+}
+
+// homeFoldMoreWord is what the fold calls the rows it is standing for when they
+// are simply more of the panel's own.
+const homeFoldMoreWord = "more"
+
+// foldMoreWord is what the fold calls the rows it is standing for: the GROUP's
+// name where every one of them is the group's and the group's own line is not on
+// the screen — `8 to check · tasks` is the whole of what a squeezed panel says
+// about its landings — and `more` everywhere else.
+func (p homeGridPanel) foldMoreWord() string {
+	group := p.read.group
+	if group == nil || p.groupOpen() || p.shown < group.at {
+		return homeFoldMoreWord
+	}
+	return group.word
 }
 
 // homeFoldKey is the identity a fold door carries beside its place word, so the
@@ -1035,47 +1152,94 @@ func switcherRowLine(row switcherRow, cell *homeCell) homeLine {
 		dir: homeBucketOf(row.session.Transcript), cell: cell}
 }
 
-// homeGridAnswer is a digit on the resting grid: THE TOP QUESTION, FROM
-// ANYWHERE ON HOME, WITH NO CURSOR MOVE (law 7). The top question is the first
-// row of `needs you` that draws its answers, so the key a person presses is one
-// they can see on the screen; a digit with no such row falls through to the
-// row under the cursor and then to the box, as it always did.
+// homeGridAnswer is an answer key on the resting grid: THE ONE ANSWERING ROW OF
+// THE FRAME, FROM ANYWHERE ON HOME (law 7). That row is the one drawing the
+// chips, so the key a person presses is one they can see on the screen; a key
+// with no such row falls through to the row under the cursor and then to the
+// box, as it always did.
 func (a *app) homeGridAnswer(key string) (tea.Cmd, bool) {
 	if !a.home.gridOn() {
 		return nil, false
 	}
-	for _, line := range a.home.lines {
-		if line.cell == nil || line.cell.panel != panelNeeds {
-			continue
-		}
-		if words := a.homeRowAnswers(line); words != "" && words != answerWaitingWord && words != needsOpenWord {
-			return a.answerRowKey(a.homeTrue(line.row), key)
-		}
+	at := a.homeAnswerAt()
+	if at < 0 {
+		return nil, false
 	}
-	return nil, false
+	line := a.home.lines[at]
+	if line.task != nil {
+		return a.homeAnswerLanding(line, key)
+	}
+	return a.answerRowKey(a.homeTrue(line.row), key)
 }
 
-// homeRowAnswers is what a `needs you` row draws at the right of its question:
-// the answers, under the answer band's own four rules ([drawAnswerBand]) — the
-// question is fresh and offered answers, this window has somewhere to leave
-// one, it has not already sent one (the waiting word stands in for a moment
-// after it has), and no question this window raised about the row is standing
-// over it ([app.answersStepAside]). Every fact is in memory; nothing is read.
+// homeAnswerAt is THE ONE ROW OF THE FRAME THAT DRAWS THE CHIPS AND TAKES THE
+// KEY: the row under the cursor when it can take an answer, and the top row of
+// `needs you` that can otherwise. It is -1 when nothing on the frame is
+// answerable.
 //
-// A ROW THAT SAYS `enter` KEEPS SAYING IT. It is an instruction rather than an
-// answer — the row is not the top question, or its question has a paragraph —
-// and the gate is about answers (homepanel_needs.go).
-func (a *app) homeRowAnswers(line homeLine) string {
-	if line.cell == nil || line.cell.subRight == "" {
+// THE CURSOR OUTRANKS THE TOP ROW BECAUSE A PERSON WHO WALKED SOMEWHERE MEANT
+// IT. Law 7 put the chips on the top question so that a digit worked without
+// moving the cursor, and that still holds for a frame nobody has walked; once
+// somebody has walked onto a landing, `a` has to mean THAT landing or the key
+// answers a row the person is not looking at. One function, so the chip and the
+// key can never be two different rows.
+func (a *app) homeAnswerAt() int {
+	if a.homeOffersAnswer(a.home.cursor) {
+		return a.home.cursor
+	}
+	for at := range a.home.lines {
+		if a.homeOffersAnswer(at) {
+			return at
+		}
+	}
+	return -1
+}
+
+// homeOffersAnswer reports that the line at `at` is a row this window can
+// actually send an answer for.
+func (a *app) homeOffersAnswer(at int) bool {
+	if at < 0 || at >= len(a.home.lines) {
+		return false
+	}
+	words := a.homeRowOffer(a.home.lines[at])
+	return words != "" && words != answerWaitingWord
+}
+
+// homeRowOffer is the answers ONE row could take, under the answer band's own
+// four rules ([drawAnswerBand]) — the question is fresh and offered answers,
+// this window has somewhere to leave one, it has not already sent one (the
+// waiting word stands in for a moment after it has), and no question this
+// window raised about the row is standing over it ([app.answersStepAside]).
+// Every fact is in memory; nothing is read.
+//
+// A LANDING IS THE SAME FOUR RULES WITH NOTHING ASKING. There is no live
+// question to be fresh, so what is left is the doorstep: a conversation with a
+// folder to leave the answer in can be answered from here, and one without
+// cannot (homepanel_needs.go's [app.homeAnswerLanding]).
+func (a *app) homeRowOffer(line homeLine) string {
+	if line.cell == nil || line.cell.panel != panelNeeds || line.cell.answers == "" {
 		return ""
 	}
-	if line.cell.subRight == needsOpenWord {
-		return needsOpenWord
+	row, now := a.homeTrue(line.row), a.home.world.Read
+	if line.task != nil {
+		question, ok := needsLandingQuestion(line)
+		if !ok {
+			return ""
+		}
+		if sent, ok := a.answerSent(row, question); ok {
+			if now.Sub(sent.at) < answerHoldFor {
+				return answerWaitingWord
+			}
+			return ""
+		}
+		if a.leaveAnswer == nil && !a.answeringHere(row) {
+			return ""
+		}
+		return line.cell.answers
 	}
 	if line.kind != homeSession {
 		return ""
 	}
-	row, now := a.homeTrue(line.row), a.home.world.Read
 	question, ok := answerable(row, now)
 	if !ok {
 		return ""
@@ -1088,6 +1252,26 @@ func (a *app) homeRowAnswers(line homeLine) string {
 	}
 	if (a.leaveAnswer == nil && !a.answeringHere(row)) || a.answersStepAside(row) {
 		return ""
+	}
+	return line.cell.answers
+}
+
+// homeRowAnswers is what the line under one row carries at its right: the
+// answers where this is the frame's one answering row, the waiting word where
+// this window has already answered it, and the row's own door word everywhere
+// else.
+//
+// A ROW THAT SAYS `enter` KEEPS SAYING IT. It is an instruction rather than an
+// answer — the row is not the answering row, or its question has a paragraph —
+// and the gate is about answers (homepanel_needs.go).
+func (a *app) homeRowAnswers(line homeLine, at int) string {
+	if line.cell == nil {
+		return ""
+	}
+	if words := a.homeRowOffer(line); words != "" {
+		if words == answerWaitingWord || at == a.homeAnswerAt() {
+			return words
+		}
 	}
 	return line.cell.subRight
 }

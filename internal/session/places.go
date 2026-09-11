@@ -166,7 +166,7 @@ func (a *Agent) ReferPlace(path string, arrival PlaceArrival) (PlaceRef, error) 
 	// have happened; everything it needs is known the moment the person names the
 	// folder, which is this moment, and there are seconds of a person reading their
 	// own screen to do it in (standingtree.go's [Agent.cutStandingTree]).
-	a.startStandingTree(ref)
+	a.standingTreesOwed()
 	return ref, nil
 }
 
@@ -253,7 +253,6 @@ func (a *Agent) SetPlaceMode(path, word string) error {
 	// hand writing what another is reading.
 	a.mu.Lock()
 	found := false
-	var ref PlaceRef
 	places := make([]PlaceRef, len(a.places))
 	copy(places, a.places)
 	for index := range places {
@@ -261,7 +260,6 @@ func (a *Agent) SetPlaceMode(path, word string) error {
 			continue
 		}
 		found, places[index].Mode = true, mode
-		ref = places[index]
 	}
 	if found {
 		a.places = places
@@ -271,18 +269,18 @@ func (a *Agent) SetPlaceMode(path, word string) error {
 		return fmt.Errorf("this conversation is not about %s", dir)
 	}
 	// THE WORD WINS WHICHEVER WAY IT ARRIVES, and it always arrives second: the
-	// place is referred before anything can be said about it, so the head start
-	// ([Agent.startStandingTree]) has already begun by the time this runs. Saying
-	// "in place" therefore has to take a copy back rather than merely stop the
-	// next one — and the settle first is what makes that possible, because a cut
-	// still in flight would finish into the folder just after it was retired.
-	// Clearing the word takes the same road in the other direction.
-	if keptAside(ref, a.workspaceStoodIn()) {
-		a.startStandingTree(ref)
-	} else {
-		a.treesAhead().Settle()
-		a.retireUntouchedTree(dir)
-	}
+	// place is referred before anything can be said about it, so a copy has
+	// usually been taken by the time this runs. Saying "in place" therefore has to
+	// take one back rather than merely stop the next one, and clearing the word has
+	// to make one — which is the same sentence in both directions and is why this
+	// says only that the answer moved (standingtree.go's [Agent.treesAhead]).
+	//
+	// IT IS OWED AND NOT RUN. The person is on the other side of this call, and
+	// asking git whether a copy may go — or walking one that has no git — is work
+	// of exactly the kind that must not happen on their path. Nothing they do next
+	// depends on it: the mode was recorded under the lock above, so the very next
+	// write already goes where they said, whatever the copy is still doing.
+	a.standingTreesOwed()
 	a.stampPlaces()
 	return nil
 }

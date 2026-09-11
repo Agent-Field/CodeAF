@@ -71,10 +71,40 @@ const (
 	pictureCacheMax = 64
 )
 
+// pictureFact is what one stat of one picture file said: how big it is, when it
+// last changed, and whether it is a file this surface could open at all.
+//
+// IT IS READ BY `open`, BY A TICK AND BY THE CALL'S OWN ARRIVAL, NEVER BY A
+// FRAME (learned.go). The stat used to be taken from inside [app.picture]
+// because the modification time and the size ARE the preview cache's key — which
+// made the key cost one syscall per visible picture per frame, thirty times a
+// second, forever. The key is the same key; the fact behind it is now something
+// the loop learned and the frame reads.
+type pictureFact struct {
+	mod  int64
+	size int64
+	// ok is false for everything that is not a readable file — a path that is
+	// gone, a directory, a permission this process does not have — and it is
+	// LEARNED AND KEPT like any other fact, because a missing file that was
+	// re-stat'd every frame is the same syscall storm as a present one.
+	ok bool
+}
+
+// statPictureFile is the memo's one reading. It answers a fact for every
+// outcome, so that a file which cannot be drawn is a thing this surface KNOWS
+// rather than a thing it asks about again on the next frame.
+func statPictureFile(path string) pictureFact {
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return pictureFact{}
+	}
+	return pictureFact{mod: info.ModTime().UnixNano(), size: info.Size(), ok: true}
+}
+
 // imagePreview is one picture as this surface already drew it: the painted
 // half-block rows, and the facts the line under them states. ok is false for a
 // file that was looked at and could not be drawn, which is cached too — a
-// missing file must not be re-stat'd ten times a second either.
+// missing file must not be re-decoded ten times a second either.
 type imagePreview struct {
 	rows   []string
 	width  int // the picture's own pixel width
@@ -132,22 +162,29 @@ func (a *app) pictureRowsFor(path string, here bool, cols, maxRows int) ([]strin
 // the same reason the column count is: the thumbnail under a row and the bigger
 // look inside it are two renderings of one file, and one must never be served
 // from the other's slot.
+//
+// THE FILE'S IDENTITY IS ASKED OF THE MEMO AND NOT OF THE DISK. This is `body`,
+// and `body` may not read the disk (learned.go). The mtime and the size in the
+// key are what the loop learned when the picture arrived, at `open`, or on the
+// beat; a name no reading has reached yet draws no picture on this frame and is
+// asked about before the next one, which is the same nothing this function has
+// always drawn for a file it could not stat.
 func (a *app) picture(path string, here bool, cols, maxRows int) (imagePreview, bool) {
 	readPath, found := a.readPathFor(path, here)
 	if !found {
 		return imagePreview{}, false
 	}
-	info, err := os.Stat(readPath)
-	if err != nil || info.IsDir() {
+	fact, known := a.pictures.of(readPath)
+	if !known || !fact.ok {
 		return imagePreview{}, false
 	}
-	key := path + "\x00" + readPath + "\x00" + itoa(int(info.ModTime().UnixNano())) +
-		"\x00" + itoa(int(info.Size())) + "\x00" + itoa(cols) + "\x00" + itoa(maxRows) +
+	key := path + "\x00" + readPath + "\x00" + itoa(int(fact.mod)) +
+		"\x00" + itoa(int(fact.size)) + "\x00" + itoa(cols) + "\x00" + itoa(maxRows) +
 		"\x00" + itoa(int(a.pal.profile)) + "\x00" + itoa(int(a.pal.ramp.ink.r))
 	if hit, known := a.previews[key]; known {
 		return hit, hit.ok
 	}
-	preview := renderPicture(a.pal, readPath, int(info.Size()), cols, maxRows)
+	preview := renderPicture(a.pal, readPath, int(fact.size), cols, maxRows)
 	if len(a.previews) >= pictureCacheMax {
 		a.previews = nil
 	}
@@ -156,6 +193,82 @@ func (a *app) picture(path string, here bool, cols, maxRows int) (imagePreview, 
 	}
 	a.previews[key] = preview
 	return preview, preview.ok
+}
+
+// learnPicture is the LOOP'S door onto one picture file: read what is on disk
+// under this path now, and file it where the frame will find it (learned.go).
+//
+// Every caller is an arrival — a picture call that just finished, a file the
+// person just attached, the transcript a resumed window just opened — which is
+// where the fourth law says a reading belongs. The stat costs nothing beside the
+// tool call that produced the file, and paying it here is what buys the frame a
+// picture it can draw without asking the disk anything.
+func (a *app) learnPicture(path string, here bool) {
+	if readPath, found := a.readPathFor(path, here); found {
+		a.pictures.learn(readPath)
+	}
+}
+
+// learnPictureOf is the same door, taking the entry rather than the path: the
+// one call the reducer's `closed` hook makes when a picture tool finishes
+// (app.go's [app.feedHooks]).
+func (a *app) learnPictureOf(e *entry) {
+	if e == nil || !picturesAFile(e.tool) {
+		return
+	}
+	if path, ok := a.picturePath(e); ok {
+		// A CALL THAT JUST WROTE THIS PATH WROTE NEW BYTES, so the reading taken
+		// here replaces whatever was learned about that name before — which is
+		// what makes regenerating into the same file redraw at once rather than
+		// on the beat. [learned.learn] reads and lays in one go, so there is
+		// nothing to forget first.
+		a.learnPicture(path, true)
+	}
+}
+
+// learnMirroredPicture is the LOOP'S door for the far machine's bytes: the copy
+// the mirror has just written for one engine path, stat'd at the moment it
+// lands. The frame resolves a hosted picture through that same mirror
+// ([app.readPathFor]), so this is the same file under the same name the next
+// frame will ask about.
+func (a *app) learnMirroredPicture(blob remoteBlob) {
+	if a.rfiles == nil {
+		return
+	}
+	store, err := a.rfiles.blobStore()
+	if err != nil {
+		return
+	}
+	if path, err := store.Path(blob.ref); err == nil {
+		a.pictures.learn(path)
+	}
+}
+
+// learnShownPictures is `open`'s walk: every picture already on screen when this
+// window started, learned before the first frame asks about any of them. A
+// resumed conversation builds its rows without replaying the events that made
+// them, so without this walk every picture in it would be drawn one message late
+// (the same gap [app.prefetchReplayedPictures] fills for the far machine's
+// bytes).
+func (a *app) learnShownPictures() {
+	learn := func(entries []entry) {
+		for i := range entries {
+			e := &entries[i]
+			if e.kind == entryUser {
+				for _, picture := range e.pictures {
+					a.learnPicture(picture, e.picturesHere)
+				}
+				continue
+			}
+			if e.kind == entryTool {
+				a.learnPictureOf(e)
+			}
+		}
+	}
+	learn(a.entries)
+	if a.room != nil {
+		learn(a.room.entries)
+	}
 }
 
 // readPathFor answers which disk path can be opened here. A live attachment is

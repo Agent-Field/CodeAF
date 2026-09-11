@@ -94,7 +94,7 @@ func (f machineFacts) nearCeiling() bool {
 // read with it. It runs on a beat and never on a draw.
 func (a *app) readMachine(now time.Time, sessions []session.SessionRow, bands map[string][]StandingItemView) {
 	a.readMachineMoney(now)
-	a.machine.hands, a.machine.wants = machineCounts(sessions, bands, a.exchanges)
+	a.machine.hands, a.machine.wants = machineCounts(now, sessions, bands, a.exchanges)
 }
 
 // readMachineMoney is the money half alone: what the day has cost, and the
@@ -127,12 +127,19 @@ func (a *app) readMachineMoney(now time.Time) {
 // draws and these figures are about the MACHINE, so a count taken from the rows
 // on screen would fall the moment a ninth thing started — which is the opposite
 // of what the figure means.
-func machineCounts(sessions []session.SessionRow, bands map[string][]StandingItemView, exchanges []*homeExchange) (hands, wants int) {
+func machineCounts(now time.Time, sessions []session.SessionRow, bands map[string][]StandingItemView, exchanges []*homeExchange) (hands, wants int) {
 	for _, row := range sessions {
+		// AND A LANDING NOBODY HAS CHECKED IS A WANT TOO. How many rows of
+		// `needs you` a conversation is — its own question, its landings, or
+		// both — is ONE reading and it is the panel's own
+		// (homepanel_needs.go's [needsWants]), so a pulse over a home cannot
+		// claim a number the rows under it do not show. It answers zero for an
+		// archived conversation and for one whose only question IS its landing,
+		// which is the row the panel drops.
+		wants += needsWants(row, now)
 		switch {
 		case row.Archived:
 		case row.NeedsPerson():
-			wants++
 		case row.Tasks.Running > 1:
 			hands += row.Tasks.Running
 		case row.Tasks.Running == 1 || row.Live && row.Presence.State == session.PresenceWorking:

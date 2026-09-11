@@ -416,7 +416,7 @@ project, as **seven panels** in one, two or three columns: `needs you`, `where y
 empty panel keeps its heading and one dim line naming what arrives there.
 
 Its own keys are in the **Home** page: `↑↓` walk a panel, `←→` cross columns, a digit
-answers the top question in `needs you`, and `enter` opens a row. `tab` is the way to the
+answers the one row of `needs you` drawing its answers, and `enter` opens a row. `tab` is the way to the
 next place, and the errand pane is taken into with `→` rather than `tab`. Home has no
 `alt+<letter>` keys — `alt+g` and `alt+q` are unbound there.
 

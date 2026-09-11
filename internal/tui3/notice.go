@@ -341,6 +341,20 @@ type noticeBoard struct {
 	lastHintTurn int
 }
 
+// bareNoticeBoard is a board with nothing behind it: no ledger on disk, no
+// build to compare, and therefore no news. It is what a surface that was never
+// handed a profile gets, and it is the half of [newNoticeBoard] that touches
+// nothing — which is why it is reachable from a frame and the loader is not.
+func bareNoticeBoard() noticeBoard {
+	return noticeBoard{
+		enabled:      true,
+		seen:         map[string]bool{},
+		done:         map[string]bool{},
+		shown:        map[string]bool{},
+		lastHintTurn: -1,
+	}
+}
+
 // newNoticeBoard loads the ledger and decides whether there is news.
 func newNoticeBoard(path, build string, enabled bool) noticeBoard {
 	b := noticeBoard{
@@ -477,8 +491,11 @@ func (a *app) noticeEvent(name string) {
 	b := &a.notices
 	if b.seen == nil {
 		// A surface built without [newApp] — a test's bare app — still has a
-		// board, and it remembers for as long as it lives.
-		*b = newNoticeBoard("", "", true)
+		// board, and it remembers for as long as it lives. It is minted rather
+		// than LOADED: a bare board has no ledger path, and going through
+		// [newNoticeBoard] to reach that conclusion put a file read on the graph
+		// of everything the frame can reach (framedisk_law_test.go).
+		*b = bareNoticeBoard()
 	}
 	b.seen[name] = true
 	wrote := false

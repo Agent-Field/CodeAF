@@ -354,7 +354,7 @@ const taskSheetDays = 14
 // that could ask it at paint time.
 func (a *app) taskSheetMine() tasksMine {
 	rows := a.taskSheetOwnRows()
-	mine := tasksMine{row: a.taskSheetSelfRow(), rows: make([]tasksMineRow, 0, len(rows))}
+	mine := tasksMine{row: a.taskSheetSelfRow(), tilde: a.tilde, rows: make([]tasksMineRow, 0, len(rows))}
 	for _, entry := range rows {
 		row := tasksMineRow{entry: entry, runs: a.recordRuns(&entry)}
 		if node := a.taskSheetNodeFor(&entry); node != nil {

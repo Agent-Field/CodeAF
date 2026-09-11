@@ -99,10 +99,24 @@ func (s *v3ModelShelf) modelsForService(service modelsource.Connected) []tui3.Mo
 	if ok && held.address == address && held.door == door && len(rows) > 0 {
 		return rows
 	}
+	// A PLAN DOOR'S CATALOG IS VENDORED AND COSTS NO FILE. [fixedDoorModels]
+	// reads `service.Door.Models` — the four documented ids the plan covers,
+	// held in memory since the profile was read — so this rung stays on the
+	// right side of the law below and answers a bound plan door whose
+	// compartment is empty or is still holding the other door's list.
 	if fixed := fixedDoorModels(service); len(fixed) > 0 {
 		return fixed
 	}
-	return tui3.CachedModelsFor(service.Source.ID, service.Address)
+	// AN EMPTY COMPARTMENT IS AN EMPTY ANSWER, and the surface falls to its own
+	// rung below this one. This used to read the service's cache file here —
+	// os.ReadFile plus a JSON parse of the whole list, with no memo in front of
+	// it — and the seam is taken from a DRAW (tui3's setupModelRows →
+	// setupModelChoices → modelList), so a profile with two model services paid
+	// that read on every paint of the first-run screen. [setSources] already
+	// fills each compartment from the same file when the profile is read, and
+	// tui3 keeps its own memo of it (internal/tui3/learned.go), so the file is
+	// still read — once, off the frame, on both sides of this seam.
+	return rows
 }
 
 // refreshService fetches a newly connected service into the same shelf /model

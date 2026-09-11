@@ -89,7 +89,7 @@ func (a *app) modelsForConnectedService(service modelsource.Connected) []Model {
 	if models := cleanModels(a.sourceModels[service.Source.ID]); len(models) > 0 {
 		return models
 	}
-	return CachedModelsFor(service.Source.ID, service.Address)
+	return a.cachedModelsFor(service.Source.ID, service.Address)
 }
 
 func (a *app) reloadModelSources() {
@@ -468,7 +468,7 @@ func (a *app) defaultServiceModels() []Model {
 			return models
 		}
 	}
-	if models := CachedModels(); len(models) > 0 {
+	if models := a.cachedModels(); len(models) > 0 {
 		return models
 	}
 	return BuiltinModels()
@@ -478,6 +478,12 @@ func (a *app) adoptModelConnectResult(msg modelConnectResultMsg) {
 	if msg.err != nil {
 		a.modelServiceMessage(msg.err.Error())
 		return
+	}
+	// A CONNECTION THAT LANDED WROTE THAT SERVICE'S CACHE ON THE WAY BACK
+	// ([app.connectModelService] above), so whatever the memo holds under that
+	// pair is a reading taken before the file existed (models.go).
+	if address, ok := a.sources.ByID(msg.service); ok {
+		a.forgetModelList(msg.service, address.Address)
 	}
 	service := strings.TrimSpace(msg.written)
 	if service == "" {

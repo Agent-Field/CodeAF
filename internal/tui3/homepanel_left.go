@@ -22,9 +22,19 @@ import (
 // own ledger rows ([switcherReading.addLedger]), each carrying its door.
 type leftPanel struct{ homePanelBase }
 
+// SAID ONCE ACROSS THE COLUMNS. A landing whose check is still the person's is
+// drawn by `needs you`'s `to check` group, one column over and higher up the
+// page ([needsChecking]); this panel drew it a second time, as an ordinary thing
+// that happened while nobody was looking. It comes back here the moment it stops
+// being a question — answered, or aged out of the group — because then it IS
+// just something that happened.
 func (leftPanel) rows(in *homeGridInput) homePanelRows {
+	checking := needsChecking(in)
 	lines := make([]homeLine, 0, len(in.ledger))
 	for _, row := range in.ledger {
+		if row.task != nil && checking[taskLedgerKey(*row.task)] {
+			continue
+		}
 		lines = append(lines, leftLine(row))
 	}
 	out := homePanelCut(panelLeft, lines)
@@ -43,12 +53,22 @@ func leftLine(row switcherRow) homeLine {
 		view: row.item, item: row.item.Item, cell: cell}
 }
 
+// taskLedgerKey is ONE piece of work's identity across home's columns: the
+// conversation that ran it and the node's number, which is the only pair that
+// is unique ([session.TaskIndexEntry.ID] repeats across sessions). It is spelled
+// here because three readers ask it — this panel's own key, the `to check`
+// group's set of what it is already drawing, and the comparison between them
+// (homepanel_needs.go's [needsChecking]).
+func taskLedgerKey(task session.TaskIndexEntry) string {
+	return task.SessionID + "/" + task.ID
+}
+
 // leftKey is a ledger line's identity beside its place word ([homeLine.sameRow]):
 // the task, the file, or — for a firing or memory's line — its words.
 func leftKey(row switcherRow) string {
 	switch {
 	case row.task != nil:
-		return row.task.SessionID + "/" + row.task.ID
+		return taskLedgerKey(*row.task)
 	case row.path != "":
 		return row.path
 	}

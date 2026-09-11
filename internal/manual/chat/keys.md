@@ -1984,7 +1984,7 @@ what each holds), and its keys are a small grammar:
 | --- | --- |
 | `↑` / `↓` (`ctrl+p` / `ctrl+n`) | walk the column you are in, from one panel into the next; `↑` off the top of a column reaches **the tab bar** (*The tab bar is a row the cursor can stand on*) |
 | `←` / `→` | cross to the next column, onto the row nearest the one you left — only into a column with a row to stand on |
-| a digit | answers **the top question in `needs you`**, from anywhere on home, with no cursor move — its answers are drawn on its own row, `1 allow once  2 always  3 deny` |
+| a digit, or a question's own key | answers **the one row of `needs you` that is drawing its answers**, from anywhere on home, with no cursor move — the row under the cursor when it can take one, the top answerable row otherwise. A question's chips are `1 allow once  2 always  3 deny`; a landing in `to check` offers `1 accept   2 not right`, its own `[a]`/`[n]` being letters and letters always type on home |
 | `enter` | acts on the row under the cursor: a conversation opens, a project row starts a new chat in that folder, a `since you left` line opens its record, file or place, a spend or `next up` row opens spend or standing, a fold line opens the place it names |
 | `pgup` / `pgdown` | jump a screenful |
 | `tab` | **the next place** on the bar |
