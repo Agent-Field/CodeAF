@@ -21,6 +21,14 @@ compiler, which turns it into a brief: the goal, the concrete deliverable, a
 budget, the shape of the work, and every default it had to supply. Then it is
 planned and worked.
 
+Compiling and planning are single model calls, each with **four minutes**, and
+a model that thinks before it answers is told how much thinking fits in that
+time on the machine serving it. One that is still thinking when its four
+minutes end is asked once more, with what it had worked out in front of it,
+for the answer that work reached. If a request runs out of time twice anyway,
+it is not started and you are told: `I couldn't get this planned — the model
+thought past its time twice. Say 'try again' to requeue it.`
+
 Anything irreversible is always compiled, however small it looks: spending or
 transferring money, publishing, sending, deploying, or deleting outside the
 workspace.

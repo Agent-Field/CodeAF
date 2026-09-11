@@ -3,20 +3,30 @@ package pool
 import (
 	"context"
 	"fmt"
+	"strings"
+	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // DefaultCallWall is how long one structuring completion may take before the
-// system stops believing in it.
+// system stops waiting on it.
 //
-// Four minutes is deliberately far past honest: the slowest structuring call in
-// the production usage rows — a contract pass over a wide fanout, on a
-// reasoning model, with a cold cache — is well under a minute. This is not a
-// latency budget and must never be tuned like one. It is the line past which a
-// single completion is no longer slow, it is gone.
+// FOUR MINUTES IS A MEASURED FIGURE NOW, AND IT IS SHOWN TO THE MODEL. It used to
+// be argued as "deliberately far past honest", on production rows where the
+// slowest structuring call was under a minute. Issue #927 measured otherwise on
+// a reasoning model with a long request: an honest compile of 225 seconds and
+// spine passes of 53 to 165, beside a grounding pass that thought for the whole
+// four minutes on one machine and answered in two seconds on another. So the
+// wall is no longer only a line past which a completion is gone. It is the time
+// the completion is TOLD it has: every walled request carries it to the effort
+// ladder, which derives the thinking budget the model is given from it
+// (provider's [provider.WithThinkingWall]), and a completion that still reaches
+// it with thought on the wire is asked for its answer rather than thrown away
+// ([walled.CompleteWithMessages]).
 //
 // The unit matters. This bounds ONE completion, not one command and not one
 // agent loop: a head turn that makes nine tool calls gets nine fresh walls, and
@@ -31,18 +41,33 @@ import (
 // on looking alive.
 const DefaultCallWall = 4 * time.Minute
 
+// LongestCall is the longest one call through a slot walled at [DefaultCallWall]
+// can honestly take: the completion it was asked for, cut at its wall, and the
+// one ask for the answer that completion's thought had reached, under a wall of
+// its own. It is exported for the reconciler's command rail, which is counted in
+// these (internal/resident's commandWall) so that the two figures cannot drift.
+const LongestCall = 2 * DefaultCallWall
+
 // ErrCallWall is what a call that outlived its wall returns. It is an ordinary
 // provider failure by design: every caller on the structuring path already has
 // an error branch, and this arrives on it rather than inventing a new one. The
-// layer above owns the retry — this layer only refuses to wait forever.
+// layer above owns the retry — this layer refuses to wait forever and keeps
+// what was thought ([walled.CompleteWithMessages]), and a call that returns this
+// is one whose answer ask ran out of time as well.
+//
+// THE SENTENCE IS THE CAUSE. Silence never reaches this wall: a stream that stops
+// writing is cut by the stream guard's own silence bounds long before four
+// minutes, with a sentence of its own. What reaches it is a model still WORKING
+// — in every row issue #927 measured, still thinking — so "stopped answering",
+// which this said until then, was the one account of the event that was false.
 //
 // It wraps context.DeadlineExceeded deliberately. A stall has to be legible to
 // the reconciler's watchdog, which decides between striking a command and
 // failing it, and the alternative was for internal/resident to import this
 // package for one sentinel. Wrapping the standard error instead means the
 // watchdog asks the only question it actually has — "did this die of time?" —
-// with errors.Is and no new dependency.
-var ErrCallWall = fmt.Errorf("the model stopped answering: %w", context.DeadlineExceeded)
+// with errors.Is.
+var ErrCallWall = fmt.Errorf("the model thought past its time: %w", context.DeadlineExceeded)
 
 // walled bounds one completion at a time. It is a decorator over router.Client
 // rather than a change inside the provider adapters because the wall is a
@@ -68,29 +93,213 @@ func wallClient(inner router.Client, wall time.Duration) router.Client {
 
 func (w walled) Model() string { return w.inner.Model() }
 
-// CompleteWithMessages runs the inner call under its own deadline and then
-// tells the two expiries apart. A caller who cancelled gets their own context
-// error back untouched — an interrupt is not a provider failure and must not be
-// retried as one. Only a call that outlived the wall while its caller was still
-// waiting becomes ErrCallWall.
+// CompleteWithMessages is the wall's whole contract with the model, in three
+// parts.
+//
+//   - THE WALL IS TOLD. The completion is sent with the wall on it, so the effort
+//     ladder can give the thinking pass the budget the wall implies
+//     ([provider.WithThinkingWall]).
+//   - THE WALL KEEPS WHAT WAS THOUGHT. What streams is kept as it arrives
+//     ([kept]). A completion that reaches its wall with thought or answer on the
+//     wire is not thrown away: the model is asked ONCE more, on the same lineage,
+//     with what it had worked out in front of it and its thinking switched off,
+//     for the answer that work reached. Only when that ask runs out of time too —
+//     or when nothing had arrived at all, which is a completion with nothing to
+//     keep — does the caller get [ErrCallWall].
+//   - THE CALLER'S OWN CANCEL IS NEVER A PROVIDER FAILURE. A caller who went away
+//     gets their own context error back untouched, and nothing is asked again.
+//
+// The answer ask is not a retry. A retry is the same bytes to another machine
+// and it belongs to the layer above; this is a DIFFERENT question — "answer from
+// what you have" — that only the wall can ask, because only the wall knows the
+// first completion ended by time rather than by anything about the request.
 func (w walled) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
-	callCtx, cancel := context.WithTimeout(ctx, w.wall)
-	defer cancel()
-
-	response, err := w.inner.CompleteWithMessages(callCtx, messages, options...)
-	if err == nil {
-		return response, nil
-	}
-	if ctx.Err() != nil {
-		// The caller went away. Whatever the inner call said about it, the
-		// honest report is the caller's own cancellation.
+	thought := &kept{}
+	response, cut, err := w.completion(ctx, messages, options, thought)
+	if !cut {
 		return response, err
 	}
-	if callCtx.Err() != nil {
+	asked, ok := thought.answerAsk(messages)
+	if !ok {
 		return nil, fmt.Errorf("%w after %s", ErrCallWall, w.wall)
 	}
-	return response, err
+	thought.tell(ctx)
+	// THINKING OFF IS PART OF THIS ASK'S CORRECTNESS, not an economy, so it is
+	// the required form: a seat's pinned effort must not put the model back into
+	// the deliberation it has just been stopped out of.
+	answer, _, err := w.completion(provider.WithRequiredReasoningEffort(ctx, provider.EffortOff), asked, options, nil)
+	if err == nil || ctx.Err() != nil {
+		return answer, err
+	}
+	// The call died of time, and that is what the layer above is told whatever
+	// the answer ask then ran into: the watchdog's question is whether the work
+	// is worth another run, and it is exactly as worth one as it was before.
+	return nil, fmt.Errorf("%w after %s; asked for the answer it had reached: %v", ErrCallWall, w.wall, err)
 }
+
+// completion runs one completion under the wall and reports whether the wall is
+// what ended it. The two expiries are told apart here and nowhere else: a caller
+// who cancelled gets their own context error back with cut false, whatever the
+// inner call said about it, and only a completion that outlived the wall while
+// its caller was still waiting is cut.
+//
+// `into`, when there is one, keeps what the completion streams. It is set on the
+// first completion only: the answer ask is the last thing this wall will ask, so
+// there is nothing its stream could be kept for.
+func (w walled) completion(ctx context.Context, messages []ai.Message, options []ai.Option, into *kept) (*ai.Response, bool, error) {
+	callCtx, cancel := context.WithTimeout(ctx, w.wall)
+	defer cancel()
+	callCtx = provider.WithThinkingWall(callCtx, w.wall)
+	if into != nil {
+		callCtx = provider.WithStreamObserver(callCtx, into.listen(ctx))
+		defer into.close()
+	}
+	response, err := w.inner.CompleteWithMessages(callCtx, messages, options...)
+	if err == nil || ctx.Err() != nil {
+		return response, false, err
+	}
+	if callCtx.Err() != nil {
+		return nil, true, err
+	}
+	return response, false, err
+}
+
+// kept is what one walled completion has streamed, held as it arrives.
+//
+// IT IS THE STREAM'S OWN ACCOUNT AND NOT THE RESPONSE'S. A completion the wall
+// cuts returns no response — the provider's race hands its caller the deadline
+// and nothing else — so what the model wrote before the cut exists in exactly
+// one place: the events that reached the observer while it was writing. This
+// listens to them as the caller would, forwards every one of them unchanged to
+// whoever the caller had listening, and keeps the two things an answer ask
+// needs: the thought, and any answer that had begun.
+//
+// It is written from the provider's read loop, on the goroutine of whichever arm
+// is speaking, and read by the wall once the completion has ended — so it is
+// locked, and it stops forwarding when the completion ends ([kept.close]): an
+// arm unwinding after the cut is still a stream about a completion the caller
+// has already been told is over, and its last words would land in the middle of
+// the answer ask's.
+//
+// Listening changes nothing about the call itself: the adapter streams whether
+// or not anybody listens, and what it says only to a listener — a line owed to a
+// person who is watching — is said only on a call whose role is one a person
+// watches, and those callers bring an observer of their own, which is still the
+// one everything reaches.
+type kept struct {
+	mu      sync.Mutex
+	thought strings.Builder
+	answer  strings.Builder
+	// shown says the caller's surface is holding text of this completion's
+	// answer — words, or a call it drew forming — which an answer ask has to
+	// void before its own arrives.
+	shown  bool
+	closed bool
+}
+
+// listen is the observer the completion is sent with: it keeps, then forwards
+// to the caller's own context, in the order the provider raised the events.
+func (k *kept) listen(caller context.Context) provider.StreamObserver {
+	return func(event provider.StreamEvent) {
+		k.mu.Lock()
+		if k.closed {
+			k.mu.Unlock()
+			return
+		}
+		k.note(event)
+		k.mu.Unlock()
+		provider.EmitEvent(caller, event)
+	}
+}
+
+// note folds one event into what is kept. Callers hold k.mu.
+//
+// A REPLACEMENT VOIDS WHAT CAME BEFORE IT, here exactly as on a surface: the
+// provider raises it when a rescue's answer takes over from the one being
+// shown, and the text above it is then the answer of an arm that lost.
+func (k *kept) note(event provider.StreamEvent) {
+	switch event.Kind {
+	case provider.StreamReasoning:
+		k.thought.WriteString(event.Delta)
+	case provider.StreamDelta:
+		k.answer.WriteString(event.Delta)
+		k.shown = true
+	case provider.StreamToolCallForming, provider.StreamToolCallReady:
+		k.shown = true
+	case provider.StreamReplaced:
+		k.thought.Reset()
+		k.answer.Reset()
+		k.shown = false
+	}
+}
+
+// close ends the completion's stream: nothing arriving after it is kept or
+// forwarded.
+func (k *kept) close() {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.closed = true
+}
+
+// answerAsk is the request that asks for the answer: the caller's own messages,
+// then what the model wrote as the assistant turn it was, then the ask. It
+// reports false when nothing was written, which is a completion that reached
+// the wall with nothing to keep — there is no work in hand to answer from, and
+// asking again would be a retry, which is the layer above's.
+//
+// The arrangement is the one every provider agrees on and the one shaped's
+// continuation uses: an assistant message is what was said, and a user message
+// is what is being asked next. The thought travels as the assistant's words
+// rather than as a replayed reasoning field because what the second request is
+// FOR is that the model reads it, and a chat template is free to drop an earlier
+// turn's reasoning field before the model ever sees it. It travels WHOLE: the
+// model wrote it inside this same window, so it fits there by construction, and
+// the end of a thought is where its conclusions are.
+func (k *kept) answerAsk(messages []ai.Message) ([]ai.Message, bool) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	worked := strings.TrimSpace(k.thought.String())
+	if begun := strings.TrimSpace(k.answer.String()); begun != "" {
+		if worked != "" {
+			worked += "\n\n"
+		}
+		worked += begun
+	}
+	if worked == "" {
+		return nil, false
+	}
+	asked := make([]ai.Message, 0, len(messages)+2)
+	asked = append(asked, messages...)
+	return append(asked,
+		ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: worked}}},
+		ai.Message{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: answerNowPrompt}}}), true
+}
+
+// tell says, on the caller's stream, that the answer is being asked for. A
+// surface holding a begun answer is told to throw it away, because the answer
+// ask's reply is the whole answer and would otherwise be drawn after half of
+// one; a surface holding only "thinking" is told what the next wait is.
+func (k *kept) tell(caller context.Context) {
+	k.mu.Lock()
+	kind := provider.StreamNotice
+	if k.shown {
+		kind = provider.StreamReplaced
+	}
+	k.mu.Unlock()
+	provider.Emit(caller, kind, askingForTheAnswer)
+}
+
+// askingForTheAnswer is the line a person watching the call reads when its wall
+// is reached with thought in hand: what happened, then what is being done.
+const askingForTheAnswer = "the model thought past its time — asking it for the answer it reached"
+
+// answerNowPrompt is the answer ask itself. It says why there is no more time,
+// what is above, and what shape to answer in — the request's own, which still
+// travels on this send: it asks for the WHOLE answer rather than the rest of
+// one, and a whole answer has the shape the first request asked for.
+const answerNowPrompt = `Your time to think about this has run out. What you had worked out so far is above, with the start of your answer if you had begun one.
+
+Give your complete, final answer now, working from that. Answer in exactly the form the request above asks for, with nothing before or after it. Do not reason about it any further.`
 
 // WithCallWall sets the per-completion wall for every call served through this
 // slot, including the ones a caller makes on a snapshot it took earlier.

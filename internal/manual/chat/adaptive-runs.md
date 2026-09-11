@@ -938,6 +938,15 @@ It is a wall and not a schedule: the length of rope at which a wedged run is mor
 dead. The wall also reaches the work itself instead of leaving every worker at fifteen
 minutes; *Why a two-hour run no longer gives a leaf only fifteen minutes* is the exact rule.
 
+**Planning has a shorter wall of its own, and the model is told it.** Each planning call
+of `aforge do` — compiling the ask, grounding, the spine, the fan-out, the contracts — gets
+four minutes, and a model that thinks before answering is given a thinking budget worked out
+from those four minutes and how fast the machine serving it writes. A call still thinking
+when its time ends is asked once more, with what it had worked out in front of it and its
+thinking switched off, for the answer that work reached. Only if that runs out of time too
+does planning stop, and a request that stops that way twice ends with `I couldn't get this
+planned — the model thought past its time twice. Say 'try again' to requeue it.`
+
 ## Why a two-hour run no longer gives a leaf only fifteen minutes — worker room and landing reserve
 
 Under a long `-timeout` wall, one worker's room grows to what the wall leaves after the

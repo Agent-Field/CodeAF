@@ -6,25 +6,49 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider/pool"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
 // commandWall bounds the whole application of one command — every model call
 // it makes, plus the store work between them.
 //
-// Ten minutes is the outer rail, not the working number. The per-call wall
-// (internal/provider/pool) is what actually catches a stalled completion, and
-// it catches it in four; this exists because a command is a sequence of calls
-// and a pathology that stalls each of them a little is a queue that never
-// drains without any single call ever looking wrong. A splice is three or four
-// round-trips including a fanned contract pass, so ten minutes is roughly twice
-// the worst honest case and nowhere near any observed one.
+// IT IS COUNTED IN CALLS, BECAUSE A COMMAND IS A SEQUENCE OF THEM. A splice waits
+// on its structuring rounds one after another — the compile, the grounding
+// beside the spine, the fan-out, the contracts, the title: [spliceRounds] — and
+// each round is one walled call, whose longest honest life is the provider
+// pool's [pool.LongestCall]: a completion that thought to its wall and the one
+// ask for the answer it reached. The rail is the product of the two, so it
+// admits the worst honest command and is still a rail: past it, a command is
+// not slow, something in it is gone.
+//
+// WHAT IT USED TO SAY AND WHY IT STOPPED BEING TRUE. It was ten minutes, argued
+// as "roughly twice the worst honest case and nowhere near any observed one".
+// Issue #927 observed one, twice in a row, on a request nobody would call
+// dishonest: GLM 5.3 on a long request compiled for 225 seconds, grounded for
+// the whole four-minute call wall, and was still in its spine and fan-out when
+// ten minutes struck both commands. A round on a reasoning model is minutes, not
+// seconds, and a rail that does not know how many rounds a command has is a
+// guess about how fast somebody else's model thinks.
+//
+// A plan deep enough to expand level by level runs more rounds than it counts,
+// and runs them inside the rest of the rail: every round is now told how long
+// it has (the thinking budget the wall implies), so an honest round lands inside
+// one call wall and the second wall each round is allowed is room the rounds
+// that did not need it leave behind.
 //
 // It is a per-command wall, not a per-tick one. A tick applying four
-// independent splices concurrently gives each of them its own ten minutes; the
-// point is that no single command can own the queue forever, not that the
-// resident must finish a batch by a clock.
-const commandWall = 10 * time.Minute
+// independent splices concurrently gives each of them its own rail; the point
+// is that no single command can own the queue forever, not that the resident
+// must finish a batch by a clock.
+const commandWall = spliceRounds * pool.LongestCall
+
+// spliceRounds is how many structuring rounds a splice waits on one after the
+// other when nothing in it is expanded: the compile, the grounding and the spine
+// (which run side by side, so they are one round), the fan-out, the contracts,
+// and the title. It is the only count in [commandWall], and it is a count of the
+// pipeline rather than a tuning of it.
+const spliceRounds = 5
 
 // commandStrikeLimit is how many times a command may stall before the person is
 // told it is not going to happen.
@@ -38,19 +62,31 @@ const commandWall = 10 * time.Minute
 // "creating task…" forever.
 const commandStrikeLimit = 2
 
-// stalledReceipt is what the person reads when a command has stopped twice. It
-// names what happened in their terms and hands back the one action that
-// actually requeues the work, because a receipt that only reports a failure
+// stalledReceipt is what the person reads when a command has run out of time
+// twice. It names what happened in their terms and hands back the one action
+// that actually requeues the work, because a receipt that only reports a failure
 // leaves somebody staring at a card wondering whether to retype the request.
-const stalledReceipt = "I couldn't get this planned — the model stopped answering twice. " +
+//
+// THE CAUSE IT NAMES IS THE TRUE ONE. It said "the model stopped answering" until
+// issue #927, and in the run that filed it every call's first token arrived in
+// under a second and the model was still thinking when each wall struck. Silence
+// never reaches this receipt — a stream that stops writing is cut by the stream
+// guard with a sentence of its own, which is not a deadline — so a command that
+// died of time is a model that was working past it.
+const stalledReceipt = "I couldn't get this planned — " + ranOutOfTime + " twice. " +
 	"Say 'try again' to requeue it."
+
+// ranOutOfTime is the cause, spelled once for the two sentences that carry it:
+// the stage note a stalled command shows while it is tried again, and the
+// receipt it ends on.
+const ranOutOfTime = "the model thought past its time"
 
 // stalled reports that a command died of time rather than of anything about
 // the request.
 //
 // The two clauses are both load-bearing. errors.Is against DeadlineExceeded is
-// what catches both walls — the per-call one wraps it deliberately so this
-// question can be asked without internal/resident importing the provider pool.
+// what catches both walls — the per-call one wraps it deliberately, so this
+// question is asked of the error and never of which package raised it.
 // The check on the outer context is what keeps a shutdown from being read as a
 // provider stall: when the process is going away every command in flight
 // reports a deadline, and striking them would rewrite an orderly exit as a
@@ -114,7 +150,7 @@ func (r *Reconciler) settleOrStrike(ctx context.Context, command store.Command,
 		// Left pending on purpose. The person's card keeps saying the work is
 		// being made, because it is: the next tick owns this command.
 		r.noteCommandStage(command, stageStalled, fmt.Sprintf(
-			"the model stopped answering — trying again (attempt %d)", strikes+1))
+			ranOutOfTime+" — trying again (attempt %d)", strikes+1))
 		return true, nil
 	}
 
