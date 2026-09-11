@@ -485,14 +485,29 @@ func (a *app) adoptModelConnectResult(msg modelConnectResultMsg) {
 	}
 	service = strings.ToLower(service)
 	line := ""
+	nextModel := ""
 	switch msg.outcome.Kind {
 	case modelsource.OutcomeConnected, modelsource.OutcomeAccountCannotPay:
 		a.reloadModelSources()
-		if connected, ok := a.sources.ByID(msg.service); ok {
+		connected, found := a.sources.ByID(msg.service)
+		if found {
 			service = strings.ToLower(connected.Source.Written)
 		}
 		if msg.outcome.Kind == modelsource.OutcomeConnected {
 			a.sourceModels[msg.service] = cleanModels(msg.models)
+			if found {
+				if modelUsesService(a.deferredModelServiceModel, connected.Source.Written) {
+					a.deferredModelServiceModel = ""
+				}
+				preferred := connected.Source.PreferredModel(connected.Door, listedModelIDs(a.sourceModels[msg.service]))
+				if next := connected.Qualify(preferred); next != "" && next != strings.TrimSpace(a.model) {
+					if a.state == stateWorking {
+						a.deferredModelServiceModel = next
+					} else {
+						nextModel = next
+					}
+				}
+			}
 		}
 		line = serviceOutcomeWord(service, msg.outcome)
 		if msg.outcome.Kind == modelsource.OutcomeConnected && a.engineRoad && strings.TrimSpace(msg.keyEnv) != "" {
@@ -502,6 +517,9 @@ func (a *app) adoptModelConnectResult(msg modelConnectResultMsg) {
 		line = serviceOutcomeWord(service, msg.outcome)
 	}
 	a.modelServiceMessage(line)
+	if nextModel != "" {
+		a.moveConversationToConnectedModel(nextModel)
+	}
 	if a.connPanel.open {
 		a.connPanel.adopt(a.connectionRows())
 	}
@@ -511,6 +529,39 @@ func (a *app) adoptModelConnectResult(msg modelConnectResultMsg) {
 		a.sheet.build()
 	}
 	a.touch()
+}
+
+// listedModelIDs keeps the ids in the service's own order for modelsource's
+// single preference rule. The surface metadata stays here; only ids cross the
+// package boundary that owns the ordering.
+func listedModelIDs(models []Model) []string {
+	ids := make([]string, 0, len(models))
+	for _, model := range models {
+		ids = append(ids, model.ID)
+	}
+	return ids
+}
+
+// moveConversationToConnectedModel takes the same model-change road a person
+// takes through /model, then uses the disconnect receipt's sentence so the two
+// automatic moves cannot drift into two accounts of what happened.
+func (a *app) moveConversationToConnectedModel(next string) {
+	next = strings.TrimSpace(next)
+	if next == "" || next == strings.TrimSpace(a.model) {
+		return
+	}
+	was := a.model
+	a.switchModel(next, 0)
+	a.modelServiceFollowup(serviceMovedWord(was, next))
+}
+
+// applyDeferredModelServiceMove spends the one pending move only after the
+// answering turn has settled. Clearing it first makes the second settle event
+// free and prevents a failed later path from replaying an old connection.
+func (a *app) applyDeferredModelServiceMove() {
+	next := a.deferredModelServiceModel
+	a.deferredModelServiceModel = ""
+	a.moveConversationToConnectedModel(next)
 }
 
 func serviceOutcomeWord(service string, outcome modelsource.Outcome) string {
@@ -658,6 +709,9 @@ func (a *app) disconnectModelService(id string) {
 	if err := config.DisconnectService(a.profileDir, id); err != nil {
 		a.modelServiceMessage(err.Error())
 		return
+	}
+	if modelUsesService(a.deferredModelServiceModel, connected.Source.Written) {
+		a.deferredModelServiceModel = ""
 	}
 	delete(a.sourceModels, id)
 	a.reloadModelSources()

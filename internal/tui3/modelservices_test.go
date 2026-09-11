@@ -54,7 +54,8 @@ func modelServiceTestAppWithAgent(t *testing.T, dir string, model string, source
 	t.Setenv("AFORGE_HOME", t.TempDir())
 	options := Options{
 		Agent: agent, ProfileDir: dir, Sources: sources,
-		Models: func() []Model { return models },
+		Models:    func() []Model { return models },
+		SaveModel: func(model string) error { return config.WriteChatModel(dir, model) },
 	}
 	if live, ok := agent.(*session.Agent); ok {
 		options.ApplyModelSources = live.SetSources
@@ -79,6 +80,230 @@ func testDirectService(address string) modelsource.Connected {
 		}
 	}
 	return modelsource.Connected{}
+}
+
+func testModelSource(t *testing.T, id string) modelsource.Source {
+	t.Helper()
+	for _, source := range modelsource.Vendored() {
+		if source.ID == id {
+			return source
+		}
+	}
+	t.Fatalf("there is no vendored model service %q", id)
+	return modelsource.Source{}
+}
+
+func installTestModelSource(t *testing.T, a *app, source modelsource.Source) {
+	t.Helper()
+	for index := range a.modelCatalog {
+		if a.modelCatalog[index].ID == source.ID {
+			a.modelCatalog[index] = source
+			return
+		}
+	}
+	t.Fatalf("the surface catalog has no model service %q", source.ID)
+}
+
+func connectZAIFromPanel(t *testing.T, a *app, apiKey string) {
+	t.Helper()
+	a.openConnect()
+	rowAt := -1
+	for at := range a.connPanel.hits {
+		row, ok := a.connPanel.at(at)
+		if ok && row.ID == modelConnectionID("z-ai") {
+			rowAt = at
+			break
+		}
+	}
+	if rowAt < 0 {
+		t.Fatal("the models group did not contain Z.ai")
+	}
+	a.connPanel.cursor = rowAt
+	if cmd := a.connectAct(rowAt); cmd != nil || a.connPanel.entry == nil || !a.connPanel.entry.choosing() {
+		t.Fatal("enter on Z.ai did not open the region choice")
+	}
+	if cmd := a.connectEntryKey(key("enter")); cmd != nil || a.connPanel.entry == nil || !a.connPanel.entry.secret {
+		t.Fatal("the chosen region did not open the key box")
+	}
+	a.connPanel.entry.box.setText(apiKey)
+	cmd := a.connectEntryKey(key("enter"))
+	if cmd == nil {
+		t.Fatal("the completed key did not start the connection")
+	}
+	if _, follow := a.Update(cmd()); follow != nil {
+		t.Fatal("the settled connection unexpectedly started another command")
+	}
+}
+
+func newZAIConnectTestApp(t *testing.T, defaultKey string) (*app, string) {
+	t.Helper()
+	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY", "ZHIPU_API_KEY"} {
+		t.Setenv(pin, "")
+	}
+	plan := sourcestub.New("plan-probe")
+	t.Cleanup(plan.Close)
+	metered := sourcestub.New("metered-probe")
+	t.Cleanup(metered.Close)
+	source := testModelSource(t, "z-ai")
+	source.Doors[0].Address = plan.URL()
+	source.Doors[1].Address = metered.URL()
+	dir := t.TempDir()
+	opening := "~deepseek/deepseek-v4-flash-latest"
+	a := modelServiceTestApp(t, dir, opening,
+		modelsource.NewSet(testDefaultService(defaultKey)),
+		[]Model{{ID: opening}, {ID: "z-ai/existing-author"}})
+	installTestModelSource(t, a, source)
+	return a, dir
+}
+
+func TestConnectingAServiceMovesTheConversationOntoItsPreferredModel(t *testing.T) {
+	for _, testCase := range []struct {
+		name       string
+		defaultKey string
+	}{
+		{name: "with the default service connected", defaultKey: "sk-default-1234567890"},
+		{name: "with no default service key"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			a, dir := newZAIConnectTestApp(t, testCase.defaultKey)
+			opening := a.model
+			connectZAIFromPanel(t, a, "plan-test-key")
+
+			want := "z-ai-direct/glm-5.3"
+			if a.model != want || a.agent.Model() != want || a.modelWord() != want {
+				t.Fatalf("conversation model = %q/%q, status = %q, want %q", a.model, a.agent.Model(), a.modelWord(), want)
+			}
+			if got := noteSaying(t, a, "is connected"); got != "z-ai-direct is connected · coding plan · 4 models" {
+				t.Fatalf("connection note = %q", got)
+			}
+			if got := noteSaying(t, a, "this conversation was on"); got != "this conversation was on "+opening+" · it is now on "+want {
+				t.Fatalf("move note = %q", got)
+			}
+			if got := config.ChatModelAt(dir); got != want {
+				t.Fatalf("the profile holds %q, want the moved model %q", got, want)
+			}
+		})
+	}
+}
+
+func TestConnectingAServiceFromProvidersMovesTheConversationOntoItsPreferredModel(t *testing.T) {
+	a, dir := newZAIConnectTestApp(t, "")
+	source, ok := a.modelSource("z-ai")
+	if !ok {
+		t.Fatal("the test surface lost Z.ai")
+	}
+	row := config.PersistedSource{
+		ID: source.ID, Written: "z-ai-direct", Region: "intl", Key: "old-plan-key", Door: source.Doors[0].ID, Order: 1,
+	}
+	if err := config.WriteSources(dir, []config.PersistedSource{row}); err != nil {
+		t.Fatal(err)
+	}
+	connectedSource := source
+	connectedSource.Written = row.Written
+	connectedSource.Address = source.Doors[0].Address
+	a.sources = modelsource.NewSet(a.sources.Default(), modelsource.Connected{
+		Source: connectedSource, Key: row.Key, Address: source.Doors[0].Address, Door: source.Doors[0],
+	})
+	a.openSettings()
+	toProviders(t, a)
+	found := false
+	for at, item := range a.sheet.items {
+		if item.service != nil && item.service.id == "z-ai" {
+			a.sheet.cursor = at
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("Providers did not draw the connected Z.ai service")
+	}
+	drive(t, a, key("enter"))
+	drive(t, a, key("enter"))
+	if a.sheet.conn.entry == nil || !a.sheet.conn.entry.secret {
+		t.Fatal("the Providers road did not reach the key box")
+	}
+	a.sheet.conn.entry.box.setText("new-plan-key")
+	drive(t, a, key("enter"))
+
+	wantModel := "z-ai-direct/glm-5.3"
+	wantMessage := "z-ai-direct is connected · coding plan · 4 models\n" +
+		"this conversation was on ~deepseek/deepseek-v4-flash-latest · it is now on " + wantModel
+	if a.model != wantModel || a.modelWord() != wantModel {
+		t.Fatalf("Providers left the conversation on %q with status %q", a.model, a.modelWord())
+	}
+	if a.sheet.msg != wantMessage {
+		t.Fatalf("Providers message = %q, want %q", a.sheet.msg, wantMessage)
+	}
+}
+
+func TestAConnectDuringATurnMovesTheModelWhenTheTurnEnds(t *testing.T) {
+	a, _ := newZAIConnectTestApp(t, "")
+	opening := a.model
+	a.state = stateWorking
+	connectZAIFromPanel(t, a, "plan-test-key")
+
+	if a.model != opening || a.modelWord() != opening {
+		t.Fatalf("a running turn moved from %q to %q before it ended", opening, a.model)
+	}
+	for _, note := range noteTexts(a) {
+		if strings.Contains(note, "this conversation was on") {
+			t.Fatalf("the running turn drew its deferred move early: %q", note)
+		}
+	}
+	if a.deferredModelServiceModel != "z-ai-direct/glm-5.3" {
+		t.Fatalf("deferred model = %q", a.deferredModelServiceModel)
+	}
+	a.settle()
+	if a.model != "z-ai-direct/glm-5.3" || a.state != stateIdle || a.deferredModelServiceModel != "" {
+		t.Fatalf("settled model/state/deferred = %q/%v/%q", a.model, a.state, a.deferredModelServiceModel)
+	}
+	if got := noteSaying(t, a, "this conversation was on"); got != "this conversation was on "+opening+" · it is now on z-ai-direct/glm-5.3" {
+		t.Fatalf("settled move note = %q", got)
+	}
+}
+
+func TestDisconnectingAServiceBeforeTheTurnEndsClearsItsDeferredMove(t *testing.T) {
+	a, _ := newZAIConnectTestApp(t, "")
+	opening := a.model
+	a.state = stateWorking
+	connectZAIFromPanel(t, a, "plan-test-key")
+	a.disconnectModelService("z-ai")
+	a.settle()
+
+	if a.model != opening || a.deferredModelServiceModel != "" {
+		t.Fatalf("the disconnected service left model/deferred %q/%q", a.model, a.deferredModelServiceModel)
+	}
+	for _, note := range noteTexts(a) {
+		if strings.Contains(note, "this conversation was on") {
+			t.Fatalf("the disconnected deferred service still moved the conversation: %q", note)
+		}
+	}
+}
+
+func TestTheMovedModelIsTheOneTheNextLaunchOpensOn(t *testing.T) {
+	a, dir := newZAIConnectTestApp(t, "")
+	connectZAIFromPanel(t, a, "plan-test-key")
+	want := "z-ai-direct/glm-5.3"
+	if got := config.ChatModelAt(dir); got != want {
+		t.Fatalf("the profile holds %q, want %q", got, want)
+	}
+
+	nextSources := config.ResolveSources(dir, "", config.DefaultBaseURL)
+	next := newApp(t.Context(), Options{
+		Agent:      &fakeAgent{model: config.ChatModelAt(dir)},
+		Workspace:  t.TempDir(),
+		ProfileDir: dir,
+		Sources:    nextSources,
+		Models:     func() []Model { return []Model{{ID: config.DefaultModel}} },
+		SaveModel:  func(model string) error { return config.WriteChatModel(dir, model) },
+	})
+	next.width, next.height = 100, 30
+	next.pal = newPalette(tokens.ANSI256, false)
+	next.openPicker()
+	chosen, ok := next.pick.choice()
+	if next.model != want || !ok || chosen.ID != want {
+		t.Fatalf("next launch model/picker = %q/%q (found=%t), want %q", next.model, chosen.ID, ok, want)
+	}
 }
 
 func TestAConnectedServicesModelsAppearGroupedWithoutARestart(t *testing.T) {

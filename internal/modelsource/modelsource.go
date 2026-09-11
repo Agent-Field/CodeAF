@@ -96,6 +96,10 @@ type Source struct {
 	Probe       Probe
 	Listing     Listing
 	ProbeModel  string
+	// A ROW'S PREFERRED MUST BE ANSWERABLE ON EVERY DOOR IT CAN BIND. The door
+	// is chosen by what the key proves, so this is the vendor's best model both
+	// its subscription and metered roads serve, not simply its flagship.
+	Preferred string
 }
 
 // Connected is one service with the two facts only a caller that may read the
@@ -248,6 +252,12 @@ func LooksLikeAPIKey(key string) bool {
 	return strings.HasPrefix(key, "sk-") && len(key) >= 20 && !strings.ContainsAny(key, " \t\r\n")
 }
 
+const (
+	zaiPreferredModel      = "glm-5.3"
+	moonshotPreferredModel = "kimi-k2.7-code"
+	minimaxPreferredModel  = "MiniMax-M3"
+)
+
 // Vendored returns the seven service descriptions shipped by this phase.
 func Vendored() []Source {
 	return []Source{
@@ -255,11 +265,12 @@ func Vendored() []Source {
 			ID: "deepseek", Written: "deepseek", Name: "DeepSeek",
 			Address: "https://api.deepseek.com/v1", KeyEnv: "DEEPSEEK_API_KEY",
 			KeyShape: LooksLikeAPIKey, Listing: ListingModels, Probe: listingProbe(),
+			Preferred: "deepseek-v4-pro",
 		},
 		{
 			ID: "z-ai", Written: "z-ai", Name: "Z.ai", KeyEnv: "ZHIPU_API_KEY",
 			Doors: []Door{
-				{ID: "coding-plan", Name: "coding plan", Address: "https://api.z.ai/api/coding/paas/v4", Models: []string{"glm-5.3", "glm-5.3-flash", "glm-5.3[1m]", "glm-5.3-flash[1m]"}, Observed: true},
+				{ID: "coding-plan", Name: "coding plan", Address: "https://api.z.ai/api/coding/paas/v4", Models: []string{zaiPreferredModel, "glm-5.3-flash", "glm-5.3[1m]", "glm-5.3-flash[1m]"}, Observed: true},
 				{ID: "metered", Name: "pay-as-you-go", Address: "https://api.z.ai/api/paas/v4", Metered: true, Observed: true},
 			},
 			Regions: []Region{
@@ -273,6 +284,7 @@ func Vendored() []Source {
 			// endpoint actually does. The fallback model stays for the regions
 			// or the day it stops.
 			Listing: ListingModels, ProbeModel: "glm-5.3-flash", Probe: listingProbe(),
+			Preferred: zaiPreferredModel,
 		},
 		{
 			ID: "moonshot", Written: "moonshot", Name: "Moonshot", KeyEnv: "MOONSHOT_API_KEY",
@@ -284,7 +296,8 @@ func Vendored() []Source {
 				{ID: "intl", Name: "International", Address: "https://api.moonshot.ai/v1"},
 				{ID: "cn", Name: "China", Address: "https://api.moonshot.cn/v1"},
 			},
-			Listing: ListingNone, ProbeModel: "kimi-k2.7-code", Probe: listingProbe(),
+			Listing: ListingNone, ProbeModel: moonshotPreferredModel, Probe: listingProbe(),
+			Preferred: moonshotPreferredModel,
 		},
 		{
 			ID: "minimax", Written: "minimax", Name: "MiniMax", KeyEnv: "MINIMAX_API_KEY",
@@ -293,7 +306,8 @@ func Vendored() []Source {
 			// distinction: the same host, bearer, model and request can spend either
 			// balance. Two doors return only when an observed response field, header
 			// or error can prove which billing product answered.
-			Listing: ListingNone, ProbeModel: "MiniMax-M3", Probe: listingProbe(),
+			Listing: ListingNone, ProbeModel: minimaxPreferredModel, Probe: listingProbe(),
+			Preferred: minimaxPreferredModel,
 		},
 		{
 			ID: "qwen", Written: "qwen", Name: "Alibaba Qwen", KeyEnv: "DASHSCOPE_API_KEY",
@@ -306,17 +320,46 @@ func Vendored() []Source {
 				{ID: "cn", Name: "China", Address: "https://dashscope.aliyuncs.com/compatible-mode/v1"},
 			},
 			Listing: ListingNone, ProbeModel: "qwen3.8-flash", Probe: listingProbe(),
+			Preferred: "qwen3.7-plus",
 		},
 		{
 			ID: "ollama", Written: "ollama", Name: "Ollama",
 			Address: "http://localhost:11434/v1", KeyOptional: true,
-			Listing: ListingModels, Probe: listingProbe(),
+			Listing: ListingModels, Probe: listingProbe(), Preferred: "",
 		},
 		{
 			ID: "custom", Written: "custom", Name: "Something else",
-			Listing: ListingModels, Probe: listingProbe(),
+			Listing: ListingModels, Probe: listingProbe(), Preferred: "",
 		},
 	}
+}
+
+// PreferredModel answers the model a newly connected service should put the
+// conversation on. THE ORDER IS THE POLICY: a door's documented catalog is
+// narrower than the vendor row, then a row preference is trusted only when the
+// service did not list models or listed that id, and only then may the first
+// listed id stand in. Empty means there is no honest move to make.
+func (s Source) PreferredModel(door Door, listed []string) string {
+	if len(door.Models) > 0 {
+		return strings.TrimSpace(door.Models[0])
+	}
+	preferred := strings.TrimSpace(s.Preferred)
+	if preferred != "" {
+		if len(listed) == 0 {
+			return preferred
+		}
+		for _, id := range listed {
+			if strings.TrimSpace(id) == preferred {
+				return preferred
+			}
+		}
+	}
+	for _, id := range listed {
+		if id = strings.TrimSpace(id); id != "" {
+			return id
+		}
+	}
+	return ""
 }
 
 // MeteredDoor returns the one separately billed road described by this

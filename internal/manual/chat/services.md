@@ -29,14 +29,21 @@ the conversation's model on the connected service. Tools, tasks and child agents
 from that turn inherit the same rule, so none of them makes an OpenRouter request. If the
 default service does have a key, the crew keeps using its configured models as usual.
 
-## When a newly connected model service starts working in this conversation
+## What model do I get after connecting a service — why did my model change
 
-On a plain launch on this machine, a successful connection with a pasted key is live in
-the conversation that is already open. The surface writes the service to the engine's
-profile; the engine re-reads that profile through the model-setting door before it applies
-the chosen model. Pick one of the new service's models in `/model`, and the very next
-request uses that service's address and pasted key. Opening another conversation is not
-required.
+A successful connection from `/connect`, or a reconnect from the Providers tab in
+`/settings`, moves this conversation onto that service in the same moment. A plan door's
+first documented model wins. Otherwise aforge uses the vendor's preferred model when the
+service listed it or published no list, then the first model the service listed. With no
+preferred or listed model there is no move and no extra sentence.
+
+For example, the connection line
+`z-ai-direct is connected · coding plan · 4 models` is followed by
+`this conversation was on ~deepseek/deepseek-v4-flash-latest · it is now on z-ai-direct/glm-5.3`.
+The status line and `/model` show the new model at once. The previous model is named so
+opening `/model` and choosing it once takes you back; `/model` is also how to go somewhere
+else. If a turn is answering, the connection lands immediately but the model move waits
+until that answer ends, so the model does not change under a sentence already streaming.
 
 When the key is a variable, the receipt adds, for example,
 `the engine process reads $DEEPSEEK_API_KEY from its own environment`. The daemon keeps

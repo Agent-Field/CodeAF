@@ -18,6 +18,7 @@ invalidates:
   - "A service whose written name collided with an OpenRouter model author was REFUSED, and the person had to retype the region and key to connect under the suggested name. The suggested name is taken on the first attempt now, and the connect line names it."
   - "A turn was believed to need the default provider's key even while its conversation model was on a connected service, so enter opened the browser connection instead of sending. The connected service carries the turn now, and the surface says nothing about OpenRouter in that state."
   - "Every background seat was believed to resolve through the default service, so a direct-only conversation's crew found no key. A seat the service cannot fill now falls to the conversation's live model on that connected service; a present default-provider key keeps the configured crew unchanged."
+  - "Connecting a service left the conversation on its old model, so a person who had only just connected Z.ai was still spending on the default service until they opened `/model`. The conversation moves onto the service's preferred model in the same moment now, by one documented rule, and the sentence names the model it left."
 ---
 
 Stacked on #800. Verified against a real Z.ai Team Plan key with both hosts behind recording

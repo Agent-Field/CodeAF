@@ -38,6 +38,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does z-ai use my coding plan first", "services"},
 		{"why is my service called z-ai-direct", "services"},
 		{"do I need an openrouter key if I connected z.ai", "services"},
+		{"why did my model change after I connected z.ai", "services"},
+		{"what model does aforge use after I connect a service", "services"},
 		{"I only have a zhipu key can I use aforge", "services"},
 		{"what happens when my plan runs out", "services"},
 		{"will it spend pay as you go automatically", "services"},
