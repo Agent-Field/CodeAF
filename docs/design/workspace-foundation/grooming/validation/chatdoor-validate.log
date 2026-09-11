@@ -1,0 +1,299 @@
+REVISION 178dc0740904dc6d783f999f22100dc2427b4586
+TRACKED-CLEAN 0 modified tracked files
+HOST spark aarch64 go version go1.26.5 linux/arm64
+STARTED 2026-09-11T03:48:16Z
+=== STEP vet: go vet ./internal/standing/ ./internal/session/ ./cmd/aforge/ ./internal/workspace/ ./internal/workspaceview/ ./internal/manual/ ./internal/tui3/
+=== RESULT vet PASS 0s
+=== STEP vet-e2e: go vet -tags e2e ./internal/e2e/ ./internal/session/
+=== RESULT vet-e2e PASS 1s
+=== STEP small-suites: go test -count=1 ./internal/standing/ ./internal/workspace/ ./internal/workspaceview/ ./internal/manual/
+ok  	github.com/Agent-Field/aforge-v2/internal/standing	4.604s
+ok  	github.com/Agent-Field/aforge-v2/internal/workspace	7.737s
+ok  	github.com/Agent-Field/aforge-v2/internal/workspaceview	0.312s
+ok  	github.com/Agent-Field/aforge-v2/internal/manual	1.389s
+=== RESULT small-suites PASS 8s
+=== STEP session-selected: go test -count=1 -timeout 15m -run Standing|Stand|ContextTrace|Governing|Organization|Trace|Firing|Inbox|Manual|Answer|Report|Rule|Finding|StopWhile|Publish|Correction|Withheld|Truncat|Digest|Hand|Journal|Torn|Session|Question|Mailbox|Fork|Deliver|Settle|Chat|Card|Placement|Folder|Timer|Background|Prefix|Belt|Prompt|Brief|Host ./internal/session/
+ok  	github.com/Agent-Field/aforge-v2/internal/session	89.082s
+=== RESULT session-selected PASS 89s
+=== STEP cmd-selected: go test -count=1 -timeout 15m -run Help|Usage|Collections|Width|Tick|Command|Unknown|Doors|Vocabulary|Plain|Standing|Emptiness|Launch|Concept|Flag ./cmd/aforge/
+ok  	github.com/Agent-Field/aforge-v2/cmd/aforge	3.638s
+=== RESULT cmd-selected PASS 5s
+=== STEP tui3-card: go test -count=1 -timeout 15m -run ^(TestAStandingCardDrawsTheTermsTheEngineSent|TestAStandingProposalDrawsWhenAndCost|TestARulesCardDrawsNoCadenceAndNoCost|TestTheBackgroundNoticeDrawsAsItsOwnBareLine)$ -v ./internal/tui3/
+=== RUN   TestAStandingProposalDrawsWhenAndCost
+--- PASS: TestAStandingProposalDrawsWhenAndCost (0.00s)
+=== RUN   TestAStandingCardDrawsTheTermsTheEngineSent
+    standing_test.go:177: the card as drawn:
+        
+          ╭─ ? ◦ keep an eye on my inbox ───────────────────────────────────────────
+          │ keep an eye on my inbox folder and keep reports/inbox-report.md current
+          │ when · when inbox/* changes
+          │ where · for this project
+          │ does · Read the changed files in inbox/ and write a short report of new
+          │ decisions and requests. FOCUS: decisions
+          │ report · reports/inbox-report.md — aforge publishes this file; the run
+          │ never writes it
+          │ folder · Launch, where this conversation is placed — its rules reach
+          │ every run
+          │ rule · RULE-LAUNCH-7: inbox reports never quote email addresses; write
+          │ [redacted] instead.
+          │ costs · shares the day's allowance · checked every 5 minutes
+          ╰─────────────────────────────────────────────────────────────────────────
+--- PASS: TestAStandingCardDrawsTheTermsTheEngineSent (0.00s)
+=== RUN   TestTheBackgroundNoticeDrawsAsItsOwnBareLine
+--- PASS: TestTheBackgroundNoticeDrawsAsItsOwnBareLine (0.00s)
+=== RUN   TestARulesCardDrawsNoCadenceAndNoCost
+--- PASS: TestARulesCardDrawsNoCadenceAndNoCost (0.00s)
+PASS
+tui3: 1 goroutines still parked at the end of the run
+ok  	github.com/Agent-Field/aforge-v2/internal/tui3	0.022s
+=== RESULT tui3-card PASS 1s
+=== STEP e2e-untagged: go test -count=1 ./internal/e2e/
+ok  	github.com/Agent-Field/aforge-v2/internal/e2e	0.226s
+=== RESULT e2e-untagged PASS 0s
+=== STEP laws: make test-laws
+./scripts/laws.sh
+laws: 64 files in 19 packages
+ok  	github.com/Agent-Field/aforge-v2/cmd/aforge	1.240s
+ok  	github.com/Agent-Field/aforge-v2/internal/ci	0.395s
+ok  	github.com/Agent-Field/aforge-v2/internal/config	0.043s
+ok  	github.com/Agent-Field/aforge-v2/internal/e2e	0.307s
+ok  	github.com/Agent-Field/aforge-v2/internal/exec	1.120s
+ok  	github.com/Agent-Field/aforge-v2/internal/guard	0.136s
+ok  	github.com/Agent-Field/aforge-v2/internal/head	0.035s
+ok  	github.com/Agent-Field/aforge-v2/internal/iconlaw	0.174s
+ok  	github.com/Agent-Field/aforge-v2/internal/lane	0.285s
+ok  	github.com/Agent-Field/aforge-v2/internal/manual	0.836s
+ok  	github.com/Agent-Field/aforge-v2/internal/provider	1.493s
+ok  	github.com/Agent-Field/aforge-v2/internal/registry	0.051s
+ok  	github.com/Agent-Field/aforge-v2/internal/relay	0.050s
+ok  	github.com/Agent-Field/aforge-v2/internal/session	2.679s
+ok  	github.com/Agent-Field/aforge-v2/internal/thread	0.465s
+ok  	github.com/Agent-Field/aforge-v2/internal/tui2/tokens	0.027s
+ok  	github.com/Agent-Field/aforge-v2/internal/tui3	10.574s
+ok  	github.com/Agent-Field/aforge-v2/internal/workspace	0.012s
+ok  	github.com/Agent-Field/aforge-v2/internal/workspaceview	0.023s
+=== RESULT laws PASS 18s
+=== STEP changelog: make changelog-check
+docs/changes/unreleased: 412 entries, all well formed.
+=== RESULT changelog PASS 0s
+=== STEP build: make build
+# Generators execute on the build host, even when aforge targets another OS.
+env -u GOOS -u GOARCH go generate ./internal/manual
+go build -tags=aforge_packed_manual -trimpath -ldflags="-s -w -X github.com/Agent-Field/aforge-v2/internal/buildinfo.rev=178dc0740 -X github.com/Agent-Field/aforge-v2/internal/buildinfo.dirty=true -X github.com/Agent-Field/aforge-v2/internal/buildinfo.builtAt=2026-09-11T03:50:18Z" -o bin/aforge ./cmd/aforge
+=== RESULT build PASS 1s
+=== STEP packed-manual: make test-packed-manual
+# Generators execute on the build host, even when aforge targets another OS.
+env -u GOOS -u GOARCH go generate ./internal/manual
+go test -tags=aforge_packed_manual ./internal/manual
+ok  	github.com/Agent-Field/aforge-v2/internal/manual	(cached)
+=== RESULT packed-manual PASS 0s
+=== STEP localwork-journey: env AFORGE_LOCALWORK_KEEP=/tmp/opus-localwork/chatdoor-keep-178dc0740 go test -tags e2e -count=1 -timeout 10m -run ^TestLocalWorkJourney$ -v ./internal/e2e/
+=== RUN   TestLocalWorkJourney
+    localwork_e2e_test.go:86: check: 1 checked
+    localwork_e2e_test.go:91: check: 1 checked · 1 ran
+    localwork_e2e_test.go:121: check: 1 checked
+    localwork_e2e_test.go:130: check: 1 checked · 1 ran
+    localwork_e2e_test.go:143: check: nothing was due
+    localwork_e2e_test.go:146: check: 1 checked · 1 ran
+    localwork_e2e_test.go:167: check: 1 checked · 1 ran
+    localwork_e2e_test.go:180: check: 1 checked
+    localwork_e2e_test.go:207: check: 1 checked · 1 ran
+    localwork_e2e_test.go:221: check: 2 checked
+    localwork_e2e_test.go:225: check: 2 checked · 2 ran
+    localwork_e2e_test.go:248: check: 1 checked
+    localwork_e2e_test.go:270: SHOW inbox work:
+        f2ca17ce72e4a732  retired  Keep an eye on the inbox folder and keep reports/inbox-report.md current.
+          retired: stopped by you
+          wakes when inbox/* changes
+          workspace: /tmp/opus-localwork/chatdoor-keep-178dc0740/project
+          instructions (version 2): Read the changed files in inbox/ and list who owns each open request. FOCUS: owners
+          report: reports/inbox-report.md
+          set up by: person, through the terminal
+          folder: a4e09abcce556f99d267f7a71a865aab Launch (placed directly)
+          rule reaching it: 93e6ea9060988ca5 RULE-LAUNCH-7: inbox reports never quote email addresses; write [redacted] instead.
+          ran 7 time(s); last came to landed
+        runs, newest first:
+          000008  finished · landed · instructions v2 · Sep 10 23:50:23
+              woken: the files you are watching changed
+              added inbox/d.md
+              came to: report updated: reports/inbox-report.md — # Report FOCUS: owners - added inbox/d.md rules seen: RULE-LAUNCH-7 read: Decision: keep the Friday date.
+              checked against 1 rule(s): kept
+              published reports/inbox-report.md (107 bytes, sha256 758db1ee620e)
+              journal: /tmp/opus-localwork/chatdoor-keep-178dc0740/home/v3/standing/f2ca17ce72e4a732/runs/000008/transcript.jsonl
+          000007  finished · landed · instructions v2 · Sep 10 23:50:22
+              woken: the files you are watching changed
+              added inbox/f.md
+              added inbox/g.md
+              came to: report updated: reports/inbox-report.md — # Report FOCUS: owners - added inbox/f.md - added inbox/g.md rules seen: RULE-LAUNCH-7 read: Request: ask Bob for th…
+              checked against 1 rule(s): kept
+              published reports/inbox-report.md (125 bytes, sha256 52d13181832b)
+              journal: /tmp/opus-localwork/chatdoor-keep-178dc0740/home/v3/standing/f2ca17ce72e4a732/runs/000007/transcript.jsonl
+          000006  finished · needs-you · instructions v2 · Sep 10 23:50:22
+              woken: the files you are watching changed
+              added inbox/f.md
+              came to: report held back, not published: it breaks a rule placed on this work — “RULE-LAUNCH-7”: the report says “bob@example.com” — it quotes an email addr… · withheld: held-by-rules
+              checked against 1 rule(s): broken after one correction
+              sent back once: “RULE-LAUNCH-7”: the report says “bob@example.com” — it quotes an email address
+              still breaks: “RULE-LAUNCH-7” — the report said “bob@example.com”
+              held back, not published; draft: /tmp/opus-localwork/chatdoor-keep-178dc0740/home/v3/standing/f2ca17ce72e4a732/runs/000006/held-report.md
+              journal: /tmp/opus-localwork/chatdoor-keep-178dc0740/home/v3/standing/f2ca17ce72e4a732/runs/000006/transcript.jsonl
+          000005  finished · landed · instructions v2 · attempt 2 · Sep 10 23:50:21
+              woken: the files you are watching changed
+              added inbox/c.md
+              retries interrupted run 000004
+              came to: report updated: reports/inbox-report.md — # Report FOCUS: owners - added inbox/c.md rules seen: RULE-LAUNCH-7 read: Request: legal review by Tuesday.
+              checked against 1 rule(s): kept
+              published reports/inbox-report.md (109 bytes, sha256 de6f9d2c9fef)
+              journal: /tmp/opus-localwork/chatdoor-keep-178dc0740/home/v3/standing/f2ca17ce72e4a732/runs/000005/transcript.jsonl
+          000004  interrupted · instructions v2 · Sep 10 23:50:21
+              woken: the files you are watching changed
+              added inbox/c.md
+              interrupted; retried as f2ca17ce72e4a732/000005
+              journal: /tmp/opus-localwork/chatdoor-keep-178dc0740/home/v3/standing/f2ca17ce72e4a732/runs/000004/transcript.jsonl
+          000003  finished · landed · instructions v2 · Sep 10 23:50:21
+              woken: the files you are watching changed
+              added inbox/b.md
+              came to: report updated: reports/inbox-report.md — # Report FOCUS: owners - added inbox/b.md rules seen: RULE-LAUNCH-7 read: Decision: budget capped at 5k.
+              checked against 1 rule(s): kept
+              published reports/inbox-report.md (106 bytes, sha256 c4a4aad34735)
+              journal: /tmp/opus-localwork/chatdoor-keep-178dc0740/home/v3/standing/f2ca17ce72e4a732/runs/000003/transcript.jsonl
+          000002  finished · landed · instructions v2 · Sep 10 23:50:21
+              woken: the files you are watching changed
+              modified inbox/a.md
+              came to: report updated: reports/inbox-report.md — # Report FOCUS: owners - modified inbox/a.md rules seen: RULE-LAUNCH-7 read: Decision: ship Friday. Ask [redacted] t…
+              checked against 1 rule(s): kept after one correction
+              sent back once: “RULE-LAUNCH-7”: the report says “alice@example.com” — it quotes an email address
+              published reports/inbox-report.md (138 bytes, sha256 79ffc27cc9c2)
+              journal: /tmp/opus-localwork/chatdoor-keep-178dc0740/home/v3/standing/f2ca17ce72e4a732/runs/000002/transcript.jsonl
+          000001  finished · landed · instructions v1 · Sep 10 23:50:20
+              woken: the files you are watching changed
+              added inbox/a.md
+              came to: report updated: reports/inbox-report.md — # Report FOCUS: decisions - added inbox/a.md rules seen: RULE-LAUNCH-7 read: Decision: ship Friday. Ask [redacted] t…
+              checked against 1 rule(s): kept after one correction
+              sent back once: “RULE-LAUNCH-7”: the report says “alice@example.com” — it quotes an email address
+              published reports/inbox-report.md (138 bytes, sha256 d43ef6f4051f)
+              journal: /tmp/opus-localwork/chatdoor-keep-178dc0740/home/v3/standing/f2ca17ce72e4a732/runs/000001/transcript.jsonl
+        log:
+          2026-09-10T23:50:20-04:00  placed in folder a4e09abcce556f99d267f7a71a865aab; its rules reach this work
+          2026-09-10T23:50:21-04:00  the files you are watching changed — landed: report updated: reports/inbox-report.md — # Report  FOCUS: decisions - added inbox/a.md rules seen: RULE-LAUNCH-7 read: Decision: ship Friday. Ask [redacted] to confirm the venue.
+          2026-09-10T23:50:21-04:00  revised at the terminal to version 2: instructions
+          2026-09-10T23:50:21-04:00  the files you are watching changed — landed: report updated: reports/inbox-report.md — # Report  FOCUS: owners - modified inbox/a.md rules seen: RULE-LAUNCH-7 read: Decision: ship Friday. Ask [redacted] to confirm the venue.
+          2026-09-10T23:50:21-04:00  paused at the terminal
+          2026-09-10T23:50:21-04:00  resumed at the terminal
+          2026-09-10T23:50:21-04:00  the files you are watching changed — landed: report updated: reports/inbox-report.md — # Report  FOCUS: owners - added inbox/b.md rules seen: RULE-LAUNCH-7 read: Decision: budget capped at 5k.
+          2026-09-10T23:50:22-04:00  the files you are watching changed — landed: report updated: reports/inbox-report.md — # Report  FOCUS: owners - added inbox/c.md rules seen: RULE-LAUNCH-7 read: Request: legal review by Tuesday.
+          2026-09-10T23:50:22-04:00  the files you are watching changed — needs-you: report held back, not published: it breaks a rule placed on this work — “RULE-LAUNCH-7”: the report says “bob@example.com” — it quotes an email address. The previous report is unchanged; t…
+          2026-09-10T23:50:22-04:00  the files you are watching changed — landed: report updated: reports/inbox-report.md — # Report  FOCUS: owners - added inbox/f.md - added inbox/g.md rules seen: RULE-LAUNCH-7 read: Request: ask Bob for the keys.
+          2026-09-10T23:50:23-04:00  the files you are watching changed — landed: report updated: reports/inbox-report.md — # Report  FOCUS: owners - added inbox/d.md rules seen: RULE-LAUNCH-7 read: Decision: keep the Friday date.
+          2026-09-10T23:50:23-04:00  stopped at the terminal
+    localwork_e2e_test.go:271: SHOW review work:
+        0c30e61c1cf0f7b2  active  When the product spec changes, review the launch copy against it.
+          wakes when product/* changes
+          workspace: /tmp/opus-localwork/chatdoor-keep-178dc0740/project
+          instructions (version 1): Compare marketing/launch-copy.md with the changed product files and list claims they no longer support. Do not edit the copy. FOCUS: claims
+          report: marketing/review-notes.md
+          set up by: person, through the terminal
+          folder: 6cc1b6bc7d83c4ed8e9f0bffee935cfd Marketing (placed directly)
+          rule reaching it: 6844c4c5b3b4c782 RULE-MKT-9: marketing notes must not promise offline support unless product/spec.md says it is supported.
+          ran 1 time(s); last came to landed
+        runs, newest first:
+          000001  finished · landed · instructions v1 · Sep 10 23:50:22
+              woken: the files you are watching changed
+              modified product/spec.md
+              came to: report updated: marketing/review-notes.md — # Report FOCUS: claims - modified product/spec.md rules seen: RULE-MKT-9 read: Offline support: removed in this re…
+              checked against 1 rule(s): kept
+              published marketing/review-notes.md (122 bytes, sha256 19fa8609c9e4)
+              journal: /tmp/opus-localwork/chatdoor-keep-178dc0740/home/v3/standing/0c30e61c1cf0f7b2/runs/000001/transcript.jsonl
+        log:
+          2026-09-10T23:50:22-04:00  set up at the terminal
+          2026-09-10T23:50:22-04:00  placed in folder 6cc1b6bc7d83c4ed8e9f0bffee935cfd; its rules reach this work
+          2026-09-10T23:50:23-04:00  the files you are watching changed — landed: report updated: marketing/review-notes.md — # Report  FOCUS: claims - modified product/spec.md rules seen: RULE-MKT-9 read: Offline support: removed in this release.
+    localwork_e2e_test.go:272: LOCALWORK RECEIPT scripted model firings=9 rule checks=11 (scripted model, not live-model acceptance)
+--- PASS: TestLocalWorkJourney (2.89s)
+PASS
+ok  	github.com/Agent-Field/aforge-v2/internal/e2e	2.901s
+=== RESULT localwork-journey PASS 4s
+=== STEP chatdoor-journey: env AFORGE_LOCALWORK_KEEP=/tmp/opus-localwork/chatdoor-keep-178dc0740 go test -tags e2e -count=1 -timeout 10m -run ^TestChatDoorJourney$ -v ./internal/e2e/
+=== RUN   TestChatDoorJourney
+    chatdoor_e2e_test.go:179: CARD when · when inbox/* changes
+        CARD costs · shares the day's allowance
+        CARD does · Read the changed files in inbox/ and write a short report of new decisions and requests. FOCUS: decisions
+        CARD report · reports/inbox-report.md — aforge publishes this file; the run never writes it
+        CARD folder · Launch, where this conversation is placed — its rules reach every run
+        CARD rule · RULE-LAUNCH-7: inbox reports never quote email addresses; write [redacted] instead.
+    chatdoor_e2e_test.go:225: check: 2 checked
+    chatdoor_e2e_test.go:229: check: 2 checked · 2 ran
+    chatdoor_e2e_test.go:263: SHOW chat-made:
+        0df47f919b841593  active  keep an eye on my inbox folder and keep reports/inbox-report.md current
+          wakes when inbox/* changes
+          workspace: /tmp/opus-localwork/chatdoor-keep-178dc0740/chatdoor-project
+          instructions (version 1): Read the changed files in inbox/ and write a short report of new decisions and requests. FOCUS: decisions
+          report: reports/inbox-report.md
+          set up by: person, through the chat
+          folder: 95f5349d1eb9ea4dbaac1b0c750a4026 Launch (placed directly)
+          rule reaching it: 5744d8ebe3fa6e69 RULE-LAUNCH-7: inbox reports never quote email addresses; write [redacted] instead.
+          waiting on you: report held back, not published: it breaks a rule placed on this work — “RULE-LAUNCH-7”: the report says “bob@example.com” — it quotes an email addr…
+          ran 2 time(s); last came to needs-you
+        runs, newest first:
+          000002  finished · needs-you · instructions v1 · Sep 10 23:50:25
+              woken: the files you are watching changed
+              added inbox/f.md
+              came to: report held back, not published: it breaks a rule placed on this work — “RULE-LAUNCH-7”: the report says “bob@example.com” — it quotes an email addr… · withheld: held-by-rules
+              checked against 1 rule(s): broken after one correction
+              sent back once: “RULE-LAUNCH-7”: the report says “bob@example.com” — it quotes an email address
+              still breaks: “RULE-LAUNCH-7” — the report said “bob@example.com”
+              held back, not published; draft: /tmp/opus-localwork/chatdoor-keep-178dc0740/chatdoor-home/v3/standing/0df47f919b841593/runs/000002/held-report.md
+              journal: /tmp/opus-localwork/chatdoor-keep-178dc0740/chatdoor-home/v3/standing/0df47f919b841593/runs/000002/transcript.jsonl
+          000001  finished · landed · instructions v1 · Sep 10 23:50:24
+              woken: the files you are watching changed
+              added inbox/a.md
+              came to: report updated: reports/inbox-report.md — # Report FOCUS: decisions - added inbox/a.md rules seen: RULE-LAUNCH-7 read: Decision: ship Friday. Ask [redacted] t…
+              checked against 1 rule(s): kept after one correction
+              sent back once: “RULE-LAUNCH-7”: the report says “alice@example.com” — it quotes an email address
+              published reports/inbox-report.md (138 bytes, sha256 d43ef6f4051f)
+              journal: /tmp/opus-localwork/chatdoor-keep-178dc0740/chatdoor-home/v3/standing/0df47f919b841593/runs/000001/transcript.jsonl
+        log:
+          2026-09-10T23:50:24-04:00  set up in the chat
+          2026-09-10T23:50:24-04:00  placed in folder 95f5349d1eb9ea4dbaac1b0c750a4026; its rules reach this work
+          2026-09-10T23:50:24-04:00  the files you are watching changed — landed: report updated: reports/inbox-report.md — # Report  FOCUS: decisions - added inbox/a.md rules seen: RULE-LAUNCH-7 read: Decision: ship Friday. Ask [redacted] to confirm the venue.
+          2026-09-10T23:50:25-04:00  the files you are watching changed — needs-you: report held back, not published: it breaks a rule placed on this work — “RULE-LAUNCH-7”: the report says “bob@example.com” — it quotes an email address. The previous report is unchanged; t…
+    chatdoor_e2e_test.go:264: SHOW terminal-made:
+        dc3ef570d242f19f  active  keep an eye on my inbox folder and keep reports/inbox-report.md current
+          wakes when inbox/* changes
+          workspace: /tmp/opus-localwork/chatdoor-keep-178dc0740/chatdoor-twin
+          instructions (version 1): Read the changed files in inbox/ and write a short report of new decisions and requests. FOCUS: decisions
+          report: reports/inbox-report.md
+          set up by: person, through the terminal
+          folder: 95f5349d1eb9ea4dbaac1b0c750a4026 Launch (placed directly)
+          rule reaching it: 5744d8ebe3fa6e69 RULE-LAUNCH-7: inbox reports never quote email addresses; write [redacted] instead.
+          waiting on you: report held back, not published: it breaks a rule placed on this work — “RULE-LAUNCH-7”: the report says “bob@example.com” — it quotes an email addr…
+          ran 2 time(s); last came to needs-you
+        runs, newest first:
+          000002  finished · needs-you · instructions v1 · Sep 10 23:50:24
+              woken: the files you are watching changed
+              added inbox/f.md
+              came to: report held back, not published: it breaks a rule placed on this work — “RULE-LAUNCH-7”: the report says “bob@example.com” — it quotes an email addr… · withheld: held-by-rules
+              checked against 1 rule(s): broken after one correction
+              sent back once: “RULE-LAUNCH-7”: the report says “bob@example.com” — it quotes an email address
+              still breaks: “RULE-LAUNCH-7” — the report said “bob@example.com”
+              held back, not published; draft: /tmp/opus-localwork/chatdoor-keep-178dc0740/chatdoor-home/v3/standing/dc3ef570d242f19f/runs/000002/held-report.md
+              journal: /tmp/opus-localwork/chatdoor-keep-178dc0740/chatdoor-home/v3/standing/dc3ef570d242f19f/runs/000002/transcript.jsonl
+          000001  finished · landed · instructions v1 · Sep 10 23:50:24
+              woken: the files you are watching changed
+              added inbox/a.md
+              came to: report updated: reports/inbox-report.md — # Report FOCUS: decisions - added inbox/a.md rules seen: RULE-LAUNCH-7 read: Decision: ship Friday. Ask [redacted] t…
+              checked against 1 rule(s): kept after one correction
+              sent back once: “RULE-LAUNCH-7”: the report says “alice@example.com” — it quotes an email address
+              published reports/inbox-report.md (138 bytes, sha256 d43ef6f4051f)
+              journal: /tmp/opus-localwork/chatdoor-keep-178dc0740/chatdoor-home/v3/standing/dc3ef570d242f19f/runs/000001/transcript.jsonl
+        log:
+          2026-09-10T23:50:24-04:00  set up at the terminal
+          2026-09-10T23:50:24-04:00  placed in folder 95f5349d1eb9ea4dbaac1b0c750a4026; its rules reach this work
+          2026-09-10T23:50:24-04:00  the files you are watching changed — landed: report updated: reports/inbox-report.md — # Report  FOCUS: decisions - added inbox/a.md rules seen: RULE-LAUNCH-7 read: Decision: ship Friday. Ask [redacted] to confirm the venue.
+          2026-09-10T23:50:25-04:00  the files you are watching changed — needs-you: report held back, not published: it breaks a rule placed on this work — “RULE-LAUNCH-7”: the report says “bob@example.com” — it quotes an email address. The previous report is unchanged; t…
+    chatdoor_e2e_test.go:271: CHATDOOR RECEIPT scripted model firings=4 rule checks=8 (scripted model, not live-model acceptance)
+--- PASS: TestChatDoorJourney (1.57s)
+PASS
+ok  	github.com/Agent-Field/aforge-v2/internal/e2e	1.589s
+=== RESULT chatdoor-journey PASS 2s
+FINISHED 2026-09-11T03:50:25Z STATUS 0

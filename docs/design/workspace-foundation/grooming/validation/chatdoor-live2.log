@@ -1,0 +1,63 @@
+=== RUN   TestRealChatDoorJourney
+    chatdoor_e2e_test.go:354: LIVE CARD words: keep an eye on my inbox folder and keep reports/inbox-report.md current
+        when · when inbox/* changes
+        costs · 
+        does · Read the inbox/ folder, list every file in it with its size and modification time. If there is content you can read (text-based), summarise each item in a fe…
+        report · reports/inbox-report.md — aforge publishes this file; the run never writes it
+        folder · Launch, where this conversation is placed — its rules reach every run
+        rule · Inbox reports never quote email addresses or phone numbers; write [redacted] instead.
+    chatdoor_e2e_test.go:355: LIVE CHAT said after the yes: 
+        
+        Let me check what's already standing and understand the inbox setup.
+        
+        Empty inbox, no report yet, and a standing order already covering redaction. Let me set this up.
+        
+        Proposing: watch the `inbox/` folder for changes and keep `reports/inbox-report.md` current. When new mail arrives, a task will read the inbox, build the report, redact emails/phones, and write it.
+        
+        Set up: watches `inbox/*` for changes and keeps `reports/inbox-report.md` current. The standing redaction rule already applies — emails and phones get `[redacted]` automatically. Costs: up to 24 runs/day, each under the shared daily allowance, with background checks active.
+    chatdoor_e2e_test.go:357: LIVE NEWS stood · 
+    chatdoor_e2e_test.go:357: LIVE NEWS background · no background checks on this machine · checked only while an aforge window is open, or when you run aforge standing check
+    chatdoor_e2e_test.go:360: LIVE ITEM c02273df2b3d95f2 when={Kind:file Words:when inbox/* changes At:0001-01-01 00:00:00 +0000 UTC Every: Glob:inbox/* IdleFor:0s Probe:{Command: Tool: Args:[]} ProbeEvery:0s Hint:} does.report="reports/inbox-report.md" instructions="Read the inbox/ folder, list every file in it with its size and modification time. If there is content you can read (text-based), summarise each item in a few lines — subject, sender, key points. Never include email addresses or phone numbers: write [redacted] instead. Write the result to reports/inbox-report.md, replacing whatever was there. If the inbox is empty, write that fact."
+    chatdoor_e2e_test.go:369: check: 1 checked
+    chatdoor_e2e_test.go:373: LIVE CHECK exit 0: 1 checked · 1 ran
+    chatdoor_e2e_test.go:375: LIVE SHOW:
+        c02273df2b3d95f2  active  keep an eye on my inbox folder and keep reports/inbox-report.md current
+          wakes when inbox/* changes
+          workspace: /tmp/opus-localwork/chatdoor-live2/project
+          instructions (version 1): Read the inbox/ folder, list every file in it with its size and modification time. If there is content you can read (text-based), summarise each item in a few l…
+          report: reports/inbox-report.md
+          set up by: person, through the chat
+          folder: daaa0080c718d73112a2b2b8aaaa8e43 Launch (placed directly)
+          rule reaching it: 7ee4370880231f62 Inbox reports never quote email addresses or phone numbers; write [redacted] instead.
+          ran 1 time(s); last came to landed · spent $0.0066
+        runs, newest first:
+          000001  finished · landed · instructions v1 · Sep 10 23:39:15
+              woken: the files you are watching changed
+              added inbox/today.md
+              came to: report updated: reports/inbox-report.md — **Inbox Report** — 2026-09-10 23:39 EDT | File | Size | Modified | |---|---|---| | inbox/today.md | 148 B | 2026-0…
+              checked against 1 rule(s): kept after one correction
+              sent back once: “Inbox reports never quote email addresses or phone numbers; write [redacted] instead.”: the report says “[Redacted]” — The report uses [Redacted] ins…
+              cost $0.0066
+              published reports/inbox-report.md (356 bytes, sha256 675499036081)
+              journal: /tmp/opus-localwork/chatdoor-live2/home/v3/standing/c02273df2b3d95f2/runs/000001/transcript.jsonl
+        log:
+          2026-09-10T23:39:12-04:00  set up in the chat
+          2026-09-10T23:39:12-04:00  placed in folder daaa0080c718d73112a2b2b8aaaa8e43; its rules reach this work
+          2026-09-10T23:40:31-04:00  the files you are watching changed — landed: report updated: reports/inbox-report.md — **Inbox Report** — 2026-09-10 23:39 EDT  | File | Size | Modified | |---|---|---| | inbox/today.md | 148 B | 2026-09-10 23:39 |  ### inbox/today.md  - **S…
+    chatdoor_e2e_test.go:383: LIVE REPORT:
+        **Inbox Report** — 2026-09-10 23:39 EDT
+        
+        | File | Size | Modified |
+        |---|---|---|
+        | inbox/today.md | 148 B | 2026-09-10 23:39 |
+        
+        ### inbox/today.md
+        
+        - **Subject:** Launch schedule
+        - **Sender:** [redacted]
+        - **Key points:** The launch moves to Friday. [redacted] at [redacted] to confirm the venue. The press release is unassigned — nobody owns it yet.
+    chatdoor_e2e_test.go:346: LIVE SPEND $0.0093 over 11 calls (this home's usage ledger)
+--- PASS: TestRealChatDoorJourney (99.05s)
+PASS
+ok  	github.com/Agent-Field/aforge-v2/internal/e2e	99.063s
+exit=0

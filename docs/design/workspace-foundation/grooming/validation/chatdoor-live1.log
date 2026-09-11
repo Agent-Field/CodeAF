@@ -1,0 +1,52 @@
+=== RUN   TestRealChatDoorJourney
+    chatdoor_e2e_test.go:354: LIVE CARD words: keep an eye on my inbox folder and keep reports/inbox-report.md current
+        when · 
+        costs · shares the day's allowance
+        does · Read the inbox/ folder and write reports/inbox-report.md. List every file in inbox/, count them, and for each file: print its name, size, and the first 5 lin…
+        report · reports/inbox-report.md — aforge publishes this file; the run never writes it
+        folder · Launch, where this conversation is placed — its rules reach every run
+        rule · Inbox reports never quote email addresses or phone numbers; write [redacted] instead.
+    chatdoor_e2e_test.go:355: LIVE CHAT said after the yes: 
+        
+        Let me check what's accessible in the project first, then look up the relevant tool usage.
+        
+        Good. I can see there's an `inbox/` directory. Now I have the full picture — this is a `file` watch: watch a glob for changes and fire a task that reads the inbox and writes a report. Let me also check if `reports/` exists and see what's currently in the inbox.
+        
+        Inbox is empty, reports/ doesn't exist yet. Now I propose the right standing item — a file watch on the inbox, running a task that reads whatever is there and writes a report.
+        
+        Set up: `keep an eye on my inbox folder and keep reports/inbox-report.md current` — watches `inbox/*` for changes, runs a task that reads the folder and publishes `reports/inbox-report.md`. Shares the day's allowance. Checks every 5 minutes, window or not.
+    chatdoor_e2e_test.go:357: LIVE NEWS stood · 
+    chatdoor_e2e_test.go:357: LIVE NEWS background · no background checks on this machine · checked only while an aforge window is open, or when you run aforge standing check
+    chatdoor_e2e_test.go:360: LIVE ITEM dea4ef85792e4dd9 when={Kind:file Words: At:0001-01-01 00:00:00 +0000 UTC Every: Glob:inbox/* IdleFor:0s Probe:{Command: Tool: Args:[]} ProbeEvery:0s Hint:} does.report="reports/inbox-report.md" instructions="Read the inbox/ folder and write reports/inbox-report.md. List every file in inbox/, count them, and for each file: print its name, size, and the first 5 lines of content. Redact any email addresses or phone numbers — write [redacted] instead. If the inbox is empty, write \"Inbox is empty.\" at the top. Create the reports/ directory if it doesn't exist. Start the report with: # Inbox Report — generated at (current date and time in EDT). Then a summary line, then the file-by-file details. Always overwrite the whole file, don't append."
+    chatdoor_e2e_test.go:369: check: 1 checked
+    chatdoor_e2e_test.go:373: LIVE CHECK exit 4: 1 checked · 1 ran · 1 need you
+          keep an eye on my inbox folder and keep reports/inbox-report…: refused in a task: default — nobody to ask
+        not finished: aforge standing show dea4ef85792e4dd9 says why; its last good report is unchanged
+    chatdoor_e2e_test.go:375: LIVE SHOW:
+        dea4ef85792e4dd9  active  keep an eye on my inbox folder and keep reports/inbox-report.md current
+          workspace: /tmp/opus-localwork/chatdoor-live1/project
+          instructions (version 1): Read the inbox/ folder and write reports/inbox-report.md. List every file in inbox/, count them, and for each file: print its name, size, and the first 5 lines …
+          report: reports/inbox-report.md
+          set up by: person, through the chat
+          folder: 28b1c076131b8a1a486c3ff42f8d9f46 Launch (placed directly)
+          rule reaching it: ab30667d3db6bad0 Inbox reports never quote email addresses or phone numbers; write [redacted] instead.
+          waiting on you: refused in a task: default — nobody to ask
+          ran 1 time(s); last came to needs-you · spent $0.0031
+        runs, newest first:
+          000001  finished · needs-you · instructions v1 · Sep 10 23:32:42
+              woken: the files you are watching changed
+              added inbox/today.md
+              came to: Let me check the inbox directory and read the file. <report> # Inbox Report — generated at 2026-09-10 23:32 EDT **Summary:** 1 file in inbox (148 bytes). ## F… · withheld: waiting-on-person
+              cost $0.0031
+              journal: /tmp/opus-localwork/chatdoor-live1/home/v3/standing/dea4ef85792e4dd9/runs/000001/transcript.jsonl
+        log:
+          2026-09-10T23:32:40-04:00  set up in the chat
+          2026-09-10T23:32:40-04:00  placed in folder 28b1c076131b8a1a486c3ff42f8d9f46; its rules reach this work
+          2026-09-10T23:34:39-04:00  the files you are watching changed — needs-you: Let me check the inbox directory and read the file.              <report> # Inbox Report — generated at 2026-09-10 23:32 EDT  **Summary:** 1 file in inbox (148 bytes).  ## Files  ### `today.md` — …
+    chatdoor_e2e_test.go:377: the live pass did not finish clean (exit 4)
+    chatdoor_e2e_test.go:346: LIVE SPEND $0.0074 over 10 calls (this home's usage ledger)
+--- FAIL: TestRealChatDoorJourney (139.80s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/e2e	139.823s
+FAIL
+exit=1

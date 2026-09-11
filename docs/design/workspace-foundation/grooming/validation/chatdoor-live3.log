@@ -1,0 +1,30 @@
+=== RUN   TestRealChatDoorJourney
+    chatdoor_e2e_test.go:354: LIVE CARD words: keep an eye on my inbox folder and keep reports/inbox-report.md current
+        when · when inbox/* changes
+        costs · 
+        does · List the contents of the inbox/ directory. Read any new or changed files (text files, markdown, emails). Compile a summary report and write it to reports/inb…
+        folder · Launch, where this conversation is placed — its rules reach every run
+        rule · Inbox reports never quote email addresses or phone numbers; write [redacted] instead.
+    chatdoor_e2e_test.go:355: LIVE CHAT said after the yes: 
+        
+        Let me first understand what's available and check the person's inbox setup.
+        
+        There's an `inbox/` directory (currently empty) but no `reports/` directory or report file yet. Let me set up the standing watch.
+        
+        The sentence is "keep an eye on my inbox folder and keep reports/inbox-report.md current" — this is ongoing file monitoring, not something done once. It names a condition (a file watch) and an action (keep a report current). This fits `when.kind: file` (watch the glob for changes) with `does.kind: task` (run work when it changes) or `does.kind: say` to alert me... but "keep current" means the report file should be maintained. A file watcher fires on changes, and the work is to update the report.
+        
+        Let me propose this as a standing file watch that fires a task to update the report when the inbox changes.
+        
+        
+        
+        The inbox is empty now. Let me set up a file watch on the inbox directory,Set up "Inbox watcher" — when `inbox/*` changes, a task updates `reports/inbox-report.md`. ~$1 per run, up to 20 runs/day. Only active while an aforge window is open (this machine has no background timer).
+    chatdoor_e2e_test.go:357: LIVE NEWS stood · 
+    chatdoor_e2e_test.go:357: LIVE NEWS background · no background checks on this machine · checked only while an aforge window is open, or when you run aforge standing check
+    chatdoor_e2e_test.go:360: LIVE ITEM 6cfd500942ca6332 when={Kind:file Words:when inbox/* changes At:0001-01-01 00:00:00 +0000 UTC Every: Glob:inbox/* IdleFor:0s Probe:{Command: Tool: Args:[]} ProbeEvery:0s Hint:} does.report="" instructions="List the contents of the inbox/ directory. Read any new or changed files (text files, markdown, emails). Compile a summary report and write it to reports/inbox-report.md. The report must: list each item with its filename, size, and modification time; briefly describe the content or subject line (redacting any email addresses or phone numbers with [redacted]); never quote email addresses or phone numbers. Keep the report concise. If inbox/ is empty or unchanged from last run, the report should say so."
+    chatdoor_e2e_test.go:362: the model's item is not the inbox report work: {Schema:4 ID:6cfd500942ca6332 Revision:1 SpecRevision:1 Words:keep an eye on my inbox folder and keep reports/inbox-report.md current Workspace:/tmp/opus-localwork/chatdoor-live3/project Origin:{SessionID:chat-inbox-door Transcript:/tmp/opus-localwork/chatdoor-live3/home/v3/projects/chatdoor/chat-inbox-door/transcript.jsonl Exchange: TaskID:0 TurnIDs:[5]} When:{Kind:file Words:when inbox/* changes At:0001-01-01 00:00:00 +0000 UTC Every: Glob:inbox/* IdleFor:0s Probe:{Command: Tool: Args:[]} ProbeEvery:0s Hint:} Does:{Kind:task Say: Brief:List the contents of the inbox/ directory. Read any new or changed files (text files, markdown, emails). Compile a summary report and write it to reports/inbox-report.md. The report must: list each item with its filename, size, and modification time; briefly describe the content or subject line (redacting any email addresses or phone numbers with [redacted]); never quote email addresses or phone numbers. Keep the report concise. If inbox/ is empty or unchanged from last run, the report should say so. Acceptance:reports/inbox-report.md exists with a current summary of all inbox items Model: Effort: MaxSteps:30 Report:} Rails:{PerRunUSD:1 MaxPerDay:20 Expires:0001-01-01 00:00:00 +0000 UTC} Altitude:project Scope:<nil> Adoption:0x629aaf5575c0 Brief:{Title:Inbox watcher Prompt:} Grant: Exceptions:[] Status:active Created:2026-09-10 23:51:09.84242557 -0400 EDT Updated:2026-09-10 23:51:09.84242557 -0400 EDT RetiredWhy: LastChecked:0001-01-01 00:00:00 +0000 UTC LastCheckLine: NextDue:0001-01-01 00:00:00 +0000 UTC Fingerprint: Previous:[] Runs:0 LastFired:0001-01-01 00:00:00 +0000 UTC LastOutcome: LastRun: SpentUSD:0 NeedsPerson: CleanRuns:0}
+    chatdoor_e2e_test.go:346: LIVE SPEND $0.0027 over 6 calls (this home's usage ledger)
+--- FAIL: TestRealChatDoorJourney (36.07s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/e2e	36.086s
+FAIL
+exit=1
