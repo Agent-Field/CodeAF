@@ -616,11 +616,12 @@ func TestTheBookKeepsOnlyTheNewestAnsweredQuestions(t *testing.T) {
 // AND NOTHING SETTLED OUTLIVES THE SESSION. A receipt kept so its decision could
 // be changed is one nobody can change once the door has shut.
 //
-// IT CALLS THE BOOK'S OWN CLOSE BECAUSE [Agent.Close] DOES NOT YET, and that is
-// the one-line seam named in this lane's report: `agent.go` is another lane's
-// file, and `a.stopAskClocksLocked()` belongs beside `a.stopSteerGraceLocked()`
-// there. What this pins is the half that is mine — that the book really does
-// clear what it was keeping.
+// AND [Agent.Close] IS WHAT DOES IT, which is the half this test could not
+// reach while `agent.go` had no call in it: it now says
+// `a.stopAskClocksLocked()` beside `a.stopSteerGraceLocked()`, because the two
+// are one law (steer_grace.go: NOTHING ARMED OUTLIVES THE SESSION THAT ARMED
+// IT). Nothing here reaches into the book itself any more — Close is asked to
+// do it and the book is only read afterwards.
 func TestClosingTheSessionClearsWhatWasKeptForARevision(t *testing.T) {
 	a := askTestAgent(t, true)
 	if _, _, err := a.executeAsk(context.Background(), json.RawMessage(askNotWaiting)); err != nil {
@@ -640,10 +641,53 @@ func TestClosingTheSessionClearsWhatWasKeptForARevision(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.mu.Lock()
-	a.asked.stopClocksLocked()
 	left := a.asked.atLocked(q.ID)
 	a.mu.Unlock()
 	if left != nil {
 		t.Fatal("a settled question outlived the session that answered it")
+	}
+}
+
+// AND THE CLOCK ON A QUESTION NOBODY ANSWERED IS STOPPED BY THE SAME LINE.
+//
+// The question itself is left exactly where it is — a session leaving does not
+// answer it, and the next one has its own book — so what has to be proved is
+// about the TIMER and not about the entry. `time.Timer.Stop` reports whether it
+// was the call that stopped a timer still running, so a second Stop answering
+// false is the proof that Close already made the first one: an armed clock would
+// answer true here, and it would go on to fire on a session with nobody left to
+// read what it decided.
+//
+// [TestAClockThatRunsOutAfterTheSessionClosedDecidesNothing] is the other half
+// and they are not the same fact. That one pins the GUARD — a clock that fires
+// anyway writes nothing. This one pins that it does not fire at all, which is
+// what stops a closed session holding a goroutine and a timer for an hour.
+func TestClosingTheSessionStopsTheClockOnAQuestionNobodyAnswered(t *testing.T) {
+	a := askTestAgent(t, true)
+	if err := a.SetAutonomy(AskChoice, Policy{Kind: PolicyRecommendThenAuto, After: time.Hour}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := a.executeAsk(context.Background(), json.RawMessage(askNotWaiting)); err != nil {
+		t.Fatal(err)
+	}
+	q := waitForOneQuestion(t, a)
+	a.mu.Lock()
+	armed := a.asked.atLocked(q.ID)
+	running := armed != nil && armed.clock != nil
+	a.mu.Unlock()
+	if !running {
+		t.Fatal("no clock was armed, so this test would pass on a question that never had one")
+	}
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	a.mu.Lock()
+	open := a.asked.atLocked(q.ID)
+	a.mu.Unlock()
+	if open == nil || open.clock == nil {
+		t.Fatal("an open question nobody answered was dropped by the close; only settled ones are")
+	}
+	if open.clock.Stop() {
+		t.Fatal("the clock was still running after the session closed")
 	}
 }

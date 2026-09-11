@@ -2109,8 +2109,9 @@ func (a *Agent) Close() error {
 	}
 	a.closed = true
 	// Nothing armed by a steer outlives the session that armed it
-	// (steer_grace.go).
+	// (steer_grace.go), and nor does a clock armed on a question (asklane.go).
 	a.stopSteerGraceLocked()
+	a.stopAskClocksLocked()
 	if a.closeDone == nil {
 		a.closeDone = make(chan struct{})
 	}
