@@ -2615,10 +2615,12 @@ type Agent struct {
 	// taken while holding this lock would be an id nothing outside a locked
 	// section could ask for.
 	steerSeq atomic.Uint64
-	// askSeq and askWaits are the model question lane's identity and wait. The
-	// question words remain in questionWords; this map holds only who is parked.
-	askSeq   atomic.Uint64
-	askWaits map[uint64]chan Answer
+	// askSeq names the questions the model puts, and asked is what this session
+	// is parked on while they stand — one type with the three endings a parked
+	// ask has in it (askwait.go). The question words remain in questionWords;
+	// this holds only who is waiting.
+	askSeq atomic.Uint64
+	asked  askedOfThePerson
 	// taskNotes counts the reports this agent's OWN sub-tasks have handed over
 	// that no request has carried yet, and taskNews is the generation channel
 	// closed each time one lands. They exist for one reader — the runner holding

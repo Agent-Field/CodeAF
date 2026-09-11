@@ -3618,6 +3618,7 @@ words, and it is one of:
 | `stopped the running command` | your words plainly told a long-running command to stop, and it was stopped |
 | `kept bash running as job 3`, or `kept bash running as jobs 3, 4` | a bash call running for more than 3 seconds was moved to the background so your correction could land now |
 | `waiting for the running step` | a short tool is being allowed to finish first |
+| `took this instead of the question` | a question was standing and your sentence answered it instead, so the question came down |
 
 A bash command that was still younger than 3 seconds when you steered gets
 `waiting for the running step`, and it is a wait of at most those few seconds: if the

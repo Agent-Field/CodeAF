@@ -41,7 +41,8 @@ Typing is never blocked. The box works normally while an answer streams.
 
 `enter` while a turn is running steers. Your words appear at once as a line of your
 own in the transcript. A short dim clause beneath says where they landed, such as
-`stopped the reply here`, `kept running as job 3`, or `waiting for the running step`.
+`stopped the reply here`, `kept running as job 3`, `took this instead of the question`,
+or `waiting for the running step`.
 
 If text or reasoning is streaming, aforge cancels that one model request, keeps the
 partial answer it actually received, and continues the **same turn** with your words
@@ -121,8 +122,9 @@ the conversation is reopened from disk.
 `stopped the reply here` when the reply in flight was cut for it, `stopped the running
 command` when your words plainly told a long command to stop, `kept bash running as job 3`
 (or `…as jobs 3, 4`) when a long command was moved to the background so your correction
-could land, and `waiting for the running step` when a short tool is being allowed to
-finish first. The clause goes when the model is actually given the words; the position of
+could land, `took this instead of the question` when a question was standing and your
+sentence answered it instead, and `waiting for the running step` when a short tool is
+being allowed to finish first. The clause goes when the model is actually given the words; the position of
 the line is what says where they went from then on.
 
 This is the key for the moment you are watching an answer go the wrong way and you do not

@@ -417,7 +417,15 @@ func TestABodyThatBreaksOffStillEndsItsRow(t *testing.T) {
 	}
 }
 
-// A stream the caller abandons ends its row too.
+// A stream the caller abandons ends its row too — AFTERWARDS, which is the
+// change and not a weakening of the law.
+//
+// The row still cannot go missing: the arm writes it as it unwinds and
+// [hedgeRace.accountForTheAbandoned] waits [abandonGrace] to collect it. What it
+// no longer does is make the CALLER wait for it. The caller of a cancelled race
+// is a person who has just steered, and a second spent here is the whole of
+// [lane.SpokenWithin] spent in front of them (hedge.go's [hedgeRace.abandon]).
+// So the assertion waits where the person does not.
 func TestAnAbandonedStreamStillEndsItsRow(t *testing.T) {
 	read := loggingTo(t)
 	started := make(chan struct{})
@@ -442,8 +450,11 @@ func TestAnAbandonedStreamStillEndsItsRow(t *testing.T) {
 	if _, err := client.CompleteWithMessages(WithStreamObserver(ctx, func(StreamEvent) {}), userMessages("hello")); err == nil {
 		t.Fatal("an abandoned stream should fail the call")
 	}
-	rows := ended(read())
-	if len(rows) == 0 || !rows[len(rows)-1].Stream {
+	waitFor(t, func() bool {
+		rows := ended(read())
+		return len(rows) > 0 && rows[len(rows)-1].Stream
+	})
+	if rows := ended(read()); len(rows) == 0 || !rows[len(rows)-1].Stream {
 		t.Fatalf("the abandoned stream left no end row: %+v", rows)
 	}
 }

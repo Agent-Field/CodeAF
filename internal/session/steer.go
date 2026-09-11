@@ -229,6 +229,23 @@ func (a *Agent) Steer(words string) (<-chan Event, error) {
 	}
 	a.steering = append(a.steering, steerMessage(steer))
 	hub := a.hub
+	// A QUESTION THE PERSON TALKED PAST IS LET GO OF BEFORE ANYTHING ELSE IS
+	// DECIDED. `ask` parks the turn on the person, so a correction queued behind
+	// it waits for a step that is itself waiting for the correction — which is
+	// not a slow boundary but no boundary at all (steerquestion.go states the
+	// measurement). Retiring it here opens the boundary this splice needs.
+	//
+	// IT IS ASKED BEFORE THE THREE ARMS BELOW AND CANNOT COLLIDE WITH THEM. A
+	// parked `ask` holds the whole tool batch, so no request is out while one
+	// stands — `a.generation` is nil and the first arm is unreachable — and the
+	// batch it holds is the one no bash can be running inside. The arm this
+	// really replaces is the last one, and that is where its landing is set.
+	retired := a.talkedPastQuestionsLocked()
+	if len(retired) > 0 {
+		// Outside the lock, with the announcements, for the reason they are:
+		// this is person-visible news and the claim above is not.
+		defer a.sayTheQuestionsCameDown(retired)
+	}
 	// A MODEL GENERATION IS CUT, NOT THE TURN. The request's own cancellation
 	// handle is distinct from a.cancel, so the loop comes back to its boundary,
 	// records only what arrived, drains this steer and continues on the same
@@ -256,6 +273,11 @@ func (a *Agent) Steer(words string) (<-chan Event, error) {
 				a.jobs.announceRow(started)
 			}
 		}()
+	} else if len(retired) > 0 {
+		// AND A QUESTION IS NOT A STEP THAT FINISHES ON ITS OWN, so this landing
+		// is not the one below. The person's sentence is what ended it, which is
+		// what they are told (steerquestion.go).
+		steer.note.Landing = steerTookTheQuestion
 	} else {
 		// Short tools are allowed to finish. The line is still visible now, and
 		// this clause says exactly why its consumed event has not arrived yet.
