@@ -96,6 +96,7 @@ import (
 // disk, and the one line saying why it is not a per-frame read.
 var frameDiskDoors = map[string]string{
 	".renderPicture": "the decode itself — the WORK the frame is drawing, not a fact it is fetching, and [app.previews] pays it once per file per shape",
+	".readDraftKeep": "one draft record read for one purpose that is not a frame's: [app.readKeptElsewhere] takes it once per draft file per epoch behind the `keptFrom` memo, and the only other reachable reading is [app.atOwnedComposer]'s, once per send stowed — a record on the way to the disk, never a fact a paint fetches",
 }
 
 // updateProcessDoors is the same allowlist for the update loop: a name the loop

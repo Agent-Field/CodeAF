@@ -1151,11 +1151,16 @@ func (a *app) errandWorkspaceOf(dir string) string {
 // the person's own home directory is where a machine-wide item's work runs
 // ([standing.Item.Workspace] says the same). A process with no home directory
 // falls back to where it is standing, for the reason internal/home's Dir does.
+//
+// THE STANDING PLACE IS SPELLED `.` AND NOT READ OFF THE KERNEL. THE FRAME
+// REACHES THIS FUNCTION — `a.composerOpensAt` asks an errand's place on every
+// paint — so an `os.Getwd` here is one syscall per frame, which is the law in
+// framedisk_law_test.go. `.` names the same directory for the one purpose here,
+// a path handed to a machine-wide item's work, and it names it without asking
+// anybody. The reading that DOES need the real directory is [`os.UserHomeDir`]
+// above, which on unix reads `$HOME` and touches no disk.
 func errandHomeDir() string {
 	if dir, err := os.UserHomeDir(); err == nil && strings.TrimSpace(dir) != "" {
-		return dir
-	}
-	if dir, err := os.Getwd(); err == nil {
 		return dir
 	}
 	return "."
