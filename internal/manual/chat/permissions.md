@@ -46,6 +46,12 @@ a blocked call always is — interrupts the blocked call exactly as it always ha
 under a hand already moving would otherwise be answered by a keystroke aimed at
 the sentence you were typing.
 
+**And a letter reaches this question only once you have aimed at it.** `c` is
+the first letter of "can you check the other table first" — so `c`, `d` and the
+other letters go into an empty box until you press `↑`, `↓`, `tab` or `enter`,
+or click an answer. `1`, `2` and `3` are printed on the answers in front of you
+and always take them.
+
 `[2]` is only drawn, and only acts, when the question is one that can bank an
 answer. Every approval question is about a TOOL and can, so every one of them
 offers it.
