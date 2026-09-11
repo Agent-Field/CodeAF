@@ -410,8 +410,9 @@ training violation (account settings)`. When that answer is about a machine
 aforge asked for by name, the machine is remembered as out of reach for your
 account — for **every model**, for **a day**, and across restarts
 (`~/.aforge/v3/account-exclusions.json`) — so no later request names it and it
-costs one refused round trip, once. Nothing about its speed is written, and an
-answer from it takes it back at once.
+costs one refused round trip, once. A strict pin on it is stood down on every
+model with the usual `cannot serve this model` line. Nothing about its speed is
+written; an answer from it, or pinning it again, takes it back at once.
 
 ## Lanes on a custom base URL, a proxy, a mirror, or a self-hosted router — `AFORGE_BASE_URL`
 

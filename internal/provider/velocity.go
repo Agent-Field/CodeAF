@@ -753,7 +753,7 @@ func noteServed(ctx context.Context, served, asked string) {
 	// a person switching a privacy setting back looks like from here; the
 	// exclusion is taken back at once rather than at the end of its hold
 	// (internal/lane's account.go).
-	lanes.ServedForAccount(served)
+	lanes.ClearAccountExclusion(served)
 }
 
 // noteVelocity folds one timed answer into this client's ledger.

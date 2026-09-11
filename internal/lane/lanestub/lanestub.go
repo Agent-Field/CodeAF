@@ -141,6 +141,10 @@ type Profile struct {
 	// machine, which is why a relaxed request lands where a demanded one died.
 	// The paced lane is still counted as asked; the answer comes from the next
 	// allowed lane. Only a request with nowhere else to go gets the 429.
+	//
+	// A ZERO PacedAfter IS THE OTHER TRANSPORT: the router refuses at once with
+	// an HTTP 429 naming the pool, before any stream opens — which is how the
+	// same full queue answered the live router's bare probe on 2026-09-10.
 	Paced      bool
 	PacedAfter time.Duration
 
@@ -1188,7 +1192,7 @@ func (s *Server) servePaced(w http.ResponseWriter, r *http.Request, clock Clock,
 			"raw":           "temporarily rate-limited upstream. Please retry shortly",
 		},
 	}
-	if !stream {
+	if !stream || lane.PacedAfter <= 0 {
 		if !clock.Wait(r.Context(), lane.PacedAfter) {
 			s.cancelled(lane.Name)
 			return

@@ -259,3 +259,104 @@ func containsLine(lines []string, needle string) bool {
 	}
 	return false
 }
+
+// TestARescueOnAFullPoolGoesBackToTheRaceAtOnce is the live replay's lesson: a
+// rescue demands one machine, and when that machine answers 429 in its own
+// name, retrying the same body is the same request to the same queue. The race
+// takes it back immediately and climbs the ladder it owes, and the full pool is
+// asked once.
+func TestARescueOnAFullPoolGoesBackToTheRaceAtOnce(t *testing.T) {
+	rig := newLaneRig(t, "recovery/full-pool",
+		lanestub.Lane{Name: "DeepSeek", AccountExcluded: true, Profile: lanestub.Profile{TTFT: 2 * time.Millisecond, Rate: 2000}},
+		lanestub.Lane{Name: "Fireworks", Profile: lanestub.Profile{Paced: true}},
+		lanestub.Lane{Name: "Novita", Profile: lanestub.Profile{TTFT: 2 * time.Millisecond, Rate: 2000, Tokens: 19}},
+	)
+	SetHedgeBudget(lanes.NewBudget(6, 0))
+	vetoEverythingBut(rig, "Fireworks", "Novita")
+	choice := lanes.Choice{Order: []string{"DeepSeek"}}
+	for _, lane := range []string{"DeepSeek", "Fireworks"} {
+		choice.Frontier = append(choice.Frontier, lanes.Scored{
+			ID: lanes.ID{Model: rig.model, Lane: lane}, TTFT: 2, Rate: 2000, Price: 0.01,
+		})
+	}
+	began := time.Now()
+	response, err := rig.client.CompleteWithMessages(WithLaneChoice(talking(), choice), userMessages("hello"))
+	if err != nil {
+		t.Fatalf("the race did not land: %v", err)
+	}
+	if got := answerTokens(response); got != 19 {
+		t.Fatalf("the answer is %d tokens, want Novita's 19 from the router's free choice", got)
+	}
+	// The full pool is DEMANDED once. (The router's own free choice may still
+	// try it and fall past it on the relaxed request; that is the router's
+	// business and costs this process nothing.)
+	demanded := 0
+	for _, ask := range rig.server.Asks() {
+		if demandedOnly(ask, "Fireworks") {
+			demanded++
+		}
+	}
+	if demanded != 1 {
+		t.Fatalf("Fireworks was demanded %d times, want once and never waited on", demanded)
+	}
+	if spent := time.Since(began); spent >= time.Second {
+		t.Fatalf("the race took %s, want no 429 backoff spent on a queue the rescue could not leave", spent)
+	}
+}
+
+
+// TestAPinOnAMachineTheAccountExcludesIsRetiredOnEveryModel is the account's
+// exclusion meeting a person's own strict pin. On model A the pin is refused,
+// retired and widened exactly as before — and the account learns the machine.
+// On model B the pin is retired BEFORE it is sent, with the same sentence,
+// rather than paying the identical 404. Pinning it again is the person saying
+// "try again", and the next request demands it.
+func TestAPinOnAMachineTheAccountExcludesIsRetiredOnEveryModel(t *testing.T) {
+	serving := func() []lanestub.Lane {
+		return []lanestub.Lane{
+			{Name: "DeepSeek", AccountExcluded: true, Profile: lanestub.Profile{TTFT: 2 * time.Millisecond, Rate: 2000}},
+			{Name: "Novita", Profile: lanestub.Profile{TTFT: 2 * time.Millisecond, Rate: 2000, Tokens: 7}},
+		}
+	}
+	rig := newLaneRig(t, "recovery/pin-a", serving()...)
+	modelB := "openrouter/recovery/pin-b"
+	rig.server.Model(modelB, serving()...)
+	RepinLane(LanePin{Lane: "DeepSeek"})
+	t.Cleanup(func() { RepinLane(LanePin{}) })
+
+	demands := func() int {
+		count := 0
+		for _, ask := range rig.server.Asks() {
+			if demandedOnly(ask, "DeepSeek") {
+				count++
+			}
+		}
+		return count
+	}
+	ask := func(model string) *noticeLog {
+		t.Helper()
+		told := &noticeLog{}
+		ctx := WithStreamObserver(talking(), told.observe)
+		if _, err := rig.client.CompleteWithMessages(ctx, userMessages("hello"), ai.WithModel(model)); err != nil {
+			t.Fatalf("%s did not answer: %v", model, err)
+		}
+		return told
+	}
+
+	ask(rig.model)
+	if got := demands(); got != 1 {
+		t.Fatalf("DeepSeek demanded %d times on model A, want the one that taught us", got)
+	}
+	onB := ask(modelB)
+	if got := demands(); got != 1 {
+		t.Fatalf("DeepSeek demanded %d times after model B, want still 1: the account excludes it for every model", got)
+	}
+	if len(onB.retired()) == 0 {
+		t.Fatalf("model B's pin was stood down without telling the person; notices = %q", onB.lines)
+	}
+
+	RepinLane(LanePin{Lane: "DeepSeek"})
+	if !lanes.Serves(modelB, "DeepSeek") {
+		t.Fatal("pinning the machine again did not take back the account's exclusion")
+	}
+}

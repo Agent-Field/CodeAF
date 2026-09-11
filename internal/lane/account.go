@@ -48,7 +48,7 @@ import (
 //
 // IT IS NEVER A BAN. Two things take a machine back: [accountExclusionHold]
 // passing, and — sooner — any answer that machine SERVES for this process
-// ([ServedForAccount]), which is the router telling us the setting has changed.
+// ([ClearAccountExclusion]), which is the router telling us the setting has changed.
 // Neither costs a request: a request that does not demand anything can still
 // be served from an excluded machine by the router's own free choice (the
 // endpoint ladder's first rung is exactly such a request), so the set can only
@@ -116,11 +116,13 @@ func ExcludeForAccount(lane, reason string) {
 	saveAccountExclusions(snapshot, "")
 }
 
-// ServedForAccount takes a machine back the moment it answers for this
-// process: the router serving from it is proof the account can reach it, which
-// is what a person flipping the setting back looks like from here. A machine
-// that was never excluded costs one read lock.
-func ServedForAccount(lane string) {
+// ClearAccountExclusion takes a machine back. Two things call it: an answer that
+// machine SERVED for this process — the router serving from it is proof the
+// account can reach it, which is what a person flipping the setting back looks
+// like from here — and a person pinning that machine again, which is them
+// saying "try again" (internal/provider's RepinLane). A machine that was never
+// excluded costs one read lock.
+func ClearAccountExclusion(lane string) {
 	name := strings.ToLower(strings.TrimSpace(lane))
 	if name == "" {
 		return
