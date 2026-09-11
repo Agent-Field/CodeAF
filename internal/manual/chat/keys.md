@@ -2374,7 +2374,7 @@ message box must be **empty**, with no panel, picker or copy mode up. A letter t
 sentence stays a letter, always.
 
 Once answered the letters go away and the receipt every question leaves takes their place,
-`decided <the card's head> → accept · you · 14:02 · c change`: the answer in the card's own
+`✓ <the card's head> → accept · you · 14:02`: the answer in the card's own
 words (`accept`, `not right`, `resolve it`, `drop it`), who decided and when (the questions
 page has the shape). The task's report then leads `you took this as done` or
 `incomplete — you said it is not finished`. `d` decides nothing yet: the answers stay drawn

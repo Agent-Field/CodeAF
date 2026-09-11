@@ -478,10 +478,10 @@ it, and the keys that answer it written into the bottom edge.
 digit takes that answer at once. It starts on the answer the model recommended
 where there is one — and that answer carries **`◆ recommended`** at the right
 edge of its row, in every view, so the recommendation and the pointer are never
-the same mark saying two things. Where nobody but you may answer — anything
-irreversible, and every permission that is not plainly reversible — the pointer
-opens on the answer that loses nothing instead, and that answer says
-`safe answer`.
+the same mark saying two things. Where nobody but you may answer — every permission
+that is not plainly reversible, and anything irreversible — the pointer opens on
+the answer that loses nothing instead, and that answer says `safe answer`. So
+`enter` on a permission you have not moved the pointer on **denies the call**.
 
 **Under the pointer, and only there**, the panel draws what that answer means:
 the note the asker wrote under it, and where it is the recommendation, why it
@@ -531,7 +531,7 @@ accepting it; an answer to one reaches the model as a message. It belongs to the
 turn that did the thing, so one you never looked at goes when that turn ends.
 
 ```
-  ✓ renamed 12 files under src/  u undo · c change
+  ✓ renamed 12 files under src/  esc later
 ```
 
 **An assumptions card** wears `≈` instead of `?` for the same reason: it is not
@@ -564,7 +564,7 @@ the row.
 | key | what it does |
 | --- | --- |
 | `1`–`9` | take that answer — these work straight away |
-| `enter` | take the answer the pointer is on — it starts on the recommended one, or on the safe one where nobody but you may answer |
+| `enter` | take the answer the pointer is on — it starts on the recommended one, and on a permission it starts on the answer that loses nothing, so `enter` on a permission you have not moved the pointer on **denies** |
 | `↑` `↓` `←` `→` | move the pointer (`↑↓` on the panel, `←→` on a one-row question; both pairs work on both). On the **page** a question opens into, `↑↓` walk the answers and `←→` fold and open the one you are on |
 | `esc` | later. Nothing is cancelled — the question folds to one titled rule where it stood |
 | `space` | open a question that has been folded to its rule, while the box is empty |
@@ -695,7 +695,7 @@ rather than guessing.
 Answering leaves one dim line where the question was:
 
 ```
-  decided allow this? → allow once · you · 14:02 · c change
+  ✓ allow this? → allow once · you · 14:02 · ◐ working
 ```
 
 What was asked, what you picked, anything you said beside it, who decided, and

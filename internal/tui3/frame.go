@@ -198,9 +198,13 @@ func frameSet(painted string, room int) string {
 	if room < 1 {
 		return ""
 	}
-	width := ansi.StringWidth(painted)
-	if width > room {
-		return ansi.Truncate(painted, room, "")
+	if ansi.StringWidth(painted) > room {
+		// AND A TRUNCATION IS PADDED TOO. A cut lands BEFORE a cell it cannot
+		// halve, so a row ending in a wide rune comes back one column short of
+		// the room asked for — and one short row puts a notch in the right edge,
+		// which is the one thing "EVERY ROW IS SET TO ONE WIDTH" is for. The pad
+		// below is the same pad, measured again after the cut.
+		painted = ansi.Truncate(painted, room, "")
 	}
-	return painted + strings.Repeat(" ", room-width)
+	return painted + strings.Repeat(" ", max(room-ansi.StringWidth(painted), 0))
 }

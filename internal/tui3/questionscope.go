@@ -19,15 +19,14 @@ import (
 // offered lifetimes drawn under the answers, cycled by a key, defaulting to the
 // narrowest, and OFFERED NOWHERE ELSE.
 //
-//	│ rm -rf build/ · this shape of command is not on the allow list
+//	│ which store should the ledger sit on?
 //	│
-//	│   1  allow once
-//	│   2  always
-//	│ ▸ 3  deny                                              safe answer
+//	│ ▸ 1  postgres                                       ◆ recommended
+//	│   2  sqlite
 //	│
 //	│   ✓ just this once · for this project
 //	╰─ ↑↓ choose · enter take it · esc later ──────────────────────────
-//	  t how long · c change · ? ask back · 1–3 jump
+//	  t how long · c change · ? ask back · 1–2 jump
 //
 // THREE LAWS, AND EACH ONE IS A WAY THIS ROW COULD LIE:
 //
@@ -40,13 +39,26 @@ import (
 //   - AN IRREVERSIBLE QUESTION OFFERS NONE. A call that cannot be taken back is
 //     asked about every time, and a row offering to stop asking would be this
 //     surface selling the one guarantee it has.
+//   - AND A PERMISSION OFFERS NONE EITHER, YET. See [questionScopes].
 
 // questionScopes is what this question may be answered for, narrowest first, or
 // none where there is no choice to make. A question that offered ONE lifetime
 // has nothing to toggle, and drawing `just this once` beside every answer would
 // teach people to stop reading the word.
+//
+// A PERMISSION OFFERS NO LIFETIMES UNTIL THE ENGINE HONOURS ONE. A consent's
+// answer is read as a key plus the banked comment and nothing else
+// (session/answers.go, session/question.go) — [session.Answer.Scope] never
+// reaches the gate — so `t → for this project` followed by `enter` grants
+// exactly ConsentOnce and the very next call asks again. A row that a person can
+// move, that says a thing, and that changes nothing is worse than no row:
+// "A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN" (CLAUDE.md), and this
+// one would be a promise about safety. The engine-side seam — read Answer.Scope
+// in the consent path and map it onto the gate's own lifetimes — is written down
+// in ~/af-qv-P.report.md; delete this clause the day it lands. The row stays
+// live for every question whose lane DOES read Scope.
 func questionScopes(q session.Question) []session.AnswerScope {
-	if q.Stakes == session.StakesIrreversible || len(q.Scope) < 2 {
+	if q.Ask == session.AskPermission || q.Stakes == session.StakesIrreversible || len(q.Scope) < 2 {
 		return nil
 	}
 	// NARROWEST FIRST, WHATEVER ORDER THE LANE LISTED THEM IN. The row is read

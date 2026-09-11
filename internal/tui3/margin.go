@@ -48,9 +48,11 @@ import (
 //     the order's page, one press away.
 //
 //   - THE GLYPH CARRIES THE HUE (docs/HOME-BRIDGE.md's colour law). `▲` wears
-//     the question violet on the one row where a person is genuinely being waited
-//     on, the breathing `●` wears the muted voice the spinner already speaks in,
-//     and everything else — the title, the scope tail, the labels — is calm.
+//     the waiting hue on the one row where a person is genuinely being waited on
+//     — the amber every surface says "waiting on you" in, since the question
+//     violet was retired on 2026-09-11 (styles.go) — the breathing `●` wears the
+//     muted voice the spinner already speaks in, and everything else — the title,
+//     the scope tail, the labels — is calm.
 //
 //   - A SCOPE TAIL ONLY WHERE THE SCOPE IS NOT THE DEFAULT. An order made in a
 //     chat governs the project ([standing.AltitudeProject] is the zero value), so
@@ -405,7 +407,7 @@ func (a *app) marginStandRow(view StandingItemView, width int) string {
 // grid so two moving things on one frame never beat against each other, and it is
 // a still mark every other moment.
 //
-// THE VIOLET IS SPENT ON ONE STATE AND NO OTHER. `▲` is a person being waited on
+// THE HUE IS SPENT ON ONE STATE AND NO OTHER. `▲` is a person being waited on
 // (docs/HOME-BRIDGE.md's colour law), which on this column is the only row
 // somebody has to do something about; the breathing cell takes the muted voice
 // the spinner already speaks in, and a still order is dim like every other fact

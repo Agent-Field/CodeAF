@@ -51,22 +51,27 @@ const (
 		"kept for this project · /autonomy <kind> ask · recommend <duration> · decide"
 )
 
-// autonomyReading is the rules this project keeps, or nil where there is no
-// project to keep them in. It is the ONE read this page does — the command's own
-// door ([autonomyAgent]) — taken when the page opens.
+// autonomyReading is the rules this project keeps, or nil where they could not
+// be read at all. It is the ONE read this page does — the command's own door
+// ([autonomyAgent]) — taken when the page opens.
+//
+// NIL AND EMPTY ARE TWO DIFFERENT ANSWERS AND THE PAGE MUST NOT CONFUSE THEM.
+// An EMPTY map is a real reading: a project that has written no rule yet, whose
+// every kind is therefore on `ask me`, and the page is exactly where somebody
+// comes to write the first one — so it draws all the rows. NIL is not a reading:
+// there is no door, or the engine refused the call because it is an older aforge
+// than this surface (remote/wire.go's version paragraph). A nil coerced into an
+// empty map would put `ask me` on every row of a page nobody could read, and
+// what the row claims is WHAT HAPPENS WITHOUT A PERSON — an engine quietly on
+// `decide` drawn as one that asks is the worst sentence this page could say. So
+// nil travels through and [sheet.autonomyItems] draws no rows at all, which is
+// the emptiness law: rules that cannot be read are not drawn as rules that are.
 func (a *app) autonomyReading() map[session.AskKind]session.Policy {
 	agent, ok := a.agent.(autonomyAgent)
 	if !ok {
 		return nil
 	}
-	rules := agent.Autonomy()
-	if rules == nil {
-		// A PROJECT WITH NO RULES WRITTEN YET STILL HAS THE ROWS, all of them
-		// saying `ask me`, because the page is where a person comes to write the
-		// first one. It is nil only where there is nowhere to write.
-		rules = map[session.AskKind]session.Policy{}
-	}
-	return rules
+	return agent.Autonomy()
 }
 
 // autonomyRow is one question kind as the settings page holds it, hung off

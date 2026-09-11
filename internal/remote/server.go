@@ -2127,13 +2127,20 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	case MethodAutonomy:
 		// THE READ SIDE OF THE ROW BELOW. It is asserted rather than called on
 		// the concrete agent for the reason every other optional door here is:
-		// this server fronts more than one kind of engine, and one that cannot
-		// keep question rules answers nothing rather than failing the call.
+		// this server fronts more than one kind of engine.
+		//
+		// AND AN ENGINE WITH NO DOOR REFUSES RATHER THAN ANSWERING `{}`. An empty
+		// map is a real answer — a project that keeps no rules yet — and a
+		// surface draws it as every kind on `ask me`. An engine that cannot keep
+		// rules at all has not said that, and a page that put `ask me` on every
+		// row would be telling a person what happens without them on the strength
+		// of a question nobody answered. The refusal is a sentence a person can
+		// read, in the grammar of the other optional doors here.
 		door, ok := agent.(interface {
 			Autonomy() map[session.AskKind]session.Policy
 		})
 		if !ok {
-			return json.Marshal(map[session.AskKind]session.Policy{})
+			return nil, errors.New("engine: this session keeps no question rules")
 		}
 		return json.Marshal(door.Autonomy())
 

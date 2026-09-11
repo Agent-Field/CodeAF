@@ -7,54 +7,12 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
-// A WAITING QUESTION DOES NOT TAKE THE KEYS OFF THE PLACE A PERSON IS STANDING
-// ON (#840).
+// THE CHIP CARRIES THE QUESTION'S OWN WORDS wherever a person is standing: the
+// status row says WHICH decision is parked, not merely that one is.
 //
-// The tasks place's foot names what `enter` does on the row under the cursor.
-// A task whose run raised a question wrote `<head> · waiting in this
-// conversation · alt+a` over that foot, and the row stopped saying it had a door
-// — the e2e subtest that presses `enter` and `space` on the row waited thirty
-// seconds for `enter open its room` and watched the chip stand where it should
-// have been. Both facts are true at once, so the foot draws both: the keys where
-// they always are, the sentence at the right edge.
-//
-// It is a STUB and not a model: the issue's own replication asks for one, because
-// whether the model raises a question before the row is inspected is a race
-// nobody can stage from outside.
-func TestAWaitingQuestionLeavesTheTaskRowsDoorHintOnTheFoot(t *testing.T) {
-	a := newTestApp(&fakeAgent{model: "m"})
-	a.width, a.height = 120, 40
-	a.raisePlace(pageTasks)
-
-	// The control: nothing waiting, and the foot names the place's own keys.
-	width, height := a.size()
-	keys := plain(a.placeHint())
-	if strings.TrimSpace(keys) == "" {
-		t.Fatal("the tasks place names no keys at all on its foot")
-	}
-	lines, _, _, _, _ := a.placeFrameNow(width, height)
-	if foot := plain(strings.Join(lines, "\n")); !strings.Contains(foot, keys) {
-		t.Fatalf("the tasks place does not draw its own keys:\n%s", foot)
-	}
-
-	// And now the task raises something for the person, exactly as the delivery
-	// road does when the question lands on another screen.
-	a.sayWhereQuestionWent(questionWaitingLine(session.Question{
-		ID: 7, Kind: session.QuestionAsk, Ask: session.AskChoice, Head: "hello.txt",
-	}))
-	lines, _, _, _, _ = a.placeFrameNow(width, height)
-	foot := plain(strings.Join(lines, "\n"))
-	if !strings.Contains(foot, questionWaitingWord) {
-		t.Fatalf("the waiting question is not said anywhere on the place:\n%s", foot)
-	}
-	if !strings.Contains(foot, keys) {
-		t.Fatalf("the waiting question displaced the place's own keys:\n%s", foot)
-	}
-}
-
-// AND THE CHIP CARRIES THE QUESTION'S OWN WORDS wherever a person is standing,
-// which is the other half of the same promise: the status row says WHICH
-// decision is parked, not merely that one is.
+// (The other half of #840 — that a waiting question does not displace the place's
+// own door hint — landed on dev as #945, which composes both into
+// [app.placeMsgLine] through [hintFitBeside]. Its test is placemsgline_test.go.)
 func TestTheChipSaysWhichQuestionIsWaiting(t *testing.T) {
 	lab := newQuestionLab(t)
 	lab.raise(session.Question{

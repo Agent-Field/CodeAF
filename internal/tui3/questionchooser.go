@@ -32,9 +32,13 @@ const (
 	// viewPhone is the bottom sheet a phone-width frame gets
 	// (questionnarrow.go).
 	viewPhone
-	// viewTabs is two or more questions from one step, drawn as one panel with
-	// a tab per question and a review tab (questionsheet.go).
-	viewTabs
+	// AND THE RUNG FOR TABS IS NOT HERE YET. Two or more questions from one step
+	// are one decision taken in parts and the owner ruled they become one panel
+	// with a tab each (2026-09-11, several-questions pick A) — but that drawing
+	// is a lane of its own and nothing raises it today. A rung whose `when` can
+	// only answer false is a ladder that lies about what it can produce, so the
+	// view and its rung arrive together with the panel that draws them.
+	//
 	// viewPanel is the framed panel a question hangs in above the box
 	// (questionpanel.go). It is the ordinary answer.
 	viewPanel
@@ -70,14 +74,6 @@ var questionLadder = []questionRung{
 			"keyboard to press a digit with: every answer becomes a band a thumb can land on",
 		when: func(a *app, q questionShown, width int) bool {
 			return a.questionNarrowed(q, width)
-		},
-	},
-	{
-		view: viewTabs,
-		why: "two or more questions from one step are one decision taken in parts, so they are " +
-			"one panel with a tab each and a review tab that sends them together",
-		when: func(a *app, q questionShown, width int) bool {
-			return a.questionTabbed(q)
 		},
 	},
 	{
@@ -170,12 +166,6 @@ func questionCarriesWeight(q session.Question) bool {
 			return true
 		}
 	}
-	return false
-}
-
-// questionTabbed reports whether this question is one of several one step
-// raised — the shape the tabs are for.
-func (a *app) questionTabbed(q questionShown) bool {
 	return false
 }
 

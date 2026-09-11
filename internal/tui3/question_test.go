@@ -479,50 +479,88 @@ func TestACardDrawsARowPerAnswerAndMarksTheAskersPick(t *testing.T) {
 	}
 }
 
-// TestEnterTakesThePickAndOtherwiseTheAnswerThatLosesNothing is where the
-// pointer stands when the asker named no pick, and it is the half of the
-// pointer that keeps it safe.
+// TestEnterOnAPermissionDeniesUntilTheEngineGradesTheCall is where the pointer
+// stands when the asker named no pick, and it is the half of the pointer that
+// keeps it safe.
 //
-// Enter takes the answer the pointer is on, so on a gate over a call that
-// cannot be taken back — `rm -rf *`, a force-push — a pointer that started on
-// the first answer would make `enter` mean `allow once`. Measured: it did.
-// The lane already says which answer costs nothing ([session.AnswerOption.
-// Safe]) and that is the one an irreversible gate opens on.
+// `enter` takes the answer the pointer is on, so a permission whose pointer
+// opened on the first answer would make `enter` mean `allow once` — on a gate
+// over `rm -rf *` as readily as over a `git status` the rules had merely not
+// seen before. The lane already says which answer costs nothing
+// ([session.AnswerOption.Safe]) and that is the one EVERY permission opens on.
 //
-// AN ORDINARY GATE OPENS ON `allow once`, which is the other half of the owner's
-// ruling of 2026-09-11 and the half this test used to have backwards: every
-// permission opened on deny, including the ones over a command the rules had
-// merely not seen before, so the key a person presses to get on with their work
-// was the key that stopped it. THE STAKES DECIDE, and nothing else does.
-func TestEnterTakesThePickAndOtherwiseTheAnswerThatLosesNothing(t *testing.T) {
+// IT IS ONE RULE AND IT IS NOT KEYED ON THE STAKES, which is what this test is
+// shaped to prove. The 2026-09-11 design ruling was that an ordinary call should
+// open on `allow once` and only a grave one on deny; the owner's follow-up the
+// same day was DENY-FIRST UNTIL GRADED, because nothing upstream grades a call —
+// the gate stamps `costly` on every consent alike and internal/approval never
+// produces irreversible at all ([TestTheGateGradesNoCallAsIrreversibleAndMarks\
+// DenyTheSafeAnswer] in internal/session holds that down). A by-stakes rule
+// would therefore have read "ordinary" for a recursive delete in production and
+// its grave branch would have been reachable only from a fixture — which is
+// exactly how the version of this test that FORCED `StakesIrreversible` by hand
+// passed while `enter` allowed everything a person actually met.
+//
+// So it walks every stakes a permission can carry rather than choosing one, and
+// states the rule's ONE exception with it: a permission a lane marked plainly
+// REVERSIBLE is not hands-only and opens on its first answer. Nothing produces
+// one today — the gate stamps `costly` — and the day something does, this is
+// where the claim is written down rather than discovered.
+func TestEnterOnAPermissionDeniesUntilTheEngineGradesTheCall(t *testing.T) {
+	for _, one := range []struct {
+		stakes session.Stakes
+		// refuses says the pointer opens on the answer that loses nothing, so
+		// `enter` on an untouched frame denies the call.
+		refuses bool
+	}{
+		{session.StakesCostly, true},       // what the gate actually stamps
+		{session.StakesIrreversible, true}, // what it would stamp if it graded
+		{session.StakesReversible, false},  // the documented exception
+	} {
+		t.Run(string(one.stakes), func(t *testing.T) {
+			lab := newQuestionLab(t)
+			ask := consentAsk()
+			ask.Form = session.FormCard
+			ask.Stakes = one.stakes
+			lab.raise(ask)
+			lab.tick(questionSettle)
+			lab.rows()
+
+			// THE ANSWER IS READ OFF THE QUESTION AND NOT SPELLED HERE: a test
+			// naming `3` would still pass the day the engine renumbered its
+			// answers and moved the refusal somewhere else.
+			want := 0
+			if one.refuses {
+				want = questionSafeAt(ask)
+				if ask.Options[want].Label != "deny" {
+					t.Fatalf("the answer that loses nothing is not the refusal: %q",
+						ask.Options[want].Label)
+				}
+			}
+			head, _ := lab.a.questionHead()
+			if head.pick != want {
+				t.Fatalf("the pointer opened on answer %d, not %d", head.pick, want)
+			}
+			if !lab.press("enter") {
+				t.Fatal("enter should take the answer the pointer is on")
+			}
+			key := ask.Options[want].Key
+			if len(lab.answer) != 1 || lab.answer[0].FirstKey() != key {
+				t.Fatalf("enter answered %+v, not %q", lab.answer, key)
+			}
+		})
+	}
+}
+
+// TestEnterTakesTheAskersPickWhereThereIsOne is the other half of the same key,
+// and the reason the rule above is written BELOW the pick and not above it: an
+// asker that recommended an answer said so on the row a person is reading, and
+// `enter` taking the recommendation IS the pointer's law. A task proposal is
+// unaffected by anything the permission rule does.
+func TestEnterTakesTheAskersPickWhereThereIsOne(t *testing.T) {
 	lab := newQuestionLab(t)
 	ask := consentAsk()
 	ask.Form = session.FormCard
-	ask.Stakes = session.StakesIrreversible
-	lab.raise(ask)
-	lab.tick(questionSettle)
-	if !lab.press("enter") {
-		t.Fatal("enter should take the answer the pointer is on")
-	}
-	if len(lab.answer) != 1 || lab.answer[0].FirstKey() != "3" {
-		t.Fatalf("enter on an irreversible gate should deny, not allow: %+v", lab.answer)
-	}
-	lab.answer = nil
-
-	// And the same gate over a call that CAN be taken back allows.
-	ordinary := consentAsk()
-	ordinary.Form = session.FormCard
-	ordinary.ID = 71
-	lab.raise(ordinary)
-	lab.tick(questionSettle)
-	lab.rows()
-	if !lab.press("enter") {
-		t.Fatal("enter should take the answer the pointer is on")
-	}
-	if len(lab.answer) != 1 || lab.answer[0].FirstKey() != "1" {
-		t.Fatalf("enter on an ordinary gate should allow once: %+v", lab.answer)
-	}
-	lab.answer = nil
 	ask.Pick = &session.Pick{Key: "1", Reason: "the narrow answer"}
 	ask.Stakes = session.StakesReversible
 	lab.raise(ask)

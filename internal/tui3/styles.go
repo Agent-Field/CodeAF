@@ -61,32 +61,25 @@ import (
 //	NoColor    no SGR at all, weight included: a terminal told not to style is
 //	           not styled halfway
 //
-// ── THE FIFTH COLOUR, AND WHY IT IS THE ONLY ONE ──
+// ── THERE IS NO FIFTH COLOUR, AND THE VIOLET IS RETIRED ──
 //
-// Violet is the identity wheel's question hue, and D11 reserves it: it is spent
-// on the moment the agent is WAITING FOR A PERSON and on nothing else — the
-// consent question, its glyph, its choices, and the word in the status line.
-// Nothing decorative may take it, because its whole value is that seeing it
-// anywhere means exactly one thing.
+// A question had a hue of its own here for a year — a violet (#C08FE8 dark,
+// #6F3FA8 light), reserved for the moment the agent is WAITING FOR A PERSON and
+// spent on the whole of it: the head, every answer, every key, the word in the
+// status line. The owner retired it on 2026-09-11 (colour pick C) and the reason
+// was not the hue. It was the AREA: home and the places had always said the same
+// "waiting on you" in amber on ONE MARK, so the one object a person must act on
+// was the one thing this surface said in two vocabularies, and a block painted
+// four rows deep in a colour nobody else used read as an alarm rather than as a
+// question.
 //
-// #C08FE8 rather than nord's own #B48EAD, which is the hue this table would
-// otherwise have borrowed: at that saturation nord's purple sits within a few
-// values of the body ink on a dark terminal, and the defect being fixed here is
-// a person who could not tell the surface was waiting for them. A question hue
-// that has to be looked for is not a question hue.
-//
-// It is also not the softer #C3A6E6 this wave first authored, and the reason is
-// the second rung of the ladder: #C3A6E6's nearest xterm-256 neighbour is 146,
-// WHICH IS THE ACCENT'S. On every 256-colour terminal the question would have
-// been painted the same colour as the person's own › glyph — the exact failure
-// this hue exists to prevent, arriving through the fallback nobody looked at.
-// #C08FE8 resolves to 140, which is a violet and is nothing else on this
-// surface. Any future change here owes the same check.
-//
-// Its sixteen-colour degradation is `heavy` (bold), which is the same answer
-// this table gives every hue that LEADS. The question is never carried by
-// colour alone: the glyph is a "?", the status line says "waiting · your call"
-// in words, and the choices name their keys.
+// SO THE QUESTION IS AMBER AND THE AMBER IS STROKE, NEVER FILL. [palette.ask]
+// paints with `warn` — the same amber every other surface already spent on
+// waiting — and it touches the marks alone: the `?` at the head, the `▸` the
+// pointer stands on, the `◆` beside a recommendation. The words are ink and the
+// asides are dim, exactly as they are in a paragraph of conversation, because a
+// question IS a paragraph of the conversation and its frame is what says it is
+// one object. A law test in this package fails a row painted in the hue.
 //
 // ── THE SIGNAL BAND, AND THE TWO TIERS THAT ARE NOT IN IT ───────────────────
 //
@@ -399,14 +392,15 @@ var (
 	hueData = mustHue("#91C5D4", heavy)
 	// hueViolet was the SHELL OPERATOR's hue until the transcript restraint
 	// greyed shell grammar down to the reading tiers (shellx.go) — it is held
-	// in the table, currently unspent, and it is deliberately NOT the question
-	// hue above.
+	// in the table and is currently unspent.
 	//
-	// The fifth colour's law is that seeing #C08FE8 means one thing — a person
-	// is being waited on — so a pipe in a command line may not wear it. This is
-	// a dimmer, greyer violet a whole tier below it: 97 rather than 140 in the
-	// 256 fallback, so the two never collapse into each other on the rung where
-	// hues get rounded. It is the one hue both ladders share, because it is
+	// IT IS NOT THE RETIRED QUESTION VIOLET AND NEVER WAS. That one was #C08FE8,
+	// a whole tier brighter (140 rather than 97 in the 256 fallback), kept apart
+	// from this so a pipe in a command line could not be mistaken for a person
+	// being waited on; it was retired from both ladders on 2026-09-11 and a
+	// question is amber on its marks now (see the colour note at the top of this
+	// file). This hue survives that ruling untouched, because it never carried
+	// the question's meaning. It is the one hue both ladders share, because it is
 	// mid-tone by construction and reads on a dark terminal and a white page
 	// alike.
 	hueViolet = mustHue("#8F6FA8", quiet)

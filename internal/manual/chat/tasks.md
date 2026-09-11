@@ -1512,7 +1512,7 @@ And one dim receipt is left above the message box, in the same words the answer 
 into `decisions.jsonl` with:
 
 ```
-  decided wants to start a task: Fix the nil-map crash → start it · you · 14:02 · c change
+  ✓ wants to start a task: Fix the nil-map crash → start it · you · 14:02 · ◐ working
 ```
 
 ## The task started before I could say no
@@ -4651,7 +4651,7 @@ MOVE the question rather than answering it, so a row that offered only those wou
 stopped being a question — the card draws them beside an answer or not at all.
 
 **Answered means the chips are gone, not greyed.** They are replaced by the one receipt
-line every question leaves, `decided <the card's head> → accept · you · 14:02 · c change`:
+line every question leaves, `✓ <the card's head> → accept · you · 14:02`:
 the pick in the card's own words (`accept`, `not right`, `resolve it`, `drop it`), who
 decided — `you`, `aforge, on your settings` when the model settled it, `another window`
 when somebody else got there first — and when. The report under the second card then

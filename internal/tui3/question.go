@@ -709,27 +709,35 @@ func questionPointerStart(q session.Question) int {
 		}
 	}
 	// AND WHERE NOBODY RECOMMENDED ANYTHING AND NOBODY BUT A PERSON MAY ANSWER,
-	// THE STAKES DECIDE WHERE THE POINTER STANDS — never the tool's name, never
-	// the kind (owner ruling 2026-09-11, consent pick B).
+	// A PERMISSION OPENS ON THE ANSWER THAT LOSES NOTHING. `enter` takes the
+	// answer the pointer is on, so a pointer on the first answer of a gate over
+	// `rm -rf` or a force-push would make `enter` mean `allow once` on a call
+	// that cannot be taken back.
 	//
-	// AN IRREVERSIBLE CALL OPENS ON THE ANSWER THAT LOSES NOTHING. `enter` takes
-	// the answer the pointer is on, so a pointer on the first answer of a gate
-	// over `rm -rf` or a force-push made `enter` mean `allow once` on the one
-	// call that cannot be taken back. That frame also carries no `always` and no
-	// clock: there is nothing about it that may happen without a person.
+	// DENY-FIRST UNTIL GRADED (owner ruling, 2026-09-11). The design ruling
+	// earlier the same day was that an ORDINARY call should open on `allow once`
+	// and only a grave one on deny — and it cannot be implemented from here yet,
+	// because NOTHING UPSTREAM GRADES A CALL. The engine's gate stamps
+	// [session.StakesCostly] on every consent it raises (session/consent.go), and
+	// `internal/approval` never produces [session.StakesIrreversible] at all, so a
+	// rule keyed on the stakes would read "ordinary" for `rm -rf /` exactly as
+	// loudly as for `git status` and the grave branch would be dead code that only
+	// a fixture could reach. A safety default that is right in the design and
+	// wrong in production is wrong.
 	//
-	// AND AN ORDINARY ONE OPENS ON `allow once`, which is the other half of the
-	// same ruling and the half that was wrong. Every gate opened on deny for a
-	// year, including the ones over a `git status` the rules merely had not seen
-	// before — so the key a person presses to get on with their work was the key
-	// that stopped it, and the safe default was worn smooth by the calls it did
-	// not need to protect anybody from.
+	// So the rule here stays the one that shipped — the hands-only test alone —
+	// and the stakes reading moves upstream: approval's always-ask shapes become
+	// [session.StakesIrreversible], `consentAsk` passes the grade through, and the
+	// day a call arrives graded this line becomes the by-stakes one.
+	// TestTheGateGradesNoCallAsIrreversibleAndMarksDenyTheSafeAnswer, in
+	// internal/session, fails on the day that changes. The seam is written down in
+	// ~/af-qv-P.report.md.
 	//
 	// IT IS BELOW THE PICK AND NOT ABOVE IT, which is the whole of why a task
 	// proposal is unaffected: an asker that recommended an answer said so on the
 	// row a person is reading (`suggested`), and `enter` taking the
 	// recommendation IS the pointer's law.
-	if questionHandsOnly(q) && q.Stakes == session.StakesIrreversible {
+	if questionHandsOnly(q) {
 		return questionSafeAt(q)
 	}
 	// AND EVERY OTHER QUESTION OPENS ON ITS FIRST ANSWER. The safe mark is not
@@ -765,6 +773,7 @@ func (a *app) withdrawQuestion(q session.Question, reason string) {
 	for _, open := range a.questions {
 		if open.token() == token {
 			found = true
+			a.rescueQuestionWords(open)
 			continue
 		}
 		kept = append(kept, open)
@@ -784,6 +793,34 @@ func (a *app) withdrawQuestion(q session.Question, reason string) {
 	a.touch()
 }
 
+// rescueQuestionWords moves a half-written `something else…` answer into the
+// message box as the question it was written for goes away.
+//
+// NOTHING SOMEBODY TYPED IS EVER DROPPED ON THE FLOOR. The words are an answer
+// to a question that has just stopped existing — answered in another window, or
+// taken back by the engine mid-sentence — so they cannot be sent and they cannot
+// stay where they were. Deleting them is the one option that is not available:
+// this surface keeps a half-typed sentence through a page opening over it and
+// through the question block arriving under it, and a question vanishing is not
+// a better reason to lose one.
+//
+// THE MESSAGE BOX IS WHERE THEY GO because it is the person's own space and the
+// only one that outlives any question. They are appended rather than written
+// over, and the box is left for the person to send, edit or clear: a sentence
+// SENT on their behalf would be this surface answering for them.
+func (a *app) rescueQuestionWords(open questionShown) {
+	words := strings.TrimSpace(open.other.words.String())
+	if words == "" {
+		return
+	}
+	if strings.TrimSpace(a.input.String()) != "" {
+		words = " " + words
+	}
+	a.input.end()
+	a.input.insert(words)
+	a.questionTyped = a.now()
+}
+
 // questionQuieted is THE BOX IS NEVER MOVED UNDER A HAND, answered.
 //
 // A question may take its rows when the box is empty, or when the box has been
@@ -791,10 +828,36 @@ func (a *app) withdrawQuestion(q session.Question, reason string) {
 // case and costs no wait at all, and the pause is what keeps a question from
 // being stuck behind a draft somebody typed and walked away from.
 func (a *app) questionQuieted() bool {
+	// AND THE `something else…` BOX IS A BOX. A person part-way through an answer
+	// in words is as plainly at the keyboard as one part-way through a message,
+	// and the block moving under them is the same defect whichever box they are
+	// in. It is not softened by [questionQuiet] the way the composer is: those
+	// words belong to THIS question and cannot be left behind and come back to,
+	// so there is no such thing as having walked away from them.
+	if a.questionWording() {
+		return false
+	}
 	if strings.TrimSpace(a.input.String()) == "" {
 		return true
 	}
 	return a.now().Sub(a.questionTyped) >= questionQuiet
+}
+
+// questionWording reports whether there are words half-typed into an open
+// question's own `something else…` box.
+//
+// IT ASKS EVERY OPEN QUESTION AND NOT ONLY THE HEAD, because the whole point is
+// the moment the head CHANGES: the question somebody was writing an answer to
+// has just been answered in another window or taken back by the engine, and the
+// one thing that must not happen next is the block treating the keystroke
+// already on its way as a key on whatever took its place.
+func (a *app) questionWording() bool {
+	for _, open := range a.questions {
+		if strings.TrimSpace(open.other.words.String()) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // questionSettled reports whether this question has been on screen long enough

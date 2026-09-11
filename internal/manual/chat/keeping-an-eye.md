@@ -319,7 +319,7 @@ every decision on this screen is put, and every answer carries what it costs bes
 Each answer is a row of its own and **a click anywhere along it takes that answer**. The
 digit takes it too.
 
-Answering leaves a line where the question was — `decided wants to keep an eye on: … → yes,
+Answering leaves a line where the question was — `✓ wants to keep an eye on: … → yes,
 set it up · you · 14:02` — and the card in the conversation settles with the answer and what
 it came to on its bottom edge: `yes, set it up · set up`.
 

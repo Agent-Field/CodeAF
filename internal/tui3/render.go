@@ -3490,9 +3490,10 @@ func (a *app) legend(width int) string {
 		return ""
 	}
 	// THE ONE MOMENT THE LEGEND MAY SHOUT: while a person is being asked
-	// something, the place goes violet along with the state word. The question
-	// is bottom-anchored and so is this border — the two of them framing the
-	// question is the surface pointing at it with both hands (consent.go).
+	// something, the place takes the waiting hue along with the state word — the
+	// amber [palette.ask] has painted with since the question violet was retired
+	// (styles.go). The question is bottom-anchored and so is this border — the two
+	// of them framing the question is the surface pointing at it with both hands.
 	paint := a.pal.dim
 	if a.asking() || a.awaitingTask() || a.awaitingStanding() {
 		paint = a.pal.ask

@@ -1394,11 +1394,10 @@ func placeFrameWithBar(a *app, width, height int,
 		}
 		fallthrough
 	default:
-		hint := " " + paintHint(hintFit(a.placeHint(), width-2), pal, pal.dim)
 		if msg, ok := a.placeMsgLine(width); ok {
-			add(placeFootBoth(hint, msg, width), nil)
+			add(msg, nil)
 		} else {
-			add(hint, nil)
+			add(" "+paintHint(hintFit(a.placeHint(), width-2), pal, pal.dim), nil)
 		}
 	}
 
@@ -1993,30 +1992,6 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 	// dimmed flat, and the door's clause keeps the colour every other key on
 	// this surface wears.
 	return " " + a.pathLink(path, paintHint(hintFitBeside(a.placeHint(), msg, width-2), a.pal, a.pal.dim)), true
-}
-
-// placeFootBoth is the foot when a place has BOTH a sentence to say and keys to
-// name: the keys on the left where they always are, the sentence at the right
-// edge, and the sentence alone when the row cannot hold the two.
-//
-// THE DOOR HINT IS NOT DISPLACED BY SOMETHING WAITING (#840). A task that raised
-// a question put `hello.txt · waiting in this conversation · alt+a` over the foot
-// of the tasks place, and the row a person was standing on stopped saying that
-// `enter` opens its room — so the keys that work on THIS screen were replaced by
-// a sentence about another one. Both are true at once, so both are drawn; and if
-// only one fits it is the sentence, because the keys are the same keys they were
-// a second ago and the sentence is new.
-func placeFootBoth(hint, msg string, width int) string {
-	hintW, msgW := ansi.StringWidth(hint), ansi.StringWidth(msg)
-	if hintW == 0 {
-		return msg
-	}
-	// One cell of rule between them at the very least, and one at the right.
-	gap := width - hintW - msgW - 1
-	if gap < 2 {
-		return msg
-	}
-	return hint + strings.Repeat(" ", gap) + msg
 }
 
 // ── opening a place ─────────────────────────────────────────────────────────
