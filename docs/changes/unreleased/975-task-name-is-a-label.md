@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: A namer that answers with its plan is refused, so the task keeps the person's own words
-pr: 942
+pr: 975
 surface: [chat, engine]
 invalidates:
   - "A task whose namer answered with a sentence was named from the front of that sentence: the rail row and the task page read `I'll start by` while the node's own record carried the person's words right beside it. No longer true: an answer that opens as a clause about the speaker is refused at any length, and the row keeps the fallback — the person's own words, clipped by the column exactly as an unnamed task's title always was."
