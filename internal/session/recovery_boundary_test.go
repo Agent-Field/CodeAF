@@ -90,10 +90,20 @@ func TestTheBoundaryReadsARoutingRefusalAsTheWire(t *testing.T) {
 	if verdict := taxonomy.Classify(wireEvidence(measuredPolicyRefusal(), 1), limits); verdict.Class != taxonomy.Transport || !verdict.Retries() {
 		t.Fatalf("a routing refusal read as %s, want transport and a retry", verdict)
 	}
+	// AND THE UNMARKED ONE IS THE REQUEST'S OWN SHAPE. It used to be read as
+	// [taxonomy.Work] — the same word a job that could not be done gets — which
+	// is what let a turn end saying "the request itself was refused" about
+	// somebody's conversation. Our own bytes are a SHAPE: nothing was learned
+	// about the work, nothing about the model, and the move is a different
+	// request. The distinction is what a person reads in the failure row.
 	unmarked := measuredPolicyRefusal()
 	unmarked.Routing = false
-	if verdict := taxonomy.Classify(wireEvidence(unmarked, 1), limits); verdict.Class != taxonomy.Work {
-		t.Fatalf("an unmarked 404 read as %s, want the request's own", verdict)
+	verdict := taxonomy.Classify(wireEvidence(unmarked, 1), limits)
+	if verdict.Class != taxonomy.Shape || verdict.Action != taxonomy.ActionReshape {
+		t.Fatalf("an unmarked 404 read as %s, want the request's own shape", verdict)
+	}
+	if !verdict.EndsTurn() {
+		t.Fatalf("our own bytes did not end the request: %s", verdict)
 	}
 	spent := &provider.RefusalError{Model: "m", Refusal: measuredPolicyRefusal(), Attempts: 3}
 	if verdict := taxonomy.Classify(wireEvidence(spent, 1), limits); verdict.Class != taxonomy.Work {

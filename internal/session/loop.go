@@ -135,33 +135,27 @@ var retryablePattern = regexp.MustCompile(
 		`websocket.?error`,
 	}, "|"))
 
-// contextOverflowPattern matches context-overflow errors. pi does NOT retry
-// these — it compacts instead.
-var contextOverflowPattern = regexp.MustCompile(
-	`(?i)` + strings.Join([]string{
-		"context.?length",
-		"context.?window",
-		"maximum.?context",
-		"token.?limit",
-		`context.?limit`,
-		"prompt.?is.?too.?long",
-		"too.?many.?tokens",
-	}, "|"))
-
 // isRetryable reports whether a provider error is retryable per pi's
 // isRetryableAssistantError: it must match the retryable pattern and NOT match
 // the non-retryable (quota/billing) pattern.
+//
+// IT IS EVIDENCE AND NEVER A DECISION, which is what this pattern lost on
+// 2026-09-10 and has back. It sets one fact on one struct — the socket shape
+// nothing typed could name, [taxonomy.Evidence.Wire] — and the move is chosen
+// from the whole of the evidence by [taxonomy.Classify]. Until this wave the
+// turn loop asked it a SECOND time, forty lines after that verdict had been
+// computed, and returned on the answer: `isContextOverflow(errMsg) ||
+// !isRetryable(errMsg)`, a pair of regexes over the provider's prose overruling
+// a typed classification that had already read the same failure. A routing 404
+// matched no pattern, so a turn with three moves left ended on the router's own
+// sentence. Its companion `isContextOverflow` is gone entirely: the request not
+// fitting is a fact the transport decides from the request-too-large status and
+// the error envelope's own code (internal/provider's [overflowRefusal]).
 func isRetryable(errMsg string) bool {
 	if nonRetryablePattern.MatchString(errMsg) {
 		return false
 	}
 	return retryablePattern.MatchString(errMsg)
-}
-
-// isContextOverflow reports whether a provider error is a context-overflow
-// error. These are NOT retried — the turn compacts and tries again.
-func isContextOverflow(errMsg string) bool {
-	return contextOverflowPattern.MatchString(errMsg)
 }
 
 // hintLimit bounds an Event.Hint. It is a one-line gloss beside a tool name in
@@ -683,7 +677,15 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// it: compact and re-send the same step. It fires regardless of
 			// CompactEnabled — that flag gates the automatic pass, not the
 			// recovery from a request the provider has already refused.
-			if isContextOverflow(err.Error()) && !overflowCompacted {
+			//
+			// AND IT IS THE VERDICT THAT SAYS SO, not a regex over the sentence.
+			// [taxonomy.ActionCompact] is the [taxonomy.Shape] policy's answer to
+			// a request that did not fit, and `overflowCompacted` is what it is
+			// told through [taxonomy.Evidence.Compacted] — so the once-per-turn
+			// rule is stated in the policy and read here rather than kept in two
+			// places that could come to disagree (taxonomy_boundary.go's
+			// [Agent.readOverflow]).
+			if a.readOverflow(err, model, overflowCompacted).Compacts() {
 				overflowCompacted = true
 				// AND THE REFUSAL IS THE ONE THING THAT TEACHES THE WINDOW. Every
 				// other figure in this law is a claim: the catalog's row, the
@@ -1353,49 +1355,52 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		if provider.IsConnectionUnavailable(err) {
 			return nil, model, err
 		}
-		// ── WHOSE MISTAKE WAS IT? ────────────────────────────────────────────
+		// ── WHOSE MISTAKE WAS IT? THE VERDICT ANSWERS, AND ONLY THE VERDICT ──
 		//
-		// THE REFUSAL ANSWERS FOR ITSELF, BEFORE ANY PATTERN READS ITS SENTENCE.
 		// A 4xx that named no upstream is the router reading OUR OWN BYTES and
-		// saying no ([provider.APIError.OurRequest]), and every endpoint alive
-		// will say the same thing about the same request — so the ladder stops
-		// here rather than spending 2s, 4s and 8s to be told it three times. A
-		// 4xx that DID name an upstream is that upstream's refusal, another
-		// endpoint may serve it, and the adapter has already taken the refusing
-		// lane out of the ledger so the next attempt is routed elsewhere
-		// (internal/provider's velocity.go, refuseUpstream).
+		// saying no, and every endpoint alive will say the same thing about the
+		// same request — so the ladder must stop rather than spend 2s, 4s and 8s to
+		// be told it three times. A 4xx that DID name an upstream is that
+		// upstream's refusal, another endpoint may serve it, and the adapter has
+		// already taken the refusing lane out of the ledger so the next attempt is
+		// routed elsewhere (internal/provider's velocity.go, refuseUpstream).
 		//
-		// IT IS A SHAPE AND NEVER A STATUS LIST, which is the whole point: the
-		// measured failure was a 400 whose text — "Provider returned error" —
-		// matched the retryable pattern and was retried three times into the same
-		// wall, while a differently-worded 400 from the same upstream would have
-		// been given up on at once. The pattern is asked second now, and only
-		// about errors that carry no refusal to ask.
-		if refusal, ok := provider.RefusalFrom(err); ok && refusal.OurRequest() {
-			return nil, model, err
-		}
-		// A CUT IS NEVER READ AS PROSE. It is a typed failure the guard raised
-		// about a stream that was served, so neither the overflow sentence nor
-		// the retryable-shape list has anything to say about it — AND NEITHER IS
-		// A ROUTING REFUSAL, for the same reason: the transport has already said
-		// what it is ([provider.RoutingRefusal]), and its 404 matches no
-		// retryable pattern, which is how the measured turn of 2026-09-10 ended
-		// on a refusal the next attempt would have landed.
-		if !isCut && !provider.RoutingRefusal(err) {
-			errMsg := err.Error()
-			if isContextOverflow(errMsg) || !isRetryable(errMsg) {
-				return nil, model, err
-			}
-		}
+		// THAT DISTINCTION USED TO BE DRAWN HERE TOO, one line below the
+		// classification that had just drawn it: `refusal.OurRequest()` with a bare
+		// return under it, the second of the three rules a 404 was classified by
+		// (docs/design/recovery/DESIGN.md §2.6). It is gone. The shape reaches the
+		// switch below as [taxonomy.Shape] carrying [taxonomy.ActionReshape], which
+		// ends the request through the same door every other ending uses — and,
+		// unlike the bare return, names the SHAPE in the row a person reads instead
+		// of calling our own bad bytes a verdict about their work.
+		// AND NOTHING BELOW THIS LINE READS THE SENTENCE. There used to be one
+		// more gate here — `isContextOverflow(errMsg) || !isRetryable(errMsg)`,
+		// two regexes over the provider's prose — and it RETURNED, forty lines
+		// after the verdict above had read the same failure off typed evidence. A
+		// string decided and the verdict was thrown away, which is how the
+		// measured turn of 2026-09-10 ended on a routing 404 that matched no
+		// retryable pattern while two other models sat unasked, and it is the
+		// exact bug class `Evidence.Routing` had to be added to work around.
+		//
+		// EVERY SHAPE THAT GATE ANSWERED FOR IS A FACT ON THE EVIDENCE NOW, and
+		// the switch below is the only road out: an overflow is
+		// [taxonomy.Evidence.Overflow] and was answered at the top of this loop,
+		// our own bytes are [taxonomy.Evidence.OurBytes], a model the router has
+		// put down is [taxonomy.Evidence.Withdrawn], an account that could not be
+		// served is [taxonomy.Evidence.Unserved], and a socket that hung up is
+		// [taxonomy.Evidence.Wire] — which is where [isRetryable] still lives, as
+		// evidence rather than as an answer.
 
 		switch {
 		case verdict.EndsTurn():
 			// NOT THE WIRE AT ALL, so there is nothing here to ask again and
 			// nothing to move to: the provider read this request and answered
-			// about it. The error travels out exactly as it came, because the
-			// layers that read it decide by its type and not by our sentence
-			// (taxonomy_boundary.go's [providerCouldNotServe]).
-			return nil, model, err
+			// about it. The failure travels out with its TYPE intact, because the
+			// layers that read it decide by that and never by our sentence
+			// (taxonomy_boundary.go's [providerCouldNotServe]) — and with the
+			// person's own words in front of it, because the router's sentence is
+			// not one anybody outside this process can act on ([endingWords]).
+			return nil, model, endingWords(err, verdict)
 		case verdict.Retries():
 			if isCut {
 				hub.send(Event{Kind: EventRetrying, Text: cutNotice(cut),
@@ -1733,6 +1738,32 @@ func transportFailure(err error, verdict taxonomy.Verdict, origin string, attemp
 		said: fmt.Sprintf("%s: %s was asked %s, and %s. /model to pick another one yourself",
 			transportWords(verdict), origin, timesWord(attempts), alsoTried(hopped)),
 	}
+}
+
+// endingWords puts the person's own account of a failure in front of the
+// provider's, keeping the failure itself reachable underneath.
+//
+// NO RAW ROUTER SENTENCE REACHES A SCREEN. `API error (404): No endpoints found
+// matching your data policy` is a true thing to write in a journal and a useless
+// thing to show somebody whose turn has just stopped: it names machinery they
+// have no access to, about a decision they did not make. The boundary has
+// already said what the failure WAS in a person's vocabulary
+// (taxonomy_boundary.go's [transportWords]), so that is the sentence, and the
+// verdict's own reason is what it is derived from.
+//
+// IT WRAPS RATHER THAN REPLACES, on [transportGaveUp]'s terms exactly: every
+// layer that decides anything about a provider failure decides it from the
+// error's TYPE, so the typed refusal stays reachable through Unwrap and only the
+// words on the front change.
+func endingWords(err error, verdict taxonomy.Verdict) error {
+	if err == nil {
+		return nil
+	}
+	said := strings.TrimSpace(transportWords(verdict))
+	if said == "" {
+		return err
+	}
+	return &transportGaveUp{err: err, said: said}
 }
 
 // transportGaveUp is that sentence WITH the failure still reachable under it, on

@@ -2242,6 +2242,33 @@ type APIError struct {
 	// somewhere else" and "our own request is wrong", which [APIError.OurRequest]
 	// and internal/taxonomy both read.
 	Routing bool
+	// Account says the list that emptied the set is the ACCOUNT'S OWN — a
+	// privacy switch, a paid-training guardrail, a standing ignore list — which
+	// is true of every model rather than of this one. It is only ever set beside
+	// Routing: the MOVE is the same (somewhere else), and what it adds is which
+	// list, for the ledger and for the journal line.
+	Account bool
+	// Withdrawn says THE ROUTER NO LONGER CARRIES THIS MODEL. The machines are
+	// fine and the request is fine; the id is gone, so there is no machine to
+	// rotate to and no shape to relax, and the only move is another model.
+	//
+	// Before it, such a 404 was indistinguishable from an emptied set and spent
+	// the whole transport budget buying three more identical refusals (#838).
+	Withdrawn bool
+	// Overflow says the request DID NOT FIT the model's window.
+	//
+	// IT IS DECIDED FROM STRUCTURE AT THIS DOOR AND NOWHERE ELSE. A seven-branch
+	// regex over the provider's prose used to answer it in internal/session, and
+	// it ran AFTER the verdict was computed and returned before the verdict could
+	// be read — a string deciding what a typed classification had already
+	// answered. What sets it now is the request-too-large status and the error
+	// envelope's own `code`, with the sentence kept only as a hint for a body
+	// that carries neither ([overflowRefusal]).
+	Overflow bool
+	// Code is the error envelope's `code`, as text. The router types that field
+	// as a number, as a string, and sometimes omits it, so it is normalised here
+	// once rather than decoded at each reader.
+	Code string
 }
 
 // Error keeps the SDK's exact error phrasing, and names the upstream when the
@@ -2411,8 +2438,32 @@ func apiError(status int, payload []byte) error {
 		}
 		failure.Provider = strings.TrimSpace(decoded.Error.Metadata.ProviderName)
 		failure.Raw = clipRaw(decoded.Error.Metadata.Raw)
+		failure.Code = envelopeCode(decoded.Error.Code)
 	}
+	// THE ONE SHAPE THAT NEEDS NO DOOR. Every other structural fact on this error
+	// depends on what the CLIENT knows — whether this base routes, whether the
+	// catalog carries the model — and is stamped at the refusal door
+	// (refusalobject.go's [Client.markRefusal]). "It did not fit" depends on
+	// nothing but the refusal itself, so it is answered where the refusal is
+	// built and is therefore true of every APIError this build makes, including
+	// the ones a stream raises in-band.
+	failure.Overflow = overflowRefusal(status, failure.Code, failure.Message, failure.Raw)
 	return failure
+}
+
+// envelopeCode normalises the error envelope's `code` to text. The router types
+// it as a number, as a string, and sometimes omits it — which is why [errorBody]
+// takes it as raw JSON — so the three spellings are folded here, once, rather
+// than at each reader.
+func envelopeCode(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		return strings.TrimSpace(text)
+	}
+	return strings.TrimSpace(strings.Trim(string(raw), `"`))
 }
 
 // clipRaw reads the upstream's own body out of the metadata, whichever of the

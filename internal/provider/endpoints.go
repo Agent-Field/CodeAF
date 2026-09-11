@@ -278,6 +278,83 @@ func (c *Client) catalogKnowsModel(model string) bool {
 	return known
 }
 
+// withdrawnModel reports that THE ROUTER NO LONGER CARRIES THIS MODEL AT ALL.
+//
+// IT IS [Client.routingRefusal]'S STRUCTURAL CLAUSE WITH ITS LAST QUESTION
+// INVERTED, and that is the whole of the difference between the two facts. Both
+// are the router answering for itself about a request no machine was asked
+// about; the routing refusal is an emptied SET, which another machine or another
+// shape can fill, and this is an absent MODEL, which nothing but another model
+// can answer. The router spells them with the same 404 and, very often, with the
+// same `No endpoints found` sentence — so read as one they cost a person the
+// whole transport budget for three more identical refusals before the hop that
+// was the only move all along (#838).
+//
+// The sheet clause is here for [Client.routingRefusal]'s reason word for word: a
+// plain OpenAI-compatible endpoint has no SET behind a model and no catalog row
+// in this build, so its first 404 must not be read as a model going away.
+func (c *Client) withdrawnModel(model string, status int, payload []byte) bool {
+	if !endpointRefusalStatus(status) || !c.baseServesLanes() {
+		return false
+	}
+	if upstream, ok := routerErrorEnvelope(payload); !ok || upstream != "" {
+		return false
+	}
+	return !c.catalogKnowsModel(model)
+}
+
+// overflowCode is the error envelope's own word for a request that did not fit.
+// It is the OpenAI-compatible spelling, which the router and every gateway in
+// front of one relay verbatim, and it is a FIELD rather than a sentence — which
+// is the entire reason this is decided here instead of by the regex
+// internal/session's turn loop used to run over the prose.
+const overflowCode = "context_length_exceeded"
+
+// overflowPhrases is what a body that carries no code and no status says
+// instead. It is a HINT and never the gate, in [endpointRefusalPhrases]'s sense
+// and for docs/design/failsafe/FAILSAFE.md rule 1's reason: the phrases are
+// evidence that something structural is true, and the day a provider rewords one
+// the code and the status still answer.
+//
+// They were the WHOLE test until 2026-09-10, in internal/session, read off the
+// error's sentence after a verdict had already been computed — so a router 404
+// whose words happened to miss every pattern returned from the turn loop as
+// though nothing could be done about it. Here they are the last question rather
+// than the first, and nothing reads them twice.
+var overflowPhrases = []string{
+	"context length",
+	"context window",
+	"maximum context",
+	"token limit",
+	"context limit",
+	"prompt is too long",
+	"too many tokens",
+}
+
+// overflowRefusal reports that a refusal is the request not fitting: the
+// request-too-large status, the envelope's own code, or — failing both — the
+// provider saying so in words.
+func overflowRefusal(status int, code string, said ...string) bool {
+	if status == http.StatusRequestEntityTooLarge {
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(code), overflowCode) {
+		return true
+	}
+	for _, sentence := range said {
+		sentence = strings.ToLower(sentence)
+		if sentence == "" {
+			continue
+		}
+		for _, phrase := range overflowPhrases {
+			if strings.Contains(sentence, phrase) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // routingRefusal is the gate on the ladder, and the whole of the answer to
 // "is this the router saying nothing it can reach will serve this shape?".
 // The header above states the five facts and why each one is needed.

@@ -8653,7 +8653,11 @@ func terminalProviderFailure(err error) bool {
 	if _, isCut := provider.CutFrom(err); isCut {
 		return false
 	}
-	if isContextOverflow(err.Error()) {
+	// A CONTEXT OVERFLOW IS A FACT ON THE EVIDENCE NOW, not a regex over the
+	// sentence: the transport decides it from the request-too-large status and
+	// the error envelope's own code (internal/provider's [overflowRefusal]), and
+	// the answer to it is a shorter conversation the turn loop already asks for.
+	if provider.Evidence(err).Overflow {
 		return false
 	}
 	var refusal *provider.RefusalError
