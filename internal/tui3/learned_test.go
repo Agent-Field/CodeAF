@@ -215,3 +215,18 @@ func TestWorkspaceAsksTheRepositoryOffTheLoop(t *testing.T) {
 		t.Fatalf("the branch is %q after the answer landed", a.branch)
 	}
 }
+
+// The fourth reading the loop used to take is a PROCESS, and the door that
+// starts it keeps one answer on the loop's own frame: there is nothing on this
+// machine that opens a link. exec.Command records a PATH miss without forking,
+// which is what lets the fork itself go to a goroutine (opener.go) while the six
+// doors that call this still get their sentence on the keystroke that asked.
+func TestNoOpenerOnPathIsAnAnswerAndNotAFork(t *testing.T) {
+	if name, _ := openerCommand(); name == "" {
+		t.Skip("this platform has no opener to miss")
+	}
+	t.Setenv("PATH", t.TempDir())
+	if err := startOpener("https://example.invalid/"); err == nil {
+		t.Fatal("a machine with no opener on PATH opened something anyway")
+	}
+}

@@ -30,6 +30,20 @@ package tui3
 // WHAT IT DOES NOT WALK, SAID OUT LOUD, because a law whose reach a reader
 // cannot predict is a law that lies by omission:
 //
+//   - A PACKAGE FUNCTION THAT TAKES THE SURFACE AS A PARAMETER, which is the
+//     biggest hole in this law and the one to close next. The walk makes a
+//     surface edge out of `x.method()` only where `x` is spelled the same as the
+//     enclosing method's own receiver, so the body of `placeFrameWithBar(a, …)`
+//     is walked — it is a package function — while every `a.…` call INSIDE it is
+//     read as a call on some other value and dropped. The reviewer of this PR
+//     traced a live one: `app.View → app.placeDraw → placeFrameWithBar(a, …)` ⊘
+//     `a.composerRows → a.composerWhereLine → a.composerWhere →
+//     a.composerOpensAt → a.errandPlace → errandHomeDir → os.Getwd`, a call in
+//     this file's own forbidden set that this file cannot see. Closing it is
+//     about eight lines — treat a parameter of type `*app` as a second receiver
+//     name — and it is issue #898 rather than done here because it will turn
+//     things up, and a law that grows an allowlist in the same commit that grows
+//     its reach teaches nobody anything.
 //   - A METHOD ON SOME OTHER VALUE the frame happens to hold — `p.rows()`,
 //     `e.word()`, `r.ref()`. Following those by name alone drags in every
 //     same-named method in an eleven-thousand-line package and turns this law
@@ -46,6 +60,16 @@ package tui3
 //     is on the other side of it is the other package's law to keep.
 //   - A METHOD VALUE PASSED AS AN ARGUMENT — `watch(a.load)` — because only a
 //     call's own Fun is read as an edge.
+//   - A LOCAL HOLDING A NAMED FUNCTION — `run := startOpener` — for the reason
+//     the seam reader gives below: filing locals by bare name lends one body's
+//     local to every other body that spells one the same way, and a fictional
+//     call chain is worse than a missing one. A local holding a LITERAL is
+//     walked, because the literal's body is right there and needs no name.
+//   - A COMMAND BUILT IN ONE BODY AND STARTED IN ANOTHER. [commandNames] tracks
+//     the binding inside a single function and its closures, so
+//     `cmd := exec.Command(…)` here and `cmd.Start()` past a return value is
+//     invisible. Nothing in this package is written that way today; a typed walk
+//     is what would see it, and this law is deliberately not one.
 //   - `go a.method()` is walked as though it were on the loop, while
 //     `go func(){ a.method() }()` is not. That is strict rather than loose, so it
 //     costs a false positive and never a miss.
@@ -359,11 +383,23 @@ func (g *surfaceGraph) readSeams(file *ast.File) {
 			// `modelsForService: opts.ModelsForService` — which is how EVERY seam
 			// the door installs on [Options] reaches this package.
 			for _, element := range node.Elts {
-				if pair, ok := element.(*ast.KeyValueExpr); ok {
-					if key, ok := pair.Key.(*ast.Ident); ok {
-						note(key.Name, pair.Value)
-					}
+				pair, ok := element.(*ast.KeyValueExpr)
+				if !ok {
+					continue
 				}
+				key, ok := pair.Key.(*ast.Ident)
+				if !ok {
+					continue
+				}
+				// `look: look` FILES A LOCAL UNDER ITS OWN NAME, which is the
+				// fiction the assignment case above refuses, arriving by another
+				// door: the value is whatever `look` means HERE, and the name is
+				// then resolved wherever it is called. A field named after what
+				// fills it says nothing the walk did not already know.
+				if same, ok := pair.Value.(*ast.Ident); ok && same.Name == key.Name {
+					continue
+				}
+				note(key.Name, pair.Value)
 			}
 		}
 		return true
