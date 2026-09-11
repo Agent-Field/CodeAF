@@ -55,7 +55,7 @@ package session
 //
 //   - NAMING IS BOUNDED, INCLUDING UNUSABLE ANSWERS. Empty replies and invalid
 //     labels fall through the same model ladder as request failures. Up to
-//     titleAttempts asks share titleWindow; another turn never adds an errand.
+//     every ask shares one titleWindow; another turn never adds an errand.
 //
 //   - IT NEVER BREAKS THE TURN, AND NOW IT NEVER DELAYS ONE EITHER. A failed,
 //     empty or cancelled title leaves the session unnamed and says nothing.
@@ -123,20 +123,22 @@ const titleAskWindow = 20 * time.Second
 
 type conversationTitle struct{ full, short string }
 
-// titleAttempts is how many times ONE naming errand may ask before it gives up,
-// and it is the transport ladder's own count rather than a number of its own:
-// the failure it is for is the failure that ladder is for. Three asks, at
-// [retryBaseDelay] doubling between them, is a provider blip survived and a
-// provider outage noticed.
-const titleAttempts = 3
-
-// titleWindow bounds the WHOLE errand — every attempt, every backoff and the
-// waits inside them. The per-call bound is the role tier's ([roles.PatienceFor],
+// titleWindow bounds the WHOLE errand — every ask, every backoff and the waits
+// inside them. The per-call bound is the role tier's ([roles.PatienceFor],
 // auxiliary.go) and it is the right bound for one call; this is the bound on
-// asking again, and without it three timeouts and two backoffs are an errand
-// that outlives the conversation it is naming. Two minutes is past three asks
-// on a healthy provider by a wide margin and far short of a person's patience
-// with a session that has no name yet.
+// asking again, and without it an errand naming a conversation could outlive the
+// conversation. Two minutes is past several asks on a healthy provider by a wide
+// margin and far short of a person's patience with a session that has no name
+// yet.
+//
+// AND IT IS THE WHOLE OF THE BOUND. There was a `titleAttempts = 3` beside it
+// until 2026-09-11 — one of the six session-side ladders
+// docs/design/recovery/DESIGN.md §7 names — and two bounds on one axis is the
+// shape this wave deleted everywhere else: the count ended the errand early on a
+// provider that was merely slow, and the window ended it anyway on one that was
+// down. What is left is this deadline and the doubling wait under it, which is
+// what makes a blip survivable and an outage noticed without anybody having to
+// state how many of either.
 const titleWindow = 2 * time.Minute
 
 // startTitleLocked starts the session naming itself, if it has no name yet.
@@ -202,18 +204,29 @@ func (a *Agent) maybeTitle(context.Context, *eventHub) {
 func (a *Agent) nameSession(ctx context.Context, question, answer, model string) {
 	ctx, done := context.WithTimeout(ctx, titleWindow)
 	defer done()
-	for attempt := range titleAttempts {
-		if attempt > 0 {
+	// AND THE SAME WINDOW IS READ ON THE TURN'S OWN CLOCK, so that a scenario can
+	// state two minutes without spending two of them (loop.go's [turnNow]). The
+	// context above is what really cuts a request mid-flight; this is what ends
+	// the LADDER, and they are the same figure.
+	until := turnNow().Add(titleWindow)
+	// THE LOOP WALKS THE WAIT AND NOT A COUNT. Each ask that comes to nothing
+	// doubles what is paid before the next one, and the window above is what
+	// ends the errand — so a provider having a bad second is waited out and one
+	// that is down is given up on, without a number that had to guess which.
+	for wait := time.Duration(0); ; wait = nextTitleWait(wait) {
+		if wait > 0 {
 			// AND THE WAIT IS CANCELLABLE. A close during a backoff is a
 			// session that has left, and a sleep that ignored it would hold the
 			// quit for the whole of the ladder.
-			timer := time.NewTimer(retryBaseDelay << (attempt - 1))
-			select {
-			case <-timer.C:
-			case <-ctx.Done():
-				timer.Stop()
+			if err := titleBackoff(ctx, wait); err != nil {
 				return
 			}
+		}
+		// AND THE WINDOW IS READ AFTER THE WAIT, because what it bounds is the
+		// ASKING: a wait that ran past the window has already answered the
+		// question of whether there is time for another one.
+		if ctx.Err() != nil || !turnNow().Before(until) {
+			return
 		}
 		// AND NOTHING IS ASKED FOR A SESSION THAT ALREADY HAS ONE. Between two
 		// attempts the session may have been named or closed, and a second ask
@@ -231,6 +244,24 @@ func (a *Agent) nameSession(ctx context.Context, question, answer, model string)
 			return
 		}
 	}
+}
+
+// titleBackoff is the naming ladder's own wait seam — see THE TURN'S OWN CLOCK
+// in loop.go for why it is not the turn's.
+var titleBackoff = backoffWait
+
+// nextTitleWait is what to pay before asking again: [retryBaseDelay] first, then
+// double, and never more than what is left of [titleWindow] could hold anyway.
+// The ceiling is arithmetic rather than patience — an unbounded doubling becomes
+// a negative duration, and the window above is the real bound.
+func nextTitleWait(paid time.Duration) time.Duration {
+	if paid <= 0 {
+		return retryBaseDelay
+	}
+	if paid >= titleWindow {
+		return titleWindow
+	}
+	return paid * 2
 }
 
 // stillNeedsName is the errand's own gate, asked before every attempt: is this
@@ -514,6 +545,9 @@ func cleanConversationTitle(raw string) conversationTitle {
 	for _, line := range strings.Split(raw, "\n") {
 		line = stripMarkup(strings.TrimSpace(line))
 		line = strings.Trim(line, `"'“”`)
+		// The labels are how a paired answer is read, and a model that says
+		// "Sure!" before one has still answered rather than changed the label.
+		line = stripInterjection(line)
 		lower := strings.ToLower(line)
 		switch {
 		case strings.HasPrefix(lower, "full:"):
@@ -612,17 +646,39 @@ func unusableName(name string) bool {
 // was measured on the rail, and the same emphasis rides a session's name whenever
 // a namer decides a heading is what was asked for.
 //
-// THE THREE MARKS ARE THE THREE A MODEL USES FOR A LABEL: emphasis, a code span,
-// and a heading. Emphasis and code are markup wherever they stand, so they come
-// out of the middle as well as the ends; a hash and a quote's angle bracket mean
-// nothing except at the FRONT of a line, so they are trimmed only there and a
-// name that is about `#4` keeps it. The underscore is deliberately left alone —
-// it is a character inside identifiers a person may genuinely have named, and
+// THE MARKS ARE THE ONES A MODEL USES FOR A LABEL: emphasis, a code span, a
+// heading and a list marker. Emphasis and code are markup wherever they stand,
+// so they come out of the middle as well as the ends; a hash, a quote's angle
+// bracket and a list marker mean nothing except at the FRONT of a line, so they
+// are trimmed only there and a name that is about `#4` keeps it. A dash, plus or
+// numbered marker is markup only when a space separates it from the words, which
+// keeps real names such as `-v flag handling` and `v1.2.3 release notes` whole.
+// An asterisk marker already comes out with emphasis rather than needing the
+// same rule in a second place. The underscore is deliberately left alone — it
+// is a character inside identifiers a person may genuinely have named, and
 // [cleanTitle] already unwelds the one case where it is a separator.
 func stripMarkup(title string) string {
 	title = strings.TrimLeft(title, "#> \t")
 	title = strings.NewReplacer("*", "", "`", "").Replace(title)
+	title = stripListMarker(title)
 	return strings.TrimSpace(title)
+}
+
+// stripListMarker removes one list marker because a name is one line rather
+// than a nested list. The separating space is the evidence that punctuation is
+// a marker instead of the first character of the name itself.
+func stripListMarker(title string) string {
+	if strings.HasPrefix(title, "- ") || strings.HasPrefix(title, "+ ") {
+		return title[2:]
+	}
+	digits := 0
+	for digits < len(title) && title[digits] >= '0' && title[digits] <= '9' {
+		digits++
+	}
+	if digits > 0 && digits+1 < len(title) && (title[digits] == '.' || title[digits] == ')') && title[digits+1] == ' ' {
+		return title[digits+2:]
+	}
+	return title
 }
 
 // ── an answer that is not a name ────────────────────────────────────────────
@@ -715,13 +771,7 @@ const (
 // name on the next line has not answered this call — firstLine has already
 // taken the only line the answer is read from.
 func stripOpener(title string) string {
-	// A "Sure," or "Okay!" with no colon after it is the same throat-clearing
-	// without the punctuation the label rule keys on.
-	if cut := strings.IndexAny(title, ",!"); cut > 0 && cut <= openerLimit {
-		if words := normalizedWords(title[:cut]); len(words) == 1 && isInterjection(words[0]) {
-			title = strings.TrimSpace(title[cut+1:])
-		}
-	}
+	title = stripInterjection(title)
 	// Twice, because "Sure: Title: porting the parser" is two announcements and
 	// stopping after the first would keep half of one.
 	for range 2 {
@@ -740,6 +790,18 @@ func stripOpener(title string) string {
 	// name". A name has a word in it that is about the conversation.
 	if words := normalizedWords(title); len(words) > 0 && len(words) <= openerWords && allOpenerWords(words) {
 		return ""
+	}
+	return title
+}
+
+// stripInterjection removes the one-word agreement a model may put before an
+// answer. The paired label reader and the plain-name reader share this exact
+// rule so their idea of "Sure," and "Okay!" cannot drift apart.
+func stripInterjection(title string) string {
+	if cut := strings.IndexAny(title, ",!"); cut > 0 && cut <= openerLimit {
+		if words := normalizedWords(title[:cut]); len(words) == 1 && isInterjection(words[0]) {
+			title = strings.TrimSpace(title[cut+1:])
+		}
 	}
 	return title
 }

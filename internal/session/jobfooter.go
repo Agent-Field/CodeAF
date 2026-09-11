@@ -10,7 +10,7 @@ package session
 // times, against a log that was empty for reasons the model could not see, ending
 // in it killing work that was about to finish.
 //
-// So every tool result the model reads carries, at its foot, one line per
+// So a tool result the model reads carries, at its foot, one line per
 // outstanding job:
 //
 //	[job 1] running 3m12s · last: case 41/120 scored
@@ -19,16 +19,25 @@ package session
 // the last thing it said. A model reading that does not need to poll, cannot
 // mistake a quiet job for a dead one, and is never surprised by a completion.
 //
-// A FORKED HAND IS ON THIS FOOTER TOO, and it is the same three facts with its
-// name in the middle:
+// ── AND IT IS SENT WHEN IT CHANGES, NOT ON EVERY RESULT ──
 //
-//	[job 4] running 12m03s · hand 2 — the docs · last: edit docs/api.md
+// It used to be every result, and that is the one thing about it that was
+// measured as waste rather than as help: a turn with one job out and twenty-one
+// tool results paid for the same three facts twenty-one times, about three
+// kilobytes of transcript per turn, and three hands out made it nineteen
+// (docs/design/prompt-diet/DESIGN.md §1). A batch of parallel calls is the worst
+// of it — six results rendered within the same second are six copies of one
+// identical line.
 //
-// It is here because a hand is a stream now rather than a barrier (fork.go): the
-// caller's `fork` call returns the moment the hands are out and the caller keeps
-// working, so the only thing standing between it and a hand it has forgotten
-// about is this line. It says the same thing to the same reader for the same
-// reason — you have work out, this is how old it is, this is what it last did.
+// So the footer is appended only when its text DIFFERS from the last one this
+// turn sent ([episode.jobFooterChanged]). Nothing is hidden by that: an
+// identical footer says exactly what the model has already read on an earlier
+// result of the same turn, still in front of it in the transcript. The moment
+// anything moves — a second of elapsed time, a new last line, a job appearing
+// or ending — the text differs and the footer is there again. And the turn is
+// the unit because the turn is what the model reads in one piece; every turn
+// starts with nothing remembered, so the first result of a turn with work out
+// always carries it.
 //
 // ── WHERE IT IS APPENDED, AND WHY ONLY THERE ──
 //
@@ -88,15 +97,6 @@ func (r *jobRegistry) runningFooter() string {
 			continue
 		}
 		line := jobFooterLead + strconv.Itoa(info.id) + jobFooterRunning + formatJobAge(info.elapsed)
-		// A HAND IS NAMED, because its id is not what the caller thinks of it by.
-		// It asked for "the docs" and it is holding that part of its own answer;
-		// `job 4` alone would make it look up which hand that was.
-		if info.kind == jobKindHand && info.label != "" {
-			line += " · " + info.label
-			if info.detail != "" {
-				line += " — " + clip(firstLine(info.detail), jobFooterLastLimit)
-			}
-		}
 		if last := one.sink.lastNonEmptyLine(); last != "" {
 			line += " · last: " + clip(firstLine(last), jobFooterLastLimit)
 		}
@@ -131,13 +131,15 @@ func formatJobAge(elapsed time.Duration) string {
 //
 // A session with no background work pays nothing and reads exactly what it read
 // before — which is most sessions, and is why this is a suffix rather than a
-// header the model has to learn to skip past.
-func (a *Agent) withJobState(result toolResult) toolResult {
+// header the model has to learn to skip past. A session WITH background work
+// pays for it once per change rather than once per result, which is the law at
+// the top of this file.
+func (a *Agent) withJobState(ep *episode, result toolResult) toolResult {
 	if a == nil || a.jobs == nil {
 		return result
 	}
 	footer := a.jobs.runningFooter()
-	if footer == "" {
+	if footer == "" || !ep.jobFooterChanged(footer) {
 		return result
 	}
 	if strings.TrimSpace(result.text) == "" {

@@ -1,6 +1,8 @@
 package session
 
 import (
+	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -647,5 +649,253 @@ func TestTheFloorOnlyTakesBackWhatThisTurnWasAsked(t *testing.T) {
 	conversation.handBackUnsettled()
 	if root.decider != TaskAskOwnerPerson {
 		t.Fatalf("the conversation did not take back its own question (%q)", root.decider)
+	}
+}
+
+// ── the floor across a restart ──────────────────────────────────────────────
+
+// WHO IS DECIDING SURVIVES THE PROCESS, AND IS HANDED BACK ON THE WAY IN. The
+// checkpoint carries the holder so that the floor has something to fire on: a
+// node the record says the model was holding comes back the person's, because
+// the turn it was going to be decided in died with the process.
+func TestTheCheckpointCarriesWhoIsDecidingAndTheFloorHandsItBack(t *testing.T) {
+	graph, node := floorGraph("")
+	agent := &Agent{config: Config{tasker: graph}}
+	agent.handToModelOnAuto(node)
+
+	graph.mu.Lock()
+	record := node.recordLocked()
+	graph.mu.Unlock()
+	if record.Decider != TaskAskOwnerModel {
+		t.Fatalf("the checkpoint says %q is deciding, so a restart has nothing to hand back", record.Decider)
+	}
+
+	fresh := &TaskGraph{}
+	recovery := fresh.rehydrate(taskDocument{
+		Type: taskDocumentType, Version: taskFileVersion, Seq: 1,
+		Nodes: []taskRecord{record},
+	}, t.TempDir(), TaskSettleAuto)
+
+	restored := fresh.node(1)
+	if restored == nil {
+		t.Fatal("the landing did not come back at all")
+	}
+	if restored.decider != TaskAskOwnerPerson {
+		t.Fatalf("a restored landing is still held by %q, and no turn is going to answer it", restored.decider)
+	}
+	if len(recovery.handedBack) != 1 || recovery.handedBack[0].id != 1 {
+		t.Fatalf("the recovery owes %d hand-backs, want the one landing", len(recovery.handedBack))
+	}
+	if owner := ProjectTask(restored.notice().StatusFacts()).Ask.Owner; owner != TaskAskOwnerPerson {
+		t.Fatalf("the card would draw %q as the holder rather than its chips", owner)
+	}
+}
+
+// A CHECKPOINT THAT SAYS NOTHING SAYS THE PERSON. Every file written before the
+// holder was carried, and every node nobody ever handed over, decodes with no
+// decider at all — and the emptiness law's answer for it is the one every
+// unowned question falls back to.
+func TestACheckpointWithNoDeciderReadsAsThePerson(t *testing.T) {
+	var record taskRecord
+	if err := json.Unmarshal([]byte(`{"id":1,"title":"Port the parser","state":"unverified"}`), &record); err != nil {
+		t.Fatalf("decode an older record: %v", err)
+	}
+	if record.Decider != "" {
+		t.Fatalf("an older record invented a decider: %q", record.Decider)
+	}
+	graph := &TaskGraph{}
+	recovery := graph.rehydrate(taskDocument{
+		Type: taskDocumentType, Version: taskFileVersion, Seq: 1,
+		Nodes: []taskRecord{record},
+	}, t.TempDir(), TaskSettleAsk)
+	if owner := ProjectTask(graph.node(1).notice().StatusFacts()).Ask.Owner; owner != TaskAskOwnerPerson {
+		t.Fatalf("an older record's landing is held by %q", owner)
+	}
+	if len(recovery.handedBack) != 0 {
+		t.Fatal("a landing nobody had handed over was published as a hand-back")
+	}
+}
+
+// A CONFLICT IS NEVER MODEL-HELD, ACROSS A RESTART EITHER. Two versions of
+// somebody's own file are theirs whatever a record says, so the restored card
+// asks them and never announces that aforge is deciding it.
+func TestARestoredConflictIsNeverTheModelsToDecide(t *testing.T) {
+	graph := &TaskGraph{}
+	graph.rehydrate(taskDocument{
+		Type: taskDocumentType, Version: taskFileVersion, Seq: 1,
+		Nodes: []taskRecord{{
+			ID: 1, Title: "Port the parser", Brief: "port it", Acceptance: "it parses",
+			State: TaskUnverified, Merge: mergeConflicted, Branch: "task/parser",
+			Decider: TaskAskOwnerModel,
+		}},
+	}, t.TempDir(), TaskSettleAuto)
+	status := ProjectTask(graph.node(1).notice().StatusFacts())
+	if status.Ask.Kind != TaskAskConflict {
+		t.Fatalf("a restored conflicted landing asks %q", status.Ask.Kind)
+	}
+	if status.Ask.Owner != TaskAskOwnerPerson {
+		t.Fatalf("a restored conflict is held by %q", status.Ask.Owner)
+	}
+}
+
+// AND THE WHOLE RESUME MAKES THE HAND-BACK: the node comes back the person's,
+// the update goes out on the lane a surface folds into the row it is drawing,
+// and the file on disk stops saying the model is deciding.
+func TestResumingASessionHandsTheModelsLandingBackAndSaysSo(t *testing.T) {
+	repo := newTestRepo(t)
+	journal := filepath.Join(t.TempDir(), "session.jsonl")
+	checkpoint := taskCheckpointPath(journal)
+	writeCheckpoint(t, checkpoint, taskDocument{
+		Type: taskDocumentType, Version: taskFileVersion, Seq: 1,
+		Nodes: []taskRecord{{
+			ID: 1, Title: "Port the parser", Brief: "port it", Acceptance: "it parses",
+			State: TaskUnverified, Merge: mergeInPlace, Report: "the parser is ported",
+			Noted: true, ElapsedMS: 42000, Decider: TaskAskOwnerModel,
+		}},
+	})
+
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = repo
+		config.SessionFile = journal
+		config.InTask = true // recover explicitly below, with somebody watching.
+	})
+	lane, stop := agent.WatchTaskUpdates()
+	defer stop()
+	drainTaskLane(lane)
+
+	agent.config.InTask = false
+	agent.recoverTasks()
+
+	notice, told := nextTaskNotice(lane)
+	if !told {
+		t.Fatal("a resume changed who is deciding and told nobody")
+	}
+	if notice.ID != 1 || notice.Decider != TaskAskOwnerPerson {
+		t.Fatalf("the update says task %d is held by %q", notice.ID, notice.Decider)
+	}
+	for _, record := range readCheckpoint(t, checkpoint).Nodes {
+		if record.ID == 1 && record.Decider == TaskAskOwnerModel {
+			t.Fatal("the file on disk still says the model is deciding a landing nothing is going to decide")
+		}
+	}
+}
+
+// AND THE LANDING QUESTION READS THAT ONE HOLDER. The questions wave derives a
+// landed `your call` from [TaskAsk] rather than keeping a holder of its own, so
+// the policy on the derived question moves with the node's own mark and there is
+// no second place for the two to disagree (question.go's [landingPolicy]).
+func TestTheLandingQuestionTakesItsPolicyFromWhoIsDeciding(t *testing.T) {
+	graph, node := floorGraph("")
+	agent := &Agent{config: Config{tasker: graph}}
+	if kind := agent.landingQuestion(PendingDecision{Notice: node.notice()}).Policy.Kind; kind != PolicyAsk {
+		t.Fatalf("a landing the person holds asks with policy %q", kind)
+	}
+	agent.handToModelOnAuto(node)
+	question := agent.landingQuestion(PendingDecision{Notice: node.notice()})
+	if question.Policy.Kind != PolicyDecide {
+		t.Fatalf("a landing the model holds carries policy %q", question.Policy.Kind)
+	}
+	if !question.Deadline.IsZero() || question.Policy.After != 0 {
+		t.Fatal("the floor is the end of a turn and not a clock, and a second timer was started for it")
+	}
+}
+
+// A MERGE ROUND THAT DIED WITH THE PROCESS IS SAID OUT LOUD, AND NOTHING RESTARTS.
+//
+// On 2026-09-09 a person pressed `resolve it` on a conflict card at 03:08:52; the
+// round's worker opened, its journal stops mid-read ten seconds later with no
+// ending, and the checkpoint still said `merge: conflicted`. The resume drew the
+// same card with the same three answers and said nothing at all — which reads as
+// a press that never happened. It says so now, the claim is dropped so the next
+// press is taken, and no round is spent on the way up.
+func TestARecoveredMergeRoundSaysItWasCutAndTheCardStillAsks(t *testing.T) {
+	graph := &TaskGraph{}
+	recovery := graph.rehydrate(taskDocument{
+		Type: taskDocumentType, Version: taskFileVersion, Seq: 1,
+		Nodes: []taskRecord{{
+			ID: 1, Title: "Hidden rental digs", Brief: "find them", Acceptance: "a list",
+			State: TaskUnverified, Merge: mergeConflicted, Branch: "task/rentals",
+			Changed: []string{"notes.md"}, Resolving: true,
+		}},
+	}, t.TempDir(), TaskSettleAsk)
+
+	if recovery.cutRounds != 1 {
+		t.Fatalf("the recovery counted %d cut rounds, want the one", recovery.cutRounds)
+	}
+	if note := recovery.note(); !strings.Contains(note, "1 "+taskWordYourCall+" (its merge round was cut)") {
+		t.Fatalf("the resumed session says %q, and never that the round was cut", note)
+	}
+	// THE CLAIM IS GONE, so the next press is taken rather than refused for a
+	// worker that stopped existing when the process did.
+	node := graph.node(1)
+	if node == nil {
+		t.Fatal("the node did not come back at all")
+	}
+	if !node.claimResolving() {
+		t.Fatal("a round nothing is running still holds the node's claim")
+	}
+	node.releaseResolving()
+	// AND THE CARD IS ASKING THE SAME QUESTION IT ASKED BEFORE THE PRESS: the
+	// node is exactly where it was, so the three answers are exactly the three.
+	status := ProjectTask(node.notice().StatusFacts())
+	if status.Ask.Kind != TaskAskConflict {
+		t.Fatalf("the restored card asks %q, want the conflict question", status.Ask.Kind)
+	}
+	if status.Ask.Owner != TaskAskOwnerPerson {
+		t.Fatalf("the restored conflict is held by %q", status.Ask.Owner)
+	}
+	if node.state != TaskUnverified || node.merge != mergeConflicted {
+		t.Fatalf("the recovery moved the node to %q/%q; a cut round changes nothing about the work", node.state, node.merge)
+	}
+}
+
+// AND AN ORDINARY YOUR-CALL LANDING GAINS NO CLAUSE. The parenthetical is for
+// the press that bought nothing, and a resume that hung it on every unchecked
+// landing would be telling people about rounds nobody ever asked for.
+func TestARecoveredYourCallWithNoRoundSaysNothingAboutRounds(t *testing.T) {
+	graph := &TaskGraph{}
+	recovery := graph.rehydrate(taskDocument{
+		Type: taskDocumentType, Version: taskFileVersion, Seq: 1,
+		Nodes: []taskRecord{{
+			ID: 1, Title: "Hidden rental digs", Brief: "find them", Acceptance: "a list",
+			State: TaskUnverified, Merge: mergeConflicted, Branch: "task/rentals",
+		}},
+	}, t.TempDir(), TaskSettleAsk)
+	if recovery.cutRounds != 0 {
+		t.Fatalf("a landing nobody pressed anything on counted %d cut rounds", recovery.cutRounds)
+	}
+	if note := recovery.note(); strings.Contains(note, "merge round") {
+		t.Fatalf("the resumed session says %q about a round that never ran", note)
+	}
+}
+
+// AND THE CLAIM REACHES THE DISK, which is the whole of why the sentence above
+// is possible: it is taken in memory to stop two workers sharing one working
+// copy, and a fact that never reached the checkpoint could not be read back.
+func TestTakingAMergeRoundsClaimIsWrittenToTheCheckpoint(t *testing.T) {
+	graph := &TaskGraph{}
+	graph.rehydrate(taskDocument{
+		Type: taskDocumentType, Version: taskFileVersion, Seq: 1,
+		Nodes: []taskRecord{{
+			ID: 1, Title: "Hidden rental digs", Brief: "find them", Acceptance: "a list",
+			State: TaskUnverified, Merge: mergeConflicted, Branch: "task/rentals",
+		}},
+	}, t.TempDir(), TaskSettleAsk)
+	node := graph.node(1)
+	if !node.claimResolving() {
+		t.Fatal("the claim was refused on a node with no round in flight")
+	}
+	graph.mu.Lock()
+	record := node.recordLocked()
+	graph.mu.Unlock()
+	if !record.Resolving {
+		t.Fatal("the checkpoint does not say a round was in flight, so a resume cannot say it was cut")
+	}
+	node.releaseResolving()
+	graph.mu.Lock()
+	record = node.recordLocked()
+	graph.mu.Unlock()
+	if record.Resolving {
+		t.Fatal("a round that landed left its claim on the record")
 	}
 }

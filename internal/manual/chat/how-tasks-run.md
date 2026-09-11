@@ -91,6 +91,16 @@ row carry the ground and how the task stood on it.
 
 ## Does a task touch my working copy? — where does my task work, what the card calls the task's directory
 
+**A quick task is the exception, and not a small one.** It has no checkout and no branch
+at all: it works in the folder this conversation is standing in — your own working copy —
+which is what lets it start the instant it is asked for and finish with nothing to merge.
+**It does not take the folder off you while it runs.** You keep editing and the chat keeps
+writing; what a quick task holds is only the files it named when it started and the ones
+it has already written, and a write of one of those is refused with the task named until
+it finishes. Two quick tasks that name the same file run one after the other rather than
+at once. The *tasks* page has it under *What a quick task is*. Everything below is about
+the ordinary kind.
+
 By default, no. Each code task gets its own checkout of **the repository the work is about**
 — its ground, resolved from what this conversation has been reading and editing (above) — on
 its own branch, so you can keep working in yours while it runs. If your request explicitly
@@ -632,13 +642,6 @@ outside them with `No task "…" among the pieces you handed out.` Its brief is 
 whole world; the project's history is not its to read. The tasks page has the whole of it,
 under *When a task splits its own work*.
 
-**And it can use hands.** `fork` is on a task's belt for the same reason it is on the
-conversation's: a task worker is a mind in the middle of its own work, so it can copy
-itself into two to four hands inside one of its own turns, in its own copy of the
-repository, and stitch what they bring back. The tasks page has the whole of it, under
-*Hands*. The one agent that cannot fork is a hand — the fork is one level deep, and a hand
-simply does not have the tool.
-
 Approval inside a task is allow-everything, with the critical floor still under it (things
 like `rm -rf /`, `mkfs`, redirecting onto a raw disk, shutdown). When a call hits that
 floor there is nobody to ask, so the task reads the refusal
@@ -673,9 +676,9 @@ cost-oriented working set. With an unknown context size no larger line is invent
 
 ## Can a task change my settings — can a task look up an old conversation, can a task start a watch, my task said it cannot do that from here
 
-No, to all three, and a task is now TOLD so rather than left to find out by
-calling a tool that is not there. Four things a conversation can do are absent
-from a worker's belt, and its instructions say what to do instead:
+A task can search earlier conversations when its parent has history access.
+Settings changes and watches still require the conversation. The worker's
+instructions describe the tools it actually carries:
 
 - **Change a setting.** `settings` and `change_setting` are off inside a task. A
   worker runs in a copy of its own with nobody watching, and a permanent change
@@ -683,9 +686,15 @@ from a worker's belt, and its instructions say what to do instead:
   be able to make. A task asked to change a preference says it cannot from a
   task and points you at `/settings`; it is told never to edit a config file instead.
 - **Look up an earlier conversation.** `search_conversations` reads the index in
-  the memory store, and a task is handed no store, so what was said in other
-  conversations cannot be looked up from inside one. A worker answers out of the
-  brief it was given.
+  its parent's history through a read-only interface, including in nested tasks.
+  The task's checker can independently read the same source.
+  It can search all indexed places and open an exchange by
+  an opaque source reference. It cannot write memories through that interface.
+  If the parent has memory off and no history source, the tool remains absent.
+  If task preparation falls back to "Complete the brief and report the result and checks run.",
+  the checker receives that referenced brief so it can check the actual request.
+  A requested final answer is kept as the task's result; checking it does not
+  require an extra file unless the request or the work's own claim requires one.
 - **Start a watch.** `watch` delivers its news into a conversation and a task has
   none. A worker waits with an ordinary foreground `bash` call.
 - **See the work that already ran** — but only at the bottom of the tree. A task
@@ -769,12 +778,43 @@ produce and what done means are handed over with every address at or below the p
 rewritten as the same address inside the task's own copy — so
 `/Users/you/code/yours/internal/widget.go` reaches the task as
 `…/trees/1/internal/widget.go`, and a task that follows its own contract is writing where it
-is allowed to. A path that is **not** under the project is left exactly as written, so a
-contract that really does point somewhere else still earns the refusal below. **Your own
+is allowed to. A path that is **not** under the project is left exactly as written — except
+the conversation's own `work` folder and another task's copy under this conversation's
+`trees/`, which move the same way as the project, below — so a contract that really does
+point somewhere else still earns the refusal below. **Your own
 words are never rewritten**: they are quoted to the task exactly as you typed them, with the
-two folders named beside them so it knows which one a path in your sentence means here. And
+folders named beside them so it knows which one a path in your sentence means here. And
 what it reads at that address is **its own copy, as the project stood when it started** —
 not the original, which you may still be changing while it works.
+
+**A conversation with no project of its own has one more folder, and it moves the same
+way.** A conversation you opened nowhere in particular keeps what it makes in its own `work`
+folder, and that is the address anything looking for somewhere to put a finished document
+answers with — so a brief written in such a conversation names it. It is not under the
+project the task is about, so the task cannot write there either. Its addresses are handed
+over as the same path under a `work` folder **inside the task's own copy**, and the section
+that names the folders says so outright: `…/work/flow.md` reaches the task as
+`…/trees/1/work/flow.md`, and what it leaves there comes home with the rest of its work. A
+conversation opened **in** a project keeps no such folder and nothing extra is rewritten for
+it. Before this, the brief named the conversation's own folder, the task's first write there
+was refused, and it had to invent that address for itself.
+
+## A later task is not pointed at an earlier task's copy
+
+**Another copy of the same folder, under this conversation's `trees/`, is rewritten
+into this task's own copy.** A task that already ran named the directory it stood in —
+`…/trees/1/internal/widget.go` — and the conversation that proposes the next piece of
+work writes that address into WHAT TO PRODUCE instead of yours. That path is not
+under the project, so it used to reach the new task exactly as written. The new task
+stands in `…/trees/2`, followed the address it was given, and was refused "is outside
+your copy" about a directory this conversation had invented. An earlier tree of the
+same conversation is a copy of the same folder, so the address is handed over as the
+same path under **this** task's own copy: `…/trees/1/internal/widget.go` reaches the
+later task as `…/trees/2/internal/widget.go`. A path that is genuinely somewhere else
+on the machine is still left as written, and still earns that refusal. A path that
+is under the project itself still binds as the project's copy, and only what that
+leaves behind is read as another task's tree. The person's own words are still
+quoted as they typed them.
 
 **Writing anywhere else is refused before it runs**, and the task reads the refusal and
 carries on. It covers every hand that names its target:
@@ -1041,6 +1081,13 @@ a session host answered in its journal only: the window sat at idle, the task ca
 done, and the answer was waiting in the transcript for whoever opened the conversation
 next. The turn now crosses the wire like any other.
 
+This is true for the ordinary `aforge chat` too, not only when you asked for a host: an
+ordinary chat is served by a session host. The same road brings the reply when a background
+job exits or a watch fires, so "my job finished and nothing appeared" is not a separate
+kind of silence. And it stays true after you have typed: a window used to stop hearing
+those self-started turns the moment it had run one turn of its own, and reopening the
+conversation was the only way to read what the model had said about the landed work.
+
 An ordinary reply to something you typed has no such line. If an old task has no recorded
 request, the line shows its identity mark and name alone rather than an empty quotation.
 If several tasks arrive before one answer, their lines are stacked in arrival order above
@@ -1076,8 +1123,8 @@ nothing.
 you have switched away from holds it for as long as you are away, and coming back
 gives you the reading time you had left — see the permissions page.
 
-All three say `waiting on you` while they wait: on home, on the status line's
-`2 open · 1 waiting`, and in a desktop notification the moment the question goes
+All three say `waiting on you` while they wait: on home, on the tab strip and in
+`/status`'s `2 open · 1 waiting`, and in a desktop notification the moment the question goes
 up — which now fires for a conversation this terminal is holding behind the
 screen even while the terminal is focused, because a focused terminal is no
 longer evidence that anybody is looking at *that* conversation.
@@ -1337,7 +1384,7 @@ read-only checker** is put in a clean restore of what the task wrote, runs the c
 declared, reads the diff, and answers. Only a pass merges.
 
 The checker has no shared context and no memory of the work. Its whole world is the
-acceptance you set, the task's own claim (labelled as a claim, not as evidence), the list
+acceptance you set, the task's full bounded conclusion (labelled as a claim, not as evidence), the list
 of files written, and where to look. **The brief is deliberately withheld** so it grades
 the contract, not the effort.
 
@@ -1743,11 +1790,13 @@ how**. It happens in two places:
   hands, and asked to hand it out.
 
 **How long is normal.** It is one full model call on the tier that thinks: **ten to thirty
-seconds**, measured at thirteen. It is given at most **three minutes**, and a reading nobody
-could get is not a refusal: an ordinary division goes ahead as the worker wrote it, and one
-that only this reading could have allowed does not. It carries no numbers — how many parts there are is exactly what it is deciding —
-and the roster says what happened afterwards, either `split into 3 parts:` or the task
-carrying on as one worker.
+seconds**, measured at thirteen. It is bounded at **ten minutes for the whole reading** —
+that tier's own patience — but a model that goes quiet is cut in tens of seconds by the
+guard every request runs under, so the ten minutes is what a reading being written may
+take and never how long you wait for one that is not coming. It carries no numbers — how
+many parts there are is exactly what it is deciding — and the roster says what happened
+afterwards, either `split into 3 parts:` or the task carrying on as one worker. *What the
+row under sizing the work says* below is the line that names the model being asked.
 
 **Nothing is wrong if it ends with no parts.** A reading that says the work is one job is
 a normal ending: the task runs as one worker, nothing is cancelled, and nothing is lost.
@@ -1756,6 +1805,35 @@ a normal ending: the task runs as one worker, nothing is cancelled, and nothing 
 no lane is free to pick the parts up, or a width floor you turned on says the material names
 too few items — the whole thing takes microseconds and no word is drawn for it. Only the reading is a wait,
 so only the reading is said.
+
+## What the row under sizing the work says — which model is being asked, sizing says asking a model, my task said a model did not answer in time, nobody answered going with the parts as drawn, asking again
+
+While a task says `sizing the work`, the **second row of its block says what is happening to
+the reading**, and it changes as the reading goes:
+
+```
+▏ sizing the work
+▏ asking z-ai/glm-5.3 · 1 of 2
+```
+
+`1 of 2` is which model of how many are lined up to be asked. When only one is lined up
+there is nothing to count and the row just says `asking <model>`.
+
+**If a model cannot answer, the row says so and names the next one.** It reads
+`z-ai/glm-5.3 did not answer in time · asking deepseek/deepseek-v4-flash-0731`, or
+`… could not be reached · asking …` where the request never landed at all. Each model is
+asked once: the next one along is the whole of the retry, and there is no waiting between
+them.
+
+**When nobody answers**, the last thing the row says is `nobody answered · going with the
+parts as drawn`, and then the task goes back to work. That is not a failure and nothing is
+lost: a second opinion that cannot be had is not a refusal, so an ordinary division goes
+ahead exactly as the worker wrote it. The one case that does not is a division that **only**
+this reading could have allowed — one a width floor had already turned down — and there the
+task carries on as a single worker instead.
+
+**The row clears when the reading ends.** It says what is true while it is true; a task back
+at its own work never carries a line about a wait that has finished.
 
 ## What briefing a worker means — briefing a worker, the wait before a handed-over turn becomes a task, aforge froze for thirty seconds, nothing appeared on the rail
 
@@ -2202,10 +2280,13 @@ ties alphabetically — the plain name before its variants.
 `task 7 started on anthropic/claude-opus-5: <title>`.
 
 **Two to four matches** get settled by you, on the proposal you are already being shown.
-The closest match leads, and that is what silence takes. Only a member of that shortlist
-can win: naming anything else, an empty answer, and the clock all fall back to the leading
-member. The task is admitted with one model, never a set. The shortlist is capped at 4 —
-the fifth would turn a proposal into a picker.
+It is one line above the proposal's answers — `run it on [ anthropic/claude-opus-5 ▾ ]` —
+and `←`/`→` walk it. The closest match leads, and that is what silence takes. Moving it
+answers nothing: the countdown goes on running, and the model in the hole when you answer
+is the one the work starts on. Only a member of that shortlist can win: naming anything
+else, an empty answer, and the clock all fall back to the leading member. The task is
+admitted with one model, never a set. The shortlist is capped at 4 — the fifth would turn
+a proposal into a picker.
 
 **If no model was named**, the task runs on `task.model` from settings when that is set,
 otherwise on **the model the conversation was on at the moment the task was admitted**.
@@ -2447,7 +2528,7 @@ anyway.
 
 Append-only, one row per landed task: id, name, label, title, status, the first sentence
 of the outcome, file count, cost, the model it ran on, its tokens in and out as one sum,
-duration, when it ended, the session id, and two URIs — where the work is and where the
+duration, when it started and when it ended, the session id, and two URIs — where the work is and where the
 transcript is. Never the content: it is an index, not an archive. A read keeps the newest
 2000 rows.
 
@@ -2625,7 +2706,7 @@ Endings are checked in a fixed order, and the first match wins:
 | 3 | A step limit fired **and the work did not hold when it was checked** | `stopped: 200 steps and no finish`, `stopped: 6 steps without progress`, or `stopped at repeat checkpoint: <what the second look said>` |
 | 4 | The checkpoints ran out | `ran out of time` |
 | 5 | You stopped it (`jobs kill`) | `stopped before it finished` |
-| 5b | The session closed or detached | paused — it resumes, it is not failed. A sub-harness **design** is the exception: `the design did not finish before aforge closed; nothing was saved` |
+| 5b | The session closed or detached | paused — it resumes, it is not failed. Two kinds do not resume: a sub-harness **design** reads `the design did not finish before aforge closed; nothing was saved`, and a **quick** task that was running reads `the quick task did not finish before aforge closed; whatever it wrote is in your folder` — it was writing in your own folder, so what it managed is already there |
 | 6 | The connection to the model dropped — a reset, a closed socket — after the call's own retries and one more worker on the same model | `lost the connection to the model: <err>` |
 | 6b | The model provider refused the request — an API error, a model that is not there | `it ended with an error: <err>`, and the row reads `the model provider refused it` |
 | 6c | The run errored | `it ended with an error: <err>` |
@@ -2755,8 +2836,8 @@ true.
 · the assistant, alongside grep (…): "<what it said as it called that tool>"
 
 CALLS THAT HAVE ALREADY RUN
-· grep {"pattern":"StreamCSV"} — came back; grep call-3 in <journal path>
-· bash {"command":"go build ./..."} — FAILED: undefined: streamCSV; grep call-4 in <journal path>
+· grep {"pattern":"StreamCSV"} — came back; read <full result path>
+· bash {"command":"go build ./..."} — FAILED: undefined: streamCSV; read <full result path>
 
 THE PERSON'S ORIGINAL MESSAGE
 The restatement above is bounded. Their original words are at this path and line — read them if that is not enough. The brief still governs what ships.
@@ -2776,7 +2857,9 @@ see *Can the task see the original request* below.
 a bounded selection: at most eight lines, each cut to about 600 characters with the middle
 marked `[…]` when it is longer, and at most six calls that had already run. Each line says
 who said it and names the session journal it came out of, so the worker can grep the words —
-or, for a call, the call id — and read the whole of it. The selection is made newest-first,
+or follow a call's full-result file — and read the whole of it. A result file names the
+specific output even if a provider reuses a call id. When only a journal reference is
+available, match the call arguments as well as its id. The selection is made newest-first,
 so the last thing you said before the work started is the line that always survives; older
 ones are dropped when the budget runs out. There is no line number: finding one would mean
 reading the whole journal every time a task starts.
@@ -2786,6 +2869,18 @@ requirements — the brief and the done-condition above them are still what the 
 graded against. A constraint you typed twenty turns ago, or one buried in the middle of a
 long message, may not be in the selection at all; if it has to bind the work, put it in the
 message that starts the task.
+
+**The quoted lines and the calls are read differently, and only one of them outranks the
+brief.** A quoted line that contradicts the work is news for the report, not a rule the
+worker applies on its own. The list of calls is not an opinion — those calls ran — so it
+**is** authoritative about what has already happened: where the brief, or the parts at the
+top of it, read as though one of them were still to be made, the task is told it has been
+made already, to read it through the pointer on its line instead of running it again, and to
+run it again only where the line says it **FAILED** or where what it reads disagrees with
+the brief. Nothing carries the result itself; the bytes stay where they are and the task
+fetches what it needs. This exists because a handover once opened on parts naming reading
+the conversation had already finished, while the list below said the same calls were done —
+and the worker obeyed the louder, earlier half and did the work twice.
 
 **A part with nothing in it gets no heading.** A task you wrote yourself with `/task` has no
 separate deliverable, so it reads as your words, the work and a done-condition. A task
@@ -2962,3 +3057,29 @@ pending names before closing its records. Those calls share up to two seconds
 of shutdown time, in addition to the existing waits for the current turn, task
 graph and background jobs. A provider that ignores cancellation can outlast
 that grace; this is a bounded wait, not a guarantee about every external process.
+
+## Does checking see the full task answer and the right tool results?
+
+Checking receives the worker's full bounded conclusion, not the shortened card summary.
+A longer answer carries its existing full-result address. A later repair or merge attempt
+replaces that conclusion; an attempt that said nothing does not reuse an older success.
+If a merge attempt is rolled back, the next check is told that its changes were undone.
+
+Tool results stay paired with the call that produced them, even when the model reuses
+an identifier in a later round. New workers can follow the specific full-result file;
+reopening a conversation without its in-memory success/failure metadata says the outcome
+is unknown. An unanswered call never borrows another call's successful result.
+
+The checker is told its actual working directory and comparison. A completed committed
+change is not described as an uncommitted staged diff. With no declared executable check,
+it reads the available files and evidence; it is not told to install dependencies it
+cannot install. Existing current checks travel through a handoff of the whole request;
+checks for a larger request do not automatically become a smaller part's checks.
+
+## Can the completion reader see what I just wrote?
+
+The completion reader sees the newest completed write or edit's small submitted argument
+object beside its matching tool result, within the existing context budget. A larger
+input is explicitly marked omitted, rather than shown as a partial object. Earlier
+failures remain part of the evidence. The model continuing the work is told to check a
+reader's objection against the actual work before changing an already-correct result.

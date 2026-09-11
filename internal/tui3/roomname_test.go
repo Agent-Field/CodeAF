@@ -147,7 +147,8 @@ func TestTheKinBlockKeepsEveryRelativesStateInsideItsRowBudget(t *testing.T) {
 	a.room = a.newRoom(3, a.tasks[3].title)
 
 	for _, width := range []int{160, 120, 80, 60} {
-		a.width, a.height = width, 40
+		// Compact frames retain the child summary; expanded frames use the tree.
+		a.width, a.height = width, 30
 		rows := kinRows(a)
 		if len(rows) > roomKinRowCap {
 			t.Fatalf("at %d columns the kin block is %d rows and the cap is %d:\n%q",

@@ -79,10 +79,21 @@ func passageBetween(t *testing.T, text, from, to string) string {
 	return text[start : start+end+len(to)]
 }
 
-// AND THE FIELD THE DOWRY RIDES IN SAYS SO. The principle is in the prompt; the
-// instruction about where to put the findings belongs on the argument that
-// carries them, because that is what the model reads at the moment it writes
-// one.
+// AND THE FIELD THE DOWRY RIDES IN ASKS FOR IT, in one clause.
+//
+// IT USED TO ASK FOR IT IN A PARAGRAPH, and the paragraph was the same one the
+// test above pins in prompts/system.md — `AND WHAT YOU HAVE ALREADY LEARNED
+// GOES WITH IT`, the dowry, in full, a second time. The prefix is a budget
+// (prefixbudget_test.go) and a rule stated in two places is the cheapest thing
+// in it to spend twice, so on 2026-09-10 the paragraph came out of the field
+// and the clause stayed: the model still reads, at the moment it writes a
+// brief, that what it has already found and ruled out belongs in there. What
+// this test pins is that the clause did not go with it.
+//
+// AND THE ONE RULE THE PAGE DOES NOT CARRY STAYS IN FULL. Nothing in
+// prompts/system.md says that a replacement for a failed task inherits neither
+// its transcript nor its report, so cutting that would not have been paying a
+// duplicate back, it would have been dropping a rule.
 func TestTheBriefArgumentAsksForWhatTheTurnAlreadyLearned(t *testing.T) {
 	agent, _ := newTestAgent(t, &routedCompleter{}, nil)
 	task, found := onBelt(agent, "propose_task")
@@ -90,14 +101,8 @@ func TestTheBriefArgumentAsksForWhatTheTurnAlreadyLearned(t *testing.T) {
 		t.Fatal("propose_task is not on the belt")
 	}
 	for _, want := range []string{
-		"WHERE YOU ARE ALREADY MID-WORK",
-		"WHAT YOU HAVE LEARNED IS PART OF THE BRIEF",
-		// The worker is now given a bounded list of the calls that ran and their
-		// inputs (admission.go), and nothing of what they RETURNED — so the
-		// argument asks for the findings on those grounds rather than on the older
-		// "it cannot see them at all".
-		"never what they returned",
-		"IF THIS REPLACES A FAILED TASK",
+		"what you have already found and ruled out",
+		"Replacing a failed task, carry its findings here",
 		"inherits neither its transcript nor its report",
 	} {
 		if !strings.Contains(string(task.Schema), want) {

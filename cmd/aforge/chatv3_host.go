@@ -599,9 +599,12 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) tui3.Opt
 		settings = config.Config{BaseURL: config.DefaultBaseURL}
 		profileDir = os.Getenv("AFORGE_PROFILE_DIR")
 	}
-	models := catalog.LoadLazy(context.Background(), catalog.Options{
-		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: profileDir,
-	})
+	discovery := catalog.Options{BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: profileDir}
+	models := catalog.LoadLazy(context.Background(), discovery)
+	// The refresh key in /model asks the same router THIS machine's list came
+	// from, and refills the same shelf — the list is this laptop's list of
+	// names on both doors (chatv3_modelshelf.go).
+	shelf := newV3ModelShelf(models, discovery)
 	seams := newHostSeams(client)
 	// EVERY BACKGROUND READING IS ARMED THROUGH ONE SEAM: the connection, and the
 	// notice line a duty that fell over speaks to once (chatv3_host_duty.go). A
@@ -641,7 +644,8 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) tui3.Opt
 		// timer that is already armed around a far process.
 		BashBackgroundAfterSeconds: welcome.BashBackgroundAfterSeconds,
 		ContextWindow:              v3Window(models, welcome.Model),
-		Models:                     func() []tui3.Model { return v3Models(models) },
+		Models:                     func() []tui3.Model { return v3Models(shelf) },
+		RefreshModels:              shelf.refresh,
 		// /export writes on THIS machine (host.go's honesty table), so its row
 		// goes in this machine's index — the same one the local launch spells.
 		ArtifactsIndex: artifactsIndexPath(),
@@ -684,7 +688,7 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) tui3.Opt
 		// which is exactly what welcome.Workspace is too).
 		//
 		// WHAT THIS LIGHTS UP HERE is both home's item band and the status line's
-		// `keeping an eye on` segment. Home reads the far world, so its project
+		// `◦ N standing orders` segment. Home reads the far world, so its project
 		// paths are paths this far store can answer, while the segment asks about this
 		// window's workspace — which over --host is the engine's own path, so
 		// the count is about the right machine ([hostStanding] has the longer
@@ -784,10 +788,11 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) tui3.Opt
 	// cached behind the surface, and a second copy per tab would be a second walk
 	// of the far machine's places on every switch.
 	fleet.machine = machineReadings{
-		recent: options.RecentSessions,
-		world:  options.World,
-		window: func(model string) int { return v3Window(models, model) },
-		draft:  options.DraftFile,
+		recent:  options.RecentSessions,
+		world:   options.World,
+		window:  func(model string) int { return v3Window(models, model) },
+		draft:   options.DraftFile,
+		history: options.History,
 	}
 	// THIS CONVERSATION'S OWN ROWS, out of the same shared walk every conversation
 	// beside it reads its own out of (chatv3_beside.go's [farTaskRows]). It
@@ -917,6 +922,10 @@ type hostSeams struct {
 	// Follow is the turns started by another window on this conversation, so a
 	// window that is not typing is still a window onto the work.
 	Follow func() <-chan remote.Following
+	// NewsSilent says the far engine has sent none of the status line's news —
+	// no provider, no live rate — and has not said it would
+	// ([remote.Client.NewsSilent]).
+	NewsSilent func() bool
 }
 
 func newHostSeams(client *remote.Client) hostSeams {
@@ -934,7 +943,7 @@ func newHostSeams(client *remote.Client) hostSeams {
 			return client.HeldQuestions()
 		},
 		Driving: client.Driver, DrivingChanged: client.DriverChanged, Take: client.Take,
-		Follow: client.Follow,
+		Follow: client.Follow, NewsSilent: client.NewsSilent,
 	}
 }
 
@@ -1036,11 +1045,13 @@ const hostStandingEvery = 5 * time.Second
 // seam's own doc comment leads with: /home does not open over --host at all
 // (internal/tui3's homeRemoteWord), so home's item band and its `p` and `s` keys
 // are unreachable here and homestanding.go's per-project standItems is never
-// called. The live reader is THE STATUS LINE — [app.keepingCount] feeds the
-// `keeping an eye on 2` segment, and it asks about the window's own workspace,
-// which over --host is the ENGINE's path. That makes the count a true sentence
-// about the right machine, and it is a real thing to have: a remote window says
-// how many things are keeping an eye on the project it is sitting in.
+// called. The live reader is THE TASK COLUMN'S FOOT AND /status —
+// [app.keepingCount] feeds the `◦ 2 standing orders` line at the foot of the
+// column (and the same words under `watching` on /status and the phone sheet),
+// and it asks about the window's own workspace, which over --host is the
+// ENGINE's path. That makes the count a true sentence about the right machine,
+// and it is a real thing to have: a remote window says how many things are
+// keeping an eye on the project it is sitting in.
 //
 // AND IT EXISTS FOR ONE LAW, which is [tui3.StandingSeam.Items]': it MUST NOT
 // BLOCK. That segment is asked on EVERY FRAME and twice per frame while a turn
@@ -1239,43 +1250,7 @@ func runHostOnce(agent *remote.Agent, text string) error {
 	if err != nil {
 		return reported(err)
 	}
-	wrote := false
-	newline := func() {
-		if wrote {
-			fmt.Println()
-			wrote = false
-		}
-	}
-	var failure error
-	for event := range events {
-		switch event.Kind {
-		case session.EventTextDelta:
-			if event.Text == "" {
-				continue
-			}
-			fmt.Print(event.Text)
-			wrote = !strings.HasSuffix(event.Text, "\n")
-		case session.EventToolBegin:
-			newline()
-			fmt.Fprintln(os.Stderr, "tool: "+tui3.ToolGloss(event.Tool, event.Hint))
-		case session.EventToolFailed:
-			newline()
-			reason := event.Hint
-			if reason == "" && event.Err != nil {
-				reason = event.Err.Error()
-			}
-			fmt.Fprintln(os.Stderr, "tool: "+event.Tool+" failed: "+reason)
-		case session.EventCompacted:
-			newline()
-			fmt.Fprintln(os.Stderr, "compacted: "+event.Hint)
-		case session.EventError:
-			failure = event.Err
-			if failure == nil {
-				failure = fmt.Errorf("session: the turn failed without a reason")
-			}
-		}
-	}
-	newline()
+	failure := drainOnceEvents(events, os.Stdout, os.Stderr)
 	_ = agent.Close()
 	return reported(failure)
 }
@@ -1407,24 +1382,54 @@ func newHostLedger(far hostFar) *hostLedger {
 	far.arm(&h.duty, "reading what has been spent")
 	return h
 }
+
+// hostLedgerEvery is how stale a held reading of the far ledger is allowed to be
+// before the next reading asks for a fresh one behind itself.
+//
+// IT IS THE ONE THING THAT MADE THE SPEND PLACE A PHOTOGRAPH. What is held used
+// to be replaced only when a WIDER window was asked for, so a launch's prime
+// answered the whole fourteen days and every reading after it was served out of
+// that answer for the life of the process: a conversation that spent money in
+// front of somebody left `nothing spent yet — the first model call writes a line
+// here` on the page under it, because the only reading the surface ever took was
+// the one from before the call. The local seam re-reads the file on home's own
+// three-second beat (place_spend.go), and this is that beat said over a wire.
+//
+// It matches [hostWorldEvery] rather than [hostStandingEvery] because it answers
+// the same kind of question — a page a person is looking at right now, about
+// facts that move while they look — and because both are read on the frame.
+const hostLedgerEvery = 2 * time.Second
+
 func (h *hostLedger) prime() { h.start(time.Now().AddDate(0, 0, -14)) }
 func (h *hostLedger) read(since time.Time) ([]session.UsageLine, bool, bool) {
-	lines, held, known, need := h.snapshot(since)
-	if need {
+	lines, held, known, floor, need := h.snapshot(since)
+	switch {
+	case need:
+		h.start(since)
+	case h.duty.due("", hostLedgerEvery):
+		// AND THE REFRESH NEVER ASKS FOR LESS THAN IS ALREADY HELD. The floor is
+		// replaced by whatever the last trip asked for, so a beat that re-asked
+		// with the CURRENT view's `since` would throw away the fortnight the prime
+		// fetched every time somebody looked at today — and the next reading of the
+		// chart would find the window too narrow and fetch it all over again, on
+		// every beat, for ever.
+		if floor.Before(since) {
+			since = floor
+		}
 		h.start(since)
 	}
 	return lines, held, known
 }
 
-// snapshot is what is held and whether a wider window is wanted, under the lock
-// held from a defer.
-func (h *hostLedger) snapshot(since time.Time) (lines []session.UsageLine, held, known, need bool) {
+// snapshot is what is held, how far back it reaches and whether a wider window
+// is wanted, under the lock held from a defer.
+func (h *hostLedger) snapshot(since time.Time) (lines []session.UsageLine, held, known bool, floor time.Time, need bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	lines = append([]session.UsageLine(nil), h.lines...)
-	held, known = h.held, h.known
+	held, known, floor = h.held, h.known, h.floor
 	need = !known || since.Before(h.floor)
-	return lines, held, known, need
+	return lines, held, known, floor, need
 }
 func (h *hostLedger) start(since time.Time) {
 	h.duty.run("chatv3/host-ledger", "", func() {

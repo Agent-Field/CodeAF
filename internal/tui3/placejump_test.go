@@ -71,9 +71,19 @@ func TestTheRightArrowOpensTheRowsVerbsOnEveryPlace(t *testing.T) {
 			if a.strip.open {
 				t.Fatalf("the %s place opened with a verb strip already up", place.id.word())
 			}
+			from := a.home.columnOf(a.home.cursor)
 			drive(t, a, key("right"))
 			if a.page != place.id {
 				t.Fatalf("`→` on the %s place moved to %q", place.id.word(), a.page.word())
+			}
+			// ON HOME'S GRID OF COLUMNS `→` IS THE NEXT COLUMN where one has a row
+			// to stand on, and the strip is `→` where none does (homegrid.go's
+			// [app.homeGridCross]; pages_test.go pins that end).
+			if place.id == pageHome && a.home.gridOn() && a.home.columnOf(a.home.cursor) == from+1 {
+				if a.strip.open {
+					t.Fatal("`→` crossed home's columns and opened a strip as well")
+				}
+				return
 			}
 			if !a.strip.open {
 				if len(a.rowVerbs()) > 0 {

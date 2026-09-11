@@ -59,7 +59,10 @@ func TestTheCompositeStandsWhenTheModelSaidNothing(t *testing.T) {
 	es := captionFixture()
 	es = append(es[:1], es[2:]...)
 	got := captionsOf(es, 0)
-	if len(got) != 1 || got[0].text != "reading 2 files in internal/tui3" || got[0].source != captionMade {
+	// The fixture's reads have both come back, so the composed floor is in the
+	// past (caption.go's [captionPast]); what this test is about is that there
+	// IS a composed floor when the model narrated nothing.
+	if len(got) != 1 || got[0].text != "read 2 files in internal/tui3" || got[0].source != captionMade {
 		t.Fatalf("composite = %#v", got)
 	}
 }
@@ -89,7 +92,11 @@ func TestThinkingNeverBecomesACaption(t *testing.T) {
 		strings.Contains(got[0].text, "I should") {
 		t.Fatalf("thinking leaked into the step title: %#v", got[0])
 	}
-	if got[0].source != captionMade || got[0].text != "listing github issues" {
+	// The call carries `toolOK`, so the batch has CLOSED, and a floor caption
+	// about a batch that has closed is spelled in the past (caption.go's
+	// [captionPast]). The step is still the tool floor, which is what this test
+	// is about; the tense is asserted on its own in failurerow_test.go.
+	if got[0].source != captionMade || got[0].text != "listed github issues" {
 		t.Fatalf("want a tool floor step, got %#v", got[0])
 	}
 }
@@ -130,6 +137,107 @@ func TestACaptionIsOneShortSentence(t *testing.T) {
 	}
 	if strings.Contains(got, "…") || strings.HasSuffix(got, "are") || strings.HasSuffix(got, "which") {
 		t.Fatalf("caption ended mid-clause: %q", got)
+	}
+}
+
+func TestCaptionWordsKeepsTokenPunctuationAndSentenceBoundaries(t *testing.T) {
+	tests := []struct {
+		name string
+		line string
+		want string
+	}{
+		{
+			name: "file extension",
+			line: "Reading livesteps.go now.",
+			want: "Reading livesteps.go now",
+		},
+		{
+			name: "dotted token in a sentence",
+			line: "I will update config.json and then run the suite.",
+			want: "I will update config.json and then run the suite",
+		},
+		{
+			name: "version number",
+			line: "Bumping the pin to v1.2.3 across the three services.",
+			want: "Bumping the pin to v1.2.3 across the three services",
+		},
+		{
+			name: "dot inside a path without a sentence end",
+			line: "searching ~/.aforge/v3/projects for the transcript",
+			want: "searching ~/.aforge/v3/projects for the transcript",
+		},
+		{
+			name: "real sentence boundary",
+			line: "Good leads. Fetching the key pages to confirm which are open.",
+			want: "Fetching the key pages to confirm which are open",
+		},
+		{
+			name: "newline boundary",
+			line: "Reading livesteps.go now\nThen checking the renderer.",
+			want: "Reading livesteps.go now",
+		},
+		{
+			name: "word limit and dangling words",
+			line: "fetching the key pages to confirm which are actually still open tonight in toronto",
+			want: "fetching the key pages to confirm",
+		},
+		{
+			name: "question mark inside a token",
+			line: "fetching https://api.example.com/v1?limit=10 for the list",
+			want: "fetching https://api.example.com/v1?limit=10 for the list",
+		},
+		{
+			name: "exclamation mark inside a token",
+			line: "checking cache!primary before reading the fallback",
+			want: "checking cache!primary before reading the fallback",
+		},
+		{
+			name: "question mark at a sentence end",
+			line: "Ready? Fetching the key pages to confirm which are open.",
+			want: "Fetching the key pages to confirm which are open",
+		},
+		{
+			name: "terminator run at a sentence end",
+			line: "Done!! Fetching the key pages to confirm which are open.",
+			want: "Fetching the key pages to confirm which are open",
+		},
+		{
+			name: "closing punctuation before a sentence end",
+			line: "Good (“confirmed!”). Fetching the key pages to confirm which are open.",
+			want: "Fetching the key pages to confirm which are open",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := captionWords(tt.line)
+			if got != tt.want {
+				t.Fatalf("captionWords(%q) = %q, want %q", tt.line, got, tt.want)
+			}
+			if strings.Contains(got, "…") {
+				t.Fatalf("captionWords(%q) appended an ellipsis: %q", tt.line, got)
+			}
+		})
+	}
+}
+
+func TestTheDrawnCaptionKeepsAFileExtension(t *testing.T) {
+	es := captionFixture()
+	es[1].text = "Reading livesteps.go now."
+	got := captionsOf(es, 0)
+	if len(got) != 1 {
+		t.Fatalf("captions = %#v, want one", got)
+	}
+
+	a := newTestApp(&fakeAgent{model: "m"})
+	rows := a.captionRows(got[0], false, false, 80, a.conversation())
+	var drawn strings.Builder
+	for _, row := range rows {
+		drawn.WriteString(plain(row.text))
+		drawn.WriteByte('\n')
+	}
+	if page := drawn.String(); !strings.Contains(page, "livesteps.go") {
+		t.Fatalf("drawn caption lost the file extension:\n%s", page)
 	}
 }
 
@@ -219,7 +327,10 @@ func TestALiveTurnKeepsPastCaptionsShutAndTheFrontierOpen(t *testing.T) {
 	// they have — the past steps shut, the step still running open.
 	showLiveWork(t, a)
 	page := strings.Join(plainRows(a), "\n")
-	if !strings.Contains(page, "reading 2 files") {
+	// PAST STEP, PAST TENSE. Both of this batch's reads have come back, so its
+	// floor caption reads `read 2 files` — the step still running below it keeps
+	// the present, which is the contrast this test is named for.
+	if !strings.Contains(page, "read 2 files") {
 		t.Fatalf("past caption missing:\n%s", page)
 	}
 	if !strings.Contains(page, "editing") {

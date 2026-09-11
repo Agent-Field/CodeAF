@@ -255,17 +255,14 @@ func TestTheOpenFoldDrawsInsideASixtyCellFrame(t *testing.T) {
 
 // ── THE HINT LINE ───────────────────────────────────────────────────────────
 
-// THE HINT IS ONE STRING SAID TWICE AND THE TEST IS WHAT KEEPS THEM ONE. Below
-// sixty the keys go from the right, whole — never a key spelled `es…`.
+// THE HINT IS ONE STRING SAID TWICE AND THE TEST IS WHAT KEEPS THEM ONE. The
+// keys go from the right, whole — never a key spelled `es…`.
 func TestThePickerHintIsRankedAndNeverHalfAKey(t *testing.T) {
 	if got := rowAll(pickerHintFields); got != pickerHint {
 		t.Fatalf("the hint's fields join to %q, want %q", got, pickerHint)
 	}
-	if got := pickerHintAt(58); got != pickerHint {
-		t.Fatalf("at sixty columns the box says %q — the whole line was the law", got)
-	}
 	for _, room := range []int{58, 42, 30, 20, 8} {
-		got := pickerHintAt(room)
+		got := pickerHintAt(room, true)
 		if ansi.StringWidth(got) > room {
 			t.Fatalf("in %d cells the hint drew %d: %q", room, ansi.StringWidth(got), got)
 		}

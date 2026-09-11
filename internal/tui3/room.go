@@ -121,6 +121,15 @@ type taskSteerDoor interface {
 	SteerTask(id uint64, text string) (session.SteerReceipt, error)
 }
 
+// taskWeightDoor is what one node's worker weighs — the size of the request it
+// has in flight, the figure a room's ↑ draws (tokencol.go). It is a door of its
+// own because only an engine that holds the worker can answer it: a hosted room
+// has no lane and reads the same fact off the node's journal instead
+// (roomrefresh.go). Zero is "nobody is working that node right now".
+type taskWeightDoor interface {
+	TaskContextTokens(id uint64) int
+}
+
 func (a *app) taskSteerDoors() (taskSteerDoor, bool) {
 	door, ok := a.agent.(taskSteerDoor)
 	return door, ok
@@ -179,21 +188,17 @@ type taskModelDoor interface {
 // taskModelDoors is that door under this surface, when it has one.
 func (a *app) taskModelDoors() (taskModelDoor, bool) {
 	door, ok := a.agent.(taskModelDoor)
+	if host, hosted := a.agent.(interface{ TaskSetupSupported() bool }); hosted {
+		ok = ok && host.TaskSetupSupported()
+	}
 	return door, ok
 }
 
 // roomModelMovable reports whether the room's model word is a DOOR as well as a
 // fact — which is exactly the set of moments a press on it would do something.
 //
-// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN, so this is what the render
-// records the press target from ([app.identityParts]) rather than something the
-// press checks after the fact. A finished, incomplete, stopped or your-call node's
-// model is a fact about what happened and nothing can move it; a queued node has
-// not started, and the engine refuses it in the same words; a run's page is a
-// fleet rather than one node, and a node belonging to a run is not in the graph
-// this door reaches. In every one of those the word is still drawn — a person is
-// entitled to read what the work ran on — and it simply does not light and does
-// not answer.
+// Ordinary settled tasks save continuation settings through the same picker.
+// Adaptive runs and guest pages remain outside this task model door.
 func (a *app) roomModelMovable() bool {
 	if a.room == nil || a.room.orch != nil {
 		return false
@@ -210,7 +215,7 @@ func (a *app) roomModelMovable() bool {
 	if node == nil || node.run != "" {
 		return false
 	}
-	if node.state != session.TaskRunning || node.stopped {
+	if !taskSetupAvailable(node) {
 		return false
 	}
 	_, ok := a.taskModelDoors()
@@ -238,6 +243,9 @@ func (a *app) retargetTask(id uint64, model string) {
 	}
 	if err := door.RetargetTask(id, model); err != nil {
 		a.note(err.Error())
+		if a.room != nil && a.room.id == id {
+			a.roomNote(err.Error())
+		}
 		return
 	}
 	// The engine publishes the new id on an update of its own, which is what moves
@@ -249,6 +257,13 @@ func (a *app) retargetTask(id uint64, model string) {
 	// The id and the model are both facts and the two `·` labels between them are
 	// not, so the pair steps to ink and the scaffolding stays dim (payload.go).
 	a.noteFacts(taskIDWord(id)+" · model · "+model, taskIDWord(id), model)
+	if a.room != nil && a.room.id == id {
+		timing := "its next turn takes it"
+		if taskSetupLater(a.roomNode()) {
+			timing = "saved for when you continue"
+		}
+		a.roomNote("model · " + model + " · " + timing)
+	}
 }
 
 // taskModelUnavailableWord is the degraded case, in the vocabulary the other
@@ -261,6 +276,9 @@ const taskModelUnavailableWord = "changing a task's model is unavailable — thi
 // taskRoom is one node's page: what it has said, the lane carrying what it says
 // next, and where the reader is in it.
 type taskRoom struct {
+	// detailsTop belongs to this page so scrolling its facts never moves the tree.
+	detailsTop int
+
 	id    uint64
 	title string
 	// feed is this page's transcript and the reducer that grows it (feed.go).
@@ -274,6 +292,10 @@ type taskRoom struct {
 	// what they have always meant to every reader of them — the fields moved
 	// house, not name.
 	feed
+	// requests is the newest request lines the last journal reading held, for a
+	// page with no lane: what lets the next reading count only what is new
+	// (roomrefresh.go's [taskRoom.takeRequests]).
+	requests []session.RequestLine
 	// unfolded is the page's OWN fold state, keyed by the page's own turns. It is
 	// not the conversation's map for the reason the entries are not the
 	// conversation's list: a turn number means nothing outside the list it counts
@@ -411,7 +433,7 @@ const (
 	// already carrying that key while a room is open, and one row saying the same
 	// thing twice is the defect the rewind mode's empty hint exists to avoid.
 	roomRecallHint = "↑↓ history"
-	roomStopHint   = "x stop"
+	roomStopHint   = "/stop · x with empty input"
 	// roomGoneWord is the one line a landed node's room draws when there is
 	// NOTHING to replay: no lane, and no journal entries. The engine keeps the
 	// transcript's path across restarts and finds it by id when it was not
@@ -619,8 +641,15 @@ func (a *app) openRoom(id uint64, title string) {
 		title = taskIDWord(id)
 	}
 	room := a.newRoom(id, title)
-	room.entries, room.turn = a.roomRecord(
-		session.ReadTranscript(doors.TaskJournal(id)), roomTail)
+	record := session.ReadTranscript(doors.TaskJournal(id))
+	room.entries, room.turn = a.roomRecord(record, roomTail)
+	// ↑ FROM THE FIRST FRAME, where the journal can say it: the newest request
+	// the node banked is the weight of what it last sent, and the worker's own
+	// answer replaces it on the next beat ([app.usageBack]). ↓ is deliberately
+	// NOT seeded from the same lines — the lane's step totals add the running
+	// step's whole bill when it ends, and a seed would count its earlier
+	// requests twice (tokencol.go).
+	room.col.weight = record.Requests.Latest
 	// AND WHAT THIS NODE HAS ALREADY STARTED JOINS THE SESSION'S COUNTS. Opening
 	// the page is the moment this surface first READS a node's history, and a
 	// background job it started an hour ago is as alive as one it starts while
@@ -847,7 +876,7 @@ func (a *app) farRoomRead(msg roomRecordMsg) tea.Cmd {
 const farRoomEvery = 250 * time.Millisecond
 
 func farRoomTick(gen int) tea.Cmd {
-	return tea.Tick(farRoomEvery, func(time.Time) tea.Msg { return farRoomTickMsg{gen: gen} })
+	return surfaceTick(farRoomEvery, func(time.Time) tea.Msg { return farRoomTickMsg{gen: gen} })
 }
 
 func (a *app) farRoomPoll(gen int) tea.Cmd {
@@ -1144,6 +1173,13 @@ func (a *app) roomEvent(ev session.Event) tea.Cmd {
 		// speculatively, before anybody has clicked anything (remotefiles.go).
 		// Nil on every local session.
 		after = a.prefetchWritten(ev)
+		// And the node's weight has just moved — its step is billed and its
+		// result is joining what it sends next — so the beat asks now
+		// ([app.usageOwed], [taskWeightDoor]).
+		a.usageOwed = true
+
+	case session.EventToolFailed:
+		a.usageOwed = true
 
 	case session.EventTurnDone:
 		// THE STEP IS FINISHED AND ON DISK — the same event internal/session's
@@ -1154,17 +1190,39 @@ func (a *app) roomEvent(ev session.Event) tea.Cmd {
 		// revision the review pass writes are two replies on one lane, and
 		// without this they arrived as one unbroken wall of JSON.
 		room.closeLive()
-		// AND ONE STEP'S ACCOUNTING IS ADDED TO THE PAGE'S COLUMN, the way the
-		// pilot adds it to the node's bill (task.go's [taskNode.liveCost]): a
-		// node is driven through many Submits, this is the end of one, and the
-		// figures at the right edge of its live work are the sum of them. The
-		// column is not opened afresh per step because the work the block stands
-		// for is the node's whole run, and the block leaves when the run does.
-		room.col.up += ev.Usage.Input
-		room.col.down += ev.Usage.Output
+		// AND ONE STEP'S OUTPUT IS ADDED TO THE PAGE'S ↓, the way the pilot adds
+		// it to the node's bill (task.go's [taskNode.liveCost]): a node is driven
+		// through many Submits, this is the end of one, and what came back over
+		// its live work is the sum of them. The column is not opened afresh per
+		// step because the work the block stands for is the node's whole run, and
+		// the block leaves when the run does. The mark goes down with it, so ↓
+		// goes on moving with what arrives after (tokencol.go's [tokenCol.bill]).
+		//
+		// ↑ IS NOT SUMMED, and that is the point of the change that put this
+		// sentence here. The step's Input is every request of that step added
+		// together; ↑ is ONE request — the node's newest — and it comes from the
+		// worker itself on the usage beat ([taskWeightDoor]).
+		room.col.bill(room.col.down+ev.Usage.Output, room.turnWritten(), room.turn)
+		a.usageOwed = true
 
 	case session.EventError:
-		a.roomNote("error: " + errText(ev.Err))
+		// THE NODE'S OWN FAILURES ARE ROWS ON ITS PAGE, in the conversation's
+		// words for the same thing: a request that was asked again draws its
+		// reason as it happens ([feed.retry], which this page's reducer takes
+		// through [feed.ingest] above), and a step that ran out of tries ends on
+		// `gave up after 2 tries · …` rather than on a page that goes on saying
+		// nothing has arrived yet ([roomYetWord]).
+		//
+		// AND IT CANNOT SAY THE SAME THING TWICE AS THE PHASE LINE. The line
+		// under the phase word (taskphase.go) is an ERRAND's ladder — a sizing
+		// reading, a review — which asks a DIFFERENT model at each rung and
+		// reports on the node's phase notice, never on its event stream
+		// (internal/session's auxiliary.go sends no event at all). These rows are
+		// the node's OWN turn being asked again. The two vocabularies are one
+		// vocabulary read against that difference: an errand says `asking
+		// <model>` because the model changes, and a turn says `asking again`
+		// because it does not.
+		a.roomNote(a.room.failureNote(ev.Err, a.serviceWordFor(a.roomNodeModel())))
 	}
 	a.touch()
 	return tea.Batch(after, waitRoom(room.lane, room.gen), a.wake())
@@ -1588,27 +1646,16 @@ func (a *app) guardSend(revive bool) tea.Cmd {
 
 // ── the guard, drawn ────────────────────────────────────────────────────────
 
-// ONE SLOT, TWO QUESTIONS. The stop confirmation (stop.go) is drawn in exactly
-// the rows the steer guard is drawn in, and the three functions below are where
-// that is arranged: the frame asks the guard how tall it is, what it says, and
-// what each of its rows IS for the pointer, and it never learns there are two
-// kinds of question down there.
-//
-// They share rather than stack because they are the same shape of thing — the
-// surface holding a keystroke back until it is told whether to act on it — and
-// because they can never be up together: a guard is raised by an enter in a
-// room's box, and the stop card is raised by a key that is only ever taken over
-// an empty one.
+// ONE SLOT, ONE QUESTION NOW. The stop confirmation (stop.go) and the tab-close
+// card (tabclose.go) were drawn in exactly these rows, and both are the question
+// block's (question.go) — so what is left here is the steer guard alone, which
+// is not a question the block draws: it is the surface holding a SENTENCE back
+// until it is told where to send it, and what it offers are two destinations
+// rather than two answers.
 
 // guardHeight is how many rows the question takes: the offer, and the engine's
 // reason under it when there is one.
 func (a *app) guardHeight() int {
-	if n := a.tabCloseHeight(); n > 0 {
-		return n
-	}
-	if n := a.stopHeight(); n > 0 {
-		return n
-	}
 	if !a.guarding() {
 		return 0
 	}
@@ -1618,29 +1665,17 @@ func (a *app) guardHeight() int {
 	return 2
 }
 
-// guardMark says what one row of the slot is for the pointer. The steer guard
-// answers to no press — it is three keys and nothing else — and the stop card's
-// answers are a row somebody can put a finger on.
-func (a *app) guardMark(at int) chromeRow {
-	if a.closingTab() {
-		return chromeRow{kind: chromeTabClose, index: at}
-	}
-	if a.stopping() {
-		return chromeRow{kind: chromeStop, index: at}
-	}
-	return chromeRow{}
-}
+// guardMark says what one row of the slot is for the pointer, and the answer is
+// NOTHING: the steer guard is three keys and nothing else. It is a function
+// rather than a bare zero at the call site because the frame asks every block on
+// the chrome the same question, and a slot that answered it differently would be
+// the one place a reader has to check.
+func (a *app) guardMark(int) chromeRow { return chromeRow{} }
 
 // guardRows draws it, in the question hue the approval block wears and for the
 // same reason: this is the surface blocked on a keyboard, and the one thing on
 // screen that is blocked on you must not look like the things that are not.
 func (a *app) guardRows(width int) []string {
-	if rows := a.tabCloseRows(width); len(rows) > 0 {
-		return rows
-	}
-	if rows := a.stopRows(width); len(rows) > 0 {
-		return rows
-	}
 	if !a.guarding() {
 		return nil
 	}
@@ -1751,23 +1786,16 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if cmd, taken := a.guardKey(msg); taken {
 		return cmd, true
 	}
-	// AND THE DESIGN'S APPROVAL CHORDS ARE READ UNDER THE GUARD, which is the
-	// right order for the one moment both are on screen: the guard is a question
-	// raised by a sentence the person just tried to send, and it has to be
-	// answered before anything else in the room means anything. These two take
-	// only ctrl+k and ctrl+x and let every other key past — a row that swallowed
-	// keys would make the box it points at unusable (roomapproval.go).
-	if a.roomApprovalKey(msg) {
-		return nil, true
-	}
-	// AND THE FOUR LETTERS THAT DECIDE ABOUT A NODE THAT NEEDS A LOOK, under the
-	// guard for the same reason, and only ever over an EMPTY box: the box in here
-	// steers the worker, and a letter that decided somebody's work was finished
-	// on the first keystroke of a sentence would be unforgivable
-	// (tasksettle.go's [app.roomSettleKey] holds every guard `x` has).
-	if a.roomSettleKey(msg) {
-		return nil, true
-	}
+	// THE LETTERS THAT DECIDE ABOUT A NODE THAT NEEDS A LOOK ARE NOT TAKEN HERE.
+	// A landed `your call` is a question, and the question block above the box
+	// answers it on every page with the one key grammar — which is read before
+	// this file is reached (input.go's key order, tasksettle.go says why).
+	//
+	// AND NEITHER IS A DESIGN WAITING TO BE JUDGED. It had two chords of its own
+	// pinned above the box in here (roomapproval.go, deleted) — one decision with
+	// two drawings and two grammars. It is the same question on the same block,
+	// answered by the same digits, and the two keys this file owns are untouched:
+	// esc leaves and enter steers.
 	// AND A RUN'S PAGE IS READ BEFORE THE ROOM'S OWN TWO KEYS (roomorch.go),
 	// because it has more levels than a room does: esc walks out of a chip's card
 	// and out of a nested run before it walks out of the page at all, and enter
@@ -1775,6 +1803,17 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// nothing. The recall walk is excluded here for the same reason esc excludes
 	// it below — a state the dismiss key cannot dismiss is a trap — and every key
 	// the page does not take falls through to the two below.
+	// Scoped controls remain commands after their argument closes the slash list.
+	// Otherwise Enter would send "/model <slug>" to the worker as an instruction.
+	if msg.String() == "enter" {
+		line := strings.TrimSpace(a.input.String())
+		name, _, _ := strings.Cut(line, " ")
+		if name == "/model" || name == "/stop" {
+			a.input.setText("")
+			a.closeLists()
+			return a.slash(line), true
+		}
+	}
 	if a.room.orch != nil && !a.recalling() {
 		if cmd, taken := a.orchKey(msg); taken {
 			return cmd, true
@@ -1810,6 +1849,13 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 
 	case "enter":
 		return a.steer(), true
+
+	case "alt+pgup":
+		a.roomDetailsScroll(-a.scrollPage())
+		return nil, true
+	case "alt+pgdown":
+		a.roomDetailsScroll(a.scrollPage())
+		return nil, true
 
 	case "ctrl+v":
 		// HOW HARD THIS NODE THINKS, one step up the ladder — the same chord that
@@ -1891,25 +1937,26 @@ func (a *app) roomHint() string {
 	case a.recalling():
 		return roomRecallHint
 	case a.stopOffered():
+		if a.roomOrganized() {
+			return "/model · /stop"
+		}
 		// THE ROOM'S ANSWER TO "HOW DO I STOP THIS". It is the honest counterpart
 		// to the conversation's "esc interrupt": the work in here ends through a
 		// card and never through the dismiss key (stop.go), so this is the key a
 		// person reaching for esc actually wants. It is drawn only while there is
 		// something to stop, which is the emptiness law applied to a hint.
 		return roomStopHint
-	case a.roomSettleAsking():
+	case a.roomLandingAsking():
 		// THE ROOM'S ANSWER TO "IT SAYS LOOK IT OVER, NOW WHAT". The node has
-		// landed, so nothing above this is live, and the three answers are
-		// printed on the foot as well — but the foot is at the far end of a page
-		// somebody is reading, and this slot is the one place on the frame a
-		// person looks for the next keystroke (tasksettle.go).
+		// landed, so nothing above this is live, and the answers are on the
+		// question block above the box — but that block is at the other end of a
+		// page somebody is reading, and this slot is the one place on the frame a
+		// person looks for the next keystroke.
 		//
-		// AND IT IS SPELLED TO THE FRAME. The slot takes a line whole or not at
-		// all ([app.legend]), so the full sentence — four cells too long at sixty
-		// columns — left the narrowest terminal naming none of the keys that
-		// answer the question it was standing on. [app.settleHintAt] is the
-		// ranked prefix of it that fits, spelled from the card's own chips.
-		return a.settleHintAt(a.roomSettleCard(), a.width, "")
+		// AND IT IS SPELLED FROM THE QUESTION'S OWN ANSWERS, so the block, this
+		// slot and the roster's cannot name three different letters for one
+		// question ([app.landingHintAt]).
+		return a.landingHintAt(a.room.id, a.width, "")
 	}
 	return ""
 }
@@ -2158,6 +2205,10 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	if !ok {
 		return nil, true
 	}
+	if line.roomAction != "" {
+		a.roomPanelTake(line.roomAction)
+		return nil, true
+	}
 	// THE FOOTER'S ONE OFFER IS PRESSABLE, because a hint that names a key and
 	// cannot be pressed is a hint that is only for one of the two hands
 	// (task.go's [app.railFootRows]).
@@ -2175,6 +2226,16 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	// enters.
 	if line.more {
 		return a.showPage(pageTasks), true
+	}
+	// AND THE STANDING COUNT IS THE FOURTH, on the same terms: it is a line of
+	// the footer, it belongs to no node, and it opens the page a person reading
+	// that number is trying to find (standdoor.go). It is refused only where the
+	// page is already what they are looking at.
+	if line.keeping {
+		if a.at(pageStanding) {
+			return nil, true
+		}
+		return a.openStanding(), true
 	}
 	if line.hint {
 		a.railWiden(!a.railWide)
@@ -2339,16 +2400,32 @@ func (a *app) roomHeadRows(width int) []string {
 		return []string{a.roomTrailRow(width)}
 	}
 	head := []string{a.roomTrailRow(width), a.roomFactsLine(width)}
-	if rows > roomHeadRowCount {
+	if a.roomOrganized() {
+		head = []string{a.roomTrailRow(width), a.roomTitleRow(width)}
+	}
+	if rows > a.roomHeadCount() {
+		if a.roomOrganized() {
+			head = append(head, a.rule(width))
+			return head
+		}
 		head = append(head, "")
 	}
 	return head
 }
 
 // roomHeadRowCount counts the semantic rows before optional trailing air on a frame with the
-// height to spare: the trail, and the facts under it. The tab strip above and
+// height to spare: the trail and the title with its facts. Compact frames
+// keep the title within the trail. The tab strip above and
 // the kin rows below are counted separately.
 const roomHeadRowCount = 2
+
+// Compact frames already name the task in their navigation row.
+func (a *app) roomHeadCount() int {
+	if a.roomOrganized() {
+		return roomHeadRowCount
+	}
+	return 2
+}
 
 // roomHeadHeight is how many of those rows this frame can actually afford.
 //
@@ -2370,12 +2447,15 @@ func (a *app) roomHeadHeight(width int) int {
 	if a.breathingRows() < 2 {
 		return 1
 	}
-	return roomHeadRowCount + a.roomHeaderPad()
+	return a.roomHeadCount() + a.roomHeaderPad()
 }
 
 // roomTrailRow is the ancestry, the way out, and nothing else.
 func (a *app) roomTrailRow(width int) string {
 	left, hits := a.roomHeadParts(width)
+	if a.roomOrganized() {
+		left, hits = a.roomAncestorParts(width)
+	}
 	a.crumbs, a.roomBackSpan = hits, hudSpan{}
 	line := strings.Repeat(" ", headLabelAt) + a.paintCrumbs(left, headLabelAt, a.pal.accent)
 	leftWidth := headLabelAt + ansi.StringWidth(left)
@@ -2732,6 +2812,10 @@ func roomKinName(name string, room int) string {
 // is telemetry about the page rather than a second header, and v1's column is
 // the reference — restrained, no border, no frame of its own (internal/tui).
 func (a *app) roomKinRows(width int) []string {
+	// The expanded page already has the family tree beside its transcript.
+	if a.roomOrganized() {
+		return nil
+	}
 	// FAMILY DETAILS BELONG TO THE TASK COLUMN. The header spans the window,
 	// but its child summary must stop where the adjacent roster begins. Both
 	// frame drawing and height accounting use this same width decision.
@@ -2860,6 +2944,17 @@ func (a *app) roomKinWord(node *taskNode) string {
 // of them out of [app.tasks] would describe the wrong work and then let a key act
 // on it. The guest's node is built once from the row that was pressed and is
 // never in that map ([taskGuest.node]).
+// roomNodeModel is the id the OPEN ROOM'S NODE is answering on, for the seams
+// that need the service behind it rather than the name on screen. Empty when no
+// node is open, which every caller reads as "no service to name".
+func (a *app) roomNodeModel() string {
+	node := a.roomNode()
+	if node == nil {
+		return ""
+	}
+	return strings.TrimSpace(node.model)
+}
+
 func (a *app) roomNode() *taskNode {
 	if a.room == nil {
 		return nil
@@ -3128,17 +3223,26 @@ const roomModelLead = "task "
 // is a guess this row is not entitled to make. It draws nothing, which is what
 // every other unpublished figure in a room draws ([app.roomSpend]).
 //
-// It wears NO REASONING SUFFIX AND NO SERVED RIDER either, for one reason said
-// twice: THE DIAL IS THE CONVERSATION'S. The ":high" is spliced on by lending
-// a.model its suffixed form for the length of one call (view.go's
-// [app.statusRow]) and the rider is keyed on a.model's own sighting, so both are
-// facts about the model the SESSION is running — and a task model wearing the
-// session's knob would be the same lie in smaller print. Reading the node's model
-// from the node keeps it out of the splice by construction.
+// It wears NO REASONING SUFFIX, because THE DIAL IS THE CONVERSATION'S: the
+// ":high" is spliced on by lending a.model its suffixed form for the length of
+// one call (view.go's [app.statusRow]), so a task model wearing it would be a
+// fact about the model the SESSION is running told in smaller print. Reading the
+// node's model from the node keeps it out of the splice by construction.
+//
+// IT DOES WEAR A SERVED RIDER, and it is the NODE'S (lanes.go's
+// [app.roomLaneRider]). It did not until the news started saying which piece of
+// work it was about: the sighting desk was keyed by model, so the only machine
+// this row could have named was whichever answer on that model id landed last —
+// the conversation's, most often — and drawing that here would have been the
+// same misreading as the reasoning splice. The rider is appended by the caller
+// ([app.identityParts]), which is where the row's width ladder lives.
 func (a *app) roomModelWord() string {
 	node := a.roomNode()
 	if node == nil {
 		return ""
+	}
+	if node.nextModel != "" {
+		return "next model " + modelBase(node.nextModel)
 	}
 	model := modelBase(strings.TrimSpace(node.model))
 	if model == "" {
@@ -3240,6 +3344,23 @@ func (a *app) roomRows(width int) []row {
 	if a.roomGuestStale() {
 		out = append(out, row{text: a.pal.dim(fit(roomGuestStaleWord, inner)), entry: -1})
 	}
+	// AND A CONVERSATION THAT HAS STOPPED AND IS WAITING ON SOMEBODY SAYS SO,
+	// under what it has done so far. The roster cannot say it — a node sitting on
+	// a question is still `running` — so a page reading somebody else's work drew
+	// a clock over work that had not moved since somebody was asked something
+	// (taskowner.go's questions lane).
+	//
+	// IT IS DIM AND NOT AMBER, AND THAT IS THE HUE LAW RATHER THAN AN OVERSIGHT.
+	// Amber is waiting on YOU and nothing else (docs/design/questions/DESIGN.md);
+	// this question is waiting on the window that owns the work, this page has no
+	// key that would answer it, and a row here in the colour that means "press
+	// something" would be asking a person for a keystroke that does not exist.
+	if asked, waiting := a.roomGuest().waiting(); waiting {
+		if head := strings.TrimSpace(asked.Head); head != "" {
+			line := a.icon(tokens.GNeedsHuman) + " " + head + railSep + roomGuestAskedWord
+			out = append(out, row{text: a.pal.dim(fit(line, inner)), entry: -1})
+		}
+	}
 	if room.done {
 		// THE FOOT. A room on a node that has landed says so once, at the bottom,
 		// where the next thing would have appeared — which is the place a person
@@ -3249,13 +3370,13 @@ func (a *app) roomRows(width int) []row {
 		if closed && len(out) > 0 {
 			out = append(out, row{entry: -1})
 		}
-		// A NODE THAT NEEDS A LOOK ASKS HERE, in the place the foot would have
-		// said "finished": the same two rows its landed card draws, answering to
-		// the same keys and the same pointer, and the same receipt once answered
-		// (tasksettle.go's [app.roomSettleRows]). Every other landing keeps the
-		// foot it has.
-		var asked bool
-		if out, asked = a.roomSettleRows(out, inner); !asked {
+		// A NODE THAT NEEDS A LOOK DOES NOT SAY `finished` HERE. Its question is
+		// standing on the block above the box, in this room as on every other
+		// page (tasksettle.go), and a foot that read `this task has finished —
+		// say it to main` over it told a person the one thing that was not true
+		// about the page they were looking at (#767). Every other landing keeps
+		// the foot it has.
+		if !a.roomLandingAsking() {
 			// AND IT NAMES A DOOR (roomrefusal.go). `task finished — esc to
 			// return` was the whole of what this row said for a year, and esc is
 			// already on the legend and on the focus header above it; where the
@@ -3270,8 +3391,6 @@ func (a *app) roomRows(width int) []row {
 	// room's own foot is asked for by name because a node that needs a look draws
 	// its answers with no entry to hang them on, so the deck walk cannot reach it.
 	gutterPass(out, width)
-	a.gutterCards(room.deck(), width)
-	gutDoneCard(a.roomSettleCard(), textGutterCols(width))
 	// THE POINTER, LAST, exactly as in the conversation (render.go's layout).
 	a.hoverPass(out, width)
 	a.restoreRoomAnchor(reading, out)
@@ -3633,6 +3752,9 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 	if lead != "" {
 		lane = roomSteerHere + roomSteerBack
 	}
+	if a.roomOrganized() {
+		lane = "Give an instruction or ask about this task"
+	}
 	if a.room.orch != nil {
 		// A RUN HAS NO WORKER TO TALK TO, so the box does not offer to steer one:
 		// the sentence goes to the PLANNER, which reads it on its next call
@@ -3655,7 +3777,14 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 	// one never could, and the reading word is exactly as true of a landed task
 	// as of a running one. The foot beside it carries the owner-aware finished
 	// sentence ([app.roomDoneRefusal]), so nothing here has to.
-	if a.room.done && !a.roomIsGuest() {
+	// AND A NODE THAT IS STILL SOMEBODY'S CALL KEEPS ITS STEER LANE. The work has
+	// stopped, but the box has not: `[s] tell it` is one of the three answers
+	// standing on the block above it, and what it does is point this box at this
+	// task (tasksettle.go's [app.landingTell]). A placeholder reading `this task
+	// has finished — say it to main` over a question the person is being asked
+	// here would send them somewhere else to answer it, which is the room half of
+	// the screen #767 was filed about.
+	if a.room.done && !a.roomIsGuest() && !a.roomLandingAsking() {
 		lane = a.roomFinishedRefusal().fit(room)
 	}
 	// The attachment/effort tray can precede the draft. Put the placeholder
@@ -3718,7 +3847,7 @@ const (
 // [app.inputBlock] is laying out into — because the segment is charged to the
 // box and to nothing else.
 func (a *app) roomLead(width int) string {
-	if a.room == nil {
+	if a.room == nil || a.roomOrganized() {
 		return ""
 	}
 	node := a.roomNode()

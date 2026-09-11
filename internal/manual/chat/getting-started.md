@@ -6,7 +6,7 @@ The first time `aforge` opens on a profile with nothing in it, the chat does not
 an empty prompt and a provider error. It opens in the chat itself, on **two screens** —
 under a minute, nothing else on the frame:
 
-1. **connect openrouter** — `enter` signs in in your browser; pasting an existing key also works
+1. **connect openrouter** — the default service; `enter` signs in in your browser, and pasting an existing key also works
 2. **Models and spending** — one screen with three controls on it: **Daily limit**,
    **Chat model** and **Work crew**, each already showing the value that is in force
 
@@ -19,7 +19,7 @@ screen. Its heading is `Models and spending` and the line under it is
 again. `esc` on the controls screen goes **back** to the connection when there is one
 behind it, and skips when the controls are the whole of the setup. A skip leaves one dim
 line naming the doors onto what it walked past: `still yours to set · /budget sets what
-aforge may spend · /model and /crew pick the models`. If OpenRouter is still not
+aforge may spend · /model and /crew pick the models`. If the default OpenRouter service is still not
 connected, its one-step screen returns on the next local interactive launch because the
 model cannot work without it.
 
@@ -33,19 +33,19 @@ sentence at a time and never half of one. The three values, `Start a conversatio
 the keyboard line are never given up, so a sixteen-row window still shows a screen you
 can answer and leave.
 
-## Set up my api key — the openrouter key step, and what happens with no key
+## Set up my api key — the default service's openrouter key step, and what happens with no key
 
-On a local interactive launch using aforge's built-in model endpoint, the first step reads
+On a local interactive launch using aforge's built-in default model service, the first step reads
 *connect openrouter*. Press `enter`: aforge opens OpenRouter in your browser, waits on a
 random return address bound only to `127.0.0.1`, and uses an S256 proof key for the trip.
-After you sign in and approve it, OpenRouter makes a user-controlled API key for this
+After you sign in and approve it, OpenRouter makes a user-controlled API key for the default service in this
 profile and sends the browser back to aforge. The browser says it is connected, the screen
 continues, and the running conversation can use the key immediately. No prompt is sent and
 no model is called during the connection.
 
 The address is also written on the waiting screen. If the browser cannot be opened, select
 or click that address yourself. `esc` while waiting cancels the return listener and leaves
-you on the OpenRouter step; another `enter` tries again.
+you on the default service's OpenRouter step; another `enter` tries again.
 
 ## What the setup screen says when something goes wrong
 
@@ -67,7 +67,7 @@ those are written for you to read. What is never shown is the operating system's
 a failure: a path inside aforge's own storage with an errno after it tells you nothing you
 can act on.
 
-## Paste an existing OpenRouter API key instead of connecting in the browser
+## Paste an existing OpenRouter API key for the default service instead of connecting in the browser
 
 Already have a key? Paste it on the same first screen instead of pressing `enter` on an
 empty box. The key is masked while it is typed, and the manual-key address remains on the
@@ -78,12 +78,12 @@ not accept is discovered by the first message you send. One that fails the shape
 leaves this line under the box and stays on the step:
 `not the shape of an openrouter key — they start with sk-or-`.
 
-What it writes: the `api_key` field of your profile's `config.json` (under `~/.aforge`),
+What it writes for the default service: the `api_key` field of your profile's `config.json` (under `~/.aforge`),
 owner-readable only. That is the same field the **openrouter key** row on the settings
 panel's Providers tab writes, and the one every later launch reads. The running
 conversation takes it at once — the next message rides it, no restart.
 
-## Skip OpenRouter, retry later, and keep the message I typed
+## Skip the default OpenRouter service, retry later, and keep the message I typed
 
 `esc` on the idle step skips setup. The conversation then says one dim line:
 `openrouter is not connected · enter on your message connects in a browser, or export
@@ -91,15 +91,15 @@ OPENROUTER_API_KEY`. Your draft is not sacrificed to a provider error: type it n
 press `enter`, and the one-step connection opens over the conversation before the draft is
 cleared. Connect, then press `enter` again to send those same words.
 
-This provider step also opens over an existing or resumed conversation and over a profile
+This default-service step also opens over an existing or resumed conversation and over a profile
 whose first-run setup was already shown. It appears whenever all of these are true: the
 launch is local and interactive, the built-in OpenRouter endpoint is still the model
 provider, and neither the shell nor the profile holds a key. A custom `AFORGE_BASE_URL`, a
 `--host` session, and a headless `--once` run are not offered an OpenRouter browser trip.
-For a headless run, start bare `aforge` once to connect in a terminal, or export
+For a headless run using the default service, start bare `aforge` once to connect in a terminal, or export
 `OPENROUTER_API_KEY` (or `OPENAI_API_KEY`) before running it.
 
-**If `OPENROUTER_API_KEY` is already set in your shell, this step is not shown at all.**
+**If the default service's `OPENROUTER_API_KEY` is already set in your shell, this step is not shown at all.**
 The environment outranks the file, always; the setup only asks for what nothing else has
 answered.
 
@@ -177,10 +177,10 @@ crew it shows `/task Fix the failing tests and explain the changes.` That reques
 itself out once** on arriving and on `←`/`→`, then settles; typing settles it at once.
 Under 112 columns it is not drawn and the form is unchanged.
 
-The controls screen shows **once, ever**. The OpenRouter prerequisite above is the only
+The controls screen shows **once, ever**. The default OpenRouter prerequisite above is the only
 step that may return.
 
-## What appears once — and why the OpenRouter step can return
+## What appears once — and why the default service's OpenRouter step can return
 
 The **Models and spending screen** is shown once per profile. When the first-run screen
 closes — finished or skipped — `setup_seen_at` is written into `config.json` with the time,
@@ -192,11 +192,15 @@ that marker. It returns as a one-step screen on a later eligible launch while th
 still missing. It can also return in the same launch when an unsent model message reaches
 `enter`; the draft stays in the box.
 
+That prerequisite is only for the default service during first run. A second service is
+not required; add one later through `/connect`, as described on the
+[services page](services.md).
+
 The once-only controls screen stays away from `--session <path>`, `aforge
 resume`, `--once`, `--host`, pipes, existing conversations, and profiles that have already
 seen them. If every answer already exists, the marker is written silently.
 
-The OpenRouter prerequisite follows a narrower rule of its own. A missing connection is
+The default service's OpenRouter prerequisite follows a narrower rule of its own. A missing connection is
 shown for local interactive `--session <path>` and `aforge resume` launches too, because
 those conversations still need a model. It stays away from `--once`, `--host`, pipes,
 custom endpoints, and profiles whose shell or profile already supplies a key.
@@ -215,7 +219,7 @@ Every answer went through a settings row, so every answer has a door:
 
 | What you answered | Where to change it later |
 | --- | --- |
-| the openrouter key | clear or remove it and the next local interactive launch offers **connect openrouter** again; `/settings`, Providers tab, the **openrouter key** row still accepts a pasted replacement |
+| the default service's openrouter key | clear or remove it and the next local interactive launch offers **connect openrouter** again; `/settings`, Providers tab, the **openrouter key** row still accepts a pasted replacement |
 | the crew | `/crew` (bare shows the three, `/crew max` sets one), or the **crew** row on the settings panel |
 | the daily limit | `/budget` (also `/limits`), or `/settings` → **Spending**. `AFORGE_DAILY_BUDGET` in your shell outranks the row |
 | the model you talk to | `/model`, or the **Chat model** row on the setup screen — the same settings row either way |

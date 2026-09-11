@@ -91,6 +91,33 @@ var revisePrompt string
 //go:embed prompts/fanout.md
 var fanoutPrompt string
 
+// quickPrompt is what a QUICK task's worker is told about being one: that it
+// works in the caller's own folder rather than a copy, that it ticks its list
+// as it goes, that nothing is going to check it, and that its last message is
+// the answer (task_quick.go).
+//
+// It is its own page on [revisePrompt]'s law rather than a paragraph inside
+// prompts/worker.md: it names `items`, which is absent from every belt but a
+// quick worker's, and a page teaching a verb that is not on the belt is the
+// prompt lying.
+//
+// AND IT OPENS BY SAYING THE PAGE ABOVE IT IS NOT ABOUT IT, which is
+// [handToolTail]'s shape and is here for [handToolTail]'s reason. A quick worker still
+// reads [workerPrompt] — it is a task, it owns its outcome, directions still
+// reach it, and there is nobody to ask — but three of that page's sentences are
+// plainly false of it: the acceptance it was handed, the task folder, and the
+// branch its work comes home on. A page that contradicted them silently would
+// leave the model holding two accounts of where it is working, and it would act
+// on whichever it read last.
+//
+// AND IT IS THE ONLY PLACE THESE LAWS ARE WRITTEN. The node's opening message
+// carries the job and the record it came out of and no rules at all
+// ([quickBrief] says why), so there is one page saying what a quick worker is
+// and it cannot disagree with a second copy of itself.
+//
+//go:embed prompts/quick.md
+var quickPrompt string
+
 // shapePrompt is what the BRIEF-SHAPER is told (task_shape.go): how to reason
 // its way from the words a person typed after /task to the brief a worker with
 // nobody to ask is actually given.
@@ -129,9 +156,14 @@ const fanLimitToken = "FAN_LIMIT"
 const disciplineToken = "WORKING_DISCIPLINE"
 
 // agentsFileLimit bounds how much of a project's AGENTS.md rides in the system
-// prompt. 8KiB is a page of house rules; a file larger than that is
-// documentation, and paying for it on every request of every turn is a cost
-// the person never asked for.
+// prompt on a FULL prefix. 8KiB is a page of house rules; a file larger than
+// that is documentation, and paying for it on every request of every turn is a
+// cost the person never asked for.
+//
+// A lean prefix bounds it at [leanInstructionLimit] instead, and reads only the
+// first instruction file it finds — [Config.instructionLimit] and
+// [Config.onlyOneInstructionFile] are the one door into both numbers
+// (promptprofile.go), so this constant is never read directly by the renderer.
 const agentsFileLimit = 8 << 10
 
 // agentsFileName is the project instruction file, discovered at the workspace
@@ -195,7 +227,18 @@ func renderSystemAt(config Config, now time.Time) string {
 	// PREDICATES (beltfacts.go). Everything below conditions a whole page on
 	// the shape; this conditions the sentences INSIDE one, which is where five
 	// families of tools were being promised to workers that do not carry them.
-	out.WriteString(strings.TrimRight(promptWithBeltFacts(config), "\n"))
+	page := strings.TrimRight(promptWithBeltFacts(config), "\n")
+	// AND THE PROFILE'S OWN CUT, WHICH IS THE ONE DOOR INTO IT. A lean prefix
+	// drops the sections [leanPageSections] names, by their `# ` heading, and
+	// gains the one line a shelved verb owes (promptprofile.go). A full prefix
+	// passes through here byte for byte, which prefixbudget_test.go asserts.
+	if config.promptProfile().lean() {
+		page = leanPage(page)
+		if pointer := config.leanShelfPointer(); pointer != "" {
+			page += "\n" + pointer
+		}
+	}
+	out.WriteString(page)
 
 	// EVERY WORKER IS TOLD WHAT IT IS, floor of the tree included. The role page
 	// names no conditional verb, so the one predicate under it is whether this
@@ -224,6 +267,13 @@ func renderSystemAt(config Config, now time.Time) string {
 		out.WriteString("\n\n")
 		out.WriteString(strings.TrimRight(dividePrompt, "\n"))
 	}
+	// AND THE PAGE ABOUT BEING A QUICK TASK, on exactly the predicate that puts
+	// `items` on this belt, for the reason the two pages above are conditional:
+	// it names a verb only a quick worker carries (task_quick.go).
+	if config.mayTickItems() {
+		out.WriteString("\n\n")
+		out.WriteString(strings.TrimRight(quickPrompt, "\n"))
+	}
 
 	out.WriteString("\n\n# Project\n")
 	fmt.Fprintf(&out, "- Workstation: %s/%s\n", runtime.GOOS, runtime.GOARCH)
@@ -239,8 +289,13 @@ func renderSystemAt(config Config, now time.Time) string {
 	}
 	out.WriteString(nowLine(now))
 
+	// THE PROJECT'S OWN RULES, UNDER THIS PROFILE'S BOUND. Both numbers here are
+	// the profile's rather than this file's constants (promptprofile.go): how
+	// much of one file rides, and whether the second one rides at all. A full
+	// prefix reads [agentsFileLimit] and both files, exactly as it always has.
+	limit := config.instructionLimit()
 	for _, instructionFile := range []string{agentsFileName, claudeFileName} {
-		instructions, truncated := readInstructionFile(workspace, instructionFile)
+		instructions, truncated := readInstructionFileWithin(workspace, instructionFile, limit)
 		if instructions == "" {
 			continue
 		}
@@ -255,7 +310,14 @@ func renderSystemAt(config Config, now time.Time) string {
 		out.WriteString(fence + "\n")
 		if truncated {
 			fmt.Fprintf(&out, "\n(%s is longer than %dKiB; the rest is on disk — read it if you need it.)\n",
-				instructionFile, agentsFileLimit>>10)
+				instructionFile, limit>>10)
+		}
+		// AND ON A LEAN PREFIX THE FIRST FILE FOUND IS THE ONLY ONE. The two
+		// names are two spellings of one set of house rules, and the second copy
+		// is the first thing a small window gives up
+		// ([Config.onlyOneInstructionFile]).
+		if config.onlyOneInstructionFile() {
+			break
 		}
 	}
 	return out.String()

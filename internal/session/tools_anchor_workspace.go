@@ -82,6 +82,13 @@ func (a *Agent) AnchorWorkspace(path string) (string, error) {
 	}
 	a.tools = tools
 	a.definitions = definitions
+	// AND THE GROUPS THIS SHAPE IS HANDED GO BACK ON. The belt above was rebuilt
+	// from scratch, so a pre-armed group is back in the partition and off the
+	// tool list; without this a lean conversation would silently lose `ask` the
+	// moment it anchored to a project (tools_capabilities.go's [Agent.armPrearmed]).
+	if err := a.armPrearmed(); err != nil {
+		return "", err
+	}
 	if a.jobs != nil {
 		a.jobs.mu.Lock()
 		a.jobs.workspace = resolved
@@ -96,20 +103,20 @@ func (a *Agent) AnchorWorkspace(path string) (string, error) {
 	return resolved, nil
 }
 
-// The caller holds a.mu; metadata writers never acquire it while holding
-// metaMu, so this transaction can safely wait for a title or spend patch.
+// The caller holds a.mu; metadata writers never acquire it while holding the
+// folder lock, so this transaction can safely wait for a title or spend patch.
 func (a *Agent) anchorMetaLocked(dir, workspace string) error {
-	a.metaMu.Lock()
-	defer a.metaMu.Unlock()
-	meta, err := LoadMeta(dir)
-	if err != nil {
-		return fmt.Errorf("read conversation place: %w", err)
-	}
-	meta.Workspace, meta.Owned = workspace, false
-	if err := SaveMeta(dir, meta); err != nil {
-		return fmt.Errorf("save conversation place: %w", err)
-	}
-	return nil
+	return withMetaLock(dir, func() error {
+		meta, err := LoadMeta(dir)
+		if err != nil {
+			return fmt.Errorf("read conversation place: %w", err)
+		}
+		meta.Workspace, meta.Owned = workspace, false
+		if err := SaveMeta(dir, meta); err != nil {
+			return fmt.Errorf("save conversation place: %w", err)
+		}
+		return nil
+	})
 }
 
 func resolveWorkspaceAnchor(path, relativeTo string) (string, error) {

@@ -57,7 +57,9 @@ var ripgrepPath = sync.OnceValues(func() (string, bool) {
 // ripgrep. It is the same tool with the same arguments and the same caps; the
 // two sentences that differ are the two facts that differ, and they are stated
 // rather than left for the model to discover by being surprised.
-const grepFallbackDescription = "Search file contents for a pattern. Returns matching lines with file paths and line numbers. Walks the tree itself (ripgrep is not on this machine), so it does NOT read .gitignore — it skips .git, node_modules, vendor and files that look binary. Output is truncated to 100 matches or 50KB (whichever is hit first). Long lines are truncated to 500 chars."
+func grepFallbackDescription(caps Caps) string {
+	return fmt.Sprintf("Search file contents for a pattern. Returns matching lines with file paths and line numbers. Walks the tree itself (ripgrep is not on this machine), so it does NOT read .gitignore — it skips .git, node_modules, vendor and files that look binary. Output is truncated to 100 matches or %s (whichever is hit first). Long lines are truncated to 500 chars.", sizeWord(caps.MaxBytes))
+}
 
 // grepToolDescription is the description this machine's `grep` actually carries.
 //
@@ -68,11 +70,11 @@ const grepFallbackDescription = "Search file contents for a pattern. Returns mat
 // blocked so the download the sentence promised could never happen. The model
 // learned it by failing, twice. So the tool keeps its name, its arguments and
 // its output shape everywhere, and only its ENGINE and this one sentence change.
-func grepToolDescription() string {
+func grepToolDescription(caps Caps) string {
 	if _, present := ripgrepPath(); present {
-		return grepDescription
+		return grepDescription(caps)
 	}
-	return grepFallbackDescription
+	return grepFallbackDescription(caps)
 }
 
 // grepMatch is one hit, whichever engine found it.
@@ -82,10 +84,11 @@ type grepMatch struct {
 	lineText   string
 }
 
-func newGrepTool(cwd string) Tool {
+func newGrepTool(cwd string, caps Caps) Tool {
+	caps = caps.resolve()
 	return Tool{
 		Name:        "grep",
-		Description: grepToolDescription(),
+		Description: grepToolDescription(caps),
 		Schema:      json.RawMessage(grepSchemaJSON),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var p struct {
@@ -144,7 +147,7 @@ func newGrepTool(cwd string) Tool {
 					return "Operation aborted", true, nil
 				}
 				matches, matchCount, matchLimitReached = found, len(found), limitHit
-				return grepRender(matches, matchCount, matchLimitReached, linesTruncated, contextValue, searchPath, isDirectory, effectiveLimit)
+				return grepRender(caps, matches, matchCount, matchLimitReached, linesTruncated, contextValue, searchPath, isDirectory, effectiveLimit)
 			}
 
 			// Build rg args.
@@ -242,7 +245,7 @@ func newGrepTool(cwd string) Tool {
 				return "Operation aborted", true, nil
 			}
 
-			return grepRender(matches, matchCount, matchLimitReached, linesTruncated, contextValue, searchPath, isDirectory, effectiveLimit)
+			return grepRender(caps, matches, matchCount, matchLimitReached, linesTruncated, contextValue, searchPath, isDirectory, effectiveLimit)
 		},
 	}
 }
@@ -251,7 +254,7 @@ func newGrepTool(cwd string) Tool {
 // engines go through. Splitting it out is what makes the fallback a fallback
 // rather than a second grep: every cap, every notice and every path rule below
 // is written once and neither engine can drift from it.
-func grepRender(matches []grepMatch, matchCount int, matchLimitReached, linesTruncated bool, contextValue int, searchPath string, isDirectory bool, effectiveLimit int) (string, bool, error) {
+func grepRender(caps Caps, matches []grepMatch, matchCount int, matchLimitReached, linesTruncated bool, contextValue int, searchPath string, isDirectory bool, effectiveLimit int) (string, bool, error) {
 	if matchCount == 0 {
 		return "No matches found", false, nil
 	}
@@ -277,7 +280,7 @@ func grepRender(matches []grepMatch, matchCount int, matchLimitReached, linesTru
 	}
 
 	rawOutput := strings.Join(outputLines, "\n")
-	truncation := truncateHeadNoLineLimit(rawOutput)
+	truncation := truncateHeadNoLineLimit(rawOutput, caps)
 	output := truncation.content
 
 	var notices []string
@@ -285,7 +288,7 @@ func grepRender(matches []grepMatch, matchCount int, matchLimitReached, linesTru
 		notices = append(notices, fmt.Sprintf("%d matches limit reached. Use limit=%d for more, or refine pattern", effectiveLimit, effectiveLimit*2))
 	}
 	if truncation.truncated {
-		notices = append(notices, fmt.Sprintf("%s limit reached", formatSize(defaultMaxBytes)))
+		notices = append(notices, fmt.Sprintf("%s limit reached", formatSize(caps.MaxBytes)))
 	}
 	if linesTruncated {
 		notices = append(notices, fmt.Sprintf("Some lines truncated to %d chars. Use read tool to see full lines", grepMaxLineLength))
@@ -525,12 +528,13 @@ func grepFormatBlock(filePath string, lineNumber, contextValue int, searchPath s
 
 // truncateHeadNoLineLimit applies truncateHead with effectively no line limit
 // (only byte limit), matching pi's `{ maxLines: Number.MAX_SAFE_INTEGER }`.
-func truncateHeadNoLineLimit(content string) truncateHeadResult {
+func truncateHeadNoLineLimit(content string, caps Caps) truncateHeadResult {
+	maxBytes := caps.resolve().MaxBytes
 	// Reuse truncateHead with a very large line limit. The byte limit still
 	// applies. This is used by grep/find/ls where the match/entry count
 	// already caps rows.
 	totalBytes := byteLength(content)
-	if totalBytes <= defaultMaxBytes {
+	if totalBytes <= maxBytes {
 		return truncateHeadResult{
 			content:     content,
 			totalLines:  len(splitLinesForCounting(content)),
@@ -548,7 +552,7 @@ func truncateHeadNoLineLimit(content string) truncateHeadResult {
 		if len(out) > 0 {
 			lineBytes++ // newline separator
 		}
-		if outputBytesCount+lineBytes > defaultMaxBytes {
+		if outputBytesCount+lineBytes > maxBytes {
 			break
 		}
 		out = append(out, line)
@@ -568,10 +572,11 @@ func truncateHeadNoLineLimit(content string) truncateHeadResult {
 
 // ── find tool ──────────────────────────────────────────────────────────────
 
-func newFindTool(cwd string) Tool {
+func newFindTool(cwd string, caps Caps) Tool {
+	caps = caps.resolve()
 	return Tool{
 		Name:        "find",
-		Description: findDescription,
+		Description: findDescription(caps),
 		Schema:      json.RawMessage(findSchemaJSON),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var p struct {
@@ -672,7 +677,7 @@ func newFindTool(cwd string) Tool {
 
 			resultLimitReached := len(relativized) >= effectiveLimit
 			rawOutput := strings.Join(relativized, "\n")
-			truncation := truncateHeadNoLineLimit(rawOutput)
+			truncation := truncateHeadNoLineLimit(rawOutput, caps)
 			resultOutput := truncation.content
 
 			var notices []string
@@ -680,7 +685,7 @@ func newFindTool(cwd string) Tool {
 				notices = append(notices, fmt.Sprintf("%d results limit reached. Use limit=%d for more, or refine pattern", effectiveLimit, effectiveLimit*2))
 			}
 			if truncation.truncated {
-				notices = append(notices, fmt.Sprintf("%s limit reached", formatSize(defaultMaxBytes)))
+				notices = append(notices, fmt.Sprintf("%s limit reached", formatSize(caps.MaxBytes)))
 			}
 			if len(notices) > 0 {
 				resultOutput += "\n\n[" + strings.Join(notices, ". ") + "]"
@@ -701,10 +706,11 @@ func newFindTool(cwd string) Tool {
 
 // ── ls tool ────────────────────────────────────────────────────────────────
 
-func newLsTool(cwd string) Tool {
+func newLsTool(cwd string, caps Caps) Tool {
+	caps = caps.resolve()
 	return Tool{
 		Name:        "ls",
-		Description: lsDescription,
+		Description: lsDescription(caps),
 		Schema:      json.RawMessage(lsSchemaJSON),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var p struct {
@@ -771,7 +777,7 @@ func newLsTool(cwd string) Tool {
 			}
 
 			rawOutput := strings.Join(results, "\n")
-			truncation := truncateHeadNoLineLimit(rawOutput)
+			truncation := truncateHeadNoLineLimit(rawOutput, caps)
 			output := truncation.content
 
 			var notices []string
@@ -779,7 +785,7 @@ func newLsTool(cwd string) Tool {
 				notices = append(notices, fmt.Sprintf("%d entries limit reached. Use limit=%d for more", effectiveLimit, effectiveLimit*2))
 			}
 			if truncation.truncated {
-				notices = append(notices, fmt.Sprintf("%s limit reached", formatSize(defaultMaxBytes)))
+				notices = append(notices, fmt.Sprintf("%s limit reached", formatSize(caps.MaxBytes)))
 			}
 			if len(notices) > 0 {
 				output += "\n\n[" + strings.Join(notices, ". ") + "]"

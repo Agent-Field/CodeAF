@@ -22,7 +22,6 @@ import (
 	"context"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -61,15 +60,11 @@ type mintedShape struct {
 	// extra half of the forward law below.
 	shelved []bare.Tool
 	page    string
-	// inherited is the caller's page a hand opens on. It is not this shape's to
-	// answer for — it was composed for the belt of the mind that forked — and
-	// what IS this shape's is everything after it.
-	inherited string
 }
 
 // beltShapes is every shape, and each is built the way its own door builds it —
-// task_run.go for a node, fork.go for a hand, standing_run.go for a check — so
-// that a door that changes what it hands down changes this test's answer too.
+// task_run.go for a node, standing_run.go for a check — so that a door that
+// changes what it hands down changes this test's answer too.
 var beltShapes = []beltShape{{
 	// The shipping conversation, fully wired: a store behind memory, an
 	// accounts hub, the harness machines. This is the fullest belt there is and
@@ -102,6 +97,12 @@ var beltShapes = []beltShape{{
 	name:  "a conversation with memory off",
 	build: func(t *testing.T, config *Config) {},
 }, {
+	name: "a worker with inherited conversation reads",
+	build: func(t *testing.T, config *Config) {
+		config.InTask = true
+		config.ConversationHistory = openTestBrain(t)
+	},
+}, {
 	// A task node one level down that was handed the conversation's graph, so
 	// it may hand parts of its own work further out (task_run.go's
 	// newTaskAgent, task.go's fan-out law).
@@ -132,20 +133,15 @@ var beltShapes = []beltShape{{
 		config.taskID = 3
 	},
 }, {
-	// A hand (fork.go): this mind copied inside the turn, on a fixed allowlist
-	// of a belt, opening on its CALLER'S page with a tail of its own after it.
-	name:  "a hand",
-	build: func(t *testing.T, config *Config) {},
-	mint: func(t *testing.T) mintedShape {
-		t.Helper()
-		caller, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) { config.System = "" })
-		seed, callersPage := caller.forkSeed()
-		hand, err := caller.newHandAgent(forkPart{Role: "one", Scope: []string{"a"}}, seed, callersPage, &handLeash{limit: forkRounds})
-		if err != nil {
-			t.Fatalf("newHandAgent: %v", err)
-		}
-		t.Cleanup(func() { _ = hand.Close() })
-		return mintedShape{belt: hand.beltTools(), shelved: hand.shelvedTools(), page: systemTextOf(hand), inherited: callersPage}
+	// THE LEAN CONVERSATION (promptprofile.go): the same shipping door on a
+	// sixteen-thousand-token window, which shelves four more groups than a full
+	// belt and is HANDED the `questions` group rather than being told to fetch
+	// it. It is a shape here because the two halves of this law — the page names
+	// only what the belt has, and it says how a shelved verb arrives — are
+	// exactly what a second partition can break.
+	name: "a lean conversation on a small window",
+	build: func(t *testing.T, config *Config) {
+		config.ContextWindow = 16_000
 	},
 }, {
 	// A standing check's probe (standing_run.go): the parent's config with the
@@ -239,19 +235,6 @@ func TestEveryToolThePromptNamesIsOnThatShapesBelt(t *testing.T) {
 		for _, token := range []string{beltFactsToken, handoffFactsToken, programFactsToken} {
 			if strings.Contains(page, token) {
 				t.Fatalf("%s: the page still carries %s, so its tool-naming facts were never composed", shape.name, token)
-			}
-		}
-		// A HAND IS ANSWERABLE FOR WHAT COMES AFTER THE PAGE IT INHERITED. It
-		// opens on its caller's page word for word, because that shared prefix
-		// is the economy of the whole verb (fork.go's forkSeed) — so the law is
-		// kept by what fork.go appends, and it is that tail this walks.
-		if minted.inherited != "" {
-			if !strings.HasPrefix(page, minted.inherited) {
-				t.Fatalf("%s: its text does not open on the page it inherited, so the shared prefix is already broken", shape.name)
-			}
-			page = strings.TrimPrefix(page, minted.inherited)
-			if strings.TrimSpace(page) == "" {
-				t.Fatalf("%s: it reads its caller's page and is told nothing of its own, so every tool named above is a tool it does not have", shape.name)
 			}
 		}
 		carried := beltNameSet(belt)
@@ -366,6 +349,17 @@ func TestEveryConditionalToolThePageNamesHasAFragment(t *testing.T) {
 			composed[name] = true
 		}
 	}
+	// AND THE LEAN PROFILE COMPOSES ITS OWN LINE THE SAME WAY. The one sentence
+	// a lean page owes — the verbs waiting on the shelf and the group each is in
+	// — is built from [leanCapabilityGroups] and each row's own predicate
+	// (promptprofile.go's [Config.leanShelfPointer]), which is exactly what a
+	// beltFact is. So the names it spells are composed, not written into the
+	// page for everybody, and a row that stopped holding takes its names with it.
+	for _, group := range leanCapabilityGroups {
+		for _, name := range group.members {
+			composed[name] = true
+		}
+	}
 	for name := range named {
 		if !on[name] || !off[name] {
 			// Either not a tool at all, or one every belt carries: the page may
@@ -437,63 +431,6 @@ func TestAFloorNodeIsToldWhatItCannotReach(t *testing.T) {
 	}
 }
 
-// TestAHandOpensOnItsCallersPageAndIsToldWhatIsActuallyIts is the hand's half
-// of the law, and it is a PREFIX and not an equality: the caller's page stays
-// word for word at the front, because that is the economy of the verb (fork.go's
-// forkSeed), and what makes it true for this reader is appended after it.
-func TestAHandOpensOnItsCallersPageAndIsToldWhatIsActuallyIts(t *testing.T) {
-	caller, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) { config.System = "" })
-	seed, callersPage := caller.forkSeed()
-	if len(seed) == 0 || callersPage == "" {
-		t.Fatal("a fork seeds nothing, so a hand has no page at all")
-	}
-	if callersPage != messageContentText(seed[0]) {
-		t.Fatal("the caller's page is not seed[0], so the shared prefix a fork exists for is already broken")
-	}
-	hand, err := caller.newHandAgent(forkPart{Role: "one", Scope: []string{"a"}}, seed, callersPage, &handLeash{limit: forkRounds})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = hand.Close() })
-
-	page := systemTextOf(hand)
-	if !strings.HasPrefix(page, callersPage) {
-		t.Fatal("a hand no longer opens on its caller's page, so every byte of the shared prefix is paid for again")
-	}
-	// AND IT GOES ON THE WIRE. refreshSystemLocked rewrites message[0] from
-	// a.system at the start of a turn, so a tail that lived anywhere else would
-	// be overwritten by the caller's page before the hand's first request.
-	hand.mu.Lock()
-	first := messageContentText(hand.messages[0])
-	hand.mu.Unlock()
-	if first != page {
-		t.Fatal("message[0] is not the hand's own system text, so what the model reads is not what this test just checked")
-	}
-
-	tail := strings.TrimPrefix(page, callersPage)
-	carried := beltNameSet(hand.beltTools())
-	if len(carried) == 0 {
-		t.Fatal("a hand has no belt, so this test would pass on nothing")
-	}
-	// THE TAIL NAMES EVERY TOOL THE HAND HAS. A verb left out of it is a verb
-	// the hand has been told, two paragraphs earlier, that it does not have.
-	for name := range carried {
-		if !strings.Contains(tail, "`"+name+"`") {
-			t.Errorf("the hand's tail does not name `%s`, which is on its belt", name)
-		}
-	}
-	// AND NO TOOL IT DOES NOT.
-	for name := range toolUniverse(t) {
-		if carried[name] || !strings.Contains(tail, "`"+name+"`") {
-			continue
-		}
-		t.Errorf("the hand's tail names `%s`, which its belt does not carry", name)
-	}
-	if !strings.Contains(tail, "CALLER'S") {
-		t.Error("the tail does not say whose page the one above it is, so a hand cannot tell which list is which")
-	}
-}
-
 // ── the hand, driven ────────────────────────────────────────────────────────
 
 // handModel is a model that answers a hand and REMEMBERS WHAT IT WAS OFFERED:
@@ -508,127 +445,4 @@ type handModel struct {
 	// reach is the tool the model asks for on its first round: the point of the
 	// test is that a hand cannot make this call, whatever its page once said.
 	reach string
-}
-
-func (m *handModel) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
-	var request ai.Request
-	for _, option := range options {
-		_ = option(&request)
-	}
-	names := make([]string, 0, len(request.Tools))
-	for _, definition := range request.Tools {
-		names = append(names, definition.Function.Name)
-	}
-	snapshot := make([]ai.Message, len(messages))
-	copy(snapshot, messages)
-
-	m.mu.Lock()
-	round := len(m.requests)
-	m.requests = append(m.requests, snapshot)
-	m.offered = append(m.offered, names)
-	if len(snapshot) > 0 {
-		m.systems = append(m.systems, messageContentText(snapshot[0]))
-	}
-	m.mu.Unlock()
-
-	if round == 0 && m.reach != "" {
-		return toolResponse("reach-1", m.reach, `{"brief":"do the thing"}`), nil
-	}
-	return textResponse("the slice is done"), nil
-}
-
-// TestAHandIsOfferedItsNineAndCanCallNothingElse drives a real hand against a
-// model that reaches for a verb its caller has and it does not.
-//
-// THE ASSERTION IS ON WHAT THE CALL CARRIES, not on the model's manners. A page
-// can be ignored; a tool block cannot be talked around and an unknown name
-// cannot be executed. So this checks the three things that are true of the
-// request itself: the page the hand read opens on its caller's and ends with
-// the tail naming its own verbs, the tool block in front of it holds exactly
-// that belt, and the one call made outside it comes back `Unknown tool`.
-func TestAHandIsOfferedItsNineAndCanCallNothingElse(t *testing.T) {
-	model := &handModel{reach: "propose_task"}
-	caller, _ := newTestAgent(t, model, func(config *Config) { config.System = "" })
-	seed, callersPage := caller.forkSeed()
-	hand, err := caller.newHandAgent(forkPart{Role: "one", Scope: []string{"a"}}, seed, callersPage, &handLeash{limit: forkRounds})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = hand.Close() })
-
-	events, err := hand.Submit(context.Background(), "work your slice")
-	if err != nil {
-		t.Fatal(err)
-	}
-	collect(t, events)
-
-	model.mu.Lock()
-	systems, offered, requests := model.systems, model.offered, model.requests
-	model.mu.Unlock()
-	if len(requests) < 2 {
-		t.Fatalf("the hand made %d requests, so it never answered the refusal", len(requests))
-	}
-
-	// ONE: the page it was actually offered.
-	page := systems[0]
-	if !strings.HasPrefix(page, callersPage) {
-		t.Fatal("the hand was not offered its caller's page, so the shared prefix is gone")
-	}
-	tail := strings.TrimPrefix(page, callersPage)
-	carried := beltNameSet(hand.beltTools())
-	for name := range carried {
-		if !strings.Contains(tail, "`"+name+"`") {
-			t.Errorf("the tail the model read does not name `%s`, which is on the belt it was handed", name)
-		}
-	}
-
-	// TWO: the tool block in front of it is that belt and nothing else.
-	block := map[string]bool{}
-	for _, name := range offered[0] {
-		block[name] = true
-	}
-	want := []string{"bash", "edit", "find", "grep", "ls", "manual", "read", "read_document", "write"}
-	wanted := map[string]bool{}
-	for _, name := range want {
-		wanted[name] = true
-	}
-	got := make([]string, 0, len(block))
-	for name := range block {
-		got = append(got, name)
-	}
-	sort.Strings(got)
-	for _, name := range want {
-		if !block[name] {
-			t.Errorf("the model's nine-tool offer is missing `%s`; got %v", name, got)
-		}
-	}
-	for _, name := range got {
-		if !wanted[name] {
-			t.Errorf("the model's nine-tool offer has extra `%s`; got %v", name, got)
-		}
-	}
-	if len(block) != len(carried) {
-		t.Errorf("the model was offered %d tools and the hand carries %d", len(block), len(carried))
-	}
-	for name := range carried {
-		if !block[name] {
-			t.Errorf("the model was not offered `%s`, which is on the hand's belt", name)
-		}
-	}
-	for name := range block {
-		if !carried[name] {
-			t.Errorf("the model was offered `%s`, which the hand cannot run", name)
-		}
-	}
-
-	// THREE: the one call made outside the list could not happen.
-	var answered string
-	for _, message := range requests[1] {
-		if message.Role == "tool" {
-			answered = messageContentText(message)
-		}
-	}
-	if !strings.Contains(answered, "Unknown tool: "+model.reach) {
-		t.Fatalf("a hand's call to `%s` was answered %q rather than refused as unknown", model.reach, answered)
-	}
 }

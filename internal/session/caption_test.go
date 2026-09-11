@@ -108,6 +108,87 @@ func TestANarratorAnswerThatIsTheInstructionIsRefused(t *testing.T) {
 	}
 }
 
+func TestCleanCaptionKeepsTokenPunctuationAndSentenceBoundaries(t *testing.T) {
+	tests := []struct {
+		name string
+		line string
+		want string
+	}{
+		{
+			name: "file extension",
+			line: "Reading livesteps.go now.",
+			want: "Reading livesteps.go now",
+		},
+		{
+			name: "dotted token in a sentence",
+			line: "I will update config.json and then run the suite.",
+			want: "I will update config.json and then run the suite",
+		},
+		{
+			name: "version number",
+			line: "Bumping the pin to v1.2.3 across the three services.",
+			want: "Bumping the pin to v1.2.3 across the three services",
+		},
+		{
+			name: "dot inside a path without a sentence end",
+			line: "searching ~/.aforge/v3/projects for the transcript",
+			want: "searching ~/.aforge/v3/projects for the transcript",
+		},
+		{
+			name: "real sentence boundary",
+			line: "Good leads. Fetching the key pages to confirm which are open.",
+			want: "Fetching the key pages to confirm which are open",
+		},
+		{
+			name: "newline boundary",
+			line: "Reading livesteps.go now\nThen checking the renderer.",
+			want: "Reading livesteps.go now",
+		},
+		{
+			name: "word limit and dangling words",
+			line: "fetching the key pages to confirm which are actually still open tonight in toronto",
+			want: "fetching the key pages to confirm",
+		},
+		{
+			name: "question mark inside a token",
+			line: "fetching https://api.example.com/v1?limit=10 for the list",
+			want: "fetching https://api.example.com/v1?limit=10 for the list",
+		},
+		{
+			name: "exclamation mark inside a token",
+			line: "checking cache!primary before reading the fallback",
+			want: "checking cache!primary before reading the fallback",
+		},
+		{
+			name: "question mark at a sentence end",
+			line: "Ready? Fetching the key pages to confirm which are open.",
+			want: "Fetching the key pages to confirm which are open",
+		},
+		{
+			name: "terminator run at a sentence end",
+			line: "Done!! Fetching the key pages to confirm which are open.",
+			want: "Fetching the key pages to confirm which are open",
+		},
+		{
+			name: "closing punctuation before a sentence end",
+			line: "Good (“confirmed!”). Fetching the key pages to confirm which are open.",
+			want: "Fetching the key pages to confirm which are open",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := cleanCaption(tt.line)
+			if got != tt.want {
+				t.Fatalf("cleanCaption(%q) = %q, want %q", tt.line, got, tt.want)
+			}
+			if strings.Contains(got, "…") {
+				t.Fatalf("cleanCaption(%q) appended an ellipsis: %q", tt.line, got)
+			}
+		})
+	}
+}
+
 func TestTheNarratorInstructionComesLast(t *testing.T) {
 	client := &scriptedCompleter{}
 	seen := 0

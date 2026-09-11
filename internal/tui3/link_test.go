@@ -95,14 +95,14 @@ func TestACountdownPausesOnWallTimeAtTheSlowCadence(t *testing.T) {
 	// The frames are delivered at the cadence the link earns, and the clock
 	// moves with them — which is what a real ten seconds looks like from here.
 	deadline := at.Add(a.askWait)
-	for frames := 0; !a.askPaused && frames < 200; frames++ {
+	for frames := 0; !askHeld(a) && frames < 200; frames++ {
 		at = at.Add(a.frameEvery())
 		drive(t, a, frameMsg{})
 	}
 	if len(agent.answers) != 0 {
 		t.Fatalf("the countdown answered %+v at the slow cadence, want a pause", agent.answers)
 	}
-	if !a.askPaused {
+	if !askHeld(a) {
 		t.Fatal("the countdown never paused at the slow cadence")
 	}
 	if !a.asking() {

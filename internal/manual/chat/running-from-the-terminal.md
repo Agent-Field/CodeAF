@@ -1,5 +1,27 @@
 # Commands you type in a terminal
 
+## How do I install or update aforge to the latest version — the curl line, dev, staging, rc and stable
+
+The installer puts aforge at `~/.aforge/bin/aforge`. Choose the newest build on
+one channel:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | bash -s -- --stable
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | bash -s -- --rc
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | bash -s -- --dev
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | bash -s -- --staging
+```
+
+Pin one published build instead with `VERSION=v0.2.0` (or another complete tag):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | VERSION=v0.2.0 bash
+```
+
+The last installer line is `aforge version`; it shows the tag installed, when it
+was built, and the Go and operating-system target. Nothing self-updates: run the
+curl command again when you want a newer build.
+
 ## Running aforge from the terminal — can I run this without the chat
 
 Typing `aforge` with no arguments opens the conversation. Everything else is a verb after
@@ -320,10 +342,29 @@ in it. `aforge logs --run <id>` answers a miss the same way.
 The id is the one the plan gave that step — the same id `logs --node <id>` filters on, and
 the value of the `node` field in `logs --json`.
 
+## The run finished and my directory is empty — where did the work go after aforge do spent money and wrote no files
+
+`aforge do` edits the directory you point it at in place; it files nothing anywhere else.
+When a run did work but ended without delivering or creating or changing a file, its answer
+ends with:
+
+```
+No created or changed files were recorded: this run worked in /srv/project, editing it in place.
+```
+
+A run that did write instead names every file by its absolute path.
+
+The run's own record is separate. On a run that does not finish cleanly, the
+`record kept at <path>` line on stderr names the private store holding its traces and job
+logs. The empty file record concerns the project directory. It does not prove the directory is
+unchanged: deletions and files outside the bounded workspace scan may be absent. Under
+`aforge do --json`, `workspace` carries the same absolute project directory. It is empty
+when an existing resident did the work and this invocation cannot establish its directory.
+
 ## Where is the record of my headless run — reading a kept one-shot's store
 
 `why` reads a store, and by default that store is `~/.aforge/graph.db`. A headless
-`aforge do` run does **not** work there: it uses a private store of its own, kept only when
+`aforge do` run does **not** work there: it uses a separate store of its own, kept only when
 the run failed or you asked for it with `--keep`, and the last line on the error stream
 says where:
 
@@ -502,7 +543,9 @@ The answer is the thing you would capture: the deliverable, the `--json` object,
 `aforge logs`, the plan `aforge plan show` prints. Everything a person reads *about* the
 run is on stderr: the `goal:` and `models:` preamble, the progress lines, warnings, the
 path a record was kept at, the receipt saying a file was written, and any question the
-command asks you.
+command asks you. For `aforge chat --once`, this includes every handover and ending line:
+`finishing here · what was asked is done`, `stopping here · ` and the line that says a
+reply's work was moved. Landing-woken replies remain on stdout with the first reply.
 
 So these do what you would expect, and nothing has to be filtered out of them:
 
@@ -545,11 +588,12 @@ aforge needs a model to work with.
 export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.
 ```
 
-**`OPENROUTER_API_KEY` is not required** — it is the first of three places a key is looked
-for. The variable, then `OPENAI_API_KEY`, then the key kept in your profile, which is where
+**For the default service, `OPENROUTER_API_KEY` is not required** — it is the first of three places its key is looked
+for. The variable, then `OPENAI_API_KEY`, then the default-service key kept in your profile, which is where
 the one you pasted on the first run or typed into `/settings` lives. Any one of them is
 enough, so a machine set up in the chat runs `aforge do` with no variable set at all.
-`aforge doctor`'s first row says which one answered — `key set · OPENROUTER_API_KEY`, or
+Each directly connected service may instead name its own environment variable, which is
+stored with that service. `aforge doctor`'s first row still reports only which default-service key answered — `key set · OPENROUTER_API_KEY`, or
 `key set · /home/you/.aforge/config.json`, or `key none ·` and the two lines above.
 
 **These change state without spending**: `cache clean`, `rebuild`, `notebook
@@ -705,9 +749,10 @@ that, and of what a mistyped command is answered with, is on the *commands* page
 
 Two things that account does not cover:
 
-- **The doors that parse no flags at all answer the gesture too.** `aforge plan show`,
-  `aforge models` and `aforge cache` take a positional or nothing, and each reads `--help`
-  as the question rather than as an argument. `aforge plan show --help` used to answer
+- **The doors that parse no flags at all answer the gesture too.** `aforge plan show` and
+  `aforge cache` take a positional or nothing, and each reads `--help` as the question
+  rather than as an argument. (`aforge models` has one flag, `--refresh`, which fetches
+  today's model list first — what `ctrl+r` does in `/model`.) `aforge plan show --help` used to answer
   `open --help: no such file or directory` — a filesystem error about a flag.
 - **`help env` is the environment table.** It moved off `--help` when that page was 127
   lines and more than half of them were this table, so the last thing on the screen after

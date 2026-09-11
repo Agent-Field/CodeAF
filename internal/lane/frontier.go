@@ -4,6 +4,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"time"
 )
 
 // ── THE FRONTIER IS THE CANDIDATE SET ───────────────────────────────────────
@@ -21,12 +22,38 @@ import (
 // uses what it already knows.
 //
 // Two steps happen here and they are different kinds of judgement. THE GATE is
-// deterministic and is about capability: a lane that cannot take a tool call,
-// cannot write the requested number of tokens, cannot read the prompt, serves
-// four-bit weights, is half down, or returns answers this build could not use,
-// is dropped outright — never sampled and found wanting. THE PRUNE is about
-// dominance and nothing else: it removes lanes no request could want, and it
-// removes them without knowing what this request wants.
+// deterministic and is about capability: a lane that cannot write the requested
+// number of tokens, cannot read the prompt, serves four-bit weights, or returns
+// answers this build could not use, is dropped outright — never sampled and
+// found wanting. THE PRUNE is about dominance and nothing else: it removes lanes
+// no request could want, and it removes them without knowing what this request
+// wants.
+//
+// ── AND THREE OF THE SHEET'S CLAIMS ARE PRIORS RATHER THAN GATES ────────────
+//
+// THE MEASURED FAILURE (docs/design/recovery/DESIGN.md §1). On 2026-09-10 a
+// tool-carrying request drew nine identical refusals from a saturated Fireworks
+// while GMICloud — which had served the three previous tool calls of the very
+// same task, in six seconds each — was not a candidate at all, because the
+// fetched sheet marks it `Tools: false` and this file removed it from every tool
+// request for good. The router's flag was simply wrong, and this build had
+// already measured the same class of wrongness once (quirks.go's MiniMax memo).
+//
+// THE LAW: THE SHEET SEEDS A BELIEF AND NEVER ENDS AN ARGUMENT. `Tools`,
+// `Uptime5m` and `Status` are the router's opinion about a machine, published
+// minutes ago, about a fleet that moves; what this process has SEEN is evidence,
+// and evidence outranks an opinion. So a lane the sheet doubts is DEMOTED — it
+// sits behind every lane nothing is doubted about, it is never asked first while
+// a better answer exists, and one request in [probeInEvery] is allowed to
+// disprove the doubt ([sheetDoubtsLast]). A lane whose own answers have since
+// proven it usable is not doubted at all, and that belief decays back toward the
+// sheet's prior on [QualityHalfLife] like every other belief here, so nothing
+// learned is learned forever.
+//
+// ONE HARD EXCLUSION SURVIVES and it is the wire's own negative: [Serves]. That
+// is not the sheet's opinion, it is the router answering a request we actually
+// made, and a machine the router will not send this model to is not a candidate
+// at any rank.
 //
 // This file may not read a clock — see the note in choose.go. The beliefs it is
 // handed have already been aged to [Request.Now] by the chooser.
@@ -43,6 +70,20 @@ const (
 	// it is intermittently absent, and the router's own fallback handles that
 	// better than a preference for it would.
 	UptimeFloor = 95.0
+
+	// probeInEvery is how often a request may be sent to a lane the sheet doubts
+	// ahead of the lanes it does not — the one draw that can disprove a published
+	// claim, because a lane that is never asked can never prove the sheet wrong.
+	//
+	// IT IS THE HEDGE PURSE'S OWN RATE, WRITTEN AS A PERIOD. [DefaultBudget]
+	// allows two rescues in any twenty requests, and a probe is bought for
+	// exactly the same reason a rescue is: one request in ten pays a little to
+	// find out something every request after it spends better. The purse itself
+	// cannot be asked here — it is spent in DOLLARS and answers against a clock,
+	// and this file may read neither (see the note in choose.go) — so the rate is
+	// stated and the draw is the chooser's own sampler, which is seeded per
+	// request and therefore reproducible.
+	probeInEvery = 10
 
 	// PriceCeilingMultiple is how far above the cheapest acceptable lane's own
 	// output tariff another lane may charge, with nobody waiting.
@@ -95,12 +136,12 @@ type gateOptions struct {
 // only kimi beliefs were two sightings meant the whole candidate set went, the
 // choice came back empty, and the request went out with no opinion on it at all.
 //
-// So the zero is asked what it means ([Facts.Known]) and a lane the sheet has
-// never spoken about passes every gate here. It is NOT thereby claimed to
-// honour a tool call: [toolsLast] puts it behind every lane known to, so what
-// is unknown is tried after what is known rather than instead of it. A gate
-// answers "could this lane serve the request"; only evidence answers "and is it
-// the one to send".
+// THAT FIX WAS HALF OF ONE. It spared the lane nobody had looked up and left the
+// lane the sheet had spoken about WRONGLY removed for good, which is the
+// GMICloud case above. Both halves are now answered the same way and in the same
+// place: neither zero nor published-false is a gate here, and [sheetDoubtsLast]
+// ranks what is doubted behind what is not. A gate answers "could this lane
+// serve the request"; only evidence answers "and is it the one to send".
 func capable(belief Belief, req Request, opts gateOptions) bool {
 	// THE WIRE OVERRULES THE SHEET ABOUT WHO SERVES THIS MODEL. Every other
 	// gate here reads the endpoints page; this one reads what the router
@@ -113,11 +154,6 @@ func capable(belief Belief, req Request, opts gateOptions) bool {
 		return false
 	}
 	facts := belief.Facts
-	// THE ROW WAS PUBLISHED AND IT SAYS NO. That is the only reading of a false
-	// tools flag this gate acts on.
-	if req.Tools && !facts.Tools && facts.Known() {
-		return false
-	}
 	if req.MaxTokens > 0 && facts.MaxOut > 0 && facts.MaxOut < req.MaxTokens {
 		return false
 	}
@@ -127,18 +163,17 @@ func capable(belief Belief, req Request, opts gateOptions) bool {
 	if !opts.allowLowQuantization && lowQuantization(facts.Quant) {
 		return false
 	}
-	if facts.Uptime5m > 0 && facts.Uptime5m < UptimeFloor {
-		return false
-	}
-	// THE ROUTER'S OWN VERDICT IS A GATE. A non-zero `status` on the sheet is
-	// the operator of the router saying it has derated this endpoint, which is
-	// evidence of a kind nothing this package measures can produce: it is about
-	// the machine rather than about our path to it. A build that routed to a
-	// lane the router itself had marked down would be overruling the only party
-	// with a view of every request that lane serves.
-	if facts.Status != 0 {
-		return false
-	}
+	// UPTIME AND THE ROUTER'S OWN STATUS WORD ARE NOT GATES HERE ANY MORE. They
+	// used to be, and the argument for the second was a good one: a non-zero
+	// `status` is the operator of the router saying it has derated this endpoint,
+	// which is a view of every request that lane serves and one nothing here can
+	// produce. What that argument omits is that it is a view published minutes
+	// ago about a fleet that moves, and that we hold a better kind of evidence
+	// about the same machine — whether it answered US, just now. So both are read
+	// where the ranking is decided ([sheetDoubtsLast]), the lane goes behind
+	// everything the sheet is happy about, and a machine that is genuinely half
+	// down simply never wins the comparison it is now allowed to enter.
+	//
 	// QUALITY IS A GATE AND NEVER A WEIGHT. A lane whose believed share of
 	// usable answers is under what this request needs leaves the candidate set
 	// until the belief recovers; it is never traded off against a cheaper price,
@@ -155,31 +190,87 @@ func capable(belief Belief, req Request, opts gateOptions) bool {
 	return true
 }
 
-// toolsLast moves the lanes nobody has published a tool flag for behind every
-// lane known to honour a tool call, keeping the order otherwise.
+// doubted reports whether the SHEET has something against this lane for this
+// request, and it is the whole of what demotes one.
 //
-// IT IS A TIEBREAK AND NOT A GATE, which is the whole difference between it and
-// what [capable] used to do. An unknown lane stays in the candidate set — it
-// can still be hedged to, probed and, when nothing else is known, sent to —
-// but it never goes in front of a machine the sheet says will take the call.
-// A request carrying no tools is left exactly as it was ranked.
-func toolsLast(order []Scored, req Request, known map[ID]Belief) []Scored {
-	if !req.Tools || len(order) < 2 {
+// THREE CLAIMS, each of which used to end the argument in [capable]:
+//
+//	tools     the request carries tool calls and the sheet does not say this
+//	          lane honours one — either it published a false, or it has never
+//	          spoken about the lane at all
+//	uptime    the sheet published a share of the last five minutes below
+//	          [UptimeFloor]; a zero is the sheet not saying and doubts nothing
+//	status    the router's own health word is not its healthy zero
+//
+// AND EVIDENCE BEATS ALL THREE. A lane whose own answers have come back usable
+// — the quality belief this process built from outcomes it saw, at the standard
+// this request needs — is not doubted whatever the sheet says, because that is a
+// measurement of the very thing the sheet is guessing at. It is the same belief
+// [capable] gates on, read here from the other side, and it decays back toward
+// the sheet's own prior on [QualityHalfLife]: a machine that stops answering
+// well is doubted again within the hour, with nobody having to remember to
+// forget anything.
+func doubted(belief Belief, req Request) bool {
+	if req.QualityNeed > 0 && belief.Quality.Known() && belief.Quality.Mean() >= req.QualityNeed {
+		return false
+	}
+	facts := belief.Facts
+	switch {
+	case req.Tools && !facts.Tools:
+		return true
+	case facts.Uptime5m > 0 && facts.Uptime5m < UptimeFloor:
+		return true
+	case facts.Status != 0:
+		return true
+	}
+	return false
+}
+
+// sheetDoubtsLast moves every lane the sheet has something against behind every
+// lane it has nothing against, keeping the order otherwise — and lets one
+// request in [probeInEvery] send the best doubted lane first anyway.
+//
+// IT IS A RANKING AND NOT A GATE, which is the whole difference between it and
+// what [capable] used to do. A doubted lane stays in the candidate set: it can
+// be hedged to, it can be walked to when the lanes in front of it refuse, and
+// when nothing else is left it is simply the answer. What it may not do is win a
+// request outright on a score, while a machine nothing is doubted about is sitting
+// there able to serve it.
+//
+// THE PROBE IS WHY THE DOUBT CAN EVER END. A lane that is always ranked last is
+// a lane that is asked only when everything else has failed, which is the worst
+// possible moment to find out it was fine all along — and on a healthy model it
+// is never asked at all, so a wrong flag is wrong forever. One draw in
+// [probeInEvery] promotes the best-scoring doubted lane to the front, its answer
+// is folded into the belief through the same outcome path every other answer
+// takes (internal/provider's noteLaneOutcome), and the doubt is then settled by
+// evidence: a usable tool answer lifts it through [doubted], a refusal the
+// decoder could not use — `tool_json` — pushes the belief back down and confirms
+// the sheet was right.
+//
+// probe is the draw, in [0,1), and the caller supplies it because this file may
+// not read a clock or a random source of its own. Anything outside the unit
+// interval is nobody having drawn, and nothing is promoted.
+func sheetDoubtsLast(order []Scored, req Request, known map[ID]Belief, probe float64) []Scored {
+	if len(order) < 2 {
 		return order
 	}
 	sure := make([]Scored, 0, len(order))
 	unsure := make([]Scored, 0, len(order))
 	for _, candidate := range order {
-		if known[candidate.ID].Facts.Tools {
-			sure = append(sure, candidate)
+		if doubted(known[candidate.ID], req) {
+			unsure = append(unsure, candidate)
 			continue
 		}
-		unsure = append(unsure, candidate)
+		sure = append(sure, candidate)
 	}
-	// Nothing is known to take a tool call, so there is nothing to rank behind
-	// and the order stands as scored.
-	if len(sure) == 0 {
+	// Everything is doubted, or nothing is: either way there is nothing to rank
+	// behind anything and the order stands exactly as it was scored.
+	if len(sure) == 0 || len(unsure) == 0 {
 		return order
+	}
+	if probe >= 0 && probe < 1 && probe*probeInEvery < 1 {
+		return append(append(unsure[:1:1], sure...), unsure[1:]...)
 	}
 	return append(sure, unsure...)
 }
@@ -236,6 +327,7 @@ func frontierFor(beliefs []Belief, req Request, opts gateOptions, cached func(ID
 		sorted = append(sorted, candidates[index])
 		sortedFacts = append(sortedFacts, facts[index])
 	}
+	sorted, sortedFacts = aboveServiceFloor(sorted, sortedFacts, beliefsByID(beliefs), req.Now)
 	sorted = pricedPessimistically(sorted, sortedFacts)
 	sorted = underPriceCeiling(sorted, sortedFacts, req)
 	// Unknown generation is not free generation. Until the request has an
@@ -395,4 +487,84 @@ func paretoFront(candidates []Scored, unknownQuality float64) []Scored {
 		}
 	}
 	return survivors
+}
+
+// ── THE SERVICE FLOOR ───────────────────────────────────────────────────────
+//
+// Every other bound in this file is RELATIVE — a multiple of the best lane in
+// the set, a multiple of the cheapest — and a relative bound cannot say that a
+// lane is too slow for a person full stop. On 2026-09-10 Morph answered every
+// deepseek-v4.1-flash request it was given, twenty-seven seconds to the first
+// token at six tokens a second, and stayed a candidate because it was the
+// cheapest lane that answered and nothing here had an absolute opinion. These
+// three do.
+const (
+	// FloorTTFT is the longest believed wait to a first token a lane may carry
+	// and still be sent a request on its own merits. Six seconds is the
+	// unattended role's patience ceiling (roles.go) with nothing left over.
+	FloorTTFT = 6 * time.Second
+	// FloorRate is the slowest believed generation a lane may carry. It sits
+	// UNDER [ReadRate]: a lane writing faster than a person reads is fast enough
+	// for prose whatever a tool loop thinks of it, and the prose objective
+	// rightly prefers a 20 tok/s lane with quick first words over a 200 tok/s
+	// lane that starts late (internal/provider's workload test). Fifteen is
+	// Morph's six and DeepInfra's fourteen, and nothing anybody would keep.
+	FloorRate = 15.0
+	// FloorServing is the least a lane may be believed to answer. Half: a lane
+	// refusing more than it serves costs more than two sends per answer.
+	FloorServing = 0.5
+	// floorEvidence is how many availability outcomes the serving clause needs
+	// before it may refuse, so that one refusal does not empty a set.
+	floorEvidence = 3.0
+)
+
+// underFloor reports whether a belief is SURELY below the service floor. Surely
+// is [ignoreSureVariance], the same sureness a refusal needs in orderOf: a lane
+// is refused on a belief the ledger is confident in, never on a wide one — and
+// because [Posterior.Predict] widens a belief with every minute it goes
+// unobserved, a lane put out by this floor drifts back into the candidate set
+// on its own once the belief is no longer sure, which is when it deserves the
+// probe that would measure it again.
+func underFloor(belief Belief, now time.Time) bool {
+	if belief.TTFT.Known() && belief.TTFT.P <= ignoreSureVariance && belief.TTFT.Mean() > float64(FloorTTFT.Milliseconds()) {
+		return true
+	}
+	if belief.Rate.Known() && belief.Rate.P <= ignoreSureVariance && belief.Rate.Mean() < FloorRate {
+		return true
+	}
+	if belief.Availability.Known() && belief.Availability.A+belief.Availability.B >= availabilityPrior.A+floorEvidence && servingAt(belief, now) < FloorServing {
+		return true
+	}
+	return false
+}
+
+// aboveServiceFloor drops every candidate surely under the floor — AND NEVER
+// ALL OF THEM. A set that is entirely under the floor is a model with no good
+// lane, and the honest answer there is the least bad one, not no answer: an
+// empty frontier is "no opinion", which sends the request out on the sort word
+// to whichever of those same lanes the router picks, blind.
+func aboveServiceFloor(candidates []Scored, facts []Facts, beliefs map[ID]Belief, now time.Time) ([]Scored, []Facts) {
+	kept := make([]Scored, 0, len(candidates))
+	keptFacts := make([]Facts, 0, len(candidates))
+	for index, candidate := range candidates {
+		if underFloor(beliefs[candidate.ID], now) {
+			continue
+		}
+		kept = append(kept, candidate)
+		keptFacts = append(keptFacts, facts[index])
+	}
+	if len(kept) == 0 {
+		return candidates, facts
+	}
+	return kept, keptFacts
+}
+
+// beliefsByID is the beliefs a frontier was built from, by lane, for the
+// clauses that read the posterior rather than the score.
+func beliefsByID(beliefs []Belief) map[ID]Belief {
+	byID := make(map[ID]Belief, len(beliefs))
+	for _, belief := range beliefs {
+		byID[belief.ID] = belief
+	}
+	return byID
 }

@@ -244,7 +244,7 @@ func TestCostReadsDurableUnbilledMarkersForItsOwnConversation(t *testing.T) {
 		page.WriteString(plain(row.text))
 		page.WriteByte('\n')
 	}
-	if !strings.Contains(page.String(), "3 "+spendUnbilledSaid) || strings.Contains(page.String(), spendTeachEmptyWord) {
+	if !strings.Contains(page.String(), "3 "+spendUnbilledSaid) || strings.Contains(page.String(), whisperOf(pageSpend)) {
 		t.Fatalf("a page with only missing prices claimed no spending: %s", page.String())
 	}
 }

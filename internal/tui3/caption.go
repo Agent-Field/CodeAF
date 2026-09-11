@@ -89,18 +89,11 @@ func deriveCaptions(es []entry, runningTurn int) []caption {
 		}
 
 		c := caption{start: from, head: head, end: to, calls: to - from}
-		if head >= 0 {
-			c.start = head
-			c.source = captionSaid
-			c.text = captionWords(es[head].text)
-		}
-		// THINKING NEVER SUPPLIES THE TITLE. A first-line of chain-of-thought is
-		// reasoning, not a step; without a narrating line we compose a floor from
-		// the tools, and the cheap narrator may overwrite it while the batch runs.
-		if c.text == "" {
-			c.source = captionMade
-			c.text = shortCaption(composeCaption(es, from, to))
-		}
+		// WHETHER THE BATCH IS STILL OPEN IS DECIDED BEFORE ITS WORDS ARE, because
+		// the words depend on it (see [captionPast]). It used to be read after the
+		// title was composed, which is how a step that had finished every one of
+		// its calls went on saying `running 2 commands` for the two minutes a
+		// person spent watching a request fail behind it.
 		live := false
 		for i := from; i < to; i++ {
 			e := es[i]
@@ -117,6 +110,25 @@ func deriveCaptions(es []entry, runningTurn int) []caption {
 				// so a step never wears the mark of a sentence it is not showing.
 				c.told = e.caption
 				c.category = e.captionCat
+			}
+		}
+		if head >= 0 {
+			c.start = head
+			c.source = captionSaid
+			c.text = captionWords(es[head].text)
+		}
+		// THINKING NEVER SUPPLIES THE TITLE. A first-line of chain-of-thought is
+		// reasoning, not a step; without a narrating line we compose a floor from
+		// the tools, and the cheap narrator may overwrite it while the batch runs.
+		if c.text == "" {
+			c.source = captionMade
+			c.text = shortCaption(composeCaption(es, from, to))
+			// A FINISHED BATCH IS NEVER CAPTIONED AS RUNNING. The floor is written
+			// in the present because it is normally written while the calls are
+			// going; once every row in it has closed, the same words in the past
+			// are the same claim about the same work, made honestly.
+			if !live {
+				c.text = captionPast(c.text)
 			}
 		}
 		if live {
@@ -158,83 +170,15 @@ func captionSpan(text string) (title string, cut int) {
 	return title, cut
 }
 
-// shortCaption keeps ONE short sentence for the step title. Same rules as
-// session.cleanCaption: prefer a complete sentence under ten words; never
-// ellipsis-cut mid-clause — the row wraps what remains.
-const captionWordMax = 10
-
+// shortCaption is [session.ShortCaption] under the name this file's call sites
+// already use.
+//
+// THE RULE LIVES IN ONE PLACE ON PURPOSE. The narrator cleans the line it wrote
+// with it and the surface titles its steps with it, and for as long as there
+// were two copies a dot inside `livesteps.go` had to be found twice to be fixed
+// once — which is how a caption came to start in the middle of a word.
 func shortCaption(line string) string {
-	line = strings.TrimSpace(line)
-	if line == "" {
-		return ""
-	}
-	var pick string
-	for _, sentence := range captionSentences(line) {
-		words := strings.Fields(strings.TrimSpace(strings.TrimRight(sentence, ".!?;:")))
-		if len(words) == 0 {
-			continue
-		}
-		if len(words) < 3 {
-			if pick == "" {
-				pick = strings.Join(words, " ")
-			}
-			continue
-		}
-		if len(words) > captionWordMax {
-			words = captionTrimDangling(words[:captionWordMax])
-		}
-		return strings.Join(words, " ")
-	}
-	return pick
-}
-
-func captionSentences(line string) []string {
-	line = strings.TrimSpace(line)
-	if line == "" {
-		return nil
-	}
-	var out []string
-	start := 0
-	for i, r := range line {
-		switch r {
-		case '.', '!', '?':
-			piece := strings.TrimSpace(line[start : i+1])
-			if piece != "" {
-				out = append(out, piece)
-			}
-			start = i + 1
-		}
-	}
-	if rest := strings.TrimSpace(line[start:]); rest != "" {
-		out = append(out, rest)
-	}
-	if len(out) == 0 {
-		return []string{line}
-	}
-	return out
-}
-
-func captionTrimDangling(words []string) []string {
-	dangling := map[string]bool{
-		"a": true, "an": true, "the": true, "and": true, "or": true, "but": true,
-		"to": true, "of": true, "in": true, "on": true, "at": true, "for": true,
-		"from": true, "by": true, "with": true, "as": true, "into": true,
-		"which": true, "that": true, "this": true, "these": true, "those": true,
-		"who": true, "whom": true, "whose": true, "where": true, "when": true,
-		"is": true, "are": true, "was": true, "were": true, "be": true, "been": true,
-		"being": true, "have": true, "has": true, "had": true, "do": true, "does": true,
-		"did": true, "will": true, "would": true, "can": true, "could": true,
-		"should": true, "may": true, "might": true, "must": true,
-		"actually": true, "still": true, "also": true, "just": true, "very": true,
-	}
-	for len(words) > 2 {
-		last := strings.ToLower(strings.Trim(words[len(words)-1], ",;:"))
-		if !dangling[last] {
-			break
-		}
-		words = words[:len(words)-1]
-	}
-	return words
+	return session.ShortCaption(line)
 }
 
 // composeCaption is the deterministic floor beneath a model-supplied heading.
@@ -469,6 +413,57 @@ func captionVerb(tool string) string {
 	default:
 		return firstNonEmpty(tool, "working")
 	}
+}
+
+// ── THE TENSE OF A STEP THAT IS OVER ────────────────────────────────────────
+
+// captionPastVerbs is the ONE TABLE that says how this surface spells a verb it
+// composed in the present once the work is finished. Every gerund [captionVerb]
+// and [bashCaption] can produce is in it, and a word that is not in it is left
+// exactly as written — a raw command slice (`go vet ./...`) has no tense to
+// change, and guessing one would garble the only part of the row that is quoted
+// rather than composed.
+var captionPastVerbs = map[string]string{
+	"asking":    "asked",
+	"building":  "built",
+	"checking":  "checked",
+	"editing":   "edited",
+	"fetching":  "fetched",
+	"listing":   "listed",
+	"looking":   "looked",
+	"reading":   "read",
+	"running":   "ran",
+	"searching": "searched",
+	"working":   "worked",
+}
+
+// captionPast is the one door onto that table: a floor caption composed in the
+// present, spelled for a batch that has closed.
+//
+// IT CONVERTS THE LEADING VERB OF EACH CLAUSE and nothing else. The floor's
+// grammar is narrow by construction — a gerund, then what it was pointed at —
+// and the one shape with two of them is `editing 2 files and running the suite`,
+// which is why the split is on ` and `. Everything after the verb is the work's
+// own words and is carried through untouched.
+func captionPast(text string) string {
+	clauses := strings.Split(text, " and ")
+	for i, clause := range clauses {
+		clauses[i] = captionPastClause(clause)
+	}
+	return strings.Join(clauses, " and ")
+}
+
+func captionPastClause(clause string) string {
+	fields := strings.Fields(clause)
+	if len(fields) == 0 {
+		return clause
+	}
+	past, ok := captionPastVerbs[strings.ToLower(fields[0])]
+	if !ok {
+		return clause
+	}
+	fields[0] = past
+	return strings.Join(fields, " ")
 }
 
 func dominantCaptionVerb(counts map[string]int) string {

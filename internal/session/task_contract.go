@@ -64,6 +64,19 @@ const TaskKindHarness TaskKind = "harness"
 // — the row, the room, the id, the stop — it has for free.
 const TaskKindSubharness TaskKind = "subharness"
 
+// TaskKindQuick is a task that runs WHERE ITS CALLER WORKS (task_quick.go): the
+// caller's own workspace, no worktree, no branch, no merge, no check and no
+// landing card. Its last message is its result, and the row goes `done`.
+//
+// IT IS THE KIND WITH NOTHING UNDER IT, and that is what a surface has to know
+// about it. Every other kind of node has something a card can point at — a
+// branch coming home, a page waiting on a yes, a program's typed output — and
+// this one has an answer and, when it wrote, the files it wrote. A card that
+// promised "the branch it wrote on is kept" over a quick node would be pointing
+// at work that does not exist, which is exactly what [TaskKind] exists to
+// prevent.
+const TaskKindQuick TaskKind = "quick"
+
 // TaskKindJob is a piece of BACKGROUND WORK this session started that is not an
 // agent at all (jobrow.go): a command running under `bash background:true`, a
 // foreground command that reached its bound and was promoted (promote.go), a
@@ -98,6 +111,48 @@ const TaskKindJob TaskKind = "job"
 // enums would be two answers.
 const TaskKindAdaptive TaskKind = "adaptive"
 
+// kindsWithoutAcceptance DECLARES which kinds of work are admitted with NO
+// ACCEPTANCE AT ALL. It is a property OF THE KIND, so it is declared here beside
+// the kinds and read from there by everything that has to know — never restated
+// as a comparison at a call site, which is how two spellings of one rule come to
+// disagree.
+//
+// A quick task is the one row today. Nothing checks a quick task — its last
+// message is its answer — so its builder leaves deliverable and acceptance EMPTY
+// rather than inventing a "DONE WHEN" no reader will ever read
+// ([Agent.newQuickSpec], and docs/design/quick-task/DESIGN.md §the judge). Every
+// other kind fills one: a design promises a page the person approves
+// (harness_task.go), a run promises the answer its program declares
+// (subharness_run.go), and ordinary work is groomed into one before it is ever
+// proposed. A kind added later answers this question by adding a row here or by
+// filling the field, and [TestEveryKindsAcceptanceMatchesWhatItDeclares] walks
+// the builders and fails the one that does neither.
+var kindsWithoutAcceptance = map[TaskKind]bool{
+	TaskKindQuick: true,
+}
+
+// kindWithoutAcceptance reads that declaration.
+func kindWithoutAcceptance(kind TaskKind) bool { return kindsWithoutAcceptance[kind] }
+
+// acceptanceHolds is THE RULE, asked wherever a piece of work and its DONE WHEN
+// are met together: the spec at admission, and the record on the way back off
+// disk ([decodeTasks]).
+//
+// Ordinary work owes an acceptance. A node without one is a node no check can
+// judge and no reader can hold the work to, so a checkpoint carrying one was not
+// written by this code — which is why the store refuses the file whole rather
+// than scheduling half a graph. A kind that DECLARES it carries none owes
+// nothing, and the blank is the answer rather than the absence of one.
+//
+// Asking both the same question was the defect this function exists to end: one
+// quick task anywhere in a conversation's history refused the whole checkpoint,
+// and the conversation reopened with no task graph at all — every finished row,
+// every piece of running work and the whole family gone. Measured on a real
+// checkpoint, 2026-09-11.
+func acceptanceHolds(kind TaskKind, acceptance string) bool {
+	return strings.TrimSpace(acceptance) != "" || kindWithoutAcceptance(kind)
+}
+
 // TaskKindWord is what a person reads where the code holds a [TaskKind], and it
 // is the ONE place that translation is made — [taskStateWord]'s law applied to
 // the other half of a row.
@@ -123,6 +178,12 @@ func TaskKindWord(kind TaskKind) string {
 		return "making a saved shape"
 	case TaskKindJob:
 		return "background job"
+	case TaskKindQuick:
+		// AND THIS ONE IS THE PERSON'S OWN WORD ALREADY. `quick` is what the tool
+		// is called, what the manual calls it and what somebody says out loud when
+		// they ask for one, so there is no translation to make — which is the
+		// happy case this function is written for rather than an exception to it.
+		return quickWord
 	}
 	return ""
 }
@@ -348,6 +409,8 @@ func settleOrAsk(word string) TaskSettle {
 // the top half, an update the bottom, and no surface reads a field its kind
 // did not set.
 type TaskNotice struct {
+	// Thinking is the effective setup, including a saved continuation choice.
+	Thinking string
 	// ID is the proposal's token: a surface hands it back to
 	// [Agent.ResolveTask]. On updates it names the node the update is about.
 	ID uint64
@@ -585,6 +648,13 @@ type TaskNotice struct {
 	// sentences a row reads, so that nothing has to tell them apart by their
 	// prose.
 	Shifted bool
+	// GroundHeld says the landing was refused by THE PERSON'S OWN UNTRACKED COPIES
+	// of the files this task wrote, sitting in the folder the branch merges into
+	// (groundcarry.go). It is the third road to the conflict's one question, and
+	// it is the road whose `resolve it` carries those copies aside rather than
+	// spending a merge round: a file git is not watching is on no branch, so
+	// there is nothing for a round to merge.
+	GroundHeld bool
 	// Decider is WHO HOLDS THIS NODE'S DECISION right now ([TaskAskOwner]). It is
 	// the person on every ordinary landing; `task.settle = auto` and a person
 	// pressing "let aforge decide this one" ([Agent.HandUnverifiedToModel]) are the
@@ -599,18 +669,27 @@ type TaskNotice struct {
 	// stands, one landed with the check switched off and one a person accepted
 	// are all done and none of them was judged (taskgrade.go's
 	// [TaskNode.checkSaid]).
-	Checked provider.Verdict
+	Checked provider.Reading
 	// Model is the model this node runs on: the one the proposal named, the
 	// configured task model, or the conversation's own (taskmodel.go). It is on
 	// the proposal AND on every update, because it is a fact about the work that
 	// outlives the question — a card that lands twenty minutes later still says
 	// whose hands did it.
 	Model string
+	// NextModel is a saved continuation choice; Model still names the last attempt.
+	NextModel string
 	// CostUSD is what this node's own agent has spent, live while it runs and
 	// frozen once it lands. Zero means nobody published a price — an unpriced
 	// model, or a node that has not started — and it is NOT the same claim as
 	// "it cost nothing", so a surface draws no figure at all for it.
 	CostUSD float64
+	// Tokens is what this node has burned, input plus output, read the same
+	// way as CostUSD: what its folded hands spent, plus the worker still in the
+	// room ([TaskNode.burned]). It is the one figure a surface with no lane to
+	// the worker — a window on another machine — can draw a node's tokens from.
+	// Zero is "nobody counted", and absent from rows that did not carry it (the
+	// roster replay, a row from a build before it existed).
+	Tokens int
 }
 
 // TaskAnswer is the surface's reply to a proposal. Approved with an empty
@@ -649,8 +728,8 @@ const (
 	//
 	// IT IS A LIFE OF THE NODE AND NOT A STEP OF A TOOL CALL, which is why it
 	// belongs on this list beside the other three. The reading is a full call to
-	// the tier that thinks — measured at thirteen seconds, and bounded at
-	// [divideReviewPatience] — and it happens twice in a node's life where the
+	// the tier that thinks — measured at thirteen seconds, and bounded by the
+	// role's own tier — and it happens twice in a node's life where the
 	// harness submits a drawing on the worker's behalf before its first request
 	// (task_divide_sketch.go): a card that has just appeared, with a clock going
 	// up and nothing else on it, for as long as the reading lasts.

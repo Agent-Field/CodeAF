@@ -24,6 +24,10 @@ covers the work behind it. Anything you steered into it, drawn where you said it
 at the end. And pinned above all of it, one line saying what it is doing, how long it has
 been going, what it has cost and how many calls it has made.
 
+While the task works, its live work carries the same `↑`/`↓` token column the conversation
+does — `↑` the task's newest request, `↓` what it has written — on a task running through
+this machine's engine too (see "No token count inside a task" on the screen page).
+
 Nothing here is thrown away — what is folded is one keypress from open.
 
 ## When did this task start — the task page says nothing where the time should be, or `started` is blank on a finished task
@@ -81,10 +85,12 @@ caption whenever its words and the work appear to disagree.
 The short status line over a batch is its **caption** — one sentence of about
 5 to 10 words naming what the step is doing and where. A collapsed stack of
 those lines is the **outline**. On a narrow window a caption wraps; it is never
-cut mid-sentence with an ellipsis. It says what each step is trying to settle
-rather than repeating commands the rows already name. A live caption may shimmer
-while its rows are folded; opening it stops the shimmer and shows the running
-calls.
+cut mid-sentence with an ellipsis. A caption ends only where its sentence ends,
+so a filename, version number or path keeps its whole self: `reading livesteps.go`
+is not shortened to `reading livesteps`, and a caption never begins in the middle
+of a word. It says what each step is trying to settle rather than repeating commands
+the rows already name. A live caption may shimmer while its rows are folded; opening
+it stops the shimmer and shows the running calls.
 
 Use **`ctrl+e` on an empty box** to open the newest `▸ worked` chip onto the outline.
 Then click the caption, select it and press `enter`, or press **`ctrl+o` on the live
@@ -211,6 +217,47 @@ Every word it draws:
 **`briefing a worker` is not one of them.** That one is on the status line under the message
 box in the conversation while your turn is being handed to a task — before the task, and its
 page, exist at all.
+
+## The status line at the bottom of a task's page — no provider, no tok/s in a task room, which model is serving this task, why is the rate blank inside a task
+
+The bottom row of a task's page is about **that task**, and it says so in two places.
+
+On the left, in front of the ledger: the room chip, the task's own model, and the machine
+answering for it.
+
+```
+⠋ Ship the parser fix · task glm-5.2 · via friendli
+```
+
+At the right edge: the task's live rate while its model is writing — `38 tok/s` — or the
+task's own phase words while it is in a stage that is producing nothing, exactly as the
+conversation's line reads them: `running go test · 41s`, `connecting · 1.2s`, `paced ·
+retry in 6s`.
+
+**The machine is named whoever served it** — `task glm-5.2 · via z-ai` when the vendor
+serves its own model — and while the task's first answer is still being written, as soon
+as the machine writing it has named itself.
+
+**It does not go quiet because your conversation is idle.** That is the ordinary state
+while a task runs: you hand the work out, your turn ends, and the task works for minutes
+with nothing happening in the conversation. The row keeps drawing the task's own reading
+throughout.
+
+**What is on that row and is still the conversation's**: the bill, the cache, the context
+meter, the job and watch counts, and the posture word. Those measure a session, and a task
+runs inside yours — the cost figure already includes what your tasks have spent (see
+"What the `$` on the status line counts" on the screen page).
+
+**A task that has said nothing recently draws nothing** — no machine and no rate, rather
+than the conversation's clock or another task's. A stage that is genuinely still going
+says so again every few seconds, so an empty right edge means this task is between things,
+not that the row has lost track. `esc` leaves the room and the row is the conversation's
+again.
+
+**Two tasks on the same model each keep their own reading.** Until 2026-09-10 they did
+not: the surface filed this news by model, so two tasks on one model overwrote each
+other, a room could show no rate and no provider at all, and the row could carry a stale
+line left from the conversation — `running ask · 4m 55s` on a page whose task was writing.
 
 ## Can't scroll in a task — the wheel and pgup do nothing
 
@@ -480,20 +527,31 @@ second copy of the conversation's wiring, and the copy had fallen behind.
 the moment the task reports *that* call finished, which is usually before its
 result comes back: calls in a batch run together and the result waits for the
 slowest of them, so the figure is the call's own and not the batch's. A call
-too quick to be worth a number gets none.
+too quick to be worth a number gets none. The same figure comes back when you
+open the page after the work has landed — the journal keeps each call's own
+duration, so a finished room still says `3.0s` and `7.0s` on the right rows
+rather than drawing the calls with no clock at all.
 
-**A retry inside a task** now shows. When the model's reply is cut and the step
-asks again, the half-answer that was cut is taken off the page — it belongs to
-a reply that will never exist — and a dim line says what happened:
-`the model went quiet mid-reply — asking again`, or, where the step gives up on
-that model and finishes on another, `the reply kept losing its thread —
-finishing this one on <model>`. Before this, a task's page kept the dead
-half-answer above the live one with nothing to explain it.
+**A retry inside a task** shows, in the same words the conversation uses. When
+the model's reply is cut and the step asks again, the half-answer that was cut is
+taken off the page — it belongs to a reply that will never exist — and a dim row
+says what happened, that it is being asked again, and which try this is:
+`the model went quiet mid-reply · asking again · 2 of 3`. Where the step gives up
+on that model and finishes on another, the row names where the rest is coming
+from instead of counting: `the reply lost its thread · moving to gpt-5-mini`.
+Before this, a task's page kept the dead half-answer above the live one with
+nothing to explain it.
 
 A failed connection or retryable request also replaces its partial answer before
-trying again, with `the request failed — asking again`. The failed attempt does
-not stay above the replacement. Stopping during the retry wait still keeps the
-partial reply you saw; a retry that never starts discards nothing.
+trying again, with `the model would not take the request · asking again · 2 of 4`
+or whichever reason applies. The failed attempt does not stay above the
+replacement. Stopping during the retry wait still keeps the partial reply you
+saw; a retry that never starts discards nothing.
+
+**And a step that runs out of tries says so** rather than leaving the page
+looking as though nothing has arrived: `gave up after 4 tries · <what the
+provider said>`. A step that failed once and was never asked again draws
+`error: <what went wrong>` — "gave up" is a claim about a struggle.
 
 **The dim `· ` lines between calls** are the page saying what its own machinery
 did. Three of them reach a task now:

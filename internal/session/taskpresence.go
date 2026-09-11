@@ -88,6 +88,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
 	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
 )
 
 // presenceName is the file, inside one session's folder. It is spelled here
@@ -150,13 +151,16 @@ const (
 	PresenceIdle PresenceState = "idle"
 )
 
-// PresenceTask is one piece of work a live session has out right now.
+// PresenceTask is one piece of work a live session has out right now: a task
+// node, or an adaptive run.
 //
-// It carries no cost, no token count and no outcome, and that is the whole
-// distinction from [TaskIndexEntry]: this is the shortest thing that lets
-// another window draw a row saying work is happening. Everything else about the
-// task is in the project index, which is the file that answers questions about
-// work rather than about processes.
+// It carries what the work is doing AT THIS INSTANT — which of its lives it is
+// in, the call in flight, how far a run has got — and never a cost, a token
+// count or an outcome, and that is the whole distinction from [TaskIndexEntry]:
+// this is the shortest thing that lets another window draw a row saying what is
+// happening. Everything about what the work CAME TO is in the project index,
+// which is the file that answers questions about work rather than about
+// processes.
 type PresenceTask struct {
 	// ID is the node's id inside the session that is running it, decimal —
 	// [TaskIndexEntry.ID]'s own spelling, so a row here and a row there about
@@ -206,6 +210,55 @@ type PresenceTask struct {
 	// files" would be inventing the one answer this field cannot give — so
 	// [Elsewhere.Touching] answers with two lists and keeps them apart.
 	Files []string `json:"files,omitempty"`
+	// Activity is the one line saying what the node's worker is doing — the
+	// call in flight and how long it has been out, or the gap between calls with
+	// the step count beside it. It is [TaskIndexEntry.Activity]'s line, from the
+	// same recorder (task_live.go), carried across the window that line never
+	// leaves.
+	//
+	// IT IS WRITTEN ONLY WHILE THE WORKER IS THE LIFE THE NODE IS IN. Through a
+	// check, a repair round or the sizing read, the recorder still holds the
+	// worker's last call, finished — a line asserting a present that has passed
+	// — so the field is left off and [PresenceTask.Phase] says what is true. It
+	// is empty too for a queued node, which has no worker yet, and for every row
+	// written by a build older than this field; a surface draws nothing for any
+	// of them.
+	Activity string `json:"activity,omitempty"`
+	// Done and Total are how far an ADAPTIVE RUN has got: nodes settled, of the
+	// nodes its planner has laid out so far ([orchestrate.Snapshot]). Total moves
+	// as the planner amends the graph, so this is a count and never a promise of
+	// the end.
+	//
+	// BOTH ARE ZERO FOR WORK THAT DOES NOT COUNT THIS WAY — a task node, and a
+	// run whose planner has not laid anything out yet — and a surface draws no
+	// `0 of 0` for them (the emptiness law).
+	Done  int `json:"done,omitempty"`
+	Total int `json:"total,omitempty"`
+}
+
+// PresenceJob is one background job a live session has running right now — a
+// dev server, a watch, a long build — as another window reads it. It is the
+// same list the conversation's own column draws ([Agent.jobsWorkingNow]), and it
+// is here so home can draw it without holding the agent that forked it.
+//
+// IT IS A CLAIM ABOUT A PROCESS AND NOTHING ELSE. A job's log, its exit code
+// and its output stay where the job's own window keeps them; a finished job is
+// simply absent from the next refresh, because a job's ending is news its own
+// conversation tells (jobrow.go's header) and this file keeps no record.
+type PresenceJob struct {
+	// ID is the job's own number, decimal — the handle `jobs output 3` and
+	// `jobs kill 3` take inside the session that holds it. It restarts at one
+	// in every window, so it is joinable only together with the session's id.
+	ID string `json:"id"`
+	// Title is the row's short name ([jobRowTitle]): a watch or a render's
+	// label, or a plain command's own first line.
+	Title string `json:"title"`
+	// Dir is the folder the process was started in. A surface names the place
+	// from it; it is empty only on a job a test registered by hand.
+	Dir string `json:"dir,omitempty"`
+	// StartedAt is when the process forked, so a surface counts the job's age
+	// up on its own beat.
+	StartedAt time.Time `json:"startedAt,omitzero"`
 }
 
 // PresenceQuestion is the card this session is stopped on, as another window
@@ -325,9 +378,14 @@ type SessionPresence struct {
 	// question borrows the consent lane to ask about a TURN (recovery.go), and
 	// it is deliberately not answerable from anywhere but its own window.
 	Question PresenceQuestion `json:"question,omitzero"`
-	// RunningTasks is the work this session has out right now, in admission
-	// order. Nil when there is none, which is most sessions.
+	// RunningTasks is the work this session has out right now: its task nodes
+	// in admission order, then its adaptive runs in the order they were minted.
+	// Nil when there is none, which is most sessions.
 	RunningTasks []PresenceTask `json:"runningTasks,omitempty"`
+	// Jobs are the background jobs this session has running right now, in the
+	// order they were started. Nil when there is none — and on every file
+	// written by a build older than this field, which reads the same way.
+	Jobs []PresenceJob `json:"jobs,omitempty"`
 	// Dir is the session folder this was read from, filled in by the reader and
 	// never written to the file — the folder already knows where it is, and a
 	// path recorded inside it would be a second answer to go wrong the day a
@@ -797,7 +855,8 @@ func (a *Agent) presenceSnapshot(now time.Time) SessionPresence {
 		// would leave that window saying `waiting on you` with nothing after it.
 		snapshot.Question = a.presenceAsk()
 	}
-	snapshot.RunningTasks = a.presenceTasks()
+	snapshot.RunningTasks = append(a.presenceTasks(), a.presenceRuns()...)
+	snapshot.Jobs = a.presenceJobs()
 	return snapshot
 }
 
@@ -856,8 +915,16 @@ type personAsk struct {
 // another lock is holding the lock Interrupt has to be able to take.
 func (a *Agent) waitingOnPerson() personAsk {
 	a.mu.Lock()
+	// THE MODEL'S OWN DOOR IS ONE OF THESE LANES, and leaving it out was a
+	// session stopped on a question telling every other window it was `working`.
+	// [Agent.askWaits] is what the `ask` tool blocks its turn on (tools_ask.go);
+	// the desk already carries the whole question beside it
+	// ([Agent.presenceAskingQuestion]), so the words below are there — it was
+	// only this predicate that did not know to look. Measured in two terminals
+	// on one machine: a question raised in the first, and home in the second
+	// drawing that conversation as `working` with nothing to answer.
 	asked := len(a.consent) > 0 || len(a.connectAsks) > 0 || len(a.harnessAsks) > 0 ||
-		len(a.standingAnswers) > 0
+		len(a.standingAnswers) > 0 || len(a.askWaits) > 0
 	for _, proposal := range a.taskAnswers {
 		if proposal != nil && proposal.notice.Deadline.IsZero() {
 			asked = true
@@ -1023,12 +1090,21 @@ func (a *Agent) presenceTasks() []PresenceTask {
 		if phase == TaskPhaseWorking {
 			phase = ""
 		}
+		// THE ACTIVITY IS READ HERE, under the graph's lock, exactly as
+		// [TaskNode.indexEntryLocked] reads it — the recorder takes only its own
+		// lock, so nothing waits on the graph for it. It is kept only while the
+		// worker is the life the node is in ([PresenceTask.Activity] says why).
+		activity := ""
+		if phase == "" {
+			activity = node.room.recorder().activity()
+		}
 		out = append(out, PresenceTask{
 			ID:        strconv.FormatUint(node.id, 10),
 			Title:     strings.TrimSpace(node.spec.title),
 			State:     string(node.state),
 			StartedAt: node.started,
 			Phase:     phase,
+			Activity:  activity,
 			// A COPY, TAKEN UNDER THE LOCK THE LIST IS APPENDED UNDER
 			// ([TaskNode.noteWrote]), so a refresh carries one whole instant of
 			// the node's writing and never half an append. A node that has
@@ -1039,6 +1115,84 @@ func (a *Agent) presenceTasks() []PresenceTask {
 		})
 	}
 	return out
+}
+
+// presenceRuns is the adaptive runs this session has out, one row each, in the
+// order their rows were minted.
+//
+// A RUN IS WORK OUT LIKE ANY NODE, AND FOR A LONG TIME THIS FILE DID NOT SAY
+// SO. A run has no node in the graph — its planned workers live on its own
+// snapshot — so [Agent.presenceTasks] never saw it, while the run's root row sat
+// in the project index saying `running` from its first breath
+// ([Agent.newOrchestrateFamily]). Every other window then judged that row by
+// the join [SessionRow.Runs] makes, found no presence naming it, and counted a
+// run in full flight as incomplete.
+//
+// SO THE ROW CARRIES THE ROOT'S OWN ID, which is the index row's id and comes
+// off the graph's one sequence — the join on (SessionID, ID) is the same one a
+// node's row makes, and it cannot collide with a node's. A run a test scripted
+// with no family has no such id and is left off.
+//
+// The registry is read under a.mu and each run's snapshot under the run's own
+// lock, never both at once — [Agent.presenceSnapshot]'s standing rule.
+func (a *Agent) presenceRuns() []PresenceTask {
+	a.mu.Lock()
+	live := make([]*orchestration, 0, len(a.orchestrations))
+	for _, run := range a.orchestrations {
+		live = append(live, run)
+	}
+	a.mu.Unlock()
+
+	type minted struct {
+		root uint64
+		row  PresenceTask
+	}
+	var rows []minted
+	for _, run := range live {
+		if run == nil || run.run == nil || run.family == nil {
+			continue
+		}
+		snap := run.run.Snapshot()
+		// A finished run stays in the registry so its room can still be read
+		// ([Agent.settleOrchestrate]); it is the index's to report, not this file's.
+		if snap.Done {
+			continue
+		}
+		done, total := orchestrateProgress(snap.Nodes)
+		family := run.family
+		family.mu.Lock()
+		title := family.title
+		family.mu.Unlock()
+		rows = append(rows, minted{root: family.root, row: PresenceTask{
+			ID:        strconv.FormatUint(family.root, 10),
+			Title:     title,
+			State:     string(TaskRunning),
+			StartedAt: family.started,
+			Done:      done,
+			Total:     total,
+		}})
+	}
+	// A map has no order and a row must not shuffle between refreshes; the root
+	// ids come off one sequence, so they sort as the runs were minted.
+	sort.Slice(rows, func(i, j int) bool { return rows[i].root < rows[j].root })
+	out := make([]PresenceTask, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, row.row)
+	}
+	return out
+}
+
+// orchestrateProgress is how far a run has got: the planned nodes that have
+// settled, of every node the planner has laid out so far. The settled test is
+// [runWorkState]'s, so the count on a row and the tree beneath it
+// ([Agent.runsWorkingNow]) cannot disagree about which workers are home.
+func orchestrateProgress(nodes []orchestrate.NodeStatus) (done, total int) {
+	for _, node := range nodes {
+		if runWorkState(node.State) == WorkDone {
+			done++
+		}
+	}
+	return done, len(nodes)
 }
 
 // ── the readers ─────────────────────────────────────────────────────────────

@@ -224,10 +224,12 @@ func TestStateCardRidesTheTailNoteOnlyWhenItHasSomethingToSay(t *testing.T) {
 }
 
 // The card is read AFTER the memory block, and now it is a whole transcript
-// that separates them rather than two lines of one string. Memory is what is
-// true across conversations and holds for the life of this one, so it stays in
-// message[0]; the card is what is true this minute, so it rides at the tail
-// where a change costs the note and nothing behind it.
+// that separates them rather than two lines of one string. NEITHER IS IN
+// message[0] any more: the card is what is true this minute and the memory block
+// is re-routed against the person's words at the start of every turn, so both
+// ride at the tail where a change costs the note and nothing behind it. They
+// ride in two notes rather than one because they move on different beats
+// (agent.go's memoryNoteOpening), and memory lands first.
 func TestStateCardRendersAfterTheMemoryBlock(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	agent.mergeStateCard(reflex.StateDelta{Goal: "ship the parser"})
@@ -235,17 +237,31 @@ func TestStateCardRendersAfterTheMemoryBlock(t *testing.T) {
 	agent.mu.Lock()
 	agent.memoryText = "\n<memory>\n- a remembered line\n</memory>\n"
 	agent.refreshSystemLocked()
+	agent.landVolatileLocked()
 	system := messageText(agent.messages[0])
+	var tail []string
+	for _, message := range agent.messages[1:] {
+		tail = append(tail, messageContentText(message))
+	}
 	agent.mu.Unlock()
 
-	if !strings.Contains(system, "<memory>") {
-		t.Fatalf("the memory block left message[0]:\n%s", system)
+	if strings.Contains(system, "<memory>") {
+		t.Fatalf("the memory block is back in message[0], in front of the whole conversation:\n%s", system)
 	}
 	if strings.Contains(system, "<state>") {
 		t.Fatalf("the card is back in message[0], in front of the whole transcript:\n%s", system)
 	}
-	if note := volatileNote(agent); !strings.Contains(note, "<state>") {
-		t.Fatalf("the card reached nothing the model reads:\n%s", note)
+	whole := strings.Join(tail, "\n")
+	memory := strings.Index(whole, "<memory>")
+	card := strings.Index(whole, "<state>")
+	if memory < 0 {
+		t.Fatalf("the memory block reached nothing the model reads:\n%s", whole)
+	}
+	if card < 0 {
+		t.Fatalf("the card reached nothing the model reads:\n%s", whole)
+	}
+	if memory > card {
+		t.Fatalf("the card landed in front of the memory block:\n%s", whole)
 	}
 }
 

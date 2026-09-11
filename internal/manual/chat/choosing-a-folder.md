@@ -62,6 +62,32 @@ whole gesture is `/folder` then `enter`.
 `esc` leaves everything exactly as it was: your half-written message comes back untouched,
 and nothing has been chosen.
 
+## /folder on the home screen — choosing the folder the next conversation opens in
+
+**On home the same command opens the same sheet, aimed at a conversation that does not exist
+yet.** Home's box is a draft for the conversation `enter` will open, and the rule above it
+says where that will be: `→ new conversation in ~/src/parser · glm-5.3-flash`. `/folder`,
+`/place` and `/dir` typed there — bare, or with a path after them — open the browser to
+change that folder.
+
+Three things are different on that sheet, and they all come from the same fact:
+
+- The title reads **`the next conversation's folder`** instead of `add context`.
+- The action row reads **`open the next conversation in · ~/src/parser`** instead of
+  `add this folder`, and it never offers `remove this folder` — the conversation this is
+  choosing for has no folders yet.
+- `enter` **pins** the folder: home comes back with the rule already changed and says
+  `next conversation opens in ~/src/parser`. Nothing is registered with any session until you
+  actually start one.
+
+**`esc` comes back to home too**, having changed nothing — the browser only replaced home
+because a sheet takes the whole frame. Files chosen on that sheet still go where files go:
+onto the tray, which rides into the conversation home opens next.
+
+**`alt+w` is the same pin without the browser** — it walks the target round the projects this
+machine knows, one press at a time. The browser is what you want when the folder is not one
+of those.
+
 ## Type a word to filter, open a row to browse
 
 The box at the top of the sheet is a **search box**, and it is empty when the sheet opens —
@@ -304,7 +330,8 @@ bound was reached, so a folder of that size is one where the column simply stops
   as they wrote it.
 - **A picture is drawn in the terminal's own cells** — one cell is two stacked pixels, in
   colour, with the aspect ratio preserved. It is cell-resolution colour and not Kitty or
-  iTerm graphics; it is coarser than those and it is the only kind that survives a repaint.
+  iTerm graphics. Its foot says `Low-resolution preview`; use the original file for
+  fine detail. The preview scrolls and repaints as ordinary terminal rows.
   On a terminal that cannot paint colour at all the pane says
   `this terminal cannot draw pictures` and names the picture's shape, format and size
   instead.
@@ -488,7 +515,7 @@ If the conversation is about two folders and the work does not say which, you ar
 once — `this conversation is about two places — <one> and <other> — so say which one this
 task is about` — and the answer is remembered.
 
-## Work on two projects in one chat, switch folders, open another repo, change directory
+## Work on two projects in one chat, switch folders, open another repo, change directory — no new conversation needed for another project
 
 Four asks, four answers, and the first one is new.
 
@@ -527,10 +554,10 @@ model looking at the disk, which it could always do.
   `remove this folder · <path>`.
 - **`/folder`** — the first rows are this conversation's own folders, most recently used
   first. That is the whole set, on demand, in one keystroke.
-- **Home** — the row for a conversation that is about somewhere beyond the project it is
-  filed under ends `· also about <name>`, and `+2` when there are more; the card beside it
-  says `also about` and names them, three at a time with `▸ …N more folders` behind the
-  rest. Typing a folder's name into home's box finds conversations about it whichever
+- **Home** — while you type, a matching conversation that is about somewhere beyond the
+  project it is filed under ends `· also about <name>`, and `+2` when there are more; the
+  card beside a search says `also about` and names them, three at a time with
+  `▸ …N more folders` behind the rest. The resting panels do not carry the clause. Typing a folder's name into home's box finds conversations about it whichever
   project they were held in. *Home* has the whole screen.
 
 Sixteen folders is as many as one conversation keeps. Past that the oldest one it worked

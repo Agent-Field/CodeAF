@@ -53,8 +53,8 @@ refused visibly rather than lost.
 A recent ssh connection is kept reusable for 300 seconds, so a new channel can avoid a
 full handshake when the underlying ssh connection is still healthy. Its control socket
 lives under this machine's aforge state directory at `~/.aforge/v3/ssh/` (moved by
-`AFORGE_HOME`). A state path too long for a unix socket disables reuse only; the ordinary
-ssh connection still opens.
+`AFORGE_HOME`). The same **104-byte** socket-path limit applies there: a state path too
+long disables reuse only; the ordinary ssh connection still opens.
 
 These network-dependent defaults are editable on `/settings`' **Workspace** tab as `ssh
 reuse` (`300s`), `ssh heartbeat` (`3s`), `ssh missed heartbeats` (`3`), and `ssh traffic`
@@ -114,10 +114,16 @@ waiting.
 So a long piece of work you left running does not fail four hours ago because nobody was
 there to say yes. It is sitting where it stopped.
 
-Four kinds of question wait this way: a permission question about a tool call, a reminder
-or watch asking to stand, an offer to run a saved harness, and a request to connect an
-account. Answer it exactly as you would have answered it live — it is not a different kind
-of card, it is the card you would have seen, with the same keys and the same offer.
+Five kinds of question wait this way: a permission question about a tool call, a reminder
+or watch asking to stand, an offer to run a saved harness, a request to connect an
+account, and a question the model asked you itself. Answer it exactly as you would have
+answered it live — it is not a different kind of card, it is the card you would have seen,
+with the same keys and the same offer.
+
+The last of the five waits by a different route and you cannot tell them apart: the engine
+simply says what it is still waiting on the moment a window attaches, so a question raised
+into an empty room draws the same block when you arrive that it would have drawn while you
+were sitting there. See **questions** for what that block does.
 
 **It tells you how long it sat there**, on a line of its own just above the card:
 
@@ -157,8 +163,8 @@ The rest of what you should know about sharing one:
 
 - **A question is answered once.** Say yes to a permission card on the phone and the
   conversation has its answer. A second window may still have that card drawn, but
-  pressing it decides nothing — a late answer to a question that has been settled is
-  dropped, which is what the same card does locally when a turn has moved on.
+  pressing it decides nothing — the engine's own refusal is said on screen, which is
+  what the same card does locally when a turn has moved on.
 - **Ending the conversation ends it for everybody.** Quitting deliberately closes the
   conversation and flushes the file, and that is a statement about the conversation rather
   than about your window. Simply closing a window — or losing its connection — leaves
@@ -410,6 +416,28 @@ already did.
 Nothing here half-works: a capability a road cannot carry is absent rather than present and
 failing, which is why the model is not given a verb it could not finish.
 
+## Is the tok/s and the via name still right when a session host is holding the conversation
+
+Yes, and there is nothing to turn on. A plain `aforge` in a folder does not run the
+conversation inside the window you are looking at — the session host holds it, in a
+process of its own, so that closing the terminal does not end the work. Everything the
+status row says about a request in flight is measured in that process and pushed to your
+window as it changes: the live `38 tok/s` at the right edge, `via <machine>` beside the
+model as soon as the machine writing the answer has named itself, the phase words
+(`connecting · 1.2s`, `first word …`, `thinking`, `writing`), and the `served` row in
+`/status`. They are filed under the conversation rather than under its model, so a
+model change in the middle of a turn, a fallback, or a change made from another window
+cannot hide them.
+
+A host started by an **older aforge** may not send them at all. The window then says so
+once, after an answer — `this conversation's engine is an older aforge, so the provider
+and tok/s are not shown — they come back once it picks up this build` — and the host
+retires as soon as it is holding nothing, so the next one runs this build.
+
+The host sends each window only its own conversation's readings, so two terminals on two
+different chats never show each other's clocks. *Running on another machine* has the same
+answer for `--host`, where the engine is on a different computer entirely.
+
 ## What does --no-host do — make one window not use the session host
 
 There are two of it, one for each end, and they mean the same thing: do not look for a
@@ -451,6 +479,35 @@ nothing a person accomplishes by typing it. The third flag beside them is `--sto
 the one a person really does type; it has its own section above. None of them appear in
 `aforge`'s usage text, because `aforge engine` itself does not — it is the far half of
 `--host` and a surface dials it.
+
+## Why does aforge take ten seconds to start, or say the conversation ends with this terminal — a state folder too long for a socket
+
+The thing that holds a conversation after you close the terminal is reached on a unix
+socket under aforge's own state folder, and a socket path may weigh at most **104
+bytes**. It is 104 rather than Linux's own 108 because the smallest limit is the one that
+travels: macOS stops at 104, and the same folder can be shared over a network mount.
+
+If `AFORGE_HOME` puts that folder deep enough to push the path past the limit, there is
+nowhere for a session host to answer, and the launch opens the conversation in this
+terminal **at once** — nothing is started in the background, and nothing is left behind
+under `v3/hosts`. Everything else about the conversation works exactly as it always does.
+It simply ends when this terminal does. The entry notice says so:
+
+```
+this conversation opened in this terminal instead, and ends with it: aforge's state folder is a longer path than the 104 bytes a socket may be named in — AFORGE_HOME moves it somewhere shorter
+```
+
+**It used to cost ten seconds.** The launch started a host into a path it could never
+listen on and waited out the whole birth wait before falling back, with a blank screen
+the entire time. The refusal is settled before anything is started now, so the surface
+draws immediately.
+
+The way out is to point `AFORGE_HOME` at a shorter path — that is the whole of it, and
+the next launch holds its conversation in the background again. `aforge chat --no-host`
+is the same floor asked for on purpose, on any machine.
+
+The same 104 bytes govern the reusable ssh control socket under **How quickly a dead ssh
+link is noticed and retried**: a path past it turns ssh reuse off and nothing else.
 
 ## Background replies while another reply finishes
 

@@ -60,6 +60,30 @@ conversation per connection — then the turn ended when the link did, and the r
 was part-way through is not coming back. aforge says which of the two happened rather than
 letting you guess; see *why did the reply not finish when it reconnected*.
 
+## The task column is empty after it reconnected — does the roster come back
+
+Yes, and it comes back whole.
+
+The column on the right is a **standing subscription** to the conversation's work, and
+that subscription lives on the connection. When a link dies and is redialled — a wifi
+handover, a lid closed, an engine on this machine replaced by a newer build — the surface
+asks for the roster again on the new link, and the far conversation replays every task it
+holds onto it: what is running, what landed, what is waiting on you. A row you already had
+and a row that was replayed are the same row, so nothing is drawn twice.
+
+The same is true of the harness card and the conversation's name.
+
+A column holding only
+
+```
++ /task
+```
+
+means this conversation has no tasks — the `tasks` label above the rows is drawn only when
+there is a row to put under it. It is not a column that has lost track of anything: a
+window attached to a conversation draws that conversation's work whether or not it is the
+window you are typing in, and it draws it again after a reconnect.
+
 ## Did I lose my work
 
 No. Nothing that reached the conversation is lost when a connection drops.
@@ -103,6 +127,26 @@ redial a click answers `reconnecting to devbox — try that again in a moment` r
 opening. Nothing is broken by it: the addresses this window minted go on working once the
 link is back, and a file already fetched opens from the copy on this machine without
 asking that machine anything (*Opening files from that machine*).
+
+## It said the engine did not answer in time — is the connection gone
+
+No. That sentence is one call that this window did not hear back from, on a
+link that is still up:
+
+```
+the engine did not answer in time
+```
+
+or `devbox did not answer in time` when the machine has a name. A keystroke —
+answering a question, taking the keyboard — is not queued behind a listing on
+that machine, and a call that has waited too long does not take the rest of the
+conversation down with it. The connection itself says `the connection to
+<machine> is gone` only when the link has actually dropped, in the sentence
+above.
+
+If the engine had already taken the answer, the receipt still closes as yours
+when the news arrives. See *The answer I pressed was refused* on the questions
+page.
 
 ## How do I know it is reconnecting — the segment on the status line
 

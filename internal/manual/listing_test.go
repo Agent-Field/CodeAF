@@ -41,6 +41,16 @@ func TestRenderWholeLabelsEverySectionWithAUniqueLine(t *testing.T) {
 		t.Fatalf("RenderWhole printed %d labels for %d sections:\n%s", labels, len(sections), rendered)
 	}
 	if !bodyBracket {
-		t.Fatalf("the real compacting answer has no bracket-prefixed body line:\n%s", rendered)
+		t.Fatal("the compacting answer no longer quotes a bracketed screen line; the person's label uniqueness needs that case")
+	}
+	// AND THE EXPORTED OPENERS MATCH WHAT WAS PRINTED, so a door and a test that
+	// share [PersonSectionOpen] cannot drift from the renderer.
+	for _, section := range sections {
+		if !strings.Contains(rendered, PersonSectionOpen(section.Page)+section.Title) {
+			t.Fatalf("RenderWhole is missing PersonSectionOpen(%q)+%q", section.Page, section.Title)
+		}
+		if strings.Contains(rendered, ModelSectionOpen(section.Page)) {
+			t.Fatalf("RenderWhole used the model's bracketed opener for %q", section.Page)
+		}
 	}
 }

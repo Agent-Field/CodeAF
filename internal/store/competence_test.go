@@ -175,10 +175,10 @@ func competenceProfileRecords(bucket string, at time.Time, failures int, surpris
 	for index := range records {
 		records[index] = profile.Record{
 			Title: fmt.Sprintf("%s-%d", bucket, index), Size: bucket, Time: at,
-			Verdict: provider.VerdictVerifiedSuccess,
+			Verdict: provider.ReadingVerifiedSuccess,
 		}
 		if index < failures {
-			records[index].Verdict = provider.VerdictSemanticFailure
+			records[index].Verdict = provider.ReadingSemanticFailure
 		}
 		if index < len(surprises) {
 			value := surprises[index]

@@ -114,23 +114,23 @@ func TestTheGateReturnsEvidenceAsItsOwnAnswer(t *testing.T) {
 // a while a gate PASS overwrote its honest verdict with the strongest one there
 // is — on the strength of a sentence. Only the evidenced pass may say that now.
 func TestOnlyAnEvidencedGatePassRecordsAVerifiedSuccess(t *testing.T) {
-	if got := revision.GateVerdict(revision.Judgment{Pass: true, Checked: true}); got != provider.VerdictUnverifiedSuccess {
+	if got := revision.GateVerdict(revision.Judgment{Pass: true, Checked: true}); got != provider.ReadingUnverifiedSuccess {
 		t.Errorf("an unevidenced pass recorded %q, want a plain success", got)
 	}
-	if got := revision.GateVerdict(revision.Judgment{Pass: true, Checked: true, Exercised: true}); got != provider.VerdictVerifiedSuccess {
+	if got := revision.GateVerdict(revision.Judgment{Pass: true, Checked: true, Exercised: true}); got != provider.ReadingVerifiedSuccess {
 		t.Errorf("an evidenced pass recorded %q, want a verified success", got)
 	}
 	// The two part company in exactly one place, and it is the place the
 	// laundering did its damage: what may move an ability rating.
-	if positive, graded := provider.VerdictUnverifiedSuccess.Graded(); graded || positive {
+	if positive, graded := provider.ReadingUnverifiedSuccess.Graded(); graded || positive {
 		t.Errorf("a plain success grades: positive=%v graded=%v", positive, graded)
 	}
-	if positive, graded := provider.VerdictVerifiedSuccess.Graded(); !graded || !positive {
+	if positive, graded := provider.ReadingVerifiedSuccess.Graded(); !graded || !positive {
 		t.Errorf("a verified success stopped grading: positive=%v graded=%v", positive, graded)
 	}
 	// And nowhere else: every surface that counts operational success counts
 	// both, so demoting an unevidenced pass must not read as a failure.
-	if provider.VerdictUnverifiedSuccess.Escalates() {
+	if provider.ReadingUnverifiedSuccess.Escalates() {
 		t.Error("a plain success now escalates, which would re-run finished work on a stronger model")
 	}
 }

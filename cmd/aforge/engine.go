@@ -195,15 +195,28 @@ func attachEngineHost(workspaceFlag string) (net.Conn, error) {
 		return nil, err
 	}
 	return enginehost.Attach(workspace, func() error {
-		return enginehost.Spawn(self, "engine", "--daemon", "--workspace", workspace)
+		return enginehost.Spawn(workspace, self, "engine", "--daemon", "--workspace", workspace)
 	})
 }
 
-// clearStaleEngineHost is the question and what is done with the answer. A nil
+// clearStaleEngineHost asks on behalf of the build that is running, which is the
+// only caller there has ever been. The yardstick is a parameter one layer down
+// because a test needs two builds of one source and a test binary is linked once.
+func clearStaleEngineHost(workspace string) (string, error) {
+	return clearStaleEngineHostFor(workspace, buildinfo.Identity())
+}
+
+// clearStaleEngineHostFor is the question and what is done with the answer. A nil
 // error means "go ahead and attach": either nothing is holding this workspace,
 // or what is holding it is this build, or what was holding it has gone — or it
 // is an older build of the SAME WIRE that would not let go, which is the one
 // case that answers with a sentence AND a nil error.
+//
+// WHAT MAKES TWO BUILDS THE SAME ONE IS THE SOURCE THEY WERE BUILT FROM, and
+// [buildinfo.Identity] is where that is decided. Rebuilding a commit does not
+// make an older aforge, and while the moment of the build was part of the answer
+// every window opened after a `make build` told somebody their own engine was
+// behind (#730).
 //
 // ── A BUSY OLD HOST IS ATTACHED TO, NOT REFUSED ─────────────────────────────
 //
@@ -221,7 +234,7 @@ func attachEngineHost(workspaceFlag string) (net.Conn, error) {
 // back one line for the entry notice saying which state the machine is in. A
 // DIFFERENT wire version keeps the refusal it has always had, because there is
 // no attaching to a peer whose frames this build cannot read.
-func clearStaleEngineHost(workspace string) (string, error) {
+func clearStaleEngineHostFor(workspace, thisBuild string) (string, error) {
 	host, err := enginehost.Ask(workspace, remote.WhoIs{})
 	switch {
 	case errors.Is(err, remote.ErrNoHostThere):
@@ -234,7 +247,7 @@ func clearStaleEngineHost(workspace string) (string, error) {
 		// Nothing answered at all: no host, or one that has stopped reading.
 		// Both are the ordinary road — Attach starts one.
 		return "", nil
-	case host.Version == remote.Version && host.Build == buildinfo.Identity():
+	case host.Version == remote.Version && host.Build == thisBuild:
 		return "", nil
 	}
 	// Another build, and it is answering, so it can be asked to go.
@@ -333,13 +346,53 @@ func runEngineHost(workspaceFlag, sessionFlag string) error {
 		// are asking for the same conversation, which is the whole of "sit down
 		// somewhere else and be in it".
 		Key: func(hello remote.Hello) string {
-			return firstEngineWord(hello.Session, sessionFlag)
+			return engineHelloKey(hello, workspace, sessionFlag)
 		},
 	})
 	if errors.Is(err, enginehost.ErrHostRunning) {
 		return nil
 	}
 	return err
+}
+
+// engineHelloKey is which conversation a hello is asking for, spelled as a
+// TRANSCRIPT PATH and never as the empty string.
+//
+// A HELLO THAT NAMES NO SESSION IS RESOLVED HERE, THE SAME WAY THE BOOT WOULD
+// RESOLVE IT, and that is the whole of what this function is for. It used to
+// answer "" for such a hello and the host filed the conversation under that
+// empty name — which worked exactly as long as the "" slot held the workspace's
+// latest. The moment that conversation ended (it moved to another window, /new
+// left it behind, it was closed) while the host went on holding a DIFFERENT one,
+// the next plain launch found nothing under "", booted, and [bootEngine]
+// resolved the very journal this host already holds the flock on. The host then
+// refused its own conversation with "this conversation is open in another
+// window", about itself.
+//
+// So the key is the answer [v3LatestTranscript] gives — one shared reading of
+// the resume order, taken without touching the disk — and the host's lookup
+// finds the conversation it is already holding before it boots anything.
+//
+// A NAMED SESSION IS SPELLED THE WAY THE BOOT WILL SPELL IT, through the same
+// [engineSessionPath] every other door reads a --session with, so two surfaces
+// that named one file two ways ("~/x", "/home/you/x") are asking for one
+// conversation rather than two.
+func engineHelloKey(hello remote.Hello, workspaceFlag, sessionFlag string) string {
+	if named := firstEngineWord(hello.Session, sessionFlag); named != "" {
+		path, err := engineSessionPath(named)
+		if err != nil {
+			return named
+		}
+		return path
+	}
+	// The hello's own workspace wins over the flag exactly as it does in
+	// [bootEngine]: the two must resolve the same directory or they would be
+	// answering about two different projects.
+	workspace, err := engineWorkspace(firstEngineWord(hello.Workspace, workspaceFlag))
+	if err != nil {
+		return ""
+	}
+	return v3LatestTranscript(workspace)
 }
 
 // bootEngine opens the conversation the hello asked for.

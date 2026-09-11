@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // ── THE QUALITY LOOP CLOSES ─────────────────────────────────────────────────
@@ -193,17 +194,26 @@ func TestAnUnnamedStreamTeachesTheBeliefNothing(t *testing.T) {
 	}
 }
 
-// TestRoutingOffTeachesTheBeliefNothing pins the operator's instruction. Somebody
-// who asked for no steering asked for no demotions either, which is the same law
-// the strike ledger keeps about its own writes.
-func TestRoutingOffTeachesTheBeliefNothing(t *testing.T) {
+// TestRoutingOffStillTeachesTheBelief is where the operator's instruction now
+// stops.
+//
+// IT USED TO BE "somebody who asked for no steering asked for no demotions
+// either", and that sentence cost more than it bought: the belief is also what
+// tells a refused request where NOT to go next, so a session with routing off
+// could only ever retry into the machine that had just failed it
+// (docs/design/recovery/DESIGN.md §2, problem 9). The reading is kept; nothing
+// derived from it reaches the wire, which is the part a person asked for.
+func TestRoutingOffStillTeachesTheBelief(t *testing.T) {
 	soup := loadCorpus(t, "babble-repetition-loop.txt")
 	client, ledger, _ := qualityClient(t, soupServer(t, soup).URL)
 	client.config.Routing = StaticRouting(RoutingOff)
 
 	ctx := WithStreamObserver(context.Background(), func(StreamEvent) {})
 	_, _ = client.CompleteWithMessages(ctx, userMessages("hello"))
-	if outcomes := ledger.judged(); len(outcomes) != 0 {
-		t.Fatalf("a session with routing off wrote %d outcomes: %+v", len(outcomes), outcomes)
+	if outcomes := ledger.judged(); len(outcomes) != 1 || outcomes[0].Accepted {
+		t.Fatalf("a session with routing off wrote %+v, want the one refused answer written down", outcomes)
+	}
+	if prefs := client.providerPreferences("openrouter/quality-model", callKnobs{}, &ai.Request{}); prefs != nil {
+		t.Fatalf("a session with routing off still asked the wire for something: %+v", prefs)
 	}
 }
