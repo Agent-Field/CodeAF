@@ -404,6 +404,11 @@ func TestAHostWithNoTimerSaysHowChecksHappen(t *testing.T) {
 	if line := backgroundLine(events); line != standingNoTimerLine {
 		t.Fatalf("a host with no timer said %q, want %q", line, standingNoTimerLine)
 	}
+	// AND THE MODEL IS TOLD THE SAME, so its one line cannot promise checks
+	// the row under the card just said there are none of.
+	if out := toolOutput(t, events, "stand"); !strings.Contains(out, "\n"+standingNoTimerLine+"\n") {
+		t.Fatalf("the model was not told there is no timer: %q", out)
+	}
 	if !strings.Contains(standingNoTimerLine, "aforge standing check") {
 		t.Fatalf("the line does not say how the person runs a check: %q", standingNoTimerLine)
 	}
@@ -444,10 +449,14 @@ func TestALinuxTimerThatWouldNotStartSaysSoAndLeavesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := newFakeStanding(t)
-	line := backgroundLine(standRatify(t, store, watch, t.TempDir()))
+	events := standRatify(t, store, watch, t.TempDir())
+	line := backgroundLine(events)
 	if line == standingBackgroundLine || !strings.HasPrefix(line, standingBackgroundFailed) ||
 		!strings.Contains(line, "systemctl") || !strings.Contains(line, standingChecksHow) {
 		t.Fatalf("a timer that never started said %q", line)
+	}
+	if out := toolOutput(t, events, "stand"); !strings.Contains(out, line) || strings.Contains(out, standingBackgroundLine) {
+		t.Fatalf("the model was told something other than the failed install: %q", out)
 	}
 	if len(systemd.calls) == 0 || !strings.HasPrefix(systemd.calls[0], "systemctl --user") {
 		t.Fatalf("the Linux arm never asked systemd: %v", systemd.calls)
