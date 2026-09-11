@@ -180,26 +180,30 @@ func TestATurnWithNothingRunningOfItsOwnIsStillCarriedOn(t *testing.T) {
 
 // ── and carrying on has a ceiling ───────────────────────────────────────────
 
-// THE SAME READING ABOUT THE SAME STOPPED TURN IS BELIEVED A FIXED NUMBER OF
-// TIMES AND THEN IT IS NOT.
+// A TURN IS CARRIED ON A FIXED NUMBER OF TIMES AND THEN IT IS NOT.
 //
 // A reader that answers "not finished" to every one of a turn's endings has
 // stopped being evidence and started being an echo, and the measured run is what
 // says so: twenty of them, five minutes, no progress at all. So the ask is
 // carried on [checkpointCarryOnCap] times, and the person is told once, in the
 // register the other notes on this road use.
+//
+// THE READER HERE SAYS SOMETHING NEW EVERY TIME, which is what this ceiling is
+// left to bound: a reading that repeats itself never reaches it any more, it is
+// stopped on the echo one rung earlier ([Person.Decide], and the case below).
 func TestCarryingOnAnAskHasACeilingOfItsOwn(t *testing.T) {
 	var remainsAsks atomic.Int64
-	// What the reader says every time, kept as one string because the note the
-	// person is shown at the cap now QUOTES IT — the line names what was read
-	// rather than asserting that the ask is unfinished (#468).
-	const readerSays = "the checks have not landed and neither pull request is merged"
+	// What the reader says, numbered, because the note the person is shown at
+	// the cap QUOTES THE LAST READING — the line names what was read rather than
+	// asserting that the ask is unfinished (#468).
+	readerSays := func(nth int64) string {
+		return fmt.Sprintf("the checks have not landed and neither pull request is merged (look %d)", nth)
+	}
 	// Past the first rung so the reader is armed, and a reader that never says
 	// the ask is finished — the exact shape the measured conversation was in.
 	completer := &scriptedCompleter{steps: waitingSteps(checkpointMarkAt(1),
 		"still waiting on the checks; nothing actionable until then", func() string {
-			remainsAsks.Add(1)
-			return readerSays
+			return readerSays(remainsAsks.Add(1))
 		})}
 	agent := checkpointAgent(t, completer)
 	stubbedGraph(agent, func(node *TaskNode) {})
@@ -221,7 +225,7 @@ func TestCarryingOnAnAskHasACeilingOfItsOwn(t *testing.T) {
 	// AND THE PERSON IS TOLD ONCE, IN WORDS THAT SAY WHAT WAS SEEN: the line
 	// quotes the reading that came back every time and promises the harness will
 	// stop pushing rather than push again.
-	if got := saidHowOften(notices, checkpointCarriedOnNote([]string{readerSays})); got != 1 {
+	if got := saidHowOften(notices, checkpointCarriedOnNote([]string{readerSays(int64(checkpointCarryOnCap) + 1)})); got != 1 {
 		t.Errorf("the ceiling on carrying on said its line %d times, want once; notices were %q", got, notices)
 	}
 	// AND THE READER IS SPENT ONE MORE TIME THAN THE CAP AND NOT TWENTY. The cap
@@ -235,5 +239,105 @@ func TestCarryingOnAnAskHasACeilingOfItsOwn(t *testing.T) {
 	// third half of the measured failure: the wait must never become a task.
 	if saidSomething(notices, checkpointCeilingNote) {
 		t.Errorf("carrying on drove the turn to the ceiling by itself: %q", notices)
+	}
+}
+
+// ── and an observation that was answered is not raised again ───────────────
+
+// A READING THAT SAYS THE SAME THING ABOUT THE SAME STOPPED TURN TWICE IS A
+// STANDSTILL, AND THE TURN ENDS ON THE ECHO RATHER THAN AT THE CAP.
+//
+// THE MEASURED FAILURE (#888), 2026-09-11, dev@333acc67d: a reply had answered
+// the person — it said there was no `zeta.txt` and nothing was written — and the
+// reader re-opened it three times running with the same observation, each one
+// claiming the missing `zeta.txt` had not been reported when the answer already
+// said so. The model spent three visible turns arguing back, and the person
+// read all three. The cap stopped the fourth; it should have stopped the second,
+// because a second identical reading is not a second piece of evidence, it is
+// the same piece said twice.
+//
+// The model's continuation answer is scripted as a rebuttal rather than a
+// change, which is what a model does with an observation that is already
+// satisfied: the lead itself tells it to explain and finish.
+func TestAReaderObservationThatWasAnsweredIsNotRaisedAgain(t *testing.T) {
+	const answered = "there is no zeta.txt, so nothing was written about it; the check ran and reported the miss"
+	const observation = "the missing zeta.txt has not been reported"
+
+	var remainsAsks atomic.Int64
+	// Past the first rung so the reader is armed, and a reader that returns the
+	// SAME line every time it is asked — the exact shape the live drive had.
+	completer := &scriptedCompleter{steps: waitingSteps(checkpointMarkAt(1), answered, func() string {
+		remainsAsks.Add(1)
+		return observation
+	})}
+	agent := checkpointAgent(t, completer)
+	stubbedGraph(agent, func(node *TaskNode) {})
+
+	events, err := agent.Submit(context.Background(), "does zeta.txt exist in here? report it either way")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := collect(t, events)
+	notices := noticeTexts(collected)
+
+	// ONE CONTINUATION AT MOST, and not three: the second identical reading ends
+	// the turn instead of re-opening it.
+	if got := strings.Count(transcriptText(agent), checkpointCarryOnLead); got != 1 {
+		t.Errorf("%d continuations were written into the turn, want one; notices were %q", got, notices)
+	}
+	if got := saidHowOften(notices, checkpointCarryOnNote); got != 1 {
+		t.Errorf("the ask was carried on %d times, want once; notices were %q", got, notices)
+	}
+	// THE PERSON IS TOLD THE TRUTH IN THE REGISTER BOTH ROADS ALREADY USE: the
+	// turn is over, and what stopped it is the reading repeating itself — not
+	// the cap, which this turn never reached.
+	if !saidSomething(notices, checkpointStoppedNote+standstillReason([]string{observation})) {
+		t.Errorf("nobody said the reading repeated itself; notices were %q", notices)
+	}
+	if saidSomething(notices, checkpointCarriedOnNote([]string{observation})) {
+		t.Errorf("the turn was ended by the cap rather than by the standstill: %q", notices)
+	}
+	// AND THE READER WAS SPENT EXACTLY TWICE, not four times: once to raise the
+	// observation and once to prove it was the same observation.
+	if got := remainsAsks.Load(); got != 2 {
+		t.Errorf("the reader was spent %d times on one answered ask, want 2", got)
+	}
+	// THE CONTROL LIVES IN TestATurnWithNothingRunningOfItsOwnIsStillCarriedOn:
+	// a turn whose reading is news still carries on, and a turn whose answer
+	// finishes the ask still ends on the reader's own NOTHING LEFT.
+}
+
+// AND THE NEXT THING THE PERSON TYPES IS A NEW STRETCH.
+//
+// The floor is about ONE ask being carried on. A conversation that met an
+// observation, argued it out and was stopped on the echo must be able to meet
+// the same observation an hour later and be carried on for it — otherwise the
+// stop a person never asked for would follow them for the rest of the session,
+// which is the failure the unattended road's own floor was careful not to have
+// ([Steward.forget]).
+func TestAStandstillIsForgottenWhenThePersonSaysSomethingNew(t *testing.T) {
+	const observation = "the missing zeta.txt has not been reported"
+	person := NewPerson()
+	reading := Remains{Reader: observation}
+
+	if got := person.Decide(reading); got.Verb != DecideCarryOn {
+		t.Fatalf("the first reading of an ask did not carry on: %+v", got)
+	}
+	if got := person.Decide(reading); got.Verb != DecideStop {
+		t.Fatalf("the same reading twice did not stop the turn: %+v", got)
+	}
+	person.hear("now check alpha.txt as well")
+	if got := person.Decide(reading); got.Verb != DecideCarryOn {
+		t.Fatalf("a fresh ask was stopped by the reading before it: %+v", got)
+	}
+	// AND NOTHING IS A STANDSTILL WHILE THIS TURN'S OWN WORK IS STILL MOVING,
+	// which is the same law the unattended road reads off the same field.
+	moving := reading
+	moving.Running = []string{"write the tests"}
+	if got := person.Decide(moving); got.Verb != DecideCarryOn {
+		t.Fatalf("a turn waiting on its own work was called a standstill: %+v", got)
+	}
+	if got := person.Decide(reading); got.Verb != DecideCarryOn {
+		t.Fatalf("the reading taken while work was moving was held against the one after it: %+v", got)
 	}
 }

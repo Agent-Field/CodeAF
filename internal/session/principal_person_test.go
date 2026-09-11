@@ -6,7 +6,8 @@ import (
 	"time"
 )
 
-// THE PERSON ADDS NOTHING, AND THIS IS THE PART A BUILD FAILS ON.
+// THE PERSON READS ONE READING THE WAY THE ENGINE ALWAYS DID, AND THIS IS THE
+// PART A BUILD FAILS ON.
 //
 // [Person] exists so that an interactive session cannot tell that any of this
 // arrived. That is a claim about behaviour, so it is written down as behaviour:
@@ -19,6 +20,12 @@ import (
 // ends the turn. Nothing else was ever consulted, so every row below carries
 // landings, checks and an acceptance that would change a [Steward]'s mind and
 // must change nothing here.
+//
+// EVERY ROW IS A FIRST READING, and that is the whole of what this table is
+// about. The one law a person's principal has gained since is about the SECOND
+// one — a reading that says what the last one said stops the turn (#888) — and
+// it is read in TestAStandstillIsForgottenWhenThePersonSaysSomethingNew, which
+// is why each row here is put to a principal of its own.
 func TestThePersonDecidesExactlyWhatTheEngineDecidedBefore(t *testing.T) {
 	// The evidence a Steward would act on, in the shapes that most want acting
 	// on: work that did not finish, a tree that does not build, a session that

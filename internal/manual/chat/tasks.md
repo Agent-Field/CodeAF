@@ -1267,10 +1267,12 @@ the file it just wrote — anything at all after the last save is the reply havi
 itself, and it is then priced like any other short reply. aforge does not try to tell a build
 from a test from a read; it only asks whether the reply stopped on the change or looked at it.
 
-**What bounds it is the same meter as everything else on this page, and one count of its own.**
+**What bounds it is the same meter as everything else on this page, and two rules of its own.**
 Carrying on counts as a round, so it climbs the same three points, and a carried-on reply that
-reaches the third one is handed to a task in the ordinary way. On top of that, one question is
-carried on at most three times — see *Waiting on something, and the limit on carrying on* below.
+reaches the third one is handed to a task in the ordinary way. On top of that: a reading that
+says what the last one said stops the reply on the spot, and a reader that keeps finding new
+things is believed at most three times — see *Waiting on something, and the limit on carrying
+on* below.
 
 **A reply that BROKE is never carried on.** Carrying on is for a reply that stopped early,
 and a reply that ended on a **failed request** did not stop early — it broke. A provider
@@ -1338,13 +1340,15 @@ the marker, keep the conversation free while it runs" was done exactly as asked,
 unfinished because the marker was not known yet, and carried on into polling the task it had
 just started and a watch over its own work.
 
-## Why does it say carry on — what carry on means, carried on, why does it say "carried on 3 times", the reply was pushed on
+## Why does it say carry on — what carry on means, carried on, why does it say "carried on 3 times", the reply was pushed on, it argued with itself about something it had already answered, why does it say "saying it again would not change it"
 
 **Carry on is the reply being pushed on past its own ending.** When a reply stops, its
 ending is read against what you asked. If something you asked for is still missing, the reply
 is not left there: it is carried on, with the missing piece as its brief, and the row says so.
 `carried on 3 times` is the count, and three is the limit — after the third the reply stops
-where it is and tells you, rather than being pushed on again over the same gap.
+where it is and tells you, rather than being pushed on again over the same gap. **A reading
+that simply repeats the one before it never gets that far**: the second identical look ends
+the reply straight away, because a thing said twice is not a second piece of evidence.
 
 **It is never carried on over its own running work.** A reply waiting on a task, a quick
 task, a background command or a watch it started is waiting, not unfinished; the ending it
@@ -1380,20 +1384,34 @@ reply that started it is not read. When it lands done with its checks green, the
 reports it is not read either. What is in between — a failed landing, a landing nobody
 checked, a new sentence you typed after it — is still read.
 
-**And one question is carried on at most three times.** A reader that answers "still not
-finished" about the same stopped reply three times running has stopped telling aforge anything
-new. The fourth time it says so, the reply ends instead, and one dim line goes on the screen —
-with what was actually read in the middle of it:
+**The same observation twice stops the reply, and that comes first.** If the reader's second
+look says exactly what its first look said about the same stopped reply, nothing moved — and
+raising it again only buys another answer to something the reply has already answered. So the
+reply ends there, on one dim line naming what repeated itself:
+
+```
+stopping here · nothing moved since the last look and what is left is the same — the missing zeta.txt has not been reported · saying it again would not change it
+```
+
+That is a **second** carry-on being refused, not the first: the observation is always put to
+the reply once. What it closes is a measured drive where a reply had correctly reported that a
+file did not exist, the reader claimed three times running that the missing file had not been
+reported, and the reply spent three turns explaining that the observation was mistaken — an
+argument you never typed a word into and read all of.
+
+**And a reader that keeps finding NEW things is carried on at most three times.** Three
+different readings are three pieces of evidence, so each one is believed; the fourth time the
+reply ends instead, and one dim line goes on the screen with what was actually read in the
+middle of it:
 
 ```
 carried on 3 times · the last reading showed: the checks have not landed · stopping here rather than carrying on again
 ```
 
-**The line quotes a reading and never asserts a conclusion.** What sits after `the last
+**Either line quotes a reading and never asserts a conclusion.** What sits after `the last
 reading showed:` is what the reader said, or — in an unattended run — the list of things that
-came home unfinished and the checks that did not pass. The line used to say "and it is still
-not finished", which was a claim about your work that nothing had taken a reading of. There is
-no number to raise and no setting that turns it off.
+came home unfinished and the checks that did not pass. There is no number to raise and no
+setting that turns either of them off.
 
 **Three carry-ons can never reach the running-long point by themselves.** That point stands at
 forty rounds and carrying on can add three, so a reply that gets handed to a task got there on

@@ -769,10 +769,20 @@ func stopSpent(reason string) Decision {
 // a person holds their own acceptance, spends against their own judgement,
 // reads a landing and decides what to do about it themselves, and carries a
 // stopped turn on by typing. The one thing it holds is the ask, because
-// [Principal.Ask] has to answer something and the session already knows it.
+// [Principal.Ask] has to answer something and the session already knows it —
+// and the floor under carrying on, which is not an addition either: it is the
+// same law [Steward] has always had, on the road that never got it.
 type Person struct {
 	mu  sync.Mutex
 	ask string
+	// floor is the standstill under this person's turns ([standstillFloor]).
+	//
+	// IT IS PER STRETCH AND NOT PER SESSION. What ends a stretch is the person
+	// saying something new ([Person.hear]) or a reading with nothing left in it,
+	// so an answered ask and the next one are judged apart — and a conversation
+	// that meets the same gap again an hour later meets it for the first time
+	// since.
+	floor standstillFloor
 }
 
 // NewPerson builds the principal of an attended session.
@@ -798,18 +808,57 @@ func (p *Person) Budget() Budget { return Budget{} }
 // exactly as it always has: the news arrives, and what happens next is theirs.
 func (p *Person) Report(Landing) string { return "" }
 
-// Decide is [Agent.readRemains]'s own rule, moved and not changed: a reader
-// with something to say re-opens the turn on it, and silence ends the turn.
-// Nothing else a person could be shown is consulted, because nothing else was.
+// Decide is [Agent.readRemains]'s own rule with one law added: a reader with
+// something to say re-opens the turn on it, silence ends the turn, AND A READER
+// THAT SAYS WHAT IT SAID LAST TIME STOPS IT ([standstillFloor]). Nothing else a
+// person could be shown is consulted, because nothing else was.
+//
+// THE ECHO IS THE ADDED LAW AND #888 IS WHY. Measured 2026-09-11: a reply had
+// reported that `zeta.txt` did not exist, and the reader re-opened the turn
+// three times running with the same observation — that the missing file had not
+// been reported — until the per-turn ceiling stopped the fourth. The model spent
+// three turns explaining that the observation was mistaken, and the person read
+// all three, because a carry-on is recorded as a user line and its answer as an
+// ordinary reply. A second identical reading is not a second piece of evidence;
+// it is the first one said twice, and this road was the only one on which that
+// was allowed to buy another turn.
 func (p *Person) Decide(r Remains) Decision {
-	if line := strings.TrimSpace(r.Reader); line != "" {
-		// THE OBSERVATION IS THE LINE ITSELF, which is not an addition to what a
-		// person's session decides: the reader's line is the whole of what was
-		// read here, and saying so is what lets the one note a person ever sees
-		// on this road quote what was seen rather than assert a conclusion.
+	line := strings.TrimSpace(r.Reader)
+	if line == "" {
+		// A DONE ANSWER ENDS THE STRETCH, for [Steward.Decide]'s reason: an ask
+		// that finished is not the same stretch as the one asked after it, and a
+		// floor that remembered across the finish would stop a conversation on
+		// its first carry-on.
+		p.forget()
+		return done("")
+	}
+	// AND NOTHING IS A STANDSTILL WHILE SOMETHING IS STILL MOVING. A reading that
+	// has not changed because this turn's own work has not come home yet is a
+	// turn waiting, not a turn repeating itself.
+	if len(r.Running) > 0 {
+		p.forget()
 		return carryOn(line, line)
 	}
-	return done("")
+	// THE OBSERVATION IS THE LINE ITSELF, which is not an addition to what a
+	// person's session decides: the reader's line is the whole of what was
+	// read here, and saying so is what lets the one note a person ever sees
+	// on this road quote what was seen rather than assert a conclusion. It is
+	// therefore both halves of the floor's fingerprint — what is left, and what
+	// was written about it, are one line here.
+	p.mu.Lock()
+	moved := p.floor.moved(line, line)
+	p.mu.Unlock()
+	if !moved {
+		return stop(standstillReason([]string{line}))
+	}
+	return carryOn(line, line)
+}
+
+// forget drops the floor, so the next reading is a first one.
+func (p *Person) forget() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.floor.forget()
 }
 
 // hear records the person's own words, and the LAST of them stands.
@@ -827,6 +876,10 @@ func (p *Person) hear(ask string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.ask = ask
+	// AND A NEW THING SAID IS A NEW STRETCH. The floor is about one ask being
+	// carried on; the moment somebody types, whatever the reader kept saying
+	// about the ask before it is about a conversation that has moved.
+	p.floor.forget()
 }
 
 // ── THE STEWARD ─────────────────────────────────────────────────────────────
@@ -882,10 +935,11 @@ type Steward struct {
 	failures map[string]int
 	stopped  string
 
-	// carriedUnmet and carriedBrief are THE LAST CARRY-ON THIS STEWARD MINTED,
-	// and they are the whole of the standstill floor ([Steward.Decide]).
+	// floor is THE LAST CARRY-ON THIS STEWARD MINTED, and it is the shared
+	// standstill every principal that can carry on decides with
+	// ([standstillFloor]).
 	//
-	// THEY LIVE HERE BECAUSE THE LOOP THEY BOUND IS LONGER THAN A TURN. The
+	// IT LIVES HERE BECAUSE THE LOOP IT BOUNDS IS LONGER THAN A TURN. The
 	// per-turn ceiling on carrying on (checkpoint.go's [checkpointCarryOnCap])
 	// counts on a meter the turn owns, and every other way out of a turn builds a
 	// fresh one — so a session whose task landings kept waking new turns was
@@ -893,11 +947,7 @@ type Steward struct {
 	// run repeated one byte-identical brief until its wall ran out (#468). A
 	// floor kept on the principal cannot be restarted by a new turn, which is the
 	// only place it means anything.
-	//
-	// They are empty until the first carry-on, so a session's FIRST identical
-	// pair of readings is a carry-on and its second is the stop.
-	carriedUnmet string
-	carriedBrief string
+	floor standstillFloor
 }
 
 // NewSteward builds the principal of an unattended session.
@@ -946,7 +996,7 @@ func (s *Steward) hear(ask string) {
 	// AND A GOAL THAT IS BEING RECORDED IS A STRETCH BEGINNING, so the floor
 	// under carrying on starts empty ([Steward.forget]'s reason, said at the
 	// other end).
-	s.carriedUnmet, s.carriedBrief = "", ""
+	s.floor.forget()
 }
 
 func (s *Steward) Acceptance() string {
@@ -1167,7 +1217,7 @@ func (s *Steward) Decide(r Remains) Decision {
 func (s *Steward) forget() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.carriedUnmet, s.carriedBrief = "", ""
+	s.floor.forget()
 }
 
 // standstill is the floor under carrying on: it answers a REASON TO STOP when
@@ -1190,27 +1240,13 @@ func (s *Steward) forget() {
 // call would be re-asked by the next turn with a fresh meter under it, which is
 // exactly the counter that was already there and could not fire.
 func (s *Steward) standstill(unmet []string, brief string) string {
-	seen := strings.Join(unmet, "; ")
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.carriedUnmet != seen || s.carriedBrief != brief {
-		s.carriedUnmet, s.carriedBrief = seen, brief
+	if s.floor.moved(strings.Join(unmet, "; "), brief) {
 		return ""
 	}
-	s.stopped = stewardStandstillReason(unmet)
+	s.stopped = standstillReason(unmet)
 	return s.stopped
-}
-
-// stewardStandstillReason is what a standstill says, in the register every stop
-// on this road wears: an observation, and then what is being done about it.
-//
-// IT NAMES WHAT IS STILL LEFT and it says the run stopped RATHER THAN REPEAT
-// ITSELF, which are the two things a person coming back to a stopped session
-// needs — the second one because a run that went quiet on its own is otherwise
-// indistinguishable from one that crashed.
-func stewardStandstillReason(unmet []string) string {
-	return "nothing moved since the last look and what is left is the same — " +
-		strings.Join(unmet, "; ") + " · saying it again would not change it"
 }
 
 // stewardBrief writes what is left to do out of what is unmet. It names the
