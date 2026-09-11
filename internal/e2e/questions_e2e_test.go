@@ -116,6 +116,11 @@ func TestQuestionsE2E(t *testing.T) {
 const (
 	questionCols = 100
 	questionRows = 36
+	// questionPageCols is the one scenario that is drawn wider: the page's two
+	// panes stand where the BODY is a hundred cells or more, and the task
+	// column — two cells even stowed — is charged against the body, so a
+	// hundred-column terminal can only ever draw the page as one column.
+	questionPageCols = 120
 )
 
 // questionRig is one aforge on this machine's own keyboard, IN THIS PROCESS.
@@ -132,9 +137,13 @@ func questionRig(t *testing.T, name string, overrides map[string]any) *rig {
 // questionRigAt is the same terminal on a state root and a project the caller
 // already made — what the reach scenario needs, because two windows answering
 // one question have to be two windows on ONE machine.
-func questionRigAt(t *testing.T, name, home, ws string) *rig {
+func questionRigAt(t *testing.T, name, home, ws string, cols ...int) *rig {
 	t.Helper()
-	return start(t, name, home, ws, questionCols, questionRows, "chat", "--no-host")
+	wide := questionCols
+	if len(cols) > 0 && cols[0] > 0 {
+		wide = cols[0]
+	}
+	return start(t, name, home, ws, wide, questionRows, "chat", "--no-host")
 }
 
 // steer types a message and sends it.
@@ -505,7 +514,17 @@ var questionCountdown = regexp.MustCompile(`start it in \d+s`)
 // reply, because an answer that does not reach the asker is a page with no door
 // out of it.
 func questionsRoom(t *testing.T) {
-	r := questionRig(t, "q-room", nil)
+	// THIS ONE SCENARIO GETS A WIDER TERMINAL AND A STOWED TASK COLUMN, because
+	// it is the one that drives the page's two panes. The page is drawn in the
+	// BODY and the column is charged against the body, so the split needs
+	// `questionPageCols` less the stowed column's two cells to clear the
+	// two-column floor. Both are pinned here rather than left to the machine's
+	// own profile: a scenario whose layout depends on a setting somebody's
+	// laptop happens to carry is a scenario that passes in one place and hangs
+	// in another.
+	r := questionRigAt(t, "q-room",
+		newHome(t, map[string]any{config.KeyTaskColumn: false}),
+		newWorkspace(t, "q-room", false), questionPageCols)
 	steer(t, r, `Call the ask tool now, exactly once, and run nothing else. `+
 		`head "which store should the ledger sit on?", kind choice, form room, `+
 		`reason "a schema change is next and it is cheaper before rows exist", `+
@@ -531,14 +550,11 @@ func questionsRoom(t *testing.T) {
 	shot(t, r, "open")
 
 	// TWO PANES, AND THE ARROWS MOVING BETWEEN THEM (owner ruling 2026-09-11,
-	// page pick A). The page splits where the BODY is a hundred cells or wider,
-	// and the task column is charged against that body — so this is the width
-	// the terminal has with the column stowed, which is what `ctrl+g` does.
-	// Below that width the page is one column and `→` is not offered, which is
-	// why the key is asserted only after the stow.
-	r.keys("C-g")
-	split := r.waitFor(15*time.Second, say(t, "questionPageDetailWord"))
-	screenSays(t, split, "postgres", "the answers keep the left of the split")
+	// page pick A): the answers on the left, the evidence of the one the pointer
+	// is on beside them, and `→ detail` on the foot because there IS a pane to
+	// move into. A page of one column unfolds that evidence under the pointer
+	// and does not offer the key.
+	screenSays(t, room, say(t, "questionPageDetailWord"), "the page is two panes at this width")
 	shot(t, r, "split")
 
 	press(t, r, "Right")
@@ -549,7 +565,6 @@ func questionsRoom(t *testing.T) {
 	back := r.waitFor(15*time.Second, say(t, "questionPageDetailWord"))
 	screenSilent(t, back, say(t, "questionPageScrollWord"),
 		"the arrows are the list's again, so the key that gives them back is not offered")
-	r.keys("C-g")
 
 	press(t, r, "x")
 	compare := r.waitFor(15*time.Second, say(t, "questionCompareOnlyWord"))
