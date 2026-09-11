@@ -510,8 +510,9 @@ are shown; `enter` or a click on `▸ 11 more` draws the rest, and `▾ 11 fewer
 back. The cursor arrives on the first of them — the biggest thing the money went on. `shift+←` and `shift+→` move the window by its own length;
 `shift+↑` and `shift+↓` change how coarse it is.
 
-Four **lenses**, cycled with `[` and `]`: `rhythm`, `models`, `days`, `year`. Arrival is
-`rhythm` — those three blocks above. The other three:
+Four **lenses**, shown as chips under the rails (`rhythm · models · days · year`) and
+also cycled with `[` and `]`. Arrival is `rhythm` — those three blocks above. Press a
+chip to switch. The other three:
 
 - **`models`** — a sortable table (In/Out, role, realized cost per million, spend).
   The head cells are the sort doors (`enter` cycles them; `c`/`t` jump to cost or

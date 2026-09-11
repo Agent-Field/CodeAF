@@ -192,3 +192,81 @@ func (p *picker) usedSectionBefore(at int) string {
 	}
 	return ""
 }
+
+// ── order chips on the framed sheet ─────────────────────────────────────────
+//
+// `cheap`, `fast` and `used` already work as typed filter words (lanes.go). A
+// stranger will not invent them. The chip strip under the box is the same
+// discovery move as the spend lens bar: name the doors, take a press, keep the
+// keyboard path.
+
+// pickOrderWords is the chip strip under `/model`'s filter, left to right.
+var pickOrderWords = []string{"cheap", "fast", "used"}
+
+// pickOrderBar draws the order chips and returns each chip's span in the INNER
+// content (column 0 is the first cell inside the sheet's side glyphs).
+func pickOrderBar(inner int, filter string, pal palette) (string, []hudSpan) {
+	active := pickOrderActive(filter)
+	line := strings.Repeat(" ", tabLead)
+	spans := make([]hudSpan, len(pickOrderWords))
+	at := tabLead
+	for i, word := range pickOrderWords {
+		if i > 0 {
+			line += strings.Repeat(" ", tabGap)
+			at += tabGap
+		}
+		chip := tabPad + word + tabPad
+		cols := tabChipCols(word)
+		spans[i] = hudSpan{from: at, to: at + cols}
+		if active[word] {
+			line += pal.selected(pal.bold(pal.ink(chip)), cols)
+		} else {
+			line += pal.dim(chip)
+		}
+		at += cols
+	}
+	return fit(line, inner), spans
+}
+
+// pickOrderActive is which of the three chip words are already in the filter.
+func pickOrderActive(filter string) map[string]bool {
+	on := make(map[string]bool, len(pickOrderWords))
+	for _, token := range strings.Fields(strings.ToLower(filter)) {
+		for _, word := range pickOrderWords {
+			if token == word {
+				on[word] = true
+			}
+		}
+	}
+	return on
+}
+
+// toggleFilterWord turns one order chip on or off in the filter box. cheap and
+// fast are exclusive (both are order terms; the last one wins, and two lit chips
+// would lie about which order is live). used keeps or drops alongside either.
+func (p *picker) toggleFilterWord(word string) {
+	if p == nil || word == "" {
+		return
+	}
+	word = strings.ToLower(strings.TrimSpace(word))
+	fields := strings.Fields(p.filter.String())
+	out := make([]string, 0, len(fields)+1)
+	had := false
+	for _, token := range fields {
+		low := strings.ToLower(token)
+		if low == word {
+			had = true
+			continue
+		}
+		// Selecting cheap drops fast, and the other way — one order at a time.
+		if (word == "cheap" && low == "fast") || (word == "fast" && low == "cheap") {
+			continue
+		}
+		out = append(out, token)
+	}
+	if !had {
+		out = append(out, word)
+	}
+	p.filter.setText(strings.Join(out, " "))
+	p.rank()
+}

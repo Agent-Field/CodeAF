@@ -278,30 +278,57 @@ func TestQuietDayStillDrills(t *testing.T) {
 	}
 }
 
-// THE HEAD ROW NAMES THE LENS. Foot keys stay `[ ] lenses` without repeating
-// the asker's word — said once, on the head.
-func TestSpendLensNamedOnTheHead(t *testing.T) {
+// THE CHIP STRIP NAMES EVERY LENS. The window head stays the window alone —
+// one source of truth for which reading is up. The foot still names `[ ] lenses`
+// and the next lens so the keys stay discoverable beside the chips.
+func TestSpendLensChipsNameEveryReading(t *testing.T) {
 	a := spendLab(t, spendFixture())
 	for _, lens := range []spendLens{spendLensRhythm, spendLensModels, spendLensDays, spendLensYear} {
 		a.setSpendLens(lens)
-		rows, _ := a.spend.reading.paintLens(lens, spendGroupModel, spendSortCost, 120, newPalette(tokens.NoColor, false), nil)
+		rows, stops := a.spend.reading.paintLens(lens, spendGroupModel, spendSortCost, 120, newPalette(tokens.NoColor, false), nil)
 		if len(rows) < 2 {
 			t.Fatalf("%s painted %d rows", lens.word(), len(rows))
 		}
-		head := plain(rows[1])
-		if !strings.Contains(head, lens.word()+" · ") {
-			t.Fatalf("%s head does not name the lens: %q", lens.word(), head)
+		bar := plain(rows[1])
+		for _, want := range []string{"rhythm", "models", "days", "year"} {
+			if !strings.Contains(bar, want) {
+				t.Fatalf("%s chip strip missing %q: %q", lens.word(), want, bar)
+			}
+		}
+		if len(stops) < 2 || !stops[1].lensBar {
+			t.Fatalf("%s row 1 is not the lens bar: %#v", lens.word(), stops)
+		}
+		head := plain(rows[2])
+		if strings.Contains(head, lens.word()+" · ") {
+			t.Fatalf("%s head still repeats the lens word after the chips: %q", lens.word(), head)
 		}
 		foot := (placeSpend{}).hint(a)
-		if strings.Contains(foot, lens.word()+" · "+spendLensWord) {
-			t.Fatalf("%s foot still repeats the lens word: %q", lens.word(), foot)
-		}
 		if !strings.Contains(foot, spendLensWord) {
 			t.Fatalf("%s foot dropped the cycle keys: %q", lens.word(), foot)
 		}
 		if !strings.Contains(foot, "] "+lens.next().word()) {
 			t.Fatalf("%s foot does not name the next lens: %q", lens.word(), foot)
 		}
+	}
+}
+
+// A PRESS ON A LENS CHIP SWITCHES THE READING without walking the cursor.
+func TestSpendLensChipPressSwitches(t *testing.T) {
+	a := spendLab(t, spendFixture())
+	a.setSpendLens(spendLensRhythm)
+	_ = placeSpend{}.body(a, 120, 40)
+	// Column of the "models" chip: lead + rhythm chip + gap.
+	x := tabLead + tabChipCols("rhythm") + tabGap + 1
+	a.clickX = x
+	// Row of the chip strip in the place body: under the place head, under rails.
+	y := placeHeadRows + 1
+	if cmd, took := (placeSpend{}).press(a, y); !took {
+		t.Fatal("press on the lens bar was not taken")
+	} else if cmd != nil {
+		t.Fatal("switching a lens returned a command")
+	}
+	if a.spend.lens != spendLensModels {
+		t.Fatalf("press on models left the lens at %s", a.spend.lens.word())
 	}
 }
 

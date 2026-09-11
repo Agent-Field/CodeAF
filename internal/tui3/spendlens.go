@@ -93,6 +93,73 @@ func parseSpendLens(word string) (spendLens, bool) {
 	return 0, false
 }
 
+// ── the lens chip strip ─────────────────────────────────────────────────────
+//
+// THE FOUR READINGS USED TO LIVE ONLY ON `[` `]` AND A HEAD CLAUSE. People
+// landed on rhythm (today's familiar bill), never pressed a bracket, and never
+// found models / days / year. A chip strip under the rails — the same object
+// the settings panel and the place tab bar already are — names every lens at
+// once and takes a press. The keys stay; the strip is how a stranger discovers
+// them (docs/design/spend-lenses/DESIGN.md).
+
+// spendLensBar is the chip row under the rails: one padded word per lens, the
+// active one filled. It is drawn at the place's full width so a press's column
+// and the paint agree (settings.go's [sheetTabBar] is the same bargain).
+func spendLensBar(width int, active spendLens, pal palette) string {
+	line := strings.Repeat(" ", tabLead)
+	for i, lens := range spendLensOrder {
+		if i > 0 {
+			line += strings.Repeat(" ", tabGap)
+		}
+		title := lens.word()
+		chip := tabPad + title + tabPad
+		if lens == active {
+			line += pal.selected(pal.bold(pal.ink(chip)), tabChipCols(title))
+		} else {
+			line += pal.dim(chip)
+		}
+	}
+	return fit(line, width)
+}
+
+// spendLensAtColumn is which chip a press landed in. The gap between chips
+// belongs to none of them — same miss rule as the place tab bar.
+func spendLensAtColumn(x int) (spendLens, bool) {
+	at := tabLead
+	for i, lens := range spendLensOrder {
+		if i > 0 {
+			at += tabGap
+		}
+		cols := tabChipCols(lens.word())
+		if x >= at && x < at+cols {
+			return lens, true
+		}
+		at += cols
+	}
+	return 0, false
+}
+
+// withSpendLensBar inserts the chip strip immediately under the rails (row 0)
+// and shifts every stop under it by one, marking the strip itself so a press
+// can switch lenses without walking the cursor onto chrome.
+func withSpendLensBar(out []string, stops []spendStop, active spendLens, width int, pal palette) ([]string, []spendStop) {
+	if len(out) == 0 {
+		return out, stops
+	}
+	nextOut := make([]string, 0, len(out)+1)
+	nextOut = append(nextOut, out[0], spendLensBar(width, active, pal))
+	nextOut = append(nextOut, out[1:]...)
+	nextStops := make([]spendStop, len(nextOut))
+	if len(stops) > 0 {
+		nextStops[0] = stops[0]
+	}
+	nextStops[1] = spendStop{lensBar: true}
+	for i := 1; i < len(stops); i++ {
+		nextStops[i+1] = stops[i]
+	}
+	return nextOut, nextStops
+}
+
 // spendGroup is how the Models lens aggregates rows.
 type spendGroup int
 
@@ -196,35 +263,18 @@ func (r spendReading) paintLens(lens spendLens, group spendGroup, sort spendSort
 }
 
 // paintRhythm is the original spend body, renamed so the lens switch has one
-// word for "what this place used to be". The head still names `rhythm` so the
-// four lenses share one grammar for "which reading is up".
+// word for "what this place used to be". The chip strip under the rails names
+// which reading is up; the window head stays the window alone.
 func (r spendReading) paintRhythm(width int, pal palette, lit func(int) bool) ([]string, []spendStop) {
 	rows, stops := r.paint(width, pal, lit)
-	if len(rows) < 2 {
-		return rows, stops
-	}
-	// Row 1 is the window head in [spendReading.paint]. Replace it with the
-	// lens-named form so Rhythm matches Models / Days / Year.
-	rows[1] = r.windowHeaderRowFor(spendLensRhythm, width, pal)
-	return rows, stops
+	return withSpendLensBar(rows, stops, spendLensRhythm, width, pal)
 }
 
-// windowHeaderRowFor is [spendReading.windowHeaderRow] with the active lens
-// named once on the left — `models · 14 days came to $2.05 · …` — which is the
-// head-row spelling DESIGN.md requires.
-func (r spendReading) windowHeaderRowFor(lens spendLens, width int, pal palette) string {
-	head := r.headWords(width)
-	painted := r.paintedHead(width, pal)
-	word := lens.word()
-	if word != "" {
-		head = word + " · " + head
-		if painted == "" {
-			painted = placeHeading(head, pal)
-		} else {
-			painted = pal.dim(word+" · ") + painted
-		}
-	}
-	return placeHeadRow(width, head, painted, r.window, pal)
+// windowHeaderRowFor is the window head on a lens body. The active lens is
+// named on the chip strip above it, never again on this row — one source of
+// truth for "which reading is up".
+func (r spendReading) windowHeaderRowFor(_ spendLens, width int, pal palette) string {
+	return r.windowHeaderRow(width, pal)
 }
 
 func (r spendReading) paintModelsLens(group spendGroup, sort spendSort, width int, pal palette, lit func(int) bool) ([]string, []spendStop) {
@@ -254,7 +304,7 @@ func (r spendReading) paintModelsLens(group spendGroup, sort spendSort, width in
 	stops := make([]spendStop, len(out))
 	stops[rails] = spendStop{ok: true, rails: true}
 	stops[headAt] = spendStop{ok: true, sortHead: true}
-	return out, stops
+	return withSpendLensBar(out, stops, spendLensModels, width, pal)
 }
 
 // modelsSortHead is the Models-lens column row. Cells left→right match the
@@ -508,7 +558,7 @@ func (r spendReading) paintDaysLens(sort spendSort, width int, pal palette, lit 
 		stops[at] = spendStop{ok: true, day: day}
 	}
 	stops[rails] = spendStop{ok: true, rails: true}
-	return out, stops
+	return withSpendLensBar(out, stops, spendLensDays, width, pal)
 }
 
 func spendDayRow(day session.DaySpend, width int, lit bool, pal palette) string {
@@ -555,7 +605,7 @@ func (r spendReading) paintYearLens(width int, pal palette, lit func(int) bool) 
 	}
 	stops := make([]spendStop, len(out))
 	stops[rails] = spendStop{ok: true, rails: true}
-	return out, stops
+	return withSpendLensBar(out, stops, spendLensYear, width, pal)
 }
 
 // yearLines is every priced line the reading was built from. The Year lens

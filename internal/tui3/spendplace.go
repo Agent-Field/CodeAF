@@ -219,6 +219,10 @@ type spendStop struct {
 	// sortHead marks the Models-lens column header: `enter` / a press cycles the
 	// sort to the next column (DESIGN.md §3 — head cells are the sort doors).
 	sortHead bool
+	// lensBar marks the chip strip under the rails. It is not a door the
+	// cursor walks (`ok` stays false); a press on a chip switches the lens
+	// (place_spend.go's [placeSpend.press]).
+	lensBar bool
 }
 
 // unfolding is this reading with the subjects' fold open or shut. It answers a

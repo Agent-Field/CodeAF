@@ -45,10 +45,12 @@ under that pointer.
 | `days` | a calendar of days in the window | — |
 | `year` | the year as a heatmap, with streak / peak / favorite | — |
 
-`[` and `]` cycle the four, in that order, wrapping. The active lens is named once on the
-head row in the asker's word — `rhythm`, `models`, `days`, `year` — never as a tab strip
-and never as a second bar of chrome. The foot names the keys this place has, including
-`[ ] lenses` where the row under the cursor does not need the cells for something else.
+`[` and `]` cycle the four, in that order, wrapping. **Under the rails sits a
+chip strip** — `rhythm · models · days · year` — the same padded-selected object
+the settings panel and the place tab bar already are. A press on a chip switches
+the reading; the keys stay for people who already know them. The window head
+names the window alone (never `rhythm ·` again); the foot still says
+`[ ] lenses · ] <next>` so the keyboard path is named beside the chips.
 
 **Still a reading.** The Spending tab remains the only editor. Nothing on any lens
 writes a limit, a model binding, or a profile row.
@@ -147,6 +149,12 @@ embed the same picker type in their own bodies.
 The placeholder keeps naming the keys it already names; it does not grow a novel essay.
 The section labels are the person-facing strings above, exact.
 
+Under the filter box on the **framed `/model` sheet** sits an order chip strip —
+`cheap · fast · used` — the same filter words the box already accepts when typed.
+A press toggles the word into the filter (`cheap` and `fast` are exclusive; `used`
+stacks with either). Settings, home and the composer still embed the picker without
+that strip; their filter hint still names `fast · cheap`.
+
 ### 6. Slash — `/spend` takes an argument
 
 | form | what it does |
@@ -166,12 +174,13 @@ printed into the conversation.
 ## Words
 
 - Lenses are named in the person's vocabulary: **rhythm**, **models**, **days**,
-  **year**. Lowercase in the head row and in `/spend` args; Title Case only if a heading
-  in the manual needs it for search.
+  **year**. Lowercase on the chip strip and in `/spend` args; Title Case only if a
+  heading in the manual needs it for search.
 - Picker sections: **`used lately`**, **`all models`** — those spellings, nowhere else.
 - Chip: **`this fortnight $12 · 2.1M`** as the shape (figures vary; the words do not).
-- Keys: `[` `]` cycle lenses; the existing spend time keys stay on `rhythm` (and on any
-  lens that still owns a window).
+- Order chips on the framed `/model` sheet: **`cheap`**, **`fast`**, **`used`**.
+- Keys: `[` `]` cycle lenses; a press on a lens chip switches; the existing spend time
+  keys stay on `rhythm` (and on any lens that still owns a window).
 - "limit" in person-facing money lines; never rail / ceiling / budget cap. No machinery
   words (`auditor`, `verdict`, `verified`, `refuted`).
 
@@ -187,8 +196,9 @@ printed into the conversation.
 
 ## Acceptance (tests the build must add)
 
-1. `[` `]` cycle `rhythm → models → days → year → rhythm` on the spend place; the head
-   names the active lens; the Spending tab is never opened by those keys.
+1. `[` `]` cycle `rhythm → models → days → year → rhythm` on the spend place; the chip
+   strip names every lens and a press switches; the Spending tab is never opened by
+   those keys or chips.
 2. `enter` on a `days` row lands on `rhythm` for that day; `esc` returns to `days` on
    that row.
 3. Models lens sorts by each column; grouping by role then subject then none; unbound

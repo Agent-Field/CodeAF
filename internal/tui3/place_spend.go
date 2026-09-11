@@ -635,7 +635,7 @@ func (a *app) readSpendFrom(from time.Time) {
 // than no door at all.
 func (a *app) openSpendRow() (tea.Cmd, bool) {
 	stop := a.spendStopAt(a.spend.cursor)
-	if !stop.ok {
+	if !stop.ok || stop.lensBar {
 		return nil, false
 	}
 	// AND THE POINTER LINE OPENS THE ONE EDITOR MONEY HAS. It is the only row
@@ -865,10 +865,9 @@ const (
 	spendEnterWord  = "enter opens what spent it"
 	spendVerbLead   = "→ "
 	spendWindowWord = "shift+←→ move the days"
-	// spendLensWord is the FOOT's cycle clause. It used to say only `[ ] lenses`,
-	// which named the keys and hid the destination — people stood on rhythm
-	// (today's arrival, which looks like the old page) and never found models /
-	// days / year. Naming the NEXT lens is one short clause, not a tab strip.
+	// spendLensWord is the FOOT's cycle clause. The chip strip under the rails
+	// already names every lens; the foot keeps the keys and the NEXT lens so a
+	// person who prefers the keyboard still finds `] models` from rhythm.
 	spendLensWord = "[ ] lenses"
 )
 
@@ -937,7 +936,21 @@ func (placeSpend) hint(a *app) string {
 }
 
 func (placeSpend) press(a *app, y int) (tea.Cmd, bool) {
-	if at, ok := placeBodyLine(y, a.spend.top, a.spend.shown); ok && a.spendStopAt(at).ok {
+	at, ok := placeBodyLine(y, a.spend.top, a.spend.shown)
+	if !ok {
+		return nil, true
+	}
+	stop := a.spendStopAt(at)
+	// A PRESS ON A LENS CHIP SWITCHES THE READING. The strip is chrome, not a
+	// cursor door — clickX is the only way to know which word was under the
+	// pointer (settings.go's [sheetPress] uses the same column for its tabs).
+	if stop.lensBar {
+		if lens, hit := spendLensAtColumn(a.clickX); hit {
+			a.setSpendLens(lens)
+		}
+		return nil, true
+	}
+	if stop.ok {
 		a.spend.cursor = at
 		a.touch()
 		return placeSpend{}.enter(a), true
@@ -1001,14 +1014,16 @@ func spendWarmingRows(width, room int, pal palette) []placeRow {
 }
 
 // spendQuietWindowRows is a held ledger paged onto a stretch that spent
-// nothing: rails pointer, lens-named head with the window control, and the
-// quiet guide — how to leave — rather than blank air under the head.
+// nothing: rails pointer, lens chips, window head with the control, and the
+// quiet guide — how to leave — rather than blank air under the head. The chips
+// stay so a quiet stretch still offers models / days / year by eye.
 func spendQuietWindowRows(a *app, width, room int) []placeRow {
 	rows := make([]placeRow, 0, room)
 	inner := width - len(placeLead)
 	r := a.spend.reading
 	rails := placeLead + r.railsRowIn(inner, a.pal.dim)
 	rows = append(rows, placeRow{text: rails, hit: 0})
+	rows = append(rows, placeRow{text: spendLensBar(width, a.spend.lens, a.pal), hit: 1})
 	rows = append(rows, placeRow{text: r.windowHeaderRowFor(a.spend.lens, width, a.pal), hit: -1})
 	if inner > 0 {
 		rows = append(rows, placeRow{text: "", hit: -1})
@@ -1017,6 +1032,9 @@ func spendQuietWindowRows(a *app, width, room int) []placeRow {
 	a.spend.stops = make([]spendStop, len(rows))
 	if len(a.spend.stops) > 0 {
 		a.spend.stops[0] = spendStop{ok: true, rails: true}
+	}
+	if len(a.spend.stops) > 1 {
+		a.spend.stops[1] = spendStop{lensBar: true}
 	}
 	a.spend.top, a.spend.shown = 0, len(rows)
 	for len(rows) < room {

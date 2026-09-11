@@ -144,6 +144,10 @@ tried only when the one above it came back empty after filtering.
 The placeholder in the empty filter box is the only place the overlay explains itself:
 `filter · fast · cheap · ↑↓ · → lanes · ctrl+t effort · ctrl+r refresh · enter · esc`
 
+On the framed `/model` sheet, the same three filter words also sit as chips under the
+box — **cheap · fast · used** — so you can press them instead of typing. Cheap and fast
+replace each other; used stacks with either.
+
 There is no mouse commit on the picker's rows.
 
 ## What each row in the model picker tells you
@@ -2035,7 +2039,9 @@ The spend place (`alt+3`, or `/spend`) is still a **reading** of what this machi
 cost. It still never edits a limit; the Spending tab is the only editor, and the place's
 first line still points there.
 
-What you are reading is one of four **lenses**, named on the head row:
+What you are reading is one of four **lenses**. Under the rails pointer sits a chip
+strip naming all four — the active one filled — so you can see and press them without
+guessing keys:
 
 | lens | what it shows |
 |---|---|
@@ -2044,9 +2050,8 @@ What you are reading is one of four **lenses**, named on the head row:
 | `days` | the days in the window |
 | `year` | a year heatmap with streak, peak and favorite when those exist |
 
-Press `[` and `]` to cycle `rhythm → models → days → year → rhythm`. The foot names
-`[ ] lenses · ] models` (the next lens) when it has the cells — so rhythm, which looks
-like today's familiar bill, still tells you where `]` goes.
+Press a chip, or press `[` and `]` to cycle `rhythm → models → days → year → rhythm`. The
+foot still names `[ ] lenses · ] models` (the next lens) when it has the cells.
 
 **`enter` on a day** (the `days` lens) opens that day's `rhythm` window. `esc` returns
 to `days` on the day you left.

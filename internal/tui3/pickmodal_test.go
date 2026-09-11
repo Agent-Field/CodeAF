@@ -94,3 +94,38 @@ func TestATaskModelSheetNamesTheTaskSubject(t *testing.T) {
 		t.Fatal("the conversation title showed on a task sheet")
 	}
 }
+
+// THE ORDER CHIPS ARE ON THE SHEET so cheap / fast / used are doors by eye,
+// not only words a person has to invent in the filter box.
+func TestTheModelSheetOrderChipsAreDoors(t *testing.T) {
+	a := pickerApp(t, &fakeAgent{model: "openai/gpt-4.1-mini"}, pickerCatalog)
+	typeLine(t, a, "/model")
+	drawn := plain(frame(a))
+	for _, want := range pickOrderWords {
+		if !strings.Contains(drawn, want) {
+			t.Fatalf("order chip %q is not on the sheet:\n%s", want, drawn)
+		}
+	}
+	win := a.pick.win
+	if win.chipsY < 0 || len(win.chips) != len(pickOrderWords) {
+		t.Fatalf("chip hit map is chipsY=%d spans=%d", win.chipsY, len(win.chips))
+	}
+	// Press "cheap".
+	drive(t, a, tea.MouseClickMsg{X: win.chips[0].from, Y: win.chipsY, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: win.chips[0].from, Y: win.chipsY, Button: tea.MouseLeft})
+	if got := a.pick.filter.String(); got != "cheap" {
+		t.Fatalf("pressing cheap left the filter at %q", got)
+	}
+	// Press "fast" — exclusive with cheap.
+	drive(t, a, tea.MouseClickMsg{X: win.chips[1].from, Y: win.chipsY, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: win.chips[1].from, Y: win.chipsY, Button: tea.MouseLeft})
+	if got := a.pick.filter.String(); got != "fast" {
+		t.Fatalf("pressing fast left the filter at %q, want fast alone", got)
+	}
+	// Press "used" — stacks with the order word.
+	drive(t, a, tea.MouseClickMsg{X: win.chips[2].from, Y: win.chipsY, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: win.chips[2].from, Y: win.chipsY, Button: tea.MouseLeft})
+	if got := a.pick.filter.String(); got != "fast used" {
+		t.Fatalf("pressing used left the filter at %q", got)
+	}
+}

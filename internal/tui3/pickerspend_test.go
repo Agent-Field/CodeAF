@@ -127,3 +127,26 @@ func TestUsedFilterEmptyCopy(t *testing.T) {
 		t.Fatalf("a misspelled filter used the quiet-machine copy: %q", got)
 	}
 }
+
+// TOGGLE FILTER WORD is what a press on an order chip does: on/off, with
+// cheap and fast exclusive so two lit order chips never disagree.
+func TestToggleFilterWord(t *testing.T) {
+	p := picker{}
+	p.start([]Model{{ID: "a/model"}}, "a/model")
+	p.toggleFilterWord("cheap")
+	if got := p.filter.String(); got != "cheap" {
+		t.Fatalf("after cheap = %q", got)
+	}
+	p.toggleFilterWord("fast")
+	if got := p.filter.String(); got != "fast" {
+		t.Fatalf("after fast = %q, want cheap dropped", got)
+	}
+	p.toggleFilterWord("used")
+	if got := p.filter.String(); got != "fast used" {
+		t.Fatalf("after used = %q", got)
+	}
+	p.toggleFilterWord("used")
+	if got := p.filter.String(); got != "fast" {
+		t.Fatalf("toggling used off left %q", got)
+	}
+}

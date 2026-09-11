@@ -864,8 +864,10 @@ memories are dropped with `/forget`.
 ## /model — pick a model
 
 `/model` with nothing after it opens the model picker as a framed sheet over the
-conversation: title **choose model**, a filter box inside the sheet, the list under
-it, and **esc · cancel** on the foot. The conversation behind it stays visible but
+conversation: title **choose model**, a filter box inside the sheet, order chips
+**cheap · fast · used** under the box (a press toggles the word into the filter;
+cheap and fast replace each other; used stacks with either), the list under that,
+and **esc · cancel** on the foot. The conversation behind it stays visible but
 faded, and nothing underneath can be touched until you choose or cancel. Pressing the
 model's name on the legend line above the box opens the same sheet. Inside a task's
 room the sheet titles itself **choose task model**.

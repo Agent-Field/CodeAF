@@ -3635,7 +3635,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// THE SAME REASON: each is the whole screen, so a press that fell
 			// through to the conversation underneath would open a tool call
 			// nobody can see. A press on one of their rows is `enter` on it
-			// (pages.go's [app.placeBodyPress]).
+			// (pages.go's [app.placeBodyPress]). The column is stashed first so a
+			// place whose row is a chip strip (spend's lens bar) can resolve
+			// which word was under the pointer — the same bargain settings
+			// already keeps with [sheetPress].
+			a.clickX, a.clickY = msg.Mouse().X, msg.Mouse().Y
 			if cmd, took := a.placeBodyPress(msg.Mouse().Y); took {
 				return a, cmd
 			}

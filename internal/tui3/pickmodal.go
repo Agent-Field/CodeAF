@@ -34,6 +34,7 @@ package tui3
 //
 //	╭─ choose model ──────────────────────────── deepseek/deepseek-v4 ─╮
 //	│  › filter · ↑↓ · enter · esc                                      │  the box
+//	│   cheap · fast · used                                              │  order chips
 //	│  ────────────────────────────────────────────────────────────    │
 //	│    deepseek/deepseek-v4-flash          $0.14 · 128k · arena 72    │  the list
 //	│    anthropic/claude-sonnet-4.5         $3.00 · 200k · arena 81    │
@@ -43,9 +44,10 @@ package tui3
 // Everything between the thin rule and the foot is palette.go's own
 // [picker.rows], unchanged: this file does not draw a second list, it frames
 // the one that already exists. What it adds is the title, the box in a place of
-// its own, the framing, and one explicit CANCEL target on the foot rule —
-// because a modal whose only way out is a key nobody was told about is a modal
-// people get stuck in.
+// its own, the order chips under the box (cheap / fast / used — filter words a
+// stranger will not invent), the framing, and one explicit CANCEL target on the
+// foot rule — because a modal whose only way out is a key nobody was told about
+// is a modal people get stuck in.
 //
 // ── ONE HIT MAP ─────────────────────────────────────────────────────────────
 //
@@ -90,8 +92,8 @@ const (
 	// context chooser and the switcher card make.
 	pickSheetFloor = 44
 	// pickSheetChrome is how many rows the frame itself costs: the head rule,
-	// the box, the thin separator under it, and the foot rule.
-	pickSheetChrome = 4
+	// the box, the order chips, the thin separator under them, and the foot rule.
+	pickSheetChrome = 5
 )
 
 // pickWin is where the last paint put the sheet, in SCREEN cells. Everything
@@ -107,6 +109,10 @@ type pickWin struct {
 	// boxY is the filter row, and boxX where its text starts, so a press in the
 	// box can put the caret under the pointer.
 	boxY, boxX int
+	// chipsY is the order-chip row under the box (`cheap · fast · used`), and
+	// chips the screen spans of each word so a press and the paint agree.
+	chipsY int
+	chips  []hudSpan
 	// cancel is the cancel target on the foot rule, and cancelY the row it is on.
 	cancel  hudSpan
 	cancelY int
@@ -171,6 +177,7 @@ func (a *app) pickSheet(width, height int) ([]string, int, int) {
 	}
 	drawHead := height >= 2
 	drawBox := height >= 3
+	drawChips := height >= 4
 	drawThin := height >= pickSheetChrome
 	left := (width - box) / 2
 
@@ -215,6 +222,19 @@ func (a *app) pickSheet(width, height int) ([]string, int, int) {
 		// the same answer every other non-writing surface gives (view.go).
 		a.caret = false
 	}
+	chipRow := -1
+	var chipSpans []hudSpan
+	if drawChips {
+		chipRow = len(out)
+		line, spans := pickOrderBar(inner, p.filter.String(), a.pal)
+		out = append(out, side(line))
+		chipSpans = make([]hudSpan, len(spans))
+		for i, span := range spans {
+			// Spans are in the INNER content; the sheet's left edge and the
+			// side glyph put content at left+1.
+			chipSpans[i] = hudSpan{from: left + 1 + span.from, to: left + 1 + span.to}
+		}
+	}
 	if drawThin {
 		out = append(out, side(a.pal.dim(strings.Repeat(glyph.thin, max(inner, 1)))))
 	}
@@ -242,6 +262,10 @@ func (a *app) pickSheet(width, height int) ([]string, int, int) {
 	if boxRow >= 0 {
 		boxY = top + boxRow
 	}
+	chipsY := -1
+	if chipRow >= 0 {
+		chipsY = top + chipRow
+	}
 	screenCancel := hudSpan{}
 	if cancel.pressable() {
 		screenCancel = hudSpan{from: left + cancel.from, to: left + cancel.to}
@@ -252,6 +276,7 @@ func (a *app) pickSheet(width, height int) ([]string, int, int) {
 		bodyX: left + 1, bodyY: bodyY,
 		bodyRows: body,
 		boxY:     boxY, boxX: boxX,
+		chipsY:   chipsY, chips: chipSpans,
 		cancel:  screenCancel,
 		cancelY: top + len(out) - 1,
 	}
@@ -354,6 +379,16 @@ func (a *app) pickModalPress(x, y int) (tea.Cmd, bool) {
 		// place a person types is the one place their pointer has to work).
 		a.pick.filter.cursor = min(max(x-win.boxX, 0), len(a.pick.filter.value))
 		a.touch()
+		return nil, true
+	}
+	if y == win.chipsY {
+		for i, span := range win.chips {
+			if i < len(pickOrderWords) && span.holds(x) {
+				a.pick.toggleFilterWord(pickOrderWords[i])
+				a.touch()
+				return nil, true
+			}
+		}
 		return nil, true
 	}
 	if row := y - win.bodyY; row >= 0 && row < win.bodyRows {
