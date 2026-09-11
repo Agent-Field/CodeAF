@@ -124,6 +124,17 @@ func PlanFor(choice Choice, pace Pace, role Role, now time.Time) control.Plan {
 		Gap:     pace.Gap,
 		Alts:    alternatives(choice, head),
 		Began:   now,
+		// ── AND THE SAME PLAN IS THE CALL'S ONE BUDGET ──────────────────────
+		//
+		// The deadline is the role's own patience ([Role.GiveUp]) counted from
+		// the moment the request went out, and the move log is empty and shared:
+		// every arm of this question writes into it, so two of them can never
+		// demand one machine. Both are here rather than in the transport because
+		// this is the ONE place a plan is built, and a second place that filled
+		// them in would be a second answer to "how long may this call take".
+		Deadline: now.Add(role.GiveUp()),
+		Role:     string(role),
+		Moves:    control.NewMoveLog(),
 	}
 }
 
