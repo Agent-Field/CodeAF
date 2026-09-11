@@ -16,6 +16,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -43,7 +44,7 @@ func TestACancelledRaceAnswersAtOnceAndDrainsItsArmsBehindTheCaller(t *testing.T
 	response, _, err := race.abandon(ctx, map[int]armResult{})
 	took := time.Since(began)
 
-	if err == nil || !errorsIsCanceled(err) {
+	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("abandon answered %v, want the caller's own cancellation", err)
 	}
 	if response != nil {
@@ -67,5 +68,3 @@ func TestACancelledRaceAnswersAtOnceAndDrainsItsArmsBehindTheCaller(t *testing.T
 		}
 	}
 }
-
-func errorsIsCanceled(err error) bool { return err == context.Canceled }

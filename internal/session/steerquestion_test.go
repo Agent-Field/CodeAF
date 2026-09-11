@@ -172,6 +172,20 @@ func TestAQuestionThePersonSpokePastIsWithdrawnWithTheirOwnAct(t *testing.T) {
 		t.Fatalf("the withdrawal reads %+v, want %q", gone.Question.Withdrawn, askTalkedPastReason)
 	}
 	collect(t, turn)
+	// AND IT IS SAID ONCE, WHICH IS WHAT MAKES THE SENTENCE A CLAIM. Two maps
+	// hold one question, and the `ask` lane's own deferred withdrawal is racing
+	// this one with [questionGoneReason]'s `the turn moved on without it` — the
+	// consent line's fact, about the person's own act. Both are claimed under one
+	// lock (steerquestion.go), so the loser finds nothing and there is no second
+	// event to read. Without that this assertion was a coin flip that happened to
+	// land: `waitForAsk` returns the FIRST withdrawal, whichever road won.
+	select {
+	case event := <-rig.asks:
+		if event.Kind == EventQuestionWithdrawn {
+			t.Fatalf("the question was withdrawn twice; the second reads %+v", event.Question.Withdrawn)
+		}
+	case <-time.After(200 * time.Millisecond):
+	}
 	// AND THE SESSION IS NOT PARKED ON ANYBODY ANY MORE, which is the fact the
 	// presence file publishes to every other window (taskpresence.go).
 	if open := rig.agent.OpenQuestions(); len(open) != 0 {

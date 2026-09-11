@@ -433,7 +433,20 @@ const abandonGrace = time.Second
 // THE ARMS ARE ALREADY CUT. [hedgeRace.run] defers the cancel of the context
 // they all ride, so nothing is left running by returning early; what is left is
 // only the account of it.
+//
+// ── WHAT MAY GO BEHIND THE CALLER, AND WHAT MAY NOT ──
+//
+// ONLY A WAIT MAY. [hedgeRace.withdraw] is not one: it is a map delete and a
+// phase, both of which cost microseconds — and the phase is the reason it has to
+// stay here rather than ride along with the drain. Every call posts an empty
+// phase as it unwinds (client.go's deferred [phaseClock.done]), and an empty
+// phase is how a surface is told to forget the row (internal/tui3's phase.go).
+// A withdrawal posted from behind this return would arrive AFTER that one, up to
+// [abandonGrace] late, under the same subject the person's NEXT request has
+// since filed its own phase under — and would blank it. The offer coming down is
+// this call's own story and belongs in this call's own order.
 func (r *hedgeRace) abandon(ctx context.Context, seen map[int]armResult) (*ai.Response, bool, error) {
+	r.withdraw()
 	// `seen` is handed over rather than shared. [hedgeRace.run] returns this
 	// call's value directly and never reads the map again, so the goroutine
 	// below is its only reader from here — which is what makes an unsynchronised
@@ -442,8 +455,8 @@ func (r *hedgeRace) abandon(ctx context.Context, seen map[int]armResult) (*ai.Re
 	return nil, false, ctx.Err()
 }
 
-// accountForTheAbandoned is everything a cancelled race owes the process once
-// its caller has gone: the arms' own endings, the offer token, and the money.
+// accountForTheAbandoned is the one thing a cancelled race owes the process that
+// nobody can be made to wait for: the arms' own endings, and the money.
 //
 // AND IT DELIBERATELY DOES NOT SETTLE. The arms were never allowed to finish,
 // so folding their waits into the belief would teach the ledger that a lane it
@@ -456,7 +469,6 @@ func (r *hedgeRace) abandon(ctx context.Context, seen map[int]armResult) (*ai.Re
 // than the race actually spent.
 func (r *hedgeRace) accountForTheAbandoned(seen map[int]armResult) {
 	r.drainArms(seen)
-	r.withdraw()
 	now := waitNow()
 	r.budget.NoteRequest(now)
 	r.budget.NoteSpend(r.spent(seen), now)

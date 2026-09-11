@@ -234,11 +234,17 @@ func (a *Agent) Steer(words string) (<-chan Event, error) {
 	// it waits for a step that is itself waiting for the correction — which is
 	// not a slow boundary but no boundary at all (steerquestion.go states the
 	// measurement). Retiring it here opens the boundary this splice needs.
+	//
+	// IT IS ASKED BEFORE THE THREE ARMS BELOW AND CANNOT COLLIDE WITH THEM. A
+	// parked `ask` holds the whole tool batch, so no request is out while one
+	// stands — `a.generation` is nil and the first arm is unreachable — and the
+	// batch it holds is the one no bash can be running inside. The arm this
+	// really replaces is the last one, and that is where its landing is set.
 	retired := a.talkedPastQuestionsLocked()
 	if len(retired) > 0 {
-		// Outside the lock, with the announcements: [Agent.WithdrawQuestion]
-		// takes a.mu itself and tells the watchers.
-		defer a.withdrawAskedQuestions(retired)
+		// Outside the lock, with the announcements, for the reason they are:
+		// this is person-visible news and the claim above is not.
+		defer a.sayTheQuestionsCameDown(retired)
 	}
 	// A MODEL GENERATION IS CUT, NOT THE TURN. The request's own cancellation
 	// handle is distinct from a.cancel, so the loop comes back to its boundary,

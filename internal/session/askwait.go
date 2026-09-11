@@ -104,7 +104,13 @@ func (asked *askedOfThePerson) talkedPastLocked() []uint64 {
 	}
 	retired := make([]uint64, 0, len(asked.parked))
 	for id := range asked.parked {
-		wait, _ := asked.claimLocked(id)
+		// Claimed rather than closed off the range variable, so this road obeys
+		// the same primitive the other two do and nothing here can reach a
+		// channel it does not own.
+		wait, parked := asked.claimLocked(id)
+		if !parked {
+			continue
+		}
 		close(wait)
 		retired = append(retired, id)
 	}

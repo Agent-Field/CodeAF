@@ -23,9 +23,10 @@ package session
 //
 // ── SO A STEER RETIRES THE MODEL'S OWN OPEN QUESTION ──
 //
-// [Agent.talkedPastQuestionsLocked] takes every `ask` this agent is parked on,
-// hands the tool [askTalkedPast] instead of an answer, and withdraws the
-// question from every surface drawing it. The tool result lands, the batch ends,
+// [Agent.talkedPastQuestionsLocked] takes every `ask` this agent is parked on —
+// both the wait and the words, under one lock — hands the tool [askTalkedPast]
+// instead of an answer, and withdraws the question from every surface drawing
+// it. The tool result lands, the batch ends,
 // the boundary opens, and the ordinary drain at the head of the loop puts the
 // person's words in front of the model — the whole of it inside
 // [lane.SpokenWithin] of the steer rather than never.
@@ -88,30 +89,47 @@ const askTalkedPastReason = "you said something else instead"
 const steerTookTheQuestion = "took this instead of the question"
 
 // talkedPastQuestionsLocked ends every `ask` this session is parked on because
-// the person spoke instead of answering, and answers the tokens of what it
-// retired for the caller to withdraw once the lock is down.
+// the person spoke instead of answering, and answers the questions it retired
+// for the caller to say out loud once the lock is down.
 //
 // The ending itself belongs to [askedOfThePerson] and not to this file — it is
 // one of the three a parked ask has, beside the answer and the let-go, and it is
-// written there with them (askwait.go). What is here is only the translation
-// from ask ids to the tokens the question lane withdraws by.
-func (a *Agent) talkedPastQuestionsLocked() []string {
+// written there with them (askwait.go).
+//
+// ── IT CLAIMS THE WORDS IN THE SAME BREATH AS THE WAIT ──
+//
+// TWO MAPS HOLD ONE QUESTION and both have to be taken here. `a.asked` holds
+// what the lane is parked on; `a.questionWords` holds what every surface is
+// drawing. Closing the channel makes that lane runnable while this lock is still
+// held, and the first thing it does on the way out is its own deferred
+// withdrawal ([Agent.rememberQuestion]) — with [questionGoneReason]'s sentence,
+// `the turn moved on without it`, which is the consent line's fact and not this
+// person's act. Claiming the words here makes that road provably find nothing,
+// so what they read about their own sentence is a claim rather than a coin flip.
+// It is askwait.go's own rule — THE ENTRY IS THE OWNERSHIP — kept for the second
+// map as well as the first.
+func (a *Agent) talkedPastQuestionsLocked() []Question {
 	retired := a.asked.talkedPastLocked()
 	if len(retired) == 0 {
 		return nil
 	}
-	tokens := make([]string, 0, len(retired))
+	taken := make([]Question, 0, len(retired))
 	for _, id := range retired {
-		tokens = append(tokens, strconv.FormatUint(id, 10))
+		// A question with nothing banked was never drawn and there is nobody to
+		// tell; the wait is ended either way, which is what unwedges the turn.
+		if q, said := a.claimQuestionLocked(QuestionAsk, strconv.FormatUint(id, 10), false); said {
+			taken = append(taken, q)
+		}
 	}
-	return tokens
+	return taken
 }
 
-// withdrawAskedQuestions takes the retired questions off every surface, with the
-// reason. It runs with a.mu DOWN, as [Agent.Steer]'s other announcements do:
-// [Agent.WithdrawQuestion] takes the lock itself and emits to the watchers.
-func (a *Agent) withdrawAskedQuestions(tokens []string) {
-	for _, token := range tokens {
-		a.WithdrawQuestion(QuestionAsk, token, askTalkedPastReason)
+// sayTheQuestionsCameDown tells every surface, with the reason. It runs with
+// a.mu DOWN, as [Agent.Steer]'s other announcements do, and through the same
+// [Agent.sayWithdrawn] every other withdrawal uses — so there is one spelling of
+// what a withdrawn question looks like and this road only supplies the sentence.
+func (a *Agent) sayTheQuestionsCameDown(taken []Question) {
+	for _, q := range taken {
+		a.sayWithdrawn(q, askTalkedPastReason)
 	}
 }
