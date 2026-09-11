@@ -49,11 +49,13 @@ func testRefusedTaskProposal(t *testing.T) {
 
 	// The turn's end is where a spilled row would linger longest, and where a
 	// second refusal — the model sending the composed check again — would draw
-	// the sentence a second time. Waiting for the person's prompt back is the
-	// suite's own way of knowing the turn ended, and what is read then is the
-	// absence the whole subtest exists for.
-	time.Sleep(5 * time.Second)
-	final := r.capture()
+	// the sentence a second time. The suite's own way of knowing a model turn
+	// has finished is waiting for a word that only comes back with it: the
+	// settled card's foot here, the way [testAskHere] waits for the answer
+	// hint after its model's reply — and what is read then is the absence the
+	// whole subtest exists for.
+	final := r.waitFor(modelPatience, say(t, "refusedCallRowWord"))
+	final = r.waitFor(modelPatience, say(t, "exchangeAnswerHint"))
 	if strings.Contains(final, "Invalid arguments:") {
 		t.Errorf("the schema's refusal sentence is on the screen after the turn:\n%s", final)
 	} else {
