@@ -256,10 +256,11 @@ make test-report PKGS=./internal/tui3 REPORT=/tmp/tui3.json    # fresh tests, ti
 
 `make test-report` keeps Go's build cache but supplies `-count=1`, so test
 results are fresh. Its JSON distinguishes cached packages, lists incomplete
-packages after an abrupt end, and sorts completed tests slowest-first. The
-quick target checks build, vet, formatting, the packed manual, and laws; it does
-not replace acceptance. `make test-touched` derives the same package set as the
-pull-request gate and runs it through the known-red ledger with `-count=1`;
+packages after an abrupt end, and sorts completed tests slowest-first; a cut run
+still writes that report and still exits non-zero. The quick target checks build,
+vet, formatting, the packed manual, well-formed change entries, the manual gates,
+and laws; it does not replace acceptance. `make test-touched` derives the same
+package set as the pull-request gate and runs it through the known-red ledger with `-count=1`;
 `make pr-ready` combines that proof with the light gate. Pass `BASE=<commit>`
 when the comparison should not be `origin/dev`. The target refuses uncommitted
 Go or module files: commit the candidate first so the local diff is exactly the

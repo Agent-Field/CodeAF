@@ -29,7 +29,9 @@ Use the smallest proof that answers the current question:
    repository's timeout and known-red ledger. It fails closed on uncommitted Go
    or module files; commit the candidate so it can prove the exact PR diff.
 3. `make test-quick` mirrors the deterministic light PR checks: build, vet,
-   format, packed manual, and laws. It is quick feedback, not acceptance.
+   format, packed manual, well-formed change entries, manual gates, and laws.
+   Whether the branch adds a change entry needs the pull request's base commit,
+   so only CI checks that half. It is quick feedback, not acceptance.
 4. `make pr-ready` is local pull-request acceptance: the light gate, manual
    probes, and `test-touched`, without a full-tree suite or binary-size build.
 5. `make test-report PKGS='./internal/tui3 ./internal/session' REPORT=/tmp/tests.json`
@@ -46,9 +48,9 @@ cache. Cold compilation and fresh test execution are therefore separate facts
 and should be labeled separately in measurements.
 
 The JSON report is diagnostic evidence, not a replacement gate. A failing test
-command remains failing; malformed or empty JSON also fails. Packages that start
-without a terminal event are listed as incomplete, which makes cancellation or
-abrupt termination visible in a partial stream.
+command remains failing; malformed or empty JSON also fails. A stream cut mid-line
+still writes a report, lists packages without a terminal event as incomplete, and
+exits non-zero, which makes cancellation or abrupt termination visible.
 
 ## Parallelism decision
 
