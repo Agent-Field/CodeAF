@@ -1395,7 +1395,8 @@ func (g *TaskGraph) children(parent uint64) []*TaskNode {
 //
 // THREE THINGS CAN HOLD A READY NODE, and a held node says which on the wire
 // ([TaskNotice.Waiting]): the person's own cap ([TaskGraph.limit]), this
-// machine's load or memory ([TaskGraph.governor]), and — for a node that is
+// machine's load or memory ([TaskGraph.governor], asked once per admission and
+// counting every node this same pass has already started), and — for a node that is
 // already running — the provider pacing its calls, which is set from the far
 // end (see [TaskNode.pacing]). Every one of them is a HOLD ON STARTING and
 // never a refusal: the node stays queued, and the next pass asks again.
@@ -1404,13 +1405,15 @@ func (g *TaskGraph) children(parent uint64) []*TaskNode {
 // call when nothing can move: the cost of a pass with nothing to do is one lock
 // and a walk of the order slice.
 func (g *TaskGraph) runFrontier() {
-	// The machine is asked BEFORE the lock and at most once a pass. It is two
+	// The machine is READ before the lock and at most once a pass: a handful of
 	// small file reads behind a one-second cache, and the graph's lock is held
 	// by everything that announces a node — no reading of /proc belongs under
-	// it, however cheap.
-	busy := g.governor.holds()
+	// it, however cheap. It is ASKED under the lock, once per admission
+	// ([TaskGraph.holdOnStartingLocked]), because the answer for the second
+	// node of a fan depends on the first one having started.
+	g.governor.observe(g.lanesTaken())
 	// AND THE PERSON'S STANDING ORDERS ARE RESOLVED BEFORE THE LOCK TOO, and at
-	// most once a pass, for the governor's reason: every node in one graph sits
+	// most once a pass, for the reading's reason: every node in one graph sits
 	// in one place, so the answer is the same for all of them, and reading a
 	// folder per starting node would be the same question asked ten times
 	// (standing_world.go).
@@ -1443,7 +1446,7 @@ func (g *TaskGraph) runFrontier() {
 			failing = append(failing, node)
 			continue
 		}
-		hold := g.holdOnStartingLocked(node, ready, busy)
+		hold := g.holdOnStartingLocked(node, ready)
 		if hold == waitingMachineBusy {
 			machineHeld = true
 		}
@@ -1548,7 +1551,13 @@ func (g *TaskGraph) runFrontier() {
 // A node that is not ready is held by its own edges and says NOTHING here:
 // DependsOn is already on the notice, and a second word for the same fact would
 // be the wire saying it twice.
-func (g *TaskGraph) holdOnStartingLocked(node *TaskNode, ready, busy bool) string {
+//
+// THIS IS THE ONE PLACE THE GOVERNOR IS ASKED, and it is asked with `running`
+// as it stands at this node — which already counts every node an earlier
+// iteration of the same pass started. That count IS the reservation: a node
+// holds its footprint against the floor from the moment it is marked running
+// here until a reading shows it or it settles (task_pressure.go).
+func (g *TaskGraph) holdOnStartingLocked(node *TaskNode, ready bool) string {
 	switch {
 	case !ready:
 		return ""
@@ -1562,10 +1571,19 @@ func (g *TaskGraph) holdOnStartingLocked(node *TaskNode, ready, busy bool) strin
 		return ""
 	case g.limit > 0 && g.running >= g.limit:
 		return waitingSlot
-	case busy:
+	case !g.governor.admits(g.running):
 		return waitingMachineBusy
 	}
 	return ""
+}
+
+// lanesTaken is how many slot-taking nodes are running, read for the one
+// reader that must have it outside the lock: the governor's reading, which
+// learns what one node weighs from the memory the running ones hold.
+func (g *TaskGraph) lanesTaken() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.running
 }
 
 // armPoll sets the one clock this scheduler has.

@@ -4627,6 +4627,15 @@ func (a *app) railSaysMore(e railEntry) bool {
 	if e.node.Paused() {
 		return true
 	}
+	// A HELD ROW SAYS WHAT IS HOLDING IT WHEREVER IT SITS IN A FAMILY. The
+	// engine starts as much of a fan as this machine can carry and holds the
+	// rest (internal/session's task_pressure.go), so a family is routinely half
+	// running and half waiting — and a child row that drew nothing was the one
+	// shape a person could not tell apart from work that has simply not been
+	// reached yet.
+	if e.node.waiting != "" {
+		return true
+	}
 	if e.root || len(e.stems) > 0 {
 		return false
 	}

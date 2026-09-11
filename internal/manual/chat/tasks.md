@@ -299,6 +299,14 @@ That is the whole aim when work splits: the shortest wall time for the whole job
 a team of workers would take it, so however many independent pieces there are, they all
 start together.
 
+**How many of them actually start at once is the machine's answer, not a number here.**
+Each start sets aside a footprint of memory — one core's share of this machine's memory,
+or more where this session's tasks have been seen to need more — so a wide hand-out starts
+as many pieces as the memory above `task.min_free_mb` can carry and leaves the rest
+queued, each saying `waiting · machine busy` on its row. Those start themselves as the
+earlier pieces finish; there is nothing to do about it and nothing to come back for. See
+how-tasks-run for the two settings behind it.
+
 What it will *not* do is watch them. Each landing arrives on its own and wakes the
 conversation, so once nothing is left that is independent of the work it handed out, the
 turn simply ends — a reply that sat there polling would have spent your money to learn
@@ -4182,7 +4190,9 @@ starts instead:
   core. At or above it, nothing new starts and a held task's row reads
   `waiting · machine busy`.
 - `task.min_free_mb` — a floor under available memory, default **1536** MiB. Below it,
-  nothing new starts.
+  nothing new starts — and each task already started sets aside a footprint of memory
+  against that floor until a reading shows it, so a wide hand-out starts what this machine
+  can carry and queues the rest on `machine busy` (how-tasks-run has the arithmetic).
 
 Both gate starts only. Nothing already running is ever touched; the pressure drains as
 running work finishes, and the check is re-asked every 5 seconds.

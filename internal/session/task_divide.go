@@ -969,7 +969,7 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 		line.Decision = divisionRepairedShared
 		line.Shared = repaired
 	}
-	return divisionDone(ids, titles, graph.machineBusy()), "", false
+	return divisionDone(ids, titles, graph.machineHolds(ids)), "", false
 }
 
 // personsOwnJob is the reviewer's reason with the record's own prefix taken back
@@ -1616,10 +1616,10 @@ func divisionNeedsPerson(why string) string {
 // ([runTaskChild]'s tail loop) — and a worker that sat on a wait would spend its
 // whole allowance doing nothing.
 //
-// AND IT SAYS WHEN THE PARTS ARE NOT STARTING YET. A machine carrying more than
-// the load or the memory floor allows holds every new node
-// ([TaskGraph.runFrontier]), so the parts are admitted and waiting rather than
-// working — and a receipt that said nothing about it would have a worker reading
+// AND IT SAYS WHEN THE PARTS ARE NOT STARTING YET. A machine that cannot carry
+// one more node holds it ([TaskGraph.runFrontier]), and a fan wider than the
+// machine starts as many as it can carry and holds the rest, so some parts are
+// admitted and waiting rather than working — and a receipt that said nothing about it would have a worker reading
 // "split into three parts" while three cards sat still. It lifts by itself
 // ([TaskGraph.armPoll]), which is the half worth saying: there is nothing for
 // the worker to do about it and nothing for it to come back and re-ask.
@@ -1631,7 +1631,7 @@ func divisionDone(ids []uint64, titles []string, machineBusy bool) string {
 	}
 	out.WriteString("\nEach works from its own brief, in a copy of its own, and its branch comes home into yours. Keep working — do not wait for them; each report arrives here when it lands, and this work is not finished until you have folded them into one deliverable.")
 	if machineBusy {
-		out.WriteString("\nThis machine is busy right now, so the parts are waiting for it rather than working. They start themselves as soon as it clears; there is nothing for you to do about that and nothing to come back for.")
+		out.WriteString("\nThis machine is busy right now, so some of the parts are waiting for it rather than working. They start themselves as it makes room; there is nothing for you to do about that and nothing to come back for.")
 	}
 	return out.String()
 }
@@ -1679,15 +1679,27 @@ func (g *TaskGraph) freeHands() int {
 	return 0
 }
 
-// machineBusy is the admission governor's own reading: this box is carrying more
-// than the load or the memory floor allows, so nothing new starts until it
-// clears (task_pressure.go).
+// machineHolds says whether the admission governor is holding any of these
+// nodes (task_pressure.go): they were admitted, and the frontier left them
+// queued because this box could not carry them yet.
 //
-// Asked before any lock, exactly as [TaskGraph.runFrontier] asks it: it is two
-// small file reads behind a one-second cache, and no reading of /proc belongs
-// under the lock that everything announcing a node holds.
-func (g *TaskGraph) machineBusy() bool {
-	return g != nil && g.governor.holds()
+// IT READS WHAT THE FRONTIER DECIDED and does not ask the machine again. The
+// governor answers per admission, counting the nodes already started, so the
+// only true answer to "are my parts waiting on the machine" is the one each
+// part was given — a second question put to the governor here would be asked
+// about a node that does not exist.
+func (g *TaskGraph) machineHolds(ids []uint64) bool {
+	if g == nil {
+		return false
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for _, id := range ids {
+		if node := g.nodes[id]; node != nil && node.state == TaskQueued && node.held == waitingMachineBusy {
+			return true
+		}
+	}
+	return false
 }
 
 // laneLimit is the person's own task.parallel cap, or 0 for no cap. It is read
