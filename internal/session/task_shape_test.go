@@ -87,22 +87,59 @@ func TestThePersonsTaskDoorAsksNoModel(t *testing.T) {
 		"completeWithModel": true, "taskName": true, "taskNameWithin": true, "memoryBlock": true,
 	}
 	_, files := packageSources(t)
+	// EVERY FUNCTION THIS PACKAGE DECLARES, BY THE NAME A CALL SPELLS IT WITH, so
+	// that the walk below can follow the door into what it calls. A method and a
+	// function of the same name are both kept: a call site says only the name, so
+	// the law reads every body that name could reach, which errs toward failing.
+	bodies := map[string][]*ast.FuncDecl{}
 	for _, file := range files {
 		for _, declaration := range file.Decls {
-			function, ok := declaration.(*ast.FuncDecl)
-			if !ok || function.Body == nil || function.Name.Name != "StartTask" || function.Recv == nil {
-				continue
+			if function, ok := declaration.(*ast.FuncDecl); ok && function.Body != nil {
+				bodies[function.Name.Name] = append(bodies[function.Name.Name], function)
 			}
-			ast.Inspect(function.Body, func(node ast.Node) bool {
-				if call, ok := node.(*ast.CallExpr); ok && asks[calledName(call.Fun)] {
-					t.Errorf("StartTask calls %s: a person's task must be admitted before any model is asked about it", calledName(call.Fun))
-				}
-				return true
-			})
-			return
 		}
 	}
-	t.Fatal("StartTask was not found, so this law is reading the wrong source")
+	door := bodies["StartTask"]
+	if len(door) == 0 {
+		t.Fatal("StartTask was not found, so this law is reading the wrong source")
+	}
+	// ONE LEVEL DOWN AS WELL AS THE BODY ITSELF. A model call moved out of the
+	// door and into something the door calls — the ground ladder, the admission
+	// compiler — is the same twenty-eight seconds with one more frame on the
+	// stack, so the walk follows the door's own callees into this package.
+	walk := func(function *ast.FuncDecl, path string, follow bool) {
+		ast.Inspect(function.Body, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			name := calledName(call.Fun)
+			if asks[name] {
+				t.Errorf("%s calls %s: a person's task must be admitted before any model is asked about it", path, name)
+			}
+			if follow {
+				for _, callee := range bodies[name] {
+					if callee.Name.Name == "StartTask" {
+						continue
+					}
+					ast.Inspect(callee.Body, func(inner ast.Node) bool {
+						if call, ok := inner.(*ast.CallExpr); ok && asks[calledName(call.Fun)] {
+							t.Errorf("%s calls %s, which calls %s: a person's task must be admitted before any model is asked about it",
+								path, name, calledName(call.Fun))
+						}
+						return true
+					})
+				}
+			}
+			return true
+		})
+	}
+	for _, function := range door {
+		if function.Recv == nil {
+			continue
+		}
+		walk(function, "StartTask", true)
+	}
 }
 
 // AND WHAT IT ADMITS IS THE PERSON'S OWN WORDS, marked as waiting for both
@@ -239,6 +276,100 @@ func TestTheWorkersFirstRequestGoesOutBeforeTheShaperOrTheJudgeAnswers(t *testin
 	}
 	if request := node.spec.request; request != shapedAsk {
 		t.Fatalf("the request is %q, want the person's sentence untouched", request)
+	}
+}
+
+// A `/task` THAT WAS QUEUED WHEN THE ENGINE STOPPED STILL GETS ITS BRIEF
+// WRITTEN BESIDE THE WORKER IT FINALLY GETS.
+//
+// The two readings happen beside the node's FIRST WORKER, and a task admitted
+// while the lanes are full has no worker at all — so what is owed has to survive
+// the process. Without [taskRecord.Unshaped] the resumed node came back owing
+// nothing: [Agent.shapeBeside] returned nil, no shaper was ever asked, and the
+// work ran on the person's raw sentence and the canned done-condition for ever,
+// with nothing on screen saying so.
+func TestAQueuedTaskThatSurvivedARestartStillHasItsBriefWritten(t *testing.T) {
+	repo := newGoModuleRepo(t)
+	t.Setenv("HOME", t.TempDir())
+	journal, checkpoint := journalIn(t)
+
+	// THE FIRST PROCESS ADMITS AND NEVER RUNS IT, which is a task typed while
+	// every lane is busy: the node is on disk, queued, with both readings owed.
+	first, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.SessionFile, config.Workspace = journal, repo
+	})
+	stubbedGraph(first, func(*TaskNode) {})
+	id, _, _, err := first.StartTask(t.Context(), shapedAsk, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document := readCheckpoint(t, checkpoint)
+	record := recordOf(t, document, id)
+	if !record.Unshaped || !record.Unsized {
+		t.Fatalf("the record owes unshaped=%v unsized=%v, want both readings owed",
+			record.Unshaped, record.Unsized)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatalf("close the first session: %v", err)
+	}
+	// AND WHAT THE KILLED PROCESS LEFT IS THAT RECORD, QUEUED. Admission is
+	// checkpointed BEFORE the frontier turns ([TaskGraph.admit]), so a process
+	// that died in between wrote exactly this node in exactly this state; the
+	// runner here has since marked it started, and the state is put back rather
+	// than raced for.
+	for i := range document.Nodes {
+		if document.Nodes[i].ID == id {
+			document.Nodes[i].State = TaskQueued
+		}
+	}
+	writeCheckpoint(t, checkpoint, document)
+
+	// AND THE SECOND PROCESS OPENS THE SAME JOURNAL. Recovery puts the node back
+	// on the frontier, and the worker it gets is the first this task ever had.
+	completer := newDoorCompleter()
+	completer.releaseShaper()
+	second, _ := newTestAgent(t, completer, func(config *Config) {
+		config.SessionFile, config.Workspace = journal, repo
+		config.RolesSource = shaperSettings()
+		config.Divide = true
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+		config.TaskAudit = false
+		config.TaskRepairRounds = 0
+	})
+	graph := second.graph()
+	node := graph.node(id)
+	if node == nil {
+		t.Fatal("the queued task did not survive the restart")
+	}
+	if !node.spec.unshaped || !node.spec.unsized {
+		t.Fatalf("the resumed node owes unshaped=%v unsized=%v, want both readings still owed",
+			node.spec.unshaped, node.spec.unsized)
+	}
+	if opening := completer.worker(t, 0); !strings.Contains(opening, shapedAsk) {
+		t.Fatalf("the resumed worker opened on %q, want the person's own words", opening)
+	}
+	worker := node.openRoom().speaker()
+	if worker == nil {
+		t.Fatal("nobody was in the room while the resumed worker was at work")
+	}
+	waitFor(t, "the written brief on the resumed worker's queue", func() bool {
+		return strings.Contains(queuedFor(worker), briefWrittenBeside)
+	})
+	close(completer.hold)
+	if read := completer.worker(t, 1); !strings.Contains(read, shapedMarker) {
+		t.Fatalf("the resumed worker never read the written brief: %q", read)
+	}
+	select {
+	case <-node.done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the resumed task never landed")
+	}
+	graph.mu.Lock()
+	brief, acceptance, unshaped := node.spec.brief, node.spec.acceptance, node.spec.unshaped
+	graph.mu.Unlock()
+	if !strings.Contains(brief, shapedMarker) || acceptance != shapedAcceptance || unshaped {
+		t.Fatalf("after the resume: brief %q, acceptance %q, unshaped %v", brief, acceptance, unshaped)
 	}
 }
 

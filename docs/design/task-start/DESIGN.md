@@ -804,6 +804,10 @@ fields (in `prompts/shape.md` too), and `taskName`. The remote wire moves to ver
   `TestAWideTaskStartsItsWorkerFirstAndTheJudgesPartsArriveAsTheReceipt` (the control);
   `TestABriefIsWrittenOnlyWhenTheWorkerReadsIt`; and the existing
   `TestEveryReadingBesideTheWorkHasAJoin`.
+- **What it costs, on one branch.** A judged-wide task whose division the reviewer then
+  refuses carries on with no `divide_work` verb at all, where dev's armed worker could
+  still divide later. Arming cannot move without unfreezing the belt and the prompt
+  together, which is a change of its own: issue #958 holds it, with the fix stated.
 - **What a reviewer might call a band-aid.** Starting the task on the person's raw
   sentence. It is not a fallback: it is the only brief that exists at the moment the
   work can begin, it is the authority the shaped brief quotes verbatim, and the shaped

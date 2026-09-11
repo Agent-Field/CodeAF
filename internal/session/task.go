@@ -465,10 +465,14 @@ type taskSpec struct {
 	// standing answer of `single` — and it is spent the moment the judge is
 	// asked, so a node is read for width once whatever happens to it after.
 	//
-	// NEITHER FLAG IS IN THE CHECKPOINT, for [taskSpec.drawn]'s reason: a node
-	// restored after its first worker ran has had both readings already, and a
-	// node restored before it comes back as one worker on the person's own
-	// words, which is what either reading failing always meant.
+	// BOTH FLAGS ARE IN THE CHECKPOINT ([taskRecord.Unshaped]), and they have to
+	// be. A `/task` admitted while the lanes are full sits QUEUED with no worker,
+	// so neither reading has happened yet; an engine restart in that window would
+	// bring the node back with both flags false and no road left to write its
+	// brief, and the work would run on the raw sentence and the canned
+	// done-condition for ever, silently. Carrying them is the only thing that
+	// makes "beside the worker" survive a restart, and it says exactly what was
+	// true when the file was written: what has been read, and what has not.
 	unsized bool
 }
 

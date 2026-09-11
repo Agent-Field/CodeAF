@@ -13,6 +13,11 @@ invalidates:
   - "The remote wire was version 14. It is version 15: Task.Judge is retired and Task.Start carries `solo`, so a version-14 surface is refused at the handshake."
 ---
 
+One thing is narrower than it was, and it is written down rather than absorbed: a task the
+judge calls wide, whose division the reviewer then refuses, carries on with no way to divide
+at all — the judge's yes no longer arms the worker, because the belt and the system prompt
+read arming when the worker is built. Issue #958 holds that branch.
+
 Sizing and shaping run beside a starting task, never in front of it (#936). The
 worker's first request goes out on the person's own sentence, and neither reading
 decides whether the work may start. The windows keep their lengths; #927 owns those.
