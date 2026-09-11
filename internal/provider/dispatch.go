@@ -662,6 +662,37 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// which is the narrower and shorter-lived question. A refusal that
 		// implicated no machine adds nothing.
 		fresh := knobs.refused.add(refusal.Lane)
+		// AND THE MOVE LOG IS CORRECTED TO THE MACHINE THAT ANSWERED. A move
+		// NAMES THE MACHINE WE EXPECT AND NEVER THE MACHINE WE COMMAND
+		// ([control.Move]) — `provider.order` is advisory once `allow_fallbacks`
+		// is on, and R1 measured this router fanning straight past it — so the
+		// machine a move claimed and the machine that refused are routinely two
+		// different pools. Writing the claim down and leaving it there tells
+		// [control.Next] that the lane we asked for has been tried when nothing
+		// was ever sent to it, which takes away the one machine we actually
+		// wanted on the evidence of a machine we did not.
+		//
+		// So the claim that never reached the wire is given back and the pool
+		// that really answered is written down in its place. That is exactly
+		// what [control.MoveLog.Release] is for, and it keeps "never repeat"
+		// about where the bytes WENT rather than about where we hoped they
+		// would go.
+		if served := strings.TrimSpace(refusal.Lane); served != "" {
+			asked := strings.TrimSpace(move.Lane)
+			if attempt == 0 {
+				asked = strings.TrimSpace(plan.Lane)
+			}
+			if asked != "" && !strings.EqualFold(asked, served) {
+				plan.Moves.Release(control.Move{
+					Kind: control.MoveMachine, Model: plan.Model,
+					Lane: asked, Shape: move.Shape,
+				})
+			}
+			plan.Moves.Add(control.Move{
+				Kind: control.MoveMachine, Model: plan.Model,
+				Lane: served, Shape: move.Shape,
+			})
+		}
 		// AND THE ROW IS WRITTEN FROM WHAT THE DOOR WORKED OUT, which is why it
 		// is here and not above the door.
 		//

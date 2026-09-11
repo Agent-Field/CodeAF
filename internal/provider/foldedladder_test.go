@@ -185,3 +185,55 @@ func TestTheHeadOfTheChoiceIsAMoveBeforeAnyArmAsksForOne(t *testing.T) {
 		t.Fatal("a rescue was handed the machine the primary is on")
 	}
 }
+
+// TestTheMoveLogNamesTheMachineThatAnsweredAndNotTheOneWeAsked is the other
+// half of that seam, and without it the head's claim is a lie the walk believes.
+//
+// `provider.order` IS ADVISORY once `allow_fallbacks` is on, and R1 measured
+// this router fanning straight past it (#850): a call that asks for DeepInfra
+// and is refused by Parasail has SENT NOTHING to DeepInfra. Leaving the claim on
+// the log tells [control.Next] the one machine we actually wanted has been tried
+// — on the evidence of a machine we never demanded — and the call ends after one
+// attempt with somewhere perfectly good left to go, which is what the rebase
+// onto #859 caught.
+func TestTheMoveLogNamesTheMachineThatAnsweredAndNotTheOneWeAsked(t *testing.T) {
+	kept := watchedPlan(t)
+	handler := &poolHandler{
+		advisory: true,
+		lanes:    []string{"Parasail", "DeepInfra"},
+		refusing: map[string]bool{"Parasail": true},
+	}
+	client := poolClient(t, "served-not-asked", handler)
+	ctx := WithLaneChoice(context.Background(), lanes.Choice{Order: []string{"DeepInfra"}})
+	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
+		t.Fatalf("the machine we asked for was healthy and the call still failed: %v", err)
+	}
+
+	log := kept.Moves.List()
+	if len(log) == 0 {
+		t.Fatal("a call that walked two machines wrote no moves at all")
+	}
+	// The pool that REFUSED is on the log, because bytes reached it.
+	if !kept.Moves.Tried("Parasail") {
+		t.Fatalf("the machine that answered is not on the move log: %#v", log)
+	}
+	// And the demand the router fanned past was claimed, given back when the
+	// refusal named somebody else, and claimed again by the move that really
+	// went there — so it is on the log ONCE, as the second move and not the
+	// first.
+	if !kept.Moves.Tried("DeepInfra") {
+		t.Fatalf("the machine the second body really went to is not on the log: %#v", log)
+	}
+	if last := log[len(log)-1]; !equalLane(last.Lane, "DeepInfra") {
+		t.Fatalf("the last move was %q, want the machine the answer came from", last.Lane)
+	}
+	seen := 0
+	for _, move := range log {
+		if equalLane(move.Lane, "DeepInfra") {
+			seen++
+		}
+	}
+	if seen != 1 {
+		t.Fatalf("the demanded machine is on the log %d times, want exactly one: %#v", seen, log)
+	}
+}
