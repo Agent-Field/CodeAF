@@ -11,7 +11,6 @@ package session
 // took one would be testing the runner again.
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -807,16 +806,9 @@ func TestAHandOverThatMissesATurnIsHeldForTheTurnThatReadsIt(t *testing.T) {
 // A turn that ends without settling what it was handed gives it back by law
 // ([Agent.handBackUnsettled]), and a test about the press that raced one of those
 // was asserting a moment rather than a fact. The road through a turn's end is
-// [TestAHandOverThatMissesATurnIsHeldForTheTurnThatReadsIt]'s. Every step parks
-// until the session's close cuts it, so an errand that takes a step does not
-// hand the turn an answer.
-func stillThinking() *scriptedCompleter {
-	park := func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
-		<-ctx.Done()
-		return nil, ctx.Err()
-	}
-	return &scriptedCompleter{steps: []step{park, park, park, park}}
-}
+// [TestAHandOverThatMissesATurnIsHeldForTheTurnThatReadsIt]'s, and handover_test.go
+// has the rest ([parkedModel]).
+func stillThinking() *scriptedCompleter { return parkedModel(nil) }
 
 // handOverLines counts the hand-over lines the model has been given or will be:
 // the transcript and the queue, read under the one lock a drain moves a line

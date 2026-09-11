@@ -2417,6 +2417,12 @@ func (a *Agent) HandUnverifiedToModel(id uint64) error {
 		return err
 	}
 	notice := node.notice()
+	// THE CARD IS TOLD BEFORE THE NOTE IS QUEUED. Every road that gives this press
+	// back acts on the note — a drain carried it, or a turn's end found nobody
+	// would — so each is downstream of the queue, and its update can only follow
+	// this one. Told after the queue, a turn ending in between gave the question
+	// back and this older update then said aforge was deciding over it.
+	a.emitTaskUpdate(notice)
 	note := wakeNote(handOverLead + "\n" +
 		taskNote(notice, taskURI(node.journalPath()), TaskSettleAuto, a.quietAddress()))
 	// THE NOTE CARRIES THE PRESS, because the note reaching a request is the only
@@ -2428,7 +2434,6 @@ func (a *Agent) HandUnverifiedToModel(id uint64) error {
 		a.giveBackHandOvers(note.handsOver)
 		return errors.New("session: agent is closed")
 	}
-	a.emitTaskUpdate(notice)
 	return nil
 }
 
@@ -2437,7 +2442,8 @@ func (a *Agent) HandUnverifiedToModel(id uint64) error {
 //
 // IT WAS A READ, THEN A WRITE, with the graph let go of between them — so two
 // presses racing each other both read "not handed yet" and both sent the model
-// the note, which is the duplicate [TaskNode.wasHandedOver] was written to stop.
+// the note, which is the duplicate the press's receipt exists to stop
+// (task_run.go's [TaskNode.handed]).
 //
 // AND A SECOND PRESS IS NOT A SECOND HAND-OVER. On 2026-09-09 the card was
 // pressed twice twenty-seven seconds apart and the model was handed the same
@@ -2535,28 +2541,6 @@ const handedAlreadyWord = "already handed to aforge"
 // question is in — so a surface that drew "already answered" over it would be
 // reporting a decision nobody has made (internal/tui3's tasksettle.go).
 var ErrTaskHandedOver = errors.New("session: that task is already handed to aforge")
-
-// wasHandedOver reports that THIS DOOR has already given the model this node's
-// decision and nothing has taken it back.
-//
-// IT IS NOT "THE MODEL IS DECIDING", and the difference is the whole of why it
-// is its own fact. Under `task.settle = auto` — and in every headless run, where
-// nobody is there to be asked — a landing marks the model as the decider by
-// POLICY (task_run.go's [Agent.handToModelOnAuto]), which is not a press and
-// carries no note. Refusing the press on that would refuse the first one.
-//
-// IT IS IN MEMORY AND NEVER ON THE RECORD, for [taskRecord.Decider]'s own
-// reason: a hand-over lasts at most one turn — the floor takes it back at the
-// end of the model's turn and a resumed session takes it back on load — so a
-// receipt that survived either would refuse a press for a turn that is over.
-func (n *TaskNode) wasHandedOver() bool {
-	if n == nil || n.graph == nil {
-		return false
-	}
-	n.graph.mu.Lock()
-	defer n.graph.mu.Unlock()
-	return n.handed
-}
 
 // decidedBy reads who is holding one node's question, with the graph taken for
 // the read the way every other reader of a node's fields takes it.

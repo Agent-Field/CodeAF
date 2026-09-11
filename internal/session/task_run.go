@@ -777,12 +777,21 @@ type TaskNode struct {
 	// announcing the end raced past.
 	stopped bool
 	// handed is the receipt for THIS SESSION'S own hand-over press: the person
-	// asked aforge to decide this one card, and the note that asks it has been
-	// put in front of the model. It is not the same fact as [TaskNode.decider]
-	// being the model — a landing under `task.settle = auto` writes that by
-	// policy and presses nothing — and it travels with the owner through
-	// [TaskNode.givesBackLocked] so a hand-back leaves no receipt behind
-	// (task_audit.go's [TaskNode.wasHandedOver] states the whole rule).
+	// asked aforge to decide this one card, and nothing has taken it back. A
+	// second press is refused on it (task_audit.go's [TaskNode.handOver]).
+	//
+	// IT IS NOT "THE MODEL IS DECIDING", and the difference is the whole of why it
+	// is its own fact. Under `task.settle = auto` — and in every headless run,
+	// where nobody is there to be asked — a landing marks the model as the decider
+	// by POLICY ([Agent.handToModelOnAuto]), which is not a press and carries no
+	// note. Refusing the press on that would refuse the first one.
+	//
+	// IT IS IN MEMORY AND NEVER ON THE RECORD, for [taskRecord.Decider]'s own
+	// reason: a hand-over lasts at most one turn — the floor takes it back at the
+	// end of the model's turn and a resumed session takes it back on load — so a
+	// receipt that survived either would refuse a press for a turn that is over.
+	// It travels with the owner through [TaskNode.givesBackLocked], so a
+	// hand-back leaves no receipt behind.
 	handed bool
 	// handPress numbers the presses that have handed this node over, and it is
 	// the ticket each one's note carries (task_audit.go's [handOverTicket]).

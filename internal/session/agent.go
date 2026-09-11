@@ -1592,10 +1592,16 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// policy or the person handed to the model comes back to the person here,
 			// and the card draws its chips again (task_run.go's
 			// [Agent.handBackUnsettled] states the law). It runs before the lock
-			// because it asks this agent for its graph, which takes a.mu itself, and
-			// it is safe to run twice — a disowned turn hands back nothing, because
-			// the turn that replaced it has already handed back whatever was owed.
-			a.handBackUnsettled()
+			// because it asks this agent for its graph, which takes a.mu itself.
+			//
+			// AND ONLY FOR A TURN THE SESSION STILL CALLS ITS OWN. A turn
+			// [Agent.Abandon] let go of can unwind long afterwards, when the turn that
+			// replaced it may be reading a press of its own, and its floor took that
+			// decision out of the replacement's hands. The abandon ran this turn's
+			// floor at the moment it let go, so a disowned turn hands back nothing.
+			if a.turnIs(seq) {
+				a.handBackUnsettled()
+			}
 			a.mu.Lock()
 			// A DISOWNED TURN CLEANS UP NOTHING. [Agent.Abandon] has already done
 			// every act below — drained the queues, cleared running, closed the
@@ -2539,6 +2545,14 @@ func queuedDirections(queued []userMessage) []uint64 {
 // drained after the last request is one nobody has said a word about.
 func (a *Agent) drainSteeringLocked(hub *eventHub) (int, bool) {
 	return a.drainQueuedLocked(hub, true)
+}
+
+// turnIs reports that seq is still the turn the session calls its own, which is
+// what a turn's clean-up asks before doing anything on the session's behalf.
+func (a *Agent) turnIs(seq uint64) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.turnSeq == seq
 }
 
 // orphanedHandsLocked takes [Agent.handsUnsent] from a turn's end that started
