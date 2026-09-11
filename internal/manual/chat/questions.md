@@ -117,7 +117,8 @@ the top of every request is the newest eight decisions plus one line saying how
 many older ones `decisions.jsonl` still holds — a record that grew all day would
 be re-sent, and paid for, on every message you send. Nothing is lost: the file
 keeps every line, and the `already decided:` refusal above is checked against all
-of them however old.
+of them however old. Answering does not rewrite that copy and so costs nothing
+beyond the answer itself.
 
 ## Why did it not ask me, or why did it go ahead by itself?
 
@@ -344,6 +345,14 @@ decision that stopped needing to be made.
 It is never called cancelled: nothing failed, and nobody decided anything. The
 decision simply stopped needing to be made.
 
+**A question goes when the turn that raised it ends.** Most of them go the moment
+the work stops waiting on them, but two kinds can still be on screen after the
+reply is written — a ratify, which never stopped anything, and one you asked
+something about and did not come back to. Both belong to the turn that raised
+them, so both are taken back when it finishes, with `the turn moved on without
+it`. A question something else is still waiting on — a running task, or one whose
+asker said it would read the answer whenever it came — stays.
+
 ## Questions aforge refuses to put to you
 
 Before a question reaches you it has to be a real one, and aforge refuses it
@@ -419,7 +428,10 @@ the row, `enter` takes it, and the key row says `[enter] take it` and
 `[←→] choose` while there is room for them (the arrows work either way).
 
 **A ratify line** — one row, with a `✓`, about something already done. Nothing
-is waiting on it. Reading past it is accepting it.
+is waiting on it: the turn carried on without stopping for it, and home does not
+say you are needed. Reading past it is accepting it; an answer to one reaches the
+model as a message. It belongs to the turn that did the thing, so one you never
+looked at goes when that turn ends.
 
 ```
   ✓ renamed 12 files under src/ · [u] undo · [c] change
@@ -788,7 +800,11 @@ beside your pick — the foot shows the difference before you press enter.
 Type what you want to know and press enter. The sentence goes to the model as an
 ordinary message and the question stays exactly where it was; the reply is drawn
 in place under the answer you asked about, led by `↳`, and the whole exchange is
-saved with your answer.
+saved with your answer. Nothing is decided by asking and no line is written to
+the record. Your answer, when you give it, reaches the model as the result of the
+call it asked from, or as a message where that turn has already moved on. While
+a question is still open nothing asks it again: a second copy of it is refused
+with `already asked and still open:`.
 
 **A limit worth knowing before you use it.** When the work is PARKED ON THIS
 QUESTION — the foot says `running ask` and nothing else is moving — the sentence

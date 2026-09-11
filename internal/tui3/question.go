@@ -496,6 +496,20 @@ func (a *app) raiseQuestion(q questionShown) {
 		if questionSameHoles(q.holes, a.questions[i].holes) {
 			q.holes = a.questions[i].holes
 		}
+		// AND A BARE RE-SEND NEVER UNDRESSES A QUESTION A LANE DRESSED. Several
+		// lanes hand this surface the event a moment before the questions lane
+		// carries the question itself — connect, the harness offer, a
+		// sub-harness intake card — and the copy this window raised from that
+		// event knows three things the engine's copy cannot: the catalog's own
+		// sentence over the box, whether what it wants is a SECRET, and the
+		// answers a hosted browser trip cannot offer. The engine's copy arrives
+		// with a hand of its own for none of them, so taking it whole would draw
+		// a key box in the clear over a question somebody was already reading.
+		if q.answered == nil && q.local == nil &&
+			(a.questions[i].answered != nil || a.questions[i].local != nil) {
+			q.question = a.questions[i].question
+			q.holes = a.questions[i].holes
+		}
 		q.clockHeld = q.clockHeld || a.questions[i].clockHeld
 		a.questions[i] = q
 		a.touch()

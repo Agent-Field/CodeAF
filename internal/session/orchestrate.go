@@ -221,7 +221,7 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 			// place a person looks reads, and a root still drawing a spinner while
 			// somebody is being asked for money is the column disagreeing with the
 			// question in front of them.
-			family.pauseRun(true)
+			family.pauseRun(true, fuel.Gauge())
 			a.emitOrchestrate(Event{
 				Kind: EventOrchestratePause, ID: seq,
 				Text: fuel.Gauge(), Hint: orchestrate.Dollars(fuel.Cap),
@@ -366,7 +366,7 @@ func (a *Agent) ResolveOrchestrate(id, answer string) (string, error) {
 	// went on wearing it would ask a person a question they have just answered.
 	// A refused answer never gets here: the gate is still up and the row still
 	// says so.
-	live.family.pauseRun(false)
+	live.family.pauseRun(false, "")
 	if answer == orchestrate.GateFinish {
 		return "finishing on what is already done", nil
 	}
@@ -1478,6 +1478,12 @@ type orchestrateFamily struct {
 	// Held here, the door stamps it onto every one of them
 	// ([orchestrateFamily.publish]), so no late row can take it off.
 	paused bool
+	// letGo takes the fuel gate's QUESTION back down, and it is set for exactly
+	// as long as the gate is up ([orchestrateFamily.pauseRun] is the one place
+	// either is written). The run's gate reached the questions lane only as
+	// something [Agent.OpenQuestions] derived when a surface subscribed, so a
+	// window that drew it was never told it had been answered.
+	letGo func()
 	// names is the last goal each node was published with, keyed the way ids is.
 	//
 	// IT EXISTS SO THAT NO ROW OF THIS RUN IS EVER PUBLISHED NAMELESS. A surface
@@ -1813,7 +1819,7 @@ func (f *orchestrateFamily) sayForming() {
 // must decide this" arriving afterwards would put a live question over finished
 // work. It is refused rather than merely unpublished so that nothing later — a
 // replay, a checkpoint — can read the flag back out.
-func (f *orchestrateFamily) pauseRun(held bool) {
+func (f *orchestrateFamily) pauseRun(held bool, gauge string) {
 	if f == nil {
 		return
 	}
@@ -1823,18 +1829,53 @@ func (f *orchestrateFamily) pauseRun(held bool) {
 		return
 	}
 	f.paused = held
+	// AND THE QUESTION COMES DOWN WITH THE FLAG, through the one door every lane
+	// raises through (question.go's [Agent.raiseQuestion]). The let-go is taken
+	// under the lock the flag is written under and CALLED with it released:
+	// withdrawing takes the agent's lock, and the two are never held the same
+	// way round anywhere in this file.
+	var letGo func()
+	if !held {
+		letGo, f.letGo = f.letGo, nil
+	}
 	// The phase the row is already in rides with it, for [orchestrateFamily.rename]'s
 	// reason exactly: a tank can empty while the opening planner call is still out,
 	// and a row republished bare here would take the forming line off a run that is
 	// still forming.
 	line, title := f.formingLocked(), f.title
 	f.mu.Unlock()
+	if held {
+		f.raiseGate(gauge)
+	} else if letGo != nil {
+		letGo()
+	}
 	// The gate itself is not named in this notice: [orchestrateFamily.publish]
 	// stamps it from the flag just written, which is what keeps one answer to
 	// "is this run held" rather than one per publisher.
 	f.publish(TaskNotice{
 		ID: f.root, Run: f.run, Title: title, State: TaskRunning, Model: f.model, Doing: line,
 	})
+}
+
+// raiseGate puts the fuel gate's question up and keeps the way to take it back
+// down. It runs with the family's lock RELEASED, because raising takes the
+// agent's; a gate answered while the question was on its way up finds the flag
+// already lowered here and the question comes straight back down, which is the
+// one interleaving this lock order allows.
+func (f *orchestrateFamily) raiseGate(gauge string) {
+	if f.agent == nil {
+		return
+	}
+	letGo := f.agent.raiseQuestion(f.agent.fuelQuestion(f.run, gauge), nil)
+	f.mu.Lock()
+	up := f.paused && !f.settled
+	if up {
+		f.letGo = letGo
+	}
+	f.mu.Unlock()
+	if !up {
+		letGo()
+	}
 }
 
 // formingDone ends the forming line once there is at least one worker to look
@@ -2046,8 +2087,16 @@ func (f *orchestrateFamily) settle(snap orchestrate.Snapshot, err error) {
 	// the flag standing behind the settled row, where a replay or a checkpoint
 	// could read it back as a question about work that is over.
 	f.paused = false
+	letGo := f.letGo
+	f.letGo = nil
 	title := f.title
 	f.mu.Unlock()
+	if letGo != nil {
+		// AND SO DOES THE QUESTION. A run that ended at its gate leaves nobody
+		// waiting on the answer, and a window still drawing it would be asking
+		// for money for work that is over.
+		letGo()
+	}
 	notice := TaskNotice{
 		ID: f.root, Run: f.run, Title: title, State: TaskDone, Model: f.model,
 		Report:  strings.TrimSpace(snap.Answer),

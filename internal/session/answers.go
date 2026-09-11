@@ -131,11 +131,6 @@ const (
 	// QuestionFuel is an adaptive run standing at its fuel gate
 	// (orchestrate.go, [Agent.ResolveOrchestrate]).
 	QuestionFuel QuestionKind = "fuel"
-	// QuestionRecovery is a turn caught going in circles, asking what to do
-	// about ITSELF (recovery.go, [Agent.ResolveRecovery]). It borrows the
-	// consent lane's wait and is deliberately answerable only in the window
-	// that raised it, so it is never offered to another one.
-	QuestionRecovery QuestionKind = "recovery"
 	// QuestionAsk is the model's own question, raised through the ask tool.
 	QuestionAsk QuestionKind = "ask"
 )

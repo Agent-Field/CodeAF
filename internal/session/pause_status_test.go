@@ -48,7 +48,7 @@ func TestARunHeldAtItsFuelGateHoldsItsOwnRowAndNotItsWorkers(t *testing.T) {
 	})
 	familyNotices(t, updates)
 
-	family.pauseRun(true)
+	family.pauseRun(true, "")
 	notices := familyNotices(t, updates)
 	if len(notices) != 1 {
 		t.Fatalf("%d rows published for one gate, want the run's own: %+v", len(notices), notices)
@@ -99,7 +99,7 @@ func TestARunHeldAtItsFuelGateHoldsItsOwnRowAndNotItsWorkers(t *testing.T) {
 func TestALateRowDoesNotTakeTheGateOffARunsRow(t *testing.T) {
 	agent, updates := familyAgent(t)
 	family := agent.newOrchestrateFamily("audit the pricing code that we shipped in June", "cheap/planner", "run-pricing")
-	family.pauseRun(true)
+	family.pauseRun(true, "")
 	familyNotices(t, updates)
 
 	// The namer answering late (taskname.go's rename), while the run is still
@@ -138,10 +138,10 @@ func TestALateRowDoesNotTakeTheGateOffARunsRow(t *testing.T) {
 func TestAnsweringTheGateTakesItOffTheRunsRow(t *testing.T) {
 	agent, updates := familyAgent(t)
 	family := agent.newOrchestrateFamily("audit the pricing code", "cheap/planner", "run-pricing")
-	family.pauseRun(true)
+	family.pauseRun(true, "")
 	familyNotices(t, updates)
 
-	family.pauseRun(false)
+	family.pauseRun(false, "")
 	notices := familyNotices(t, updates)
 	if len(notices) != 1 {
 		t.Fatalf("%d rows published for one answer: %+v", len(notices), notices)
@@ -153,7 +153,7 @@ func TestAnsweringTheGateTakesItOffTheRunsRow(t *testing.T) {
 	// AND IT IS SAID ONCE. A run publishes on every launch, landing, note and
 	// steer; a gate that had not moved is not news, and a roster redrawn for it is
 	// a row a surface has to decide to ignore.
-	family.pauseRun(false)
+	family.pauseRun(false, "")
 	if again := familyNotices(t, updates); len(again) != 0 {
 		t.Fatalf("a gate that did not move published %d rows: %+v", len(again), again)
 	}
@@ -166,7 +166,7 @@ func TestAnsweringTheGateTakesItOffTheRunsRow(t *testing.T) {
 func TestASettledRunHasNoGate(t *testing.T) {
 	agent, updates := familyAgent(t)
 	family := agent.newOrchestrateFamily("audit the pricing code", "cheap/planner", "run-pricing")
-	family.pauseRun(true)
+	family.pauseRun(true, "")
 	familyNotices(t, updates)
 
 	family.settle(orchestrate.Snapshot{Done: true, Stopped: true}, nil)
@@ -178,7 +178,7 @@ func TestASettledRunHasNoGate(t *testing.T) {
 		t.Fatalf("a run stopped at its gate settled as %+v", closing)
 	}
 
-	family.pauseRun(true)
+	family.pauseRun(true, "")
 	if late := familyNotices(t, updates); len(late) != 0 {
 		t.Fatalf("a settled run was put back at a gate: %+v", late)
 	}
@@ -199,7 +199,7 @@ func TestARestoredRunIsNeverHeldAtAGate(t *testing.T) {
 		family.upsert([]orchestrate.NodeStatus{
 			node("n1", "tariff table", "You are reading the tariff table.", orchestrate.Running),
 		})
-		family.pauseRun(true)
+		family.pauseRun(true, "")
 	})
 	if len(rows) != 2 {
 		t.Fatalf("%d rows redrawn, want the run and its worker: %+v", len(rows), rows)
@@ -364,7 +364,7 @@ func waitForRunRow(t *testing.T, updates <-chan Event, run string, want func(Tas
 func TestALateRunningPublicationCannotReopenASettledRun(t *testing.T) {
 	agent, updates := familyAgent(t)
 	family := agent.newOrchestrateFamily("audit the pricing code", "cheap/planner", "run-late")
-	family.pauseRun(true)
+	family.pauseRun(true, "")
 	familyNotices(t, updates)
 	family.settle(orchestrate.Snapshot{Done: true, Stopped: true}, nil)
 	familyNotices(t, updates)
