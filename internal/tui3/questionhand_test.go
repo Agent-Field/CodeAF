@@ -355,7 +355,81 @@ func TestTheNextQuestionDoesNotInheritTheHand(t *testing.T) {
 // KEYBOARD. The arrow that does it in life walks the pointer, which would put
 // half these tests on a different answer than the one they are about; the two
 // tests above are where the rule itself is held.
-func aimed(a *app) { a.aimQuestion() }
+func aimed(a *app) {
+	head, ok := a.questionHead()
+	if !ok {
+		return
+	}
+	a.aimQuestion(head.token())
+}
+
+// ── THE HAND IS THE TOKEN, SO NOTHING INHERITS IT ───────────────────────────
+//
+// Both of these were live on the first cut of the rule, where the hand was a
+// flag set by a key ARRIVING rather than by the block TAKING it.
+
+// SCENARIO A: a key the block handed back does not hand it the keyboard. `enter`
+// over a half-typed sentence is the conversation's — it sends the message — so
+// the `d` of the next sentence is still the box's.
+func TestEnterThatSentAMessageDoesNotGiveTheBlockTheKeyboard(t *testing.T) {
+	lab := handLab(t)
+	lab.a.input.setText("looks good")
+	if _, took := lab.a.questionKey(questionPressOf(questionEnterKey)); took {
+		t.Fatal("the block took the enter that was sending a message")
+	}
+	lab.a.input.reset()
+	if lab.press(questionCommentKey) {
+		t.Fatal("the enter that went to the conversation gave the block the keyboard")
+	}
+	if len(lab.answer) != 0 {
+		t.Fatalf("the first letter of the next sentence answered: %+v", lab.answer)
+	}
+}
+
+// SCENARIO B: the question behind the one you put off does not inherit the hand.
+func TestTheQuestionBehindTheFoldedOneDoesNotInheritTheHand(t *testing.T) {
+	lab := handLab(t)
+	lab.raise(session.Question{
+		ID: 9103, Head: "drop the old table?", Ask: session.AskChoice,
+		Asker:   session.Asker{Kind: session.AskerModel},
+		Options: []session.AnswerOption{{Key: "1", Label: "drop it"}, {Key: "2", Label: "keep it"}},
+	})
+	lab.tick(questionSettle * 2)
+	lab.rows()
+	first, _ := lab.a.questionHead()
+	if !lab.press("down") {
+		t.Fatal("the arrow did not reach the first question")
+	}
+	lab.press(questionLaterKey)
+	head, ok := lab.a.questionHead()
+	if !ok || head.token() == first.token() {
+		t.Fatal("esc did not put the first question behind the second")
+	}
+	if lab.press(questionCommentKey) {
+		t.Fatal("the second question inherited the hand aimed at the one that was folded")
+	}
+	if len(lab.answer) != 0 {
+		t.Fatalf("a question nobody had aimed at was answered: %+v", lab.answer)
+	}
+}
+
+// AND A KEY THE SETTLE GUARD DROPPED SAYS NOTHING ABOUT THIS QUESTION EITHER:
+// it was aimed at whatever was on screen before it arrived.
+func TestAKeyDroppedByTheSettleGuardDoesNotGiveTheHand(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.raise(session.Question{
+		ID: 9104, Head: "index which column?", Ask: session.AskChoice,
+		Asker:   session.Asker{Kind: session.AskerModel},
+		Options: []session.AnswerOption{{Key: "1", Label: "created_at"}, {Key: "2", Label: "updated_at"}},
+	})
+	// No tick: the question has not been on screen long enough to take a key.
+	lab.press("down")
+	lab.tick(questionSettle * 2)
+	lab.rows()
+	if lab.press(questionCommentKey) {
+		t.Fatal("a key the settle guard dropped handed the block the keyboard")
+	}
+}
 
 // ── THE DOOR TAKES A LIST ───────────────────────────────────────────────────
 //

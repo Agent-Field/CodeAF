@@ -1499,14 +1499,18 @@ type app struct {
 	// not persisted — a rule offered on the strength of something somebody did
 	// last week is a rule offered about a habit they may not have.
 	questionYeses map[string]int
-	// questionHand says the person has AIMED at the block: they have walked it,
-	// taken something on it, or clicked it, rather than looking at the box under
-	// it. It is what lets a digit or a letter reach the question at all — until
-	// it is set, a key that could be the first character of a sentence belongs
-	// to the box (questionkeys.go's THE BOX KEEPS THE FIRST LETTER). It is given
-	// up when the question goes, so the rule holds once per question rather than
-	// once per session.
-	questionHand bool
+	// questionHand is the TOKEN of the question the person has AIMED at: the one
+	// they have walked, taken something on, or clicked, rather than looking at
+	// the box under it. It is what lets a letter reach the block at all — until
+	// it names the question in front, a key that could be the first character of
+	// a sentence belongs to the box (questionkeys.go's THE BOX KEEPS THE FIRST
+	// LETTER).
+	//
+	// IT IS A TOKEN AND NOT A FLAG SO THAT NOTHING HAS TO GIVE IT BACK. A flag
+	// had to be dropped at every place a question can leave the front, and the
+	// ones that were missed were a question inheriting a keyboard aimed at a
+	// different one ([app.questionHasTheHand] tells that story).
+	questionHand string
 	// questionSent is the answer THIS WINDOW handed to the door for a question,
 	// by token, and it is remembered BEFORE the door is asked rather than after
 	// it answers — because the one case it exists for is a door that took the

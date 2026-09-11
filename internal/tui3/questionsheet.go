@@ -627,11 +627,11 @@ func (a *app) questionSheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 	switch key {
 	case "up", "shift+tab":
-		a.aimQuestion()
+		a.aimSheet()
 		a.moveSheetCursor(-1)
 		return nil, true
 	case "down", "tab":
-		a.aimQuestion()
+		a.aimSheet()
 		a.moveSheetCursor(1)
 		return nil, true
 	}
@@ -650,7 +650,7 @@ func (a *app) questionSheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// WHOLE batch, so a letter taken from somebody starting a sentence sends
 		// a list they had not even walked (questionkeys.go's THE BOX KEEPS THE
 		// FIRST LETTER).
-		if !a.questionHand {
+		if !a.sheetHasTheHand() {
 			return nil, false
 		}
 		if key == questionSendKey {
@@ -790,4 +790,28 @@ type sheetRow struct {
 	kind session.QuestionKind
 	id   uint64
 	ref  string
+}
+
+// aimSheet and sheetHasTheHand are questionkeys.go's THE BOX KEEPS THE FIRST
+// LETTER on the batch form. The hand is a TOKEN there, and the sheet's own two
+// verbs are about the whole batch rather than one row — so what the sheet asks
+// is whether the hand is on ANY row it is holding, and walking it aims at the
+// row the cursor lands on.
+func (a *app) aimSheet() {
+	if a.questionBatch == nil || a.questionBatch.cursor >= len(a.questionBatch.questions) || a.questionBatch.cursor < 0 {
+		return
+	}
+	a.aimQuestion(questionTokenOf(a.questionBatch.questions[a.questionBatch.cursor]))
+}
+
+func (a *app) sheetHasTheHand() bool {
+	if a.questionHand == "" || a.questionBatch == nil {
+		return false
+	}
+	for _, q := range a.questionBatch.questions {
+		if questionTokenOf(q) == a.questionHand {
+			return true
+		}
+	}
+	return false
 }

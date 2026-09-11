@@ -522,11 +522,6 @@ func (a *app) raiseQuestion(q questionShown) {
 		return
 	}
 	q.ruled = a.autonomyRuled(q.question.Ask)
-	// A QUESTION THAT HAS JUST ARRIVED HAS NOBODY'S HAND ON IT. The aim is given
-	// per question (questionkeys.go), so a new one arriving under a hand that
-	// was aimed at the last one does not inherit the keyboard — which is the
-	// case the rule exists for, a question landing between two keystrokes.
-	a.dropQuestionHand()
 	a.questions = append(a.questions, q)
 	a.questionRule(&a.questions[len(a.questions)-1])
 	a.touch()
@@ -2583,10 +2578,6 @@ func (a *app) dressAnswer(q questionShown, answer session.Answer) session.Answer
 // it again.
 func (a *app) closeQuestion(q questionShown, answer session.Answer) {
 	token := q.token()
-	// THE HAND GOES BACK TO THE BOX WITH THE QUESTION. Whatever aimed at this
-	// one says nothing about the next one, and the first key into an empty box
-	// is the box's again for every question in turn (questionkeys.go).
-	a.dropQuestionHand()
 	// AND THE SENT STAMP GOES WITH IT. It is only ever about a question still
 	// open here with an answer of this window's unaccounted for, and this is
 	// where both of those stop being true ([app.markQuestionSent]).
@@ -2893,6 +2884,25 @@ func (a *app) questionOffFrame() bool {
 // prevent. What is above this line is the BLOCK's own two guards (which question
 // is the head, and whether it has been drawn), which home answers for itself.
 func (a *app) questionKeyOn(head questionShown, msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	cmd, took := a.questionKeyTaken(head, msg)
+	// THE HAND IS GIVEN BY A KEY THE BLOCK ACTUALLY TOOK, and by nothing else.
+	//
+	// IT WAS GIVEN BY THE KEY ARRIVING, which is not the same thing and was
+	// wrong twice. `enter` over a half-typed sentence is the CONVERSATION's —
+	// it sends the message and this routing hands it back — so aiming on the
+	// way past handed the block the keyboard for a key it never took: "looks
+	// good", enter, then "do the schema first" and the `d` handed the call back
+	// to the asker. And a key the settle guard drops was aimed at whatever was
+	// on screen before this question, so it says nothing about this one.
+	if took && questionAimKey(msg.String()) && a.questionSettled(head) {
+		a.aimQuestion(head.token())
+	}
+	return cmd, took
+}
+
+// questionKeyTaken is [app.questionKeyOn]'s routing: what the block does with
+// one key, and whether it took it.
+func (a *app) questionKeyTaken(head questionShown, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	key := msg.String()
 	if key == "ctrl+c" {
 		// Leaving is never modal, and mid-turn ctrl+c is the interrupt, which
@@ -2911,12 +2921,6 @@ func (a *app) questionKeyOn(head questionShown, msg tea.KeyPressMsg) (tea.Cmd, b
 	// question rather than to none.
 	if !a.questionSettled(head) {
 		return nil, true
-	}
-	// AND A KEY THAT CANNOT BE TEXT IS THE PERSON AIMING AT THE BLOCK, which is
-	// what hands it the keyboard for the keys that could be (questionkeys.go's
-	// THE BOX KEEPS THE FIRST LETTER).
-	if questionAimKey(key) {
-		a.aimQuestion()
 	}
 	if cmd, taken := a.questionBeatKey(head, key); taken {
 		return cmd, true
@@ -3650,7 +3654,7 @@ func (a *app) questionPress(x, y int) (tea.Cmd, bool) {
 		}
 		// A CLICK ON AN ANSWER IS AIMING AT THE BLOCK, exactly as an arrow is
 		// (questionkeys.go's THE BOX KEEPS THE FIRST LETTER).
-		a.aimQuestion()
+		a.aimQuestion(head.token())
 		if len(head.beat) > 0 {
 			// THE BEAT'S SPANS ARE SHAPES AND NOT ANSWERS. They are drawn where
 			// the answers were, so a press there means whichever of the two is on

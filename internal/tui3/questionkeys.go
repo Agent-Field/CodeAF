@@ -650,13 +650,21 @@ func questionTextKey(key string) bool {
 
 // questionHasTheHand reports whether the block may take a verb that could have
 // been the first letter of a sentence.
+//
+// THE HAND IS THE TOKEN IT WAS AIMED AT, and that is the whole of why there is
+// no place that gives it back. A flag had to be dropped everywhere a question
+// could leave the front — answered, folded, withdrawn, replaced by the next one
+// in the queue — and every site that was missed was a question inheriting a
+// keyboard aimed at a different one: `esc` on the first of two folded it and
+// left the second holding the hand, so the next `d` decided a question nobody
+// had looked at. A token cannot be inherited: it either names the question in
+// front or it names one that is not.
 func (a *app) questionHasTheHand(q session.Question) bool {
-	return a.questionHand || questionRaisedHere(q)
+	if questionRaisedHere(q) {
+		return true
+	}
+	return a.questionHand != "" && a.questionHand == questionTokenOf(q)
 }
 
-// aimQuestion is the person looking at the block rather than at the box.
-func (a *app) aimQuestion() { a.questionHand = true }
-
-// dropQuestionHand gives the hand back to the box, which is what a question
-// leaving the screen does.
-func (a *app) dropQuestionHand() { a.questionHand = false }
+// aimQuestion is the person looking at one question rather than at the box.
+func (a *app) aimQuestion(token string) { a.questionHand = token }
