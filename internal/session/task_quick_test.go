@@ -182,7 +182,10 @@ func quickBatch(first, second step) step {
 // minus everything that would reach a real profile, a real provider or a real
 // home. The workspace is a repository because a quick task runs in the
 // person's own copy and the treehold question is asked of a real tree.
-func quickAgent(t *testing.T, completer Completer) (*Agent, *TaskGraph, string) {
+// `more` is folded in after the wiring above it, so a test that wants a
+// checkpoint on disk can name a session file without a second copy of this
+// function going out of step with this one.
+func quickAgent(t *testing.T, completer Completer, more ...func(*Config)) (*Agent, *TaskGraph, string) {
 	t.Helper()
 	repo := newGoModuleRepo(t)
 	t.Setenv("HOME", t.TempDir())
@@ -194,6 +197,9 @@ func quickAgent(t *testing.T, completer Completer) (*Agent, *TaskGraph, string) 
 		config.TaskAutoApproveSeconds = 0
 		config.TaskAudit = false
 		config.TaskRepairRounds = 0
+		for _, apply := range more {
+			apply(config)
+		}
 	})
 	return agent, agent.graph(), repo
 }
@@ -743,6 +749,253 @@ func TestAQuickTaskWhoseTurnEndsOnAnErrorLandsRatherThanHanging(t *testing.T) {
 	for _, banned := range []string{"panic", "goroutine", "nil pointer", "index out of range"} {
 		if strings.Contains(strings.ToLower(notice.Report), banned) {
 			t.Errorf("the card says %q, and %q is machinery a person is never shown", notice.Report, banned)
+		}
+	}
+}
+
+// ── (8) the conversation that reopens ───────────────────────────────────────
+
+// A QUICK TASK COMES BACK OUT OF THE CHECKPOINT, AND SO DOES EVERYTHING BESIDE
+// IT.
+//
+// This is the defect, end to end through the real door. A quick node is
+// admitted with NO ACCEPTANCE on purpose — nothing checks one, so a "DONE WHEN"
+// would be a contract with no reader (task_quick.go's [Agent.newQuickSpec]) —
+// and [decodeTasks] refused any node without one. The refusal is whole-document
+// by design, so ONE quick task anywhere in a conversation's history meant that
+// conversation reopened with no task graph at all: every finished row, every
+// piece of running work, the whole family, gone, and one line in a log file
+// saying the checkpoint was corrupt. Measured on a real one, 2026-09-11.
+//
+// WHAT IT DOES NOT ASSERT IS THE LIST. A quick node's items and ticks are not on
+// the record at all, so a restored one comes back with none — which is why one
+// that has not finished settles rather than going back on the frontier
+// ([nothingIsComingBackForIt]). Carrying the list is the record's own shape and
+// is somebody else's change; this one is the rule the decoder asks.
+func TestAQuickTaskComesBackFromTheCheckpoint(t *testing.T) {
+	items := []string{"read the schema", "read the migration", "say which disagrees"}
+	completer := newQuickLanes([]step{
+		quickCall("q1", "compare the pair", "compare the LEDGER-WALK pair", items, []string{"notes.md"}),
+		finalText("it is out"),
+	})
+	// The worker ticks the SECOND item and answers. Ticking the second rather
+	// than the first is deliberate: a `done` of [false true false] cannot be
+	// mistaken for a count that was rebuilt from how far the list had got.
+	completer.lane("LEDGER-WALK",
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			ticked, _ := json.Marshal(map[string]int{"done": 2})
+			return toolResponse("i1", quickItemsToolName, string(ticked)), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("the migration is the one that disagrees"), nil
+		},
+	)
+
+	journal, checkpoint := journalIn(t)
+	agent, graph, _ := quickAgent(t, completer, func(config *Config) {
+		config.SessionFile = journal
+	})
+	collect(t, mustSubmit(t, agent, "compare the schema and the migration"))
+	node := quickNodeSaying(t, graph, "LEDGER-WALK")
+	waitDoneNode(t, node)
+	id := node.id
+	written := awaitRecord(t, checkpoint, id, func(record taskRecord) bool {
+		return record.State == TaskDone
+	}, "done")
+
+	// ON DISK: the kind, and the empty acceptance that is the design rather than
+	// a field somebody forgot.
+	if written.Kind != TaskKindQuick {
+		t.Fatalf("the checkpoint calls node %d a %q, want %q", id, written.Kind, TaskKindQuick)
+	}
+	if written.Acceptance != "" {
+		t.Fatalf("a quick node was written with acceptance %q — nothing checks one, and inventing a clause is the wrong fix", written.Acceptance)
+	}
+
+	// AND THE WHOLE FILE IS STILL A FILE THIS STORE WILL READ. This is the line
+	// the defect failed on: before the fix `ok` was false and the document that
+	// came back was empty.
+	document, ok := loadTaskCheckpoint(checkpoint)
+	if !ok {
+		t.Fatal("a conversation that ran one quick task reopens with NO TASK GRAPH: the checkpoint was refused whole")
+	}
+
+	// AND IT REBUILDS AS A QUICK NODE — the kind, the state it landed in, and the
+	// answer that was its whole point.
+	fresh := newTaskGraph()
+	fresh.rehydrate(document, t.TempDir(), TaskSettleAsk)
+	back := fresh.node(id)
+	if back == nil {
+		t.Fatalf("node %d is not in the rebuilt graph", id)
+	}
+	if back.kind != TaskKindQuick {
+		t.Fatalf("it came back a %q, want %q", back.kind, TaskKindQuick)
+	}
+	if back.spec.acceptance != "" {
+		t.Fatalf("it came back carrying acceptance %q, which nothing wrote", back.spec.acceptance)
+	}
+	if state := back.stateNow(); state != TaskDone {
+		t.Fatalf("a finished quick task came back %q", state)
+	}
+	if report := back.notice().Report; !strings.Contains(report, "the migration") {
+		t.Fatalf("its answer did not survive: %q", report)
+	}
+}
+
+// THE RULE STAYS STRICT FOR ORDINARY WORK, and that is the half of this fix
+// that is easy to lose. A node with no acceptance is a node no auditor can
+// judge, so a document carrying one was not written by this code and is refused
+// whole. What changed is only that the question is now asked OF THE KIND: the
+// one kind admitted without an acceptance is let through, and every other node
+// answers for itself.
+func TestOnlyAQuickNodeMayCarryNoAcceptance(t *testing.T) {
+	document := func(kind TaskKind) []byte {
+		encoded, err := json.MarshalIndent(taskDocument{
+			Type: taskDocumentType, Version: taskFileVersion, Seq: 1,
+			Nodes: []taskRecord{{
+				ID: 1, Title: "compare the pair", Brief: "compare the pair",
+				Acceptance: "", Kind: kind, State: TaskDone, Noted: true,
+			}},
+		}, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return encoded
+	}
+
+	if _, err := decodeTasks(document(TaskKindQuick)); err != nil {
+		t.Fatalf("a quick node with no acceptance was refused: %v — nothing ever checks one", err)
+	}
+	for _, kind := range []TaskKind{"", TaskKindHarness, TaskKindSubharness} {
+		if _, err := decodeTasks(document(kind)); err == nil {
+			t.Fatalf("a %q node with no acceptance was accepted, and the rule that catches a half-written file is gone", kind)
+		}
+	}
+}
+
+// THE REAL FILE'S SHAPE, PINNED.
+//
+// This is the checkpoint the defect was found in, reduced to the shape that
+// matters: four finished quick nodes with `"acceptance": ""` beside ordinary
+// work that has an acceptance, a parent and a dependency. Every one of those
+// nodes was thrown away together, so the conversation reopened empty.
+//
+// The queued quick node is the other half of the ruling. A quick node's list is
+// not on the record, so nothing here can rebuild the body it would run — and the
+// one thing that must never happen to it is being handed to an ORDINARY worker: a
+// copy of the folder, a branch and a check for work whose whole promise was that
+// it had none of those. It settles, and says so.
+func TestACheckpointFromAConversationThatRanQuickTasksDecodes(t *testing.T) {
+	const content = `{"type":"tasks","version":1,"seq":7,"nodes":[
+		{"id":1,"title":"index.html — Y2K chrome home","summary":"s","brief":"b","acceptance":"","kind":"quick","state":"done","noted":true},
+		{"id":2,"title":"contact.html — risograph print","summary":"s","brief":"b","acceptance":"","kind":"quick","state":"done","noted":true},
+		{"id":3,"title":"evidence.html — phosphor terminal","summary":"s","brief":"b","acceptance":"","kind":"quick","state":"done","noted":true},
+		{"id":4,"title":"product.html — blueprint schematic","summary":"s","brief":"b","acceptance":"","kind":"quick","state":"done","noted":true},
+		{"id":5,"title":"quick insights","summary":"s","brief":"b","acceptance":"everything asked for is done","state":"done","noted":true},
+		{"id":6,"title":"Fix the hero headline","summary":"s","brief":"b","acceptance":"the screenshot shows separation","parent":5,"depends_on":[5],"state":"queued"},
+		{"id":7,"title":"read the other two","summary":"s","brief":"b","acceptance":"","kind":"quick","parent":5,"state":"queued"}]}`
+
+	document, err := decodeTasks([]byte(content))
+	if err != nil {
+		t.Fatalf("a conversation that ran four quick tasks cannot reopen: %v", err)
+	}
+	if len(document.Nodes) != 7 {
+		t.Fatalf("%d nodes came back, want all 7", len(document.Nodes))
+	}
+
+	graph := newTaskGraph()
+	recovery := graph.rehydrate(document, t.TempDir(), TaskSettleAsk)
+	for id := uint64(1); id <= 4; id++ {
+		node := graph.node(id)
+		if node == nil {
+			t.Fatalf("quick node %d is not in the rebuilt graph", id)
+		}
+		if node.kind != TaskKindQuick {
+			t.Fatalf("node %d came back a %q, want %q", id, node.kind, TaskKindQuick)
+		}
+		if state := node.stateNow(); state != TaskDone {
+			t.Fatalf("finished quick node %d came back %q", id, state)
+		}
+	}
+	// The ordinary work beside them is untouched: its acceptance, its family and
+	// its edge are all still there, and it is still waiting its turn.
+	ordinary := graph.node(6)
+	if ordinary == nil || ordinary.spec.acceptance == "" {
+		t.Fatalf("the ordinary node lost its acceptance: %+v", ordinary)
+	}
+	if ordinary.parent != 5 || len(ordinary.dependsOn) != 1 || ordinary.dependsOn[0] != 5 {
+		t.Fatalf("the ordinary node's family and edge did not survive: parent %d, waits on %v", ordinary.parent, ordinary.dependsOn)
+	}
+	if state := ordinary.stateNow(); state != TaskQueued {
+		t.Fatalf("the ordinary node came back %q, want it still waiting", state)
+	}
+
+	// AND THE QUICK NODE THAT NEVER STARTED IS OVER RATHER THAN ON THE FRONTIER.
+	waiting := graph.node(7)
+	if waiting == nil {
+		t.Fatal("the queued quick node is not in the rebuilt graph")
+	}
+	if state := waiting.stateNow(); state != TaskFailed {
+		t.Fatalf("a queued quick node came back %q — the next session would run it in a worktree with a branch and a check", state)
+	}
+	if report := waiting.notice().Report; report != quickLostReport {
+		t.Fatalf("it settled saying %q, want %q", report, quickLostReport)
+	}
+	if waiting.parent != 5 {
+		t.Fatalf("it lost its family: parent %d, want 5", waiting.parent)
+	}
+	if recovery.done != 5 || recovery.waiting != 1 || recovery.interrupted != 1 {
+		t.Fatalf("recovery counted %+v, want 5 done, 1 waiting and the one that never started", recovery)
+	}
+}
+
+// EVERY KIND'S ACCEPTANCE MATCHES WHAT ITS KIND DECLARES.
+//
+// [kindsWithoutAcceptance] is a property of the KIND, and a property is only
+// worth having if it is true of the specs the builders actually make. This is
+// the line that keeps the two from drifting — which is exactly what went wrong:
+// `quick_task`'s builder left the field empty on purpose, the store's validator
+// asked every record for one, and neither side was written against anything the
+// other could read.
+//
+// A kind added later fails here until it either fills an acceptance or declares
+// that it carries none.
+func TestEveryKindsAcceptanceMatchesWhatItDeclares(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = t.TempDir()
+	})
+	quick, refusal := agent.newQuickSpec("compare the pair", []string{"one"}, nil, nil)
+	if refusal != "" {
+		t.Fatalf("the quick door refused its own test call: %s", refusal)
+	}
+
+	for _, built := range []struct {
+		what string
+		spec taskSpec
+	}{
+		{"a quick task", quick},
+		{"a subharness design", taskSpec{
+			title: "t", brief: "b",
+			acceptance: "a page the person approves, saved into this machine's harness registry",
+			design:     &harnessDesignSpec{goal: "g"},
+		}},
+		{"a subharness run", taskSpec{
+			title: "t", brief: "b",
+			acceptance: "the answer this program promises, in the shape it declares",
+			run:        &subharnessRunSpec{},
+		}},
+		{"ordinary work", taskSpec{title: "t", brief: "b", acceptance: "the tests pass"}},
+	} {
+		kind := built.spec.kind()
+		if !acceptanceHolds(kind, built.spec.acceptance) {
+			t.Errorf("%s is admitted as a %q with acceptance %q, and that kind does not declare that it carries none: the checkpoint would refuse the whole file it lands in",
+				built.what, kind, built.spec.acceptance)
+		}
+		// AND THE DECLARATION IS NOT SLACK EITHER. A kind that declares it
+		// carries no acceptance and then fills one is a kind whose records would
+		// be let through unchecked for a field it does in fact have.
+		if kindWithoutAcceptance(kind) && strings.TrimSpace(built.spec.acceptance) != "" {
+			t.Errorf("%s declares it carries no acceptance and was admitted with %q", built.what, built.spec.acceptance)
 		}
 	}
 }
