@@ -330,6 +330,27 @@ type Plan struct {
 	// never climb. It is set by the one caller that holds such a refusal's own
 	// body (internal/provider's dispatch.go, [Client.recoverFromRefusal]).
 	ShapeRefused bool
+	// Unattributed says the last refusal NAMED NO MACHINE: an account-wide
+	// ceiling, a router answering for itself, a refusal whose envelope carried
+	// no upstream. Nothing can be taken off the next body, so the next body is
+	// byte-for-byte the body that was just refused.
+	//
+	// IT IS THE SECOND FACT [Next] CANNOT WORK OUT FOR ITSELF, and it is the one
+	// that makes an open set honest. An open set has another machine in it
+	// forever ([Plan.serving]) BECAUSE each body carries a longer exclusion list
+	// than the last — and that premise is exactly what an unattributed refusal
+	// breaks. Without this field the generator answered such a refusal with a
+	// machine move every time, the dispatcher sent the identical bytes again
+	// behind a doubling wait, and a person watched one ceiling for the whole of
+	// the call's deadline.
+	//
+	// So a call that cannot narrow anything is one machine wide as far as it can
+	// tell, and it gets what a set of one gets: the comeback the refusal asked
+	// for, once, and then the model. It is set by the one caller that holds the
+	// refusal (internal/provider's dispatch.go) and is false for a fault that
+	// never reached a machine at all, which names nobody for a different reason
+	// and keeps the walk it has always had.
+	Unattributed bool
 	// Role is who the call is being made for, spelled as `lane.Role` spells it.
 	// It is carried rather than looked up so the dispatcher, the hazard and the
 	// row all read the same word.

@@ -248,3 +248,64 @@ func TestANilMoveLogIsEmptyAndDecidesNothing(t *testing.T) {
 		t.Fatal("a nil log accepted a move")
 	}
 }
+
+// ── AN UNATTRIBUTED REFUSAL IS NOT AN OPEN SET ──────────────────────────────
+//
+// THE LAW: a walk of an open set is only a walk while the exclusion list is
+// growing. A refusal that named no machine adds nothing to the next body, so
+// the next body is the one that was just refused — which is the same bytes to
+// the same machine, the one thing the design forbids
+// (docs/design/recovery/DESIGN.md §3).
+//
+// THE MEASURED FAILURE this pins is the account-wide ceiling: seven sends of
+// identical bytes behind a doubling wait, because [Next] answered every one of
+// them with a machine move it could not name.
+func TestAnUnattributedRefusalGetsOneComebackAndThenTheModel(t *testing.T) {
+	t.Parallel()
+	plan := planOf("m", nil, nil, 3*time.Second)
+	plan.Unattributed = true
+
+	made := walk(plan)
+	if len(made) != 1 {
+		t.Fatalf("a refusal nothing could be excluded from earned %d moves: %+v", len(made), made)
+	}
+	if made[0].Kind != MoveWait {
+		t.Fatalf("the one move was %s, want the comeback the refusal named", made[0].Kind)
+	}
+	if made[0].Wait != 3*time.Second {
+		t.Fatalf("the comeback was %s, want the three seconds the refusal asked for", made[0].Wait)
+	}
+	if made[0].Lane != "" {
+		t.Fatalf("the move named %q; nobody was named, which is the whole of why it is a wait", made[0].Lane)
+	}
+}
+
+// AND A REFUSAL THAT NAMED NOBODY AND ASKED FOR NOTHING HAS NO MOVE AT ALL. It
+// cannot be routed around and it did not say when to come back, so the honest
+// answer is the model — which is [MoveNone], and the session's.
+func TestAnUnattributedRefusalWithNoComebackHasNowhereToGo(t *testing.T) {
+	t.Parallel()
+	plan := planOf("m", nil, nil, 0)
+	plan.Unattributed = true
+	if move := Next(plan, nil); move.Kind != MoveNone {
+		t.Fatalf("a refusal with nothing to exclude and no comeback answered %s", move.Kind)
+	}
+}
+
+// AND A NAMED SET IS UNTOUCHED BY ANY OF IT. The flag is about a body that can
+// exclude nothing; a request confined to machines still walks them, and the one
+// legal repeat is still the last of them.
+func TestAnUnattributedRefusalStillWalksASetItCanName(t *testing.T) {
+	t.Parallel()
+	plan := planOf("m", []string{"A", "B"}, nil, 2*time.Second)
+	plan.Unattributed = true
+	made := walk(plan)
+	if len(made) != 2 {
+		t.Fatalf("a set of two earned %d moves: %+v", len(made), made)
+	}
+	for index, want := range []string{"A", "B"} {
+		if made[index].Kind != MoveMachine || made[index].Lane != want {
+			t.Fatalf("move %d is %s/%q, want the machine %q", index, made[index].Kind, made[index].Lane, want)
+		}
+	}
+}

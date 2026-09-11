@@ -251,7 +251,13 @@ func Next(plan Plan, history []Move) Move {
 			// makes the next send a different request rather than the same one.
 			// There is nothing here to walk and nothing to run out of, so the
 			// deadline is the whole bound.
-			if len(candidates) == 0 {
+			//
+			// AND THE EXCLUSION LIST IS THE WHOLE PREMISE, so a refusal that named
+			// nobody takes the premise away: there is nothing to add to the next
+			// body, the next body is the one that was just refused, and this
+			// answer would be the identical bytes to the identical machine for the
+			// length of the deadline ([Plan.Unattributed]).
+			if len(candidates) == 0 && !plan.Unattributed {
 				return Move{Kind: MoveMachine, Model: plan.Model, Shape: shape}
 			}
 			// 1. ANOTHER MACHINE. The head of the choice first, then the
@@ -262,14 +268,20 @@ func Next(plan Plan, history []Move) Move {
 					return move
 				}
 			}
-			// 2. THE SAME MACHINE, ONCE, AND ONLY WHEN IT IS ALONE. A set one
+			// 2. THE SAME MACHINE, ONCE, AND ONLY WHEN THERE IS NO OTHER. A set one
 			// machine wide has no other machine for the next body to go to — a
-			// person's strict pin, a rescue's demand, an account-wide hold — so
-			// the comeback the machine named itself is the only legal repeat
-			// there is.
-			if len(candidates) == 1 && plan.Comeback > 0 && !madeKind(history, MoveWait) {
+			// person's strict pin, a rescue's demand, an account-wide hold — and
+			// so has an open set whose refusal named nobody, because a body that
+			// can exclude nothing is a body that can only go back where it came
+			// from. The comeback the refusal named itself is the only legal repeat
+			// there is, and it is legal once.
+			if len(candidates) <= 1 && plan.Comeback > 0 && !madeKind(history, MoveWait) {
+				alone := ""
+				if len(candidates) == 1 {
+					alone = candidates[0]
+				}
 				return Move{
-					Kind: MoveWait, Model: plan.Model, Lane: candidates[0],
+					Kind: MoveWait, Model: plan.Model, Lane: alone,
 					Shape: shape, Wait: plan.Comeback,
 				}
 			}

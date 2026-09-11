@@ -297,6 +297,12 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	// See the branch it governs below: a backoff is what we pay to ask the same
 	// machine again, and it is the only thing it is for.
 	moved := false
+	// unattributed says the last REFUSAL named nobody, so there is nothing to put
+	// on the next body and the next body is the one that was just refused. It is
+	// the move generator's ([control.Plan.Unattributed]) and it is deliberately
+	// not set by a fault that never reached a machine: that names nobody for a
+	// different reason — the bytes never arrived — and keeps the walk it has.
+	unattributed := false
 	// move is what the plan says to do next, and it is empty on the first pass
 	// because the first send is not a recovery from anything.
 	var move control.Move
@@ -366,9 +372,14 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			// after the first recovered pass it pays the ordinary fault backoff
 			// below. Everything else asks the one move generator as before.
 			if !reconnected {
-				// What the last refusal asked us to wait, which is the one input the
-				// move generator needs that changes between moves.
+				// What the last refusal asked us to wait, and whether it named
+				// anybody at all: the two inputs the move generator needs that
+				// change between moves. A refusal that implicated no machine
+				// leaves nothing to put on the next body, which is what stops an
+				// open set pretending it has somewhere to go
+				// ([control.Plan.Unattributed]).
 				plan.Comeback = providerWait
+				plan.Unattributed = unattributed
 				move = control.Next(plan, plan.Moves.List())
 				if move.Kind == control.MoveNone {
 					break
@@ -567,6 +578,10 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				return nil, fmt.Errorf("execute request: %w", err)
 			}
 			lastErr = fmt.Errorf("execute request: %w", err)
+			// AND A FAULT IS NOT AN UNATTRIBUTED REFUSAL, whatever an earlier
+			// attempt of this call learned: the bytes never reached anybody, so
+			// nothing has been established about where they may go next.
+			unattributed = false
 			// A TRANSPORT FAULT NAMES NOBODY, so nothing is excluded from the next
 			// body: the bytes never reached a machine that could be blamed, and
 			// writing one down would be this loop guessing. What the next attempt
@@ -669,10 +684,6 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// adapter can repair by itself — a knob it guessed wrong about reaches
 		// [Client.sendRepaired] a layer up, and walking it would spend a machine
 		// to discover a fact the memo already answers.
-		// relayed says this pass is here because a machine NAMED ITSELF on a
-		// status that is not otherwise retryable. It is a flag of its own and not
-		// `peek != nil`, because every refusal below reads a peek.
-		relayed := false
 		if !retryableStatus(response.StatusCode) {
 			if !relayedByAMachine(response.StatusCode) || c.repairable(c.modelFor(request), knobs) ||
 				len(knobs.reasoning) > 0 {
@@ -683,7 +694,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				response.Body = rewound(read, response.Body)
 				return response, nil
 			}
-			peek, relayed = read, true
+			peek = read
 		}
 		if rateLimited {
 			providerWait = named
@@ -732,6 +743,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// which is the narrower and shorter-lived question. A refusal that
 		// implicated no machine adds nothing.
 		fresh := knobs.refused.add(refusal.Lane)
+		unattributed = strings.TrimSpace(refusal.Lane) == ""
 		// AND THE MOVE LOG IS CORRECTED TO THE MACHINE THAT ANSWERED. A move
 		// NAMES THE MACHINE WE EXPECT AND NEVER THE MACHINE WE COMMAND
 		// ([control.Move]) — `provider.order` is advisory once `allow_fallbacks`
@@ -841,18 +853,30 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		}
 		// ── AN EXCLUSION THAT DID NOT TAKE IS NOWHERE ELSE TO GO ────────────
 		//
-		// A relayed 4xx above bought this call one move, and the move is only
-		// worth taking if it really was a move: a second refusal from a machine
-		// this call has ALREADY vetoed is the router telling us, in the only way
-		// it can, that the veto changed nothing — either the pool is that one
-		// machine or this base does not honour `provider.ignore`. Either way
-		// there is no other endpoint to reach and the honest thing is to hand
-		// the refusal back, which is what the layer above knows how to answer
-		// (the ladder, then the session's one model hop).
+		// A refusal that NAMED a machine bought this call one move, and the move
+		// is only worth taking if it really was a move: a second refusal from a
+		// machine this call has ALREADY vetoed is the router telling us, in the
+		// only way it can, that the veto changed nothing — either the pool is
+		// that one machine or this base does not honour `provider.ignore`.
+		// Either way there is no other endpoint to reach and the honest thing is
+		// to hand the refusal back, which is what the layer above knows how to
+		// answer (the ladder, then the session's one model hop).
 		//
-		// A 429 IS NOT THIS: the pool's own hold is read by [Client.pacedOut]
-		// above, which knows about windows this loop does not.
-		if relayed && !fresh {
+		// IT IS ASKED OF THE EVIDENCE AND NO LONGER OF THE STATUS. It used to
+		// read `relayed` — a 4xx that would not otherwise have been retried — so
+		// the commonest named refusal in the log was exempt from it, and a
+		// per-machine 429 rode the account-limiter road instead: eight sends to
+		// one pool over ninety seconds on 2026-09-11 14:39, each body naming that
+		// pool in `provider.ignore` and each answered by it regardless, while six
+		// other machines on the same model were serving in under five seconds.
+		// Who refused is the fact; the number it wore is the upstream's
+		// ([taxonomy.Evidence.Named]).
+		//
+		// A REFUSAL THAT NAMED NOBODY IS NOT THIS, and it is `fresh` being false
+		// for an empty name that would otherwise make it look like one. Nothing
+		// was vetoed, so no veto failed; that road is the wait and then the model
+		// ([control.Plan.Unattributed]).
+		if strings.TrimSpace(refusal.Lane) != "" && !fresh {
 			return nil, lastErr
 		}
 		// AND THE SHORTER PATIENCE FOR A FAULT IS GONE WITH THE LONGER ONE FOR A
