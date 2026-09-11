@@ -120,6 +120,17 @@ type Profile struct {
 	// FailWith is an HTTP status this lane answers with instead of streaming.
 	// Zero serves normally.
 	FailWith int
+	// TearAfter is how many visible deltas this lane writes before the
+	// connection goes away underneath the answer: no finish frame, no usage, no
+	// sentinel, the body simply stops. Zero tears nothing.
+	//
+	// IT IS THE ONE ENDING THE OTHER KNOBS COULD NOT STAGE. A refusal is a
+	// status, a stall is silence the guard eventually acts on, and a cancel is
+	// this process's own decision — but a reply that was arriving and then was
+	// not is none of those, and it is 1,884 of 1,887 in-stream failures in the
+	// 2026-09-10 census. A scenario about what a person is shown when a call
+	// stops halfway has to be able to say it.
+	TearAfter int
 	// Answer, when set, is the text this lane streams instead of the
 	// generated t0 t1 t2 tokens. It exists so a test can stage a
 	// degraded winner — the F20 mojibake — without inventing a second
@@ -1189,6 +1200,13 @@ func (s *Server) serveStream(w http.ResponseWriter, r *http.Request, clock Clock
 			return
 		}
 	}
+	// written is how many visible deltas this lane has put on the wire, which is
+	// what [Profile.TearAfter] counts. It is kept across BOTH shapes of answer so
+	// that a staged answer and a generated one tear the same way — a knob that
+	// silently did nothing on one of them would be a fixture lying about what it
+	// staged.
+	written := 0
+	torn := func() bool { return lane.TearAfter > 0 && written >= lane.TearAfter }
 	if lane.Answer != "" {
 		if !pause() {
 			s.cancelled(lane.Name)
@@ -1198,6 +1216,7 @@ func (s *Server) serveStream(w http.ResponseWriter, r *http.Request, clock Clock
 			s.cancelled(lane.Name)
 			return
 		}
+		written++
 	} else {
 		for token := 0; token < total; token++ {
 			if !pause() {
@@ -1208,7 +1227,19 @@ func (s *Server) serveStream(w http.ResponseWriter, r *http.Request, clock Clock
 				s.cancelled(lane.Name)
 				return
 			}
+			written++
+			if torn() {
+				break
+			}
 		}
+	}
+	// AND THE WIRE GOES AWAY UNDER THE ANSWER ([Profile.TearAfter]).
+	// [http.ErrAbortHandler] is the standard library's own way to say "close this
+	// connection without finishing the response", so the client reads an
+	// incomplete chunked body — which is exactly what a torn reply is, and is not
+	// something a handler returning normally can produce.
+	if torn() {
+		panic(http.ErrAbortHandler)
 	}
 	if !write("data: " + finishJSON(id, ask.Model, named) + "\n\n") {
 		s.cancelled(lane.Name)
