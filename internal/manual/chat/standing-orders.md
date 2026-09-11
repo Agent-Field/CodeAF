@@ -714,8 +714,8 @@ since you read version N. A stopped order cannot be resumed or edited: `a stoppe
 must be set up afresh`.
 
 **Pause and stop while a run is working.** A pause lets that run finish and publish; it
-holds back the next one. A stop does not undo what the run already did, but its report
-is not published and no note is sent: `stopped while it ran`.
+holds back the next one. A stop does not undo what the run already did, but a report
+not yet written is not written and no note is sent: `stopped while it ran`.
 
 This door never turns on the background timer. Its orders are checked when a window
 is open, when the timer is already on, or when you run `aforge standing check`. News
@@ -731,12 +731,12 @@ not compared. If the earlier reading is missing the run is told the changes are
 unknown, never that nothing changed.
 
 `--report <path>` names one file inside the workspace. The run's **final answer** is the
-report, and aforge — not the run — writes it there, replacing the previous version; the
-run is told where the previous version is so it can carry things forward. The run is
-asked to put the report between a line `<report>` and a line `</report>`, and only what
-is between them is published. An answer with no `<report>` line and no `</report>`
-anywhere is published whole; one with a `</report>` but no `<report>` line is not
-published, because nobody can tell where its report began. An unattended run may only
+report, and aforge — not the run — writes it there, replacing the previous version
+unless you changed it; the run is told where it is so it can carry things forward. The run is
+asked to put the report between a line `<report>` and a line `</report>` — whole lines,
+outside any fenced code block — and only what is between them is published. An answer
+with neither line is published whole; one with a `</report>` line but no `<report>`
+line is not published, since nobody can tell where its report began. An unattended run may only
 do what your approval rules allow without asking — reading, not writing or shell
 commands — so a run that tries to write the report file itself is refused, and that is
 not a question for you. If it also replied with a finished report between the lines,
@@ -752,10 +752,11 @@ files and writes one local file.
 ## Why wasn't my report published — the reason, and the withheld code in the record
 
 Only a run that came back clean publishes. Anything else fails the run, or waits on
-you, and leaves the last good report exactly where it was. `aforge standing show <id>`
-prints the reason on the run's `came to:` line followed by `· withheld: <code>`; the
-same code is `"withheld"` in the run's `occurrence.json` and in `--json`. A run that
-published, and an order with no `--report`, carry no code.
+you, and leaves the last good report where it was. `aforge standing show <id>` prints
+the reason on the run's `came to:` line followed by `· withheld: <code>`, also
+`"withheld"` in `occurrence.json` and `--json`. An order with no `--report` is held to
+the same truth: a run that was cut off, cut at the output limit or stopped at a limit
+comes to `failed`, never `landed`, with its code. A clean run carries none.
 
 | Code | The line |
 |---|---|
@@ -771,11 +772,30 @@ published, and an order with no `--report`, carry no code.
 | `held-by-rules` | `report held back, not published: …` |
 | `stopped` | `stopped while it ran` |
 | `not-written` | `could not publish the report to …` |
+| `report-changed` | `report held back, not published: … is not what aforge last published there …` |
 
-An answer is cut at the output limit only after aforge has asked for the rest twice. A
-finished report is still withheld when the run was then stopped at a limit, because it
-was written before the work that was stopped. All of it holds for the one correction
-the rules check asks for, too. The codes are fixed names to search or script against.
+An answer is cut at the output limit only after aforge has asked for the rest twice,
+and a report counts only if the turn that wrote it was not cut: a later turn stands in
+for it only by writing a new report. A report is withheld when the run was then stopped
+at a limit, and all of it holds for the rules check's one correction too.
+
+## I edited the report file — aforge never writes over your changes
+
+The report is a file in your project, and you may open and annotate it. Just before
+aforge replaces it, it compares the file with what it last published there (the sha256
+in that run's receipt). It replaces the file only if it is still exactly that, or is
+gone. If you changed it — or it was there before aforge first published — nothing is
+written over it: the run waits on you, its new report is kept as `held-report.md` in
+the run's folder, and the line is `report held back, not published: … is not what
+aforge last published there … Move your copy aside to let the next run publish`, code
+`report-changed`. Move or delete your copy and the next run publishes. The compare is
+made at the moment of the write, so an edit saved while a run works is safe; only one
+saved in the same instant as the write can slip past it.
+
+A stop and the end of the pass are checked at that same moment, and again just before
+the note is sent. A stop before the write means the report is not written and no note
+is sent; a stop after it leaves the report published and sends no note
+(`stopped while it ran: its report was published before the stop`).
 
 ## What woke each run and what it made — aforge standing show, check, and a run killed midway
 
@@ -796,7 +816,10 @@ the order to the run and from the run back to the order.
 **If aforge is killed mid-run**, nothing is lost and nothing doubles. The next pass
 finds the half-done run, marks it `interrupted`, and retries the same change as
 `attempt 2`, naming the run it replaces. A run that finished, or whose report was
-already published, but was not yet recorded is recorded, not run again.
+already published, but was not yet recorded is recorded, not run again. News waiting in
+an inbox is removed only once the conversation that opened it has written it into its
+own record, so a window closed at once, or aforge killed, loses none of it. Run folders
+are numbered once and a number is never handed out again, even after a sweep.
 
 A run that fails is recorded as failed and is not retried by itself; the next change
 starts a new run.

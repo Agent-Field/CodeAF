@@ -298,8 +298,35 @@ func theHandReports(t *testing.T, completer *forkCompleter) []string {
 	if len(completer.callerRequests) == 0 {
 		t.Fatal("the caller never made a request")
 	}
+	return handReportsIn(completer.callerRequests[len(completer.callerRequests)-1])
+}
+
+// handReportsRecorded is every hand's report as the caller's OWN RECORD holds
+// it, in the order it was recorded, once the record holds want of them — or
+// what it holds after ten seconds.
+//
+// THE RECORD, AND NOT THE LAST REQUEST. A report that lands after the caller's
+// final request has gone is recorded at the turn's end and carried by the
+// follow-up wake's request (agent.go's turn end); a test that read the last
+// request it happened to have captured could look before that wake did and
+// count two of three, with nothing lost. The record is where every report ends
+// up, in the order it arrived — so a lost report still fails here, and so does
+// a join that gathered its hands and sorted them.
+func handReportsRecorded(t *testing.T, agent *Agent, want int) []string {
+	t.Helper()
 	var reports []string
-	for _, message := range completer.callerRequests[len(completer.callerRequests)-1] {
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(2 * time.Millisecond) {
+		if reports = handReportsIn(agent.snapshot()); len(reports) >= want {
+			break
+		}
+	}
+	return reports
+}
+
+// handReportsIn reads the hand reports out of a run of messages.
+func handReportsIn(messages []ai.Message) []string {
+	var reports []string
+	for _, message := range messages {
 		if !strings.EqualFold(message.Role, "user") {
 			continue
 		}
@@ -476,7 +503,7 @@ func TestEachHandsReportArrivesWhenThatHandFinishes(t *testing.T) {
 	collect(t, mustSubmit(t, agent, "split it"))
 	handsAreHome(t, agent)
 
-	reports := theHandReports(t, completer)
+	reports := handReportsRecorded(t, agent, 3)
 	if len(reports) != 3 {
 		t.Fatalf("%d hand reports reached the caller, want 3:\n%s", len(reports), strings.Join(reports, "\n--\n"))
 	}

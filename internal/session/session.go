@@ -2873,6 +2873,11 @@ type Agent struct {
 	// empty list of watchers and the person would open a conversation with news
 	// in it and see nothing. The first [Agent.TaskUpdates] takes it.
 	standingNews []Event
+	// foldPending is the inbox notes this agent has folded and its record does
+	// not hold yet ([Agent.drainStandingInbox]). The drain runs at more than one
+	// moment, and the files stay until the fold is recorded, so a second drain
+	// before the first fold is recorded must not fold the same notes again.
+	foldPending map[deliveryID]bool
 	// jobRows is the roster id minted for each background job, keyed by the
 	// registry's own number for it. The two numberings are separate counters and
 	// a row keyed on the registry's would collide with a task's, which is why

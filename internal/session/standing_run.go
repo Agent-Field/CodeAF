@@ -626,6 +626,7 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 	report := strings.TrimSpace(item.Does.Report)
 	drain := func(events <-chan Event) {
 		var said, since strings.Builder
+		cutAtLimit := false
 		for event := range events {
 			switch event.Kind {
 			case EventTextDelta:
@@ -681,9 +682,9 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 				// THE TURN SAYS HOW IT ENDED. An answer the loop stopped asking the
 				// rest of at the output limit ends its turn like any other, so it
 				// is this mark and not the turn's ending that says the answer is
-				// partial ([Event.Truncated]). The last turn's ending is the one
-				// that counts, as the last turn's words are.
-				end.truncated = event.Truncated
+				// partial ([Event.Truncated]). It is kept with THIS turn's words
+				// and report ([firingEnd.closeTurn]), never on its own.
+				cutAtLimit = event.Truncated
 			case EventToolFailed:
 				// A REFUSED WRITE OF THE RUN'S OWN REPORT IS NOT A QUESTION FOR
 				// THE PERSON. aforge publishes that one path itself, so there is
@@ -700,7 +701,6 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 				}
 			}
 		}
-		end.readReport(said.String())
 		// THE OUTCOME IS THE LAST THING THIS FIRING ACTUALLY SAID. A run that
 		// divided opens by announcing that it split the work into three parts
 		// and closes by saying what came of them, and the person reads ONE
@@ -708,10 +708,7 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		// an earlier turn's rather than queueing behind them. A turn that said
 		// nothing replaces nothing: silence is not a newer account, and a run
 		// whose last re-entry was wordless still came to what it said before it.
-		if words := strings.TrimSpace(said.String()); words != "" {
-			end.reply = words
-			end.final = strings.TrimSpace(since.String())
-		}
+		end.closeTurn(said.String(), since.String(), cutAtLimit)
 	}
 	drain(events)
 
@@ -770,7 +767,7 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 	// ONE ANSWER DECIDES WHAT THE RUN CAME TO AND WHETHER IT PUBLISHES
 	// (standing_publish.go), and the outcome's line is that answer's line.
 	withheld := end.withheld(report != "", ctx.Err())
-	outcome := end.outcome(withheld, ctx.Err())
+	outcome := end.outcome(withheld, ctx.Err(), report != "")
 	// THE REPORT IS PUBLISHED BY THE OWNER, and only a run that came to
 	// something clean publishes one: a run that stopped on a question, was cut
 	// off, was stopped at a limit or said nothing leaves the last good report
@@ -793,7 +790,7 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 			end.beginCorrection()
 			drain(next)
 			if w := end.withheld(true, ctx.Err()); w != notWithheld {
-				return "", errors.New(end.why(w, ctx.Err()))
+				return "", errors.New(end.why(w, ctx.Err(), true))
 			}
 			return end.body(), nil
 		}
@@ -803,7 +800,7 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		// have been stopped at a limit, cut off, or left its report unclosed.
 		if w := end.withheld(true, ctx.Err()); w != notWithheld {
 			publish, withheld = false, w
-			outcome = end.outcome(w, ctx.Err())
+			outcome = end.outcome(w, ctx.Err(), true)
 		} else if held != "" {
 			publish, withheld = false, withheldByRules
 			outcome.Kind = standing.OutcomeNeedsYou
@@ -819,64 +816,145 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		}
 	}
 	outcome.USD = agent.Usage().CostUSD
-	// ── STOPPED WHILE IT RAN ──
+	// ── aforge's OWN TWO ACTS, EACH FENCED WHERE IT HAPPENS ──
 	//
 	// A stop does not reach into a run that has already started: what the run
 	// did with its own tools has been done, and nothing here undoes it. What
 	// aforge has NOT done yet is its own last two acts — replacing the report
-	// and delivering the note — and the person who said stop was told the work
-	// will not run again, so neither happens now. A PAUSE IS NOT A STOP: work
-	// admitted before a pause finishes as it was admitted, report and all, and
-	// the pause holds back the next occurrence (currentAdmission, in the pass).
-	if r.stoppedSince(item) {
-		outcome.NeedsPerson = ""
-		if !end.saved {
-			outcome.Kind = standing.OutcomeNothing
-		}
-		outcome.Text = "stopped while it ran: no note was sent"
-		if report != "" {
-			outcome.Text = "stopped while it ran: its report was not published and no note was sent; the previous report is unchanged"
-		}
-		recordWithheld(&outcome, withheldStopped, report != "")
-		return outcome, nil
-	}
+	// and delivering the note — and each is rechecked against the stop and the
+	// pass's context at the moment it happens, not once before both
+	// ([effectFence]). A PAUSE IS NOT A STOP: work admitted before a pause
+	// finishes as it was admitted, report and all, and the pause holds back the
+	// next occurrence (currentAdmission, in the pass).
+	fence := r.fenceFor(ctx, item)
+	published := false
 	if publish {
-		published, err := publishStandingReport(item.Workspace, report, final)
-		if err != nil {
+		receipt, held, err := publishStandingReport(fence, item.Workspace, report, final, r.lastPublished(item, report))
+		switch {
+		case held == withheldStopped:
+			return stoppedWhileItRan(outcome, end.saved, report, false), nil
+		case held == withheldCutOff:
+			withheld = held
+			outcome.Kind = standing.OutcomeFailed
+			outcome.Text = "the run was cut off before its report was published: " + oneLine(ctx.Err().Error()) + "; the previous report is unchanged"
+		case held == withheldReportChanged:
+			withheld = held
+			outcome.Kind = standing.OutcomeNeedsYou
+			outcome.NeedsPerson = clip(reportChangedLine(runDir, report, final), standingOutcomeClip)
+			outcome.Text = outcome.NeedsPerson
+		case err != nil:
 			withheld = withheldUnwritten
 			outcome.Kind = standing.OutcomeFailed
 			outcome.Text = "could not publish the report to " + report + ": " + err.Error()
-		} else {
-			outcome.Published = published
+		default:
+			published = true
+			outcome.Published = receipt
 			if occurred {
 				// Recorded the moment it exists, so a process that dies before
 				// the pass finishes still leaves the receipt behind — and the
 				// pass that finds it records the occurrence rather than running
 				// it again (internal/standing's finishedOccurrence).
-				occurrence.Published = published
+				occurrence.Published = receipt
 				_ = standing.WriteOccurrence(runDir, occurrence)
 			}
 			outcome.Text = clip("report updated: "+report+" — "+final, standingOutcomeClip)
 		}
 	}
+	// A RUN THAT CAME TO NOTHING TELLS NOBODY, because there is nothing to tell:
+	// no line, no landing, nothing waiting. Walking the delivery roads with an
+	// empty sentence would put `◦ keep main green: ` into the conversation
+	// somebody is sitting in, which is an interruption whose whole content is
+	// that it was not worth interrupting for. It is still asked whether it was
+	// stopped, so its record says so.
+	//
+	// IT IS STILL RECORDED. The pass writes the ledger row, the item's log line
+	// and its `previous` list from this outcome whatever it says
+	// (internal/standing's tick.go), so the money and the fact that it ran
+	// survive the run folder the sweep will eventually reap.
+	var note func() (reportWithheld, error)
+	if outcome.Kind != standing.OutcomeNothing {
+		kind, text := outcome.Kind, outcome.Text
+		note = func() (reportWithheld, error) {
+			r.deliver(item, kind, text, runDir)
+			return notWithheld, nil
+		}
+	}
+	switch held, _ := fence.do(note); held {
+	case withheldStopped:
+		return stoppedWhileItRan(outcome, end.saved, report, published), nil
+	case withheldCutOff:
+		if withheld == notWithheld {
+			withheld = held
+		}
+		outcome.Text = clip(outcome.Text+"; the pass was cut off before its note was delivered", standingOutcomeClip)
+	}
 	// The answer is recorded beside the outcome, as a code (occurrence.json's
 	// "withheld"), for whatever reads the record rather than the line.
-	recordWithheld(&outcome, withheld, report != "")
-	if outcome.Kind == standing.OutcomeNothing {
-		// A RUN THAT CAME TO NOTHING TELLS NOBODY, because there is nothing to
-		// tell: no line, no landing, nothing waiting. Walking the delivery roads
-		// with an empty sentence would put `◦ keep main green: ` into the
-		// conversation somebody is sitting in, which is an interruption whose
-		// whole content is that it was not worth interrupting for.
-		//
-		// IT IS STILL RECORDED. The pass writes the ledger row, the item's log
-		// line and its `previous` list from this outcome whatever it says
-		// (internal/standing's tick.go), so the money and the fact that it ran
-		// survive the run folder the sweep will eventually reap.
-		return outcome, nil
-	}
-	r.deliver(item, outcome.Kind, outcome.Text, runDir)
+	outcome.Withheld = withheld.code()
 	return outcome, nil
+}
+
+// stoppedWhileItRan is the outcome of a run whose item the person stopped
+// before one of aforge's own acts: the act did not happen, and neither did any
+// after it. The person who said stop was told the work will not run again, so
+// no note is sent. What the run already did stands, a report already published
+// included.
+func stoppedWhileItRan(outcome standing.Outcome, saved bool, report string, published bool) standing.Outcome {
+	outcome.NeedsPerson = ""
+	if !saved && !published {
+		outcome.Kind = standing.OutcomeNothing
+	}
+	switch {
+	case published:
+		outcome.Text = "stopped while it ran: its report was published before the stop, and no note was sent"
+	case report != "":
+		outcome.Text = "stopped while it ran: its report was not published and no note was sent; the previous report is unchanged"
+	default:
+		outcome.Text = "stopped while it ran: no note was sent"
+	}
+	outcome.Withheld = withheldStopped.code()
+	return outcome
+}
+
+// reportChangedLine is what a run whose report file changed under it waits on
+// the person with. The draft is kept in the run's folder, as a held report is
+// ([heldReportFile]); the person's file is never written over.
+func reportChangedLine(runDir, report, draft string) string {
+	line := "report held back, not published: " + report + " is not what aforge last published there — it was changed, or it was there before aforge wrote it — so aforge did not write over it"
+	path := filepath.Join(runDir, heldReportFile)
+	if err := os.WriteFile(path, []byte(strings.TrimSpace(draft)+"\n"), 0o600); err == nil {
+		line += "; the draft is in " + path
+	}
+	return line + ". Move your copy aside to let the next run publish"
+}
+
+// fenceFor is the fence for this firing's acts ([effectFence]): the pass's
+// context as the decision found it, and the item's store.
+func (r *standingRunner) fenceFor(ctx context.Context, item standing.Item) effectFence {
+	fence := effectFence{ctx: ctx, live: ctx.Err() == nil, id: item.ID}
+	if r.root != "" && item.ID != "" {
+		if store, err := standing.Open(r.root); err == nil {
+			fence.store = store
+		}
+	}
+	return fence
+}
+
+// lastPublished is the sha256 of the report this item last published to
+// report, or "" when it has published none there (or keeps no store to ask).
+func (r *standingRunner) lastPublished(item standing.Item, report string) string {
+	if r.root == "" || item.ID == "" {
+		return ""
+	}
+	store, err := standing.Open(r.root)
+	if err != nil {
+		return ""
+	}
+	last, err := store.LastPublication(item.ID, report)
+	if err != nil || last == nil {
+		return ""
+	}
+	return last.SHA256
 }
 
 // heldReportFile is the run-folder file a draft is kept in when the report was
@@ -940,22 +1018,6 @@ func (r *standingRunner) checkAgainstRules(ctx context.Context, agent *Agent, ru
 		_ = standing.WriteOccurrence(runDir, occurrence)
 	}
 	return draft, held
-}
-
-// stoppedSince answers whether the person stopped this item while the run was
-// working. It reads the item's document as it is NOW; a store that cannot be
-// read, or an item it does not hold, is not a stop — a runner driven without a
-// store has nobody who could have said one.
-func (r *standingRunner) stoppedSince(item standing.Item) bool {
-	if r.root == "" || item.ID == "" {
-		return false
-	}
-	store, err := standing.Open(r.root)
-	if err != nil {
-		return false
-	}
-	current, err := store.Get(item.ID)
-	return err == nil && current.Status == standing.StatusRetired
 }
 
 // standingCameTo decides what one firing's work came to, from the three things
@@ -1042,16 +1104,27 @@ func standingReportBlock(item standing.Item, report string) string {
 }
 
 // publishStandingReport writes a run's report to its declared path inside the
-// workspace, atomically, and answers the receipt.
+// workspace, atomically, and answers the receipt — or the reason it did not:
+// the fence held it back ([effectFence]), or the file was not what aforge last
+// published there. last is that publication's sha256, "" when there was none.
 //
 // THE PATH IS RE-CHECKED AGAINST THE WORKSPACE HERE, not only at admission:
 // the report's folder is resolved through the filesystem as it is NOW, and a
 // symlink planted since the item was made must not carry the write outside the
 // project the person pointed it at.
-func publishStandingReport(workspace, report, text string) (*standing.Publication, error) {
+//
+// AND THE FILE IS COMPARED BEFORE IT IS REPLACED (the scale audit's F1, law
+// L1). A run lasts minutes, and the report is a file in the person's project
+// that people also open and annotate; replacing it on the strength of a read
+// taken before the run is a write that loses whatever they typed meanwhile. So
+// the rename happens only if the file is still exactly what aforge last
+// published there, or is absent. A file aforge never wrote — there before the
+// first publication — is the person's the same way. Otherwise nothing is
+// written over it and the run waits on the person with its draft kept.
+func publishStandingReport(fence effectFence, workspace, report, text, last string) (*standing.Publication, reportWithheld, error) {
 	root, err := filepath.EvalSymlinks(workspace)
 	if err != nil {
-		return nil, err
+		return nil, notWithheld, err
 	}
 	target := filepath.Join(root, filepath.Clean(report))
 	dir := filepath.Dir(target)
@@ -1067,44 +1140,65 @@ func publishStandingReport(workspace, report, text string) (*standing.Publicatio
 		existing = filepath.Dir(existing)
 	}
 	if err := insideProject(root, existing); err != nil {
-		return nil, err
+		return nil, notWithheld, err
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, err
+		return nil, notWithheld, err
 	}
 	// And once more after, for whatever changed between the two.
 	if err := insideProject(root, dir); err != nil {
-		return nil, err
+		return nil, notWithheld, err
 	}
 	if info, err := os.Lstat(target); err == nil && info.Mode()&os.ModeSymlink != 0 {
-		return nil, errors.New("the report path is a symbolic link")
+		return nil, notWithheld, errors.New("the report path is a symbolic link")
 	}
 	body := strings.TrimSpace(text) + "\n"
 	temp, err := os.CreateTemp(dir, ".report-*")
 	if err != nil {
-		return nil, err
+		return nil, notWithheld, err
 	}
 	name := temp.Name()
 	defer func() { _ = os.Remove(name) }()
 	if _, err := temp.WriteString(body); err != nil {
 		_ = temp.Close()
-		return nil, err
+		return nil, notWithheld, err
 	}
 	if err := temp.Sync(); err != nil {
 		_ = temp.Close()
-		return nil, err
+		return nil, notWithheld, err
 	}
 	if err := temp.Close(); err != nil {
-		return nil, err
+		return nil, notWithheld, err
 	}
 	if err := os.Chmod(name, 0o644); err != nil {
-		return nil, err
+		return nil, notWithheld, err
 	}
-	if err := os.Rename(name, target); err != nil {
-		return nil, err
+	held, err := fence.do(func() (reportWithheld, error) {
+		if !unchangedSince(target, last) {
+			return withheldReportChanged, nil
+		}
+		return notWithheld, os.Rename(name, target)
+	})
+	if held != notWithheld || err != nil {
+		return nil, held, err
 	}
-	sum := sha256.Sum256([]byte(body))
-	return &standing.Publication{Path: report, SHA256: hex.EncodeToString(sum[:]), Bytes: len(body), At: time.Now().UTC()}, nil
+	return &standing.Publication{Path: report, SHA256: sha256Hex(body), Bytes: len(body), At: time.Now().UTC()}, notWithheld, nil
+}
+
+// unchangedSince answers whether the file at target is still what aforge last
+// published there (last, a sha256), or absent. A file that is there with no
+// publication behind it is not aforge's to replace.
+func unchangedSince(target, last string) bool {
+	current, err := os.ReadFile(target)
+	if errors.Is(err, os.ErrNotExist) {
+		return true
+	}
+	return err == nil && last != "" && sha256Hex(string(current)) == last
+}
+
+func sha256Hex(text string) string {
+	sum := sha256.Sum256([]byte(text))
+	return hex.EncodeToString(sum[:])
 }
 
 // insideProject refuses a folder that resolves, through the filesystem as it
@@ -1564,31 +1658,107 @@ func StandingIdle() standing.Idle {
 // process never let go of is the other, and since #653 the second is the
 // ordinary one — the session host outlives the window and hands the next one
 // the same agent. So [Agent.WatchTaskUpdates] asks for this too, and the drain
-// is idempotent by construction: it empties the files it reads.
+// is idempotent by construction: a note this agent already folded is not
+// folded again ([Agent.foldPending], and the journal's own record).
+//
+// THE INBOX IS CONSUMED AFTER THE FOLD IS RECORDED, never before (the scale
+// audit's law L3). The files are staged and left where they are; the fold
+// carries one durable delivery per note ([durableDelivery]), whose id the
+// journal writes with the line, and only when that line is on disk does the
+// settle remove the files. A window closed before any turn carried the fold, or
+// a process killed in between, leaves them for the next open — and a note the
+// journal already holds, because the process died after the record and before
+// the removal, is recognised by its id and not folded twice.
 func (a *Agent) drainStandingInbox() {
 	if a.config.InTask {
 		return
 	}
-	var notes []standing.Note
+	var stages []standing.StagedInbox
 	dir := strings.TrimSpace(a.config.Place.Dir)
 	if dir == "" {
 		dir = filepath.Dir(strings.TrimSpace(a.config.SessionFile))
 	}
 	if dir != "" && dir != "." {
-		if mine, err := standing.Drain(dir); err == nil {
-			notes = mine
+		if stage, err := standing.StageInbox(dir); err == nil {
+			stages = append(stages, stage)
 		}
 	}
-	notes = append(notes, a.drainProjectInbox()...)
+	if stage, ok := a.stageProjectInbox(); ok {
+		stages = append(stages, stage)
+	}
+	commit := sync.OnceFunc(func() {
+		for _, stage := range stages {
+			stage.Commit()
+		}
+	})
+	var notes []standing.Note
+	for _, stage := range stages {
+		for _, note := range stage.Notes {
+			if id := inboxDeliveryID(note); !a.hasRecorded(id) && !a.foldIsPending(id) {
+				notes = append(notes, note)
+			}
+		}
+	}
 	if len(notes) == 0 {
+		// Everything staged is already in this conversation's record, or there
+		// was nothing: either way the files have done their work.
+		if len(stages) > 0 && !a.foldIsPendingAny() {
+			commit()
+		}
 		return
 	}
 	// TWO INBOXES, ONE FOLD, IN ONE ORDER. What arrived is what arrived: a
 	// person who was away does not care which file a note waited in, and two
 	// folds with two openings would be the mailbox this note exists to avoid.
 	sort.SliceStable(notes, func(i, j int) bool { return notes[i].At.Before(notes[j].At) })
-	a.enqueueAmbientNote(standingAwayNote(notes))
+	fold := userText(standingAwayNote(notes))
+	for _, note := range notes {
+		fold.delivered = append(fold.delivered, durableDelivery{id: inboxDeliveryID(note), settled: commit})
+	}
+	a.markFoldPending(fold.delivered)
+	if !a.enqueueNote(fold) {
+		return
+	}
 	a.queueStandingNews(notes)
+}
+
+// inboxDeliveryID is the durable delivery id one inbox note is folded under.
+func inboxDeliveryID(note standing.Note) deliveryID {
+	return deliveryID("inbox:" + note.ID)
+}
+
+// markFoldPending records the notes a fold carries until its record holds
+// them.
+func (a *Agent) markFoldPending(carried []durableDelivery) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.foldPending == nil {
+		a.foldPending = map[deliveryID]bool{}
+	}
+	for _, delivery := range carried {
+		a.foldPending[delivery.id] = true
+	}
+}
+
+// foldIsPending answers whether this agent has folded the note and not yet
+// recorded the fold.
+func (a *Agent) foldIsPending(id deliveryID) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.foldPending[id] && !a.file.recorded(id)
+}
+
+// foldIsPendingAny answers whether any fold of this agent's is still waiting
+// for its record — the files it came from are then not this drain's to remove.
+func (a *Agent) foldIsPendingAny() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for id := range a.foldPending {
+		if !a.file.recorded(id) {
+			return true
+		}
+	}
+	return false
 }
 
 // queueStandingNews turns the fold into what the SCREEN reads: one dim row per
@@ -1629,31 +1799,28 @@ func (a *Agent) queueStandingNews(notes []standing.Note) {
 	a.mu.Unlock()
 }
 
-// drainProjectInbox empties the PROJECT's inbox — what fired for this workspace
+// stageProjectInbox takes the PROJECT's inbox — what fired for this workspace
 // while no window of it was open, from an item whose own origin was an exchange
 // and had nowhere else to land ([standingRunner.deliver], road 4).
 //
-// AN ERRAND DOES NOT DRAIN IT. Home's `ask here` pane closes with the screen
-// and is never reopened, so a fold drawn into one would be this build reading a
-// person's news out to nobody and then deleting it. It waits for a
-// conversation, which is a room they come back to.
-func (a *Agent) drainProjectInbox() []standing.Note {
+// AN ERRAND DOES NOT TAKE IT. Home's `ask here` pane closes with the screen and
+// is never reopened, so a fold drawn into one would be this build reading a
+// person's news out to nobody. It waits for a conversation, which is a room
+// they come back to.
+func (a *Agent) stageProjectInbox() (standing.StagedInbox, bool) {
 	if a.config.Errand {
-		return nil
+		return standing.StagedInbox{}, false
 	}
 	store := a.standingItems()
 	if store == nil {
-		return nil
+		return standing.StagedInbox{}, false
 	}
 	root, workspace := strings.TrimSpace(store.Root()), a.standingWorkspace()
 	if root == "" || workspace == "" {
-		return nil
+		return standing.StagedInbox{}, false
 	}
-	notes, err := standing.DrainProject(root, workspace)
-	if err != nil {
-		return nil
-	}
-	return notes
+	stage, err := standing.StageProjectInbox(root, workspace)
+	return stage, err == nil
 }
 
 // standingAwayNote renders that fold: one opening line, then one line per note

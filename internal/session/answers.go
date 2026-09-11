@@ -728,27 +728,58 @@ func deliverAnswer(sessionDir string, answer Answer) error {
 	return file.Close()
 }
 
-// DrainAnswers reads and removes a session's answers, oldest first. A folder
-// with nothing on its doorstep is an empty slice and no error, which is the
-// ordinary case on every beat of every session that was never answered from
-// anywhere.
-func DrainAnswers(sessionDir string) ([]Answer, error) {
+// DrainAnswers takes a session's answers, oldest first, hands each to apply,
+// and only then removes them. A folder with nothing on its doorstep is an empty
+// slice and no error, which is the ordinary case on every beat of every session
+// that was never answered from anywhere. A nil apply only reads and consumes.
+//
+// THE RENAME IS THE READ'S OWN LOCK, and it is the whole of the concurrency
+// story here: whoever wins the rename owns those lines, and a write racing it
+// lands in a fresh file the next beat drains.
+//
+// AND THE FILE GOES ONLY AFTER THE ANSWERS ARE APPLIED (the scale audit's law
+// L3, finding F2). It used to be removed on the way out of the read, before a
+// single answer reached its lane, and a staged file left by a process killed
+// in between was never read again. Every staged file is read again now, and a
+// second application is harmless by construction: an answer is keyed by the
+// question it answers, and a question nobody is waiting on — including one
+// already answered — falls through its resolver untouched ([Agent.applyAnswer]).
+func DrainAnswers(sessionDir string, apply func(Answer)) ([]Answer, error) {
 	path := AnswersPath(sessionDir)
 	if strings.TrimSpace(sessionDir) == "" {
 		return nil, nil
 	}
-	// THE RENAME IS THE READ'S OWN LOCK, and it is the whole of the concurrency
-	// story here: whoever wins the rename owns those lines, and a write racing
-	// it lands in a fresh file the next beat drains.
-	staged := path + "." + NewSessionID() + ".draining"
-	if err := os.Rename(path, staged); err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
+	if err := os.Rename(path, path+"."+NewSessionID()+".draining"); err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
-	defer os.Remove(staged)
-	file, err := os.Open(staged)
+	staged, err := filepath.Glob(path + ".*.draining")
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(staged)
+	var answers []Answer
+	for _, file := range staged {
+		read, err := readAnswers(file)
+		if err != nil {
+			return answers, err
+		}
+		answers = append(answers, read...)
+	}
+	sort.SliceStable(answers, func(a, b int) bool { return answers[a].At.Before(answers[b].At) })
+	if apply != nil {
+		for _, answer := range answers {
+			apply(answer)
+		}
+	}
+	for _, file := range staged {
+		_ = os.Remove(file)
+	}
+	return answers, nil
+}
+
+// readAnswers reads one staged answers file.
+func readAnswers(path string) ([]Answer, error) {
+	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
@@ -770,11 +801,7 @@ func DrainAnswers(sessionDir string) ([]Answer, error) {
 		}
 		answers = append(answers, answer)
 	}
-	if err := scanner.Err(); err != nil {
-		return answers, err
-	}
-	sort.SliceStable(answers, func(a, b int) bool { return answers[a].At.Before(answers[b].At) })
-	return answers, file.Close()
+	return answers, scanner.Err()
 }
 
 // ── the live session's side ─────────────────────────────────────────────────
@@ -797,13 +824,7 @@ func (a *Agent) drainAnswers() {
 	if dir == "" {
 		return
 	}
-	answers, err := DrainAnswers(dir)
-	if err != nil && len(answers) == 0 {
-		return
-	}
-	for _, answer := range answers {
-		a.applyAnswer(answer)
-	}
+	_, _ = DrainAnswers(dir, a.applyAnswer)
 }
 
 // applyAnswer hands one answer to the lane it belongs to, THROUGH THE SAME

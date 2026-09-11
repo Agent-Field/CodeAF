@@ -5,9 +5,19 @@ package standing
 // folder, appended by whoever has news, drained whole the next time the person
 // opens that conversation and shown under one "while you were away" fold.
 //
-// THE DRAIN RENAMES BEFORE IT READS. A note delivered while the fold is being
+// THE READER STAGES BEFORE IT READS. A note delivered while the fold is being
 // built would otherwise be read and then deleted unseen; moving the file aside
 // first means a racing delivery starts a fresh inbox that the next open finds.
+//
+// AND IT CONSUMES ONLY AFTER ITS EFFECT IS RECORDED (the scale audit's law L3,
+// finding F2). The staged file used to be removed the moment it was read, so
+// the notes lived only in memory until a later turn journaled them — and a
+// window opened and closed with no turn, or a process killed in between, lost
+// them. A staged file left by a crash was never read again either, because the
+// reader only looked for inbox.jsonl. Now the file stays until the reader has
+// recorded what it did with the notes and says so ([StagedInbox.Commit]), every
+// staged file is read again at the next open, and each note carries an id the
+// reader dedupes on, so a note read twice across a crash is folded once.
 //
 // There are TWO addresses and one shape. A session's inbox is the one below; a
 // PROJECT's inbox is the second half of this file, and it exists because not
@@ -15,6 +25,8 @@ package standing
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -28,6 +40,9 @@ import (
 func Deliver(sessionDir string, note Note) error {
 	if note.At.IsZero() {
 		note.At = time.Now()
+	}
+	if note.ID == "" {
+		note.ID = newID()
 	}
 	line, err := json.Marshal(note)
 	if err != nil {
@@ -48,19 +63,52 @@ func Deliver(sessionDir string, note Note) error {
 	return file.Close()
 }
 
-// Drain reads and removes a session's inbox, oldest first. An absent inbox is
-// an empty slice and no error.
-func Drain(sessionDir string) ([]Note, error) {
+// StagedInbox is an inbox taken for reading and not yet consumed: its notes,
+// oldest first, and the staged files they came from.
+type StagedInbox struct {
+	Notes []Note
+	files []string
+}
+
+// stagedSuffix ends the name of an inbox moved aside for reading.
+const stagedSuffix = ".draining"
+
+// StageInbox takes a session's inbox for reading: the live file is moved
+// aside, and every staged file already there — one a reader took before it
+// was killed — is read with it. Nothing is removed until [StagedInbox.Commit].
+// An absent inbox is an empty stage and no error.
+func StageInbox(sessionDir string) (StagedInbox, error) {
 	path := InboxPath(sessionDir)
-	staged := path + "." + newID() + ".draining"
-	if err := os.Rename(path, staged); err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
+	if err := os.Rename(path, path+"."+newID()+stagedSuffix); err != nil && !os.IsNotExist(err) {
+		return StagedInbox{}, err
 	}
-	defer os.Remove(staged)
-	return readInbox(staged), nil
+	files, err := filepath.Glob(path + ".*" + stagedSuffix)
+	if err != nil {
+		return StagedInbox{}, err
+	}
+	sort.Strings(files)
+	var stage StagedInbox
+	seen := map[string]bool{}
+	for _, file := range files {
+		stage.files = append(stage.files, file)
+		for _, note := range readInbox(file) {
+			if !seen[note.ID] {
+				seen[note.ID] = true
+				stage.Notes = append(stage.Notes, note)
+			}
+		}
+	}
+	sort.SliceStable(stage.Notes, func(a, b int) bool { return stage.Notes[a].At.Before(stage.Notes[b].At) })
+	return stage, nil
+}
+
+// Commit consumes the stage: its files are removed. The reader calls it only
+// once what it did with the notes is recorded, and a reader that never gets
+// there leaves them for the next open.
+func (s StagedInbox) Commit() {
+	for _, file := range s.files {
+		_ = os.Remove(file)
+	}
 }
 
 // readInbox reads one inbox file, oldest first. A file that is not there, or
@@ -84,6 +132,12 @@ func readInbox(path string) []Note {
 		var note Note
 		if err := json.Unmarshal(raw, &note); err != nil {
 			continue
+		}
+		if note.ID == "" {
+			// A note from before ids: its own bytes are the one thing that
+			// names it the same way on every read.
+			sum := sha256.Sum256(raw)
+			note.ID = "line-" + hex.EncodeToString(sum[:8])
 		}
 		notes = append(notes, note)
 	}
@@ -154,13 +208,13 @@ func DeliverProject(root, workspace string, note Note) error {
 	return Deliver(ProjectInboxDir(root, workspace), note)
 }
 
-// DrainProject reads and removes a project's inbox, oldest first — [Drain] at
-// the project's address.
-func DrainProject(root, workspace string) ([]Note, error) {
+// StageProjectInbox takes a project's inbox for reading — [StageInbox] at the
+// project's address.
+func StageProjectInbox(root, workspace string) (StagedInbox, error) {
 	if strings.TrimSpace(root) == "" || strings.TrimSpace(workspace) == "" {
-		return nil, nil
+		return StagedInbox{}, nil
 	}
-	return Drain(ProjectInboxDir(root, workspace))
+	return StageInbox(ProjectInboxDir(root, workspace))
 }
 
 // PeekProjectInbox reads a project's inbox WITHOUT emptying it, oldest first.

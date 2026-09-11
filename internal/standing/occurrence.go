@@ -102,10 +102,13 @@ type Occurrence struct {
 	OutcomeText string       `json:"outcomeText,omitempty"`
 	USD         float64      `json:"usd,omitempty"`
 	Published   *Publication `json:"published,omitempty"`
-	// Withheld is why a firing that keeps a report did not publish it, as a
-	// stable code a front end can read ("at-a-limit", "empty-report", …; the
-	// one table is internal/session's withheldCodes). It is present ONLY on a
-	// withheld run, so a record written before it existed reads the same.
+	// Withheld is why the run did not come back clean, as a stable code a front
+	// end can read ("output-limit", "at-a-limit", "empty-report", …; the one
+	// table is internal/session's withheldCodes). For an order that keeps a
+	// report it is also why the report was not published; an order that keeps
+	// none carries it too, because a cut or capped run is not finished work
+	// either. It is present ONLY on such a run, so a record written before it
+	// existed reads the same.
 	Withheld     string `json:"withheld,omitempty"`
 	Error        string `json:"error,omitempty"`
 	SupersededBy string `json:"supersededBy,omitempty"`
@@ -192,22 +195,10 @@ func (s *Store) Occurrences(id string, limit int) ([]Occurrence, error) {
 	if err := checkID(id); err != nil {
 		return nil, ErrNotFound
 	}
-	entries, err := os.ReadDir(s.RunsDir(id))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
+	names, err := runFolders(s.RunsDir(id))
 	if err != nil {
 		return nil, err
 	}
-	names := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if entry.IsDir() {
-			names = append(names, entry.Name())
-		}
-	}
-	// The folders are zero-padded numbers (newRunDir), so a reverse string
-	// sort is newest first.
-	sort.Sort(sort.Reverse(sort.StringSlice(names)))
 	var out []Occurrence
 	for _, name := range names {
 		occurrence, err := ReadOccurrence(filepath.Join(s.RunsDir(id), name))
@@ -220,6 +211,27 @@ func (s *Store) Occurrences(id string, limit int) ([]Occurrence, error) {
 		}
 	}
 	return out, nil
+}
+
+// LastPublication answers the receipt of the report this item last published
+// to path, newest first across its runs, or nil when it has published none
+// there. It is what a publication is compared against before it replaces the
+// file (internal/session's publishStandingReport).
+func (s *Store) LastPublication(id, path string) (*Publication, error) {
+	if err := checkID(id); err != nil {
+		return nil, ErrNotFound
+	}
+	names, err := runFolders(s.RunsDir(id))
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range names {
+		record, err := ReadOccurrence(filepath.Join(s.RunsDir(id), name))
+		if err == nil && record.Published != nil && filepath.Clean(record.Published.Path) == filepath.Clean(path) {
+			return record.Published, nil
+		}
+	}
+	return nil, nil
 }
 
 // occurrenceKey is the item state a firing is admitted from. It is read off

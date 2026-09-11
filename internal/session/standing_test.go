@@ -1419,9 +1419,9 @@ func TestAnOrdinaryOriginStillWaitsInItsOwnConversation(t *testing.T) {
 	if _, err := runner.Say(context.Background(), item, "the last run on main failed"); err != nil {
 		t.Fatalf("Say: %v", err)
 	}
-	notes, err := standing.Drain(dir)
-	if err != nil || len(notes) != 1 {
-		t.Fatalf("the session inbox holds %d notes (err %v)", len(notes), err)
+	stage, err := standing.StageInbox(dir)
+	if err != nil || len(stage.Notes) != 1 {
+		t.Fatalf("the session inbox holds %d notes (err %v)", len(stage.Notes), err)
 	}
 	if got := standing.PeekProjectInbox(root, workspace); len(got) != 0 {
 		t.Fatalf("the project inbox was written too: %+v", got)

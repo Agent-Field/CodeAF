@@ -1,0 +1,44 @@
+BASELINE: c7ec2566f (the lane head before round 3), throwaway detached worktree, with two portable proof files copied in: internal/session/round3_proof_test.go and internal/standing/round3_standing_proof_test.go (the round-3 regressions spelled with only what exists at c7ec2566f)
+EXPECTED: every regression FAILS here, except the two positive controls (TestALaterTurnsNewReportStandsInForOneCutAtTheLimit, TestACleanNoReportRunStillLands), which pass at both revisions
+RUN: 2026-09-11T00:01:24Z host spark go1.26.5 linux/arm64 GOMAXPROCS=4 GOFLAGS=-p=2
+
+── internal/session
+    round3_proof_test.go:41: delimitedReport("\ufeff<report>\nvalid body\n</report>") = "", 3; want "valid body", 1
+    round3_proof_test.go:41: delimitedReport("Close a report with `</report>` on its own line.") = "", 3; want "", 0
+    round3_proof_test.go:41: delimitedReport("<report>\n# R\n```\n</report>\n```\nafter\n</report>") = "# R\n```", 1; want "# R\n```\n</report>\n```\nafter", 1
+    round3_proof_test.go:41: delimitedReport("<report>\nA\n</report>\n~~~\n<report>\n~~~") = "", 2; want "A", 1
+--- FAIL: TestRound3ProofDelimitersAreWholeLinesOutsideFences (0.00s)
+    round3_proof_test.go:128: the cut report was published: "# Report\n- the first part\n- the second part\n" (outcome {Kind:landed Text:report updated: reports/r.md — # Report
+--- FAIL: TestAReportCutAtTheLimitIsNotRehabilitatedByALaterTurn (0.03s)
+--- PASS: TestALaterTurnsNewReportStandsInForOneCutAtTheLimit (0.03s)
+    round3_proof_test.go:162: outcome {Kind:landed Text:Looked at the first failure.
+--- FAIL: TestANoReportRunStoppedAtItsStepLimitDidNotLand (0.01s)
+    round3_proof_test.go:178: outcome {Kind:landed Text:Three flaky tests: the first the second and the third is USD:0 NeedsPerson: Published:<nil> Withheld:}, want failed · output-limit with no report named
+--- FAIL: TestANoReportRunCutAtTheOutputLimitDidNotLand (0.01s)
+--- PASS: TestACleanNoReportRunStillLands (0.01s)
+    round3_proof_test.go:282: a stopped item's report was published (outcome {Kind:landed Text:report updated: reports/r.md — # Report
+--- FAIL: TestAStopBetweenTheDecisionAndTheActPublishesNothing (0.01s)
+    round3_proof_test.go:298: a cancelled pass published (outcome {Kind:landed Text:report updated: reports/r.md — # Report
+--- FAIL: TestACancellationBetweenTheDecisionAndTheActPublishesNothing (0.01s)
+    round3_proof_test.go:345: the person's edit was written over: "# Report\n- the run's new page\n" (outcome {Kind:landed Text:report updated: reports/r.md — # Report
+--- FAIL: TestAReportThePersonEditedMidRunIsNeverWrittenOver (0.01s)
+    round3_proof_test.go:369: a file aforge never wrote was replaced: "# Report\n- the first page\n" (outcome {Kind:landed Text:report updated: reports/r.md — # Report
+--- FAIL: TestAReportFileAforgeNeverWroteIsNotWrittenOver (0.01s)
+    round3_proof_test.go:405: the inbox was consumed before anything recorded the fold
+--- FAIL: TestInboxNewsOutlivesAWindowThatNeverRecordedIt (0.00s)
+    round3_proof_test.go:473: the journal replays ["before the tear"], want both sound lines
+--- FAIL: TestATornJournalTailDoesNotSwallowTheNextLine (0.01s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/session	0.357s
+FAIL
+
+── internal/standing
+    round3_standing_proof_test.go:26: the next open read 0 notes (<nil>); the staged news was lost
+--- FAIL: TestRound3ProofAnInboxStagedBeforeACrashIsReadAtTheNextOpen (0.00s)
+    round3_standing_proof_test.go:52: newest first read 9999, 9998
+--- FAIL: TestRunsPastTenThousandAreStillReadNewestFirst (0.00s)
+    round3_standing_proof_test.go:82: the next run was handed 0003, a number already minted
+--- FAIL: TestARunNumberIsNeverHandedOutTwice (0.00s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/standing	0.006s
+FAIL
