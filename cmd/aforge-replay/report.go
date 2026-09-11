@@ -103,6 +103,11 @@ func whatWasRead(out io.Writer, look settings, rows []callrows.Row, requests []a
 // two is this instrument's own error, measured on the same log it is about. A
 // reader who does not believe this section should not read the next one.
 func howGoodTheEstimateIs(out io.Writer, requests []asked, measured *world, look settings) {
+	// The counters are cleared first so that the staleness printed below is
+	// exactly this pass's — one price per request, on the machine that served it.
+	// Left running they would also carry the spotlight's own pricing, which is a
+	// deliberately unrepresentative handful of the log's worst moments.
+	measured.priced, measured.stale = 0, nil
 	var errors []float64
 	for _, one := range requests {
 		if math.IsNaN(one.ownFelt) || one.ownFelt <= 0 || one.machine == "" {
