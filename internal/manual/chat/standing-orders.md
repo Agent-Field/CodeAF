@@ -850,9 +850,10 @@ at a limit, and all of it holds for the rules check's one correction too.
 ## I edited the report file — aforge does not write over your changes
 
 The report is a file in your project, and you may open and annotate it. Just before
-aforge replaces it, it compares the file with what it last published there (the sha256
-of its last receipt). It replaces the file only if it is still exactly that, or is
-gone. If you changed it — or it was there before aforge first published — nothing is
+aforge replaces it, it compares the file with what aforge last put at that path (the
+sha256 of the path's own receipt, whichever of your orders put it there — so an order
+set up afresh at the same path carries on publishing where the stopped one did). It
+replaces the file only if it is still exactly that, or is gone. If you changed it — or it was there before aforge first published — nothing is
 written over it: the run waits on you, its new report is kept as `held-report.md` in
 the run's folder, and the line is `report held back, not published: … is not what
 aforge last published there … Move your copy aside to let the next run publish`, code

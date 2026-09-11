@@ -22,7 +22,7 @@ func openFence() effectFence { return effectFence{ctx: context.Background()} }
 
 func TestAStandingReportIsPublishedInsideItsProjectOnly(t *testing.T) {
 	workspace := t.TempDir()
-	published, held, err := publishStandingReport(openFence(), workspace, "reports/inbox.md", "  # Report\nall quiet  ", "")
+	published, held, err := publishStandingReport(openFence(), workspace, "reports/inbox.md", "  # Report\nall quiet  ")
 	if err != nil || held != notWithheld {
 		t.Fatal(held, err)
 	}
@@ -40,11 +40,11 @@ func TestAStandingReportIsPublishedInsideItsProjectOnly(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(workspace, "escape")); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := publishStandingReport(openFence(), workspace, "escape/report.md", "x", ""); err == nil {
+	if _, _, err := publishStandingReport(openFence(), workspace, "escape/report.md", "x"); err == nil {
 		t.Fatal("a report was written through a symlink outside the project")
 	}
 	// Nor does it make folders on the far side before refusing.
-	if _, _, err := publishStandingReport(openFence(), workspace, "escape/deeper/still/report.md", "x", ""); err == nil {
+	if _, _, err := publishStandingReport(openFence(), workspace, "escape/deeper/still/report.md", "x"); err == nil {
 		t.Fatal("a report was written through a symlinked parent")
 	}
 	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
@@ -54,7 +54,7 @@ func TestAStandingReportIsPublishedInsideItsProjectOnly(t *testing.T) {
 	if err := os.Symlink(filepath.Join(outside, "target.md"), filepath.Join(workspace, "reports", "linked.md")); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := publishStandingReport(openFence(), workspace, "reports/linked.md", "x", ""); err == nil {
+	if _, _, err := publishStandingReport(openFence(), workspace, "reports/linked.md", "x"); err == nil {
 		t.Fatal("a symlinked report path was followed")
 	}
 }
