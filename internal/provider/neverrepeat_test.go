@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/home"
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/lane/lanestub"
 )
@@ -41,30 +42,44 @@ type poolHandler struct {
 	asked []asked
 	// lanes is the whole roster, in the order the router would fall back through.
 	lanes []string
+	// advisory makes `order` what it really is on the wire once
+	// `allow_fallbacks` is true: a RANKING the router may ignore. With it set,
+	// this handler serves the first machine it is not forbidden to serve,
+	// whatever was asked for first — which is the live shape of the 2026-09-10
+	// 22:20 run, where every attempt asked for DeepInfra and Parasail answered
+	// all eighteen of them with a 429.
+	advisory bool
 }
 
 type asked struct {
 	lane string
 	body string
+	// sent is the preference object this attempt really carried, which is the
+	// thing the law is about: a ranking the router may ignore proves nothing, and
+	// a veto is what actually takes a machine off the table.
+	sent wirePrefs
+}
+
+// wirePrefs is the `provider` object as it went out.
+type wirePrefs struct {
+	Provider struct {
+		Order  []string `json:"order"`
+		Only   []string `json:"only"`
+		Ignore []string `json:"ignore"`
+	} `json:"provider"`
 }
 
 func (h *poolHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	body := make([]byte, 1<<16)
 	read, _ := request.Body.Read(body)
 	body = body[:read]
-	var wire struct {
-		Provider struct {
-			Order  []string `json:"order"`
-			Only   []string `json:"only"`
-			Ignore []string `json:"ignore"`
-		} `json:"provider"`
-	}
+	var wire wirePrefs
 	_ = json.Unmarshal(body, &wire)
 
 	h.mu.Lock()
 	lane := h.pickLocked(wire.Provider.Order, wire.Provider.Only, wire.Provider.Ignore)
 	digest := fmt.Sprintf("%x", sha256.Sum256(body))
-	h.asked = append(h.asked, asked{lane: lane, body: digest})
+	h.asked = append(h.asked, asked{lane: lane, body: digest, sent: wire})
 	refusing := lane == "" || h.refusing[lane]
 	h.mu.Unlock()
 
@@ -82,7 +97,7 @@ func (h *poolHandler) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 	}
 	writer.Header().Set("Content-Type", "application/json")
 	_, _ = fmt.Fprintf(writer,
-		`{"model":"sim/model","provider":%q,"choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}]}`,
+		`{"model":"openrouter/pool","provider":%q,"choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}]}`,
 		lane)
 }
 
@@ -106,6 +121,9 @@ func (h *poolHandler) pickLocked(order, only, ignore []string) string {
 	if len(open) == 0 {
 		return ""
 	}
+	if h.advisory {
+		return open[0]
+	}
 	for _, wanted := range order {
 		for _, name := range open {
 			if strings.EqualFold(name, wanted) {
@@ -122,20 +140,32 @@ func (h *poolHandler) log() []asked {
 	return append([]asked(nil), h.asked...)
 }
 
+// wire is the preference object one attempt carried.
+func (h *poolHandler) wire(attempt int) wirePrefs {
+	log := h.log()
+	if attempt < 0 || attempt >= len(log) {
+		return wirePrefs{}
+	}
+	return log[attempt].sent
+}
+
 // poolClient is a client pointed at one of these pools, with the waits collapsed
 // so a scenario proves what it is about rather than how long a backoff is.
-func poolClient(t *testing.T, handler *poolHandler) *Client {
+//
+// EVERY SCENARIO GETS ITS OWN MODEL AND ITS OWN LEDGER, because both of the
+// places a belief lands are process-wide on purpose — the strike ledger
+// (velocity.go's [sharedVelocity]) and the registry's own (internal/lane). A
+// scenario that inherited the one before it would open with its machines already
+// refused and prove nothing about the walk it is here to prove.
+func poolClient(t *testing.T, name string, handler *poolHandler) *Client {
 	t.Helper()
+	t.Setenv(home.EnvVar, t.TempDir())
 	client, err := NewClient(Config{APIKey: "k", BaseURL: "https://openrouter.ai/api/v1",
-		Model: "sim/model", HTTPClient: handlerClient(handler)})
+		Model: "openrouter/" + name, HTTPClient: handlerClient(handler)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	client.wait = func(context.Context, time.Duration) error { return nil }
-	// A LEDGER OF THIS SCENARIO'S OWN. The shipped one is process-wide on
-	// purpose (velocity.go's [sharedVelocity]), so a scenario that inherited the
-	// one before it would open with its machines already refused and prove
-	// nothing about the walk it is here to prove.
 	client.velocity = newVelocityLedger()
 	lanes.HeardPrefsCarried(client.config.BaseURL)
 	return client
@@ -150,7 +180,7 @@ func TestARefusedMachineIsNotAskedTwiceWhileAnotherIsAdmissible(t *testing.T) {
 		lanes:    []string{"DeepInfra", "Fireworks", "GMICloud"},
 		refusing: map[string]bool{"DeepInfra": true, "Fireworks": true},
 	}
-	client := poolClient(t, handler)
+	client := poolClient(t, "never-repeat-walk", handler)
 
 	if _, err := client.CompleteWithMessages(context.Background(), userMessages("hello")); err != nil {
 		t.Fatalf("a pool with one healthy machine in it did not answer: %v", err)
@@ -186,7 +216,7 @@ func TestWalkingTheMachinesIsNarratedAsAnOrdinal(t *testing.T) {
 		lanes:    []string{"DeepInfra", "Fireworks", "GMICloud"},
 		refusing: map[string]bool{"DeepInfra": true, "Fireworks": true},
 	}
-	client := poolClient(t, handler)
+	client := poolClient(t, "never-repeat-ordinal", handler)
 
 	told := &heard{}
 	previous := OnPhase(told.take)
@@ -196,12 +226,21 @@ func TestWalkingTheMachinesIsNarratedAsAnOrdinal(t *testing.T) {
 		t.Fatalf("the call did not answer: %v", err)
 	}
 
-	paced, ok := told.find(PhasePaced)
+	// A MOVE IS NARRATED AS TRYING AGAIN AND NOT AS WAITING, because nothing is
+	// being waited for: the machine that refused is off the next body and the
+	// next body goes out at once.
+	moving, ok := told.find(PhaseRetrying)
 	if !ok {
 		t.Fatal("a call that walked two saturated machines told the person nothing")
 	}
-	if !strings.Contains(paced.Detail, " of ") {
-		t.Fatalf("the phase read %q, want an ordinal a person can count in", paced.Detail)
+	if !strings.Contains(moving.Detail, " of ") {
+		t.Fatalf("the phase read %q, want an ordinal a person can count in", moving.Detail)
+	}
+	if !moving.Deadline.IsZero() && moving.Deadline.After(moving.Since) {
+		t.Fatalf("a move promised a countdown to %s, and there is nothing to count down to", moving.Deadline)
+	}
+	if _, waited := told.find(PhasePaced); waited {
+		t.Fatal("a call with somewhere else to go was drawn as waiting on a machine")
 	}
 	for _, news := range told.all() {
 		if strings.Contains(news.Detail, "429") || strings.Contains(news.Detail, "API error") {
@@ -210,9 +249,61 @@ func TestWalkingTheMachinesIsNarratedAsAnOrdinal(t *testing.T) {
 	}
 }
 
-// A POOL ONE MACHINE WIDE IS THE ONE LEGAL SAME-MACHINE MOVE, and it is made
-// after the wait that machine asked for rather than after our own doubling.
-func TestAPoolOneMachineWideIsReAskedAfterTheWaitItNamed(t *testing.T) {
+// ── ORDER IS ADVISORY, SO THE EXCLUSION KEYS ON WHO ANSWERED ────────────────
+//
+// THE LIVE RUN (2026-09-10 22:20–22:34, four quick tasks). Every attempt asked
+// for DeepInfra by name and the ROUTER served Parasail, which answered 429:
+// eighteen identical sends on one node, eleven on another, eleven more served by
+// Fireworks on a third. `provider.order` is a ranking the router may ignore once
+// `allow_fallbacks` is on, so re-ordering the request excludes nothing at all.
+// The next body has to carry `provider.ignore: [the machine that ANSWERED]`,
+// which is the `(via X)` in the refusal and never the lane we asked for.
+//
+// AND THE LANE WE ASKED FOR IS NOT STRUCK. It never answered, so it has said
+// nothing — striking it would take away the one machine we actually wanted on
+// the evidence of a machine we did not.
+func TestTheMachineThatAnsweredIsVetoedAndTheOneWeAskedForIsNot(t *testing.T) {
+	handler := &poolHandler{
+		advisory: true,
+		lanes:    []string{"Parasail", "DeepInfra"},
+		refusing: map[string]bool{"Parasail": true},
+	}
+	client := poolClient(t, "never-repeat-advisory", handler)
+	choice := lanes.Choice{Order: []string{"DeepInfra"}}
+	ctx := WithLaneChoice(context.Background(), choice)
+
+	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
+		t.Fatalf("a pool whose second machine was healthy did not answer: %v", err)
+	}
+
+	log := handler.log()
+	if len(log) != 2 {
+		t.Fatalf("the call made %d sends, want one refused and one answered: %+v", len(log), log)
+	}
+	if log[0].lane != "Parasail" || log[1].lane != "DeepInfra" {
+		t.Fatalf("the router served %+v, want the fan-out then the machine we asked for", log)
+	}
+	first, second := handler.wire(0), handler.wire(1)
+	if len(first.Provider.Ignore) != 0 {
+		t.Fatalf("the first attempt already vetoed %v", first.Provider.Ignore)
+	}
+	if len(second.Provider.Ignore) != 1 || second.Provider.Ignore[0] != "Parasail" {
+		t.Fatalf("the second attempt vetoed %v, want exactly the machine that answered", second.Provider.Ignore)
+	}
+	for _, name := range second.Provider.Ignore {
+		if strings.EqualFold(name, "DeepInfra") {
+			t.Fatal("the lane we asked for was struck for a refusal it never made")
+		}
+	}
+	if len(second.Provider.Order) == 0 || !strings.EqualFold(second.Provider.Order[0], "DeepInfra") {
+		t.Fatalf("the second attempt ordered %v, want the lane we asked for still first", second.Provider.Order)
+	}
+}
+
+// alonePool answers one 429 naming itself and asking for three seconds, and
+// then answers properly. It is the pool that is one machine wide.
+func alonePool(t *testing.T) (*Client, func() int, *[]time.Duration) {
+	t.Helper()
 	var mu sync.Mutex
 	served := 0
 	handler := http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
@@ -227,33 +318,73 @@ func TestAPoolOneMachineWideIsReAskedAfterTheWaitItNamed(t *testing.T) {
 			return
 		}
 		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"model":"sim/model","provider":"Alone","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}]}`))
+		_, _ = writer.Write([]byte(`{"model":"openrouter/pool","provider":"Alone","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}]}`))
 	})
 	client := pacedClient(t, handler)
-	var waits []time.Duration
+	client.velocity = newVelocityLedger()
+	waits := &[]time.Duration{}
 	client.wait = func(_ context.Context, delay time.Duration) error {
-		waits = append(waits, delay)
+		*waits = append(*waits, delay)
 		return nil
 	}
+	return client, func() int { mu.Lock(); defer mu.Unlock(); return served }, waits
+}
 
+// A CONVERSATION NEVER WAITS OUT A WINDOW WHILE ANOTHER MODEL EXISTS.
+//
+// THE OWNER'S RULING, 2026-09-10: nobody should ever work around a `too many
+// requests` by switching models themselves. When every machine this request may
+// go to is being held, the call gives the refusal straight back — `pacingExhausted`
+// reads it as the pacing door it is (endpoints.go) and the session offers the
+// next model, which beats any window.
+func TestAWatchedCallWithEveryMachineHeldGivesUpAtOnce(t *testing.T) {
+	client, served, waits := alonePool(t)
+	ctx := WithLaneChoice(context.Background(), lanes.Choice{Only: []string{"Alone"}})
+	_, err := client.CompleteWithMessages(ctx, userMessages("hello"))
+	if err == nil {
+		t.Fatal("the one machine was held; the call should have handed the refusal back")
+	}
+	if !strings.Contains(err.Error(), "429") {
+		t.Fatalf("the call failed with %v, want the pacing the model hop is offered on", err)
+	}
+	if got := served(); got != 1 {
+		t.Fatalf("the call made %d sends, want one: there was nowhere else to send it", got)
+	}
+	if len(*waits) != 0 {
+		t.Fatalf("a person watching waited %v before being offered another model", *waits)
+	}
+}
+
+// A POOL ONE MACHINE WIDE IS THE ONE LEGAL SAME-MACHINE MOVE, and it belongs to
+// the call nobody is watching: a task node has a worktree of work behind it and
+// no fallback to hop to, so it waits — for exactly as long as the machine asked,
+// with that moment on the phase pipe so a surface can draw the countdown.
+func TestAPatientCallWaitsTheWindowItWasGivenAndReAsksOnce(t *testing.T) {
+	client, served, waits := alonePool(t)
 	told := &heard{}
 	previous := OnPhase(told.take)
 	t.Cleanup(func() { OnPhase(previous) })
 
-	if _, err := client.CompleteWithMessages(context.Background(), userMessages("hello")); err != nil {
+	// ONE MACHINE WIDE IS A DEMAND, which is what confines a request to a single
+	// machine on the wire: `provider.only` with `allow_fallbacks: false`. Without
+	// one the router may fall back and the honest move is still to go elsewhere.
+	ctx := WithLaneChoice(WithPatientRateLimits(context.Background()),
+		lanes.Choice{Only: []string{"Alone"}})
+	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
 		t.Fatalf("a pool that asked us to come back in three seconds did not answer: %v", err)
 	}
-	mu.Lock()
-	sends := served
-	mu.Unlock()
-	if sends != 2 {
-		t.Fatalf("the call made %d sends, want exactly one re-ask", sends)
+	if got := served(); got != 2 {
+		t.Fatalf("the call made %d sends, want exactly one re-ask", got)
 	}
-	if len(waits) != 1 || waits[0] != 3*time.Second {
-		t.Fatalf("the call waited %v, want the three seconds the machine asked for", waits)
+	if len(*waits) != 1 || (*waits)[0] != 3*time.Second {
+		t.Fatalf("the call waited %v, want the three seconds the machine asked for", *waits)
 	}
-	if _, ok := told.find(PhasePaced); !ok {
+	paced, ok := told.find(PhasePaced)
+	if !ok {
 		t.Fatal("a call held for a machine's own wait was not narrated as paced")
+	}
+	if countdown := paced.Deadline.Sub(paced.Since); countdown <= 0 || countdown > 4*time.Second {
+		t.Fatalf("the phase promised a countdown of %s, want the window the machine named", countdown)
 	}
 }
 
@@ -298,7 +429,7 @@ func TestRetryNeverRepeatsAMachine(t *testing.T) {
 			}
 		}
 		handler := &poolHandler{lanes: roster, refusing: refusing}
-		client := poolClient(t, handler)
+		client := poolClient(t, fmt.Sprintf("never-repeat-round-%d", round), handler)
 		_, _ = client.CompleteWithMessages(context.Background(), userMessages("hello"))
 
 		seen := map[string]bool{}

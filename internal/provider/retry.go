@@ -199,6 +199,11 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	attempts := 0
 	var recoveryCtx context.Context
 	reconnected := false
+	// moved says the last attempt took a machine OFF the next body, so the next
+	// send is a different request to a different machine and owes nobody a wait.
+	// See the branch it governs below: a backoff is what we pay to ask the same
+	// machine again, and it is the only thing it is for.
+	moved := false
 	// The body this call is carrying, kept ONLY when somebody asked for it: the
 	// old bodies pin, which puts it on the line of the model-call log, or the
 	// debug record, which is where bodies are moving to (calllog.go). On every
@@ -223,7 +228,21 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// here because a call that is repaired or relaxed comes back through
 		// this loop with a new body and the same trace.
 		knobs.trace.begin()
-		if attempt > 0 && !reconnected {
+		if attempt > 0 && !reconnected && moved {
+			// A MOVE IS NOT A WAIT. The last attempt excluded the machine that
+			// refused it, so the body about to go out is a different request to a
+			// different machine — and sitting out a backoff first would be this
+			// call serving a sentence another machine handed down. A backoff is
+			// for asking the SAME machine again, which is the next branch.
+			//
+			// The person is told all the same, in the ordinal, with no moment
+			// attached: there is nothing to count down to, because nothing is
+			// being waited for.
+			now := c.clock()
+			notePhase(ctx, c.modelFor(request), PhaseRetrying,
+				ordinalOf(attempts, patienceOf(patient)), now, now, "")
+			providerWait = 0
+		} else if attempt > 0 && !reconnected {
 			delay := backoffFor(attempt, providerWait)
 			// AND A PERSON IS TOLD HOW LONG, WHICH IS THE ONE FACT THIS LOOP
 			// HAD AND THREW AWAY. Until the phase clock, a conversation parked
@@ -255,7 +274,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				return nil, err
 			}
 		}
-		reconnected = false
+		reconnected, moved = false, false
 		if waited, err := c.waitConnection(ctx, c.modelFor(request), c.config.BaseURL, false); err != nil {
 			return nil, err
 		} else if waited && knobs.trace != nil {
@@ -441,7 +460,39 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// this decides what it means for the remaining attempts of this one call,
 		// which is the narrower and shorter-lived question. A refusal that
 		// implicated no machine adds nothing.
-		knobs.refused.add(refusal.Lane)
+		fresh := knobs.refused.add(refusal.Lane)
+		// ── "NOT YET" IS ANSWERED BY GOING SOMEWHERE ELSE ───────────────────
+		//
+		// THE OWNER'S RULING, 2026-09-10: a person must never work around a 429
+		// by switching models themselves. So the three moves, in this order.
+		//
+		// FIRST, ANOTHER MACHINE, AT ONCE. The refusing machine is off the next
+		// body and the next body goes out with no backoff at all — see [moved].
+		//
+		// SECOND, THE MODEL. When every machine this request may go to is being
+		// held for a wait, a conversation's call gives the refusal back
+		// immediately: `pacingExhausted` reads it as the pacing door it is
+		// (endpoints.go) and the session offers the next model, which is always
+		// faster than a window. A person never waits out a window while another
+		// model exists.
+		//
+		// THIRD, AND ONLY WHEN THERE IS NOWHERE ELSE AT ALL, the wait — and then
+		// it is the earliest window's own end, which is the moment a surface
+		// draws a countdown to rather than our doubling.
+		held, spent := c.pacedOut(c.modelFor(request), knobs)
+		if rateLimited && spent {
+			if !patient {
+				return nil, lastErr
+			}
+			// The machine's own answer to this call wins, because it is the
+			// window said out loud; the ledger's hold is what is left when this
+			// refusal named nothing — a window some EARLIER call was told about,
+			// which is still the honest moment to come back at.
+			if wait := held.Sub(c.clock()); providerWait <= 0 && wait > 0 && wait < maxProviderWait {
+				providerWait = wait
+			}
+		}
+		moved = fresh && !spent
 		// ONE RECOVERY OWNER, ASKED ONCE. Two exits used to answer this — the
 		// walk's for a fault and the full demanded pool's for a 429 (#835) — and
 		// keeping them apart is how the same question came to have two answers

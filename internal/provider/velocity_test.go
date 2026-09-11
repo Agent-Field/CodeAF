@@ -665,14 +665,63 @@ func TestUnnamedCutNotesNothing(t *testing.T) {
 	}
 }
 
-func TestRoutingOffNotesNothingForACut(t *testing.T) {
+// A CUT THAT NAMED NOBODY STILL NAMES THE MACHINE WE ASKED FOR.
+//
+// THE ONE STALL SHAPE THAT COULD NOT REROUTE (docs/design/recovery/DESIGN.md §2,
+// problem 11). A stream that died before any chunk said who was serving it
+// struck nothing at all, so `StreamCut.Rerouted` was false, the taxonomy
+// shortened the allowance rather than forcing a different machine, and the next
+// attempt landed on the same lane deterministically. This process WROTE the
+// request, so it knows what it asked for; that is the honest answer when the
+// wire gave none, and it is a five-minute prior rather than a verdict.
+func TestABlindCutIsFiledAgainstTheMachineWeAskedFor(t *testing.T) {
+	client, _ := cutThenAnswerClient(t, RoutingLatency, "")
+	ctx := WithLaneChoice(WithStreamObserver(context.Background(), func(StreamEvent) {}),
+		lanes.Choice{Order: []string{"quicksilver"}})
+	began := time.Now()
+	_, err := client.CompleteWithMessages(ctx, userMessages("hello"))
+	cut, ok := CutFrom(err)
+	if !ok {
+		t.Fatalf("err = %v, want a guard cut", err)
+	}
+	if cut.Provider != "" {
+		t.Fatalf("the stream named %q, want a cut that named nobody", cut.Provider)
+	}
+	if !cut.Rerouted {
+		t.Fatal("a blind cut rerouted nothing, so the next attempt goes back to the same machine")
+	}
+	if _, ignore := client.velocity.preferences("vendor/fast-model"); !equalStrings(ignore, []string{"quicksilver"}) {
+		t.Fatalf("ignore = %v, want the machine this request asked for first", ignore)
+	}
+	// AND THE NEXT SEND CARRIES IT AT ONCE. A cut is a move, not a fault to sit
+	// out: the veto is on the very next body rather than after a backoff.
+	prefs := client.providerPreferences("vendor/fast-model", callKnobs{}, &ai.Request{})
+	if prefs == nil || !equalStrings(prefs.Ignore, []string{"quicksilver"}) {
+		t.Fatalf("the next request carries %#v, want the cut machine vetoed", prefs)
+	}
+	if took := time.Since(began); took > time.Second {
+		t.Fatalf("the cut took %s to become a veto, want it on the next body", took)
+	}
+}
+
+// A cut IS recorded with routing off, and nothing is asked for on the wire.
+//
+// THE LAW MOVED HERE (docs/design/recovery/DESIGN.md §2, problem 9). A ledger a
+// configuration row switches off is a ledger that cannot tell the next attempt
+// where not to go, and a machine that went quiet mid-answer is exactly the fact
+// the next attempt most needs. What `routing off` means is that nothing derived
+// from the ledger is sent.
+func TestRoutingOffStillNotesACutAndAsksForNothing(t *testing.T) {
 	client, _ := cutThenAnswerClient(t, RoutingOff, "molasses")
 	ctx := WithStreamObserver(context.Background(), func(StreamEvent) {})
 	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err == nil {
 		t.Fatal("the stalled first stream landed, want a guard cut")
 	}
-	if order, ignore := client.velocity.preferences("vendor/fast-model"); len(order) != 0 || len(ignore) != 0 {
-		t.Fatalf("routing off recorded order=%v ignore=%v, want no cut ledger entry", order, ignore)
+	if _, ignore := client.velocity.preferences("vendor/fast-model"); !equalStrings(ignore, []string{"molasses"}) {
+		t.Fatalf("routing off recorded ignore=%v, want the machine that went quiet", ignore)
+	}
+	if prefs := client.providerPreferences("vendor/fast-model", callKnobs{}, &ai.Request{}); prefs != nil {
+		t.Fatalf("routing off asked the wire for %+v, want nothing at all", prefs)
 	}
 }
 

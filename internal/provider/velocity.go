@@ -592,6 +592,84 @@ func (l *velocityLedger) keepTheSetServable(model string, prefs *providerPrefs) 
 	prefs.dropEmptyIgnore()
 }
 
+// pacedOut reports that EVERY machine this request may go to is being held for
+// a wait, and when the first of those waits ends.
+//
+// ── WHY IT IS ASKED OF A SET AND NEVER OF A COUNT ───────────────────────────
+//
+// This process cannot count a model's machines: it knows only the ones it has
+// itself timed, and "my vetoes cover everything I know" is routinely true of a
+// healthy ledger doing its job — one refusing lane written out of a set of five,
+// and the router picks one of the four this process has never seen
+// ([velocityLedger.keepTheSetServable] carries the whole argument and the
+// measured failure). So the denominator is the set THIS REQUEST is confined to:
+// the machines a demand permits, else the candidate set the chooser drew. With
+// neither — a call in a build where the router is not wired in — the honest
+// answer is that there may well be somewhere else to go, and this says so.
+//
+// IT IS THE ONE FACT A 429 CANNOT BE ANSWERED WITHOUT. Waiting out a window
+// while another machine is free is the defect this wave exists to close; moving
+// when there is nowhere to move is a request spent to be told so again. The
+// caller reads both halves: a conversation's call gives the failure back at once
+// so the session can hop the model, and a task's call waits — with the moment
+// this returns as the countdown a person actually watches (retry.go).
+func (c *Client) pacedOut(model string, knobs callKnobs) (time.Time, bool) {
+	set := requestSet(knobs)
+	if len(set) == 0 || c.velocity == nil {
+		return time.Time{}, false
+	}
+	return c.velocity.heldUntil(model, set)
+}
+
+// requestSet is the machines this request may go to, empty when it may go to
+// any. A demand is the set outright; otherwise it is the candidate set the
+// chooser drew, which is what this build believes the pool to be.
+func requestSet(knobs callKnobs) []string {
+	if knobs.hedgeLane != "" {
+		return []string{knobs.hedgeLane}
+	}
+	if knobs.laneChoice == nil {
+		return nil
+	}
+	if len(knobs.laneChoice.Only) > 0 {
+		return knobs.laneChoice.Only
+	}
+	named := make([]string, 0, len(knobs.laneChoice.Frontier)+len(knobs.laneChoice.Order))
+	for _, candidate := range knobs.laneChoice.Frontier {
+		named = append(named, candidate.ID.Lane)
+	}
+	for _, lane := range knobs.laneChoice.Order {
+		if !namesEndpoint(named, lane) {
+			named = append(named, lane)
+		}
+	}
+	return named
+}
+
+// heldUntil is when the first of a set's holds expires, and whether every one of
+// them is held. A machine the ledger has never heard of is not held, which is
+// what makes an unknown machine an answer rather than a wait.
+func (l *velocityLedger) heldUntil(model string, set []string) (time.Time, bool) {
+	if l == nil || len(set) == 0 {
+		return time.Time{}, false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	held := l.lanes[normalizeModel(model)]
+	now := l.now()
+	soonest := time.Time{}
+	for _, name := range set {
+		entry := held[strings.TrimSpace(name)]
+		if entry == nil || entry.ignoredUntil.IsZero() || !now.Before(entry.ignoredUntil) {
+			return time.Time{}, false
+		}
+		if soonest.IsZero() || entry.ignoredUntil.Before(soonest) {
+			soonest = entry.ignoredUntil
+		}
+	}
+	return soonest, true
+}
+
 // lanesKnown is every endpoint this process has timed for a model, in the order
 // it first saw them.
 func (l *velocityLedger) lanesKnown(model string) []string {

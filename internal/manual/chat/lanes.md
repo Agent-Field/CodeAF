@@ -46,11 +46,12 @@ a measured thing is about the thing that was measured.
 ## Auto, and which lanes it is choosing between — how it picks a provider on the very first message, and whether aforge do routes too
 
 Left alone, aforge is on **auto**. Before each request it drops every endpoint
-that cannot do the job at all — no tool calls when you sent tools, too small an
-answer, weights served at a coarser precision than the model is meant to run at,
-one the router itself has marked down — and then ranks what is left by the only
-thing you actually feel: how long you will be sitting there, plus what it costs,
-with the money converted into seconds by how much your waiting is worth.
+that cannot do the job at all — too small an answer for what you asked for, not
+enough room for the conversation, weights served at a coarser precision than the
+model is meant to run at, a share of usable answers below what this kind of work
+needs — and then ranks what is left by the only thing you actually feel: how long
+you will be sitting there, plus what it costs, with the money converted into
+seconds by how much your waiting is worth.
 
 Nothing is waiting on this when nobody is waiting on you. A background errand is
 ranked on price, because a second saved for a machine is a second nobody spends.
@@ -70,6 +71,37 @@ a *company* — that this one is quick, that one queues — carries across every
 model that company serves. So the first request to a brand-new model is still
 routed, still has a clock on it, and asks for a fresh sheet in the background
 while it goes. You never wait for that fetch.
+
+## When the provider list says a machine cannot take tool calls, or is half down — why aforge tries it anyway
+
+The public sheet carries three claims about each machine that aforge used to
+treat as final: whether it honours a tool call, what share of the last five
+minutes it was answering, and whether the router's own operators have marked it
+down. A machine failing any of them was removed from the candidate set outright.
+
+**They are opinions now, not doors.** A machine the sheet doubts is **ranked
+last** — behind every machine nothing is doubted about, never asked first while
+something better can serve you — and it is still there when the machines in
+front of it are busy or refuse. About **one request in ten** is sent to it first
+on purpose, because a machine nobody ever asks can never show the sheet was
+wrong about it.
+
+This changed because the sheet was measurably wrong. On 2026-09-10 a task was
+answered three times in a row, six seconds each, by a machine the sheet flags as
+unable to take tool calls — while the same task sat on a busy machine collecting
+nine refusals, because the one that was working had been removed from every
+request carrying tools.
+
+**What a machine's own answers say beats what the sheet says about it.** Once
+aforge has seen a machine return usable answers to this kind of work, the sheet's
+doubt stops applying to it and it is ranked on its numbers like anything else.
+That belief fades over about an hour if the machine stops answering well, so
+nothing learned here is learned forever.
+
+One claim is still a closed door, and it is not the sheet's: when the **router
+itself** answers that a machine cannot serve this model, that machine is not a
+candidate at any rank. That is an answer to a request aforge really made, not a
+page published some minutes ago.
 
 ## Learning which provider finishes my work faster
 
@@ -331,9 +363,28 @@ its own.
 
 - **When the answer names the machine, aforge stops sending there.** Every
   request after it goes to a different machine for as long as that one asked to
-  be left alone, and for **five minutes** when it named no time. The request
-  that collected the rate limit keeps waiting out its own retries, because its
-  body was already written and sent.
+  be left alone, and for **five minutes** when it named no time.
+- **And that includes the request that collected it.** Its next try is written
+  fresh, with the busy machine left off, so it walks on to another one instead
+  of queueing behind the same full queue. Before 2026-09-10 it did not: the
+  request was written once and sent again unchanged, which is how a single ask
+  spent seventeen tries on one machine over eleven minutes and still ended
+  `too many requests`. You see the walk as `2 of 6` on the status row while it
+  happens.
+- **The same machine is only ever asked twice when it is the only one there
+  is** — a lane you pinned yourself, or a model with one machine behind it —
+  and then aforge waits exactly as long as that machine asked for before trying
+  again. That wait is shown as what it is: `waiting for coreweave · 12s`,
+  counting down to the moment the machine named.
+- **Moving to another machine costs no wait at all.** A pause between tries is
+  what aforge pays to ask the *same* machine again; going somewhere else is a
+  different request and it goes out immediately.
+- **You never have to switch models to get past this.** When every machine
+  behind the model is busy at once, aforge stops waiting and moves your turn to
+  the next model instead, because another model is always quicker than a window.
+  Work running inside a task has no other model to move to, so that is the one
+  place aforge waits the window out — and it tells you which machine it is
+  waiting for and how long is left.
 - **It counts wherever the message arrived.** A rate limit can come back before
   a single word is written, or in the middle of a reply that had already started
   arriving. The machine is stepped around either way. Before 2026-09-10 only the
@@ -467,4 +518,11 @@ you are not — the split the rest of this page describes. Writing a word in the
 overrides that everywhere: `latency` asks for the fastest one on every call, background
 work included; `price` ranks on price alone on every call, your own turns included, which
 is you saying that speed is not worth money anywhere; and `off` is the paragraph above.
-`price` still measures machines and still chooses between them. Only `off` stops both.
+`price` still measures machines and still chooses between them. `off` stops the choosing.
+
+**`off` does not stop the remembering, and that is deliberate.** aforge still writes down
+which machine answered and which one refused, because that is what lets a request that
+has just been refused go somewhere else instead of back to the same place — recovery is
+not steering, and a build that forgot a refusal the moment you switched routing off would
+be a build that could only ever retry into it. Nothing it remembers reaches the wire:
+with `off`, every request goes out with no preference on it at all.

@@ -264,12 +264,21 @@ func TestTheGateDropsALaneThatCannotServeTheRequestAtAll(t *testing.T) {
 	if !capable(derated, talk(), opts) {
 		t.Error("a lane the router marked down left the candidate set rather than being demoted")
 	}
-	if !doubted(derated, talk()) {
+	// Its own answers are what would end the doubt, so the claim about the sheet
+	// is asked of a machine this process has judged nothing about.
+	unjudged := derated
+	unjudged.Quality = Beta{}
+	if !doubted(unjudged, talk()) {
 		t.Error("a lane the router marked down was not even doubted")
 	}
-	derated.Facts.Status = 0
-	if doubted(derated, talk()) {
+	unjudged.Facts.Status = 0
+	if doubted(unjudged, talk()) {
 		t.Error("a healthy lane was doubted on a status of zero")
+	}
+	// AND EVIDENCE ENDS IT. A machine whose answers keep coming back usable is
+	// not doubted by a page published minutes ago.
+	if doubted(derated, talk()) {
+		t.Error("a lane the router marked down is still doubted after answering us well")
 	}
 }
 
