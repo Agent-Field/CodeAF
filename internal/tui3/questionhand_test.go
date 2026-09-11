@@ -623,3 +623,30 @@ func TestADeadlinedRefusalDoesNotReRaiseWhatTheLaneAlreadySettled(t *testing.T) 
 		t.Fatal("a refusal that arrived after the engine had applied the answer re-raised the question")
 	}
 }
+
+// ── A REFUSAL THAT ARRIVED AFTER A SWITCH IS NOT LOST ───────────────────────
+//
+// Review of #919, item 6. The fold that could not speak — the person was
+// looking at another conversation — used to drop the engine's sentence. The
+// engine never took the answer, so the question comes back on the next attach,
+// and it used to come back with no account of why.
+func TestARefusalDuringASwitchComesBackWithTheQuestion(t *testing.T) {
+	lab := handLab(t)
+	head, _ := lab.a.questionHead()
+	lab.a.closeQuestion(head, session.Answer{Key: "1", Picked: []string{"1"}})
+	lab.a.keepQuestionRefusal(head.token(), errQuestionTest)
+	// The engine re-delivers it, because it never took the answer.
+	head.shown = time.Time{}
+	lab.a.raiseQuestion(head)
+	if said := plain(lastNote(t, lab.a)); !strings.Contains(said, errQuestionTest.Error()) {
+		t.Fatalf("the question came back with no account of why: %q", said)
+	}
+	// AND IT IS SAID ONCE. A sentence repeated on every re-delivery would be a
+	// conversation shouting one refusal at somebody for as long as they left the
+	// question open.
+	before := plain(lastNote(t, lab.a))
+	lab.a.raiseQuestion(head)
+	if now := plain(lastNote(t, lab.a)); now != before {
+		t.Fatalf("the kept refusal was said a second time: %q", now)
+	}
+}

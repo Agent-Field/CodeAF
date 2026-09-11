@@ -241,3 +241,82 @@ func programNames(file *ast.File) map[string]bool {
 	})
 	return names
 }
+
+// AND OVER A CONNECTION, UPDATE ASKS THE FAR MACHINE NOTHING.
+//
+// This is the law offloop.go names, and it is the runtime half of
+// [TestNoEngineDoorIsAskedFromTheUpdateLoop]: the structural one reads the
+// source, this one watches the wire. The figure it gates on is the client's own
+// count of calls made ([remote.Client.CallsMade]) — a count, never a stopwatch
+// (PERF.md) — measured across a real Update that answers a real question on a
+// real socket. The answer still arrives: it goes out on the door line's
+// goroutine, and nothing on the loop waited for it.
+func TestAnAnswerOverAConnectionAsksTheFarMachineNothingFromUpdate(t *testing.T) {
+	surface, engine := net.Pipe()
+	answered := make(chan struct{}, 4)
+	go func() {
+		lines := bufio.NewScanner(engine)
+		lines.Buffer(make([]byte, 0, 1<<20), 1<<24)
+		send := func(f remote.Frame) {
+			line, _ := json.Marshal(f)
+			_, _ = engine.Write(append(line, '\n'))
+		}
+		for lines.Scan() {
+			var frame remote.Frame
+			if json.Unmarshal(lines.Bytes(), &frame) != nil {
+				return
+			}
+			switch frame.Kind {
+			case "hello":
+				welcome, _ := json.Marshal(remote.Welcome{Version: remote.Version, Workspace: "/srv/app", SessionFile: "/srv/app/j.jsonl"})
+				send(remote.Frame{Kind: "welcome", Payload: welcome})
+			case "call":
+				if frame.Method == remote.MethodQuestionResolve {
+					answered <- struct{}{}
+				}
+				send(remote.Frame{Kind: "result", ID: frame.ID})
+			}
+		}
+	}()
+	client, err := remote.Dial(surface, "", remote.Hello{Version: remote.Version})
+	if err != nil {
+		t.Fatalf("dial the engine: %v", err)
+	}
+	defer func() { _ = client.Close(); _ = engine.Close() }()
+
+	a := newTestApp(client.Agent())
+	defer a.doorLine.close()
+	q := session.Question{
+		ID: 4242, Kind: session.QuestionAsk, Ask: session.AskChoice,
+		Head: "which store?", Asker: session.Asker{Kind: session.AskerModel},
+		Options: []session.AnswerOption{{Key: "1", Label: "sqlite"}, {Key: "2", Label: "postgres"}},
+		Asked:   a.now(),
+	}
+	a.raiseQuestion(questionShown{question: q})
+	a.questionRows(a.width)
+	head, ok := a.questionHead()
+	if !ok {
+		t.Fatal("the question is not on the block")
+	}
+	before := client.CallsMade()
+	cmd := a.answerQuestion(head, session.Answer{Key: "1", Picked: []string{"1"}})
+	// THE ASSERTION IS HERE, BETWEEN UPDATE RETURNING AND THE COMMAND RUNNING.
+	// Update has done everything it is going to do about this answer.
+	if now := client.CallsMade(); now != before {
+		t.Fatalf("Update made %d call(s) to the far machine — the answer road is back on the loop", now-before)
+	}
+	if a.questioning() {
+		t.Fatal("the question did not settle on the keystroke")
+	}
+	// AND THE ANSWER STILL GOES. It travels on the command, through the door
+	// line, and the far machine is asked exactly once.
+	spend(t, a, cmd)
+	select {
+	case <-answered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the far machine was never asked, so the answer reached nobody")
+	}
+	if now := client.CallsMade(); now != before+1 {
+		t.Fatalf("the far machine was asked %d times for one answer", now-before)
+	}
+}

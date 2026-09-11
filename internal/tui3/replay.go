@@ -117,7 +117,14 @@ func (a *app) replayList(all []session.DisplayEntry) {
 		from = a.earlierFloor
 	}
 	blocks, turns := a.replayBlocks(all[from:], chatReplay(a.turn))
-	a.entries = append(a.entries, blocks...)
+	// ANYTHING ALREADY ON THE SCREEN WAS SAID AFTER ALL OF THIS, and goes under
+	// it. The record this is built from is fetched off the loop and the box is
+	// live the whole time it is in flight, so a person who switched conversation
+	// and typed straight away had their message appended to and then buried by
+	// the history that arrived behind it.
+	inTheGap := a.entries
+	a.entries = append(blocks[:len(blocks):len(blocks)], inTheGap...)
+	_ = inTheGap
 	a.turn += turns
 	a.replayFrom = from
 	// A CONVERSATION THAT WAS COMPACTED AND THEN PUT DOWN HAS ALMOST NO TAIL — a

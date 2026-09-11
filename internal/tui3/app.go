@@ -1502,6 +1502,10 @@ type app struct {
 	// doorLine is the one queue every engine door is asked through, in the order
 	// the keystrokes that caused them arrived (offloop.go).
 	doorLine *doorLine
+	// questionRefused is a door's sentence kept against the question it was
+	// about, for a refusal that arrived after the person had switched away
+	// ([app.keepQuestionRefusal]).
+	questionRefused map[string]string
 	// questionDone is every question token the ENGINE has said is decided. It is
 	// what stops a refusal from a call that deadlined — arriving after the
 	// engine already applied the answer — from putting a settled question back

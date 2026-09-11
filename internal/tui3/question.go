@@ -522,6 +522,11 @@ func (a *app) raiseQuestion(q questionShown) {
 		return
 	}
 	q.ruled = a.autonomyRuled(q.question.Ask)
+	// AND A REFUSAL THIS WINDOW COULD NOT SAY AT THE TIME IS SAID NOW. It was
+	// kept against this token because the person was looking at another
+	// conversation when the door turned their answer down; the question coming
+	// back is the moment it means something again.
+	a.sayKeptQuestionRefusal(q.token())
 	a.questions = append(a.questions, q)
 	a.questionRule(&a.questions[len(a.questions)-1])
 	a.touch()
@@ -2523,11 +2528,23 @@ func (a *app) answerQuestions(all []questionAnswer) tea.Cmd {
 				refused[i] = door.ResolveQuestion(one.answer)
 			}
 			return func(here bool) tea.Cmd {
-				if !here {
-					return nil
-				}
 				for i, err := range refused {
 					if err == nil {
+						continue
+					}
+					if !here {
+						// THE SENTENCE KEEPS THE QUESTION COMPANY. A person who
+						// switched conversation between the keystroke and the
+						// refusal cannot be told here — this screen is somebody
+						// else's conversation now, and saying it would be this
+						// surface putting one conversation's news on another. So
+						// it is kept against the token: the engine never took the
+						// answer, so it re-delivers the question on the next
+						// attach, and the reason arrives with it
+						// ([app.raiseQuestion]). It used to be dropped on the
+						// floor, which left a question that had come back with no
+						// account of why.
+						a.keepQuestionRefusal(sending[i].q.token(), err)
 						continue
 					}
 					// A REFUSED ANSWER LEAVES ITS OWN QUESTION OPEN, AND SAYS SO,
@@ -3912,6 +3929,28 @@ const questionRaceWord = "two windows answered that · the first one is the deci
 // engine has settled this" has to stay true for as long as anything could
 // arrive claiming otherwise. What arrives is a door's refusal from a call that
 // deadlined, and that can be ten seconds behind.
+// keepQuestionRefusal holds a door's sentence against the question it was about,
+// for a window that had moved on when it arrived, and sayKeptQuestionRefusal
+// spends it when that question comes back.
+func (a *app) keepQuestionRefusal(token string, err error) {
+	if token == "" || err == nil {
+		return
+	}
+	if a.questionRefused == nil {
+		a.questionRefused = map[string]string{}
+	}
+	a.questionRefused[token] = strings.TrimSpace(err.Error())
+}
+
+func (a *app) sayKeptQuestionRefusal(token string) {
+	said, kept := a.questionRefused[token]
+	if !kept {
+		return
+	}
+	delete(a.questionRefused, token)
+	a.note(said)
+}
+
 func (a *app) questionSettledByLane(token string) {
 	if token == "" {
 		return

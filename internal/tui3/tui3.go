@@ -1291,6 +1291,10 @@ func Run(ctx context.Context, opts Options) error {
 	defer listenForNews(surface.news)()
 	defer surface.news.close()
 	defer surface.leaving.close()
+	// AND THE DOOR LINE ENDS WITH THE WINDOW, after what is already in it has
+	// been asked (offloop.go): a person's last keystroke before they close a
+	// window is still an answer somebody gave.
+	defer surface.doorLine.close()
 	defer forwardSignals(p, surface.leaving)()
 	_, err := p.Run()
 	// THE TAB IS HANDED BACK ON EVERY ROAD OUT, after the program has stopped
@@ -1319,7 +1323,7 @@ func Run(ctx context.Context, opts Options) error {
 // readers run on whatever goroutine the news arrived on — a provider's stream
 // between two deltas, or the wire client's reader between two frames — and
 // internal/session documents that neither may be held by a reader. The second
-// one is the defect wake.go opens with: a reader parked on a busy loop held the
+// one is the defect doorbell.go opens with: a reader parked on a busy loop held the
 // very frame that loop was waiting for, and an answered question froze the
 // window for ten seconds. A status line that has changed is still a frame that
 // has to be drawn, and nothing else is going to ask for one: a rescue drawn at

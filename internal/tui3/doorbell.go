@@ -41,10 +41,21 @@ import (
 // that is the coalescing, and it is why a burst of a hundred phases costs one
 // frame rather than a hundred.
 //
-// IT IS THE ONLY WAY IN. Program.Send appears nowhere in this package
-// (doorbell_test.go's [TestNothingInTheSurfaceCallsProgramSend] holds it), because
-// every caller of it is a goroutine that can be made to wait on a busy loop, and
-// a goroutine that can be made to wait is a deadlock waiting for its partner.
+// IT IS THE ONLY WAY IN THAT CARRIES NOTHING, which is the precise claim and
+// the one worth making. Program.Send appears nowhere in this package
+// (doorbell_test.go's [TestNothingInTheSurfaceCallsProgramSend] holds it),
+// because every caller of it is a goroutine that can be made to wait on a busy
+// loop, and a goroutine that can be made to wait is a deadlock waiting for its
+// partner.
+//
+// THE OTHER NON-BLOCKING WAKE IS [behindWatch.stir] (keeper.go), and it is
+// deliberately not this. It says "read THIS conversation's agent", so it carries
+// a key — and a wake that carries content cannot coalesce the way this one does,
+// because two rings with different keys are two messages. It keeps its own
+// buffered lane and its own per-key dedup arm instead. What the two share is the
+// only law that matters here and neither may ever break: a wake never waits for
+// the loop. It has a `default:` on its send for exactly the reason this door has
+// a one-slot channel.
 
 // doorbell is one door into the update loop: one message, one slot, never waited on.
 //
