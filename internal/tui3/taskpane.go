@@ -207,7 +207,7 @@ func (a *app) taskSheetBody(width, room int) []placeRow {
 		list, _ := row.hit.(taskSheetHit)
 		if a.taskSheet.top+at == 0 {
 			out = append(out, placeRow{
-				text: r.headLine(width),
+				text: r.headRow(width, a.pal),
 				hit:  taskSplitHit{list: list},
 			})
 			continue
@@ -431,9 +431,10 @@ const (
 	// the conversation rather than a record.
 	taskPaneChatWord = "open the chat"
 	// taskPaneWorkWord counts what one conversation asked for, and the money
-	// under it is what the whole of that came to.
-	taskPaneWorkWord = " piece of work"
-	taskPaneWorkMany = "s"
+	// beside it is what the whole of that came to. It is the head line's own
+	// count of the same thing, spelled the one way ([tasksReading.head]).
+	taskPaneWorkWord = "piece"
+	taskPaneWorkTail = " of work"
 )
 
 // ── the conversation's own preview ──────────────────────────────────────────
@@ -467,7 +468,7 @@ func (a *app) taskPaneChat(chat tasksChat, width int) []taskPaneRow {
 		}
 	}
 	if held > 0 {
-		line := itoa(held) + plural(taskPaneWorkWord, held, taskPaneWorkMany)
+		line := itoa(held) + " " + plural(taskPaneWorkWord, held) + taskPaneWorkTail
 		if cost > 0 {
 			line += railSep + dollars(cost)
 		}

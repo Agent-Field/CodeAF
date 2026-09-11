@@ -662,6 +662,16 @@ func (r tasksReading) headLine(width int) string {
 	return head
 }
 
+// headRow is that same sentence PAINTED, at a width the layout may not be using.
+//
+// It goes through [tasksReading.paint] rather than spelling the head arm a second
+// time, so the split frame's head and the list's own head are one row built one
+// way — the head carries the window control and a second painter would be a
+// second chance for the control to be drawn where it is not bound.
+func (r tasksReading) headRow(width int, pal palette) string {
+	return r.paint([]tasksLine{{kind: tasksLineWord, text: r.headLine(width), owner: -1}}, 0, width, pal, false)
+}
+
 // tasksKin is the family column in front of one row: one step of indent for
 // every ancestor the frame has room to draw, and the two cells that say what
 // this row IS.
