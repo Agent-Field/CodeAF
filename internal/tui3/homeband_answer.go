@@ -117,11 +117,24 @@ func answerable(row session.SessionRow, now time.Time) (session.PresenceQuestion
 // answerSent is what this window already sent for one row's question, when it
 // sent one and the question is still the same question.
 func (a *app) answerSent(row session.SessionRow, question session.PresenceQuestion) (homeAnswered, bool) {
-	sent, ok := a.answered[strings.TrimSpace(row.Dir)]
+	sent, ok := a.answered[answerSlot(row.Dir, question)]
 	if !ok || sent.kind != question.Kind || sent.id != question.ID {
 		return homeAnswered{}, false
 	}
 	return sent, true
+}
+
+// answerSlot is the key this window remembers one answer under: the session
+// folder AND the question inside it.
+//
+// ONE SLOT PER QUESTION, NOT PER CONVERSATION. A conversation used to have at
+// most one answerable row on this screen, so its folder was identity enough.
+// `to check` gives one conversation a row per landing it is holding
+// (homepanel_needs.go), and a single slot meant answering the second landing
+// forgot the first — whose chips came back, and whose key could be pressed
+// again, sending a second answer for a question already answered from here.
+func answerSlot(dir string, question session.PresenceQuestion) string {
+	return strings.TrimSpace(dir) + "\x00" + string(question.Kind) + ":" + itoa64(question.ID)
 }
 
 // drawAnswerBand is the chips, or the line that says they have been pressed.
@@ -347,7 +360,7 @@ func (a *app) rememberAnswered(dir string, question session.PresenceQuestion, la
 			delete(a.answered, at)
 		}
 	}
-	a.answered[dir] = homeAnswered{kind: question.Kind, id: question.ID, label: label, at: now}
+	a.answered[answerSlot(dir, question)] = homeAnswered{kind: question.Kind, id: question.ID, label: label, at: now}
 }
 
 // answeringHere reports that the row on home IS the conversation this window is

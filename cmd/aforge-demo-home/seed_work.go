@@ -174,6 +174,56 @@ var demoTasks = []demoTask{
 			DurationMS: 7 * 60 * 1000,
 		},
 	},
+	// AND A GROUP OF LANDINGS NOBODY HAS CHECKED, ACROSS THREE PROJECTS. Home's
+	// `needs you` panel holds them as its `to check` group (homepanel_needs.go),
+	// and a fixture with ONE of them draws a group of one — which is the shape a
+	// group line, a count, a clause and a fold all fail to be tested by. These
+	// are deliberately unlike each other: one wrote seventeen files, one wrote
+	// none, one has a name long enough to be cut, and one is old enough to age
+	// onto the fold rather than onto a row.
+	{
+		project: firstProjectName, talk: "Reading the Ledger", ago: 26 * time.Hour,
+		entry: session.TaskIndexEntry{
+			ID: "1", Title: "Take the fortnight's spend apart by model", Status: string(session.TaskUnverified),
+			Outcome:      "Opus is four fifths of the fortnight and nearly all of it is one conversation; the split is in the page.",
+			Files:        []string{"docs/design/spend/fortnight.md"},
+			FilesChanged: 1, Cost: 0.19, Model: "anthropic/claude-sonnet-4", Tokens: 24_400,
+			DurationMS: 5 * 60 * 1000,
+		},
+	},
+	{
+		project: firstProjectName, talk: "The Manual's Missing Page", ago: 30 * time.Hour,
+		entry: session.TaskIndexEntry{
+			ID: "1", Title: "Write the page about reading a task, and every question it should answer",
+			Status:  string(session.TaskUnverified),
+			Outcome: "Seventeen sections, each under two thousand characters, and every probe in the table reaches one of them.",
+			Files: []string{
+				"internal/manual/chat/reading-a-task-page.md", "internal/manual/chat/tasks.md",
+				"internal/manual/chat/home.md", "internal/manual/chat/keys.md",
+			},
+			FilesChanged: 17, Cost: 0.61, Model: "anthropic/claude-opus-4.1", Tokens: 88_200,
+			DurationMS: 19 * 60 * 1000,
+		},
+	},
+	{
+		project: "pricing-site", talk: "Pricing Research", ago: 7 * time.Hour,
+		entry: session.TaskIndexEntry{
+			ID: "2", Title: "Read what the four nearest competitors charge", Status: string(session.TaskUnverified),
+			Outcome: "Three of the four price per seat and one per workspace; nobody could check the figures against a source.",
+			Cost:    0.08, Model: "anthropic/claude-sonnet-4", Tokens: 11_300,
+			DurationMS: 3 * 60 * 1000,
+		},
+	},
+	{
+		project: "infra", talk: "Rotating the Deploy Key", ago: 4 * 24 * time.Hour,
+		entry: session.TaskIndexEntry{
+			ID: "1", Title: "Rotate the deploy key and re-fasten the runners", Status: string(session.TaskUnverified),
+			Outcome:      "The key is rotated and both runners took it; the third host was not reachable to prove.",
+			Files:        []string{"terraform/runners.tf", "runbooks/deploy-key.md"},
+			FilesChanged: 2, Cost: 0.24, Model: "anthropic/claude-sonnet-4", Tokens: 31_100,
+			DurationMS: 8 * 60 * 1000,
+		},
+	},
 }
 
 // writeTaskIndex appends every row to its own project's index and answers how

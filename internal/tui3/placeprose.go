@@ -96,15 +96,21 @@ const (
 	standNotOursWord = "that one does not stand over this conversation"
 )
 
-// needsUncheckedWord is the line under a `needs you` row for work that landed
-// and that nobody could check (homepanel_needs.go's [needsCall]).
+// The two words the `to check` group of `needs you` is drawn with
+// (homepanel_needs.go), spelled once here because the heading, the fold and the
+// manual all quote them.
 //
-// IT SAYS WHAT THE PERSON CAN DO, NOT WHAT THE MACHINE COULD NOT. The engine's
-// own reason, `nobody could check it`, is the right sentence on the task's
-// record, where the two answers stand beside it; on home, under a title and an
-// age, it read as a shrug (owner, 2026-09-10). The line names its own door, so
-// the row draws no second `enter` beside it.
-const needsUncheckedWord = "landed unchecked · enter to look"
+// THE CLAUSE IS THE WHOLE EXPLANATION AND IT IS SAID ONCE. The difference
+// between a row that has stopped a conversation and a landing nobody has looked
+// at is not obvious from a title and an age, and it used to be spelled under
+// every landing — `landed unchecked · enter to look`, the same sub-line on nine
+// rows (owner, 2026-09-11). It is seven words on the group's own line now, in
+// the place a heading's clause already lives, and the rows under it are one line
+// each.
+const (
+	needsCheckWord   = "to check"
+	needsCheckClause = "finished, nobody has checked it"
+)
 
 // ── THE FIVE-LEVEL SCALE (SCREEN 2a) ────────────────────────────────────────
 //

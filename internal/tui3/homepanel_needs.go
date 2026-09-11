@@ -6,30 +6,52 @@ import (
 	"strings"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // needsPanel is `needs you` (docs/design/home-mission-control/DESIGN.md §1, §3
-// P1): every question on the machine that is waiting on a person, the longest
-// wait first (homeattention.go's [attentionOlder]).
+// P1): everything on the machine that is waiting on a person, in TWO GROUPS on
+// one panel.
 //
-// THREE SOURCES AND ONE LIST. A conversation stopped on a question, a task the
-// record marks as the person's call, and a watch that needs somebody are three
-// different engines asking the same thing, and a person answering them does not
-// care which engine it was. Each row is two lines: the title with its age at the
-// right, and under it the question's own sentence.
+// BLOCKING FIRST, THEN WHAT HAS LANDED (the spec of record for #884). The top
+// group is the live questions — a conversation stopped on a question or on a
+// consent card, a watch that needs somebody — longest wait first
+// ([attentionOlder]), each wearing the amber mark and carrying its own sentence.
+// Under them the `to check` group is every task whose call is the person's,
+// newest first, one line each. A live question is always above a landing however
+// old the landing is, because a landing costs nothing while it waits and a
+// stopped conversation costs everything.
 //
-// THE ANSWERS ARE DRAWN ON THE TOP ANSWERABLE ROW AND NOWHERE ELSE (law 7). A
-// digit pressed anywhere on home answers that row ([app.homeGridAnswer]), so the
-// chips beside it are the key a person is about to press. Chips on a second row
-// would be a `1` on screen twice with one meaning, which is a guess; every other
-// row says `enter`, and enter opens it.
+// THE DIFFERENCE BETWEEN THE TWO GROUPS IS SAID ONCE, ON THE GROUP'S OWN LINE:
+// `to check · 8` at the left and `finished, nobody has checked it` at the right
+// (placeprose.go's [needsCheckWord] and [needsCheckClause]). It used to be said
+// under every landing row, which was the same nine words nine times and pushed
+// `where you were` off a forty-row frame (owner, 2026-09-11).
+//
+// A LANDING IS ONE LINE AT REST AND TWO UNDER THE CURSOR. The second line is the
+// first sentence of what the work came to and the two answers the task itself
+// offers ([session.TaskAsk]), which is the whole of what "check it" means; the
+// panel reserves the line it grows into ([homeCell.grows]) so the column does
+// not move as the cursor walks.
+//
+// THE ANSWERS ARE DRAWN ON ONE ROW OF THE FRAME AND NOWHERE ELSE (law 7): the
+// row under the cursor when it can take an answer, and the top row that can
+// otherwise ([app.homeAnswerAt]). Drawing and routing ask that one function, so
+// a `1` on the screen and the key a person presses cannot be two different rows.
 type needsPanel struct{ homePanelBase }
 
 const (
-	// needsOpenWord is what a row says where its answers are not drawn: a
-	// question with a paragraph, a task's call, a watch's question, any row
-	// below the top one. enter opens it.
+	// needsOpenWord is what a QUESTION row says where its answers are not drawn:
+	// one with a paragraph, or one that is not the frame's answering row. enter
+	// opens it.
+	//
+	// A LANDING NEVER SAYS IT. Its second line only exists under the cursor, and
+	// there the answers are the thing the line is for; a `to check` row that this
+	// window cannot answer draws the report's sentence and nothing at its right,
+	// which is the emptiness law rather than an instruction repeated on every
+	// row. enter still opens the record ([app.homeLandOnTask]).
 	needsOpenWord = "enter"
 	// needsAnswersCap is how many of a question's answers fit on its row. A
 	// question with more draws the first ones and then [needsOpenWord], because
@@ -37,37 +59,42 @@ const (
 	needsAnswersCap = 3
 )
 
-// needsItem is one row before the panel orders it: when it was asked, the line,
-// and the answers it would draw if it were the top answerable row.
+// needsItem is one row before the panel orders it: when it was asked, and the
+// line.
 type needsItem struct {
-	asked   time.Time
-	line    homeLine
-	answers string
+	asked time.Time
+	line  homeLine
 }
 
 func (needsPanel) rows(in *homeGridInput) homePanelRows {
-	calls, older := needsFresh(needsCalls(in), in.now)
-	items := append(needsAsked(in), calls...)
-	sort.SliceStable(items, func(i, j int) bool { return attentionOlder(items[i].asked, items[j].asked) })
-	lines := make([]homeLine, 0, len(items))
-	drawn := false
-	for _, item := range items {
-		// A line that already names its door draws no second one ([needsUncheckedWord]).
-		if item.line.cell.sub != needsUncheckedWord {
-			item.line.cell.subRight = needsOpenWord
-		}
-		if item.answers != "" && !drawn {
-			item.line.cell.subRight, drawn = item.answers, true
-		}
+	asked := needsAsked(in)
+	sort.SliceStable(asked, func(i, j int) bool { return attentionOlder(asked[i].asked, asked[j].asked) })
+	// AND THE LANDINGS ARE NEWEST FIRST, which is the opposite order and the
+	// right one for them: `needs you` is ranked by how long something has been
+	// stopped, and nothing is stopped here — the freshest landing is the work
+	// still in the person's head, and the oldest ages out of the group entirely
+	// ([needsFresh]).
+	calls := append([]needsItem(nil), in.calls...)
+	sort.SliceStable(calls, func(i, j int) bool { return attentionOlder(calls[j].asked, calls[i].asked) })
+	lines := make([]homeLine, 0, len(asked)+len(calls))
+	for _, item := range append(asked, calls...) {
 		lines = append(lines, item.line)
 	}
 	out := homePanelCut(panelNeeds, lines)
-	out.said = countWord(len(lines))
-	out.older = older
+	// THE HEADING COUNTS THE QUESTIONS AND THE GROUP LINE COUNTS THE LANDINGS.
+	// A frame holding only landings draws `needs you` with no count at all
+	// rather than `needs you · 0`, which is the emptiness law applied to a
+	// heading ([countWord]).
+	out.said = countWord(len(asked))
+	out.older = in.callsOlder
+	if len(calls) > 0 {
+		out.group = &homePanelGroup{at: len(asked), word: needsCheckWord,
+			said: countWord(len(calls)), right: needsCheckClause}
+	}
 	return out
 }
 
-// needsFresh is the task calls that are still a question, and how many are
+// needsFresh is the task calls that are still worth checking, and how many are
 // history.
 //
 // A YOUR-CALL OLDER THAN [homeNeedsTaskFresh] IS HISTORY, NOT A QUESTION (owner,
@@ -80,7 +107,7 @@ func (needsPanel) rows(in *homeGridInput) homePanelRows {
 // not known to be old, and stays.
 func needsFresh(items []needsItem, now time.Time) (fresh []needsItem, older int) {
 	for _, item := range items {
-		if !item.asked.IsZero() && now.Sub(item.asked) > homeNeedsTaskFresh {
+		if needsAged(item.asked, now) {
 			older++
 			continue
 		}
@@ -89,15 +116,31 @@ func needsFresh(items []needsItem, now time.Time) (fresh []needsItem, older int)
 	return fresh, older
 }
 
+// needsAged is that rule as one predicate, so the panel's rows and the pulse's
+// count age a landing out at the same instant ([machineCounts]).
+func needsAged(asked, now time.Time) bool {
+	return !asked.IsZero() && now.Sub(asked) > homeNeedsTaskFresh
+}
+
 // needsAsked is the conversations and watches the switcher already ranks as
 // waiting on somebody.
+//
+// A CONVERSATION WAITING ONLY ON ITS OWN LANDING IS NOT ONE OF THEM — THE
+// LANDING IS. [session.Agent.waitingOnPerson] reads a pending decision LAST and
+// writes the sentence `your call on <title>` into the presence with no question
+// object, so such a session drew as a question ABOVE the `to check` row for the
+// very same piece of work: once under the CONVERSATION's name with a bare
+// `enter`, once under the TASK's name with its files and its two answers. The
+// second row is the better one and this drops the first (the spec of record's
+// "said once", applied inside the panel as well as across the columns).
 func needsAsked(in *homeGridInput) []needsItem {
 	var items []needsItem
 	for _, row := range in.rows {
-		if !row.needs {
+		if !row.needs || (row.kind == switcherConversation &&
+			needsLandingsSpeakFor(row.session, needsCallTitlesOn(in, row.session.ID))) {
 			continue
 		}
-		cell := &homeCell{panel: panelNeeds, mark: cellMarkNeeds, title: row.title}
+		cell := &homeCell{panel: panelNeeds, mark: cellMarkNeeds, title: row.title, subRight: needsOpenWord}
 		homeLiveMargin(cell, row, sinceAt(row.at, in.now))
 		item := needsItem{asked: row.at}
 		switch row.kind {
@@ -105,7 +148,7 @@ func needsAsked(in *homeGridInput) []needsItem {
 			head, whole := needsSentence(row.session)
 			cell.sub = head
 			if _, ok := answerable(row.session, in.now); ok && whole {
-				item.answers = answersWord(row.session.Presence.Question)
+				cell.answers = answersWord(row.session.Presence.Question)
 			}
 		case switcherStanding:
 			cell.sub = switcherFirstLine(row.item.Item.NeedsPerson)
@@ -116,6 +159,89 @@ func needsAsked(in *homeGridInput) []needsItem {
 	return items
 }
 
+// needsYourCallLead opens the sentence a session writes into its presence while
+// nothing but a landed task is waiting on somebody — internal/session's
+// `yourCallLine`, which is the tier's own word and a preposition
+// ([tierYourCallWord]; taskpresence.go builds it the same way from the same
+// word). It is rebuilt here rather than imported because the engine keeps it
+// unexported; the seam is noted in the change entry.
+const needsYourCallLead = tierYourCallWord + " on "
+
+// needsLandingsSpeakFor reports that the WHOLE of what a conversation is waiting
+// on is one of its own landings, which the `to check` group is already drawing
+// under the work's own name.
+//
+// IT IS THE ENGINE'S SENTENCE AND NOT AN ABSENCE. The first cut of this test was
+// "the presence carries no question object", and that is wrong in two lanes that
+// bank no card at the desk and say so: a sub-harness offer (`wants to run …`)
+// and an adaptive run at its fuel gate (`out of fuel · …`) both write a reason
+// with no question, and a conversation stopped at either of those would have
+// VANISHED from home the moment it happened to own a landing
+// (internal/session's taskpresence.go says which lanes bank nothing). So the
+// test is the sentence the pending-decision arm writes, opened by
+// [needsYourCallLead] and closed by the title of one of this conversation's own
+// landings — a question of any other kind keeps its row.
+func needsLandingsSpeakFor(row session.SessionRow, titles []string) bool {
+	if len(titles) == 0 || row.Presence.Question.Kind != "" {
+		return false
+	}
+	reason := strings.TrimSpace(row.Reason())
+	if !strings.HasPrefix(reason, needsYourCallLead) {
+		return false
+	}
+	for _, title := range titles {
+		if title != "" && strings.HasSuffix(reason, title) {
+			return true
+		}
+	}
+	return false
+}
+
+// needsCallTitlesOn is the titles the `to check` group is drawing for one
+// conversation, read out of the reading the beat already took.
+func needsCallTitlesOn(in *homeGridInput, id string) []string {
+	var titles []string
+	for _, call := range in.calls {
+		if call.line.task != nil && call.line.task.SessionID == id {
+			titles = append(titles, strings.TrimSpace(call.line.task.Title))
+		}
+	}
+	return titles
+}
+
+// needsWants is how many rows of `needs you` ONE conversation is: one per
+// landing of its own that the `to check` group draws, and its own question where
+// the panel keeps that row.
+//
+// THE PANEL BUILDS ITS ROWS FROM THESE READINGS AND THE PULSE COUNTS THEM FROM
+// THIS ONE, so `N want you` over a home and the rows under it are the same
+// arithmetic ([machineCounts]).
+func needsWants(row session.SessionRow, now time.Time) int {
+	titles := needsCallTitles(row, now)
+	n := len(titles)
+	if row.NeedsPerson() && !needsLandingsSpeakFor(row, titles) {
+		n++
+	}
+	return n
+}
+
+// needsCallTitles is one conversation's landings as the `to check` group would
+// draw them, by title, taken straight off the index row.
+func needsCallTitles(row session.SessionRow, now time.Time) []string {
+	if row.Archived {
+		return nil
+	}
+	var titles []string
+	for i := range row.Tasks.Rows {
+		entry := row.Tasks.Rows[i]
+		if _, ok := needsCallOf(row, entry); !ok || needsAged(needsCallAt(entry), now) {
+			continue
+		}
+		titles = append(titles, strings.TrimSpace(entry.Title))
+	}
+	return titles
+}
+
 // needsCalls is every task the project's record marks as the person's call —
 // work that finished and nobody could check, a landing that turned the work
 // back, a branch that would not fasten. They are read off the world's own index
@@ -123,46 +249,185 @@ func needsAsked(in *homeGridInput) []needsItem {
 // the tasks place can never disagree about which work is waiting.
 //
 // ENTER OPENS THE CONVERSATION ON THE TASK'S RECORD ([app.homeLandOnTask]),
-// which is where the question and its two answers are.
-func needsCalls(in *homeGridInput) []needsItem {
+// which is where the question and the whole of its evidence are.
+func needsCalls(world session.World, now time.Time) []needsItem {
 	var items []needsItem
-	for _, project := range in.world.Projects {
+	for _, project := range world.Projects {
 		for _, row := range project.Sessions {
 			for i := range row.Tasks.Rows {
 				entry := row.Tasks.Rows[i]
-				status := taskEntryStatus(entry, row.Runs(entry))
-				if !status.Attention || status.On != session.TaskWaitPerson || needsAskedInChat(row, entry) {
+				status, ok := needsCallOf(row, entry)
+				if !ok {
 					continue
 				}
-				items = append(items, needsCall(project, row, entry, status, in.now))
+				items = append(items, needsCall(project, row, entry, status, now))
 			}
 		}
 	}
 	return items
 }
 
-// needsCall is one of those rows.
+// needsCallOf is THE ONE READING OF "THIS LANDING IS WAITING ON THE PERSON",
+// and its status.
+//
+// THREE READERS AND ONE ANSWER. The `to check` group draws these rows, `since
+// you left` drops the landings this group is already drawing ([leftPanel.rows]),
+// and the pulse counts them beside the questions ([machineCounts]). A second
+// spelling of this test anywhere would be a `3 want you` over four rows, which
+// is the exact failure the one-reader law exists for.
+//
+// A LANDING THE CONVERSATION IS ITSELF ASKING ABOUT IS NOT ONE OF THESE
+// ([needsAskedInChat]): that is a stopped conversation, it is a `needs you` row,
+// and it is the row that can take a digit.
+func needsCallOf(row session.SessionRow, entry session.TaskIndexEntry) (session.TaskStatus, bool) {
+	// WORK IN A CONVERSATION SOMEBODY PUT AWAY IS NOT WAITING ON THEM. Archiving
+	// is the decision to stop being asked about it, and every other panel already
+	// reads it that way ([machineCounts] skips an archived row outright).
+	if row.Archived {
+		return session.TaskStatus{}, false
+	}
+	status := taskEntryStatus(entry, row.Runs(entry))
+	if !status.Attention || status.On != session.TaskWaitPerson || needsAskedInChat(row, entry) {
+		return session.TaskStatus{}, false
+	}
+	return status, true
+}
+
+// needsCallAt is when a landing asked — when the work ended, or when it started
+// for a row that never recorded an ending.
+func needsCallAt(entry session.TaskIndexEntry) time.Time {
+	if !entry.EndedAt.IsZero() {
+		return entry.EndedAt
+	}
+	return entry.StartedAt
+}
+
+// needsCall is one of those rows: the title, how many files it wrote and how
+// long ago, and — under the cursor — what it came to and its two answers.
 func needsCall(project session.Project, row session.SessionRow, entry session.TaskIndexEntry, status session.TaskStatus, now time.Time) needsItem {
 	title := strings.TrimSpace(entry.Label)
 	if title == "" {
 		title = strings.TrimSpace(entry.Title)
 	}
-	sub := switcherFirstLine(status.Reason)
-	if sub == "" {
-		sub = status.Word
-	}
-	if status.Ask.Kind == session.TaskAskCheck {
-		sub = needsUncheckedWord
-	}
-	asked := entry.EndedAt
-	if asked.IsZero() {
-		asked = entry.StartedAt
-	}
-	cell := &homeCell{panel: panelNeeds, mark: cellMarkNeeds, title: title, right: sinceAt(asked, now), sub: sub,
-		key: needsCallKey + entry.ID}
+	asked := needsCallAt(entry)
+	// A LANDING WEARS NO MARK (law 8). The amber `?` means a thing has stopped
+	// and will not move until somebody answers it; a landing has already
+	// finished, and a column of question marks over work that is DONE was the
+	// screen saying the opposite of what was true.
+	cell := &homeCell{panel: panelNeeds, title: title, right: needsCallFacts(entry, asked, now),
+		key:   needsCallKey + entry.ID,
+		grows: true, sub: needsCallSub(entry, status), answers: needsCallAnswers(status)}
 	line := homeLine{kind: homeSession, row: row, project: project.Name,
 		dir: homeBucketOf(row.Transcript), task: &entry, cell: cell}
 	return needsItem{asked: asked, line: line}
+}
+
+// needsCallSub is the line a landing grows under the cursor: THE FIRST SENTENCE
+// OF WHAT THE WORK CAME TO, which is what a person needs in order to say whether
+// it holds. The engine's own reason for the call stands in where the work left no
+// report, and the tier's word where there is neither.
+func needsCallSub(entry session.TaskIndexEntry, status session.TaskStatus) string {
+	if sub := switcherFirstLine(entry.Outcome); sub != "" {
+		return sub
+	}
+	if sub := switcherFirstLine(status.Reason); sub != "" {
+		return sub
+	}
+	return status.Word
+}
+
+// needsCallFacts is a landing's right margin: how many files it wrote and how
+// long ago, as ONE clause — `3 files · 1d`.
+//
+// IT IS ONE CLAUSE AND NOT TWO FACTS SIDE BY SIDE because they are read as one
+// sentence about the same piece of work, and because a row cut between them
+// would leave `3 files` with no age beside a column of rows that all have one.
+// A landing that wrote no files says NOTHING where the count would be, never
+// `0 files` (the emptiness law).
+func needsCallFacts(entry session.TaskIndexEntry, asked, now time.Time) string {
+	age := sinceAt(asked, now)
+	if entry.FilesChanged <= 0 {
+		return age
+	}
+	files := itoa(entry.FilesChanged) + plural(" file", entry.FilesChanged)
+	if age == "" {
+		return files
+	}
+	return files + rowSep + age
+}
+
+// The two keys a landing is answered with ON HOME, and the landing keys they
+// stand for.
+//
+// ── WHY THEY ARE DIGITS HERE AND LETTERS EVERYWHERE ELSE ────────────────────
+//
+// A landing is `[a] accept · [n] not right` on its card, in its room and on its
+// record, and [session.LandingYesKey] is that letter (answers.go: the landing
+// keys are task-states' own, letter for letter). HOME CANNOT OFFER A LETTER. Its
+// foot promises "type to search or start something new" and the promise has no
+// asterisk — a bare letter on this screen always types, whatever the cursor is
+// resting on (home.go's [app.homeKey] states it), and the ONE printable
+// exception it allows is a digit drawn on the row itself. An `a` that sometimes
+// accepted a landing and sometimes began "a site for my café" is the mode that
+// law exists to forbid.
+//
+// So the KEY is home's and the WORDS are the task's: `1 accept   2 not right`,
+// read off [session.TaskAsk], mapped back to the landing's own keys before the
+// answer leaves this surface ([needsLandingKey]). Nothing about the answer is
+// renumbered — only the key a person presses on THIS screen, which is the same
+// bargain the drawn digit has always been.
+const (
+	needsYesKey = "1"
+	needsNoKey  = "2"
+)
+
+// needsCallAnswers is the two answers a landing offers, in the task's own words
+// on home's own two digits.
+//
+// THE WORDS ARE THE ASK'S ([session.TaskAsk.Yes] and .No) and this file spells
+// none of them. A row whose ask has no words offers nothing, which is the
+// absence law: there is no default pair to fall back on.
+//
+// AND EVERY ASK THAT REACHES HERE IS [session.TaskAskCheck]. The status comes
+// from [session.TaskIndexEntry.StatusFacts], which fills the state, the ending
+// and the kind and nothing else — the merge, the ground hold and the phase are
+// the NODE's facts and the index does not carry them — so `taskAskOf` can only
+// take its `check` arm for an index row. A conflict is a different question with
+// different words, it is banked by the engine as `conflict:<id>`
+// ([session.Agent.landingQuestion]), and it reaches a person through the task's
+// own card and not through this panel. So [needsLandingQuestion] names one kind
+// rather than guessing between two.
+func needsCallAnswers(status session.TaskStatus) string {
+	yes, no := strings.TrimSpace(status.Ask.Yes), strings.TrimSpace(status.Ask.No)
+	if yes == "" || no == "" {
+		return ""
+	}
+	return needsYesKey + " " + yes + homeCellGap + needsNoKey + " " + no
+}
+
+// needsLandingKey is home's digit as the landing key the engine answers to.
+func needsLandingKey(key string) (string, bool) {
+	switch key {
+	case needsYesKey:
+		return session.LandingYesKey, true
+	case needsNoKey:
+		return session.LandingNoKey, true
+	}
+	return "", false
+}
+
+// needsChecking is every landing the `to check` group is drawing, by the
+// identity a `since you left` line carries for the same task
+// (homepanel_left.go's [leftKey]) — so one piece of work is one row of home's
+// column and never two.
+func needsChecking(in *homeGridInput) map[string]bool {
+	said := make(map[string]bool, len(in.calls))
+	for _, item := range in.calls {
+		if item.line.task != nil {
+			said[taskLedgerKey(*item.line.task)] = true
+		}
+	}
+	return said
 }
 
 // needsCallKey prefixes a task row's [homeCell.key], so a conversation's own
@@ -221,4 +486,103 @@ func answersWord(question session.PresenceQuestion) string {
 		parts = append(parts, chip.text)
 	}
 	return strings.Join(parts, homeCellGap)
+}
+
+// ── answering a landing from home ───────────────────────────────────────────
+
+// needsLandingQuestion is the landing question a `to check` row stands for, as
+// the answer doors want it: the kind, the node's id, and the two options in the
+// task's own words. It is false for a row that is not a landing or whose id the
+// index never recorded.
+//
+// IT IS BUILT FROM THE ROW AND NEVER FROM A LIVE SESSION'S PRESENCE. That is the
+// whole difference between this group and the one above it: nothing is asking,
+// so there is no question object to read — the task index says the call is the
+// person's and [session.TaskAsk] says what the two answers are called.
+func needsLandingQuestion(line homeLine) (session.PresenceQuestion, bool) {
+	if line.task == nil || line.cell == nil || line.cell.answers == "" {
+		return session.PresenceQuestion{}, false
+	}
+	id, err := strconv.ParseUint(strings.TrimSpace(line.task.ID), 10, 64)
+	if err != nil || id == 0 {
+		return session.PresenceQuestion{}, false
+	}
+	yes, no, ok := needsAnswerWords(line.cell.answers)
+	if !ok {
+		return session.PresenceQuestion{}, false
+	}
+	return session.PresenceQuestion{Kind: session.QuestionLanding, ID: id, Options: []session.AnswerOption{
+		{Key: needsYesKey, Label: yes},
+		{Key: needsNoKey, Label: no, Safe: true},
+	}}, true
+}
+
+// needsAnswerWords reads the two words back out of the clause the row draws, so
+// the chip a person sees and the label the receipt says are the SAME STRING and
+// not two readings of one status.
+func needsAnswerWords(clause string) (yes, no string, ok bool) {
+	parts := strings.SplitN(clause, homeCellGap, 2)
+	if len(parts) != 2 {
+		return "", "", false
+	}
+	yes = strings.TrimPrefix(parts[0], needsYesKey+" ")
+	no = strings.TrimPrefix(parts[1], needsNoKey+" ")
+	return yes, no, yes != "" && no != ""
+}
+
+// homeAnswerLanding takes one of a landed task's own answers from home, and it
+// is THE ONE DOOR on whichever side of the window the conversation is.
+//
+// In this window the answer goes straight to [session.Agent.ResolveQuestion],
+// which is where the record card's `a` and `n` end up too ([app.taskCardKey] →
+// [app.questionOptionKey] → the block). In any other window it is left on that
+// conversation's doorstep ([app.leaveAnswer] → [session.WriteAnswer]), and that
+// session's own heartbeat hands it to the SAME ResolveQuestion
+// ([session.Agent.drainAnswers] → [session.Agent.applyLanding] →
+// [session.Agent.ResolveUnverified]). There is no third path, and nothing here
+// settles a task itself.
+//
+// A CONVERSATION THAT IS NOT RUNNING APPLIES IT WHEN IT NEXT RUNS, which is what
+// this surface has always promised for another window's question and is why the
+// row says `answered · waiting for it to pick that up` until it is picked up.
+func (a *app) homeAnswerLanding(line homeLine, key string) (tea.Cmd, bool) {
+	question, ok := needsLandingQuestion(line)
+	if !ok {
+		return nil, false
+	}
+	label := question.Label(key)
+	answer, ok := needsLandingKey(key)
+	if label == "" || !ok {
+		return nil, false
+	}
+	row := a.homeTrue(line.row)
+	if _, sent := a.answerSent(row, question); sent {
+		// ONE ANSWER PER LANDING, for [app.answerRowKey]'s reason: the first is
+		// on its way and the row is still saying so.
+		return nil, false
+	}
+	if a.answeringHere(row) {
+		doors, ok := a.questionDoors()
+		if !ok {
+			return nil, false
+		}
+		sent := session.Answer{At: time.Now(), Kind: session.QuestionLanding, ID: question.ID,
+			Key: answer, Picked: []string{answer}, DecidedBy: session.DecidedByPerson}
+		if err := doors.ResolveQuestion(sent); err != nil {
+			return nil, false
+		}
+		a.home.say(answerSentWord+label, "")
+		return nil, true
+	}
+	dir := strings.TrimSpace(row.Dir)
+	if a.leaveAnswer == nil || dir == "" {
+		return nil, false
+	}
+	if err := a.leaveAnswer(dir, question.Kind, question.ID, answer); err != nil {
+		a.home.say(answerFailedWord, dir)
+		return nil, true
+	}
+	a.rememberAnswered(dir, question, label)
+	a.home.say(answerSentWord+label, "")
+	return nil, true
 }
