@@ -318,6 +318,18 @@ type Plan struct {
 	// A request carrying no tools, no cap and no knob has none, and then the
 	// ladder is not a move this call has.
 	Shapes []string
+	// ShapeRefused says the last refusal was about the request's SHAPE and not
+	// about the machine that answered it: "no endpoints found that can handle the
+	// requested parameters" is the router saying that every machine it can see
+	// has already answered for this body, so another machine is not a move.
+	//
+	// IT IS THE ONE FACT [Next] CANNOT WORK OUT FOR ITSELF. The serving set of
+	// such a request is usually OPEN — nobody named a pool — and an open set has
+	// another machine in it forever (see [Plan.serving]), so a ladder that asked
+	// for its rung without this would be handed a machine every time and would
+	// never climb. It is set by the one caller that holds such a refusal's own
+	// body (internal/provider's dispatch.go, [Client.recoverFromRefusal]).
+	ShapeRefused bool
 	// Role is who the call is being made for, spelled as `lane.Role` spells it.
 	// It is carried rather than looked up so the dispatcher, the hazard and the
 	// row all read the same word.

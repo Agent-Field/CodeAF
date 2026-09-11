@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -319,5 +320,97 @@ func TestPacingIsTakenBackWhenTheCallGivesUp(t *testing.T) {
 	}
 	if len(said) != 2 || !said[0] || said[1] {
 		t.Fatalf("the pacing notice said %v, want one park and one release", said)
+	}
+}
+
+// TestTheOneKnobBuysTimeAndNeverASecondSend is the brief's own acceptance for
+// the fold, and it asserts BOTH halves of what `response.attempts` had to become.
+//
+// `attempts: 3` USED TO BE THREE SENDS. It is three times the patience now — a
+// 270-second talk deadline where the measurement says 90 — and the thing that
+// must NOT move with it is how many requests the call is allowed to make: a
+// person asking for more patience is asking to be waited for, never for the same
+// bytes to be posted to the same machine again. So the same `machines × shapes +
+// 1` bound `control.Next` keeps at a factor of one is checked here at a factor of
+// three, on the wire, against a pool that refuses everything.
+//
+// THE CLOCK IS THE SAME FICTION [TestOneDeadlineBoundsEverything] states: the
+// wait seam is stubbed and the dispatcher charges itself for every wait it asked
+// for, so a four-and-a-half-minute deadline is proved in microseconds.
+func TestTheOneKnobBuysTimeAndNeverASecondSend(t *testing.T) {
+	t.Cleanup(func() { lanes.UsePatience(1) })
+
+	// FIRST, WHAT THE PERSON BOUGHT. Every role is scaled, because the factor is
+	// about the person and the column is about the work.
+	lanes.UsePatience(3)
+	for _, row := range []struct {
+		role lanes.Role
+		want time.Duration
+	}{
+		{lanes.RoleTalk, 270 * time.Second},
+		{lanes.RoleLeafAttached, 270 * time.Second},
+		{lanes.RoleProbe, 135 * time.Second},
+	} {
+		if got := row.role.GiveUp(); got != row.want {
+			t.Errorf("at three times the patience %s gives up after %s, want %s", row.role, got, row.want)
+		}
+	}
+	// AND A FACTOR UNDER ONE IS NOT A SHORTER DEADLINE. It is somebody asking
+	// this build to give up sooner than the measurement says a turn takes, and
+	// it reads as the default.
+	lanes.UsePatience(0.25)
+	if got := lanes.RoleTalk.GiveUp(); got != lanes.TurnGiveUp {
+		t.Errorf("a quarter of the patience gave %s, want the measured %s", got, lanes.TurnGiveUp)
+	}
+
+	// SECOND, WHAT IT DID NOT BUY. A pool of four machines that all refuse, run
+	// at three times the patience: the call may take 270 seconds and it may not
+	// make one send more than it could at 90.
+	lanes.UsePatience(3)
+	kept := watchedPlan(t)
+	pool := &scriptedPool{script: map[string]int{}}
+	for index := range 4 {
+		name := fmt.Sprintf("Machine%d", index)
+		pool.roster = append(pool.roster, name)
+		pool.script[name] = http.StatusTooManyRequests
+	}
+	client := poolClient(t, "patience-three", pool)
+	var asked []time.Duration
+	client.wait = func(_ context.Context, delay time.Duration) error {
+		asked = append(asked, delay)
+		return nil
+	}
+	ctx := WithLaneChoice(context.Background(), lanes.Choice{Order: pool.roster})
+	ctx = WithRole(ctx, lanes.RoleTalk)
+
+	began := time.Now()
+	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err == nil {
+		t.Fatal("a pool where every machine refuses should not have answered")
+	}
+	believed := time.Since(began)
+	for _, delay := range asked {
+		believed += delay
+	}
+	if bound := 270*time.Second + maxProviderWait; believed > bound {
+		t.Fatalf("the call ran %s against a 270s deadline (one wait of slack is %s): waits %v",
+			believed, maxProviderWait, asked)
+	}
+	// AND THE DEADLINE IT RAN UNDER REALLY WAS THE SCALED ONE. The bound above
+	// is satisfied by a call that ends early, and this call DOES end early —
+	// four machines and three rungs run out long before four and a half minutes
+	// do, which is the whole point: patience is what a call MAY spend, never
+	// what it must. So the plan the dispatcher was built with is read directly,
+	// and it is the only honest way to say the multiplier arrived.
+	//
+	// The window is read to the second: the deadline and `Began` are stamped a
+	// few microseconds apart by a real clock, and a test that demanded they be
+	// equal to the nanosecond would be testing the clock.
+	if window := kept.Deadline.Sub(kept.Began).Round(time.Second); window != 270*time.Second {
+		t.Fatalf("the call ran under a %s deadline, want the 90s talk give-up times three", window)
+	}
+	sends := pool.sends()
+	if limit := 4*(1+len(relaxRungs)) + 1; len(sends) > limit {
+		t.Fatalf("three times the patience made %d sends over four machines, bound %d: %v",
+			len(sends), limit, sends)
 	}
 }

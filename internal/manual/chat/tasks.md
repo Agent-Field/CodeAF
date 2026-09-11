@@ -4137,8 +4137,9 @@ the governor cannot say anything and therefore never holds. On those machines
 
 Separately, a task that is already running can be held by the provider's own pacing. Its
 row reads `waiting · rate limited` until the calls get through — or until the task's
-patience runs out, which is 60 attempts or 10 minutes of waiting, whichever comes first;
-your own turn gives up sooner, at 6 attempts or 2 minutes. See how-tasks-run.
+patience runs out, which is **four and a half minutes** of trying, machine after machine;
+your own turn gives up sooner, at **90 seconds**. Neither is a number of attempts: it is
+how long, and nothing counts tries. See how-tasks-run.
 
 The frontier used to hold two tasks at once. Two was a guess standing in for a resource
 nobody had measured: idle on a sixteen-core box, one too many on a laptop already compiling.

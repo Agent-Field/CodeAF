@@ -68,6 +68,20 @@ import (
 // docs/ARCHITECTURE.md). Four is where it stops: past three failed lanes the
 // evidence is about the model or the request rather than about the endpoints,
 // and every step of the walk is budgeted besides.
+//
+// ── IT IS NOT A RETRY BUDGET AND MUST NOT BE FOLDED INTO THE DEADLINE ───────
+//
+// Every other count on this path went when the plan's one deadline arrived
+// (docs/design/recovery/DESIGN.md §4), and this one deliberately stayed, so here
+// is the difference in one sentence: those counted how many times a question may
+// be ASKED AGAIN, and this bounds how many copies of it may be in flight AT
+// ONCE. A hedge is Dean & Barroso's tail-at-scale rescue — a second request
+// started while the first is still alive, paid for out of a purse — so what
+// bounds it is money and concurrency, not patience. Folding it into the deadline
+// would let one slow answer become as many simultaneous paid requests as ninety
+// seconds can start, which is the traffic an account-wide rate limit is made of.
+// The arms share the deadline over them and the move log under them; what they
+// do not share is a retry count, because they are not retries.
 const maxArms = 4
 
 // heldEvents bounds what is remembered for an arm that is not speaking. A
@@ -179,9 +193,13 @@ type hedgeRace struct {
 	// have two silent arms at once, and one list would interleave two answers
 	// and replay the mixture.
 	held map[int][]StreamEvent
-	// tried is every lane this request has already been sent to, so the walk
-	// never asks the same machine twice.
-	tried map[string]bool
+	// WHAT THIS QUESTION HAS ALREADY TRIED IS THE PLAN'S, AND THERE IS NO COPY
+	// OF IT HERE. A race kept its own `tried` set until 2026-09-11 — a second
+	// answer to the same question the dispatcher under every arm was answering
+	// from [control.Plan.Moves], free to disagree with it the moment either side
+	// learned something the other did not (docs/design/recovery/DESIGN.md §4).
+	// The claim, the release and the "where could an arm go now" read all go
+	// through [hedgeRace.plan]'s own move log, which every arm shares.
 	// refused is set the moment the purse says no. A REFUSAL IS FINAL for this
 	// question: a race that re-asked on the next delta would turn one refusal
 	// into a poll.
@@ -258,15 +276,18 @@ func (c *Client) raceFor(ctx context.Context, observer StreamObserver, build con
 		speaker:  0,
 		winner:   -1,
 		held:     map[int][]StreamEvent{},
-		tried:    map[string]bool{},
 		results:  make(chan armResult, maxArms+ladderArms),
 		wake:     make(chan struct{}, 1),
 		decided:  make(chan struct{}),
 	}
-	if head := lanes.HeadOf(choice); head != "" {
-		race.tried[strings.ToLower(head)] = true
-	}
 	race.plan = c.planFor(ctx, choice, race.model, race.expected)
+	// AND THE MACHINE THE PRIMARY IS ABOUT TO ASK IS WRITTEN DOWN AS A MOVE, on
+	// the log every arm and every dispatcher under them reads. It is the first
+	// thing this question tries, so a rescue that could be handed it would be
+	// two arms on one machine — which is the whole of what the shared log is for.
+	if head := lanes.HeadOf(choice); head != "" {
+		race.plan.Moves.Add(control.Move{Kind: control.MoveMachine, Model: race.model, Lane: head})
+	}
 	return race, true
 }
 
@@ -474,13 +495,14 @@ func (r *hedgeRace) startArm(index int, lane string, ladder []byte) {
 }
 
 // untriedAlts is where an arm started now could go: the plan's alternatives
-// minus the machines this question has already been sent to.
+// minus the machines this question has already been sent to, read off the one
+// log that knows ([control.MoveLog.Tried]).
 func (r *hedgeRace) untriedAlts() []control.Alternative {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	alts := make([]control.Alternative, 0, len(r.plan.Alts))
 	for _, alt := range r.plan.Alts {
-		if !r.tried[strings.ToLower(alt.Lane)] {
+		if !r.plan.Moves.Tried(alt.Lane) {
 			alts = append(alts, alt)
 		}
 	}
@@ -630,7 +652,7 @@ func (r *hedgeRace) hedge(from int, act control.Act, alt string) {
 		r.mu.Lock()
 		r.refused = true
 		r.rememberRefusalLocked("budget")
-		delete(r.tried, strings.ToLower(alt))
+		r.releaseMove(alt)
 		r.mu.Unlock()
 		r.recordHedge(alt, "budget", false)
 		return
@@ -707,9 +729,7 @@ func (r *hedgeRace) rescueOnStall(from int, act control.Act) bool {
 		r.mu.Lock()
 		r.refused = true
 		r.rememberRefusalLocked("budget")
-		if alt != "" {
-			delete(r.tried, strings.ToLower(alt))
-		}
+		r.releaseMove(alt)
 		r.mu.Unlock()
 		return false
 	}
@@ -820,17 +840,35 @@ func (r *hedgeRace) claim(preferred string, past bool) (lane, why string) {
 	if r.refused && !past {
 		return "", "budget"
 	}
-	if lane := strings.TrimSpace(preferred); lane != "" && !r.tried[strings.ToLower(lane)] {
-		r.tried[strings.ToLower(lane)] = true
+	// AND THE RESERVATION IS A MOVE ON THE PLAN. [control.MoveLog.Add] answers
+	// false for a machine this question has already taken, so the claim and the
+	// dispatcher's own never-repeat rule are one test rather than two that agree
+	// until they do not.
+	if lane := strings.TrimSpace(preferred); lane != "" && r.claimMove(lane) {
 		return lane, ""
 	}
 	for _, alt := range r.plan.Alts {
-		if lane := strings.TrimSpace(alt.Lane); lane != "" && !r.tried[strings.ToLower(lane)] {
-			r.tried[strings.ToLower(lane)] = true
+		if lane := strings.TrimSpace(alt.Lane); lane != "" && r.claimMove(lane) {
 			return lane, ""
 		}
 	}
 	return "", "no alt"
+}
+
+// claimMove takes one machine for this question, and answers false when
+// something already has it.
+func (r *hedgeRace) claimMove(lane string) bool {
+	return r.plan.Moves.Add(control.Move{Kind: control.MoveMachine, Model: r.model, Lane: lane})
+}
+
+// releaseMove gives a claim back. It is called on the one path that claims a
+// machine and then does not send to it: the purse, asked after the machine is
+// reserved because what it is asked costs depends on which machine it is.
+func (r *hedgeRace) releaseMove(lane string) {
+	if lane = strings.TrimSpace(lane); lane == "" {
+		return
+	}
+	r.plan.Moves.Release(control.Move{Kind: control.MoveMachine, Model: r.model, Lane: lane})
 }
 
 // ── WHAT "REFUSED" MAY MEAN ON A ROW ────────────────────────────────────────
@@ -1012,7 +1050,7 @@ func (r *hedgeRace) affordableAlt() (string, bool) {
 	r.mu.Lock()
 	alt := ""
 	for _, candidate := range r.plan.Alts {
-		if lane := strings.TrimSpace(candidate.Lane); lane != "" && !r.tried[strings.ToLower(lane)] {
+		if lane := strings.TrimSpace(candidate.Lane); lane != "" && !r.plan.Moves.Tried(lane) {
 			alt = lane
 			break
 		}
@@ -1339,7 +1377,7 @@ func (r *hedgeRace) walkAvailable() bool {
 	}
 	for _, alt := range r.plan.Alts {
 		lane := strings.TrimSpace(alt.Lane)
-		if lane == "" || r.tried[strings.ToLower(lane)] || !lanes.Serves(r.model, lane) {
+		if lane == "" || r.plan.Moves.Tried(lane) || !lanes.Serves(r.model, lane) {
 			continue
 		}
 		return r.budget.Affordable(waitNow(), r.estimateLocked(lane, r.expected))
@@ -1408,7 +1446,7 @@ func (r *hedgeRace) takeRefusal(body []byte) bool {
 	}
 	for _, alt := range r.plan.Alts {
 		lane := strings.TrimSpace(alt.Lane)
-		if lane == "" || r.tried[strings.ToLower(lane)] || !lanes.Serves(r.model, lane) {
+		if lane == "" || r.plan.Moves.Tried(lane) || !lanes.Serves(r.model, lane) {
 			continue
 		}
 		if !r.budget.Affordable(waitNow(), r.estimateLocked(lane, r.expected)) {

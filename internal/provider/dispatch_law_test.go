@@ -116,6 +116,19 @@ func TestNoAttemptCountingLoopOutsideTheDispatcher(t *testing.T) {
 			continue
 		}
 		ast.Inspect(file, func(node ast.Node) bool {
+			// AND THE LADDER IS A COUNT TOO, spelled as a range rather than as a
+			// number: `for _, step := range c.relaxationPlan(...)` was the seventh
+			// budget, and it walked the rungs itself while [control.Next] sat
+			// beside it already knowing them. A rung is a move now, so the only
+			// place that may walk them is the place that asks for moves.
+			if loop, ok := node.(*ast.RangeStmt); ok {
+				over := strings.ToLower(receiverOf(loop.X))
+				if strings.Contains(over, "relaxationplan") || strings.HasSuffix(over, ".shapes") {
+					t.Errorf("%s walks the relaxation rungs itself — the rungs are the plan's and "+
+						"%s asks control.Next for one (docs/design/recovery/DESIGN.md §4)", name, dispatcherFile)
+				}
+				return true
+			}
 			loop, ok := node.(*ast.ForStmt)
 			if !ok || loop.Init == nil {
 				return true

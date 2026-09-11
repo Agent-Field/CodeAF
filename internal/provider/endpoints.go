@@ -615,65 +615,13 @@ const maxFallbackModels = 2
 // The relaxation rungs stay exactly where they were. They are about the request
 // and nobody above this layer can compose one.
 
-// recoverFromRefusal climbs the relaxation ladder, narrating each rung, and ends
-// in an error a person can act on.
-//
-// The first attempt has already happened and been refused — its body is `first`
-// — so every attempt this function makes is numbered from one as a RETRY, which
-// is what the line says.
-func (c *Client) recoverFromRefusal(
-	ctx context.Context,
-	request *ai.Request,
-	knobs callKnobs,
-	stream bool,
-	first []byte,
-) (*http.Response, error) {
-	model := c.modelFor(request)
-	plan := c.relaxationPlan(request, knobs, model)
-	total := len(plan)
-	if total == 0 {
-		return nil, c.refusalError(request, knobs, model, nil, 1, first)
-	}
-
-	last := first
-	stripped := make([]string, 0, len(plan))
-	attempt := 0
-
-	// The relaxations ACCUMULATE. Each rung is climbed on top of the last,
-	// because the refusal never says which field it objected to — a body that
-	// still carries the reasoning knob has not tested whether dropping the
-	// output cap was enough.
-	relaxed := knobs
-	for _, step := range plan {
-		attempt++
-		// THE MEMO FOLLOWS THE SECOND REFUSAL. Reaching this rung means the
-		// endpoint-membership retry, when there was one, was refused under the
-		// original price ceiling too. That is evidence the ceiling must come off;
-		// the first refusal alone could have been caused by any membership field.
-		if step.bit == relaxPriceCeiling && c.velocity != nil {
-			c.velocity.refuseCeiling(model)
-		}
-		relaxed.relaxed |= step.bit
-		stripped = append(stripped, step.name)
-		Emit(ctx, StreamNotice, fmt.Sprintf("Retry %d/%d: %s", attempt, total, step.label))
-		// AND THE PHASE CLOCK CARRIES THE SAME RUNG, so the status line says
-		// "trying again · 2 of 6" while the notice above says which knob went.
-		// It is the same fact at two grains and it is stated once, here, from
-		// the same pair of numbers (phase.go).
-		notePhase(ctx, c.modelFor(request), PhaseRetrying,
-			ordinalOf(attempt, total), c.clock(), time.Time{}, "")
-		response, payload, err := c.attemptShaped(ctx, request, relaxed, stream)
-		if err != nil {
-			return nil, err
-		}
-		if response != nil {
-			return response, nil
-		}
-		last = payload
-	}
-
-	return nil, c.refusalError(request, knobs, model, stripped, attempt+1, last)
-}
+// THE LADDER ITSELF IS THE DISPATCHER'S (dispatch.go's
+// [Client.recoverFromRefusal]). What stays here is the DATA it climbs — which
+// rungs this request has, in which order, spelled how — because that is a fact
+// about the request's shape and the encoder is the only layer that knows it. The
+// walk moved because a second loop counting its own rungs is a second budget,
+// which is the shape docs/design/recovery/DESIGN.md §4 deleted: the rungs reach
+// [control.Next] as [control.Plan.Shapes] and come back one at a time.
 
 // widenPastTheUncarriedPreference is the ONE retry that finds out whether a
 // base's 400 was about the `provider` field at all — and it is the ANSWER to

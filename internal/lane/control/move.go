@@ -147,6 +147,50 @@ func (l *MoveLog) Add(move Move) bool {
 	return true
 }
 
+// Release gives a claim back, and it is for the one thing [Add] is also used
+// for: RESERVING a machine before anything has been sent to it.
+//
+// A RACE CLAIMS BEFORE IT PRICES (internal/provider's hedge.go). Two arms
+// deciding at the same instant must not both take the last machine, so the claim
+// is taken under the log's own lock and the purse is asked afterwards — and a
+// purse that says no leaves a machine written down as tried that nothing was
+// ever sent to. That is a lie to [Next], which would skip it, so it is taken
+// back here. Nothing else may call this: a move that reached the wire is a fact
+// and facts are not withdrawn.
+func (l *MoveLog) Release(move Move) {
+	if l == nil || move.Kind == MoveNone {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for index := len(l.moves) - 1; index >= 0; index-- {
+		if l.moves[index].sameAs(move) {
+			l.moves = append(l.moves[:index], l.moves[index+1:]...)
+			return
+		}
+	}
+}
+
+// Tried reports whether this question has already been sent to a machine, in any
+// shape. It is the claim half of [Add] asked as a question — what a race needs
+// to know before it offers a machine to an arm — and it reads the same log the
+// dispatcher's own walk reads, which is the whole of why two arms cannot take
+// one machine.
+func (l *MoveLog) Tried(lane string) bool {
+	lane = strings.TrimSpace(lane)
+	if l == nil || lane == "" {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, made := range l.moves {
+		if strings.EqualFold(made.Lane, lane) {
+			return true
+		}
+	}
+	return false
+}
+
 // List is a copy of what has been tried, in the order it was tried.
 func (l *MoveLog) List() []Move {
 	if l == nil {
@@ -195,30 +239,39 @@ func Next(plan Plan, history []Move) Move {
 	shape := shapeReached(history)
 	for {
 		candidates := plan.serving()
-		// 0. AN OPEN SET HAS ANOTHER MACHINE UNTIL THE DEADLINE SAYS OTHERWISE.
-		// Nobody named the pool, so the router picks — and each body carries a
-		// longer exclusion list than the last, which is what makes the next send
-		// a different request rather than the same one. There is nothing here to
-		// walk and nothing to run out of, so the deadline is the whole bound.
-		if len(candidates) == 0 {
-			return Move{Kind: MoveMachine, Model: plan.Model, Shape: shape}
-		}
-		// 1. ANOTHER MACHINE. The head of the choice first, then the frontier's
-		// own order, which is already best-belief-first.
-		for _, lane := range candidates {
-			move := Move{Kind: MoveMachine, Model: plan.Model, Lane: lane, Shape: shape}
-			if !made(history, move) {
-				return move
+		// 0. A REFUSAL ABOUT THE SHAPE HAS ALREADY ANSWERED FOR EVERY MACHINE.
+		// The router read our own bytes and said no endpoint can serve them, so
+		// walking machines would buy the identical sentence from each of them;
+		// the only move such a refusal earns is the rung below
+		// ([Plan.ShapeRefused] says where that is known).
+		if !plan.ShapeRefused {
+			// 0a. AN OPEN SET HAS ANOTHER MACHINE UNTIL THE DEADLINE SAYS
+			// OTHERWISE. Nobody named the pool, so the router picks — and each
+			// body carries a longer exclusion list than the last, which is what
+			// makes the next send a different request rather than the same one.
+			// There is nothing here to walk and nothing to run out of, so the
+			// deadline is the whole bound.
+			if len(candidates) == 0 {
+				return Move{Kind: MoveMachine, Model: plan.Model, Shape: shape}
 			}
-		}
-		// 2. THE SAME MACHINE, ONCE, AND ONLY WHEN IT IS ALONE. A set one
-		// machine wide has no other machine for the next body to go to — a
-		// person's strict pin, a rescue's demand, an account-wide hold — so the
-		// comeback the machine named itself is the only legal repeat there is.
-		if len(candidates) == 1 && plan.Comeback > 0 && !madeKind(history, MoveWait) {
-			return Move{
-				Kind: MoveWait, Model: plan.Model, Lane: candidates[0],
-				Shape: shape, Wait: plan.Comeback,
+			// 1. ANOTHER MACHINE. The head of the choice first, then the
+			// frontier's own order, which is already best-belief-first.
+			for _, lane := range candidates {
+				move := Move{Kind: MoveMachine, Model: plan.Model, Lane: lane, Shape: shape}
+				if !made(history, move) {
+					return move
+				}
+			}
+			// 2. THE SAME MACHINE, ONCE, AND ONLY WHEN IT IS ALONE. A set one
+			// machine wide has no other machine for the next body to go to — a
+			// person's strict pin, a rescue's demand, an account-wide hold — so
+			// the comeback the machine named itself is the only legal repeat
+			// there is.
+			if len(candidates) == 1 && plan.Comeback > 0 && !madeKind(history, MoveWait) {
+				return Move{
+					Kind: MoveWait, Model: plan.Model, Lane: candidates[0],
+					Shape: shape, Wait: plan.Comeback,
+				}
 			}
 		}
 		// 3. A RELAXED SHAPE, ONE RUNG, and then the machines are all admissible

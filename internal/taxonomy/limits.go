@@ -14,13 +14,23 @@ import "time"
 // hands them down; this package never reads a profile and never names an
 // environment variable.
 type Limits struct {
-	// TransportAttempts is N: how many tries one request gets on its own tier
-	// before the transport policy gives up on it. It is the TOTAL, first attempt
-	// included, so 3 is one try and two retries.
-	TransportAttempts int
+	// Patience is how much of a role's own give-up the person wants spent on one
+	// request before the harness moves on: 1 is the measured figure
+	// (`lane.Role.GiveUp`), 3 is three times as long.
+	//
+	// IT WAS A COUNT OF SENDS AND IT IS A MULTIPLIER ON A DEADLINE. `N attempts`
+	// bounded nothing after docs/design/recovery/DESIGN.md §4 — the transport
+	// under it already stopped at the plan's deadline, so a person who asked for
+	// eight tries bought eight identical requests inside the same ninety seconds
+	// and a number that multiplied the one below it. The intent behind the knob
+	// is patience, and patience is TIME; this is that intent, read honestly, on
+	// the one figure that really ends a call. A person still spells it
+	// `response.attempts` (internal/config), because it is still the same
+	// question: how hard should this try before it tells me it could not.
+	Patience float64
 
-	// TransportBackoff is the first wait. Each further attempt doubles it, so
-	// this one number is the whole schedule.
+	// TransportBackoff is the first wait. Each further wait doubles it, so this
+	// one number is the whole schedule.
 	TransportBackoff time.Duration
 
 	// SemanticFailures is K: how many checks must read the finished work and
@@ -34,15 +44,16 @@ type Limits struct {
 	TierCapUSD float64
 }
 
-// The floors. They are what a caller that resolved nothing still gets: three
-// attempts on the wire doubling from one second, and a stronger tier bought on
-// the first measured failure.
+// The floors. They are what a caller that resolved nothing still gets: the
+// role's own patience on the wire with a wait doubling from one second, and a
+// stronger tier bought on the first measured failure.
 //
-// THE WIRE PAIR WAS FOUR AND TWO SECONDS and both came down on 2026-09-10, for
-// the reason each of them now states: the fourth attempt was blind and the
-// waiting was latency a person paid for a machine that was never going to
-// answer. The tier pair is untouched and is still exactly the behaviour this
-// build already had.
+// THE WIRE'S COUNT IS GONE ALTOGETHER (docs/design/recovery/DESIGN.md §4). It
+// was four attempts doubling from two seconds until 2026-09-10 and three from
+// one second after it; what bounds the wire now is the plan's deadline, which is
+// the role's give-up scaled by [Limits.Patience], and the only number left here
+// about the wire is how long to wait before the next move. The tier pair is
+// untouched and is still exactly the behaviour this build already had.
 //
 // K FLOORS AT ONE, WHICH IS NOT WHERE THE BILL CAME FROM. The argument for
 // buying on the first finding is a good one and it is written out in
@@ -53,27 +64,24 @@ type Limits struct {
 // person who wants the tier held back further raises this; the default changes
 // nothing about a harness that is working.
 const (
-	// DefaultTransportAttempts is three: one try, one repeat, and then the move.
+	// DefaultPatience is one: the role's own measured give-up and not a second
+	// of anybody's guess on top of it.
 	//
-	// IT WAS FOUR, AND THE FOURTH WAS SPENT BLIND. A transport fault is the
-	// network on this machine far more often than it is the far end — the call
-	// census of 2026-09-10 puts the whole network family at 6.8% of failures —
-	// and the chains it produced re-sent into a dead resolver rather than
-	// waiting for it: three `no such host` chains ran 1,113s, 1,005s and 787s
-	// and answered nothing. The origin being unreachable is already owned by
-	// the connectivity gate (internal/provider's connectivity.go), which probes
-	// the real origin, says so on the phase pipe while it waits, and gives up
-	// after its own window. A fourth blind re-send buys nothing that gate does
-	// not buy better, and it spends the turn's ninety seconds
-	// ([lane.TurnGiveUp]) doing it.
-	DefaultTransportAttempts = 3
+	// IT WAS THREE, AND IT WAS A COUNT. `DefaultTransportAttempts = 3` was one
+	// try and two repeats of a request that the transport under it was already
+	// bounding by a deadline, so the three multiplied a figure the person could
+	// be told (`lane.TurnGiveUp`, ninety seconds, measured) by one they could
+	// not. The whole argument for keeping the wire's own patience short survives
+	// in the [DefaultTransportBackoff] below and in internal/provider's
+	// connectivity gate, which is what really owns an origin that is not there.
+	DefaultPatience = 1.0
 	// DefaultTransportBackoff is one second, doubling: 1s, 2s.
 	//
-	// IT WAS TWO, and at four attempts that was eight seconds of a ninety-second
-	// turn spent asleep before anything had moved. The wait exists to let a
-	// rate window drain, which is a claim about the machine that refused; when
-	// the next move is a DIFFERENT machine there is nothing to drain and the
-	// sleep is pure latency the person pays for.
+	// IT WAS TWO, and at the four attempts of the time that was eight seconds of
+	// a ninety-second turn spent asleep before anything had moved. The wait
+	// exists to let a rate window drain, which is a claim about the machine that
+	// refused; when the next move is a DIFFERENT machine there is nothing to
+	// drain and the sleep is pure latency the person pays for.
 	DefaultTransportBackoff = time.Second
 	// DefaultSemanticFailures is one. See above.
 	DefaultSemanticFailures = 1
@@ -102,8 +110,8 @@ const (
 // that wants to stop retrying sets the count to one, and one that wants a short
 // ladder sets a short backoff.
 func (l Limits) floor() Limits {
-	if l.TransportAttempts < 1 {
-		l.TransportAttempts = DefaultTransportAttempts
+	if l.Patience < 1 {
+		l.Patience = DefaultPatience
 	}
 	if l.TransportBackoff <= 0 {
 		l.TransportBackoff = DefaultTransportBackoff

@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -66,8 +65,12 @@ func TestATransportRetryReplacesTheVisiblePartialAnswer(t *testing.T) {
 	if retry.Retry.Next != "" {
 		t.Errorf("an ordinary retry said it was moving to %q", retry.Retry.Next)
 	}
-	if retry.Retry.Attempt != 1 || retry.Retry.Attempts != taxonomy.DefaultTransportAttempts {
-		t.Errorf("the retry reads %d of %d, want the first of the whole ladder",
+	// AND THE DENOMINATOR IS NOTHING, WHICH IS THE POINT. A wire failure is
+	// bounded by the turn's deadline and not by a count, so there is no "of how
+	// many" to say — and a surface draws `2 of 4` only when it has both halves
+	// (internal/tui3's failureCountWord). Unknown renders as nothing.
+	if retry.Retry.Attempt != 1 || retry.Retry.Attempts != 0 {
+		t.Errorf("the retry reads %d of %d, want the first of a ladder with no length",
 			retry.Retry.Attempt, retry.Retry.Attempts)
 	}
 	if !strings.Contains(retry.Retry.Reason, "connection") {

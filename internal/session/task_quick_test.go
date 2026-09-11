@@ -717,6 +717,9 @@ func TestAQuickTaskWhoseTurnEndsOnAnErrorLandsRatherThanHanging(t *testing.T) {
 	completer.lane("ERRAND-SIDE", worker...)
 
 	agent, graph, _ := quickAgent(t, completer)
+	// AND THE WORKER'S LADDER IS SPENT ON THE TEST'S CLOCK: what ends it is the
+	// node's own give-up, which is minutes of a person's time ([onATestClock]).
+	onATestClock(t)
 	collect(t, mustSubmit(t, agent, "read the ledger for me"))
 	node := quickNodeSaying(t, graph, "ERRAND-SIDE")
 	waitDoneNode(t, node)
