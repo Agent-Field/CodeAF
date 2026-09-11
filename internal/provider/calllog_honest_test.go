@@ -171,6 +171,16 @@ func TestAFailedAttemptCarriesWhatItCost(t *testing.T) {
 // state the law; a law kept by every path remembering to keep it has one
 // counter-example per exit, so the transport now closes what it opened
 // (calllog.go's [callTrace.open]).
+//
+// IT IS A LAW ABOUT THE SETTLED LOG AND NOT ABOUT ONE INSTANT. A race the caller
+// abandoned answers that caller at once and keeps its account behind them
+// ([hedgeRace.accountForTheAbandoned]), so for a few milliseconds after a
+// cancelled call returns there really is a start row with nothing under it. That
+// is the trade and it is deliberate: the caller of a cancelled race is a person
+// who has just typed a correction, and the drain used to cost them the whole of
+// [lane.SpokenWithin]. So the tally is taken once the arms have reported —
+// bounded by [abandonGrace], which is what bounds the accounting itself — and
+// every other clause of the law is unchanged and asserted exactly as it was.
 func TestEveryStartRowGetsARowUnderIt(t *testing.T) {
 	for _, scene := range []struct {
 		name  string
@@ -225,17 +235,36 @@ func TestEveryStartRowGetsARowUnderIt(t *testing.T) {
 			// scenes is allowed to fail, and three of them are meant to.
 			_, _ = rig.client.CompleteWithMessages(scene.ask(t, rig), userMessages("hello"))
 
-			started, finished := map[string]int{}, map[string]int{}
-			for _, row := range read() {
-				if row.ID == "" {
-					continue
+			tally := func() (map[string]int, map[string]int) {
+				started, finished := map[string]int{}, map[string]int{}
+				for _, row := range read() {
+					if row.ID == "" {
+						continue
+					}
+					if row.Phase == "start" {
+						started[row.ID]++
+						continue
+					}
+					finished[row.ID]++
 				}
-				if row.Phase == "start" {
-					started[row.ID]++
-					continue
-				}
-				finished[row.ID]++
+				return started, finished
 			}
+			// Settled, not instantaneous — see the law above. A scene whose rows
+			// were all written before the call returned satisfies this on the
+			// first look and pays nothing for it.
+			waitFor(t, func() bool {
+				started, finished := tally()
+				if len(started) == 0 {
+					return false
+				}
+				for id := range started {
+					if finished[id] == 0 {
+						return false
+					}
+				}
+				return true
+			})
+			started, finished := tally()
 			if len(started) == 0 {
 				t.Fatal("nothing went out at all, so this scene proves nothing")
 			}

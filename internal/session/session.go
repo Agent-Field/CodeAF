@@ -377,6 +377,8 @@ const (
 	// It fires when the stream guard cut a request (internal/provider's
 	// streamguard.go): the endpoint went quiet, or the reply stopped being
 	// language. It also fires when a transport failure is about to be retried.
+	// A rescue taking over a visible answer on another machine serving the same
+	// model fires it too (internal/provider's hedge.go).
 	// The turn loop discards that attempt's partial text, its early reads and
 	// its half-arrived calls before the next request, so A SURFACE MUST THROW
 	// AWAY WHAT IT DREW FOR THEM TOO — everything after the last thing the person
@@ -2613,10 +2615,12 @@ type Agent struct {
 	// taken while holding this lock would be an id nothing outside a locked
 	// section could ask for.
 	steerSeq atomic.Uint64
-	// askSeq and askWaits are the model question lane's identity and wait. The
-	// question words remain in questionWords; this map holds only who is parked.
-	askSeq   atomic.Uint64
-	askWaits map[uint64]chan Answer
+	// askSeq names the questions the model puts, and asked is what this session
+	// is parked on while they stand — one type with the three endings a parked
+	// ask has in it (askwait.go). The question words remain in questionWords;
+	// this holds only who is waiting.
+	askSeq atomic.Uint64
+	asked  askedOfThePerson
 	// taskNotes counts the reports this agent's OWN sub-tasks have handed over
 	// that no request has carried yet, and taskNews is the generation channel
 	// closed each time one lands. They exist for one reader — the runner holding

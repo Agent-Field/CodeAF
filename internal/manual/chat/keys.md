@@ -41,7 +41,8 @@ Typing is never blocked. The box works normally while an answer streams.
 
 `enter` while a turn is running steers. Your words appear at once as a line of your
 own in the transcript. A short dim clause beneath says where they landed, such as
-`stopped the reply here`, `kept running as job 3`, or `waiting for the running step`.
+`stopped the reply here`, `kept running as job 3`, `took this instead of the question`,
+or `waiting for the running step`.
 
 If text or reasoning is streaming, aforge cancels that one model request, keeps the
 partial answer it actually received, and continues the **same turn** with your words
@@ -121,8 +122,9 @@ the conversation is reopened from disk.
 `stopped the reply here` when the reply in flight was cut for it, `stopped the running
 command` when your words plainly told a long command to stop, `kept bash running as job 3`
 (or `…as jobs 3, 4`) when a long command was moved to the background so your correction
-could land, and `waiting for the running step` when a short tool is being allowed to
-finish first. The clause goes when the model is actually given the words; the position of
+could land, `took this instead of the question` when a question was standing and your
+sentence answered it instead, and `waiting for the running step` when a short tool is
+being allowed to finish first. The clause goes when the model is actually given the words; the position of
 the line is what says where they went from then on.
 
 This is the key for the moment you are watching an answer go the wrong way and you do not
@@ -1745,7 +1747,7 @@ the tab you are in. See *Conversation tabs* and
 | `enter` / click a row | Open that conversation |
 | `→` | Open the fold — every other conversation on this machine |
 | `←` | Fold them away again |
-| `ctrl+w` | Dismiss the conversation under the cursor from this window's tab row. If it is working you are asked once — `keep running`, `stop work` or `cancel` — and the conversation goes on running unless you chose to stop it. See *Closing a tab* on the screen page |
+| `ctrl+w` | Dismiss the conversation under the cursor from this window's tab row. An open row that is not the conversation you are in is dismissed at once with no question, and the card says `tab closed · <the conversation's name>`. Only the conversation you are in raises `keep running` / `stop work` / `cancel` when it is working. A row that is not open in this window answers `that one is not open here — enter opens it`. See *Closing a tab* on the screen page |
 | `esc` | Take it all back: the card goes and you are in the conversation you started from, however many presses ago that was |
 | any other key | While the card is fading, it is typing — the card goes and the key lands in your message. On the holding card it puts the card away and is swallowed |
 
@@ -1775,6 +1777,7 @@ Every row says **what changed since you last looked**, not what the conversation
 | The row says | What happened |
 | --- | --- |
 | `asking you something` | it is waiting on you — a question or an approval |
+| `working` | something is turning in it — a reply, a task node, or a background command — and it wears `◐` |
 | `3 tasks running` | that many pieces of work are turning in it right now |
 | `it finished while you were away` | a turn ended in there after you left |
 | `nothing new` | it has been quiet since you left it |
@@ -1786,6 +1789,10 @@ Every row says **what changed since you last looked**, not what the conversation
 Then the project it is in and how long ago you left it. That is what makes the switcher
 double as the catch-up: after twenty minutes in one chat, one key says what the other seven
 did.
+
+The mark on each row is the mark on that conversation's tab, taken from the same reading.
+That includes `you are here`: work in the conversation in front wears `◐`, and a question
+there wears `?`, without replacing the note that says where you are.
 
 The card is **frozen the moment it opens**. A conversation that finishes a turn while you
 are looking at the card does not re-rank the list under your finger.
@@ -2014,7 +2021,9 @@ starts a new one in that row's folder, though `enter` on a row of the `projects`
 the way home offers now. On a standing item's row — in `needs you` while it asks, in
 `running` while it fires — **`ctrl+e` pauses** it, **`ctrl+x` stops it for good**, and
 **`ctrl+v` raises how hard that item thinks** one rung. Each chord acts on the row under
-your pointer when there is one, the cursor's row otherwise.
+your pointer when there is one, the cursor's row otherwise. The machine's own default is
+not on this chord — it is the `thinking` row of `/settings`, and *ctrl+v — how hard the
+thing you are looking at thinks* says why.
 
 With the mouse: a click puts the cursor on a row and a second click on that row opens it.
 The wheel walks the list three rows a turn, and the **tab bar above the panels is a
@@ -2779,11 +2788,15 @@ reaches the **tab bar** now, so that card is gone. To change how hard this machi
 default, open `/settings` and walk to the **`thinking`** row, which is the setting both
 roads always wrote.
 
-**It climbs and it wraps.** Each press goes one rung up, and `max` wraps back to `low`. It
-never returns to "nobody said" — clearing a rung hands the work back to whatever stands
-over it, which is a decision rather than something a wheel does on its way past. Set a
-thing back to nothing by name instead: `/effort auto` or the top row of `/effort` for this
-conversation, and the `thinking` row's own `auto` for the machine.
+**It climbs, and what happens off the top is the scope's own answer.** Each press goes one
+rung up. A conversation's rung and a standing item's rung wrap from `max` back to `low` and
+never return to "nobody said" — clearing one hands the work back to whatever stands over
+it, which is a decision rather than something a wheel does on its way past. Clear the
+conversation with `/effort auto` or the top row of `/effort`; clear an item where its rung
+is written down.
+A task's rung, and the level `ctrl+t` dials onto one model in `/model`, come back to `auto`
+off the top instead, because the surface is the only door that sets either and so has to be
+the door that clears them.
 
 **The rung reads as a quiet clause where the thing already states its facts.** A task's is
 under `Task setup` (or `Next run setup` after it settles) in the expanded

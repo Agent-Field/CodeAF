@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -1434,8 +1435,8 @@ func (p *picker) entryText(at int, width int, level func(string) string) (string
 		}
 		return p.rowText(model, dial, width)
 	case laneAutoAt:
-		// THE NAME ON THIS ROW IS THE CHOOSER'S AND NOT THE SORT'S. "auto picks
-		// the fastest lane each answer — coreweave now" is a claim about where
+		// THE NAME ON THIS ROW IS THE CHOOSER'S AND NOT THE SORT'S. "auto weighs
+		// speed against price each answer — coreweave now" is a claim about where
 		// the NEXT REQUEST would go, and only the chooser answers that; the
 		// order the rows are drawn in is this file's own reading of the same
 		// beliefs and is allowed to differ.
@@ -1492,7 +1493,7 @@ func (p *picker) mark(filled bool) string {
 // laneAutoNote is what the auto row says it does. It is a sentence and not a
 // word because it is the row a person will land on first and the one they will
 // leave alone: what it is FOR has to be on it.
-const laneAutoNote = "picks the fastest lane each answer"
+const laneAutoNote = "weighs speed against price each answer"
 
 // laneUnmeasured is the one line a fold draws in the machines' place when
 // nothing behind the model has been measured. It is a sentence a person would
@@ -1579,10 +1580,13 @@ func (p *picker) rowFields(model Model, pin string) []rowField {
 
 // ── reasoning strength, from the row it belongs to ──────────────────────────
 //
-// ctrl+t walks the model under the cursor through off → low → medium → high →
-// off. The level is stored ON THE AGENT, per model id (internal/session's
-// agent.go), which is what makes it survive the picker closing, a switch away
-// and a switch back — and what makes /new forget it, since /new is a new agent.
+// ctrl+t walks the model under the cursor through auto → low → medium → high →
+// xhigh → max → auto. It is the SAME walk a task's own thinking control takes,
+// and auto is absence: the model is handed back to whatever stands below its
+// per-model pin. The level is stored ON THE AGENT, per model id
+// (internal/session's agent.go), which is what makes it survive the picker
+// closing, a switch away and a switch back — and what makes /new forget it,
+// since /new is a new agent.
 //
 // IT IS ctrl+t AND NOT t. The filter box takes every printable key, and a bare
 // t would mean nobody could type "sonnet", "mistral" or "gpt" into a list whose
@@ -1594,20 +1598,15 @@ func (p *picker) rowFields(model Model, pin string) []rowField {
 // would be a 400 at the next turn, and refusing to offer it is how the surface
 // declines to sell something the endpoint will not honour.
 
-// reasoningCycle is the walk, in order. The empty level leads it because off is
-// where every model starts and where the cycle comes back to.
-var reasoningCycle = []string{"", "low", "medium", "high"}
-
 // nextReasoning is the level after this one, wrapping.
 func nextReasoning(level string) string {
-	for at, step := range reasoningCycle {
-		if step == level {
-			return reasoningCycle[(at+1)%len(reasoningCycle)]
-		}
+	rung, known := effort.Parse(level)
+	if !known {
+		// A level from a build that knew a word this one does not resolves to
+		// absence, which is the one answer that cannot surprise anybody.
+		return effort.None.String()
 	}
-	// A level from somewhere this surface does not know about resolves to off,
-	// which is the one answer that cannot surprise anybody.
-	return ""
+	return effortNextClearing(rung).String()
 }
 
 // The level a model is held at is read through [app.reasoningFor], which lives

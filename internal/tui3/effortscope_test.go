@@ -168,8 +168,8 @@ func itemHome(t *testing.T) (*app, *effortBand) {
 func TestAStandingItemsCardStatesItsRungAndCtrlVMovesIt(t *testing.T) {
 	a, band := itemHome(t)
 
-	// A SENTINEL SAYS NOTHING UNTIL SOMEBODY RAISES IT. Its firings run on the
-	// standing floor and "nobody said" is not a rung to print.
+	// A SENTINEL SAYS NOTHING UNTIL SOMEBODY RAISES IT. Its firings ask for no
+	// rung at all, and "nobody said" is not a rung to print.
 	subject, ok := a.homeSubject()
 	if !ok || subject.kind != bandKindItem {
 		t.Fatalf("the cursor is not on an item: %+v", subject)

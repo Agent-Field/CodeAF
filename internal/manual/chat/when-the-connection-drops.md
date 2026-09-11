@@ -6,8 +6,13 @@ Check which connection the message names. `waiting for connection` means a
 model request could not connect before it was sent. aforge checks reachability
 and waits for up to two minutes, subject to the request's own deadline. You can
 cancel the wait. When the endpoint becomes reachable, the request continues;
-the outage does not spend its generation retries or teach a slower provider
+the outage does not move to another serving machine or teach a slower provider
 speed. This recovery does not replay a request already accepted by the model.
+If the check answers but the request still cannot go out, aforge waits a little
+longer before each further try and then says `connection is still unavailable;
+try again when connected`. A picture, video, speech or transcription request
+shows `waiting for connection` against the model it asked for, just as a chat
+reply does.
 
 For a chat opened with `--host`, a lost link to the other machine has a separate
 reconnection policy: the surface redials for up to five minutes. Your draft
@@ -15,9 +20,18 @@ stays local and the far machine keeps the conversation journal. If redialling
 ends, run the same command to reopen that conversation. The sections below
 explain what happens to a reply that was still arriving.
 
-## My wifi died in the middle of a reply
+## My wifi died in the middle of a reply — the internet dropped mid-answer, my connection went down while it was replying
 
-The surface redials the machine by itself. You do not have to do anything.
+Which connection went down is the whole answer. An ordinary chat on this machine has no
+second-machine link to redial. If its model request could not connect before it was sent,
+the line says `waiting for connection` and the two-minute recovery described above applies.
+If a model stream that was already writing breaks instead, the request follows the ordinary
+failure ladder: the conversation says `the request failed — asking again` and the live line
+says `trying again` while it waits. A conversation opened with `--host` has a second
+connection, and that link to the other machine is the one the surface redials for up to five
+minutes.
+
+Over `--host`, the surface redials the machine by itself. You do not have to do anything.
 
 A conversation opened with `--host` runs on the other machine; the link between the two is
 the only part a café's wifi, a VPN flap or a sleeping laptop can take away. When the link

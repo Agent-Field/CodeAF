@@ -60,11 +60,59 @@ func (a *Agent) retainedDelivery(n *TaskNode, changed []string, branch, merge st
 		for _, path := range changed {
 			args = append(args, ":(literal)"+path)
 		}
-		if _, err := git(root, args...); err == nil {
+		if _, err := git(root, args...); err == nil && anythingToCompare(root, branch, changed) {
 			return ""
 		}
 	}
 	return branch
+}
+
+// Git diff --quiet cannot tell identical content from pathspecs that matched
+// nothing. THE CHANGED LIST IS A CLAIM, NOT A RECEIPT: TaskNode.finish records
+// it without reconciliation, and taskTree.comeHome discards the paths that
+// commitTaskWork actually saved. Work reported as still on a branch costs a
+// person one look; work reported as delivered when it is not costs them the
+// work, so an unreadable or empty comparison stays retained.
+//
+// The two commands read the two sides the diff itself compares — what the kept
+// branch carries, and what the workspace tracks — and both take the pathspecs
+// the diff took, so all three readings agree on what a path means.
+func anythingToCompare(root, branch string, changed []string) bool {
+	branchArgs := []string{"ls-tree", "-r", "-z", "--name-only", "refs/heads/" + branch, "--"}
+	workspaceArgs := []string{"ls-files", "-z", "--"}
+	wanted := make(map[string]bool, len(changed))
+	for _, path := range changed {
+		pathspec := ":(literal)" + path
+		branchArgs = append(branchArgs, pathspec)
+		workspaceArgs = append(workspaceArgs, pathspec)
+		wanted[strings.TrimSpace(path)] = true
+	}
+	branchNames, branchErr := git(root, branchArgs...)
+	if namesOne(wanted, branchNames, branchErr) {
+		return true
+	}
+	workspaceNames, workspaceErr := git(root, workspaceArgs...)
+	return namesOne(wanted, workspaceNames, workspaceErr)
+}
+
+// namesOne reports whether one of git's NUL-separated listings actually holds a
+// path that was asked about.
+//
+// IT MATCHES A NAME AND NOT MERE OUTPUT, because [git] hands back what the
+// command wrote to BOTH streams: a warning on stderr would otherwise read as a
+// file that exists, which is the exact reading this guard was written to refuse.
+// A command that failed at all answers no — a repository that cannot be read is
+// not a repository that has been shown to hold the work.
+func namesOne(wanted map[string]bool, out string, err error) bool {
+	if err != nil {
+		return false
+	}
+	for _, name := range strings.Split(out, "\x00") {
+		if wanted[strings.TrimSpace(name)] {
+			return true
+		}
+	}
+	return false
 }
 
 // Empty receipts stay absent; historical declarations are evidence, not new

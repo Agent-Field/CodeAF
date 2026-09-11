@@ -294,6 +294,10 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	attempts := 0
 	var recoveryCtx context.Context
 	reconnected := false
+	// connectionPasses chooses the backoff after a reachability check answered
+	// but the send still failed. It is not a budget: [control.Plan.Deadline] is
+	// the one thing that ends this call, exactly as it is for every other fault.
+	connectionPasses := 0
 	// moved says the last attempt took a machine OFF the next body, so the next
 	// send is a different request to a different machine and owes nobody a wait.
 	// See the branch it governs below: a backoff is what we pay to ask the same
@@ -363,11 +367,20 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			if plan.Spent(spentAt()) {
 				break
 			}
-			// A billing-door switch is already the move this attempt owes. It must
-			// reach the authorised address before the endpoint controller is asked
-			// for another move; otherwise a plan pause could be turned into a lane
-			// walk or an early end without ever trying the metered door.
-			if !switchedDoor {
+			// TWO PASSES ALREADY OWE THE MOVE THEY ARE MAKING, and neither may ask
+			// the generator for a second one.
+			//
+			// A billing-door switch is one: it must reach the authorised address
+			// before the endpoint controller is asked for another move, or a plan
+			// pause could be turned into a lane walk or an early end without ever
+			// trying the metered door.
+			//
+			// A reachability check that answered after a pre-send failure is the
+			// other: it names no machine and earns no routing move. The next send
+			// stays on this road; after the first recovered pass it pays the
+			// ordinary fault backoff below. Everything else asks the one move
+			// generator as before.
+			if !switchedDoor && !reconnected {
 				// What the last refusal asked us to wait, which is the one input the
 				// move generator needs that changes between moves.
 				plan.Comeback = providerWait
@@ -395,8 +408,34 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		if attempt > 0 && switchedDoor {
 			// A BILLING-DOOR SWITCH IS NEITHER A RECONNECTION NOR A RETRY. The
 			// person's opt-in already chose the next address, so it goes out at once
-			// and the phase clock's door is the only status change owed here.
+			// and the phase clock's door is the only status change owed here. It is
+			// asked BEFORE the recovered-pass branch below for exactly that reason:
+			// a door switch that fell through to it would be narrated as recovering
+			// from a dropped connection and would sit out a backoff it does not owe.
 			providerWait = 0
+		} else if attempt > 0 && reconnected && connectionPasses > 1 {
+			// THE FIRST RECOVERED PASS IS IMMEDIATE. Every later one means the
+			// check answered while the request itself still could not leave, which
+			// is another fault and pays the same growing pause as every other one.
+			// The wait is charged to the plan even when a test makes waiting free,
+			// so a fast-answering portal cannot make the deadline unreachable.
+			delay := backoffFor(connectionPasses-1, 0)
+			if left := plan.Left(spentAt()); left > 0 && delay > left {
+				delay = left
+			}
+			now := c.clock()
+			notePhase(ctx, c.modelFor(request), PhaseRetrying,
+				"", now, now.Add(delay), "")
+			waitBegan := dispatchNow()
+			if err := c.wait(ctx, delay); err != nil {
+				return nil, err
+			}
+			if took := dispatchNow().Sub(waitBegan); took < delay {
+				owed += delay - took
+			}
+			if plan.Spent(spentAt()) {
+				break
+			}
 		} else if attempt > 0 && !reconnected && moved {
 			// A MOVE IS NOT A WAIT. The last attempt excluded the machine that
 			// refused it, so the body about to go out is a different request to a
@@ -558,10 +597,15 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				}
 				// A DNS or dial failure precedes accepted generation. Wait for
 				// the origin, not another provider behind that same origin. The
-				// whole recovery is bounded even if connectivity keeps flapping.
+				// dispatcher plan remains the one bound when the check answers but
+				// the send still fails.
 				if recoveryCtx == nil {
 					var cancelRecovery context.CancelFunc
-					recoveryCtx, cancelRecovery = context.WithTimeout(ctx, connectionRecoveryWindow)
+					left := plan.Left(spentAt())
+					if left <= 0 {
+						return nil, &ConnectionUnavailableError{}
+					}
+					recoveryCtx, cancelRecovery = context.WithTimeout(ctx, left)
 					defer cancelRecovery()
 				}
 				if _, waitErr := c.waitConnection(recoveryCtx, c.modelFor(request), httpRequest.URL.String(), true); waitErr != nil {
@@ -573,12 +617,14 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 					}
 					return nil, waitErr
 				}
-				// Connectivity probes do not spend provider retries. A fresh
-				// connection gets the request immediately, without old backoff.
-				attempt--
+				// A healthy check does not spend a machine or a request-shape move.
+				// The first recovered pass is immediate; a further failure waits
+				// at the top of the next pass under this plan's deadline.
+				connectionPasses++
 				reconnected = true
 				continue
 			}
+			connectionPasses = 0
 			if c.handBack(ctx, knobs, "", false) {
 				return nil, lastErr
 			}
@@ -591,6 +637,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			// connection speed for the length of the deadline.
 			continue
 		}
+		connectionPasses = 0
 		potentialRateLimit := response.StatusCode == http.StatusTooManyRequests
 		// Error bodies can stall too. They are read below before a retry, so
 		// they need the same idle bound as successful streaming bodies.
@@ -844,6 +891,9 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// 429. `!rateLimited && attempt >= maxAttempts-1` was the last of the
 		// six budgets this loop owned; the plan is asked at the top of the next
 		// pass and answers for both.
+	}
+	if connectionPasses > 0 {
+		return nil, &ConnectionUnavailableError{}
 	}
 	if lastErr == nil {
 		lastErr = errors.New("request failed")

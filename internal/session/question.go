@@ -1256,9 +1256,25 @@ func (a *Agent) rememberQuestion(q Question) func() {
 func (a *Agent) claimQuestion(kind QuestionKind, token string, keep bool) (Question, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	q, said := a.questionWords[questionToken(kind, token)]
+	return a.claimQuestionLocked(kind, token, keep)
+}
+
+// claimQuestionLocked is that claim with a.mu ALREADY HELD, for a road that has
+// to take the words off the book in the same locked section as something else.
+//
+// THE ONLY SUCH ROAD IS A QUESTION THE PERSON TALKED PAST (steerquestion.go),
+// and it needs this for a reason worth stating: closing the `ask` channel makes
+// that lane runnable at once, and the lane's own defer withdraws whatever is
+// still standing with the sentence it uses when a turn simply moved on
+// ([questionGoneReason]). Two roads racing for one entry is a coin flip over
+// what the person reads about their own act. Claiming both the wait and the
+// words under one lock makes the loser provably find nothing, which is the rule
+// askwait.go already keeps for the channels.
+func (a *Agent) claimQuestionLocked(kind QuestionKind, token string, keep bool) (Question, bool) {
+	key := questionToken(kind, token)
+	q, said := a.questionWords[key]
 	if said && !keep {
-		delete(a.questionWords, questionToken(kind, token))
+		delete(a.questionWords, key)
 	}
 	return q, said
 }
@@ -1414,13 +1430,19 @@ func (a *Agent) checkQuestion(q Question) error {
 // [Agent.ResolveConsent]'s terms: the thing is already gone, and there is
 // nobody left to tell.
 func (a *Agent) WithdrawQuestion(kind QuestionKind, token, reason string) {
-	q, said := a.questionSaid(kind, token)
+	q, said := a.claimQuestion(kind, token, false)
 	if !said {
 		return
 	}
-	a.mu.Lock()
-	delete(a.questionWords, questionToken(kind, token))
-	a.mu.Unlock()
+	a.sayWithdrawn(q, reason)
+}
+
+// sayWithdrawn is the second half of a withdrawal: the sentence, said to every
+// surface drawing the row. It is separate from the claim because a road that
+// claimed the words under a lock it was already holding still owes the saying
+// once that lock is down (steerquestion.go), and there must not be two spellings
+// of what a withdrawal looks like.
+func (a *Agent) sayWithdrawn(q Question, reason string) {
 	q.Withdrawn = &Withdrawal{
 		Reason: strings.TrimSpace(reason),
 		By:     q.Asker.Kind,
@@ -1660,16 +1682,13 @@ func (a *Agent) applyToLane(answer Answer) error {
 	words := answer.Words()
 	switch answer.Kind {
 	case QuestionAsk:
+		// The delivery cannot block and the entry is the ownership, so this is
+		// one call under one lock rather than the read-unlock-send it was
+		// (askwait.go). An answer to an ask that has already ended finds nothing
+		// parked and is nothing to do.
 		a.mu.Lock()
-		wait := a.askWaits[answer.ID]
-		if wait != nil {
-			delete(a.askWaits, answer.ID)
-		}
+		a.asked.answerLocked(answer.ID, answer)
 		a.mu.Unlock()
-		if wait == nil {
-			return nil
-		}
-		wait <- answer
 		return nil
 	case QuestionConsent, QuestionTask, QuestionStanding:
 		if answer.Kind == QuestionStanding && key == "" && words != "" {
@@ -1922,10 +1941,7 @@ func (a *Agent) OpenQuestions() []Question {
 	var open []Question
 
 	a.mu.Lock()
-	modelAsks := make([]uint64, 0, len(a.askWaits))
-	for id := range a.askWaits {
-		modelAsks = append(modelAsks, id)
-	}
+	modelAsks := a.asked.openLocked()
 	consent := make([]uint64, 0, len(a.consent))
 	for id := range a.consent {
 		consent = append(consent, id)

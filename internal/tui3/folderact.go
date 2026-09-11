@@ -245,22 +245,21 @@ func (a *app) folderConfirm() tea.Cmd {
 		}
 		return nil
 	}
-	// AND A FOLDER CANNOT BE OFFERED ON A CONVERSATION THAT CANNOT HOLD ONE. The
+	// AND A FOLDER CANNOT BE OFFERED WHERE THE CONVERSATION CANNOT TAKE ONE. The
 	// browser opens for files either way ([app.openContextPick]), so this is the
-	// one place the two intents genuinely part: the refusal is said with the
-	// person's marks still in their hands rather than after the sheet has gone.
-	if !a.canReferPlace() {
+	// one place the two intents genuinely part: [app.placeRefusal] gives every
+	// road the same sentence, said with the person's marks still in their hands
+	// rather than after the sheet has gone.
+	if word := a.placeRefusal(); word != "" {
 		for _, take := range takes {
 			if take.dir {
-				a.note(folderNoDoorWord)
+				a.note(word)
 				a.touch()
 				return nil
 			}
 		}
 	}
-	a.folder.close()
-	a.touch()
-	return a.folderTakeCmd(takes)
+	return tea.Batch(a.closeFolderSheet(), a.folderTakeCmd(takes))
 }
 
 // targetFolderConfirm is a confirm on the sheet home opened: the folder becomes
@@ -292,11 +291,10 @@ func (a *app) targetFolderConfirm(takes []folderTake) tea.Cmd {
 		}
 		files = append(files, take)
 	}
-	a.folder.close()
+	back := a.closeFolderSheet()
 	// HOME COMES BACK FIRST AND THE SENTENCE IS SAID SECOND. Raising home builds
 	// a fresh [homeView] (home.go's [app.raiseHome]), so a line said before it
 	// would be a line thrown away.
-	back := a.openHome()
 	if where != "" {
 		a.target.where = where
 		a.home.say(targetMovedWord+a.hostedPath(shortPath(where, a.tilde, 0)), "")
@@ -332,7 +330,7 @@ func (a *app) folderTakeCmd(takes []folderTake) tea.Cmd {
 				return out
 			}
 			if take.dir {
-				out = folderTakeDir(out, door, take.path, tilde)
+				out = folderTakeDir(out, door, take.path, tilde, hosted)
 				continue
 			}
 			out = folderTakeFile(out, take.path, hosted)
@@ -342,7 +340,11 @@ func (a *app) folderTakeCmd(takes []folderTake) tea.Cmd {
 }
 
 // folderTakeDir registers one directory, or says why it could not be.
-func folderTakeDir(out folderTakenMsg, door placeReferrer, path, tilde string) folderTakenMsg {
+func folderTakeDir(out folderTakenMsg, door placeReferrer, path, tilde string, hosted bool) folderTakenMsg {
+	if hosted {
+		out.notes = append(out.notes, folderRemoteWord)
+		return out
+	}
 	if door == nil {
 		out.notes = append(out.notes, folderNoDoorWord)
 		return out

@@ -76,12 +76,12 @@ func (a *app) referPlace(chosen chosenPlace) {
 	if path == "" {
 		return
 	}
-	door, ok := a.placeDoor()
-	if !ok {
-		a.note(folderNoDoorWord)
+	if word := a.placeRefusal(); word != "" {
+		a.note(word)
 		a.touch()
 		return
 	}
+	door, _ := a.placeDoor()
 	// ReferPlace snaps the path to its repository root and stamps the
 	// conversation's meta, so the next task about this folder finds it at the
 	// SAID rung and nobody is asked. The refusal IS the line when it comes, and
@@ -170,15 +170,30 @@ func (a *app) canReferPlace() bool {
 	return true
 }
 
+// placeRefusal is what a road onto a folder must say instead of taking one, or
+// "" when it may take it. The connection's sentence is asked first because it
+// is the more specific fact and the one a person can act on; two roads giving
+// two different reasons for one folder is the defect this function exists to
+// make impossible.
+func (a *app) placeRefusal() string {
+	if a.hosted() {
+		return folderRemoteWord
+	}
+	if !a.canReferPlace() {
+		return folderNoDoorWord
+	}
+	return ""
+}
+
 // ── the command ─────────────────────────────────────────────────────────────
 
-// folderRemoteWord is /folder over a connection. The folders this process can
-// read are the laptop's and the conversation is on the other machine, so every
-// row this list could draw would be somewhere the work cannot go — which is the
-// same fault [app.composerDestinations] already refuses to commit. The design's
-// own ruling is that a far place is a wire door of its own and belongs to a
-// later wave; until then this says so in one sentence rather than offering a
-// list that lies.
+// folderRemoteWord is every road onto a folder over a connection. The folders
+// this process can read are the laptop's and the conversation is on the other
+// machine, so every row this list could draw would be somewhere the work cannot
+// go — which is the same fault [app.composerDestinations] already refuses to
+// commit. The design's own ruling is that a far place is a wire door of its own
+// and belongs to a later wave; until then this says so in one sentence rather
+// than offering a list that lies.
 const folderRemoteWord = "choosing a folder is not available over --host yet — the folders here are this machine's, not the ones the conversation is on."
 
 // THERE IS NO LONGER A REFUSAL FOR AN EMPTY MACHINE. `folderEmptyWord` said
@@ -247,21 +262,30 @@ func (a *app) openTargetFolderPick(query string) tea.Cmd {
 	return cmd
 }
 
-// closeFolderSheet is every way out of the browser that is not a confirm — esc,
-// and the `esc · cancel` target on the sheet's foot — with the ONE thing the
-// sheet home opened owes on the way: home comes back.
+// closeFolderSheet is the one way out of the browser — esc, the `esc · cancel`
+// target on the sheet's foot, and a confirm — with the ONE thing the sheet home
+// opened owes on the way: home comes back.
 //
 // ESC CHANGES NOTHING (folderpick.go's law) and coming back to home is not a
 // change: it is the screen a person was on when they typed the command, and the
 // sheet only replaced it because a place cannot draw a modal.
+//
+// THE SHEET IS THE ONLY SURFACE HERE THAT COVERS RATHER THAN REPLACES. The
+// ordinary frame revealed after it closes often has rows shorter than the
+// sheet, and the incremental renderer does not always overwrite the cells the
+// sheet lit beyond those rows. Padding cannot repair that: the renderer clears
+// its cell buffer before every frame, so explicit trailing spaces and absent
+// cells produce the same diff. This is one full repaint at the one moment this
+// surface has a layer to undraw, routed through one door so none of the ways out
+// can leave the layer behind.
 func (a *app) closeFolderSheet() tea.Cmd {
 	home := a.folder.forTarget
 	a.folder.close()
 	a.touch()
 	if home {
-		return a.openHome()
+		return tea.Batch(tea.ClearScreen, a.openHome())
 	}
-	return nil
+	return tea.ClearScreen
 }
 
 // openContextPick is the browser, opened FROM MEMORY. The only work on this path
@@ -281,24 +305,27 @@ func (a *app) closeFolderSheet() tea.Cmd {
 //
 //   - /folder is a request to give the conversation a directory, and a
 //     conversation that cannot hold one is told so instead of being handed a
-//     browser it cannot choose from ([app.canReferPlace]).
+//     browser it cannot choose from ([app.placeRefusal]).
 //   - a bare /attach is a request to put a file on the next message, which
 //     needs no folder door whatever. The sheet opens; a folder row on it then
 //     refuses with the same sentence when it is confirmed (folderact.go).
 func (a *app) openContextPick(query string, folders bool) tea.Cmd {
-	if a.hosted() {
-		a.note(folderRemoteWord)
-		return nil
-	}
-	// AND THE CAPABILITY IS ASKED FOR BEFORE THE LIST IS BUILT. `--host` is not
-	// the only way to reach a conversation this program is not itself running:
-	// a LOCAL engine reached down the same wire has an empty far hostname, so
-	// [app.hosted] is false for it and the picker used to open, rank a hundred
-	// directories and print `folder · …` at a session that could not hold one.
-	// A browser you cannot choose from is not offered at all.
-	if folders && !a.canReferPlace() {
-		a.note(folderNoDoorWord)
-		return nil
+	// THE INTENT CHOOSES THE REFUSAL BEFORE THE LIST IS BUILT. The connection's
+	// sentence used to be said for BOTH doors, which answered a request about a
+	// file with an answer about folders and left the person who did not know the
+	// path with no door at all; intent now decides this refusal the same way it
+	// decides the folder door below it.
+	//
+	// `--host` is not the only way to reach a conversation this program is not
+	// itself running: a LOCAL engine reached down the same wire has an empty far
+	// hostname, so [app.hosted] is false for it and the picker used to open, rank
+	// a hundred directories and print `folder · …` at a session that could not
+	// hold one. A browser you cannot choose from is not offered at all.
+	if folders {
+		if word := a.placeRefusal(); word != "" {
+			a.note(word)
+			return nil
+		}
 	}
 	// Home has its own composer. Reveal the conversation's browser without
 	// changing the unsent draft suspended underneath that page.
@@ -339,9 +366,10 @@ func (a *app) openContextPick(query string, folders bool) tea.Cmd {
 // contextStart is WHERE THE CHOOSER OPENS, and it is one answer for both doors.
 //
 // The ladder is what a person most likely means: the folder this conversation is
-// already about, then the directory this window is working in, then home. Every
-// rung is somewhere they have already been — the sheet never opens on `/`, which
-// is a place nobody was and every walk away from it is four keystrokes.
+// already about, then a borrowed workspace or the directory this window is
+// working in, then home. Every rung is somewhere they have already been — the
+// sheet never opens on `/`, which is a place nobody was and every walk away from
+// it is four keystrokes.
 //
 // NOTHING HERE STATS ANYTHING. A directory that has been moved since it was
 // remembered opens a column that says it cannot be read, which is the honest
@@ -353,8 +381,15 @@ func (a *app) contextStart() string {
 			return path
 		}
 	}
-	if root := a.pathRoot(); root != "" {
+	// AN OWNED WORKSPACE IS AFORGE'S BOOKKEEPING, NOT WHERE THE PERSON IS. It is
+	// ~/.aforge/v3/projects/<encoded>/<id>/work ([Options.Owned]), and standing
+	// the sheet there put work/, meta.json, presence.json and transcript.jsonl in
+	// front of somebody who was standing in a folder of their own.
+	if root := a.pathRoot(); root != "" && !a.owned {
 		return root
+	}
+	if a.localRoot != "" {
+		return a.localRoot
 	}
 	if home, err := os.UserHomeDir(); err == nil {
 		return home
