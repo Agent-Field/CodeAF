@@ -61,10 +61,15 @@ const (
 	// list is the subject and the pane is the answer about one row of it, so the
 	// list keeps the larger half at every width.
 	taskPaneShare = 40
-	// taskPaneThin and taskPaneWide clamp that share. A pane narrower than the
-	// floor cannot hold a facts line without wrapping it into nonsense; one wider
-	// than the ceiling is a column of forty-character sentences with a hand's
-	// width of air beside them, and the cells are worth more to the names.
+	// taskPaneThin and taskPaneWide clamp that share, and both are measured off
+	// the longest line the pane actually draws: the facts line
+	// ([app.taskPaneFacts]), whose four clauses at their fullest — `12 files`,
+	// `$12.34`, a provider-qualified model name, `12d ago` — come to a little over
+	// forty cells with their separators. THIN is the width at which that line
+	// still fits with its model on it, so the drop below it is a degrade and not
+	// the ordinary case. WIDE is a prose measure and the one number here that is a
+	// judgement: a wrapped paragraph past about sixty-five cells stops being
+	// scannable beside a list, and the cells are worth more to the names.
 	taskPaneThin = 44
 	taskPaneWide = 64
 )
@@ -90,6 +95,16 @@ func taskPaneCols(width int) int {
 // [taskPaneCols] gives, asked by the callers that only want the yes or no.
 func taskPaneOpen(width int) bool { return taskPaneCols(width) > 0 }
 
+// taskPaneSeam is the rule between the halves as this place draws it: the
+// roster's own seam with a cell of air in front of it.
+//
+// THE GUTTER IS ON BOTH SIDES BECAUSE THE LIST CAN FILL ITS HALF EXACTLY. The
+// room hangs [railSeam] off a body that always has slack; a list row fitted to
+// the cell is a row whose last glyph would sit against the rule, which reads as a
+// name that ran into it. One constant, so the paint and the pointer measure the
+// same thing.
+var taskPaneSeam = " " + railSeam
+
 // taskPaneList is the cells the LIST is drawn in on a split frame, and the whole
 // width where there is no pane. One arithmetic, so the paint, the hit map and the
 // pointer cannot disagree about where the seam is.
@@ -98,7 +113,7 @@ func taskPaneList(width int) int {
 	if cols == 0 {
 		return width
 	}
-	return width - cols - ansi.StringWidth(railSeam)
+	return width - cols - ansi.StringWidth(taskPaneSeam)
 }
 
 // taskPaneShowing is THE ONE PREDICATE the list asks before it grows the cursor
@@ -212,17 +227,29 @@ func (a *app) taskSheetBody(width, room int) []placeRow {
 		return a.taskSheet.body(a, width, room)
 	}
 	rows := a.taskSheet.body(a, left, room)
+	// ONE READING FOR THE WHOLE SPLIT. Every question asked below — which row the
+	// cursor is on, what the head sentence says, what the pane draws — is asked of
+	// the reading this place is already holding, taken once. Each of them used to
+	// take its own, and a filtered reading builds a fresh tree every time it is
+	// asked for ([tasksPlace.filtered]), so a frame paid for four.
 	r := a.tasksFiltered()
-	pane := a.taskPaneRows(width-left-ansi.StringWidth(railSeam), room)
-	seam := a.pal.dim(railSeam)
+	lines := r.lay(left)
+	// THE HEAD SPENDS A ROW OF THE FRAME AND NONE OF THE PANE, so the pane is
+	// built at the room that is actually left for it. A pane built at the body's
+	// full room and then spent one row short loses its LAST row — which the
+	// short-frame trim has just made the verb line, the one row of a preview
+	// somebody can act on ([app.taskPaneRows]).
+	head := 0
+	if a.taskSheet.top == 0 && len(rows) > 0 {
+		head = 1
+	}
+	pane := a.taskPaneRows(r, lines, width-left-ansi.StringWidth(taskPaneSeam), room-head)
+	seam := a.pal.dim(taskPaneSeam)
 	out := make([]placeRow, 0, len(rows))
-	// THE PANE IS SPENT FROM ITS OWN TOP, not from the body's. The head takes a
-	// row of the frame and none of the pane, so a pane indexed by the body's row
-	// would have its title drawn under the head and lost.
 	next := 0
 	for at, row := range rows {
 		list, _ := row.hit.(taskSheetHit)
-		if a.taskSheet.top+at == 0 {
+		if head == 1 && at == 0 {
 			out = append(out, placeRow{
 				text: r.headRow(width, a.pal),
 				hit:  taskSplitHit{list: list},
@@ -253,15 +280,20 @@ func taskPanePad(text string, width int) string {
 }
 
 // taskPaneRows is the pane itself: the cursor row's record, or the cursor
-// conversation's, padded out to the room the body was given.
-func (a *app) taskPaneRows(width, room int) []taskPaneRow {
+// conversation's, in exactly the rows it was given.
+//
+// IT IS HANDED THE READING AND ITS LAYOUT rather than asking for them, because
+// the caller has just built both and a filtered reading rebuilds its whole tree
+// every time it is asked for ([tasksPlace.filtered]).
+func (a *app) taskPaneRows(r tasksReading, lines []tasksLine, width, room int) []taskPaneRow {
+	if room < 1 {
+		return nil
+	}
 	var rows []taskPaneRow
-	switch {
-	case width < 1 || room < 1:
-	default:
-		if chat, ok := a.taskSheetChat(); ok {
-			rows = a.taskPaneChat(chat, width)
-		} else if item, ok := a.taskSheetCurrent(); ok {
+	if width >= 1 {
+		if chat, ok := r.chatAt(lines, a.taskSheet.cursor); ok {
+			rows = a.taskPaneChat(r, chat, width)
+		} else if item, ok := r.at(lines, a.taskSheet.cursor); ok {
 			rows = a.taskPaneRecord(item, width)
 		}
 	}
@@ -478,9 +510,13 @@ func (a *app) taskPaneFiles(entry session.TaskIndexEntry, width int) []string {
 }
 
 // taskPaneFileRows is how many paths the pane names before it counts the rest.
-// Five is what fits beside a paragraph and a verb line on the shortest frame the
-// pane is drawn on at all, and the count below them is what keeps the band
-// honest at every longer one.
+//
+// FIVE IS THE SPEC'S FIGURE and it is a judgement rather than a derivation: it is
+// the longest list a person reads as a LIST rather than counts, and the `N more`
+// under it is what keeps the band honest at every length past that. The record
+// itself caps what it kept at [session.TaskIndexEntry.Files]' own limit, which is
+// far larger, so this never decides what is knowable — only what is worth a row
+// of a preview.
 const taskPaneFileRows = 5
 
 // The words the pane says, quoted in the manual exactly as they are spelled
@@ -512,12 +548,11 @@ const (
 // IT IS A SUMMARY AND NOT A SECOND LIST. The work itself is one `→` away in the
 // list beside it, and a pane that drew twenty rows of it would be the page
 // drawing the same tree twice.
-func (a *app) taskPaneChat(chat tasksChat, width int) []taskPaneRow {
+func (a *app) taskPaneChat(r tasksReading, chat tasksChat, width int) []taskPaneRow {
 	pal := a.pal
 	bands := [][]string{{fit(pal.bold(pal.ink(chat.title)), width)}}
 
 	held, cost, first := 0, 0.0, make([]tasksItem, 0, taskPaneChatRows)
-	r := a.tasksFiltered()
 	tree := r.tree()
 	for _, group := range tree.groups {
 		if group.chat.key != chat.key {
@@ -551,10 +586,13 @@ func (a *app) taskPaneChat(chat tasksChat, width int) []taskPaneRow {
 	return taskPaneDraw(taskRecordBands(bands), a.taskPaneVerbLine(verbs, width))
 }
 
-// taskPaneChatRows is how many of a conversation's rows the preview names. Three
-// is the tree's own order — the most urgent first ([tasksTreeOf] files them) —
-// which is what a person is looking for when the cursor is on the conversation
-// rather than on one of its rows.
+// taskPaneChatRows is how many of a conversation's rows the preview names, and it
+// is a sample rather than a list: the work itself is one `→` away in the list
+// beside it, and a pane that drew twenty rows of it would be the page drawing the
+// same tree twice. THREE IS WHAT THE ORDER MAKES WORTH DRAWING — the tree files
+// the most urgent first ([tasksTreeOf]), so the first three are the ones a person
+// standing on the conversation is looking for, and the fourth is already work
+// they would open the conversation to read.
 const taskPaneChatRows = 3
 
 // ── the verbs ───────────────────────────────────────────────────────────────
@@ -596,21 +634,25 @@ func (a *app) taskPaneVerbLine(verbs []taskPaneVerb, width int) *taskPaneRow {
 	pal := a.pal
 	line, at, spans := "", 0, make([]taskPaneVerb, 0, len(verbs))
 	for i, verb := range verbs {
+		gap := ""
 		if i > 0 {
-			line += taskPaneVerbGap
-			at += len(taskPaneVerbGap)
+			gap = taskPaneVerbGap
 		}
-		text := verb.text
-		if at+ansi.StringWidth(text) > width {
+		// THE GAP IS SPENT ONLY IF THE CLAUSE AFTER IT IS, so a line that stopped
+		// short does not end in three cells of air a person can see at the fold.
+		// It is measured in CELLS and not in bytes, like everything else on this
+		// line, so the day the separator stops being three spaces nothing moves.
+		start := at + ansi.StringWidth(gap)
+		if start+ansi.StringWidth(verb.text) > width {
 			// A CLAUSE THAT WOULD NOT FIT IS NOT DRAWN AND IS NOT PRESSABLE. The
 			// spans are what the pointer resolves against, so a clause cut by [fit]
 			// with a span still recorded for it would be a target under a word that
 			// is no longer there.
 			break
 		}
-		verb.from, verb.to = at, at+ansi.StringWidth(text)
+		verb.from, verb.to = start, start+ansi.StringWidth(verb.text)
 		spans = append(spans, verb)
-		line += pal.warnBold(verb.key) + pal.warn(strings.TrimPrefix(text, verb.key))
+		line += gap + pal.warnBold(verb.key) + pal.warn(strings.TrimPrefix(verb.text, verb.key))
 		at = verb.to
 	}
 	if len(spans) == 0 {
@@ -631,8 +673,7 @@ func (a *app) taskPaneVerbLine(verbs []taskPaneVerb, width int) *taskPaneRow {
 // saying so. So the pane has to be drawn for its digits to mean anything, which
 // is [taskPaneCols]' answer once more rather than a second guess at it.
 func (a *app) taskPaneKey(key string) (tea.Cmd, bool) {
-	width, _ := a.size()
-	if !taskPaneOpen(width) || a.taskSheet.detailOn {
+	if !a.taskPaneShowing() || a.taskSheet.detailOn {
 		return nil, false
 	}
 	item, ok := a.taskSheetCurrent()
@@ -650,18 +691,20 @@ func (a *app) taskPaneKey(key string) (tea.Cmd, bool) {
 
 // taskPanePress is a click to the right of the seam: the verb under it, pressed.
 // It reports whether there was one.
-func (a *app) taskPanePress(x, y int) (tea.Cmd, bool) {
-	width, height := a.size()
-	left := taskPaneList(width)
-	if x < left+ansi.StringWidth(railSeam) {
+func (a *app) taskPanePress(x, y int, hits []placeHit) (tea.Cmd, bool) {
+	if !a.taskPaneShowing() {
 		return nil, false
 	}
-	_, hits, _, _ := a.placeDraw(placeTasks{}, width, height)
+	width, _ := a.size()
+	left := taskPaneList(width) + ansi.StringWidth(taskPaneSeam)
+	if x < left {
+		return nil, false
+	}
 	pane := taskPaneHitsOf(hits)
 	if y < 0 || y >= len(pane) {
 		return nil, false
 	}
-	at := x - left - ansi.StringWidth(railSeam)
+	at := x - left
 	for _, verb := range pane[y].verbs {
 		if at < verb.from || at >= verb.to {
 			continue
@@ -683,11 +726,15 @@ func (a *app) taskPanePress(x, y int) (tea.Cmd, bool) {
 // taskPaneSettle is how long the cursor has to stand still before the pane asks
 // the disk for that row's report.
 //
-// IT IS THE KEY REPEAT AND NOT A GUESS. A held arrow on every terminal anybody
-// runs this in repeats faster than this, so a person walking the list never pays
-// for a row they are passing through, and a person who has STOPPED on a row has
-// their report inside a beat of stopping. The frame itself never waits on it —
-// the read is a command and the slot is empty until it lands.
+// IT IS SET AGAINST THE KEY REPEAT AND NOT AGAINST A FRAME. Terminals repeat a
+// held key at roughly thirty a second once the initial delay is past — far faster
+// than this — so a person walking the list arms one settle per row and every one
+// but the last is dropped by its generation, and a person who has STOPPED on a
+// row has their report within a beat of stopping. It is deliberately longer than
+// a frame and shorter than a glance: anything under a repeat interval would read
+// a journal per row walked, and anything a person would NOTICE would make the
+// pane feel like it was thinking. The frame never waits on it either way — the
+// read is a command and the slot is empty until it lands.
 const taskPaneSettle = 120 * time.Millisecond
 
 // taskPaneSettleMsg is the cursor having stood still, carrying the move it was
@@ -709,13 +756,24 @@ type taskPaneSettleMsg struct {
 // ([session.PeekReport]); the law that nothing on the draw path touches a disk is
 // the reason this is a command hanging off a keypress, a click and a wheel tick
 // rather than a lookup inside [app.taskPaneRecord].
+//
+// IT IS CALLED AFTER EVERY KEY AND NOT ONLY AFTER THE ONES THAT WALK
+// ([placeTasks.key] is the one door), because five of the ways this cursor moves
+// never reach the walk: the fold arrows and the window arrows are the router's
+// ([app.placeKey]), `esc` on a filter re-lays the whole list, and the editor's
+// own chords re-rank it. A key that moved nothing arms a settle that finds the
+// row already read and does nothing; a key that moved the cursor is the only
+// thing that can cost a file.
 func (a *app) taskPaneFollow() tea.Cmd {
-	width, _ := a.size()
-	if !taskPaneOpen(width) || a.taskSheet.detailOn {
+	if !a.taskPaneShowing() || a.taskSheet.detailOn {
 		return nil
 	}
 	item, ok := a.taskSheetCurrent()
-	if !ok {
+	if !ok || item.away {
+		// WORK ANOTHER WINDOW IS RUNNING HAS NO REPORT HERE TO READ. Its pane says
+		// where the work is and nothing else ([app.taskPaneRecord] stops there), so
+		// a read armed for one would open a journal whose text is thrown away —
+		// and those rows are live, so it would happen on every arrival.
 		return nil
 	}
 	key := tasksKeyOf(item.entry)

@@ -872,11 +872,11 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// nothing underneath for a key to mean anything to, and a chord that fell
 	// through would act on a surface that is not on screen.
 	//
-	// AND EVERY KEY THAT MOVED THE CURSOR LETS THE PANE FOLLOW IT. The arms above
-	// walk, fold and filter, and all three can leave the cursor on a row whose
-	// report has not been read; one call here is what arms that read, rather than
-	// six ([app.taskPaneFollow] drops the ones that have nothing to do).
-	return a.taskPaneFollow(), true
+	// THE PANE'S OWN FOLLOW IS NOT ARMED HERE. Half the arms above return before
+	// this line and the router's chords never reach it at all, so the arming lives
+	// one layer out, at the single door every key to this place comes through
+	// ([placeTasks.key]).
+	return nil, true
 }
 
 // taskSheetMove walks the stops, which is what steps the cursor over the head
@@ -1061,14 +1061,20 @@ func (a *app) taskSheetPress(x, y int) tea.Cmd {
 		a.taskCardPress(x, y)
 		return nil
 	}
+	// THE FRAME IS BUILT ONCE AND BOTH HALVES OF THE HIT MAP COME OUT OF IT. A
+	// press used to lay the whole place out twice — once for the pane's verbs and
+	// once for the list's rows — which on a filtered record is two tree builds for
+	// one click (taskpane.go's [taskSheetHitsOf] and [taskPaneHitsOf] read the one
+	// map from either side).
+	width, height := a.size()
+	painted, raw, _, _ := a.placeDraw(placeTasks{}, width, height)
 	// THE PANE'S OWN VERB LINE ANSWERS FIRST, because it is the one thing on this
 	// frame to the RIGHT of the seam that a press acts on and a click there must
 	// never fall through to the row it is drawn beside (taskpane.go).
-	if cmd, took := a.taskPanePress(x, y); took {
+	if cmd, took := a.taskPanePress(x, y, raw); took {
 		return cmd
 	}
-	width, height := a.size()
-	painted, hits, _, _ := a.taskSheetFrame(width, height)
+	hits := taskSheetHitsOf(raw)
 	if y < 0 || y >= len(hits) {
 		return nil
 	}
@@ -1555,9 +1561,12 @@ func (placeTasks) counted() bool { return true }
 // open takes the reading and arms the beat. The reading is this place's own
 // walk of the record; the beat is the tab bar's ([placeTasks.tick] says which
 // of the two it is for).
+// open primes the place AND the pane beside it: a record drawn with no report
+// under it, waiting for a keystroke that may never come, is a preview that looks
+// broken on the one frame everybody sees first.
 func (placeTasks) open(a *app) tea.Cmd {
 	cmd := a.showTaskPlace()
-	return tea.Batch(cmd, a.armPlaceClock())
+	return tea.Batch(cmd, a.armPlaceClock(), a.taskPaneFollow())
 }
 func (placeTasks) close(a *app) { a.taskSheet.close(a) }
 
@@ -1726,7 +1735,13 @@ func (placeTasks) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // (pages.go's [place] states the split).
 func (placeTasks) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
 	cmd, _ := a.taskSheetKeyPress(msg)
-	return cmd
+	// AND THE PANE FOLLOWS THE CURSOR WHATEVER MOVED IT. This is the one door
+	// every key to this place comes through, which is the only place the arming
+	// can be complete: the walk is only one of the ways the cursor moves, and the
+	// fold arrows, the window arrows, `esc` on a filter and the editor's own
+	// chords all answer inside [app.taskSheetKeyPress] and return before its tail
+	// (taskpane.go's [app.taskPaneFollow] drops the ones with nothing to do).
+	return tea.Batch(cmd, a.taskPaneFollow())
 }
 
 // placeFold is the grammar's one door onto a place's tree: `→` opens the thing

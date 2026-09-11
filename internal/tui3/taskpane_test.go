@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"errors"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -22,7 +23,7 @@ import (
 
 // paneSeam is the seam as a reader sees it, with its gutter trimmed off so a row
 // can be searched for it.
-var paneSeam = strings.TrimSpace(railSeam)
+var paneSeam = strings.TrimSpace(taskPaneSeam)
 
 // paneText is everything the pane drew, one row per line, stripped of paint.
 func paneText(a *app) string {
@@ -35,7 +36,7 @@ func paneRows(a *app) []string {
 	width, height := a.size()
 	lines, _, _, _ := a.taskSheetFrame(width, height)
 	left := a.taskSheetListWidth()
-	at := left + ansi.StringWidth(railSeam)
+	at := left + ansi.StringWidth(taskPaneSeam)
 	out := make([]string, 0, len(lines))
 	for _, line := range lines {
 		bare := plain(line)
@@ -103,7 +104,7 @@ func TestTheTasksBodySplitsOnlyWhereTheFrameIsWideEnough(t *testing.T) {
 	if !strings.Contains(placeText(a), paneSeam) {
 		t.Fatalf("a split frame drew no seam:\n%s", placeText(a))
 	}
-	if got, want := a.taskSheetListWidth(), a.width-taskPaneCols(a.width)-ansi.StringWidth(railSeam); got != want {
+	if got, want := a.taskSheetListWidth(), a.width-taskPaneCols(a.width)-ansi.StringWidth(taskPaneSeam); got != want {
 		t.Fatalf("the list was laid out in %d cells, want %d", got, want)
 	}
 
@@ -292,8 +293,7 @@ func TestWalkingTheListReadsOneJournalPerSettle(t *testing.T) {
 	a, asked := paneReadLab(t, taskPaneFloor+12)
 	var last tea.Cmd
 	for range 3 {
-		cmd, _ := a.taskSheetKeyPress(key("down"))
-		last = cmd
+		last = placeTasks{}.key(a, key("down"))
 	}
 	if got := asked.Load(); got != 0 {
 		t.Fatalf("walking read %d journals before anything settled", got)
@@ -301,7 +301,7 @@ func TestWalkingTheListReadsOneJournalPerSettle(t *testing.T) {
 	if last == nil {
 		t.Fatal("the last move armed no settle")
 	}
-	settle, ok := last().(taskPaneSettleMsg)
+	settle, ok := paneSettleOf(t, last)
 	if !ok {
 		t.Fatalf("the move armed something else: %#v", last())
 	}
@@ -330,17 +330,16 @@ func TestWalkingTheListReadsOneJournalPerSettle(t *testing.T) {
 // walked through, which is exactly the read this mechanism exists to not pay for.
 func TestASettleFromAnEarlierMoveReadsNothing(t *testing.T) {
 	a, asked := paneReadLab(t, taskPaneFloor+12)
-	first, _ := a.taskSheetKeyPress(key("down"))
+	first := placeTasks{}.key(a, key("down"))
 	if first == nil {
 		t.Fatal("the first move armed no settle")
 	}
-	stale, ok := first().(taskPaneSettleMsg)
+	stale, ok := paneSettleOf(t, first)
 	if !ok {
 		t.Fatalf("the move armed something else: %#v", first())
 	}
-	if _, _ = a.taskSheetKeyPress(key("down")); true {
-		// The cursor has moved on; the settle above is about the row behind it.
-	}
+	// The cursor moves on; the settle above is about the row behind it.
+	placeTasks{}.key(a, key("down"))
 	if cmd := a.taskPaneSettled(stale); cmd != nil {
 		t.Fatal("a stale settle asked for a journal")
 	}
@@ -412,19 +411,24 @@ func TestAClickOnANarrowFrameOpensOnTheFirstPress(t *testing.T) {
 // beside.
 func TestAClickOnThePanesAcceptAnswersTheRow(t *testing.T) {
 	a, agent := paneLandingLab(t, taskPaneFloor+12)
+	// THE COLUMN IS READ OFF THE PAINTED FRAME and never off the hit map this is
+	// testing: a test that took both halves of the arithmetic from one source
+	// could not catch the two disagreeing, which is the whole failure it is here
+	// for.
 	width, height := a.size()
-	_, hits, _, _ := a.placeDraw(placeTasks{}, width, height)
-	left := a.taskSheetListWidth() + ansi.StringWidth(railSeam)
+	lines, _, _, _ := a.taskSheetFrame(width, height)
 	row, at := -1, -1
-	for y, hit := range taskPaneHitsOf(hits) {
-		for _, verb := range hit.verbs {
-			if verb.key == "1" {
-				row, at = y, left+verb.from
-			}
+	for y, line := range lines {
+		bare := plain(line)
+		want := strings.Index(bare, "1 accept")
+		if !strings.Contains(bare, paneSeam) || want < 0 {
+			continue
 		}
+		row, at = y, ansi.StringWidth(bare[:want])
+		break
 	}
 	if row < 0 {
-		t.Fatalf("the pane drew no accept to click:\n%s", paneText(a))
+		t.Fatalf("the pane drew no accept to click:\n%s", placeText(a))
 	}
 	a.taskSheetPress(at, row)
 	if len(agent.answer) != 1 || agent.answer[0].ID != 7 || agent.answer[0].FirstKey() != session.LandingYesKey {
@@ -481,27 +485,55 @@ func TestThePaneNamesFiveFilesAndCountsTheRest(t *testing.T) {
 // A SHORT FRAME KEEPS THE HEAD AND THE VERBS. The verb line is the last band, so
 // a pane cut from the bottom would drop the two answers and keep the file paths —
 // which is the one part of a preview nobody can act on.
+//
+// IT IS DRIVEN THROUGH THE WHOLE BODY AND NOT THROUGH [app.taskPaneRows] ALONE,
+// because the defect this is written against was in the JOIN: the page's head
+// sentence takes a row of the frame and none of the pane, and a pane built at the
+// body's full room lost its last row to that — which the trim had just made the
+// verb line.
 func TestAShortFrameKeepsThePanesTitleAndItsVerbs(t *testing.T) {
 	a, _ := paneLandingLab(t, taskPaneFloor+12)
 	item, ok := a.taskSheetCurrent()
 	if !ok {
 		t.Fatal("no row under the cursor")
 	}
-	cols := taskPaneCols(a.width)
-	short := a.taskPaneRows(cols, 4)
-	if len(short) != 4 {
-		t.Fatalf("a four-row pane drew %d rows", len(short))
+	a.height = 18
+	rows := paneRows(a)
+	drawn := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if strings.TrimSpace(row) != "" {
+			drawn = append(drawn, row)
+		}
 	}
-	head := strings.TrimSpace(plain(short[0].text))
-	if want := strings.TrimSpace(plain(fit(taskRecordWords(item.entry), cols))); head != want {
-		t.Fatalf("the short pane's first row is %q, want the title %q", head, want)
+	if len(drawn) < 2 {
+		t.Fatalf("the pane drew %d rows on a short frame:\n%s", len(drawn), strings.Join(rows, "\n"))
 	}
-	last := plain(short[len(short)-1].text)
+	if want := strings.TrimSpace(plain(fit(taskRecordWords(item.entry), taskPaneCols(a.width)))); strings.TrimSpace(drawn[0]) != want {
+		t.Fatalf("the short pane opens on %q, want the title %q", drawn[0], want)
+	}
+	if last := drawn[len(drawn)-1]; !strings.Contains(last, "1 accept") {
+		t.Fatalf("the short pane ends on %q, want the verbs:\n%s", last, strings.Join(rows, "\n"))
+	}
+}
+
+// AND THE HEAD SENTENCE NEVER EATS A ROW OF THE PANE. It spends a row of the
+// FRAME and none of the preview, so the pane is built at the room that is left.
+func TestThePagesHeadDoesNotCostThePaneItsLastRow(t *testing.T) {
+	a, _ := paneLandingLab(t, taskPaneFloor+12)
+	a.height = 18
+	withHead := paneRows(a)
+	if len(withHead) == 0 {
+		t.Fatalf("the pane drew nothing:\n%s", placeText(a))
+	}
+	last := ""
+	for _, row := range withHead {
+		if strings.TrimSpace(row) != "" {
+			last = row
+		}
+	}
 	if !strings.Contains(last, "1 accept") {
-		t.Fatalf("the short pane's last row is %q, want the verbs", last)
-	}
-	if len(short[len(short)-1].hit.verbs) == 0 {
-		t.Fatal("the short pane's verb line answers nothing to a press")
+		t.Fatalf("with the head on screen the pane ends on %q, want the verbs:\n%s",
+			last, strings.Join(withHead, "\n"))
 	}
 }
 
@@ -515,16 +547,20 @@ func TestTheReportOfWorkStillRunningIsReadAgainOnArrival(t *testing.T) {
 	if !ok {
 		t.Fatal("no row under the cursor")
 	}
-	key := tasksKeyOf(item.entry)
-	a.taskPaneKeep(key, item.entry.EndedAt, "what it said an hour ago")
+	a.taskPaneKeep(tasksKeyOf(item.entry), item.entry.EndedAt, "what it said the first time")
 	if cmd := a.taskPaneFollow(); cmd != nil {
 		t.Fatal("a landed row that has been read armed another settle")
 	}
-	// The same row, still running: nothing has landed, so nothing is settled.
+
+	// THE SAME ROW, STILL RUNNING. The reading is rebuilt so the cursor's row is
+	// the live one, and arriving on it has to ask again.
 	live := item.entry
 	live.EndedAt, live.Status = time.Time{}, string(session.TaskRunning)
-	if _, read := a.taskPaneKept(live); read {
-		t.Fatal("a row whose landing moved read back the old landing's report")
+	a.taskSheet.reading.items[0].entry = live
+	a.taskSheet.reading.items[0].runs = true
+	a.taskPaneKeep(tasksKeyOf(live), live.EndedAt, "what it said the first time")
+	if cmd := a.taskPaneFollow(); cmd == nil {
+		t.Fatal("a row that has not landed was treated as read for good")
 	}
 }
 
@@ -545,4 +581,90 @@ func TestARowThatLandedAgainReadsAsUnread(t *testing.T) {
 	if _, read := a.taskPaneKept(again); read {
 		t.Fatal("a second landing read back the first landing's report")
 	}
+}
+
+// A MACHINE THAT COULD NOT BE ASKED IS NOT AN ANSWER ABOUT THE ROW. `unread` is a
+// fact about the LINK, and keeping it would file "this row had nothing to say"
+// against a journal nobody has read yet — permanently, for the life of the place.
+func TestALinkThatWouldNotAnswerIsNotKeptAsSilence(t *testing.T) {
+	a, asked := paneReadLab(t, taskPaneFloor+12)
+	a.farRecord = func(string, int) (session.TaskRecord, error) {
+		asked.Add(1)
+		return session.TaskRecord{}, errors.New("the link did not answer")
+	}
+	item, ok := a.taskSheetCurrent()
+	if !ok {
+		t.Fatal("no row under the cursor")
+	}
+	cmd := a.readTaskTail(item.entry)
+	if cmd == nil {
+		t.Fatal("the row named no journal to read")
+	}
+	msg, ok := cmd().(taskTailMsg)
+	if !ok || !msg.unread {
+		t.Fatalf("the failed read answered %#v", msg)
+	}
+	a.taskTailRead(msg)
+	if _, read := a.taskPaneKept(item.entry); read {
+		t.Fatal("a link that would not answer was kept as a row with nothing to say")
+	}
+	if follow := a.taskPaneFollow(); follow == nil {
+		t.Fatal("arriving on the row again asked for nothing")
+	}
+}
+
+// WORK ANOTHER WINDOW IS RUNNING HAS NO REPORT HERE TO READ. Its pane says where
+// the work is and stops there, which is why arriving on one arms no journal read
+// ([app.taskPaneFollow] asks the same question of the same field): those rows are
+// live, so a read armed for one would open a file whose text is thrown away, on
+// every arrival, for as long as the other window ran.
+func TestAnotherWindowsWorkPreviewsWhereItIsAndNothingElse(t *testing.T) {
+	a, _ := paneReadLab(t, taskPaneFloor+12)
+	item, ok := a.taskSheetCurrent()
+	if !ok {
+		t.Fatal("no row under the cursor")
+	}
+	away := item
+	away.away, away.window = true, "the other window"
+	a.taskPaneKeep(tasksKeyOf(away.entry), away.entry.EndedAt, "a report nobody should see here")
+
+	var drawn []string
+	for _, row := range a.taskPaneRecord(away, taskPaneCols(a.width)) {
+		if text := strings.TrimSpace(plain(row.text)); text != "" {
+			drawn = append(drawn, text)
+		}
+	}
+	page := strings.Join(drawn, "\n")
+	// The sentence is WRAPPED to the pane, so it is read back with its folds
+	// taken out rather than looked for on one row.
+	if said := strings.Join(strings.Fields(page), " "); !strings.Contains(said, strings.TrimSpace(taskAwayCardWhere("the other window"))) {
+		t.Fatalf("the pane does not say where the work is:\n%s", page)
+	}
+	for _, banned := range []string{"a report nobody should see here", taskPaneOpenWord, dollars(away.entry.Cost)} {
+		if strings.Contains(page, banned) {
+			t.Fatalf("the pane over another window's work drew %q:\n%s", banned, page)
+		}
+	}
+}
+
+// paneSettleOf is one armed command read back as the settle it should be. A
+// command the place answered with may be a batch — the key door batches the
+// place's own answer with the pane's follow — so the settle is looked for inside
+// whatever came back rather than assumed to be the whole of it.
+func paneSettleOf(t *testing.T, cmd tea.Cmd) (taskPaneSettleMsg, bool) {
+	t.Helper()
+	if cmd == nil {
+		return taskPaneSettleMsg{}, false
+	}
+	switch msg := cmd().(type) {
+	case taskPaneSettleMsg:
+		return msg, true
+	case tea.BatchMsg:
+		for _, one := range msg {
+			if settle, ok := paneSettleOf(t, one); ok {
+				return settle, true
+			}
+		}
+	}
+	return taskPaneSettleMsg{}, false
 }

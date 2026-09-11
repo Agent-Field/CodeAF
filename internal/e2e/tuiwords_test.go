@@ -508,9 +508,11 @@ var tuiWords = map[string]tuiWord{
 		screen: "enter open",
 		why: "the verb line of the RECORD PANE beside the tasks list (taskpane.go), which is drawn on " +
 			"every frame 110 columns or wider — the suite runs at 120. It is the one clause of that line " +
-			"every row has, whatever state it landed in, so waiting for it proves the body actually split " +
-			"and the pane found the cursor's row. The two answers beside it belong to a row that is the " +
-			"person's call and are not waited for here",
+			"every row has, whatever state the model's work landed in, which is why the wait is on this " +
+			"and not on the two answers beside it. IT IS A PREFIX OF [tasksEnterRoomWord] " +
+			"(`enter open its room`), so it discriminates only where the foot is NOT offering a room — " +
+			"which is exactly where its own subtest waits for it: the window that reads the record back " +
+			"holds no node, its foot says `enter go inside it`, and that wait comes first",
 	},
 	"taskRoomFootWord": {
 		screen: "m puts it in your message · ↑↓ scroll",

@@ -2875,8 +2875,10 @@ wisp · /Users/ada/code/wisp
 
 ## Searching the task page: type to filter, find an old task by name, why does the tasks box say type to filter this list, my cursor jumped to another task while I was reading
 
-**Just type.** On the task page every printable key — letters, digits and the space —
-builds a filter, and both sections narrow against it as you go. The message box at the foot
+**Just type.** On the task page every printable key — letters, the space, and digits
+everywhere they are not an answer — builds a filter, and both sections narrow against it as
+you go. The two exceptions are `1` and `2` over a row the record pane beside the list is
+drawing answers for, which answer it: see *Answer a task from the list*. The message box at the foot
 of this place says so itself: it rests on `type to filter this list` rather than the
 `say what you want done` every other place shows, because there is nothing to send from here
 and a box inviting an instruction over a slot that only filters was the one thing on the
@@ -2933,7 +2935,7 @@ too — see *I started a task over ssh and the sidebar stayed empty* above.
 | `enter` | open the main chat, task room, or record card named by this row |
 | `→` | open the family under this row, where it has one; a second `→` on an open family opens the row's verbs |
 | `←` | fold that conversation or family back up |
-| any printable key | type into the filter |
+| any printable key | type into the filter — except `1` and `2` over a row the pane is offering those two answers for, which answer it |
 | `backspace` `ctrl+w` `ctrl+u` | edit the filter |
 | `esc` | clear the filter, or close the page when there is none |
 | `ctrl+.` | close the page |
@@ -2957,9 +2959,11 @@ going to get:
   engine offers one, or opens a card explaining which window holds it. The foot names
   the available door.
 
-Clicking a row's title does what `enter` on it does, on the **first** press — the page opens things,
-it does not change them. The row under the pointer takes the hover step. The wheel walks the
-cursor.
+Clicking a row's title puts the cursor on it and the record pane beside the list becomes that
+row; clicking the **same row again** opens it — the page opens things, it does not change them.
+On a frame too narrow for the pane there is nothing for a first click to show, so one click
+opens as it always did. A click on one of the pane's own answers presses that answer and opens
+nothing. The row under the pointer takes the hover step. The wheel walks the cursor.
 
 ## Main chats and their subtasks — the conversation tree, folds, holds 3 more, what the +3 under a row means
 
@@ -4934,7 +4938,8 @@ header or its arrow control.
 Type to filter; every section narrows at once, and a section the query empties is not drawn.
 **The message box at the foot of this place says `type to filter this list`**, not `say what
 you want done` — on the tasks place there is no message to send and every printable key goes
-to the filter, so the box says what typing into it actually does. Every other place keeps the
+to the filter, so the box says what typing into it actually does. The one exception is `1` and
+`2` over a row the pane is offering those two answers for, which answer it. Every other place keeps the
 shared prompt. `↑` and `↓` move among conversation and task rows and skip the head sentence, the blank lines
 and the section words. `enter` on a main chat opens that conversation. On a task it opens its **room** when this conversation
 is holding, and otherwise goes **inside** it — the record card. Rows another window is running
@@ -5010,9 +5015,9 @@ with the pane showing the same row.
 **On a conversation's own row the pane is the conversation**: its title, `3 pieces of work ·
 $9.30`, the first few rows under it in the order the page files them, and `enter open the chat`.
 
-**Under 110 columns there is no pane and no rule.** The place is the list alone and the cursor
-row says its own `state · reason` instead. Under 60 columns the rows are two-line cards, as
-they have always been.
+**Under 110 columns there is no pane and no rule.** The place is the list alone, and each row
+carries what it always carried at the right of its own line. Under 60 columns the rows are
+two-line cards, as they have always been.
 
 ## Answer a task from the list — accept or reject a finished task with 1 and 2 without opening it
 

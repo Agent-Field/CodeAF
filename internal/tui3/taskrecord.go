@@ -355,11 +355,22 @@ func (a *app) readTaskTail(entry session.TaskIndexEntry) tea.Cmd {
 // taskTailRead folds one journal read into the card, and drops a read that is
 // about a task the person has already walked away from.
 func (a *app) taskTailRead(msg taskTailMsg) {
-	// THE PANE KEEPS EVERY READ, WHATEVER THE CARD IS DOING. One journal is read
-	// once and two readers spend it: the card, which is showing this row right
-	// now, and the pane's cache, which is what stops a person walking back up the
-	// list paying for the same file twice (taskpane.go).
-	a.taskPaneKeep(msg.key, msg.at, msg.tail)
+	// THE PANE KEEPS EVERY READ THAT HAPPENED, WHATEVER THE CARD IS DOING. One
+	// journal is read once and two readers spend it: the card, which is showing
+	// this row right now, and the pane's cache, which is what stops a person
+	// walking back up the list paying for the same file twice (taskpane.go).
+	//
+	// A MACHINE THAT COULD NOT BE ASKED IS NOT AN ANSWER ABOUT THE ROW. `unread`
+	// is a fact about the LINK — an ssh pipe that did not answer, a hosted surface
+	// whose door was never wired — and keeping it would file "this row had nothing
+	// to say" against a journal nobody has read yet, permanently: the pane would
+	// never ask again for the life of the place, and one dropped packet would
+	// leave a row reportless with nothing on screen saying why. So it is not kept,
+	// and arriving on the row again asks again. The card says the honest sentence
+	// in the meantime ([app.taskCardTailRows]).
+	if !msg.unread {
+		a.taskPaneKeep(msg.key, msg.at, msg.tail)
+	}
 	if !a.taskSheet.detailOn || taskURIPath(a.taskSheet.detail.TranscriptURI) != msg.path {
 		return
 	}
@@ -784,13 +795,21 @@ type taskRecordVerb struct {
 // It is the one table that says both what that line spells and what each clause
 // presses, so the drawing and the keyboard cannot disagree.
 //
-// THE DIGIT IS THE ANSWER'S POSITION ON THE QUESTION'S OWN ANSWERS ROW, which is
-// this surface's own rule for an option carrying no key of its own
-// ([app.questionAnswerParts] numbers them exactly that way). The landing's
-// answers wear LETTERS because docs/design/task-states/DESIGN.md fixed `a`, `n`
-// and `s` on that card (session's answers.go states the law), and the letters are
-// untouched here: this ADDS the digit a one-line verb row has room for and takes
-// nothing away from a hand that learned the letters.
+// THE DIGIT IS THE ANSWER'S POSITION ON THE QUESTION'S OWN ANSWERS ROW. That is
+// the shape [app.questionAnswerParts] already falls back to for an option
+// carrying no key of its own — it spells `itoa(i+1)` there — and the only
+// difference here is that these options DO carry keys: the landing's answers wear
+// LETTERS because docs/design/task-states/DESIGN.md fixed `a`, `n` and `s` on that
+// card (session's answers.go states the law). So the position is a SECOND name
+// beside the letter rather than a stand-in for a missing one, and the letters are
+// untouched.
+//
+// AND NO DIGIT IS HANDED OUT THAT COULD COLLIDE WITH AN OPTION'S OWN KEY. Four
+// other question kinds are answered by digits (`AnswerOptions` spells them so),
+// and although none of them can reach this card today — [app.taskRecordLanding]
+// matches only the landing and the conflict — a question whose own keys were
+// digits would otherwise have two meanings for one keystroke. A row that carries
+// its own digits is left alone here and answered by them.
 //
 // IT STOPS AFTER THE ANSWERS THE ROW'S OWN ASK NAMES. [session.TaskAsk] carries
 // exactly the yes and the no, and [session.landingOptions] writes those two words
@@ -813,9 +832,26 @@ func taskRecordVerbs(q questionShown, ask session.TaskAsk) []taskRecordVerb {
 		if key == "" || word == "" {
 			continue
 		}
-		out = append(out, taskRecordVerb{digit: itoa(at + 1), key: key, word: word})
+		digit := itoa(at + 1)
+		if taskRecordSpellsDigits(q.question.Options) {
+			digit = key
+		}
+		out = append(out, taskRecordVerb{digit: digit, key: key, word: word})
 	}
 	return out
+}
+
+// taskRecordSpellsDigits reports that a question's answers already wear digits of
+// their own, in which case the verb line draws those rather than minting a second
+// set over the top of them.
+func taskRecordSpellsDigits(options []session.AnswerOption) bool {
+	for _, option := range options {
+		key := strings.TrimSpace(option.Key)
+		if len(key) != 1 || key[0] < '0' || key[0] > '9' {
+			return false
+		}
+	}
+	return len(options) > 0
 }
 
 // taskRecordAsk is the question one row of the record is asking in the person's
@@ -848,17 +884,23 @@ func (a *app) taskRecordAnswer(entry session.TaskIndexEntry, key string) (tea.Cm
 	if !ok {
 		return nil, false
 	}
+	// THE OPTION'S OWN KEY IS ASKED FIRST, AND THAT ORDER IS THE SAFETY. A digit
+	// here is a POSITION, and a question whose answers already wear digits would
+	// have two meanings for one keystroke — `3` as this row's third answer and `3`
+	// as the answer spelled `[3]`. Asked in this order the option's own spelling
+	// always wins, and [taskRecordVerbs] hands out no digit that could collide
+	// with one.
 	press := ""
-	for _, verb := range taskRecordVerbs(q, a.taskRecordAsk(entry)) {
-		if verb.digit == key {
-			press = verb.key
+	for _, option := range q.question.Options {
+		if strings.TrimSpace(option.Key) == key {
+			press = key
 			break
 		}
 	}
 	if press == "" {
-		for _, option := range q.question.Options {
-			if strings.TrimSpace(option.Key) == key {
-				press = key
+		for _, verb := range taskRecordVerbs(q, a.taskRecordAsk(entry)) {
+			if verb.digit == key {
+				press = verb.key
 				break
 			}
 		}

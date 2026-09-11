@@ -2398,7 +2398,9 @@ Only the left button acts. A press is resolved in this order:
    above it, and a click on the `⟲ rewind here` line does the rewind.
 1. The settings panel, the task page, home, the rewind timeline, the status deck, or the
    phone tool sheet — each takes **every** press inside its frame, padding included. On the
-   task page a press on a row opens it on the first press; a press on a section word or on
+   task page a press on a row puts the cursor there and the record pane beside the list
+   follows it, and a second press on the same row opens it — on a frame too narrow for that
+   pane one press opens, as it always did; a press on a section word or on
    empty padding does nothing. Inside an old task's record card, the head row and the foot
    go back to the list and its body is read. On standing, spend and search a press on a
    row opens it on the first press too; on memory it opens a line's card, or folds a
