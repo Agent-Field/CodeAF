@@ -725,13 +725,23 @@ func questionPointerStart(q session.Question) int {
 	// a fixture could reach. A safety default that is right in the design and
 	// wrong in production is wrong.
 	//
-	// So the rule here stays the one that shipped — the hands-only test alone —
-	// and the stakes reading moves upstream: approval's always-ask shapes become
-	// [session.StakesIrreversible], `consentAsk` passes the grade through, and the
-	// day a call arrives graded this line becomes the by-stakes one.
+	// So the rule here stays the one that shipped — the hands-only test alone.
+	// [questionHandsOnly] DOES read the stakes, and that reading is the shape of
+	// the ruling rather than yet its behaviour: it lets a permission a lane marked
+	// plainly REVERSIBLE open on its first answer, and NO LANE PRODUCES ONE TODAY
+	// any more than one produces [session.StakesIrreversible]. Both branches are
+	// there and only the middle one is ever taken.
+	//
+	// THE GRADING IS ISSUE #953 and the order of work is written there: approval's
+	// always-ask shapes become [session.StakesIrreversible], `consentAsk` passes the
+	// grade through instead of stamping `costly` flat, and then — and only then —
+	// this line splits by stakes and the graded frame drops its `always` and its
+	// clock. Until #953 lands, `enter` on any permission denies.
+	//
 	// TestTheGateGradesNoCallAsIrreversibleAndMarksDenyTheSafeAnswer, in
-	// internal/session, fails on the day that changes. The seam is written down in
-	// ~/af-qv-P.report.md.
+	// internal/session, is what says so out loud: it raises this engine's own
+	// `consentAsk` output for `rm -rf *` and FAILS the day that output is graded,
+	// naming the surface test to re-read. The seam is in ~/af-qv-P.report.md.
 	//
 	// IT IS BELOW THE PICK AND NOT ABOVE IT, which is the whole of why a task
 	// proposal is unaffected: an asker that recommended an answer said so on the

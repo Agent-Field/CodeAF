@@ -1,0 +1,40 @@
+{
+  "id": 9,
+  "kind": "consent",
+  "ask": "permission",
+  "form": "line",
+  "asker": {
+    "kind": "engine"
+  },
+  "head": "needs your ok to run bash",
+  "reason": "default (unset)",
+  "subject": {
+    "kind": "call",
+    "callId": "c1",
+    "name": "bash"
+  },
+  "options": [
+    {
+      "key": "1",
+      "label": "allow once"
+    },
+    {
+      "key": "2",
+      "label": "always",
+      "widening": true
+    },
+    {
+      "key": "3",
+      "label": "deny",
+      "safe": true
+    }
+  ],
+  "stakes": "costly",
+  "blocking": {
+    "turn": true
+  },
+  "scope": [
+    "once",
+    "always"
+  ]
+}

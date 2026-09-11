@@ -1,8 +1,12 @@
 package session
 
 import (
+	"bytes"
 	"encoding/json"
+	"flag"
+	"os"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -73,4 +77,58 @@ func TestTheGateGradesNoCallAsIrreversibleAndMarksDenyTheSafeAnswer(t *testing.T
 			t.Fatalf("the answer that loses nothing is not the refusal: %q", option.Label)
 		}
 	}
+
+	// AND THE WHOLE OBJECT IS WRITTEN DOWN WHERE THE SURFACE CAN RAISE IT.
+	//
+	// The surface rule this protects lives in internal/tui3, which cannot call
+	// into this package's unexported gate, and a hand-built copy of this question
+	// over there is exactly the fixture that let the regression through: it
+	// claimed `irreversible` where the engine says `costly`, so it tested a frame
+	// nobody ever meets. So the genuine article is kept on disk, THIS test is what
+	// keeps it current, and tui3's
+	// TestEnterOnTheEnginesOwnPermissionDeniesTheCall raises what is in the file
+	// rather than anything it made up. A golden that drifts is worse than none, so
+	// the drift is what fails here.
+	assertConsentGolden(t, ask)
 }
+
+// consentGolden is where the engine's own answer to `rm -rf *` is kept for the
+// surface's tests to raise. It sits beside the code that produces it, because
+// the producer is what owes it accuracy.
+const consentGolden = "testdata/consentask-rm-rf.json"
+
+// assertConsentGolden holds the file and the gate to each other, and rewrites the
+// file under -update rather than making somebody transcribe a diff by hand.
+func assertConsentGolden(t *testing.T, ask Question) {
+	t.Helper()
+	// THE STAMP IS NOT PART OF THE QUESTION'S SHAPE. `Asked` is a clock reading
+	// and would make this file differ on every run, so it is cleared before the
+	// comparison and the surface stamps its own.
+	ask.Asked = time.Time{}
+	fresh, err := json.MarshalIndent(ask, "", "  ")
+	if err != nil {
+		t.Fatalf("encode the consent question: %v", err)
+	}
+	fresh = append(fresh, '\n')
+	if *updateGolden {
+		if err := os.WriteFile(consentGolden, fresh, 0o644); err != nil {
+			t.Fatalf("write %s: %v", consentGolden, err)
+		}
+		return
+	}
+	held, err := os.ReadFile(consentGolden)
+	if err != nil {
+		t.Fatalf("read %s: %v (run `go test ./internal/session -run %s -update`)",
+			consentGolden, err, t.Name())
+	}
+	if !bytes.Equal(bytes.TrimSpace(held), bytes.TrimSpace(fresh)) {
+		t.Fatalf("the gate no longer produces what %s holds, so tui3 is raising a "+
+			"question this engine does not ask.\n\nnow:\n%s\nheld:\n%s\n"+
+			"If the change is intended, re-run with -update AND re-read tui3's "+
+			"TestEnterOnTheEnginesOwnPermissionDeniesTheCall: the pointer rule is "+
+			"read off this object.", consentGolden, fresh, held)
+	}
+}
+
+// updateGolden rewrites the file above instead of comparing against it.
+var updateGolden = flag.Bool("update", false, "rewrite the consent golden in testdata")

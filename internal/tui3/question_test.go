@@ -1,7 +1,10 @@
 package tui3
 
 import (
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -1646,5 +1649,58 @@ func TestAnAnswerThisWindowLostStillWearsTheOtherWindowsName(t *testing.T) {
 	got := lab.plain()
 	if !strings.Contains(got, "another window") {
 		t.Fatalf("a key pressed on another screen was drawn as this window's:\n%s", got)
+	}
+}
+
+// TestEnterOnTheEnginesOwnPermissionDeniesTheCall presses `enter` on the
+// question THIS ENGINE ASKS about `rm -rf *`, rather than on one this file made
+// up to look like it.
+//
+// That distinction is the whole reason the test exists. The version of the
+// pointer rule that shipped in #933's first push was proved against a fixture
+// that set `StakesIrreversible` by hand; the engine's gate stamps
+// [session.StakesCostly] on every consent it raises, so the fixture described a
+// frame nobody ever meets and the rule it proved allowed `rm -rf *` on `enter`
+// in production while the test stayed green.
+//
+// So the object comes off disk, from internal/session/testdata, and
+// TestTheGateGradesNoCallAsIrreversibleAndMarksDenyTheSafeAnswer in that package
+// is what keeps the file equal to what `consentAsk` returns. Neither test can go
+// green on a lie on its own: one holds the engine to the file, this one holds the
+// surface to the engine.
+func TestEnterOnTheEnginesOwnPermissionDeniesTheCall(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "session", "testdata", "consentask-rm-rf.json"))
+	if err != nil {
+		t.Fatalf("read the engine's own consent question: %v", err)
+	}
+	var ask session.Question
+	if err := json.Unmarshal(raw, &ask); err != nil {
+		t.Fatalf("decode the engine's own consent question: %v", err)
+	}
+	// The file is the gate's answer about a recursive delete, so a test that
+	// stopped being about one would say nothing worth knowing.
+	if ask.Ask != session.AskPermission || ask.Subject.Kind != session.SubjectCall {
+		t.Fatalf("the file no longer holds a permission about a call: %+v", ask)
+	}
+
+	lab := newQuestionLab(t)
+	lab.raise(ask)
+	lab.tick(questionSettle)
+	lab.rows()
+
+	safe := questionSafeAt(ask)
+	if ask.Options[safe].Label != "deny" {
+		t.Fatalf("the answer that loses nothing is not the refusal: %q", ask.Options[safe].Label)
+	}
+	head, _ := lab.a.questionHead()
+	if head.pick != safe {
+		t.Fatalf("the pointer opened on %q, not on `deny`", ask.Options[head.pick].Label)
+	}
+	if !lab.press("enter") {
+		t.Fatal("enter was not taken by the engine's own permission")
+	}
+	if len(lab.answer) != 1 || lab.answer[0].FirstKey() != ask.Options[safe].Key {
+		t.Fatalf("enter on `rm -rf *` answered %+v, not the refusal %q",
+			lab.answer, ask.Options[safe].Key)
 	}
 }
