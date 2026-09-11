@@ -1,4 +1,6 @@
 CO-ROUTINE c
-  SCAN 2 CONSTANT ROWS
+  SCAN n CONSTANT ROWS
 SCAN c
-SEARCH g USING INDEX direction_legacy_record (record_id=?)
+SEARCH g USING INTEGER PRIMARY KEY (rowid=?)
+CORRELATED SCALAR SUBQUERY n
+  SEARCH n USING COVERING INDEX direction_legacy_record (record_id=?)

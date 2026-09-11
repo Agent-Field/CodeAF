@@ -173,14 +173,15 @@ func (s *Store) Import(ctx context.Context, run ImportRun, item ImportItem) (Imp
 }
 
 // The import path's lookups, named so the plan test reads the same text.
-const (
-	legacyByContent = `SELECT record_id,revision FROM direction_legacy WHERE source_store=? AND source_id=? AND source_sha256=?`
+var (
+	legacyByContent = named("legacy-key", `SELECT record_id,revision FROM direction_legacy
+ WHERE source_store=? AND source_id=? AND source_sha256=?`)
 	// legacyNewestBySource finds a document's record by the primary key, then
 	// its newest mapping by (record_id, revision) read backwards: two seeks,
 	// however often the document was imported.
-	legacyNewestBySource = `SELECT g.record_id,g.revision,g.source_version FROM direction_legacy g
+	legacyNewestBySource = named("legacy-newest", `SELECT g.record_id,g.revision,g.source_version FROM direction_legacy g
  WHERE g.record_id=(SELECT record_id FROM direction_legacy WHERE source_store=? AND source_id=? LIMIT 1)
- ORDER BY g.revision DESC LIMIT 1`
+ ORDER BY g.revision DESC LIMIT 1`)
 )
 
 // imported is the newest mapping of a document: the record it went to, the

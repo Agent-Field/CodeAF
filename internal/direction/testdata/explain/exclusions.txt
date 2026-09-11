@@ -1,4 +1,4 @@
 CO-ROUTINE c
-  SCAN 2 CONSTANT ROWS
+  SCAN n CONSTANT ROWS
 SCAN c
 SEARCH e USING COVERING INDEX sqlite_autoindex_direction_exclusions_1 (record_id=? AND revision=?)

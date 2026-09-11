@@ -362,6 +362,37 @@ func TestR10FindingsAreInformationalOneMembershipHop(t *testing.T) {
 	}
 }
 
+// AN INFORMATIONAL PAGE IS CUT IN THE STORE. However many findings reach the
+// subject, the statement returns one page and one row to say there is more.
+func TestAnInformationalPageIsCutInTheStore(t *testing.T) {
+	w := newWorld(t)
+	for i := 0; i < 60; i++ {
+		musts(t)(w.s.Note(w.ctx, finding(fmt.Sprint("fact ", i), chatTarget("w")), model))
+	}
+	subj := Subject{Refs: []workspace.Ref{chat("w")}, Phase: PhaseChat}
+	var rows int
+	if err := w.s.ws.ReadSnapshot(w.ctx, func(tx *sqlTx) error {
+		args := []any{"conversation", "w", "", string(TargetEverywhere), Everywhere, "", 11, 20}
+		got, err := collect(w.ctx, tx, informationalQuery(1, 1), args, func(r scanner) (int, error) { return 1, nil })
+		rows = len(got)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 11 {
+		t.Fatalf("a page of 10 read %d rows from the store", rows)
+	}
+	page, err := w.s.Informational(w.ctx, subj, 20, 10)
+	if err != nil || len(page.Items) != 10 || !page.More {
+		t.Fatalf("the third page: %d items, more %v, %v", len(page.Items), page.More, err)
+	}
+	for i := 1; i < len(page.Items); i++ {
+		if a, b := page.Items[i-1].Rev, page.Items[i].Rev; a.WrittenAt.Before(b.WrittenAt) {
+			t.Fatalf("the page is not newest first: %s before %s", a.WrittenAt, b.WrittenAt)
+		}
+	}
+}
+
 func contains(list []string, id string) bool {
 	for _, x := range list {
 		if x == id {
@@ -474,8 +505,10 @@ func TestResolveStopsAtItsBoundsAndNamesTheHeaviestTarget(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		w2.accept(rule(fmt.Sprint(i, strings.Repeat("x", 40*1024)), chatTarget("w")))
 	}
-	if _, err := w2.s.Resolve(w2.ctx, Subject{Refs: []workspace.Ref{chat("w")}, Phase: PhaseChat}); !errors.Is(err, ErrGoverningTooLarge) {
-		t.Fatalf("over the byte bound: %v", err)
+	_, err = w2.s.Resolve(w2.ctx, Subject{Refs: []workspace.Ref{chat("w")}, Phase: PhaseChat})
+	if !errors.As(err, &large) || large.Heaviest.Ref != "w" || large.HeaviestRecords != 2 ||
+		large.HeaviestBytes != large.Bytes || large.Bytes <= MaxGoverningBytes {
+		t.Fatalf("over the byte bound, the heaviest target is the one with the most wording: %+v, %v", large, err)
 	}
 
 	w3 := newWorld(t)
@@ -488,6 +521,101 @@ func TestResolveStopsAtItsBoundsAndNamesTheHeaviestTarget(t *testing.T) {
 	}
 	if _, err := w3.s.Resolve(w3.ctx, Subject{Refs: []workspace.Ref{chat("deep")}, Phase: PhaseChat}); !errors.Is(err, ErrClosureTooLarge) {
 		t.Fatalf("over the closure bound: %v", err)
+	}
+}
+
+// THE HEAVIEST TARGET COUNTS RECORDS, NOT PATHS. Folder A carries 25 rules and
+// both of the subject's refs are placed in it; folder B carries 40 and one ref
+// is placed there. A contributes 25 records however many refs reach it, so B
+// is the place to narrow.
+func TestTheHeaviestTargetCountsRecordsNotPaths(t *testing.T) {
+	w := newWorld(t)
+	a, b := w.folder("A"), w.folder("B")
+	w.place(a, chat("x"))
+	w.place(a, chat("y"))
+	w.place(b, chat("x"))
+	for i := 0; i < 25; i++ {
+		w.accept(rule(fmt.Sprint("a rule ", i), folderTarget(a, Direct)))
+	}
+	for i := 0; i < 40; i++ {
+		w.accept(rule(fmt.Sprint("b rule ", i), folderTarget(b, Direct)))
+	}
+	_, err := w.s.Resolve(w.ctx, Subject{Refs: []workspace.Ref{chat("x"), chat("y")}, Phase: PhaseChat})
+	var large *GoverningTooLargeError
+	if !errors.As(err, &large) || large.Heaviest.Ref != b {
+		t.Fatalf("heaviest %+v, want folder B (%s) with 40 records: %v", large, b, err)
+	}
+	if large.HeaviestRecords != 40 || large.Records != 65 || large.Bytes != 0 {
+		t.Fatalf("the record bound counts records once each and reads no bodies: %+v", large)
+	}
+}
+
+// THE NEWEST LEGACY NAME IS ONE SEEK PER RECORD. A hold re-imported twenty
+// times has twenty mappings; the resolver reads the newest one and nothing
+// else, so the cost of provenance does not grow with import history.
+func TestTheNewestLegacyNameIsReadWithOneSeekPerRecord(t *testing.T) {
+	w := newWorld(t)
+	var res ImportResult
+	for v := 1; v <= 20; v++ {
+		var err error
+		if res, err = w.s.Import(w.ctx, importRun, holdItem("hold-1", fmt.Sprint(v), fmt.Sprintf("at most $%d a night", 100+v))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var rows int
+	if err := w.s.ws.ReadSnapshot(w.ctx, func(tx *sqlTx) error {
+		got, err := collect(w.ctx, tx, legacyQuery(1), []any{res.Record}, func(r scanner) (int, error) { return 1, nil })
+		rows = len(got)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 1 {
+		t.Fatalf("the legacy read returned %d rows for one record; it must seek the newest mapping only", rows)
+	}
+	a := governs(w.resolve(chat("w")), res.Record)
+	if a == nil || a.Legacy == nil || a.Legacy.Version != "20" {
+		t.Fatalf("the delivered legacy name: %+v", a)
+	}
+}
+
+// MUTUAL OVERRIDES RESOLVE NOTHING. A overrides B and B overrides A is no
+// statement of which governs here, so neither is annotated and a conflict the
+// person declared between them stays a conflict.
+func TestMutualOverridesAreAnUnresolvedConflict(t *testing.T) {
+	w := newWorld(t)
+	must := musts(t)
+	a := w.accept(rule("ship Friday", chatTarget("w")))
+	d := rule("ship Monday", chatTarget("w"))
+	d.Links = []Link{{Kind: Overrides, To: a.ID}, {Kind: ConflictsWith, To: a.ID}}
+	b := w.accept(d)
+	must(w.s.Link(w.ctx, must(w.s.Current(w.ctx, a.ID)).Fence(), Link{Kind: Overrides, To: b.ID}, card(t, "Friday wins")))
+	eff := w.resolve(chat("w"))
+	if len(eff.Conflicts) != 1 || eff.Conflicts[0] != (Conflict{A: min(a.ID, b.ID), B: max(a.ID, b.ID)}) {
+		t.Fatalf("conflicts %+v; mutual overrides must leave the pair unresolved", eff.Conflicts)
+	}
+	for _, x := range eff.Governing {
+		if len(x.Overrides) != 0 || len(x.OverriddenBy) != 0 {
+			t.Fatalf("%s is annotated %+v / %+v under mutual overrides", x.Rev.ID, x.Overrides, x.OverriddenBy)
+		}
+	}
+}
+
+// A RESOLVE NEVER DELIVERS A LIVE ROW THE RECORD NO LONGER SAYS. If the live
+// index names a revision that is not the record's current one, the index has
+// drifted: the resolve stops with ErrDrift rather than deliver authority the
+// records do not grant.
+func TestAResolveRefusesALiveRowThatIsNotTheCurrentRevision(t *testing.T) {
+	w := newWorld(t)
+	r := w.accept(rule("formal tone", chatTarget("w")))
+	if err := w.s.ws.WriteImmediate(w.ctx, func(tx *sqlTx) error {
+		_, err := tx.ExecContext(w.ctx, "UPDATE direction_records SET revision=1 WHERE id=?", r.ID)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if eff, err := w.s.Resolve(w.ctx, Subject{Refs: []workspace.Ref{chat("w")}, Phase: PhaseChat}); !errors.Is(err, ErrDrift) {
+		t.Fatalf("a resolve over a drifted index: governing %v, %v", ids(eff.Governing), err)
 	}
 }
 
