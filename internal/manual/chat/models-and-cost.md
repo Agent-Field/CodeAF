@@ -9,20 +9,26 @@ your prompt or API key; it does not ask a model to generate anything.
 
 Waiting calls share a check. After each failed check, aforge waits about one to
 one and a half seconds before checking again. Each check has a two-second limit.
-When the endpoint answers, your request resumes without waiting through an old
-retry delay. A response proves endpoint reachability, not that every internet
-service is healthy. No separate public ping service is involved.
+When the endpoint first answers, your request resumes immediately. If the check
+answers but your request still cannot go out, aforge waits a little longer
+before each further try. A response proves endpoint reachability, not that every
+internet service is healthy. No separate public ping service is involved.
 
 Connection recovery waits up to two minutes, or less if that call already had
 a shorter deadline. Esc or Stop work cancels your call immediately; other calls
 still waiting keep their shared check. If the connection does not return, aforge
 says `connection is still unavailable; try again when connected`.
 
+A picture, video, speech or transcription request shows `waiting for
+connection` against the model it asked for, just as a chat reply does. If its
+checks answer but the request still cannot go out, aforge eventually gives up
+with `connection is still unavailable; try again when connected`.
+
 Chat, auxiliary requests, document parsing and authenticated media requests use
 this recovery for pre-send connection failures. A cut-off reply still follows
 the existing stream recovery rules. A lost response to an accepted media job
 does not automatically submit that job again. Rate limits keep their existing
-retry policy; invalid credentials, invalid requests and certificate errors are
+recovery policy; invalid credentials, invalid requests and certificate errors are
 not repaired by a connection wait.
 
 ## Why a longer conversation does not get a full cache discount
@@ -874,7 +880,8 @@ effort rungs below).
 ## Reasoning effort — making the model think harder or faster
 
 Reasoning effort is set in the model picker with **ctrl+t**, on the model under the cursor.
-Each press walks it round: off → low → medium → high → off.
+Each press walks it round: `auto → low → medium → high → xhigh → max → auto`. `auto`
+hands the dial back to whatever is under it.
 
 - On a model whose catalog row does not accept a reasoning knob, ctrl+t does **nothing at
   all, silently** — the level would be a 400 at the next turn. A row that published nothing
@@ -889,8 +896,8 @@ Each press walks it round: off → low → medium → high → off.
 **A level set here wins over everything else that asks for thinking.** It is the most
 specific thing anybody said about how hard this model should work, so it beats the
 conversation's own rung, a task's rung and the **thinking** default — see *Making the model
-think harder, deeper, or less*. The cycle itself is unchanged and still walks
-off → low → medium → high → off; it does not offer `xhigh` or `max`.
+think harder, deeper, or less*. This is the same walk the task control and the settings row
+use, and all five rungs are reachable here.
 
 ## Making the model think harder, deeper, or less — the effort ladder from low to max
 
@@ -915,22 +922,24 @@ Several things can name a rung, and the most specific one wins:
    `meta.json`, so it is still there after you close aforge and come back.
 3. **The piece of work's own rung** — a task carries one in `tasks.json`, and a standing
    item carries one as its `does.effort`.
-4. **What the call is for.** A standing item firing, and the sentinel run that watches for
-   it, think at `low`. The errands aforge runs beside your turn — naming a conversation,
-   summarising it, judging where a request belongs — ask for nothing at all. Your own turn,
-   and the task workers you hand work out to, take the default.
+4. **What the call is for.** A standing item's firing and the sentinel check in front of it
+   take the item's own rung, and ask for nothing at all when the item has none — nothing
+   else on this machine reaches them. The errands aforge runs beside your turn — naming a
+   conversation, summarising it, judging where a request belongs — ask for nothing whatever
+   anybody set. Your own turn, and the task workers you hand work out to, take the default.
 5. **The default** — the **thinking** row, which is `auto` until somebody chooses otherwise.
 
 **`ctrl+v` moves the rung of whatever you are standing on.** In the message box it moves
 **this conversation's** rung, which is named on the line above the box, beside the model:
 `glm-5.3-flash · ⠿ high`. On a task — the roster row under the cursor, or the page you are
-inside — it moves that task's rung. On home with the cursor on no row at all, it moves the
-**thinking** row itself, the machine-wide default. On a standing item's card it moves that
-item's. The rung climbs one step each press and wraps from `max` back to `low`; it never
-goes back to "nobody said" — for this conversation, `/effort auto` and the top row of
-`/effort` are what do that. The **thinking** row in `/settings` stays what it is: the
-answer for every conversation that has not been dialled by hand. The keys page has the
-whole of it — see *The thinking chip above the message box* and *ctrl+v — how hard the
+inside — it moves that task's rung. On a standing item's card it moves that item's. A
+conversation's rung and an item's rung climb one step each press and wrap from `max` back
+to `low`; they never go back to "nobody said". For this conversation, `/effort auto` and
+the top row of `/effort` clear it instead. A task's rung, and the level `ctrl+t` dials onto
+one model in `/model`, come back to `auto` off the top — that is how you hand this piece of
+work, or this model, back to whatever stands above it. The **thinking** row in `/settings`
+stays what it is: the answer for every conversation that has not been dialled by hand. The
+keys page has the whole of it — see *The thinking chip above the message box* and *ctrl+v — how hard the
 thing you are looking at thinks*.
 
 **Three doors, one rung.** `ctrl+v`, a press on the rung itself, and `/effort`:
@@ -1776,12 +1785,16 @@ function, and if you ever see them differ, that is a bug worth reporting.
 the provider — every step of a turn is its own request — so this figure is normally larger
 than the number of times you have spoken.
 
-It counts **every** request, not only the ones in your turns: naming the session, a judge
-deciding where something should be routed, looking at a picture, every request a task's
-own agent made on its own lane, and every request a harness run made while it walked its
-program. That is deliberate, because the `spend` line above it is the
+It counts every request that is written down, not only the ones in your turns: naming the
+session, a judge deciding where something should be routed, looking at a picture, every
+request a task's own agent made on its own lane, and every request a harness run made
+while it walked its program. That is deliberate, because the `spend` line above it is the
 sum over exactly those requests — a smaller count beside it would be a bill divided by the
 wrong number.
+
+**One request is not written down and so is not in either figure**: the one-token
+measurement sent while you are typing. Your provider bills it and aforge does not count
+it — there is a section on that below, `Spend that /cost does not show`.
 
 `empty reflex answers` appears only when that failure happened. Those requests remain in
 the token, call and spend totals because the provider billed them; the separate count says
@@ -2551,7 +2564,7 @@ lane in force (`auto` when nothing is pinned):
 
 ```
  deepseek-v4-flash   via cloudflare · ▲0.8s · $0.09/$0.18 per M · 1M · 58t/s
-   ● auto        picks the fastest lane each answer — cloudflare now · recommended
+   ● auto        weighs speed against price each answer — cloudflare now · recommended
      cloudflare    0.8s · 58 t/s · $1.3/M · no tools · 100% · ▁▂▁▃▁▂
      coreweave     0.4s · 24 t/s · $0.28/M · tail 12s · 99% · ▁▁▇▁▂▁
      deepinfra     0.8s · 27 t/s · $0.18/M · out ≤ 65k · 99%
@@ -2740,7 +2753,7 @@ Turn it off if you are paying for every token and never mind waiting. With it of
 are one row because they are one promise: aforge may spend a little extra to keep an
 answer moving.
 
-## Why aforge sends something when you start typing — the one-token measurement
+## Does aforge send anything while I am typing — the one-token measurement it sends before you press enter
 
 While you are typing, and before you press enter, aforge sends **one token** to each of
 the two lanes your next message would most likely go to, and times how long the first
@@ -2754,11 +2767,46 @@ token out, twice.
 
 **How often.** At most one pair every **twenty seconds** per model, however fast you
 type — so a long message buys one, not one per keystroke. None at all when the **speed
-guard** is off, when `routing` is `off`, when the lane row says `openrouter`, or when
-the connection pool is already being rate-limited.
+guard** is off, when `routing` is `off`, when the lane row says `openrouter`, when the
+pool is already backing off a rate limit, when aforge is still recovering a dropped
+connection, or when **nobody is waiting on that model** — a task working on its own and
+an errand buy none, because the measurement exists to shorten a wait somebody is sitting
+through.
 
 **Nothing ever waits for it.** It is sent and forgotten; a message you send a moment
 later does not wait on it, and a probe that fails teaches nothing and changes nothing.
+
+**It is not in `/cost`.** It is a real request to a real provider and your provider bills
+you for it, and aforge's own figures do not include it. The next section says why, what
+it adds up to, and where to see it.
+
+## Spend that /cost does not show — why the typing measurement is missing from the figures
+
+There is exactly one request aforge makes that its own money figures do not count: the
+**one-token measurement** it sends while you are typing, to warm the connection and time
+the machine your next message is heading for. Your provider bills you for it. `/cost`,
+the status line, the spend place (`alt+3`) and the total at the end of `aforge do` all
+leave it out, and so do the call-log rows and `aforge-census`.
+
+**Why it is missing.** Those figures are all counts of the **call log**, and the
+measurement deliberately writes no row there — it skips the shaping, the retries and the
+record on purpose, so that what it times is one clean request to one named machine and
+not a retry of one. And it hangs up **at the first word**, so the token count a provider
+sends at the end of a reply never arrives: there is no measured figure to add up, only
+the fixed shape of the request.
+
+**What it comes to.** Ten tokens in and one token out, twice — about **two hundredths of
+a cent** a pair, at most one pair every twenty seconds per model, and only while somebody
+is actually sitting there waiting. An unbroken hour of typing is a few cents. It cannot
+run in the background, and a task working on its own buys none.
+
+**How to see it anyway.** Every measurement it buys is appended to
+`~/.aforge/v3/lanes.log`, one line of JSON each, with the ones bought this way marked as
+probes. That file is the record of what was sent.
+
+**How to make it zero.** Settings → Providers → **speed guard**, off. The same row governs
+asking a second machine when an answer is slow to start, so turning it off stops both.
+`routing off` and a lane row set to `openrouter` also stop it.
 
 ## The lane row in settings — auto, pinned, pinned but borrowable, openrouter
 
@@ -2774,7 +2822,7 @@ Settings → Providers has two rows under **routing**:
 
 | Value | What it does |
 |---|---|
-| `auto` | aforge picks the fastest lane each answer |
+| `auto` | aforge weighs speed against price on each answer and picks the lane that wins |
 | `pinned: cloudflare` | every request goes to that lane and nowhere else, until the router says that lane cannot serve this model — then this model routes on auto for the rest of the run and aforge says so once |
 | `pinned: cloudflare, borrow when slow` | it goes there, but a slow answer may still be rescued elsewhere |
 | `openrouter` | no lane is asked for; the router balances on price |

@@ -3,13 +3,13 @@ package session
 import (
 	_ "embed"
 	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/filememo"
 )
 
 // systemPromptSource is omp's normal-chat system prompt, adapted (Decision 2).
@@ -427,16 +427,43 @@ func readInstructionFile(workspace, name string) (content string, truncated bool
 // workspace's own, and several of them can ride at once (placescontext.go) — and
 // two spellings of "read this file, cut it on a rune boundary, say that it was
 // cut" is one of them forgetting the boundary.
+// instructionFileMemo is the project's own rules, READ AT MOST ONCE PER CHANGE.
+//
+// THE DEFECT IT CLOSES: [renderSystemAt] re-reads AGENTS.md and CLAUDE.md
+// whenever the prompt's clock has gone stale ([clockRefresh]) — which is exactly
+// the turn a person has just come back to their terminal and started, the one
+// turn of a long conversation where there is nobody else's latency to hide
+// behind. The files it re-reads have not changed since the session opened in the
+// overwhelming majority of cases, and a project with several folders attached
+// pays the same read once per folder (placescontext.go).
+//
+// It holds the BYTES rather than the trimmed string because two callers bound
+// the same file differently — a lean prefix cuts it shorter than a full one —
+// and a memo per (file, bound) would read one file twice to answer two questions
+// about the same bytes. What it holds is bounded at [agentsFileLimit]+1, which
+// is one byte more than the largest bound anybody asks for and is what makes
+// "was it cut" answerable without the rest of the file.
+var instructionFileMemo = filememo.New(func(_ string, data []byte, missing bool) ([]byte, error) {
+	if missing {
+		return nil, nil
+	}
+	if len(data) > agentsFileLimit+1 {
+		data = data[:agentsFileLimit+1]
+	}
+	return data, nil
+})
+
 func readInstructionFileWithin(dir, name string, limit int) (content string, truncated bool) {
-	file, err := os.Open(filepath.Join(dir, name))
-	if err != nil {
+	buffer, err := instructionFileMemo.Read(filepath.Join(dir, name))
+	if err != nil || len(buffer) == 0 {
 		return "", false
 	}
-	defer file.Close()
-	// One byte past the limit tells truncation from an exactly-sized file.
-	buffer, err := io.ReadAll(io.LimitReader(file, int64(limit)+1))
-	if err != nil {
-		return "", false
+	// One byte past the limit tells truncation from an exactly-sized file, and a
+	// bound above what the memo holds cannot be honoured — nothing asks for one
+	// ([agentsFileLimit] is the ceiling), and if something ever does it reads the
+	// file as truncated rather than as complete.
+	if limit > agentsFileLimit {
+		limit = agentsFileLimit
 	}
 	if len(buffer) > limit {
 		// Back off to a rune boundary. A byte-exact cut can land inside a

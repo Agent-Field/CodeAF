@@ -271,11 +271,11 @@ func TestTheLiveLoopConsultsTheProjectBeforeTheMachine(t *testing.T) {
 	broken := "ld: symbol(s) not found for architecture arm64"
 	signature, _ := fixSignature("bash", broken)
 
-	project := newFixStore(filepath.Join(bucket, fixesFileName))
+	project := settledFixStore(t, filepath.Join(bucket, fixesFileName))
 	for i := 0; i < 2; i++ {
 		project.confirm(signature, "go test ./internal/...")
 	}
-	global := newFixStore(filepath.Join(root, "v3", fixesFileName))
+	global := settledFixStore(t, filepath.Join(root, "v3", fixesFileName))
 	for i := 0; i < 9; i++ {
 		global.confirm(signature, "go test ./...")
 	}
@@ -455,7 +455,7 @@ func TestARefusalIsNeverAnsweredWithAdvice(t *testing.T) {
 	}
 	// Plant the very entry the measured run had, by the back door the live path
 	// is now forbidden from taking.
-	store := newFixStore(filepath.Join(bucket, fixesFileName))
+	store := settledFixStore(t, filepath.Join(bucket, fixesFileName))
 	for i := 0; i < 5; i++ {
 		store.confirmAdvised(signature, "pwd")
 	}

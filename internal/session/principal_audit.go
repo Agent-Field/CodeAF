@@ -16,14 +16,15 @@ package session
 //
 // So a Steward gets two readings a person would have taken for themselves:
 //
-//   - THE CHECKS THE WORK ITSELF NAMED, RE-RUN FROM CLEAN. Not a list this file
+//   - THE CHECKS THE WORK ITSELF NAMED, READ FROM CLEAN. Not a list this file
 //     knows — task_checks.go already settled that law, and the same
 //     [auditDoorFor] contract is used here so a session and its nodes can never
 //     disagree about what a check is. "From clean" means A FRESH PROCESS IN THE
 //     DELIVERABLE TREE: no shell the turn had open, no environment a tool call
 //     had edited, nothing cached from the run. It is what a person typing the
-//     command in a new terminal would get, which is exactly the reading that was
-//     never taken.
+//     command in a new terminal would get. An answer already taken over the
+//     same unchanged tree is that reading and is reused rather than paid for
+//     again.
 //
 //   - AND A RECONCILIATION OF EVERYTHING THE SESSION CREATED. Every path is
 //     either inside the deliverable tree — where it is part of the answer — or
@@ -137,8 +138,8 @@ func trimChecks(checks []string) []string {
 	return checks
 }
 
-// runSessionChecks runs the session's declared checks from clean and reports
-// what each one said.
+// runSessionChecks reads the session's declared checks from clean and reports
+// what each one said, reusing an answer already taken over the same tree state.
 //
 // EACH ONE IS ITS OWN PROCESS, in the deliverable tree, with a deadline of its
 // own. There is no shell state carried between them and none carried in from
@@ -147,10 +148,11 @@ func trimChecks(checks []string) []string {
 // stands, with every unit of work merged into it, and re-cutting that tree from
 // a branch would be auditing something nobody asked for.
 //
-// A CHECK THAT COULD NOT BE STARTED IS A CHECK THAT DID NOT PASS. The
-// alternative is a session that declares itself finished because its build
-// command was misspelled, which is the failure this whole road exists to catch
-// pointing the other way.
+// A CHECK DELIBERATELY LEFT UNSTARTED BECAUSE THE WALL CANNOT HOLD IT IS UNREAD,
+// not red. An invocation that was attempted but could not start still does not
+// pass: otherwise a session could declare itself finished because its build
+// command was misspelled, which is the failure this road catches pointing the
+// other way.
 func (a *Agent) runSessionChecks(ctx context.Context, checks []string) []CheckRun {
 	tree := a.deliverableTree()
 	out := make([]CheckRun, 0, len(checks))
@@ -158,13 +160,87 @@ func (a *Agent) runSessionChecks(ctx context.Context, checks []string) []CheckRu
 		if ctx.Err() != nil {
 			return out
 		}
-		out = append(out, runOneCheck(ctx, tree, check))
+		run, _ := a.checkNow(ctx, tree, check)
+		out = append(out, run)
 	}
 	return out
 }
 
-func runOneCheck(ctx context.Context, tree, check string) CheckRun {
-	ctx, done := context.WithTimeout(ctx, sessionCheckWindow)
+// checkNow is the one road every session-side check execution takes. An answer
+// over the tree's present state is returned without starting a process; a fresh
+// run records its pace even when the command itself moved the tree and made its
+// answer unusable.
+func (a *Agent) checkNow(ctx context.Context, tree, check string) (CheckRun, bool) {
+	memory := a.sessionCheckMemories()
+	if memory != nil {
+		// THE SERIALIZATION INCLUDES THE PROCESS. Two ending readers over one
+		// tree must not both miss the answer before either has had time to store
+		// it, or the memory would reproduce the duplicate run under contention.
+		memory.execution.Lock()
+		defer memory.execution.Unlock()
+	}
+	state := treeStateNow(tree)
+	if answer, ok := memory.answerFor(tree, check, state); ok {
+		return answer, false
+	}
+	window, fits := a.checkWindow(tree, check)
+	if !fits {
+		return CheckRun{Command: check, Unread: notEnoughTimeToRun + check}, false
+	}
+	started := time.Now()
+	run := runOneCheck(ctx, tree, check, window)
+	took := time.Since(started)
+	after := treeStateNow(tree)
+	moved := after != state
+	memory.remember(tree, check, state, run, took, moved)
+	return run, moved
+}
+
+// checkWindow decides whether one session-side check fits the wall-bounded
+// duration. A wall nobody named preserves the five-minute window exactly; a
+// named wall refuses a reading too short to be useful.
+func (a *Agent) checkWindow(tree, check string) (time.Duration, bool) {
+	steward := a.steward()
+	if steward == nil {
+		return sessionCheckWindow, true
+	}
+	budget := steward.Budget()
+	if budget.Wall == 0 {
+		return sessionCheckWindow, true
+	}
+	window := a.wallBoundedWindow(sessionCheckWindow)
+	need := verify.ShortestUsefulReading
+	if pace, remembered := a.sessionCheckMemories().paceFor(tree, check); remembered {
+		need = pace
+	}
+	return window, window >= need
+}
+
+// wallBoundedWindow is the one place a session-side reading consults the wall.
+// It preserves the caller's window when there is no Steward or no wall, and
+// otherwise gives the reading no more than the hours that remain on the
+// Steward's own clock.
+func (a *Agent) wallBoundedWindow(window time.Duration) time.Duration {
+	steward := a.steward()
+	if steward == nil {
+		return window
+	}
+	budget := steward.Budget()
+	if budget.Wall == 0 {
+		return window
+	}
+	left, _ := budget.Left()
+	return min(window, left)
+}
+
+// runOneCheck also serves task-baseline callers, whose context already carries
+// their checking deadline. Session callers supply the smaller wall-sized window.
+func runOneCheck(ctx context.Context, tree, check string, windows ...time.Duration) CheckRun {
+	window := sessionCheckWindow
+	if len(windows) > 0 {
+		window = windows[0]
+	}
+	ctx, done := context.WithTimeout(ctx, window)
 	defer done()
 	command := exec.CommandContext(ctx, "bash", "-c", check)
 	command.Dir = tree
@@ -746,13 +822,15 @@ func (a *Agent) openBaseline(ctx context.Context) {
 
 // readBaseline is the reading itself, on its own goroutine.
 func (a *Agent) readBaseline(ctx context.Context, checks []string) {
+	tree := a.deliverableTree()
 	// ONE WINDOW FOR THE WHOLE PHOTOGRAPH. [Agent.runSessionChecks] bounds each
 	// call it makes as well, so a single check still cannot outlive the window
-	// on its own; what this adds is that the SET cannot either.
-	ctx, done := context.WithTimeout(ctx, sessionCheckWindow)
+	// on its own; what this adds is that the SET cannot either. The wall's one
+	// sizing door bounds this photograph without inventing a command for it.
+	window := a.wallBoundedWindow(sessionCheckWindow)
+	ctx, done := context.WithTimeout(ctx, window)
 	defer done()
 
-	tree := a.deliverableTree()
 	var red, unread, moved []string
 	failures := make(map[string][]string)
 	for index, check := range checks {
@@ -762,13 +840,16 @@ func (a *Agent) readBaseline(ctx context.Context, checks []string) {
 			unread = append(unread, checks[index:]...)
 			break
 		}
-		before := treeStateNow(tree)
-		run := runOneCheck(ctx, tree, check)
-		if after := treeStateNow(tree); after != before {
+		run, changed := a.checkNow(ctx, tree, check)
+		if changed {
 			// THE CHECK WROTE. Whatever it answered is an answer about a tree it
 			// changed itself, so it is not a photograph of anything and it is
 			// discarded rather than trusted.
 			moved = append(moved, check)
+			unread = append(unread, check)
+			continue
+		}
+		if run.Unread != "" {
 			unread = append(unread, check)
 			continue
 		}
@@ -1012,6 +1093,13 @@ func (a *Agent) terminalAudit(ctx context.Context) ([]CheckRun, reconciliation, 
 	// ([Agent.awaitBaseline]).
 	a.awaitBaseline(ctx)
 	ran := a.runSessionChecks(ctx, a.sessionChecks())
+	var unread []string
+	for _, check := range ran {
+		if check.Unread != "" {
+			unread = append(unread, check.Command)
+		}
+	}
+	a.rememberTerminalUnread(unread)
 	tree := a.deliverableTree()
 	found := reconcile(a.createdList(), tree)
 	stashed := a.stashedWork()
@@ -1050,6 +1138,10 @@ func (a *Agent) journalChecks(ran []CheckRun, stashed int) {
 	moment := journalPrincipal{Who: principalWord(a.who()), Event: "checked", Stashed: stashed}
 	for _, check := range ran {
 		moment.Checks = append(moment.Checks, check.Command)
+		if check.Unread != "" {
+			moment.Unread = append(moment.Unread, check.Command)
+			continue
+		}
 		if !check.Passed {
 			moment.Failed = append(moment.Failed, check.Command)
 		}

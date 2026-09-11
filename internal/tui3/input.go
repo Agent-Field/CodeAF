@@ -345,12 +345,11 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
-	// A pending permission holds its work, not navigation. These chords never
-	// answer the question or edit a partly typed key. The connect offer used to
-	// be on this line beside it and is not any more: it is a card on the block
-	// now (connect.go), the block is not modal, and a rung that holds keys back
-	// is a rung only a modal needs.
-	if a.asking() && !a.shaping() {
+	// A pending question holds its work, not navigation. These chords never
+	// answer the question or edit a partly typed key. Every lane is one card on
+	// the unified block now (question.go), and the block's answer grammar must
+	// not take a chord before the navigation door below can read it.
+	if a.questioning() {
 		switch msg.String() {
 		case closeTabChord:
 			cmd, _ := a.closeTabKey(msg)
@@ -1229,9 +1228,11 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	case "end", "ctrl+e":
 		// ctrl+e has two meanings and they are read the way ↑'s four are: with
-		// nothing typed it opens the model's thinking (thinking.go), and with a
-		// sentence in the box it is end-of-line, where the caret is what the hand
-		// meant. `end` is always end-of-line, so nothing is unreachable.
+		// nothing typed it opens the running turn's compact steps first
+		// ([app.toggleLatestWorkfold]) and falls through to the model's thinking
+		// ([app.toggleLatestThought]); with a sentence in the box it is end-of-line,
+		// where the caret is what the hand meant. `end` is always end-of-line, so
+		// nothing is unreachable.
 		if msg.String() == "ctrl+e" && a.input.empty() {
 			if a.toggleLatestWorkfold() || a.toggleLatestThought() {
 				return nil

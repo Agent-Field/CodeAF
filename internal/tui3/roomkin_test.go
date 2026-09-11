@@ -59,7 +59,7 @@ func TestARoomsHeaderNamesWhatItHandedOutAndLeavesTheParentToTheTrail(t *testing
 	if block := strings.Join(rows, "\n"); strings.Contains(block, "part of") {
 		t.Fatalf("the kin block still says the parent the trail is naming:\n%s", block)
 	}
-	if trail := a.roomTrail(); trail != "Untitled ▸ Ship the port ▸ Write the tree" {
+	if trail := a.roomTrail(); trail != unnamedConversationWord+" ▸ Ship the port ▸ Write the tree" {
 		t.Fatalf("the trail does not carry the parent: %q", trail)
 	}
 }
@@ -82,7 +82,7 @@ func TestARootsRoomListsEveryPieceAndClaimsNoParent(t *testing.T) {
 	}
 	// AND ITS TRAIL CLAIMS NONE EITHER: a root's chain is the conversation and the
 	// page, which is the trail this surface has always drawn.
-	if trail := a.roomTrail(); trail != "Untitled ▸ Ship the port" {
+	if trail := a.roomTrail(); trail != unnamedConversationWord+" ▸ Ship the port" {
 		t.Fatalf("a root's trail invented a step: %q", trail)
 	}
 	for _, want := range []string{
@@ -121,14 +121,21 @@ func TestARootsRoomListsEveryPieceAndClaimsNoParent(t *testing.T) {
 // AND THE WORD IS THE COLUMN'S. This row used to read `queued`, which promises
 // that a scheduler will get to the child — while what is actually true is that
 // it is behind the piece of work whose room this is, which is itself waiting on
-// the person reading the page. The column called the same child `parked` the
-// whole time, and two surfaces one keypress apart may not have two words for one
+// the person reading the page. The column calls that child `waiting`, not
+// `queued`, and two surfaces one keypress apart may not have two words for one
 // fact.
-func TestAHandedOutPieceWaitingOnAnotherSaysParkedInTheColumnsWord(t *testing.T) {
+func TestAHandedOutPieceWaitingOnAnotherSaysWaitingInTheColumnsWord(t *testing.T) {
 	a, _, _ := taskApp(t)
 	railRun(a)
 	a.tasks[4].dependsOn = []uint64{5}
 	roomOn(a, 3, "Write the tree")
+	got := a.roomKinWord(a.tasks[4])
+	if got != railGroupWords[railParked] {
+		t.Fatalf("the blocked child's room word is %q, want the roster's %q", got, railGroupWords[railParked])
+	}
+	if got == railGroupWords[railIdle] {
+		t.Fatalf("the blocked child's room word is the roster's queued word %q", got)
+	}
 
 	// The handed-out line is the block's FIRST row now: the parent moved to the
 	// trail and took its own row with it (roomcrumbs.go).

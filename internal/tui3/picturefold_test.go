@@ -185,6 +185,11 @@ func TestClickingPreviewPixelsOpensFullQuality(t *testing.T) {
 				a.entries = []entry{{kind: entryTool, tool: "view_image", status: toolOK, detail: toolDetail{Args: `{"path":` + strconvQuote(path) + `}`, Output: "seen"}}}
 				a.openTool(0)
 			}
+			// THE FIXTURE PUTS AN ALREADY-EXPANDED PICTURE ON SCREEN, which in the
+			// product is a conversation that was open before this window was — so
+			// it is `open`'s walk that has stat'd the file, not the frame
+			// (learned.go; the frame reads a memo and never the disk).
+			a.learnShownPictures()
 			opened := watchOpener(t)
 			clicked := false
 			if a.expandShowing() {

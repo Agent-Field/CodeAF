@@ -451,7 +451,7 @@ the row.
 | `esc` | later. Nothing is cancelled |
 | `o` | open it out into its own page, where there is more to see. Inside the page it opens and folds the answer you are on |
 | `c` | change — take an answer, but say what you want different. The answers row becomes `change: say what you want different, then enter · it goes with [2] …`; type in the box below, `enter` sends the words with the pointed answer, `esc` gives the box back |
-| `?` | ask back before answering. The row becomes `ask back: type your question, then enter · the question stays open`; the reply lands in the conversation and the question is still there to answer |
+| `?` | ask back before answering. The row becomes `ask back: type your question, then enter · the question stays open`; the question is still there to answer, and the reply lands in the conversation when the work can read it — after you answer, if the work is parked on this question |
 | `d` | you decide |
 | `D` | decide questions like this from now on |
 | `r` | make it a rule |
@@ -726,18 +726,47 @@ lies. `x` again goes back to the answers.
 
 There is no separate typing place: **the message box under the question is where
 the words go**, and the block says what they will mean. With nothing pressed,
-what you type is a message to the conversation and the question waits. Press
+what you type is a message to the conversation — and sending it **takes the
+question back**, because saying something else is a kind of answer (the next
+section). Press
 `c` first and the answers row turns into `change: say what you want different,
 then enter · it goes with [2] Adaptive · esc back` — now the box is the
 question's: every letter types (even `d`), `enter` sends the sentence together
 with the answer the pointer is on, and `esc` turns the row back into the keys
 without answering. Press `?` and the row says `ask back: type your question,
-then enter · the question stays open`: `enter` sends the question to the asker,
-its reply lands in the conversation, and the block is still above the box to
-answer afterwards.
+then enter · the question stays open`: `enter` sends the question to the asker and
+the block is still above the box to answer afterwards. Its reply lands in the
+conversation when the work can read it — which, while the work is parked on this
+very question, is after you answer (see the limit under **Ask it something before
+I decide**).
 
 If the row still shows the keys — `[enter] take it · [esc] later · …` — the box
 is the conversation's, and what you type there goes to the model as a message.
+
+## I typed instead of pressing a key — answering a question in my own words, talking past it
+
+Send a message while a question is open and **the question comes down and your
+sentence goes to the model at once**. The row it leaves behind reads
+
+```
+  ⊘ Which painting genres do you like? — no longer needed · you said something else instead
+```
+
+and your own line is marked `took this instead of the question`.
+
+The model is told, in as many words, that nobody answered it and that your
+sentence is the next thing it will read — so `portrait` typed under a list of
+genres is read as your answer to it, and nothing is filed in the record as a
+choice you pressed. If what you said leaves the decision open, it asks again.
+
+**This is why nothing gets stuck.** A question waits for you and the work waits
+for the question, so a sentence that only queued behind the question would be
+waiting for itself: you would type, and the screen would sit there. Your words
+end the wait instead.
+
+If you meant to say something *beside* the question and keep it open, `?` is the
+key for that — but read the limit on it below first: while the work is parked on
+the question, an ask-back reaches the model only once you have answered.
 
 ## Comment on one option
 
@@ -757,9 +786,18 @@ beside your pick — the foot shows the difference before you press enter.
 `?` puts one question back to whoever asked, with the question still open.
 
 Type what you want to know and press enter. The sentence goes to the model as an
-ordinary message, the question stays exactly where it was, and the reply is drawn
-in place under the answer you asked about, led by `↳`. Answer the question when
-you have read it; the whole exchange is saved with your answer.
+ordinary message and the question stays exactly where it was; the reply is drawn
+in place under the answer you asked about, led by `↳`, and the whole exchange is
+saved with your answer.
+
+**A limit worth knowing before you use it.** When the work is PARKED ON THIS
+QUESTION — the foot says `running ask` and nothing else is moving — the sentence
+you ask back with is queued behind that question, and the question is waiting for
+you. So no reply comes until you answer. There is no error and nothing is lost:
+answer the question and the ask-back reaches the model with it. When the work is
+doing something else beside the question — a command, a file, another step — the
+reply comes back while you are still deciding, which is what this key was written
+for.
 
 **One exchange per answer.** A second `?` on the same answer says `already asked
 about this one` rather than doing nothing. A question that turned into a

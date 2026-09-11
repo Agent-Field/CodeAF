@@ -105,7 +105,7 @@ close mark; Home, `+`, and the scroll arrows gain a pointer dot, and Chats chang
 tab you are already in does nothing while you are in the conversation itself, and takes you
 back out to it from a task page.
 
-## Many open conversation tabs — horizontal scrolling, overflow, and readable names
+## Many open conversation tabs — horizontal scrolling, overflow, readable names, the tab bar, and how to scroll the tab bar
 
 **The order never changes as you switch.** Tabs sit in the order this window first entered
 them, so the one you reached for a minute ago is still in the same place. At most 32 are
@@ -155,15 +155,13 @@ in that state.
 the conversation it was written for and comes back when you return to it, including on a
 door that had to close the conversation to leave it.
 
-**It stands down on a small frame** — under 12 columns wide, or on a terminal too short
-for a blank row above the message box — for the same reason the room header does. The
-rule under the tabs goes first, on a terminal shorter than twenty rows: it is a seam, and
-a seam is the cheapest thing on the frame to give up.
+## Why did my tabs disappear on a small terminal — how wide and tall the tab bar needs
 
-On frames at least 48 columns wide, a blank row above the tabs appears at 32 rows,
-one below at 36 rows, and one after task metadata at 40 rows. These separate steps
-keep the reading area from shrinking as the window grows. Smaller terminals collapse
-the vertical padding. Blank tab rows and gaps cannot activate the content beneath them.
+**The tab strip stands down below 12 columns or below 16 rows.** At 16 rows and taller,
+the conversation keeps the same four-row head as every place: the machine pulse, the tabs,
+a rule, and a blank. From 6 through 15 rows the whole head stands down, while the blank and
+rule above the message box remain. Below 6 rows those give way too, leaving the conversation,
+the box, and the status line. Blank rows cannot activate the content beneath them.
 
 **Home at the left opens the home page**, keeping your conversation and unsent words.
 It is separate from the tabs and breadcrumbs. Space twice on an empty composer still
@@ -177,14 +175,14 @@ change what Enter opens. Without color both markers remain visible; ASCII mode u
 straight corners and a plain dot. Short windows give up inner vertical space before
 the selected row.
 
-## Why does my tab say Untitled — when does a chat get its name, how do I rename this conversation, my new chat has no title, the tab says Untitled instead of the conversation name
+## What is my chat called before it has a name — unnamed tab, when does a chat get its name, how do I rename this conversation, why it no longer says Untitled
 
 **Naming starts when your first message is accepted.** The small model on the `title`
 role works in the background alongside the answer. Each naming ask has twenty seconds to
 reach an answer or its existing fallback. The answer does not wait for a title, and the
 title does not wait for the answer to finish.
 
-1. `+` opens the `New chat` page. A newly created conversation starts as `Untitled`.
+1. `+` opens the `New chat` page. A newly created conversation starts as `new conversation`.
 2. Sending your first message starts both the conversation and background naming.
 3. One response supplies a full conversation title and a one- or two-word tab label. The tab strip
    and the terminal's own title use the compact label; breadcrumbs, the status line, Home,
@@ -200,7 +198,7 @@ whole of the bound and there is no count of attempts. You do not need to send
 another message. A failed title never interrupts the answer or changes its working state.
 Empty answers, instruction echoes and placeholders are rejected, and the next configured
 naming model can answer within the same budget. If those attempts fail, the tab remains
-`Untitled`; an unnamed saved conversation can try again on its next message after reopening.
+`new conversation`; an unnamed saved conversation can try again on its next message after reopening.
 
 **An existing name wins.** Naming runs once per session lifetime, and a chat that already
 has a name is not named again. Older saved names with a leaked `Full:` label are cleaned
@@ -208,11 +206,11 @@ when read — including one written behind a `-` or `1.` list marker — and sav
 are limited to two words. Closing the session cancels unfinished naming. There is no
 command or tab action to rename a conversation manually.
 
-**`Untitled` labels an unnamed tab and its breadcrumb root.** Elsewhere it is named
-after the folder it is in: the status line says the project, and home, the `ctrl+k`
-switcher and the terminal's own title say `new conversation`. And `Untitled` is not `main` — `main` is
-where you are, the conversation you get back to from a task page, which is what `esc/←
-main` and `say it to main` both mean.
+**`new conversation` is the one name placeholder.** The tab, its breadcrumb root and the
+`ctrl+k` switcher row all use it, and no conversation-name surface calls the same unnamed
+chat `Untitled`. The project in the status line is a separate fact. The placeholder is not
+`main` either — `main` is the conversation as a place, the one you get back to from a task
+page, which is what `esc/← main` and `say it to main` both mean.
 
 ## Closing a tab — the × on a tab, Ctrl+W, where do I go next
 
@@ -253,7 +251,9 @@ ends that task; `/quit` ends the program.
 A tool permission question does not trap you in its tab. `ctrl+w` offers the same
 close actions while leaving the question unanswered; `ctrl+k` opens Chats and
 `ctrl+t` opens another chat. A hidden chat waiting on your answer is marked
-with `?`; Chats says `asking you something`. Reopen it to answer the original question. Cancel on the close card
+with `?`; Chats says `asking you something`. The question's answer keys do nothing
+while another chat or the **New chat** page is in front of you. Reopen the asking
+chat to see the offer and answer the original question. Cancel on the close card
 leaves both the tab and permission untouched; `stop work` cancels that reply.
 
 
@@ -351,6 +351,11 @@ conversations under it. A selected **New chat** tab labels this page. The other 
 | click a recent row | The same |
 | `ctrl+t` or `+` again | Reuses the page you already have |
 
+The start page takes every key. Letters and digits belong to its first-message
+box; its own navigation keys keep their meanings. If the chat behind it is
+waiting on a question, typing here cannot answer it; go back to that chat to see
+the offer and use its answer keys.
+
 **A picture on its own is a message.** Drop or paste one and press `enter` with nothing
 typed and the conversation starts on the picture.
 
@@ -397,13 +402,17 @@ circle — and it carries at most one:
 | Mark | Means |
 | --- | --- |
 | `?` | That conversation is **waiting on you** — an approval, a sign-in, a proposal with no clock on it, or work out of fuel |
-| `◐` | A turn or task is **running** in it |
+| `◐` | A queued or running piece of work, a turn, or a background job is **running** in it |
 | nothing | At rest, or nothing is known about it |
 
 **`?` outranks `◐`** when both are true, because it is the one you can act on. The cell is
 the same width in all three states, so a name never moves sideways when a turn starts. On a
 terminal with no box characters `◐` is drawn `*`; `?` is already plain text, so the three
 stay apart with color off.
+
+**The `ctrl+k` switcher rows carry the same two marks from the same reading.** A tab and
+its row cannot disagree, including the row for the conversation you are standing on. A
+queued or running piece of work, a turn, or a background job wears `◐` in both places.
 
 **A countdown is not a question.** A task proposal that will go ahead on its own wears the
 working mark or none — only something that will wait forever for your answer gets `?`.
@@ -2914,7 +2923,7 @@ The right-hand task column is read at a glance, so it is drawn as one bright thi
 lot of quiet ones. (This is its `tasks` section. The same column's other section,
 `standing`, is described under *What is that column on the right*.)
 
-- A **running** task's name is in ink, the body colour. **Idle, parked and finished**
+- A **running** task's name is in ink, the body colour. **Queued, waiting and finished**
   names are muted — a step quieter — and the room you are standing in is the one name in
   the accent and bold, with a colour band across its whole row.
 - The tree connectors (`├─ `, `└─ `, `│  `), the id at the end of a row (`#7`), every
@@ -2949,7 +2958,7 @@ session, with the filter, the cards and the mention. Home (`/home`, or space twi
 empty box) is the other place old work is listed. Running work belonging to *other*
 windows is not on the column at all, and never was; `/history` carries that too.
 
-The footer is up to three dim lines of counts — `3 running · 1 needs you`, `148 parked ·
+The footer is up to three dim lines of counts — `3 running · 1 needs you`, `148 waiting ·
 12 done` — then the standing count `◦ 2 standing orders` when anything stands over this
 project, and then up to three more dim lines, each of which is a button as well as a key:
 
@@ -3424,12 +3433,16 @@ first word, or in the middle of its thinking, or mid-answer — aforge sends the
 question to another one of them and lets the two race. Whichever writes first owns the
 reply and the other is cancelled, which is what stops the bill. Anything the loser wrote
 while the race was undecided is thrown away, so its text, its thought and its half-formed
-tool calls never reach the screen or the conversation. If text was already on the screen
-when the switch happened, a line says so:
+tool calls never reach the screen or the conversation. If words from the first machine
+were already on the screen when the rescue wins, those words are taken off the page too:
+none of them is in the conversation, and the answer you keep is the second machine's,
+whole. This one line is drawn once where the withdrawn text was:
 
 ```
   that lane went quiet — this answer is coming from another one
 ```
+
+A rescue that wins before the first word takes nothing away and says nothing.
 
 The moment it acts at is not a fixed number of seconds. It is worked out per request from
 what the machine answering is believed to do, and it sits between **0.7 and 8 seconds** —
@@ -3517,13 +3530,24 @@ The rest of the answer arrives from that model, at that model's price, and the w
 above it names it from then on. Your own model is unchanged and your next message goes back
 to it. See *Models, context, and what it costs* for which model it moves to and when.
 
-**Where the text went after a cut.** If the reply had started, what you were reading is
+## Where the text on screen went when it said trying again — the words disappeared, and a rescue takes them the same way
+
+If the reply had started when the request was cut or rescued, what you were reading is
 **removed from the screen**, and it is removed because it was removed everywhere: none of
 it is in the conversation, none of it is in the session file, and none of it is sent back
 to the model on the retry. Any tool call that was still arriving when the cut happened
-stops where it is and keeps its row. A rescue is different: only one of the two machines is
-ever the one you are hearing, so when it wins nothing is taken away, and when the other one
-wins you are told in a line of its own that the answer changed machines.
+stops where it is and keeps its row. A rescue has the same discard boundary when it takes
+over an answer you had already begun reading: the first machine's words, private working
+and half-arrived tool calls come off the page, because none of them is in the conversation
+either. The answer you keep is the second machine's, whole, and this line is drawn once
+where the withdrawn text was:
+
+```
+  that lane went quiet — this answer is coming from another one
+```
+
+If the rescue wins before the first word, there is nothing to take away and no line is
+drawn.
 
 This is the one place aforge takes something off the page that you watched arrive, and the
 difference from an interrupt is exactly that. When **you** press `esc`, the half-written
@@ -3601,6 +3625,7 @@ words, and it is one of:
 | `stopped the running command` | your words plainly told a long-running command to stop, and it was stopped |
 | `kept bash running as job 3`, or `kept bash running as jobs 3, 4` | a bash call running for more than 3 seconds was moved to the background so your correction could land now |
 | `waiting for the running step` | a short tool is being allowed to finish first |
+| `took this instead of the question` | a question was standing and your sentence answered it instead, so the question came down |
 
 A bash command that was still younger than 3 seconds when you steered gets
 `waiting for the running step`, and it is a wait of at most those few seconds: if the

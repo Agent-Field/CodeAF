@@ -311,13 +311,14 @@ var spokenWaitExceptions = map[string]string{
 	"(*Client).drainReceipts": "receipts are fetched after the answer has landed; nobody is waiting",
 	// THE ONE THE RECOVERY DESIGN NAMES AND THE ONE IT IS WRONG ABOUT.
 	// `abandonGrace` is listed in §2 problem 8 beside the limiter's slot, and it
-	// is a different case: [hedgeRace.drainArms] is only ever reached from
-	// [hedgeRace.abandon], which is entered BECAUSE the caller's context is
-	// already done — the person pressed stop, or the turn was taken over. A
-	// phase posted to somebody who has already left is noise, and the grace is
-	// one second whether or not it is spent. What the arms owe is their log
-	// rows, which they write themselves, and that is what the drain is for.
-	"(*hedgeRace).drainArms": "entered only after the caller cancelled; there is nobody left to tell",
+	// is a different case: [hedgeRace.drainArms] is reached only from
+	// [hedgeRace.accountForTheAbandoned], which runs on its own goroutine after
+	// the cancelled caller has already been answered. It is NOT in the request
+	// path at all — which it was until 2026-09-11, when it was measured spending
+	// the whole of [lane.SpokenWithin] in front of a person who had just typed a
+	// correction. What the arms owe is their log rows, which they write
+	// themselves, and that is what the drain is for.
+	"(*hedgeRace).drainArms": "runs behind the answered caller; nobody is on the other side of it",
 }
 
 // TestEveryWaitInTheRequestPathIsSpoken is the recovery design's clause 4 as a

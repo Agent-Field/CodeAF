@@ -98,6 +98,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"same answer for all of these", "questions"},
 		{"the question disappeared", "questions"},
 		{"a question vanished without me answering", "questions"},
+		{"I typed a sentence instead of pressing a key and the question disappeared", "questions"},
+		{"can I answer a question in my own words instead of picking one", "questions"},
 		{"the other window answered it", "questions"},
 		{"two windows answered at the same time", "questions"},
 		{"what does /autonomy do", "questions"},
@@ -156,6 +158,26 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// types after they have seen the refusal, not the words it is written in.
 		{"collections database is locked", "collections"},
 		{"two aforge commands writing collections at the same time", "collections"},
+		// THE MANUAL'S PERSON-FACING TRUTHS, asked in the words that exposed
+		// stale claims about the switcher, approvals, and remote build versions.
+		{"what does ctrl+w do on the switcher", "keys"},
+		{"which tools never ask me for approval", "permissions"},
+		{"the remote machine says its protocol does not match", "running-on-another-machine"},
+		// A DROPPED CONNECTION, asked without assuming whether the ordinary model
+		// request or a second --host connection is the one that went away.
+		{"my wifi died in the middle of a reply", "when-the-connection-drops"},
+		// THE FOLDER PREVIEW AND ITS BOUND, asked the way somebody meets each one:
+		// before attaching a file, and after a very large directory stops short.
+		{"how do I preview a file before attaching it", "choosing-a-folder"},
+		{"what happens when a folder is too big to show every file", "choosing-a-folder"},
+		// THE CHAT STRIP ON A SMALL OR CROWDED FRAME. These words distinguish it
+		// from the seven-place bar and make the terminal floor discoverable.
+		{"scroll the tab bar", "screen"},
+		{"why did my tabs disappear on a small terminal", "screen"},
+		// SAVED CONVERSATION IDENTITIES, asked for the two bounds the pages owe:
+		// how long a generated name is and where a command-line id comes from.
+		{"how long can a conversation name be", "sessions-and-rewind"},
+		{"where do I get a conversation id", "collections"},
 		// Lanes behind a base of the person's own: the question the hostname gate
 		// (issue #373) used to answer wrongly, in the three ways it gets asked.
 		{"do lanes work with a custom base url", "lanes"},
@@ -174,6 +196,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// meet it: reading the figure, and finding it beside the call log.
 		{"what does the total at the end of aforge do include", "models-and-cost"},
 		{"why is the printed cost different from the call log", "models-and-cost"},
+		// THE ONE SEND THAT IS NOT IN THE MONEY FIGURES, asked the three ways
+		// somebody meets it: noticing the sending, doubting the total, and
+		// looking for the switch. A capability that spends without appearing in
+		// /cost has to be findable from a person's own suspicion, or the only
+		// place it exists is the code.
+		{"does aforge send anything while I am typing", "models-and-cost"},
+		{"my provider bill is higher than what /cost says", "models-and-cost"},
+		{"how do I stop aforge sending requests I did not ask for", "models-and-cost"},
 		// A refused headless run names the project it worked in, asked in the two
 		// ways somebody meets an empty file list after spending time and money.
 		{"the run finished and my directory is empty where did the work go", "running-from-the-terminal"},
@@ -771,6 +801,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it kept working after everything was finished", "starting-aforge"},
 		{"a task died on the wire and the run would not stop", "starting-aforge"},
 		{"it keeps saying the tests fail but they were already failing", "starting-aforge"},
+		{"why did it run the tests again at the end", "starting-aforge"},
+		{"it said unchecked when it finished", "starting-aforge"},
+		{"it ran out of time running the test suite", "starting-aforge"},
 		{"why did it move my work to a task after five minutes", "starting-aforge"},
 		{"it kept running tests for ten minutes and then handed the work over", "starting-aforge"},
 		{"it says nothing has been finished yet but it did the work itself", "starting-aforge"},
@@ -2359,6 +2392,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does aforge do pick the fastest endpoint too", "lanes"},
 		{"does a headless run choose between lanes", "lanes"},
 		{"why did it pick that provider on my very first message", "lanes"},
+		{"why did my first message go to the most expensive provider", "lanes"},
 		// Naming the machine yourself — asked as the worry underneath it, which
 		// is whether a pin is honoured — and reading the line that says which
 		// machine actually answered.

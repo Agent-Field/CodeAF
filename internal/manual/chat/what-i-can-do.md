@@ -616,6 +616,40 @@ looking model in settings, or attach the picture to a message.`) and for video
 A model that was reached and failed is named:
 `could not look at <path> — <model>: <reason>`.
 
+## How long does reading a picture or a recording take, and what do I see while it happens?
+
+It is a **second model being asked a question**, so it takes as long as a model
+takes — a few seconds usually, longer for a video — and you are told which sense
+is running and on which file while it does:
+
+```
+looking at error.png
+listening to memo.m4a
+watching run.mp4
+```
+
+`view_image` says `looking at <file>` the same way. The line stays on screen for
+as long as the wait lasts, so a tool row is never silent while something is
+happening behind it.
+
+**It cannot run forever.** These asks are as impatient as your own turn is: the
+same ninety-second give-up, and something is done about a silence after ten
+seconds rather than after minutes. `view_image` used to allow ten minutes and no
+longer does. When the wait runs out you get a sentence naming the model and the
+file — `<model> did not answer about <path> within 1m30s — try again, or ask
+about a smaller picture` — rather than a row that keeps spinning.
+
+**The answer is paged, not cut short.** It comes back through the same 2000
+lines or 50KB cap every read is paged to, with `Use offset=… to continue.` for
+the rest. aforge deliberately does **not** ask the looking model for a shorter
+answer: the ceiling it could name is far above anything these answers run to,
+and naming one would rule out every machine that publishes a smaller output
+limit — making the look slower, to shorten a paragraph nobody was reading.
+
+**A re-read costs nothing.** The description is remembered against the file's
+own bytes for the conversation, so reading the same picture twice — or paging
+through a long transcript — asks no model a second time.
+
 ## Can you transcribe a recording, or tell me what a song sounds like?
 
 Both, and you do not have to say which — `read` works it out.

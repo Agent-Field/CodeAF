@@ -130,15 +130,18 @@ When the **far** machine is the older one it refuses first, and what you see is 
 sentence rather than that one:
 
 ```
-error: engine: this build speaks protocol 3 and the surface speaks 4 — the two halves have to be the same build
+error: engine: this build speaks protocol <n> and the surface speaks <m> — the two halves have to be the same build
 ```
+
+The two numbers are the two builds' own protocol versions. They change with releases; what
+matters is only that they differ.
 
 If something on that machine is still holding a conversation from the older build, that
 same sentence gains a clause naming it, because then the machine — not the binary — is
 what is behind:
 
 ```
-error: engine: this build speaks protocol 3 and the surface speaks 4 — the two halves have to be the same build, and this machine is still running the older one — run aforge engine --stop here to retire it
+error: engine: this build speaks protocol <n> and the surface speaks <m> — the two halves have to be the same build, and this machine is still running the older one — run aforge engine --stop here to retire it
 ```
 
 Either way the fix is one command: update aforge on the machine that is behind. Nothing is
@@ -208,7 +211,8 @@ The **near** machine — the one you are sitting at — owns the surface:
   so what you typed while working on `devbox:code/app` belongs to that place
 - the model picker's cached list
 - the terminal itself
-- **the paths for `/image` and for `@` completion**, which are anchored here
+- **the paths for `/image`, `/attach` and `@` completion**, which are anchored here; a bare
+  `/attach` opens the chooser on this machine
 - **the browser, the viewer and the file door** — the small `127.0.0.1` listener this
   window opens so that a path in a reply, `/files` and `/files <path>` can show you a file
   that is on the other machine (*Opening files from that machine*)
@@ -611,12 +615,20 @@ all work over `--host`. What to know is **whose machine they are on**:
 - Pausing or stopping one writes to the far machine's store, and a write that store
   refuses is shown as its own refusal rather than redrawn as done.
 
-**Home and the standing place both work, and both are about the far machine.** Home lists
-that machine's projects with each one's `◦` item band under it and the `p`/`s` keys live on
-them; the standing place lists both what stands on this conversation and what stands anywhere
-else on that machine. The `◦ 2 standing orders` count at the foot of the task column counts
-the far machine's items for the workspace this window is on, because over `--host` that path
-is the far machine's own.
+**Home works and is about the far machine; the standing place works in half.** Home lists
+that machine's projects with each one's `◦` item band under it, and the `p`/`s` keys live on
+them.
+
+The standing place over a connection draws ONE of its shelves: **what stands anywhere else
+on that machine**. The shelf for *what stands on this conversation*, and the one for
+*exceptions*, are both empty — not because nothing stands, but because the reading behind
+them is a door the connection does not carry. For the same reason the `◦ 2 standing orders`
+count at the foot of the task column is **absent** over `--host`: there is no line rather
+than a wrong number.
+
+To see and change what stands on the conversation itself, open it on the machine it runs on.
+This is a gap and not a design: the doors exist on that machine and nothing carries them
+across yet.
 
 Two readings are absent over a connection, and each says nothing rather than guessing:
 
@@ -717,16 +729,28 @@ lost rather than waiting for you.
 own stream, so a turn whose words match a registered harness still asks you, and answering
 `yes` still runs it over there.
 
-## Attaching a picture, and @ paths, over --host
+## Attaching a picture or file, a bare /attach chooser, and @ paths, over --host
 
-`/image` and `@` completion are **local on purpose**. The picture is on the machine you
-are sitting at, and its bytes travel with the message.
+`/image`, `/attach` and `@` completion are **local on purpose**. The picture or file is on
+the machine you are sitting at, and its bytes travel with the message.
 
-So a relative path you type after `/image`, and the `@` completion walk, are both anchored
-**here** — to the directory you launched from — and not to the remote workspace. If you
-want a file that lives on the far machine, that path will not find it. To reach one of
-those, click it where the reply names it, or use `/files` — that is the other direction,
-and *Opening files from that machine* is the page for it.
+So a relative path you type after `/image` or `/attach`, and the `@` completion walk, are
+anchored **here** — to the directory you launched from — and not to the remote workspace.
+A bare `/attach` opens the add context chooser here too, already browsing the machine you
+are sitting at. Files chosen there reach the tray and travel with the next message.
+
+A folder is the one thing that chooser will not take over a connection. Confirming one on
+the sheet, or typing `/attach <a directory>`, registers nothing and says exactly:
+
+```
+choosing a folder is not available over --host yet — the folders here are this machine's, not the ones the conversation is on.
+```
+
+The sheet stays open after a marked folder is refused, with the marks still there. `/folder`
+and its `/place` and `/dir` aliases say the same sentence without opening it. If you want a
+file that lives on the far machine, a local path will not find it; click it where the reply
+names it, or use `/files` — that is the other direction, and *Opening files from that
+machine* is the page for it.
 
 The image size ceilings are applied on this side, with the same words a local session
 uses:

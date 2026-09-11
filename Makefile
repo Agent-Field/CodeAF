@@ -2,7 +2,7 @@
 # anywhere else — so a stale copy can't shadow a fresh one.
 BINARY := bin/aforge
 
-.PHONY: all build build-check debug demo-home embed manual-pack-law furrow test test-focus test-report test-quick test-touched test-touched-preflight pr-ready test-laws fmt-check test-packed-manual test-remote test-e2e test-e2e-tui vet check size clean \
+.PHONY: all build build-check debug demo-home embed manual-pack-law furrow test test-focus test-report test-quick test-touched test-touched-preflight pr-ready test-laws fmt-check test-packed-manual manual-gates test-remote test-e2e test-e2e-tui vet check size clean \
         changelog changelog-new changelog-check changelog-preview
 
 # What the shipped binary is allowed to weigh, in bytes, checked in beside the
@@ -142,13 +142,20 @@ REPORT ?= test-report.json
 test-report:
 	./scripts/test-report.sh '$(REPORT)' $(MAKE) -s --no-print-directory test PKGS='$(PKGS)' TEST_FLAGS="$(TEST_FLAGS) -count=1 -json"
 
-# This mirrors the deterministic light half of the pull-request gate. It is
-# fast feedback, NOT full acceptance: it does not run touched packages or the
+# This runs the deterministic light pull-request gates: build, vet, formatting,
+# the packed corpus, well-formed change entries, the manual gates, and the laws.
+# Off a pull request the changelog check can prove only that entries are well
+# formed; whether this branch adds one needs the base commit that only CI has.
+# It is fast feedback, NOT full acceptance: it does not run touched packages or
 # whole suite. Use pr-ready before claiming pull-request acceptance.
 build-check:
 	go build ./...
 
-test-quick: build-check vet fmt-check test-packed-manual test-laws
+test-quick: build-check vet fmt-check test-packed-manual changelog-check manual-gates test-laws
+
+manual-gates:
+	go test ./internal/manual/
+	go test -run 'Manual' ./internal/tui3/ ./internal/session/
 
 # THE TOUCHED SET IS THE PULL-REQUEST JOB'S SET. A module-file change reaches
 # every package; otherwise each changed Go file contributes its directory, and
@@ -207,14 +214,7 @@ test-touched: test-touched-preflight
 # ratchet, cross builds and remote containers; those remain staging/nightly
 # work, with `make check` as the full-tree laptop/Spark spelling.
 pr-ready: test-touched-preflight
-	$(MAKE) --no-print-directory build-check
-	$(MAKE) --no-print-directory vet
-	$(MAKE) --no-print-directory fmt-check
-	$(MAKE) --no-print-directory test-packed-manual
-	$(MAKE) --no-print-directory changelog-check
-	go test ./internal/manual/
-	go test -run Manual ./internal/tui3/ ./internal/session/
-	$(MAKE) --no-print-directory test-laws
+	$(MAKE) --no-print-directory test-quick
 	$(MAKE) --no-print-directory test-touched
 
 # The laws alone — every test that reads the tree itself — in under half a

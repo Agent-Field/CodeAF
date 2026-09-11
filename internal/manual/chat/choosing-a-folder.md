@@ -10,14 +10,16 @@ with the folder you are standing in browsable in columns. It also answers to `/p
 /folder            the sheet, opened on the folder this conversation is about
 /folder aforge     …with `aforge` already searched, so the list of known folders is narrowed
 /folder ~/code/    …with a path already typed, so the columns are open in ~/code
-/attach            the same sheet, opened in exactly the same place
+/attach            the same sheet; over --host it browses the machine you are sitting at
 ```
 
-**Both commands open the same sheet, in the same place, already browsing.** Where it opens
-is the first of these that exists: a folder this conversation has already been given, the
-folder this window is working in, your home directory. It does not matter which of the two
-words you typed, and a brand-new machine that has never chosen a folder gets the same sheet
-as one that has chosen forty.
+**Locally, both commands open the same sheet, in the same place, already browsing.** Where
+it opens is the first of these that exists: a folder this conversation has already been
+given, the folder this window is working in, your home directory. aforge's own state folder
+is never where it opens. A brand-new machine that has never chosen a folder gets the same
+sheet as one that has chosen forty. Over `--host`, a bare `/attach` still opens that sheet
+on the machine you are sitting at because files travel; `/folder` refuses because a folder
+cannot.
 
 **It is a window, not a line at the bottom of the chat.** The conversation stays visible
 behind it, dimmed, and is not live while the sheet is up: clicking it, scrolling it or
@@ -29,8 +31,8 @@ the sheet does nothing — it will not throw away things you have chosen.
 lists the subdirectories and then the files inside them, with each file's size against the
 right edge; a large preview of whatever the cursor is on sits beside them. So one sheet
 answers both questions — which project do I mean, and which file do I want to send — and
-`/attach` with no path after it opens the same sheet on the folder this conversation is
-standing in.
+`/attach` with no path after it opens the same sheet. Locally it follows the folder ladder;
+over `--host` it browses the machine you are sitting at.
 
 The two things do different things when you choose them, and the last row of the sheet
 always says which:
@@ -62,13 +64,34 @@ whole gesture is `/folder` then `enter`.
 `esc` leaves everything exactly as it was: your half-written message comes back untouched,
 and nothing has been chosen.
 
+## The add context sheet over --host — another machine, over ssh
+
+Over `--host`, a bare `/attach` opens the add context sheet on the machine you are sitting
+at. It opens already browsing: first a folder the conversation has already been given, then
+the folder this window is working in, then your home directory. aforge's own state folder is
+never where it opens. Files chosen there go onto the tray and their bytes travel with the
+next message to the conversation on the other machine.
+
+A folder is the one thing that sheet cannot take over the connection. Confirming a folder,
+or typing `/attach <a directory>`, leaves the folder unregistered and says exactly:
+
+```
+choosing a folder is not available over --host yet — the folders here are this machine's, not the ones the conversation is on.
+```
+
+The sheet stays open after a marked folder is refused, with your marks still there, so you
+can unchoose it or choose a file instead. `/folder`, `/place` and `/dir` say the same sentence
+without opening the sheet. A bare `/attach` does open because it is a file door and files
+travel over ssh.
+
 ## /folder on the home screen — choosing the folder the next conversation opens in
 
-**On home the same command opens the same sheet, aimed at a conversation that does not exist
-yet.** Home's box is a draft for the conversation `enter` will open, and the rule above it
-says where that will be: `→ new conversation in ~/src/parser · glm-5.3-flash`. `/folder`,
-`/place` and `/dir` typed there — bare, or with a path after them — open the browser to
-change that folder.
+**On local home the same command opens the same sheet, aimed at a conversation that does not
+exist yet.** Home's box is a draft for the conversation `enter` will open, and the rule above
+it says where that will be: `→ new conversation in ~/src/parser · glm-5.3-flash`.
+`/folder`, `/place` and `/dir` typed there — bare, or with a path after them — open the
+browser to change that folder. Over `--host`, they do not open it: this machine's directory
+cannot be the far conversation's folder, so they say the refusal in the section above.
 
 Three things are different on that sheet, and they all come from the same fact:
 
@@ -259,10 +282,10 @@ Twenty-four things is as many as one message can carry, and the twenty-fifth pre
 it. You can walk into other folders between choices — the tray is not about one level. A
 folder you choose that the conversation already holds is left alone rather than taken off.
 
-The work a confirm does runs in the background, because registering a folder is a round
-trip when the conversation is on another machine and attaching a file is a look at the
-disk. Nothing on screen claims otherwise, and each thing that fails says so by name:
-`no such file: main.go`, `no such folder · ~/code/gone`.
+The work a confirm does runs in the background, because registering a folder can be a round
+trip through the local engine and attaching a file is a look at the disk. Nothing on screen
+claims otherwise, and each thing that fails says so by name: `no such file: main.go`,
+`no such folder · ~/code/gone`.
 
 The dim tail at the right end is what the machine already knows about that folder:
 
@@ -282,7 +305,7 @@ A fact aforge has not established draws nothing at all rather than a blank or a 
 facts are read in the background as your cursor lands on a row, so a big repository may
 take a beat to say whether it is dirty — the keys never wait for it.
 
-## An empty folder, and one you are not allowed to read
+## An empty folder, one you are not allowed to read, and a folder too big to show every file
 
 They are different things and the browser says which is which, where the rows would have
 been. A folder that **was** read and has nothing inside it says `nothing below here` — and
@@ -308,13 +331,16 @@ this file is empty
 this is not text · nothing to show here
 only the first part of this file was read
 more of this file is not shown
-more of this folder is not shown
 this terminal cannot draw pictures
 this picture could not be opened
 this document is pages of pictures · there is no text in it
 this document could not be read
 this document is too large to read here
 ```
+
+A folder with more in it than the browser will draw is listed only as far as five
+thousand directories and five thousand files. Nothing on the pane says today that the
+bound was reached, so a folder of that size is one where the column simply stops.
 
 - A file that is **not text** — an executable, an archive, a video, a compiled object — says
   so rather than showing you its bytes. Its size and kind are named on the pane's foot
@@ -420,6 +446,36 @@ been shown what changed and said so. See `## /land` below.
 `bash` is the exception, and it is worth knowing: a shell command runs in the folder you
 are standing in and touches whatever it names, including files in a folder you chose. Only
 the model's `read`, `write` and `edit` go through the copy.
+
+**The copy is made the moment you choose the folder, not the first time something
+is written** — unless you said to work in the folder directly, or it is the
+folder you are standing in, and then there is never a copy at all. You may see
+one dim line while it happens — `preparing · a working copy of <folder>` — which
+is a branch being taken or, for a plain folder, a copy being made. It runs while
+you are reading your own screen, so by the time the model writes anything it is
+already there. It used to be made inside that first write instead, which is why
+an edit into a large repository used to sit for seconds with nothing on screen
+to say why.
+
+Saying "work in it directly" always wins, even said afterwards. Because a folder
+has to be chosen before you can say anything about it, the copy has usually
+already been taken by then — so it is given back: the branch and the working copy
+go, and the folder is edited directly from that moment. The giving back happens
+beside you rather than while you wait, so it can take a second or two longer than
+the reply; nothing waits on it, because the next write already goes where you
+said.
+
+**A copy that holds anything at all is never given back.** Not only what the
+model's `write` and `edit` put there — a file a shell command made, something a
+script left, a change a task working in that copy committed, all of it counts.
+The copy is kept exactly where it is, its branch with it, and
+`changes for <name> · /land` still leads to it; only the folder you write into
+from then on changes. For a repository, git itself is asked and a copy it will
+not part with is kept; for a plain folder, the copy is compared with the folder
+it was made from.
+
+If the copy cannot be made at all, nothing is refused: the write goes to the real
+folder, exactly as it would have before you chose one.
 
 ## /land — merge what you did into my folder, put the changes in, land the work, I committed or rebased before landing
 
@@ -588,6 +644,13 @@ A **file** handed to `/attach` still goes on the tray as a file, exactly as befo
 one command covers both, and you do not have to know in advance which of the two you are
 pointing at.
 
+Over `--host`, the directory is on the machine you are sitting at while the conversation is
+on the other one, so it is not registered and the command says exactly:
+
+```
+choosing a folder is not available over --host yet — the folders here are this machine's, not the ones the conversation is on.
+```
+
 Two things that are deliberately not this:
 
 - **Dragging a folder onto the window still refuses** with
@@ -641,10 +704,11 @@ nothing is waiting · what this conversation writes in the folder it is standing
 putting changes into a folder is not available over --host yet — the conversation is on the other machine.
 ```
 
-- The first is `/folder` on a session opened with `--host`. The folders this program can
+- The first is every road onto a folder on a session opened with `--host`: `/folder`, a
+  folder confirmed on the sheet, and `/attach <a directory>`. The folders this program can
   read are on the laptop you are sitting at; the conversation is on the other machine, so
-  every row it could draw would be somewhere the work cannot go. Type the far machine's
-  path into whatever asks for one instead.
+  none is registered. A bare `/attach` still opens the sheet because files travel; if a
+  marked folder is refused, the sheet stays open with the marks still in your hands.
 - The second is a conversation that has no way to hold a folder at all. Nothing is added
   and nothing pretends to be; `/folder` does not open.
 - There is no longer a refusal for a machine with nothing remembered. `nothing to offer yet`
@@ -671,7 +735,7 @@ putting changes into a folder is not available over --host yet — the conversat
   (`no such file: <path>`, `<name> is already attached`); `/attach` with nothing after it
   opens this browser instead of correcting you.
 
-## Finding preview controls while a path is typed
+## Finding preview controls while a path is typed — preview a file before attaching it, see what is in a file before I send it, look at a file first
 
 Every chord the sheet owns is named exactly once, across **two lines**, so neither is a
 wall of shortcuts.

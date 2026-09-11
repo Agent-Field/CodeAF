@@ -192,9 +192,10 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/resume` | `/sessions` | — | opens the earlier-conversations picker |
 | `/compact` | — | — | summarizes the conversation now |
 | `/home` | — | — | every project and conversation on this machine, fullscreen |
-| `/folder` | `/place`, `/dir` | — | opens the add context sheet — say which folder this conversation is also about |
-| `/folder` | `/place`, `/dir` | `<path>` | …opens it with that already in the box: a word filters, a path browses |
-| `/attach` | `/upload` | `<path>` | a file goes on the tray; **a folder** is referred instead, and says `folder · <path>` |
+| `/folder` | `/place`, `/dir` | — | locally opens the add context sheet; over `--host` says the folder chooser is unavailable |
+| `/folder` | `/place`, `/dir` | `<path>` | locally opens it with that in the box; over `--host` gives the same refusal |
+| `/attach` | `/upload` | — | opens the add context sheet for files, including over `--host` |
+| `/attach` | `/upload` | `<path>` | a file goes on the tray; locally a folder is referred, while over `--host` it is refused |
 | `/land` | — | — | says what has been changed for a folder you chose and is waiting to go into it |
 | `/land` | — | `now` | …puts it in: a branch merged for a repository, files copied back for a plain folder |
 | `/land` | — | `<folder>` | …when more than one folder is waiting; `/land <folder> now` puts that one in |
@@ -857,9 +858,10 @@ switch mid-conversation is ever refused with "encrypted reasoning … produced u
 different model", the request is repaired and sent again on its own; nothing is lost.
 
 Moving in the picker: type to filter; ↑ / ctrl+p and ↓ / ctrl+n move; pgup/pgdown move
-12; left, right, home, end, ctrl+u and ctrl+w edit the filter. **ctrl+t** walks the model
-under the cursor through off → low → medium → high → off reasoning effort. enter
-switches.
+12; left, right, home, end, ctrl+u and ctrl+w edit the filter. **ctrl+t** walks the
+reasoning effort of the model under the cursor through
+`auto → low → medium → high → xhigh → max → auto`, which is the same walk a task's own
+thinking control takes. enter switches.
 
 **→ or tab on a model opens its lanes and walks the cursor into them**, onto the pinned
 lane or `auto`; enter pins, ← or tab walks back out. *Lanes → Pinning one lane yourself*
