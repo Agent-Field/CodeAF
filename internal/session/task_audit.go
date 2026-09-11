@@ -2426,7 +2426,7 @@ func (a *Agent) HandUnverifiedToModel(id uint64) error {
 	note := wakeNote(handOverLead + "\n" +
 		taskNote(notice, taskURI(node.journalPath()), TaskSettleAuto, a.quietAddress()))
 	// THE NOTE CARRIES THE PRESS, because the note reaching a request is the only
-	// thing that makes the press READ ([TaskNode.handUnread]).
+	// thing that makes the press READ ([TaskNode.handReader]).
 	note.handsOver = []handOverTicket{{node: node, ticket: ticket}}
 	if !a.enqueueNote(note) {
 		// A closed session reads nothing, so the question was never handed to
@@ -2465,7 +2465,7 @@ func (n *TaskNode) handOver() (uint64, error) {
 		return 0, fmt.Errorf("task %d is %s: %w", n.id, handedAlreadyWord, ErrTaskHandedOver)
 	}
 	n.handPress++
-	n.decider, n.handed, n.handUnread = TaskAskOwnerModel, true, true
+	n.decider, n.handed, n.handReader = TaskAskOwnerModel, true, 0
 	return n.handPress, nil
 }
 
@@ -2486,17 +2486,18 @@ type handOverTicket struct {
 }
 
 // markHandOversRead is called at the drain immediately before a provider
-// request, with the presses that request carries (agent.go's
-// [Agent.drainSteering]). It is the only place a press becomes read, for the
-// reason [markDirectionsCarried] is the only place a direction does. A press
-// that has been taken back, or taken back and made again, is not this ticket and
-// is left alone.
-func markHandOversRead(hands []handOverTicket) {
+// request, with the presses that request carries and the number of the turn
+// making it (agent.go's [Agent.drainSteering]). It is the only place a press
+// becomes read, for the reason [markDirectionsCarried] is the only place a
+// direction does, and the turn it names is the one whose floor gives it back. A
+// press that has been taken back, or taken back and made again, is not this
+// ticket and is left alone.
+func markHandOversRead(hands []handOverTicket, turn uint64) {
 	for _, hand := range hands {
 		graph := hand.node.graph
 		graph.mu.Lock()
 		if hand.node.handPress == hand.ticket {
-			hand.node.handUnread = false
+			hand.node.handReader = turn
 		}
 		graph.mu.Unlock()
 	}
@@ -2515,7 +2516,7 @@ func (a *Agent) giveBackHandOvers(hands []handOverTicket) {
 	for _, hand := range hands {
 		graph := hand.node.graph
 		graph.mu.Lock()
-		if hand.node.handPress == hand.ticket && hand.node.handed && hand.node.handUnread {
+		if hand.node.handPress == hand.ticket && hand.node.handed && hand.node.handReader == 0 {
 			hand.node.givesBackLocked()
 			if hand.node.state == TaskUnverified {
 				handed = append(handed, hand.node)
@@ -2560,7 +2561,7 @@ func (n *TaskNode) decidedBy() TaskAskOwner {
 // (task_run.go). A road that wrote only the owner would leave a receipt behind
 // and refuse the next press.
 func (n *TaskNode) givesBackLocked() {
-	n.decider, n.handed, n.handUnread = TaskAskOwnerPerson, false, false
+	n.decider, n.handed, n.handReader = TaskAskOwnerPerson, false, 0
 }
 
 // takesBack puts one node's question back in the person's hands, with the

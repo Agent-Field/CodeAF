@@ -3,7 +3,8 @@
 2026-09-11. Lane `codex/personal-handover-race` (Claude Code Opus on Spark), base
 `e373ab411` on `codex/personal-ai-backend`. Round 1: `42b3fd4d7` (reviewed,
 approved, merged by the coordinator). Round 2 (the review's non-blocking findings):
-the commit that adds this file. Not merged by the lane.
+`79cc7bb65`, which adds this file. Round 3 (the second review's stranding and panic):
+the commit after it. Not merged by the lane.
 
 ## Outcome
 
@@ -44,14 +45,16 @@ handed it back. The failing count was a queue that turn was draining.
 ## The fence
 
 - **L1, fenced writes.** Each press is a ticket on the node (`handPress`,
-  `handUnread`). Its note carries the ticket (`userMessage.handsOver`). A press
+  `handReader`). Its note carries the ticket (`userMessage.handsOver`). A press
   becomes read only at the drain before a request (`drainSteering`,
-  `markHandOversRead`). A turn-end or abandon drain parks it on `Agent.handsUnsent`
-  for the next turn's first drain. When no turn starts, it is given back
-  (`orphanedHandsLocked`, `giveBackHandOvers`). Every late write compares the ticket.
-- **L2, recheck at the effect.** The floor skips an unread press under the graph lock
-  it writes under (`task_run.go:4099`). The press's state check and its write are one
-  claim (`TaskNode.handOver`).
+  `markHandOversRead`), which stamps the reading turn's number on it. A turn-end or
+  abandon drain parks it on `Agent.handsUnsent` for the next turn's first drain; when
+  no turn starts it is given back (`giveBackHandOvers`). Late writes compare the ticket.
+- **L2, recheck at the effect.** A turn's floor (`handBackUnsettled(seq)`) takes
+  back only a press that turn read, checked under the graph lock it writes under. The
+  press's state check and its write are one claim (`TaskNode.handOver`).
+- **A drain belongs to the live turn.** `drainSteering` refuses unless its hub is
+  the session's; the hub is set and cleared in the same hold as `turnSeq`.
 - No `a.mu`→`graph.mu` nesting: every ticket write runs after `a.mu` is released.
 
 ## Round 2: the review's findings
@@ -68,26 +71,28 @@ handed it back. The failing count was a queue that turn was draining.
 | abandon is the turn's end | `TestWhatAnAbandonedTurnWasDecidingComesBackAtTheAbandon` | drop floor → FAIL 3/3 |
 | floor skips unread (round 1) | `TestAHandOverThatMissesATurnIsHeldForTheTurnThatReadsIt` | drop skip → FAIL 3/3 |
 
-Mutations ran in a throwaway detached worktree, never this tree.
+Mutations ran in a throwaway detached worktree. A disowned turn's clean-up asks
+`turnIs(seq)` before its floor, so `Abandon` runs that turn's floor itself (its
+goroutine may never unwind). The press emits its card update *before* it enqueues:
+every give-back acts on the note, so its update can only follow. Reading `notice`
+after `enqueueNote` would not close it, and no deterministic regression exists without
+a seam inside `enqueueNote`. `TaskNode.wasHandedOver` is deleted.
 
-- **Disowned turn.** Its clean-up now asks `turnIs(seq)` before the floor
-  (`agent.go:1602`). Skipping it there would strand whatever the abandoned turn read,
-  because its goroutine may never unwind. So `Abandon` runs the floor once it lets go
-  (`abandon.go:149`), beside the orphan give-back.
-- **Out-of-date card.** Reading `notice` after `enqueueNote` does not close it: a
-  give-back can still emit between the press's read and its emit. The press now emits
-  *before* it enqueues. Every road that gives this press back acts on its note, so it
-  is downstream of the enqueue, and its update can only follow the press's. No
-  deterministic regression: the interleaving needs a step inside `enqueueNote`, and
-  the package has no seam there.
-- `TaskNode.wasHandedOver` is deleted; its rule now sits on the `handed` field.
-- Manual: `task-controls.md` names the picture case and quotes `aforge is deciding`.
+## Round 3: the second review
+
+| Finding | Test (failed on `79cc7bb65`) | Fix |
+|---|---|---|
+| let-go drain strands a press | `TestALetGoTurnsDrainTakesNothingFromTheQueue` (queue emptied) | drain checks `a.hub == hub` |
+| let-go floor after `turnIs` / after `Abandon`'s unlock | `TestALetGoTurnsFloorLeavesAPressTheNextTurnRead` (`"person"`) | floor checks `handReader == seq` |
+| let-go floor on a policy-held landing | `TestADisownedTurnLeavesAPolicyHeldLandingAlone` (`turnIs` → `true`: FAIL 3/3) | clean-up asks `turnIs(seq)` |
+| picture turn abandoned: `close of closed channel` | `TestAPictureAnswerLetGoOfLeavesTheNextTurnAlone` (panic) | picture turns are numbered; clean-up checks it |
+
+Cancelling before `Abandon` unlocks was rejected: a loop can pass its cancel check just
+before it and still drain. The picture turn's `done` closes once under the number, the
+ordinary clean-up's guard. A node held by policy has no reader stamp, so its windows remain.
 
 ## Known residue (not fixed, fail-safe direction noted)
 
-- **Check-then-act windows.** A turn abandoned between `turnIs` and its floor, or a
-  press read by a new turn in the instant between `Abandon`'s unlock and its floor,
-  can still be handed back early. The fail-safe is that the person holds the card.
 - **Two writers on one card.** A take-back from another window racing a press can
   still end on the older update. Only a per-node update sequence closes that.
 - **An orphaned note stays in the transcript.** The next turn may resolve the node

@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -31,51 +32,20 @@ import (
 // card redrew its answers while aforge was deciding and a second press was taken
 // as a fresh one.
 func TestADisownedTurnLeavesTheNextTurnsDecisionAlone(t *testing.T) {
-	stuck, reading := make(chan uint64, 1), make(chan struct{}, 1)
-	release := make(chan struct{})
-	defer func() {
-		select {
-		case <-release:
-		default:
-			close(release)
-		}
-	}()
-	completer := &scriptedCompleter{steps: []step{
-		// The landing's turn, stuck in a wait no context reaches — the shape an
-		// abandon exists for (abandon.go).
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			stuck <- goroutineID()
-			<-release
-			return textResponse("I was somewhere else."), nil
-		},
-		// The turn the press wakes, with the press in front of it.
-		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
-			reading <- struct{}{}
-			<-ctx.Done()
-			return nil, ctx.Err()
-		},
-	}}
+	completer, stuck, reading, release := stuckThenReading()
+	defer release()
 	agent, _ := newTestAgent(t, completer, func(config *Config) { config.AskConsent = true })
 	id := landUnverified(t, agent)
 
-	var letGo uint64
-	select {
-	case letGo = <-stuck:
-	case <-time.After(10 * time.Second):
-		t.Fatal("the landing never woke a turn")
-	}
+	letGo := awaitStuck(t, stuck)
 	if _, abandoned := agent.Abandon(AbandonStopTimeout); !abandoned {
 		t.Fatal("there was no turn to abandon")
 	}
 	if err := agent.HandUnverifiedToModel(id); err != nil {
 		t.Fatalf("handing the decision over: %v", err)
 	}
-	select {
-	case <-reading:
-	case <-time.After(10 * time.Second):
-		t.Fatal("no turn read the hand-over")
-	}
-	close(release)
+	awaitParked(t, reading)
+	release()
 	waitGoroutineGone(t, letGo)
 
 	if owner := agent.taskNode(id).decidedBy(); owner != TaskAskOwnerModel {
@@ -83,6 +53,123 @@ func TestADisownedTurnLeavesTheNextTurnsDecisionAlone(t *testing.T) {
 	}
 	if err := agent.HandUnverifiedToModel(id); !errors.Is(err, ErrTaskHandedOver) {
 		t.Fatalf("a second press while aforge reads the first answers %v, want it already handed over", err)
+	}
+}
+
+// AND A QUESTION THE POLICY HANDED OVER IS THE LIVE TURN'S TOO. With nobody
+// watching, a landing is the model's by policy ([Agent.handToModelOnAuto]) and
+// carries no press to stamp, so what keeps a let-go turn's floor off it is the
+// clean-up asking the turn number first.
+func TestADisownedTurnLeavesAPolicyHeldLandingAlone(t *testing.T) {
+	completer, stuck, reading, release := stuckThenReading()
+	defer release()
+	agent, _ := newTestAgent(t, completer, nil)
+	landUnverified(t, agent)
+	letGo := awaitStuck(t, stuck)
+	if _, abandoned := agent.Abandon(AbandonStopTimeout); !abandoned {
+		t.Fatal("there was no turn to abandon")
+	}
+	id := landUnverified(t, agent)
+	awaitParked(t, reading)
+	release()
+	waitGoroutineGone(t, letGo)
+
+	if owner := agent.taskNode(id).decidedBy(); owner != TaskAskOwnerModel {
+		t.Fatalf("the let-go turn's end took the landing the next turn is settling: %q is deciding", owner)
+	}
+}
+
+// A DRAIN BELONGS TO THE LIVE TURN.
+//
+// [Agent.Abandon] frees the session before it cuts the let-go turn's context, so a
+// goroutine that comes unstuck in between passes the loop's cancel check and
+// reaches the drain before its next request (loop.go). That drain took what was
+// queued for whatever came next — a press among it, marked read by a turn that
+// was never going to answer, whose clean-up then hands nothing back. The press
+// was left with aforge and nobody deciding. The test stands where that goroutine
+// stands: after the abandon, at the drain, with its own turn's hub.
+func TestALetGoTurnsDrainTakesNothingFromTheQueue(t *testing.T) {
+	entered := make(chan struct{}, 1)
+	agent, _ := newTestAgent(t, parkedModel(entered), func(config *Config) { config.AskConsent = true })
+	id := landUnverified(t, agent)
+	awaitParked(t, entered)
+	agent.mu.Lock()
+	letGo := agent.hub
+	agent.mu.Unlock()
+	if _, abandoned := agent.Abandon(AbandonStopTimeout); !abandoned {
+		t.Fatal("there was no turn to abandon")
+	}
+	// With work stopped the press wakes no turn, so its note waits on the queue
+	// for whoever comes next.
+	if err := agent.StopWork(); err != nil {
+		t.Fatalf("stopping work: %v", err)
+	}
+	if err := agent.HandUnverifiedToModel(id); err != nil {
+		t.Fatalf("handing the decision over: %v", err)
+	}
+
+	agent.drainSteering(letGo)
+	if queued := strings.Join(steeringQueue(agent), "\n"); !strings.Contains(queued, handOverLead) {
+		t.Fatal("a let-go turn's drain took the press off the queue of the turn that comes next")
+	}
+}
+
+// AND ITS FLOOR TAKES BACK ONLY WHAT IT READ. A let-go turn's floor can run after
+// the turn that replaced it has carried a press — at the instant [Agent.Abandon]
+// frees the session, or in a clean-up that asked the turn number a moment
+// before the abandon moved it. The press belongs to the turn that read it.
+func TestALetGoTurnsFloorLeavesAPressTheNextTurnRead(t *testing.T) {
+	entered := make(chan struct{}, 1)
+	agent, _ := newTestAgent(t, parkedModel(entered), func(config *Config) { config.AskConsent = true })
+	id := landUnverified(t, agent)
+	awaitParked(t, entered)
+	agent.mu.Lock()
+	letGo := agent.turnSeq
+	agent.mu.Unlock()
+	if _, abandoned := agent.Abandon(AbandonStopTimeout); !abandoned {
+		t.Fatal("there was no turn to abandon")
+	}
+	if err := agent.HandUnverifiedToModel(id); err != nil {
+		t.Fatalf("handing the decision over: %v", err)
+	}
+	awaitParked(t, entered)
+
+	agent.handBackUnsettled(letGo)
+	if owner := agent.taskNode(id).decidedBy(); owner != TaskAskOwnerModel {
+		t.Fatalf("the let-go turn's floor took the press the next turn is reading: %q is deciding", owner)
+	}
+}
+
+// A PICTURE ANSWER THAT IS LET GO OF IS LET GO OF ONCE. The picture turn's
+// clean-up had no turn number: when an abandoned one came unstuck it closed the
+// `done` the abandon had already closed — a panic nothing recovers — and cleared
+// the running flag, hub and cancel of whatever turn had started since.
+func TestAPictureAnswerLetGoOfLeavesTheNextTurnAlone(t *testing.T) {
+	completer, stuck, reading, release := stuckThenReading()
+	defer release()
+	agent, workspace := newTestAgent(t, completer, blindWithVision)
+	agent.SetModel("vendor/blind")
+	ctx, cancel := deadline(10 * time.Second)
+	defer cancel()
+	if _, err := agent.SubmitImage(ctx, "what is in this?", []Image{{Path: writeImage(t, workspace, "shot.png", "PHOTOBYTES")}}); err != nil {
+		t.Fatalf("SubmitImage: %v", err)
+	}
+	letGo := awaitStuck(t, stuck)
+	if _, abandoned := agent.Abandon(AbandonStopTimeout); !abandoned {
+		t.Fatal("there was no turn to abandon")
+	}
+	if _, err := agent.Submit(ctx, "and the boats?"); err != nil {
+		t.Fatalf("the next message: %v", err)
+	}
+	awaitParked(t, reading)
+	release()
+	waitGoroutineGone(t, letGo)
+
+	agent.mu.Lock()
+	running, hub := agent.running, agent.hub
+	agent.mu.Unlock()
+	if !running || hub == nil {
+		t.Fatalf("the let-go picture turn's clean-up ended the turn after it (running %v, hub %v)", running, hub != nil)
 	}
 }
 
@@ -111,8 +198,11 @@ func TestALateActOnATakenBackPressLeavesTheNextPressAlone(t *testing.T) {
 		t.Fatalf("the second press: %v", err)
 	}
 
-	markHandOversRead([]handOverTicket{first})
-	agent.handBackUnsettled()
+	agent.mu.Lock()
+	turn := agent.turnSeq
+	agent.mu.Unlock()
+	markHandOversRead([]handOverTicket{first}, turn)
+	agent.handBackUnsettled(turn)
 	if owner := node.decidedBy(); owner != TaskAskOwnerModel {
 		t.Fatalf("carrying the first press's note let the floor take the unread second one: %q is deciding", owner)
 	}
@@ -291,6 +381,43 @@ func parkedModel(entered chan<- struct{}) *scriptedCompleter {
 		return nil, ctx.Err()
 	}
 	return &scriptedCompleter{steps: []step{park, park, park, park}}
+}
+
+// stuckThenReading is a model whose first request is stuck in a wait no context
+// reaches until release is called — the shape [Agent.Abandon] exists for — and
+// whose second parks until the session cuts it, saying so on reading. stuck
+// carries the stuck request's goroutine, so a test can wait for that turn's
+// clean-up ([waitGoroutineGone]). A test defers release, which runs before the
+// session's close: a close waits for a turn that is still stuck.
+func stuckThenReading() (*scriptedCompleter, <-chan uint64, <-chan struct{}, func()) {
+	stuck, reading := make(chan uint64, 1), make(chan struct{}, 1)
+	release := make(chan struct{})
+	var once sync.Once
+	let := func() { once.Do(func() { close(release) }) }
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			stuck <- goroutineID()
+			<-release
+			return textResponse("I was somewhere else."), nil
+		},
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			reading <- struct{}{}
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+	}}
+	return completer, stuck, reading, let
+}
+
+func awaitStuck(t *testing.T, stuck <-chan uint64) uint64 {
+	t.Helper()
+	select {
+	case id := <-stuck:
+		return id
+	case <-time.After(10 * time.Second):
+		t.Fatal("the first request was never made")
+		return 0
+	}
 }
 
 func awaitParked(t *testing.T, entered <-chan struct{}) {
