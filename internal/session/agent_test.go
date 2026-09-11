@@ -258,7 +258,11 @@ func newTestAgent(t *testing.T, completer Completer, mutate func(*Config)) (*Age
 	if err != nil {
 		t.Fatalf("newAgent: %v", err)
 	}
+	// A SESSION'S DEFERRED WRITES ARE SETTLED BEFORE ITS DIRECTORIES GO AWAY, the
+	// same call an exit door owes ([Agent.SettleWrites], placemeta.go). Cleanups
+	// run last-registered-first, so this lands before the tempdirs above it.
 	t.Cleanup(func() { _ = agent.Close() })
+	t.Cleanup(agent.SettleWrites)
 	return agent, workspace
 }
 

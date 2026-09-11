@@ -87,15 +87,20 @@ func (a *Agent) metaStamp() *stampWriter {
 	return a.metaStampWriter
 }
 
-// SettleMeta waits until everything this session owes meta.json has landed.
+// SettleWrites waits until everything this session owes a file BEHIND a person's
+// path has landed: the meta.json stamp and the fix shelf's counters.
 //
-// IT IS THE EXIT DOOR. A deferred write's whole risk is a process that stops
-// while one is owed, and the answer to that risk is one call at the door where
-// stopping happens — [Agent.Close] — plus the same call in every test that reads
-// meta.json back after speaking.
-func (a *Agent) SettleMeta() {
-	a.metaStampOnce.Do(func() { a.metaStampWriter = &stampWriter{} })
-	a.metaStampWriter.settle()
+// IT IS THE ONE EXIT DOOR, and there is one rather than one per owner because a
+// caller closing a session should not have to know which parts of it defer a
+// write. A deferred write's whole risk is a process that stops while one is
+// owed; this is the answer to that risk, and it belongs at [Agent.Close] and in
+// every test that reads one of those files back.
+func (a *Agent) SettleWrites() {
+	if a == nil {
+		return
+	}
+	a.metaStamp().settle()
+	a.fixShelfFor().settle()
 }
 
 // stampWriter is [offpath.Write] with the patch it is to perform carried beside
