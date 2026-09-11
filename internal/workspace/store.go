@@ -19,8 +19,28 @@ import (
 
 // Version 1 was collections and memberships. Version 2 adds shared sourced
 // context beside them. Version 3 adds explicit governing placements, without
-// promoting any existing reference membership into governing scope.
-const schemaVersion = 3
+// promoting any existing reference membership into governing scope. Version 4
+// adds the direction record tables (direction_schema.go) and store_meta.
+const schemaVersion = 4
+
+// AN ORDINARY OPEN DOES NOT UPGRADE A STORE TO VERSION 4. Open and OpenExisting
+// bring a store up to version 3 and read a version 4 store as it stands; only
+// EnsureDirection, which the direction package calls when it opens the store,
+// adds the version 4 tables. Nothing a person runs today reaches that door, so
+// the owner's store stays at version 3 — readable by every build before this
+// one — until the first lane that writes direction records ships. That keeps
+// the version 4 tables inert in the plain sense: they are not even created
+// until something needs them.
+const ordinaryVersion = 3
+
+// additions[v] is what version v adds to version v-1, spelled once, so that a
+// fresh store and an upgraded one are built from the same text.
+var additions = map[int]string{
+	2: contextSchema,
+	3: placementSchema,
+	4: directionSchema + storeMetaSchema,
+}
+
 const applicationID = 0x4146434c // AFCL distinguishes this store from optional memory.
 
 // The version 1 tables, spelled exactly as version 1 created them. A store that
@@ -86,12 +106,25 @@ CREATE INDEX context_targets_reference ON context_targets(kind,ref_id,session_id
 // newer store only when that version is at most its own, and then touches only
 // the tables it knows. Without this, every version bump would strand every
 // older binary: the version check below refused anything it did not know, which
-// made an upgrade one-way. The table is written by the first version above 3;
-// this version only reads it.
+// made an upgrade one-way. Version 4 is the first to write the table.
 const (
 	storeMetaTable   = "store_meta"
 	minReaderVersion = "min_reader_version"
 )
+
+// VERSION 4 LEAVES EVERY VERSION 3 TABLE EXACTLY AS VERSION 3 READS AND WRITES
+// IT: the direction tables are separate, reference no version 3 table, and hold
+// nothing a version 3 write could make inconsistent. So a version 3 build that
+// knows store_meta may keep using a version 4 store, and says so here.
+const directionMinReader = 3
+
+var storeMetaSchema = fmt.Sprintf(`
+CREATE TABLE %s (
+ key TEXT PRIMARY KEY,
+ value TEXT NOT NULL
+);
+INSERT INTO %[1]s(key,value) VALUES ('%s','%d');
+`, storeMetaTable, minReaderVersion, directionMinReader)
 
 // ErrNewerStore reports a store written by a newer build that has not declared
 // this build able to read it. The store is left exactly as it was found.
@@ -167,7 +200,7 @@ func openStore(absolute string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	s := &Store{db: db}
-	if err := s.initialize(); err != nil {
+	if err := s.initialize(ordinaryVersion); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("open collections: %w", err)
 	}
@@ -233,7 +266,7 @@ func stamp(q schemaReader) (app, version int, err error) {
 	return app, version, nil
 }
 
-func (s *Store) initialize() error {
+func (s *Store) initialize(target int) error {
 	app, version, err := stamp(s.db)
 	if err != nil {
 		return err
@@ -243,13 +276,13 @@ func (s *Store) initialize() error {
 	// used to begin an immediate transaction, so a peer that merely held the
 	// writer made an ordinary read fail busy. Reading the stamp and preparing the
 	// reads needs only a shared lock, which a reserved writer allows. Creation and
-	// the version 1 upgrade still run in the immediate transaction below, and both
+	// every upgrade still run in the immediate transaction below, and both
 	// re-read the stamp inside it, so a peer that upgrades between these two steps
 	// is seen rather than raced.
-	if app == applicationID && version == schemaVersion {
+	if app == applicationID && version >= target && version <= schemaVersion {
 		// Preparing the actual reads catches missing tables before reporting a
 		// successful open. We never recreate a damaged initialized schema.
-		return verifySchema(s.db)
+		return verifyVersion(s.db, version)
 	}
 	if app == applicationID && version > schemaVersion {
 		return s.acceptNewer()
@@ -264,8 +297,8 @@ func (s *Store) initialize() error {
 		return err
 	}
 	switch {
-	case app == applicationID && version == schemaVersion:
-		if err := verifySchema(tx); err != nil {
+	case app == applicationID && version >= target && version <= schemaVersion:
+		if err := verifyVersion(tx, version); err != nil {
 			return err
 		}
 		return tx.Commit()
@@ -276,27 +309,20 @@ func (s *Store) initialize() error {
 			return err
 		}
 		return tx.Commit()
-	case app == applicationID && (version == 1 || version == 2):
+	case app == applicationID && version >= 1:
 		// AN UPGRADE MUST FIND THE OLD STORE INTACT BEFORE IT ADDS ANYTHING.
 		// Every table addition and the version stamp share this immediate
 		// transaction, so a failed upgrade leaves the previous schema intact.
-		if version == 1 {
-			if err := verifyCollectionSchema(tx); err != nil {
-				return fmt.Errorf("refusing to upgrade a damaged version 1 store: %w", err)
-			}
-			if _, err := tx.Exec(contextSchema); err != nil {
-				return err
-			}
-		} else if err := verifyContextSchema(tx); err != nil {
-			return fmt.Errorf("refusing to upgrade a damaged version 2 store: %w", err)
+		if err := verifyVersion(tx, version); err != nil {
+			return fmt.Errorf("refusing to upgrade a damaged version %d store: %w", version, err)
 		}
-		if _, err := tx.Exec(placementSchema); err != nil {
+		if err := addVersions(tx, version, target); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version=%d", schemaVersion)); err != nil {
+		if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version=%d", target)); err != nil {
 			return err
 		}
-		if err := verifySchema(tx); err != nil {
+		if err := verifyVersion(tx, target); err != nil {
 			return err
 		}
 		return tx.Commit()
@@ -309,13 +335,28 @@ func (s *Store) initialize() error {
 	if tables != 0 {
 		return errors.New("this database belongs to another feature; choose a separate collections database")
 	}
-	if _, err := tx.Exec(collectionSchema + contextSchema + placementSchema); err != nil {
+	if _, err := tx.Exec(collectionSchema); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(fmt.Sprintf("PRAGMA application_id=%d; PRAGMA user_version=%d", applicationID, schemaVersion)); err != nil {
+	if err := addVersions(tx, 1, target); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(fmt.Sprintf("PRAGMA application_id=%d; PRAGMA user_version=%d", applicationID, target)); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+// addVersions applies, in order, what each version after `from` adds, up to and
+// including `to`. Every addition is CREATE only (L5): an upgrade adds to a
+// store and never rebuilds, renames or drops what an older build reads.
+func addVersions(tx *sql.Tx, from, to int) error {
+	for v := from + 1; v <= to; v++ {
+		if _, err := tx.Exec(additions[v]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // acceptNewer opens a store stamped by a newer build without taking the
@@ -355,14 +396,26 @@ func verifyNewer(q schemaReader, version int) error {
 	return verifySchema(q)
 }
 
-// verifySchema reads every table this version depends on. A store is only
+// verifySchema reads every table this build depends on. A store is only
 // reported as open once all of them answer; a missing half is never an empty set.
-func verifySchema(q schemaReader) error {
-	if err := verifyContextSchema(q); err != nil {
-		return err
+func verifySchema(q schemaReader) error { return verifyVersion(q, schemaVersion) }
+
+// verifyVersion reads every table a store stamped `version` must have.
+func verifyVersion(q schemaReader, version int) error {
+	if version >= 4 {
+		if err := verifyDirectionSchema(q); err != nil {
+			return err
+		}
 	}
-	_, err := q.Exec("SELECT collection_id,kind,ref_id,session_id,target_collection FROM placements LIMIT 0")
-	return err
+	if version >= 3 {
+		if _, err := q.Exec("SELECT collection_id,kind,ref_id,session_id,target_collection FROM placements LIMIT 0"); err != nil {
+			return err
+		}
+	}
+	if version >= 2 {
+		return verifyContextSchema(q)
+	}
+	return verifyCollectionSchema(q)
 }
 
 func verifyContextSchema(q schemaReader) error {
