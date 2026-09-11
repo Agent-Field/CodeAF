@@ -672,7 +672,11 @@ func (a *app) holdSteer(ch <-chan session.Event) tea.Cmd {
 	if ch == nil {
 		return nil
 	}
-	return waitSteerLane(ch, a.gen)
+	// THE LANE IS STAMPED WITH THE CONVERSATION AND NOT WITH THE TURN
+	// (app.go's [app.steerGen]). A steer's news comes back after the turn it was
+	// typed into has ended — that is what a fall-through IS — so a stamp that
+	// moved with every turn was guaranteed to be stale exactly when it mattered.
+	return waitSteerLane(ch, a.steerGen)
 }
 
 // waitSteerLane reads one steer's own stream until that steer's story is over,
@@ -733,8 +737,19 @@ func waitSteerLane(ch <-chan session.Event, gen int) tea.Cmd {
 // ([Agent.dropFollowUpsLocked]), so a surface that queued this one would draw a
 // question and then sit under it with no answer coming. The stop is the last
 // thing that turn writes on this screen, here as everywhere.
+//
+// AND IT IS CHECKED AGAINST THE CONVERSATION, NEVER AGAINST THE TURN. This read
+// [app.gen] until 2026-09-11, and that was a guarantee of the defect rather than
+// a guard against one: [app.gen] counts turns, a fall-through is BY DEFINITION
+// news that arrives after its turn ended, and the very next turn — the first
+// fallen-through steer's own, drained a moment earlier — moves it. So a person
+// who typed two corrections into one answer had the second one's whole turn
+// thrown away here: the engine ran it, wrote it into the transcript and answered
+// it, and the screen drew neither the question nor a word of the reply.
+// [app.steerGen] moves only when the conversation is replaced, which is the
+// question this line means to ask.
 func (a *app) steerFell(msg steerFellMsg) tea.Cmd {
-	if msg.ch == nil || msg.gen != a.gen || a.windingDown() || a.state == stateInterrupted {
+	if msg.ch == nil || msg.gen != a.steerGen || a.windingDown() || a.state == stateInterrupted {
 		if msg.ch != nil {
 			go func() {
 				for range msg.ch { //nolint:revive // draining is the whole body
