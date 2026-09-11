@@ -1226,6 +1226,7 @@ func (c *Client) refuseLane(model string, refusal laneRefusal, wait time.Duratio
 		// from here on routes around it instead of queueing behind it, the
 		// remaining attempts of this very call included (retry.go).
 		c.notePacedProvider(model, refusal.Lane, wait)
+		c.noteLaneRefused(model, refusal.Lane, "paced")
 		return true
 	}
 	// AN ACCOUNT'S EXCLUSION IS WRITTEN FOR EVERY MODEL, and it is written here
@@ -1240,6 +1241,7 @@ func (c *Client) refuseLane(model string, refusal laneRefusal, wait time.Duratio
 		return false
 	}
 	c.refuseServing(model, refusal)
+	c.noteLaneRefused(model, refusal.Lane, "refused")
 	return c.velocity.pace(model, refusal.Lane, 0)
 }
 

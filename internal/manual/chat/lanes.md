@@ -609,8 +609,10 @@ steering, it is the promise this surface makes — but it stops choosing endpoin
 for you, stops sending second requests, and stops spending anything on speed.
 
 **The row has three answers, not two, and the third is not off.** Left alone, aforge asks
-for the fastest machine on the turns you are waiting through and the cheapest on the work
-you are not — the split the rest of this page describes. Writing a word in the row
+for the fastest machine on the turns you are waiting through, and on the work you are not
+watching it still weighs speed, at a quarter of that weight — a task ends when its slowest
+call ends, and a machine that refuses four requests in five costs five sends for one answer,
+so its seconds are never free. That is the split the rest of this page describes. Writing a word in the row
 overrides that everywhere: `latency` asks for the fastest one on every call, background
 work included; `price` ranks on price alone on every call, your own turns included, which
 is you saying that speed is not worth money anywhere; and `off` is the paragraph above.

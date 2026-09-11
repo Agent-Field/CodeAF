@@ -4,6 +4,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"time"
 )
 
 // ── THE FRONTIER IS THE CANDIDATE SET ───────────────────────────────────────
@@ -183,10 +184,31 @@ func capable(belief Belief, req Request, opts gateOptions) bool {
 	// this lane be good enough", and a lane nobody has judged yet must answer
 	// yes, or the gate refuses the entire candidate set for lack of evidence
 	// and then never sends the request that would have supplied it.
-	if req.QualityNeed > 0 && belief.Quality.Known() && belief.Quality.Upper(z90) < req.QualityNeed {
+	if req.QualityNeed > 0 && belief.Quality.Known() && qualityBound(belief.Quality) < req.QualityNeed {
 		return false
 	}
 	return true
+}
+
+// qualityEvidence is how much weight a quality belief must carry before the gate
+// reads its mean rather than its upper bound. The sheet's prior is nine
+// pseudo-observations (belief.go's qualityPrior), so twelve is three real
+// outcomes on top of it — enough to stop asking "could it be good enough" and
+// start asking "is it".
+const qualityEvidence = 12.0
+
+// qualityBound is what the gate compares against the role's need. THE UPPER
+// BOUND UNTIL THERE IS EVIDENCE, THE MEAN AFTER. The bound is right for a lane
+// nobody has judged, which must answer yes or the gate refuses the whole set
+// for lack of evidence; it is wrong for a lane judged a dozen times, because
+// the bound of a Beta at a 0.83 mean on six observations still clears 0.9 and
+// on twelve it still clears 0.95, so a lane answering badly one time in six
+// was never gated on quality at all.
+func qualityBound(quality Beta) float64 {
+	if quality.A+quality.B >= qualityEvidence {
+		return quality.Mean()
+	}
+	return quality.Upper(z90)
 }
 
 // doubted reports whether the SHEET has something against this lane for this
@@ -326,6 +348,7 @@ func frontierFor(beliefs []Belief, req Request, opts gateOptions, cached func(ID
 		sorted = append(sorted, candidates[index])
 		sortedFacts = append(sortedFacts, facts[index])
 	}
+	sorted, sortedFacts = aboveServiceFloor(sorted, sortedFacts, beliefsByID(beliefs), req.Now)
 	sorted = pricedPessimistically(sorted, sortedFacts)
 	sorted = underPriceCeiling(sorted, sortedFacts, req)
 	// Unknown generation is not free generation. Until the request has an
@@ -485,4 +508,81 @@ func paretoFront(candidates []Scored, unknownQuality float64) []Scored {
 		}
 	}
 	return survivors
+}
+
+// ── THE SERVICE FLOOR ───────────────────────────────────────────────────────
+//
+// Every other bound in this file is RELATIVE — a multiple of the best lane in
+// the set, a multiple of the cheapest — and a relative bound cannot say that a
+// lane is too slow for a person full stop. On 2026-09-10 Morph answered every
+// deepseek-v4.1-flash request it was given, twenty-seven seconds to the first
+// token at six tokens a second, and stayed a candidate because it was the
+// cheapest lane that answered and nothing here had an absolute opinion. These
+// three do.
+const (
+	// FloorTTFT is the longest believed wait to a first token a lane may carry
+	// and still be sent a request on its own merits. Six seconds is the
+	// unattended role's patience ceiling (roles.go) with nothing left over.
+	FloorTTFT = 6 * time.Second
+	// FloorRate is the slowest believed generation a lane may carry. Thirty
+	// tokens a second is the strike ledger's own LagRate and well under the
+	// slowest lane anybody would call fine.
+	FloorRate = 30.0
+	// FloorServing is the least a lane may be believed to answer. Half: a lane
+	// refusing more than it serves costs more than two sends per answer.
+	FloorServing = 0.5
+	// floorEvidence is how many availability outcomes the serving clause needs
+	// before it may refuse, so that one refusal does not empty a set.
+	floorEvidence = 3.0
+)
+
+// underFloor reports whether a belief is SURELY below the service floor. Surely
+// is [ignoreSureVariance], the same sureness a refusal needs in orderOf: a lane
+// is refused on a belief the ledger is confident in, never on a wide one — and
+// because [Posterior.Predict] widens a belief with every minute it goes
+// unobserved, a lane put out by this floor drifts back into the candidate set
+// on its own once the belief is no longer sure, which is when it deserves the
+// probe that would measure it again.
+func underFloor(belief Belief, now time.Time) bool {
+	if belief.TTFT.Known() && belief.TTFT.P <= ignoreSureVariance && belief.TTFT.Mean() > float64(FloorTTFT.Milliseconds()) {
+		return true
+	}
+	if belief.Rate.Known() && belief.Rate.P <= ignoreSureVariance && belief.Rate.Mean() < FloorRate {
+		return true
+	}
+	if belief.Availability.Known() && belief.Availability.A+belief.Availability.B >= availabilityPrior.A+floorEvidence && servingAt(belief, now) < FloorServing {
+		return true
+	}
+	return false
+}
+
+// aboveServiceFloor drops every candidate surely under the floor — AND NEVER
+// ALL OF THEM. A set that is entirely under the floor is a model with no good
+// lane, and the honest answer there is the least bad one, not no answer: an
+// empty frontier is "no opinion", which sends the request out on the sort word
+// to whichever of those same lanes the router picks, blind.
+func aboveServiceFloor(candidates []Scored, facts []Facts, beliefs map[ID]Belief, now time.Time) ([]Scored, []Facts) {
+	kept := make([]Scored, 0, len(candidates))
+	keptFacts := make([]Facts, 0, len(candidates))
+	for index, candidate := range candidates {
+		if underFloor(beliefs[candidate.ID], now) {
+			continue
+		}
+		kept = append(kept, candidate)
+		keptFacts = append(keptFacts, facts[index])
+	}
+	if len(kept) == 0 {
+		return candidates, facts
+	}
+	return kept, keptFacts
+}
+
+// beliefsByID is the beliefs a frontier was built from, by lane, for the
+// clauses that read the posterior rather than the score.
+func beliefsByID(beliefs []Belief) map[ID]Belief {
+	byID := make(map[ID]Belief, len(beliefs))
+	for _, belief := range beliefs {
+		byID[belief.ID] = belief
+	}
+	return byID
 }

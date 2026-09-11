@@ -382,6 +382,19 @@ func (c *Client) applyLaneChoice(prefs *providerPrefs, model string, knobs callK
 		}
 		prefs.Order = order
 		prefs.Sort = ""
+		// AND THE PRICE CEILING COMES OFF WITH THE SORT WORD. `max_price` is the
+		// router's list price times 1.25, and the list price of a model is its
+		// CHEAPEST endpoint, so the ceiling vetoes every lane more than a quarter
+		// dearer than the cheapest — before the router has read the order at
+		// all. Recorded on 2026-09-11 (docs/design/routing/ASSESSMENT-20260911.md):
+		// the belief asked for GMICloud, Novita, Fireworks; the ceiling of $0.75
+		// left one of them; the account's data policy excluded that one; 404.
+		// The frontier has already priced every lane it named with the person's
+		// own λ (frontier.go's underPriceCeiling), which is the ceiling that
+		// belongs on a request somebody is waiting for. The sort-word path,
+		// where no belief has spoken, keeps the wire ceiling because nothing
+		// else bounds its spend.
+		prefs.MaxPrice = nil
 	}
 	for _, lane := range choice.Ignore {
 		if lane == "" || lane == pinned || namesEndpoint(prefs.Order, lane) || namesEndpoint(prefs.Ignore, lane) {
@@ -913,6 +926,27 @@ func (c *Client) noteLaneOutcome(model, served, reason string, accepted bool) {
 		Accepted: accepted,
 		Reason:   reason,
 		At:       laneNow(),
+	})
+}
+
+// noteLaneRefused tells the belief that a named lane did not answer at all — a
+// paced pool, a struck endpoint. It is the availability axis ([lanes.Outcome]'s
+// Refused), and it exists because the strike ledger's five-minute `ignore` was
+// the ONLY memory of a refusal: per client, undone by the set-empty release, and
+// written over by the belief's own order on the same wire object. The belief
+// now hears it too, and prices the lane by the sends an answer costs. The
+// attribution law is [Client.noteLaneOutcome]'s: no named lane, nothing said.
+func (c *Client) noteLaneRefused(model, lane, reason string) {
+	lane = strings.TrimSpace(lane)
+	model = laneModel(model)
+	if !c.carriesPreferences() || model == "" || lane == "" {
+		return
+	}
+	lanes.Default().Ledger().NoteOutcome(lanes.Outcome{
+		ID:      lanes.ID{Model: model, Lane: lane},
+		Refused: true,
+		Reason:  reason,
+		At:      laneNow(),
 	})
 }
 

@@ -577,6 +577,14 @@ func (c *chooser) Choose(req Request) Choice {
 			rate = candidate.Rate
 		}
 		felt := PerceivedSeconds(ttft/1000, rate, req.Visible, req.Hidden)
+		// AND THE WAIT IS PAID ONCE PER SEND, NOT ONCE PER ANSWER. A lane that
+		// answers one request in five is asked five times for one answer, and
+		// each of those asks is a round trip the person sits through before the
+		// hop to somewhere else; dividing by [Belief.Serving] is what puts a
+		// refusing pool behind a slower lane that actually answers. The
+		// availability belief is aged to now with the rest ([Ledger] ages
+		// timing; this is the same forgetting on the same clock).
+		felt /= servingAt(belief, req.Now)
 		perceived[candidate.ID] = felt
 		candidate.Score = scoreOf(candidate.Price, felt, lambda)
 		scored = append(scored, candidate)
@@ -710,6 +718,16 @@ func ignoredOf(scored []Scored, aged map[ID]Belief, order []string, lambda float
 // elsewhere and on purpose: the frontier prunes at the p75 ([quartileZ]) and
 // the hedge deadline is computed from the full predictive spread
 // ([predictive]), so nothing is lost here by asking a narrower question.
+// servingAt is [Belief.Serving] read at a moment: the availability posterior is
+// let go toward its prior for the time since the last outcome, so that a pool
+// refused ten minutes ago is mostly forgiven by the time it is asked about.
+func servingAt(belief Belief, now time.Time) float64 {
+	if belief.Availability.Known() && !belief.AvailabilityAt.IsZero() && now.After(belief.AvailabilityAt) {
+		belief.Availability = belief.Availability.Toward(availabilityPrior, now.Sub(belief.AvailabilityAt), AvailabilityHalfLife)
+	}
+	return belief.Serving()
+}
+
 func sample(posterior Posterior, draws *rand.Rand, width float64, measured bool) float64 {
 	if !posterior.Known() {
 		return 0
