@@ -84,6 +84,22 @@ const (
 	// a build log where the failure is; the whole log is still on disk and the
 	// note still names it.
 	jobExitTailLines = jobsDefaultTail
+
+	// jobExitNewsRule is the one clause a job's ending carries about ITSELF: it
+	// is news, and it asks for nothing.
+	//
+	// A HARNESS-AUTHORED MESSAGE CARRIES ITS OWN READING INSTRUCTION, which is
+	// the delivery class docs/design/prompt-diet/DESIGN.md §2 files this under
+	// and the pattern [standingNewsRule] was already written in — right down to
+	// the opening words, because a job's ending and a standing item's firing are
+	// the same kind of arrival and a model should not have to learn two frames
+	// for it. Saying it here costs the turn a job ends on; saying it on the page
+	// cost every request of every turn.
+	//
+	// IT NAMES WHAT IT IS FORBIDDING for [standingNewsRule]'s reason: a model
+	// holding `bash` reads an exit code as an invitation to run the thing again,
+	// and a model holding `jobs` reads a quiet job as something to go and check.
+	jobExitNewsRule = "— this already happened: relay it if it matters, never re-run it and never poll for it."
 )
 
 // jobState is what a job is doing now.
@@ -131,20 +147,6 @@ const (
 	// has — and its ending is a note on the steering lane carrying the landed
 	// path or the failure.
 	jobKindRender
-	// jobKindHand is one hand of a fork (fork.go): a copy of the caller's own
-	// mind, working a declared slice of the same working copy.
-	//
-	// IT IS HERE FOR THE REASON A RENDER IS, and the reason is the law this
-	// file opens with: A HAND IS A STREAM, NOT A BARRIER. `fork` used to
-	// block its caller's tool call until the SLOWEST hand came home — measured
-	// at thirty-nine minutes on a fork whose first hand was finished in ninety
-	// seconds, with that finished work sitting unbuilt and unmeasured for
-	// thirty-seven of them. So a hand is registered like every other stream this
-	// session starts: one id space, one log file, one row in `jobs list`, one
-	// kill, one death at Close. Its middle is a child agent's turn, its kill is
-	// that turn's context being cancelled — the same stop function a watch has —
-	// and its ending is a note on the steering lane carrying its whole report.
-	jobKindHand
 )
 
 // job is one background command.
@@ -154,14 +156,22 @@ const (
 // the lock a turn holds, least of all the one Interrupt needs to be able to
 // take at any moment.
 type job struct {
+	// The admission generation rejects work reserved before a conversation stop.
+	epoch   uint64
 	id      int
 	command string
 	kind    jobKind
 	// label and detail are a watch's short name and its terms ("every 10s on
 	// change"), empty for a bash job. They are set once at start and read
 	// without the lock.
-	label   string
-	detail  string
+	label  string
+	detail string
+	// dir is the folder the job was started in — the registry's workspace AT
+	// THE FORK, taken once and never moved. It is the job's own because the
+	// workspace is not: `anchor_workspace` re-roots the registry mid-session
+	// (tools_anchor_workspace.go), and a dev server started before that still
+	// runs where it was started, which is what a row naming its folder must say.
+	dir     string
 	started time.Time
 	logPath string
 	cmd     *exec.Cmd
@@ -239,9 +249,11 @@ type jobInfo struct {
 	// report to point a person at, and the log is what it points at instead
 	// (jobnotice.go).
 	logPath string
-	state   jobState
-	code    int
-	ticks   int
+	// dir is where the job was started ([job.dir]).
+	dir   string
+	state jobState
+	code  int
+	ticks int
 	// started is when the process forked, copied out beside elapsed so a surface
 	// can count a live job's clock up on its own beat rather than re-asking the
 	// engine for a duration four times a second (jobnotice.go says why both).
@@ -260,6 +272,7 @@ func (j *job) info() jobInfo {
 		id: j.id, command: j.command, kind: j.kind, label: j.label, detail: j.detail,
 		name:    j.name,
 		logPath: j.logPath,
+		dir:     j.dir,
 		state:   j.state, code: j.exitCode, ticks: j.ticks,
 		started: j.started, elapsed: elapsed,
 	}
@@ -505,19 +518,7 @@ type jobRegistry struct {
 	// this closes behind ([TaskGraph.stopAll]); this is the door itself learning
 	// to say no.
 	closed bool
-	// hands is how many forked hands are OUT — started and not yet reported.
-	//
-	// IT IS COUNTED RATHER THAN READ OFF THE SLICE, and the reason is a race
-	// that would cost a hand's whole report. A hand's job settles a moment
-	// BEFORE its report reaches the steering queue, and the thing reading this
-	// count is a task node's runner deciding whether to land ([runTaskChild]'s
-	// tail loop, through [Agent.childrenOutstanding]). A count taken from the
-	// jobs' states would read zero inside that moment, and the runner would land
-	// the node on top of a report nobody had read — which is exactly the defect
-	// the wait on a sub-task's report was written to close. So the count is
-	// raised when the hand goes out and lowered only AFTER its report is on the
-	// queue.
-	hands int
+	epoch  uint64
 }
 
 func newJobRegistry(workspace string, place Place, notify func(string), watch ...func(string, string, bool)) *jobRegistry {
@@ -551,13 +552,13 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 	// was taken away. Every caller of this already answers an error by carrying
 	// on without a log, which is the honest shape for work that is ending.
 	r.mu.Lock()
-	closed := r.closed
+	closed, epoch, workspace := r.closed, r.epoch, r.workspace
 	r.mu.Unlock()
 	if closed {
 		return nil, errSessionClosed
 	}
 
-	directory := droppingsDir(r.place, r.workspace, droppingJobs)
+	directory := droppingsDir(r.place, workspace, droppingJobs)
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		return nil, fmt.Errorf("could not create the jobs directory: %w", err)
 	}
@@ -567,9 +568,11 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 		return nil, err
 	}
 	return &job{
+		epoch:   epoch,
 		id:      id,
 		command: command,
 		kind:    kind,
+		dir:     workspace,
 		started: time.Now(),
 		logPath: logPath,
 		// One sink for both streams, as bare's bash does: stdout and stderr
@@ -636,7 +639,7 @@ func (r *jobRegistry) claimJobLog(directory string) (int, string, *os.File, erro
 // after the quit took it away, which is the visible half of the same bug.
 func (r *jobRegistry) join(started *job) error {
 	r.mu.Lock()
-	if r.closed {
+	if r.closed || started.epoch != r.epoch {
 		r.mu.Unlock()
 		started.sink.close()
 		if started.logPath != "" {
@@ -710,7 +713,7 @@ func (r *jobRegistry) start(command string) (*job, error) {
 	// buffering fix in it at all.
 	shell, shellArgs := bare.StreamingShell(command)
 	process := exec.Command(shell, shellArgs...)
-	process.Dir = r.workspace
+	process.Dir = started.dir
 	process.Env = bare.StreamingEnv()
 	// Setsid puts the job and everything it spawns in one process group, so a
 	// kill reaches the whole tree — the leader of a new session leads its own
@@ -807,69 +810,6 @@ func (r *jobRegistry) startRender(label, prompt string) (*job, context.Context, 
 	return started, ctx, nil
 }
 
-// startHand registers one forked hand as a job and hands back the job and the
-// context its turn must run under.
-//
-// IT IS [jobRegistry.startVideo] WITH ONE MORE FACT KEPT, and everything else
-// about it is the same argument: the context is the BACKGROUND one and never
-// the turn's, because a hand whose whole purpose is to outlive the tool call
-// that opened it would be killed by the act of answering that call. Its cancel
-// is the job's stop function, so `jobs kill`, [Agent.Interrupt] and Close all
-// reach it through [job.signal].
-//
-// The one more fact is [jobRegistry.hands]: a hand is OUT from this instant
-// until its report is delivered, which is a longer life than the job's own and
-// is the life a node's landing has to wait on. See the field.
-func (r *jobRegistry) startHand(label, role string) (*job, context.Context, error) {
-	started, err := r.newJob(role, jobKindHand)
-	if err != nil {
-		return nil, nil, err
-	}
-	started.label = label
-	started.detail = role
-
-	ctx, cancel := context.WithCancel(context.Background())
-	started.stop = cancel
-	r.mu.Lock()
-	r.hands++
-	r.mu.Unlock()
-	if err := r.add(started); err != nil {
-		// THE HAND COMES BACK IN. It was counted OUT a line ago, and this one is
-		// never going anywhere; a count left raised would be a node's landing
-		// waiting forever on a report from a hand that was refused at the door
-		// (see [jobRegistry.hands]).
-		r.handHome()
-		cancel()
-		return nil, nil, err
-	}
-	return started, ctx, nil
-}
-
-// handHome lowers the out-count, and it is called AFTER the hand's report is on
-// the steering queue rather than when its job settles. See [jobRegistry.hands].
-func (r *jobRegistry) handHome() {
-	if r == nil {
-		return
-	}
-	r.mu.Lock()
-	if r.hands > 0 {
-		r.hands--
-	}
-	r.mu.Unlock()
-}
-
-// handsOutstanding reports whether any hand this session forked has yet to
-// deliver its report. It is what keeps a node's landing from closing on top of
-// one ([Agent.childrenOutstanding]).
-func (r *jobRegistry) handsOutstanding() bool {
-	if r == nil {
-		return false
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.hands > 0
-}
-
 // owedRunning reports whether any command this registry took over from a call
 // that was waiting for it has yet to have its ending handed over. It is what
 // holds a task worker's next question back until the answer is in front of it
@@ -912,28 +852,6 @@ func (r *jobRegistry) releaseParked() {
 		return
 	}
 	r.paid()
-}
-
-// stopHands ends every hand still out, the way the person's interrupt means it.
-//
-// A BACKGROUND JOB SURVIVES AN INTERRUPT AND A HAND DOES NOT, and the difference
-// is whose work it is. A job is a command the person asked to be left running; a
-// hand is THIS MIND, copied, finishing the answer that was just interrupted —
-// and an answer nobody is waiting for any more has no hands to keep out. Every
-// kill here is a requested one, so no hand reports itself onto a queue whose
-// turn has just been cancelled.
-func (r *jobRegistry) stopHands() {
-	if r == nil {
-		return
-	}
-	for _, candidate := range r.all() {
-		if candidate.kind != jobKindHand {
-			continue
-		}
-		if candidate.requestKill() {
-			candidate.signal(syscall.SIGTERM)
-		}
-	}
 }
 
 // finish settles a job whose middle was a goroutine rather than a process, and
@@ -1069,6 +987,11 @@ func (r *jobRegistry) settleExit(watched *job, code int) {
 		if last := watched.sink.lastNonEmptyLine(); last != "" {
 			note += ": " + clip(last, jobExitNoteLimit)
 		}
+		// AND THE NOTE SAYS, IN ITS OWN FRAME, THAT IT IS NEWS. It rides the
+		// steering lane and arrives as a user-role message, which read cold is
+		// indistinguishable from somebody typing "job 3 exited 0" — and a model
+		// reading it that way runs the command again to see what they meant.
+		note += "\n" + jobExitNewsRule
 		// AND THE OUTPUT COMES WITH IT. A watch's note is its own sentence and
 		// needs none of this; a bash job's ending is the moment its output finally
 		// means something, and a note that withheld it would be an invitation to
@@ -1148,14 +1071,6 @@ func (r *jobRegistry) kill(ctx context.Context, id int) (string, bool) {
 	if target.kind == jobKindTask {
 		return fmt.Sprintf("%s (job %d) stopped; its branch is kept", target.label, id), false
 	}
-	// A hand is STOPPED and whatever it had already written is STILL THERE: the
-	// hands share the caller's working copy, so ending one throws nothing away
-	// and leaves a slice that may be half-made. The model is told both, because
-	// the second is the half it would otherwise assume away.
-	if target.kind == jobKindHand {
-		return fmt.Sprintf("%s (job %d) stopped; what it had already written is still in your working copy "+
-			"and may be half-made — no report is coming", target.label, id), false
-	}
 	// A render is STOPPED and nothing was saved, which is the whole of what the
 	// model needs to know: no file landed, and no note about this job is
 	// coming. The label is the noun — "video", "music" — so the sentence names
@@ -1231,12 +1146,6 @@ func statusText(info jobInfo) string {
 		if info.kind == jobKindRender {
 			return "finished"
 		}
-		// Nor has a hand: its outcome is a WORD (done, out of rounds, stopped)
-		// that reached the model in its own report, and an exit code here would
-		// be a second, dumber account of the same ending.
-		if info.kind == jobKindHand {
-			return "finished"
-		}
 		return fmt.Sprintf("exited(%d)", info.code)
 	case jobKilled:
 		return "killed"
@@ -1275,10 +1184,7 @@ func (r *jobRegistry) list() string {
 		// A render's row is a task's row for the same reason: the label says
 		// what kind of thing is running, and the detail is the prompt it was
 		// given, which is how a person picks one of three renders out of a list.
-		// A hand's row is a task's row for the same reason again: the label says
-		// which hand it is and the detail is the one line it was told, which is
-		// how a model picks one of four hands out of a list.
-		if info.kind == jobKindTask || info.kind == jobKindRender || info.kind == jobKindHand {
+		if info.kind == jobKindTask || info.kind == jobKindRender {
 			fmt.Fprintf(&rendered, "job %d · %s · %s · %s · %s",
 				info.id, info.label, statusText(info), formatElapsed(info.elapsed),
 				clip(firstLine(info.detail), hintLimit))

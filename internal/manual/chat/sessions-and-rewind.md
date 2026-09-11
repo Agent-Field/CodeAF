@@ -435,8 +435,9 @@ of it.
 
 **When home greets you instead, there is no welcome box at all.** On a machine that holds
 a conversation other than the one your launch opened, the first frame is the home screen
-(see the home page), and the box is retired before it ever draws — home's list is every
-conversation in every project, which is the box's four recent rows and more. Two
+(see the home page), and the box is retired before it ever draws — home's `where you
+were` panel, with the search behind its fold, is every conversation in every project, which
+is the box's four recent rows and more. Two
 greeters would be one too many. It does not appear behind home either: `esc` out of home
 lands you on the ordinary prompt.
 
@@ -456,7 +457,7 @@ the page:
 ```
 
 **It names the conversation, not the file.** The name is the one the session gave itself
-from its first exchange; a conversation that has not named itself yet is called by the
+from its opening message; a conversation that has not named itself yet is called by the
 opening of the first thing you said in it. Either way it is one row, at every width.
 
 It used to print the journal's absolute path there instead, which ran to four or five
@@ -477,17 +478,24 @@ in the older spelling.
 The name is written by a model, once, and appears in the status line below the message
 box: `porting the parser · gpt-4.1-mini:high`.
 
-**It arrives one turn in.** As soon as your first exchange finishes, the model on the
-`title` role — small work, so a cheap one — is shown the opening question and answer and
-then asked, at the end of that same message,
-`Name this session in ≤8 words, lowercase, no quotes. Answer with the name only.` That is
-**one call per conversation** — it is never retried inside a conversation, so a provider
-having a bad minute costs you a name and nothing else. Until it lands, the status line
-falls back to the folder's name; nothing says
-"untitled".
+**It starts with your first message.** The small model on the `title` role is shown the
+opening question and asked for a descriptive conversation title plus a compact tab label
+in one response. The answer and the naming request run independently. A late name still
+reaches an idle chat, a background tab, or a hosted chat after the connection is restored;
+no refresh or follow-up message is needed.
 
-The name is capped at **80 characters**, and the status line fits it to the room left by
-the model rather than letting identity push telemetry off the frame.
+Each ask is bounded to twenty seconds so a slow cheap endpoint yields to the existing
+fallback promptly. Temporary provider failures are asked again for as long as the
+two-minute parent window lasts, with a wait that doubles in front of each ask; nothing
+counts the asks. Closing the session cancels this work. Failed or invalid naming
+leaves the conversation usable with its existing placeholder; an existing name is never
+overwritten. Title calls remain billed to the session and cost history, separately from
+an unrelated turn that happens to be running when the name arrives.
+
+The full name is capped at **80 characters** in both its journal and folder metadata. The
+stable compact label is capped at **32 characters** in both places, and the tab strip fits
+it to its available cells. Old saved conversations
+have no separate compact label and use their full title in the tab, exactly as before.
 
 **There is no command to rename a conversation.** The name lives in the transcript as its
 own appended line, and the last one wins when the file is read back — but nothing on this
@@ -515,15 +523,15 @@ survives, so `fix: nil map crash` is kept whole.
 **A refused name is not a blank row.** The conversation simply has no name of its own, and
 the lists that draw a name — home, `/resume`, `recent sessions` — fall back to **your own
 opening words**, the first line you typed, exactly as they do for a conversation whose
-first turn has not finished yet. The legend above the message box shows only the branch
+background naming has not finished yet. The legend above the message box shows only the branch
 until a real name lands.
 
 **The ones already named badly heal themselves.** A transcript or a folder that was written
 down under the instruction is read back as having no name at all, and the folder's row gets
 your opening words back — they are read out of the transcript, where they have been all
 along. Nothing is rewritten: the old line stays in the file, which is append-only. The next
-time you open that conversation the namer gets its one call again, on your next completed
-turn, appending the good name the way every name is appended.
+time you open that conversation, your next message starts another bounded naming attempt
+in the background, appending the good name when it arrives.
 
 ## /resume — opening an earlier conversation
 
@@ -609,11 +617,13 @@ what the two presses do and what they cost.
 `--host` story rather than this one: a conversation held by a session host can have several
 windows attached, one keyboard between them, the newest window typing. That happens locally
 too when a host is already holding this workspace — a `--host` or `--at` connection into this
-machine, or somebody's `aforge engine`. See *Staying on that machine*. A plain `aforge chat`
-never starts a host of its own; it opens in this terminal's own process, which is what keeps
-adaptive runs, harness building and subharness intake cards working in it.
+machine, or somebody's `aforge engine`, or the host `aforge chat` here starts for itself.
+See *Staying on that machine*: an ordinary launch now opens its conversation in this
+machine's session host, so a second terminal in this folder joins that conversation rather
+than meeting a lock. Harness building and subharness intake cards work in a hosted
+conversation; the adaptive runner is the one thing still switched off in one.
 
-## It used to start a new conversation in the second terminal — why it doesn't now
+## It used to start a new conversation in the second terminal — why it doesn't now, aforge started a new conversation instead of the one that was running
 
 Opening a conversation takes a non-blocking exclusive lock on its file before anything is
 replayed, so a second window meets that lock at the door. It used to quietly name a new
@@ -629,6 +639,22 @@ away, and you were handed a different one instead, with no way back to it. A sec
 still opens a fresh conversation — that is what `esc` leaves you in, and nothing about it is
 lost — but it opens **on home with the held row armed**, so the conversation you actually
 came for is one keystroke away instead of nowhere.
+
+**The fresh conversation is opened through the engine, not in this terminal.** That is what
+makes the armed row worth arming: a window on the engine road can ask the engine for the
+held conversation and get it back instantly, while a window that had fallen back into this
+terminal could only ask the *other window* to let go — and an engine holding the journal
+never answers that. So a refusal moves you sideways into a new chat on the same road; it
+never drops you off it. The one launch that still meets the bare sentence is a headless
+`--once`, below.
+
+**And the engine never refuses you its own conversation.** A plain launch in a folder the
+engine is holding sits down in the conversation it holds. That broke for a while in one
+shape — once the first conversation the engine opened had ended (you moved it, `/new`d past
+it, closed it) while the engine went on holding another, the next plain launch was told
+`this conversation is open in another window` by the very engine holding it, and landed in a
+new chat in this terminal instead. It does not happen now: which conversation "nothing
+named" means is read the same way at the door as it is when one is opened.
 
 **Where nobody can press anything, you get a sentence instead.** A headless `--once` run has
 no screen to offer a row on, so it refuses and says what to do:
@@ -661,10 +687,13 @@ open in another window — go there, or start a new conversation here
 **No file path is printed.** The path is aforge's bookkeeping and not something you can act
 on; what you can act on is in the sentence.
 
-**Home does something better: it MOVES it.** `enter` on a row marked `another window` offers
-to move that conversation into this terminal, and a second `enter` asks for it — the other
-window finishes its reply, lets go, and the row opens here with its tasks and its unsent
-sentence. See *Continue a conversation from another terminal* on the home page.
+**Home does something better: it BRINGS IT HERE.** `enter` on a row marked `another window`
+or `open in the engine` opens that conversation in this terminal. On the ordinary
+`aforge chat` it is one keystroke and it is instant — the engine holds the conversation and
+hands it over mid-reply, nothing pauses, and the terminal that had it says
+`moved to another window · enter on home brings it back`. Where there is no engine
+(`--no-host`, `--debug`) it takes a second `enter`, and that window's reply stops there. See
+*Continue a conversation from another terminal* on the home page.
 
 A conversation you pick that is NOT held opens normally. And the one time this can still
 surprise you is a lock taken in the instant between the screen being drawn and your
@@ -738,8 +767,9 @@ runs — in every spelling, `$(gh auth token)` inside another command included. 
 how tasks run has the whole of it. Here, in the conversation, the command is yours and runs as it always
 did.
 
-**What is recognised**, by shape rather than by service, so a provider that mints the same
-shape is covered without aforge having heard of it:
+**What is recognised** includes every key aforge holds: its exact value is redacted,
+whatever its shape. Results are also checked for these familiar shapes when the value did
+not come from aforge's own settings:
 
 - GitHub tokens — `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, and fine-grained `github_pat_`
 - keys in the `sk-` family — OpenAI, Anthropic, OpenRouter, and everything else using it

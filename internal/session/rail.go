@@ -38,6 +38,9 @@ var ErrSpendRail = errors.New("session: the spend rail was reached")
 // railBlockLocked reports why a turn may not start, or nil. It is called with
 // a.mu held, from the one place turns begin.
 func (a *Agent) railBlockLocked() error {
+	if err := a.launchBudgetBlockLocked(); err != nil {
+		return err
+	}
 	rail := a.config.SpendRailUSD
 	if rail <= 0 {
 		return nil
@@ -103,6 +106,9 @@ func railMoney(usd float64) string {
 // zero there still means the run nobody bounded.
 func (a *Agent) railCap(asked float64) float64 {
 	rail := a.config.SpendRailUSD
+	if launch := a.interactiveBudget().USD; launch > 0 && (rail <= 0 || launch < rail) {
+		rail = launch
+	}
 	if rail <= 0 {
 		return asked
 	}

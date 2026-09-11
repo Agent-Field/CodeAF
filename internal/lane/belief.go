@@ -137,6 +137,8 @@ type ledger struct {
 	rate   chains
 	think  chains
 	judged tallies
+	// workloads learns answer size separately from endpoint speed.
+	workloads map[string]workloadEstimate
 	// shifted names the pairs whose leaf a change point has just reset. It is
 	// read once and cleared, which is what makes it a piece of news rather than
 	// a state somebody has to remember to acknowledge.
@@ -303,6 +305,12 @@ func (l *ledger) readBack() {
 // than the evidence, once per beat, for ever.
 func (l *ledger) rebuild(held storeState, records []record, skipped int) {
 	l.beliefs = map[ID]Belief{}
+	l.workloads = make(map[string]workloadEstimate)
+	for _, row := range held.Workloads {
+		if row.valid() && len(l.workloads) < workloadLimit {
+			l.workloads[workloadKey(row.Model, row.Class)] = row
+		}
+	}
 	l.priors = map[ID]spread{}
 	for _, prior := range held.Priors {
 		prior.ID = prior.ID.key()
@@ -370,6 +378,8 @@ func (l *ledger) replay(entry record) {
 		l.primeRow(*entry.Row, entry.Weight)
 	case entry.Think != nil:
 		l.deliberated(*entry.Think)
+	case entry.Work != nil:
+		l.foldWorkload(*entry.Work)
 	}
 }
 
@@ -561,12 +571,13 @@ func Flush() {
 // snapshot is everything this ledger would have written down.
 func (l *ledger) snapshot() storeState {
 	return storeState{
-		Beliefs: l.held(),
-		Priors:  l.spreads(),
-		Wait:    l.wait,
-		Rate:    l.rate,
-		Think:   l.think,
-		Judged:  l.judged,
+		Beliefs:   l.held(),
+		Priors:    l.spreads(),
+		Wait:      l.wait,
+		Rate:      l.rate,
+		Think:     l.think,
+		Judged:    l.judged,
+		Workloads: l.heldWorkloads(),
 	}
 }
 
@@ -950,7 +961,14 @@ func (l *ledger) NoteOutcome(o Outcome) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.restore()
-	l.weigh(o)
+	// A REFUSAL MOVES AVAILABILITY AND NOTHING ELSE. The quality axis is about
+	// answers that arrived; charging it for one that did not would let a busy
+	// pool read as a lane that writes bad tool calls, and gate it out for the
+	// hour QualityHalfLife remembers rather than the minutes a queue lasts.
+	if !o.Refused {
+		l.weigh(o)
+	}
+	l.weighAvailability(o)
 	l.keep(record{At: o.At, Out: &o})
 }
 
@@ -982,6 +1000,41 @@ func (l *ledger) weigh(o Outcome) {
 	l.beliefs[o.ID] = belief
 }
 
+// AvailabilityHalfLife is how long a refusal is remembered. Five minutes is the
+// strike ledger's own cooldown (internal/provider's ignoreCooldown) and the
+// window a rate-limited pool typically takes to open again; forgetting faster
+// would send the request straight back, forgetting slower would hold a lane
+// out of the order over a queue that has long since drained.
+const AvailabilityHalfLife = 5 * time.Minute
+
+// availabilityPrior is one answered request and no refusal: a lane nobody has
+// seen refuse is believed to serve. One rather than eight, so that a single
+// refusal halves the belief and four of them cost five sends per answer — the
+// shape the log actually showed — where a heavier prior would need a dozen
+// refusals to say what the first one already said.
+var availabilityPrior = Beta{A: 1, B: 0}
+
+// weighAvailability folds one outcome into the availability axis. Every outcome
+// moves it — an answer is an answer whatever its quality — and it is the one
+// axis a Refused outcome moves, because a refusal says nothing about the
+// quality of an answer that never arrived.
+func (l *ledger) weighAvailability(o Outcome) {
+	belief := l.beliefs[o.ID]
+	belief.ID = o.ID
+	l.dress(&belief)
+	if !belief.Availability.Known() {
+		belief.Availability = availabilityPrior
+	}
+	if !belief.AvailabilityAt.IsZero() && !o.At.IsZero() {
+		belief.Availability = belief.Availability.Toward(availabilityPrior, o.At.Sub(belief.AvailabilityAt), AvailabilityHalfLife)
+	}
+	belief.Availability = belief.Availability.Observe(!o.Refused)
+	if !o.At.IsZero() {
+		belief.AvailabilityAt = o.At
+	}
+	l.beliefs[o.ID] = belief
+}
+
 // age widens a belief that has been sitting still, and stops where the public
 // sheet stands.
 //
@@ -1002,9 +1055,18 @@ func (l *ledger) weigh(o Outcome) {
 // a design whose whole claim is that there is no penalty box. At the honest
 // clamp a fully forgotten belief and a fresh sheet weigh the same, which is
 // what "worth about as much as anybody can look up" has to mean.
+//
+// AND THE CLAMP IS UNCONDITIONAL. It used to be skipped whenever `floor` was
+// zero — which is every pair the public sheet publishes no percentiles for —
+// so precisely the lanes with the least known about them were the ones whose
+// ageing was unbounded. That is where the overflow in [Posterior.Predict] was
+// reached from, and it is why a belief file went days refusing to compact on a
+// NaN. The floor a lane with no published spread ages to is the same one a
+// first measurement of it would be weighed against ([variance]): the honest
+// default, not nothing at all.
 func age(p Posterior, elapsed time.Duration, floor float64) Posterior {
 	p = p.Predict(elapsed, HalfLife)
-	if ceiling := SheetWeight * floor; ceiling > 0 && p.P > ceiling {
+	if ceiling := SheetWeight * variance(floor); p.P > ceiling {
 		p.P = ceiling
 	}
 	return p

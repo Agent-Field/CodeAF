@@ -15,10 +15,10 @@ import (
 // blankRow reports whether a drawn row carries nothing but spaces.
 func blankRow(s string) bool { return strings.TrimRight(plain(s), " ") == "" }
 
-// ruleAt is the index of the frame's one horizontal line, or -1.
+// ruleAt locates the bottom input rule, after any header divider.
 func ruleAt(rows []string) int {
-	for i, r := range rows {
-		if strings.Contains(plain(r), "──") {
+	for i := len(rows) - 1; i >= 0; i-- {
+		if strings.Contains(plain(rows[i]), "──") {
 			return i
 		}
 	}
@@ -53,9 +53,9 @@ func scrolledApp(t *testing.T, height int) *app {
 
 // ── 1. the breathing room ───────────────────────────────────────────────────
 
-// THE GAP IS A LADDER AND EVERY RUNG IS COUNTED. Two blank rows on a window
-// with the height to lend them, one on the everyday window, none on a short one
-// — and whatever it draws, [app.chromeHeight] charges the conversation for
+// THE GAP IS A LADDER AND EVERY RUNG IS COUNTED. The foot keeps its one blank
+// above the rule on a window with a rung to lend it and none on a short one —
+// and whatever it draws, [app.chromeHeight] charges the conversation for
 // exactly the rows [app.chrome] drew.
 func TestTheBreathingGapStepsDownWithTheWindow(t *testing.T) {
 	for _, c := range []struct {
@@ -97,23 +97,22 @@ func TestTheBreathingGapStepsDownWithTheWindow(t *testing.T) {
 			if rule < 1 {
 				t.Fatalf("the rule is at row %d:\n%s", rule, plain(frame(a)))
 			}
-			// One blank below the rule whatever the ladder says — the row the box
-			// has always stood on.
-			if !blankRow(frameRows[rule+1]) {
-				t.Fatalf("the row under the rule is %q, want the gap above the draft",
-					plain(frameRows[rule+1]))
+			// THE PROMPT IS THE ROW DIRECTLY UNDER THE RULE and the status line is
+			// the row directly under the prompt: the conversation's foot is a
+			// place's foot, one blank over the rule and none under the box (view.go's
+			// [app.footClearance]).
+			if !strings.Contains(plain(frameRows[rule+1]), "›") {
+				t.Fatalf("the draft is not directly under the rule:\n%s", plain(frame(a)))
 			}
-			if !strings.Contains(plain(frameRows[rule+2]), "›") {
-				t.Fatalf("the draft is not two rows under the rule:\n%s", plain(frame(a)))
+			if rule+2 != len(frameRows)-1 || blankRow(frameRows[rule+2]) {
+				t.Fatalf("the row under the draft is %q, want the status line",
+					plain(frameRows[rule+2]))
 			}
-			// And the SECOND helping goes above it, where the conversation stops.
-			above := blankRow(frameRows[rule-1])
-			if want := c.gap == 2; above != want {
-				t.Fatalf("the row above the rule is %q (blank=%v), want blank=%v",
-					plain(frameRows[rule-1]), above, want)
-			}
-			if c.gap == 2 && blankRow(frameRows[rule-2]) {
-				t.Fatalf("the gap above the rule is more than one row:\n%s", plain(frame(a)))
+			// And the one blank goes above the rule, where the conversation stops,
+			// on both rungs that draw a rule at all.
+			if !blankRow(frameRows[rule-1]) {
+				t.Fatalf("the row above the rule is %q, want the foot's clearance",
+					plain(frameRows[rule-1]))
 			}
 		})
 	}
@@ -149,9 +148,11 @@ func TestTheJumpChipOnlyShowsWhileTheReaderHasScrolledAway(t *testing.T) {
 	if len(rows) != a.height {
 		t.Fatalf("the frame is %d rows tall, want %d", len(rows), a.height)
 	}
-	// The chip names the key, and it names the key the router actually binds.
-	if got := plain(rows[at]); !strings.HasSuffix(got, "↓ latest · "+jumpKey) {
-		t.Fatalf("the chip row is %q, want it right-aligned and naming %s", got, jumpKey)
+	// The chip names the key, and it names the key the router actually binds. It
+	// is drawn at the LEFT edge of that row from 2026-09-09 — out against the
+	// rail it was the one thing on the frame nobody saw (jumpchip.go).
+	if got := strings.TrimRight(plain(rows[at]), " "); got != "↓ latest · "+jumpKey {
+		t.Fatalf("the chip row is %q, want it left-aligned and naming %s", got, jumpKey)
 	}
 
 	// A conversation SHORTER than its window has nothing below it, so a released
@@ -164,15 +165,20 @@ func TestTheJumpChipOnlyShowsWhileTheReaderHasScrolledAway(t *testing.T) {
 	}
 }
 
-// ONE ROW OF THE GAP, WHICHEVER ONE THERE IS. The everyday window keeps a single
-// blank and the chip rides that instead of asking for a row of its own.
-func TestTheJumpChipFallsBackToTheGapAboveTheDraft(t *testing.T) {
+// THE SAME ROW ON THE EVERYDAY WINDOW. The short window keeps the foot's one
+// blank above the rule as the tall one does, and the chip rides that instead of
+// asking for a row of its own. It used to fall back to a blank under the draft,
+// which the foot no longer keeps (view.go's [app.footClearance]).
+func TestTheJumpChipRidesTheFootsClearanceOnTheEverydayWindow(t *testing.T) {
 	a := scrolledApp(t, 10)
 	a.scroll(-3)
 	rows := strings.Split(frame(a), "\n")
 	at, rule := chipAtRow(rows), ruleAt(rows)
-	if at < 0 || rule < 0 || at != rule+1 {
+	if at < 0 || rule < 0 || at != rule-1 {
 		t.Fatalf("the chip is on row %d and the rule on %d:\n%s", at, rule, plain(frame(a)))
+	}
+	if !strings.Contains(plain(rows[rule+1]), "›") {
+		t.Fatalf("the draft is not directly under the rule:\n%s", plain(frame(a)))
 	}
 	if len(rows) != a.height {
 		t.Fatalf("the chip took a row: the frame is %d tall, want %d", len(rows), a.height)
@@ -196,10 +202,11 @@ func TestPressingTheJumpChipReturnsToTheLiveEdge(t *testing.T) {
 	if at < 0 || !a.jumpSpan.pressable() {
 		t.Fatalf("the chip drew no target: row %d, span %+v", at, a.jumpSpan)
 	}
-	// A press to the LEFT of the chip is a press on empty space, which is
-	// nothing on this surface.
-	drive(t, a, clickAt(0, at))
-	drive(t, a, releaseAt(0, at))
+	// A press to the RIGHT of the chip is a press on empty space, which is
+	// nothing on this surface. The chip is left-aligned from 2026-09-09, so the
+	// empty half of the gap row is the one out towards the rail.
+	drive(t, a, clickAt(a.jumpSpan.to+4, at))
+	drive(t, a, releaseAt(a.jumpSpan.to+4, at))
 	if a.stick {
 		t.Fatal("a press on the empty half of the gap row jumped the conversation")
 	}
@@ -266,7 +273,7 @@ func TestTheJumpChipBrightensUnderThePointerAndNowhereElse(t *testing.T) {
 	at := chipAtRow(rows)
 	dim := rows[at]
 
-	a.setHover(0, at)
+	a.setHover(a.jumpSpan.to+40, at)
 	if a.hot.kind == hoverJump {
 		t.Fatal("the chip claimed a pointer forty columns away from it")
 	}

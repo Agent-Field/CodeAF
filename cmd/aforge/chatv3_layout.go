@@ -255,25 +255,93 @@ func v3ResolveSession(explicit, workspace, launchDir string, owned bool) (v3Sess
 	}
 	spoken, empty := v3ScanBucket(bucket)
 
-	if len(spoken) > 0 {
-		folder := spoken[0]
-		place := v3PlaceFor(folder.dir, workspace, owned || folder.meta.Owned)
-		v3ReapEmpty(empty, "")
-		return v3Session{Place: place, Transcript: place.Transcript(), Resumed: true, Bucket: bucket}, nil
-	}
-	if folder, found := v3FreeEmpty(empty); found {
-		place := v3PlaceFor(folder.dir, workspace, owned)
-		v3ReapEmpty(empty, folder.dir)
-		// Reused, not resumed: there is nothing in it to come back to, and a
-		// surface that said "resumed" about a folder with no words in it would be
-		// naming a conversation that never happened.
-		return v3Session{Place: place, Transcript: place.Transcript(), Bucket: bucket}, nil
+	if folder, resumed, found := v3PickFolder(spoken, empty, true); found {
+		// A folder somebody has spoken in carries its OWN posture — a
+		// conversation that owns its workspace goes on owning it whatever
+		// terminal reopens it — while an empty one has nothing to remember and
+		// takes this launch's.
+		keeps := owned
+		keep := ""
+		if resumed {
+			keeps = owned || folder.meta.Owned
+		} else {
+			// The folder this launch is about to open is the one empty it may
+			// not reap.
+			keep = folder.dir
+		}
+		place := v3PlaceFor(folder.dir, workspace, keeps)
+		v3ReapEmpty(empty, keep)
+		// Resumed only for a folder somebody has SPOKEN in: there is nothing to
+		// come back to in an empty one, and a surface that said "resumed" about
+		// a folder with no words in it would be naming a conversation that never
+		// happened.
+		return v3Session{Place: place, Transcript: place.Transcript(), Resumed: resumed, Bucket: bucket}, nil
 	}
 	place, err := v3MintSession(bucket, workspace, launchDir, owned)
 	if err != nil {
 		return v3Session{}, err
 	}
 	return v3Session{Place: place, Transcript: place.Transcript(), Bucket: bucket}, nil
+}
+
+// v3PickFolder is the resume order applied to one scan of a project's bucket:
+// the newest folder somebody has SPOKEN in, and otherwise the newest empty one.
+// The second bool is whether anything was found at all; the first is whether
+// what was found was spoken in.
+//
+// THE ORDER IS ONE LAW WITH TWO READERS, which is the whole reason it is a
+// function rather than an `if` written out twice. The launch that is about to
+// WRITE the journal reads it with free=true — an empty folder another window is
+// holding open is a person sitting at a prompt, and handing them a second writer
+// only produces the lock notice one step later ([v3FreeEmpty]). The engine host
+// reads it with free=false to answer a different question — WHICH CONVERSATION
+// IS THIS HELLO ASKING FOR ([v3LatestTranscript]) — and there a folder somebody
+// is sitting in is precisely the one a second surface saying nothing wants to
+// sit down in. A joiner is not a second writer, so the filter that protects the
+// writer would, here, hide the answer.
+func v3PickFolder(spoken, empty []v3Folder, free bool) (v3Folder, bool, bool) {
+	if len(spoken) > 0 {
+		return spoken[0], true, true
+	}
+	if !free {
+		if len(empty) > 0 {
+			return empty[0], false, true
+		}
+		return v3Folder{}, false, false
+	}
+	folder, found := v3FreeEmpty(empty)
+	return folder, false, found
+}
+
+// v3LatestTranscript is the transcript a launch that named NO session is asking
+// for in this workspace, and "" when the workspace has no conversation yet.
+//
+// IT CHANGES NOTHING ON DISK, which is the one thing that separates it from
+// [v3ResolveSession] and the reason it exists at all. The engine host asks it on
+// every hello, to answer "which conversation is this" BEFORE it opens anything
+// (engine.go's [engineHelloKey]); a reading that reaped empty folders or minted
+// a new one would make the question itself change the answer, and would mint a
+// conversation for a hello that was about to join one.
+//
+// IT IS THE SAME ORDER THE BOOT APPLIES, through the same [v3PickFolder], so the
+// key a hello resolves to and the journal the boot would open cannot drift apart
+// — which is the whole of the defect this closes: a host that resolved "latest"
+// one way at the door and another way at the boot met its OWN flock and told the
+// person their conversation was open in another window.
+func v3LatestTranscript(workspace string) string {
+	if strings.TrimSpace(workspace) == "" {
+		return ""
+	}
+	bucket, err := v3ProjectDir(workspace)
+	if err != nil {
+		return ""
+	}
+	spoken, empty := v3ScanBucket(bucket)
+	folder, _, found := v3PickFolder(spoken, empty, false)
+	if !found {
+		return ""
+	}
+	return session.Place{Dir: folder.dir}.Transcript()
 }
 
 // v3NamedSession opens the path a person put on the command line.

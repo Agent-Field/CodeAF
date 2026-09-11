@@ -31,6 +31,9 @@ const (
 // The original lines are deliberately absent: once the window has been read,
 // no later draw should be able to count a line outside it by accident.
 type spendReading struct {
+	// unfolded is whether `what it was for` draws every subject rather than the
+	// first [spendSubjectCap] and a fold line ([spendReading.unfolding]).
+	unfolded bool
 	window   session.UsageWindow
 	now      time.Time
 	totals   session.DaySpend
@@ -70,6 +73,9 @@ type spendReading struct {
 	// that DRAWING stays arithmetic over what was already gathered. Zero is the
 	// ordinary case and the line says nothing about it.
 	unwritten int64
+	// unbilled is how many charged calls ended without either a wire price or a
+	// provider receipt ([session.UnbilledCalls]). Zero is absent from the line.
+	unbilled int64
 }
 
 // lost hands the reading the count of rows that never reached the file. It
@@ -77,6 +83,13 @@ type spendReading struct {
 // answer.
 func (r spendReading) lost(dropped int64) spendReading {
 	r.unwritten = dropped
+	return r
+}
+
+// unpriced hands the reading the count of charged calls no receipt could put a
+// figure on. It answers a copy for the same immutable-reading reason as [lost].
+func (r spendReading) unpriced(calls int64) spendReading {
+	r.unbilled = calls
 	return r
 }
 
@@ -193,6 +206,16 @@ type spendStop struct {
 	// (place_spend.go's [app.openSpendRow]). It is a flag and not a fourth
 	// subject kind because it is not a subject at all: nothing was spent on it.
 	rails bool
+	// fold marks the fold line under `what it was for`, whose `enter` opens the
+	// rest of the subjects or folds them back.
+	fold bool
+}
+
+// unfolding is this reading with the subjects' fold open or shut. It answers a
+// copy, for [spendReading.naming]'s reason.
+func (r spendReading) unfolding(open bool) spendReading {
+	r.unfolded = open
+	return r
 }
 
 // naming hands the reading the titles for the ids it is holding. It answers a
@@ -223,21 +246,26 @@ func spendSubjectKey(subject session.SubjectSpend) string {
 // unknown price become a measured free call on screen.
 func readSpend(lines []session.UsageLine, win session.UsageWindow, now time.Time) spendReading {
 	win = win.Normalized()
+	var unbilled int64
 	priced := make([]session.UsageLine, 0, len(lines))
 	for _, line := range lines {
+		if line.Unbilled && win.Holds(session.UsageLineDay(line)) {
+			unbilled++
+		}
 		if line.USD > 0 && win.Holds(session.UsageLineDay(line)) {
 			priced = append(priced, line)
 		}
 	}
 	if len(priced) == 0 {
-		return spendReading{window: win, now: now}
+		return spendReading{window: win, now: now, unbilled: unbilled}
 	}
 	r := spendReading{
-		window: win,
-		now:    now,
-		totals: session.UsageTotals(priced),
-		days:   session.UsageByDay(priced, win),
-		models: session.UsageByModel(priced),
+		unbilled: unbilled,
+		window:   win,
+		now:      now,
+		totals:   session.UsageTotals(priced),
+		days:     session.UsageByDay(priced, win),
+		models:   session.UsageByModel(priced),
 	}
 	// A subject exists only when the ledger names one of its addresses. The
 	// grouping reader's default conversation bucket is useful arithmetic, but
@@ -295,10 +323,30 @@ func (r spendReading) rows(width int, pal palette) []string {
 // map written by anything other than the draw is a hit map that resolves a
 // keypress against a row the draw did not put there — the law every hit map on
 // this surface is held to (home's own says it first).
+// empty distinguishes an untouched ledger from calls whose price is missing.
+// Both page selection and row rendering must preserve a shortfall-only reading.
+func (r spendReading) empty() bool {
+	return r.totals.USD <= 0 && r.unbilled <= 0 && r.unwritten <= 0
+}
+
 func (r spendReading) body(width int, pal palette) ([]string, []spendStop) {
-	if width < 1 || r.totals.USD <= 0 {
+	return r.paint(width, pal, nil)
+}
+
+// paint is [spendReading.body] with the rows a hand is on lit: the subject bold
+// in ink and the row's own facts brought up to ink, which is SCREEN 2a's band on
+// every place (placeprose.go's [placeSubject]). lit may be nil.
+//
+// EVERY ROW STANDS ON THE PLACE'S ONE LEFT EDGE ([placeLead]): it is laid out
+// one cell narrower and led by that cell, except the window head, whose row
+// already stands on it ([placeHeadRow]).
+func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]string, []spendStop) {
+	if width < 1 || r.empty() {
 		return nil, nil
 	}
+	on := func(at int) bool { return lit != nil && lit(at) }
+	inner := width - len(placeLead)
+	fold := -1
 	var out []string
 	// doors are recorded BY THE INDEX THE ROW LANDED AT, taken as it is appended.
 	// [appendPlaceSection] eats a trailing blank before it writes a heading, so a
@@ -312,16 +360,16 @@ func (r spendReading) body(width int, pal palette) ([]string, []spendStop) {
 	// what it is allowed and where that second figure is set; `enter` on it walks
 	// to the one editor money has.
 	rails := len(out)
-	out = append(out, r.railsRow(width, pal))
+	out = append(out, placeLead+r.railsRowIn(inner, placeFactInk(on(rails), pal)))
 	out = append(out, r.windowHeaderRow(width, pal))
 
-	if spark := r.sparkline(width); spark != "" {
-		out = append(out, pal.data(spark))
+	if spark := r.sparkline(inner); spark != "" {
+		out = append(out, placeLead+pal.data(spark))
 		if axis := r.sparkAxis(ansi.StringWidth(spark), pal); axis != "" {
-			out = append(out, axis)
+			out = append(out, placeLead+axis)
 		}
 	}
-	if loud, subject, door := r.loudestRow(width, pal); loud != "" {
+	if loud, subject, door := r.loudestRowIn(inner, placeFactInk(on(len(out)), pal)); loud != "" {
 		// AND THE LOUDEST DAY IS A DOOR, because the row names a thing money was
 		// spent on exactly as the rows under `what it was for` do — and the word
 		// on its right now says `enter opens it`, which is a key drawn and
@@ -329,13 +377,13 @@ func (r spendReading) body(width int, pal palette) ([]string, []spendStop) {
 		if door {
 			doors[len(out)] = subject
 		}
-		out = append(out, loud)
+		out = append(out, placeLead+loud)
 	}
 
 	if len(r.models) > 0 || len(r.crew.unbound) > 0 {
-		out = appendPlaceSection(out, pal.dim(fit(spendModelsWord, width)))
+		out = appendPlaceSection(out, placeLead+placeHeading(fit(spendModelsWord, inner), pal))
 		for _, model := range r.models {
-			out = append(out, r.modelRow(model, width, pal))
+			out = append(out, placeLead+r.modelRow(model, inner, pal))
 		}
 		// AND THE SLOTS NOTHING ANSWERS FOR, under the models that do. A slot with
 		// no binding has no line in the ledger to be found on and would simply be
@@ -343,26 +391,33 @@ func (r spendReading) body(width int, pal palette) ([]string, []spendStop) {
 		// this column must not give, because "planning costs nothing" and "nothing
 		// is bound to planning" are opposite facts about the same blank.
 		for _, slot := range r.crew.unbound {
-			out = append(out, spendUnboundRow(slot, width, pal))
+			out = append(out, placeLead+spendUnboundRow(slot, inner, pal))
 		}
 	}
 	if len(r.subjects) > 0 {
-		out = appendPlaceSection(out, pal.dim(fit("what it was for", width)))
+		out = appendPlaceSection(out, placeLead+placeHeading(fit(spendSubjectsWord, inner), pal))
 		shown := len(r.subjects)
-		if shown > spendSubjectCap {
+		if shown > spendSubjectCap && !r.unfolded {
 			shown = spendSubjectCap
 		}
 		for _, subject := range r.subjects[:shown] {
 			doors[len(out)] = subject
-			out = append(out, spendSubjectRow(subject, r.name(subject), width, pal))
+			out = append(out, placeLead+spendSubjectRowLit(subject, r.name(subject), inner, on(len(out)), pal))
 		}
-		if more := len(r.subjects) - shown; more > 0 {
-			out = append(out, pal.dim(fit(foldLine(more, ""), width)))
+		// THE FOLD LINE IS A DOOR BOTH WAYS: `▸ 11 more` opens the rest where
+		// they stand and `▾ 11 fewer` puts them back, on `enter` or a click —
+		// the one fold grammar home's list and the tasks place already keep.
+		if hidden := len(r.subjects) - spendSubjectCap; hidden > 0 {
+			fold = len(out)
+			out = append(out, placeLead+placeFactInk(on(fold), pal)(fit(foldDoor(r.unfolded, hidden, ""), inner)))
 		}
 	}
 	stops := make([]spendStop, len(out))
 	for at, subject := range doors {
 		stops[at] = spendStop{subject: subject, ok: true}
+	}
+	if fold >= 0 {
+		stops[fold] = spendStop{ok: true, fold: true}
 	}
 	stops[rails] = spendStop{ok: true, rails: true}
 	return out, stops
@@ -382,6 +437,12 @@ func (r spendReading) body(width int, pal palette) ([]string, []spendStop) {
 // about today, and a machine with no daily limit says `no limit` rather than
 // drawing a fraction with nothing under the line.
 func (r spendReading) railsRow(width int, pal palette) string {
+	return r.railsRowIn(width, pal.dim)
+}
+
+// railsRowIn is [spendReading.railsRow] in the ink the row is drawn in: dim at
+// rest, ink under the band.
+func (r spendReading) railsRowIn(width int, ink func(string) string) string {
 	fields := []rowField{}
 	if today := r.today; today > 0 {
 		// THE POINTER LINE USES [dollars] AND NOT THIS PAGE'S OWN SLIVER WORD.
@@ -411,8 +472,12 @@ func (r spendReading) railsRow(width int, pal palette) string {
 		figure := strconv.FormatInt(r.unwritten, 10)
 		fields = append(fields, rowSay(figure+" "+spendUnwrittenSaid, figure+" unwritten", figure))
 	}
+	if r.unbilled > 0 {
+		figure := strconv.FormatInt(r.unbilled, 10)
+		fields = append(fields, rowSay(figure+" "+spendUnbilledSaid, figure+" unbilled", figure))
+	}
 	fields = append(fields, rowSay(spendRailsWord, "/budget"))
-	return pal.dim(fit(rowTail(fields, width), width))
+	return ink(fit(rowTail(fields, width), width))
 }
 
 // spendDayTotal is WHAT ONE DAY COST, summed off ledger lines — and it is THE
@@ -488,7 +553,7 @@ func (r spendReading) headWords(width int) string {
 		// sentence already names the fortnight it is about.
 		return spendNothingWord
 	}
-	room := width - ansi.StringWidth(placeWindowWords(r.window)) - placeHeadGap
+	room := width - len(placeLead) - ansi.StringWidth(placeWindowWords(r.window)) - placeHeadGap
 	if room < 1 {
 		room = width
 	}
@@ -548,8 +613,8 @@ func spendSpanWord(win session.UsageWindow) string {
 }
 
 // spendNothingWord is the head line over a window nothing was spent in. It is
-// NOT [spendTeach]: a machine that has spent nothing is being taught what this
-// place is for, and a machine that has simply been paged onto a quiet fortnight
+// NOT the place's whisper ([placeWhisper]): a machine that has spent nothing
+// is told what arrives here, and a machine that has simply been paged onto a quiet fortnight
 // wants the control that pages it back (place_spend.go's [spendPage.held]).
 const spendNothingWord = "nothing spent"
 
@@ -597,25 +662,36 @@ const spendSparkCells = 8
 // they are; how many CELLS each of them gets is the frame's answer, and this is
 // where it is given.
 func (r spendReading) sparkline(width int) string {
-	peak := 0.0
+	return sparkline(r.dayValues(), width)
+}
+
+// dayValues is each bucket's dollars, in order — the series both the spend
+// place's chart and home's spend panel draw.
+func (r spendReading) dayValues() []float64 {
+	values := make([]float64, 0, len(r.days))
 	for _, day := range r.days {
-		if day.USD > peak {
-			peak = day.USD
-		}
+		values = append(values, day.USD)
 	}
-	if peak <= 0 || width < 1 || len(r.days) == 0 {
+	return values
+}
+
+// sparkline is a series as one row of the vocabulary's spark cells, scaled to
+// its own peak and given as many cells per value as the width allows, up to
+// [spendSparkCells]. It is the spend place's drawing of its window; home's
+// spend panel, a column wide, draws its fortnight in block cells instead
+// ([homeSparkCells]).
+func sparkline(values []float64, width int) string {
+	peak := 0.0
+	for _, value := range values {
+		peak = max(peak, value)
+	}
+	if peak <= 0 || width < 1 || len(values) == 0 {
 		return ""
 	}
-	cells := width / len(r.days)
-	if cells > spendSparkCells {
-		cells = spendSparkCells
-	}
-	if cells < 1 {
-		cells = 1
-	}
+	cells := max(1, min(spendSparkCells, width/len(values)))
 	var b strings.Builder
-	for _, day := range r.days {
-		b.WriteString(strings.Repeat(tokens.Sparkline(day.USD/peak), cells))
+	for _, value := range values {
+		b.WriteString(strings.Repeat(tokens.Sparkline(value/peak), cells))
 	}
 	return fit(b.String(), width)
 }
@@ -667,6 +743,11 @@ func (r spendReading) sparkAxis(width int, pal palette) string {
 // the sentence whole and draws no door at all — never `rebuild-the-frame… tasks`,
 // which was the reading at 60 columns.
 func (r spendReading) loudestRow(width int, pal palette) (string, session.SubjectSpend, bool) {
+	return r.loudestRowIn(width, pal.dim)
+}
+
+// loudestRowIn is [spendReading.loudestRow] in the ink the row is drawn in.
+func (r spendReading) loudestRowIn(width int, ink func(string) string) (string, session.SubjectSpend, bool) {
 	if r.loudest.USD <= 0 {
 		return "", session.SubjectSpend{}, false
 	}
@@ -680,7 +761,7 @@ func (r spendReading) loudestRow(width int, pal palette) (string, session.Subjec
 		door = rowTail([]rowField{word}, width-ansi.StringWidth(left)-rowGutter-1)
 		opens = door != ""
 	}
-	return spendSides(width, left, door, pal.dim, pal.dim), r.loudFor, opens
+	return spendSides(width, left, door, ink, ink), r.loudFor, opens
 }
 
 // spendDoorWord is where `enter` on a row goes, in the words of the place it
@@ -704,6 +785,9 @@ func spendDoorWord(subject session.SubjectSpend) rowField {
 // go and change — and not the auxiliary word one call gave itself, which is what
 // the caption used to promise and what the table used to draw.
 const spendModelsWord = "what ran it · by the model, and the role it was bound to"
+
+// spendSubjectsWord is the subjects table's caption.
+const spendSubjectsWord = "what it was for"
 
 // spendUnboundRow is one role slot with nothing bound to it:
 //
@@ -789,6 +873,12 @@ func spendBar(fraction float64, cap int) string {
 }
 
 func spendSubjectRow(subject session.SubjectSpend, name string, width int, pal palette) string {
+	return spendSubjectRowLit(subject, name, width, false, pal)
+}
+
+// spendSubjectRowLit is [spendSubjectRow] on the scale: the subject in ink, bold
+// under the band, and its facts dim at rest and ink under it.
+func spendSubjectRowLit(subject session.SubjectSpend, name string, width int, lit bool, pal palette) string {
 	tag := filepath.Base(strings.TrimSpace(subject.Workspace))
 	if subject.Kind == session.SubjectStanding && subject.Calls > 0 {
 		tag = fmt.Sprintf("standing · %d firings", subject.Calls)
@@ -804,11 +894,12 @@ func spendSubjectRow(subject session.SubjectSpend, name string, width int, pal p
 		// row spends that field on something a person did not already know.
 		kind = ""
 	}
+	facts := placeFactInk(lit, pal)
 	var left strings.Builder
 	left.WriteString(pal.dim(tokens.GlyphProseBullet + " "))
-	left.WriteString(pal.data(name))
+	left.WriteString(placeSubject(name, lit, pal))
 	for _, word := range nonempty(tag, kind) {
-		left.WriteString(pal.dim(" · " + word))
+		left.WriteString(facts(" · " + word))
 	}
 	return spendSides(width, left.String(), spendMoneyWord(subject.USD), func(s string) string { return s }, placeMoneyInk(pal))
 }
@@ -875,7 +966,7 @@ func (r spendReading) step(win session.UsageWindow, key string) session.UsageWin
 
 // THE EMPTY SPEND PAGE IS THE PLACE'S OWN TEACHING AND NOT A SECOND ONE. A
 // ledger with nothing priced in the window draws no rows at all
-// ([spendReading.body] answers nil), and the place's body then draws the three
-// sentences saying what spend is for ([spendTeach], place_spend.go). This file
-// used to carry a near-identical trio of its own; two teachings for one place is
-// two places for the wording to drift, and that one is what the manual quotes.
+// ([spendReading.body] answers nil), and the place's body then draws its heading
+// and its whisper ([placeWhisper]). This file used to carry a near-identical
+// trio of its own; two teachings for one place is two places for the wording to
+// drift, and the whisper is what the manual quotes.

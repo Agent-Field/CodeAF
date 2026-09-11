@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -25,7 +26,7 @@ func TestACheckAlreadyRunOverAnUnchangedTreeIsNotRunAgain(t *testing.T) {
 		t.Fatalf("the first reading was not a clean pass: moved=%v %+v", moved, first)
 	}
 	second, moved := agent.checkNow(context.Background(), tree, command)
-	if moved || second != first {
+	if moved || !reflect.DeepEqual(second, first) {
 		t.Fatalf("the remembered answer changed: moved=%v\nfirst: %+v\nsecond: %+v", moved, first, second)
 	}
 	if executions := checkExecutions(t, counter); executions != 1 {
@@ -196,7 +197,7 @@ func TestWithNoWallEveryCheckRunsAsItAlwaysDid(t *testing.T) {
 	}
 	first, _ := agent.checkNow(context.Background(), tree, command)
 	second, _ := agent.checkNow(context.Background(), tree, command)
-	if !first.Ran || !first.Passed || second != first {
+	if !first.Ran || !first.Passed || !reflect.DeepEqual(second, first) {
 		t.Fatalf("the no-wall readings changed: first=%+v second=%+v", first, second)
 	}
 	if executions := checkExecutions(t, counter); executions != 1 {
@@ -210,7 +211,8 @@ func TestTheTerminalReadingRunsOneSuiteWhenTheTreeHasNotMoved(t *testing.T) {
 	agent, tree := checkMemoryAgent(t, Budget{Wall: time.Hour})
 	declared, counter := countedSessionCheck(t, tree)
 	steward := agent.steward()
-	steward.setAcceptance("the work is complete when `" + declared + "` passes")
+	steward.hear("finish the work")
+	steward.setAcceptanceContract(steward.Ask(), "the work is complete when the declared check passes", []string{declared})
 	checks := agent.sessionChecks()
 	if len(checks) != 1 {
 		t.Fatalf("the acceptance produced checks %q, want the counted command", checks)

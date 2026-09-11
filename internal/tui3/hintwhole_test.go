@@ -47,6 +47,10 @@ func TestTheJobPageAndTheRecordCardNameTheWayOutOnceOnEveryFrame(t *testing.T) {
 		{"a running job", jobPageKeysRun, jobPageKeysRunHeld, jobPageBackWord},
 		{"a settled job", jobPageKeysOver, jobPageKeysOverHeld, jobPageBackWord},
 		{"a task's record card", taskCardKeys, taskCardKeysHeld, taskCardBackWord},
+		// And the same card over work another window is running, which has no
+		// mention to offer ([taskAwayCardKeys] says why) and obeys both laws with
+		// one clause fewer.
+		{"a task's card over another window's work", taskAwayCardKeys, taskAwayCardKeysHeld, taskCardBackWord},
 	} {
 		// LAW ONE, on the sheet that carries it: the way out is last, because it
 		// is the clause the fitter keeps.

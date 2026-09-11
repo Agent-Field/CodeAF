@@ -73,7 +73,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	file := flags.String("session", "", "session transcript to resume; empty resumes this directory's most recent")
 	noCompact := flags.Bool("no-compact", false, "never compact automatically")
 	yolo := flags.Bool("yolo", false, "run every tool without asking: the approval default becomes allow")
-	reasoning := flags.String("reasoning", "", "how hard this session's model is asked to think: off, low, medium or high")
+	reasoning := flags.String("reasoning", "", "reasoning override: auto (inherit), low, medium, high, xhigh or max; off is an alias for auto")
 	host := flags.String("host", "", "run the session on another machine over ssh: host, user@host, or host:path/to/project")
 	at := flags.String("at", "", "reach a machine that has no ssh, by the name `aforge serve` prints there: otter-lamp-42, or otter-lamp-42:path/to/project")
 	// --no-host is the escape hatch off the local dial, and it means here
@@ -175,7 +175,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// and /new — a new agent — starts with no level at all.
 	level, ok := session.ParseReasoning(*reasoning)
 	if !ok {
-		return fmt.Errorf("--reasoning %q: use off, low, medium or high", *reasoning)
+		return fmt.Errorf("--reasoning %q: use auto, low, medium, high, xhigh or max (off also clears the override)", *reasoning)
 	}
 
 	// THE OTHER DOOR, and it forks BEFORE any of this machine's own resolution
@@ -215,27 +215,51 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		})
 	}
 
-	// THE FOURTH DOOR, AND THE ONLY ONE WITH NO MACHINE IN IT: this workspace's
-	// own session host, on a unix socket, when a conversation here is already
-	// running in one. It is never STARTED from here — [v3HostRoad] is the whole
-	// of the rule and chatv3_local.go states why a plain local launch stays in
-	// its own process.
+	// The fourth door, and the only one with no machine in it: this workspace's
+	// own session host, on a unix socket. It is the ordinary road for an
+	// interactive launch — the work outlives this terminal and the next window
+	// here joins the same conversation — and [v3HostRoad] names the launches
+	// that keep the in-process door instead.
 	//
 	// It forks HERE, beside the other two, and for their reason: the launch
 	// below assembles this machine's models, keys, gate and session files, and
 	// the process on the other end of that socket has already assembled its own.
+	//
+	// The per-launch postures travel with it. --yolo and its neighbours are how
+	// the session is BUILT, so they ride the hello and the engine builds with
+	// them; a conversation that is ALREADY open keeps the shape it was opened
+	// with, and this launch is told so and comes back here rather than running
+	// under a posture nobody asked for.
+	//
+	// entryNotice is that sentence, or the reason no host could be used. Either
+	// way it is shown on the surface's own notice line below rather than printed
+	// into a terminal the surface is about to take over.
+	entryNotice := ""
 	if workspace, take := v3HostRoad(v3HostChoice{
 		noHost: *noHost,
-		shaped: *yolo || *noCompact || *oneModel || chatBudget(*maxHours, *maxCost).Set(),
+		once:   strings.TrimSpace(*once) != "",
+		debug:  *debug,
+		setup:  !v3MachineIsSetUp(),
 	}); take {
-		return openChatV3Local(localLaunch{
+		err := openChatV3Local(localLaunch{
 			workspace: workspace,
 			session:   strings.TrimSpace(*file),
 			model:     strings.TrimSpace(*model),
 			level:     level,
 			once:      strings.TrimSpace(*once),
 			pick:      pickSession,
+			shape:     v3LaunchShape(*yolo, *noCompact, *oneModel, *maxHours, *maxCost, strings.TrimSpace(*once) == ""),
 		})
+		var taken *hostShapeTaken
+		var unreachable *hostUnreachable
+		switch {
+		case errors.As(err, &taken):
+			entryNotice = taken.sentence
+		case errors.As(err, &unreachable):
+			entryNotice = "this conversation opened in this terminal instead, and ends with it: " + unreachable.reason
+		default:
+			return err
+		}
 	}
 
 	// Everything both v3 doors assemble the same way: the settings, the model
@@ -264,11 +288,15 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		return err
 	}
 	seed := v3Options{
-		Model:     *model,
-		NoCompact: *noCompact,
-		Yolo:      *yolo,
-		OneModel:  *oneModel,
-		Budget:    chatBudget(*maxHours, *maxCost),
+		Model: *model,
+		// A TERMINAL DOOR IS STEERED unless --once is it: --once is the
+		// headless fork below. The seed carries the fact into the boot
+		// launch, the seam's /new and /resume, and the hosted shape.
+		Interactive: strings.TrimSpace(*once) == "",
+		NoCompact:   *noCompact,
+		Yolo:        *yolo,
+		OneModel:    *oneModel,
+		Budget:      chatBudget(*maxHours, *maxCost),
 	}
 	boot := seed
 	boot.Session = *file
@@ -306,21 +334,22 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// too would be a second copy of a decision that is made correctly one
 		// layer down, and it would take the `/subharness` list away from a door
 		// that may yet grow one.
-		return runChatV3Once(ctx, cfg, text, level, resumed)
+		return runChatV3Once(ctx, cfg, launch.Project, text, level, resumed)
 	}
 	// Interactive: there is a surface, and it answers (internal/tui3's
 	// consent.go). This is the ONLY path that sets it.
 	cfg.AskConsent = true
-	// AND THAT SURFACE HOLDS THE HARNESS LANE, which is a second fact and not the
-	// same one: the lane is a standing subscription opened on the agent itself
-	// (internal/tui3's watchDesigns), so it exists only where the surface and the
-	// session are in one process. It is what lets chat offer a saved program with
-	// an intake card (internal/session's canProposeSubharness); a conversation
-	// held over a connection sets AskConsent and NOT this, because the card has no
-	// road to the far end (engine.go says the same about the design card).
-	cfg.HarnessCards = true
+	// AND THAT SURFACE HOLDS EVERY STANDING LANE, which is a second fact and not
+	// the same one: a design card, a subharness intake card and an adaptive
+	// run's fuel gate each arrive on a subscription opened on the agent itself
+	// (internal/tui3's watchDesigns and watchRuns), and here the surface and the
+	// session are one process, so all three reach a person by construction. The
+	// three are set together, in the one place that decides them for every door
+	// (chatv3_lanes.go), so this launch and a hosted one differ in what the road
+	// carries rather than in what two files remembered to say.
+	cfg, open := v3Shape(cfg, v3LanesHere())
 
-	agent, cfg, notice, err := openV3Agent(cfg, workspace, v3OpenSession)
+	agent, cfg, notice, err := openV3Agent(cfg, launch.Project, open)
 	// LAUNCH-ON-LOCK. The conversation this terminal asked for is open in
 	// another window, and this door has a screen — so it offers that
 	// conversation rather than refusing or, as it once did, quietly handing over
@@ -450,7 +479,12 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// Asked at the moment the picker opens, never at boot: a catalog that
 		// resolved while the person was reading is a catalog the picker can
 		// use, and one that has not resolved answers nil instead of waiting.
-		Models: func() []tui3.Model { return v3Models(models) },
+		// It reads the shelf, which ctrl+r in /model refills with today's list.
+		Models:                  func() []tui3.Model { return v3Models(proc.Shelf) },
+		RefreshModels:           proc.Shelf.refresh,
+		ModelsForService:        proc.Shelf.modelsForService,
+		RefreshModelsForService: proc.Shelf.refreshService,
+		Sources:                 settings.Sources,
 		// The same deliverables index the session's config carries, so the
 		// surface's /export rows and the session's own land in one file.
 		ArtifactsIndex: artifactsIndexPath(),
@@ -553,7 +587,8 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// And the key arriving after the door: every conversation this process
 		// holds starts talking with it on its next request, and every one opened
 		// later is built with it (chatv3_process.go's [v3Process.setAPIKey]).
-		ApplyAPIKey: proc.setAPIKey,
+		ApplyAPIKey:       proc.setAPIKey,
+		ApplyModelSources: proc.setModelSources,
 		// With no endpoint named, OpenRouter is the model provider and a missing
 		// key has a direct browser door. A custom OpenAI-compatible endpoint gets
 		// no OpenRouter offer, and a non-interactive launch has nobody to finish
@@ -577,7 +612,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// the top of the conversation — rather than growing surfaces of their
 		// own. An ordinary attended launch with the same file on disk is still
 		// shown nothing whatever.
-		Notice:        joinV3Notices(notice, session.UnattendedNotice(cfg), buildinfo.StaleNotice()),
+		Notice:        joinV3Notices(entryNotice, notice, session.UnattendedNotice(cfg), buildinfo.StaleNotice()),
 		ContextWindow: cfg.ContextWindow,
 		History:       recall,
 		DraftFile:     draft,
@@ -623,6 +658,13 @@ type v3Options struct {
 	// NoCompact and Yolo are the two flags that change what a session may do.
 	NoCompact bool
 	Yolo      bool
+	// Interactive is the door's own fact that A PERSON IS STEERING THIS
+	// CONVERSATION — a screen somebody is typing into, here or over a hosted
+	// dial. It is not --yolo: yolo is approvals and says nothing about who is
+	// watching. The terminal doors set it; --once and every headless caller
+	// leave it unset, keeping the unattended goal owner (internal/session's
+	// principal.go reads it beside the budget).
+	Interactive bool
 	// OneModel settles every text call this session makes onto the session
 	// model. It is a MEASUREMENT POSTURE rather than a preference: a run whose
 	// spend and quality are being attributed to one model cannot have a tier
@@ -636,6 +678,21 @@ type v3Options struct {
 	// posture every session has always had, where the model stopping is the
 	// session stopping.
 	Budget session.Budget
+	// NoStandingTicks says THIS PROCESS IS NOT THE ONE THAT KEEPS TIME for the
+	// machine's standing items, however complete the config it is about to build.
+	//
+	// It exists for exactly one caller, and the zero value is the posture every
+	// other door has always had. On the engine road the screen and the sessions
+	// live in two processes: the ENGINE holds this project's conversations, and a
+	// firing is delivered into an open conversation of the same project through
+	// the live registry of the process that ran the pass (internal/standing, and
+	// internal/manual/chat/keeping-an-eye.md's three roads). So a client that
+	// ticked would win the store's lock every so often and fire an item into a
+	// registry holding nothing but its own errand — filing the words in the
+	// project's inbox for the next launch while the person sat in front of the
+	// conversation they were meant to land in. One process keeps time, and on
+	// that road it is the one holding the conversations.
+	NoStandingTicks bool
 }
 
 // joinV3Notices puts the launch's dim lines on one row, in the order they were
@@ -702,6 +759,16 @@ type v3Launch struct {
 	Workspace   string
 	SessionFile string
 	Resumed     bool
+	// Project is the DIRECTORY THIS CONVERSATION IS ABOUT, which is not always
+	// Workspace above: an OWNED conversation works in its own private work/
+	// folder under ~/.aforge/v3/projects, and Workspace is that folder.
+	//
+	// It is carried because two things are keyed by the project and not by the
+	// tools root — the engine host that holds this workspace's conversations
+	// (internal/enginehost), and therefore the `aforge engine --stop --workspace
+	// X` in [sessionHeldElsewhereSentence]. Handing that sentence Workspace
+	// spelled a command that pointed at a host which does not exist.
+	Project string
 	// Place is the session folder this launch opened (internal/session's
 	// place.go), and Bucket the project directory it sits in. The surface keeps
 	// both after the launch: the folder is what /new mints a sibling of, and the
@@ -757,19 +824,28 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// has a good answer without it, and an unknown window leaves the session on
 	// its conservative default.
 	models := proc.Models
+	activeModels, activeModel, activeListsModels := v3CatalogForModel(context.Background(), settings, chosen, models)
 	harnesses := proc.Harnesses
 
 	// The typed programs this conversation can reach, and the two stores they are
 	// found in (chatv3_subharness.go). It is assembled BEFORE the config because
 	// all four seams below are fields of it, and the zero value is subharnesses
 	// off — so nothing here has to ask whether the wiring worked.
-	subharnesses := v3Subharnesses(settings, models, chosen, workspace, harnesses)
+	subharnesses := v3Subharnesses(settings, activeModels, chosen, workspace, harnesses)
+	mediaSettings := settings
+	mediaSettings.Model = chosen
+	mediaSettings.Models = activeModels
+	var media session.MediaGenerator
+	if activeListsModels {
+		media = v3ImageGen(mediaSettings)
+	}
 
 	cfg := session.Config{
 		Workspace:      workspace,
 		Model:          chosen,
 		APIKey:         settings.APIKey,
 		BaseURL:        settings.BaseURL,
+		Sources:        settings.Sources,
 		CompactEnabled: !opts.NoCompact,
 		SessionFile:    transcript,
 		// The folder this conversation keeps everything in (Decision 26). It is
@@ -808,35 +884,37 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// anybody can say so without waiting. Zero keeps session's own
 		// conservative default, and [warmV3Models] corrects it in place the
 		// moment the catalog resolves.
-		ContextWindow:    v3Window(models, chosen),
-		ContextWindowFor: models.ContextLength,
+		ContextWindow:    v3Window(activeModels, activeModel),
+		ContextWindowFor: activeModels.ContextLength,
 		// Whether the model in use can LOOK at a picture, from the catalog's
 		// published input modalities. It is a closure rather than a value
 		// because the answer is about the model the NEXT turn rides, and this
-		// session's model changes under /model (see [v3SeesImages]).
-		SupportsImages: v3SeesImages(models),
+		// session's model changes under /model (see [v3SeesImages]). It reads
+		// the SHELF, so a model picked out of a list somebody refreshed a moment
+		// ago is answered from that list rather than refused as unknown.
+		SupportsImages: v3SeesImages(proc.Shelf),
 		// The published answer to "may this call carry this knob", which the
 		// adapter asks before it lets an optional field travel. It was wired to
 		// nothing on this path, so a reasoning level set with ctrl+t or
 		// --reasoning went to every model blind — and on a router, a knob no
 		// endpoint publishes is not a 400 but a 404 with no endpoints left to
 		// serve the request (internal/provider's endpoints.go).
-		SupportsParameter: models.SupportsParameter,
-		ReasoningProfile:  config.ReasoningProfileSeam(models),
+		SupportsParameter: activeModels.SupportsParameter,
+		ReasoningProfile:  config.ReasoningProfileSeam(activeModels),
 		// And the model's own published price, which is what bounds the latency
 		// ask: this session wants the fastest endpoint, not the dearest one
 		// wearing the model's name (internal/provider's latencyPriceCeiling).
-		ModelPrice: models.PriceNow,
+		ModelPrice: activeModels.PriceNow,
 		// Where a conversation goes when nothing serving its model will take the
 		// request at all. Closures again, and for the same reason as the vision
 		// gate: the question is about the model the failing turn was ON, which
 		// /model moves.
-		NearestModels: v3NearestModels(models),
+		NearestModels: v3NearestModels(activeModels),
 		// The models a task may be handed to, asked at the moment a proposal
 		// names one and never at boot — the picker's own bargain, because both
 		// questions are about a catalog that may still be warming and neither of
-		// them may wait for it.
-		TaskModels: v3TaskModels(models),
+		// them may wait for it. The shelf, for the vision gate's reason.
+		TaskModels: v3TaskModels(proc.Shelf),
 		// The two halves of the harness offer (internal/session's harness.go):
 		// what a turn is matched against, and what a yes reaches. They are
 		// filled together because either one alone is detection off — a
@@ -878,7 +956,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// The media client, on the contract's terms: nil keeps every
 		// generation verb off the belt. The RESOLVER (MediaModel) is wired
 		// after governance lands, because its pin rung reads RolesSource.
-		Media: v3ImageGen(settings),
+		Media: media,
 		// THE AMBIENT SIDE (chatv3_standing.go). It is filled for every door
 		// that is a CONVERSATION — chat, resume, engine — and taken away again
 		// on the --once path below, because nothing unwatched may set up
@@ -903,14 +981,13 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	if err != nil {
 		return nil, err
 	}
-	// AND WHO THIS SESSION IS WORKING FOR (internal/session's principal.go). The
-	// two rows are the flag and the ceiling, and they are set together because
-	// neither means anything without the other: --yolo alone is the approval
-	// posture it has always been, and a ceiling on an attended session was
-	// refused at the door. It is the ONE place they reach the engine, on
-	// [applyV3Governance]'s own law — every governance seam already exists on
-	// the other side, so this is a translation and never a second policy.
+	// AND WHO THIS SESSION IS WORKING FOR (internal/session's
+	// principal.go): the unattended flag and its ceiling, plus the door's own
+	// steering fact read apart from both — the ONE place they reach the
+	// engine, on [applyV3Governance]'s own law, so this is a translation and
+	// never a second policy.
 	cfg.Unattended = opts.Yolo
+	cfg.Interactive = opts.Interactive
 	cfg.Budget = opts.Budget
 	// AND THE ACCOUNTS MANAGER IS THE PROCESS'S, not this launch's. Governance
 	// leaves the field empty for exactly this reason: an account connected on
@@ -927,9 +1004,11 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// and a nil one keeps every generation tool off the belt rather than on it
 	// and failing. The resolver is nil for nobody: it answers "" per modality,
 	// which is the same absence at a finer grain.
-	cfg.Media = v3MediaClient(settings)
-	cfg.MediaModel = v3MediaModel(models, settings.ProfileDir, cfg.RolesSource)
-	cfg.MediaPick = v3MediaPick(models)
+	if activeListsModels {
+		cfg.Media = v3MediaClient(mediaSettings)
+		cfg.MediaModel = v3MediaModel(activeModels, settings.ProfileDir, cfg.RolesSource)
+		cfg.MediaPick = v3MediaPick(activeModels)
+	}
 
 	// AND THE RUN DOOR IS BUILT FROM THE SAME PAIR. A saved harness may name a
 	// media verb on its whitelist, and the node that reaches for it at run time
@@ -957,17 +1036,18 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// (chatv3_standing.go). It is here, beside [startPlaceSweep], because every
 	// v3 door assembles through this function — and the first pass is a whole
 	// interval away, so a launch that exits immediately has ticked nothing.
-	if cfg.Standing != nil {
+	if cfg.Standing != nil && !opts.NoStandingTicks {
 		startStandingTicks(cfg.Standing.Store)
 	}
 
 	return &v3Launch{
 		Settings:     settings,
-		Models:       models,
+		Models:       activeModels,
 		Harnesses:    harnesses,
 		Config:       cfg,
 		Model:        chosen,
 		Workspace:    workspace,
+		Project:      project,
 		SessionFile:  transcript,
 		Resumed:      resumed,
 		Place:        found.Place,
@@ -1166,9 +1246,28 @@ func v3TakeOverInstead(cfg session.Config, workspace string) (*session.Agent, se
 // to a person who met one of them last week.
 func sessionHeldElsewhereSentence(workspace string) string {
 	if strings.TrimSpace(workspace) == "" {
-		return "this conversation is open in another window — open aforge here and press enter on it to move it here, or run aforge engine --stop to let go of it"
+		return sessionHeldElsewhereOpening + " — open aforge here and press enter on it to move it here, or run aforge engine --stop to let go of it"
 	}
-	return fmt.Sprintf("this conversation is open in another window — open aforge here and press enter on it to move it here, or run aforge engine --stop --workspace %s to let go of it", workspace)
+	return fmt.Sprintf("%s — open aforge here and press enter on it to move it here, or run aforge engine --stop --workspace %s to let go of it", sessionHeldElsewhereOpening, workspace)
+}
+
+// sessionHeldElsewhereOpening is the first clause of that sentence, spelled
+// once so that the CLIENT SIDE OF THE SOCKET CAN RECOGNISE IT.
+//
+// A refusal made inside the engine reaches the surface as a sentence and
+// nothing else: internal/remote carries a boot failure as `engine: ` plus the
+// text ([remote.spokenError]), which is right — a person reads it unchanged —
+// and leaves the dialler with a string to read. So the one place the wording
+// lives is here, and the one reader of it is [hostHeldRefusal]. A second
+// spelling anywhere would be a road that silently stopped recognising the
+// refusal it is written to answer.
+const sessionHeldElsewhereOpening = "this conversation is open in another window"
+
+// hostHeldRefusal reports whether an engine refused a hello because the journal
+// it was asked for is held by something else — [session.ErrSessionLocked] as it
+// looks after a trip over a socket.
+func hostHeldRefusal(err error) bool {
+	return err != nil && strings.Contains(err.Error(), sessionHeldElsewhereOpening)
 }
 
 // ── governance: what a session may do, on whose models, for how much ────────
@@ -1287,12 +1386,35 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 		// what the flag promises for work that leaves the conversation.
 		cfg.TaskModel = ""
 	}
+	// EVERY DOOR THAT BUILDS A SESSION RUN READS ITS AUDIT POSTURE HERE. The
+	// question in #618 was askable only because nothing held that one-reader
+	// law; taskaudit_law_test.go now makes a second reader or an unwired door fail
+	// on the day it lands.
 	cfg.TaskAudit = config.TaskAuditEnabledAt(profileDir)
+	// AND WHETHER AFORGE SIGNS THE GIT WORK IT DOES IN THE PERSON'S NAME, read
+	// here for the reason the audit row above it is read here: every v3 door
+	// comes through this function, and a row honoured in the conversation but
+	// not in a standing firing is a row the person cannot trust. PROFILE-ONLY —
+	// a repository that could turn this on would be putting its own advert in a
+	// visitor's commit by being cloned, and one that could turn it off would be
+	// stripping provenance the visitor asked for. The CONTRIBUTING file a
+	// repository writes still wins, but it wins by being read and obeyed, not by
+	// silently rewriting somebody's profile (internal/exec's AttributionLaw).
+	cfg.Attribution = config.AttributionAt(profileDir)
 	// Whether a reply that comes apart is cut and asked again. PROFILE-ONLY, and
 	// the reason is not trust this time but taste: it is a judgement about
 	// somebody's own replies, and a repository has no business turning off a
 	// visitor's protection against a model that has stopped writing language.
 	cfg.ReplyGuardOff = !config.ReplyGuardEnabledAt(profileDir)
+	// How much aforge puts in front of the model before the person has typed.
+	// The engine settles this from the model's window and this row is the
+	// person overruling that (internal/session's promptprofile.go); `auto`, the
+	// default, hands over the word that decides nothing and leaves the window
+	// to answer exactly as it did before the row existed. PROFILE-ONLY, for the
+	// reply-guard reason above: a repository that could set it would decide, by
+	// being cloned, that a visitor's conversation loses its saved memories and
+	// half its tool list.
+	cfg.PromptProfile = config.PromptProfileAt(profileDir)
 	// And who decides when that check comes back with nothing. PROFILE-ONLY for
 	// the reason the audit row above it is: a repository that could set this
 	// would be deciding, by being cloned, that a visitor's work gets accepted by
@@ -2118,7 +2240,7 @@ func warmV3Models(models *catalog.Catalog, agent *session.Agent, started string)
 // terminal ownership. Everything the surface would draw as chrome goes to
 // stderr and only what the model said goes to stdout, so a probe can compare
 // stdout with the sentence it asked for.
-func runChatV3Once(ctx context.Context, cfg session.Config, text, level string, resumed bool) error {
+func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, level string, resumed bool) error {
 	// The leaving road stands before session opening because opening can take
 	// time, and a signal there would otherwise take the default disposition and
 	// skip every defer — the whole of #471. Cancelling the turn is all the
@@ -2147,7 +2269,14 @@ func runChatV3Once(ctx context.Context, cfg session.Config, text, level string, 
 	if resumed && cfg.SessionFile != "" {
 		fmt.Fprintln(os.Stderr, "resumed "+cfg.SessionFile)
 	}
-	agent, cfg, notice, err := openV3Agent(cfg, cfg.Workspace, v3OpenSession)
+	// THE SENTENCE NAMES THE PROJECT AND NOT THE SESSION'S OWN WORK DIRECTORY.
+	// [sessionHeldElsewhereSentence] spells `aforge engine --stop --workspace X`
+	// and X has to be the directory a host is keyed by, or the command it hands
+	// a person points at a host that does not exist. cfg.Workspace is not that
+	// directory for an OWNED conversation — there it is the session's private
+	// work folder under ~/.aforge/v3/projects — so the launch's own workspace is
+	// carried in rather than read back off the config.
+	agent, cfg, notice, err := openV3Agent(cfg, workspace, v3OpenSession)
 	if err != nil {
 		return reported(err)
 	}
@@ -2156,6 +2285,28 @@ func runChatV3Once(ctx context.Context, cfg session.Config, text, level string, 
 		fmt.Fprintln(os.Stderr, notice+": "+cfg.SessionFile)
 	}
 	defer func() { _ = agent.Close() }()
+
+	// A DECISION TAKEN ON NOBODY'S BEHALF IS SAID OUT LOUD.
+	//
+	// With nobody at a keyboard the question gate applies the policy and answers
+	// itself (internal/session's tools_ask.go), and DESIGN.md's HEADLESS law is
+	// that this is PRINTED: `asked: <head> → 1 (default · nobody to ask)`. The
+	// sentence rides the answer, and the answer rides the questions lane rather
+	// than the turn's stream, because a question outlives the turn that raised
+	// one — so it is read here, beside the turn, and written to stderr with the
+	// tool lines rather than into the reply a caller is piping somewhere.
+	questions, stopQuestions := agent.WatchQuestions()
+	defer stopQuestions()
+	guard.Go("chatv3/once-questions", func() {
+		for event := range questions {
+			if event.Kind != session.EventQuestionAnswered || event.Answer == nil {
+				continue
+			}
+			if line := strings.TrimSpace(event.Answer.From); line != "" {
+				fmt.Fprintln(os.Stderr, line)
+			}
+		}
+	})
 
 	events, err := agent.Submit(ctx, text)
 	if err != nil {

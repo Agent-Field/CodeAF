@@ -170,6 +170,68 @@ func TestAnUnfinishedLandingCarriesTheRunOn(t *testing.T) {
 
 // ── a session that changed the deliverable has finished something (#513) ────
 
+// TestAReaderNobodyCouldReachIsNotAWitnessThatWorkIsUnfinished proves C1, C3
+// and C4: completed declared checks may witness inline work only after a reader
+// call failed; silence with no reader and an unreachable reader with no check
+// both leave the original witness law standing.
+func TestAReaderNobodyCouldReachIsNotAWitnessThatWorkIsUnfinished(t *testing.T) {
+	checked := Remains{
+		Made:              true,
+		ReaderUnreachable: true,
+		Checks:            []CheckRun{{Command: "go test ./...", Ran: true, Passed: true}},
+	}
+	if !checked.finishedSomething() {
+		t.Fatal("green checks that ran did not stand in for the reader nobody could reach")
+	}
+	if unmet := checked.unmet(); len(unmet) != 0 {
+		t.Fatalf("green checked inline work still had something left: %v", unmet)
+	}
+
+	absent := Remains{Made: true}
+	if absent.finishedSomething() {
+		t.Fatal("an install with nobody to ask treated silence as a witness")
+	}
+	if unmet := absent.unmet(); len(unmet) != 1 || unmet[0] != nothingFinishedYet {
+		t.Fatalf("silence with no reader changed what is left: %v", unmet)
+	}
+
+	unanswered := Remains{Made: true, ReaderUnreachable: true}
+	if unanswered.finishedSomething() {
+		t.Fatal("an unreachable reader with no check became a witness")
+	}
+	if unmet := unanswered.unmet(); len(unmet) != 1 || unmet[0] != nothingFinishedYet {
+		t.Fatalf("an unreachable reader with no check changed what is left: %v", unmet)
+	}
+
+	unread := Remains{
+		Made:              true,
+		ReaderUnreachable: true,
+		Checks:            []CheckRun{{Command: "missing-check", Ran: false, Passed: false}},
+	}
+	if unread.finishedSomething() {
+		t.Fatal("a declared check that never ran became a witness")
+	}
+}
+
+// TestAReaderThatNamedAGapIsStillWhatIsLeft proves C5: a reader that answered
+// with a gap was reached, so green checks never stand in for it or erase what it
+// found.
+func TestAReaderThatNamedAGapIsStillWhatIsLeft(t *testing.T) {
+	const gap = "the scopes are still parsed case-sensitively"
+	remains := Remains{
+		Made:   true,
+		Reader: gap,
+		Checks: []CheckRun{{Command: "go test ./...", Ran: true, Passed: true}},
+	}
+	if remains.finishedSomething() {
+		t.Fatal("green checks overruled a reader that named a gap")
+	}
+	unmet := remains.unmet()
+	if !strings.Contains(strings.Join(unmet, "\n"), gap) {
+		t.Fatalf("the reader's gap is not what remains: %v", unmet)
+	}
+}
+
 // WORK THIS SESSION DID WITH ITS OWN HANDS IS FINISHED WORK, WITH THE READER
 // AGREEING.
 //
@@ -194,9 +256,9 @@ func TestInlineWorkWithTheReaderAgreeingIsFinishedWork(t *testing.T) {
 		t.Fatalf("a session that wrote the whole fix itself was told it had finished nothing: %+v", decision)
 	}
 
-	// AND WITHOUT THE WITNESS IT IS NOT. A reader that was never asked, and one
-	// whose call failed, both answer the same silence, and silence is not
-	// agreement.
+	// AND WITHOUT THE WITNESS IT IS NOT. A reader that was never asked is silence,
+	// and silence is not agreement. A failed call is carried separately now, but
+	// without a declared check that actually ran it is no stronger.
 	alone := steward.Decide(Remains{
 		Said:       "The scheme parsing is fixed and the tests pass.",
 		Acceptance: "the bearer scheme is case-insensitive and the suite passes",
@@ -320,7 +382,14 @@ func TestAProviderRefusalIsToldFromAnErrorAndFromTheWire(t *testing.T) {
 	// THE SERVICE FAILING TO SERVE: no route left, a limit still refusing after
 	// the retries, an account that could not be served, the service itself down.
 	for _, err := range []error{
-		&provider.APIError{Status: 404, Message: "All providers have been ignored"},
+		// THE FIXTURE CARRIES THE DOOR'S OWN MARK, because that is what a refusal
+		// of this shape looks like by the time anything reads it: the transport
+		// decides "a list emptied the set" once, at its refusal door, and stamps
+		// it ([provider.APIError.Routing], refusalobject.go's markRefusal). A
+		// fixture without the mark is not a routing 404 that lost something on the
+		// way — it is the shape our OWN bytes arrive in, and reading it as a route
+		// with nothing left on it is precisely the confusion #835 measured.
+		&provider.APIError{Status: 404, Routing: true, Message: "All providers have been ignored"},
 		&provider.APIError{Status: 503, Message: "service unavailable"},
 		&provider.APIError{Status: 429, Message: "rate limit"},
 		&provider.APIError{Status: 401, Message: "no key"},
@@ -438,8 +507,8 @@ func TestAUnitWhoseWorkCameHomeAnywayIsAbsorbedAndSaidSo(t *testing.T) {
 
 	neverCameHome := remains
 	neverCameHome.Landings[0].Merged = false
-	if left := neverCameHome.unmet(); len(left) != 1 {
-		t.Fatalf("a landing that never came home absorbed another: %q", left)
+	if left := neverCameHome.unmet(); len(left) != 2 || !strings.Contains(left[0], "changes have not reached the requested workspace") || left[1] != "Add focused tests did not finish" {
+		t.Fatalf("missing delivery and the unfinished sibling must both remain: %q", left)
 	}
 	neverCameHome.Landings[0].Merged = true
 
@@ -718,13 +787,11 @@ func TestARedCheckWhoseBaselineWasUnreadIsNotCounted(t *testing.T) {
 	}
 }
 
-// AND THE SENTENCES ABOUT THE CHECKS RIDE A READER'S BRIEF TOO.
+// AND THE SENTENCES ABOUT THE CHECKS RIDE THE ADMITTED BRIEF.
 //
-// Where the mark reader supplied the brief, this package's own two sentences
-// used to be skipped — so a worker was handed a line about the work with no word
-// about which red was already there, and went and fixed somebody else's bug. A
-// reader's line is about the WORK and cannot know that.
-func TestTheAlreadyRedSentenceRidesAReaderSuppliedBrief(t *testing.T) {
+// A reader's unrelated line cannot replace a failed task, while the worker must
+// still hear which visible red was already there.
+func TestTheAlreadyRedSentenceRidesTheAdmittedBrief(t *testing.T) {
 	steward := budgetLeft(t)
 	decision := steward.Decide(Remains{
 		Reader:       "the scopes are still parsed case-sensitively",
@@ -738,11 +805,11 @@ func TestTheAlreadyRedSentenceRidesAReaderSuppliedBrief(t *testing.T) {
 	if decision.Verb != DecideCarryOn {
 		t.Fatalf("a unit the check refused was called finished: %+v", decision)
 	}
-	if !strings.Contains(decision.Brief, "the scopes are still parsed case-sensitively") {
-		t.Fatalf("the brief is not the reader's own line:\n%s", decision.Brief)
+	if strings.Contains(decision.Brief, "the scopes are still parsed case-sensitively") || !strings.Contains(decision.Brief, "fix it did not finish") {
+		t.Fatalf("reader prose replaced the failed task fact:\n%s", decision.Brief)
 	}
 	if !strings.Contains(decision.Brief,
-		"1 check was already failing before this work and is not counted: tox -e py") {
+		"1 check was already failing before this work; that does not show the requested result works: tox -e py") {
 		t.Fatalf("a reader's brief never says what was already broken:\n%s", decision.Brief)
 	}
 
@@ -755,7 +822,7 @@ func TestTheAlreadyRedSentenceRidesAReaderSuppliedBrief(t *testing.T) {
 		Checks:     []CheckRun{{Command: "tox -e py", Passed: false, Ran: true}},
 	})
 	if !strings.Contains(early.Brief, baselineStillReading) {
-		t.Fatalf("a reader's brief never says the reading is still going:\n%s", early.Brief)
+		t.Fatalf("the admitted brief never says the reading is still going:\n%s", early.Brief)
 	}
 }
 
@@ -790,7 +857,7 @@ func TestTheBriefSaysWhatWasAlreadyFailingBeforeTheWork(t *testing.T) {
 		t.Fatalf("the brief does not name the check this work broke:\n%s", decision.Brief)
 	}
 	if !strings.Contains(decision.Brief,
-		"1 check was already failing before this work and is not counted: tox -e py") {
+		"1 check was already failing before this work; that does not show the requested result works: tox -e py") {
 		t.Fatalf("the brief never says what was already broken:\n%s", decision.Brief)
 	}
 }
@@ -1137,17 +1204,16 @@ func TestALandingThatCoversTheAskOutranksTheReadersLine(t *testing.T) {
 	if got := budgetLeft(t).Decide(settled); got.Verb != DecideDone {
 		t.Fatalf("a landed, checked ask was carried on over a reader's line: %+v", got)
 	}
-	// AND A LANDING THAT DID NOT FINISH IS EXACTLY AS IT WAS: the work says
-	// something is left, and the reader's own words are what the next attempt
-	// opens on because they are the more specific account of it.
+	// AND A LANDING THAT DID NOT FINISH CARRIES ITS CONCRETE FACT. The reader's
+	// prose cannot replace it with a new obligation.
 	unfinished := settled
 	unfinished.Landings = []Landing{{ID: 1, Title: "merge the ledger home", State: TaskFailed}}
 	got := budgetLeft(t).Decide(unfinished)
 	if got.Verb != DecideCarryOn {
 		t.Fatalf("a unit of work that did not finish was called finished: %+v", got)
 	}
-	if got.Brief != reader {
-		t.Fatalf("the carry-on lost the reader's own words:\n got %q\nwant %q", got.Brief, reader)
+	if strings.Contains(got.Brief, reader) || !strings.Contains(got.Brief, "merge the ledger home did not finish") {
+		t.Fatalf("the carry-on did not preserve the admitted task fact:\n%s", got.Brief)
 	}
 }
 
@@ -1270,5 +1336,58 @@ func TestADoneAnswerForgetsWhatWasLeftLastTime(t *testing.T) {
 	// reading of it stops, exactly as the first stretch's did.
 	if got := steward.Decide(stuck); got.Verb != DecideStop {
 		t.Fatalf("the floor did not come back under the new stretch: %+v", got)
+	}
+}
+
+func TestAReaderCannotReplaceARetainedDeliveryGap(t *testing.T) {
+	steward := budgetLeft(t)
+	got := steward.Decide(Remains{
+		Acceptance: "the requested account is in this workspace",
+		Landed:     true,
+		Reader:     "also prepare a separate background report",
+		Delivery:   deliveryContract{Kind: "workspace"},
+		Landings: []Landing{{ID: 1, Title: "write the account", State: TaskDone,
+			Files: []string{"account.txt"}, Retained: "task/account"}},
+	})
+	if got.Verb != DecideCarryOn || !strings.Contains(got.Brief, "retained branch task/account") {
+		t.Fatalf("the retained delivery fact was not the continuation: %+v", got)
+	}
+	if strings.Contains(got.Brief, "background report") {
+		t.Fatalf("reader prose replaced the concrete delivery gap:\n%s", got.Brief)
+	}
+}
+
+func TestAnUnknownRedCheckDoesNotHideARetainedDeliveryGap(t *testing.T) {
+	got := budgetLeft(t).Decide(Remains{
+		Acceptance:   "the requested account is in this workspace",
+		Landed:       true,
+		Reader:       "prepare a separate background report",
+		Checks:       []CheckRun{{Command: "false", Passed: false, Ran: true}},
+		Unread:       []string{"false"},
+		BaselineRead: true,
+		Delivery:     deliveryContract{Kind: "workspace"},
+		Landings: []Landing{{ID: 1, Title: "write the account", State: TaskDone,
+			Files: []string{"account.txt"}, Retained: "task/account"}},
+	})
+	if got.Verb != DecideCarryOn || !strings.Contains(got.Brief, "retained branch task/account") {
+		t.Fatalf("unknown check displaced the retained delivery gap: %+v", got)
+	}
+	if !strings.Contains(got.Brief, "no usable before-reading") || strings.Contains(got.Brief, "false does not pass") {
+		t.Fatalf("unknown red was not reported without becoming work:\n%s", got.Brief)
+	}
+	if strings.Contains(got.Brief, "background report") {
+		t.Fatalf("reader prose became a new obligation:\n%s", got.Brief)
+	}
+}
+
+func TestAnInlineReaderGapRemainsAuthoritative(t *testing.T) {
+	steward := budgetLeft(t)
+	got := steward.Decide(Remains{
+		Acceptance: "the table includes every region",
+		Made:       true,
+		Reader:     "the north-region row is missing",
+	})
+	if got.Verb != DecideCarryOn || !strings.Contains(got.Brief, "the north-region row is missing") {
+		t.Fatalf("the inline reader's admitted gap was discarded: %+v", got)
 	}
 }

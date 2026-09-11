@@ -165,10 +165,10 @@ func Revise(ctx context.Context, client Completer, graph *Graph, event string) (
 	// operation was refused produced a legal document describing an illegal
 	// plan, which is a semantic failure and nothing else can see it.
 	if refused > 0 && refused == len(applied) {
-		provider.Report(ctx, provider.VerdictSemanticFailure)
+		provider.Report(ctx, provider.ReadingSemanticFailure)
 		return applied, usage, nil
 	}
-	provider.Report(ctx, provider.VerdictVerifiedSuccess)
+	provider.Report(ctx, provider.ReadingVerifiedSuccess)
 	return applied, usage, nil
 }
 

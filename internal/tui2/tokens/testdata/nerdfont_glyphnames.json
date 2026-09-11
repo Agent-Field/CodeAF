@@ -17,6 +17,9 @@
  "nf-fa-asterisk": {
   "code": "f069"
  },
+ "nf-fa-ban": {
+  "code": "f05e"
+ },
  "nf-fa-bolt": {
   "code": "f0e7"
  },
@@ -38,6 +41,18 @@
  "nf-fa-circle_o": {
   "code": "f10c"
  },
+ "nf-fa-clock_o": {
+  "code": "f017"
+ },
+ "nf-fa-code_fork": {
+  "code": "f126"
+ },
+ "nf-fa-cog": {
+  "code": "f013"
+ },
+ "nf-fa-comment": {
+  "code": "f075"
+ },
  "nf-fa-cube": {
   "code": "f1b2"
  },
@@ -50,8 +65,26 @@
  "nf-fa-ellipsis_v": {
   "code": "f142"
  },
+ "nf-fa-exchange": {
+  "code": "f0ec"
+ },
+ "nf-fa-file_audio_o": {
+  "code": "f1c7"
+ },
+ "nf-fa-file_image_o": {
+  "code": "f1c5"
+ },
+ "nf-fa-file_text": {
+  "code": "f15c"
+ },
+ "nf-fa-file_video_o": {
+  "code": "f1c8"
+ },
  "nf-fa-flag": {
   "code": "f024"
+ },
+ "nf-fa-flask": {
+  "code": "f0c3"
  },
  "nf-fa-folder": {
   "code": "f07b"
@@ -59,8 +92,14 @@
  "nf-fa-folder_o": {
   "code": "f114"
  },
+ "nf-fa-globe": {
+  "code": "f0ac"
+ },
  "nf-fa-home": {
   "code": "f015"
+ },
+ "nf-fa-lightbulb_o": {
+  "code": "f0eb"
  },
  "nf-fa-long_arrow_right": {
   "code": "f178"
@@ -73,6 +112,9 @@
  },
  "nf-fa-pencil": {
   "code": "f040"
+ },
+ "nf-fa-plus": {
+  "code": "f067"
  },
  "nf-fa-question_circle": {
   "code": "f059"
@@ -88,6 +130,12 @@
  },
  "nf-fa-sign_in": {
   "code": "f090"
+ },
+ "nf-fa-stop": {
+  "code": "f04d"
+ },
+ "nf-fa-tasks": {
+  "code": "f0ae"
  },
  "nf-fa-terminal": {
   "code": "f120"

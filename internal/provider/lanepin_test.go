@@ -244,3 +244,40 @@ func TestTheFirstKeystrokeBuysAPairAndTheSecondBuysNothing(t *testing.T) {
 		t.Fatalf("%d probes went out for two keystrokes inside one window, want the one pair", got)
 	}
 }
+
+// PINNEDFOR IS THE PIN AS THE WIRE WILL CARRY IT, which is the only pin a
+// surface may write on a model's name (internal/tui3's modelWord): the machine
+// while it is pinned, and nothing on `openrouter`, once the wire has retired it
+// for this model, or on a base that has said it will not carry the choice.
+func TestPinnedForIsThePinTheNextRequestCarries(t *testing.T) {
+	forgotten(t)
+	model := "openrouter/named-on-the-chrome"
+
+	pinned(t, LanePin{OpenRouter: true})
+	if got := PinnedFor(model); got != "" {
+		t.Fatalf("the openrouter row reads as pinned to %q", got)
+	}
+	pinned(t, LanePin{Lane: "Harbor"})
+	if got := PinnedFor(model); got != "Harbor" {
+		t.Fatalf("a pin reads %q, want Harbor", got)
+	}
+	if !retirePin("Harbor", model) {
+		t.Fatal("the refusal did not retire the pin")
+	}
+	if got := PinnedFor(model); got != "" {
+		t.Fatalf("a retired pin still reads %q for the model it was retired for", got)
+	}
+	if got := PinnedFor("openrouter/another"); got != "Harbor" {
+		t.Fatalf("a pin retired for one model reads %q for another", got)
+	}
+
+	const base = "https://proxy.example/v1"
+	lanes.WireSheet(base, "", nil, false)
+	t.Cleanup(func() { lanes.WireSheet("", "", nil, false) })
+	if !lanes.HeardPrefsSilent(base) {
+		t.Fatal("the base's answer was not filed")
+	}
+	if got := PinnedFor("openrouter/another"); got != "" {
+		t.Fatalf("a base that will not carry the choice reads as pinned to %q", got)
+	}
+}

@@ -337,6 +337,11 @@ var longerCommands = []string{"cache clean", "devices revoke"}
 // flag anybody added, which is the same defect the environment table's
 // interpolated dollar figures were fixed for.
 func usageForCommand(name string) string {
+	// Collection editing has its own short reference page so the front page
+	// can introduce organization without listing every membership operation.
+	if name == "collections" {
+		return collectionsUsage
+	}
 	lines := strings.Split(usageText, "\n")
 	var blocks []string
 	for index := 0; index < len(lines); index++ {
@@ -404,11 +409,12 @@ func commandLine(line, name string) bool {
 
 // askedForHelp is the same gesture read by a door that parses NO flags at all.
 //
-// `show`, `manual` and `models` take a positional and nothing else, so
-// `aforge show --help` answered `open --help: no such file or directory` — a
-// filesystem error about a flag — and `aforge models --help` ran the command
-// with the flag silently ignored. A person probing an unfamiliar command types
-// this first and is owed the usage, not a stat error.
+// `show` and `manual` take a positional and nothing else, so `aforge show
+// --help` answered `open --help: no such file or directory` — a filesystem
+// error about a flag — and `aforge models --help`, before `--refresh` gave it a
+// flag set of its own, ran the command with the flag silently ignored. A person
+// probing an unfamiliar command types this first and is owed the usage, not a
+// stat error.
 func askedForHelp(args []string) bool {
 	for _, argument := range args {
 		switch argument {
@@ -466,7 +472,7 @@ func nearestCommand(typed string) string {
 // reason they are absent from the usage text: nothing types them.
 var knownCommands = []string{
 	"chat", "resume", "serve", "devices", "do", "plan", "revise", "run", "exec",
-	"show", "models", "notebook", "competence", "services", "wake", "doctor",
+	"show", "models", "notebook", "collections", "competence", "services", "wake", "doctor",
 	"logs", "cache", "rebuild", "why", "manual", "version", "help",
 }
 

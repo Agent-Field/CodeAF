@@ -86,3 +86,17 @@ func setMtime(t *testing.T, path string, stamp time.Time) {
 		t.Fatal(err)
 	}
 }
+
+func TestBuildIdentityDistinguishesRebuildsWithinOneDisplayMinute(t *testing.T) {
+	previous := current
+	t.Cleanup(func() { current = previous })
+	current = Info{Revision: "same-revision", Dirty: true, BuiltAt: time.Date(2026, 9, 8, 20, 0, 1, 0, time.UTC)}
+	first, display := Identity(), String()
+	current.BuiltAt = current.BuiltAt.Add(time.Second)
+	if String() != display {
+		t.Fatal("fixture does not share a display minute")
+	}
+	if Identity() == first {
+		t.Fatal("a dirty rebuild retained the prior engine identity")
+	}
+}

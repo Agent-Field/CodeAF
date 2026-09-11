@@ -418,7 +418,9 @@ func TestCopyModeTakesAWrappedFenceWholeAndPastesNoMarkers(t *testing.T) {
 	}
 	var pasted []string
 	for _, row := range text[from : to+1] {
-		pasted = append(pasted, copyClean(row))
+		// These rows came straight from [renderMarkdown] and never went through
+		// the transcript's pass, so there is no reading gutter on them to lift.
+		pasted = append(pasted, copyClean(row, 0))
 	}
 	joined := strings.Join(pasted, "")
 	if strings.Contains(joined, mdContMark) || strings.Contains(joined, tokens.GlyphCodeGutter) {

@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -83,6 +84,21 @@ const (
 	// twenty-five cells; left at the end it would be the clause a narrow foot
 	// SLICED, which is the one thing no hint on this surface does.
 	taskCardKeysHeld = "m puts it in your message · ↑↓ scroll"
+	// taskAwayCardKeys and taskAwayCardKeysHeld are those same two sheets over
+	// work ANOTHER WINDOW is running, and the difference is the mention.
+	//
+	// THE MENTION IS ABSENT RATHER THAN DEAD. `@` resolves against work that has
+	// LANDED ([app.mentionTask]) and nothing has landed here — the row was minted
+	// out of the other window's presence file — so `m` would write a name that
+	// points at nothing, or, because ids restart with every conversation, at THIS
+	// session's task wearing the same number. A capability that cannot work is
+	// absent, not broken: the key does nothing and the foot does not name it.
+	//
+	// They keep the other two clauses exactly as they are spelled above, because
+	// a card that said one key two ways would be two sheets to learn
+	// ([TestTheJobPageAndTheRecordCardNameTheWayOutOnceOnEveryFrame] holds both).
+	taskAwayCardKeys     = "↑↓ scroll · " + taskCardBackWord
+	taskAwayCardKeysHeld = "↑↓ scroll"
 	// taskCardTailHead heads the report. "what it said at the end" and not
 	// "final assistant message": the node is a thing that did some work and then
 	// said how it went, and that is the sentence a person came here to read.
@@ -209,6 +225,10 @@ func (a *app) openTaskRecord(entry *session.TaskIndexEntry) tea.Cmd {
 	// behind it and esc dropped the person onto a page with nothing on it.
 	raised := a.showPage(pageTasks)
 	a.taskSheet.detail, a.taskSheet.detailOn = *entry, true
+	// A ROW OPENED FROM HOME OR FROM THE COLUMN IS A ROW OF THE RECORD, so it
+	// carries no away owner — and clearing it here keeps that true whatever card
+	// was up before ([app.taskSheetInside] states the law at the other door).
+	a.taskSheet.awayOwner = tasksAwayOwner{}
 	// The list underneath is parked on the row that was pressed, so esc comes
 	// back to it rather than to the top of a list somebody scrolled a long way
 	// down. It is done on the way IN because the list is rebuilt every frame and
@@ -227,6 +247,33 @@ func (a *app) openTaskRecord(entry *session.TaskIndexEntry) tea.Cmd {
 // [session.TaskIndexEntry.ID]).
 func (a *app) taskSheetPointAt(want session.TaskIndexEntry) {
 	r := a.tasksFiltered()
+	// A RECORD CAN BE OPENED WHILE ITS PARENTS ARE FOLDED. Reveal the path to
+	// the selected work before locating its row, so back returns to that work
+	// rather than to an unrelated row at the top of the list. Parent addresses
+	// remain scoped to the conversation, and damaged cycles cannot trap a key.
+	parents := make(map[tasksKey]session.TaskIndexEntry, len(r.items))
+	for _, item := range r.items {
+		parents[tasksKeyOf(item.entry)] = item.entry
+	}
+	if a.taskSheet.opened == nil {
+		a.taskSheet.opened = make(map[tasksKey]bool)
+	}
+	a.taskSheet.opened[tasksChatKey(want.SessionID)] = true
+	seen := make(map[tasksKey]bool)
+	for entry := want; strings.TrimSpace(entry.Parent) != ""; {
+		key := tasksKey{session: strings.TrimSpace(entry.SessionID), id: strings.TrimSpace(entry.Parent)}
+		if seen[key] {
+			break
+		}
+		seen[key] = true
+		parent, found := parents[key]
+		if !found {
+			break
+		}
+		a.taskSheet.opened[key] = true
+		entry = parent
+	}
+	r.open = a.taskSheet.opened
 	width, _ := a.size()
 	lines := r.lay(width)
 	for at := range lines {
@@ -306,6 +353,7 @@ func (a *app) closeTaskRecord() {
 	a.taskSheet.detail, a.taskSheet.detailOn = session.TaskIndexEntry{}, false
 	a.taskSheet.detailTop, a.taskSheet.tail, a.taskSheet.tailRead = 0, "", false
 	a.taskSheet.tailKept, a.taskSheet.tailUnread = false, false
+	a.taskSheet.awayOwner = tasksAwayOwner{}
 	a.touch()
 }
 
@@ -325,6 +373,32 @@ func taskURIPath(uri string) string { return session.TaskRecordPath(uri) }
 // [app.taskSheetKeyPress], which is where this page's whole claim on the
 // keyboard lives.
 func (a *app) taskCardKey(key string) tea.Cmd {
+	if q, ok := a.taskRecordLanding(a.taskSheet.detail); ok {
+		// THE QUESTION IS ANSWERED WHERE ITS EVIDENCE IS. The block owns the
+		// landing and its keys ([app.questionOptionKey]); this page only
+		// carries them, so `a`/`n`/`s`, the pointer's `←→` and `enter` reach
+		// the same door the conversation's block reaches. `s tell it` opens
+		// the node's room, which lives over the conversation, so the sheet is
+		// put down first.
+		switch key {
+		case "left", "right":
+			cmd, _ := a.questionOptionKey(q, key)
+			return cmd
+		case questionEnterKey:
+			cmd, _ := a.questionEnter(q, false)
+			return cmd
+		}
+		for _, option := range q.question.Options {
+			if strings.TrimSpace(option.Key) != key {
+				continue
+			}
+			if key == session.LandingTellKey {
+				a.closeTaskSheet()
+			}
+			cmd, _ := a.questionOptionKey(q, key)
+			return cmd
+		}
+	}
 	switch key {
 	case "esc", "left":
 		// ONE LAYER AT A TIME. The list is underneath and it is where this came
@@ -342,6 +416,13 @@ func (a *app) taskCardKey(key string) tea.Cmd {
 		// letter because every printable key there is the filter. So it is here,
 		// on the one page of this surface that is read rather than typed at, and
 		// the foot names it ([taskCardKeys]).
+		//
+		// AND THERE IS NOTHING TO MENTION OVER ANOTHER WINDOW'S WORK. A `@` name
+		// resolves against work that has LANDED, and this row's has not — the key
+		// is unbound here and the foot does not name it ([taskAwayCardKeys]).
+		if a.taskSheet.awayOwner.on {
+			return nil
+		}
 		entry := a.taskSheet.detail
 		a.closeTaskSheet()
 		a.mentionTask(&entry)
@@ -486,12 +567,26 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 	}
 
 	add(pal.dim(rule(width)), taskCardHitNone)
+	// THE PAGE ENTER LANDS ON FROM A `needs you` ROW SHOWS THE QUESTION IT
+	// NEEDS YOU FOR. The landing has been on the block above the conversation's
+	// box all along ([session.Agent.publishLandingQuestion]); this card is a
+	// place, the block is neither drawn nor keyed under a place, and a person
+	// sent here by `enter` read the whole report and found nothing to press
+	// (the owner, 2026-09-10). So the card draws the question's own head and
+	// answers row, from the block's own object, above its foot.
+	asking := false
+	if q, ok := a.taskRecordLanding(entry); ok {
+		asking = true
+		for _, row := range a.taskRecordLandingRows(q, width-2) {
+			add(" "+row, taskCardHitNone)
+		}
+	}
 	// phone lane: the keys line becomes bands a thumb can hit (taskphone.go).
 	if taskCardPhone(width) {
 		line, _ := a.taskCardBar(width)
 		add(line, taskCardHitMention)
 	} else {
-		add(" "+paintHint(hintFit(taskCardFootKeys(wayOut), width-2), pal, pal.dim), taskCardHitFoot)
+		add(" "+paintHint(hintFit(taskCardFootKeys(wayOut, a.taskSheet.awayOwner.on, asking), width-2), pal, pal.dim), taskCardHitFoot)
 	}
 
 	// A terminal too short for the whole card keeps its head and its foot: what
@@ -511,11 +606,74 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 // on the TITLE's length as well as on the width, so a second guess here would be
 // a card that says `esc back` twice on one frame and, on the frame after, not at
 // all.
-func taskCardFootKeys(headSaysTheWayOut bool) string {
-	if headSaysTheWayOut {
-		return taskCardKeysHeld
+// AND IT IS HANDED THE OWNER FOR THE SAME REASON. A card over work another
+// window is running has no mention to offer ([taskAwayCardKeys] says why), and a
+// foot that named one would be this page's one clause that does nothing when it
+// is pressed.
+func taskCardFootKeys(headSaysTheWayOut, away, asking bool) string {
+	if away {
+		if headSaysTheWayOut {
+			return taskAwayCardKeysHeld
+		}
+		return taskAwayCardKeys
 	}
-	return taskCardKeys
+	lead := ""
+	if asking {
+		// The pointer's keys go first, because the question is what the page
+		// was opened for; the answers themselves are on their own row above.
+		lead = taskCardAskingKeys
+	}
+	if headSaysTheWayOut {
+		return lead + taskCardKeysHeld
+	}
+	return lead + taskCardKeys
+}
+
+// taskCardAskingKeys opens the foot over a card whose node is asking: how the
+// answers row above it is walked and taken.
+const taskCardAskingKeys = "←→ choose · enter take it · "
+
+// taskRecordLanding is the landing (or conflict) question standing on the node
+// this card is about — one of THIS conversation's nodes, since the block only
+// holds this conversation's questions and another session's task may wear the
+// same number ([session.TaskIndexEntry.ID] is not unique across sessions).
+func (a *app) taskRecordLanding(entry session.TaskIndexEntry) (questionShown, bool) {
+	if strings.TrimSpace(entry.SessionID) != strings.TrimSpace(a.taskSheetSelfRow().ID) {
+		return questionShown{}, false
+	}
+	id, err := strconv.ParseUint(strings.TrimSpace(entry.ID), 10, 64)
+	if err != nil || id == 0 {
+		return questionShown{}, false
+	}
+	for _, kind := range []session.QuestionKind{session.QuestionLanding, session.QuestionConflict} {
+		token := string(kind) + ":" + itoa64(id)
+		for _, open := range a.questions {
+			if open.token() == token {
+				return open, true
+			}
+		}
+	}
+	return questionShown{}, false
+}
+
+// taskRecordLandingRows is the question as the card draws it: its head with
+// the block's own mark, its reason dim under it, and the answers row the block
+// would draw — the same words and keys, the pointed answer banded — so what a
+// person learns here is what the conversation's block will show them next.
+func (a *app) taskRecordLandingRows(q questionShown, width int) []string {
+	rows := make([]string, 0, 4)
+	head := strings.TrimSpace(q.question.Head)
+	if head != "" {
+		rows = append(rows, fit(a.questionMarkFor(q.question)+" "+a.pal.askBold(head), width))
+	}
+	if why := strings.TrimSpace(q.question.Reason); why != "" {
+		rows = append(rows, fit("  "+a.pal.dim(why), width))
+	}
+	parts, _, pointed := a.questionAnswerParts(q, "", formsLine, false)
+	if len(parts) > 0 {
+		rows = append(rows, fit(a.questionPaint(q, parts, "", formsCard, pointed), width))
+	}
+	return rows
 }
 
 // taskCardTitleLine is the head — what this task was called on the left, and how
@@ -565,6 +723,11 @@ func (a *app) taskCardBody(entry session.TaskIndexEntry, width int) []string {
 	if line := a.taskCardWhenLine(entry); line != "" {
 		bands = append(bands, []string{pal.ink(fit(line, width))})
 	}
+	// THE RECOVERY BAND STANDS WHERE THE OUTCOME WOULD, because it is what this
+	// card was opened to say: work another window is running has no outcome and
+	// never will here, and the sentence a person came for is where the work is
+	// ([app.taskCardAwayRows]).
+	bands = append(bands, a.taskCardAwayRows(width))
 	// THE OUTCOME IS THE SENTENCE THE PERSON CAME FOR, so it is the first thing
 	// under the state and it is drawn in ink rather than in the dim every other
 	// fact here wears.
@@ -613,6 +776,36 @@ func (a *app) taskCardBody(entry session.TaskIndexEntry, width int) []string {
 	return out
 }
 
+// taskCardAwayRows is the recovery band: where the work IS, and the one thing
+// there is to do about it. taskview.go spells both sentences and says which
+// claims were taken off this card and why.
+//
+// TWO LINES AND NOT FOUR. A person who pressed this row asked one question, and
+// the card's other bands already say everything the record knows; a paragraph
+// about what MIGHT happen to work in a process this window cannot see was the
+// surface talking to fill the space.
+//
+// IT IS DRAWN FROM WHAT THE PLACE RECORDED AND NEVER GUESSED FROM AN EMPTY
+// RECORD. A card with no outcome, no branch and no transcript is ALSO what a
+// landed row whose journal somebody deleted looks like, and those two rows need
+// opposite sentences — so the band hangs on [tasksPlace.awayOwner], which is set
+// by the one door that opens a card over another window's work
+// ([app.taskSheetAwayCard]) and cleared by every other.
+func (a *app) taskCardAwayRows(width int) []string {
+	owner := a.taskSheet.awayOwner
+	if !owner.on {
+		return nil
+	}
+	var out []string
+	for _, wrapped := range wrap(taskAwayCardWhere(owner.window), width) {
+		out = append(out, a.pal.ink(wrapped))
+	}
+	for _, wrapped := range wrap(taskAwayCardNoRoom, width) {
+		out = append(out, a.pal.dim(wrapped))
+	}
+	return out
+}
+
 // taskCardWhenLine is the state the work came home in, when it landed, and how
 // long it ran — one line, with every clause that has nothing behind it dropped.
 func (a *app) taskCardWhenLine(entry session.TaskIndexEntry) string {
@@ -642,6 +835,15 @@ func (a *app) taskCardWhenLine(entry session.TaskIndexEntry) string {
 // emptiness law, and `out of ` with nothing after it is a preposition standing
 // in for a fact.
 func (a *app) taskCardSourceLine(entry session.TaskIndexEntry) string {
+	// AND WORK ANOTHER WINDOW IS RUNNING HAS NO CONVERSATION HERE TO NAME. That
+	// row was minted out of the other window's presence file and this surface has
+	// met neither its conversation nor its title, so there is nothing true to put
+	// on this line — and the band above has already said where the work is. It is
+	// asked of the OWNER rather than of the ids, because the ids can be silent on
+	// both sides while this fact is certain ([app.taskSheetAwayCard] set it).
+	if a.taskSheet.awayOwner.on {
+		return ""
+	}
 	row := tasksRowFor(a.taskSheet.world, a.taskSheet.mine, entry)
 	source := strings.TrimSpace(row.Title)
 	if source == "" {

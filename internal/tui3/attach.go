@@ -16,6 +16,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/remote"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // THE ATTACHMENT TRAY: a picture is not a sentence.
@@ -158,10 +159,7 @@ func chipMark(pal palette) string {
 // message, and a tray that drew them alike would leave a person wondering why
 // their CSV was never looked at.
 func fileChipMark(pal palette) string {
-	if pal.ascii {
-		return "+"
-	}
-	return "▤"
+	return pal.glyph(tokens.GActionRead)
 }
 
 // pictureChips and fileChips split the tray into its two kinds.
@@ -308,10 +306,16 @@ func (a *app) attachPath(raw string) {
 // build has two, and a PNG sent as a file would be a path the model can read
 // bytes out of and never look at. So a picture goes on the tray as a picture,
 // which the chip's own glyph then says.
+// A BARE /attach IS NOT THIS FUNCTION'S BUSINESS ANY MORE. It used to answer
+// `/attach takes a path · try /attach server.log`, which is a correction rather
+// than an answer — somebody who typed the word without the path is somebody who
+// does not know the path. The command now opens the context browser with file
+// intent before reaching here (folderplace.go's [app.openContextPick]), so an
+// empty argument is a caller mistake and not a person's, and the refusal that
+// used to stand for it is gone rather than unreachable.
 func (a *app) attachFilePath(raw string) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		a.note("/attach takes a path · try /attach server.log")
 		return
 	}
 	path := a.resolvePath(raw)
@@ -588,31 +592,23 @@ func chipLabels(chips []chip, pal palette) []string {
 // kind of fact — something the next message carries besides its words — and the
 // tray is the one place this surface keeps those. Its own cell is INK rather
 // than dim, because it is the one thing up here that changes what enter does.
-// AND THE THINKING DIAL RIDES THE SAME ROW, LAST AND RIGHT-ALIGNED
-// (effortchip.go). It is the one cell up here that is not cargo — nothing comes
-// off the message when it is pressed — so it does not stand in the cargo's
-// queue: it keeps the same columns whether the tray is empty or carrying four
-// screenshots, which is what lets a hand learn where it is.
+// THE THINKING DIAL USED TO RIDE THIS ROW, last and right-aligned, and it is on
+// the seam beside the model now (effortchip.go). It was the one cell up here
+// that was not cargo — nothing came off the message when it was pressed — and
+// it kept most sessions' tray rows alive on their own, for a fact about the
+// model that belongs on the line the model is written on.
 func (a *app) chipStrip(width int) string {
-	// The dial's columns are recorded where the row is laid out, which is what
-	// keeps the press and the paint in step (jumpchip.go's [app.jumpChip] makes
-	// the same bargain for the same reason). Cleared first, so a frame that draws
-	// no dial cannot be pressed against the last frame that did.
-	a.effortSpan = hudSpan{}
 	cells := a.harnessTrayCells()
+	// AND THE FOLDERS THIS CONVERSATION IS ABOUT RIDE THE SAME ROW, between the
+	// harness and the cargo (folderchip.go). They are the same kind of fact —
+	// something every next message carries besides its words — and this is the
+	// one place on the surface those are kept.
+	places := a.placeTrayCells()
 	labels := chipLabels(a.chips, a.pal)
-	dial := a.effortChipText()
-	dialCells := ansi.StringWidth(dial)
-	// A CHIP THAT DOES NOT FIT IS DROPPED RATHER THAN TRUNCATED, which is
-	// pickrow.go's law about an answer and is the same law here: half a rung word
-	// is a word somebody reads as another rung.
-	if dial != "" && dialCells+effortTrayGap > width {
-		dial, dialCells = "", 0
-	}
-	if len(cells) == 0 && len(labels) == 0 && dial == "" {
+	if len(cells) == 0 && len(places) == 0 && len(labels) == 0 {
 		return ""
 	}
-	painted := make([]string, 0, len(cells)+len(labels))
+	painted := make([]string, 0, len(cells)+len(places)+len(labels))
 	for at, cell := range cells {
 		if at == 0 {
 			// THE POINTER LIGHTS ONE THING ON THIS ROW, never the row. Every cell up
@@ -632,6 +628,13 @@ func (a *app) chipStrip(width int) string {
 		// nothing, so it does not light.
 		painted = append(painted, a.pal.dim(cell))
 	}
+	for at, cell := range places {
+		if a.hoveringChip(trayPlaceChip - at) {
+			painted = append(painted, a.pal.cursor(a.pal.dim(cell), 0))
+			continue
+		}
+		painted = append(painted, a.pal.dim(cell))
+	}
 	for i, label := range labels {
 		if a.hoveringChip(i) {
 			painted = append(painted, a.pal.cursor(a.pal.dim(label), 0))
@@ -639,18 +642,8 @@ func (a *app) chipStrip(width int) string {
 		}
 		painted = append(painted, a.pal.dim(label))
 	}
-	// The cargo is fitted to what is left after the dial, so a long file name
-	// ellipsizes rather than pushing the dial off the end of the row.
-	room := width
-	if dial != "" {
-		room = width - dialCells - effortTrayGap
-	}
-	cargo, cargoCells := fitWidth(strings.Join(painted, chipGap), room)
-	if dial == "" {
-		return cargo
-	}
-	a.effortSpan = hudSpan{from: width - dialCells, to: width}
-	return cargo + strings.Repeat(" ", width-cargoCells-dialCells) + a.paintEffortChip(dial)
+	cargo, _ := fitWidth(strings.Join(painted, chipGap), width)
+	return cargo
 }
 
 // chipAt resolves a column to the chip drawn on it, or -1.
@@ -673,37 +666,42 @@ func chipAt(labels []string, x int) int {
 // the frame, the hit-testing and the height must ask ONE function where the
 // input block starts. The tray is that block's first row (input.go), so it is
 // the input block's start and nothing else has to be known.
-func (a *app) chipPress(x, y int) bool {
+// It answers a COMMAND as well as whether it took the press, because one of the
+// cells up here now acts on the conversation rather than on the draft: taking a
+// folder off is a call that may cross a wire, and it goes back to the loop as a
+// command rather than being run under the pointer (folderchip.go).
+func (a *app) chipPress(x, y int) (tea.Cmd, bool) {
 	at, ok := a.chipTrayTarget(x, y)
 	if !ok {
-		return false
+		return nil, false
 	}
 	if at == trayHarnessChip {
 		a.dropHarnessChip()
-		return true
+		return nil, true
 	}
-	// THE DIAL IS THE ONE CELL UP HERE THAT OPENS SOMETHING rather than taking
-	// something off (effortchip.go). It is the self-teaching door beside the
-	// chord, which docs/DESIGN-LANGUAGE.md requires of every chord on this
-	// surface: a person who never pressed ctrl+v can still find the five rungs,
-	// click one, and read the key off the list.
-	if at == trayEffortChip {
-		a.openEffortMenu()
-		return true
+	// AND A FOLDER'S CELL TAKES THE FOLDER OFF THE CONVERSATION — not off the
+	// message, which is what every other cargo cell up here does. It is the same
+	// gesture over a longer-lived object, and the work goes off the loop because
+	// over a connection it is a round trip (folderchip.go).
+	if at <= trayPlaceChip {
+		return a.dropPlaceChip(trayPlaceChip - at)
 	}
 	a.removeChip(at)
-	return true
+	return nil, true
 }
 
 // trayHarnessChip is what [app.chipTrayTarget] answers for the picked harness's
 // own cell, which is not one of [app.chips] and has a different thing done to it.
 const trayHarnessChip = -1
 
-// trayEffortChip is what [app.chipTrayTarget] answers for the thinking dial at
-// the right end of the row (effortchip.go). It is not one of [app.chips] either,
-// and what is done to it is the opposite of what is done to them: a press opens
-// the ladder rather than taking anything off the message.
-const trayEffortChip = -2
+// trayPlaceChip is what [app.chipTrayTarget] answers for the FIRST folder this
+// conversation is about, and the ones after it count DOWNWARD from here —
+// `trayPlaceChip - n` (folderchip.go). They are numbered away from zero rather
+// than sharing the chips' own space because what a press does to them is
+// different in kind: a picture comes off the message, a folder comes off the
+// conversation, and one index space for both would make an off-by-one delete the
+// wrong sort of thing.
+const trayPlaceChip = -3
 
 // chipTrayTarget resolves a pointer on the tray to the one thing it is over, and
 // reports whether it was over anything at all.
@@ -721,33 +719,39 @@ const trayEffortChip = -2
 // chrome this rebuilds.
 func (a *app) chipTrayTarget(x, y int) (int, bool) {
 	cells := a.harnessTrayCells()
-	// THE DIAL KEEPS THIS ROW ALIVE ON A TRAY WITH NO CARGO ON IT
-	// (effortchip.go), so the field test asks about it too — and asks the cheap
-	// half first, because a session whose model wants no thinking at all draws no
-	// dial and should pay nothing for the question.
+	places := a.placeTrayCells()
 	// AND A PLACE TAKING THE FRAME IS NOT THIS ROW AT ALL. Home draws a tray of
 	// its own over its own box (placebodies.go's [app.placeTray]) and resolves
 	// every press against its own two maps (homemouse.go); the geometry below is
 	// the CONVERSATION's, so a press answered here while a place is up would be a
 	// click on a chip the frame never drew.
-	if (len(a.chips) == 0 && len(cells) == 0 && a.effortChipText() == "") ||
+	if (len(a.chips) == 0 && len(cells) == 0 && len(places) == 0) ||
 		a.at(pageSettings) || a.at(pageHome) || a.pick.open {
 		return 0, false
 	}
 	width, height := a.size()
-	rows, _, _, _ := a.chrome(width)
-	at := len(rows) - 1 - a.overlayHeight() - a.inputHeight()
+	// THE ROW IS THE ONE THE LAYOUT MARKED AS THE BLOCK'S FIRST, and it is READ
+	// off the marks rather than counted backwards from the foot of the chrome.
+	// The count was `len(rows) - 1 - overlay - input`, which was true only while
+	// nothing else stood between the box and the bottom of the frame — and on
+	// 2026-09-09 the breathing blank moved from above the box to below it
+	// (view.go's [app.chrome]), so every press on the tray landed one row above
+	// where the tray was drawn. A mark cannot drift that way: it says which row
+	// the block actually began on. AND A GREETING HAS NO SUCH ROW: while the
+	// welcome unit holds the box it draws its own draft with no tray on it
+	// (welcome.go), so there is nothing here to press and this answers no.
+	rows, marks, _, _ := a.chrome(width)
+	at := -1
+	for i, mark := range marks {
+		if mark.kind == chromeDraft && mark.index == 0 {
+			at = i
+			break
+		}
+	}
 	if at < 0 || y != height-len(rows)+at {
 		return 0, false
 	}
 	column := x - len(inputPad)
-	// THE DIAL IS ASKED FIRST BECAUSE IT IS THE ONE CELL WHOSE COLUMNS THE
-	// LAYOUT RECORDED, and laying the chrome out directly above is what wrote
-	// them — the same order [app.jumpPress] and [app.statusPress] keep. The
-	// cargo's own offsets are counted from the left and cannot reach this far.
-	if a.effortSpan.holds(column) {
-		return trayEffortChip, true
-	}
 	// THE HARNESS CELL IS ASKED FIRST BECAUSE IT IS DRAWN FIRST, and the
 	// pictures start after it — the offset is computed from the same cells the
 	// row was built from, so what is drawn and what a click resolves against
@@ -757,6 +761,21 @@ func (a *app) chipTrayTarget(x, y int) (int, bool) {
 			return trayHarnessChip, true
 		}
 		column -= harnessTrayWidth(cells)
+	}
+	// AND THE FOLDERS ARE ASKED FOR NEXT BECAUSE THEY ARE DRAWN NEXT
+	// (folderchip.go), with the offset counted off the very cells the row was
+	// built from — so what is drawn and what a click resolves against cannot
+	// disagree. The counting cell at the end of them answers to nothing: `+2 more
+	// folders` is a sentence, and pressing a sentence means nothing on this
+	// surface. [app.dropPlaceChip] refuses it by the same bound.
+	if len(places) > 0 {
+		// The counting cell is BEYOND THE BOUND and is not answered for: `+2 more
+		// folders` is a sentence, and a cell that brightened under the pointer and
+		// then did nothing would be claiming to be something you can press.
+		if at := chipAt(places, column); at >= 0 && at < placeTrayCap {
+			return trayPlaceChip - at, true
+		}
+		column -= placeTrayWidth(places)
 	}
 	i := chipAt(chipLabels(a.chips, a.pal), column)
 	if i < 0 {
@@ -958,6 +977,13 @@ func chipPaths(chips []chip) []string {
 // A refusal puts the pictures back, in front of anything attached while the
 // message was in flight and without duplicating it. A success drops them: they
 // are in the conversation now.
+//
+// AND THEY GO BACK ON THE CONVERSATION'S TRAY, WHEREVER THE PERSON IS STANDING
+// (recipient.go). A refusal can take a second to arrive — over a connection it
+// is the whole upload — and a task's page opened in that second owns the box:
+// handing the pictures to whatever tray is on screen would attach the
+// conversation's screenshots to a message being written to a worker, which is
+// this wave's own defect said about the tray instead of the words.
 func (a *app) chipsSettled(err error) {
 	if len(a.sent) == 0 {
 		return
@@ -967,13 +993,15 @@ func (a *app) chipsSettled(err error) {
 	if err == nil {
 		return
 	}
-	restored := append([]chip(nil), sent...)
-	for _, held := range a.chips {
-		if !heldBy(restored, held.path) {
-			restored = append(restored, held)
+	a.atMainComposer(func(state *composerState) {
+		restored := append([]chip(nil), sent...)
+		for _, held := range state.chips {
+			if !heldBy(restored, held.path) {
+				restored = append(restored, held)
+			}
 		}
-	}
-	a.chips = restored
+		state.chips = restored
+	})
 	a.touch()
 }
 

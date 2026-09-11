@@ -19,7 +19,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
-	"github.com/Agent-Field/aforge-v2/internal/command"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/consent"
 	"github.com/Agent-Field/aforge-v2/internal/craft"
@@ -37,6 +36,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/revision"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 	"github.com/Agent-Field/aforge-v2/internal/rtk"
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/thread"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -128,6 +128,19 @@ type brainOptions struct {
 	newClient func(config.Config, string) (*liveClient, error)
 }
 
+// remainingWall reads what the errand's own context still leaves.
+//
+// WHAT THE ERRAND'S WALL LEAVES IS THE ONLY FIGURE THAT CARRIES THE PERSON'S
+// OWN NUMBER. The runner passes the same context settings.ExecContext preserves
+// and the leaf actually runs under; a surface with no wall has no deadline here
+// and keeps the token-sized room it has always granted.
+func remainingWall(ctx context.Context) time.Duration {
+	if at, ok := ctx.Deadline(); ok {
+		return time.Until(at)
+	}
+	return 0
+}
+
 // buildBrain assembles the brain: every provider client, the reconciler, the
 // runner and the consent desk. It is a function rather than the body of the
 // errand because a test scripts a provider through brainOptions.newClient and
@@ -200,7 +213,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// for them, which is the first time they can possibly matter. Everything
 	// here is the same resolution in the same order as before; only the moment
 	// moves, from in front of the first frame to behind it.
-	mediaModels := command.NewMediaModels(baseMedia, func(tools *exec.MediaTools) {
+	mediaModels := NewMediaModels(baseMedia, func(tools *exec.MediaTools) {
 		tools.ImageModel = firstNonEmptyString(tools.ImageModel, settings.ResolveImageModel(modelCatalog))
 		tools.SpeechModel = firstNonEmptyString(tools.SpeechModel, settings.ResolveSpeechModel(modelCatalog))
 		tools.MusicModel = firstNonEmptyString(tools.MusicModel, settings.ResolveMusicModel(modelCatalog))
@@ -527,8 +540,9 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// the deliberately tiny rung budget and a seconds-scale watchdog.
 		turns, tokens := gatheringGrant(chatLeafTurns, chatLeafTokens, fanIn)
 		leafRoom := exec.SubharnessFor(subharness)
-		deadline := leafRoom.Deadline(tokens)
-		watchdog := leafRoom.Watchdog(tokens)
+		wallLeft := remainingWall(ctx)
+		deadline := leafRoom.DeadlineWithin(tokens, wallLeft)
+		watchdog := exec.WatchdogAbove(deadline)
 		if isReflex {
 			turns, tokens = reflexTurns, reflexTokens
 			deadline = reflexDeadline
@@ -667,8 +681,9 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		if fold {
 			turns, tokens = foldGrant(modelCatalog.ContextLength(workingModel),
 				exec.FoldTurns, pushed, tokens)
-			deadline = leafRoom.Deadline(tokens)
-			watchdog = leafRoom.Watchdog(tokens)
+			wallLeft = remainingWall(ctx)
+			deadline = leafRoom.DeadlineWithin(tokens, wallLeft)
+			watchdog = exec.WatchdogAbove(deadline)
 			build.maxTurns, build.maxTokens, build.deadline = turns, tokens, deadline
 		}
 		// Journaled either way, so a benchmark can tell a fold that fired from a
@@ -970,7 +985,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					attempted.Fold = false
 					build.maxTurns, build.maxTokens = openTurns, openTokens
 					build.deadline = openDeadline
-					watchdog = leafRoom.Watchdog(openTokens)
+					watchdog = exec.WatchdogAbove(build.deadline)
 					worker = runningWorker(node.ID, subharness, build, "")
 					if modeErr := graph.RecordLeafMode(node.ID, store.LeafMode{
 						Mode: store.LeafModeOpen, Deps: carried, Pushed: pushed,
@@ -1158,7 +1173,8 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			// path to find. Naming them in the error text is enough — the error
 			// is what a failed node records, and a downstream step now reads
 			// paths out of it the same way it reads them out of a summary.
-			failure := humanFailure(node, err, absolute, withheld)
+			account := checklistAccount(graph, node.ID, absolute)
+			failure := humanFailure(node, err, absolute, withheld, account)
 			// A sibling's failure is the board note nobody should have to
 			// remember to write: the workers still running are about to lean on
 			// a result that is not coming, and the reason it died is the fact
@@ -1518,7 +1534,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 									evidence.Quote, evidence.Quotes = held.Quote, held.Citations
 									evidence.Mechanical, evidence.Finding = true, held.Finding
 									evidence.Constraint = held.Constraint
-									outcome.Verdict = provider.VerdictSemanticFailure
+									outcome.Verdict = provider.ReadingSemanticFailure
 								}
 							}
 							log.Printf("quorum: revised after reject")
@@ -1682,7 +1698,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 							// Falling back to an engine re-run here would buy the
 							// spend this path exists to refuse.
 							composedOnly = false
-							outcome.Verdict = provider.VerdictSemanticFailure
+							outcome.Verdict = provider.ReadingSemanticFailure
 						} else {
 							spent.PromptTokens += composition.Usage.PromptTokens
 							spent.CompletionTokens += composition.Usage.CompletionTokens
@@ -1784,7 +1800,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						// fix. See revision.GroundedInTheWorld, and
 						// docs/design/gate/SETTLEMENT.md §8.
 						evidence.PolishClosed = revision.RepairClosed(closed, unmet, reread, evidence.Unmoved)
-						outcome.Verdict = provider.VerdictSemanticFailure
+						outcome.Verdict = provider.ReadingSemanticFailure
 						revised = true
 						if evidence.PolishClosed {
 							// The same distinction the first gate makes; drawing it
@@ -1813,7 +1829,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 							evidence.Constraint = closed.Constraint
 						}
 					} else {
-						outcome.Verdict = provider.VerdictSemanticFailure
+						outcome.Verdict = provider.ReadingSemanticFailure
 					}
 					switch {
 					case evidence.PolishClosed:
@@ -2683,6 +2699,20 @@ func (b *leafBanker) bank(billed provider.Billed) {
 	b.total.Cost += billed.Cost
 }
 
+// reconciled is the leaf's late half of [leafBanker.bank]. A found provider
+// receipt is the same real call money and belongs on the node immediately; an
+// absent receipt has no figure this graph can honestly record.
+func (b *leafBanker) reconciled(receipt provider.Reconciled) {
+	if b == nil {
+		return
+	}
+	if !receipt.Found {
+		session.RecordUnbilledCall(session.UsageLedgerPath(), session.UsageLine{Task: b.nodeID, Model: receipt.Model})
+		return
+	}
+	b.bank(receipt.Billed)
+}
+
 // banked is what this leaf's calls have already put on disk, which is what the
 // landing roll-up subtracts so the same money is not journaled twice.
 func (b *leafBanker) banked() exec.Usage {
@@ -2703,7 +2733,9 @@ func armBilling(ctx context.Context, banker *leafBanker) context.Context {
 	if banker == nil {
 		return ctx
 	}
-	return provider.WithBilling(provider.WithCallNode(ctx, banker.nodeID), banker.bank)
+	ctx = provider.WithCallNode(ctx, banker.nodeID)
+	ctx = provider.WithBilling(ctx, banker.bank)
+	return provider.WithReconcile(ctx, banker.reconciled)
 }
 
 // leafShape accumulates one attempt's per-turn ledger onto whatever earlier
@@ -3272,16 +3304,6 @@ func withDocumentAttachmentBrief(brief string, paths []string) string {
 	return strings.TrimSpace(brief) + strings.TrimRight(addition.String(), "\n")
 }
 
-// What an errand still borrows from internal/command, under the spellings this
-// package's own prose uses. The commander itself — every capability a surface
-// reached the machine through — went with the surface that reached it (#329);
-// these three are ordinary helpers a process with no terminal needs.
-var (
-	loadChatPrefs       = command.LoadPrefs
-	attachmentStoreRoot = command.AttachmentStoreRoot
-	newSessionID        = command.NewSessionID
-)
-
 // liveClient and messageClientPool are internal/provider/pool's Client and
 // Pool. The provider seam moved out of this file in the Wave 1 dissolution;
 // these names stay because they are what this package's own prose has always
@@ -3764,8 +3786,9 @@ func leafCause(node store.Node, err error) string {
 // unedited, where the record page shows it in full and no clipping reaches.
 //
 // The partial files ride below too, for the retry and for the person who wants
-// them, not for the notification.
-func humanFailure(node store.Node, err error, artifacts []string, withheld string) error {
+// them, not for the notification. The checklist follows them so a run that
+// never reached its delivery gate still accounts for every thing it was asked.
+func humanFailure(node store.Node, err error, artifacts []string, withheld, checklist string) error {
 	if err == nil {
 		return nil
 	}
@@ -3784,7 +3807,31 @@ func humanFailure(node store.Node, err error, artifacts []string, withheld strin
 	if withheld = strings.TrimSpace(withheld); withheld != "" {
 		body += "\n\n" + withheld
 	}
+	if checklist = strings.TrimSpace(checklist); checklist != "" {
+		body += "\n\n" + checklist
+	}
 	return errors.New(body)
+}
+
+// checklistAccount is best-effort on the failure path because losing a journal
+// read must never replace the work and error the node already has to hand over.
+func checklistAccount(graph *store.Store, nodeID string, wrote []string) string {
+	if graph == nil {
+		return ""
+	}
+	acceptance, found, err := graph.AcceptanceFor(nodeID)
+	if err != nil || !found {
+		return ""
+	}
+	// A GATE NOBODY COULD READ IS NOT A GATE THAT ANSWERED, and it is not a
+	// reason to drop the person's own list. The list is still accounted for,
+	// with nothing claimed answered — which is the conservative side, and the
+	// same direction every other unreadable row is read in here.
+	gate, gateRead, err := graph.DeliveryGateFor(nodeID)
+	if err != nil {
+		gate, gateRead = store.DeliveryGate{}, false
+	}
+	return revision.ChecklistAccount(revision.AnswerChecklist(acceptance.Points, gate, gateRead, wrote))
 }
 
 // failureCauseBytes bounds the cause line. A provider that answers a refusal
@@ -4745,7 +4792,7 @@ func quorumVerify(ctx context.Context, settings config.Config, clients *messageC
 			said := verdict{accept: false, reason: "REJECT: the check did not finish"}
 			defer func() { ch <- said }()
 			vctx := pool.WithSpendNode(errandContext(ctx, settings, "quorum", lane.RoleJudge), nodeID)
-			resp, err := client.CompleteWithMessages(vctx, messages, ai.WithMaxTokens(200))
+			resp, err := client.CompleteWithMessages(vctx, messages)
 			if err != nil || resp == nil || len(resp.Choices) == 0 || len(resp.Choices[0].Message.Content) == 0 {
 				said = verdict{true, ""} // fail-open
 				return
@@ -5912,7 +5959,7 @@ func reflectAcrossJobs(settings config.Config, client *liveClient, graph *store.
 		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "reflect", lane.RoleAuxiliary), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: reflectorSystemPrompt}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input.String()}}},
-		}, ai.WithMaxTokens(500))
+		})
 		if err != nil || response == nil {
 			return nil, err
 		}
@@ -5940,7 +5987,7 @@ func digestTerritory(settings config.Config, client *liveClient) resident.Territ
 		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "reflect", lane.RoleAuxiliary), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: territoryDigestSystemPrompt + voice}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input.String()}}},
-		}, ai.WithMaxTokens(300))
+		})
 		if err != nil || response == nil {
 			return "", err
 		}
@@ -5967,16 +6014,17 @@ func checkSentinel(settings config.Config, client *liveClient) resident.Sentinel
 			}
 		}
 		system := sentinelSystemPrompt + prompt.Voice
-		// Sixty tokens is a yes, a no, and a line of reason — and nothing at all
-		// on a model that reasons first, because the thinking is spent out of
-		// this same budget before the verdict is written. That reads here as
-		// "sentinel returned no clear yes" on every wake forever. A cap is a cap
-		// and not a purchase, so the number has to hold what the reply can
-		// legitimately need; head/scribe.go carries the full accounting.
+		// NO CEILING TRAVELS. This call used to carry one — sixty tokens, then a
+		// thousand and twenty-four once a model that reasons first spent the
+		// whole sixty thinking and left "sentinel returned no clear yes" on every
+		// wake forever. Both figures were the same mistake in different sizes:
+		// guessing how much room somebody else's model needs to say yes. The
+		// prompt asks for a verdict and a line of reason, and the model's own
+		// default is what bounds it.
 		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "sentinel", lane.RoleJudge), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: system}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input}}},
-		}, ai.WithMaxTokens(1024))
+		})
 		if err != nil {
 			return resident.SentinelVerdict{}, err
 		}
@@ -6011,16 +6059,16 @@ Judge a good name by one test: someone who asked for this work yesterday must re
 // root node per job that would otherwise show a paragraph.
 func titleGoal(settings config.Config, client *liveClient) resident.TitleFunc {
 	return func(ctx context.Context, goal string) (string, error) {
-		// A CAP IS NOT A PURCHASE, and 30 was arithmetic on the answer: five
-		// words are ten tokens, so thirty looked generous. On a model that
-		// reasons before it speaks the thinking is spent out of this same budget
-		// first and the call returns nothing at all — the same failure that left
-		// every room in the rail untitled (head/scribe.go, where the mechanism
-		// and its one escalation are written out).
+		// NO CEILING TRAVELS, and the history of this line is why. It was 30 —
+		// arithmetic on the answer, five words being ten tokens — and on a model
+		// that reasons before it speaks the thinking took all thirty and the call
+		// returned nothing, which is what left every room in the rail untitled.
+		// The fix was a bigger guess; the fix now is no guess. The prompt says
+		// "ONLY a name of 3 to 5 words" and that is the whole of the ask.
 		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "title", lane.RoleAuxiliary), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: titleGoalPrompt}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: firstLine(goal)}}},
-		}, ai.WithMaxTokens(512))
+		})
 		if err != nil || response == nil {
 			return "", err
 		}
@@ -6054,12 +6102,15 @@ func distillFacts(settings config.Config, client *liveClient, graph *store.Store
 			input += "\n\n" + refused
 		}
 		// The same call may now carry a whole workflow file, which is worth
-		// several times what five one-line memories are: the ceiling is what
-		// keeps a craft from being truncated into an invalid file.
+		// several times what five one-line memories are — and the old ceiling
+		// here was sized by hand for exactly that. It is gone with the rest of
+		// them: a craft truncated into an invalid file is what the parser and its
+		// one repair round below are for, and neither of them needs this file to
+		// have guessed a number first.
 		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "distill", lane.RoleAuxiliary), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: distillerSystemPrompt}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input}}},
-		}, ai.WithMaxTokens(1500))
+		})
 		if err != nil || response == nil {
 			return nil, err
 		}
@@ -6108,7 +6159,7 @@ func repairCraft(settings config.Config, client *liveClient) resident.CraftRepai
 		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "craft-repair", lane.RoleDesign), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: craftRepairSystemPrompt}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input}}},
-		}, ai.WithMaxTokens(1500))
+		})
 		if err != nil || response == nil {
 			if err == nil {
 				err = fmt.Errorf("craft repair returned no response")
@@ -6160,7 +6211,7 @@ func fillCraftParams(settings config.Config, client *liveClient) resident.CraftP
 		}
 		input := fmt.Sprintf("Request:\n%s\n\nWorkflow: %s — %s\n\nValues it needs:\n%s",
 			instruction, workflow.Name, workflow.Description, wanted.String())
-		options := []ai.Option{ai.WithMaxTokens(300)}
+		var options []ai.Option
 		// The schema is built per workflow because the values are: a fixed one
 		// would either name nothing or name another craft's holes.
 		if client.Routed() {
@@ -6269,7 +6320,7 @@ func consolidateFacts(settings config.Config, client *liveClient, graph *store.S
 		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "consolidate", lane.RoleMemory), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: consolidatorSystemPrompt}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input.String()}}},
-		}, ai.WithMaxTokens(700))
+		})
 		if err != nil || response == nil {
 			return resident.Consolidation{}, err
 		}

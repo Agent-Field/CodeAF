@@ -81,6 +81,7 @@ func toolEntries(a *app) int {
 // called the tool twice.
 func TestAFormingCallDrawsOneRowThatFillsIn(t *testing.T) {
 	a, agent := formingTurn(t)
+	showLiveWork(t, a)
 
 	// FRAGMENT ONE: the wire has an id and nothing else. The row exists anyway,
 	// because "something is arriving" is the fact the old surface could not say.
@@ -158,6 +159,7 @@ func TestAFormingCallDrawsOneRowThatFillsIn(t *testing.T) {
 // matched them by name would fold both into whichever was drawn first.
 func TestTwoFormingCallsKeepTheirOwnRows(t *testing.T) {
 	a, agent := formingTurn(t)
+	showLiveWork(t, a)
 	drive(t, a,
 		streamEventMsg{gen: a.gen, ev: forming("c1", "write", "", strings.Repeat("x", 20))},
 		streamEventMsg{gen: a.gen, ev: forming("c2", "write", "", strings.Repeat("x", 30))},
@@ -230,6 +232,7 @@ func TestAFormingRowIsCompactOnAPhone(t *testing.T) {
 	a.width = phoneWidth
 	a.pal = newPalette(tokens.ANSI256, false)
 	typeLine(t, a, "go on then")
+	showLiveWork(t, a)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: forming("c1", "write", "write internal/session/loop.go", strings.Repeat("x", 4096))})
 
 	line := formingRow(t, a)
@@ -293,8 +296,11 @@ func TestTheSpawnCardFormsBeforeItAsks(t *testing.T) {
 		t.Fatalf("the landed proposal did not take the answer lane: %+v", a.task)
 	}
 	body = strings.Join(plainRows(a), "\n")
-	if !strings.Contains(body, "[ yes ]") {
-		t.Fatalf("the proposal is not asking:\n%s", body)
+	// AND THE ASKING IS ABOVE THE BOX, which is where every decision on this
+	// surface is put (question.go): the block in the transcript is the
+	// assignment, and the question about it is the block's.
+	if ask := plain(strings.Join(a.questionRows(a.width), "\n")); !strings.Contains(ask, "1  start it") {
+		t.Fatalf("the proposal is not asking:\n%s", ask)
 	}
 	if strings.Contains(body, taskFormingWord) {
 		t.Fatalf("the landed proposal is still forming:\n%s", body)

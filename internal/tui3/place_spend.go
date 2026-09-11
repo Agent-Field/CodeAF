@@ -66,6 +66,12 @@ type spendPage struct {
 	// POINTER PREVIEWS AND THE CURSOR SELECTS: it is drawn at the same rung as
 	// the cursor's own row and moves nothing.
 	hover int
+	// unfolded is whether the subjects' fold is open. It lasts while the place
+	// is up and a fresh visit starts it shut, as every fold on a place does.
+	unfolded bool
+	// woke is whether focus has been put at the page's centre of mass yet on
+	// this visit; after that the cursor is the person's.
+	woke bool
 	// read is the instant the lines were read, and every figure and age on the
 	// page is measured from it rather than from a fresh clock.
 	read time.Time
@@ -75,10 +81,10 @@ type spendPage struct {
 	//
 	// A WINDOW EMPTIED BY THE ARROWS IS NOT AN EMPTY MACHINE. Both draw no rows,
 	// and the right answer to each is the opposite of the other: a machine that
-	// has spent nothing wants the frame spent saying what this place is for
-	// ([spendTeach]), while a window paged onto a quiet fortnight wants the
+	// has spent nothing wants the frame to say what arrives here
+	// ([placeWhisper]), while a window paged onto a quiet fortnight wants the
 	// HEADER — the control that pages it back — above nothing at all. Drawing the
-	// teaching in both cases swallowed the only way out of the second.
+	// whisper in both cases swallowed the only way out of the second.
 	held bool
 	// world is THIS PLACE'S OWN SCAN of the projects root, taken on the way in
 	// and again on the beat. It is what `what it was for` joins its ids against
@@ -109,6 +115,27 @@ func (a *app) openSpend() tea.Cmd {
 		world: a.readWorld()}
 	a.readSpendLines(now)
 	return a.armPlaceClock()
+}
+
+// spendCenterOfMass is the row focus wakes on: THE FIRST THING THE MONEY WENT
+// ON, at the head of `what it was for` — the row this page exists to answer.
+// It woke on the pointer line, a door to the limits editor, so the first
+// `enter` on arrival left the bill for a settings tab (PLACES-AUDIT.md finding
+// 16). A page with no subjects wakes where it always did.
+func (a *app) spendCenterOfMass() int {
+	at := a.spend.cursor
+	if len(a.spend.reading.subjects) == 0 {
+		return at
+	}
+	first := spendSubjectKey(a.spend.reading.subjects[0])
+	// THE LAST ROW NAMING IT, because the loudest day above the table can name
+	// the same subject and the table's own row is the one under its heading.
+	for i, stop := range a.spend.stops {
+		if stop.ok && !stop.rails && !stop.fold && spendSubjectKey(stop.subject) == first {
+			at = i
+		}
+	}
+	return at
 }
 
 // spendCrewNow is WHO IS BOUND TO WHAT RIGHT NOW: the crew as the settings
@@ -260,7 +287,7 @@ func (a *app) rebuildSpend() {
 	p := &a.spend
 	p.reading = readSpend(p.lines, p.win, p.read).naming(p.names).crewed(a.spendCrewNow()).
 		railed(a.machineAllowance()).lost(session.UsageDrops()).
-		todayed(spendDayTotal(p.lines, p.read))
+		todayed(spendDayTotal(p.lines, p.read)).unfolding(p.unfolded)
 	// THE DOORS ARE SETTLED HERE AS WELL AS AT THE DRAW, and the two agree
 	// because WHICH rows exist does not depend on the width — only what each of
 	// them can fit does. Waiting for a draw would leave the cursor standing on
@@ -268,6 +295,13 @@ func (a *app) rebuildSpend() {
 	// opened this place and has not painted yet.
 	_, p.stops = p.reading.body(a.width, a.pal)
 	p.cursor = a.nearestSpendStop(p.cursor)
+	// FOCUS WAKES ONCE, on the first reading that has anything to wake on —
+	// which is not always the one taken on the way in: a far machine's ledger
+	// answers a beat later ([app.spendCenterOfMass]).
+	if !p.woke && len(p.reading.subjects) > 0 {
+		p.cursor = a.spendCenterOfMass()
+		p.woke = true
+	}
 }
 
 // spendNames is the join the ledger cannot make: an id against the word a
@@ -446,6 +480,13 @@ func (a *app) openSpendRow() (tea.Cmd, bool) {
 	if stop.rails {
 		return a.openSpending(spendTodayKey), true
 	}
+	// THE FOLD LINE OPENS WHERE IT STANDS, and the cursor stays on it: the
+	// line is still there, now saying `fewer`, so the next `enter` undoes it.
+	if stop.fold {
+		a.spend.unfolded = !a.spend.unfolded
+		a.rebuildSpend()
+		return nil, true
+	}
 	switch stop.subject.Kind {
 	case session.SubjectTask:
 		return a.showPage(pageTasks), true
@@ -516,38 +557,8 @@ func (placeSpend) tick(a *app, now time.Time) bool {
 	return true
 }
 
-// spendTeach is what this place says on a machine that has spent nothing.
-//
-// AN ALMOST-EMPTY PAGE IS THE BEST TEACHER ON THE MACHINE (SCREEN 1f). Nobody
-// arrives at spend by accident — you walk into it from the tab bar, from
-// `alt+5`, or by typing the word — and that arrival is the one moment a person
-// is asking "what is this". So the place answers, in three sentences of dim
-// prose in the body's own column, and says nothing else at all.
-//
-// IT IS NOT A PLACEHOLDER AND IT MUST NOT PRETEND TO BE ONE. There is no
-// "coming soon", no greyed-out table with headings over it — a capability that
-// cannot work is absent rather than broken (CLAUDE.md), and a page that draws
-// the furniture of a feature it does not have looks like a bug rather than like
-// a plan. Every sentence here is true today.
-// AND THE LAST SENTENCE SAYS WHAT IS TRUE OF THIS MACHINE RIGHT NOW, in a verb,
-// the way the tasks place ends its own teaching with `no tasks yet — /task
-// <brief> starts one` ([tasksTeach]). Three sentences about what a ledger is,
-// drawn over a ledger that is empty, leave a person unable to tell "nothing has
-// been spent" from "the ledger could not be read" — and the emptiness law, which
-// is why no `$0.00` appears anywhere above, is exactly what makes those two
-// silences look identical. So the page says which one it is.
-const spendTeach = "What this machine has cost, by the day, by the model, and by what it was for. " +
-	"Every model call writes a line, so the figures here are the bill and not an estimate. " +
-	"There is nothing to set here — the allowance is edited on the status line that shows it. " +
-	spendTeachEmptyWord
-
-// spendTeachEmptyWord is that last sentence, named because it is the one clause
-// of [spendTeach] a test asserts by itself and the one a person is actually
-// looking for.
-const spendTeachEmptyWord = "nothing spent yet — the first model call writes a line here."
-
-// body is the ledger, or — on a machine that has spent nothing inside the window
-// it is showing — the three sentences saying what this place is for.
+// body is the ledger, or — on a machine that has spent nothing at all — the
+// place's heading and its whisper (placeprose.go's [placeWhisper]).
 //
 // IT ASKS THE TOTAL rather than drawing the body to see whether it is empty,
 // because drawing it twice a frame to answer one question is the kind of waste a
@@ -563,9 +574,9 @@ func (placeSpend) remote(a *app) string {
 }
 
 func (placeSpend) body(a *app, width, room int) []placeRow {
-	if a.spend.reading.totals.USD <= 0 {
+	if a.spend.reading.empty() {
 		if !a.spend.held {
-			return placeTeachRows(placeTeachProse(spendTeach, width, a.pal), room)
+			return placeWhisperRows(pageSpend, width, room, a.pal)
 		}
 		// THE HEADER STAYS, because it is the only thing on this frame naming the
 		// window the four arrow keys move ([spendPage.held] holds the argument).
@@ -577,7 +588,8 @@ func (placeSpend) body(a *app, width, room int) []placeRow {
 		a.spend.stops, a.spend.top, a.spend.shown = nil, 0, 0
 		return rows
 	}
-	body, stops := a.spend.reading.body(width, a.pal)
+	lit := func(i int) bool { return (i == a.spend.cursor || i == a.spend.hover) && a.spendStopAt(i).ok }
+	body, stops := a.spend.reading.paint(width, a.pal, lit)
 	a.spend.stops = stops
 	// THE WINDOW FOLLOWS THE CURSOR. A body cut at the room and never moved
 	// loses the cursor off the bottom of the screen the moment the ledger is
@@ -589,8 +601,8 @@ func (placeSpend) body(a *app, width, room int) []placeRow {
 			break
 		}
 		text := body[i]
-		if (i == a.spend.cursor || i == a.spend.hover) && a.spendStopAt(i).ok {
-			text = a.pal.selected(text, width)
+		if lit(i) {
+			text = placeBand(text, width, a.pal)
 		}
 		rows = append(rows, placeRow{text: text, hit: i})
 	}
@@ -636,7 +648,7 @@ func (placeSpend) window(a *app, key string) bool { return a.spendWindowKey(key)
 // a compromise — so `b` is drawn before it works, and it works on every row of
 // this place because every row of this place is about money.
 func (placeSpend) verbs(a *app) []verb {
-	if !a.spendStopAt(a.spend.cursor).ok {
+	if stop := a.spendStopAt(a.spend.cursor); !stop.ok || stop.fold {
 		return nil
 	}
 	return []verb{{key: 'b', word: "the limits", do: func() tea.Cmd {
@@ -670,7 +682,9 @@ const (
 // surface advertising a key that does nothing.
 func (placeSpend) hint(a *app) string {
 	var parts []string
-	if a.spendStopAt(a.spend.cursor).ok {
+	if stop := a.spendStopAt(a.spend.cursor); stop.fold {
+		parts = append(parts, foldEnterWord(a.spend.unfolded))
+	} else if stop.ok {
 		parts = append(parts, spendEnterWord)
 		for _, v := range (placeSpend{}).verbs(a) {
 			parts = append(parts, spendVerbLead+v.word)
@@ -689,12 +703,13 @@ func (placeSpend) hint(a *app) string {
 	return strings.Join(parts, railSep) + railSep + "esc"
 }
 
-func (placeSpend) press(a *app, y int) bool {
+func (placeSpend) press(a *app, y int) (tea.Cmd, bool) {
 	if at, ok := placeBodyLine(y, a.spend.top, a.spend.shown); ok && a.spendStopAt(at).ok {
 		a.spend.cursor = at
 		a.touch()
+		return placeSpend{}.enter(a), true
 	}
-	return true
+	return nil, true
 }
 
 func (placeSpend) hover(a *app, y int) bool {

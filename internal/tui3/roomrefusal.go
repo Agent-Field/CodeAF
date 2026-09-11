@@ -1,6 +1,10 @@
 package tui3
 
-import "github.com/charmbracelet/x/ansi"
+import (
+	"strings"
+
+	"github.com/charmbracelet/x/ansi"
+)
 
 // ── A REFUSAL NAMES WHERE THE WORDS CAN GO ──────────────────────────────────
 //
@@ -50,6 +54,15 @@ const (
 	// kin line already holds itself to (room.go's [app.roomKinRows]): a parent
 	// named as a bare id has told a person nothing.
 	refusalParentDoor = ", or open its parent, "
+	// refusalOwnerLead opens the ONE door a page read through somebody else's
+	// conversation has (taskowner.go's [taskGuest]): the conversation that owns
+	// the work. [app.roomDoneRefusal] splices the owner's own name after it when
+	// this window has one, and [refusalOwnerPlace] stands in when it does not.
+	refusalOwnerLead = "say it in "
+	// refusalOwnerPlace is that conversation named by its role, for a guest whose
+	// owner nothing has named — the same words the reading page's own refusal
+	// already uses (taskowner.go's [roomGuestReadingWord]).
+	refusalOwnerPlace = "the conversation that owns it"
 )
 
 // refusal is one thing a task surface says when a person's words or keystroke
@@ -110,6 +123,18 @@ var (
 		what: "this session has no task rooms",
 		door: refusalMainDoor,
 	}
+	// roomGuestFinishedRefusal is what a landed task's page says when the page is
+	// a READING of another conversation's work (taskowner.go's [taskGuest]). ITS
+	// DOOR IS NEVER MAIN: `say it to main` on a guest page would aim the words at
+	// THIS window's conversation, whose task of the same number is different work
+	// — the wrong-owner delivery the whole guest lane exists to prevent, offered
+	// as advice. [app.roomDoneRefusal] puts the owner's own name in the door when
+	// this window has one.
+	roomGuestFinishedRefusal = refusal{
+		what:      "this task has finished",
+		shortWhat: "finished",
+		door:      refusalOwnerLead + refusalOwnerPlace,
+	}
 )
 
 // taskRefusals is EVERY refusal the task surfaces can say to a person's words or
@@ -122,6 +147,7 @@ var (
 var taskRefusals = []refusal{
 	roomFinishedRefusal,
 	roomUnavailableRefusal,
+	roomGuestFinishedRefusal,
 }
 
 // roomFinishedRefusal is [roomFinishedRefusal] with the node's parent named in
@@ -141,6 +167,26 @@ func (a *app) roomFinishedRefusal() refusal {
 	out := roomFinishedRefusal
 	if title := a.roomParentTitle(); title != "" {
 		out.door += refusalParentDoor + title
+	}
+	return out
+}
+
+// roomDoneRefusal is the refusal a landed page's foot draws: the ordinary one,
+// with the parent named when there is one — or, on a page read through somebody
+// else's conversation, the guest's own, whose door is the OWNER and never main.
+//
+// THE OWNER IS NAMED WHEN THIS WINDOW KNOWS WHAT TO CALL IT, by the same name
+// the trail above the page already uses ([taskGuest.owner]); a conversation
+// nothing has named keeps the door by its role, which is the emptiness law said
+// about a destination.
+func (a *app) roomDoneRefusal() refusal {
+	guest := a.roomGuest()
+	if guest == nil {
+		return a.roomFinishedRefusal()
+	}
+	out := roomGuestFinishedRefusal
+	if owner := strings.TrimSpace(guest.owner); owner != "" {
+		out.door = refusalOwnerLead + owner
 	}
 	return out
 }

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -74,6 +75,31 @@ type feed struct {
 	settledTurn int
 	// pendingReplyTags arrived before the first words of the answer they label.
 	pendingReplyTags []session.TaskReplyTag
+	// asked and askedTurn are HOW MANY TIMES THIS TURN HAS BEEN ASKED AGAIN, and
+	// the turn that count belongs to.
+	//
+	// IT IS THE ONLY COUNT OF A FAILING REQUEST THIS SURFACE HAS. The engine's
+	// retry event carries a sentence and no arithmetic today (failurerow.go
+	// states the seam), so what the give-up row says about how many tries were
+	// spent is what this reducer WATCHED go past — honest about being that, and
+	// counted here rather than on either surface so that the conversation and a
+	// node's page cannot answer the question differently.
+	//
+	// The turn is carried beside it because a count is per-request-ladder and a
+	// ladder belongs to one turn; comparing rather than resetting means no caller
+	// has to remember to clear it, which is exactly the kind of remembering that
+	// leaves the second turn of a session reporting the first one's failures.
+	asked, askedTurn int
+	// lastAsk is the retry this feed drew most recently, kept whole so that the
+	// row in the transcript and the word on the status line are two readings of
+	// ONE struct rather than two sentences about one moment (failurerow.go).
+	lastAsk failure
+	// col is this page's live token column — the books its lane has heard,
+	// and the pair in motion (tokencol.go). It is HERE and not on the surface
+	// because it is a fact about the transcript being grown: the conversation
+	// and a task room each carry one, opened with the work and read by the same
+	// drawing through [deck.col].
+	col tokenCol
 	// hooks is what this view asked the reducer to do on its behalf, and is the
 	// only thing in here that differs between one surface and another.
 	hooks feedHooks
@@ -236,6 +262,9 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 	case session.EventTextDelta:
 		f.sayStream(ev.Text, lump)
 
+	case session.EventAssistantDone:
+		f.confirmResponse()
+
 	case session.EventReasoning:
 		f.reasonStream(ev.Text, lump)
 
@@ -285,20 +314,7 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 		f.closeTool(ev, toolFailed, firstNonEmpty(ev.Hint, errText(ev.Err)))
 
 	case session.EventCaption:
-		// The narrator speaks about the open step rather than minting a transcript
-		// block. Keeping the override on that step's newest call lets both pages
-		// derive the same caption from the same entry list.
-		for i := len(f.entries) - 1; i >= 0; i-- {
-			e := &f.entries[i]
-			if e.turn != f.turn {
-				break
-			}
-			if e.kind == entryTool {
-				e.caption = strings.TrimSpace(ev.Text)
-				f.touch()
-				break
-			}
-		}
+		f.nameStep(ev)
 
 	case session.EventCompacting:
 		f.openCompaction(firstNonEmpty(ev.Hint, "compacting"))
@@ -310,6 +326,62 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 		// close.
 		f.closeLive()
 		f.settleCompaction(firstNonEmpty(ev.Hint, "compacted"))
+	}
+}
+
+// nameStep is the narrator speaking about ONE step (session's caption.go). It
+// mints no transcript block: the sentence and the family it named are written
+// onto the call the batch opened with, and both pages derive the same caption
+// from the same entry list.
+//
+// IT KEYS ON THE ANCHOR AND NEVER ON "THE NEWEST ROW". The engine sends the
+// batch's first call id with the event, and this walks for THAT row. The reason
+// is a race the old keying could not survive: the narrator's goroutine checks
+// that its batch is still open and can then be descheduled, so its answer can
+// arrive after that batch ended, after the next one began, and after the next
+// one's rows are on screen. Keyed by recency, a sentence about the finished step
+// retitled the running one — silently, on the row a person is watching. Keyed by
+// the anchor, an event that names a step this feed is not holding is simply
+// dropped, which is the correct thing to do with news about work that is over.
+//
+// THE ANCHORLESS EVENT IS AN OLDER ENGINE and is served exactly as it always
+// was: a host built before the anchor existed sends captions with no id, and
+// dropping them would silently take the narration away from every mixed-version
+// link. That path keeps the recency rule and therefore keeps the old race; every
+// build that ships the anchor is free of it.
+//
+// BOTH HALVES OR NEITHER. The sentence and the family arrive in one event and
+// are written in one assignment, so no frame can draw the new words beside the
+// old mark. An event with no family CLEARS the field rather than leaving a
+// previous one standing: the mark then comes off the tools, which is right about
+// this batch, where a stale family would be right about the last one.
+func (f *feed) nameStep(ev session.Event) {
+	text := strings.TrimSpace(ev.Text)
+	if text == "" {
+		return
+	}
+	if anchor := strings.TrimSpace(ev.CallID); anchor != "" {
+		for i := len(f.entries) - 1; i >= 0; i-- {
+			e := &f.entries[i]
+			if e.kind != entryTool || e.callID != anchor {
+				continue
+			}
+			e.caption, e.captionCat = text, ev.Category
+			f.touch()
+			return
+		}
+		return
+	}
+	for i := len(f.entries) - 1; i >= 0; i-- {
+		e := &f.entries[i]
+		if e.turn != f.turn {
+			return
+		}
+		if e.kind == entryTool {
+			e.caption, e.captionCat = text, ev.Category
+			f.touch()
+			return
+		}
 	}
 }
 
@@ -577,6 +649,15 @@ func (f *feed) beginTool(ev session.Event) {
 	f.entries = append(f.entries, entry{
 		kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: f.turn,
 		status: toolRunning, began: f.now(), detail: toolDetail{Args: ev.Args},
+		// AND THE ROW MINTED HERE TAKES THE ID TOO. Every other door onto a tool
+		// row records it and this one did not, which left the rows drawn for a
+		// provider that does not stream its calls — and for a surface that
+		// attached mid-batch — as the only rows in the conversation with no
+		// identity. Anything that pairs by id then cannot find them: the end and
+		// the figure fall back to matching by tool name, and a caption, which has
+		// only the id to go on, is dropped outright ([feed.nameStep]). It is the
+		// same string the branch above adopts, from the same field.
+		callID: ev.CallID,
 	})
 	f.follow()
 	f.touch()
@@ -917,7 +998,7 @@ func (f *feed) sayStream(text string, lump bool) {
 		return
 	}
 	if f.live < 0 || f.live >= len(f.entries) || f.entries[f.live].kind != entryAssistant {
-		f.entries = append(f.entries, entry{kind: entryAssistant, turn: f.turn,
+		f.entries = append(f.entries, entry{kind: entryAssistant, turn: f.turn, provisional: true, began: f.now(),
 			replyTags: append([]session.TaskReplyTag(nil), f.pendingReplyTags...)})
 		f.pendingReplyTags = nil
 		f.live = len(f.entries) - 1
@@ -1004,10 +1085,21 @@ func (f *feed) reasonStream(text string, lump bool) {
 	if f.think < 0 || f.think >= len(f.entries) || f.entries[f.think].kind != entryThinking {
 		// The reply in progress is closed first, so the block lands above the
 		// answer rather than splitting a paragraph that is still being written.
-		f.closeLive()
+		// A queued person or notice already sits below this assembler. Keep
+		// its pointer so later answer bytes cannot jump underneath that line.
+		var owner *responseConfirmation
+		if f.queuedBelowLive() {
+			e := &f.entries[f.live]
+			if e.confirmed == nil {
+				e.confirmed = &responseConfirmation{}
+			}
+			owner = e.confirmed
+		} else {
+			f.closeLive()
+		}
 		now := f.now()
 		f.entries = append(f.entries, entry{
-			kind: entryThinking, turn: f.turn, began: now, ended: now,
+			kind: entryThinking, turn: f.turn, began: now, ended: now, confirmed: owner,
 			// A BLOCK OPENED AFTER ITS TURN'S BOUNDARY IS BORN SETTLED (#225,
 			// [feed.settledTurn]). The boundary that would have closed it has
 			// already gone by, and a thought block left open would stay expanded
@@ -1067,6 +1159,7 @@ func (f *feed) takeReplyTags(tags []session.TaskReplyTag) {
 // way: a call lands in place, between two paragraphs, because that is where it
 // happened and the reply is written around it.
 func (f *feed) said(e entry) {
+	f.reserveResponseContinuation()
 	live := f.live
 	f.entries = append(f.entries, e)
 	if live < 0 || live >= len(f.entries)-1 || f.entries[live].kind != entryAssistant {
@@ -1076,6 +1169,54 @@ func (f *feed) said(e entry) {
 		return
 	}
 	f.live = live
+}
+
+// queuedBelowLive recognizes only rows deliberately spliced below an active
+// answer. A real tool or another response ends that ownership interval.
+func (f *feed) queuedBelowLive() bool {
+	e := blockAt(f.entries, f.live)
+	if e == nil || e.kind != entryAssistant || !e.provisional || e.cut || e.turn != f.turn || f.live == len(f.entries)-1 {
+		return false
+	}
+	for i := f.live + 1; i < len(f.entries); i++ {
+		if !groupBreaks(&f.entries[i]) && f.entries[i].kind != entryNote {
+			return false
+		}
+	}
+	return true
+}
+
+// A person can speak while first reasoning has temporarily closed the prose
+// assembler. Reserve its continuation before their line, using the active
+// reasoning pointer and ordinary response barriers rather than crossing users.
+func (f *feed) reserveResponseContinuation() {
+	if f.live >= 0 {
+		return
+	}
+	thought := blockAt(f.entries, f.think)
+	if thought == nil || thought.kind != entryThinking || thought.turn != f.turn {
+		return
+	}
+	for i := f.think - 1; i >= 0; i-- {
+		e := &f.entries[i]
+		if e.turn != f.turn || groupBreaks(e) || e.kind == entryTool || e.kind == entryCompact {
+			return
+		}
+		if e.kind != entryAssistant {
+			continue
+		}
+		if !e.provisional || e.cut || (e.confirmed != nil && e.confirmed.done) {
+			return
+		}
+		if e.confirmed == nil {
+			e.confirmed = &responseConfirmation{}
+		}
+		owner := e.confirmed
+		thought.confirmed = owner
+		f.entries = append(f.entries, entry{kind: entryAssistant, turn: f.turn, provisional: true, confirmed: owner, began: f.now()})
+		f.live, f.mdAt = len(f.entries)-1, f.now()
+		return
+	}
 }
 
 // note appends a surface-side line — a nudge, a notice, a slash command's
@@ -1141,6 +1282,40 @@ func (f *feed) noteWritten(text string, block bool, facts []string) {
 // because a room that had three of the four would be a room drawing an attempt
 // that never ran — which is exactly what a room did, by having none of them.
 func (f *feed) retry(ev session.Event) {
+	// A retry ends the attempt, including any text closed by interleaved
+	// reasoning. A later confirmation must not adopt those discarded words.
+	end := len(f.entries) - 1
+	var owner *responseConfirmation
+	if e := blockAt(f.entries, f.live); e != nil && e.kind == entryAssistant && e.provisional {
+		end, owner = f.live, e.confirmed
+	}
+	for i := end; i >= 0 && f.entries[i].turn == f.turn; i-- {
+		e := &f.entries[i]
+		if (e.kind == entryTool && e.status != toolForming) || groupBreaks(e) || e.kind == entryCompact {
+			break
+		}
+		if e.kind == entryAssistant {
+			if !e.provisional {
+				break
+			}
+			e.provisional, e.text, e.stale = false, "", true
+		}
+	}
+	// The same unfinished owner labels reasoning that was displaced by a
+	// queued line. The engine discarded it too; keeping it would make live
+	// history differ from a task reopened after the retry.
+	if owner != nil && !owner.done {
+		for i := range f.entries {
+			e := &f.entries[i]
+			if e.kind != entryThinking || e.confirmed != owner {
+				continue
+			}
+			if f.think == i {
+				f.collapseThought()
+			}
+			f.entries[i] = entry{kind: entryAssistant, turn: e.turn, settled: true, stale: true}
+		}
+	}
 	f.dropLive()
 	f.dropRetryingFormingTools()
 	f.resolveUnfinished()
@@ -1150,7 +1325,77 @@ func (f *feed) retry(ev session.Event) {
 	if f.hooks.retrying != nil {
 		f.hooks.retrying()
 	}
-	f.note(ev.Text)
+	// AND THE ATTEMPT THAT NEVER HAPPENED LEAVES A ROW WHERE THE PERSON IS
+	// READING. It used to leave the event's sentence and nothing else, which was
+	// nearly right and missed the two things the sentence cannot say: that this
+	// is one of several, and — when the ladder runs out — that it stopped. Both
+	// come off [failure], composed in the one place every surface composes them
+	// (failurerow.go).
+	f.lastAsk = retryFailure(ev, f.countAsk())
+	f.note(failureRow(f.lastAsk))
+}
+
+// failureNote is what a surface writes when a turn ENDS on an error, and it is
+// here — in the reducer both surfaces share — so that the conversation and a
+// node's page cannot tell the same failure two different ways.
+//
+// A TURN THAT TRIED AGAIN GAVE UP; A TURN THAT DID NOT SIMPLY FAILED. The
+// give-up sentence is a claim about a ladder, and saying it over an error that
+// was raised on the first and only attempt — a request too big for the window, a
+// refusal of our own bytes — would be the surface inventing a struggle that
+// never happened. So the count decides the words, and with no count the line is
+// the plain one it has always been.
+// A VENDOR THAT SAID WHY IN PLAIN WORDS IS QUOTED, NOT CLASSIFIED. An account
+// with no funds answers the same way every time and there is nothing to try
+// again, so the line is the one the connect row already writes: the service,
+// what happened to the account, and the vendor's sentence. `error:`,
+// `API error` and a bare `(429)` are this program's vocabulary rather than the
+// person's, and a status number is the one part of that answer nobody can act
+// on.
+func (f *feed) failureNote(err error, service string) string {
+	if said, ok := cannotPayWords(err); ok && strings.TrimSpace(service) != "" {
+		return serviceCannotPayWord(service, said)
+	}
+	text := errText(err)
+	if seen := f.asksSeen(); seen > 0 {
+		return failureRow(gaveUpFailure(text, seen))
+	}
+	return errorNoteWord + text
+}
+
+// cannotPayWords is the vendor's own sentence when a refusal is the terminal
+// account-cannot-pay shape, and false for every other error. It reads the
+// refusal object rather than the formatted sentence, so a pacing 429 cannot
+// become this by wording added inside this process.
+func cannotPayWords(err error) (string, bool) {
+	refusal, ok := provider.RefusalFrom(err)
+	if !ok || !refusal.AccountCannotPay() {
+		return "", false
+	}
+	if said := strings.TrimSpace(refusal.Message); said != "" {
+		return said, true
+	}
+	return strings.TrimSpace(refusal.Body), true
+}
+
+// countAsk records one more try of this turn's request and answers how many had
+// been counted before it — see [feed.asked] for why the count is here.
+func (f *feed) countAsk() int {
+	if f.askedTurn != f.turn {
+		f.askedTurn, f.asked = f.turn, 0
+	}
+	seen := f.asked
+	f.asked++
+	return seen
+}
+
+// asksSeen is that count read without adding to it: what the give-up row at the
+// end of the ladder is counting.
+func (f *feed) asksSeen() int {
+	if f.askedTurn != f.turn {
+		return 0
+	}
+	return f.asked
 }
 
 // dropLive throws away the assistant block the CURRENT attempt was streaming
@@ -1203,6 +1448,78 @@ func (f *feed) dropRetryingFormingTools() {
 			continue
 		}
 		f.entries[i] = entry{kind: entryAssistant, turn: f.turn, stale: true}
+	}
+	f.touch()
+}
+
+// A provider may end with private reasoning after its last visible words. Walk
+// only this response's tail so confirmation still reaches those words without
+// promoting a tool preamble or another exchange's answer.
+func (f *feed) confirmResponse() {
+	confirmation := &responseConfirmation{}
+	// A person's queued line or a surface notice can sit below the active
+	// assembler while its answer keeps growing. That pointer owns the response;
+	// a tail search would either stop at their line or move the answer below it.
+	end := len(f.entries) - 1
+	anchored := false
+	if e := blockAt(f.entries, f.live); e != nil && e.kind == entryAssistant && e.provisional && e.turn == f.turn {
+		end, anchored = f.live, true
+		if e.confirmed != nil && !e.confirmed.done {
+			confirmation = e.confirmed
+		}
+	}
+	var fragments []int
+	for i := end; i >= 0; i-- {
+		e := &f.entries[i]
+		if e.turn != f.turn || groupBreaks(e) || e.kind == entryTool || e.kind == entryCompact {
+			break
+		}
+		if e.kind != entryAssistant {
+			continue
+		}
+		// A previous response or a discarded attempt cannot become part of
+		// this answer merely because no tool separated the two requests.
+		if !e.provisional || (e.confirmed != nil && e.confirmed.done) {
+			break
+		}
+		if e.cut {
+			return
+		}
+		fragments = append(fragments, i)
+	}
+	if len(fragments) > 0 {
+		confirmation.done = true
+		for _, i := range fragments {
+			e := &f.entries[i]
+			e.provisional, e.confirmed = false, confirmation
+			if f.live == i {
+				f.closeLive()
+			} else {
+				settleBlock(e)
+			}
+		}
+		// THE CONFIRMED ANSWER HAS THE JOURNAL'S SHAPE. Interleaved private
+		// reasoning must not split the final answer or leave a thought row in
+		// its middle. Preserve exact content order in one final prose entry;
+		// empty earlier fragments in place so every existing index stays valid.
+		var text strings.Builder
+		var tags []session.TaskReplyTag
+		for at := len(fragments) - 1; at >= 0; at-- {
+			e := &f.entries[fragments[at]]
+			text.WriteString(e.text)
+			tags = append(tags, e.replyTags...)
+			e.text, e.replyTags, e.stale = "", nil, true
+		}
+		last := fragments[0]
+		if !anchored && last != len(f.entries)-1 {
+			// Some providers finish with reasoning after their visible words.
+			// Put the whole answer after that settled work, as replay does.
+			f.closeLive()
+			f.entries = append(f.entries, f.entries[last])
+			last = len(f.entries) - 1
+		}
+		e := &f.entries[last]
+		e.text, e.replyTags, e.demoted = text.String(), tags, false
 	}
 	f.touch()
 }

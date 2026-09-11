@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/plan"
+	"github.com/Agent-Field/aforge-v2/internal/revision"
 	"github.com/Agent-Field/aforge-v2/internal/shaped"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
@@ -58,9 +59,11 @@ func TestEveryRepairIsKeptUnderTheNodeItWasMadeFor(t *testing.T) {
 // this is the reading the exit code takes off that record.
 func TestADeliveryWhoseGateFaultedIsNotWhole(t *testing.T) {
 	graph, watcher, _ := narrationFixture(t)
-	if err := graph.RecordDeliveryGate("task-1", store.DeliveryGate{
-		Gap: "the review could not be read, so this delivery was never checked", Unclosed: true,
-	}); err != nil {
+	const ownFailure = "finish_reason=length"
+	fault := "the gate answered with nothing this could read: gate request: " +
+		"the model did not answer in the shape this asked for (" + ownFailure + " completion_tokens=8192)"
+	gate := store.DeliveryGate{Gap: revision.GateFaultWords(fault), Unclosed: true}
+	if err := graph.RecordDeliveryGate("task-1", gate); err != nil {
 		t.Fatal(err)
 	}
 	node, found, err := graph.Node("task-1")
@@ -69,6 +72,13 @@ func TestADeliveryWhoseGateFaultedIsNotWhole(t *testing.T) {
 	}
 	if watcher.deliveredWhole(node) {
 		t.Fatal("a delivery whose own check never happened was reported as whole")
+	}
+	finding, reason, standing := gateStanding(gate)
+	if !standing {
+		t.Fatal("a faulted gate left no standing shortfall")
+	}
+	if line := partialWords(finding, reason); !strings.Contains(line, ownFailure) {
+		t.Fatalf("the door's last line dropped the gate's own failure: %q", line)
 	}
 }
 

@@ -155,14 +155,14 @@ const (
 	// tokens are actually for is the two things it WRITES when the answer is
 	// yes: the goal, and the done-condition the work is finished against.
 	//
-	// IT GREW WITH THE SECOND FIELD. A judge that runs out of budget halfway
-	// through its object produces JSON nothing can salvage, which this file reads
-	// as a no and says nothing about — so a ceiling that fit one written field
-	// and not two would have turned the feature off quietly on exactly the
-	// requests worth starting. Nine hundred is both fields at their bounds
-	// ([routeGoalBytes], taskShapeAcceptanceLimit) with the object around them,
-	// and it is still a fraction of what the task it decides costs.
-	routeJudgeTokens = 900
+	// NO CEILING IS SENT FOR IT. There was one — 900, grown from a smaller
+	// figure when the second written field arrived, because a judge that runs
+	// out of budget halfway through its object produces JSON nothing can salvage
+	// and this file reads that as a no. Growing it twice was the tell: the room
+	// a judge needs is a fact about the model, and guessing it once more would
+	// have turned the feature off quietly on exactly the requests worth
+	// starting. The bounds below are what this file actually enforces, on the
+	// answer it gets back.
 	// routeShapeLines is how much of the assistant's answer the judge is shown.
 	// TWO LINES IS THE SHAPE AND NOT THE ANSWER: what the judge is deciding is
 	// whether the person's request needed work, and a judge handed the whole reply
@@ -253,6 +253,12 @@ type routeVerdict struct {
 	// [taskPersonAcceptance]: a judgement nobody asked for must never be the
 	// reason work is refused.
 	Acceptance string `json:"acceptance"`
+	// Delivery is used only by the original-ask acceptance writer.
+	Delivery deliveryContract `json:"delivery,omitempty"`
+	// Repeatable checks travel with the same request that declared them. A
+	// correction may keep the task useful while invalidating its old checks.
+	Checks        []string `json:"checks,omitempty"`
+	checksRequest string
 }
 
 // routeJudgeBrief is what the judge is told, and it is the work-or-words law in
@@ -301,7 +307,7 @@ const routeVerdictContract = `Answer with ONE JSON object and nothing else — n
 
 or
 
-  {"work": true, "wide": true, "goal": "...", "acceptance": "...", "why": "..."}
+  {"work": true, "wide": true, "goal": "...", "acceptance": "...", "checks": ["..."], "why": "..."}
 
   wide   true when the work is BROAD — many files, many sources, several
          independent parts — so the one worker that starts on it is allowed to
@@ -320,6 +326,11 @@ or
          the report names each pricing bug with its file and line" — and never
          write "the goal is met" or "the task is complete", which give the
          checker nothing to look at.
+  checks Optional. ONE simple command per entry that safely re-establishes the
+         result, such as a test, build or probe. The checker can run only these
+         declared commands. Do not put verification only in acceptance prose.
+         NEVER the requested action itself: a deploy, send or one-time job must
+         not be repeated. Omit checks when none are known or safe to repeat.
   why    ONE line, in a person's own words, saying what this looks like. It is
          shown to them beside the work, so write it as you would say it:
          "research across every package", "a sweep over forty files".`
@@ -441,7 +452,7 @@ func (a *Agent) routeJudge(ctx context.Context, hub *eventHub, user userMessage,
 	// AND WITH NO DIVISION DRAWN, because nobody has drawn one: this door reads a
 	// REQUEST nobody has worked on yet, and the shape of what is left of a turn is
 	// a question only a mark can answer (checkpoint.go's [drawnDivision]).
-	a.launchRouteTask(hub, verdict, verdict.Goal, drawnDivision{}, ahead)
+	a.launchRouteTask(hub, verdict, verdict.Goal, drawnDivision{}, ahead, nil)
 }
 
 // routeSubstantial reports whether a message is worth a model call. It counts
@@ -462,7 +473,7 @@ func routeSubstantial(text string) bool {
 // conversation's own model rather than refusing — and an install with nothing
 // anywhere gets no judge at all, which is this feature absent rather than broken.
 func (a *Agent) askRouteJudge(ctx context.Context, model, asked, answered string) (routeVerdict, bool) {
-	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouter, model, routeJudgeBrief, routeJudgeQuestion(asked, answered))
+	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouter, model, routeJudgeBrief, routeJudgeQuestion(asked, answered), asked)
 	if !ok {
 		return routeVerdict{}, false
 	}
@@ -507,7 +518,7 @@ func (a *Agent) askRouteJudge(ctx context.Context, model, asked, answered string
 // better reader's answer thrown away at no saving whatever ([routeWidth] is what
 // the two readings come to).
 func (a *Agent) confirmRouteWork(ctx context.Context, model, asked, answered string) (routeVerdict, bool) {
-	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouterConfirm, model, routeJudgeBrief, routeJudgeQuestion(asked, answered))
+	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouterConfirm, model, routeJudgeBrief, routeJudgeQuestion(asked, answered), asked)
 	return verdict, ok && verdict.Work
 }
 
@@ -541,13 +552,12 @@ func routeWidth(screen, confirm routeVerdict) bool {
 // billing, the salvage ladder and the bounds each written field is held to — is
 // the same for all four calls, and a second spelling of it is how a confirm
 // slowly stops confirming what its screen answered.
-func (a *Agent) putRouteQuestion(ctx context.Context, role roles.Role, model, brief, question string) (routeVerdict, bool) {
+func (a *Agent) putRouteQuestion(ctx context.Context, role roles.Role, model, brief, question, asked string) (routeVerdict, bool) {
 	response, judge, err := a.callRole(ctx, role, model,
 		[]ai.Message{
 			textMessage("system", brief),
 			textMessage("user", question),
-		},
-		ai.WithMaxTokens(routeJudgeTokens))
+		})
 	if err != nil || response == nil {
 		return routeVerdict{}, false
 	}
@@ -574,6 +584,7 @@ func (a *Agent) putRouteQuestion(ctx context.Context, role roles.Role, model, br
 	// two spellings of that bound would be two answers to one question
 	// (task_shape.go's taskShapeAcceptanceLimit).
 	verdict.Acceptance = clip(strings.TrimSpace(verdict.Acceptance), taskShapeAcceptanceLimit)
+	verdict.checksRequest = asked
 	return verdict, true
 }
 
@@ -901,7 +912,7 @@ func (a *Agent) routeTriage(race *routeRace, meter *checkpointMeter) {
 func (a *Agent) askRouteAhead(ctx context.Context, asked string) (routeVerdict, bool) {
 	ctx, done := context.WithTimeout(ctx, routeRaceWindow)
 	defer done()
-	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouter, "", routeAheadBrief, routeAheadQuestion(asked))
+	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouter, "", routeAheadBrief, routeAheadQuestion(asked), asked)
 	if !ok || verdict.Goal == "" {
 		// A yes with nothing to run is not a yes: whoever is handed this cannot see
 		// the conversation, so an empty goal would start work nobody could describe.
@@ -935,7 +946,7 @@ func (a *Agent) askRouteAhead(ctx context.Context, asked string) (routeVerdict, 
 func (a *Agent) confirmRouteAhead(ctx context.Context, asked string) (routeVerdict, bool) {
 	ctx, done := context.WithTimeout(ctx, routeRaceConfirmWindow)
 	defer done()
-	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouterConfirm, "", routeAheadBrief, routeAheadQuestion(asked))
+	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouterConfirm, "", routeAheadBrief, routeAheadQuestion(asked), asked)
 	return verdict, ok && verdict.Work
 }
 
@@ -988,7 +999,14 @@ func (a *Agent) confirmRouteAhead(ctx context.Context, asked string) (routeVerdi
 // person reads, written as a name a model wrote so nothing renames it; one
 // still in flight rides the spec, and the graph waits for it rather than asking
 // again.
-func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title string, drawn drawnDivision, ahead *nameAhead) (string, uint64) {
+//
+// AND IT CARRIES THE QUICK NODE'S OWN SPEC, where the road that reached here
+// decided the work belongs to one (checkpoint_quick.go). It is a PARAMETER
+// beside [drawnDivision] and for the same reason: no judge writes it, and the
+// two are mutually exclusive — a drawing is parts to hand OUT and a quick spec
+// is those parts as one worker's ordered items. nil is every other door and
+// leaves this function exactly as it was.
+func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title string, drawn drawnDivision, ahead *nameAhead, quick *quickTaskSpec) (string, uint64) {
 	// THE LAST LINE OF THE FLOOR (spawnfloor.go). Both roads into this function
 	// already return above on a one-command ask; a reserved id for work that
 	// must not start would be the floor leaking a node number into a conversation
@@ -1000,6 +1018,7 @@ func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title strin
 	id := graph.reserve()
 	spec := taskSpec{
 		drawn:   drawn,
+		quick:   quick,
 		title:   routeTaskTitle(title),
 		summary: verdict.Why,
 		// THE PERSON'S OWN MESSAGE RIDES ALONG, as it does on every other door
@@ -1012,6 +1031,12 @@ func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title strin
 		// [Agent.handOverRunningTurn] and does not build a spec of its own, so
 		// this one assignment covers both roads.
 		origin: a.taskOriginRef(),
+		// AND THE WORKING CONTEXT, from the one compiler every door uses
+		// (admission.go). This door needs it more than any other: nobody asked
+		// for this work, so the only account of why it exists is a judge's
+		// summary — and on the checkpoint road the turn being handed over has
+		// already made the calls whose handles are in here.
+		admission: a.admissionContext(),
 		// THE BRIEF IS THE STATE AND THE ACCEPTANCE IS THE ASK, and they are two
 		// different documents that were quietly collapsing into one.
 		//
@@ -1029,6 +1054,7 @@ func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title strin
 		// in front of the generic stand-in ([routeAcceptance]).
 		brief:      verdict.Goal,
 		acceptance: routeAcceptance(verdict, a.taskRequest()),
+		checks:     routeChecks(verdict, a.taskRequest()),
 		model:      a.resolveTaskModel("").model,
 		// THE JUDGE'S OWN WIDE VERDICT ARMS THE TASK IT STARTS. It is the same
 		// judgement the sizing judge is asked at the typed door and the same one
@@ -1064,6 +1090,13 @@ func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title strin
 	// the rest, on the rail.
 	said := "this looked like work, so task " +
 		strconv.FormatUint(id, 10) + " " + word + ": " + spec.title
+	// AND A QUICK NODE SAYS THE WHOLE THING IN ONE LINE. The road that sent it
+	// here does not write its own line above this one, because the two facts a
+	// person is owed — their turn was moved, and the work is carrying on IN THIS
+	// FOLDER — are one small event and read as one ([checkpointQuickNote]).
+	if quick != nil {
+		said = checkpointQuickLine(spec.title)
+	}
 	hub.send(Event{Kind: EventNotice, Text: said})
 	return said, id
 }
@@ -1147,4 +1180,15 @@ func routeAcceptance(verdict routeVerdict, request string) string {
 		return routeAskAcceptance + asked
 	}
 	return routeFallbackAcceptance
+}
+
+// A routed check is still a declared check, with the same validation as an
+// explicit task proposal. A stale request or malformed list grants no commands;
+// neither can stop useful work from being handed over without those checks.
+func routeChecks(verdict routeVerdict, request string) []string {
+	if request == "" || verdict.checksRequest != request {
+		return nil
+	}
+	checks, _ := declaredCheckList(verdict.Checks)
+	return checks
 }

@@ -198,6 +198,20 @@ type place interface {
 	window(a *app, key string) bool
 	// box is the composer this place types into — the shared one by default.
 	box(a *app) *editor
+	// resting is WHAT THAT BOX SAYS WITH NOTHING TYPED IN IT, and "" takes the
+	// router's own sentence.
+	//
+	// IT EXISTS BECAUSE THE SLOT WAS TELLING A LIE ON ONE PLACE. Every place's
+	// box row said `say what you want done` — which is exactly right where the box
+	// sends a message, and exactly wrong on the tasks place, where the box IS the
+	// filter and every printable key narrows the list. A person read an invitation
+	// to give an instruction, typed one, and watched their history disappear
+	// instead. The box was always the place's own editor ([placeTasks.box] has
+	// returned the query for as long as the place has existed) and the pointer has
+	// always resolved a caret against whatever was drawn there
+	// (placemouse.go's [app.placeBoxPress]); the only thing that was shared and
+	// should not have been is the sentence.
+	resting(a *app) string
 	// note is the one line a place may say about what it is HOLDING, drawn under
 	// the rule and above the composer.
 	note(a *app, width int) []string
@@ -217,11 +231,18 @@ type place interface {
 	// lines are BUILT — on home's own three-second beat — because the seams
 	// behind it are the ones a draw may never touch (homeplaces.go).
 	summary(a *app) string
-	// press is a press on one of this place's body rows. It moves the cursor and
-	// never acts, which is the law every place keeps: every verb on these lists
-	// is a key, and `enter` leaves the conversation a person is sitting in, so a
-	// click that did either would be a gesture nobody can aim.
-	press(a *app, y int) bool
+	// press is a press on one of this place's body rows. A PRESS ON A ROW IS
+	// `enter` ON IT: the cursor lands on the row and the row's door opens, which
+	// is the one click grammar every list on this surface keeps — home's rows,
+	// the tasks place, a picker (PLACES-AUDIT.md finding 6). The pointer resting
+	// is the preview; the press is the choice. The bool is whether the place
+	// took the press, which it does for every row of its body, door or not.
+	//
+	// A CLICK NEVER SPENDS. Where `enter` would send words to a model on a
+	// person's behalf — memory's `ask me about it` — the press opens the row's
+	// own card instead, because a click that starts a paid turn is a gesture
+	// nobody can take back. Every verb stays a key.
+	press(a *app, y int) (tea.Cmd, bool)
 	// hover is the pointer resting over a body row: the row is previewed and the
 	// cursor is left where it is.
 	hover(a *app, y int) bool
@@ -265,9 +286,10 @@ func (placeBase) verbs(a *app) []verb                     { return nil }
 func (placeBase) alt(a *app, letter rune) bool            { return false }
 func (placeBase) window(a *app, key string) bool          { return false }
 func (placeBase) note(a *app, width int) []string         { return nil }
+func (placeBase) resting(a *app) string                   { return "" }
 func (placeBase) changed(a *app, since time.Time) int     { return 0 }
 func (placeBase) summary(a *app) string                   { return "" }
-func (placeBase) press(a *app, y int) bool                { return false }
+func (placeBase) press(a *app, y int) (tea.Cmd, bool)     { return nil, false }
 func (placeBase) hover(a *app, y int) bool                { return false }
 func (placeBase) wheel(a *app, delta int) bool            { return false }
 func (placeBase) key(a *app, msg tea.KeyPressMsg) tea.Cmd { return nil }
@@ -306,20 +328,66 @@ func (placeBase) box(a *app) *editor { return &a.compose }
 // and a row of [placeOrder], and nothing else anywhere.
 var placeRegistry = map[page]place{}
 
-// placeOrder is the whole set, in the one order that matters: left to right
-// along the tab bar, `alt+1` through `alt+7`, and the circle `tab` walks.
+// placeOrder is the whole set, in the one order that matters: `alt+1` through
+// `alt+7`, and — for the first [placeBarPlaces] of them — left to right along
+// the tab bar and round the circle `tab` walks.
 //
-// THE ORDER IS THE READING ORDER OF A DAY. What wants you (home), what ran
-// (tasks), what runs without being asked (standing), what was learned (memory),
-// what it cost (spend), then the two that are asked for rather than looked at —
-// finding something, and changing something.
+// THE BAR IS FOUR PLACES AND HOME IS THEIR SUMMARY (DESIGN.md's law 10). What
+// wants you and what is running (home), the work itself (tasks), what it cost
+// (spend), and how this machine is set (settings). Standing, memory and search
+// come after them: still rooms, still reached by `/standing`, `/memory` and
+// `/search`, by the typed box's place offers, by `alt+5`…`alt+7` and by the
+// map — but not drawn on a bar a person reads a hundred times a day, until they
+// are the rooms a person walks into a hundred times a day.
+//
+// THE THREE KEEP A DIGIT EACH so a hand that learned `alt+5` finds a room there
+// rather than a key that does nothing.
 //
 // IT IS A LIST HERE AND NOT AN `init` ORDER. Go runs a package's `init`s in
 // filename order, so a registry that took its order from them would put the tab
 // bar's reading order at the mercy of what a file happens to be called — and
 // `place_home.go` sorts after `place_tasks.go` would silently reorder the bar
 // and every number on it.
-var placeOrder = []page{pageHome, pageTasks, pageStanding, pageMemory, pageSpend, pageSearch, pageSettings}
+var placeOrder = []page{pageHome, pageTasks, pageSpend, pageSettings, pageStanding, pageMemory, pageSearch}
+
+// placeBarPlaces is how many of [placeOrder] the tab bar draws: the four a day
+// is read through.
+const placeBarPlaces = 4
+
+// barPages is the places the bar draws while a person stands at `here`: the
+// first [placeBarPlaces], and the room they are standing in when it is one of
+// the others — a bar with no word lit is a bar that does not know where you
+// are. With the map up (`every`) it is all of them, numbered, so the three that
+// are off the bar are on the one surface whose job is to show every key.
+func barPages(here page, every bool) []page {
+	if every {
+		return placeOrder
+	}
+	shown := placeOrder[:placeBarPlaces:placeBarPlaces]
+	for _, id := range placeOrder[placeBarPlaces:] {
+		if id == here {
+			return append(shown, id)
+		}
+	}
+	return shown
+}
+
+// placeDigitOf is the digit `alt+` takes to reach one place — its position in
+// [placeOrder], which is not always its position on the bar.
+func placeDigitOf(id page) int {
+	for i, at := range placeOrder {
+		if at == id {
+			return i + 1
+		}
+	}
+	return 0
+}
+
+// placeChord is the chord that reaches one place, spelled the way the command
+// menu and the help write it — `alt+3`. It is READ OFF [placeOrder] so a row
+// that names a place's key cannot go on naming the key it had before the bar
+// was reordered (commands.go's /spend and /search rows did exactly that).
+func placeChord(id page) string { return chordAltWord + itoa(placeDigitOf(id)) }
 
 // registerPlace files one place under its own id. A second registration for one
 // id is a bug this would hide, so it panics at start-up rather than letting one
@@ -331,11 +399,12 @@ func registerPlace(p place) {
 	placeRegistry[p.id()] = p
 }
 
-// pages is the tab bar's order, read from the registry's order table.
+// pages is every place in digit order, read from the registry's order table.
+// The bar draws a prefix of it ([barPages]).
 func pages() []page { return placeOrder }
 
-// placeWordList is the seven words in the bar's own order, for the one sentence
-// on the key sheet that has to say which digit is which (commands.go).
+// placeWordList is the seven words in digit order, for the one sentence on the
+// key sheet that has to say which digit is which (commands.go).
 //
 // IT IS READ OFF [placeOrder] AND NOT TYPED OUT, because a hand-written list on
 // the help sheet is a second answer to what `alt+3` opens — and the day a place
@@ -449,9 +518,9 @@ func (a *app) placeCount(id page) int {
 
 // ── the tab bar ─────────────────────────────────────────────────────────────
 
-// placeTabBar is the second row of every place: the seven words, the one you are
-// standing in wearing the band, and a number beside any place that has something
-// new in it.
+// placeTabBar is the second row of every place: the four words ([barPages]), the
+// one you are standing in wearing the band, and a number beside any place that
+// has something new in it.
 //
 // IT IS [sheetTabBar] WITH THE TITLES PASSED IN, and it is drawn with that
 // function's own geometry — [tabLead], [tabGap], [tabPad] — for the reason that
@@ -459,7 +528,7 @@ func (a *app) placeCount(id page) int {
 // the task strip is, drawn the same way, so that 'which page am I on' is one
 // visual question across the app rather than two". The settings panel keeps its
 // own inner bar under this one, and the two are told apart by what they are
-// made of rather than by a decoration: this one is the seven places, that one is
+// made of rather than by a decoration: this one is the places, that one is
 // settings' own sections.
 //
 // ── THE WIDTH LADDER ────────────────────────────────────────────────────────
@@ -469,13 +538,13 @@ func (a *app) placeCount(id page) int {
 //
 //  1. every word, every count, with the bar's own air between the chips —
 //     while they fit;
-//  2. EVERY WORD AGAIN, WITH THE AIR GIVEN UP. The seven words plus the padding
-//     each chip carries are fifty-seven cells and the air between them is six
-//     more, so a sixty-column terminal — a split pane, an ssh session from a
-//     train, a phone — overshot by three and fell all the way past the middle
-//     rung to the single word `home`, because on a quiet machine no place wears
-//     a count. The words are what this row is FOR and the space between them is
-//     not, so the space is what goes first.
+//  2. EVERY WORD AGAIN, WITH THE AIR GIVEN UP. When the bar was seven words,
+//     they and the padding each chip carries were fifty-seven cells and the air
+//     between them six more, so a sixty-column terminal — a split pane, an ssh
+//     session from a train, a phone — overshot by three and fell all the way
+//     past the middle rung to the single word `home`, because on a quiet machine
+//     no place wears a count. The words are what this row is FOR and the space
+//     between them is not, so the space is what goes first.
 //  3. as many words as fit, in the bar's own order, always carrying the place
 //     you are standing in and any place wearing a count, and ending with a dim
 //     count of the places that did not fit ([barMoreWord]).
@@ -485,13 +554,15 @@ func (a *app) placeCount(id page) int {
 // spare for it — so what the bar owes a person is that the other rooms EXIST,
 // and the key that reaches them is on the foot of every place
 // ([placeHintTail]), which [hintFit] protects to the last cell there is. A bar
-// collapsed to the word `home` said neither of those things, and six of the
-// seven places were undiscoverable on exactly the tier where a person is least
-// able to go looking for them.
+// collapsed to the word `home` said neither of those things, and every other
+// place was undiscoverable on exactly the tier where a person is least able to
+// go looking for them.
 //
 // `numbered` is the map ([app.mapShowing]): every chip grows the digit that
-// jumps to it, in the cells the words were already in, and nothing moves that a
-// person has to re-find when the map goes away.
+// jumps to it, in the cells the words were already in, and the places off the
+// bar are drawn after them with theirs — nothing moves that a person has to
+// re-find when the map goes away, and the three digits the bar does not show
+// are shown where the keys are.
 func (a *app) placeTabBar(width int, numbered bool, pal palette) string {
 	every := func(page) bool { return true }
 	if full, spans, ok := a.tabBarAt(width, numbered, pal, every, tabGap, 0); ok {
@@ -544,10 +615,10 @@ func barMoreWord(n, room int) string {
 // [app.tabBarAt] so the ladder can MEASURE a chip without painting one, and so
 // the measurement and the paint can never come to disagree about how wide a
 // word is.
-func (a *app) barChipWord(at int, id page, numbered bool) string {
+func (a *app) barChipWord(id page, numbered bool) string {
 	word := id.word()
 	if numbered {
-		word = itoa(at+1) + " " + word
+		word = itoa(placeDigitOf(id)) + " " + word
 	}
 	if n := a.placeCount(id); n > 0 {
 		word += " " + itoa(n)
@@ -574,28 +645,29 @@ func (a *app) barChipWord(at int, id page, numbered bool) string {
 // last cells on one more word and then had no room to say two others exist
 // would be the collapse this ladder is here to prevent, one word later.
 func (a *app) barWordsAt(width int, numbered bool) (map[page]bool, int) {
-	cost := func(at int, id page) int { return ansi.StringWidth(a.barChipWord(at, id, numbered)) + tabPadCols }
-	keep := make(map[page]bool, len(pages()))
+	shown := barPages(a.page, numbered)
+	cost := func(id page) int { return ansi.StringWidth(a.barChipWord(id, numbered)) + tabPadCols }
+	keep := make(map[page]bool, len(shown))
 	spent := tabLead
-	for at, id := range pages() {
+	for _, id := range shown {
 		if a.barKeeps(id) || a.placeCount(id) > 0 {
 			keep[id] = true
-			spent += cost(at, id)
+			spent += cost(id)
 		}
 	}
-	reserve := tabPadCols + ansi.StringWidth("+"+itoa(len(pages())))
-	for at, id := range pages() {
+	reserve := tabPadCols + ansi.StringWidth("+"+itoa(len(shown)))
+	for _, id := range shown {
 		if keep[id] {
 			continue
 		}
-		if spent+cost(at, id)+reserve > width {
+		if spent+cost(id)+reserve > width {
 			break
 		}
 		keep[id] = true
-		spent += cost(at, id)
+		spent += cost(id)
 	}
 	elided := 0
-	for _, id := range pages() {
+	for _, id := range shown {
 		if !keep[id] {
 			elided++
 		}
@@ -682,9 +754,10 @@ type placeTabSpan struct {
 // drawn as [barMoreWord] at the end of the row, in the cells that are left.
 func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bool, gap, elided int) (string, []placeTabSpan, bool) {
 	line, plain := strings.Repeat(" ", tabLead), strings.Repeat(" ", tabLead)
-	spans := make([]placeTabSpan, 0, len(pages()))
+	shown := barPages(a.page, numbered)
+	spans := make([]placeTabSpan, 0, len(shown))
 	at, first := tabLead, true
-	for i, id := range pages() {
+	for _, id := range shown {
 		if !keep(id) {
 			continue
 		}
@@ -697,7 +770,7 @@ func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bo
 		// THE MAP GROWS THE NUMBER IN THE CELL THE WORD WAS ALREADY IN
 		// (SCREEN 3b). Nothing shifts, nothing pops up, and letting go of the
 		// map leaves the bar exactly where the eye left it ([app.barChipWord]).
-		word := a.barChipWord(i, id, numbered)
+		word := a.barChipWord(id, numbered)
 		chip := tabPad + word + tabPad
 		band := ansi.StringWidth(word) + tabPadCols
 		switch {
@@ -827,9 +900,14 @@ func (a *app) barDrop() {
 // does. Every list here clamps because a list has a top and a bottom a person is
 // reading towards; the bar is a RING — it is the circle `tab` already walks
 // ([nextPage]), and stopping the cursor dead at `settings` would make the two
-// keys disagree about the same seven words.
+// keys disagree about the same words.
+//
+// IT WALKS THE WORDS ON THE BAR, which is the ring drawn from where the person
+// is standing rather than from where the cursor is: standing in memory, the
+// bar carries `memory` after the four, and a cursor that walked a ring without
+// it would step over a word it can see.
 func (a *app) barWalk(back bool) {
-	a.bar.at = nextPage(a.bar.at, back)
+	a.bar.at = nextOn(barPages(a.page, a.mapShowing), a.bar.at, back)
 	a.touch()
 }
 
@@ -1060,6 +1138,7 @@ func placeFrameWithBar(a *app, width, height int,
 	// a place does not do is draw the question's violet or the tick's olive.
 	was := a.pal
 	a.pal = was.onPlaces()
+	a.pal.placeRows = !a.at(pageHome)
 	defer func() { a.pal = was }()
 	pal := a.pal
 	lines := make([]string, 0, height)
@@ -1069,21 +1148,32 @@ func placeFrameWithBar(a *app, width, height int,
 		hits = append(hits, hit)
 	}
 
-	add(a.pulseLine(width, pal), nil)
+	// THE HEAD IS THE CONVERSATION'S HEAD, drawn by the same function with the
+	// bar as its middle row (head.go).
+	//
 	// THE BAR IS ROW ONE AND THE POINTER IS TOLD SO HERE. A press arrives as a
 	// row of the terminal, and the only honest way to know which row the bar
 	// ended up on is to record it where it was drawn — the clamp below can cut
 	// it off a frame too short for its own contents, and a press resolved
 	// against a constant would then open a place for a click on a body row.
 	a.tabRow = placeTabRow
-	add(a.placeTabBar(width, a.mapShowing, pal), nil)
-	add(pal.dim(rule(width)), nil)
-	add("", nil)
+	for _, row := range a.headRows(width, a.placeTabBar(width, a.mapShowing, pal), pal) {
+		add(row, nil)
+	}
 
 	box := a.placeBox()
 	var draftRows []string
 	var draftCX, draftCY int
-	if box != nil && !box.empty() {
+	switch {
+	case a.targetPickShowing():
+		// THE BOX IS THE LIST'S FILTER WHILE THE TARGET'S MODEL LIST IS UP, exactly
+		// as the conversation's box is the picker's (input.go's [app.inputBlock]):
+		// what a person types narrows the rows above, and the row has to show
+		// them the letters they typed rather than the resting sentence. The
+		// picker's own hint stands in while nothing is typed.
+		draftRows, draftCX, draftCY = draftBlock(&a.target.pick.filter, pal, width-2, 1,
+			a.target.pick.hintAt(width-2-ansi.StringWidth(prompt)), "")
+	case box != nil && !box.empty():
 		draftRows, draftCX, draftCY = draftBlock(box, pal, width-2, homeDraftRows, "", "")
 	}
 	draftHeight := len(draftRows)
@@ -1098,7 +1188,24 @@ func placeFrameWithBar(a *app, width, height int,
 	// and they belong beside the composer that could answer them.
 	inline := a.verbStripRow(width)
 	strip := a.placeStrip(width)
-	note := a.placeNote(width)
+	// THE NOTE RIDES THE RULE, SO THE FOOT IS ONE HEIGHT ON EVERY PLACE. It used
+	// to be a row of its own under the rule, and a place with a note (tasks,
+	// settings) drew its rule one row higher than a place without one — `tab`
+	// between them moved the rule and the body's bottom edge, and the first task
+	// to land moved it again inside tasks (PLACES-AUDIT.md finding 1). As the
+	// rule's legend it costs no row at all, which is the shape the conversation's
+	// seam and home's target already have. Home keeps its notes as rows because
+	// its rule is already a legend of its own ([app.targetLegend]).
+	//
+	// A note builder fits its words to the width it is handed less the two cells
+	// its own row spent on a lead and a margin, so it is handed the rule's room
+	// plus those two — and drops a whole clause, rather than the rule cutting one.
+	var note, legend []string
+	if a.at(pageHome) {
+		note = a.placeNote(width)
+	} else {
+		legend = a.placeNote(width - placeNoteRuleFrame + 2)
+	}
 	// AND THE TRAY IS A ROW OF THE FOOT, directly over the box, exactly where the
 	// conversation draws it (attach.go, input.go's [app.inputBlock]). It is
 	// measured with the foot for the composer layer's reason: a row that appeared
@@ -1153,10 +1260,19 @@ func placeFrameWithBar(a *app, width, height int,
 		for i := range drawn {
 			texts[i] = drawn[i].text
 		}
+		a.hop.originY = len(lines)
 		texts = a.hopOver(texts, width, pal)
 		for i := range drawn {
 			drawn[i].text, drawn[i].hit = texts[i], nil
 		}
+	}
+	// AND THE MODEL LIST OVER HOME'S TARGET IS DRAWN THE SAME WAY, for the same
+	// reason and through the same body (homedraft.go's [app.targetPickRows]).
+	// `/model` at home used to open [app.pick] — a bottom-anchored overlay a
+	// place cannot draw and the keyboard cannot reach — which then appeared over
+	// the conversation behind home the moment `esc` closed the screen.
+	if a.targetPickShowing() {
+		drawn = a.targetPickRows(width, bodyRoom, pal)
 	}
 	if a.composer.open {
 		// The model list `alt+o` opens is drawn in the body's room and not over
@@ -1175,13 +1291,27 @@ func placeFrameWithBar(a *app, width, height int,
 		add(row.text, row.hit)
 	}
 	add("", nil)
-	add(pal.dim(rule(width)), nil)
-	// A PLACE MAY SAY ONE LINE ABOUT WHAT IT IS HOLDING, and it says it here:
-	// under the rule and above the composer, where every place's own count,
-	// filter line or open editor's label goes. It is the router's one concession
-	// to the places having bodies that are not all lists — and it is a LINE, not
-	// a foot: a place that wanted three rows here would be a place drawing a
-	// second frame inside this one.
+	// AND HOME'S RULE IS A LEGEND RATHER THAN A LINE. The other six places have
+	// nothing to put on it — you are IN them, and the tab bar four rows up says
+	// which — but home's box is a draft for a conversation that does not exist
+	// yet, and this is the line a person's eye crosses on the way into it. So it
+	// carries the two facts that draft is made of and the two chords that change
+	// them, exactly as the conversation's own seam does one row above its box
+	// (homedraft.go, foot.go's THE SEAM IS WHO AND WHERE).
+	//
+	// It is recorded as a local and published below the clamp for [app.boxRow]'s
+	// reason: the clamp is what decides which rows this frame really kept.
+	targetTop := -1
+	ruleLine := placeNoteRule(legend, width, pal)
+	if a.at(pageHome) {
+		if line, drew := a.targetLegend(width, pal); drew {
+			ruleLine, targetTop = line, len(lines)
+		}
+	}
+	add(ruleLine, nil)
+	// A PLACE MAY SAY ONE LINE ABOUT WHAT IT IS HOLDING, and it says it on the
+	// rule above ([placeNoteRule]); only home, whose rule is its target legend,
+	// still spends rows on one here.
 	for _, row := range note {
 		add(row, nil)
 	}
@@ -1192,6 +1322,16 @@ func placeFrameWithBar(a *app, width, height int,
 	// a verb that is always in reach has to always say where it will land —
 	// otherwise "start a task from anywhere" is "start a task somewhere".
 	chip := a.scopeChip()
+	// AND HOME HAS NO CHIP, because home's rule says the same fact one row up and
+	// says it better: `→ new conversation in ~/src/parser · glm-5.3-flash` is
+	// where the sentence lands AND what it will run on, and `here ~/src/parser`
+	// competing with the draft for the same row was the one reading on this
+	// screen that `enter` did not honour (homedraft.go's header). The other six
+	// places keep it — `alt+enter` sends a task from any of them, and a verb
+	// always in reach has to always say where it will land.
+	if a.at(pageHome) {
+		chip = ""
+	}
 	// AND THE POINTER IS TOLD WHERE THE BOX ENDED UP, on the tab bar's own
 	// bargain: a press resolves against the rows that were actually drawn
 	// ([app.boxRow], placemouse.go's [app.placeBoxPress]). It is recorded as a
@@ -1278,8 +1418,21 @@ func placeFrameWithBar(a *app, width, height int,
 				boxHeight = 0
 			}
 		}
+		// AND HOME'S RULE MOVES WITH THEM, by the same arithmetic and under the
+		// same rule: a legend the clamp pushed off the top is a legend with no
+		// row on this frame, and a press must never be resolved against one.
+		switch {
+		case targetTop >= 1+removed:
+			targetTop -= removed
+		case targetTop > 0:
+			targetTop = -1
+		}
 	}
 	a.boxRow, a.boxRows = boxTop, boxHeight
+	a.targetRow = targetTop
+	if targetTop < 0 {
+		a.targetFolderSpan, a.targetModelSpan = hudSpan{}, hudSpan{}
+	}
 	for len(lines) < height {
 		add("", nil)
 	}
@@ -1438,9 +1591,22 @@ const (
 	mapCloseWords = "esc close"
 )
 
-// placeRestWord is what this place's box row says with nothing typed in it, and
-// it is the same sentence on every place — home included (SCREEN 2b).
+// placeRestWord is what this place's box row says with nothing typed in it.
+//
+// IT IS THE SAME SENTENCE ON EVERY PLACE THAT SENDS ONE — home included (SCREEN
+// 2b) — AND THE PLACE'S OWN WHERE THE BOX DOES SOMETHING ELSE. The design's
+// argument for one sentence is that the box is one box wherever you stand, and
+// that argument holds exactly as far as the box doing one thing. On the tasks
+// place it does not: there is no message to send from there, every printable key
+// goes to the filter ([placeTasks.box]), and the shared prompt was inviting an
+// instruction into a slot that could only ever narrow a list ([place.resting]
+// carries the whole of that story).
 func (a *app) placeRestWord() string {
+	if pl := a.showing(); pl != nil {
+		if said := strings.TrimSpace(pl.resting(a)); said != "" {
+			return "› " + said
+		}
+	}
 	return "› " + placeRestWord
 }
 
@@ -1493,6 +1659,13 @@ func (a *app) placeHintSaid() string {
 	// round.
 	if pl := a.showing(); pl != nil && a.sheetLayerOwnsKeys() {
 		return pl.hint(a)
+	}
+	// AND THE MODEL LIST OVER HOME'S TARGET IS THE THIRD OF THOSE, on identical
+	// terms: it has taken `tab` along with every other key while it is up
+	// (homedraft.go's [app.homeTargetKey]), so the tail would name two keys that
+	// do nothing.
+	if a.targetPickShowing() {
+		return a.homeHint()
 	}
 	// EVERY PLACE'S OWN SENTENCE, WITH THE ROUTER'S KEYS ON THE END OF IT. The
 	// places that had a keys line of their own keep it — it is about the row a
@@ -1692,7 +1865,7 @@ func noteFit(note string, room int) string {
 // there was one, in the two shapes the person-facing sentences on this surface
 // are built out of:
 //
-//	a gloss in brackets   `… move it here (it moves when that window's reply ends)`
+//	a gloss in brackets   `… move it here (that window's reply stops there)`
 //	a dash elaboration    `open in another window — enter again to move it here`
 //
 // The bracket goes first because a gloss is the lowest-value thing on the line
@@ -1772,13 +1945,17 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 // SCREEN 1f'S PREAMBLE IS THE LAW NOW: an almost-empty place is the best teacher
 // on the machine, so it always opens and spends the whole frame saying what it
 // is for. There is no refusal path left here to put anything back with, and each
-// place answers an empty world with its own teaching prose ([tasksTeach],
-// [standingTeach], [memoryTeaching]) rather than with a bounce. The one fact a
+// place answers an empty world with its heading and its whisper
+// (placeprose.go's [placeWhisper]) rather than with a bounce. The one fact a
 // place cannot teach its way around — a reading that belongs to a machine this
 // process cannot see — is drawn as a single dim line in the place's body
 // ([place.remote]), which is still the place being open and saying why it is
 // empty.
-func (a *app) showPage(id page) tea.Cmd {
+func (a *app) showPage(id page) (cmd tea.Cmd) {
+	if a.startingChat() {
+		back := a.parkChatStart()
+		defer func() { cmd = tea.Batch(back, cmd) }()
+	}
 	// LEAVING A PLACE IS THE LOOK, and it is the place's own `close` that writes
 	// the stamp — one call for EVERY place rather than a list of them here, which
 	// would be a second answer to which places can wear a number
@@ -1804,7 +1981,17 @@ func (a *app) showPage(id page) tea.Cmd {
 	// next room it would be a decision drawn over a page it was never about
 	// (composerlayer.go).
 	a.closeComposerLayer()
+	// AND EVERY BOTTOM-ANCHORED MODAL GOES WITH IT. A place takes the frame
+	// whole, so a picker or a panel left open behind one is drawn nowhere and
+	// driven by nothing — and then appears over whatever the next `esc` lands on
+	// ([app.closeModals] names the ten and says where the bug was seen).
+	a.closeModals()
 	a.pageMsg = ""
+	// AND THE TOP LINE'S MONEY IS READ AT THE DOOR, before the room's first
+	// frame: the pulse draws a memo and never a file, so a room walked into
+	// between two beats would otherwise open under yesterday's figure
+	// (homemachine.go's [app.readMachineMoney]).
+	a.readMachineMoney(a.now())
 	next := placeFor(id)
 	if next == nil {
 		// THE CONVERSATION IS A PAGE ID LIKE ANY OTHER, and it is the one with no
@@ -1814,6 +2001,38 @@ func (a *app) showPage(id page) tea.Cmd {
 	}
 	a.page = id
 	return next.open(a)
+}
+
+// closeModals puts away every bottom-anchored overlay on the way into a place.
+//
+// THIS IS THE FIX FOR "IT GOES TO AN OLD CHAT". A place takes the frame whole
+// (view.go returns before the chrome is ever built) and every key while one is
+// showing is routed to [app.placeKeyPress] above the modal checks (input.go), so
+// each of these opened from home was invisible AND unreachable — and then
+// [app.closeHome] handed the frame back to the conversation underneath and the
+// picker appeared over THAT. Ten commands did it: /model, /resume, /folder,
+// /attach, /files, /crew, /permissions, /connect, /harness and /subharness.
+//
+// IT IS NOT [app.standDownRest], which is the two FULLSCREEN pages that are not
+// places, and it is not [app.closeForSwitch], which is about a conversation
+// changing under a person's hands. This one is about the frame: these are
+// overlays the place cannot draw, so a place standing up puts them away.
+func (a *app) closeModals() {
+	a.pick.close()
+	a.roster.close()
+	a.folder.close()
+	a.shelf.close()
+	a.crewPick.close()
+	a.effPick.close()
+	a.connPanel.close()
+	a.harnPanel.close()
+	a.permPanel.close()
+	a.subPage.close()
+	// AND HOME'S OWN MODEL LIST, which IS drawn where it stands and is still a
+	// list nobody left open on purpose: walking to another place and back to a
+	// list you had not finished with is a list you have to remember opening
+	// (homedraft.go). The pin it was about survives; only the list goes.
+	a.target.pick.close()
 }
 
 // raisePlace says where the person is standing for a place that has ALREADY
@@ -1853,11 +2072,8 @@ func (a *app) pageShowing() bool { return a.showing() != nil }
 // arithmetic — a terminal row becoming a line of a body, a window that follows a
 // cursor — is placemouse.go's, because it is the same on every place.
 
-// placeBodyPress is a press on one place's own rows: it moves that place's
-// cursor and never acts, which is the law the standing place already stated for
-// all of them — every verb on these lists is a key, and `enter` leaves the
-// conversation a person is sitting in, so a click that did either would be a
-// gesture nobody can aim.
+// placeBodyPress is a press on one place's own rows: the row under it is
+// entered, exactly as `enter` on it would (the law is [place.press]'s).
 func (a *app) placeBodyPress(y int) (tea.Cmd, bool) {
 	pl := a.showing()
 	// AND NO GESTURE REACHES A PAGE THAT IS UNDER THE COMPOSER LAYER. Its rows are
@@ -1867,7 +2083,7 @@ func (a *app) placeBodyPress(y int) (tea.Cmd, bool) {
 	if pl == nil || a.composer.open {
 		return nil, false
 	}
-	return nil, pl.press(a, y)
+	return pl.press(a, y)
 }
 
 // placeBodyHover is the pointer resting over one place's rows: THE POINTER
@@ -1890,10 +2106,16 @@ func (a *app) placeBodyWheel(delta int) bool {
 	return pl != nil && !a.composer.open && pl.wheel(a, delta)
 }
 
-// nextPage is `tab`: the place after this one, and round again from the last.
-// `back` is `shift+tab`, the same circle walked the other way.
-func nextPage(at page, back bool) page {
-	all := pages()
+// nextPage is `tab`: the place after this one along the bar, and round again
+// from the last. `back` is `shift+tab`, the same circle walked the other way.
+//
+// THE CIRCLE IS THE BAR ([barPages]). `tab` is the bar walked by a key, so it
+// goes where the words are: the four, and the room you are standing in when it
+// is one of the three off the bar — from which `tab` goes on to home.
+func nextPage(at page, back bool) page { return nextOn(barPages(at, false), at, back) }
+
+// nextOn is one step round a ring of places from `at`.
+func nextOn(all []page, at page, back bool) page {
 	for i, id := range all {
 		if id != at {
 			continue

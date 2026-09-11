@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // caption is the title of one discrete step of a turn's work.
@@ -24,6 +26,12 @@ type caption struct {
 	calls            int
 	began, ended     time.Time
 	told             string
+	// category is the family of work this step belongs to as the NARRATOR named
+	// it, and it is empty whenever the narrator named none. [stepCategory] is
+	// the door that answers the question completely, falling to the batch's own
+	// tool names — this field is only the model's half, kept beside [told] the
+	// way [told] is kept beside [text].
+	category session.ActionCategory
 }
 
 // captionSource records which rung supplied the words.
@@ -70,22 +78,22 @@ func deriveCaptions(es []entry, runningTurn int) []caption {
 				// Walking backwards and retaining the match merges consecutive
 				// prose heads into the earliest head over this one batch.
 				head = i
+				continue
+			}
+			// Reasoning may sit between this step's narration and its calls.
+			// Once its narration is found, an intervening block separates it
+			// from an older phase; borrowing that older head loses this one.
+			if head >= 0 {
+				break
 			}
 		}
 
 		c := caption{start: from, head: head, end: to, calls: to - from}
-		if head >= 0 {
-			c.start = head
-			c.source = captionSaid
-			c.text = captionWords(es[head].text)
-		}
-		// THINKING NEVER SUPPLIES THE TITLE. A first-line of chain-of-thought is
-		// reasoning, not a step; without a narrating line we compose a floor from
-		// the tools, and the cheap narrator may overwrite it while the batch runs.
-		if c.text == "" {
-			c.source = captionMade
-			c.text = shortCaption(composeCaption(es, from, to))
-		}
+		// WHETHER THE BATCH IS STILL OPEN IS DECIDED BEFORE ITS WORDS ARE, because
+		// the words depend on it (see [captionPast]). It used to be read after the
+		// title was composed, which is how a step that had finished every one of
+		// its calls went on saying `running 2 commands` for the two minutes a
+		// person spent watching a request fail behind it.
 		live := false
 		for i := from; i < to; i++ {
 			e := es[i]
@@ -97,7 +105,30 @@ func deriveCaptions(es []entry, runningTurn int) []caption {
 				c.ended = e.ended
 			}
 			if e.caption != "" {
+				// The newest narration in the batch wins, and its family comes
+				// with it — the two were written together and are read together,
+				// so a step never wears the mark of a sentence it is not showing.
 				c.told = e.caption
+				c.category = e.captionCat
+			}
+		}
+		if head >= 0 {
+			c.start = head
+			c.source = captionSaid
+			c.text = captionWords(es[head].text)
+		}
+		// THINKING NEVER SUPPLIES THE TITLE. A first-line of chain-of-thought is
+		// reasoning, not a step; without a narrating line we compose a floor from
+		// the tools, and the cheap narrator may overwrite it while the batch runs.
+		if c.text == "" {
+			c.source = captionMade
+			c.text = shortCaption(composeCaption(es, from, to))
+			// A FINISHED BATCH IS NEVER CAPTIONED AS RUNNING. The floor is written
+			// in the present because it is normally written while the calls are
+			// going; once every row in it has closed, the same words in the past
+			// are the same claim about the same work, made honestly.
+			if !live {
+				c.text = captionPast(c.text)
 			}
 		}
 		if live {
@@ -118,8 +149,25 @@ func deriveCaptions(es []entry, runningTurn int) []caption {
 }
 
 func captionWords(text string) string {
-	line := strings.TrimSpace(firstLine(text))
-	return shortCaption(line)
+	title, _ := captionSpan(text)
+	return title
+}
+
+// captionSpan consumes a source line only when the caption represents it whole.
+// An abbreviated heading keeps the complete narration in the expanded body;
+// preserving sentences is safer than resuming partway through a clipped clause.
+func captionSpan(text string) (title string, cut int) {
+	line := firstLine(text)
+	title = shortCaption(strings.TrimSpace(line))
+	whole := strings.Join(strings.Fields(strings.TrimRight(strings.TrimSpace(line), ".!?;:")), " ")
+	if title == "" || title != whole {
+		return title, 0
+	}
+	cut = len(line)
+	if cut < len(text) && text[cut] == '\n' {
+		cut++
+	}
+	return title, cut
 }
 
 // shortCaption keeps ONE short sentence for the step title. Same rules as
@@ -435,6 +483,57 @@ func captionVerb(tool string) string {
 	}
 }
 
+// ── THE TENSE OF A STEP THAT IS OVER ────────────────────────────────────────
+
+// captionPastVerbs is the ONE TABLE that says how this surface spells a verb it
+// composed in the present once the work is finished. Every gerund [captionVerb]
+// and [bashCaption] can produce is in it, and a word that is not in it is left
+// exactly as written — a raw command slice (`go vet ./...`) has no tense to
+// change, and guessing one would garble the only part of the row that is quoted
+// rather than composed.
+var captionPastVerbs = map[string]string{
+	"asking":    "asked",
+	"building":  "built",
+	"checking":  "checked",
+	"editing":   "edited",
+	"fetching":  "fetched",
+	"listing":   "listed",
+	"looking":   "looked",
+	"reading":   "read",
+	"running":   "ran",
+	"searching": "searched",
+	"working":   "worked",
+}
+
+// captionPast is the one door onto that table: a floor caption composed in the
+// present, spelled for a batch that has closed.
+//
+// IT CONVERTS THE LEADING VERB OF EACH CLAUSE and nothing else. The floor's
+// grammar is narrow by construction — a gerund, then what it was pointed at —
+// and the one shape with two of them is `editing 2 files and running the suite`,
+// which is why the split is on ` and `. Everything after the verb is the work's
+// own words and is carried through untouched.
+func captionPast(text string) string {
+	clauses := strings.Split(text, " and ")
+	for i, clause := range clauses {
+		clauses[i] = captionPastClause(clause)
+	}
+	return strings.Join(clauses, " and ")
+}
+
+func captionPastClause(clause string) string {
+	fields := strings.Fields(clause)
+	if len(fields) == 0 {
+		return clause
+	}
+	past, ok := captionPastVerbs[strings.ToLower(fields[0])]
+	if !ok {
+		return clause
+	}
+	fields[0] = past
+	return strings.Join(fields, " ")
+}
+
 func dominantCaptionVerb(counts map[string]int) string {
 	keys := make([]string, 0, len(counts))
 	for key := range counts {
@@ -504,40 +603,10 @@ func captionText(c caption) string {
 	return shortCaption(c.text)
 }
 
-const shimmerPeriod = 36
-const shimmerBand = 8
-
-// shimmer paints the one moving band a collapsed live caption owns.
-//
-// THE SHIMMER IS THE SPINNER, RELOCATED. Its tool rows are absent while it
-// moves, and opening those rows returns the animation budget to their spinners.
-func (a *app) shimmer(text string) string {
-	if text == "" {
-		return ""
-	}
-	if a.linear {
-		return a.pal.narr(text)
-	}
-	runes := []rune(text)
-	span := len(runes) + shimmerBand
-	center := (a.paints % shimmerPeriod) * span / shimmerPeriod
-	from, to := center-shimmerBand, center
-	var b strings.Builder
-	for i, r := range runes {
-		word := string(r)
-		if i >= from && i < to {
-			b.WriteString(a.pal.ink(word))
-		} else {
-			b.WriteString(a.pal.narr(word))
-		}
-	}
-	return b.String()
-}
-
 // captionRows draws the step title. IT WRAPS; IT NEVER ELLIPSIS-CUTS. A
 // person-facing caption is short (5–10 words), and on a narrow frame those
 // words still show in full across lines rather than ending in `…`.
-func (a *app) captionRows(c caption, live, open bool, width int) []row {
+func (a *app) captionRows(c caption, live, open bool, width int, d deck) []row {
 	mark := a.linearMark("▾ ", "v ")
 	if !open {
 		mark = a.linearMark("▸ ", "> ")
@@ -548,6 +617,19 @@ func (a *app) captionRows(c caption, live, open bool, width int) []row {
 		tail = ""
 		if !c.began.IsZero() {
 			tail = countUpWord(a.now().Sub(c.began))
+		}
+		// AND A STEP THAT IS WRITING SAYS HOW MUCH IT HAS WRITTEN. This row
+		// stands for one step, so it carries one step's figure and never the
+		// turn's — the door above it carries that (tokencol.go states the rule
+		// both rows obey). The dot is the surface's own separator between two
+		// facts about the same thing: how long it has been going, and what has
+		// come back from it.
+		if word := a.stepTokenWord(c, d); word != "" {
+			if tail == "" {
+				tail = word
+			} else {
+				tail += " · " + word
+			}
 		}
 	}
 	room := width - workIndentCols(width)
@@ -596,8 +678,8 @@ func (a *app) captionRows(c caption, live, open bool, width int) []row {
 
 // captionRow is the single-row form tests still call; live drawing uses
 // [captionRows] so a narrow frame wraps instead of clipping.
-func (a *app) captionRow(c caption, live, open bool, width int) row {
-	rows := a.captionRows(c, live, open, width)
+func (a *app) captionRow(c caption, live, open bool, width int, d deck) row {
+	rows := a.captionRows(c, live, open, width, d)
 	if len(rows) == 0 {
 		return row{entry: c.start, hit: hitCaption, turn: c.start}
 	}

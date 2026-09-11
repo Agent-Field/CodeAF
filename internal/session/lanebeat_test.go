@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 	"testing"
-	"time"
 
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
@@ -64,13 +63,12 @@ func TestSwappingTheModelTellsTheBeat(t *testing.T) {
 	t.Cleanup(func() { _ = agent.Close() })
 
 	agent.SetModel("somebody/picked-in-the-picker")
-	select {
-	case model := <-sheet.Wanted():
-		if model != "somebody/picked-in-the-picker" {
-			t.Fatalf("the beat was told about %q", model)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("SetModel never told the beat, so the picked model stays cold for the life of the session")
+	// SetModel queues synchronously. Observe the receipt, not the queue the
+	// real beat is consuming; two readers can make a successful delivery fail.
+	sheet.mu.Lock()
+	defer sheet.mu.Unlock()
+	if len(sheet.wanted) != 1 || sheet.wanted[0] != "somebody/picked-in-the-picker" {
+		t.Fatalf("the beat was told about %q, want the picked model exactly once", sheet.wanted)
 	}
 }
 
@@ -94,9 +92,9 @@ func TestASessionWithNoBeatTellsNobody(t *testing.T) {
 	t.Cleanup(func() { _ = agent.Close() })
 
 	agent.SetModel("somebody/picked-in-the-picker")
-	select {
-	case model := <-sheet.Wanted():
-		t.Fatalf("routing off still queued a fetch for %q", model)
-	case <-time.After(150 * time.Millisecond):
+	sheet.mu.Lock()
+	defer sheet.mu.Unlock()
+	if len(sheet.wanted) != 0 {
+		t.Fatalf("routing off still queued a fetch for %q", sheet.wanted)
 	}
 }

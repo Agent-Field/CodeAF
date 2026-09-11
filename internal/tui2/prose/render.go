@@ -301,9 +301,9 @@ func (r *renderer) list(n *ast.List) {
 // rule is the faint hairline of a thematic break. It spans the measure and not
 // the terminal, so it ends where the sentences above it end.
 //
-// DELIBERATELY NOT [blocks.Ruled]: a thematic break is the AUTHOR's rule, drawn
-// because the document asked for one, and it never carries a title — a word set
-// into it would be this renderer speaking over the text it is rendering.
+// A thematic break is the AUTHOR's rule, drawn because the document asked for
+// one, and it never carries a title — a word set into it would be this renderer
+// speaking over the text it is rendering.
 func (r *renderer) rule() {
 	r.emit([]piece{{text: hairline(r.proseWidth()), st: style{tok: tokens.TextTertiary}}})
 }

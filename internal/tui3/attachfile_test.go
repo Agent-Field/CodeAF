@@ -207,11 +207,16 @@ func TestTheFilesOnOneMessageHaveATotalCeiling(t *testing.T) {
 func TestEveryOtherRefusalAttachCanGive(t *testing.T) {
 	a, _, dir := fileLab(t, "", map[string]int{"server.log": 8, "sub/inner.txt": 8})
 	for _, test := range []struct{ arg, want string }{
-		{"", "/attach takes a path · try /attach server.log"},
 		{"nope.txt", "no such file: nope.txt"},
 		// `sub` USED TO BE HERE, AND IT IS NOT A REFUSAL ANY MORE. A directory
 		// after /attach is now the folder door
 		// (TestAttachOnAFolderTakesTheFolderDoorInsteadOfRefusing).
+		//
+		// AND NEITHER IS A BARE `/attach`. `/attach takes a path · try /attach
+		// server.log` used to be the first row here; the command now opens the
+		// context browser with file intent instead of correcting somebody who
+		// does not know the path
+		// (TestABareAttachOpensTheBrowserWhereTheConversationStands).
 	} {
 		a.entries = nil
 		a.attachFilePath(test.arg)

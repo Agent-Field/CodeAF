@@ -35,14 +35,16 @@ import (
 )
 
 // workerSystem is the prompt a task node actually reads: prompts/system.md with
-// the shared discipline in it, plus prompts/task.md appended. It is rendered
+// the shared discipline in it, plus prompts/worker.md appended. It is rendered
 // rather than read off a variable because the assembly is the thing under test —
 // a fragment that stopped being substituted would still sit in its own file.
 func workerSystem(t *testing.T) string {
 	t.Helper()
 	session, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	// The id is what makes this a NODE rather than something else running with
+	// nobody there ([Config.isWorker]), and [Agent.newTaskAgent] always sets it.
 	return renderSystem(Config{
-		Workspace: t.TempDir(), InTask: true, tasker: session.graph(), taskDepth: 1,
+		Workspace: t.TempDir(), InTask: true, tasker: session.graph(), taskID: 1, taskDepth: 1,
 	})
 }
 
@@ -126,7 +128,7 @@ func TestTheChatIsTaughtTheSameWorkingDisciplineAsTheWorker(t *testing.T) {
 // TestTheDeliverableFilePathLawIsSaidOnce is the same one-wording law the
 // discipline fragment already obeys, applied to the deliverable-file path
 // rule. prompts/system.md is read by every surface this package renders, so a
-// second copy in prompts/task.md is a paragraph every worker paid for twice
+// second copy in prompts/worker.md is a paragraph every worker paid for twice
 // (prefixbudget_test.go weighs the assembled prompt) and a law with two
 // places to drift apart from.
 //

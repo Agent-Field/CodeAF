@@ -98,8 +98,11 @@ var (
 	// a number.
 	deadlineSized = regexp.MustCompile(`time\.(Minute|Second|Hour|Millisecond)\b|time\.Duration\(`)
 	// deadlineAsks is the whole of the permitted way to come by a leaf's room:
-	// the table's two doors onto the shape, and the one door onto the pad.
-	deadlineAsks = regexp.MustCompile(`\.Deadline\(|\.Watchdog\(|WatchdogAbove\(`)
+	// the table's doors onto the shape, and the one door onto the pad.
+	// DeadlineWithin is a second door onto the same table, in the same file; the
+	// alternative is the fifth hand-written copy of the arithmetic this law
+	// exists to forbid.
+	deadlineAsks = regexp.MustCompile(`\.Deadline\(|\.DeadlineWithin\(|\.Watchdog\(|WatchdogAbove\(`)
 	// deadlineFromTokens is the floor-and-a-minute-per-fifty-thousand
 	// arithmetic in any spelling at all: a token count turned into a duration.
 	// It catches the copy that names its variable something else entirely,
@@ -236,6 +239,8 @@ func TestTheLeafRoomLawReadsTheActNotTheSpelling(t *testing.T) {
 			"a run's wall is not a leaf's room, whatever it is spelled as"},
 		{"deadline := leafRoom.Deadline(tokens)", roomAllowed,
 			"asking the table is the whole permitted way to come by a room"},
+		{"deadline := leafRoom.DeadlineWithin(tokens, wallLeft)", roomAllowed,
+			"asking the table to fit its room under a wall is the second permitted door"},
 		{"deadline, ok := ctx.Deadline()", roomAllowed,
 			"reading a context's deadline hands out nothing"},
 		{"shaped.deadline = info.Deadline(build.maxTokens)", roomAllowed,

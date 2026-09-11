@@ -401,6 +401,42 @@ func UsageTotals(lines []UsageLine) DaySpend {
 	return total
 }
 
+// SpendToday is what was spent on now's local calendar day, in dollars — the
+// figure a daily ceiling is measured against.
+//
+// THE DAY IS THE WRITER'S, through [UsageLineDay], so this and the day's bar in
+// [UsageByDay] are one answer: a figure beside the bar that re-derived the day
+// from each row's timestamp would disagree with it for every call made near
+// midnight in another zone.
+func SpendToday(lines []UsageLine, now time.Time) float64 {
+	today := usageBucketStart(now, GrainDay)
+	var usd float64
+	for _, line := range lines {
+		if UsageLineDay(line).Equal(today) {
+			usd += line.USD
+		}
+	}
+	return usd
+}
+
+// SpendShare is how much of a daily budget usd is, as a fraction: 0.5 is half
+// of it. It is 0 when there is no budget — config's 0 is no ceiling at all
+// (internal/config's DailyBudgetUSDAt), and a share of no ceiling is nothing
+// a surface should draw.
+//
+// IT IS NOT CAPPED AT ONE. A day over its ceiling is news, and a surface drawing
+// a bar clamps it there itself; clamping here would hide the overrun from
+// every other reader.
+//
+// The budget is an ARGUMENT and not read here, so this file stays what its
+// header says it is: arithmetic over what a page already has.
+func SpendShare(usd, budget float64) float64 {
+	if budget <= 0 {
+		return 0
+	}
+	return usd / budget
+}
+
 // ── which models ────────────────────────────────────────────────────────────
 
 // ModelSpend is one row of "what ran it": a model, and what it cost.
@@ -618,6 +654,9 @@ func UsageSubjectWord(kind string) string {
 // when the child closes. Folded is the honest one; the halves are what makes it
 // auditable rather than a figure that jumped.
 type Receipt struct {
+	// Unbilled is the owned calls whose provider receipts could not be priced.
+	Unbilled int
+
 	// Direct is what the node's OWN calls cost — its turns and the auxiliary
 	// calls made on its behalf.
 	Direct float64
@@ -669,6 +708,9 @@ func UsageTree(lines []UsageLine, conversation string) Receipt {
 			receipt.Direct += line.USD
 		default:
 			continue
+		}
+		if line.Unbilled {
+			receipt.Unbilled++
 		}
 		receipt.Calls += line.Calls
 	}

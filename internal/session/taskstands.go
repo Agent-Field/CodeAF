@@ -192,7 +192,7 @@ func (a *Agent) resolveTaskGround(spec taskSpec) taskStand {
 	} else if reground != "" {
 		stand.dir, stand.rung = reground, taskGroundSaid
 	}
-	stand.mode, redirect = groundModeAfterPlacement(stand, spec, workspace, redirect)
+	stand.mode, redirect = groundModeAfterPlacement(stand, spec, workspace, redirect, a.config.Place.Trees())
 	stand.redirect = redirect
 	return stand
 }
@@ -200,7 +200,7 @@ func (a *Agent) resolveTaskGround(spec taskSpec) taskStand {
 // groundModeAfterPlacement is the mode phase of [Agent.resolveTaskGround]. It
 // keeps the person's referred-place word authoritative while letting a model's
 // declined `in place` request become ordinary evidence for [groundMode].
-func groundModeAfterPlacement(stand taskStand, spec taskSpec, workspace, redirect string) (TaskMode, string) {
+func groundModeAfterPlacement(stand taskStand, spec taskSpec, workspace, redirect, trees string) (TaskMode, string) {
 	// A MODE THE PERSON SAID IS NOT RECOMPUTED. Every ordinary rung leaves this
 	// blank; a referred place may carry the person's own word about how work
 	// happens there ([PlaceRef.Mode]), and that word is obeyed rather than read.
@@ -220,7 +220,7 @@ func groundModeAfterPlacement(stand taskStand, spec taskSpec, workspace, redirec
 		// reference, exactly as it would on every other ladder rung.
 		modeStand.rung = ""
 	}
-	return groundMode(modeStand, spec, workspace), redirect
+	return groundMode(modeStand, spec, workspace, trees), redirect
 }
 
 // whereInsideRepository reports the committed repository a model-authored
@@ -424,6 +424,7 @@ func (a *Agent) groundFromPlaces(spec taskSpec, workspace string, weights []grou
 		}
 	}
 	for _, tier := range [][]PlaceRef{namedSaid, namedKept, said, kept} {
+		tier = distinctPlaceGrounds(tier)
 		switch len(tier) {
 		case 0:
 		case 1:
@@ -434,6 +435,20 @@ func (a *Agent) groundFromPlaces(spec taskSpec, workspace string, weights []grou
 		}
 	}
 	return taskStand{}, false
+}
+
+// distinctPlaceGrounds weighs a repository once within an evidence tier. Several
+// attachments can share its working ground without requiring a two-roots question.
+func distinctPlaceGrounds(places []PlaceRef) []PlaceRef {
+	seen := map[string]bool{}
+	out := make([]PlaceRef, 0, len(places))
+	for _, place := range places {
+		if !seen[place.Path] {
+			seen[place.Path] = true
+			out = append(out, place)
+		}
+	}
+	return out
 }
 
 // placeStand is one referred place as an answer: the SAID rung, and the person's
@@ -682,9 +697,9 @@ func groundRoot(dir string) string {
 // looks like — this design came to place work that was going somewhere WRONG,
 // and it may not quietly take a worktree away from work that was already going
 // somewhere right.
-func groundMode(stand taskStand, spec taskSpec, workspace string) TaskMode {
+func groundMode(stand taskStand, spec taskSpec, workspace string, trees string) TaskMode {
 	_, isRepo := repositoryRoot(stand.dir)
-	writes := groundNamesWorkUnder(stand.dir, spec)
+	writes := groundNamesWorkUnder(stand.dir, spec, trees)
 	switch {
 	case isRepo && (stand.rung == taskGroundStandingIn || writes):
 		return TaskModeWorktree
@@ -710,7 +725,7 @@ func groundMode(stand taskStand, spec taskSpec, workspace string) TaskMode {
 // whole contract names no file — a question about a project, an answer that
 // comes back in a report — which is exactly the work that should not be cutting
 // branches off somebody's repository.
-func groundNamesWorkUnder(ground string, spec taskSpec) bool {
+func groundNamesWorkUnder(ground string, spec taskSpec, trees string) bool {
 	ground = canonicalPath(ground)
 	if ground == "" {
 		return false
@@ -719,21 +734,72 @@ func groundNamesWorkUnder(ground string, spec taskSpec) bool {
 		if groundHolds(ground, token) {
 			return true
 		}
+		// AND A PATH UNDER ANOTHER TREE OF THIS CONVERSATION IS THE SAME
+		// FOLDER. The conversation learns the address of a task's private
+		// copy, so the next proposal writes that address into the contract.
+		// It is not under the ground as spelled, so this used to answer no,
+		// [groundMode] made the work a reference, and [taskCopyFor] bound
+		// nothing — the worker was handed the other tree's address and
+		// refused "is outside your copy" about a directory the harness
+		// invented (#839). Another tree is a copy of the same folder;
+		// naming a file in it is naming work under the ground.
+		if underSiblingTree(trees, token) {
+			return true
+		}
 	}
 	return false
 }
 
+// underSiblingTree reports whether one written path stands under another
+// tree of this conversation — a child of [Place.Trees]. The trees folder
+// itself is not a tree, and a relative name is already an address in the
+// directory the worker stands in.
+func underSiblingTree(trees, token string) bool {
+	trees = canonicalPath(cleanFolder(trees))
+	if trees == "" || trees == "/" || token == "" {
+		return false
+	}
+	if strings.HasPrefix(token, "~") {
+		token = groundDirOf(token, "")
+	}
+	if !filepath.IsAbs(token) {
+		return false
+	}
+	full := canonicalPath(token)
+	if full == "" {
+		return false
+	}
+	under, inside := insideWorkspace(trees, full)
+	if !inside {
+		return false
+	}
+	_, _, ok := firstRelComponent(under)
+	return ok
+}
+
 // groundHolds reports whether one written path lands under the ground. An
-// absolute path is compared as it stands; a relative one is a name inside the
+// absolute path is compared canonically; a relative one is a name inside the
 // project and counts when the file or the directory that would hold it is really
 // there, which keeps ordinary prose from reading as a path.
+//
+// THE ABSOLUTE COMPARISON IS BETWEEN TWO CANONICAL SPELLINGS, as [placeNamedIn]'s
+// is: the ground arrives spelled the way git resolves it while a contract's paths
+// are spelled the way their author was standing, and on macOS the two differ by a
+// `/private` nobody typed. Read as written, a contract that named the ground three
+// times looked like one that named nothing under it, so [groundMode] made the work
+// a reference — and a reference binds no addresses to its copy ([taskCopyFor]),
+// which sent the worker to the person's checkout.
+//
+// Both sides are resolved here rather than left to callers, because some hold a
+// canonical ground and some a raw workspace ([scopeCollisions]); resolving one
+// side only turns paths that agree into paths that do not.
 func groundHolds(ground, token string) bool {
 	if strings.HasPrefix(token, "~") || filepath.IsAbs(token) {
-		full := groundDirOf(token, "")
+		full := canonicalPath(groundDirOf(token, ""))
 		if full == "" {
 			return false
 		}
-		_, inside := insideWorkspace(ground, full)
+		_, inside := insideWorkspace(canonicalPath(ground), full)
 		return inside
 	}
 	full := filepath.Join(ground, filepath.FromSlash(token))
@@ -838,9 +904,9 @@ func sortedKeys(set map[string]bool) []string {
 }
 
 // pathTokens picks the things in a piece of prose that could be paths: a word
-// with a separator in it, or one that ends in an extension. Everything around it
-// — quotes, backticks, brackets, the full stop that ended the sentence — is
-// trimmed off.
+// with a separator in it, or one that ends in an extension. What is around it —
+// quotes, backticks, brackets — is trimmed off, and so is the full stop that
+// ended the sentence, which is why the trimming below has a side to it.
 //
 // IT IS A READING AND NOT A PARSER, and every caller treats it as one: a token
 // only ever matters here when it also turns out to exist under a directory, or
@@ -853,7 +919,13 @@ func pathTokens(text string) []string {
 			r == '`' || r == '"' || r == '\'' || r == '(' || r == ')' || r == '[' || r == ']' ||
 			r == '<' || r == '>' || r == '{' || r == '}'
 	}) {
-		token := strings.Trim(raw, ".:")
+		// THE PUNCTUATION IS TRIMMED OFF THE END ONLY. A leading dot is part of
+		// the path — `./slow-build.sh`, `../out/report.md`, `.github/ci.yml` —
+		// and trimming it turned a name in the working directory into an
+		// absolute path at the root of the machine, which the ground lint then
+		// refused as a folder the task does not stand in. A leading colon is
+		// nobody's filename and still goes.
+		token := strings.TrimLeft(strings.TrimRight(raw, ".:"), ":")
 		if token == "" || !looksLikePath(token) {
 			continue
 		}

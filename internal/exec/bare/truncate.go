@@ -1,16 +1,32 @@
 // Package bare is the wire tool library: pi 0.82.1's seven tools (read, bash,
 // edit, write, grep, find, ls) with the matching, truncation and streaming
 // logic behind them. Chat's tool surface is built from it. It is aforge-owned
-// code — not a vendored copy of pi — but the tool descriptions, schemas, result
-// strings and truncation footers are pinned to pi's source so the wire bytes a
-// model sees are identical to the ones these tools were measured on.
+// code — not a vendored copy of pi — but the schemas, result strings and
+// truncation footers are pinned to pi's source so the wire bytes a model sees
+// are identical to the ones these tools were measured on.
+//
+// THE DESCRIPTIONS THAT QUOTE A LIMIT ARE THE EXCEPTION, and they have to be.
+// pi's are literals because pi's caps are literals; here the caps follow the
+// model's window ([Caps]), so read, bash, grep, find and ls render their
+// figures from the pair they are actually applying. read and bash were cut to
+// their contract in the same pass — what the tool does and what it costs, with
+// the question of which work belongs on which door left to the page that owns
+// it. edit and write are pi's, verbatim.
 package bare
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
+)
 
 // Truncation constants mirror pi's truncate.js. They are the literal values pi
 // interpolates into tool descriptions and footers, so they are exported names
 // only within this package — the descriptions carry the rendered numbers.
+//
+// THEY ARE NOW THE CEILING RATHER THAN THE LAW. A result is cut to whatever
+// [Caps] the belt was built with, and these two are what a belt gets when
+// nothing can say how much room the model has. See [CapsFor].
 const (
 	defaultMaxLines = 2000
 	defaultMaxBytes = 50 * 1024 // 50KB
@@ -21,6 +37,79 @@ const (
 // that has to bound one binds itself to the number the read tool's own
 // description quotes rather than to a second copy of it that can drift away.
 const ResultByteCap = defaultMaxBytes
+
+// Caps are the two bounds every result in this package is cut to, and they
+// travel with the belt rather than sitting in a constant.
+//
+// ONE READ MAY NOT BE MOST OF WHAT THE MODEL CAN HOLD. Cutting every result at
+// pi's flat 50KB is right for the window pi's numbers were measured against and
+// wrong below it: on a 16k model one `read` of one file was 78% of everything
+// the model could carry, so the file arrived and there was no room left to
+// think about it. The caps therefore follow the window (see [CapsFor]), and the
+// descriptions the model reads are rendered from the pair actually in force —
+// a tool that quotes a limit it is not applying is a tool the model plans
+// wrongly around.
+type Caps struct {
+	MaxLines int
+	MaxBytes int
+}
+
+// DefaultCaps is pi's own pair: 2000 lines or 50KB, whichever binds first. It
+// is what a belt built without a window gets, so a caller that knows nothing
+// about the model behaves exactly as this package did before caps existed.
+func DefaultCaps() Caps { return Caps{MaxLines: defaultMaxLines, MaxBytes: defaultMaxBytes} }
+
+// CapsFor scales the pair to a model's context window, through the one law
+// that owns the share ([ctxbudget.ToolResultBytes]) rather than a second
+// formula of this package's own.
+//
+// The line cap follows the byte cap in pi's own proportion, because the two
+// bind together and moving one alone would change which of them a given output
+// is cut by. A window of 128,000 tokens or more lands exactly 2000 lines and
+// 50KB, which is what keeps every frontier conversation byte-identical to what
+// it was.
+func CapsFor(contextTokens int) Caps {
+	return capsAt(ctxbudget.ToolResultBytes(contextTokens, defaultMaxBytes))
+}
+
+// capsAt derives the pair from a byte budget alone. A budget outside the
+// ordinary range takes pi's own, so an unusable number can never widen a cap:
+// the caps only ever fall away from pi's, never past them.
+func capsAt(maxBytes int) Caps {
+	if maxBytes <= 0 || maxBytes > defaultMaxBytes {
+		return DefaultCaps()
+	}
+	lines := defaultMaxLines * maxBytes / defaultMaxBytes
+	if lines < 1 {
+		lines = 1
+	}
+	return Caps{MaxLines: lines, MaxBytes: maxBytes}
+}
+
+// resolve fills in pi's defaults for a zero Caps, so that a caller which has
+// not been taught about caps yet cuts results exactly where it always did.
+func (c Caps) resolve() Caps {
+	if c.MaxLines <= 0 {
+		c.MaxLines = defaultMaxLines
+	}
+	if c.MaxBytes <= 0 {
+		c.MaxBytes = defaultMaxBytes
+	}
+	return c
+}
+
+// sizeWord renders a cap the way a SENTENCE says it — "50KB" where the footers
+// say "50.0KB" — so a description interpolating the number in force reads the
+// way the hand-typed one it replaces did.
+func sizeWord(bytes int) string {
+	rendered := formatSize(bytes)
+	for _, unit := range []string{"KB", "MB"} {
+		if trimmed, whole := strings.CutSuffix(rendered, ".0"+unit); whole {
+			return trimmed + unit
+		}
+	}
+	return rendered
+}
 
 // formatSize mirrors pi's truncate.js:formatSize. The boundary tests pin the
 // exact rendered strings, which the read/bash footers interpolate.
@@ -79,9 +168,15 @@ func splitLinesForCounting(content string) []string {
 // The byte accounting adds +1 for the newline that separates each line from
 // the previous one (i>0), exactly as pi does — the newline is real output
 // the model sees and counts against the budget.
-func truncateHead(content string) truncateHeadResult {
-	maxLines := defaultMaxLines
-	maxBytes := defaultMaxBytes
+func truncateHead(content string, caps Caps) truncateHeadResult {
+	caps = caps.resolve()
+	return truncateHeadAt(content, caps.MaxLines, caps.MaxBytes)
+}
+
+// truncateHeadAt is truncateHead with a caller-owned byte budget. The ordinary
+// tools always use pi's defaults; a composed belt may reserve room for the
+// continuation footer while keeping the same line and offset semantics.
+func truncateHeadAt(content string, maxLines, maxBytes int) truncateHeadResult {
 	totalBytes := byteLength(content)
 	lines := splitLinesForCounting(content)
 	totalLines := len(lines)
@@ -163,9 +258,10 @@ type truncateTailResult struct {
 // The byte accounting adds +1 for the newline separator when the line is not
 // the first one added (outputLinesArr.length > 0 in pi), matching pi's
 // backwards walk.
-func truncateTail(content string) truncateTailResult {
-	maxLines := defaultMaxLines
-	maxBytes := defaultMaxBytes
+func truncateTail(content string, caps Caps) truncateTailResult {
+	caps = caps.resolve()
+	maxLines := caps.MaxLines
+	maxBytes := caps.MaxBytes
 	totalBytes := byteLength(content)
 	lines := splitLinesForCounting(content)
 	totalLines := len(lines)

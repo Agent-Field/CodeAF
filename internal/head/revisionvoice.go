@@ -113,7 +113,7 @@ func (h *Head) composeRevision(ctx context.Context, user store.Message, kind sto
 	response, err := client.CompleteWithMessages(ctx, []ai.Message{
 		textMessage("system", resident.VoicePrompt(h.store, revisionVoicePrompt)),
 		textMessage("user", body),
-	}, ai.WithMaxTokens(300))
+	})
 	if err != nil || response == nil {
 		return revisionDecision{}
 	}

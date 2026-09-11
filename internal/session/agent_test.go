@@ -115,6 +115,29 @@ func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages [
 		s.mu.Unlock()
 		return textResponse(""), nil
 	}
+	// AND SO IS THE SESSION'S OWN NAMER, for the narrator's reason and one
+	// stronger: since #653 it is started when the person's FIRST MESSAGE is
+	// accepted rather than when the turn ends (title.go), so it is in flight
+	// beside the first scripted step of every fixture whose config names a
+	// session file. There is no ordering between that goroutine and the turn, so
+	// no positional script can hold a slot for it — a fixture that tried would be
+	// a coin toss between the turn eating the namer's step and the namer eating
+	// the turn's.
+	//
+	// A fixture that is ABOUT the name installs an aside, consulted above, which
+	// wins ([titleAside], title_test.go). Everything else gets silence, which
+	// leaves the session unnamed and is what a namer nobody could reach has
+	// always given its caller.
+	if isTitleCall(snapshot) {
+		s.asides = append(s.asides, snapshot)
+		s.mu.Unlock()
+		// AND IT COSTS NOTHING. A namer no fixture scripted did not happen as
+		// far as that fixture is concerned, and a usage block here is a row on
+		// the ledger and tokens on the meter that the test's own arithmetic
+		// knows nothing about — [Agent.addDetachedUsageAs] banks nothing for a
+		// response that carries none (loop.go).
+		return &ai.Response{Choices: []ai.Choice{{Message: textMessage("assistant", "")}}}, nil
+	}
 	index := len(s.seen)
 	s.seen = append(s.seen, snapshot)
 	s.models = append(s.models, request.Model)
@@ -1667,6 +1690,67 @@ func callsResponse(calls ...ai.ToolCall) *ai.Response {
 	}
 }
 
+// A response that returns a whole tool batch without streaming still carries
+// the provider's identity through every lifecycle event. The two calls use the
+// same tool name because a name cannot disambiguate the row an event belongs to.
+func TestNonStreamingSameToolBatchCarriesCallIDsThroughLifecycle(t *testing.T) {
+	calls := []ai.ToolCall{
+		{ID: "call-first", Type: "function", Function: ai.ToolCallFunction{Name: "read", Arguments: `{"path":"first.txt"}`}},
+		{ID: "call-second", Type: "function", Function: ai.ToolCallFunction{Name: "read", Arguments: `{"path":"second.txt"}`}},
+	}
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return callsResponse(calls...), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("done"), nil
+		},
+	}}
+	agent, workspace := newTestAgent(t, completer, nil)
+	for _, name := range []string{"first.txt", "second.txt"} {
+		if err := os.WriteFile(filepath.Join(workspace, name), []byte(name+"\n"), 0o644); err != nil {
+			t.Fatalf("write %s fixture: %v", name, err)
+		}
+	}
+
+	events := collect(t, mustSubmit(t, agent, "read both files"))
+	var begun, ended []Event
+	finished := make(map[string]Event)
+	for _, event := range events {
+		switch event.Kind {
+		case EventToolAnnounced:
+			t.Fatalf("non-streaming response announced a call: %+v", event)
+		case EventToolBegin:
+			begun = append(begun, event)
+		case EventToolFinished:
+			finished[event.CallID] = event
+		case EventToolEnd:
+			ended = append(ended, event)
+		case EventToolFailed:
+			t.Fatalf("tool failed: %+v", event)
+		}
+	}
+	if len(begun) != len(calls) || len(ended) != len(calls) || len(finished) != len(calls) {
+		t.Fatalf("lifecycle counts = begin %d, finished %d, end %d; want %d each", len(begun), len(finished), len(ended), len(calls))
+	}
+	for index, call := range calls {
+		if begun[index].Tool != call.Function.Name || begun[index].Args != call.Function.Arguments || begun[index].CallID != call.ID {
+			t.Errorf("begin %d = %+v, want tool %q args %q call ID %q", index, begun[index], call.Function.Name, call.Function.Arguments, call.ID)
+		}
+		if ended[index].Tool != call.Function.Name || ended[index].Args != call.Function.Arguments || ended[index].CallID != call.ID {
+			t.Errorf("end %d = %+v, want tool %q args %q call ID %q", index, ended[index], call.Function.Name, call.Function.Arguments, call.ID)
+		}
+		got, ok := finished[call.ID]
+		if !ok {
+			t.Errorf("no finished event for call ID %q", call.ID)
+			continue
+		}
+		if got.Tool != call.Function.Name || got.Args != call.Function.Arguments {
+			t.Errorf("finished event for %q = %+v, want tool %q args %q", call.ID, got, call.Function.Name, call.Function.Arguments)
+		}
+	}
+}
+
 func emitReady(t *testing.T, ctx context.Context, call ai.ToolCall) {
 	t.Helper()
 	payload, err := json.Marshal(call)
@@ -2314,13 +2398,18 @@ func beltNames(a *Agent) []string {
 	return out
 }
 
+// hasTool asks whether this build HAS the verb, which is what every
+// absence-law fixture in this package means by the question: a machine with no
+// video model does not have `generate_video`, and one with a model does. It
+// therefore reads what the build offers — the belt plus the shelf the rarely
+// reached verbs wait on (tools_capabilities.go) — because shelving changes when
+// a schema is sent and never whether the capability exists.
+//
+// The narrower question, "is it in the tool block the model is reading right
+// now", is [Agent.hasTool], and capabilities_test.go is where the two are held
+// apart.
 func hasTool(a *Agent, name string) bool {
-	for _, tool := range a.beltTools() {
-		if tool.Name == name {
-			return true
-		}
-	}
-	return false
+	return a.offers(name)
 }
 
 // A model must never be told about a hand it does not have: with no pair wired

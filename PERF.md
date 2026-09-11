@@ -6,6 +6,19 @@ two thirds off the embedded corpora. This file is what keeps it. Every win below
 is defended by something that goes red locally, in `go test` or in `make check`,
 with a message that says what happened.
 
+## Connection recovery bounds
+
+`internal/provider/connectivity.go` limits a connection-recovery episode to
+two minutes (`connectionRecoveryWindow`), including repeated loss after a
+successful probe. Caller deadlines and cancellation can end it earlier. Each
+non-generating HEAD check has a two-second timeout (`connectionProbeTimeout`);
+failed checks wait 1–1.5 seconds (`connectionProbeInterval` plus jitter). The
+cadence does not grow exponentially with outage age. Healthy calls issue zero
+checks. Waiting calls on one adapter share one active probe, and the final
+subscriber cancels it. Chat and media adapters own separate gates. These are
+operational safety bounds, not latency test thresholds; regression tests count
+requests, accepted generations and probe subscriptions.
+
 ## The doctrine: gate on work, never on time
 
 **No gate in this repository is allowed a wall-clock threshold.** Every one of
@@ -20,6 +33,22 @@ the regression it was guarding against.
 caps are allowed to move — a feature is sometimes worth its bytes, a fix
 sometimes pays a residual off — but moving one is a decision somebody signs for
 in a diff, never a drift nobody saw.
+
+## Live interrupt probe safety window
+
+`TestLiveInterruptFanoutSpendsAtMostOnePlannerAndTitle` counts at most one
+planner call and one title call after a stop and redirect. Its redirected live
+provider request has a **45-second cancellation context**, matching the live
+compact-history probe. The former ten-second fixture collector cut off a
+correct `ok` answer that completed in 11.76 seconds during concurrent provider
+trials on 2026-09-08. This is a network safety bound, not a response-latency
+claim: the test now also requires turn completion, no error, and a
+nonempty answer. Discarded attempts are replaced on `EventRetrying`, as on
+the actual chat surface. Exact provider wording is assessed separately: a
+live trial returned `okok` consistently in the provider response, event
+stream, and saved assistant message; the raw wire response was not inspected.
+The deterministic collector and the interrupted turn's ten-second cancellation
+guard are unchanged, as are both exact fanout limits.
 
 ## The size ratchet
 
@@ -105,6 +134,22 @@ all four, each with its own furrow artifact staged:
 
 The budget is 54,600,000, two percent above darwin/amd64, the same headroom
 every figure in this section was given, now over a smaller binary.
+
+## Adaptive run shutdown grace
+
+`Agent.Close` cancels adaptive runs and their name calls, then gives all accepted
+run lifetimes **one shared 2-second grace** (`jobShutdownGrace`) before closing
+the task graph and journals. The join includes setup before registration, root
+settlement, workers, planner callbacks and names. It holds no engine lock.
+
+This adds at most **2 seconds of deliberate waiting** to the existing sequential
+shutdown rounds; it does not change the foreground turn, graph, job or ledger
+limits. Cooperative calls normally finish immediately on cancellation. A provider
+or callback that ignores cancellation can outlive the grace; Close returns and
+this join cannot promise that arbitrary external work has stopped. `Run` itself
+still returns promptly on context cancellation; its owner separately joins calls
+after Run has stopped launching them. The regressions check ownership and order,
+not a response-time performance target.
 
 ## The flush ceiling
 
@@ -776,6 +821,9 @@ run to the common path and one bounded model call to two seams.
 | one check's captured assertion text | **16KB** | `verify.assertionTextBytes` |
 | words of a sentence read as one name | **4** | `verify.spokenWindow` |
 | behaviours a finding names | **8, then a count** | `revision.regressionsNamed` |
+| one behaviour in the closing account | **140 bytes** | `revision.behaviourWords` |
+| one explanation in the closing account | **80 bytes** | `revision.checkWords` |
+| the complete closing account | **half of `store.MaxDigestBytes`** | `revision.checklistBlockBytes`; machine rows remain whole |
 | the gate's own reading | **`verify.ReadingBudget`, above** | `revision.Evidence.measureFinalTree` |
 
 **The checklist's length is derived from the request and not typed.** A request
@@ -1070,54 +1118,50 @@ and `outOfWall` both — was told there was no limit. The errand's wall is now t
 run context's deadline. It changes no timing on a run that finishes inside its
 wall; what it changes is that a run approaching one can act on it.
 
-## The shaped answer's room, which is derived and never named
+## Provider-owned generation defaults and local bounds
 
-Every call that asks a model for a JSON object goes through `internal/shaped`,
-and the ceiling it goes out with is **derived from the ask**. Before the seam
-existed each pass named its own: 8192 in the planner, a reserve-eighth in the
-delivery gate, eight thousand plus an echo in the intent compiler. Each was
-right about the call in front of its author and wrong about the next one — and
-wrong in the direction that costs a whole run, because a fan-out asking for five
-parts was given the room for one verdict, cut off mid-part, and the run exited
-with zero nodes (`bench/deepswe/AUTOPSY.md`, s4, `textual-richlog-follow-state`).
+A request with no operator choice sends **no generation control**. Aforge omits
+`max_tokens`, `max_completion_tokens`, `temperature`, `top_p` and `reasoning`
+from ordinary chat, headless work, auxiliary roles, structured calls, document
+parsing, saved harness execution and resident work. The provider and selected
+model therefore supply their own generation defaults.
 
-```
-room = one object × how many objects the ask asks for + what the answer echoes
-```
+This applies to retries and continuations too. A shaped request still carries
+its schema or JSON mode, and a document request still carries its parser plug;
+neither functional field implies a generation ceiling. The plain OpenAI SDK
+loop is the one request builder Aforge does not own. Its config defaults are
+cleared **before** caller options are applied, so the same omission holds there
+and an explicit zero temperature or output limit is preserved.
 
-| term | value | where |
+Explicit choices remain explicit. `AFORGE_REASONING`,
+`AFORGE_EXEC_REASONING`, a model or crew value with `:low`, `:medium` or
+`:high`, a saved task or standing-work rung, and an embedder's `ai.Option` still
+travel. The three shipped crew presets contain bare model ids and add no effort
+level. `cmd/harness-design` is a development command with explicit CLI-sized
+requests and retains its caps.
+
+The local process remains bounded independently of provider generation:
+
+| bound | purpose | where |
 | --- | --- | --- |
-| one object | `CompletionReserve() / 8`, floored at **4096** | `objectShare`, `objectFloor`, `internal/shaped/ceiling.go` |
-| how many | the ask's own figure — `fanOutWidth` (**5**) for a fan-out, `sequenceDepth` (**4**) for the stage question a sequence is divided by, the node count for the per-node passes, **1** everywhere else | `Ask.Answers` |
-| the echo | `2 × len(material) / 3` — tokens ≈ bytes/3, twice, because the compiled goal restates the request and then quotes it | `Ask.Echo` |
-| the memo | the widest cut this model has been watched taking on this lane, **doubled** | `provider.WidestAnswerCut`, `model-quirks.json` |
-| the bound | never past `CompletionReserve()` | `reserve()` |
+| completion reserve | context-window allocation, compaction and structured-repair accounting | `internal/ctxbudget`, `internal/shaped/ceiling.go` |
+| response byte limits | cap what one socket response may place in memory | `internal/provider/client.go`, `internal/provider/document.go` |
+| task and node budgets | bound graph growth and total work | `internal/session`, `internal/resident` |
+| request and run deadlines | bound elapsed work | `internal/provider/client.go`, callers' contexts |
 
-Two properties are the whole reason this is safe to adopt everywhere.
+`internal/shaped.Room` is now an accounting unit only. Repairs use it to make
+progress toward the completion reserve even when a provider reports no usage;
+it is never encoded as `max_tokens`. A response with no requested ceiling keeps
+the existing adaptive total-timeout floor: five minutes, or a longer configured
+timeout. Explicit output limits can still scale that timeout up to its existing
+fifteen-minute maximum. Removing generation defaults does not lengthen those
+operational deadlines.
 
-**Every one-object ask comes out with exactly the ceiling it already had.** The
-share and the floor are the delivery gate's own measured numbers, moved rather
-than changed, so nothing anybody measured moves. Only an ask for MORE than one
-object gets more room, which is the finding.
-
-**Nothing here is a clock and nothing here is a retry count.** A repair
-continues while the last round added text and the answer is still an unterminated
-object, bounded by the reserve — both quantities move one way, so the loop ends
-on what happened rather than on a number somebody guessed. A reply that never
-began an object is asked again exactly once, at doubled room, which is the same
-arithmetic `plan.retryTokenBudget` and `revision.retryVerdictTokens` each wrote
-separately and which is now written here alone.
-
-The width the fan-out prompt states and the width its ceiling is derived from
-are one constant, interpolated into the prompt (`fanOutWidth`,
-`internal/plan/fanout.go`). `TestAFanOutIsSizedForTheWidthItsPromptPermits` fails
-if they ever become two. The stage question that divides a node no worker can
-carry to an end is the same arrangement one constant along (`sequenceDepth`,
-`internal/plan/sequence.go`), pinned by
-`TestTheStagePromptAsksTheSizePromptsSecondQuestion`.
-
-`internal/shaped/shaped_test.go` pins the derivation, the operator's reserve
-never being outrun, and the three repairs.
+The width a fan-out prompt states and the accounting room derived for its repair
+loop still share one constant (`fanOutWidth`, `internal/plan/fanout.go`). The
+stage question uses `sequenceDepth` in the same way. `internal/shaped` tests pin
+that accounting derivation and the repair loop; provider and config wire tests
+pin both default omission and explicit operator options.
 
 ## What a gated task inherits from the work before it
 
@@ -1139,6 +1183,144 @@ Pinned by `internal/session/task_inherit_test.go`. The number on
 `taskShapeBriefLimit` is the brief bound every brief on this road is already
 held to; this section is the first time the inherited half is held to it.
 
+## What a landed task keeps of its own answer
+
+The report is the card — three lines of 300 characters (`taskReportLines`,
+`taskReportLineLimit`). What the work produced is kept beside it, and two
+numbers bound it (`internal/session/task_result.go`):
+
+| what | bound | the rule |
+| --- | --- | --- |
+| the record's own body | `taskResultLimit` (**16,000**) | the checkpoint is rewritten on every transition, so an unbounded body is a file written hundreds of times. Past it the text is cut with `…` and the whole is written beside the transcript. |
+| what one reader is handed | `taskResultCarry` (**4,000**) | a landing note, a continuation's finding and one notice each carry this much — a parent folding five pieces back reads five of them — with the address of the whole beside it. |
+| the file it overflows to | `<transcript stem>-result.txt` | written whenever the answer is longer than one reader gets, through a temporary file and a rename, so a reader following the pointer never opens a half-written answer. A write that fails leaves the transcript as the source and never a path to a file that is not there. |
+
+What travels is decided by the node's **state and ending**, never by the
+report's wording, which an accept or a late verdict may rewrite: a landing whose
+ending is `refused` names its output and its address instead of handing the body
+on, and every other settled landing hands it over. The only question asked of
+the report is whether it already contains the answer word for word, which can
+only omit what the reader is already holding. On the inherited-brief road the
+address rides the prerequisite's HEADER, which the shared pot above does not
+clip. Pinned by `internal/session/task_result_e2e_test.go`.
+
+## Specialist tool discovery
+
+Chat starts with core tools and one local `load_capability` registry operation
+for available media, settings and saved-procedure groups. Loading appends the
+original schemas on the next request within the same turn, preserving the
+existing order, execution path and permissions. Workers retain their direct
+belts. No new inference call selects or constructs a group, although first use
+needs an additional model request to call the loaded tool.
+
+The standard prefix fixture measured **47,606 → 44,347 bytes**, including the
+heavier wording that explains discovery; `fixedPrefixBudget` was **48,000** and
+is now **49,000** (see below).
+The fully enabled tool block measured **40,595 → 26,740 bytes**, including its
+**708-byte** loader. `TestShelvingTakesMoreOffTheToolBlockThanItPutsOn` compares
+complete encoded blocks and requires net savings at least **four times** the
+loader's encoded size. Byte savings are not measured provider tokens, cache
+hits, latency or bills. Loading changes the prefix once; repeat loading leaves
+it unchanged. Reopening restores load calls still in saved history; a load
+compacted away may be needed again.
+
+## The fixed prefix budget, and the one wave that raised it
+
+`fixedPrefixBudget` (`internal/session/prefixbudget_test.go`) bounds what every
+request carries before anybody has said anything: the widest system page plus
+the encoded tool block. It was **48,000** from the shelving wave until
+2026-09-10, and every wave in between paid for its own additions out of a
+sentence that was already being said twice — the ledger in that file's header
+records each payment.
+
+**Quick tasks raised it to 49,000 (2026-09-10).** A new verb is not a sentence,
+so there was nothing of its own for it to pay with. `quick_task` encodes to
+**1,196 bytes** and the belt bullet naming it is **129** more, against
+`propose_task`'s 5,720. Both were cut to the bone first: the description is the
+routing judge and nothing else, with the "the id returns at once, so never poll"
+sentence left to `propose_task`'s description, which is on the belt whenever
+this one is; the schema's six fields carry one clause each, and `depends_on` and
+`model` give up their rules entirely to the identical fields next door. The
+measured prefix is **48,761**, which is 239 under the new cap.
+
+What is still owed: the planner rule is in the prefix twice (`taskDescription`
+and prompts/system.md's own paragraph, both pinned by
+`TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner`), so paying it back is a
+change to that test's mind and not only to the bytes. The cap only ever moves
+with this section in the same commit.
+
+**The choice wave paid it back and the cap is 48,000 again (2026-09-10).** The
+measured prefix is **46,245**, which is 1,755 under the restored cap and 390
+below where the day started.
+What it bought is one picture where three rule lists used to be. The belt's
+routing bullets sorted on WIDTH — and a real model read a read-only survey of
+four packages as wide work and bought it a worktree, a check and a landing — so
+they were replaced whole (owner's ruling) by what the model HAS and what each
+thing COSTS: a quick task is a copy of its abilities where it stands, a task is
+a worker in a copy of the folder that is checked and merged, pieces kept cost
+their sum, and independent pieces handed out in one breath cost the longest of
+them. The clock was never stated at all before, and neither was the conduct
+after a hand-off; both are in the same fragment now, and it names no shapes of
+work, so nothing on it has to be kept true as the product changes.
+
+That fragment is a net saving over what it replaced, and it states "never poll"
+ONCE for every road rather than once per verb. Two of the three duplicate rules
+named above paid more of it: prompts/system.md's `small work ... is answered
+here` sentence is gone, the routing call being one the picture makes better and
+in the place the call is made, and the `WIDE WORK` bullet's `never split related
+work` went with the bullet itself. What was ADDED to a description is one
+clause, in `quick_task`: the GRAIN, quoting `taskNoProgress` rather than a
+figure typed twice, because a quick task cut at twenty files died `out of rounds
+— stopped: 6 steps without progress` and cost $0.62 for nothing.
+
+**And `propose_task`'s schema went on the diet its description went on.**
+Fourteen fields carried 3,511 bytes of prose; they carry one clause each now.
+`brief` lost the dowry passage outright, because prompts/system.md teaches it
+(`AND WHAT YOU HAVE ALREADY LEARNED GOES WITH IT`) and a test pins it there, and
+a rule in two places is the cheapest thing in a budget to spend twice. `wide`,
+`no_progress`, `max_steps`, `depends_on`, `deliverable`, `acceptance`, `ground`,
+`expects` and `checks` each kept their rule and lost the paragraph around it;
+`model` is unchanged. Every em dash came out of every description string, small
+models tokenising them badly. The tool block went **23,369 → 21,808**.
+
+## Following through on a completion claim
+
+A turn may decline handoff once per request when its own continuation says no
+work remains and the other reader names no independent parts. Agreement does
+not grant another decline. The meter asks again after **10 additional rounds
+of real work**, using `checkpointPrice`, and does not grant the same request
+another completion decline. Watching existing work does not advance this count;
+a new direction changes the request. This adds no classifier or model call to
+an ordinary tool round. `internal/session/completion_stale_test.go` pins the
+bound, revised direction, and survival of commands already owned by the turn.
+
+## The write allowance on an inline turn
+
+A turn that is changing files under the workspace is bounded by **five landed
+write calls** (`writeAllowanceCalls`, internal/session/writeseam.go). The next
+workspace write takes the same handover road the round ceiling takes, once per
+turn, and that road can still decline.
+
+**The count is calls, and only calls.** A second trigger on the number of
+DISTINCT files a turn had touched (two) has been removed. Breadth is not what the
+allowance prices: writing a helper and then the output it produces is two paths
+and one small piece of work, and a turn moved onto a task for that spends a fresh
+worktree and a brief on work that was already finishing inline. What the seam is
+for is how often a turn reaches for the disk unwatched — the run it was written
+from made forty-eight write calls — and the call count catches that whether those
+calls land on one file or on forty. One call is one reach however many paths it
+names.
+
+Nothing else moves: reads are still free in any number, a failed write and
+anything outside the workspace still count nothing, a forked hand's landed calls
+are still counted on the caller, and the delivery of a result this conversation
+owns still holds the door. The round ceiling (`checkpointPrice`, 10) and the
+turn-wall share are unchanged, so a turn that crossed the old file trigger at its
+second write now runs to its fifth write call or to whichever of those governors
+comes first. `internal/session/writeseam_test.go` pins both shapes: a few writes
+across different files followed by running their result finishes inline, and
+repeated writes to one file still hand over at the fifth call.
+
 ## The in-turn working-set ceiling
 
 A single tool-heavy turn starts folding already-seen tool results at **64,000
@@ -1155,6 +1337,77 @@ never candidates; every replaced result remains readable through its stub path.
 `TestALongTurnsToolWorkingSetStaysBounded` pins the 60-round request ceiling and
 the readable bytes, while the other `turnfold_test.go` cases pin the no-op below
 the line and the unseen-result horizon.
+
+## The frozen tool history, rebuilt per request
+
+Every request of every tool round re-sends the whole conversation, and old tool
+results are the bulk of it. The snapshot on its way to the provider therefore
+carries the results of earlier turns as a REDUCED VIEW, while the live
+transcript and the journal keep every byte (`internal/session/toolcompact.go`).
+
+| bound | value | why |
+| --- | --- | --- |
+| what one reduced result keeps | head **200** (`checkpointResultBytes/2`) + tail **400** (`checkpointResultBytes`) | the tail is the verdict the checkpoint reader already proved is enough; the head is what ran, and where `no such file` and a compiler's banner land. Both are derived from the one bound rather than written twice. |
+| left verbatim below | **600 bytes** (`compactViewBytes`) | a view of a result that small repeats most of it and then charges a header for having done so. |
+| all consumed results together | **5,000 tokens** (`checkpointDigestBytes`) | the same account the checkpoint digest is held to. Over it, the oldest shrink to stub.go's one-line account, oldest first. It is a ceiling to walk towards: several hundred calls weigh more than it even as single lines. |
+| the walk itself | one pass, running total | re-adding every old result on every iteration is quadratic in the call count, on the hot path of every request. The call-id→tool-name index is built once for the same reason. |
+
+The newest completed write/edit may retain its whole argument object up to
+**1,600 bytes** (`checkpointWriteArgumentBytes = 4 * checkpointResultBytes`),
+within the existing whole-digest budget. Larger objects are marked omitted rather
+than sliced into misleading partial JSON; only one input rides, so a write batch
+cannot evict older failures with all its payloads. Admission materializes a full
+result pointer only for selected evidence, at most `admissionHandlesKept` results;
+if the pointer does not fit, the existing journal reference stays.
+
+The checkpoint readers keep ordinary requests inside that same **5,000-token** digest.
+Only an original request too large to fit there with its heading is sent as a complete
+separate section, once, with the work evidence independently held to the existing bound.
+Those extra request tokens are required so a constraint in the middle or at the end cannot
+be removed from a completion or handoff question; the ask is not duplicated.
+
+Every reduction names where the whole result can be read, and **one resolver
+answers for all three passes** — this view, the end-of-turn stub and the
+current-turn fold (`Agent.fullResultPointer`). It answers with the result's own
+bytes filed under `logs/stubs/` (`writeStub`), which `read` opens and pages at
+any size; where there is nowhere to file them, with the session journal and the
+call id to grep for; and otherwise with `not retrievable`.
+
+**A `store:` ref is not a pointer**, and it was the first answer all three passes
+used to give. Nothing on the belt fetches a store message by id —
+`search_conversations` searches words and clips every hit to one line
+(`tools_conversations.go`) — so with memory on, every stub in the session pointed
+at a handle only this process could resolve.
+
+The memo behind it has three bounds, because it sits on the request path:
+
+| bound | value | why |
+| --- | --- | --- |
+| the place a pointer may name | one reading per request (`Agent.resultPlaceNow`) | the workspace moves under `a.mu` (`AnchorWorkspace`); a resolver reading the field per result would race it and could answer two ways inside one request. The stub pass and the turn fold pass the same reading, already holding the lock. |
+| the memo's key | workspace + the result's fingerprint | a stub path is relative to the workspace it was filed in, so an entry kept across an anchor names a file `read` now resolves elsewhere. |
+| the memo's size | `filedCap` = `defaultContextWindow × bytesPerToken ÷ stubMinBytes` (≈ 341) | the most results one request could carry. Past it the memo is dropped whole rather than evicted one at a time; a miss costs one write. |
+
+A filing that FAILED is remembered as the absence it is, so the fallback is the
+journal and the request path does not retry the write per result per request. The
+retry happens when the workspace changes or the memo is dropped. The write itself
+lands through a rename (`writeStub`), because the file may be read by a model
+following a pointer that is already in flight.
+
+Pinned by `internal/session/toolcompact_test.go`. Retrieval is proved with the
+belt's OWN read tool rather than with a string assertion:
+`TestAReducedResultsPointerFetchesTheElidedMiddleWithTheBeltsOwnRead` runs a turn
+with a store AND a journal behind it, takes the pointer out of the request the
+provider was sent, pages the file it names and finds the sentinel the view
+elided; `TestStubbingWithAStoreOnPointsAtSomethingTheBeltCanOpen` does the same
+for the end-of-turn stub. The fallbacks are pinned by
+`TestThePointerFallsBackToTheJournalAndThenToNothing`, the anchor and the race by
+`TestAPointerStillOpensTheSameBytesAfterTheWorkspaceMoves` and
+`TestResolvingAPointerRacesNothingWithAnAnchor` (the latter is a `-race`
+assertion), the bounds by `TestThePointerMemoStaysBounded` and
+`TestAFailedFilingFallsToTheJournalWithoutSpinning`, the repeat by
+`TestCompactToolHistoryRepeatsItselfExactly`, the pairing by
+`TestCompactToolHistoryKeepsEveryCallPairedWithItsResult`, and
+`BenchmarkCompactToolHistory` reports the constant at 100, 400 and 1,600 rounds.
 
 ## The compaction threshold, and the ceiling that is no longer a constant
 
@@ -1215,6 +1468,16 @@ The chain `threshold > compactTarget > keepRecent` holds under both laws, becaus
 `compactTarget` derives from whichever threshold governs rather than from the
 derivation alone.
 
+**And the fold inside a pass is asked for against the target, not the trigger.**
+A pass stubs first, and the stub pass alone routinely lands the estimate just
+under the trigger and thousands of tokens above the target — below the line that
+fired the pass, with no headroom bought. Gated on the trigger, the fold then did
+not run at all and the next step fired another pass, which is the once-a-step
+thrash `compactTarget` exists to end. Pinned by
+`TestAPassThatOnlyStubbedStillFoldsToTheTarget`, whose fixture SEARCHES for a
+history that stubs to between the two lines rather than hard-coding today's
+arithmetic.
+
 Pinned by `internal/session/window_policy_test.go`,
 `internal/session/window_guard_test.go` and
 `internal/session/context_fill_test.go`.
@@ -1228,7 +1491,7 @@ Pinned by `internal/session/window_policy_test.go`,
 | The babble guard builds **one** zlib writer per stream and Resets it per window; a window costs at most 4 allocations. A writer per window is a hundred kilobytes of deflate state per five hundred bytes of reply. | `internal/provider/alloclaws_test.go` |
 | The hub's backlog fold is **amortized constant per delta**: ten times the deltas for less than twice the allocations. `Text += delta` is quadratic — 1.6 GB of copying over one long reply, under the hub's lock. | `internal/session/alloclaws_test.go` |
 | A frame with a four-thousand-line draft costs what a frame with a twelve-line draft costs. | `internal/tui3/inputsmooth_test.go` |
-| Scrolling a **4,000-line transcript** by one screen allocates at most **220** times and re-renders **zero unchanged entries**. The residual is composing the visible frame, not wrapping history. | `internal/tui3/inputsmooth_test.go` |
+| Scrolling a **4,000-line transcript** by one screen allocates at most **230** times and re-renders **zero unchanged entries**. The residual is composing the visible frame, not wrapping history. It was 220 until 2026-09-10, when the conversation's head gained the pulse row (one head for every frame) and the frame measured 227 against 217 without it. | `internal/tui3/inputsmooth_test.go` |
 | Message-part reads and the v2 token formatters allocate nothing. | `internal/store/message_parts_test.go`, `internal/tui2/tokens/format_test.go` |
 
 Correctness is pinned separately and deliberately so: `memo_test.go` proves the
@@ -1322,11 +1585,28 @@ gesture all the way to the state it leaves behind.
 
 Over `--host` the surface runs on the laptop and only the engine is far away
 (docs/REMOTE.md), so every question the surface asks its agent is a round trip
-down an ssh pipe with a ten-second deadline on it (internal/remote's
-`callDeadline`) — and every one of them is made from the update loop, which is
-the one goroutine that also decodes keys, resolves clicks and paints. A question
-asked while DRAWING is therefore a question asked thirty times a second, and one
-asked while resolving a POINTER is asked once per cell the pointer crosses.
+down an ssh pipe with a deadline on it — and every one of them is made from the
+update loop, which is the one goroutine that also decodes keys, resolves clicks
+and paints. A question asked while DRAWING is therefore a question asked thirty
+times a second, and one asked while resolving a POINTER is asked once per cell
+the pointer crosses.
+
+**The deadline is `callDeadline`, ten seconds, for every call**, and it is one
+number rather than one per kind for a reason worth writing down, because the
+obvious change was made and taken back out (#846). A person's keystroke on a
+question is a call too — internal/tui3's `answerQuestion` asks its door straight
+from Update rather than from a command — so a longer window for an act would be
+a longer time the terminal can sit without drawing. Measured on the Spark:
+eighteen copies of the questions e2e, six at a time, and with a thirty-second
+act window two of them took 53 seconds where every other copy took 22, both
+losing the receipt because nothing repainted. Twelve copies of the parent commit
+produced none over 33 seconds.
+
+What makes ten seconds safe for an act is not the clock. It is that the engine's
+reader no longer serializes it behind a getter (internal/remote's
+`callclass.go`), that a deadline reached on a live link now says `<machine> did
+not answer in time` rather than claiming the connection is gone, and that the
+receipt stamped before the door closes as yours when the engine's news arrives.
 
 | Law | Where it is pinned |
 | --- | --- |
@@ -1513,12 +1793,16 @@ against a catalog endpoint that refuses immediately.
   constructor, shared with the headless doors where waiting is correct. What
   `chatv3_subharness.go` asks for itself is zero — it reads the window through
   `catalog.Catalog.ModelsNow`, which answers nil while the catalog warms.
-- **The whole launch asks sixteen**, and that figure is a ratchet, not a law.
-  Fifteen of them come from `v3RunHarness` building the harness tool bridge
-  eagerly, which arms the media hands, each of which asks which model would
-  draw, see, speak or sing. Nothing in the first frame reads any of those
-  answers. It is written down so it is a known debt rather than a discovery, and
-  the only direction it may move without a conversation is down.
+- **The whole launch asks eleven** against this fixture's empty custom-base
+  catalog, and that figure is a ratchet, not a law. Ten of them come from
+  `v3RunHarness` building the harness tool bridge eagerly and asking the
+  capability questions that leave all five media hands off the belt. This pin
+  no longer covers the extra catalog reads paid when a listing advertises the
+  media models and arms that family; those reads occur only on a machine whose
+  catalog says the tools can work. Nothing in the first frame reads any of
+  those answers. The smaller figure is written down as the known lower bound
+  this refusing fixture measures, and the only direction it may move without a
+  conversation is down.
 
 `catalog.Catalog.BlockingReads` and `packed.Unpacks` exist for these pins and
 for nothing else. Each is one atomic counter behind a door that already existed,
@@ -1543,10 +1827,21 @@ and the run met none of them.
 | **A completion is asked for as a STREAM whether or not anybody is watching it.** The observer decides who is TOLD; it never decided whether the call is guarded, and until this it silently did. | No bound of its own. It is what arms the three below on a headless call. | `internal/provider/unwatched_test.go` |
 | **A request that has produced no token is cut.** | `firstDeltaBound`, 90s — past every healthy first token this adapter has measured, and under the streaming transport's `responseHeaderTimeout` so a stall is named rather than surfacing as a torn connection. | `internal/provider/streamguard_test.go` |
 | **A stream that has gone quiet is cut**, with keepalives buying bounded patience and no more. | `midStreamGapBound`, 45s, is what a lane nothing is known about gets — half the first bound, because a model that has started writing has finished deciding. A lane whose RATE this process has measured is cut at `gapFor(rate)` instead: the time that lane takes to write `streamGapLumpTokens` (3,500 — the fourteen-kilobyte server-side lump of 2026-08-24, at the estimator's four bytes to the token), clamped to `LagGap`…`midStreamGapBound`. So 250 tok/s waits 15s where a stranger waits 45. The keepalive extension window stays the FLAT bound at every rate, and `bufferedQuietBound`, 150s, still caps the total quiet. | `internal/provider/streamguard_test.go`, `internal/provider/patience_measured_test.go` |
-| **A reply that never ends is cut at a wall derived from the LANE'S OWN history** — the longest reply that endpoint has actually finished for this process, times `streamWallFactor`, clamped to `streamWallMeasuredFloor`…`streamWallCeiling`. A lane with NO history gets `streamWallFloor`, 5m, and that figure is now the outer bound for a stranger rather than the floor under everybody: it used to outrank the derivation, so a lane whose longest finished reply was twenty-four seconds still waited out five whole minutes, and two streams in the dogfood run of 2026-08-31 did exactly that on endpoints sustaining 83–270 tok/s. `streamWallMeasuredFloor` is `bufferedQuietBound` rather than a number of its own: the shortest honest wall is the longest honest silence, or the wall would cut a stream the silence bounds are still being patient with. | `internal/provider/velocity.go`'s `runs` ledger. A model-size table is a claim this process cannot check; a completed reply is a measurement. | `internal/provider/streamguard_test.go`, `internal/provider/patience_measured_test.go` |
+| **A reply that never ends is cut at a wall derived from the LANE'S OWN history** — the longest reply that endpoint has actually finished for this process, times `streamWallFactor`, clamped to `streamWallMeasuredFloor`…`streamWallCeiling`. A lane with NO history gets `streamWallFloor`, 5m, and that figure is now the outer bound for a stranger rather than the floor under everybody: it used to outrank the derivation, so a lane whose longest finished reply was twenty-four seconds still waited out five whole minutes, and two streams in the dogfood run of 2026-08-31 did exactly that on endpoints sustaining 83–270 tok/s. `streamWallMeasuredFloor` is `bufferedQuietBound` rather than a number of its own: the shortest honest wall is the longest honest silence, or the wall would cut a stream the silence bounds are still being patient with. **The wall bounds a reply that is not working, never a reply that is long:** when it fires, a stream that delivered at least `1/streamWallFactor` of what its lane's measured rate (`velocityLedger.rate`; `LagRate`, 30 tok/s, for a lane with none — `paceFor`) would have produced over the period is re-armed for another period, up to `streamWallCeiling`, which no evidence moves; one that did not is cut with the unchanged sentence, naming the whole bound reached. Measured 2026-09-10: three `write` attempts streaming 24–41 tok/s were cut at their walls (2m30s, 2m30s, 10m39s) on a lane that had only finished 5–9s turns — $1.46 of $1.74 thrown away. A tool call's arguments count as the answer arriving, in the controller's reading and in the cut's `Tokens`. Non-streamed completions keep the hard wall. | `internal/provider/velocity.go`'s `runs` ledger for the period and its rate ledger for the pace. A model-size table is a claim this process cannot check; a completed reply is a measurement, and so is a rate. | `internal/provider/streamguard_test.go`, `internal/provider/patience_measured_test.go`, `internal/provider/streamwall_pace_test.go`, `internal/lane/control/toolcall_test.go` |
 | **An endpoint whose ANSWERS cannot be used loses standing, and wins it back by serving.** A guard cut — silence, stall, overrun, soup, unparsed tool grammar — and an answer with nothing in it are reported to the lane belief as outcomes that were not accepted; every answer that survives every guard is reported as one that was. The belief decays toward the lane's prior over `lane.QualityHalfLife` and the frontier gate reads it against the role's own `QualityNeed`. | No new number: `lane.Outcome` and `Ledger.NoteOutcome` have existed since the routing wave and had no production caller until this. The decay, the recovery and the gate are all `internal/lane`'s own. | `internal/provider/lanequality_test.go`, `internal/lane/garbage_test.go` |
 | **An endpoint that STALLS is treated exactly like one that REFUSES**: its lane is struck, memoized for `ignoreCooldown`, and every request encoded afterwards routes around it. | `velocityLedger.pace`, per model, sourced from the endpoint the wire itself named. | `internal/provider/unwatched_test.go` |
-| **A cut retries the CALL, never the leaf**, and says so on the stream a person is reading. | `cutBudget` — 2 attempts when the ledger routed around the endpoint, 1 when it could not. | `internal/session/loop.go` |
+| **A cut retries the CALL, never the leaf**, and says so on the stream a person is reading. When every arm fails, an accepted rescue's typed cut reaches this retry instead of being hidden by the primary arm's earlier routing refusal; the retry clears any partial reply before sending. | `cutBudget` — 2 attempts when the ledger routed around the endpoint, 1 when it could not. The provider does not add another retry after exposed output. | `internal/provider/hedge_terminal_test.go`, `internal/session/loop.go` |
+| **Every wait in the request path is SPOKEN, inside one second.** A wait that is real is reported, and four of them were not (`docs/design/recovery/DESIGN.md` §2 problem 8). The one this wave closed is the limiter's slot queue: a burst of rate limits halves the process-wide ceiling and every other call parks in `adaptiveLimiter.acquire` BEFORE its request reaches the wire, so none of the stream's own phases has started and the person reads a blank line for the length of somebody else's burst. It now posts `PhaseConnecting` with no deadline — nothing in this process knows when a slot comes free, and the emptiness law draws an unknown as nothing — and says it again on `phaseBeat`. | `lane.SpokenWithin`, 1s. Miller 1968 through Nielsen 1993: one second is the limit of a person's uninterrupted flow of thought. It bounds SPEECH and never cuts anything, so there is no trade against it. | `internal/provider/limiter_test.go`, and the law `TestEveryWaitInTheRequestPathIsSpoken` in `internal/provider/waiting_law_test.go` |
+| **A connection wait draws a countdown to the moment it really ends.** It posted a zero, which is correctly drawn as nothing, so a person on dead Wi-Fi was told the wait was real and never how long this build would give it. | `connectionRecoveryWindow`, 2m, measured from when the wait began — the moment `waitConnection` gives up with `ConnectionUnavailableError` and the ladder above stops spending windows on the same origin. No new number. | `internal/provider/connectivity_test.go` |
+| **A streamed request carries no total duration deadline at all**, and the row records which bound really ended it. `clientFor` gives a stream `Timeout: 0` and `attemptContext` gives it a cancel, never a timeout; a completion keeps its adaptive total, because an answer arriving in one piece has no silence to measure. The census of 2026-09-10 read 869 `context deadline exceeded` rows at exactly 60s and 90s — 780 with a first token already taken — as the wall cutting live streams. It is not the wall and it is not in this package: those deadlines are the CALLER's. What this package owes is the honest record, `streamWatch.applied` beside `streamWatch.armed`: what actually stopped the attempt, beside when the hazard was going to start thinking about a second machine. | No new number. `deadline_ms` alone made 2,720 of 11,841 attempts read as running past twice their own bound. | `internal/provider/streamguard_test.go` (`TestNoFixedDurationEverBoundsAProducingStream`, `TestADripAtItsLanesPaceOutlivesEveryDurationBound`, `TestASilentStreamIsCutAtItsLanesOwnGapAndNotTheFlatOne`), `internal/provider/armwatch_test.go` |
+| **A losing arm of a race is exhaust, not failure.** Its row carries `cancelled: lost the race` unless the race had something more specific to say. 1,204 of 3,906 bad rows in ten days are `context canceled`, and most are arms another arm beat — a log that files them beside a provider's refusal is measuring this build's own hedging policy and reporting it as provider health. | No bound. It is a word on a row. | `internal/provider/armwatch_test.go` |
+| **A ceiling that fires picks an act; it may not pick neither.** A hedge is the PAID way to act on a silence and comes out of a purse of two rescues per twenty calls; a cut is the FREE way — end this attempt and let the layer above ask another machine. When the purse refuses and NOT ONE BYTE has reached the stream (`pathFaultReason`, no token and no router comment), the cut is taken. Measured 2026-09-10: 2,186 attempts fired the ceiling, had the purse refuse, and had nothing act at all; 648 ran past six times the silence that was refused, to a p99 of 272s and a worst case of 938s. Four quick tasks that evening waited 260s, 370s, 375s and 428s for a first token, all past a ceiling that had already fired. **The cut is taken on a dead wire only**, and the discriminator is measured: of those 2,186, the ones reading `drift` ended cleanly 92% of the time and `ceiling` 75% — cutting those would throw nine calls in ten away — while `no heartbeat` ends cleanly 31% against first tokens whose p99 is 505s. | `lane.VisiblePatience` × the role's patience, unchanged. The change is that the ceiling is hard regardless of PURSE as well as regardless of belief (`docs/design/waiting/DESIGN.md` §A clause 1). | `internal/provider/armwatch_test.go` |
+| **The buffered quiet cap is NOT scaled by the role.** The first-token and mid-stream bounds are patience and scale with whose errand it is; the cap is a measured ceiling on what an endpoint may do while keeping its line warm, and a machine does not earn longer because nobody is watching. Stretched, it was 7m30s for a task node and 15m for a standing pass — the colon trickler the cap exists to stop. All four six-minute waits above sat inside the stretched cap and past the flat one. | `bufferedQuietBound`, 150s, flat at every role. It was `150s × patience`. | `internal/provider/streamguard_test.go` |
+| **A first token that finally arrives from a named machine still teaches the ledger about it.** A sighting used to be dropped whenever the act had been charged to the path — but that claim is made from what had arrived at the moment of the act, and a stream that went on to write from a named machine has disproved it. All four of the six-minute streams named their machine and every one was dropped, so its sheet went on claiming an eight-second first token. | No new number: `LagTTFT`, 2s, is already the line such a sighting falls the wrong side of. | `internal/provider/armwatch_test.go` |
+| **A failed call is bounded by ONE deadline and by nothing else.** `control.Plan.Deadline` is the whole of how long one call may go on recovering, and what comes next inside it is `control.Next` — another machine, the same machine once after the comeback it named itself when the set is one wide, a relaxed shape one rung at a time, none. Six budgets are **deleted** with the loop that owned them (`internal/provider/dispatch.go`, formerly `retry.go`): `maxAttempts` 3, `rateLimitAttempts` 6, `patientAttempts` 60, `watchedPacingBudget` 2m, `patientPacingBudget` 10m and `freeMoves` 8, with `outOfPatience` and `patienceOf`. Their product — 3 models × 4 attempts × 5 arms × 6 paced sends × 9 rungs — was nobody's number, and the census of 2026-09-10 measured what it produced: chains of sixteen and seventeen identical sends to one machine over eleven minutes, ending refused. A wait the dispatcher ASKED for is charged against the deadline whether or not the clock really moved, so the test seam that makes waiting free cannot make the deadline unreachable. | `lane.Role.GiveUp` = `lane.TurnGiveUp` (90s, measured: 66% of recovering chains land inside it) × the role's own patience column — the same column `lane.VisiblePatience` is scaled by, so a role cannot be patient about when to act and impatient about when to stop. Talk and an attached leaf 90s; an unattended leaf, a memory or an auxiliary errand 4m30s; standing, judge and design 9m; a probe 45s; a role that named nothing reads as unattended. R4's measured recommendation (`watchedPacingBudget` → 30s, `patientPacingBudget` → 2m) is superseded: pacing has no budget of its own at all now. | `internal/provider/dispatch_e2e_test.go` (`TestOneDeadlineBoundsEverything`, 300 scripted pools; `TestTheScreenshotScenarioAnswersThroughTheFourthMachine`), `internal/lane/control/move_test.go` (`TestNextNeverRepeatsAMove`), and the laws in `internal/provider/dispatch_law_test.go` |
+| **A 4xx the router RELAYED is one machine's verdict and is walked, not surfaced.** `error.metadata.provider_name` is present exactly when the router forwarded somebody else's refusal, which means the routing layer found something to try; the model's other machines have said nothing about this request. A refusal that named NOBODY is still the router reading our own bytes and still goes back whole, and so does anything `sendRepaired` can fix by itself. A second refusal from a machine this call has already vetoed is the router saying the veto changed nothing — there is nowhere else, and the refusal goes back. | No count. The walk is bounded by the deadline above and by the exclusion set (`provider.ignore`, keyed on who ANSWERED — #850). 401, 402 and 403 are deliberately not walked: they are facts about this process and every machine will answer them identically. | `internal/provider/refusal_class_test.go`, `internal/provider/dispatch_e2e_test.go` |
+| **The wire is not forgiven a NUMBER of times at all — it is forgiven for a LENGTH OF TIME.** `taxonomy.Limits.TransportAttempts` is deleted with `DefaultTransportAttempts` (4, then 3): the transport under every caller was already bounded by `control.Plan.Deadline`, so a count above it multiplied rather than bounded and neither figure could be stated to a person. What is left of that pair is the WAIT — one second, doubling — and a failure that asks for no wait at all (an empty 200, a mangled tool call: rotation mends those and time does not) still pays one from the SECOND onward, or a ladder bounded by a deadline sends as fast as an endpoint can fail. A caller with no time left says so as `taxonomy.Evidence.OutOfTime` and the one classifier answers hop-or-end; it is deliberately not `Evidence.Spent`, which claims no shape of the request could be served. | `taxonomy.DefaultTransportBackoff` 1s, doubling. `taxonomy.Limits.Patience` is the person's `response.attempts` read as a MULTIPLIER on `lane.Role.GiveUp` (default 1.0, so 90s for a turn; `3` is 270s), published process-wide through `lane.UsePatience` — the one door, because a deadline is built in two places that cannot read a profile. A person who set `8` when it was a count now gets eight times the patience and never eight identical sends. | `internal/taxonomy`, `internal/lane/roles.go`, `internal/session/loop.go`, `internal/session/recovery_law_test.go` (the law, and the allowlist of what counts THINGS) |
+| **The relaxation ladder has no length of its own either.** `endpoints.go`'s `for _, step := range c.relaxationPlan(...)` is folded into the dispatcher: the rungs are `control.Plan.Shapes` and which one comes next is `control.Next`, recorded on the same move log the machine walk writes into, stopping at the same deadline. `relaxationPlan` stays as the DATA — which fields this body actually carries is the encoder's fact. `maxArms` 4 and `ladderArms` 1 are KEPT and are not a retry budget: they bound how many copies of one question are in flight AT ONCE, which is money and concurrency (Dean & Barroso's tail-at-scale rescue), and the arms share the deadline over them and the move log under them. | `control.Plan.ShapeRefused` is what the generator cannot work out for itself — "no endpoints found that can handle the requested parameters" answers for every machine the router can see, and such a request's serving set is usually OPEN, which has another machine in it forever. | `internal/provider/foldedladder_test.go`, `internal/provider/dispatch_law_test.go` |
 
 ### The claim reaper is the backstop, not the detector
 
@@ -1700,9 +1995,29 @@ could be checked.
 | --- | --- | --- |
 | `spent()` vs the grant | uncached prompt + cached at `cachedTokenWeightPercent` (10, the provider's own discount) + completion — **what the job pays** | **yes** |
 | `maxTurnBackstop` (400) | iterations | **yes** |
-| the no-progress guard | repeated calls, a stagnant window, `noProgressTurnFloor` (60) | **yes** |
+| the no-progress guard | `noProgressRepeatCap` (4) repeated calls, a `noProgressStagnantCap` (6) stagnant window, or `noProgressTurnFloor` (60) | **yes** |
+| mutation-free recon notice | `noProgressReconTurns` (10) consecutive tool-calling turns that changed nothing in the workspace | no — asks for the result, and asks again at each further span |
+| `wallPaceAt` (0.5) | the elapsed share of this leaf's own wall, read to the second | no — one live clock reading, once, before the landing reserve |
+| the landing reserve | `landingTurns` (4) turns or `landingTokenShare` (0.2) of the grant, whichever arrives first | it **ends** a leaf the grant already landed |
+| `toolTimeoutRepeatCap` (3) | timeouts of one exact tool call (tool name and argument text), counted across a leaf round | **yes**, unless a budget or deadline landing already owns the ending |
 | `rawCeiling` (3 × grant) | Σ over turns of prompt + completion, undiscounted | no — wrap-up warning only |
 | `reuseCeiling` (working set × fill × reuse = 240,000) | Σ over turns of prompt sent | no — wrap-up warning only |
+
+The measured leaf that spent its whole 45-minute wall reading stayed below the turn floor,
+and every fresh hash reset the stagnant reading. The answer is not a fourth ceiling: a leaf
+whose deliverable is its answer reads and writes nothing by design, so the absence of a write
+is not evidence of a stall. It gets a reminder at each mutation-free span and, once past
+`wallPaceAt` of its own wall, one live reading of what has gone and what is left. A leaf that
+is genuinely circling is stopped by the repeat and stagnant signals, which fire at 4 and 6
+turns and reach it far sooner.
+
+The effective ceiling a caller gets is therefore the grant, plus
+`landingTokenShare` of that grant, plus the overshoot of the turn that crosses
+the grant and the overshoot of the turn that crosses the landing allowance.
+Both crossings are measured after a complete turn, so there can be two separate
+overshoots. The complete landing turn keeps a mid-edit workspace whole. The token half exists because four leaves in the
+2026-09-03 worker trial reached 1.18×, 1.28×, 1.74× and 2.04× their grants; one
+reserve alone billed 122,392 tokens against a 150,000-token grant.
 
 **The two cumulative bounds were retired as stops, and the arithmetic is why.**
 Σ over turns of the prompt is `turns × mean-context` wearing a token name: a
@@ -1738,6 +2053,21 @@ its two numbers and their unit; `store.LeafExhausted` journals them beside the
 of five ceilings stopped a leaf is FAILSAFE.md's fourth clause exactly — an
 absence that means five things at once. Pinned by
 `internal/exec/inks9_test.go`.
+
+## Learned routing work stays bounded
+
+`internal/lane/workload.go` retains at most **256** model/request-class forecasts
+(`workloadLimit`), evicting the oldest class. Receipt weight decays with the
+existing routing `HalfLife`; less than half an observation of remaining evidence
+defers to conversation history. The existing shared journal persists observations,
+so this adds no provider lookup or network operation to the send path. A class is
+model, tool availability, foreground/background intent and resolved reasoning
+setting. Forecasts are bounded by the request's actual wire output ceiling.
+
+Readable stream progress uses a single accumulated byte counter and the existing
+`charsPerToken` estimate, independent of frame size. It retains no text and adds
+no per-frame allocation. Token bills remain receipt-based. Session routing headers
+respect the protocol's **256-character** maximum by hashing longer identities.
 
 ## The generalist leaves a record
 
@@ -1795,3 +2125,249 @@ changing that tree; cancelled or unstarted processes provide neither an answer
 nor a reusable execution time. `TestACheckAlreadyRunOverAnUnchangedTreeIsNotRunAgain`,
 `TestACheckThatMovedTheTreeIsNeverRemembered` and
 `TestACancelledCheckDoesNotPoisonTheNextReading` cover those reuse conditions.
+
+## Conversation trees on Home and Tasks
+
+Tasks builds its conversation and parent index once per reading and reuses it
+for layout. Search retains the full ancestor chain; valid hierarchy depth is
+not capped. The visible indentation uses at most four two-cell levels and
+shrinks further on narrow terminals (`tasksKinLevels`, `tasksKinRoom`). This is
+a display allowance, not a limit on delegated work. Home preserves at least
+sixteen cells for a task name by shortening ancestor prefixes
+(`homeWorkNameFloor`), and its desktop preview still shows three task names.
+`BenchmarkTasksConversationHistory` exercises forty conversations holding 5,120
+tasks; the fixture is built outside the measurement.
+
+## Task reading positions across navigation
+
+`internal/tui3/roomreading.go` retains at most `roomReadingLimit` (64) recently visited
+task transcripts' display choices, keyed by host, owning conversation, and task id.
+Each keeps at most `roomReadingEntryLimit` (`2 * roomTail`, 240) block settings plus one
+scroll anchor. Keys are fixed-size text fingerprints and occurrence numbers; no tool
+output, transcript, or live subscription is kept by this cache. Least recently visited
+pages are evicted. These caps bound retained memory without changing the journal tail.
+`TestTaskReadingCacheIsBoundedAndRevisitsStayRecent` exercises eviction through real
+room navigation. Hashing happens at close/reopen, never on an ordinary cached frame.
+
+The breadcrumb bar walks only the open task's parent links, with cycle detection.
+Its fitting ladder considers at most eight explicit ancestor levels; deeper ancestors
+are represented by a fold rather than silently discarded. Main-chat header layout is
+cached by width, ink and displayed chat name/picker availability. No filesystem read or
+roster sort runs in the breadcrumb paint path.
+
+
+## Chat-header navigation
+
+At widths of at least 48 columns, the header gains a blank row above the tabs
+at 32 rows, below them at 36 rows, and after task metadata at 40 rows. Staggering
+these thresholds keeps a growing terminal from losing reading rows. Smaller
+frames collapse the padding; drawing, scrolling and pointer targeting share the
+same height calculation. Home is a capability check in memory and has no hover-time I/O.
+The switcher adds two inner padding rows only when capacity permits, retaining a
+selected conversation on short frames. Its surface color is computed once per card.
+
+The tab strip remembers at most 32 recently used conversations without limiting the
+agents held by the keeper. Stable order is retained for remembered tabs; the current
+chat is revealed after navigation; explicit arrow or wheel browsing may move it offscreen.
+Overflow has a bounded in-memory viewport and the existing conversation picker. The
+32-candidate cap supports realistic multi-chat work without fitting dozens of names into
+six-cell labels; no new history reads, agent limit, or animation loop is introduced.
+The window-local reopen stack retains at most the same 32 closed tab addresses,
+with one entry per conversation. This history is not persisted. It stores no
+transcript or agent; reopening
+uses the existing conversation connection and draft restoration path.
+Each tab uses at most 32 cells when several tabs share the row, including its
+leading inset and three close-target cells (space, mark, trailing inset). These are presentation
+bounds, not execution or history limits. Frame reads use cached local identity and
+in-memory titles, never fresh history scans or remote calls. Cached click destinations
+include the complete tab identity and picker availability, not just rendered words.
+
+
+The navigation panel renders a separate transcript separator and, inside a task,
+a separate metadata row. Its tab candidate slice is bounded to 32 entries;
+the recency stack and held agents remain uncapped. Membership walks can still
+inspect recency keys when candidates are dismissed or missing, but the renderer
+no longer builds an unbounded temporary tab list and compares each entry against
+all prior entries. Closing a tab preserves the remaining presentation order.
+Pointer targets are recorded by the row renderer, including separate close and
+Back spans; no filesystem or network call is added to hover or tab layout.
+
+The new-chat header status reads only in-memory state. Held watchers cache task
+and turn transitions; the front tab scans its existing task-state map. No
+per-frame engine call or filesystem reading is added, and no timer is added for
+status marks. This is not an input-to-paint latency measurement. The full UI
+gate and the existing 4,000-line scroll allocation law pass without cap changes.
+
+## The task report's bounded fenced tail
+
+A task report keeps `taskReportLines` (3) non-empty lines, each bounded by
+`taskReportLineLimit` (300 bytes). A fence opened inside that room may carry
+`taskReportFenceLines` (8) additional source lines so the quoted result can
+reach its closing fence. If the block still does not close, the report adds its
+closing delimiter and a separate cut mark; ordinary prose gains no extra room.
+The full answer stays in the task journal.
+
+`TestAReportStillCutsOrdinaryProseToThreeLines`,
+`TestAReportWillNotHangAnOpeningFence` and
+`TestACheckpointRowKeepsTheReportsFencedTail` pin the ordinary bound, the fenced
+exception and the durable report the task surface reads.
+
+## Compact live conversation steps
+
+The main conversation budgets `liveStepRows` (3) wrapped rows for recent step
+captions. It admits whole captions newest first; if the newest caption alone
+exceeds that budget on a narrow frame, it is kept whole. This is a presentation
+budget, not a limit on saved work, tool results or the answer. Questions,
+corrections, answers, notices and failed steps can separate compact blocks.
+
+The window reuses the caption list already derived for the layout. Its entry
+and caption walks advance through the ordered lists; it does not rescan every
+caption for each separated block. Opening a block traverses its caption spans
+rather than searching the whole caption list for every entry. Motion uses the
+existing frame clock, shimmer and fade palette, adding no timer, goroutine,
+filesystem access or network request. The screen-reader tier stays static.
+`stepElapsedAfter` is 10 seconds. An active caption then formats its elapsed age
+from the existing frame clock in whole seconds, using `countUpWord`. Its dim
+suffix only occupies spare cells on the last wrapped line; it never changes
+wrapping or the row budget. Unknown start times and completed captions carry no
+live clock. No additional tick source or state is allocated for elapsed time.
+
+## Task request and finished-task reading
+
+A task page keeps the existing `roomTail` entry budget. When its opening brief
+would fall outside that tail, `keepRoomTail` reserves two slots for the brief and
+an explicit history seam, retaining the newest `roomTail - 2` entries. It keeps
+no second transcript. Request presentation is derived only for the brief entry
+and follows the existing cached row/three-line disclosure path; raw text remains
+the entry identity. Finished rooms reuse `foldTurns` without another fold engine.
+Reading bookmarks still retain at most 240 fingerprint settings across each of
+64 tasks; the saved fold style is one enum and work choices follow the fingerprint
+of each derived fold's start rather than an unstable integer index.
+
+## Caption shimmer motion
+
+The current collapsed step is sampled by `frameInterval` (33 ms), but its
+position follows elapsed time through `app.now`, so skipped or remote frames do
+not slow the motion. `shimmerPeriod` is two seconds, with a continuous cosine
+feather and no separately scheduled pause. The band travels beyond both ends
+before wrapping, so the loop boundary is quiet. Its half-width is the larger
+of `shimmerMinRadius` (6 terminal cells) and `shimmerWidthRatio` (0.20) of the
+line width. This broader feather smooths the bright crest at terminal frame
+rates; the crest reaches ordinary answer ink without bolding or moving letters.
+Whole graphemes receive colour together.
+
+Each painted line takes two linear walks (cell measurement and drawing), with
+constant-space iteration besides its output. Adjacent graphemes of the same
+colour share one escape pair; only the feather needs per-cluster spans. A
+69-cell caption spends at most 30 colour spans rather than styling every letter.
+Truecolour interpolates channels directly. No new timer, I/O or background
+worker is involved. Screen-reader and lower-colour modes (including 256 colours)
+remain static because nearest palette matches can introduce abrupt hue changes.
+Tests inspect the whole cycle in both themes for visible yet smooth colour,
+a quiet loop boundary, stable width, intact Unicode and elapsed-time behavior
+under skipped frames. An actual paint-handler regression checks that between
+finished calls only an inline activity dot moves. The latest finished caption
+stays still and whole, sharing the existing oversized-caption exception.
+Waiting labels reuse `stepElapsedAfter` (10 seconds) and the known request
+clock, with no new timer or narrator call. Suffixes use spare columns; at narrow
+widths the dot uses the existing icon gutter. The laid-out activity row suppresses
+a duplicate footer pulse; detailed phase information remains in the footer.
+
+## Memory lookup before the first response
+
+Pre-turn recall shares `lane.VisiblePatience` (10 seconds) across response repair
+and model fallback; a shorter caller deadline wins. This is a cancellation ceiling,
+not a sleep: successful lookup returns immediately and the ordinary learned lane
+controller can act earlier. `RoleRecall` values interactive, critical-path latency
+without publishing its private output. Other reflex operations share the existing
+`roles.PatienceFor(RoleReflex)` (45 seconds) across retries. Recall bypasses the
+ordinary session auxiliary adapter, so its own operation now owns these bounds.
+On recall failure, the main request proceeds without selected memories. The phase
+uses the existing session heartbeat and clears before the main request starts.
+
+Host attachment compares a build identity captured at process initialization,
+including timestamp precision beyond the minute shown on screen. This adds one
+string to the existing local-socket handshake and no executable hashing or extra
+network round trip. A mismatched busy host remains alive.
+
+## Conversation titles run independently of foreground turns
+
+`startTitleLocked` starts one naming job when the first user message is accepted into
+an unnamed journal-backed session. `titleTried` is marked under the agent lock before
+launch; later turns and end-of-turn fallback calls cannot launch duplicates. The job
+uses session lifetime, not a turn context. Neither Submit nor turn-stream closure waits
+for it. Closing cancels the job before joins and uses the existing `closeGrace` bound.
+
+`titleAttempts = 3` bounds the automatic retry ladder; `titleWindow = 2 minutes` covers
+all attempts and backoff. Transient transport failures and individual auxiliary deadlines
+retry while the overall context remains live. Backoff uses `retryBaseDelay` (2 seconds),
+doubling to 4 seconds before the third attempt. Empty/invalid names, permanent failures,
+and cancellation do not retry. Each attempt retains the role ladder's existing maximum
+of two provider rungs, so the outer job permits at most six role-level calls, subject to
+the shared deadline and the provider adapter's existing transport policy. Prompt input
+remains clipped by `titleClip`; returned names by `titleLimit`.
+
+The session title no longer consumes the interrupt generation's task-naming allowance:
+its lifetime gate already prevents duplicate jobs, while retries must survive Escape.
+Task naming and planner limits are unchanged. Detached title usage enters session totals
+and the usage ledger but cannot change a later or abandoned turn's spend.
+
+Title subscriptions are conversation-owned, stopped on detach/close, and replay the saved
+name. Hosted title frames reuse revisioned `FactsPush`; newer ordinary facts also notify
+changed names so overtaking cannot lose the visible update. Reconnect reopens an existing
+title subscription once, without polling or model work. Background title redraws neither
+consume completion flags nor raise attention banners. Metadata read-modify-write is
+serialized per agent, with owned-field patches so stale spend snapshots preserve titles.
+
+## Checker observations remain bounded and recoverable
+
+The checker keeps its existing **8,000-byte** per-result ceiling
+(`auditResultLimit`). Its native reader uses **7,500 bytes** for page content
+(`auditReadContentLimit`), reserving the remainder for the exact line range and
+continuation footer. Other oversized observations use the existing atomic,
+content-addressed `writeStub` path; their bounded preview names the saved file.
+This adds no model call or separate retention cache. A single line larger than
+the native reader's content limit retains the reader's explicit long-line
+response; line paging does not claim to split it.
+
+## Task-side column height budget
+
+`internal/tui3/roompanel.go` uses the existing rail width and theme paints.
+The expanded hierarchy requires **33 terminal rows**
+(`roomPanelFloor + roomHeadRowCount + 13`). Its divided task panel also requires
+`roomPanelFloor` (**18 body rows**).
+Controls and existing column navigation reserve their measured height first;
+Conversation context, when present, receives one third of the remainder, capped at `roomDetailsMax`
+(**8 rows**), and the task tree gets the rest with a two-row floor.
+Both windows clamp their own scroll offsets. Shorter frames use the established
+compact rail, header Stop and model picker. These are display budgets, not limits
+on tasks, their history or their execution.
+
+Deep tree rows retain their full navigation ancestry but bound drawn indentation
+by the available width, reserving `railTitleFloor`, the two-cell glyph lead and
+one `treeIndentCols` child stem. An ellipsis marks omitted outer connectors.
+
+Task setup reads thinking levels from the standing task notices on hosted pages.
+Frames and pointer motion make **zero network calls**. The expanded sidebar
+reserves its resize hint even before hover, keeping controls at stable rows.
+
+## Compact transcript images
+
+Unopened image tools and sent attachments are one text control per image, with no
+pixel rows, file stats or decodes. Explicit expansion retains `pictureRowsMax` (20
+rows). A message expands at most one attachment at a time. The shared media controls
+carry file ownership independently of their label, and original-file opening runs
+outside the paint loop through the existing local or hosted mirror route. Display
+state is not journaled. Folder preview decoding remains on its bounded worker pool.
+
+## Conversation lookup bounds
+
+`search_conversations` keeps the existing eight default and twenty maximum
+matches. Search passages and neighbouring messages are bounded by
+`store.ConversationExcerptBytes` (400 bytes); a search adds at most one actual
+message on either side from the same conversation. Explicit source-reference reads
+return the full indexed anchor, bounded by `store.MaxMessageBytes` (16 KiB),
+plus at most two 400-byte neighbours on each side. They do not read whole
+transcripts or invoke an embedding model. Search tokenization accepts at most
+32 Unicode word/number tokens, quoted as FTS data. History access inherited by
+tasks grants reads only and introduces no background memory calls or writes.

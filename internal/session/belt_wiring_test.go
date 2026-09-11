@@ -51,9 +51,25 @@ func v3ShapedAgent(t *testing.T) *Agent {
 func TestTheChatBeltCarriesTheBigHands(t *testing.T) {
 	agent := v3ShapedAgent(t)
 	for _, want := range []string{"build_harness", "list_harnesses", "propose_task"} {
-		if !agent.hasTool(want) {
+		if !agent.offers(want) {
 			t.Fatalf("%s is not on the belt, so the model does not have the verb", want)
 		}
+	}
+	// AND WHERE EACH ONE LIVES, because "the model has the verb" is now two
+	// answers and a wiring mistake could turn either into the other. propose_task
+	// is how work leaves a turn and is carried; the two saved-procedure hands wait
+	// on the `harnesses` shelf one `load_capability` call away
+	// (tools_capabilities.go), which is what a lane reading this needs to know.
+	if !agent.hasTool("propose_task") {
+		t.Fatal("propose_task is on a shelf: the verb work leaves a turn by must be carried")
+	}
+	for _, shelved := range []string{"build_harness", "list_harnesses"} {
+		if agent.hasTool(shelved) {
+			t.Errorf("%s is carried on the belt; it belongs on the harnesses shelf", shelved)
+		}
+	}
+	if !agent.hasTool(loadCapabilityToolName) {
+		t.Fatal("something was shelved and there is no load_capability to fetch it back")
 	}
 	// AND NOT THE ONE THAT IS GONE, on the fully-wired shape where it would
 	// otherwise appear. This is the assertion that would have caught the verb

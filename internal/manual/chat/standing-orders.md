@@ -171,17 +171,27 @@ just say them. The hint is also absent wherever the chord would refuse — a tra
 pictures on it, a picked shape of work, a build with no ambient side.
 
 To check afterwards whether anything actually stands, open `/standing`, or read the
-`◦ keeping an eye on N` count at the foot of the screen.
+`◦ N standing orders` count at the foot of the task column.
 
-## keeping an eye on 2 — the count at the foot of the screen opens the page
+## 2 standing orders — the count at the foot of the task column opens the page
 
-The status line's `◦ keeping an eye on N` segment is a **door**. Click it and the standing
-orders page opens — the same page `/standing` and `/orders` open, showing which N those
-are. It brightens under the pointer, the way the model's name beside it does.
+`◦ N standing orders` (`◦ 1 standing order` for one) is drawn dim at the **foot of the
+task column**, under that column's own counts of what is running, waiting, parked and
+done. It is a **door**: click it and the standing orders page opens — the same page
+`/standing` and `/orders` open, showing which N those are. It brightens under the pointer,
+the way the column's other pressable lines do.
+
+**It moved there on 2026-09-09**, from the status line at the very bottom of the frame. It
+had been a segment of that row, between the background-job count and the `YOLO` badge. The
+row is the numbers about the conversation in front of you; what stands over the project is
+what the column beside the conversation is already for, and the count now sits directly
+under the tally of that project's other live work. Before that again it read
+`◦ keeping an eye on N`, which named nothing a person could type; the words are the
+command that opens it.
 
 It counts the active orders reaching **this** window's project, so it is the fastest
-answer to "did that actually stand?". Nothing standing here means no segment at all and
-nothing to press.
+answer to "did that actually stand?". Nothing standing here means no line at all and
+nothing to press, and a column too short or too narrow for a footer draws none of it.
 
 Its mark moves while an order of this place is being acted on right now, and is still
 otherwise — so movement there means one of your orders is working, out of the corner of
@@ -197,7 +207,7 @@ always was. `standing` is under it, and it is the orders standing over this conv
 
 ```
 tasks
-⠙ ◆ Fix the nil-map     #7
+⠙ Fix the nil-map       #7
 + /task
 
 standing
@@ -216,8 +226,8 @@ standing
   twenty-four cells rather than thirty, the tail gives way so the order's own name keeps
   its room. `/standing` says the reach in full whatever the width.
 - **A row breathes while its order is being checked or fired right now** — its mark becomes
-  the spinner, exactly as the `keeping an eye on 2` chip on the status line does. It is
-  still every other moment.
+  the spinner, exactly as the `◦ 2 standing orders` count at the foot of the same column
+  does. It is still every other moment.
 - **Orders with a next occasion coming are listed first**, and the rules that merely
   `holds` sit under them: a rule has no "next", so it does not belong in a queue of what
   happens next.
@@ -229,7 +239,7 @@ standing
 anything is in it. The rows under a label are only the real ones: with nothing standing,
 the `standing` section is its label and its `+ /standing` row and nothing between them.
 
-These rows answer to the **pointer**. The roster's keyboard cursor (`ctrl+t`) walks the
+These rows answer to the **pointer**. The roster's keyboard cursor (`alt+t`) walks the
 task rows only. On a build with no ambient side there is no `standing` section at all —
 the column is the roster it always was.
 
@@ -325,7 +335,7 @@ over every project, and "keep this branch green, just in this conversation" dies
 the chat does. If you say nothing about it, the card still tells you which one it picked
 before anything stands — read the `where ·` band before you press `1 yes, set it up`.
 
-**And if the reach is wrong, change it on the card.** `2 change when or where` turns the box
+**And if the reach is wrong, change it on the card.** `c change when or where` turns the box
 below into a place to say either one: "only in this project", "everywhere", "just this
 chat" — the same door that changes the time. `enter` sends your words back, nothing is set
 up yet, and a new card comes with the reach you asked for on its `where ·` band.
@@ -339,7 +349,7 @@ where you are sitting.
 ```
   standing orders
   in this conversation
-› ? keep the tests green         needs your look · the fix touches migrations
+› ? keep the tests green              your call · the fix touches migrations
   for this project
   ◦ draft the weekly update                                  Mondays at 9am
   everywhere
@@ -520,7 +530,7 @@ four.
   conversation you are in. Inside a shelf the order is the same triage home uses: what
   needs you, then what is moving, then everything else.
 - **A row says how much rope the order has, then what home says about it** — its mark, its
-  name, the rope (*How much rope one has* below), and one clause: `needs your look · …`,
+  name, the rope (*How much rope one has* below), and one clause: `your call · …`,
   `checking now`, `paused`, `holds`, `checked 4m ago · …`, or its cadence. There is one
   derivation of that clause for the whole program, so this page and home can never disagree
   about an order in front of you. On a narrow terminal the clause gives way first and the
@@ -537,29 +547,28 @@ four.
 - **`shift+←` and `shift+→`** move the time window in the header — *When it fired* below.
 
 Typing remains composer text and `tab` moves to the next place. When nothing at all stands
-on this computer the place opens on its own three sentences — *Nothing stands here yet — the
+on this computer the place opens on its heading and one line — *Nothing stands here yet — the
 empty standing page* below has them.
 
 ## Nothing stands here yet — the empty standing page
 
-A machine nothing stands on **still opens the page**. `alt+3`, `tab`, `/standing` and
-`/orders` all reach it, and what they reach is three dim lines saying what a standing order
-is:
+A machine nothing stands on **still opens the page**. `alt+5`, `/standing` and
+`/orders` all reach it, and what they reach is the page's heading and one dim line naming
+what arrives there and what puts it there:
 
 ```
-nothing stands here yet — say what should always be true, and I'll hold it.
-an order stands until you stop it, and it can reach just this conversation, this project, or everywhere.
-enter opens the conversation that made one, when there is one here.
+standing orders
+  reminders, watches and routines · "remind me at 6" or "every morning at 9"
 ```
 
-No shelf heading is drawn over it, and neither is the time window in the header: a control
-naming a span of days on a machine that has never held an order is a control about nothing.
+No shelf is drawn under it, and no time window beside the heading: a control naming a span
+of days on a machine that has never held an order is a control about nothing.
 The tab bar, the composer and the top line are all there as usual, so `tab` walks on and
 anything you type is still the first sentence of something new.
 
-The first of those lines used to be what `/standing` said **instead** of opening, with no
-page behind it. On a machine aforge was installed on an hour ago that is every door onto the
-page, so the sentence stayed and the refusal went.
+`/standing` used to say one sentence **instead** of opening, with no page behind it. On a
+machine aforge was installed on an hour ago that is every door onto the page, so the refusal
+went and the page opens.
 
 A list emptied by the **time window** rather than by the machine is a different screen: it
 keeps its header, because the header is the control that pages the window back.

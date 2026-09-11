@@ -29,6 +29,9 @@ func dragApp(t *testing.T) *app {
 		entry{kind: entryThinking, text: "the person wants fmt", open: true, settled: true},
 		entry{kind: entryAssistant, settled: true, text: "Use fmt.Println."},
 	)
+	// The fixture is an explicitly opened reading: finished work now folds
+	// even when its replayed turn number is zero.
+	a.openWorkfold(0)
 	a.touch()
 	return a
 }
@@ -173,9 +176,13 @@ func TestTheSweptRowsWearTheSelectionWhileTheButtonIsDown(t *testing.T) {
 
 	drive(t, a, tea.MouseClickMsg{X: 4, Y: from, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseMotionMsg{X: 4, Y: to, Button: tea.MouseLeft})
+	// THE SPAN IS IN CONTENT ROWS AND THE SWEEP WAS IN SCREEN ROWS, and the two
+	// are a body region apart: the conversation now has a pinned bar of its own
+	// above it (roomcrumbs.go), so a test that compared the two numbers directly
+	// was only ever right while the body started at the top of the terminal.
 	low, high, on := a.dragSpan()
-	if !on || low != from || high != to {
-		t.Fatalf("the selection spans %d..%d (on=%v), want %d..%d", low, high, on, from, to)
+	if wantLow, wantHigh := a.bodyContentRow(from), a.bodyContentRow(to); !on || low != wantLow || high != wantHigh {
+		t.Fatalf("the selection spans %d..%d (on=%v), want %d..%d", low, high, on, wantLow, wantHigh)
 	}
 	// THE RELEASE DOES NOT SNUFF THE SELECTION. The rows stay lit for as long
 	// as the status line still says "copied", so a person sees exactly what
@@ -183,8 +190,9 @@ func TestTheSweptRowsWearTheSelectionWhileTheButtonIsDown(t *testing.T) {
 	// moment they let go — which read as the copy never having happened.
 	drive(t, a, tea.MouseReleaseMsg{X: 4, Y: to, Button: tea.MouseLeft})
 	low, high, on = a.dragSpan()
-	if !on || low != from || high != to {
-		t.Fatalf("the copied rows are not kept lit: %d..%d (on=%v)", low, high, on)
+	if wantLow, wantHigh := a.bodyContentRow(from), a.bodyContentRow(to); !on || low != wantLow || high != wantHigh {
+		t.Fatalf("the copied rows are not kept lit: %d..%d (on=%v), want %d..%d",
+			low, high, on, wantLow, wantHigh)
 	}
 	a.dragUntil = time.Now().Add(-time.Second)
 	if _, _, on := a.dragSpan(); on {

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -381,8 +382,12 @@ func toolBudgetsFor(contextTokens int) toolBudgets {
 type Result struct {
 	Content string
 	IsError bool
-	// reportedJobs prevents a status-bearing result from being memoised and
-	// replayed later as if its transient background state were still current.
+	// reportedJobs says this result was footed with the state of the
+	// outstanding background jobs, which is the one part of it that is NOT a
+	// fact about the call: it carries an elapsed time and is stale the moment
+	// it is written. [observations.admit] reads it to take the report off
+	// before it addresses the body, and to refuse to address a result that is
+	// nothing BUT a report — two reports are never the same fact.
 	reportedJobs bool
 	// shape is which end of this result survives if it has to be cut. The
 	// default is shapeRead because most results are read forward; the tools
@@ -393,6 +398,9 @@ type Result struct {
 	// arrived because nothing could hold the whole of it. Bounding it a second
 	// time at the turn boundary would cut the notice off the end of itself.
 	bounded bool
+	// timedOut carries the command runner's fact to the round limit so that
+	// deciding whether to stop never depends on matching person-facing text.
+	timedOut bool
 	// Followup carries multimodal content that must reach the next model turn.
 	// The ordinary text result is still emitted first so tool-call pairing
 	// remains valid on every OpenAI-compatible backend.
@@ -1089,6 +1097,65 @@ func (t *Toolbox) finishResult(result Result) Result {
 	return result
 }
 
+// jobReportLead opens every line of [jobRegistry.report], jobReportSep follows
+// the id on it, and jobReportClose ends it. They are the three parts of
+// [isJobReportLine]'s test, so the report is rendered from the same three
+// constants rather than from a format string that could drift away from them.
+const (
+	jobReportLead  = "[job "
+	jobReportSep   = " · "
+	jobReportClose = "]"
+)
+
+// stripJobReport gives back the body of a result without the background-job
+// state [Toolbox.finishResult] appended to it.
+//
+// IT IS THE COUNTERPART OF THAT APPEND AND MUST STAY ONE. A report carries an
+// elapsed time, so it differs on every single call, and anything asking whether
+// two results are THE SAME FACT has to ask it of the bodies alone. The defect
+// that put this here was exactly that: [observations.admit] hashed the whole
+// string, so while any job was out NOTHING in the leaf could ever collapse to a
+// pointer — a hundred identical reads of the same file were a hundred distinct
+// strings, and the de-duplication that exists to keep them out of the window
+// was silently off for the entire length of every session that ran a job.
+//
+// The test is deliberately narrow: only a run of lines at the very END, each of
+// which is a whole `[job N · …]` line, is taken off. A result whose own content
+// happens to mention a job is left exactly as it is.
+func stripJobReport(text string) string {
+	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
+	cut := len(lines)
+	for cut > 0 && isJobReportLine(lines[cut-1]) {
+		cut--
+	}
+	if cut == len(lines) {
+		return text
+	}
+	// The blank line the append put between the body and the report goes with
+	// it: it belongs to the report, not to what the tool said.
+	for cut > 0 && strings.TrimSpace(lines[cut-1]) == "" {
+		cut--
+	}
+	return strings.Join(lines[:cut], "\n")
+}
+
+// isJobReportLine reports whether one line is [jobRegistry.report]'s.
+func isJobReportLine(line string) bool {
+	if !strings.HasPrefix(line, jobReportLead) || !strings.HasSuffix(line, jobReportClose) {
+		return false
+	}
+	rest := line[len(jobReportLead):]
+	marker := strings.Index(rest, jobReportSep)
+	if marker <= 0 {
+		return false
+	}
+	// Everything between the lead and the separator has to be the id and
+	// nothing else, so a sentence that merely opens with the same two words is
+	// not mistaken for a line of the report.
+	_, err := strconv.Atoi(rest[:marker])
+	return err == nil
+}
+
 type recallToolFact struct {
 	NodeID   string         `json:"node_id,omitempty"`
 	Scope    string         `json:"scope"`
@@ -1470,7 +1537,7 @@ func (r shellRun) trustworthy(class rtk.Class) bool {
 func (r shellRun) result(seconds int) Result {
 	if r.timedOut {
 		out := errorf("command timed out after %ds. Partial output:\n%s", seconds, r.body)
-		out.shape, out.bounded = shapeCommand, r.bounded
+		out.shape, out.bounded, out.timedOut = shapeCommand, r.bounded, true
 		return out
 	}
 	if r.detached {

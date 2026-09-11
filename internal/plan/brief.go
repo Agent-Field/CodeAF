@@ -9,7 +9,6 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/shaped"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -516,11 +515,11 @@ func writeBrief(ctx context.Context, client Completer, shared string, node Node,
 	}
 
 	system := briefPrompt
-	// A brief is a few paragraphs of instruction for one worker; it travels
-	// under the same ceiling as every other planning call, because left unset
-	// the ceiling is the leaf completion reserve and a model that loops runs
-	// to it (see structuredReplyTokens).
-	options := []ai.Option{ai.WithMaxTokens(shaped.ObjectRoom())}
+	// NO CEILING TRAVELS. A brief used to go out under the same derived room as
+	// every other planning call; that room is no longer a request this harness
+	// makes of anybody's model (internal/shaped), and a brief is prose the
+	// prompt already bounds.
+	var options []ai.Option
 	if Criterion {
 		system = briefWithCriterion
 		options = append(options, ai.WithSchema(briefSchema))
@@ -537,7 +536,7 @@ func writeBrief(ctx context.Context, client Completer, shared string, node Node,
 	ctx = provider.WithCallNode(ctx, callNodeKey(node.ID))
 	response, err := client.CompleteWithMessages(ctx, messages, options...)
 	if err != nil {
-		provider.Report(ctx, provider.VerdictProviderFailure)
+		provider.Report(ctx, provider.ReadingProviderFailure)
 		return "", Done{}, nil, fmt.Errorf("brief %q: %w", node.Title, err)
 	}
 	brief, done := decodeBrief(response.Text())
@@ -548,14 +547,14 @@ func writeBrief(ctx context.Context, client Completer, shared string, node Node,
 		// Nothing at all came back. On a reasoning model the usual cause is the
 		// whole budget going to private deliberation, which is a different fact
 		// about the model than a badly written instruction and is worth naming.
-		provider.Report(ctx, provider.VerdictEmptyResponse)
+		provider.Report(ctx, provider.ReadingEmptyResponse)
 		return "", Done{}, usageOf(response), annotate(fmt.Errorf("brief %q: empty response", node.Title), response)
 	}
 	// A brief is prose. There is no schema to check it against and nothing cheap
 	// that can say whether it is a good instruction, so this is exactly the case
 	// the unverified verdict exists for: output that worked, evidence that does
 	// not move a rating.
-	provider.Report(ctx, provider.VerdictUnverifiedSuccess)
+	provider.Report(ctx, provider.ReadingUnverifiedSuccess)
 	return brief, done, usageOf(response), nil
 }
 

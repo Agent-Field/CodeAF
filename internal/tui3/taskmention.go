@@ -144,7 +144,7 @@ func (a *app) tasksLoaded(rows []session.TaskIndexEntry, known ...bool) tea.Cmd 
 	if len(known) > 0 && !known[0] && a.farTasks != nil {
 		a.comp.tasksHeld = true
 		read := a.farTasks
-		return tea.Tick(100*time.Millisecond, func(time.Time) tea.Msg {
+		return surfaceTick(100*time.Millisecond, func(time.Time) tea.Msg {
 			rows, ready := read()
 			return tasksLoadedMsg{rows: rows, known: ready}
 		})
@@ -184,6 +184,7 @@ func (a *app) adoptFarTaskRows(rows []session.TaskIndexEntry) {
 		if node == nil {
 			node = &taskNode{id: id, ident: identFor(id), met: row.EndedAt}
 			a.tasks[id] = node
+			a.takeTypedTaskBrief(node)
 			a.taskOrder = append(a.taskOrder, id)
 		}
 		node.label = firstNonEmpty(strings.TrimSpace(row.Title), strings.TrimSpace(row.Label))
@@ -355,8 +356,6 @@ func (c *completion) sectionRule(section int) string {
 // that ran somewhere else rather than a path in this directory. Without it the
 // two halves of the list are told apart only by the rule scrolled above them.
 const (
-	glyphRunning      = "▸"
-	glyphRunningASCII = ">"
 	glyphMention      = "⧉"
 	glyphMentionASCII = "#"
 )
@@ -368,15 +367,15 @@ const (
 // worth the tail is which of the two similarly-named ones this is.
 //
 //	› ✓ ⧉ Fix the nil-map crash                                    3h
-//	  ▸ ⧉ Sweep the deprecated call sites                          4m
-func taskRowLabel(entry session.TaskIndexEntry, ascii bool) string {
+//	  ◐ ⧉ Sweep the deprecated call sites                          4m
+func taskRowLabel(entry session.TaskIndexEntry, pal palette) string {
 	// Label is the title already cut to a row's width (session.taskLabel), and
 	// the uncut title stands in for a row written before that field existed.
 	words := entry.Label
 	if words == "" {
 		words = entry.Title
 	}
-	return taskStatusGlyph(entry, ascii) + " " + mentionMark(ascii) + " " + words
+	return taskStatusGlyph(entry, pal) + " " + mentionMark(pal.ascii) + " " + words
 }
 
 func mentionMark(ascii bool) string {
@@ -389,39 +388,12 @@ func mentionMark(ascii bool) string {
 // taskStatusGlyph is the node's state in one cell, from the vocabulary the rail
 // already spends (task.go) so that a person who has watched a task run
 // recognizes it here.
-func taskStatusGlyph(entry session.TaskIndexEntry, ascii bool) string {
-	switch entry.Status {
-	case string(session.TaskRunning):
-		if ascii {
-			return glyphRunningASCII
-		}
-		return glyphRunning
-	case string(session.TaskQueued):
-		if ascii {
-			return glyphQueuedASCII
-		}
-		return glyphQueued
-	case string(session.TaskFailed):
-		if refused(entry.Ending) {
-			return glyphHalted
-		}
-		if ascii {
-			return glyphBadASCII
-		}
-		return glyphBad
-	case string(session.TaskUnverified):
-		// THE TICK IS NOT THE DEFAULT ANSWER TO "WHAT ELSE IS THERE". An
-		// unverified row would otherwise fall through below and wear the one
-		// success glyph this surface has, which is the single place a person
-		// picking a task by recognition could be told that work nobody could
-		// judge came home (task.go's [glyphUnverified]).
-		return glyphUnverified
-	default:
-		if ascii {
-			return glyphDoneASCII
-		}
-		return glyphDone
-	}
+//
+// The menu has no liveness to ask: it draws the index alone, so a row claiming
+// to be running is taken at its word rather than guessed at. The surfaces that
+// do have the answer draw the quieter cell.
+func taskStatusGlyph(entry session.TaskIndexEntry, pal palette) string {
+	return pal.glyph(tierSlot(session.ProjectTask(entry.StatusFacts(true))))
 }
 
 // taskNoteWord is the age on the right: how long a live task has been going,

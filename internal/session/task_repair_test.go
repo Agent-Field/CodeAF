@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -164,7 +165,7 @@ func TestRefutedWorkIsRepairedInPlaceAndLandsWhenItHolds(t *testing.T) {
 
 	completer := &routedCompleter{
 		parent: []step{
-			proposeCall("Add the greeting", "write greet.go and a test for it, checked with `go test ./...`"),
+			proposeCall("Add the greeting", "write greet.go and a test for it", "go test ./..."),
 			finalText("handed off"),
 		},
 		child: nodeLane(8, func(repairing, wrote bool) *ai.Response {
@@ -577,11 +578,11 @@ func TestNoMachineryWordReachesAPersonOnAnyPath(t *testing.T) {
 		{"a node that came back short twice", TaskFailed, gapsOutcome([][]string{shortFirst.evidence, shortAgain.evidence})},
 		{"a node with a finding and no evidence", TaskFailed, gapsOutcome(nil)},
 		{"a node cut off mid-check", TaskUnverified, withReport(taskCutMidCheck, held.checkedSoFar())},
-		{"a node nobody could judge", TaskUnverified, essay.lookOutcome()},
-		{"a node nobody could judge twice", TaskUnverified, essay.twice().lookOutcome()},
-		{"a node with no answer at all", TaskUnverified, auditVerdict{}.lookOutcome()},
-		{"a node a person accepted", TaskDone, acceptedLine("I read the diff myself and it holds")},
-		{"a node a person turned down", TaskFailed, refutedLine("it is missing the eleventh company")},
+		{"a node nobody could judge", TaskUnverified, essay.lookOutcome(TaskFacts{})},
+		{"a node nobody could judge twice", TaskUnverified, essay.twice().lookOutcome(TaskFacts{})},
+		{"a node with no answer at all", TaskUnverified, auditVerdict{}.lookOutcome(TaskFacts{})},
+		{"a node a person accepted", TaskDone, acceptedLine("I read the diff myself and it holds", TaskAskOwnerPerson)},
+		{"a node a person turned down", TaskFailed, refutedLine("it is missing the eleventh company", TaskAskOwnerPerson)},
 		{"a node nothing checked", TaskDone, "nothing checked this work: the task.audit setting is off"},
 		{"a node that ran out of time", TaskFailed, "ran out of time"},
 		{"a node somebody stopped", TaskFailed, "stopped before it finished"},
@@ -605,7 +606,7 @@ func TestNoMachineryWordReachesAPersonOnAnyPath(t *testing.T) {
 	if outcome := held.doneOutcome(); !strings.Contains(outcome, "go test ./... and it is ok") {
 		t.Fatalf("the plain evidence lost what was run: %q", outcome)
 	}
-	if look := essay.lookOutcome(); !strings.Contains(look, "I read the diff") {
+	if look := essay.lookOutcome(TaskFacts{}); !strings.Contains(look, "I read the diff") {
 		t.Fatalf("the plain non-answer lost what the checker said: %q", look)
 	}
 }
@@ -671,9 +672,8 @@ func TestAuditBeltAllowsOrientationAndSaysWhereToLook(t *testing.T) {
 	}
 }
 
-// ONE ANSWER CANNOT EAT THE REPLY BUDGET. A huge result is cut at the belt with
-// the count of what was left behind and a sentence saying what to do instead —
-// which is what the auditor that read a whole home directory needed.
+// ONE ANSWER CANNOT EAT THE REPLY BUDGET. A huge result is cut at the belt and
+// the rest stays reachable through the same read hand.
 func TestAnOversizedToolResultIsCutAtTheAuditBelt(t *testing.T) {
 	dir := t.TempDir()
 	huge := strings.Repeat("a line of a very long file\n", 4000)
@@ -683,7 +683,7 @@ func TestAnOversizedToolResultIsCutAtTheAuditBelt(t *testing.T) {
 	}
 
 	byName := map[string]func(context.Context, json.RawMessage) (string, bool, error){}
-	for _, tool := range auditBelt(dir, plainDoor(auditReadCommands)) {
+	for _, tool := range auditBelt(dir, plainDoor(auditReadCommands), Place{Dir: t.TempDir()}) {
 		byName[tool.Name] = tool.Execute
 	}
 	arguments := json.RawMessage(`{"command":` + strconv.Quote("cat huge.txt") + `}`)
@@ -694,11 +694,8 @@ func TestAnOversizedToolResultIsCutAtTheAuditBelt(t *testing.T) {
 	if len(text) > auditResultLimit+300 {
 		t.Fatalf("the result was %d bytes, want it cut near %d", len(text), auditResultLimit)
 	}
-	if !strings.Contains(text, "more bytes") {
-		t.Fatalf("the cut does not say how much was left behind:\n%.200q", text)
-	}
-	if !strings.Contains(text, "ask something narrower") {
-		t.Fatalf("the cut does not say what to do instead:\n%.200q", text)
+	if !strings.Contains(text, "whole output:") || !strings.Contains(text, "use read with offset/limit") {
+		t.Fatalf("the cut does not provide an actionable continuation:\n%.200q", text)
 	}
 	// A result that FITS is handed over untouched: the cap is a ceiling, not a
 	// rewrite.
@@ -708,7 +705,108 @@ func TestAnOversizedToolResultIsCutAtTheAuditBelt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	if strings.Contains(text, "ask something narrower") {
+	if strings.Contains(text, "whole output:") {
 		t.Fatalf("a small result was marked as cut:\n%q", text)
+	}
+}
+
+// EVERY KIND OF RESULT USES THE SAME FILE READER. A non-file tool's long
+// prose/data/code output is filed through the canonical stub path, then read
+// with ordinary line offsets; there is no second result protocol to learn.
+func TestABoundedResultCanBeReadPastItsFirstFragment(t *testing.T) {
+	workspace := t.TempDir()
+	droppings := Place{Dir: t.TempDir()}
+	wantLate := "func relevantFinding() { return true }"
+	whole := "source: reports/quarterly review.sql\n"
+	for index := range 300 {
+		whole += strings.Repeat("界,prose,data;", 6) + strconv.Itoa(index) + "\n"
+	}
+	whole += wantLate
+	result := boundedResult(bare.Tool{
+		Name:    "grep",
+		Execute: func(context.Context, json.RawMessage) (string, bool, error) { return whole, false, nil },
+	}, droppings, workspace)
+	first, isError, err := result.Execute(context.Background(), nil)
+	if err != nil || isError || len(first) > auditResultLimit {
+		t.Fatalf("large result = (%d bytes, error %v, %v)", len(first), isError, err)
+	}
+	lead := "whole output: "
+	start := strings.Index(first, lead)
+	end := strings.Index(first[start+len(lead):], " — use read")
+	if start < 0 || end < 0 {
+		t.Fatalf("result has no ordinary file pointer:\n%s", first)
+	}
+	pointer := first[start+len(lead) : start+len(lead)+end]
+	var reader bare.Tool
+	for _, tool := range auditBelt(workspace, plainDoor(auditReadCommands), droppings) {
+		if tool.Name == "read" {
+			reader = tool
+		}
+	}
+	page, pageError, pageErr := reader.Execute(context.Background(), json.RawMessage(`{"path":`+strconv.Quote(pointer)+`}`))
+	if pageErr != nil || pageError || len(page) > auditResultLimit {
+		t.Fatalf("first file page = (%d bytes, error %v, %v)", len(page), pageError, pageErr)
+	}
+	if !strings.Contains(page, "reports/quarterly review.sql") || !strings.Contains(page, "Use offset=") {
+		t.Fatalf("first file page lost its path or continuation:\n%s", page)
+	}
+	for offset := 2; offset <= 300; offset++ {
+		page, pageError, pageErr = reader.Execute(context.Background(), json.RawMessage(`{"path":`+strconv.Quote(pointer)+`,"offset":`+strconv.Itoa(offset)+`}`))
+		if pageErr != nil || pageError || len(page) > auditResultLimit {
+			t.Fatalf("page at line %d = (%d bytes, error %v, %v)", offset, len(page), pageError, pageErr)
+		}
+		if offset == 2 && strings.HasPrefix(page, "source: reports/") {
+			t.Fatal("offset=2 repeated the first line")
+		}
+		if strings.Contains(page, wantLate) {
+			return
+		}
+		if marker := strings.LastIndex(page, "Use offset="); marker >= 0 {
+			digits := strings.TrimSpace(strings.TrimSuffix(page[marker+len("Use offset="):], "to continue.]"))
+			if next, parseErr := strconv.Atoi(digits); parseErr == nil {
+				offset = next - 1
+			}
+		}
+	}
+	t.Fatalf("late code was not reachable through %s", pointer)
+}
+
+func TestABoundedErrorKeepsItsMeaning(t *testing.T) {
+	tool := boundedResult(bare.Tool{
+		Name: "ls",
+		Execute: func(context.Context, json.RawMessage) (string, bool, error) {
+			return "permission denied: private data\n" + strings.Repeat("detail\n", 2000), true, nil
+		},
+	}, Place{Dir: t.TempDir()}, t.TempDir())
+	text, isError, err := tool.Execute(context.Background(), nil)
+	if err != nil || !isError {
+		t.Fatalf("bounded error = (%q, %v, %v)", text, isError, err)
+	}
+	if !strings.HasPrefix(text, "permission denied: private data") || len(text) > auditResultLimit {
+		t.Fatalf("bounded error lost its cause or bound: %d bytes, %.80q", len(text), text)
+	}
+	if !strings.Contains(text, "whole output:") {
+		t.Fatalf("bounded error has no full-output path: %.200q", text)
+	}
+}
+
+// A failed filing must leave an honest way to recover narrower evidence.
+func TestABoundedResultExplainsWhenTheFullOutputCannotBeSaved(t *testing.T) {
+	workspace := t.TempDir()
+	blocked := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blocked, []byte("occupied"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, isFailure := range []bool{false, true} {
+		tool := boundedResult(bare.Tool{Name: "grep", Execute: func(context.Context, json.RawMessage) (string, bool, error) {
+			return strings.Repeat("observed evidence\n", 2000), isFailure, nil
+		}}, Place{Dir: blocked}, workspace)
+		text, isError, err := tool.Execute(context.Background(), nil)
+		if err != nil || isError != isFailure || len(text) > auditResultLimit {
+			t.Fatalf("result = (%d bytes, %v, %v)", len(text), isError, err)
+		}
+		if !strings.Contains(text, "full output could not be saved") || !strings.Contains(text, "ask for a narrower") || strings.Contains(text, "whole output:") {
+			t.Fatalf("missing honest recovery: %s", text)
+		}
 	}
 }

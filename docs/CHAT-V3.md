@@ -597,7 +597,11 @@ messages, exactly omp's split:
 - **Steer** (plain Enter mid-turn): stops the model generation that is running,
   keeps its partial reply, and injects the person's words as the next user
   message in the same turn. A short tool reaches its boundary first; a bash
-  already running for 3 seconds is adopted as a job so the steer can land now.
+  already running for 3 seconds is adopted as a job so the steer can land now,
+  and one that is still younger than that is looked at once more when it
+  crosses the same 3 seconds, so the handoff never waits for a long command's
+  ending or for the background-after clock. An explicit stop phrase reaches the
+  command at any age and never waits out that grace.
 - **Follow-up** (`ctrl+q`): queued to start a fresh turn the moment the
   current one yields.
 
@@ -646,7 +650,7 @@ so resume is exact.
 | **V3-0** skeleton | chatv3 gate; `internal/session` agent (bare-loop machinery, omp-adapted prompt, four tools + grep/glob/todo + task/change/stop + board/open/recall + ask/say); minimal tui3 (top bar, conversation, streaming, input); resident wiring + head skip clause | talk; agent reads/edits/runs in the workspace; finalize → task lands and runs; Esc interrupts; restart resumes the thread |
 | **V3-1** the workforce on screen | DAG rail scoped to session; cards + dock; node drill-in + steer; `@tag` steering; control palettes & slashes (pause/resume/cancel/redirect/restart/model); question UX | every Decision-5 row drivable by keyboard and mouse |
 | **V3-2** omp comfort | settings panel; model picker per role; project-local config; session switcher/welcome; compaction polish | settings/model flows match omp muscle memory; crash mid-session loses nothing journaled |
-| **V3-3** cutover | delete `internal/tui`, `internal/tui2`, `internal/head`, the chatv2 gate; `aforge chat` = v3 | the repo has exactly one chat; tasker packages diff-free |
+| **V3-3** cutover | DONE for the chat surfaces: `internal/tui` and the v2 surface are gone; `aforge chat` is v3. `internal/head`'s conversational cohort and the chatv2 gate are follow-ups. | the repo has one live chat; the resident head remains until its follow-up |
 
 ## Decision 17 — One picker, a question per slot, and the two things a row says
 
@@ -1274,7 +1278,7 @@ of the way; later inspection and control is through `/memory`.
 | **V3-0** skeleton | chatv3 gate; `internal/session` agent (bare-loop machinery, omp-adapted prompt, working tools + todo); minimal tui3 (status line, conversation, streaming, input) | DONE (lite, tasker-free): talk, read/edit/run in the workspace, Esc interrupt, resume, steering, compaction |
 | **V3-1** the workforce on screen | session anchor splice; workforce tools → gate → RequestCommand; DAG rail scoped to session; cards + dock; node rooms + steer; `@tag`; control palettes (pause/resume/cancel/redirect/restart/model); question UX | every Decision-5 row drivable by keyboard and mouse |
 | **V3-2** omp comfort | settings panel; model picker per role; project-local config; session switcher/welcome; compaction polish | settings/model flows match omp muscle memory; crash mid-session loses nothing journaled |
-| **V3-3** cutover | delete `internal/tui`, `internal/tui2`, `internal/head`, the chatv2 gate; `aforge chat` = v3 | the repo has exactly one chat; tasker packages diff-free |
+| **V3-3** cutover | DONE for the chat surfaces: `internal/tui` and the v2 surface are gone; `aforge chat` is v3. `internal/head`'s conversational cohort and the chatv2 gate are follow-ups. | the repo has one live chat; the resident head remains until its follow-up |
 
 ## What this is not
 

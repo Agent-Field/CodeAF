@@ -32,7 +32,7 @@ import (
 // So the four laws are:
 //
 //	(a) nothing outside this package talks to a completions or media endpoint
-//	(b) exactly four functions in this package put a request on the wire, and
+//	(b) exactly six functions in this package put a request on the wire, and
 //	    exactly four read an event stream
 //	(c) every role in the table has a call site that names it
 //	(d) only the ladder's last rung changes the model a person asked for
@@ -336,7 +336,7 @@ func TestNothingOutsideTheFunnelTalksToAModelEndpoint(t *testing.T) {
 // ── (b) ONE FUNCTION PUTS A COMPLETION ON THE WIRE ──────────────────────────
 
 // funnelWireSenders is every function in this package that hands a request to
-// an http.Client, and there are four because there are four kinds of thing this
+// an http.Client, and there are six because there are six kinds of thing this
 // adapter fetches.
 //
 //	send         every chat completion, and the only one with the retry loop,
@@ -347,7 +347,12 @@ func TestNothingOutsideTheFunnelTalksToAModelEndpoint(t *testing.T) {
 //	             which are request/response and carry no stream at all
 //	Fetch        sheetFetcher's GET of the lane sheet, which is not a model call
 //	             — it is the belief the choice is made from (lanes.go)
-var funnelWireSenders = []string{"Fetch", "doEndpoint", "probeLane", "send"}
+//	fetchReceipt the bounded background GET for a cut stream's exact generation
+//	             receipt; it creates no model work and never runs on the turn
+//
+// probeConnection is a credential-free HEAD of the configured origin. Its
+// contract tests forbid a prompt, a request body or redirect following.
+var funnelWireSenders = []string{"Fetch", "doEndpoint", "fetchReceipt", "probeConnection", "probeLane", "send"}
 
 // funnelSendCallers is every function that reaches [Client.send].
 //
@@ -439,7 +444,7 @@ func TestOneFunctionSendsACompletionOnTheWire(t *testing.T) {
 	}
 
 	if funnelDiffer(senders, funnelWireSenders) {
-		t.Errorf("the functions that put a request on the wire are %v; the law names %v — a fifth is a request with no retry loop, no limiter and no row in the call log",
+		t.Errorf("the functions that put a request on the wire are %v; the law names %v — an unnamed sender is a request whose bounds and record are unknown",
 			funnelNames(senders), funnelWireSenders)
 	}
 	if funnelDiffer(callers, funnelSendCallers) {
@@ -582,8 +587,23 @@ func funnelLaneImport(file *ast.File) string {
 var funnelModelSetters = []string{"ParseDocument", "newRequest", "probeLane"}
 
 // funnelModelChangers are the functions that may change the model on a request
-// that already has one, and they are rung four.
-var funnelModelChangers = []string{"recoverFromPacing", "recoverFromRefusal"}
+// that already has one.
+//
+// THERE ARE NONE, AND THE EMPTY LIST IS THE LAW. It held two — the endpoint
+// ladder's own walk and the pacing door's — and rung four used to live here, in
+// the adapter, drawing from the same `FallbackModels` that internal/session's
+// turn loop draws from, with neither knowing the other had already tried a model
+// (docs/design/recovery/DESIGN.md §2.2). Live evidence from 2026-09-10 22:32 says
+// what it cost beyond the double spend: the adapter's hop carried the ORIGINAL
+// model's `provider.only` to the new model and was answered `404 No allowed
+// providers are available for the selected model`, because a lane pin is per
+// model and nothing re-derived it.
+//
+// The adapter relaxes a request's SHAPE. Rung four belongs to the layer that
+// owns the turn and knows what it has spent (internal/session's nextFallback,
+// reading [ModelsTried]); internal/taxonomy's classifier_law_test.go holds the
+// other half, that the chain itself has one reader here.
+var funnelModelChangers = []string{}
 
 // TestOnlyTheLadderChangesTheModel is law (d).
 //

@@ -117,8 +117,8 @@ func TestTheTaskPageOpensOnItsKeyAndTakesTheWholeFrame(t *testing.T) {
 }
 
 // EVERY DOOR ONTO THIS PLACE OPENS IT ON A PROJECT THAT HAS RUN NOTHING, and
-// what it opens onto is three sentences saying what tasks are plus the one that
-// says what to do about it ([tasksTeach]).
+// what it opens onto is its heading and the whisper naming what arrives there
+// and the one thing that puts it there ([placeWhisper]).
 //
 // THIS TEST USED TO PIN THE OPPOSITE. `ctrl+.` fell through in silence and
 // /history wrote a line, on the argument that a fullscreen page with no rows is
@@ -134,7 +134,7 @@ func TestEveryDoorOntoTheTaskPlaceOpensItWithNoTasksAtAll(t *testing.T) {
 	if !a.at(pageTasks) {
 		t.Fatal("ctrl+. opened nothing on a project that has run nothing")
 	}
-	if text := taskSheetText(a); !strings.Contains(text, taskSheetEmpty) {
+	if text := taskSheetText(a); !strings.Contains(text, whisperOf(pageTasks)) {
 		t.Fatalf("the empty place does not say what to do about it:\n%s", text)
 	}
 	drive(t, a, key("esc"))
@@ -143,8 +143,8 @@ func TestEveryDoorOntoTheTaskPlaceOpensItWithNoTasksAtAll(t *testing.T) {
 	if !a.at(pageTasks) {
 		t.Fatal("/history opened nothing on a project that has run nothing")
 	}
-	if text := taskSheetText(a); !strings.Contains(text, "tasks is the history of work") {
-		t.Fatalf("the empty place does not say what it is for:\n%s", text)
+	if text := taskSheetText(a); !strings.Contains(text, whisperOf(pageTasks)) {
+		t.Fatalf("the empty place does not say what arrives here:\n%s", text)
 	}
 }
 
@@ -158,8 +158,8 @@ func TestEveryDoorOntoTheTaskPlaceOpensItWithNoTasksAtAll(t *testing.T) {
 func TestTheTasksNoteAndItsBodyNeverDisagreeAboutBeingEmpty(t *testing.T) {
 	a, _, _ := taskApp(t)
 
-	// Nothing anywhere: the tab bar still walks in, the body teaches, and the
-	// note says NOTHING — a count beside that prose is the pair the law forbids.
+	// Nothing anywhere: the tab bar still walks in, the body whispers, and the
+	// note says NOTHING — a count beside that line is the pair the law forbids.
 	a.showPage(pageTasks)
 	if !a.at(pageTasks) {
 		t.Fatal("the tab bar did not walk into an empty tasks place")
@@ -168,8 +168,8 @@ func TestTheTasksNoteAndItsBodyNeverDisagreeAboutBeingEmpty(t *testing.T) {
 		t.Fatalf("an empty place counted what it does not have: %q", note)
 	}
 	text := taskSheetText(a)
-	if !strings.Contains(text, "tasks is the history of work this machine has run.") {
-		t.Fatalf("the empty place does not say what it is for:\n%s", text)
+	if !strings.Contains(text, whisperOf(pageTasks)) {
+		t.Fatalf("the empty place does not say what arrives here:\n%s", text)
 	}
 	a.closeTaskSheet()
 
@@ -189,8 +189,8 @@ func TestTheTasksNoteAndItsBodyNeverDisagreeAboutBeingEmpty(t *testing.T) {
 			t.Fatalf("the note reads %q and does not count the rows the body drew (%q)", note, want)
 		}
 	}
-	if text := taskSheetText(a); strings.Contains(text, "tasks is the history of work") {
-		t.Fatalf("a place with rows on it taught what a task is:\n%s", text)
+	if text := taskSheetText(a); strings.Contains(text, whisperOf(pageTasks)) {
+		t.Fatalf("a place with rows on it kept its whisper:\n%s", text)
 	}
 
 	// AND A QUERY THAT MATCHED NOTHING IS NOT AN EMPTY PLACE. There is work here;
@@ -201,8 +201,8 @@ func TestTheTasksNoteAndItsBodyNeverDisagreeAboutBeingEmpty(t *testing.T) {
 	if !strings.Contains(note, taskSheetFilterNone) {
 		t.Fatalf("a query that matched nothing said nothing: %q", note)
 	}
-	if text := taskSheetText(a); strings.Contains(text, "tasks is the history of work") {
-		t.Fatalf("a filtered-empty place taught what a task is:\n%s", text)
+	if text := taskSheetText(a); strings.Contains(text, whisperOf(pageTasks)) {
+		t.Fatalf("a filtered-empty place whispered as if it were empty:\n%s", text)
 	}
 }
 
@@ -253,7 +253,7 @@ func TestTheTaskPageCommandIsHistoryAndNothingSpellsItTasks(t *testing.T) {
 func TestTheTaskPageDrawsThisWindowsWorkBesideEveryOtherConversations(t *testing.T) {
 	a, _, _ := taskApp(t)
 	// FIVE HEADINGS NEED A FRAME THAT HOLDS FIVE. This fixture spends work across
-	// every section the place has — running, parked, done today and earlier — and
+	// every section the place has — running, waiting, finished today and earlier — and
 	// a 24-row terminal cuts the last of them off the visible frame, which is the
 	// page paginating correctly and not the grouping being wrong.
 	a.height = 32
@@ -265,6 +265,11 @@ func TestTheTaskPageDrawsThisWindowsWorkBesideEveryOtherConversations(t *testing
 
 	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open on a session with work in it")
+	}
+	// Content assertions inspect expanded families; opening the page keeps them folded.
+	a.taskSheet.opened = make(map[tasksKey]bool)
+	for _, item := range a.taskSheet.reading.items {
+		a.taskSheet.opened[tasksKeyOf(item.entry)] = true
 	}
 	text := taskSheetText(a)
 
@@ -292,7 +297,7 @@ func TestTheTaskPageDrawsThisWindowsWorkBesideEveryOtherConversations(t *testing
 	// THE GROUPING IS BY WHAT YOU DO NEXT AND NEVER BY WHOSE WORK IT IS: what is
 	// running leads, what landed today follows, and everything older is last.
 	running := strings.Index(text, taskSheetNowHead)
-	today := strings.Index(text, "done today")
+	today := strings.Index(text, "finished today")
 	earlier := strings.Index(text, taskSheetPastHead)
 	if running < 0 || today < running || earlier < today {
 		t.Fatalf("the sections are absent or out of order (%d/%d/%d):\n%s", running, today, earlier, text)
@@ -301,14 +306,12 @@ func TestTheTaskPageDrawsThisWindowsWorkBesideEveryOtherConversations(t *testing
 		t.Fatalf("work from forty hours ago is drawn above %q:\n%s", taskSheetPastHead, text)
 	}
 	if at := strings.Index(text, "Sweep the call sites"); at < today || at > earlier {
-		t.Fatalf("work that landed today is not under `done today`:\n%s", text)
+		t.Fatalf("work that landed today is not under `finished today`:\n%s", text)
 	}
-	// NO SHAPE IS CLAIMED. The connectors said which node hangs off which; a list
-	// grouped by state has no parentage to draw, and drawing one would be a claim
-	// about kinship the grouping has just thrown away.
-	for _, gone := range []string{treeBranch, treeLast} {
-		if strings.Contains(text, gone) {
-			t.Fatalf("the place drew a tree connector %q:\n%s", gone, text)
+	// The live graph's parent links survive the list conversion.
+	for _, connector := range []string{tasksKinCont, tasksKinLast} {
+		if !strings.Contains(text, connector) {
+			t.Fatalf("the expanded live family lost its connector %q:\n%s", connector, text)
 		}
 	}
 	// And the note counts every section it drew, in the same words they are
@@ -320,7 +323,7 @@ func TestTheTaskPageDrawsThisWindowsWorkBesideEveryOtherConversations(t *testing
 	// [taskNodeEnded] carries the whole reasoning).
 	for _, want := range []string{
 		"2 " + taskSheetNowHead, "2 " + railGroupWords[railParked],
-		"1 done today", "2 " + taskSheetPastHead,
+		"1 finished today", "2 " + taskSheetPastHead,
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the note does not count what is on the page (%q):\n%s", want, text)
@@ -335,8 +338,21 @@ func TestTheTaskPageDrawsThisWindowsWorkBesideEveryOtherConversations(t *testing
 // project's index carries this session's live rows and so does the graph they
 // came off, so a node in both is one node: the pair (conversation, id) is what
 // identifies a row of work, and the freshest authority wins it.
+//
+// AND THE WINDOW HAS TO BE ABLE TO NAME ITSELF FOR THAT PAIR TO MEAN ANYTHING.
+// A row saying `this belongs to conversation X` is only OURS if this window can
+// say it is X, and a window's own name is its journal's folder
+// (taskowner.go's [taskSessionOf], which is the same arithmetic
+// [session.TaskIndexEntry.SessionID] is written with). The fixture used to claim
+// an owner while leaving the surface with no journal at all, which is a shape no
+// running aforge has — a conversation with no file has written no index rows to
+// collide with — and under the owner rule it read as two different tasks that
+// happened to share a number and a title: the live one under `running` and a
+// second copy filed as `incomplete` under `earlier`. So the journal is set here,
+// and the two authorities meet on one identity the way they do in production.
 func TestTheTaskPageDoesNotRepeatWorkTheTreeIsAlreadyShowing(t *testing.T) {
 	a, _, _ := taskApp(t)
+	a.file = "/w/this-one/transcript.jsonl"
 	railRun(a)
 	a.comp.tasks = []session.TaskIndexEntry{
 		{
@@ -348,6 +364,11 @@ func TestTheTaskPageDoesNotRepeatWorkTheTreeIsAlreadyShowing(t *testing.T) {
 
 	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open")
+	}
+	// Content assertions inspect expanded families; opening the page keeps them folded.
+	a.taskSheet.opened = make(map[tasksKey]bool)
+	for _, item := range a.taskSheet.reading.items {
+		a.taskSheet.opened[tasksKeyOf(item.entry)] = true
 	}
 	text := taskSheetText(a)
 	if n := strings.Count(text, "Write the tree"); n != 1 {
@@ -655,7 +676,7 @@ func TestALiveRowStillOpensItsRoomFromTheColumn(t *testing.T) {
 	}
 	rosterText(a, a.viewHeight())
 
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 	drive(t, a, key("enter"))
 	if a.room == nil || a.room.id != 7 {
 		t.Fatalf("enter on a live row did not open its room: %+v", a.room)
@@ -673,6 +694,7 @@ func TestALiveRowStillOpensItsRoomFromTheColumn(t *testing.T) {
 // looking at.
 func TestTheColumnOffersItsDoorOnlyWhenThereIsSomethingBehindIt(t *testing.T) {
 	a, _, _ := taskApp(t)
+	a.file = "/w/.aforge/v3/sessions/-w/current/session.jsonl"
 	a.profileDir = t.TempDir()
 	// One node, nothing folded, and no record: the column is showing the whole of
 	// what there is to show.
@@ -688,6 +710,7 @@ func TestTheColumnOffersItsDoorOnlyWhenThereIsSomethingBehindIt(t *testing.T) {
 	a.comp.tasks = []session.TaskIndexEntry{
 		pastTask("1", "ship-the-port", "Ship the port", time.Minute),
 	}
+	a.comp.tasks[0].SessionID = a.taskSheetSelfID()
 	for _, gone := range []string{taskSheetMoreHint, taskSheetPastHint} {
 		if rail := rosterText(a, a.viewHeight()); strings.Contains(rail, gone) {
 			t.Fatalf("the column offered %q for a row it is already drawing:\n%s", gone, rail)
@@ -808,7 +831,7 @@ func TestRunningWorkStaysOnTheColumnHoweverFarTheCursorWalks(t *testing.T) {
 			session.TaskNotice{Merge: mergeWordMerged}))
 	}
 
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 	for i := 0; i < 40; i++ {
 		drive(t, a, key("down"))
 	}
@@ -845,7 +868,7 @@ func TestTypingOnTheTaskPageFiltersBothSections(t *testing.T) {
 	text := taskSheetText(a)
 	for _, want := range []string{
 		taskSheetNowHead, "Ship the port",
-		"done today", "Port the parser",
+		"finished today", "Port the parser",
 		taskSheetFilterWord + "port",
 	} {
 		if !strings.Contains(text, want) {
@@ -1072,7 +1095,7 @@ func TestTheRostersCursorStopsAtTheLastTaskOfThisConversation(t *testing.T) {
 	}
 	rosterText(a, a.viewHeight())
 
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 	if a.railWhere.id != 1 {
 		t.Fatalf("ctrl+t did not park the cursor on this session's node: %+v", a.railWhere)
 	}
@@ -1107,7 +1130,7 @@ func TestCtrlTFallsThroughOnAColumnWithOnlyTheProjectsRecord(t *testing.T) {
 	}
 	rosterText(a, a.viewHeight())
 
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 	if a.railHold {
 		t.Fatal("ctrl+t took the keyboard for a column with no rows on it")
 	}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -46,6 +47,10 @@ func TestTwoBilledCallsLeaveTwoUsageRowsWithoutALanding(t *testing.T) {
 	sink := provider.BillingSinkFrom(ctx)
 	if sink == nil {
 		t.Fatal("armBilling armed nothing; a leaf's calls would go unbanked")
+	}
+	reconcile := provider.ReconcileSinkFrom(ctx)
+	if reconcile == nil {
+		t.Fatal("armBilling armed no receipt sink; a cut leaf call would go unbanked")
 	}
 	if node := provider.CallNodeFrom(ctx); node != "task-2" {
 		t.Fatalf("the calls are filed under %q, want task-2", node)
@@ -96,6 +101,20 @@ func TestTwoBilledCallsLeaveTwoUsageRowsWithoutALanding(t *testing.T) {
 	sink(provider.Billed{Node: "task-2", Model: "deepseek/deepseek-v4-flash"})
 	if rows, _ = bankedRows(t, graph, "task-2"); rows != 2 {
 		t.Fatalf("an unpriced response added a row; the table holds %d, want 2", rows)
+	}
+	// A cut call whose provider receipt arrives later uses the second sink and
+	// leaves its own row even though the leaf itself has already ended.
+	reconcile(provider.Reconciled{Billed: provider.Billed{
+		Node: "task-2", Model: "deepseek/deepseek-v4-flash",
+		PromptTokens: 700, CompletionTokens: 30, Cost: 0.04,
+	}, Ref: "late-leaf", Reason: "torn", Found: true})
+	if rows, _ = bankedRows(t, graph, "task-2"); rows != 3 {
+		t.Fatalf("a reconciled leaf call left %d rows, want its third row", rows)
+	}
+	before := session.UnbilledCalls()
+	reconcile(provider.Reconciled{Ref: "missing-leaf", Reason: "torn"})
+	if got := session.UnbilledCalls() - before; got != 1 {
+		t.Fatalf("a leaf receipt that could not be had moved the unbilled count by %d, want one", got)
 	}
 }
 

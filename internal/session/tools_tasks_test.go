@@ -12,9 +12,13 @@ package session
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // A MODEL CAN LOOK AT WORK THAT IS STILL GOING. It names the task, and what
@@ -130,11 +134,16 @@ func TestTasksToolRowsSayWhatARunningNodeIsDoing(t *testing.T) {
 func TestTasksToolSteersARunningNode(t *testing.T) {
 	agent, node, id := runningStubbedNode(t, "Move the config")
 
-	// Nobody is in the room yet: a stubbed runner has no child, and "there is no
-	// worker to talk to" is a better answer than a line queued onto nothing.
+	// Nobody is in the room yet: a stubbed runner has no child. The line is kept
+	// on the task's own record for its next round rather than queued onto nothing
+	// or sent back (assignment.go), and the answer says the one thing a relayed
+	// line must always say — that it is not the person's authority.
 	text, isError := runTool(t, agent, "tasks", fmt.Sprintf(`{"id":%d,"say":"use etc/"}`, id))
-	if !isError || !strings.Contains(text, "nobody in it") {
-		t.Fatalf("steering a node with no worker was not refused:\n%s", text)
+	if isError {
+		t.Fatalf("a line to a running node was refused:\n%s", text)
+	}
+	if !strings.Contains(text, "on the task's record") || !strings.Contains(text, "only the person's own direction") {
+		t.Fatalf("the answer does not say what became of the line:\n%s", text)
 	}
 
 	// A worker arrives — the room's speaker is the agent the words reach.
@@ -146,7 +155,7 @@ func TestTasksToolSteersARunningNode(t *testing.T) {
 	if isError {
 		t.Fatalf("steering a running node failed:\n%s", text)
 	}
-	if !strings.Contains(text, "brief and its acceptance are unchanged") {
+	if !strings.Contains(text, "only the person's own direction can move that") {
 		t.Fatalf("the answer does not state the contract:\n%s", text)
 	}
 	if !steeringContains(worker, "the config lives under etc/, not conf/") {
@@ -303,4 +312,398 @@ func runningStubbedNode(t *testing.T, title string) (*Agent, *TaskNode, uint64) 
 		waitDoneNode(t, node)
 	})
 	return agent, node, id
+}
+
+// ── the stop verb ───────────────────────────────────────────────────────────
+
+// THE MODEL CAN END RUNNING WORK, AND THROUGH THE PERSON'S OWN DOOR.
+//
+// Told to stop task 2, a model with no stop verb did the only thing its belt
+// allowed: it said "stopped in favour of task 3, do not continue" INTO the task.
+// The worker wrote down that it had been told to stop and delivered nothing, the
+// check read that as an ordinary unfinished run, a round opened to close the
+// gaps, and the task went on spending. This test is the verb that replaces that
+// move: one call, the same [Agent.Cancel] road the stop card takes, the reason on
+// the node's own record, and no check.
+func TestTasksToolStopsARunningNodeThroughTheStopDoor(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	started, release := make(chan struct{}), make(chan struct{})
+	// The runner takes no claim — no [TaskNode.setCancel] — so the stop settles
+	// the node where it stands rather than promising a landing nothing would
+	// bring, which is cancel.go's road for a node no goroutine has taken up.
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		close(started)
+		<-release
+	})
+	t.Cleanup(func() { close(release) })
+
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "Port the parser", named: true, brief: "b", acceptance: "a"})
+	waitSignal(t, started, "the node to start")
+
+	text, isError := runTool(t, agent, "tasks",
+		fmt.Sprintf(`{"id":%d,"stop":true,"say":"I changed my mind, task 3 covers this"}`, id))
+	if isError {
+		t.Fatalf("stopping a running node was refused:\n%s", text)
+	}
+	for _, want := range []string{
+		// The engine's own line, with the reason where a person's would be.
+		"stopped " + taskStopName(id, "Port the parser") + ": I changed my mind, task 3 covers this",
+		// And the fact the old workaround got wrong: a stop is not an unfinished
+		// run, so nothing sends it back to close its gaps.
+		"it is not checked and nothing re-runs it",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the stop answer is missing %q:\n%s", want, text)
+		}
+	}
+
+	node := graph.node(id)
+	if state := node.stateNow(); state != TaskFailed {
+		t.Fatalf("the stopped node is %q, want settled the moment it was stopped", state)
+	}
+	notice := node.notice()
+	if !notice.Stopped {
+		t.Fatalf("the landing does not say somebody stopped it: %+v", notice)
+	}
+	// THE REASON IS THE RECORD, exactly as it is for an accept and a refute: the
+	// row afterwards says why this work ended, and not merely that it did.
+	if want := taskStoppedWord + ": I changed my mind, task 3 covers this"; notice.Report != want {
+		t.Fatalf("the stopped node's report is %q, want %q", notice.Report, want)
+	}
+
+	// AND A SECOND STOP IS NOT AN ERROR. The task is settled, so the answer is
+	// what it IS, in the word the person's own screen is showing them.
+	again, isError := runTool(t, agent, "tasks", fmt.Sprintf(`{"id":%d,"stop":true}`, id))
+	if isError {
+		t.Fatalf("stopping a settled node answered as an error:\n%s", again)
+	}
+	if !strings.Contains(again, "is stopped") || !strings.Contains(again, "nothing to stop") {
+		t.Fatalf("the answer does not say what the task is now:\n%s", again)
+	}
+}
+
+// A TASK THAT FINISHED SAYS SO, IN THE PERSON'S WORD FOR IT. "Stop task 2" over
+// work that landed a minute ago is a reasonable thing to have said, and a refusal
+// would leave the model guessing whether it had ended anything.
+func TestTasksToolStopOnASettledNodeAnswersWithItsState(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		node.finish("added the guard", nil, "", "")
+		node.graph.complete(node, TaskDone)
+	})
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "Fix the nil-map crash", named: true, brief: "b", acceptance: "a"})
+	waitDoneNode(t, graph.node(id))
+
+	text, isError := runTool(t, agent, "tasks", fmt.Sprintf(`{"id":%d,"stop":true}`, id))
+	if isError {
+		t.Fatalf("stopping a landed node answered as an error:\n%s", text)
+	}
+	if !strings.Contains(text, "is "+taskWordDone) || !strings.Contains(text, "nothing to stop") {
+		t.Fatalf("a landed node's stop does not say what it is:\n%s", text)
+	}
+}
+
+// STOP IS THE ONE VERB THAT CANNOT SHARE A CALL. Continue puts the work back on,
+// resolve settles what it produced, forward sends the person's words into it —
+// and every one of those is a decision about a task this call is ending.
+func TestTasksToolRefusesAStopSentWithAnotherVerb(t *testing.T) {
+	agent, _, id := runningStubbedNode(t, "Sweep the call sites")
+
+	for _, call := range []string{
+		fmt.Sprintf(`{"id":%d,"stop":true,"continue":true}`, id),
+		fmt.Sprintf(`{"id":%d,"stop":true,"resolve":"accept"}`, id),
+		fmt.Sprintf(`{"id":%d,"stop":true,"forward":true}`, id),
+	} {
+		text, isError := runTool(t, agent, "tasks", call)
+		if !isError || !strings.Contains(text, "stop ends the task") {
+			t.Fatalf("%s was not refused:\n%s", call, text)
+		}
+	}
+	// And a stop aimed at nothing names what is missing, the way every other
+	// verb on this tool does.
+	if text, isError := runTool(t, agent, "tasks", `{"stop":true}`); !isError ||
+		!strings.Contains(text, "stop needs an id") {
+		t.Fatalf("stop without an id was not refused:\n%s", text)
+	}
+}
+
+// WHAT THE MODEL IS TOLD ABOUT THE TWO VERBS. The defect was not that the door
+// was missing from the engine — a person's stop has always worked — it was that
+// the model reading this schema had no word for ending work and one that looked
+// close enough. So the description carries both halves: stop ends it, and a `say`
+// telling a task to stop does not.
+func TestTheTasksSchemaSaysStopEndsWorkAndSayDoesNot(t *testing.T) {
+	if !strings.Contains(tasksDescription, "To END running work use stop") {
+		t.Fatalf("the tool's description does not name the stop verb:\n%s", tasksDescription)
+	}
+	var schema struct {
+		Properties map[string]struct {
+			Type        string `json:"type"`
+			Description string `json:"description"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal([]byte(tasksSchemaJSON), &schema); err != nil {
+		t.Fatalf("the tasks schema does not parse: %v", err)
+	}
+	stop, present := schema.Properties["stop"]
+	if !present {
+		t.Fatal("the tasks schema has no stop field")
+	}
+	if stop.Type != "boolean" {
+		t.Fatalf("stop is a %q, want a boolean beside continue and forward", stop.Type)
+	}
+	for _, want := range []string{"same door the person's own stop pulls", "asks no confirmation"} {
+		if !strings.Contains(stop.Description, want) {
+			t.Fatalf("the stop field does not say %q:\n%s", want, stop.Description)
+		}
+	}
+	// AND THE FIELD THE MODEL USED TO REACH FOR SAYS WHAT IT IS NOT.
+	if say := schema.Properties["say"].Description; !strings.Contains(say, "It ends nothing") ||
+		!strings.Contains(say, "stop is the door that ends work") {
+		t.Fatalf("say does not say that it ends nothing:\n%s", say)
+	}
+}
+
+// ── which task a bare number names ──────────────────────────────────────────
+
+// THE INDEX IS THE PROJECT'S, AND IDS RESTART WITH EVERY CONVERSATION.
+//
+// Every conversation in a project appends to one file, so a project that has had
+// four conversations has four task 2s in it, and [LookupTask] answers with the
+// newest — right for a slug, wrong for a number. On 2026-09-09 a conversation
+// holding a recovered task 2 asked to settle it; the number matched another
+// conversation's newer row, and the model was told there was "no graph left to
+// settle it in" and pointed at a worktree belonging to work it had never seen.
+//
+// A number said in a conversation means that conversation's task.
+func TestABareIdNamesThisConversationsTaskAndNotAnotherConversationsRow(t *testing.T) {
+	bucket := t.TempDir()
+	mine := filepath.Join(bucket, "mine")
+	if err := os.MkdirAll(mine, 0o700); err != nil {
+		t.Fatalf("session folder: %v", err)
+	}
+	// The other conversation's task 2, landed a minute ago — NEWER than ours, so
+	// it is the row the newest-wins search hands back.
+	appendTaskIndex(filepath.Join(bucket, taskIndexName), TaskIndexEntry{
+		ID: "2", Name: "somebody-elses-work", Label: "Somebody else's work",
+		Title: "Somebody else's work", Status: string(TaskDone), SessionID: "theirs",
+		EndedAt: time.Now(), ArtifactURI: "file:///somewhere/else/trees/2",
+	})
+
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Place = Place{Dir: mine}
+	})
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		node.finish("UNVERIFIED — the auditor answered neither VERIFIED nor REFUTED", nil, "", "")
+		node.graph.complete(node, TaskUnverified)
+	})
+	// Two nodes, so that ours is task 2 as well: the collision is the test.
+	first := graph.reserve()
+	graph.admit(first, taskSpec{title: "Read the journals", named: true, brief: "b", acceptance: "a"})
+	waitDoneNode(t, graph.node(first))
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "Hidden rental digs", named: true, brief: "b", acceptance: "a"})
+	waitDoneNode(t, graph.node(id))
+	if id != 2 {
+		t.Fatalf("the node under test is %d, want 2", id)
+	}
+	// OURS IS THE OLDER PIECE OF WORK, which is the shape the defect needs and
+	// the shape it was found in: task 2 ran in an earlier conversation and this
+	// one recovered it from the checkpoint, while the row it collided with landed
+	// minutes ago. The newest-wins search hands back the newest, and by the clock
+	// that is the stranger.
+	agedTaskNode(graph, first, time.Now().Add(-3*time.Hour))
+	agedTaskNode(graph, id, time.Now().Add(-3*time.Hour))
+
+	// A READ BY NUMBER IS THIS CONVERSATION'S TASK.
+	read, isError := runTool(t, agent, "tasks", `{"id":"2"}`)
+	if isError {
+		t.Fatalf("reading task 2 was refused:\n%s", read)
+	}
+	if !strings.Contains(read, "Hidden rental digs") || strings.Contains(read, "Somebody else's work") {
+		t.Fatalf("task 2 read the wrong conversation's row:\n%s", read)
+	}
+
+	// AND SO IS A SETTLE. This is the call that was refused.
+	text, isError := runTool(t, agent, "tasks", `{"id":"2","resolve":"accept","say":"I read the branch"}`)
+	if isError {
+		t.Fatalf("settling this conversation's task 2 was refused:\n%s", text)
+	}
+	if strings.Contains(text, "somewhere/else") {
+		t.Fatalf("the answer points at another conversation's worktree:\n%s", text)
+	}
+	if state := graph.node(id).stateNow(); state != TaskDone {
+		t.Fatalf("this conversation's task 2 is %q, want done", state)
+	}
+
+	// A NAME STILL MEANS THE NEWEST, whoever ran it: a slug carries no
+	// conversation in it, and "the X task" said out loud means the last one.
+	byName, isError := runTool(t, agent, "tasks", `{"id":"somebody-elses-work"}`)
+	if isError || !strings.Contains(byName, "Somebody else's work") {
+		t.Fatalf("a slug no longer reaches the newest row that wears it:\n%s", byName)
+	}
+}
+
+// HANDING A DECISION TO AFORGE IS A PROMISE ITS OWN DOOR HAS TO BE ABLE TO KEEP.
+//
+// The person presses "let aforge decide", the engine marks the node and hands the
+// model a line about it, and the model answers with `tasks … resolve`. That is
+// one road, and it ran through the id collision above: the person's door found
+// the node by id and the model's door found somebody else's row, so the card went
+// on saying `your call` with nothing able to move it.
+func TestHandingAYourCallToTheModelAndItsResolveAreOneRoad(t *testing.T) {
+	bucket := t.TempDir()
+	mine := filepath.Join(bucket, "mine")
+	if err := os.MkdirAll(mine, 0o700); err != nil {
+		t.Fatalf("session folder: %v", err)
+	}
+	appendTaskIndex(filepath.Join(bucket, taskIndexName), TaskIndexEntry{
+		ID: "1", Name: "another-conversations-one", Label: "Another conversation's one",
+		Title: "Another conversation's one", Status: string(TaskDone), SessionID: "theirs",
+		EndedAt: time.Now(), ArtifactURI: "file:///somewhere/else/trees/1",
+	})
+	// AskConsent is what tells the engine somebody is sitting there, and it is
+	// what leaves a your-call landing in the PERSON'S hands: with nobody watching
+	// the model holds every one of them by policy ([Agent.settlePolicy]) and the
+	// card this test is about is never drawn.
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Place, config.AskConsent = Place{Dir: mine}, true
+	})
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		node.finish("UNVERIFIED — the auditor answered neither VERIFIED nor REFUTED", nil, "", "")
+		node.graph.complete(node, TaskUnverified)
+	})
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "Hidden rental digs", named: true, brief: "b", acceptance: "a"})
+	waitDoneNode(t, graph.node(id))
+	if owner := graph.node(id).decidedBy(); owner == TaskAskOwnerModel {
+		t.Fatal("the landing handed itself over, so there is no press to test")
+	}
+	// Recovered work: it ran hours ago, and the row it shares a number with
+	// landed since — which is what sent the model's door to the wrong task.
+	agedTaskNode(graph, id, time.Now().Add(-3*time.Hour))
+
+	if err := agent.HandUnverifiedToModel(id); err != nil {
+		t.Fatalf("handing the decision over: %v", err)
+	}
+	if owner := graph.node(id).notice().Decider; owner != TaskAskOwnerModel {
+		t.Fatalf("the node says %q is deciding, want the model", owner)
+	}
+	text, isError := runTool(t, agent, "tasks",
+		fmt.Sprintf(`{"id":"%d","resolve":"accept","say":"the branch has the change and the test"}`, id))
+	if isError {
+		t.Fatalf("the model could not settle what it was handed:\n%s", text)
+	}
+	if state := graph.node(id).stateNow(); state != TaskDone {
+		t.Fatalf("the handed-over node is %q, want done", state)
+	}
+}
+
+// AND A SECOND PRESS IS NOT A SECOND HAND-OVER. Pressing "let aforge decide"
+// twice sent the model two identical lines about one decision it was already
+// holding; the answer now is the plain fact.
+func TestHandingTheSameDecisionOverTwiceSaysItIsAlreadyHandedOver(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.AskConsent = true
+	})
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		node.finish("UNVERIFIED — the auditor answered neither VERIFIED nor REFUTED", nil, "", "")
+		node.graph.complete(node, TaskUnverified)
+	})
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "Hidden rental digs", named: true, brief: "b", acceptance: "a"})
+	waitDoneNode(t, graph.node(id))
+
+	if err := agent.HandUnverifiedToModel(id); err != nil {
+		t.Fatalf("handing the decision over: %v", err)
+	}
+	said := len(steeringQueue(agent))
+	err := agent.HandUnverifiedToModel(id)
+	if err == nil {
+		t.Fatal("a second hand-over was taken as a fresh one")
+	}
+	if !strings.Contains(err.Error(), handedAlreadyWord) {
+		t.Fatalf("the second press answers %q, want it to say it is already handed over", err)
+	}
+	// AND IT IS ITS OWN SENTINEL. A card told the question was "already answered"
+	// would stop asking over work that is still waiting on one, so the surface has
+	// to be able to tell this apart from a node somebody settled elsewhere
+	// (internal/tui3's settleRefused).
+	if !errors.Is(err, ErrTaskHandedOver) || errors.Is(err, ErrTaskDecided) {
+		t.Fatalf("the second press answers with %v, which a surface cannot tell from a settled node", err)
+	}
+	if again := len(steeringQueue(agent)); again != said {
+		t.Fatalf("the second press enqueued %d more lines for the model", again-said)
+	}
+	// AND TAKING IT BACK MAKES A HAND-OVER POSSIBLE AGAIN: the refusal is about
+	// who is holding the question, not a door that closes for good.
+	if err := agent.TakeBackDecision(id); err != nil {
+		t.Fatalf("taking the decision back: %v", err)
+	}
+	if err := agent.HandUnverifiedToModel(id); err != nil {
+		t.Fatalf("handing it over after taking it back: %v", err)
+	}
+}
+
+// TestAnsweringLetAforgeDecideTwiceStandsRatherThanRefusing is the same press
+// from the OTHER side — the door a person's key goes through
+// ([Agent.applyLanding]). The row somebody is looking at was drawn before the
+// hand-over reached it, so a second press is a press on a stale card and the
+// state it asks for is the state that already holds; answering it with a
+// refusal would put trouble on a card whose question was answered correctly.
+// Every other refusal on that key is still handed back.
+func TestAnsweringLetAforgeDecideTwiceStandsRatherThanRefusing(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.AskConsent = true
+	})
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		node.finish("UNVERIFIED — the auditor answered neither VERIFIED nor REFUTED", nil, "", "")
+		node.graph.complete(node, TaskUnverified)
+	})
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "Hidden rental digs", named: true, brief: "b", acceptance: "a"})
+	waitDoneNode(t, graph.node(id))
+
+	answer := Answer{Kind: QuestionLanding, ID: id}
+	if err := agent.applyLanding(answer, LandingDecideKey, ""); err != nil {
+		t.Fatalf("the first press: %v", err)
+	}
+	said := len(steeringQueue(agent))
+	if err := agent.applyLanding(answer, LandingDecideKey, ""); err != nil {
+		t.Fatalf("the second press was refused: %v", err)
+	}
+	// AND IT SENT NOTHING A SECOND TIME. Standing is not repeating: the model is
+	// already holding this decision and a second identical line about it is the
+	// defect, not the refusal.
+	if again := len(steeringQueue(agent)); again != said {
+		t.Fatalf("the second press enqueued %d more lines for the model", again-said)
+	}
+	if node := agent.taskNode(id); node == nil || node.decidedBy() != TaskAskOwnerModel {
+		t.Fatal("the node is not held by aforge after two presses")
+	}
+	// AND A REFUSAL THAT IS NOT THIS ONE STILL ARRIVES: taking the decision back
+	// and settling it makes the next press a press on work that has stopped
+	// asking, and that is trouble a person has to be told about.
+	if err := agent.TakeBackDecision(id); err != nil {
+		t.Fatalf("taking the decision back: %v", err)
+	}
+	if err := agent.ResolveUnverified(id, TaskAccept, ""); err != nil {
+		t.Fatalf("settling it: %v", err)
+	}
+	if err := agent.applyLanding(answer, LandingDecideKey, ""); err == nil {
+		t.Fatal("a press on a settled node was taken as a hand-over")
+	}
+}
+
+// agedTaskNode backdates one settled node's landing, so a test can build the
+// clock a recovered graph has: work that finished hours ago, beside rows that
+// landed since.
+func agedTaskNode(graph *TaskGraph, id uint64, when time.Time) {
+	graph.mu.Lock()
+	defer graph.mu.Unlock()
+	if node := graph.nodes[id]; node != nil {
+		node.ended = when
+	}
 }

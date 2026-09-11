@@ -91,7 +91,7 @@ func briefFoldHidden(e *entry, width int) int {
 	if e == nil || !e.brief {
 		return 0
 	}
-	if n := len(wrap(e.text, userBodyCols(width))) - briefFoldLines; n > 0 {
+	if n := len(wrap(requestDisplayText(e), userBodyCols(width))) - briefFoldLines; n > 0 {
 		return n
 	}
 	return 0

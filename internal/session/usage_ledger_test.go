@@ -612,7 +612,7 @@ func TestAnOrdinaryRowIsExactlyAsWideAsItWas(t *testing.T) {
 	if string(before) != string(after) {
 		t.Fatalf("a call with no lane widened its row:\n before %s\n  after %s", before, after)
 	}
-	for _, word := range []string{"lane", "ttft_ms", "tps", "hedged", "hedge_waste_usd"} {
+	for _, word := range []string{"reconciled", "lane", "ttft_ms", "tps", "hedged", "hedge_waste_usd"} {
 		if strings.Contains(string(after), word) {
 			t.Fatalf("the row names %q with nothing to say: %s", word, after)
 		}

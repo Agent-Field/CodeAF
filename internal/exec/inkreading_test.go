@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -27,7 +28,7 @@ func inkSuite(t *testing.T, streamed int, hang time.Duration) (*Workspace, verif
 	for index := 1; index <= streamed; index++ {
 		script += "echo 'ok " + strconv.Itoa(index) + " - grid > box layout " + strconv.Itoa(index) + "'\n"
 	}
-	script += "sleep " + strconv.Itoa(int(hang.Seconds())) + "\n"
+	script += ": > .checks-emitted\nsleep " + strconv.Itoa(int(hang.Seconds())) + "\n"
 	suite := filepath.Join(root, "suite.sh")
 	if err := os.WriteFile(suite, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
@@ -53,23 +54,66 @@ func inkSuite(t *testing.T, streamed int, hang time.Duration) (*Workspace, verif
 func TestACutSecondReadingKeepsWhatItNamed(t *testing.T) {
 	workspace, strategy := inkSuite(t, 6, 30*time.Second)
 	reading := verify.Reading{
-		Taken: true, Budget: 900 * time.Millisecond,
+		Taken: true, Budget: 30 * time.Second,
 		Before: verify.Result{
 			Strategy: strategy,
 			Reported: []string{"grid > box layout 1", "grid > box layout 2"},
 		},
 	}
+	// Observe the output before cutting it. A ceiling measured from process
+	// launch can fire before the shell starts under full-suite load, which
+	// tests an empty reading rather than preservation of a partial roster.
+	ctx, cancel := context.WithCancel(context.Background())
+	finished := make(chan struct{})
 	outcome := &Outcome{}
-	PhotographAfter(context.Background(), workspace, nil, time.Hour,
-		Task{Goal: t.Name()}, Opening{Reading: reading}, true, outcome)
+	go func() {
+		defer close(finished)
+		PhotographAfter(ctx, workspace, nil, time.Hour,
+			Task{Goal: t.Name()}, Opening{Reading: reading}, true, outcome)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-finished:
+		case <-time.After(5 * time.Second):
+			t.Error("the second reading did not settle after cancellation")
+		}
+	})
+	deadline := time.NewTimer(10 * time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+waiting:
+	for {
+		select {
+		case <-tick.C:
+			if _, err := os.Stat(filepath.Join(workspace.Root(), ".checks-emitted")); err == nil {
+				break waiting
+			}
+		case <-deadline.C:
+			t.Fatal("the fixture never emitted its checks")
+		case <-finished:
+			t.Fatal("the fixture ended before the requested cut")
+		}
+	}
+	cancel()
+	select {
+	case <-finished:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the second reading did not settle after cancellation")
+	}
 
 	after := outcome.Verification
 	if !after.AfterTaken {
 		t.Fatalf("a runner that named six checks before its ceiling was read as unread: %q",
 			after.Unread)
 	}
-	if len(after.After.Reported) == 0 {
-		t.Fatal("the roster the runner streamed was thrown away")
+	want := []string{
+		"grid > box layout 1", "grid > box layout 2", "grid > box layout 3",
+		"grid > box layout 4", "grid > box layout 5", "grid > box layout 6",
+	}
+	if !slices.Equal(after.After.Reported, want) {
+		t.Fatalf("the streamed roster was not preserved: got %v, want %v", after.After.Reported, want)
 	}
 	if !after.After.TimedOut {
 		t.Error("the ceiling fired and the result does not say so")

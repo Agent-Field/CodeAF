@@ -66,6 +66,7 @@ func TestARunningCommandIsSentToTheBackgroundWithOneKey(t *testing.T) {
 	a, agent := promotingTurn(t)
 	a.width = 120
 	runningBash(t, a, "c1", "go test ./...")
+	showLiveWork(t, a)
 	if !a.railShowing() {
 		t.Fatal("the 120-column frame did not start with its task column standing")
 	}
@@ -155,6 +156,7 @@ func TestBackgroundingIsAbsentWithoutTheEnginesDoor(t *testing.T) {
 	a := newTestApp(agent)
 	typeLine(t, a, "build it")
 	runningBash(t, a, "c1", "go test ./...")
+	showLiveWork(t, a)
 
 	drive(t, a, key("ctrl+g"))
 
@@ -174,6 +176,7 @@ func TestARefusedPromotionMarksNothing(t *testing.T) {
 	a, agent := promotingTurn(t)
 	agent.refuse = true
 	runningBash(t, a, "c1", "go test ./...")
+	showLiveWork(t, a)
 
 	drive(t, a, key("ctrl+g"))
 
@@ -255,6 +258,7 @@ func TestOnlyAHoveredPromotableBashOffersClickToBackground(t *testing.T) {
 	a, _ := promotingTurn(t)
 	a.width = 120
 	runningBash(t, a, "c1", "go test ./...")
+	showLiveWork(t, a)
 	at := a.promotableRow()
 	if at < 0 {
 		t.Fatal("the live bash row is not promotable")
@@ -314,6 +318,7 @@ func TestTheBackgroundOfferLightsWithoutLightingTheToolRow(t *testing.T) {
 	a, _ := promotingTurn(t)
 	a.width = 120
 	runningBash(t, a, "c1", "go test ./...")
+	showLiveWork(t, a)
 	at := a.promotableRow()
 	y, latent := toolScreenRow(t, a, at)
 	if strings.Contains(latent.text, backgroundKeepWord) || !latent.keep.pressable() {
@@ -354,6 +359,7 @@ func TestClickingTheBackgroundOfferKeepsThatCallAndDoesNotOpenIt(t *testing.T) {
 	a.width = 120
 	runningBash(t, a, "old", "go test ./...")
 	runningBash(t, a, "under-pointer", "git status")
+	showLiveWork(t, a)
 	second := len(a.entries) - 1
 	y, _ := toolScreenRow(t, a, second)
 	drive(t, a, motionTo(0, y))
@@ -389,6 +395,7 @@ func TestAnAutomaticPromotionMarksTheWideAndPhoneRows(t *testing.T) {
 	a, _ := promotingTurn(t)
 	a.width = 120
 	runningBash(t, a, "clock", "x")
+	showLiveWork(t, a)
 	at := a.promotableRow()
 	y, _ := toolScreenRow(t, a, at)
 	drive(t, a, motionTo(0, y))

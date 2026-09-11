@@ -430,9 +430,6 @@ func (a *app) shiftBlockIndices(by int) {
 	move(&a.think)
 	move(&a.sel)
 	move(&a.expand.entry)
-	for i := range a.asks {
-		move(&a.asks[i].entry)
-	}
 }
 
 // earlierMark is the one line at the top of a part-drawn conversation, and it
@@ -542,7 +539,8 @@ func roomReplay(tail int) replayShape {
 // for the PAGE — a helping cut from each half would keep a screenful of a region
 // nobody scrolled to and drop the work that is happening now.
 func (a *app) roomRecord(record session.Record, tail int) ([]entry, int) {
-	blocks, turns := a.recordBlocks(record, tail)
+	blocks, turns := a.recordBlocks(record, 0)
+	blocks = keepRoomTail(blocks, tail)
 	// AND WHAT THE READING COULD NOT DO IS SAID AT THE TOP, above the window
 	// rather than inside it. It is a fact about the READING and not about the
 	// work, so a page long enough to be windowed must not quietly stop saying it
@@ -704,6 +702,23 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 				// pairs the end that arrives a second later with the row already
 				// standing, or the same call is drawn twice.
 				callID: e.CallID,
+				// AND THE STEP'S OWN TITLE COMES BACK WITH IT. The narration and
+				// the family it named were journaled against this call
+				// (session's DisplayEntry.Caption), so a reopened conversation
+				// draws the sentence the person was reading and the mark beside
+				// it — rather than recomposing "running 1 command" out of the
+				// tool names and demoting a `test` to a `run`. Both are empty on
+				// every call that was not a batch's anchor and on every file
+				// written before the line existed, which is the ordinary case
+				// and falls back exactly as it always did.
+				caption:    e.Caption,
+				captionCat: e.CaptionCategory,
+				// AND THE CALL'S OWN DURATION COMES BACK WITH IT. The live stream
+				// wrote EventToolFinished onto the row; the journal kept the same
+				// figure on a `took` line (session's DisplayEntry.Took), so a
+				// page opened after the batch still says what each call took —
+				// rather than drawing finished rows with no figure at all.
+				ran: e.Took,
 				// The detail is carried through UNPARSED, which is what makes a
 				// replayed row the same row: everything the expansion shows — the
 				// diff, the content preview, the highlighted command and its
@@ -722,6 +737,12 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			})
 
 		case "aside":
+			if shape.brief && len(blocks) == 0 && canonicalTaskRequest(text) {
+				turn++
+				turns++
+				blocks = append(blocks, entry{kind: entryUser, text: text, turn: turn, brief: true})
+				continue
+			}
 			if text == "" {
 				continue
 			}

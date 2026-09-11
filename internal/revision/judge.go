@@ -607,11 +607,11 @@ const GateLessonsHeading = "Lessons from EARLIER, UNRELATED work — " +
 // sentence can no longer move a model's ability rating. Everywhere the product
 // counts operational success — competence rates, reflex outcomes, the self
 // page — both already count, and they still do.
-func GateVerdict(judgment Judgment) provider.Verdict {
+func GateVerdict(judgment Judgment) provider.Reading {
 	if judgment.Exercised {
-		return provider.VerdictVerifiedSuccess
+		return provider.ReadingVerifiedSuccess
 	}
-	return provider.VerdictUnverifiedSuccess
+	return provider.ReadingUnverifiedSuccess
 }
 
 // Evidence is what the gate can hold a claim against: what the leaf
@@ -1667,7 +1667,7 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 		// run reaches the exit code. See Judgment.Fault and its one reader in
 		// cmd/aforge/chat.go.
 		if shaped.Unreadable(err) {
-			provider.Report(judgeCtx, provider.VerdictFormatFailure)
+			provider.Report(judgeCtx, provider.ReadingFormatFailure)
 			// AND THE MECHANICAL GATE STILL RUNS. A gate that produced no
 			// verdict has not settled anything, and a promised file that is not
 			// on disk is settled by the filesystem rather than by anybody's
@@ -1682,7 +1682,7 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 					Mechanical: true, Checked: true, Grounds: grounds,
 					Finding: FindingMissingProduces, Fallback: true}
 			}
-			return faulted(node, "the gate answered with nothing this could read", err)
+			return faulted(node, gateUnreadableWhy, err)
 		}
 		// A transport failure is a different thing and stays fail-open: the
 		// model was never reached, so nothing about this deliverable was
@@ -1691,11 +1691,11 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 		// reached and what was done about it, the delivery path turns that into
 		// a gate row of its own kind, and the run leaves unchecked rather than
 		// ok. See GateUnreached and cmd/aforge/chat.go's seam.
-		provider.Report(judgeCtx, provider.VerdictProviderFailure)
+		provider.Report(judgeCtx, provider.ReadingProviderFailure)
 		return unjudged(node, gateNote(GateUnreached, asked), err)
 	}
 	if verdict.Pass {
-		provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
+		provider.Report(judgeCtx, provider.ReadingVerifiedSuccess)
 		// A judge that omits the field says nothing about evidence, and
 		// nothing is the honest reading: the missing answer stays false.
 		pass := Judgment{Pass: true, Exercised: verdict.Exercised, Checked: true,
@@ -1708,12 +1708,12 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	}
 	gaps := strings.TrimSpace(verdict.Gaps)
 	if gaps == "" {
-		provider.Report(judgeCtx, provider.VerdictSemanticFailure)
+		provider.Report(judgeCtx, provider.ReadingSemanticFailure)
 		// A fail that names nothing is not a fail and is not a pass either: the
 		// gate held an opinion it could not state. It ships, and it says so.
 		return unjudged(node, "the gate failed the work and named no gap", nil)
 	}
-	provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
+	provider.Report(judgeCtx, provider.ReadingVerifiedSuccess)
 	// An ungrounded gap is still recorded as a gap: it is said out loud, it
 	// rides the delivery, and it is in the ledger. What it does not buy is
 	// paid work — neither the revision round nor the extension — and both of
@@ -1784,11 +1784,38 @@ func faulted(node store.Node, why string, err error) Judgment {
 	return Judgment{Fault: note}
 }
 
+const (
+	gateUnreadableWhy     = "the gate answered with nothing this could read"
+	gateFaultSentence     = "the review could not be read, so this delivery was never checked"
+	gateFaultHandoverLead = "I'm handing this over unchecked: the review of it could not be read"
+	gateFaultHandoverTail = ", so nothing has confirmed this is what you asked for."
+)
+
+// gateFaultReason keeps the part of a fault that distinguishes this run from
+// another one. The shared lead already says the review was unreadable, so
+// repeating the gate's equivalent lead would obscure the evidence that follows
+// it. That evidence is already bounded by internal/shaped's replyDetailBytes
+// and noteBytes; this reading does not invent another limit.
+func gateFaultReason(fault string) string {
+	reason := strings.TrimSpace(fault)
+	if strings.HasPrefix(reason, gateUnreadableWhy) {
+		reason = strings.TrimPrefix(reason, gateUnreadableWhy)
+		reason = strings.TrimPrefix(reason, ": ")
+	}
+	return strings.TrimSpace(reason)
+}
+
 // GateFaultWords is the shortfall as the delivery gate's own ledger keeps it,
 // and as the headless stream prints it. It says what did not happen — the check
-// — rather than what the gate found, because the gate found nothing.
+// — and why it did not happen, never alleging anything about the work when the
+// gate found nothing. An empty reason stays empty so an unknown renders as
+// nothing rather than as a dangling separator.
 func GateFaultWords(fault string) string {
-	return "the review could not be read, so this delivery was never checked"
+	words := gateFaultSentence
+	if reason := gateFaultReason(fault); reason != "" {
+		words += " — " + reason
+	}
+	return words
 }
 
 // GateFaultHandover is the reservation that rides the delivery when the gate
@@ -1797,9 +1824,15 @@ func GateFaultWords(fault string) string {
 // It exists for the same reason GapHandover does: a run that hands over work its
 // own check never looked at must not hand it over in silence. What it must NOT
 // say is that anything is wrong with the work — nobody knows, and that is the
-// whole point — so it names the missing check and stops there.
+// whole point — so it names the missing check and why it did not happen, never
+// alleging anything about the work. An empty reason stays empty so an unknown
+// renders as nothing rather than as an empty parenthetical.
 func GateFaultHandover(fault string) string {
-	return "I'm handing this over unchecked: the review of it could not be read, so nothing has confirmed this is what you asked for."
+	words := gateFaultHandoverLead
+	if reason := gateFaultReason(fault); reason != "" {
+		words += " (" + reason + ")"
+	}
+	return words + gateFaultHandoverTail
 }
 
 // unjudged is the fail-open pass, said out loud.
@@ -1830,6 +1863,16 @@ func unjudged(node store.Node, why string, err error) Judgment {
 // prints it verbatim after "delivered without a check: ". Spelled once here
 // because a sentence in two places is two sentences.
 const GateUnreached = "the gate could not be reached"
+
+// GateName is what the thing that judges a delivery is called, in the words a
+// person reads and a machine reads back.
+//
+// Spelled once here for the reason GateUnreached above it is: a name in two
+// places is two names, and the second one drifts. cmd/aforge's `--json`
+// envelope publishes it as `judged_by`, docs/HEADLESS.md's contract table
+// quotes it, and the chat manual answers "what checked my unattended run" with
+// it — three readers, one string.
+const GateName = "delivery gate"
 
 // The three answers to "and what was done about it", which is the question a
 // person reading an unchecked delivery asks second. One of them is always on the
@@ -2466,9 +2509,9 @@ func JudgeRemainder(ctx context.Context, settings config.Config, client *pool.Cl
 		// That is the safe direction here and it is why this one does not fault
 		// the way the delivery gate does — nothing is being called whole.
 		if shaped.Unreadable(err) {
-			provider.Report(judgeCtx, provider.VerdictFormatFailure)
+			provider.Report(judgeCtx, provider.ReadingFormatFailure)
 		} else {
-			provider.Report(judgeCtx, provider.VerdictProviderFailure)
+			provider.Report(judgeCtx, provider.ReadingProviderFailure)
 		}
 		return Remainder{}
 	}
@@ -2477,10 +2520,10 @@ func JudgeRemainder(ctx context.Context, settings config.Config, client *pool.Cl
 		// A "not done" that cannot name the gap is the exact failure the old
 		// path had: a remainder assumed rather than found. Unchecked, so the
 		// replan proceeds on the partial alone.
-		provider.Report(judgeCtx, provider.VerdictSemanticFailure)
+		provider.Report(judgeCtx, provider.ReadingSemanticFailure)
 		return Remainder{}
 	}
-	provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
+	provider.Report(judgeCtx, provider.ReadingVerifiedSuccess)
 	return Remainder{Done: verdict.Done, Remaining: remaining, Checked: true}
 }
 

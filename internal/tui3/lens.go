@@ -92,6 +92,8 @@ type lens struct {
 	// foldPast is what collapses here, resolved through [folders] by
 	// workfold.go's [app.deckFolds].
 	foldPast foldStyle
+	// compactLive covers only running machinery, independently of past folds.
+	compactLive bool
 	// toolTail is how many of a folded cluster's calls stay on screen, and nil
 	// means [toolWindow] — the conversation's designed compactness, where the
 	// fold sits among prose. It is a FUNCTION rather than a number because a
@@ -113,21 +115,22 @@ type lens struct {
 // folded to a chip because they asked a question and what they were owed was
 // the answer.
 var participantLens = lens{
-	clock:      true,
-	receipts:   receiptsInline,
-	foldPast:   foldTurns,
-	spawnCards: true,
+	clock:       true,
+	receipts:    receiptsInline,
+	foldPast:    foldTurns,
+	compactLive: true,
+	spawnCards:  true,
 }
 
 // overseerLens is the person checking on work somebody else is doing: no clock
 // of ours over their turns, the numbers gathered in the header, settled phases
-// folded to chips, and a whole screenful of calls kept at the live frontier —
-// because the person watching NOW is the one reader for whom the machinery is
-// the content.
+// folded to chips, and the live frontier kept compact. Opening its outline
+// retains a screenful of calls, independently of the three-row compact budget.
 var overseerLens = lens{
-	receipts: receiptsHeader,
-	foldPast: foldPhases,
-	toolTail: (*app).roomToolTail,
+	receipts:    receiptsHeader,
+	foldPast:    foldPhases,
+	compactLive: true,
+	toolTail:    (*app).roomToolTail,
 }
 
 // transcriptLens is THE THIRD SURFACE, AND HERE IS THE ARGUMENT.

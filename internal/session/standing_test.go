@@ -1554,31 +1554,43 @@ func TestAnExpiryBeforeTheItemsOwnMomentIsRefused(t *testing.T) {
 	}
 }
 
-// THE EDGE IS THE MOMENT ITSELF, because the pass asks about the end before it
-// asks whether anything is due: an end at exactly when.at retires the item in
-// the same instant it becomes deliverable, so it is refused with everything
-// earlier, and one second later is an ordinary end and is kept.
+// THE EDGE IS ONE CHECK PAST THE MOMENT, not the moment itself, because the
+// pass that would deliver the item is the same pass that asks about the end and
+// it only comes around every [standing.Interval]. An end at exactly when.at
+// retires the item in the instant it becomes deliverable; an end a second later
+// is the identical death arriving a minute after, since the pass that lands
+// between them finds the item out of time and retires it unsaid. So everything
+// short of a whole check past the firing is refused, and the two refusals are
+// spelled differently — one says the end stands before the firing, the other
+// names the cadence — because the fix is different: move the end, or accept
+// that a near end and a near firing cannot both be had.
 func TestTheEndHasToBeLaterThanTheMomentItOutlives(t *testing.T) {
 	now := time.Date(2026, 8, 31, 23, 10, 11, 0, time.Local)
 	due := time.Date(2026, 8, 31, 23, 11, 11, 0, time.Local)
 	for _, probe := range []struct {
-		name    string
-		end     time.Time
-		refused bool
+		name string
+		end  time.Time
+		says string
 	}{
-		{name: "eleven seconds before the moment", end: due.Add(-11 * time.Second), refused: true},
-		{name: "one second before the moment", end: due.Add(-time.Second), refused: true},
-		{name: "the moment itself", end: due, refused: true},
-		{name: "one second after the moment", end: due.Add(time.Second)},
+		{name: "eleven seconds before the moment", end: due.Add(-11 * time.Second), says: "so it would retire before it ever fired"},
+		{name: "one second before the moment", end: due.Add(-time.Second), says: "so it would retire before it ever fired"},
+		{name: "the moment itself", end: due, says: "so it would retire before it ever fired"},
+		{name: "one second after the moment", end: due.Add(time.Second), says: "is less than one check after"},
+		{name: "twenty-five seconds after the moment", end: due.Add(25 * time.Second), says: "is less than one check after"},
+		{name: "a second short of a whole check", end: due.Add(standing.Interval - time.Second), says: "is less than one check after"},
+		{name: "exactly one check after the moment", end: due.Add(standing.Interval)},
 		{name: "an hour after the moment", end: due.Add(time.Hour)},
 	} {
 		t.Run(probe.name, func(t *testing.T) {
 			var parsed standArguments
 			parsed.Rails.Expires = probe.end.Format("2006-01-02T15:04:05")
 			rails, problem := standingRails(parsed, standing.When{Kind: standing.WhenAt, At: due}, now)
-			if probe.refused {
-				if !strings.Contains(problem, "so it would retire before it ever fired") {
+			if probe.says != "" {
+				if !strings.Contains(problem, probe.says) {
 					t.Fatalf("an end at %s was taken: problem = %q", probe.end.Format(time.RFC3339), problem)
+				}
+				if !rails.Expires.IsZero() {
+					t.Fatalf("a refused end at %s was kept anyway", probe.end.Format(time.RFC3339))
 				}
 				return
 			}
@@ -1930,15 +1942,29 @@ func TestTheSteeringLineReadsAsNewsAndNotAsARequest(t *testing.T) {
 	if !strings.Contains(line, "Do not call stand again") {
 		t.Fatalf("the injected line does not forbid setting it up again: %q", line)
 	}
-	// AND THE PROMPT SAYS THE SAME THING IN ONE SENTENCE, so the framing is not
-	// the only place the model can learn it (CLAUDE.md's manual law applies to
-	// system.md too: it must not lie, and it must not be silent about a rule the
-	// engine enforces).
-	if !strings.Contains(systemPrompt, standingNewsFrame) {
-		t.Fatalf("system.md never mentions %q", standingNewsFrame)
+	// AND THE PAGE DOES NOT SAY IT A SECOND TIME. The rule used to be on both —
+	// here, under the news, and again in prompts/system.md's standing section —
+	// and the page's copy was bought on every request of every turn for a turn
+	// most sessions never have. A message that carries its own instruction needs
+	// no page explaining it, which is the WITH THE EVENT class of the prompt
+	// diet (docs/design/prompt-diet/DESIGN.md §2; lawregistry_test.go files this
+	// one as standing.news-is-not-a-request). So the assertion runs backwards:
+	// if the frame is back on the page, the byte the diet took out is back too.
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.System = ""
+		config.standingItems = &fakeStanding{}
+	})
+	page := systemTextOf(agent)
+	if strings.Contains(page, standingNewsFrame) {
+		t.Fatalf("%q is on the page as well as under the news it is about, which is one law paid for twice", standingNewsFrame)
 	}
-	if !strings.Contains(systemPrompt, "never call `stand`\nagain for it") {
-		t.Fatal("system.md does not tell the model to leave a fired item alone")
+	if strings.Contains(page, "never call `stand`") {
+		t.Fatal("the page explains a fired item again; that sentence is standingNewsRule's, under the firing's own line")
+	}
+	// And what the page DOES still owe is the existence of the verb, so that a
+	// sentence worth leaving behind is recognised before anything fires.
+	if !strings.Contains(page, "SOMETHING TO LEAVE BEHIND") || !strings.Contains(page, "`stand`") {
+		t.Fatalf("the page no longer says a sentence can be left behind at all:\n%s", page)
 	}
 }
 

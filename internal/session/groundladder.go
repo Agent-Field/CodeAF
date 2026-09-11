@@ -291,6 +291,13 @@ func carveGround(ctx context.Context, order groundOrder) (taskTree, error) {
 			continue
 		}
 		tree.rung = rung.rung()
+		// The filesystem seal and the Git baseline answer different questions.
+		// Capture the latter before any worker can commit in this new copy.
+		if tree.branch != "" && tree.checkBase == "" {
+			if sha, err := git(tree.dir, "rev-parse", "HEAD"); err == nil {
+				tree.checkBase = strings.TrimSpace(sha)
+			}
+		}
 		return tree, nil
 	}
 	return taskTree{}, errors.New("no copy of " + order.ground + " could be made for this task")

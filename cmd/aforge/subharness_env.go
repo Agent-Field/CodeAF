@@ -324,7 +324,7 @@ func (e *headlessEnv) Recall(_ context.Context, query string) ([]exec.Note, erro
 // stdout because stdout is the run's answer and a caller pipes it somewhere.
 //
 // The vocabulary law reaches the line, and it reaches it from the program's own
-// words: work is running, finishing, done, incomplete, or needs your look.
+// words: work is running, finishing, done, incomplete, or your call.
 // Nothing here dresses a status up or translates it.
 func (e *headlessEnv) Log(_ context.Context, status string) error {
 	line := strings.TrimSpace(status)

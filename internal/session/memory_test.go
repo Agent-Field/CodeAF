@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/reflex"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -36,6 +35,11 @@ type reflexScript struct {
 
 	routes, extracts, decides, turns int
 	systems                          []string
+	// requests is the WHOLE of what each call was sent, every message joined.
+	// The routed memory block rides at the tail of the transcript rather than in
+	// message[0] (agent.go's memoryNoteOpening), so a test asking whether a turn
+	// carried it has to read the request and not just its head.
+	requests []string
 	// routeInputs is what each router call was actually SHOWN, which is the
 	// half of the request that changed: the shortlist is the thing under test.
 	routeInputs []string
@@ -46,9 +50,15 @@ func (r *reflexScript) CompleteWithMessages(_ context.Context, messages []ai.Mes
 	if len(messages) > 0 {
 		system = messageText(messages[0])
 	}
+	var whole strings.Builder
+	for _, message := range messages {
+		whole.WriteString(messageText(message))
+		whole.WriteString("\n")
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.systems = append(r.systems, system)
+	r.requests = append(r.requests, whole.String())
 	switch {
 	case strings.Contains(system, "memory router"):
 		r.routes++
@@ -199,9 +209,13 @@ func TestTheRoutedMemoriesAreRenderedIntoTheBlock(t *testing.T) {
 }
 
 // AND IT REACHES THE ACTUAL REQUEST. The block is decided inside the turn — the
-// router is a provider call and the prompt refresh runs under the session lock —
-// so the thing worth asserting is what message[0] said when the turn went out.
-func TestTheBlockIsInTheSystemPromptTheTurnRidesOn(t *testing.T) {
+// router is a provider call and the landing runs under the session lock — so the
+// thing worth asserting is what the turn actually sent. It rides at the TAIL of
+// the transcript now rather than in message[0], which this wave made byte-stable
+// for the life of a session (memory.go's refreshSystemLocked), so the assertion
+// is over the whole request; the base prompt is still checked so a request that
+// somehow carried the block without the page could not pass.
+func TestTheBlockIsInTheRequestTheTurnRidesOn(t *testing.T) {
 	script := &reflexScript{answer: "reformatted"}
 	agent, brain := brainAgent(t, script, nil)
 	tabs := remember(t, brain, "prefers tabs", "prefers tabs over spaces in Go")
@@ -212,14 +226,14 @@ func TestTheBlockIsInTheSystemPromptTheTurnRidesOn(t *testing.T) {
 
 	var found bool
 	script.mu.Lock()
-	for _, system := range script.systems {
-		if strings.Contains(system, "SYSTEM") && strings.Contains(system, "prefers tabs over spaces in Go") {
+	for _, request := range script.requests {
+		if strings.Contains(request, "SYSTEM") && strings.Contains(request, "prefers tabs over spaces in Go") {
 			found = true
 		}
 	}
 	script.mu.Unlock()
 	if !found {
-		t.Fatal("no request carried the routed memory in its system prompt")
+		t.Fatal("no request carried the routed memory")
 	}
 }
 
@@ -681,9 +695,14 @@ func TestATaskNodeOpensWithTheMemoryItsBriefNeeded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newAgent: %v", err)
 	}
+	// The block rides at the TAIL, in its own note, and lands on the drain
+	// immediately before the first request (agent.go's memoryNoteOpening) — so
+	// what a node opens with is read out of the transcript rather than out of
+	// message[0], which the wave that moved it made byte-stable for the session.
 	child.mu.Lock()
-	opening := messageText(child.messages[0])
+	child.landVolatileLocked()
 	child.mu.Unlock()
+	opening := transcriptText(child)
 	if !strings.Contains(opening, "prefers tabs over spaces in Go") {
 		t.Fatalf("the node did not open with the block:\n%s", opening)
 	}
@@ -691,9 +710,7 @@ func TestATaskNodeOpensWithTheMemoryItsBriefNeeded(t *testing.T) {
 	// refresh has nothing to replace the block with — clearing it would take
 	// away the one thing the node was given.
 	collect(t, mustSubmit(t, child, "start on the first file"))
-	child.mu.Lock()
-	working := messageText(child.messages[0])
-	child.mu.Unlock()
+	working := transcriptText(child)
 	if !strings.Contains(working, "prefers tabs over spaces in Go") {
 		t.Fatalf("the node's first turn dropped the block:\n%s", working)
 	}
@@ -806,7 +823,7 @@ func TestTheReflexCallsAreOnTheSessionsBill(t *testing.T) {
 	}
 }
 
-func cappedReflexResponse(tokens int) *ai.Response {
+func emptyReflexResponse(tokens int) *ai.Response {
 	response := textResponse(" \n")
 	response.Choices[0].FinishReason = "length"
 	response.Usage = &ai.Usage{
@@ -815,17 +832,14 @@ func cappedReflexResponse(tokens int) *ai.Response {
 	return response
 }
 
-func TestAnEmptyReflexRetriesFallsBackAndLeavesOneHonestTrail(t *testing.T) {
+func TestAnEmptyReflexFallsBackAndLeavesOneHonestTrail(t *testing.T) {
 	const primary = "test/reflex-silent"
 	const low = "test/low"
 	sessionPath := filepath.Join(t.TempDir(), "session.jsonl")
 	ledgerPath := filepath.Join(t.TempDir(), UsageLedgerName)
 	completer := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return cappedReflexResponse(reflex.AnswerTokens), nil
-		},
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return cappedReflexResponse(reflex.ThinkingAnswerTokens), nil
+			return emptyReflexResponse(200), nil
 		},
 		func(context.Context, []ai.Message) (*ai.Response, error) {
 			return textResponse(`{"inject":["memory-id"],"cmd":null}`), nil
@@ -845,7 +859,7 @@ func TestAnEmptyReflexRetriesFallsBackAndLeavesOneHonestTrail(t *testing.T) {
 	memory := remember(t, brain, "the useful memory", "the useful remembered text")
 	// The scripted answer needs the store's real id, which is minted only after
 	// the agent exists.
-	completer.steps[2] = func(context.Context, []ai.Message) (*ai.Response, error) {
+	completer.steps[1] = func(context.Context, []ai.Message) (*ai.Response, error) {
 		return textResponse(`{"inject":["` + memory.ID + `"],"cmd":null}`), nil
 	}
 
@@ -878,47 +892,48 @@ func TestAnEmptyReflexRetriesFallsBackAndLeavesOneHonestTrail(t *testing.T) {
 	models := append([]string(nil), completer.models...)
 	ceilings := append([]int(nil), completer.max...)
 	completer.mu.Unlock()
-	if got := strings.Join(models, ","); got != primary+","+primary+","+low+","+low {
-		t.Fatalf("models = %s, want the primary twice and then the low tier", got)
+	if got := strings.Join(models, ","); got != primary+","+low+","+low {
+		t.Fatalf("models = %s, want the primary once and then the low tier", got)
 	}
-	if ceilings[0] != reflex.AnswerTokens || ceilings[1] != reflex.ThinkingAnswerTokens {
-		t.Fatalf("ceilings = %v, want %d then %d", ceilings, reflex.AnswerTokens, reflex.ThinkingAnswerTokens)
+	for call, ceiling := range ceilings {
+		if ceiling != 0 {
+			t.Fatalf("call %d carried max_tokens = %d", call+1, ceiling)
+		}
 	}
 
 	used := agent.Usage()
-	if used.EmptyReflex != 2 || used.Calls != 4 {
-		t.Fatalf("usage = %+v, want four reflex calls and two empty answers", used)
+	if used.EmptyReflex != 1 || used.Calls != 3 {
+		t.Fatalf("usage = %+v, want three reflex calls and one empty answer", used)
 	}
 	if err := agent.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}
 	lines := journalUsageLines(t, sessionPath)
-	if len(lines) != 4 {
+	if len(lines) != 3 {
 		t.Fatalf("journal has %d usage rows, want one per paid request", len(lines))
 	}
 	for index, line := range lines {
 		if !line.Aux || line.Role != string(roles.RoleReflex) {
 			t.Fatalf("row %d = %+v, want an auxiliary reflex row", index+1, line)
 		}
-		if line.Empty != (index < 2) {
-			t.Fatalf("row %d empty = %v, want %v", index+1, line.Empty, index < 2)
+		if line.Empty != (index == 0) {
+			t.Fatalf("row %d empty = %v, want %v", index+1, line.Empty, index == 0)
 		}
 	}
 	replayed, err := replaySessionFile(sessionPath)
 	if err != nil {
 		t.Fatalf("replay: %v", err)
 	}
-	if replayed.usage.EmptyReflex != 2 {
-		t.Fatalf("replayed usage = %+v, want both empty reflex answers", replayed.usage)
+	if replayed.usage.EmptyReflex != 1 {
+		t.Fatalf("replayed usage = %+v, want the empty reflex answer", replayed.usage)
 	}
 	FlushUsage()
 	ledger, err := ReadUsage(ledgerPath, time.Time{})
 	if err != nil {
 		t.Fatalf("read usage ledger: %v", err)
 	}
-	if len(ledger) != 4 || !ledger[0].Empty || !ledger[1].Empty ||
-		ledger[2].Empty || ledger[3].Empty {
-		t.Fatalf("usage ledger = %+v, want only the two wasted requests marked empty", ledger)
+	if len(ledger) != 3 || !ledger[0].Empty || ledger[1].Empty || ledger[2].Empty {
+		t.Fatalf("usage ledger = %+v, want only the wasted request marked empty", ledger)
 	}
 }
 

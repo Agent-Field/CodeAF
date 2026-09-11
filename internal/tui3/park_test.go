@@ -73,7 +73,9 @@ func TestAPersonsLineNeverCutsAStreamedAnswerInTwo(t *testing.T) {
 	a, _ := streaming(t, "the first paragraph of the answer. ")
 	a.submit("do much more of a deep research please")
 	a.say("and the second paragraph of the same answer.")
-	drive(t, a, frameMsg{})
+	// Only the response boundary certifies the full answer; the queued
+	// person's line must not prevent it or move above either paragraph.
+	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{Kind: session.EventAssistantDone}}, frameMsg{})
 
 	blocks := assistantBlocks(a)
 	if len(blocks) != 1 {

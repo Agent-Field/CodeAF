@@ -22,6 +22,13 @@ import (
 // with no belief at all still reaches it, which is the whole of "from zero
 // history, every call is bounded".
 //
+// WHAT THE CEILING BOUNDS IS REAL SILENCE — a wire that has stopped writing —
+// and not the gap between two readable words. The argument is at
+// [hazard.stillSince]; the short version is that a model writing six thousand
+// tokens of reasoning is the opposite of a model that has stopped, and a bound
+// that could not tell the two apart called the fastest stream of the day a
+// stall at ten seconds.
+//
 // The three phases differ only in which distribution stands behind W:
 //
 //   - SILENT, nothing has arrived: the serving lane's first token, measured
@@ -107,9 +114,39 @@ import (
 //
 // IT CANNOT REFUSE ON A NUMBER NOBODY MEASURED. An unknown survival has no
 // quantile — [Survival.Quantile] answers zero — so the gate is open, and the
-// payoff test cannot fire either because [Survival.Remaining] is zero as well.
-// A plan with no belief is bounded by its ceiling and by nothing else, which is
-// exactly what it was before.
+// payoff test cannot fire either because [Survival.Remaining] on that belief is
+// nothing at all. A plan with no belief is bounded by its ceiling and by
+// nothing else, which is exactly what it was before: WHERE NOTHING IS MEASURED
+// THE ANSWER IS "KEEP WAITING WHILE THE WIRE IS ALIVE", never an invented
+// number.
+
+// ── A TOKEN IS PROGRESS ONLY WHILE THE STREAM IS KEEPING UP ────────────────
+//
+// The per-gap tail test above cannot recognize a uniformly slow stream. A run
+// of gaps that are each ordinary enough on their own can together say that the
+// visible rate has collapsed, and raising the one-gap threshold enough to hear
+// that run would also condemn healthy jitter. So each VISIBLE-to-visible gap g
+// contributes its standard-normal deviate under the lane's gap belief:
+//
+//	zi = (ln g - Gap.Mu) / Gap.Sigma
+//
+// After n gaps, sum(zi) / sqrt(n) is standard normal under that belief and can
+// be compared with the SAME derived z above. At one gap it is exactly the test
+// already made by [hazard.abnormal], so this adds no second threshold.
+//
+// The sum and its weight both decay by exp(-g / Ceiling) before the new gap is
+// added. THE COLLAPSE MUST BE CURRENT: evidence from a bad patch is forgotten
+// on the same horizon as the bound it can stop resetting, and repeated looks
+// do not accumulate forever. This pair gates only whether a visible token is
+// credited as progress; it raises no act and enters no payoff arithmetic. Once
+// the aggregate says the stream is not keeping up, the existing absolute
+// ceiling gets the same honest silence it gets from a stream that stopped.
+//
+// This clock deliberately reads the PAGE while the drift clock in [hazard.assess]
+// reads the WIRE. [Plan.Gap] is the measured interval between visible tokens,
+// and a model that interleaves long thoughts between single words really is
+// delivering visible text too slowly for the person waiting. Past a ceiling of
+// that rate it is rescued; the think-duration clock has already had its say.
 
 // falseActBudget is the share of HEALTHY requests that may carry an act raised
 // by the arithmetic rather than by the ceiling.
@@ -139,13 +176,22 @@ type hazard struct {
 	// now is the latest moment anybody has told it about, and it is the only
 	// reason this type ever compares two times.
 	now time.Time
-	// progress is the last VISIBLE progress — the request going out counts as
-	// the first — and it is what both W and the ceiling measure from. delta is
-	// the last sign of the endpoint WRITING, visible or not, which is the
-	// liveness clock's own origin. think is when the run of thought began.
+	// progress is the last CREDITED visible progress — the request going out
+	// counts as the first — and it is what W and the floor measure from.
+	// wrote is the last visible token whether or not it earned that credit;
+	// delta is the last sign of the endpoint WRITING, visible or not, which is
+	// the liveness clock's own origin AND the ceiling's, because a wire that is
+	// writing is not a wire that has gone silent ([hazard.stillSince]). think
+	// is when the run of thought began.
 	progress time.Time
+	wrote    time.Time
 	delta    time.Time
 	think    time.Time
+	// drift and weight are the decayed sum of visible-gap deviates and its
+	// effective count. They decide only whether a visible token still counts as
+	// progress; the existing ladder remains the only thing that raises an act.
+	drift  float64
+	weight float64
 	// visible is the text already on the screen, in tokens. It is what a
 	// rescue would have to write again, and hidden tokens are deliberately not
 	// in it: a run of thought is money already spent and nothing a person would
@@ -229,17 +275,33 @@ func deviate(tail float64) float64 {
 // Note folds in one moment of the stream and says what to do about it.
 //
 // THE THREE COUNTS ARE NOT INTERCHANGEABLE and this is the only place that
-// matters. Visible text is progress and resets the clock. A hidden delta is the
-// endpoint writing where nobody can read, so it moves the PHASE and the
-// liveness clock and leaves the silence exactly where it was. A heartbeat moves
-// neither.
+// matters. Visible text is measured against the visible-gap belief and resets
+// the clock only while it is keeping up. A hidden delta is the endpoint writing
+// where nobody can read, so it moves the PHASE and the liveness clock and
+// leaves both visible clocks exactly where they were. A heartbeat moves neither.
 func (h *hazard) Note(reading Reading) Act {
 	h.advance(reading.At)
 	switch {
 	case reading.Visible > 0:
 		h.visible += reading.Visible
 		h.phase = PhaseWriting
-		h.progress, h.delta = h.now, h.now
+		if !h.wrote.IsZero() {
+			gap := h.now.Sub(h.wrote)
+			if gap > 0 && h.plan.Gap.Known() {
+				decay := math.Exp(-gap.Seconds() / h.plan.Ceiling.Seconds())
+				// The belief is per token, while one event may contain a whole
+				// batch. Normalize its interval so healthy batching keeps credit.
+				perToken := gap.Seconds() / float64(reading.Visible)
+				surprise := (math.Log(perToken) - h.plan.Gap.Mu) / h.plan.Gap.Sigma
+				h.drift = h.drift*decay + surprise
+				h.weight = h.weight*decay + 1
+			}
+		}
+		h.wrote = h.now
+		if h.keepingUp() {
+			h.progress = h.now
+		}
+		h.delta = h.now
 	case reading.Hidden > 0:
 		if h.phase == PhaseSilent {
 			h.phase, h.think = PhaseThinking, h.now
@@ -247,6 +309,13 @@ func (h *hazard) Note(reading Reading) Act {
 		h.delta = h.now
 	}
 	return h.verdict()
+}
+
+// keepingUp reports whether the measured visible rate still earns progress.
+// An unknown gap belief decides nothing, and the first visible token has no
+// preceding visible gap — its interval belongs to the first-token clock.
+func (h *hazard) keepingUp() bool {
+	return !h.plan.Gap.Known() || h.weight < 1 || h.drift/math.Sqrt(h.weight) <= h.z
 }
 
 // Quiet says nothing has arrived by now, and asks the same question.
@@ -299,7 +368,7 @@ func (h *hazard) Acted(kind Kind) bool {
 // IT IS NEVER IN THE PAST. A moment already gone is a timer that fires
 // immediately and forever, which is how a beat becomes a spin.
 func (h *hazard) Deadline() time.Time {
-	ceiling := h.progress.Add(h.plan.Ceiling)
+	ceiling := h.stillSince().Add(h.plan.Ceiling)
 	low := h.progress.Add(h.plan.Floor)
 	if low.Before(h.now) {
 		low = h.now
@@ -335,8 +404,10 @@ func (h *hazard) notPast(moment time.Time) time.Time {
 }
 
 // silence is s: how long this request has gone without visible progress. It is
-// what a person is waiting through, so it is what the floor and the ceiling ask
-// about.
+// what the payoff arithmetic is asked about and what the floor guards, and it
+// is the figure the model-call row records. THE CEILING ASKS [hazard.still]
+// INSTEAD — silence with a readable word at the end of it is not the same
+// question as silence with a dead wire at the end of it.
 func (h *hazard) silence(now time.Time) time.Duration { return now.Sub(h.progress) }
 
 // quiet is how long the WIRE has been still: the time since the endpoint last
@@ -344,6 +415,54 @@ func (h *hazard) silence(now time.Time) time.Duration { return now.Sub(h.progres
 // about, because a lane still writing is a lane that has not stopped — and a
 // heartbeat is not writing, which is why [hazard.delta] never moves on one.
 func (h *hazard) quiet(now time.Time) time.Duration { return now.Sub(h.delta) }
+
+// ── WHAT THE CEILING IS A CEILING ON ────────────────────────────────────────
+//
+// THE CEILING BOUNDS REAL SILENCE, AND AN ENDPOINT THAT IS WRITING IS NOT
+// SILENT. It used to be measured from [hazard.progress] — the last VISIBLE
+// token — which is right about what a person is waiting through only while the
+// visible stream is the whole story. It is not the whole story on a model that
+// thinks: hidden deltas move [hazard.delta] and the phase and never `progress`,
+// so a healthy run of reasoning reached the ceiling at exactly the ceiling, on
+// every model that deliberates for longer than one, while the tokens were
+// arriving at full rate and the surface was drawing them counting up. The
+// measured case was 6,174 reasoning tokens over 108 seconds at 57 a second —
+// the fastest thing on the wire that afternoon — reported as a stall at ten.
+//
+// The drift clock in [hazard.assess] already reads the wire for exactly this
+// reason and says so; the ceiling overrode it. So the ceiling reads the wire
+// too, and the ONE case where a stream that is writing is nonetheless a silence
+// a person is really in keeps its old clock: a visible rate that has collapsed,
+// which [hazard.keepingUp] measures against the lane's own gap belief and which
+// the ceiling already answers with [RateReason].
+//
+// NOTHING HERE LOOSENS THE ABSOLUTE. A still wire still reaches the ceiling at
+// the ceiling — a heartbeat is not writing and never moves [hazard.delta], so a
+// router holding the line open by saying nothing in a well-formed way is bounded
+// exactly as before — and a stream that has stopped is a stream whose quiet and
+// whose silence are the same number.
+
+// rateCollapsed reports whether visible text has arrived and stopped keeping up
+// with the lane's own belief about its rate. It is one predicate because two
+// readings of it — which clock the ceiling runs on, and which word the act
+// carries — must always agree.
+func (h *hazard) rateCollapsed() bool { return h.visible > 0 && !h.keepingUp() }
+
+// stillSince is the moment real silence began: the last time the endpoint wrote
+// anything at all, or, where the visible rate has collapsed, the last credited
+// progress — because text arriving too slowly to read IS a person waiting in
+// silence, whatever the wire is doing.
+func (h *hazard) stillSince() time.Time {
+	if h.rateCollapsed() {
+		return h.progress
+	}
+	return h.delta
+}
+
+// still is how long that silence has run. It is what the ceiling bounds, and it
+// is never longer than [hazard.silence]: the wire writes at least as often as
+// the screen does.
+func (h *hazard) still(now time.Time) time.Duration { return now.Sub(h.stillSince()) }
 
 // firesAt reports whether the answer at that moment is to act. It is the whole
 // decision with the choice of act taken out of it, so that the deadline search
@@ -353,7 +472,7 @@ func (h *hazard) firesAt(now time.Time) bool {
 	if silence < h.plan.Floor {
 		return false
 	}
-	if silence >= h.plan.Ceiling {
+	if h.still(now) >= h.plan.Ceiling {
 		return true
 	}
 	// BOTH TESTS, AND THE SEARCH ABOVE STILL WORKS BECAUSE BOTH ARE MONOTONE.
@@ -361,7 +480,7 @@ func (h *hazard) firesAt(now time.Time) bool {
 	// quantile" is monotone by inspection, so their conjunction is monotone and
 	// the bisection still finds the FIRST moment the answer flips.
 	wait, cost, _, odd := h.assess(now)
-	return odd && wait > cost+h.plan.Margin
+	return odd && wait.Over(cost, h.plan.Margin)
 }
 
 // verdict is the one place an act is decided, so that the ladder and the
@@ -380,12 +499,24 @@ func (h *hazard) verdict() Act {
 		// Under the floor a second request is racing the network rather than
 		// the lane, so nothing is acted on — but the arm may still commit.
 		return h.hold(out)
-	case odd && wait > cost+h.plan.Margin:
+	case odd && wait.Over(cost, h.plan.Margin):
 		out.Reason = word
 		return h.act(out, false)
-	case silence >= h.plan.Ceiling:
-		out.Reason = CeilingReason
-		return h.act(out, true)
+	case h.still(h.now) >= h.plan.Ceiling:
+		rate := h.rateCollapsed()
+		if rate {
+			out.Reason = RateReason
+		} else {
+			out.Reason = CeilingReason
+		}
+		out = h.act(out, true)
+		if rate {
+			// THE CEILING BOUNDS TIME TO ACTION, so asking the ladder begins a
+			// fresh interval whether or not it has another act left. A spent
+			// ladder is the strongest case for not asking again on the next reading.
+			h.progress = h.now
+		}
+		return out
 	default:
 		return h.hold(out)
 	}
@@ -394,7 +525,7 @@ func (h *hazard) verdict() Act {
 // assess is W and A right now, with the machine word for whichever clock is
 // governing. It is the arithmetic of §B and the only place either number is
 // computed.
-func (h *hazard) assess(now time.Time) (wait, cost float64, word string, odd bool) {
+func (h *hazard) assess(now time.Time) (wait, cost Seconds, word string, odd bool) {
 	cost = h.cost()
 	switch h.phase {
 	case PhaseThinking:
@@ -405,7 +536,7 @@ func (h *hazard) assess(now time.Time) (wait, cost float64, word string, odd boo
 		// too long, and the clock below is the one that would say so.
 		quiet := h.quiet(now).Seconds()
 		gap, oddGap := h.plan.Gap.Remaining(quiet), h.abnormal(h.plan.Gap, quiet)
-		if oddGap && gap > cost+h.plan.Margin {
+		if oddGap && gap.Over(cost, h.plan.Margin) {
 			return gap, cost, "drift", true
 		}
 		// And the duration clock, which prices the alternative's own thought:
@@ -415,7 +546,7 @@ func (h *hazard) assess(now time.Time) (wait, cost float64, word string, odd boo
 		// thought usually lasts, which is the only distribution that can tell a
 		// model deliberating from a model hung.
 		thought := now.Sub(h.think).Seconds()
-		return h.plan.Think.Remaining(thought), cost + h.plan.Think.Mean(), "long think",
+		return h.plan.Think.Remaining(thought), cost.Plus(h.plan.Think.Mean()), "long think",
 			h.abnormal(h.plan.Think, thought)
 	case PhaseWriting:
 		// AND THE DRIFT CLOCK READS THE WIRE, NOT THE PAGE. A model that writes
@@ -440,8 +571,9 @@ func (h *hazard) assess(now time.Time) (wait, cost float64, word string, odd boo
 //
 // A SURVIVAL NOBODY MEASURED HAS NO QUANTILE and answers zero, so the gate is
 // open — which is right and costs nothing, because the payoff test is closed in
-// exactly that case: [Survival.Remaining] on an unknown belief is zero and
-// never crosses. A plan with no belief is bounded by its ceiling, as it was.
+// exactly that case: [Survival.Remaining] on an unknown belief is nothing at
+// all, and [Seconds.Over] cannot say yes without a figure. A plan with no
+// belief is bounded by its ceiling, as it was.
 func (h *hazard) abnormal(of Survival, waited float64) bool {
 	return waited > of.Quantile(h.z)
 }
@@ -453,10 +585,16 @@ func (h *hazard) abnormal(of Survival, waited float64) bool {
 // WITH λ AT ZERO NOTHING BUYS SPEED. Nobody is waiting, so no amount of money
 // converts into seconds, and the controller can only ever report — which is the
 // honest half of "a background errand is worth money and not haste".
-func (h *hazard) cost() float64 {
+//
+// AND WHERE THERE IS NO ALTERNATIVE THERE IS NO COST, which is nothing rather
+// than infinity. The two read the same way in the one comparison this figure is
+// ever in ([Seconds.Over] cannot say yes without a number on both sides), and
+// only one of them is true: a request with nowhere to go has not been priced at
+// an unaffordable amount, it has not been priced at all.
+func (h *hazard) cost() Seconds {
 	alt, ok := h.costAlt()
 	if !ok || h.plan.Lambda <= 0 {
-		return math.Inf(1)
+		return Seconds{}
 	}
 	rate := alt.Rate
 	if rate <= 0 {
@@ -466,7 +604,7 @@ func (h *hazard) cost() float64 {
 	if rate > 0 {
 		rewrite = float64(h.visible) / rate
 	}
-	return alt.First.Mean() + rewrite + h.plan.Lambda*alt.Extra
+	return Measured(alt.First.Mean() + rewrite + h.plan.Lambda*alt.Extra)
 }
 
 // rate is what the lane serving this stream is believed to write at, in tokens
@@ -572,7 +710,7 @@ func (h *hazard) reachable(ceiling bool) (Alternative, bool) {
 // token reply commits early and a four-thousand token one commits late, for the
 // same reason and out of the same arithmetic.
 func (h *hazard) hold(out Act) Act {
-	if h.acted[Commit] || h.visible == 0 || !h.acted[Hedge] || math.IsInf(out.Cost, 1) {
+	if h.acted[Commit] || h.visible == 0 || !h.acted[Hedge] || !out.Cost.Known() {
 		return out
 	}
 	h.acted[Commit] = true

@@ -16,7 +16,9 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/effort"
+	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/redact"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
@@ -39,6 +41,10 @@ import (
 // boundary's own defaults ARE these two.
 const retryBaseDelay = taxonomy.DefaultTransportBackoff
 
+// detachedFromTurn is [Agent.addDetachedUsageAs]'s argument spelled as a word,
+// because `true` at a call site says nothing about which of two booleans it is.
+const detachedFromTurn = true
+
 // truncationContinuations gives a cut-off answer two chances to finish in
 // smaller pieces. The bound matters because a model that ignores the note can
 // otherwise turn one bad output ceiling into an unbounded, silent spend.
@@ -47,28 +53,17 @@ const truncationContinuations = 2
 // ── what a cut stream is worth asking again ─────────────────────────────────
 //
 // A stream the guard cut (internal/provider's streamguard.go) is a different
-// kind of failure from a torn connection, and it gets its own budget rather than
-// spending the transport one above: the request never failed, so there is
-// nothing here to back off from, and the same three attempts that make sense for
-// a socket would keep a model that has lost the thread going four times over a
-// context that is only getting worse.
+// kind of failure from a torn connection, and it spends a different allowance:
+// the request never failed, so there is nothing here to back off from, and the
+// same four attempts that make sense for a socket would keep a model that has
+// lost the thread going four times over a context that is only getting worse.
 //
-// SILENCE IS WORTH ASKING TWICE. The endpoint is very often simply a bad draw
-// out of a router's pool, and the second try lands on a different one.
-//
-// DEGENERATION IS WORTH ASKING ONCE. If the same transcript produces soup twice,
-// the transcript is the problem and asking a third time spends the whole prompt
-// to be told so again — which is the point at which the person is told instead.
-//
-// AND A THIRD BUDGET, for the case where asking again reaches the same endpoint
-// every time. Two attempts that could only land in the same place are one
-// attempt with a wait in front of it, so the step stops asking sooner and moves
-// to another model instead. The whole rule is stated at [cutBudget].
-const (
-	silentRetries = 2
-	babbleRetries = 1
-	blindRetries  = 1
-)
+// THE NUMBERS ARE NOT HERE ANY MORE, and that is the point of the change they
+// moved in. They are [taxonomy.SilentCutAttempts] and its two neighbours, read
+// by the one policy that decides what any failed request is worth
+// (internal/taxonomy's transportBudget), so that a cut and a refusal are one
+// story told from one place rather than two budgets kept in two files that
+// answered "is there another model to ask" differently.
 
 const truncationContinuationNote = "Your last reply was cut off at the output limit. " +
 	"Continue the work in smaller parts. Use tool calls to save any large deliverable " +
@@ -141,33 +136,27 @@ var retryablePattern = regexp.MustCompile(
 		`websocket.?error`,
 	}, "|"))
 
-// contextOverflowPattern matches context-overflow errors. pi does NOT retry
-// these — it compacts instead.
-var contextOverflowPattern = regexp.MustCompile(
-	`(?i)` + strings.Join([]string{
-		"context.?length",
-		"context.?window",
-		"maximum.?context",
-		"token.?limit",
-		`context.?limit`,
-		"prompt.?is.?too.?long",
-		"too.?many.?tokens",
-	}, "|"))
-
 // isRetryable reports whether a provider error is retryable per pi's
 // isRetryableAssistantError: it must match the retryable pattern and NOT match
 // the non-retryable (quota/billing) pattern.
+//
+// IT IS EVIDENCE AND NEVER A DECISION, which is what this pattern lost on
+// 2026-09-10 and has back. It sets one fact on one struct — the socket shape
+// nothing typed could name, [taxonomy.Evidence.Wire] — and the move is chosen
+// from the whole of the evidence by [taxonomy.Classify]. Until this wave the
+// turn loop asked it a SECOND time, forty lines after that verdict had been
+// computed, and returned on the answer: `isContextOverflow(errMsg) ||
+// !isRetryable(errMsg)`, a pair of regexes over the provider's prose overruling
+// a typed classification that had already read the same failure. A routing 404
+// matched no pattern, so a turn with three moves left ended on the router's own
+// sentence. Its companion `isContextOverflow` is gone entirely: the request not
+// fitting is a fact the transport decides from the request-too-large status and
+// the error envelope's own code (internal/provider's [overflowRefusal]).
 func isRetryable(errMsg string) bool {
 	if nonRetryablePattern.MatchString(errMsg) {
 		return false
 	}
 	return retryablePattern.MatchString(errMsg)
-}
-
-// isContextOverflow reports whether a provider error is a context-overflow
-// error. These are NOT retried — the turn compacts and tries again.
-func isContextOverflow(errMsg string) bool {
-	return contextOverflowPattern.MatchString(errMsg)
 }
 
 // hintLimit bounds an Event.Hint. It is a one-line gloss beside a tool name in
@@ -214,6 +203,17 @@ const outputLimit = 4000
 // a follow-up (agent.go) — an interrupted or faulted turn must not be the thing
 // that starts the next one.
 func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bool {
+	// A CUT STREAM'S RECEIPT ARRIVES AFTER THIS TURN'S CALL HAS RETURNED. The
+	// sink belongs on the turn context before any of its calls or errands derive
+	// children from it, so every streamed request can hand that late fact back to
+	// this agent without making the turn wait for it.
+	ctx = provider.WithReconcile(ctx, a.reconciled)
+	// AND THE MODELS THIS TURN IS PUT TO ARE RECORDED ON IT. One record per turn,
+	// opened here so that every call and errand derived from this context writes
+	// to the same one — which is what makes "has this model already been asked"
+	// a fact the one model hop can read rather than a count it keeps
+	// (internal/provider's modelstried.go, [Agent.nextFallback]).
+	ctx = provider.WithModelsTried(ctx)
 	started := time.Now()
 	var turn Usage
 
@@ -485,6 +485,22 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// rather than a second opinion about the same fact (internal/provider's
 	// roles.go).
 	ctx = provider.WithRole(ctx, a.laneRole())
+	// AND WHOSE ERRAND IT IS, beside what kind of errand it is, for the reason
+	// internal/provider's roles.go states: an engine that is a separate process
+	// from the surface registers ONE phase reader for every conversation it is
+	// running, and news that could not name its own conversation would be drawn
+	// on every window at once. This is the one place it is stamped, because
+	// every request a turn makes — the talk turn itself and every node under it
+	// — descends from this context (newskey.go's [Agent.newsKey]).
+	ctx = provider.WithSession(ctx, a.newsKey())
+	// AND WHAT THE ERRAND IS ABOUT, which is a different question from whose it
+	// is: a conversation and every task node under it share one conversation,
+	// and each of them is a subject a window may be looking straight at. It is
+	// stamped beside the session for the same reason — every request this turn
+	// makes descends from this context — and it is EMPTY for the conversation
+	// itself, which is what makes a build that never had the stamp behave
+	// exactly as it always did (newskey.go's [Agent.newsSubject]).
+	ctx = provider.WithNode(ctx, a.newsSubject())
 	if a.config.InTask {
 		ctx = provider.WithRoutingIntent(ctx, provider.IntentBackground)
 	}
@@ -562,9 +578,34 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// emptyReplies is how many times this turn has been answered with an HTTP 200
 	// carrying nothing at all. It is counted for the turn rather than for the
 	// step because that is the shape the measured failure had — three of them in
-	// fifteen seconds — and because the ladder it is walked against is the
-	// transport ladder, which is a budget for a piece of work and not for a line.
+	// fifteen seconds — and it is counted for the ROW a person reads, never for a
+	// budget: what bounds the re-asking is `emptyUntil` below.
 	emptyReplies := 0
+	// AND THE RE-ASKING IS BOUNDED BY TIME AND NOT BY A COUNT. It used to walk
+	// the person's `response.attempts` through the boundary, which is one of the
+	// six session-side ladders docs/design/recovery/DESIGN.md §7 names: a count
+	// under a transport that was already bounded by the plan's deadline, so the
+	// two multiplied and neither could be stated. This is the same give-up the
+	// call under it runs on, started at the FIRST empty answer — a turn doing
+	// real work between two of them is not a turn that is failing, and the clock
+	// that matters is how long this has been going nowhere. `emptyOwed` is the
+	// waiting this loop asked for, charged against that clock whether or not the
+	// clock really moved — see THE TURN'S OWN CLOCK below for why.
+	var emptyUntil time.Time
+	var emptyOwed time.Duration
+	// emptyWait is what the NEXT empty answer costs before the one after it is
+	// asked for, and it is zero until the second.
+	//
+	// THE FIRST EMPTY ANSWER IS ANSWERED AT ONCE AND BY SOMEBODY ELSE. Waiting
+	// mends an endpoint under strain and an endpoint that answered instantly with
+	// nothing is not under strain — being served by somebody else is what mends
+	// it, which costs no time at all (internal/taxonomy's waitFor says the whole
+	// of that argument and returns no backoff here). A SECOND one says the asking
+	// again is not working, and from there the wait doubles: not to mend anything,
+	// but because a deadline over a ladder that pays nothing is a deadline reached
+	// as fast as an endpoint can say nothing, which is a great many full-price
+	// requests for one answer.
+	var emptyWait time.Duration
 
 	// meter is what this turn has COST, in finished tool rounds, priced against
 	// what handing it over would cost (checkpoint.go). It belongs to the turn for
@@ -586,8 +627,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// drains the queue under the same lock that clears running (agent.go),
 		// so a leftover lands ahead of the next Submit's message.
 		if ctx.Err() != nil {
-			a.keepPartial(partial, hub)
-			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
+			a.endStoppedTurn(ctx, hub, partial, turn, started, model)
 			return false
 		}
 
@@ -658,17 +698,26 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			}
 			// Interrupt (or the caller's own deadline). Whatever was streamed
 			// before the cut is real work the person watched arrive, so it
-			// stays in the transcript and the turn ends normally.
+			// stays in the transcript and the turn ends normally — and WHICH
+			// DOOR ENDED IT is written down and, where it was not the person's
+			// own stop, said out loud (stopcause.go).
 			if ctx.Err() != nil {
-				a.keepPartial(partial, hub)
-				hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
+				a.endStoppedTurn(ctx, hub, partial, turn, started, model)
 				return false
 			}
 			// Overflow is the one error with an answer other than reporting
 			// it: compact and re-send the same step. It fires regardless of
 			// CompactEnabled — that flag gates the automatic pass, not the
 			// recovery from a request the provider has already refused.
-			if isContextOverflow(err.Error()) && !overflowCompacted {
+			//
+			// AND IT IS THE VERDICT THAT SAYS SO, not a regex over the sentence.
+			// [taxonomy.ActionCompact] is the [taxonomy.Shape] policy's answer to
+			// a request that did not fit, and `overflowCompacted` is what it is
+			// told through [taxonomy.Evidence.Compacted] — so the once-per-turn
+			// rule is stated in the policy and read here rather than kept in two
+			// places that could come to disagree (taxonomy_boundary.go's
+			// [Agent.readOverflow]).
+			if a.readOverflow(err, model, overflowCompacted).Compacts() {
 				overflowCompacted = true
 				// AND THE REFUSAL IS THE ONE THING THAT TEACHES THE WINDOW. Every
 				// other figure in this law is a claim: the catalog's row, the
@@ -731,17 +780,56 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// end a turn (taxonomy_boundary.go's [Agent.readEmptyReply]). The
 			// transcript is untouched either way, so the retry re-sends exactly
 			// the messages the empty attempt was sent.
+			assistantDone := false
 			if turnBroke(response) {
 				a.journalFailedCall(ctx, model, "", errEmptyAnswer, emptyReplies+1, a.requestEstimate())
 				emptyReplies++
-				if verdict := a.readEmptyReply(model, emptyReplies); verdict.Retries() {
+				if emptyUntil.IsZero() {
+					emptyUntil = turnNow().Add(a.giveUp())
+				}
+				// AND IT GOES THROUGH THE SAME VERDICT ROAD AS EVERY OTHER FAILED
+				// CALL, SAYING SO. This was the second retry road in the turn: the
+				// boundary decided it, the wait was taken, and the surface was told
+				// NOTHING — no [EventRetrying], no [RetryNews], no phase — so a
+				// person watched a clock counting a request that had already come
+				// back empty (docs/design/recovery/DESIGN.md §2.8, one of the four
+				// silent waits). The verdict is the same one a refusal earns, the
+				// allowance is the same allowance, and now the line is the same
+				// line.
+				verdict := a.readEmptyReply(model, emptyReplies,
+					!turnNow().Add(emptyOwed).Before(emptyUntil))
+				if verdict.Retries() {
 					partial.reset()
-					if waitErr := backoffWait(ctx, verdict.Backoff); waitErr == nil {
+					wait := verdict.Backoff
+					if wait <= 0 && emptyReplies > 1 {
+						emptyWait = nextMoveWait(emptyWait, a.failureLimits().TransportBackoff)
+						wait = emptyWait
+					}
+					if wait > 0 {
+						a.tellPhase(provider.PhaseRetrying,
+							retryOrdinal(emptyReplies+1, verdict.Attempts), time.Now())
+					}
+					waitBegan := turnNow()
+					waitErr := turnBackoff(ctx, wait)
+					if took := turnNow().Sub(waitBegan); took < wait {
+						emptyOwed += wait - took
+					}
+					if wait > 0 {
+						a.endPhase()
+					}
+					if waitErr == nil {
+						// SAID ONLY AFTER THE WAIT SUCCEEDS, on the ladder's own rule
+						// and for its reason: a stop during the wait keeps whatever
+						// the person was already reading rather than announcing a
+						// replacement that will never be asked for.
+						hub.send(Event{Kind: EventRetrying, Text: emptyReplyNotice,
+							Retry: retryNews(model, emptyReplies, verdict, nil, "")})
 						continue
 					}
 				}
 			} else {
 				a.recordAssistant(ai.Message{Role: "assistant", Content: assistantContent(response)}, reasoning.snapshot())
+				assistantDone = true
 			}
 			// The step's text is in the transcript now. Resetting here rather
 			// than at the top of the next iteration is what keeps an interrupt
@@ -754,6 +842,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 					continue
 				}
 				a.markTurnTruncated()
+				assistantDone = false
+			}
+			if assistantDone {
+				// THE WORDS ARE DURABLE BEFORE THEIR BOUNDARY IS VISIBLE. A room
+				// joining after this event reads the response from the journal and
+				// must not replay the same streamed text from its catch-up lane.
+				hub.send(Event{Kind: EventAssistantDone})
 			}
 			// `pre-decision` (hooks.go): the last chance to shape what the model
 			// will be sent next. Its two citizens are the cross-turn stub and the
@@ -1033,6 +1128,40 @@ func (a *Agent) stoppedSoup(text string, hub *eventHub) bool {
 	return true
 }
 
+// endStoppedTurn is the ONE place a turn that ended with no answer is put on the
+// record, and it exists because there used to be no such place.
+//
+// A turn whose context was cancelled kept its partial reply, sealed itself and
+// returned — which is right — and wrote NOTHING about why. On a reply that was
+// still thinking there is no partial to keep either, so the whole ending was a
+// transcript with a question in it and nothing after, a model-call row saying
+// `context canceled`, and an idle status line. Nobody could tell a stop the
+// person pressed from a window that took the conversation over.
+//
+// TWO ACCOUNTS, FOR TWO READERS. The machine's goes in the journal, in the
+// machine's own words, so that the file can answer the question afterwards. The
+// person's goes to the surface, in theirs, and only where they did not do it
+// themselves: telling somebody what they just pressed is noise, and it is the
+// one door that already drew its own ending.
+//
+// THE JOURNAL ROW IS FOR THE MACHINERY DOORS ONLY. An ordinary stop is a thing
+// a person did and watched happen, and a failed-call row on every esc would
+// turn the record of a healthy session into a list of failures.
+func (a *Agent) endStoppedTurn(ctx context.Context, hub *eventHub, partial *partialBuffer, turn Usage, started time.Time, model string) {
+	a.keepPartial(partial, hub)
+	if door, stopped := stopCause(ctx); stopped && door != StopByPerson {
+		cause := context.Cause(ctx)
+		if _, ours := StoppedBy(cause); !ours {
+			cause = stopFor(door)
+		}
+		a.journalFailedCall(ctx, model, "", cause, 1, a.requestEstimate())
+		if said := stopSentence(door, stopName(cause)); said != "" {
+			hub.send(Event{Kind: EventNotice, Text: said})
+		}
+	}
+	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
+}
+
 // keepSteeredPartial records the legal assistant half of a cut generation.
 // Tool calls are deliberately absent: a call whose result can never follow is
 // a provider-invalid assistant message. When fragments had arrived, the text
@@ -1153,12 +1282,53 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 	// started on, however far along it the step has walked.
 	origin := model
 	var hopped []string
-	// THE LADDER'S LENGTH IS THE BOUNDARY'S, not this file's constant. It is
-	// read once, outside the loop, because a bound that could change between two
-	// attempts of one ladder is a ladder nobody can reason about afterwards
-	// (taxonomy_boundary.go).
-	attempts := a.failureLimits().TransportAttempts
-	for attempt := 0; attempt < attempts; attempt++ {
+	// ── THE LADDER HAS NO LENGTH, AND THE DEADLINE IS THE WHOLE OF THE BOUND ──
+	//
+	// THE MEASURED FAILURE (docs/design/recovery/DESIGN.md §2 problem 1). This
+	// count and the transport's own MULTIPLIED. Each of these attempts is a whole
+	// call under the dispatcher's plan — up to `lane.Role.GiveUp` of walking
+	// machines and climbing rungs — so three of them was three times the bound
+	// the dispatcher believed it was keeping, and then the hop multiplied it
+	// again by the length of the chain. Nobody could state the product, which is
+	// exactly why the census found chains running eleven minutes.
+	//
+	// ONE MODEL GETS ONE GIVE-UP. It is the same figure the call under it is
+	// bounded by, so the two agree instead of composing: whichever of them ends
+	// first, the turn moves on to the next model or says so. A NEW MODEL GETS A
+	// FRESH ONE, for the reason the hop below already states about the counts —
+	// what the last model did says nothing about this one.
+	//
+	// AND THE COUNT THAT USED TO SIT BESIDE IT IS GONE. `attempts` was
+	// `taxonomy.Limits.TransportAttempts`, the person's `response.attempts`, read
+	// once outside this loop and walked as its length. It is the same setting
+	// read the honest way now — it SCALES this deadline (lane's [lane.UsePatience],
+	// published where the limits are resolved) — so somebody who asks for more
+	// patience gets more time rather than more identical requests, and this loop
+	// has exactly one bound again.
+	deadline := turnNow().Add(a.giveUp())
+	// moveOn is THE BUDGET IS SPENT, SO THE MODEL MOVES, and it is a closure
+	// because two roads reach it: a verdict that says hop, and a wait that would
+	// outlast the deadline (below). Asking the same weights again is the one
+	// thing already known not to work; the chain is the adapter's, the same one
+	// every other road in this build walks (internal/provider's endpoints.go),
+	// and the hop is SAID rather than done quietly, because the rest of this
+	// reply arrives in a different voice and the person is watching it happen.
+	var moveOn func(taxonomy.Verdict)
+	// owed is the part of a wait this loop asked for that the clock did not
+	// really take — see THE TURN'S OWN CLOCK above. `unpaid` is what the NEXT
+	// move costs when the failure itself asks for no wait ([nextMoveWait]).
+	var owed, unpaid time.Duration
+	spentAt := func() time.Time { return turnNow().Add(owed) }
+	attempt := 0
+	for ; ; attempt++ {
+		// AND IT IS ASKED AT THE TOP, because it is the only thing that ends this
+		// ladder. A failure below has its own reading — the boundary is told the
+		// deadline is gone and answers hop-or-end through the one classifier —
+		// and this is the case where nothing failed at all: the turn spent its
+		// whole give-up on attempts that were cut and re-asked.
+		if !spentAt().Before(deadline) && attempt > 0 {
+			break
+		}
 		// Each attempt streams the reply from the beginning, so the buffer
 		// starts empty: an attempt that dies half-way through its text and an
 		// interrupt during the next one would otherwise record the two halves
@@ -1185,6 +1355,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		if rung != effort.None {
 			attemptCtx = provider.WithConfiguredEffortRung(ctx, rung)
 		}
+		recordEffort(attemptCtx, model, rung)
 		// What this call is FOR, for the model-call log. A conversation's own
 		// turn and a task child's turn run the identical loop, and the one thing
 		// that tells them apart is whether this agent IS a node — so the word
@@ -1200,12 +1371,17 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// transcript keeps them whole — the journal is the record — and the
 		// request the model is about to read does not. compactToolHistory leaves
 		// the system prompt, the newest frozen batch and everything this turn
-		// has already sent verbatim (toolcompact.go).
-		messages = compactToolHistory(messages, frozenToolHistory)
+		// has already sent verbatim, and every result it reduces names where the
+		// whole of it can be read back (toolcompact.go).
+		// The place a pointer may name is read ONCE for the whole request, under
+		// the lock an anchor takes to move it (toolcompact.go).
+		place := a.resultPlaceNow()
+		messages = compactToolHistory(messages, frozenToolHistory,
+			func(message ai.Message) string { return a.fullResultPointer(message, place) })
 		attemptCtx = provider.WithMessageReasoning(attemptCtx, carried)
 		attemptCtx, generation := a.beginGeneration(attemptCtx)
-		response, err := a.client.CompleteWithMessages(attemptCtx, messages,
-			ai.WithModel(model), ai.WithTools(a.beltDefinitions()))
+		response, err := a.completeWithModel(attemptCtx, messages, model,
+			ai.WithTools(a.beltDefinitions()))
 		cause := a.endGeneration(generation)
 		if errors.Is(cause, errSteerCut) {
 			return response, model, errSteerCut
@@ -1216,7 +1392,37 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		lastErr = err
 
 		if ctx.Err() != nil {
-			return nil, model, ctx.Err()
+			// THE TURN ITSELF IS OVER and no rung of this ladder can be climbed
+			// on a dead context. What is owed here is the ACCOUNT, so the cause
+			// travels out in place of a bare `context canceled` — it unwraps to
+			// [context.Canceled], so every caller that only asks whether the
+			// turn was cancelled still gets its answer (stopcause.go).
+			return nil, model, context.Cause(ctx)
+		}
+		// AND A GENERATION CUT WITH THE TURN STILL ALIVE IS RE-ASKED RATHER THAN
+		// REPORTED. A steer is answered above, by the boundary it exists to open;
+		// anything else that cuts one request out from under a live turn — now
+		// or later — is machinery, and machinery that takes a reply away owes the
+		// person another attempt at it rather than a turn that stops. The three
+		// resets at the top of this loop are exactly what such a cut needs: the
+		// text that was streamed, the reads it started and the half-arrived calls
+		// are all thrown away before the next request is assembled, so nothing of
+		// the dead attempt reaches the replacement. It costs a slice of the
+		// give-up above, which is what stops a door that cuts every generation
+		// from cutting them forever.
+		//
+		// AND THE ROW SAYS HOW FAR IN WITHOUT SAYING HOW FAR THERE IS TO GO.
+		// `Attempts` was the ladder's length and there is no length any more, so
+		// it is left at nothing — the surface draws `2 of 4` only when it has
+		// both halves and draws neither when it has one (internal/tui3's
+		// failureCountWord), which is the emptiness law doing exactly its job.
+		if cause != nil {
+			a.journalFailedCall(ctx, model, "", cause, attempt+1, a.requestEstimate())
+			hub.send(Event{Kind: EventRetrying, Text: cutShortNotice, Retry: &RetryNews{
+				Model: model, Attempt: attempt + 1,
+				Reason: "the reply was cut short",
+			}})
+			continue
 		}
 		// AND THE FAILURE IS WRITTEN DOWN BEFORE ANYTHING DECIDES WHAT TO DO
 		// ABOUT IT. Every other outcome of a request reaches the journal; this
@@ -1225,93 +1431,331 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// turn that stopped. It is journaled per ATTEMPT, so a ladder of three
 		// reads as a ladder.
 		a.journalFailedCall(ctx, model, "", err, attempt+1, a.requestEstimate())
-		// AND THE BOUNDARY READS IT. The row above says WHAT the provider said;
-		// this says what the harness took it to MEAN, which is the only half of
-		// the record the money turns on (taxonomy_boundary.go). The verdict is
-		// read below rather than acted on here, because the two answers already
-		// in this loop — a guard cut and a refusal of our own bytes — are more
-		// specific than any class and must keep their own arms.
-		verdict := a.readCallFailure(err, model, "", attempt+1)
-		// THE GUARD'S CUT, ANSWERED HERE. The three resets at the top of this
-		// loop are exactly what a cut needs — the soup that was streamed, the
-		// reads it started, the calls it was half-way through asking for — so a
-		// cut re-enters the loop through the same door a fault does, and the junk
-		// is gone before the next request is assembled.
-		if cut, isCut := provider.CutFrom(err); isCut {
+		// A GUARD'S CUT IS A DIFFERENT KIND OF SPENDING, and it is counted apart
+		// from the outright failures rather than answered apart from them. The
+		// request was served and the REPLY came apart, so the loop's own attempt
+		// number does not advance for one: a cut is not evidence that the
+		// endpoint is failing, and it must not shorten the patience a real fault
+		// gets. The three resets at the top of this loop are exactly what a cut
+		// needs — the soup that was streamed, the reads it started, the calls it
+		// was half-way through asking for — so a cut re-enters through the same
+		// door a fault does with the junk already gone.
+		cut, isCut := provider.CutFrom(err)
+		if isCut {
 			if cut.Rerouted {
 				rerouted = true
 			}
-			if cuts >= cutBudget(cut, rerouted) {
-				// THE BUDGET IS SPENT, SO THE MODEL MOVES. Asking the same
-				// weights a fourth time is the one thing already known not to
-				// work; the chain is the same one an endpoint refusal walks
-				// (internal/provider's endpoints.go), and the hop is SAID rather
-				// than done quietly, because the rest of this reply arrives in a
-				// different voice and the person is watching it happen.
-				if next, moved := a.nextFallback(origin, hopped); moved {
-					hopped = append(hopped, next)
-					hub.send(Event{Kind: EventRetrying, Text: hopNotice(cut, next)})
-					model = next
-					rung = a.effortFor(model)
-					// A new model gets a whole budget of its own: what the last
-					// one did says nothing about this one, and a fallback that
-					// inherited a spent budget would be given up on before it had
-					// answered once.
-					cuts, rerouted = 0, false
-					attempt--
-					continue
-				}
-				return nil, model, cutFailure(cut, cuts+1, hopped)
-			}
 			cuts++
-			hub.send(Event{Kind: EventRetrying, Text: cutNotice(cut)})
-			attempt--
-			continue
 		}
-		// ── WHOSE MISTAKE WAS IT? ────────────────────────────────────────────
+		// AND THE BOUNDARY READS IT. The row above says WHAT the provider said;
+		// this says what the harness took it to MEAN, which is the only half of
+		// the record the money turns on (taxonomy_boundary.go).
 		//
-		// THE REFUSAL ANSWERS FOR ITSELF, BEFORE ANY PATTERN READS ITS SENTENCE.
+		// ONE ROAD LEAVES THIS POINT. The verdict says ask again, move to the
+		// next model, or stop — and a cut stream and a refused request differ
+		// only in the evidence they arrive carrying. They used to differ in the
+		// CODE: the cut had its own three budgets and hopped on its own
+		// authority here, while a refusal walked the ladder and then ended the
+		// turn, so a chain the person configured was reachable from one road and
+		// invisible from the other. One 502 and three 429s inside seventy-five
+		// seconds ended a turn on 2026-09-10 with two other models sitting
+		// unasked in the same session, and that is the road this is.
+		next, haveFallback := a.nextFallback(ctx, origin, hopped)
+		// The hop, bound to THIS attempt's facts — which model comes next, and
+		// whether the thing that failed was a cut. See the declaration above.
+		moveOn = func(verdict taxonomy.Verdict) {
+			hopped = append(hopped, next)
+			// AND THE STATUS LINE SAYS SO WHILE IT HAPPENS, by the one word that
+			// means a person's answer is changing hands
+			// ([provider.PhaseSwitchingModel]). That word used to be posted by the
+			// adapter's own model hop, which is deleted — this is the only model
+			// change in the build now, so it is the only thing that can say it, and
+			// a hop that sent only a feed event left the status line drawing the old
+			// model's clock.
+			a.tellPhaseThen(provider.PhaseSwitchingModel, "", next, time.Now())
+			hub.send(Event{Kind: EventRetrying, Text: hopNotice(cut, verdict, next),
+				Retry: retryNews(model, spentOn(attempt, cuts, isCut), verdict, cut, next)})
+			model = next
+			rung = a.effortFor(model)
+			// A NEW MODEL GETS A WHOLE BUDGET OF ITS OWN — both kinds of it.
+			// What the last one did says nothing about this one, and a fallback
+			// that inherited a spent budget would be given up on before it had
+			// answered once. The attempt counter is put one BEHIND its first
+			// rung, because the loop's own post-statement is what advances it.
+			cuts, rerouted = 0, false
+			attempt = -1
+			// AND ITS OWN GIVE-UP, for the same reason: a fallback handed the
+			// remains of the deadline the model before it spent would be given
+			// up on before it had answered once. What the last model asked to
+			// wait goes with it.
+			deadline, owed, unpaid = turnNow().Add(a.giveUp()), 0, 0
+		}
+		// ── A SPENT DEADLINE IS A SPENT BUDGET, SAID IN THE ONE WORD THE
+		// BOUNDARY ALREADY UNDERSTANDS ─────────────────────────────────────
+		//
+		// The verdict says whether asking again is the right MOVE; the deadline
+		// says whether this model still has any of the person's turn left to
+		// spend on it. Rather than a second road out of this switch, a spent
+		// deadline is told to the boundary as a spent ladder — which is what it
+		// is — so the answer comes back through the ONE classifier as hop or
+		// end, exactly as a spent count does. It is the same idiom
+		// `movesForFailure` uses for a node that died on the wire.
+		ladder := transportLadder{
+			attempt:    attempt + 1,
+			cuts:       cuts,
+			degenerate: isCut && degenerateCut(cut),
+			rerouted:   rerouted,
+			fallback:   haveFallback,
+			outOfTime:  !spentAt().Before(deadline),
+		}
+		// TWO READS ARE ONE FAILURE. The verdict is settled first — whether
+		// asking again is the right move, and then whether there is time to —
+		// and the line is written once, at the end of this switch, carrying the
+		// answer that was acted on (taxonomy_boundary.go's [Agent.weighLadder]).
+		verdict, evidence := a.weighLadder(err, ladder)
+		// ── AND WHETHER THERE IS TIME TO ASK AGAIN IS PART OF THE SAME READING ──
+		//
+		// Asking again is only a move if there is time to make it. A ladder that
+		// paid its wait and came back to find the give-up gone would give up
+		// SILENTLY, with a chain the person configured sitting unasked — the exact
+		// failure #794 closed, and the reason the ending and the hop both come
+		// from the one classifier. So the wait is worked out here, and if it
+		// would outlast the deadline the same failure is read once more with
+		// that fact on it ([taxonomy.Evidence.OutOfTime]) and answers hop-or-end.
+		//
+		// AND A FAILURE THAT ASKS FOR NO WAIT STILL PAYS ONE AFTER THE FIRST, or
+		// the deadline over this ladder is reached as fast as the endpoint can
+		// fail ([nextMoveWait] states the whole argument).
+		wait := time.Duration(0)
+		if verdict.Retries() && !isCut {
+			if wait = verdict.Backoff; wait <= 0 && attempt > 0 {
+				wait = nextMoveWait(unpaid, a.failureLimits().TransportBackoff)
+			}
+			if !spentAt().Add(wait).Before(deadline) {
+				ladder.outOfTime = true
+				verdict, evidence = a.weighLadder(err, ladder)
+			}
+		}
+		// AND THE LINE IS WRITTEN ONCE, HERE, carrying the verdict that is about
+		// to be acted on rather than one that was reconsidered
+		// (taxonomy_boundary.go).
+		a.writeLadderVerdict(verdict, evidence, model, "")
+		if provider.IsConnectionUnavailable(err) {
+			return nil, model, err
+		}
+		// ── WHOSE MISTAKE WAS IT? THE VERDICT ANSWERS, AND ONLY THE VERDICT ──
+		//
 		// A 4xx that named no upstream is the router reading OUR OWN BYTES and
-		// saying no ([provider.APIError.OurRequest]), and every endpoint alive
-		// will say the same thing about the same request — so the ladder stops
-		// here rather than spending 2s, 4s and 8s to be told it three times. A
-		// 4xx that DID name an upstream is that upstream's refusal, another
-		// endpoint may serve it, and the adapter has already taken the refusing
-		// lane out of the ledger so the next attempt is routed elsewhere
-		// (internal/provider's velocity.go, refuseUpstream).
+		// saying no, and every endpoint alive will say the same thing about the
+		// same request — so the ladder must stop rather than spend 2s, 4s and 8s to
+		// be told it three times. A 4xx that DID name an upstream is that
+		// upstream's refusal, another endpoint may serve it, and the adapter has
+		// already taken the refusing lane out of the ledger so the next attempt is
+		// routed elsewhere (internal/provider's velocity.go, refuseUpstream).
 		//
-		// IT IS A SHAPE AND NEVER A STATUS LIST, which is the whole point: the
-		// measured failure was a 400 whose text — "Provider returned error" —
-		// matched the retryable pattern and was retried three times into the same
-		// wall, while a differently-worded 400 from the same upstream would have
-		// been given up on at once. The pattern is asked second now, and only
-		// about errors that carry no refusal to ask.
-		if refusal, ok := provider.RefusalFrom(err); ok && refusal.OurRequest() {
-			return nil, model, err
-		}
-		errMsg := err.Error()
-		if isContextOverflow(errMsg) || !isRetryable(errMsg) {
-			return nil, model, err
-		}
-		if verdict.Retries() {
+		// THAT DISTINCTION USED TO BE DRAWN HERE TOO, one line below the
+		// classification that had just drawn it: `refusal.OurRequest()` with a bare
+		// return under it, the second of the three rules a 404 was classified by
+		// (docs/design/recovery/DESIGN.md §2.6). It is gone. The shape reaches the
+		// switch below as [taxonomy.Shape] carrying [taxonomy.ActionReshape], which
+		// ends the request through the same door every other ending uses — and,
+		// unlike the bare return, names the SHAPE in the row a person reads instead
+		// of calling our own bad bytes a verdict about their work.
+		// AND NOTHING BELOW THIS LINE READS THE SENTENCE. There used to be one
+		// more gate here — `isContextOverflow(errMsg) || !isRetryable(errMsg)`,
+		// two regexes over the provider's prose — and it RETURNED, forty lines
+		// after the verdict above had read the same failure off typed evidence. A
+		// string decided and the verdict was thrown away, which is how the
+		// measured turn of 2026-09-10 ended on a routing 404 that matched no
+		// retryable pattern while two other models sat unasked, and it is the
+		// exact bug class `Evidence.Routing` had to be added to work around.
+		//
+		// EVERY SHAPE THAT GATE ANSWERED FOR IS A FACT ON THE EVIDENCE NOW, and
+		// the switch below is the only road out: an overflow is
+		// [taxonomy.Evidence.Overflow] and was answered at the top of this loop,
+		// our own bytes are [taxonomy.Evidence.OurBytes], a model the router has
+		// put down is [taxonomy.Evidence.Withdrawn], an account that could not be
+		// served is [taxonomy.Evidence.Unserved], and a socket that hung up is
+		// [taxonomy.Evidence.Wire] — which is where [isRetryable] still lives, as
+		// evidence rather than as an answer.
+
+		switch {
+		case verdict.EndsTurn():
+			// NOT THE WIRE AT ALL, so there is nothing here to ask again and
+			// nothing to move to: the provider read this request and answered
+			// about it. The failure travels out with its TYPE intact, because the
+			// layers that read it decide by that and never by our sentence
+			// (taxonomy_boundary.go's [providerCouldNotServe]) — and with the
+			// person's own words in front of it, because the router's sentence is
+			// not one anybody outside this process can act on ([endingWords]).
+			return nil, model, endingWords(err, verdict)
+		case verdict.Retries():
+			if isCut {
+				hub.send(Event{Kind: EventRetrying, Text: cutNotice(cut),
+					Retry: retryNews(model, cuts, verdict, cut, "")})
+				attempt--
+				continue
+			}
 			// AND THE WAIT IS SAID OUT LOUD. This ladder is the longest silence
 			// in the whole request path — two seconds, then four, then eight,
 			// with a failed request in front of each of them — and until this
 			// line it told the surface nothing at all, so a person watching a
 			// turn back off for fourteen seconds saw a clock counting a request
-			// that had already failed. The rung rides as the detail in the
-			// person's own arithmetic, so the line reads `trying again · 2 of 4`
-			// (internal/provider's phase.go spells the word).
+			// that had already failed.
+			//
+			// AND THE ORDINAL IS DRAWN ONLY WHERE THERE REALLY IS A DENOMINATOR.
+			// It used to read `2 of 4` off the person's `response.attempts`,
+			// which is not a count of anything any more — it is how much time
+			// this model gets — so the line says `trying again` on an ordinary
+			// failure and keeps its arithmetic for a reply that came apart, which
+			// has a real allowance ([taxonomy.transportBudget]). Nothing is
+			// invented to fill the gap: unknown renders as nothing.
+			unpaid = wait
 			a.tellPhase(provider.PhaseRetrying,
-				fmt.Sprintf("%d of %d", attempt+2, attempts), time.Now())
-			waitErr := backoffWait(ctx, verdict.Backoff)
+				retryOrdinal(attempt+2, verdict.Attempts), time.Now())
+			waitBegan := turnNow()
+			waitErr := turnBackoff(ctx, wait)
+			if took := turnNow().Sub(waitBegan); took < wait {
+				owed += wait - took
+			}
 			a.endPhase()
 			if waitErr != nil {
 				return nil, model, waitErr
 			}
+			// THE PAGE DISCARDS THE SAME ATTEMPT AS THE JOURNAL. The next loop
+			// resets partial, reasoning and forming before requesting a
+			// replacement; a phase-clock update alone cannot remove the old
+			// streamed answer. Say this only after the wait succeeds: a stop
+			// during backoff keeps its partial reply.
+			if hub != nil {
+				hub.send(Event{Kind: EventRetrying, Text: retryNotice,
+					Retry: retryNews(model, attempt+1, verdict, nil, "")})
+			}
+			continue
+		case verdict.Hops():
+			moveOn(verdict)
+			continue
 		}
+		// NOWHERE LEFT TO ASK. The sentence names what happened in the person's
+		// own terms and, when a chain was actually walked, the models that also
+		// could not answer — because "try a different model" said to somebody who
+		// has just watched two of them fail is the surface not knowing what it did.
+		if isCut {
+			return nil, model, cutFailure(cut, cuts, hopped)
+		}
+		return nil, model, transportFailure(lastErr, verdict, origin, attempt+1, hopped)
 	}
-	return nil, model, fmt.Errorf("after %d retries: %w", attempts-1, lastErr)
+	// AND THE LOOP FALLS OUT HERE ONLY WHEN THE DEADLINE WENT WITHOUT A FAILURE
+	// TO READ — every attempt cut short and re-asked until the give-up was gone.
+	// The count in the sentence is what this turn actually SPENT rather than the
+	// constant it used to be bounded by, because there is no constant any more;
+	// the prefix itself is kept exactly as it was, because a surface reads it
+	// (internal/tui3's stripRetryPrefix).
+	if lastErr == nil {
+		lastErr = errors.New("the model could not be reached")
+	}
+	return nil, model, fmt.Errorf("after %d retries: %w", attempt-1, lastErr)
+}
+
+// nextMoveWait is what a ladder pays before its next move WHEN THE FAILURE ITSELF
+// ASKS FOR NO WAIT: [retryBaseDelay] first and then double, capped so a
+// long-lived turn's doubling stays arithmetic rather than overflowing into a
+// negative duration. The deadline over the ladder is the real bound.
+//
+// WHY THERE IS A WAIT AT ALL FOR A FAILURE THAT WAITING DOES NOT MEND. An empty
+// 200 and a mangled tool call are not an endpoint under strain — it answered, at
+// once, with something that was not an answer — and what mends them is being
+// served by somebody else, which costs no time (internal/taxonomy's waitFor says
+// exactly this and returns no backoff for either). That argument is about the
+// FIRST one, and it is kept: the first such failure moves at once. It stops
+// being true for the ones after it, because a ladder bounded by a deadline that
+// pays nothing between two requests is a ladder that sends as fast as an
+// endpoint can say nothing — the deadline is reached, honestly, in a great many
+// full-price requests. So the first is free and the rest double.
+func nextMoveWait(paid, first time.Duration) time.Duration {
+	if first <= 0 {
+		first = retryBaseDelay
+	}
+	if paid <= 0 {
+		return first
+	}
+	if paid >= lanes.TurnGiveUp {
+		return lanes.TurnGiveUp
+	}
+	return paid * 2
+}
+
+// retryOrdinal is `2 of 4`, and nothing at all when either half is missing.
+//
+// BOTH HALVES OR NEITHER. A denominator this build cannot stand behind is the
+// emptiness law's own example: `2 of 0` is not a smaller truth than `2 of 4`, it
+// is a different and false one. internal/provider's `ordinalOf` and
+// internal/tui3's `failureCountWord` are the same rule said at the two other
+// grains a person reads it at.
+func retryOrdinal(at, of int) string {
+	if at <= 0 || of <= 0 || at > of {
+		return ""
+	}
+	return fmt.Sprintf("%d of %d", at, of)
+}
+
+// giveUp is how long one model may spend answering this agent's turn: the
+// role's own measured patience ([lane.Role.GiveUp]) with the person's own
+// factor already on it (`response.attempts`, published where the limits are
+// resolved — taxonomy_boundary.go). It is asked through the limits so the
+// factor is resolved before the first request of the first turn goes out.
+func (a *Agent) giveUp() time.Duration {
+	a.failureLimits()
+	return a.laneRole().GiveUp()
+}
+
+// emptyReplyNotice is the dim line for a 200 that carried nothing. It says what
+// happened rather than "the request failed", because from the person's side
+// nothing failed: the model answered, and the answer was empty — which is the
+// one transport shape they can actually see the shape of.
+const emptyReplyNotice = "nothing came back from the model — asking again"
+
+// retryNotice is the dim line for a request that FAILED and is being sent again.
+// It says nothing about the shape of the failure, which is the honest register
+// for something the person can neither hurry nor answer; [RetryNews.Reason] on
+// the same event carries the shape for a surface that draws one.
+const retryNotice = "the request failed — asking again"
+
+// degenerateCut says a cut was the reply ceasing to be language rather than the
+// stream going quiet. The two spend different allowances and the reason is
+// stated where the allowance is (internal/taxonomy's transportBudget).
+func degenerateCut(cut *provider.StreamCut) bool {
+	return cut != nil && (cut.Reason == provider.CutBabble || cut.Reason == provider.CutMachinery)
+}
+
+// spentOn is how much of this model's budget is gone, in the units the verdict
+// counted it in: cut attempts for a cut, ladder attempts for anything else.
+func spentOn(attempt, cuts int, isCut bool) int {
+	if isCut {
+		return cuts
+	}
+	return attempt + 1
+}
+
+// retryNews is one [EventRetrying]'s payload (retrynews.go). `cut` is nil when
+// the attempt failed outright rather than being cut, and `next` is empty unless
+// the step is moving to another model.
+func retryNews(model string, spent int, verdict taxonomy.Verdict, cut *provider.StreamCut, next string) *RetryNews {
+	reason := transportWords(verdict)
+	if cut != nil {
+		// A CUT KNOWS MORE ABOUT ITSELF THAN ITS CLASS DOES. The taxonomy groups
+		// every quiet stream under one shape, which is right for a journal line
+		// counting a thousand of them and thin for a person who is owed the
+		// difference between a model that went quiet and one that ran on forever.
+		reason = cutWords(cut)
+	}
+	return &RetryNews{
+		Model:    model,
+		Attempt:  spent,
+		Attempts: verdict.Attempts,
+		Reason:   reason,
+		Next:     next,
+	}
 }
 
 // ── THE ENDPOINT-DIVERSITY GATE ─────────────────────────────────────────────
@@ -1347,35 +1791,17 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 // off are an empty chain and `--one-model`, and both make the hop ABSENT rather
 // than broken.
 
-// cutBudget is how many times a cut of this kind is worth asking again, given
-// what is known about whether the last attempts reached different endpoints.
-//
-// Degeneration is the one reason the gate says nothing about: soup is a claim
+// Degeneration is the one thing the gate says nothing about: soup is a claim
 // about the transcript and the weights reading it, never about which endpoint
-// delivered it, so it keeps its own single retry either way.
+// delivered it, so it keeps its own short allowance either way. A machinery leak
+// shares that allowance for the same reason — the answer came back wrong-shaped,
+// and asking the same lane again returns the same shape ([degenerateCut]).
 //
-// AN OVERRUN IS AN ENDPOINT CLAIM and shares the silence budget deliberately.
+// AN OVERRUN IS AN ENDPOINT CLAIM and shares the silence allowance deliberately.
 // A reply that ran past the wall its own lane earned is that lane failing to
 // finish, exactly as a reply that went quiet is — the ledger struck it either
 // way (internal/provider's noteCutProvider) — so the question "did anything
 // actually move" governs both.
-func cutBudget(cut *provider.StreamCut, rerouted bool) int {
-	if cut.Reason == provider.CutBabble {
-		return babbleRetries
-	}
-	// A machinery leak gets the babble budget for the babble reason: the answer
-	// came back wrong-shaped, and asking the same lane again returns the same
-	// shape. The one re-ask exists because the ledger struck the lane on the
-	// cut, so the next ask lands on a different endpoint serving the same
-	// model — where the same model usually answers in language.
-	if cut.Reason == provider.CutMachinery {
-		return babbleRetries
-	}
-	if !rerouted {
-		return blindRetries
-	}
-	return silentRetries
-}
 
 // nextFallback is the model this step moves to next, and false when there is
 // none left — an empty chain, a completer with no chain to offer, or a chain
@@ -1387,17 +1813,74 @@ func cutBudget(cut *provider.StreamCut, rerouted bool) int {
 // It is asked about `origin`, the model the STEP STARTED ON, so a second hop
 // walks the same list rather than deriving a fresh chain from the fallback —
 // which is how a bounded chain of two becomes an unbounded walk.
-func (a *Agent) nextFallback(origin string, hopped []string) (string, bool) {
-	chain, ok := a.client.(modelChain)
-	if !ok {
+//
+// ── IT READS WHAT WAS TRIED AND NO LONGER COUNTS ITS OWN HOPS ───────────────
+//
+// It used to index the chain blind: `options[len(hopped)]`, where `hopped` was a
+// list this loop kept itself. That is only right while this loop is the ONLY
+// thing that changes a model, and until 2026-09-10 it was not — the adapter's
+// endpoint ladder walked the same `FallbackModels` at its foot and neither knew
+// the other had been there, so a turn could pay for one fallback twice and skip
+// another entirely (docs/design/recovery/DESIGN.md §2.2). The adapter's walk is
+// deleted and this is the one model hop in the build; what it reads is the FACT
+// of which models the dispatcher has actually put on the wire for this turn
+// ([provider.ModelsTried]), folded with this loop's own record, and it answers
+// with the first model on the chain that is on neither.
+//
+// A context with no record answers nothing, and the fold is what makes that
+// safe: `hopped` alone still bounds the walk exactly as it always did.
+func (a *Agent) nextFallback(ctx context.Context, origin string, hopped []string) (string, bool) {
+	// AND `--one-model` IS A PERSON SAYING NO TO THIS, in the one file that has
+	// to honour it rather than only in the door that empties the chain. The flag
+	// already leaves the adapter with no fallbacks to offer, so this is belt and
+	// braces — and it is worth having: the promise is "every text call this
+	// session makes rides the model you named" ([Config.OneModel]), a completer
+	// that offers a chain anyway is a completer this session must refuse, and the
+	// law is stated in this file's own comment above [cutBudget]'s old home while
+	// being enforced nowhere in it. It is the same guard the checker's failover
+	// keeps for the same reason (taxonomy_boundary.go's failoverCheckerModel).
+	if a.config.OneModel {
 		return "", false
 	}
-	options := chain.FallbackModels(origin)
+	options := a.fallbackModels(origin)
+	// AND THE CHAIN IS STILL BOUNDED BY ITS OWN LENGTH. A turn may move as many
+	// times as the chain is long and no further — the cap is the adapter's
+	// (internal/provider's maxFallbackModels) and is not re-decided here — so a
+	// question whose every fallback has been asked has nowhere left to go, which
+	// is what makes the difference between moving on and giving up.
 	if len(hopped) >= len(options) {
 		return "", false
 	}
-	return options[len(hopped)], true
+	tried := map[string]bool{normalizeHop(origin): true}
+	for _, model := range hopped {
+		tried[normalizeHop(model)] = true
+	}
+	for _, model := range provider.ModelsTried(ctx) {
+		tried[normalizeHop(model)] = true
+	}
+	for _, model := range options {
+		if !tried[normalizeHop(model)] {
+			return model, true
+		}
+	}
+	return "", false
 }
+
+// normalizeHop folds a model id the way a comparison between two records of it
+// has to be folded: this loop's own list is written from the chain, and the
+// adapter's is written from whatever spelling actually reached the wire.
+func normalizeHop(model string) string {
+	return strings.ToLower(strings.TrimSpace(model))
+}
+
+// cutShortNotice is the dim line for a request that was cut out from under a
+// turn that is still going — not by the stream guard, which has its own words
+// below, but by machinery inside this process.
+//
+// It is [cutNotice]'s register and for the same reason: the turn is still going,
+// nobody has to decide anything, and the person is owed the fact that the reply
+// they were watching is being started over rather than an unexplained pause.
+const cutShortNotice = "the reply was cut short — asking again"
 
 // cutNotice is the dim line the person sees while the question is asked again.
 //
@@ -1419,6 +1902,26 @@ func cutNotice(cut *provider.StreamCut) string {
 	}
 }
 
+// cutWords is what a cut WAS, with nothing about what is being done next. It is
+// the shape [RetryNews.Reason] carries, and it is spelled apart from [cutNotice]
+// because a sentence and a fact are not the same thing: the line says "asking
+// again" because a person is watching a wait, and the fact is drawn into whatever
+// row a surface has already built.
+func cutWords(cut *provider.StreamCut) string {
+	switch cut.Reason {
+	case provider.CutBabble:
+		return "the reply lost its thread"
+	case provider.CutStalled:
+		return "the model went quiet mid-reply"
+	case provider.CutOverrun:
+		return "the reply kept going and never finished"
+	case provider.CutMachinery:
+		return "the model answered in its own internal markup instead of words"
+	default:
+		return "nothing came back from the model"
+	}
+}
+
 // hopNotice is the line the person reads when the step gives up on one model
 // and finishes the reply on another.
 //
@@ -1426,7 +1929,14 @@ func cutNotice(cut *provider.StreamCut) string {
 // the one difference that matters: it NAMES THE MODEL. The rest of the answer
 // will arrive in a different voice, at a different price, and somebody watching
 // text appear is owed the reason before it does.
-func hopNotice(cut *provider.StreamCut, next string) string {
+//
+// `cut` is nil when what spent the model's budget was the request FAILING rather
+// than the reply coming apart — a refusal, a reset, a deadline — and the verdict
+// is what says which of those it was (taxonomy_boundary.go's transportKeptWords).
+func hopNotice(cut *provider.StreamCut, verdict taxonomy.Verdict, next string) string {
+	if cut == nil {
+		return transportKeptWords(verdict) + " — finishing this one on " + next
+	}
 	switch cut.Reason {
 	case provider.CutBabble:
 		return "the reply kept losing its thread — finishing this one on " + next
@@ -1494,6 +2004,68 @@ func (e *cutGaveUp) Error() string { return e.said }
 
 func (e *cutGaveUp) Unwrap() error { return e.cut }
 
+// transportFailure is the sentence a turn ends on when the request kept FAILING
+// — a refusal, a reset, a deadline — and there was nowhere left to ask.
+//
+// IT IS TWO SENTENCES, and which one it is turns on whether a chain was actually
+// walked. When one was, the models that also could not answer are named and the
+// advice to try another model is dropped, because it has already been taken
+// twice ([cutFailure] states the whole argument). When none was, the sentence is
+// the one this build has always ended on — `after 3 retries: …` — which is not
+// prose anybody loves and IS what several layers out and a good deal of the
+// record already read, so it is left exactly as it was.
+func transportFailure(err error, verdict taxonomy.Verdict, origin string, attempts int, hopped []string) error {
+	if len(hopped) == 0 {
+		return fmt.Errorf("after %d retries: %w", attempts-1, err)
+	}
+	return &transportGaveUp{
+		err: err,
+		said: fmt.Sprintf("%s: %s was asked %s, and %s. /model to pick another one yourself",
+			transportWords(verdict), origin, timesWord(attempts), alsoTried(hopped)),
+	}
+}
+
+// endingWords puts the person's own account of a failure in front of the
+// provider's, keeping the failure itself reachable underneath.
+//
+// NO RAW ROUTER SENTENCE REACHES A SCREEN. `API error (404): No endpoints found
+// matching your data policy` is a true thing to write in a journal and a useless
+// thing to show somebody whose turn has just stopped: it names machinery they
+// have no access to, about a decision they did not make. The boundary has
+// already said what the failure WAS in a person's vocabulary
+// (taxonomy_boundary.go's [transportWords]), so that is the sentence, and the
+// verdict's own reason is what it is derived from.
+//
+// IT WRAPS RATHER THAN REPLACES, on [transportGaveUp]'s terms exactly: every
+// layer that decides anything about a provider failure decides it from the
+// error's TYPE, so the typed refusal stays reachable through Unwrap and only the
+// words on the front change.
+func endingWords(err error, verdict taxonomy.Verdict) error {
+	if err == nil {
+		return nil
+	}
+	said := strings.TrimSpace(transportWords(verdict))
+	if said == "" {
+		return err
+	}
+	return &transportGaveUp{err: err, said: said}
+}
+
+// transportGaveUp is that sentence WITH the failure still reachable under it, on
+// [cutGaveUp]'s terms and for its reason: every layer that decides anything about
+// a provider failure decides it by the error's TYPE (taxonomy_boundary.go's
+// [providerCouldNotServe], task_run.go's [terminalProviderFailure]), and a
+// decision made by matching substrings of a sentence is a decision that breaks
+// the next time somebody rewords it.
+type transportGaveUp struct {
+	err  error
+	said string
+}
+
+func (e *transportGaveUp) Error() string { return e.said }
+
+func (e *transportGaveUp) Unwrap() error { return e.err }
+
 // alsoTried names the models a step actually moved to. It replaces the advice
 // to try another model, because "try another model" said to somebody who has
 // just watched two of them fail is the surface not knowing what it did.
@@ -1502,6 +2074,19 @@ func alsoTried(hopped []string) string {
 }
 
 // timesWord counts the way a person counts. Small numbers have words.
+//
+// It runs to six because that is about as far as a ladder bounded by a turn's
+// give-up gets on a real pool, and `was asked 4 times` in the middle of a
+// sentence somebody reads while their turn is failing is the harness counting
+// rather than speaking. PAST SIX IT IS A NUMERAL, which is the honest thing: a
+// person who really was asked nine times should read nine, and a build that
+// spelled every figure would be inventing English for a number nobody says.
+//
+// THE CEILING USED TO BE A CONSTANT'S. It was four rungs by default
+// (`taxonomy.DefaultTransportAttempts`) plus a little room for a person who had
+// raised it, and that constant is deleted: what a call may spend is a deadline
+// now, so how many times it was asked is something only the call can say
+// afterwards and never something this word can be sized from.
 func timesWord(n int) string {
 	switch n {
 	case 1:
@@ -1510,9 +2095,40 @@ func timesWord(n int) string {
 		return "twice"
 	case 3:
 		return "three times"
+	case 4:
+		return "four times"
+	case 5:
+		return "five times"
+	case 6:
+		return "six times"
 	}
 	return fmt.Sprintf("%d times", n)
 }
+
+// ── THE TURN'S OWN CLOCK, AND WHAT IT CHARGES ITSELF FOR ────────────────────
+//
+// turnNow is the clock the give-up is read against, and turnBackoff is the wait
+// it pays between two attempts. Both are vars for the reason internal/provider's
+// `dispatchNow` and `Client.wait` are: a scenario has to be able to state ninety
+// seconds without spending ninety of them, and nothing in production replaces
+// either.
+//
+// AND A WAIT THIS LOOP ASKED FOR IS SPENT WHETHER OR NOT THE CLOCK MOVED. Under
+// a count that was harmless — the count was what ended the ladder. Under a
+// deadline it is not: a seam that makes waiting free makes the deadline
+// unreachable and the loop it bounds the unbounded one this wave exists to
+// delete. So the loop charges itself for what it ASKED for (`owed` in
+// [Agent.completeWithRetryReasoning]). In production it is a rounding error; in
+// a scenario it is the whole of the fiction, honestly kept.
+//
+// AND THE NAMING LADDER'S WAIT IS A SEAM OF ITS OWN (title.go's `titleBackoff`),
+// because it runs BESIDE a turn rather than inside one: two ladders sharing one
+// stubbed wait would have each of them spending the other's deadline, where in
+// real time they spend the same seconds once.
+var (
+	turnNow     = time.Now
+	turnBackoff = backoffWait
+)
 
 func backoffWait(ctx context.Context, delay time.Duration) error {
 	timer := time.NewTimer(delay)
@@ -1536,6 +2152,12 @@ type toolResult struct {
 	// on [Event.HarnessMade], and every counter that judges the model by its
 	// steps skips it — the harness's failures are the harness's steps.
 	harness bool
+	// refusedBy names the pre-action citizen that said no, and is empty on
+	// every result that is not a veto. Nobody is shown it: it exists so the
+	// debug record can say WHO refused a call, because a refusal recorded as a
+	// failure sends somebody debugging the tool instead of the gate
+	// (internal/trace's ToolEvent).
+	refusedBy string
 }
 
 // ── the early-start law ─────────────────────────────────────────────────────
@@ -1842,10 +2464,11 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 	for index, call := range calls {
 		rendered[index] = argsText(call)
 		hub.send(Event{
-			Kind: EventToolBegin,
-			Tool: call.Function.Name,
-			Hint: a.gloss(call),
-			Args: rendered[index],
+			Kind:   EventToolBegin,
+			Tool:   call.Function.Name,
+			Hint:   a.gloss(call),
+			Args:   rendered[index],
+			CallID: call.ID,
 		})
 	}
 
@@ -1938,11 +2561,20 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 	}()
 	results := slots.taken(waitBatch(ctx, finished))
 
-	// The end events carry Args as well as Output. Carrying the arguments rather
-	// than making the surface remember the begin event costs nothing — the
-	// rendering is the one done above — and buys an end event that is
+	// WHETHER EACH CALL CAME BACK A FAILURE IS RECORDED HERE AND NOWHERE ELSE
+	// (admission.go). The flag the tool returned does not survive into the
+	// transcript — a result there is a string — so work handed out later in this
+	// turn could otherwise only guess at it from the words, which is exactly the
+	// invention the admission context refuses to make.
+	a.noteCallOutcomes(calls, results)
+
+	// The end events carry Args, Output, and the provider's call ID. Carrying
+	// them rather than making the surface remember the begin event costs nothing
+	// — the rendering is the one done above — and buys an end event that is
 	// self-contained, which is what a surface that renders a finished row from
-	// one event needs.
+	// one event needs. The ID remains necessary when one batch calls the same
+	// tool more than once, because neither its name nor completion order identifies
+	// the row.
 	for index, call := range calls {
 		if results[index].isError {
 			hub.send(Event{
@@ -1951,6 +2583,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 				Hint:   clip(firstLine(results[index].text), hintLimit),
 				Args:   rendered[index],
 				Output: capOutput(results[index].text),
+				CallID: call.ID,
 				// WHOSE FAILURE THIS WAS travels with it. Everything counting
 				// steps out of band — the runner's no-progress ledger above all —
 				// reads events and not results, so a fact kept only on the result
@@ -1967,6 +2600,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 			Tool:   call.Function.Name,
 			Args:   rendered[index],
 			Output: capOutput(results[index].text),
+			CallID: call.ID,
 		})
 	}
 	return results
@@ -2001,10 +2635,25 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 // been found to carry the tool: a call for a tool that does not exist is
 // answered "Unknown tool", never asked about. A question about a tool nobody
 // has is a question with no right answer.
+// AND IT IS WHERE THE DEBUG RECORD LEARNS ABOUT TOOLS. Everything a call can
+// become — it ran, it failed, a door refused it before it ran, the hand was not
+// on the belt at all — comes back through this one function, so the record is
+// written around it rather than inside the four exits below (debugrecord.go).
 func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
+	started := time.Now()
+	result := a.dispatchTool(ctx, ep, hub, call, rendered)
+	recordToolCall(ctx, call, result, started, time.Since(started))
+	return result
+}
+
+// dispatchTool is the dispatch itself: find the hand, ask the doors, run it.
+func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
 	for _, tool := range a.beltTools() {
 		if tool.Name != call.Function.Name {
 			continue
+		}
+		if invalid := invalidBashArguments(call.Function.Name, json.RawMessage(call.Function.Arguments)); invalid != "" {
+			return a.finishToolResult(ep, call, toolResult{text: invalid, isError: true})
 		}
 		running, refused, allowed := ep.preAction(ctx, hub, call)
 		if !allowed {
@@ -2035,13 +2684,20 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 		// OVER, and what it cost, is known here and is stale by the time the
 		// slowest sibling returns. Sent from inside the execution so the early
 		// start (warmBatch.consider) is measured the same way the batch is.
+		took := time.Since(started)
+		// AND THE RECORD KEEPS THE FIGURE where the event is sent, with the same
+		// id: a page opened after the batch — or a room rebuilt from the journal
+		// after a landing — has no stream to watch, and without this line the
+		// rows came back with Args and Output but no duration (sessionfile.go's
+		// [sessionFile.appendTook]).
+		a.file.appendTook(call.ID, took)
 		if hub != nil {
 			hub.send(Event{
 				Kind:   EventToolFinished,
 				Tool:   call.Function.Name,
 				Args:   rendered,
 				CallID: call.ID,
-				Took:   time.Since(started),
+				Took:   took,
 			})
 		}
 		if err != nil {
@@ -2118,7 +2774,45 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 // before it existed.
 func (a *Agent) finishToolResult(ep *episode, call ai.ToolCall, result toolResult) toolResult {
 	result.text = redact.Secrets(result.text)
-	return a.withJobState(ep.noteToolOutcome(call, result))
+	body := result.text
+	result = a.withJobState(ep, ep.noteToolOutcome(call, result))
+	result.text = footersInsideTheCap(body, result.text)
+	return result
+}
+
+// footersInsideTheCap keeps what this chokepoint appends INSIDE the bound the
+// result already respected, rather than on top of it.
+//
+// EVERY CAP IN THIS PROGRAM IS A PROMISE ABOUT WHAT THE MODEL WILL BE HANDED,
+// and both of the appends above are made after the tool has already cut its
+// output to fit [bare.MaxResultBytes]. A 50 KB read plus a job footer plus a
+// fix line was 50 KB and change — small on one call and not small at all on the
+// fortieth, which is a window the person never agreed to spend. So the BODY
+// gives up the room, exactly as task_audit.go's boundedResult does it: the
+// footers are what the model most needs to see, and the body is the half it can
+// go and read the rest of.
+//
+// A result that was ALREADY over the cap on its own is left alone. The footer is
+// not what busted it, and a chokepoint that quietly cut every oversized result
+// would be a second cap with no notice on it — a read_document's own bound, or a
+// task's report, would be cut here by a rule written for a shell command.
+func footersInsideTheCap(body, grown string) string {
+	if len(grown) <= bare.MaxResultBytes {
+		return grown
+	}
+	// The appends are suffixes of the body with its trailing newlines trimmed
+	// (jobfooter.go's withJobState, fixrecall.go's fixAnnotate), so what is not
+	// the body is the footers, exactly.
+	trimmed := strings.TrimRight(body, "\n")
+	if trimmed == "" || !strings.HasPrefix(grown, trimmed) || len(trimmed) > bare.MaxResultBytes {
+		return grown
+	}
+	footers := grown[len(trimmed):]
+	room := bare.MaxResultBytes - len(footers) - capMarkerRoom
+	if room <= 0 {
+		return grown
+	}
+	return capBytes(trimmed, room) + footers
 }
 
 // glossField names the argument that says what a call is DOING, per tool. A
@@ -2437,6 +3131,13 @@ func capOutput(text string) string { return capBytes(text, outputLimit) }
 // from the one a person's screen is drawn with (task_audit.go's boundedResult),
 // and two truncations with two ways of marking the cut would be two answers to
 // "is this the whole thing".
+// capMarkerRoom is what [capBytes] needs for the "… (N more bytes)" it writes in
+// place of what it cut, and it is the slack a caller leaves when it is fitting a
+// body and a footer into one budget together. It is generous on purpose: the
+// count inside it is an unbounded integer and the marker must never be the thing
+// that pushes the pair back over the cap it was measured against.
+const capMarkerRoom = 32
+
 func capBytes(text string, limit int) string {
 	if len(text) <= limit {
 		return text
@@ -2491,15 +3192,23 @@ func utf8RuneStart(b byte) bool { return b&0xC0 != 0x80 }
 // ── usage ───────────────────────────────────────────────────────────────────
 
 // bankedCall is one call's money on its way into the books: what it cost, who
-// answered, what for, how the lane behind it behaved, and the two things that
+// answered, what for, how the lane behind it behaved, and the things that
 // differ between the doors — whether the machine's ledger is owed a row (a fold
-// is not a call) and whether this was a step of the conversation.
+// is not a call), whether this was a step of the conversation, and whether its
+// money arrived too late to belong to the turn now running.
 type bankedCall struct {
 	used   Usage
 	model  string
 	role   string
 	lane   laneFacts
 	ledger bool
+	// late says this money reached the books after the turn that spent it had
+	// already ended. It still belongs in the session and the machine ledger, but
+	// the RUNNING turn's share must not move for money spent by an earlier one.
+	late bool
+	// reconciled marks the ledger row as figures supplied by a provider receipt
+	// after the stream ended without its usage block.
+	reconciled bool
 	// turn says this call was a STEP OF THE CONVERSATION and not an errand run
 	// beside it, which is the whole of what [Usage.Turns] counts.
 	turn bool
@@ -2544,12 +3253,14 @@ func (a *Agent) bank(call bankedCall) {
 	// cost, so the only honest figure to journal it with is the one accumulated
 	// here (abandon.go's [Agent.Abandon]). It is reset when a turn opens and is
 	// meaningless outside one, which is why it is not exported.
-	a.turnSpend.Input += call.used.Input
-	a.turnSpend.Output += call.used.Output
-	a.turnSpend.CacheRead += call.used.CacheRead
-	a.turnSpend.CacheWrite += call.used.CacheWrite
-	a.turnSpend.CostUSD += call.used.CostUSD
-	a.turnSpend.Calls += call.used.Calls
+	if !call.late {
+		a.turnSpend.Input += call.used.Input
+		a.turnSpend.Output += call.used.Output
+		a.turnSpend.CacheRead += call.used.CacheRead
+		a.turnSpend.CacheWrite += call.used.CacheWrite
+		a.turnSpend.CostUSD += call.used.CostUSD
+		a.turnSpend.Calls += call.used.Calls
+	}
 	if call.turn {
 		a.usage.Turns++
 	}
@@ -2558,8 +3269,37 @@ func (a *Agent) bank(call bankedCall) {
 	}
 	a.mu.Unlock()
 	if call.ledger {
-		a.recordUsageLine(call.used, call.model, call.role, call.lane)
+		a.recordUsageLine(call.used, call.model, call.role, call.lane, call.reconciled)
 	}
+}
+
+// reconciled receives the one late answer for a call whose stream ended before
+// its usage block. A missing receipt moves only the visible gap counter; a
+// found one enters through [Agent.bank], the same door as every ordinary call,
+// so the session meter and the machine ledger cannot diverge.
+func (a *Agent) reconciled(receipt provider.Reconciled) {
+	if !receipt.Found || receipt.Billed.Empty() {
+		a.recordUnbilledReceipt(receipt.Model)
+		return
+	}
+	used := Usage{
+		Input:   receipt.PromptTokens,
+		Output:  receipt.CompletionTokens,
+		CostUSD: receipt.Cost,
+		Calls:   1,
+	}
+	lane := laneFacts{Hedged: receipt.Hedged}
+	if receipt.Hedged {
+		// HedgeWasteUSD is a receipt column and is never added to a money total,
+		// so repeating this call's own USD there identifies waste without double
+		// counting it. Only rescue arms carry the context marker; an original arm
+		// that loses has none and reconciles as an ordinary cut.
+		lane.Waste = receipt.Cost
+	}
+	a.bank(bankedCall{
+		used: used, model: receipt.Model, lane: lane, ledger: true,
+		late: true, reconciled: true,
+	})
 }
 
 // addUsage folds one response's accounting into the turn and the session, and
@@ -2671,6 +3411,14 @@ func (a *Agent) journalFailedCall(ctx context.Context, model, role string, err e
 		Attempt:  attempt,
 		Input:    estimate,
 		Message:  clip(err.Error(), errorRowMessage),
+	}
+	// AND A STOP OF OURS SAYS SO IN A FIELD AND NOT ONLY IN ITS SENTENCE. The
+	// message already reads `turn ended: taken over`, which is enough for a
+	// person opening the file and not enough for the reader that has to decide
+	// whether the question above this row is still owed an answer: that reader
+	// must not be parsing prose (stopcause.go, resume.go).
+	if door, ours := StoppedBy(err); ours {
+		row.Door = string(door)
 	}
 	if refusal, ok := provider.RefusalFrom(err); ok {
 		row.Status = refusal.Status
@@ -3190,7 +3938,8 @@ func (p compactionPass) empty() bool { return p.stubbed == 0 && p.folded == 0 }
 //     its own bytes (stub.go). Nothing is described, nothing is decided, and the
 //     bytes stay readable — in the store's thread, or in this session's logs/.
 //
-//  2. THE FOLD. If the transcript is still over threshold, the oldest ASSISTANT
+//  2. THE FOLD. If the transcript is still above [compactTarget] — the headroom
+//     line, not the trigger the pass fired on — the oldest ASSISTANT
 //     work is replaced by one marker line naming how much went and where it can
 //     be read, and the fold runs down to [compactTarget] — below the threshold
 //     by half a reserve, so the pass that just ran is not the pass that runs
@@ -3256,7 +4005,14 @@ func (a *Agent) compact(_ context.Context, hub *eventHub) (bool, error) {
 
 	pass := compactionPass{stored: a.chatlog != nil}
 	pass.stubbed = a.stubOldOutputsLocked()
-	if a.estimateTokensLocked() > a.compactThreshold() {
+	// THE FOLD IS ASKED FOR AGAINST THE TARGET, NOT THE TRIGGER. The pass fires
+	// at the threshold, and the stub pass alone routinely lands the estimate just
+	// under it — below the trigger, above the target, with no headroom at all. The
+	// gate was the threshold, so the fold was skipped, the next step's few
+	// thousand tokens crossed the line again, and the session was back in exactly
+	// the once-per-step thrash [compactTarget] exists to end. What buys the
+	// headroom is the same figure the fold already stops at.
+	if a.estimateTokensLocked() > a.compactTargetTokens() {
 		pass.folded, pass.marker = a.foldLocked()
 	}
 	a.compacting = false
@@ -3591,7 +4347,7 @@ func (a *Agent) estimateTokensLocked() int {
 	for _, message := range a.messages {
 		total += messageBytes(message)
 	}
-	estimate := total / bytesPerToken
+	estimate := EstimateTokens(total)
 	if a.contextTokens > estimate {
 		return a.contextTokens
 	}
@@ -3666,9 +4422,9 @@ func (a *Agent) addAuxiliaryUsage(response *ai.Response, model string, calls int
 	a.addAuxiliaryUsageAs(response, model, calls, "")
 }
 
-// addEmptyReflexUsage is the paid-call door for a reflex request that consumed
-// its whole output ceiling without answering. The tokens and price stay in the
-// ordinary totals; the extra count says what that spend failed to buy.
+// addEmptyReflexUsage is the paid-call door for a reflex request that returned
+// no answer. The tokens and price stay in the ordinary totals; the extra count
+// says what that spend failed to buy.
 func (a *Agent) addEmptyReflexUsage(response *ai.Response, model string) {
 	a.addUsageAs(response, model, 1, string(roles.RoleReflex), true, true)
 }
@@ -3752,11 +4508,32 @@ func (a *Agent) addAuxiliaryUsageAs(response *ai.Response, model string, calls i
 	a.addUsageAs(response, model, calls, role, true, false)
 }
 
+// addDetachedUsageAs is [Agent.addAuxiliaryUsageAs] for an errand that is NOT
+// ON ANY TURN'S CLOCK — one started beside a turn, on the session's own
+// lifetime, that may land while a different turn is running or while none is
+// (title.go).
+//
+// The money is the session's and the machine's exactly as any errand's is; what
+// it must not move is a.turnSpend, which is the figure an abandoned turn is
+// journaled with. A name bought by the first turn and paid for during the
+// third would otherwise appear as the third turn's cost, and a title that
+// landed during a turn that was then abandoned would be journaled as money that
+// turn spent. That is the `late` bit at [bankedCall], said the other way round:
+// late means "the turn that spent this has ended", and detached means "no turn
+// ever owned it".
+func (a *Agent) addDetachedUsageAs(response *ai.Response, model string, calls int, role string) {
+	a.addUsageAs(response, model, calls, role, true, false, detachedFromTurn)
+}
+
 // addUsageAs is the body both auxiliary doors share, with one bit of difference:
 // whether this tally is a CALL THIS AGENT MADE — and therefore a line in the
 // machine's ledger — or a fold of work that already wrote its own
 // ([Agent.addFoldedUsage]).
-func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role string, ledger, emptyReflex bool) {
+//
+// detached, when it is passed, keeps the tally off the RUNNING turn's share —
+// see [Agent.addDetachedUsageAs]. It is variadic so that the thirty callers that
+// are on a turn's clock say nothing and mean it.
+func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role string, ledger, emptyReflex bool, detached ...bool) {
 	if response == nil || response.Usage == nil {
 		return
 	}
@@ -3777,7 +4554,7 @@ func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role 
 	// AN ERRAND'S ROW CARRIES NO LANE. Nothing timed this call — the witness
 	// watches the turn's own stream — and the turn's figures on this row would be
 	// a measurement of one request filed against another.
-	a.bank(bankedCall{used: aux, model: model, role: role, ledger: ledger})
+	a.bank(bankedCall{used: aux, model: model, role: role, ledger: ledger, late: len(detached) > 0 && detached[0]})
 	// The write is outside the lock for the reason [Agent.sealTurn]'s is: the
 	// file has its own, and holding the agent's across a disk write would put
 	// every reader of the session's totals behind it.

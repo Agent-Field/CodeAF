@@ -59,6 +59,103 @@ func TestADeliveryTheGateCouldNotReachIsJournaledAsItsOwnKindOfRow(t *testing.T)
 	}
 }
 
+// TestASettledErrandNamesExactlyTheGateThatAnswered holds both sides of the
+// machine contract against real journal rows: a settled errand whose delivery
+// something read names it, and one nothing read names nothing.
+//
+// A pass and a fault are both ANSWERS FROM THE GATE and publish its name; no
+// row and an unjudged row publish none, so the presence of the key alone
+// answers whether anything checked the delivery and a caller never has to read
+// a sentence to find out.
+func TestASettledErrandNamesExactlyTheGateThatAnswered(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		record bool
+		gate   store.DeliveryGate
+		want   string
+	}{
+		{name: "a pass", record: true, gate: store.DeliveryGate{Pass: true}, want: revision.GateName},
+		{name: "an unclosed fault", record: true, gate: store.DeliveryGate{
+			Gap: revision.GateFaultWords("the answer could not be read"), Unclosed: true,
+		}, want: revision.GateName},
+		{name: "no gate row"},
+		{name: "an unjudged row", record: true,
+			gate: deliveryGateOf(revision.Judgment{Pass: true, Unjudged: unreachedNote})},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			graph, watcher, _ := narrationFixture(t)
+			claim, claimed, err := graph.Claim("task-1", "test")
+			if err != nil || !claimed {
+				t.Fatalf("claim task-1: claimed=%t, err=%v", claimed, err)
+			}
+			if err := graph.Start(claim); err != nil {
+				t.Fatal(err)
+			}
+			if err := graph.Complete(claim, "the delivery"); err != nil {
+				t.Fatal(err)
+			}
+			if test.record {
+				if err := graph.RecordDeliveryGate("task-1", test.gate); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			nodes, err := watcher.sessionNodes()
+			if err != nil {
+				t.Fatal(err)
+			}
+			outcome := watcher.compose(nodes)
+			if outcome.JudgedBy != test.want {
+				t.Fatalf("JudgedBy = %q, want %q", outcome.JudgedBy, test.want)
+			}
+			encoded, err := json.Marshal(errandEnvelope(outcome))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var fields map[string]any
+			if err := json.Unmarshal(encoded, &fields); err != nil {
+				t.Fatal(err)
+			}
+			got, present := fields["judged_by"]
+			if test.want == "" && present {
+				t.Fatalf("--json carried judged_by=%v where nothing judged: %s", got, encoded)
+			}
+			if test.want != "" && (!present || got != test.want) {
+				t.Fatalf("--json carried judged_by=%v (present=%t), want %q: %s",
+					got, present, test.want, encoded)
+			}
+			if _, unjudged := fields["unjudged"]; present && unjudged {
+				t.Fatalf("--json carried judged_by and unjudged together: %s", encoded)
+			}
+		})
+	}
+}
+
+// TestAnUnreadableGateRowIsNotEvidenceOfACheck holds the best-effort edge the
+// two readers beside it already hold: a store that will not answer states no
+// fact about the run, so it must not manufacture a name for a check nobody can
+// show happened, and it must not change the ending.
+func TestAnUnreadableGateRowIsNotEvidenceOfACheck(t *testing.T) {
+	graph, watcher, _ := narrationFixture(t)
+	node, ok, err := graph.Node("task-1")
+	if err != nil || !ok {
+		t.Fatalf("node task-1: found=%t, err=%v", ok, err)
+	}
+	if err := graph.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := watcher.judgedBy(node); got != "" {
+		t.Fatalf("an unreadable store named a check: %q", got)
+	}
+	encoded, err := json.Marshal(errandEnvelope(headlessOutcome{JudgedBy: watcher.judgedBy(node)}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "judged_by") {
+		t.Fatalf("an unreadable store produced a judged_by key: %s", encoded)
+	}
+}
+
 // AN UNJUDGED DELIVERY IS NEVER `ok`. It is its own ending, said in words on the
 // door, in the record and in `--json`.
 //
@@ -128,6 +225,9 @@ func TestARunNothingJudgedEndsUncheckedAndSaysSoOnTheDoorAndInTheJson(t *testing
 	}
 	if outcome.Unjudged != unreachedNote {
 		t.Fatalf("the reason nothing checked this run is %q, want %q", outcome.Unjudged, unreachedNote)
+	}
+	if outcome.JudgedBy != "" {
+		t.Fatalf("an unjudged run named %q as its checker", outcome.JudgedBy)
 	}
 	// The work still ships. Fail-open stands; what changed is that nobody can
 	// read the ending as a check that held.
@@ -208,6 +308,9 @@ func TestARunNothingJudgedEndsUncheckedAndSaysSoOnTheDoorAndInTheJson(t *testing
 	}
 	if fields["unjudged"] != unreachedNote {
 		t.Fatalf("--json says unjudged=%v, want %q", fields["unjudged"], unreachedNote)
+	}
+	if _, present := fields["judged_by"]; present {
+		t.Fatalf("--json carried judged_by beside unjudged: %s", envelope)
 	}
 	// And it is absent on every run whose gate answered, so a caller may read
 	// the key's presence as the answer.

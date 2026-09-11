@@ -228,11 +228,16 @@ func TestTaskRoomClosesWhenTheNodeLands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WatchTask on a running node: %v", err)
 	}
-	// Running, but nobody is in there: a stubbed runner has no child agent, and
-	// "there is no worker to talk to" is a better answer than a line queued onto
-	// nothing.
-	if _, err := agent.SteerTask(id, "hello"); err == nil {
-		t.Fatal("SteerTask found a worker where there is none")
+	// Running, but nobody is in there: a stubbed runner has no child agent. The
+	// words are HELD on the node rather than sent back, because the node is still
+	// running and a reader is still ahead of it (assignment.go); what a surface
+	// must never be told is that they were delivered.
+	held, err := agent.SteerTask(id, "hello")
+	if err != nil {
+		t.Fatalf("a running node with no worker yet refused the person's line: %v", err)
+	}
+	if !held.Held || held.Direction == 0 {
+		t.Fatalf("receipt = %+v, want the line kept on the node's record", held)
 	}
 
 	close(release)
@@ -406,13 +411,15 @@ func watchedTool(events []Event, kind EventKind, tool string) bool {
 	return false
 }
 
-// THE CHECK HAS NO READER, AND THE DOOR SAYS SO. A node under check is still
-// TaskRunning and its worker agent is still open — the exact window in which a
-// steered line used to be taken with a receipt and then closed over unread
-// (#273). The refusal must name the check, because "no worker to talk to yet"
-// points the person at the wrong end of the run — and nothing may land on the
-// worker's queue, because a queued line is the swallow, not a lesser form of it.
-func TestASteerDuringTheCheckIsRefusedWithTheReason(t *testing.T) {
+// THE CHECK HAS NO READER, AND THE DOOR SAYS SO WITHOUT SENDING THE WORDS BACK.
+// A node under check is still TaskRunning and its worker agent is still open —
+// the exact window in which a steered line used to be taken with a receipt and
+// then closed over unread (#273). Nothing may land on that worker's queue,
+// because a queued line nothing will drain is the swallow. What happens instead
+// is that the line is kept on the NODE, the receipt names the check, and the
+// landing may not publish over it (assignment.go): a correction sent in the last
+// second before work comes home is the one that matters most.
+func TestASteerDuringTheCheckIsHeldOnTheRecordWithTheReason(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	worker, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 
@@ -435,15 +442,23 @@ func TestASteerDuringTheCheckIsRefusedWithTheReason(t *testing.T) {
 	graph.admit(id, taskSpec{title: "a node", brief: "b", acceptance: "a"})
 	<-started
 
-	_, err := agent.SteerTask(id, "hows the test doing?")
-	if err == nil {
-		t.Fatal("a node under check accepted a line nobody would read")
+	receipt, err := agent.SteerTask(id, "make it CSV instead")
+	if err != nil {
+		t.Fatalf("a line said while the work was being checked was refused: %v", err)
 	}
-	if !strings.Contains(err.Error(), "being checked") {
-		t.Fatalf("the refusal does not name the check: %v", err)
+	if !receipt.Held || receipt.Direction == 0 {
+		t.Fatalf("receipt = %+v, want the words kept on the task's own record", receipt)
+	}
+	if !strings.Contains(receipt.Landing, "being checked") {
+		t.Fatalf("the receipt does not name the check: %q", receipt.Landing)
 	}
 	if worker.steeringHeld() {
-		t.Fatal("the refused line still landed on the worker's queue")
+		t.Fatal("the line landed on the queue of a worker whose reading is over, where nothing would drain it")
+	}
+	// AND THE LANDING MAY NOT PUBLISH OVER IT, which is what makes keeping it
+	// something other than a politer way of losing it (assignment.go).
+	if claim := graph.node(id).claimPublication(); claim.granted {
+		t.Fatal("a landing could still publish with the person's words unread")
 	}
 
 	close(release)

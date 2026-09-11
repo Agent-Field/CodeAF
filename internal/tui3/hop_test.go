@@ -191,7 +191,7 @@ func TestTheSurfaceUnderTheSwitcherIsDimmed(t *testing.T) {
 	// squint at is a card that has taken the keyboard for nothing.
 	head := ""
 	for _, line := range out {
-		if strings.Contains(plain(line), hopOpenWord) && strings.Contains(plain(line), "tab down") {
+		if strings.Contains(plain(line), hopOpenWord) && strings.Contains(plain(line), "enter open") {
 			head = line
 		}
 	}
@@ -426,10 +426,10 @@ func TestTheFoldKeepsTheCardAboutWhatIsOpen(t *testing.T) {
 	}
 }
 
-// TestCtrlWClosesAConversationAndAsksTwiceOverRunningWork is the way out, and
+// TestCtrlWDismissesATabAndKeepsItsConversation is the way out, and
 // the one guard on it: closing ends the agent, so work turning inside it stops —
 // which is what the quit door already warns about, said here on the row.
-func TestCtrlWClosesAConversationAndAsksTwiceOverRunningWork(t *testing.T) {
+func TestCtrlWDismissesATabAndKeepsItsConversation(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
 	older, _ := keepThree(t, a)
@@ -444,11 +444,11 @@ func TestCtrlWClosesAConversationAndAsksTwiceOverRunningWork(t *testing.T) {
 		t.Fatalf("the cursor is on %q", a.hop.rows[a.hop.at].title)
 	}
 	drive(t, a, key(hopAwayKey))
-	if a.openCount() != 2 {
-		t.Fatalf("ctrl+w left %d open", a.openCount())
+	if a.openCount() != 3 {
+		t.Fatalf("ctrl+w stopped holding a conversation: %d open", a.openCount())
 	}
-	if older.closes == 0 {
-		t.Fatal("ctrl+w did not close the agent")
+	if older.closes != 0 || older.stops != 0 {
+		t.Fatal("ctrl+w ended work instead of dismissing a tab")
 	}
 	// THE CARD STAYS UP AND SAYS SO, because tidying up is something people do
 	// two or three of in a row.
@@ -460,34 +460,23 @@ func TestCtrlWClosesAConversationAndAsksTwiceOverRunningWork(t *testing.T) {
 	}
 }
 
-// TestClosingAConversationWithWorkInItTakesTwoPresses is that guard on its own.
-func TestClosingAConversationWithWorkInItTakesTwoPresses(t *testing.T) {
+// Repeated dismissal remains harmless even while work is running.
+func TestDismissingARunningTabNeverStopsItsWork(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
 	emptyMachine(a)
 	busy := &busyAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a.stow(Conversation{Agent: busy, SessionFile: "/tmp/lab/busy.jsonl", Place: "lab"},
 		&aside{since: a.now(), title: "the busy one"})
-
-	drive(t, a, key(hopOpenKey), key(hopAwayKey))
-	if a.openCount() != 2 {
-		t.Fatalf("one press closed a conversation with work in it: %d open", a.openCount())
+	drive(t, a, key(hopOpenKey), key(hopAwayKey), key(hopAwayKey))
+	if a.openCount() != 2 || busy.closes != 0 || busy.stops != 0 {
+		t.Fatalf("dismissing stopped work: open=%d closes=%d stops=%d", a.openCount(), busy.closes, busy.stops)
 	}
-	if !strings.Contains(a.hop.say, "2 tasks running") {
-		t.Fatalf("the warning reads %q", a.hop.say)
+	if !a.tabShut[a.convKey("/tmp/lab/busy.jsonl")] {
+		t.Fatal("dismissal did not hide the running tab")
 	}
-	drive(t, a, key(hopAwayKey))
-	if a.openCount() != 1 {
-		t.Fatalf("the second press left %d open", a.openCount())
-	}
-	// AND A WALK DISARMS IT: a warning that outlived the cursor leaving the row
-	// would close a conversation nobody was looking at.
-	other := &busyAgent{fakeAgent: &fakeAgent{model: "m"}}
-	a.stow(Conversation{Agent: other, SessionFile: "/tmp/lab/other-busy.jsonl", Place: "lab"},
-		&aside{since: a.now(), title: "another busy one"})
-	drive(t, a, key(hopOpenKey), key(hopAwayKey), key("down"), key("up"), key(hopAwayKey))
-	if a.openCount() != 2 {
-		t.Fatalf("a walk did not disarm the close: %d open", a.openCount())
+	if !strings.Contains(a.hop.say, hopAwayWord) {
+		t.Fatalf("dismissal was not acknowledged: %q", a.hop.say)
 	}
 }
 
@@ -541,9 +530,10 @@ func TestQuickSwitchingSwitchesOnThePressAndTheCardFades(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
 	a.hopQuick = true
+	a.keysDisambiguated = true
 	keepThree(t, a)
 
-	drive(t, a, key(hopOpenKey))
+	drive(t, a, key(hopAlias))
 	if a.file != "/tmp/lab/rail-scope.jsonl" {
 		t.Fatalf("the first press left the surface on %q", a.file)
 	}
@@ -561,7 +551,7 @@ func TestQuickSwitchingSwitchesOnThePressAndTheCardFades(t *testing.T) {
 		}
 	}
 
-	drive(t, a, key(hopOpenKey))
+	drive(t, a, key(hopAlias))
 	if a.file != "/tmp/lab/price-scrape.jsonl" {
 		t.Fatalf("the second press left the surface on %q", a.file)
 	}
@@ -595,9 +585,10 @@ func TestQuickSwitchingEscTakesTheWholeBurstBack(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
 	a.hopQuick = true
+	a.keysDisambiguated = true
 	keepThree(t, a)
 
-	drive(t, a, key(hopOpenKey), key(hopOpenKey))
+	drive(t, a, key(hopAlias), key(hopAlias))
 	if a.file != "/tmp/lab/price-scrape.jsonl" {
 		t.Fatalf("two presses landed on %q", a.file)
 	}
@@ -617,9 +608,10 @@ func TestTouchingAnythingButTheChordConvertsTheReceiptToTheBrowsingCard(t *testi
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
 	a.hopQuick = true
+	a.keysDisambiguated = true
 	keepThree(t, a)
 
-	drive(t, a, key(hopOpenKey))
+	drive(t, a, key(hopAlias))
 	landed := a.file
 	drive(t, a, key("down"))
 	if a.hop.live {
@@ -648,9 +640,10 @@ func TestTypingRidesStraightThroughALiveCard(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
 	a.hopQuick = true
+	a.keysDisambiguated = true
 	keepThree(t, a)
 
-	drive(t, a, key(hopOpenKey), key("z"))
+	drive(t, a, key(hopAlias), key("z"))
 	if a.hopShowing() {
 		t.Fatal("typing left the receipt up")
 	}
@@ -669,7 +662,7 @@ func TestTheReverseChordEntersTheRingAtTheFarEnd(t *testing.T) {
 	a.keysDisambiguated = true
 	keepThree(t, a)
 
-	drive(t, a, key(hopBackKey))
+	drive(t, a, key(hopBackAlias))
 	if a.file != "/tmp/lab/price-scrape.jsonl" {
 		t.Fatalf("the reverse chord landed on %q rather than the far end of the ring", a.file)
 	}
@@ -684,13 +677,86 @@ func TestQuickSwitchingOffIsTheBrowsingCardAlone(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
 	a.hopQuick = false
+	a.keysDisambiguated = true
 	keepThree(t, a)
 
-	drive(t, a, key(hopOpenKey))
+	drive(t, a, key(hopAlias))
 	if a.file != "/tmp/lab/this-one.jsonl" {
 		t.Fatalf("with quick switching off the press moved the surface to %q", a.file)
 	}
 	if !a.hopShowing() || a.hop.live {
 		t.Fatal("the card should be up, and browsing rather than fading")
+	}
+}
+
+// Reading the list must never navigate, even with a profile saved while quick
+// switch was the default. A timeout is not evidence that Ctrl was released.
+func TestCtrlKPreviewsUntilAnExplicitChoiceEvenWithQuickSwitch(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file = "/tmp/lab/this-one.jsonl"
+	a.hopQuick = true
+	keepThree(t, a)
+	drive(t, a, key(hopOpenKey), key(hopOpenKey))
+	if a.file != "/tmp/lab/this-one.jsonl" || a.hop.live || a.hop.at != 1 {
+		t.Fatal("cycling navigated instead of previewing")
+	}
+	drive(t, a, hopSettleMsg{pulse: a.hop.pulse})
+	if !a.hopShowing() {
+		t.Fatal("the list disappeared while being read")
+	}
+	drive(t, a, key("esc"))
+	if a.file != "/tmp/lab/this-one.jsonl" {
+		t.Fatal("cancel changed chats")
+	}
+	drive(t, a, key(hopOpenKey), key(hopOpenKey), key("enter"))
+	if a.file != "/tmp/lab/price-scrape.jsonl" || a.hopShowing() {
+		t.Fatal("enter did not open the highlighted chat")
+	}
+}
+
+func TestSwitcherMouseOpensOnlyVisibleRowsAndKeepsSelectionVisible(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file = "/tmp/lab/this-one.jsonl"
+	keepThree(t, a)
+	drive(t, a, key(hopOpenKey))
+	a.hop.originY = 4
+	body := make([]string, 16)
+	a.hopOver(body, 60, a.pal)
+	a.hopPress(0, 0)
+	if a.file != "/tmp/lab/this-one.jsonl" {
+		t.Fatal("backdrop click switched chats")
+	}
+	if a.hopShowing() {
+		t.Fatal("backdrop click left the switcher open")
+	}
+	drive(t, a, key(hopOpenKey))
+	a.hop.originY = 4
+	a.hopOver(body, 60, a.pal)
+	target := a.hop.spots[1]
+	a.hopPress(a.hop.left+3, a.hop.top+target.row)
+	if a.file != "/tmp/lab/price-scrape.jsonl" {
+		t.Fatal("click did not open the rendered row")
+	}
+	drive(t, a, key(hopOpenKey))
+	a.hop.at = len(a.hop.rows) - 1
+	a.hopCardLines(40, 6, a.pal)
+	found := false
+	for _, spot := range a.hop.spots {
+		found = found || spot.at == a.hop.at
+	}
+	if !found {
+		t.Fatal("short switcher hid the highlighted choice")
+	}
+}
+
+func TestSwitcherShowsLongSelectedTitleBelowTheList(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file = "/tmp/lab/this-one.jsonl"
+	keepThree(t, a)
+	drive(t, a, key(hopOpenKey))
+	a.hop.rows[0].title = "Investigate the parsing regression in weekly reports"
+	lines := a.hopCardLines(60, 18, a.pal)
+	if !strings.Contains(plain(strings.Join(lines, "\n")), "weekly reports") {
+		t.Fatal("selected title still clipped its distinguishing suffix")
 	}
 }

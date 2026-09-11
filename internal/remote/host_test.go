@@ -13,6 +13,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -28,14 +29,19 @@ import (
 // mode switch would have hidden exactly the thing these tests are about.
 func dialSession(t *testing.T, sess *Session) *link {
 	t.Helper()
+	return dialOpening(t, func(Hello) (*Session, error) { return sess, nil })
+}
+
+// dialOpening is the same link with the conversation door in the test's hands,
+// for the tests that are about WHETHER that door is reached at all.
+func dialOpening(t *testing.T, open func(Hello) (*Session, error)) *link {
+	t.Helper()
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
 	l := &link{t: t, toward: inW, frames: make(chan Frame, 256), served: make(chan error, 1)}
 
 	go func() {
-		err := ServeAttach(inR, outW, AttachOptions{
-			Open: func(Hello) (*Session, error) { return sess, nil },
-		})
+		err := ServeAttach(inR, outW, AttachOptions{Open: open})
 		_ = outW.Close()
 		l.served <- err
 	}()
@@ -60,6 +66,68 @@ func dialSession(t *testing.T, sess *Session) *link {
 // heldSession is one persistent conversation on the scripted agent.
 func heldSession(agent *fakeAgent) *Session {
 	return NewSession(engineOn(agent), true)
+}
+
+// A JOINED READER IS BOUND TO THE CONVERSATION IT JOINED, ON EVERY CALL.
+//
+// THE WELCOME ONLY PROVES WHOSE CONVERSATION IT WAS AT THE INSTANT OF ARRIVING.
+// Several surfaces share one [Session], and the window that owns it can call
+// [MethodSessionNew] or [MethodSessionOpen] a second later — which replaces the
+// agent and the transcript underneath everybody. A reader opened onto one
+// conversation's task 7 would then be answered by the REPLACEMENT conversation's
+// task 7: a different piece of work, drawn under the name the reader is still
+// showing, with no error anywhere. That is the wrong-owner failure the whole task
+// lane exists to end, arriving one layer below the check that ends it.
+func TestAJoinedReaderIsRefusedAfterTheOwnerOpensAnotherConversation(t *testing.T) {
+	first := &fakeAgent{model: "a/b", title: "the one being read", taskJournal: "/w/task-7.jsonl"}
+	second := &fakeAgent{model: "a/b", title: "something else", taskJournal: "/w/other-7.jsonl"}
+
+	engine := engineOn(first)
+	engine.Fresh = func() (WrappedAgent, string, error) { return second, "/sessions/two.jsonl", nil }
+	var read []string
+	engine.TaskRecord = func(uri string, _ int) (session.TaskRecord, error) {
+		read = append(read, uri)
+		return session.TaskRecord{Report: "what it said"}, nil
+	}
+	sess := NewSession(engine, true)
+
+	owner := dialSession(t, sess)
+	owner.hello(Hello{Version: Version, Surface: "macbook"})
+	reader := dialSession(t, sess)
+	reader.hello(Hello{
+		Version: Version, Surface: "reader",
+		Session: engine.SessionFile, Join: true, Watch: true,
+	})
+
+	// While it is the conversation that was joined, the reader reads it.
+	if frame := reader.call(1, MethodTaskRoom, TaskRoomArgs{ID: 7, Tail: 4}); frame.Error != "" {
+		t.Fatalf("the reader could not read the conversation it joined: %v", frame.Error)
+	}
+	if len(read) != 1 || !strings.HasSuffix(read[0], "/w/task-7.jsonl") {
+		t.Fatalf("the reading went to %v, want the joined conversation's own journal", read)
+	}
+
+	// The window that owns the session opens something else in it.
+	owner.ok(2, MethodSessionNew, nil)
+
+	// AND THE READER IS TOLD RATHER THAN QUIETLY MOVED.
+	frame := reader.call(3, MethodTaskRoom, TaskRoomArgs{ID: 7, Tail: 4})
+	if frame.Error == "" {
+		t.Fatal("the reader was handed the replacement conversation's task 7")
+	}
+	if !strings.Contains(frame.Error, "not open here any more") {
+		t.Fatalf("the reader was refused with %q, want the sentence its page acts on", frame.Error)
+	}
+	if len(read) != 1 {
+		t.Fatalf("the replacement conversation's journal was read: %v", read)
+	}
+	// And the owner's own connection follows its session, as it always has.
+	if frame := owner.call(4, MethodTaskRoom, TaskRoomArgs{ID: 7, Tail: 4}); frame.Error != "" {
+		t.Fatalf("the owning window was refused its own conversation: %v", frame.Error)
+	}
+	if len(read) != 2 || !strings.HasSuffix(read[1], "/w/other-7.jsonl") {
+		t.Fatalf("the owning window did not follow its session: %v", read)
+	}
 }
 
 // ── sequence numbers ────────────────────────────────────────────────────────
@@ -365,6 +433,38 @@ func TestAQuestionLeftBehindBecomesOneThatIsWaiting(t *testing.T) {
 	}
 }
 
+// AND IT REACHES THE NEXT WINDOW BEFORE THE DEAD ONE HAS LEFT. This is the
+// ordering a killed terminal actually produces: it says nothing on its way out,
+// so the session only learns it is gone when its socket gets around to
+// reporting the end — which can be after the window that replaced it has been
+// welcomed. Nothing here detaches, and the card is still handed over, because
+// what makes a question waiting is that THIS surface has not been sent it.
+func TestTheNextWindowIsHandedTheCardBeforeTheOneItReplacedHasLeft(t *testing.T) {
+	agent := &fakeAgent{}
+	sess := heldSession(agent)
+
+	first := dialSession(t, sess)
+	first.hello(Hello{Version: Version})
+	first.ok(1, MethodSubmit, SubmitArgs{Text: "port the parser"})
+	stream := agent.stream(0)
+	stream <- session.Event{Kind: session.EventConsentRequest, ID: 5, Tool: "bash", Hint: "git push"}
+	// Receiving the frame is the barrier: the card has been recorded and this
+	// surface is on record as having drawn it.
+	first.recv()
+
+	back := dialSession(t, sess)
+	welcome := decode[Welcome](t, back.hello(Hello{Version: Version}).Payload)
+	if len(welcome.Held) != 1 || welcome.Held[0].Event.Unwire().ID != 5 {
+		t.Fatalf("the returning window was handed %+v, want the unanswered card", welcome.Held)
+	}
+
+	// And the window that already drew it is not handed it a second time.
+	again := decode[[]HeldQuestion](t, first.ok(2, MethodHeldQuestions, nil).Payload)
+	if len(again) != 0 {
+		t.Fatalf("a card already on somebody's screen was handed to them again: %d", len(again))
+	}
+}
+
 // ── more than one surface ───────────────────────────────────────────────────
 
 func TestASecondSurfaceIsToldItIsNotAlone(t *testing.T) {
@@ -433,13 +533,13 @@ func (sess *Session) liveSeq(id uint64) uint64 {
 	return 0
 }
 
-// heldCount is how many questions are waiting, read under the session's own
+// heldCount is how many questions are outstanding, read under the session's own
 // lock — a test that reached into the set directly would be racing the pump
 // that fills it.
 func (sess *Session) heldCount() int {
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
-	return len(sess.held.waiting())
+	return sess.held.outstanding()
 }
 
 func waitForEngine(t *testing.T, done func() bool) {

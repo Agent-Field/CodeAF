@@ -234,6 +234,8 @@ task — this happened, and `blocked_on` exists so it cannot happen again.
 | `files` | Absolute paths to files the run produced. Always a list, never `null`. |
 | `error` | Why it could not be run at all, in the same words stderr carried. **Always present**, and empty on a run that started — including a run a limit cut short, whose partial answer is in `answer` and whose reason is in `stop` and `incomplete`. |
 | `unjudged` | On `aforge do`, why nothing checked the delivery — how the gate was asked and the provider's own sentence. It appears on exactly the runs nothing checked, so its presence is itself the answer to "was this checked?" and a caller never has to read the sentence. |
+| `judged_by` | On `aforge do`, the name of what read the delivery — `delivery gate`. It appears when the settled root has a gate row other than an unreachable-gate row, including an unreadable response. It identifies the attempted reader; `ok` and `stop` still decide the outcome. A split root or a run with no gate row can omit both `judged_by` and `unjudged`. `task.audit` is the conversation's own row for work handed out of a chat and does not reach this road. |
+| `checklist` | On `aforge do`, one whole, unclipped `{behaviour, state, why}` row for every acceptance point. `state` is exactly `answered`, `not answered` or `not reached`; the key is present when the settled root has a checklist. Split jobs can keep their checklists on child rows and omit this key. |
 | `spend_usd` | Dollars **this run** cost — measured as the delta of today's spend across the run, not a per-call estimate. |
 | `tokens` | `{"in": …, "out": …}`. |
 | `seconds` | Wall clock. |
@@ -369,7 +371,7 @@ harness passes anything with newlines in it.
 | `--dir dir` | `.` | The directory the worker works in, created if missing. Also where its scratch lands — see below. `-w` is the shorthand and keeps working forever. |
 | `--system text` | empty | The working method, passed as the task's contract. |
 | `--max-turns N` | `200` | Runaway backstop on agent iterations. Hitting it exits `3`. |
-| `--token-budget N` | `150000` | Token budget for the whole run. Hitting it exits `3`. |
+| `--token-budget N` | `150000` | Token budget for the whole run. Crossing it buys a bounded landing rather than a kill, so the effective ceiling is the budget, plus a fifth of it for the landing, plus the overshoot of the turn crossing the budget and of the final landing turn. Hitting it exits `3`. |
 | `--timeout D` | scaled from `--token-budget` | Hard wall, as a duration: `15m`, `2h`, `90s`. A bare number is read as seconds, so `--timeout 900` keeps working. Unset, it is 15 minutes, or one minute per 50k tokens of budget when that is longer. Hitting it exits `3`. |
 | `--model slug` | the ladder in section 1 | The work model. `exec` opens with the same `models:` line on stderr, naming its one seat and the rung that chose it. |
 | `--context-fill N` | `60` | How full the context window may get before it is compacted, in percent. |
@@ -517,7 +519,9 @@ again.
   is `do --db`.
 - **No daily spending limit and no `--yes-spend`.** `AFORGE_DAILY_BUDGET` is not
   consulted here; `--token-budget` is the only ceiling, and it is counted in
-  tokens. A campaign driving `exec` is responsible for its own spend.
+  tokens. Its landing stops after a few final calls or a fifth of the budget,
+  whichever runs out first; the effective ceiling also includes overshoot from both the budget-crossing
+  turn and the final landing turn. A campaign driving `exec` is responsible for its own spend.
 - **No resident lease.** It never waits for another aforge and never hands work
   to one.
 - **No delivery gate and no replan.** Nothing judges the answer, and nothing

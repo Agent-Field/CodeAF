@@ -1,5 +1,27 @@
 # Commands you type in a terminal
 
+## How do I install or update aforge to the latest version — the curl line, dev, staging, rc and stable
+
+The installer puts aforge at `~/.aforge/bin/aforge`. Choose the newest build on
+one channel:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | bash -s -- --stable
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | bash -s -- --rc
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | bash -s -- --dev
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | bash -s -- --staging
+```
+
+Pin one published build instead with `VERSION=v0.2.0` (or another complete tag):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | VERSION=v0.2.0 bash
+```
+
+The last installer line is `aforge version`; it shows the tag installed, when it
+was built, and the Go and operating-system target. Nothing self-updates: run the
+curl command again when you want a newer build.
+
 ## Running aforge from the terminal — can I run this without the chat
 
 Typing `aforge` with no arguments opens the conversation. Everything else is a verb after
@@ -149,6 +171,28 @@ one pass there is `--token-budget` and `--timeout`.
 itself, the same bytes `--out` would write. `aforge logs --json` is a third: one JSON object per line,
 byte-for-byte what is on disk.
 
+## What checked my unattended or headless run — what judged the delivery, and why task.audit is not the answer
+
+An `aforge do` errand's delivery is read at the end by the **delivery gate**. It takes a
+reading of the project's own checks before the work and another at the end, maps what you
+asked for onto the checks that exercise it, and answers whether the delivery holds.
+
+With `--json`, `judged_by` names that reader when the settled root has a gate row that
+is not marked unreachable. An unreadable response still names the reader; read `ok` and
+`stop` to learn the outcome. `unjudged` instead names an unreachable gate's reason. A run
+with no gate row can omit both keys, so absence alone does not prove a check happened.
+
+`task.audit` is a different road's row and does not reach `aforge do`. It governs work the
+conversation hands out with `/task`: a separate, fresh, read-only checker is put in a clean
+restore of what the task wrote. Turning that row off produces the report line `nothing
+checked this work: the task.audit setting is off`. A headless errand never prints that line,
+because the session task engine is not the engine running it; its delivery gate is the
+check.
+
+One limitation remains: when a job is broken into several pieces, its gate is journaled
+against the piece that delivered rather than the whole that settles them, so `judged_by` is
+absent there.
+
 ## The old --json field names — deliverable, text, elapsed_ms, settled
 
 **The old names still work, for one release, and then go away.** They are printed beside
@@ -167,14 +211,25 @@ hurry:
 **`settled` is not the old name of `ok`, and it is not going away.** It means "nothing this
 run is waiting for can still move", which is true of a run that asked a question and did
 nothing: `settled: true` with `ok: false` and exit 4. Reading the one as the other would
-record every refusal as a success.
+record every refusal as a success. A broken finished tree is the one ending that answers
+that sentence false; *Why settled can be false* below gives its exact shape.
+
+## Why settled can be false — the tree does not build or the run left code broken
+
+A run that hands back a tree its own check could not collect is not settled: the tree does
+not build, it left the code broken, and repairing it is still work waiting to move. That
+run says `settled: false`, `ok: false`, `stop: "incomplete"`, and leaves with exit 2. Its
+answer includes the check's own sentence about what could not be read.
+
+## Fields that belong only to one command
 
 Some fields belong to one command and stay. `aforge do` carries `spend_work` and
 `spend_overhead` — what the work cost against what it cost to decide what the work should
 be — and `blocked_on`, `learned`, `plan_model`, `model_source`, `plan_model_source` and
-`subharness`. It also carries `unjudged` on the runs nothing checked — why the delivery
-went out unread — and on no others, so a script may read the key's presence as the answer. `aforge run` carries `output`, which is the typed answer whole,
-and `report`.
+`subharness`. It also carries `judged_by` when the settled root records an answered gate
+attempt and `unjudged` when that gate could not be reached. Both keys can be absent when
+no root gate row is available; neither key replaces `ok` and `stop`. `aforge run` carries `output`, which is
+the typed answer whole, and `report`.
 
 `incomplete` is on `aforge run` and `aforge exec` both, and it is why it did not finish, in
 the same words stderr carried — a token budget that ran out with half an answer already
@@ -290,7 +345,7 @@ the value of the `node` field in `logs --json`.
 ## Where is the record of my headless run — reading a kept one-shot's store
 
 `why` reads a store, and by default that store is `~/.aforge/graph.db`. A headless
-`aforge do` run does **not** work there: it uses a private store of its own, kept only when
+`aforge do` run does **not** work there: it uses a separate store of its own, kept only when
 the run failed or you asked for it with `--keep`, and the last line on the error stream
 says where:
 
@@ -512,11 +567,12 @@ aforge needs a model to work with.
 export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.
 ```
 
-**`OPENROUTER_API_KEY` is not required** — it is the first of three places a key is looked
-for. The variable, then `OPENAI_API_KEY`, then the key kept in your profile, which is where
+**For the default service, `OPENROUTER_API_KEY` is not required** — it is the first of three places its key is looked
+for. The variable, then `OPENAI_API_KEY`, then the default-service key kept in your profile, which is where
 the one you pasted on the first run or typed into `/settings` lives. Any one of them is
 enough, so a machine set up in the chat runs `aforge do` with no variable set at all.
-`aforge doctor`'s first row says which one answered — `key set · OPENROUTER_API_KEY`, or
+Each directly connected service may instead name its own environment variable, which is
+stored with that service. `aforge doctor`'s first row still reports only which default-service key answered — `key set · OPENROUTER_API_KEY`, or
 `key set · /home/you/.aforge/config.json`, or `key none ·` and the two lines above.
 
 **These change state without spending**: `cache clean`, `rebuild`, `notebook
@@ -672,9 +728,10 @@ that, and of what a mistyped command is answered with, is on the *commands* page
 
 Two things that account does not cover:
 
-- **The doors that parse no flags at all answer the gesture too.** `aforge plan show`,
-  `aforge models` and `aforge cache` take a positional or nothing, and each reads `--help`
-  as the question rather than as an argument. `aforge plan show --help` used to answer
+- **The doors that parse no flags at all answer the gesture too.** `aforge plan show` and
+  `aforge cache` take a positional or nothing, and each reads `--help` as the question
+  rather than as an argument. (`aforge models` has one flag, `--refresh`, which fetches
+  today's model list first — what `ctrl+r` does in `/model`.) `aforge plan show --help` used to answer
   `open --help: no such file or directory` — a filesystem error about a flag.
 - **`help env` is the environment table.** It moved off `--help` when that page was 127
   lines and more than half of them were this table, so the last thing on the screen after

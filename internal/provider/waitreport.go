@@ -38,8 +38,9 @@ type HedgeReport struct {
 	// cancelled — both empty when no stream named one.
 	winner string
 	loser  string
-	// reason is the controller's own machine word ("first token late", "no
-	// heartbeat", "drift", "gap"). It is for the log and never for a person.
+	// reason is the controller's own machine word ("first token late", "drift",
+	// "long think", "ceiling", "no heartbeat", "rate collapsed"). It is for
+	// the log and never for a person.
 	reason string
 	// waste is what the arms that did not answer are estimated to have cost. It
 	// is an ESTIMATE and says so: a cancelled stream delivers no usage frame,
@@ -262,13 +263,33 @@ type waitFacts struct {
 	// went out, and ttft how long its first token really took.
 	deadline time.Duration
 	ttft     time.Duration
+	// applied is the bound that REALLY ended this attempt and appliedWord is
+	// what it was, both zero when no bound of ours ended it.
+	//
+	// A ROW MAY CARRY BOTH THIS AND `deadline` AND THEY ARE DIFFERENT
+	// QUESTIONS: what this call planned to act on, and what actually stopped
+	// it. Recording only the first is what made `deadline_ms` unreadable — see
+	// [streamWatch.applied] for the census figures. internal/calllog is where
+	// these land on the row.
+	applied     time.Duration
+	appliedWord string
+	// exhaust says this attempt is the cost of a race another arm won, not a
+	// thing that went wrong. See [streamWatch.lost].
+	exhaust bool
 	// silence is how long the wait had run when something was done about it,
-	// action what was done, and wait and cost the two numbers the inequality
-	// was decided on.
+	// action what was done, reason why the controller did it, and wait and cost
+	// the two figures the inequality was decided on.
+	//
+	// THE TWO FIGURES MAY BE NOTHING and they carry their own answer to that:
+	// a request with nowhere to act to was never priced, and a wait past what
+	// its belief can put a number on has no number either. They used to be
+	// floats holding an infinity, and the row paid for it — see
+	// [control.Seconds] and internal/calllog's finite.go.
 	silence time.Duration
 	action  string
-	wait    float64
-	cost    float64
+	reason  string
+	wait    control.Seconds
+	cost    control.Seconds
 	// arms is how many requests this one question became, hedged whether that
 	// was more than one, and waste what the arms that did not answer cost.
 	arms   int
@@ -276,7 +297,8 @@ type waitFacts struct {
 	waste  float64
 	// note is one sentence about something this call decided that no other
 	// field can say. It is empty on almost every row.
-	note string
+	note    string
+	refused string
 }
 
 // facts is what this arm's row carries about its wait.
@@ -293,21 +315,40 @@ func (w *streamWatch) facts() (waitFacts, bool) {
 	lane := w.race.askedLane(w.arm)
 	w.mu.Lock()
 	facts := waitFacts{
-		lane:     lane,
-		deadline: w.armed,
-		silence:  w.silence,
-		action:   actionWord(w.acted.Kind),
-		wait:     w.acted.Wait,
-		cost:     w.acted.Cost,
+		lane:        lane,
+		deadline:    w.armed,
+		applied:     w.applied,
+		appliedWord: w.appliedWord,
+		exhaust:     w.lost,
+		silence:     w.silence,
+		action:      actionWord(w.acted.Kind),
+		reason:      w.acted.Reason,
+		wait:        w.acted.Wait,
+		cost:        w.acted.Cost,
 	}
 	if !w.first.IsZero() && !w.began.IsZero() {
 		facts.ttft = w.first.Sub(w.began)
 	}
 	w.mu.Unlock()
-	facts.arms, facts.waste, facts.note = w.race.spend(w.arm)
+	facts.arms, facts.waste, facts.note, facts.refused = w.race.spend(w.arm)
 	facts.hedged = facts.arms > 1
+	// THE LOSER OF A RACE SAYS SO IN WORDS UNTIL THERE IS A FIELD FOR IT. The
+	// recovery design (§7 row R4) wants the outcome itself marked `exhaust`;
+	// the field is internal/calllog's and lands with R0. Meanwhile the row's
+	// own note carries the sentence, which is enough for a census to stop
+	// counting a won race as 1,204 failures — and the note is only written
+	// where the race has nothing else to say, because a race that DID have
+	// something to say about this call is saying the more specific thing.
+	if facts.exhaust && facts.note == "" {
+		facts.note = exhaustNote
+	}
 	return facts, true
 }
+
+// exhaustNote is what a losing arm's row says about itself. It is a sentence
+// rather than a code because [waitFacts.note] is prose by contract, and it is
+// spelled once so a census can key on it exactly.
+const exhaustNote = "cancelled: lost the race"
 
 // actionWord is the controller's verdict as the log spells it. It is a table
 // rather than a method on [control.Kind] because the words are this layer's

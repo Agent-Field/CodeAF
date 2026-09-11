@@ -124,7 +124,11 @@ func TestAnAdaptiveRunNodeCarriesTheMediaVerbsAndLacksThemWithoutModels(t *testi
 // decides whether a call SAVED something — one question, one answer.
 func TestTheLandingBeltKeepsEveryVerbThatSavesADeliverable(t *testing.T) {
 	agent, _ := newMediaAgent(t, &scriptedMedia{}, nil)
-	landing := toolNameSet(landingBelt(agent.tools))
+	// THE NARROWING ONLY EVER RUNS OVER A NODE'S BELT, and a node shelves nothing
+	// (tools_capabilities.go states why). So the fixture hands it the whole belt
+	// this machine builds rather than the conversation's carried half, which is
+	// the set a node would actually be holding when it is told to land.
+	landing := toolNameSet(landingBelt(agent.offeredTools()))
 
 	for _, verb := range []string{"write", "edit", "generate_image", "speak"} {
 		if !landing[verb] {
@@ -155,7 +159,7 @@ func TestTheLandingBeltKeepsEveryVerbThatSavesADeliverable(t *testing.T) {
 // the moment the belt became conditional.
 func TestTheLandingInstructionNamesExactlyTheHandsItKept(t *testing.T) {
 	withMedia, _ := newMediaAgent(t, &scriptedMedia{}, nil)
-	said := landingInstruction(landingBelt(withMedia.tools))
+	said := landingInstruction(landingBelt(withMedia.offeredTools()))
 	for _, verb := range []string{"generate_image", "speak"} {
 		if !strings.Contains(said, verb) {
 			t.Errorf("the landing instruction never names %s, which the landing belt carries:\n%s", verb, said)
@@ -334,7 +338,7 @@ func TestTheCuttingVerbTravelsOnFfmpegAndNotOnAnyModel(t *testing.T) {
 	// node ordered to save the film it has been cutting needs the verb that
 	// joins one.
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) { config.InTask = true })
-	if !toolNameSet(landingBelt(agent.tools))["edit_video"] {
+	if !toolNameSet(landingBelt(agent.offeredTools()))["edit_video"] {
 		t.Error("the landing belt dropped edit_video — a node landing a cut cannot join one")
 	}
 }

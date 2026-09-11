@@ -125,23 +125,45 @@ func (d *hostDuty) claim(key string) bool {
 // land is deferred under every trip: the latch is released and the clock
 // stamped however the trip ended, and a panic is recorded and mentioned here
 // rather than left for the guard above to swallow.
+//
+// THE LATCH IS LET GO OF LAST, AND THE ORDER IS THE OBSERVABLE COMPLETION. A
+// released latch is the only thing outside this goroutine that can say the trip
+// is over — the next beat asks on it, and a test waits on it — so everything
+// this fault owes anybody has to have happened before it moves: the fault
+// recorded, and the one sentence queued. Releasing first left both of those in
+// flight after the duty read as landed, which is a fault a beat could race past
+// and a test could not wait for without guessing at a duration.
 func (d *hostDuty) land(scope, key string) {
 	recovered := recover()
-	tell, what, first := d.release(key, recovered != nil)
+	// Publication owns the latch until it finishes, even when the notice sink
+	// itself panics and the outer guard must record that failure.
+	defer d.release(key)
 	if recovered == nil {
 		return
 	}
 	_ = guard.Note(scope, recovered)
+	tell, what, first := d.faulted()
 	if first && tell != nil {
 		tell(fmt.Sprintf("%s over this connection fell over once and will be tried again", what))
 	}
 }
 
-// release lets go of key's latch and stamps the clock, and — when the trip
-// faulted — answers whether this is the first fault this duty has to mention,
-// with what to say it through. It is the locked half of [hostDuty.land], split
-// out so the mutex is held from a defer and let go before anything is said.
-func (d *hostDuty) release(key string, faulted bool) (tell func(string), what string, first bool) {
+// faulted marks that this duty has a fault to mention and answers whether this
+// caller is the one to mention it, with what to say it through. It is separate
+// from [hostDuty.release] so the sentence goes out BEFORE the latch does, and it
+// holds the mutex from a defer and says nothing while holding it.
+func (d *hostDuty) faulted() (tell func(string), what string, first bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	first = !d.said
+	if first {
+		d.said = true
+	}
+	return d.tell, d.what, first
+}
+
+// release lets go of key's latch and stamps the clock, however the trip ended.
+func (d *hostDuty) release(key string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.ended == nil {
@@ -149,11 +171,6 @@ func (d *hostDuty) release(key string, faulted bool) (tell func(string), what st
 	}
 	d.out[key] = false
 	d.ended[key] = time.Now()
-	first = faulted && !d.said
-	if first {
-		d.said = true
-	}
-	return d.tell, d.what, first
 }
 
 // hostNews joins the duties' sentences onto the connection's own one-off notice,

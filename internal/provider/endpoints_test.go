@@ -162,32 +162,52 @@ func TestAnAllProvidersIgnoredRefusalClimbsTheLadder(t *testing.T) {
 	}
 }
 
-func TestRefusalFallsBackToTheConfiguredModelAsConfigured(t *testing.T) {
-	// Nothing about the request's shape is servable on the first model; the
-	// second one takes it whole.
+// THE LADDER ENDS AT THE REQUEST'S SHAPE AND NEVER REACHES A MODEL.
+//
+// It used to walk [Client.fallbackChain] at its foot: a model hop inside the
+// adapter, on a budget nobody above could see, while internal/session's turn
+// loop walked the same list for the same reason (docs/design/recovery/DESIGN.md
+// §2.2). Live evidence from 2026-09-10 22:32 says what it cost beyond the double
+// spend — the hop carried the ORIGINAL model's `provider.only` across and was
+// answered `404 No allowed providers are available for the selected model`,
+// because a lane pin is per model and nothing re-derived it.
+//
+// So a request nothing can serve comes back as a DIAGNOSIS about its shape, with
+// the chain untouched, and the layer that owns the turn decides whether another
+// model is worth asking (internal/session's nextFallback, reading
+// [ModelsTried]). internal/taxonomy's classifier_law_test.go fails the build on
+// a second reader of the chain.
+func TestTheLadderNeverWalksToAnotherModel(t *testing.T) {
 	client, recorded := refusingClient(t, func(body map[string]any) bool {
 		return body["model"] == "other/model"
 	}, Config{Fallbacks: []string{"other/model"}})
 
 	var notices []string
-	response, err := client.CompleteWithMessages(noticeContext(context.Background(), &notices),
+	_, err := client.CompleteWithMessages(noticeContext(context.Background(), &notices),
 		userMessages("hi"), toolRequest()...)
-	if err != nil {
-		t.Fatalf("the fallback should have answered: %v", err)
+	if err == nil {
+		t.Fatal("every endpoint serving this model refused; the call should have")
 	}
-	if response == nil {
-		t.Fatal("no response")
+	var refusal *RefusalError
+	if !errors.As(err, &refusal) {
+		t.Fatalf("err = %T (%v), want the ladder's own diagnosis", err, err)
 	}
-	last := notices[len(notices)-1]
-	if !strings.Contains(last, "Falling back to other/model") {
-		t.Fatalf("last notice = %q, want the fallback named", last)
+	// NOT ONE REQUEST NAMED THE FALLBACK, and the fallback was configured and
+	// would have answered — which is exactly what makes this an assertion rather
+	// than an accident of the fixture.
+	for index := range recorded.bodies {
+		if model, _ := recorded.body(index)["model"].(string); model != "sim/model" {
+			t.Fatalf("request %d went out on %q — the adapter changed the model", index, model)
+		}
 	}
-	// THE FALLBACK IS TRIED AS CONFIGURED. The strips above were evidence about
-	// a different model's endpoints, and carrying them over would answer on the
-	// fallback with no tools for a reason that never applied to it.
-	final := recorded.body(len(recorded.bodies) - 1)
-	if final["tools"] == nil || final["max_tokens"] == nil {
-		t.Fatalf("fallback attempt = %#v, want the request as configured", final)
+	for _, notice := range notices {
+		if strings.Contains(notice, "Falling back") {
+			t.Fatalf("notices = %v, want nothing said about a model this layer does not change", notices)
+		}
+	}
+	// AND THE DIAGNOSIS IS ABOUT THE SHAPE, which is the half this layer owns.
+	if len(refusal.Stripped) == 0 {
+		t.Fatalf("the diagnosis named nothing it took off: %v", err)
 	}
 }
 
@@ -213,7 +233,7 @@ func TestConfiguredFallbacksOutrankTheCatalogsNearestModel(t *testing.T) {
 
 func TestExhaustedChainEndsInADiagnosisRatherThanA404(t *testing.T) {
 	client, _ := refusingClient(t, func(map[string]any) bool { return false },
-		Config{Fallbacks: []string{"other/model"}})
+		Config{Model: "sim/exhausted-price", Fallbacks: []string{"other/model"}, ModelPrice: knownModelPrice()})
 
 	_, err := client.CompleteWithMessages(context.Background(), userMessages("hi"), toolRequest()...)
 	if err == nil {
@@ -225,13 +245,12 @@ func TestExhaustedChainEndsInADiagnosisRatherThanA404(t *testing.T) {
 	}
 	message := err.Error()
 	for _, want := range []string{
-		"sim/model",           // which model
+		"sim/exhausted-price", // which model
 		"tools", "max_tokens", // what was sent
-		"provider.require_parameters", // including the economy nobody asked for
-		"retried without",             // what was taken off
-		"also tried other/model",      // and what else was tried
-		"No endpoints found",          // the provider's own words, kept
-		"/model",                      // and the one thing a person can do
+		"provider.require_parameters", "provider.max_price", // including the economies nobody asked for
+		"retried without",    // what was taken off
+		"No endpoints found", // the provider's own words, kept
+		"/model",             // and the one thing a person can do
 	} {
 		if !strings.Contains(message, want) {
 			t.Fatalf("terminal error = %q, want it to name %q", message, want)
@@ -418,46 +437,41 @@ func pacedChainClient(t *testing.T, handler http.Handler, fallbacks []string) *C
 	return client
 }
 
-func TestPacingThatNeverClearsFallsBackToAnotherModelAndSaysSo(t *testing.T) {
-	handler, recorded := pacingUntil(map[string]bool{"sim/model": true})
-	client := pacedChainClient(t, handler, []string{"other/model"})
+// A POOL THAT WOULD NOT STOP PACING US COMES BACK WHOLE, CHAIN OR NO CHAIN.
+//
+// There was a second door here — `recoverFromPacing` — which walked the fallback
+// models when the attempt loop's patience ran out. It was the other half of the
+// two-model-hop defect (docs/design/recovery/DESIGN.md §2.2) and it is deleted.
+// The 429 now travels back exactly as it arrived: the response boundary reads it
+// as the wire, the turn spends its own budget on it, and if that budget runs out
+// the ONE model hop in this build takes it to the next model knowing what has
+// already been tried.
+//
+// A CHAIN CHANGES NOTHING HERE, which is the assertion. Both halves of this test
+// used to be two tests with opposite outcomes.
+func TestPacingThatNeverClearsComesBackForTheLayerThatOwnsTheTurn(t *testing.T) {
+	for _, fallbacks := range [][]string{nil, {"other/model"}} {
+		handler, recorded := pacingUntil(map[string]bool{"sim/model": true})
+		client := pacedChainClient(t, handler, fallbacks)
 
-	var notices []string
-	response, err := client.CompleteWithMessages(
-		noticeContext(context.Background(), &notices), userMessages("hi"))
-	if err != nil {
-		t.Fatalf("the chain should have landed the call: %v", err)
-	}
-	if response == nil {
-		t.Fatal("no response")
-	}
-	if want := "Retry 1/1: Falling back to other/model"; len(notices) != 1 || notices[0] != want {
-		t.Fatalf("notices = %v, want exactly [%q]", notices, want)
-	}
-	// The last request is the one that answered, and it rode the fallback.
-	last := recorded.body(len(recorded.bodies) - 1)
-	if got, _ := last["model"].(string); got != "other/model" {
-		t.Fatalf("the answering request named %q, want other/model", got)
-	}
-}
-
-// NO CHAIN IS NO HOP. A build with nothing to fall back to surfaces the
-// provider's own refusal, exactly as it did before this door existed.
-func TestPacingWithoutAChainSurfacesTheProvidersRefusal(t *testing.T) {
-	handler, _ := pacingUntil(map[string]bool{"sim/model": true})
-	client := pacedChainClient(t, handler, nil)
-
-	var notices []string
-	_, err := client.CompleteWithMessages(
-		noticeContext(context.Background(), &notices), userMessages("hi"))
-	if err == nil {
-		t.Fatal("every attempt was paced; the call should have failed")
-	}
-	if !strings.Contains(err.Error(), "429") {
-		t.Fatalf("the error %q no longer names what the provider said", err)
-	}
-	if len(notices) != 0 {
-		t.Fatalf("notices = %v, want nothing said about a chain that does not exist", notices)
+		var notices []string
+		_, err := client.CompleteWithMessages(
+			noticeContext(context.Background(), &notices), userMessages("hi"))
+		if err == nil {
+			t.Fatalf("fallbacks %v: every attempt was paced; the call should have failed", fallbacks)
+		}
+		if !strings.Contains(err.Error(), "429") {
+			t.Fatalf("fallbacks %v: the error %q no longer names what the provider said", fallbacks, err)
+		}
+		if len(notices) != 0 {
+			t.Fatalf("fallbacks %v: notices = %v, want nothing said about a model this layer does not change",
+				fallbacks, notices)
+		}
+		for index := range recorded.bodies {
+			if model, _ := recorded.body(index)["model"].(string); model != "sim/model" {
+				t.Fatalf("fallbacks %v: request %d went out on %q", fallbacks, index, model)
+			}
+		}
 	}
 }
 

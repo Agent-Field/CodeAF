@@ -21,6 +21,8 @@ func TestAdaptiveCompletionTimeoutScalesAndBoundsRequests(t *testing.T) {
 		configured time.Duration
 		want       time.Duration
 	}{
+		{name: "no requested ceiling keeps the operational floor", maxTokens: 0, want: 5 * time.Minute},
+		{name: "no requested ceiling keeps a longer configured floor", maxTokens: 0, configured: 10 * time.Minute, want: 10 * time.Minute},
 		{name: "floor", maxTokens: 4_096, want: 5 * time.Minute},
 		{name: "scaled", maxTokens: 32_768, want: 512 * time.Second},
 		{name: "configured floor", maxTokens: 4_096, configured: 10 * time.Minute, want: 10 * time.Minute},
@@ -516,6 +518,12 @@ func TestAdapterErrorsKeepTheStatusCodeTheHarnessClassifiesOn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// THE SCHEDULE IS NOT WHAT THIS IS ABOUT. A call that names no role is bounded
+	// by `lane.RoleUnknown`'s give-up — the conservative background reading, four
+	// and a half minutes — and a provider that answers 429 forever really will
+	// spend it. The waits are stubbed so this proves what it is about (the status
+	// survives to the harness) rather than how long a backoff ladder is.
+	client.wait = func(context.Context, time.Duration) error { return nil }
 	_, err = client.CompleteWithMessages(context.Background(), userMessages("a"))
 	if err == nil || !strings.Contains(err.Error(), "API error (429)") {
 		t.Fatalf("error = %v, want a status the provider taxonomy can read", err)

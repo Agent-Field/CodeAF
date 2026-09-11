@@ -59,8 +59,11 @@ type fakeAgent struct {
 	levels map[string]string
 
 	interrupts int
-	compacts   int
-	closes     int
+	// stopDoor is the door the last stop named, so a test can tell a person's
+	// own stop from machinery closing the conversation (stopcause.go).
+	stopDoor session.StopDoor
+	compacts int
+	closes   int
 
 	consents  []string
 	standings []session.StandingAnswer
@@ -211,10 +214,13 @@ func (f *fakeAgent) finish(stream chan session.Event) {
 	}
 }
 
-func (f *fakeAgent) Interrupt() {
+func (f *fakeAgent) Interrupt() { f.InterruptFor(session.StopByPerson) }
+
+func (f *fakeAgent) InterruptFor(door session.StopDoor) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.interrupts++
+	f.stopDoor = door
 }
 
 func (f *fakeAgent) Compact(context.Context) error {
@@ -222,6 +228,14 @@ func (f *fakeAgent) Compact(context.Context) error {
 	defer f.mu.Unlock()
 	f.compacts++
 	return f.compactBy
+}
+
+// closed is how many times this agent was told the conversation is over, read
+// under its own lock because the engine goroutine writes it.
+func (f *fakeAgent) closed() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.closes
 }
 
 func (f *fakeAgent) Close() error {
@@ -1325,17 +1339,20 @@ func TestAStandingCardCrossesTheWireAndIsAnsweredBack(t *testing.T) {
 	}
 
 	l.ok(2, MethodStandingResolve, StandingArgs{ID: 7, Answer: session.StandingAnswer{Approved: true}})
-	agent.mu.Lock()
-	defer agent.mu.Unlock()
-	if len(agent.standings) != 1 {
-		t.Fatalf("the answer did not reach the engine's agent: %+v", agent.standings)
-	}
-	if !agent.standings[0].Approved {
-		t.Fatalf("the answer arrived as %+v", agent.standings[0])
-	}
-	if len(agent.consents) != 1 || agent.consents[0] != "standing:7:yes" {
-		t.Fatalf("the card the answer was for did not travel: %q", agent.consents)
-	}
+	// Release the fake before the next event asks the engine for fresh facts.
+	func() {
+		agent.mu.Lock()
+		defer agent.mu.Unlock()
+		if len(agent.standings) != 1 {
+			t.Fatalf("the answer did not reach the engine's agent: %+v", agent.standings)
+		}
+		if !agent.standings[0].Approved {
+			t.Fatalf("the answer arrived as %+v", agent.standings[0])
+		}
+		if len(agent.consents) != 1 || agent.consents[0] != "standing:7:yes" {
+			t.Fatalf("the card the answer was for did not travel: %q", agent.consents)
+		}
+	}()
 	stream <- session.Event{Kind: session.EventStandingUpdate, Standing: &session.StandingNotice{Update: "stood", Text: "watching CI"}}
 	news := decode[EventWire](t, l.await(func(f Frame) bool {
 		return f.Kind == "event" && f.ID == ref.Stream
@@ -1411,4 +1428,13 @@ func TestServeSaysWhenTheStandingDoorIsMissing(t *testing.T) {
 	if result := l.call(2, MethodStandingSave, standingCard().Item); result.Error == "" {
 		t.Error("Standing.Save answered without a store behind it")
 	}
+}
+
+// door is the door the last stop named, read the way every other reading of
+// this double is: under its own lock, because the stop arrives on whichever
+// goroutine ended the conversation.
+func (f *fakeAgent) door() session.StopDoor {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.stopDoor
 }

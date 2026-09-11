@@ -342,7 +342,7 @@ func TestAParentIsReEnteredWithItsPiecesReport(t *testing.T) {
 		t.Fatalf("the model was asked %d times, want a turn for the piece's report", got)
 	}
 	last := userTextIn(completer.request(completer.requests() - 1))
-	for _, want := range []string{"the law is in section four", "finished"} {
+	for _, want := range []string{"the law is in section four", "done"} {
 		if !strings.Contains(last, want) {
 			t.Fatalf("the report the parent was re-entered with reads %q, want %q in it", last, want)
 		}
@@ -609,11 +609,11 @@ func TestSteeringAParkedParentWakesItAndArrivesInItsNextTurn(t *testing.T) {
 	}
 	waitFor(t, "the parent to park on its piece", nest.parent.waitingOnItsPieces)
 
-	waiting, err := nest.session.SteerTask(nest.parent.id, "the config lives under etc/")
+	receipt, err := nest.session.SteerTask(nest.parent.id, "the config lives under etc/")
 	if err != nil {
 		t.Fatalf("the person cannot say anything to a parked parent: %v", err)
 	}
-	if !waiting {
+	if !receipt.Waiting {
 		t.Fatal("the door answered that the parent was working, so every surface would promise the line lands at a step it is not going to take")
 	}
 
@@ -639,24 +639,36 @@ func TestSteeringAParkedParentWakesItAndArrivesInItsNextTurn(t *testing.T) {
 	}
 }
 
-// AND A LINE NOBODY CAN READ ANY MORE IS REFUSED OUT LOUD. The worker closes the
-// instant its last piece is folded in; a sentence handed to it after that goes
-// onto a queue nothing will ever drain, and the person has to hear that rather
-// than watch a room that says it arrived.
-func TestALineSteeredAtAClosedWorkerIsRefusedRatherThanSwallowed(t *testing.T) {
+// AND A LINE NOBODY CAN READ RIGHT NOW IS HELD ON THE TASK'S RECORD, NEVER
+// SWALLOWED. The worker closes the instant its last piece is folded in, and a
+// sentence handed to it after that would go onto a queue nothing will ever
+// drain — but the NODE is still running, with a check and a landing in front of
+// it, so the words are kept against the work instead of being sent back
+// (assignment.go). What the person is owed is that they were not dropped and
+// that nothing lands as done over them; the receipt says both.
+func TestALineSteeredAtAClosedWorkerIsHeldRatherThanSwallowed(t *testing.T) {
 	nest := newNest(t, nil, nil)
 	if err := nest.node.Close(); err != nil {
 		t.Fatalf("closing the worker: %v", err)
 	}
-	waiting, err := nest.session.SteerTask(nest.parent.id, "one more thing")
-	if err == nil {
-		t.Fatal("the person's line was taken by an agent that will never read it")
+	receipt, err := nest.session.SteerTask(nest.parent.id, "one more thing")
+	if err != nil {
+		t.Fatalf("the person's line was refused while the node is still running: %v", err)
 	}
-	if waiting {
-		t.Fatal("a refused line was reported as one that woke something")
+	if !receipt.Held || receipt.Waiting {
+		t.Fatalf("receipt = %+v, want it held on the record rather than reported as delivered", receipt)
 	}
-	if !strings.Contains(err.Error(), "nobody in it to read your line") {
-		t.Fatalf("the refusal reads %q, want it to say there is nobody in there", err)
+	if receipt.Direction == 0 {
+		t.Fatal("a held line was given no receipt id, so no worker could ever cite it")
+	}
+	if !strings.Contains(receipt.Landing, "being checked") {
+		t.Fatalf("the receipt says %q, want the engine's own sentence about what was kept", receipt.Landing)
+	}
+	// AND THE LANDING CANNOT PUBLISH OVER IT. This is the whole of what "held"
+	// buys the person: the words are on the node, unread, and the boundary a
+	// landing has to claim refuses.
+	if claim := nest.parent.claimPublication(); claim.granted {
+		t.Fatal("a landing claimed the publication boundary with the person's words unread")
 	}
 	if steeringContains(nest.node, "one more thing") {
 		t.Fatal("the line was queued on the closed worker anyway")
@@ -974,7 +986,7 @@ func TestAnAcceptedFamilyLandsEveryGenerationsWork(t *testing.T) {
 	// nothing to lay anywhere — and the ledger it settles with is still the
 	// whole of the subtree under it.
 	partTree := taskTree{dir: tree.dir, ground: tree.dir, merge: mergeInPlace, mode: TaskModeFolder}
-	partLedger, merge, _, _ := landHome(part, partTree, []string{"part.md"})
+	partLedger, merge, _, _ := landHome(part, partTree, []string{"part.md"}, false)
 	part.finish("wrote the note", partLedger, "", merge)
 	graph.complete(part, TaskDone)
 
@@ -983,8 +995,8 @@ func TestAnAcceptedFamilyLandsEveryGenerationsWork(t *testing.T) {
 	}
 
 	// AND THE FAMILY LANDS NEEDING A LOOK, which merges nothing at all.
-	kept, keptLedger := keepHome(family, tree, []string{"notes.md"})
-	family.finish(needsLookLead+"nobody could judge this", keptLedger, "", kept)
+	kept, keptLedger := keepHome(family, tree, []string{"notes.md"}, false)
+	family.finish(yourCallLead(TaskFacts{Merge: kept})+"nobody could judge this", keptLedger, "", kept)
 	graph.complete(family, TaskUnverified)
 	if _, err := os.Stat(filepath.Join(ground, "part.md")); !os.IsNotExist(err) {
 		t.Fatal("work that was never accepted was laid over the person's folder")

@@ -287,6 +287,12 @@ const (
 	bandOrderKeys        = 100 // what the keyboard does here, always last
 )
 
+// THE REGISTRY OUTLIVED THE RESTING CARD THAT ASSEMBLED MOST OF THESE BANDS.
+// The grid (homegrid.go) retired that card, and the panels take what they need
+// from the reading rather than from here; but three surfaces still draw every
+// band a subject has — the card beside the typed search ([app.homeCardRows]),
+// the standing item's card ([StandingItemCard]) and the phone sheet
+// ([app.homeSheetBody]) — so it stays for as long as one of them asks.
 var (
 	homeBandRegistry []homeBand
 	homeBandsSorted  bool
@@ -447,6 +453,22 @@ func (a *app) bandFold(ctx bandContext, band string, rows []string, show int, wh
 // The groups are joined with ONE BLANK ROW between them and none after the
 // last, which is the separation the card uses between its bands, one rung down.
 func (a *app) bandFoldGroups(ctx bandContext, band string, groups [][]string, show int, what string) []string {
+	return a.bandFoldGroupsHiding(ctx, band, groups, show, len(groups)-show, what)
+}
+
+// bandFoldGroupsHiding is [app.bandFoldGroups] for a band whose GROUPS are not
+// the things its fold line counts.
+//
+// A group is one entry of the band for every band but one, and there the two
+// numbers are the same number. The work band is the exception: it groups by
+// FAMILY so that a fold can never separate a child from the parent that explains
+// it, and what a person reading `▸ 3 more tasks` is deciding about is the pieces
+// of work behind the line rather than the runs they belong to
+// (homeband_work.go, hometree.go's [homeWorkHidden]). So the caller that knows
+// the difference says the count, and everything else about the fold — where it
+// cuts, the mark it wears, the row it records for the pointer — is the one
+// implementation.
+func (a *app) bandFoldGroupsHiding(ctx bandContext, band string, groups [][]string, show, hidden int, what string) []string {
 	join := func(groups [][]string) []string {
 		var out []string
 		for _, group := range groups {
@@ -468,7 +490,7 @@ func (a *app) bandFoldGroups(ctx bandContext, band string, groups [][]string, sh
 	if !folded {
 		rest = groups
 	}
-	label := bandFoldWord(len(groups)-show, what, folded)
+	label := bandFoldWord(hidden, what, folded)
 	out := join(rest)
 	out = append(out, ctx.pal.dim(fit(bandFoldMark(ctx.pal, folded)+" "+label, ctx.width)))
 	a.noteBandFoldLine(band, ctx.subject, strings.TrimSpace(label))

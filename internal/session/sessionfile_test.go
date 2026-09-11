@@ -28,8 +28,11 @@ func TestSessionFileRoundTrip(t *testing.T) {
 			return textResponse("nothing in there yet"), nil
 		},
 	}}
-	first, _ := newTestAgent(t, writer, func(config *Config) { config.SessionFile = path })
+	// Name requests are independent of the foreground tool/answer sequence.
+	namer := naming(writer, namerReply{title: "workspace inventory"})
+	first, _ := newTestAgent(t, namer, func(config *Config) { config.SessionFile = path })
 	collect(t, mustSubmit(t, first, "what is in the workspace?"))
+	waitTitleJob(t, first)
 	if err := first.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
@@ -73,7 +76,7 @@ func TestSessionFileRoundTrip(t *testing.T) {
 			t.Fatal("reopening the session rewrote the header")
 		}
 	}
-	// The session named itself after its first completed turn, so one line is
+	// The background naming has settled independently of the turn, so one line is
 	// the title (title.go) and is not part of the transcript. Counting it here
 	// rather than filtering it out silently is the point: the journal holds
 	// exactly the messages plus the facts about the session itself.
@@ -129,8 +132,21 @@ func TestSessionFileRoundTrip(t *testing.T) {
 		t.Fatalf("journal holds %d call lines of the conversation's own, want one per answered request (2)",
 			called-errands)
 	}
+	// AND ONE `took` LINE PER FINISHED CALL (sessionfile.go's appendTook). This
+	// turn asked ls once, so the journal holds that figure beside the tool
+	// result — a fact about the session, not a message. Zero when the call
+	// finished under a millisecond (emptiness law); never more than one.
+	tooks := 0
+	for _, line := range lines {
+		if strings.Contains(line, `"type":"took"`) {
+			tooks++
+		}
+	}
+	if tooks > 1 {
+		t.Fatalf("journal holds %d took lines, want at most 1 for one finished call", tooks)
+	}
 	// system is never journaled: it is rendered fresh on every open.
-	if got, want := len(lines)-titles-used-called, 1+len(want)-1; got != want {
+	if got, want := len(lines)-titles-used-called-tooks, 1+len(want)-1; got != want {
 		t.Fatalf("journal has %d message lines, want %d (header + every message but system)", got, want)
 	}
 }

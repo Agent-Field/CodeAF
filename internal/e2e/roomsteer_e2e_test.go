@@ -33,7 +33,7 @@ import (
 // The journey is the one the issue is about (#252):
 //
 //	/task solo <brief>      one worker, started from the box
-//	ctrl+t, enter           into that node's page
+//	alt+t, enter            into that node's page
 //	<a correction>, enter   the person bending work that is already running
 //
 // and the three things it proves: the correction lands as an elbow with the
@@ -188,7 +188,7 @@ func openRoom(t *testing.T, r *rig) {
 	// carrying on made a run's outcome a function of how loaded the machine was,
 	// and waiting for the walk's own words alone read the settle row — a perfectly
 	// ordinary frame — as the column having failed to take the keyboard.
-	r.keys("C-t")
+	r.keys("M-t")
 	r.waitForAny(20*time.Second, railHoldWalk, railHoldNeedsLook)
 	r.keys("Enter")
 	r.waitFor(30*time.Second, "esc/← main")

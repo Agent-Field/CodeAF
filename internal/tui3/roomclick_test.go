@@ -37,8 +37,10 @@ func clickRailNode(t *testing.T, a *app, id uint64) {
 	top := a.bodyTop()
 	for y := top; y < top+a.viewHeight(); y++ {
 		if node := a.railNodeAt(y); node != nil && node.id == id {
-			// Past the seam and past the state cell, on the title: the two cells
-			// before it are the column's handle and the one after them folds.
+			// Past the seam and past the state cell, on the title. The two cells
+			// before it are the column's handle at this width, and the one after
+			// them is the fold while the pointer is on it (task.go's
+			// [app.railLead]) — this press wants neither.
 			drive(t, a, tea.MouseClickMsg{X: a.bodyWidth() + ansi.StringWidth(railSeam) + 6,
 				Y: y, Button: tea.MouseLeft})
 			drive(t, a, tea.MouseReleaseMsg{X: a.bodyWidth() + ansi.StringWidth(railSeam) + 6,
@@ -139,21 +141,25 @@ func TestAPressOnNothingInTheConversationDoesNothing(t *testing.T) {
 // that end is inside the roster's own columns. The rail claims every press in
 // those columns, so a header read after it would be dead at exactly the cells
 // carrying the words.
-func TestTheRoomHeaderIsTheWayOutAtBothEnds(t *testing.T) {
+func TestTheRoomHeaderBackLabelOpensAndWhitespaceIsInert(t *testing.T) {
 	a, _, _ := roomApp(t)
-	for _, x := range []int{0, 2, a.width / 2, a.width - 2} {
-		clickRail(t, a, 0)
+	clickRail(t, a, 0)
+	_ = a.roomHeadRows(a.width)
+	if !a.roomBackSpan.pressable() {
+		t.Fatal("header omitted its Back control")
+	}
+	for _, x := range []int{0, a.width / 2, a.width - 1} {
+		drive(t, a, tea.MouseClickMsg{X: x, Y: a.roomHeadRow(), Button: tea.MouseLeft})
+		drive(t, a, tea.MouseReleaseMsg{X: x, Y: a.roomHeadRow(), Button: tea.MouseLeft})
 		if !a.roomOpen() {
-			t.Fatal("the rail did not open a room")
+			t.Fatalf("blank header space at %d navigated", x)
 		}
-		if head := plain(a.roomHead(a.width)); !strings.Contains(head, roomBackWord) {
-			t.Fatalf("the pinned header does not name the way out:\n%q", head)
-		}
-		drive(t, a, tea.MouseClickMsg{X: x, Y: 0, Button: tea.MouseLeft})
-		drive(t, a, tea.MouseReleaseMsg{X: x, Y: 0, Button: tea.MouseLeft})
-		if a.roomOpen() {
-			t.Fatalf("a press on the header at column %d did not return to the conversation", x)
-		}
+	}
+	x := a.roomBackSpan.from + 1
+	drive(t, a, tea.MouseClickMsg{X: x, Y: a.roomHeadRow(), Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: x, Y: a.roomHeadRow(), Button: tea.MouseLeft})
+	if a.roomOpen() {
+		t.Fatal("Back label failed to return to the conversation")
 	}
 }
 
@@ -212,28 +218,36 @@ func TestTheColumnsStowLineStillAnswersFromInsideARoom(t *testing.T) {
 	}
 }
 
-// THE IN-ROOM APPROVAL ROW STILL ANSWERS A PRESS (roomapproval.go). It is read
+// THE BLOCK STILL ANSWERS A PRESS FROM INSIDE A ROOM (question.go). It is read
 // above the body, so nothing about the body's miss can reach it — this is the
 // test that keeps the ladder in that order.
-func TestTheRoomApprovalRowStillAnswersAPress(t *testing.T) {
+//
+// The row used to be the room's own (roomapproval.go, deleted): a second drawing
+// of one decision, with two chords of its own. A design's page is a question, and
+// a question is drawn once, above the box, wherever the person is standing.
+func TestTheBlockStillAnswersAPressFromInsideARoom(t *testing.T) {
 	a, agent := awaitingDesign(t)
-	at := -1
+	// Laying the chrome out is what writes the bands; reading them before it
+	// would be reading where the answers were drawn on the previous frame.
+	chromeText(a)
+	at, want := -1, session.HarnessSaveKey+"  save it"
 	for y := 0; y < a.height; y++ {
-		if mark, ok := a.chromeAt(y); ok && mark.kind == chromeRoomApproval && mark.index == 1 {
+		mark, ok := a.chromeAt(y)
+		if !ok || mark.kind != chromeQuestion {
+			continue
+		}
+		if rows := a.questionRows(a.width); mark.index < len(rows) && strings.Contains(plain(rows[mark.index]), want) {
 			at = y
 			break
 		}
 	}
 	if at < 0 {
-		t.Fatal("the design's room drew no approval row to press")
+		t.Fatalf("the design's room drew no answer row to press:\n%s", chromeText(a))
 	}
-	if len(a.roomApprovalTaps) == 0 {
-		t.Fatal("the approval row recorded no answers to press")
-	}
-	drive(t, a, tea.MouseClickMsg{X: a.roomApprovalTaps[0].span.from, Y: at, Button: tea.MouseLeft})
-	drive(t, a, tea.MouseReleaseMsg{X: a.roomApprovalTaps[0].span.from, Y: at, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseClickMsg{X: 4, Y: at, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: 4, Y: at, Button: tea.MouseLeft})
 	if len(agent.answers) == 0 {
-		t.Fatal("a press on the approval row answered nothing")
+		t.Fatal("a press on the block's answer row answered nothing")
 	}
 	if !a.roomOpen() {
 		t.Fatal("answering the design's question walked out of its room")
@@ -435,7 +449,7 @@ func TestTheRoomsMarkIsOnTheRosterAtEveryWidth(t *testing.T) {
 	a.railWiden(false)
 
 	// AND OVER THE BODY, which is the roster's third shape.
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 	if !a.railStanding() {
 		t.Fatal("ctrl+t raised no roster")
 	}

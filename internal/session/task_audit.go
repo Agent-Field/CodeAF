@@ -122,7 +122,8 @@ package session
 //	verified          the work's own account, with the evidence sentence under it
 //	                  — the state already says done
 //	refuted out       "incomplete — " and the plain gaps, every round of them
-//	nobody could say  "finished, but needs your look — " and what the checker said
+//	nobody could say  the question the row is asking ([yourCallLead]) and what
+//	                  the checker said
 //
 // The reason is not squeamishness. The person did not ask for an audit; they
 // asked for a report on eleven companies. "REFUTED" tells them about the
@@ -155,7 +156,6 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
-	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // The auditor is a ROLE, registered from the file that makes the call, exactly
@@ -247,6 +247,11 @@ const (
 	// much was left behind so the auditor knows to ask a narrower question rather
 	// than believing it has seen everything.
 	auditResultLimit = 8000
+
+	// auditReadContentLimit leaves room under auditResultLimit for bare read's
+	// exact line range and continuation footer. It changes only the page size;
+	// paths and offsets keep the ordinary read contract.
+	auditReadContentLimit = 7500
 
 	// auditRestoreEntries bounds the CLEAN RESTORE a verdict is reached in when
 	// the workspace is not a repository and the restore has to be copied by hand
@@ -386,10 +391,10 @@ const (
 	// not say who looked, because from the person's chair it does not matter:
 	// the news is that the work is not finished and here is what is missing.
 	incompleteLead = "incomplete — "
-	// needsLookLead opens the node nobody could judge. "Finished, but" is the
-	// honest half nobody else says: the work RAN, it is sitting on a branch, and
-	// the only thing missing is somebody's eyes.
-	needsLookLead = "finished, but needs your look — "
+	// yourCallDash joins a your-call landing's question to the detail under it,
+	// and it is the only part of that lead spelled in this file: the question
+	// itself is [yourCallLead]'s, read off the projection.
+	yourCallDash = " — "
 	// repairedAgainLead opens the second and later rounds' gaps, so that a
 	// report carrying three sets of evidence reads as three attempts rather than
 	// as one auditor repeating itself.
@@ -399,7 +404,7 @@ const (
 	// [treeRefused]). It says the two things that are true and nothing else: the
 	// decision stands, and the work is still where the sentence after it names.
 	//
-	// IT IS NOT [needsLookLead]. That lead asks somebody a question, and the
+	// IT IS NOT [yourCallLead]. That lead asks somebody a question, and the
 	// whole of this landing is that the question has been answered and asking it
 	// again would get the same refusal from the same disk (#513).
 	keptWhereItIsLead = "taken as it stands, and it could not be brought home, so the work stays where it is — "
@@ -431,6 +436,42 @@ const (
 		"it was stopped while its work was being checked, so nothing finished checking it — " +
 		"what it wrote is on its branch"
 )
+
+// yourCallLead opens the report of a landing SOMEBODY HAS TO DECIDE, and it is
+// the question that landing's own row will be asking — [taskAskOf]'s sentence,
+// read off the projection rather than spelled a second time here
+// (task_status.go). A report that opened with one question while the card beside
+// it asked another would be two accounts of one landing, which is the whole
+// defect the three tiers were drawn to end.
+//
+// `finished, but needs your look — ` WAS THIS LEAD AND IT IS DELETED as
+// person-facing text (docs/design/task-states/DESIGN.md). It named a state no
+// surface calls that any more, and it said the same sentence for a branch that
+// would not merge as for work nobody could check.
+//
+// It takes the facts rather than a question because the caller is holding the
+// facts and not the question: what came of the merge decides which of the six
+// this landing is asking, and every road here already knows that much.
+func yourCallLead(facts TaskFacts) string {
+	return taskAskOf(facts).Reason + yourCallDash
+}
+
+// withYourCallLead puts that question in front of what is said under it, AND
+// DOES NOT SAY IT TWICE.
+//
+// Three of the checker's own sentences already open with the question, because
+// they were written when the lead was a different sentence entirely and each had
+// to carry its own subject: [checkerRanOut] says "nobody could check it in 5m0s",
+// [checkerAskedTwice] and [checkerWindowClosedAlone] both open "nobody could
+// check it". Where the account already opens with the question, THE ACCOUNT IS
+// THE LEAD — anything else is one sentence stuttering, which is what a lead and
+// an account written a year apart will always eventually do.
+func withYourCallLead(facts TaskFacts, said string) string {
+	if reason := taskAskOf(facts).Reason; !strings.HasPrefix(said, reason) {
+		return reason + yourCallDash + said
+	}
+	return said
+}
 
 // machineryWords is the vocabulary that must never reach a person, and what to
 // say instead. The order is LONGEST-STEM-FIRST and it has to be: "unverified"
@@ -534,7 +575,17 @@ func plainLines(lines []string) []string {
 // keeps as the row's outcome, and that line belongs to what the work found —
 // not to the command somebody ran to check it (task_run.go's workTaskNode).
 func (v auditVerdict) doneOutcome() string {
-	return strings.Join(plainLines(v.evidence), "\n")
+	return v.withAlreadyRed(strings.Join(plainLines(v.evidence), "\n"))
+}
+
+// withAlreadyRed puts the repository's own old red under the checker's
+// evidence on a finished landing. It calls the session's sentence rather than
+// giving a task a second spelling of the same fact.
+func (v auditVerdict) withAlreadyRed(report string) string {
+	if len(v.alreadyRed) == 0 {
+		return report
+	}
+	return withReport(report, alreadyRedSentence(v.alreadyRed))
 }
 
 // gapsOutcome is what a node that ran out of repair rounds says: "incomplete —"
@@ -584,12 +635,12 @@ func (v auditVerdict) checkedSoFar() string {
 // lookOutcome is what the node nobody could judge says: it FINISHED, and it
 // needs eyes. The checker's own words follow, in plain form, because they are
 // the whole basis on which somebody is being asked to decide.
-func (v auditVerdict) lookOutcome() string {
+func (v auditVerdict) lookOutcome(facts TaskFacts) string {
 	lines := plainLines(v.evidence)
 	if len(lines) == 0 {
-		return needsLookLead + "nobody could say whether it holds"
+		return yourCallLead(facts) + "the checker never answered"
 	}
-	return needsLookLead + strings.Join(lines, "\n")
+	return withYourCallLead(facts, strings.Join(lines, "\n"))
 }
 
 // takenAsItStands is [auditVerdict.lookOutcome]'s counterpart for a run with
@@ -607,9 +658,9 @@ func takenAsItStands(v auditVerdict) string {
 	if len(lines) == 0 {
 		// A non-answer with nothing behind it says what is true and invents no
 		// reason for it — the emptiness law, on the one field there is.
-		return takenAsItStandsLead + "nobody could check it" + takenAsItStandsTail
+		return v.withAlreadyRed(takenAsItStandsLead + "nobody could check it" + takenAsItStandsTail)
 	}
-	return withReport(takenAsItStandsLead+lines[0]+takenAsItStandsTail, strings.Join(lines[1:], "\n"))
+	return v.withAlreadyRed(withReport(takenAsItStandsLead+lines[0]+takenAsItStandsTail, strings.Join(lines[1:], "\n")))
 }
 
 // auditVerdict is one audit's answer: the word, and what it is standing on.
@@ -630,6 +681,10 @@ type auditVerdict struct {
 	answered bool
 	word     string
 	evidence []string
+	// alreadyRed is the repository's own red that still stood when this answer
+	// was reached. Only finished roads render it; a finding or a request for a
+	// person's look keeps its attention on what is missing.
+	alreadyRed []string
 }
 
 // report is how the verdict rides the node's Report: the word, an em dash, and
@@ -698,6 +753,11 @@ const checkerWindowClosed = "the window closed before a second"
 // separator every other run of evidence on a card already uses.
 const checkerWindowClosedTail = " · " + checkerWindowClosed
 
+// checkerWindowClosedAlone is the same fact with nothing beside it: one call
+// was made, it left no account of itself, and there was no time to ask again.
+// It carries the subject the tail borrows from the sentence it hangs off.
+const checkerWindowClosedAlone = "nobody could check it — " + checkerWindowClosed + " call could be made"
+
 // ── the checking window, and one call inside it ─────────────────────────────
 
 // auditPace is ONE node's checking window and the bound on one call inside it.
@@ -723,6 +783,24 @@ type auditPace struct {
 	// until is when the window closes, read off the clock at the moment the
 	// checking began.
 	until time.Time
+}
+
+// auditNow is the clock every sentence about the checking window is measured
+// against, and it is ONE DOOR so that a test can move it ([Config.auditClock]).
+//
+// The window is read four times on the way to a second call — when the node's
+// window opens, when a call starts, when a stalled call is cut, and again before
+// a fresh checker is asked for — and what those readings decide between them is
+// which sentence a person ends up reading. THE GAP BETWEEN THE LAST TWO IS THE
+// ONE THAT MATTERS: the harness asks whether a retry is worth building, builds
+// one, and asks again with the clock in hand, and a window that closes in
+// between is a retry nobody made. On a real clock that gap is microseconds wide
+// and opens only when the box is loaded, which is no way to prove anything.
+func (a *Agent) auditNow() time.Time {
+	if a.config.auditClock != nil {
+		return a.config.auditClock()
+	}
+	return time.Now()
 }
 
 // newAuditPace opens one node's window.
@@ -813,7 +891,12 @@ func noVerdict(why, said string) auditVerdict {
 // stands, and the one line that reason quotes is the first ([takenAsItStands]).
 func (v auditVerdict) andTheWindowClosed() auditVerdict {
 	if len(v.evidence) == 0 {
-		return noVerdict(checkerWindowClosed, "")
+		// WITH NOTHING BESIDE IT, THE CLAUSE NEEDS ITS SUBJECT BACK. "the window
+		// closed before a second" is a tail on a call's own account and reads as
+		// half a sentence on its own — and half a sentence about time running out
+		// is one a person takes for a deadline they missed ([checkerAskedTwice]
+		// is the same repair on the same family).
+		return noVerdict(checkerWindowClosedAlone, "")
 	}
 	evidence := append([]string{}, v.evidence...)
 	evidence[0] += checkerWindowClosedTail
@@ -826,17 +909,33 @@ func (v auditVerdict) onTheSecondTry() auditVerdict {
 	return v
 }
 
-// twice re-tells a non-verdict as the SECOND one it is. A person reading "the
-// auditor could not be asked" wants to know whether that happened once or
-// whether the harness tried again and got the same nothing, because only the
-// second is worth their attention.
+// checkerAskedTwice is what a person reads when both calls were made and
+// neither came back, and IT NAMES WHO COULD NOT ANSWER.
+//
+// It used to read "asked twice and got no answer either time", which has no
+// subject in it at all — and a person reading an unattributed clause on their
+// own card reads it as being about themselves: asked twice, by whom, and did I
+// miss it? Nobody was asked anything. Two checking calls were made and neither
+// said a word, which is [checkerRanOut]'s law applied to the one line in this
+// family that never got it: say who could not answer, and stop there.
+const checkerAskedTwice = "nobody could check it — asked twice, and neither call answered"
+
+// twice re-tells a non-verdict as the SECOND one it is. Whether the harness
+// asked once or asked again and got the same nothing is the difference between
+// a blip and a checker that is not answering at all, and only the second is
+// worth somebody's attention.
+//
+// IT IS SAID ONLY WHERE BOTH CALLS HAPPENED ([Agent.auditNode]). A window that
+// closed before a second call could be made has its own clause and does not come
+// through here ([checkerWindowClosed]), so this sentence never claims an attempt
+// nobody made.
 func (v auditVerdict) twice() auditVerdict {
 	if len(v.evidence) == 0 {
-		return noVerdict("asked twice and got no answer either time", "")
+		return noVerdict(checkerAskedTwice, "")
 	}
 	evidence := make([]string, len(v.evidence))
 	copy(evidence, v.evidence)
-	evidence[0] = "asked twice and got no answer either time — " + evidence[0]
+	evidence[0] = checkerAskedTwice + " — " + evidence[0]
 	v.evidence = evidence
 	return v
 }
@@ -858,6 +957,7 @@ func (v auditVerdict) twice() auditVerdict {
 // than a blip, and a third call would only spend the person's money to write
 // down the same absence.
 func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, changed []string, claim string, log io.Writer) auditVerdict {
+	claim = checkerConclusion(node, claim)
 	// THE NODE'S PULSE SAYS WHICH OF ITS THREE LIVES THIS IS (task_beat.go), AND
 	// SO DOES THE CARD ([EventTaskPhase]). A node under check is running —
 	// nothing landed, nothing was undone — so a reader watching only the state
@@ -924,15 +1024,17 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	}
 
 	// AND THE DOOR IS READ OFF THE WORK, ONCE, FOR BOTH ATTEMPTS. What this audit
-	// may run is the checks the node's own document declares and the ones its
-	// worker ran (task_checks.go); a retry that recomputed it could be judging
+	// may run is the current verification contract's declared checks, including
+	// declared family checks (task_checks.go); worker receipts grant no permission.
+	// The baseline reads this same door. A retry that recomputed it could judge
 	// the same tree through a different door, and "the same question asked again"
 	// is the only thing a retry is allowed to be.
-	door := auditDoorFor(node, auditPlace{ground: ground.dir, ran: tree.dir})
+	door := auditDoorFor(node, ground.dir)
+	checks := a.checkGroundFor(ctx, tree, ground, door, log)
 	// AND THE WINDOW IS OPENED ONCE, HERE, FOR THE WHOLE OF THIS NODE'S CHECKING.
 	// Both attempts below spend the same one ([auditPace]), so the figure a
 	// landing quotes is the figure the checking actually had.
-	pace := newAuditPace(a.auditWindowFor(door), time.Now())
+	pace := newAuditPace(a.auditWindowFor(door), a.auditNow())
 	if len(door.checks) == 0 {
 		fmt.Fprintf(log, "audit: nothing this work declares or ran is a re-runnable check — judging from reading, within %s\n",
 			pace.window)
@@ -942,7 +1044,8 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// the other half of the law: a claim is a finding, or it holds, or it is said
 	// out loud — never silently passed ([withOpenClaims]).
 	open := checklist.open()
-	verdict, again := a.auditOnce(ctx, node, tree, ground, pace, door, files, claim, open, log)
+	verdict, again := a.auditOnce(ctx, node, tree, ground, pace, door, checks, files, claim, open, "", log)
+	verdict.alreadyRed = checks.alreadyRed()
 	switch {
 	case verdict.answered, !again:
 		return withOpenClaims(verdict, open)
@@ -956,20 +1059,79 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// what the first attempt found is the only account there is of where the time
 	// went: a retry that answered `nobody could check it` in its place would tell
 	// a person nobody was asked, when somebody was asked and abandoned.
-	if _, worthAsking := pace.bound(time.Now()); !worthAsking {
+	if _, worthAsking := pace.bound(a.auditNow()); !worthAsking {
 		fmt.Fprintf(log, "audit: %s\n", checkerWindowClosed)
 		return withOpenClaims(verdict.andTheWindowClosed(), open)
 	}
-	fmt.Fprintf(log, "audit: no verdict — asking a fresh auditor\n")
-	retried, _ := a.auditOnce(ctx, node, tree, ground, pace, door, files, claim, open, log)
-	if retried.answered {
+	// AND THE SECOND ASK GOES SOMEWHERE ELSE WHERE THERE IS SOMEWHERE ELSE. A
+	// model that read the diff, ran the verification and then said neither word
+	// is a model this question does not fit, and a fresh checker on the same one
+	// is the same question put to the same weights — which is what a person
+	// reading `nobody could check it` had paid for twice. So the retry rides the
+	// adapter's own fallback chain, exactly as a conversation's turn and a node's
+	// run do when a lane stops answering ([Agent.failoverCheckerModel]), and it
+	// is the ONE line the journal owes about it.
+	elsewhere, moved := a.failoverCheckerModel(a.auditorModel())
+	if moved {
+		fmt.Fprintf(log, "audit: no verdict — asking %s instead\n", elsewhere)
+	} else {
+		fmt.Fprintf(log, "audit: no verdict — asking a fresh auditor\n")
+	}
+	retried, again := a.auditOnce(ctx, node, tree, ground, pace, door, checks, files, claim, open, elsewhere, log)
+	retried.alreadyRed = checks.alreadyRed()
+	return withOpenClaims(secondAuditOutcome(verdict, retried, again, log), open)
+}
+
+// secondAuditOutcome is what a person reads when the first attempt did not
+// answer and a second was considered. The four roads:
+//
+//   - the second answered → that verdict, marked as the second try
+//   - the second stalled as the window closed → the second's own stall account
+//   - the second could not be made (window already under the floor) → the
+//     FIRST attempt's account plus the window-closed clause — never
+//     [checkerAskedTwice] over [checkerRanOut], which would claim two calls
+//     when only one ran (#803)
+//   - the second ran and also did not answer, with room left → [twice]
+func secondAuditOutcome(first, second auditVerdict, secondAgain bool, log io.Writer) auditVerdict {
+	if second.answered {
 		// AND THE LANDING SAYS WHICH TRY ANSWERED. A verdict the first call did
 		// not produce is the same verdict — nothing about the work is different —
 		// but a person reading a card wants to know that the first call was
 		// abandoned rather than skipped ([checkedOnTheSecondTry]).
-		return withOpenClaims(retried.onTheSecondTry(), open)
+		return second.onTheSecondTry()
 	}
-	return retried.twice()
+	if !secondAgain {
+		// Matching the pre-flight branch above: the window closed, and when the
+		// second attempt never became a call its only evidence is [checkerRanOut]
+		// — keeping that would erase the first call's stall (#803). A second
+		// attempt that stalled on the last of the window already carries
+		// [andTheWindowClosed].
+		if auditCallRan(second) {
+			return second
+		}
+		fmt.Fprintf(log, "audit: %s\n", checkerWindowClosed)
+		return first.andTheWindowClosed()
+	}
+	return second.twice()
+}
+
+// auditCallRan reports that its verdict is about a call that was actually made
+// (or that failed to start after being asked), rather than about a window that
+// closed before anybody was asked.
+func auditCallRan(v auditVerdict) bool {
+	if len(v.evidence) == 0 {
+		return false
+	}
+	line := v.evidence[0]
+	switch {
+	case strings.Contains(line, "without answering and was abandoned"):
+		return true
+	case strings.Contains(line, "the checker could not be asked"):
+		return true
+	case strings.Contains(line, "the checker could not start"):
+		return true
+	}
+	return false
 }
 
 // auditOnce is one attempt: a fresh auditor in the node's worktree, one
@@ -986,8 +1148,18 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 // ([auditPace]) and the check is asked again inside what is left — where before
 // it, one hung call spent the whole five minutes and the node landed on a
 // sentence claiming nobody could check it (#513).
-func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ground auditGround, pace auditPace, door auditDoor, files landingFiles, claim string, open []claimFinding, log io.Writer) (auditVerdict, bool) {
-	auditor, err := a.newAuditAgent(ground.dir, node, door)
+func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ground auditGround, pace auditPace, door auditDoor, checks checkGround, files landingFiles, claim string, open []claimFinding, on string, log io.Writer) (auditVerdict, bool) {
+	// A WINDOW WITH TOO LITTLE LEFT IN IT ASKS NOBODY ANYTHING — and that question
+	// is asked BEFORE a fresh checker is built. Building under load can spend the
+	// last of a short window; a call that is then refused must not be written as a
+	// call that ran, or the landing claims two asks when only one happened (#803).
+	// The bound is read again after the build for the timeout itself, so a call
+	// that does go out is still measured against the time it actually has.
+	if _, worthAsking := pace.bound(a.auditNow()); !worthAsking {
+		return noVerdict(checkerRanOut(pace.window), ""), false
+	}
+
+	auditor, err := a.newAuditAgent(ground.dir, node, door, on)
 	if err != nil {
 		return noVerdict("the checker could not start: "+err.Error(), ""), true
 	}
@@ -1009,13 +1181,7 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	// something to run gets the time a run takes, one whose only remaining move is
 	// a refused command gets the time reading takes ([auditDoor.window]) — and
 	// what is decided here is only how much of it one call may hold.
-	//
-	// A WINDOW WITH TOO LITTLE LEFT IN IT ASKS NOBODY ANYTHING. It is read HERE,
-	// with the first checker closed and this one already built, so the bound is
-	// measured against the time this call actually has; a retry that would get
-	// less than the floor is not made at all, and what the landing then says is
-	// that the window closed rather than that a call it never made stalled.
-	bound, worthAsking := pace.bound(time.Now())
+	bound, worthAsking := pace.bound(a.auditNow())
 	if !worthAsking {
 		return noVerdict(checkerRanOut(pace.window), ""), false
 	}
@@ -1023,7 +1189,7 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	defer done()
 
 	fmt.Fprintf(log, "audit: verifying against the acceptance\n")
-	events, err := auditor.Submit(auditCtx, auditQuestion(node, tree, ground, door, files, claim, open))
+	events, err := auditor.Submit(auditCtx, auditQuestion(node, tree, ground, door, checks, files, claim, open))
 	if err != nil {
 		return noVerdict("the checker could not be asked: "+err.Error(), ""), true
 	}
@@ -1060,7 +1226,7 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 		// ([auditVerdict.andTheWindowClosed]), and [checkerRanOut] is left for
 		// the case it is true of: no call stalled, and the window simply ran out.
 		stalled := noVerdict(checkerStalled(bound), said)
-		if pace.left(time.Now()) > 0 {
+		if pace.left(a.auditNow()) > 0 {
 			fmt.Fprintf(log, "audit: %s\n", checkerStalled(bound))
 			return stalled, true
 		}
@@ -1309,7 +1475,13 @@ func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, v
 	case runErr != nil:
 		fmt.Fprintf(log, "repair %d: ended with an error: %v\n", round, runErr)
 	}
-	return wrote, taskReport(child)
+	// This round's answer replaces the last one's: a repair round is the node
+	// working again, so what it produced is what the node produced. It is kept
+	// here for the receipts' reason — the transcript closes on the way out
+	// (task_result.go).
+	said := lastSaid(child)
+	node.keepWorkerConclusion(said, log)
+	return wrote, firstLines(said, taskReportLines)
 }
 
 // repairInstruction is what the repairing worker is asked.
@@ -1413,10 +1585,36 @@ func alsoChanged(changed, more []string) []string {
 	return changed
 }
 
+// keepWorkerConclusion replaces the current attempt's answer, including an
+// empty answer. Keeping an earlier success when a newer worker says nothing
+// would give the checker a claim about the previous attempt's work.
+func (n *TaskNode) keepWorkerConclusion(said string, log io.Writer) {
+	if strings.TrimSpace(said) != "" {
+		n.keepResultNoting(said, log)
+		return
+	}
+	n.graph.mu.Lock()
+	n.produced = taskResult{}
+	n.graph.mu.Unlock()
+}
+
+// checkerConclusion gives every checking path the worker's kept answer instead
+// of its display summary. Rechecking does not inherit an earlier checker's
+// decision, and older nodes without a kept result still use their supplied claim.
+func checkerConclusion(node *TaskNode, fallback string) string {
+	kept := node.result()
+	if strings.TrimSpace(kept.text) == "" {
+		return fallback
+	}
+	return resultBlock(resultDelivery{
+		body: kept.text, where: kept.whereWhole(), cut: kept.bytes > len(kept.text),
+	})
+}
+
 // auditQuestion is what the auditor is asked: the frozen acceptance, the work's
 // own claim, and where to look.
 //
-// The BRIEF IS NOT HERE, and that is deliberate. The brief is the executor's
+// The BRIEF IS NOT HERE for an explicit acceptance, and that is deliberate. The brief is the executor's
 // instruction — its goal, its constraints, the conventions it was told to
 // follow — and an auditor reading it starts grading effort and intention. The
 // acceptance is the contract (Argus's two-tier goal contract,
@@ -1425,20 +1623,45 @@ func alsoChanged(changed, more []string) []string {
 // words are included as a CLAIM, labelled as one: it is the thing under audit,
 // not evidence about it.
 //
+// The unshaped fallback is the one exception: its acceptance explicitly says
+// to complete the brief. Omitting that referenced contract makes a checker
+// reconstruct the request from the worker's claim or from unrelated history.
+//
 // AND IT NAMES THE DOOR. The auditor's bash will run the checks this work
 // declares or ran and nothing else (task_checks.go), so the packet says which
 // those are — or says plainly that there are none and that reading is the whole
 // of the job. A model that has not been told where the door is spends its
 // window looking for one, which is exactly what was measured.
-func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door auditDoor, files landingFiles, claim string, open []claimFinding) string {
+func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door auditDoor, checks checkGround, files landingFiles, claim string, open []claimFinding) string {
 	var out strings.Builder
 	out.WriteString("The work: " + node.title() + "\n\n")
 	out.WriteString("ACCEPTANCE (this is the contract; judge against this and nothing else):\n")
-	out.WriteString(node.acceptance() + "\n\n")
+	node.graph.mu.Lock()
+	acceptance := node.assignmentLocked().acceptance
+	brief := node.spec.brief
+	node.graph.mu.Unlock()
+	out.WriteString(acceptance + "\n\n")
+	if acceptance == taskPersonAcceptance {
+		out.WriteString("THE BRIEF REFERENCED BY THAT ACCEPTANCE (the requested deliverable, not the worker's claim):\n")
+		out.WriteString(brief + "\n\n")
+	}
+	// AND WHERE THE PERSON MOVED IT, THE PACKET SAYS SO AND SAYS WHICH ONE WINS.
+	// A revised task has two done-conditions in its history and exactly one it is
+	// judged by (assignment.go); an auditor handed both without being told that
+	// would look for work satisfying a requirement the person themselves withdrew.
+	// Their own words are here because the acceptance above is a restatement of
+	// them, and a restatement that has drifted is a thing a reader can only catch
+	// with the original beside it.
+	if revised := node.revisionNote(); revised != "" {
+		out.WriteString(revised + "\n\n")
+	}
 
 	if claim = strings.TrimSpace(claim); claim != "" {
 		out.WriteString("What it CLAIMS it did — this is the claim under audit, not evidence:\n")
 		out.WriteString(claim + "\n\n")
+		// A retained answer can be the requested deliverable without a file.
+		// Its persistence is a runtime fact; its factual claims still need checks.
+		out.WriteString("The task's final response is retained in its task record. When the acceptance asks for an answer or report in the final response, that retained text is the deliverable; do not invent a requirement to create a file. A file is required when the acceptance requires one or the work claims to have created one. The answer's factual claims still require independent evidence.\n\n")
 	}
 	if len(files.own) > 0 {
 		out.WriteString("Files it wrote: " + strings.Join(files.own, ", ") + "\n")
@@ -1458,23 +1681,20 @@ func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door audit
 	out.WriteString(claimsBlock(open))
 	out.WriteString(auditReceiptBlock(node.lastReceipts(), ground.restored))
 
-	// WHERE IT IS STANDING IS TOLD TRUTHFULLY, WHICHEVER GROUND IT GOT. The
-	// restored sentence is a claim the auditor cannot check for itself — it cannot
-	// see the tree it is not in — so it may only be made when it is true
-	// ([auditGround]).
+	// The current directory and the worker's old addresses are different facts.
+	// Receipt paths name where evidence was produced, never where to check now.
+	out.WriteString("CHECK THESE FILES HERE: " + ground.dir + "\n")
+	out.WriteString("You are already in this directory. Paths in worker receipts name its earlier copy; use this directory for the files under review.\n")
 	if ground.restored {
-		out.WriteString("WHERE YOU ARE: a CLEAN RESTORE of what would ship. It is the repository as it stood before " +
-			"this work began, with exactly the files listed above laid over it, and NOTHING else the work left in its " +
-			"own copy — no installs, no build output, no file it moved, linked or created by hand. Install and build " +
-			"whatever the verification needs here; that is expected and it is what your time is for. If a check needs " +
-			"something that is not in those files and you cannot make it yourself from them, that is the finding.\n")
+		out.WriteString("WHERE YOU ARE: a CLEAN RESTORE of the selected work. It starts from the restored repository or folder and overlays the selected files. Committed work may already be in that starting state.\n")
 	} else {
-		out.WriteString("WHERE YOU ARE: the working copy where the work was done, so everything the run left around it " +
-			"is still here. A check that passes only because of something the work did not WRITE — a file it moved, a " +
-			"link it made, a path it created by hand — has not passed; look for that before you accept one.\n")
+		out.WriteString("WHERE YOU ARE: the working copy where the work was done. Files or dependencies left by the worker may still be present; distinguish those from the files this task produced.\n")
 	}
 	if tree.root != "" {
-		out.WriteString("Its changes are staged, so `git diff --cached` shows all of them, new files included.\n")
+		out.WriteString("`git diff --cached` shows the currently staged delta, which may be empty when the work is already committed. An empty delta does not say the requested work is absent or complete; read the relevant files.\n")
+		if tree.checkBase != "" {
+			out.WriteString("The task's starting commit is " + tree.checkBase + "; compare against it when checking changes that are already committed.\n")
+		}
 	} else {
 		out.WriteString("This workspace is not a repository, so there is no diff to read: check the files themselves.\n")
 	}
@@ -1489,6 +1709,7 @@ func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door audit
 	if manifest := groundManifest(ground.dir); manifest != "" {
 		out.WriteString("\n" + manifest)
 	}
+	out.WriteString(checkGroundBlock(checks))
 	out.WriteString("\n" + door.line())
 	if len(door.checks) == 0 {
 		out.WriteString("\nRead the change. Then give your verdict.")
@@ -1747,19 +1968,14 @@ func restoreFromGround(root string, tree taskTree, wrote []string) (auditGround,
 		return auditGround{}, "a fresh checkout could not be made: " + err.Error()
 	}
 	dir := filepath.Join(holder, "check")
+	drop, problem := detachedWorktree(tree.place, root, root, dir, "HEAD")
 	remove := func() {
-		unlock := lockGitRoot(tree.place, root)
-		_, _ = git(root, "worktree", "remove", "--force", dir)
-		_, _ = git(root, "worktree", "prune")
-		unlock()
+		drop()
 		_ = os.RemoveAll(holder)
 	}
-	unlock := lockGitRoot(tree.place, root)
-	out, err := git(root, "worktree", "add", "--detach", dir, "HEAD")
-	unlock()
-	if err != nil {
+	if problem != "" {
 		_ = os.RemoveAll(holder)
-		return auditGround{}, "a fresh checkout could not be made: " + firstLine(out)
+		return auditGround{}, "a fresh checkout could not be made: " + problem
 	}
 	if problem := layWork(tree.dir, dir, wrote); problem != "" {
 		remove()
@@ -1814,25 +2030,25 @@ func restoreFromFolder(tree taskTree, wrote []string) (auditGround, string) {
 func restoreFromBranch(tree taskTree, wrote []string) (auditGround, string) {
 	dir := tree.dir + "-check"
 	holder := tree.branchHolder()
-	remove := func() {
-		unlock := lockGitRoot(tree.place, tree.root)
-		defer unlock()
-		_, _ = git(holder, "worktree", "remove", "--force", dir)
-		_, _ = git(holder, "worktree", "prune")
-		_ = os.RemoveAll(dir)
+	// THE CHECKOUT IS CUT FROM THE BRANCH THE WORK IS ACTUALLY ON. A node may
+	// rename the branch it is standing on — one renamed its own task branch to
+	// the name the brief asked for — and the tree's record then names a ref this
+	// repository has never heard of, which came back as `fatal: invalid
+	// reference` and dropped every check into the node's own copy (#653). The
+	// recorded branch stays authoritative while it exists; otherwise the live
+	// checkout names its replacement, with the release record as the last
+	// observation available after the copy was given back.
+	ref := tree.branch
+	if !branchIsThere(holder, ref) {
+		if live := currentBranch(tree.dir); branchIsThere(holder, live) {
+			ref = live
+		} else if mark, released := rememberedRelease(tree.dir); released && branchIsThere(holder, mark.Branch) {
+			ref = mark.Branch
+		}
 	}
-	// A restore left behind by a process that died is cleared before this one is
-	// made, on the same argument [prepareTaskTree] clears its own: the path
-	// carries the node's own directory name, so the only thing that can be sitting
-	// at it is an earlier restore of this same node.
-	remove()
-
-	unlock := lockGitRoot(tree.place, tree.root)
-	out, err := git(holder, "worktree", "add", "--detach", dir, tree.branch)
-	unlock()
-	if err != nil {
-		_ = os.RemoveAll(dir)
-		return auditGround{}, "a fresh checkout could not be made: " + firstLine(out)
+	remove, problem := detachedWorktree(tree.place, tree.root, holder, dir, ref)
+	if problem != "" {
+		return auditGround{}, "a fresh checkout could not be made: " + problem
 	}
 	if problem := layWork(tree.dir, dir, wrote); problem != "" {
 		remove()
@@ -2073,13 +2289,6 @@ type toolReceipt struct {
 	tool   string
 	args   string
 	result string
-	// command is the shell line a bash receipt ran, read out of the call's
-	// arguments BEFORE they were flattened and cut for the packet. It is kept
-	// apart from args because two different readers want two different things:
-	// the packet wants one readable line, and the door wants the command exactly
-	// as it was typed, since a check is only re-runnable verbatim
-	// (task_checks.go's [ranChecks]). It is empty for every other tool.
-	command string
 }
 
 // lastToolReceipts is the tail of what a worker RAN, read off its transcript.
@@ -2102,15 +2311,7 @@ func lastToolReceipts(child *Agent, most int) []toolReceipt {
 		return nil
 	}
 	messages := child.snapshot()
-	// The call is in an ASSISTANT message and the result is in the tool message
-	// that answers it, so the two are joined by the provider's own call id — the
-	// only thing that survives a batch of four calls answered out of order.
-	calls := make(map[string]ai.ToolCall)
-	for _, message := range messages {
-		for _, call := range message.ToolCalls {
-			calls[call.ID] = call
-		}
-	}
+	calls := toolResultCalls(messages)
 	var out []toolReceipt
 	for index := len(messages) - 1; index >= 0 && len(out) < most; index-- {
 		message := messages[index]
@@ -2122,22 +2323,12 @@ func lastToolReceipts(child *Agent, most int) []toolReceipt {
 			continue
 		}
 		receipt := toolReceipt{result: clip(result, auditReceiptLimit)}
-		if call, ok := calls[message.ToolCallID]; ok {
+		if call, ok := calls[index]; ok {
 			receipt.tool = call.Function.Name
 			// The arguments are JSON and a pretty-printed call would spend six lines
 			// of the packet saying what one says (tools_standing.go's [oneLine]).
 			receipt.args = clip(oneLine(call.Function.Arguments), taskReportLineLimit)
-			// AND THE SHELL LINE IS KEPT WHOLE, uncut, for the door
-			// ([toolReceipt.command]). A command clipped to fit a packet is a
-			// command nobody can re-run.
-			if strings.EqualFold(call.Function.Name, approval.ToolBash) {
-				var fields struct {
-					Command string `json:"command"`
-				}
-				if json.Unmarshal([]byte(call.Function.Arguments), &fields) == nil {
-					receipt.command = fields.Command
-				}
-			}
+
 		}
 		out = append(out, receipt)
 	}
@@ -2154,9 +2345,6 @@ func lastToolReceipts(child *Agent, most int) []toolReceipt {
 // the reason the claim works the same way ([TaskNode.keepClaim]): a repair
 // round's check is the one that describes the tree the auditor is about to read.
 func (n *TaskNode) keepReceipts(receipts []toolReceipt) {
-	if len(receipts) == 0 {
-		return
-	}
 	n.graph.mu.Lock()
 	n.receipts = receipts
 	n.graph.mu.Unlock()
@@ -2208,6 +2396,20 @@ func (n *TaskNode) startedAt() time.Time {
 // It is exported because two callers need it: a surface with a person in front
 // of it, and the model through the `tasks` tool (tools_tasks.go).
 func (a *Agent) ResolveUnverified(id uint64, resolution TaskResolution, why string) error {
+	return a.resolveUnverifiedBy(id, resolution, why, TaskAskOwnerPerson)
+}
+
+// resolveUnverifiedBy is that door with WHICH DOOR WAS USED carried through it.
+//
+// THE RECEIPT SAYS WHO DECIDED, AND IT IS A FACT RATHER THAN AN INFERENCE. A
+// node settled under `task.settle = auto` and a node the person pressed `[a]` on
+// reach the same three answers, and reading the policy afterwards to guess which
+// happened is wrong the moment a person answers a card on a node the model was
+// holding — which is exactly what `[t] take it back` is for. So the two callers
+// name themselves: the surface goes through [Agent.ResolveUnverified] and the
+// model's own `tasks … resolve` goes through here (tools_tasks.go), and the
+// report leads with the one that spent the verb ([acceptedLine]).
+func (a *Agent) resolveUnverifiedBy(id uint64, resolution TaskResolution, why string, by TaskAskOwner) error {
 	node := a.taskNode(id)
 	if node == nil {
 		return fmt.Errorf("no task %d in this session", id)
@@ -2224,9 +2426,9 @@ func (a *Agent) ResolveUnverified(id uint64, resolution TaskResolution, why stri
 	why = strings.TrimSpace(why)
 	switch resolution {
 	case TaskAccept:
-		return a.acceptTask(node, why)
+		return a.acceptTask(node, why, by)
 	case TaskRefute:
-		return a.refuteTask(node, why)
+		return a.refuteTask(node, why, by)
 	case TaskReaudit:
 		return a.reauditTask(node)
 	}
@@ -2275,9 +2477,126 @@ func (a *Agent) HandUnverifiedToModel(id uint64) error {
 	if state := node.stateNow(); state != TaskUnverified {
 		return settledAlready(id, state)
 	}
+	// AND A SECOND PRESS IS NOT A SECOND HAND-OVER. On 2026-09-09 the card was
+	// pressed twice twenty-seven seconds apart and the model was handed the same
+	// decision twice, in two identical lines — a second instruction about a
+	// question it was already holding, which is an invitation to answer it twice.
+	// The honest answer to the second press is what is already true, and the card
+	// draws it exactly as it draws every other refusal these doors give.
+	if node.wasHandedOver() {
+		return fmt.Errorf("task %d is %s: %w", id, handedAlreadyWord, ErrTaskHandedOver)
+	}
+	// AND THE NODE RECORDS WHO IS HOLDING IT, so that the card in front of the
+	// person stops offering them chips they have just handed over and says who is
+	// deciding instead. It is the same mark `task.settle = auto` makes at the
+	// landing (task_run.go's [Agent.handToModelOnAuto]) and the same floor hands it
+	// back when the model's turn ends without an answer (agent.go).
+	node.holdsDecision(TaskAskOwnerModel)
 	notice := node.notice()
 	a.enqueueSteering(handOverLead + "\n" +
 		taskNote(notice, taskURI(node.journalPath()), TaskSettleAuto, a.quietAddress()))
+	a.emitTaskUpdate(notice)
+	return nil
+}
+
+// handedAlreadyWord is what a repeated hand-over answers with, in the person's
+// own vocabulary for the thing they pressed — the card says aforge is deciding,
+// so the refusal says the same word back rather than naming a field.
+const handedAlreadyWord = "already handed to aforge"
+
+// ErrTaskHandedOver says the second press changed nothing because the first one
+// already did it, and it is a SEPARATE sentinel from [ErrTaskDecided] because
+// the two are opposite facts about the card in front of somebody. A decided node
+// is over and its card stops asking; a handed-over one is still `your call`,
+// still waiting on an answer, and the only thing that moved is whose hands the
+// question is in — so a surface that drew "already answered" over it would be
+// reporting a decision nobody has made (internal/tui3's tasksettle.go).
+var ErrTaskHandedOver = errors.New("session: that task is already handed to aforge")
+
+// wasHandedOver reports that THIS DOOR has already given the model this node's
+// decision and nothing has taken it back.
+//
+// IT IS NOT "THE MODEL IS DECIDING", and the difference is the whole of why it
+// is its own fact. Under `task.settle = auto` — and in every headless run, where
+// nobody is there to be asked — a landing marks the model as the decider by
+// POLICY (task_run.go's [Agent.handToModelOnAuto]), which is not a press and
+// carries no note. Refusing the press on that would refuse the first one.
+//
+// IT IS IN MEMORY AND NEVER ON THE RECORD, for [taskRecord.Decider]'s own
+// reason: a hand-over lasts at most one turn — the floor takes it back at the
+// end of the model's turn and a resumed session takes it back on load — so a
+// receipt that survived either would refuse a press for a turn that is over.
+func (n *TaskNode) wasHandedOver() bool {
+	if n == nil || n.graph == nil {
+		return false
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.handed
+}
+
+// decidedBy reads who is holding one node's question, with the graph taken for
+// the read the way every other reader of a node's fields takes it.
+func (n *TaskNode) decidedBy() TaskAskOwner {
+	if n == nil || n.graph == nil {
+		return ""
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.decider
+}
+
+// givesBackLocked puts one node's question back in the person's hands, with the
+// graph held. It is a function because the receipt above has to move with the
+// owner wherever the owner moves, and there are three roads that move it: the
+// person taking it back, the end-of-turn floor, and a resumed session's load
+// (task_run.go). A road that wrote only the owner would leave a receipt behind
+// and refuse the next press.
+func (n *TaskNode) givesBackLocked() {
+	n.decider, n.handed = TaskAskOwnerPerson, false
+}
+
+// holdsDecision writes who is holding one node's question. It is the graph's
+// lock and one field, and it is here rather than beside the door because both
+// doors that move a decision — this one and the settle policy's — have to write
+// exactly the same thing.
+func (n *TaskNode) holdsDecision(owner TaskAskOwner) {
+	if n == nil || n.graph == nil {
+		return
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	if owner != TaskAskOwnerModel {
+		n.givesBackLocked()
+		return
+	}
+	// AND THE RECEIPT IS WRITTEN WITH THE OWNER. A press that gets this far is
+	// the one that hands the model the note, and the next press on the same node
+	// is answered with what is already true rather than sending a second copy of
+	// one decision ([TaskNode.wasHandedOver]).
+	n.decider, n.handed = owner, true
+}
+
+// TakeBackDecision is [Agent.HandUnverifiedToModel] in reverse: the person
+// deciding, after all, to decide. It is what the card's "take it back" presses,
+// and it is what the floor does by itself at the end of a turn (task_run.go's
+// [Agent.handBackUnsettled]).
+//
+// IT RESOLVES NOTHING EITHER. The node stays exactly as it is and what changes is
+// who is holding the question, so the card stops saying aforge is deciding and
+// draws its chips again. A line already on the steering queue is left where it
+// is: the model may still say what it thinks, and what it may no longer do is
+// have the last word.
+func (a *Agent) TakeBackDecision(id uint64) error {
+	node := a.taskNode(id)
+	if node == nil {
+		return fmt.Errorf("no task %d in this session", id)
+	}
+	if state := node.stateNow(); state != TaskUnverified {
+		return settledAlready(id, state)
+	}
+	node.holdsDecision(TaskAskOwnerPerson)
+	a.emitTaskUpdate(node.notice())
 	return nil
 }
 
@@ -2305,7 +2624,7 @@ const (
 // is pretend an auditor said so: the report leads with who accepted it and on
 // what grounds, because a card that read "VERIFIED" over a verdict nobody gave
 // would be the same lie as the one this file was fixed to stop telling.
-func (a *Agent) acceptTask(node *TaskNode, why string) error {
+func (a *Agent) acceptTask(node *TaskNode, why string, by TaskAskOwner) error {
 	// THE CLAIM IS TAKEN BEFORE THE WORKING COPY IS LOOKED FOR, and it covers
 	// everything down to the resettle. What sits between the two is an os.Stat, a
 	// `git rev-parse` and a merge — long enough for a second accept in the same
@@ -2323,7 +2642,7 @@ func (a *Agent) acceptTask(node *TaskNode, why string) error {
 	// learn it and nobody guessed: somebody read the work and said it holds,
 	// which is the same kind of answer the gate gives and belongs in the same
 	// record (taskgrade.go).
-	node.checkSaid(provider.VerdictVerifiedSuccess, 0)
+	node.checkSaid(provider.ReadingVerifiedSuccess, 0)
 	report, changed, _, _ := node.leavings()
 	// AND IT LANDS THE FAMILY'S LEDGER, THROUGH THE ONE ROAD EVERY LANDING TAKES
 	// (task_ledger.go's [landHome]). An accept happens long after the run: the
@@ -2331,7 +2650,16 @@ func (a *Agent) acceptTask(node *TaskNode, why string) error {
 	// divider that landed unverified and is accepted in the morning must lay the
 	// same whole product a verified one laid at once. The fold is idempotent, so
 	// a list that is already complete costs a walk of itself.
-	changed, merge, detail, refusal := landHome(node, tree, changed)
+	changed, merge, detail, refusal := landHome(node, tree, changed, a.signsGitWork())
+	if refusal == refusedByYourFiles {
+		// AND THE ROAD IS MARKED HERE TOO. An accept is the second time a node's
+		// branch is offered to the ground, and it can be refused by the person's
+		// own untracked copies exactly as the first was (groundcarry.go) — so the
+		// card that comes back asks the same question with the answer that can
+		// actually spend it behind it, rather than falling back to a branch
+		// conflict that is not what happened.
+		node.heldByYourFiles()
+	}
 	// AN ACCEPT IS NOT A MERGE, and a branch that would not go is not done
 	// however sure the person was about the work. The node stays where it was —
 	// needing a look — with the conflicting files named, because what is being
@@ -2345,17 +2673,17 @@ func (a *Agent) acceptTask(node *TaskNode, why string) error {
 		// work where the sentence under it says it is, and the next resolution on
 		// this node is answered as already decided ([settledAlready]).
 		if refusal == refusedByTheTree {
-			node.finish(withReport(keptWhereItIsLead+detail, withReport(acceptedLine(why), report)),
+			node.finish(withReport(keptWhereItIsLead+detail, withReport(acceptedLine(why, by), report)),
 				changed, tree.branch, merge)
 			node.graph.resettle(node, TaskDone)
 			return nil
 		}
-		node.finish(withReport(needsLookLead+detail, withReport(acceptedLine(why), report)),
+		node.finish(withReport(withYourCallLead(node.landingFacts(merge), detail), withReport(acceptedLine(why, by), report)),
 			changed, tree.branch, merge)
 		node.graph.resettle(node, TaskUnverified)
 		return nil
 	}
-	node.finish(withReport(acceptedLine(why), withReport(report, detail)), changed, tree.branch, merge)
+	node.finish(withReport(acceptedLine(why, by), withReport(report, detail)), changed, tree.branch, merge)
 	node.graph.resettle(node, TaskDone)
 	return nil
 }
@@ -2365,17 +2693,17 @@ func (a *Agent) acceptTask(node *TaskNode, why string) error {
 // REFUTED verdict, which drops the node's claim because the auditor's evidence
 // has already answered it. Here the auditor answered nothing, so what the node
 // said is still the only account of the work there is.
-func (a *Agent) refuteTask(node *TaskNode, why string) error {
+func (a *Agent) refuteTask(node *TaskNode, why string, by TaskAskOwner) error {
 	if err := node.claimSettle(claimRefute); err != nil {
 		return err
 	}
 	defer node.releaseSettle()
 	// The same fact in the negative, and it is evidence of exactly the same
 	// weight: a person doing the check's job and finding the work does not hold.
-	node.checkSaid(provider.VerdictSemanticFailure, 0)
+	node.checkSaid(provider.ReadingSemanticFailure, 0)
 	report, changed, branch, merge := node.leavings()
 	node.end(TaskEndingRefused)
-	node.finish(withReport(refutedLine(why), report), changed, branch, merge)
+	node.finish(withReport(refutedLine(why, by), report), changed, branch, merge)
 	node.graph.resettle(node, TaskFailed)
 	return nil
 }
@@ -2425,11 +2753,8 @@ func (a *Agent) reauditTask(node *TaskNode) error {
 		defer cancel()
 		defer node.releaseSettle()
 		defer listed.settle(0)
-		// NO CLAIM IS PASSED. The first audit was given the node's own last
-		// words as the thing under audit; this one is given the acceptance and
-		// the diff, and nothing about the answer that was not an answer — a
-		// fresh auditor primed with "the last one could not decide" is a fresh
-		// auditor that has been told what to conclude.
+		// The node supplies its worker's kept conclusion at the common check
+		// boundary. No earlier checker's decision is passed as a claim.
 		verdict := a.auditNode(ctx, node, tree, changed, "", taskLog(listed))
 		if ctx.Err() != nil {
 			// KILLED IS NOT A VERDICT. The node is left exactly as it was —
@@ -2474,7 +2799,7 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 		// asked to resolve this node needs both halves (task_contract.go's
 		// TaskUnverified) — the index row, the brief a dependent is handed, and
 		// the accept that carries it into TaskDone all read this string.
-		node.finish(withReport(verdict.lookOutcome(), claim), changed, branch, merge)
+		node.finish(withReport(verdict.lookOutcome(TaskFacts{Merge: merge, Conflicts: node.clashes()}), claim), changed, branch, merge)
 		node.graph.resettle(node, TaskUnverified)
 	case !verdict.verified:
 		// A re-audit that finds something is a landing, not a loop. The repair
@@ -2486,7 +2811,7 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 		node.finish(gapsOutcome([][]string{verdict.evidence}), changed, branch, abortedMerge(tree))
 		node.graph.resettle(node, TaskFailed)
 	default:
-		changed, merged, detail, refusal := landHome(node, tree, changed)
+		changed, merged, detail, refusal := landHome(node, tree, changed, a.signsGitWork())
 		// A VERDICT THAT ARRIVES LATE CANNOT MERGE A BRANCH THAT WILL NOT GO
 		// EITHER. The node keeps the one state that is true of it — somebody has
 		// to look — with the work committed on its branch and the clashing files
@@ -2503,7 +2828,7 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 				node.graph.resettle(node, TaskDone)
 				return
 			}
-			node.finish(withReport(needsLookLead+detail, withReport(claim, verdict.doneOutcome())),
+			node.finish(withReport(withYourCallLead(TaskFacts{Merge: merged, Conflicts: node.clashes()}, detail), withReport(claim, verdict.doneOutcome())),
 				changed, tree.branch, merged)
 			node.graph.resettle(node, TaskUnverified)
 			return
@@ -2511,7 +2836,7 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 		// THE CLAIM, NOT THE CARRIED REPORT — and the claim LEADS, exactly as it
 		// does on the gate's own landing (task_run.go's workTaskNode). The carried
 		// report opens with the line that said nobody could judge this work, and a
-		// card stacking a fresh answer over "finished, but needs your look — …"
+		// card stacking a fresh answer over the question the last landing asked
 		// contradicts itself in two lines. What the person and the model want first
 		// is what the work found; what it was checked on follows.
 		node.finish(withReport(claim, withReport(verdict.doneOutcome(), detail)), changed, tree.branch, merged)
@@ -2528,19 +2853,52 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 // work back to them, so the vocabulary law holds here exactly as it holds on
 // every other landing: what happened is that a person looked and made a call,
 // and no part of that is worth spelling in the harness's own courtroom.
-func acceptedLine(why string) string {
-	line := "you looked at this yourself and took it as done"
+func acceptedLine(why string, by TaskAskOwner) string {
+	line := acceptedTookLine(by)
 	if why != "" {
 		line += ": " + clip(firstLine(why), taskReportLineLimit)
 	}
 	return line
 }
 
-func refutedLine(why string) string {
+// The two voices a resolved landing is written in, spelled once and read by the
+// card, the room, the row and the `tasks` reply.
+//
+// THEY SAY WHO, AND THEY MUST. A node the model settled under `task.settle =
+// auto` carried `you looked at this yourself and took it as done` into the
+// person's own transcript — a sentence about something they never did, on work
+// nobody had read. The person's own press keeps `you`; the model's verb says
+// `aforge`, which is what this product is called everywhere a person reads it.
+const (
+	acceptedByYou    = "you took this as done"
+	acceptedByAforge = "aforge took this as done"
+	notRightByYou    = "you said it is not finished"
+	notRightByAforge = "aforge said it is not finished"
+)
+
+// acceptedTookLine and notRightSaidLine pick the voice off the door that spent
+// the verb, never off the settle policy: a person answering a card on a node the
+// model was holding is the person, and `[t] take it back` exists to make that
+// happen.
+func acceptedTookLine(by TaskAskOwner) string {
+	if by == TaskAskOwnerModel {
+		return acceptedByAforge
+	}
+	return acceptedByYou
+}
+
+func notRightSaidLine(by TaskAskOwner) string {
+	if by == TaskAskOwnerModel {
+		return notRightByAforge
+	}
+	return notRightByYou
+}
+
+func refutedLine(why string, by TaskAskOwner) string {
 	// It leads with the same word a node that ran out of repair rounds leads
 	// with, because it is the same news: the work is not finished. Who decided is
 	// the second half of the sentence, not the headline.
-	line := incompleteLead + "you looked at this yourself and said so"
+	line := incompleteLead + notRightSaidLine(by)
 	if why != "" {
 		line += ": " + clip(firstLine(why), taskReportLineLimit)
 	}
@@ -2548,6 +2906,25 @@ func refutedLine(why string) string {
 }
 
 // ── the auditor's agent ─────────────────────────────────────────────────────
+
+// auditorModel is the model a fresh checker for this session lands on, read the
+// way [Agent.newAuditAgent] reads it and for one purpose: the failover has to
+// know which model it is moving OFF before it can ask the chain what comes after
+// it ([Agent.failoverCheckerModel]).
+//
+// A role that will not resolve answers with the conversation's own model, which
+// is what the checker would have been built on anyway — this is a question about
+// where to go next, and a build with nothing to resolve simply has nowhere.
+func (a *Agent) auditorModel() string {
+	a.mu.Lock()
+	source, model := a.config.RolesSource, a.model
+	a.mu.Unlock()
+	judge, err := roles.Resolve(roles.Source(source), roles.RoleAuditor, model)
+	if err != nil {
+		return model
+	}
+	return judge
+}
 
 // newAuditAgent builds the judge: the same loop and the same package as the
 // node it audits, on the high tier, with a read-only belt and a system prompt
@@ -2566,11 +2943,15 @@ func refutedLine(why string) string {
 // fact about the WORK — the checks its document declares and its worker ran
 // (task_checks.go) — and it is read once by the caller so that both attempts at
 // one node judge it through the same door.
-func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor) (*Agent, error) {
+// AND WHICH MODEL IT JUDGES ON MAY BE HANDED IN. `on` is empty for every
+// ordinary check, which resolves the judge off the roles ladder below; it is
+// filled only by the one retry that moves a non-answering check onto another
+// lane ([Agent.failoverCheckerModel]), and nothing else about the auditor
+// changes with it — same prompt, same belt, same door, same window.
+func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on string) (*Agent, error) {
 	a.mu.Lock()
 	parent := a.config
 	model := a.model
-	client := unwrapCompleter(a.client)
 	// EVERY ATTEMPT GETS ITS OWN JOURNAL, AND THE NONCE IS WHAT MAKES THE NEXT
 	// AUDITOR FRESH. The path carries a timestamp to the second, and two audits of
 	// one node — the retry after a non-answer, the check after a repair round —
@@ -2592,7 +2973,17 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor) (*Agen
 	if err != nil {
 		return nil, err
 	}
-	auditor, err := newAgent(Config{
+	// THE HANDED-IN MODEL WINS OUTRIGHT, and only the failover hands one in. The
+	// ladder has already been asked at that point and answered with a lane this
+	// session would move to; resolving the role again over the top of it would be
+	// this function deciding that the answer did not count.
+	if named := strings.TrimSpace(on); named != "" {
+		judge = named
+	}
+	auditor, err := a.newChildAgent(Config{
+		// A checker can independently read the source a worker cited, without
+		// gaining the writable memory store or any additional mutation tool.
+		ConversationHistory: parent.conversationHistory(),
 		// The auditor reads rather than writes, but reading is what makes a
 		// dropping: a long file it looks at is stubbed on its way out of the live
 		// context (stub.go), and with nothing here those bytes landed in the
@@ -2602,6 +2993,7 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor) (*Agen
 		Model:     judge,
 		APIKey:    parent.APIKey,
 		BaseURL:   parent.BaseURL,
+		Sources:   parent.Sources,
 		// The window of the model the AUDITOR runs, which the roles ladder has
 		// very often made a different one from the node's
 		// (loop.go's [Agent.childWindow]).
@@ -2631,7 +3023,7 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor) (*Agen
 		RolesSource: parent.RolesSource,
 		// Beside the ladder it overrides, for task_run.go's reason.
 		OneModel: parent.OneModel,
-	}, client)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -2642,7 +3034,10 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor) (*Agen
 	// may touch, and every later hand added to the session would silently join
 	// the auditor's belt unless somebody remembered this rule. Composed here,
 	// a new tool reaches the auditor only when this list names it.
-	tools := auditBelt(dir, door)
+	tools := auditBelt(dir, door, parent.droppingsPlace())
+	for _, tool := range auditor.conversationTools() {
+		tools = append(tools, boundedResult(tool, parent.droppingsPlace(), dir))
+	}
 	definitions, err := toolDefinitions(tools)
 	if err != nil {
 		_ = auditor.Close()
@@ -2658,6 +3053,10 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor) (*Agen
 	// label it (F38). The attempt is marked used so maybeTitle is a no-op.
 	auditor.titleTried = true
 	auditor.mu.Unlock()
+	// The shelf goes with the belt it was built beside, for the reason fork.go
+	// states: `auditBelt` is an allowlist, and a narrowing meant to be total has
+	// to empty the cupboard as well as the list (tools_capabilities.go).
+	auditor.clearShelf()
 	return auditor, nil
 }
 
@@ -2672,14 +3071,16 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor) (*Agen
 // bounds an investigation is what ONE ANSWER may weigh, whichever hand returned
 // it, so it is applied here — where the hands are chosen — and not five times
 // over in five wrappers.
-func auditBelt(dir string, door auditDoor) []bare.Tool {
+func auditBelt(dir string, door auditDoor, droppings Place) []bare.Tool {
 	var belt []bare.Tool
 	for _, tool := range bare.AllTools(dir) {
 		switch tool.Name {
-		case "read", "grep", "find", "ls":
-			belt = append(belt, boundedResult(tool))
+		case "read":
+			belt = append(belt, boundedResult(bare.ReadTool(dir, auditReadContentLimit), droppings, dir))
+		case "grep", "find", "ls":
+			belt = append(belt, boundedResult(tool, droppings, dir))
 		case "bash":
-			belt = append(belt, boundedResult(verifyOnlyBash(tool, door)))
+			belt = append(belt, boundedResult(verifyOnlyBash(tool, door), droppings, dir))
 		}
 	}
 	return belt
@@ -2687,26 +3088,28 @@ func auditBelt(dir string, door auditDoor) []bare.Tool {
 
 // boundedResult caps what one tool call may hand back.
 //
-// It reuses [capBytes], which is the package's own truncation — the same one
-// [capOutput] bounds a tool result for a person's screen with — so a cut result
-// carries the count of what was left behind rather than an ellipsis: an auditor
-// that cannot tell whether it is missing a line or a megabyte cannot tell
-// whether it has seen enough to judge. The sentence after it says what to do
-// about it, because the answer is never "give up", it is "ask something
-// narrower".
+// A cut result is filed through [writeStub], the same content-addressed,
+// atomic droppings path used by conversation compaction. The cap therefore
+// remains a hard bound on this observation while ordinary read paths and line
+// offsets reach the rest. Nothing is written into the work being judged.
 //
 // The refusals pass through UNCAPPED in every practical case and deliberately go
 // through the same cap anyway: a refusal is a result like any other, and a gate
 // with an exception in it is a gate with a way around it.
-func boundedResult(tool bare.Tool) bare.Tool {
+func boundedResult(tool bare.Tool, droppings Place, workspace string) bare.Tool {
 	inner := tool.Execute
 	tool.Execute = func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 		text, isError, err := inner(ctx, args)
 		if err != nil || len(text) <= auditResultLimit {
 			return text, isError, err
 		}
-		return capBytes(text, auditResultLimit) +
-			"\n[cut here: ask something narrower — a path, a pattern, a specific file]", isError, nil
+		pointer, fileErr := writeStub(droppings, workspace, text)
+		if fileErr != nil || pointer == "" {
+			footer := "\n[cut here; full output could not be saved — ask for a narrower path, pattern, or range]"
+			return capBytes(text, auditResultLimit-len(footer)-32) + footer, isError, nil
+		}
+		footer := fmt.Sprintf("\n[cut here; whole output: %s — use read with offset/limit]", pointer)
+		return capBytes(text, auditResultLimit-len(footer)-32) + footer, isError, nil
 	}
 	return tool
 }

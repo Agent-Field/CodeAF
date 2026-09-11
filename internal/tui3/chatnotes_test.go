@@ -102,6 +102,10 @@ func TestAWrappedNoteFitsTheColumnItIsDrawnIn(t *testing.T) {
 		}
 		var joined strings.Builder
 		for i, r := range rows {
+			// The row is measured AS DRAWN — the reading gutter is cells this
+			// row really occupies — and only then stepped past, because what
+			// the two trims below read is the note's own marker and the indent
+			// law under it (pastGutter, gutter.go).
 			if w := ansi.StringWidth(r); w > body {
 				t.Fatalf("at %d columns a note row is %d cells wide in a %d-cell column:\n%q",
 					width, w, body, r)
@@ -111,9 +115,10 @@ func TestAWrappedNoteFitsTheColumnItIsDrawnIn(t *testing.T) {
 			}
 			// The first row wears the marker, the rest the two spaces under it;
 			// both sit inside the indent law's own gutter.
-			line := strings.TrimPrefix(unindented(r), "· ")
+			inset := pastGutter(body, r)
+			line := strings.TrimPrefix(unindented(inset), "· ")
 			if i > 0 {
-				line = strings.TrimPrefix(unindented(r), "  ")
+				line = strings.TrimPrefix(unindented(inset), "  ")
 			}
 			joined.WriteString(line)
 		}
@@ -219,7 +224,7 @@ func TestTheHintSlotNamesTheAlwaysKeyOnlyWhereItWouldAct(t *testing.T) {
 	if strings.Contains(hint, "always") {
 		t.Fatalf("the slot promised a key the block above it refused: %q", hint)
 	}
-	for _, want := range []string{"y allow", "n deny"} {
+	for _, want := range []string{"1 allow once", "3 deny"} {
 		if !strings.Contains(hint, want) {
 			t.Fatalf("the slot lost %q with it: %q", want, hint)
 		}
@@ -230,7 +235,7 @@ func TestTheHintSlotNamesTheAlwaysKeyOnlyWhereItWouldAct(t *testing.T) {
 	memo.Memo = true
 	_, b := wired([]session.Event{toolBegin("bash", "bash make vet"), memo})
 	typeLine(t, b, "go on")
-	if hint := b.legendRight(b.width); !strings.Contains(hint, "a always") {
+	if hint := b.legendRight(b.width); !strings.Contains(hint, "2 always") {
 		t.Fatalf("an ordinary question lost its always key: %q", hint)
 	}
 }

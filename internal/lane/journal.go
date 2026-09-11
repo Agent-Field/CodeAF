@@ -77,13 +77,14 @@ type record struct {
 	Row    *Row      `json:"row,omitempty"`
 	Weight float64   `json:"k,omitempty"`
 	Think  *thought  `json:"think,omitempty"`
+	Work   *Workload `json:"work,omitempty"`
 }
 
 // ok reports whether the record says one thing. A line naming no observation,
 // or two, is a line this build did not write and cannot act on.
 func (r record) ok() bool {
 	said := 0
-	for _, set := range []bool{r.Sight != nil, r.Out != nil, r.Row != nil, r.Think != nil} {
+	for _, set := range []bool{r.Sight != nil, r.Out != nil, r.Row != nil, r.Think != nil, r.Work != nil} {
 		if set {
 			said++
 		}

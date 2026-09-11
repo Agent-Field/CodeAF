@@ -195,7 +195,23 @@ func TestARoomOpensShowingTheStepTheNodeIsInTheMiddleOf(t *testing.T) {
 		t.Fatal("a rail click did not open the node's room")
 	}
 
-	// The whole page has it…
+	// The first frame names the current step compactly. The full narration
+	// and the queued edit remain behind a working disclosure.
+	compact := roomText(a)
+	if !strings.Contains(compact, "The tests pass") || strings.Contains(compact, "edit internal/config/load.go") {
+		t.Fatalf("room did not open on compact current activity:\n%s", compact)
+	}
+	compactRows, _ := a.roomWindow(a.bodyWidth(), a.viewHeight())
+	var compactFrame []string
+	for _, r := range compactRows {
+		compactFrame = append(compactFrame, plain(r.text))
+	}
+	firstFrame := strings.Join(compactFrame, "\n")
+	if strings.Count(firstFrame, "The tests pass") != 1 || strings.Contains(firstFrame, "edit internal/config/load.go") {
+		t.Fatalf("first visible frame lost compact current activity:\n%s", firstFrame)
+	}
+	openRoomCompactWork(t, a)
+	// The expanded page has the complete catch-up, not just its short caption.
 	page := roomText(a)
 	for _, want := range []string{"Fixing the loader", "edit internal/config/load.go"} {
 		if !strings.Contains(page, want) {
@@ -249,6 +265,9 @@ func TestARoomOpensAtTheLiveEdgeAndNotAtTheTop(t *testing.T) {
 
 	a.openRoom(7, "Fix the nil-map crash")
 	a.touch()
+	// This assertion is about the reader who requests the retained history.
+	// The compact default deliberately does not fill the screen with it.
+	openRoomCompactWork(t, a)
 
 	rows := a.roomRows(a.bodyWidth())
 	height := a.viewHeight()

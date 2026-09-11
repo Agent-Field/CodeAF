@@ -64,3 +64,37 @@ func TestAStalledFirstPromptLaneShowsARescueSwitch(t *testing.T) {
 	}
 	waitFor(t, func() bool { return rig.server.Cancels("A") == 1 })
 }
+
+// A first prompt with only one available lane can report a wait, but cannot
+// promise a replacement request that does not exist.
+func TestAFirstPromptWithNoAlternativeDoesNotClaimARescue(t *testing.T) {
+	told := listen(t)
+	rig := newLaneRig(t, "first-prompt/alone",
+		lanestub.Lane{Name: "A", Profile: lanestub.Profile{
+			TTFT: 300 * time.Millisecond, Rate: 2000, Tokens: 24, Heartbeats: true,
+		}},
+	)
+	rig.patience(t, 150*time.Millisecond)
+	watched := &notices{}
+	report := &HedgeReport{}
+	ctx := WithFirstPrompt(WithHedgeReport(talking(), report))
+	ctx = WithLaneChoice(ctx, alone(choiceFor(rig.model, 0)))
+	ctx = WithStreamObserver(ctx, watched.observe)
+	response, err := rig.client.CompleteWithMessages(ctx, userMessages("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Hedged() || answerTokens(response) != 24 {
+		t.Fatalf("expected the original answer without a rescue; hedged=%v", report.Hedged())
+	}
+	said := watched.kinds(StreamNotice)
+	if len(said) != 1 || said[0].Delta != "still waiting for an answer · /model switches" {
+		t.Fatalf("notices = %+v, want an honest wait with the switch path", said)
+	}
+	if _, switching := told.find(PhaseSwitching); switching {
+		t.Fatal("the clock claimed to switch without another request")
+	}
+	if _, waiting := told.find(PhaseAllSlow); !waiting {
+		t.Fatalf("the clock never reported the wait: %v", told.story())
+	}
+}

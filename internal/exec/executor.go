@@ -306,7 +306,7 @@ type Outcome struct {
 	// the two part company in exactly the case that matters — a leaf that
 	// produced text and stopped because it was out of budget reads as "budget"
 	// and grades as a failure.
-	Verdict provider.Verdict
+	Verdict provider.Reading
 
 	// Ran is the tail of what the leaf actually did: the last calls it made,
 	// in order, with the arguments clipped. ToolCalls already counted them and
@@ -858,7 +858,7 @@ func Requeued(err error, record func() int) (allowed time.Duration, recorded int
 // answers — the ink run of 2026-08-29 printed a grant of 150,000 beside a leaf
 // that had been landed by a different ceiling at 240,000.
 type Meter struct {
-	// Name is the bound in one word, for a reader and for a grep. The four the
+	// Name is the bound in one word, for a reader and for a grep. The bounds the
 	// loop writes have constants because two files spell them and one of them
 	// decides whether the figures are re-read at land time: see MeterCost.
 	Name string `json:"name,omitempty"`
@@ -878,13 +878,14 @@ type Meter struct {
 // MeterCost and MeterDeadline are LIVE: both are read when the landing reserve
 // is granted and both keep moving while the landing turns run, so what they
 // held at the grant is not what the leaf actually reached. They are re-read at
-// land time. MeterTurns and MeterNoProgress are counts of the loop itself and
-// are already final at the moment they are written.
+// land time. MeterTurns, MeterNoProgress and MeterToolTimeouts are counts of
+// the loop itself and are already final at the moment they are written.
 const (
-	MeterCost       = "cost"
-	MeterDeadline   = "deadline"
-	MeterTurns      = "turns"
-	MeterNoProgress = "no-progress"
+	MeterCost         = "cost"
+	MeterDeadline     = "deadline"
+	MeterTurns        = "turns"
+	MeterNoProgress   = "no-progress"
+	MeterToolTimeouts = "tool-timeouts"
 )
 
 // Named reports that a bound actually said something.

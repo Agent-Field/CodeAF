@@ -201,12 +201,11 @@ const (
 	// the work somewhere it is watched.
 	checkpointMarks = 3
 
-	// checkpointBriefTokens bounds the handoff brief. The shaper writes the same
-	// document under taskShapeTokens for a request nobody has worked on yet; this
-	// one is written by a model with a turn's worth of findings in front of it and
-	// is asked to put them down, so it gets more room — and it is still clipped to
-	// taskShapeBriefLimit, which is the bound EVERY brief on this road is held to.
-	checkpointBriefTokens = 2000
+	// THE HANDOFF BRIEF IS SENT WITH NO CEILING, like everything else on this
+	// road. It used to carry 2000 — more room than the shaper's, because this
+	// document is written by a model with a turn's worth of findings in front of
+	// it — and what actually held the brief to a size was never that figure but
+	// taskShapeBriefLimit, the clip EVERY brief here is held to after it arrives.
 
 	// checkpointBriefWords is how many WORDS a dowry must carry before the
 	// harness will hand it to somebody as an instruction.
@@ -261,14 +260,13 @@ const (
 	// costs nothing.
 	checkpointBriefTries = 2
 
-	// checkpointSketchTokens is the sidecar's whole budget. What it is asked for
-	// is one line of shape and one sentence naming the letters, and a reader that
-	// runs out of room halfway through the shape writes a line the parser reads as
-	// ONE PART — a silent CONTINUE from the one call that was supposed to notice
-	// width. Three hundred is both halves at any length a sketch of a turn's
-	// remaining work honestly takes, and a fraction of the tool round it stands
-	// between.
-	checkpointSketchTokens = 300
+	// THE SIDECAR SENDS NO BUDGET EITHER, and its old one is the clearest case
+	// for why not. Three hundred tokens was "both halves at any length a sketch
+	// honestly takes" — and a reader that ran out of room halfway through the
+	// shape wrote a line the parser read as ONE PART, a silent CONTINUE from the
+	// one call that was supposed to notice width. The failure mode of a ceiling
+	// picked here is a wrong answer nobody can see, so there is no ceiling; what
+	// bounds this call is [checkpointSketchWindow].
 
 	// checkpointSketchWindow is how long the mark's read gets, and unlike the
 	// race's two windows (route_judge.go) SOMEBODY IS WAITING ON THIS ONE. It
@@ -285,9 +283,9 @@ const (
 
 	// checkpointHandoffWindow is how long the mastermind gets to WRITE the brief,
 	// and it is longer than the sketch's window for the one honest reason: what is
-	// being asked for is a document of up to [checkpointBriefTokens] rather than a
-	// line of shape, and a bound that fits a sketch would time out most of the
-	// documents this exists to produce.
+	// being asked for is a whole document rather than a line of shape, and a
+	// bound that fits a sketch would time out most of the documents this exists
+	// to produce.
 	//
 	// It is still a person's patience and not a generous bound. It stands at the
 	// END of a turn that has already run to its ceiling — minutes of tool calls —
@@ -372,6 +370,11 @@ const (
 	// that it had failed.
 	checkpointResultBytes = 400
 
+	// One completed write input travels beside its outcome. A path and a byte
+	// count cannot establish what was written. Larger inputs are explicitly
+	// omitted, and this evidence competes within the existing digest budget.
+	checkpointWriteArgumentBytes = 4 * checkpointResultBytes
+
 	// checkpointSaidBytes is how much of the turn's last words the reader is
 	// shown. It is the one part of the digest that is the model's own account of
 	// where it has got to, and a paragraph of it is the whole of what a reader
@@ -395,14 +398,14 @@ const (
 // answer about the emptiness.
 const (
 	checkpointDigestAsked = "WHAT WAS ASKED"
-	checkpointDigestDone  = "WHAT HAS BEEN DONE SO FAR, ONE LINE PER STEP"
+	checkpointDigestDone  = "TOOLS CALLED, ONE LINE PER STEP"
 	// checkpointDigestFound heads the results, and its heading SAYS THE ORDER
 	// because the order is not the one a reader would assume. The newest call is
 	// printed first, so a reader that runs out of attention has spent it on the
 	// evidence in front of the turn rather than on the evidence behind it — and
 	// the same order is what the fitting drops from, oldest end first.
 	checkpointDigestFound   = "WHAT CAME BACK, NEWEST FIRST"
-	checkpointDigestWritten = "WHAT HAS BEEN WRITTEN OR CHANGED"
+	checkpointDigestWritten = "WRITE OR EDIT ATTEMPTS (CHECK THE RESULTS)"
 	// checkpointDigestMoved heads ONE LINE: when the work last changed, and what
 	// has come back since (novelty.go's [workClock]). It is the fact a reader of
 	// a ledger cannot get from the ledger — ninety lines of activity look the
@@ -464,6 +467,20 @@ const checkpointResultArrow = " → "
 // accept work that a worker in its own copy cannot see, let alone accept. The
 // exclusion is stated in the ask, and the fold that reads it back is
 // [checkpointSketch.handsBack].
+//
+// AND IT SAYS THAT WHAT IS DONE IS NOT WHAT IS LEFT, which is a repair rather
+// than a tidiness. WHAT COMES BACK FROM HERE BECOMES THE FIRST PARAGRAPH OF THE
+// BRIEF, under the words "WHAT IS LEFT, AS PARTS" ([checkpointSketch.head]) — so
+// a reader that drew work the turn above it had ALREADY FINISHED handed the next
+// pair of hands a louder, earlier instruction to do it again, while the evidence
+// section further down that same document correctly said it was done and pointed
+// at what came back (admission.go). Measured 2026-09-10: a worker opened on
+// exactly that brief and spent its first minutes re-reading what the parent had
+// read and re-deriving what the handoff had already stated. The contradiction
+// cannot be repaired downstream, because by the time the two halves are in one
+// document they already disagree — so the reader that draws the line is the one
+// that has to be told, and the writer of the prose half is told the same thing in
+// the same change ([checkpointHandoffWriteAsk]).
 const checkpointSketchAsk = "[checkpoint] Above is what was asked and what has been done towards it. " +
 	"In one line, sketch what remains of the ask as parts and arrows: " +
 	"independent parts separated by ' | ', ordered steps joined by ' > '. " +
@@ -471,7 +488,9 @@ const checkpointSketchAsk = "[checkpoint] Above is what was asked and what has b
 	"Nothing else on that line. Then one sentence saying what each letter is. " +
 	"If nothing remains, that line is '(done)'. " +
 	"Work you have already handed out is not a part: if all that remains is waiting on it, " +
-	"reviewing what comes back or accepting it, that line is '(waiting)'."
+	"reviewing what comes back or accepting it, that line is '(waiting)'. " +
+	"Work that is already done is not a part either: what the account above shows finished is not " +
+	"what remains, and drawing it sends somebody to do it a second time."
 
 // checkpointSplitNote is the ONE line a person reads when a mark's sketch says
 // the work in front of it has parts.
@@ -614,10 +633,22 @@ const (
 // IT IS ASKED FOR PROSE AND NOT FOR HEADINGS. The reader of this document is a
 // worker opening on it cold, and a brief with four shouted headings over four
 // empty sections is a form somebody filled in.
+//
+// AND IT SAYS WHERE THE LINE BETWEEN THE FIRST TWO OF THE FOUR FALLS, because
+// the whole value of asking for both is lost when a thing lands on the wrong
+// side of it. The four things are ordered "what is left" then "what is already
+// known", and a writer that put a finished reading under the first has not
+// merely been untidy — it has written the instruction the worker obeys, ahead of
+// and louder than the evidence section that says the same reading is done
+// (admission.go). This is [checkpointSketchAsk]'s clause said in the third
+// person, landed in the same change and measured from the same run: a worker
+// opened on such a brief and spent its first minutes redoing finished work.
 const checkpointHandoffWriteAsk = "[write the handoff] The work above is being handed to somebody who will finish it, and they " +
 	"cannot see any of this — not the conversation, not the tool results, not the draft. Write their instruction " +
 	"and nothing else: what is left to do, what is already known that they would otherwise have to find out " +
-	"again, what has been ruled out, and how anybody could tell when it is done. Finish against the person's own " +
+	"again, what has been ruled out, and how anybody could tell when it is done. Nothing that is already done goes " +
+	"under what is left to do: what has already been read, run or found out is what they already know, and putting " +
+	"it under what is left sends them to do it again. Finish against the person's own " +
 	"words at the top, never against whatever the draft happens to be holding. Do not greet them, do not " +
 	"describe this conversation, and do not repeat yourself."
 
@@ -635,7 +666,14 @@ const checkpointHandoffWriteAsk = "[write the handoff] The work above is being h
 // AND IT NAMES NOTHING ABOUT THE KIND OF WORK, by the law [checkpointSketchAsk]
 // is held to.
 const checkpointRemainsAsk = "[still asked] Above is what the person asked for and what has been done towards it. " +
-	"The model working on it has just stopped. In one line, say what of the ASK is still not done. " +
+	"The model working on it has just stopped. This is a bounded account, not a fresh inspection of the files. " +
+	"Submitted write/edit arguments show intended changes; their tool results say whether they succeeded. " +
+	"Compare the requested deliverable and its explicit value/type constraints with those inputs and results before deciding. " +
+	"A successful write confirms only that bytes were written; it does not prove their contents meet the request. " +
+	"Tool failures and exact data mismatches outweigh an assistant claim of success. " +
+	"Abbreviated or omitted content is unknown, not evidence of a defect. " +
+	"Ground any claimed defect in the evidence shown; if a necessary check is missing, name that check instead of inventing its result. " +
+	"In one line, say what of the ASK is still not done. " +
 	"If everything they asked for is done, answer with the single line " + checkpointNothingLeft +
 	" and write nothing else at all. Otherwise write that one line and nothing else: no preamble, " +
 	"no list, no question."
@@ -729,9 +767,130 @@ func checkpointCarriedOnNote(observed []string) string {
 // next request, and anything reading a request's last message to tell the ask
 // apart from the answer read the continuation as the question. Two lanes, two
 // markers.
-const checkpointCarryOnLead = "[carry on] You stopped, but what was asked is not finished. " +
-	"Somebody reading the work against the request says this is what is left. " +
-	"Carry on with it, and do not summarise what you have already done:\n"
+// checkpointLoadNudgeNote is the one line a person reads when a turn is sent
+// back for loading a tool it never used. It is in the register of the other
+// carry-on notes: an observation, a middle dot, what happens next.
+const checkpointLoadNudgeNote = "it loaded a tool and stopped before using it · asking it to go on"
+
+// checkpointAskNudgeNote is the line a person reads when a turn is sent back
+// for an `ask` the gate refused and the model never made again.
+const checkpointAskNudgeNote = "its question was refused and it stopped without asking again · asking it to go on"
+
+// checkpointAskNudgeLead is that continuation, carrying the refusal itself so
+// the model has the fix in front of it rather than in its history.
+func checkpointAskNudgeLead(refusal string) string {
+	return "[carry on] Your `ask` this turn was refused — " + strings.TrimSpace(refusal) + " — and the person saw no question. " +
+		"Ask again in this same turn with that fixed, or say in one line why you no longer need to."
+}
+
+// askRefusedAndNotRetried reads the transcript for the shape
+// [checkpointAskNudgeLead] answers: the newest `ask` of THIS turn came back
+// refused ([askRefusedLead]) and no `ask` was made after it. The walk is the
+// one [loadedAndNeverUsed] makes — backward, through a synthetic continuation,
+// stopping at the person's own message — and it returns the refusal's own
+// words, without the lead.
+func askRefusedAndNotRetried(messages []ai.Message) (string, bool) {
+	for i := len(messages) - 1; i >= 0; i-- {
+		message := messages[i]
+		switch message.Role {
+		case "user":
+			if strings.HasPrefix(partsText(message), "[carry on] ") {
+				continue
+			}
+			return "", false
+		case "assistant":
+			for _, call := range message.ToolCalls {
+				if strings.TrimSpace(call.Function.Name) != "ask" {
+					continue
+				}
+				id := strings.TrimSpace(call.ID)
+				for j := i + 1; j < len(messages); j++ {
+					if messages[j].Role != "tool" || strings.TrimSpace(messages[j].ToolCallID) != id {
+						continue
+					}
+					answer := strings.TrimSpace(partsText(messages[j]))
+					if !strings.HasPrefix(answer, askRefusedLead) {
+						return "", false
+					}
+					return strings.TrimPrefix(answer, askRefusedLead), true
+				}
+				return "", false
+			}
+		}
+	}
+	return "", false
+}
+
+// checkpointLoadNudgeLead is the synthetic continuation itself, and it names
+// the tools by the names the load answered with, so a model that has forgotten
+// what it fetched is told rather than left to search its own history.
+func checkpointLoadNudgeLead(names []string) string {
+	quoted := make([]string, 0, len(names))
+	for _, name := range names {
+		quoted = append(quoted, "`"+name+"`")
+	}
+	return "[carry on] You loaded " + strings.Join(quoted, ", ") + " this turn and then stopped without calling it. " +
+		"It is in your tool list now: call it in this same turn, or say in one line why you no longer need it."
+}
+
+// loadedAndNeverUsed reads the transcript for the shape [Agent.checkpointReopen]
+// sends back: the newest tool call of THIS turn was a `load_capability` that
+// answered `Loaded: …`, and nothing was called after it.
+//
+// THE WALK IS BACKWARD AND STOPS AT THE PERSON'S OWN MESSAGE, so a load an
+// earlier turn made and used cannot be mistaken for this turn's. A synthetic
+// continuation is a user-role message too and is walked THROUGH, because the
+// turn it re-opened is still this turn. What the load armed is read off the
+// load's own answer — the line `load_capability` wrote — rather than off the
+// group name, because the group is a word and the answer is the fact.
+func loadedAndNeverUsed(messages []ai.Message) ([]string, bool) {
+	for i := len(messages) - 1; i >= 0; i-- {
+		message := messages[i]
+		switch message.Role {
+		case "user":
+			if strings.HasPrefix(partsText(message), "[carry on] ") {
+				continue
+			}
+			return nil, false
+		case "assistant":
+			if len(message.ToolCalls) == 0 {
+				continue
+			}
+			if len(message.ToolCalls) != 1 || strings.TrimSpace(message.ToolCalls[0].Function.Name) != loadCapabilityToolName {
+				return nil, false
+			}
+			id := strings.TrimSpace(message.ToolCalls[0].ID)
+			for j := i + 1; j < len(messages); j++ {
+				if messages[j].Role != "tool" || strings.TrimSpace(messages[j].ToolCallID) != id {
+					continue
+				}
+				answer := strings.TrimSpace(partsText(messages[j]))
+				if !strings.HasPrefix(answer, loadedLead) {
+					return nil, false
+				}
+				names := strings.Split(strings.TrimSpace(strings.SplitN(strings.TrimPrefix(answer, loadedLead), ".", 2)[0]), ", ")
+				return names, len(names) > 0 && names[0] != ""
+			}
+			return nil, false
+		}
+	}
+	return nil, false
+}
+
+// partsText is a message's text parts joined, which is the only reading a
+// transcript walk needs of it.
+func partsText(message ai.Message) string {
+	var text strings.Builder
+	for _, part := range message.Content {
+		text.WriteString(part.Text)
+	}
+	return text.String()
+}
+
+const checkpointCarryOnLead = "[carry on] A reader of a bounded account of the work raised the observation below. " +
+	"Check it against the actual current work and the person's request before changing anything. " +
+	"Fix any confirmed gap. If the observation is mistaken or already satisfied, preserve the correct work, " +
+	"explain the evidence briefly, and finish; do not invent a change to satisfy the observation.\n"
 
 // ── the meter ───────────────────────────────────────────────────────────────
 
@@ -756,10 +915,38 @@ type checkpointMeter struct {
 	// fact about ONE answer. A counter that remembered yesterday's carry-ons
 	// would refuse to carry on a conversation that had never asked for it.
 	carriedOn int
+	// loadNudged says this turn has already been sent back once for stopping
+	// right after a `load_capability` it never used, or an `ask` that was
+	// refused and never made again ([Agent.checkpointReopen],
+	// [loadedAndNeverUsed], [askRefusedAndNotRetried]). ONCE: a model that ignores the nudge too is a model
+	// that has decided, and a second nudge would be an argument.
+	loadNudged bool
+	// claimedDone is the REQUEST a completion claim has already been believed
+	// about, and empty on a turn that has made none ([Agent.handOverRunningTurn]).
+	//
+	// IT IS CHARGED ON EVERY ACCEPTED DROP AND NEVER ONLY ON THE UNCORROBORATED
+	// ONES. Two readers agreeing is better evidence than one, and it is still not
+	// a fact — both can be wrong at once, which is the shape the frozen cells had
+	// — so the bound is one claim per request whoever agreed with it. A privilege
+	// for agreement would leave exactly the path where two minds are both wrong
+	// unbounded, which is the path with no reader left to catch it.
+	//
+	// AND IT IS THE ASK ITSELF RATHER THAN A FLAG, because a person who types a
+	// new direction mid-turn has changed what the claim was about
+	// ([Agent.turnAsk] grows as steering lands). A revision must not inherit a
+	// completion spent on the sentence before it; the same sentence twice must
+	// not be believed twice.
+	claimedDone string
+	// askAgainAt is the round the ceiling stands on AFTER a believed claim, and
+	// zero on every turn that has not made one. It is what makes a drop safe to
+	// grant without corroboration: a turn that said it was finished and then did
+	// [checkpointPrice] more rounds of real work has disproved its own claim, and
+	// the ceiling is there to meet it.
+	askAgainAt int
 	// marks is how many of the ladder's rungs have already fired.
 	marks int
 	// shareSpent says the wall's share has already opened its door in this turn,
-	// so that a handover the two minds declined is not asked for again at every
+	// so that a handover this road declined is not asked for again at every
 	// boundary after (turnwall.go's [Agent.pastTurnWallShare] claims it).
 	//
 	// IT LIVES ON THIS METER BECAUSE THE THING IT LATCHES IS A FACT ABOUT ONE
@@ -887,14 +1074,12 @@ func roundWasWatching(calls []ai.ToolCall) bool {
 // establishes itself, on every provider, and it is also the unit the measured
 // failure was measured in: ninety-odd tool rounds.
 //
-// A ROUND IS ONE BATCH AND NOT ONE CALL, AND A FORK BURST IS ONE BATCH. This
-// counts what it counts because the meter measures THE PERSON'S WAITING, and a
-// batch is one wait however many calls are inside it — that is why eight reads
-// asked for in one breath cost one round. A `fork` (fork.go) is the sharpest
-// case of the same fact: one call, in one batch, with two to four whole agents
-// working inside it, and the person waits once. So a lane tempted to count calls
-// here would silently price a burst at four times what the person actually
-// waited, and would move work off a conversation for having been parallel.
+// A ROUND IS ONE BATCH AND NOT ONE CALL. This counts what it counts because the
+// meter measures THE PERSON'S WAITING, and a batch is one wait however many
+// calls are inside it — that is why eight reads asked for in one breath cost one
+// round. So a lane tempted to count calls here would silently price a burst at
+// several times what the person actually waited, and would move work off a
+// conversation for having been parallel.
 func (m *checkpointMeter) round(worked bool) int {
 	if m == nil {
 		return 0
@@ -922,6 +1107,16 @@ func (m *checkpointMeter) round(worked bool) int {
 		return 0
 	}
 	m.rounds++
+	// AND A TURN THAT SAID IT WAS FINISHED IS MET AGAIN IF IT CARRIES ON WORKING.
+	//
+	// This rung stands in front of the ladder's own count — the ceiling may
+	// already have fired, and the write seam may have dropped long before it —
+	// because what it bounds is not how much a turn has cost but a CLAIM the
+	// harness believed ([Agent.handOverRunningTurn]).
+	if m.askAgainAt > 0 && m.rounds >= m.askAgainAt {
+		m.askAgainAt = 0
+		return checkpointMarks
+	}
 	if m.marks >= checkpointMarks {
 		return 0
 	}
@@ -930,6 +1125,49 @@ func (m *checkpointMeter) round(worked bool) int {
 	}
 	m.marks++
 	return m.marks
+}
+
+// mayBelieveDone reports that no completion claim about THIS request has been
+// believed yet, and so one may be believed now.
+//
+// A NIL METER ANSWERS YES, which is the door looped.go and the seams reach this
+// road through when there is no turn meter to charge. It is the fail-open
+// direction on the one question where erring the other way manufactures the
+// duplicate work this whole road exists to avoid.
+func (m *checkpointMeter) mayBelieveDone(ask string) bool {
+	return m == nil || m.claimedDone != completionClaimOver(ask)
+}
+
+// believeDone charges one claim ABOUT ONE REQUEST and arms the ceiling to ask
+// again after [checkpointPrice] more rounds of real work.
+//
+// IT IS THE SAME PRICE THE LADDER CHARGES FOR ITS FIRST LOOK AT ANY TURN, taken
+// from that constant rather than written again here: a turn that has just said
+// it is finished is, for this purpose, a turn nobody has looked at yet.
+func (m *checkpointMeter) believeDone(ask string) {
+	if m == nil {
+		return
+	}
+	m.claimedDone = completionClaimOver(ask)
+	m.askAgainAt = m.rounds + checkpointPrice
+}
+
+// completionClaimOver names the request a completion claim was made about.
+//
+// IT IS THE ASK'S OWN TEXT, normalised for whitespace and nothing else. A claim
+// is spent against the sentence it was made about, so a person's new direction —
+// which [Agent.turnAsk] renders as a longer list — is a different request and
+// arrives with the claim unspent, exactly as the first one did.
+func completionClaimOver(ask string) string {
+	trimmed := strings.TrimSpace(ask)
+	if trimmed == "" {
+		// AN ASK NOBODY CAN NAME IS STILL ONE REQUEST for this purpose. A turn
+		// opened by a door that carries no sentence would otherwise be handed a
+		// fresh claim at every seam, which is the unbounded path in different
+		// clothes.
+		return "(no ask)"
+	}
+	return strings.Join(strings.Fields(trimmed), " ")
 }
 
 // ── the sketch ──────────────────────────────────────────────────────────────
@@ -1004,9 +1242,8 @@ var checkpointDoneShapes = map[string]bool{
 //
 // AND A READER NOBODY REACHED SAYS NOTHING AT ALL. An empty sketch is a fault, a
 // timeout, an install with no mastermind and a blank reply, and reading silence
-// as agreement is precisely the failure this corroboration exists to close: it
-// would hand the drop straight back to the running model on every turn whose
-// sidecar was down. So the sketch must have been drawn.
+// as agreement would hand every turn whose sidecar was down straight back to the
+// running model. So the sketch must have been drawn.
 func (s checkpointSketch) saysDone() bool {
 	if !s.drawn() {
 		return false
@@ -1360,12 +1597,12 @@ func unbracket(stage string) string {
 // A session with no client at all is the same answer for the other reason.
 func (a *Agent) markReaderAbsent() bool {
 	a.mu.Lock()
-	source, client, floor := a.config.RolesSource, a.client, ""
+	source, floor := a.config.RolesSource, ""
 	if a.config.OneModel {
 		floor = a.model
 	}
 	a.mu.Unlock()
-	if client != nil {
+	if a.hasClient() {
 		if _, err := roles.Ladder(roles.Source(source), roles.RoleMarkReader, floor); err == nil {
 			return false
 		}
@@ -1435,8 +1672,10 @@ func (a *Agent) readMark(ctx context.Context) checkpointRead {
 	// AN ACCOUNT OF THE WORK AND NOT THE CONVERSATION, for the price
 	// [checkpointDigestTokens] states: the reader is asked about the SHAPE of what
 	// is left, and nothing inside a tool result changes that shape.
-	digest := checkpointDigest(a.taskRequest(), a.snapshot())
-	if digest == "" {
+	asked := a.turnAsk()
+	snapshot := a.snapshot()
+	page := checkpointCompletionPage(asked, snapshot)
+	if page == "" {
 		// NOTHING TO READ IS NOT A READING. A turn with no ask, no tool call and
 		// nothing said has nothing for a second mind to be shown, and a call made
 		// on an empty page is a mastermind asked to invent an answer. It cannot
@@ -1444,9 +1683,16 @@ func (a *Agent) readMark(ctx context.Context) checkpointRead {
 		// ever does, the honest outcome is the fail-open one and no bill.
 		return checkpointRead{}
 	}
+	// AND THE OWNER'S OWN CONTEXT IS KEPT, because a reading that fails under a
+	// CANCELLED turn is a different fact from a reader that could not be reached
+	// ([checkpointRead.ownerGone]). The frozen handoff-after cell's only error
+	// line was `role:markreader message:context canceled`, and it was read as a
+	// reader outage: the turn had been let go of, and the seam went on to hand
+	// the person's original sentence to a cold worker anyway.
+	owner := ctx
 	ctx, done := context.WithTimeout(ctx, checkpointSketchWindow)
 	defer done()
-	messages := []ai.Message{textMessage("user", digest+"\n\n"+checkpointSketchAsk)}
+	messages := []ai.Message{textMessage("user", page+"\n\n"+checkpointSketchAsk)}
 	began := time.Now()
 	// AND THE PERSON IS TOLD WHAT THIS SILENCE IS, because it is one: a turn stops
 	// mid-round, a mastermind is shown an account of the work and asked what is
@@ -1467,11 +1713,15 @@ func (a *Agent) readMark(ctx context.Context) checkpointRead {
 	// failed, the one the window cut short — which is what the defer is for.
 	a.tellPhase(provider.PhaseTakingStock, "", began)
 	defer a.endPhase()
-	response, reader, err := a.callRole(ctx, roles.RoleMarkReader, "", messages,
-		ai.WithMaxTokens(checkpointSketchTokens))
+	response, reader, err := a.callRole(ctx, roles.RoleMarkReader, "", messages)
 	read := checkpointRead{asked: true, model: reader, took: time.Since(began)}
 	if err != nil || response == nil {
 		read.failed = true
+		// A READING THAT FAILED BECAUSE THE TURN WAS LET GO OF SAYS NOTHING ABOUT
+		// THE READER. The window this call was given is its own; the owner's is
+		// the conversation's, and only that one being done means the work above
+		// this call no longer belongs to anybody.
+		read.ownerGone = owner.Err() != nil
 		return read
 	}
 	a.addAuxiliaryUsage(response, reader, 1)
@@ -1498,12 +1748,12 @@ func (a *Agent) readMark(ctx context.Context) checkpointRead {
 	// back. One question, one answer, carried.
 	read.held = a.piecesStillOut()
 	read.sketch, read.ownRemainder = read.sketch.withoutHeldWork(read.held)
-	// AND WHAT THE READER WAS SHOWN RIDES BACK WITH WHAT IT DREW. The drawing is
-	// one line of letters; the account under those letters is the only thing
-	// anybody downstream could weigh as EVIDENCE, and it is honest evidence
-	// because it is exactly the page a mastermind read before it said the work
-	// had parts (task_divide_sketch.go).
-	read.digest = digest
+	// AND THE WORK EVIDENCE THE READER SAW RIDES BACK WITH WHAT IT DREW. The
+	// drawing is one line of letters; this bounded account is what a downstream
+	// writer can weigh beneath it (task_divide_sketch.go). The handoff page adds
+	// the complete ask in its own section, so carrying it here would send the
+	// same request twice.
+	read.digest = checkpointDigest("", snapshot)
 	return read
 }
 
@@ -1539,13 +1789,19 @@ type checkpointRead struct {
 	// held is the ledger the reduction above was taken against
 	// ([Agent.piecesStillOut]), carried so that every later reading on this road
 	// answers to the same one. See [Agent.readMark].
-	held    []heldPiece
-	digest  string
-	asked   bool
-	failed  bool
-	model   string
-	costUSD float64
-	took    time.Duration
+	held   []heldPiece
+	digest string
+	asked  bool
+	failed bool
+	// ownerGone says the reading failed under a context the CONVERSATION had
+	// already cancelled, rather than at a reader that could not answer. The two
+	// are spelled apart because the harness must do opposite things with them:
+	// an outage is silence and the road carries on, while an abandoned turn owns
+	// nothing and must start nothing ([Agent.handOverRunningTurn]).
+	ownerGone bool
+	model     string
+	costUSD   float64
+	took      time.Duration
 }
 
 // drawn is this reading as the DIVISION IT PROPOSES, which is the one thing about
@@ -1569,6 +1825,9 @@ func (a *Agent) journalMarkRead(read checkpointRead, mark, rounds int, decision 
 	}
 	if read.failed {
 		decision = checkpointDecisionFailed
+		if read.ownerGone {
+			decision = checkpointDecisionAbandoned
+		}
 	}
 	a.file.appendMark(journalMark{
 		N:          mark,
@@ -1594,6 +1853,12 @@ const (
 	// the file has to be able to tell them apart: one is a reader that could not
 	// be reached, the other is an install that never had one.
 	checkpointDecisionNoReader = "no reader"
+	// checkpointDecisionAbandoned is a reading that failed because THE TURN was
+	// cancelled under it, which the file has to be able to tell from `failed` for
+	// the reason `no reader` exists: the frozen handoff-after cell's whole
+	// evidence of it was one `context canceled` line that read as a reader outage
+	// ([checkpointRead.ownerGone]).
+	checkpointDecisionAbandoned = "abandoned"
 	// checkpointDecisionWrote is the write seam's own word (writeseam.go). It is
 	// distinct from the ceiling's because the two moments are different facts
 	// about a turn — one outran the reading, one outran the small edit — and a
@@ -1630,6 +1895,28 @@ const (
 	// checkpointCeilingTrivial is the spawn floor (spawnfloor.go): the ask
 	// itself is one command, so nothing moves, whatever the work has cost.
 	checkpointCeilingTrivial = "dropped:trivial-ask"
+	// checkpointCeilingDelivering is the write seam standing down over a result
+	// this conversation already owns (writeseam.go's
+	// [Agent.deliveringOwnedResult]): the integration of finished work stays
+	// where the finished work landed. It is spelled apart from
+	// `dropped:work-already-out` because the two are opposite halves of one
+	// custody — that one is a piece still OUT, this one is a piece that has come
+	// BACK — and a bench reading the file has to be able to tell them apart. The
+	// row carries the id of the result being delivered.
+	checkpointCeilingDelivering = "dropped:delivering-own-result"
+	// checkpointCeilingAwaiting is the ending a handover takes when the only
+	// thing left of the request is the ending of an operation this conversation
+	// started and is already owed (handoff_remainder.go). It is spelled apart
+	// from `dropped:nothing-left` because the obligation is still OPEN: nothing
+	// was finished, nothing was accepted, no command was stopped, and the wake
+	// that was always coming is what brings the result back.
+	checkpointCeilingAwaiting = "dropped:awaiting-own-work"
+	// checkpointCeilingAbandoned is the ending a handover takes when the turn's
+	// own context is already cancelled — the person pressed escape, the session
+	// let the turn go, the request behind it is gone. It is spelled apart from
+	// every drop above because nothing was decided about the WORK: the seam has
+	// no owner to admit a task on behalf of ([Agent.handOverRunningTurn]).
+	checkpointCeilingAbandoned = "dropped:turn-abandoned"
 )
 
 // THE LAW: ONE ENDING ROW PER ENDING, WRITTEN AT THE SEAM THAT TOOK IT.
@@ -1648,12 +1935,43 @@ const (
 // other three for the same reason they are spelled apart from each other: a bench
 // reading the file has to tell a turn the clock moved from a turn the counters
 // moved, and it can only do that if the row says so.
+//
+// AND THE CARRY-ON ROAD IS A FIFTH, which is not a handover at all and writes a
+// row for the same reason the other four do. It is the one seam that can end a
+// turn WITHOUT reading it ([Agent.checkpointReopen]'s gates), and a refusal
+// nobody can find afterwards is exactly what #567 was: two runs that behaved
+// completely differently leaving identical journals. A row with this seam on it
+// therefore never says `moved` — nothing was handed anywhere — it says which
+// ending the road stood down for.
 const (
 	checkpointSeamMark    = "mark"
 	checkpointSeamWrite   = "write"
 	checkpointSeamCeiling = "ceiling"
 	checkpointSeamWall    = "wall"
+	checkpointSeamCarry   = "carry-on"
 )
+
+// journalCarryOnAwaited writes down the one ending the carry-on road takes on
+// its own account: the turn is left alone because a task this conversation
+// started has not come back yet (turnhandoff.go's
+// [Agent.turnIsWaitingOnItsOwnTasks]).
+//
+// IT BORROWS THE HANDOVER'S OWN WORD, `dropped:awaiting-own-work`, because it is
+// the same fact about the same conversation — the obligation is still OPEN and
+// the wake that was always coming is what brings the result back — and a bench
+// counting waits should not have to know which road noticed. Seam is what tells
+// the two apart, and the reason names the node rather than a job.
+func (a *Agent) journalCarryOnAwaited(rounds int, node uint64) {
+	a.file.appendCeiling(journalCeiling{
+		Rounds:   rounds,
+		Seam:     checkpointSeamCarry,
+		Decision: checkpointCeilingAwaiting,
+		// TaskID is deliberately not set: it names a node this row ADMITTED, and
+		// this row admits nothing (sessionfile.go's [journalCeiling]). The id
+		// rides in the reason, the way the delivery seam's does.
+		Reason: fmt.Sprintf("awaiting task %d", node),
+	})
+}
 
 // ── the carry ladder ────────────────────────────────────────────────────────
 //
@@ -1689,6 +2007,17 @@ const (
 	carryRungDraft   = "draft"
 	carryRungAsk     = "ask"
 
+	// AND ONE ROAD WALKS NO LADDER AT ALL, so it names itself on the ceiling row
+	// rather than naming a rung it never tried. A write-free turn whose drawing
+	// came back with parts is handed over as a QUICK NODE, and the drawing is the
+	// brief: its parts are the node's items, in order, and there is nothing for a
+	// second model to write out of them (checkpoint_quick.go). Nothing was
+	// skipped and nothing failed — there was nothing to ask for — so `skipped`
+	// and `empty` would both be a rung reporting on a call this road does not
+	// make. A bench reading the file tells this road from every other by this
+	// word alone.
+	carryRungQuick = "quick"
+
 	// What one rung DID. `written` is words somebody could work from;
 	// `degenerate` is words that were not words, or words that had stopped
 	// saying new things; `failed` is a rung whose call did not come back, and
@@ -1702,6 +2031,13 @@ const (
 	carrySkipped     = "skipped"
 	carryNothingLeft = "nothing-left"
 	carryEmpty       = "empty"
+	// carryAwaited is the draft rung answering that what is left is the ending of
+	// an operation this conversation is already owed, by number
+	// (handoff_remainder.go). It is spelled apart from `nothing-left` because the
+	// two are different facts about the ask: one says it is discharged, this one
+	// says a named obligation is still outstanding and is this conversation's to
+	// receive.
+	carryAwaited = "awaited"
 )
 
 // What the JOURNAL is told when the reason is the harness's own and not a
@@ -2028,27 +2364,35 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 	// writer's call is the work moving, a result is lines that were or were not
 	// new (novelty.go).
 	lines := newLineNovelty()
-	// The step each call took, by id, so a result that arrives after a later
-	// batch's write is not counted against it.
-	at := make(map[string]int)
-	// The line each call wrote, by id, so its result can be printed under the same
-	// words the ledger used and a reader can match the two.
-	calls := make(map[string]string)
-	for _, message := range messages {
-		for _, call := range message.ToolCalls {
+	// Steps and labels belong to call occurrences. An orphan or duplicate
+	// result must not borrow a prior batch's label or advance its work clock.
+	at := make(map[*ai.ToolCall]int)
+	calls := make(map[*ai.ToolCall]string)
+	paired := toolResultCalls(messages)
+	writeResult, writeStep := -1, 0
+	var writeInput string
+	for messageIndex, message := range messages {
+		for callIndex := range message.ToolCalls {
+			call := &message.ToolCalls[callIndex]
 			name := strings.TrimSpace(call.Function.Name)
 			if name == "" {
 				continue
 			}
 			line := name
-			if argument := checkpointArgument(call.Function.Arguments); argument != "" {
+			argument := checkpointArgument(call.Function.Arguments)
+			if checkpointWriters[name] {
+				if path := checkpointArgumentNamed(call.Function.Arguments, "path"); path != "" {
+					argument = clip(path, checkpointLedgerBytes)
+				}
+			}
+			if argument != "" {
 				line += " " + argument
 			}
 			ledger = append(ledger, line)
 			moved.step()
 			if id := strings.TrimSpace(call.ID); id != "" {
-				calls[id] = line
-				at[id] = moved.steps
+				calls[call] = line
+				at[call] = moved.steps
 			}
 			if !checkpointWriters[name] {
 				continue
@@ -2070,8 +2414,8 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 		if message.Role != "tool" {
 			continue
 		}
-		id := strings.TrimSpace(message.ToolCallID)
-		line, known := calls[id]
+		call := paired[messageIndex]
+		line, known := calls[call]
 		if !known {
 			continue
 		}
@@ -2079,13 +2423,24 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 		for _, part := range message.Content {
 			came.WriteString(part.Text)
 		}
-		if at[id] > moved.changedAt {
+		if at[call] > moved.changedAt {
 			fresh, weighed := lines.measure(line, stripJobFooter(came.String()))
 			moved.read(fresh, weighed)
 		}
 		if tail := checkpointResultTail(came.String()); tail != "" {
 			results = append(results, line+checkpointResultArrow+tail)
+			if checkpointWriters[call.Function.Name] && at[call] > writeStep {
+				writeResult, writeStep = len(results)-1, at[call]
+				if len(call.Function.Arguments) <= checkpointWriteArgumentBytes {
+					writeInput = "\nsubmitted arguments: " + call.Function.Arguments
+				} else {
+					writeInput = fmt.Sprintf("\nsubmitted arguments omitted (%d bytes); inspect the current file before judging its contents", len(call.Function.Arguments))
+				}
+			}
 		}
+	}
+	if writeResult >= 0 {
+		results[writeResult] += writeInput
 	}
 	return ledger, written, results, moved
 }
@@ -2126,12 +2481,13 @@ var checkpointWriters = map[string]bool{"write": true, "edit": true}
 // and IT KNOWS NO TOOL'S NAME FOR ANYTHING.
 //
 // IT USED TO BE A LIST OF KEYS — command, query, pattern, path, url — and the
-// list was measured being the wrong shape of rule. `fork` (fork.go) takes
-// `parts`, so a turn that had already fanned out twice was drawn in the digest as
-// two bare lines reading `fork`, and the reader sketched serial work over the top
-// of a turn that was demonstrably already parallel. A list of anticipated keys is
-// a list that is wrong about every verb added after it was written, silently, in
-// the one document a second mind reads the turn out of.
+// list was measured being the wrong shape of rule. A verb that fans work out
+// takes none of those keys, so a turn that had already fanned out twice was
+// drawn in the digest as two bare lines carrying the verb's name and nothing
+// else, and the reader sketched serial work over the top of a turn that was
+// demonstrably already parallel. A list of anticipated keys is a list that is
+// wrong about every verb added after it was written, silently, in the one
+// document a second mind reads the turn out of.
 //
 // SO IT READS THE ARGUMENTS AS THEY CAME AND TAKES THE FIRST THING THAT SAYS
 // ANYTHING: the first string, or the first array rendered as its elements. Wire
@@ -2306,8 +2662,14 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 	// disk, and a turn that crosses it on round three must not wait until round
 	// ten to be noticed (writeseam.go). It fires once, and past it the marks and
 	// the ceiling govern the turn exactly as they always did.
-	if a.writeMeterNow().pastAllowance() {
-		return a.checkpointWriting(ctx, hub, turn, started, model, meter.rounds, meter.raced, taken)
+	//
+	// AND IT DOES NOT FIRE ON A DELIVERY. A turn discharging a result this
+	// conversation already owns is finishing work that was watched, and moving it
+	// hands the integration to a worktree that cannot see the index it is standing
+	// in ([Agent.deliveringOwnedResult]). The marks and the ceiling below are
+	// untouched by that and still govern the same turn.
+	if a.writeSeamFires(meter.rounds) {
+		return a.checkpointWriting(ctx, hub, turn, started, model, meter.rounds, meter, taken)
 	}
 	// AND THE BATCH IS PRICED FOR WHAT IT WAS. A round the turn spent looking at
 	// work it already has out is not a round of work, and the ladder does not move
@@ -2321,7 +2683,7 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 	// takes the mark ladder below and is never asked the clock, so the two
 	// readings can neither race nor be paid for twice at one step.
 	if wallShareIsAsked(mark, calls) && a.pastTurnWallShare(meter, started) {
-		return a.checkpointOverWallShare(ctx, hub, turn, started, model, meter.rounds, meter.raced, taken)
+		return a.checkpointOverWallShare(ctx, hub, turn, started, model, meter.rounds, meter, taken)
 	}
 	if mark == 0 {
 		return false
@@ -2329,8 +2691,8 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 	// THE SKETCH IS READ AT EVERY MARK, THE CEILING'S INCLUDED. At the first two
 	// it is the decision; at the ceiling the decision is already made and the
 	// drawing is still worth its call for TWO reasons now — it is what names the
-	// parts at the head of the brief the worker opens on, and it is the second mind
-	// whose agreement the remains contract needs before a handover may be dropped
+	// parts at the head of the brief the worker opens on, and a drawing with parts
+	// in it is the one reading that REFUSES a completion claim
 	// ([Agent.handOverRunningTurn]).
 	read := a.readMark(ctx)
 	rounds := meter.rounds
@@ -2341,13 +2703,13 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 		}
 		a.journalMarkRead(read, mark, rounds, checkpointDecisionSplit)
 		return a.handOverRunningTurn(ctx, hub, turn, started, model,
-			checkpointSplitNote, checkpointSeamMark, rounds, meter.raced, read, taken).moved
+			checkpointSplitNote, checkpointSeamMark, rounds, meter, meter.raced, read, taken).moved
 	}
 	// THE CEILING'S OWN READ IS JOURNALED AS A CARRY-ON, because that is what it
 	// did: it decided nothing, and the ceiling line written a moment later is
 	// where what happened to the turn is recorded.
 	a.journalMarkRead(read, mark, rounds, read.sketch.carryOnDecision())
-	return a.checkpointCeiling(ctx, hub, turn, started, model, rounds, meter.raced, read, taken)
+	return a.checkpointCeiling(ctx, hub, turn, started, model, rounds, meter, meter.raced, read, taken)
 }
 
 // checkpoints reports whether this turn may be checkpointed at all.
@@ -2420,7 +2782,7 @@ func (a *Agent) checkpoints(ctx context.Context, user userMessage) bool {
 	// marks and the ceiling all start a task through this gate; a commit
 	// that has already staged five files is still a commit, and looking at
 	// the work is how F26 converted it.
-	if trivialAsk(a.taskRequest()) {
+	if trivialAsk(a.turnAsk()) {
 		return false
 	}
 	a.mu.Lock()
@@ -2536,6 +2898,37 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 		return false, false
 	}
 	said := response.Text()
+	// A TURN THAT LOADED A TOOL AND STOPPED WITHOUT USING IT IS SENT BACK ONCE,
+	// AND THIS COSTS NO READER. It stands ahead of every gate below because it is
+	// not a reading of the work at all: it is the harness finishing something it
+	// started. `load_capability` answers "Continue in this same turn", the model
+	// answers with a plan — "Let me make the question." — and the turn ends with
+	// the question never asked, the picture never made, the setting never read.
+	// Measured on 2026-09-10 with the person's own words, on a model that loaded
+	// `ask` and then wrote 416 tokens of intention and no call. It is read
+	// structurally off the transcript ([loadedAndNeverUsed]), never off what was
+	// said, and a turn whose last words asked the person something is left alone
+	// as everywhere else in this file. It applies to a typed turn as much as a
+	// woken one, which is why it sits ABOVE [Agent.checkpoints]: the price gate
+	// is about spending a reader, and nothing is spent here.
+	if meter != nil && ctx.Err() == nil && !meter.loadNudged && !endsAskingThePerson(said) {
+		if names, ok := loadedAndNeverUsed(a.snapshot()); ok {
+			meter.loadNudged = true
+			hub.send(Event{Kind: EventNotice, Text: checkpointLoadNudgeNote})
+			a.record(textMessage("user", checkpointLoadNudgeLead(names)))
+			return true, false
+		}
+		// THE SAME SHAPE ONE RUNG LATER: the question was asked, the gate
+		// refused it, and the turn ended telling the person to answer a
+		// question that was never drawn. Read off the tool's own answer
+		// ([askRefusedLead]), once a turn under the same flag.
+		if refusal, ok := askRefusedAndNotRetried(a.snapshot()); ok {
+			meter.loadNudged = true
+			hub.send(Event{Kind: EventNotice, Text: checkpointAskNudgeNote})
+			a.record(textMessage("user", checkpointAskNudgeLead(refusal)))
+			return true, false
+		}
+	}
 	if !a.checkpoints(ctx, user) {
 		return false, false
 	}
@@ -2556,8 +2949,8 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	// person's answer — and re-opening it would be the harness answering
 	// something addressed to somebody else. A turn that ends while a job this
 	// conversation started is still running is in the same position: a process
-	// job, a render and a hand each queue their exit as an OWED note that starts
-	// a turn by itself the moment it lands ([Agent.enqueueJobNote]), so the
+	// job and a render each queue their exit as an OWED note that starts a turn
+	// by itself the moment it lands ([Agent.enqueueJobNote]), so the
 	// continuation the reader would buy already exists and is already on its way.
 	//
 	// A WATCH IS INCLUDED AND IT WAKES TOO, which is the half this gate was
@@ -2570,6 +2963,52 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	//
 	// See [checkpointCarryOnCap] for the five minutes this was measured in.
 	if a.turnIsWaitingOnItsOwnWork() {
+		return false, false
+	}
+	// AND A TURN THAT HANDED ITS ASK OFF IS FINISHED EVEN THOUGH THE ASK IS NOT.
+	//
+	// The reader answers "is the OUTCOME in hand", and that is the wrong question
+	// to end a turn on when the outcome has just become a live task's to deliver:
+	// its landing starts a turn here on its own and THAT turn is read for what
+	// remains, with the report in front of it, at wake prices. Carrying on here
+	// buys polls of the work that is about to report — measured, and exactly the
+	// shape [checkpointCarryOnCap] was written for.
+	//
+	// IT IS THE ADMISSION'S OWN FACT AND NOT A READING OF WHAT WAS SAID, and it is
+	// qualified to THIS turn's handoff: an old task, a failed one, and a worker's
+	// own turn all leave this gate shut (turnhandoff.go).
+	if a.turnHandedItsAskOff() {
+		return false, false
+	}
+	// AND A TURN THAT ENDED WITH WORK OF ITS OWN STILL RUNNING IS WAITING, NOT
+	// STOPPED SHORT.
+	//
+	// The gate above is qualified to the turn that made the handoff, and a turn
+	// STARTED BY ONE PIECE LANDING while another is still out falls straight
+	// through it: nobody typed it, the epoch is new, and the reader is armed by
+	// the wake rule below. Measured on 2026-09-10 — a chat with two quick tasks
+	// out answered the first one's landing, and the road then re-opened that
+	// answer three times over the second, each time to be told it was still
+	// running (turnhandoff.go's [Agent.turnIsWaitingOnItsOwnTasks], which is
+	// where the person's own veto is stated).
+	//
+	// IT IS ASKED BEFORE THE READER IS PAID, unlike the cap below, because there
+	// is nothing here for a reading to change: the piece is out, its landing
+	// wakes this conversation with the report in front of it, and that turn is
+	// read for what remains at wake prices.
+	if node, waiting := a.turnIsWaitingOnItsOwnTasks(); waiting {
+		a.journalCarryOnAwaited(meter.rounds, node)
+		return false, false
+	}
+	// AND A TURN THAT IS REPORTING A SETTLED, CHECKED TASK IS FINISHED.
+	//
+	// The live gate above covers work still out. This is the landing's half
+	// (#468): the task came home done, its own checks passed, and the end-of-turn
+	// reader — looking at a digest of the transcript, not the tree — said the ask
+	// was unfinished. The turn was carried on three times and then told the person
+	// the work was not finished, over a card that already showed it done.
+	// turnhandoff.go is the fact; this is where it stops the reader being spent.
+	if a.turnSettledItsAsk() {
 		return false, false
 	}
 	// A WOKEN TURN OUTRANKS THE PRICE, WHICH IS THE WHOLE OF WHAT THE MEASURED RUN
@@ -2590,8 +3029,9 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	// work, and the cell settled idle with seven and a half of its ten hours
 	// unspent on the best clean seed of the run. A WOKEN TURN IS READ FOR WHAT
 	// REMAINS WHATEVER IT COST ([Agent.wakeLocked] sets the bit); it is owed an
-	// answer by definition, and [endsAskingThePerson] and [turnBroke] above are
-	// the only two endings that still stop the reader from being spent on one.
+	// answer by definition, and [endsAskingThePerson], [turnBroke] and a landing
+	// that already came home with its check green ([turnSettledItsAsk]) are the
+	// endings that still stop the reader from being spent on one.
 	//
 	// THE PRICE GATE, AND THE EXPOSURE THAT OUTRANKS IT, FOR EVERY OTHER TURN.
 	//
@@ -2652,6 +3092,17 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	// cap that fired before the reader would have to guess that the ask was still
 	// unfinished, and would say so out loud on the turn where the model had
 	// finally finished it.
+	// AND THE WAIT IS READ AGAIN AT THE MOMENT THE ANSWER IS ACTED ON, for
+	// [Agent.stillGranted]'s reason: a reading taken a model call ago is
+	// evidence about a conversation that may have moved since, and the reader
+	// walks a digest and can re-run this session's declared checks before it
+	// answers. A gap named while a piece of this conversation's own work is out
+	// is dropped exactly as it would have been a call earlier — same word, same
+	// row — rather than being believed because it arrived late.
+	if node, waiting := a.turnIsWaitingOnItsOwnTasks(); waiting {
+		a.journalCarryOnAwaited(meter.rounds, node)
+		return false, false
+	}
 	if meter.carriedOn >= checkpointCarryOnCap {
 		hub.send(Event{Kind: EventNotice, Text: checkpointCarriedOnNote(decision.Observed)})
 		return false, false
@@ -2701,14 +3152,22 @@ const checkpointStoppedNote = "stopping here · "
 // run, nothing is spent, and a [Person] never gets past this line: their answer
 // is the reader's line and silence, exactly as it always was.
 //
-// THE SECOND DECIDE IS WHERE THE TREE IS LOOKED AT. A principal that says the
-// ask is MET has said the one thing this build never had any way to check, so
-// it is checked: the session's declared checks are read from clean (with an
-// answer over the same unchanged tree reused) and the same principal is asked
-// again with their results in front of it
-// (principal_audit.go). An acceptance is what says a principal is in a position
-// to be asked that — a person holds their own and is shown nothing — so the
-// second reading belongs to a session that has one and to no other.
+// THE TREE IS LOOKED AT WHERE ITS ANSWER CAN CHANGE THE ENDING. Ordinarily a
+// principal that says the ask is MET has said the one thing this build never had
+// any way to check, so the session's declared checks are read from clean — with
+// an answer over the same unchanged tree reused — and the same principal is
+// asked again with their results in front of it (principal_audit.go). When an
+// unreachable reader is the only missing witness for inline work, that reading
+// comes FIRST: the checks are the only second opinion still available, so the
+// goal owner must see them on its first look.
+// An acceptance is what says a principal is in a position to be asked that — a
+// person holds their own and is shown nothing — so this reading belongs to a
+// session that has one and to no other.
+//
+// A GOAL OWNER IS ASKED EXACTLY ONCE PER ENDING ON THE STAND-IN ROAD. Asking it
+// first without the checks and then again with them would show
+// [Steward.standstill] the same unmet set twice without a turn between, stopping
+// a run on the first reader timeout instead of letting it carry on (#582).
 //
 // AND THE SWEEP RIDES WITH IT, which is why the audit is not skipped when the
 // second answer turns out to be "carry on": what a session left lying beside
@@ -2718,9 +3177,15 @@ const checkpointStoppedNote = "stopping here · "
 func (a *Agent) decideRemains(ctx context.Context, reader readerLine, said string) Decision {
 	principal := a.who()
 	remains := a.remainsFor(said, reader)
+	remains = a.completeRetainedContract(ctx, remains)
 	a.journalAbsorbed(remains)
-	decision := principal.Decide(remains)
-	if decision.Verb == DecideDone && remains.Acceptance != "" {
+	readChecks := remains.Acceptance != "" && remains.witnessIsTheOnlyGap()
+	var decision Decision
+	if !readChecks {
+		decision = principal.Decide(remains)
+		readChecks = decision.Verb == DecideDone && remains.Acceptance != ""
+	}
+	if readChecks {
 		var found reconciliation
 		decision, found = a.decideOverTheChecks(ctx, remains)
 		// AND THE SWEEP HAPPENS ONLY AT AN ENDING. A principal that reads the
@@ -2756,14 +3221,16 @@ func (a *Agent) decideRemains(ctx context.Context, reader readerLine, said strin
 // AND EACH IS SAID ONCE. The reading is taken at the end of every reply and the
 // answer does not change, so a row per turn would be one fact written thirty
 // times. What is already written down is remembered for the life of the session.
-// decideOverTheChecks is the SECOND READING a done has to survive: the session's
-// declared checks are read from clean over the tree as it stands, what was
-// already red before the work is folded in beside them, and the principal is
-// asked again with the results in front of it. Both roads that can end a run on
-// a done — the stopped turn ([Agent.decideRemains]) and the handover
-// ([Agent.decideHandover]) — take it, so neither can finish on a done nobody
-// checked. It also returns what the audit's sweep found, for the caller that
-// tidies.
+// decideOverTheChecks is the TERMINAL READING a done has to survive: the
+// session's declared checks are read from clean over the tree as it stands,
+// reusing any answer already taken over that unchanged tree. What was already
+// red before the work is folded in beside them, and the principal is asked with
+// their results in front of it. Ordinarily it is the second look; when those
+// checks stand in for an unreachable reader, it is the first and only one. Both
+// roads that can end a run on a done — the stopped turn
+// ([Agent.decideRemains]) and the handover ([Agent.decideHandover]) — take it,
+// so neither can finish on a done nobody checked. It also returns what the
+// audit's sweep found, for the caller that tidies.
 //
 // THE BASELINE IS RE-READ WITH THE CHECKS. The reading handed in was assembled
 // before the checks ran, when the before-reading may not have landed;
@@ -2779,7 +3246,8 @@ func (a *Agent) decideOverTheChecks(ctx context.Context, remains Remains) (Decis
 	// one account of that nobody in this session can take for themselves
 	// ([Remains.Stashed]).
 	remains.Stashed = stashed
-	remains.WasFailing, remains.Unread, remains.BaselineRead = a.baselineRedChecks()
+	remains.WasFailing, remains.Unread, remains.BaselineRead = a.baselineRedChecksFor(checks)
+	remains.WasFailingTests = a.baselineFailureNames()
 	return a.who().Decide(remains), found
 }
 
@@ -2902,10 +3370,12 @@ func turnBroke(response *ai.Response) bool {
 // are read by completely different code — a sketch is parsed for width, and this
 // is handed back to the running model as prose.
 //
-// AN EMPTY ANSWER MEANS THE ASK IS MET, and every failure produces one: no
-// mastermind, a fault, a window that ran out, a reply that is not prose, and the
-// remains contract answered with its own token. Reading silence as "there is more
-// to do" would re-open turns on every install without a crew.
+// AN EMPTY ANSWER STILL ENDS THE READER'S PART OF THE TURN, but its cause is
+// carried separately now. No mastermind and no digest remain silence; a reply
+// that is not prose was reached; the remains token is agreement; and only a call
+// that failed to come back is unreachable. Reading all of those as "there is
+// more to do" would re-open turns on every install without a crew, while reading
+// a failed call as disagreement would send finished inline work round again.
 //
 // AND IT IS BILLED TO THE ERRAND POCKET, for [Agent.readMark]'s reason: it is a
 // side-call to a different model that the person did not ask for.
@@ -2918,17 +3388,18 @@ func (a *Agent) readRemains(ctx context.Context) readerLine {
 	if a.markReaderAbsent() {
 		return readerLine{}
 	}
-	digest := checkpointDigest(a.taskRequest(), a.snapshot())
-	if digest == "" {
+	// THE ASK IS THE ONE THIS TURN OWES, which on a woken turn is the request its
+	// result belongs to and not whatever was typed last (wakecause.go).
+	page := checkpointCompletionPage(a.turnAsk(), a.snapshot())
+	if page == "" {
 		return readerLine{}
 	}
 	ctx, done := context.WithTimeout(ctx, checkpointSketchWindow)
 	defer done()
-	messages := []ai.Message{textMessage("user", digest+"\n\n"+checkpointRemainsAsk)}
-	response, reader, err := a.callRole(ctx, roles.RoleMarkReader, "", messages,
-		ai.WithMaxTokens(checkpointSketchTokens))
+	messages := []ai.Message{textMessage("user", page+"\n\n"+checkpointRemainsAsk)}
+	response, reader, err := a.callRole(ctx, roles.RoleMarkReader, "", messages)
 	if err != nil || response == nil {
-		return readerLine{}
+		return readerLine{unreachable: true}
 	}
 	a.addAuxiliaryUsage(response, reader, 1)
 	said := strings.TrimSpace(response.Text())
@@ -2950,7 +3421,27 @@ func (a *Agent) readRemains(ctx context.Context) readerLine {
 	return readerLine{said: clip(firstLine(said), checkpointSketchBytes), answered: true}
 }
 
-// readerLine is what the mark reader answered about what is left, in the three
+// checkpointCompletionPage keeps the person's COMPLETE request in the reader's
+// page. Ordinary asks remain inside [checkpointDigest]; one too large to fit
+// with its heading rides separately from the independently bounded evidence.
+func checkpointCompletionPage(asked string, messages []ai.Message) string {
+	asked = strings.TrimSpace(asked)
+	if len(checkpointDigestAsked)+1+len(asked) <= checkpointDigestBytes {
+		return checkpointDigest(asked, messages)
+	}
+	evidence := checkpointDigest("", messages)
+	var out strings.Builder
+	out.WriteString(checkpointDigestAsked)
+	out.WriteString("\n")
+	out.WriteString(asked)
+	if evidence != "" {
+		out.WriteString("\n\n")
+		out.WriteString(evidence)
+	}
+	return out.String()
+}
+
+// readerLine is what the mark reader answered about what is left, in the four
 // states it actually has.
 //
 // THE EMPTY STRING USED TO MEAN ALL THREE. "Nobody was asked", "the call failed"
@@ -2961,14 +3452,25 @@ func (a *Agent) readRemains(ctx context.Context) readerLine {
 // is, and collapsing it into silence is what left one measured run reading
 // "nothing has been finished yet" over a green tree it had just written
 // ([Remains.finishedSomething], #513).
+//
+// THE FOURTH STATE KEEPS THE FAILED CALL APART. A reader nobody could reach is
+// not a reader who disagreed: in Human-Agent-Society-reef-145-chat the reader
+// timed out and a green inline fix was handed to a task that did it again for
+// nine and a half minutes (#582).
 type readerLine struct {
 	// said is what is still left, in the reader's own words, and "" when it said
-	// nothing is left or was never asked.
+	// nothing is left, was never asked, could not be reached or answered without
+	// prose. The flags below say which of those facts the silence carries.
 	said string
 	// answered says a reader was asked and replied at all.
 	answered bool
 	// nothingLeft says the reply was that nothing is left.
 	nothingLeft bool
+	// unreachable says the reader WAS asked and the call did not come back — a
+	// transport fault, a window that ran out, or a nil response. It is false for
+	// an absent reader and for every response that was reached, including one
+	// whose answer was empty or not prose.
+	unreachable bool
 }
 
 // endsAskingThePerson reports that a turn's last words put a question to whoever
@@ -3019,14 +3521,15 @@ func (a *Agent) turnIsWaitingOnItsOwnWork() bool {
 //
 // THERE IS EXACTLY ONE ANSWER THAT LEAVES THE TURN RUNNING, and it is not a third
 // sketch: it is the model saying nothing remains at all
-// ([checkpointNothingLeft]) AND THE MARK'S OWN READER AGREEING. The ceiling
+// ([checkpointNothingLeft]) with no independent remainder named by the sketch. The ceiling
 // exists to move A GRIND somewhere it is watched, and a turn that is finishing is
 // not a grind — but a running model declaring itself finished is the model
 // grading its own work, which is exactly the reading this whole file was rebuilt
 // to stop relying on. It was measured doing it: a turn declared nothing was left
 // at the ceiling, the handover was dropped, and the same model then ground on for
-// twenty more rounds unwatched. So the drop needs two minds
-// ([Agent.handOverRunningTurn]).
+// twenty more rounds unwatched. So the drop is believed ONCE PER REQUEST and the
+// ceiling comes back to meet a turn that carries on working past its own claim
+// ([Agent.handOverRunningTurn], [checkpointMeter.believeDone]).
 //
 // EVERYTHING ELSE IT DOES IS [Agent.handOverRunningTurn]'S. It contributes the
 // two things that are its own: the line, and a verdict ARMED TO SPLIT. This turn
@@ -3038,22 +3541,23 @@ func (a *Agent) turnIsWaitingOnItsOwnWork() bool {
 //
 // THE SKETCH RIDES ALONG WHEN THERE IS ONE, and it now does two jobs rather than
 // one. A drawing of what is left is exactly what the worker's first paragraph
-// should be — and it is the second mind the remains contract needs, because the
-// only thing that can stop the ceiling is the two of them agreeing.
+// should be — and where it draws INDEPENDENT PARTS it is a second mind stating
+// that work remains, which is the one reading that refuses a completion claim
+// ([Agent.handOverRunningTurn]).
 //
 // AND THIS IS THE ONE MOMENT THAT WRITES ITSELF DOWN. What the ceiling did to a
 // turn used to exist nowhere: a run where the handover was dropped and a run where
 // it never fired read identically in the file, which is why the measured failure
 // could not be attributed without re-reading provider logs. So one line, with the
 // round it fired on and what it decided (sessionfile.go's [journalCeiling]).
-func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string, rounds int, verdict routeVerdict, read checkpointRead, taken *Decision) bool {
+func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string, rounds int, meter *checkpointMeter, verdict routeVerdict, read checkpointRead, taken *Decision) bool {
 	verdict.Wide = true
 	// AND THE ROW IS NOT WRITTEN HERE ANY MORE. It is written by the function
 	// below, on every way out it has, because the ending is decided there and the
 	// two other doors into it were leaving the file silent — see the seam
 	// constants above. This road's remaining job on that line is nothing.
 	return a.handOverRunningTurn(ctx, hub, turn, started, model,
-		checkpointCeilingNote, checkpointSeamCeiling, rounds, verdict, read, taken).moved
+		checkpointCeilingNote, checkpointSeamCeiling, rounds, meter, verdict, read, taken).moved
 }
 
 // handOverRunningTurn ENDS A TURN THAT IS STILL RUNNING and moves what is left
@@ -3077,7 +3581,7 @@ func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usag
 // parts at the head of it, the task, the gap, and a turn sealed with the
 // transcript left in a state the next turn can open on.
 //
-// AND IT CAN DECLINE, ON TWO MINDS AGREEING AND NEVER ON ONE.
+// AND IT CAN DECLINE, ON A CLAIM NO READING CONTRADICTS, ONCE PER REQUEST.
 //
 // The ground is the one no clock can see for itself: the model answering the
 // dowry ask with [checkpointNothingLeft]. Every clock here decides on evidence
@@ -3092,20 +3596,34 @@ func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usag
 // twenty more rounds with nobody watching — the failure this whole file exists to
 // prevent, let through by the one door built to be kind to it.
 //
-// So the declaration is CORROBORATED against the sketch the mark's own reader
-// drew at that same moment ([checkpointSketch.saysDone]). Two minds agreeing that
-// nothing remains is evidence; one mind saying so about itself is a claim. When
-// they agree, NOTHING HAPPENS: no task, no line, no gap spent, no turn sealed —
-// the turn carries on and its own answer stands, which is the honest outcome for
-// a turn that was already finishing. When they do not, the work moves, and it
-// moves on the person's own sentence, because a continuation that answered with
-// the token wrote no instruction to hand anybody. That is the same fallback a
-// dowry of machine markup gets, for the same reason: a task that could not start
-// at all would be the guarantee broken.
+// SO THE CLAIM IS WEIGHED AGAINST WHAT CONTRADICTS IT AND NOT AGAINST WHAT
+// AGREES WITH IT. That is the correction the frozen revision cells forced: the
+// declaration used to need the mark's reader to have drawn `(done)` at the same
+// moment, and a reader that failed, was never reached, or drew a shape with no
+// parts in it was spent as though it had said work was left. It had said
+// nothing. Three measured cells ended with a finished request handed to a cold
+// worker on the person's original sentence for want of a corroboration nobody
+// was in a position to give.
 //
-// THE MARK'S OWN SPLIT CAN NEVER BE DROPPED, and it needs no rule of its own to
-// say so. A sketch with independent parts in it is a reader stating that work
-// remains, so it cannot corroborate a claim that none does.
+// WHAT REFUSES A CLAIM IS A DRAWING WITH INDEPENDENT PARTS IN IT
+// ([checkpointSketch.split]) — a reader stating positively that work remains —
+// and nothing else. THE MARK'S OWN SPLIT THEREFORE STILL CANNOT BE DROPPED, and
+// it needs no rule of its own to say so: that road is only entered on a drawing
+// that says exactly this.
+//
+// AND THE MODEL GRADING ITSELF IS BOUNDED BY THE TURN'S OWN BUDGET. One claim is
+// believed per request, whether or not a reader agreed with it
+// ([checkpointMeter.believeDone]); a turn that then does [checkpointPrice] more
+// rounds of real work has disproved it, and the ceiling is armed to come back and
+// meet it with the claim spent. A person who types a NEW direction has changed
+// the request, so the next claim is about that one and is believed on its own
+// terms. When the drop is granted, NOTHING HAPPENS: no task, no line, no gap
+// spent, no turn sealed — the turn carries on and its own answer stands, which is
+// the honest outcome for a turn that was already finishing. When it is refused,
+// the work moves on the person's own sentence, because a continuation that
+// answered with the token wrote no instruction to hand anybody. That is the same
+// fallback a dowry of machine markup gets, for the same reason: a task that could
+// not start at all would be the guarantee broken.
 //
 // THE PERSON'S OWN WORDS ARE READ FIRST AND ARE NEVER WRITTEN BY ANYBODY. They
 // ride the spec's request, verbatim, exactly as they do on every other door into
@@ -3119,7 +3637,7 @@ func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usag
 // written before the turn began — the race's own, from the request alone — would
 // be the one thing on the table that knows least, which is why it is dropped
 // where the other two fields of that verdict are kept.
-func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model, line, seam string, rounds int, verdict routeVerdict, read checkpointRead, taken *Decision) (over checkpointHandover) {
+func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model, line, seam string, rounds int, meter *checkpointMeter, verdict routeVerdict, read checkpointRead, taken *Decision) (over checkpointHandover) {
 	// ONE ENDING ROW PER ENDING, WRITTEN AT THE SEAM THAT TOOK IT.
 	//
 	// IT IS A DEFER BECAUSE THERE ARE SEVERAL WAYS OUT of this function and the
@@ -3143,14 +3661,19 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 			Reason: over.reason, TaskID: over.taskID, Carry: over.carry,
 		})
 	}()
-	// THE FLOOR STANDS IN FRONT OF EVERYTHING. A caller that reached here
+	// A canceled turn cannot start durable work. Recheck after each model call:
+	// a failed reader may fall back to the original ask, but cancellation must not.
+	if ctx.Err() != nil {
+		return checkpointHandover{decision: checkpointCeilingAbandoned}
+	}
+	// THE FLOOR STANDS IN FRONT OF EVERYTHING ELSE. A caller that reached here
 	// through [Agent.checkpoints] already asked, but looped.go's looping
 	// handoff and any future door share this function, and a handover that
 	// paid for the goal owner's reading, a name and a brief before being
 	// declined would still have converted the ask in every way that costs
 	// money. So the ask is read first and nothing is spent: the ending row
 	// above writes the drop, and the turn carries on.
-	if trivialAsk(a.taskRequest()) {
+	if trivialAsk(a.turnAsk()) {
 		return checkpointHandover{decision: checkpointCeilingTrivial}
 	}
 	// A HANDOVER IS AN ENDING, AND AN UNATTENDED SESSION'S PRINCIPAL READS EVERY
@@ -3158,20 +3681,17 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// name, the phase clock and the two model calls below, because the whole
 	// point of an ending that stops the run is that none of them is spent.
 	reading, handover, ended := a.endTurnUnderSteward(ctx, hub, turn, started, model, taken)
+	if ctx.Err() != nil {
+		return checkpointHandover{decision: checkpointCeilingAbandoned}
+	}
 	if ended {
 		return handover
 	}
 	sketch := read.sketch
-	asked := a.taskRequest()
-	// THE NAME IS ASKED FOR NOW, beside the two calls below rather than after
-	// them (taskname.go's [nameAhead]). This stage is the longest silence on the
-	// road, and the namer used to start only when it ended — so the line that
-	// announced the task, and the row it put on the rail, carried the person's
-	// raw sentence and were renamed under their eyes a moment later, or never,
-	// when the task failed first. Asked here, the name has the whole stage to
-	// land in. A road that declines below lets the call go.
-	ahead := a.nameAhead(asked)
-	defer ahead.release()
+	asked := a.turnAsk()
+	// THE NAME IS NOT ASKED FOR YET — it is started below, under every ending
+	// this road can still take.
+	//
 	// AND THE PERSON IS TOLD WHAT THE SILENCE IS, because the two calls below are
 	// the longest stretch of this whole road with nothing drawn.
 	//
@@ -3197,14 +3717,30 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// [phaseHeldBeat]), so the two calls below are one stage with one clock on
 	// it, counting from here to whichever ending this road takes.
 	a.tellPhase(provider.PhaseBriefing, checkpointBriefingWho, time.Now())
-	draft, remains, drafted := a.checkpointBrief(ctx, turn, model)
+	draft, remains, drafted, awaited := a.checkpointBrief(ctx, turn, model)
+	if ctx.Err() != nil {
+		a.endPhase()
+		return checkpointHandover{decision: checkpointCeilingAbandoned}
+	}
+	// THE ONE PLACE AN AWAIT IS CONSUMED, and it is checked again here rather than
+	// trusted from a model call ago ([Agent.stillGranted]). Nothing moves: no task
+	// is admitted, nothing is marked done, no command is stopped, and the ending
+	// this conversation is owed comes back as the wake it always did. It is spelled
+	// apart from the decline below because that one is the request being FINISHED
+	// and this one is the request being unfinished in this conversation's own
+	// hands. The goal owner's carry-on outranks it on the same terms it outranks
+	// that decline, and a person's session never reads that road at all.
+	if a.stillGranted(awaited) && !reading.carriesOn() {
+		a.endPhase()
+		return checkpointHandover{decision: checkpointCeilingAwaiting, reason: awaited.awaitedRow()}
+	}
 	if !remains {
-		// AND THE PRINCIPAL'S CARRY-ON OUTRANKS BOTH MINDS. The decline rests on
-		// two readers of the WORK agreeing that none of it is left; the session's
+		// AND THE PRINCIPAL'S CARRY-ON OUTRANKS THE CLAIM AND THE READING BOTH.
+		// The decline rests on readers of the WORK; the session's
 		// goal owner has just read the same ending against the ask itself — what
 		// landed, what the checks said, what the acceptance was — and answered
 		// that it is not finished. That is not a third opinion to be weighed, it
-		// is the one the other two are opinions ABOUT, so where it says carry on
+		// is the one they are opinions ABOUT, so where it says carry on
 		// there is nothing here to decline. Measured (#513): a cell's write seam
 		// fired at round 34 and its ceiling at 40, the goal owner said carry on
 		// at both — "not yet confirmed" — and the two-minds decline threw both
@@ -3214,7 +3750,32 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 		// A PERSON'S SESSION IS UNTOUCHED: [Person] never reads this road at all,
 		// so [stewardReading.carriesOn] is false and the decline stands exactly
 		// as it did.
-		if sketch.saysDone() && !reading.carriesOn() {
+		// AND THE DRAWING IS READ FOR WHAT IT CONTRADICTS, NOT FOR WHETHER IT
+		// AGREES. This is the change the measured cell forced. The sketch is a
+		// cheaper reader answering a different question a moment earlier, from an
+		// account of the work rather than the work itself, and requiring it to
+		// say `(done)` made SILENCE into evidence of remainder: on the frozen
+		// revision cell its reader drew one waiting part while the person's CSV
+		// was already written, and on the cell after it the reader could not be
+		// reached at all. Both handed a finished request to a cold worker
+		// carrying the person's original sentence, which is the duplicate work
+		// this file exists to prevent, arriving through the door built to be kind.
+		//
+		// SO ONLY A POSITIVE READING OF REMAINDER REFUSES THE CLAIM: a drawing
+		// with independent parts in it is a second mind stating that work is
+		// left, and it still moves the turn ([checkpointSketch.split], which is
+		// also why THE MARK'S OWN SPLIT CAN STILL NEVER BE DROPPED — that road is
+		// only entered on a drawing that says exactly this).
+		//
+		// AND EVERY ACCEPTED DROP IS CHARGED, INCLUDING THE ONE A SECOND READER
+		// AGREED WITH ([checkpointMeter.believeDone]). Agreement is better
+		// evidence than a bare claim and it is still not a fact, so exempting it
+		// would leave the both-wrong path — the one with no reader left to catch
+		// it — with no bound at all. One claim per request, however many minds
+		// were behind it: a turn that then does [checkpointPrice] more rounds of
+		// real work has disproved itself and the ceiling comes back to meet it.
+		if !read.sketch.split() && meter.mayBelieveDone(asked) && !reading.carriesOn() {
+			meter.believeDone(asked)
 			// NOTHING HAPPENS, and that includes the line AND the ladder's own lines.
 			// A person told their answer was being moved and then left watching it
 			// finish where it was would have been told something that did not happen,
@@ -3227,7 +3788,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 			a.endPhase()
 			return checkpointHandover{decision: checkpointCeilingNothing}
 		}
-		// UNCORROBORATED, or corroborated and overruled, so the work moves — and
+		// CONTRADICTED, ALREADY SPENT, OR OVERRULED, so the work moves — and
 		// the continuation spent its answer on the token instead of on an
 		// instruction, so there is no draft of the turn's findings. The writer
 		// below still has the ask and the digest, which is more than the person's
@@ -3239,6 +3800,27 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 		// handing the writer nothing where a remainder exists would be this road
 		// discarding the reason it did not decline.
 		draft = reading.remainder()
+	}
+	// THE NAME IS ASKED FOR HERE, once NO ending above this line can still take
+	// the road: the await, the drop and the steward's own two endings are all
+	// behind it. It used to be started above both model calls so the rail row was
+	// never drawn under the person's raw sentence, and it still has the writer's
+	// call below to land in — the longest stretch of the stage — so nothing is
+	// lost by asking a moment later. A completed request no longer pays a namer
+	// for a task nobody starts (taskname.go's [nameAhead]).
+	ahead := a.nameAhead(asked)
+	defer ahead.release()
+	// AND A TURN THAT ONLY READ GOES SOMEWHERE ELSE ENTIRELY, on a road that
+	// writes no brief because the drawing already is one (checkpoint_quick.go).
+	//
+	// IT IS DECIDED HERE, AFTER EVERY ENDING AND BEFORE EVERY MODEL CALL. After,
+	// because a turn that is finishing, awaiting or overruled must not be moved
+	// at all and the kind of node it would have moved to changes none of that.
+	// Before, because the two calls below are the whole of what this road exists
+	// to skip: a worktree nobody opens and a ninety-second writer producing a
+	// paragraph the items say better.
+	if quick := a.quickFromDrawing(read, asked); quick != nil {
+		return a.handOverAsQuick(ctx, hub, turn, started, model, verdict, asked, quick, ahead)
 	}
 	// AND THE BRIEF IS WRITTEN BY SOMEBODY WHO DID NOT SPEND THE TURN.
 	//
@@ -3263,6 +3845,10 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// with its outcomes in hand, written down rung by rung, and the rung that
 	// supplied the brief rides the ceiling's own line (see the carry ladder above).
 	written, wrote := a.writeHandoff(ctx, asked, read.digest, draft)
+	if ctx.Err() != nil {
+		a.endPhase()
+		return checkpointHandover{decision: checkpointCeilingAbandoned}
+	}
 	// AND A RUNG THAT ASSIGNS WORK THIS CONVERSATION IS STILL HOLDING IS NOT A
 	// RUNG, which is the same law the drawing was reduced by one step earlier
 	// (checkpoint_custody.go) applied to the two rungs a MODEL wrote.
@@ -3356,8 +3942,11 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// gives and is not a gap to be closed here: what bounds a turn that has passed
 	// its ceiling is the carried-on counter, and ENDING one is its own road (#513).
 	//
-	// IT FIRES ONLY ON WHAT SURVIVED THE LADDER, so a goal that is real work is
-	// handed over exactly as it was before any of this existed.
+	// IT FIRES ON THE WHOLE ENVELOPE THE WORKER WILL RECEIVE. The sketch heads the
+	// chosen rung only after the ladder has been walked, and launchRouteTask adds
+	// the person's request and fallback done-condition after that. Reading the raw
+	// rung alone leaves three later doors through which held work can return. They
+	// are composed here first and read by the same ledger rule as every rung.
 	//
 	// ── AND THE READING OF THE GOAL IS NOT WHAT CLOSES THE FLOOR ──
 	//
@@ -3387,7 +3976,12 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// handover that would have been fine is dropped and the turn carries on. That is
 	// the direction this errs in, deliberately, and it costs a conversation some
 	// parallelism where the other direction cost a worker its whole deadline.
-	saysHeldWork := len(read.held) > 0 && namesHeldWork(goal, read.held)
+	verdict.Work = true
+	verdict.Goal = sketch.head(goal)
+	request := a.taskRequest()
+	saysHeldWork := len(read.held) > 0 && (namesHeldWork(verdict.Goal, read.held) ||
+		namesHeldWork(request, read.held) ||
+		namesHeldWork(routeAcceptance(verdict, request), read.held))
 	bareAskOnADividedDrawing := carried == carryRungAsk && strings.TrimSpace(read.ownRemainder) != ""
 	if saysHeldWork || bareAskOnADividedDrawing {
 		hub.send(Event{Kind: EventNotice, Text: checkpointHeldWholeNote})
@@ -3397,8 +3991,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 		// for the reason in a ladder that may not even have one.
 		return checkpointHandover{decision: checkpointCeilingHeldWork, reason: carryHeldWork}
 	}
-	verdict.Work = true
-	verdict.Goal = sketch.head(goal)
+	verdict = a.handoffChecks(verdict, asked, request, read)
 	// AND THE DRAWING TRAVELS WITH THE WORK, which is the whole of what changed
 	// after the parts stopped being only a paragraph.
 	//
@@ -3455,6 +4048,9 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	if strings.TrimSpace(read.ownRemainder) != "" {
 		line += checkpointHeldRestNote
 	}
+	if ctx.Err() != nil {
+		return checkpointHandover{decision: checkpointCeilingAbandoned}
+	}
 	hub.send(Event{Kind: EventNotice, Text: line})
 	// AND THE TASK IS NAMED FROM THE PERSON'S OWN WORDS AND NEVER FROM THE DOWRY.
 	// The other door into [Agent.launchRouteTask] cuts its title off the front of a
@@ -3464,7 +4060,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// closing remark of a finished answer. The person's sentence is the one thing
 	// on this road nobody writes, so it is the one thing that cannot come back as
 	// machinery — and the namer improves it a second later anyway (taskname.go).
-	said, id := a.launchRouteTask(hub, verdict, asked, drawn, ahead)
+	said, id := a.launchRouteTask(hub, verdict, asked, drawn, ahead, nil)
 
 	// THE GAP IS SPENT, because the person has just been interrupted by a task and
 	// does not care which of the moments noticed. routeJudgeGap exists so that work
@@ -3515,10 +4111,30 @@ type checkpointHandover struct {
 	carry string
 	// reason is why, WHERE THE DECISION WORD DOES NOT ALREADY SAY IT. It is empty
 	// on nearly every ending — the ladder's own lines say why a brief could not be
-	// written, and a turn two minds agreed was finished has no reason to give — and
+	// written, and a turn nothing contradicted has no reason to give — and
 	// carries one where an autopsy grepping the word would otherwise be left
 	// looking (sessionfile.go's [journalCeiling]).
 	reason string
+}
+
+// handoffChecks carries an existing declaration only when this handoff still
+// represents the whole request it was declared for. A remainder inherits no
+// whole-request checks, and a routing declaration keeps its own validity rules.
+func (a *Agent) handoffChecks(verdict routeVerdict, asked, request string, read checkpointRead) routeVerdict {
+	if len(read.held) > 0 || strings.TrimSpace(read.ownRemainder) != "" {
+		verdict.Checks = nil
+		return verdict
+	}
+	if len(verdict.Checks) > 0 || request == "" || asked != request {
+		return verdict
+	}
+	steward := a.steward()
+	if steward == nil || steward.Ask() != request {
+		return verdict
+	}
+	verdict.Checks = steward.declaredChecks()
+	verdict.checksRequest = request
+	return verdict
 }
 
 // endTurnUnderSteward puts a HANDOVER to the session's goal owner, and ends the
@@ -3736,11 +4352,13 @@ const stopLeftItMovingTail = " · work was still going and was left where it was
 // the goal owner has not changed its mind, and says so again at the next ending.
 func heldForMovingWork(decision Decision, moving []string) Decision {
 	brief := decision.Brief
-	if strings.TrimSpace(brief) == "" {
-		// A HELD DONE HAS NO BRIEF OF ITS OWN — nothing was left — so the
-		// continuation says the one true thing rather than falling back to the
-		// person's bare ask and starting the work over: what is left is the work
-		// still moving, by name.
+	if decision.Verb == DecideDone || strings.TrimSpace(brief) == "" {
+		// A HELD DONE'S BRIEF IS ALWAYS THE MOVING WORK. A done can now carry the
+		// account of checks standing in for an unreachable reader, but that is why
+		// it was answered, not what remains after the seal finds live work. The
+		// continuation says the one true thing rather than starting the finished
+		// work over: what is left is the work still moving, by name. The empty-brief
+		// road remains for the stops that already reached it.
 		brief = heldDoneBrief + strings.Join(moving, ", ")
 	}
 	return Decision{
@@ -3795,12 +4413,15 @@ func (a *Agent) sealTurnWithNothingMoving(spent bool, turn Usage, started time.T
 // decideHandover puts a handover to the principal, and it is
 // [Agent.decideRemains] with ONE THING MOVED.
 //
-// THE SECOND READING IS TAKEN HERE TOO. Done is an ending on this road now
+// THE TERMINAL READING IS TAKEN HERE TOO. Done is an ending on this road now
 // ([Agent.endTurnUnderSteward]), so a done that had not been answered by
 // reading the session's declared checks from clean would be a run finishing
 // on a done nobody checked — the one thing the stopped-turn road exists to
-// prevent. It used to be left out because done did not end a handover, and the
-// checks would have been a process each bought to change nothing.
+// prevent. Where an unreachable reader is the only gap, the checks are read
+// before the first decision here just as they are at a stopped turn. THE GOAL
+// OWNER IS ASKED EXACTLY ONCE PER ENDING ON THAT ROAD; giving the standstill
+// floor the same unmet set before and after the checks would stop a run on its
+// first timeout (#582).
 //
 // WHAT IS MOVED IS THE DONE'S TIDY. On the stopped-turn road the sweep rides
 // with the second reading; here a done can still be HELD over work that is
@@ -3816,9 +4437,15 @@ func (a *Agent) sealTurnWithNothingMoving(spent bool, turn Usage, started time.T
 // ([Agent.endTurnUnderSteward]).
 func (a *Agent) decideHandover(ctx context.Context, reader readerLine, said string) Decision {
 	remains := a.remainsFor(said, reader)
+	remains = a.completeRetainedContract(ctx, remains)
 	a.journalAbsorbed(remains)
-	decision := a.who().Decide(remains)
-	if decision.Verb == DecideDone && remains.Acceptance != "" {
+	readChecks := remains.Acceptance != "" && remains.witnessIsTheOnlyGap()
+	var decision Decision
+	if !readChecks {
+		decision = a.who().Decide(remains)
+		readChecks = decision.Verb == DecideDone && remains.Acceptance != ""
+	}
+	if readChecks {
 		decision, _ = a.decideOverTheChecks(ctx, remains)
 	}
 	if decision.Verb == DecideStop {
@@ -3908,14 +4535,21 @@ func (a *Agent) decideHandover(ctx context.Context, reader readerLine, said stri
 // So it reports the brief AND whether there is anything to hand over, which are
 // two facts rather than one: falling back to the person's ask and dropping the
 // handover are opposite answers to opposite failures.
-func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) (string, bool, carryStep) {
+func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) (string, bool, carryStep, awaitDecision) {
 	// DO NOT RE-READ THE CONVERSATION FOR A REDIRECT. The measured stall sent
 	// fifty-seven messages to write a brief the person had just spoken in one
 	// sentence (F13). Their words stand as the brief; the draft rung is skipped.
 	if a.interrupt.redirecting() {
-		return "", true, carryStep{rung: carryRungDraft, outcome: carrySkipped, reason: carryRedirect}
+		return "", true, carryStep{rung: carryRungDraft, outcome: carrySkipped, reason: carryRedirect},
+			awaitDecision{refused: awaitNotClaimed}
 	}
-	messages := append(a.snapshot(), textMessage("user", checkpointHandoffAsk))
+	// AND THE ASK CARRIES THIS CONVERSATION'S OWN LIVE OPERATIONS WHERE THERE ARE
+	// ANY (handoff_remainder.go). The ground is read BEFORE the history it will be
+	// checked against, so a correction that lands in between changes the epoch and
+	// the claim is refused; a drain in between can only add what the model saw.
+	offered := a.awaitableOperations()
+	offeredAt := a.awaitGroundNow()
+	messages := append(a.snapshot(), textMessage("user", checkpointHandoffAsk+awaitOfferBlock(offered)))
 	// WITHOUT THE TURN'S STREAM, for the reason every errand in this package is
 	// made without it (auxiliary.go's [Agent.callRole]): the loop installed an
 	// observer that types deltas into the room as the assistant speaking, and this
@@ -3926,16 +4560,17 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 	// answer rather than the answer itself, so it is priced and drawn as the
 	// errand it is: a person is reading the turn this ends, and the clock over
 	// their answer is not this call's to move (internal/lane's roles.go).
-	response, err := a.client.CompleteWithMessages(
+	response, err := a.completeWithModel(
 		provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary), messages,
-		ai.WithModel(model), ai.WithMaxTokens(checkpointBriefTokens))
+		model)
 	if err != nil || response == nil {
 		// AND THE FAULT IS CARRIED OUT OF HERE RATHER THAN SPELLED AS SILENCE. This
 		// rung answering "" used to be indistinguishable from a rung that answered
 		// machine markup, and the caller's journal cannot tell a fault from a
 		// degeneration it was never told about.
 		reason, said := carryFault(err)
-		return "", true, carryStep{rung: carryRungDraft, outcome: carryFailed, reason: reason, said: said}
+		return "", true, carryStep{rung: carryRungDraft, outcome: carryFailed, reason: reason, said: said},
+			awaitDecision{refused: awaitNotClaimed}
 	}
 	// The person pays for it on the turn it belongs to rather than out of the
 	// auxiliary pocket, because this is the conversation's own model reading the
@@ -3953,7 +4588,25 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 	// THE REMAINS CONTRACT IS READ FIRST, because it is the only answer here that
 	// is about the WORK rather than about the document.
 	if declaresNothingLeft(brief) {
-		return "", false, carryStep{rung: carryRungDraft, outcome: carryNothingLeft}
+		return "", false, carryStep{rung: carryRungDraft, outcome: carryNothingLeft},
+			awaitDecision{refused: awaitNotClaimed}
+	}
+	// AND THE AWAIT CONTRACT IS READ NEXT, because it is the other answer that is
+	// about the WORK rather than about the document. It never overlaps with the
+	// one above: that token says the request is discharged, and this says a named
+	// ending is still owed to this conversation (handoff_remainder.go).
+	if claimed, ok := readAwaitClaim(brief); ok {
+		if decided := a.confirmAwait(claimed, offered, offeredAt); decided.granted {
+			return "", true, carryStep{rung: carryRungDraft, outcome: carryAwaited,
+				reason: decided.awaitedRow()}, decided
+		} else {
+			// A REFUSED CLAIM IS NOT A BRIEF EITHER: the answer was a token and
+			// some numbers, so there is nothing in it a worker could open on. The
+			// rung is degenerate and the ladder descends to the writer, exactly as
+			// it does for any other answer nobody could work from.
+			return "", true, carryStep{rung: carryRungDraft, outcome: carryDegenerate,
+				reason: decided.refused, said: carrySaidNothingNew}, decided
+		}
 	}
 	// An empty reply, a whitespace one and a sentinel are all the same failure to
 	// this line: nothing came back that anybody could work from.
@@ -3965,18 +4618,19 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 	// with a document that will drag its own repetition into the spec.
 	if !briefIsProse(brief) {
 		return "", true, carryStep{rung: carryRungDraft, outcome: carryDegenerate,
-			reason: carryNotProse, said: carrySaidNothingNew}
+			reason: carryNotProse, said: carrySaidNothingNew}, awaitDecision{refused: awaitNotClaimed}
 	}
 	if briefRepeats(brief) {
 		return "", true, carryStep{rung: carryRungDraft, outcome: carryDegenerate,
-			reason: carryDraftLooped, said: carrySaidNothingNew}
+			reason: carryDraftLooped, said: carrySaidNothingNew}, awaitDecision{refused: awaitNotClaimed}
 	}
 	// THE SAME BOUND EVERY BRIEF ON THIS ROAD IS HELD TO, and that constant rather
 	// than a second number of this file's own (task_shape.go's
 	// taskShapeBriefLimit): two spellings of one bound are two answers to the
 	// question of how long a worker's instruction may be.
 	brief = clip(brief, taskShapeBriefLimit)
-	return brief, true, carryStep{rung: carryRungDraft, outcome: carryWritten, chars: len(brief)}
+	return brief, true, carryStep{rung: carryRungDraft, outcome: carryWritten, chars: len(brief)},
+		awaitDecision{refused: awaitNotClaimed}
 }
 
 // writeHandoff is the OTHER HALF of the dowry: the mastermind that turns what the
@@ -4054,8 +4708,7 @@ func (a *Agent) writeHandoff(ctx context.Context, asked, digest, draft string) (
 	for try := 0; try < checkpointBriefTries; try++ {
 		// NO BELT, for [Agent.checkpointBrief]'s reason: a writer with no hand to
 		// reach for can only answer with the document.
-		response, writer, err := a.callRole(ctx, roles.RoleHandoff, "", messages,
-			ai.WithMaxTokens(checkpointBriefTokens))
+		response, writer, err := a.callRole(ctx, roles.RoleHandoff, "", messages)
 		if err != nil || response == nil {
 			// THE PROVIDER'S OWN WORDS COME OUT WITH THE FAILURE. On the measured run
 			// this rung died on [checkpointHandoffWindow] — ninety seconds, to the
@@ -4104,7 +4757,7 @@ func checkpointHandoffPage(asked, card, digest, draft string) string {
 		out.WriteString("\n")
 		out.WriteString(body)
 	}
-	section(checkpointHandoffAskedHeading, clip(strings.TrimSpace(asked), briefAskLimit))
+	section(checkpointHandoffAskedHeading, strings.TrimSpace(asked))
 	section(checkpointHandoffStateHeading, card)
 	section(checkpointHandoffWorkHeading, digest)
 	section(checkpointHandoffDraftHeading, clip(strings.TrimSpace(draft), taskShapeBriefLimit))

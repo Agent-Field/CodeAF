@@ -1,0 +1,190 @@
+<div id="af-conversation-tasks" aria-label="Aforge conversation and tasks prototype">
+  <style>
+    #af-conversation-tasks { --af-bg:light-dark(#f8f9fb,#171a20); --af-surface:light-dark(#eef1f5,#1e222a); --af-ink:light-dark(#303b4c,#c6cdda); --af-dim:light-dark(#526178,#a0aabd); --af-line:light-dark(#cbd2dc,#39414e); --af-accent:light-dark(#315d87,#9dc3e6); --af-ok:light-dark(#42602e,#a3be8c); --af-ask:light-dark(#73439a,#c6a1e6); color:var(--af-ink); font:14px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace; }
+    #af-conversation-tasks * { box-sizing:border-box }
+    #af-conversation-tasks button, #af-conversation-tasks textarea, #af-conversation-tasks select { font:inherit; color:inherit }
+    #af-conversation-tasks button { cursor:pointer; background:transparent; border:1px solid transparent; padding:6px 10px; border-radius:4px; text-align:left }
+    #af-conversation-tasks button:hover { background:var(--af-surface); border-color:var(--af-line) }
+    #af-conversation-tasks button:disabled { opacity:.5; cursor:default }
+    #af-conversation-tasks .af-demo { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; padding:8px 2px 14px; color:var(--af-dim) }
+    #af-conversation-tasks .af-demo button { border-color:var(--af-line) }
+    #af-conversation-tasks .af-window { background:var(--af-bg); border:1px solid var(--af-line); border-radius:8px; overflow:clip }
+    #af-conversation-tasks .af-top { padding:14px 22px; display:flex; justify-content:space-between; align-items:center; gap:12px; border-bottom:1px solid var(--af-line) }
+    #af-conversation-tasks .af-brand { color:var(--af-accent); font-weight:500 }
+    #af-conversation-tasks .af-project { color:var(--af-dim) }
+    #af-conversation-tasks .af-layout { display:grid; grid-template-columns:minmax(0,1fr) 255px }
+    #af-conversation-tasks .af-main { min-width:0; padding:24px }
+    #af-conversation-tasks .af-crumb { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:26px }
+    #af-conversation-tasks .af-crumb button { padding:0; color:var(--af-accent) }
+    #af-conversation-tasks .af-crumb span { overflow-wrap:anywhere }
+    #af-conversation-tasks .af-rail { padding:20px 14px; border-left:1px solid var(--af-line); min-width:0 }
+    #af-conversation-tasks .af-rail h3 { margin:0 8px 14px; font:inherit; font-weight:500 }
+    #af-conversation-tasks .af-task { display:block; width:100%; margin-bottom:12px; padding:10px 8px; overflow-wrap:anywhere }
+    #af-conversation-tasks .af-task[aria-current="page"] { background:var(--af-surface); border-color:var(--af-line) }
+    #af-conversation-tasks .af-task-title { display:block; font-weight:500; margin-bottom:3px }
+    #af-conversation-tasks .af-meta, #af-conversation-tasks .af-receipt { color:var(--af-dim); font-size:12px }
+    #af-conversation-tasks .af-rail-note { margin:26px 8px 0; color:var(--af-dim); font-size:12px }
+    #af-conversation-tasks .af-message { margin-bottom:24px; max-width:72ch; overflow-wrap:anywhere }
+    #af-conversation-tasks .af-author { color:var(--af-accent); display:block; margin-bottom:6px; font-size:12px }
+    #af-conversation-tasks p { margin:0 0 12px }
+    #af-conversation-tasks .af-work { padding:12px 0; margin:0 0 22px; border-top:1px solid var(--af-line); border-bottom:1px solid var(--af-line) }
+    #af-conversation-tasks .af-work button { color:var(--af-accent); padding:4px 0; display:block }
+    #af-conversation-tasks .af-status { color:var(--af-accent) }
+    #af-conversation-tasks .af-status[data-state="done"] { color:var(--af-ok) }
+    #af-conversation-tasks .af-status[data-state="needs-input"] { color:var(--af-ask) }
+    #af-conversation-tasks .af-task-head { display:flex; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-bottom:20px }
+    #af-conversation-tasks .af-task-head h2 { font:inherit; font-size:17px; font-weight:500; margin:0 0 6px; overflow-wrap:anywhere }
+    #af-conversation-tasks .af-question { padding:16px 0; margin-bottom:22px; border-top:1px solid var(--af-line); border-bottom:1px solid var(--af-line) }
+    #af-conversation-tasks .af-question p:first-child { color:var(--af-ask) }
+    #af-conversation-tasks .af-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center }
+    #af-conversation-tasks .af-actions button { border-color:var(--af-line) }
+    #af-conversation-tasks details { margin-bottom:24px }
+    #af-conversation-tasks summary { cursor:pointer; padding:6px 0; color:var(--af-dim) }
+    #af-conversation-tasks .af-activity { list-style:none; padding:8px 0 0; margin:0 }
+    #af-conversation-tasks .af-activity li { padding:7px 0; border-bottom:1px solid var(--af-line); overflow-wrap:anywhere }
+    #af-conversation-tasks pre { white-space:pre-wrap; overflow-wrap:anywhere; color:var(--af-ink); padding:12px; background:var(--af-surface); font:inherit }
+    #af-conversation-tasks .af-compose { border-top:1px solid var(--af-line); padding-top:16px; margin-top:32px }
+    #af-conversation-tasks .af-compose label { display:block; color:var(--af-accent); margin-bottom:10px; overflow-wrap:anywhere }
+    #af-conversation-tasks select { background:var(--af-bg); border:1px solid var(--af-line); border-radius:4px; padding:5px; max-width:100%; margin-bottom:10px }
+    #af-conversation-tasks textarea { resize:vertical; width:100%; min-height:85px; border:1px solid var(--af-line); border-radius:4px; background:var(--af-bg); padding:12px }
+    #af-conversation-tasks textarea::placeholder { color:var(--af-dim) }
+    #af-conversation-tasks .af-compose .af-actions { margin-top:10px; justify-content:space-between }
+    #af-conversation-tasks .af-primary { background:var(--af-accent); color:var(--af-bg); border-color:var(--af-accent) }
+    #af-conversation-tasks .af-primary:hover { color:var(--af-ink) }
+    #af-conversation-tasks .af-footer { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:10px 22px; border-top:1px solid var(--af-line); color:var(--af-dim); font-size:12px }
+    #af-conversation-tasks .af-mobile-tasks { display:none }
+    #af-conversation-tasks .af-notice { color:var(--af-ask); padding:0 0 18px }
+    #af-conversation-tasks .af-live { min-height:24px; margin-top:12px; color:var(--af-dim); font-size:12px }
+    #af-conversation-tasks[data-layout="strip"] .af-layout { display:flex; flex-direction:column }
+    #af-conversation-tasks[data-layout="strip"] .af-rail { order:-1; border-left:0; border-bottom:1px solid var(--af-line) }
+    #af-conversation-tasks[data-layout="strip"] .af-task-list { display:flex; flex-wrap:wrap; gap:8px }
+    #af-conversation-tasks[data-layout="strip"] .af-task { width:auto; flex:1 1 190px; margin:0 }
+    #af-conversation-tasks[data-layout="strip"] .af-rail-note { display:none }
+    @media(max-width:700px) {
+      #af-conversation-tasks .af-layout { display:flex; flex-direction:column }
+      #af-conversation-tasks .af-main { padding:18px }
+      #af-conversation-tasks .af-top { padding:12px 16px }
+      #af-conversation-tasks .af-rail { order:-1; border:0; border-bottom:1px solid var(--af-line) }
+      #af-conversation-tasks .af-rail:not(.af-show) { display:none }
+      #af-conversation-tasks .af-mobile-tasks { display:block; border-color:var(--af-line) }
+      #af-conversation-tasks .af-project { display:none }
+      #af-conversation-tasks .af-demo, #af-conversation-tasks .af-footer { font-size:12px }
+      #af-conversation-tasks textarea { font-size:16px }
+    }
+    @media(pointer:coarse) { #af-conversation-tasks button, #af-conversation-tasks select { min-height:44px } }
+  </style>
+  <div class="af-demo"><span>Interactive concept · simulated work</span><button type="button" data-action="advance">Advance demo task</button></div>
+  <div class="af-window">
+    <header class="af-top"><span class="af-brand">aforge <span class="af-project">/ acme-api</span></span><button class="af-mobile-tasks" type="button" data-action="toggle-tasks" aria-expanded="false">Tasks · 2</button><span class="af-project">Conversation + tasks</span></header>
+    <div class="af-layout">
+      <main class="af-main"><nav class="af-crumb" aria-label="Current conversation"></nav><div class="af-content"></div><form class="af-compose"><label for="af-task-message"></label><select aria-label="Message recipient"></select><textarea id="af-task-message" rows="2" placeholder="Keep thinking here…"></textarea><div class="af-actions"><button type="button" data-action="offload">Run as task</button><button type="button" data-action="send" class="af-primary">Send</button></div><div class="af-live" role="status" aria-live="polite"></div></form></main>
+      <aside class="af-rail" aria-label="Tasks in this conversation"><h3>Tasks <span class="af-meta af-count"></span></h3><div class="af-task-list"></div><p class="af-rail-note">Work continues while you’re in the conversation.</p></aside>
+    </div>
+    <footer class="af-footer"><span class="af-context">Conversation</span><span>Enter send · Shift+Enter newline · Esc back to conversation</span></footer>
+  </div>
+  <script>
+  (() => {
+    const root=document.getElementById('af-conversation-tasks');
+    const $=selector=>root.querySelector(selector);
+    const state={view:'main',recipient:'main',drafts:{main:''},expanded:{},mobile:false,nextId:3,layout:'rail'};
+    const tasks=[
+      {id:'auth',title:'Fix authentication retry',state:'running',phase:'Checking refresh-token behavior',revision:1,assignment:'Fix refresh-token retries. Keep the change on a branch.',branch:'fix/auth-retry',messages:[{who:'Aforge',text:'I reproduced a retry that refreshes the token twice. I’m checking the behavior for existing clients before changing it.'}],activity:['Reproduced duplicate refresh requests','Traced retry handling through the session client'],result:false},
+      {id:'docs',title:'Update setup documentation',state:'done',phase:'2 files changed',revision:1,assignment:'Update local setup instructions and commit them on a feature branch.',branch:'docs/local-setup',messages:[{who:'Aforge',text:'Updated the local setup instructions and checked both example commands.'}],activity:['Updated README.md and docs/setup.md','Checked both example commands'],result:true}
+    ];
+    const conversation=[{who:'You',text:'Fix refresh-token retries. Keep the change on a branch.'},{task:'auth'},{who:'You',text:'While that runs, how should session expiry work?'},{who:'Aforge',text:'We can keep the session policy separate from retry behavior. The task is handling the retry fix; we can decide here when a session should expire.'}];
+    const task=id=>tasks.find(t=>t.id===id);
+    const esc=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const target=()=>state.view==='main'?state.recipient:state.view;
+    const label=t=>t.state==='needs-input'?'Needs your input':t.state==='stopped'?'Stopped':t.state==='done'?'Done':'Running';
+    const status=t=>`<span class="af-status" data-state="${t.state}">${label(t)}</span>`;
+    function saveDraft(){state.drafts[target()]=$('textarea').value;}
+    function say(text){$('.af-live').textContent=text;}
+    function open(id){saveDraft();state.view=id;state.recipient='main';state.mobile=false;render();}
+    function workRow(t){return `<div class="af-work">${status(t)} · ${esc(t.title)}<div class="af-meta">${esc(t.phase)}</div><button type="button" data-action="open" data-id="${t.id}">${t.state==='done'?'Review result':t.state==='needs-input'?'Answer in task':'Open task'}</button></div>`;}
+    function message(m){return m.task?workRow(task(m.task)):`<div class="af-message"><span class="af-author">${esc(m.who)}</span><p>${esc(m.text)}</p></div>`;}
+    function taskBody(t){
+      const active=t.state==='running'||t.state==='needs-input';
+      const outcome=t.id==='docs'?'Setup instructions and examples are updated.':t.id==='auth'?(t.compatibility===false?'The retry fix uses the new refresh behavior; the compatibility change is documented.':'The retry fix is committed. Existing clients keep their refresh behavior.'):'The demo task has reached its result.';
+      let html=`<div class="af-task-head"><div><h2>${esc(t.title)}</h2>${status(t)}<div class="af-meta">${esc(t.phase)}</div></div><button type="button" data-action="${active?'stop':'resume'}" data-id="${t.id}">${active?'Stop task':t.state==='done'?'Continue work':'Resume task'}</button></div>`;
+      html+=`<details${state.expanded[t.id+':assignment']?' open':''} data-detail="${t.id}:assignment"><summary>Assignment · revision ${t.revision}</summary><p>${esc(t.assignment)}</p></details>`;
+      html+=t.messages.map(message).join('');
+      if(t.state==='needs-input')html+=`<section class="af-question"><p>One decision before I continue</p><p>Should retries preserve the refresh behavior of existing clients?</p><div class="af-actions"><button type="button" data-action="answer" data-answer="Keep existing clients compatible" data-id="${t.id}">Keep compatibility</button><button type="button" data-action="answer" data-answer="Use the new behavior and document the breaking change" data-id="${t.id}">Change the behavior</button></div></section>`;
+      if(t.result){html+=`<section class="af-work"><p>Result · ${esc(t.branch)}</p><p>${esc(outcome)}</p><div class="af-meta">${t.id==='docs'?'2 files changed · example commands checked':t.id==='auth'?'3 files changed · regression checks passed':'Illustrative completion · no work was executed'}<br>Saved on the task branch · main unchanged</div><details data-detail="${t.id}:changes"${state.expanded[t.id+':changes']?' open':''}><summary>View changes and checks</summary><pre>${esc(t.id==='docs'?'README.md\ndocs/setup.md\n\nBoth setup commands completed.':t.id!=='auth'?'No real files or checks were produced by this local walkthrough.':'src/session/retry.ts\nsrc/session/client.ts\ntests/session/retry.test.ts\n\nRetry regression checks: passed\nCompatibility check: passed\n\n- refreshToken() on every retry\n+ reuse the in-flight refresh request')}</pre></details></section>`;}
+      html+=`<details data-detail="${t.id}:activity"${state.expanded[t.id+':activity']?' open':''}><summary>Activity · ${t.activity.length} updates</summary><ul class="af-activity">${t.activity.map(a=>`<li>${esc(a)}</li>`).join('')}</ul></details>`;
+      return html;
+    }
+    function render(){
+      root.dataset.layout=state.layout;
+      const t=task(state.view);
+      $('.af-crumb').innerHTML=state.view==='main'?'<span>Conversation</span>':`<button type="button" data-action="open" data-id="main">Conversation</button><span aria-hidden="true">/</span><span>${esc(t.title)}</span>`;
+      const question=tasks.find(x=>x.state==='needs-input');
+      $('.af-content').innerHTML=state.view==='main'?`${question?`<div class="af-notice">${esc(question.title)} needs your input. <button type="button" data-action="open" data-id="${question.id}">Answer</button></div>`:''}${conversation.map(message).join('')}`:taskBody(t);
+      $('.af-task-list').innerHTML=tasks.map(x=>`<button type="button" class="af-task" data-action="open" data-id="${x.id}"${state.view===x.id?' aria-current="page"':''}><span class="af-task-title">${esc(x.title)}</span>${status(x)}<span class="af-meta" style="display:block">${esc(x.phase)}</span></button>`).join('');
+      $('.af-count').textContent=`· ${tasks.length}`;
+      $('.af-rail').classList.toggle('af-show',state.mobile);
+      $('.af-mobile-tasks').textContent=`Tasks · ${tasks.length}`;
+      $('.af-mobile-tasks').setAttribute('aria-expanded',String(state.mobile));
+      const select=$('select');select.hidden=state.view!=='main';
+      select.innerHTML='<option value="main">Conversation</option>'+tasks.map(x=>`<option value="${x.id}">${esc(x.title)}</option>`).join('');select.value=state.recipient;
+      updateComposer();
+      $('.af-context').textContent=state.view==='main'?'Conversation':`Task · ${t.title}`;
+      const running=tasks.filter(x=>x.state==='running');
+      $('.af-rail-note').textContent=running.length?'Work continues while you’re in the conversation.':question?'Tasks that need a decision wait here.':'Results and conversations stay available.';
+      $('[data-action="advance"]').disabled=running.length===0;
+      $('[data-action="advance"]').textContent=running.length?'Advance demo task':'No running demo task';
+    }
+    function updateComposer(){
+      const id=target(),t=task(id);
+      $('.af-compose label').textContent=id==='main'?'Message conversation':`Message ${t.title}`;
+      $('textarea').value=state.drafts[id]||'';
+      $('textarea').placeholder=id==='main'?'Keep thinking here…':'Ask a question or send a direction…';
+      $('[data-action="offload"]').hidden=id!=='main';
+      say('');
+    }
+    function send(asTask=false){
+      const text=$('textarea').value.trim(),id=target();
+      if(!text){say(asTask?'Describe the work to start a task.':'Write a message first.');$('textarea').focus();return;}
+      state.drafts[id]='';
+      if(asTask){
+        const newId='work'+state.nextId++;tasks.push({id:newId,title:text.length>58?text.slice(0,55)+'…':text,state:'running',phase:'Working through the assignment',revision:1,assignment:text,branch:'task/'+newId,messages:[{who:'Aforge',text:'The assignment is here. You can keep talking in the conversation while this task runs.'}],activity:['Assignment received'],result:false});
+        conversation.push({who:'You',text},{task:newId});render();say('Task started. You are still in the conversation.');
+      }else if(id==='main'){
+        conversation.push({who:'You',text},{who:'Aforge',text:'Added to our conversation. Your tasks continue alongside it.'});render();say('Sent to conversation.');
+      }else{
+        const t=task(id);t.messages.push({who:'You',text});
+        if(t.state==='done'){t.pendingDirection=text;t.activity.push('Follow-up saved');}
+        else{t.revision++;t.assignment+='\n\nDirection: '+text;t.activity.push('Direction received · revision '+t.revision);}
+        if(t.state==='needs-input'){t.state='running';t.phase='Applying your direction';}
+        t.messages.push({who:'Aforge',text:t.state==='stopped'?'Direction saved. This task is still stopped.':t.state==='done'?'Follow-up saved with the result. Continue work to start another execution.':'Direction received. I’ll carry it into the remaining work.'});
+        render();say(`Sent to ${t.title} · received`);
+      }
+      $('textarea').focus();
+    }
+    root.addEventListener('click',e=>{
+      const b=e.target.closest('button[data-action]');if(!b||!root.contains(b))return;
+      const action=b.dataset.action,id=b.dataset.id,t=task(id);
+      if(action==='open'){open(id);return;}
+      if(action==='offload'){send(true);return;}
+      if(action==='send'){send();return;}
+      saveDraft();
+      if(action==='toggle-tasks'){state.mobile=!state.mobile;render();return;}
+      if(action==='stop'){t.pausedState=t.state;t.state='stopped';t.phase='Stopped · work and conversation kept';t.activity.push('Stopped at your request');render();say('Task stopped. Its work is kept.');return;}
+      if(action==='resume'){const prior=t.state;t.state=prior==='stopped'?(t.pausedState||'running'):'running';t.phase=t.state==='needs-input'?'Compatibility decision needed':'Continuing from saved work';if(prior==='done'){t.revision++;if(t.pendingDirection){t.assignment+='\n\nDirection: '+t.pendingDirection;t.pendingDirection='';}t.result=false;}t.activity.push('Execution resumed');render();say(t.state==='needs-input'?'Task resumed; your decision is still needed.':'Task resumed.');return;}
+      if(action==='answer'){t.compatibility=b.dataset.answer.startsWith('Keep');t.messages.push({who:'You',text:b.dataset.answer},{who:'Aforge',text:'Decision received. I’ll continue with that direction.'});t.assignment+='\n\nDecision: '+b.dataset.answer;t.revision++;t.state='running';t.phase='Checking the agreed behavior';t.activity.push('Your decision was received');render();say('Decision received. Task resumed.');return;}
+      if(action==='advance'){
+        const current=task(state.view);const next=current&&current.state==='running'?current:tasks.find(x=>x.state==='running');if(!next)return;
+        if(next.id==='auth'&&next.revision===1){next.state='needs-input';next.phase='Compatibility decision needed';next.activity.push('Paused for your compatibility decision');}
+        else{next.state='done';next.phase='Result on task branch';next.result=true;next.activity.push('Checks passed; result saved on its branch');}
+        render();say(`${next.title}: ${label(next).toLowerCase()}.`);
+      }
+    });
+    $('.af-compose').addEventListener('submit',e=>{e.preventDefault();send();});
+    $('textarea').addEventListener('input',saveDraft);
+    $('select').addEventListener('change',e=>{saveDraft();state.recipient=e.target.value;updateComposer();$('textarea').focus();});
+    root.addEventListener('keydown',e=>{if(e.key==='Escape'&&state.view!=='main'){e.preventDefault();open('main');}else if(e.key==='Enter'&&!e.shiftKey&&e.target===$('textarea')&&!e.isComposing){e.preventDefault();send();}});
+    root.addEventListener('toggle',e=>{if(e.target.matches('details[data-detail]'))state.expanded[e.target.dataset.detail]=e.target.open;},true);
+    render();
+    if(globalThis.Tweak){const tweak=new Tweak({container:root,onChange:()=>{saveDraft();render();}});tweak.addSelect(state,'layout',{label:'Task navigation',options:[{label:'Right task rail',value:'rail'},{label:'Compact task strip',value:'strip'}]});}
+  })();
+  </script>
+</div>

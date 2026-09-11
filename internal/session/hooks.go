@@ -248,14 +248,6 @@ func (a *Agent) controlPlaneFor() *controlPlane {
 	// already refused is a call there is nothing left to say about — and it is a
 	// no-op on every agent that is not inside a task, which is every conversation.
 	plane.register(taskGitGuard{agent: a})
-	// AND A HAND'S ROUND BUDGET, which is a citizen only on a hand (fork.go). It
-	// is registered conditionally rather than made a no-op on every agent because
-	// post-feedback is on the step boundary of every turn this program runs, and
-	// a citizen that did nothing there would still be a lock taken and a slice
-	// walked on each of them.
-	if a.config.handLeash != nil {
-		plane.register(a.config.handLeash)
-	}
 	return plane
 }
 
@@ -279,10 +271,11 @@ type episode struct {
 	// request carried. A result at or beyond it has not been seen by the model and
 	// may not be folded, however full the turn has become (turnfold.go).
 	seenThrough int
-	// consumedReads names the read calls the model had received when it last
-	// successfully changed a file. IDs rather than transcript indices keep the
-	// boundary true when a general compaction rebuilds the message slice.
-	consumedReads map[string]bool
+	// consumedReads names the read occurrences the model had received when it
+	// last successfully changed a file. Retained messages share their ToolCalls
+	// backing slices even when compaction moves them. Provider IDs can repeat,
+	// so an ID must never let a later observation inherit this consumption.
+	consumedReads map[*ai.ToolCall]bool
 
 	// watch is the loop detector's window over this turn's calls (looped.go).
 	watch *loopWatch
@@ -309,6 +302,48 @@ type episode struct {
 	// the rest of the episode is advanced on the turn loop's one goroutine.
 	captionMu sync.Mutex
 	captionN  int
+
+	// jobFooterSent is the last job-state footer this turn appended to a tool
+	// result, and it is here so that the next result can leave it off when
+	// nothing about the outstanding work has moved (jobfooter.go states the law
+	// and the measurement). The turn is the unit because the turn is what the
+	// model reads in one piece: a new episode remembers nothing, so the first
+	// result of every turn with work out carries the footer.
+	//
+	// It is guarded for [episode.captionN]'s reason: a batch runs its calls on
+	// goroutines of their own, and a batch of six results rendered inside the
+	// same second is exactly the case this field exists for.
+	jobFooterMu   sync.Mutex
+	jobFooterSent string
+
+	// asking is the person's message THE REQUEST NOW GOING OUT is answering,
+	// stamped where the horizon is stamped and read by the one tool that may act
+	// under their authority (task_forward.go). It is guarded for [episode.captionN]'s
+	// reason — a batch runs its calls on goroutines of their own — and it is
+	// per-request rather than per-turn because a steer lands mid-turn: a call
+	// made against what they said at the top of the turn must not be able to
+	// forward what they typed into the middle of it.
+	askingMu sync.Mutex
+	asking   personSource
+}
+
+// jobFooterChanged takes one rendered footer and answers whether it says
+// anything this turn has not already said, remembering it either way.
+//
+// AN EPISODE THAT DOES NOT EXIST HAS SAID NOTHING. A caller with no turn around
+// it — a small test, a door that builds a result by hand — gets the footer, so
+// the absence of a turn can never be the reason the model was told less.
+func (ep *episode) jobFooterChanged(footer string) bool {
+	if ep == nil {
+		return true
+	}
+	ep.jobFooterMu.Lock()
+	defer ep.jobFooterMu.Unlock()
+	if ep.jobFooterSent == footer {
+		return false
+	}
+	ep.jobFooterSent = footer
+	return true
 }
 
 // newEpisode builds one turn's control plane and runs `episode-init`.
@@ -340,7 +375,27 @@ func (ep *episode) decisionBegins() {
 	}
 	ep.agent.mu.Lock()
 	ep.seenThrough = len(ep.agent.messages)
+	// AND THE PERSON'S MESSAGE THIS REQUEST IS ANSWERING, read under the lock
+	// their words are recorded under and the lock [Agent.Steer] mints its id
+	// inside, so the identity, the words and the request generation cannot be
+	// torn apart from one another (task_forward.go).
+	asking := ep.agent.askingLocked()
 	ep.agent.mu.Unlock()
+
+	ep.askingMu.Lock()
+	ep.asking = asking
+	ep.askingMu.Unlock()
+}
+
+// askedFrom is the person's message the request that produced this call was
+// answering, and the zero source where there was none.
+func (ep *episode) askedFrom() personSource {
+	if ep == nil {
+		return personSource{}
+	}
+	ep.askingMu.Lock()
+	defer ep.askingMu.Unlock()
+	return ep.asking
 }
 
 // preAction runs the pre-action chain and reports the call to run, or the
@@ -352,6 +407,10 @@ func (ep *episode) preAction(ctx context.Context, hub *eventHub, call ai.ToolCal
 	for _, hook := range ep.plane.preAction {
 		rewritten, refused, allowed := hook.PreAction(ctx, ep, hub, call)
 		if !allowed {
+			// WHO SAID NO IS RECORDED HERE, at the one place every veto passes
+			// through, rather than inside each citizen — a hook added next
+			// month cannot forget to name itself.
+			refused.refusedBy = hook.Name()
 			return call, refused, false
 		}
 		call = rewritten
@@ -391,12 +450,13 @@ func (ep *episode) markSeenReadsConsumed() {
 		end = len(ep.agent.messages)
 	}
 	if ep.consumedReads == nil {
-		ep.consumedReads = make(map[string]bool)
+		ep.consumedReads = make(map[*ai.ToolCall]bool)
 	}
 	for index := ep.agent.turnFloor; index < end; index++ {
-		for _, call := range ep.agent.messages[index].ToolCalls {
+		for callIndex := range ep.agent.messages[index].ToolCalls {
+			call := &ep.agent.messages[index].ToolCalls[callIndex]
 			if call.ID != "" && earlyTools[call.Function.Name] {
-				ep.consumedReads[call.ID] = true
+				ep.consumedReads[call] = true
 			}
 		}
 	}

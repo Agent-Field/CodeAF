@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -35,7 +36,7 @@ func TestEveryRoadHomeComposesTheSameReport(t *testing.T) {
 	writeFile(t, filepath.Join(tree.dir, "parser.py"), "def parse():\n    return 1\n")
 
 	agent := &Agent{}
-	state := agent.landFinished(node, tree, []string{"parser.py"},
+	state := agent.landFinished(context.Background(), node, tree, []string{"parser.py"},
 		"the parser reads the shared line", "checked against the acceptance", " (unaudited)", io.Discard)
 
 	if state != TaskDone {
@@ -78,7 +79,7 @@ func TestTheOneRoadHomeStillRefusesToCallAConflictDone(t *testing.T) {
 	writeFile(t, filepath.Join(tree.dir, "shared.txt"), "the node's line\n")
 
 	agent := &Agent{}
-	state := agent.landFinished(node, tree, []string{"shared.txt"},
+	state := agent.landFinished(context.Background(), node, tree, []string{"shared.txt"},
 		"the shared line now carries the flag", "checked against the acceptance", "", io.Discard)
 
 	if state != TaskUnverified {
@@ -88,7 +89,7 @@ func TestTheOneRoadHomeStillRefusesToCallAConflictDone(t *testing.T) {
 	if merge != mergeConflicted {
 		t.Fatalf("merge = %q, want it to say the branch would not go", merge)
 	}
-	if !strings.HasPrefix(report, needsLookLead) {
+	if !strings.HasPrefix(report, yourCallLead(node.notice().StatusFacts())) {
 		t.Fatalf("the report does not lead with the person's own words:\n%s", report)
 	}
 	if !strings.Contains(report, "the shared line now carries the flag") {
@@ -114,7 +115,7 @@ func TestAConflictedMergeNoticeNamesTheBranchAndDoesNotClaimSuccess(t *testing.T
 	writeFile(t, filepath.Join(tree.dir, "shared.txt"), "the node's line\n")
 
 	agent := &Agent{}
-	state := agent.landFinished(node, tree, []string{"shared.txt"},
+	state := agent.landFinished(context.Background(), node, tree, []string{"shared.txt"},
 		"the shared line now carries the flag", "checked against the acceptance", "", io.Discard)
 	if state != TaskUnverified {
 		t.Fatalf("a conflicted landing is %q, want it to need a look", state)
@@ -133,7 +134,7 @@ func TestAConflictedMergeNoticeNamesTheBranchAndDoesNotClaimSuccess(t *testing.T
 		"task 1 finished",
 		"merged into yours",
 		"arrived as a merge",
-		needsLookLead,
+		yourCallLead(node.notice().StatusFacts()),
 	} {
 		if strings.Contains(note, success) {
 			t.Fatalf("the notice claims success (%q):\n%s", success, note)

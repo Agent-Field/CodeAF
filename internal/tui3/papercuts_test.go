@@ -27,9 +27,11 @@ func TestEveryRefusalOnTheTaskSurfacesNamesADoor(t *testing.T) {
 		}
 		// A DOOR IS A PLACE, NOT A KEY. `esc to return` was what the finished
 		// room said for a year, and esc is a way off the page rather than a
-		// destination for a sentence — so a door has to name somewhere this
-		// surface can actually put the words.
-		if !strings.Contains(r.door, roomCrumbRoot) {
+		// destination for a sentence — so a door has to name somewhere the words
+		// can actually go: this window's own conversation, or — on a page read
+		// through somebody else's — the conversation that owns the work, which is
+		// the one place main is NOT (roomrefusal.go's [roomGuestFinishedRefusal]).
+		if !strings.Contains(r.door, roomCrumbRoot) && !strings.Contains(r.door, refusalOwnerPlace) {
 			t.Fatalf("%q names %q, which is not a place words can go", r.what, r.door)
 		}
 		for _, spelling := range []string{r.line(), r.short()} {
@@ -119,7 +121,7 @@ func TestASentenceTypedOverTheRosterArrivesIntact(t *testing.T) {
 	a, _, _ := taskApp(t)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Port the parser", session.TaskDone,
 		session.TaskNotice{Merge: mergeWordMerged})})
-	drive(t, a, key("ctrl+t"))
+	drive(t, a, key(railHoldChord))
 	if !a.railHold {
 		t.Fatal("the roster was not handed the keyboard")
 	}
@@ -145,7 +147,7 @@ func TestNoBareChordFiresWhileTheBoxHoldsWords(t *testing.T) {
 	a, _, _ := taskApp(t)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Port the parser", session.TaskRunning,
 		session.TaskNotice{})})
-	drive(t, a, key("ctrl+t"))
+	drive(t, a, key(railHoldChord))
 	typeInto(t, a, "note: ")
 	wide := a.railWide
 
@@ -167,9 +169,9 @@ func TestNoBareChordFiresWhileTheBoxHoldsWords(t *testing.T) {
 func TestTheSettleLettersStandDownUnderADraft(t *testing.T) {
 	a, agent := settleApp(t)
 	landUnverified(t, a)
-	typeInto(t, a, "actually let me look at this first")
+	typeInto(t, a, "hm, let me look at this first")
 
-	for _, letter := range []string{"a", "l", "n", "d"} {
+	for _, letter := range []string{"a", "n", "d"} {
 		drive(t, a, key(letter))
 	}
 	if len(agent.resolved) > 0 || len(agent.handed) > 0 {
@@ -185,7 +187,7 @@ func TestWidenIsAChordAndNotALetterBesideAColumn(t *testing.T) {
 	a, _, _ := taskApp(t)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Port the parser", session.TaskDone,
 		session.TaskNotice{Merge: mergeWordMerged})})
-	drive(t, a, key("ctrl+t"))
+	drive(t, a, key(railHoldChord))
 	wide := a.railWide
 
 	drive(t, a, key(railWidenChord))
@@ -212,23 +214,23 @@ func TestWidenIsAChordAndNotALetterBesideAColumn(t *testing.T) {
 func TestARowThatNeedsYourLookShowsItsVerbsBeforeTheRoomIsEntered(t *testing.T) {
 	a, _ := settleApp(t)
 	landUnverified(t, a)
-	drive(t, a, key("ctrl+t"))
+	drive(t, a, key(railHoldChord))
 	if a.railFocusNode() == nil {
 		t.Fatal("the roster has no focused row to ask about")
 	}
 
 	hint := a.railHoldHintWord()
-	if !strings.Contains(hint, roomSettleHint) {
-		t.Fatalf("the hint does not offer the answers: %q", hint)
-	}
-	for _, want := range []string{"a accept", "l look again", "n not right"} {
+	// THE SLOT NAMES THE CARD'S OWN CHIPS. The two answers are the ask's
+	// ([session.TaskAsk]), so a slot spelling `accept` over a card whose first
+	// chip reads `resolve it` would be naming a key that is not there.
+	for _, want := range []string{"a accept", "n not right"} {
 		if !strings.Contains(hint, want) {
 			t.Fatalf("the hint is missing %q: %q", want, hint)
 		}
 	}
 	// AND THE SLOT IS WHAT THE FRAME ACTUALLY DRAWS, not a string only this test
 	// can see.
-	if got := a.hintWord(); !strings.Contains(got, roomSettleHint) {
+	if got := a.hintWord(); !strings.Contains(got, "a accept") {
 		t.Fatalf("the frame's hint slot says something else: %q", got)
 	}
 }
@@ -239,7 +241,7 @@ func TestARowThatNeedsYourLookShowsItsVerbsBeforeTheRoomIsEntered(t *testing.T) 
 func TestTheSettleVerbsAnswerFromTheRosterRow(t *testing.T) {
 	a, agent := settleApp(t)
 	landUnverified(t, a)
-	drive(t, a, key("ctrl+t"))
+	drive(t, a, key(railHoldChord))
 
 	drive(t, a, key("a"))
 	if len(agent.resolved) != 1 || agent.resolved[0].answer != session.TaskAccept {
@@ -250,7 +252,7 @@ func TestTheSettleVerbsAnswerFromTheRosterRow(t *testing.T) {
 	}
 	// ONCE ANSWERED THE SLOT GOES BACK TO THE MOVE KEYS, because the question is
 	// gone and a hint may not name a key that no longer does anything.
-	if hint := a.railHoldHintWord(); strings.Contains(hint, roomSettleHint) {
+	if hint := a.railHoldHintWord(); strings.Contains(hint, "a accept") {
 		t.Fatalf("the hint still asks a question that was answered: %q", hint)
 	}
 }
@@ -262,9 +264,9 @@ func TestAnOrdinaryRowIsOfferedNoSettleVerbs(t *testing.T) {
 	a, agent := settleApp(t)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Port the parser", session.TaskDone,
 		session.TaskNotice{Elapsed: time.Second, Merge: mergeWordMerged})})
-	drive(t, a, key("ctrl+t"))
+	drive(t, a, key(railHoldChord))
 
-	if hint := a.railHoldHintWord(); strings.Contains(hint, roomSettleHint) {
+	if hint := a.railHoldHintWord(); strings.Contains(hint, "a accept") {
 		t.Fatalf("a merged row offers the answers: %q", hint)
 	}
 	drive(t, a, key("a"))
@@ -282,7 +284,7 @@ func TestTheBareWidenLetterKeepsTheFullFrameRoster(t *testing.T) {
 	a.width, a.height = 60, 24
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Port the parser", session.TaskRunning,
 		session.TaskNotice{})})
-	drive(t, a, key("ctrl+t"))
+	drive(t, a, key(railHoldChord))
 	if !a.railFull() {
 		t.Fatalf("the roster is not over the body at %d columns", a.width)
 	}

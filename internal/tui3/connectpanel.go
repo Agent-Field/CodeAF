@@ -155,7 +155,7 @@ type connectPanel struct {
 
 	// owner maps each screen line of the block back to the HIT that drew it —
 	// the geometry recorded at layout, which is the same bargain the approval
-	// question's answers make (app.go's [app.askTaps]). At [tierPhone] a row is
+	// question's answers make (app.go's [app.questionBands]). At [tierPhone] a row is
 	// two lines and the section gap is a line belonging to nothing, so the
 	// pointer cannot resolve this arithmetic on its own.
 	owner []int
@@ -331,6 +331,9 @@ func (p *connectPanel) note(hit int) string {
 	if row.Connected {
 		return row.Account
 	}
+	if _, model := modelConnectionSource(row.ID); model {
+		return modelServiceTag(row)
+	}
 	if p.filtering {
 		return connectTag(row.Service)
 	}
@@ -339,6 +342,9 @@ func (p *connectPanel) note(hit int) string {
 
 // connectTag is what an available row says about how it is connected.
 func connectTag(service connect.Service) string {
+	if _, model := modelConnectionSource(service.ID); model {
+		return modelServiceTag(connect.Status{Service: service})
+	}
 	if keyService(service) {
 		return keyTag
 	}
@@ -470,11 +476,11 @@ func (a *app) openConnect() {
 		a.note(connectRemoteWord)
 		return
 	}
-	if a.conns == nil {
+	if a.conns == nil && len(a.modelCatalog) == 0 {
 		a.note(connectUnavailableWord)
 		return
 	}
-	rows := a.conns.Services()
+	rows := a.connectionRows()
 	if len(rows) == 0 {
 		a.note(noServicesWord)
 		return
@@ -494,11 +500,11 @@ func (a *app) openConnect() {
 // kept the number would leave the cursor on a stranger.
 func (a *app) refreshConnect() {
 	p := &a.connPanel
-	if !p.open || a.conns == nil {
+	if !p.open {
 		return
 	}
 	was, had := p.choice()
-	p.adopt(a.conns.Services())
+	p.adopt(a.connectionRows())
 	if had {
 		for at := range p.hits {
 			if row, ok := p.at(at); ok && row.ID == was.ID {
@@ -580,6 +586,9 @@ func (a *app) connectEntryKey(msg tea.KeyPressMsg) tea.Cmd {
 		if answer == "" {
 			break
 		}
+		if _, model := modelConnectionSource(entry.id); model {
+			return a.modelEntryAnswer(entry)
+		}
 		p.close()
 		a.touch()
 		if entry.secret {
@@ -642,6 +651,9 @@ func (a *app) connectAct(at int) tea.Cmd {
 		return nil
 	}
 	if !row.Connected {
+		if _, model := modelConnectionSource(row.ID); model {
+			return a.startModelConnect(row, false)
+		}
 		name := a.serviceName(row.ID, row.Name)
 		if keyService(row.Service) || row.Service.Blank != "" {
 			// THE PANEL STAYS UP UNDER THE BOX, unlike the browser path, and the
@@ -659,6 +671,11 @@ func (a *app) connectAct(at int) tea.Cmd {
 		return nil
 	}
 	p.armed = ""
+	if id, model := modelConnectionSource(row.ID); model {
+		a.disconnectModelService(id)
+		a.refreshConnect()
+		return nil
+	}
 	if a.conns == nil {
 		return nil
 	}

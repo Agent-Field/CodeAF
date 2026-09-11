@@ -81,11 +81,6 @@ const (
 	// slipped through, not a second attempt at that rule.
 	spellOutDraftClip = 2000
 
-	// spellOutTokens is the ceiling: six short clauses and the line that opens
-	// them, with room for a model that runs long. Not room for an essay, which
-	// the prompt spends its last paragraph refusing.
-	spellOutTokens = 400
-
 	// spellOutClauses is the most clauses the block may carry, and it is the
 	// prompt's own limit enforced rather than restated ([cleanSpellOut] holds a
 	// model that ignored it to the same number). Past six the block stops being
@@ -156,9 +151,9 @@ func (a *Agent) SpellOut(ctx context.Context, draft string) string {
 
 	a.mu.Lock()
 	call, err := roles.ResolveCall(roles.Source(a.config.RolesSource), spellOutRole, a.model)
-	client, closed := a.client, a.closed
+	closed := a.closed
 	a.mu.Unlock()
-	if closed || err != nil || client == nil || strings.TrimSpace(call.Model) == "" {
+	if closed || err != nil || strings.TrimSpace(call.Model) == "" {
 		return ""
 	}
 
@@ -173,7 +168,7 @@ func (a *Agent) SpellOut(ctx context.Context, draft string) string {
 	// on a low-tier model is ten seconds spent on the one thing the person is
 	// waiting for. WithoutStream because nobody's turn asked for this, and left
 	// on a stream it would type itself into the room above the box.
-	response, callErr := client.CompleteWithMessages(
+	response, callErr := a.completeWithModel(
 		// A side errand of the box the person is typing in, named as one so it
 		// is priced as one and never owns the clock (internal/lane's roles.go).
 		provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary),
@@ -184,7 +179,7 @@ func (a *Agent) SpellOut(ctx context.Context, draft string) string {
 			// person has configured, and they answer whatever they read last.
 			textMessage("user", clip(draft, spellOutDraftClip)+"\n\n"+spellOutPrompt),
 		},
-		ai.WithModel(call.Model), ai.WithMaxTokens(spellOutTokens))
+		call.Model)
 	if callErr != nil || response == nil {
 		return ""
 	}

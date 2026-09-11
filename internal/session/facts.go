@@ -29,11 +29,14 @@ package session
 // these five here — a frame or a keystroke reads it, so waiting on the wire for
 // it is a terminal that has stopped repainting.
 type Facts struct {
+	// NeedsPerson names an outstanding human decision, including hidden chats.
+	NeedsPerson bool `json:"needsPerson,omitempty"`
 	// Model is the model the next request will use ([Agent.Model]).
 	Model string `json:"model,omitempty"`
 	// Title is the name the session gave itself ([Agent.Title]), and empty for
 	// a conversation that has not earned one yet.
-	Title string `json:"title,omitempty"`
+	Title      string `json:"title,omitempty"`
+	ShortTitle string `json:"shortTitle,omitempty"`
 	// Spent is the session's running total ([Agent.Usage]).
 	Spent Usage `json:"spent,omitzero"`
 	// ContextTokens is what the conversation weighs right now
@@ -52,6 +55,36 @@ type Facts struct {
 	// A model with no level set has NO ENTRY, never an empty one: the agent
 	// stores absence as absence, and so does this.
 	Reasoning map[string]string `json:"reasoning,omitempty"`
+	// Thinking is the RESOLVED rung this conversation's next turn will ask for
+	// ([Agent.ResolvedEffort]) — whichever scope decided it, and "" for a
+	// conversation asking for no thinking at all, which the emptiness law draws
+	// as nothing.
+	//
+	// IT IS THE RESOLVED RUNG AND NOT THE STORED ONE, because that is the word
+	// the dial on the seam draws (internal/tui3's effortchip.go states the law:
+	// what the cell says is what will happen). The stored rung is a question
+	// asked once, by a person opening the dial, and it goes over the wire as its
+	// own call rather than riding a photograph every frame reads.
+	//
+	// It is spelled `thinking` because that is the word every person-facing
+	// surface already uses for this setting — the settings row, the task clause,
+	// the dial itself — and a fact named one thing in the protocol and another on
+	// the screen is two vocabularies for one ladder.
+	Thinking string `json:"thinking,omitempty"`
+	// Places is the folders this conversation is about, newest first
+	// ([Agent.Places]) — the person's own attachments among them, told apart by
+	// [PlaceRef.Arrival].
+	//
+	// IT RIDES THE PHOTOGRAPH BECAUSE THE FOLDER INDICATOR IS DRAWN ON A FRAME.
+	// The surface shows what is attached beside the composer and offers a key to
+	// remove one, so the set is asked for at repaint rate — and a reading that
+	// went to the engine would make the repaint rate of a terminal a function of
+	// a round trip, which is the exact defect internal/remote's replica.go
+	// exists to end. It moves once per deliberate act and is a handful of short
+	// strings, so it is the cheapest thing on this struct to state unasked.
+	//
+	// Nil is a conversation about nowhere else, which is nearly all of them.
+	Places []PlaceRef `json:"places,omitempty"`
 }
 
 // LevelFor is the reasoning level held for one model id, and "" for a model
@@ -96,13 +129,46 @@ func FactsOf(source FactSource) Facts {
 	if source == nil {
 		return Facts{}
 	}
-	return Facts{
+	facts := Facts{
 		Model:         source.Model(),
 		Title:         source.Title(),
 		Spent:         source.Usage(),
 		ContextTokens: source.ContextTokens(),
 		Reasoning:     source.ReasoningLevels(),
 	}
+	if named, ok := source.(interface{ ShortTitle() string }); ok {
+		facts.ShortTitle = named.ShortTitle()
+	}
+	// AND THE FOLDERS, ASSERTED RATHER THAN REQUIRED. A capability that cannot
+	// work is absent rather than broken, and a source that does not keep places —
+	// a scripted test agent, a shape of engine that predates them — is not a
+	// conversation about nowhere: it is one nobody can ask. Adding the method to
+	// [FactSource] would make every one of those a compile error for a reading
+	// they have no answer to.
+	if door, ok := source.(PlaceSource); ok {
+		facts.Places = door.Places()
+	}
+	if door, ok := source.(interface{ NeedsPerson() bool }); ok {
+		facts.NeedsPerson = door.NeedsPerson()
+	}
+	// AND THE THINKING RUNG, ASSERTED FOR THE FOLDERS' REASON. A source with no
+	// dial on it is not a conversation thinking at nothing: it is one nobody can
+	// ask, and the surface at the other end of a wire must be able to tell those
+	// two apart — which is what [remote.Welcome]'s own flag is for. A CAPABILITY
+	// THAT CANNOT WORK IS ABSENT, NOT BROKEN, so the field stays empty here and
+	// the dial is simply not drawn.
+	if door, ok := source.(interface{ ResolvedEffort() string }); ok {
+		facts.Thinking = door.ResolvedEffort()
+	}
+	return facts
+}
+
+// PlaceSource is the slice of an agent that knows which folders a conversation
+// is about. [Agent] satisfies it, and so does the slice an engine serves across
+// a connection — which is the point: one photograph carries the set, so a
+// surface drawing the folder indicator never asks over a wire.
+type PlaceSource interface {
+	Places() []PlaceRef
 }
 
 // Facts is this conversation's own photograph of itself.

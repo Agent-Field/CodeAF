@@ -133,7 +133,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
@@ -199,7 +198,7 @@ var divideSchemaJSON = `{"type":"object","properties":{` +
 	`"brief":{"type":"string","description":"WHAT THIS PART WORKS ON — its scope, and only that. It never sees your conversation and cannot ask you anything, so name the material it works on, the symbols and the conventions, and what you have learned that it would otherwise find out again. Material several parts read is FINE to name here — what a part OWNS is what its done-condition names, and nothing else. Shared material is READ AND NEVER WRITTEN, so say that in the brief of any part you hand some to: what a part would change there goes back in its report instead. The work being divided and what the other parts own are composed around this for you: do not restate either"},` +
 	`"acceptance":{"type":"string","description":"DONE WHEN — the observable done-condition somebody else could check without taking this part's word for it. IT IS ALSO WHERE THIS PART'S OWNERSHIP IS READ: name here everything this part PRODUCES and nothing it merely reads, because two parts whose done-conditions name the same thing are refused outright before anything is handed out"},` +
 	`"grade":{"type":"string","enum":["` + gradeMechanical + `","` + gradeCareful + `"],"description":"HOW THIS PART CAN GO WRONG, which decides how much thinking it is done with. \"` + gradeMechanical + `\", the default and most parts: the failure mode is NOT BEING DONE YET, visible to anybody looking at the result. \"` + gradeCareful + `\": the failure mode is SUBTLE WRONGNESS — a design decision, tricky debugging, a judgement about somebody else's code — where the work can look finished and be quietly wrong. Grade for the failure mode, never size or importance: a long dull part is ` + gradeMechanical + `, a short part that must be RIGHT is ` + gradeCareful + `"},` +
-	expectsSchemaJSON + `},` +
+	expectsSchemaJSON + `,` + checksSchemaJSON + `},` +
 	`"required":["title","summary","brief","acceptance"],"additionalProperties":false}}` +
 	`},"required":["evidence","parts"],"additionalProperties":false}`
 
@@ -224,6 +223,11 @@ type dividePart struct {
 	// the run this road was measured on needed most: the briefs named files and
 	// symbols of a world their workers were never given.
 	Expects []Expectation `json:"expects,omitempty"`
+	// Checks is the repeatable verification THIS PART is checked by — the only
+	// commands its own checker will run (task_checks.go). It is the third
+	// optional field, and a part that declares one its siblings declare too has
+	// named the family's check rather than its own ([sharedCheckCommands]).
+	Checks []string `json:"checks,omitempty"`
 }
 
 // The two grades. They are spelled once, here, because four readers need them:
@@ -482,8 +486,10 @@ func (a *Agent) armDivision(spec taskSpec) string {
 	// THREE SIGNALS ARE. A harness DESIGN is two model calls producing one JSON
 	// page, in a room, with no worktree and nothing to hand out
 	// (harness_task.go); a saved program's RUN has its steps written down
-	// already (subharness_run.go). Neither has parts, and neither has a worker's
-	// belt to put the verb on.
+	// already (subharness_run.go); a QUICK task's parts are its items, worked in
+	// order in the caller's own copy, and handing them to workers in worktrees
+	// would be the one thing it promised not to do (task_quick.go). None of the
+	// three has parts, and none has a worker's belt to put the verb on.
 	//
 	// IT MATTERS BECAUSE THE THIRD SIGNAL READS TEXT. A design goal saying "a
 	// harness that checks the 8 endpoint files" enumerates enough items for
@@ -840,8 +846,9 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	// This is the one step of a division that a person WAITS THROUGH. Everything
 	// above is arithmetic on text and everything below is admission, and both are
 	// instant; this is a full call to the tier that thinks, measured at thirteen
-	// seconds and bounded at [divideReviewPatience] — during which the node's row
-	// drew what it draws between two tool calls, which is a clock. On the road
+	// seconds and bounded by the role's own tier ([Agent.callRoleChecked]) —
+	// during which the node's row drew what it draws between two tool calls,
+	// which is a clock. On the road
 	// where the harness submits a drawing before the worker's first request
 	// (task_divide_sketch.go) that is a task card that has just appeared and has
 	// nothing on it at all, and the run this was measured on read as a task that
@@ -856,8 +863,19 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	// the end of this function. What follows is the admission, which is the node's
 	// own work again and takes no time a person can see — leaving the sizing word
 	// standing over it would be the row explaining a moment that had passed.
+	//
+	// AND IT SAYS WHAT THE READING IS DOING WHILE IT DOES IT. The phase word on
+	// its own was the whole of the measured failure's visible half: three minutes
+	// and twenty seconds of "sizing the work" over a row that was doing nothing a
+	// person could see, while two models were asked in turn and neither answered.
+	// [Agent.sizingSaid] puts the errand's own ladder under that word — which
+	// model, which of how many, and what happened to the last one — on the same
+	// event and the same field the check's finding already rides
+	// (internal/tui3's taskphase.go draws it and needed no change).
+	sizing := a.sizingSaid(node)
 	settle := a.enterPhase(node, taskBeatSizing, 0, 0, "")
-	parts, refusal := a.reviewDivision(ctx, node, parsed, thin)
+	parts, refusal := a.reviewDivision(withErrandWatch(ctx, sizing.tell), node, parsed, thin)
+	sizing.ended(refusal)
 	settle()
 	if refusal.refused() {
 		// THE REVIEWER SAID NO, and what that costs the task is a decision of its
@@ -866,6 +884,21 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 		said, person := settleDivisionRefusal(node, refusal, thin, &line)
 		return said, person, false
 	}
+	// AND A READING THAT NEVER HAPPENED IS WRITTEN DOWN AS ONE.
+	//
+	// This is the fail-open road: nobody could be reached, or what came back was
+	// not something anybody could read, and the parts the worker drew are admitted
+	// anyway because a second opinion that cannot be had is not a refusal (see
+	// [Agent.reviewDivision]). The line used to carry `decision: admitted` and
+	// NOTHING ELSE — byte for byte the same row a reviewed admission writes — so
+	// the autopsy of task 1 of conversation 57d51779f63ac603 could not tell an
+	// admission somebody read from an admission nobody did without going back to
+	// the call rows and matching timestamps by hand.
+	//
+	// The word stays `admitted`, because that is what happened to the parts. What
+	// is added is why there was no reading, in the same field a refusal writes it
+	// ([settleDivisionRefusal]), which is the one place a reader already looks.
+	line.Error = refusal.why
 	parsed.Parts = parts
 
 	// AND THE SAME RULE OVER THE PARTS THE REVIEWER SETTLED. Gate three above
@@ -1013,6 +1046,14 @@ func parseDivideArguments(args json.RawMessage) (divideArguments, string) {
 			return parsed, fmt.Sprintf("%s (part %d)", problem, i+1)
 		}
 		parsed.Parts[i].Expects = expects
+		// AND SO IS THE VERIFICATION, through the reading the proposal's own door
+		// uses (task_checks.go's [declaredCheckList]), so that a part and a task
+		// cannot come to two opinions about what a declared check may be.
+		checks, problem := declaredCheckList(part.Checks)
+		if problem != "" {
+			return parsed, fmt.Sprintf("%s (part %d)", problem, i+1)
+		}
+		parsed.Parts[i].Checks = checks
 	}
 	return parsed, ""
 }
@@ -1035,25 +1076,136 @@ func (a *Agent) carefulModel(fallback string) string {
 	return model
 }
 
+// ── what a person sees while the work is being sized ────────────────────────
+
+// sizingLine is the row under the sizing word: the errand's own ladder, told to
+// whoever is watching this node, in their words.
+//
+// THE HOLE IT FILLS WAS MEASURED. Task 1 of conversation 57d51779f63ac603 sat in
+// "sizing the work" for three minutes and twenty seconds while two models were
+// asked in turn and neither answered, and the row said the same one word the
+// whole time. From the outside that is indistinguishable from work that has hung
+// — which is the exact sentence [TaskPhaseSizing] was added to stop being true,
+// one level up.
+//
+// WHY IT IS A LITTLE MACHINE AND NOT A FORMAT STRING. The most useful thing to
+// say spans two moments: the rung that just failed and the rung being asked
+// instead are ONE sentence to a person and two events to the ladder. So
+// something has to hold the first until the second arrives, and this holds
+// exactly one string and the name of the model last asked.
+//
+// AND THE VOCABULARY IS THE SURFACE'S, not the machinery's. Nothing here is a
+// reviewer, nothing is unreached, and nothing has a verdict: a model is being
+// asked, one of them did not answer in time, and — when none of them did — the
+// parts are going out as they were drawn.
+type sizingLine struct {
+	agent *Agent
+	node  *TaskNode
+	// owed is what to say about the rung that just failed, held until the next
+	// rung is asked so that the two halves are said as one line. It is dropped
+	// rather than said on its own when the ladder ends: what a person needs then
+	// is [sizingLine.nobodyAnswered], which says what HAPPENS rather than what
+	// went wrong.
+	owed string
+}
+
+// sizingSaid is the teller for one node's reading. It is a value and not a
+// package function because the two halves of a sentence have to meet somewhere.
+func (a *Agent) sizingSaid(node *TaskNode) *sizingLine {
+	return &sizingLine{agent: a, node: node}
+}
+
+// tell is the errand watch ([withErrandWatch]): one moment of the ladder, turned
+// into the one line under the phase word.
+func (s *sizingLine) tell(news errandNews) {
+	if s == nil {
+		return
+	}
+	if news.Failed {
+		s.owed = strings.TrimSpace(news.Model + " " + news.Why)
+		return
+	}
+	// THE COUNT ONLY WHERE THERE IS SOMETHING TO COUNT, and only on the opening
+	// line. A ladder of one rung saying "1 of 1" is the emptiness law broken with
+	// arithmetic, and a line that has already said a model failed is carrying the
+	// place on the ladder implicitly.
+	line := "asking " + news.Model
+	if s.owed != "" {
+		line = s.owed + " · " + line
+	} else if news.Rungs > 1 {
+		line += " · " + strconv.Itoa(news.Rung) + " of " + strconv.Itoa(news.Rungs)
+	}
+	s.owed = ""
+	s.say(line)
+}
+
+// ended is the reading finishing, whichever way it went, and it is the ONE road
+// out so that [Agent.divideOnce] does not carry a branch about a row.
+//
+// It says something on exactly one of them: the fail-open road, where the
+// reading could not be had at all and the parts go out as the worker drew them.
+// A refusal somebody actually WROTE needs no line here — the worker is about to
+// be told the reason in full — and a clean reading needs none either, because
+// what follows it is the parts appearing, which says everything.
+//
+// AND IT SAYS WHAT HAPPENS RATHER THAN WHAT FAILED, because that is the half a
+// person waiting on their work actually needs: the other reading of a row that
+// only names a failure is that the work stopped, and it did not.
+func (s *sizingLine) ended(refusal divisionRefusal) {
+	if s == nil || refusal.refused() || refusal.why == "" {
+		return
+	}
+	s.owed = ""
+	s.say(sizingNobodyAnswered)
+}
+
+// sizingNobodyAnswered is spelled once here because the manual quotes it.
+const sizingNobodyAnswered = "nobody answered · going with the parts as drawn"
+
+// say puts one line on the node's phase event, from the conversation the node
+// belongs to ([TaskNode.phaseTeller]) rather than from whoever noticed — a
+// division is read by the node's own worker, whose only lanes are its room's.
+func (s *sizingLine) say(text string) {
+	if s == nil || s.node == nil {
+		return
+	}
+	s.node.phaseTeller(s.agent).emitTaskPhase(TaskPhaseNotice{
+		ID: s.node.id, Phase: taskBeatSizing, Text: text,
+	})
+}
+
 // ── the plan, read once by the tier that thinks ─────────────────────────────
 
 const (
-	// divideReviewTokens is the reviewer's budget, and it is large because the
-	// answer is the PARTS THEMSELVES: up to [taskFanLimit] briefs written out in
-	// full. A cap that truncated the last part's brief would hand a worker half
-	// a world.
-	divideReviewTokens = 4000
-	// divideReviewPatience bounds the wait. The tier's own bound is ten minutes
-	// (roles.Patience) and that is the right figure for a planner nobody is
-	// waiting on; here a worker is mid-turn with its own steps ticking and its
-	// parts not yet existing, so this one is nearer. It is deliberately generous
-	// against the alternative — a division that never happened is worse than a
-	// division that started three minutes late — and it is bounded rather than
-	// absent because failing open means waiting longer buys nothing at all.
-	// The errand shares this budget across its whole ladder rather than handing
-	// it to the first rung ([Agent.callRole]), so a wedged mastermind endpoint
-	// still leaves the fall-through rung time to answer inside these minutes.
-	divideReviewPatience = 3 * time.Minute
+	// The reviewer sends no budget. It used to send 4000 — large because the
+	// answer is the PARTS THEMSELVES, up to [taskFanLimit] briefs written out in
+	// full, and a cap that truncated the last part's brief would hand a worker
+	// half a world. That reasoning is exactly why there is no figure now: this
+	// file cannot know what "the parts themselves" costs on a model it has never
+	// seen, and being wrong about it is silent.
+	// THE READING HAS NO BOUND OF ITS OWN, AND THAT IS THE FIX FOR A MEASURED
+	// FAILURE. It used to carry `divideReviewPatience = 3 * time.Minute`, which
+	// [Agent.callRoleChecked] then divided evenly between the ladder's rungs —
+	// ninety seconds apiece — and applied as a hard deadline on the call. On task
+	// 1 of conversation 57d51779f63ac603 both rungs were writing an answer when
+	// their ninety seconds ran out, and the parts went out unread with two badly
+	// spelled names on them.
+	//
+	// A NEARER NUMBER THAN THE GUARD'S OWN WALL IS NOT A BOUND, IT IS A
+	// GUILLOTINE. internal/provider's stream wall floors at five minutes for a
+	// lane it has measured nothing about, so any figure this file could have
+	// picked under that would cut streams the guard was still perfectly happy
+	// with — which is exactly what three minutes did. So the bound is the ROLE'S
+	// TIER, once, where every other errand's already is: ten minutes
+	// ([roles.Patience] for the mastermind), spent across the whole ladder rather
+	// than per rung, and never spelled twice.
+	//
+	// TEN MINUTES IS NOT TEN MINUTES OF WAITING. The guard ends a rung that is
+	// silent in tens of seconds and a rung that stops keeping pace at its lane's
+	// own wall, so the ten is what a review that is genuinely being written may
+	// take — and while it takes it, the node's row says which model is being
+	// asked and which of how many ([Agent.sizingSaid]), which is the other half
+	// of what the measured run got wrong.
 	// divideReviewBriefBytes and divideReviewEvidenceBytes bound the two things
 	// the reviewer is shown that it cannot amend. THE PARTS THEMSELVES ARE NEVER
 	// CLIPPED: they are what is being reviewed, and a reviewer amending a brief
@@ -1215,9 +1367,6 @@ func (a *Agent) reviewDivision(ctx context.Context, parent *TaskNode, parsed div
 		}
 		return parsed.Parts, divisionRefusal{why: why}
 	}
-	ctx, cancel := context.WithTimeout(ctx, divideReviewPatience)
-	defer cancel()
-
 	a.mu.Lock()
 	model := a.model
 	a.mu.Unlock()
@@ -1225,8 +1374,7 @@ func (a *Agent) reviewDivision(ctx context.Context, parent *TaskNode, parsed div
 		[]ai.Message{
 			textMessage("system", divideReviewBrief),
 			textMessage("user", divideReviewQuestion(parent, parsed, thin)),
-		},
-		ai.WithMaxTokens(divideReviewTokens))
+		})
 	if err != nil || response == nil {
 		why := "unreached"
 		if err != nil {

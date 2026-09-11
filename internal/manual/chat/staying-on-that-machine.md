@@ -114,10 +114,16 @@ waiting.
 So a long piece of work you left running does not fail four hours ago because nobody was
 there to say yes. It is sitting where it stopped.
 
-Four kinds of question wait this way: a permission question about a tool call, a reminder
-or watch asking to stand, an offer to run a saved harness, and a request to connect an
-account. Answer it exactly as you would have answered it live — it is not a different kind
-of card, it is the card you would have seen, with the same keys and the same offer.
+Five kinds of question wait this way: a permission question about a tool call, a reminder
+or watch asking to stand, an offer to run a saved harness, a request to connect an
+account, and a question the model asked you itself. Answer it exactly as you would have
+answered it live — it is not a different kind of card, it is the card you would have seen,
+with the same keys and the same offer.
+
+The last of the five waits by a different route and you cannot tell them apart: the engine
+simply says what it is still waiting on the moment a window attaches, so a question raised
+into an empty room draws the same block when you arrive that it would have drawn while you
+were sitting there. See **questions** for what that block does.
 
 **It tells you how long it sat there**, on a line of its own just above the card:
 
@@ -137,6 +143,11 @@ Two things are worth knowing. A question that was **on your screen** when you wa
 is kept too, and comes back the next time you attach. And a question waiting for you keeps
 that conversation open — the machine does not let go of a conversation that is holding one.
 
+A new window receives every unanswered question even if the old window is still
+connected or its broken connection has not yet been noticed. The question appears once
+in the new window, even when the running reply also replays it. Answering it resolves
+the same question for the conversation.
+
 ## Two windows on one conversation — two terminals on the same chat
 
 More than one window can be attached to the same conversation at once — a desk machine and
@@ -152,8 +163,8 @@ The rest of what you should know about sharing one:
 
 - **A question is answered once.** Say yes to a permission card on the phone and the
   conversation has its answer. A second window may still have that card drawn, but
-  pressing it decides nothing — a late answer to a question that has been settled is
-  dropped, which is what the same card does locally when a turn has moved on.
+  pressing it decides nothing — the engine's own refusal is said on screen, which is
+  what the same card does locally when a turn has moved on.
 - **Ending the conversation ends it for everybody.** Quitting deliberately closes the
   conversation and flushes the file, and that is a statement about the conversation rather
   than about your window. Simply closing a window — or losing its connection — leaves
@@ -181,18 +192,30 @@ one dim line reading `typing from another window now · enter takes it back` —
 window` rather than a machine name, because there is no other machine in it. The status
 line grows no `via` segment for the same reason.
 
-**A host has to be there already.** A plain `aforge chat` never starts one, on purpose:
-adaptive runs, harness building and subharness intake cards are all off in a hosted
-conversation (*What still does not work*, below), so a terminal that has nobody to share
-with keeps them. A host is there when something asked for one — a `--host` or `--at`
-connection into this machine, or `aforge engine` run on it.
+**A host is started for you.** `aforge chat` in a folder opens its conversation in this
+machine's session host, and starts one if none is running. That is what makes the work
+outlive the terminal: close the window mid-task and the task keeps going; open a terminal
+here tomorrow and you are back in the same conversation rather than beside it. The host
+retires itself when it is holding nothing.
 
-**Without a host, a second terminal offers you the conversation rather than a seat in it.**
-It comes up on home with that row already armed, and one `enter` moves the conversation to
-this terminal — the window that had it says `moved to another window`. One conversation, one
-place, and you say which place — *Continue a conversation from another terminal* on the home
-page, and *Two terminals in the same folder* on the sessions page. `--no-host` opts a window
-out of joining a host at all.
+**Four launches stay in this terminal instead**, each because something real about them
+lives in this process:
+
+- **the first run on a machine with no key.** Connecting a provider is a conversation with
+  you, and a background host has no terminal to have it in. Once a key is set up, the next
+  launch takes the host road.
+- **`--once`**, which never starts a host — a resident process left behind by a headless
+  command is a surprise — though it joins one that is already there.
+- **`--debug`**, because the model-call record is written by the process making the calls.
+- **`--no-host`**, the escape hatch, for the day the host is the thing that is wrong.
+
+**The per-launch postures travel with the launch.** `--yolo`, `--no-compact`, `--one-model`,
+`--max-hours` and `--max-cost` describe how a session is BUILT, and the host builds it that
+way. A conversation that is already open keeps the shape it was opened with — nothing here
+overwrites a session somebody else is in — so if you ask for one shape and this folder's
+conversation is already running under another, aforge says so in one line and opens a
+conversation in this terminal instead, where the flag is real. That one ends when the
+terminal does.
 
 ## What typing from spark now means, and why my input box is one line
 
@@ -270,6 +293,11 @@ goes on showing the work.
 
 A turn that was already running when a window attaches is picked up part-way through in the
 same way, with the part it missed drawn in first.
+
+And so is a turn nobody in the room started: a finished task's landing note starts a turn
+of the conversation's own, and it streams to every attached window the same way — told the
+moment it begins, drawn as it runs, closed when it ends. A window that attaches while it
+runs picks it up part-way like any other running turn.
 
 ## Does my window come back and steal the keyboard after my wifi drops
 
@@ -367,24 +395,48 @@ another machine*).
 
 ## What still does not work, even though the session stays open
 
-Three things, and all three for the same reason: their questions do not travel this
-connection at all — not the card, and not the answer.
+Two things.
 
-- **Building a harness.** Asking for a harness to be designed is off over `--host`. The
-  card that asks whether to keep the finished page is raised on a lane that has no door on
-  this wire, so it would never reach you and holding it is not possible either. Running a
-  harness that already exists works normally.
-- **An adaptive run.** Its notes, its gauge and its spending gate all arrive on the same
-  kind of lane. A run started over a connection would spend money and stop at its cap with
-  nothing on your screen, so the model is not given the verb at all.
-- **Offering a saved program with an intake card.** Same lane, same answer. `/subharness`
-  is a command on the machine you are sitting at and has nothing to list over a
-  connection.
+- **An adaptive run.** A hosted conversation is built with no adaptive runner. Its notes,
+  its gauge and its spending gate arrive on a standing subscription that this wire does not
+  yet carry, and unlike the harness lane that subscription replays nothing — so a gate
+  raised while every window was away would be gone when you came back, and the run would sit
+  at its cap for ever. Nothing is lost by the wait: no command, tool or sentence starts an
+  adaptive run in this build anyway, here or on a far machine.
+- **`/subharness`** lists what is saved on the machine you are sitting at, so over a
+  connection it has nothing to show you and says so. The far session can still OFFER a
+  saved program with an intake card, and answering that card runs it over there.
 
-This is a smaller list than it was — permission cards, reminders, harness offers and
-account connections all wait for you now. What is left is not about anybody being in the
-room; it is about a road that has not been built. Nothing here half-works: each one is
-absent rather than present and failing.
+The list used to be three long. Harness building and subharness intake cards came off it
+when the wire grew their subscription and their answer: a card raised while nobody is
+attached is handed to the next window that arrives, once, and answering it takes it down.
+Permission cards, reminders, harness offers and account connections wait for you as they
+already did.
+
+Nothing here half-works: a capability a road cannot carry is absent rather than present and
+failing, which is why the model is not given a verb it could not finish.
+
+## Is the tok/s and the via name still right when a session host is holding the conversation
+
+Yes, and there is nothing to turn on. A plain `aforge` in a folder does not run the
+conversation inside the window you are looking at — the session host holds it, in a
+process of its own, so that closing the terminal does not end the work. Everything the
+status row says about a request in flight is measured in that process and pushed to your
+window as it changes: the live `38 tok/s` at the right edge, `via <machine>` beside the
+model as soon as the machine writing the answer has named itself, the phase words
+(`connecting · 1.2s`, `first word …`, `thinking`, `writing`), and the `served` row in
+`/status`. They are filed under the conversation rather than under its model, so a
+model change in the middle of a turn, a fallback, or a change made from another window
+cannot hide them.
+
+A host started by an **older aforge** may not send them at all. The window then says so
+once, after an answer — `this conversation's engine is an older aforge, so the provider
+and tok/s are not shown — they come back once it picks up this build` — and the host
+retires as soon as it is holding nothing, so the next one runs this build.
+
+The host sends each window only its own conversation's readings, so two terminals on two
+different chats never show each other's clocks. *Running on another machine* has the same
+answer for `--host`, where the engine is on a different computer entirely.
 
 ## What does --no-host do — make one window not use the session host
 
@@ -427,3 +479,11 @@ nothing a person accomplishes by typing it. The third flag beside them is `--sto
 the one a person really does type; it has its own section above. None of them appear in
 `aforge`'s usage text, because `aforge engine` itself does not — it is the far half of
 `--host` and a surface dials it.
+
+## Background replies while another reply finishes
+
+On a hosted conversation, a finished task or background command can start a reply
+without another message from you. It appears as a new turn, preserving earlier
+answers above it. If your window is still drawing the previous reply, it finishes
+that stream before drawing the queued reply. Returning midway through a reply uses
+the same stream and its recorded events.

@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"errors"
 	"strings"
 	"time"
 
@@ -66,9 +65,10 @@ import (
 // turn's machinery collapses to "▸ worked · 10 tool calls · ctrl+e"; in here
 // the same chip is spent per SETTLED PHASE instead of per turn, because a
 // node's life is one long turn and folding by turn swallowed the whole page the
-// instant it stopped running. The live frontier never folds and keeps a whole
-// screenful of calls. workfold.go states the law where the chips are derived,
-// with the reversal it went through boxed beside it.
+// instant it stopped running. Current work uses the conversation's compact
+// step display; opening it restores its calls and reasoning. Expanded calls
+// retain the room's screenful budget. workfold.go owns settled phase folding,
+// while livesteps.go owns the running work's disclosure.
 //
 // ── THE DOORS ARE ASSERTED, NEVER REQUIRED ──
 //
@@ -86,12 +86,13 @@ type taskRoomAgent interface {
 	// when the node is unknown, not running, or has no worker up yet — all three
 	// are "there is nobody in there to talk to", and all three are worth saying.
 	//
-	// The bool is whether the node was WAITING ON ITS OWN PIECES when the line
-	// was taken. It arrives either way; what changes is that a parked node has no
-	// step coming to read it at, so the line is what wakes it, and a room that
-	// said nothing would leave the person watching a page that does not move
-	// (internal/session's task_room.go).
-	SteerTask(id uint64, text string) (bool, error)
+	// The receipt is what the sending DID (internal/session's
+	// [session.SteerReceipt]): delivered, delivered to a node that was WAITING ON
+	// ITS OWN PIECES — which has no step coming to read the line at, so the line
+	// is what wakes it — or HELD on the task's record while its work is being
+	// checked. All three are successes and each has its own sentence, which this
+	// surface draws and never rewrites.
+	SteerTask(id uint64, text string) (session.SteerReceipt, error)
 	// WatchTask subscribes to the node's live events, FROM NOW: no history is
 	// replayed, and the channel closes at the node's final state. A finished node
 	// answers with an already-closed channel rather than an error.
@@ -117,12 +118,58 @@ func (a *app) roomDoors() (taskRoomAgent, bool) {
 // taskSteerDoor is separate from the live-watch door because a hosted room is
 // refreshed by bounded journal reads while its one write still crosses.
 type taskSteerDoor interface {
-	SteerTask(id uint64, text string) (bool, error)
+	SteerTask(id uint64, text string) (session.SteerReceipt, error)
+}
+
+// taskWeightDoor is what one node's worker weighs — the size of the request it
+// has in flight, the figure a room's ↑ draws (tokencol.go). It is a door of its
+// own because only an engine that holds the worker can answer it: a hosted room
+// has no lane and reads the same fact off the node's journal instead
+// (roomrefresh.go). Zero is "nobody is working that node right now".
+type taskWeightDoor interface {
+	TaskContextTokens(id uint64) int
 }
 
 func (a *app) taskSteerDoors() (taskSteerDoor, bool) {
 	door, ok := a.agent.(taskSteerDoor)
 	return door, ok
+}
+
+// roomGuest is the view the page on screen is being read through, and nil on an
+// ordinary room — which is every room but one (taskowner.go).
+func (a *app) roomGuest() *taskGuest {
+	if a.room == nil {
+		return nil
+	}
+	return a.room.guest
+}
+
+// roomIsGuest is THE ONE QUESTION EVERY ACTION ON A ROOM ASKS, and it is spelled
+// once because the answer is the same for all of them: this page is a READING of
+// another conversation's work, so nothing on it may reach into this window's
+// graph.
+//
+// THE IDS COLLIDE BY DESIGN, which is what makes this dangerous rather than
+// merely wrong. Task ids restart with every conversation, so a page onto another
+// conversation's task 7 usually sits beside a perfectly real local task 7 — and a
+// door that fell through to [app.tasks] would not fail. It would stop healthy
+// local work, or move it onto another model, silently, while the person was
+// looking at somebody else's task. So every one of those doors is ABSENT here
+// rather than aimed somewhere safer.
+func (a *app) roomIsGuest() bool { return a.roomGuest() != nil }
+
+// roomSteerDoors is the door THE PAGE ON SCREEN types into: this conversation's
+// own, and NONE on a page being read through somebody else's.
+//
+// IT IS ASKED IN PLACE OF [app.taskSteerDoors] AT EXACTLY ONE CALL SITE, which
+// is what keeps this narrow: everything else on the surface that steers is
+// steering its own conversation's work, and the one thing that might not be is
+// the box under a room.
+func (a *app) roomSteerDoors() (taskSteerDoor, bool) {
+	if a.roomIsGuest() {
+		return nil, false
+	}
+	return a.taskSteerDoors()
 }
 
 // taskModelDoor is the fourth door onto a node (internal/session's
@@ -141,30 +188,34 @@ type taskModelDoor interface {
 // taskModelDoors is that door under this surface, when it has one.
 func (a *app) taskModelDoors() (taskModelDoor, bool) {
 	door, ok := a.agent.(taskModelDoor)
+	if host, hosted := a.agent.(interface{ TaskSetupSupported() bool }); hosted {
+		ok = ok && host.TaskSetupSupported()
+	}
 	return door, ok
 }
 
 // roomModelMovable reports whether the room's model word is a DOOR as well as a
 // fact — which is exactly the set of moments a press on it would do something.
 //
-// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN, so this is what the render
-// records the press target from ([app.identityParts]) rather than something the
-// press checks after the fact. A finished, failed, stopped or unverified node's
-// model is a fact about what happened and nothing can move it; a queued node has
-// not started, and the engine refuses it in the same words; a run's page is a
-// fleet rather than one node, and a node belonging to a run is not in the graph
-// this door reaches. In every one of those the word is still drawn — a person is
-// entitled to read what the work ran on — and it simply does not light and does
-// not answer.
+// Ordinary settled tasks save continuation settings through the same picker.
+// Adaptive runs and guest pages remain outside this task model door.
 func (a *app) roomModelMovable() bool {
 	if a.room == nil || a.room.orch != nil {
+		return false
+	}
+	// AND A PAGE READ THROUGH SOMEBODY ELSE'S CONVERSATION MOVES NOTHING. The door
+	// behind this ([app.taskModelDoors]) is THIS window's engine, so it would
+	// retarget whatever this conversation calls by the same number
+	// ([app.roomIsGuest]). The word is still drawn — a person is entitled to read
+	// what the work ran on — and it does not light.
+	if a.roomIsGuest() {
 		return false
 	}
 	node := a.roomNode()
 	if node == nil || node.run != "" {
 		return false
 	}
-	if node.state != session.TaskRunning || node.stopped {
+	if !taskSetupAvailable(node) {
 		return false
 	}
 	_, ok := a.taskModelDoors()
@@ -192,6 +243,9 @@ func (a *app) retargetTask(id uint64, model string) {
 	}
 	if err := door.RetargetTask(id, model); err != nil {
 		a.note(err.Error())
+		if a.room != nil && a.room.id == id {
+			a.roomNote(err.Error())
+		}
 		return
 	}
 	// The engine publishes the new id on an update of its own, which is what moves
@@ -203,6 +257,13 @@ func (a *app) retargetTask(id uint64, model string) {
 	// The id and the model are both facts and the two `·` labels between them are
 	// not, so the pair steps to ink and the scaffolding stays dim (payload.go).
 	a.noteFacts(taskIDWord(id)+" · model · "+model, taskIDWord(id), model)
+	if a.room != nil && a.room.id == id {
+		timing := "its next turn takes it"
+		if taskSetupLater(a.roomNode()) {
+			timing = "saved for when you continue"
+		}
+		a.roomNote("model · " + model + " · " + timing)
+	}
 }
 
 // taskModelUnavailableWord is the degraded case, in the vocabulary the other
@@ -215,6 +276,9 @@ const taskModelUnavailableWord = "changing a task's model is unavailable — thi
 // taskRoom is one node's page: what it has said, the lane carrying what it says
 // next, and where the reader is in it.
 type taskRoom struct {
+	// detailsTop belongs to this page so scrolling its facts never moves the tree.
+	detailsTop int
+
 	id    uint64
 	title string
 	// feed is this page's transcript and the reducer that grows it (feed.go).
@@ -228,14 +292,19 @@ type taskRoom struct {
 	// what they have always meant to every reader of them — the fields moved
 	// house, not name.
 	feed
+	// requests is the newest request lines the last journal reading held, for a
+	// page with no lane: what lets the next reading count only what is new
+	// (roomrefresh.go's [taskRoom.takeRequests]).
+	requests []session.RequestLine
 	// unfolded is the page's OWN fold state, keyed by the page's own turns. It is
 	// not the conversation's map for the reason the entries are not the
 	// conversation's list: a turn number means nothing outside the list it counts
 	// (render.go's [deck]).
-	unfolded map[int]bool
-	workOpen map[int]bool
-	capOpen  map[int]bool
-	lane     <-chan session.Event
+	unfolded        map[int]bool
+	workOpen        map[int]bool
+	capOpen         map[int]bool
+	readingRestored bool
+	lane            <-chan session.Event
 	// stop LEAVES that lane, and is nil for an agent that offers no way out of
 	// one. A room a person walked out of while the conversation goes on running
 	// is a subscriber that must say goodbye: nothing else can tell a reader that
@@ -273,6 +342,20 @@ type taskRoom struct {
 	// telemetry, and the next event replaces this string in place.
 	harnessProgress string
 
+	// guest is set when this page is a task in ANOTHER CONVERSATION, read
+	// through a second view onto the engine that is already running it
+	// (taskowner.go). It is a field on this struct for [taskRoom.orch]'s reason:
+	// everything a room promises — esc restores the transcript, the rail stays,
+	// the scroll is the room's own — has to hold here too, and the only way to
+	// guarantee that is for this to BE a room.
+	//
+	// IT REPLACES THE PAGE'S TWO SEAMS AND NOTHING ELSE. Where it is set, the
+	// journal is read through it ([app.readRoomRecord]) and a line is steered
+	// through it ([app.steer]); every other field means exactly what it means on
+	// an ordinary room. The surface's own agent, conversation and drafts are
+	// untouched, which is what makes this a view rather than a switch.
+	guest *taskGuest
+
 	// The reader's own position. It is HERE and not on the app because that is
 	// the whole promise of esc: the conversation's scroll is not touched while a
 	// room is open, so returning to it restores nothing because nothing moved.
@@ -284,11 +367,15 @@ type taskRoom struct {
 	// no other time — and, unlike the conversation's, on the HEIGHT too, because
 	// a room's fold keeps as many calls as its view is tall ([app.roomToolTail])
 	// and a taller view is a different row list.
-	rows    []row
-	width   int
-	height  int
-	dirty   bool
-	loading bool
+	rows          []row
+	width         int
+	height        int
+	dirty         bool
+	loading       bool
+	readFailed    bool
+	journal       []byte
+	lastSteerAt   time.Time
+	pendingSteers []roomSteerEcho
 }
 
 type roomRecordMsg struct {
@@ -306,17 +393,26 @@ type farRoomTickMsg struct{ gen int }
 // through it.
 func (r *taskRoom) deck() deck {
 	running := 0
-	if r.lane != nil && !r.done {
+	if r.running() {
 		running = r.turn
 	}
 	// THE LENS IS THE WHOLE OF WHAT MAKES THIS PAGE A ROOM (lens.go): settled
 	// phases fold to chips, the numbers gather in the header rather than under
 	// each turn, the session's clock does not run over a node's turns, and a
-	// folded cluster keeps a screenful of calls instead of three.
+	// expanded cluster keeps a screenful of calls instead of three.
 	return deck{
 		entries: r.entries, unfolded: r.unfolded, workOpen: r.workOpen, capOpen: r.capOpen,
-		lens: overseerLens, runningTurn: running,
+		lens: r.readingLens(), runningTurn: running, col: &r.col,
 	}
+}
+
+// running is whether the page's work is still going, and it is the ONE answer
+// the deck's running turn, the live token column and every other sign of life
+// on the page read. Hosted and guest pages read bounded journals without a
+// local event lane. The task's reported state owns activity; a failed or lost
+// reader cannot claim that its retained transcript is still making progress.
+func (r *taskRoom) running() bool {
+	return !r.done && !r.readFailed && (r.guest == nil || !r.guest.lost)
 }
 
 // The words the room says of itself.
@@ -337,7 +433,7 @@ const (
 	// already carrying that key while a room is open, and one row saying the same
 	// thing twice is the defect the rewind mode's empty hint exists to avoid.
 	roomRecallHint = "↑↓ history"
-	roomStopHint   = "x stop"
+	roomStopHint   = "/stop · x with empty input"
 	// roomGoneWord is the one line a landed node's room draws when there is
 	// NOTHING to replay: no lane, and no journal entries. The engine keeps the
 	// transcript's path across restarts and finds it by id when it was not
@@ -367,8 +463,9 @@ const (
 	// a lie about live work, and the revive key is withheld for the same reason:
 	// asking the head to start the work again while the original is minutes from
 	// done manufactures a duplicate task.
-	roomBusyWord    = " cannot read this right now — "
-	roomLoadingWord = "bringing this task's transcript from the other machine…"
+	roomBusyWord       = " cannot read this right now — "
+	roomLoadingWord    = "loading this task's conversation…"
+	roomReadFailedWord = "couldn't read this task's conversation · retrying"
 	// roomSteerLane is the input's placeholder while a room is open, with the
 	// node's title spliced in: the box says who it is talking to, because it is
 	// the same box that talks to the model. It names the way out as well —
@@ -389,11 +486,16 @@ const (
 	roomCrumbRoot = "main"
 	// roomCrumbSep separates one step of the trail from the next.
 	roomCrumbSep = " ▸ "
-	// The two sentences the kin block says, in the alphabet the rail already
-	// spells a family relation in — "waits: <title>", so "part of: <title>" and
-	// "spawned: <title>" (task.go's [app.railUnder]). A person who has read the
-	// roster's rows has already learned this punctuation.
-	roomKinUnderWord = "part of: "
+	// The sentence the kin block says, in the alphabet the rail already spells a
+	// family relation in — "waits: <title>", so "handed out: <title>" (task.go's
+	// [app.railUnder]). A person who has read the roster's rows has already
+	// learned this punctuation.
+	//
+	// IT USED TO HAVE A SIBLING, `part of: <title>`, and the breadcrumb took its
+	// job (roomcrumbs.go): the parent is a PLACE and is on the trail with the rest
+	// of the chain, where it can be pressed, rather than a fact one row under a
+	// trail that was saying something else.
+	//
 	// AND `spawned:` WAS THE MACHINERY'S OWN WORD. It is what a process does to
 	// another process, and this house bans it in anything a person reads — the
 	// same rule that took `worktree` off the completion card. What actually
@@ -402,7 +504,7 @@ const (
 	roomKinSpawnedWord = "handed out: "
 	// roomKinStateSep joins a child to its state word on the spawned line. It is
 	// the em dash the surface already uses to hang a condition off a name
-	// (task.go's [taskStoppedKept], "stopped — branch kept"), so the two levels
+	// (task.go's [taskBranchKept], "branch kept"), so the two levels
 	// of the list read apart: children are separated by [railSep], and a child
 	// from its own state by this.
 	roomKinStateSep = " — "
@@ -450,6 +552,9 @@ const roomTail = 120
 // — and three copies of the same eight fields is three chances for the fourth
 // one to be built wrong.
 func (a *app) newRoom(id uint64, title string) *taskRoom {
+	// Replacing a view must release its subscription just as Escape does.
+	// Leaving the old lane open does not keep useful work running; it leaks a reader.
+	a.closeRoom()
 	a.roomGen++
 	r := &taskRoom{
 		id: id, title: title, gen: a.roomGen,
@@ -508,9 +613,15 @@ func (a *app) roomFeedHooks(r *taskRoom) feedHooks {
 }
 
 func (a *app) openRoom(id uint64, title string) {
+	// A task destination takes the body and composer together. Park an open
+	// start page before retargeting either of them.
+	if a.startingChat() {
+		a.parkChatStart()
+	}
 	doors, ok := a.roomDoors()
 	if !ok {
-		if a.hosted() && (a.farRoomRecord != nil || a.farRecord != nil) {
+		// Local engine windows use this same door without a remote host label.
+		if a.farRoomRecord != nil || a.farRecord != nil {
 			node := a.tasks[id]
 			if node != nil && (a.farRoomRecord != nil || node.transcript != "") {
 				a.openFarRoom(node, title)
@@ -530,14 +641,38 @@ func (a *app) openRoom(id uint64, title string) {
 		title = taskIDWord(id)
 	}
 	room := a.newRoom(id, title)
-	room.entries, room.turn = a.roomRecord(
-		session.ReadTranscript(doors.TaskJournal(id)), roomTail)
+	record := session.ReadTranscript(doors.TaskJournal(id))
+	room.entries, room.turn = a.roomRecord(record, roomTail)
+	// ↑ FROM THE FIRST FRAME, where the journal can say it: the newest request
+	// the node banked is the weight of what it last sent, and the worker's own
+	// answer replaces it on the next beat ([app.usageBack]). ↓ is deliberately
+	// NOT seeded from the same lines — the lane's step totals add the running
+	// step's whole bill when it ends, and a seed would count its earlier
+	// requests twice (tokencol.go).
+	room.col.weight = record.Requests.Latest
 	// AND WHAT THIS NODE HAS ALREADY STARTED JOINS THE SESSION'S COUNTS. Opening
 	// the page is the moment this surface first READS a node's history, and a
 	// background job it started an hour ago is as alive as one it starts while
 	// somebody is watching ([app.tallyNode], Decision 4).
 	a.tallyNode(id, room.entries)
 	a.room = room
+	// AND THE BOX STARTS TALKING TO THIS NODE (recipient.go). Whatever was being
+	// written for the conversation — or for the node whose page this one replaced
+	// — is stashed under its own reader, and this node's own unsent line, caret,
+	// paste chips and tray are laid back out. Nothing is carried across: an
+	// unsent draft has not changed its mind about who it is for.
+	//
+	// IT IS FIRST, AND THE SEND BELOW DEPENDS ON IT. The unresolved sends this
+	// page draws are read off THIS recipient's composer (steersend.go's
+	// [app.adoptUnsentSteer]), and the question it raises is drawn over this
+	// page's own box — both of which are the wrong ones until the box has been
+	// pointed at this node.
+	a.retargetComposer(taskRecipient(id))
+	// AND A CORRECTION THIS WINDOW NEVER LEARNED THE FATE OF COMES BACK ONTO THE
+	// PAGE IT WAS TYPED INTO (steersend.go). It is drawn under the history rather
+	// than lost with the process that was holding it, and it is still a send: the
+	// question it raises asks again under the name it already had.
+	a.adoptUnsentSteer(room)
 	prefetch := a.prefetchRoomPictures()
 	// AND THE HISTORY IS MARKED WITH THE CONTEXT IT HAPPENED IN (turncontext.go).
 	// The journal records what was said and never where the saying went, so the
@@ -603,19 +738,89 @@ func (a *app) openFarRoom(node *taskNode, title string) {
 		title = taskIDWord(node.id)
 	}
 	room := a.newRoom(node.id, title)
-	room.done, room.loading = roomRowDone(node), true
+	room.done = roomRowDone(node)
 	a.room = room
+	// The hosted door owes the composer exactly what the local one owes it
+	// ([app.openRoom]): this page's own words, and nobody else's. It is still THIS
+	// conversation's node, on another machine — a page reading ANOTHER
+	// conversation's journal is a different reader, and this one line is all that
+	// changes for it (recipient.go's [guestRecipient]).
+	a.retargetComposer(taskRecipient(node.id))
+	// The same unresolved send a local page adopts, held in hand so the bounded
+	// journal read that is about to replace these rows keeps it (steersend.go).
+	a.adoptUnsentSteer(room)
 	a.sel = -1
 	a.dropHover()
 	a.touch()
-	read, id, uri, gen := a.farRoomRecord, node.id, node.transcript, room.gen
-	a.roomPump = func() tea.Msg {
+	a.armRoomRecord()
+}
+
+// armRoomRecord parks the journal read a freshly opened page owes itself AND
+// sets [taskRoom.loading] from whether there is actually a read on the way.
+//
+// THE FLAG IS A CLAIM ABOUT THE WIRE, NOT A MOOD, and the two doors that raise
+// it had it the other way round: the flag was set first, unconditionally, and
+// the read was asked for afterwards with nothing checking that it existed. Every
+// door into [app.readRoomRecord] can answer nil — a hosted page whose row has no
+// transcript URI and no by-id reader, a guest view whose owner never handed a
+// room reader back — and where it did, `loading` stayed true with NO command
+// parked, so no answer and no beat were ever coming. That is the page in the
+// defect report: a huge empty body promising `loading this task's conversation…`
+// under a header whose clock was counting up, for ever.
+//
+// So the read is asked for first and the flag is its answer. A page with nothing
+// on the way is not loading; it falls through to the honest line about what it
+// does know ([app.roomRecordRows]).
+// IT PARKS THE READ ALONE AND BATCHES NOTHING WITH IT. Every caller of
+// [app.takeRoomPump] on this road hands the one command straight back to the
+// program loop and reads its answer as a [roomRecordMsg]; wrapping it in a batch
+// here would make the far door's pump a different shape from the guest door's,
+// which batches its own notice lane on top afterwards.
+func (a *app) armRoomRecord() {
+	a.roomPump = a.readRoomRecord()
+	if a.room != nil {
+		a.room.loading = a.roomPump != nil
+	}
+}
+
+// Capture the reader and identity before leaving the program loop, for both
+// the first read and refreshes. A window switch cannot change an in-flight read.
+//
+// A GUEST PAGE READS THROUGH ITS OWN VIEW. The journal belongs to another
+// conversation and this window's own reader would ask its own engine session
+// about an id that means something else there — the same wrong-owner failure as
+// opening the room, one layer down. The view is captured here with everything
+// else, so a page closed mid-read cannot be answered by a connection that has
+// since been given back ([taskRoom.gen] discards it either way).
+func (a *app) readRoomRecord() tea.Cmd {
+	if a.room == nil {
+		return nil
+	}
+	if guest := a.room.guest; guest != nil {
+		read, id, gen := guest.room, a.room.id, a.room.gen
+		if read == nil || guest.lost {
+			return nil
+		}
+		return func() tea.Msg {
+			record, err := read(id, session.TaskJournalTail)
+			return roomRecordMsg{gen: gen, record: record, err: err}
+		}
+	}
+	read, fallback, id, gen := a.farRoomRecord, a.farRecord, a.room.id, a.room.gen
+	uri := ""
+	if node := a.tasks[id]; node != nil {
+		uri = node.transcript
+	}
+	if read == nil && (fallback == nil || uri == "") {
+		return nil
+	}
+	return func() tea.Msg {
 		var record session.TaskRecord
 		var err error
 		if read != nil {
 			record, err = read(id, session.TaskJournalTail)
 		} else {
-			record, err = a.farRecord(uri, session.TaskJournalTail)
+			record, err = fallback(uri, session.TaskJournalTail)
 		}
 		return roomRecordMsg{gen: gen, record: record, err: err}
 	}
@@ -625,17 +830,41 @@ func (a *app) farRoomRead(msg roomRecordMsg) tea.Cmd {
 	if a.room == nil || a.room.gen != msg.gen {
 		return nil
 	}
-	a.room.loading = false
-	if msg.err == nil {
-		a.room.entries, a.room.turn = a.roomRecord(
-			session.ReadTranscriptBytes(msg.record.Journal), roomTail)
+	if guest := a.roomGuest(); guest != nil && guest.lost {
+		return nil
 	}
+	a.room.loading = false
+	a.room.readFailed = msg.err != nil
+	if msg.err == nil {
+		a.refreshRoomRecord(msg.record.Journal)
+	}
+	// A GUEST PAGE TAKES ONE THING FROM THE READING AND ONE ONLY: whether the
+	// conversation it joined is still the conversation it joined. What the WORK is
+	// doing is not in a journal at all and is never guessed from one — that comes
+	// from the owner's own lane (taskowner.go's [app.tookGuestNotice]).
+	a.tookGuestRecord(msg)
 	a.room.resolveUnfinished()
 	a.roomTouched()
 	prefetch := a.prefetchRoomPictures()
-	node := a.tasks[a.room.id]
-	if roomRowDone(node) {
-		a.room.done = true
+	// AND A GUEST WHOSE CONVERSATION IS GONE STOPS ASKING. Retrying would be a
+	// beat forever against an engine that has already given its final answer
+	// ([taskGuest.lost]); the page keeps what it last read and says why.
+	if a.roomIsGuest() {
+		if a.room.guest.lost {
+			return prefetch
+		}
+		return tea.Batch(prefetch, farRoomTick(a.room.gen))
+	}
+	// A GUEST PAGE KEEPS THE ANSWER IT OPENED WITH. `is the work over` is read
+	// off THIS session's roster, and a task in another conversation has no row
+	// there — [roomRowDone] answers true for a node it has never seen, which
+	// would put `task finished` under work that is running in the window next
+	// door. What the row on the tasks place said is the only reading this window
+	// has, and [app.openOwnerRoom] set it on the way in.
+	if a.room.guest == nil {
+		a.room.setDone(roomRowDone(a.tasks[a.room.id]))
+	}
+	if a.room.done && msg.err == nil {
 		return prefetch
 	}
 	return tea.Batch(prefetch, farRoomTick(a.room.gen))
@@ -647,7 +876,7 @@ func (a *app) farRoomRead(msg roomRecordMsg) tea.Cmd {
 const farRoomEvery = 250 * time.Millisecond
 
 func farRoomTick(gen int) tea.Cmd {
-	return tea.Tick(farRoomEvery, func(time.Time) tea.Msg { return farRoomTickMsg{gen: gen} })
+	return surfaceTick(farRoomEvery, func(time.Time) tea.Msg { return farRoomTickMsg{gen: gen} })
 }
 
 func (a *app) farRoomPoll(gen int) tea.Cmd {
@@ -661,14 +890,23 @@ func (a *app) farRoomPoll(gen int) tea.Cmd {
 	if a.room == nil || a.room.gen != gen {
 		return nil
 	}
-	if a.room.done || a.farRoomRecord == nil {
+	if a.room.done && !a.room.readFailed && !a.roomIsGuest() {
 		return nil
 	}
-	read, id := a.farRoomRecord, a.room.id
-	return func() tea.Msg {
-		record, err := read(id, session.TaskJournalTail)
-		return roomRecordMsg{gen: gen, record: record, err: err}
+	cmd := a.readRoomRecord()
+	if cmd == nil {
+		// THE BEAT STOPS AND THE PAGE STOPS SAYING IT IS WAITING, together. A
+		// reader can go away between one beat and the next — a guest view given
+		// back, a row whose URI never arrived — and a page that kept the word
+		// while nothing was coming is the stuck sentence [app.armRoomRecord]
+		// exists to prevent, reached one tick later instead of at the door.
+		if a.room.loading {
+			a.room.loading = false
+			a.roomTouched()
+		}
+		return nil
 	}
+	return cmd
 }
 
 // leavableRoomDoors is the room lane WITH A WAY OUT OF IT (session's
@@ -704,6 +942,7 @@ func (a *app) closeRoom() {
 	if a.room == nil {
 		return
 	}
+	a.rememberRoomReading()
 	a.roomGen++
 	// AND THE LANE IS GIVEN BACK. A room closes while its conversation goes on
 	// running, so there is nobody to close the channel for us the way an agent
@@ -711,13 +950,39 @@ func (a *app) closeRoom() {
 	if a.room.stop != nil {
 		a.room.stop()
 	}
+	// AND A GUEST VIEW IS GIVEN BACK WITH THE PAGE, which is the whole of what
+	// makes looking into somebody else's conversation free. It is THIS VIEW'S
+	// connection and nothing else: the conversation goes on running, the window
+	// that owns it keeps its keyboard, and the engine is untouched
+	// (tui3.go's [TaskOwnerView.Close]).
+	guest := a.room.guest
+	if guest != nil {
+		guest.release()
+		a.room.guest = nil
+	}
 	// The clock thaws where it was frozen, at the value it would have had all
 	// along: nothing was stopped, only unreported (task.go's [app.taskNow]).
-	a.thawNode(a.room.id)
+	//
+	// A GUEST PAGE FROZE NOTHING AND THAWS NOTHING. Its id belongs to another
+	// conversation's graph and very probably also to a node of this one; thawing
+	// on the way out would report a local node's clock as having run through a
+	// page that was never about it.
+	if guest == nil {
+		a.thawNode(a.room.id)
+	}
 	a.room = nil
+	// AND THE BOX GOES BACK TO THE CONVERSATION, HOLDING THE CONVERSATION'S OWN
+	// WORDS (recipient.go). The line typed at the node stays with the node — esc
+	// is a way out of a page and never a decision to throw a sentence away — and
+	// the half-written message this window had for the model is exactly where it
+	// was, caret included. It is done through the OWNER rather than through the
+	// room that was just put down, so a page whose kind is not a node's (a run's,
+	// roomorch.go) is stashed under its own name.
+	a.retargetComposer(mainRecipient)
 	// The guard is a question about a line typed at THIS node. Leaving the room
 	// takes it down: the two answers it offers are both about a page that is no
-	// longer on screen, and the words are still in the box either way.
+	// longer on screen, and the words are not lost either way — they stay with
+	// the page they were typed at, and come back with it (recipient.go).
 	a.guard = nil
 	a.dropHover()
 	a.touch()
@@ -758,7 +1023,7 @@ func (a *app) roomOpen() bool { return a.room != nil }
 // highlight: a mark for "where you are" on a surface you have not gone anywhere
 // on is a mark that means nothing.
 func (a *app) roomStandingOn(node *taskNode) bool {
-	if a.room == nil || node == nil {
+	if a.room == nil || node == nil || a.roomIsGuest() {
 		return false
 	}
 	if run := a.orchOf(); run != nil {
@@ -773,15 +1038,28 @@ func (a *app) roomStandingOn(node *taskNode) bool {
 	return node.id != 0 && a.room.id == node.id
 }
 
-// openRoomFor opens the room of the node with this id, or closes it when it is
-// already the room on screen. It is what BOTH doors resolve to — the rail click
-// and the transcript walk — so a second press on either is always the way back.
+// openRoomFor toggles compact task controls and transcript links within the same
+// conversation. Sidebar rows use openRailRoom so a repeated click stays inside.
+// A guest with the same task number belongs to a different conversation.
 func (a *app) openRoomFor(id uint64, title string) {
-	if a.room != nil && a.room.id == id {
+	if a.room != nil && !a.roomIsGuest() && a.room.id == id {
 		a.closeRoom()
 		return
 	}
 	a.openRoom(id, title)
+}
+
+// openRailRoom makes list selection idempotent. Repeated clicks must not close
+// the page or replace its draft, scroll position and live subscription.
+func (a *app) openRailRoom(node *taskNode) {
+	if node == nil || a.roomStandingOn(node) {
+		return
+	}
+	if node.run != "" {
+		a.openOrchRoom(node.run, node.node)
+	} else {
+		a.openRoom(node.id, node.title)
+	}
 }
 
 // openRoomAt is the KEYBOARD door: enter on a selected proposal row opens that
@@ -895,6 +1173,13 @@ func (a *app) roomEvent(ev session.Event) tea.Cmd {
 		// speculatively, before anybody has clicked anything (remotefiles.go).
 		// Nil on every local session.
 		after = a.prefetchWritten(ev)
+		// And the node's weight has just moved — its step is billed and its
+		// result is joining what it sends next — so the beat asks now
+		// ([app.usageOwed], [taskWeightDoor]).
+		a.usageOwed = true
+
+	case session.EventToolFailed:
+		a.usageOwed = true
 
 	case session.EventTurnDone:
 		// THE STEP IS FINISHED AND ON DISK — the same event internal/session's
@@ -905,9 +1190,39 @@ func (a *app) roomEvent(ev session.Event) tea.Cmd {
 		// revision the review pass writes are two replies on one lane, and
 		// without this they arrived as one unbroken wall of JSON.
 		room.closeLive()
+		// AND ONE STEP'S OUTPUT IS ADDED TO THE PAGE'S ↓, the way the pilot adds
+		// it to the node's bill (task.go's [taskNode.liveCost]): a node is driven
+		// through many Submits, this is the end of one, and what came back over
+		// its live work is the sum of them. The column is not opened afresh per
+		// step because the work the block stands for is the node's whole run, and
+		// the block leaves when the run does. The mark goes down with it, so ↓
+		// goes on moving with what arrives after (tokencol.go's [tokenCol.bill]).
+		//
+		// ↑ IS NOT SUMMED, and that is the point of the change that put this
+		// sentence here. The step's Input is every request of that step added
+		// together; ↑ is ONE request — the node's newest — and it comes from the
+		// worker itself on the usage beat ([taskWeightDoor]).
+		room.col.bill(room.col.down+ev.Usage.Output, room.turnWritten(), room.turn)
+		a.usageOwed = true
 
 	case session.EventError:
-		a.roomNote("error: " + errText(ev.Err))
+		// THE NODE'S OWN FAILURES ARE ROWS ON ITS PAGE, in the conversation's
+		// words for the same thing: a request that was asked again draws its
+		// reason as it happens ([feed.retry], which this page's reducer takes
+		// through [feed.ingest] above), and a step that ran out of tries ends on
+		// `gave up after 2 tries · …` rather than on a page that goes on saying
+		// nothing has arrived yet ([roomYetWord]).
+		//
+		// AND IT CANNOT SAY THE SAME THING TWICE AS THE PHASE LINE. The line
+		// under the phase word (taskphase.go) is an ERRAND's ladder — a sizing
+		// reading, a review — which asks a DIFFERENT model at each rung and
+		// reports on the node's phase notice, never on its event stream
+		// (internal/session's auxiliary.go sends no event at all). These rows are
+		// the node's OWN turn being asked again. The two vocabularies are one
+		// vocabulary read against that difference: an errand says `asking
+		// <model>` because the model changes, and a turn says `asking again`
+		// because it does not.
+		a.roomNote(a.room.failureNote(ev.Err, a.serviceWordFor(a.roomNodeModel())))
 	}
 	a.touch()
 	return tea.Batch(after, waitRoom(room.lane, room.gen), a.wake())
@@ -972,6 +1287,13 @@ func (a *app) roomTouched() {
 
 // ── steering ────────────────────────────────────────────────────────────────
 
+// roomTraySteerWord is what a page says when there are files on its tray as a
+// correction leaves it. A correction carries WORDS — the engine's steer door
+// takes a sentence and nothing else — so the tray is left exactly as it was
+// rather than quietly spent, and the line says where those files CAN be sent
+// from, because this page can never send them.
+const roomTraySteerWord = "attached files do not go with a correction · they stay on this page · esc, then attach them in the conversation to send them"
+
 // steer is enter, while a room is open: the sentence in the box goes to the
 // NODE, and lands in the room as the person's own line.
 //
@@ -981,13 +1303,28 @@ func (a *app) roomTouched() {
 // (internal/session's SteerTask), and neither does this.
 //
 // A NODE THAT IS NOT LISTENING RAISES THE GUARD instead of swallowing the line
-// (see [steerGuard]). The box is not cleared in that case: the sentence is still
-// the person's, and taking it away after telling them it went nowhere would be
-// the surface losing their words twice.
+// (see [steerGuard]). The person's sentence comes back to them in that case:
+// their words are still theirs, and taking them away after telling them they
+// went nowhere would be the surface losing them twice (steersend.go's
+// [app.restoreSteerDraft]).
+//
+// AND THE CROSSING ITSELF IS NOT DONE HERE. The engine is asked from a command,
+// off the event loop, and its answer settles the row when it arrives —
+// steersend.go states that law in full and this function's job is the two ends
+// of it: what the page says the instant enter is pressed, and what it says when
+// the answer comes back.
 func (a *app) steer() tea.Cmd {
 	room := a.room
 	line := strings.TrimSpace(a.input.String())
 	if room == nil || line == "" {
+		return nil
+	}
+	// A COMPACT TAG WITH NOTHING BEHIND IT STOPS THE SEND HERE TOO (draftkeep.go's
+	// [app.missingPaste]). [app.pastesUnfolded] below would hand the worker the tag
+	// as though it were the document, and a correction is the last message that can
+	// afford to be half of itself.
+	if tag := a.missingPaste(line); tag != "" {
+		a.roomNote(draftOrphanSendWord + " · " + tag)
 		return nil
 	}
 	// A RUN'S PAGE STEERS THE PLANNER (roomorch.go). Same box, same enter, same
@@ -998,47 +1335,39 @@ func (a *app) steer() tea.Cmd {
 	if room.orch != nil {
 		return a.orchSteer()
 	}
+	if a.roomIsGuest() {
+		a.roomNote(roomGuestReadingWord)
+		return nil
+	}
 	if room.done {
 		a.raiseGuard(line, "")
 		return nil
 	}
-	doors, ok := a.taskSteerDoors()
-	if !ok {
-		a.roomNote(roomUnavailableRefusal.line())
+	if !a.canSteerTask() {
+		// AND IT SAYS WHICH REFUSAL THIS IS. An engine with no ear, a page belonging
+		// to another conversation, and a conversation with no transcript to keep a
+		// correction in are three different facts (steersend.go's [app.steerRefusal]).
+		a.roomNote(a.steerRefusal())
 		return nil
 	}
 	// The worker reads the paste and the room's row keeps the tag (pastechip.go).
-	// The chips are spent only once the engine has taken the line: a refusal
-	// leaves the words in the box, chips and all.
-	waiting, err := doors.SteerTask(room.id, a.pastesUnfolded(line))
-	if err != nil {
-		// The engine's own sentence, kept: "task 3 is done, not running" and
-		// "task 3 has no worker to talk to yet" are different facts, and a
-		// surface that flattened them to "could not steer" would be throwing
-		// away the half that says what to do about it. It goes on the guard's
-		// second row rather than into the room, because it is the reason the
-		// question below is being asked.
-		//
-		// AND THE ENGINE SAYS WHICH KEYS ARE HONEST. A refusal that means the
-		// node is still running with no reader inside it withholds revive
-		// (session.ErrNobodyToRead); every other refusal — done, gone, never
-		// started — is exactly what revive is for.
-		if errors.Is(err, session.ErrNobodyToRead) {
-			a.raiseBusyGuard(line, err.Error())
-			return nil
-		}
-		a.raiseGuard(line, err.Error())
-		return nil
-	}
-	// A STEERED LINE IS A LINE YOU TYPED, so ↑ brings it back. It is remembered
-	// through the same door [app.enter] remembers a message through (recall.go),
-	// and for the same reason: the box in here is the box out there, and a
-	// sentence that could be recalled in the conversation but not in a room would
-	// make the room a different editor wearing the same prompt. It is remembered
-	// only once the engine has taken it — the guard above keeps the words in the
-	// box, and a recall list holding sentences that went nowhere would be a
-	// history of things that did not happen.
-	a.remember(line)
+	// The chips are spent as the words leave: a send that fails brings the
+	// sentence back with its tags in it, and unfolding it twice would put the
+	// document in the box.
+	words := a.pastesUnfolded(line)
+	// AND THE WHOLE COMPOSER IS PHOTOGRAPHED BEFORE IT IS EMPTIED. What a refused
+	// send gives back is what the person actually had — their spelling, their
+	// caret, and the compact chips their text stands on — and none of that can be
+	// reconstructed from the sentence afterwards (steersend.go's [steerKeep]).
+	keep := a.steerComposerNow()
+	// A STEERED LINE IS A LINE YOU TYPED, so ↑ brings it back — through the same
+	// door [app.enter] remembers a message through (recall.go), because the box in
+	// here is the box out there.
+	//
+	// IT IS REMEMBERED WHEN THE SEND SETTLES AND NOT AT THIS KEYPRESS
+	// ([app.rememberSteer]). A sentence the engine handed straight back is in the
+	// box again, and a recall list holding it as well would be a history of
+	// something that did not happen.
 	a.pastes = nil
 	a.input.reset()
 	a.endRecall()
@@ -1060,18 +1389,44 @@ func (a *app) steer() tea.Cmd {
 	// out — and silence is what the person would also see if the words had gone
 	// nowhere at all.
 	//
-	// It is CONSUMED at once because that is the whole of what this door
-	// promises: [session.Agent.SteerTask] delivers the line to an agent that was
-	// listening, and what the node does with it next is the node's turn to take.
+	// IT IS NOT CONSUMED YET, and that is the change this row went through. The
+	// engine has not been asked at the instant this block is drawn — the crossing
+	// is a command, and it may take as long as a slow link takes — so the row
+	// wears the working clause the whole way over ([steerSendingWord]) and takes
+	// the engine's own sentence when the answer arrives (steersend.go's
+	// [app.steerSent]). A block that claimed delivery here would be claiming it
+	// before anybody had said so.
 	now := a.now()
-	a.roomSaid(entry{kind: entrySteer, turn: room.turn, context: a.turnContext(),
-		steer: &steerElbow{
-			words: line, at: now, consumed: true, landed: now,
-			receipt: session.SteerDelivered(waiting),
-		}})
-	// The two wakeups the clause's fade needs and no ticker, which is [fadeTicks]'
-	// whole bargain (steerelbow.go takes the same two for the same reason).
-	return tea.Batch(a.edited(), fadeTicks())
+	elbow := &steerElbow{words: line, at: now, landing: steerSendingWord}
+	a.roomSaid(entry{kind: entrySteer, turn: room.turn, context: a.turnContext(), steer: elbow})
+	if a.farRoomRecord != nil {
+		room.keepSteerEcho(words, room.entries[len(room.entries)-1])
+	}
+	// AND FILES IN THE TRAY ARE SAID RATHER THAN PRETENDED. A correction is a
+	// sentence — the engine's steer door takes words and nothing else — so the
+	// tray is left exactly as it is, and a person who dropped a file in expecting
+	// it to go with these words is told where it CAN go instead. The compact
+	// pastes above did travel: they are in the sentence.
+	if len(a.chips) > 0 {
+		a.roomNote(roomTraySteerWord)
+	}
+	// The crossing, the draft's own save, and the two wakeups the clause needs —
+	// which is [fadeTicks]' whole bargain, and here it is what turns the spinner
+	// on a page where nothing else is arriving (steerelbow.go takes the same two
+	// for the same reason).
+	return tea.Batch(a.sendSteer(room, line, words, elbow, keep), a.edited(), fadeTicks())
+}
+
+// steerReceiptWords is the engine's own sentence for what the sending did, drawn
+// verbatim. A held line — the task's work is being checked, so nobody read it
+// yet and it is on the task's record — has its own words, and this surface does
+// not invent a shorter one for it: "delivered" over a line nobody has read would
+// be the room telling a person something that is not true.
+func steerReceiptWords(receipt session.SteerReceipt) string {
+	if words := strings.TrimSpace(receipt.Landing); words != "" {
+		return words
+	}
+	return session.SteerDelivered(receipt.Waiting)
 }
 
 // ── the steer guard ─────────────────────────────────────────────────────────
@@ -1121,6 +1476,17 @@ type steerGuard struct {
 	// revive: the honest keys are m and esc, because "start it again" about work
 	// that is minutes from done would race the original with a duplicate.
 	busy bool
+	// lost is the THIRD question, and it is not about the node at all: nobody
+	// answered the crossing, so what is unknown is whether the words arrived
+	// (steersend.go). Neither of the other two keys is honest here — reviving the
+	// work or sending the line to the model would both duplicate a correction the
+	// task may already hold — so the only offer is to ASK AGAIN about the send
+	// that is already out there, under the name it already has.
+	lost *steerSend
+	// risky says asking again may deliver twice, because the engine at the other
+	// end does not recognise a repeat. The offer says so in as many words: a
+	// person choosing it is deciding, and a surface doing it quietly is a defect.
+	risky bool
 }
 
 // raiseGuard puts the question up. The room stays open underneath it: the page
@@ -1138,6 +1504,26 @@ func (a *app) raiseGuard(line, why string) {
 // TestASteerTheEngineRefusedRaisesTheGuardWithItsReason).
 func (a *app) raiseBusyGuard(line, why string) {
 	a.raiseGuardOf(line, why, true)
+}
+
+// raiseLostGuard is the question a crossing NOBODY ANSWERED raises. The words
+// are on the page and still held as a send; this is the offer to ask again
+// about that same send rather than to type it a second time.
+func (a *app) raiseLostGuard(send *steerSend) {
+	if a.room == nil || send == nil {
+		return
+	}
+	// THE REASON IS NOT REPEATED HERE. The row the words are on already carries
+	// it ([steerLostWord]), and one sentence said twice on two adjacent rows is
+	// the surface talking over itself.
+	a.guard = &steerGuard{
+		title: a.room.title, text: send.line, lost: send,
+		// Asking again can only deliver twice where a crossing was LOST and the
+		// engine keeps no message names. A refusal delivered nothing.
+		risky: send.lost && !send.door.repeat,
+	}
+	a.closeLists()
+	a.touch()
 }
 
 func (a *app) raiseGuardOf(line, why string, busy bool) {
@@ -1171,10 +1557,18 @@ func (a *app) guardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if !a.guarding() {
 		return nil, false
 	}
+	lost := a.guard.lost
 	switch msg.String() {
 	case "ctrl+c":
 		return nil, false
 	case "r":
+		// A LOST GUARD'S `r` ASKS AGAIN ABOUT THE SEND ALREADY OUT THERE, under
+		// the name it already had, which is what keeps one correction one
+		// correction (steersend.go's [app.retrySteer]).
+		if lost != nil {
+			a.dropGuard()
+			return a.retrySteer(lost.at), true
+		}
 		// A busy guard has no revive (see [steerGuard.busy]): the key does
 		// nothing rather than restarting work that is still running.
 		if a.guard.busy {
@@ -1182,11 +1576,21 @@ func (a *app) guardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 		return a.guardSend(true), true
 	case "m":
+		// AND IT HAS NO `m` EITHER. Sending the line to the model while the task
+		// may already hold it is the duplicate this question exists to avoid, and
+		// there is nothing to send to main anyway — the words are on the page.
+		if lost != nil {
+			return nil, true
+		}
 		return a.guardSend(false), true
 	case "esc":
 		// The words stay in the box. esc here is not "leave the room" — the room
 		// is still open under the question — it is "I did not mean to send that
 		// yet", and the sentence is exactly where it was.
+		//
+		// AND ON A LOST GUARD IT LEAVES THE SEND WHERE IT IS: still held, still on
+		// the page wearing its own clause, and still one `r` from being asked
+		// about again. Nothing is dropped by declining to decide.
 		a.dropGuard()
 		return nil, true
 	}
@@ -1208,38 +1612,50 @@ func (a *app) guardSend(revive bool) tea.Cmd {
 			"Start it again with this instruction: " + guard.text
 	}
 	a.dropGuard()
-	a.closeRoom()
+	// THE ACCEPTED DRAFT IS THE ROOM'S, AND IT IS SPENT WHILE THE ROOM STILL HOLDS
+	// THE BOX (recipient.go). These words were typed at the node and are going to
+	// the model instead because the person just said so — so the page's own line
+	// is cleared here, and the conversation's unsent sentence, which nobody has
+	// decided anything about, is still waiting under [app.closeRoom] below.
+	//
+	// AND THE MODEL READS THE DOCUMENTS AND NOT THE TAGS. A compact paste in the
+	// room's box carries `[paste 1 · 42 lines]` on screen and forty-two lines
+	// underneath (pastechip.go's law: every door that carries the box's words to a
+	// model hands over the second). This road handed over the first, so a sentence
+	// re-pointed at the conversation arrived as a tag the model could only guess
+	// about — and the chips are the page's, so they are unfolded and spent before
+	// the box changes hands.
+	shown := line
+	line = a.pastesUnfolded(line)
+	a.pastes = nil
 	a.input.reset()
 	a.endRecall()
 	a.closeLists()
+	a.closeRoom()
 	a.stick = true
 	// The person's own sentence is what goes in the recall list, not the
 	// wrapper this surface put around it: ↑ is for getting back what you typed.
 	a.remember(guard.text)
-	a.dropDraft()
-	return a.submit(line)
+	// AND THE FILE FOLLOWS THE CONVERSATION'S BOX RATHER THAN BEING DROPPED
+	// (draft.go's [app.keepMainDraft]). What was spent here was the page's line,
+	// not main's, so a remove would delete the crash insurance for a sentence
+	// still sitting in the box this keystroke just came back to.
+	a.keepMainDraft()
+	return a.submitShown(line, shown)
 }
 
 // ── the guard, drawn ────────────────────────────────────────────────────────
 
-// ONE SLOT, TWO QUESTIONS. The stop confirmation (stop.go) is drawn in exactly
-// the rows the steer guard is drawn in, and the three functions below are where
-// that is arranged: the frame asks the guard how tall it is, what it says, and
-// what each of its rows IS for the pointer, and it never learns there are two
-// kinds of question down there.
-//
-// They share rather than stack because they are the same shape of thing — the
-// surface holding a keystroke back until it is told whether to act on it — and
-// because they can never be up together: a guard is raised by an enter in a
-// room's box, and the stop card is raised by a key that is only ever taken over
-// an empty one.
+// ONE SLOT, ONE QUESTION NOW. The stop confirmation (stop.go) and the tab-close
+// card (tabclose.go) were drawn in exactly these rows, and both are the question
+// block's (question.go) — so what is left here is the steer guard alone, which
+// is not a question the block draws: it is the surface holding a SENTENCE back
+// until it is told where to send it, and what it offers are two destinations
+// rather than two answers.
 
 // guardHeight is how many rows the question takes: the offer, and the engine's
 // reason under it when there is one.
 func (a *app) guardHeight() int {
-	if n := a.stopHeight(); n > 0 {
-		return n
-	}
 	if !a.guarding() {
 		return 0
 	}
@@ -1249,23 +1665,17 @@ func (a *app) guardHeight() int {
 	return 2
 }
 
-// guardMark says what one row of the slot is for the pointer. The steer guard
-// answers to no press — it is three keys and nothing else — and the stop card's
-// answers are a row somebody can put a finger on.
-func (a *app) guardMark(at int) chromeRow {
-	if a.stopping() {
-		return chromeRow{kind: chromeStop, index: at}
-	}
-	return chromeRow{}
-}
+// guardMark says what one row of the slot is for the pointer, and the answer is
+// NOTHING: the steer guard is three keys and nothing else. It is a function
+// rather than a bare zero at the call site because the frame asks every block on
+// the chrome the same question, and a slot that answered it differently would be
+// the one place a reader has to check.
+func (a *app) guardMark(int) chromeRow { return chromeRow{} }
 
 // guardRows draws it, in the question hue the approval block wears and for the
 // same reason: this is the surface blocked on a keyboard, and the one thing on
 // screen that is blocked on you must not look like the things that are not.
 func (a *app) guardRows(width int) []string {
-	if rows := a.stopRows(width); len(rows) > 0 {
-		return rows
-	}
 	if !a.guarding() {
 		return nil
 	}
@@ -1276,6 +1686,25 @@ func (a *app) guardRows(width int) []string {
 	if a.guard.busy {
 		parts = []string{
 			a.guard.title + roomBusyWord, "[m]", " send to main · ", "[esc]", " cancel",
+		}
+	}
+	// THE LOST QUESTION OFFERS ONE ACTION AND SAYS WHAT IT COSTS. Where the
+	// engine keeps message names, asking again cannot deliver twice and the line
+	// says so; where it does not, the line says that instead, because the person
+	// is the one deciding (steersend.go).
+	if a.guard.lost != nil {
+		retry := steerLostRetry
+		if a.guard.risky {
+			retry = steerLostRisk
+		}
+		// A send the engine REFUSED as belonging to another conversation was not
+		// delivered at all, so the question is not about a missing answer.
+		ask := steerLostAsk
+		if !a.guard.lost.lost {
+			ask = steerElsewhereAsk
+		}
+		parts = []string{
+			a.guard.title + ask, "[r]", retry, "[esc]", steerLostLeave,
 		}
 	}
 	line := strings.Join(parts, "")
@@ -1357,23 +1786,16 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if cmd, taken := a.guardKey(msg); taken {
 		return cmd, true
 	}
-	// AND THE DESIGN'S APPROVAL CHORDS ARE READ UNDER THE GUARD, which is the
-	// right order for the one moment both are on screen: the guard is a question
-	// raised by a sentence the person just tried to send, and it has to be
-	// answered before anything else in the room means anything. These two take
-	// only ctrl+k and ctrl+x and let every other key past — a row that swallowed
-	// keys would make the box it points at unusable (roomapproval.go).
-	if a.roomApprovalKey(msg) {
-		return nil, true
-	}
-	// AND THE FOUR LETTERS THAT DECIDE ABOUT A NODE THAT NEEDS A LOOK, under the
-	// guard for the same reason, and only ever over an EMPTY box: the box in here
-	// steers the worker, and a letter that decided somebody's work was finished
-	// on the first keystroke of a sentence would be unforgivable
-	// (tasksettle.go's [app.roomSettleKey] holds every guard `x` has).
-	if a.roomSettleKey(msg) {
-		return nil, true
-	}
+	// THE LETTERS THAT DECIDE ABOUT A NODE THAT NEEDS A LOOK ARE NOT TAKEN HERE.
+	// A landed `your call` is a question, and the question block above the box
+	// answers it on every page with the one key grammar — which is read before
+	// this file is reached (input.go's key order, tasksettle.go says why).
+	//
+	// AND NEITHER IS A DESIGN WAITING TO BE JUDGED. It had two chords of its own
+	// pinned above the box in here (roomapproval.go, deleted) — one decision with
+	// two drawings and two grammars. It is the same question on the same block,
+	// answered by the same digits, and the two keys this file owns are untouched:
+	// esc leaves and enter steers.
 	// AND A RUN'S PAGE IS READ BEFORE THE ROOM'S OWN TWO KEYS (roomorch.go),
 	// because it has more levels than a room does: esc walks out of a chip's card
 	// and out of a nested run before it walks out of the page at all, and enter
@@ -1381,6 +1803,17 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// nothing. The recall walk is excluded here for the same reason esc excludes
 	// it below — a state the dismiss key cannot dismiss is a trap — and every key
 	// the page does not take falls through to the two below.
+	// Scoped controls remain commands after their argument closes the slash list.
+	// Otherwise Enter would send "/model <slug>" to the worker as an instruction.
+	if msg.String() == "enter" {
+		line := strings.TrimSpace(a.input.String())
+		name, _, _ := strings.Cut(line, " ")
+		if name == "/model" || name == "/stop" {
+			a.input.setText("")
+			a.closeLists()
+			return a.slash(line), true
+		}
+	}
 	if a.room.orch != nil && !a.recalling() {
 		if cmd, taken := a.orchKey(msg); taken {
 			return cmd, true
@@ -1416,6 +1849,13 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 
 	case "enter":
 		return a.steer(), true
+
+	case "alt+pgup":
+		a.roomDetailsScroll(-a.scrollPage())
+		return nil, true
+	case "alt+pgdown":
+		a.roomDetailsScroll(a.scrollPage())
+		return nil, true
 
 	case "ctrl+v":
 		// HOW HARD THIS NODE THINKS, one step up the ladder — the same chord that
@@ -1497,25 +1937,26 @@ func (a *app) roomHint() string {
 	case a.recalling():
 		return roomRecallHint
 	case a.stopOffered():
+		if a.roomOrganized() {
+			return "/model · /stop"
+		}
 		// THE ROOM'S ANSWER TO "HOW DO I STOP THIS". It is the honest counterpart
 		// to the conversation's "esc interrupt": the work in here ends through a
 		// card and never through the dismiss key (stop.go), so this is the key a
 		// person reaching for esc actually wants. It is drawn only while there is
 		// something to stop, which is the emptiness law applied to a hint.
 		return roomStopHint
-	case a.roomSettleAsking():
+	case a.roomLandingAsking():
 		// THE ROOM'S ANSWER TO "IT SAYS LOOK IT OVER, NOW WHAT". The node has
-		// landed, so nothing above this is live, and the three answers are
-		// printed on the foot as well — but the foot is at the far end of a page
-		// somebody is reading, and this slot is the one place on the frame a
-		// person looks for the next keystroke (tasksettle.go).
+		// landed, so nothing above this is live, and the answers are on the
+		// question block above the box — but that block is at the other end of a
+		// page somebody is reading, and this slot is the one place on the frame a
+		// person looks for the next keystroke.
 		//
-		// AND IT IS SPELLED TO THE FRAME. The slot takes a line whole or not at
-		// all ([app.legend]), so the full sentence — four cells too long at sixty
-		// columns — left the narrowest terminal naming none of the keys that
-		// answer the question it was standing on. [roomSettleHintAt] is the
-		// ranked prefix of it that fits.
-		return a.settleHintAt(a.width, "")
+		// AND IT IS SPELLED FROM THE QUESTION'S OWN ANSWERS, so the block, this
+		// slot and the roster's cannot name three different letters for one
+		// question ([app.landingHintAt]).
+		return a.landingHintAt(a.room.id, a.width, "")
 	}
 	return ""
 }
@@ -1618,7 +2059,7 @@ func (a *app) navForward() tea.Cmd {
 		return nil
 	}
 	at := -1
-	if a.room != nil {
+	if a.room != nil && !a.roomIsGuest() {
 		for i, node := range running {
 			if node.id == a.room.id {
 				at = i
@@ -1627,7 +2068,7 @@ func (a *app) navForward() tea.Cmd {
 		}
 	}
 	next := running[(at+1)%len(running)]
-	if a.room != nil && a.room.id == next.id {
+	if a.roomStandingOn(next) {
 		return nil
 	}
 	a.openRoom(next.id, next.title)
@@ -1717,14 +2158,15 @@ func (a *app) goHome() {
 // closing the room, which would make the column a person aims at to switch rooms
 // the column that throws them out.
 //
-// A ROW IS A DOOR AND ITS GLYPH CELL IS A FOLD. Anywhere on a node's row opens
-// that node's room, which is what every row of this column has always done; the
-// one cell that means something else is the STATE CELL of a family root, where a
-// press folds the family instead — and that is the same cell the pointer reveals
-// a ▾ or ▸ in, so the affordance and the target are the same two columns
-// (task.go's [app.railEntryRows]). A folded root's ▸ +N is the other half of it:
-// the count is what says there is something hidden, so pressing the count opens
-// it.
+// A ROW IS A DOOR AND ONLY A DRAWN CONTROL IS ANYTHING ELSE. Anywhere on a
+// node's row opens that node's room, which is what every row of this column has
+// always done, and the cells that mean something else are the ones the frame put
+// there to be pressed and no others: a folded root's `▸ +N`, where the count is
+// what says something is hidden, and the glyph cell ON THE FRAMES WHERE IT IS
+// DRAWN AS A DISCLOSURE, which is while the pointer is on a row that can fold.
+// Both come from spans the layout recorded (task.go's [app.railEntryRows]), so
+// the target is always exactly what is on screen; the press does not ask what
+// KIND of row it hit, because a row that could fold is not a fold control.
 //
 // The press moves the roster's cursor to what was pressed but does NOT take the
 // keyboard: clicks focus what was clicked, and the draft is where this surface
@@ -1748,15 +2190,23 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	if !a.railAt(x, y) {
 		return nil, false
 	}
-	// THE SEAM IS THE COLUMN'S HANDLE. It answers before rows do because the
-	// same two cells run through node rows and the footer alike: grabbing the
-	// handle changes the column, never opens whatever happens to sit behind it.
+	// THE SEAM IS THE COLUMN'S HANDLE WHERE THERE IS A TIER TO PULL IT TO. It
+	// answers before rows do because the same two cells run through node rows and
+	// the footer alike: grabbing the handle changes the column, never opens
+	// whatever happens to sit behind it. Where the frame lends no second tier
+	// there is no handle, so those two cells are the row's like every other cell
+	// on it ([app.railSeamAt], and task.go's [app.railCanWiden] for the whole of
+	// why).
 	if a.railSeamAt(x, y) {
 		a.railWiden(!a.railWide)
 		return nil, true
 	}
 	line, ok := a.railLineAt(y)
 	if !ok {
+		return nil, true
+	}
+	if line.roomAction != "" {
+		a.roomPanelTake(line.roomAction)
 		return nil, true
 	}
 	// THE FOOTER'S ONE OFFER IS PRESSABLE, because a hint that names a key and
@@ -1777,6 +2227,16 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	if line.more {
 		return a.showPage(pageTasks), true
 	}
+	// AND THE STANDING COUNT IS THE FOURTH, on the same terms: it is a line of
+	// the footer, it belongs to no node, and it opens the page a person reading
+	// that number is trying to find (standdoor.go). It is refused only where the
+	// page is already what they are looking at.
+	if line.keeping {
+		if a.at(pageStanding) {
+			return nil, true
+		}
+		return a.openStanding(), true
+	}
 	if line.hint {
 		a.railWiden(!a.railWide)
 		return nil, true
@@ -1796,29 +2256,32 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	}
 	a.railWhere = railSpotOf(e)
 	at := x - a.railLeft() - ansi.StringWidth(railSeam)
+	// THE WHOLE ROW IS THE NODE'S DOOR AND THE TWO EXCEPTIONS ARE DRAWN. A press
+	// falls through to the room unless it landed on something the frame put there
+	// to be pressed — the `▸ +N` a folded root wears at rest, and the disclosure
+	// the glyph cell becomes under the pointer — and BOTH are read from spans the
+	// layout recorded rather than from a question about what kind of row this is
+	// (task.go's [app.railEntryRows]). Asking the row's kind was the bug: a family
+	// root and a landed row with a block tucked under it CAN fold, so their
+	// leading cells folded on every press, while the cell they folded from was
+	// drawing the row's state on every frame where the pointer was not already on
+	// it. A person aiming at a task got a list that jumped instead of a page.
 	switch {
-	case e.root && line.badge.holds(at):
+	case line.badge.holds(at):
 		a.railSetOpen(e.node, true)
-	case (e.root || a.railTucks(e)) && line.glyph.holds(at):
-		// THE GLYPH CELL IS THE DISCLOSURE ON BOTH KINDS OF ROW: a family root
-		// folds its subtree, and a row that has landed folds its own block back
-		// under itself (task.go's [app.railSaysMore]). The set that LIGHTS under
-		// the pointer is the set that acts, which is hover.go's own law — both
-		// halves ask [app.railTucks].
+	case line.glyph.holds(at):
 		a.railToggle(e.node)
 	default:
-		if e.node.run != "" {
-			a.openOrchRoom(e.node.run, e.node.node)
-		} else {
-			a.openRoomFor(e.node.id, e.node.title)
-		}
+		a.openRailRoom(e.node)
 	}
 	return a.takeRoomPump(), true
 }
 
-// railSeamAt reports whether a pointer is on the visible two-cell handle.
+// railSeamAt reports whether a pointer is on the visible two-cell handle — which
+// is a handle only where there is a tier to pull it to (task.go's
+// [app.railCanWiden] says what it cost when it was not).
 func (a *app) railSeamAt(x, y int) bool {
-	if !a.railAt(x, y) || a.railFull() {
+	if !a.railAt(x, y) || !a.railCanWiden() {
 		return false
 	}
 	left := a.railLeft()
@@ -1829,15 +2292,22 @@ func (a *app) railSeamAt(x, y int) bool {
 // is the press's guard and the hover's alike (hover.go), because a column that
 // answered a click it would not light under the pointer is a column that
 // disagrees with itself about what it is.
+//
+// IT IS BOUNDED BOTH WAYS, and the vertical bound is the same one the closed
+// column's edge already keeps (task.go's [app.railGripAt]): the roster is drawn
+// into the BODY REGION and nowhere else — [app.railRows] returns exactly
+// [app.viewHeight] lines, footer included — so a column that answered for every
+// row of the frame was answering for the composer, the legend and the status
+// line under it. [app.railPress] takes what [app.railAt] gives it and returns
+// "taken" whether or not a line resolves, so those rows lost every press landing
+// in the roster's last thirty columns: the box did not focus, the hint did not
+// act, and nothing at all happened. Below the region a press is somebody else's.
 func (a *app) railAt(x, y int) bool {
-	switch {
-	case a.railFull():
-		top := a.bodyTop()
-		return top >= 0 && y >= top && y < top+a.viewHeight()
-	case !a.railShowing() || x < a.bodyWidth():
+	if !a.railFull() && (!a.railShowing() || x < a.bodyWidth()) {
 		return false
 	}
-	return true
+	top := a.bodyTop()
+	return top >= 0 && y >= top && y < top+a.viewHeight()
 }
 
 // railLeft is the screen column the roster's own lines start at: the frame's
@@ -1860,7 +2330,8 @@ func (a *app) railHoverNode(x, y int) *taskNode {
 
 // ── THE FOCUS HEADER ────────────────────────────────────────────────────────
 //
-//	─ ⠙ main ▸ Fix the nil-map crash · running · 2m12s · $0.04 ──── esc/←← main ─
+//	─ main ▸ Ship the port ▸ Fix the nil-map crash ───────────── esc/← main ─
+//	─ ⠙ working · 2m12s · $0.04 · 6 tool calls ───────────────────── Stop ───
 //
 // A ROOM USED TO LOOK LIKE THE CONVERSATION. Same rows, same hues, same box
 // underneath, and the only two things saying otherwise were a word in the legend
@@ -1869,13 +2340,32 @@ func (a *app) railHoverNode(x, y int) *taskNode {
 // later had nothing on screen telling them that the sentence they were about to
 // type was going to a worktree somewhere else.
 //
-// So the room pins ONE line at the top of the body region, and it is the only
-// thing on this surface drawn in the accent that is not the person's own words:
-// WHERE YOU ARE (the trail), WHAT IT IS DOING (the state, its clock, its spend),
-// and HOW YOU LEAVE. It is pinned rather than scrolled for the reason a status
-// line is pinned — a fact that scrolls away is a fact that is only true at the
-// top of the page — and it is one line because a room is a place you are looking
-// THROUGH, not a page about a node.
+// So the room pins its own rows at the top of the body region, under the tab
+// strip (chattabs.go). They are pinned rather than scrolled for the reason a
+// status line is pinned — a fact that scrolls away is a fact that is only true
+// at the top of the page.
+//
+// ── AND THEY ARE TWO ROWS, WHICH THEY WERE NOT ──────────────────────────────
+//
+// One row carried all of it: the state glyph, then the trail, then the state
+// word, the clock, the spend, the call count and the model, joined with the same
+// `·` the trail's own steps were joined with and painted in the one accent the
+// whole line wore. So the ancestry a person came to read ran into telemetry with
+// no seam between them, the loudest ink on the page was spent on figures, and
+// the path — the thing the row exists for — was the part that got cut first when
+// the frame narrowed.
+//
+// THE TRAIL ROW IS NOW ANCESTRY AND NOTHING ELSE: "main ▸ parent ▸ child", the
+// way out at its right end, and no glyph, no money, no model. THE FACTS ROW
+// UNDER IT is what the work is doing — the state in its own semantic ink, the
+// rest in the dim every other piece of telemetry on this surface wears — and it
+// ends in `Stop`, spelled out, which is the one control anywhere on the surface
+// that ends work with a pointer.
+//
+// NAVIGATION OUTRANKS TELEMETRY WHEN THE FRAME IS NARROW, and the split is what
+// makes that true by construction rather than by negotiation: the trail gets its
+// whole row, and the facts degrade on their own row by the ranked prefix every
+// list on this surface already uses (rowfit.go's law 3).
 //
 // THE TRAIL IS A BREADCRUMB and it always names the root: "main ▸ <node>" one
 // level down, "main ▸ parent ▸ child" when a node's page grows a door into the
@@ -1883,20 +2373,6 @@ func (a *app) railHoverNode(x, y int) *taskNode {
 // job is to say what this page hangs off, and "main" is the one name this
 // surface has for the conversation itself.
 
-// roomHead is the pinned line, or "" when there is no room open and nothing to
-// pin. It is drawn by the frame (view.go), which is the only thing that knows
-// where the top of the body region is.
-// THE ✕ RIDES THE RIGHT END, AFTER THE WAY OUT (stop.go). The header already
-// ends in the two things a person needs from a page they are standing in — how
-// to leave it, and, now, how to stop what is in it — and they are in that order
-// because leaving is free and stopping is not.
-//
-// IT DEGRADES BEFORE THE BACK WORD DOES. The right label is tried at three
-// strengths, and the middle one keeps the ✕ alone: the key that leaves is
-// printed on the legend at the bottom of the frame and known by everybody who
-// has ever used a terminal, while the button is the only thing anywhere on the
-// surface that ends work with a pointer. So the mark outlives the microcopy —
-// the same ladder [app.legend] walks, spending the recoverable thing first.
 // roomHeadFloor is the narrowest frame that gets a pinned header at all: under
 // it there is not a trail and a way out's worth of room, and the row would be an
 // ellipsis. It is stated once because the kin rows under the header stand on it
@@ -1904,112 +2380,101 @@ func (a *app) railHoverNode(x, y int) *taskNode {
 // the geometry counted and the frame did not draw ([app.roomKinRows]).
 const roomHeadFloor = 12
 
-func (a *app) roomHead(width int) string {
-	// [app.headHeight] is what the geometry budgeted for this row, and it is
-	// asked rather than second-guessed: a header the frame drew on a short
-	// terminal that the scrolling had not subtracted would push the room's last
-	// row under the input box.
-	a.roomStop = hudSpan{}
-	if a.headHeight() == 0 || width < roomHeadFloor {
-		return ""
+// roomHeadRows is the room's pinned rows, or none when there is no room open and
+// nothing to pin. They are drawn by the frame (view.go), which is the only thing
+// that knows where the top of the body region is, and there are always exactly
+// [roomHeadRowCount] of them when there are any — the geometry charges for that
+// number and a frame that drew a different one would put the room's last row
+// under the input box.
+func (a *app) roomHeadRows(width int) []string {
+	a.roomStop, a.roomBackSpan, a.crumbs = hudSpan{}, hudSpan{}, nil
+	// THE CONVERSATION HAS NO HEADER OF ITS OWN. It used to draw one crumb here —
+	// its own name, which is `main ▸` with nothing after it — and the tab strip
+	// above now says that and more (chattabs.go). A row whose whole content is a
+	// fact the row above it already carries is a row this surface does not draw.
+	rows := a.roomHeadHeight(width)
+	if rows == 0 {
+		return nil
 	}
-	left := a.roomHeadWord(width)
-	mark := a.roomStopWord()
-	// THE ✕ BRIGHTENS UNDER THE POINTER, and it is brightened HERE rather than
-	// spliced into the finished line: [app.legendLine] paints the right label as
-	// one piece and the mark is the last thing in it, so ink written into the label
-	// lands on the mark's own cells and the piece after it is painted separately
-	// anyway. It is a step up from the dim the label rests in, which is the model
-	// segment's own answer to a label that is also a control (render.go's
-	// [app.paintIdentity]) — the row is one line at the top of the frame, not a row
-	// of a list, and a highlighted rectangle round one glyph would be the one boxed
-	// thing on a surface with no boxes. The width is unchanged, so every attempt
-	// below still fits exactly as it did.
-	shown := mark
-	if mark != "" && a.hoveringRoomStop() {
-		shown = a.pal.ink(mark)
+	if rows == 1 {
+		return []string{a.roomTrailRow(width)}
 	}
-	attempts := []string{roomBackWord, ""}
-	if mark != "" {
-		attempts = []string{roomBackWord + roomStopSep + shown, shown, roomBackWord, ""}
+	head := []string{a.roomTrailRow(width), a.roomFactsLine(width)}
+	if a.roomOrganized() {
+		head = []string{a.roomTrailRow(width), a.roomTitleRow(width)}
 	}
-	for _, right := range attempts {
-		line, ok := a.legendLine(left, right, width, a.pal.accent)
-		if !ok {
-			continue
+	if rows > a.roomHeadCount() {
+		if a.roomOrganized() {
+			head = append(head, a.rule(width))
+			return head
 		}
-		// The mark is the LAST thing in the right label, and [app.legendLine]
-		// closes with one space and one rule cell after it — so its columns are
-		// arithmetic rather than a second layout, whichever attempt fitted.
-		if mark != "" && strings.HasSuffix(right, shown) {
-			cols := ansi.StringWidth(mark)
-			a.roomStop = hudSpan{from: width - 2 - cols, to: width - 2}
-		}
-		// AND THE ROW ITSELF TAKES THE BACKGROUND STEP, because the row itself is
-		// the control: everything on it is about leaving, and [app.roomBackPress]
-		// takes a press anywhere along it. The ✕ never lights with it — the two are
-		// different hovers and the pointer can only be on one of them — so the band
-		// is never the surface offering "leave" over cells that end work.
+		head = append(head, "")
+	}
+	return head
+}
+
+// roomHeadRowCount counts the semantic rows before optional trailing air on a frame with the
+// height to spare: the trail and the title with its facts. Compact frames
+// keep the title within the trail. The tab strip above and
+// the kin rows below are counted separately.
+const roomHeadRowCount = 2
+
+// Compact frames already name the task in their navigation row.
+func (a *app) roomHeadCount() int {
+	if a.roomOrganized() {
+		return roomHeadRowCount
+	}
+	return 2
+}
+
+// roomHeadHeight is how many of those rows this frame can actually afford.
+//
+// THE FACTS ROW IS THE SECONDARY CHROME AND IT STANDS DOWN FIRST, on the ladder
+// the kin rows and the breathing room already stand on (view.go's
+// [app.breathingRows]). A person on a six-row terminal has one row of page and a
+// box; what they cannot do without up here is WHICH PAGE THIS IS, so the trail
+// keeps the row and the telemetry — which is still on the status line — gives it
+// up. Navigation first when the frame is short is the same law as navigation
+// first when it is narrow.
+//
+// It is asked rather than assumed by [app.headHeight] and by every pointer
+// target on these rows: a row the frame drew and the scrolling did not subtract
+// puts the page's last line under the input box.
+func (a *app) roomHeadHeight(width int) int {
+	if a.room == nil || width < roomHeadFloor || a.breathingRows() == 0 {
+		return 0
+	}
+	if a.breathingRows() < 2 {
+		return 1
+	}
+	return a.roomHeadCount() + a.roomHeaderPad()
+}
+
+// roomTrailRow is the ancestry, the way out, and nothing else.
+func (a *app) roomTrailRow(width int) string {
+	left, hits := a.roomHeadParts(width)
+	if a.roomOrganized() {
+		left, hits = a.roomAncestorParts(width)
+	}
+	a.crumbs, a.roomBackSpan = hits, hudSpan{}
+	line := strings.Repeat(" ", headLabelAt) + a.paintCrumbs(left, headLabelAt, a.pal.accent)
+	leftWidth := headLabelAt + ansi.StringWidth(left)
+	back := " " + roomBackWord + " "
+	backWidth := ansi.StringWidth(back)
+	if leftWidth+2+backWidth+1 <= width {
+		from := width - backWidth - 1
+		a.roomBackSpan = hudSpan{from: from, to: from + backWidth}
+		shown := a.pal.dim(back)
 		if a.hoveringRoomBack() {
-			line = a.pal.cursor(line, width)
+			shown = a.pal.cursor(shown, 0)
 		}
-		return line
+		return line + strings.Repeat(" ", from-leftWidth) + shown + " "
 	}
-	return a.pal.accent(fit(left, width))
+	return line + strings.Repeat(" ", max(0, width-leftWidth))
 }
 
-// roomBackPress answers a press on the pinned header, and reports whether it
-// took it. The header IS the way out for the pointer.
-//
-// THE WHOLE ROW IS THE TARGET, not just the "esc/← main" at its right end. The
-// row is one line tall and about nine cells of it are the microcopy; asking a
-// person to land a pointer on those nine is asking them to aim at a label, and
-// the two things that share this row — the trail and the way out — are both
-// about leaving. The ✕ is the exception and it is claimed one rung earlier
-// (stop.go's [app.stopMarkPress]), because ending work and leaving the page you
-// were watching it on are opposite gestures and the expensive one wins the cells
-// it is drawn on.
-//
-// THE KIN ROWS UNDER IT ARE NOT PART OF THIS. They are dim telemetry about the
-// node's family ([app.roomKinRows]), and a press on a fact is not a press on a
-// door — it does nothing, exactly as a press on any other row that answers to
-// nothing does ([app.press]).
-//
-// It is read from the frame's OWN row numbering — the header is the first row of
-// a room's frame, always, because [app.view] draws it first and the geometry
-// charges [app.headHeight] for it — rather than through [app.chromeAt], which
-// resolves the block at the BOTTOM of the window and has never had a row up here
-// to answer for.
-func (a *app) roomBackPress(y int) bool {
-	if !a.roomBackAt(y) {
-		return false
-	}
-	a.closeRoom()
-	return true
-}
-
-// roomBackAt is that same test with nothing done about it, so the pointer can ask
-// what the press asks and the row can light on exactly the cells a click acts on
-// (hover.go's law). The ✕ is claimed one rung earlier and never reaches here
-// (stop.go's [app.stopMarkAt]).
-func (a *app) roomBackAt(y int) bool {
-	return a.roomOpen() && a.headHeight() != 0 && y == 0
-}
-
-// ── THE HEADER IS THE INSTRUMENT ────────────────────────────────────────────
-//
-// roomHeadWord is the header's left, and it carries THE JUDGMENT AND
-// ACCOUNTABILITY ACTS WHOLE so that the transcript below it does not have to:
-// which node this is, what it is doing, how long it has been at it, what it has
-// cost, how many calls it has made, and — where it is running — the vaguest
-// true sentence about what is happening right now.
-//
-// WHY THEY ARE HERE AND NOT DOWN THE PAGE. A person comes to a task to steer
-// and to check. The check is one glance, and a glance is a fixed number of
-// cells at the top of the frame — so a room's numbers gather in one line
-// instead of dribbling down a scroll that has to be read to be summed
-// (lens.go's [receiptsHeader]; the conversation keeps its per-turn receipts,
-// which is the opposite posture and the right one out there).
+// roomFactsLine is the quiet row under the trail: what this work is doing, what
+// it has taken, and the one control that ends it.
 //
 // EVERY SEGMENT IS DROPPED WHEN NOBODY HAS PUBLISHED IT — THE EMPTINESS LAW,
 // PER SEGMENT. A queued node has no clock, an unpriced one no cost, a node that
@@ -2018,50 +2483,171 @@ func (a *app) roomBackAt(y int) bool {
 // that is zero is a figure nobody measured, and `$0.00 · 0 tool calls` is the
 // row spending its scarce cells saying nothing twice.
 //
-// AND IT DEGRADES BY WHAT IT IS FOR, on the fitter every list on this surface
-// already uses (rowfit.go). THE IDENTITY IS WHOLE OR THE ROW IS POINTLESS: the
-// mark and the trail take every cell they ask for before a fact gets one,
-// because a person on a narrow terminal is first of all working out which page
-// they are on. The facts behind it are a RANKED PREFIX — the first one that
-// will not fit ends the line and nothing later is skipped forward into the gap
-// — so a narrow header says the same ranked things a wide one does, with the
-// tail missing rather than a different tail.
+// THE STATE WEARS THE NODE'S OWN INK and everything after it is dim. The hue is
+// [app.taskStateInk] — the same one the roster paints that node's glyph with —
+// so "your call" reads as warning here exactly as it does in the column,
+// and the figures beside it read as figures. The row is painted in pieces rather
+// than nested for [app.roomTrailRow]'s reason: a hue inside a hue ends at the
+// inner one's reset.
+//
+// Roomy frames group outcome and activity apart from model, effort and cost.
+// When those complete groups cannot fit, the shared ranked fitter (rowfit.go)
+// retains a prefix of the compact priority order, without skipping facts.
+func (a *app) roomFactsLine(width int) string {
+	a.roomStop = hudSpan{}
+	node := a.roomNode()
+	mark := a.roomStopWord()
+	shown := mark
+	// THE `Stop` BRIGHTENS UNDER THE POINTER, and it is brightened HERE rather
+	// than spliced into the finished line: [app.legendLine] paints the right label
+	// as one piece and the word is the last thing in it, so ink written into the
+	// label lands on the word's own cells. It is a step up from the dim the label
+	// rests in, which is this surface's answer to a label that is also a control
+	// (render.go's [app.paintIdentity]) — the row is one line at the top of the
+	// frame, and a highlighted rectangle round one word would be the one boxed
+	// thing on a surface with no boxes.
+	if mark != "" && a.hoveringRoomStop() {
+		shown = a.pal.ink(mark)
+	}
+	if node != nil && !a.orchOpen() {
+		if line, ok := a.roomGroupedFacts(node, width, shown); ok {
+			if mark != "" {
+				cols := ansi.StringWidth(mark)
+				a.roomStop = hudSpan{from: width - 2 - cols, to: width - 2}
+			}
+			return line
+		}
+	}
+	left, lead := a.roomFactsWord(node, width)
+	ink := a.pal.dim
+	if node != nil && lead > 0 {
+		ink = a.taskStateInk(node)
+	}
+	paint := func(label string) string {
+		cols := ansi.StringWidth(label)
+		if lead <= 0 || lead > cols {
+			return a.pal.dim(label)
+		}
+		return ink(ansi.Cut(label, 0, lead)) + a.roomSetupInk(ansi.Cut(label, lead, cols), node)
+	}
+	for _, right := range []string{shown, ""} {
+		line, ok := a.legendLine(left, right, width, paint)
+		if !ok {
+			continue
+		}
+		// The word is the LAST thing in the right label, and [app.legendLine]
+		// closes with one space and one rule cell after it — so its columns are
+		// arithmetic rather than a second layout.
+		if mark != "" && right == shown {
+			cols := ansi.StringWidth(mark)
+			a.roomStop = hudSpan{from: width - 2 - cols, to: width - 2}
+		}
+		return line
+	}
+	return a.pal.dim(fit(left, width))
+}
+
+// roomFactsWord is that row's left label, plain, and how many of its leading
+// cells are the state word — which is the one segment painted in the node's own
+// ink rather than in the row's dim.
+//
+// A RUN'S PAGE ANSWERS FOR ITS OWN (roomorch.go): the facts under a node are a
+// state, a clock and a spend, and a run has none of them. What it has instead is
+// a tank, and the tank is the fact that cannot be left off this row.
+func (a *app) roomFactsWord(node *taskNode, width int) (string, int) {
+	// Keep a visible seam even when a dependency or phase has a long name.
+	room := max(width-roomHeadFurniture-12, 0)
+	if a.orchOpen() {
+		return a.orchHeadWord(room), 0
+	}
+	if node == nil {
+		return "", 0
+	}
+	facts := a.roomHeadFacts(node)
+	// THE STATE IS THE ROW'S OWN LEAD AND IT KEEPS ITS GLYPH. The mark is the
+	// roster's cell for this node ([app.roomMark]) and it belongs beside the word
+	// it illustrates rather than in front of a path — which is where it used to
+	// sit, one cell into a breadcrumb it had nothing to do with.
+	lead := ""
+	if facts[0].known() {
+		lead = a.roomMark(node) + " " + facts[0].full
+		facts = facts[1:]
+	}
+	if lead == "" {
+		return rowTail(facts, room), 0
+	}
+	lead = fit(lead, room)
+	cols := ansi.StringWidth(lead)
+	tail := rowTail(facts, room-cols-len(rowSep))
+	if tail == "" {
+		return lead, cols
+	}
+	return lead + rowSep + tail, cols
+}
+
+// roomBackPress uses the rendered Back label's padded target. Whitespace and
+// breadcrumb separators are not navigation controls.
+func (a *app) roomBackPress(x, y int) bool {
+	if !a.roomBackAt(x, y) {
+		return false
+	}
+	a.closeRoom()
+	return true
+}
+
+func (a *app) roomBackAt(x, y int) bool {
+	return a.roomOpen() && a.headHeight() != 0 && y == a.roomHeadRow() && a.roomBackSpan.holds(x)
+}
+
+// ── THE HEADER IS THE INSTRUMENT ────────────────────────────────────────────
+//
+// roomHeadWord is the trail row's left: WHICH PAGE THIS IS, the whole way down.
+// It is ancestry alone now. The judgment and accountability facts it used to
+// carry beside the path — the state, the clock, the spend, the call count, the
+// model — are the row underneath ([app.roomFactsLine]), which is where they can
+// be painted as figures instead of as a continuation of a place.
+//
+// WHY THEY ARE AT THE TOP OF THE FRAME AT ALL, on either row. A person comes to
+// a task to steer and to check. The check is one glance, and a glance is a fixed
+// number of cells at the top of the frame — so a room's numbers gather there
+// instead of dribbling down a scroll that has to be read to be summed (lens.go's
+// [receiptsHeader]; the conversation keeps its per-turn receipts, which is the
+// opposite posture and the right one out there).
 //
 // It is built PLAIN, without paint, because the whole line is painted once by
 // [app.legendLine]: a hue nested inside a hue ends at the inner one's reset, and
 // the rest of the line would fall back to the terminal's default mid-sentence.
 func (a *app) roomHeadWord(width int) string {
-	// A RUN'S PAGE ANSWERS FOR ITS OWN HEADER (roomorch.go): the facts under it
-	// are a node's — a state, a clock, a spend — and a run has none of them.
-	// What it has instead is a tank, and the tank is the fact that cannot be left
-	// off this line.
-	if a.orchOpen() {
-		return a.orchHeadWord(width)
-	}
-	node := a.roomNode()
-	name := a.roomMark(node) + " " + a.roomTrail()
+	word, _ := a.roomHeadParts(width)
+	return word
+}
+
+// roomHeadParts is that line and where its crumbs landed, in the label's own
+// columns. The two are built together for the reason every hit map on this
+// surface is written by the render that drew it: a trail laid out twice is a
+// trail a click can miss by exactly the difference between the two layouts.
+//
+// The current task keeps its identity. The way back gets a reserved target
+// when the middle of the path can fold enough to keep both; otherwise the path
+// uses the whole row and its root remains a way out.
+func (a *app) roomHeadParts(width int) (string, []crumbHit) {
 	room := max(width-roomHeadFurniture, 0)
-	if node == nil {
-		// A room on a node this surface has had no update for. The trail is still
-		// true and nothing else is, which is exactly what gets said.
-		return fit(name, room)
+	// Reserve the padded Back target before fitting the middle of the path.
+	// If that would cut the current task's identity, the path keeps priority.
+	withBack := width - headLabelAt - ansi.StringWidth(" "+roomBackWord+" ") - 3
+	line, hits, whole := a.roomCrumbLine(max(withBack, 0))
+	if !whole {
+		line, hits, _ = a.roomCrumbLine(room)
 	}
-	// LAW 1, AND IT NOW HAS SOMETHING TO SPEND. The name arrives WHOLE — the
-	// engine's own title for the work, uncut ([taskTitleOf]; until this wave it
-	// was cut to three words before any width was known, so this header at a
-	// hundred and sixty columns named the work no better than a twenty-four-cell
-	// rail row did) — and the identity takes every cell it asks for before a fact
-	// gets one. A name that had to be CUT takes the whole line: an ellipsis in it
-	// has already spent the one thing the row was drawn to say, and a spend
-	// figure beside it would be a second loss.
-	if ansi.StringWidth(name) > room {
-		return fit(name, room)
+	if a.orchOpen() {
+		// A RUN'S PAGE HAS A TRAIL AND NO CRUMB THIS WINDOW CAN OPEN (roomorch.go):
+		// its steps are the run's own goals and none of them is a node in this
+		// conversation's graph, so the row is drawn and records nothing. Its facts
+		// are the tank, and the tank is on the row below with everything else that
+		// is a figure.
+		return line, nil
 	}
-	tail := rowTail(a.roomHeadFacts(node), room-ansi.StringWidth(name)-len(rowSep))
-	if tail == "" {
-		return name
-	}
-	return name + rowSep + tail
+	return line, crumbsAt(hits, headLabelAt)
 }
 
 // roomHeadFurniture is what [app.legendLine] spends on the header's own rule
@@ -2082,16 +2668,7 @@ const roomHeadFurniture = 4
 // made before the work started, not news, and they are the first thing a narrow
 // frame can afford to lose.
 func (a *app) roomHeadFacts(node *taskNode) []rowField {
-	work := roomWorkOf(a.roomEntries())
-	return []rowField{
-		rowSay(a.roomStateWord(node)),
-		rowSay(a.roomClock(node)),
-		rowSay(a.roomSpend(node)),
-		roomCallField(work.calls),
-		rowSay(a.roomLiveWord(node, work)),
-		rowSay(strings.TrimSpace(node.model), modelBase(strings.TrimSpace(node.model))),
-		rowSay(a.taskEffortClause(node)),
-	}
+	return a.roomFactsOf(node).ranked()
 }
 
 // roomCallField is HOW MUCH WORK THIS IS, counted. It is the chip's own grammar
@@ -2235,6 +2812,14 @@ func roomKinName(name string, room int) string {
 // is telemetry about the page rather than a second header, and v1's column is
 // the reference — restrained, no border, no frame of its own (internal/tui).
 func (a *app) roomKinRows(width int) []string {
+	// The expanded page already has the family tree beside its transcript.
+	if a.roomOrganized() {
+		return nil
+	}
+	// FAMILY DETAILS BELONG TO THE TASK COLUMN. The header spans the window,
+	// but its child summary must stop where the adjacent roster begins. Both
+	// frame drawing and height accounting use this same width decision.
+	width = min(width, a.bodyWidth())
 	// A RUN'S PAGE IS ALREADY ITS OWN FAMILY TREE (roomorch.go): the graph is
 	// drawn there, node by node, with every prerequisite an edge — so a sentence
 	// about kin would be the picture read out loud beside the picture.
@@ -2254,7 +2839,7 @@ func (a *app) roomKinRows(width int) []string {
 	if node == nil {
 		return nil
 	}
-	kids, byKey := a.railKin()
+	kids, _ := a.railKin()
 	// THE ROWS ARE A BUDGET AND THE NAMES ARE FITTED TO IT. These lines are dim
 	// telemetry with a hard cap of [roomKinRowCap] rows, so a relative's name
 	// that arrives whole (taskident.go's [taskTitleOf]) is cut HERE, where the
@@ -2263,21 +2848,25 @@ func (a *app) roomKinRows(width int) []string {
 	// ending on a bare `—` with the state word cut off the bottom of it.
 	inner := width - ansi.StringWidth(roomKinIndent)
 	var lines []string
-	// WHO ASKED FOR THE WORK, AND IT IS NOT A DEPENDENCY — session's
-	// task_contract.go states that difference in those words, and this line is
-	// the only place on the surface that says the parent out loud rather than
-	// drawing it as an elbow. A parent this surface has had no update for is left
-	// UNSAID rather than named as an id, which is the rule [app.railWaits]
-	// already applies at the other end of the family: "part of: 7" has told a
-	// person nothing.
-	if up := byKey[node.ParentID()]; up != nil && up != node {
-		lines = append(lines, roomKinUnderWord+roomKinName(up.title, inner-ansi.StringWidth(roomKinUnderWord)))
-	}
-	// AND WHAT THIS WORK HANDED OUT, each piece with the state word it wears
+	// WHO ASKED FOR THE WORK IS ON THE TRAIL NOW AND NOT ON A LINE DOWN HERE.
+	// This block used to open with `part of: <the parent's title>` — one level of
+	// ancestry, said as a fact you could not press, one row under a trail that was
+	// claiming in the same breath that this work hung off the conversation. The
+	// breadcrumb says the whole chain and every step of it is a door
+	// (roomcrumbs.go), so the sentence is gone rather than drawn twice: the same
+	// rule the state word already holds these rows to — a header that said the
+	// same thing twice would be a header read twice to learn one thing.
+	//
+	// WHAT THIS WORK HANDED OUT STAYS, because a trail goes UP. Children are not
+	// on the way to anywhere, they are what is happening underneath, and the roster
+	// is the only other place they are drawn. Each piece keeps the state word it
+	// wears everywhere else on the surface.
 	// everywhere else on the surface. The order is [app.railKin]'s, which is the
-	// order the session met them — the one order a family is allowed to use,
-	// because any other moves a row a person is watching for a reason they
-	// cannot see.
+	// column's own: what needs a person first, then what is running, then what is
+	// waiting, then what is over — with arrival order keeping the peace inside
+	// each of those. It used to be arrival order alone, and on the block this line
+	// exists for — a run that hands four pieces out and finishes them one by one —
+	// that put every settled piece in front of the ones still going.
 	var spawned []string
 	// Each piece gets an EQUAL SHARE of what is left after the lead and the
 	// separators between them, less its own state word: the names are the
@@ -2344,73 +2933,78 @@ func (a *app) roomKinWord(node *taskNode) string {
 
 // roomNode is the node the open room is about, or nil when this surface has
 // never had an update for it.
+//
+// A GUEST PAGE ANSWERS WITH ITS OWN NODE AND NEVER WITH THE LOCAL GRAPH'S, and
+// this is the single most important line in the guest lane. Task ids restart with
+// every conversation ([session.TaskIndexEntry.ID] states it), so a page opened
+// onto another conversation's task 7 is very often standing beside THIS
+// conversation's task 7 — a different piece of work, with a different title, a
+// different model and a different state. Every reader of this function is a
+// header, a state word, a clock, a model, a kin row or an action; answering any
+// of them out of [app.tasks] would describe the wrong work and then let a key act
+// on it. The guest's node is built once from the row that was pressed and is
+// never in that map ([taskGuest.node]).
+// roomNodeModel is the id the OPEN ROOM'S NODE is answering on, for the seams
+// that need the service behind it rather than the name on screen. Empty when no
+// node is open, which every caller reads as "no service to name".
+func (a *app) roomNodeModel() string {
+	node := a.roomNode()
+	if node == nil {
+		return ""
+	}
+	return strings.TrimSpace(node.model)
+}
+
 func (a *app) roomNode() *taskNode {
 	if a.room == nil {
 		return nil
+	}
+	if guest := a.room.guest; guest != nil {
+		return guest.node
 	}
 	return a.tasks[a.room.id]
 }
 
 // roomMark is the node's state in one cell, UNPAINTED — [app.railGlyph]'s glyph
 // without its hue, because the header wears one hue for its whole length.
+//
+// It is the roster's own cell ([app.taskStateMark]) and not a second table. The
+// copy that used to live here had drifted: it knew the refusal mark but neither
+// the stop's mark nor the halt's `!`, so a node a person stopped wore a
+// failure's cross on its own page and the stop's mark one keypress away.
 func (a *app) roomMark(node *taskNode) string {
 	if node == nil {
-		return a.linearMark(glyphQueued, glyphQueuedASCII)
+		return a.icon(tokens.GQueued)
 	}
-	if mark, incomplete := a.incompleteGlyph(node); incomplete {
-		return mark
-	}
-	switch node.state {
-	case session.TaskDone:
-		return a.linearMark(glyphDone, glyphDoneASCII)
-	case session.TaskFailed:
-		return a.linearMark(glyphBad, glyphBadASCII)
-	case session.TaskUnverified:
-		// THE THIRD SETTLED STATE WEARS THE RAIL'S THIRD MARK (task.go's
-		// [glyphUnverified]), and without this case it wore the QUEUED glyph: a
-		// node that ran to the end, drawn on its own page as though it had not
-		// started. It is the same cell in both glyph tiers, so there is nothing
-		// for [app.linearMark] to stand in for.
-		return glyphUnverified
-	case session.TaskRunning:
-		if a.linear {
-			return glyphRunASCII
-		}
-		return tokens.Spinner(a.paints / spinnerStep)
-	default:
-		return a.linearMark(glyphQueued, glyphQueuedASCII)
-	}
+	return a.taskStateMark(node)
 }
 
-// roomTrail is the breadcrumb: the root, then one step per room walked into
-// without coming back out.
-//
-// The path is one deep today, because the only door into a room is the rail and
-// the rail is a flat list of the session's nodes — walking from one row to
-// another is a step SIDEWAYS, and [app.openRoomFor] treats it as one. The trail
-// is written over a path rather than over the open room so that the day a node's
-// own page grows a door into the node it spawned, the breadcrumb is already the
-// thing on screen.
-func (a *app) roomTrail() string {
-	trail := roomCrumbRoot
-	for _, step := range a.roomPath() {
-		trail += roomCrumbSep + step
-	}
-	return trail
-}
+// The trail itself is roomcrumbs.go's — [app.roomCrumbs] is the model and
+// [app.roomTrail] reads it out as this sentence. It used to be built here, over
+// [app.roomPath], and it named the root and the open room and nothing between
+// them: the ancestry the engine had modelled all along was one dim line further
+// down, spelled as a fact rather than as a place, and only ever one level of it.
 
-// roomPath is the titles of the rooms between the conversation and the page on
-// screen, outermost first.
-func (a *app) roomPath() []string {
-	if a.room == nil {
-		return nil
+// guestOwnerName is what to call the conversation a page is being read through,
+// and [taskAwayWord] for one nothing has named — which is the same word the row
+// and the recovery card use for a window with no title, so the three places a
+// person meets this fact sound like one program.
+func guestOwnerName(owner string) string {
+	if owner = strings.TrimSpace(owner); owner == "" {
+		return taskAwayWord
 	}
-	return []string{a.room.title}
+	return owner
 }
 
 // roomStateWord is what the node is doing, in the engine's own vocabulary where
 // it has one (task.go's merge words).
 func (a *app) roomStateWord(node *taskNode) string {
+	// A QUESTION SOMEBODY ELSE IS ANSWERING IS STILL THAT QUESTION. This line
+	// used to read `awaiting review` for a card the settle policy had handed to
+	// the model, which was a fourth word for one reading and said nothing about
+	// what the question actually was. The header reads the reading's own sentence
+	// — `your call · nobody could check it` — and WHO is holding it is the card's
+	// to say, one keypress away (tasksettle.go, docs/design/task-states/DESIGN.md).
 	switch node.state {
 	case session.TaskRunning:
 		// A NODE A PERSON HAS ENDED IS STOPPING, AND IT OUTRANKS EVERY PHASE
@@ -2424,8 +3018,9 @@ func (a *app) roomStateWord(node *taskNode) string {
 		// the conversation has learned it here too.
 		//
 		// The SPINNER beside it deliberately keeps turning, which is not a
-		// contradiction but the other half of the honesty ([app.stoppedGlyph]
-		// makes the argument in full, stop.go): out in the conversation the person
+		// contradiction but the other half of the honesty ([session.ProjectTask]
+		// keeps that law now: a stop still going through is still running): out in
+		// the conversation the person
 		// is sitting in front of the turn and nothing should move once they have
 		// stopped it, while a node is work going on somewhere else that really is
 		// still going on — and the mark that says "landed" is owed to the landing
@@ -2469,8 +3064,11 @@ func (a *app) roomStateWord(node *taskNode) string {
 		// there: the node is running and the wire is full. The reason itself is on
 		// the rail's own row under the node; the header has one line and spends it
 		// on the state.
+		// A ROW NEVER READS A BARE `waiting`. The word is half the news and the
+		// reason is the half a person can act on, so the two travel together
+		// wherever either is drawn ([session.TaskStatus.RowWord]).
 		if node.waiting != "" {
-			return taskHeldWord
+			return a.taskStatus(node).RowWord()
 		}
 		// The word the status line uses for a session that is working, said about
 		// a node for the same reason: a person who has learned what "working"
@@ -2489,7 +3087,7 @@ func (a *app) roomStateWord(node *taskNode) string {
 			return "waits: " + waits
 		}
 		if node.waiting != "" {
-			return taskHeldWord
+			return a.taskStatus(node).RowWord()
 		}
 		return roomQueuedWord
 	case session.TaskFailed:
@@ -2499,18 +3097,21 @@ func (a *app) roomStateWord(node *taskNode) string {
 		if node.stopped {
 			return taskStoppedByPerson
 		}
-		if refused(node.ending) {
-			return taskRecordStoppedWord
-		}
-		return roomFailedWord
+		// AND `failed` IS GONE. The engine keeps the state's name and a person
+		// reads the reading's own word — `incomplete` — because "failed" sends
+		// somebody looking for a fault and four of the five ways a run ends this
+		// way are not one (docs/design/task-states/DESIGN.md). The reason itself is
+		// on the rail's row under the node; the header has one line and spends it
+		// on the state.
+		return a.taskStatus(node).Word
 	case session.TaskUnverified:
 		// NOT THE MERGE SENTENCE, for the reason the rail states in the same words
-		// (task.go's [app.railUnder]): an unverified node wears session's
-		// "aborted" merge exactly as a stopped one does, so the switch below said
-		// "stopped" about work that ran to the end. What it is waiting for is a
-		// person, and the header says what the card and the rail already say
-		// (task.go's [taskUnverifiedWord]).
-		return taskUnverifiedWord
+		// (task.go's [app.railUnder]): a node whose landing is somebody's call
+		// wears session's "aborted" merge exactly as a stopped one does, so the
+		// switch below said "stopped" about work that ran to the end. What it is
+		// waiting for is a person, and the header says the word the card and the
+		// rail already say (tasktier.go).
+		return a.taskStatus(node).Word
 	}
 	// WHERE THE WORK LANDED, IN A PERSON'S WORDS. It is one table lookup and not
 	// a switch with a fall-through, because the fall-through was drawing the
@@ -2524,11 +3125,14 @@ func (a *app) roomStateWord(node *taskNode) string {
 	return roomDoneWord
 }
 
-// The three words the header has that nothing else on this surface says.
+// The two words the header has that nothing else on this surface says.
+//
+// A THIRD ONE, `failed`, IS GONE. It was the header's private name for a landing
+// the reading calls `incomplete`, and it reported a finding nobody made about
+// the four endings in five that are not faults.
 const (
 	roomQueuedWord = "queued"
 	roomDoneWord   = "done"
-	roomFailedWord = "failed"
 )
 
 // roomClock is the node's age: counting up while it runs, frozen at what the
@@ -2619,17 +3223,26 @@ const roomModelLead = "task "
 // is a guess this row is not entitled to make. It draws nothing, which is what
 // every other unpublished figure in a room draws ([app.roomSpend]).
 //
-// It wears NO REASONING SUFFIX AND NO SERVED RIDER either, for one reason said
-// twice: THE DIAL IS THE CONVERSATION'S. The ":high" is spliced on by lending
-// a.model its suffixed form for the length of one call (view.go's
-// [app.statusRow]) and the rider is keyed on a.model's own sighting, so both are
-// facts about the model the SESSION is running — and a task model wearing the
-// session's knob would be the same lie in smaller print. Reading the node's model
-// from the node keeps it out of the splice by construction.
+// It wears NO REASONING SUFFIX, because THE DIAL IS THE CONVERSATION'S: the
+// ":high" is spliced on by lending a.model its suffixed form for the length of
+// one call (view.go's [app.statusRow]), so a task model wearing it would be a
+// fact about the model the SESSION is running told in smaller print. Reading the
+// node's model from the node keeps it out of the splice by construction.
+//
+// IT DOES WEAR A SERVED RIDER, and it is the NODE'S (lanes.go's
+// [app.roomLaneRider]). It did not until the news started saying which piece of
+// work it was about: the sighting desk was keyed by model, so the only machine
+// this row could have named was whichever answer on that model id landed last —
+// the conversation's, most often — and drawing that here would have been the
+// same misreading as the reasoning splice. The rider is appended by the caller
+// ([app.identityParts]), which is where the row's width ladder lives.
 func (a *app) roomModelWord() string {
 	node := a.roomNode()
 	if node == nil {
 		return ""
+	}
+	if node.nextModel != "" {
+		return "next model " + modelBase(node.nextModel)
 	}
 	model := modelBase(strings.TrimSpace(node.model))
 	if model == "" {
@@ -2665,6 +3278,7 @@ func (a *app) roomRows(width int) []row {
 	// page out against the one view the frame is drawing, and a resize, a rail
 	// tier change or a draft growing a line all re-derive the fold's tail
 	// without any of them having to remember to.
+	reading := a.restoreRoomReading()
 	height := a.viewHeight()
 	if room.rows != nil && room.width == width && room.height == height && !room.dirty {
 		return room.rows
@@ -2680,9 +3294,16 @@ func (a *app) roomRows(width int) []row {
 		room.rows, room.width, room.height, room.dirty = out, width, height, false
 		return out
 	}
-	out, closed := a.deckRows(room.deck(), width)
+	// THE READING GUTTER IS TAKEN OUT FIRST AND GIVEN BACK LAST, exactly as in
+	// the conversation (gutter.go, and render.go's [app.layout] states the law).
+	// A task's page is a transcript and is read as one; it stood flush against
+	// the terminal's left edge for the same reason the conversation did, and at
+	// the same cost. A RUN'S PAGE IS NOT — a graph of cards is not a paragraph —
+	// which is why the branch that returns one does so above this line.
+	inner := gutterInner(width)
+	out, closed := a.deckRows(room.deck(), inner)
 	if room.harnessProgress != "" && !room.done {
-		out = append(out, row{text: a.pal.dim(fit(room.harnessProgress, width)), entry: -1})
+		out = append(out, row{text: a.pal.dim(fit(room.harnessProgress, inner)), entry: -1})
 		closed = false
 	}
 	// AN EMPTY ROOM SAYS WHAT IT KNOWS AND WHY IT KNOWS NO MORE, above whatever
@@ -2699,8 +3320,46 @@ func (a *app) roomRows(width int) []row {
 	// perfectly healthy session: a task opened the moment it is started has
 	// journaled nothing yet, and one that is queued has not begun. The words
 	// differ by what is true (roomYetWord above), the rule does not.
-	if len(out) == 0 && room.harnessProgress == "" {
-		out = a.roomRecordRows(out, width)
+	switch {
+	case room.guest != nil && room.guest.lost:
+		// THE CONVERSATION UNDER THIS PAGE WAS REPLACED, and there is nothing to
+		// retry. Everything above stays — it is what this window did read, and it
+		// was true when it read it — and this is the last line of it.
+		out = append(out, row{text: a.pal.dim(fit(taskGuestGoneWord, inner)), entry: -1})
+	case room.readFailed && len(out) > 0:
+		// A PAGE THAT DID READ SOMETHING SAYS THE FAILURE UNDER IT. An EMPTY one
+		// falls through instead, because a lone `couldn't read…` over a blank body
+		// is the very page this branch was written to prevent — everything the
+		// surface already knows about the work goes on first, and the failure is
+		// the last line of it ([app.roomRecordRows] draws both).
+		out = append(out, row{text: a.pal.dim(fit(roomReadFailedWord, inner)), entry: -1})
+	case len(out) == 0:
+		out = a.roomRecordRows(out, inner)
+	}
+	// AND A READING PAGE WITH NO WAY TO ASK ITS OWNER SAYS SO, once, under
+	// whatever it did read. It is not a refusal and not an error — the transcript
+	// above it is real — it is the one thing the page cannot know, said rather
+	// than papered over with a state word that stopped being true (taskowner.go's
+	// [app.roomGuestStale]).
+	if a.roomGuestStale() {
+		out = append(out, row{text: a.pal.dim(fit(roomGuestStaleWord, inner)), entry: -1})
+	}
+	// AND A CONVERSATION THAT HAS STOPPED AND IS WAITING ON SOMEBODY SAYS SO,
+	// under what it has done so far. The roster cannot say it — a node sitting on
+	// a question is still `running` — so a page reading somebody else's work drew
+	// a clock over work that had not moved since somebody was asked something
+	// (taskowner.go's questions lane).
+	//
+	// IT IS DIM AND NOT AMBER, AND THAT IS THE HUE LAW RATHER THAN AN OVERSIGHT.
+	// Amber is waiting on YOU and nothing else (docs/design/questions/DESIGN.md);
+	// this question is waiting on the window that owns the work, this page has no
+	// key that would answer it, and a row here in the colour that means "press
+	// something" would be asking a person for a keystroke that does not exist.
+	if asked, waiting := a.roomGuest().waiting(); waiting {
+		if head := strings.TrimSpace(asked.Head); head != "" {
+			line := a.icon(tokens.GNeedsHuman) + " " + head + railSep + roomGuestAskedWord
+			out = append(out, row{text: a.pal.dim(fit(line, inner)), entry: -1})
+		}
 	}
 	if room.done {
 		// THE FOOT. A room on a node that has landed says so once, at the bottom,
@@ -2711,22 +3370,30 @@ func (a *app) roomRows(width int) []row {
 		if closed && len(out) > 0 {
 			out = append(out, row{entry: -1})
 		}
-		// A NODE THAT NEEDS A LOOK ASKS HERE, in the place the foot would have
-		// said "finished": the same two rows its landed card draws, answering to
-		// the same keys and the same pointer, and the same receipt once answered
-		// (tasksettle.go's [app.roomSettleRows]). Every other landing keeps the
-		// foot it has.
-		var asked bool
-		if out, asked = a.roomSettleRows(out, width); !asked {
+		// A NODE THAT NEEDS A LOOK DOES NOT SAY `finished` HERE. Its question is
+		// standing on the block above the box, in this room as on every other
+		// page (tasksettle.go), and a foot that read `this task has finished —
+		// say it to main` over it told a person the one thing that was not true
+		// about the page they were looking at (#767). Every other landing keeps
+		// the foot it has.
+		if !a.roomLandingAsking() {
 			// AND IT NAMES A DOOR (roomrefusal.go). `task finished — esc to
 			// return` was the whole of what this row said for a year, and esc is
 			// already on the legend and on the focus header above it; where the
-			// words in the box can go was on neither.
-			out = append(out, row{text: a.pal.dim(a.roomFinishedRefusal().fit(width)), entry: -1})
+			// words in the box can go was on neither. On a page read through
+			// somebody else's conversation the door is the OWNER'S
+			// ([app.roomDoneRefusal]): `say it to main` there would aim the words
+			// at this window's conversation, which is the wrong one.
+			out = append(out, row{text: a.pal.dim(a.roomDoneRefusal().fit(inner)), entry: -1})
 		}
 	}
+	// THE GUTTER, BEFORE THE PASS THAT PAINTS THE WHOLE ROW (gutter.go). The
+	// room's own foot is asked for by name because a node that needs a look draws
+	// its answers with no entry to hang them on, so the deck walk cannot reach it.
+	gutterPass(out, width)
 	// THE POINTER, LAST, exactly as in the conversation (render.go's layout).
 	a.hoverPass(out, width)
+	a.restoreRoomAnchor(reading, out)
 	room.rows, room.width, room.height, room.dirty = out, width, height, false
 	return out
 }
@@ -2755,29 +3422,112 @@ func (a *app) roomRows(width int) []row {
 // and is empty, so there is nothing to replay and nothing has been lost either.
 // It takes [roomYetWord], which is the same shape of answer said about a page
 // that is not finished being written.
+// AND A PAGE THAT HAS NOT LANDED SPENDS THEM ON THE INSTRUCTION. A task opened
+// the second it is started is the commonest way to reach these rows and it was
+// the worst of them: the only thing under the header was `loading this task's
+// conversation…` — a sentence about the surface's own plumbing, on a page opened
+// by somebody who wanted to see the work. What that person is owed is already in
+// hand before any journal is read, because the contract is frozen at admission
+// (task.go's [taskNode.brief]): THE WORDS THEY ASKED FOR. So the brief goes on
+// first, then what the engine last said the work is doing, then the one line
+// about why there is nothing else — and every one of them comes off together the
+// moment a block arrives, because this whole function is drawn only for a page
+// with no blocks at all.
 func (a *app) roomRecordRows(out []row, width int) []row {
-	if a.room != nil && a.room.loading {
-		return append(out, row{text: a.pal.dim(fit(roomLoadingWord, width)), entry: -1})
-	}
 	node := a.roomNode()
-	word := roomGoneWord
-	if a.room != nil && !a.room.done {
-		word = roomYetWord
-	}
 	if node == nil {
 		// A page this surface never had a row for. There is nothing to add to the
 		// blank except the reason it is blank.
-		return append(out, row{text: a.pal.dim(fit(word, width)), entry: -1})
+		return append(out, row{text: a.pal.dim(fit(a.roomBlankWord(), width)), entry: -1})
 	}
 	// WHAT THE ROW SAYS THE WORK CAME TO, first, because it is the only thing here
 	// a person came for. The report is prose somebody wrote, so it wraps.
-	if report := strings.TrimSpace(node.report); report != "" {
-		for _, line := range wrap(report, width) {
+	//
+	// THE BRIEF STANDS IN ITS PLACE AND NEVER BESIDE IT, and WHICH of them is
+	// drawn is decided by whether the work is over. A landing's own sentences are
+	// what a finished page is for, and the instruction under them would push them
+	// off a short frame. Work that is still going is the other way round: what a
+	// person opening it wants is what they asked for, and a report on a running
+	// row is a sentence about some EARLIER state of it — a far roster carries the
+	// last outcome it heard beside a row that has since started again, and drawing
+	// that over live work is the page claiming an ending that has not happened.
+	// Either one falls back to the other, because a page with one of them and
+	// neither drawn is the blank this whole function exists to prevent.
+	instruction := firstNonEmpty(strings.TrimSpace(node.brief), strings.TrimSpace(node.assignment))
+	said := instruction
+	if a.room != nil && a.room.done {
+		said = firstNonEmpty(strings.TrimSpace(node.report), instruction)
+	} else if said == "" {
+		said = strings.TrimSpace(node.report)
+	}
+	if said != "" {
+		ink := a.pal.narr
+		if !a.room.done {
+			ink = a.pal.accent
+		}
+		for _, line := range wrap(said, width) {
+			out = append(out, row{text: ink(line), entry: -1})
+		}
+		out = append(out, row{entry: -1})
+	}
+	// THEN WHAT THE WORK IS DOING RIGHT NOW, where the engine has said and the
+	// header has not already spent its one word on it ([app.roomStartingSay]).
+	if say := a.roomStartingSay(node); say != "" {
+		for _, line := range wrap(say, width) {
 			out = append(out, row{text: a.pal.dim(line), entry: -1})
 		}
 	}
-	// THEN WHY THERE IS NO TRANSCRIPT UNDER IT, chosen above.
-	return append(out, row{text: a.pal.dim(fit(word, width)), entry: -1})
+	// AND LAST, WHY THERE IS NO TRANSCRIPT UNDER ANY OF IT.
+	return append(out, row{text: a.pal.dim(fit(a.roomBlankWord(), width)), entry: -1})
+}
+
+// roomBlankWord is the one line an empty page ends on: WHY there is nothing
+// here, which is a different fact in each of four cases and was collapsed into
+// two of them for as long as the loading branch returned early.
+//
+// The order is the order of certainty. A read on the wire has not answered yet
+// and nothing else is known; a read that FAILED is not a page that is loading
+// and never says so, which is the distinction the retry line carries; and under
+// both of them sit the two honest endings a page with no read pending has —
+// nothing has arrived yet, or nothing is left.
+func (a *app) roomBlankWord() string {
+	switch {
+	case a.room == nil:
+		return roomGoneWord
+	case a.room.readFailed:
+		return roomReadFailedWord
+	case a.room.loading:
+		return roomLoadingWord
+	case !a.room.done:
+		return roomYetWord
+	}
+	return roomGoneWord
+}
+
+// roomStartingSay is what the engine last said this work is DOING, for a page
+// that has nothing of its own to draw yet: the difference between a task that
+// has not started writing and a task nothing is happening to.
+//
+// A WAIT USES THE ROSTER'S COMPLETE EXPLANATION. Reasons can be fragments
+// such as "its parts", so dropping the state leaves a sentence without a verb.
+// Named phases already printed verbatim by the header remain absent here.
+//
+// A LANDED PAGE SAYS NONE OF IT. These three fields are reports of RIGHT NOW and
+// the engine clears them at the landing (task.go); drawing a stale one over
+// finished work would be the page claiming live activity that ended.
+func (a *app) roomStartingSay(node *taskNode) string {
+	if node == nil || a.room == nil || a.room.done {
+		return ""
+	}
+	switch {
+	case strings.TrimSpace(node.waiting) != "":
+		return a.taskStatus(node).RowWord()
+	case strings.TrimSpace(node.mending) != "":
+		return strings.TrimSpace(node.mending)
+	case strings.TrimSpace(node.tool) != "":
+		return strings.TrimSpace(node.tool)
+	}
+	return ""
 }
 
 // roomRowDone answers the one question every foot, legend and refusal on a room
@@ -2854,7 +3604,7 @@ func (a *app) roomOffsetFor(total, height int) int {
 // roomScroll moves the room's window and re-decides whether the reader is
 // following the node.
 //
-// SCROLLING UP AT THE TOP OPENS THE FOLD. Scroll is the universal read-history
+// SCROLLING UP AT THE TOP OF A RUNNING ROOM OPENS THE FOLD. Scroll is the universal read-history
 // gesture, and a fold is exactly the history a person came into a room to
 // read; a wheel that stopped dead against a line saying "N earlier tool calls"
 // was the gesture unwired from the one thing it is for. So a scroll up that
@@ -2914,6 +3664,11 @@ func (a *app) roomScroll(delta int) {
 // ([app.roomTouched]).
 func (a *app) roomUnfoldAtTop(total, height int) bool {
 	room := a.room
+	// FINISHED WORK OPENS ONLY BY DISCLOSURE. Scrolling back to the request,
+	// including trackpad momentum at the top, must not expose the tool log.
+	if room == nil || room.done {
+		return false
+	}
 	rows := a.roomRows(a.bodyWidth())
 	end := min(height, total)
 	var open func()
@@ -2997,6 +3752,9 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 	if lead != "" {
 		lane = roomSteerHere + roomSteerBack
 	}
+	if a.roomOrganized() {
+		lane = "Give an instruction or ask about this task"
+	}
 	if a.room.orch != nil {
 		// A RUN HAS NO WORKER TO TALK TO, so the box does not offer to steer one:
 		// the sentence goes to the PLANNER, which reads it on its next call
@@ -3005,12 +3763,41 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 		// listening" is the question it exists to answer.
 		lane = orchSteerLane + roomSteerBack
 	}
-	if a.room.done {
+	if a.roomIsGuest() {
+		// A BORROWED PAGE DOES NOT OFFER A KEYBOARD IT DOES NOT HAVE. This window is
+		// a second view onto a conversation another window is driving, and the
+		// steering door is genuinely absent here ([app.roomSteerDoors]) — so a
+		// placeholder reading `Steer <task>…` would be the box promising a delivery
+		// nothing behind it can make, which is the one thing a placeholder must
+		// never do. It says what the page IS instead, and keeps the way out.
+		lane = roomGuestLane + roomSteerBack
+	}
+	// A GUEST PAGE KEEPS THE READING WORD WHEN THE WORK LANDS. The finished
+	// refusal below is about a box that could once steer and now cannot; this
+	// one never could, and the reading word is exactly as true of a landed task
+	// as of a running one. The foot beside it carries the owner-aware finished
+	// sentence ([app.roomDoneRefusal]), so nothing here has to.
+	// AND A NODE THAT IS STILL SOMEBODY'S CALL KEEPS ITS STEER LANE. The work has
+	// stopped, but the box has not: `[s] tell it` is one of the three answers
+	// standing on the block above it, and what it does is point this box at this
+	// task (tasksettle.go's [app.landingTell]). A placeholder reading `this task
+	// has finished — say it to main` over a question the person is being asked
+	// here would send them somewhere else to answer it, which is the room half of
+	// the screen #767 was filed about.
+	if a.room.done && !a.roomIsGuest() && !a.roomLandingAsking() {
 		lane = a.roomFinishedRefusal().fit(room)
 	}
-	out := append([]string(nil), rows...)
-	out[0] = lead + a.pal.dim(prompt) + a.pal.dim(fit(lane, room))
-	return out
+	// The attachment/effort tray can precede the draft. Put the placeholder
+	// on the actual prompt row so it never paints a second composer above it.
+	prefix := ansi.Strip(lead) + prompt
+	for i, line := range rows {
+		if strings.HasPrefix(ansi.Strip(line), prefix) {
+			out := append([]string(nil), rows...)
+			out[i] = lead + a.pal.dim(prompt) + a.pal.dim(fit(lane, room))
+			return out
+		}
+	}
+	return rows
 }
 
 // ── THE COMPOSER SAYS WHERE THE WORDS GO ────────────────────────────────────
@@ -3060,7 +3847,7 @@ const (
 // [app.inputBlock] is laying out into — because the segment is charged to the
 // box and to nothing else.
 func (a *app) roomLead(width int) string {
-	if a.room == nil {
+	if a.room == nil || a.roomOrganized() {
 		return ""
 	}
 	node := a.roomNode()

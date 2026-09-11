@@ -5,20 +5,27 @@ package remote
 // into the workspace and assembled an agent exactly the way `aforge chat` does.
 //
 // The shape is one reader and one writer, and everything else follows from it.
-// Calls arrive in the order the surface made them and are answered in that same
-// order, because a surface that sets a model and then submits a message means
-// those two things in that order and nothing here may reorder them. The one
-// exception is a turn's events, which arrive on a channel the session owns and
-// are pumped by a goroutine of their own — that is the whole reason Submit
-// answers with a stream id instead of a transcript.
+// Calls that open a stream or change the conversation's shape still arrive and
+// are answered in the order the surface made them, on this goroutine
+// ([classify] is the one predicate). A surface that sets a model and then
+// submits a message means those two things in that order and nothing here may
+// reorder them. The one exception is a turn's events, which arrive on a
+// channel the session owns and are pumped by a goroutine of their own — that
+// is the whole reason Submit answers with a stream id instead of a transcript.
 //
-// ORDER IS WORTH MORE THAN OVERLAP, and the one call that pays for it is
-// Compact: it is the only method that does the work itself rather than starting
-// it, so a compaction pass holds the reader for as long as the summarizer takes
-// and the calls behind it wait. Handing it a goroutine would buy a live status
-// line during a compaction and cost the guarantee that a /model followed by a
-// message is a message on the new model — a bad trade, and a bug nobody would
-// reproduce twice.
+// GETTERS AND SMALL ACTS RUN OFF THIS GOROUTINE. A listing that held the
+// reader used to queue a person's keystroke behind it until [callDeadline]
+// fired and the surface declared the connection gone, while the engine went
+// on to apply the key. That is the defect: a person's act is not queued
+// behind an unrelated getter.
+//
+// ORDER IS WORTH MORE THAN OVERLAP for the calls that stay here, and the one
+// that pays for it is Compact: it is the only method that does the work itself
+// rather than starting it, so a compaction pass holds the reader for as long
+// as the summarizer takes and the ordered calls behind it wait. Handing Compact
+// a goroutine would buy a live status line during a compaction and cost the
+// guarantee that a /model followed by a message is a message on the new model
+// — a bad trade, and a bug nobody would reproduce twice.
 //
 // ── VERSION 2: THE CONVERSATION IS NOT THE CONNECTION ────────────────────────
 //
@@ -48,6 +55,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -82,6 +90,9 @@ type WrappedAgent interface {
 	FollowUp(text string) (<-chan session.Event, error)
 	Steer(text string) (<-chan session.Event, error)
 	Interrupt()
+	// InterruptFor is the stop with the door it came through on it, for the
+	// machinery stops that are not a person (internal/session's stopcause.go).
+	InterruptFor(door session.StopDoor)
 	Compact(ctx context.Context) error
 	Close() error
 	Model() string
@@ -140,6 +151,10 @@ type Engine struct {
 	// started a new one" travels here, the same words the local door puts on
 	// the surface's entry notice.
 	Note string
+	// Launch is the shape this conversation was built with, echoed on every
+	// welcome so a surface can tell the conversation it asked for from the one
+	// it joined ([LaunchShape]). Nil is the engine's own defaults.
+	Launch *LaunchShape
 
 	// ApprovalMode is this machine's own answer to "does a tool run without
 	// asking", read once at boot off the profile the boot closure resolved
@@ -309,6 +324,17 @@ const ringEvents = 4096
 func Serve(in io.Reader, out io.Writer, opts Options) error {
 	return ServeAttach(in, out, AttachOptions{
 		Open: func(hello Hello) (*Session, error) {
+			// A JOIN IS REFUSED HERE, BEFORE ANYTHING IS BOOTED. [Hello.Join] asks
+			// for a conversation that is ALREADY OPEN and says it will take nothing
+			// else, and this door has none to offer: it opens the pipe's own
+			// conversation, and that conversation is this pipe's whole life. Booting
+			// one to answer a join would do the exact thing the flag exists to
+			// prevent — start a model to answer a question about work somebody
+			// believes is already running somewhere else — and the connection would
+			// then be bound to a transcript nobody asked for.
+			if hello.Join {
+				return nil, errors.New("this engine opens one conversation for one connection, so there is none already open here to join")
+			}
 			engine, err := opts.Boot(hello)
 			if err != nil {
 				return nil, err
@@ -362,8 +388,9 @@ type Session struct {
 	held  *heldSet
 
 	// surfaces is everybody attached right now. Events fan out to all of them;
-	// calls arrive from each independently and are serialized at the agent by
-	// the same one-call-at-a-time reader every connection has.
+	// calls arrive from each independently. Stream-opening and shape-changing
+	// calls stay serialized on that connection's reader ([classify]); getters
+	// and small acts run off it so a keystroke cannot wait behind a listing.
 	surfaces map[*server]struct{}
 	pumps    sync.WaitGroup
 
@@ -373,6 +400,28 @@ type Session struct {
 	// opens, and a window that arrived late needs that replay for itself
 	// (tasklane.go states the whole of it).
 	tasklanes map[*server]*taskFeed
+
+	// newsfeeds is one outbox per surface for the live status row — the phase
+	// clock and the lane sighting, which are pushed at this process by
+	// internal/session's two global readers and have to be steered to the
+	// connection they belong to (news.go). It is keyed by surface for the task
+	// lane's reason and drained by a goroutine per surface for one this file
+	// has nowhere else: the fan-out runs on a turn's own stream goroutine, and
+	// a status line may not be able to stall the turn it is measuring.
+	newsfeeds map[*server]*newsFeed
+
+	// lanes is the same arrangement for the harness subscription version 11
+	// added, keyed by lane and then by the surface holding it
+	// (standinglane.go). It is a map by lane rather than one field because
+	// every road that ends a subscription ends all of them: a surface leaving,
+	// a session swap, a conversation closing.
+	lanes map[laneName]map[*server]*laneFeed
+
+	// wakeStop is the way out of this conversation's one subscription to the
+	// turns it starts itself (wakelane.go). Nil is a conversation whose agent
+	// has no wake lane to hold — a scripted engine — or one whose subscription
+	// was left by a swap and not yet retaken.
+	wakeStop *wakeWatch
 
 	// driver is the one surface that may put words into this conversation, and
 	// arrivals is what "newest" means when the keyboard has to find one. Both
@@ -385,6 +434,9 @@ type Session struct {
 	// race to the writers, so the surface keeps the highest number it has seen
 	// and drops anything older (wire.go's [FactsPush]).
 	factsRev uint64
+	// weighOwed says a tool batch has ended and the facts have not been stated
+	// since its results joined the conversation ([weighsAgain]).
+	weighOwed bool
 
 	// closed is the conversation deliberately ended — [MethodClose], or the
 	// pipe dying on an engine whose life this pipe was.
@@ -392,7 +444,31 @@ type Session struct {
 	// empty is when the last surface left, and zero while somebody is here. It
 	// is what an idle policy measures (internal/enginehost).
 	empty time.Time
+	// acted is when a window last made a call. A stalled road tears the pipe
+	// under a window that has not gone anywhere, and this is the reading that
+	// keeps that gap from looking like an empty room. Zero is a conversation
+	// nobody has called into.
+	acted time.Time
+	// lastWatch is the last surface name that acted or left, so a stop the
+	// unattended door takes can say which window it believed had gone. It is a
+	// label, never an identity, and empty when nobody was ever here.
+	lastWatch string
 }
+
+// watchGrace is how long a window goes on counting as somebody watching after
+// its last call. THE GAP IT COVERS IS A STALLED CALL PLUS THE REDIAL AFTER IT,
+// so the span is derived from [callDeadline] and never retyped: one deadline
+// for the call that did not come back, and one for the link that has not been
+// dialled again yet.
+const watchGrace = 2 * callDeadline
+
+// WatchFor is that grace as [Session.watchedLocked] applies it, and it is
+// [watchGrace] everywhere the product runs. It is a var for the reason
+// internal/enginehost's sessionIdle is one: a test asking what the IDLE POLICY
+// decides is not asking about a stalled road, and it must be able to take this
+// span out of the question rather than wait it out. Nothing in the product
+// writes it.
+var WatchFor = watchGrace
 
 // NewSession wraps an opened engine as a conversation. Persistent says the
 // engine outlives its connections, which is the fact [Welcome.Persistent]
@@ -401,7 +477,7 @@ func NewSession(engine *Engine, persistent bool) *Session {
 	if engine == nil {
 		return nil
 	}
-	return &Session{
+	sess := &Session{
 		engine:     engine,
 		agent:      engine.Agent,
 		persistent: persistent,
@@ -409,8 +485,20 @@ func NewSession(engine *Engine, persistent bool) *Session {
 		held:       newHeldSet(),
 		surfaces:   map[*server]struct{}{},
 		tasklanes:  map[*server]*taskFeed{},
+		lanes:      map[laneName]map[*server]*laneFeed{},
+		newsfeeds:  map[*server]*newsFeed{},
 		empty:      time.Now(),
 	}
+	// The conversation watches its own turns from the moment it exists, so a
+	// wake that runs while nobody is attached still mints the stream an
+	// arriving surface reads in its welcome — and the turn itself is journalled
+	// either way, because the engine is the only writer of the session file.
+	sess.watchOwnTurns()
+	// AND THE CONVERSATION IS FILED UNDER THE NAME ITS OWN NEWS ARRIVES UNDER,
+	// from the moment it exists, so the phase of a wake that runs before
+	// anybody attaches has somewhere to be steered to (news.go).
+	sess.fileNews()
+	return sess
 }
 
 // Workspace is the directory this conversation works in — the answer a host
@@ -431,6 +519,29 @@ func (sess *Session) Attached() int {
 // Ended reports that this conversation is over — somebody said goodbye through
 // [MethodClose], or the pipe that was its whole life went away. A host reaps
 // one that says so.
+// File is the transcript this conversation is writing.
+//
+// IT IS THE ONE IDENTITY A CONVERSATION HAS OUTSIDE THIS PACKAGE. A host keys
+// its sessions by whatever the first hello said, which is a launch's word and
+// not the conversation's own; the file is what the world scan, the presence
+// files, the task index and the surface all name a conversation by. So a caller
+// answering "is the conversation in this file already open here" asks this
+// ([Hello.Join] is that caller).
+//
+// It is read under the session's own lock because a swap writes it
+// ([Session.swap]).
+func (sess *Session) File() string {
+	if sess == nil {
+		return ""
+	}
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	if sess.engine == nil {
+		return ""
+	}
+	return sess.engine.SessionFile
+}
+
 func (sess *Session) Ended() bool {
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
@@ -438,19 +549,88 @@ func (sess *Session) Ended() bool {
 }
 
 // IdleSince is when this conversation went quiet, and the zero time when it has
-// not: a surface is attached, a turn is still running, or a question is waiting
-// for somebody to come back and answer it.
+// not. Five things make it busy: a surface attached, a turn still streaming, a
+// question waiting to be answered, WORK THE CONVERSATION HANDED OFF, and a
+// window that acted inside [watchGrace].
 //
-// A TURN WITH NOBODY WATCHING IS NOT IDLE, which is the entire point of the
-// persistent engine — the long refactor asked for from a café keeps the session
-// alive while it runs, and a held card keeps it alive until it is answered.
+// The fourth was missing and it had a clock on it. A task, an adaptive run and a
+// background job outlive the turn that started them; the turn ends, its ring is
+// dropped, and the session read as idle while the workers ran on — thirty minutes
+// later the sweep closed it and took the work. So the agent is asked, and
+// [session.Agent.WorkingNow] is the authoritative reading: tasks, runs and jobs
+// together.
+//
+// The agent is asked off this lock, because that walk takes locks of its own and
+// holding sess.mu across it would put the sweep in front of every event a turn
+// records. The answer can age while it is read, so the state is re-checked
+// afterwards and a conversation that changed under the reading is reported busy
+// for this pass: one sweep too many costs a minute of memory, one too few costs
+// somebody's work. [Session.RetireIfIdle] is where that re-check becomes a
+// decision.
 func (sess *Session) IdleSince() time.Time {
 	sess.mu.Lock()
+	agent, generation := sess.agent, sess.generation
+	idle := sess.idleSinceLocked()
+	sess.mu.Unlock()
+	if idle.IsZero() || agent == nil {
+		return idle
+	}
+	if workingNow(agent) {
+		return time.Time{}
+	}
+	// The re-check. A surface may have arrived, a turn opened, a card raised or
+	// the whole conversation swapped while the walk above ran; a swap makes the
+	// reading about an agent this session no longer has, so it is discarded.
+	sess.mu.Lock()
 	defer sess.mu.Unlock()
-	if len(sess.surfaces) > 0 || len(sess.rings) > 0 || len(sess.held.waiting()) > 0 {
+	if sess.agent != agent || sess.generation != generation {
+		return time.Time{}
+	}
+	return sess.idleSinceLocked()
+}
+
+// idleSinceLocked is the half of the reading this package can answer itself.
+func (sess *Session) idleSinceLocked() time.Time {
+	if sess.watchedLocked() || len(sess.rings) > 0 || sess.held.outstanding() > 0 {
 		return time.Time{}
 	}
 	return sess.empty
+}
+
+// watchedLocked is somebody being in the room, and it is the one reading the
+// unattended sentence may be said on.
+//
+// A SURFACE ATTACHED IS THE OBVIOUS HALF. The other half is a window that
+// ACTED inside [WatchFor] and whose pipe has since gone quiet, because that is
+// what a stalled call does to a window nobody has left: the road takes ten
+// seconds to give up, the link is torn, the redial has not landed, and for that
+// gap a person sitting in front of the conversation looks to this package
+// exactly like an empty room. Reading it as one is how a reply was stopped
+// under somebody who had just pressed a key in it (#833).
+//
+// IT IS DELIBERATELY NOT THE IDLE READING. A turn still streaming with nobody
+// in front of it is busy AND unwatched, and the two questions have different
+// answers there — [Session.idleSinceLocked] asks whether the conversation is
+// doing anything, and this asks whether anybody is there to be told about it.
+func (sess *Session) watchedLocked() bool {
+	if len(sess.surfaces) > 0 {
+		return true
+	}
+	return WatchFor > 0 && !sess.acted.IsZero() && time.Since(sess.acted) <= WatchFor
+}
+
+// workingNow asks a conversation whether anything it started is still going.
+//
+// It is asserted rather than required of [WrappedAgent] on tasklane.go's terms:
+// a scripted agent with no graph has no work, and an engine that cannot answer
+// is not one to be kept alive on suspicion. Any live root counts — a queued node
+// is work that has not started YET, not work that is over.
+func workingNow(agent WrappedAgent) bool {
+	door, ok := agent.(interface{ WorkingNow() []session.WorkNode })
+	if !ok {
+		return false
+	}
+	return len(door.WorkingNow()) > 0
 }
 
 // Close ends the conversation: the turn in flight stops where it is and keeps
@@ -461,18 +641,116 @@ func (sess *Session) IdleSince() time.Time {
 // conversation survive" is whether this ran. It is idempotent because every
 // road out of a connection may call it and a host may call it again on the way
 // down.
+// AND THE DOOR IS READ FROM PRESENCE, because this is the road the whole
+// machine takes when it goes away — internal/enginehost's shutdown, which is
+// `aforge engine --stop`, a signal, and a stale build letting go. A window
+// still in the room means the engine went out from under somebody, and that is
+// not the unattended door however the host was asked. An empty room is.
 func (sess *Session) Close() error {
+	sess.mu.Lock()
+	door, name := session.StopByEngineStopped, ""
+	if !sess.watchedLocked() {
+		door, name = session.StopByRetired, sess.lastWatch
+	}
+	sess.mu.Unlock()
+	return sess.closeFor(door, name)
+}
+
+// closeFor is [Session.Close] for a road that already knows which door it is,
+// and it is the one place the closed flag is won so that no two endings can
+// both interrupt the turn.
+func (sess *Session) closeFor(door session.StopDoor, name string) error {
 	sess.mu.Lock()
 	agent, already := sess.agent, sess.closed
 	sess.closed = true
 	sess.mu.Unlock()
+	return sess.shutDown(agent, already, door, name)
+}
+
+// closeLeaving is a person's own goodbye: [MethodClose] said the conversation
+// is over, which is leaving it, not retiring it for want of a watcher.
+func (sess *Session) closeLeaving() error {
+	return sess.closeFor(session.StopByLeaving, sess.lastWatched())
+}
+
+// lastWatched is the window this conversation last saw, as a label and never as
+// an identity. Empty is a conversation nobody was ever in.
+func (sess *Session) lastWatched() string {
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	return sess.lastWatch
+}
+
+// RetireIfIdle ends this conversation if it has been idle for longer than the
+// policy allows, and answers whether it is now over.
+//
+// IT EXISTS FOR THE GAP BETWEEN ASKING AND ACTING. A caller that read
+// [Session.IdleSince] and then called Close would be deciding on a photograph:
+// a surface can attach, a turn can open and a card can be raised in between, and
+// closing then would take down a conversation somebody had just come back to.
+// Here the last look and the decision to end it happen under ONE acquisition of
+// the session lock, so anything that goes through that lock either arrives
+// before the look — and cancels the retirement — or finds the conversation
+// already ended and is handed a fresh one (internal/enginehost's open).
+//
+// WHAT IS STILL A PHOTOGRAPH is the work reading inside IdleSince, which cannot
+// be taken under this lock (it walks the graph). The guarantee is therefore:
+// nothing that reaches this session's own state can be lost, and a background
+// worker that starts something new in the microseconds after the walk is
+// interrupted with its journal flushed, exactly as a person's own /quit would.
+// The window is that walk, not the whole idle span.
+func (sess *Session) RetireIfIdle(olderThan time.Duration) bool {
+	idle := sess.IdleSince()
+	if idle.IsZero() || time.Since(idle) <= olderThan {
+		return false
+	}
+	sess.mu.Lock()
+	if again := sess.idleSinceLocked(); again.IsZero() || time.Since(again) <= olderThan {
+		// Somebody came back, a turn opened, or a card was raised while the
+		// question was being asked. The conversation stays.
+		sess.mu.Unlock()
+		return false
+	}
+	agent, already := sess.agent, sess.closed
+	name := sess.lastWatch
+	sess.closed = true
+	sess.mu.Unlock()
+	_ = sess.shutDown(agent, already, session.StopByRetired, name)
+	return true
+}
+
+// shutDown is what ending a conversation does once the caller has won the
+// closed flag: every lane left, the turn interrupted, the journal flushed.
+func (sess *Session) shutDown(agent WrappedAgent, already bool, door session.StopDoor, name string) error {
 	// The rails are left BEFORE the agent is, so no lane is still delivering off
-	// a conversation that is being flushed and shut (tasklane.go).
+	// a conversation that is being flushed and shut (tasklane.go), and version
+	// 11's subscription goes the same way (standinglane.go).
 	sess.closeTaskLanes()
+	sess.closeLanes()
+	// The wake lane goes with them and for the same reason: it is a rail, and
+	// a rail left open on a conversation being flushed is a subscription the
+	// sweep has already decided is over (wakelane.go).
+	sess.stopWakeLane()
+	// AND THE NEWSROOM LOSES THIS CONVERSATION, which is what puts the two
+	// global readers back when the last one on this process goes: a host
+	// holding nothing has to read as a build with nobody watching, because that
+	// is what decides whether a stalled pinned lane is asked about or quietly
+	// borrowed against (news.go).
+	sess.dropNews()
 	if agent == nil || already {
 		return nil
 	}
-	agent.Interrupt()
+	// THE DOOR IS THE ONE THIS ENDING CAME THROUGH, not a single sentence
+	// shared by every road out. A named interrupt is preferred when the
+	// agent can carry the window; a scripted engine that cannot still
+	// hears the door.
+	if named, ok := agent.(interface {
+		InterruptNamed(session.StopDoor, string)
+	}); ok {
+		named.InterruptNamed(door, name)
+	} else {
+		agent.InterruptFor(door)
+	}
 	return agent.Close()
 }
 
@@ -490,6 +768,110 @@ func (sess *Session) current() WrappedAgent {
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
 	return sess.agent
+}
+
+// agentOf is the engine to deliver to WHEN the conversation open here is the one
+// the caller named, and it takes both under one hold of the lock [Session.swap]
+// replaces them under — the caller cannot check the name and then act on an
+// agent the swap moved in between. An empty claim is a caller making none.
+func (sess *Session) agentOf(conversation string) (WrappedAgent, bool) {
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	conversation = strings.TrimSpace(conversation)
+	if conversation == "" {
+		return sess.agent, true
+	}
+	// AN UNKNOWN IDENTITY IS NOT A MATCH. A session with no transcript name
+	// cannot establish the claim, so the claim is refused — the same reading
+	// [session.Agent.thisConversation] takes.
+	open := strings.TrimSpace(sess.engine.SessionFile)
+	if open == "" || filepath.Clean(conversation) != filepath.Clean(open) {
+		return nil, false
+	}
+	return sess.agent, true
+}
+
+// steerConversation is the conversation ONE correction has to be delivered to,
+// out of the two names a connection can carry: what it JOINED (bound at the
+// door, and never sent again) and what this send CLAIMED ([TaskSteerArgs.Session],
+// the conversation the surface believed it was addressing). False is a
+// correction that must not be delivered at all.
+//
+// NEITHER NAME OVERRIDES THE OTHER. A bound connection that claims a different
+// conversation is refused rather than served under either reading, because one
+// of the two beliefs is wrong and there is no way to tell which. A bound
+// connection that claims nothing is checked against its binding, so a swap
+// cannot answer it with the replacement's task of the same number. An unbound
+// connection — an ordinary window, which FOLLOWS its session — is checked
+// against its claim alone, exactly as before, and an empty claim is a caller
+// making none.
+func steerConversation(joined, claimed string) (string, bool) {
+	joined, claimed = strings.TrimSpace(joined), strings.TrimSpace(claimed)
+	if joined == "" {
+		return claimed, true
+	}
+	if claimed != "" && !sameTranscript(claimed, joined) {
+		return "", false
+	}
+	return joined, true
+}
+
+// ErrJoinedGone is a joined connection finding that the conversation it joined
+// is not the one this session is running any more. It is a fact and not a
+// failure: the window that owns the session opened something else in it, and a
+// reader bound to the old one has nothing left to read.
+var ErrJoinedGone = errors.New("engine: that conversation is not open here any more")
+
+// joinRefusal is what a hello that said [Hello.Join] is told when the
+// conversation it named is not the one this session is running.
+//
+// IT NAMES WHAT WAS ASKED FOR, because the surface that asked is holding a row
+// it read off a disk a moment ago and the useful fact is which conversation the
+// engine could not give it. AND A JOIN THAT NAMED NOTHING MEETS THE SAME
+// REFUSAL: an unknown identity is not a match ([Session.agentOf] states the same
+// law for a call), so it is answered rather than quietly turned into a surface
+// that follows whatever this session opens next.
+func joinRefusal(asked string) error {
+	if asked = strings.TrimSpace(asked); asked == "" {
+		return fmt.Errorf("%w: a join has to name the conversation it wants", ErrJoinedGone)
+	}
+	return fmt.Errorf("%w: %s", ErrJoinedGone, asked)
+}
+
+// serving picks the agent AND the record reader together, under ONE lock, and
+// refuses when a joined connection's conversation has been replaced.
+//
+// THE PAIR IS THE POINT. They used to be taken under two separate locks, so a
+// [Session.swap] landing between them handed one call the OLD agent and the NEW
+// conversation's record reader — two halves of two different conversations
+// answering one question about a task id that means something in each.
+//
+// AND THE IDENTITY IS RE-CHECKED ON EVERY CALL, not once at the door. A welcome
+// proves whose conversation this was at the instant of attaching; another window
+// on the same session can call [MethodSessionOpen] a second later and replace it
+// underneath, and every read after that would be answered by the replacement —
+// under the name the reader is still drawing. `want` is empty for an ordinary
+// surface, which FOLLOWS its session wherever the person takes it; it is set
+// only for a connection that said [Hello.Join], which asked for one conversation
+// and must be told rather than quietly moved.
+func (sess *Session) serving(want string) (WrappedAgent, func(string, int) (session.TaskRecord, error), error) {
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	if want != "" && !sameTranscript(want, sess.engine.SessionFile) {
+		return nil, nil, ErrJoinedGone
+	}
+	return sess.agent, sess.engine.TaskRecord, nil
+}
+
+// sameTranscript compares two paths to one journal. Both sides of this arrived
+// as text — one off a hello, one out of an engine — and neither promises the
+// other's spelling.
+func sameTranscript(a, b string) bool {
+	a, b = strings.TrimSpace(a), strings.TrimSpace(b)
+	if a == "" || b == "" {
+		return false
+	}
+	return filepath.Clean(a) == filepath.Clean(b)
 }
 
 // ── the ring of a running turn ──────────────────────────────────────────────
@@ -547,22 +929,60 @@ func (r *ring) after(seq uint64) (uint64, []json.RawMessage) {
 // the write lock across the whole arrival makes the two orders one: a pump that
 // snapshotted this surface waits behind the welcome, and a pump that did not is
 // already in the replay.
+//
+// ── AND A JOIN IS CONFIRMED BEFORE ANYTHING IS TOUCHED ──
+//
+// The host matched [Hello.Session] against the conversations it holds and then
+// LET GO OF ITS OWN LOCK (internal/enginehost's Host.open); this is the first
+// moment the session's lock is taken. A [MethodSessionOpen] landing in that gap
+// used to be absorbed silently, because what was recorded here was the
+// conversation that turned out to be open rather than the one the hello asked
+// for — after which [Session.serving], [Session.laneIsOwnedLocked] and
+// [Session.agentOf] all compared the replacement against itself and passed
+// forever. So the hello's own name is what is checked, and a mismatch is a
+// refusal at the door: nothing is numbered, nothing is added to the room, and
+// the keyboard is not touched, because a connection that is about to be told
+// "no" must not first take the keys off the window that owns the work.
 func (sess *Session) attach(s *server, hello Hello) error {
 	sess.mu.Lock()
-	// Attached counts the OTHERS, so it is read before this one is added
-	// (wire.go's Welcome.Attached states why the number is carried at all).
-	welcome := sess.welcomeLocked()
-	welcome.Encoding = s.encoding
-	welcome.Attached = len(sess.surfaces)
+	if hello.Join && !sameTranscript(hello.Session, sess.engine.SessionFile) {
+		sess.mu.Unlock()
+		return joinRefusal(hello.Session)
+	}
+	// THE ARRIVAL IS NUMBERED BEFORE THE WELCOME IS BUILT, because the welcome
+	// says which questions THIS surface is owed and the number is how a card
+	// names the surfaces that have already drawn it (held.go).
 	s.name = machineLabel(hello.Surface)
+	// THE ARRIVAL IS AN ACT. A window that has just been welcomed is
+	// watching, and a pipe that tears on the way in — or a getter that
+	// no longer crosses the wire — must not read as nobody having been
+	// here. Every later call renews the same clock from dispatch.
+	sess.acted = time.Now()
+	if s.name != "" {
+		sess.lastWatch = s.name
+	}
 	sess.arrivals++
 	s.arrived = sess.arrivals
+	// Attached counts the OTHERS, so it is read before this one is added
+	// (wire.go's Welcome.Attached states why the number is carried at all).
+	welcome := sess.welcomeLocked(s)
+	welcome.Encoding = s.encoding
+	welcome.Attached = len(sess.surfaces)
 	sess.surfaces[s] = struct{}{}
 	sess.empty = time.Time{}
 	// THE NEWEST WINDOW DRIVES, and a window that merely lost its link is not a
 	// new one (driver.go states the whole rule, [Hello.Back] states why the
-	// difference is load-bearing).
-	if !hello.Back || sess.driver == nil {
+	// difference is load-bearing). A WATCHER IS NEITHER: it never drives, and the
+	// flag is recorded so no later hand-on can give it the keyboard either.
+	s.watching = hello.Watch
+	if hello.Join {
+		// WHAT THIS CONNECTION IS BOUND TO is the conversation it named, confirmed
+		// against the one open under this same lock a few lines above. The engine's
+		// own spelling of the path is what is kept, because every later comparison
+		// is against that field and one spelling saves a clean on every call.
+		s.joined = sess.engine.SessionFile
+	}
+	if !s.watching && (!hello.Back || sess.driver == nil) {
 		sess.takeLocked(s)
 	}
 	welcome.Driver = sess.driverForLocked(s)
@@ -577,18 +997,29 @@ func (sess *Session) attach(s *server, hello Hello) error {
 			return err
 		}
 	}
+	// THE LIVE ROW OPENS LAST, after the welcome and the replay are on the wire,
+	// so a phase measured while this surface was being welcomed cannot overtake
+	// the welcome that tells it which conversation it is in (news.go).
+	sess.watchNews(s)
 	return nil
 }
 
 // detach takes one connection out of the room, and — when it was the last one —
-// starts the clock an idle policy reads and turns every unanswered card into a
-// question nobody is looking at.
+// starts the clock an idle policy reads. IT IS NOT WHAT MAKES A CARD WAITING:
+// a killed terminal leaves without saying so, and this runs whenever its socket
+// gets around to reporting the end, which may be after the window that replaced
+// it has already been welcomed (held.go states the whole rule).
 func (sess *Session) detach(s *server) {
 	// THE RAIL'S SUBSCRIPTION GOES WITH THE WINDOW. It is left before anything
 	// else because leaving it is what ends the goroutine pumping frames at a
 	// pipe that is closing (tasklane.go).
 	sess.dropTaskLane(s)
+	sess.dropLanes(s)
+	sess.dropNewsFeed(s)
 	sess.mu.Lock()
+	if s.name != "" {
+		sess.lastWatch = s.name
+	}
 	delete(sess.surfaces, s)
 	// THE KEYBOARD IS NEVER LEFT ON A WINDOW THAT HAS GONE. It goes to the
 	// newest surface still here, so the last window standing can always type
@@ -600,7 +1031,6 @@ func (sess *Session) detach(s *server) {
 	}
 	if len(sess.surfaces) == 0 {
 		sess.empty = time.Now()
-		sess.held.roomEmptied()
 	}
 	sess.mu.Unlock()
 	if moved {
@@ -608,7 +1038,49 @@ func (sess *Session) detach(s *server) {
 	}
 }
 
-func (sess *Session) welcomeLocked() Welcome {
+// steerFromDoor is an engine that takes a correction WITH THE SURFACE'S NAME
+// FOR THE SEND on it, and recognises the same send arriving twice
+// (internal/session's [session.Agent.SteerTaskFrom]).
+//
+// IT IS ONE INTERFACE FOR TWO QUESTIONS ASKED AT DIFFERENT MOMENTS: the
+// handler asserts it to route a named send, and the welcome asserts it to tell
+// the surface, before anything is sent, whether asking twice is safe here
+// ([Welcome.SteerRepeat]). Two assertions of one door would be two answers to
+// one question the day an engine grew half of it.
+type steerFromDoor interface {
+	SteerTaskFrom(uint64, string, session.SteerSource) (session.SteerReceipt, error)
+	SteerRepeatKnown() bool
+}
+
+// steeredOf is the engine's receipt as the frame carries it. It is one function
+// because a field added to the receipt and forgotten in one of the handler's
+// branches is a fact that arrives on some engines and not others.
+func steeredOf(receipt session.SteerReceipt) TaskSteered {
+	return TaskSteered{
+		Waiting:   receipt.Waiting,
+		Held:      receipt.Held,
+		Direction: receipt.Direction,
+		Landing:   receipt.Landing,
+		Again:     receipt.Again,
+	}
+}
+
+// steerRepeatKnown asks this engine whether it keeps the identity on a send.
+// The door answers for itself; an engine without the door answers no, which is
+// the reading a surface must take from silence ([Welcome.SteerRepeat]).
+func steerRepeatKnown(agent any) bool {
+	door, ok := agent.(steerFromDoor)
+	return ok && door.SteerRepeatKnown()
+}
+
+func shortTitleOf(agent any) string {
+	if named, ok := agent.(interface{ ShortTitle() string }); ok {
+		return named.ShortTitle()
+	}
+	return ""
+}
+
+func (sess *Session) welcomeLocked(s *server) Welcome {
 	// A HOSTED START MUST READ THE ENGINE'S FILE, not the surface's. Carrying
 	// this reading in the welcome is what makes an old persistent engine say
 	// it was replaced before somebody has to spend a turn to discover it.
@@ -627,14 +1099,35 @@ func (sess *Session) welcomeLocked() Welcome {
 		Model:                      sess.agent.Model(),
 		Build:                      buildinfo.String(),
 		Title:                      sess.agent.Title(),
+		ShortTitle:                 shortTitleOf(sess.agent),
 		Note:                       note,
 		ApprovalMode:               sess.engine.ApprovalMode,
 		BashBackgroundAfterSeconds: sess.engine.BashBackgroundAfterSeconds,
 		PlacesRoot:                 sess.engine.PlacesRoot,
 		Live:                       sess.liveLocked(),
-		Held:                       sess.held.waiting(),
+		Held:                       sess.held.waitingFor(s.arrived),
 		Persistent:                 sess.persistent,
+		Launch:                     sess.engine.Launch,
 		Facts:                      sess.factsLocked(),
+		SteerRepeat:                steerRepeatKnown(sess.agent),
+		// Whether this engine can hold a folder at all, asked of the agent it has
+		// open — for [Welcome.Folders]'s stated reason: the surface's own type
+		// assertion cannot see across the wire.
+		Folders: keepsFolders(sess.agent),
+		// This revision checks it in the handler, for every engine behind it
+		// ([Session.agentOf]), so the answer is about the wire and not the agent.
+		SteerOwner: true,
+		TaskSetup:  taskSetupKnown(sess.agent),
+		// Whether this engine has a dial on the conversation's own thinking,
+		// asked of the agent it has open — for [Welcome.Effort]'s stated reason:
+		// neither a type assertion at the far end nor the rung itself can tell an
+		// engine without a dial from a conversation whose dial is off.
+		Effort:     effortKnown(sess.agent),
+		TaskSettle: taskSettleKnown(sess.agent),
+		// Whether this conversation's news reaches the surface at all, asked the
+		// way the newsroom files it ([Session.fileNews]): an engine that cannot
+		// name its conversation fans nothing out, and says so here.
+		News: newsKeyOf(sess.agent) != "",
 	}
 }
 
@@ -690,16 +1183,50 @@ func (sess *Session) announce() {
 
 // factsMoved says whether one event of a turn changes something a frame reads.
 //
-// IT IS A SHORT LIST ON PURPOSE, and every entry earns its place: a turn ending
-// settles the spending and the weight, an error ends a turn the same way, a
-// name being chosen is the one time a session's title ever changes, and a
-// compaction is the one thing that makes a conversation weigh LESS. Every other
-// kind moves text on a screen and no fact behind it — and a list that announced
-// on all of them would put a transcript walk between every delta and the next.
+// State transitions publish spending, identity and attention. Question and
+// settlement events must publish before a hidden reader wakes, while ordinary
+// text and reasoning deltas carry no changed frame facts.
 func factsMoved(kind session.EventKind) bool {
 	switch kind {
-	case session.EventTurnDone, session.EventError, session.EventTitleChanged, session.EventCompacted:
+	case session.EventTurnDone, session.EventError, session.EventTitleChanged, session.EventCompacted,
+		session.EventConsentRequest, session.EventToolEnd, session.EventToolFailed,
+		session.EventConnectAsk, session.EventConnectDone,
+		session.EventTaskProposal, session.EventTaskUpdate,
+		session.EventStandingProposal, session.EventStandingUpdate,
+		session.EventHarnessOffer, session.EventHarnessRun, session.EventHarnessDesignDone,
+		session.EventHarnessDesignRevising, session.EventOrchestratePause, session.EventOrchestrateFuel,
+		session.EventSubharnessAsk, session.EventSubharnessProposal, session.EventSubharnessProposalOff:
 		return true
+	}
+	return false
+}
+
+// weighsAgainLocked says whether this event is the first word of the request
+// that follows a tool batch, which is when what the conversation weighs is
+// stated again (the facts' ContextTokens).
+//
+// THE END OF A BATCH IS STATED ALREADY AND IS ONE STEP EARLY FOR THE WEIGHT. The
+// facts go out on every tool end ([factsMoved]) — the step's usage is banked by
+// then — but the session records the batch's RESULTS into the conversation only
+// after the last end has been published (internal/session's loop), so a reading
+// taken there weighs the conversation without the results that are about to be
+// sent. A surface drawing the weight of the request in flight — the chat's live
+// token column — saw a big file read join the conversation one whole step late.
+// The next request is the first moment the results are certainly in, and its
+// first word is the first event this pump sees from it.
+func (sess *Session) weighsAgainLocked(kind session.EventKind) bool {
+	switch kind {
+	case session.EventToolEnd, session.EventToolFailed:
+		sess.weighOwed = true
+	case session.EventTurnDone, session.EventError:
+		// The turn's own end states the facts whole, results and all.
+		sess.weighOwed = false
+	case session.EventTextDelta, session.EventReasoning, session.EventThinking,
+		session.EventToolForming, session.EventToolAnnounced:
+		if sess.weighOwed {
+			sess.weighOwed = false
+			return true
+		}
 	}
 	return false
 }
@@ -764,6 +1291,14 @@ func (sess *Session) replayLocked(cursors []StreamCursor) []Frame {
 func (sess *Session) mint() (id, generation uint64) {
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
+	return sess.mintLocked()
+}
+
+// mintLocked is [Session.mint] for a caller already holding sess.mu — the
+// wake lane, which has to ask whether the conversation it is about to name a
+// stream in is still the one its lane belongs to, and has to ask it in the
+// same hold of the lock that does the naming (wakelane.go).
+func (sess *Session) mintLocked() (id, generation uint64) {
 	sess.streams++
 	sess.rings[sess.streams] = &ring{first: 1}
 	return sess.streams, sess.generation
@@ -812,18 +1347,26 @@ func (sess *Session) emit(id, generation uint64, event session.Event) {
 		return
 	}
 	seq := held.add(payload)
-	// A QUESTION RAISED INTO AN EMPTY ROOM WAITS INSTEAD OF EXPIRING, which is
-	// what [heldSet] is for; a question raised while somebody is watching is on
-	// their screen and only becomes a waiting one if they leave without
-	// answering it.
-	sess.held.raise(wire, id, len(sess.surfaces) == 0)
+	watching := sess.watchingLocked()
+	// A QUESTION WAITS INSTEAD OF EXPIRING FOR EVERY SURFACE THIS FRAME IS NOT
+	// GOING TO, which is what [heldSet] is for: the windows in the list below
+	// are about to draw it, and any other window — including one that has not
+	// dialled yet — is owed it on arrival.
+	if _, question := heldKeyOf(event); question {
+		// Ordinary text deltas do not need a second copy of the watching set.
+		drawn := make([]uint64, 0, len(watching))
+		for _, surface := range watching {
+			drawn = append(drawn, surface.arrived)
+		}
+		sess.held.raise(wire, id, drawn)
+	}
 	// A connect ask removes itself when its five-minute wait settles. That
 	// settling emits the next event, so reconcile here while the session lock is
 	// already held and do not leave a dead card keeping the host alive forever.
 	if pending, ok := sess.agent.(interface{ PendingConnect() []string }); ok {
 		sess.held.settleConnect(pending.PendingConnect())
 	}
-	watching := sess.watchingLocked()
+	weighs := sess.weighsAgainLocked(event.Kind)
 	sess.mu.Unlock()
 
 	// THE FACTS GO FIRST, AHEAD OF THE EVENT THAT MOVED THEM. A surface settles
@@ -832,7 +1375,7 @@ func (sess *Session) emit(id, generation uint64, event session.Event) {
 	// late and the status line would report the turn before this one. The agent
 	// has already sealed the turn by the time this event reaches the pump, so
 	// the reading taken here is the finished one.
-	if factsMoved(event.Kind) {
+	if factsMoved(event.Kind) || weighs {
 		sess.announce()
 	}
 
@@ -902,7 +1445,7 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 	// The note belonged to the launch and to nothing after it: a swap the
 	// person asked for is not a session that moved under them.
 	sess.engine.Note = ""
-	welcome := sess.welcomeLocked()
+	welcome := sess.welcomeLocked(asked)
 	welcome.Attached = len(sess.surfaces) - 1
 	if welcome.Attached < 0 {
 		welcome.Attached = 0
@@ -914,15 +1457,24 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 	sess.mu.Unlock()
 
 	if previous != nil {
-		previous.Interrupt()
+		previous.InterruptFor(session.StopByLeaving)
 		_ = previous.Close()
 	}
 	// AND EVERY RAIL IN THE ROOM IS RE-POINTED AT THE CONVERSATION THAT IS
 	// ACTUALLY OPEN. The subscriptions above belonged to the agent just closed;
 	// each is reopened on the new one, which replays the new graph's roster
 	// (tasklane.go). It happens after the close so no lane can be handed rows
-	// from a conversation on its way out.
+	// from a conversation on its way out — the wake lane with the rest of them,
+	// because a wake queued on the old conversation's lane must never mint a
+	// stream in the one that replaced it.
 	sess.retakeTaskLanes()
+	sess.retakeLanes()
+	sess.retakeWakeLane()
+	// AND THE NEWSROOM IS TOLD THE ROOM'S NAME HAS CHANGED. /new and /resume
+	// mint a whole new agent, whose news arrives under a name of its own, and a
+	// conversation still filed under the old one would draw a status row that
+	// stopped moving the moment it was replaced (news.go).
+	sess.fileNews()
 	return json.Marshal(welcome)
 }
 
@@ -956,11 +1508,28 @@ type server struct {
 	// room filled up, which is how "the newest" is decided (driver.go).
 	name    string
 	arrived uint64
+	// watching is [Hello.Watch]: this surface reads and never drives. It is kept
+	// on the connection because the decision is made in three places — arrival,
+	// the hand-on when a driver leaves, and the guard in front of every door that
+	// types — and all three have to agree (driver.go).
+	watching bool
+	// joined is the transcript a [Hello.Join] connection asked for, and "" for an
+	// ordinary surface. It is re-checked on every call ([Session.serving]),
+	// because a welcome proves whose conversation this was at the instant of
+	// arriving and another window can replace it a second later.
+	joined string
 
 	// pending is the stream a call has just opened and dispatch has not yet let
-	// speak. It is one slot rather than a queue because one reader makes one
-	// call at a time.
+	// speak. It is one slot rather than a queue because only an ordered call
+	// opens a stream, and those stay on the reader, one at a time ([classify]).
 	pending *pending
+	// side is every getter or small act this connection has handed off the
+	// reader. The serve loop waits for it before leave, so a listing still
+	// running does not write into a session that has already been closed.
+	side sync.WaitGroup
+	// Observers leave with the view, independently of the durable turn pump.
+	observersMu sync.Mutex
+	observers   map[uint64]*taskFeed
 
 	// leaving records how this connection ends, and it is the whole of version
 	// 2's three-roads-out. detached is [MethodDetach] — the surface is going and
@@ -982,6 +1551,8 @@ func (s *server) serve(in io.Reader) (err error) {
 			err = guard.Note("remote/engine", recovered)
 			s.fatal(err.Error())
 		}
+		s.side.Wait()
+		s.stopObservers()
 		s.leave()
 	}()
 
@@ -1008,7 +1579,15 @@ func (s *server) serve(in io.Reader) (err error) {
 			s.fatal(err.Error())
 			return err
 		}
-		s.dispatch(frame)
+		if staysOnReader(frame.Method) {
+			s.dispatch(frame)
+		} else {
+			s.side.Add(1)
+			go func(call Frame) {
+				defer s.side.Done()
+				s.dispatch(call)
+			}(frame)
+		}
 		if s.detached {
 			// THE SURFACE SAID IT WAS GOING, and said so before it went, which
 			// is the fact version 1 could not express. The turn keeps running;
@@ -1061,8 +1640,17 @@ func (s *server) leave() {
 		return
 	}
 	sess.detach(s)
-	if s.goodbye || !sess.persistent {
-		_ = sess.Close()
+	if s.goodbye {
+		_ = sess.closeLeaving()
+		return
+	}
+	if !sess.persistent {
+		// AND THIS ONE IS THE UNATTENDED DOOR BY CONSTRUCTION, whatever the
+		// grace above would say: the pipe that just tore WAS this
+		// conversation's whole life, so nothing is ever going to attach to it
+		// again and there is no window left to come back. It names the one it
+		// had, which is the last thing anybody reading the journal can use.
+		_ = sess.closeFor(session.StopByRetired, sess.lastWatched())
 	}
 }
 
@@ -1108,7 +1696,12 @@ func (s *server) handshake(line []byte) error {
 	if err != nil {
 		return s.refuse("engine: " + err.Error())
 	}
-	if sess == nil || sess.agent == nil {
+	// THE AGENT IS READ UNDER THE SESSION'S OWN LOCK. A host hands out sessions
+	// that other connections are already driving, and [Session.swap] replaces
+	// this field under that lock — so a bare read here is one goroutine reading
+	// what another is writing, which is a race whatever the answer turns out to
+	// be.
+	if sess == nil || sess.current() == nil {
 		return s.refuse("engine: the workspace opened no conversation")
 	}
 	s.session = sess
@@ -1118,6 +1711,16 @@ func (s *server) handshake(line []byte) error {
 	arrived := sess.attach(s, hello)
 	s.write.Unlock()
 	if arrived != nil {
+		// A JOIN REFUSED AT THE DOOR IS A REFUSAL AND NOT A BROKEN PIPE. The
+		// sentence goes down the wire the way every other handshake refusal does —
+		// it cannot be sent from inside [Session.attach], which runs with this
+		// connection's writer held — and the session is let go of first, because
+		// this connection never entered the room and [server.leave] must not take
+		// it out of one.
+		if errors.Is(arrived, ErrJoinedGone) {
+			s.session = nil
+			return s.refuse(arrived.Error())
+		}
 		return arrived
 	}
 	// AND ONLY THEN IS THE REST OF THE ROOM TOLD who has the keyboard now. It
@@ -1127,6 +1730,11 @@ func (s *server) handshake(line []byte) error {
 	// an older window learning it is a watcher is news about the window that has
 	// arrived, which had better have arrived first.
 	sess.tellDriver(s)
+	// AND THE WINDOWS THIS ONE WALKED AWAY FROM ARE TOLD THAT IT DID. It is the
+	// same ordering and for the same reason as the line above, and it is second
+	// because a window learning it has been left should learn it after the room
+	// already agrees who is typing (driver.go's [Session.tellMoved]).
+	sess.tellMoved(s, hello)
 	return nil
 }
 
@@ -1185,6 +1793,11 @@ func readCall(line []byte) (Frame, error) {
 // method returns nothing: a surface waiting on a result it will never get is a
 // surface that has stopped, and "it worked" is a fact worth a line.
 func (s *server) dispatch(call Frame) {
+	// PRESENCE IS RENEWED BY THE ACT ITSELF. A stalled call tears this
+	// pipe under a window that has not gone anywhere; recording the call
+	// here — the one funnel every keystroke takes — is what keeps that
+	// gap from reading as an empty room.
+	s.noteAct()
 	payload, err := s.invoke(call)
 	result := Frame{Kind: "result", ID: call.ID, Payload: payload}
 	if err != nil {
@@ -1192,7 +1805,27 @@ func (s *server) dispatch(call Frame) {
 	}
 	_ = s.send(result)
 	// And only now does a turn opened by that call begin to speak.
-	s.release()
+	// GETTERS AND SMALL ACTS NEVER OPEN A STREAM, so they must not touch
+	// pending: two of them running at once would race the one slot, and one
+	// of them could steal a stream an ordered call had just named.
+	if staysOnReader(call.Method) {
+		s.release()
+	}
+}
+
+// noteAct records that this window just made a call, which is the fact
+// [Session.idleSinceLocked] reads as still being watched.
+func (s *server) noteAct() {
+	sess := s.session
+	if sess == nil {
+		return
+	}
+	sess.mu.Lock()
+	sess.acted = time.Now()
+	if s.name != "" {
+		sess.lastWatch = s.name
+	}
+	sess.mu.Unlock()
 }
 
 func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
@@ -1207,9 +1840,22 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	}()
 
 	sess := s.session
-	agent := sess.current()
+	agent, readRecord, err := sess.serving(s.joined)
+	if err != nil {
+		return nil, err
+	}
 	if agent == nil {
 		return nil, errors.New("engine: no conversation is open")
+	}
+	// A WATCHER MAY DO THE FEW THINGS ON A LIST AND NOTHING ELSE, and the list is
+	// the way round it is for the reason every other guard on this surface is a
+	// denial: a door added next year cannot forget an allow-list. The driver rule
+	// below covers the doors that TYPE, which is not the same set — switching a
+	// model, resolving a card, reviving a node, opening another session and
+	// closing this one all change the conversation without a word being said, and
+	// every one of them was open to a reader before this ([Hello.Watch]).
+	if s.watching && !watcherMay(call.Method) {
+		return nil, fmt.Errorf("%s (%s)", watchingWord, call.Method)
 	}
 	// THE DOORS THAT PUT WORDS INTO THE CONVERSATION ARE THE DRIVER'S, and
 	// the check is here rather than in each of them so that a door added later
@@ -1225,6 +1871,31 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	}
 
 	switch call.Method {
+	case MethodTaskModel, MethodTaskEffort, MethodTaskSetEffort:
+		args, err := arg[TaskSetupArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		want, agreed := steerConversation(s.joined, args.Session)
+		if !agreed || want == "" {
+			return nil, session.ErrNotThatConversation
+		}
+		owner, mine := sess.agentOf(want)
+		if !mine {
+			return nil, session.ErrNotThatConversation
+		}
+		door, ok := owner.(taskSetupDoor)
+		if !ok {
+			return nil, errors.New("task setup is unavailable in this engine; update the engine and reconnect")
+		}
+		switch call.Method {
+		case MethodTaskModel:
+			return nil, door.RetargetTask(args.ID, args.Value)
+		case MethodTaskSetEffort:
+			return nil, door.SetTaskEffort(args.ID, args.Value)
+		default:
+			return json.Marshal(door.TaskEffort(args.ID))
+		}
 	case MethodTaskRoom:
 		args, err := arg[TaskRoomArgs](call)
 		if err != nil {
@@ -1238,13 +1909,12 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if path == "" {
 			return json.Marshal(session.TaskRecord{})
 		}
-		sess.mu.Lock()
-		read := sess.engine.TaskRecord
-		sess.mu.Unlock()
-		if read == nil {
+		// The reader is the one that came WITH this agent ([Session.serving]), so
+		// the journal path and the reading are the same conversation's.
+		if readRecord == nil {
 			return nil, errors.New("engine: this engine cannot read its record")
 		}
-		record, err := read("file://"+path, args.Tail)
+		record, err := readRecord("file://"+path, args.Tail)
 		if err != nil {
 			return nil, err
 		}
@@ -1254,17 +1924,77 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
-		door, ok := agent.(interface {
+		// THE CONVERSATION IS CHECKED BEFORE THE TASK NUMBER IS USED FOR ANYTHING.
+		// The agent it will be delivered to is taken under the same lock the swap
+		// replaces it under ([Session.swap]), so a `Session.Open` landing beside
+		// this call either happens before it — and this is refused — or after it,
+		// and this was delivered to the conversation it named. There is no third
+		// ordering, and nothing is ever re-aimed at the task with that number in
+		// the conversation that replaced it.
+		//
+		// AND A BOUND CONNECTION IS HELD TO ITS BINDING. [Session.serving] above
+		// checked it, but that was a separate hold of the lock: a swap landing
+		// between the two would have left this call to be decided by whatever the
+		// caller claimed — and a caller claiming nothing would have been answered
+		// by the replacement. Both names are enforced, and neither overrides the
+		// other ([steerConversation]).
+		want, agreed := steerConversation(s.joined, args.Session)
+		if !agreed {
+			return json.Marshal(TaskSteered{Elsewhere: true})
+		}
+		steerAgent, mine := sess.agentOf(want)
+		if !mine {
+			return json.Marshal(TaskSteered{Elsewhere: true})
+		}
+		agent = steerAgent
+		// THE NAMED SEND FIRST. A surface that gave this crossing an identity is a
+		// surface that may ask again for it, and the door that keeps the identity
+		// is the only one that can answer the second ask with "already on the
+		// record" instead of delivering the correction twice
+		// ([session.Agent.SteerTaskFrom]). An engine without it falls through to
+		// the two doors below and steers exactly as it always did — the surface
+		// was told in its welcome that this was so ([Welcome.SteerRepeat]) and does
+		// not ask twice there.
+		if door, ok := agent.(steerFromDoor); ok && args.Scope != "" {
+			receipt, err := door.SteerTaskFrom(args.ID, args.Text,
+				session.SteerSource{Scope: args.Scope, Seq: args.Seq, At: args.Said})
+			if err != nil {
+				// AN UNKNOWN OUTCOME IS NOT AN ERROR STRING. Carried as one it would
+				// arrive as an ordinary refusal and the surface would hand the words
+				// back, where the next enter renames them ([TaskSteered.Uncertain]).
+				if errors.Is(err, session.ErrSendUnanswered) {
+					return json.Marshal(TaskSteered{Uncertain: true})
+				}
+				return nil, err
+			}
+			return json.Marshal(steeredOf(receipt))
+		}
+		// THE RECEIPT DOOR FIRST, AND THE OLDER ONE STILL ANSWERED. An engine that
+		// carries the whole receipt says whether the line was HELD against a task
+		// whose work is being checked (internal/session's [session.SteerReceipt]);
+		// one that predates it can still be steered, and its answer is the delivery
+		// it always gave. The capability is asserted rather than required, and its
+		// absence is visible in the frame rather than hidden behind a default.
+		if door, ok := agent.(interface {
+			SteerTask(uint64, string) (session.SteerReceipt, error)
+		}); ok {
+			receipt, err := door.SteerTask(args.ID, args.Text)
+			if err != nil {
+				return nil, err
+			}
+			return json.Marshal(steeredOf(receipt))
+		}
+		older, ok := agent.(interface {
 			SteerTask(uint64, string) (bool, error)
 		})
 		if !ok {
 			return nil, errors.New("engine: this session has no task rooms")
 		}
-		waiting, err := door.SteerTask(args.ID, args.Text)
+		waiting, err := older.SteerTask(args.ID, args.Text)
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(TaskSteered{Waiting: waiting})
+		return json.Marshal(TaskSteered{Waiting: waiting, Landing: session.SteerDelivered(waiting)})
 	case MethodTaskStop:
 		args, err := arg[TaskStopArgs](call)
 		if err != nil {
@@ -1285,6 +2015,67 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		// replayed the moment the subscription opens (tasklane.go).
 		sess.watchTasks(s)
 		return nil, nil
+	case MethodDesignWatch:
+		// THE HARNESS LANE, SUBSCRIBED. Like the rail's own, it answers nothing:
+		// what it buys is every design card, every note around one, and every
+		// subharness intake card arriving as a "design" frame from here on
+		// (standinglane.go).
+		sess.watchLane(s, laneDesign)
+		return nil, nil
+	case MethodQuestionWatch:
+		// THE QUESTIONS LANE, SUBSCRIBED. Like the two above it, it answers
+		// nothing: what it buys is every question this conversation raises,
+		// withdraws or has answered arriving as a "question" frame from here on,
+		// including everything still open replayed the moment the subscription
+		// opens (internal/session's [Agent.WatchQuestions]).
+		sess.watchLane(s, laneQuestion)
+		return nil, nil
+	case MethodTitleWatch:
+		// THE NAMING LANE, SUBSCRIBED. It answers nothing: what it buys is the
+		// name this conversation gives itself arriving as a "title" frame,
+		// including the one it is already carrying (standinglane.go).
+		sess.watchLane(s, laneTitle)
+		return nil, nil
+	case MethodQuestionResolve:
+		args, err := arg[QuestionArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		// THE OPTIONAL-DOOR PATTERN, on the terms the two frames below it keep: an
+		// engine that cannot resolve a question loses the ANSWERING and not the
+		// connection, and the sentence it refuses with is one a person can read.
+		door, ok := agent.(interface {
+			ResolveQuestion(session.Answer) error
+		})
+		if !ok {
+			return nil, errors.New("engine: this session cannot answer questions from here")
+		}
+		return nil, door.ResolveQuestion(args.Answer)
+	case MethodSetAutonomy:
+		args, err := arg[AutonomyArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			SetAutonomy(session.AskKind, session.Policy) error
+		})
+		if !ok {
+			return nil, errors.New("engine: this session keeps no settings about what may answer by itself")
+		}
+		return nil, door.SetAutonomy(args.Kind, args.Policy)
+	case MethodSubharnessResolve:
+		args, err := arg[SubharnessResolveArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			ResolveSubharness(uint64, bool, json.RawMessage)
+		})
+		if !ok {
+			return nil, errors.New("engine: this session has no saved programs to offer")
+		}
+		door.ResolveSubharness(args.ID, args.Run, args.Input)
+		return nil, nil
 	case MethodTaskResolve:
 		args, err := arg[TaskResolveArgs](call)
 		if err != nil {
@@ -1300,6 +2091,12 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			Approved: args.Approved, Redirect: args.Redirect, Model: args.Model,
 		})
 		return nil, nil
+	case MethodTaskSettle:
+		args, err := arg[TaskSettleArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		return settleTask(agent, args)
 	case MethodTaskHold:
 		args, err := arg[TaskHoldArgs](call)
 		if err != nil {
@@ -1442,9 +2239,43 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	case MethodDepositFile:
 		return s.depositFile(call)
 
+	case MethodStopWork:
+		door, ok := agent.(interface{ StopWork() error })
+		if !ok {
+			return nil, fmt.Errorf("this engine cannot stop all conversation work")
+		}
+		return nil, door.StopWork()
+
 	case MethodInterrupt:
+		// A STOP WITH NO DOOR ON IT IS A PERSON'S OWN, which is what every
+		// surface older than this argument means by sending nothing.
+		args, err := arg[InterruptArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		if door := session.StopDoor(strings.TrimSpace(args.Door)); door != "" && door != session.StopByPerson {
+			agent.InterruptFor(door)
+			return nil, nil
+		}
 		agent.Interrupt()
 		return nil, nil
+
+	case MethodAnswerLaneOffer:
+		// THE ANSWER TO THE ONE QUESTION THE PHASE SEAM RAISES, and it is
+		// asserted rather than required of [WrappedAgent] for the task lane's
+		// reason: an engine with no transport under it has no offer to answer,
+		// and false — "there was nothing to answer" — is the honest word for
+		// that as much as for a question that aged out (wire.go's
+		// [MethodAnswerLaneOffer]).
+		yes, err := arg[bool](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(laneOfferDoor)
+		if !ok {
+			return mustJSON(false), nil
+		}
+		return mustJSON(door.AnswerLaneOffer(yes)), nil
 
 	case MethodCompact:
 		return nil, agent.Compact(context.Background())
@@ -1457,7 +2288,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		// done a moment earlier and with somebody still listening for the
 		// failure.
 		s.goodbye = true
-		return nil, agent.Close()
+		return nil, sess.closeLeaving()
 
 	case MethodDetach:
 		// THE ONE METHOD WHOSE VALUE IS THE DIFFERENCE BETWEEN IT AND SILENCE.
@@ -1469,7 +2300,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 
 	case MethodHeldQuestions:
 		sess.mu.Lock()
-		waiting := sess.held.waiting()
+		waiting := sess.held.waitingFor(s.arrived)
 		sess.mu.Unlock()
 		return json.Marshal(waiting)
 
@@ -1512,6 +2343,33 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		agent.SetReasoningFor(args.Model, args.Level)
 		s.session.announce()
 		return nil, nil
+
+	case MethodEffort, MethodResolvedEffort, MethodSetEffort:
+		door, ok := agent.(effortDoor)
+		if !ok {
+			// A surface reading [Welcome.Effort] never gets here, and one that
+			// asked anyway is told the fact rather than left with a zero value it
+			// would draw as a rung of its own (effort.go).
+			return nil, errors.New("engine: this conversation has no thinking dial; update the engine and reconnect")
+		}
+		if call.Method == MethodEffort {
+			return json.Marshal(door.ConversationEffort())
+		}
+		if call.Method == MethodResolvedEffort {
+			return json.Marshal(door.ResolvedEffort())
+		}
+		rung, err := arg[string](call)
+		if err != nil {
+			return nil, err
+		}
+		took := door.SetConversationEffort(rung)
+		// AND EVERY SURFACE IS TOLD, on [MethodSetModel]'s terms: the rung rides
+		// the fact set every window on this conversation draws from, and a dial
+		// moved in one of them is a cell the others are painting right now.
+		if took {
+			s.session.announce()
+		}
+		return json.Marshal(took)
 
 	case MethodConsent:
 		args, err := arg[ConsentArgs](call)
@@ -1583,6 +2441,16 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 
 	case MethodContextTokens:
 		return json.Marshal(agent.ContextTokens())
+
+	case MethodObserve:
+		return s.observe(agent, call)
+	case MethodUnobserve:
+		args, err := arg[observeArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		s.dropObserver(args.ID)
+		return json.Marshal(struct{}{})
 
 	case MethodTranscript:
 		return json.Marshal(agent.Transcript())
@@ -1779,6 +2647,9 @@ func (s *server) stream(method, said string, events <-chan session.Event, err er
 
 // pending is a stream that has been named and not yet started.
 type pending struct {
+	// A view subscription starts after its result without announcing a turn.
+	start func()
+
 	id         uint64
 	generation uint64
 	method     string
@@ -1799,6 +2670,10 @@ func (s *server) release() {
 	waiting := s.pending
 	s.pending = nil
 	if waiting == nil {
+		return
+	}
+	if waiting.start != nil {
+		waiting.start()
 		return
 	}
 	sess := s.session

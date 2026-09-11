@@ -156,17 +156,22 @@ func TestAPasteDismissesTheWelcomeBox(t *testing.T) {
 func TestHomeKeepsItsLettersOverEveryQuestionAboveIt(t *testing.T) {
 	for _, tc := range []struct {
 		name string
+		// answer is the key that answers this question in its OWN grammar, which
+		// is no longer one letter for all three: the harness offer is on the
+		// block now and the block answers by the NUMBER beside an answer
+		// (questionkeys.go's one table).
+		answer string
 		// start builds a surface with this question's session under it, the
 		// event that raises the question, and a way to ask whether it has been
 		// answered.
 		start func(t *testing.T) (*app, session.Event, func() bool)
 	}{
-		{"the connect offer", func(t *testing.T) (*app, session.Event, func() bool) {
+		{"the connect offer", "1", func(t *testing.T) (*app, session.Event, func() bool) {
 			agent, a, _ := connectApp(t)
 			return a, askConnectEvent("c1", "notion", "Notion"),
 				func() bool { return len(agent.resolved) > 0 }
 		}},
-		{"the harness offer", func(t *testing.T) (*app, session.Event, func() bool) {
+		{"the harness offer", session.HarnessRunKey, func(t *testing.T) (*app, session.Event, func() bool) {
 			agent := &harnessAgent{fakeAgent: &fakeAgent{model: "m"}}
 			a := newTestApp(agent)
 			return a, session.Event{
@@ -175,7 +180,7 @@ func TestHomeKeepsItsLettersOverEveryQuestionAboveIt(t *testing.T) {
 				},
 				func() bool { return len(agent.answers) > 0 }
 		}},
-		{"the task proposal", func(t *testing.T) (*app, session.Event, func() bool) {
+		{"the task proposal", "y", func(t *testing.T) (*app, session.Event, func() bool) {
 			a, agent, _ := taskApp(t)
 			return a, proposal(a, 7, 0), func() bool { return len(agent.answered) > 0 }
 		}},
@@ -206,7 +211,14 @@ func TestHomeKeepsItsLettersOverEveryQuestionAboveIt(t *testing.T) {
 			// proposal keeps the y in its box until enter sees the complete answer;
 			// the two modal offers still answer on their single key.
 			a, ev, answered = tc.start(t)
-			drive(t, a, streamOf(a, ev), key("y"))
+			drive(t, a, streamOf(a, ev))
+			// THE BLOCK TAKES NO KEY FROM A QUESTION IT HAS NEVER DRAWN
+			// (question.go's [app.questionKey]), and the harness draws no
+			// frames — so the question is put on screen here, which is what a
+			// terminal does before a hand reaches the keyboard.
+			a.chrome(a.width)
+			settleAsk(a)
+			drive(t, a, key(tc.answer))
 			if tc.name == "the task proposal" {
 				if answered() {
 					t.Fatal("y answered the task proposal before enter")
@@ -242,11 +254,17 @@ func TestAStandingCardArrivingTakesHomeDownLikeTheQuestionsAboveIt(t *testing.T)
 
 // ── the deletion keys ───────────────────────────────────────────────────────
 
-// EVERY NAME A TERMINAL SENDS THEM BY. A word kill that only answered to ctrl+w
-// is a word kill most people never find: alt+backspace is what a Mac keyboard
-// does, ctrl+backspace is what Windows does, and cmd+delete is the line kill.
+// EVERY NAME A TERMINAL SENDS THEM BY. A word kill that only answered to one
+// spelling is a word kill most people never find: alt+backspace is what a Mac
+// keyboard does, ctrl+backspace is what Windows does, and cmd+delete is the line
+// kill.
+//
+// ctrl+w IS NOT ON THIS LIST ANY MORE and it is not an omission: it is the chord
+// that shuts the tab in front now (tabclosekey.go), read far above the box, and
+// tabclosekey_test.go holds both halves of that trade. It still edits the filter
+// of every modal overlay, which the test below this one walks.
 func TestTheWordAndLineKillsAnswerToEveryNameTheySendUnder(t *testing.T) {
-	for _, name := range []string{"ctrl+w", "alt+backspace", "ctrl+backspace"} {
+	for _, name := range []string{"alt+backspace", "ctrl+backspace"} {
 		_, a := wired(nil)
 		a.input.setText("read the config file")
 		drive(t, a, key(name))
@@ -467,16 +485,23 @@ func TestATwoTapLeftGoesHome(t *testing.T) {
 // the settle that followed collapsed the block over whatever they had chosen.
 func TestAThinkOpenedWhileItStreamsShowsTheWholeBufferAndStaysOpen(t *testing.T) {
 	a := reasoningLines(t, "one", "two", "three", "four", "five")
+	// THE RUNNING TURN'S WORK IS OPENED FIRST, because the conversation now
+	// stands a running turn's machinery — the reasoning block with it — behind
+	// three compact lines until somebody asks for it (livesteps.go). The block
+	// below is what a reader sees once they have asked.
+	showLiveWork(t, a)
 
 	// Closed, it is the reading window: a header and three lines.
 	if got := len(thoughtBlockRows(t, a)); got != 1+thoughtLive {
 		t.Fatalf("the closed block draws %d rows, want %d", got, 1+thoughtLive)
 	}
 
-	// ctrl+e over an empty box opens it, mid-stream.
-	drive(t, a, key("ctrl+e"))
-	if !a.toggledThoughtOpen() {
-		t.Fatal("ctrl+e did not open the streaming block")
+	// The block's own door opens it, mid-stream. It is called here rather than
+	// pressed as `ctrl+e`, because over a running turn that key now belongs to the
+	// whole work the block sits inside (workfold.go's [app.toggleLatestWorkfold]);
+	// a click on the block is the gesture that reaches this one (thinking.go).
+	if !a.toggleLatestThought() {
+		t.Fatal("the block's own door did not open the streaming block")
 	}
 	body := strings.Join(plainRows(a), "\n")
 	for _, want := range []string{"one", "two", "three", "four", "five"} {
@@ -497,10 +522,12 @@ func TestAThinkOpenedWhileItStreamsShowsTheWholeBufferAndStaysOpen(t *testing.T)
 			strings.Join(plainRows(a), "\n"))
 	}
 
-	// And the same key closes it again.
-	drive(t, a, key("ctrl+e"))
+	// And the same door closes it again.
+	if !a.toggleLatestThought() {
+		t.Fatal("the block's own door stopped answering")
+	}
 	if a.toggledThoughtOpen() {
-		t.Fatal("ctrl+e did not close what it opened")
+		t.Fatal("the door did not close what it opened")
 	}
 }
 
@@ -508,6 +535,7 @@ func TestAThinkOpenedWhileItStreamsShowsTheWholeBufferAndStaysOpen(t *testing.T)
 // not about disabling the automatic collapse for everybody.
 func TestAThinkNobodyTouchedCollapsesOnItsOwn(t *testing.T) {
 	a := reasoningLines(t, "one", "two")
+	showLiveWork(t, a)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: text(session.EventTextDelta, "so:")})
 	if a.toggledThoughtOpen() {
 		t.Fatal("a block nobody opened came back expanded")

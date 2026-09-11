@@ -66,9 +66,10 @@ type LeafExhausted struct {
 	// Attempt is which try this was within the claim, counted from one.
 	Attempt int `json:"attempt"`
 	// Bound names what ran out in the executor's own vocabulary — the
-	// exec.StopReason, so "deadline", "turn-cap", "budget" or "overrun". It is
-	// carried verbatim rather than reworded because the words a person reads
-	// are composed at the surface and the record keeps the fact.
+	// exec.StopReason, so "deadline", "turn-cap", "budget", "overrun" or
+	// "tool-timeouts". It is carried verbatim rather than reworded because the
+	// words a person reads are composed at the surface and the record keeps the
+	// fact.
 	Bound string `json:"bound"`
 	// Allowed is the room it was given, spelled as the surface granted it
 	// ("15m0s", "200 turns"). Empty when the surface did not say.

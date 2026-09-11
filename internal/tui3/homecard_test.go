@@ -2,7 +2,6 @@ package tui3
 
 import (
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -59,29 +58,6 @@ func homeCardFor(t *testing.T, a *app, transcript string) []string {
 	return out
 }
 
-// homeCardPainted is [homeCardFor] with the paint left on, for the assertions
-// whose subject is an INK rather than a word.
-//
-// The card's one remaining news claim is a colour: a piece of work that landed
-// since home was last closed wears its tick in the accent
-// ([app.homeTaskGlyph] reads [app.homeEntryFresh]), and one that was already
-// looked at wears the same tick muted. A stripped reading cannot tell those two
-// rows apart, so the tests about news ask for the painted one.
-func homeCardPainted(t *testing.T, a *app, transcript string) []string {
-	t.Helper()
-	if width, _ := a.size(); width < homeCardMin {
-		a.width, a.height = homeCardMin, max(a.height, 30)
-		a.home.build()
-	}
-	a.home.point(transcript)
-	width, _ := a.size()
-	_, right := homeColumns(width)
-	if right <= 0 {
-		t.Fatalf("no detail column at width %d", width)
-	}
-	return a.homeDetail(right, 20, a.pal)
-}
-
 // cardLine finds the first card line containing a phrase, or -1.
 func cardLine(card []string, phrase string) int {
 	for at, line := range card {
@@ -127,17 +103,10 @@ func TestBelowTheCardTierTheRowCarriesTheFactInstead(t *testing.T) {
 	if tier := a.homeTierNow(); tier != homeTierList {
 		t.Fatalf("a %d-cell frame is tier %v, want the list", a.width, tier)
 	}
-	// AND THE FACT THE CARD CARRIED IS ON THE ROW'S OWN NOTE, which is why there
-	// is nothing to miss: the note is the reading, not a consolation for one.
-	// (What a running node is DOING rides beside it — `· reading filings` — and
-	// is never on disk, so no lab can put it there: [session.TaskIndexEntry]'s
-	// Activity is built live and marked `json:"-"`.)
-	text := homeText(a)
-	if !strings.Contains(text, "1 task running") {
-		t.Fatalf("the row does not carry the fact the card was for:\n%s", text)
-	}
-	if strings.Contains(text, "Read the filings") {
-		t.Fatalf("a card was drawn under the tier:\n%s", text)
+	// AND THE FACT THE CARD CARRIED IS ON THE GRID, which is why there is
+	// nothing to miss: the work is its own row of `running`, named after itself.
+	if text := homeText(a); !strings.Contains(text, "Read the filings") {
+		t.Fatalf("the grid does not carry the fact the card was for:\n%s", text)
 	}
 
 	// AND ONE CELL WIDER THERE IS ONE, about the same row.
@@ -153,70 +122,6 @@ func TestBelowTheCardTierTheRowCarriesTheFactInstead(t *testing.T) {
 }
 
 // ── THE CARD IS SHAPED BY THE ROW'S STATE ───────────────────────────────────
-
-// A quiet conversation's work reads as a ledger: the mark, the task NAMED, and
-// what it cost at the right margin — one row (place_home.go's
-// [app.homeCardWork]).
-//
-// THE LAW THAT DIED IS "THE OUTCOME HANGS UNDER THE NAME" — on this card. It was
-// the registered band's shape and it still is (homeband_work.go, and the phone
-// sheet draws it), but SCREEN 1d spells a landed row of the ≥160 card as
-// `✓ toy-scale validation of decomposition   $1.63` and nothing else, and the
-// owner ordered the design followed exactly (FIDELITY.md item 8). So the
-// sentence about how a done task went belongs to the tasks place the fold names,
-// and this test asks for the row the design draws. A task that is NOT done keeps
-// its sentence here — [TestARunningCardLeadsTheRowWithItsState] is that half —
-// because a card that drew every outcome as one more tick with a price on it
-// would be calling every outcome the same outcome.
-//
-// THE LAST THING SAID IS NOT ON THIS CARD EITHER, AND NOTHING CARRIES IT. The
-// `leftoff` band is one of the eleven the switcher's card dropped: the card
-// exists only where the width is genuinely spare, and a card drawn there has to
-// be worth more than the row beside it — showing a person the sentence that
-// `enter` shows a beat later is the one thing it may not spend that width on.
-func TestAQuietCardReadsItsWorkAsALedger(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", "/tmp/alpha", now)
-	other := lab.session("-tmp-alpha", "aaaa000000000002", "landing page copy", "/tmp/alpha", now.Add(-2*time.Hour))
-	lab.says(other, "user", "tighten the hero copy")
-	lab.task("-tmp-alpha", session.TaskIndexEntry{
-		ID: "1", Name: "hero-rewrite", Label: "Hero rewrite", Title: "Hero rewrite",
-		Status: string(session.TaskDone), SessionID: "aaaa000000000002",
-		EndedAt: now.Add(-time.Hour), Cost: 1.63,
-		Outcome: "Led with the outcome and cut the copy by half.",
-	})
-
-	a := lab.app(mine)
-	a.openHome()
-	card := homeCardFor(t, a, other)
-	work := cardLine(card, "Hero rewrite")
-	if work < 0 {
-		t.Fatalf("the quiet card has no work on it:\n%s", strings.Join(card, "\n"))
-	}
-	// THE WHOLE LEDGER ROW IS ONE LINE: the mark, the name, and the figure hard
-	// against the right edge, which is where every figure on this surface sits.
-	row := strings.TrimRight(card[work], " ")
-	if !strings.HasPrefix(strings.TrimSpace(row), glyphDone+" Hero rewrite") {
-		t.Fatalf("the ledger row does not lead with the mark and the name: %q", row)
-	}
-	if !strings.HasSuffix(row, dollars(1.63)) {
-		t.Fatalf("the ledger row does not end on what it cost: %q", row)
-	}
-	if said := cardLine(card, "tighten the hero copy"); said >= 0 {
-		t.Fatalf("the card spent its width repeating what enter would show:\n%s",
-			strings.Join(card, "\n"))
-	}
-	if outcome := cardLine(card, "Led with the outcome"); outcome >= 0 {
-		t.Fatalf("a landed task kept its outcome sentence on the card:\n%s",
-			strings.Join(card, "\n"))
-	}
-	// And nothing on a landed row claims to be happening, or spells `done` in a
-	// word: the design's mark is what says it, and it says it once.
-	if text := strings.Join(card, "\n"); strings.Contains(text, "done Hero") || strings.Contains(text, "running") {
-		t.Fatalf("the ledger still spells state words:\n%s", text)
-	}
-}
 
 // A conversation with work running says so ON the work: the name first, and
 // `● running` with what it is doing under it.
@@ -245,14 +150,16 @@ func TestARunningCardLeadsTheRowWithItsState(t *testing.T) {
 	if !a.homeAnimating() {
 		t.Fatal("a row with work running did not earn the paint clock")
 	}
-	// THE ROW SAYS WHAT IT IS DOING, before any card is asked for — this is the
-	// reading the old `state` band was for, on the surface that carries it now.
-	if text := homeText(a); !strings.Contains(text, "1 task running") {
+	// THE WORK SAYS WHAT IT IS DOING, before any card is asked for — this is the
+	// reading the old `state` band was for, on the surface that carries it now:
+	// the running panel's row for the task, with its line under it
+	// (homepanel_running.go).
+	if text := homeText(a); !strings.Contains(text, "Port the picker") || !strings.Contains(homeLineAfter(text, "Port the picker"), tabSignalWord(tabWorking)) {
 		t.Fatalf("the row does not say what the conversation is doing:\n%s", text)
 	}
 	card := homeCardFor(t, a, other)
 	work := cardLine(card, "Port the picker")
-	state := cardLine(card, homeLiveGlyph+" running")
+	state := cardLine(card, homeLiveGlyph+" working")
 	if work < 0 || state < 0 {
 		t.Fatalf("the running card is missing a band (work %d, state %d):\n%s",
 			work, state, strings.Join(card, "\n"))
@@ -268,10 +175,20 @@ func TestARunningCardLeadsTheRowWithItsState(t *testing.T) {
 	}
 }
 
-// Every node of a family is its own row on the card, root and child alike. The
-// SHAPE of a family — child indented under the root that started it — is the
-// task page's to draw (task.go's roster); this band is a list of things that
-// happened, name first, and it draws them in the index's own order.
+// Every node of a family is its own row on the card, root and child alike — AND
+// THE CHILD HANGS UNDER THE ROOT THAT STARTED IT.
+//
+// THE LAW THAT DIED IS "THE SHAPE OF A FAMILY IS THE TASK PAGE'S TO DRAW". This
+// band was a list of things that happened, name first, in the index's own order,
+// and what that produced on the one screen a person opens twenty times a day was
+// three pieces of ONE run standing beside each other as three peers — with the
+// order deciding which of them a reader thought was the whole story. The owner's
+// instruction is that the conversation is the parent and the work under it is a
+// TREE, at any depth, never a row of strangers.
+//
+// So the roster's own connectors are drawn here too (hometree.go, task.go's
+// [treeLast]) — one vocabulary for one fact — and the rows are still one per
+// node, which is the half of this test that did not change.
 func TestEveryNodeOfAFamilyIsItsOwnRowOnTheCard(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
@@ -296,97 +213,19 @@ func TestEveryNodeOfAFamilyIsItsOwnRowOnTheCard(t *testing.T) {
 	if root < 0 || kid < 0 {
 		t.Fatalf("the family is not on the card (root %d, kid %d):\n%s", root, kid, strings.Join(card, "\n"))
 	}
-	if strings.HasPrefix(card[root], " ") || strings.HasPrefix(card[kid], " ") {
-		t.Fatalf("a task name on this band is indented:\n%s", strings.Join(card, "\n"))
+	// THE ROOT IS AT THE MARGIN and the child hangs off it, under it.
+	if strings.HasPrefix(card[root], " ") || strings.HasPrefix(card[root], treeLast) {
+		t.Fatalf("the run's own row is drawn as if something handed it out:\n%s", strings.Join(card, "\n"))
+	}
+	if kid <= root {
+		t.Fatalf("the child is drawn above the run that asked for it:\n%s", strings.Join(card, "\n"))
+	}
+	if !strings.HasPrefix(card[kid], treeLast) {
+		t.Fatalf("the child is drawn as a peer of the run that asked for it:\n%s", strings.Join(card, "\n"))
 	}
 }
 
 // ── SINCE YOU LAST LOOKED ───────────────────────────────────────────────────
-
-// Work that landed after home was last closed is still visible the moment the
-// screen opens, and closing home is what writes the next origin — so looking at
-// the news is what retires it.
-//
-// THE ✓ ON THE ROW IS GONE AND NOTHING BROUGHT IT BACK. The switcher's marks say
-// what a row IS — `?` needs you, `◐` moving, `○` at rest, `=` a paused watch —
-// and a tick on every settled row would spend the loudest cell in the list on
-// the rows that want nothing, which is the same argument homeband_work.go's
-// "done is the absence of a mark" already makes one column over. The law the
-// tick was defending — you can see that something landed while you were away —
-// is carried by two things that say it in words instead:
-//
-//   - THE ROW'S OWN NOTE, `3 files made` ([switcherConversationNote]), which is
-//     the one fact the card used to be for (SCREEN 1a);
-//   - THE `since you left` LEDGER at the top of the list, which is a door into
-//     the page that owns what happened rather than a mark on a row.
-//
-// THE CARD'S CAPTION IS NOT WHAT SAYS IT HERE ANY MORE. [homeFreshWord] is the
-// registered `work` band's line — the phone sheet still draws it — and the ≥160
-// conversation card composes its own work rows now, in the design's five bands
-// and its wording (FIDELITY.md item 8, place_home.go's [app.homeCardWork]).
-// SCREEN 1d has no caption over the work, so the caption is not there. What IS
-// there is the mark's own ink: [app.homeTaskGlyph] draws a fresh landing's tick
-// in the accent and every other one muted, which is the same claim said in the
-// register the design left room for. So the card's half of this law is asserted
-// as a COLOUR, and the two halves that were always words — the row's note and
-// the ledger — are asserted unchanged.
-func TestWorkLandedSinceYouLastLookedIsMarked(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	here := lab.workspace("alpha")
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", here, now)
-	other := lab.session("-tmp-alpha", "aaaa000000000002", "pricing research", here, now.Add(-2*time.Hour))
-	lab.task("-tmp-alpha", session.TaskIndexEntry{
-		ID: "1", Name: "tiers", Label: "Model the tiers", Title: "Model the tiers",
-		Status: string(session.TaskDone), SessionID: "aaaa000000000002",
-		EndedAt: now.Add(-10 * time.Minute), FilesChanged: 3, Outcome: "Both models drafted.",
-	})
-	session.NoteLook(lab.root, now.Add(-time.Hour))
-
-	a := lab.app(mine)
-	a.openHome()
-	text := homeText(a)
-	if strings.Contains(text, glyphDone+" Pricing Research") {
-		t.Fatalf("a resting row wears a tick again:\n%s", text)
-	}
-	if !strings.Contains(text, "3 files made") {
-		t.Fatalf("the row does not say what landed while you were away:\n%s", text)
-	}
-	if !strings.Contains(text, "since you left") || !strings.Contains(text, "landed") {
-		t.Fatalf("the ledger does not say anything landed:\n%s", text)
-	}
-	card := homeCardPainted(t, a, other)
-	at := cardLine(card, "Model the tiers")
-	if at < 0 {
-		t.Fatalf("the card has no work on it:\n%s", plain(strings.Join(card, "\n")))
-	}
-	if !strings.HasPrefix(card[at], a.pal.accent(glyphDone)) {
-		t.Fatalf("the card does not mark the news: %q", card[at])
-	}
-
-	// Closing is the look: the stamp advances, and the next open marks nothing.
-	a.homeKey(key("esc"))
-	if look := session.LastLook(lab.root); !look.After(now.Add(-time.Minute)) {
-		t.Fatalf("closing home did not write the look stamp (got %v)", look)
-	}
-	a.openHome()
-	text = homeText(a)
-	for _, stale := range []string{"3 files made", "since you left", glyphDone + " Pricing Research"} {
-		if strings.Contains(text, stale) {
-			t.Fatalf("news survived being looked at (%q):\n%s", stale, text)
-		}
-	}
-	// AND THE MARK GOES QUIET WITH THEM. The tick stays — a landed task is landed
-	// whether or not anybody watched it land — and it drops to the muted ink every
-	// other settled row wears.
-	card = homeCardPainted(t, a, other)
-	if at = cardLine(card, "Model the tiers"); at < 0 {
-		t.Fatalf("the card lost its work:\n%s", plain(strings.Join(card, "\n")))
-	}
-	if !strings.HasPrefix(card[at], a.pal.muted(glyphDone)) {
-		t.Fatalf("the card still marks news that has been looked at: %q", card[at])
-	}
-}
 
 // The first look has no origin, so it marks NOTHING — the alternative is a
 // first open where everything ever done shouts "new".
@@ -395,8 +234,8 @@ func TestWorkLandedSinceYouLastLookedIsMarked(t *testing.T) {
 // "Zero means there is no origin to measure from — a first look — and nothing at
 // all is marked"), and every surface that measures from the stamp owes it. The
 // tick on the ROW and the `landed` count went with the strips, so the surfaces
-// it is owed on are the three that replaced them: the row's own note, the `since
-// you left` ledger, and the mark on the card's work rows.
+// it is owed on are the three that replaced them: the row's own note and the
+// `since you left` ledger.
 //
 // ALL THREE PAY IT NOW. Two of them did not when this was written — switcher.go's
 // [switcherReading.addLedger] and [switcherConversationNote] compared against
@@ -404,18 +243,12 @@ func TestWorkLandedSinceYouLastLookedIsMarked(t *testing.T) {
 // land "since you left" and every quiet row claim files it made "while you were
 // away" — and both carry the condition today ([switcherReading.addLedger] and the
 // note both return early on a zero stamp), which is why this test is green.
-//
-// THE CARD'S HALF IS AN INK RATHER THAN A CAPTION. [homeFreshWord] was the
-// registered `work` band's line and the ≥160 card composes its own work rows now
-// (FIDELITY.md item 8), so what the card owes the law is [app.homeTaskGlyph]'s
-// accent, which [app.homeEntryFresh] holds to the same two exemptions
-// [app.homeFresh] always did.
 func TestTheFirstLookMarksNothing(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	here := lab.workspace("alpha")
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", here, now)
-	other := lab.session("-tmp-alpha", "aaaa000000000002", "pricing research", here, now.Add(-2*time.Hour))
+	lab.session("-tmp-alpha", "aaaa000000000002", "pricing research", here, now.Add(-2*time.Hour))
 	lab.task("-tmp-alpha", session.TaskIndexEntry{
 		ID: "1", Name: "tiers", Label: "Model the tiers", Title: "Model the tiers",
 		Status: string(session.TaskDone), SessionID: "aaaa000000000002",
@@ -428,10 +261,11 @@ func TestTheFirstLookMarksNothing(t *testing.T) {
 	if strings.Contains(text, glyphDone+" Pricing Research") {
 		t.Fatalf("a first look lit the tick on a row:\n%s", text)
 	}
-	// A WINDOW WITH NO ORIGIN CANNOT SAY `since you left`, because there is no
-	// since. It is the same claim [TestTheSwitcherKeepsUnknownAndZeroFactsEmpty]
-	// makes about a reading with nothing in it, on a machine that has done work.
-	if strings.Contains(text, "since you left") || strings.Contains(text, "landed") {
+	// A WINDOW WITH NO ORIGIN HAS NO LEDGER, because there is no since. The
+	// `since you left` panel keeps its heading and whispers what arrives there
+	// (docs/design/home-mission-control/DESIGN.md §4), and no line of it counts
+	// anything that landed.
+	if strings.Contains(text, "landed") {
 		t.Fatalf("a first look invented a ledger:\n%s", text)
 	}
 	// AND NEITHER CAN A ROW'S NOTE, which is scoped to the same stamp: "3 files
@@ -439,51 +273,6 @@ func TestTheFirstLookMarksNothing(t *testing.T) {
 	// "ever", which is a different sentence.
 	if strings.Contains(text, "files made") {
 		t.Fatalf("a first look counted everything a row ever did as news:\n%s", text)
-	}
-	card := homeCardPainted(t, a, other)
-	at := cardLine(card, "Model the tiers")
-	if at < 0 {
-		t.Fatalf("the card has no work on it:\n%s", plain(strings.Join(card, "\n")))
-	}
-	if !strings.HasPrefix(card[at], a.pal.muted(glyphDone)) {
-		t.Fatalf("a first look marked a card's work as news: %q", card[at])
-	}
-}
-
-// And the conversation THIS window is in never carries the NEWS MARK: its
-// landings were watched happening, not missed.
-//
-// THE MARK THIS IS STILL ABOUT IS THE ONE ON THE CARD'S WORK ROWS, and it is the
-// only per-row news claim left on the screen. It used to be [homeFreshWord], the
-// registered band's caption; the ≥160 card composes its own work rows now
-// (FIDELITY.md item 8) and the claim rides the tick's ink instead
-// ([app.homeTaskGlyph] reads [app.homeEntryFresh], which holds both of the
-// exemptions [app.homeFresh] always did — no stamp, and this window's own
-// conversation). The `since you left` ledger is deliberately NOT held to it: it
-// is a count about the MACHINE with a door into the tasks page, not a mark on a
-// row, and every task that landed while home was closed belongs in it whichever
-// conversation ran it.
-func TestYourOwnLandingsAreNotNews(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	here := lab.workspace("alpha")
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", here, now)
-	lab.task("-tmp-alpha", session.TaskIndexEntry{
-		ID: "1", Name: "tiers", Label: "Model the tiers", Title: "Model the tiers",
-		Status: string(session.TaskDone), SessionID: "aaaa000000000001",
-		EndedAt: now.Add(-10 * time.Minute), FilesChanged: 3,
-	})
-	session.NoteLook(lab.root, now.Add(-time.Hour))
-
-	a := lab.app(mine)
-	a.openHome()
-	card := homeCardPainted(t, a, mine)
-	at := cardLine(card, "Model the tiers")
-	if at < 0 {
-		t.Fatalf("the card has no work on it:\n%s", plain(strings.Join(card, "\n")))
-	}
-	if !strings.HasPrefix(card[at], a.pal.muted(glyphDone)) {
-		t.Fatalf("this window's own work was marked as news: %q", card[at])
 	}
 }
 
@@ -553,173 +342,4 @@ func TestTheFactsLineCarriesTheFilesFigure(t *testing.T) {
 
 // ── the card at ≥160, all five bands (SCREEN 1d) ────────────────────────────
 
-// THE DESIGN'S FIVE BANDS, IN THE DESIGN'S ORDER, ON ONE CARD.
-//
-// The acceptance walk found four of them: the title, the place line, `work` and
-// the facts. The two it could not see were the two its fixture had nothing
-// behind — `it is stopped on you` needs a conversation ANOTHER window is holding
-// a question in, and `made for you` needs a file some conversation actually left
-// behind. Both are seams, both are wired, and neither had a test that walked the
-// whole card. This is that test: a real presence file with an answerable
-// question in it, a real artifact in the index, and every band asserted in
-// order.
-func TestTheCardDrawsAllFiveBandsOfTheDesign(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	alpha, beta := lab.workspace("alpha"), lab.workspace("beta")
-	mine := lab.session("-alpha", "aaaa000000000001", "porting the picker", alpha, now.Add(-2*time.Minute))
-	row := lab.session("-beta", "bbbb000000000001", "swarm task splitting", beta, now.Add(-3*time.Minute))
-	// The work band's row, and the money on it.
-	lab.task("-beta", session.TaskIndexEntry{
-		ID: "1", Name: "toy-scale-validation", Label: "toy-scale validation of decomposition",
-		Title: "toy-scale validation of decomposition", Status: string(session.TaskDone),
-		Outcome: "a report", Cost: 1.63, FilesChanged: 1,
-		EndedAt: now.Add(-3 * time.Hour), SessionID: "bbbb000000000001",
-	})
-	// A question ANOTHER window is holding, written the way that window's own
-	// heartbeat writes it (session's taskpresence.go).
-	lab.asking("-beta", "bbbb000000000001", session.PresenceQuestion{
-		Kind:    session.QuestionConsent,
-		ID:      7,
-		Text:    "Add a --report-only mode so the report can be regenerated without re-running the sweep?",
-		Options: session.AnswerOptions(session.QuestionConsent),
-		Asked:   now,
-	}, now)
-	// And a file it left behind.
-	index := filepath.Join(t.TempDir(), session.ArtifactsIndexName)
-	made := filepath.Join(t.TempDir(), "swarm-decomposition.md")
-	if err := os.WriteFile(made, []byte("report"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	session.RecordArtifact(index, session.Artifact{
-		Path: made, Session: "bbbb000000000001", Title: "swarm-decomposition.md",
-		Created: now.Add(-2 * time.Hour),
-	})
-
-	a := lab.app(mine)
-	a.artifacts = index
-	a.width, a.height = 200, 40
-	a.leaveAnswer = func(string, session.QuestionKind, uint64, string) error { return nil }
-	a.openHome()
-
-	// THE CARD ALONE, and not the frame it sits in. The list's own row carries a
-	// cut-down `asks: …` note, so a search over the whole frame would find the
-	// question in the wrong column and prove nothing about the card's order.
-	//
-	// THE FIVE BANDS, IN ORDER. Each is found after the one before it, so a card
-	// that drew them all in the wrong order fails as loudly as one that dropped
-	// a band.
-	card := strings.Join(homeCardFor(t, a, row), "\n")
-	last := -1
-	for _, want := range []string{
-		"Swarm Task Splitting",   // the title
-		"beta",                   // the place line
-		homeCardStoppedWord,      // it is stopped on you
-		"--report-only mode",     // the question, in its own words
-		"1 allow once",           // its answer keys
-		homeCardTalkWord,         // and the way into the conversation that asked
-		homeCardWorkWord,         // work
-		"toy-scale validation",   //   with its row
-		"$1.63",                  //   and what it came to
-		homeCardMadeWord,         // made for you
-		"swarm-decomposition.md", //   with the file
-		homeVerbsWord,            // → verbs: …
-	} {
-		at := strings.Index(card, want)
-		if at < 0 {
-			t.Fatalf("the card does not carry %q:\n%s", want, card)
-		}
-		if at < last {
-			t.Fatalf("%q is drawn out of the design's order:\n%s", want, card)
-		}
-		last = at
-	}
-}
-
-// AND A CARD WITH NOTHING BEHIND A BAND DRAWS NO BAND. The emptiness law reaches
-// the two this lane wired: a conversation nobody is asking anything of has no
-// `it is stopped on you`, and one that made nothing has no `made for you` — and
-// neither leaves a heading over a blank.
-func TestTheCardDrawsNoBandItHasNothingBehind(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	mine := lab.session("-alpha", "aaaa000000000001", "porting the picker", lab.workspace("alpha"), now.Add(-2*time.Minute))
-	row := lab.session("-beta", "bbbb000000000001", "swarm task splitting", lab.workspace("beta"), now.Add(-3*time.Minute))
-	a := lab.app(mine)
-	a.width, a.height = 200, 40
-	a.leaveAnswer = func(string, session.QuestionKind, uint64, string) error { return nil }
-	a.openHome()
-	card := strings.Join(homeCardFor(t, a, row), "\n")
-	for _, absent := range []string{homeCardStoppedWord, homeCardMadeWord, homeCardTalkWord} {
-		if strings.Contains(card, absent) {
-			t.Fatalf("the card drew %q over an absence:\n%s", absent, card)
-		}
-	}
-}
-
 // ── ONE PRICE PER TASK ON A CARD ────────────────────────────────────────────
-
-// A TASK'S PRICE WAS DRAWN TWICE ON ONE CARD, four cells apart, in two different
-// inks: `$0.52` right-aligned on the name row and `$0.52` again in the dim
-// under-block beside the file count. It happened for every task that was not
-// simply done, because that is exactly when the under-block is appended.
-//
-// The name row wins — it is the column a reader runs an eye down — and the
-// under-block is told so rather than left to guess
-// (homeband_work.go's [homeWorkUnderSaid]). The cells it gives back are the ones
-// the file count and the outcome sentence were losing to an ellipsis.
-func TestACardDrawsATasksPriceOnceAndNotTwice(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", "/tmp/alpha", now)
-	other := lab.session("-tmp-alpha", "aaaa000000000002", "cut every list", "/tmp/alpha", now.Add(-time.Hour))
-	lab.task("-tmp-alpha", session.TaskIndexEntry{
-		ID: "3", Name: "cut-lists", Label: "Cut every list over to the row fitter",
-		Title:  "Cut every list over to the row fitter",
-		Status: string(session.TaskUnverified), SessionID: "aaaa000000000002",
-		EndedAt: now.Add(-20 * time.Minute), Cost: 0.52, FilesChanged: 4,
-		Outcome: "The four lists now fit their own width.",
-	})
-
-	a := lab.app(mine)
-	a.openHome()
-	card := homeCardFor(t, a, other)
-
-	// The reading is scoped to the WORK BAND — the heading and the rows under it
-	// until the next blank. The card's own totals band ("touched 4 files · spent
-	// …") is a different fact about a different subject, and a conversation that
-	// ran one task is the case where the two figures agree.
-	head := cardLine(card, homeCardWorkWord)
-	if head < 0 {
-		t.Fatalf("the card has no work band:\n%s", strings.Join(card, "\n"))
-	}
-	var band []string
-	for _, line := range card[head:] {
-		if strings.TrimSpace(plain(line)) == "" && len(band) > 1 {
-			break
-		}
-		band = append(band, plain(line))
-	}
-	figure := dollars(0.52)
-	said := 0
-	for _, line := range band {
-		said += strings.Count(line, figure)
-	}
-	if said != 1 {
-		t.Fatalf("the work band says %s %d times, want once — one source of truth for a figure drawn twice:\n%s",
-			figure, said, strings.Join(band, "\n"))
-	}
-	// AND IT IS THE NAME ROW THAT KEPT IT, hard against the card's right edge
-	// where every figure on this surface sits.
-	name := cardLine(card, "Cut every list")
-	if name < 0 {
-		t.Fatalf("the card has no work on it:\n%s", strings.Join(card, "\n"))
-	}
-	if row := strings.TrimRight(plain(card[name]), " "); !strings.HasSuffix(row, figure) {
-		t.Fatalf("the price left the name row rather than the block under it: %q", row)
-	}
-	// AND THE FILE COUNT, WHICH WAS BEING SQUEEZED OUT, IS THERE.
-	if at := cardLine(card, "4 files"); at < 0 {
-		t.Fatalf("the file count is still missing from the card:\n%s", strings.Join(card, "\n"))
-	}
-}

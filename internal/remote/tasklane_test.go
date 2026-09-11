@@ -249,8 +249,12 @@ func TestPendingTasksSaysWhenTheFarEndDidNotAnswer(t *testing.T) {
 // making the surface's key path wait for the round trip, and the far engine's
 // zero-deadline proposal returns to the watching surface.
 func TestTaskHoldCrossesTheVersionTenWire(t *testing.T) {
-	if Version != 10 {
-		t.Fatalf("task hold protocol version = %d, want 10", Version)
+	// The hold arrived AT version 10, so the floor is what this pins rather than
+	// the number of the day: a later version that still carries it is exactly
+	// what this test wants to see, and an equality here would fail every future
+	// delta for a reason that has nothing to do with holds.
+	if Version < 10 {
+		t.Fatalf("task hold protocol version = %d, want 10 or later", Version)
 	}
 	far := &railAgent{fakeAgent: &fakeAgent{}}
 	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) {

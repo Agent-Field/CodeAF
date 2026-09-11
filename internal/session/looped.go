@@ -890,7 +890,7 @@ func (a *Agent) handOverLoopingTurn(ctx context.Context, hub *eventHub, user use
 		// NO READING HAS BEEN TAKEN FOR THIS ENDING YET — this is a step boundary
 		// and not a stopped turn — so the ceiling takes one of its own
 		// ([Agent.endTurnUnderSteward]).
-		if a.checkpointCeiling(ctx, hub, turn, started, model, rounds, meter.raced, read, nil) {
+		if a.checkpointCeiling(ctx, hub, turn, started, model, rounds, meter, meter.raced, read, nil) {
 			return true
 		}
 	}

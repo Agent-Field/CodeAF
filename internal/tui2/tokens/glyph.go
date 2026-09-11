@@ -1,6 +1,13 @@
 package tokens
 
-// The glyph vocabulary (5.17, 5.21). No emoji in chrome: emoji are
+// The glyph vocabulary (5.17, 5.21), and the whole of what a person sees drawn
+// as a mark anywhere in this product. Its law, its three tiers, the table as it
+// landed and how to add to it are docs/design/icons/DESIGN.md; the short of it
+// is that every mark is a SLOT with a plain, a nerd-font and an ASCII spelling,
+// that GlyphSet.Glyph(id) is the one door to them, and that a surface spelling a
+// mark as a literal is a build failure rather than a matter of taste.
+//
+// No emoji in chrome: emoji are
 // double-width, render inconsistently, carry their own untintable colors, and
 // read as notification confetti rather than as an instrument. Everything here
 // is single-width, tintable and metric-safe — and glyph_test.go proves the
@@ -18,6 +25,13 @@ const (
 	GlyphWorking = "◐"
 	GlyphSettled = "✓"
 	GlyphFailed  = "✕"
+	// GlyphStopped is work A PERSON ENDED, and it is deliberately neither
+	// [GlyphSettled] nor [GlyphFailed]: a tick is a finding that the work came
+	// off and a cross is a finding that it did not, and nobody found anything
+	// about work somebody stopped. The filled square is the mark every device a
+	// person owns stops with, it is one cell under both shipping rulers, and it
+	// is the shape the nerd-font tier has an exact icon for (nf-fa-stop).
+	GlyphStopped = "■"
 	// GlyphPaused is 5.17's replacement for the banned ⏸: a paused row is
 	// "=" (or a dim GlyphQueued, at the renderer's choice).
 	GlyphPaused = "="
@@ -25,11 +39,53 @@ const (
 	// Attention and blocking.
 	GlyphNeedsHuman = "?" // always amber (5.16)
 	GlyphWaitsOn    = "⚑" // waiting on a sibling (waits-on edge)
+	// GlyphWithdrawn is a question that STOPPED BEING A QUESTION — its subject
+	// went away, the plan changed, or another answer made it moot, so the asker
+	// took it back (docs/design/questions/DESIGN.md's WITHDRAWN, WITH A REASON).
+	//
+	// It is deliberately none of the three marks it sits nearest. A tick says
+	// somebody decided; a cross says the answer was no; a filled square says a
+	// person ended it. Nobody decided anything here and nobody ended anything —
+	// the decision simply stopped needing to be made — and the circled slash is
+	// the one shape in the geometric register that says "this does not apply"
+	// without claiming an outcome.
+	GlyphWithdrawn = "⊘"
+	// GlyphAssumed is the ladder's SECOND rung drawn: the asker has taken
+	// something for granted, said so, and gone on — and everything on the card
+	// stands until somebody strikes it (docs/design/questions/DESIGN.md names
+	// this mark for the assumption kind).
+	//
+	// IT IS NOT [GlyphNeedsHuman], and that is the whole reason the slot exists.
+	// `?` means "waiting on a person" and is the one mark on this surface that
+	// is always amber; an assumptions card is waiting on nobody — it is going
+	// ahead, and the offer to strike a line is a courtesy rather than a gate.
+	// Drawing it with the attention mark told a person to answer something that
+	// was not asking them anything, which is the fastest way to make the amber
+	// mark stop meaning what it says.
+	//
+	// It is also not [GlyphEstimate]. A tilde is bound to a NUMBER — 10.2.8's
+	// "estimated number" — and this stands alone at the head of a card; the two
+	// are near neighbours in shape and say different things, which is exactly
+	// the distinction the one-glyph-one-meaning gate exists to keep.
+	GlyphAssumed = "≈"
 
 	// Disclosure and navigation.
 	GlyphCollapsed = "▸"
 	GlyphExpanded  = "▾"
 	GlyphScopeUp   = "‹" // scope header / go up
+
+	// GlyphTarget is WHERE THE NEXT THING GOES, and it is the one mark in this
+	// vocabulary about a destination rather than about a state. Home's rule wears
+	// it in front of the folder and the model the next conversation will open on
+	// (internal/tui3's homedraft.go), and the whole of its meaning is the
+	// difference between "where I am" and "where this is going" — which is why it
+	// is neither [GlyphScopeUp], a header pointing back up a tree, nor
+	// [GlyphPromptSteer], a composer's own prompt.
+	//
+	// IT IS GEOMETRY ON PURPOSE. An arrow is already the right character for a
+	// grid, exactly as the tree corners and the rails are, and a Font Awesome
+	// arrow in its place would buy nothing and spend a private-use codepoint.
+	GlyphTarget    = "→" // where the next thing goes
 	GlyphTruncated = "⋯" // clickable overflow; [GlyphEllipsis] marks static overflow
 
 	// GlyphEllipsis is §16's ONE ELLIPSIS GRAMMAR as a slot: the mark text
@@ -38,8 +94,8 @@ const (
 	// "there is more, click for it", and a cut ([GlyphCut]) says "this stopped
 	// and should not have". Three marks, three sentences.
 	//
-	// It was the most-drawn mark in the product with no name here: blocks,
-	// prose, placeline, modelui, palette, footer and composer each spelled the
+	// It was the most-drawn mark in the product with no name here: prose,
+	// placeline, modelui, palette, footer and composer each spelled the
 	// byte themselves, and three of them wrote a comment explaining which of
 	// the other two marks they did NOT mean. The slot ends the explaining.
 	//
@@ -62,6 +118,17 @@ const (
 	// which surface the draft will land in (5.15).
 	GlyphPromptChat  = "›"
 	GlyphPromptSteer = "↦"
+	// GlyphReplyIn is AN ANSWER DRAWN UNDER THE THING IT ANSWERS: the reply to a
+	// question a person put back to the asker, the response landing on the row
+	// that asked for it (docs/design/questions/DESIGN.md's room form). It is a
+	// prompt mark in the same family as the two above — punctuation saying whose
+	// turn a line is — which is why it is geometry and neither tier swaps it.
+	//
+	// It is deliberately NOT [GlyphPromptChat]: `›` is the person typing and this
+	// is what came back, and a page that drew both with one mark would make an
+	// exchange unreadable at exactly the moment it matters. U+21B3 is
+	// East_Asian_Width=Neutral and one cell under both shipping rulers.
+	GlyphReplyIn = "↳"
 
 	// The execution voices (5.5). A work record is four speakers and no
 	// labels: the model thinking, the tools it reached for, the reader
@@ -77,6 +144,30 @@ const (
 	GlyphShell   = "$" // a shell call — the prompt a person types at
 	GlyphSearch  = "⌕" // a call that went out to the world
 	GlyphWrite   = "✎" // a call that wrote something down
+
+	// The action families (internal/tui3's step gutter). One still, monochrome
+	// mark per FAMILY of work — searching, editing, running a command — keyed
+	// off the closed vocabulary the engine carries in session.ActionCategory.
+	//
+	// THEY ARE SLOTS HERE AND NOT CHARACTERS THERE. The surface used to hold
+	// its own three-tier table, with the private-use codepoints spelled inline
+	// beside the plain marks, so ten icons and ten plain glyphs lived outside
+	// the width gate, outside the ban list and outside the one-meaning law —
+	// which is how ▤, ◎ and ◷ came to be drawn product-wide without ever having
+	// been measured. Four of the families reuse a slot this table already owns
+	// (search, write, shell, and the diff-add byte for a thing that was not
+	// there); the rest are named here, and the surface keeps only the map from
+	// a family to a slot.
+	GlyphActionRead        = "▤" // a box with lines in it — a page of text, opened
+	GlyphActionCreate      = "+" // something that was not there is
+	GlyphActionTest        = "◎" // a target being aimed at — NEVER a checkmark
+	GlyphActionBrowse      = "↗" // out of here and onto a page somewhere else
+	GlyphActionTransfer    = "⇄" // bytes going the other way as well
+	GlyphActionCommunicate = "»" // the guillemet: something being SAID, to a person
+	GlyphActionCoordinate  = "⇉" // work handed out, or this mind copied to run beside itself
+	GlyphActionPlan        = "≡" // three level lines, an outline
+	GlyphActionWait        = "◷" // a quarter of a clock face, still
+	GlyphActionWork        = "▪" // a small square: "a step", which is all it knows
 
 	// Meta.
 	GlyphBoosted   = "⇡" // transient escalation of the work-role binding (8.2.16)
@@ -171,6 +262,29 @@ const (
 	// in its named-exceptions table so a THIRD `$` slot has to be argued for.
 	GlyphModel = "◇"
 	GlyphSpend = "$"
+
+	// The file kinds. A chip says WHAT KIND OF THING is on the end of a path
+	// before it says the path, and so does the gutter beside a call that made
+	// one or opened one; the four kinds a person can hand this program are the
+	// four here.
+	//
+	// GlyphFileDocument is [GlyphActionRead]'s byte on purpose — a page of text
+	// is a page of text whether a call opened it or a person dragged it in, and
+	// the tier draws the SAME icon for both rather than inventing a distinction
+	// the floor does not draw. It is the one collision in this block, and it is
+	// carried in glyphvocab_test.go's named-exceptions table.
+	//
+	// GlyphFileVideo is U+25B7 WHITE RIGHT-POINTING TRIANGLE and NOT the filled
+	// U+25B6 a chip used to draw: the filled triangle is [GlyphQueuePill]'s, one
+	// plain byte may upgrade exactly one way, and an outline triangle is the
+	// right weight beside three outlined file icons anyway.
+	//
+	// GlyphFileImage is U+233E APL FUNCTIONAL SYMBOL CIRCLE JOT and
+	// GlyphFileAudio is U+266A EIGHTH NOTE, both one cell under both rulers.
+	GlyphFileDocument = "▤"
+	GlyphFileImage    = "⌾"
+	GlyphFileAudio    = "♪"
+	GlyphFileVideo    = "▷"
 )
 
 // GaugeCells is the one-cell context gauge (5.17): context % as a single
@@ -201,9 +315,8 @@ var SparklineCells = [7]string{"⣀", "⣄", "⣤", "⣦", "⣶", "⣷", "⣿"}
 // render, and a reading that does not exist (NaN) reads empty rather than
 // guessing (16's EMPTINESS).
 //
-// The cell says HOW FULL. It never says whether that is a problem — that
-// judgement is [ContextToken]'s, and it is amber-past-the-warn-point, dual
-// (percentage AND absolute tokens), and deliberately not a sixth cell.
+// The cell says HOW FULL. It never says whether that is a problem; colour is a
+// separate judgement and deliberately not a sixth cell.
 func Gauge(fraction float64) string {
 	switch {
 	case !(fraction > 0): // also catches NaN
@@ -271,21 +384,36 @@ func Glyphs() []GlyphInfo {
 		{"Working", GlyphWorking, '◐', true},
 		{"Settled", GlyphSettled, '✓', false},
 		{"Failed", GlyphFailed, '✕', false},
+		{"Stopped", GlyphStopped, '■', true},
 		{"Paused", GlyphPaused, '=', false},
 		{"NeedsHuman", GlyphNeedsHuman, '?', false},
 		{"WaitsOn", GlyphWaitsOn, '⚑', false},
+		{"Withdrawn", GlyphWithdrawn, '⊘', false},
+		{"Assumed", GlyphAssumed, '≈', true},
 		{"Collapsed", GlyphCollapsed, '▸', false},
 		{"Expanded", GlyphExpanded, '▾', false},
 		{"ScopeUp", GlyphScopeUp, '‹', false},
+		{"Target", GlyphTarget, '→', true},
 		{"Truncated", GlyphTruncated, '⋯', false},
 		{"Ellipsis", GlyphEllipsis, '…', true},
 		{"Cut", GlyphCut, '╌', false},
 		{"PromptChat", GlyphPromptChat, '›', false},
 		{"PromptSteer", GlyphPromptSteer, '↦', false},
+		{"ReplyIn", GlyphReplyIn, '↳', false},
 		{"Thought", GlyphThought, '✳', false},
 		{"Shell", GlyphShell, '$', false},
 		{"Search", GlyphSearch, '⌕', false},
 		{"Write", GlyphWrite, '✎', false},
+		{"ActionRead", GlyphActionRead, '▤', true},
+		{"ActionCreate", GlyphActionCreate, '+', false},
+		{"ActionTest", GlyphActionTest, '◎', true},
+		{"ActionBrowse", GlyphActionBrowse, '↗', true},
+		{"ActionTransfer", GlyphActionTransfer, '⇄', false},
+		{"ActionCommunicate", GlyphActionCommunicate, '»', false},
+		{"ActionCoordinate", GlyphActionCoordinate, '⇉', false},
+		{"ActionPlan", GlyphActionPlan, '≡', true},
+		{"ActionWait", GlyphActionWait, '◷', false},
+		{"ActionWork", GlyphActionWork, '▪', false},
 		{"Boosted", GlyphBoosted, '⇡', false},
 		{"Separator", GlyphSeparator, '·', true},
 		{"Missing", GlyphMissing, '—', true},
@@ -311,6 +439,10 @@ func Glyphs() []GlyphInfo {
 		{"GitBranch", GlyphGitBranch, '⋔', false},
 		{"Model", GlyphModel, '◇', true},
 		{"Spend", GlyphSpend, '$', false},
+		{"FileDocument", GlyphFileDocument, '▤', true},
+		{"FileImage", GlyphFileImage, '⌾', false},
+		{"FileAudio", GlyphFileAudio, '♪', true},
+		{"FileVideo", GlyphFileVideo, '▷', true},
 		// The prose slots (code.go). They are named there because a slot is a
 		// MEANING and not a byte, and they are walked HERE because the width
 		// gate is the one place a glyph may not hide: GlyphCodeGutter arrived

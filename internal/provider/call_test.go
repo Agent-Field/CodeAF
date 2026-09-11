@@ -12,18 +12,18 @@ import (
 // model, and an answer nobody checked says nothing about an answer.
 func TestVerdictsGradeOnlyWhatIsEvidence(t *testing.T) {
 	tests := []struct {
-		verdict  Verdict
+		verdict  Reading
 		positive bool
 		graded   bool
 	}{
-		{VerdictVerifiedSuccess, true, true},
-		{VerdictUnverifiedSuccess, false, false},
-		{VerdictProviderFailure, false, false},
-		{VerdictFormatFailure, false, true},
-		{VerdictSemanticFailure, false, true},
-		{VerdictBudgetStop, false, true},
-		{VerdictTurnCap, false, true},
-		{VerdictEmptyResponse, false, true},
+		{ReadingVerifiedSuccess, true, true},
+		{ReadingUnverifiedSuccess, false, false},
+		{ReadingProviderFailure, false, false},
+		{ReadingFormatFailure, false, true},
+		{ReadingSemanticFailure, false, true},
+		{ReadingBudgetStop, false, true},
+		{ReadingTurnCap, false, true},
+		{ReadingEmptyResponse, false, true},
 	}
 	for _, test := range tests {
 		t.Run(string(test.verdict), func(t *testing.T) {
@@ -52,8 +52,8 @@ func TestAnUnroutedCallIsANoOpEverywhere(t *testing.T) {
 	if got := CallFrom(ctx).Pin("a/model"); got != "a/model" {
 		t.Fatalf("Pin on a nil slot = %q, want the caller's own choice back", got)
 	}
-	CallFrom(ctx).Observe(func(Verdict) { t.Fatal("an observer on a nil slot was called") })
-	Report(ctx, VerdictVerifiedSuccess)
+	CallFrom(ctx).Observe(func(Reading) { t.Fatal("an observer on a nil slot was called") })
+	Report(ctx, ReadingVerifiedSuccess)
 }
 
 // TestTheFirstReportWins keeps one unit of work to one observation. An error
@@ -61,21 +61,21 @@ func TestAnUnroutedCallIsANoOpEverywhere(t *testing.T) {
 // count twice, and the second count would be the wrong one.
 func TestTheFirstReportWins(t *testing.T) {
 	ctx := WithCall(context.Background(), ClassPlanSpine)
-	var seen []Verdict
-	CallFrom(ctx).Observe(func(verdict Verdict) { seen = append(seen, verdict) })
+	var seen []Reading
+	CallFrom(ctx).Observe(func(verdict Reading) { seen = append(seen, verdict) })
 
-	Report(ctx, VerdictSemanticFailure)
-	Report(ctx, VerdictVerifiedSuccess)
-	if len(seen) != 1 || seen[0] != VerdictSemanticFailure {
+	Report(ctx, ReadingSemanticFailure)
+	Report(ctx, ReadingVerifiedSuccess)
+	if len(seen) != 1 || seen[0] != ReadingSemanticFailure {
 		t.Fatalf("observed %v, want only the first verdict", seen)
 	}
 	// A verdict reported before anything registered is not resurrected by a
 	// later registration: the call is settled, and settling it twice would
 	// attribute one outcome to two attempts.
 	late := WithCall(context.Background(), ClassPlanBind)
-	Report(late, VerdictVerifiedSuccess)
-	CallFrom(late).Observe(func(Verdict) { t.Fatal("an observer registered after the verdict was fired") })
-	Report(late, VerdictVerifiedSuccess)
+	Report(late, ReadingVerifiedSuccess)
+	CallFrom(late).Observe(func(Reading) { t.Fatal("an observer registered after the verdict was fired") })
+	Report(late, ReadingVerifiedSuccess)
 }
 
 // TestPinHoldsForTheWholeLoop is the cache-lineage guarantee. Concurrency is in

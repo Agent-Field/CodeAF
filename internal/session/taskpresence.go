@@ -88,6 +88,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
 	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
 )
 
 // presenceName is the file, inside one session's folder. It is spelled here
@@ -150,13 +151,16 @@ const (
 	PresenceIdle PresenceState = "idle"
 )
 
-// PresenceTask is one piece of work a live session has out right now.
+// PresenceTask is one piece of work a live session has out right now: a task
+// node, or an adaptive run.
 //
-// It carries no cost, no token count and no outcome, and that is the whole
-// distinction from [TaskIndexEntry]: this is the shortest thing that lets
-// another window draw a row saying work is happening. Everything else about the
-// task is in the project index, which is the file that answers questions about
-// work rather than about processes.
+// It carries what the work is doing AT THIS INSTANT — which of its lives it is
+// in, the call in flight, how far a run has got — and never a cost, a token
+// count or an outcome, and that is the whole distinction from [TaskIndexEntry]:
+// this is the shortest thing that lets another window draw a row saying what is
+// happening. Everything about what the work CAME TO is in the project index,
+// which is the file that answers questions about work rather than about
+// processes.
 type PresenceTask struct {
 	// ID is the node's id inside the session that is running it, decimal —
 	// [TaskIndexEntry.ID]'s own spelling, so a row here and a row there about
@@ -206,6 +210,55 @@ type PresenceTask struct {
 	// files" would be inventing the one answer this field cannot give — so
 	// [Elsewhere.Touching] answers with two lists and keeps them apart.
 	Files []string `json:"files,omitempty"`
+	// Activity is the one line saying what the node's worker is doing — the
+	// call in flight and how long it has been out, or the gap between calls with
+	// the step count beside it. It is [TaskIndexEntry.Activity]'s line, from the
+	// same recorder (task_live.go), carried across the window that line never
+	// leaves.
+	//
+	// IT IS WRITTEN ONLY WHILE THE WORKER IS THE LIFE THE NODE IS IN. Through a
+	// check, a repair round or the sizing read, the recorder still holds the
+	// worker's last call, finished — a line asserting a present that has passed
+	// — so the field is left off and [PresenceTask.Phase] says what is true. It
+	// is empty too for a queued node, which has no worker yet, and for every row
+	// written by a build older than this field; a surface draws nothing for any
+	// of them.
+	Activity string `json:"activity,omitempty"`
+	// Done and Total are how far an ADAPTIVE RUN has got: nodes settled, of the
+	// nodes its planner has laid out so far ([orchestrate.Snapshot]). Total moves
+	// as the planner amends the graph, so this is a count and never a promise of
+	// the end.
+	//
+	// BOTH ARE ZERO FOR WORK THAT DOES NOT COUNT THIS WAY — a task node, and a
+	// run whose planner has not laid anything out yet — and a surface draws no
+	// `0 of 0` for them (the emptiness law).
+	Done  int `json:"done,omitempty"`
+	Total int `json:"total,omitempty"`
+}
+
+// PresenceJob is one background job a live session has running right now — a
+// dev server, a watch, a long build — as another window reads it. It is the
+// same list the conversation's own column draws ([Agent.jobsWorkingNow]), and it
+// is here so home can draw it without holding the agent that forked it.
+//
+// IT IS A CLAIM ABOUT A PROCESS AND NOTHING ELSE. A job's log, its exit code
+// and its output stay where the job's own window keeps them; a finished job is
+// simply absent from the next refresh, because a job's ending is news its own
+// conversation tells (jobrow.go's header) and this file keeps no record.
+type PresenceJob struct {
+	// ID is the job's own number, decimal — the handle `jobs output 3` and
+	// `jobs kill 3` take inside the session that holds it. It restarts at one
+	// in every window, so it is joinable only together with the session's id.
+	ID string `json:"id"`
+	// Title is the row's short name ([jobRowTitle]): a watch or a render's
+	// label, or a plain command's own first line.
+	Title string `json:"title"`
+	// Dir is the folder the process was started in. A surface names the place
+	// from it; it is empty only on a job a test registered by hand.
+	Dir string `json:"dir,omitempty"`
+	// StartedAt is when the process forked, so a surface counts the job's age
+	// up on its own beat.
+	StartedAt time.Time `json:"startedAt,omitzero"`
 }
 
 // PresenceQuestion is the card this session is stopped on, as another window
@@ -242,6 +295,23 @@ type PresenceQuestion struct {
 	// judges freshness by it, because the FILE's stamp is what says whether any
 	// of this is still true (see [SessionPresence.Fresh]).
 	Asked time.Time `json:"asked,omitzero"`
+	// Full is the WHOLE question (question.go), where the lane that raised it
+	// could describe one — the evidence, the asker's own pick, what is waiting
+	// on it, what an answer costs and how long it may last.
+	//
+	// THE FOUR FIELDS ABOVE STAY FILLED BESIDE IT, and that is the whole reason
+	// this is a pointer on the end rather than a replacement: presence files are
+	// read by BUILDS OF OTHER AGES, on this machine and across a shared disk,
+	// and a window that only ever knew Kind, ID, Text and Options must go on
+	// answering exactly as it did. A build that knows this field draws the
+	// object; a build that does not draws the line and the chips, which is what
+	// it always drew.
+	//
+	// IT IS STILL THE SHORTEST THING SOMEBODY COULD ANSWER FROM in the sense
+	// this struct's header means it: the whole question is the asker's own
+	// account of the decision, not a second rendering of the row it is about —
+	// [SubjectRef] points at that row and never copies it.
+	Full *Question `json:"full,omitempty"`
 }
 
 // Answerable reports whether this question is one another window could answer:
@@ -308,9 +378,14 @@ type SessionPresence struct {
 	// question borrows the consent lane to ask about a TURN (recovery.go), and
 	// it is deliberately not answerable from anywhere but its own window.
 	Question PresenceQuestion `json:"question,omitzero"`
-	// RunningTasks is the work this session has out right now, in admission
-	// order. Nil when there is none, which is most sessions.
+	// RunningTasks is the work this session has out right now: its task nodes
+	// in admission order, then its adaptive runs in the order they were minted.
+	// Nil when there is none, which is most sessions.
 	RunningTasks []PresenceTask `json:"runningTasks,omitempty"`
+	// Jobs are the background jobs this session has running right now, in the
+	// order they were started. Nil when there is none — and on every file
+	// written by a build older than this field, which reads the same way.
+	Jobs []PresenceJob `json:"jobs,omitempty"`
 	// Dir is the session folder this was read from, filled in by the reader and
 	// never written to the file — the folder already knows where it is, and a
 	// path recorded inside it would be a second answer to go wrong the day a
@@ -567,6 +642,64 @@ func (a *Agent) presenceAskingOptions(kind QuestionKind, id uint64, text string,
 	}
 }
 
+// presenceAskingWhole is [Agent.presenceAskingOptions] for a lane that can
+// describe its question COMPLETELY (question.go's [Question]).
+//
+// It banks the same short form every older reader expects — the kind, the id,
+// one line and the answers — and the whole object beside it, and it banks the
+// question's WORDS where [Agent.OpenQuestions] reads them. The three go up and
+// come down together, because a lane that stopped waiting has stopped asking,
+// and a window still drawing the question would be offering a key the session
+// would drop.
+func (a *Agent) presenceAskingWhole(q Question) func() {
+	forgetWords := a.rememberQuestion(q)
+	forgetDesk := a.presenceAskingQuestion(q)
+	return func() {
+		forgetDesk()
+		forgetWords()
+	}
+}
+
+// presenceAskingQuestion banks one whole question at the desk. It is split out
+// from [Agent.presenceAskingWhole] so a lane that wants the presence row without
+// the word book — there is none today — would have one, and so the mapping from
+// a [Question] to the four fields an older reader sees is written exactly once.
+func (a *Agent) presenceAskingQuestion(q Question) func() {
+	desk := a.presence
+	if desk == nil {
+		return func() {}
+	}
+	asked := q.Asked
+	if asked.IsZero() {
+		asked = time.Now()
+	}
+	question := PresenceQuestion{
+		Kind:    q.Kind,
+		ID:      q.ID,
+		Text:    strings.TrimSpace(q.Head),
+		Options: q.Options,
+		Asked:   asked,
+		Full:    &q,
+	}
+	desk.mu.Lock()
+	desk.askSeq++
+	seq := desk.askSeq
+	desk.asks = append(desk.asks, presenceAsk{seq: seq, question: question})
+	desk.mu.Unlock()
+	a.nudgePresence()
+	return func() {
+		desk.mu.Lock()
+		for at, ask := range desk.asks {
+			if ask.seq == seq {
+				desk.asks = append(desk.asks[:at], desk.asks[at+1:]...)
+				break
+			}
+		}
+		desk.mu.Unlock()
+		a.nudgePresence()
+	}
+}
+
 // beat is the heartbeat: one write now, one on every nudge, one on every tick,
 // and a removal on the way out.
 //
@@ -623,6 +756,12 @@ func (d *presenceDesk) beat() {
 		case <-ticker.C:
 			d.agent.drainAnswers()
 			d.agent.drainTakeover()
+			// AND A QUESTION WHOSE SUBJECT WENT AWAY IS TAKEN BACK, with a
+			// reason (question.go's [Agent.sweepQuestions]). It is on this beat
+			// and not on the nudge for [Agent.drainAnswers]'s reason exactly: a
+			// nudge fires while the agent's own lock is held by the lane that
+			// sent it, and the sweep reads every lane there is.
+			d.agent.sweepQuestions()
 			d.write()
 		}
 	}
@@ -716,7 +855,8 @@ func (a *Agent) presenceSnapshot(now time.Time) SessionPresence {
 		// would leave that window saying `waiting on you` with nothing after it.
 		snapshot.Question = a.presenceAsk()
 	}
-	snapshot.RunningTasks = a.presenceTasks()
+	snapshot.RunningTasks = append(a.presenceTasks(), a.presenceRuns()...)
+	snapshot.Jobs = a.presenceJobs()
 	return snapshot
 }
 
@@ -754,6 +894,9 @@ type personAsk struct {
 // looking idle while they waited (consent.go, connect.go, harness.go, task.go,
 // tools_standing.go, tools_subharness.go each hold one of these).
 //
+// A task proposal with an active countdown starts automatically and does not
+// require the person. Holding it removes that deadline and makes it a question.
+//
 // THE STANDING CARD IS THE ONE LANE THAT WAITS FOREVER — it carries no clock at
 // all, by law (standing_contract.go) — so a window left on one said "idle" for
 // as long as it stood there, which is the exact opposite of the truth.
@@ -772,8 +915,22 @@ type personAsk struct {
 // another lock is holding the lock Interrupt has to be able to take.
 func (a *Agent) waitingOnPerson() personAsk {
 	a.mu.Lock()
+	// THE MODEL'S OWN DOOR IS ONE OF THESE LANES, and leaving it out was a
+	// session stopped on a question telling every other window it was `working`.
+	// [Agent.askWaits] is what the `ask` tool blocks its turn on (tools_ask.go);
+	// the desk already carries the whole question beside it
+	// ([Agent.presenceAskingQuestion]), so the words below are there — it was
+	// only this predicate that did not know to look. Measured in two terminals
+	// on one machine: a question raised in the first, and home in the second
+	// drawing that conversation as `working` with nothing to answer.
 	asked := len(a.consent) > 0 || len(a.connectAsks) > 0 || len(a.harnessAsks) > 0 ||
-		len(a.taskAnswers) > 0 || len(a.standingAnswers) > 0
+		len(a.standingAnswers) > 0 || len(a.askWaits) > 0
+	for _, proposal := range a.taskAnswers {
+		if proposal != nil && proposal.notice.Deadline.IsZero() {
+			asked = true
+			break
+		}
+	}
 	// THE SUBHARNESS PROPOSAL IS READ SEPARATELY BECAUSE IT BRINGS ITS OWN
 	// WORDS. It banks no card at the desk — no other window can answer it, so
 	// offering it there would be a chip that does nothing — and a lane counted
@@ -807,8 +964,34 @@ func (a *Agent) waitingOnPerson() personAsk {
 			return personAsk{waiting: true, reason: fuelGateLine + " · " + snap.Fuel.Gauge()}
 		}
 	}
+	// AND A LANDED TASK'S `YOUR CALL` IS A QUESTION LIKE ANY OTHER, which for a
+	// long time this did not count. Work that finished and that nobody could
+	// check waits on a person's word and moves for nothing else — it is the
+	// third tier of docs/design/task-states/DESIGN.md and the whole content of
+	// pending.go's registry — and yet it lived outside every lane above, so a
+	// session sitting on one said `idle` to home, to the switcher and to the tab
+	// signal. A person was told there was nothing to do about work that could
+	// not go on without them (ideation/questions-audit.md, finding 4).
+	//
+	// IT IS READ LAST because it is the one question in this list that BLOCKS
+	// NOTHING: the work has already finished, and the reason a person reads
+	// should be the thing that is actually stopped where anything is.
+	//
+	// AND UNDER THE GRAPH'S OWN LOCK, never the agent's — this file's standing
+	// rule about anything with a lock of its own, kept by calling
+	// [Agent.PendingDecisions] with a.mu already released.
+	if pending := a.PendingDecisions(); len(pending) > 0 {
+		return personAsk{waiting: true, reason: yourCallLine + strings.TrimSpace(pending[0].Notice.Title)}
+	}
 	return personAsk{}
 }
+
+// yourCallLine opens the sentence a session says while a landed task waits on
+// somebody's word, and the task's own title closes it. It is [fuelGateLine]'s
+// shape and the tier's own word (task_status.go's [taskWordYourCall]), so home,
+// the switcher and the row on the roster cannot become three accounts of one
+// decision.
+const yourCallLine = taskWordYourCall + " on "
 
 // fuelGateLine opens the sentence a session says when an adaptive run has spent
 // its tank. It is the run page's own lead, repeated here because internal/session
@@ -824,8 +1007,9 @@ const subharnessOfferLine = "wants to run "
 
 // NeedsPerson reports whether this conversation is stopped on a question only a
 // person can answer — an approval, a connect offer, a sub-harness offer, a task
-// proposal, a standing card, an intake card chat raised for a saved program, or
-// an adaptive run waiting at its fuel gate.
+// proposal, a standing card, an intake card chat raised for a saved program, an
+// adaptive run waiting at its fuel gate, or a landed task waiting on somebody's
+// word about whether its work holds.
 //
 // IT IS THE PRESENCE FILE'S OWN TEST, ASKED DIRECTLY. A surface in this process
 // must never answer it by reading its own presence file back: that file is
@@ -850,16 +1034,29 @@ func (a *Agent) WaitingOn() string { return a.waitingOnPerson().reason }
 // sentence about a question this file cannot see, would put words on a surface
 // that nothing in the session ever said.
 func (a *Agent) presenceAsk() PresenceQuestion {
+	// Automatic proposals offer intervention but do not require an answer.
+	// Read deadlines under the same lock HoldTask uses to remove them.
+	a.mu.Lock()
+	automatic := make(map[uint64]bool, len(a.taskAnswers))
+	for id, proposal := range a.taskAnswers {
+		if proposal != nil && !proposal.notice.Deadline.IsZero() {
+			automatic[id] = true
+		}
+	}
+	a.mu.Unlock()
 	desk := a.presence
 	if desk == nil {
 		return PresenceQuestion{}
 	}
 	desk.mu.Lock()
 	defer desk.mu.Unlock()
-	if len(desk.asks) == 0 {
-		return PresenceQuestion{}
+	for _, ask := range desk.asks {
+		if ask.question.Kind == QuestionTask && automatic[ask.question.ID] {
+			continue
+		}
+		return ask.question
 	}
-	return desk.asks[0].question
+	return PresenceQuestion{}
 }
 
 // presenceTasks is the work this session has out, read off the graph WITHOUT
@@ -893,12 +1090,21 @@ func (a *Agent) presenceTasks() []PresenceTask {
 		if phase == TaskPhaseWorking {
 			phase = ""
 		}
+		// THE ACTIVITY IS READ HERE, under the graph's lock, exactly as
+		// [TaskNode.indexEntryLocked] reads it — the recorder takes only its own
+		// lock, so nothing waits on the graph for it. It is kept only while the
+		// worker is the life the node is in ([PresenceTask.Activity] says why).
+		activity := ""
+		if phase == "" {
+			activity = node.room.recorder().activity()
+		}
 		out = append(out, PresenceTask{
 			ID:        strconv.FormatUint(node.id, 10),
 			Title:     strings.TrimSpace(node.spec.title),
 			State:     string(node.state),
 			StartedAt: node.started,
 			Phase:     phase,
+			Activity:  activity,
 			// A COPY, TAKEN UNDER THE LOCK THE LIST IS APPENDED UNDER
 			// ([TaskNode.noteWrote]), so a refresh carries one whole instant of
 			// the node's writing and never half an append. A node that has
@@ -909,6 +1115,84 @@ func (a *Agent) presenceTasks() []PresenceTask {
 		})
 	}
 	return out
+}
+
+// presenceRuns is the adaptive runs this session has out, one row each, in the
+// order their rows were minted.
+//
+// A RUN IS WORK OUT LIKE ANY NODE, AND FOR A LONG TIME THIS FILE DID NOT SAY
+// SO. A run has no node in the graph — its planned workers live on its own
+// snapshot — so [Agent.presenceTasks] never saw it, while the run's root row sat
+// in the project index saying `running` from its first breath
+// ([Agent.newOrchestrateFamily]). Every other window then judged that row by
+// the join [SessionRow.Runs] makes, found no presence naming it, and counted a
+// run in full flight as incomplete.
+//
+// SO THE ROW CARRIES THE ROOT'S OWN ID, which is the index row's id and comes
+// off the graph's one sequence — the join on (SessionID, ID) is the same one a
+// node's row makes, and it cannot collide with a node's. A run a test scripted
+// with no family has no such id and is left off.
+//
+// The registry is read under a.mu and each run's snapshot under the run's own
+// lock, never both at once — [Agent.presenceSnapshot]'s standing rule.
+func (a *Agent) presenceRuns() []PresenceTask {
+	a.mu.Lock()
+	live := make([]*orchestration, 0, len(a.orchestrations))
+	for _, run := range a.orchestrations {
+		live = append(live, run)
+	}
+	a.mu.Unlock()
+
+	type minted struct {
+		root uint64
+		row  PresenceTask
+	}
+	var rows []minted
+	for _, run := range live {
+		if run == nil || run.run == nil || run.family == nil {
+			continue
+		}
+		snap := run.run.Snapshot()
+		// A finished run stays in the registry so its room can still be read
+		// ([Agent.settleOrchestrate]); it is the index's to report, not this file's.
+		if snap.Done {
+			continue
+		}
+		done, total := orchestrateProgress(snap.Nodes)
+		family := run.family
+		family.mu.Lock()
+		title := family.title
+		family.mu.Unlock()
+		rows = append(rows, minted{root: family.root, row: PresenceTask{
+			ID:        strconv.FormatUint(family.root, 10),
+			Title:     title,
+			State:     string(TaskRunning),
+			StartedAt: family.started,
+			Done:      done,
+			Total:     total,
+		}})
+	}
+	// A map has no order and a row must not shuffle between refreshes; the root
+	// ids come off one sequence, so they sort as the runs were minted.
+	sort.Slice(rows, func(i, j int) bool { return rows[i].root < rows[j].root })
+	out := make([]PresenceTask, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, row.row)
+	}
+	return out
+}
+
+// orchestrateProgress is how far a run has got: the planned nodes that have
+// settled, of every node the planner has laid out so far. The settled test is
+// [runWorkState]'s, so the count on a row and the tree beneath it
+// ([Agent.runsWorkingNow]) cannot disagree about which workers are home.
+func orchestrateProgress(nodes []orchestrate.NodeStatus) (done, total int) {
+	for _, node := range nodes {
+		if runWorkState(node.State) == WorkDone {
+			done++
+		}
+	}
+	return done, len(nodes)
 }
 
 // ── the readers ─────────────────────────────────────────────────────────────

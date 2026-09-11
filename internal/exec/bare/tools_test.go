@@ -3,10 +3,12 @@ package bare
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -111,10 +113,10 @@ func TestWriteSchemaVerbatim(t *testing.T) {
 
 func TestDescriptionsVerbatim(t *testing.T) {
 	tools := Tools(t.TempDir())
-	if tools[0].Description != readDescription {
+	if tools[0].Description != readDescription(DefaultCaps()) {
 		t.Errorf("read description mismatch")
 	}
-	if tools[1].Description != bashDescription {
+	if tools[1].Description != bashDescription(DefaultCaps()) {
 		t.Errorf("bash description mismatch")
 	}
 	if tools[2].Description != editDescription {
@@ -260,24 +262,90 @@ func TestReadOffsetAndLimit(t *testing.T) {
 	}
 }
 
-// ── read: line truncation at 2000 lines ───────────────────────────────────
+// ── read: line truncation at the line cap ─────────────────────────────────
 
+// THE FIGURES COME FROM THE CAP IN FORCE, not from a literal. The caps follow
+// the model's window now ([CapsFor]), and a test that spelled 2000 here would
+// be pinning the 128k case forever — the very drift the descriptions were made
+// to render out of.
 func TestReadLineTruncation(t *testing.T) {
 	dir := t.TempDir()
-	// 3000 lines, each 1 byte + newline = 2 bytes → total 6000 bytes < 50KB.
+	caps := DefaultCaps()
+	lines := caps.MaxLines + 1000
+	// One byte a line plus its newline, so the byte cap cannot be what binds.
 	var sb strings.Builder
-	for i := range 3000 {
+	for i := range lines {
 		sb.WriteString("l")
-		if i < 2999 {
+		if i < lines-1 {
 			sb.WriteString("\n")
 		}
 	}
 	mustWriteFile(t, dir, "f.txt", sb.String())
 	tools := Tools(dir)
 	text, _ := runTool(t, tools[0], map[string]any{"path": "f.txt"})
-	// Should show 2000 lines, footer says "Showing lines 1-2000 of 3000".
-	if !strings.Contains(text, "\n\n[Showing lines 1-2000 of 3000. Use offset=2001 to continue.]") {
-		t.Errorf("missing line truncation footer in:\n...%s", text[len(text)-120:])
+	want := fmt.Sprintf("\n\n[Showing lines 1-%d of %d. Use offset=%d to continue.]", caps.MaxLines, lines, caps.MaxLines+1)
+	if !strings.Contains(text, want) {
+		t.Errorf("missing line truncation footer %q in:\n...%s", want, text[len(text)-120:])
+	}
+}
+
+// The caps are a share of the window with pi's own pair as the ceiling: a
+// frontier conversation is byte-identical to what it was, a small one is not
+// asked to hold most of a file, and a window nobody could name keeps pi's.
+func TestCapsFollowTheWindow(t *testing.T) {
+	pi := DefaultCaps()
+	for _, window := range []int{0, 128_000, 200_000, 1 << 20} {
+		if got := CapsFor(window); got != pi {
+			t.Errorf("a %d-token window got %+v, want pi's own %+v", window, got, pi)
+		}
+	}
+	small := CapsFor(16_000)
+	if small.MaxBytes != 16_000*4/10 {
+		t.Errorf("a 16k window may hold %d bytes of one result, want a tenth of it", small.MaxBytes)
+	}
+	// The two caps stay in pi's proportion, so which of them binds a given
+	// output does not change with the window.
+	if small.MaxLines != pi.MaxLines*small.MaxBytes/pi.MaxBytes {
+		t.Errorf("the line cap %d is out of proportion with the byte cap %d", small.MaxLines, small.MaxBytes)
+	}
+	// And the caps only ever fall: a share below the floor still leaves a
+	// fragment worth reading rather than going to nothing.
+	tiny := CapsFor(4_000)
+	if tiny.MaxBytes >= small.MaxBytes || tiny.MaxBytes <= 0 || tiny.MaxLines <= 0 {
+		t.Errorf("a 4k window got %+v", tiny)
+	}
+}
+
+// And the same read on a small model is cut at the small model's cap, in the
+// same sentence — which is the whole point of the scaling: one read of one file
+// may not be most of what the model can hold.
+func TestReadOnASmallWindowIsCutAtItsOwnCap(t *testing.T) {
+	dir := t.TempDir()
+	caps := CapsFor(16_000)
+	if caps.MaxLines >= DefaultCaps().MaxLines || caps.MaxBytes >= DefaultCaps().MaxBytes {
+		t.Fatalf("a 16k window should get a smaller pair than pi's, got %+v", caps)
+	}
+	lines := caps.MaxLines + 100
+	var sb strings.Builder
+	for i := range lines {
+		sb.WriteString("l")
+		if i < lines-1 {
+			sb.WriteString("\n")
+		}
+	}
+	mustWriteFile(t, dir, "f.txt", sb.String())
+	tools := ToolsCapped(dir, caps)
+	text, _ := runTool(t, tools[0], map[string]any{"path": "f.txt"})
+	want := fmt.Sprintf("\n\n[Showing lines 1-%d of %d. Use offset=%d to continue.]", caps.MaxLines, lines, caps.MaxLines+1)
+	if !strings.Contains(text, want) {
+		t.Errorf("missing line truncation footer %q in:\n...%s", want, text[len(text)-160:])
+	}
+	// The description quotes what it applied, not what pi applied.
+	if !strings.Contains(tools[0].Description, fmt.Sprintf("cut at %d lines or %s", caps.MaxLines, sizeWord(caps.MaxBytes))) {
+		t.Errorf("read describes a limit it is not applying: %q", tools[0].Description)
+	}
+	if strings.Contains(tools[1].Description, "2000") || strings.Contains(tools[1].Description, "50KB") {
+		t.Errorf("bash describes pi's caps on a 16k model: %q", tools[1].Description)
 	}
 }
 
@@ -292,9 +360,41 @@ func TestReadByteTruncation(t *testing.T) {
 	mustWriteFile(t, dir, "f.txt", sb.String())
 	tools := Tools(dir)
 	text, _ := runTool(t, tools[0], map[string]any{"path": "f.txt"})
-	// Byte truncation footer includes "(50.0KB limit)" — formatSize(51200).
-	if !strings.Contains(text, "(50.0KB limit). Use offset=") {
+	// The byte footer renders the cap in force — formatSize(51200) by default.
+	if !strings.Contains(text, fmt.Sprintf("(%s limit). Use offset=", formatSize(DefaultCaps().MaxBytes))) {
 		t.Errorf("missing byte truncation footer in:\n...%s", text[len(text)-120:])
+	}
+}
+
+func TestReadWithAComposedBudgetKeepsItsContinuation(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "quarterly reviews 界")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var body strings.Builder
+	for index := range 300 {
+		body.WriteString(strings.Repeat("界,data,prose;", 5))
+		body.WriteString(strconv.Itoa(index))
+		body.WriteByte('\n')
+	}
+	mustWriteFile(t, dir, "review.sql", body.String())
+	tool := ReadTool(dir, 7500)
+	first, _ := runTool(t, tool, map[string]any{"path": "review.sql"})
+	if len(first) > 8000 {
+		t.Fatalf("composed read = %d bytes, want room for its footer under 8000", len(first))
+	}
+	marker := strings.LastIndex(first, "Use offset=")
+	if marker < 0 {
+		t.Fatalf("composed read lost its continuation:\n%s", first)
+	}
+	digits := strings.TrimSpace(strings.TrimSuffix(first[marker+len("Use offset="):], "to continue.]"))
+	next, err := strconv.Atoi(digits)
+	if err != nil {
+		t.Fatalf("continuation offset %q: %v", digits, err)
+	}
+	second, _ := runTool(t, tool, map[string]any{"path": "review.sql", "offset": next})
+	if strings.HasPrefix(second, "界,data,prose;0") || !strings.Contains(second, strconv.Itoa(next-1)) {
+		t.Fatalf("continuation repeated the first page or skipped its next line:\n%s", second)
 	}
 }
 
@@ -308,8 +408,10 @@ func TestReadFirstLineExceedsByteLimit(t *testing.T) {
 	if isErr {
 		t.Fatal("expected not isError (first-line-exceeds is a footer, not an error)")
 	}
-	// formatSize(60000) = "58.6KB", formatSize(51200) = "50.0KB".
-	want := "[Line 1 is 58.6KB, exceeds 50.0KB limit. Use bash: sed -n '1p' f.txt | head -c 51200]"
+	// formatSize(60000) = "58.6KB", and the limit is whatever bound it.
+	cap := DefaultCaps().MaxBytes
+	want := fmt.Sprintf("[Line 1 is %s, exceeds %s limit. Use bash: sed -n '1p' f.txt | head -c %d]",
+		formatSize(60000), formatSize(cap), cap)
 	if text != want {
 		t.Errorf("got %q, want %q", text, want)
 	}
@@ -1008,13 +1110,13 @@ func TestGrepFindLsDescriptionsVerbatim(t *testing.T) {
 	// rather than against a literal, because a test that demanded pi's sentence
 	// everywhere would be demanding a description that lies about half the
 	// machines it ships to.
-	if tools[4].Description != grepToolDescription() {
+	if tools[4].Description != grepToolDescription(DefaultCaps()) {
 		t.Errorf("grep description mismatch")
 	}
-	if tools[5].Description != findDescription {
+	if tools[5].Description != findDescription(DefaultCaps()) {
 		t.Errorf("find description mismatch")
 	}
-	if tools[6].Description != lsDescription {
+	if tools[6].Description != lsDescription(DefaultCaps()) {
 		t.Errorf("ls description mismatch")
 	}
 }

@@ -55,10 +55,14 @@ var ErrHostRunning = errors.New("engine host: another host already holds this wo
 // two lifetimes are deliberately NOT married: standing work already keeps a
 // machine warm on its own terms, and a host that stayed up forever to guard it
 // would be a second answer to a question that already has one.
+// sessionIdle is a var rather than a const so a test can ask what the policy
+// DECIDES without waiting half an hour to find out. Nothing in the product
+// writes it.
+var sessionIdle = 30 * time.Minute
+
 const (
-	sessionIdle = 30 * time.Minute
-	hostIdle    = 2 * time.Minute
-	sweepEvery  = 30 * time.Second
+	hostIdle   = 2 * time.Minute
+	sweepEvery = 30 * time.Second
 )
 
 // The two numbers a stand-down is measured in.
@@ -89,9 +93,18 @@ type Options struct {
 	Boot func(remote.Hello) (*remote.Engine, error)
 
 	// Key says which conversation a hello wants, so that two surfaces asking
-	// for the same one are handed the same one. Empty from a nil Key is the
-	// workspace's latest-or-new, which is what a hello naming no session means
-	// everywhere else on this wire.
+	// for the same one are handed the same one.
+	//
+	// IT ANSWERS A TRANSCRIPT PATH, INCLUDING FOR A HELLO THAT NAMED NOTHING.
+	// "The workspace's latest" is a question about this machine's disk, and the
+	// door that starts the host is the half of this pair that can read it
+	// (cmd/aforge's [engineHelloKey]) — resolving it here, at the door, is what
+	// lets the lookups below find a conversation this host is ALREADY holding
+	// rather than booting a second agent onto its journal.
+	//
+	// A nil Key falls back to the hello's own session, which is what a test with
+	// no door behind it means, and the empty string it answers for a hello that
+	// named nothing is then the boot's problem rather than an identity.
 	Key func(remote.Hello) string
 }
 
@@ -112,7 +125,16 @@ type Host struct {
 
 	mu       sync.Mutex
 	sessions map[string]*remote.Session
-	live     int
+	// latest is the transcript this host opened for the last hello that named
+	// no conversation, and it is an ALIAS RATHER THAN AN IDENTITY: nothing is
+	// ever filed under it, [Host.open] simply resolves the empty key through it
+	// before it looks anything up. See the law at that lookup.
+	latest string
+	// minted counts the conversations opened by a hello that asked for one of
+	// its own ([remote.Hello.New]) and could not be filed under their own
+	// transcript. It is bookkeeping and never an identity: see [Host.freeKeyLocked].
+	minted int
+	live   int
 	// probes is how many of those live connections turned out to be the version
 	// exchange rather than a surface (whois.go). THE QUESTION MUST NOT COUNT AS
 	// THE WORK: a connection asking "are you busy" is not what busy means, and
@@ -271,11 +293,58 @@ func (h *Host) open(hello remote.Hello) (*remote.Session, error) {
 	if h.closed || h.retiring {
 		return nil, errors.New("engine host: this host is shutting down")
 	}
+	// A JOIN TAKES A CONVERSATION THAT IS ALREADY HERE AND NOTHING ELSE. It is
+	// matched on the transcript rather than on the key, and it never reaches the
+	// boot below — [remote.Hello.Join] says why both halves of that are the point.
+	if hello.Join {
+		return h.joinedLocked(hello.Session)
+	}
+	// AND A MINT TAKES NOTHING THAT IS ALREADY HERE. [remote.Hello.New] is a
+	// window opening ANOTHER conversation beside the ones it has, so the lookup
+	// below — which is what makes two surfaces saying nothing land in one
+	// conversation — is exactly what it must not do. It boots, and it is keyed by
+	// the transcript the engine chose rather than by the empty string the hello
+	// carried, so a later window naming that file finds this conversation instead
+	// of opening a second agent onto the same journal.
+	if hello.New {
+		return h.mintedLocked(hello)
+	}
+	// AND NO CONVERSATION IS EVER KEYED BY THE EMPTY STRING, which is the whole
+	// of the collision this closes.
+	//
+	// "Nothing" is not a name: a hello that names no session is asking for this
+	// workspace's LATEST, and the door resolves that to a transcript path before
+	// it ever reaches here (cmd/aforge's [engineHelloKey]). What is left for the
+	// host is the one case a door cannot resolve — a workspace with no
+	// conversation in it yet, and a host with no door at all — and there the
+	// empty string is resolved through the transcript the last such hello landed
+	// on rather than used as a slot to file under.
+	//
+	// It was a slot once, and it worked exactly as long as that slot held the
+	// workspace's latest. The moment its conversation ended — moved to another
+	// window, left behind by /new, closed — while this host went on holding a
+	// different one, the next plain hello found nothing under "" and booted;
+	// the boot resolved the workspace's latest, which is a journal THIS PROCESS
+	// holds the flock on, and the host refused its own conversation with "this
+	// conversation is open in another window".
+	if key == "" {
+		key = h.latest
+	}
 	if existing := h.sessions[key]; existing != nil && !existing.Ended() {
 		// THE WHOLE PRODUCT IS THIS LINE: the conversation was already running,
 		// possibly mid-turn, and the surface is joining it rather than starting
 		// anything.
 		return existing, nil
+	}
+	// AND A HELLO THAT NAMES A TRANSCRIPT THIS HOST IS ALREADY HOLDING IS THE
+	// SAME LINE SAID ABOUT A DIFFERENT KEY. A conversation minted by the branch
+	// above, or by an older hello that named no session, is keyed by something
+	// this hello has no way to guess — so without this a person reopening that
+	// chat by its own path would boot a second agent onto a journal the first one
+	// holds the lock on, and be told their conversation was open in another
+	// window by the process they were talking to.
+	if open, found := h.openLocked(key); found {
+		return open, nil
 	}
 	engine, err := h.opts.Boot(hello)
 	if err != nil {
@@ -285,9 +354,119 @@ func (h *Host) open(hello remote.Hello) (*remote.Session, error) {
 		return nil, errors.New("engine host: the workspace opened no conversation")
 	}
 	sess := remote.NewSession(engine, true)
-	h.sessions[key] = sess
+	// The conversation is filed under the JOURNAL THE BOOT ACTUALLY OPENED,
+	// which is the one name every later hello can arrive at — by naming it, or
+	// by resolving "this workspace's latest" to it.
+	filed := h.freeKeyLocked(firstFilled(engine.SessionFile, key))
+	h.sessions[filed] = sess
+	if key == "" {
+		// And this is what a hello that named nothing will mean next time. It
+		// is the alias above, written where the answer is finally known — the
+		// name this conversation was actually filed under, so that an engine
+		// which answered no transcript at all is still found rather than booted
+		// a second time.
+		h.latest = filed
+	}
 	h.quiet = time.Time{}
 	return sess, nil
+}
+
+// firstFilled is the first of its arguments with something in it, trimmed.
+func firstFilled(words ...string) string {
+	for _, word := range words {
+		if trimmed := strings.TrimSpace(word); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+// mintedLocked opens a conversation of this host's own choosing and files it
+// under the transcript it opened.
+//
+// THE KEY IS THE ENGINE'S ANSWER AND NOT THE HELLO'S QUESTION, which is the one
+// thing that makes this different from the ordinary road. A minting hello names
+// no session on purpose — where a new conversation lands is a question about
+// this machine's disk — so keying it by what the hello said would file every
+// minted conversation under the empty string and have the second one replace the
+// first.
+//
+// IT IS ALWAYS FILED, even when the transcript it wants is somehow taken and
+// even when the engine answered no file at all. The map is not only the door a
+// second window comes back through: it is what the sweep retires conversations
+// out of and what [Host.idleLocked] counts, so a session left out of it would be
+// a conversation this host holds, keeps alive and can never let go of.
+func (h *Host) mintedLocked(hello remote.Hello) (*remote.Session, error) {
+	engine, err := h.opts.Boot(hello)
+	if err != nil {
+		return nil, err
+	}
+	if engine == nil || engine.Agent == nil {
+		return nil, errors.New("engine host: the workspace opened no conversation")
+	}
+	sess := remote.NewSession(engine, true)
+	h.sessions[h.freeKeyLocked(engine.SessionFile)] = sess
+	h.quiet = time.Time{}
+	return sess, nil
+}
+
+// freeKeyLocked is where a minted conversation is filed: its own transcript when
+// nothing live is under that name, and otherwise a key nothing can collide with.
+// The fallback is not reachable by name and is not meant to be — it exists so
+// that the bookkeeping above can never drop a conversation on the floor.
+func (h *Host) freeKeyLocked(file string) string {
+	key := strings.TrimSpace(file)
+	if key != "" {
+		if held := h.sessions[key]; held == nil || held.Ended() {
+			return key
+		}
+	}
+	h.minted++
+	return fmt.Sprintf("\x00minted-%d", h.minted)
+}
+
+// openLocked is the live conversation writing one transcript, found by that
+// transcript rather than by the key it was filed under. It is [Host.joinedLocked]
+// without the refusal: a caller here has somewhere else to go when the answer is
+// no, which is the boot.
+func (h *Host) openLocked(file string) (*remote.Session, bool) {
+	want := strings.TrimSpace(file)
+	if want == "" {
+		return nil, false
+	}
+	want = filepath.Clean(want)
+	for _, sess := range h.sessions {
+		if sess == nil || sess.Ended() {
+			continue
+		}
+		if open := strings.TrimSpace(sess.File()); open != "" && filepath.Clean(open) == want {
+			return sess, true
+		}
+	}
+	return nil, false
+}
+
+// joinedLocked is the live conversation writing one transcript, and an error
+// naming what was asked for when there is none.
+//
+// THE REFUSAL IS A SENTENCE AND NOT A BOOT. The caller is a surface that wants a
+// second view onto work it believes is running; if that belief is stale — the
+// window closed a second ago, the conversation ended — the honest answer is that
+// it is not here, and the surface has a recovery state for exactly that. Starting
+// a conversation would answer a question nobody asked with a model somebody pays
+// for.
+//
+// The file is compared cleaned, because one side of this walked a directory and
+// the other read a presence file, and neither promises the other's spelling.
+func (h *Host) joinedLocked(file string) (*remote.Session, error) {
+	want := strings.TrimSpace(file)
+	if want == "" {
+		return nil, errors.New("engine host: a join has to name a conversation")
+	}
+	if sess, found := h.openLocked(want); found {
+		return sess, nil
+	}
+	return nil, fmt.Errorf("engine host: that conversation is not open here: %s", filepath.Clean(want))
 }
 
 // whois is the host answering what it is and what it will do about a request to
@@ -384,13 +563,37 @@ func (h *Host) sweep() {
 // last one. It is a function rather than the body of the loop above so that a
 // test can ask what the policy decides without waiting out a clock.
 func (h *Host) sweepOnce() bool {
-	var retiring []*remote.Session
+	// THE DECISION IS MADE OFF THIS HOST'S LOCK. Retiring a conversation flushes
+	// its journal and may walk its graph, and doing that with the sessions map
+	// held would stall every connection arriving meanwhile.
+	type held struct {
+		key  string
+		sess *remote.Session
+	}
 	h.mu.Lock()
+	holding := make([]held, 0, len(h.sessions))
 	for key, sess := range h.sessions {
-		idle := sess.IdleSince()
-		if sess.Ended() || (!idle.IsZero() && time.Since(idle) > sessionIdle) {
-			delete(h.sessions, key)
-			retiring = append(retiring, sess)
+		holding = append(holding, held{key: key, sess: sess})
+	}
+	h.mu.Unlock()
+
+	var gone []held
+	for _, one := range holding {
+		// RetireIfIdle takes its last look and ends the conversation under one
+		// acquisition of the session's own lock, so a surface that arrived while
+		// this pass was thinking cancels the retirement rather than losing the
+		// conversation it just joined.
+		if one.sess.Ended() || one.sess.RetireIfIdle(sessionIdle) {
+			gone = append(gone, one)
+		}
+	}
+
+	h.mu.Lock()
+	for _, one := range gone {
+		// Only if it is still the SAME conversation under that key: a hello may
+		// have opened a fresh one there while this pass was retiring the old.
+		if h.sessions[one.key] == one.sess {
+			delete(h.sessions, one.key)
 		}
 	}
 	if h.live == 0 && len(h.sessions) == 0 && h.quiet.IsZero() {
@@ -398,14 +601,6 @@ func (h *Host) sweepOnce() bool {
 	}
 	leaving := h.live == 0 && len(h.sessions) == 0 &&
 		!h.quiet.IsZero() && time.Since(h.quiet) > hostIdle
-	// AND A HOST WHOSE BINARY WAS REPLACED LEAVES AS SOON AS IT IS HOLDING
-	// NOTHING, without waiting out either clock. The clocks exist to keep a
-	// conversation warm for somebody who will come back to it; there is nothing
-	// warm about a build nobody is running any more, and staying is how a stale
-	// host comes to be spliced onto a surface an hour later (binary.go). The
-	// conversations it is holding are NOT taken down for this — idleLocked is
-	// the same "nothing in flight" the version exchange answers with, and a
-	// journal is flushed on the way out either way.
 	replaced := !leaving && h.binary.replaced() && h.idleLocked()
 	if replaced {
 		// The door closes under the same lock that decided, so a surface
@@ -417,11 +612,6 @@ func (h *Host) sweepOnce() bool {
 
 	if replaced {
 		h.note("the file this host was started from has been replaced; retiring so the next connection starts the current one")
-	}
-	for _, sess := range retiring {
-		// Closing flushes the journal, which is the only thing that has to
-		// happen before a conversation is let go of.
-		_ = sess.Close()
 	}
 	return leaving
 }

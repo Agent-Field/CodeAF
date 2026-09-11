@@ -47,11 +47,12 @@ import (
 // no arm by which a question about running work could change it.
 
 const (
-	// asideMaxTokens bounds one aside. It is half the answering turn's cap
-	// because an aside answers ONE question about something already on the board
-	// and never carries a deliverable — the artifact law's whole point is that
-	// deliverables leave this budget entirely, and an aside cannot write one.
-	asideMaxTokens = 600
+	// An aside used to carry a 600-token ceiling — half the answering turn's cap,
+	// on the argument that it answers ONE question about something already on
+	// the board and never carries a deliverable. The argument still holds and
+	// the ceiling is gone anyway: it was this file's guess at how long somebody
+	// else's model needs to answer one question. What keeps an aside small is
+	// asideQuestionBytes below and the prompt.
 	// asideQuestionBytes bounds what may be asked. Past this it is not a
 	// curiosity question, it is a direction, and directions are journal.
 	asideQuestionBytes = 600
@@ -125,8 +126,7 @@ func (h *Head) Ask(ctx context.Context, sessionID, question string) (string, err
 	// the reply the person is waiting on.
 	response, err := client.CompleteWithMessages(
 		provider.WithStreamSession(ctx, AsideStreamSession(sessionID)),
-		[]ai.Message{textMessage("system", asidePrompt), textMessage("user", prompt)},
-		ai.WithMaxTokens(asideMaxTokens))
+		[]ai.Message{textMessage("system", asidePrompt), textMessage("user", prompt)})
 	if err != nil {
 		return "", fmt.Errorf("head aside: %w", err)
 	}

@@ -15,24 +15,34 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
 )
 
-// TestMain switches the model-call log OFF for this package.
+// TestMain switches the model-call log OFF for this package and gives the
+// binary a machine of its own to run on.
 //
 // The log is always on in the product, so a test binary that says nothing about
 // it appends a row for every call these tests make — including the ones that
 // deliberately dial a host that does not exist — into the developer's own
 // ~/.aforge/logs/calls.jsonl, where it is noise in the one file somebody is
 // reading to debug a real run. The tests below read fixtures instead.
+//
+// AND THE SAME ARGUMENT IS TRUE OF THE CREDENTIALS AND THE STATE ROOT, which is
+// what [isolateTestEnvironment] answers: several doors here are driven end to
+// end in the belief that they stop at a missing key, and on a developer's laptop
+// they stopped at a live provider instead (testenv_test.go carries the whole
+// case).
 func TestMain(m *testing.M) {
 	if _, pinned := os.LookupEnv(calllog.EnvVar); !pinned {
 		os.Setenv(calllog.EnvVar, calllog.OffValue)
 	}
-	os.Exit(m.Run())
+	restore := isolateTestEnvironment()
+	code := m.Run()
+	restore()
+	os.Exit(code)
 }
 
 // fixtureRows is the log a person could actually have, as it sits on disk: a
 // refused attempt that taught the adapter something, the retry that landed —
 // carrying the whole of what the row holds, the lane asked for and the lane
-// that served, the wait before the first token, the deadline the watch was
+// that served, the wait before the first token, the moment the watch was
 // holding and the hedge that was fired against it — and one call that went out
 // and has not come back. The first two belong to a run; the third carries no
 // run at all, which is what almost every row on disk looks like today and is
@@ -42,8 +52,8 @@ func fixtureRows() []string {
 		`{"ts":"2026-08-28T21:12:41.000Z","id":"aaaaaaaa","phase":"start","run":"r-7f3a","tag":"compile","model":"z-ai/glm-5.3-flash","lane":"deepinfra","effort":"low","max_tokens":10240,"messages":2,"attempt":1}`,
 		`{"ts":"2026-08-28T21:12:41.200Z","id":"aaaaaaaa","run":"r-7f3a","tag":"compile","model":"z-ai/glm-5.3-flash","lane":"deepinfra","served":"deepinfra","effort":"low","max_tokens":10240,"messages":2,"attempt":1,"status":400,"ms":200,"error":"Reasoning is mandatory for this endpoint","learned":["reasoning_mandatory"]}`,
 		`{"ts":"2026-08-28T21:12:41.300Z","id":"bbbbbbbb","phase":"start","run":"r-7f3a","tag":"compile","model":"z-ai/glm-5.3-flash","effort":"low","max_tokens":10240,"messages":2,"attempt":2}`,
-		`{"ts":"2026-08-28T21:12:53.000Z","id":"bbbbbbbb","run":"r-7f3a","tag":"compile","model":"z-ai/glm-5.3-flash","lane":"auto","served":"coreweave","effort":"low","max_tokens":10240,"messages":2,"stream":true,"attempt":2,"status":200,"ms":12700,"ttft_ms":420,"deadline_ms":8000,"action":"hedge","arms":2,"hedged":true,"waste_usd":0.0012,"finish":"stop","prompt_tokens":1204,"completion_tokens":466,"cached_tokens":1024,"cost":0.0003}`,
-		`{"ts":"2026-08-28T21:13:04.000Z","id":"cccccccc","phase":"start","tag":"leaf","node":"build","model":"z-ai/glm-5.3","lane":"novita","effort":"high","max_tokens":65536,"deadline_ms":30000,"messages":9,"tools":11,"attempt":1}`,
+		`{"ts":"2026-08-28T21:12:53.000Z","id":"bbbbbbbb","run":"r-7f3a","tag":"compile","model":"z-ai/glm-5.3-flash","lane":"auto","served":"coreweave","effort":"low","max_tokens":10240,"messages":2,"stream":true,"attempt":2,"status":200,"ms":12700,"ttft_ms":420,"hazard_ceiling_ms":8000,"action":"hedge","arms":2,"hedged":true,"waste_usd":0.0012,"finish":"stop","prompt_tokens":1204,"completion_tokens":466,"cached_tokens":1024,"cost":0.0003}`,
+		`{"ts":"2026-08-28T21:13:04.000Z","id":"cccccccc","phase":"start","tag":"leaf","node":"build","model":"z-ai/glm-5.3","lane":"novita","effort":"high","max_tokens":65536,"hazard_ceiling_ms":30000,"messages":9,"tools":11,"attempt":1}`,
 	}
 }
 
@@ -155,7 +165,7 @@ func TestLogsOnAMachineThatHasNeverCalledAModelDrawsNothingAndSaysWhereTheLogWou
 
 // TestLogsShowsTheWholeRowAndNotHalfOfIt is the law of this reader: a field
 // that is on the record is on the line. The half that used to be dropped — who
-// was asked, who answered, the wait before the first token, the deadline the
+// was asked, who answered, the wait before the first token, the moment the
 // watch held, and what was done about a silence — is the half somebody opens
 // this command to see.
 func TestLogsShowsTheWholeRowAndNotHalfOfIt(t *testing.T) {
@@ -170,7 +180,7 @@ func TestLogsShowsTheWholeRowAndNotHalfOfIt(t *testing.T) {
 	refused, answered, inFlight := lines[0], lines[1], lines[2]
 	// The router overrode the preference on the call that landed, and that
 	// difference is the single most useful thing on the line.
-	for _, want := range []string{"auto→coreweave", "first token 0.4s", "deadline 8.0s",
+	for _, want := range []string{"auto→coreweave", "first token 0.4s", "rescue at 8.0s",
 		"acted hedge", "2 arms", "hedged", "waste $0.0012"} {
 		if !strings.Contains(answered, want) {
 			t.Errorf("the answered call's line is missing %q: %q", want, answered)
@@ -181,15 +191,39 @@ func TestLogsShowsTheWholeRowAndNotHalfOfIt(t *testing.T) {
 	if !strings.Contains(refused, "deepinfra") || strings.Contains(refused, "deepinfra→") {
 		t.Errorf("a lane that served what was asked for prints once: %q", refused)
 	}
-	// A deadline was set on the call still in flight and never reached, which
-	// is the row that says the deadline was set in the right place.
-	if !strings.Contains(inFlight, "deadline 30.0s") {
-		t.Errorf("the in-flight call's deadline is missing: %q", inFlight)
+	// A rescue moment was set on the call still in flight and never reached,
+	// which is the row that says it was set in the right place.
+	if !strings.Contains(inFlight, "rescue at 30.0s") {
+		t.Errorf("the in-flight call's rescue moment is missing: %q", inFlight)
 	}
-	// The emptiness law: the retry's start row carried no deadline and no lane,
+	// The emptiness law: the retry's start row carried no rescue moment and no lane,
 	// so nothing stands in for them.
 	if strings.Contains(refused, "acted") || strings.Contains(refused, "arms") {
 		t.Errorf("a call nothing was done about prints nothing about it: %q", refused)
+	}
+}
+
+// TestLogsShowsTheActionReasonAndTheRefusedRescue is C4/C5 at the person-facing
+// door: the controller's word sits beside its action, a refused hedge says why,
+// and an ordinary call grows no placeholder fields.
+func TestLogsShowsTheActionReasonAndTheRefusedRescue(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		record calllog.Record
+		want   string
+	}{
+		{
+			"both explanations are present",
+			calllog.Record{Action: "hedge", Reason: "rate collapsed", Refused: "budget"},
+			"acted hedge · rate collapsed · no rescue: budget",
+		},
+		{"neither explanation is present", calllog.Record{}, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := strings.Join(hedgeFields(test.record), " · "); got != test.want {
+				t.Fatalf("hedge fields = %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 

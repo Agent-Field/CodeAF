@@ -31,11 +31,16 @@ import (
 // count. The air is what goes now.
 func TestTheNarrowBarStillSaysWhereElseYouCanGo(t *testing.T) {
 	a := placeApp(t)
-	for _, width := range []int{60, 80, 120, 160} {
+	// THE WIDTH WHERE THE AIR GOES is one cell under the bar's own width: the
+	// words still fit there once the gaps between them are given up. It is read
+	// off the bar rather than typed, because the bar is four words now and a
+	// literal sixty was a width measured against seven.
+	tight := ansi.StringWidth(plain(a.placeTabBar(200, false, a.pal))) - 1
+	for _, width := range []int{tight, 60, 80, 120, 160} {
 		bar := plain(a.placeTabBar(width, false, a.pal))
-		for _, id := range pages() {
+		for _, id := range barPages(a.page, false) {
 			if !strings.Contains(bar, id.word()) {
-				t.Fatalf("at %d columns the bar drew\n\t%q\nand a person cannot reach %q from it; every one of the seven places should be on the row:\n\t%q",
+				t.Fatalf("at %d columns the bar drew\n\t%q\nand a person cannot reach %q from it; every one of its places should be on the row:\n\t%q",
 					width, bar, id.word(), plain(a.placeTabBar(200, false, a.pal)))
 			}
 		}
@@ -50,11 +55,11 @@ func TestTheNarrowBarStillSaysWhereElseYouCanGo(t *testing.T) {
 	wide := plain(a.placeTabBar(120, false, a.pal))
 	if !strings.Contains(wide, "home   tasks") {
 		t.Fatalf("at 120 columns the bar drew\n\t%q\nand the air between two chips is gone; it should read\n\t%q",
-			wide, "  home   tasks   standing …")
+			wide, "  home   tasks   spend   settings")
 	}
-	if narrow := plain(a.placeTabBar(60, false, a.pal)); !strings.Contains(narrow, "home  tasks") {
-		t.Fatalf("at 60 columns the bar drew\n\t%q\nand it should carry every word with the air between the chips given up:\n\t%q",
-			narrow, "  home  tasks  standing  memory  spend  search  settings")
+	if narrow := plain(a.placeTabBar(tight, false, a.pal)); !strings.Contains(narrow, "home  tasks") {
+		t.Fatalf("at %d columns the bar drew\n\t%q\nand it should carry every word with the air between the chips given up:\n\t%q",
+			tight, narrow, "  home  tasks  spend  settings")
 	}
 }
 
@@ -67,14 +72,14 @@ func TestTheNarrowBarStillSaysWhereElseYouCanGo(t *testing.T) {
 // reaches them is on the foot of every place.
 func TestABarTooNarrowForEveryWordSaysHowManyItDropped(t *testing.T) {
 	a := placeApp(t)
-	for _, tc := range []struct{ width int }{{40}, {24}} {
+	for _, tc := range []struct{ width int }{{28}, {24}} {
 		bar := plain(a.placeTabBar(tc.width, false, a.pal))
 		if !strings.Contains(bar, a.page.word()) {
 			t.Fatalf("at %d columns the bar drew\n\t%q\nand dropped the place you are standing in (%q)", tc.width, bar, a.page.word())
 		}
 		if !strings.Contains(bar, tokens.GlyphCollapsed) {
 			t.Fatalf("at %d columns the bar drew\n\t%q\nand said nothing about the places it could not carry; it should end in a marked count, as in\n\t%q",
-				tc.width, bar, "  home  tasks  "+tokens.GlyphCollapsed+" 5")
+				tc.width, bar, "  home  tasks  "+tokens.GlyphCollapsed+" 2")
 		}
 		if got := ansi.StringWidth(bar); got > tc.width {
 			t.Fatalf("at %d columns the bar is %d cells wide and runs past the frame:\n\t%q", tc.width, got, bar)
@@ -83,7 +88,7 @@ func TestABarTooNarrowForEveryWordSaysHowManyItDropped(t *testing.T) {
 		// is one the count has to stand for, or the row is a second way of
 		// hiding them.
 		missing := 0
-		for _, id := range pages() {
+		for _, id := range barPages(a.page, false) {
 			if !strings.Contains(bar, id.word()) {
 				missing++
 			}
@@ -103,7 +108,8 @@ func TestABarTooNarrowForEveryWordSaysHowManyItDropped(t *testing.T) {
 		}
 	}
 	// AND A COUNT NEVER APPEARS ON A BAR THAT CARRIED EVERYTHING. A `+0` beside
-	// seven words would be furniture, and furniture is what people stop seeing.
+	// four words would be furniture, and furniture is what people stop seeing —
+	// and the three places reached by command are not a count the bar owes.
 	for _, width := range []int{60, 80, 120, 160} {
 		if bar := plain(a.placeTabBar(width, false, a.pal)); strings.Contains(bar, "+") {
 			t.Fatalf("at %d columns every place is on the bar and it still counts something:\n\t%q", width, bar)
@@ -119,8 +125,14 @@ func TestABarTooNarrowForEveryWordSaysHowManyItDropped(t *testing.T) {
 // here (it …`, which promises a key and then eats it. It is the same defect the
 // sliced key list was, in a sentence instead of a list, and it goes through the
 // same fitter now.
+//
+// THE SENTENCE IS A LITERAL HERE AND NO LONGER THE FOOT'S OWN. That door asks
+// with a card on home now (homeconfirm.go) and the foot has stopped carrying it
+// — but the FITTER is what this test is about, the shape it defeated is the one
+// below, and a law deleted with the string that first broke it is a law that
+// comes back with the next sentence of that shape.
 func TestTheNarrowFootDropsWholeHintsAndNeverSlicesOne(t *testing.T) {
-	sentence := takeoverArmedWord("open in another window")
+	sentence := "open in another window — enter again to move it here (that window's reply stops there; its tasks resume here)"
 	for _, width := range []int{60, 80, 120, 160} {
 		foot := hintFit(sentence, width-2)
 		if strings.Contains(foot, glyphMore) {
@@ -284,7 +296,7 @@ func rowSaying(frame, word string) string {
 // four in flight, a hundred and twenty-three dollars spent of five hundred, and
 // a Thursday afternoon.
 //
-// THE FACTS ARE PUT STRAIGHT INTO THE MEMO [app.machineFactsAt] KEEPS, because
+// THE FACTS ARE PUT STRAIGHT INTO THE MEMO THE PULSE DRAWS ([app.machine]), because
 // the subject here is the LADDER and not the reading. A fixture that built
 // twelve waiting conversations and four running tasks on disk would be a slow
 // test of the counters, and the counters have their own (pulsemoney_test.go).
@@ -295,8 +307,7 @@ func pulseLab(t *testing.T) (*app, time.Time) {
 	mine := lab.session("-alpha", "aaaa000000000001", "porting the picker", lab.workspace("alpha"), now)
 	a := lab.app(mine)
 	a.clock = func() time.Time { return now }
-	a.home.machine = machineFacts{wants: 12, hands: 4, spent: 123.45, ceiling: 500}
-	a.home.machineAt = now
+	a.machine = machineFacts{wants: 12, hands: 4, spent: 123.45, ceiling: 500}
 	return a, now
 }
 
@@ -315,7 +326,7 @@ func TestTheTopLineGivesUpTheClockBeforeTheWorkCount(t *testing.T) {
 	// THE WIDE TIERS DID NOT MOVE. A fix for sixty columns that cost a hundred
 	// and sixty a segment would be a fix that made the common case worse.
 	for _, width := range []int{80, 120, 160} {
-		line := plain(a.pulseLine(width, a.pal))
+		line := plain(a.pulseLine(width, a.pal, pulseWhole))
 		for _, want := range []string{product, "12 want you", "4 moving", "$123.45 / " + railFigure(500), clock} {
 			if !strings.Contains(line, want) {
 				t.Fatalf("at %d columns the top line drew\n\t%q\nand lost %q; there is room for all of it:\n\t%q",
@@ -337,7 +348,7 @@ func TestTheTopLineGivesUpTheClockBeforeTheWorkCount(t *testing.T) {
 		{30, " " + product + "   12 want you"},
 		{16, " " + product},
 	} {
-		line := plain(a.pulseLine(one.width, a.pal))
+		line := plain(a.pulseLine(one.width, a.pal, pulseWhole))
 		if squash(line) != squash(one.want) {
 			t.Fatalf("at %d columns the top line drew\n\t%q\nand it should have dropped whole segments by rank:\n\t%q",
 				one.width, line, one.want)
@@ -350,8 +361,8 @@ func TestTheTopLineGivesUpTheClockBeforeTheWorkCount(t *testing.T) {
 	// lowest-ranked thing on the line and it is never EMPTY, which are two
 	// different laws: a machine with nothing stopped, nothing moving and nothing
 	// spent draws the name and the time.
-	a.home.machine = machineFacts{}
-	if line := plain(a.pulseLine(80, a.pal)); !strings.Contains(line, clock) {
+	a.machine = machineFacts{}
+	if line := plain(a.pulseLine(80, a.pal, pulseWhole)); !strings.Contains(line, clock) {
 		t.Fatalf("over a quiet morning the top line drew\n\t%q\nand it should be the name and the time:\n\t%q", line, " "+product+"   "+clock)
 	}
 }
@@ -365,7 +376,7 @@ func TestTheTopLineGivesUpTheClockBeforeTheWorkCount(t *testing.T) {
 func TestANarrowTopLineNeverSaysTheDayCostNothing(t *testing.T) {
 	a, _ := pulseLab(t)
 	for width := 12; width <= 160; width++ {
-		line := plain(a.pulseLine(width, a.pal))
+		line := plain(a.pulseLine(width, a.pal, pulseWhole))
 		switch {
 		case strings.Contains(line, "$0.00"):
 			t.Fatalf("at %d columns the top line drew\n\t%q\nover a day that spent $123.45; a dropped segment may not become a zero", width, line)

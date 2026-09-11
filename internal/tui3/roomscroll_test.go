@@ -42,8 +42,9 @@ func callsJournal(t *testing.T, n int) string {
 	return roomJournal(t, lines...)
 }
 
-// callsRoom opens a room on a node with three screens' worth of calls in one
-// turn — more than any tail can keep, so the fold is guaranteed to be drawn.
+// callsRoom opens the compact room, then explicitly opens its live outline.
+// These tests inspect the call window within that outline, using three screens
+// of calls so its overflow and scrolling behavior remain meaningful.
 func callsRoom(t *testing.T) (*app, int) {
 	t.Helper()
 	a, fake, _ := roomApp(t)
@@ -51,6 +52,13 @@ func callsRoom(t *testing.T) (*app, int) {
 	fake.journal = callsJournal(t, n)
 	a.openRoom(7, "Port the loader")
 	a.touch()
+	compact := roomText(a)
+	// Every call in the journal was answered, so the step has CLOSED and its
+	// floor caption is in the past (caption.go's [captionPast]).
+	if !strings.Contains(compact, "read "+strconv.Itoa(n)+" files") || strings.Contains(compact, "file0.go") {
+		t.Fatalf("new room did not start with a compact caption:\n%s", compact)
+	}
+	openRoomCompactWork(t, a)
 	return a, n
 }
 
@@ -85,7 +93,7 @@ func TestARoomWithManyCallsFillsItsFrameAndFoldsOnlyTheOverflow(t *testing.T) {
 		t.Fatalf("%d calls on the page at %d rows high — the fold starved the screen:\n%s",
 			calls, height, roomText(a))
 	}
-	if want := "reading " + strconv.Itoa(n) + " files"; !strings.Contains(fold, want) {
+	if want := "read " + strconv.Itoa(n) + " files"; !strings.Contains(fold, want) {
 		t.Fatalf("the room's fold reads %q, want %q", fold, want)
 	}
 	visible, pad := a.roomWindow(width, height)

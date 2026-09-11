@@ -43,17 +43,15 @@ import (
 // and exactly what to change to keep it.
 //
 // WHAT ENTERS THE LADDER. Only this error class does, and only after a watched
-// request has no serving, untried lane the purse will fund. A recognised
-// refusal still teaches the ceiling memo before a funded walk takes it, so the
-// next arm never repeats a ceiling the router has already refused. A timeout,
-// a 5xx, a 429 and a plain 404 from a wrong base URL all keep the behaviour they
-// had (retry.go), because none of them is a claim about the request's shape and
+// request has no serving, untried lane the purse will fund. A timeout, a 5xx, a
+// 429 and a plain 404 from a wrong base URL all keep the behaviour they had
+// (retry.go), because none of them is a claim about the request's shape and
 // stripping fields off them would spend a person's turn discovering that.
 //
 // ── HOW THE CLASS IS RECOGNISED: BY STRUCTURE, NEVER BY VOCABULARY ──────────
 //
 // A list of the sentences a router has been SEEN to refuse in is always one
-// sentence behind, and on 2026-08-28 it was. The ladder's first rung IS the
+// sentence behind, and on 2026-08-28 it was. The ladder's price rung IS the
 // recovery for a price ceiling that emptied the endpoint set, and it never
 // fired for a whole headless run, because the router reports the LAST filter
 // that emptied the set — "no endpoints available matching your guardrail
@@ -90,11 +88,10 @@ import (
 // model. What is left is "nothing I can reach will serve this shape", and the
 // ladder is the right answer to it whatever sentence it arrived in.
 //
-// [endpointRefusalPhrases] survives as a HINT with two jobs and no authority:
+// [endpointRefusalPhrases] survives as a HINT with one job and no authority:
 // it SHORT-CIRCUITS the classification when it matches, so every refusal the
 // old gate caught is still caught — including on endpoints where the structural
-// facts cannot be established at all — and it chooses the WORDING of the retry
-// line a person reads ([Client.recoverFromRefusal]).
+// facts cannot be established at all.
 
 // endpointRefusalStatus is the status half of the gate. 404 is the router's own
 // spelling of "nothing can serve this"; 400 is what several OpenAI-compatible
@@ -106,7 +103,7 @@ func endpointRefusalStatus(status int) bool {
 
 // endpointRefusalPhrases is the vocabulary a router has been SEEN to refuse a
 // parameter combination in. It is a HINT and no longer the gate — the header
-// above says what replaced it and what the two remaining jobs are. Rule 1 of
+// above says what replaced it and what its remaining job is. Rule 1 of
 // docs/design/failsafe/FAILSAFE.md is why it is a hint: a phrase list is
 // evidence, never the classification.
 var endpointRefusalPhrases = []string{
@@ -139,39 +136,18 @@ var endpointRefusalPhrases = []string{
 	// satisfy the max price" — it reports the LAST filter that emptied the set,
 	// which was the data policy. None of the phrases above matched, so the gate
 	// said "not this class", the plain-404 path resent the identical body, and
-	// the ladder that drops the ceiling on its first rung never fired. The proof
+	// the ladder that drops the ceiling on its price rung never fired. The proof
 	// was a bisect against the live router with the captured body: every field
 	// passed alone, and max_price at list × 1.0 produced this exact sentence.
 	//
 	// THE FOUR PHRASES BELOW ARE NOW HISTORY RATHER THAN LOAD-BEARING. The refusal
 	// they describe is caught by [Client.routingRefusal] on its structure, and
-	// would be caught if the router reworded it tomorrow. What they still buy is
-	// the sentence a person reads when the ceiling comes off (see
-	// [Client.recoverFromRefusal]).
+	// would be caught if the router reworded it tomorrow. They remain because
+	// hints preserve the older gate on bases whose endpoint sheet is unavailable.
 	"no endpoints available",
 	"data policy",
 	"guardrail restrictions",
 	"satisfy the max price",
-}
-
-// ceilingRefusal reads a refusal body for the two spellings the router uses when
-// it is the PRICE CEILING that left nothing: its own "satisfy the max price",
-// and the data-policy sentence it prefers when the last endpoint under the
-// ceiling was one the account has excluded.
-//
-// IT DECIDES A SENTENCE AND NOT A BEHAVIOUR. The memo that stops the ceiling
-// being sent to a model twice ([velocityLedger.refuseCeiling]) no longer waits
-// to be told the price was the reason — that would be the vocabulary gate again,
-// one layer in — and what is left for these words to do is tell a person that
-// the thing coming off their request is a price ceiling.
-func ceilingRefusal(payload []byte) bool {
-	text := strings.ToLower(string(payload))
-	for _, phrase := range []string{"satisfy the max price", "data policy", "guardrail restrictions"} {
-		if strings.Contains(text, phrase) {
-			return true
-		}
-	}
-	return false
 }
 
 // endpointRefusalPhrase reports whether a refusal is one already KNOWN to be
@@ -187,6 +163,58 @@ func ceilingRefusal(payload []byte) bool {
 // that there is no lane here to blame.
 func ignoredEverything(body []byte) bool {
 	return strings.Contains(strings.ToLower(string(body)), "all providers have been ignored")
+}
+
+// accountExcluded is the router reporting that the ACCOUNT'S OWN SETTINGS
+// removed every machine the request's set held — the paid-model-training switch,
+// an account-wide guardrail — before any of them was asked. It is the same class
+// of fact as [ignoredEverything] (a list emptied the set; no machine answered)
+// and it is one the router states on every model, which is why it is kept for
+// every model (internal/lane's account.go).
+//
+// IT IS DECIDED BY STRUCTURE FIRST (docs/design/failsafe/FAILSAFE.md rule 1).
+// The live router's body carries `error.metadata.ineligibility_reasons`, one
+// object per reason a machine was removed, and a reason that is the account's
+// is one the person can CHANGE — it carries the `configure_url` of the setting
+// that did it, and its machine word ends `-by-account`. A body whose every reason
+// is such a reason is an account exclusion whatever its sentence says. The
+// sentence's `(account settings)` survives as the hint for a body that arrives
+// without metadata, and has no other authority.
+func accountExcluded(body []byte) bool {
+	var decoded struct {
+		Error struct {
+			Message  string `json:"message"`
+			Metadata struct {
+				Reasons []struct {
+					Reason       string `json:"reason"`
+					ConfigureURL string `json:"configure_url"`
+				} `json:"ineligibility_reasons"`
+			} `json:"metadata"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(body, &decoded) != nil {
+		return false
+	}
+	if reasons := decoded.Error.Metadata.Reasons; len(reasons) > 0 {
+		for _, reason := range reasons {
+			configurable := strings.TrimSpace(reason.ConfigureURL) != ""
+			byAccount := strings.HasSuffix(strings.ToLower(strings.TrimSpace(reason.Reason)), "-by-account")
+			if !configurable && !byAccount {
+				return false
+			}
+		}
+		return true
+	}
+	return strings.Contains(strings.ToLower(decoded.Error.Message), "(account settings)")
+}
+
+// listEmptied is the one question both of the above answer: did a LIST — this
+// process's vetoes, the account's ignored providers, the account's own
+// guardrails — empty the set before any machine was asked? A refusal that says
+// so implicates no machine it names, and the ledger reads it as
+// [laneRefusal.Unasked].
+func listEmptied(body []byte) bool {
+	return ignoredEverything(body) || accountExcluded(body)
 }
 
 func endpointRefusalPhrase(payload []byte) bool {
@@ -250,6 +278,107 @@ func (c *Client) catalogKnowsModel(model string) bool {
 	return known
 }
 
+// withdrawnModel reports that THE ROUTER NO LONGER CARRIES THIS MODEL AT ALL.
+//
+// IT IS [Client.routingRefusal]'S STRUCTURAL CLAUSE WITH ITS LAST QUESTION
+// INVERTED, and that is the whole of the difference between the two facts. Both
+// are the router answering for itself about a request no machine was asked
+// about; the routing refusal is an emptied SET, which another machine or another
+// shape can fill, and this is an absent MODEL, which nothing but another model
+// can answer. The router spells them with the same 404 and, very often, with the
+// same `No endpoints found` sentence — so read as one they cost a person the
+// whole transport budget for three more identical refusals before the hop that
+// was the only move all along (#838).
+//
+// The sheet clause is here for [Client.routingRefusal]'s reason word for word: a
+// plain OpenAI-compatible endpoint has no SET behind a model and no catalog row
+// in this build, so its first 404 must not be read as a model going away.
+//
+// ── IT DEMANDS POSITIVE EVIDENCE, WHICH IS THE OPPOSITE OF ITS NEIGHBOUR ────
+//
+// [Client.catalogKnowsModel] answers false for two different things: a catalog
+// that has no row for this model, and a build with no catalog at all. For
+// [Client.routingRefusal] those are safely the same — it uses the answer to
+// WITHHOLD a ladder, so knowing nothing declines — and here they are opposites,
+// because this uses the answer to declare a model gone. So a client with no
+// price resolver answers false: it has no opinion, and a fact nobody can testify
+// to is not a fact.
+//
+// AND A LIST THAT EMPTIED THE SET IS NOT A MODEL GOING AWAY. The two arrive
+// under the same 404 from the same envelope; the list has machines behind it and
+// this has none, so `listEmptied` is asked first and its answer wins
+// (refusalobject.go reads the two as one object).
+func (c *Client) withdrawnModel(model string, status int, payload []byte) bool {
+	// A 404 AND NOTHING ELSE, which is the one place this parts company with
+	// [endpointRefusalStatus]. That helper also takes a 400 because a router
+	// really does refuse an unservable PARAMETER with one — and a 400 is the
+	// router saying something about the request it was handed, never that the
+	// model has gone. Reading one as a withdrawal took a model away for the rest
+	// of the conversation on the strength of a single bad body.
+	if status != http.StatusNotFound || !c.baseServesLanes() || c.config.ModelPrice == nil {
+		return false
+	}
+	if upstream, ok := routerErrorEnvelope(payload); !ok || upstream != "" {
+		return false
+	}
+	if listEmptied(payload) {
+		return false
+	}
+	return !c.catalogKnowsModel(model)
+}
+
+// overflowCode is the error envelope's own word for a request that did not fit.
+// It is the OpenAI-compatible spelling, which the router and every gateway in
+// front of one relay verbatim, and it is a FIELD rather than a sentence — which
+// is the entire reason this is decided here instead of by the regex
+// internal/session's turn loop used to run over the prose.
+const overflowCode = "context_length_exceeded"
+
+// overflowPhrases is what a body that carries no code and no status says
+// instead. It is a HINT and never the gate, in [endpointRefusalPhrases]'s sense
+// and for docs/design/failsafe/FAILSAFE.md rule 1's reason: the phrases are
+// evidence that something structural is true, and the day a provider rewords one
+// the code and the status still answer.
+//
+// They were the WHOLE test until 2026-09-10, in internal/session, read off the
+// error's sentence after a verdict had already been computed — so a router 404
+// whose words happened to miss every pattern returned from the turn loop as
+// though nothing could be done about it. Here they are the last question rather
+// than the first, and nothing reads them twice.
+var overflowPhrases = []string{
+	"context length",
+	"context window",
+	"maximum context",
+	"token limit",
+	"context limit",
+	"prompt is too long",
+	"too many tokens",
+}
+
+// overflowRefusal reports that a refusal is the request not fitting: the
+// request-too-large status, the envelope's own code, or — failing both — the
+// provider saying so in words.
+func overflowRefusal(status int, code string, said ...string) bool {
+	if status == http.StatusRequestEntityTooLarge {
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(code), overflowCode) {
+		return true
+	}
+	for _, sentence := range said {
+		sentence = strings.ToLower(sentence)
+		if sentence == "" {
+			continue
+		}
+		for _, phrase := range overflowPhrases {
+			if strings.Contains(sentence, phrase) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // routingRefusal is the gate on the ladder, and the whole of the answer to
 // "is this the router saying nothing it can reach will serve this shape?".
 // The header above states the five facts and why each one is needed.
@@ -290,12 +419,11 @@ func (c *Client) routingRefusal(model string, status int, payload []byte) bool {
 type relaxSet uint8
 
 const (
-	// relaxEndpointFilter drops THE WHOLE `provider` FILTER — the hard
-	// parameter filter, this process's own refusals, the price ceiling, and the
-	// demand for one machine that a pin or a rescue put there. FIRST because it
-	// is the only rung that changes nothing about what the model is asked: it
-	// widens which endpoints may answer, and every field on it is one that can
-	// empty the endpoint set ([providerPrefs.narrowing] is the one list).
+	// relaxEndpointFilter drops every membership restriction — the hard
+	// parameter filter, this process's own refusals, and the demand for one
+	// machine that a pin or a rescue put there. FIRST because it changes neither
+	// what the model is asked nor the most aforge will pay: it widens which
+	// endpoints may answer under the same ceiling.
 	//
 	// `provider.only` was not on this rung for a long time, and that is half of
 	// issue #266: a pinned request climbed every rung there is — reasoning, the
@@ -303,6 +431,11 @@ const (
 	// pinned to the one machine that had refused it, so every rung was spent on
 	// a request that could not have been served whatever shape it was in.
 	relaxEndpointFilter relaxSet = 1 << iota
+	// relaxPriceCeiling drops max_price only after the wider endpoint set has
+	// refused the request too. Availability still wins, but an unrelated pin,
+	// ignore list, or require_parameters refusal cannot silently authorize a
+	// dearer endpoint.
+	relaxPriceCeiling
 	// relaxReasoning drops the `reasoning` knob. A knob, not content: the model
 	// answers the same question, with its own default amount of thinking.
 	relaxReasoning
@@ -342,6 +475,7 @@ type relaxStep struct {
 // two names for one thing the first time either was reworded.
 var relaxRungs = []relaxStep{
 	{bit: relaxEndpointFilter, label: "relaxed the endpoint filter", name: "provider.require_parameters"},
+	{bit: relaxPriceCeiling, label: "dropped the price ceiling", name: "provider.max_price"},
 	{bit: relaxReasoning, label: "removed reasoning", name: "reasoning"},
 	{bit: relaxMaxTokens, label: "removed max_tokens", name: "max_tokens"},
 	{bit: relaxResponseFormat, label: "removed response_format", name: "response_format"},
@@ -375,8 +509,12 @@ func (c *Client) relaxationPlan(request *ai.Request, knobs callKnobs, model stri
 	// could not see the narrowest filter this process sends. A pinned request
 	// therefore had no first rung at all and climbed straight to "removed
 	// reasoning", still pinned to the machine that had refused it (issue #266).
-	if c.wirePreferences(model, knobs, request).narrowing() {
+	prefs := c.wirePreferences(model, knobs, request)
+	if prefs.membershipNarrowing() {
 		plan = append(plan, rung(relaxEndpointFilter))
+	}
+	if prefs != nil && prefs.MaxPrice != nil {
+		plan = append(plan, rung(relaxPriceCeiling))
 	}
 	if c.resolveEffort(model, knobs.effort) != EffortNone {
 		plan = append(plan, rung(relaxReasoning))
@@ -455,115 +593,35 @@ func dropAttachments(messages []ai.Message) []ai.Message {
 // and let them pick, rather than to walk a list on their behalf.
 const maxFallbackModels = 2
 
-// carriedCeiling reports whether this request's composed provider object put a
-// price ceiling on the wire.
+// ── THE ADAPTER NEVER CHANGES THE MODEL ─────────────────────────────────────
 //
-// IT READS THE COMPOSED OBJECT AND NOT THE LEDGER'S HALF. A rescue or a strict
-// pin removes the ceiling after the ordinary preferences are built, and a
-// request already on the ladder removes the whole endpoint filter afterwards;
-// only [Client.wirePreferences] sees both decisions. [Client.sendRecovered]
-// reads this once before writing the memo and carries the answer into the
-// ladder, so the person-facing label still describes the refused request.
-func (c *Client) carriedCeiling(model string, knobs callKnobs, request *ai.Request) bool {
-	prefs := c.wirePreferences(model, knobs, request)
-	return prefs != nil && prefs.MaxPrice != nil
-}
-
-// recoverFromRefusal climbs the ladder and then the fallback chain, narrating
-// each attempt, and ends in an error a person can act on.
+// It used to. This ladder walked [Client.fallbackChain] after its relaxation
+// rungs, and internal/session's turn loop walks the SAME chain when a model's
+// transport budget is spent — two mechanisms drawing from one list, neither
+// knowing the other had already tried a model. A turn could pay for the same
+// fallback twice, and the session's `nextFallback` indexed the list blind: it
+// counted its OWN hops and read `options[len(hopped)]`, so a chain the adapter
+// had already walked was re-walked from the top.
 //
-// The first attempt has already happened and been refused — its body is `first`
-// — so every attempt this function makes is numbered from one as a RETRY, which
-// is what the line says.
-func (c *Client) recoverFromRefusal(
-	ctx context.Context,
-	request *ai.Request,
-	knobs callKnobs,
-	stream bool,
-	first []byte,
-	carriedCeiling bool,
-) (*http.Response, error) {
-	model := c.modelFor(request)
-	plan := c.relaxationPlan(request, knobs, model)
-	// THE PHRASE LIST'S SECOND JOB. When the router's own sentence said it was
-	// the price or the account's policy that emptied the set, the first rung
-	// SAYS SO — "relaxed the endpoint filter" does not tell somebody watching
-	// that they were being routed under a price ceiling at all, and the ceiling
-	// is the one thing on that rung they may want back. The rung does exactly
-	// the same work either way: max_price rides the same provider object as
-	// require_parameters and ignore, and rung one drops the object.
-	if carriedCeiling && ceilingRefusal(first) && len(plan) > 0 && plan[0].bit == relaxEndpointFilter {
-		plan[0].label = "dropped the price ceiling and relaxed the endpoint filter"
-	}
-	fallbacks := c.fallbackChain(model)
-	total := len(plan) + len(fallbacks)
-	if total == 0 {
-		return nil, c.refusalError(request, knobs, model, nil, nil, 1, first)
-	}
+// ONE MODEL HOP, AND IT BELONGS TO THE SESSION (docs/design/recovery §4, "what
+// the session keeps"). The adapter owns the request's SHAPE — which machine,
+// which knobs, which ceiling — and hands back a refusal naming what it tried; the
+// layer that owns the turn decides whether a different model is worth asking,
+// because it is the only layer that knows what the turn has already spent and
+// what the person asked for. What the adapter still owes is the FACT: every
+// model it put on the wire is recorded on the call's own context
+// ([ModelsTried]), so the session's hop reads what was tried instead of counting.
+//
+// The relaxation rungs stay exactly where they were. They are about the request
+// and nobody above this layer can compose one.
 
-	last := first
-	stripped := make([]string, 0, len(plan))
-	tried := make([]string, 0, len(fallbacks))
-	attempt := 0
-
-	// The relaxations ACCUMULATE. Each rung is climbed on top of the last,
-	// because the refusal never says which field it objected to — a body that
-	// still carries the reasoning knob has not tested whether dropping the
-	// output cap was enough.
-	relaxed := knobs
-	for _, step := range plan {
-		attempt++
-		relaxed.relaxed |= step.bit
-		stripped = append(stripped, step.name)
-		Emit(ctx, StreamNotice, fmt.Sprintf("Retry %d/%d: %s", attempt, total, step.label))
-		// AND THE PHASE CLOCK CARRIES THE SAME RUNG, so the status line says
-		// "trying again · 2 of 6" while the notice above says which knob went.
-		// It is the same fact at two grains and it is stated once, here, from
-		// the same pair of numbers (phase.go).
-		notePhase(ctx, c.modelFor(request), PhaseRetrying,
-			ordinalOf(attempt, total), c.clock(), time.Time{}, "")
-		response, payload, err := c.attemptShaped(ctx, request, relaxed, stream)
-		if err != nil {
-			return nil, err
-		}
-		if response != nil {
-			return response, nil
-		}
-		last = payload
-	}
-
-	for _, next := range fallbacks {
-		attempt++
-		tried = append(tried, next)
-		Emit(ctx, StreamNotice, fmt.Sprintf("Retry %d/%d: Falling back to %s", attempt, total, next))
-		// AND THIS IS THE ONE RUNG THAT CHANGES THE ANSWER'S MODEL, so it is
-		// the one rung whose phase says so by name: a person who asked one model
-		// and is being answered by another is owed that sentence while it
-		// happens rather than in the transcript afterwards (the ladder, in
-		// docs/ARCHITECTURE.md).
-		notePhase(ctx, c.modelFor(request), PhaseSwitchingModel,
-			"", c.clock(), time.Time{}, next)
-		// A NEW MODEL IS TRIED AS CONFIGURED. The strips above were evidence
-		// about the endpoints serving the old model and say nothing about these
-		// ones; carrying them over would silently answer on a fallback model with
-		// no tools because a different model's endpoints had no room for them.
-		candidate := *request
-		candidate.Model = next
-		response, payload, err := c.attemptShaped(ctx, &candidate, knobs, stream)
-		if err != nil {
-			return nil, err
-		}
-		if response != nil {
-			// The caller's request now names the model that actually answered, so
-			// the streamed response, the velocity ledger and the reply's
-			// attribution all agree about which one it was.
-			request.Model = next
-			return response, nil
-		}
-		last = payload
-	}
-	return nil, c.refusalError(request, knobs, model, stripped, tried, attempt+1, last)
-}
+// THE LADDER ITSELF IS THE DISPATCHER'S (dispatch.go's
+// [Client.recoverFromRefusal]). What stays here is the DATA it climbs — which
+// rungs this request has, in which order, spelled how — because that is a fact
+// about the request's shape and the encoder is the only layer that knows it. The
+// walk moved because a second loop counting its own rungs is a second budget,
+// which is the shape docs/design/recovery/DESIGN.md §4 deleted: the rungs reach
+// [control.Next] as [control.Plan.Shapes] and come back one at a time.
 
 // widenPastTheUncarriedPreference is the ONE retry that finds out whether a
 // base's 400 was about the `provider` field at all — and it is the ANSWER to
@@ -685,7 +743,7 @@ func (c *Client) widenPastTheRetiredPin(
 		payload = first
 	}
 	return nil, c.refusalError(request, knobs, c.modelFor(request),
-		[]string{rung(relaxEndpointFilter).name}, nil, 2, payload)
+		[]string{rung(relaxEndpointFilter).name}, 2, payload)
 }
 
 // attemptShaped sends one shaped attempt and separates the two outcomes the
@@ -720,80 +778,23 @@ func (c *Client) attemptShaped(
 	return nil, peek, nil
 }
 
-// ── the second door: patience spent on pacing ───────────────────────────────
+// ── the second door that was: patience spent on pacing ──────────────────────
 //
 // A 429 that never clears is the other way a model runs out of ability to
 // answer, and the answer to it is the same one: ask a different model. The
-// retry loop's patience is the whole of what this waits for — six attempts and
-// two minutes for a watched call, sixty and ten minutes for a task node's
-// (retry.go's outOfPatience) — and when that is spent the call has today's
-// choice between an error and another model. This offers the model.
+// retry loop's patience is the whole of what the call waits for — six attempts
+// and two minutes for a watched call, sixty and ten minutes for a task node's
+// (retry.go's outOfPatience) — and when that is spent the call has a choice
+// between an error and another model.
 //
-// It is DELIBERATELY the same chain and the same narration as the refusal
-// ladder above. Two ways of spelling "the next model" would drift, and a person
-// watching a retry line does not care which of the two doors it came through:
-// the sentence they need is the same either way.
-
-// pacingExhausted reports whether an error is the retry loop giving up on a
-// provider that would not stop pacing us. Only a 429 reaches this shape — every
-// other retryable status breaks out on maxAttempts long before patience is a
-// question, and a 4xx is never retried at all (retry.go).
-func pacingExhausted(err error) bool {
-	var api *APIError
-	for err != nil {
-		if decoded, ok := err.(*APIError); ok {
-			api = decoded
-			break
-		}
-		unwrapped, ok := err.(interface{ Unwrap() error })
-		if !ok {
-			return false
-		}
-		err = unwrapped.Unwrap()
-	}
-	return api != nil && api.Status == http.StatusTooManyRequests
-}
-
-// recoverFromPacing offers the chain to a call the provider paced into the
-// ground, and hands back the original error untouched when there is nothing to
-// offer — no chain configured, or a failure that was never about pacing.
-//
-// A fallback attempt goes through [Client.sendRepaired] rather than back
-// through [Client.sendShaped]: the refusal ladder is the FIRST door's business,
-// and re-entering it here would let one exhausted 429 walk two more models
-// through six relaxations each while a person waits on a turn that has already
-// been slow.
-func (c *Client) recoverFromPacing(
-	ctx context.Context,
-	request *ai.Request,
-	knobs callKnobs,
-	stream bool,
-	paced error,
-) (*http.Response, error) {
-	if !pacingExhausted(paced) {
-		return nil, paced
-	}
-	model := c.modelFor(request)
-	fallbacks := c.fallbackChain(model)
-	if len(fallbacks) == 0 {
-		return nil, paced
-	}
-	for index, next := range fallbacks {
-		Emit(ctx, StreamNotice, fmt.Sprintf("Retry %d/%d: Falling back to %s", index+1, len(fallbacks), next))
-		candidate := *request
-		candidate.Model = next
-		response, err := c.sendRepaired(ctx, &candidate, knobs, stream)
-		if err != nil {
-			continue
-		}
-		// The caller's request now names the model that actually answered, for
-		// the reason the refusal chain rewrites it: attribution, the ledger and
-		// the reply have to agree about which model this was.
-		request.Model = next
-		return response, nil
-	}
-	return nil, paced
-}
+// THAT CHOICE IS NOT THIS LAYER'S TO MAKE AND NO LONGER IS. `recoverFromPacing`
+// walked [Client.fallbackChain] here, silently, on a budget nobody above could
+// see, while internal/session's turn loop walked the same list for the same
+// reason — the second of the two model-hop mechanisms docs/design/recovery §2.2
+// counts. The paced error now travels back whole: the boundary reads it as the
+// wire ([taxonomy.Transport]), the turn spends its own budget on it, and if that
+// budget runs out the ONE model hop in this build takes it to the next model,
+// knowing what has already been tried ([ModelsTried]).
 
 // ── which model to fall back to ─────────────────────────────────────────────
 
@@ -806,7 +807,24 @@ func (c *Client) recoverFromPacing(
 // quiet often enough to have spent its budget. The precedence and the cap stay
 // here, in [Client.fallbackChain], because a second place that decided which
 // model comes next would be a second answer to drift from this one.
-func (c *Client) FallbackModels(model string) []string { return c.fallbackChain(model) }
+// AND A MODEL THE ROUTER HAS PUT DOWN IS NOT OFFERED. The chain is where a hop
+// picks its target, so a model already known to have no endpoints must not be on
+// it — otherwise the hop lands on a second 404 and the turn pays twice for one
+// fact (withdrawn.go, measured 2026-09-10 22:39). Dropping it HERE rather than at
+// the caller is what keeps the order deterministic: two turns of one conversation
+// asked the same question and moved to different models, because each rediscovered
+// the withdrawal for itself.
+func (c *Client) FallbackModels(model string) []string {
+	chain := c.fallbackChain(model)
+	carried := chain[:0]
+	for _, candidate := range chain {
+		if c.WithdrawnModel(candidate) {
+			continue
+		}
+		carried = append(carried, candidate)
+	}
+	return carried
+}
 
 // fallbackChain is the models to try after the ladder, in order.
 //
@@ -860,8 +878,6 @@ type RefusalError struct {
 	Params []string
 	// Stripped is what the chain took off, in the order it did.
 	Stripped []string
-	// Tried is the fallback models attempted after the ladder ran out.
-	Tried []string
 	// Attempts is how many requests were sent in total, the first one included.
 	Attempts int
 	// Refusal is the provider's own last words, kept whole so nothing this
@@ -881,9 +897,6 @@ func (e *RefusalError) Error() string {
 	if len(e.Stripped) > 0 {
 		out.WriteString("; retried without " + strings.Join(e.Stripped, ", then without "))
 	}
-	if len(e.Tried) > 0 {
-		out.WriteString("; also tried " + strings.Join(e.Tried, ", "))
-	}
 	if e.Refusal != nil && strings.TrimSpace(e.Refusal.Message) != "" {
 		out.WriteString(`. the provider said: "` + strings.TrimSpace(e.Refusal.Message) + `"`)
 	}
@@ -895,15 +908,19 @@ func (e *RefusalError) Error() string {
 // carried rather than a general suggestion. What a person can do about this is
 // always one of two things — send less, or ask somebody else — and the sentence
 // says which "less" is available on this particular call.
+//
+// IT NO LONGER NAMES OTHER MODELS, because this layer no longer tries any. The
+// diagnosis is about the request's SHAPE — what it carried and what came off —
+// and the model is the turn's to move (internal/session's nextFallback). A third
+// branch here used to say "none of the fallbacks could serve it either", which
+// was a sentence about a walk this ladder made on a budget nobody above it could
+// see; the layer that hops now says what it tried, in its own words, because it
+// is the layer that knows (loop.go's alsoTried).
 func (e *RefusalError) advice() string {
-	switch {
-	case len(e.Stripped) == 0:
+	if len(e.Stripped) == 0 {
 		return "try a different model, or a different base URL if this one is not a router"
-	case len(e.Tried) > 0:
-		return "try a different model with /model — none of the fallbacks could serve it either"
-	default:
-		return "try a different model with /model, or set models.fallbacks so this can move on its own"
 	}
+	return "try a different model with /model, or set models.fallbacks so this can move on its own"
 }
 
 // Unwrap keeps the provider's refusal reachable, so a caller that classifies
@@ -927,7 +944,7 @@ func (c *Client) refusalError(
 	request *ai.Request,
 	knobs callKnobs,
 	model string,
-	stripped, tried []string,
+	stripped []string,
 	attempts int,
 	payload []byte,
 ) error {
@@ -935,7 +952,6 @@ func (c *Client) refusalError(
 		Model:    model,
 		Params:   c.sentParams(request, knobs, model),
 		Stripped: stripped,
-		Tried:    tried,
 		Attempts: attempts,
 	}
 	if decoded, ok := apiError(http.StatusNotFound, payload).(*APIError); ok {

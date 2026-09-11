@@ -37,6 +37,8 @@ func runningFetch(t *testing.T, width int, url string, age time.Duration) *app {
 		Hint: "web_fetch " + url,
 		Args: `{"url":"` + url + `"}`,
 	}})
+	// This fixture measures the detailed row, inside the opened work.
+	showLiveWork(t, a)
 	a.entries[firstTool(t, a)].began = a.now().Add(-age)
 	a.touch()
 	return a

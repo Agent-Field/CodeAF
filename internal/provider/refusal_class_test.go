@@ -16,9 +16,9 @@ import (
 // endpoints.go's ladder used to be entered on a list of sentences the router had
 // been seen to say, and on 2026-08-28 the router said a new one: "No endpoints
 // available matching your guardrail restrictions and data policy". The ladder
-// whose FIRST rung is the exact recovery — drop provider.max_price — never
-// fired, three identical 404s went out, and a headless task died. Adding the
-// sentence to the list bought one sentence of coverage.
+// whose price rung is the exact recovery never fired, three identical 404s
+// went out, and a headless task died. Adding the sentence to the list bought
+// one sentence of coverage.
 //
 // These tests hold the gate that does not go out of date, and — just as
 // importantly — the four things that must still NOT enter it. Rule 1 of
@@ -59,6 +59,12 @@ func countingRouter(t *testing.T, status int, refusal string, accept func(map[st
 // by one test is not read by the next.
 func classClient(t *testing.T, handler http.Handler, config Config) *Client {
 	t.Helper()
+	// AND A FRESH LANE REGISTRY. The strike ledger and the pins below are this
+	// client's own, but the belief is process-wide, and a belief another test
+	// left behind for `sim/model` — two lanes, one judged — turns a refusal's
+	// recovery into a walk to the other lane before the ladder's first rung,
+	// which is a different call shape than the one these tests are counting.
+	forgetLanes(t)
 	config.APIKey = "test-key"
 	if config.BaseURL == "" {
 		config.BaseURL = "https://openrouter.ai/api/v1"
@@ -172,8 +178,17 @@ func TestARefusalOnAModelTheCatalogDoesNotKnowIsSurfaced(t *testing.T) {
 // `error.metadata.provider_name` is present exactly when the router forwarded
 // somebody else's refusal — which means the routing layer DID find something to
 // try, the opposite of "nothing can serve this shape". That failure has its own
-// answer (refusal_test.go's lane rotation) and must not be answered by stripping
-// the person's request instead.
+// answer — the WALK, one machine at a time — and must not be answered by
+// stripping the person's request instead.
+//
+// AND THE WALK IS NOW TAKEN INSIDE THE CALL RATHER THAN THREE TURNS LATER
+// (docs/design/recovery/DESIGN.md §3). It used to be the session's: a relayed
+// 4xx ended the call, and the rotation happened only because the ledger
+// remembered the refusing machine into the NEXT turn. So this is two requests
+// now, not one — the refusal, and the one move that finds out whether the veto
+// took. Here it does not (this router answers the same relayed 400 whatever it
+// is sent), and a machine already vetoed refusing again is the router saying
+// there is nowhere else; the refusal goes back whole at that point.
 func TestARelayedUpstreamRefusalDoesNotClimbTheLadder(t *testing.T) {
 	const relayed = `{"error":{"message":"Provider returned error","code":400,` +
 		`"metadata":{"provider_name":"Baidu","raw":"internal server failure"}}}`
@@ -185,8 +200,14 @@ func TestARelayedUpstreamRefusalDoesNotClimbTheLadder(t *testing.T) {
 		noticeContext(context.Background(), &notices), userMessages("hi"), toolRequest()...); err == nil {
 		t.Fatal("a relayed 400 answered successfully")
 	}
-	if got := len(recorded.bodies); got != 1 {
-		t.Fatalf("made %d requests, want exactly 1 — an upstream's refusal is not the ladder's", got)
+	if got := len(recorded.bodies); got != 2 {
+		t.Fatalf("made %d requests, want the refusal and one move — an upstream's refusal is a walk, "+
+			"never the ladder", got)
+	}
+	// AND THE MOVE WAS A REAL ONE: the second body vetoed the machine that
+	// refused the first, which is what makes it a different request.
+	if !contains(ignoredEndpoints(recorded.bodies[1]), "Baidu") {
+		t.Fatalf("the second request did not exclude the machine that refused: %v", recorded.bodies[1])
 	}
 	if len(notices) != 0 {
 		t.Fatalf("notices = %#v, want nothing stripped off the request over an upstream fault", notices)
@@ -269,16 +290,13 @@ func TestPacingFaultsAndTimeoutsDoNotEnterTheLadder(t *testing.T) {
 	}
 }
 
-// THE CEILING MEMO FIRES ON THE STRUCTURAL CLASS.
+// THE CEILING MEMO FIRES AFTER TWO STRUCTURAL REFUSALS.
 //
 // The router names the LAST filter that emptied the set, and it is under no
-// obligation to name the price. A memo that waited to hear "max price" is the
-// same defect one layer in, so what it waits for is the CLASS plus a ceiling
-// having been on the wire.
+// obligation to name the price. The memo therefore waits for the structural
+// class twice: once before widening endpoint membership under the same ceiling,
+// and once before taking that ceiling off.
 func TestTheCeilingMemoFiresOnASentenceThatNeverMentionsThePrice(t *testing.T) {
-	if ceilingRefusal([]byte(unseenRefusal)) {
-		t.Fatal("the sentence this test is built on names the price; it proves nothing")
-	}
 	recorded, handler := countingRouter(t, http.StatusNotFound, unseenRefusal, func(body map[string]any) bool {
 		prefs, _ := body["provider"].(map[string]any)
 		return prefs == nil || prefs["max_price"] == nil
@@ -291,8 +309,8 @@ func TestTheCeilingMemoFiresOnASentenceThatNeverMentionsThePrice(t *testing.T) {
 	if prefs, _ := recorded.body(0)["provider"].(map[string]any); prefs == nil || prefs["max_price"] == nil {
 		t.Fatal("the first request carried no ceiling, so this test proves nothing")
 	}
-	if got := len(recorded.bodies); got != 2 {
-		t.Fatalf("first call made %d requests, want 2: the refused one and the relaxed retry", got)
+	if got := len(recorded.bodies); got != 3 {
+		t.Fatalf("first call made %d requests, want the original and two distinct relaxation rungs", got)
 	}
 	if !client.velocity.ceilingRefused("sim/model") {
 		t.Fatal("the ledger learnt nothing from a refusal that did not name the price")
@@ -302,20 +320,18 @@ func TestTheCeilingMemoFiresOnASentenceThatNeverMentionsThePrice(t *testing.T) {
 	if _, err := client.CompleteWithMessages(context.Background(), userMessages("again")); err != nil {
 		t.Fatalf("second call: %v", err)
 	}
-	if got := len(recorded.bodies); got != 3 {
-		t.Fatalf("second call made %d requests, want exactly 1", got-2)
+	if got := len(recorded.bodies); got != 4 {
+		t.Fatalf("second call made %d requests, want exactly 1", got-3)
 	}
-	if prefs, _ := recorded.body(2)["provider"].(map[string]any); prefs != nil && prefs["max_price"] != nil {
+	if prefs, _ := recorded.body(3)["provider"].(map[string]any); prefs != nil && prefs["max_price"] != nil {
 		t.Fatal("the second call carried the ceiling the router already refused")
 	}
 }
 
-// AND WHEN THE ROUTER DID NAME THE PRICE OR THE POLICY, THE PERSON IS TOLD SO.
-//
-// This is the whole of what the phrase list still decides: the wording of a
-// line somebody reads. "relaxed the endpoint filter" does not tell them they
-// were being routed under a price ceiling at all.
-func TestARefusalThatNamedThePolicySaysSoOnTheFirstRung(t *testing.T) {
+// EVEN WHEN THE ROUTER NAMES PRICE OR POLICY, THE TWO CHANGES STAY SEPARATE.
+// The refusal's words do not authorize dropping the cap on the membership
+// rung; the next structural refusal does.
+func TestARefusalThatNamedThePolicyStillUsesTheSeparatePriceRung(t *testing.T) {
 	const policyBody = `{"error":{"message":"No endpoints available matching your guardrail ` +
 		`restrictions and data policy.","code":404}}`
 	_, handler := countingRouter(t, http.StatusNotFound, policyBody, func(body map[string]any) bool {
@@ -327,10 +343,11 @@ func TestARefusalThatNamedThePolicySaysSoOnTheFirstRung(t *testing.T) {
 	var notices []string
 	if _, err := client.CompleteWithMessages(
 		noticeContext(context.Background(), &notices), userMessages("hi")); err != nil {
-		t.Fatalf("the first rung should have landed the call: %v", err)
+		t.Fatalf("the refusal ladder should have landed the call: %v", err)
 	}
-	if len(notices) == 0 || !strings.Contains(notices[0], "dropped the price ceiling") {
-		t.Fatalf("notices = %#v, want the first rung to name the ceiling it took off", notices)
+	if len(notices) != 2 || strings.Contains(notices[0], "price ceiling") ||
+		!strings.Contains(notices[1], "dropped the price ceiling") {
+		t.Fatalf("notices = %#v, want endpoint widening before the price-ceiling rung", notices)
 	}
 
 	// A request that carried NO ceiling never claims to have dropped one, even

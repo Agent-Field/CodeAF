@@ -35,10 +35,9 @@ var systemPromptSource string
 //
 // It is SUBSTITUTED and not appended, at the point in each page where that page
 // teaches working discipline, and it is substituted ONCE: prompts/system.md is
-// read by every surface this package renders — the conversation, a worker that
-// may fan out, and a worker at the floor of the tree that is given no
-// prompts/task.md at all — so a second copy in prompts/task.md would be a
-// paragraph every worker paid for twice and the law stated in two places that
+// read by every surface this package renders — the conversation and every worker,
+// the floor of the tree included — so a second copy in prompts/worker.md would
+// be a paragraph every worker paid for twice and the law stated in two places that
 // can drift apart.
 //
 //go:embed prompts/discipline.md
@@ -57,17 +56,67 @@ var disciplinePrompt string
 var systemPrompt = strings.Replace(systemPromptSource, disciplineToken,
 	strings.TrimRight(disciplinePrompt, "\n"), 1)
 
-// taskPrompt is what a TASK NODE is told on top of it: that nobody is there,
-// and how to decide whether a step of its brief is one it does or one it hands
-// further out (task.go's fan-out law).
+// workerPrompt is what a TASK NODE is told on top of it: that nobody is there,
+// that the outcome is its own, what a direction arriving mid-work is, and what
+// its report and its copy of the material are for.
 //
 // It is appended and not substituted. A node is the same worker doing the same
 // job somewhere quieter (task_run.go), so it reads the same house rules about
 // deliverables, grounding and background work; what it needs extra is the part
 // no conversation has, which is this.
 //
-//go:embed prompts/task.md
-var taskPrompt string
+// IT IS THE ROLE AND NOT THE ABILITIES, which is why it was split. Every
+// worker is one of these — the floor of the tree included — and the pages below
+// are the verbs only some of them carry. A worker that was told nothing about
+// its own role because it could not fan out was left reading the CONVERSATION's
+// page, which opens by telling it there is a person here to talk to.
+//
+//go:embed prompts/worker.md
+var workerPrompt string
+
+// revisePrompt is the one kind of direction that is not a fact or a question:
+// the person moving what this work is judged by. It is its own page on the same
+// law the two below are — `revise_assignment` is absent from a worker handed no
+// graph (assignment_tool.go), and a page teaching a verb that is not on the belt
+// is the prompt lying.
+//
+//go:embed prompts/revise.md
+var revisePrompt string
+
+// fanoutPrompt is how to decide whether a step of the brief is one this worker
+// does or one it hands further out (task.go's fan-out law), and how to wait for
+// what it handed out. It names `propose_task` and `tasks`, so it renders on the
+// predicate that puts them on the belt and nowhere else.
+//
+//go:embed prompts/fanout.md
+var fanoutPrompt string
+
+// quickPrompt is what a QUICK task's worker is told about being one: that it
+// works in the caller's own folder rather than a copy, that it ticks its list
+// as it goes, that nothing is going to check it, and that its last message is
+// the answer (task_quick.go).
+//
+// It is its own page on [revisePrompt]'s law rather than a paragraph inside
+// prompts/worker.md: it names `items`, which is absent from every belt but a
+// quick worker's, and a page teaching a verb that is not on the belt is the
+// prompt lying.
+//
+// AND IT OPENS BY SAYING THE PAGE ABOVE IT IS NOT ABOUT IT, which is
+// [handToolTail]'s shape and is here for [handToolTail]'s reason. A quick worker still
+// reads [workerPrompt] — it is a task, it owns its outcome, directions still
+// reach it, and there is nobody to ask — but three of that page's sentences are
+// plainly false of it: the acceptance it was handed, the task folder, and the
+// branch its work comes home on. A page that contradicted them silently would
+// leave the model holding two accounts of where it is working, and it would act
+// on whichever it read last.
+//
+// AND IT IS THE ONLY PLACE THESE LAWS ARE WRITTEN. The node's opening message
+// carries the job and the record it came out of and no rules at all
+// ([quickBrief] says why), so there is one page saying what a quick worker is
+// and it cannot disagree with a second copy of itself.
+//
+//go:embed prompts/quick.md
+var quickPrompt string
 
 // shapePrompt is what the BRIEF-SHAPER is told (task_shape.go): how to reason
 // its way from the words a person typed after /task to the brief a worker with
@@ -85,7 +134,7 @@ var shapePrompt string
 
 // dividePrompt is the extra page a worker gets when THIS piece of work was
 // armed to discover that it is wide (task_divide.go). It is separate from
-// task.md rather than a paragraph inside it for the reason the whole belt is
+// the pages above rather than a paragraph inside one for the reason the belt is
 // conditional: the verb it describes is absent from most workers, and a page
 // telling a model about a tool it does not have is the prompt lying — the
 // defect CLAUDE.md records `note`/`forget` having caused.
@@ -107,9 +156,14 @@ const fanLimitToken = "FAN_LIMIT"
 const disciplineToken = "WORKING_DISCIPLINE"
 
 // agentsFileLimit bounds how much of a project's AGENTS.md rides in the system
-// prompt. 8KiB is a page of house rules; a file larger than that is
-// documentation, and paying for it on every request of every turn is a cost
-// the person never asked for.
+// prompt on a FULL prefix. 8KiB is a page of house rules; a file larger than
+// that is documentation, and paying for it on every request of every turn is a
+// cost the person never asked for.
+//
+// A lean prefix bounds it at [leanInstructionLimit] instead, and reads only the
+// first instruction file it finds — [Config.instructionLimit] and
+// [Config.onlyOneInstructionFile] are the one door into both numbers
+// (promptprofile.go), so this constant is never read directly by the renderer.
 const agentsFileLimit = 8 << 10
 
 // agentsFileName is the project instruction file, discovered at the workspace
@@ -137,6 +191,25 @@ const claudeFileName = "CLAUDE.md"
 // (tools_standing.go).
 const clockRefresh = 10 * time.Minute
 
+// isWorker says whether this agent IS a task node — the thing prompts/worker.md
+// is written to, at any depth of the tree.
+//
+// IT IS THE NODE AND NOT [Config.InTask], which is the posture rather than the
+// role: a standing check's probe and a hand both run InTask because there is
+// nobody there to ask and neither of them may hand work out (standing_run.go,
+// fork.go), and neither has a brief, an acceptance or a branch that comes home.
+// A page telling either of them to own an outcome and report on it would be the
+// same lie the floor node was being told, pointed the other way. The task id is
+// what only [Agent.newTaskAgent] sets, so it is the fact both halves read.
+func (c Config) isWorker() bool { return c.InTask && c.taskID != 0 }
+
+// mayRevise says whether `revise_assignment` belongs on this belt, and it is
+// the SAME question [Agent.assignmentTools] answers, asked of a config before
+// there is an agent: a worker handed no graph — an orchestrate run's node — has
+// no assignment road to move, and the page that teaches the verb must come off
+// with it.
+func (c Config) mayRevise() bool { return c.InTask && c.tasker != nil && c.taskID != 0 }
+
 // renderSystem builds the final system prompt as of right now.
 func renderSystem(config Config) string { return renderSystemAt(config, time.Now()) }
 
@@ -154,15 +227,38 @@ func renderSystemAt(config Config, now time.Time) string {
 	// PREDICATES (beltfacts.go). Everything below conditions a whole page on
 	// the shape; this conditions the sentences INSIDE one, which is where five
 	// families of tools were being promised to workers that do not carry them.
-	out.WriteString(strings.TrimRight(promptWithBeltFacts(config), "\n"))
+	page := strings.TrimRight(promptWithBeltFacts(config), "\n")
+	// AND THE PROFILE'S OWN CUT, WHICH IS THE ONE DOOR INTO IT. A lean prefix
+	// drops the sections [leanPageSections] names, by their `# ` heading, and
+	// gains the one line a shelved verb owes (promptprofile.go). A full prefix
+	// passes through here byte for byte, which prefixbudget_test.go asserts.
+	if config.promptProfile().lean() {
+		page = leanPage(page)
+		if pointer := config.leanShelfPointer(); pointer != "" {
+			page += "\n" + pointer
+		}
+	}
+	out.WriteString(page)
 
+	// EVERY WORKER IS TOLD WHAT IT IS, floor of the tree included. The role page
+	// names no conditional verb, so the one predicate under it is whether this
+	// agent is a task node at all ([Config.isWorker]) — a standing check and a
+	// hand are neither, and each opens on a page of its own.
+	if config.isWorker() {
+		out.WriteString("\n\n")
+		out.WriteString(strings.TrimRight(workerPrompt, "\n"))
+	}
+	if text := renderBeltFacts(config, revisionFacts, "\n\n"); text != "" {
+		out.WriteString("\n\n")
+		out.WriteString(text)
+	}
 	// A node that may hand work out is told how to decide; a node standing on
 	// the floor of the tree is not, because it has no propose_task to decide
 	// with and a prompt promising one is a prompt that lies (the law is in
 	// CLAUDE.md and the belt is built from the same predicate).
 	if config.mayFanOut() {
 		out.WriteString("\n\n")
-		out.WriteString(strings.ReplaceAll(strings.TrimRight(taskPrompt, "\n"), fanLimitToken, strconv.Itoa(taskFanLimit)))
+		out.WriteString(strings.ReplaceAll(strings.TrimRight(fanoutPrompt, "\n"), fanLimitToken, strconv.Itoa(taskFanLimit)))
 	}
 	// AND THE PAGE ABOUT DISCOVERING WIDTH, on exactly the predicate the belt
 	// is built from, so the prompt and the toolbelt can never disagree about
@@ -170,6 +266,13 @@ func renderSystemAt(config Config, now time.Time) string {
 	if config.mayDivide() {
 		out.WriteString("\n\n")
 		out.WriteString(strings.TrimRight(dividePrompt, "\n"))
+	}
+	// AND THE PAGE ABOUT BEING A QUICK TASK, on exactly the predicate that puts
+	// `items` on this belt, for the reason the two pages above are conditional:
+	// it names a verb only a quick worker carries (task_quick.go).
+	if config.mayTickItems() {
+		out.WriteString("\n\n")
+		out.WriteString(strings.TrimRight(quickPrompt, "\n"))
 	}
 
 	out.WriteString("\n\n# Project\n")
@@ -186,8 +289,13 @@ func renderSystemAt(config Config, now time.Time) string {
 	}
 	out.WriteString(nowLine(now))
 
+	// THE PROJECT'S OWN RULES, UNDER THIS PROFILE'S BOUND. Both numbers here are
+	// the profile's rather than this file's constants (promptprofile.go): how
+	// much of one file rides, and whether the second one rides at all. A full
+	// prefix reads [agentsFileLimit] and both files, exactly as it always has.
+	limit := config.instructionLimit()
 	for _, instructionFile := range []string{agentsFileName, claudeFileName} {
-		instructions, truncated := readInstructionFile(workspace, instructionFile)
+		instructions, truncated := readInstructionFileWithin(workspace, instructionFile, limit)
 		if instructions == "" {
 			continue
 		}
@@ -202,7 +310,14 @@ func renderSystemAt(config Config, now time.Time) string {
 		out.WriteString(fence + "\n")
 		if truncated {
 			fmt.Fprintf(&out, "\n(%s is longer than %dKiB; the rest is on disk — read it if you need it.)\n",
-				instructionFile, agentsFileLimit>>10)
+				instructionFile, limit>>10)
+		}
+		// AND ON A LEAN PREFIX THE FIRST FILE FOUND IS THE ONLY ONE. The two
+		// names are two spellings of one set of house rules, and the second copy
+		// is the first thing a small window gives up
+		// ([Config.onlyOneInstructionFile]).
+		if config.onlyOneInstructionFile() {
+			break
 		}
 	}
 	return out.String()
@@ -279,21 +394,30 @@ func readAgentsFile(workspace string) (content string, truncated bool) {
 }
 
 func readInstructionFile(workspace, name string) (content string, truncated bool) {
-	file, err := os.Open(filepath.Join(workspace, name))
+	return readInstructionFileWithin(workspace, name, agentsFileLimit)
+}
+
+// readInstructionFileWithin is the same read under a bound the caller names. It
+// exists because an ATTACHED folder's rules ride under a tighter one than the
+// workspace's own, and several of them can ride at once (placescontext.go) — and
+// two spellings of "read this file, cut it on a rune boundary, say that it was
+// cut" is one of them forgetting the boundary.
+func readInstructionFileWithin(dir, name string, limit int) (content string, truncated bool) {
+	file, err := os.Open(filepath.Join(dir, name))
 	if err != nil {
 		return "", false
 	}
 	defer file.Close()
 	// One byte past the limit tells truncation from an exactly-sized file.
-	buffer, err := io.ReadAll(io.LimitReader(file, agentsFileLimit+1))
+	buffer, err := io.ReadAll(io.LimitReader(file, int64(limit)+1))
 	if err != nil {
 		return "", false
 	}
-	if len(buffer) > agentsFileLimit {
+	if len(buffer) > limit {
 		// Back off to a rune boundary. A byte-exact cut can land inside a
 		// multi-byte rune, and the U+FFFD that replaces the fragment is a
 		// character the person never wrote arriving in the model's house rules.
-		cut := agentsFileLimit
+		cut := limit
 		for cut > 0 && !utf8RuneStart(buffer[cut]) {
 			cut--
 		}

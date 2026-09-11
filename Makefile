@@ -2,7 +2,7 @@
 # anywhere else — so a stale copy can't shadow a fresh one.
 BINARY := bin/aforge
 
-.PHONY: all build debug demo-home embed manual-pack-law furrow test test-laws fmt-check test-packed-manual test-remote vet check size clean \
+.PHONY: all build build-check debug demo-home embed manual-pack-law furrow test test-focus test-report test-quick test-touched test-touched-preflight pr-ready test-laws fmt-check test-packed-manual test-remote test-e2e test-e2e-tui vet check size clean \
         changelog changelog-new changelog-check changelog-preview
 
 # What the shipped binary is allowed to weigh, in bytes, checked in beside the
@@ -41,7 +41,8 @@ manual-pack-law:
 	fi
 
 embed: manual-pack-law
-	go generate $(PACKED_PKGS)
+	# Generators execute on the build host, even when aforge targets another OS.
+	env -u GOOS -u GOARCH go generate $(PACKED_PKGS)
 
 # ── the furrow that rides inside ────────────────────────────────────────────
 #
@@ -110,26 +111,111 @@ debug: furrow embed
 KNOWN_RED := $(shell grep -v -e '^\#' -e '^[[:space:]]*$$' .github/known-red.txt 2>/dev/null | paste -sd'|' -)
 TEST_SKIP := $(if $(KNOWN_RED),-skip '^($(KNOWN_RED))$$')
 
-# THE PER-PACKAGE TIMEOUT IS MEASURED, NOT GUESSED. internal/tui3 is the slowest
-# package at about 485 seconds on a two-core runner or a loaded workstation;
-# ci-full's old 8m cut it off at the finish line and reported whichever test
-# happened to be running as though it had hung. Fifteen minutes is that number
-# with headroom, and a package that really hangs still names itself.
-#
-# THE NUMBER IS PROVISIONAL. Of tui3's 478 seconds, 362 are its harness
-# sleeping 150ms for every command that never returns (#399); once that lands
-# the package is near two minutes and this can come down. Lower it from a new
-# measurement, never raise it to fit a slow run.
+# THE PER-PACKAGE TIMEOUT IS MEASURED, NOT GUESSED. On 2026-09-08 internal/tui3
+# took 563 seconds on the constrained shared runner (GOMAXPROCS=4, -p=2), while
+# internal/session took 210 seconds. Fifteen minutes leaves headroom and still
+# makes a package that really hangs name itself. Lower it only from a new
+# uncached measurement, never from an expected optimization.
 TEST_TIMEOUT := 15m
 TEST_FLAGS ?=
 PKGS ?= ./...
 
-# A whole-tree run takes the box's one suite lock (scripts/one-suite.sh says
-# why); a run of named packages does not.
-SUITE_LOCK := $(if $(filter ./...,$(PKGS)),./scripts/one-suite.sh)
+# A full run of the tree or either heavy package takes the box's one suite lock
+# (scripts/one-suite.sh says why). Focused and lighter runs stay independent.
+HEAVY_PKGS := ./... ./internal/tui3 ./internal/tui3/ ./internal/session ./internal/session/
+SUITE_LOCK := $(if $(filter $(HEAVY_PKGS),$(PKGS)),./scripts/one-suite.sh)
 
 test:
 	$(SUITE_LOCK) go test -timeout $(TEST_TIMEOUT) $(TEST_FLAGS) $(TEST_SKIP) $(PKGS)
+
+# One named regression is the fastest trustworthy edit loop. RUN is required:
+# an omitted selector must not silently turn a focused command into a full
+# package run. The ordinary test target still owns the ledger and timeout.
+test-focus:
+	@test -n "$(RUN)" || { echo "usage: make test-focus PKGS=./internal/pkg RUN='^TestName$$'"; exit 2; }
+	go test -timeout $(TEST_TIMEOUT) $(TEST_FLAGS) -run '$(RUN)' $(TEST_SKIP) $(PKGS)
+
+# Keep the Go build cache warm while forcing the tests themselves to execute.
+# REPORT is structured JSON; progress and the slowest completed tests remain
+# visible on stderr during a long package run.
+REPORT ?= test-report.json
+test-report:
+	./scripts/test-report.sh '$(REPORT)' $(MAKE) -s --no-print-directory test PKGS='$(PKGS)' TEST_FLAGS="$(TEST_FLAGS) -count=1 -json"
+
+# This mirrors the deterministic light half of the pull-request gate. It is
+# fast feedback, NOT full acceptance: it does not run touched packages or the
+# whole suite. Use pr-ready before claiming pull-request acceptance.
+build-check:
+	go build ./...
+
+test-quick: build-check vet fmt-check test-packed-manual test-laws
+
+# THE TOUCHED SET IS THE PULL-REQUEST JOB'S SET. A module-file change reaches
+# every package; otherwise each changed Go file contributes its directory, and
+# a directory emptied by the change contributes nothing. BASE may name the
+# pull request's exact base SHA; on a laptop it defaults to origin/dev. This
+# refuses uncommitted Go or module files because the real gate sees BASE..HEAD:
+# silently ignoring those files under-tests, while folding a shared checkout's
+# unrelated edits into this run over-tests. Commit the candidate, then prove
+# exactly what the pull request will send. The preflight is separate so
+# `pr-ready` refuses before spending anything on its light checks. Tests still
+# go through `make test`, the one door for the timeout, known-red ledger and
+# full heavy-package lock.
+test-touched-preflight:
+	@set -eu; \
+	base="$${BASE:-origin/dev}"; \
+	if ! git rev-parse --verify "$$base^{commit}" >/dev/null 2>&1; then \
+		printf '%s\n' "cannot resolve BASE '$$base'; fetch origin/dev or pass BASE=<commit>" >&2; \
+		exit 2; \
+	fi; \
+	uncommitted="$$( \
+		{ git diff --name-only HEAD -- '*.go' go.mod go.sum; \
+		  git ls-files --others --exclude-standard -- '*.go' go.mod go.sum; } \
+		| sort -u \
+	)"; \
+	if test -n "$$uncommitted"; then \
+		printf '%s\n' 'test-touched cannot mirror the PR while Go or module files are uncommitted:' "$$uncommitted" \
+			'Commit or remove them, then run this target again.' >&2; \
+		exit 2; \
+	fi
+
+test-touched: test-touched-preflight
+	@set -eu; \
+	base="$${BASE:-origin/dev}"; \
+	changed="$$(git diff --name-only "$$base" HEAD -- '*.go' go.mod go.sum | sort -u)"; \
+	if printf '%s\n' "$$changed" | grep -qxE 'go\.(mod|sum)'; then \
+		pkgs="./..."; \
+	else \
+		dirs="$$(printf '%s\n' "$$changed" | while IFS= read -r file; do \
+			if test "$${file%.go}" != "$$file"; then dirname "$$file"; fi; \
+		done | sort -u)"; \
+		pkgs=""; \
+		for dir in $$dirs; do \
+			if ls "$$dir"/*.go >/dev/null 2>&1; then pkgs="$$pkgs ./$$dir"; fi; \
+		done; \
+	fi; \
+	if test -z "$$pkgs"; then \
+		echo 'No Go file and no module file changed; nothing to run.'; \
+		exit 0; \
+	fi; \
+	echo "touched:$$pkgs"; \
+	$(MAKE) --no-print-directory test TEST_FLAGS='$(TEST_FLAGS) -count=1 -p 1' PKGS="$$pkgs"
+
+# One local spelling for the two jobs behind the pull request's required
+# `check`: first the deterministic light gate, then the exact touched-package
+# proof above. This deliberately omits the full tree, release binary, size
+# ratchet, cross builds and remote containers; those remain staging/nightly
+# work, with `make check` as the full-tree laptop/Spark spelling.
+pr-ready: test-touched-preflight
+	$(MAKE) --no-print-directory build-check
+	$(MAKE) --no-print-directory vet
+	$(MAKE) --no-print-directory fmt-check
+	$(MAKE) --no-print-directory test-packed-manual
+	$(MAKE) --no-print-directory changelog-check
+	go test ./internal/manual/
+	go test -run Manual ./internal/tui3/ ./internal/session/
+	$(MAKE) --no-print-directory test-laws
+	$(MAKE) --no-print-directory test-touched
 
 # The laws alone — every test that reads the tree itself — in under half a
 # minute. This is what the pull-request gate runs on every change, and
@@ -166,6 +252,19 @@ test-packed-manual: embed
 # on the day the pipeline cannot yet run it.
 test-remote:
 	go test -tags docker_e2e -count=1 -run TestRemoteTwoMachines -timeout 20m ./internal/e2e/
+
+# THE AMBIENT SURFACE, ALONE. TestTUIE2E fits in about seventeen minutes; the
+# full tagged package does not fit in forty (ManualOnTheWire, QuestionsE2E and
+# the roomfeed twins run first and eat the budget). This is the door for the
+# seventeen-minute ambient proof. Needs OPENROUTER_API_KEY, tmux and bin/aforge.
+test-e2e-tui: build
+	go test -tags e2e -count=1 -timeout 40m -v -run '^TestTUIE2E$$' ./internal/e2e/
+
+# THE WHOLE TAGGED PACKAGE. Two hours is the measured fit on Spark once every
+# live-model lane is included; prefer test-e2e-tui when only the ambient surface
+# is under change.
+test-e2e: build
+	go test -tags e2e -count=1 -timeout 120m -v ./internal/e2e/
 
 # ── the demo home ───────────────────────────────────────────────────────────
 #
@@ -276,6 +375,29 @@ changelog-preview:
 changelog:
 	@test -n "$(VERSION)" || { echo 'usage: make changelog VERSION=v0.2.0'; exit 1; }
 	@go run $(CHANGES) roll $(VERSION)
+
+# ── THE CALL CENSUS ─────────────────────────────────────────────────────────
+#
+# `make census` reads the model-call log this build always writes and prints
+# docs/design/recovery/DESIGN.md §1 as markdown. It is the instrument that
+# design's §8 asks for: five waves of recovery work each move a number in that
+# table, and without a committed measurement every one of them is an argument
+# about anecdotes.
+#
+#   make census                          this machine's own log
+#   make census LOG=/path/to/calls.jsonl a log synced from somewhere else
+#   make census OUT=/tmp/census.md       write it to a file instead of stdout
+#   make census TOP=40 DAYS=7            widen the signature list and the window
+#
+# NIGHTLY IT IS THE SAME COMMAND. The Spark's cron syncs the laptop's log and
+# runs `make census LOG=… OUT=…`; bench/README.md has the recipe and the one
+# thing the cron owns that this target does not.
+census:
+	@go run ./cmd/aforge-census \
+	  $(if $(TOP),-top $(TOP)) $(if $(DAYS),-days $(DAYS)) \
+	  $(if $(MIN),-min $(MIN)) $(if $(CHAINS),-chains $(CHAINS)) \
+	  $(LOG) $(if $(OUT),> $(OUT))
+	@$(if $(OUT),echo "the census is in $(OUT)")
 
 clean:
 	rm -rf bin

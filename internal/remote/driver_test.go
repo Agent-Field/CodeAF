@@ -11,6 +11,7 @@ package remote
 
 import (
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -263,6 +264,159 @@ func TestALinkComingBackDoesNotStealTheKeyboardFromWhereThePersonWent(t *testing
 	}
 	if told := driverOf(back); !told.Yours {
 		t.Fatalf("the last window standing was left unable to type: %+v", told)
+	}
+}
+
+// A WATCHER NEVER TAKES THE KEYBOARD, AND `Back` WAS NOT ENOUGH.
+//
+// A surface opened to READ one task of a conversation running next door
+// ([Hello.Watch]) must not end up driving it. `Back` gets the first half right
+// and the second half exactly wrong: a returning surface takes the keyboard the
+// moment it is going spare, and going spare is the ordinary state of a
+// conversation whose window has stepped away for a second. So the reader is
+// refused it on arrival, refused it when the driver leaves, refused it through
+// [MethodTake], and refused when it types anyway — in words about itself, because
+// nothing about the conversation is in the way.
+func TestAWatchingSurfaceIsNeverGivenTheKeyboardEvenWhenItIsGoingSpare(t *testing.T) {
+	agent := &fakeAgent{}
+	sess := heldSession(agent)
+
+	desk := dialSession(t, sess)
+	desk.hello(Hello{Version: Version, Surface: "macbook"})
+
+	// The reader arrives NEWEST, which is what would ordinarily take the keyboard.
+	reader := dialSession(t, sess)
+	welcome := decode[Welcome](t, reader.hello(Hello{Version: Version, Surface: "macbook", Watch: true}).Payload)
+	if welcome.Driver.Yours {
+		t.Fatal("a reading surface was handed the keyboard on arrival")
+	}
+	if told := driverOf(desk); !told.Yours {
+		t.Fatalf("a reading surface took the keyboard off the window that owns the work: %+v", told)
+	}
+
+	// The window that owns the work goes away. There is nobody left who may type,
+	// and the room is left with NO driver rather than with the reader.
+	if err := desk.end(); err != nil {
+		t.Fatalf("the desk's link ended with %v", err)
+	}
+	if told := driverOf(reader); told.Yours {
+		t.Fatalf("a reading surface inherited a keyboard nobody was holding: %+v", told)
+	}
+	// ...AND ASKING FOR IT OUTRIGHT IS REFUSED IN WORDS RATHER THAN ANSWERED WITH
+	// A DRIVER. [MethodTake] is not on the reader's allow-list, so the refusal
+	// lands one layer ABOVE the hand-over rule — the call never reaches
+	// [Session.take] at all — and the result carries a sentence instead of a
+	// [Driver]. That is the stronger of the two guarantees and it is the one the
+	// wire actually gives, so it is what is demanded here: a test that decoded a
+	// Driver out of this frame would be reading an empty payload and calling the
+	// zero value a pass.
+	took := reader.call(1, MethodTake, nil)
+	if took.Error == "" {
+		t.Fatalf("a reading surface was allowed to ask for the keyboard: %+v", took)
+	}
+	if !strings.Contains(took.Error, watchingWord) {
+		t.Fatalf("the refusal is %q, want the reader's own words %q", took.Error, watchingWord)
+	}
+	if !strings.Contains(took.Error, MethodTake) {
+		t.Fatalf("the refusal does not name the door that was tried: %q", took.Error)
+	}
+	if len(took.Payload) != 0 {
+		t.Fatalf("a refused take still answered with a driver: %s", took.Payload)
+	}
+}
+
+// AN OLD ENGINE IS REFUSED AT THE DOOR RATHER THAN TRUSTED WITH THE FLAGS.
+//
+// [Hello.Join] and [Hello.Watch] are omitempty booleans, which is precisely what
+// an older build DISCARDS in silence — and a build that discarded them would boot
+// a conversation to answer a question about running work, and hand this reader
+// the keyboard, before any welcome existed to check. The version gate is what
+// stops it, it runs before `Open` and before `attach`, and this is the test that
+// the gate is in front of both.
+func TestAJoinOrWatchHelloFromAnotherProtocolIsRefusedBeforeAnythingOpens(t *testing.T) {
+	agent := &fakeAgent{}
+	sess := heldSession(agent)
+
+	desk := dialSession(t, sess)
+	desk.hello(Hello{Version: Version, Surface: "macbook"})
+
+	var opened atomic.Int64
+	old := dialOpening(t, func(Hello) (*Session, error) { opened.Add(1); return sess, nil })
+
+	frame := old.hello(Hello{Version: Version - 1, Surface: "reader", Join: true, Watch: true})
+	if frame.Kind != "fatal" {
+		t.Fatalf("a hello from another protocol was answered with %q, want a refusal", frame.Kind)
+	}
+	if !strings.Contains(frame.Error, "protocol") {
+		t.Fatalf("the refusal does not say what was wrong with the hello: %q", frame.Error)
+	}
+	if got := opened.Load(); got != 0 {
+		t.Fatalf("a refused hello reached the conversation door %d times", got)
+	}
+	// AND NOTHING ABOUT THE OWNER MOVED, WHICH IS PROVEN BY A SILENCE AND A CALL.
+	//
+	// THE SILENCE IS THE POINT AND IT CANNOT BE AWAITED. A hand-over is what
+	// produces a `driver` frame, and the whole claim here is that no hand-over
+	// happened — so waiting for one is waiting for the thing whose absence is the
+	// pass, and it can only ever time out. What is asked instead is the fact that
+	// frame would have carried: the desk can still type, which is what holding the
+	// keyboard MEANS on this wire, and it is answered rather than awaited.
+	desk.ok(1, MethodSubmit, SubmitArgs{Text: "go"})
+	// AND THE REFUSED CONNECTION IS OVER, on its own side, having opened nothing.
+	if err := old.end(); err == nil {
+		t.Fatal("a refused hello left the engine serving that connection")
+	}
+}
+
+// A WATCHER CHANGES NOTHING, EVEN THROUGH A DOOR THAT NEVER TYPES.
+//
+// The driver rule covers the methods that put WORDS into a conversation, which is
+// not the same set as the methods that change one: a model, an effort rung, a
+// permission, a resolve, a revive, opening another session in this one, closing
+// it. Every one of those was open to a reader before [Hello.Watch], and every one
+// of them acts on somebody else's work. The guard is an ALLOW-LIST, so this test
+// asks for things a reader has no business asking for and expects a refusal in
+// its own words rather than a change.
+func TestAWatchingSurfaceIsRefusedEveryDoorThatChangesAnything(t *testing.T) {
+	agent := &fakeAgent{}
+	sess := heldSession(agent)
+
+	desk := dialSession(t, sess)
+	desk.hello(Hello{Version: Version, Surface: "macbook"})
+	reader := dialSession(t, sess)
+	reader.hello(Hello{Version: Version, Surface: "reader", Watch: true})
+
+	was := agent.model
+	for id, call := range []struct {
+		method  string
+		payload any
+	}{
+		{MethodSetModel, "someone/else"},
+		{MethodSubmit, "go"},
+		{MethodInterrupt, nil},
+		{MethodSessionNew, nil},
+		{MethodTaskStop, TaskStopArgs{ID: "7"}},
+	} {
+		frame := reader.call(uint64(id+1), call.method, call.payload)
+		if frame.Error == "" {
+			t.Fatalf("%s was allowed on a reading surface", call.method)
+		}
+		if !strings.Contains(frame.Error, watchingWord) {
+			t.Fatalf("%s was refused with %q, want the reader's own sentence", call.method, frame.Error)
+		}
+	}
+	if agent.model != was {
+		t.Fatalf("a reading surface moved the model to %q", agent.model)
+	}
+	// AND THE ONE DOOR IT EXISTS FOR IS OPEN. A guard that refused this too would
+	// be a connection with nothing to do.
+	if frame := reader.call(90, MethodTaskRoom, TaskRoomArgs{ID: 7, Tail: 4}); frame.Error != "" &&
+		strings.Contains(frame.Error, watchingWord) {
+		t.Fatalf("the reader was refused the one thing it is for: %v", frame.Error)
+	}
+	// The window that owns the work still drives and is untouched.
+	if told := driverOf(desk); !told.Yours {
+		t.Fatalf("the reader took the keyboard: %+v", told)
 	}
 }
 

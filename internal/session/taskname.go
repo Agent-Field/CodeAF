@@ -129,11 +129,6 @@ const (
 	taskNameSummaryClip = 400
 	taskNameBriefClip   = 1500
 
-	// taskNameTokens is the ceiling on the answer. Three words is a handful of
-	// tokens; this is that with room for a model that says "Title: …" first,
-	// which [cleanTitle] strips.
-	taskNameTokens = 32
-
 	// taskNameWindow is how long the call is given. Nobody is waiting for it —
 	// the node is already running — so this is not a person's patience but a
 	// bound on a goroutine holding a provider slot for work that has stopped
@@ -288,7 +283,7 @@ func (n *nameAhead) release() {
 // is the machine's own filing.
 func taskNameNeeded(title string) bool {
 	title = strings.TrimSpace(title)
-	if title == "" {
+	if title == "" || unusableName(title) {
 		return true
 	}
 	if strings.ContainsAny(title, "/\\") {
@@ -324,10 +319,10 @@ func (a *Agent) taskName(ctx context.Context, subject string) string {
 // admission has a row already drawn under it ([taskNameAheadWindow]).
 func (a *Agent) taskNameWithin(ctx context.Context, subject string, window time.Duration) string {
 	a.mu.Lock()
-	model, closed, client := a.model, a.closed, a.client
+	model, closed := a.model, a.closed
 	source := a.config.RolesSource
 	a.mu.Unlock()
-	if closed || client == nil {
+	if closed || !a.hasClient() {
 		return ""
 	}
 	// IT CARRIES ITS OWN DEADLINE for the shaper's reason: the provider's client
@@ -350,15 +345,21 @@ func (a *Agent) taskNameWithin(ctx context.Context, subject string, window time.
 		}
 	}
 
-	// NO EFFORT IS PUT ON THE REQUEST, and that is the reflex law rather than an
-	// omission: the calls that are told not to think are the ones that sort and
-	// name in a few words, and this is one of them.
-	response, named, callErr := a.callRole(ctx, roles.RoleTaskName, floor,
+	// NO EFFORT AND NO CEILING ARE PUT ON THE REQUEST. Both used to be here and
+	// both were this harness deciding how somebody else's model answers a
+	// question; the clips above are what keep this call small, and the prompt is
+	// what keeps the answer to three words.
+	response, named, callErr := a.callRoleChecked(ctx, roles.RoleTaskName, floor,
 		[]ai.Message{
 			textMessage("system", taskNameSystem),
 			textMessage("user", subject+"\n\n"+taskNamePrompt),
-		},
-		ai.WithMaxTokens(taskNameTokens))
+		}, func(response *ai.Response, named string) bool {
+			if cleanTaskName(response.Text()) != "" {
+				return true
+			}
+			a.addDetachedUsageAs(response, named, 1, auxRoleTaskName)
+			return false
+		})
 	if callErr != nil || response == nil {
 		return ""
 	}
@@ -383,7 +384,7 @@ func (a *Agent) taskNameWithin(ctx context.Context, subject string, window time.
 // like that can be true of both namers at once.
 func cleanTaskName(raw string) string {
 	name := firstWordsOf(cleanTitle(raw), TaskNameWords)
-	if name == "" || taskNameNeeded(name) {
+	if name == "" || unusableName(name) || taskNameNeeded(name) {
 		return ""
 	}
 	return name
@@ -440,27 +441,35 @@ func (g *TaskGraph) rename(node *TaskNode, name string) {
 
 // nameRun gives the run's own row a name, if its goal is a sentence rather than
 // one. The goal itself is what the namer reads: a run has no gloss and no brief
-// of its own, and the goal is what every one of its nodes is cut out of.
-func (f *orchestrateFamily) nameRun(goal string) {
+// of its own, and the goal is what every one of its nodes is cut out of. Its
+// context belongs to the session, so ordinary completion keeps a useful name
+// in flight while Close can cancel and join it through the returned channel.
+func (f *orchestrateFamily) nameRun(ctx context.Context, goal string) <-chan struct{} {
+	done := make(chan struct{})
 	if f == nil || f.agent == nil {
-		return
+		close(done)
+		return done
 	}
 	f.mu.Lock()
 	current := f.title
 	f.mu.Unlock()
 	if !taskNameNeeded(current) {
-		return
+		close(done)
+		return done
 	}
 	subject := clip(strings.TrimSpace(goal), taskNameBriefClip)
 	if subject == "" {
-		return
+		close(done)
+		return done
 	}
 	agent := f.agent
 	go func() {
-		if name := agent.taskName(context.Background(), subject); name != "" {
+		defer close(done)
+		if name := agent.taskName(ctx, subject); name != "" {
 			f.rename(name)
 		}
 	}()
+	return done
 }
 
 // rename writes the run's new name and republishes its row under it.

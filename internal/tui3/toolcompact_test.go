@@ -200,11 +200,15 @@ func TestTheWiderTiersAreUnchanged(t *testing.T) {
 		if !strings.HasPrefix(line, head) || !strings.HasSuffix(line, "+1 −1") {
 			t.Fatalf("the row at %d cells is\n\t%q\nwant %q with the stat at its right end", width, line, head)
 		}
-		// The row is the frame's width less the indent every tool row is drawn
-		// with (workfold.go), which is what puts the stat AT the edge rather
-		// than two cells past it.
-		if got := ansi.StringWidth(line); got != width-2 {
-			t.Fatalf("the row at %d cells measured %d, want %d", width, got, width-2)
+		// The row is the column it is LAID OUT in — the frame less the reading
+		// gutter it is moved into (gutter.go's [gutterInner]) — less the indent
+		// every tool row is drawn with (workfold.go). That is what puts the stat
+		// AT the edge rather than two cells past it. The line read back here has
+		// had its leading air trimmed (toolRowAt), so the gutter is off it and
+		// the width asserted is the row's own.
+		want := gutterInner(width) - 2
+		if got := ansi.StringWidth(line); got != want {
+			t.Fatalf("the row at %d cells measured %d, want %d", width, got, want)
 		}
 	}
 }

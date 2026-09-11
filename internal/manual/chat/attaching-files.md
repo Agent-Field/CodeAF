@@ -60,7 +60,24 @@ on the tray above the message box, and it goes with the next thing you send.
 ```
 /attach server.log
 /upload ~/Downloads/sales-q3.csv
+/attach                     the browser, so you can find the file and look at it first
 ```
+
+**On the home screen a bare `/attach` does not open that sheet** — it says
+`type the path after /attach · or drop the file here`, and `/folder` is the browser there.
+Everything below is about `/attach` inside a conversation; *Attaching a file from home* has
+the home half.
+
+**With nothing after it, `/attach` opens the add context sheet.** It is the same framed
+window `/folder` opens, in the same place and already browsing — the conversation stays
+visible behind it, dimmed, and does not answer a click while it is up. It stands in the
+folder this conversation is about: the subdirectories and then the files
+with their sizes, and a preview of whatever the cursor is on — source with syntax colour, a
+picture drawn in the terminal's own cells, a PDF's text. Moving the cursor shows you a file;
+it does not attach it. `alt+m` chooses one, or several, and the last row of the sheet says
+`attach this file · <path>` — or `attach 2 files` once you have chosen more than one — and
+`enter` does exactly what it says. "Choosing a folder" is the full account of that sheet,
+its keys and its preview.
 
 Path rules are `/image`'s: `~` is your home directory, a bare name is under the directory
 this conversation is about, and an absolute path is left alone. Tab completes the path as
@@ -375,7 +392,6 @@ Pictures are counted separately and have their own ceiling of **10MB each** — 
 Exactly as they are written:
 
 ```
-/attach takes a path · try /attach server.log
 no such file: <what you typed>
 <name> is already attached
 <name> is 24MB and over the 16MB file limit
@@ -384,17 +400,39 @@ could not read <name>
 this connection cannot carry a file · the words were not sent
 ```
 
-The first is a bare `/attach` with nothing after it. The second is a path that is not
-there. The third means it is on the tray already; the same path twice is one chip. The
-fourth and fifth are the ceilings, and they only ever appear over `--host`. The sixth is a
-file that vanished or became unreadable between attaching and sending. The last means this
-connection was opened without a door for files; your words were **not** sent and your tray
-is still yours.
+The first is a path that is not there. The second means it is on the tray already; the same
+path twice is one chip. The third and fourth are the ceilings, and they only ever appear
+over `--host`. The fifth is a file that vanished or became unreadable between attaching and
+sending. The last means this connection was opened without a door for files; your words
+were **not** sent and your tray is still yours.
+
+**A bare `/attach` is not on this list any more.** It used to answer
+`/attach takes a path · try /attach server.log`; it now opens the add context sheet on the
+folder this conversation is standing in, so you can find the file rather than being told to
+know its path. See "Choosing a folder".
 
 **A folder is not on this list any more.** `/attach ~/code/thing` used to answer
 `<name> is a folder · attach a file`; it now goes to the folder door and says
-`folder · ~/code/thing`. Dropping a folder on the window still refuses with that old
-sentence — see "Choosing a folder".
+`folder · ~/code/thing`. On home it pins the next conversation's folder instead and says
+`next conversation opens in ~/code/thing`, because there is no conversation there to attach
+one to. Dropping a folder on the window still refuses with that old sentence — see
+"Choosing a folder".
+
+## Attaching a file from home — /attach on the home screen, before there is a conversation
+
+**Home has a tray of its own and `/attach <path>` fills it.** No conversation is opened for
+it: the chip appears above home's box, home says
+`attached · server.log · rides with the next conversation`, and the file is attached to the
+first message of whatever conversation you start next. `/image <path>` is the same for a
+picture, and a drop or a paste onto home does it with no command at all.
+
+**A bare `/attach` there asks for the path** — `type the path after /attach · or drop the file
+here` — rather than opening the browser. `/folder` is the browser on home, and it is aimed at
+which folder the next conversation opens in (see "Choosing a folder").
+
+**The tray survives the walk.** Attach a file on home, go into a conversation, come back: it
+is still there. Home's tray row cannot be clicked; a chip comes off on a conversation's own
+tray, where the `✕` is.
 
 A few refusals come from the far machine instead and arrive with `engine:` in front of
 them — the file arrived with no usable name, or with a name that was really a path:
@@ -424,7 +462,8 @@ so `/attach` is the general word and `/image` is the specific one.
 
 On the tray the two are told apart by their own glyph — `▣ #1 shot.png` for a picture,
 `▤ server.log` for a file — and by the number, which only a picture carries. In the
-transcript a picture keeps its `[#1 shot.png]` marker and draws a thumbnail underneath;
+transcript a picture keeps its `[#1 shot.png]` marker and a collapsed control underneath
+with **preview** and **open original** actions;
 an ordinary file remains the `[server.log]` marker alone.
 
 ## Drag a file in, or paste a path

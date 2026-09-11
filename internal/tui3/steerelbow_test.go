@@ -167,6 +167,7 @@ func TestACorrectionLandsBetweenTheToolRowsItInterrupted(t *testing.T) {
 	working(t, a, "read parse.go")
 	drive(t, a, streamEventMsg{gen: a.gen, ev: steerAcceptedEvent(1, "use the staging bucket")})
 	working(t, a, "read build.go")
+	showLiveWork(t, a)
 
 	before, said, after := steerToolRowAt(a, "read parse.go"), steerRowAt(a, "use the staging bucket"), steerToolRowAt(a, "read build.go")
 	if before < 0 || said < 0 || after < 0 {
@@ -204,6 +205,7 @@ func TestOverAConnectionACorrectionLandsInThePlaceItWasSaid(t *testing.T) {
 	working(t, a, "read lexer.go")
 	drive(t, a, streamEventMsg{gen: a.gen, ev: steerAcceptedEvent(1, "use the staging bucket")})
 	working(t, a, "read parse.go")
+	showLiveWork(t, a)
 
 	before, said, after := steerToolRowAt(a, "read lexer.go"), steerRowAt(a, "use the staging bucket"), steerToolRowAt(a, "read parse.go")
 	if before < 0 || said < 0 || after < 0 || !(before < said && said < after) {
@@ -223,6 +225,7 @@ func TestTwoCorrectionsStayInTheOrderAndThePlacesTheyWereSaid(t *testing.T) {
 	drive(t, a, streamEventMsg{gen: a.gen, ev: steerAcceptedEvent(1, "use the staging bucket")})
 	working(t, a, "read lexer.go")
 	drive(t, a, streamEventMsg{gen: a.gen, ev: steerAcceptedEvent(2, "and skip the cache")})
+	showLiveWork(t, a)
 
 	first, work, second := steerRowAt(a, "use the staging bucket"), steerToolRowAt(a, "read lexer.go"), steerRowAt(a, "and skip the cache")
 	if first < 0 || work < 0 || second < 0 || !(first < work && work < second) {
@@ -247,6 +250,7 @@ func TestACorrectionStandsFlushLeftBesideTheWorkItInterrupted(t *testing.T) {
 	typeLine(t, a, "port the parser")
 	working(t, a, "read lexer.go")
 	drive(t, a, streamEventMsg{gen: a.gen, ev: steerAcceptedEvent(1, "use the staging bucket")})
+	showLiveWork(t, a)
 
 	lines := plainRows(a)
 	said := steerRowAt(a, "use the staging bucket")
@@ -503,7 +507,9 @@ func TestAFellThroughSteerIsNotQueuedOntoATurnSomebodyStopped(t *testing.T) {
 	a.state = stateInterrupted
 	lane := make(chan session.Event)
 	close(lane)
-	a.steerFell(steerFellMsg{gen: a.gen, words: "use the staging bucket", ch: lane})
+	// The stamp is the LANE's own and not the turn's ([app.convGen]), so the
+	// stop below is the only reason this can be refused for.
+	a.steerFell(steerFellMsg{gen: a.convGen, words: "use the staging bucket", ch: lane})
 	if len(a.follows) != 0 {
 		t.Fatal("a stopped turn drained a correction into a turn of its own")
 	}

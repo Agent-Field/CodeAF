@@ -255,6 +255,17 @@ type steerElbow struct {
 	// yesterday — the block's position is what says where it went, which is the
 	// whole of this file's design.
 	receipt string
+	// stalled says NOTHING IS HAPPENING TO THESE WORDS. It belongs to one state
+	// and one only: a crossing to another agent that nobody answered, so it is
+	// unknown whether the task has them (steersend.go).
+	//
+	// IT EXISTS TO TAKE THE SPINNER OFF. An unconsumed row spins, because an
+	// unconsumed row is ordinarily a thing in flight — and a spinner over a send
+	// that is not moving is this surface claiming work is happening when the
+	// truth is that nobody knows anything. The clause stays instead, and it does
+	// not fade: it is not news, it is an unresolved state, and it goes when the
+	// send resolves and not when it gets old.
+	stalled bool
 	// consumed is the fact itself. It is a field beside the instant rather than
 	// `!landed.IsZero()` because a REPLAYED elbow knows it landed and does not
 	// know when the surface would have said so — the journal keeps the SEND's
@@ -449,6 +460,11 @@ func (a *app) elbowMoving(elbow *steerElbow) bool {
 	if elbow == nil {
 		return false
 	}
+	// A stalled row draws the same cells on every frame, so asking for one is
+	// asking the page to rebuild forever for a picture that never changes.
+	if elbow.stalled {
+		return false
+	}
 	if !elbow.consumed {
 		return true
 	}
@@ -562,6 +578,11 @@ func (a *app) elbowClauseWords(elbow steerElbow) (string, string) {
 	if word == "" {
 		word = steerPendingWord
 	}
+	// AND A STALLED ROW SPENDS NO MOVING CELL. See [steerElbow.stalled]: nothing
+	// is in flight, so nothing turns.
+	if elbow.stalled {
+		return word, a.pal.dim(word)
+	}
 	spin := a.steerSpin()
 	return spin + " " + word, a.pal.muted(spin) + a.pal.dim(" "+word)
 }
@@ -651,7 +672,11 @@ func (a *app) holdSteer(ch <-chan session.Event) tea.Cmd {
 	if ch == nil {
 		return nil
 	}
-	return waitSteerLane(ch, a.gen)
+	// THE LANE IS STAMPED WITH THE CONVERSATION AND NOT WITH THE TURN
+	// (app.go's [app.convGen]). A steer's news comes back after the turn it was
+	// typed into has ended — that is what a fall-through IS — so a stamp that
+	// moved with every turn was guaranteed to be stale exactly when it mattered.
+	return waitSteerLane(ch, a.convGen)
 }
 
 // waitSteerLane reads one steer's own stream until that steer's story is over,
@@ -712,8 +737,19 @@ func waitSteerLane(ch <-chan session.Event, gen int) tea.Cmd {
 // ([Agent.dropFollowUpsLocked]), so a surface that queued this one would draw a
 // question and then sit under it with no answer coming. The stop is the last
 // thing that turn writes on this screen, here as everywhere.
+//
+// AND IT IS CHECKED AGAINST THE CONVERSATION, NEVER AGAINST THE TURN. This read
+// [app.gen] until 2026-09-11, and that was a guarantee of the defect rather than
+// a guard against one: [app.gen] counts turns, a fall-through is BY DEFINITION
+// news that arrives after its turn ended, and the very next turn — the first
+// fallen-through steer's own, drained a moment earlier — moves it. So a person
+// who typed two corrections into one answer had the second one's whole turn
+// thrown away here: the engine ran it, wrote it into the transcript and answered
+// it, and the screen drew neither the question nor a word of the reply.
+// [app.convGen] moves only when the conversation is replaced, which is the
+// question this line means to ask.
 func (a *app) steerFell(msg steerFellMsg) tea.Cmd {
-	if msg.ch == nil || msg.gen != a.gen || a.windingDown() || a.state == stateInterrupted {
+	if msg.ch == nil || msg.gen != a.convGen || a.windingDown() || a.state == stateInterrupted {
 		if msg.ch != nil {
 			go func() {
 				for range msg.ch { //nolint:revive // draining is the whole body

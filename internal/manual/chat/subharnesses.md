@@ -17,7 +17,7 @@ Three things follow from that, and they are the whole feature:
   are working in; and some are the pages a design wrote when you asked aforge to build you
   one, under `~/.aforge/harnesses`. The mark on a row reads `yours` or `from this project`,
   and that is where it was found, not what language it is in or which door built it.
-- **A run is a task.** It gets a roster row, a room, a journal and a `✕`, like every other
+- **A run is a task.** It gets a roster row, a room, a journal and a `Stop`, like every other
   piece of work you can walk away from.
 
 **A harness is a subharness.** One system, one name for it, several doors onto it. What you
@@ -127,7 +127,7 @@ else to fill in, because that is all a page can be handed.
 
 The row draws no time and the card promises no shape: a page states neither, and drawing
 either would be a claim the design never made. From `run it` it is a task like every other
-run — a roster row, a room where its steps land as they happen, a journal, and a `✕`.
+run — a roster row, a room where its steps land as they happen, a journal, and a `Stop`.
 
 ## When aforge offers one — the card it raises by itself
 
@@ -274,7 +274,7 @@ conversation reads `still blank · <field>`, and the cursor lands on that field.
 
 When the run starts, the overlay closes and the line reads
 `subharness <name> started · <title>`. **From there it is a task**: a roster row, a room,
-a journal and a `✕` that stops it, like every other piece of work you can walk away from.
+a journal and a `Stop` that ends it, like every other piece of work you can walk away from.
 This list draws nothing further about it.
 
 ## What subharnesses cannot do yet

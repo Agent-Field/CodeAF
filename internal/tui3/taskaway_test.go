@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -278,11 +279,90 @@ func TestTheRostersTreeIsUnchangedByOtherWindows(t *testing.T) {
 	}
 }
 
-// ANOTHER WINDOW'S WORK IS READ AND NOT PRESSED. There is no room to open — the
-// node is in another conversation's graph — and nothing landed for a mention to
-// point at, so the cursor steps over the row rather than promising a door that
-// does not exist.
-func TestAnotherWindowsRowTakesNoCursor(t *testing.T) {
+// ANOTHER WINDOW'S WORK IS PRESSED, AND WHAT IT OPENS IS THE ANSWER.
+//
+// THIS TEST USED TO ASSERT THE OPPOSITE, and the reversal is the whole of the
+// fix. The row took no cursor and `enter` did nothing, on the argument that
+// there is no room to open — the node is in another process's graph — and
+// nothing landed for a mention to point at. Both halves of that argument are
+// still true and neither of them was ever a reason to leave the row inert: a
+// person reading a list where nine rows answer and the tenth silently refuses
+// cannot tell a refusal from a broken screen, and the one thing they needed —
+// WHICH window has this, and that they have to go there — was exactly what
+// pressing it could not say. So the row is a stop, and the card behind it says
+// it. Nothing here invents a lane into another window: what changed is that the
+// refusal is a page rather than a keystroke that does nothing.
+func TestAnotherWindowsRowOpensTheCardThatSaysWhereTheWorkIs(t *testing.T) {
+	a, agent, _ := awayApp(t)
+	agent.away = session.NewElsewhere(time.Now(),
+		map[string]string{"the-other-window": "docs pass"},
+		window("the-other-window", session.PresenceTask{
+			ID: "7", Title: "Sweep the call sites", State: string(session.TaskRunning)}))
+	if !openTaskPlaceWithRows(a) {
+		t.Fatal("/history refused to open over another window's work")
+	}
+	item, ok := a.taskSheetCurrent()
+	if !ok || !item.away {
+		t.Fatalf("the cursor cannot stand on another window's work: %+v %t", item, ok)
+	}
+	// AND THE FOOT NAMES WHAT IS REALLY BEHIND THE KEY. Not a room — this window
+	// has none to open — but the page that says where the work is.
+	line := a.taskSheetKeysLine()
+	if !strings.Contains(line, tasksEnterAwayWord) {
+		t.Fatalf("the foot says %q and never names the door under the cursor", line)
+	}
+	for _, promised := range []string{tasksEnterRoomWord, tasksEnterInsideWord, tasksVerbsWord} {
+		if strings.Contains(line, promised) {
+			t.Fatalf("the foot promises %q over another window's work:\n\t%s", promised, line)
+		}
+	}
+
+	a.taskSheetEnter()
+	if !a.taskSheet.detailOn || !a.taskSheet.awayOwner.on {
+		t.Fatalf("enter opened no recovery card: detail=%t away=%+v",
+			a.taskSheet.detailOn, a.taskSheet.awayOwner)
+	}
+	if a.roomOpen() {
+		t.Fatal("enter opened a room onto a node this window does not hold")
+	}
+	card := taskSheetText(a)
+	// THE TWO SENTENCES, AND THE WINDOW NAMED IN THE FIRST OF THEM.
+	for _, want := range []string{
+		"Sweep the call sites", "docs pass",
+		taskAwayCardWhere("docs pass"), taskAwayCardNoRoom,
+	} {
+		if !strings.Contains(card, want) {
+			t.Fatalf("the card never says %q:\n%s", want, card)
+		}
+	}
+	// AND IT OFFERS NO MENTION, on the foot or on the key. Nothing has landed for
+	// an "@" name to resolve against, and a name that resolved against THIS
+	// session's task 7 would be the wrong task under the right number.
+	if strings.Contains(card, "m puts it in your message") {
+		t.Fatalf("the card offers a mention over work that has not landed:\n%s", card)
+	}
+	a.taskCardKey("m")
+	if text := string(a.input.value); strings.Contains(text, "@") {
+		t.Fatalf("m wrote a mention for work that has not landed: %s", text)
+	}
+
+	// esc BACKS OUT ONE LAYER, and the owner goes with the card rather than
+	// leaking onto the next row somebody opens.
+	a.taskCardKey("esc")
+	if a.taskSheet.detailOn || a.taskSheet.awayOwner.on {
+		t.Fatalf("esc left the card up: detail=%t away=%+v",
+			a.taskSheet.detailOn, a.taskSheet.awayOwner)
+	}
+	if !a.at(pageTasks) {
+		t.Fatal("esc closed the whole page instead of backing out to the list")
+	}
+}
+
+// A WINDOW WITH NO NAME STILL GETS THE WHOLE ANSWER. The first sentence stops
+// where the name would go rather than trailing off after a colon, which is
+// [taskAwayNote]'s law said in prose — and the second is unchanged, because what
+// to do about the work does not depend on what the window is called.
+func TestTheRecoveryCardOverAnUnnamedWindowStillSaysWhatToDo(t *testing.T) {
 	a, agent, _ := awayApp(t)
 	agent.away = session.NewElsewhere(time.Now(), nil,
 		window("the-other-window", session.PresenceTask{
@@ -290,22 +370,68 @@ func TestAnotherWindowsRowTakesNoCursor(t *testing.T) {
 	if !openTaskPlaceWithRows(a) {
 		t.Fatal("/history refused to open over another window's work")
 	}
-	if _, ok := a.taskSheetCurrent(); ok {
-		t.Fatal("the cursor is standing on another window's work")
+	a.taskSheetEnter()
+	card := taskSheetText(a)
+	for _, want := range []string{taskAwayCardWhere(""), taskAwayCardNoRoom} {
+		if !strings.Contains(card, want) {
+			t.Fatalf("the card never says %q:\n%s", want, card)
+		}
 	}
-	// And the foot promises nothing about enter, and no verb either, because
-	// neither does anything here. What is left of SCREEN 1e's line is the one
-	// clause that is still true.
-	if line := a.taskSheetKeysLine(); line != tasksTypeWord {
-		t.Fatalf("the foot says %q over a page with no door on it", line)
+	if strings.Contains(card, ": .") || strings.Contains(card, "project: ") {
+		t.Fatalf("an unnamed window left a colon standing in for its name:\n%s", card)
 	}
-	// enter is a no-op rather than a panic or a mention of nothing.
-	if cmd := a.taskSheetEnter(); cmd != nil {
-		t.Fatal("enter did something on a row that has no door")
+}
+
+// AND THE POINTER AND THE KEYBOARD OPEN THE SAME THING. A click on the row is
+// the row's cursor plus its enter, which is what the page promises for every
+// other row it draws — so a person who reaches for the mouse must not find a
+// door that only the keyboard has.
+func TestClickingAnotherWindowsRowOpensTheSameCardAsEnter(t *testing.T) {
+	for _, width := range []int{44, 80, 120} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			a, agent, _ := awayApp(t)
+			a.width = width
+			agent.away = session.NewElsewhere(time.Now(),
+				map[string]string{"the-other-window": "docs pass"},
+				window("the-other-window", session.PresenceTask{
+					ID: "7", Title: "Sweep the call sites", State: string(session.TaskRunning)}))
+			if !openTaskPlaceWithRows(a) {
+				t.Fatal("/history refused to open over another window's work")
+			}
+			// The keyboard first, so the two answers can be compared rather than
+			// asserted apart.
+			a.taskSheetEnter()
+			typed := taskSheetText(a)
+			a.taskCardKey("esc")
+
+			row := awayHitRow(t, a, "Sweep the call sites")
+			a.taskSheetPress(2, row)
+			if !a.taskSheet.detailOn || !a.taskSheet.awayOwner.on {
+				t.Fatalf("a click on the row opened no recovery card at %d columns:\n%s",
+					width, taskSheetText(a))
+			}
+			if clicked := taskSheetText(a); clicked != typed {
+				t.Fatalf("the pointer and the keyboard opened different pages at %d columns:\n--- enter\n%s\n--- click\n%s",
+					width, typed, clicked)
+			}
+		})
 	}
-	if text := string(a.input.value); strings.Contains(text, "@") {
-		t.Fatalf("enter wrote a mention for work that has not landed: %s", text)
+}
+
+// awayHitRow is the SCREEN ROW one title is drawn on, resolved through the
+// page's own hit map — which is what a press will name. Counting drawn lines
+// would find the row at [tierPhone] and miss that a card is two lines there.
+func awayHitRow(t *testing.T, a *app, title string) int {
+	t.Helper()
+	width, height := a.size()
+	lines, hits, _, _ := a.taskSheetFrame(width, height)
+	for y := range lines {
+		if y < len(hits) && hits[y].kind == taskSheetHitRow && strings.Contains(plain(lines[y]), title) {
+			return y
+		}
 	}
+	t.Fatalf("no pressable row is %q:\n%s", title, strings.Join(drawnRows(lines), "\n"))
+	return -1
 }
 
 // THE FILTER REACHES THE OTHER WINDOWS TOO. A person typing a word they half

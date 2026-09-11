@@ -5,6 +5,22 @@ import (
 	"testing"
 )
 
+func TestRetainedBranchNoticePreservesRequestedWorkflow(t *testing.T) {
+	for _, merge := range []string{mergeKept, mergeConflicted, mergeAborted} {
+		notice := TaskNotice{ID: 7, Title: "Port the parser", State: TaskUnverified,
+			Branch: "task/parser", Merge: merge, Changed: []string{"parser.go"}}
+		note := taskNote(notice, "", TaskSettleAsk, landingAddress{person: true})
+		if !strings.Contains(note, notice.Branch) || !strings.Contains(note, "unless their request calls for it") {
+			t.Fatalf("%s: missing retained branch or workflow boundary: %s", merge, note)
+		}
+		for _, direction := range []string{"merge it yourself", "merge that branch", "check one out and merge", "merge it where"} {
+			if strings.Contains(note, direction) {
+				t.Fatalf("%s: notice directs an unrequested merge: %s", merge, note)
+			}
+		}
+	}
+}
+
 // WHAT THE MODEL IS TOLD WHEN A NODE LANDS.
 //
 // The note is the model's only account of work it handed off, and it is about to
@@ -25,30 +41,30 @@ func TestTaskNoteSaysWhichOfTheThreeItIs(t *testing.T) {
 			ID: 7, Title: "Port the parser", State: TaskDone,
 			Report: "go test ./... ok", Merge: mergeMerged, Branch: "task/parser",
 		},
-		// FINISHED, and the report is the evidence it finished on. The note does
+		// DONE, and the report is the evidence it finished on. The note does
 		// not say "verified" — a done node also reaches this line by a person
 		// accepting it and by the checking row being off, and none of those three
 		// is the harness's own word to spend on a person (task_audit.go).
 		want: []string{
-			"task 7 finished: Port the parser",
+			"task 7 done: Port the parser",
 			"go test ./... ok",
 			"its branch task/parser merged into yours",
 		},
-		never: []string{"failed", "needs your look"},
+		never: []string{"failed", "needs your look", "finished"},
 	}, {
 		what: "a landing that came back short",
 		notice: TaskNotice{
 			ID: 8, Title: "Mix audio", State: TaskFailed, Branch: "task/mix-audio",
 			Report: incompleteLead + "the new case does not run",
 		},
-		// FAILED, and the news is what is MISSING — plus the one thing the model
+		// INCOMPLETE, and the news is what is MISSING — plus the one thing the model
 		// must do with it, which is ask rather than quietly spend again.
 		want: []string{
-			"task 8 failed: Mix audio",
+			"task 8 incomplete: Mix audio · the check found gaps: the new case does not run",
 			incompleteLead + "the new case does not run",
 			"offer them a follow-up in their own words",
 		},
-		never: []string{"needs your look"},
+		never: []string{"needs your look", "task 8 failed"},
 	}, {
 		what: "a landing that stopped for another reason",
 		notice: TaskNotice{
@@ -57,24 +73,28 @@ func TestTaskNoteSaysWhichOfTheThreeItIs(t *testing.T) {
 		},
 		// A NODE THAT RAN OUT OF TIME HAS NO GAP TO OFFER ANYBODY. The follow-up
 		// sentence rides an incomplete landing and only that one.
-		want:  []string{"task 10 failed: Grind the build", "ran out of time"},
-		never: []string{"offer them a follow-up"},
+		want:  []string{"task 10 incomplete: Grind the build · a fault: ran out of time", "ran out of time"},
+		never: []string{"offer them a follow-up", "task 10 failed"},
 	}, {
 		what: "a landing nobody could judge",
 		notice: TaskNotice{
 			ID: 9, Title: "Collect sources", State: TaskUnverified,
-			Report: needsLookLead + "asked twice and got no answer either time",
+			Report: withYourCallLead(TaskFacts{}, checkerAskedTwice),
 		},
 		// NOT "FAILED", and it says what is waiting on whom: the state exists
 		// because "the work is wrong" and "nobody could tell me whether the work
 		// is wrong" are different news.
+		// AND THE QUESTION IS ON THE HEAD ONCE. The report opens with it, the
+		// head writes it, and the note takes it off the report rather than
+		// saying it twice — so what is left under the head is the rest of the
+		// checker's own sentence (task_run.go's [taskNote]).
 		want: []string{
-			"task 9 needs your look: Collect sources",
-			needsLookLead + "asked twice",
+			"task 9 your call: Collect sources · nobody could check it",
+			strings.TrimPrefix(checkerAskedTwice, yourCallLead(TaskFacts{})),
 			"it is neither done nor failed",
 			"tasks id 9 resolve accept|reaudit|refute",
 		},
-		never: []string{"task 9 failed", "task 9 finished"},
+		never: []string{"task 9 failed", "task 9 finished", "needs your look"},
 	}} {
 		note := taskNote(c.notice, uri, TaskSettleAsk, landingAddress{person: true})
 		for _, want := range c.want {
@@ -102,7 +122,7 @@ func TestTaskNoteSaysWhichOfTheThreeItIs(t *testing.T) {
 // resumed session (task_store.go).
 func TestTaskNoteWithNoTranscriptEndsAtTheTitle(t *testing.T) {
 	note := taskNote(TaskNotice{ID: 3, Title: "Port the parser", State: TaskDone}, "", TaskSettleAsk, landingAddress{person: true})
-	if first := strings.SplitN(note, "\n", 2)[0]; first != "task 3 finished: Port the parser" {
+	if first := strings.SplitN(note, "\n", 2)[0]; first != "task 3 done: Port the parser" {
 		t.Fatalf("the first line is %q", first)
 	}
 	if strings.Contains(note, "transcript") {

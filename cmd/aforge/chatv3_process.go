@@ -40,6 +40,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/connect"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/history"
+	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
@@ -58,6 +59,11 @@ type v3Process struct {
 	// Models is ONE lazy warm and one cache on disk. N catalogs would be N
 	// network round trips for one answer.
 	Models *catalog.Catalog
+	// Shelf holds Models until somebody asks /model for today's list, and the
+	// refreshed catalog after (chatv3_modelshelf.go). The picker and the two
+	// session readers that answer about a model somebody may have just picked
+	// out of that list — can it see, may a task be handed to it — read here.
+	Shelf *v3ModelShelf
 	// Harnesses is the registry under the state root. The law is already written
 	// at [openV3Launch]: two stores at one directory is how /harness and the
 	// offer card come to name different harnesses.
@@ -167,13 +173,17 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	// Model discovery starts here and is waited for NOWHERE. On a cold cache
 	// resolving it is a network round-trip, and everything it feeds has a good
 	// answer without it.
-	models := catalog.LoadLazy(context.Background(), catalog.Options{
+	discovery := catalog.Options{
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
-	})
+	}
+	models := catalog.LoadLazy(context.Background(), discovery)
+	shelf := newV3ModelShelf(models, discovery)
+	shelf.setSources(settings.Sources)
 	return &v3Process{
 		Settings:   settings,
 		ProfileDir: settings.ProfileDir,
 		Models:     models,
+		Shelf:      shelf,
 		Harnesses:  subharness.Default(),
 		Memory:     v3Memory(settings.ProfileDir),
 		Artifacts:  artifactsIndexPath(),
@@ -241,12 +251,34 @@ func (p *v3Process) setAPIKey(key string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.Settings.APIKey = strings.TrimSpace(key)
+	p.Settings.Sources = p.Settings.Sources.WithDefaultKey(p.Settings.APIKey)
 	for _, agent := range p.agents {
 		if err := agent.SetAPIKey(key); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// setModelSources makes a profile connection live for every retained
+// conversation and for launches opened later in this process.
+func (p *v3Process) setModelSources(sources modelsource.Set) {
+	if sources.Empty() {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.Settings.Sources = sources
+	p.Shelf.setSources(sources)
+	for _, agent := range p.agents {
+		agent.SetSources(sources)
+	}
+}
+
+func (p *v3Process) currentAccount() (string, modelsource.Set) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.Settings.APIKey, p.Settings.Sources
 }
 
 // apiKey is the key the process holds now, which may be newer than the one any
@@ -414,13 +446,11 @@ func (s *v3Seam) launch(workspace string) (*v3Launch, error) {
 	// with, and a /new built from it would open a conversation that refuses
 	// every request. A copy is patched rather than the boot itself, because the
 	// boot is shared and this is a reading, not a change to it.
-	if strings.TrimSpace(launch.Config.APIKey) == "" {
-		if key := s.proc.apiKey(); key != "" {
-			keyed := *launch
-			keyed.Config.APIKey = key
-			launch = &keyed
-		}
-	}
+	key, sources := s.proc.currentAccount()
+	current := *launch
+	current.Config.APIKey = key
+	current.Config.Sources = sources
+	launch = &current
 	return launch, nil
 }
 
@@ -479,13 +509,17 @@ func (s *v3Seam) open(launch *v3Launch, cfg session.Config, resumed bool) (tui3.
 	// There is a surface, and it answers (internal/tui3's consent.go). Every
 	// conversation this seam opens is one somebody is looking at.
 	cfg.AskConsent = true
-	// And it holds the harness lane for every one of them: the surface opens the
-	// standing subscription again on each conversation it takes (internal/tui3's
+	// And it holds every standing lane for every one of them: the surface opens
+	// those subscriptions again on each conversation it takes (internal/tui3's
 	// switcher.go), which is what lets chat offer a saved program with an intake
-	// card here as well as in the first conversation of the process (chatv3.go
-	// states the distinction between this and AskConsent).
-	cfg.HarnessCards = true
-	agent, cfg, notice, err := openV3Agent(cfg, launch.Workspace, v3OpenSession)
+	// card — and design a harness, and run adaptively — here as well as in the
+	// first conversation of the process. The lanes are asked for the same way
+	// the boot conversation asks (chatv3_lanes.go), so a conversation opened by
+	// /new is not a lesser one than the conversation it replaced.
+	cfg, open := v3Shape(cfg, v3LanesHere())
+	// The PROJECT and not the tools root: the sentence a held journal answers
+	// with names the directory a host is keyed by ([v3Launch.Project]).
+	agent, cfg, notice, err := openV3Agent(cfg, launch.Project, open)
 	if err != nil {
 		return tui3.Conversation{}, err
 	}

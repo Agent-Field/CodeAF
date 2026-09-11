@@ -141,9 +141,21 @@ const (
 // affinity pin, which puts the incumbent in front unconditionally — cannot be
 // argued with by a price at all, which is what this replaces.
 
-// prefixNote is one lane's last conversation, and when it served it.
+// prefixNote is one lane's last conversation, HOW LONG THE PROMPT WAS WHEN IT
+// LAST SERVED IT, and when.
+//
+// THE LENGTH IS THE HALF THIS NOTE USED TO BE MISSING. Without it the only
+// honest answer to "how much of this request does that lane hold" was "the
+// prefix matched", and the caller turned that into a discount on the WHOLE of
+// a request that had since grown. The tokens appended after the lane last
+// answered were never sent to it and cannot be in its cache. So the length is
+// carried, and it is the length the PROVIDER counted rather than anything this
+// process estimated before the send (internal/provider's noteLane): a discount
+// granted on a guessed schema size is a discount nobody's usage frame agreed
+// to. Zero is "not known", and it earns nothing.
 type prefixNote struct {
 	prefix string
+	tokens int
 	at     time.Time
 }
 
@@ -160,15 +172,21 @@ var prefixMemory = struct {
 // a handful of models, so this is a bound on a leak rather than a policy.
 const prefixMemoryLimit = 256
 
-// RememberPrefix notes that a lane served a conversation, so that the next
-// choice can price the prompt cache it probably still holds.
+// RememberPrefix notes that a lane served a conversation AT A PROMPT LENGTH, so
+// that the next choice can price the prompt cache it probably still holds
+// WITHOUT pricing the part of the next prompt that lane has never seen.
 //
 // The transport calls it after every answer — it is the one write this package
 // takes from the send path — and it takes the moment as an argument for the
-// same reason everything else here does.
-func RememberPrefix(id ID, prefix string, at time.Time) {
+// same reason everything else here does. `tokens` is the served answer's own
+// reported prompt length; a caller that does not know it passes zero, and zero
+// is remembered as "not known" rather than as a length.
+func RememberPrefix(id ID, prefix string, tokens int, at time.Time) {
 	if id.Zero() || prefix == "" {
 		return
+	}
+	if tokens < 0 {
+		tokens = 0
 	}
 	prefixMemory.mu.Lock()
 	defer prefixMemory.mu.Unlock()
@@ -183,7 +201,21 @@ func RememberPrefix(id ID, prefix string, at time.Time) {
 			delete(prefixMemory.notes, oldest)
 		}
 	}
-	prefixMemory.notes[id] = prefixNote{prefix: prefix, at: at}
+	prefixMemory.notes[id] = prefixNote{prefix: prefix, tokens: tokens, at: at}
+}
+
+// RememberedPrefix is the read half of [RememberPrefix]: which conversation a
+// lane last served and at what prompt length, and whether anything is held at
+// all. It is exported for the reason [ForgetPrefixes] is — the transport that
+// WRITES these notes lives in another package, so the test that its answers
+// arrive with the served identity and the settled length cannot reach the map
+// otherwise. Nothing in the routing path calls it; [cachedTokens] reads the map
+// directly.
+func RememberedPrefix(id ID) (string, int, bool) {
+	prefixMemory.mu.Lock()
+	defer prefixMemory.mu.Unlock()
+	note, seen := prefixMemory.notes[id]
+	return note.prefix, note.tokens, seen
 }
 
 // ForgetPrefixes drops every note. It is for tests, which must not inherit one
@@ -195,10 +227,28 @@ func ForgetPrefixes() {
 }
 
 // cachedTokens is how many of this request's prompt tokens a lane is believed
-// to hold, which is all of them or none: a prefix cache is a prefix, and a
-// conversation that has grown since is still hit for everything up to where it
-// grew. Being generous here is what makes the incumbent lane cheaper by exactly
-// the discount it is about to give, and being wrong costs a comparison.
+// to hold: a prefix cache is a prefix, so a conversation that has grown since
+// is still hit for everything up to WHERE IT GREW — and for nothing past it.
+//
+// THE BOUND IS THE SHORTER OF TWO KNOWN LENGTHS: what that lane's last answer
+// reported it read, and what this request is sending. A grown prompt earns
+// credit for the part the lane actually saw and pays full price for the rest; a
+// SHRUNK one — a compaction, a rewrite — earns credit for at most what it is
+// now sending, because a discount on tokens this request does not contain is
+// arithmetic about a message nobody is going to send.
+//
+// IT REMAINS AN ESTIMATE AND NOT A RECEIPT. A matching lineage inside the hold
+// says this lane answered these bytes recently, not that it still holds them:
+// the lane may have evicted the prefix, and a compaction or a rewrite can
+// change bytes UNDER an unchanged lineage so that a prompt of the same length
+// is a different prompt. Only the next answer's `cached_tokens` settles it.
+// What the bound removes is the one error that needed no cache behaviour to be
+// wrong — crediting a lane for tokens that were appended after it last spoke.
+//
+// A length that is not known earns NOTHING. An answer whose usage frame carried
+// no prompt count leaves a zero here, and a zero is unknown rather than "all of
+// it": inventing a length would be exactly the fabricated discount this bound
+// exists to end.
 func cachedTokens(id ID, req Request) int {
 	if req.Prefix == "" || req.PromptTokens <= 0 {
 		return 0
@@ -209,8 +259,14 @@ func cachedTokens(id ID, req Request) int {
 	if !seen || note.prefix != req.Prefix {
 		return 0
 	}
+	if note.tokens <= 0 {
+		return 0
+	}
 	if age := req.Now.Sub(note.at); age < 0 || age > PrefixHold {
 		return 0
+	}
+	if note.tokens < req.PromptTokens {
+		return note.tokens
 	}
 	return req.PromptTokens
 }
@@ -521,6 +577,14 @@ func (c *chooser) Choose(req Request) Choice {
 			rate = candidate.Rate
 		}
 		felt := PerceivedSeconds(ttft/1000, rate, req.Visible, req.Hidden)
+		// AND THE WAIT IS PAID ONCE PER SEND, NOT ONCE PER ANSWER. A lane that
+		// answers one request in five is asked five times for one answer, and
+		// each of those asks is a round trip the person sits through before the
+		// hop to somewhere else; dividing by [Belief.Serving] is what puts a
+		// refusing pool behind a slower lane that actually answers. The
+		// availability belief is aged to now with the rest ([Ledger] ages
+		// timing; this is the same forgetting on the same clock).
+		felt /= servingAt(belief, req.Now)
 		perceived[candidate.ID] = felt
 		candidate.Score = scoreOf(candidate.Price, felt, lambda)
 		scored = append(scored, candidate)
@@ -538,12 +602,16 @@ func (c *chooser) Choose(req Request) Choice {
 		return scored[a].ID.Lane < scored[b].ID.Lane
 	})
 
-	// AND WHAT IS UNKNOWN GOES BEHIND WHAT IS KNOWN. A lane the sheet has never
-	// published a tool flag for is a candidate and not a favourite: it is ranked
-	// last among the survivors when the request carries tools, so the choice
-	// tries the machines we know will take the call first and still has
-	// somewhere to go when we know nothing at all (frontier.go's [toolsLast]).
-	scored = toolsLast(scored, req, aged)
+	// AND WHAT THE SHEET DOUBTS GOES BEHIND WHAT IT DOES NOT. A lane the sheet
+	// says will not take a tool call, or has published as half down or derated,
+	// is a candidate and not a favourite: it is ranked last among the survivors,
+	// so the choice tries the machines nothing is doubted about first and still
+	// has somewhere to go when they refuse. One draw in [probeInEvery] sends it
+	// first anyway, because a lane that is never asked can never prove the sheet
+	// wrong — which is the whole of frontier.go's THREE OF THE SHEET'S CLAIMS ARE
+	// PRIORS RATHER THAN GATES, and the draw comes from the same seeded sampler
+	// the score does, so one request's choice stays reproducible.
+	scored = sheetDoubtsLast(scored, req, aged, draws.Float64())
 
 	choice := Choice{Frontier: scored}
 	choice.Order = orderOf(scored, aged)
@@ -551,6 +619,7 @@ func (c *chooser) Choose(req Request) Choice {
 		return Choice{}
 	}
 	choice.Ignore = ignoredOf(scored, aged, choice.Order, lambda)
+	choice.Ignore = flooredInto(choice.Ignore, aged, choice.Order, lambda, req.Now)
 	// AND NOTHING ABOUT TIME. Where a rescue would go and when it would go
 	// there are [PlanFor]'s, built for every call out of the same frontier this
 	// carries — see the note on [Choice].
@@ -605,6 +674,32 @@ func orderOf(scored []Scored, aged map[ID]Belief) []string {
 // lane that starts three times slower and costs half as much is the RIGHT
 // answer, and putting it in `provider.ignore` would be this process refusing a
 // lane on an objective the request does not have.
+// flooredInto adds every lane surely under the service floor (frontier.go) to
+// the ignore list, under the same λ rule as ignoredOf: nobody waiting, nothing
+// vetoed. A lane the floor took out of the frontier is not in the order, and a
+// router with fallbacks on would otherwise still be free to land there.
+func flooredInto(ignore []string, aged map[ID]Belief, order []string, lambda float64, now time.Time) []string {
+	if lambda <= 0 {
+		return ignore
+	}
+	named := map[string]bool{}
+	for _, lane := range order {
+		named[lane] = true
+	}
+	for _, lane := range ignore {
+		named[lane] = true
+	}
+	var floored []string
+	for id, belief := range aged {
+		if named[id.Lane] || !underFloor(belief, now) {
+			continue
+		}
+		floored = append(floored, id.Lane)
+	}
+	sort.Strings(floored)
+	return append(ignore, floored...)
+}
+
 func ignoredOf(scored []Scored, aged map[ID]Belief, order []string, lambda float64) []string {
 	if lambda <= 0 {
 		return nil
@@ -650,6 +745,16 @@ func ignoredOf(scored []Scored, aged map[ID]Belief, order []string, lambda float
 // elsewhere and on purpose: the frontier prunes at the p75 ([quartileZ]) and
 // the hedge deadline is computed from the full predictive spread
 // ([predictive]), so nothing is lost here by asking a narrower question.
+// servingAt is [Belief.Serving] read at a moment: the availability posterior is
+// let go toward its prior for the time since the last outcome, so that a pool
+// refused ten minutes ago is mostly forgiven by the time it is asked about.
+func servingAt(belief Belief, now time.Time) float64 {
+	if belief.Availability.Known() && !belief.AvailabilityAt.IsZero() && now.After(belief.AvailabilityAt) {
+		belief.Availability = belief.Availability.Toward(availabilityPrior, now.Sub(belief.AvailabilityAt), AvailabilityHalfLife)
+	}
+	return belief.Serving()
+}
+
 func sample(posterior Posterior, draws *rand.Rand, width float64, measured bool) float64 {
 	if !posterior.Known() {
 		return 0

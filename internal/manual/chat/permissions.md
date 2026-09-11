@@ -1,40 +1,54 @@
 # What runs without asking, and who can see your files
 
-## The question aforge asks before it runs a tool
+## The question aforge asks before it runs a tool — which key allows a command, what `1`, `2` and `3` do
 
 When the model asks to run a tool and the rules say "ask", aforge blocks that
-one call and draws a question above the input box. The conversation cannot move
-until it is answered.
+one call and draws a question above the input box. The call does not run until
+you answer, and the conversation is paused on it.
 
-The offer line reads, literally:
+The row above the question is **the call's own transcript row**, re-used rather
+than described again — so what you approve is what you read. Under it, the
+answers row reads, literally:
 
 ```
-allow? [y] yes · [n] no · [a] always, this command · [esc] cancel
+? allow? [1] allow once · [2] always, this command · [3] deny · [c] change · [esc] later · 7s
 ```
 
-with the wait mode on the end — ` · 7s`, or ` · paused` once you have touched
-it or the reminder expired, or ` · waiting` when the countdown is off. Silence
-is never a no.
+with the wait mode on the end — ` · 7s`, or ` · paused` once you have touched it
+or the reminder ran out, or ` · waiting` when the countdown is off. Silence is
+never a no.
 
-- `y` — allow this one call. The transcript row is annotated `allowed`.
-- `n` — refuse this one call. The row is annotated `denied`. The model is handed
+- `1` — allow this one call. The transcript row is annotated `allowed`.
+- `3` — refuse this one call. The row is annotated `denied`. The model is handed
   an error result, `denied by the person: <rule>`, and keeps going.
-- `esc` — the same as `n`. Cancelling is denying.
-- `a` — the widening yes. What it banks is a separate decision, and on a shell
+- `2` — the widening yes. What it banks is a separate decision, and on a shell
   command aforge asks you which shape to bank before it answers.
+- `c` — refuse or allow **in words**. It puts the cursor in the box (which was
+  never taken away); type your sentence and press `enter`, and the words go to
+  the model as the answer.
+- `esc` — **later**. The question folds away to the chip on the status line and
+  **nothing is answered**. The call stays blocked and the conversation stays
+  paused on it. This is the one word here that changed meaning: `esc` used to be
+  spelled `cancel` and cancelling meant denying, which was the safe reading when
+  the block was a modal nobody could leave.
 
-`t` and `d` still work and are deliberately not printed on the offer: `t` is
-always, `d` is deny.
+`t`, `d`, `y`, `n` and `a` are not keys on this question. They were the block's
+keys before every question in aforge moved onto one renderer with one key
+grammar; a hand that remembers them is answering a question that no longer takes
+them, so they do nothing here (`y`, `n` and `a` type themselves into the box).
 
-Any other key stops the clock and does nothing else. Every key that is not
-`ctrl+c` is swallowed, so a stray keystroke cannot type into your draft.
-`ctrl+c` passes through: mid-turn — which a blocked call always is — it interrupts
-the blocked call, exactly as it always has. It never quits on one press; the door
-takes two presses and does not arm while a turn is running.
+**A key it does not draw belongs to your draft.** The question is not modal: the
+box below it is live, typing goes into your message, and the question is still
+there and still answerable the moment the box is clear. `ctrl+c` mid-turn — which
+a blocked call always is — interrupts the blocked call exactly as it always has.
 
-`[a]` is only drawn, and only acts, when the question is one that can bank an
-answer. The recovery lane borrows the same block without it, and there the
-always key is absent and a press does nothing.
+**A key pressed in the first quarter-second is dropped.** A question that lands
+under a hand already moving would otherwise be answered by a keystroke aimed at
+the sentence you were typing.
+
+`[2]` is only drawn, and only acts, when the question is one that can bank an
+answer. The recovery lane borrows the same question without it, and there the
+widening answer is absent and its key does nothing.
 
 **It does not have to be answered in this window.** A conversation stopped on
 this question says so on **home**, with the same three answers on the row —
@@ -44,7 +58,94 @@ limits, and what `2 always` banks when it is pressed there).
 
 When more than one question is queued a `N more` line appears. Questions are
 answered oldest first, and each gets its own countdown when it reaches the
-front. While a question is up your draft is suspended and the typed lists close.
+front.
+
+## What the answers row does on a narrow terminal
+
+The one-row form needs about eighty columns. Below that it gives things up in a
+fixed order, and **it never cuts an answer off the end** — an offer with an
+answer missing is an offer that hides an answer.
+
+1. The verbs go first, from the least useful backwards. `[c] change` goes before
+   the clock does.
+2. Then the clock. A countdown you cannot see is still a countdown; an answer you
+   cannot see is not an answer.
+3. Then the aside inside an answer's own word: `always, this tool (session)`
+   becomes `always, this tool`.
+4. Then the question **promotes to a card** — the head on one row, one row per
+   answer with its key, and the verbs underneath:
+
+```
+? needs your ok to run bash
+  bash pattern "rm -rf *" · aforge
+    1  allow once
+    2  always, this tool
+    3  deny
+  [esc] later
+```
+
+`[esc]` is never given up at any width: it is the way out, and a row with no way
+off it is the modal this block replaced.
+
+## The approval question on a phone-sized terminal
+
+Under sixty columns the question becomes a **bottom sheet**, because `[1]` is
+three cells for a thumb that covers ten:
+
+```
+───── ? bash ─────────────
+ git commit -m "wave"
+ bash pattern "git *"
+──────────────────────────
+ [1] allow once
+ [2] always, this command
+ [3] deny
+ 2 more                 8s
+```
+
+Each answer is a **band the full width of the frame** — the whole row is the
+target, not just its key. The command **wraps** instead of being cut, up to six
+lines, and says so with `…` if even that was not enough. The clock keeps its own
+corner, bottom right and off the bands, so reaching past it cannot answer. The
+queue count sits beside it. Every row of the sheet swallows a press, so a press
+that misses a band cannot reach the transcript underneath it.
+
+`esc` is still *later* from the keyboard and has **no band**: folding a question
+away is not an answer, and a full-width target that looked like one would be
+read as the no.
+
+## What is left where the question was: the receipt
+
+An answered question leaves one dim line where it stood:
+
+```
+  decided needs your ok to run bash → allow once · you · 14:02 · c change
+```
+
+It is the same sentence the model reads in `the record`, so what you saw and
+what it was told cannot become two accounts of one decision. It stays for about
+half a minute and then it is history — the transcript row keeps its own
+annotation for good.
+
+A question the asker took back says so once instead, and the chip's count drops:
+
+```
+  ⊘ needs your ok to run bash — no longer needed · the turn moved on without it
+```
+
+## Answering a question you put off — the chip
+
+`esc` folds a question rather than answering it, so the status line carries a
+chip for as long as anything is open:
+
+```
+? 1 question · alt+a
+```
+
+`alt+a` raises the newest open question from **any page** — home, a room, the
+tasks place — and takes you back to the conversation it belongs to. The count
+includes the ones you folded: `esc` is later and not cancelled, so a question you
+put off is still a question the work is waiting on.
 
 ## Why did it ask my permission before running that — the dim line under the offer
 
@@ -56,14 +157,13 @@ rules' own words. It can read:
 - `tool "edit"`
 - `bash pattern "rm -rf *"`
 - `critical command "rm -rf /"`
-- `bash call with no readable command`
 - `<tool> acts in your name outside this machine`
 - `you said yes to "<phrase>"`
 - `"<phrase>" is set to ask first`
 
 The same sentence is what the model is told when a call is refused.
 
-## The countdown: silence waits — why an unanswered approval is not denied
+## The countdown: silence waits — why an unanswered approval is not denied, and whether an approval question expires while you are in another chat
 
 A question that is not answered stays a question. Silence is never a **no**.
 
@@ -76,7 +176,7 @@ countdown is off) and the work stays blocked until you answer. The transcript
 row is not annotated `denied · no answer`; that wording was a previous build
 answering no for you.
 
-Any key press, and any mouse press inside the block, pauses the clock
+Any key the question reads, and any press on its answers, stops the clock
 **permanently**. There is no way to start it again; the tail then reads
 ` · paused` and the question waits for you. Setting the countdown to `0` turns
 the clock off from the start, and every question waits forever.
@@ -136,9 +236,11 @@ either; both are on.
 Work does not stop because you looked away, so if a session really is going
 nowhere, it is one of these:
 
-- **A question is up.** The most common one. The row it is about says
-  `allow?`; the session is blocked until you answer, and the countdown is held
-  while you are away rather than answering for you.
+- **A question is up.** The most common one. The answers row under the call
+  reads `allow?`; the call is blocked until you answer, and the countdown is held
+  while you are away rather than answering for you. If you pressed `esc` on it,
+  it is folded to the chip — `? 1 question · alt+a` on the status line — and the
+  work is still waiting on it.
 - **A call was already denied while you were gone** on a build from before
   silence stopped answering no. The row says `denied · no answer`. Say so and
   the model will ask again. A current build does not write that; the question
@@ -151,7 +253,8 @@ session and none that wakes one.
 
 ## How long an answer lasts: once, this session, or written down — how to make it stop asking every time
 
-- **Once** — `y`, `n`, `esc` and `d` answer this call and nothing else.
+- **Once** — `1`, `3` and a typed answer under `c` answer this call and nothing
+  else. `esc` answers nothing at all: it puts the question off.
 - **For the session** — a "stop asking" answer is kept in memory for the rest of
   this agent's life. It is deliberately coarse: it answers for **the whole
   tool**, so a session memo about bash covers every bash command the rules would
@@ -169,12 +272,12 @@ purpose.
 An answer whose scope cannot be read is treated as **once** — the narrow reading
 is the safe one.
 
-## What "always" means when you press `a`: what "always" banks, and how wide the rule is
+## What "always" means when you press `2`: what "always" banks, and how wide the rule is
 
 Pressing always is not one decision. On a shell command it is two.
 
-For `bash`, and only for bash, pressing `a` (or `t`) **does not answer yet**. It
-replaces the offer line, in place, with the shapes the rule could be written as:
+For `bash`, and only for bash, pressing `2` **does not answer yet**. It replaces
+the answers row, in place, with the shapes the rule could be written as:
 
 ```
 always? [1] git status*  ·  [2] git *  ·  [3] just this line  ·  [esc] never mind
@@ -187,8 +290,10 @@ written; nothing widens on its own.
 
 - `1`–`9` pick a shape.
 - `esc` backs out of the beat and puts the original question back exactly as it
-  was. It answers nothing.
-- Every other key, including `y` and `n`, does nothing while the beat is up.
+  was. It answers nothing — and this is the one place `esc` does not mean *later*,
+  because what is on screen is a step inside an answer.
+- The digits are the **beat's**, not the question's: while it is up, `3` is the
+  third shape and not `deny`. The row under your eyes is the shapes.
 
 The last entry always reads `just this line`. It is the command line itself,
 named rather than reprinted so the command is not on screen twice.
@@ -200,7 +305,8 @@ derives nothing and writes nothing.
 For every other tool, always banks the tool. The word on the key says which of
 the three you are getting: `always, this command` (bash), `always, this tool`,
 or `always, this tool (session)` when there is nothing to write to and the
-answer lasts for this agent's life only.
+answer lasts for this agent's life only. On a narrow frame the ` (session)` is
+dropped before any answer is.
 
 ## The shapes offered for a shell command, exactly
 
@@ -325,8 +431,10 @@ Segments are split on `&&`, `||`, `;`, `|`, a bare `&`, subshells (`$( )`,
 backticks, parentheses) and newlines. Quoted text is literal. `2>&1` and `&>log`
 are not separators, and neither are brace groups.
 
-A bash call whose command cannot be read degrades an allow to a **prompt**, with
-the rule `bash call with no readable command`. A deny or a prompt stands.
+A malformed bash call, or one with no readable non-empty command, is returned to
+the model as `Invalid arguments` so it can correct the call. Nothing executes,
+and no permission card asks you to approve an absent command. A corrected call
+goes through the ordinary shell-command rules, including prompts and denials.
 
 ## `--yolo` — how do I let it run things without asking
 
@@ -538,6 +646,66 @@ auxiliary calls somewhere, set one of the five crew classes
 
 A row your environment has pinned refuses like it does everywhere else:
 `<label> is set by <NAME>`.
+
+## Does aforge sign my commits — why is there a co-author on my commit, who is agentfield-bot, how do I turn the trailer off
+
+Yes, unless you turn it off. There are three marks and no others, and this is
+exactly what each one looks like.
+
+**A commit** ends with a blank line and one trailer:
+
+```
+Co-Authored-By: aforge <agentfield-bot@users.noreply.github.com>
+```
+
+**A pull request or an issue** ends its body with a line holding an em dash, and
+then one sentence:
+
+```
+—
+Drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=pull_request&utm_campaign=drafted_with) · reviewed and owned by the author
+```
+
+On an issue that link reads `utm_medium=issue` instead.
+
+**A comment** — on an issue, on a pull request, on a line of a review — ends
+with one small muted line, no em dash above it:
+
+```
+<sub>drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=comment&utm_campaign=drafted_with)</sub>
+```
+
+`agentfield-bot` is aforge's own GitHub account and the address is the one GitHub
+hands out for it. The marks are provenance — another pair of hands typed this —
+and they are the only trace left on your work.
+
+## Will it sign every comment it leaves — how gentle the comment line is, and where none of the three ever appear
+
+**A comment thread gets the line once.** The first comment aforge leaves in a
+thread carries it; every later comment in that same thread carries nothing. It
+is also left off entirely on a one-line reply, on anything inside a code block or
+a suggestion block, and on a comment you dictated word for word — those are your
+words and aforge does not sign them.
+
+None of the three ever appear in a commit subject, in a code file, in a README,
+in anything aforge writes for you such as a report or a deck, or in what it says
+back to you in this conversation. If you see one somewhere else, that is a fault
+worth reporting.
+
+**A repository that says no wins.** If a CONTRIBUTING file or a stated policy
+forbids AI trailers or generated-by lines, aforge leaves all three out and tells
+you it did.
+
+**To turn it off**, open `/settings` and switch the **attribution** row off, or
+set `AFORGE_ATTRIBUTION=0` in your environment. It is on by default. aforge
+cannot change this row for you — ask it to and it says so and points you at
+`/settings` — because a signature is yours to decide. A change lands on the next
+piece of work handed off, and on the next aforge you start.
+
+The commit a task writes when its work lands carries the same trailer. Those
+commits are authored as `aforge <aforge@localhost>` and always have been: aforge
+reads that name to tell its own commits from yours when it lands a branch. Your
+own commits are authored by you and are never touched.
 
 ## A timeout is not a deny — why it said "denied by the person" when nobody said no
 

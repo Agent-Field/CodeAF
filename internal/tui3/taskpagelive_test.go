@@ -75,3 +75,55 @@ func TestTheOpenTaskPageDoesNotRefileWhenNothingMoved(t *testing.T) {
 		t.Fatalf("a quiet frame moved the stamp from %d to %d", held, a.taskSheet.mineAt)
 	}
 }
+
+// THE CURSOR STAYS ON THE WORK IT WAS ON WHEN THE LIST MOVES UNDER IT.
+//
+// This is the same defect the whole lane is about, reached by the clock rather
+// than by a bad match. The cursor is a LINE of a layout the beat replaces whole,
+// and the sections are ordered by what you do next — so a task finishing leaves
+// `running`, joins `finished today`, and every row that was below it moves up
+// one. A cursor kept as a number is then on a different piece of work than the
+// person is looking at, and the next `enter` opens it.
+func TestTheTaskPageCursorFollowsItsRowWhenAnotherTaskLands(t *testing.T) {
+	a := hostedPlaceLab(t)
+	a.showPage(pageTasks)
+	// Two live rows, and the cursor put on the SECOND of them — so the row above
+	// it is the one that will leave and take the numbering with it.
+	a.taskUpdate(oneRunningNode(41, "widening the sluice"))
+	a.taskUpdate(oneRunningNode(42, "reading the gauge"))
+	a.taskSheet.regroup(a)
+	a.taskSheet.cursor = a.tasksSettle(0)
+	for i := 0; i < 20; i++ {
+		if item, ok := a.taskSheetCurrent(); ok && item.entry.Label == "reading the gauge" {
+			break
+		}
+		a.taskSheetMove(1)
+	}
+	item, ok := a.taskSheetCurrent()
+	if !ok || item.entry.Label != "reading the gauge" {
+		t.Fatalf("the walk never reached the second running row: %+v", item.entry)
+	}
+	was := a.taskSheet.cursor
+
+	// The row ABOVE it lands, which re-files it into another section.
+	a.taskUpdate(session.Event{
+		Kind: session.EventTaskUpdate,
+		Tool: "propose_task",
+		Task: &session.TaskNotice{ID: 41, Title: "widening the sluice", State: session.TaskDone},
+	})
+	a.taskSheet.regroup(a)
+
+	now, ok := a.taskSheetCurrent()
+	if !ok {
+		t.Fatalf("the cursor came off the page entirely:\n%s", pageRows(t, a))
+	}
+	if now.entry.Label != "reading the gauge" {
+		t.Fatalf("the cursor moved from %q to %q while a different task landed:\n%s",
+			"reading the gauge", now.entry.Label, pageRows(t, a))
+	}
+	// AND IT REALLY MOVED, so the assertion above is about the row being followed
+	// and not about a list that happened to stay still.
+	if a.taskSheet.cursor == was {
+		t.Fatal("the fixture did not re-file the list, so nothing was proven")
+	}
+}

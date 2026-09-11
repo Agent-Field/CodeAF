@@ -724,7 +724,7 @@ func TestATranscriptWithNoSteersLoadsExactlyAsItAlwaysDid(t *testing.T) {
 	}
 	journal.appendMessage(textMessage("user", "what does this do"))
 	journal.appendMessage(textMessage("assistant", "it reads the file"))
-	journal.appendNote(textMessage("user", "task 3 finished"))
+	journal.appendNote(textMessage("user", "task 3 finished"), noteMarks{})
 	if err := journal.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}
@@ -770,7 +770,7 @@ func TestATranscriptWithNoSteersLoadsExactlyAsItAlwaysDid(t *testing.T) {
 func TestNodeSteeringIsNotATurnSplice(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 
-	if !agent.enqueueSteeredLine("the config lives under etc/", false) {
+	if !agent.accept(agent.spoken("the config lives under etc/", false, fromPerson, 0)).accepted() {
 		t.Fatal("the node's own steering lane refused a line")
 	}
 	agent.mu.Lock()
@@ -833,7 +833,7 @@ func TestASteerAdoptsAnOldBashAndItsExitArrivesLater(t *testing.T) {
 	agent, _ := newTestAgent(t, completer, nil)
 	turn := mustSubmit(t, agent, "build and inspect")
 	waitFor(t, "foreground bash to start", func() bool { return len(agent.inFlightBash.snapshot()) == 1 })
-	time.Sleep(steerBashAge + 100*time.Millisecond)
+	advanceSteerAge(agent, steerBashAge+100*time.Millisecond)
 	steered := mustSteer(t, agent, "inspect the parser while that runs")
 	collect(t, turn)
 	events := collect(t, steered)
@@ -899,7 +899,7 @@ func TestAStopSteerKillsAnOldBash(t *testing.T) {
 	agent, _ := newTestAgent(t, completer, nil)
 	turn := mustSubmit(t, agent, "start the server")
 	waitFor(t, "old foreground bash to start", func() bool { return len(agent.inFlightBash.snapshot()) == 1 })
-	time.Sleep(steerBashAge + 100*time.Millisecond)
+	advanceSteerAge(agent, steerBashAge+100*time.Millisecond)
 	steered := mustSteer(t, agent, "kill it")
 	collect(t, turn)
 	events := collect(t, steered)

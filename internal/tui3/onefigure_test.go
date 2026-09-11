@@ -16,6 +16,7 @@ package tui3
 // string.
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -109,6 +110,41 @@ func TestTheFourSpendSurfacesRenderOneFigure(t *testing.T) {
 	}
 }
 
+// THE SAME ONE FIGURE ON THE ENGINE HOST'S DOOR, AFTER A RECEIPT THAT CAME LATE.
+//
+// A bare `aforge` opens a window on the engine host, which reads the ledger
+// through a seam and holds no path to it. The route judge the turn finished in
+// front of was cut, the provider's receipt for it was banked under this
+// conversation twenty seconds after the turn ended, and nothing asked the agent
+// again — so the frame clock's last reading of the books, $0.41, is all this
+// window's `cost` knows. The tab must still say what `today` says, because on a
+// machine holding one conversation they are the same money read two ways (the
+// tagged suite's one_figure_on_every_spend_surface, which this failed on).
+func TestTheSpendingTabCountsALateReceiptThroughTheHostSeam(t *testing.T) {
+	a, _ := sheetApp(t)
+	folder := filepath.Join(t.TempDir(), "projects", "repo", treeConversation)
+	a.file = filepath.Join(folder, "transcript.jsonl")
+	a.usageLedger = ""
+	now := time.Now()
+	a.ledger = func(time.Time) ([]session.UsageLine, bool, bool) {
+		return []session.UsageLine{
+			{At: now.Add(-time.Minute), Session: treeConversation, Model: "m", Calls: 1, USD: 0.41},
+			{At: now, Session: treeConversation, Model: "judge", Calls: 1, USD: 0.12, Reconciled: true},
+		}, true, true
+	}
+	a.cost = 0.41
+	a.openSettings()
+
+	want := dollars(0.53)
+	if got := spendingReceipt(t, a); got != "this one "+want {
+		t.Fatalf("Spending's per-conversation receipt reads %q, want %q", got, "this one "+want)
+	}
+	today := a.todayReading()
+	if today == nil || !strings.Contains(today.value.full, want) {
+		t.Fatalf("Spending's `today` row reads %+v, want it to carry %q", today, want)
+	}
+}
+
 // AND NOTHING SAYS ANYTHING ABOUT LOST RECORDS WHEN NONE WERE LOST. The
 // unwritten row is a fact about a machine whose disk stopped answering, and the
 // emptiness law forbids drawing its absence as a zero.
@@ -137,5 +173,35 @@ func TestALostSpendingRecordIsSaidOnBothSpendSurfaces(t *testing.T) {
 	row := plain(reading.railsRow(a.width, newPalette(tokens.NoColor, false)))
 	if !strings.Contains(row, "3 "+spendUnwrittenSaid) {
 		t.Fatalf("the /spend pointer line says nothing about three lost records: %q", row)
+	}
+}
+
+// TestNothingIsSaidAboutUnbilledCallsWhenThereAreNone is C7's empty half. A
+// zero is absence on both the Spending tab and the /cost spend place, never a
+// reassuring figure the machine did not measure.
+func TestNothingIsSaidAboutUnbilledCallsWhenThereAreNone(t *testing.T) {
+	if unbilled := unbilledReadingFor(0); unbilled != nil {
+		t.Fatalf("Spending draws an %q row with no missing prices: %+v", spendUnbilledWord, unbilled)
+	}
+	now := time.Now()
+	reading := readSpend(nil, session.LastDays(now, spendWindowDays), now).unpriced(0)
+	if row := plain(reading.railsRow(200, newPalette(tokens.NoColor, false))); strings.Contains(row, spendUnbilledSaid) {
+		t.Fatalf("the /cost spend place claims calls were unpriced: %q", row)
+	}
+}
+
+// TestTheSpendSurfacesSayHowManyCallsCouldNotBePriced is C7's visible half:
+// both surfaces compose the count from the same person-facing constant.
+func TestTheSpendSurfacesSayHowManyCallsCouldNotBePriced(t *testing.T) {
+	const missing = int64(2)
+	setting := unbilledReadingFor(missing)
+	if setting == nil || !strings.Contains(setting.value.full, "2 "+spendUnbilledSaid) {
+		t.Fatalf("Spending's unbilled row = %+v", setting)
+	}
+	now := time.Now()
+	reading := readSpend(nil, session.LastDays(now, spendWindowDays), now).unpriced(missing)
+	row := plain(reading.railsRow(200, newPalette(tokens.NoColor, false)))
+	if !strings.Contains(row, "2 "+spendUnbilledSaid) {
+		t.Fatalf("the /cost spend place says nothing about two unpriced calls: %q", row)
 	}
 }

@@ -10,7 +10,7 @@ package tui3
 //
 //	  standing orders
 //	  in this conversation
-//	› ▲ keep the tests green        needs your look · the fix touches migrations
+//	› ▲ keep the tests green        your call · the fix touches migrations
 //	  for this project
 //	  ◦ draft the weekly update                                  Mondays at 9am
 //	  everywhere
@@ -253,9 +253,10 @@ func standingGrainRoom(width int, win session.UsageWindow) bool {
 	return grain
 }
 
-// standingHeadWords is the page's name as the header lays it out, indent and
-// all. It is measured as well as drawn, so it is one string.
-const standingHeadWords = "  " + standHeading
+// standingHeadWords is the page's name as the header lays it out. It is
+// measured as well as drawn, so it is one string; the edge it stands on is the
+// head row's own ([placeLead]).
+const standingHeadWords = standHeading
 
 // standingHeaderRow is the place's first line: what this page is on the left,
 // and on the right the window that scopes it — drawn by the one head row every
@@ -304,7 +305,7 @@ func standRowLabel(row standRow, pal palette) string {
 // on would be a second authority on the one question this column exists to ask.
 //
 // THE STATUS CLAUSE BEHIND IT IS [standRollup]'S, exactly as it has always been:
-// needs your look, checking now, paused, the cadence, what the last look found —
+// your call, checking now, paused, the cadence, what the last look found —
 // one derivation with one set of words, shared with home's own rows.
 //
 // THE WORDS OUTRANK BOTH, exactly as they do on home's own row ([standFitNote]
@@ -374,6 +375,22 @@ func standLastLook(view StandingItemView, width int, pal palette, now time.Time)
 	return []string{"", pal.dim(fit("  "+head, width)), pal.ink(fit("  "+line, width))}
 }
 
+// standShelfAir is how many blank rows the list spends on air: the one under
+// the head, and one above every shelf after the first.
+func standShelfAir(rows []standRow) int {
+	air := 1
+	shelves := 0
+	for _, row := range rows {
+		if row.kind == standRowShelf {
+			shelves++
+		}
+	}
+	if shelves > 1 {
+		air += shelves - 1
+	}
+	return air
+}
+
 // standingLines paints the rows into exactly the `room` lines the frame reserved
 // for them, and answers the map a click resolves against, the top it scrolled
 // to, and the window it had room for.
@@ -391,7 +408,14 @@ func standingLines(rows []standRow, win session.UsageWindow, cursor, top, width,
 	if room <= 0 || width < 1 {
 		return nil, nil, top, 0
 	}
-	shown = overlayItems(room-1, width)
+	// THE AIR IS RESERVED BEFORE THE WINDOW IS SIZED: a blank under the head
+	// and one above every shelf after the first. Sized without it, the cursor on
+	// the last row of a full page would be the row the blanks pushed off the
+	// bottom.
+	shown = overlayItems(room-1-standShelfAir(rows), width)
+	if shown < 1 {
+		shown = 1
+	}
 	scrolled = listTop(cursor, top, len(rows), shown)
 	fill := newOverlayFill(width, room, pal, hover)
 	// THE HEADINGS ARE [overlayFill.plain] LINES, which is what makes them
@@ -401,14 +425,21 @@ func standingLines(rows []standRow, win session.UsageWindow, cursor, top, width,
 	// for the same reason it is drawn there at all — it is about the WHOLE list
 	// and answers to no row on it.
 	fill.plain(standingHeaderRow(width, win, pal))
+	fill.plain("")
 	for at := scrolled; at < len(rows) && fill.room(); at++ {
 		row := rows[at]
 		var fitted bool
 		switch row.kind {
 		case standRowShelf:
-			fitted = fill.plain(pal.dim(fit("  "+row.shelf, width)))
+			// A SHELF IS A SECTION AND TAKES A SECTION'S AIR: one blank row above
+			// it, as every section heading on a place has (SCREEN 2a's rhythm). The
+			// first stands on the blank under the head.
+			if last := len(fill.out) - 1; last >= 0 && fill.out[last] != "" && fill.room() {
+				fill.plain("")
+			}
+			fitted = fill.plain(placeLead + placeHeading(fit(row.shelf, width-len(placeLead)), pal))
 		case standRowNotHere:
-			fitted = fill.plain(pal.dim(fit("  "+standRowNotHereLine(row, pal), width)))
+			fitted = fill.plain(pal.dim(fit(placeLead+"  "+standRowNotHereLine(row, pal), width)))
 		default:
 			fitted = fill.add(at, standRowLabel(row, pal), standRowNote(row, width, now), at == cursor, false)
 			if fitted && at == cursor {
@@ -439,25 +470,6 @@ func standingLines(rows []standRow, win session.UsageWindow, cursor, top, width,
 		owner = append(owner, -1)
 	}
 	return lines, owner, scrolled, shown
-}
-
-// standingTeach spends an empty page on explaining the place rather than drawing
-// a time control over a list with nothing in it.
-//
-// THE FIRST SENTENCE IS THE ONE THIS PLACE HAS ALWAYS SAID ([standNothingWord]),
-// which is why it is not spelled again here: it was the refusal's own words back
-// when a machine with nothing standing on it opened no page at all, and moving a
-// sentence from a transcript line to the body of the place it was about is the
-// whole of what that change was. The two under it are the same three-line shape
-// tasks and memory teach in ([tasksTeach], [memoryTeaching]): what the place
-// holds, where the things in it come from, and what a key does once there is
-// something here.
-func standingTeach(pal palette) []string {
-	return []string{
-		pal.dim(standNothingWord),
-		pal.dim("an order stands until you stop it, and it can reach just this conversation, this project, or everywhere."),
-		pal.dim("enter opens the conversation that made one, when there is one here."),
-	}
 }
 
 // standingSummary is WHAT IS BEHIND THIS PLACE, in the one clause home's typed

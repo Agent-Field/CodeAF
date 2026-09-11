@@ -26,13 +26,18 @@ import (
 type principalEar interface{ hear(ask string) }
 
 // newPrincipalFor picks this session's principal, and THE BUDGET IS WHAT PICKS
-// IT.
+// IT — unless somebody is steering.
 //
-// Three readings, in order, and each of the first two is a reason a session
+// Four readings, in order, and each of the first three is a reason a session
 // stays exactly as it was:
 //
-//   - A SESSION SOMEBODY IS SITTING IN FRONT OF GETS A [Person]. `--yolo` is
-//     what says otherwise, and it reaches this package as [Config.Unattended].
+//   - A CONVERSATION SOMEBODY IS STEERING GETS A [Person], whatever its
+//     approval posture and whatever ceilings were typed beside it. `--yolo` is
+//     the approval posture and a budget is the goal owner's ceiling, and for a
+//     screen somebody is typing into neither one is a fact about who is
+//     watching — [Config.Interactive] is, and only the door knows it.
+//   - A SESSION NOBODY CONFIGURED GETS A [Person] too, which is every worker
+//     and every agent a test assembled by hand.
 //   - AN UNATTENDED SESSION WITH NO CEILING ALSO GETS A [Person], and the door
 //     says one line about it at launch. This is the rule the whole feature turns
 //     on: carrying a conversation on by itself is spending, and spending
@@ -48,13 +53,20 @@ func newPrincipalFor(a *Agent) Principal {
 	//
 	// A goal owner holds the WHOLE ask, spends a budget against it, and sweeps
 	// what the session left behind. None of those is a thing a worker owns: a
-	// node has a brief and an auditor of its own, a fork's hand has a scope, an
-	// errand is forty cells that close with home. Every one of them is built
-	// from a fresh Config literal today and would inherit none of this — but two
-	// roads COPY the conversation's config wholesale (standing_run.go), and a
-	// third written next year will too. The guard belongs here, once, where the
-	// answer is decided, rather than as a line every copier has to remember.
-	if a.config.InTask || a.config.Errand || a.config.inHand {
+	// node has a brief and an auditor of its own, an errand is forty cells that
+	// close with home. Every one of them is built from a fresh Config literal
+	// today and would inherit none of this — but two roads COPY the
+	// conversation's config wholesale (standing_run.go), and a third written
+	// next year will too. The guard belongs here, once, where the answer is
+	// decided, rather than as a line every copier has to remember.
+	if a.config.InTask || a.config.Errand {
+		return NewPerson()
+	}
+	// AND A CONVERSATION SOMEBODY IS STEERING WORKS FOR THE PERSON STEERING
+	// IT, whatever its approval posture and ceilings: yolo is approvals and a
+	// budget is the goal owner's ceiling, and neither one says nobody is
+	// watching. [Config.Interactive] does, and it outranks the arming pair.
+	if a.config.Interactive {
 		return NewPerson()
 	}
 	if !a.config.Unattended || !a.config.Budget.Set() {
@@ -125,13 +137,17 @@ func (a *Agent) hearAsk(text string) {
 const unattendedWithoutBudget = "no budget was named, so this session stops when the model stops — " +
 	"give it --max-hours or --max-cost and it carries its own work on until the ask is met or the budget is out"
 
-// UnattendedNotice is the one line a door shows for an unattended session, or
-// "" when there is nothing worth saying.
-//
-// It is a function of the config rather than a field on it so that a door
-// cannot show the wrong one: the same two readings that pick the principal pick
-// the sentence.
+// UnattendedNotice is the one line a door shows about the ceilings this
+// launch was given, or "" when there is nothing worth saying. A steered
+// conversation states its budget rather than silence, so the pair it was
+// given is never mistaken for a goal owner.
 func UnattendedNotice(config Config) string {
+	if config.Interactive {
+		if !config.Budget.Set() {
+			return ""
+		}
+		return "interactive conversation: " + budgetWords(config.Budget)
+	}
 	if !config.Unattended {
 		return ""
 	}
@@ -210,8 +226,11 @@ func (a *Agent) landings() ([]Landing, bool, taskFlight) {
 		if !state.settled() {
 			continue
 		}
-		settled++
-		report, changed, _, merge := node.leavings()
+		if node.parent == a.config.taskID {
+			settled++
+		}
+		report, changed, branch, merge := node.leavings()
+		retained := a.retainedDelivery(node, changed, branch, merge)
 		out = append(out, Landing{
 			ID:     node.id,
 			Title:  node.title(),
@@ -221,10 +240,15 @@ func (a *Agent) landings() ([]Landing, bool, taskFlight) {
 			// tell a gap in the ask from a sibling that died on the wire, and
 			// from one whose work somebody else has since brought home
 			// ([Landing.aboutTheWork], [Remains.absorbedBy]).
-			Ending:  node.endingNow(),
-			Files:   changed,
-			Merged:  merge == mergeMerged,
-			Checked: node.checkAnswer() == provider.VerdictVerifiedSuccess,
+			Ending:    node.endingNow(),
+			Files:     changed,
+			Merged:    merge == mergeMerged,
+			Retained:  retained,
+			InPlace:   merge == mergeInPlace,
+			Delivered: merge == mergeKept && branch != "" && len(changed) > 0 && retained == "",
+			Elsewhere: node.parent != a.config.taskID,
+			Produced:  node.producedResult(),
+			Checked:   node.checkAnswer() == provider.ReadingVerifiedSuccess,
 			// The signature is the failure's own first line, which is what the
 			// audit wrote when it said what was missing. IT IS A STAND-IN AND
 			// SAYS SO: the classification lane at the provider boundary is where
@@ -345,12 +369,19 @@ func (g *TaskGraph) stuckWordLocked(node *TaskNode, known map[uint64]bool) strin
 // waitWord says what became of the thing a stuck unit of work is waiting on, in
 // the vocabulary a person reads: work that did not finish, and work that nobody
 // could judge and that is therefore waiting on THEM.
+//
+// THE SECOND ONE IS THE TIER'S WORD AND NOT THIS FILE'S (task_status.go's
+// [taskWordYourCall]). `needs your look` was one surface's private spelling of
+// the state every other surface now calls your call, and it is deleted
+// (docs/design/task-states/DESIGN.md). It carries its "is" because it lands in
+// the middle of a sentence rather than on a row — "which is your call" — and a
+// word that reads as a row and nowhere else is a word this line cannot use.
 func waitWord(state TaskState) string {
 	switch state {
 	case TaskFailed:
 		return "did not finish"
 	case TaskUnverified:
-		return "needs your look"
+		return "is " + taskWordYourCall
 	}
 	return "has not started either"
 }
@@ -399,15 +430,17 @@ func (a *Agent) remainsFor(said string, reader readerLine) Remains {
 		Running:    flight.moving,
 		Blocked:    flight.stuck,
 	}
+	if steward := a.steward(); steward != nil {
+		remains.Delivery = steward.declaredDelivery()
+	}
 	// AND WHAT THIS SESSION MADE WITH ITS OWN HANDS. A session that did the whole
 	// job inline never settles a task, so [Remains.Landed] — which is a reading of
 	// the graph and nothing else — stays false over a tree it has just written, and
 	// "nothing has been finished yet" was the first line of both briefs the
 	// standstill then compared (#513). What it made is read from the session's two
-	// ledgers against the deliverable tree as it stands now, and it counts only
-	// WITH the reader agreeing — a session's own files are not a second opinion
-	// about themselves
-	// ([Remains.finishedSomething]).
+	// ledgers against the deliverable tree as it stands now. It counts only WITH
+	// A WITNESS: the reader agreeing, or declared checks that actually run when
+	// that reader could not be reached ([Remains.finishedSomething]).
 	//
 	// IT IS NON-EMPTY REGULAR FILES THIS SESSION CREATED, OR FILES IT CHANGED,
 	// under the tree. The two are kept in separate ledgers because only the
@@ -423,6 +456,7 @@ func (a *Agent) remainsFor(said string, reader readerLine) Remains {
 	// digest taken before the write ([Agent.changedInDeliverable]).
 	remains.Made = a.createdInDeliverable() || a.changedInDeliverable()
 	remains.ReaderSaysDone = reader.nothingLeft
+	remains.ReaderUnreachable = reader.unreachable
 	// AND WHAT WAS ALREADY RED BEFORE THE WORK, which is read here — before any
 	// decision — rather than beside the checks themselves: the checks are run
 	// once, after a principal has said the ask is met, and a baseline attached at
@@ -430,6 +464,7 @@ func (a *Agent) remainsFor(said string, reader readerLine) Remains {
 	// ([Agent.openBaseline]). The reading runs in the background, so it may not
 	// have landed; a reading with no baseline counts nothing as this run's own.
 	remains.WasFailing, remains.Unread, remains.BaselineRead = a.baselineRedChecks()
+	remains.WasFailingTests = a.baselineFailureNames()
 	return remains
 }
 
@@ -506,6 +541,6 @@ func landingFromNotice(notice TaskNotice) Landing {
 		Ending:    notice.Ending,
 		Files:     notice.Changed,
 		Merged:    notice.Merge == mergeMerged,
-		Checked:   notice.Checked == provider.VerdictVerifiedSuccess,
+		Checked:   notice.Checked == provider.ReadingVerifiedSuccess,
 	}
 }

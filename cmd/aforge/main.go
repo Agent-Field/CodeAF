@@ -198,6 +198,8 @@ func run() error {
 		return runModels(os.Args[2:])
 	case "notebook":
 		return runNotebook(os.Args[2:])
+	case "collections":
+		return runCollections(os.Args[2:])
 	case "competence":
 		return runCompetence(os.Args[2:])
 	case "services":
@@ -346,7 +348,7 @@ Look at what happened — read-only, no key, nothing spent
       every model call aforge made — what was asked, which lane answered, what
       came back. The filters are exact and combine; --json prints the rows as
       they are on disk, --body one call's bodies. AFORGE_CALL_LOG=off is off
-  aforge models
+  aforge models [--refresh]
       the models this machine will use, and what each has been measured at
   aforge doctor [--db path]
       is this install healthy, and where does it keep things
@@ -375,6 +377,7 @@ Housekeeping — changes state on disk or on the network
   aforge notebook [--db path]
       what it has learned, and what it has been corrected on
   aforge notebook retract|restore <seq> [--db path]
+` + collectionsSummary + `
   aforge competence [--db path] [--model slug]
       what it has been measured as good at
   aforge services [--db path]
@@ -446,7 +449,8 @@ than fighting your shell.
                        AFORGE_MODELS=~/.aforge/models.json
                        Ratings accumulate in ~/.aforge/router-ledger.json
                        across runs; see them with ` + "`aforge models`" + `.
-  AFORGE_REASONING     planning calls: off (default), low, medium, high
+  AFORGE_REASONING     planning calls: model default (unset), off, low, medium,
+                       high
   AFORGE_EXEC_REASONING
                        executor calls: model default (unset), off, low, medium,
                        high

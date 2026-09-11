@@ -35,15 +35,20 @@ func TestTheLandedCardSaysWhatTheWorkCostWhenSomebodyPricedIt(t *testing.T) {
 		t.Fatalf("the collapsed card recites the price:\n%s", taskText(a))
 	}
 	clickHit(t, a, hitDone)
-	if !strings.Contains(taskText(a), doneCostLabel+dollars(0.75)) {
+	if !strings.Contains(taskText(a), dollars(0.75)) {
 		t.Fatalf("the opened card does not say what the work cost:\n%s", taskText(a))
 	}
-	// It sits BESIDE the model, in the block's own order: whose hands, then what
-	// the hands came to.
+	// AND IT SITS ON THE MODEL'S OWN ROW, which is what changed when the three
+	// stacked fact rows became one ([app.doneFactsRow]). The price wears no label
+	// any more: on a row of whole facts joined by ` · `, `$0.75` is the only thing
+	// that can be a dollar figure, and `cost · ` in front of it was a noun saying
+	// what the glyph already said.
 	text := taskText(a)
-	model, cost := strings.Index(text, doneModelLabel), strings.Index(text, doneCostLabel)
-	if model < 0 || cost < model {
+	if !strings.Contains(text, doneModelLabel+"openai/gpt-5"+railSep+dollars(0.75)) {
 		t.Fatalf("the price is not beside the model that earned it:\n%s", text)
+	}
+	if strings.Contains(text, "cost · ") {
+		t.Fatalf("the price wears a label the row does not need:\n%s", text)
 	}
 }
 
@@ -62,7 +67,7 @@ func TestACardNobodyPricedDrawsNoCostRowAtAll(t *testing.T) {
 	clickHit(t, a, hitDone)
 
 	text := taskText(a)
-	if strings.Contains(text, doneCostLabel) || strings.Contains(text, dollars(0)) {
+	if strings.Contains(text, "$") || strings.Contains(text, dollars(0)) {
 		t.Fatalf("an unpriced node was given a figure:\n%s", text)
 	}
 	// The rest of the block is unchanged by the absence — a missing price costs
@@ -87,7 +92,7 @@ func TestTheCardsPriceIsTheNodesReconciledFigureAndNotTheRawNotice(t *testing.T)
 		session.TaskDone, session.TaskNotice{Report: "the guard is in", Merge: mergeWordMerged})})
 	clickHit(t, a, hitDone)
 
-	if !strings.Contains(taskText(a), doneCostLabel+dollars(0.30)) {
+	if !strings.Contains(taskText(a), dollars(0.30)) {
 		t.Fatalf("the card dropped the spend the pilot counted:\n%s", taskText(a))
 	}
 }
@@ -106,7 +111,7 @@ func TestTheCardsPriceIsEnoughToOpenTheCardFor(t *testing.T) {
 		t.Fatal("a priced card offers no way to read the price")
 	}
 	card.open = true
-	if got := plainOf(a.doneDetail(card, 60)); !strings.Contains(got, doneCostLabel+dollars(0.42)) {
+	if got := plainOf(a.doneDetail(card, 60)); !strings.Contains(got, dollars(0.42)) {
 		t.Fatalf("the opened card drew no price:\n%s", got)
 	}
 }

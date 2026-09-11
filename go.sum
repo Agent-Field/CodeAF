@@ -1,7 +1,5 @@
 charm.land/bubbletea/v2 v2.0.8 h1:SxTJMhCAI3lbPmy4SgX5LWZ24AdINr4I6UEqzZvYJuY=
 charm.land/bubbletea/v2 v2.0.8/go.mod h1:2SkdgoTXluXJHOUwAoRlRXF/28vklb1rFl6GcgV1/ss=
-charm.land/lipgloss/v2 v2.0.5 h1:kbNxgeeUOYv5J0YdpxFjfvf3dFvqH8Aci4zB6xqFtrY=
-charm.land/lipgloss/v2 v2.0.5/go.mod h1:9oqhxt4yxIMe6q5A4kHr44DremZk7J9UNh74GlWa5nc=
 github.com/AOShei/go-fast-pdf v0.1.1 h1:1ZnZLX82194jgwBcR0fUHQ5nBpZNes3R9Yhs3UU7ISk=
 github.com/AOShei/go-fast-pdf v0.1.1/go.mod h1:W2DEM8ieuiYlefEEu+IjivQCapFOqDlAgVMrP80ELes=
 github.com/Agent-Field/agentfield/sdk/go v0.0.0-20260801225427-e6587ade0886 h1:IntHt8hUmpHlFL8qo373dfaBDJ+5pGGh+Q60zWAJcNw=

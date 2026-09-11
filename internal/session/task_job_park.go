@@ -83,10 +83,10 @@ func (a *Agent) armJobPark(bound time.Duration) {
 //
 // NO SINGLE WAIT MAY OUTLAST THE WHOLE ALLOWANCE THE RUN WAS GIVEN. The bound is
 // one timer for the whole park rather than one per piece of news, so unrelated
-// news cannot renew it; when it expires the node is asked again and the ordinary
-// deadline checkpoint collects it ([childRun.trip]). A command that has wedged
-// can therefore cost this node its allowance and never more than it, which is
-// what a bound is for.
+// news cannot renew it. The runner independently watches its current deadline
+// in childRun.drain, so a command started late in an allowance cannot postpone
+// that checkpoint by parking for another whole allowance. This local timer is
+// a backstop; renewal and cancellation remain the runner's decisions.
 func (a *Agent) parkOnOwedJob(ctx context.Context) {
 	a.mu.Lock()
 	bound, jobs := a.jobParkBound, a.jobs

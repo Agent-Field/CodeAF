@@ -133,5 +133,5 @@ func (a *Agent) sessionCheckMemories() *checkMemories {
 	if steward == nil {
 		return nil
 	}
-	return &steward.checks
+	return &steward.checkMemory
 }

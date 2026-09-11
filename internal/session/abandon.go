@@ -125,6 +125,10 @@ func (a *Agent) Abandon(reason AbandonReason) (Usage, bool) {
 	// the keypress, and this is the same law said at the second stage, because a
 	// follow-up queued DURING the winding down would otherwise start here.
 	a.dropFollowUpsLocked()
+	// The turn's number has already moved on above, which is what makes an
+	// armed second look inert; this is the same act said as a release
+	// (steer_grace.go).
+	a.stopSteerGraceLocked()
 	a.running = false
 	a.cancel, a.hub, a.done, a.abandon = nil, nil, nil, nil
 	a.turnSpend = Usage{}
@@ -143,13 +147,8 @@ func (a *Agent) Abandon(reason AbandonReason) (Usage, bool) {
 		close(gone)
 	}
 	if cancel != nil {
-		cancel()
+		cancel(stopFor(StopByAbandoned))
 	}
-	// AND EVERY FORKED HAND WITH IT, on [Agent.Interrupt]'s own reasoning: a hand
-	// runs on a context of its own, so the cancel above does not reach it, and a
-	// hand still finishing a reply for a turn nobody is waiting for is spend with
-	// nothing at the end of it.
-	a.jobs.stopHands()
 	if hub != nil {
 		hub.close()
 	}

@@ -214,16 +214,15 @@ func TestTheGateDropsALaneThatCannotServeTheRequestAtAll(t *testing.T) {
 		lanes[lane.name] = belief
 	}
 
+	// AND THE TOOL FLAG IS NO LONGER ONE OF THEM. It is a prior now, not a gate
+	// (frontier.go's THREE OF THE SHEET'S CLAIMS ARE PRIORS RATHER THAN GATES):
+	// every one of these lanes is still a candidate, and what the flag decides is
+	// where it is RANKED — which the sheet-doubt test below asserts.
 	tools := talk()
 	tools.Tools = true
-	for _, lane := range []string{"Parasail", "Cloudflare", "Baidu", "Alibaba"} {
-		if capable(lanes[lane], tools, opts) {
-			t.Errorf("%s took a tool call it does not honour", lane)
-		}
-	}
-	for _, lane := range []string{"CoreWeave", "DeepInfra", "DigitalOcean"} {
+	for _, lane := range []string{"Parasail", "Cloudflare", "Baidu", "Alibaba", "CoreWeave", "DeepInfra", "DigitalOcean"} {
 		if !capable(lanes[lane], tools, opts) {
-			t.Errorf("%s honours tool calls and was dropped anyway", lane)
+			t.Errorf("%s left the candidate set over a sheet flag, which is a prior and not a gate", lane)
 		}
 	}
 
@@ -243,31 +242,89 @@ func TestTheGateDropsALaneThatCannotServeTheRequestAtAll(t *testing.T) {
 		t.Error("a four-bit lane stayed out after being allowed in")
 	}
 
-	half := lanes["Baidu"]
-	half.Facts.Uptime5m = 90
-	if capable(half, talk(), opts) {
-		t.Error("a lane answering nine minutes in ten was treated as available")
-	}
-
 	poor := lanes["Baidu"]
 	poor.Quality = Beta{A: 8, B: 4}
 	if capable(poor, talk(), opts) {
 		t.Error("quality was weighed rather than gated")
 	}
 
-	// AND THE ROUTER'S OWN VERDICT IS A GATE. A non-zero `status` on the sheet
-	// is the operator of the router saying it has derated this endpoint, which
-	// is evidence about the machine that nothing we can measure produces. The
-	// gate ignored the column until wave 2b, which is one of the two reasons the
-	// reference simulator and the shipped build did not admit the same lanes.
+	// AND NEITHER UPTIME NOR THE ROUTER'S OWN STATUS WORD ENDS THE ARGUMENT ANY
+	// MORE. Both were gates, and the argument for the second was a good one — it
+	// is evidence about the machine that nothing here can produce — but it is an
+	// opinion published minutes ago about a fleet that moves, and a wrong one
+	// removed GMICloud from every tool request of a task it had just served three
+	// times (docs/design/recovery/DESIGN.md §1). They demote instead.
+	half := lanes["Baidu"]
+	half.Facts.Uptime5m = 90
+	if !capable(half, talk(), opts) {
+		t.Error("a lane answering nine minutes in ten left the candidate set rather than being demoted")
+	}
 	derated := lanes["Baidu"]
 	derated.Facts.Status = -2
-	if capable(derated, talk(), opts) {
-		t.Error("a lane the router itself marked down was still routed to")
-	}
-	derated.Facts.Status = 0
 	if !capable(derated, talk(), opts) {
-		t.Error("a healthy lane was refused on a status of zero")
+		t.Error("a lane the router marked down left the candidate set rather than being demoted")
+	}
+	// Its own answers are what would end the doubt, so the claim about the sheet
+	// is asked of a machine this process has judged nothing about.
+	unjudged := derated
+	unjudged.Quality = Beta{}
+	if !doubted(unjudged, talk()) {
+		t.Error("a lane the router marked down was not even doubted")
+	}
+	unjudged.Facts.Status = 0
+	if doubted(unjudged, talk()) {
+		t.Error("a healthy lane was doubted on a status of zero")
+	}
+	// AND EVIDENCE ENDS IT. A machine whose answers keep coming back usable is
+	// not doubted by a page published minutes ago.
+	if doubted(derated, talk()) {
+		t.Error("a lane the router marked down is still doubted after answering us well")
+	}
+}
+
+// TestTheSheetsDoubtsRankALaneLastAndAProbeStillAsksIt is the other half of the
+// law the gates above gave up: what the sheet says is acted on, it is simply
+// acted on as a RANKING. The measured case is GMICloud, flagged `Tools: false`
+// while serving three tool calls of one task in six seconds each.
+func TestTheSheetsDoubtsRankALaneLastAndAProbeStillAsksIt(t *testing.T) {
+	at := noon.Add(-time.Minute)
+	lanes := map[ID]Belief{}
+	var order []Scored
+	for _, lane := range []struct {
+		name  string
+		tools bool
+		ttft  float64
+	}{{"GMICloud", false, 400}, {"Fireworks", true, 900}} {
+		id := ID{Model: testModel, Lane: lane.name}
+		lanes[id] = Belief{ID: id, At: at, Facts: Facts{Tools: lane.tools, Quant: "fp8", Uptime5m: 100}}
+		order = append(order, Scored{ID: id, TTFT: lane.ttft})
+	}
+	req := Request{Model: testModel, Tools: true, QualityNeed: 0.9}
+
+	// The doubted lane is the FASTER of the two, so it led the order on the
+	// numbers and is asked second all the same — and it is still there.
+	ranked := sheetDoubtsLast(order, req, lanes, 1)
+	if len(ranked) != 2 || ranked[0].ID.Lane != "Fireworks" || ranked[1].ID.Lane != "GMICloud" {
+		t.Fatalf("the doubted lane was ranked %+v, want it behind the lane nothing is doubted about", ranked)
+	}
+
+	// One draw in probeInEvery asks it first anyway, which is the only way a
+	// published flag can ever be disproved.
+	probed := sheetDoubtsLast(order, req, lanes, 0)
+	if len(probed) != 2 || probed[0].ID.Lane != "GMICloud" {
+		t.Fatalf("the probe drew %+v, want the doubted lane asked first", probed)
+	}
+
+	// AND EVIDENCE ENDS THE DOUBT. Three tool calls this lane actually served are
+	// a measurement of the thing the sheet was guessing at.
+	served := lanes[ID{Model: testModel, Lane: "GMICloud"}]
+	served.Quality = Beta{A: 12, B: 1}
+	lanes[served.ID] = served
+	if doubted(served, req) {
+		t.Fatal("a lane whose own answers came back usable is still doubted by a sheet flag")
+	}
+	if proven := sheetDoubtsLast(order, req, lanes, 1); proven[0].ID.Lane != "GMICloud" {
+		t.Fatalf("a lane that proved itself is still ranked last: %+v", proven)
 	}
 }
 
@@ -496,7 +553,7 @@ func TestTheLaneHoldingThePrefixIsCheaperByExactlyTheDiscount(t *testing.T) {
 	request := talk()
 	request.Prefix = "conversation-7"
 	incumbent := ID{Model: testModel, Lane: "Baidu"}
-	RememberPrefix(incumbent, request.Prefix, noon.Add(-time.Minute))
+	RememberPrefix(incumbent, request.Prefix, request.PromptTokens, noon.Add(-time.Minute))
 
 	facts := measuredLanes[5].belief(testModel, 20).Facts
 	cold := PriceOf(facts, request)
@@ -585,7 +642,7 @@ func TestTheValueOfASecondIsATableAndNotADial(t *testing.T) {
 	if got := Lambda(false, true, 0, time.Minute, 0); got != TaskWallValue {
 		t.Fatalf("a call on the critical path is worth %v, want %v", got, TaskWallValue)
 	}
-	if got := Lambda(false, false, 10*time.Minute, time.Minute, 0); got != 0 {
+	if got := Lambda(false, false, 10*time.Minute, time.Minute, 0); got != UnattendedValue {
 		t.Fatalf("a node with slack to spare is worth %v, want price to win outright", got)
 	}
 	tight := Lambda(false, false, 0, time.Minute, 0)
@@ -836,5 +893,105 @@ func TestTheBeatFetchesWhatWasWanted(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("the beat never fetched the model that was queued for it")
+	}
+}
+
+// ── THE LENGTH THE LANE ACTUALLY SAW ────────────────────────────────────────
+
+// TestAGrownPromptEarnsNoCreditForTokensTheLaneNeverSaw is the accounting the
+// prefix note was missing. The lane answered this conversation at 14_972 tokens
+// and the next request sends 15_502: the 530 appended since were never on the
+// wire to it and cannot be in its cache, so exactly the seen length is credited.
+//
+// THIS IS THE CASE THAT FAILED BEFORE THE NOTE CARRIED A LENGTH. The old
+// [cachedTokens] returned req.PromptTokens whenever the lineage matched inside
+// the hold, so this assertion read 15_502 — a discount on 530 tokens no lane
+// had ever been sent.
+func TestAGrownPromptEarnsNoCreditForTokensTheLaneNeverSaw(t *testing.T) {
+	ForgetPrefixes()
+	defer ForgetPrefixes()
+	incumbent := ID{Model: testModel, Lane: "Baidu"}
+	RememberPrefix(incumbent, "conversation-7", 14_972, noon.Add(-time.Minute))
+
+	grown := talk()
+	grown.Prefix, grown.PromptTokens = "conversation-7", 15_502
+	if held := cachedTokens(incumbent, grown); held != 14_972 {
+		t.Fatalf("a grown prompt was credited %d cached tokens, want the 14972 the lane actually saw", held)
+	}
+	// And the credit is still real: the incumbent is cheaper than a stranger by
+	// the discount on the part it did serve, which is what the bound preserves.
+	facts := measuredLanes[5].belief(testModel, 20).Facts
+	cold := PriceOf(facts, grown)
+	warm := PriceWithCache(facts, grown, cachedTokens(incumbent, grown))
+	if warm >= cold {
+		t.Fatalf("a partly warm prefix cost %.6f and a cold one %.6f", warm, cold)
+	}
+}
+
+// TestAShrunkPromptIsCreditedNoMoreThanItSends is the other side of the bound.
+// A compaction leaves the lineage alone and makes the prompt shorter; crediting
+// the length the lane once held would discount tokens this request does not
+// contain.
+func TestAShrunkPromptIsCreditedNoMoreThanItSends(t *testing.T) {
+	ForgetPrefixes()
+	defer ForgetPrefixes()
+	incumbent := ID{Model: testModel, Lane: "Baidu"}
+	RememberPrefix(incumbent, "conversation-7", 15_502, noon.Add(-time.Minute))
+
+	compacted := talk()
+	compacted.Prefix, compacted.PromptTokens = "conversation-7", 4_000
+	if held := cachedTokens(incumbent, compacted); held != 4_000 {
+		t.Fatalf("a compacted prompt of 4000 tokens was credited %d", held)
+	}
+}
+
+// TestALengthNobodyReportedEarnsNoDiscount is the honesty half: an answer whose
+// usage frame carried no prompt count leaves a zero, and a zero is UNKNOWN
+// rather than "all of it". Inventing a length here is the fabricated discount
+// the bound exists to end.
+func TestALengthNobodyReportedEarnsNoDiscount(t *testing.T) {
+	ForgetPrefixes()
+	defer ForgetPrefixes()
+	incumbent := ID{Model: testModel, Lane: "Baidu"}
+	request := talk()
+	request.Prefix = "conversation-7"
+
+	for _, unknown := range []int{0, -1} {
+		RememberPrefix(incumbent, request.Prefix, unknown, noon.Add(-time.Minute))
+		if held := cachedTokens(incumbent, request); held != 0 {
+			t.Fatalf("a note of %d prompt tokens earned a discount on %d", unknown, held)
+		}
+		facts := measuredLanes[5].belief(testModel, 20).Facts
+		if warm, cold := PriceWithCache(facts, request, cachedTokens(incumbent, request)), PriceOf(facts, request); warm != cold {
+			t.Fatalf("an unknown length priced at %.6f against a cold %.6f", warm, cold)
+		}
+	}
+}
+
+// TestTheBoundedNoteKeepsLineageAndExpiry pins that the length did not cost the
+// note its other two guards: a different conversation and an expired one are
+// still worth nothing, whatever length was remembered.
+func TestTheBoundedNoteKeepsLineageAndExpiry(t *testing.T) {
+	ForgetPrefixes()
+	defer ForgetPrefixes()
+	incumbent := ID{Model: testModel, Lane: "Baidu"}
+	RememberPrefix(incumbent, "conversation-7", 14_972, noon.Add(-time.Minute))
+
+	other := talk()
+	other.Prefix, other.PromptTokens = "conversation-8", 14_972
+	if held := cachedTokens(incumbent, other); held != 0 {
+		t.Fatalf("another conversation on the same lane was credited %d cached tokens", held)
+	}
+	stale := talk()
+	stale.Prefix, stale.PromptTokens = "conversation-7", 14_972
+	stale.Now = noon.Add(PrefixHold + time.Minute)
+	if held := cachedTokens(incumbent, stale); held != 0 {
+		t.Fatalf("a note older than the hold was credited %d cached tokens", held)
+	}
+	stranger := ID{Model: testModel, Lane: "Alibaba"}
+	fresh := talk()
+	fresh.Prefix, fresh.PromptTokens = "conversation-7", 14_972
+	if held := cachedTokens(stranger, fresh); held != 0 {
+		t.Fatalf("a lane that never served this conversation was credited %d cached tokens", held)
 	}
 }

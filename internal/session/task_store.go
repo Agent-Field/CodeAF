@@ -67,6 +67,7 @@ package session
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -157,7 +158,18 @@ type taskRecord struct {
 	// always did: the brief has no origin section.
 	OriginJournal string `json:"origin_journal,omitempty"`
 	OriginLine    int    `json:"origin_line,omitempty"`
-	Brief         string `json:"brief"`
+	// Admission is the working context the node was admitted with: bounded
+	// quotations of what was said around the work and handles to the calls that
+	// already ran (admission.go). A resumed node that lost it would be re-opened
+	// on the contract alone, which is the same loss Request was carried to end.
+	//
+	// IT IS A POINTER SO THAT NOTHING IS WRITTEN FOR A NODE THAT HAS NONE, and
+	// its own Version field is what an older or newer record is read through
+	// ([AdmissionContext.restored]). Absent in every checkpoint written before
+	// this existed, which resumes exactly as it always did: fewer sections,
+	// nothing invented.
+	Admission *AdmissionContext `json:"admission,omitempty"`
+	Brief     string            `json:"brief"`
 	// Deliverable is what must exist when the node is over. It is omitempty for
 	// Request's reason and for one more: a task the PERSON wrote themselves names
 	// no deliverable separately, and a heading over nothing is not written
@@ -204,6 +216,8 @@ type taskRecord struct {
 	Seal     string     `json:"groundSeal,omitempty"`
 	Base     string     `json:"groundBase,omitempty"`
 	Universe string     `json:"groundUniverse,omitempty"`
+	// CheckBase preserves the before-reading when the worker commits or resumes.
+	CheckBase string `json:"checkBase,omitempty"`
 
 	// Frozen is the world every part of THIS node starts from, written when it
 	// divided ([TaskNode.Frozen]). It is here for the reason the four above are —
@@ -220,6 +234,27 @@ type taskRecord struct {
 	// that divided — a resumed node that had forgotten it would be a check
 	// nobody ever makes.
 	Family []string `json:"familyChecks,omitempty"`
+	// Checks is the repeatable verification this node is checked by
+	// ([TaskNode.Checks]). It is here for Family's reason — the check is made when
+	// the work comes home, which can be a different process from the one that
+	// admitted it — and it is ADDITIVE: a checkpoint written before this field
+	// existed decodes without it, which means the node it rebuilds declares no
+	// repeatable check and its checker judges by reading. That is the honest
+	// answer for an old record rather than a hole, because the alternative would
+	// be guessing a command out of its prose (task_checks.go).
+	Checks []string `json:"checks,omitempty"`
+	// FamilyDeclared is the part of Family this node's CHECKER may re-run, and
+	// ChecksRevision is which revision of the assignment both lists were written
+	// for ([TaskNode.FamilyDeclared], [TaskNode.checksRevision]). They are as
+	// additive as Checks and they fail the same way: a record written before them
+	// restores a node whose checker re-runs nothing of its family's, which is the
+	// only honest reading of a list an older build filled out of prose.
+	FamilyDeclared []string `json:"familyDeclaredChecks,omitempty"`
+	ChecksRevision uint64   `json:"checksRevision,omitempty"`
+	// FamilyWas is what this node owed its family before a revision moved the goal
+	// ([TaskNode.FamilyWas]): kept so that what was required is still readable, and
+	// required by nothing.
+	FamilyWas []string `json:"familyChecksWas,omitempty"`
 
 	// Parent and Depth are the node's FAMILY: which node handed this work out
 	// (0 at a root) and how many tasks deep it sits (1 for a conversation's own
@@ -249,6 +284,17 @@ type taskRecord struct {
 	// existed, which resumes exactly as it always did: the report is carried
 	// whole.
 	Claim string `json:"claim,omitempty"`
+
+	// Result is what the work produced, kept whole up to one cap with a pointer
+	// to the rest of it (task_result.go). Claim above is that same answer cut to
+	// the card's three lines; this is what a dependent's brief, a landing note
+	// and a continuation's finding are built from, so a session resumed from this
+	// file hands the work's answer on rather than the preview it kept.
+	//
+	// It is a pointer so that absence is ordinary: every checkpoint written
+	// before this field existed decodes with nil here, and every reader falls
+	// back to the report exactly as it did then.
+	Result *taskResultRecord `json:"result,omitempty"`
 
 	Changed  []string `json:"changed,omitempty"`
 	Branch   string   `json:"branch,omitempty"`
@@ -287,7 +333,9 @@ type taskRecord struct {
 	// Model is the model this node was admitted to run on, and empty when it
 	// simply took the conversation's — including on every checkpoint written
 	// before a task could carry one, which resumes exactly as it always did.
-	Model string `json:"model,omitempty"`
+	Model      string  `json:"model,omitempty"`
+	NextModel  string  `json:"next_model,omitempty"`
+	NextEffort *string `json:"next_effort,omitempty"`
 
 	// Effort is the rung on the effort ladder this node's workers ask for, and
 	// empty when nobody set one and the ladder decides from further down
@@ -331,16 +379,103 @@ type taskRecord struct {
 	// lane. It is what stops a resumed session re-announcing work the transcript
 	// already carries.
 	//
-	// It is HANDED OVER, not read: a note enqueued in the instant before the
-	// process died never reached the transcript and is lost. That window is one
-	// step boundary wide and closing it would mean the graph reaching into the
-	// turn loop to ask whether a message had drained yet, which is a coupling
-	// worth more than the case it buys.
+	// IT IS THE RECIPIENT'S RECORD AND NOT ITS QUEUE. A note accepted onto a
+	// queue is read at a step boundary that an unattended session may never
+	// reach — the wake declines with nobody there, and the reaper closes the
+	// session half an hour after the terminal detached — so a mark made at the
+	// enqueue said "announced" about a landing no model ever saw, and this
+	// checkpoint then stopped the next life re-telling it. It is written when the
+	// note reaches the recipient's own record ([TaskNode.noteRecorded]).
+	//
+	// A crash between that record and this file leaves this saying "still owed"
+	// about a landing that was told — which is why the replay asks the
+	// recipient's journal as well ([sessionFile.recorded]), and why the failure
+	// here is a landing said twice rather than one lost. A file written before
+	// this meaning changed says "announced" about a note that was queued, which
+	// is read here exactly as it was written.
 	Noted bool `json:"noted,omitempty"`
+
+	// NotedState is the ending that announcement was made for, so that work which
+	// later ends somewhere else — a person deciding about a landing nobody could
+	// check — is news again while the same landing is not announced twice
+	// ([TaskNode.notedLocked]). It is absent from every checkpoint written before
+	// it existed, and an absent one reads as "announced, whatever it said".
+	NotedState TaskState `json:"noted_state,omitempty"`
+
+	// Attempt is which life of this node's work the row describes, raised each
+	// time the node is re-armed ([TaskGraph.reopen]). Absent from older
+	// checkpoints, which restore as attempt 0 — the life they were written in —
+	// and from every node that has only ever run once.
+	Attempt int `json:"attempt,omitempty"`
 
 	// Interrupted says this node was RUNNING when a session ended and that a
 	// recovery has consumed that fact. It is the consume-once receipt.
 	Interrupted bool `json:"interrupted,omitempty"`
+
+	// Decider is WHO WAS HOLDING THIS NODE'S DECISION when the file was written
+	// ([TaskAskOwner], task_run.go's [TaskNode.decider]): the person, or the model
+	// under `task.settle = auto` or after somebody handed this one card over.
+	//
+	// IT IS WRITTEN SO THAT THE FLOOR HAS SOMETHING TO FIRE ON. A node the model
+	// was holding is handed back to the person the moment this file is read
+	// ([TaskGraph.handBackOnLoad]), because the turn it was going to be decided in
+	// died with the process — so the value that survives is never the value that
+	// is restored, and what it buys is a hand-back that HAPPENS and can be watched
+	// rather than a zero value that happened to look like one.
+	//
+	// THE EMPTINESS LAW HOLDS. Absent — every checkpoint written before this field
+	// existed, and every node nobody ever handed over — reads as the person, which
+	// is where every unowned question belongs ([taskDeciderOf] says the same thing
+	// on the reading side).
+	//
+	// AND THE PROJECT INDEX DELIBERATELY DOES NOT CARRY IT. That file is what work
+	// CAME TO, appended once and never rewritten, and who is holding a question
+	// lasts at most one turn — a row on disk saying `aforge is deciding` about a
+	// conversation that closed hours ago would be a claim nothing could ever
+	// correct. It is [TaskIndexEntry.Activity]'s rule about a present that ends
+	// seconds after it is recorded, said about a second momentary fact.
+	Decider TaskAskOwner `json:"decider,omitempty"`
+
+	// Clashing, Shifted and GroundHeld are WHAT A YOUR-CALL LANDING IS ASKING
+	// ABOUT, and they are on the record for the same reason [taskRecord.Decider]
+	// is: nothing can work them out again.
+	//
+	// The names were read out of git's index while the refused merge still stood
+	// and the merge was then abandoned, so the index no longer holds them; which
+	// of the three roads to a conflicted landing this was is a fact about a merge
+	// that has already happened. A checkpoint without them came back with the
+	// question intact and the sentence hollowed out — `conflicts with your branch`
+	// with no files, on a road that was not a branch conflict at all — and a
+	// surface reading the road back out of the report's prose is this program
+	// reading its own writing (task_run.go's [TaskNode.shiftedBy] states the law).
+	//
+	// THE EMPTINESS LAW HOLDS on all three: absent is an absence and never a
+	// claim that nothing clashed.
+	Clashing   []string `json:"clashing,omitempty"`
+	Shifted    bool     `json:"shifted,omitempty"`
+	GroundHeld bool     `json:"groundHeld,omitempty"`
+
+	// Resolving says A MERGE ROUND WAS IN FLIGHT when this file was written
+	// (task_merge_round.go's [TaskNode.claimResolving]): the person pressed
+	// `resolve it` on a conflict card, a worker was opened in the working copy,
+	// and it had not landed yet.
+	//
+	// IT IS ON THE RECORD FOR THE SENTENCE A RESUME OWES. That worker dies with
+	// the process, and the node it was working on is left exactly as it was —
+	// `your call`, its files still clashing, its card still offering the same
+	// three answers. Without this the resume said nothing at all about it, and a
+	// person who had pressed a button and watched a round start came back to a
+	// card that looked as though they never had (2026-09-09, task 2 of an
+	// apartment search: the round's own journal ends mid-read at 03:09:02 and the
+	// node still reads `conflicts with your branch`).
+	//
+	// IT IS NEVER RESTORED AS TRUE. The claim it records exists to stop TWO
+	// workers editing one working copy, and the worker it was held for is gone —
+	// so a resume that kept the flag would refuse the person's next press forever
+	// ([TaskGraph.rehydrate] clears it as it counts it). Nothing restarts the
+	// round: a round costs a model call, and a session that spent one on its own
+	// initiative on the way up is a session spending the person's money for them.
+	Resolving bool `json:"resolving,omitempty"`
 
 	// Kind is what sort of node this was ([TaskKind]), and empty is the ordinary
 	// one: work in a worktree. It is on the record for ONE reader — the recovery
@@ -364,6 +499,71 @@ type taskRecord struct {
 	// absent, and a checkpoint written before it existed reads exactly as it
 	// always did: the design fails with nothing saved.
 	Offer *harnessOfferRecord `json:"offer,omitempty"`
+
+	// Assignment is what this node is working towards NOW, when that is no longer
+	// only what it was admitted with: the revisions the person's own directions
+	// made, and the receipts for every line said to it (assignment.go).
+	//
+	// IT IS ABSENT ON A NODE NOBODY HAS SAID ANYTHING TO, which is nearly all of
+	// them, and absent on every checkpoint written before it existed. Read back as
+	// nothing it means exactly what it meant then — the admitted brief and
+	// acceptance are the effective ones — so an old session opens unchanged, and
+	// the fields it would have overlaid are still on the record beside it.
+	Assignment *assignmentRecord `json:"assignment,omitempty"`
+}
+
+// assignmentRecord is the overlay and its receipts on disk. The admitted brief,
+// deliverable and acceptance keep their own fields above: this is what has been
+// said and decided SINCE, and a reader that wants what was first agreed must
+// still be able to find it.
+type assignmentRecord struct {
+	Version     uint64            `json:"version,omitempty"`
+	Deliverable string            `json:"deliverable,omitempty"`
+	Acceptance  string            `json:"acceptance,omitempty"`
+	Revisions   []revisionRecord  `json:"revisions,omitempty"`
+	Directions  []directionRecord `json:"directions,omitempty"`
+	Next        uint64            `json:"next,omitempty"`
+}
+
+// revisionRecord is one accepted move of the goal, with the words that
+// authorised it.
+type revisionRecord struct {
+	Version     uint64    `json:"version"`
+	Direction   uint64    `json:"direction,omitempty"`
+	Said        string    `json:"said,omitempty"`
+	Work        string    `json:"work,omitempty"`
+	Deliverable string    `json:"deliverable,omitempty"`
+	Acceptance  string    `json:"acceptance,omitempty"`
+	At          time.Time `json:"at,omitzero"`
+}
+
+// directionRecord is one line said to the node, with who said it and what became
+// of it. It is on the checkpoint because a direction nobody has read is what
+// stops a landing publishing, and a process that died between the words and the
+// landing must not come back having forgotten them.
+type directionRecord struct {
+	ID      uint64    `json:"id"`
+	Words   string    `json:"words"`
+	At      time.Time `json:"at,omitzero"`
+	From    string    `json:"from,omitempty"`
+	State   string    `json:"state,omitempty"`
+	Version uint64    `json:"version,omitempty"`
+	// Source is the person's message this was forwarded from (task_forward.go),
+	// absent on a line said into the node's own room and on every checkpoint
+	// written before forwarding existed.
+	Source *sourceRecord `json:"source,omitempty"`
+}
+
+// sourceRecord is [personSourceID] on disk. THE SCOPE IS WRITTEN WITH THE
+// NUMBER and is not optional: the number alone is one opening of one session's
+// count of the person's messages, and a later opening counts again from a
+// history that compaction may have folded. Restored without its scope it would
+// let a session recognise tomorrow's first message as a direction it already
+// holds — dropping a genuinely new correction as a repeat — which is the one
+// failure this pair exists to make impossible.
+type sourceRecord struct {
+	Scope string `json:"scope"`
+	Seq   uint64 `json:"seq"`
 }
 
 // harnessOfferRecord is one finished page as the checkpoint carries it: enough
@@ -400,6 +600,12 @@ type harnessOfferRecord struct {
 // (orchestrate.go's [orchestrateFamily.publish] keeps the live ones). Doing is
 // deliberately NOT among them: it is the phase a row is in while it is moving
 // ("forming the work"), and nothing restored from here is moving.
+//
+// NEITHER IS Paused, AND FOR A STRONGER REASON. It is a question put to a person
+// by a run that is still going, and the run died with the process — so a restored
+// row wearing it would ask for money on behalf of an orchestrator that no longer
+// exists, and no answer could reach one. Left out, the row comes back settled
+// like every other row that was moving, which is the truth about it.
 type runRecord struct {
 	ID     uint64 `json:"id"`
 	Run    string `json:"run,omitempty"`
@@ -471,6 +677,11 @@ type taskStore struct {
 	// only overwrite a settled file with a stale "running". Dropped, silently,
 	// because the log line for it would blame a file that is perfectly fine.
 	closed bool
+	// duringWrite is run inside the write, and is nil everywhere except in the
+	// one test that has to ask what a READER can see while a write is still
+	// deciding ([TaskGraph.admitWritten]'s publication boundary). There is no
+	// other way to stand inside that window on purpose.
+	duringWrite func()
 }
 
 func newTaskStore(path string) *taskStore {
@@ -489,36 +700,82 @@ func newTaskStore(path string) *taskStore {
 // checkpoint could not be saved would trade the whole feature for the resume of
 // it.
 func (s *taskStore) save(graph *TaskGraph) {
-	if s == nil || graph == nil {
+	err := s.write(graph)
+	// A save after the door shut stays SILENT, exactly as it always was: it is a
+	// goroutine that outlived the close, and the log line would blame a file that
+	// is perfectly fine (see [taskStore.closed]).
+	if err == nil || errors.Is(err, errStoreClosed) {
 		return
+	}
+	log.Printf("session: could not write the task checkpoint %s: %v", s.pathOf(), err)
+}
+
+// write is the same snapshot-and-write, ANSWERING FOR ITSELF. It exists because
+// one caller cannot treat a failure as bookkeeping: a correction admitted to a
+// node's record and acknowledged to the person has to be on the disk the engine
+// would resume from, or a crash between the two loses it — or, worse, loses only
+// its identity, so the person's retry arrives as a second correction
+// (task_room.go's admission law).
+//
+// Everything else still goes through [taskStore.save] and still only logs.
+func (s *taskStore) write(graph *TaskGraph) error {
+	if s == nil || graph == nil {
+		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
-		return
+		return errStoreClosed
 	}
+	return s.writeLocked(graph.document())
+}
 
-	document := graph.document()
+// writeLocked writes ONE ALREADY-TAKEN SNAPSHOT with the store's lock held.
+//
+// It takes the document rather than the graph because its other caller writes
+// while holding the GRAPH's lock too ([TaskGraph.admitWritten]), and asking the
+// graph for a document in there would take that lock a second time.
+func (s *taskStore) writeLocked(document taskDocument) error {
+	if s == nil {
+		return nil
+	}
+	if s.closed {
+		// The session has gone. Nothing written now would be resumed from, and a
+		// caller asking for a promise gets a refusal rather than a false yes.
+		return errStoreClosed
+	}
+	if s.duringWrite != nil {
+		s.duringWrite()
+	}
 	encoded, err := json.MarshalIndent(document, "", "  ")
 	if err != nil {
-		log.Printf("session: could not encode the task checkpoint %s: %v", s.path, err)
-		return
+		return err
 	}
 	if directory := filepath.Dir(s.path); directory != "" && directory != "." {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
-			log.Printf("session: could not write the task checkpoint %s: %v", s.path, err)
-			return
+			return err
 		}
 	}
 	temporary := s.path + ".tmp"
 	if err := os.WriteFile(temporary, append(encoded, '\n'), 0o644); err != nil {
-		log.Printf("session: could not write the task checkpoint %s: %v", s.path, err)
-		return
+		return err
 	}
 	if err := os.Rename(temporary, s.path); err != nil {
 		_ = os.Remove(temporary)
-		log.Printf("session: could not write the task checkpoint %s: %v", s.path, err)
+		return err
 	}
+	return nil
+}
+
+// errStoreClosed is a checkpoint asked for after the session's door shut.
+var errStoreClosed = errors.New("this session's task checkpoint is closed")
+
+// pathOf is the file this store writes, for a log line about a nil store.
+func (s *taskStore) pathOf() string {
+	if s == nil {
+		return ""
+	}
+	return s.path
 }
 
 // close makes every later save a no-op. It is the session close's to call, and
@@ -552,11 +809,103 @@ func (g *TaskGraph) checkpoint() {
 	store.save(g)
 }
 
+// admitWritten puts something on the record and on the disk AS ONE ACT, and
+// takes it back off the record if the disk refuses.
+//
+// ── THE PUBLICATION BOUNDARY IS THE GRAPH'S LOCK, HELD ACROSS THE WRITE ──
+//
+// Every reader of a node's record — the drain that carries directions into a
+// worker's next request, the landing that revalidates against them, the count of
+// unread ones — reads the assignment under the GRAPH's lock and knows nothing
+// about the store's. So holding only the store's lock would publish the
+// direction to those readers the instant it went into the record, while its own
+// write was still deciding: a worker could read and act on a correction that a
+// failed write then rolled back, and the person would be told nothing was sent.
+//
+// Holding the graph's lock from the admission to the commit closes that with no
+// second copy of the record and no staged state to keep in step: a reader is
+// either before the whole act or after it, and after a failure there is nothing
+// there to see. The store's lock is held outside it, so no unrelated checkpoint
+// can publish a half-decided admission either. The ordering is store.mu →
+// graph.mu, which is this file's only ordering.
+//
+// WHAT IT COSTS is that task readers wait for one file write, and it is paid
+// only by a NAMED correction — a sentence a person typed. Every transition still
+// checkpoints through [taskStore.save], which holds nothing while it writes.
+//
+// take and drop are called with the graph's lock ALREADY HELD and must not take
+// it again ([TaskNode.heardDirectionLocked], [TaskNode.forgetDirectionLocked]).
+//
+// A GRAPH WITH NO FILE BEHIND IT PROMISES NOTHING AND SAYS SO — the admission
+// still happens, and there is no write to fail. That is a session whose tasks do
+// not survive the process at all, so the promise made here is exactly as strong
+// as the store is: about resuming THIS engine, and nothing more.
+func (g *TaskGraph) admitWritten(take func() directionHeard, drop func(directionHeard)) (directionHeard, error) {
+	if g == nil {
+		return take(), nil
+	}
+	g.mu.Lock()
+	store := g.store
+	g.mu.Unlock()
+	if store == nil {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		return take(), nil
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	heard := take()
+	// Only a fresh admission changes the record. A repeat, a refusal or a message
+	// out of order writes nothing, which is also why neither can fail here.
+	if !heard.fresh() {
+		return heard, nil
+	}
+	if err := store.writeLocked(g.documentLocked()); err != nil {
+		drop(heard)
+		return heard, err
+	}
+	return heard, nil
+}
+
+// dropWritten is the same boundary for the other direction: something comes off
+// the record and off the disk together, with no moment in between that a reader
+// can see one and not the other. The error is whether the disk agrees again.
+func (g *TaskGraph) dropWritten(drop func()) error {
+	if g == nil {
+		drop()
+		return nil
+	}
+	g.mu.Lock()
+	store := g.store
+	g.mu.Unlock()
+	if store == nil {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		drop()
+		return nil
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	drop()
+	return store.writeLocked(g.documentLocked())
+}
+
 // document is the graph as the file sees it, in admission order — the order that
 // makes the frontier deterministic, and the order a person reads the file in.
 func (g *TaskGraph) document() taskDocument {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	return g.documentLocked()
+}
+
+// documentLocked is the same reading with the graph's lock already held, for the
+// admission that publishes and writes under one hold of it
+// ([TaskGraph.admitWritten]).
+func (g *TaskGraph) documentLocked() taskDocument {
 	document := taskDocument{Type: taskDocumentType, Version: taskFileVersion, Seq: g.seq}
 	for _, id := range g.order {
 		node := g.nodes[id]
@@ -688,56 +1037,73 @@ func (n *TaskNode) recordLocked() taskRecord {
 		beat = n.graph.store.beatPath(n.id)
 	}
 	return taskRecord{
-		ID:            n.id,
-		Title:         n.spec.title,
-		Summary:       n.spec.summary,
-		Request:       n.spec.request,
-		OriginJournal: n.spec.origin.journal,
-		OriginLine:    n.spec.origin.line,
-		Brief:         n.spec.brief,
-		Deliverable:   n.spec.deliverable,
-		Where:         n.spec.where,
-		Ground:        n.Ground,
-		Mode:          n.Mode,
-		Home:          n.Home,
-		HomeSha:       n.HomeSha,
-		Rung:          n.Rung,
-		Seal:          n.Seal,
-		Base:          n.Base,
-		Universe:      n.Universe,
-		Frozen:        n.Frozen,
-		Family:        n.Family,
-		Acceptance:    n.spec.acceptance,
-		DependsOn:     dependsOn,
-		Parent:        n.parent,
-		Depth:         n.depth,
-		State:         n.state,
-		Report:        n.report,
-		Ending:        n.endingLocked(),
-		Claim:         n.claim,
-		Changed:       changed,
-		Wrote:         wrote,
-		Branch:        n.branch,
-		Worktree:      n.worktree,
-		Merge:         n.merge,
-		Journal:       n.journal,
-		Beat:          beat,
-		Model:         n.spec.model,
-		Effort:        n.spec.effort.String(),
-		MaxSteps:      n.spec.maxSteps,
-		NoProgress:    n.spec.noProgress,
-		ElapsedMS:     elapsed.Milliseconds(),
-		StartedAt:     n.started,
-		EndedAt:       n.ended,
-		CostUSD:       n.cost,
-		Input:         n.input,
-		Output:        n.output,
-		CacheRead:     n.cacheRead,
-		CacheWrite:    n.cacheWrite,
-		Noted:         n.noted,
-		Interrupted:   n.interrupted,
-		Kind:          n.kind,
-		Offer:         n.offer,
+		ID:             n.id,
+		Title:          n.spec.title,
+		Summary:        n.spec.summary,
+		Request:        n.spec.request,
+		OriginJournal:  n.spec.origin.journal,
+		OriginLine:     n.spec.origin.line,
+		Admission:      recordedAdmission(n.spec.admission),
+		Brief:          n.spec.brief,
+		Deliverable:    n.spec.deliverable,
+		Where:          n.spec.where,
+		Ground:         n.Ground,
+		Mode:           n.Mode,
+		Home:           n.Home,
+		HomeSha:        n.HomeSha,
+		Rung:           n.Rung,
+		Seal:           n.Seal,
+		Base:           n.Base,
+		CheckBase:      n.CheckBase,
+		Universe:       n.Universe,
+		Frozen:         n.Frozen,
+		Family:         n.Family,
+		Checks:         n.Checks,
+		FamilyDeclared: n.FamilyDeclared,
+		ChecksRevision: n.checksRevision,
+		FamilyWas:      n.FamilyWas,
+		Acceptance:     n.spec.acceptance,
+		DependsOn:      dependsOn,
+		Parent:         n.parent,
+		Depth:          n.depth,
+		State:          n.state,
+		Report:         n.report,
+		Ending:         n.endingLocked(),
+		Claim:          n.claim,
+		Result:         resultRecordOf(n.produced),
+		Changed:        changed,
+		Wrote:          wrote,
+		Branch:         n.branch,
+		Worktree:       n.worktree,
+		Merge:          n.merge,
+		Journal:        n.journal,
+		Beat:           beat,
+		Model:          n.spec.model,
+		NextModel:      n.nextModel,
+		NextEffort:     n.nextEffort,
+		Effort:         n.spec.effort.String(),
+		MaxSteps:       n.spec.maxSteps,
+		NoProgress:     n.spec.noProgress,
+		ElapsedMS:      elapsed.Milliseconds(),
+		StartedAt:      n.started,
+		EndedAt:        n.ended,
+		CostUSD:        n.cost,
+		Input:          n.input,
+		Output:         n.output,
+		CacheRead:      n.cacheRead,
+		CacheWrite:     n.cacheWrite,
+		Noted:          n.notedRead,
+		NotedState:     n.notedState,
+		Attempt:        n.attempt,
+		Interrupted:    n.interrupted,
+		Decider:        n.decider,
+		Clashing:       n.clashing,
+		Shifted:        n.shifted,
+		GroundHeld:     n.groundHeld,
+		Resolving:      n.resolving,
+		Kind:           n.kind,
+		Offer:          n.offer,
+		Assignment:     recordedAssignment(n.assignment),
 	}
 }
 
@@ -880,9 +1246,22 @@ func validMergeOutcome(merge string) bool {
 // taskRecovery is what one recovery found, in the four categories a person and a
 // model both need kept apart, plus the notes nobody ever got.
 type taskRecovery struct {
-	done        int
-	failed      int
-	unverified  int
+	// deliveries are the durable deliveries the re-told notes are: one per
+	// landing this session still owes, settled when the recipient's record holds
+	// the note ([durableDelivery]). Without them a resume marked its own
+	// re-telling as said the moment it composed it, so a session closed unread
+	// twice lost the landing exactly as the first enqueue-time mark did.
+	deliveries []durableDelivery
+	done       int
+	failed     int
+	unverified int
+	// cutRounds is how many of those `your call` nodes had a MERGE ROUND in
+	// flight when the process ended (task_merge_round.go). They are a subset of
+	// unverified and never a category of their own: the node is in exactly the
+	// state it was in before the round started, and what the clause adds is the
+	// one thing the card cannot say for itself — that the press the person
+	// remembers making did happen, and bought nothing.
+	cutRounds   int
 	interrupted int
 	waiting     int
 	// designs is counted apart from interrupted, and has to be: an interrupted
@@ -910,6 +1289,20 @@ type taskRecovery struct {
 	// notes are the completion notes that were never handed over, in the shape
 	// [taskNote] would have produced for them.
 	notes []string
+	// handedBack are the landings the AUTO-SETTLE FLOOR took off the model on the
+	// way in ([TaskGraph.handBackOnLoad]) and that are still waiting on a decision.
+	// They are here for the caller to publish once it holds an agent, because a
+	// notice is read with the graph let go of ([TaskNode.notice] states the
+	// ordering) and this half of recovery is a pure function of a file.
+	//
+	// THEY ARE DELIBERATELY NOT AMONG THE NOTES. The model has already been told
+	// about each of these landings — that is what put the question in its hands —
+	// and a resumed session opening by telling it the same landing again would be
+	// news about nothing that happened. What changed is who is holding the
+	// question, and the person is the one who needs to see that: it reaches them
+	// as an ordinary task update, which is the same lane the end-of-turn floor
+	// publishes on.
+	handedBack []*TaskNode
 }
 
 // any reports whether the recovery restored anything at all. A checkpoint that
@@ -930,6 +1323,28 @@ func (r taskRecovery) any() bool {
 // the one interrupted node that does NOT resume ([interrupt]):
 //
 //	recovered task graph: 2 done · 1 design did not finish (nothing saved) · 1 waiting
+//
+// cutRoundsWord is the clause under the your-call count for the rounds that
+// died with the process, and "" when none did.
+//
+// IT SAYS "WAS CUT" AND NEVER "FAILED". Nothing was found wrong with the work
+// and nothing was lost: the round's worker stopped existing, the working copy is
+// where it was, and the card is offering the same three answers. The one thing
+// it must NOT imply is that anything is being retried — nothing restarts a round
+// but the person pressing again.
+func cutRoundsWord(unverified, cut int) string {
+	switch {
+	case cut <= 0:
+		return ""
+	case cut == 1 && unverified == 1:
+		return "its merge round was cut"
+	case cut == 1:
+		return "1 with a merge round cut"
+	default:
+		return strconv.Itoa(cut) + " with a merge round cut"
+	}
+}
+
 func (r taskRecovery) note() string {
 	if !r.any() {
 		return ""
@@ -938,11 +1353,19 @@ func (r taskRecovery) note() string {
 	if r.done > 0 {
 		parts = append(parts, strconv.Itoa(r.done)+" done")
 	}
+	// THE WORDS ARE THE TIER WORDS AND NOT THE STATES' OWN (task_status.go).
+	// `failed` sent a person looking for a fault in work nobody had judged, and
+	// `unverified` was the machinery describing itself; the counts are the same
+	// counts, said in the words every other place a task is drawn now uses.
 	if r.failed > 0 {
-		parts = append(parts, strconv.Itoa(r.failed)+" failed")
+		parts = append(parts, strconv.Itoa(r.failed)+" "+taskWordIncomplete)
 	}
 	if r.unverified > 0 {
-		parts = append(parts, strconv.Itoa(r.unverified)+" unverified")
+		clause := strconv.Itoa(r.unverified) + " " + taskWordYourCall
+		if word := cutRoundsWord(r.unverified, r.cutRounds); word != "" {
+			clause += " (" + word + ")"
+		}
+		parts = append(parts, clause)
 	}
 	if r.interrupted > 0 {
 		parts = append(parts, strconv.Itoa(r.interrupted)+" interrupted ("+keptBranches(r.branches)+")")
@@ -1020,6 +1443,18 @@ func (a *Agent) recoverTasks() {
 	// second crash between here and the first turn must not hand the same
 	// interrupt to a second recovery.
 	graph.checkpoint()
+	// AND THE HAND-BACK IS TOLD. Every landing the floor took off the model on the
+	// way in is one ordinary task update, on the lane a surface already folds into
+	// the row it is drawing — the same lane and the same shape the end-of-turn
+	// floor publishes on (task_run.go's [Agent.handBackUnsettled]). Nothing is
+	// attached yet on a fresh process and the sends fall on an empty room, which is
+	// correct: what the surface reads then is the roster replay, and these nodes
+	// are in it saying the person is deciding. On a window attaching to a
+	// conversation that is already open, this is the update that takes the `aforge
+	// is deciding` row off the card.
+	for _, node := range recovery.handedBack {
+		a.emitTaskUpdate(node.notice())
+	}
 
 	if note := recovery.note(); note != "" {
 		// THE AMBIENT LANE, not the waking one (agent.go): this runs at
@@ -1027,12 +1462,59 @@ func (a *Agent) recoverTasks() {
 		// the last process left behind is context for the first turn rather than
 		// a reason to start one. A session that opened by talking to itself about
 		// yesterday's interrupt would be answering a question nobody asked.
-		a.enqueueAmbientNote(note)
+		line := userText(note)
+		line.delivered = recovery.deliveries
+		a.accept(delivery{origin: fromRuntime, kind: msgNotice, note: line})
 	}
 	// CONTINUE — the same frontier every other transition turns. A queued node
 	// whose prerequisites are done starts now; one whose prerequisite was
 	// interrupted fails through the cascade that already exists.
 	graph.runFrontier()
+	// A saved naming failure is not an earned name. Retry only those rows from
+	// their saved briefs; reopening never renames valid work or reruns a task.
+	for _, record := range document.Nodes {
+		if unusableName(record.Title) || namesTheInstruction(record.Title) {
+			graph.nameNode(graph.node(record.ID))
+		}
+	}
+}
+
+// countSettled files ONE node that was not running when the file was written,
+// and it is a function of its own because [TaskGraph.rehydrate] is at its
+// ending budget (internal/session's complexity ratchet) — the counting is a
+// decision about one record and nothing about the graph, so it reads better
+// here anyway.
+//
+// It takes a POINTER because one of the four answers edits the record: a merge
+// round's claim is dropped as it is counted, and the record the caller goes on
+// to restore has to be the edited one.
+func (r *taskRecovery) countSettled(record *taskRecord) {
+	switch record.State {
+	case TaskDone:
+		r.done++
+	case TaskFailed:
+		r.failed++
+	case TaskUnverified:
+		// Counted apart from both: it is not work that failed and it is not work
+		// still to come, it is work waiting on a person (task_contract.go's
+		// TaskUnverified). A resumed session that filed it under "waiting" would
+		// be telling somebody the scheduler will get to it, and the scheduler
+		// never will.
+		r.unverified++
+		// AND A ROUND THAT WAS IN FLIGHT IS SAID OUT LOUD. The person pressed
+		// `resolve it`, a worker opened in the working copy, and the process died
+		// under it — so the card is back offering the same three answers it
+		// offered before they pressed, which without a word about it reads as a
+		// press that never happened. The claim itself is dropped here: it existed
+		// to stop a second worker joining the first, and the first is gone
+		// ([taskRecord.Resolving] states the whole rule).
+		if record.Resolving {
+			r.cutRounds++
+			record.Resolving = false
+		}
+	default:
+		r.waiting++
+	}
 }
 
 // rehydrate rebuilds the graph from a checkpoint and reconciles it with the
@@ -1072,21 +1554,7 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string, settle Ta
 				recovery.branches = append(recovery.branches, kept)
 			}
 		} else {
-			switch record.State {
-			case TaskDone:
-				recovery.done++
-			case TaskFailed:
-				recovery.failed++
-			case TaskUnverified:
-				// Counted apart from both: it is not work that failed and it is
-				// not work still to come, it is work waiting on a person
-				// (task_contract.go's TaskUnverified). A resumed session that
-				// filed it under "waiting" would be telling somebody the
-				// scheduler will get to it, and the scheduler never will.
-				recovery.unverified++
-			default:
-				recovery.waiting++
-			}
+			recovery.countSettled(&record)
 		}
 		records = append(records, record)
 	}
@@ -1139,9 +1607,9 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string, settle Ta
 	}
 	g.mu.Unlock()
 
-	// The notes nobody ever got, in the shape a fresh run would have produced —
-	// and marked as handed over, so this is the only life of this session in
-	// which they are said.
+	// The notes nobody ever got, in the shape a fresh run would have produced.
+	// They are QUEUED and not announced: a life that closes before anybody reads
+	// one still owes it, and the next life says it again ([durableDelivery]).
 	//
 	// THEY ARE RE-TOLD AND NOT ARRIVING, so nothing here is put to the session's
 	// goal owner: the landing already happened, in a life of this session that
@@ -1153,11 +1621,62 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string, settle Ta
 	if g.home != nil {
 		address = g.home.quietAddress()
 	}
-	for _, node := range unannounced {
-		recovery.notes = append(recovery.notes, taskNote(node.notice(), taskURI(node.journalPath()), settle, address))
-		node.markNoted()
-	}
+	notes, deliveries := g.owedNotes(unannounced, settle, address)
+	recovery.notes = append(recovery.notes, notes...)
+	recovery.deliveries = append(recovery.deliveries, deliveries...)
+	// AND THE FLOOR, WHICH IS THE ONE RECONCILIATION THIS FILE MAKES BESIDE THE
+	// INTERRUPT. A node the record says the model was holding has no turn left to
+	// be decided in, so it comes back to the person here — before the frontier
+	// turns, before anything is drawn, and before the checkpoint above it is
+	// rewritten, so the file on disk stops saying it too
+	// ([TaskGraph.handBackOnLoad] states the law).
+	recovery.handedBack = g.handBackOnLoad()
 	return recovery
+}
+
+// owedNotes composes the landings this session still owes and the deliveries
+// that settle them.
+//
+// A RE-TELLING IS A DELIVERY LIKE ANY OTHER: queued, not announced. A life that
+// closes before anybody reads one still owes it, and the next life says it
+// again — which is what a resume that marked its own re-telling as said the
+// moment it composed it could not do ([durableDelivery]).
+//
+// AND THE RECORD IS ASKED FIRST. The checkpoint says these are owed, and the
+// checkpoint may simply not have been written: a process killed between the
+// recipient recording a note and the file being saved comes back here with the
+// mark off. The journal is the record that WAS written, so a landing whose
+// delivery id is already on one of its lines is settled rather than said twice
+// ([sessionFile.recorded]).
+func (g *TaskGraph) owedNotes(unannounced []*TaskNode, settle TaskSettle, address landingAddress) ([]string, []durableDelivery) {
+	var (
+		notes      []string
+		deliveries []durableDelivery
+	)
+	for _, node := range unannounced {
+		claim, claimed := node.claimNote(node.attemptNow())
+		if !claimed {
+			continue
+		}
+		delivery := node.settlesNote(claim)
+		if g.home != nil && g.home.hasRecorded(delivery.id) {
+			delivery.settled()
+			continue
+		}
+		// A RE-TELLING IS READ THE SAME WAY THE FIRST TELLING WOULD HAVE BEEN, so
+		// it opens on the same lead ([landingNoteLead]). A resumed session is in
+		// fact the shape that needs it most: nobody has typed, the note is the
+		// whole message, and the model has no turn behind it to infer who wrote it.
+		//
+		// THE NOTICE IS READ ONCE, for [Agent.reportTaskNode]'s reason: a lead and
+		// a head composed from two readings of a node could name two different
+		// landings of it.
+		notice := node.notice()
+		notes = append(notes, landingNoteLead(notice)+taskNote(notice, taskURI(node.journalPath()), settle, address))
+		node.noteQueued(claim)
+		deliveries = append(deliveries, delivery)
+	}
+	return notes, deliveries
 }
 
 // restoreNode is one record as a node again. Its done channel is CLOSED for a
@@ -1165,8 +1684,20 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string, settle Ta
 // never going to happen — and open for a queued one, which is genuinely still
 // waiting.
 func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
+	// Keep a readable fallback while the normal naming lane repairs old failures.
+	if unusableName(record.Title) || namesTheInstruction(record.Title) {
+		subject := record.Summary
+		if strings.TrimSpace(subject) == "" {
+			subject = record.Request
+		}
+		if strings.TrimSpace(subject) == "" {
+			subject = record.Brief
+		}
+		record.Title = taskPersonTitle(subject)
+	}
 	node := &TaskNode{
-		graph:     graph,
+		nextModel:  record.NextModel,
+		nextEffort: record.NextEffort, graph: graph,
 		id:        record.ID,
 		dependsOn: record.DependsOn,
 		parent:    record.Parent,
@@ -1179,6 +1710,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 			summary:     record.Summary,
 			request:     record.Request,
 			origin:      taskOrigin{journal: record.OriginJournal, line: record.OriginLine},
+			admission:   restoredAdmission(record.Admission),
 			brief:       record.Brief,
 			deliverable: record.Deliverable,
 			where:       record.Where,
@@ -1189,38 +1721,60 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 			maxSteps:    record.MaxSteps,
 			noProgress:  record.NoProgress,
 		},
-		Ground:      record.Ground,
-		Mode:        record.Mode,
-		Home:        record.Home,
-		HomeSha:     record.HomeSha,
-		Rung:        record.Rung,
-		Seal:        record.Seal,
-		Base:        record.Base,
-		Universe:    record.Universe,
-		Frozen:      record.Frozen,
-		Family:      record.Family,
-		state:       record.State,
-		report:      record.Report,
-		ending:      record.Ending,
-		kind:        record.Kind,
-		claim:       record.Claim,
-		changed:     record.Changed,
-		wrote:       record.Wrote,
-		branch:      record.Branch,
-		worktree:    record.Worktree,
-		merge:       record.Merge,
-		journal:     record.Journal,
-		elapsed:     time.Duration(record.ElapsedMS) * time.Millisecond,
-		started:     record.StartedAt,
-		ended:       record.EndedAt,
-		cost:        record.CostUSD,
-		input:       record.Input,
-		output:      record.Output,
-		cacheRead:   record.CacheRead,
-		cacheWrite:  record.CacheWrite,
-		noted:       record.Noted,
-		interrupted: record.Interrupted,
-		offer:       record.Offer,
+		Ground:         record.Ground,
+		Mode:           record.Mode,
+		Home:           record.Home,
+		HomeSha:        record.HomeSha,
+		Rung:           record.Rung,
+		Seal:           record.Seal,
+		Base:           record.Base,
+		CheckBase:      record.CheckBase,
+		Universe:       record.Universe,
+		Frozen:         record.Frozen,
+		Family:         record.Family,
+		Checks:         record.Checks,
+		FamilyDeclared: record.FamilyDeclared,
+		checksRevision: record.ChecksRevision,
+		FamilyWas:      record.FamilyWas,
+		state:          record.State,
+		report:         record.Report,
+		ending:         record.Ending,
+		kind:           record.Kind,
+		claim:          record.Claim,
+		produced:       resultFromRecord(record.Result),
+		changed:        record.Changed,
+		wrote:          record.Wrote,
+		branch:         record.Branch,
+		worktree:       record.Worktree,
+		merge:          record.Merge,
+		journal:        record.Journal,
+		elapsed:        time.Duration(record.ElapsedMS) * time.Millisecond,
+		started:        record.StartedAt,
+		ended:          record.EndedAt,
+		cost:           record.CostUSD,
+		input:          record.Input,
+		output:         record.Output,
+		cacheRead:      record.CacheRead,
+		cacheWrite:     record.CacheWrite,
+		noted:          record.Noted,
+		notedRead:      record.Noted,
+		notedState:     record.NotedState,
+		attempt:        record.Attempt,
+		interrupted:    record.Interrupted,
+		// AND WHO WAS HOLDING ITS DECISION, which is read back exactly as it was
+		// written and then put right by the floor a few lines above this node's
+		// arrival ([TaskGraph.handBackOnLoad], called out of [TaskGraph.rehydrate]).
+		// Restoring it faithfully and handing it back deliberately is the whole
+		// point: the alternative — dropping it here — is the right answer with no
+		// act behind it, which is what nothing could seed and nothing could watch.
+		decider: record.Decider,
+		// AND WHAT ITS LANDING WAS ASKING ABOUT, faithfully: the files, and which
+		// of the three roads put them there ([taskRecord.Clashing]).
+		clashing:   record.Clashing,
+		shifted:    record.Shifted,
+		groundHeld: record.GroundHeld,
+		offer:      record.Offer,
+		assignment: restoredAssignment(record.Assignment),
 	}
 	// AND WHETHER THIS WORK MAY STILL DISCOVER THAT IT IS WIDE. The road is not
 	// on the record, because it is not a fact about the work — it is a reading
@@ -1356,6 +1910,27 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 		// finish, and what it got through is in its journal.
 		record.State = TaskFailed
 		record.Report = subharnessInterruptedReport
+		record.EndedAt = interruptedAt(record)
+		return record, ""
+	}
+
+	if record.Kind == TaskKindQuick {
+		// A QUICK TASK IS NEVER RE-RUN EITHER, and this is the line that makes it
+		// true. The argument is the two above it, arrived at from a third side.
+		//
+		// What tells [Agent.runTaskNode] to hand a node to the quick body rather
+		// than to a worker is [taskSpec.quick], and that field is not in the
+		// checkpoint: the list it carries is being ticked while the node runs, and
+		// there is no finished record here that could rebuild it. So a quick node
+		// put back on the frontier is a node the next session would run as an
+		// ORDINARY WORKER — a copy of the folder, a branch and a check, for work
+		// whose whole promise was that it had none of those.
+		//
+		// It settles instead, saying the one thing that is true of it: it did not
+		// finish, and because it was working in the person's own folder rather
+		// than a copy, whatever it managed is already in front of them.
+		record.State = TaskFailed
+		record.Report = quickInterruptedReport
 		record.EndedAt = interruptedAt(record)
 		return record, ""
 	}

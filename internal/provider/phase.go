@@ -60,6 +60,8 @@ const (
 	// PhaseConnecting is the handshake: DNS, TLS, and the request going out.
 	// Nothing has been accepted yet.
 	PhaseConnecting Phase = "connecting"
+	// PhaseConnectionLost is a reachability wait, not a slow model response.
+	PhaseConnectionLost Phase = "waiting for connection"
 	// PhaseFirstWord is the wait after the endpoint accepted the request and
 	// before it wrote anything — the queue, the router's own fallback walk, a
 	// cold model loading. It is the phase a hedge deadline belongs to.
@@ -123,6 +125,8 @@ const (
 	// on, before there is a task to point at (internal/session's checkpoint.go).
 	// Detail names who it is for, so the row reads "briefing a worker".
 	PhaseBriefing Phase = "briefing"
+	// PhasePreparing names bounded context lookup before the main request starts.
+	PhasePreparing Phase = "preparing"
 	// PhaseTakingStock is the reading a turn stops for at a mark: a second mind
 	// is shown an account of the work so far and asked what is left of the ask
 	// (internal/session's checkpoint.go, [readMark]). It is a ten-to-thirty
@@ -197,6 +201,50 @@ type PhaseNews struct {
 	Model string
 	Role  lanes.Role
 	At    time.Time
+
+	// Session is the conversation this request belongs to ([SessionFrom]), and
+	// it is EMPTY IN EVERY BUILD THAT NEEDS NO ANSWER: one process with one
+	// window has nothing to disambiguate. An engine that is a separate process
+	// from its surfaces reads it to decide which connection a piece of news
+	// belongs on, and news that names no conversation is news it cannot place.
+	Session string
+
+	// Subject is WHAT THIS NEWS IS ABOUT, and it is a different question from
+	// Session, which is whose it is. A conversation runs a talk turn and a tree
+	// of task nodes under it; all of them are one Session, and each of them is
+	// its own subject.
+	//
+	// A NEWS ITEM BELONGS TO A SUBJECT, AND A WINDOW DRAWS ITS OWN SUBJECT'S
+	// NEWS. That is the law this field exists for, and it is stated here rather
+	// than at a drawing site because a surface cannot invent an identity that
+	// never left the engine. Until it existed a surface's news desks were keyed
+	// by MODEL, which is an address and not an identity: two task nodes running
+	// on one model id overwrote each other's phase, and a node's room could
+	// never be asked what its own node was doing — the row it drew was
+	// whichever of the two had posted last.
+	//
+	// EMPTY MEANS THE CONVERSATION. Every producer that names no subject, and
+	// every older peer across a connection, is talking about the conversation
+	// itself, so absence must behave exactly as it did before this field
+	// existed — which is what internal/tui3's desks do with it: a subject-less
+	// piece of news is filed under its model, as it always was.
+	//
+	// It is carried on the context ([WithNode]) rather than passed down the
+	// call chain for the role's and the session's reason: it belongs to the
+	// ERRAND, so it survives a completer wrapper, a retry, a relax rung and a
+	// hedge arm without anybody re-stating it.
+	Subject string
+
+	// Relayed says this news arrived over a connection from the engine that
+	// produced it, rather than off this process's own stream.
+	//
+	// IT EXISTS TO STOP A LOOP. A build that is both serving and watching —
+	// which is every test that drives an engine host inside its own process —
+	// would otherwise forward what it just received straight back out of the
+	// door it came in, forever. It is never put on the wire: the side that
+	// takes a frame off the wire is the only side that can know it, and it
+	// stamps it on receipt.
+	Relayed bool
 }
 
 // Waiting reports whether this phase is one a person is waiting through with
@@ -204,7 +252,7 @@ type PhaseNews struct {
 // kept here so that two surfaces cannot disagree about it.
 func (n PhaseNews) Waiting() bool {
 	switch n.Phase {
-	case PhaseConnecting, PhaseFirstWord, PhasePaced, PhaseRetrying, PhaseSwitching, PhaseSwitchingModel, PhaseAsking, PhaseAllSlow:
+	case PhaseConnecting, PhaseConnectionLost, PhaseFirstWord, PhasePaced, PhaseRetrying, PhaseSwitching, PhaseSwitchingModel, PhaseAsking, PhaseAllSlow:
 		return true
 	}
 	return false
@@ -275,6 +323,17 @@ type phaseClock struct {
 	mu    sync.Mutex
 	model string
 	role  lanes.Role
+	// session is the conversation these requests belong to, carried so that an
+	// engine serving many windows can put this clock on the right one
+	// (roles.go's [WithSession]). It is empty in a build where there is only
+	// one window to put it on.
+	session string
+	// subject is what this clock is ABOUT — a task node's own identity, empty
+	// for the conversation (roles.go's [WithNode]). It is carried beside the
+	// session rather than derived from it because a conversation and every node
+	// under it share one session and each of them is a subject of its own; a
+	// window draws its own subject's news and nothing else's.
+	subject string
 	// phase is what was last posted, since when, and when it was last said out
 	// loud.
 	phase Phase
@@ -314,9 +373,11 @@ func (c *Client) newPhaseClock(ctx context.Context, model string) *phaseClock {
 		return nil
 	}
 	return &phaseClock{
-		model: strings.TrimSpace(model),
-		role:  RoleFrom(ctx),
-		now:   c.clock,
+		model:   strings.TrimSpace(model),
+		role:    RoleFrom(ctx),
+		session: SessionFrom(ctx),
+		subject: NodeFrom(ctx),
+		now:     c.clock,
 	}
 }
 
@@ -412,7 +473,7 @@ func (p *phaseClock) done() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.phase = ""
-	postPhase(PhaseNews{Model: p.model, Role: p.role, At: p.now()})
+	postPhase(PhaseNews{Model: p.model, Role: p.role, Session: p.session, Subject: p.subject, At: p.now()})
 }
 
 // say posts the phase as it stands. IT IS CALLED WITH THE LOCK HELD, from every
@@ -430,6 +491,8 @@ func (p *phaseClock) say(detail string, now time.Time) {
 		Detail:   detail,
 		Model:    p.model,
 		Role:     p.role,
+		Session:  p.session,
+		Subject:  p.subject,
 		At:       now,
 	}
 	// THE RATE IS THE ONE THIS PHASE MEASURED, and never the last answer's. A
@@ -455,6 +518,8 @@ func notePhase(ctx context.Context, model string, phase Phase, detail string, si
 		Detail:   detail,
 		Model:    strings.TrimSpace(model),
 		Role:     RoleFrom(ctx),
+		Session:  SessionFrom(ctx),
+		Subject:  NodeFrom(ctx),
 	})
 }
 
@@ -569,4 +634,19 @@ func withPhaseClock(ctx context.Context, clock *phaseClock) context.Context {
 func phaseClockFrom(ctx context.Context) *phaseClock {
 	clock, _ := ctx.Value(phaseClockContextKey{}).(*phaseClock)
 	return clock
+}
+
+// modelWaitedOn is the model this request is for, read off the clock the call
+// is already keeping, and empty on a call with no clock.
+//
+// IT EXISTS FOR THE WAITS THAT ARE NOT THE STREAM'S. A phase row is keyed on a
+// model, and a seam that waits before the request is on the wire — the
+// limiter's slot queue, the connectivity probe — has the fact in its context
+// and not in its signature. Empty means nobody is listening, in which case the
+// phase it would compose has nowhere to go anyway.
+func modelWaitedOn(ctx context.Context) string {
+	if clock := phaseClockFrom(ctx); clock != nil {
+		return clock.model
+	}
+	return ""
 }

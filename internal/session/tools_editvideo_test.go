@@ -411,7 +411,10 @@ func TestAScoreCanBeLaidUnderAClipThatAlreadyHasSound(t *testing.T) {
 func TestTheSchemaIsOneWellFormedObjectTheModelCanRead(t *testing.T) {
 	requireFfmpeg(t)
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
-	for _, tool := range agent.belt() {
+	if text, failed := runTool(t, agent, loadCapabilityToolName, `{"group":"media"}`); failed {
+		t.Fatalf("loading media: %s", text)
+	}
+	for _, tool := range agent.beltTools() {
 		if tool.Name != "edit_video" {
 			continue
 		}

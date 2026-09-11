@@ -14,7 +14,6 @@ import (
 
 const (
 	taskJudgeTimeout = 3 * time.Second
-	taskJudgeTokens  = 120
 )
 
 // taskJudgePrompt sizes one piece of work. WHAT IT DECIDES IS NARROWER THAN IT
@@ -121,6 +120,12 @@ func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, st
 		title: title, named: strings.TrimSpace(shaped.Title) != "",
 		summary: firstLine(brief), request: brief, origin: a.taskOriginRef(), brief: work,
 		acceptance: acceptance, where: shaped.Where, model: a.resolveTaskModel("").model,
+		// AND WHAT WAS SAID AROUND IT, from the one compiler every door uses
+		// (admission.go). A typed task is the door where the person has most
+		// often already settled something in the conversation above it — the
+		// folder, the format, the thing not to touch — and their command names
+		// none of it.
+		admission: a.admissionContext(),
 	}
 	// AND WHERE THE WORK STANDS (taskstands.go). A typed task gets the same
 	// ladder a proposal gets, because a person who opened aforge in their home
@@ -188,8 +193,7 @@ func (a *Agent) judgeDecomposable(ctx context.Context, brief string) (bool, []st
 	a.mu.Unlock()
 	messages := []ai.Message{textMessage("system", taskJudgePrompt), textMessage("user", strings.TrimSpace(brief))}
 	for attempt := 0; attempt < 2; attempt++ {
-		response, judge, callErr := a.callRole(ctx, roles.RolePlanner, model, messages,
-			ai.WithMaxTokens(taskJudgeTokens))
+		response, judge, callErr := a.callRole(ctx, roles.RolePlanner, model, messages)
 		if callErr != nil || response == nil {
 			return false, nil, ""
 		}

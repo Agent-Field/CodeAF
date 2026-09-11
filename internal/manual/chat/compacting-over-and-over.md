@@ -14,6 +14,12 @@ stops near **99,200** tokens, about ten thousand under the trigger. Those ten th
 tokens are several steps of ordinary growth, and until the conversation has used them up
 the automatic check after each step finds nothing to do.
 
+A pass turns old tool results into pointers first and folds afterwards, and **the fold is
+measured against the lower line too**. Stubbing on its own often lands the estimate just
+under the trigger and nowhere near the target; a pass that stopped there had bought no room
+at all, and the next step put it straight back over. It now keeps folding down to the target
+whatever the stubbing already saved.
+
 An earlier version stopped folding the moment it dipped under the threshold. One task
 compacted fifteen times in six minutes — after nearly every step, four to six messages a
 pass, with the estimate never once going down — because a step's growth put it straight
@@ -36,7 +42,7 @@ Two things used to make a big model fold like a small one, and both are fixed:
 - aforge refused to believe any claim above 256,000 tokens, for every model alike. That
   ceiling is gone; what can lower a claim now is an endpoint actually **refusing** a request
   for being too long, which aforge writes down and never trusts that model past again.
-- work that left the conversation — a task's worker, an adaptive run's worker, a fork, the
+- work that left the conversation — a task's worker, an adaptive run's worker, the
   reader that checks a task — was handed nothing at all when its model differed from yours,
   and so folded against the conservative 128,000-token default whatever its own model held.
   Each of those now asks the catalog for its own model.

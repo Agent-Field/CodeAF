@@ -74,8 +74,15 @@ func briefBodyRows(a *app) []string {
 
 // briefWrapped is what the instruction wraps to at the width the page draws it —
 // the truth every count on the door is measured against.
+//
+// IT ASKS THE MEASURE THE PAINT ASKS, both halves of it. The rows are laid out
+// inside the reading gutter (gutter.go's [gutterInner]) and a person's own words
+// are wrapped inside their lead and the divider's cell ([userBodyCols]) — the
+// same two calls [briefFoldHidden] makes. A literal here would be the drift
+// [userBodyCols]'s own note was written about, and it would be re-lived on the
+// next cell this surface spends.
 func briefWrapped(a *app, text string) []string {
-	return wrap(text, a.bodyWidth()-userLeadCols)
+	return wrap(text, userBodyCols(gutterInner(a.bodyWidth())))
 }
 
 // pressBriefDoor clicks the door where it is on screen. It resolves the screen
@@ -404,7 +411,8 @@ func TestALongMessageIsNeverCutWithoutADoor(t *testing.T) {
 	a.touch()
 
 	width := a.bodyWidth()
-	want := wrap(said, width-userLeadCols)
+	// The same measure the paint makes, gutter and divider both (briefWrapped).
+	want := wrap(said, userBodyCols(gutterInner(width)))
 	if len(want) <= briefFoldLines {
 		t.Fatalf("the fixture is not long enough to be cut: it wraps to %d lines", len(want))
 	}

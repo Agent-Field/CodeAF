@@ -57,7 +57,7 @@ import (
 // every geometric question resolves through ([app.viewHeight]).
 //
 // A FRAME TOO NARROW FOR THE RAIL CAN STILL OPEN THE ROSTER, and there it opens
-// over the body instead of beside it (ctrl+t, task.go's [app.railFull]). The
+// over the body instead of beside it (alt+t, task.go's [app.railFull]). The
 // strip is what makes that reachable without a key at all.
 //
 // A terminal too short for all of it gives up its breathing room first — the
@@ -95,21 +95,13 @@ type chromeKind uint8
 
 const (
 	chromeNone chromeKind = iota
-	// chromeChoices is the consent block's offer line, which is interactive by
-	// keyboard and hoverable by pointer.
-	chromeChoices
-	// chromeConnectAsk is the connect offer's answers row, which is interactive
-	// by keyboard and hoverable by pointer — the approval question's arrangement
-	// one block down (connect.go).
-	chromeConnectAsk
-	// chromeHarnessAsk is the sub-harness offer's row, which is the same
-	// arrangement one rung further down: one pressable row, answered by keyboard
-	// or by pointer (harness.go).
-	chromeHarnessAsk
-	// chromeRoomApproval is the answers row of the design approval block pinned
-	// inside a design's own room (roomapproval.go). Only the second row of that
-	// block carries this kind, because it is the only one that answers.
-	chromeRoomApproval
+	// chromeQuestion is one row of THE QUESTION BLOCK (question.go), the one
+	// renderer for every decision this engine hands a person. Every row of it
+	// carries the kind and its own index, because the block's forms put their
+	// answers on different rows — the line's are on its head row, the card's on
+	// its foot — and the press resolves the row before the column, so one kind
+	// with an honest index is what lets it hit-test either.
+	chromeQuestion
 	// chromeOverlay is one row of whichever list is open; index is its position
 	// in that list's own rows.
 	chromeOverlay
@@ -126,6 +118,11 @@ const (
 	// own slot, so the two share a kind's worth of the frame and never a moment
 	// of it.
 	chromeStop
+	// chromeTabClose is one row of the close-a-tab confirmation (tabclose.go);
+	// index is its position within the card, and the answers are on index 1. It
+	// shares the guard's slot with [chromeStop] for the reason those two share
+	// it: they are the same shape of thing and can never be up together.
+	chromeTabClose
 	// chromeParked is one row of a message waiting for the answer to finish
 	// (park.go); index is which parked message that row belongs to, so a press
 	// pulls that one back into the box to be edited. The dim line under the block
@@ -178,7 +175,7 @@ func (a *app) View() tea.View {
 		return a.shown
 	}
 	frame, caretX, caretY := a.frame()
-	v := tea.NewView(frame)
+	v := tea.NewView(a.tabTitlePreview(frame))
 	v.AltScreen = true
 	// THE POINTER IS OURS BY DEFAULT, AND THAT HAS A COST WORTH NAMING. Asking
 	// for it — at any motion level — makes this app the owner of every drag, so
@@ -209,11 +206,12 @@ func (a *app) View() tea.View {
 	// each of which would submit. v2 enables it unless this says otherwise, and
 	// it says so out loud because the default is the thing being relied on.
 	v.DisableBracketedPasteMode = false
-	// The tab's one line (windowtitle.go). Declared rather than written: the
+	// The window's half of the terminal's title (title.go), which is the
+	// sentence the tab was last sent. Declared rather than written: the
 	// renderer compares it with the last frame's and emits OSC 2 only when it
 	// moved, so declaring it on every frame costs nothing on the frames where
 	// nothing changed.
-	v.WindowTitle = a.windowTitle()
+	v.WindowTitle = a.titleSent
 	// The caret is hidden on surfaces with nothing to type into (home at rest),
 	// where a blinking bar over the heading would be a cursor with no box to
 	// live in. [app.frame] sets [app.caret] on every render.
@@ -275,6 +273,7 @@ func (a *app) frame() (string, int, int) {
 // frameBody is the frame as every surface in this package builds it, before the
 // one composition pass [app.frame] puts over the whole of it.
 func (a *app) frameBody() (string, int, int) {
+	a.inlineWaitShowing = false
 	width, height := a.size()
 	if a.pasteEdit.open {
 		return a.pasteEditorFrame(width, height)
@@ -376,6 +375,43 @@ func (a *app) frameBody() (string, int, int) {
 			return strings.Join(lines, "\n"), caretX, caretY
 		}
 	}
+	// AND THE CONTEXT CHOOSER OVER THE WHOLE OF IT (contextmodal.go). It is the
+	// LAST of these because it is the only one that keeps what is underneath on
+	// the screen: the conversation is composed exactly as it would have been and
+	// then faded, so a person choosing a folder can still see the message they
+	// were writing — and cannot touch it. Everything above this line is a surface
+	// that REPLACES the conversation; this one covers it.
+	if a.contextModalShowing() {
+		under, _, _ := a.chatFrameLines(width, height)
+		lines, caretX, caretY := a.contextModalOver(under, width, height)
+		return strings.Join(lines, "\n"), caretX, caretY
+	}
+	lines, caretX, caretY := a.chatFrameLines(width, height)
+	return strings.Join(lines, "\n"), caretX, caretY
+}
+
+// chatFrameLines is the ordinary conversation frame — the transcript, its rail,
+// the chrome under it and the status line — as LINES rather than as one string.
+//
+// It was the tail of [app.frameBody] and is its own function for one caller: the
+// context chooser draws over a finished frame and has to be handed one
+// (contextmodal.go). Splitting a joined frame back apart would have been the
+// same rows measured twice, and a sheet composited onto a second measurement is
+// a sheet one row away from where the pointer thinks it is.
+func (a *app) chatFrameLines(width, height int) ([]string, int, int) {
+	// The body decides who owns activity before the footer is drawn. This
+	// uses the same cached rows that the frame places below; status painting
+	// never rebuilds a hidden transcript to infer ownership.
+	view := a.viewHeight()
+	fullRail := a.railFull()
+	var body []row
+	pad := 0
+	if !fullRail {
+		body, pad = a.bodyRows(a.bodyWidth(), view)
+		for _, r := range body {
+			a.inlineWaitShowing = a.inlineWaitShowing || r.inlineWait
+		}
+	}
 	chrome, chromeMarks, caretX, caretRow := a.chrome(width)
 	// The welcome box rides at the top of the frame rather than at the bottom
 	// with the chrome it is built with ([welcomeLift] states why). Splitting it
@@ -389,7 +425,13 @@ func (a *app) frameBody() (string, int, int) {
 	// the window — which page this is, and how to leave it — rather than about
 	// the transcript, so it is not one of the columns the rail borrows from
 	// (room.go).
-	head := a.roomHead(width)
+	// THE TAB STRIP IS THE ROW ABOVE IT, and it is a different question: the
+	// header says where you are INSIDE a conversation, and the strip says which
+	// conversation that is and which others this window can go back to
+	// (chattabs.go). They are two rows because they are two questions — the one
+	// that used to carry both carried neither well.
+	tabs := a.tabsRow(width)
+	head := a.roomHeadRows(width)
 	// AND THE TASK STRIP IS THE ROW UNDER IT, for the same reason and at the same
 	// width: what is running is a fact about the SESSION, not about the
 	// transcript, and it is pinned because a door that scrolls away is a door
@@ -403,11 +445,20 @@ func (a *app) frameBody() (string, int, int) {
 	// hit-testing included, resolves through the same number — and the chrome is
 	// drawn at the FULL width, because the status line and the legend are about
 	// the whole window rather than about the transcript (task.go).
-	view := a.viewHeight()
 
 	rows := make([]string, 0, height)
-	if head != "" {
-		rows = append(rows, head)
+	if tabs != "" {
+		// THE HEAD IS THE PLACES' HEAD — the pulse, the strip, the rule and the
+		// blank — drawn by the one function both frames call (head.go), and a
+		// room lays its trail under the blank (chattabs.go's
+		// [app.headSealHeight]). The prefix is cut at exactly the count
+		// [app.headHeight] charges, so the rows the frame draws and the rows the
+		// scrolling subtracts are the same rows by construction.
+		head := a.headRows(width, tabs, a.pal)
+		rows = append(rows, head[:a.tabsHeight(width)+a.headSealHeight(width)]...)
+	}
+	if len(head) > 0 {
+		rows = append(rows, head...)
 		// AND THE FAMILY UNDER IT, dim, where this node has one: who handed the
 		// work out and what it handed out itself, which is the fact the roster's
 		// tree carries in its shape and this page had no shape to carry it in
@@ -423,10 +474,11 @@ func (a *app) frameBody() (string, int, int) {
 	// [app.railFull]). The conversation is not drawn under it — an overlay you
 	// read past is an overlay that made the page harder to read — and the chrome
 	// below stays, because the draft is still where this surface types.
-	if a.railFull() {
+	if fullRail {
 		// THE SWITCHER IS DRAWN OVER THE ROSTER TOO. On a frame with no columns
 		// to lend, the roster IS the body, and a card that skipped this branch
 		// would be a key that did nothing at sixty columns (hop.go).
+		a.hop.originY = len(rows)
 		rows = append(rows, a.hopMaybe(a.railRows(view), width)...)
 		// The lifted rows are still part of this frame's height even here, where
 		// the roster has taken the body: dropping them would draw a window short
@@ -434,9 +486,8 @@ func (a *app) frameBody() (string, int, int) {
 		// them while the roster is up, which is right — the roster is over them.
 		liftedAt := len(rows)
 		rows = append(rows, lifted...)
-		return a.frameOut(rows, chrome, height, caretX, caretRow, lift, liftedAt)
+		return a.frameLines(rows, chrome, height, caretX, caretRow, lift, liftedAt)
 	}
-	body, pad := a.bodyRows(a.bodyWidth(), view)
 	rail := a.railRows(view)
 	railAt := func(i int) string {
 		if i < len(rail) {
@@ -483,6 +534,7 @@ func (a *app) frameBody() (string, int, int) {
 				texts[i] = r.text
 			}
 		}
+		a.hop.originY = len(rows)
 		texts = a.hopOver(texts, a.bodyWidth(), a.pal)
 		body, pad = make([]row, len(texts)), 0
 		for i, text := range texts {
@@ -521,7 +573,7 @@ func (a *app) frameBody() (string, int, int) {
 	for i := above; i < pad; i++ {
 		rows = append(rows, a.railJoin("", railAt(len(body)+i)))
 	}
-	return a.frameOut(rows, chrome, height, caretX, caretRow, lift, liftedAt)
+	return a.frameLines(rows, chrome, height, caretX, caretRow, lift, liftedAt)
 }
 
 // welcomeAbove is how much of the body's slack goes ABOVE the lifted greeting:
@@ -551,6 +603,16 @@ func welcomeAbove(lift, pad int) int {
 // in it is the arithmetic this replaced, and it put the terminal's cursor on the
 // status row for as long as the greeting was up.
 func (a *app) frameOut(rows, chrome []string, height, caretX, caretRow, lift, liftedAt int) (string, int, int) {
+	lines, caretX, caretY := a.frameLines(rows, chrome, height, caretX, caretRow, lift, liftedAt)
+	return strings.Join(lines, "\n"), caretX, caretY
+}
+
+// frameLines is [app.frameOut] with the rows still apart, for the one caller
+// that draws OVER a finished frame rather than beside it: the context chooser
+// composites its sheet onto these lines and needs them as lines
+// (contextmodal.go). Joining and re-splitting would be the same arithmetic done
+// twice, and the second copy is the one that would be wrong.
+func (a *app) frameLines(rows, chrome []string, height, caretX, caretRow, lift, liftedAt int) ([]string, int, int) {
 	rows = append(rows, chrome...)
 	// A frame taller than the terminal loses rows from the TOP: the chrome is
 	// the tail, and everything the caret's row is counted back through is in it.
@@ -569,7 +631,7 @@ func (a *app) frameOut(rows, chrome []string, height, caretX, caretRow, lift, li
 	if caretY >= height {
 		caretY = height - 1
 	}
-	return strings.Join(rows, "\n"), caretX, caretY
+	return rows, caretX, caretY
 }
 
 // chrome is everything below the conversation: the rows, what each row is for
@@ -580,8 +642,7 @@ func (a *app) frameOut(rows, chrome []string, height, caretX, caretRow, lift, li
 // [app.chromeAt] resolves a pointer to one of them — three questions that must
 // never be able to disagree about where the input line is.
 func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
-	gap := a.breathingRows()
-	roomy := gap > 0
+	roomy := a.breathingRows() > 0
 
 	rows := make([]string, 0, 8)
 	marks := make([]chromeRow, 0, 8)
@@ -590,9 +651,8 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 		marks = append(marks, mark)
 	}
 
-	// THE CHIP RIDES THE FIRST ROW OF THE GAP, which is the row nearest the
-	// conversation it is about: above the rule where the window is airy enough
-	// to have a row up there, and the old blank above the draft where it is not.
+	// THE CHIP RIDES THE FOOT'S CLEARANCE, the blank above the rule, which is the
+	// row nearest the conversation it is about ([app.footClearance]).
 	// It is drawn into a row that ALREADY EXISTS rather than onto the last line
 	// of the transcript, and that is the whole reason it composes: a conversation
 	// row is cached per entry (render.go's entryRows) and shortened by the rail's
@@ -625,9 +685,9 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	for i, line := range unit {
 		add(line, chromeRow{kind: chromeWelcome, index: i})
 	}
-	// The rows above the rule are the SECOND helping of breathing room, so there
-	// is one of them or none (see [app.breathingRows]).
-	for i := 1; i < gap && !greeted; i++ {
+	// THE FOOT'S ONE BLANK IS ABOVE THE RULE, where the conversation stops —
+	// the clearance a place keeps over its own rule ([app.footClearance]).
+	for i := 0; i < a.footClearance() && !greeted; i++ {
 		addGap()
 	}
 	if roomy && !greeted {
@@ -636,38 +696,30 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 		// no room for a label.
 		add(a.legend(width), chromeRow{kind: chromeLegend})
 	}
-	for i, line := range a.consentRows(width) {
-		// The offer is the second row of the block, and it is the only row of it
-		// a pointer can be over — the call above it is a transcript row that
-		// happens to be repeated here, and the rule and the count below it are
-		// statements. The phone sheet answers to the pointer over its whole
-		// height, which is [app.consentMark]'s other half (consent.go).
-		add(line, a.consentMark(i, width))
+	// THE QUESTION BLOCK IS THE FIRST OF THE PINNED BLOCKS, because it is the
+	// one every other block on this ladder is being folded into
+	// (docs/design/questions/DESIGN.md). It carries the receipts of what was
+	// just answered as well as what is still open, so it sits ABOVE the older
+	// blocks rather than under them: a receipt is about a question that has
+	// gone, and a receipt drawn below a question that is still up would read as
+	// an answer to the wrong one.
+	for i, line := range a.questionRows(width) {
+		add(line, a.questionRowMark(i))
 	}
-	// AND THE CONNECT OFFER SITS DIRECTLY UNDER IT, because it is the same kind
-	// of thing one rung quieter: a question the session is waiting on, drawn
-	// where this surface draws everything it wants answered (connect.go). The
-	// two STACK rather than share a slot — an approval question is about a call
-	// and this is about an account, and either can be raised while the other is
-	// up — and the block above keeps the keyboard while it is there.
-	for i, line := range a.connectAskRows(width) {
-		add(line, a.connectMark(i))
-	}
-	// AND THE HARNESS OFFER UNDER THAT, the third and quietest rung of the same
-	// lane (harness.go): a question the session is holding a turn on, one row,
-	// whose no is free. It stacks under the two above it for their own reason —
-	// any of the three can be raised while another is up.
-	for i, line := range a.harnessAskRows(width) {
-		add(line, a.harnessMark(i))
-	}
-	// AND A DESIGN ROOM'S APPROVAL ROW UNDER THAT (roomapproval.go). It is the
-	// same shape of thing one rung quieter still, and it STACKS rather than
-	// sharing: the three blocks above are questions the SESSION is blocked on,
-	// which own the keyboard while they are up, and this one is a standing
-	// question in a room the person is also talking in — so it can be on screen
-	// under any of them, and it takes only its own two chords.
-	for i, line := range a.roomApprovalRows(width) {
-		add(line, a.roomApprovalMark(i))
+	// THE CONNECT OFFER USED TO SIT DIRECTLY UNDER IT, in a block of its own with
+	// its own answers row, its own click targets and a key router that took every
+	// keystroke while it was up. It is a card ON the block now (connect.go), so
+	// there is nothing to stack: one question about a call and one about an
+	// account are two questions in one queue, and the block already says how many
+	// are behind the one being read.
+	// AND A QUESTION'S OWN FOOT UNDER THAT, which is DESIGN.md's alignment law
+	// said as geometry: "the room's foot is pinned above the box exactly where
+	// every other question sits". It STACKS rather than sharing for the reason
+	// the approval row does — this is a question a person opened out on purpose,
+	// and the blocks above it are questions the session raised — and it takes
+	// only keys the box does not want (questionroom.go).
+	for _, line := range a.questionFootRows(width) {
+		add(line, chromeRow{})
 	}
 	// THE STEER GUARD SITS WHERE THE APPROVAL QUESTION SITS, because it is the
 	// same kind of thing: the surface holding words back until it is told where
@@ -695,9 +747,6 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	for i, line := range a.parkedRows(width) {
 		add(line, a.parkedMark(i, width))
 	}
-	if roomy && !greeted {
-		addGap()
-	}
 
 	// THE CARET IS IN THE UNIT WHILE THE UNIT HOLDS THE BOX, and at the foot
 	// otherwise. Both are a row counted from the head of this block — the unit's
@@ -705,6 +754,9 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	// where it drew that half ([app.frameOut]).
 	caretX, caretRow := unitX, unitRow
 	if !a.welcomeHolds() {
+		if a.roomRecipientHeight() > 0 {
+			add(inputPad+a.pal.accent(fit(a.roomRecipientWord(), width-len(inputPad))), chromeRow{})
+		}
 		input, x, row := a.inputBlock(width - len(inputPad))
 		// THE BOX IS THE REDIRECT LANE while a proposal is open: the placeholder
 		// is applied to the block the input already rendered, because the hint
@@ -727,6 +779,11 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 			add(inputPad+line, chromeRow{kind: chromeDraft, index: i})
 		}
 	}
+	// AND NO BLANK UNDER THE BOX. The prompt sits on the row directly beneath
+	// the seam, so a person starts writing at the top of the room the box has
+	// (the 2026-09-09 law), and the status line sits directly under the box as a
+	// place's hint does under its own — so the box and the rule are on the same
+	// rows in a chat and on every place ([app.footClearance] has the history).
 	// AND WHAT THE DRAFT WOULD MEAN SITS DIRECTLY UNDER THE BOX (spellout.go).
 	// Below, because it is not part of the message and being under the sentence
 	// is how a person reads that at a glance; and above the open list, because a
@@ -745,30 +802,19 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 }
 
 // statusRow is the HUD's status row — one row, or two on a narrow frame where
-// the telemetry stops sharing with the identity (render.go's [app.statusRows])
-// — with the reasoning level on the model segment:
-// "anthropic/claude-sonnet-4.5:high" where a level has been dialled, and the
-// bare model id — the line exactly as it was — where none has.
+// the right edge stops sharing with the ledger (render.go's [app.statusRows]),
+// and a two-row deck at phone width.
 //
-// The level belongs on that line because it is a fact about what the next
-// request will cost and how long it will take, and the model segment is where a
-// person already looks for both. It is spelled with a colon rather than a fourth
-// segment for the same reason it is spelled that way on the picker row: it is
-// not a thing beside the model, it is how this model is being run.
-//
-// The splice happens by LENDING the model field its suffixed form for the length
-// of one call. [app.status] reads a.model directly (render.go), the frame is
-// drawn on the model goroutine one row at a time, and the alternative is a
-// second copy of the status line's segment layout — width budget, narrow-frame
-// dropping and all — kept in step with the first by nothing but attention.
+// IT USED TO LEND [app.model] ITS LEVELLED FORM for the length of this call —
+// "claude-sonnet-4.5:high" — so that the phone deck's chip, which reads the
+// field, would carry the reasoning level. And every other reading inside the
+// same draw took the lent id too: the live rate at the right edge asks the phase
+// desk for the conversation's news BY NAME ([app.talkKeys]), found nothing under
+// `id:level`, and drew no tok/s at all for any model with a level dialled — with
+// or without an engine host. The deck now asks for its levelled word directly
+// (statusdeck.go's [app.deckModelRow]), and this field is never rewritten on the
+// way to a frame.
 func (a *app) statusRow(width int) []string {
-	level := a.reasoningFor(a.model)
-	if level == "" || a.model == "" {
-		return a.statusRows(width)
-	}
-	id := a.model
-	a.model = id + ":" + level
-	defer func() { a.model = id }()
 	return a.statusRows(width)
 }
 
@@ -851,31 +897,47 @@ func (a *app) chromeHeight() int {
 	// layout to learn how tall the bottom of the frame is), the input block, and
 	// whatever the two optional blocks, the open list and the welcome box are
 	// holding.
-	n := a.statusHeight(width) + a.overlayHeight() + a.consentHeight() +
-		a.connectAskHeight() + a.harnessAskHeight() + a.roomApprovalHeight() + a.guardHeight() +
+	n := a.statusHeight(width) + a.overlayHeight() + a.questionHeight() +
+		a.questionFootHeight() + a.guardHeight() +
 		a.followHeight() + a.landHeight() + a.parkedHeight() + a.welcomeHeight() + a.spellHeight()
 	// THE GREETING'S ROWS ALREADY HOLD THE BOX while it holds the box, and the
 	// rule and its breathing room are not drawn under a greeting at all — both
 	// are [app.chrome]'s own decisions, read back here so the conversation is
 	// charged exactly what the frame draws.
 	if !a.welcomeHolds() {
-		n += a.inputHeight()
+		n += a.inputHeight() + a.roomRecipientHeight()
 	}
-	if gap := a.breathingRows(); gap > 0 && a.welcomeHeight() == 0 {
-		n += gap + 1 // the breathing room, and the rule standing in it
+	if clear := a.footClearance(); clear > 0 && a.welcomeHeight() == 0 {
+		n += clear + 1 // the clearance, and the rule under it
 	}
 	return n
 }
 
-// breathingRows is the resting gap between the conversation and the box, in
-// rows. It is the ONE ladder both halves of the frame read — [app.chrome] spends
-// these rows and [app.chromeHeight] charges the conversation for them — because
-// a gap the layout drew and the geometry did not count is a caret one row below
-// where the terminal puts its cursor.
+// footClearance is the air between the conversation's last row and the foot's
+// rule: the rows [app.chrome] spends there and [app.chromeHeight] charges for,
+// asked of one function because a gap the layout drew and the geometry did not
+// count is a caret one row below where the terminal puts its cursor.
 //
-// THE LADDER STEPS DOWN, NEVER UP. Two rows is the resting state of a window
-// with the height to lend them; the everyday window keeps the single blank above
-// the draft it has always had; and below [roomyFloor] the surface stops drawing
+// THE CONVERSATION'S FOOT IS A PLACE'S FOOT — one blank, the rule, the box and
+// the status line, where a place draws one blank, its rule, its box and its hint
+// on the same clearance ([spacingRuleClearance], pages.go's [placeFrame]). It
+// used to keep a second blank under the box that no place has, so `esc` from
+// home into a chat moved the box and the rule up a row (PLACES-AUDIT.md, lane K).
+func (a *app) footClearance() int {
+	if a.breathingRows() == 0 {
+		return 0
+	}
+	return spacingRuleClearance
+}
+
+// breathingRows is the frame's height ladder, in rungs. The foot's rule and its
+// clearance stand on the first ([app.footClearance]); the head, the room's kin
+// rows and the rest of the pinned chrome above the conversation stand on the
+// second (chattabs.go's [app.tabsHeight]).
+//
+// THE LADDER STEPS DOWN, NEVER UP. Two rungs is the resting state of a window
+// with the height to lend them; the everyday short window keeps the foot and
+// gives up the head; and below [roomyFloor] the surface stops drawing
 // whitespace altogether, along with the rule, the pinned header and the strip.
 // A short window never pays for the wave that made a tall one roomier.
 func (a *app) breathingRows() int {
@@ -952,8 +1014,35 @@ func (a *app) window(width, height int) ([]row, int) {
 // turn underneath is still streaming into a transcript nobody is looking at —
 // which is what makes esc restore the conversation exactly.
 func (a *app) bodyRows(width, height int) ([]row, int) {
+	// THE NEW-CHAT START PAGE STANDS OVER THE CONVERSATION AND NOT UNDER IT
+	// (chatstart.go). It is the greeting's unit drawn in the middle of the frame,
+	// and the greeting is only ever drawn on an EMPTY surface — over a transcript
+	// it would be centred in whatever slack that transcript left, which on a full
+	// screen is none, and the two would be drawn through each other.
+	//
+	// IT IS ANSWERED HERE AND NOWHERE ELSE because this is the one reading three
+	// things share: the draw, the pointer ([app.chromeAt] asks it again to find
+	// the lifted rows) and the hit-testing ([app.rowAt]). A frame that hid the
+	// transcript in the draw alone would keep answering clicks with rows nobody
+	// can see.
+	if a.startingChat() {
+		if a.welcomeFits() {
+			return nil, height
+		}
+		// A window too small for the unit still gets the page: the box falls back
+		// to the foot of the frame where it lives on every other screen, and this
+		// row is what says which page it belongs to.
+		return []row{{text: a.pal.dim(fit(startTinyWord, width)), entry: -1}}, max(0, height-1)
+	}
 	if a.copy.on {
 		return a.copyRows(width, height)
+	}
+	// AND A QUESTION OPENED OUT INTO ITS OWN PAGE IS THE FOURTH ANSWER, on the
+	// room's own terms and above it (questionroom.go): a question is drawn over
+	// whatever it was raised about, and a node's page is one of the things it can
+	// be raised about.
+	if a.questionRoomOpen() {
+		return a.questionRoomWindow(width, height)
 	}
 	if a.roomOpen() {
 		return a.roomWindow(width, height)
@@ -993,10 +1082,27 @@ func (a *app) rowAt(y int) (row, bool) {
 	if a.railFull() {
 		return row{}, false
 	}
+	// AND SO DOES THE NEW-CHAT START PAGE, for the same reason said about a page
+	// rather than a column (chatstart.go): the conversation is not drawn under it
+	// ([app.bodyRows]), and a pointer answered from a transcript nobody can see
+	// would expand tool calls and open task pages belonging to the conversation
+	// the person has just stepped away from. The page's own rows are the
+	// greeting's, and they are hit-tested as chrome ([app.chromeAt]).
+	if a.startingChat() {
+		return row{}, false
+	}
 	// The body starts AT the top of its region and the padding falls below it
 	// (see the frame's own note), so a screen row resolves by distance from the
 	// top with nothing to subtract. A pointer on the slack lands past the end of
 	// the row list and gets nothing, which is what it should get.
+	if a.questionRoomOpen() {
+		body, _ := a.questionRoomWindow(a.bodyWidth(), a.viewHeight())
+		at := y - top
+		if at < 0 || at >= len(body) {
+			return row{}, false
+		}
+		return body[at], true
+	}
 	if a.roomOpen() {
 		body, _ := a.roomWindow(a.bodyWidth(), a.viewHeight())
 		at := y - top
@@ -1047,28 +1153,38 @@ func (a *app) topHeight() int { return a.headHeight() + a.stripHeight() }
 // through, rather than at the frame — a header the frame drew and the scrolling
 // did not know about would put the room's last row under the input box.
 func (a *app) headHeight() int {
-	// The same floor the rule and the blank above the draft stand on: a terminal
-	// too short for breathing room is too short for a header, and what is
-	// happening is still on the status line.
-	if a.room == nil || a.breathingRows() == 0 {
-		return 0
-	}
-	// AND THE SAME FLOOR THE HEADER ITSELF STANDS ON. [app.roomHead] draws
-	// nothing at all under [roomHeadFloor] columns — there is not a trail and a
-	// way out's worth of line down there — so a row charged for here would be a
-	// row the frame never drew, and every hit-test on the page would land one line
-	// from where it was aimed.
+	// THE PULSE AND THE TAB STRIP ARE THE FIRST OF THOSE ROWS AND ARE CHARGED
+	// FOR HERE, on the strip's own two floors (chattabs.go's [app.tabsHeight]):
+	// they are drawn over the conversation and over every page inside it,
+	// because which conversation this is stays true wherever you have walked to
+	// inside one.
+	//
+	// AND THE SEAM UNDER THE STRIP — the rule and the blank that are the head's
+	// last two rows on every frame, a room's included — which is what closes the
+	// head off from the transcript and from the roster beside it on a terminal
+	// whose background this program does not control (chattabs.go's
+	// [app.headSealHeight]).
 	width, _ := a.size()
-	if width < roomHeadFloor {
-		return 0
+	head := a.tabsHeight(width) + a.headSealHeight(width)
+	if a.room == nil {
+		// AND THE CONVERSATION ITSELF HAS NO TRAIL ROW. `main` with nothing after
+		// it is the tab above it said twice, and the emptiness law is exactly this:
+		// a row that carries no news is a row that is not drawn.
+		return head
 	}
+	// A ROOM'S OWN ROWS ARE CHARGED FOR THROUGH THEIR OWN LADDER, which knows the
+	// two floors the header stands on — too narrow for a trail and a way out, too
+	// short for breathing room — and which of its two rows a short frame can
+	// afford (room.go's [app.roomHeadHeight]). It is asked rather than counted off
+	// a rendered slice, because this runs before anything is drawn.
+	//
 	// THE KIN ROWS ARE PART OF THE PINNED REGION AND ARE CHARGED FOR HERE, for
-	// exactly the reason the header's own row is: they are drawn above the body
+	// exactly the reason the header's own rows are: they are drawn above the body
 	// by the frame, and rows the scrolling has not subtracted push the room's
 	// last row under the input box. They are asked at the frame's OWN width,
 	// which is the width [app.view] hands the header, so the count here and the
 	// rows drawn there can never disagree (room.go's [app.roomKinRows]).
-	return 1 + len(a.roomKinRows(width))
+	return head + a.roomHeadHeight(width) + len(a.roomKinRows(width))
 }
 
 // scrollPage is how many rows one pgup or pgdown moves: a screenful less a line
@@ -1219,7 +1335,7 @@ func (a *app) resized(width, height int) tea.Cmd {
 		return nil
 	}
 	a.sizing = true
-	return tea.Tick(resizeGrace, func(time.Time) tea.Msg { return resizeSettledMsg{} })
+	return surfaceTick(resizeGrace, func(time.Time) tea.Msg { return resizeSettledMsg{} })
 }
 
 // follow is what every append calls: content grew, and a reader at the live

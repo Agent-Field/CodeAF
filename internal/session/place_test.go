@@ -127,19 +127,28 @@ func TestASubmissionStampsTheFolder(t *testing.T) {
 func TestTheEarnedNameReachesTheFolder(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "0123456789abcdef")
 	place := Place{Dir: dir}
-	completer := &scriptedCompleter{steps: []step{
-		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("noted"), nil },
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return textResponse("the flickering box"), nil
-		},
-	}}
+	completer := namedTurn(t, "noted", "the flickering box")
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.Place = Place{Dir: dir, Workspace: config.Workspace}
 		config.SessionFile = place.Transcript()
 	})
 	collect(t, mustSubmitTo(t, agent, "why does the box flicker?"))
+	// The naming runs beside the turn now (title.go), so the folder is read
+	// once the session says it has a name rather than when the turn ends.
+	if got := awaitTitle(t, agent); got != "the flickering box" {
+		t.Fatalf("the session named itself %q", got)
+	}
 
-	meta, _ := LoadMeta(dir)
+	// The stamp is written after the name is recorded and outside the agent's
+	// lock (placemeta.go), so the folder is waited on rather than read once.
+	var meta Meta
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if meta, _ = LoadMeta(dir); meta.Title == "the flickering box" {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
 	if meta.Title != "the flickering box" {
 		t.Fatalf("the folder is called %q, want the name the session gave itself", meta.Title)
 	}

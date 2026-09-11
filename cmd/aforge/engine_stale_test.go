@@ -20,6 +20,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
 	"github.com/Agent-Field/aforge-v2/internal/enginehost"
 	"github.com/Agent-Field/aforge-v2/internal/remote"
 )
@@ -136,10 +137,14 @@ func shortEngineHome(t *testing.T) {
 func TestAHostOfThisBuildIsSplicedOntoWithoutAWord(t *testing.T) {
 	shortEngineHome(t)
 	workspace := "/home/somebody/api"
-	standIn(t, workspace, remote.HostSelf{Version: remote.Version}, false)
+	standIn(t, workspace, remote.HostSelf{Version: remote.Version, Build: buildinfo.Identity()}, false)
 
-	if err := clearStaleEngineHost(workspace); err != nil {
+	note, err := clearStaleEngineHost(workspace)
+	if err != nil {
 		t.Fatalf("a host of this build was not attached to: %v", err)
+	}
+	if note != "" {
+		t.Fatalf("a host of this build owed a sentence: %q", note)
 	}
 }
 
@@ -151,7 +156,7 @@ func TestAHostOfAnotherBuildIsRetiredRatherThanAttachedTo(t *testing.T) {
 	// THE WHOLE POINT: the door does not hand a new surface to an old build. It
 	// gets that build out of the way, and the line after this one starts a
 	// fresh host from the binary that is on disk now.
-	if err := clearStaleEngineHost(workspace); err != nil {
+	if _, err := clearStaleEngineHost(workspace); err != nil {
 		t.Fatalf("a host of another build was not cleared: %v", err)
 	}
 	if conn, err := enginehost.Dial(workspace); err == nil {
@@ -165,7 +170,7 @@ func TestAHostOfAnotherBuildWithWorkInFlightIsRefusedAndNotKilled(t *testing.T) 
 	workspace := "/home/somebody/api"
 	standIn(t, workspace, remote.HostSelf{Version: remote.Version - 1, Busy: true}, false)
 
-	err := clearStaleEngineHost(workspace)
+	_, err := clearStaleEngineHost(workspace)
 	var stale *staleHost
 	if !errors.As(err, &stale) {
 		t.Fatalf("a busy older host answered %v, want a refusal", err)
@@ -194,7 +199,7 @@ func TestAHostTooOldToBeAskedIsRefusedInWordsAndLeftAlone(t *testing.T) {
 	workspace := "/home/somebody/api"
 	standIn(t, workspace, remote.HostSelf{}, true)
 
-	err := clearStaleEngineHost(workspace)
+	_, err := clearStaleEngineHost(workspace)
 	var stale *staleHost
 	if !errors.As(err, &stale) {
 		t.Fatalf("a host that cannot be asked answered %v, want a refusal", err)
@@ -221,7 +226,71 @@ func TestAHostTooOldToBeAskedIsRefusedInWordsAndLeftAlone(t *testing.T) {
 // not a decision at all: the attach that follows starts a host.
 func TestNothingHoldingTheWorkspaceIsNotARefusal(t *testing.T) {
 	shortEngineHome(t)
-	if err := clearStaleEngineHost("/home/somebody/api"); err != nil {
+	if _, err := clearStaleEngineHost("/home/somebody/api"); err != nil {
 		t.Fatalf("an empty machine answered %v", err)
 	}
+}
+
+// Protocol compatibility cannot establish that a daemon includes today's fixes.
+func TestASameProtocolHostOfAnotherBuildIsRetired(t *testing.T) {
+	for _, stamp := range []string{"previous-build", ""} {
+		t.Run(stamp, func(t *testing.T) {
+			shortEngineHome(t)
+			workspace := "/home/somebody/api"
+			standIn(t, workspace, remote.HostSelf{Version: remote.Version, Build: stamp}, false)
+			if _, err := clearStaleEngineHost(workspace); err != nil {
+				t.Fatal(err)
+			}
+			if conn, err := enginehost.Dial(workspace); err == nil {
+				_ = conn.Close()
+				t.Fatal("stale same-protocol host still answers")
+			}
+		})
+	}
+}
+
+// A HOST ONE BUILD BEHIND, HOLDING WORK, IS ATTACHED TO AND NOT REFUSED. It used
+// to be the third refusal on this road, and the sentence it printed —
+// `run aforge engine --stop` — would have ended the very conversation the person
+// was trying to get back on screen. It speaks this build's wire, so it is joined,
+// and the entry notice carries one line saying which state the machine is in.
+func TestASameProtocolBusyOlderBuildIsAttachedToAndSaysSo(t *testing.T) {
+	shortEngineHome(t)
+	workspace := "/home/somebody/api"
+	standIn(t, workspace, remote.HostSelf{Version: remote.Version, Build: "previous-build", Busy: true}, false)
+	note, err := clearStaleEngineHost(workspace)
+	if err != nil {
+		t.Fatalf("a busy host on this wire was refused: %v", err)
+	}
+	if !strings.Contains(note, "older aforge") {
+		t.Fatalf("the notice did not say the engine is an older build: %q", note)
+	}
+	if !strings.Contains(note, "goes quiet") {
+		t.Fatalf("the notice did not say when it picks up this build: %q", note)
+	}
+	if strings.Contains(note, "--stop") {
+		t.Fatalf("the notice still sends somebody off to stop their own work: %q", note)
+	}
+	conn, err := enginehost.Dial(workspace)
+	if err != nil {
+		t.Fatalf("busy host was stopped: %v", err)
+	}
+	_ = conn.Close()
+}
+
+// AND A DIFFERENT WIRE STILL IS REFUSED, busy or not: there is no attaching to a
+// peer whose frames this build cannot read.
+func TestABusyHostOnAnotherWireIsStillRefused(t *testing.T) {
+	shortEngineHome(t)
+	workspace := "/home/somebody/api"
+	standIn(t, workspace, remote.HostSelf{Version: remote.Version - 1, Busy: true}, false)
+	var stale *staleHost
+	if _, err := clearStaleEngineHost(workspace); !errors.As(err, &stale) {
+		t.Fatalf("wanted explicit busy refusal, got %v", err)
+	}
+	conn, err := enginehost.Dial(workspace)
+	if err != nil {
+		t.Fatalf("busy host was stopped: %v", err)
+	}
+	_ = conn.Close()
 }

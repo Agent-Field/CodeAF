@@ -4,10 +4,36 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 )
+
+func TestDocumentedSessionAffinitySurvivesAChangedPrompt(t *testing.T) {
+	for _, key := range []string{"conversation", strings.Repeat("long-lineage", 40)} {
+		t.Run(fmt.Sprintf("key-bytes-%d", len(key)), func(t *testing.T) {
+			client, recorded := pinningClient(t, StaticRouting(RoutingLatency), 0, 0, false,
+				answering(ok(answerFrom("quicksilver", 90000, 0, 0))))
+			for _, prompt := range []string{"before compaction", "changed opening after compaction", "continue"} {
+				if _, err := client.CompleteWithMessages(lineage(key), userMessages(prompt)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var session string
+			for _, headers := range recorded.headers {
+				got := headers.Get("X-Session-Id")
+				if got == "" || len(got) > 256 || session != "" && got != session {
+					t.Fatalf("invalid or changing session identity: %q", got)
+				}
+				session = got
+			}
+			if order := orderOn(t, recorded, 2); len(order) == 0 || order[0] != "quicksilver" {
+				t.Fatalf("cold but successful compaction displaced the endpoint: %v", order)
+			}
+		})
+	}
+}
 
 // ── THE ENDPOINT THAT HOLDS THE CACHE ───────────────────────────────────────
 //
@@ -15,7 +41,7 @@ import (
 // moves, and each move re-sent a 94k-token transcript to a machine that had
 // never seen it: $0.00846 cold against $0.00179 warm for the same context.
 // These tests pin the answer — a lineage asks for the endpoint that served it
-// last, and lets go only when that endpoint fails it, loses the cache, or
+// last, and lets go only when that endpoint fails it or
 // charges above the ceiling.
 
 // answerFrom is one router answer, spelled the way OpenRouter spells it under
@@ -189,10 +215,9 @@ func TestAFailedRequestLetsGoOfTheEndpointItWasPinnedTo(t *testing.T) {
 	}
 }
 
-// A COLD ANSWER FROM THE PINNED ENDPOINT ENDS THE PIN. The cache we came back
-// for is gone, so coming back again buys nothing, and this is what stands in for
-// an expiry nobody could have guessed a constant for.
-func TestAZeroCacheReadOnALongPromptEndsThePin(t *testing.T) {
+// A COLD ANSWER CAN WARM THE NEXT REQUEST. Releasing this provider would pay
+// for another cold prefix elsewhere, even though this endpoint just served us.
+func TestAZeroCacheReadOnALongPromptKeepsTheSuccessfulEndpoint(t *testing.T) {
 	client, recorded := pinningClient(t, StaticRouting(RoutingLatency), 0, 0, false,
 		answering(
 			ok(answerFrom("quicksilver", 90000, 89000, 0)),
@@ -207,18 +232,18 @@ func TestAZeroCacheReadOnALongPromptEndsThePin(t *testing.T) {
 	if got := orderOn(t, recorded, 1); !equalStrings(got, []string{"quicksilver"}) {
 		t.Fatalf("second request order = %v, want the pin", got)
 	}
-	if got := orderOn(t, recorded, 2); len(got) != 0 {
-		t.Fatalf("order after a cold answer = %v, want nothing — the cache it was for is gone", got)
+	if got := orderOn(t, recorded, 2); !equalStrings(got, []string{"quicksilver"}) {
+		t.Fatalf("order after a cold answer = %v, want the successful endpoint", got)
 	}
 }
 
 // A SHORT PROMPT'S ZERO IS NOISE, NOT EVIDENCE. Endpoints report cache reads in
 // blocks, so a small request honestly reads nothing back even on the machine
 // that just answered it, and a lineage must not throw a warm cache away over a
-// rounding rule (affinity.go's pinPrefixFloor).
+// rounding rule.
 func TestAZeroCacheReadOnAShortPromptKeepsThePin(t *testing.T) {
 	client, recorded := pinningClient(t, StaticRouting(RoutingLatency), 0, 0, false,
-		answering(ok(answerFrom("quicksilver", pinPrefixFloor-1, 0, 0))))
+		answering(ok(answerFrom("quicksilver", 100, 0, 0))))
 	ctx := lineage("conversation-1")
 	for _, prompt := range []string{"hello", "again", "once more"} {
 		if _, err := client.CompleteWithMessages(ctx, userMessages(prompt)); err != nil {

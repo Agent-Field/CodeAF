@@ -111,6 +111,7 @@ func TestAShortenedEditStatIsAFloor(t *testing.T) {
 // FOLLOWS: fragment by fragment it shows the last lines, not the first.
 func TestAFormingWriteShowsTheFileArriving(t *testing.T) {
 	a, _ := formingTurn(t)
+	showLiveWork(t, a)
 
 	head := `{"path":"notes.go","content":"package main\nfunc first() {}\n`
 	drive(t, a, streamEventMsg{gen: a.gen, ev: forming("c1", "write", "write notes.go", head)})

@@ -354,6 +354,13 @@ func (r *runModels) CompleteWithMessages(ctx context.Context, messages []ai.Mess
 	switch {
 	case isPlannerCall(messages):
 		kind = "planner"
+	case isTitleCall(messages):
+		// AND NEITHER IS THE SESSION'S OWN NAMER. It is started when the first
+		// message is accepted rather than when the turn ends (title.go), so it
+		// is in flight beside the run's own calls instead of after them —
+		// counting it as a node made the first assertion here about the title
+		// role's tier.
+		kind = "titler"
 	case isNameCall(messages):
 		// THE NAMER IS NOT PART OF THE RUN. It is one cheap call that turns the
 		// run's goal into the two or three words its row is drawn under

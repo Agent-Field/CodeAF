@@ -76,7 +76,7 @@ func pressFarCard(t *testing.T, a *app) {
 	_, hits, _, _ := a.taskSheetFrame(width, height)
 	row := -1
 	for y, hit := range hits {
-		if hit.kind == taskSheetHitRow {
+		if _, worker := a.tasksFiltered().at(a.tasksFiltered().lay(width), hit.index); hit.kind == taskSheetHitRow && worker {
 			row = y
 			break
 		}
@@ -312,7 +312,7 @@ func TestAHostedTaskCardSaysItIsStillReading(t *testing.T) {
 	width, height := a.size()
 	_, hits, _, _ := a.taskSheetFrame(width, height)
 	for y, hit := range hits {
-		if hit.kind == taskSheetHitRow {
+		if _, worker := a.tasksFiltered().at(a.tasksFiltered().lay(width), hit.index); hit.kind == taskSheetHitRow && worker {
 			a.taskSheetPress(2, y)
 			break
 		}

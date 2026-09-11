@@ -96,17 +96,18 @@ import (
 //	                  harnesses are unavailable rather than listing THIS
 //	                  machine's and offering to run them there.
 //	BUILDING a harness
-//	                  OFF, and off at the engine rather than here
-//	                  (cmd/aforge's engine.go nils Config.HarnessStore). The
-//	                  design lane is a standing subscription on the agent
-//	                  ([designAgent.HarnessDesigns]) and a remote handle has no
-//	                  such method, so this surface never subscribes — a design
-//	                  left switched on would have spent two model calls and
-//	                  raised its keep-or-drop card into a room with nobody in
-//	                  it. Turning it off at the far end means the model does not
-//	                  have the verb and says so. RUNNING one that already exists
-//	                  is unaffected: that rides Harnesses and RunHarness, which
-//	                  the engine still fills.
+//	                  ON, and on at both ends. It was off for as long as the
+//	                  design lane — a standing subscription on the agent
+//	                  ([designAgent.HarnessDesigns]) — had no door on this wire:
+//	                  a design left switched on would have spent two model calls
+//	                  and raised its keep-or-drop card into a room with nobody in
+//	                  it. internal/remote carries that subscription now and the
+//	                  remote handle answers WatchHarnessDesigns, so this surface
+//	                  subscribes exactly as a local one does and the card's
+//	                  answer crosses back through ResolveHarness. The same is
+//	                  true of the subharness intake card, whose answer crosses as
+//	                  ResolveSubharness. RUNNING one that already exists was
+//	                  never affected: that rides Harnesses and RunHarness.
 //	the task rail     DRAWN from this conversation's rows in the far world. A
 //	                  running or landed row opens immediately: Task.Room brings
 //	                  the bounded journal tail on the room's own beat, and the
@@ -331,7 +332,19 @@ func (a *app) hostedPath(path string) string {
 // this is the narrowest true statement of what is off, and the card, the offer
 // row and the enter key all read it rather than each deciding for themselves.
 func (a *app) hostedBrowserSignIn() bool {
-	return a.hosted() && a.asksConnect() && (!a.connAsks[0].needsKey || a.connAsks[0].blank != "")
+	head, ok := a.connectAsking()
+	if !ok {
+		return false
+	}
+	ask, found := a.connAskOf(head.question.Token())
+	return found && a.hostedBrowserSignInFor(ask)
+}
+
+// hostedBrowserSignInFor is the same sentence about ONE offer, which is what the
+// offer's own question is built from before it is on the block to be found by
+// [app.hostedBrowserSignIn] (connect.go's [app.connectShown]).
+func (a *app) hostedBrowserSignInFor(ask connAsk) bool {
+	return a.hosted() && (!ask.needsKey || ask.blank != "")
 }
 
 // pathRoot is where a relative path the person typed is anchored.

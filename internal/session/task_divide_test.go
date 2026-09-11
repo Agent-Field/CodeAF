@@ -1196,7 +1196,7 @@ func TestEachPartCarriesItsOwnDoneConditionAndTheParentKeepsTheOriginal(t *testi
 		}
 		// The checker sees the acceptance and nothing else about the goal, so the
 		// question it is actually asked is where this has to be true.
-		question := auditQuestion(kids[i], taskTree{}, auditGround{}, auditDoor{}, landingFiles{}, "", nil)
+		question := auditQuestion(kids[i], taskTree{}, auditGround{}, auditDoor{}, checkGround{}, landingFiles{}, "", nil)
 		if !strings.Contains(question, want) {
 			t.Fatalf("the checker for part %d was asked %q, want its own done-condition", kids[i].id, question)
 		}
@@ -1210,7 +1210,7 @@ func TestEachPartCarriesItsOwnDoneConditionAndTheParentKeepsTheOriginal(t *testi
 	if got := nest.parent.acceptance(); got != original {
 		t.Fatalf("the whole job is now finished against %q, want the condition it was admitted with", got)
 	}
-	if strings.Contains(auditQuestion(nest.parent, taskTree{}, auditGround{}, auditDoor{}, landingFiles{}, "", nil), alphaDone) {
+	if strings.Contains(auditQuestion(nest.parent, taskTree{}, auditGround{}, auditDoor{}, checkGround{}, landingFiles{}, "", nil), alphaDone) {
 		t.Fatal("the whole job is being checked against one of its parts' conditions")
 	}
 }
@@ -1485,7 +1485,8 @@ func TestTheManualMentionsTheDivisionVerb(t *testing.T) {
 	// and wrong in exactly the way that gate exists to catch.
 	nest := newDivideNest(t, wideBrief, 0)
 	found := false
-	for _, tool := range nest.node.belt() {
+	nest.node.tools = nest.node.belt()
+	for _, tool := range nest.node.offeredTools() {
 		if !manual.Chat().Mentions(tool.Name) {
 			t.Errorf("no chat manual page mentions the %s tool — add it to internal/manual/chat/", tool.Name)
 		}
@@ -1582,6 +1583,17 @@ func TestAProposalThatNeverSaidItWasWideIsTheTaskItAlwaysWas(t *testing.T) {
 // default. A live session announced "a broad multi-source sweep, so I'm
 // launching an adaptive research run" while every one of these read the other
 // way round.
+//
+// AND THE LAW NARROWED ON 2026-09-10 TO A WIDE **CHANGE**, which is what these
+// needles now spell. The road is unchanged and so is the reason for it — one
+// worker opens the material and hands the real parts out, because nobody can
+// see the parts from the request — but it was written as "WIDE WORK" and a real
+// model applied it to a READ: asked for a survey of four packages it said "wide
+// survey across four packages, sizing it before I hand it off" and bought a
+// worktree, a check and a landing for four files nothing was going to write.
+// A wide read is quick tasks now (task_quick.go's judge), so the pin below
+// asserts BOTH halves — that a wide change still comes here, and that the page
+// no longer sends a read here with it.
 func TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.OrchestrateRunner = neverRuns
@@ -1592,7 +1604,7 @@ func TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner(t *testing.T) {
 	if !found {
 		t.Fatal("the belt has no propose_task")
 	}
-	for _, want := range []string{"WIDE WORK", "`wide`", "do not reach for a planner"} {
+	for _, want := range []string{"A WIDE CHANGE", "`wide`", "do not reach for a planner"} {
 		if !strings.Contains(task.Description, want) {
 			t.Errorf("propose_task never says %q, so nothing tells the model wide work belongs here", want)
 		}
@@ -1612,8 +1624,20 @@ func TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner(t *testing.T) {
 	// ONE SOURCE OF TRUTH: the prompt may not advertise the planner as the way
 	// to parallelize while the belt says otherwise.
 	rendered := renderSystem(agent.config)
-	if !strings.Contains(rendered, "WIDE WORK") || !strings.Contains(rendered, "with `wide`") {
-		t.Error("prompts/system.md does not route wide work to propose_task")
+	if !strings.Contains(rendered, "and landed on its own") || !strings.Contains(rendered, "with `wide`") {
+		t.Error("prompts/system.md does not route a wide change to propose_task")
+	}
+	// AND THE OTHER HALF, WHICH IS THE HALF THAT WAS MISSING. A page that routes
+	// a wide change here and says nothing about the work whose answer comes back
+	// to be read leaves the model to generalise, and the generalisation it made
+	// was to buy a worktree for a survey.
+	if !strings.Contains(rendered, "carry on with is quick") || !strings.Contains(rendered, "`"+quickTaskToolName+"`") {
+		t.Error("prompts/system.md does not route work whose result is read back to a quick task")
+	}
+	// AND THE CLOCK, which is a decision and not a rule: a model that is never
+	// told what a hand-off buys does independent pieces one after another.
+	if !strings.Contains(rendered, "cost the longest of them alone") {
+		t.Error("prompts/system.md never tells the model what handing pieces out in one breath buys")
 	}
 	// AND THE PROMPT SAYS THE ABSENCE OUTRIGHT. The page used to argue that the
 	// planner was the exception, which is a sentence that only makes sense while
@@ -1622,7 +1646,7 @@ func TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner(t *testing.T) {
 	if !strings.Contains(rendered, "THERE IS NO PLANNER ON YOUR BELT") {
 		t.Error("prompts/system.md does not tell the model it has no planner")
 	}
-	if !strings.Contains(systemPrompt, "Wide\nwork is one task that hands its own parts out once the material shows the width\nis real") {
+	if !strings.Contains(systemPrompt, "A change too wide for one\nworker is one task with `wide` set, which hands its own parts out once the\nmaterial shows the width is real") {
 		t.Error("prompts/system.md does not name the road that replaced the planner")
 	}
 	// And the sentences that produced the live reflex are gone rather than merely
@@ -2114,6 +2138,72 @@ func TestOneFileNamedTwoWaysIsStillOneFileAndProseIsNotAClaim(t *testing.T) {
 		{"a file two briefs name is not a claim either", []dividePart{
 			{Brief: "the figures go towards reports/a.md", Acceptance: "reports/a.md holds the north"},
 			{Brief: "reports/a.md is another part's; do not touch it", Acceptance: "reports/b.md holds the south"},
+		}, nil},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := scopeCollisions(test.parts, tree)
+			if len(got) != len(test.want) {
+				t.Fatalf("the parts collide on %v, want %v", got, test.want)
+			}
+			for i, want := range test.want {
+				if got[i] != want {
+					t.Fatalf("the parts collide on %v, want %v", got, test.want)
+				}
+			}
+		})
+	}
+}
+
+// AND ONE PHYSICAL FILE IS ONE CLAIM WHATEVER PATH REACHES IT. A part spells
+// its output the way it was standing, so two parts can name one file through a
+// symlinked ancestor and agree on nothing but the disk — /var and /private/var
+// on a Mac. Compared as words they owned two files, and two workers were sent to
+// write one.
+func TestPartsThatClaimOneFileThroughAnAliasCollide(t *testing.T) {
+	root := t.TempDir()
+	tree := filepath.Join(root, "real")
+	if err := os.MkdirAll(filepath.Join(tree, "reports"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A sibling whose name begins the same way, so that the alias is read at
+	// component boundaries rather than as a prefix.
+	if err := os.MkdirAll(filepath.Join(root, "real-old", "reports"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(root, "alias")
+	if err := os.Symlink(tree, alias); err != nil {
+		t.Skipf("this filesystem does not make symlinks: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(root, "real-old"), alias+"-old"); err != nil {
+		t.Fatal(err)
+	}
+	aliased := filepath.Join(alias, "reports", "a.md")
+
+	for _, test := range []struct {
+		name  string
+		parts []dividePart
+		want  []string
+	}{
+		// The relative name is the file this division's own tree would hold and
+		// it is not there yet, which is what a part's output normally is.
+		{"one output named relative and through an alias", []dividePart{
+			{Acceptance: "reports/a.md holds the north"},
+			{Acceptance: aliased + " holds the south"},
+		}, []string{aliased}},
+		{"one output named two ways in the same part", []dividePart{
+			{Acceptance: "reports/a.md is written, and " + aliased + " holds the figures"},
+			{Acceptance: "reports/b.md holds the figures"},
+		}, nil},
+		// READING IS NOT OWNING, through an alias as through any other spelling:
+		// the material both parts work from is named in the brief, and the brief
+		// claims nothing.
+		{"a shared input through an alias is not a claim", []dividePart{
+			{Brief: "read " + filepath.Join(alias, "reports", "plan.md"), Acceptance: "reports/a.md holds the north"},
+			{Brief: "read " + filepath.Join(alias, "reports", "plan.md"), Acceptance: "reports/b.md holds the south"},
+		}, nil},
+		{"a sibling reached through a lookalike alias is a different file", []dividePart{
+			{Acceptance: "reports/a.md holds the north"},
+			{Acceptance: filepath.Join(alias+"-old", "reports", "a.md") + " holds the south"},
 		}, nil},
 	} {
 		t.Run(test.name, func(t *testing.T) {

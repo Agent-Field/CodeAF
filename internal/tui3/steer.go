@@ -460,6 +460,13 @@ func (a *app) runSendOffered() bool {
 // the same predicate as its key, so a word in this line is a working gesture on
 // the frame that drew it.
 func (a *app) runHint() string {
+	if a.questionWriting() {
+		// WHILE THE BOX IS A QUESTION'S, THE QUESTION'S ROW IS THE HINT.
+		// `enter steers it in · esc interrupt` over a box whose enter answers
+		// a card and whose esc gives the box back would be two keys named
+		// wrong on one screen ([app.questionWritingRow] says them right).
+		return ""
+	}
 	parts := make([]string, 0, 4)
 	if send := a.typingHint(); send != "" {
 		parts = append(parts, strings.Split(send, hintSegment)...)
@@ -482,15 +489,6 @@ func (a *app) runHint() string {
 // full sentence and guarantees forward progress: one clause is the floor and
 // returns nothing, so [app.legend] can never loop on an unshortenable rung.
 func (a *app) hintShorter(slot string) string {
-	// A standing card has its own compact spelling, built from the same answer
-	// chips as its full row. Preserve that road before applying the running
-	// hint's right-to-left ladder below.
-	if a.awaitingStanding() && slot == standAskHint(a.stand) {
-		if short := standAskHintShort(a.stand); short != slot {
-			return short
-		}
-		return ""
-	}
 	full := a.runHint()
 	if slot == "" || slot != full && !strings.HasPrefix(full, slot+hintSegment) {
 		return ""

@@ -147,7 +147,7 @@ turns into a conversation.
 
 ## I updated aforge on that machine and it still says the versions differ
 
-It works on the next connection, and there is nothing left to clean up by hand.
+The next connection checks the running build as well as protocol compatibility. An idle old copy is replaced automatically; a busy one is left running and the connection explains how to retire it.
 
 Something over there holds your conversation between connections. It is started by the
 first connection and outlives it, which is what lets a turn keep running after you close
@@ -157,7 +157,7 @@ the old one is still answering, which is how you can be told to update something
 updated an hour ago.
 
 So before it hands your window over, `aforge engine` asks whatever is already holding that
-workspace which build it is. Three things can be true:
+workspace which build it is. The check includes the source/build stamp even when the wire protocol has not changed; a host too old to report a build stamp is treated as an older copy. Three things can be true:
 
 - **It is this build.** Your window attaches to it exactly as before. This is the ordinary
   case, and it costs one question on a local socket.
@@ -257,8 +257,8 @@ Yes, and they show **the far machine's**.
 
 `space` `space` opens the home of the machine your session runs on: its projects, its
 conversations, what each of them ran, and what keeps an eye on it. `enter` on a row opens
-that conversation — the engine swaps to it and this window keeps drawing, the same door
-`aforge resume` uses locally. The right end of the tab bar reads `on <machine>` so you can
+that conversation beside the one you are in — the engine gives it a connection of its own
+and the chat you came from keeps running, the same door `aforge resume` uses locally. The right end of the tab bar reads `on <machine>` so you can
 see whose afternoon you are looking at, and it is not there at all on a local session.
 
 Three of the seven places still read the machine this window is running on, and each says so
@@ -268,6 +268,36 @@ under *The places over --host*.
 
 This is new. Home over a connection used to draw one dim line saying its projects belonged
 to the wrong machine, and before that it refused to open.
+
+## Can I accept a task, or say it is not right, from a connected window
+
+Yes. A landing that comes home as **your call** draws the same card here that it draws on
+the machine it ran on — the reason on one row and `[a] accept · [n] not right · [s] tell it`
+under it, with `[d] let aforge decide this one` beside them — and every one of those keys is
+spent on the engine that owns the work. A conflict's `[a] resolve it` spends its merge round
+over there too.
+
+This was broken until 2026-09-09 and the way it was broken is worth knowing, because you may
+still meet it against an older engine. The keys were never refused: the **answers row was
+not drawn at all**. You saw
+
+```
+? ◆ Port the parser · your call · 42s · 1 file
+  nobody could check it
+```
+
+and nothing under it. That is aforge's rule about capabilities doing exactly what it is
+written to do — a control with nothing behind it is left off rather than offered and failing
+— and what had nothing behind it was the connection: the four doors that decide a landing
+had never been given a way to cross it.
+
+So if a card asks and offers you nothing, the engine at the other end is older than this
+build. Update it and reconnect. Everything else about the card is unchanged: the reason is
+always drawn, whether or not anything can be pressed, because what is being asked is worth
+knowing even where you cannot answer it from this window.
+
+A **reading** window — one opened only to watch a task's page — is refused these keys on
+purpose, and says `this window is reading this conversation, not typing into it`.
 
 ## How do I work on the same conversation from two computers — another window, and another machine
 
@@ -334,6 +364,61 @@ If the link drops, those figures **stop moving and stay where they were** rather
 emptying out — which is the truth, because the conversation is not moving either. The
 `connection` segment says what is happening, and everything comes back up to date the
 moment the link does.
+
+## Make a hosted conversation think harder — ctrl+v, /effort and the thinking rung over --host
+
+**It works, and the rung is set on the machine the conversation is running on.** The line
+above your message box names it beside the model — `glm-5.3-flash · ⠿ high` — and all
+three doors reach across: `ctrl+v` walks it a step, pressing it walks it a step, and
+`/effort` opens the six rows or takes one outright (`/effort max`). A hosted conversation
+nobody has dialled reads `⠿ auto`, exactly as a local one does, and `/effort auto` clears
+it back there.
+
+The word you see is the rung **that machine** resolved, not the one this one would have
+picked: the ladder is decided where the turn is made, so a level dialled onto the model
+over there still wins over there. Setting it is one trip across; drawing it is none — it
+rides the same fact set the model and the money ride down on.
+
+An engine too old to know the ladder says so when the connection opens, and then there is
+**no rung on the line at all**, the chord does nothing, and `/effort` says
+`how hard this conversation thinks is unavailable — this session has no dial onto it`.
+That is the absence law rather than a knob that silently fails: update the engine on that
+machine and reconnect.
+
+A task's own rung is separate and also crosses — see "Change the model or thinking inside
+a task".
+
+## Do I still see the speed and which machine answered when the engine is elsewhere
+
+Yes. All of it crosses the connection, and it is the same row you read locally.
+
+- **The live rate at the right edge** — `38 tok/s` — while the answer is being written.
+- **`via <machine>`** beside the model on the line above the message box, as soon as the
+  machine writing the answer has named itself and then for the answer that came back:
+  the lane that actually served it, and `via parasail · rescued` when a second machine
+  finished what the first one started.
+- **The phase words** on the row while a request is in flight: `connecting · 1.2s`,
+  `first word · 3.1s → parasail at 4.4s`, `thinking · 12s · friendli 38 t/s`,
+  `writing · 4s · friendli 61 t/s`, `paced · retry in 6s`, `trying again · 2 of 6`.
+- **The `served` row in `/status`** — the endpoint the last answer came from.
+
+**An engine too old to send them says so**, once, after an answer: `this conversation's
+engine is an older aforge, so the provider and tok/s are not shown — they come back once it
+picks up this build`. Nothing else changes; update aforge on that machine and reconnect.
+
+**Nothing is measured on this machine.** Every one of those figures is taken where the
+request is made, which is the machine running the conversation, and pushed down to you
+the moment it changes. So the clock counts the real wait on that machine, and the rate is
+that machine's throughput rather than a guess made from when bytes reached your terminal.
+
+**The clocks are rebuilt against your own.** What crosses is *how long* — how long this
+phase has lasted, how long is left before something is done about the wait — never a
+timestamp, because two machines need not agree about what time it is. A phase you stop
+hearing about goes quiet on the row after fifteen seconds, exactly as it does locally.
+
+**A phase that goes missing is never a wrong one.** If the link is busy the odd reading is
+dropped rather than queued, because every one of them is a claim about *now* and the next
+one is a second away.
 
 ## What does not work over --host
 
@@ -427,12 +512,22 @@ update the older aforge so both ends are the same build and reconnect.
 
 The task roster lists this far conversation's work. Its rows come from the far
    machine's task record, so `ctrl+g` reveals the same landed tasks beside the chat that
-   you would see while sitting at that machine. Opening one first says
-   `bringing this task's transcript from the other machine…`, then draws the task's own
-   transcript when it arrives. A running row opens too: its page reads the bounded tail on
-   its own beat, says `nothing on this page yet — it fills in as the task works` before the
-   first block, and fills as the far worker writes. `enter` steers that worker and `x`
-   stops it through the far engine. Changing its model is still absent.
+   you would see while sitting at that machine. Opening one draws what this window
+   already knows — the instruction, and what the far engine last said the work is doing —
+   and, while the read is genuinely on the wire, the line
+   `loading this task's conversation…` under it. The whole of that is replaced by the
+   task's own transcript when it arrives.
+
+   That line is a claim about a read in flight, so it is only ever drawn when there is
+   one. A page with no way to ask the other machine does not show it; it says
+   `nothing on this page yet — it fills in as the task works` instead, which is the honest
+   half of the same sentence. A read that came back with an error is a third thing again
+   and says so: `couldn't read this task's conversation · retrying`, with the instruction
+   still above it and the beat still going.
+
+   A running row opens too: its page reads the bounded tail on its own beat and fills as
+   the far worker writes. `enter` steers that worker and `x` stops it through the far
+   engine. Changing its model is still absent.
 
 9. **Starting tasks works on the far machine.** `/task <brief>`, `/task solo <brief>` and
    `/task adaptive <brief>` send the brief to that conversation's engine. The far machine
@@ -459,12 +554,12 @@ The task roster lists this far conversation's work. Its rows come from the far
     That is a fact about `/export` alone and no longer a fact about the connection — files do
     cross, both ways (*Attaching files*).
 
-12. **Building a new sub-harness is switched off**, and not for the reason it used to be. A
-    question raised while nobody is attached now *waits* for the next window — but a design's
-    card never reaches this connection at all, because it is announced on a subscription this
-    protocol has no door for rather than on a turn's stream. So there is nothing to hold. The
-    designer is not offered over `--host` and aforge says it cannot build one from here.
-    Running a harness that already exists is unaffected.
+12. **Building a new sub-harness works over a connection.** It did not use to: a design's
+    card is announced on a subscription rather than on a turn's stream, and this protocol had
+    no door for one, so the designer was switched off at the engine rather than left to raise
+    a page nobody would ever see. The wire carries that subscription now, and your answer —
+    keep it, or drop it — goes back the same way. Running a harness that already exists was
+    never affected.
 
 13. **Three of the seven places still read this machine.** Spend adds up the ledger every
     model call on the machine this window runs on writes into, search reads the index of what
@@ -496,11 +591,10 @@ The task roster lists this far conversation's work. Its rows come from the far
 
 ## Reminders and watches over --host — they work, and they belong to that machine
 
-**Standing items are the one ambient capability a connection does not take away.** A
-sub-harness design is switched off at the engine because its card would arrive in an empty
-room, and an adaptive run cannot be started from a conversation at all; this card is
-neither — it crosses the wire as an ordinary event and your answer crosses back as its own
-frame.
+**Standing items cross this wire as ordinary events**, and your answer crosses back as its
+own frame — which is why they were the one ambient capability a connection never took away,
+back when a design card and an adaptive run's gate had no road here at all. The design card
+has one now (*Building a new sub-harness*, above); the run's gate still does not.
 
 So `remind me at 6`, `tell me when CI on main goes red` and `every Monday post the standup`
 all work over `--host`. What to know is **whose machine they are on**:
@@ -517,8 +611,9 @@ all work over `--host`. What to know is **whose machine they are on**:
 **Home and the standing place both work, and both are about the far machine.** Home lists
 that machine's projects with each one's `◦` item band under it and the `p`/`s` keys live on
 them; the standing place lists both what stands on this conversation and what stands anywhere
-else on that machine. The status line's `◦ keeping an eye on 2` counts the far machine's items
-for the workspace this window is on, because over `--host` that path is the far machine's own.
+else on that machine. The `◦ 2 standing orders` count at the foot of the task column counts
+the far machine's items for the workspace this window is on, because over `--host` that path
+is the far machine's own.
 
 Two readings are absent over a connection, and each says nothing rather than guessing:
 
@@ -598,22 +693,22 @@ harnesses are unavailable here
 
 It does not list this machine's harnesses and offer to run them over there.
 
-**Building a new sub-harness is switched off over a remote connection.** The tools that
-design one are not on the far session's belt at all, so asking for one gets you a plain
-answer that it cannot be done from here — nothing starts and nothing is spent. The reason is
-that the card asking whether to keep the finished page is announced on a subscription this
-protocol has no door for, so it never crosses at all. A question that *does* cross and finds
-nobody attached is held for the next window; this one is not one of those. Build harnesses in a
-session running on that machine directly.
+**Building a new sub-harness works over a remote connection.** The tools that design one
+are on the far session's belt, the card asking whether to keep the finished page reaches
+this window on a subscription the wire now carries, and your answer goes back to the far
+machine. It runs there, on that machine's models and under that machine's rules, and the
+page it writes is saved there — which is where you would want it, since that is where the
+work is. The page is not copied to this laptop.
 
 **Adaptive runs are not something you can start here — and not because of the wire.** No
 conversation opens an adaptive run any more, on this machine or the far one: there is no
 command, no setting, no tool and no sentence that does it (*adaptive runs*, under *How do I
 start an adaptive run*). So a message beginning `orchestrate …` is an ordinary turn over
 `--host` for exactly the reason it is an ordinary turn locally. The remote session is also
-built with no adaptive runner at all, which is belt and braces rather than the reason: a
-run's fuel gate would arrive on the standing lane a connection does not carry, and a run
-that stopped at its cap would wait four hours for an answer nobody could give it.
+built with no adaptive runner, and that has not changed: a run's notes, its gauge and its
+spending gate arrive on a standing subscription this wire does not carry, and one that —
+unlike the harness lane's — replays nothing, so a gate raised while you were away would be
+lost rather than waiting for you.
 
 **Running a harness that already exists is unaffected.** The offer card rides the turn's
 own stream, so a turn whose words match a registered harness still asks you, and answering
@@ -730,3 +825,27 @@ machine answered. The session is closed when the turn ends.
 ```
 aforge resume opens the session picker; for one headless message use: aforge chat --host <dest> --once "text"
 ```
+
+## Reopening another tab through the local engine
+
+A new local-engine tab carries the window's launch settings, including that it
+is an interactive chat. Reopening that conversation by its session path uses
+those same settings and rejoins the engine's live work. It does not submit the
+message again or wait for its own pending question to finish in another window.
+Explicitly different launch flags still use the existing compatibility check.
+
+## Opening full-quality images from an SSH server
+
+To view an original image on your computer, run aforge locally with `--host` pointing
+to the server. The **[open original]** action, a click on the expanded picture, or
+**alt+o** fetches the remote file through the existing connection, checks its content,
+keeps a named local copy and opens that copy in your system viewer. Repeated opens
+reuse unchanged content; a changed remote file is refreshed. A local attachment
+keeps its local ownership and does not make that round trip.
+
+If you SSH into a server and run aforge there, the terminal application and its file
+opener are on that server. The original-file action explains how to use the local
+`--host` client and shows the original path so you can retrieve it yourself. It does
+not launch a viewer on a machine you are not sitting at. The optional cell preview
+still scrolls as ordinary terminal text; it cannot display screenshot text at full
+resolution. This distinction applies inside tmux too.

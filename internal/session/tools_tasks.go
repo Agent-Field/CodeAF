@@ -54,7 +54,22 @@ import (
 // comment beside it is free. Every rule the old description stated is still
 // stated; what went is the rhetoric, and the sentences the schema's own fields
 // say better. A rule belongs in the field it governs and appears ONCE.
-const tasksDescription = "Every task this project ever ran, and what runs now. No id searches; an id reads, steers, continues or settles one. \"continue task N\" / \"keep going on task N\" is id plus continue on a settled task — never a narration and never a new propose_task. Use it when the person means earlier work without pointing at it, or to look inside running work. Never to WAIT for handed-off work. A search also lists other windows' live work here, marked `another window`: no id in this conversation, so it cannot be read, steered, continued or resolved. Rows carry artifact and transcript URIs that read takes verbatim."
+//
+// AND THE STOP VERB IS SPELLED OUT IN IT rather than left to the field, because
+// the sentence a model has to have BEFORE it reaches for a field is which field
+// ends work. Asked to stop task 2, a model with no stop verb said "stop, do not
+// continue" into the task with `say`; the worker wrote down that it had been
+// told to stop, delivered nothing, and the check read that as an ordinary
+// unfinished run and opened a repair round on it. The task went on spending for
+// as long as it took somebody to notice.
+// AND THE ROUTING SENTENCE LEFT (2026-09-10, the prompt diet). "Use it when the
+// person means earlier work without pointing at it, or to look inside running
+// work" is a WHEN-TO-REACH rule, and a description is a CONTRACT: what the tool
+// does, what its fields take, what comes back. Which verb a request routes to is
+// stated once, on the page's own routing table, rather than once per tool here —
+// eighteen descriptions each carrying their own routing clause is the same table
+// written eighteen times and billed on every request of every turn.
+const tasksDescription = "Find prior or running tasks. No id searches; an id reads, steers, stops, forwards, continues or settles one. To END running work use stop: a say telling a task to stop is a message it may ignore, never a stop. Never to WAIT for handed-off work. A search also lists other windows' live work, marked `another window`: it has no id here, so none of those operations reach it."
 
 // The schema's `resolve` enum is INTERPOLATED from [TaskResolutions] rather
 // than typed out, because the landing note offers the same three words to the
@@ -70,17 +85,25 @@ const tasksDescription = "Every task this project ever ran, and what runs now. N
 var tasksSchemaJSON = `{"type":"object","properties":{` +
 	`"query":{"type":"string","description":"Matched against titles, ids and outcomes; omit for the newest."},` +
 	`"limit":{"type":"integer","description":"Rows to return (default: ` + strconv.Itoa(taskSearchLimit) + `, maximum: ` + strconv.Itoa(taskSearchCeiling) + `)"},` +
-	`"id":{"type":"string","description":"A task's id (\"7\") or name (\"fix-the-nil-map-crash\"). Running, it answers with its LIVE state."},` +
+	`"id":{"type":"string","description":"A task's id (\"7\") or name (\"fix-the-nil-map-crash\")."},` +
 	// The live answer is read off the running work itself (task_live.go) and
 	// names what it is doing this second, how long it has been at it, its steps,
 	// its spend and its last lines. That list is not spelled in the schema
 	// because the answer itself carries it, and this string is paid for on every
 	// request of every turn while this comment is free.
 	`"lines":{"type":"integer","description":"Tail lines of a running task (default: ` + strconv.Itoa(taskLiveDefaultTail) + `, maximum: ` + strconv.Itoa(taskLiveMaxTail) + `)"},` +
-	`"scope":{"type":"string","enum":` + taskScopeEnum + `,"description":"\"` + taskScopeProject + `\" (default) is this project alone; \"` + taskScopeEverywhere + `\" also lists live work in every OTHER project, grouped by project and as unreachable from here. A search only."},` +
-	`"say":{"type":"string","description":"A line into the RUNNING task named by id: a correction, or a fact it lacks. With resolve, it is the REASON; with continue, this round's finding."},` +
-	`"continue":{"type":"boolean","description":"The door for \"continue task N\" / \"keep going on task N\". Re-arm that settled task: same node, brief and working copy. A new propose_task is the wrong door."},` +
-	`"resolve":{"type":"string","enum":` + TaskResolveEnum() + `,"description":"Settles a task nobody could check. accept: done on your own reading, branch merged. reaudit: a fresh checker, task still waiting. refute: it and its dependents fail. Ask accept or refute only on evidence you read; prefer reaudit when the checker never answered."}` +
+	`"scope":{"type":"string","enum":` + taskScopeEnum + `,"description":"\"` + taskScopeProject + `\" (default) is this project alone; \"` + taskScopeEverywhere + `\" also lists live work in every other project, grouped by project and unreachable from here. A search only."},` +
+	`"say":{"type":"string","description":"A line into the running task named by id: a correction, or a fact it lacks. It ends nothing; stop is the door that ends work. With stop or resolve it is the reason, with continue this round's finding."},` +
+	`"stop":{"type":"boolean","description":"Ends the running task named by id, through the same door the person's own stop pulls: work halts where it stands, the branch is kept, nothing re-runs it. It asks no confirmation; say is the reason."},` +
+	`"continue":{"type":"boolean","description":"The door for \"continue task N\": re-arms that settled task with the same node, brief and working copy."},` +
+	`"resolve":{"type":"string","enum":` + TaskResolveEnum() + `,"description":"Settles a task nobody could check, only on evidence you read. accept: done, branch merged. reaudit: a fresh checker, and the answer when none came. refute: it and its dependents fail."},` +
+	// AND THE ONE OP THAT CARRIES SOMEBODY ELSE'S AUTHORITY says in its own
+	// description that the words are not yours to write, because that is the
+	// rule a model has to know BEFORE it reaches for the field. What it cannot
+	// do — supply the text, name a message, forward from a turn the person did
+	// not open — is refused by the runtime with its reason (task_forward.go), so
+	// the schema spends its bytes on the choice rather than on the law.
+	`"forward":{"type":"boolean","description":"Sends what the person just said into the running task named by id, verbatim and as theirs: the one door by which a correction typed here moves what that task is judged by. Their words go alone."}` +
 	`},"additionalProperties":false}`
 
 // tasksArguments is the wire form. The id is RAW because a model that has just
@@ -95,6 +118,8 @@ type tasksArguments struct {
 	ID       json.RawMessage `json:"id"`
 	Lines    int             `json:"lines"`
 	Say      string          `json:"say"`
+	Stop     bool            `json:"stop"`
+	Forward  bool            `json:"forward"`
 	Continue bool            `json:"continue"`
 	Resolve  string          `json:"resolve"`
 }
@@ -145,9 +170,11 @@ func taskScopeWord(raw string) (string, bool) {
 //   - id: that one task. Running, and the answer is read off the GRAPH — the
 //     same live source the surface's rail draws (task_live.go) — never off the
 //     index file, which by construction holds only work that is over.
-//   - id and say: the person's door into a running node ([Agent.SteerTask]),
-//     opened for the model. It is the same door and the same law: talk to the
-//     worker, never a new target.
+//   - id and say: a line into a running node ([Agent.relayToTask]). Same
+//     mechanics as the person's own door and the same law — talk to the worker,
+//     never a new target — but it arrives named as this conversation speaking,
+//     because the model is not the person and a worker that cannot tell them
+//     apart will read coordination as permission.
 //   - id and continue: the same node again ([Agent.ContinueTask]), after it
 //     failed or finished. Same brief, same working copy, last report as this
 //     round's finding. A new propose_task is the wrong door.
@@ -180,6 +207,12 @@ func (a *Agent) tasksTool() bare.Tool {
 				if strings.TrimSpace(parsed.Resolve) != "" {
 					return "Invalid arguments: resolve needs an id — it settles one task that needs a look, not a search", true, nil
 				}
+				if parsed.Forward {
+					return "Invalid arguments: forward needs an id — the person's words go to one running task, not to a search", true, nil
+				}
+				if parsed.Stop {
+					return "Invalid arguments: stop needs an id — it ends one running task, not a search", true, nil
+				}
 				return markTaskLook(ctx, a.taskSearchText(parsed.Query, parsed.Limit, scope)), false, nil
 			}
 			// THE SAME ANSWER TWICE IN ONE TURN SAYS SO (tasklook.go). It is the
@@ -187,7 +220,7 @@ func (a *Agent) tasksTool() bare.Tool {
 			// receipt and the description say the report comes to it, and this
 			// says the same thing again on the answer it is staring at. A refusal
 			// is left alone — it is not a look at anything.
-			answer, failed, err := a.oneTask(token, parsed)
+			answer, failed, err := a.oneTask(ctx, token, parsed)
 			if failed || err != nil {
 				return answer, failed, err
 			}
@@ -213,7 +246,7 @@ func (a *Agent) tasksTool() bare.Tool {
 func (a *Agent) taskSearchText(query string, limit int, scope string) string {
 	out := taskRowsTextLimit(a.taskRows(), query, limit)
 	if !a.tellsElsewhere() {
-		return out
+		return a.taskConversationHint(out)
 	}
 	now := time.Now()
 	if section := taskElsewhereText(a.Elsewhere().Tasks(), query, now); section != "" {
@@ -225,10 +258,19 @@ func (a *Agent) taskSearchText(query string, limit int, scope string) string {
 	// world.go's reading of the machine, cheap enough to take on a keystroke
 	// and still not a thing to take on a turn nobody asked the question in.
 	if scope != taskScopeEverywhere {
-		return out
+		return a.taskConversationHint(out)
 	}
 	if section := taskEverywhereText(a.OtherProjects(now), query, now); section != "" {
 		out += "\n" + section
+	}
+	return a.taskConversationHint(out)
+}
+
+// A miss in this project is not a miss everywhere. Only a final empty result
+// points at conversations, and only when that reader is on the caller's belt.
+func (a *Agent) taskConversationHint(out string) string {
+	if a.config.hasConversationHistory() && strings.HasPrefix(out, "No task matches ") && !strings.Contains(out, "\n") {
+		out += " If this was a conversation rather than handed-off work, search_conversations searches saved chats across places. A saved memory may suggest the answer but does not locate the original conversation; look up the source before answering."
 	}
 	return out
 }
@@ -455,9 +497,20 @@ func taskToken(raw json.RawMessage) string {
 // RESOLVE IS READ BEFORE SAY, and they are not two ways of doing one thing: say
 // talks to a worker that is still there, resolve decides about work that is
 // over. A call carrying both means the second, and `say` is its reason.
-func (a *Agent) oneTask(token string, parsed tasksArguments) (string, bool, error) {
+func (a *Agent) oneTask(ctx context.Context, token string, parsed tasksArguments) (string, bool, error) {
+	if parsed.Forward && (parsed.Continue || strings.TrimSpace(parsed.Resolve) != "") {
+		return "forward cannot be combined with continue or resolve; send one action at a time.", true, nil
+	}
+	// AND STOP IS THE ONE THAT CANNOT SHARE A CALL WITH ANYTHING. It ends the
+	// work; continue puts it back on, resolve settles what it produced, forward
+	// sends the person's words into it. A call carrying stop and one of those is
+	// two decisions about the same task in one breath, and there is no order to
+	// take them in that answers what the caller meant.
+	if parsed.Stop && (parsed.Continue || parsed.Forward || strings.TrimSpace(parsed.Resolve) != "") {
+		return "stop ends the task, so it cannot be combined with continue, resolve or forward; send one action at a time.", true, nil
+	}
 	rows := a.taskRows()
-	entry, found := LookupTask(rows, token)
+	entry, found := a.taskByToken(rows, token)
 	if !found {
 		// CONTINUE ON A MISS IS NOT "NO TASK". The person named a number and
 		// asked to re-arm it; answering as a search miss lets the model
@@ -474,19 +527,47 @@ func (a *Agent) oneTask(token string, parsed tasksArguments) (string, bool, erro
 		return fmt.Sprintf("No task %q in this project. Call tasks with no arguments to see the most recent ones.", token), true, nil
 	}
 	id, here := a.thisSessionTask(entry)
+	// STOP IS READ BEFORE SAY, because a call carrying both means one thing: end
+	// it, and here is why. Reading say first would relay the reason into a worker
+	// this call is about to cut, which is the exact move this verb exists to
+	// replace.
+	if parsed.Stop {
+		return a.stopOneTask(entry, id, here, parsed.Say)
+	}
 	if resolution := strings.TrimSpace(parsed.Resolve); resolution != "" {
 		return a.resolveOneTask(entry, id, here, TaskResolution(strings.ToLower(resolution)), parsed.Say)
 	}
 	if parsed.Continue {
 		return a.continueOneTask(entry, id, here, parsed.Say)
 	}
+	// FORWARD IS READ BEFORE SAY AND REFUSES TO SHARE A CALL WITH IT. They send
+	// two different people's words, and a call carrying both is a call whose
+	// author cannot be answered for (task_forward.go).
+	if parsed.Forward {
+		if strings.TrimSpace(parsed.Say) != "" {
+			return forwardNotYours, true, nil
+		}
+		return a.forwardOneTask(ctx, entry, id, here)
+	}
 	if say := strings.TrimSpace(parsed.Say); say != "" {
 		if !here {
 			return fmt.Sprintf("Task %s ran in an earlier conversation, so there is nobody left to say it to. Propose the work again if it needs doing differently.", entry.ID), true, nil
 		}
-		waiting, err := a.SteerTask(id, say)
+		// THE MODEL IS NOT THE PERSON, AND THE WORKER MUST BE ABLE TO TELL. This
+		// tool call is coordination between two conversations in one session; it
+		// took [Agent.SteerTask] until now, which is the door the person's own
+		// words come through, so the worker journaled the model's sentence as the
+		// person's correction and could read "you may change the schema" as a
+		// grant nobody with authority had given ([Agent.relayToTask]). On the
+		// node's record the same origin is what keeps this line from ever being
+		// cited to move the done-condition (assignment.go).
+		receipt, err := a.relayToTask(id, say)
 		if err != nil {
 			return capitalized(err.Error()) + ".", true, nil
+		}
+		waiting := receipt.Waiting
+		if receipt.Held {
+			return fmt.Sprintf("said to task %s: %s\nIts work is being checked, so nobody read it yet; it is on the task's record and its next round reads it. It cannot change what that task is judged by — only the person's own direction does that.", entry.ID, say), false, nil
 		}
 		// AND WHICH KIND OF WAIT IT LANDED IN. A task that has handed its own
 		// pieces out is parked on their reports and has no step coming
@@ -494,11 +575,17 @@ func (a *Agent) oneTask(token string, parsed tasksArguments) (string, bool, erro
 		// riding a turn already running — which is the difference between an
 		// answer now and an answer the model would otherwise expect at the next
 		// step of a task that is not taking one.
-		arrival := "It arrives in its loop as the person's own words."
+		//
+		// AND IT ARRIVES AS YOURS. The answer says so plainly, because a model
+		// told its line lands "as the person's own words" will use this tool to
+		// give itself permissions: the worker reads it named as another agent in
+		// this session ([relayNote]), and only the person's own door speaks for
+		// the person.
+		arrival := "It arrives in its loop named as this conversation speaking, not as the person."
 		if waiting {
-			arrival = "It was waiting on the pieces it handed out; your line wakes it, and arrives as the person's own words."
+			arrival = "It was waiting on the pieces it handed out; your line wakes it, and arrives named as this conversation speaking, not as the person."
 		}
-		return fmt.Sprintf("said to task %s: %s\n%s Its brief and its acceptance are unchanged — they were frozen when it started.", entry.ID, say, arrival), false, nil
+		return fmt.Sprintf("said to task %s: %s\n%s Nothing you say here changes what it is allowed to do, and its done-condition is unchanged: only the person's own direction can move that.", entry.ID, say, arrival), false, nil
 	}
 	if !here {
 		// Its row, and the truth about why there is no more: the graph that ran
@@ -514,6 +601,52 @@ func (a *Agent) oneTask(token string, parsed tasksArguments) (string, bool, erro
 		return taskRowText(entry), false, nil
 	}
 	return taskLiveText(live, state), false, nil
+}
+
+// stopOneTask is the stop verb: the model ending running work through the very
+// door a person's own stop pulls ([Agent.CancelWithReason]).
+//
+// ONE DOOR, SO THE CONSEQUENCES CANNOT DIVERGE. The cut, the kept branch, the
+// `stopped` row on the rail and the landing that arrives a moment later are the
+// same whichever hand asked for them — which is the whole reason this reaches for
+// Cancel rather than settling the node here.
+//
+// IT ASKS NOBODY, AND THAT IS THE ONE DIFFERENCE WORTH KNOWING. The person's
+// road draws a card and waits for an answer (internal/tui3's stop.go); this call
+// IS the answer to a person who has already said stop, and a second question
+// would be asking them to confirm their own sentence.
+//
+// AND A TASK THAT IS NOT RUNNING IS NOT AN ERROR. "Stop task 2" over work that
+// landed a minute ago is a reasonable thing to have said, and what the asker is
+// owed back is what task 2 actually IS — done, stopped, your call — in the words
+// they are reading on the screen (task_status.go's tier words), rather than a
+// refusal that leaves the model guessing whether it ended anything.
+func (a *Agent) stopOneTask(entry TaskIndexEntry, id uint64, here bool, why string) (string, bool, error) {
+	if !here {
+		// A ROW STILL CLAIMING TO BE LIVE IS THE ONE REFUSAL HERE. The stop door
+		// is this session's graph and the id belongs to another conversation's, so
+		// there is nothing here to end and nobody to end it — the same fact
+		// steering and resolving already give for the same row.
+		if entry.Live() {
+			return fmt.Sprintf("Task %s is running in the conversation that owns it, and a stop reaches only this session's own work. It has to be stopped in that window.", entry.ID), true, nil
+		}
+		return fmt.Sprintf("task %s ran in an earlier conversation and is %s; there is nothing to stop.", entry.ID, taskEntryWord(entry)), false, nil
+	}
+	if node := a.taskNode(id); node != nil {
+		if status := ProjectTask(node.notice().StatusFacts()); status.Settled() {
+			return fmt.Sprintf("task %s is %s; there is nothing to stop.", entry.ID, status.RowWord()), false, nil
+		}
+	}
+	line, err := a.CancelWithReason(CancelTask+":"+strconv.FormatUint(id, 10), why)
+	if err != nil {
+		return capitalized(err.Error()) + ".", true, nil
+	}
+	// AND THE ANSWER SAYS THE THING THE OLD WORKAROUND GOT WRONG. A task told in
+	// words to stop still ended as an unfinished run and was sent back to close
+	// its gaps; a task STOPPED never reaches the check at all
+	// (task_run.go's [Agent.settleUnfinished]), and the model has to know that so
+	// it does not go looking for a landing that will never be judged.
+	return line + ". Its landing arrives the way every task's does; it is not checked and nothing re-runs it.", false, nil
 }
 
 // continueOneTask is the continue verb: the model re-arming a settled node
@@ -552,17 +685,81 @@ func (a *Agent) resolveOneTask(entry TaskIndexEntry, id uint64, here bool, resol
 		return fmt.Sprintf("Task %s ran in an earlier conversation, so there is no graph left to settle it in. Its work is at %s — read it, and propose what still needs doing.",
 			entry.ID, taskWhereWord(entry)), true, nil
 	}
-	if err := a.ResolveUnverified(id, resolution, why); err != nil {
+	// THE MODEL'S OWN VERB GOES THROUGH THE MODEL'S OWN DOOR, so the receipt on
+	// the work says who spent it (task_audit.go's [Agent.resolveUnverifiedBy]).
+	if err := a.resolveUnverifiedBy(id, resolution, why, TaskAskOwnerModel); err != nil {
 		return capitalized(err.Error()) + ".", true, nil
 	}
-	switch resolution {
-	case TaskAccept:
-		return fmt.Sprintf("accepted task %s as done on your reading of it, with nobody else's check behind it. Its branch has come home and anything waiting on it can start.", entry.ID), false, nil
-	case TaskRefute:
-		return fmt.Sprintf("refuted task %s. It is failed, its branch is kept, and anything waiting on it fails with it.", entry.ID), false, nil
-	default:
-		return fmt.Sprintf("a fresh checker is looking at task %s again. It stays waiting until that answer lands, and you will hear the outcome the way every other task lands.", entry.ID), false, nil
+	return resolvedReply(entry.ID, a.taskNode(id), resolution), false, nil
+}
+
+// resolvedReply is WHAT ACTUALLY HAPPENED, read off the node after the door
+// returned rather than written from what was asked for.
+//
+// ── THE RUN THIS WAS WRITTEN FROM ──
+//
+// A divided task landed `your call`, the model spent `accept` on it, and this
+// reply said "Its branch has come home and anything waiting on it can start."
+// The branch had not come home: the merge was refused by the person's own
+// uncommitted copies of the very files the task wrote, the node was still
+// unverified with its branch kept, and the model — told the work had landed —
+// told the person "Task 1 is done and accepted" (#767).
+//
+// ── THE LAW ──
+//
+// A TOOL REPLY IS A READING OF THE WORLD AND NEVER A RESTATEMENT OF THE REQUEST.
+// [Agent.acceptTask] can settle a node three ways — home and done, kept where it
+// is and done, or still somebody's call with the branch kept — and each of them
+// is a different next move for whoever reads this. So the state and the merge
+// are read back, the projection's own sentence says what is still being asked
+// (task_status.go's [TaskAsk]), and the words are the words every surface uses.
+func resolvedReply(id string, node *TaskNode, resolution TaskResolution) string {
+	if node == nil {
+		// The node went out from under the answer — another window, a late check.
+		// Nothing here can say what became of it, and saying anything would be a
+		// guess about somebody else's landing.
+		return fmt.Sprintf("task %s took that answer. Call tasks with its number to see where it stands.", id)
 	}
+	notice := node.notice()
+	status := ProjectTask(notice.StatusFacts())
+	if resolution == TaskReaudit {
+		return fmt.Sprintf("a fresh checker is looking at task %s again. It stays waiting until that answer lands, and you will hear the outcome the way every other task lands.", id)
+	}
+	// STILL SOMEBODY'S CALL IS THE HEADLINE WHEN IT IS TRUE. It is the one
+	// outcome a reader must not miss, whichever verb was spent: nothing merged,
+	// nothing failed, and the question is standing exactly where it was.
+	if status.Tier == TaskTierYourCall {
+		said := fmt.Sprintf("task %s is still your call", id)
+		if reason := strings.TrimSpace(status.Ask.Reason); reason != "" {
+			said += " — " + reason
+		}
+		if branch := strings.TrimSpace(notice.Branch); branch != "" {
+			said += " · its branch " + branch + " was kept"
+		}
+		return said + ". Nothing merged and nothing failed: say what is in the way and leave the choice with the person."
+	}
+	if resolution == TaskRefute {
+		said := fmt.Sprintf("task %s is incomplete on your word", id)
+		if branch := strings.TrimSpace(notice.Branch); branch != "" {
+			said += ": its branch " + branch + " is kept"
+		}
+		return said + ", and anything waiting on it stops with it."
+	}
+	said := fmt.Sprintf("accepted task %s as done on your reading of it, with nobody else's check behind it.", id)
+	if notice.Merge == mergeMerged {
+		if branch := strings.TrimSpace(notice.Branch); branch != "" {
+			return said + " Its branch " + branch + " merged into yours and anything waiting on it can start."
+		}
+		return said + " Its work is home and anything waiting on it can start."
+	}
+	// DONE WITHOUT A MERGE IS ITS OWN FACT AND IS SAID. A tree that would not take
+	// the work settles the node anyway rather than asking the same question again
+	// (task_audit.go), and where the work is sitting is the whole of what is left
+	// to say about it.
+	if branch := strings.TrimSpace(notice.Branch); branch != "" {
+		return said + " Its branch " + branch + " did not merge and was kept, so the work is there rather than in the person's checkout."
+	}
+	return said + " Anything waiting on it can start."
 }
 
 // continueNoGraph is the honest refusal when this session cannot re-arm the
@@ -628,11 +825,60 @@ func (a *Agent) taskRows() []TaskIndexEntry {
 	return rows
 }
 
+// taskByToken finds the ONE task a token names, and it asks THIS CONVERSATION'S
+// LIVE GRAPH BEFORE IT ASKS THE FILE.
+//
+// THE INDEX IS THE PROJECT'S AND NOT THE CONVERSATION'S, which is the whole
+// reason this function exists. Every conversation in a project appends to one
+// file (task_index.go's [Config.taskIndexFile]) and ids restart with every
+// conversation, so the project's rows hold as many task 2s as it has had
+// conversations — and [LookupTask] answers with the NEWEST of them, which is
+// right for a slug and wrong for a number. On 2026-09-09 a conversation holding
+// a recovered task 2 asked to settle it, the number matched a DIFFERENT
+// conversation's newer row, and the model was refused with "there is no graph
+// left to settle it in" and pointed at a stranger's worktree — over a node this
+// session was holding all along.
+//
+// A NAME STILL MEANS THE NEWEST. A slug is derived from a title and carries no
+// conversation in it, so "the nil-map task" said out loud means the last one
+// whoever ran it, exactly as it always did.
+//
+// AND A NODE ASKS FOR NOTHING WIDER THAN ITS OWN FAMILY. Inside a node
+// [Agent.taskRows] is already only the pieces it handed out, and reaching into
+// the graph by id here would walk straight past that scope — so this preference
+// is a conversation's alone.
+func (a *Agent) taskByToken(rows []TaskIndexEntry, token string) (TaskIndexEntry, bool) {
+	token = strings.ToLower(strings.TrimSpace(token))
+	if token == "" {
+		return TaskIndexEntry{}, false
+	}
+	if a.config.taskID == 0 {
+		if id := taskIDNumber(token); id != 0 && a.taskNode(id) != nil {
+			a.mu.Lock()
+			session := a.sessionID()
+			a.mu.Unlock()
+			for _, entry := range rows {
+				if entry.SessionID == session && strings.TrimSpace(entry.ID) == token {
+					return entry, true
+				}
+			}
+		}
+	}
+	return LookupTask(rows, token)
+}
+
 // thisSessionTask resolves a row to a node of THIS session's graph. A row from
-// an earlier conversation, or one whose id this graph never held, is not one:
-// ids restart with every conversation (see [TaskIndexEntry.ID]), so the pair is
-// what identifies a node and matching on the number alone would read a live
-// task 7 as last month's task 7.
+// another conversation, or one whose id this graph never held, is not one: ids
+// restart with every conversation (see [TaskIndexEntry.ID]), so the pair is what
+// identifies a node and matching on the number alone would read a live task 7 as
+// last month's task 7.
+//
+// A RECOVERED GRAPH IS THIS SESSION'S GRAPH. A conversation that reopened a
+// checkpoint is holding those nodes now — the person's own doors reach them by
+// id ([Agent.HandUnverifiedToModel], [Agent.Cancel]) — and the rows the graph
+// writes for them carry THIS session's id ([Agent.liveTaskRows]), so the test
+// below is already true for them. What was not true was the row this reached:
+// see [Agent.taskByToken], which is where that was fixed.
 func (a *Agent) thisSessionTask(entry TaskIndexEntry) (uint64, bool) {
 	a.mu.Lock()
 	session := a.sessionID()
@@ -795,6 +1041,26 @@ func taskRowsTextLimit(rows []TaskIndexEntry, query string, limit int) string {
 
 func taskFamilyKey(session, id string) string { return session + "\x00" + id }
 
+// taskEntryWord is the word a row wears, in the SAME vocabulary the person
+// reading over the model's shoulder is looking at: `done`, `stopped`,
+// `incomplete` with its reason, `your call` (task_status.go's tier words). The
+// engine's own state word is what this used to print, and a model that read
+// `failed` off a row told somebody their work had failed when a connection had
+// dropped.
+//
+// A ROW THE READING CANNOT PLACE KEEPS THE STATE IT CLAIMS. A record written by
+// a build this one does not know is still a row, and printing nothing for it
+// would lose the only thing it says about itself.
+func taskEntryWord(entry TaskIndexEntry) string {
+	// held: the record is not an authority on whether anything is behind a
+	// live-looking row, and answering false here would call every running row in
+	// the file dead (task_status.go's [TaskIndexEntry.StatusFacts]).
+	if word := ProjectTask(entry.StatusFacts(true)).RowWord(); word != "" {
+		return word
+	}
+	return entry.Status
+}
+
 func taskNodeCount(count int) string {
 	if count == 1 {
 		return "1 node"
@@ -803,7 +1069,7 @@ func taskNodeCount(count int) string {
 }
 
 func taskChildRowText(entry TaskIndexEntry, withURI bool) string {
-	parts := []string{entry.Title, entry.Status}
+	parts := []string{entry.Title, taskEntryWord(entry)}
 	if word := taskWhenWord(entry); word != "" {
 		parts = append(parts, word)
 	}
@@ -836,7 +1102,7 @@ func taskChildRowText(entry TaskIndexEntry, withURI bool) string {
 // row reading "· 0 files · · $0.00" is three facts this build does not have,
 // stated as though it did.
 func taskRowText(entry TaskIndexEntry) string {
-	parts := []string{entry.ID, entry.Name, entry.Status}
+	parts := []string{entry.ID, entry.Name, taskEntryWord(entry)}
 	if word := taskWhenWord(entry); word != "" {
 		parts = append(parts, word)
 	}

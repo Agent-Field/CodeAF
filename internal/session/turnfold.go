@@ -69,7 +69,7 @@ type turnFoldReplacement struct {
 // reaches its headroom target. An observation becomes consumed only after work
 // made from it lands. Assistant text, calls and their arguments, mutating tool
 // batches, and every observation not yet acted upon remain verbatim.
-func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[string]bool, hub *eventHub) {
+func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[*ai.ToolCall]bool, hub *eventHub) {
 	line := turnWorkingSet(a.window())
 	if line <= 0 {
 		return
@@ -115,6 +115,7 @@ func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[string]bool, 
 	}
 
 	earlier := shapeEntries(a.messages, a.file)
+	place := a.resultPlaceLocked()
 	target := turnWorkingTarget(a.window()) * bytesPerToken
 	batches := turnFoldBatches(a.messages, a.turnFloor, limit, consumedReads)
 	// A pass that cannot buy the whole headroom does not run. Every rewrite
@@ -140,19 +141,12 @@ func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[string]bool, 
 		for _, index := range batch.indices {
 			message := a.messages[index]
 			text := messageContentText(message)
-			pointer := a.chatlog.ref(message)
+			// The same pointer the stub pass and the snapshot view give, and for
+			// the same reason: a store ref is not one ([Agent.fullResultPointer]).
+			pointer := a.fullResultPointer(message, place)
 			if pointer == "" {
-				workspace := strings.TrimSpace(a.config.Workspace)
-				if workspace == "" {
-					complete = false
-					break
-				}
-				path, err := writeStub(a.config.droppingsPlace(), workspace, text)
-				if err != nil {
-					complete = false
-					break
-				}
-				pointer = path
+				complete = false
+				break
 			}
 			stub := ai.Message{
 				Role:       message.Role,
@@ -273,15 +267,16 @@ func transcriptBytes(messages []ai.Message) int {
 // partial batch at the horizon is left whole, because rewriting one sibling and
 // not another would make one model decision carry two different histories of
 // the observation it received.
-func turnFoldBatches(messages []ai.Message, start, limit int, consumedReads map[string]bool) []turnFoldBatch {
+func turnFoldBatches(messages []ai.Message, start, limit int, consumedReads map[*ai.ToolCall]bool) []turnFoldBatch {
 	var batches []turnFoldBatch
 	for index := start; index < limit; index++ {
 		if messages[index].Role != "assistant" || len(messages[index].ToolCalls) == 0 {
 			continue
 		}
 		readBatch := true
-		for _, call := range messages[index].ToolCalls {
-			if !earlyTools[call.Function.Name] || !consumedReads[call.ID] {
+		for callIndex := range messages[index].ToolCalls {
+			call := &messages[index].ToolCalls[callIndex]
+			if !earlyTools[call.Function.Name] || !consumedReads[call] {
 				readBatch = false
 				break
 			}

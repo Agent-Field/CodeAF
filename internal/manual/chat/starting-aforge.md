@@ -50,6 +50,9 @@ A `--once` or piped run cannot open a browser and still stops at the door with
 `aforge chat needs a model to talk with.` Its next line says to run bare `aforge` in a
 terminal to connect OpenRouter, or to export `OPENROUTER_API_KEY` (or `OPENAI_API_KEY`). A
 custom `AFORGE_BASE_URL` is never offered the OpenRouter connection.
+That variable still changes only the default service. To add a supported second place
+models come from, connect a service through `/connect`; the [services page](services.md)
+explains the checked connection and picker names.
 
 **The first frame is home** — every project on this machine and every conversation
 in them — with the conversation this directory would have opened loaded and ready
@@ -78,8 +81,8 @@ there.
 | `--once "<text>"` | send one message, print the reply, and exit — no screen, nobody watching |
 | `--no-compact` | never shorten the conversation automatically |
 | `--yolo` | run every tool without asking, subject to the limits that nothing lifts |
-| `--max-hours <n>` | with `--yolo`: how many hours it may carry its own work on |
-| `--max-cost <n>` | with `--yolo`: how many dollars it may carry its own work on |
+| `--max-hours <n>` | with `--yolo`: elapsed-time limit; interactive chat checks before new turns |
+| `--max-cost <n>` | with `--yolo`: dollar limit; interactive chat checks before new turns |
 | `--one-model` | every text call this session makes runs on the session model |
 
 `--yolo` does not make aforge unstoppable: a small set of destructive commands
@@ -88,38 +91,46 @@ permissions page.
 
 ## Leaving it running on its own · leaving a headless run going with a budget · --once yolo · no screen · unattended · overnight · nobody watching
 
-`--yolo` on its own only changes what it asks you about. It still stops when the
-model stops talking — which is right when you are sitting there, because you are
-the one who says what happens next.
+`--yolo` changes tool approvals. Normal interactive chat remains a conversation you
+can steer, even with a budget: an unrelated question does not become a new assignment
+for running tasks, and the first request does not remain a fixed goal for every later
+reply. Tasks retain their own assignments until you revise them.
 
-Give it a budget as well and it carries its own work on:
+For a fixed unattended goal, use the one-message door with a budget:
 
-    aforge chat --yolo --max-hours 6
-    aforge chat --yolo --max-cost 20
-    aforge chat --yolo --max-hours 6 --max-cost 20
-    aforge chat --once "fix the failing test" --yolo --max-hours 6
+    aforge chat --once "finish the import fix" --yolo --max-hours 6
+    aforge chat --once "finish the import fix" --yolo --max-cost 20
 
-That posture is the same without a screen. The `--once` form above carries its
-own work on exactly as the conversation does, moves a long reply's work onto a
-task at the same points, and has every ending read the same way. The only
-difference is how the decision is shown: there is no screen to draw its line on,
-so the line is kept in the transcript instead.
+## Does a run with no screen carry its own work on · headless --once checkpoints
 
-Either number alone is enough; both together means whichever runs out first. You
-can set them once for a whole run of launches with `AFORGE_MAX_HOURS` and
-`AFORGE_MAX_COST`, and the flag always beats the variable.
+Yes, when launched with `--once`, `--yolo` and a time or cost budget. A headless
+unattended run checkpoints long replies at the same points. Its decisions are
+kept in the transcript, where a run without a screen can still be inspected.
 
-Without a budget none of that happens, and it tells you so in one line when it
-starts. If you are sitting there watching it, none of this applies to you: your
-session is exactly what it has always been, and nothing is ever deleted on your
-behalf.
+Either limit alone is enough; both means whichever runs out first. The defaults can
+come from `AFORGE_MAX_HOURS` and `AFORGE_MAX_COST`; explicit flags take precedence.
+A headless `--yolo` launch without a budget stops when the model stops.
 
-`--max-hours` and `--max-cost` cannot travel over `--host` — the conversation is
-built on the far machine, so set them there.
+## Interactive chat limits · --max-hours · --max-cost
+
+In normal interactive chat, `--max-hours` and `--max-cost` are checked before a new
+turn starts, including a reply started by background work. They do not freeze the
+conversation's goal. The time limit uses the current engine session's clock; the
+money limit uses its recorded cumulative cost. An exhausted limit refuses the next
+turn before recording your message or calling a model.
+
+A turn already running and work already delegated may finish. These are not hard
+reservations across every concurrent task, so the final bill can exceed a limit.
+`/budget` remains a separate conversation spending limit; the stricter dollar limit
+applies. Launch limits are changed by relaunching with different flags. A refusal
+states which launch limit was reached.
+
+The local persistent host carries these launch settings. Explicit `--host` still
+refuses the budget flags at its door; configure that machine's launch instead.
 
 ## What changes when you give it a budget — done when, carrying on by itself, tidying up after itself
 
-With a budget, four things change, and only with a budget:
+For a fixed headless goal (`--once --yolo` with a budget), five things change:
 
 - **It writes down what finished means.** At the start it turns your ask into one
   `done when` sentence and shows it to you on a dim line. That sentence is fixed
@@ -140,8 +151,20 @@ With a budget, four things change, and only with a budget:
   it is working in is part of the answer and is left alone, and anything it wrote
   outside that folder is scratch and is deleted. It never touches a file it did
   not create, and it never touches one it only changed.
+- **The hours end the run even while its work is out.** The run cannot continue
+  past the hours you gave it, whether work is out or not: the wall is read while
+  the conversation is idle as well as at the end of a reply. If time runs out
+  with a task still running, that task is stopped through the usual stop: its row
+  settles, and its branch, working copy and everything it did are kept. Nothing
+  starts after the wall. If a reply is still speaking, the wall waits; that reply
+  reaches its own ending and stops there instead of being sealed from outside.
 
-## Why did it stop at a task that was finished · it ended without starting more work · why did it not hand the work over
+## Why did it stop at a task that was finished
+
+If it ended without starting more work, or did not hand the work over, the
+budgeted run checked whether anything remained before starting another task.
+
+## It ended without starting more work · why did it not hand the work over
 
 With a budget, **every** way a turn ends is read, not just the ones where the model stops
 talking. A long turn can also end by having its work moved onto a task — when a second
@@ -169,21 +192,27 @@ So before the work moves, the same reading a stopped turn gets is taken:
   `stopping here · ` line every other stop uses. If a piece of work is still running when
   that happens, it does **not** stop there: the work moves onto a task as usual and the same
   stop is said again at the next ending, once nothing is in flight.
-- **The hours or the money ran out** — this is the one stop that does not wait for anything.
-  Waiting is more of exactly what ran out, so it ends the turn even with work still going,
-  and says so on the end of its own line: `· work was still going and was left where it was`.
-  Nothing is killed and nothing is thrown away; what was running is where you left it.
+- **The hours or the money ran out** — this is the one stop that does not buy another
+  reply. Waiting is more of exactly what ran out, so a reply already speaking reaches its
+  own ending even with work still going, and says so on the end of its line:
+  `· work was still going and was left where it was`. A money-only ceiling leaves that
+  work where it is. If the hours ran out, the wall reader then stops the work through its
+  usual stop and says `· work was still going, so it was stopped and what it did was kept`.
+  Nothing is thrown away, and its branch and working copy are kept.
 
 **And a handover it asked for is never dropped.** A long turn can normally talk its own
-handover out of happening: if the model says nothing is left AND the second reader's sketch
-says the same, the work stays where it is and the turn finishes. On a run with a budget that
+handover out of happening: if the model says nothing is left and the second reader's sketch
+does not name independent parts still to do, the work stays where it is and the turn
+finishes. It gets that **once per request**, whether or not the sketch agreed — a turn that
+says it is done and then keeps working is met by the next look with the claim already spent.
+On a run with a budget that
 only holds while the run's own owner agrees — and when it has just read the ending and said
 the ask is **not** finished, the work moves anyway, on its account of what is left rather
 than on your bare sentence. A run measured before this said "not yet confirmed" at its
 write seam and again at its ceiling, had both handovers thrown away by the two readers, and
 ended eight hundred seconds later inside a `git stash` with the fix uncommitted.
 
-**And with a budget one reply may spend at most a third of the wall.** *Why did it move my
+**And for a fixed headless goal, one reply may spend at most a third of the wall.** *Why did it move my
 work to a task after five minutes; it kept running tests for ten minutes and then handed it
 over; why did it not hand over sooner.* The other three ways above all COUNT something —
 parts in a sketch, files changed, rounds spent — and a reply that spends its time reading
@@ -209,8 +238,8 @@ one with six seconds to go. It happens
 towards it; and it needs a wall, so `--max-cost` on its own never triggers it.
 
 None of this applies to a session you are sitting in front of: your turn's work moves onto a
-task exactly as it always has, nothing is decided for you, and the two readers agreeing
-still leaves your answer where it is. There is no wall on your session, so there is no share
+task exactly as it always has, nothing is decided for you, and a reply that says nothing is
+left still leaves your answer where it is. There is no wall on your session, so there is no share
 of one either, however long your reply runs.
 
 ## What counts as still left · a task that died on the wire · it kept working after everything was finished
@@ -234,21 +263,26 @@ Measured before this: a task died on an API 404 an hour before its parent wrote 
 file it was for, went green and merged. The run read the dead sibling as a gap in the ask
 and carried on over a finished tree until its wall ran out.
 
-## It says nothing has been finished yet after editing or creating a file · inline work · emptied file · blank file · zero bytes
+## Inline work is finished with a witness · the reader timed out · it did the work twice · it says nothing has been finished yet after editing or creating a file
 
-**And work aforge did itself counts as finished work.** The question is not only "did a
-task come home": a session that made the change and wrote the tests **inline**, with no
-task at all, has finished something — as long as the second reader agrees nothing is left.
-That includes a fix that is one edit to a file the project already had, which is the
-commonest fix there is: it used to count only files the session created, so a one-line change
-to an existing file read as nothing finished until the run stopped itself over green work.
-Before this, a run that did the whole job in the conversation read `nothing has been
-finished yet` at the end of every reply over a tree it had just written, said the same
-thing twice, and stopped itself for going round in circles one second after tidying up. If
-that reader names a gap instead, the run carries on into it, and being finished is settled
-by running your checks over the tree either way.
+**Work aforge did itself counts as finished work with a second opinion.** A session that
+made the change and wrote the tests **inline**, with no task at all, has finished something
+when the second reader agrees nothing is left. That includes one edit to an existing file;
+older runs counted only new files and could stop themselves over a green fix while saying
+`nothing has been finished yet`. If the reader names a gap, the run carries on into that gap
+whatever the checks say.
 
-**And a file is your work only while its content still differs from what it was before the
+**If the second reader could not be reached, silence is not treated as a gap.** On an
+unattended run aforge actually runs your declared checks over the tree and lets a green
+reading stand in, saying `the reader could not be reached, so the checks stood in for it`.
+A red check carries the run on with that command named. At least one declared check must
+start and finish: with no check declared, or none that ran, nothing can stand in and the run
+carries on exactly as before. An install with no reader is different from a failed call;
+that absence runs no check on its own.
+
+## A changed file counts only while its content differs · a reverted or stashed edit is not finished work
+
+**A file is your work only while its content still differs from what it was before the
 edit.** A change put back the way it was, a revert, or a fix pushed onto `git stash` and
 never popped leaves the path written and nothing in the tree, so none of them counts as
 finished work. A stash the run took itself and never popped is said out loud as well —
@@ -256,22 +290,52 @@ finished work. A stash the run took itself and never popped is said out loud as 
 finishing over it; a stash you already had before the run started is yours and is never
 counted, and neither is the one a landing takes to set your uncommitted work aside.
 
+## An emptied, blank or zero-byte created file does not count as finished work
+
 **A file the run created counts as its work only while there is something in it.** A
 rewrite that produced nothing, a generator that wrote no bytes, or a `> file` in a shell
 step can leave it emptied, blank, or at zero bytes; none of those empty files counts as
 finished work. It is still your file: nothing inside the folder aforge is working in is
 ever deleted, whatever is in it.
 
+## The git an unattended run left on its own will not run · why it refused to stash, checkout, pull or reset --hard
+
+**A session left running on its own with a budget answers to the same git list as a
+task.** It decides on its own word that the work is done, and a stash can make that word
+false by taking the work out of the tree it judges. The refusal happens before the shell
+runs.
+
+It will not run `stash` in any form except `stash list` and `stash show`; `merge`,
+`rebase`, `cherry-pick`, `revert`, `checkout`, `switch`, `am`, `apply`, `worktree`,
+`update-ref`, or `symbolic-ref`; `pull`, `fetch`, `clone`, `remote`, or `submodule`;
+`push`; `reset --hard`, `reset --merge`, or `reset --keep`; or `restore --source`.
+These are one list: they take the working copy away, put it onto work the session did not
+do, bring in remote work, or send the session's work to a shared remote on its own word.
+
+**Reading is still allowed.** `git status`, `diff`, `log`, `show`, `branch --list`,
+`stash list`, and `stash show` can look at any branch. Plain `git reset` can unstage,
+plain `git restore <path>` can restore the session's own path, and `git add` and
+`git commit` are allowed. For a stash, the session reads exactly:
+
+> git stash is not yours to run here: it takes your working copy away, and what is in it is the work this session will be judged on. Leave the change in the tree, or commit it.
+
+The `1 stash entry holds work that is not in the tree` reading in the section above says
+the stash out loud after the fact; this refusal is why there is now usually nothing for
+that reading to say. None of these refusals applies to a session you are sitting in front
+of, or to an unattended run that named no ceiling: nothing is deciding on its own that
+the work is done then, and your git is your own.
+
 ## It keeps saying the tests fail but they were already failing · red before the work · a check that was broken when I started
 
-**A check is yours only if your run turned it red.** On a run with a budget, aforge runs
+**A check is yours only if your run introduced new red.** On a run with a budget, aforge runs
 the checks its acceptance names once at the start — before it has touched anything — and
 writes down which were already failing. Only the acceptance it wrote for the work and each
 task's own brief supply checks; a command pasted into your ask (the steps you took to see a
 bug, say) is never run as one — `$ chmod 000 tox.ini` in a pasted issue once was, and no
-longer is. At the end, only a check that was **green before and red after** counts as work
-still to do. The answer already taken is used when the tree has not moved, so one command
-runs once for one state of the tree; when it has moved, aforge runs the check again.
+longer is. At the end it reads them again, reusing an answer already taken when the tree has
+not moved. A check that was **green before and red after** counts as work still to do. When
+a runner names individual failures, a new failure inside a command that was already red
+also counts; unparsed red stays uncertain.
 
 That first reading runs **in the background**, so nothing waits for it: your first turn
 starts straight away. It gets one window for the whole set rather than one per check, and
@@ -285,8 +349,8 @@ itself keeps, so anything your `.gitignore` covers is invisible here and a test 
 **A check the reading could not take is never counted against you — or for you.** Nobody
 knows whose red it is, so it is left out of the arithmetic in both directions rather than
 guessed at. Until the whole reading lands the same is true of every check, and the run says
-so in as many words. At the very end it waits for the reading before deciding, so a run is
-never called finished over red nobody could account for.
+so in as many words. At the very end it waits for the reading before deciding. Missing
+before-evidence remains unknown; waiting does not turn it into a passing check.
 
 That matters because of the sentence people naturally write: *"the existing test suite
 passes"*. Over a project whose suite already has one failing test, that can never become
@@ -297,11 +361,30 @@ What was already broken is not hidden from the work either — the brief it carr
 says so plainly, so nothing goes off to fix it by accident:
 
 ```
-1 check was already failing before this work and is not counted: tox -e py
+1 check was already failing before this work; that does not show the requested result works: tox -e py
 ```
 
-A session you are sitting in front of runs none of this: your tree is in front of you, and
-nothing is checked or decided on your behalf.
+This section describes the session's own end-of-reply reading, which runs only when you
+leave a session working with a budget. A task's checker takes its separate before-reading
+whether you are watching or away; **The check says my tests fail but they were already
+failing** in *How tasks run* explains that task reading and its limits.
+
+## A task added a check after work started · no before-reading for a late check
+
+A task can name a check after the session has already taken its initial reading. The
+session still runs that check at completion, but cannot tell whether its failure existed
+before the work. It records which commands the initial reading covered; a later command
+stays unknown rather than becoming a new regression just because it has no earlier entry.
+The ending or continuation names that uncertainty, for example:
+
+```
+one check has no usable before-reading, so its current result cannot establish a regression from this work: check-report
+```
+
+An unknown result does not prove the requested result works. A task still running, a
+failed task or work that has not reached its requested destination still keeps the session
+from finishing. A check actually read before work that turns from green to red still
+counts as work left to do.
 
 ## It ran the same tests three times · it ran out of time running the tests · why did it say unchecked at the end
 
@@ -327,6 +410,11 @@ running out of time.
 An unattended run with a budget looks at the work at the end of every reply: which
 pieces of work came home finished, and what the checks your work names said when
 they ran. If something is left, it carries on by itself with that as the brief.
+
+That brief names the concrete gap: unfinished work, missing delivery or a new check
+failure. A second reader's explanation cannot replace that gap with another obligation.
+For an answer made directly in the conversation with no task result, the reader can
+still identify a missing part of the requested answer.
 
 **The same thing left twice running stops the run.** The evidence that a run is
 getting anywhere is that what is left CHANGES. When it reaches the end of a reply
@@ -356,12 +444,12 @@ changed because it is waiting on that work is a run waiting rather than a run
 repeating itself, so the count above starts again once everything has landed.
 
 **Work that cannot start is not waiting, it is left.** A piece of work queued
-behind one that did not finish, or behind one that came home and needs your look,
+behind one that did not finish, or behind one that came home needing a decision,
 has nothing coming to start it — nobody is going to look at it while the run is
 unattended. So it is said whole, with what it waits on and what became of that:
 
 ```
-wire the handlers is waiting on port the parser, which needs your look
+wire the handlers is waiting on port the parser, which is your call
 ```
 
 That counts as part of what is left rather than as a reason to keep going, which
@@ -370,10 +458,10 @@ carrying on for the rest of its hours over work nothing was ever going to start.
 
 ## It keeps saying a file does not pass · a check nobody asked for
 
-**A check is a command, never a file.** When somebody writes the session's
-`done when` sentence and names something in backticks, or a piece of work names
-it in its own account, aforge runs it in a fresh shell to see whether the work
-stands up. A file is opened the way the file itself says it opens: if it is
+**A check is a command explicitly declared in the task's `checks` field.**
+A command quoted in your request, a brief or a `done when` sentence does not
+become permission to run it. Declared checks run in a fresh shell to see whether
+the work stands up. A file is opened the way the file itself says it opens: if it is
 executable, or its first line names the program that runs it, that is what gets
 run. **A file that says neither is not a check at all** and is left out — a
 source file quoted in a sentence is something to look at, not something to run.

@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -62,6 +63,16 @@ import (
 // places it (statusdeck.go says why it is the full reading there and one word on
 // the live row).
 func (a *app) statusText() string {
+	return labelledLines(a.statusItems())
+}
+
+// statusItems is the whole list /status prints: [app.deckItems] with the three
+// differences of medium this command makes, then the build and file rows. It is
+// the ONE list behind both the text form and [app.statusJSON], so the two forms
+// cannot disagree about a fact. The transformations below are described at
+// length on [app.statusText]; they live here because they are the list rather
+// than its rendering.
+func (a *app) statusItems() []deckItem {
 	// The totals are refreshed FIRST. A command typed between turns must answer
 	// from what the session holds now and not from whatever the last event left
 	// on these fields ([app.take] keeps the larger of the two, so this can only
@@ -122,7 +133,34 @@ func (a *app) statusText() string {
 		// to reach it, rather than as a bare path that looks like one of theirs.
 		items = append(items, deckItem{label: "file", value: a.hostedPath(a.file)})
 	}
-	return labelledLines(items)
+	return items
+}
+
+// statusJSON is /status --json: [app.statusItems] serialized as ONE JSON object
+// with the labels as keys and the values as strings, in the order the text form
+// prints them.
+//
+// It is built by hand from the ordered slice rather than marshalled from a map,
+// because a Go map randomizes key order — and the point of the two forms is that
+// they list the same facts in the same order. Each label and value still goes
+// through [json.Marshal] for its escaping, so the result is guaranteed to be
+// well-formed.
+func (a *app) statusJSON() string {
+	items := a.statusItems()
+	var b strings.Builder
+	b.WriteByte('{')
+	for i, item := range items {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		key, _ := json.Marshal(item.label)
+		value, _ := json.Marshal(item.value)
+		b.Write(key)
+		b.WriteByte(':')
+		b.Write(value)
+	}
+	b.WriteString("}\n")
+	return b.String()
 }
 
 // statusFacts is what THE PAYLOAD RULE lifts out of /status: the second column
@@ -247,6 +285,9 @@ func (a *app) costText() string {
 	if u.EmptyReflex > 0 {
 		add("empty reflex answers", itoa(u.EmptyReflex))
 	}
+	if a.tree.Unbilled > 0 {
+		add(spendUnbilledWord, itoa(a.tree.Unbilled)+" "+spendUnbilledSaid)
+	}
 	add("time", tookWord(u.Duration))
 
 	if len(items) == 0 {
@@ -282,11 +323,11 @@ func tokenHalves(in, out, both int) string {
 // worth.
 //
 // The cash is printed ONLY when it is real, on the terms [app.cacheSaved] is
-// held: it is accumulated per turn at the moment BOTH a prompt price and a
-// cache-read price are published, and a session that had neither cannot have it
-// worked out afterwards. So a session on a model that publishes no cache-read
-// price says how much it read and stops there, rather than learning to say it
-// saved the whole prompt price. The count leads and the money follows it, which is
+// held: it is the session's cache reads priced at the model this conversation
+// is on, and only where BOTH a prompt price and a cache-read price are
+// published. So a session on a model that publishes no cache-read price says
+// how much it read and stops there, rather than learning to say it saved the
+// whole prompt price. The count leads and the money follows it, which is
 // the order [app.warmSegment] puts the same pair in on the status line.
 func cacheWords(read int, saved float64) string {
 	if read <= 0 {

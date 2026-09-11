@@ -60,13 +60,13 @@ var commands = []command{
 	// (render.go's [app.identityParts]). It is worth saying because a surface
 	// with the mouse turned off (config's ui.mouse) does not have it, and this
 	// row is then the only one there is.
-	{name: "model", desc: "pick a model · or press its name in the status line"},
+	{name: "model", desc: "pick a model · or press its name above the message box"},
 	// `<slug>` is the whole of what this row offers a person scanning the list,
 	// and the three other shapes it takes — `@lane`, `auto`, a filter query —
 	// are NOT four more rows here. The list is how somebody finds a command,
 	// not where they learn its grammar; the manual's model page has the four
 	// forms in a table ([modelArg] at the foot of this file).
-	{name: "model", args: "<slug>", desc: "switch the model"},
+	{name: "model", args: "<slug>", desc: "switch the model for the conversation or open task"},
 	{name: "image", args: "<path>", desc: "attach a picture · tab completes the path"},
 	// /set and /config were already answered by the dispatch before aliases
 	// existed, and /connections and /sessions with them. They are written here
@@ -83,6 +83,9 @@ var commands = []command{
 	{name: "new", desc: "start another conversation in this project", alias: []string{"clear", "clean", "reset"}},
 	{name: "resume", desc: "open an earlier conversation", alias: []string{"sessions"}},
 	{name: "compact", desc: "summarize the conversation now"},
+	{name: "stop", desc: "stop the open task or selected work · asks first"},
+	{name: "autonomy", desc: "how questions are handled while you are away"},
+	{name: "autonomy", args: "<kind> <ask|recommend DURATION|decide>", desc: "change one project's question rule"},
 	// A project-less conversation needs this once, while /compact is a daily
 	// command everywhere. Keep the one-shot anchor immediately below the eight
 	// always-visible rows so adding it does not hide /compact behind a scroll.
@@ -121,9 +124,10 @@ var commands = []command{
 	{name: "home", desc: "every project and conversation on this machine"},
 	// AND THE TWO PLACES THAT HAD NO TYPED DOOR, directly under the one that
 	// does. /home, /memory, /standing, /history and /settings each open a place
-	// from the box; search and spend were reachable only by `alt+6`, `alt+5`,
+	// from the box; search and spend were reachable only by their `alt+` digit,
 	// `tab`, the tab bar, or typing a word on home — every one of which has to be
-	// learned somewhere else first.
+	// learned somewhere else first. The digit on each row is read off the bar's
+	// order table ([placeChord]).
 	//
 	// /spend IS A PLACE AND NOT A READING, WHICH IS WHY IT MOVED. It used to be
 	// an alias of /cost, so the one word a person guesses for "what has this cost
@@ -133,8 +137,8 @@ var commands = []command{
 	// belongs to the bigger one. /cost keeps /usage and /tokens, and says on its
 	// own row which question it is answering, so nobody who typed either word
 	// lands nowhere.
-	{name: "search", desc: "everything said on this machine · alt+6"},
-	{name: "spend", desc: "what this machine has cost, by the day · alt+5"},
+	{name: "search", desc: "everything said on this machine · " + placeChord(pageSearch)},
+	{name: "spend", desc: "what this machine has cost, by the day · " + placeChord(pageSpend)},
 	// It sits AFTER /compact and before /help because those two are the pair a
 	// person reads together when a conversation has gone wrong: compacting is
 	// what you do when the turn was right and too long, rewinding is what you do
@@ -252,6 +256,24 @@ var commands = []command{
 	// occasionally regrets it, which is exactly where /memories sits too.
 	{name: "crew", desc: "the five models aforge uses on its own behalf, beside the one you talk to"},
 	{name: "crew", args: "<preset>", desc: "…set the five to frugal, balanced or max · /model stays"},
+	// AND HOW HARD THE ONE YOU TALK TO THINKS, under the two rows about WHICH
+	// models it thinks with, because that is the order the two questions arrive
+	// in: a person picks the model and then decides how much of it to spend.
+	//
+	// TWO ROWS FOR ONE COMMAND, the way /crew and /model have two: the bare form
+	// is the five rungs with what each one buys, which is how somebody chooses
+	// between words that all mean "harder"; a single row carrying <rung> would
+	// make that list unreachable, since [app.runMenu] puts a row that TAKES
+	// something into the draft instead of running it.
+	//
+	// It is the LADDER'S door and not its only one. The rung is on the seam
+	// beside the model, `ctrl+v` walks it and so does a press on it
+	// (effortchip.go) — this is the row for the person who wants to read the
+	// five before choosing, and the word people reach for is `thinking`, which
+	// is what the settings row calls the same ladder.
+	{name: "effort", desc: "how hard this conversation thinks · the five rungs, and what each buys",
+		alias: []string{"think", "thinking"}},
+	{name: "effort", args: "<rung>", desc: "…set it outright · ctrl+v walks it, or press it on the seam"},
 	{name: "task", args: "<brief>", desc: "start work you can walk away from", door: sendDoorTask},
 	{name: "task", args: "solo <brief>", desc: "…with one worker, and no sizing call before it", door: sendDoorTask},
 	// THE THIRD ROW IS GONE, AND ITS ABSENCE IS THE FEATURE. It typed
@@ -296,6 +318,7 @@ var commands = []command{
 	// lines it prints: somebody who wanted the money and typed the general word
 	// still gets their answer, while the reverse is not true.
 	{name: "status", desc: "everything the status line knows, one fact per line", alias: []string{"info", "context"}},
+	{name: "status", args: "--json", desc: "…everything the status line knows, as one JSON object"},
 	// THE ROW NAMES WHOSE BILL IT IS, because the other one is now a command of
 	// its own two rows up: /cost is THIS CONVERSATION and /spend is the machine.
 	// The word `spend` used to be an alias here and pointed the one guess a
@@ -1028,7 +1051,23 @@ func helpText(file string, chords chordSpelling) string {
 		helpKeyRow(chords.say(parkKey), "mid-answer: waits above the box · → sends a waiting one"),
 		"ctrl+q         hand this to the session now, to run after the current turn",
 		"ctrl+e         open the model's thinking, streaming or finished",
-		"ctrl+t         the task roster · ↑↓ move · →← fold · enter opens · esc back",
+		// THE NEW TAB AND THE ROSTER, IN THAT ORDER AND ON TWO ROWS. They used to be
+		// one key: ctrl+t handed the roster the keyboard, and the tab strip's `+` had
+		// no chord at all. The strip is drawn as tabs, so the key every browser opens
+		// a tab with is the one people press at it — and the roster keeps the letter
+		// under the other modifier (task.go's [railHoldChord]), which is the smallest
+		// move a hand has to make and the modifier its own widen chord already uses.
+		helpKeyRow(newChatChord, "a new chat start page · your draft stays put · esc back"),
+		// AND THE OTHER DIRECTION, ON THE ROW UNDER IT. The two chords are one
+		// gesture, so they are read together here as they are in input.go, and the
+		// row says what the key does NOT do — because "close" is the word people
+		// fear on a conversation that has an hour of work in it.
+		// AND THE ROW MAY NOT SPELL `ctrl+k` (escword_test.go finds the switcher's own
+		// row by that prefix, and a second row carrying it is a second answer to the
+		// question that test asks). The card is named by what it is instead.
+		helpKeyRow(closeTabChord, "close this tab · select the last open chat · keep your draft"),
+		helpKeyRow(reopenTabChord, "reopen the last closed tab · when the terminal sends this distinct chord"),
+		helpKeyRow(chords.say(railHoldChord), "the task roster · ↑↓ move · →← fold · enter opens · esc back"),
 		"ctrl+.         every task this project has run · /history · type to filter",
 		"ctrl+g         close the roster's column, or bring it back · remembered",
 		"ctrl+l         back to the latest · the chip above the box says so too",
@@ -1039,7 +1078,7 @@ func helpText(file string, chords chordSpelling) string {
 		// The line is TRUE IN BOTH MODES of ui.quick_switch on purpose: this list
 		// has no reach into the profile, and a clause that named one mode would be
 		// wrong in the other. The card's own head and the manual say the rest.
-		"ctrl+k         switch conversations · tap it like alt+tab · esc back",
+		"ctrl+k         choose a conversation · enter open · esc cancel",
 		"               → reaches every other one on this machine · ctrl+w closes one",
 		"→ ←            over an empty box: into a running task, and back out",
 		// THE WORD "home" USED TO BE HERE AND IS NOW SPENT. This gesture leaves a
@@ -1048,7 +1087,11 @@ func helpText(file string, chords chordSpelling) string {
 		// person pressing ← ← to find out where they end up.
 		"← ←            out of a task room · the conversation, at the live edge",
 		"space space    over an empty box: home · /home · esc back",
-		"ctrl+w         delete the word behind the caret · ctrl+u the line",
+		// THE WORD KILL IS NAMED BY THE KEYS THAT STILL REACH THE BOX. ctrl+w was
+		// on this row until it became the close-tab chord above, and a sheet that
+		// went on offering it would be teaching a keystroke that shuts the window
+		// you are typing in.
+		"alt+backspace  delete the word behind the caret · ctrl+u the line",
 		"ctrl+,         open settings",
 		"d              in /permissions: drop the line under the cursor · press it twice",
 		"p s n          in /standing: pause one · stop it · keep it out of here",

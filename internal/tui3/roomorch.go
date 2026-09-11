@@ -331,10 +331,14 @@ const (
 // keeps the surface's own mark, because failure is the one state that is not a
 // point on that ramp.
 const (
-	orchGlyphQueued  = "○"
-	orchGlyphRunning = "◐"
-	orchGlyphDone    = "●"
-	orchGlyphPaused  = "⏸"
+	orchGlyphQueued  = tokens.GlyphQueued
+	orchGlyphRunning = tokens.GlyphWorking
+	orchGlyphDone    = tokens.GlyphStepDone
+	// THE TRANSPORT BAR IS BANNED (tokens.BannedGlyphs: `⏸` is width-unstable
+	// and emoji-presentation in many fonts), and the vocabulary's paused mark
+	// is `=`. A patched font draws nf-fa-pause for it, which is the shape the
+	// old byte was reaching for.
+	orchGlyphPaused = tokens.GlyphPaused
 	// The linear tier's stand-ins, on [glyphQueuedASCII]'s terms: a shape a
 	// screen reader cannot name is replaced by a character it can.
 	orchGlyphQueuedASCII  = "o"
@@ -389,6 +393,11 @@ const orchPollEvery = 250 * time.Millisecond
 // paths that return no command of their own, and one drain point is worth more
 // than four return values.
 func (a *app) openOrchRoom(id, goal string) {
+	// A task destination takes the body and composer together. Park an open
+	// start page before retargeting either of them.
+	if a.startingChat() {
+		a.parkChatStart()
+	}
 	if _, ok := a.orchDoors(); !ok {
 		// THE BUILD GUARD, room.go's exactly: the doors are an assertion and not a
 		// compile-time requirement, so a surface driven by an agent that has never
@@ -407,6 +416,11 @@ func (a *app) openOrchRoom(id, goal string) {
 	// zero and draws nothing, which is the honest answer.
 	a.room = a.newRoom(0, firstNonEmpty(goal, id))
 	a.room.orch = run
+	// AND THE BOX STARTS TALKING TO THE PLANNER (recipient.go). It is retargeted
+	// HERE rather than in the constructor because a run's page is only a run's
+	// page from the line above: built with the node id zero, it would otherwise be
+	// keyed as the conversation itself and share the conversation's draft.
+	a.retargetComposer(runRecipient(id))
 	a.orchLive = id
 	a.sel = -1
 	a.dropHover()
@@ -431,7 +445,7 @@ func (a *app) orchShowing(id string) bool {
 
 // orchTick asks for the next poll.
 func orchTick(gen int) tea.Cmd {
-	return tea.Tick(orchPollEvery, func(time.Time) tea.Msg { return orchPollMsg{gen: gen} })
+	return surfaceTick(orchPollEvery, func(time.Time) tea.Msg { return orchPollMsg{gen: gen} })
 }
 
 // orchPoll re-reads the run and re-arms. A generation that no longer matches is
@@ -1483,12 +1497,12 @@ func (a *app) orchGlyph(node orchestrate.NodeStatus) string {
 	case orchestrate.Done:
 		return a.linearMark(orchGlyphDone, orchGlyphDoneASCII)
 	case orchestrate.Failed:
-		return a.linearMark(glyphBad, glyphBadASCII)
+		return a.icon(tokens.GFailed)
 	case orchestrate.Cancelled:
 		// NOT THE CROSS. A node somebody stopped did not fail and nobody found
 		// anything wrong with it — it is the one state on this ramp that is not a
 		// point on it, and it wears the roster's own stop mark (stop.go).
-		return a.linearMark(glyphStopped, glyphStoppedASCII)
+		return a.icon(tokens.GStopped)
 	case orchestrate.Running:
 		return a.linearMark(orchGlyphRunning, orchGlyphRunningASCII)
 	default:
@@ -1732,7 +1746,12 @@ func orchNodeWord(node orchestrate.NodeStatus) string {
 	case orchestrate.Done:
 		return orchDoneWord
 	case orchestrate.Failed:
-		return "failed"
+		// `failed` IS NOT A WORD THIS SURFACE SAYS ANY MORE. It sends somebody
+		// looking for a fault, and most of the ways a node ends this way are not
+		// one — so a run's node reads what every other piece of work on this
+		// surface reads (taskview.go's [taskRecordStoppedWord], and
+		// docs/design/task-states/DESIGN.md).
+		return taskRecordStoppedWord
 	case orchestrate.Cancelled:
 		return orchStoppedWord
 	}
@@ -1820,11 +1839,12 @@ func (a *app) orchGateRows(page *orchPage, width int) {
 		return
 	}
 	page.put("")
-	question := glyphAsk + " " + orchGateLead
+	ask := a.icon(tokens.GNeedsHuman)
+	question := ask + " " + orchGateLead
 	if spend := strings.TrimSpace(run.gate.text); spend != "" {
 		question += " · " + spend
 	}
-	page.put(a.pal.askBold(glyphAsk) + a.pal.ask(fit(question[len(glyphAsk):], width-len(glyphAsk))))
+	page.put(a.pal.askBold(ask) + a.pal.ask(fit(question[len(ask):], width-ansi.StringWidth(ask))))
 	for _, answer := range run.gateAnswers() {
 		picked := run.pick == orchTarget{answer: answer}
 		lead := a.orchLead(picked)
@@ -1932,7 +1952,7 @@ func (a *app) orchHeadMark() string {
 	run := a.orchOf()
 	switch {
 	case run.snap.Stopped:
-		return a.linearMark(glyphStopped, glyphStoppedASCII)
+		return a.icon(tokens.GStopped)
 	case run.gate != nil || run.snap.Paused:
 		return a.linearMark(orchGlyphPaused, orchGlyphPausedASCII)
 	case run.snap.Done:
