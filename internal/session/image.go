@@ -431,12 +431,18 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 			a.hub = nil
 			a.done = nil
 			close(done)
+			started := false
 			if next, ok := a.nextFollowUpLocked(completed); ok {
 				// An ordinary turn, on the chat model: the follow-up is words,
 				// and words are what that model can read.
 				a.startTurnLocked(context.Background(), next.message, next.stream)
+				started = true
 			}
+			// A hand-over this drain wrote down is read by the follow-up's first
+			// request, or by nobody ([Agent.giveBackHandOvers]).
+			orphaned := a.orphanedHandsLocked(started)
 			a.mu.Unlock()
+			a.giveBackHandOvers(orphaned)
 		}()
 		defer func() {
 			if recovered := recover(); recovered != nil {

@@ -93,7 +93,9 @@ still means the newest task anywhere in the project that wears it, which is what
 `already handed to aforge` and sends the model nothing further — no second instruction, no
 second line about the same decision — and it is not shown to you as trouble, because the
 state it asks for is the state that already holds: the reason row goes on reading `aforge
-is deciding`. If you want it back, press `take it back` and the answers return to you.
+is deciding`. If you want it back, press `take it back` and the answers return to you. A
+press made as aforge finishes a reply is held for the reply that reads it; one no reply
+will read — you stopped it — comes straight back to you.
 
 **A recovered task is this conversation's task.** Reopening a conversation brings its
 graph back — `recovered task graph: 1 done · 1 your call` — and everything the card offers
