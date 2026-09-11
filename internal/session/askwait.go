@@ -25,6 +25,22 @@ package session
 //
 // There is no fourth, and nothing outside this file may reach the channels.
 //
+// ── AND AN ANSWERED QUESTION IS KEPT, BECAUSE IT CAN BE CHANGED ──
+//
+// A decision the person made is still theirs afterwards: while its receipt is on
+// screen they may answer it again (`c change`, tui3's questionchange.go), and a
+// permission they widened may be handed back whole (`u undo`). So the entry does
+// not leave this book when it is answered — [askOpen.settled] is filled in and
+// the entry stays, which is the only way the revision can be rendered against
+// what was actually asked and say what it replaced. It leaves when the turn
+// retires it, when the call that asked is abandoned, or with the session.
+//
+// THE OWNERSHIP MOVES DOWN ONE FIELD WITH IT. `THE ENTRY IS THE OWNERSHIP` holds
+// for the three endings that take the entry out of the map; the answer claims
+// the WAIT instead ([askedOfThePerson.answerLocked] takes `open.wait` and leaves
+// nil behind), which is the same primitive one field lower and is what
+// [askedOfThePerson.askedBackLocked] already did.
+//
 // ── AND A QUESTION CAN OUTLIVE THE CALL THAT ASKED IT ──
 //
 // Two shapes do it: a RATIFY, which nothing waits on ([AskKind.Waits]), and a
@@ -55,6 +71,8 @@ package session
 // a.mu held, like everything else here, without the unlock-and-hope the raw map
 // needed around it.
 
+import "time"
+
 // askedOfThePerson is every question the model has put that this session is
 // still parked on, keyed by the ask's own id. The zero value is usable and holds
 // nothing.
@@ -77,6 +95,19 @@ type askOpen struct {
 	theirs map[string]string
 	wait   chan Answer
 	letGo  func()
+	// clock is the policy's own timer where the question has one. It belongs to
+	// the LANE and not to the call, so it runs on a question nobody is parked on
+	// — which is every ratify and every ask whose turn did not wait
+	// (asklane.go's [Agent.startAskClock]).
+	clock *time.Timer
+	// held says a person pressed a key on this question and the clock will never
+	// answer it. There is no way back: a clock that resumed would fire exactly
+	// when somebody looked away mid-decision.
+	held bool
+	// settled is the answer that ended it, and nil while it is still open. It is
+	// kept because a settled reversible decision can still be CHANGED, and the
+	// correction says what it was changed from.
+	settled *Answer
 }
 
 // parkLocked registers one ask and answers the channel its lane waits on, which
@@ -86,7 +117,11 @@ func (asked *askedOfThePerson) parkLocked(open *askOpen) <-chan Answer {
 	if asked.parked == nil {
 		asked.parked = make(map[uint64]*askOpen)
 	}
-	if open.q.Ask.Waits() {
+	// THE FIELD IS THE DERIVATION. `Blocking.Turn` is built in [Agent.executeAsk]
+	// from whether this call really parks — the kind's own answer AND the asker's
+	// own word — so reading it here is reading that one decision rather than
+	// making a second one that could disagree with the row on the screen.
+	if open.q.Blocking.Turn {
 		// Buffered to one and read at most once, so the road that applies the
 		// answer never blocks on the lane having got to its select.
 		open.wait = make(chan Answer, 1)
@@ -107,6 +142,79 @@ func (asked *askedOfThePerson) claimLocked(id uint64) (*askOpen, bool) {
 	return open, true
 }
 
+// askSettledKept is how many ANSWERED questions this book keeps for a revision.
+//
+// IT IS THE BOUND ON THE ONE THING HERE THAT OUTLIVES BEING ANSWERED. A settled
+// entry is kept so `c change` can put the question back and say what it
+// replaced; kept forever, the book would grow for the life of a session with
+// every question ever answered in it.
+//
+// THE CONSTRAINT IS WHAT MATTERS AND THE NUMBER FOLLOWS IT: this must be at
+// least as large as the most receipts any surface offers `c change` or `u undo`
+// on at once, or a key drawn on the screen would be refused by this book. In
+// tui3 that figure is `questionRecordsKept`, which is TWO — the two receipts
+// above the box, each live for about half a minute.
+//
+// It is four rather than two because this engine cannot see how many surfaces
+// are drawing it. A second window attached to the same conversation keeps
+// receipts of its own, and the `--host` link's window is a third; each one is
+// offering its own keys against this one book. Twice the figure of the only
+// surface anybody can count is slack bought cheaply — four entries — against a
+// refusal a person would read as the program forgetting what they just decided.
+// The floor is the sentence above; the doubling is the guess, and it is written
+// down as a guess so that raising the surface's figure is known to reach here.
+const askSettledKept = 4
+
+// forgetOldSettledLocked drops the oldest settled entries past that bound. Ids
+// are minted in order ([Agent.askSeq]), so the smallest settled id is the oldest
+// decision and the first to go.
+func (asked *askedOfThePerson) forgetOldSettledLocked() {
+	for {
+		settled, oldest := 0, uint64(0)
+		for id, open := range asked.parked {
+			if open == nil || open.settled == nil {
+				continue
+			}
+			settled++
+			if oldest == 0 || id < oldest {
+				oldest = id
+			}
+		}
+		if settled <= askSettledKept || oldest == 0 {
+			return
+		}
+		if open := asked.parked[oldest]; open != nil && open.clock != nil {
+			open.clock.Stop()
+		}
+		delete(asked.parked, oldest)
+	}
+}
+
+// stopClocksLocked stops every clock this book has armed, because NOTHING ARMED
+// OUTLIVES THE SESSION THAT ARMED IT (steer_grace.go states the same law for a
+// steer's grace). A clock that fired after the door shut would answer a question
+// with nobody to read the answer: the note would be refused by a closed queue
+// and the decision would still be in the record, where the next run of this
+// conversation reads it as something the person settled.
+func (asked *askedOfThePerson) stopClocksLocked() {
+	for id, open := range asked.parked {
+		if open == nil {
+			continue
+		}
+		if open.clock != nil {
+			open.clock.Stop()
+		}
+		if open.settled != nil {
+			// AND NOTHING SETTLED OUTLIVES THE SESSION EITHER. A receipt kept so
+			// its decision could be changed is a receipt nobody can change once
+			// the door has shut; the questions still OPEN are left exactly where
+			// they are, because a session leaving does not answer them and the
+			// next one has its own book.
+			delete(asked.parked, id)
+		}
+	}
+}
+
 // atLocked is what is standing under one id, without taking it. It is for the
 // readings — the presence file's, the sweep's — and never for an ending.
 func (asked *askedOfThePerson) atLocked(id uint64) *askOpen { return asked.parked[id] }
@@ -116,17 +224,51 @@ func (asked *askedOfThePerson) atLocked(id uint64) *askOpen { return asked.parke
 // whose call is long gone; false is an answer that arrived after the question
 // stopped being one, which every caller treats as nothing to do rather than as
 // a fault.
-func (asked *askedOfThePerson) answerLocked(id uint64, answer Answer) (*askOpen, bool) {
-	open, parked := asked.claimLocked(id)
-	if !parked {
-		return nil, false
+func (asked *askedOfThePerson) answerLocked(id uint64, answer Answer) (*askOpen, chan Answer, error) {
+	open, parked := asked.parked[id]
+	if !parked || open == nil {
+		// A QUESTION THIS BOOK HAS NO ENTRY FOR IS NOT A LATE ANSWER, AND THE
+		// DIFFERENCE IS WORTH A SENTENCE. What reaches here is a row on somebody
+		// screen that this engine is not asking any more — the turn was
+		// interrupted and took the question with it, they talked past it, or the
+		// session host has restarted since it was drawn and the book went with
+		// the process.
+		return nil, nil, errAnswerGone
 	}
-	if open.wait != nil {
-		// The claim above is the ownership: the entry is out of the map, so no
-		// other road can reach this channel and the field is left standing as
-		// the caller's own reading of WHO GOT THE ANSWER — a lane still parked,
-		// or nobody, which is a question that outlived its call.
-		open.wait <- answer
+	if open.settled != nil && !answer.Revises {
+		// THE FIRST ANSWER WINS, AND THE SECOND CHANGES NOTHING AT ALL —
+		// including the record. The clock and a person can reach the door in the
+		// same instant, and a loser that said nothing was recorded and announced
+		// as the decision while the model had already been told the other one.
+		return nil, nil, errAnswerSettled
+	}
+	settled := answer
+	open.settled = &settled
+	if open.clock != nil {
+		open.clock.Stop()
+	}
+	asked.forgetOldSettledLocked()
+	// THE WAIT IS CLAIMED AND THE ENTRY STAYS. Nothing else can reach this
+	// channel afterwards, so a correction that arrives once the call has taken
+	// its answer and gone is a MESSAGE rather than a send into a channel nobody
+	// reads — which is measurable: without it, a change to a question the turn
+	// had waited for was recorded, drawn, and never heard by the model
+	// (the Spark, 2026-09-11).
+	wait := open.wait
+	open.wait = nil
+	if wait != nil {
+		wait <- answer
+	}
+	return open, wait, nil
+}
+
+// settledLocked is one question this book holds and somebody has already
+// answered, for the revision that wants to know what was asked and what was
+// decided last time.
+func (asked *askedOfThePerson) settledLocked(id uint64) (*askOpen, bool) {
+	open, parked := asked.parked[id]
+	if !parked || open == nil || open.settled == nil {
+		return nil, false
 	}
 	return open, true
 }
@@ -208,7 +350,21 @@ func (asked *askedOfThePerson) talkedPastLocked() []uint64 {
 func (asked *askedOfThePerson) retireLocked() []*askOpen {
 	var gone []*askOpen
 	for id, open := range asked.parked {
-		if open == nil || open.wait != nil || questionOutlivesTurn(open.q) {
+		if open == nil || open.wait != nil {
+			continue
+		}
+		if open.settled != nil {
+			// AN ANSWERED QUESTION IS NOT RETIRED AT ALL. Nothing is drawn for it
+			// — the answer took its row down — and withdrawing it would put `no
+			// longer needed` on somebody's screen about their own decision. What
+			// is left is the entry a revision reads, and its bound is
+			// [askedOfThePerson.forgetOldSettledLocked] rather than this sweep:
+			// a turn very often ENDS on the answer that settled it, and clearing
+			// it here would take `c change` away one frame after the receipt
+			// offered it.
+			continue
+		}
+		if questionOutlivesTurn(open.q) {
 			continue
 		}
 		if taken, parked := asked.claimLocked(id); parked {
@@ -233,7 +389,14 @@ func (asked *askedOfThePerson) openLocked() []uint64 {
 		return nil
 	}
 	ids := make([]uint64, 0, len(asked.parked))
-	for id := range asked.parked {
+	for id, open := range asked.parked {
+		if open == nil || open.settled != nil {
+			// AN ANSWERED QUESTION IS NOT AN OPEN ONE. The entry is kept so the
+			// decision can be changed while its receipt is on screen (the header
+			// says why); what is drawn, counted and replayed is what is still a
+			// question.
+			continue
+		}
 		ids = append(ids, id)
 	}
 	return ids

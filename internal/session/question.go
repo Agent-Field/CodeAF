@@ -1051,6 +1051,17 @@ type DecisionRecord struct {
 	// preference is later written from. Empty is the ordinary case and nothing
 	// is drawn for it.
 	Why string `json:"why,omitempty"`
+	// Was is what this decision replaced, in the words it was read under, and it
+	// is filled on a CHANGED decision alone ([Answer.Revises]).
+	//
+	// THE LINE HAS TO SAY IT OR THE RECORD READS AS A CONTRADICTION. Two lines
+	// with the same head and different answers is exactly what a person changing
+	// their mind leaves behind, and a reader — the model, the mark reader, the
+	// person three days later — cannot tell that from the program having asked
+	// the same thing twice and got two answers. Measured on the Spark,
+	// 2026-09-11: a side-call read the record, found "Hello" and a file saying
+	// "Hola", and set about "fixing" the file.
+	Was []string `json:"was,omitempty"`
 	// At is when.
 	At time.Time `json:"at"`
 }
@@ -1135,6 +1146,11 @@ func (r DecisionRecord) LineClauses() []DecisionClause {
 	clauses := []DecisionClause{{Text: strings.TrimSpace(r.Head) + " → " + r.Words()}}
 	if change := strings.TrimSpace(r.Change); change != "" {
 		clauses = append(clauses, DecisionClause{Text: "with: " + change, GiveUp: 2})
+	}
+	if len(r.Was) > 0 {
+		// IT IS NEVER GIVEN UP. A changed decision that dropped the clause
+		// saying so is the contradiction this field exists to prevent.
+		clauses = append(clauses, DecisionClause{Text: "changed from " + strings.Join(r.Was, ", ")})
 	}
 	if by := strings.TrimSpace(string(r.By)); by != "" {
 		clauses = append(clauses, DecisionClause{Text: decidedByWord(r.By)})
@@ -1826,6 +1842,26 @@ func (a *Agent) ResolveQuestion(answer Answer) error {
 	if strings.TrimSpace(answer.Key) == "" {
 		answer.Key = answer.FirstKey()
 	}
+	// A REVISION IS THE OTHER THING AN ANSWER CAN BE, and it takes its own road
+	// for one reason: every lane below is a resolver handing an answer to
+	// somebody WAITING for it, and a question that has been settled has nobody
+	// waiting. [Agent.reviseLane] applies it and answers what was asked, so the
+	// record and the announcement below are made exactly as they are for a first
+	// answer — a changed decision is a decision, and it is kept and said the
+	// same way.
+	if answer.Revises {
+		q, prior, err := a.reviseLane(answer)
+		if err != nil {
+			return err
+		}
+		record := decisionRecordOf(q, answer)
+		if prior != nil {
+			record.Was = decisionRecordOf(q, *prior).Labels
+		}
+		a.recordDecision(record)
+		a.emitQuestion(EventQuestionAnswered, q, &answer)
+		return nil
+	}
 	// THE WORDS ARE CLAIMED BEFORE THE LANE IS TOUCHED. The lane is about to
 	// return and let go of this question, and letting go of one nobody answered
 	// is withdrawing it ([Agent.rememberQuestion]) — so an answer that had not
@@ -1843,6 +1879,16 @@ func (a *Agent) ResolveQuestion(answer Answer) error {
 		q = a.questionForLandingAnswer(answer)
 	}
 	if err := a.applyToLane(answer); err != nil {
+		if errors.Is(err, errAnswerSettled) {
+			// THE LOSER OF A RACE RECORDS NOTHING AND SAYS NOTHING. Somebody
+			// else's answer to this question got there first — the clock and a
+			// person can both reach this door in the same instant — and it has
+			// already been recorded, announced and given to the model. Writing a
+			// second record here is how the record and the windows came to show
+			// one answer while the model had been told the other. The question is
+			// NOT put back: it really is answered.
+			return nil
+		}
 		// NOTHING WAS DECIDED, SO NOTHING IS FORGOTTEN. The question is still a
 		// question and still has to be drawn.
 		if said && resolvesQuestion(answer) {
@@ -2009,9 +2055,11 @@ func (a *Agent) applyToLane(answer Answer) error {
 	words := answer.Words()
 	switch answer.Kind {
 	case QuestionAsk:
-		// The model's own lane keeps its answers in one place (tools_ask.go):
-		// the call parked on the question takes it where there is one, and the
-		// model is told as a message where the question outlived its call.
+		// THE MODEL'S OWN LANE DELIVERS RATHER THAN RELEASES (asklane.go): the
+		// answer reaches the call parked on it where there is one, and the
+		// conversation's own queue where there is not. The delivery cannot block
+		// and the claim is the ownership, so the handover is one locked step
+		// rather than the read-unlock-send it was.
 		return a.answerAsk(answer)
 	case QuestionConsent, QuestionTask, QuestionStanding:
 		if answer.Kind == QuestionStanding && key == "" && words != "" {

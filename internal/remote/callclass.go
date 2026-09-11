@@ -146,7 +146,7 @@ func classify(method string) callClass {
 		MethodTaskRoom, MethodTaskPending, MethodTaskJudge, MethodTaskEffort,
 		MethodListDir, MethodStatPaths, MethodFetchFile:
 		return classGetter
-	case MethodQuestionResolve,
+	case MethodQuestionResolve, MethodQuestionHold,
 		MethodConsent, MethodConsentRemember,
 		MethodStandingResolve, MethodHarness, MethodConnect, MethodConnectKey,
 		MethodNoteConnected,

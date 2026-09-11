@@ -1493,6 +1493,15 @@ type app struct {
 	// [app.questionRecordsShown] — a receipt is news, and news that never goes
 	// is furniture.
 	questionRecords []questionRecord
+	// priorAnswers is what a question being CHANGED was answered with last time,
+	// kept by token from the receipt that offered the change until the new answer
+	// is given (questionchange.go).
+	priorAnswers map[string]session.DecisionRecord
+	// questionHolds are the clocks a key has stopped this frame, waiting to be
+	// handed to bubbletea as commands (questionhold.go). They are never sent
+	// from inside the key routine: telling the engine is a call over a
+	// connection, and Update is the one place that must not wait on one.
+	questionHolds []tea.Cmd
 	// questionYeses counts the same-shaped yeses per shape, which is the whole
 	// of the rule offer: the third one puts `r make it a rule` on the row
 	// ([app.questionRule]). It is this window's own count and is deliberately
@@ -3079,6 +3088,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// card fact so a start and a keep can never disagree (task.go).
 	if a.levelsWaiting() || a.waiting() || a.formingCardLive() {
 		cmd = tea.Batch(cmd, a.wake())
+	}
+	// AND A CLOCK SOMEBODY STOPPED IS TOLD TO THE ENGINE HERE, from a command
+	// rather than from inside the key routine that took the key
+	// (questionhold.go's [app.takeQuestionHolds] says why it is this line).
+	if hold := a.takeQuestionHolds(); hold != nil {
+		cmd = tea.Batch(cmd, hold)
 	}
 	// AND THE TERMINAL'S TITLE IS ASKED AFTER EVERY MESSAGE, because this is
 	// the one place every change to where a person stands has already happened

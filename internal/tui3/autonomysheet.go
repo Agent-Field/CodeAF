@@ -13,7 +13,7 @@ package tui3
 //	landing          decide yourself
 //	assumptions      recommend, auto in 10m
 //	already done     ask me
-//	/autonomy <kind> ask · recommend <duration> · decide
+//	/autonomy <kind> ask · recommend [duration] · decide
 //
 // ── WHY IT IS PER PROJECT AND NOT PER PROFILE ──
 //
@@ -57,7 +57,7 @@ const (
 	// door. An earlier draft put `· change` on every row, which is a word with
 	// no key behind it — furniture that tells somebody a thing is changeable
 	// without telling them how.
-	autonomyUsageWord = "/autonomy <kind> ask · recommend <duration> · decide"
+	autonomyUsageWord = "/autonomy <kind> ask · recommend [duration] · decide"
 	// autonomyNoProjectWord is the refusal for a conversation with no project to
 	// store rules in. It says what is missing rather than that something failed.
 	autonomyNoProjectWord = "this conversation has no project to keep question rules in"
@@ -197,16 +197,22 @@ func autonomyLineOf(words string) (session.AskKind, session.Policy, string) {
 	case "decide":
 		rule.Kind = session.PolicyDecide
 	case "recommend":
-		if len(parts) != 3 {
+		// A LENGTH IS OPTIONAL. `recommend` on its own takes the engine's own
+		// default, which is the one derivation of that figure (session's
+		// [autonomyClock]); naming a duration is how somebody who wants a
+		// different one says so.
+		rule.Kind = session.PolicyRecommendThenAuto
+		if len(parts) == 3 {
+			after, err := time.ParseDuration(parts[2])
+			if err != nil || after <= 0 {
+				return "", session.Policy{}, "that duration is not understood: " + parts[2]
+			}
+			rule.After = after
+		} else if len(parts) != 2 {
 			return "", session.Policy{}, autonomyUsageWord
 		}
-		after, err := time.ParseDuration(parts[2])
-		if err != nil || after <= 0 {
-			return "", session.Policy{}, "that duration is not understood: " + parts[2]
-		}
-		rule.Kind, rule.After = session.PolicyRecommendThenAuto, after
 	default:
-		return "", session.Policy{}, "choose ask, recommend <duration>, or decide"
+		return "", session.Policy{}, "choose ask, recommend [duration], or decide"
 	}
 	return kind, rule, ""
 }

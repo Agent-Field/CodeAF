@@ -21,7 +21,7 @@ Before the engine puts a question to the person, the asker has climbed:
 1. **the record** — never ask what a decision record or a preference answers
 2. **assume, and say so** — an assumptions card; the person strikes the wrong ones
 3. **act, then ratify** — reversible: do it, show a ratify card (D1 = A)
-4. *(owed, D8 = B this wave)* start on the pick while asking — designed as a seam, not built
+4. **keep working while asking** (D8, built 2026-09-11) — an `ask` that says `blocking: {turn: false}` comes back at once and the answer arrives later as a message; see *An answer is a message* below
 5. **show outcomes** — attach what each answer produces (a diff, a rendered row, a layout)
 6. **structured input** — blanks · checklist · this-or-this · dial, never free text where a key would do
 7. **the question** — head, options, pick with reason and confidence, what would change its mind
@@ -214,10 +214,131 @@ conversation with the same answers row.
 One tool, `ask`, whose schema is the object minus what the engine fills (ID,
 Asker, Asked, Policy): head, kind, options with bodies and blocks, dimensions,
 input shape, pick with reason/confidence/wouldChange, stakes, scope, attach.
-The result is the `Answer`, whole — including `Reframe` and `AskedBack`. The
+The result is the `Answer`, whole — including `Reframe` and `AskedBack` — behind
+one sentence saying who gave it; with `blocking: {turn: false}` the result is
+`asked · question N` and that same text arrives later as a message. The
 system prompt carries the ladder in the model's own instructions and names
 `ask` as the last rung. `internal/session/prompts/system.md` and the manual
 state exactly when asking is allowed; the question gate enforces it.
+
+## An answer is a message (lane A, 2026-09-11)
+
+Until this wave an answer to the model's own `ask` was only the RETURN VALUE of
+the call that asked: `executeAsk` parked the turn on a channel, and the answer
+existed for the model only if that call was still waiting for it. Three things
+the owner picked could not be built on that — keeping working while a question
+stands, a countdown that goes with the pick, and changing an answer after it is
+given — because each of them is an answer arriving when NO call is waiting.
+
+**The road already existed.** A background job's ending, a watch's firing and a
+task landing reach the model through ONE door, `Agent.accept(delivery)`
+(`internal/session/mailbox.go`): the note goes on the steering queue, the loop
+drains that queue at the next STEP boundary (`drainSteering`, before the next
+request), and on an idle conversation the note's wake mark starts a turn
+(`wakeLocked`). It coalesces, it respects the spend rail, a stopped session and a
+task node's runner, and it journals the note in the session's lane. An answer is
+now one more thing that rides it. There is no second delivery path.
+
+**The one door is still `ResolveQuestion`.** Its `ask` arm hands the answer to
+the lane's book, `Agent.asks` (one `modelAsk` per question the model raised in
+this conversation), which renders it ONCE — `askAnswerText`: one sentence saying
+what happened, then the `Answer` as JSON in the model's own keys — and then:
+
+- a call parked on the question is handed that text as its result;
+- with nobody parked, the text goes through `accept` as an owed note
+  (`answerNote`: wake, not batched into "while you worked", the same delivery
+  marks `relayNote` carries so a task node's runner is released by it and does
+  not close on top of it).
+
+The bytes are the same either way, and a law test holds them the same.
+
+**Deleted:** `askWaits` (a map of channels that could only release a parked
+call), the policy clock inside `executeAsk`'s `select` (a clock that existed only
+while a call waited), and the ask arm that dropped an answer with nobody parked.
+
+### The three features are three cases of it
+
+1. **Keep working while asking.** `blocking: {turn: false}` — an explicit false —
+   registers the question, puts it on every screen, and returns at once:
+   `asked · question 3 · <head> · …the answer arrives as a message that starts
+   "answered · question 3"`. The question outlives the call and the turn; the
+   turn ending does not withdraw it. Its answer lands at the next step boundary
+   of whatever turn is running, or starts one. `blocking` omitted, or `turn:
+   true`, waits exactly as before — THE ZERO VALUE WAITS, as `Policy`'s does, so
+   a model that says nothing gets today's behaviour. A stop (`workStopped`)
+   declines the wake and the answer waits on the queue for the person's next
+   line. Headless runs are unchanged: the policy decides, or `your call`.
+2. **The countdown.** A question with a pick under `PolicyRecommendThenAuto`
+   gets its clock from the lane's book, not from the call, so it runs whether or
+   not a call is parked. When it runs out the pick goes through the one door as
+   `DecidedBy: dial`, and the text says it is PROVISIONAL — the person has not
+   said this and may still change it. The length is the person's own number:
+   the `After` they set for this kind with `/autonomy`, and where they set none
+   (the assumption kind's default) `awayAfter` — the boundary this program
+   already uses to conclude nobody is at the keyboard. Irreversible stakes never
+   get a clock (the gate). **One source of truth for the deadline:
+   `Question.Deadline`.** A key on the question calls
+   `Agent.HoldQuestion(kind, token)` (wire `Question.Hold`), which stops the
+   clock for good, zeroes the deadline and re-sends the question, so every
+   window stops counting on the same beat. A surface reads a recommend-then-auto
+   question with a zero deadline as `paused`.
+3. **Change an answer.** `Answer.Revises` — one bit on the answer that already
+   travels the wire whole — says "this is a new answer to a question already
+   settled", which the door would otherwise drop as a late second click. The
+   door refuses a revision of an irreversible decision (`that decision cannot
+   change — it was marked irreversible`), writes a new record (the gate and the
+   record read the newest), emits `EventQuestionAnswered` so other windows
+   update their receipts, and delivers a correction through the same road:
+   `changed · question 3 · <head> · was SQLite, now JSONL…`. On the consent lane
+   a revision away from a widening answer drops the conversation's memo for that
+   tool, so the next call asks again; the saved settings rule is the surface's
+   to remove, since the surface wrote it.
+
+### The offer to stop asking (2026-09-11, owner)
+
+A setting that changes what the program does on its own is never reachable only by a
+slash command. `/autonomy`, the settings row and this offer are three doors onto ONE
+store — `.aforge/autonomy.json`, written only through `Agent.SetAutonomy`.
+
+WHEN the offer appears is derived from the record this session already keeps, and from
+nothing else: the newest decision is the third of its shape answered the same way, by
+the person, reversibly, and that shape has no explicit row yet. It is therefore offered
+**once per kind per project** with nothing new to store — an explicit row silences it
+for good, and both taking the offer (`recommend then go`) and declining it (`ask me`)
+write one. Never for a shape the door itself refuses (a confirmation always asks; a
+clarification never runs on a clock), and never on irreversible stakes.
+
+**This is not built.** It was written and then taken out of #954 (opened as #914, which GitHub closed with its base branch) rather than shipped
+with nothing calling it: the dim line on the receipt and its keys are the surface's, and
+that surface reads no decision record yet — so the whole of it would have been a
+function nobody could reach. Two things it needs when somebody builds it: the record
+list on the surface's side of the door, and ONE counter for the `r make it a rule` offer
+(tui3's `questionYeses` counts yeses per shape today, which is a second count of the
+same thing).
+
+### Limits, stated
+
+- The book is in memory. A session host that restarts loses its open asks
+  exactly as it loses a parked turn today; a revision of a question from an
+  earlier life is refused with `that question is from an earlier run`.
+- Only the model's `ask` and consent take a revision. Every other lane's
+  answer has already moved work, and saying otherwise would be a key that lies.
+- A consent keeps its own call parked — it is a gate on that call and nothing
+  else. The other calls in the same batch already run beside it (`runToolsWarm`
+  runs a batch concurrently); the NEXT step waits for the whole batch because a
+  request cannot be assembled with a tool result missing.
+- Over the engine-host road a turn the conversation starts on its own reaches the
+  screen: #690 was the defect there and #856 fixed it. Driven over the default
+  host road on 2026-09-11 — a non-blocking ask answered with the turn idle woke
+  it, and the answer and the work it caused were drawn.
+
+### Wire
+
+Version 15. An older engine would read `Answer.Revises` as a late answer and
+drop it silently, and would answer `Question.Hold` with no such method while its
+clock went on and took the pick under somebody's hand — both are silences, and
+the door refuses a mismatch rather than let a person believe they changed
+something.
 
 ## Lanes
 
