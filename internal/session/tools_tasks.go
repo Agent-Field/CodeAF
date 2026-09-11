@@ -286,10 +286,12 @@ func (a *Agent) taskConversationHint(out string) string {
 // taskElsewhereText draws the other windows' running work in this tool's own row
 // grammar, matched against the same query the search used.
 //
-//	running in other aforge windows on this project:
-//	another window · Sweep the call sites · running · running for 4m 12s
-//	  in the window called "docs pass"
-//	  files so far: internal/session/agent.go, internal/session/task.go
+//	A TASK'S PARTS RIDE ON ITS ROW THE WAY THE BLOCK DRAWS THEM
+//	([foldElsewhere]): a window running one quick task with three parts is
+//	ONE row for that family — its own title, `3 quick parts running` — and
+//	no row of its own for any part. The overflow line counts families, not
+//	parts, so a window with work handed out cannot push another window's
+//	whole task out of the answer.
 //
 // THE ROW LEADS WITH `another window` AND CARRIES NO ID, and that is the one
 // deliberate break from [taskRowText]. Ids restart with every conversation
@@ -312,15 +314,20 @@ func taskElsewhereText(rows []ElsewhereTask, query string, now time.Time) string
 	if len(matched) == 0 {
 		return ""
 	}
+	// THE CAP IS TAKEN OVER FAMILIES AND NOT ROWS. Parts counted against it
+	// meant a window running one task with four parts could spend the whole
+	// budget and push a different window's task out of the answer — a number
+	// the same reading gives the <elsewhere> block the other way ([deltaLiveRows]).
+	families := foldElsewhere(matched)
 	over := 0
-	if len(matched) > taskSearchLimit {
-		over = len(matched) - taskSearchLimit
-		matched = matched[:taskSearchLimit]
+	if len(families) > taskSearchLimit {
+		over = len(families) - taskSearchLimit
+		families = families[:taskSearchLimit]
 	}
 	var out strings.Builder
 	out.WriteString("running in other aforge windows on this project:\n")
-	for _, at := range matched {
-		taskAwayRow(&out, "", "another window", at, now)
+	for _, family := range families {
+		taskAwayFamilyRow(&out, "", "another window", family, now)
 	}
 	if over > 0 {
 		fmt.Fprintf(&out, "… and %d more running elsewhere.\n", over)
@@ -374,6 +381,97 @@ func taskAwayRow(out *strings.Builder, indent, lead string, at ElsewhereTask, no
 	}
 }
 
+// taskAwayFamilyRow writes ONE family of work somebody else has out — the
+// family's head row in [taskAwayRow]'s grammar, with its parts counted on it
+// and no row of its own for any part.
+//
+// IT IS THE BLOCK'S OWN FOLD, REUSED ([foldElsewhere]) rather than restated,
+// because the model reads both in one turn: `<elsewhere>` says `3 quick parts
+// running` and then this tool said four unrelated jobs, and a model deciding
+// whether to start the same work believed whichever reading it saw last. One
+// writer is the only way the two stay the same sentence.
+func taskAwayFamilyRow(out *strings.Builder, indent, lead string, family elsewhereFamily, now time.Time) {
+	at := family.head
+	// THE PARTS COUNT RIDES ON THE HEAD'S OWN ROW, after the clauses that say
+	// what it is and how long it has been going, so a family with nothing handed
+	// out draws exactly the row it always drew.
+	word := elsewherePartsWord(family.parts)
+	if word == "" {
+		taskAwayRow(out, indent, lead, at, now)
+		return
+	}
+	title := deltaLine(at.Task.Title)
+	if title == "" {
+		title = "untitled work"
+	}
+	parts := []string{lead, title}
+	if state := strings.TrimSpace(at.Task.State); state != "" {
+		parts = append(parts, state)
+	}
+	// A QUEUED NODE HAS NO CLOCK, exactly as [taskWhenWord] has it.
+	if !at.Task.StartedAt.IsZero() {
+		if span := taskSpanWord(now.Sub(at.Task.StartedAt)); span != "" {
+			parts = append(parts, "running for "+span)
+		}
+	}
+	parts = append(parts, word)
+	out.WriteString(indent + strings.Join(parts, " · ") + "\n")
+	if name := deltaLine(at.Session); name != "" {
+		out.WriteString(indent + "  in the window called " + strconv.Quote(name) + "\n")
+	}
+	// THE FAMILY'S FILES AND NOT THE HEAD'S, because a part that has written is
+	// work that window has out, and a reader deciding what to leave alone needs
+	// every path the family is in — merged in the order the work touched them.
+	files := family.files()
+	if len(files) > deltaRowFiles {
+		files = files[:deltaRowFiles]
+	}
+	if word := deltaFilesWord(files, len(family.files())); word != "" {
+		out.WriteString(indent + "  files so far: " + word + "\n")
+	}
+}
+
+// everyFamily is one piece of work running in another project, folded the way
+// this project's own other windows are folded: the head, and the parts it
+// handed out counted on its row. `head` is the head's own [OtherProjectTask] so
+// the wide answer keeps the one fact that is about the head's conversation and
+// not the family's shape — whether this terminal is the one holding it.
+type everyFamily struct {
+	elsewhere elsewhereFamily
+	head      OtherProjectTask
+}
+
+// otherProjectRow finds the folded head's own row in its project, so
+// [OtherProjectTask.Mine] survives the fold; a head nothing matched carries no
+// such fact, which is every row a build older than the fold would have written.
+func otherProjectRow(held []OtherProjectTask, family elsewhereFamily) OtherProjectTask {
+	for _, at := range held {
+		if at.SessionID == family.head.SessionID && at.Task.ID == family.head.Task.ID {
+			return at
+		}
+	}
+	return OtherProjectTask{ElsewhereTask: family.head}
+}
+
+// otherProjectFamilies is one project's kept rows with its families folded and
+// the query's matches kept, so the cap and the writer below read one shape
+// rather than re-deriving the fold.
+type otherProjectFamilies struct {
+	OtherProject
+	families []everyFamily
+}
+
+// everyFamilyCount is how many folded rows the wide answer holds across its
+// projects — the number the overflow line counts, so it counts families and
+// never parts.
+func everyFamilyCount(groups []otherProjectFamilies) int {
+	total := 0
+	for _, group := range groups {
+		total += len(group.families)
+	}
+	return total
+}
+
 // taskEverywhereText draws what is running in every OTHER project on this
 // machine, grouped by project, under the same query the search used.
 //
@@ -382,6 +480,7 @@ func taskAwayRow(out *strings.Builder, indent, lead string, at ElsewhereTask, no
 //	  another window · Port the parser · running · running for 2m 3s
 //	    in the window called "parser work"
 //	  open here · Rewrite the docs · queued
+//	  another window · Survey the config loaders · running · running for 5m · 3 quick parts running
 //
 // TWO LEAD WORDS, BECAUSE TWO OF THESE ARE NOT THE SAME THING TO A PERSON.
 // `another window` is a terminal somewhere else that they have to go and find.
@@ -398,14 +497,15 @@ func taskAwayRow(out *strings.Builder, indent, lead string, at ElsewhereTask, no
 // this section short on a machine with forty buckets under its state root.
 func taskEverywhereText(groups []OtherProject, query string, now time.Time) string {
 	query = strings.ToLower(strings.TrimSpace(query))
-	var kept []OtherProject
-	total := 0
+	var kept []otherProjectFamilies
 	for _, group := range groups {
 		var rows []OtherProjectTask
 		for _, at := range group.Tasks {
 			// The project's own name is matched as well as the task's, because
 			// "what is wisp doing" is the same question asked about the place
-			// rather than about the work.
+			// rather than about the work. A PART IS MATCHED ON ITS OWN TITLE TOO,
+			// so a query naming a family's work still finds the head it hangs
+			// under — the fold below would otherwise drop it silently.
 			hay := strings.ToLower(at.Task.Title + " " + at.Session + " " + group.Name + " " + group.Path)
 			if query != "" && !strings.Contains(hay, query) {
 				continue
@@ -416,25 +516,43 @@ func taskEverywhereText(groups []OtherProject, query string, now time.Time) stri
 			continue
 		}
 		group.Tasks = rows
-		kept = append(kept, group)
-		total += len(rows)
+		kept = append(kept, otherProjectFamilies{OtherProject: group})
 	}
 	if len(kept) == 0 {
 		return ""
 	}
+	// THE SAME FOLD, THE SAME CAP, THE SAME REASON as this project's own
+	// section: families and not parts, so a window with work handed out cannot
+	// push another project's whole task out of the wide answer either. The fold
+	// is taken INSIDE one project at a time and never across the groups,
+	// because a family is keyed by window and id and each project's rows came
+	// out of that project's own presence files — a shared id under two projects
+	// is two pieces of work exactly as it was before this existed.
+	for i, group := range kept {
+		rows := make([]ElsewhereTask, 0, len(group.Tasks))
+		for _, at := range group.Tasks {
+			rows = append(rows, at.ElsewhereTask)
+		}
+		folded := foldElsewhere(rows)
+		families := make([]everyFamily, 0, len(folded))
+		for _, family := range folded {
+			families = append(families, everyFamily{elsewhere: family, head: otherProjectRow(group.Tasks, family)})
+		}
+		kept[i] = otherProjectFamilies{OtherProject: kept[i].OtherProject, families: families}
+	}
 	over := 0
-	if total > taskSearchLimit {
-		over = total - taskSearchLimit
+	if families := everyFamilyCount(kept); families > taskSearchLimit {
+		over = families - taskSearchLimit
 		budget := taskSearchLimit
-		var capped []OtherProject
+		var capped []otherProjectFamilies
 		for _, group := range kept {
 			if budget <= 0 {
 				break
 			}
-			if len(group.Tasks) > budget {
-				group.Tasks = group.Tasks[:budget]
+			if len(group.families) > budget {
+				group.families = group.families[:budget]
 			}
-			budget -= len(group.Tasks)
+			budget -= len(group.families)
 			capped = append(capped, group)
 		}
 		kept = capped
@@ -452,13 +570,13 @@ func taskEverywhereText(groups []OtherProject, query string, now time.Time) stri
 			head += " · " + path
 		}
 		out.WriteString(head + "\n")
-		for _, at := range group.Tasks {
+		for _, family := range group.families {
 			lead := "another window"
-			if at.Mine {
+			if family.head.Mine {
 				lead = "open here"
 				mine = true
 			}
-			taskAwayRow(&out, "  ", lead, at.ElsewhereTask, now)
+			taskAwayFamilyRow(&out, "  ", lead, family.elsewhere, now)
 		}
 	}
 	if over > 0 {
