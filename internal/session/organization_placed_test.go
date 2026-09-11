@@ -216,3 +216,18 @@ func TestTheCollectionsRefNamesTheStandingKind(t *testing.T) {
 		}
 	}
 }
+
+// FILING IS `add`, IN THE PERSON'S OWN VERB. Live descendants run 02
+// (2026-09-11): with the standing kind named, "also file that acme watch under
+// my Archive folder, just for reference" still went to `place`, which makes
+// Archive's rules reach the watch — because the belt said add "manages
+// references" and nothing said which verb files. The terminal's usage has
+// always said "add files a reference"; the chat's tool now says it the same way.
+func TestTheCollectionsToolSaysFilingIsAdd(t *testing.T) {
+	a := &Agent{config: Config{Organization: &Organization{Path: "collections.db"}}}
+	for _, tool := range a.organizationTools() {
+		if tool.Name == "collections" && !strings.Contains(tool.Description, "add files a reference") {
+			t.Fatalf("the collections tool does not say which verb files: %q", tool.Description)
+		}
+	}
+}

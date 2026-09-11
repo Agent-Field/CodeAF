@@ -81,7 +81,8 @@ Ask to create a collection, file this chat or a piece of ongoing work in it, or
 inspect its work. The `collections` tool supports list, show, find, create, add
 and remove. Omitting `ref` on add or find means this conversation; to file ongoing
 work instead, such as a watch, `ref` names kind `standing` and the id `stand`
-returned for it. Show answers what `aforge collections show` prints: what the
+returned for it. Filing is `add`: it never makes the folder's rules reach the work,
+which only `place` does. Show answers what `aforge collections show` prints: what the
 folder files, under `items`, then what is placed in it, whose rules reach it,
 under `placed`. Each carries its kind (`conversation`, `task`, `standing`), its id,
 its state and a one-line title, read through its existing owner. It does not
