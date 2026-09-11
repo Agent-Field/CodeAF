@@ -180,7 +180,7 @@ func TestTheCloseTargetNeverFallsThroughIntoSelectingTheTab(t *testing.T) {
 		t.Fatalf("the close target overlaps the label: label=%+v close=%+v", label, span)
 	}
 	for x := span.from; x < span.to; x++ {
-		hit, ok := a.tabAt(x, a.tabsLineRow())
+		hit, ok := a.tabAt(x, placeTabRow)
 		if !ok || hit.kind != tabClose {
 			t.Fatalf("column %d of the close target answers as %+v", x, hit)
 		}
@@ -199,10 +199,10 @@ func TestTheSeparatorsAreInertAndTheRowIsStillTheStrips(t *testing.T) {
 	before := a.file
 	label := tabSpanFor(t, a, "openrouter price scrape")
 	sep := label.from - 1 // the rule in front of the first tab
-	if _, ok := a.tabAt(sep, a.tabsLineRow()); ok {
+	if _, ok := a.tabAt(sep, placeTabRow); ok {
 		t.Fatalf("column %d is a separator and answers as a target", sep)
 	}
-	if _, took := a.tabPress(sep, a.tabsLineRow()); !took {
+	if _, took := a.tabPress(sep, placeTabRow); !took {
 		t.Fatal("a press on the strip's own furniture fell through the row")
 	}
 	if a.file != before || a.hop.open {
@@ -352,23 +352,51 @@ func TestTheChatsWordOutlivesItsDecorationOnANarrowFrame(t *testing.T) {
 // EVERY ROW THE HEADER DRAWS IS A ROW THE SCROLLING SUBTRACTED, at every width
 // and on the short frames where pieces of it stand down. A row the frame drew
 // and the geometry did not charge for puts the page's last line under the box.
+//
+// THE HEAD IS THE PLACES' FOUR ROWS OR NOTHING in the conversation, and the
+// pulse and the strip with the room's own ladder under them inside a room
+// (head.go) — so the identity is asked in both, at every size.
 func TestTheHeaderPanelIsDrawnAndBudgetedAtEveryFrame(t *testing.T) {
 	a := crumbApp(t)
+	for _, where := range []string{"in a room", "in the conversation"} {
+		if where == "in the conversation" {
+			a.width, a.height = 120, 40
+			drive(t, a, key("esc"))
+		}
+		headerBudgeted(t, a, where)
+	}
+}
+
+// headerBudgeted is the identity asked at every size, wherever the window is
+// standing.
+func headerBudgeted(t *testing.T, a *app, where string) {
+	t.Helper()
 	for _, size := range []struct{ w, h int }{
-		{160, 40}, {120, 40}, {80, 40}, {60, 40}, {60, 24}, {80, airyFloor},
+		{160, 40}, {120, 40}, {80, 40}, {60, 40}, {60, 24}, {80, 24}, {120, 45}, {80, airyFloor},
 		{80, airyFloor - 1}, {80, roomyFloor}, {roomHeadFloor - 1, 40}, {40, 8},
 	} {
 		a.width, a.height = size.w, size.h
 		a.touch()
 		rows := strings.Split(frame(a), "\n")
-		drawn := a.tabsHeight(size.w) + a.chatRuleHeight(size.w) + len(a.roomHeadRows(size.w)) +
+		drawn := a.tabsHeight(size.w) + a.headSealHeight(size.w) + len(a.roomHeadRows(size.w)) +
 			len(a.roomKinRows(size.w))
 		if a.room != nil && a.headHeight() == 0 {
 			drawn = 0
 		}
 		if drawn != a.headHeight() {
-			t.Fatalf("at %dx%d the header draws %d rows and is charged %d",
-				size.w, size.h, drawn, a.headHeight())
+			t.Fatalf("%s at %dx%d the header draws %d rows and is charged %d",
+				where, size.w, size.h, drawn, a.headHeight())
+		}
+		if a.room == nil && drawn != 0 && drawn != placeHeadRows {
+			t.Fatalf("%s at %dx%d the head is %d rows, not the places' %d",
+				where, size.w, size.h, drawn, placeHeadRows)
+		}
+		// AND THE ROWS CHARGED ARE THE ROWS DRAWN: the pulse on top, the rule
+		// where the geometry says the seam is.
+		if a.room == nil && drawn == placeHeadRows &&
+			(!strings.HasPrefix(plain(rows[0]), " "+product) || strings.Trim(plain(rows[placeTabRow+1]), "─") != "") {
+			t.Fatalf("%s at %dx%d the head is charged as the places' and drawn as something else:\n%q\n%q",
+				where, size.w, size.h, plain(rows[0]), plain(rows[placeTabRow+1]))
 		}
 		// A frame with no body region left answers -1 and has nothing to check
 		// (view.go's [app.bodyTop]); everywhere else the body starts exactly under
@@ -402,7 +430,7 @@ func TestEachHeaderRowAnswersForItselfAndForNoOther(t *testing.T) {
 		if _, ok := a.tabAt(headLabelAt+1, a.roomHeadRow()); ok {
 			t.Fatalf("at %d columns the tab row answers on the trail's row", width)
 		}
-		if _, ok := a.crumbAt(headLabelAt+1, a.tabsLineRow()); ok {
+		if _, ok := a.crumbAt(headLabelAt+1, placeTabRow); ok {
 			t.Fatalf("at %d columns the trail answers on the tab row", width)
 		}
 		if _, ok := a.crumbAt(headLabelAt+1, a.roomFactsRow()); ok {

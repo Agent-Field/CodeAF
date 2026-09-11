@@ -2,18 +2,18 @@
 
 ## Can I set a reminder from home
 
-Yes. Type it on the home screen and press `ctrl+enter` — or press `↑` once and then `enter`,
-which lands on the row spelled `ask here: "…"`.
+Yes. Type it on the home screen, press `↑` once — which lands on the row spelled
+`ask here: "…"` — and press `enter`.
 
 ```
  ? ask here: "remind me at 6 to leave"
  + start a new conversation: "remind me at 6 to leave"
- ──────────────────────────────────────────────────────────────────────────────────────────────────
+ ─ → new conversation in ~/aforge-v2 · glm-5.3-flash ────────── alt+w folder · alt+o model ─
  › remind me at 6 to leave
- enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · esc clear
+ enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · esc clear
 ```
 
-What you get is **a row at the top of home's list and a pane holding the exchange**. The row
+What you get is **a row at the top of home's `where you were` panel and a pane holding the exchange**. The row
 stays there — with what the errand is doing written in its tail — until the errand is
 finished and you have read what it came to. The pane is the exchange itself: what you said,
 the reply as it streams, one line per tool call, and the card when one arrives. On an
@@ -41,10 +41,9 @@ Every `ask here` is one row, marked `?`, named with the first line of what you a
 - **`∙ stood`** — something now stands because of it.
 - **`∙ answered`** — it finished and nothing standing came of it.
 
-The rows sort the way everything else on this screen sorts: **what wants you first, then
-what is moving, then what is done**. They sit at the very **top of home's one list**, above
-everything the machine has to say for itself — an errand is a thing you asked for a minute
-ago.
+The rows sort among themselves: **what wants you first, then what is moving, then what is
+done**. They sit at the very **top of home's `where you were` panel**, above every
+conversation — an errand is a thing you asked for a minute ago.
 
 `enter` or `→` on the row hands the keyboard to the pane. The hint under the box says so:
 `↑↓ move · enter or tab answer this ask here · esc close`. (`tab` on the row was the way in
@@ -72,7 +71,7 @@ Under it is the **live strip**: at most **two lines**, always the newest two thi
 have happened this turn, scrolling as they arrive — a call starting, a call finishing with
 its own time, and the growing tail of the reply so a long answer visibly moves. A call that
 is running carries the braille spinner; one that succeeded carries nothing at all, which is
-how the conversation draws a finished call; one that failed carries `✗` and what went wrong.
+how the conversation draws a finished call; one that failed carries `✕` and what went wrong.
 
 **The whole block disappears when the turn ends.** It is a window onto the moment, not a
 second copy of the transcript — everything in it is already a row above it.
@@ -183,8 +182,9 @@ it:
 - **`esc`** in the pane hands the keyboard to the list. One layer at a time: if you have
   half a follow-up typed, the first `esc` clears that and the second one leaves.
 - **`enter`** on the exchange's row in the list hands the keyboard to its pane.
-- **clicking** puts the keyboard where the pointer is. A click on a list row selects that
-  row *and* takes the keyboard to the column; a click anywhere in the pane brings it back.
+- **clicking** puts the keyboard where the pointer is. A click on a list row opens that
+  row, as `enter` would, *and* takes the keyboard to the column; a click anywhere in the
+  pane brings it back.
 - **answering `1`** on a card hands it back by itself. The thing you asked for is being
   made, and the list is where you go next.
 
@@ -197,22 +197,23 @@ While the pane has the keyboard the hint reads `enter sends a follow-up · tab o
 the list`, with the card's own answers in front of it when a card is up and
 `↓ continue as a conversation` after it when that row is on screen.
 
-**The answers in that line are the chips the card actually drew, and never one more.** A
-card that offers all three reads `1 yes · 2 change when or where · 3 just once · 0 no`; a
-one-off reminder's card, which has no `just once` to give, reads
-`1 yes · 2 change when or where · 0 no`. The line is built from the row of chips rather
-than written out, so it cannot name a digit that would do nothing.
+**The answers in that line are the ones the card actually drew, and never one more.** A
+card that offers all three reads
+`1 yes, set it up · 3 just once · 0 no · c change`; a one-off reminder's card,
+which has no `just once` to give, reads `1 yes, set it up · 0 no · c change`.
+The line is built from the question rather than written out, so it cannot name a digit that
+would do nothing.
 
 `continue as a conversation` is reached with `↓` inside the pane and left again with `↑`,
 `tab` or `esc`. It also lights up under the pointer and takes one click.
 
 ## Ask here on a narrow window — the exchange takes the whole screen
 
-On a terminal too narrow for two columns — **under 136 columns** — home has no right-hand
-pane to put an exchange in. It does not refuse. The two
-zones are **stacked** instead of sat side by side:
+Home's panels have no right-hand pane to put an exchange in **at any width**, and a search
+under **136 columns** has none either. It does not refuse. The two are **stacked** instead
+of sat side by side:
 
-- the **list** is the screen until you enter an exchange;
+- the **panels** (or the list, while you type) are the screen until you enter an exchange;
 - the **exchange** is the screen while it holds the keyboard — the same pane, the same card,
   the same live strip, drawn at the full width;
 - **`esc`** or **`tab`** brings the list back, with the exchange's row still on it wearing
@@ -225,23 +226,33 @@ Resizing between the two shapes costs nothing: it is the same exchange and the s
 keyboard, drawn in whichever geometry fits. Drag a window narrow with the pane open and the
 pane fills the frame; drag it wide again and it goes back beside the list.
 
-## Why can't I click a row while asking — you can, and it selects it
+## Why can't I click a row while asking — you can, and it opens it
 
-You can, and it does. A click on any row of the left column puts the cursor on it and gives
-the keyboard to the column, so the next `↑` or `↓` walks from there. A second click on the
-same row opens it, which is home's ordinary two-step — one click that switched conversations
-would make a mis-aimed pointer close the session you are in.
+You can, and it does. A click on any row of the left column puts the cursor on it, gives
+the keyboard to the column and opens the row, exactly as `enter` on it would — one click,
+the same as on every place. A click on the exchange's own row gives its pane the keyboard,
+and a click on `ask here` or on the row of what you typed only puts the cursor there,
+because a click never starts a paid turn.
 
-A click on a card's chip in the pane answers the card, the same way clicking one answers it
-in a conversation. A press anywhere on the row of chips counts as that row's, so missing the
-gap between two answers costs nothing.
+A click on one of the card's answers in the pane answers the card, the same way clicking one
+answers it in a conversation. Each answer owns its whole row, so there is no gap between two
+of them to miss.
 
-`ctrl+enter` only reaches aforge on a terminal that can tell it apart from a plain `enter`
-(the kitty keyboard protocol, Windows terminals). `alt+enter` is bound to the same thing and
-every terminal here sends it, so if `ctrl+enter` does nothing, use `alt+enter`.
+**There is a chord for it and the foot does not name it.** `ctrl+enter` is still bound to
+`ask here`, and it only reaches aforge on a terminal that can tell it apart from a plain
+`enter` — the kitty keyboard protocol, Windows terminals. `alt+enter` is **not** a second
+spelling of it: on home as on every place, that chord opens the composer layer and sends
+what you typed off as a **task** (the places page). So the arrow is the gesture the foot
+names, because the arrow is the one every terminal has. This page used to say `alt+enter` was
+bound to the same thing, and it was not.
 
 If this window was launched with no way to open a second session, the row refuses in one
-line: `this window cannot ask from home`, and nothing is created.
+line: `this window cannot ask from home`, and nothing is created. The window that gets that
+line is one attached to another machine — `--host` or `--at`: the errand's folder and the
+standing store live on the machine that runs the errand, and a laptop cannot make either of
+them on a server's disk. An ordinary `aforge` in a folder asks from home whether or not this
+project's engine is holding the conversation, because that engine is a process on the same
+machine as the folder.
 
 ## What is ask here — and how is it different from starting a conversation
 
@@ -258,22 +269,23 @@ It is not an unstored chat. The record is the point: "why did I get this reminde
 be able to open the conversation that made it.
 
 Which project the errand belongs to is the project **under the cursor** — walk `↑` onto one
-of its rows and press `ctrl+enter` to say "this one". With the cursor still on the typing
-rows it is the project this window is in, and the home directory `~` when this window is in
-no project at all. A reminder belongs to no repository; a watch on CI belongs to one. Its
+of its rows and press `enter` on the `ask here` row to say "this one". With the cursor still
+on the typing rows it is the project this window is in, and the home directory `~` when this
+window is in no project at all. A reminder belongs to no repository; a watch on CI belongs to one. Its
 row is drawn at the top of the list whichever project it ended up in, and the project it
 belongs to is what the errand's own record says.
 
-## How do I answer the card, or say no to it — 1 yes, 2 change when or where, 3 just once, 0 no
+## How do I answer the card, or say no to it — 1 yes, c change when or where, 3 just once, 0 no
 
 When the exchange gets far enough to propose something that keeps working, a card appears in
 the pane with your own words, when it would wake, and what it would cost per run. Nothing is
 created until you answer it:
 
 - `1` — yes. It stands as proposed, and the keyboard goes back to the list.
-- `2` — change it. The pane says `type the change and press enter`; write the correction in
+- `c` — change it. The pane says `type the change and press enter`; write the correction in
   your own words ("make it 8pm", "every weekday") and the model proposes again. Nothing is
-  created by a change.
+  created by a change. (This was `2` before the card's answers moved onto the question every
+  screen here draws; `c` is that question's own key for "not as it stands".)
 - `3` — once. The action runs now and nothing standing is created. **Not every card offers
   it**: a one-off reminder draws no `3 just once` chip, because doing "remind me at six"
   now says the wrong thing hours early. The hint under the box names the digit only where
@@ -285,7 +297,8 @@ created until you answer it:
   where `esc` also declines.
 
 Those four answers are the only four, and a card draws three of them where `3` is not one
-it can offer. There is no default: a card nobody answers creates
+it can offer. Each answer is a row of its own and **a click anywhere along it takes that
+answer**. There is no default: a card nobody answers creates
 nothing — and nothing answers it for you. **There is no clock on it.** It waits, and its row
 on home says `? waiting on you` for as long as it does.
 
@@ -293,12 +306,12 @@ on home says `? waiting on you` for as long as it does.
 out, and its bottom edge carries what was decided in the same words a card in a conversation
 uses: `yes, set it up · set up`, `just once · done now, nothing kept`,
 `change when or where · you asked for something different`,
-`not set up`, `ended · nothing was set up`. The chips go, so `1`, `2`, `3` and `0` are
-ordinary characters again and can be typed into a follow-up. The only card that ever replaces it is the new one the
-model sends after `2 change when or where`.
+`not set up`, `ended · nothing was set up`. The answers go, so `1`, `3`, `0` and `c` are
+ordinary characters again and can be typed into a follow-up. The only card that ever
+replaces it is the new one the model sends after a change.
 
 The digits belong to a card only while it is still a question. With no card up, or with an
-answered one on screen, `2` in the middle of "make it 2pm" is just a `2`.
+answered one on screen, `3` in the middle of "make it 3pm" is just a `3`.
 
 ## Where did that exchange go — the folder, at every stage
 

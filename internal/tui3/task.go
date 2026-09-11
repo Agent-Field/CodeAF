@@ -4,7 +4,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -66,23 +65,20 @@ type taskCard struct {
 	dependsOn []uint64
 	// model is the model this work will run on, and it is a FACT rather than a
 	// question: the engine resolved it before anybody was asked (session's
-	// taskmodel.go), and the card states it because a proposal that did not say
+	// taskmodel.go), and the block states it because a proposal that did not say
 	// whose hands the work is going into would be hiding the one thing about it
 	// nobody can find out afterwards.
 	//
-	// options is the exception: one word that fitted more than one model, which
-	// the engine will not choose between. Then the card OFFERS them — model is
-	// whichever is picked, and the leading one is what silence takes — and the
-	// chosen id travels back on the answer.
-	model   string
-	options []string
-	// pick is which of options has the keyboard, and modelRow/modelSpans are
-	// where that row landed and what each chip occupies, for the click. They are
-	// the choices row's own machinery ([app.taskCardRows]) for the same reason:
-	// one layout, one set of targets.
-	pick       int
-	modelRow   int
-	modelSpans []choiceSpan
+	// THE SHORTLIST IS NOT DRAWN ANY MORE, and this one field is all that is
+	// left of it. A word that fitted more than one model used to raise a row of
+	// chips here, answered by digits — and the digits are the question block's
+	// answers now, one grammar for every decision on this surface, so a second
+	// reader for the same keystroke is exactly what this wave exists to end.
+	// What runs is what the engine already resolved (session's firstTaskModel),
+	// which is what those chips opened on; CORRECTING IT FROM THE PROPOSAL IS
+	// OWED, and until it lands the way to ask for another is to say so in the
+	// words `c change` takes.
+	model string
 	// elsewhere is the one dim line saying which of this brief's files another
 	// window's work is already in, as the engine wrote it (session's
 	// TaskNotice.Elsewhere), and "" when there was nothing to say.
@@ -97,44 +93,20 @@ type taskCard struct {
 	// or held (session's TaskNotice.Deadline). A zero deadline draws no countdown:
 	// a number counting down to nothing is a promise the engine did not make.
 	deadline time.Time
-	// born is when this phase of the card arrived. While it forms, the count-up
-	// measures from the call's first fragment. Once the question lands, the
-	// replacement card uses it for the METER: a bar that drains needs both ends
-	// of the span, and the notice carries only the far one. Both are taken from
-	// the surface's own clock at the moment the phase first becomes visible.
+	// born is when this phase of the card arrived: the call's first fragment
+	// while it forms, which is what the count-up on that row measures from.
 	born time.Time
 	// open says the brief and the acceptance are showing, behind the same
 	// expand mechanic a tool row's detail is behind.
 	open bool
-	// choice is which of [taskChoiceWords] has the keyboard — the row's own
-	// cursor, and the thing enter acts on.
-	choice int
-	// typing says the redirect lane has the focus: the person asked for the box,
-	// so the letters that would otherwise answer the question are text again.
-	typing bool
 	// verdict is what was decided, in the words the row keeps afterwards. It is
 	// empty for exactly as long as the question is open.
 	verdict string
-	// answer is the OPTION that settled it — "yes", "redirect", "no" — kept
-	// beside the verdict the way a consent row keeps "allowed". It is empty when
-	// nobody chose: a clock that ran out and a turn that ended chose nothing.
+	// answer is the ANSWER that settled it, in the question's own word for it —
+	// `start it`, `no`, `change` — kept beside the verdict the way a consent row
+	// keeps "allowed". It is empty when nobody chose: a clock that ran out and a
+	// turn that ended chose nothing.
 	answer string
-
-	// choiceRow is where the choices row sits inside this card's rendered rows,
-	// or -1, and spans are the columns each option occupies on it. Both are
-	// written by [app.taskCardRows] and read by the hit-testing (app.go's
-	// [app.choicePress]) — one layout, one set of targets, because a row whose
-	// drawing and whose clicks disagreed would answer a question the person did
-	// not ask.
-	choiceRow int
-	spans     []choiceSpan
-	// gut is how many columns of the READING GUTTER are already in the two span
-	// sets above (gutter.go). The card is drawn at the transcript's own left
-	// edge, which is no longer screen column zero, and the shift is applied to
-	// finished spans by one pass — so the pass has to know what it has already
-	// paid, or a card whose rows came back from the entry cache would be moved
-	// again on every frame until its chips walked off the end of the row.
-	gut int
 
 	// forming says this card is a propose_task call that is STILL ARRIVING —
 	// the block drawn from the first fragment of the call, before there is a
@@ -186,8 +158,10 @@ type taskNode struct {
 	// (session's TaskNotice.Model). Empty means nobody said — a scripted agent,
 	// an older engine — and every row that draws it draws nothing instead, the
 	// way the spend does.
-	model string
-	state session.TaskState
+	model     string
+	nextModel string
+	thinking  string
+	state     session.TaskState
 	// dependsOn is the structural half of this file (see the header): stored
 	// always, drawn only when a prerequisite is unmet.
 	dependsOn []uint64
@@ -208,6 +182,25 @@ type taskNode struct {
 	// replacing it — a stopped node still settles as failed — and it is what the
 	// roster's ⊘ and the header's "stopped" are drawn from (stop.go).
 	stopped bool
+	// conflicts names the files that CLASH on a landing whose branch would not
+	// fasten onto the person's (session's TaskNotice.Conflicts). An empty list
+	// under a conflicted merge is the emptiness law and not a claim that nothing
+	// clashed: git does not always say which files it was about.
+	conflicts []string
+	// shifted and groundHeld are WHICH ROAD put those names there: the ground
+	// moved under work that would have fastened, or the person's own untracked
+	// copies of the files the task wrote are sitting in the folder it lands into
+	// (session's TaskNotice.Shifted, .GroundHeld). All three roads ask the
+	// conflict's one question and each has its own sentence — which is a fact
+	// carried here rather than a reading of the report's prose.
+	shifted    bool
+	groundHeld bool
+	// decider is WHO HOLDS THIS NODE'S QUESTION right now (TaskNotice.Decider),
+	// and it is the whole of what `task.settle = auto`, a person handing one card
+	// over and the floor that hands it back at the end of a turn have to say to
+	// each other. The zero value reads as the person, which is the only safe
+	// reading of a notice that said nothing ([session.TaskAskOwner]).
+	decider session.TaskAskOwner
 	// ending is WHY a failed node stopped where it did, as the engine said it
 	// (session's TaskNotice.Ending), and "" when it gave no reason — which is
 	// every row from an older engine or checkpoint, drawn as it always was
@@ -253,12 +246,14 @@ type taskNode struct {
 	// figure is a number from eleven minutes ago, and a bill that stands still
 	// for eleven minutes is a bill nobody believes. Read it through [taskNode.spent].
 	liveCost float64
-	// tokens is what this node has burned, input plus output, summed over the
-	// turns the pilot has seen. Zero means NOBODY COUNTED — no notice carries a
-	// token figure, so a node this surface met after it landed has none and
-	// never will — and it is not the claim that a node thought for free: a
-	// surface draws nothing at all for it, the way it draws nothing for an
-	// unpublished price (session's task_contract.go on CostUSD).
+	// tokens is what this node has burned, input plus output: the larger of
+	// the turns the pilot has seen and the engine's own count on its notices
+	// (session's TaskNotice.Tokens), which is the only count a window with no
+	// lane to the worker gets. Zero means NOBODY COUNTED — a node this surface
+	// met after it landed from a row that carried no figure — and it is not the
+	// claim that a node thought for free: a surface draws nothing at all for it,
+	// the way it draws nothing for an unpublished price (session's
+	// task_contract.go on CostUSD).
 	tokens                int
 	report, branch, merge string
 	// produced is WHAT THE WORK MADE, kept apart from the report above because
@@ -581,8 +576,8 @@ var mergeScreenWords = map[string]string{
 	mergeWordConflicted: mergeWordConflicted,
 	// "aborted" reads as a crash and is almost never one: the commonest way a
 	// node wears it is that a person stopped it or it spent the steps it was
-	// given (see [taskStoppedKept], which adds the branch clause where a row has
-	// the cells for it).
+	// given (the rail hangs the branch clause off it where a row has the cells
+	// for it, [app.railUnder]).
 	mergeWordAborted: taskStoppedWord,
 	// "kept" says what the engine did with a ref; the person-facing fact is
 	// that a finished branch is waiting for them to take it.
@@ -617,42 +612,32 @@ func mergeScreenWord(merge string) string {
 	return roomDoneWord
 }
 
-// The two words a stopped node is drawn with.
+// taskStoppedWord is what a stopped node is drawn with.
 //
 // A node stops for reasons that are nobody's failure — a person pressed c on its
 // room, it spent the steps it was given, its deadline came — and session marks
 // every one of them "aborted", which is a word a person reads as "it crashed".
 // It did not: it stopped, and its branch was kept precisely so the work is still
-// there. Both halves are on screen because the second is the one that says what
-// to do next.
-const (
-	taskStoppedWord = "stopped"
-	taskStoppedKept = "stopped — branch kept"
-)
+// there.
+//
+// THE BRANCH IS A FACT AND NOT PART OF THE STATE. This constant had a sibling,
+// `stopped — branch kept`, which welded the two together and made the branch
+// unsayable about any other landing; where the work was left is now its own
+// clause on the row ([taskBranchKept], and the landing card's fact line), and
+// the state is one word (docs/design/task-states/DESIGN.md).
+const taskStoppedWord = "stopped"
 
-// The words a node NOBODY COULD JUDGE is drawn with (session's TaskUnverified).
+// taskBranchKept is WHERE THE WORK WAS LEFT, and it is a fact about source
+// control rather than a state: this node wears session's "aborted" merge and
+// nothing about it stopped.
 //
-// It is the third settled state and it is neither of the other two: the run is
-// over, the branch is kept, and nothing came back that could call the work
-// finished or call it wrong — so the surface must not spend "done" on it and
-// must not spend "failed" on it either.
-//
-// THE MACHINERY IS NOT THE SURFACE'S TO MENTION. These words used to be the
-// checking apparatus read out loud — "unverified", "auditor inconclusive" — and
-// that is a person being handed this program's internal org chart in place of
-// their answer. Nobody delegating a piece of work asked for a verdict; they
-// asked for the work. So the state is spelled as the only thing about it that is
-// a person's business: it FINISHED, and it is on them to look at it. The
-// identifiers keep their old names because they name a state in the code, and
-// the code is not the surface.
-const (
-	taskUnverifiedWord  = "needs your look"
-	taskUnverifiedGloss = "finished, but needs your look"
-	taskUnverifiedWaits = "finished — look it over"
-	// taskBranchKept is [taskStoppedKept] without the stop: this node wears the
-	// same "aborted" merge, and nothing about it stopped.
-	taskBranchKept = "branch kept"
-)
+// THE STATE WORDS THAT USED TO STAND BESIDE IT ARE GONE. `needs your look`,
+// `finished, but needs your look` and `finished — look it over` were three
+// spellings of one reading — the machine has done what it can, and somebody has
+// to say something — which internal/session now spells once as `your call` plus
+// the reason for it (docs/design/task-states/DESIGN.md). They were this file's
+// own vocabulary, and the roster, the record and home each had a different one.
+const taskBranchKept = "branch kept"
 
 // taskFinishingWord is what a node says while it is closing a gap in work it has
 // otherwise finished (session's TaskNotice.Mending, carried on [taskNode.mending]).
@@ -676,10 +661,10 @@ const taskFinishingWord = "finishing"
 // nothing" and "this has been sitting there for four minutes because the
 // machine is full".
 //
-// The identifier is "held" and the word is "waiting" because [taskWaitingWord]
-// is already spent, on the meter of a proposal that is waiting on a person. Two
-// different moments, one honest English word for both, and the card's had the
-// name first.
+// The identifier is "held" and the word is "waiting" because the proposal
+// meter's own sentence ([taskWaitingWord]) is about a different moment
+// altogether: a proposal nobody has agreed to yet, which says what answering it
+// would do rather than that it is waiting.
 const taskHeldWord = "waiting"
 
 // The reasons the engine holds a node with (session's TaskNotice.Waiting),
@@ -833,6 +818,12 @@ func (a *app) taskEvent(ev session.Event) tea.Cmd {
 		// pump is deliberately NOT re-armed below: the agent it was reading is
 		// about to be closed.
 		return a.takeOver()
+	case session.EventMoved:
+		// AND THE OTHER ROAD: the engine holding this conversation has told this
+		// window that another one has opened it (takeover.go's [app.movedAway]).
+		// The lane pump is deliberately NOT re-armed below for [session.EventTakeover]'s
+		// reason — the agent it was reading is about to be let go of.
+		return a.movedAway(ev.Text)
 	case session.EventStandingUpdate:
 		// AN ITEM FIRES WITH NOBODY IN THE ROOM, which is the whole of the
 		// ambient side — so a FIRING reaches this surface here and only here,
@@ -1035,7 +1026,7 @@ func (a *app) formTask(ev session.Event) {
 	card := a.formingCard()
 	if card == nil {
 		card = &taskCard{
-			forming: true, callID: ev.CallID, born: a.now(), choiceRow: -1, modelRow: -1,
+			forming: true, callID: ev.CallID, born: a.now(),
 		}
 		a.closeLive()
 		a.entries = append(a.entries, entry{kind: entryTask, turn: a.turn, card: card})
@@ -1132,17 +1123,44 @@ func (a *app) refuseFormingCard() {
 	a.touch()
 }
 
+// proposeTask takes one session.EventTaskProposal.
+//
+// THE BLOCK ASKS AND THIS ROW IS WHAT IT IS ABOUT (question.go). The engine
+// sends the proposal twice on purpose — this card, which carries the whole
+// assignment, and the same moment as a [session.Question] on the questions lane
+// — and the two halves are drawn in the two places each belongs: the brief in
+// the transcript, where it is part of what happened and can still be read a
+// week later, and the ASKING above the box, where every other decision on this
+// surface is put. What used to be here as well was a second copy of the asking:
+// a choices row, a draining meter and a keyboard lane, all of them a decision
+// drawn in a place no other decision is drawn.
+//
+// The card is REUSED where the id is one this window already has. Holding the
+// clock is an update to the proposal every surface has ([session.Agent.
+// HoldTask]) and not a second proposal, and the deadline it zeroes travels to
+// the question as well — it is the question that draws the clock now.
 func (a *app) proposeTask(ev session.Event) {
 	notice := ev.Task
 	if notice == nil {
 		return
 	}
-	// Holding a clock is an update to the proposal every surface already has,
-	// not a second proposal. Reusing the card preserves its draft and focus while
-	// the zero deadline changes the meter to the engine's new state.
-	if a.task != nil && !a.task.settled() && a.task.id == notice.ID {
-		a.task.deadline = notice.Deadline
-		a.markCardStale(a.task)
+	// A PROPOSAL THIS WINDOW HAS ALREADY SEEN IS AN UPDATE, NEVER A SECOND
+	// PROPOSAL, and the id is the whole of the test — not "the id AND still
+	// open", which is what this asked before a real screen showed what that
+	// costs. The engine rebroadcasts the notice whenever the clock is held
+	// ([session.Agent.HoldTask]), and the block holds it on the first key a
+	// question reads — so the rebroadcast arrives a moment AFTER the answer that
+	// caused it, and a window that took it for a new proposal drew the card a
+	// second time, raised the question a second time, and then wrote a second
+	// receipt when the engine's answer came back to a question that was open
+	// again. One proposal, two blocks, two receipts, all from one keystroke.
+	if card := a.cardFor(notice.ID); card != nil {
+		if card.settled() {
+			return
+		}
+		card.deadline = notice.Deadline
+		a.setTaskDeadline(notice.ID, notice.Deadline)
+		a.markCardStale(card)
 		a.touch()
 		return
 	}
@@ -1165,42 +1183,145 @@ func (a *app) proposeTask(ev session.Event) {
 		ident:      identFor(notice.ID),
 		dependsOn:  notice.DependsOn,
 		model:      strings.TrimSpace(notice.Model),
-		options:    notice.ModelOptions,
 		elsewhere:  strings.TrimSpace(notice.Elsewhere),
 		deadline:   notice.Deadline,
 		born:       a.now(),
-		// THE CARD OPENS ON "YES", because that is what the block is proposing and
-		// a cursor parked on the destructive answer is a cursor that makes the
-		// safe answer the one you have to aim at. The clock behind it says the
-		// same thing: silence is approval.
-		choice:    choiceYes,
-		choiceRow: -1,
-		// And on the CLOSEST model, which is the one the engine put first and the
-		// one the countdown will settle on. The models row is a correction, not a
-		// decision the work is waiting behind.
-		pick:     0,
-		modelRow: -1,
 	}
 	a.task = card
 	a.closeLive()
-	// The typed lists follow the draft, and the draft is now the redirect lane:
-	// a completion list left open under it would be answering keys that belong
-	// to the question (consent.go makes the same call for the same reason).
+	// The typed lists follow the draft, and the draft is where the correction
+	// gets typed: a completion list left open under a question answering to
+	// digits is two readers for one keystroke (consent.go makes the same call
+	// for the same reason).
 	a.closeLists()
 	// THE BLOCK THE CALL WAS FORMING INTO BECOMES THIS ONE. The person has been
-	// watching this proposal arrive; the question is that block's next state,
+	// watching this proposal arrive; the assignment is that block's next state,
 	// not a second copy of it underneath ([app.formTask]).
 	if at := a.formingCardAt(); at >= 0 {
 		a.entries[at].card = card
 		a.entries[at].turn = a.turn
 		a.entries[at].stale = true
-		a.follow()
+	} else {
+		a.entries = append(a.entries, entry{kind: entryTask, turn: a.turn, card: card})
+	}
+	// AND THE QUESTION IS RAISED FROM HERE TOO, dressed with the lane's own two
+	// hands. It arrives on the questions lane as well and the block replaces by
+	// token, so whichever gets here first draws and the second is the same
+	// decision rather than a second one — consent.go's own bargain, and it is
+	// what lets this window put the transcript card and the engine's answer
+	// together without a second resolver.
+	a.raiseQuestion(a.taskShown(notice))
+	a.follow()
+	a.touch()
+}
+
+// taskShown is one proposal as the block holds it: the engine's own question
+// object, plus the two things it cannot carry.
+//
+//   - WHAT THIS PROGRAM DOES ABOUT AN ANSWER ([app.taskAnswered]) — the card in
+//     the transcript keeps what was decided, and a yes opens the forming block
+//     the approved brief is shaped in.
+//   - WHAT A KEYSTROKE MEANS TO THE CLOCK ([app.taskHeld]). A proposal is the
+//     one question on this surface whose silence ANSWERS, so the moment there
+//     is somebody at the keyboard the engine is told to stop counting.
+func (a *app) taskShown(notice *session.TaskNotice) questionShown {
+	id := notice.ID
+	return questionShown{
+		question: a.taskQuestion(notice),
+		answered: func(answer session.Answer) session.Answer {
+			return a.taskAnswered(id, answer)
+		},
+		held: func() { a.holdTask(id) },
+	}
+}
+
+// taskQuestion is the proposal as the object every surface draws, and it is the
+// engine's own builder said again (session's [Agent.proposalQuestion]).
+//
+// The two must stay ONE SENTENCE, for consent.go's reason: the block keys a
+// question by its lane and its id, so this one and the one that arrives on the
+// questions lane a moment later are the SAME question, and two builders that
+// drifted would make them two — one replacing the other on screen while
+// somebody was part-way through reading it.
+func (a *app) taskQuestion(notice *session.TaskNotice) session.Question {
+	built := session.Question{
+		ID:       notice.ID,
+		Kind:     session.QuestionTask,
+		Ask:      session.AskPermission,
+		Form:     session.FormCard,
+		Asker:    session.Asker{Kind: session.AskerModel},
+		Head:     session.TaskProposalLead + strings.TrimSpace(notice.Title),
+		Reason:   strings.TrimSpace(notice.Summary),
+		Subject:  session.SubjectRef{Kind: session.SubjectNode, ID: notice.ID, Name: strings.TrimSpace(notice.Title)},
+		Options:  session.AnswerOptions(session.QuestionTask),
+		Stakes:   session.StakesCostly,
+		Blocking: session.Blocking{Turn: true},
+		Deadline: notice.Deadline,
+		Asked:    a.now(),
+		// THE MODEL SHORTLIST IS THE ENGINE'S SHAPE, ASKED FOR RATHER THAN
+		// REBUILT. A proposal whose `model` argument fit more than one model this
+		// install has carries a hole for it, and the answer's own map carries the
+		// chosen one back to [session.ResolveTask] — see [session.TaskModelShape].
+		Input: session.TaskModelShape(*notice),
+	}
+	if !notice.Deadline.IsZero() {
+		built.Pick = &session.Pick{
+			Key:        "1",
+			Reason:     session.TaskProposalPickReason,
+			Confidence: session.ConfidenceFairly,
+		}
+		built.Policy = session.Policy{
+			Kind:  session.PolicyRecommendThenAuto,
+			After: notice.Deadline.Sub(a.now()),
+		}
+	}
+	return built
+}
+
+// setTaskDeadline moves the clock on the question this proposal raised, which
+// is where the clock is drawn.
+//
+// A HELD PROPOSAL STOPS COUNTING EVERYWHERE AT ONCE. The engine rebroadcasts
+// the notice with a zero deadline and nothing else ([session.Agent.HoldTask]),
+// so the question object this window is holding would otherwise go on counting
+// down to a moment nothing is waiting for — which is the one thing a countdown
+// may never do.
+func (a *app) setTaskDeadline(id uint64, deadline time.Time) {
+	for i := range a.questions {
+		q := &a.questions[i]
+		if q.question.Kind != session.QuestionTask || q.question.ID != id {
+			continue
+		}
+		q.question.Deadline = deadline
+		if deadline.IsZero() {
+			// THE CLOCK GOES AND THE RECOMMENDATION STAYS. What a held proposal
+			// stops being is a question that answers itself; what it does not
+			// stop being is one the asker has an opinion about — so the policy
+			// and the deadline are cleared and the pick is not, and `enter` goes
+			// on taking the answer the row is marked with.
+			q.question.Policy = session.Policy{}
+		}
 		a.touch()
 		return
 	}
-	a.entries = append(a.entries, entry{kind: entryTask, turn: a.turn, card: card})
-	a.follow()
-	a.touch()
+}
+
+// dropTaskQuestion takes the proposal's question off the block when the answer
+// came from somewhere that is not an answer: the clock, the end of the turn,
+// another window.
+//
+// IT IS A WITHDRAWAL AND NOT AN ANSWER, which is the whole distinction: nobody
+// decided anything here, so nothing is recorded as though somebody had. The
+// reason is the engine's own sentence for the same event (session's
+// [questionGoneReason]).
+func (a *app) dropTaskQuestion(id uint64, reason string) {
+	for _, open := range a.questions {
+		if open.question.Kind != session.QuestionTask || open.question.ID != id {
+			continue
+		}
+		a.withdrawQuestion(open.question, reason)
+		return
+	}
 }
 
 // formingCardAt is [app.formingCard]'s index, for the one caller that has to
@@ -1232,8 +1353,14 @@ const (
 	taskDeclinedWord = "declined"
 	taskClockWord    = "approved · the clock"
 	taskExpiredWord  = "expired · the turn ended"
-	taskRedirectLane = "redirect this task… (enter sends it, esc declines)"
-	taskProposalHint = "enter answer · esc no"
+	// taskRedirectLane is what the empty box says while a proposal is open: the
+	// one thing the box is for at that moment.
+	//
+	// IT NO LONGER NAMES esc. It used to read `(enter sends it, esc declines)`,
+	// which was true while this block owned the keyboard and is a lie now: esc
+	// is LATER on every question this surface asks (question.go), the work stays
+	// waiting and nothing is decided by making something go away.
+	taskRedirectLane = "say what to change… (enter sends it)"
 	taskExpandHint   = "ctrl+e for the brief"
 	// taskModelTag labels the one fact a proposal carries that nobody can find
 	// out afterwards: whose hands the work is going into.
@@ -1255,7 +1382,19 @@ const (
 	// taskWaitingWord is what stands where the meter would be on a proposal the
 	// engine is holding open indefinitely. A bar with no end to drain toward
 	// would be an animation inventing a deadline nobody set.
-	taskWaitingWord = "waiting on you"
+	//
+	// IT IS THE READING'S OWN SENTENCE FOR THAT QUESTION. A proposal with no
+	// clock is the your-call tier's `start` ask and internal/session spells its
+	// reason `starts on your word` ([session.TaskAskStart]); this row said
+	// `waiting on you`, which is the phrase home spends on a CONVERSATION that
+	// wants somebody — so one screen had one phrase for two different objects
+	// and neither said what pressing anything would do.
+	//
+	// THE CLOCK IS THE WHOLE DIFFERENCE BETWEEN THE TWO TIERS. A proposal that
+	// will start by itself needs nothing from anybody and says when
+	// ([taskAutoWord], which is the engine's spelling too); one that will sit
+	// there until somebody answers is the person's call and says so.
+	taskWaitingWord = "starts on your word"
 	taskAutoWord    = "auto-starts in "
 	// taskFormingWord stands where the meter will be while the call that fills
 	// this card is still arriving. It is a state and not a promise: there is no
@@ -1273,266 +1412,72 @@ const (
 	taskFormingRefused = "not started · the call was refused"
 )
 
-// THE THREE ANSWERS, and they are a ROW OF OPTIONS rather than three keys named
-// in a sentence.
+// awaitingTask reports whether a proposal is open in this window.
 //
-// The lane underneath was the whole interface until this wave: bare enter
-// approved, esc declined, and the only thing on screen that said so was a hint
-// in the legend, forty rows away from the question. A decision moment with
-// nothing to point at is a decision moment a person answers by guessing — so the
-// options are drawn where the question is, in the consent block's own bracket
-// idiom, and every one of them is reachable by pointer or by ←/→ and enter.
-// A bare letter cannot name one: the empty box is also the start of the redirect
-// lane, so its first letter has to remain a letter.
-const (
-	choiceYes = iota
-	choiceRedirect
-	choiceNo
-)
-
-var taskChoiceWords = [...]string{"yes", "redirect", "no"}
-
-// awaitingTask reports whether a proposal owns the answer lane.
+// IT NO LONGER MEANS "OWNS THE KEYBOARD". The proposal is answered on the
+// question block like every other decision on this surface, and the block is
+// never modal (question.go's THE NEVER MODAL law) — so what this says is that
+// something is being asked, which is what its readers actually want to know.
 func (a *app) awaitingTask() bool { return a.task != nil && !a.task.settled() }
 
-// taskKey is the proposal's claim on the keyboard, and it is deliberately NOT
-// modal.
+// taskKey is the ONE key the proposal still owns, and it is not an answer.
 //
-// The consent question suspends the draft because there is nothing useful to
-// type at it. A proposal is the opposite: the most valuable thing a person can
-// do with a groomed piece of work is CORRECT it, so the input box stays live and
-// becomes the redirect lane.
+// The three answers and the clock went to the question block with every other
+// decision on this surface (question.go), and what is left here is the key that
+// opens the assignment in the transcript: `ctrl+e` is what this surface means
+// "show me the rest of this" by, and the brief is the rest of a proposal. It
+// belongs to the lane rather than to the block because it acts on the BLOCK IN
+// THE TRANSCRIPT — the question above the box has nothing to unfold.
 //
-// THE KEYS ARE TAKEN IN TWO TIERS, and the tier is decided by what is in the
-// box:
-//
-//	always      enter answers the focused option · esc declines · ctrl+e the brief
-//	empty box   ←/→ move the focus · 1–4 pick a model when offered
-//
-// The second tier is given back the moment there is a sentence in the box, and
-// the moment the redirect lane has been asked for. Bare letters are never in
-// that tier: "run tests first" begins with an r, and a surface that read it as
-// the redirect-focus shortcut would silently drop the first letter. ←/→ survive
-// the redirect lane because there is no caret to move in an empty box, and
-// because a focus a person can enter and not leave is a trap.
+// A LETTER-LESS KEY IS STILL THE BOX'S THE MOMENT THERE IS A LINE TO END. That
+// is the rule input.go applies to the thinking block, and it is applied here for
+// the same reason: ctrl+e is end-of-line in every shell a person has used.
 func (a *app) taskKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
-	if !a.awaitingTask() {
+	if !a.awaitingTask() || msg.String() != "ctrl+e" {
 		return nil, false
 	}
-	card := a.task
-	switch msg.String() {
-	case "enter":
-		return a.submitTaskAnswer(), true
-	case "esc":
-		// esc is the dismiss key everywhere on this surface, so it stays the
-		// outright no — from the lane as well as from the row.
-		a.answerTask(false, "")
-		return nil, true
-	case "ctrl+e":
-		// end-of-line keeps the key the moment there is a line to end: the same
-		// rule input.go applies to the thinking block.
-		if !a.input.empty() {
-			return nil, false
-		}
-		a.toggleCard()
-		return nil, true
-	}
-	// The model picker is the one overlay that can be up over a proposal with an
-	// empty box, and its filter answers to the same letters.
-	if a.chordsStandDown() || a.pick.open {
+	if !a.input.empty() {
 		return nil, false
 	}
-	switch msg.String() {
-	case "left":
-		a.moveChoice(-1)
-		return nil, true
-	case "right":
-		a.moveChoice(1)
-		return nil, true
-	}
-	if card.typing {
-		return nil, false
-	}
-	// THE DIGITS BELONG TO THE MODELS ROW, on the one card that has one, and they
-	// are taken in the empty-box tier and under its guard:
-	// a person writing "3 files should change" is writing, not choosing.
-	if at, ok := taskModelKey(msg.String()); ok && at < len(card.options) {
-		a.takeModel(at)
-		return nil, true
-	}
-	return nil, false
+	a.toggleCard()
+	return nil, true
 }
 
-// taskModelKey reads a digit as one of the models on offer, zero-indexed. Only
-// the four the shortlist can hold are keys; anything else is not this row's.
-func taskModelKey(key string) (int, bool) {
-	switch key {
-	case "1":
-		return 0, true
-	case "2":
-		return 1, true
-	case "3":
-		return 2, true
-	case "4":
-		return 3, true
-	}
-	return 0, false
-}
-
-// takeModel moves the choice of model. It ANSWERS NOTHING: the question is
-// still whether the work goes at all, and picking the model it goes on is a
-// correction to the proposal rather than a verdict on it.
-func (a *app) takeModel(at int) {
-	card := a.task
-	if card == nil || card.settled() || at < 0 || at >= len(card.options) {
-		return
-	}
-	card.pick = at
-	card.model = card.options[at]
-	a.markCardStale(card)
-	a.touch()
-}
-
-// submitTaskAnswer is the only door that reads the proposal's box. A pointer or
-// focused choice means exactly the visible option it names; enter instead means
-// the sentence the person finished typing when there is one.
-func (a *app) submitTaskAnswer() tea.Cmd {
-	text := a.input.String()
-	if strings.TrimSpace(text) == "" {
-		return a.takeChoice(a.task.choice)
-	}
-	approve, redirect := taskAnswerFromText(a.pastesUnfolded(text))
-	a.answerTask(approve, redirect)
-	a.pastes = nil
-	return a.edited()
-}
-
-// takeChoice acts on one explicit option, whether a key, an arrow's enter or a
-// click asked for it.
+// taskAnswered is the lane's own hand on an answer, on its way to the engine's
+// door: the card in the transcript keeps what was decided, and a yes opens the
+// block the approved brief is shaped in.
 //
-// REDIRECT IS THE ONE OPTION THAT DOES NOT ANSWER. It is a request for the box —
-// the placeholder is already down there saying what the box is for — so it takes
-// the focus and waits; the enter that follows carries the words. The other two
-// options answer exactly what they say even when the box holds a draft: only
-// enter submits that draft.
-func (a *app) takeChoice(at int) tea.Cmd {
+// THE ENGINE'S OWN MAPPING SAYS WHAT THE ANSWER MEANS ([session.AnswerFromKey])
+// rather than a second reading of the keys here, and the one case that mapping
+// does not cover is the one the box carries: WORDS ARE A YES WITH A CORRECTION.
+// The most valuable thing a person can do with a groomed piece of work is
+// correct it, and correcting it is saying yes to the corrected version — which
+// is what the engine's door does with the same answer (session's applyToLane).
+func (a *app) taskAnswered(id uint64, answer session.Answer) session.Answer {
 	card := a.task
-	if card == nil || card.settled() || at < 0 || at >= len(taskChoiceWords) {
-		return nil
+	if card == nil || card.id != id || card.settled() {
+		return answer
 	}
-	card.choice = at
-	if at == choiceNo {
-		a.answerTask(false, "")
-		return nil
-	}
-	if at == choiceRedirect {
-		card.typing = true
-		a.markCardStale(card)
-		a.touch()
-		return nil
-	}
-	a.answerTask(true, "")
-	return a.edited()
-}
-
-// taskBareAnswers is the whole vocabulary that can answer a proposal without
-// using its choice row. Keeping both yes and no in one table prevents the input
-// lane and its tests from growing separate dialects.
-var taskBareAnswers = []struct {
-	word    string
-	approve bool
-}{
-	{word: "no"},
-	{word: "nope"},
-	{word: "n"},
-	{word: "stop"},
-	{word: "cancel"},
-	{word: "don't"},
-	{word: "dont"},
-	{word: "yes", approve: true},
-	{word: "y", approve: true},
-	{word: "ok", approve: true},
-	{word: "okay", approve: true},
-	{word: "go", approve: true},
-	{word: "sure", approve: true},
-}
-
-// taskAnswerFromText reserves only a complete bare answer. Any longer sentence
-// is a correction to the brief, even when its first word happens to be no.
-func taskAnswerFromText(text string) (bool, string) {
-	answer := strings.ToLower(strings.TrimRightFunc(strings.TrimSpace(text), func(r rune) bool {
-		return unicode.IsSpace(r) || r == '.' || r == '!'
-	}))
-	for _, bare := range taskBareAnswers {
-		if answer == bare.word {
-			return bare.approve, ""
+	redirect := answer.Words()
+	approve := redirect != ""
+	word := questionKeyWord(questionCommentKey)
+	if key := answer.FirstKey(); key != "" {
+		action, ok := session.AnswerFromKey(session.QuestionTask, key)
+		approve = ok && action.Task.Approved
+		word = key
+		if option, ok := a.taskOption(id, key); ok && strings.TrimSpace(option.Label) != "" {
+			word = strings.TrimSpace(option.Label)
 		}
-	}
-	return true, text
-}
-
-// moveChoice walks the row and STOPS at its ends rather than wrapping. Three
-// options are a row a person reads at a glance, and a cursor that reappeared at
-// the far end would put "no" under a key pressed to reach "yes".
-func (a *app) moveChoice(delta int) {
-	card := a.task
-	if card == nil || card.settled() {
-		return
-	}
-	at := card.choice + delta
-	switch {
-	case at < 0:
-		at = 0
-	case at >= len(taskChoiceWords):
-		at = len(taskChoiceWords) - 1
-	}
-	card.choice = at
-	// Landing on redirect is asking for the box, exactly as pressing r is.
-	card.typing = at == choiceRedirect
-	a.markCardStale(card)
-	a.touch()
-}
-
-// answerTask resolves the open proposal and annotates its row.
-//
-// The redirect is APPENDED to the brief by the engine (session's TaskAnswer), so
-// what travels is the person's words verbatim and what stays here is the fact
-// that they said them. The draft is cleared either way: the sentence in the box
-// was about this question, and leaving it there would make the next enter send
-// it to the model.
-func (a *app) answerTask(approve bool, redirect string) {
-	card := a.task
-	if card == nil || card.settled() {
-		return
 	}
 	switch {
 	case approve && redirect != "":
-		card.verdict, card.answer = taskRedirectWord, taskChoiceWords[choiceRedirect]
+		card.verdict = taskRedirectWord
 	case approve:
-		card.verdict, card.answer = taskApprovedWord, taskChoiceWords[choiceYes]
+		card.verdict = taskApprovedWord
 	default:
-		card.verdict, card.answer = taskDeclinedWord, taskChoiceWords[choiceNo]
+		card.verdict = taskDeclinedWord
 	}
-	// A CARD THAT ASKED WHICH MODEL KEEPS THE ANSWER. The block collapses to its
-	// verdict line, and on this one card that line is the only place the choice
-	// the person just made is written down — everywhere else states the model the
-	// work RAN on, which is the same fact only until somebody wonders whether it
-	// was the one they picked.
-	if approve && len(card.options) > 1 && card.model != "" {
-		card.verdict += " · " + card.model
-	}
-	card.typing = false
-	if agent, ok := a.tasker(); ok {
-		// The model travels with the answer only when there was a choice to make:
-		// on every ordinary proposal the engine already resolved it, and a surface
-		// naming it back would be answering a question nobody asked (session's
-		// TaskAnswer says the same in its own words).
-		chosen := ""
-		if len(card.options) > 1 {
-			chosen = card.model
-		}
-		agent.ResolveTask(card.id, session.TaskAnswer{Approved: approve, Redirect: redirect, Model: chosen})
-	}
+	card.answer = word
 	// A YES OPENS THE SAME WAIT THE TYPED COMMAND STANDS IN. The engine shapes
 	// the approved brief before the task exists, and the person who just said
 	// yes is owed the same forming block a person who typed /task gets — one
@@ -1542,26 +1487,67 @@ func (a *app) answerTask(approve bool, redirect string) {
 	if approve && redirect == "" {
 		a.beginProposalWait(card)
 	}
-	a.input.reset()
 	a.endRecall()
 	a.closeLists()
 	a.markCardStale(card)
 	a.touch()
+	return answer
 }
 
-// holdTask makes the first typed rune visible locally before it crosses any
-// connection, then tells the engine once. A zero deadline is also the memory
-// that deleting the draft must not restart the clock.
-func (a *app) holdTask() {
+// taskOption is one answer's option on the question this id names, read back
+// off the block rather than rebuilt — consent.go's own reason: the answers a
+// person saw are the ones the block actually drew.
+func (a *app) taskOption(id uint64, key string) (session.AnswerOption, bool) {
+	for _, open := range a.questions {
+		if open.question.Kind != session.QuestionTask || open.question.ID != id {
+			continue
+		}
+		return open.question.Option(key)
+	}
+	return session.AnswerOption{}, false
+}
+
+// answerTaskWith answers the open proposal on the block with one key, and
+// reports whether it found one to answer.
+//
+// IT IS THE BLOCK'S OWN ANSWER and not a second one beside it, exactly as
+// consent's [app.answerWith] is: the same receipt, the same record and the same
+// annotated card as the same key pressed in front of the question. The one
+// caller is home's errand band, where a person answers a question from the page
+// rather than from the conversation it was asked in (homeband_answer.go).
+func (a *app) answerTaskWith(id uint64, key string) bool {
+	for _, open := range a.questions {
+		if open.question.Kind != session.QuestionTask || open.question.ID != id {
+			continue
+		}
+		if _, ok := open.question.Option(key); !ok {
+			return false
+		}
+		a.answerQuestion(open, session.Answer{Key: key, Picked: []string{key}})
+		return true
+	}
+	return false
+}
+
+// holdTask is what a keystroke means to a clock that ANSWERS.
+//
+// Every other clock on this block holds by itself and never answers anything
+// (question.go's [app.tickQuestion], and F41 is why). The proposal's does the
+// opposite — silence starts the work — so the moment there is evidence of
+// somebody at the keyboard the engine is told to stop counting, and this window
+// zeroes its own copy of the deadline first: the person pressed a key here, and
+// the countdown may not go on draining while the news crosses a connection.
+func (a *app) holdTask(id uint64) {
 	card := a.task
-	if card == nil || card.settled() || card.deadline.IsZero() {
+	if card == nil || card.id != id || card.settled() || card.deadline.IsZero() {
 		return
 	}
 	card.deadline = time.Time{}
+	a.setTaskDeadline(id, time.Time{})
 	a.markCardStale(card)
 	a.touch()
 	if agent, ok := a.tasker(); ok {
-		agent.HoldTask(card.id)
+		agent.HoldTask(id)
 	}
 }
 
@@ -1633,9 +1619,23 @@ func (a *app) tickTasks() {
 		return
 	}
 	a.task.verdict = taskClockWord
+	// AND THE QUESTION GOES WITH IT. Nobody answered — the clock did what the
+	// row said it would — so it is withdrawn rather than answered, and the
+	// sentence is the engine's own for this event (session's questionGoneReason).
+	a.dropTaskQuestion(a.task.id, taskStartedItselfReason)
 	a.markCardStale(a.task)
 	a.touch()
 }
+
+// taskStartedItselfReason and taskTurnEndedReason are why a proposal stopped
+// being a question when nobody answered it. They are internal/session's own two
+// sentences for the same two endings (its [questionGoneReason]), said here
+// because this window learns of both from the card's lane rather than from the
+// questions lane and must retire the question in the same words.
+const (
+	taskStartedItselfReason = "it started on its own, as the card said it would"
+	taskTurnEndedReason     = "the work is no longer waiting on it"
+)
 
 // syncTaskAsk drops a card about a question nobody is asking any more.
 //
@@ -1666,11 +1666,12 @@ func (a *app) syncTaskAsk() {
 	}
 	// The deadline is what distinguishes the two honest stories: a clock that
 	// ran out approved it, and anything else ended with the turn.
-	word := taskExpiredWord
+	word, reason := taskExpiredWord, taskTurnEndedReason
 	if !a.task.deadline.IsZero() && !a.now().Before(a.task.deadline) {
-		word = taskClockWord
+		word, reason = taskClockWord, taskStartedItselfReason
 	}
 	a.task.verdict = word
+	a.dropTaskQuestion(a.task.id, reason)
 	a.markCardStale(a.task)
 	a.touch()
 }
@@ -1699,17 +1700,29 @@ func taskAsksOpen(agent taskAgent) ([]uint64, bool) {
 // THE PROPOSAL IS A CONTAINED BLOCK, and it is contained because of what it sits
 // between. Every other entry on this surface is a paragraph in a conversation:
 // it begins where the last one ended and nothing is lost when the eye runs from
-// one into the next. A question is not a paragraph. It has a top, three answers
-// and a clock, and when its rows flowed into the reply underneath it the result
-// was a decision a person had to reconstruct the boundaries of before they could
-// make it.
+// one into the next. An assignment is not a paragraph. It has a top, a brief and
+// a set of facts about where the work will run, and when its rows flowed into
+// the reply underneath it the result was a block a person had to reconstruct the
+// boundaries of before they could read it.
+//
+// THE ANSWERS ARE NOT ON IT ANY MORE (question.go). What was here was a decision
+// drawn in a place no other decision on this surface is drawn — its own choices
+// row, its own draining meter, its own claim on the keyboard — and every law it
+// needed had to be argued here separately from the eight other blocks that
+// needed the same ones. So the ASKING is above the box with every other
+// question, and the block in the transcript is what the question is ABOUT:
 //
 //	╭─ ? ◆ Fix nil-map crash ───────────────────────────────────────────────
 //	│ The parser drops a key on an empty map.
-//	│ [ yes ]  [ redirect ]  [ no ]
-//	│ ███████████████░░░░░  auto-starts in 3.2s
-//	│ ctrl+e for the brief
+//	│ from your folder as it stands — unsaved edits included
+//	│ model deepseek/deepseek-v4-flash · ctrl+e for the brief
 //	╰──────────────────────────────────────────────────────────────────────
+//
+//	? wants to start a task: Fix nil-map crash
+//	  the parser drops a key on an empty map · aforge
+//	  ▸ 1  start it
+//	    2  no
+//	  [enter] take the pick · [esc] later · [c] change · start it in 9s
 //
 // COLLAPSED IS A NAME AND A SENTENCE, and that is the card law this surface now
 // applies to all three of a task's cards — the proposal, the rail's presence and
@@ -1735,17 +1748,7 @@ func (a *app) taskCardRows(card *taskCard, width int, sel bool) []string {
 	if card == nil || width < 4 {
 		return nil
 	}
-	// The hit targets are rebuilt with the rows that carry them, and cleared
-	// first: a settled card has no options, and a stale span is a click that
-	// answers a question nobody is asking.
-	card.choiceRow, card.spans = -1, nil
-	card.modelRow, card.modelSpans = -1, nil
-	// AND THE GUTTER IS UNPAID AGAIN, because these spans are about to be minted
-	// against the row's own columns from zero. The pass that moves them into the
-	// transcript's gutter reads this to know what it already owes (gutter.go).
-	card.gut = 0
-	// STILL ARRIVING: three rows, nothing to answer, and no hit targets — which
-	// the two lines above have just made true for this frame.
+	// STILL ARRIVING: three rows, and the only rows on this block that move.
 	if card.forming && !card.settled() {
 		return a.taskFormingRows(card, width, sel)
 	}
@@ -1792,26 +1795,11 @@ func (a *app) taskCardRows(card *taskCard, width int, sel bool) []string {
 		out = append(out, stem+a.pal.dim(fit("where: "+card.where, room)))
 	}
 	if point := a.taskBranchPoint(); point != "" {
-		// The branch point sits with the assignment and above the answers, because
-		// it is a fact about the work rather than a fact about answering: it is the
-		// last thing read before the eye reaches the options, and the one thing on
-		// the card a person cannot find out afterwards without reading a merge.
+		// The branch point is the last of the facts about the work, and it is the
+		// one thing on the card a person cannot find out afterwards without
+		// reading a merge.
 		out = append(out, stem+a.pal.dim(fit(point, room)))
 	}
-	// THE MODELS ROW ONLY EXISTS WHEN THERE IS A CHOICE. One word, one model is
-	// every ordinary proposal, and that model is said on the meta line below —
-	// where it costs no row at all.
-	if len(card.options) > 1 {
-		models, spans := a.taskModels(card, ansi.StringWidth(a.blockStem()), room)
-		if models != "" {
-			card.modelRow, card.modelSpans = len(out), spans
-			out = append(out, stem+models)
-		}
-	}
-	choices, spans := a.taskChoices(card, ansi.StringWidth(a.blockStem()), room)
-	card.choiceRow, card.spans = len(out), spans
-	out = append(out, stem+choices)
-	out = append(out, stem+a.taskMeter(card, room))
 	if meta := a.taskMetaWord(card, room); meta != "" {
 		out = append(out, stem+a.pal.dim(meta))
 	}
@@ -1889,7 +1877,7 @@ func (a *app) taskHead(card *taskCard, width int, sel bool) string {
 	// and both are true of this row: somebody is being asked something, and the
 	// thing being asked about is THAT one — the same mark that will be on the
 	// rail in four seconds and on the card that lands in eleven minutes.
-	head := corner + " " + glyphAsk + " "
+	head := corner + " " + a.icon(tokens.GNeedsHuman) + " "
 	mark := a.taskMarkSel(card.ident, sel) + " "
 	title := fit(card.name, width-ansi.StringWidth(head)-3)
 	line := paint(head) + mark
@@ -1923,7 +1911,7 @@ func (a *app) taskFormingRows(card *taskCard, width int, sel bool) []string {
 	room := width - ansi.StringWidth(a.blockStem())
 	mark := tokens.Spinner(a.paints / spinnerStep)
 	if a.linear {
-		mark = glyphRunASCII
+		mark = a.icon(tokens.GWorking)
 	}
 	line := taskFormingWord
 	if word := countUpWord(a.now().Sub(card.born)); word != "" {
@@ -1951,7 +1939,7 @@ func (a *app) taskFormingHead(card *taskCard, width int, sel bool) string {
 		corner = taskCornerASCII
 	}
 	head := corner + " "
-	mark := a.pal.dim(a.linearMark(glyphQueued, glyphQueuedASCII)) + " "
+	mark := a.pal.dim(a.icon(tokens.GQueued)) + " "
 	title := fit(firstNonEmpty(card.name, taskFormingName), width-ansi.StringWidth(head)-3)
 	line := a.pal.dim(head) + mark
 	if sel {
@@ -1988,49 +1976,6 @@ func (a *app) taskFoot(card *taskCard, width int) string {
 		word = card.answer + " · " + card.verdict
 	}
 	return paint(corner+" ") + a.pal.dim(fit(word, width-ansi.StringWidth(corner)-1))
-}
-
-// taskChoices draws the row of options and reports what each one occupies, in
-// screen columns, so a click can be resolved to the option under it.
-//
-// An option that does not fit is DROPPED rather than truncated, which is the
-// rule the consent offer follows for the same reason (consent.go): half an
-// answer is an answer somebody presses by mistake.
-func (a *app) taskChoices(card *taskCard, left, width int) (string, []choiceSpan) {
-	var line string
-	var spans []choiceSpan
-	at := left
-	end := left + width
-	for i, word := range taskChoiceWords {
-		chip := "[ " + word + " ]"
-		gap := 0
-		if i > 0 {
-			gap = 2
-		}
-		if at+gap+ansi.StringWidth(chip) > end {
-			break
-		}
-		if gap > 0 {
-			line += strings.Repeat(" ", gap)
-			at += gap
-		}
-		line += a.taskChip(word, i == card.choice)
-		spans = append(spans, choiceSpan{from: at, to: at + ansi.StringWidth(chip), at: i})
-		at += ansi.StringWidth(chip)
-	}
-	return line, spans
-}
-
-// taskChip is one option. The focused one takes the question hue and the weight
-// together; the others keep the hue and spend the weight on their INITIAL, which
-// is the key that picks them — the same trick the consent offer plays with its
-// bracketed letters, minus the brackets nobody needs when the letter is already
-// the first thing in the word.
-func (a *app) taskChip(word string, focus bool) string {
-	if focus {
-		return a.pal.askBold("[ " + word + " ]")
-	}
-	return a.pal.dim("[ ") + a.pal.askBold(word[:1]) + a.pal.ask(word[1:]) + a.pal.dim(" ]")
 }
 
 // taskBranchPoint is the branch-point line for this conversation, or nothing at
@@ -2076,118 +2021,6 @@ func (a *app) taskMetaWord(card *taskCard, width int) string {
 	}
 	return fit(strings.Join(parts, " · "), width)
 }
-
-// taskModels draws the row of models this work could run on, and reports what
-// each one occupies so a click can be resolved to the model under it.
-//
-// IT IS A CORRECTION, NOT A GATE. The card arrives with the closest match
-// already picked and the countdown already running, because the alternative is
-// work that stops for a question the person did not ask — one word fitting two
-// models is the harness's ambiguity, not theirs. What the row buys is the
-// thirty seconds in which the choice is free to change.
-//
-// An option that does not fit is DROPPED rather than truncated, which is the
-// rule [app.taskChoices] follows for the same reason: half a model id is a model
-// somebody picks by mistake.
-func (a *app) taskModels(card *taskCard, left, width int) (string, []choiceSpan) {
-	words := taskModelWords(card.options)
-	var line string
-	var spans []choiceSpan
-	at, end := left, left+width
-	for i, word := range words {
-		chip := "[ " + itoa(i+1) + " " + word + " ]"
-		gap := 0
-		if i > 0 {
-			gap = 2
-		}
-		if at+gap+ansi.StringWidth(chip) > end {
-			break
-		}
-		if gap > 0 {
-			line += strings.Repeat(" ", gap)
-			at += gap
-		}
-		line += a.taskModelChip(itoa(i+1), word, i == card.pick)
-		spans = append(spans, choiceSpan{from: at, to: at + ansi.StringWidth(chip), at: i})
-		at += ansi.StringWidth(chip)
-	}
-	if len(spans) < 2 {
-		// One chip is not a choice, and a row that offers one option is a row that
-		// asks a question it has already answered.
-		return "", nil
-	}
-	return line, spans
-}
-
-// taskModelChip is one model. The picked one takes the question hue and the
-// weight together, and the others spend the weight on the DIGIT that picks
-// them — the choices row's own trick, with a number where the initial would be:
-// two model ids from one vendor share every letter that could have been a key.
-func (a *app) taskModelChip(key, word string, focus bool) string {
-	if focus {
-		return a.pal.askBold("[ " + key + " " + word + " ]")
-	}
-	return a.pal.dim("[ ") + a.pal.askBold(key) + a.pal.ask(" "+word+" ]")
-}
-
-// taskModelWords is how the options are SPELLED on the row: the part after the
-// vendor, which is the part that differs, unless two vendors carry the same one
-// — in which case the vendor is the whole distinction and every chip keeps its
-// full id. The meta line under the row always names the picked model in full.
-func taskModelWords(options []string) []string {
-	tails := make([]string, 0, len(options))
-	seen := map[string]bool{}
-	for _, option := range options {
-		tail := option
-		if slash := strings.LastIndex(option, "/"); slash >= 0 {
-			tail = option[slash+1:]
-		}
-		if tail == "" || seen[strings.ToLower(tail)] {
-			return append([]string(nil), options...)
-		}
-		seen[strings.ToLower(tail)] = true
-		tails = append(tails, tail)
-	}
-	return tails
-}
-
-// taskMeter is THE COUNTDOWN, AS A COUNTDOWN.
-//
-// What stood here was the string "4s", redrawn every frame — a number that a
-// person had to read, twice, a second apart, before it told them anything. A
-// draining bar is the same fact in a channel that needs no reading at all: the
-// question "how much of my time to decide is left" is answered by how much of
-// the row is still filled, and the number beside it is there for the person who
-// wants the figure rather than the shape.
-//
-// It is recomputed from the DEADLINE on every frame ([app.tickTasks] runs on the
-// same clock), never stepped: a bar that advanced itself would drift from the
-// clock the engine is actually holding the proposal against.
-func (a *app) taskMeter(card *taskCard, width int) string {
-	if card.deadline.IsZero() {
-		return a.pal.dim(fit(taskWaitingWord, width))
-	}
-	left := card.deadline.Sub(a.now())
-	word := taskAutoWord + countdownFine(left)
-	cells := taskMeterCells
-	if room := width - ansi.StringWidth(word) - 2; cells > room {
-		cells = room
-	}
-	if cells < 1 {
-		return a.pal.dim(fit(word, width))
-	}
-	span := card.deadline.Sub(card.born)
-	frac := 0.0
-	if span > 0 {
-		frac = float64(left) / float64(span)
-	}
-	return a.progress(frac, cells) + "  " + a.pal.dim(word)
-}
-
-// taskMeterCells is the meter's widest. Twenty cells is a bar a person reads as
-// a proportion; past that it is a progress dialog, and this surface does not
-// have those.
-const taskMeterCells = 20
 
 // countdownFine spells the time LEFT beside the meter, and it spells the last
 // ten seconds in tenths.
@@ -2538,6 +2371,12 @@ func (a *app) railGroupOf(node *taskNode) railGroup {
 		// `done` once let a nested question expire with nobody able to see it
 		// (#268). What folds is how loud it is ([app.railGlyphRank]).
 		return railAttention
+	case status.Tier == session.TaskTierYourCall:
+		// A QUESTION SOMEBODY ELSE IS HOLDING IS PARKED AND NEVER DONE. The demand
+		// is gone — the model, or the parent's own agent, is answering it — but the
+		// work is not finished, and filing it under `done` is exactly how a nested
+		// question once expired with nobody able to see it (#268).
+		return railParked
 	case status.Presence == session.TaskPresenceWaiting:
 		return railParked
 	case status.State == session.TaskQueued:
@@ -3306,6 +3145,10 @@ func (a *app) bodyWidth() int {
 // to the roster, because two would be a click that opened the node above the one
 // under the pointer.
 type railLine struct {
+	// roomAction and roomSection share the drawn rows with pointer routing.
+	roomAction  string
+	roomSection int
+
 	text string
 	// entry indexes [app.railEntries], or -1 for the padding and the footer.
 	entry int
@@ -3340,6 +3183,11 @@ type railLine struct {
 	// know whether it was asked to widen the column, to hide it, or to leave it
 	// for a page that holds work this session never ran.
 	more bool
+	// keeping says this line is the footer's standing count, whose door is
+	// /standing (standdoor.go). It is a fourth flag for the third one's reason:
+	// every one of these lines can be on the frame at once, and a press has to
+	// know which of the four it landed on.
+	keeping bool
 	// door is the slash word this line TYPES INTO THE DRAFT when it is pressed —
 	// the `+` row at the foot of each section (margin.go). It is the word itself
 	// rather than a flag because there are two of them and they type two different
@@ -3409,9 +3257,30 @@ func (a *app) railLines(entries []railEntry, width int) []railLine {
 // what the executor can actually run at once — and a person who expands `done
 // 300` pays for it on the frames they are looking at it, which are frames with
 // nothing animating on them (see [app.tasksAnimating]).
+// The return door is outside both scrolling layouts, so depth and a long task
+// list cannot move the way back to the conversation off screen.
+const railMainAction = "main"
+const railMainWord = "Back to main"
+
 func (a *app) railView(height int) ([]railLine, int) {
 	if height <= 0 || !a.railStanding() {
 		return nil, -1
+	}
+	if !a.roomOpen() {
+		return a.railContentView(height)
+	}
+	rows, focus := a.railContentView(height - 1)
+	word := a.icon(tokens.GScopeUp) + " " + railMainWord
+	head := railLine{text: a.pal.accent(fit(word, a.railRoom())), entry: -1, roomAction: railMainAction}
+	return append([]railLine{head}, rows...), focus
+}
+
+func (a *app) railContentView(height int) ([]railLine, int) {
+	if height <= 0 || !a.railStanding() {
+		return nil, -1
+	}
+	if a.roomPanelShowing(height) {
+		return a.roomPanelView(height)
 	}
 	room := a.railRoom()
 	entries := a.railEntries()
@@ -3427,10 +3296,10 @@ func (a *app) railView(height int) ([]railLine, int) {
 	// nothing exists, while the emptiness law spends no pixels naming absence.
 	head := a.marginHead(room, len(entries) > 0)
 	lines := a.railLines(entries, room)
-	foot, hint, door, more := a.railFootRows(room, height)
+	foot, marks := a.railFootRows(room, height)
 	body := height - len(foot)
 	if body < 1 {
-		body, foot, hint, door, more = height, nil, -1, -1, -1
+		body, foot, marks = height, nil, noRailFoot
 	}
 
 	// ── THE COLUMN IS A BUDGET AND NOT A STACK ────────────────────────────────
@@ -3538,7 +3407,8 @@ func (a *app) railView(height int) ([]railLine, int) {
 	}
 	for i, text := range foot {
 		out = append(out, railLine{
-			text: text, entry: -1, hint: i == hint, stow: i == door, more: i == more})
+			text: text, entry: -1, hint: i == marks.hint, stow: i == marks.door,
+			more: i == marks.more, keeping: i == marks.keeping})
 	}
 	return out, focus
 }
@@ -3676,6 +3546,8 @@ func (a *app) railRows(height int) []string {
 			node = entries[line.entry].node
 		}
 		switch {
+		case line.roomAction != "" && a.hot.kind == hoverRoomControl && a.hot.key == line.roomAction:
+			text = a.hoverRow(text, room)
 		case a.roomStandingOn(node):
 			text = a.pal.selected(text, room)
 		case node != nil && a.hoveringRail(node):
@@ -3706,6 +3578,12 @@ func (a *app) railRows(height int) []string {
 			// AND THE COLUMN'S OWN DOOR TAKES IT TOO, on the terms every other
 			// pressable line here takes it on: it answers to a click, so the pointer
 			// says so ([app.railDoorLine]).
+			text = a.hoverRow(text, room)
+		case line.keeping && a.hoveringRailStanding():
+			// AND THE STANDING COUNT, which is a door onto /standing and says so
+			// twice for the margin door's reason: its own ink comes up
+			// ([app.railStandingLine]) and the row's ground comes up here, because
+			// the ground is what tells a hand the WHOLE line answers.
 			text = a.hoverRow(text, room)
 		case line.door != "" && a.hoveringMarginDoor(line.door):
 			// AND THE MARGIN'S TWO `+` ROWS, on the same terms and for the same
@@ -4008,13 +3886,10 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// ([railHoldHint]).
 		return nil, true
 	}
-	// THE ANSWERS TO THE ONE QUESTION A ROW CAN BE ASKING, on the row that is
-	// asking it (tasksettle.go's [app.railSettleKey]). It is read last so that
-	// nothing above it changes meaning, and it takes the same three letters the
-	// card and the room take, under the same guard.
-	if a.railSettleKey(msg) {
-		return nil, true
-	}
+	// THE ANSWERS TO THE ONE QUESTION A ROW CAN BE ASKING ARE NOT TAKEN HERE.
+	// They are the landing question's own, on the block above the box, which is
+	// drawn on this page like every other and read before this file
+	// (tasksettle.go says why the column stopped keeping its own copy).
 	return nil, false
 }
 
@@ -4266,28 +4141,43 @@ func (a *app) railEnter() tea.Cmd {
 // because a total is read as a state of the session.
 var railFootOrder = [railGroupCount]railGroup{railRunning, railAttention, railIdle, railParked, railDone}
 
-// railFootMax is how many lines the footer may spend. Three is the whole
-// aggregate at the full width; a fourth would be the column reporting on itself.
+// railFootMax is how many lines the footer may spend on the COUNTS. Three is
+// the whole aggregate at the full width; a fourth would be the column reporting
+// on itself. The standing line, the doors and the offer are each measured
+// against the height on their own.
 const railFootMax = 3
+
+// railFootMarks is where the footer's pressable lines landed, as indices into
+// the rows it returns, or -1 for a line this frame did not draw.
+//
+// IT IS A STRUCT AND NOT FOUR RETURNED INTEGERS because there are four of them
+// now: a caller unpacking `foot, hint, door, more, keeping :=` is four
+// positional ints nobody can read at the call site, and the fourth was added by
+// putting the standing count at the foot of the column (standdoor.go).
+type railFootMarks struct {
+	// hint is the widen offer, door the column's own way out, more the door onto
+	// the task page, and keeping the standing count.
+	hint, door, more, keeping int
+}
+
+// noRailFoot is the answer for a frame with no footer at all: every line
+// missing.
+var noRailFoot = railFootMarks{hint: -1, door: -1, more: -1, keeping: -1}
 
 // railFootRows is the aggregate: what the window cannot show, said once at the
 // bottom of the column.
 //
-//	Σ $1.42 · 312k tok
 //	3 running · 1 needs you
 //	148 parked · 12 done
+//	◦ 2 standing orders
 //
-// THE MONEY IS THE SESSION'S, AND THAT IS THE HONEST SUM. Per-node spend is not
-// on the seam and cannot be: internal/session folds a finished node's usage into
-// the session's own auxiliary total the moment its child closes (task_run.go's
-// foldTaskUsage), so the figure beside the Σ ALREADY CONTAINS every node in this
-// column, plus the conversation that proposed them. It is therefore drawn as the
-// whole and never per row — a per-row share is the one number this surface would
-// have to invent — and the Σ is what says so.
+// THE Σ IS GONE WITH THE MONEY IT LED. It meant "this is a SUM, including what
+// the column folded away", and it earned that while the first line was
+// `Σ $1.42 · 312k tok`. The bill left this foot for the status row on
+// 2026-09-09 — one number drawn twice on one frame — and a sigma in front of a
+// row of counts is a mathematician's mark on a tally: the counts are counts,
+// they say so in words, and nothing about them needs a symbol to be believed.
 //
-// The two figures are drawn only when they are not zero. A session that has been
-// told nothing about what it spent says nothing, rather than reporting $0.00
-// beside a hundred and forty-eight nodes.
 // AND THE GROUP WORDS OUTLIVED THE GROUPS. The column stopped filing nodes under
 // five headings ([app.railEntries] draws families now), and the five words are
 // still the vocabulary a person has for what a session is doing — so the count
@@ -4306,9 +4196,17 @@ const railFootMax = 3
 // promotable foreground command takes ctrl+g first. Widening is an offer the
 // column makes about itself when a title is being cut; hiding remains a pointer
 // answer at every moment and a keyboard answer whenever no command can be kept.
-func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
+//
+// AND THE STANDING COUNT IS A LINE OF IT SINCE 2026-09-09 ([app.railStandingLine],
+// standdoor.go). It was a segment of the status row; it belongs here, under the
+// counts of what this column is holding, because it is the same question those
+// counts answer — what is alive on this project — and because this column is
+// where a person already looks for it. It keeps everything it had: it is drawn
+// only when something stands here, its mark breathes while a pass has one of
+// those orders in its hands, and pressing it opens /standing.
+func (a *app) railFootRows(width, height int) ([]string, railFootMarks) {
 	if width < 8 || height < 4 {
-		return nil, -1, -1, -1
+		return nil, noRailFoot
 	}
 	var segs []string
 	// THE BOOKS DECIDE WHETHER A FIGURE IS DRAWN AND THE CLOCK DECIDES WHAT IT
@@ -4316,12 +4214,11 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 	// whether there is anything to report; the figures themselves come off the
 	// eased readings, so this foot counts up with the status line rather than
 	// jumping beside it (reveal.go).
-	if a.cost > 0 {
-		segs = append(segs, dollars(a.spendDrawn()))
-	}
-	if a.tokens > 0 {
-		segs = append(segs, tokenWord(a.tokensDrawn())+" tok")
-	}
+	// THE MONEY IS NOT HERE ANY MORE. It was the session's whole bill, and so
+	// is the figure at the left of the status row two lines down — one number
+	// drawn twice on one frame, and the second copy cost the column two of its
+	// three lines. The foot counts what the column holds; the bill is the
+	// status row's (foot.go).
 	members := a.railMembers()
 	for _, g := range railFootOrder {
 		if n := len(members[g]); n > 0 {
@@ -4361,13 +4258,21 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 		viewText = taskSheetPastHint
 	}
 	view := ansi.StringWidth(viewText) <= width && (record || a.railFoldedAny())
-	if len(segs) == 0 && !offer && !stow && !view {
-		return nil, -1, -1, -1
+	// THE STANDING LINE IS DRAWN ONLY WHERE SOMETHING STANDS, which is the
+	// emptiness law the segment already kept on the status row: a permanent
+	// `0 standing orders` is a permanent reminder of the absence of a thing
+	// (homestanding.go's [app.keepingSegment]).
+	standWord := a.keepingSegment()
+	if ansi.StringWidth(standWord) > width {
+		standWord = ""
+	}
+	if len(segs) == 0 && standWord == "" && !offer && !stow && !view {
+		return nil, noRailFoot
 	}
 	// The footer never takes more than a third of the column: a roster that is
 	// mostly its own summary has stopped being a roster.
 	rooms := min(railFootMax, height/3)
-	lines := railPack(segs, width, rooms, railSigma)
+	lines := railPack(segs, width, rooms)
 	out := make([]string, 0, len(lines)+2)
 	// ONE BLANK ABOVE IT, when the column can lend one — whitespace is how this
 	// surface separates blocks, and a rule across a two-cell column would be a
@@ -4377,6 +4282,14 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 	}
 	for _, line := range lines {
 		out = append(out, a.pal.dim(line))
+	}
+	marks := noRailFoot
+	// THE STANDING COUNT GOES DIRECTLY UNDER THE TALLY, because it is the last of
+	// the counts: three lines saying what this project is holding, and then the
+	// doors and the offers about the column itself.
+	if standWord != "" && len(out)+1 < height {
+		marks.keeping = len(out)
+		out = append(out, a.railStandingLine())
 	}
 	// THE PAGE'S DOOR GOES DIRECTLY UNDER THE TALLY, above the two lines about the
 	// column itself. The order is what the lines are ABOUT: the counts say what
@@ -4388,24 +4301,42 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 	// footnoted record rows used to. A door onto a month of other people's
 	// afternoons is not a thing this column should raise its voice about; it is a
 	// thing it should never fail to mention.
-	more := -1
 	if view && len(out)+1 < height {
-		more = len(out)
+		marks.more = len(out)
 		out = append(out, paintHint(viewText, a.pal, a.pal.dim))
 	}
-	hint := -1
 	if offer && len(out)+1 < height {
-		hint = len(out)
+		marks.hint = len(out)
 		out = append(out, paintHint(hintText, a.pal, a.pal.dim))
 	}
 	// The door goes UNDER the width offer, at the very bottom of the column, which
 	// is where a person looks for the way out of anything.
-	door := -1
 	if stow && len(out)+1 < height {
-		door = len(out)
+		marks.door = len(out)
 		out = append(out, a.railDoorLine())
 	}
-	return out, hint, door, more
+	return out, marks
+}
+
+// railStandingLine is the standing count as the foot of the column draws it:
+//
+//	◦ 2 standing orders
+//
+// DIM LIKE THE TALLY ABOVE IT, AND BRIGHT UNDER THE POINTER, which is this
+// column's own spelling of "this line answers to a click" ([app.railDoorLine]
+// and the margin's `+` rows make the same bargain). Pressing it opens /standing
+// (room.go's [app.railPress]); the keyboard door is unchanged and is still
+// /standing or /orders typed into the box.
+//
+// THE WORD IS [app.keepingWord] AND NOT THE SEGMENT, because the mark breathes
+// while a pass has one of this place's orders in its hands and the two are the
+// same width by construction — that function swaps the glyph and nothing else
+// (homestanding.go).
+func (a *app) railStandingLine() string {
+	if a.hoveringRailStanding() {
+		return a.pal.accent(a.keepingWord())
+	}
+	return a.pal.dim(a.keepingWord())
 }
 
 // railDoorLine is the standing column's own door as it is drawn: the chevron
@@ -4490,13 +4421,10 @@ func (a *app) railOffersResize() bool {
 	if !a.railCanWiden() {
 		return false
 	}
-	return a.railCramped || a.railHold || a.hoveringRailArea()
+	// The task panel reserves its footer before laying out the tree. Hover may
+	// recolor that footer, but must never add a row and move the controls.
+	return a.roomOrganized() || a.railCramped || a.railHold || a.hoveringRailArea()
 }
-
-// railSigma opens the footer's first line, and it is the whole of what makes the
-// figures behind it readable: this is the sum of everything, including what the
-// column folded away.
-const railSigma = "Σ "
 
 // railPack folds the footer's segments into at most rooms lines of at most width
 // cells, joined by this surface's own separator.
@@ -4504,26 +4432,30 @@ const railSigma = "Σ "
 // A segment that will not fit is DROPPED and the fold is said out loud with the
 // ellipsis this surface truncates everything with: a footer that silently stops
 // counting is a footer that claims the session is smaller than it is.
-func railPack(segs []string, width, rooms int, lead string) []string {
+//
+// IT TAKES NO LEAD ANY MORE. It had one — `Σ `, on the first line only — for as
+// long as the first line was the session's bill; the counts that are left say
+// what they are in words ([app.railFootRows] says why the sigma went).
+func railPack(segs []string, width, rooms int) []string {
 	if rooms < 1 || width < 1 {
 		return nil
 	}
 	out := make([]string, 0, rooms)
-	line := lead
+	line := ""
 	for _, seg := range segs {
 		add := seg
-		if line != lead {
+		if line != "" {
 			add = railSep + seg
 		}
 		if ansi.StringWidth(line)+ansi.StringWidth(add) <= width {
 			line += add
 			continue
 		}
-		// THE FIRST SEGMENT KEEPS THE Σ whatever the width: a column too narrow
-		// for "Σ $1.42" is a column that has to choose, and the sign is what says
-		// the figure is a total rather than a row's.
-		if line == lead {
-			line = fit(lead+seg, width)
+		// A FIRST SEGMENT TOO WIDE FOR THE COLUMN IS CUT RATHER THAN DROPPED: a
+		// count is still worth reading with its tail folded, and dropping it would
+		// leave the line under it claiming to be the first thing this session has.
+		if line == "" {
+			line = fit(seg, width)
 			continue
 		}
 		out = append(out, line)
@@ -4535,7 +4467,7 @@ func railPack(segs []string, width, rooms int, lead string) []string {
 	}
 	// The loop returns the moment the last line is spoken for, so what reaches
 	// here is a line with room left in the block.
-	if line != lead {
+	if line != "" {
 		out = append(out, line)
 	}
 	return out
@@ -4590,7 +4522,19 @@ func (a *app) railEntryRows(e railEntry, width int) ([]string, hudSpan, hudSpan)
 	if node == nil {
 		return nil, hudSpan{}, hudSpan{}
 	}
+	// Deep ancestry keeps its full navigation identity, but its indentation must
+	// leave room for a name and the under-row's child stem. The ellipsis marks
+	// omitted outer connectors; only this drawing copy is shortened.
+	depthRoom := max((width-railTitleFloor-2-treeIndentCols)/treeIndentCols, 1)
+	compressed := len(e.stems) > depthRoom
+	if compressed {
+		e.stems = e.stems[len(e.stems)-depthRoom:]
+	}
 	prefix, at := a.railPrefix(e.stems)
+	if compressed {
+		tail, _ := a.railPrefix(e.stems[1:])
+		prefix = a.pal.dim(a.linearMark("…", "~")+strings.Repeat(" ", treeIndentCols-1)) + tail
+	}
 	glyph, lead, folds := a.railLead(e)
 	room := width - at - ansi.StringWidth(lead)
 	// The trailing slot: a folded root says how much it is standing for, every
@@ -4865,32 +4809,55 @@ func (a *app) railWorst(t *railTwig) *taskNode {
 	return worst
 }
 
-// railGlyphRank orders the states by how loud they are on one cell: something
-// waiting on a person, then something running, then something that did not come
-// off, then something not started, then work that is over.
-// A CHILD WHOSE PARENT IS STILL WORKING DOES NOT MAKE THE FOLDED ROW A DEMAND,
-// which is [app.railGroupOf]'s law said on one cell: the parent is the one being
-// asked, so a family drawn as its root alone must wear the root's own news and
-// not a question its own head is already holding.
+// railGlyphRank orders the readings by how loud they are on one cell, and IT IS
+// THE TIER'S ORDER: the person's call first, then work in flight, then work that
+// is over (docs/design/task-states/DESIGN.md).
+//
+// THE ONE RANK THE TIERS DO NOT DECIDE IS `over` AND UNFINISHED. The glyph on a
+// folded row is the news of the subtree, and "something in here did not come
+// off" is the loudest news there is short of a demand — so an incomplete child
+// outranks a sibling that has not started, which is why this order and
+// [app.railTreeUrgency]'s differ by exactly one rank. Where a family STANDS in
+// the column is a question about what a person still has to do; what it WEARS is
+// a question about what happened in it.
+//
+// A CHILD WHOSE DECISION IS ITS PARENT'S AGENT'S DOES NOT MAKE THE FOLDED ROW A
+// DEMAND, which is [app.railGroupOf]'s law said on one cell: the parent holds
+// the question, so a family drawn as its root alone must wear the root's own
+// news and not a question its own head is already answering. That fold is read
+// off [session.TaskAsk.Owner] and off nothing else — a design waiting to be
+// approved is asking the PERSON, and no agent above it can answer for them —
+// and it changes only where the row sorts. The row still reads its reason.
 func (a *app) railGlyphRank(node *taskNode) int {
 	status := a.taskStatus(node)
 	switch {
-	case node.Paused(), status.ChangesUnlanded():
-		return 0
-	case status.Presence == session.TaskPresenceNeedsLook:
-		// The fold is for work nobody could check, whose question goes to the
-		// parent's own agent. A design waiting to be approved is asking the
-		// PERSON, and no agent above it can answer for them.
-		if status.State == session.TaskUnverified && a.taskParentDeciding(node) {
+	case status.Tier == session.TaskTierYourCall:
+		// AND THE TIER IS ASKED FIRST. A node whose landing is somebody's call has
+		// a branch that never came home by construction, so an unlanded-changes
+		// test above this one would answer for every one of them and the fold
+		// below could never fire.
+		//
+		// THE PARENT'S OWN RUN IS THE SAME FACT THE ENGINE HAS NOT PUBLISHED YET.
+		// The engine routes a sub-task's landing note to its parent node's agent
+		// while that parent lives (session's deliverTaskNote), which IS the model
+		// holding the question — but it does not stamp [session.TaskNotice.Decider]
+		// on that shape, so reading the owner alone would take the #268 fold away
+		// and put a demand back on a family whose head is already answering it.
+		// Both roads are the same claim; when the engine publishes the second the
+		// clause goes.
+		if status.Ask.Owner == session.TaskAskOwnerModel || a.taskParentDeciding(node) {
 			return 4
 		}
 		return 0
-	case status.State == session.TaskRunning:
-		return 1
-	case status.State == session.TaskFailed:
-		return 2
-	case status.State == session.TaskQueued:
+	case node.Paused(), status.ChangesUnlanded():
+		return 0
+	case status.Tier == session.TaskTierMoving:
+		if status.Presence == session.TaskPresenceWorking || status.Presence == session.TaskPresenceFinishing {
+			return 1
+		}
 		return 3
+	case status.Presence == session.TaskPresenceIncomplete:
+		return 2
 	}
 	return 4
 }
@@ -4961,7 +4928,7 @@ func (a *app) railTitle(node *taskNode, title string) string {
 //	waiting · machine busy       and what is holding it when nothing does
 //
 // THE ROWS THAT CARRY A HANDLE CARRY NOTHING ELSE. A conflicted branch, a kept
-// branch, a prerequisite's name and "unverified — waiting on you" are each one
+// branch, a prerequisite's name and a question's own reason are each one
 // fact a person has to ACT on, and a price appended to any of them would be a
 // figure competing with the only thing on the row worth reading. The telemetry
 // belongs to the states nobody has to do anything about — a node that is running
@@ -4974,9 +4941,6 @@ func (a *app) railTitle(node *taskNode, title string) string {
 // handles back to work that is not on screen, and half of one of those is worth
 // nothing at all.
 func (a *app) railUnder(node *taskNode, width int) []string {
-	if a.taskReviewPending(node) {
-		return []string{a.pal.dim(fit(taskReviewPendingWord, width))}
-	}
 	paint, text := a.pal.dim, ""
 	switch node.state {
 	case session.TaskRunning:
@@ -5067,11 +5031,26 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 		}
 		text = "waits: " + waits
 	case session.TaskUnverified:
-		// NOT THE MERGE SENTENCE. An unverified node wears session's "aborted"
-		// merge like a stopped one does, and the row below would therefore say
-		// "stopped — branch kept" about work that ran to the end. What it is
-		// waiting for is a person, and that is what the row says.
-		paint, text = a.pal.warn, taskUnverifiedWaits
+		// NOT THE MERGE SENTENCE. A node whose landing is somebody's call wears
+		// session's "aborted" merge like a stopped one does, and the row below
+		// would therefore say `stopped` about work that ran to the end. What this
+		// row says is the QUESTION and its reason, in the engine's own spelling
+		// ([session.TaskStatus.RowWord]) — `your call · nobody could check it`,
+		// `your call · conflicts with your branch: parser.go` — because the reason
+		// is the half a person can act on and a bare `your call` sends them to the
+		// card to find out what for.
+		status := a.taskStatus(node)
+		paint, text = tierInk(a.pal, status), status.RowWord()
+		// THE FILE LIST IS THE FIRST THING TO GO, and it goes WHOLE. This block
+		// is [railUnderRows] tall and a reason that names sixteen files is four
+		// rows of them, so a column that simply wrapped and cut left the person
+		// reading `your call · conflicts with your branch:` — the announcement of
+		// a list, with the list cut off underneath it, which is the one shape
+		// tasktier.go's [tierWordShed] exists to prevent. The list is on the card
+		// one keypress away; what the row is read for is what to do.
+		if len(railWrap(text, width)) > railUnderRows {
+			text = tierWordShed(text)
+		}
 	default:
 		switch node.merge {
 		case mergeWordKept:
@@ -5093,9 +5072,24 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 			// nothing went wrong, and the work is still on that branch — and where
 			// the engine said WHY it stopped, the row leads with that instead
 			// (taskending.go), because "stopped" was measured true of none of six.
-			text = endingKept(node.ending) + " · " + node.branch
-			if halted(node.ending) {
-				paint = a.pal.warn
+			// THE STATE, THEN WHERE THE WORK WAS LEFT. The state is the reading's
+			// own sentence and never this file's — `stopped`, or `incomplete · ran
+			// out of steps` — and the branch is a FACT hung off it rather than part
+			// of it. The one sentence that used to cover all of this, `stopped —
+			// branch kept`, was measured true of one landing in six.
+			//
+			// AND THE HANDLE OUTLIVES THE REASON. This block is two rows
+			// ([railUnderRows]) and a long ending sentence plus a branch name is
+			// three, which would drop the branch off the bottom — and the branch is
+			// the only way back to work that is not on screen, while the reason is
+			// on the card in full one keypress away. So when both will not fit the
+			// reason gives way, exactly as the file list does on a card
+			// (tasktier.go's [tierRow] states the same law).
+			status := a.taskStatus(node)
+			paint = tierInk(a.pal, status)
+			text = status.RowWord() + railSep + node.branch
+			if len(railWrap(text, width)) > railUnderRows {
+				text = status.Word + railSep + node.branch
 			}
 		default:
 			// THE MERGE WORD, AND WHAT THE WORK COST TO GET THERE. A node that came
@@ -5112,14 +5106,17 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 			// the person's own tree — still leads with why it stopped, when the
 			// engine said (taskending.go): where the work is is not what happened
 			// to it.
-			if word := endingWord(node.ending); word != "" && node.state == session.TaskFailed {
-				text = word
+			// A FAILED NODE WITH NO BRANCH TO KEEP — a non-git workspace ran it in
+			// the person's own tree — still leads with the reading's own sentence
+			// about how it ended, because where the work is is not what happened to
+			// it. The sentence is [session.TaskReasonOf]'s and is spelled nowhere on
+			// this surface.
+			if status := a.taskStatus(node); node.state == session.TaskFailed && status.RowWord() != "" {
+				text = status.RowWord()
 				if landed := mergeScreenWord(node.merge); landed != "" {
 					text += railSep + landed
 				}
-				if halted(node.ending) {
-					paint = a.pal.warn
-				}
+				paint = tierInk(a.pal, status)
 			}
 			if spent := node.spent(); text != "" && spent > 0 {
 				if priced := text + railSep + dollars(spent); ansi.StringWidth(priced) <= width {
@@ -5239,7 +5236,7 @@ func (a *app) railDoing(node *taskNode, width int) []string {
 //	finishing · adding amp-labs to t…           and the same row, fitted
 //
 // THE WORD IS THE SURFACE'S AND THE SENTENCE IS THE ENGINE'S, which is the same
-// split every other row down here is built on ([taskStoppedKept] states it about
+// split every other row down here is built on ([taskBranchKept] states it about
 // a merge word). "finishing" is this column saying which part of running this is;
 // what follows the separator is the engine's own plain line about what is left,
 // kept verbatim, because the whole value of the row is that it is SPECIFIC.
@@ -5283,7 +5280,7 @@ func (a *app) railWaiting(node *taskNode, width int) []string {
 	if node.waiting == "" {
 		return nil
 	}
-	line := fit(taskHeldWord+railSep+node.waiting, width)
+	line := fit(a.taskStatus(node).RowWord(), width)
 	if line == "" {
 		return nil
 	}
@@ -5457,83 +5454,22 @@ func (a *app) railGlyph(node *taskNode) string {
 	return a.taskStateInk(node)(a.taskStateMark(node))
 }
 
-// taskStateMark is a node's state in one cell, UNPAINTED. The cell is the
-// reading's and not the state's: which `failed` is a fault, which is work a
-// check found unfinished, which is a person's own stop and which is a run the
-// wire ended are four marks, decided once in [session.ProjectTask].
+// taskStateMark is a node's state in one cell, UNPAINTED — [tierMark]'s cell
+// asked about a node this window is watching. The table itself is tasktier.go's
+// and there is only one of it: which `failed` is a fault, which is a person's
+// own stop and which is a run the wire ended are decided once in
+// [session.ProjectTask] and drawn once there.
 func (a *app) taskStateMark(node *taskNode) string {
-	status := a.taskStatus(node)
-	switch status.Presence {
-	case session.TaskPresenceStopped:
-		// ⊘ outranks the state: a stopped node settles `failed` because nothing
-		// merged, and a cross would report a finding nobody made about work the
-		// person ended themselves.
-		return a.linearMark(glyphStopped, glyphStoppedASCII)
-	case session.TaskPresenceNeedsLook:
-		// ? for both kinds of waiting on you, and no spinner: the spinner is this
-		// surface's promise that something is happening this instant.
-		return glyphUnverified
-	case session.TaskPresenceIncomplete:
-		// ! is unfinished work; the cross is kept for the fault, because nobody
-		// found anything wrong with the rest.
-		if !status.Fault {
-			return glyphHalted
-		}
-		return a.linearMark(glyphBad, glyphBadASCII)
-	case session.TaskPresenceDone:
-		return a.linearMark(glyphDone, glyphDoneASCII)
-	}
-	if status.State == session.TaskRunning {
-		if a.linear {
-			return glyphRunASCII
-		}
-		return tokens.Spinner(a.paints / spinnerStep)
-	}
-	return a.linearMark(glyphQueued, glyphQueuedASCII)
+	return a.tierMark(a.taskStatus(node))
 }
 
 // taskStateInk is the hue that state is said in — the paint half of
-// [app.railGlyph], in the order the glyph half decides its cell so the two can
-// never fall out of step. Anything that says a node's name in the colour of what
-// it is doing asks this: the roster's glyph, and the composer's room segment.
+// [app.railGlyph], asked separately so the two can never fall out of step.
+// Anything that says a node's name in the colour of what it is doing asks this:
+// the roster's glyph, and the composer's room segment.
 func (a *app) taskStateInk(node *taskNode) func(string) string {
-	status := a.taskStatus(node)
-	switch status.Presence {
-	case session.TaskPresenceStopped:
-		return a.pal.dim
-	case session.TaskPresenceNeedsLook:
-		return a.pal.warn
-	case session.TaskPresenceIncomplete:
-		if !status.Fault {
-			return a.pal.warn
-		}
-		return a.pal.bad
-	case session.TaskPresenceDone:
-		return a.pal.muted
-	}
-	if status.State == session.TaskRunning {
-		return a.pal.accent
-	}
-	return a.pal.dim
+	return tierInk(a.pal, a.taskStatus(node))
 }
-
-// glyphDone marks a node that landed. See [app.railGlyph] for why this surface
-// has one at all.
-const (
-	glyphDone      = "✓"
-	glyphDoneASCII = "+"
-)
-
-// glyphUnverified marks the node nobody could judge, and it ASKS A QUESTION
-// because that is what the state is: not a tick, which would claim a verdict
-// nobody gave, and not a cross, which would claim a finding nobody made. It
-// takes the warn hue rather than the ask hue — [glyphAsk] is the question the
-// SESSION is blocked on and answering it is the next thing anyone does here,
-// while this one waits for as long as it takes.
-//
-// It is the same cell in both glyph tiers: "?" is already a character a screen
-// reader names, so there is nothing for the linear tier to stand in for.
-const glyphUnverified = "?"
 
 // railJoin lays one conversation row beside the rail's column for that row. It
 // is the ONLY place the two columns meet, and it pads through
@@ -5622,11 +5558,30 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		// monotonic but the NAMING is not: a row can be published before its title
 		// is known and again after, in the same state, and the second one is the
 		// only chance this surface gets to learn what the work is called.
+		//
+		// AND A LANDING THAT CHANGED WHAT IT IS ASKING IS NEWS IN THE SAME STATE.
+		// A node the model accepted whose merge was then REFUSED settles again as
+		// `unverified` with a different merge word, a different file list and a
+		// different road — a different question, with different answers, now the
+		// person's — and a guard that only looked at the state threw that event
+		// away, which is why the card in front of somebody kept asking the
+		// question the first landing asked ([taskReasks], #767).
+		//
+		// AND A DECISION CHANGING HANDS IS THE QUIETEST NEWS OF ALL AND THE ONE
+		// NOBODY MAY MISS. The floor hands an unanswered question back to the person
+		// at the end of the model's turn by publishing a row whose state, span,
+		// branch and report are all exactly what they were and whose only news is
+		// [session.TaskNotice.Decider] — so a guard that only ever looked at the
+		// state would throw away the event that puts the chips back on the card
+		// somebody is waiting in front of (taskdone.go's [app.handedBackCard]).
 		node := a.tasks[notice.ID]
 		if node == nil || (notice.CostUSD <= node.cost &&
 			taskLiveLines(notice) == node.liveLines() && !taskRenames(notice, node) &&
 			!taskRenamesContext(notice, node) && !taskStops(notice, node) &&
-			!taskPauses(notice, node)) {
+			!taskPauses(notice, node) && !taskReasks(notice, node) &&
+			notice.Decider == node.decider && notice.NextModel == node.nextModel && notice.Thinking == node.thinking &&
+			(notice.Brief == "" || notice.Brief == node.brief) &&
+			(notice.Acceptance == "" || notice.Acceptance == node.acceptance)) {
 			return nil
 		}
 	}
@@ -5668,6 +5623,16 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		}
 		a.tasks[notice.ID] = node
 		a.taskOrder = append(a.taskOrder, notice.ID)
+	}
+	// Replayed engine updates carry the original contract without a proposal card.
+	if notice.Brief != "" {
+		node.brief = notice.Brief
+	}
+	if notice.Acceptance != "" {
+		node.acceptance = notice.Acceptance
+	}
+	if notice.Summary != "" {
+		node.assignment = notice.Summary
 	}
 	a.takeTypedTaskBrief(node)
 	if title := strings.TrimSpace(notice.Title); title != "" {
@@ -5749,12 +5714,23 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		node.produced, node.producedWhole = notice.Result, notice.ResultWhole
 		node.producedCut, node.producedHeld = notice.ResultCut, notice.ResultHeld
 	}
+	// THE TWO FACTS A QUESTION IS MADE OF, taken from every update including their
+	// absence. Which files clash and who is holding the decision are both reports
+	// of what is true RIGHT NOW — a merge round that resolved a clash and a floor
+	// that handed a question back both publish a row that stops carrying what the
+	// last one did — so keeping either past the notice that dropped it would be
+	// this surface asking a question somebody has already answered
+	// (docs/design/task-states/DESIGN.md).
+	node.conflicts, node.decider = notice.Conflicts, notice.Decider
+	node.shifted, node.groundHeld = notice.Shifted, notice.GroundHeld
 	// The model is kept whenever an update carries one and never overwritten
 	// with an empty: it is a property of the work, settled at admission, and an
 	// update that says nothing about it is not an update that changed it.
 	if model := strings.TrimSpace(notice.Model); model != "" {
 		node.model = model
 	}
+	node.nextModel = strings.TrimSpace(notice.NextModel)
+	node.thinking = notice.Thinking
 	if len(notice.Changed) > 0 {
 		node.changed = notice.Changed
 	}
@@ -5763,6 +5739,13 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	// take a figure off the focus header that was true (room.go).
 	if notice.CostUSD > 0 {
 		node.cost = notice.CostUSD
+	}
+	// AND THE TOKENS, the same burn counted from the engine's side, which is the
+	// only side a window with no lane to the worker has (session's
+	// TaskNotice.Tokens). The larger of the two readings wins, as the price's
+	// does ([taskNode.spent]): this lane and the pilot's count the same thing.
+	if notice.Tokens > node.tokens {
+		node.tokens = notice.Tokens
 	}
 	// THE LIVE LINES ARE COPIED WHOLE, INCLUDING THEIR ABSENCE, and they are the
 	// fields on this node that are deliberately not kept when an update stops
@@ -5822,6 +5805,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	// this surface, was the thing that said yes.
 	if a.task != nil && a.task.id == notice.ID && !a.task.settled() {
 		a.task.verdict = taskClockWord
+		a.dropTaskQuestion(a.task.id, taskStartedItselfReason)
 		a.markCardStale(a.task)
 	}
 	var pilot tea.Cmd
@@ -5860,7 +5844,18 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		// law). So the roster-only rule holds for work that came home DECIDED, and
 		// a decision is written wherever it is. It may fold under its family; it
 		// may not be absent.
-		if node.parent == "" || node.state == session.TaskUnverified {
+		//
+		// AND THE ANSWER TO THAT QUESTION IS WRITTEN WHERE THE QUESTION WAS. A part
+		// that carded `your call` here and is then settled — by a person's `a`, by
+		// the model under `task.settle = auto` — lands a second time, as done or
+		// incomplete, and that landing is the only account the conversation gets of
+		// the decision: the card's own receipt row went with its chips when the
+		// question moved onto the block (#776), and the block's `decided …` line is
+		// news for half a minute. Without the second card the part read `your call`
+		// in the conversation for ever after it had been decided (the tmux suite's
+		// nested-landing subtest, red from #776 until this). A part that never asked
+		// here still lands on the roster alone.
+		if node.parent == "" || node.state == session.TaskUnverified || a.doneEntryFor(node.id) >= 0 {
 			a.landedCard(node)
 		}
 	}
@@ -5997,4 +5992,40 @@ func (a *app) redirectLane(rows []string, width int) []string {
 	out := append([]string(nil), rows...)
 	out[0] = lead + a.pal.dim(prompt) + a.pal.ask(fit(taskRedirectLane, room))
 	return out
+}
+
+// taskReasks reports that one notice asks a DIFFERENT question about a node
+// than the one this surface is already drawing about it.
+//
+// It is the de-dup guard's exception for a landing that was re-settled without
+// moving state ([app.taskUpdate]). The merge word, the files that clash and
+// which of the three roads put them there are exactly the facts a your-call
+// row's question is built from (session's [session.TaskAsk]), so a notice that
+// changes any of them is a notice that changes the question — and a person is
+// owed the one they are actually being asked.
+func taskReasks(notice *session.TaskNotice, node *taskNode) bool {
+	if notice == nil || node == nil {
+		return false
+	}
+	if notice.Merge != "" && notice.Merge != node.merge {
+		return true
+	}
+	if notice.Shifted != node.shifted || notice.GroundHeld != node.groundHeld {
+		return true
+	}
+	return !sameStrings(notice.Conflicts, node.conflicts)
+}
+
+// sameStrings is list equality for the one comparison above. An empty list and
+// a nil one are the same absence, which is the emptiness law said about a slice.
+func sameStrings(one, two []string) bool {
+	if len(one) != len(two) {
+		return false
+	}
+	for i := range one {
+		if one[i] != two[i] {
+			return false
+		}
+	}
+	return true
 }

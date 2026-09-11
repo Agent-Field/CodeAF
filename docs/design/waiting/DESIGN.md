@@ -1066,6 +1066,127 @@ stall was the one act that throws the whole attempt away. The bounds are scaled
 by the role's patience now and floored at twice its ceiling, and the law walks
 every role in the table at every rate the derivation can be handed.
 
+## L. The wall bounds a reply that is not working, never a reply that is long
+
+*Added 2026-09-10, against `dev@996117314`.* The transport's stream wall
+(`internal/provider/streamguard.go`, "THE WALL") is the one bound in the clock
+table that measured *length* rather than *silence*, and it was blind to whether
+the stream was working.
+
+### The evidence
+
+A task on `moonshotai/kimi-k3` asked for one self-contained HTML file (the
+existing one is 33 KB, about 9k tokens; the model was going for more). It ran
+twenty minutes and produced nothing. From its event log and the reconciled
+`usage.jsonl` rows:
+
+| attempt | lane | ran | output streamed before the cut | journal |
+| --- | --- | --- | --- | --- |
+| 1 | DigitalOcean | 2m30s | 5,510 tok (~37 tok/s, steady) | `the reply ran past 2m30s without finishing and was cut` |
+| 2 | DeepInfra | 2m30s | 3,576 tok (~24 tok/s, steady) | same |
+| 3 | Morph | 10m39s | 26,145 tok (~41 tok/s, steady) | `the reply ran past 10m39s without finishing and was cut` |
+| hedge arm during 3 | – | – | 18,233 tok, discarded | `hedge_waste_usd` 0.30 |
+
+$1.46 of the task's $1.74 was discarded output. Every cut reply was streaming
+at its lane's normal rate the whole time, and the error rows carried no token
+count.
+
+### Three causes, all in code
+
+1. **The wall was blind to progress.** It was a pure elapsed-time timer at five
+   times the longest reply the lane had *completed*, floored at 2m30s once the
+   lane had any history. This lane had only finished 5–9 second tool-call
+   turns, so its wall was 2m30s — at 40 tok/s a hard cap of about 6k output
+   tokens. A 9k-token write can never fit, and the retry ran the identical
+   request into the identical wall.
+2. **A tool-call fragment was hidden.** The read loop called a delta visible
+   only when it carried answer text, so a `write` streaming its arguments was
+   reported to the controller as a run of thought. The phase never left
+   `PhaseThinking`; the duration clock measured ten minutes of writing against
+   how long this model *thinks*, called it pathological, and raised a rescue arm
+   that wrote 18k tokens nobody kept. The cut's `Tokens` counted answer text
+   only, so the row said zero.
+3. **The wall could only learn from a completed reply,** and a lane whose wall
+   is too short to complete a long reply never completes one. This is cause 1
+   seen from the ledger's side and needs no mechanism of its own: once a stream
+   keeping pace is not cut, it completes, `noteRun` records it, and the next
+   wall is derived from it.
+
+### The law
+
+**A tool-call argument is the answer arriving.** It is `Reading.Visible`, it
+moves the phase to writing, and it counts in the cut's `Tokens` — as does
+thought, because the cut's figure is the stream wall's own count of everything
+the model wrote, the same estimate (`tokensOf`, four bytes a token) the rest of
+the adapter rates with, and comparable with the provider's output count, which
+includes reasoning. Thought stays hidden to the controller because a rescue
+would not have to repeat it for anybody; a call's arguments are exactly what a
+rescue would have to write again. The one-voice rule counts a call forming on
+the screen as the answer being read (`hedge.go`'s `shown`), so a rescue's first
+call fragment cannot take the voice from a speaker whose own call is on screen.
+
+**When the wall fires, it asks whether the stream kept pace before it cuts.** The
+tokens delivered over the period the wall was armed for — measured from the
+first write, then from each re-arm — are compared with what the lane's own
+measured rate would have produced over that period. At least a fifth, and the
+wall re-arms for another period; less, and the stream is cut exactly as before,
+with the same sentence, whose figure is the whole bound the timer reached. The
+re-arm never passes `streamWallCeiling` (20 minutes), which stays absolute.
+
+**The fifth is `streamWallFactor`, not a new number.** The factor was argued
+from the spread between healthy replies — three or four to one, with a reply
+that will never end an order of magnitude off — and the same spread bounds a
+rate: load, decoding deep into a long context and bursty delivery move a lane's
+rate by less than that, and a drip is ten or a hundred times under it. The
+controller's own "keeping up" test (`hazard.go`, the decayed sum of gap
+deviates) was considered and not reused: over thousands of tokens it would
+condemn a stream running 20% under its lane's median, which is right for
+gating credit toward a ten-second ceiling and wrong for a cut that throws the
+whole attempt away.
+
+**A lane with no measured rate is held to `LagRate`** (30 tok/s, so six a
+second): the one rate this process already asserts about every endpoint, the
+line under which a finished reply is called slow. Every healthy lane measured
+here clears six a second, so a stranger's long reply is re-armed and a
+stranger's drip is caught at its first wall exactly as before. The stream's own
+first-period rate was the alternative and it is wrong: a drip measured against
+itself keeps pace with itself and would run to the ceiling. This covers
+`routing off` too, where the rate ledger is not kept.
+
+**The rule is strictly more patient than the one it replaces.** Every stream the
+old wall cut is cut at the same moment or re-armed; nothing is cut earlier. A
+completion that is not streamed keeps its hard wall — there is nothing to
+measure pace with until it is over.
+
+### Alternatives considered and rejected
+
+- **Bound by output tokens instead of time.** Some routes deliberately send no
+  `max_tokens` (`document.go`, `relaxMaxTokens`), and the request's token room
+  already bounds a count where one is sent. The failure the wall exists for is a
+  drip — a *rate* — and a count bound catches a drip only after it has dripped
+  the whole budget, which at a token a second is hours. Pace is the honest
+  measurement of the thing that is wrong.
+- **Raise `streamWallMeasuredFloor`.** A band-aid. The floor would be a new
+  guess about the longest honest reply, the chicken-and-egg would stay, and a
+  slower lane or a bigger file would hit it tomorrow. Rejected.
+- **Push the wall on every chunk.** Already rejected in the file: a wall a
+  chunk can push is not a wall, and a drip is made of chunks. The pace re-arm is
+  different in kind — no chunk moves it; it is re-derived once per period from a
+  measurement over the whole period, and it cannot pass the ceiling. A drip
+  cannot buy a second period however many tokens it sends.
+- **Carry the partial `write` across the cut** (salvage, or the continuation
+  hedge). Out of scope, and owed. A wall cut still throws the reply away whole.
+  The seams are `hedgeRace.flip` (the continuation hedge `hedge.go` already
+  names) and `internal/session/salvage.go` (the output-limit salvage); whoever
+  builds it extends one of those rather than writing a second repair path.
+
+Also owed, and small: a thought is folded back into the model's thinking
+distribution only when the first word of *text* ends it (`client.go`'s
+`lanes.NoteThought`), so a turn that thinks and then calls a tool teaches the
+duration clock nothing. Closing the thought on the first call fragment is the
+same law, but it re-announces `StreamThinking` on interleaved turns and was left
+for a change that can check every surface's reading of that event.
+
 ## What this deliberately does not do
 
 - **It does not race every lane on every request.** Three to five arms is three
@@ -1078,7 +1199,8 @@ every role in the table at every rate the derivation can be handed.
 - **It does not touch the transport's bounds.** Rows 10–18 of the clock table
   stay exactly where they are: they are the last resort for the case where no
   action is possible at all, and every one of them is deliberately far past
-  every one of the controller's.
+  every one of the controller's. (§L changed what the stream wall does when it
+  fires — it asks whether the stream kept pace — and none of its figures.)
 - **It does not make `routing off` wait on a policy.** A person who asked for no
   steering gets none — and the ceiling still applies, because a ceiling is not
   steering. What it can do at the ceiling is `Report`, and nothing else.

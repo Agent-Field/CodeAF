@@ -507,7 +507,9 @@ func TestAFellThroughSteerIsNotQueuedOntoATurnSomebodyStopped(t *testing.T) {
 	a.state = stateInterrupted
 	lane := make(chan session.Event)
 	close(lane)
-	a.steerFell(steerFellMsg{gen: a.gen, words: "use the staging bucket", ch: lane})
+	// The stamp is the LANE's own and not the turn's ([app.convGen]), so the
+	// stop below is the only reason this can be refused for.
+	a.steerFell(steerFellMsg{gen: a.convGen, words: "use the staging bucket", ch: lane})
 	if len(a.follows) != 0 {
 		t.Fatal("a stopped turn drained a correction into a turn of its own")
 	}

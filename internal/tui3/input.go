@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // prompt is the input line's mark. Two cells, and the only furniture below the
@@ -344,9 +345,12 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
-	// Pending permission and account input hold their work, not navigation.
-	// These chords never answer either question or edit a partly typed key.
-	if (a.asking() && !a.shaping()) || a.asksConnect() {
+	// A pending permission holds its work, not navigation. These chords never
+	// answer the question or edit a partly typed key. The connect offer used to
+	// be on this line beside it and is not any more: it is a card on the block
+	// now (connect.go), the block is not modal, and a rung that holds keys back
+	// is a rung only a modal needs.
+	if a.asking() && !a.shaping() {
 		switch msg.String() {
 		case closeTabChord:
 			cmd, _ := a.closeTabKey(msg)
@@ -360,43 +364,37 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 
-	// An approval question outranks even the model overlay: it is the one state
-	// where the SESSION is blocked on this keyboard — a tool call is parked
-	// mid-batch waiting for the answer — and everything else on this surface can
-	// wait for one keystroke. ctrl+c is the exception it makes for itself
-	// (consent.go).
-	if cmd, taken := a.consentKey(msg); taken {
+	// THE CHIP'S CHORD IS READ ABOVE EVERY PLACE, because the chip is drawn on
+	// every page and a door that only opened from the conversation would be a
+	// door that is not there wherever a person is actually standing when the
+	// count changes. It answers false unless something is open and the key is
+	// its own, so on every other keystroke it costs one string comparison
+	// (question.go's [app.questionChipKeyPress]).
+	if cmd, taken := a.questionChipKeyPress(msg); taken {
 		return cmd
 	}
 
-	// The connect offer is the next rung down, and it is modal for the same
-	// reason at a lower urgency: the session is waiting on this answer too, and
-	// a key that is not one of the two answers is a key that does nothing rather
-	// than a key that types into a conversation that cannot move (connect.go).
-	if cmd, taken := a.connectAskKey(msg); taken {
-		return cmd
+	// THE QUESTION BLOCK IS READ FIRST AMONG THE QUESTIONS, and it is the one
+	// rung on this list that is NOT modal (question.go). It takes only the keys
+	// it has drawn — over an empty box, because a letter is the question's only
+	// there — and hands everything else straight back, so the eleven arms below
+	// it and the composer under all of them keep every key they had. What it
+	// buys by being here rather than lower is that `esc` means LATER on a
+	// question before it means anything else to anything underneath.
+	if cmd, taken := a.questionKey(msg); taken {
+		// AND WHATEVER THE ANSWER PARKED IS HANDED ON. `change it` on a finished
+		// design walks into that design's room (harnesscard.go), and a room whose
+		// lane was never started is a page that never updates. It is nothing at
+		// all on every other answer, which is every other key that reaches here.
+		return tea.Batch(cmd, a.takeRoomPump())
 	}
 
-	// And the harness offer under that, modal for the same reason at the lowest
-	// urgency of the three: the session is holding a turn — before its first
-	// request — on this one answer (harness.go).
-	if cmd, taken := a.harnessAskKey(msg); taken {
+	// AND THE ONE KEY THE PROPOSAL STILL OWNS, which is not an answer: ctrl+e
+	// unfolds the assignment in the transcript (task.go). It is below the block
+	// because the block is where the proposal is answered and a key it draws
+	// must reach it first.
+	if cmd, taken := a.taskKey(msg); taken {
 		return cmd
-	}
-	// And a LANDED card that is still asking, on the same rung and for the same
-	// reason: a card in the transcript with a question on it answers its own
-	// keys while it is the selected block (tasksettle.go). Every guard `x` has is
-	// on it — the box must be empty, no overlay may be up — because these are
-	// letters, and a letter that decided somebody's work was finished while they
-	// were typing a sentence would be unforgivable.
-	if a.settleCardKey(msg) {
-		return nil
-	}
-	if a.harnessCardKey(msg) {
-		// `e` on that card walks into the design's room now (harnesscard.go), so
-		// whatever door it parked is handed on here: a room whose lane was never
-		// started is a page that never updates.
-		return a.takeRoomPump()
 	}
 
 	// THE SWITCHER IS READ HERE, ABOVE THE PLACES AND BELOW THE THREE QUESTIONS,
@@ -459,16 +457,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// person leaves it (expand.go). It is read AFTER the status sheet because
 	// the deck is raised over whatever the body was drawing, this one included.
 	if a.expandShowing() && msg.String() != "ctrl+c" {
-		a.expandKey(msg)
-		return nil
+		return a.expandKey(msg)
 	}
 
 	// The model overlay is modal: while it is up every key belongs to it and
 	// the draft below is suspended untouched. ctrl+c is the one exception, for
 	// the same reason it is read first below — leaving is never modal.
 	if a.pick.open && msg.String() != "ctrl+c" {
-		a.pickerKey(msg)
-		return nil
+		return a.pickerKey(msg)
 	}
 	if a.crewPick.open && msg.String() != "ctrl+c" {
 		a.crewPickerKey(msg)
@@ -627,7 +623,11 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			// conversation's standing lanes (welcome.go's [app.resumeSession]).
 			return cmd
 		}
-		if !welcomeKeeps(msg.String()) {
+		// AND THE FIRST CONVERSATION'S GREETING IS THE THIRD CONTRACT AT THIS
+		// RUNG. It stands through typing — the composer stays where the person
+		// aimed at it, and the three starting points stay readable — and it is
+		// spent by the send instead (welcome.go's [app.welcomeStandsThroughTyping]).
+		if !welcomeKeeps(msg.String()) && !a.welcomeStandsThroughTyping() {
 			a.dismissWelcome()
 		}
 	}
@@ -849,6 +849,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// not into it (followup.go). Enter stays steering.
 		return a.followUp()
 
+	case "alt+o":
+		return a.openVisiblePicture()
+
+	case "alt+i":
+		a.toggleVisiblePictures()
+		return nil
+
 	case "ctrl+o":
 		// A SELECTED COMPLETION CARD OWNS THIS KEY, because that card is the one
 		// place on the surface that prints a key and says what it does with it —
@@ -916,12 +923,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// carries no text of its own, and everything above this line has already
 		// had its say — so a person mid-sentence can dial the conversation up and
 		// keep typing into the same words. It sits beside ctrl+, because the two
-		// are the surface's two dials and the chip above the box is this one's
+		// are the surface's two dials and the rung on the seam is this one's
 		// visible door, exactly as the panel is that one's.
 		//
 		// The chord does nothing at all on a session that cannot say how hard it
-		// thinks, which is the design law about a capability with nothing behind
-		// it rather than a guard: there is no chip on that frame either.
+		// thinks — a `--host` connection to an engine with no dial among them,
+		// which says so at the door (internal/remote's effort.go). That is the
+		// design law about a capability with nothing behind it rather than a
+		// guard: there is no rung on that frame either.
 		return a.cycleEffort()
 
 	case "pgup":
@@ -1262,8 +1271,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		a.editTags(at, at, len([]rune(text)))
 		// THE FIRST RUNE HOLDS AN OPEN TASK PROPOSAL. This is the typed-character
 		// door; app.paste applies the same hold after the clipboard changes this
-		// box, so both roads share the engine-owned clock policy.
-		a.holdTask()
+		// box, so both roads share the engine-owned clock policy. The question
+		// block holds it too, off any key it reads (question.go's
+		// [app.holdQuestionClocks]) — this is the half that fires for a rune the
+		// question never sees, which is every rune once the box has words in it.
+		if a.task != nil {
+			a.holdTask(a.task.id)
+		}
 		// AND THE ENGINE IS TOLD SOMEBODY IS WRITING (internal/session's Typing).
 		// It is here, on the one line every typed character passes through,
 		// because that is exactly what it is for: seconds before a request is
@@ -1392,6 +1406,12 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 		return a.edited()
 	}
 	a.stick = true
+	// AND THE FIRST CONVERSATION'S GREETING IS SPENT HERE, at the send and not at
+	// the first keystroke. Every other greeting goes on the first key, which drops
+	// the composer to the foot of the frame; the first one stands through typing
+	// so the box a person aimed at does not move out from under them mid-word
+	// (welcome.go's [app.spendWelcome]).
+	a.spendWelcome()
 	// Everything the person pressed enter on is remembered, commands included:
 	// "/model anthropic/…" is exactly the kind of line nobody wants to type
 	// twice, and a recall list that held only the sentences would be a shell
@@ -1479,12 +1499,6 @@ func (a *app) completePath() tea.Cmd {
 // inputBlock renders the draft — or the picker's filter box in its place — and
 // says where the caret sits inside it.
 func (a *app) inputBlock(width int) ([]string, int, int) {
-	// THE TRAY BELONGS TO THE MAIN DRAFT AND TO NOTHING THAT STANDS IN ITS
-	// POSITION, so the dial's recorded columns are cleared here rather than only
-	// in [app.chipStrip] (effortchip.go): every early return below draws a box
-	// with no tray above it, and a span left over from the frame before would let
-	// a click on a filter box open the thinking ladder.
-	a.effortSpan = hudSpan{}
 	// The box may not take the frame. Two rows are spoken for whatever happens
 	// — the status line and the blank under it — and what is left over, up to
 	// the ceiling, is the box's: a six-line paste into a four-line window shows
@@ -1509,7 +1523,7 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 		// prompt, since the picker's box takes no lead — so the keys go whole,
 		// from the right, on a frame too narrow for all of them (rowfit.go).
 		return draftBlock(&a.pick.filter, a.pal, width, 1,
-			pickerHintAt(width-ansi.StringWidth(prompt)), "")
+			a.pick.hintAt(width-ansi.StringWidth(prompt)), "")
 	}
 	if a.at(pageMemory) {
 		if a.mem.edit != nil {
@@ -1575,7 +1589,10 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 	// own prompt (room.go's [app.roomLead]). It is the main draft's alone: the
 	// filter boxes above stand in this position while an overlay has the keyboard,
 	// and none of them sends a word anywhere.
-	block, caretX, caretRow := a.pasteDraftBlock(width, rows)
+	block, caretX, caretRow := a.secretDraftBlock(width)
+	if block == nil {
+		block, caretX, caretRow = a.pasteDraftBlock(width, rows)
+	}
 	// THE TRAY IS PART OF THE BOX, not a fifth thing the frame has to know about
 	// (attach.go). It is one row above the draft, so it is one row of this
 	// block: every geometric question below the conversation already goes
@@ -1586,6 +1603,37 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 		caretRow++
 	}
 	return block, caretX, caretRow
+}
+
+// secretDraftBlock is the message box while the question above it asked for a
+// CREDENTIAL, and nil on every other frame.
+//
+// THE SECRET IS NEVER DRAWN BACK. Not once, not while it is being typed, not
+// behind a "show" toggle: what is on the row is a bullet per character and how
+// many of them there are ([keyLine] draws exactly that, and the /connect panel
+// and the settings sheet's row draw it the same way — one way of entering a key
+// on this surface, and a second one that looked almost like it would be a second
+// thing to trust).
+//
+// THE COUNT IS THE ONLY TELEMETRY, and it is there for the paste. A key is forty
+// or two hundred characters, the bullets run off the end of the row long before
+// that, and the count is what tells a person the whole thing arrived.
+//
+// It is ONE ROW and never the draft's six: a credential is not a paragraph, and
+// a masked box that grew would be a row of bullets nobody can read moving the
+// conversation up the screen. The box is still [app.input] — the same box, with
+// the same keys, answered by the same `enter` ([app.questionEnter]) — so nothing
+// about how the answer is given changes with how it is drawn.
+func (a *app) secretDraftBlock(width int) ([]string, int, int) {
+	head, ok := a.questionHead()
+	if !ok || !head.question.Input.Secret || head.question.Input.Kind != session.InputText {
+		return nil, 0, 0
+	}
+	// The hint is EMPTY because the card above the box is already saying what to
+	// type ([app.questionCardBody] draws the prompt as its last row), and the one
+	// instruction said twice is the two-renderings defect one size smaller.
+	line, caretX := keyLine(&a.input, "", true, a.pal, width)
+	return []string{line}, caretX, 0
 }
 
 // inputHeight is how many rows the input block is taking. Every geometric

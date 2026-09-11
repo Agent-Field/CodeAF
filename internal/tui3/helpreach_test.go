@@ -158,8 +158,8 @@ func TestTheSetupRefusesInSentencesAndNeverInGoErrors(t *testing.T) {
 	// which is where the operating system's own error came from.
 	d, dir, _ := setupApp(t, nil)
 	pressSetup(d, key("enter"))
-	if d.setup.step() != setupCrew {
-		t.Fatalf("the fixture is not on the crew step (%v)", d.setup.step())
+	if d.setup.step() != setupControls {
+		t.Fatalf("the fixture is not on the controls step (%v)", d.setup.step())
 	}
 	if err := os.Chmod(dir, 0o500); err != nil {
 		t.Skipf("this filesystem cannot be made read-only: %v", err)
@@ -169,8 +169,8 @@ func TestTheSetupRefusesInSentencesAndNeverInGoErrors(t *testing.T) {
 	if d.setup.refusal != setupSaveFailedWord {
 		t.Fatalf("a profile that cannot be written said %q, want %q", d.setup.refusal, setupSaveFailedWord)
 	}
-	if d.setup.step() != setupCrew {
-		t.Fatal("a step that could not be written walked on anyway")
+	if !d.setup.open || d.setup.step() != setupControls {
+		t.Fatal("a control that could not be written walked on anyway")
 	}
 	for _, machinery := range []string{"/", ":", "config", "denied"} {
 		if strings.Contains(d.setup.refusal, machinery) {
@@ -187,16 +187,16 @@ func TestTheSetupRefusesInSentencesAndNeverInGoErrors(t *testing.T) {
 // keeps them and replaces only the operating system's.
 func TestTheSetupKeepsASettingsOwnRefusalAboutWhatWasTyped(t *testing.T) {
 	a, _, _ := setupApp(t, nil)
-	pressSetup(a, key("enter"), key("enter"))
-	if a.setup.step() != setupBudget {
-		t.Fatalf("the fixture is not on the rails step (%v)", a.setup.step())
+	pressSetup(a, key("enter"))
+	if a.setup.step() != setupControls {
+		t.Fatalf("the fixture is not on the controls step (%v)", a.setup.step())
 	}
 	pressSetup(a, key("a"), key("b"), key("c"), key("enter"))
 	if a.setup.refusal == setupSaveFailedWord || a.setup.refusal == "" {
 		t.Fatalf("a figure the setting refused was answered with %q, want the row's own words", a.setup.refusal)
 	}
 	if !strings.Contains(a.setup.refusal, "dollar amount") {
-		t.Fatalf("the rails step said %q, want the setting's own refusal about what was typed", a.setup.refusal)
+		t.Fatalf("the limit said %q, want the setting's own refusal about what was typed", a.setup.refusal)
 	}
 }
 
@@ -272,7 +272,7 @@ func TestTheMapNamesTheRowVerbsOnlyWhereTheRowHasThem(t *testing.T) {
 
 // ── ROWS 11, 12 AND 18: THE SEARCH PLACE'S OWN BODY ─────────────────────────
 
-// THE TEACHING PROSE WRAPS, AND EVERY ROW HANGS FROM THE BODY'S OWN COLUMN.
+// NOTHING IS CUT, AND EVERY ROW HANGS FROM THE BODY'S OWN COLUMN.
 // Both sentences went through the character ruler, so at eighty columns the
 // third one drew `…at the matching t…` and its other half was gone; and the
 // rows started at column 1 where tasks, standing and spend all start at 2, so
@@ -294,7 +294,13 @@ func TestTheSearchTeachingWrapsAndHangsFromTheBodysColumn(t *testing.T) {
 				if strings.TrimSpace(text) == "" {
 					continue
 				}
-				if !strings.HasPrefix(text, " ") || strings.HasPrefix(text, "  ") {
+				// THE WHISPER HANGS UNDER ITS HEADING, one gutter in, exactly as
+				// home hangs a panel's (placeprose.go's [placeWhisperLead]); every
+				// other row hangs from the body's own column.
+				// A RESULT hangs its title after the row's two-cell lead, which is
+				// the same column (searchplace.go's [searchLead]).
+				gutter := strings.HasPrefix(text, placeWhisperLead) && !strings.HasPrefix(text, placeWhisperLead+" ")
+				if !gutter && (!strings.HasPrefix(text, " ") || strings.HasPrefix(text, "  ")) {
 					t.Fatalf("row %d at %d columns hangs from the wrong column: %q", i, width, text)
 				}
 				if strings.HasSuffix(strings.TrimRight(text, " "), "…") {
@@ -304,15 +310,10 @@ func TestTheSearchTeachingWrapsAndHangsFromTheBodysColumn(t *testing.T) {
 		}
 	}
 
-	// AND THE LONGEST SENTENCE SURVIVES WHOLE ACROSS THE LINES IT TOOK.
+	// AND THE WHISPER IS WHOLE AT EIGHTY COLUMNS, under the place's heading.
 	page := searchSaid(readSearch("", nil, session.World{}, searchTestNow), 80)
-	if !strings.Contains(page, searchExampleWord) {
-		t.Fatalf("the teaching page lost the one line with a verb in it at 80 columns:\n%s", page)
-	}
-	for _, line := range searchTeachWords {
-		if !strings.Contains(page, line) {
-			t.Fatalf("the teaching page lost %q at 80 columns:\n%s", line, page)
-		}
+	if !strings.Contains(page, placeWhisper[pageSearch].whisper) {
+		t.Fatalf("the empty search place lost its whisper at 80 columns:\n%s", page)
 	}
 }
 

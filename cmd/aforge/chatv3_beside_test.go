@@ -75,7 +75,9 @@ func (s *scriptedAgent) finish() {
 	close(lane)
 }
 
-func (s *scriptedAgent) Interrupt() {
+func (s *scriptedAgent) Interrupt() { s.InterruptFor(session.StopByPerson) }
+
+func (s *scriptedAgent) InterruptFor(session.StopDoor) {
 	s.mu.Lock()
 	s.interrupts++
 	s.mu.Unlock()

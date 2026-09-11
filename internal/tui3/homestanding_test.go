@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // ── THE AMBIENT BAND ON HOME ────────────────────────────────────────────────
@@ -120,78 +120,6 @@ func bandOfSix(t *testing.T) (*standBand, *homeLab, string) {
 	return band, lab, transcript
 }
 
-// AN ITEM TAKES ITS PLACE IN THE ONE TRIAGE ORDER, AND ONLY THE ONES THAT WANT
-// SOMETHING TAKE A PLACE AT ALL.
-//
-// ── WHAT DIED AND WHERE IT WENT ─────────────────────────────────────────────
-//
-// THE PER-PROJECT BAND IS GONE FROM THE RESTING LIST. It used to be every item
-// this machine holds, drawn under its own project's heading, three of them and
-// then a door saying how many more there were — and the resting screen has no
-// project headings to hang a band under any more (switcher.go, place_home.go).
-// An item earns a row on the flat ranked list exactly when it NEEDS SOMEBODY or
-// is FIRING ([readSwitcher] takes those two and nothing else); the ones still
-// waiting for their time, and the door over them, are the standing place's
-// business now. [TestTheStandingBandKeepsItsThreeRowsAndItsDoorOnAPhone] pins
-// them where they still stand.
-//
-// WHAT SURVIVED IS THE ORDER, and it is the half that mattered: one ladder
-// across BOTH kinds of row, so an item stopped on a question can never sort
-// under conversations that want nothing. The glyph and the position are one
-// claim made twice, and this pins them together.
-func TestAStandingItemTakesItsPlaceInTheOneTriageOrder(t *testing.T) {
-	band, lab, transcript := bandOfSix(t)
-	a := lab.app(transcript)
-	band.wire(a)
-	openHomeOn(a, transcript)
-
-	lines := homeLines(a)
-	joined := strings.Join(lines, "\n")
-
-	// EACH ROW IS FOUND BY ITS MARK AND ITS WORDS TOGETHER, which is how the
-	// order and the glyphs are pinned in one reading: a row sorted to the top
-	// under a mark that says "at rest" would simply not be found here.
-	ask := homeRowAt(lines, tokens.GlyphNeedsHuman+" keep main green")
-	run := homeRowAt(lines, "check the deploy")
-	chat := homeRowAt(lines, tokens.GlyphQueued+" Pricing Research")
-	for name, at := range map[string]int{"needs-you": ask, "running": run, "quiet chat": chat} {
-		if at < 0 {
-			t.Fatalf("home never drew the %s row:\n%s", name, joined)
-		}
-	}
-	if !(ask < run && run < chat) {
-		t.Fatalf("the list is not in triage order (ask %d, run %d, chat %d):\n%s", ask, run, chat, joined)
-	}
-	// AND EACH SAYS WHY IT IS WHERE IT IS. The note is the reading's own
-	// ([switcherStandingNote]) and it is the whole of what the band's rollup was
-	// for on a row.
-	if !strings.Contains(lines[ask], "the fix touches migrations") {
-		t.Fatalf("the row that needs somebody does not say what for:\n%s", joined)
-	}
-	if !strings.Contains(lines[run], standing.RunningChecking+" now") {
-		t.Fatalf("the row a pass is on does not say so:\n%s", joined)
-	}
-	// AND ITS MARK AGREES WITH ITS POSITION. It is the only moving thing on this
-	// machine, so it is also the one row the frame gives the turning cell to
-	// (homespinner.go) — which is why the mark is asked for as "the still one or
-	// the turning one" rather than as one glyph.
-	if !strings.ContainsAny(lines[run], tokens.GlyphWorking+"⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {
-		t.Fatalf("the row a pass is on does not wear a moving mark:\n%s", joined)
-	}
-	// THE FOUR THAT WANT NOTHING ARE NOT ON THIS SCREEN, and neither is a door
-	// over them. Four items with nothing to say for themselves used to cost five
-	// rows of a twenty-row screen — that is the whole reason this changed.
-	for _, quiet := range []string{"tell me when the cert expires", "remind me on Fridays",
-		"remind me on Sundays", "remind me on Tuesdays"} {
-		if strings.Contains(joined, quiet) {
-			t.Fatalf("an item that wants nothing took a row on the resting list (%q):\n%s", quiet, joined)
-		}
-	}
-	if strings.Contains(joined, homeItemsFoldWord) {
-		t.Fatalf("the resting list still draws the band's door:\n%s", joined)
-	}
-}
-
 // AND THE BAND ITSELF IS STILL DRAWN WHERE IT STILL LIVES: the phone's inbox,
 // which is built from [homeView.projectBlock] and so still splits a project's
 // items around its conversations, three of them and then one door
@@ -233,7 +161,7 @@ func TestTheStandingBandKeepsItsThreeRowsAndItsDoorOnAPhone(t *testing.T) {
 	if !strings.Contains(joined, "…3"+homeItemsFoldWord) {
 		t.Fatalf("the fold does not count what it is hiding:\n%s", joined)
 	}
-	if !strings.Contains(joined, "needs your look") {
+	if !strings.Contains(joined, tierYourCallWord) {
 		t.Fatalf("the row that needs somebody lost its rollup:\n%s", joined)
 	}
 	// AND THE DOOR OPENS. enter on the fold line shows the rest.
@@ -282,7 +210,7 @@ func TestAStandingRowSaysOnlyWhatItKnows(t *testing.T) {
 
 	stuck := bandItem("n", "keep main green", "/w", standing.WhenProbe, "when CI goes red")
 	stuck.NeedsPerson = "the fix touches migrations"
-	if got := standRollup(StandingItemView{Item: stuck}, now); got != "needs your look · the fix touches migrations" {
+	if got := standRollup(StandingItemView{Item: stuck}, now); got != tierYourCallWord+" · the fix touches migrations" {
 		t.Fatalf("a stopped item reads %q", got)
 	}
 }
@@ -427,9 +355,15 @@ func (h *homeView) pointItemForTest(id string) {
 	h.picked = true
 }
 
-// THE SEGMENT EXISTS ONLY WHEN THERE IS SOMETHING TO SAY, and it moves only
+// THE COUNT EXISTS ONLY WHEN THERE IS SOMETHING TO SAY, and it moves only
 // while one of them is actually firing.
-func TestTheKeepingAnEyeSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
+//
+// IT IS READ OFF THE SEGMENT RATHER THAN OFF A ROW, because the two surfaces
+// that draw it are tested where they draw it: the count came off the status row
+// on 2026-09-09 and is a line at the foot of the task column now
+// (standmark_test.go's own door tests, task.go's [app.railFootRows]). What this
+// test owns is the FACT — the words, the emptiness law and the breathing.
+func TestTheStandingOrdersSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.width = 200
 	// THE READING IS CACHED ON HOME'S OWN BEAT ([app.keepingCount]), so the
@@ -440,8 +374,12 @@ func TestTheKeepingAnEyeSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 	a.clock = func() time.Time { return now }
 	stale := func() { now = now.Add(keepEvery + time.Second) }
 
-	if strings.Contains(plain(a.status(200)), "keeping an eye") {
-		t.Fatalf("a surface with the ambient side off grew a segment:\n%s", plain(a.status(200)))
+	if got := a.keepingSegment(); got != "" {
+		t.Fatalf("a surface with the ambient side off grew a segment: %q", got)
+	}
+	// AND IT IS NOT ON THE STATUS ROW AT ANY WIDTH ANY MORE (foot.go's [groupOff]).
+	if line := plain(a.status(200)); strings.Contains(line, homeKeepingWord) {
+		t.Fatalf("the standing count is back on the status row:\n%s", line)
 	}
 
 	band := &standBand{items: []standing.Item{
@@ -450,13 +388,19 @@ func TestTheKeepingAnEyeSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 	}}
 	band.wire(a)
 	stale()
-	want := standWaitGlyph + homeKeepingWord + "2"
-	if !strings.Contains(plain(a.status(200)), want) {
-		t.Fatalf("the status row is missing %q:\n%s", want, plain(a.status(200)))
+	// THE SEGMENT NAMES THE PAGE IT OPENS. It read `keeping an eye on 2` until
+	// 2026-09-09, which named nothing a person could type — the door is
+	// /standing, so the segment says `◦ 2 standing orders` (homestanding.go).
+	want := standWaitGlyph + " 2" + homeKeepingWord + "s"
+	if got := a.keepingSegment(); got != want {
+		t.Fatalf("the count reads %q, want %q", got, want)
+	}
+	if line := plain(a.status(200)); strings.Contains(line, homeKeepingWord) {
+		t.Fatalf("the standing count is back on the status row:\n%s", line)
 	}
 
 	// AT REST THE GLYPH IS STILL. It breathes only while a firing is in flight.
-	if strings.Contains(plain(a.status(200)), "keeping an eye on 2") && a.keepingWord() != want {
+	if a.keepingWord() != want {
 		t.Fatalf("a quiet band is animating: %q", a.keepingWord())
 	}
 	band.running = map[string]standing.RunningMark{
@@ -466,7 +410,7 @@ func TestTheKeepingAnEyeSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 	if a.keepingWord() == want {
 		t.Fatalf("a firing band is not breathing: %q", a.keepingWord())
 	}
-	if !strings.HasSuffix(a.keepingWord(), homeKeepingWord+"2") {
+	if !strings.HasSuffix(a.keepingWord(), " 2"+homeKeepingWord+"s") {
 		t.Fatalf("the breathing segment lost its count: %q", a.keepingWord())
 	}
 
@@ -474,8 +418,55 @@ func TestTheKeepingAnEyeSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 	band.items[0].Status = standing.StatusPaused
 	band.items[1].Status = standing.StatusPaused
 	stale()
-	if strings.Contains(plain(a.status(200)), "keeping an eye") {
-		t.Fatalf("a band of paused items still claims to be watching:\n%s", plain(a.status(200)))
+	if got := a.keepingSegment(); got != "" {
+		t.Fatalf("a band of paused items still claims to be watching: %q", got)
+	}
+}
+
+// A STOOD EVENT DROPS THE CACHED ZERO so the column's foot and /status can
+// draw the count on the next frame rather than waiting out [keepEvery].
+// `ask here` stands on the errand's stream ([app.errandUpdated]); a firing in
+// this conversation stands through [app.standingUpdate] — both take the same
+// door.
+func TestAStoodEventRefreshesTheStandingCountWithoutWaitingOutTheBeat(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.width, a.height = 180, 45
+	a.welcome.open = false
+	a.workspace = "/tmp/lab"
+	a.railAway = false
+	now := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
+	a.clock = func() time.Time { return now }
+
+	item := bandItem("one", "remind me in 1 minute to drink water", "/tmp/lab", standing.WhenAt, "in 1 minute")
+	band := &standBand{}
+	band.wire(a)
+	// Seed the cache at zero WHILE the seam answers, then put the item on the
+	// store without advancing the clock — the shape a window hits when
+	// hostStanding has just answered empty and an errand stands one a beat later.
+	if got := a.keepingSegment(); got != "" {
+		t.Fatalf("empty store claimed standing chrome: %q", got)
+	}
+	band.items = []standing.Item{item}
+	if got := a.keepingSegment(); got != "" {
+		t.Fatalf("cached zero should still be held before the stood event: %q", got)
+	}
+	a.standingUpdate(session.Event{
+		Kind: session.EventStandingUpdate,
+		Standing: &session.StandingNotice{
+			Update: "stood",
+			Item:   item,
+		},
+	})
+	want := standWaitGlyph + " 1" + homeKeepingWord
+	if got := a.keepingSegment(); got != want {
+		t.Fatalf("after stood, keepingSegment=%q want %q", got, want)
+	}
+	if note := a.statusText(); !strings.Contains(note, homeKeepingWord) {
+		t.Fatalf("/status missing the count after stood:\n%s", note)
+	}
+	screen := strings.Join(screenLines(a), "\n")
+	if !strings.Contains(screen, homeKeepingWord) {
+		t.Fatalf("the frame missing ◦ N standing order after stood:\n%s", screen)
 	}
 }
 
@@ -557,47 +548,6 @@ func TestStatusSaysNothingAboutWatchingWithNoStandingSeam(t *testing.T) {
 	}
 }
 
-// A FRAME THAT IS NOT WIDE ENOUGH DROPS THE CARD AND KEEPS THE INDEX, which is
-// home's own law applied to the other kind of row: an index somebody can read
-// beats a preview nobody can.
-//
-// THE FLOOR MOVED AND THE LAW DID NOT. The everyday card tier went with the
-// strips, and there is exactly one width at which a card appears now —
-// [homeCardMin], which is what the list and the card and the gutter add up to
-// (homebridge.go). So the two frames this test uses are that floor and the cell
-// below it, which is the honest way to pin a boundary: a round number beside it
-// would stop meaning anything the day one of the columns changed.
-func TestANarrowHomeDropsTheItemCard(t *testing.T) {
-	lab := newHomeLab(t)
-	transcript := lab.session("alpha", "s1", "Pricing Research", "/w/alpha", time.Now().Add(-time.Hour))
-	band := &standBand{items: []standing.Item{stuckItem()}}
-	a := lab.app(transcript)
-	band.wire(a)
-	a.openHome()
-	a.home.pointItemForTest("one")
-
-	// The card's second band is `project · path`, and it is the one string on
-	// the frame that only the card draws — the hint line at the foot names the
-	// same keys the card's last band does, so a test that looked for those would
-	// be finding the hint.
-	const place = "alpha · /w/alpha"
-
-	a.width, a.height = homeCardMin-1, 24
-	narrow := strings.Join(homeLines(a), "\n")
-	if !strings.Contains(narrow, "remind me on Fridays") {
-		t.Fatalf("the narrow frame lost the row itself:\n%s", narrow)
-	}
-	if strings.Contains(narrow, place) {
-		t.Fatalf("the narrow frame kept the card:\n%s", narrow)
-	}
-
-	a.width = homeCardMin
-	wide := strings.Join(homeLines(a), "\n")
-	if !strings.Contains(wide, place) {
-		t.Fatalf("the frame at the card's own floor lost the card:\n%s", wide)
-	}
-}
-
 // ENTER ON AN ITEM IS ITS PROVENANCE, and an item that never became a
 // conversation says so rather than offering a door onto nothing.
 func TestEnterOnAnItemOpensWhereItWasAsked(t *testing.T) {
@@ -624,10 +574,9 @@ func TestEnterOnAnItemOpensWhereItWasAsked(t *testing.T) {
 // with no conversation to compare against does not wear it at all.
 //
 // IT IS DRAWN WHEREVER [StandingItemRow] IS, which since the switcher landed is
-// the band under the phone tier and the drop-up under a query — the resting list
-// paints its own rows from the reading ([switcherPaintRow]) and has three marks
-// rather than five, and an item that only has NEWS earns no row on it at all
-// ([readSwitcher]). So this is pinned at the tier that still draws the band; the
+// the band under the phone tier and the drop-up under a query — the resting grid
+// paints its own rows from panel cells and has two marks rather than five, and an
+// item that only has NEWS earns no row on it at all ([readSwitcher]). So this is pinned at the tier that still draws the band; the
 // derivation itself is one function and [TestNewsNeverOverwritesTheLouderMarks]
 // holds it straight.
 func TestTheNewsGlyphIsDerivedFromWhenYouLastSpoke(t *testing.T) {
@@ -862,7 +811,7 @@ func TestASurfaceThatCannotAskNeverDrawsTheDot(t *testing.T) {
 	a.stands.Running = nil
 	a.openHome()
 
-	views := a.standItems("/w/alpha")
+	views, _ := a.standItems("/w/alpha")
 	if len(views) != 1 || views[0].Running {
 		t.Fatalf("a surface with no seam decided something was running: %+v", views)
 	}
@@ -933,5 +882,103 @@ func TestTheBandsListRulesAfterEverythingWithATime(t *testing.T) {
 	}
 	if strings.Join(order, "") != "abdc" {
 		t.Fatalf("the band reads %v, wanted the appointments soonest first and the rules newest first behind them", order)
+	}
+}
+
+// ── what fired while nobody was here ────────────────────────────────────────
+
+// A ONE-OFF THAT FIRED AND STOOD DOWN IS STILL WHAT HAPPENED WHILE YOU WERE
+// AWAY, and home's `since you left` block says so.
+//
+// THE HOLE THIS PINS WAS FOUND ON A REAL SCREEN. internal/e2e's
+// `the_firing_reaches_the_person` stands `remind me in 1 minute`, shuts every
+// window, fires it with `aforge tick` and comes back — and home drew no block at
+// all. internal/standing's tick.go stamps LastFired and then retires a one-off in
+// the same pass, [app.standItems] drops every retired item because a thing that
+// is over is not keeping an eye on anything, and switcher.go's ledger walked the
+// bands — so the commonest standing thing there is was the one kind of firing the
+// block could never mention.
+//
+// BOTH HALVES ARE ASSERTED, because the fix must not put the dead item back on
+// the list: the row is gone from the band, and the firing is in the block.
+func TestAOneOffThatFiredWhileNobodyWasHereIsInTheSinceYouLeftBlock(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	here := lab.workspace("alpha")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", here, now.Add(-3*time.Hour))
+	// The look stamp: home was last closed an hour ago, and the reminder went off
+	// ten minutes ago with nothing open.
+	session.NoteLook(lab.root, now.Add(-time.Hour))
+
+	item := bandItem("once", "remind me in 1 minute to drink water", here, standing.WhenAt, "in 1 minute")
+	item.Status, item.RetiredWhy = standing.StatusRetired, "fired"
+	item.Runs, item.LastFired, item.LastChecked = 1, now.Add(-10*time.Minute), now.Add(-10*time.Minute)
+	item.LastOutcome = "said"
+	band := &standBand{items: []standing.Item{item}}
+
+	a := lab.app(mine)
+	band.wire(a)
+	a.openHome()
+	text := homeText(a)
+
+	if !strings.Contains(text, "since you left") {
+		t.Fatalf("a reminder fired while nobody was here and home said nothing happened:\n%s", text)
+	}
+	// THE BLOCK SAYS THE ITEM'S OWN LAST-LOOK SENTENCE, which is
+	// [standing.LastLookLine] and nothing this surface writes.
+	want := standing.LastLookLine(item, a.home.world.Read)
+	if want == "" || !strings.HasPrefix(want, "fired ") {
+		t.Fatalf("the fixture does not read as a firing: %q", want)
+	}
+	if !strings.Contains(text, "fired ") {
+		t.Fatalf("the block does not say the reminder fired:\n%s", text)
+	}
+	if !strings.Contains(text, "it told you") {
+		t.Fatalf("the block drops what came of the firing:\n%s", text)
+	}
+
+	// AND THE DEAD ITEM IS STILL NOT ON THE LIST. It is over; the band is what is
+	// true now, and a retired reminder wearing a row would be home claiming
+	// something is being kept an eye on that is not.
+	views, fired := a.standItems(here)
+	if len(views) != 0 {
+		t.Fatalf("a retired item came back onto the band: %+v", views)
+	}
+	if len(fired) != 1 || fired[0].Item.ID != "once" {
+		t.Fatalf("the reading did not carry the firing out: %+v", fired)
+	}
+	if strings.Contains(text, standRollup(StandingItemView{Item: item}, now)) {
+		t.Fatalf("the retired item drew a band row:\n%s", text)
+	}
+}
+
+// AND A FIRST LOOK STILL MARKS NOTHING. The retired half of the reading is
+// bounded by the look stamp exactly as the block is ([standFiredSince]), so a
+// machine somebody has never closed home on does not hand the ledger every
+// reminder it ever fired for the block to throw away one line later.
+func TestTheRetiredHalfOfTheReadingPaysTheFirstLookLaw(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	here := lab.workspace("alpha")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", here, now.Add(-3*time.Hour))
+
+	item := bandItem("once", "remind me in 1 minute to drink water", here, standing.WhenAt, "in 1 minute")
+	item.Status, item.RetiredWhy = standing.StatusRetired, "fired"
+	item.Runs, item.LastFired, item.LastChecked = 1, now.Add(-10*time.Minute), now.Add(-10*time.Minute)
+	band := &standBand{items: []standing.Item{item}}
+
+	a := lab.app(mine)
+	band.wire(a)
+	a.openHome()
+	if !a.home.seen.IsZero() {
+		t.Fatalf("this test is about a machine nobody has closed home on (stamp %v)", a.home.seen)
+	}
+	if len(a.home.fired) != 0 {
+		t.Fatalf("a first look carried a year of firings into the reading: %+v", a.home.fired)
+	}
+	// THE `since you left` PANEL KEEPS ITS HEADING AND WHISPERS (DESIGN.md §4),
+	// and no line of it counts a firing.
+	if text := homeText(a); !strings.Contains(text, homeWhisper[panelLeft]) {
+		t.Fatalf("a first look drew a ledger:\n%s", text)
 	}
 }

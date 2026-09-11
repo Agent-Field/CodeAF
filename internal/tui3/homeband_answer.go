@@ -144,11 +144,27 @@ func drawAnswerBand(a *app, ctx bandContext) []string {
 	if a.leaveAnswer == nil && !a.answeringHere(row) {
 		return nil
 	}
+	if a.answersStepAside(row) {
+		return nil
+	}
 	lines := a.answerChipLines(question, ctx.width, pal)
 	if len(lines) == 0 {
 		return nil
 	}
 	return lines
+}
+
+// answersStepAside is whether the row's own answers stay off the screen for now
+// — the card band's chips and the foot's strip both ask it, so the two cannot
+// come to disagree.
+//
+// NOT WHILE HOME'S OWN CARD IS UP ON THIS ROW. Enter on a held row raises `Move
+// this conversation here?` beside it (homeconfirm.go), and that card takes the
+// digits first — so chips promising `1 publish it` under a card where `1` is
+// `move it here` would be two questions on one keyboard. The chips step aside
+// while the card stands and are back the moment it is answered or put down.
+func (a *app) answersStepAside(row session.SessionRow) bool {
+	return a.home.ask != nil && a.home.armed == row.Transcript
 }
 
 // answerChip is one chip as it is drawn and as it is pressed: the key and its
@@ -210,7 +226,14 @@ func (a *app) answerKey(key string) (tea.Cmd, bool) {
 	if !ok || subject.kind != bandKindSession {
 		return nil, false
 	}
-	row := subject.row
+	return a.answerRowKey(subject.row, key)
+}
+
+// answerRowKey is one digit sent to one conversation's question, and false when
+// that conversation is not asking or never offered that key. It is the whole
+// door both the cursor's digits and the grid's top question ride
+// (homegrid.go's [app.homeGridAnswer]), so the two cannot answer differently.
+func (a *app) answerRowKey(row session.SessionRow, key string) (tea.Cmd, bool) {
 	question, ok := answerable(row, time.Now())
 	if !ok {
 		return nil, false
@@ -353,12 +376,24 @@ func (a *app) answeringHere(row session.SessionRow) bool {
 func (a *app) answerHere(question session.PresenceQuestion, key string) (tea.Cmd, bool) {
 	action, ok := session.AnswerFromKey(question.Kind, key)
 	if !ok {
-		return nil, false
+		// EVERY OTHER LANE GOES THROUGH THE ONE DOOR. [session.AnswerFromKey]
+		// knows the three lanes that were answerable from home before questions
+		// became one object, and it is deliberately not being taught the other
+		// eight: the object the session left in its presence file carries its
+		// own answers, and [session.Agent.ResolveQuestion] reads the lane off
+		// the answer and hands it to that lane's own resolver. So a question
+		// this build has never heard of is still answerable from home, which is
+		// the whole point of there being one object.
+		return a.answerWholeQuestion(question, key)
 	}
 	switch action.Kind {
 	case session.QuestionConsent:
-		if len(a.asks) > 0 && a.asks[0].id == question.ID {
-			a.answerWith(action.Allow, action.Scope, answerConsentWord(action))
+		if a.consentAsking(question.ID) {
+			// AND IT IS THE BLOCK'S OWN ANSWER, not a second one beside it
+			// (consent.go's [app.answerWith]): the same receipt, the same record
+			// and the same annotated row as the same answer pressed in front of
+			// the question.
+			a.answerWith(action.Allow, action.Scope)
 			return nil, true
 		}
 		if a.agent != nil {
@@ -366,8 +401,7 @@ func (a *app) answerHere(question session.PresenceQuestion, key string) (tea.Cmd
 			return nil, true
 		}
 	case session.QuestionTask:
-		if card := a.task; card != nil && card.id == question.ID && !card.settled() {
-			a.answerTask(action.Task.Approved, "")
+		if a.answerTaskWith(question.ID, key) {
 			return nil, true
 		}
 		if agent, ok := a.tasker(); ok {
@@ -376,11 +410,14 @@ func (a *app) answerHere(question session.PresenceQuestion, key string) (tea.Cmd
 		}
 	case session.QuestionStanding:
 		if card := a.stand; card != nil && card.id == question.ID && !card.settled() {
-			// THE THREE ANSWERS ARE READ FROM THE ACTION AND NOT FROM THE KEY,
-			// so the words this card settles with cannot drift from what the
-			// engine was told ([session.AnswerFromKey] is the one mapping). The
-			// last arm is the decline — a zero [session.StandingAnswer] — and it
-			// keeps the same row `esc` would have left in this window.
+			// AND IT IS THE BLOCK'S OWN ANSWER, not a second one beside it: the
+			// same receipt, the same record and the same settled row as the same
+			// answer pressed in front of the card (standing.go). The words the
+			// row keeps are read off the answer that settled it, so they cannot
+			// drift from what the engine was told.
+			if open := a.questionOpenOn(session.QuestionStanding, question.ID); open != nil {
+				return a.answerQuestion(*open, session.Answer{Key: key}), true
+			}
 			switch {
 			case action.Standing.Once:
 				return a.answerStanding(action.Standing, standOnceDone, standOnceWord), true
@@ -398,20 +435,31 @@ func (a *app) answerHere(question session.PresenceQuestion, key string) (tea.Cmd
 	return nil, false
 }
 
-// answerConsentWord is what the row in this window keeps.
+// answerWholeQuestion answers from the object the session left behind, for the
+// lanes home has no older path for.
 //
-// THE ALWAYS IS SPELLED WITH ITS REACH ON IT, because from home it is the
-// tool-wide one and nothing narrower: the second beat that turns a shell always
-// into a shape is a thing you do while looking at the command, and home has the
-// one line the session is stopped on rather than the command
-// ([session.AnswerFromKey] states the same at the other end). A row that said
-// `always · saved` would be claiming a rule nobody wrote.
-func answerConsentWord(action session.AnswerAction) string {
-	if action.Allow && action.Scope == session.ConsentToolSession {
-		return answerAlwaysWord
+// IT DRAWS ITS ANSWER OUT OF THE QUESTION AND NEVER OUT OF THE KEY. The key is
+// looked up in that question's OWN options ([session.Question.Option]), so a
+// digit this question did not offer answers nothing rather than answering
+// whatever the kind's general table says a digit means.
+func (a *app) answerWholeQuestion(question session.PresenceQuestion, key string) (tea.Cmd, bool) {
+	whole := question.Full
+	if whole == nil {
+		return nil, false
 	}
-	return decisionWord(action.Allow)
+	if _, ok := whole.Option(key); !ok {
+		return nil, false
+	}
+	doors, ok := a.questionDoors()
+	if !ok {
+		return nil, false
+	}
+	answer := session.Answer{
+		At: time.Now(), Kind: whole.Kind, ID: whole.ID, Ref: whole.Ref, Ask: whole.Ask,
+		Key: key, Picked: []string{key}, DecidedBy: session.DecidedByPerson,
+	}
+	if err := doors.ResolveQuestion(answer); err != nil {
+		return nil, false
+	}
+	return nil, true
 }
-
-// answerAlwaysWord is that spelling.
-const answerAlwaysWord = "always · this tool, this session"

@@ -23,10 +23,13 @@ import (
 // observations behind it and one with three hundred are different claims, and
 // the table is the only place that difference can be seen.
 func runModels(args []string) error {
-	// `aforge models --help` used to run the command with the flag silently
-	// ignored, because this door parses no flags at all (usage.go).
-	if askedForHelp(args) {
-		return commandHelp("models")
+	// ONE FLAG, and it is the /model picker's ctrl+r for a script: today's list
+	// from the router rather than the day-old cache. It parses through the same
+	// seam as every door with a flag, so `--help` is still the usage on stdout.
+	flags := commandFlags("models")
+	refresh := flags.Bool("refresh", false, "fetch today's model list now instead of reading the day-old cache")
+	if err := parseCommandFlags(flags, args); err != nil {
+		return err
 	}
 	settings, err := config.Load()
 	if err != nil {
@@ -40,9 +43,13 @@ func runModels(args []string) error {
 	// The same daily-cached listing every other surface reads. This one is a
 	// report and may wait for it: a panel line without the model's own
 	// capabilities is the line this command exists to improve on.
-	models := catalog.Load(context.Background(), catalog.Options{
-		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
-	})
+	discovery := catalog.Options{BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir}
+	models, err := v3ModelsReport(discovery, *refresh)
+	if err != nil {
+		// The same sentence the picker leaves, on stderr: the table below is
+		// still printed, from the list the catalog kept.
+		fmt.Fprintln(os.Stderr, tui3.ModelsFetchFailed+" · "+err.Error())
+	}
 
 	if len(settings.Panel.Models) == 0 {
 		line := "panel:  none — AFORGE_MODELS is unset, so every call goes to " + settings.Model
@@ -140,6 +147,23 @@ func runModels(args []string) error {
 	fmt.Println("  p(pass) is that rating against an average call of the class.")
 	fmt.Println("  a class written class/shape is one sub-population of it, rated separately.")
 	return nil
+}
+
+// v3ModelsReport is the catalog this report reads: the daily-cached one, or —
+// with --refresh — today's, fetched once and written into both caches exactly
+// as the picker's key writes them, so a script can do what the key does. A
+// refresh that does not land still hands back the catalog it degraded to, with
+// the reason beside it.
+func v3ModelsReport(discovery catalog.Options, refresh bool) (*catalog.Catalog, error) {
+	if !refresh {
+		return catalog.Load(context.Background(), discovery), nil
+	}
+	fresh, err := catalog.Refresh(context.Background(), discovery)
+	if err != nil {
+		return fresh, v3FetchReason(err)
+	}
+	_ = tui3.WriteModelCache(v3Models(fresh))
+	return fresh, nil
 }
 
 // reasoningWord is the catalog's phrase for what a model does with reasoning,

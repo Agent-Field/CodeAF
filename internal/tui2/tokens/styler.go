@@ -2,31 +2,6 @@ package tokens
 
 import (
 	"strings"
-
-	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
-)
-
-// The consumer seam.
-//
-// internal/tui2/blocks declares the smallest interface it needs — a Paint that
-// takes text, a state and a hue — and deliberately never imports this package,
-// so the two could be built in parallel. This file closes the seam from THIS
-// side, so the assembly wave writes
-//
-//	transcript.SetStyler(tokens.NewStyler(profile, tokens.FocusNormal))
-//
-// and not an adapter type in a third package. The import edge runs
-// tokens → blocks, which is the direction that keeps blocks a leaf; blocks does
-// not gain a dependency by being depended on.
-//
-// The two enums are declared on both sides with matching ordinals (see [Hue]),
-// so the conversion below is a numeric cast the compiler folds away.
-// styler_test.go pins the correspondence, and a compile-time assertion pins the
-// interface, so both halves of the seam fail loudly rather than silently.
-
-var (
-	_ blocks.Styler         = (*Styler)(nil)
-	_ blocks.IdentityStyler = (*Styler)(nil)
 )
 
 // Styler paints text with this package's palette for one terminal profile and
@@ -176,8 +151,7 @@ func (s *Styler) WithGlyphSet(g GlyphSet) *Styler {
 // glare onto the headings.
 //
 // A Styler built by [NewStyler] or [NewStylerIn] carries no override, so every
-// construction site in this tree — the whole v2 surface included — keeps
-// rendering exactly the bytes it rendered.
+// construction site in this tree keeps rendering exactly the bytes it rendered.
 //
 // ── WHAT IT COSTS PER PROFILE ──
 //
@@ -249,7 +223,7 @@ func inkSeq(p Profile, c Color) string {
 // and the automatic path must never rewrite one (12.7 D.3).
 //
 // A nil Styler resolves the plain glyph rather than panicking, and that
-// forgiveness is deliberate where [Styler.Paint]'s is not. A nil Styler is a
+// forgiveness is deliberate where the painting paths' is not. A nil Styler is a
 // real state in this tree — a block built before a profile was chosen holds one
 // — and a consumer adopting the tier replaces a package-level CONSTANT with
 // this call. If the call could panic where the constant could not, adoption
@@ -262,37 +236,6 @@ func (s *Styler) Glyph(id GlyphID) string {
 		return Plain.Glyph(id)
 	}
 	return s.glyphs.Glyph(id)
-}
-
-// PaintGlyph resolves a slot in this tier and paints it on the state and hue
-// axes, which is the whole grammar of a glyph cell in one call.
-func (s *Styler) PaintGlyph(id GlyphID, state blocks.State, hue blocks.Hue) string {
-	return s.Paint(s.glyphs.Glyph(id), state, hue)
-}
-
-// Paint implements [blocks.Styler]: it wraps text in the escape sequences for
-// the token that state and hue resolve to.
-//
-// It obeys blocks' contract that painting must not change printable width —
-// only escape sequences are added, never a printable byte. Empty text is
-// returned untouched, because an escape pair around nothing is bytes the
-// terminal parses for no reason, and a zero-width painted string would make
-// every "is this row empty" check downstream answer wrong.
-func (s *Styler) Paint(text string, state blocks.State, hue blocks.Hue) string {
-	return s.paint(text, ResolveToken(Hue(hue), State(state)))
-}
-
-// PaintIdentity implements [blocks.IdentityStyler]: it paints text in the
-// stable pastel of a task seed, resolved through the same 8-hue wheel the rail
-// assigns from (5.16). The state axis is accepted and ignored for the hue —
-// identity is identity whether the task is running or settled, which is the
-// whole point of a stable accent — but a chrome-state caller gets the tertiary
-// grey, because chrome is structure and structure has no identity.
-func (s *Styler) PaintIdentity(text string, seed uint64, state blocks.State) string {
-	if State(state) == StateChrome {
-		return s.paint(text, TextTertiary)
-	}
-	return s.paint(text, Identity(int(seed%IdentityCount)))
 }
 
 // PaintToken is the direct door for a renderer that already knows its token —
@@ -316,8 +259,8 @@ func (s *Styler) PaintToken(text string, t Token) string {
 // measured every one of them.
 //
 // Under [SelectionMarker] it returns the text unpainted, and that is the whole
-// of what this function may do: painting must not change printable width (the
-// blocks contract), and a marker is a CELL. A renderer whose profile answers
+// of what this function may do: painting must not change printable width, and
+// a marker is a CELL. A renderer whose profile answers
 // [SelectionMarker] therefore has to draw [GlyphAccentRail] in its gutter — ask
 // [Profile.SelectionStyle] before drawing a row, not this function after.
 func (s *Styler) PaintOn(text string, fg, bg Token) string {
@@ -362,10 +305,10 @@ func (s *Styler) PaintOn(text string, fg, bg Token) string {
 // and a card whose ground stopped halfway along a row would be a rendering bug
 // nobody could see the cause of. One known sequence, one repair, both stated.
 //
-// Printable width is untouched, which is the blocks contract this obeys like
-// every other painter here. An empty row is returned as it came: a background
-// around nothing is bytes for no reason, and a zero-width painted string makes
-// every "is this row blank" check downstream answer wrong.
+// Printable width is untouched, as it is for every other painter here. An
+// empty row is returned as it came: a background around nothing is bytes for
+// no reason, and a zero-width painted string makes every "is this row blank"
+// check downstream answer wrong.
 func (s *Styler) PaintRowOn(row string, ground Token) string {
 	if !s.enabled || row == "" || ground >= tokenCount || !ground.IsSurface() {
 		return row
@@ -383,12 +326,6 @@ func (s *Styler) PaintRowOn(row string, ground Token) string {
 	b.WriteString(row)
 	b.WriteString(sgrResetBg)
 	return b.String()
-}
-
-// Token resolves the hue and state axes to a token without painting, for a
-// caller that wants the colour value itself (a lipgloss style, a swatch).
-func (s *Styler) Token(state blocks.State, hue blocks.Hue) Token {
-	return ResolveToken(Hue(hue), State(state))
 }
 
 // sgrResetAll is the reset written after a painted span. Foreground and
@@ -409,12 +346,11 @@ const (
 // never a substring rewrite, never an ASCII slot, never a lead rune inside a
 // longer string.
 //
-// The warrant is the header grammar: blocks paints the glyph cell as its own
-// span, so it arrives here as a whole one-rune string. That is how four
-// consumer packages written before the tier existed get the tier without an
-// edit. What it costs on the hot path is one branch under the plain tier, and
-// under the nerd-font tier one rune decode plus a binary search over two dozen
-// entries — a bounded rune check, not a map probe per cell.
+// A glyph cell arrives here as a whole one-rune string, while prose arrives as
+// more than one rune and passes through untouched. What it costs on the hot
+// path is one branch under the plain tier, and under the nerd-font tier one rune
+// decode plus a binary search over two dozen entries — a bounded rune check,
+// not a map probe per cell.
 func (s *Styler) upgrade(text string) string {
 	if !s.upgrading {
 		return text

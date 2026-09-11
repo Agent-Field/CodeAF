@@ -549,3 +549,5 @@ the window narrows is worse than one that moves down a row.
 
 What the row was really seeing is the two-row status line doing its job at a
 width where nothing else would have. Recorded here so nobody reopens it.
+
+**Row 2 — fixed 2026-09-10 (home mission-control, lane E).** A node's start is kept on the checkpoint (`taskRecord.StartedAt`) and now written on its index row too (`TaskIndexEntry.StartedAt`, from the node's own start, and from the run's for an adaptive root), `Duration()` counts a live row up from it, and a restored node the surface cannot date draws no landing time (`taskNodeEnded`'s `restored` guard) rather than one reckoned from when the window opened.

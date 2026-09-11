@@ -22,6 +22,7 @@ package session
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -385,7 +386,7 @@ func TestOnlyASpentBudgetSealsOverWorkThatIsMoving(t *testing.T) {
 func TestAPersonsHandoverStillMovesTheWork(t *testing.T) {
 	dir := t.TempDir()
 	transcript := filepath.Join(dir, "transcript.jsonl")
-	agent := checkpointAgent(t, splitSketchSteps(), func(config *Config) {
+	agent := checkpointWritingAgent(t, writingSplitSketchSteps(), func(config *Config) {
 		config.Workspace = dir
 		config.SessionFile = transcript
 		config.Divide = true
@@ -415,6 +416,17 @@ func TestAPersonsHandoverStillMovesTheWork(t *testing.T) {
 func splitSketchSteps() *scriptedCompleter {
 	return &scriptedCompleter{
 		steps: grindingSteps(checkpointMarkAt(1)+6, checkpointSplitSketch,
+			"Finish the four pieces\nwhat is left, and everything this turn already found out"),
+	}
+}
+
+// writingSplitSketchSteps is [splitSketchSteps] for a turn that TOUCHED THE
+// DISK, which is the turn the full handover road still takes: a drawing with
+// parts out of a turn that only read is handed to a quick node instead
+// (checkpoint_quick.go's [Agent.quickFromDrawing]).
+func writingSplitSketchSteps() *scriptedCompleter {
+	return &scriptedCompleter{
+		steps: writingGrindSteps(checkpointMarkAt(1)+6, checkpointSplitSketch,
 			"Finish the four pieces\nwhat is left, and everything this turn already found out"),
 	}
 }
@@ -639,7 +651,7 @@ func TestAcceptingWorkOverAMergeConflictStillNeedsALook(t *testing.T) {
 	node.setTree(tree)
 	node.finish("edited the shared file", []string{"shared.txt"}, tree.branch, tree.merge)
 
-	if err := agent.acceptTask(node, "I read it myself"); err != nil {
+	if err := agent.acceptTask(node, "I read it myself", TaskAskOwnerPerson); err != nil {
 		t.Fatalf("acceptTask: %v", err)
 	}
 
@@ -650,7 +662,7 @@ func TestAcceptingWorkOverAMergeConflictStillNeedsALook(t *testing.T) {
 	if merge != mergeConflicted {
 		t.Fatalf("merge = %q, want %q", merge, mergeConflicted)
 	}
-	if !strings.HasPrefix(report, needsLookLead) {
+	if !strings.HasPrefix(report, yourCallLead(node.notice().StatusFacts())) {
 		t.Fatalf("the report leads with %q, want the words a person reads for a landing nobody could finish", report)
 	}
 	if strings.Contains(report, keptWhereItIsLead) {
@@ -684,7 +696,7 @@ func TestATreeThatIsNoRepositorySettlesTheAcceptWhereItStands(t *testing.T) {
 	node.setTree(tree)
 	node.finish("wrote the parser", []string{"parser.py"}, tree.branch, tree.merge)
 
-	if err := agent.acceptTask(node, "I read it myself"); err != nil {
+	if err := agent.acceptTask(node, "I read it myself", TaskAskOwnerPerson); err != nil {
 		t.Fatalf("acceptTask: %v", err)
 	}
 
@@ -726,7 +738,7 @@ func TestAnAcceptWithNothingToCommitStillComesHome(t *testing.T) {
 	node.setTree(tree)
 	node.finish("read the parser and found nothing to change", nil, tree.branch, tree.merge)
 
-	if err := agent.acceptTask(node, "I read it myself"); err != nil {
+	if err := agent.acceptTask(node, "I read it myself", TaskAskOwnerPerson); err != nil {
 		t.Fatalf("acceptTask: %v", err)
 	}
 
@@ -796,7 +808,7 @@ func TestACommitRefusedInAWritableTreeIsAboutTheWork(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(refs, 0o755) })
 
-	_, problem, _, refusal := tree.comeHome("add the parser", []string{"parser.py"})
+	_, problem, _, refusal := tree.comeHome("add the parser", []string{"parser.py"}, false)
 
 	if !strings.Contains(strings.ToLower(problem), "permission denied") {
 		t.Skipf("git refused the commit with %q, which is not the sentence this test is about", problem)
@@ -959,6 +971,48 @@ func TestAStalledCallSurvivesAWindowThatClosedBeforeASecond(t *testing.T) {
 	}
 }
 
+// AND THE SAME FACT UNDER LOAD MUST NOT BE RETOLD AS "ASKED TWICE" (#803).
+//
+// The measured race: the first call stalls inside its share; building the second
+// checker then spends what is left of a short window; auditOnce returns
+// [checkerRanOut] with again=false without ever submitting. Folding that into
+// [twice] claimed two calls when only one ran, and erased the stall sentence the
+// posture landing asserts. [secondAuditOutcome] keeps the first account.
+func TestASecondAttemptThatNeverRanDoesNotClaimTwoCalls(t *testing.T) {
+	window := 40 * time.Millisecond
+	first := noVerdict(checkerStalled(window/auditCallShare), "")
+	// What auditOnce returns when the bound check fails after (or before) the
+	// second checker is built: a ran-out sentence, and again=false.
+	second := noVerdict(checkerRanOut(window), "")
+
+	got := secondAuditOutcome(first, second, false, io.Discard)
+	account := strings.Join(got.evidence, " · ")
+	if !strings.Contains(account, "without answering and was abandoned") {
+		t.Fatalf("the stall was erased:\n%s", account)
+	}
+	if !strings.Contains(account, checkerWindowClosed) {
+		t.Fatalf("the window closing was not said:\n%s", account)
+	}
+	if strings.Contains(account, "asked twice") {
+		t.Fatalf("a call that was never made was counted as a second ask:\n%s", account)
+	}
+	if strings.Contains(account, checkerRanOut(window)) {
+		t.Fatalf("the landing says nobody was asked, and the first call was:\n%s", account)
+	}
+	// AND THE WORK TAKEN AS IT STANDS STILL NAMES THE STALL.
+	stands := takenAsItStands(got)
+	for _, want := range []string{
+		takenAsItStandsLead,
+		"without answering and was abandoned",
+		checkerWindowClosed,
+		takenAsItStandsTail,
+	} {
+		if !strings.Contains(stands, want) {
+			t.Fatalf("taken as it stands is missing %q:\n%s", want, stands)
+		}
+	}
+}
+
 // AND WHAT THE LANDING SAYS THEN IS THAT THE WINDOW CLOSED.
 //
 // A window too small to hold a call at all is the same shape as a retry that
@@ -1059,7 +1113,12 @@ func TestAWindowOneStallClosedIsDecidedByThePosture(t *testing.T) {
 				config.Workspace = repo
 				config.AskConsent = false
 				config.TaskAutoApproveSeconds = 0
-				config.auditWindow = 40 * time.Millisecond
+				// Two seconds, not forty milliseconds: under load the short window
+				// was spent building the second checker before either hang could
+				// register as a stall, which is a fixture weather report rather
+				// than the posture claim (#803). The sibling abandoned-and-retry
+				// test uses ten seconds for the same reason.
+				config.auditWindow = 2 * time.Second
 				if unattended {
 					config.Unattended = true
 					config.Budget = Budget{Wall: time.Hour}
@@ -1076,7 +1135,7 @@ func TestAWindowOneStallClosedIsDecidedByThePosture(t *testing.T) {
 				if notice.State != TaskUnverified {
 					t.Fatalf("state = %q, want it waiting on somebody (report %q)", notice.State, notice.Report)
 				}
-				if !strings.HasPrefix(notice.Report, needsLookLead) {
+				if !strings.HasPrefix(notice.Report, yourCallLead(notice.StatusFacts())) {
 					t.Fatalf("a watched run stopped asking:\n%s", notice.Report)
 				}
 				return
@@ -1100,7 +1159,12 @@ func TestAWindowOneStallClosedIsDecidedByThePosture(t *testing.T) {
 			if strings.Contains(notice.Report, "nobody could check it in") {
 				t.Fatalf("the landing says nobody was asked, and two checkers were:\n%s", notice.Report)
 			}
-			if strings.Contains(notice.Report, needsLookLead) {
+			// AND IT DOES NOT OPEN WITH A QUESTION. The checker's own sentence
+			// says "nobody could check it" wherever it is quoted, so what tells
+			// the two landings apart is whether the report LEADS with the
+			// question — this one leads with the work's own account and settles
+			// under it.
+			if strings.HasPrefix(strings.TrimSpace(notice.Report), yourCallLead(notice.StatusFacts())) {
 				t.Fatalf("an unattended run still asks somebody who is not there:\n%s", notice.Report)
 			}
 			// AND THE VOCABULARY LAW HOLDS ON THE NEW SENTENCE.

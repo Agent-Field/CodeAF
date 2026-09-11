@@ -210,10 +210,6 @@ func TestEveryConstructibleTokenIsValid(t *testing.T) {
 		check(Identity(i))
 		check(BandFor(Identity(i)))
 	}
-	for _, id := range []string{"", "wisp-parity", "a", "01JD8Z9K2QW5X7YV3B4N6M8P0R"} {
-		check(IdentityFor(id))
-		check(IdentityNext(id, Identity0))
-	}
 	for h := Hue(0); h < 40; h++ {
 		for s := State(0); s < 40; s++ {
 			check(ResolveToken(h, s))
@@ -227,7 +223,6 @@ func TestEveryConstructibleTokenIsValid(t *testing.T) {
 	}
 	check(Promote(TextTertiary))
 	check(Demote(TextPrimary))
-	check(ContextToken(1, 2))
 	check(ElapsedToken(1, 2))
 }
 

@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -27,6 +28,10 @@ type switchAgent struct {
 	pending []uint64
 	stops   int
 	closed  bool
+	// left is closed once Close has returned, so a test that lets go of a
+	// conversation off the frame can wait without racing the close itself.
+	left     chan struct{}
+	leftOnce sync.Once
 }
 
 func (s *switchAgent) Attach() (<-chan session.Event, bool, func()) {
@@ -42,7 +47,14 @@ func (s *switchAgent) Attach() (<-chan session.Event, bool, func()) {
 
 func (s *switchAgent) PendingConsent() []uint64 { return s.pending }
 
-func (s *switchAgent) Close() error { s.closed = true; return s.fakeAgent.Close() }
+func (s *switchAgent) Close() error {
+	s.closed = true
+	err := s.fakeAgent.Close()
+	if s.left != nil {
+		s.leftOnce.Do(func() { close(s.left) })
+	}
+	return err
+}
 
 // TestASwitchKeepsTheTranscriptTheDraftTheScrollAndTheQuestion is the round
 // trip, asserted field by field.
@@ -69,8 +81,8 @@ func TestASwitchKeepsTheTranscriptTheDraftTheScrollAndTheQuestion(t *testing.T) 
 	agent.running, agent.backlog = true, []session.Event{
 		consentEvent(7, "read", "read consent.go", `tool "read"`),
 	}
-	a.askAt = a.now().Add(-6 * time.Second)
-	before, _ := a.askLeft()
+	startAskClock(a, a.now().Add(-6*time.Second), false)
+	before := askClockLeft(a)
 
 	conv, side := a.front(), a.detachConversation()
 
@@ -111,8 +123,8 @@ func TestASwitchKeepsTheTranscriptTheDraftTheScrollAndTheQuestion(t *testing.T) 
 	}
 	// THE SAME READING TIME, NOT A FRESH CLOCK. The countdown measures how long
 	// somebody has had to read the question, and nobody read it while the
-	// conversation was in another project (consent.go's [app.tickAsk]).
-	after, _ := a.askLeft()
+	// conversation was in another project (question.go's [app.tickQuestion]).
+	after := askClockLeft(a)
 	if after > side.askLeft+time.Second || after < side.askLeft-time.Second {
 		t.Fatalf("the countdown came back with %s left, and %s went in", after, side.askLeft)
 	}

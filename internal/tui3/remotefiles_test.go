@@ -716,6 +716,12 @@ func TestALiveHostedUserPictureDrawsFromTheLocalDisk(t *testing.T) {
 	if !found {
 		t.Fatal("the live send left no user entry")
 	}
+	for i := range a.entries {
+		if a.entries[i].kind == entryUser {
+			a.togglePictureAt(i, 0)
+			break
+		}
+	}
 	if rows := userEntryRows(t, a, 80); paintedRows(rows) == 0 {
 		t.Fatal("the live hosted attachment was sent through the empty mirror")
 	}
@@ -734,7 +740,7 @@ func TestAReplayedHostedUserPictureFetchesSilentlyIntoTheMirror(t *testing.T) {
 	far := "/srv/app/out/far.png"
 	wire.farFile(far, "image/png", string(data), 1700)
 	a.entries = []entry{{kind: entryUser, text: "look [#1 far.png]",
-		pictures: []string{far}, picturesHere: false}}
+		pictures: []string{far}, picturesHere: false, pictureExpanded: 1}}
 	if rows := userEntryRows(t, a, 80); paintedRows(rows) != 0 {
 		t.Fatal("the replay drew before the mirror held the file")
 	}

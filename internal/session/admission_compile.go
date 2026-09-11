@@ -21,6 +21,7 @@ package session
 import (
 	"bytes"
 	"encoding/json"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -131,13 +132,13 @@ func (a *Agent) noteCallOutcomes(calls []ai.ToolCall, results []toolResult) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.callOutcomes == nil {
-		a.callOutcomes = make(map[string]callOutcome, len(calls))
+		a.callOutcomes = make(map[*ai.ToolCall]callOutcome, len(calls))
 	}
 	// Emptied rather than trimmed: trimming needs an order this map does not
 	// keep, and an id the compiler cannot find is answered "unknown", which is
 	// the honest answer for an outcome nobody kept.
 	if len(a.callOutcomes) > admissionOutcomesKept {
-		a.callOutcomes = make(map[string]callOutcome, len(calls))
+		a.callOutcomes = make(map[*ai.ToolCall]callOutcome, len(calls))
 	}
 	for index, call := range calls {
 		if index >= len(results) {
@@ -147,7 +148,7 @@ func (a *Agent) noteCallOutcomes(calls []ai.ToolCall, results []toolResult) {
 		if outcome.failed {
 			outcome.detail = clip(firstLine(results[index].text), admissionDetailLimit)
 		}
-		a.callOutcomes[call.ID] = outcome
+		a.callOutcomes[&calls[index]] = outcome
 	}
 }
 
@@ -164,14 +165,16 @@ type admissionSource struct {
 	asked string
 	// messages is the working transcript, oldest first.
 	messages []ai.Message
-	// outcomes says how a finished call came back, by call id.
-	outcomes map[string]callOutcome
+	// outcomes says how this particular call came back. Shallow snapshots retain
+	// its pointer; a restarted process conservatively has no outcome metadata.
+	outcomes map[*ai.ToolCall]callOutcome
 	// record is the journal these words and results can be read out of: a path
 	// read and grep open, which a conversation-store id is not. It is known
 	// without reading anything — placing each quote at its own line would mean
 	// parsing the whole journal on every spawn for a number that is ambiguous
 	// anyway. Empty for a session with no file, and then nothing draws a pointer.
-	record string
+	record       string
+	resultSource resultSource
 	// scope names where these words were said and is part of every id: the same
 	// sentence in two sessions is not one event.
 	scope string
@@ -290,7 +293,8 @@ func admissionCandidates(source admissionSource) []admissionCandidate {
 				ID: source.scope + "/a" + chatRefKey(message), Speaker: admissionAssistant,
 				Text: elide(text, admissionQuoteLimit), From: source.from, Source: source.record,
 			}
-			for _, call := range message.ToolCalls {
+			for callIndex := range message.ToolCalls {
+				call := &message.ToolCalls[callIndex]
 				quote.Calls = append(quote.Calls, call.Function.Name)
 			}
 			candidates = append(candidates, admissionCandidate{order: index, quote: quote})
@@ -362,20 +366,20 @@ func admissionEvidence(source admissionSource, spent *int) []AdmissionHandle {
 	}
 	type found struct {
 		order  int
+		result int
 		handle AdmissionHandle
 	}
-	answered := make(map[string]ai.Message, len(source.messages))
-	for _, message := range source.messages {
-		if message.Role == "tool" && message.ToolCallID != "" {
-			answered[message.ToolCallID] = message
-		}
+	answered := make(map[*ai.ToolCall]int)
+	for index, call := range toolResultCalls(source.messages) {
+		answered[call] = index
 	}
 	handles := make([]found, 0, 8)
 	for index, message := range source.messages {
 		if message.Role != "assistant" {
 			continue
 		}
-		for _, call := range message.ToolCalls {
+		for callIndex := range message.ToolCalls {
+			call := &message.ToolCalls[callIndex]
 			if call.ID == "" || call.Function.Name == "" || admissionSelfCall[call.Function.Name] {
 				continue
 			}
@@ -383,14 +387,14 @@ func admissionEvidence(source admissionSource, spent *int) []AdmissionHandle {
 				Call: call.ID, Tool: call.Function.Name, From: source.from,
 				Input: clip(compactArguments(call.Function.Arguments), admissionInputLimit),
 			}
-			_, wasAnswered := answered[call.ID]
-			switch outcome, known := source.outcomes[call.ID]; {
+			resultIndex, wasAnswered := answered[call]
+			switch outcome, known := source.outcomes[call]; {
+			case !wasAnswered:
+				handle.Outcome = AdmissionUnanswered
 			case known && outcome.failed:
 				handle.Outcome, handle.Detail = AdmissionFailed, outcome.detail
 			case known:
 				handle.Outcome = AdmissionOK
-			case !wasAnswered:
-				handle.Outcome = AdmissionUnanswered
 			}
 			// A pointer only where there is something to fetch. The journal writes
 			// the call id on the result's own line, so the grep the rendered line
@@ -398,7 +402,7 @@ func admissionEvidence(source admissionSource, spent *int) []AdmissionHandle {
 			if wasAnswered {
 				handle.Source = source.record
 			}
-			handles = append(handles, found{order: index, handle: handle})
+			handles = append(handles, found{order: index, result: resultIndex, handle: handle})
 		}
 	}
 	sort.SliceStable(handles, func(one, two int) bool {
@@ -410,19 +414,24 @@ func admissionEvidence(source admissionSource, spent *int) []AdmissionHandle {
 		return handles[one].order > handles[two].order
 	})
 	kept := make([]found, 0, admissionHandlesKept)
-	seen := make(map[string]bool, len(handles))
 	for _, candidate := range handles {
 		if len(kept) >= admissionHandlesKept {
 			break
-		}
-		if seen[candidate.handle.Call] {
-			continue
 		}
 		cost := handleCost(candidate.handle)
 		if cost > room {
 			continue
 		}
-		seen[candidate.handle.Call] = true
+		// Only selected evidence may file a result. If the more precise pointer
+		// would exceed the existing budget, retain the journal reference instead.
+		if candidate.handle.Outcome != AdmissionUnanswered && source.resultSource != nil {
+			candidate.handle.Result = source.resultSource(source.messages[candidate.result])
+			if pointedCost := handleCost(candidate.handle); pointedCost <= room {
+				cost = pointedCost
+			} else {
+				candidate.handle.Result = ""
+			}
+		}
 		room -= cost
 		*spent += cost
 		kept = append(kept, candidate)
@@ -480,23 +489,23 @@ func (c *AdmissionContext) inherit(parent AdmissionContext, seen map[string]bool
 	// no use for; what travels is that the call went badly, which is what stops a
 	// family paying for it twice.
 	carriedEvidence := make([]AdmissionHandle, 0, admissionInherited)
-	held := make(map[string]bool, len(c.Evidence))
+	held := make(map[AdmissionHandle]bool, len(c.Evidence))
 	for _, handle := range c.Evidence {
-		held[handle.Call] = true
+		held[handle.identity()] = true
 	}
 	for _, handle := range parent.Evidence {
 		if len(carriedEvidence) >= admissionInherited || handle.Outcome != AdmissionFailed {
 			continue
 		}
 		handle.Depth++
-		if handle.Depth > admissionDepthLimit || held[handle.Call] {
+		if handle.Depth > admissionDepthLimit || held[handle.identity()] {
 			continue
 		}
 		cost := handleCost(handle)
 		if spent+cost > admissionRoom() {
 			continue
 		}
-		held[handle.Call], spent = true, spent+cost
+		held[handle.identity()], spent = true, spent+cost
 		carriedEvidence = append(carriedEvidence, handle)
 	}
 	c.Evidence = append(carriedEvidence, c.Evidence...)
@@ -529,7 +538,7 @@ func (a *Agent) admissionContext() AdmissionContext {
 	// the live slices after the lock is let go races the session it describes.
 	source.said = append([]personTurn(nil), a.personTurns...)
 	source.messages = admissionWindowOf(a.messages)
-	source.outcomes = make(map[string]callOutcome, len(a.callOutcomes))
+	source.outcomes = make(map[*ai.ToolCall]callOutcome, len(a.callOutcomes))
 	for id, outcome := range a.callOutcomes {
 		source.outcomes[id] = outcome
 	}
@@ -539,6 +548,17 @@ func (a *Agent) admissionContext() AdmissionContext {
 	file := a.file
 	a.mu.Unlock()
 	source.record = file.journalName()
+	place := a.resultPlaceNow()
+	source.resultSource = func(message ai.Message) string {
+		pointer := a.fullResultPointer(message, place)
+		if pointer == "" || strings.HasPrefix(pointer, "grep ") {
+			return ""
+		}
+		if !filepath.IsAbs(pointer) {
+			pointer = filepath.Join(place.workspace, pointer)
+		}
+		return pointer
+	}
 	return compileAdmission(source)
 }
 

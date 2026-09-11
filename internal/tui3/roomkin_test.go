@@ -158,7 +158,7 @@ func TestAHandedOutPieceWaitingOnAnotherSaysParkedInTheColumnsWord(t *testing.T)
 
 // WORK THAT NEEDS A PERSON SAYS SO IN THE SURFACE'S OWN WORDS, and never in the
 // machinery's: this row is read by a person, so "unverified" and the checking
-// apparatus behind it are not its vocabulary (task.go's [taskUnverifiedWord]).
+// apparatus behind it are not its vocabulary (tasktier.go).
 func TestASpawnedPieceThatNeedsALookSaysSoInPlainWords(t *testing.T) {
 	a, _, _ := taskApp(t)
 	railRun(a)
@@ -168,7 +168,7 @@ func TestASpawnedPieceThatNeedsALookSaysSoInPlainWords(t *testing.T) {
 	// The handed-out line is the block's FIRST row now: the parent moved to the
 	// trail and took its own row with it (roomcrumbs.go).
 	row := kinRows(a)[0]
-	if !strings.Contains(row, "Cut the goldens"+roomKinStateSep+taskUnverifiedWord) {
+	if !strings.Contains(row, "Cut the goldens"+roomKinStateSep+tierYourCallWord) {
 		t.Fatalf("the piece does not ask for a look:\n%s", row)
 	}
 	for _, banned := range []string{"unverified", "auditor", "verdict", "refuted"} {
@@ -187,9 +187,9 @@ func TestAFlatTasksRoomGrowsNoKinBlock(t *testing.T) {
 	if rows := kinRows(a); len(rows) != 0 {
 		t.Fatalf("a task with no family drew a kin block:\n%q", rows)
 	}
-	// The tab strip and room header include their own breathing room. None
+	// The head and the room's header include their own breathing room. None
 	// of that space is a shelf for a family this task does not have.
-	if a.headHeight() != a.tabsHeight(a.width)+a.roomHeadHeight(a.width) {
+	if a.headHeight() != a.roomHeadRow()+a.roomHeadHeight(a.width) {
 		t.Fatalf("the pinned region is %d rows over a flat task", a.headHeight())
 	}
 }
@@ -272,5 +272,36 @@ func TestTheKinBlockFitsAndIsCapped(t *testing.T) {
 	a.width = roomHeadFloor - 1
 	if rows := a.roomKinRows(a.width); len(rows) != 0 {
 		t.Fatalf("the kin block outlived the header it hangs under:\n%q", rows)
+	}
+}
+
+// A waiting parent with long child names must keep its details out of the
+// roster's columns, including after resizing across the roster breakpoint.
+func TestWaitingParentDetailsStayInsideTaskColumn(t *testing.T) {
+	a, _, _ := taskApp(t)
+	railRun(a)
+	roomOn(a, 1, "Reddit marketing strategy")
+	a.tasks[1].waiting = "its parts"
+	for _, id := range []uint64{2, 3, 5} {
+		a.tasks[id].title = strings.Repeat("Long child task title ", 12)
+	}
+	for _, width := range []int{60, 100, 160, 205} {
+		a.width = width
+		a.touch()
+		for _, line := range a.roomKinRows(width) {
+			if got := ansi.StringWidth(line); got > a.bodyWidth() {
+				t.Fatalf("window %d: child summary occupies %d cells, task column has %d", width, got, a.bodyWidth())
+			}
+		}
+		if got, want := a.roomStartingSay(a.tasks[1]), plain(a.railWaiting(a.tasks[1], width)[0]); got != want {
+			t.Fatalf("empty page says %q, roster says %q", got, want)
+		}
+		rows := strings.Split(frame(a), "\n")
+		for i, line := range a.roomKinRows(width) {
+			at := a.roomHeadRow() + a.roomHeadHeight(width) + i
+			if plain(rows[at]) != plain(line) {
+				t.Fatalf("child summary disagrees with frame geometry at width %d", width)
+			}
+		}
 	}
 }

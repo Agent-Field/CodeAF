@@ -3,8 +3,9 @@ package session
 // WHAT A SESSION WITH NO SCHEDULING IS TOLD, AND WHAT IT MUST NOT BE TOLD.
 //
 // `stand` is the sharpest absence on this belt (beltfacts.go's [Config.mayStand]
-// states why), so the page composes a whole section from it: the mechanics where
-// the verb is present, one sentence where it is not. That sentence is easy to
+// states why), so the page composes its own paragraph from it: one sentence
+// saying the verb exists where it does, one saying nothing can be scheduled
+// where it does not. That second sentence is easy to
 // write too wide — the first draft said nothing this agent does keeps working
 // once the window closes — and too wide is not a smaller claim, it is a FALSE
 // one: work handed to a task outlives the turn that started it, is checkpointed
@@ -60,26 +61,60 @@ func TestTheSectionWithoutSchedulingDeniesOnlyScheduling(t *testing.T) {
 	}
 }
 
-// AND THE PRESENT CASE IS STILL THE WHOLE MECHANIC. The reduction that made the
-// section conditional must not have made it conditional AND thinner.
-func TestTheSectionWithSchedulingStillTeachesTheMechanics(t *testing.T) {
+// AND THE PRESENT CASE IS EXISTENCE AND NOTHING ELSE.
+//
+// THE LAW MOVED, SO THIS TEST MOVED WITH IT. Eleven fragments of the old
+// 2,482-byte section were pinned here — the waking kinds, the `when.in` and
+// `when.at` grammar, the card's answers, the background-checks row, the
+// `[something you set up fired]` frame. Every one of them is now delivered by
+// whoever needs it and only then: tools_standing.go's [standDescription] and
+// [standSchemaJSON] carry the mechanics beside the field each governs,
+// standing_run.go's [standingNewsRule] rides under the firing's own line, and
+// the chat manual's keeping-an-eye page carries the rest in the words a person
+// asks them in. Pinning them here as well would be pinning the SECOND copy of a
+// law and would fail the day the first copy is the only one left, which is
+// today (docs/design/prompt-diet/DESIGN.md §2).
+//
+// So what is held here now is the thing the page alone can say, which is that
+// there IS somewhere to leave a sentence, and that the verb for it is proposed
+// rather than performed.
+func TestTheSectionWithSchedulingIsExistenceAndNothingElse(t *testing.T) {
 	present := standingSectionFor(true)
+
+	// FORWARD: the model can recognise one of these sentences and knows the verb.
 	for _, want := range []string{
-		"WAKING OR HOLDING",
-		"`when.kind: hold`",
-		"UNSURE MEANS INSTRUCTION PLUS AN OFFER",
-		"SAYING WHEN",
-		"when.in",
-		"when.at",
-		"A CARD OFFERS",
-		"NOTHING STANDS UNTIL THEY SAY",
-		"WHERE A FIRING ARRIVES",
-		"BACKGROUND CHECKS ARE ON AND NOBODY IS ASKED",
-		"[something you set up fired]",
+		"SOMETHING TO LEAVE BEHIND",
+		"`stand`",
+		"PROPOSE IT",
+		"remind me at 6",
 	} {
 		if !strings.Contains(present, want) {
-			t.Errorf("the standing section no longer says %q", want)
+			t.Errorf("the standing line no longer says %q:\n%s", want, present)
 		}
+	}
+
+	// REVERSE: none of the mechanics has crept back onto a page that is re-sent
+	// in front of every request of every turn. Each fragment below is owned
+	// somewhere cheaper, and the comment above names where.
+	for _, elsewhere := range []string{
+		"WAKING OR HOLDING",
+		"when.kind",
+		"when.in",
+		"when.at",
+		"RFC3339",
+		"A CARD OFFERS",
+		"BACKGROUND CHECKS",
+		"[something you set up fired]",
+	} {
+		if strings.Contains(present, elsewhere) {
+			t.Errorf("%q is back on the page; it is `stand`'s description, its schema, or the firing's own line:\n%s", elsewhere, present)
+		}
+	}
+
+	// AND IT IS ONE SHORT PARAGRAPH. The section was 2,482 bytes of message[0];
+	// a ceiling here is what stops it growing back a sentence at a time.
+	if len(present) > 600 {
+		t.Errorf("the standing line is %d bytes, which is a section again and not an existence line:\n%s", len(present), present)
 	}
 }
 

@@ -142,10 +142,17 @@ func (a *app) deckTopRow(width int) string {
 // The model is its BASENAME and it sheds its rider here — "via deepinfra · 92
 // tok/s" is nine cells this frame does not have, and the sheet carries it whole
 // along with the full routing address (see [app.identity] for the same trade at
-// every other width).
+// every other width). A pinned lane is NOT the rider and stays: it is part of
+// the word ([app.modelWord]), because it is an instruction rather than news.
+//
+// AND THE CONVERSATION'S CHIP CARRIES THE REASONING LEVEL, spelled onto the id —
+// `kimi-k3:high` — which is the one place the deck says how hard the model is
+// being asked to think. It is asked for as a word ([app.modelWordAt]) rather
+// than lent through [app.model] for the draw, which is what hid the live rate
+// (view.go's [app.statusRow] tells that story).
 func (a *app) deckModelRow(width int) string {
 	right, plainRight := a.deckAmbient(width)
-	chip := modelBase(a.model)
+	chip := a.modelWordAt(a.reasoningFor(a.model))
 	// A ROOM RENAMES THIS ROW TOO, which is the wide row's own law at phone width
 	// (render.go's [app.identityParts]): row 1 has already renamed itself to the
 	// task, and a row 2 still naming the session's model would be the deck's half
@@ -422,7 +429,14 @@ func (a *app) deckItems() []deckItem {
 		model += ":" + level
 	}
 	add("model", model, deckActModel)
-	// THE CREW GOES DIRECTLY UNDER THE MODEL, because the two are read together
+	// AND THE LANE IT IS PINNED TO, DIRECTLY UNDER IT, which is this page's
+	// spelling of the `@lane` the chrome writes on the model's name
+	// ([app.modelWord]). It is a line of its own rather than a suffix on the
+	// model's because this list IS /status --json, and a script reading `model`
+	// was promised the routing address and nothing else; `lane` is the one key
+	// added. On `auto` and `openrouter` there is no line — the emptiness law.
+	add("lane", a.pinnedNow(), deckActNone)
+	// THE CREW GOES UNDER THE MODEL AND ITS LANE, because the two are read together
 	// or not at all: the line above is the model this conversation talks to, and
 	// this one is the four classes aforge makes its own calls on. A person who
 	// has just changed one and is checking whether it took is looking at exactly
@@ -462,8 +476,21 @@ func (a *app) deckItems() []deckItem {
 		if part.kind == segCrew {
 			continue
 		}
+		text := part.text
+		// AND THE SHAPE OF THE APPROACH RIDES THE METER HERE. The sparkline came
+		// off the status row on 2026-09-09 — a row that is read at a glance was
+		// spending six cells on a trend nobody acts on from the line — and this
+		// page is where a person who wants the trend asks for it. A conversation
+		// sitting at 60% for six turns and one that arrived there from 20% are
+		// the same figure and completely different situations, and this is the
+		// only place that difference is now written down ([app.ctxSpark]).
+		if part.kind == segCtx {
+			if spark := a.ctxSpark(); spark != "" {
+				text += " " + spark
+			}
+		}
 		if int(part.kind) < len(deckSegWords) {
-			add(deckSegWords[part.kind], part.text, deckActNone)
+			add(deckSegWords[part.kind], text, deckActNone)
 		}
 		// AND DIRECTLY UNDER THE METER, THE LINE THE METER IS MEASURED AGAINST.
 		// The context row says how full the conversation is; this one says how
@@ -517,7 +544,13 @@ func (a *app) deckItems() []deckItem {
 var deckSegWords = [segCount]string{
 	// The crew's word is here so the array is complete, and [app.deckItems] never
 	// reads it: the crew is written under the model in full instead.
-	segCrew:    "crew",
+	segCrew: "crew",
+	// The open count had NO word here either, for [segKeeping]'s reason and with
+	// the same result — an empty label with a figure hanging in the value column
+	// under nothing. It matters more now: the segment came off the status row on
+	// 2026-09-09 (foot.go's [groupOff]), so this page and /status are the only
+	// two places it is written down at all.
+	segOpen:    "open",
 	segAmbient: "background",
 	// phone lane: the standing side had NO word at all here, so its segment came
 	// out of the loop above with an empty label and hung in the value column
@@ -528,6 +561,7 @@ var deckSegWords = [segCount]string{
 	segCtx:     "context",
 	segCache:   "cache",
 	segBurn:    "rate",
+	segRate:    "speed",
 	segETA:     "compaction",
 	segYolo:    "approvals",
 	// phone lane: the link's healthy reading fits the row, while its reconnecting
@@ -778,7 +812,7 @@ func (a *app) deckActivate(at int, items []deckItem) {
 		// bottom of the frame, and a picker under a fullscreen sheet is a picker
 		// nobody can see.
 		a.closeStatusSheet()
-		a.openPicker()
+		a.openPickerFromChip()
 	default:
 		a.touch()
 	}
@@ -852,7 +886,7 @@ func (a *app) deckMove(n int) {
 // ([app.statusPress]).
 func (a *app) deckPress(x, row int) bool {
 	if row == 1 && a.modelSpan.holds(x) {
-		a.openPicker()
+		a.openPickerFromChip()
 		return true
 	}
 	a.openStatusSheet()

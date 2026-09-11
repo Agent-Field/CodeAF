@@ -5,8 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	tea "charm.land/bubbletea/v2"
-
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -237,6 +235,25 @@ func TestClosingAnIdleTabAsksNothing(t *testing.T) {
 }
 
 // A TAB THAT IS WORKING RAISES THE CARD, AND THE CARD CHANGES NOTHING UNTIL IT
+// showCard puts a raised confirmation on screen and lets it settle, which is
+// what a real terminal does between a question arriving and a hand reaching the
+// keyboard: the block takes no key from a question it has never drawn, and it
+// drops one that lands inside the settle guard (question.go).
+func showCard(a *app) {
+	a.questionRows(a.width)
+	settleAsk(a)
+}
+
+// takeAnswer answers a confirmation the way a person does — MOVE THEN TAKE.
+// The key that names an answer walks the cursor onto it and `enter` is what
+// decides, which is the whole of "nothing is decided by one keystroke"
+// (stop.go's law, in the block's grammar).
+func takeAnswer(t *testing.T, a *app, named string) {
+	t.Helper()
+	showCard(a)
+	drive(t, a, key(named), key("enter"))
+}
+
 // IS ANSWERED.
 func TestClosingAWorkingTabAsksBeforeAnythingMoves(t *testing.T) {
 	a, _, first := asyncApp(t)
@@ -254,18 +271,20 @@ func TestClosingAWorkingTabAsksBeforeAnythingMoves(t *testing.T) {
 		t.Fatal("raising the card touched the work")
 	}
 	// THE CURSOR OPENS ON THE ANSWER THAT LOSES NOTHING.
-	if a.tabClose.pick != tabCloseKeepAt {
-		t.Fatalf("the card opened on answer %d", a.tabClose.pick)
+	head, ok := a.questionHead()
+	if !ok || head.pick != tabCloseKeepAt {
+		t.Fatalf("the card opened on answer %d (open=%v)", head.pick, ok)
 	}
-	rows := a.tabCloseRows(a.width)
-	if len(rows) != 3 {
-		t.Fatalf("the card drew %d rows", len(rows))
-	}
-	said := plain(strings.Join(rows, "\n"))
+	said := plain(strings.Join(a.questionRows(a.width), "\n"))
 	for _, want := range []string{"keep running", "stop work", "cancel", "Close this tab?"} {
 		if !strings.Contains(said, want) {
 			t.Fatalf("the card does not say %q:\n%s", want, said)
 		}
+	}
+	// AND esc IS `cancel` ON ITS OWN ROW, because the dismiss key on this
+	// surface takes questions away and must not also let a tab go.
+	if !strings.Contains(said, "[esc] cancel") {
+		t.Fatalf("the card does not name what esc gives:\n%s", said)
 	}
 }
 
@@ -276,6 +295,7 @@ func TestCancellingTheCloseLeavesTheTabAndTheWorkAlone(t *testing.T) {
 	before := a.file
 	drain(t, a, a.tabDismiss(a.frontChatTab()))
 
+	showCard(a)
 	drive(t, a, key("esc"))
 	if a.closingTab() {
 		t.Fatal("esc left the card up")
@@ -307,6 +327,7 @@ func TestKeepRunningHidesTheTabAndKeepsTheConversation(t *testing.T) {
 		t.Fatal("a working tab was closed without asking")
 	}
 
+	showCard(a)
 	drive(t, a, key("enter"))
 	if a.closingTab() {
 		t.Fatal("enter left the card up")
@@ -352,7 +373,7 @@ func TestStopWorkEndsOnlyTheConversationItsCardIsAbout(t *testing.T) {
 	a.taskOrder = []uint64{3}
 
 	drain(t, a, a.tabDismiss(a.frontChatTab()))
-	drive(t, a, key(tabCloseStopKey))
+	takeAnswer(t, a, "2")
 
 	if second.stops == 0 {
 		t.Fatal("stop work did not stop the turn it was about")
@@ -382,7 +403,7 @@ func TestClosingOneChatWhileAnotherRunsLeavesTheOtherRunning(t *testing.T) {
 	turning(a, second)
 
 	drain(t, a, a.tabDismiss(a.frontChatTab()))
-	drive(t, a, key(tabCloseStopKey))
+	takeAnswer(t, a, "2")
 
 	if !first.running || first.closed || first.stops != 0 {
 		t.Fatal("stopping one chat stopped the one behind it")
@@ -410,11 +431,11 @@ func TestTheCardSurvivesTheWorkFinishingUnderIt(t *testing.T) {
 	if !a.closingTab() {
 		t.Fatal("the card took itself down when the work finished")
 	}
-	if rows := a.tabCloseRows(a.width); len(rows) != 3 {
-		t.Fatalf("the card stopped drawing: %v", rows)
+	if rows := a.questionRows(a.width); len(rows) == 0 {
+		t.Fatal("the card stopped drawing")
 	}
 	// AND STOP WORK ON IT IS A STOP THAT FINDS NOTHING, never a failure.
-	drive(t, a, key(tabCloseStopKey))
+	takeAnswer(t, a, "2")
 	if a.closingTab() {
 		t.Fatal("the card is still up after being answered")
 	}
@@ -423,34 +444,37 @@ func TestTheCardSurvivesTheWorkFinishingUnderIt(t *testing.T) {
 	}
 }
 
-// THE POINTER ANSWERS THE SAME CARD THE KEYBOARD DOES, on the answers' own row.
+// THE POINTER ANSWERS THE SAME CARD THE KEYBOARD DOES, on the answer's own row.
+//
+// A PRESS IS NOT A KEYSTROKE. The confirmation's move-then-take law is about
+// keys — a hand resting on the row a question lands under — and a pointer put on
+// a named answer and clicked is somebody aiming at that answer. So the press
+// takes it outright, exactly as it always did.
 func TestAPressOnAnAnswerAnswersTheCard(t *testing.T) {
 	a, _, first := asyncApp(t)
 	turning(a, first)
 	drain(t, a, a.tabDismiss(a.frontChatTab()))
 	// Lay the card out so its answers record where they landed.
-	rows := a.tabCloseRows(a.width)
-	if len(rows) != 3 || len(a.tabClose.spans) != 3 {
-		t.Fatalf("the card drew %d rows and %d answers", len(rows), len(a.tabClose.spans))
+	showCard(a)
+	if len(a.questionBands) != 3 {
+		t.Fatalf("the card drew %d pressable answers", len(a.questionBands))
 	}
-	stopSpan := a.tabClose.spans[tabCloseStopAt]
+	band := a.questionBands[tabCloseStopAt]
 
-	// The card sits in the guard's slot; the frame is what knows where that is.
+	// The block sits above the box; the frame is what knows where that is.
 	_ = a.View()
 	row := -1
 	for y := 0; y < a.height; y++ {
-		if mark, ok := a.chromeAt(y); ok && mark.kind == chromeTabClose && mark.index == 1 {
+		if mark, ok := a.chromeAt(y); ok && mark.kind == chromeQuestion && mark.index == band.row {
 			row = y
 		}
 	}
 	if row < 0 {
 		t.Fatal("the frame drew no pressable row for the card")
 	}
-	var answered tea.Cmd
-	if !a.tabClosePress(stopSpan.from, row, &answered) {
+	if !a.questionPress(band.span.from, row) {
 		t.Fatal("a press on the stop answer was not taken")
 	}
-	drain(t, a, answered)
 	if a.closingTab() {
 		t.Fatal("the press did not answer the card")
 	}

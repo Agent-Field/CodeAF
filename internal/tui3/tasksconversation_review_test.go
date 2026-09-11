@@ -61,7 +61,7 @@ func TestTasksDeepAncestrySurvivesFilteringWithoutACutoff(t *testing.T) {
 
 func TestTaskTallyCountsActualStatesWithinAnUrgentConversation(t *testing.T) {
 	r := tasksChatReading()
-	if got := r.tally(); !strings.Contains(got, "1 needs your look") || strings.Contains(got, "4 needs your look") {
+	if got := r.tally(); !strings.Contains(got, "1 "+tierYourCallWord) || strings.Contains(got, "4 "+tierYourCallWord) {
 		t.Fatalf("the urgent conversation reclassified its finished siblings: %s", got)
 	}
 }

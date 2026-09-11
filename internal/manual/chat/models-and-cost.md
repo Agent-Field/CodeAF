@@ -37,21 +37,27 @@ This affects routing estimates; it is not proof of a cache hit. A provider may
 evict cached input, and compaction or a rewrite can change earlier text even when
 the conversation identity stays the same.
 
-## Which model am I talking to, which model is it using right now, and how do I switch or change it
+## How do I pick a different model — which model am I talking to, which model is it using right now, and how do I switch or change it
 
-The model in use is written in the status line. There are two doors to the picker:
+The model in use is written on the legend line directly above the message box, after the
+conversation's name (`porting the parser · glm-5.3-flash`). There are two doors to the
+picker:
 
 - type `/model` with nothing after it, or
-- press the model's name in the status line.
+- press the model's name on that line above the box.
 
 If you have turned the mouse off (`ui.mouse`), only the command works.
 
 **The name you press is the model you move.** Out in the conversation that is the
-conversation's model. Inside a running task's room the status line names *that task's*
-model — `task <name>` — and pressing it opens the same picker aimed at that task alone,
+conversation's model. Inside a running task's room the status line at the very bottom
+names *that task's* model — `task <name>` — and pressing it opens the same picker aimed at that task alone,
 from its next turn onward. Nothing else moves: not the conversation, not any other task.
 See "Changing the model for one task while it is running" on the tasks page. Inside a
 task that has finished the name is still there to read and cannot be pressed.
+
+If the task's work is being checked when you press, there is no next turn left to move:
+the pick is saved for the next run and the row keeps naming the model the work actually
+ran on. The room shows `next model <id>` while that choice is held.
 
 The picker is a filter box in the input line's place with a short list of models under it.
 It is bottom-anchored: the conversation shrinks above it, so nothing pops up over what you
@@ -95,8 +101,8 @@ Type to filter. The keys:
 | pgup / pgdown | move 12 rows |
 | left, right, home, end, ctrl+u, ctrl+w | edit the filter text |
 | ctrl+t | walk the reasoning effort of the model under the cursor |
-| tab, → | open the lanes — the providers serving the model under the cursor |
-| tab, ← | close them again |
+| tab, → | open the lanes — the providers serving the model under the cursor — and move the cursor into them |
+| tab, ← | close them again, back on the model |
 | enter | switch to the row under the cursor — or, on an open lane, pin it |
 | esc | cancel, changing nothing |
 
@@ -119,14 +125,16 @@ tiers — prefix, then substring, then subsequence. So `ds v4` finds
 `deepseek/deepseek-v4-flash` and `claude 4.5` finds `anthropic/claude-sonnet-4.5`, and fuzzy
 hits sit at the bottom rather than mixed through. Twelve rows show at a time.
 
-The picker **never fetches**. The list comes from what is already known, in this order: the
+The picker **never fetches on its own** — only when you press `ctrl+r` in it, which asks the
+router for the newest list (the *commands* page, "Refreshing the model list"). Otherwise
+the list comes from what is already known, in this order: the
 catalog the door passed in, then `~/.aforge/v3/models.json`, then five names this build
 remembers (`deepseek/deepseek-v4-flash`, `openai/gpt-4.1-mini`,
 `anthropic/claude-sonnet-4.5`, `google/gemini-2.5-flash`, `moonshotai/kimi-k3`). Each rung is
 tried only when the one above it came back empty after filtering.
 
 The placeholder in the empty filter box is the only place the overlay explains itself:
-`filter · ↑↓ · → lanes · ctrl+t effort · enter · esc`
+`filter · ↑↓ · → lanes · ctrl+t effort · ctrl+r refresh · enter · esc`
 
 There is no mouse commit on the picker's rows.
 
@@ -163,8 +171,10 @@ provider would typically serve that model, frozen when the list opened — so a 
 running underneath cannot make the names jump, and the `▲0.5s` and `58t/s` next to them
 stay still too. Close the list and open it again to see the latest.
 
-The status line's `via` is a different fact: that one is who is answering the turn that
-is in flight (`via deepinfra · 92 tok/s`), and it is allowed to move.
+The `via` beside the model above the message box is a different fact: that one is who is
+answering the turn that is in flight, and it is allowed to move. It carries no rate: how
+fast the stream is producing stands at the right of the status line beside the state word
+while the turn writes, as `38 tok/s`.
 
 ## Why does the model picker keep jumping
 
@@ -224,31 +234,28 @@ A slug the catalog has never carried is still **taken at its word**, exactly as 
 aforge may be offline, or you may be naming a model this build has never listed. In that
 case the context window is left alone.
 
-## I changed the model but my task is still on the old one — /model does not move a running task's model
+## I changed the model but my task is still on the old one — change the model inside a task
 
-`/model` moves the **conversation**. Work already handed over is not moved: a task's model
-is settled the moment the task is admitted and kept for its whole life, so a task that was
-running when you switched carries on in the voice it started in. That is deliberate — the
-switch you made mid-thought does not silently change the terms of work you already
-approved.
+In the conversation, `/model` changes the model you talk to. Inside an ordinary task, `/model` opens the picker for **that task only**, and
+`/model <slug>` changes that task. Clicking its model in the status line or
+**Task setup** opens the same picker. A filtered `/model` search keeps that
+same task scope. The change takes effect on the task's next turn; a response
+already in progress keeps its model. Other tasks and the conversation stay as
+before.
 
-When you switch while tasks are running, the note in the conversation says so in the same
-line that names the new model:
+For a completed, incomplete or `your call` ordinary task, the picker saves the
+model for when you continue. It does not restart work or change the completed
+attempt's recorded model. A queued task takes the choice when it starts.
 
-```
-model · anthropic/claude-opus-5 — tasks already running keep the model they started on
-```
+An adaptive run or its nodes, and a task being read through
+another conversation cannot use this model-changing door. `/model` says
+`this task's model cannot be changed here` instead of changing the conversation
+behind that page. Provider pinning with `@provider` or `auto` remains available
+from the conversation's `/model`.
 
-With nothing running, the note is just `model · <the model>`.
-
-**To move one running task**, walk into its room and press the `task <model>` part of the
-status line — the ordinary picker opens aimed at that task, and the change takes effect on
-the task's next turn. That room is the only door; there is no command or setting that
-re-models running work from outside.
-
-**New tasks follow the switch.** Work admitted after `/model` runs on the model the
-conversation is now on — unless you have set `task.model` in settings, which always wins,
-or you name a model for that one task in words.
+Changing the conversation model does not move existing tasks. New tasks resolve
+their model from an explicit choice, the task model setting, the crew's worker
+class, then the conversation model when that worker class is blank.
 
 ## The crew — which models aforge uses on my behalf, and /crew
 
@@ -283,6 +290,8 @@ that followed your conversation would put the most expensive model in the build 
 cheapest questions in it — a call made twice every turn on a frontier model is a bill nobody
 agreed to. Closed models that are cheaper on their own vendor's platform than through the
 router are deliberately not in any preset; you can still pin one on any row.
+You can also connect that vendor yourself as a direct service; the
+[services page](services.md) explains its names, limits and missing Phase 1 cost record.
 
 **Why these ids.** They were picked on 2026-09-01 off the catalog's own published scores —
 OpenRouter republishes Artificial Analysis's coding and agentic indexes on every model row
@@ -399,8 +408,8 @@ That is right, and nothing is broken. **`/crew` does not change the model you ar
 to**, and the readout at the bottom of the frame is that model — the conversation's. The
 only thing that moves it is `/model`, the model row in `/settings`, or naming one with
 `/model <name>`. The confirmation says so by name: `/crew max` ends
-`· you are still talking to deepseek-v4-flash — /model changes that`, and the status line
-now carries `crew max` beside the model so the two dials read as two.
+`· you are still talking to deepseek-v4-flash — /model changes that`, and `/status` prints
+`model` and `crew` on neighbouring lines so the two dials read as two.
 
 The crew is a different dial: the five **classes** aforge makes its own calls on — reflex,
 small work, worker, careful work, mastermind — used for titles, memory, the safety gate,
@@ -419,8 +428,8 @@ running keeps the model it was admitted on.
 - `/settings` → Providers has the **crew** row above the five class rows.
 - Bare `/crew` opens the three presets with yours marked, under a `you talk to · <model>`
   line naming the seat they do not touch.
-- The live status line says `crew max` at the head of the telemetry, across the gap from
-  the model segment — the same word `/status` prints, read from the same five rows.
+- `/status` and the phone status sheet say `crew max` on their own line — the status row
+  itself stopped carrying the crew word on 2026-09-09; it is a setting, not a measurement.
 - The hint line under the model picker says `crew max` beside its keys, so the picker you
   opened looking for the change tells you the crew is a separate thing.
 
@@ -555,7 +564,7 @@ line, so the two surfaces are telling you about one thing.
 ## What are the six models — the one you talk to and the five crew seats
 
 aforge runs **six model seats**. **Seat one is the model you talk to**: it answers every
-message you type, it is the id on the left of the status line, and `/model` is the only thing
+message you type, it is the id written above the message box, and `/model` is the only thing
 that moves it. The other five are the **crew** — the models aforge uses on its own behalf,
 for calls you did not type:
 
@@ -572,8 +581,8 @@ for calls you did not type:
 `max` — and never seat one. Bare `/crew` opens with `you talk to · <model>` above the three
 presets, so the seat the presets do not touch is on the same page as the ones they do.
 `/settings` → Providers pins any one of the five on its own, which turns the crew word to
-`custom`. The live status line says both dials: the model segment on the left is seat one,
-and `crew max` at the head of the telemetry on the right is the other five.
+`custom`. Seat one is the model named above the message box; the other five are the
+`crew` line of `/status`.
 
 ## Does /crew change my chat model — no, and what crew max on the status line means
 
@@ -586,11 +595,11 @@ crew → max · brain kimi-k3 · hands glm-5.3 · checks kimi-k3 · you are stil
 
 `/model`, `/model <name>` or the model row in `/settings` are the only ways to change the
 chat model, and `/crew` never offers to. The two dials also stay separate on the frame: the
-status line shows the chat model on the left and `crew max` — or `crew balanced`,
-`crew frugal`, `crew custom` when you pinned a seat yourself — at the head of the telemetry
-on the right. That segment is a setting, not a measurement, so it is among the first things
-a narrow row gives up; `/status` prints `model` and `crew` on neighbouring lines at any
-width. The one session with no `crew` segment at all is a **remote** one opened with
+chat model is written above the message box, and `crew max` — or `crew balanced`,
+`crew frugal`, `crew custom` when you pinned a seat yourself — is a line of `/status` and of
+the phone status sheet. It is not on the status row: a setting is not a measurement, and
+the row is for numbers now. `/status` prints `model` and `crew` on neighbouring lines at any
+width. The one session with no `crew` line at all is a **remote** one opened with
 `--host`: that crew lives on the other machine.
 
 ## Asking a class to think harder — a level on a class value
@@ -732,7 +741,7 @@ Two things worth knowing:
 
 Yes, from the checks it was already running. **Every task that settles is written down**:
 the model it ran on, the name the work was given, how it ended in plain words — `landed`,
-`not accepted`, `did not finish`, `needs your look`, `stopped` — how many times the work was handed back, what
+`not accepted`, `did not finish`, `your call`, `stopped` — how many times the work was handed back, what
 it cost and how long it took. The check at the end of a task had already read the work and
 said whether it holds, so that answer *is* the grade: **nothing extra is spent, and no
 second model is asked to judge anything.** Work nobody could check teaches nothing, which
@@ -829,8 +838,8 @@ with. They fire on their own clock long after your run ended, and the crew answe
 
 ## What the screen says under `--one-model` — why does the status line say one model, where did my crew word go, no crew receipt when a task starts
 
-**The crew segment names the flag, because the flag is what seats the call.** Under
-`--one-model` the status line's crew segment reads `one model` rather than the preset your four
+**The crew line names the flag, because the flag is what seats the call.** Under
+`--one-model` the crew line of `/status` and the phone sheet reads `one model` rather than the preset your four
 rows derive to, and `/status` answers its crew line with `one model · every call rides the model
 you are talking to`. The model picker's hint slot and the welcome line under the wordmark say
 the same word. All of them read one answer, so none of them can disagree with another.
@@ -873,7 +882,9 @@ Each press walks it round: off → low → medium → high → off.
 - The level lives on the session, **per model id**. It survives switching away to another
   model and back. `/new` forgets it.
 - Where the level is set, it is shown after the id as `<id>:<level>` — in the picker row, and
-  on the `model` line of `/status`.
+  on the `model` line of `/status`. It is **not** spelled that way on the line above the
+  message box: that line carries one thinking rung, and that rung is the resolved one —
+  the level you dialled here is folded into it, because a level on the model wins.
 
 **A level set here wins over everything else that asks for thinking.** It is the most
 specific thing anybody said about how hard this model should work, so it beats the
@@ -885,11 +896,14 @@ off → low → medium → high → off; it does not offer `xhigh` or `max`.
 
 How hard the model thinks is one dial with five rungs, cheapest first: `low`, `medium`,
 `high`, `xhigh`, `max`. There is also **auto**, which is the dial left alone — aforge asks
-for nothing and the model thinks however it thinks.
+for nothing and the model thinks however it thinks. Auto is the **shipped** setting, and
+`⠿ auto` is what the line above the message box reads until something is dialled; no rung
+is the shipped one.
 
 **The default is `auto`.** It is the **thinking** row in `/settings`, among the model rows
-beside the model you talk to, and its choices are `auto, low, medium, high, xhigh, max`. The
-row is written to the profile as `effort`. Existing explicit settings remain in force.
+beside the model you talk to, and its choices are `auto, low, medium, high, xhigh, max` —
+the same six the `/effort` ladder offers this conversation. The row is written to the
+profile as `effort`. Existing explicit settings remain in force.
 Move it down to make the model think less, which is what gives you faster and cheaper
 answers; move it to `xhigh` or `max` when you would rather wait and get the careful one.
 
@@ -908,15 +922,36 @@ Several things can name a rung, and the most specific one wins:
 5. **The default** — the **thinking** row, which is `auto` until somebody chooses otherwise.
 
 **`ctrl+v` moves the rung of whatever you are standing on.** In the message box it moves
-**this conversation's** rung, which has a chip above the box naming it. On a task — the
-roster row under the cursor, or the page you are inside — it moves that task's rung. On
-home with the cursor on no row at all, it moves the **thinking** row itself, the
-machine-wide default. On a standing item's card it moves that item's. The rung climbs one
-step each press and wraps from `max` back to `low`; it never goes back to "nobody said".
-The **thinking** row in `/settings` stays what it is: the answer for every conversation
-that has not been dialled by hand. The keys page has the whole of it — see *The thinking
-chip above the message box* and *ctrl+v — how hard the thing you are looking at thinks*.
-There is no slash command for it.
+**this conversation's** rung, which is named on the line above the box, beside the model:
+`glm-5.3-flash · ⠿ high`. On a task — the roster row under the cursor, or the page you are
+inside — it moves that task's rung. On home with the cursor on no row at all, it moves the
+**thinking** row itself, the machine-wide default. On a standing item's card it moves that
+item's. The rung climbs one step each press and wraps from `max` back to `low`; it never
+goes back to "nobody said" — for this conversation, `/effort auto` and the top row of
+`/effort` are what do that. The **thinking** row in `/settings` stays what it is: the
+answer for every conversation that has not been dialled by hand. The keys page has the
+whole of it — see *The thinking chip above the message box* and *ctrl+v — how hard the
+thing you are looking at thinks*.
+
+**Three doors, one rung.** `ctrl+v`, a press on the rung itself, and `/effort`:
+
+| What you do | What happens |
+|---|---|
+| `ctrl+v` | one step up the ladder, wrapping off the top |
+| press the rung on the line above the box | the same one step, and it lights under the pointer first |
+| `/effort` (or `/thinking`, `/think`) | six rows — `auto` and the five rungs — with what each one buys and the one in force marked |
+| `/effort max` | that rung, outright |
+| `/effort auto` (or `/effort off`) | clears this conversation's rung and hands it back to whatever stands over it |
+
+A word that is none of the six changes nothing and prints them all. This is
+**this conversation's** rung in every one of those forms, and it reaches the work this
+conversation hands out: a task worker starts at it.
+
+**It works over `--host` too.** The rung is set on the machine the conversation is running
+on and the word on your line is the one that machine resolved — `⠿ auto` included, on a
+hosted conversation nobody has dialled. Against an engine too old to know the ladder there
+is no rung on the line and neither the chord nor `/effort` offers one — a capability that
+cannot work is absent rather than broken.
 
 ## Auto reasoning — use OpenRouter defaults instead of forcing high
 
@@ -940,6 +975,17 @@ that reaches a firing is the one written on the item's own card, and an item tha
 never dialled sends no reasoning field at all. The conversation you set the item up in
 still does not reach it — that is what keeps an install dialled to `max` from turning
 every check on the machine into a deep pass.
+
+## Thinking between tool calls
+
+A completed model reply keeps the reasoning supplied by that model alongside its
+tool calls, so the next step can continue from the same work. Streamed pieces of
+one text or summary block are joined before that history is sent back. Separate
+blocks stay separate, and encrypted reasoning is retained without rewriting it.
+
+This does not choose a thinking level or add a token budget. An unfinished attempt
+does not supply a completed reasoning continuation, and switching models does not
+send one model's private reasoning to another.
 
 ## What a request carries when nobody has chosen anything
 
@@ -1014,7 +1060,7 @@ model that has started writing has finished deciding.
 
 **And the second one gets shorter still on an endpoint aforge has measured.** Forty-five
 seconds is what a stranger gets. Once aforge knows how fast an endpoint writes — the
-`t/s` figure the status line shows you — the gap it will sit through is how long *that*
+`t/s` figure the status line shows you beside the state word while a turn writes — the gap it will sit through is how long *that*
 endpoint would take to write about three and a half thousand tokens: roughly **15 seconds**
 on one sustaining 250 tokens a second, **42** on one sustaining 83. A minute of silence from
 an endpoint that has been writing two hundred and fifty words a second is not patience, it
@@ -1034,8 +1080,9 @@ stops being the first pick for the next request.
 A cut request is asked again **twice**. When the router named the endpoint that went
 quiet, that endpoint is avoided on the retry so another endpoint serving the same model
 can answer. The screen says `trying again · 12s` while it is (see *What is on the
-screen*), and a dim line lands saying `nothing came back from the model — asking again`
-or `the model went quiet mid-reply — asking again`.
+screen*), and a dim row lands in the conversation saying which — `nothing came back from
+the model · asking again · 2 of 3`, or `the model went quiet mid-reply · asking again ·
+2 of 3`.
 
 **If all three attempts come back with nothing, aforge finishes the reply on another
 model** — the next one in your `fallback models` row, or the nearest same-class model in
@@ -1043,7 +1090,7 @@ the catalog when you have written no row. It is said out loud before it happens,
 where the rest of the answer is coming from:
 
 ```
-the model kept going quiet mid-reply — finishing this one on openai/gpt-5-mini
+the model went quiet mid-reply · moving to gpt-5-mini
 ```
 
 The turn finishes there and the cost lands against the model that actually answered. **It
@@ -1065,8 +1112,10 @@ repeating advice already taken:
 error: nothing came back from the model in 1m30s, three times. openai/gpt-5-mini and anthropic/claude-sonnet-4 could not finish it either — /model to pick another one yourself
 ```
 
-These retries are **their own budget**. A request nobody answered is not evidence that the
-endpoint is failing, so it does not spend the three retries a real provider error gets.
+These retries are **their own budget**, and they are the only count left in the request
+path. A request nobody answered is not evidence that the endpoint is failing, so it does
+not spend the patience a real provider error gets — which is a length of time rather than a
+number of tries (see *How long aforge keeps trying*).
 
 **Sometimes it moves after two attempts instead of three.** Three attempts are worth
 making only when they can reach *different* endpoints. If the stream died before naming
@@ -1102,14 +1151,30 @@ few seconds resets both of them forever, and for a long time nothing in aforge e
 request like that: a turn could sit there for half an hour with the reply still technically
 arriving, and the session log recorded nothing at all while it did.
 
-So every request also carries a **wall** — the longest it may run before it is cut, whether
-or not it is still writing.
+So every request also carries a **wall**. **A long reply that is still writing at its
+endpoint's normal speed is not cut at the wall** — only a reply that has stopped keeping
+up, or one that reaches 20 minutes.
 
 **The wall is not a fixed number.** It is worked out from what that endpoint has actually
 done for you: **five times the longest reply it has finished** in this session, never less
 than **2m30s** and never more than **20 minutes**. Two endpoints serving the same model
 therefore get two different walls, and one that routinely writes long answers earns a
 longer one by writing them.
+
+**When a reply reaches the wall, aforge checks its speed before it cuts.** If the reply
+wrote at least a fifth of what that endpoint normally writes in the same time, it is a long
+answer and not a stuck one, and it gets another wall's worth of time. It is checked again at
+the end of that, and again, up to **20 minutes**, which is the one limit nothing extends. A
+reply that is dripping — a token every few seconds from an endpoint that writes forty a
+second — is cut at the first wall. The speed of an endpoint aforge has not timed yet is
+taken as 30 tokens a second, so the check is six a second.
+
+**A long file write is a long reply like any other.** A tool call that writes a whole file
+streams its contents the way an answer streams words, and it counts as the reply arriving.
+Before this, a model writing one large file on an endpoint that had only ever finished short
+turns was cut at 2m30s every time, on every retry, while it wrote at full speed — the wall
+was too short for the file, and the endpoint could never finish a long reply to earn a
+longer wall.
 
 **A model aforge has not spoken to yet gets 5 minutes**, because there is nothing measured
 to work from. That figure used to be the floor under *everybody*, which meant the
@@ -1123,17 +1188,17 @@ The lower clamp is 2m30s and not less, because that is the longest an endpoint i
 go quiet while assembling an answer on its own side (above). A wall shorter than that would
 cut a reply the silence clocks were still being patient with.
 
-When a reply hits the wall it is cut and asked again exactly like a reply that went quiet —
+When a reply is cut at the wall it is asked again exactly like a reply that went quiet —
 the endpoint is avoided on the retry, and a dim line lands:
 
 ```
-the reply kept going and never finished — asking again
+the reply kept going and never finished · asking again · 2 of 3
 ```
 
 and if it keeps happening, the turn moves to your next fallback model:
 
 ```
-the reply kept running on without finishing — finishing this one on openai/gpt-5-mini
+the reply kept going and never finished · moving to gpt-5-mini
 ```
 
 with the same ending when there is nowhere to move:
@@ -1141,6 +1206,10 @@ with the same ending when there is nowhere to move:
 ```
 error: the reply ran past 15m0s without finishing and was cut, three times. a different model may answer — /model, or set models.fallbacks so this can move on its own
 ```
+
+The time in that sentence is the whole limit the reply reached — after extensions, if it
+got any — and the session log records how many tokens had arrived before the cut, a file
+being written included.
 
 **Nothing you can set changes the wall.** It has no settings row, because a number you had
 to pick would be a number nobody could pick correctly — that is the whole reason it is
@@ -1153,7 +1222,8 @@ second for every 64 tokens it may write, never less than 5 minutes and never mor
 Once that endpoint has finished a reply for you, the measured wall applies to those calls
 too, and whichever of the two is shorter is the one that cuts. A model aforge has not heard
 back from yet keeps the room-sized deadline, because a first reply from a model that thinks
-at length may need all of it.
+at length may need all of it. **That wall is never extended**: a reply that arrives in one
+piece has no speed to check until it is over.
 
 **A cut reply is thrown away whole**, like every other cut: none of the text reaches the
 conversation, and the retry starts the reply from the beginning.
@@ -1161,9 +1231,12 @@ conversation, and the retry starts the reply from the beginning.
 ## I keep getting rate limited — 429, "too many requests", the provider telling aforge to slow down
 
 A provider that answers `429` is pacing aforge, not failing. That is not an error, so the
-call waits and comes back rather than giving up: up to **six attempts** or **two minutes**,
-whichever runs out first, for a turn you are sitting in front of. Work that left the
-conversation gets far more — see *How a task actually runs*.
+call moves rather than giving up: the machine that said "not yet" is taken off the next
+request and another machine serving the same model is asked at once, for as long as the
+turn's own patience lasts — **90 seconds** for a turn you are sitting in front of. Work
+that left the conversation gets far more: four and a half minutes for a task's own call,
+nine for a standing pass. There is no count of attempts anywhere in this; see *How long
+aforge keeps trying*.
 
 Two things happen while it waits. If the refusal names *which* endpoint hit its limit —
 routers often do, when the limit is one provider's shared pool rather than your account —
@@ -1171,23 +1244,107 @@ that endpoint is avoided on every request after it, so the next attempt queues s
 else. And the wait itself is capped at a minute however long the provider asked for, so a
 provider naming tomorrow morning does not park your turn.
 
-**When that patience runs out, aforge tries the next model in your `fallback models` row**
-rather than handing you the refusal. It says so on the same line a refusal uses:
+**When that patience runs out, the refusal goes back to your turn**, which moves to the
+next model in your `fallback models` row — the next section is what that looks like.
+
+There used to be a second, quieter move here: the call itself would switch models and say
+`Retry 1/1: Falling back to openai/gpt-5-mini`. That is gone. **Your model is changed in
+exactly one place now**, by the turn, out loud, and the line you read for it is the one in
+the next section. Two things moving one model meant a turn could pay for the same fallback
+twice and skip another entirely, and one of them carried the old model's pinned machine
+across to the new model, which the router then refused.
+
+With no chain to move to, you get the provider's own words and the status:
 
 ```
-Retry 1/1: Falling back to openai/gpt-5-mini
+error: after 4 attempts: API error (429): rate limit exceeded
 ```
 
-With no chain to move to, you get the provider's own words and the status, which is what
-this did before:
+The number in that sentence is what the call actually spent, not a ceiling it was allowed:
+there is no ceiling, only the deadline. That patience is the *call's* own, inside one
+request. What happens when the whole request
+keeps failing — several 429s in a row, a `502` between them — is the next section.
+
+## The model kept refusing and aforge moved to another one — 429 and 502 in a row, my turn died while another model was working, does a refusal reach my fallback models
+
+Yes. **A model that will not take your request at all is given up on the same way a model
+that goes quiet is: aforge finishes the reply on the next model in your `fallback models`
+row**, or on the nearest same-class model in the catalog when you have written no row.
+
+This is what happens. A request that fails outright — a refusal from the machine serving
+your model, a `502`, a torn connection, a deadline — is sent again, up to **four times in
+all**, waiting 2s, then 4s, then 8s, with a dim line each time:
 
 ```
-error: after 6 attempts: API error (429): rate limit exceeded
+the model would not take the request · asking again · 2 of 4
 ```
 
-This only covers *pacing*. A server fault — a `500`, a `503`, a torn connection — keeps the
-short patience it always had and never moves your model: a broken endpoint is not a claim
-that the model cannot answer.
+When all four are gone, the turn does not end. It moves, and says so before the next words
+appear in a different voice:
+
+```
+the model would not take the request · moving to gpt-5-mini
+```
+
+The new model gets a full four tries of its own — what the last one did says nothing about
+this one — and the cost lands against the model that actually answered. **It is a rescue,
+not a choice you made**: your model is untouched, `/status` still shows it, and your next
+message goes back to it.
+
+**It did not use to.** Until this changed, only a *cut* reply reached your fallback models;
+a refusal walked the four tries and then ended the turn, so a measured conversation on
+2026-09-10 took one `502` and three `429`s inside seventy-five seconds and died — while a
+second model in the same session was answering every call put to it.
+
+Only when there is nowhere left to ask does the turn end. With no chain, it ends on the
+words it always did:
+
+```
+error: after 3 retries: API error (429): rate limit exceeded (via Together)
+```
+
+and when the chain was walked and could not answer either, the sentence names every model
+that was tried rather than advising a move you have already made:
+
+```
+error: the model kept turning the request away: deepseek/deepseek-v4.1-flash was asked four times, and openai/gpt-5-mini could not finish it either. /model to pick another one yourself
+```
+
+## A model with no machines, a key that was not accepted, a conversation too long — what aforge says instead of the router's error
+
+**You never read the router's own sentence about a failed turn.** `API error (404): 0
+endpoints out of 1 requested are available matching your guardrail restrictions and data
+policy` is a true thing to write in a log and a useless thing to hand somebody whose reply
+just stopped: it names machinery you have no access to, about a decision you did not make.
+So every ending is said in words about your conversation, with the provider's own text kept
+on the record for an autopsy.
+
+These are the sentences and what each one means.
+
+| what you read | what happened | what aforge does |
+| --- | --- | --- |
+| `that model is not being served any more` | the router has no machines behind that model id at all | moves to your next fallback model at once, with no tries wasted |
+| `your key was not accepted for this model` | a key that is missing, not permitted for this model, or out of balance | stops and tells you — no machine, shape or model changes this |
+| `this conversation got too long for the model` | the transcript is past the model's window | shortens the conversation once and asks the same question again |
+| `this conversation is too long for the model even after shortening it` | it still did not fit | stops; start a new conversation, or `/model` to one with a bigger window |
+| `the request could not be sent as it was` | the router read the request itself and refused it | the request was already retried with its optional parts taken off; nothing else will help |
+| `nothing came back from the model — asking again` | a reply arrived with no words and no tool call | asks again on the same budget as any other failure |
+
+**A model with no machines costs you nothing to discover twice.** The first turn that meets
+one moves on and aforge remembers it for as long as the program is running, so every later
+turn skips it before a single request goes out and never offers it as a fallback. An answer
+from that model clears the memory again — a model with no machines this afternoon often has
+some next week, and nothing is written to disk.
+
+**The overflow move fires whatever your compaction setting is.** That setting governs the
+automatic pass that keeps a long conversation trimmed; this is the recovery from a request
+a provider has already refused, and it runs either way.
+
+**Two things stop the move, and both make it absent rather than broken.** `--one-model`
+settles every call this run makes onto the model you named, so nothing is ever asked of
+another one. And a refusal your router made **on its own account** — a `400` that names no
+machine — is your request being read and rejected, which every model would do, so it stops
+at once with no retry and no move (see *"Provider returned error"* below).
 
 ## "Provider returned error" — a 400, what the error actually was, and why my reply just stopped
 
@@ -1240,6 +1397,129 @@ different machine, which is what the next try asks for. Only when all four come 
 does the turn end. Before this, one empty reply ended a whole turn, and a measured run
 stopped eighteen minutes in with hours of budget unspent.
 
+## Where do I see that it is asking again — the retry rows in the conversation, gave up, moving to another model, and the request that did not answer in time
+
+**Every failed attempt at a request leaves a row where you are reading**, in the
+dim lane aforge writes everything about itself in. You do not have to be looking
+at the status line at the moment it happens, and you do not lose the story by
+looking away:
+
+```
+· the model went quiet · asking again · 2 of 4
+· the model would not take the request · asking again · 3 of 4
+· the model kept going quiet · moving to glm-5.3
+· gave up after 4 tries · API error (429) rate limited
+```
+
+The first three are **something still being done**. A row is three things: what
+went wrong, what is being done about it, and how far in it is.
+
+- **What went wrong** is aforge's own reading of the failure, in the same words
+  everywhere: `nothing came back from the model`, `the model did not answer in
+  time`, `the model went quiet`, `the reply lost its thread`, `the reply stopped
+  part-way`, `the connection to the model dropped`, `the model would not take the
+  request`, `the model could not be reached`.
+- **`asking again`** means the same model, once more. **`moving to <model>`**
+  means that model's tries are spent and the rest of the answer arrives from
+  another one — a different voice at a different price, which is why it is said
+  before the text starts appearing.
+- **`2 of 4`** is which try this is out of how many that model gets. It is the
+  budget the run is actually walking rather than a number aforge holds, so it
+  moves with your settings and with the kind of failure. **A row that is moving
+  to another model carries no count**: the count belonged to the model being
+  left, and beside a new name it would read as that new model's.
+
+The last one is **the end**. `gave up after 4 tries · …` is drawn when a turn
+that was asked again runs out of tries, and what follows the dot is what the
+provider actually said. It is the row that used to be missing: a turn could fail
+four requests over ninety seconds, give up, and leave nothing in the
+conversation at all except a two-word state on the status line, which is gone by
+the next redraw. If nothing is being done any more, a row says so.
+
+**An error nobody tried again for is still just an error.** A turn that failed
+on its first and only attempt — a request too large for the window, a refusal of
+the request itself — draws `error: <what went wrong>`. "Gave up" is a claim about
+a struggle, and aforge does not make it about a single attempt.
+
+**The status line has its own short form of the same event** while a second
+attempt is on the wire, with a count-up beside it — the words are in *The model
+went quiet, or stopped answering halfway through* above. The row and the status
+line are two readings of one moment, so they cannot disagree.
+
+**A task's own page draws the same rows.** A step of a task that is asked again,
+or that gives up, says so on the task's page in exactly these words, so a task
+whose work keeps failing is not a page that says nothing has arrived yet.
+
+## My reply just stopped and nothing was said — a turn that ended with no answer, no error and no note, my answer disappeared when I opened the conversation in another window, who ended my reply, do I have to type my question again
+
+If a reply ends without arriving, aforge says one sentence about it. There is
+exactly one case where it says nothing, and that is when **you** stopped it: the
+screen already drew your stop, and repeating it back to you would be noise.
+
+Everything else is machinery taking a reply away from somebody who was waiting
+for it, and each door has its own sentence:
+
+| what ended it | what you read |
+| --- | --- |
+| this conversation was opened in another window | `this conversation was opened in another window, so the reply stopped here — ask again to pick it up`, said in the window letting go. The window you moved it to asks your question again by itself — see below |
+| the conversation was closed or left under the turn | `the reply stopped when this conversation was left — ask again to pick it up` |
+| your stop took too long and was let go of | `the reply was let go of after the stop took too long` |
+| you stopped all the work in the conversation | `everything running here was stopped, the reply with it` |
+| nobody was left watching a conversation on another machine | `nobody was left watching this conversation, so the reply stopped — ask again to pick it up`. Only the unattended door says this. If the engine knew which window it thought had gone, the sentence names it: `nobody was left watching this conversation from studio, so the reply stopped — ask again to pick it up` |
+| the engine holding this conversation was stopped | `the engine holding this conversation was stopped, so the reply stopped — ask again to pick it up` |
+
+**You do not have to type your question again when a conversation moved.** If the
+reply had said *nothing at all* when another window took the conversation — which
+is what a long stretch of thinking looks like, because working is not kept — the
+window it arrived in asks your question again for you, straight away, through the
+ordinary turn door. Your question is on the page once, where it always was; under
+it is one dim line,
+
+```
+  the reply stopped when this conversation moved — asking again
+```
+
+and then the answer. The stopped attempt's thinking and any half-written words
+are gone, because nothing kept them.
+
+**A reply that had already started is not asked again.** Whatever had been
+written is in the transcript that arrives with the conversation, and tasks that
+were running land `paused — it resumes` and start again from their checkpoint —
+so nothing is run a second time. This only ever fires on the one shape the
+conversation's own file ends in: your words, and then aforge stopping the turn
+that was answering them with nothing said. A turn **you** stopped is never asked
+again, and neither is one that ended any other way — a conversation you left, a
+window that closed, an engine that was stopped while you were still in it, or a
+session on another machine nobody was watching. Those keep their sentence and
+wait for you.
+
+Whatever the door, the ending is also written into the conversation's own file
+as a failed call naming the door — for whoever reads the file afterwards, not
+for the screen: an error line is never replayed into a conversation, so a
+reopened conversation shows what was said and not a note about how the last turn
+ended. The model-call log names it too. A row that used to read `context
+canceled` now reads `context canceled (turn ended: taken over)`, which is the
+one thing an autopsy of a vanished reply needs and did not have. `aforge logs`
+is where to look.
+
+**A request cut out from under a turn that is still going is asked again rather
+than reported.** You see `the reply was cut short · asking again · 2 of 4`, the text that
+had arrived is thrown away, and the turn carries on. Nothing is silently lost:
+if every attempt is spent, the turn ends with the reason said out loud.
+
+Before 2026-09-09 none of this existed. A turn whose reply was taken away ended
+with no answer, no error, no note and an idle status line, and there was no way
+— on the screen, in the transcript, or in the log — to tell your own stop from a
+second window taking the conversation over.
+
+## It said nobody was left watching but I was sitting right here — the reply stopped, bash cancelled, which window did it think had gone, the engine was stopped
+
+`nobody was left watching this conversation, so the reply stopped — ask again to pick it up` is only what you read when the conversation was let go of because nobody was watching it. A goodbye of your own says `the reply stopped when this conversation was left — ask again to pick it up`. An engine stopped on somebody's word while a window is still in the room says `the engine holding this conversation was stopped, so the reply stopped — ask again to pick it up`.
+
+A window that just did something — pressed a key, answered a card — is still watching, even if its link dropped for a few seconds. That gap is a stalled call and the redial after it, not an empty room, and the reply is not stopped for want of a watcher.
+
+When the unattended door does take a stop, it names the window it believed had gone: `nobody was left watching this conversation from studio, so the reply stopped — ask again to pick it up`. Without a name the sentence is the one above, unchanged.
+
 ## Why did my task not move to a stronger model — trouble with the connection never buys a dearer model
 
 Three different things used to look the same to aforge: **the connection** failed, **the
@@ -1280,12 +1560,12 @@ conversation, and the model reads its own nonsense before writing the next one.
 So aforge watches the reply as it arrives and cuts it where it went wrong. **None of that
 text is kept**: it is not in the conversation, not in the session file, not sent back to
 the model, and it comes off your screen. A dim line says so —
-`the reply lost its thread — that text was dropped, asking again` — and the same question
+`the reply lost its thread · asking again · 2 of 2` — and the same question
 is asked **once** more. If the second reply comes apart too, aforge finishes it on the next
 model in your `fallback models` row, saying so first:
 
 ```
-the reply kept losing its thread — finishing this one on openai/gpt-5-mini
+the reply lost its thread · moving to gpt-5-mini
 ```
 
 With nowhere to go, the turn ends in the sentence that says what to do about it instead:
@@ -1392,7 +1672,7 @@ aside first, so the retry genuinely lands somewhere else. If the markup keeps co
 turn moves to the next model in your `fallback models` row, saying so:
 
 ```
-the model kept answering in its own internal markup — finishing this one on openai/gpt-5-mini
+the model answered in its own internal markup instead of words · moving to gpt-5-mini
 ```
 
 With nowhere left to go, the turn ends in
@@ -1419,7 +1699,7 @@ which is the whole machine's ledger rather than this conversation's — it was a
 |---|---|
 | `spend` | the money, printed only when it is above zero — this conversation **and every task it started** |
 | `conversation` | what the conversation's own calls cost |
-| `tasks` | what the work it started has cost, running or finished — tasks, the hands a reply forked, and the nodes of an adaptive run |
+| `tasks` | what the work it started has cost, running or finished — tasks and the nodes of an adaptive run |
 | `tokens` | `48.1k in · 3.2k out`, or one half alone, or the combined figure |
 | `cache` | `31.2k read · saved $0.0180` — the money half only when a price pair was published |
 | `model calls` | **requests to the provider**, deliberately not "turns" |
@@ -1441,15 +1721,15 @@ books stay exact; only what the line paints is in motion.
 resumed conversation, or switching to another one, lands on that conversation's own
 bill at once. A screen-reader session never eases a number.
 
-## Does the status line's money include what my tasks are spending, or what its hands are spending — yes, live
+## Does the status line's money include what my tasks are spending — yes, live
 
 **The `$` on the status line is the whole tree: this conversation and every task it
 started, at every depth, while they are still running.** It is one figure, not two, and it
 is the same figure `/cost` leads with.
 
-**Hands and adaptive runs are in it too.** A reply that splits itself into hands, and a
-node of an adaptive run, are both work this conversation started: their money is on the
-row while they are still working, under `tasks` when you ask `/cost` for the halves.
+**Adaptive runs are in it too.** A node of an adaptive run is work this conversation
+started: its money is on the row while it is still working, under `tasks` when you ask
+`/cost` for the halves.
 
 It used to be the conversation's own half alone. A task's money only reaches the
 conversation's books when the task **closes**, so a family working for two hours left the
@@ -1544,7 +1824,7 @@ covers the requests made before the restart.
 
 ## Is there a record of what I spent across all my conversations, by day or by model
 
-Yes — a file on disk, and **the spend place reads it**. Press `alt+5`, or `tab` to it from any
+Yes — a file on disk, and **the spend place reads it**. Press `alt+3`, or `tab` to it from any
 other place, and it draws that file: which days, which models, and what the money was for.
 
 Every cost line written into a conversation's transcript is also appended to one file for the
@@ -1589,10 +1869,10 @@ Five things are worth knowing about it:
 - **Work is counted once.** A task's own requests are recorded where they were made. Its total
   is added to the conversation that started it afterwards, and that addition is deliberately
   not written here, or the same money would be counted twice. **That holds for every kind of
-  work, not only tasks** — the hands a reply forks and the nodes of an adaptive run each
-  record their own requests and are added up afterwards the same way. Until this was fixed
-  both were on this file twice, so a day that included a fork or a run read high, and the
-  daily limit was reached before that much had actually been spent.
+  work, not only tasks** — the nodes of an adaptive run record their own requests and are
+  added up afterwards the same way. Until this was fixed they were on this file twice, so a
+  day that included a run read high, and the daily limit was reached before that much had
+  actually been spent.
 
 The status line shows **this conversation and its task family**, combining the current
 ledger reading with the conversation meter. `/cost` prints that same scope with its
@@ -1600,7 +1880,7 @@ breakdown; `/spend` opens the ledger for the whole machine.
 
 ## The spend place — what days and models cost, and what the money was for
 
-`alt+5` opens it. It reads the machine-wide ledger above when you walk in and again on the
+`alt+3` opens it. It reads the machine-wide ledger above when you walk in and again on the
 same three-second beat every place runs on, and it draws three things:
 
 - **the window and its total** — `14 days came to $34.10 · 41.2M tokens` on the left of the
@@ -1793,7 +2073,7 @@ above — do not describe this conversation as filling to 60%.
 
 ## A task or a worker on another model gets that model's window
 
-Work that leaves the conversation — a task's worker, an adaptive run's worker, a fork, the
+Work that leaves the conversation — a task's worker, an adaptive run's worker, the
 reader that checks a task — often runs on a different model from the one you are talking
 to. Each of those asks the same model catalog the conversation asks, for **its own** model,
 so a worker on a million-token model folds at a million-token model's line.
@@ -1848,9 +2128,9 @@ real file, though a journal line is JSON and `grep` clips a long one. **A conver
 can name neither says `full: not retrievable`** rather than a path that is not there.
 
 **A `store:` id is never given as a pointer.** It used to be, whenever memory was on, and
-nothing aforge can run fetches a store message by id — `search_conversations` searches words
-and answers with one clipped line per hit. So a stub or a reduced view that named one sent
-the model somewhere it could not go. When a turn has made so many calls that even these views
+at that time no tool could fetch a store message by id. `search_conversations` now opens
+a bounded exchange by a source reference, but it does not replay a whole tool
+result. A stub still names the file containing the full bytes. When a turn has made so many calls that even these views
 are too much, the oldest fall back to the same one-line stub described next.
 
 **Rung 1 — stubbing.** At the end of every completed turn, tool results older than the last
@@ -2008,7 +2288,8 @@ The `per conversation` row carries a receipt of its own, `this one $53.58`, and 
 **same figure the money segment on the status line draws** — this conversation and every
 piece of work it started, whether or not that work has finished. It used to say only what
 the conversation itself had spent, so the tab and the row a person pressed to get here
-disagreed while a task was running.
+disagreed while a task was running. It also counts a call whose receipt arrived after its
+turn ended, the same moment `today` does.
 
 **Four of the six are rows you can edit** — `per day`, `per conversation`, `per plan`,
 `practice`. `per task` and `per standing run` are **readings**: they are real rails, and
@@ -2040,10 +2321,10 @@ the same registry row, so what you set through one is what the others show:
 | --- | --- |
 | `/budget`, also `/limits` | opens the tab with the cursor on `per day` |
 | the money segment on the status line | press `$0.14` — it opens the tab. It brightens under the pointer to say it is a door |
-| the spend place (`alt+5`) | `enter` on its first line, the dim `today $3.42 of $500 · /budget sets the limits` — the same figure the top line of every place draws |
+| the spend place (`alt+3`) | `enter` on its first line, the dim `today $3.42 of $500 · /budget sets the limits` — the same figure the top line of every place draws |
 | the spend place, from a row | `→` opens the verb strip, where `b` is `the limits` |
 | a refused turn | the message names `/budget` |
-| the first-run setup | its third screen, `what may aforge spend?` |
+| the first-run setup | its `Models and spending` screen, whose **Daily limit** row writes this same row. It asks about the day's limit only — `per plan` and `per conversation` keep their defaults there and are changed here |
 
 `ctrl+,` opens the panel itself, and `←`/`→` walk to **Spending** from wherever it opened.
 
@@ -2104,7 +2385,7 @@ Spending tab and `/cost` are the two readings — `/cost` is this conversation, 
 the whole machine since midnight.
 
 The machine's day is drawn in **three** places and they are **one reading of one file**:
-`today` on the Spending tab, `today $3.42 of $500` on the spend place (`alt+5`), and the
+`today` on the Spending tab, `today $3.42 of $500` on the spend place (`alt+3`), and the
 green figure on the **top line of every place** — `$3.42 / $500.00`, beside the clock. All
 three sum the same rows of the machine ledger, so they cannot come apart, and the top line
 says the same thing whichever place you are standing on.
@@ -2213,22 +2494,30 @@ With `routing: off` there is nothing measured, so there is no lane to choose, no
 
 ## "0 endpoints … guardrail restrictions and data policy" — paid model training violation, what it means and what aforge does
 
-This sentence means OpenRouter applied aforge's price cap first, leaving one endpoint, and
-then excluded that endpoint under your OpenRouter account's privacy setting because its
-provider may train on prompts. It does not mean the model disappeared or that your prompt
-was rejected.
+On the default service, this sentence means the endpoints your request was down to were all excluded by your
+OpenRouter account's privacy setting, because their providers may train on prompts. It
+does not mean the model disappeared or that your prompt was rejected. The request can be
+down to one endpoint because aforge's price cap left only one, because it asked for one
+machine by name, or because its list of slow machines covered the rest.
 
-aforge first relaxes the endpoint filter and asks again under the same cap. If the router
-still refuses that wider request, aforge drops the cap and asks the same model a third time.
-The attempt lines say `relaxed the endpoint filter` and then `dropped the price ceiling`.
-A rescue request or a request pinned to one lane never carries the cap, because that lane
-has already passed aforge's price choice. Once the price rung is reached, the cap stays off
-that model for the rest of this session, including the next rescue.
+aforge answers it without ending your turn. A machine asked for by name is remembered as
+out of reach for your account — for every model, for a day, across restarts — and the
+answer moves to another machine. So is the one machine the price cap left, when the
+router's count and aforge's list of machines agree on which it was. A price cap that only
+out-of-reach machines fit under is not sent at all, so the next turn is not refused. When there is nowhere left to move, aforge relaxes the
+endpoint filter and lets the router choose, then drops the cap and asks again. The attempt
+lines say `relaxed the endpoint filter` and then `dropped the price ceiling`. A rescue
+request or a request pinned to one lane never carries the cap, because that lane has
+already passed aforge's price choice. Once the price rung is reached, the cap stays off
+that model for the rest of this session.
 
 You can change the account policy at `https://openrouter.ai/settings/privacy`, choose
 another model, or pin a lane that serves this model. Pinning chooses the provider for this
 home — including terminal runs and background work; it does not change your OpenRouter
 privacy setting.
+
+A direct service does not use OpenRouter's endpoint list, price cap, or data-policy
+negotiation. Its single lane sends directly to the service you connected.
 
 ## Choose a provider — pinning the endpoint that serves your model, and what the lanes under a model row are
 
@@ -2257,7 +2546,8 @@ left to aforge, `pinned: cloudflare` when it is not, `openrouter` when you have 
 no endpoint at all. A session that has measured nothing shows the model id alone.
 
 In the model picker — `/model`, or `enter` on that **your model** row — press `→` or
-`tab` on a row and the model's lanes open underneath it:
+`tab` on a row and the model's lanes open underneath it, with the cursor already on the
+lane in force (`auto` when nothing is pinned):
 
 ```
  deepseek-v4-flash   via cloudflare · ▲0.8s · $0.09/$0.18 per M · 1M · 58t/s
@@ -2290,14 +2580,18 @@ means you want that name served from there.
 `enter` on the **lane** row opens that same fold directly, on the model you are talking
 to, with the cursor already on the lane in force — so choosing an endpoint is reading
 the measured numbers and pressing enter, never guessing at a word. When nothing has been
-measured there are no machines to list, and the row walks between the only two honest
-answers instead: `auto` and `openrouter`.
+measured it opens all the same, onto the only two honest answers: `auto` and `openrouter`.
 
 From the keyboard alone: `/model @cloudflare` pins, `/model auto` un-pins.
 
-**A model nobody has measured has no lanes to open, and `→` does nothing on it.** There
-is nothing truthful to put under it, so nothing is drawn — the same rule that leaves the
-speed off its row.
+**A model nobody has measured opens onto its two answers and no machines.** `→` shows
+`auto` and `openrouter`, and in the machines' place one line —
+`no machine has been measured for this model yet — machines show up after its first answer`
+— with no number anywhere, the same rule that leaves the speed off its row. Opening it
+asks for that model's list of machines in the background.
+
+A pinned lane is written on the model's name as `model@lane` — see *Lanes → Pinning one
+lane yourself*.
 
 ## What the note on a lane row means — no tools, out ≤ 65k, tail 12s, fp4
 
@@ -2332,6 +2626,12 @@ lane's **answers** rather than its speed forgets more slowly — about an hour �
 requests are minutes apart and a belief that forgot faster than the evidence arrived would
 never be worth anything.
 
+Forgetting has an end, and a lane nobody has heard from in hours reaches it. Such a row
+says **nothing at all about its worst answers** — no `tail 12s`, and no `no tail` either,
+because that is a claim about the worst case too. The speed and throughput figures stay:
+they are still the best guess there is. Ask that lane one question and the row has a tail
+again, or has honestly none.
+
 The dim line under the cursor says both halves out loud:
 
 ```
@@ -2359,25 +2659,34 @@ they combine:
 substring, then subsequence over the model id — so `ds v4` and `claude 4.5` work exactly
 as before, and a word this grammar does not know is simply a word to search for.
 
-## Why did it say via cloudflare — the lane named on the status line
+## Why did it say via cloudflare — the lane named beside your model
 
-Beside your model on the status line, `via <name>` is the lane that actually answered,
-and it is a fact rather than a decision: it is the name that came back on the answer. When
-aforge knows the timings it reads `via cloudflare · 0.6s · 61 t/s` — the wait before the
-first word, and how fast it was writing. The rate is only there **while a turn is
-running**, because a rate is a claim about now; the name alone goes quiet after ten
-minutes.
+Beside your model on the line above the message box, `via <name>` is the lane that
+actually answered, and it is a fact rather than a decision: it is the name that came back
+on the answer. While an answer is being written it names the machine writing it, as soon
+as that machine has named itself — so the first answer of a conversation carries it too.
+It goes quiet only when nothing is being written and no answer has come back in the last
+ten minutes.
 
-It is left off entirely when the lane's name is already in the model id: `gpt-4.1 ·
-via openai` is a row saying the same thing twice.
+**It is drawn whoever served, the vendor's own machines included.** `glm-5.3-flash · via
+z-ai` is not a line saying the same thing twice: the model is spelled there as its
+basename, so the vendor half of its address (`z-ai/`) is not on the screen at all. Until
+2026-09-09 the rider was hidden in exactly that case, and what it produced was a name
+that came and went as the router moved between a vendor's own machines and everybody
+else's — which reads as aforge having lost track of who is answering. The `served` row on
+`/status` and the phone sheet still leaves it out, because the line above it there is the
+model's whole routing address.
 
-**While a turn is running you usually see something better than `via`.** The connection
-reports what it is doing right now, and that outranks both readings under it, so the same
-spot reads `thinking · 12s · friendli 38 t/s` or `first word · 3.1s → parasail at 4.4s`
-until the request ends. The ranking is by tense: the phase is what this request is doing,
-`via <name>` is what the **last** answer did, and the older sighting under that is what
-some answer did in the last ten minutes. Drawing the older one under a request that has
-been stalled for a minute is exactly the thing this ordering exists to stop.
+**The rate is not on that rider.** How fast the stream is producing is a claim about now
+and stands at the right edge of the status row instead, as `38 tok/s`, while the answer
+is being thought or written.
+
+**While a turn is running the right edge says what the connection is doing.** The phase
+outranks the older readings, so that spot reads `first word · 3.1s → parasail at 4.4s` or
+`paced · retry in 6s` until something starts arriving, and then the rate alone. The
+ranking is by tense: the phase is what this request is doing, `via <name>` is who
+answered, and a sighting's own rate is what some answer did in the last ten minutes —
+which is why no such rate is ever drawn as though it were now.
 
 ## What "rescued" means on the status line, and "slow · trying …" and "refused"
 
@@ -2406,7 +2715,9 @@ provider.only preference permits only: coreweave` — the same spot reads
 `refused · trying nextbit…`. That machine is then finished for this model: it is not asked
 again, and it leaves the set aforge chooses from for thirty minutes. If the
 machine the answer moved to refuses as well, the promise is withdrawn rather than left on
-the screen, and the row reads `nextbit refused`.
+the screen, and the row reads `nextbit refused`. If the second lane fails for any other
+reason, or the turn is stopped while it is out, the promise comes off too and the row goes
+back to naming the machine that answered last.
 
 If the second lane wins, the line reads `via coreweave · rescued` for that answer once the
 request has finished, and goes back to normal on the next one.
@@ -2656,10 +2967,18 @@ itself.
 a call goes *out* as well as when it comes back: a planning call four minutes into a
 65,536-token ceiling used to look exactly like a machine doing nothing.
 
-**A line may leave a number out and say which one in its `note`** — `cost_s was +Inf
-and is not on this row.` — because a figure the endpoint or the wait never really measured
-is missing rather than invented, so a row short of `cost_s`, `wait_s`, `waste_usd` or
-`cost` beside a sentence like that is an honest line and not a broken one.
+**A line leaves a number out when nothing measured it.** A row short of `cost_s`,
+`wait_s`, `waste_usd` or `cost` is an honest line and not a broken one: `cost_s` is
+what a rescue would have cost and there is none to price on a call with nowhere else
+to go, and `wait_s` is how much longer the wait was expected to run, which a belief
+nobody has measured cannot say. A figure that was never measured is missing rather
+than invented, and the row says nothing about it.
+
+Rows written before 2026-09-09 may carry a sentence in their `note` instead —
+`cost_s was +Inf and is not on this row.` The wait controller used to price "nowhere
+to act to" as infinity, which JSON cannot write, so the figure came off the row and
+the sentence explained it. It no longer produces one, and a row that is short of a
+figure now simply says nothing.
 
 **The headless waiting line reads the same record.** When `aforge do` has nothing new to
 say it prints `still waiting: … · last call <model> <n> ago`, and that `last call` is the
@@ -2725,10 +3044,12 @@ session keeps the bodies you asked for rather than rotating them away after a fe
 calls.
 
 That pin is also the old spelling of one switch — `AFORGE_DEBUG=1`, `--debug`, or `/debug`
-in a conversation — which keeps the **debug record** of a run in a folder of its own. The
-bodies are moving there, so that this file stays small enough to grep and a long run
-cannot rotate away the failure you came for. The debug-record page says where the folder
-is and what is in it today.
+in a conversation — which keeps the **debug record** of a run in a folder of its own.
+The bodies live there now (each model call under `calls/`, each tool call and each
+choice on `events.jsonl`), so this file can stay small enough to grep and a long run
+cannot rotate away the failure you came for. The pin still also writes the bodies onto
+the log for one release, so a shell history that uses the old word still gets them. The
+debug-record page says where the folder is and what is in it.
 
 **Why did that call fail?** The line says. A `→ 400` carries the endpoint's own first
 sentence; a line with no status at all is a request that never reached an endpoint; a line
@@ -2755,3 +3076,90 @@ reasoning response keeps its existing handling.
 No. The connection wait pauses provider-switch timers. Once the endpoint is
 reachable, those timers restart, and that call is excluded from learned provider
 speed because the local outage was not time spent generating an answer.
+
+## Why a small model gets a shorter page and fewer tools — the lean profile
+
+On a model with a small context window, aforge sends a smaller set of
+instructions and a smaller tool list. Nobody is asked to choose: the
+`prompt profile` row is `auto` out of the box and works it out. Lean applies in
+exactly three cases, and nothing else:
+
+- the model's context window is under 32,000 tokens — the figure the catalog or
+  the endpoint reports, which is what a local runner like llama.cpp, ollama or
+  LM Studio tells aforge about the model it has loaded; or
+- the `prompt profile` row under `models` in `/settings` says `lean`; or
+- you put `AFORGE_PROMPT_PROFILE=lean` in front of the command, which pins it
+  for that one launch and holds the row read-only while it is set.
+
+Lean changes four things:
+
+- `# Interrupts and steering` comes off the page. What it explains, each
+  interrupting message now says in its own first words.
+- Seven verbs wait one call away instead of riding in front of every request:
+  `propose_task`, `tasks`, `watch`, `track`, `commit`, `recall` and
+  `read_document`. They are all still here — `load_capability` fetches a group
+  and the schemas arrive on the next request, in the same turn.
+- `ask` is put straight in the tool list rather than waiting to be fetched, so
+  a model that makes one call per message can still put a question to you.
+- Saved memories are off. There is no `remember` verb and no `<memory>` block,
+  and the reply says so plainly if you ask. Nothing is deleted, and a larger
+  model brings them back. The record of what was said is untouched, and still
+  searchable.
+
+The project's own instructions still ride, cut at 2KiB instead of 8KiB, and
+only the first file found of `AGENTS.md` and `CLAUDE.md`. The reply says the
+file was cut and where the rest is.
+
+Why: everything in front of a request is re-sent on every round of every turn.
+On a 128,000-token window that is a few percent; on a 16,000-token one it is
+most of the room the model has to think in.
+
+## Is an open-weight or local model given the lean profile? Does deepseek or glm get a shorter page?
+
+Only if its context window is under 32,000 tokens, or you chose `lean` yourself
+on the `prompt profile` row or pinned it for the launch. Nothing about a model's
+licence, its vendor, its name or which crew seat it sits in makes a session
+lean.
+
+So an open-weight model with a large window is NOT lean. `deepseek-v4-flash` and
+`glm-5.3-flash` are served with 128,000 tokens of room, so they get the full
+page, the full tool list and saved memories, exactly like any other
+128,000-token model — including when they are the model your crew preset picked
+for the `worker` seat, and including when you then choose that same model in
+chat. Open weights are a licence, not a size.
+
+A model you run yourself usually is small, and it is recognised by the window it
+reports, not by its name: llama.cpp, ollama and LM Studio all tell aforge the
+window the loaded model was given.
+
+The `prompt profile` row and `AFORGE_PROMPT_PROFILE` both overrule the window,
+in the same three words. The next section says which wins.
+
+## The prompt profile setting — choosing lean or full yourself
+
+`/settings`, under `models`, has a row called `prompt profile`. It takes three
+words:
+
+- **`auto`** is the default and the shipped behaviour: the window decides, lean
+  under 32,000 tokens and full at or above it.
+- **`lean`** sends the shorter page and the shorter tool list whatever the model
+  reports.
+- **`full`** sends everything whatever the model reports.
+
+**A change lands the next time aforge starts.** The profile is settled once when
+a conversation opens, because it decides the page and the tool list every
+request in that conversation is sent with.
+
+**`AFORGE_PROMPT_PROFILE` still pins it for one launch, over the row.** Put
+`AFORGE_PROMPT_PROFILE=lean` or `AFORGE_PROMPT_PROFILE=full` in front of the
+command and that launch uses it; the settings row goes read-only for as long as
+the variable is set and says which variable owns it, exactly as every other
+pinned row does. `AFORGE_PROMPT_PROFILE=auto` puts the window back in charge for
+that launch. Any other value is not a pin at all: your row stands and, if it is
+`auto`, the window decides as usual.
+
+**When to touch it.** Almost never — the window is right almost every time. The
+case it is there for is an endpoint that reports a window its loaded model does
+not really have, which is where `lean` is you telling aforge the truth. `full`
+is the other direction: a small window you would rather spend on the whole tool
+list than on the conversation.
