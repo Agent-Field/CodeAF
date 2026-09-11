@@ -522,6 +522,11 @@ func (a *app) raiseQuestion(q questionShown) {
 		return
 	}
 	q.ruled = a.autonomyRuled(q.question.Ask)
+	// A QUESTION THAT HAS JUST ARRIVED HAS NOBODY'S HAND ON IT. The aim is given
+	// per question (questionkeys.go), so a new one arriving under a hand that
+	// was aimed at the last one does not inherit the keyboard — which is the
+	// case the rule exists for, a question landing between two keystrokes.
+	a.dropQuestionHand()
 	a.questions = append(a.questions, q)
 	a.questionRule(&a.questions[len(a.questions)-1])
 	a.touch()
@@ -2508,6 +2513,10 @@ func (a *app) answerQuestion(q questionShown, answer session.Answer) tea.Cmd {
 // it again.
 func (a *app) closeQuestion(q questionShown, answer session.Answer) {
 	token := q.token()
+	// THE HAND GOES BACK TO THE BOX WITH THE QUESTION. Whatever aimed at this
+	// one says nothing about the next one, and the first key into an empty box
+	// is the box's again for every question in turn (questionkeys.go).
+	a.dropQuestionHand()
 	// AND THE SENT STAMP GOES WITH IT. It is only ever about a question still
 	// open here with an answer of this window's unaccounted for, and this is
 	// where both of those stop being true ([app.markQuestionSent]).
@@ -2833,6 +2842,12 @@ func (a *app) questionKeyOn(head questionShown, msg tea.KeyPressMsg) (tea.Cmd, b
 	if !a.questionSettled(head) {
 		return nil, true
 	}
+	// AND A KEY THAT CANNOT BE TEXT IS THE PERSON AIMING AT THE BLOCK, which is
+	// what hands it the keyboard for the keys that could be (questionkeys.go's
+	// THE BOX KEEPS THE FIRST LETTER).
+	if questionAimKey(key) {
+		a.aimQuestion()
+	}
 	if cmd, taken := a.questionBeatKey(head, key); taken {
 		return cmd, true
 	}
@@ -2880,6 +2895,15 @@ func (a *app) questionKeyOn(head questionShown, msg tea.KeyPressMsg) (tea.Cmd, b
 	}
 	if cmd, taken := a.questionOptionKey(head, key); taken {
 		return cmd, true
+	}
+	if questionTextKey(key) && !a.questionHasTheHand(head.question) {
+		// AND A VERB IS THE BOX'S UNTIL SOMEBODY AIMS AT THE BLOCK. The `d` at
+		// the head of "do the schema first" handed the call back to the asker and
+		// left the rest of the sentence in the box. Every key above this line
+		// NAMES an answer drawn on the row and is untouched by it; every key
+		// below it is a letter a sentence starts with (questionkeys.go's THE BOX
+		// KEEPS THE FIRST LETTER).
+		return nil, false
 	}
 	return a.questionVerbKey(head, key)
 }
@@ -3554,6 +3578,9 @@ func (a *app) questionPress(x, y int) (tea.Cmd, bool) {
 		if x < span.from || x >= span.to {
 			continue
 		}
+		// A CLICK ON AN ANSWER IS AIMING AT THE BLOCK, exactly as an arrow is
+		// (questionkeys.go's THE BOX KEEPS THE FIRST LETTER).
+		a.aimQuestion()
 		if len(head.beat) > 0 {
 			// THE BEAT'S SPANS ARE SHAPES AND NOT ANSWERS. They are drawn where
 			// the answers were, so a press there means whichever of the two is on

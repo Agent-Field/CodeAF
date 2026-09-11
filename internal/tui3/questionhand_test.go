@@ -257,3 +257,101 @@ func TestTheAnswersRowIsWhereTheBlockSaysItIsWithAReceiptAboveIt(t *testing.T) {
 			lab.a.questionSpanRow, drawn)
 	}
 }
+
+// ── THE BOX KEEPS THE FIRST LETTER ──────────────────────────────────────────
+//
+// The defect, in the owner's own words: "the first key typed into an empty box
+// must not answer — a digit picks, `d` hands the call back today." The rule and
+// the reason the ANSWERS' keys are not on this road are in questionkeys.go.
+
+// handLab is one question on the block, settled, with an empty box under it.
+func handLab(t *testing.T) *questionLab {
+	t.Helper()
+	lab := newQuestionLab(t)
+	lab.raise(session.Question{
+		ID: 9101, Head: "which column should it index?", Ask: session.AskChoice,
+		Asker: session.Asker{Kind: session.AskerModel},
+		Options: []session.AnswerOption{
+			{Key: "1", Label: "created_at"},
+			{Key: "2", Label: "updated_at"},
+		},
+	})
+	lab.tick(questionSettle * 2)
+	lab.rows()
+	return lab
+}
+
+func TestTheFirstLetterOfASentenceIsNotAVerbOnTheBlock(t *testing.T) {
+	lab := handLab(t)
+	// `do the schema first` — the `d` used to hand the call back to the asker.
+	if lab.press(questionDecideKey) {
+		t.Fatal("the block took `d` from an empty box nobody had aimed at it")
+	}
+	if len(lab.answer) != 0 {
+		t.Fatalf("the first letter of a sentence answered the question: %+v", lab.answer)
+	}
+	// AND SO IS EVERY OTHER VERB ON THE TABLE. They are each the first letter of
+	// a word somebody types into a box.
+	for _, key := range []string{questionCommentKey, questionAskBackKey, questionRuleKey, questionUndoKey, questionOpenKey, questionCompareKey} {
+		if lab.press(key) {
+			t.Fatalf("the block took %q from an empty box nobody had aimed at it", key)
+		}
+	}
+}
+
+// AND THE SAME KEY WORKS THE MOMENT SOMEBODY AIMS AT THE BLOCK. One arrow is
+// the whole of it — the grammar the block is drawn with, read in the order a
+// hand uses it.
+func TestAVerbWorksOnceTheBlockHasBeenAimedAt(t *testing.T) {
+	lab := handLab(t)
+	if !lab.press("down") {
+		t.Fatal("the arrow did not reach the block")
+	}
+	if !lab.press(questionCommentKey) {
+		t.Fatal("`c` did not reach the block after the person aimed at it")
+	}
+	if !lab.a.questionWriting() {
+		t.Fatal("`c` reached the block and did not point the box at the question")
+	}
+}
+
+// AND THE ANSWERS' OWN KEYS ARE NEVER HELD BACK. `[1] created_at` is drawn on
+// the row in front of the person; a key drawn as pressable that is not
+// pressable is a worse defect than the one the rule closes.
+func TestAnAnswersOwnKeyAnswersWithoutAiming(t *testing.T) {
+	lab := handLab(t)
+	if !lab.press("1") {
+		t.Fatal("the digit drawn on the row did not answer")
+	}
+	if len(lab.answer) != 1 || lab.answer[0].Key != "1" {
+		t.Fatalf("the digit did not send its own answer: %+v", lab.answer)
+	}
+}
+
+// AND THE HAND IS GIVEN UP WITH THE QUESTION. What somebody aimed at says
+// nothing about the question that lands after it — which is the case the rule
+// exists for, one arriving between two keystrokes.
+func TestTheNextQuestionDoesNotInheritTheHand(t *testing.T) {
+	lab := handLab(t)
+	lab.press("down")
+	lab.press("1")
+	lab.raise(session.Question{
+		ID: 9102, Head: "drop the old table?", Ask: session.AskChoice,
+		Asker:   session.Asker{Kind: session.AskerModel},
+		Options: []session.AnswerOption{{Key: "1", Label: "drop it"}, {Key: "2", Label: "keep it"}},
+	})
+	lab.tick(questionSettle * 2)
+	lab.rows()
+	if lab.press(questionDecideKey) {
+		t.Fatal("the question that arrived next inherited the hand from the one before it")
+	}
+}
+
+// aimed is the person having AIMED at the block — looked at the question rather
+// than at the box under it — without moving anything on it.
+//
+// A TEST ABOUT WHAT A VERB DOES IS NOT A TEST ABOUT HOW THE BLOCK GETS THE
+// KEYBOARD. The arrow that does it in life walks the pointer, which would put
+// half these tests on a different answer than the one they are about; the two
+// tests above are where the rule itself is held.
+func aimed(a *app) { a.aimQuestion() }

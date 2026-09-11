@@ -551,15 +551,25 @@ func TestAWindowThatCannotResolveSaysSoRatherThanFailingSilently(t *testing.T) {
 	}
 }
 
-// AND A REFUSAL FROM THE ENGINE IS SHOWN WHERE THE FOOT WAS. A refusal a person
-// cannot see is an answer that silently did nothing.
-func TestAnEngineRefusalIsDrawnWhereTheFootWas(t *testing.T) {
+// AND A REFUSAL FROM THE ENGINE PUTS THE QUESTION BACK, IN THE ENGINE'S OWN
+// WORDS. A refusal a person cannot see is an answer that silently did nothing.
+//
+// IT IS NO LONGER DRAWN ON THIS PAGE'S FOOT, and that is the answer road's
+// shape rather than a lost sentence: the page settles on the keystroke and
+// closes, because a page that sat unchanged for a round trip is a page somebody
+// answers twice (offloop.go). What a refusal has to do is put the question
+// somewhere it can be answered again, and that is the block — with the words the
+// engine refused in ([app.reopenQuestion]).
+func TestAnEngineRefusalPutsTheQuestionBackInTheEnginesWords(t *testing.T) {
 	a, agent := standingInAQuestion(t, demoQuestionReading())
 	agent.refuse = errQuestionTest
 	tap(t, a, "1")
 	tapNamed(t, a, tea.KeyEnter, 0)
-	if foot := footText(a); !strings.Contains(foot, errQuestionTest.Error()) {
-		t.Errorf("the refusal should be on screen:\n%s", foot)
+	if said := plain(lastNote(t, a)); !strings.Contains(said, errQuestionTest.Error()) {
+		t.Errorf("the engine's refusal never reached the person: %q", said)
+	}
+	if !a.questioning() {
+		t.Error("the refused question was not put back where it can be answered again")
 	}
 }
 

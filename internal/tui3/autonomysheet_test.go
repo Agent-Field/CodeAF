@@ -103,7 +103,9 @@ func TestDWritesTheProjectRuleAndSaysSo(t *testing.T) {
 	q := deliveryQuestion(1, session.AskChoice, true)
 	a.raiseQuestion(questionShown{question: q})
 	head, _ := a.questionHead()
-	a.questionDial(head)
+	// AND WHAT `D` HANDED BACK IS RUN. The dial is written through the engine's
+	// door, which is asked from a command and never from the loop (offloop.go).
+	spend(t, a, a.questionDial(head))
 	if rule := agent.rules[session.AskChoice]; rule.Kind != session.PolicyDecide {
 		t.Fatalf("D left this project's rule at %#v", rule)
 	}

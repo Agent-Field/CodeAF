@@ -625,9 +625,11 @@ func TestARatifiedActOffersTheWayBackWithoutBeingTold(t *testing.T) {
 	if !ok {
 		t.Fatal("the ratify line left the block")
 	}
-	if _, took := lab.a.questionVerbKey(head, questionUndoKey); !took {
+	cmd, took := lab.a.questionVerbKey(head, questionUndoKey)
+	if !took {
 		t.Fatal("`u` was drawn and did nothing")
 	}
+	lab.spend(cmd)
 	if len(lab.answer) != 1 || lab.answer[0].FirstKey() != "1" {
 		t.Fatalf("`u` sent %+v, want the answer that puts the work back", lab.answer)
 	}
@@ -1361,6 +1363,10 @@ func TestChangeAndAskBackTurnTheRowIntoAPromptAndEnterSendsTheWords(t *testing.T
 		Pick:    &session.Pick{Key: "2", Reason: "most guidance"},
 	})
 	lab.tick(time.Second)
+	// The person is looking at the block rather than at the box, which is what
+	// lets a letter reach it at all (questionkeys.go's THE BOX KEEPS THE FIRST
+	// LETTER).
+	aimed(lab.a)
 	lab.press("c")
 	screen := lab.plain()
 	if !strings.Contains(screen, "change: say what you want different, then enter · it goes with [2] Adaptive · esc back") {
@@ -1391,6 +1397,9 @@ func TestChangeAndAskBackTurnTheRowIntoAPromptAndEnterSendsTheWords(t *testing.T
 		Options: []session.AnswerOption{{Key: "1", Label: "sqlite"}, {Key: "2", Label: "postgres"}},
 	})
 	lab.tick(time.Second)
+	// AND THE NEXT QUESTION HAS TO BE AIMED AT TOO: the hand is given up with
+	// the question before it (questionkeys.go).
+	aimed(lab.a)
 	lab.press("?")
 	if screen = lab.plain(); !strings.Contains(screen, "ask back: type your question, then enter · the question stays open · esc back") {
 		t.Fatalf("? did not turn the row into a prompt:\n%s", screen)

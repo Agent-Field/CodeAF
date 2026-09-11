@@ -627,9 +627,11 @@ func (a *app) questionSheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 	switch key {
 	case "up", "shift+tab":
+		a.aimQuestion()
 		a.moveSheetCursor(-1)
 		return nil, true
 	case "down", "tab":
+		a.aimQuestion()
 		a.moveSheetCursor(1)
 		return nil, true
 	}
@@ -642,9 +644,18 @@ func (a *app) questionSheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	switch key {
 	case questionEnterKey:
 		return a.openSheetRow()
-	case questionSendKey:
-		return a.sendSheet()
-	case questionAlikeKey:
+	case questionSendKey, questionAlikeKey:
+		// THE SHEET'S TWO VERBS ARE THE BOX'S UNTIL SOMEBODY AIMS AT THE SHEET,
+		// which is the block's law and is sharper here: `s` and `g` are about the
+		// WHOLE batch, so a letter taken from somebody starting a sentence sends
+		// a list they had not even walked (questionkeys.go's THE BOX KEEPS THE
+		// FIRST LETTER).
+		if !a.questionHand {
+			return nil, false
+		}
+		if key == questionSendKey {
+			return a.sendSheet()
+		}
 		return a.sameSheetAnswer()
 	}
 	// A DIGIT ANSWERS THE ROW THE CURSOR IS ON, which is ONE KEY GRAMMAR read

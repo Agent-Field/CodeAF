@@ -246,6 +246,7 @@ func TestTheThreeKeysSendTheThreeAnswers(t *testing.T) {
 	standAsk(t, a, tick, session.StandingNotice{
 		WhenWords: "Mondays at 9am", CostWords: "about $0.02 a run",
 	})
+	aimed(a)
 	drive(t, a, key2(questionCommentKey))
 	if len(agent.answered) != 0 {
 		t.Fatalf("`c` answered before anything was typed: %+v", agent.answered)
