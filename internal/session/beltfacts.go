@@ -390,48 +390,69 @@ var programFacts = []beltFact{{
 var standingFacts = []beltFact{{
 	tools: []string{"stand"},
 	holds: Config.mayStand,
+	// THIS IS THE ONE HOME OF RECOGNITION (2026-09-11). The discharge test and
+	// the anchoring rule used to be `stand`'s own description at greater length,
+	// and before that a second copy here; now the page says them once and
+	// [standDescription] points at this heading, which it can do because both
+	// are built from [Config.mayStand]. The line of limits, reach and grant is
+	// here for the same reason: it is one law the schema used to repeat under
+	// five fields.
 	present: "# Things that keep working after this window\n" +
 		"Some of what a person says is not work for now but something to leave behind\n" +
-		"with `stand`: \"remind me at 6\", \"tell me when CI goes red\",\n" +
-		"\"every Monday draft the update\", \"always run the tests\". Doing one instead\n" +
-		"of proposing it answers a request they did not make. Send their sentence\n" +
-		"verbatim, what wakes it, what a firing does, and its rails; the card prices it.\n" +
+		"with `stand`: \"remind me at 6\", \"tell me when CI goes red\", \"every Monday\n" +
+		"draft the update\", \"make sure the tests never break\". Doing one once instead\n" +
+		"answers a request they did not make: \"run the tests\" is work now, \"run the\n" +
+		"tests whenever I push\" stands.\n" +
+		"\n" +
+		"THE DISCHARGE TEST decides, never the words. A sentence that can be satisfied\n" +
+		"once and forgotten is part of the work in front of you, even when it says \"make\n" +
+		"sure\" or \"always\": \"make sure this website you are building is 3 pages\" is\n" +
+		"done once the site has three pages. One that work nobody has done yet could\n" +
+		"break tomorrow stands. A demonstrative or present tense about the thing under\n" +
+		"way (\"this site you're building\", \"what you're doing\") anchors it to today's\n" +
+		"work, and acceptance is never a card.\n" +
 		"\n" +
 		"WAKING OR HOLDING. A standing sentence naming a moment, a rhythm or a condition\n" +
-		"gets the waking kind it names: `at`, `every`, `file`, `idle`, `probe`. One\n" +
-		"naming none of them, a rule or preference (\"always ...\", \"we use X here\"), is\n" +
-		"`when.kind: hold`: it never fires and never spends, riding into every\n" +
-		"conversation and task it reaches, and is sent with no `does` and no `rails`.\n" +
+		"gets that waking kind: `at` (\"at 6\"), `every` (\"every Monday\"), `probe` (\"when\n" +
+		"CI goes red\"), `idle` (\"tonight\"), `file` (a folder changing; `does.kind: task`\n" +
+		"with `does.report` when a file is kept current). One naming none, a rule or\n" +
+		"preference (\"always ...\", \"we use X here\"), is `when.kind: hold`: it never\n" +
+		"fires and never spends, riding into every conversation and task it reaches, and\n" +
+		"is sent with no `does` and no `rails`.\n" +
 		"\n" +
 		"UNSURE MEANS INSTRUCTION PLUS AN OFFER: bind it to the work in front\n" +
 		"of you AND offer the standing version in one line at the end of your reply.\n" +
-		"Never a card on a guess.\n" +
+		"Never a card on a guess: one they did not want costs their trust in every card.\n" +
 		"\n" +
 		"SAYING WHEN. For a distance from now (\"in 1 minute\") ALWAYS send `when.in` with\n" +
 		"a Go duration (\"1m\", \"1h30m\") and NEVER work a stamp out for it, since aforge\n" +
 		"resolves it against the real clock as you call. For a moment they NAMED (\"at 6\")\n" +
 		"work the RFC3339 stamp out from `Now` yourself, in the same offset, as `when.at`.\n" +
 		"One or the other, never both. A MOMENT ALREADY GONE IS REFUSED: work it out\n" +
-		"again from THE TIME THE TOOL GAVE YOU, the `now:` line every `stand` result ends\n" +
-		"with. AND NEVER TELL THEM YOU CANNOT HOLD A TIMER: \"remind me in 1 minute\" is a\n" +
-		"standing one-off, `when.in: \"1m\"` with `does.kind: say`, and that IS the timer.\n" +
+		"again from the `now:` line every `stand` result ends with. NEVER TELL THEM YOU\n" +
+		"CANNOT HOLD A TIMER: \"remind me in 1 minute\" is `when.in: \"1m\"` with\n" +
+		"`does.kind: say`.\n" +
+		"\n" +
+		"THEIRS TO NAME, NEVER YOURS: `rails` with `cost_words`, `altitude`, `placement`,\n" +
+		"`grant` and `model` are sent only when they said so, and a limit nobody named is\n" +
+		"dropped.\n" +
 		"\n" +
 		"A CARD OFFERS `yes, set it up`, an outright no, `just once` on anything but a\n" +
 		"one-off reminder, and `change when or where`, whose answer returns as their own\n" +
-		"words to re-propose with.\n" +
+		"words to re-propose with. NOTHING STANDS UNTIL THEY SAY YES, and an unanswered\n" +
+		"card declines. Say what now stands and what it costs; never re-ask an answered\n" +
+		"card.\n" +
 		"\n" +
 		"WHERE A FIRING ARRIVES: the person, not a room, so never promise a reminder\n" +
-		"\"here\" as though this window were the only door. NOTHING STANDS UNTIL THEY SAY\n" +
-		"YES, and an unanswered card declines. Say what now stands and what it costs, and\n" +
-		"never re-ask an answered card.\n" +
+		"\"here\" as though this window were the only door.\n" +
 		"\n" +
 		"BACKGROUND CHECKS: where this machine has a timer, the first thing that ever\n" +
 		"stands turns it on unasked, so items are checked with no aforge window open. The\n" +
 		"line under the card says whether it did; never promise more, and turn the\n" +
 		"`background checks` row in /settings if they ask.\n" +
 		"\n" +
-		"A LINE THAT OPENS `[something you set up fired]` IS NEWS AND NOT A REQUEST: the\n" +
-		"thing already ran, so relay it to the person in one line and never call `stand`\n" +
+		"A LINE THAT OPENS `[something you set up fired]` IS NEWS AND NOT A REQUEST:\n" +
+		"relay it in one line and never call `stand`\n" +
 		"again for it.",
 	// AND THE ABSENT CASE NAMES NO VERB, which is what lets the section go with
 	// it: a heading over one sentence is a heading nobody needs, and a sentence

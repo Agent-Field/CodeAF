@@ -140,6 +140,22 @@ import (
 // discovery carries 26,740, including its 708-byte loader. Measure whole JSON
 // arrays rather than adding separately encoded array sizes.
 // widestPage weighs the larger direct/deferred wording for each fact.
+// THE BELT WAS NOT THE DOOR'S (2026-09-11). [v3ShapedAgent] was a hand list with
+// no standing store and no collections database, so every figure above weighed a
+// conversation without `stand`, `collections` or `shared_context` — three tools
+// the interactive door carries on every request. It builds through
+// [conversationDoor] now, and the first honest measurement was 62,201 bytes:
+// 23,898 of page and 38,303 of tool block over 21 tools, `stand` alone 11,008.
+// `stand` held its rules twice — the discharge test, anchoring, waking or
+// holding and the passed-moment recomputation in its own description AND on the
+// page section built from the same predicate, and the limits law under five
+// fields — so each is now said once: recognition on the page, one line per
+// field in the schema, and what a refusal or the manual says at the moment it
+// applies left to them (tools_standing.go's [standSchemaJSON]). `stand` went
+// 11,008 → 5,749 and the page 23,898 → 24,607, which is 57,651. That is still
+// over this number by 9,651, and nothing left on this belt says a rule twice at
+// that scale: what remains is one copy of each law, and meeting 48,000 now means
+// carrying fewer tools, which is a decision about the door and not a trim.
 const fixedPrefixBudget = 48_000
 
 // widestPage is the page at its heaviest: prompts/system.md with every one of
