@@ -367,6 +367,33 @@ func TestClosingTheSheetAsksForTheWholeScreenBack(t *testing.T) {
 			t.Fatal("an empty confirm did not ask for the whole screen back")
 		}
 	})
+
+	t.Run("home esc", func(t *testing.T) {
+		a, _, _ := mixedLab(t)
+		runCmd(a.openHome())
+		settleFolder(t, a, a.homeSlash("/folder"))
+		cmd := a.folderKey(tea.KeyPressMsg{Code: tea.KeyEscape})
+		if a.folder.open || !a.at(pageHome) {
+			t.Fatalf("home esc left open=%v page=%v", a.folder.open, a.page)
+		}
+		if cmd == nil || !contextExitAsksForTheScreen(contextExitMessages(cmd())) {
+			t.Fatal("home esc did not ask for the whole screen back")
+		}
+	})
+
+	t.Run("home choice", func(t *testing.T) {
+		a, _, _ := mixedLab(t)
+		runCmd(a.openHome())
+		settleFolder(t, a, a.homeSlash("/folder"))
+		onFolderRow(t, a, "inner")
+		cmd := a.folderConfirm()
+		if a.folder.open || !a.at(pageHome) {
+			t.Fatalf("home confirm left open=%v page=%v", a.folder.open, a.page)
+		}
+		if cmd == nil || !contextExitAsksForTheScreen(contextExitMessages(cmd())) {
+			t.Fatal("home confirm did not ask for the whole screen back")
+		}
+	})
 }
 
 // THE ORDINARY FRAME AFTER A RESIZED SHEET HOLDS NONE OF THE SHEET'S CELLS, and

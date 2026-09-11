@@ -13,11 +13,14 @@ invalidates:
 Padding our own rows cannot repair the residue and was not attempted: the renderer
 clears its cell buffer before every frame, so trailing spaces and absent cells
 produce the same diff. The one lever is a full repaint, asked for at the one moment
-this surface has a layer to undraw, and routed through a single `closeContextSheet`
-so no way out can leave the layer standing.
+this surface has a layer to undraw, and routed through dev's single
+`closeFolderSheet`, so no way out can leave the layer standing. That door also
+keeps the newer target sheet's promise to return to Home after either cancel or
+confirm.
 
 The sheet's rows now yield in one order — the browser's own rows, then the thin rule
 under the box, then the box — which leaves the head rule and the foot rule as the
 last two to go: four rows draw `add context`, the box, the rule and the way out.
-With no box on screen there is nowhere to type, so the frame hides the caret rather
-than blinking it at a row that is not there.
+On Home the same row carries `the next conversation's folder`, dev's newer title.
+With no box on screen there is nowhere to type, so the frame hides the caret
+rather than blinking it at a row that is not there.
