@@ -26,6 +26,24 @@ const (
 	connectionProbeInterval  = time.Second
 )
 
+// connectionRetry is one media call's recovery state. Completion calls keep
+// this state inside the one dispatcher, where [control.Plan.Deadline] is their
+// only budget; media has no plan or completion ladder and keeps the caller's
+// shorter deadline or [connectionRecoveryWindow]. The pass count chooses a
+// backoff rung and never ends the call.
+type connectionRetry struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+	passes int
+	owed   time.Duration
+}
+
+func (r *connectionRetry) release() {
+	if r.cancel != nil {
+		r.cancel()
+	}
+}
+
 // ConnectionUnavailableError ends automatic recovery without inviting a model
 // or endpoint ladder to spend another window on the same unreachable origin.
 type ConnectionUnavailableError struct{}
@@ -39,6 +57,68 @@ func (*ConnectionUnavailableError) Error() string {
 func IsConnectionUnavailable(err error) bool {
 	var unavailable *ConnectionUnavailableError
 	return errors.As(err, &unavailable)
+}
+
+// recoverBeforeSend waits for the origin on behalf of one media send that
+// failed before it left, and reports whether the caller may try again. A nil
+// error means send; anything else is this call's ending. A DNS or dial failure
+// precedes accepted generation, so what is waited for is the ORIGIN and never
+// another provider behind that same origin.
+//
+// THE PAUSE IS THE WHOLE POINT. A check that answers while the send keeps
+// failing — a captive portal, a transparent proxy — is a fault and not a
+// recovery, and a fault backs off. The first recovered pass is still immediate
+// because a connection that genuinely came back should not wait out an old
+// delay; every pass after it waits backoffFor its own count, which is the same
+// ladder every other fault on this client climbs.
+func (c *Client) recoverBeforeSend(ctx context.Context, recovery *connectionRetry, model, target string) error {
+	if recovery.ctx == nil {
+		recovery.ctx, recovery.cancel = context.WithTimeout(ctx, connectionRecoveryWindow)
+	}
+	deadline, bounded := recovery.ctx.Deadline()
+	spentAt := func() time.Time { return time.Now().Add(recovery.owed) }
+	if bounded && !spentAt().Before(deadline) {
+		return &ConnectionUnavailableError{}
+	}
+	recovery.passes++
+	if _, err := c.waitConnection(recovery.ctx, model, target, true); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if recovery.ctx.Err() != nil {
+			return &ConnectionUnavailableError{}
+		}
+		return err
+	}
+	if recovery.passes > 1 {
+		delay := backoffFor(recovery.passes-1, 0)
+		if bounded {
+			left := deadline.Sub(spentAt())
+			if left <= 0 {
+				return &ConnectionUnavailableError{}
+			}
+			if delay > left {
+				delay = left
+			}
+		}
+		began := time.Now()
+		if err := c.wait(recovery.ctx, delay); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if recovery.ctx.Err() != nil {
+				return &ConnectionUnavailableError{}
+			}
+			return err
+		}
+		if took := time.Since(began); took < delay {
+			recovery.owed += delay - took
+		}
+		if bounded && !spentAt().Before(deadline) {
+			return &ConnectionUnavailableError{}
+		}
+	}
+	return nil
 }
 
 // connectionFailure only admits failures before an HTTP exchange. A stream

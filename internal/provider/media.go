@@ -158,7 +158,7 @@ func (c *MediaClient) GenerateImage(ctx context.Context, request ImageRequest) (
 		request.OutputFormat = "png"
 	}
 	var response ImageResponse
-	headers, err := c.postJSON(ctx, "/images", request, &response)
+	headers, err := c.postJSON(ctx, "/images", request, &response, request.Model)
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +176,7 @@ func (c *MediaClient) Speak(ctx context.Context, request SpeechRequest) (*Speech
 	if err != nil {
 		return nil, fmt.Errorf("marshal speech request: %w", err)
 	}
-	response, err := c.do(ctx, "/audio/speech", body)
+	response, err := c.do(ctx, "/audio/speech", body, request.Model)
 	if err != nil {
 		return nil, err
 	}
@@ -207,14 +207,14 @@ func (c *MediaClient) GenerateVideo(ctx context.Context, request VideoRequest) (
 
 func (c *MediaClient) generateVideo(ctx context.Context, request VideoRequest) (*VideoResponse, error) {
 	var job videoJob
-	if _, err := c.postJSON(ctx, "/videos", request, &job); err != nil {
+	if _, err := c.postJSON(ctx, "/videos", request, &job, request.Model); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(job.ID) == "" {
 		return nil, fmt.Errorf("video submission returned no job id")
 	}
 	if strings.EqualFold(strings.TrimSpace(job.Status), "completed") {
-		return c.downloadVideo(ctx, job)
+		return c.downloadVideo(ctx, job, request.Model)
 	}
 
 	pollingURL := strings.TrimSpace(job.PollingURL)
@@ -249,7 +249,7 @@ func (c *MediaClient) generateVideo(ctx context.Context, request VideoRequest) (
 			return nil, fmt.Errorf("%w after %s", ErrVideoTimeout, c.videoTimeout)
 		}
 
-		if err := c.getJSON(ctx, pollingURL, &job); err != nil {
+		if err := c.getJSON(ctx, pollingURL, &job, request.Model); err != nil {
 			return nil, err
 		}
 		switch strings.ToLower(strings.TrimSpace(job.Status)) {
@@ -261,7 +261,7 @@ func (c *MediaClient) generateVideo(ctx context.Context, request VideoRequest) (
 				}
 			}
 		case "completed":
-			return c.downloadVideo(ctx, job)
+			return c.downloadVideo(ctx, job, request.Model)
 		case "failed", "cancelled", "expired":
 			return nil, fmt.Errorf("video job %s: %s", job.Status, videoErrorDetail(job.Error))
 		default:
@@ -270,7 +270,7 @@ func (c *MediaClient) generateVideo(ctx context.Context, request VideoRequest) (
 	}
 }
 
-func (c *MediaClient) downloadVideo(ctx context.Context, job videoJob) (*VideoResponse, error) {
+func (c *MediaClient) downloadVideo(ctx context.Context, job videoJob, model string) (*VideoResponse, error) {
 	if len(job.UnsignedURLs) == 0 || strings.TrimSpace(job.UnsignedURLs[0]) == "" {
 		return nil, fmt.Errorf("completed video job returned no download URL")
 	}
@@ -292,7 +292,7 @@ func (c *MediaClient) downloadVideo(ctx context.Context, job videoJob) (*VideoRe
 	// the key iff the download host is the host we were configured to talk to,
 	// and withhold it anywhere else. Genuinely off-site storage still never sees
 	// it, and the router's own content endpoint works.
-	response, err := c.doEndpoint(ctx, http.MethodGet, endpoint, nil, c.sameHostAsBase(endpoint))
+	response, err := c.doEndpoint(ctx, http.MethodGet, endpoint, nil, c.sameHostAsBase(endpoint), model)
 	if err != nil {
 		return nil, err
 	}
@@ -310,12 +310,12 @@ func (c *MediaClient) downloadVideo(ctx context.Context, job videoJob) (*VideoRe
 	return &VideoResponse{Video: payload, Usage: job.Usage}, nil
 }
 
-func (c *MediaClient) postJSON(ctx context.Context, path string, request any, target any) (http.Header, error) {
+func (c *MediaClient) postJSON(ctx context.Context, path string, request any, target any, model string) (http.Header, error) {
 	body, err := json.Marshal(request)
 	if err != nil {
 		return nil, fmt.Errorf("marshal media request: %w", err)
 	}
-	response, err := c.do(ctx, path, body)
+	response, err := c.do(ctx, path, body, model)
 	if err != nil {
 		return nil, err
 	}
@@ -333,8 +333,8 @@ func (c *MediaClient) postJSON(ctx context.Context, path string, request any, ta
 	return response.Header.Clone(), nil
 }
 
-func (c *MediaClient) getJSON(ctx context.Context, endpoint string, target any) error {
-	response, err := c.doEndpoint(ctx, http.MethodGet, endpoint, nil, true)
+func (c *MediaClient) getJSON(ctx context.Context, endpoint string, target any, model string) error {
+	response, err := c.doEndpoint(ctx, http.MethodGet, endpoint, nil, true, model)
 	if err != nil {
 		return err
 	}
@@ -352,15 +352,24 @@ func (c *MediaClient) getJSON(ctx context.Context, endpoint string, target any) 
 	return nil
 }
 
-func (c *MediaClient) do(ctx context.Context, path string, body []byte) (*http.Response, error) {
-	return c.doEndpoint(ctx, http.MethodPost, c.mediaEndpoint(path), body, true)
+func (c *MediaClient) do(ctx context.Context, path string, body []byte, model string) (*http.Response, error) {
+	return c.doEndpoint(ctx, http.MethodPost, c.mediaEndpoint(path), body, true, model)
 }
 
-func (c *MediaClient) doEndpoint(ctx context.Context, method, endpoint string, body []byte, authenticated bool) (*http.Response, error) {
-	var recoveryCtx context.Context
+// doEndpoint sends one media request and, on a failure that came BEFORE the
+// request left, waits for the origin rather than giving up on it.
+//
+// THE MODEL TRAVELS WITH THE REQUEST, and it is a parameter rather than a field
+// because this one client serves five verbs and every call names its own model.
+// It is what the wait is announced against: a phase for a model nobody named
+// belongs to nobody, and internal/tui3's PostPhaseNews drops it — which is how
+// a picture whose connection had gone drew nothing at all while it waited.
+func (c *MediaClient) doEndpoint(ctx context.Context, method, endpoint string, body []byte, authenticated bool, model string) (*http.Response, error) {
+	var recovery connectionRetry
+	defer recovery.release()
 	for {
 		if c.connection != nil && authenticated {
-			if _, err := c.connection.waitConnection(ctx, "", endpoint, false); err != nil {
+			if _, err := c.connection.waitConnection(ctx, model, endpoint, false); err != nil {
 				return nil, err
 			}
 		}
@@ -385,19 +394,8 @@ func (c *MediaClient) doEndpoint(ctx context.Context, method, endpoint string, b
 		response, err := c.http.Do(request)
 		if err != nil {
 			if authenticated && c.connection != nil && connectionFailure(err) && !sent.Load() && ctx.Err() == nil {
-				if recoveryCtx == nil {
-					var cancelRecovery context.CancelFunc
-					recoveryCtx, cancelRecovery = context.WithTimeout(ctx, connectionRecoveryWindow)
-					defer cancelRecovery()
-				}
-				if _, waitErr := c.connection.waitConnection(recoveryCtx, "", endpoint, true); waitErr != nil {
-					if ctx.Err() != nil {
-						return nil, ctx.Err()
-					}
-					if recoveryCtx.Err() != nil {
-						return nil, &ConnectionUnavailableError{}
-					}
-					return nil, waitErr
+				if err := c.connection.recoverBeforeSend(ctx, &recovery, model, endpoint); err != nil {
+					return nil, err
 				}
 				continue
 			}
