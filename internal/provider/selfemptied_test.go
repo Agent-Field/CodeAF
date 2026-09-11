@@ -7,7 +7,6 @@ import (
 	"time"
 
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // ── AN IGNORE LIST NEVER EMPTIES THE SET THE REQUEST IS SENT TO ─────────────
@@ -34,7 +33,7 @@ func TestADemandedLaneIsNotAlsoRefusedOnTheSameRequest(t *testing.T) {
 		intent:     IntentInteractive,
 		laneChoice: &lanes.Choice{Only: []string{"beta"}},
 	}
-	prefs := client.wirePreferences(model, knobs, &ai.Request{})
+	prefs := client.wirePreferences(model, knobs)
 	if prefs == nil {
 		t.Fatal("no preference object at all, want the demand")
 	}
@@ -56,7 +55,7 @@ func TestAHedgedArmIsNotRefusedByTheVetoItInherits(t *testing.T) {
 	client.velocity.brisk(model, "beta")
 	client.velocity.pace(model, "beta", time.Minute)
 
-	prefs := client.wirePreferences(model, callKnobs{intent: IntentInteractive, hedgeLane: "beta"}, &ai.Request{})
+	prefs := client.wirePreferences(model, callKnobs{intent: IntentInteractive, hedgeLane: "beta"})
 	if prefs == nil || !equalStrings(prefs.Only, []string{"beta"}) {
 		t.Fatalf("preferences = %#v, want the hedged arm's demand", prefs)
 	}
@@ -126,7 +125,7 @@ func TestTheReleasedLaneIsTheOneNearestForgiveness(t *testing.T) {
 	client.velocity.pace(model, "beta", time.Minute)
 	client.velocity.refuseCoveringIgnore(model)
 
-	prefs := client.wirePreferences(model, callKnobs{intent: IntentInteractive}, &ai.Request{})
+	prefs := client.wirePreferences(model, callKnobs{intent: IntentInteractive})
 	if prefs == nil {
 		t.Fatal("no preference object at all")
 	}
@@ -145,7 +144,7 @@ func TestOneKnownLaneIsNeverRefusedIntoAnEmptySet(t *testing.T) {
 	client.velocity.pace(model, "only", time.Minute)
 	client.velocity.refuseCoveringIgnore(model)
 
-	prefs := client.wirePreferences(model, callKnobs{intent: IntentInteractive}, &ai.Request{})
+	prefs := client.wirePreferences(model, callKnobs{intent: IntentInteractive})
 	if prefs != nil && len(prefs.Ignore) > 0 {
 		t.Fatalf("ignore = %v on a model with one known lane, want nothing refused", prefs.Ignore)
 	}
@@ -161,7 +160,7 @@ func TestAVetoThatNarrowsTheSetIsLeftAlone(t *testing.T) {
 	client.velocity.brisk(model, "beta")
 	client.velocity.pace(model, "beta", time.Minute)
 
-	prefs := client.wirePreferences(model, callKnobs{intent: IntentInteractive}, &ai.Request{})
+	prefs := client.wirePreferences(model, callKnobs{intent: IntentInteractive})
 	if prefs == nil || !equalStrings(prefs.Ignore, []string{"beta"}) {
 		t.Fatalf("ignore = %#v, want the struck lane still refused while another serves", prefs)
 	}
@@ -227,7 +226,7 @@ func TestADemandWithASpareMachineKeepsTheVetoOnTheOther(t *testing.T) {
 		intent:     IntentInteractive,
 		laneChoice: &lanes.Choice{Only: []string{"alpha", "beta"}},
 	}
-	prefs := client.wirePreferences(model, knobs, &ai.Request{})
+	prefs := client.wirePreferences(model, knobs)
 	if prefs == nil || !equalStrings(prefs.Ignore, []string{"beta"}) {
 		t.Fatalf("ignore = %#v, want the struck machine still refused while the other serves the demand", prefs)
 	}
@@ -246,7 +245,7 @@ func TestACoveredDemandReleasesOneMachineAndKeepsTheRest(t *testing.T) {
 		intent:     IntentInteractive,
 		laneChoice: &lanes.Choice{Only: []string{"alpha", "beta"}},
 	}
-	prefs := client.wirePreferences(model, knobs, &ai.Request{})
+	prefs := client.wirePreferences(model, knobs)
 	if prefs == nil || !equalStrings(prefs.Ignore, []string{"alpha"}) {
 		t.Fatalf("ignore = %#v, want the machine nearest forgiveness released and the other kept", prefs)
 	}
@@ -365,7 +364,7 @@ func TestALaneTheRouterWillNotSendToLeavesTheDenominator(t *testing.T) {
 	client.velocity.refuseCoveringIgnore(model)
 	client.velocity.learnUnreachable(model, []string{"Bravo"})
 
-	prefs := client.wirePreferences(model, callKnobs{intent: IntentInteractive}, &ai.Request{})
+	prefs := client.wirePreferences(model, callKnobs{intent: IntentInteractive})
 	if prefs == nil {
 		t.Fatal("no preference object at all")
 	}
@@ -387,7 +386,7 @@ func TestALaneUnderVetoIsNeverLearnedUnreachable(t *testing.T) {
 	client.velocity.refuseCoveringIgnore(model)
 	client.velocity.learnUnreachable(model, []string{"Alpha", "Bravo"})
 
-	prefs := client.wirePreferences(model, callKnobs{intent: IntentInteractive}, &ai.Request{})
+	prefs := client.wirePreferences(model, callKnobs{intent: IntentInteractive})
 	if prefs == nil || !equalStrings(prefs.Ignore, []string{"Alpha"}) {
 		t.Fatalf("ignore = %#v, want both vetoed lanes kept in the denominator and Bravo released", prefs)
 	}
@@ -430,7 +429,7 @@ func TestADemandedRefusalTeachesNothingAboutTheOtherMachines(t *testing.T) {
 	}
 
 	client.velocity.pace(model, vetoed, time.Minute)
-	prefs := client.wirePreferences(model, callKnobs{intent: IntentInteractive}, &ai.Request{})
+	prefs := client.wirePreferences(model, callKnobs{intent: IntentInteractive})
 	if prefs == nil || !equalStrings(prefs.Ignore, []string{vetoed}) {
 		t.Fatalf("ignore = %#v, want Alpha still counted after a refusal of its demanded set", prefs)
 	}
@@ -448,7 +447,7 @@ func TestAnAnsweringMachineIsBackInTheDenominator(t *testing.T) {
 	client.velocity.learnUnreachable(model, []string{"Bravo"})
 	client.velocity.brisk(model, "Alpha")
 
-	prefs := client.wirePreferences(model, callKnobs{intent: IntentInteractive}, &ai.Request{})
+	prefs := client.wirePreferences(model, callKnobs{intent: IntentInteractive})
 	if prefs == nil || !equalStrings(prefs.Ignore, []string{"Bravo"}) {
 		t.Fatalf("ignore = %#v, want Bravo's veto left standing after Alpha answered", prefs)
 	}
@@ -464,7 +463,7 @@ func TestNothingLeavesTheDenominatorBeforeTheRouterHasSaidSo(t *testing.T) {
 	client.velocity.brisk(model, "Bravo")
 	client.velocity.pace(model, "Bravo", time.Minute)
 
-	prefs := client.wirePreferences(model, callKnobs{intent: IntentInteractive}, &ai.Request{})
+	prefs := client.wirePreferences(model, callKnobs{intent: IntentInteractive})
 	encoded, err := json.Marshal(prefs)
 	if err != nil {
 		t.Fatal(err)

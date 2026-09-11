@@ -413,10 +413,17 @@ type callKnobs struct {
 	// request of a hedged pair (hedge.go). Empty on every ordinary call, which
 	// is what keeps a healthy request byte-for-byte what it always was.
 	hedgeLane string
-	// laneChoice is the lane preference this call was decided on, nil when
-	// nobody decided one — which is every call in a build where the router is
-	// not wired in, and every non-streamed call, which has no watch to agree
-	// with and makes its own inside the encoder.
+	// laneChoice is the lane preference THIS CALL was decided on, drawn once by
+	// [Client.withLaneChoice] and read by everything under it: the encoder that
+	// writes `provider.order`, the plan that says what to do when the send fails
+	// ([requestSet]), and the watch that decides whether to hedge.
+	//
+	// NIL IS A CALL THAT DECIDED TO PREFER NOTHING — no belief, no pin, routing
+	// off, a base that does not carry the field — and the request goes out shaped
+	// exactly as it was before this package existed. It is NOT an invitation to
+	// decide again further down: the encoder used to do that on any call the
+	// streamed door had not stamped, which gave one call as many sets of machines
+	// as it had attempts (lanes.go's [Client.applyLaneChoice]).
 	laneChoice *lanes.Choice
 	// refused is every machine that has already said no to THIS CALL, and it is
 	// what makes each attempt a different request rather than the same one
@@ -515,6 +522,27 @@ func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs call
 	// arm of it inherits that one deadline and that one list of moves.
 	if _, held := callPlanFrom(ctx); !held {
 		ctx = withCallPlan(ctx, lanes.PlanFor(lanes.Choice{}, lanes.Pace{}, RoleFrom(ctx), dispatchNow()))
+	}
+	// AND THE CALL'S ONE LANE CHOICE IS STAMPED BESIDE ITS ONE BUDGET, ON THE
+	// SAME DOOR AND FOR THE SAME REASON (lanes.go's [Client.withLaneChoice]).
+	//
+	// A CHOICE IS A SAMPLED DECISION, so a call that draws one per encode is a
+	// call whose plan, whose watch and whose body can each be about a different
+	// set of machines. The streamed door asks for it earlier, because the watch
+	// needs it before the first byte leaves; every OTHER road to the wire — the
+	// raw channel door [Client.StreamComplete] rides, and whatever is written
+	// next — reaches it here, once, and the ask is idempotent so the streamed
+	// call is handed back its own.
+	//
+	// THE KNOBS ARE RE-READ RATHER THAN REBUILT. They arrived resolved from the
+	// caller's context and carry this call's refusal set and its trace; a second
+	// [knobsFrom] would hand the loop below a fresh trace and lose the attempts
+	// already counted against it.
+	ctx = c.withLaneChoice(ctx, request)
+	if knobs.laneChoice == nil {
+		if choice, made := laneChoiceFromContext(ctx); made {
+			knobs.laneChoice = &choice
+		}
 	}
 	// AND A MODEL THIS PROCESS HAS ALREADY BEEN TOLD THE ROUTER DOES NOT CARRY IS
 	// NOT SENT AT ALL (withdrawn.go). The router answered for itself the first

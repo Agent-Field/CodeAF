@@ -94,7 +94,7 @@ func TestCachePreferenceAndStallWatchNameTheSameEndpoint(t *testing.T) {
 	request := &ai.Request{Messages: userMessages("continue")}
 	ctx := client.withLaneChoice(lineage("warm"), request)
 	choice, made := laneChoiceFromContext(ctx)
-	prefs := client.wirePreferences(model, knobsFrom(ctx), request)
+	prefs := client.wirePreferences(model, knobsFrom(ctx))
 	if !made || lanes.HeadOf(choice) != "brass" || prefs == nil || len(prefs.Order) == 0 || prefs.Order[0] != "brass" {
 		t.Fatalf("watch and wire disagree on cached endpoint: choice=%+v, prefs=%+v", choice, prefs)
 	}
