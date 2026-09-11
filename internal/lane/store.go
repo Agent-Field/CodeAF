@@ -424,38 +424,46 @@ func writeState(path string, held storeState) error {
 // honest state of a filter whose arithmetic went wrong is that it knows
 // nothing about that pair.
 func spellable(held storeState) storeState {
-	kept := held.Beliefs[:0]
-	for _, belief := range held.Beliefs {
-		if !belief.spellable() {
-			continue
-		}
-		kept = append(kept, belief)
-	}
-	held.Beliefs = kept
-
-	priors := held.Priors[:0]
-	for _, prior := range held.Priors {
-		if !finite(prior.TTFT) || !finite(prior.Rate) {
-			continue
-		}
-		priors = append(priors, prior)
-	}
-	held.Priors = priors
-
-	workloads := held.Workloads[:0]
-	for _, workload := range held.Workloads {
-		if !finite(workload.Visible) || !finite(workload.Hidden) || !finite(workload.Weight) {
-			continue
-		}
-		workloads = append(workloads, workload)
-	}
-	held.Workloads = workloads
-
+	held.Beliefs = keepFinite(held.Beliefs, Belief.spellable)
+	held.Priors = keepFinite(held.Priors, func(p spread) bool {
+		return finite(p.TTFT) && finite(p.Rate)
+	})
+	held.Workloads = keepFinite(held.Workloads, func(w workloadEstimate) bool {
+		return finite(w.Visible) && finite(w.Hidden) && finite(w.Weight)
+	})
 	held.Wait = spellableChains(held.Wait)
 	held.Rate = spellableChains(held.Rate)
 	held.Think = spellableChains(held.Think)
 	held.Judged = spellableTallies(held.Judged)
 	return held
+}
+
+// NOTHING HERE WRITES INTO WHAT IT WAS GIVEN. The state handed to a compaction
+// is a shallow copy of the ledger's own ([ledger.snapshot]), so its maps and
+// slices are the LIVE ones — deleting an entry here would reach into a
+// hierarchy another goroutine is folding observations into, which is a data
+// race and a belief silently removed from a running process. So a value that
+// cannot be written is dropped by building a new container, and the ordinary
+// case — nothing wrong, which is every compaction — allocates nothing and hands
+// back exactly what it was given.
+
+// keepFinite is one slice with the values that can be written, and the same
+// slice untouched when they all can.
+func keepFinite[T any](values []T, spellable func(T) bool) []T {
+	for index, value := range values {
+		if spellable(value) {
+			continue
+		}
+		kept := make([]T, 0, len(values)-1)
+		kept = append(kept, values[:index]...)
+		for _, later := range values[index+1:] {
+			if spellable(later) {
+				kept = append(kept, later)
+			}
+		}
+		return kept
+	}
+	return values
 }
 
 // spellable reports whether every number this belief carries is one.
@@ -475,28 +483,38 @@ func spellableChains(held chains) chains {
 	if !spellableNode(held.World) {
 		held.World = node{}
 	}
-	spellableNodes(held.Lane)
-	spellableNodes(held.Model)
-	spellableNodes(held.Pair)
-	for key, value := range held.Drift {
-		if !finite(value.Up) || !finite(value.Down) {
-			delete(held.Drift, key)
-		}
-	}
-	for key, value := range held.Spread {
-		if !finite(value.Mean) || !finite(value.M2) {
-			delete(held.Spread, key)
-		}
-	}
+	held.Lane = keepFiniteIn(held.Lane, spellableNode)
+	held.Model = keepFiniteIn(held.Model, spellableNode)
+	held.Pair = keepFiniteIn(held.Pair, spellableNode)
+	held.Drift = keepFiniteIn(held.Drift, func(d drift) bool {
+		return finite(d.Up) && finite(d.Down)
+	})
+	held.Spread = keepFiniteIn(held.Spread, func(s spreadStat) bool {
+		return finite(s.Mean) && finite(s.M2)
+	})
 	return held
 }
 
-func spellableNodes(held map[string]node) {
-	for key, value := range held {
-		if !spellableNode(value) {
-			delete(held, key)
+// keepFiniteIn is [keepFinite] for a map, and the same map untouched when every
+// value in it can be written.
+func keepFiniteIn[V any](held map[string]V, spellable func(V) bool) map[string]V {
+	sound := true
+	for _, value := range held {
+		if !spellable(value) {
+			sound = false
+			break
 		}
 	}
+	if sound {
+		return held
+	}
+	kept := make(map[string]V, len(held))
+	for key, value := range held {
+		if spellable(value) {
+			kept[key] = value
+		}
+	}
+	return kept
 }
 
 func spellableNode(held node) bool { return finite(held.X) && finite(held.P) }
@@ -504,16 +522,9 @@ func spellableNode(held node) bool { return finite(held.X) && finite(held.P) }
 // spellableTallies drops the quality evidence whose counts stopped being
 // numbers, by the same rule.
 func spellableTallies(held tallies) tallies {
-	for key, value := range held.Lane {
-		if !finite(value.A) || !finite(value.B) {
-			delete(held.Lane, key)
-		}
-	}
-	for key, value := range held.Model {
-		if !finite(value.A) || !finite(value.B) {
-			delete(held.Model, key)
-		}
-	}
+	sound := func(t tally) bool { return finite(t.A) && finite(t.B) }
+	held.Lane = keepFiniteIn(held.Lane, sound)
+	held.Model = keepFiniteIn(held.Model, sound)
 	return held
 }
 

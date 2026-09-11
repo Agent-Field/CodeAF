@@ -447,3 +447,26 @@ func TestAgeingNeverReachesANumberNobodyCanHold(t *testing.T) {
 		t.Errorf("an observation folded into a poisoned belief left %v", repaired)
 	}
 }
+
+// TestWritingTheStateNeverReachesIntoTheLedgerItWasGiven is the other half of
+// the law above, and the one a race detector would otherwise find first: a
+// compaction is handed a SHALLOW copy of the ledger's own state, so its maps
+// are the live ones. Dropping a value by deleting from them would reach into a
+// hierarchy another goroutine is folding observations into.
+func TestWritingTheStateNeverReachesIntoTheLedgerItWasGiven(t *testing.T) {
+	live := map[string]node{
+		"sound":    {X: 1, P: 0.2},
+		"poisoned": {X: math.NaN(), P: 0.2},
+	}
+	held := storeState{}
+	held.Wait.Lane = live
+	if err := writeState(filepath.Join(t.TempDir(), "lanes.json"), held); err != nil {
+		t.Fatal(err)
+	}
+	if len(live) != 2 {
+		t.Fatalf("writing the file deleted from the ledger's own map: %d entries left", len(live))
+	}
+	if _, kept := live["poisoned"]; !kept {
+		t.Error("the caller's map lost an entry to a write")
+	}
+}
