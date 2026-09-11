@@ -475,6 +475,19 @@ func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs call
 	// here — so the record is exact. What reads it is the layer that owns the one
 	// remaining model hop, which used to index a chain blind (modelstried.go).
 	model := c.modelFor(request)
+	// AND THE CALL'S ONE BUDGET IS STAMPED HERE, ON THE ONE DOOR EVERY SEND
+	// PASSES THROUGH (dispatch.go's [Client.dispatchPlan]).
+	//
+	// IT MUST BE ABOVE THE RECOVERIES AND NOT INSIDE THEM. A repaired 400, a
+	// retired pin, a widened preference and every rung of the relaxation ladder
+	// all come back through [Client.send] with a new body, and each of them
+	// building a plan of its own would be a call whose deadline restarted every
+	// time it recovered from anything — which is the product this wave deleted,
+	// wearing one name. A race has already stamped its own (hedge.go), and every
+	// arm of it inherits that one deadline and that one list of moves.
+	if _, held := callPlanFrom(ctx); !held {
+		ctx = withCallPlan(ctx, lanes.PlanFor(lanes.Choice{}, lanes.Pace{}, RoleFrom(ctx), dispatchNow()))
+	}
 	// AND A MODEL THIS PROCESS HAS ALREADY BEEN TOLD THE ROUTER DOES NOT CARRY IS
 	// NOT SENT AT ALL (withdrawn.go). The router answered for itself the first
 	// time; sending again buys the identical 404 and, worse, a whole shape ladder

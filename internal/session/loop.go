@@ -1247,6 +1247,22 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 	// attempts of one ladder is a ladder nobody can reason about afterwards
 	// (taxonomy_boundary.go).
 	attempts := a.failureLimits().TransportAttempts
+	// ── AND THE OUTER BOUND IS THE SAME DEADLINE THE TRANSPORT IS BOUNDED BY ──
+	//
+	// THE MEASURED FAILURE (docs/design/recovery/DESIGN.md §2 problem 1). This
+	// count and the transport's own MULTIPLIED. Each of these attempts is a whole
+	// call under the dispatcher's plan — up to `lane.Role.GiveUp` of walking
+	// machines and climbing rungs — so three of them was three times the bound
+	// the dispatcher believed it was keeping, and then the hop multiplied it
+	// again by the length of the chain. Nobody could state the product, which is
+	// exactly why the census found chains running eleven minutes.
+	//
+	// ONE MODEL GETS ONE GIVE-UP. It is the same figure the call under it is
+	// bounded by, so the two agree instead of composing: whichever of them ends
+	// first, the turn moves on to the next model or says so. A NEW MODEL GETS A
+	// FRESH ONE, for the reason the hop below already states about the counts —
+	// what the last model did says nothing about this one.
+	deadline := time.Now().Add(a.laneRole().GiveUp())
 	for attempt := 0; attempt < attempts; attempt++ {
 		// Each attempt streams the reply from the beginning, so the buffer
 		// starts empty: an attempt that dies half-way through its text and an
@@ -1374,8 +1390,22 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// seconds ended a turn on 2026-09-10 with two other models sitting
 		// unasked in the same session, and that is the road this is.
 		next, haveFallback := a.nextFallback(ctx, origin, hopped)
+		// ── A SPENT DEADLINE IS A SPENT BUDGET, SAID IN THE ONE WORD THE
+		// BOUNDARY ALREADY UNDERSTANDS ─────────────────────────────────────
+		//
+		// The verdict says whether asking again is the right MOVE; the deadline
+		// says whether this model still has any of the person's turn left to
+		// spend on it. Rather than a second road out of this switch, a spent
+		// deadline is told to the boundary as a spent ladder — which is what it
+		// is — so the answer comes back through the ONE classifier as hop or
+		// end, exactly as a spent count does. It is the same idiom
+		// `movesForFailure` uses for a node that died on the wire.
+		spent := attempt + 1
+		if !time.Now().Before(deadline) {
+			spent = attempts
+		}
 		verdict := a.readLadderFailure(err, model, "", transportLadder{
-			attempt:    attempt + 1,
+			attempt:    spent,
 			cuts:       cuts,
 			degenerate: isCut && degenerateCut(cut),
 			rerouted:   rerouted,
@@ -1489,6 +1519,10 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			// rung, because the loop's own post-statement is what advances it.
 			cuts, rerouted = 0, false
 			attempt = -1
+			// AND ITS OWN GIVE-UP, for the same reason: a fallback handed the
+			// remains of the deadline the model before it spent would be given
+			// up on before it had answered once.
+			deadline = time.Now().Add(a.laneRole().GiveUp())
 			continue
 		}
 		// NOWHERE LEFT TO ASK. The sentence names what happened in the person's
