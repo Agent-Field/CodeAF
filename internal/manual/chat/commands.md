@@ -1737,9 +1737,11 @@ order:
 The four machine rows lead because the endpoint serving your model is part of the same
 decision as the model, and they used to sit at the foot of the tab, forty rows below it.
 
-Then the rest of the tab: "looking", "reading", "reply guard" — whether a reply
-that has come apart is cut and asked again, on by default (see *Models, context, and what
-it costs*) — and one row per capability slot added automatically from the settings
+Then the rest of the tab: "looking", "reading", "prompt profile" — how much aforge
+tells the model before you type, `auto`, `lean` or `full`, with `auto` deciding from the
+model's context window (see *Models, context, and what it costs*) — "reply guard" —
+whether a reply that has come apart is cut and asked again, on by default (same page) —
+and one row per capability slot added automatically from the settings
 registry: drawing, speaking, composing, filming, voice.
 
 The first four of the five classes are **select** rows and open the model picker. The

@@ -2422,7 +2422,7 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 func (a *Agent) finishToolResult(ep *episode, call ai.ToolCall, result toolResult) toolResult {
 	result.text = redact.Secrets(result.text)
 	body := result.text
-	result = a.withJobState(ep.noteToolOutcome(call, result))
+	result = a.withJobState(ep, ep.noteToolOutcome(call, result))
 	result.text = footersInsideTheCap(body, result.text)
 	return result
 }

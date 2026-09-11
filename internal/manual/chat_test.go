@@ -199,6 +199,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"when does aforge use the lean profile", "models-and-cost"},
 		{"is deepseek given a shorter page than claude", "models-and-cost"},
 		{"does an open weight model get the lean prompt", "models-and-cost"},
+		// And the row that chooses it by hand, asked the way somebody who has
+		// just seen it in /settings would ask, and the way somebody who wants
+		// the effect but not the word would.
+		{"what is the prompt profile setting", "models-and-cost"},
+		{"how do I make aforge send a shorter prompt", "models-and-cost"},
+		{"can I turn the lean profile on myself", "models-and-cost"},
 		{"can you read a pdf file", "what-i-can-do"},
 		{"can you search the web", "what-i-can-do"},
 		{"which search engine answered?", "what-i-can-do"},
