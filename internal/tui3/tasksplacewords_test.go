@@ -98,3 +98,32 @@ func TestAConversationRootWearsAFolderTagOnlyWhereItIsNews(t *testing.T) {
 		t.Fatalf("another project's chat lost the one fact that places it:\n  %s", got)
 	}
 }
+
+// AND THE WINDOW'S OWN FOLDER IS READ OFF ITS OWN CONVERSATION ROW.
+//
+// [app.taskSheetSelfRow] knows what this conversation is CALLED and nothing
+// about which project bucket it belongs to; the world scan knows the bucket and
+// nothing about a journal this session has not finished writing. The two meet in
+// [tasksConversationRows], so the reading takes the folder from there — asking
+// [tasksMine.row] directly got the half with no folder on it, and every row of
+// the folder a person was sitting in went on wearing its name.
+func TestTheReadingKnowsTheFolderThisWindowIsSittingIn(t *testing.T) {
+	now := time.Date(2026, time.September, 11, 9, 0, 0, 0, time.UTC)
+	mine := tasksMine{row: session.SessionRow{
+		ID: "room-a", Title: "Sweeping the Frame Budget",
+		Transcript: "/tmp/room-a/transcript.jsonl", Open: true, Live: true,
+	}}
+	world := session.World{Projects: []session.Project{{
+		Name: "aforge", Sessions: []session.SessionRow{{
+			ID: "room-a", Title: "Sweeping the Frame Budget", Transcript: "/tmp/room-a/transcript.jsonl",
+			Project: "aforge", ProjectDir: "/home/pat/code/aforge", At: now.Add(-time.Hour),
+		}},
+	}}, Read: now}
+	r := readTasks(world, mine, session.LastDays(now, 14), time.Time{}, now)
+	if r.folder != "/home/pat/code/aforge" {
+		t.Fatalf("the reading thinks this window is in %q, want the folder its own conversation names", r.folder)
+	}
+	if page := tasksPage(r, 100); strings.Contains(page, "aforge") && !strings.Contains(page, "Sweeping") {
+		t.Fatalf("the page drew the folder it is already in:\n%s", page)
+	}
+}

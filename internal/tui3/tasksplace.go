@@ -235,10 +235,7 @@ func tasksKeyOf(entry session.TaskIndexEntry) tasksKey {
 // graph, then the other windows — which are reading a presence file written
 // seconds ago and are the only authority for work that has not landed.
 func readTasks(world session.World, mine tasksMine, win session.UsageWindow, seen, now time.Time) tasksReading {
-	r := tasksReading{
-		win: win.Normalized(), seen: seen, now: now,
-		folder: strings.TrimSpace(mine.row.ProjectDir), tilde: mine.tilde,
-	}
+	r := tasksReading{win: win.Normalized(), seen: seen, now: now, tilde: mine.tilde}
 	// order keeps the pass stable: a map alone would re-order the page on every
 	// frame it was rebuilt, and the sections below are drawn in the order the
 	// rows arrived within each one.
@@ -301,6 +298,18 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, see
 	// and both of them under the chat that asked for the work.
 	visible := make([]tasksItem, 0, len(order))
 	r.chats = tasksConversationRows(world, mine, r.win, now)
+	// AND THE WINDOW'S OWN FOLDER IS READ OFF ITS OWN CONVERSATION ROW, which is
+	// where the two authorities have already met: this window knows what it is
+	// called and the world scan knows which bucket that conversation belongs to,
+	// and [tasksConversationRows] merges the pair. Asking [tasksMine.row]
+	// directly gets the half that has no folder on it, which is how every row of
+	// the folder a person is sitting in went on wearing its name.
+	for _, row := range r.chats {
+		if row.ID != "" && row.ID == strings.TrimSpace(mine.row.ID) {
+			r.folder = strings.TrimSpace(row.ProjectDir)
+			break
+		}
+	}
 	r.wholeChats = len(r.chats)
 	r.held = len(order) + len(r.chats)
 	for _, key := range order {
