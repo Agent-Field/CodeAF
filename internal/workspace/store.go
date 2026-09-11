@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -79,10 +80,32 @@ CREATE TABLE context_targets (
 CREATE INDEX context_targets_reference ON context_targets(kind,ref_id,session_id);
 `
 
+// A STORE STAMPED NEWER THAN THIS BUILD SAYS WHO MAY STILL READ IT. A newer
+// version records, in store_meta, the oldest version whose tables it left
+// readable and writable exactly as that version wrote them. This build opens a
+// newer store only when that version is at most its own, and then touches only
+// the tables it knows. Without this, every version bump would strand every
+// older binary: the version check below refused anything it did not know, which
+// made an upgrade one-way. The table is written by the first version above 3;
+// this version only reads it.
+const (
+	storeMetaTable   = "store_meta"
+	minReaderVersion = "min_reader_version"
+)
+
+// ErrNewerStore reports a store written by a newer build that has not declared
+// this build able to read it. The store is left exactly as it was found.
+var ErrNewerStore = errors.New("collections database was written by a newer aforge")
+
 // LOCK WAITS ARE BOUNDED so a peer holding the writer cannot hang a command
 // indefinitely. The pragma is built from this constant rather than repeating
 // the number, because a bound that appears twice is a bound that drifts.
 const busyTimeout = time.Second
+
+// Statistics are refreshed when a handle closes, over a bounded sample, so the
+// planner keeps choosing indexes as the organization graph grows. The sample
+// bound is SQLite's own recommendation for this pragma on short-lived handles.
+const analysisLimit = 400
 
 // Store owns collection metadata and sourced context revisions. Transcripts, task checkpoints, standing
 // items and artifacts retain their existing owners and persistence formats.
@@ -138,6 +161,46 @@ func storePath(path string) (string, error) {
 // so the creating door and the read-only door cannot drift apart in their
 // pragmas or their locking.
 func openStore(absolute string) (*Store, error) {
+	db, err := sql.Open("sqlite", storeDSN(absolute))
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(1)
+	s := &Store{db: db}
+	if err := s.initialize(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("open collections: %w", err)
+	}
+	s.useWAL()
+	return s, nil
+}
+
+// useWAL moves the store to write-ahead logging the first time a build that
+// knows about it opens the store; the mode is kept in the file, so every later
+// open finds it already set and takes no lock for it. Under the rollback
+// journal a reader holding its snapshot makes a committing writer wait, and the
+// one-second bound above turns that wait into "database is locked" once the
+// organization is read on every turn by several processes. WAL lets readers and
+// one writer proceed together.
+//
+// IT RUNS ONLY AFTER THE STORE WAS ACCEPTED, because switching the mode rewrites
+// the file header and a store this build refused must be left byte for byte as
+// it was found. A switch that cannot happen now — a peer is mid-transaction, or
+// the file system cannot share WAL memory and SQLite keeps the old mode — leaves
+// the store in the rollback journal it has always used, which is correct and
+// only slower, and the next open tries again. That is why the result is not an
+// error: refusing to open over a journal mode would stop work the old mode
+// handles correctly.
+func (s *Store) useWAL() {
+	var mode string
+	if err := s.db.QueryRow("PRAGMA journal_mode").Scan(&mode); err != nil || strings.EqualFold(mode, "wal") {
+		return
+	}
+	_ = s.db.QueryRow("PRAGMA journal_mode=WAL").Scan(&mode)
+}
+
+// storeDSN spells every per-connection setting this store relies on.
+func storeDSN(absolute string) string {
 	u := url.URL{Scheme: "file", Path: absolute}
 	q := u.Query()
 	// The caller either created the private file or required it to exist. SQLite
@@ -149,17 +212,7 @@ func openStore(absolute string) (*Store, error) {
 	q.Add("_pragma", "synchronous(FULL)")
 	q.Set("_txlock", "immediate")
 	u.RawQuery = q.Encode()
-	db, err := sql.Open("sqlite", u.String())
-	if err != nil {
-		return nil, err
-	}
-	db.SetMaxOpenConns(1)
-	s := &Store{db: db}
-	if err := s.initialize(); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("open collections: %w", err)
-	}
-	return s, nil
+	return u.String()
 }
 
 // schemaReader is the surface initialization needs, satisfied by both the
@@ -198,6 +251,9 @@ func (s *Store) initialize() error {
 		// successful open. We never recreate a damaged initialized schema.
 		return verifySchema(s.db)
 	}
+	if app == applicationID && version > schemaVersion {
+		return s.acceptNewer()
+	}
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return err
@@ -210,6 +266,13 @@ func (s *Store) initialize() error {
 	switch {
 	case app == applicationID && version == schemaVersion:
 		if err := verifySchema(tx); err != nil {
+			return err
+		}
+		return tx.Commit()
+	case app == applicationID && version > schemaVersion:
+		// A peer upgraded between the first reading and this one. The newer
+		// store is judged exactly as it would have been had it been seen first.
+		if err := verifyNewer(tx, version); err != nil {
 			return err
 		}
 		return tx.Commit()
@@ -255,6 +318,43 @@ func (s *Store) initialize() error {
 	return tx.Commit()
 }
 
+// acceptNewer opens a store stamped by a newer build without taking the
+// writer. The stamp, the declaration and the tables are read in one snapshot,
+// so a peer upgrading again in between cannot be half seen. Versions only ever
+// rise, so the stamp read inside the snapshot is still newer than this build.
+func (s *Store) acceptNewer() error {
+	tx, err := s.db.BeginTx(context.Background(), &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	_, version, err := stamp(tx)
+	if err != nil {
+		return err
+	}
+	return verifyNewer(tx, version)
+}
+
+// verifyNewer accepts a newer store only when it declares this build a
+// permitted reader, and only after every table this build uses answers. A
+// newer store that says nothing about its readers is refused: silence is not
+// permission, and the store is left untouched either way.
+func verifyNewer(q schemaReader, version int) error {
+	var declared string
+	err := q.QueryRow("SELECT value FROM "+storeMetaTable+" WHERE key=?", minReaderVersion).Scan(&declared)
+	if err != nil {
+		return fmt.Errorf("%w: version %d does not say which older builds may read it (%v); this build reads version %d", ErrNewerStore, version, err, schemaVersion)
+	}
+	minimum, err := strconv.Atoi(declared)
+	if err != nil || minimum < 1 {
+		return fmt.Errorf("%w: version %d declares an unreadable minimum reader %q", ErrNewerStore, version, declared)
+	}
+	if minimum > schemaVersion {
+		return fmt.Errorf("%w: version %d needs a build that reads version %d or newer; this build reads version %d", ErrNewerStore, version, minimum, schemaVersion)
+	}
+	return verifySchema(q)
+}
+
 // verifySchema reads every table this version depends on. A store is only
 // reported as open once all of them answer; a missing half is never an empty set.
 func verifySchema(q schemaReader) error {
@@ -293,7 +393,18 @@ func verifyCollectionSchema(q schemaReader) error {
 	return nil
 }
 
-func (s *Store) Close() error { return s.db.Close() }
+// Close refreshes the planner's statistics and releases the handle. The
+// refresh is PRAGMA optimize, which analyzes only the tables this handle's
+// queries showed would benefit, over a bounded sample; it is what keeps the
+// recursive governing walk on its indexes as the graph grows (L10). IT NEVER
+// WAITS FOR A PEER: the lock wait is dropped to zero first, so a close that
+// finds another writer skips the refresh and the next close does it. Statistics
+// guide the planner and hold no data, so a skipped refresh loses nothing and is
+// not reported as a failure of the close.
+func (s *Store) Close() error {
+	_, _ = s.db.Exec(fmt.Sprintf("PRAGMA busy_timeout=0; PRAGMA analysis_limit=%d; PRAGMA optimize", analysisLimit))
+	return s.db.Close()
+}
 
 func (s *Store) Create(ctx context.Context, name string) (Collection, error) {
 	if err := ValidateName(name); err != nil {
