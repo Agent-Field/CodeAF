@@ -290,6 +290,11 @@ type DaySpend struct {
 	// Tokens is input plus output as one sum, which is the figure every surface
 	// in this codebase draws ([TaskIndexEntry.Tokens] states the law).
 	Tokens int
+	// Input and Output are the two halves Tokens is made of, kept separately so
+	// a Days lens can compare them the way a Models lens does. Zero is ordinary
+	// and draws as nothing on the page (the emptiness law is the page's).
+	Input  int
+	Output int
 	USD    float64
 }
 
@@ -361,6 +366,8 @@ func UsageByDay(lines []UsageLine, window UsageWindow) []DaySpend {
 		for i := range series {
 			if series[i].At.Equal(start) {
 				series[i].Calls += line.Calls
+				series[i].Input += line.Input
+				series[i].Output += line.Output
 				series[i].Tokens += line.Input + line.Output
 				series[i].USD += line.USD
 				break
@@ -446,6 +453,11 @@ type ModelSpend struct {
 	Model  string
 	Calls  int
 	Tokens int
+	// Input and Output are the two halves Tokens is made of. The ledger does not
+	// keep a cache split ([UsageLine] says why), so these two are the finest
+	// token facts a spend page can draw.
+	Input  int
+	Output int
 	USD    float64
 }
 
@@ -473,6 +485,8 @@ func UsageByModel(lines []UsageLine) []ModelSpend {
 			totals[id] = row
 		}
 		row.Calls += line.Calls
+		row.Input += line.Input
+		row.Output += line.Output
 		row.Tokens += line.Input + line.Output
 		row.USD += line.USD
 	}
@@ -480,6 +494,14 @@ func UsageByModel(lines []UsageLine) []ModelSpend {
 	for _, row := range totals {
 		rows = append(rows, *row)
 	}
+	SortModelSpend(rows)
+	return rows
+}
+
+// SortModelSpend orders by dollars, then calls, then name — the Models lens and
+// the picker's "used lately" fold share this so two readings of one ledger
+// cannot disagree about who came first.
+func SortModelSpend(rows []ModelSpend) {
 	sort.Slice(rows, func(i, j int) bool {
 		switch {
 		case rows[i].USD != rows[j].USD:
@@ -489,7 +511,56 @@ func UsageByModel(lines []UsageLine) []ModelSpend {
 		}
 		return rows[i].Model < rows[j].Model
 	})
-	return rows
+}
+
+// PeakHour is the local hour-of-day (0–23) that held the most dollars in lines,
+// and whether any priced call was present at all. A quiet ledger answers
+// false — the emptiness law draws nothing for an unknown peak.
+func PeakHour(lines []UsageLine) (hour int, ok bool) {
+	var byHour [24]float64
+	any := false
+	for _, line := range lines {
+		if !(line.USD > 0) {
+			continue
+		}
+		any = true
+		byHour[line.At.Local().Hour()] += line.USD
+	}
+	if !any {
+		return 0, false
+	}
+	best := 0
+	for h := 1; h < 24; h++ {
+		if byHour[h] > byHour[best] {
+			best = h
+		}
+	}
+	return best, true
+}
+
+// ActiveStreak is how many consecutive local days ending on end carried any
+// priced spend, walking backward through days. Zero means none — and draws as
+// nothing.
+func ActiveStreak(lines []UsageLine, end time.Time) int {
+	spent := map[string]bool{}
+	for _, line := range lines {
+		if line.USD > 0 {
+			spent[UsageLineDay(line).Format(usageDayLayout)] = true
+		}
+	}
+	if len(spent) == 0 {
+		return 0
+	}
+	day := usageBucketStart(end, GrainDay)
+	n := 0
+	for {
+		if !spent[day.Format(usageDayLayout)] {
+			break
+		}
+		n++
+		day = day.AddDate(0, 0, -1)
+	}
+	return n
 }
 
 // ── what it was for ─────────────────────────────────────────────────────────

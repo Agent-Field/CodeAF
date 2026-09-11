@@ -419,6 +419,8 @@ func (a *app) moveTarget() bool {
 // cursor sits on what you are on, so enter confirms rather than changes.
 func (a *app) openTargetPicker() {
 	a.target.pick.startFor(a.modelsFor(chatModel), a.targetModel(), chatModel)
+	a.armSpendHistory(&a.target.pick)
+	a.target.pick.rank()
 	a.touch()
 }
 

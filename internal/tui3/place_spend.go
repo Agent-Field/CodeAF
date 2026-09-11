@@ -47,6 +47,12 @@ type spendPage struct {
 	// win is which stretch of time and how coarse — the two dimensions the four
 	// `shift+arrow` keys move ([session.UsageWindow]).
 	win session.UsageWindow
+	// lens is which READING of the held lines is on screen (spendlens.go). Rhythm
+	// is the default; `[` / `]` and `/spend models|days|year` move it.
+	lens spendLens
+	// group and sort are the Models / Days lens controls (`g`, `c` / `t`).
+	group spendGroup
+	sort  spendSort
 	// reading is the answer the body is drawn from: derived, immutable, and
 	// rebuilt only when the lines, the window or the names actually changed.
 	reading spendReading
@@ -293,7 +299,7 @@ func (a *app) rebuildSpend() {
 	// them can fit does. Waiting for a draw would leave the cursor standing on
 	// the header until the first frame, which is a real state on a window that
 	// opened this place and has not painted yet.
-	_, p.stops = p.reading.body(a.width, a.pal)
+	_, p.stops = p.reading.paintLens(p.lens, p.group, p.sort, a.width, a.pal, nil)
 	p.cursor = a.nearestSpendStop(p.cursor)
 	// FOCUS WAKES ONCE, on the first reading that has anything to wake on —
 	// which is not always the one taken on the way in: a far machine's ledger
@@ -435,6 +441,36 @@ func (a *app) spendKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		a.leavePlace()
 		return nil
+	case "]":
+		a.cycleSpendLens(1)
+		return nil
+	case "[":
+		a.cycleSpendLens(-1)
+		return nil
+	case "g":
+		if a.spend.lens == spendLensModels {
+			a.spend.group = a.spend.group.next()
+			a.spend.woke = false
+			a.rebuildSpend()
+			a.touch()
+		}
+		return nil
+	case "c":
+		if a.spend.lens == spendLensModels || a.spend.lens == spendLensDays {
+			a.spend.sort = spendSortCost
+			a.spend.woke = false
+			a.rebuildSpend()
+			a.touch()
+		}
+		return nil
+	case "t":
+		if a.spend.lens == spendLensModels || a.spend.lens == spendLensDays {
+			a.spend.sort = spendSortTokens
+			a.spend.woke = false
+			a.rebuildSpend()
+			a.touch()
+		}
+		return nil
 	case "up", "ctrl+p":
 		a.moveSpend(-1)
 		a.touch()
@@ -456,6 +492,65 @@ func (a *app) spendKey(msg tea.KeyPressMsg) tea.Cmd {
 		a.touch()
 	}
 	return nil
+}
+
+// cycleSpendLens is `[` / `]`: one step along the lens cycle, and a re-read when
+// the Year lens needs a longer floor than the fortnight the page opened on.
+func (a *app) cycleSpendLens(dir int) {
+	if dir < 0 {
+		a.setSpendLens(a.spend.lens.prev())
+		return
+	}
+	a.setSpendLens(a.spend.lens.next())
+}
+
+// setSpendLens lands on one lens and rebuilds. Year may need lines older than
+// the current window's From; Rhythm/Models/Days keep the window the arrows set.
+func (a *app) setSpendLens(lens spendLens) {
+	a.spend.lens = lens
+	a.spend.woke = false
+	if lens == spendLensYear {
+		year := yearWindow(a.now())
+		if a.spend.win.From.After(year.From) {
+			// Keep the fortnight on the head; only the read floor moves so the
+			// heatmap has a year of lines to draw.
+			a.readSpendFrom(year.From)
+			return
+		}
+	}
+	a.rebuildSpend()
+	a.touch()
+}
+
+// readSpendFrom re-reads the ledger from a floor without moving the window.
+func (a *app) readSpendFrom(from time.Time) {
+	now := a.now()
+	lines, held := []session.UsageLine(nil), false
+	if a.ledger != nil {
+		var known bool
+		lines, held, known = a.ledger(from)
+		if !known {
+			a.rebuildSpend()
+			a.touch()
+			return
+		}
+	} else {
+		lines, _ = a.spend.cache.Read(from)
+	}
+	a.spend.lines, a.spend.read = lines, now
+	a.spend.world = a.readWorld()
+	a.spend.names = a.spendNames(a.spend.world)
+	a.spend.held = held
+	if a.ledger == nil {
+		for _, line := range lines {
+			if line.USD > 0 {
+				a.spend.held = true
+				break
+			}
+		}
+	}
+	a.rebuildSpend()
+	a.touch()
 }
 
 // openSpendRow is `enter` on a row of "what it was for": it opens THE THING THE
@@ -484,6 +579,16 @@ func (a *app) openSpendRow() (tea.Cmd, bool) {
 	// line is still there, now saying `fewer`, so the next `enter` undoes it.
 	if stop.fold {
 		a.spend.unfolded = !a.spend.unfolded
+		a.rebuildSpend()
+		return nil, true
+	}
+	// A DAYS-LENS ROW DRILLS INTO THAT DAY: the window becomes the day, the lens
+	// returns to Rhythm, and the models/subjects under it are that day's bill.
+	if stop.day.USD > 0 && !stop.day.At.IsZero() {
+		day := session.UsageWindow{From: stop.day.At, To: stop.day.At, Grain: session.GrainDay}
+		a.spend.win = day.Normalized()
+		a.spend.lens = spendLensRhythm
+		a.spend.woke = false
 		a.rebuildSpend()
 		return nil, true
 	}
@@ -574,7 +679,7 @@ func (placeSpend) remote(a *app) string {
 }
 
 func (placeSpend) body(a *app, width, room int) []placeRow {
-	if a.spend.reading.empty() {
+	if a.spend.reading.empty() && a.spend.lens != spendLensYear {
 		if !a.spend.held {
 			return placeWhisperRows(pageSpend, width, room, a.pal)
 		}
@@ -588,8 +693,11 @@ func (placeSpend) body(a *app, width, room int) []placeRow {
 		a.spend.stops, a.spend.top, a.spend.shown = nil, 0, 0
 		return rows
 	}
+	if a.spend.lens == spendLensYear && !a.spend.held && a.spend.reading.empty() {
+		return placeWhisperRows(pageSpend, width, room, a.pal)
+	}
 	lit := func(i int) bool { return (i == a.spend.cursor || i == a.spend.hover) && a.spendStopAt(i).ok }
-	body, stops := a.spend.reading.paint(width, a.pal, lit)
+	body, stops := a.spend.reading.paintLens(a.spend.lens, a.spend.group, a.spend.sort, width, a.pal, lit)
 	a.spend.stops = stops
 	// THE WINDOW FOLLOWS THE CURSOR. A body cut at the room and never moved
 	// loses the cursor off the bottom of the screen the moment the ledger is
@@ -670,6 +778,7 @@ const (
 	spendEnterWord  = "enter opens what spent it"
 	spendVerbLead   = "→ "
 	spendWindowWord = "shift+←→ move the days"
+	spendLensWord   = "[ ] lenses"
 )
 
 // hint is the foot, assembled from the clauses that are TRUE of the row under
@@ -682,9 +791,19 @@ const (
 // surface advertising a key that does nothing.
 func (placeSpend) hint(a *app) string {
 	var parts []string
+	parts = append(parts, a.spend.lens.word()+" · "+spendLensWord)
+	if a.spend.lens == spendLensModels {
+		parts = append(parts, spendGroupKeyWord, spendSortKeyWord)
+	}
+	if a.spend.lens == spendLensDays {
+		parts = append(parts, spendSortKeyWord)
+		if stop := a.spendStopAt(a.spend.cursor); stop.day.USD > 0 {
+			parts = append(parts, "enter opens that day")
+		}
+	}
 	if stop := a.spendStopAt(a.spend.cursor); stop.fold {
 		parts = append(parts, foldEnterWord(a.spend.unfolded))
-	} else if stop.ok {
+	} else if stop.ok && stop.day.At.IsZero() {
 		parts = append(parts, spendEnterWord)
 		for _, v := range (placeSpend{}).verbs(a) {
 			parts = append(parts, spendVerbLead+v.word)
@@ -695,9 +814,6 @@ func (placeSpend) hint(a *app) string {
 		parts = append(parts, spendWindowWord)
 	}
 	if len(parts) == 0 {
-		// A PAGE WITH NOTHING ON IT STILL HAS A WAY OUT, and that is all it has.
-		// [placeTailed] adds `tab next place`, so this is `esc` alone rather than
-		// a foot naming three keys over an empty ledger.
 		return "esc"
 	}
 	return strings.Join(parts, railSep) + railSep + "esc"
