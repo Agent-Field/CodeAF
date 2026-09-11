@@ -429,6 +429,23 @@ func callLogLine(record calllog.Record, answered bool, now time.Time) string {
 	if ended := strings.TrimSpace(record.Ended); ended != "" {
 		fields = append(fields, "closed: "+ended)
 	}
+	// WHAT ACTUALLY ENDED IT, beside what was planned. `rescue at` above is when
+	// a second machine was going to be considered and it ends nothing; this is
+	// the bound that really cut the attempt, and it is absent on the great
+	// majority of rows, which ended for reasons of their own.
+	if word := strings.TrimSpace(record.AppliedWord); word != "" {
+		cut := "cut: " + word
+		if record.AppliedMs > 0 {
+			cut += " at " + shortDuration(time.Duration(record.AppliedMs)*time.Millisecond)
+		}
+		fields = append(fields, cut)
+	}
+	// AND AN ARM THAT LOST A RACE IS NOT A FAILURE. Its error says `context
+	// canceled` like a call somebody walked away from, and without this word a
+	// reader of this line cannot tell the two apart.
+	if record.Exhaust {
+		fields = append(fields, "lost the race")
+	}
 	// WHAT THE PROVIDER ITSELF ASKED FOR. A refusal that named a comeback time
 	// is the only refusal this build may answer with the same bytes to the same
 	// machine, so the figure it named is the one thing a reader has to be able

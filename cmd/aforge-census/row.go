@@ -64,6 +64,23 @@ func (r row) failed() bool {
 	return strings.TrimSpace(r.Error) != "" || (r.Status != 0 && r.Status != 200)
 }
 
+// exhaust reports whether this row is the losing arm of a hedge this build won.
+//
+// IT IS NOT A FAILURE AND COUNTING IT AS ONE MEASURES OUR OWN HEDGING POLICY.
+// The arm really was sent and really was cut off, so its row says `context
+// canceled` and reads exactly like a caller walking away: 1,204 of 3,906 bad
+// rows in the first census, the largest cause family in it, every one of them
+// the price of a race that ended with an answer.
+//
+// The sentence is read as well as the field because the rows already in the log
+// have only the sentence — internal/provider wrote the note for one wave while
+// this field was landing, and a census that could not read it would show the
+// finding disappearing on the day of the rebuild rather than on the day the
+// build changed.
+func (r row) exhaust() bool {
+	return r.Exhaust || strings.Contains(strings.ToLower(r.Note), "lost the race")
+}
+
 // readLog reads every line of a log into rows, skipping the ones that are not
 // JSON at all.
 //
@@ -150,17 +167,26 @@ const (
 	// because it is the one class that is a defect in the RECORD rather than a
 	// fact about a call.
 	classUnwritten statusClass = "closed by the transport"
+	// classExhaust is the arm of a hedge that was cut off because the other arm
+	// answered. It sits beside the failures and is NOT one: the question it was
+	// sent for was answered, and by this build's own design.
+	classExhaust statusClass = "hedge exhaust"
 )
 
 // classesInOrder is the order the table prints, worst-understood last.
 var classesInOrder = []statusClass{
-	classClean, classInStream, classPaced, classTransport,
+	classClean, classExhaust, classInStream, classPaced, classTransport,
 	classRouting, classMalformed, classOther, classUnwritten, classNote,
 }
 
 func (r row) statusClass() statusClass {
 	failing := strings.TrimSpace(r.Error) != ""
 	switch {
+	case r.exhaust():
+		// READ BEFORE THE STATUS COLUMN, because there is nothing in the status
+		// column to read: a cancelled arm has no status, and every reading of
+		// this log before the field existed filed it under `transport`.
+		return classExhaust
 	case r.Ended != "" && r.Status == 0 && !failing:
 		return classUnwritten
 	case r.Status == 200 && !failing:
@@ -190,8 +216,19 @@ func (r row) statusClass() statusClass {
 type causeFamily string
 
 const (
-	causeCanceled  causeFamily = "self-inflicted: canceled"
-	causeDeadline  causeFamily = "self-inflicted: deadline"
+	causeExhaust  causeFamily = "hedge exhaust: the other arm answered"
+	causeCanceled causeFamily = "self-inflicted: canceled"
+	// causeCaller is the CALLER's own context running out, and it is a separate
+	// family from the walls because they are set in different buildings.
+	//
+	// IT WAS READ AS A WALL AND IT NEVER WAS ONE. The 869 `context deadline
+	// exceeded` rows in the first census sit at exactly sixty and ninety
+	// seconds, which is no bound internal/provider owns: they are the errand
+	// deadlines internal/session sets around an auxiliary call
+	// (docs/design/recovery/DESIGN.md §8, R4's correction). A census that files
+	// them under the stream guard's walls is telling a wave to go and loosen a
+	// bound that had nothing to do with it.
+	causeCaller    causeFamily = "caller deadline (the caller's own context)"
 	causeWall      causeFamily = "self-inflicted: walls"
 	causePaced     causeFamily = "provider: 429"
 	causeNetwork   causeFamily = "network / this laptop"
@@ -202,8 +239,15 @@ const (
 )
 
 var familiesInOrder = []causeFamily{
-	causeCanceled, causePaced, causeDeadline, causeNetwork,
+	causeExhaust, causeCanceled, causePaced, causeCaller, causeNetwork,
 	causeRouting, causeWall, causeUpstream, causeMalformed, causeUnread,
+}
+
+// ourOwnDoing are the families that are this build acting, not the world going
+// wrong. They are named as a set because the headline number of the census — how
+// much of the failure is the provider's — is meaningless without it.
+var ourOwnDoing = map[causeFamily]bool{
+	causeExhaust: true, causeCanceled: true, causeCaller: true, causeWall: true,
 }
 
 // networkPhrases are what a failure on this laptop's own wire says. They are
@@ -237,10 +281,19 @@ func (r row) cause() (causeFamily, bool) {
 	}
 	said := strings.ToLower(r.Error)
 	switch {
+	case r.exhaust():
+		return causeExhaust, true
 	case strings.Contains(said, "context canceled"):
 		return causeCanceled, true
 	case strings.Contains(said, "context deadline exceeded"):
-		return causeDeadline, true
+		// WHICH DEADLINE IS A FIELD NOW AND NOT A GUESS. A bound this package
+		// owns says so on the row (`applied`); a `context deadline exceeded`
+		// with nothing in that field came from a context somebody else set, and
+		// the honest reading of it is the caller's.
+		if strings.TrimSpace(r.AppliedWord) != "" {
+			return causeWall, true
+		}
+		return causeCaller, true
 	case r.Status == 429 || apiErrorStatus(said) == 429:
 		return causePaced, true
 	case r.Status == 404 || apiErrorStatus(said) == 404:

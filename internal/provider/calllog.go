@@ -410,6 +410,17 @@ func (c *Client) record(facts recordFacts) {
 	if wait, watched := streamWatchFrom(facts.ctx).facts(); watched {
 		record.Lane = wait.lane
 		record.HazardCeilingMs = wait.deadline.Milliseconds()
+		// WHAT WAS PLANNED AND WHAT HAPPENED ARE TWO FIELDS, AND THE ROW MAY
+		// CARRY BOTH. The ceiling above is when the watch was going to start
+		// thinking about a second machine; these two are the bound that actually
+		// ended the attempt, and they stay empty on every attempt no bound of
+		// ours ended, which is almost all of them.
+		record.AppliedMs = wait.applied.Milliseconds()
+		record.AppliedWord = wait.appliedWord
+		// AN ARM THAT LOST A RACE IS EXHAUST AND NOT A FAILURE, and its row is
+		// the only place that can say so: the error it carries is `context
+		// canceled`, indistinguishable in the file from a caller walking away.
+		record.Exhaust = wait.exhaust
 		if record.TTFTms == 0 {
 			// The watch's reading is the FALLBACK and not the source. A raced
 			// call has both; an unwatched one has only what the stream loop

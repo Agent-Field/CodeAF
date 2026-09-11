@@ -315,3 +315,52 @@ func TestAnAttemptNothingWroteIsClosedByTheTransport(t *testing.T) {
 		t.Errorf("closing a square log wrote %d more rows", after-before)
 	}
 }
+
+// TestTheLosingArmsRowSaysItIsExhaustAndNotAFailure carries the watch's two
+// readings (internal/provider's armwatch.go, wave R4) onto the row, which is the
+// only place a census can reach them.
+//
+// A CANCELLED ARM AND AN ABANDONED CALL ARE THE SAME SENTENCE IN THIS FILE. Both
+// say `context canceled`, and the first census read all 1,204 of them as
+// failures — the largest cause family it found, and not one of them a thing that
+// went wrong: they are the price of a race this build chose to run and won. The
+// row is where the difference has to be written down, because by the time
+// anything reads the log the race is long over.
+func TestTheLosingArmsRowSaysItIsExhaustAndNotAFailure(t *testing.T) {
+	read := loggingTo(t)
+	rig := newLaneRig(t, "exhaust/row",
+		// Thirty virtual seconds to A's first token, against five milliseconds
+		// to B's: the rescue lands and A is cut off with nothing written.
+		lanestub.Lane{Name: "A", Profile: lanestub.Profile{TTFT: 300 * time.Millisecond, Rate: 2000, Tokens: 24}},
+		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
+	)
+	rig.believes("A", 20, 2000)
+
+	report := &HedgeReport{}
+	ctx := WithHedgeReport(talking(), report)
+	ctx = WithLaneChoice(ctx, choiceFor(rig.model, 12*time.Millisecond))
+	if _, err := rig.client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
+		t.Fatal(err)
+	}
+	if !report.Hedged() {
+		t.Fatal("the scenario did not hedge, so there is no losing arm to record")
+	}
+	// The loser's row is written where the loser finds out, which is a moment
+	// after the caller already has its answer.
+	waitFor(t, func() bool { return len(ended(read())) == 2 })
+
+	var exhaust, answers int
+	for _, row := range ended(read()) {
+		if row.Exhaust {
+			exhaust++
+			if strings.TrimSpace(row.Error) == "" {
+				t.Error("the exhaust row has no error on it, so there was nothing for a census to mistake")
+			}
+			continue
+		}
+		answers++
+	}
+	if exhaust != 1 || answers != 1 {
+		t.Fatalf("the race left %d exhaust rows and %d answers, want one of each", exhaust, answers)
+	}
+}

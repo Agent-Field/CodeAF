@@ -37,13 +37,18 @@ func TestTheCensusTellsAFailureInsideAnOpenedStreamFromASuccess(t *testing.T) {
 			counted[r.statusClass()]++
 		}
 	}
-	// Four of the fixture's 200s carry an error and are failures whatever the
-	// status column says; six are clean answers.
-	if counted[classInStream] != 4 {
-		t.Errorf("200-with-an-error rows: got %d, want 4", counted[classInStream])
+	// Five of the fixture's 200s carry an error and are failures whatever the
+	// status column says; six are clean answers. A sixth 200 carries an error
+	// too and is not a failure at all: it is the arm of a hedge the other arm
+	// won, and it has its own class so it can never be read as either.
+	if counted[classInStream] != 5 {
+		t.Errorf("200-with-an-error rows: got %d, want 5", counted[classInStream])
 	}
 	if counted[classClean] != 6 {
 		t.Errorf("clean 200s: got %d, want 6", counted[classClean])
+	}
+	if counted[classExhaust] != 1 {
+		t.Errorf("hedge exhaust: got %d, want 1", counted[classExhaust])
 	}
 	if counted[classPaced] != 3 || counted[classRouting] != 1 || counted[classMalformed] != 1 {
 		t.Errorf("statuses: 429 %d, 404 %d, 400 %d", counted[classPaced], counted[classRouting], counted[classMalformed])
@@ -65,14 +70,15 @@ func TestACauseIsReadFromWhatTheFailureSaysAndNotFromItsStatus(t *testing.T) {
 		family causeFamily
 		n      int
 	}{
-		{causeDeadline, 1},  // a live stream guillotined at ninety seconds
-		{causeCanceled, 1},  // a hedge loser
+		{causeCaller, 1},    // ninety seconds, and no bound of ours says otherwise
+		{causeExhaust, 1},   // an arm cut off because the other one answered
+		{causeCanceled, 1},  // a caller that walked away
 		{causePaced, 3},     // the three 429s, one of them inside no stream at all
 		{causeNetwork, 1},   // DNS on this laptop
 		{causeRouting, 1},   // the account-policy 404
 		{causeUpstream, 1},  // a 504 delivered inside an opened 200
 		{causeMalformed, 1}, // our own bytes refused
-		{causeWall, 1},      // this build's own five-minute cut
+		{causeWall, 2},      // the five-minute cut, and one that names its bound
 	} {
 		if counted[want.family] != want.n {
 			t.Errorf("%s: got %d, want %d", want.family, counted[want.family], want.n)
@@ -195,6 +201,76 @@ func TestTheChecksCountEveryFindingTheFirstCensusMade(t *testing.T) {
 	}
 	if !strings.Contains(got, "| started and never finished | 1 | ") {
 		t.Errorf("the orphaned start row was not counted:\n%s", got)
+	}
+}
+
+// An arm cut off because the other arm answered is the price of a race that was
+// WON, and the largest single "cause family" in the first census was made of
+// them. It is counted apart from the failures everywhere it appears, and it is
+// left out of the machine's health altogether — nothing about the lane we
+// stopped listening to is measured by our own decision to stop.
+func TestAnArmCutOffBecauseTheOtherAnsweredIsNotAFailure(t *testing.T) {
+	got := censusOf(t, defaults())
+	if !strings.Contains(got, "| hedge exhaust | 1 |") {
+		t.Errorf("the exhaust row is not its own class:\n%s", got)
+	}
+	if !strings.Contains(got, "are this build acting on its own calls") {
+		t.Errorf("the cause table does not split our own doing from the world's:\n%s", got)
+	}
+	if !strings.Contains(got, "the question they were sent for WAS answered") {
+		t.Errorf("the exhaust rows are not called what they are:\n%s", got)
+	}
+	if strings.Contains(got, "| Nebius |") {
+		t.Errorf("a cancelled arm was counted against the machine it was sent to:\n%s", got)
+	}
+}
+
+// The rows already in the log carry the sentence and not the field, because
+// internal/provider wrote the note for one wave while the field was landing. A
+// census that could only read the field would show the finding vanishing on the
+// day of the rebuild rather than on the day the build changed.
+func TestAnExhaustRowIsReadFromItsSentenceAsWellAsItsField(t *testing.T) {
+	log := writeLines(t,
+		`{"ts":"2026-09-08T10:00:00.000Z","id":"1","model":"m/one","served":"Nebius","status":200,"ms":900,"hedged":true,"note":"cancelled: lost the race","error":"decode stream: context canceled"}`,
+	)
+	rows, err := readLog(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rows[0].exhaust() {
+		t.Fatal("a row saying in words that it lost the race was read as a failure")
+	}
+	if family, _ := rows[0].cause(); family != causeExhaust {
+		t.Errorf("its cause: got %s, want %s", family, causeExhaust)
+	}
+}
+
+// `context deadline exceeded` is two different facts wearing one sentence, and
+// the first census filed both under this build's own stream walls. The 869 rows
+// at exactly sixty and ninety seconds were the errand deadlines the caller sets;
+// the guard names its own bound on the row when it is the one that cut.
+func TestADeadlineIsTheCallersUnlessABoundOfOursSaysOtherwise(t *testing.T) {
+	log := writeLines(t,
+		`{"ts":"2026-09-08T10:00:00.000Z","id":"1","model":"m/one","status":200,"ms":60000,"error":"decode stream: context deadline exceeded"}`,
+		`{"ts":"2026-09-08T10:01:00.000Z","id":"2","model":"m/one","status":200,"ms":45100,"applied_ms":45000,"applied":"silence","error":"decode stream: context deadline exceeded"}`,
+	)
+	rows, err := readLog(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if family, _ := rows[0].cause(); family != causeCaller {
+		t.Errorf("a deadline no bound of ours claims: got %s, want %s", family, causeCaller)
+	}
+	if family, _ := rows[1].cause(); family != causeWall {
+		t.Errorf("a deadline the guard named: got %s, want %s", family, causeWall)
+	}
+	var out bytes.Buffer
+	report(&out, log, rows, defaults())
+	if !strings.Contains(out.String(), "cut by a bound this build set, and says which") {
+		t.Errorf("the checks do not count the bounds that acted:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "Cut by: silence 1") {
+		t.Errorf("the bound that cut is not named:\n%s", out.String())
 	}
 }
 

@@ -95,7 +95,7 @@ func statusTable(out io.Writer, finishes []row) {
 
 func causeTable(out io.Writer, finishes []row) {
 	counted := map[causeFamily]int{}
-	total := 0
+	total, ours := 0, 0
 	for _, r := range finishes {
 		family, failed := r.cause()
 		if !failed {
@@ -103,13 +103,16 @@ func causeTable(out io.Writer, finishes []row) {
 		}
 		counted[family]++
 		total++
+		if ourOwnDoing[family] {
+			ours++
+		}
 	}
 	fmt.Fprint(out, "## Cause families\n\n")
 	if total == 0 {
 		fmt.Fprint(out, "Nothing failed.\n\n")
 		return
 	}
-	fmt.Fprintln(out, "| family | n | % of failures |")
+	fmt.Fprintln(out, "| family | n | % of bad rows |")
 	fmt.Fprintln(out, "| --- | ---: | ---: |")
 	for _, family := range familiesInOrder {
 		if counted[family] == 0 {
@@ -118,6 +121,18 @@ func causeTable(out io.Writer, finishes []row) {
 		fmt.Fprintf(out, "| %s | %d | %s |\n", family, counted[family], share(counted[family], total))
 	}
 	fmt.Fprintln(out)
+	// THE HEADLINE IS THE SPLIT AND NOT THE TOTAL. A number that counts a race
+	// this build won, a turn a person walked away from and an errand deadline
+	// somebody else set as "failures" is a measurement of our own policy read
+	// back as provider health, which is the reading the first census made and
+	// the reason the two fields it needed now exist.
+	fmt.Fprintf(out, "**%d of %d bad rows (%s) are this build acting on its own calls** — "+
+		"an arm cut off because the other one answered, a caller leaving, a caller's own deadline, "+
+		"or a bound this package set. The remaining %d are the world.\n\n",
+		ours, total, share(ours, total), total-ours)
+	if n := counted[causeExhaust]; n > 0 {
+		fmt.Fprintf(out, "Of those, %d are hedge exhaust: the question they were sent for WAS answered.\n\n", n)
+	}
 }
 
 // ── the signatures ──────────────────────────────────────────────────────────
@@ -337,6 +352,14 @@ func healthSection(out io.Writer, finishes []row, look settings) {
 		if r.at.Before(since) || r.Model == "" {
 			continue
 		}
+		if r.exhaust() {
+			// AN ARM WE CUT OFF SAYS NOTHING ABOUT THE MACHINE IT WAS SENT TO.
+			// It is left out of the health table altogether rather than counted
+			// as a failure of the lane that was still working on it when this
+			// build stopped listening — which would mark down exactly the
+			// machines the hedge is aimed at.
+			continue
+		}
 		machine := strings.TrimSpace(r.Served)
 		if machine == "" {
 			// UNSERVED AND NOT ASSUMED. A row that never learned who answered
@@ -422,6 +445,11 @@ func surprises(out io.Writer, rows, finishes []row) {
 		unwritten   int
 		wildest     float64
 	)
+	var (
+		cutByABound int
+		exhausted   int
+	)
+	appliedBy := map[string]int{}
 	endedBy := map[string]int{}
 	started := map[string]bool{}
 	ended := map[string]bool{}
@@ -455,6 +483,13 @@ func surprises(out io.Writer, rows, finishes []row) {
 			unwritten++
 			endedBy[r.Ended]++
 		}
+		if word := strings.TrimSpace(r.AppliedWord); word != "" {
+			cutByABound++
+			appliedBy[word]++
+		}
+		if r.exhaust() {
+			exhausted++
+		}
 		if r.failed() {
 			failures++
 			if r.Cost == 0 {
@@ -487,8 +522,13 @@ func surprises(out io.Writer, rows, finishes []row) {
 	fmt.Fprintf(out, "| a wait or a cost no second could hold | %d | %d |\n", absurd, len(finishes))
 	fmt.Fprintf(out, "| a row JSON could not spell and lost | %d | %d |\n", unspelled, len(rows))
 	fmt.Fprintf(out, "| closed by the transport because no path wrote it | %d | %d |\n", unwritten, len(finishes))
+	fmt.Fprintf(out, "| cut by a bound this build set, and says which | %d | %d |\n", cutByABound, len(finishes))
+	fmt.Fprintf(out, "| exhaust of a race that was won, counted as a failure until now | %d | %d |\n", exhausted, len(finishes))
 	if unwritten > 0 {
 		fmt.Fprintf(out, "\nClosed as: %s.\n", topOf(endedBy, 6))
+	}
+	if cutByABound > 0 {
+		fmt.Fprintf(out, "\nCut by: %s.\n", topOf(appliedBy, 6))
 	}
 	if wildest > absurdSeconds {
 		fmt.Fprintf(out, "\nThe largest figure in seconds on any row is %g.\n", wildest)

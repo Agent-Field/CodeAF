@@ -217,6 +217,35 @@ type Record struct {
 	// figure was right and the NAME was the lie, so the name moved
 	// (docs/design/recovery/DESIGN.md §7, wave R0).
 	HazardCeilingMs int64 `json:"hazard_ceiling_ms,omitempty"`
+	// AppliedMs is THE BOUND THAT ACTUALLY ENDED THIS ATTEMPT and AppliedWord is
+	// what to call it. HazardCeilingMs above says what was PLANNED; these two say
+	// what HAPPENED, and the row may honestly carry both.
+	//
+	// They are the other half of the `deadline_ms` repair. Separating them is
+	// what lets a reader ask the only question that matters about a cut call —
+	// which bound cut it — instead of inferring one from a ceiling that never
+	// cut anything. Six hundred rows in the 2026-09-10 census were cut by a
+	// bound set OUTSIDE the provider package and were read as the stream wall
+	// cutting live streams, which the wall never did.
+	//
+	// BOTH ARE ABSENT ON EVERY ATTEMPT NO BOUND OF OURS ENDED — an answer, a
+	// refusal, the caller leaving — because absent is the honest reading of
+	// "nothing here cut this". The guard fills them in when one of its bounds
+	// fires (internal/provider, wave R4).
+	AppliedMs   int64  `json:"applied_ms,omitempty"`
+	AppliedWord string `json:"applied,omitempty"`
+	// Exhaust marks the row of an arm that was cancelled because another arm of
+	// the same hedge answered first.
+	//
+	// IT IS THE DIFFERENCE BETWEEN EXHAUST AND FAILURE, and no reading of this
+	// file could tell them apart before it existed. A losing arm's request
+	// really was made and really was cut off, so its row says `context
+	// canceled` like any abandoned call: 1,204 of 3,906 bad rows in the
+	// 2026-09-10 census, the single largest cause family in it, and not one of
+	// them is a thing that went wrong. They are the price of a race this build
+	// chose to run and WON. A census that counts them as failures is measuring
+	// its own hedging policy and calling it provider health.
+	Exhaust bool `json:"exhaust,omitempty"`
 	// Lane is the machine the preference named — the first entry of the
 	// `provider.order` this request carried, or the pin it carried instead.
 	// Empty for a call to an endpoint that is not a router, and for one sent
