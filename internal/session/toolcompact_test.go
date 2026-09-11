@@ -395,6 +395,101 @@ func TestAReducedViewCountsTheBytesItCutExactly(t *testing.T) {
 	}
 }
 
+// THE TAIL OF A COMPACTED RESULT IS THE TOOL'S OWN LAST LINE, NEVER THE JOB
+// FOOTER. A command's verdict is at the end of it, which is exactly where
+// jobfooter.go appends the state of the outstanding jobs — so a reduced view of
+// a 40 KB build log ended in a background job's elapsed time and the model never
+// saw whether the build passed. The footer is stale by the time this view is
+// read anyway; the fresh copy is on the result the model is reading now.
+func TestAReducedViewEndsInTheToolsOwnLastLineAndNotTheJobFooter(t *testing.T) {
+	text := headedOutput(7) + "\n\n[job 3] running 12m03s · last: case 41/120 scored"
+	view := reducedResultView("bash", text, "logs/stubs/9c2f.txt")
+	if strings.Contains(view, "[job 3] running") {
+		t.Fatalf("the compacted view carried the job footer: %.300q", view)
+	}
+	if !strings.HasSuffix(view, strings.TrimSpace(lastLineOf(headedOutput(7)))) {
+		t.Fatalf("the view does not end in the tool's own last line: %.300q", view)
+	}
+	// AND THE SIZE IT REPORTS IS THE RESULT'S, not the result plus a footer.
+	if !strings.Contains(view, fmt.Sprintf("%d bytes ·", len(strings.TrimSpace(headedOutput(7))))) {
+		t.Fatalf("the view counted the footer into the result's size: %.300q", view)
+	}
+}
+
+// The stub line quotes what the TOOL said. A result whose own output was empty
+// used to quote a background job's elapsed time as its outcome.
+func TestAStubQuotesTheToolAndNotTheJobFooter(t *testing.T) {
+	line := stubLine("bash", "\n\n[job 3] running 12m03s · last: case 41/120 scored", "store:412")
+	if strings.Contains(line, "job 3") {
+		t.Fatalf("the stub quoted the job footer as the outcome: %q", line)
+	}
+	if !strings.Contains(line, "0 bytes") {
+		t.Fatalf("the stub counted the footer into the result's size: %q", line)
+	}
+}
+
+func lastLineOf(text string) string {
+	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
+	return lines[len(lines)-1]
+}
+
+// A REWRITE IN THE MIDDLE OF THE TRANSCRIPT HAS TO EARN THE COLD PREFIX BEHIND
+// IT. Measured on this wave's own branch: a 934-byte result was replaced by an
+// 843-byte reduced view whose `full:` clause was a ninety-character absolute
+// path, so ninety-one bytes were reclaimed and 5,260 bytes of conversation
+// behind it were re-billed uncached (BENCH.md §1c). The bound that let it
+// through was on the result's size; what decides whether it pays is the reclaim,
+// and the pointer is part of what eats it.
+func TestAMarginalReducedViewIsDeclinedWhenItsPointerEatsTheSaving(t *testing.T) {
+	// A pointer as long as the one the bench captured, and a result just over
+	// the size at which a view is composed at all.
+	pointer := "/tmp/afconv-home." + strings.Repeat("q", 135) + "/droppings/9c2f0a41b7de.txt"
+	source := resultSource(func(ai.Message) string { return pointer })
+	marginal := strings.Repeat("s", 913) + "\nBUILD-FINISHED-CLEAN"
+
+	messages := []ai.Message{
+		textMessage("system", "SYSTEM-PROMPT-MUST-NOT-MOVE"),
+		textMessage("user", "do the work"),
+		ai.Message{Role: "assistant", ToolCalls: []ai.ToolCall{{
+			ID: "call-0", Function: ai.ToolCallFunction{Name: "bash", Arguments: "{}"},
+		}}},
+		ai.Message{Role: "tool", ToolCallID: "call-0",
+			Content: []ai.ContentPart{{Type: "text", Text: marginal}}},
+		ai.Message{Role: "assistant", ToolCalls: []ai.ToolCall{{
+			ID: "call-1", Function: ai.ToolCallFunction{Name: "bash", Arguments: "{}"},
+		}}},
+		ai.Message{Role: "tool", ToolCallID: "call-1",
+			Content: []ai.ContentPart{{Type: "text", Text: "the newest batch, untouched"}}},
+	}
+
+	// The view IS composed and IS smaller — which is exactly why the old
+	// "smaller than what it replaces" test let it through.
+	view := reducedResultView("bash", marginal, pointer)
+	if len(view) >= len(marginal) {
+		t.Fatalf("the fixture is not marginal: a %d-byte result composed a %d-byte view",
+			len(marginal), len(view))
+	}
+	if reclaim := len(marginal) - len(view); reclaim*stubPrefixShare >= len(marginal) {
+		t.Fatalf("the fixture reclaims %d of %d bytes, which the law allows — "+
+			"make the pointer longer or the result larger", reclaim, len(marginal))
+	}
+
+	got := compactToolHistory(messages, len(messages), source)
+	if text := toolTextsOf(got)[0]; text != marginal {
+		t.Fatalf("a rewrite worth %d bytes was made anyway:\n%.200q",
+			len(marginal)-len(view), text)
+	}
+
+	// AND THE GUARD IS NOT AN OFF SWITCH. The same long pointer against a result
+	// that genuinely has something to give back is still reduced.
+	heavy := append([]ai.Message(nil), messages...)
+	heavy[3] = ai.Message{Role: "tool", ToolCallID: "call-0",
+		Content: []ai.ContentPart{{Type: "text", Text: toolCompactOutput(0)}}}
+	if text := toolTextsOf(compactToolHistory(heavy, len(heavy), source))[0]; !strings.HasPrefix(text, compactReducedMarker) {
+		t.Fatalf("a %d-byte result was left verbatim:\n%.200q", len(toolCompactOutput(0)), text)
+	}
+}
+
 // A SESSION THAT CAN NAME NOWHERE SAYS SO. A pointer at a store this session
 // never had, or a journal it is not writing, costs the model a call and returns
 // nothing — the one failure stub.go's law forbids.

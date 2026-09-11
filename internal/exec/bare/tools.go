@@ -39,25 +39,42 @@ type Tool struct {
 // AllTools returns all seven pi tools in registry order: read, bash, edit,
 // write, grep, find, ls. The first four are active by default (Tools returns
 // them); grep, find, and ls are registered but inactive unless activated.
-func AllTools(cwd string) []Tool {
+//
+// It cuts results at pi's own caps, which is what a caller that cannot say how
+// much room the model has should get. A caller that CAN say builds the same
+// seven through [AllToolsCapped].
+func AllTools(cwd string) []Tool { return AllToolsCapped(cwd, DefaultCaps()) }
+
+// AllToolsCapped is [AllTools] with the belt's own result caps, derived from
+// the model's context window by [CapsFor]. The caps reach the descriptions as
+// well as the truncation: every number these seven tools quote is rendered
+// from the pair they are actually applying.
+func AllToolsCapped(cwd string, caps Caps) []Tool {
+	caps = caps.resolve()
 	return []Tool{
-		newReadTool(cwd),
-		newBashTool(cwd),
+		newReadTool(cwd, caps),
+		newBashTool(cwd, caps),
 		newEditTool(cwd),
 		newWriteTool(cwd),
-		newGrepTool(cwd),
-		newFindTool(cwd),
-		newLsTool(cwd),
+		newGrepTool(cwd, caps),
+		newFindTool(cwd, caps),
+		newLsTool(cwd, caps),
 	}
 }
 
 // Tools returns the four default active pi tools in registry order: read,
-// bash, edit, write. Descriptions and schemas are the exact verbatim pi
-// strings. They go on the wire, so the bytes are pinned to pi's source.
-func Tools(cwd string) []Tool {
+// bash, edit, write. The schemas are the exact verbatim pi strings and go on
+// the wire, so those bytes are pinned to pi's source; the descriptions are
+// this package's own where a cap or a contract had to move (see the block of
+// them below).
+func Tools(cwd string) []Tool { return ToolsCapped(cwd, DefaultCaps()) }
+
+// ToolsCapped is [Tools] with the belt's own result caps. See [AllToolsCapped].
+func ToolsCapped(cwd string, caps Caps) []Tool {
+	caps = caps.resolve()
 	return []Tool{
-		newReadTool(cwd),
-		newBashTool(cwd),
+		newReadTool(cwd, caps),
+		newBashTool(cwd, caps),
 		newEditTool(cwd),
 		newWriteTool(cwd),
 	}
@@ -113,19 +130,42 @@ const findSchemaJSON = `{"type":"object","properties":{"pattern":{"type":"string
 
 const lsSchemaJSON = `{"type":"object","properties":{"path":{"type":"string","description":"Directory to list (default: current directory)"},"limit":{"type":"integer","description":"Maximum number of entries to return (default: 500)"}},"required":[],"additionalProperties":false}`
 
-const readDescription = "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete."
+// EVERY NUMBER IN A DESCRIPTION IS RENDERED FROM THE CAP IN FORCE. The figures
+// below are what the model plans its reading around — how much of a file it
+// gets, when to page — and a belt that quotes 50KB while cutting at 6 is a belt
+// that teaches the model a fact about the machine that is not true. So the five
+// descriptions that carry a limit — read, bash, grep, find and ls — are built at
+// belt time from [Caps], which is why they are functions and their two
+// neighbours are still constants: edit and write quote no number at all.
+//
+// They are also the CONTRACT and nothing else. What a tool is for, and which
+// road a piece of work belongs on, is the page's own table (beltfacts.go's
+// `## Work or words`) stated once — not a policy paragraph repeated in front of
+// every request on the belt.
 
-const bashDescription = "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds."
+func readDescription(caps Caps) string {
+	return fmt.Sprintf("Read a file. Text, or an image (jpg, png, gif, webp, bmp) which comes back as an attachment. Text is cut at %d lines or %s, whichever comes first; page the rest with offset/limit.", caps.MaxLines, sizeWord(caps.MaxBytes))
+}
+
+func bashDescription(caps Caps) string {
+	return fmt.Sprintf("Execute a bash command in the current working directory. Returns stdout and stderr, cut to the last %d lines or %s, whichever comes first; when it is cut the whole output is saved to a temp file the result names. Optionally provide a timeout in seconds.", caps.MaxLines, sizeWord(caps.MaxBytes))
+}
 
 const editDescription = "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes."
 
 const writeDescription = "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories."
 
-const grepDescription = "Search file contents for a pattern. Returns matching lines with file paths and line numbers. Respects .gitignore. Output is truncated to 100 matches or 50KB (whichever is hit first). Long lines are truncated to 500 chars."
+func grepDescription(caps Caps) string {
+	return fmt.Sprintf("Search file contents for a pattern. Returns matching lines with file paths and line numbers. Respects .gitignore. Output is truncated to 100 matches or %s (whichever is hit first). Long lines are truncated to 500 chars.", sizeWord(caps.MaxBytes))
+}
 
-const findDescription = "Search for files by glob pattern. Returns matching file paths relative to the search directory. Respects .gitignore. Output is truncated to 1000 results or 50KB (whichever is hit first)."
+func findDescription(caps Caps) string {
+	return fmt.Sprintf("Search for files by glob pattern. Returns matching file paths relative to the search directory. Respects .gitignore. Output is truncated to 1000 results or %s (whichever is hit first).", sizeWord(caps.MaxBytes))
+}
 
-const lsDescription = "List directory contents. Returns entries sorted alphabetically, with '/' suffix for directories. Includes dotfiles. Output is truncated to 500 entries or 50KB (whichever is hit first)."
+func lsDescription(caps Caps) string {
+	return fmt.Sprintf("List directory contents. Returns entries sorted alphabetically, with '/' suffix for directories. Includes dotfiles. Output is truncated to 500 entries or %s (whichever is hit first).", sizeWord(caps.MaxBytes))
+}
 
 // ── path resolution ────────────────────────────────────────────────────────
 
@@ -226,8 +266,8 @@ var unicodeSpaces = strings.NewReplacer(
 
 // ── read tool ─────────────────────────────────────────────────────────────
 
-func newReadTool(cwd string) Tool {
-	return readTool(cwd, defaultMaxBytes)
+func newReadTool(cwd string, caps Caps) Tool {
+	return readTool(cwd, caps)
 }
 
 // ReadTool returns the ordinary read hand with a smaller content budget. Its
@@ -235,16 +275,24 @@ func newReadTool(cwd string) Tool {
 // This is for belts that reserve part of their total result bound for the
 // footer; values outside the ordinary range use the ordinary 50KB ceiling.
 func ReadTool(cwd string, maxBytes int) Tool {
-	if maxBytes <= 0 || maxBytes > defaultMaxBytes {
-		maxBytes = defaultMaxBytes
+	// ONLY THE BYTE BUDGET IS THE CALLER'S HERE. A composed belt is reserving
+	// room for its own footer, which is a statement about bytes and about
+	// nothing else — scaling the line cap down with it would cut a thin file
+	// that fits the budget whole, which is a behaviour change no caller asked
+	// for. A belt sizing itself to a model's window says so with [CapsFor].
+	caps := DefaultCaps()
+	if maxBytes > 0 && maxBytes < caps.MaxBytes {
+		caps.MaxBytes = maxBytes
 	}
-	return readTool(cwd, maxBytes)
+	return readTool(cwd, caps)
 }
 
-func readTool(cwd string, maxBytes int) Tool {
+func readTool(cwd string, caps Caps) Tool {
+	caps = caps.resolve()
+	maxBytes := caps.MaxBytes
 	return Tool{
 		Name:        "read",
-		Description: readDescription,
+		Description: readDescription(caps),
 		Schema:      json.RawMessage(readSchemaJSON),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var p struct {
@@ -294,7 +342,7 @@ func readTool(cwd string, maxBytes int) Tool {
 				selectedContent = strings.Join(allLines[startLine:], "\n")
 			}
 
-			truncation := truncateHeadAt(selectedContent, defaultMaxLines, maxBytes)
+			truncation := truncateHeadAt(selectedContent, caps.MaxLines, caps.MaxBytes)
 
 			if truncation.firstLineExceedsLimit {
 				firstLineSize := formatSize(byteLength(allLines[startLine]))
@@ -325,10 +373,11 @@ func readTool(cwd string, maxBytes int) Tool {
 
 const maxTimeoutMs = 2147483647
 
-func newBashTool(cwd string) Tool {
+func newBashTool(cwd string, caps Caps) Tool {
+	caps = caps.resolve()
 	return Tool{
 		Name:        "bash",
-		Description: bashDescription,
+		Description: bashDescription(caps),
 		Schema:      json.RawMessage(bashSchemaJSON),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			// When the call was asked for, so a cut can say how long it ran
@@ -418,7 +467,7 @@ func newBashTool(cwd string) Tool {
 			// for both child.stdout and child.stderr. Using separate pipes
 			// with goroutines raced: cmd.Wait closes the pipes before the
 			// goroutines drain the last chunk.
-			acc := newOutputAccumulator()
+			acc := newOutputAccumulator(caps)
 			cmd.Stdout = acc
 			cmd.Stderr = acc
 
@@ -890,6 +939,10 @@ func mutationQueueKey(filePath string) string {
 // when the output exceeds the caps. The snapshot runs truncateTail on the
 // accumulated tail text.
 type outputAccumulator struct {
+	// caps are the belt's own bounds; maxBytes and maxLines are the same two
+	// numbers under the names pi's accumulator gives them, kept because every
+	// arithmetic below reads them one at a time.
+	caps             Caps
 	maxBytes         int
 	maxLines         int
 	maxRollingBytes  int
@@ -921,11 +974,13 @@ func (a *outputAccumulator) Write(data []byte) (int, error) {
 	return len(data), nil
 }
 
-func newOutputAccumulator() *outputAccumulator {
+func newOutputAccumulator(caps Caps) *outputAccumulator {
+	caps = caps.resolve()
 	return &outputAccumulator{
-		maxBytes:        defaultMaxBytes,
-		maxLines:        defaultMaxLines,
-		maxRollingBytes: defaultMaxBytes * 2,
+		caps:            caps,
+		maxBytes:        caps.MaxBytes,
+		maxLines:        caps.MaxLines,
+		maxRollingBytes: caps.MaxBytes * 2,
 	}
 }
 
@@ -1035,11 +1090,14 @@ type accumulatorSnapshot struct {
 	lastLinePartial bool
 	lastLineBytes   int
 	fullOutputPath  string
+	// capBytes is the byte cap this snapshot was cut at, so the footer quotes
+	// the bound that actually bound it rather than a constant.
+	capBytes int
 }
 
 func (a *outputAccumulator) snapshot() accumulatorSnapshot {
 	snapshotText := a.getSnapshotText()
-	tailTrunc := truncateTail(snapshotText)
+	tailTrunc := truncateTail(snapshotText, a.caps)
 
 	truncated := a.totalLines > a.maxLines || a.totalDecoded > a.maxBytes
 	truncatedBy := ""
@@ -1068,6 +1126,7 @@ func (a *outputAccumulator) snapshot() accumulatorSnapshot {
 		lastLinePartial: tailTrunc.lastLinePartial,
 		lastLineBytes:   a.currentLineBytes,
 		fullOutputPath:  a.tempFilePath,
+		capBytes:        a.maxBytes,
 	}
 }
 
@@ -1124,7 +1183,7 @@ func formatBashTruncationFooter(snap accumulatorSnapshot) string {
 	if snap.truncatedBy == "lines" {
 		return fmt.Sprintf("\n\n[Showing lines %d-%d of %d. Full output: %s]", startLine, endLine, snap.totalLines, snap.fullOutputPath)
 	}
-	return fmt.Sprintf("\n\n[Showing lines %d-%d of %d (%s limit). Full output: %s]", startLine, endLine, snap.totalLines, formatSize(defaultMaxBytes), snap.fullOutputPath)
+	return fmt.Sprintf("\n\n[Showing lines %d-%d of %d (%s limit). Full output: %s]", startLine, endLine, snap.totalLines, formatSize(snap.capBytes), snap.fullOutputPath)
 }
 
 // _ keeps strconv imported for potential future use.

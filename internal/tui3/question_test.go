@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -1384,5 +1385,88 @@ func TestChangeAndAskBackTurnTheRowIntoAPromptAndEnterSendsTheWords(t *testing.T
 	}
 	if len(lab.a.questions) != 1 {
 		t.Fatal("esc folded the question instead of ending the prompt")
+	}
+}
+
+// TestAnAnswerTheDoorNeverAcknowledgedIsStillThisWindowsAnswer is the receipt's
+// own honesty, and it is a defect that was measured rather than imagined.
+//
+// The engine runs in its own process even on this machine, so an answer crosses
+// a wire: [session.Agent.ResolveQuestion] applies it, emits
+// [session.EventQuestionAnswered], and writes its reply afterwards. When that
+// reply does not arrive — a deadline spent while the engine was busy, a pipe
+// that went — this window is left holding a question the engine has already
+// settled, and the lane's news about that settling reads, to
+// [app.foldOthersAnswer]'s ordinary rule, exactly like somebody else's answer.
+// On the ordinary road's own e2e that drew `decided … · another window ·` over a
+// key pressed on this very screen, about one run in nine.
+func TestAnAnswerTheDoorNeverAcknowledgedIsStillThisWindowsAnswer(t *testing.T) {
+	lab := newQuestionLab(t)
+	// THE DOOR TAKES IT AND SAYS NOTHING, which is the whole shape of the
+	// failure: refusing an answer and losing the reply to one look identical
+	// from here, and only the second leaves the engine settled.
+	lab.agent.answer = func(answer session.Answer) error {
+		lab.answer = append(lab.answer, answer)
+		return errors.New("the engine did not answer in time")
+	}
+	ask := consentAsk()
+	lab.raise(ask)
+	lab.tick(questionSettle)
+	lab.rows()
+	if !lab.press("1") {
+		t.Fatal("the settled question did not take its own key")
+	}
+	if len(lab.answer) != 1 || lab.answer[0].FirstKey() != "1" {
+		t.Fatalf("the door was handed %+v", lab.answer)
+	}
+	// AND THE LANE BRINGS THAT VERY ANSWER BACK.
+	settled, q := lab.answer[0], ask
+	lab.a.questionFold(session.Event{
+		Kind: session.EventQuestionAnswered, Question: &q, Answer: &settled,
+	})
+	got := lab.plain()
+	if strings.Contains(got, "another window") {
+		t.Fatalf("the receipt says somebody else pressed the key:\n%s", got)
+	}
+	if !strings.Contains(got, "you") {
+		t.Fatalf("the receipt does not say who decided:\n%s", got)
+	}
+	if count := strings.Count(got, "decided "); count != 1 {
+		t.Fatalf("one answer left %d receipts:\n%s", count, got)
+	}
+	if len(lab.a.questions) != 0 {
+		t.Fatalf("the settled question is still on the block: %d open", len(lab.a.questions))
+	}
+}
+
+// TestAnAnswerThisWindowLostStillWearsTheOtherWindowsName is the other half of
+// that law, and the one the guard must not break: FIRST ANSWER WINS
+// (docs/design/questions/DESIGN.md). Two people pressed two different keys, the
+// engine took the other one, and the receipt this window draws is about a
+// decision it did not make.
+func TestAnAnswerThisWindowLostStillWearsTheOtherWindowsName(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.agent.answer = func(answer session.Answer) error {
+		lab.answer = append(lab.answer, answer)
+		return errors.New("that question has already been decided")
+	}
+	ask := consentAsk()
+	lab.raise(ask)
+	lab.tick(questionSettle)
+	lab.rows()
+	if !lab.press("1") {
+		t.Fatal("the settled question did not take its own key")
+	}
+	q := ask
+	other := session.Answer{
+		Kind: q.Kind, ID: q.ID, Ref: q.Ref, Ask: q.Ask,
+		Key: "3", Picked: []string{"3"}, DecidedBy: session.DecidedByPerson, At: lab.at,
+	}
+	lab.a.questionFold(session.Event{
+		Kind: session.EventQuestionAnswered, Question: &q, Answer: &other,
+	})
+	got := lab.plain()
+	if !strings.Contains(got, "another window") {
+		t.Fatalf("a key pressed on another screen was drawn as this window's:\n%s", got)
 	}
 }

@@ -18,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 )
 
 // ── minimal PDFs ────────────────────────────────────────────────────────────
@@ -256,7 +258,7 @@ func TestReadDescriptionGainsOneSentence(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	tool := beltTool(t, agent, "read")
 
-	if !strings.HasPrefix(tool.Description, "Read the contents of a file.") {
+	if !strings.HasPrefix(tool.Description, "Read a file.") {
 		t.Fatalf("pi's description should lead: %q", tool.Description)
 	}
 	if !strings.Contains(tool.Description, pdfSentence) {
@@ -265,8 +267,15 @@ func TestReadDescriptionGainsOneSentence(t *testing.T) {
 	if !strings.HasSuffix(tool.Description, senseSentence) {
 		t.Fatalf("the senses sentence should close it: %q", tool.Description)
 	}
-	if !strings.Contains(tool.Description, "truncated to 2000 lines or 50KB") {
+	// THE FIGURES ARE ASSERTED AGAINST THE CAPS IN FORCE, never against a
+	// literal: the caps follow the model's window now, and a test that pinned
+	// the digits would be pinning the 128k case forever.
+	caps := agent.resultCaps()
+	if !strings.Contains(tool.Description, fmt.Sprintf("cut at %d lines or ", caps.MaxLines)) {
 		t.Fatalf("pi's truncation law should survive the wrap: %q", tool.Description)
+	}
+	if caps != bare.DefaultCaps() {
+		t.Fatalf("a test agent should carry pi's own caps, got %+v", caps)
 	}
 }
 
@@ -320,14 +329,14 @@ func TestPDFReadHonoursOffsetAndLimit(t *testing.T) {
 // 50KB rather than pi's sed hint, which would print binary.
 func TestPDFReadTruncationMirrorsPi(t *testing.T) {
 	many := strings.Repeat("a line of extracted text\n", 2500)
-	truncated := piReadLaw(many, nil, nil)
+	truncated := piReadLaw(bare.DefaultCaps(), many, nil, nil)
 	if !strings.Contains(truncated, "[Showing lines 1-2000 of 2501. Use offset=2001 to continue.]") {
 		t.Fatalf("line truncation should carry pi's footer: %q", truncated[max(0, len(truncated)-120):])
 	}
 
 	huge := strings.Repeat("x", 60*1024)
-	oneLine := piReadLaw(huge, nil, nil)
-	if len(oneLine) < pdfMaxBytes {
+	oneLine := piReadLaw(bare.DefaultCaps(), huge, nil, nil)
+	if len(oneLine) < bare.DefaultCaps().MaxBytes {
 		t.Fatalf("a huge single line should still return its first 50KB, got %d bytes", len(oneLine))
 	}
 	if !strings.Contains(oneLine, "exceeds 50.0KB limit. Showing its first 50.0KB.]") {
@@ -335,7 +344,7 @@ func TestPDFReadTruncationMirrorsPi(t *testing.T) {
 	}
 
 	short := "one\ntwo\nthree"
-	if got := piReadLaw(short, nil, nil); got != short {
+	if got := piReadLaw(bare.DefaultCaps(), short, nil, nil); got != short {
 		t.Fatalf("text inside the caps should ride through untouched: %q", got)
 	}
 }

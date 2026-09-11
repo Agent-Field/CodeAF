@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -936,17 +937,34 @@ func (o *observations) admit(turn int, call ai.ToolCall, result Result) string {
 	if result.IsError {
 		body = "ERROR: " + body
 	}
-	// Three kinds of result are never content-addressed. An error is short and
-	// its whole value is being read where it happened. A result carrying a
-	// background-job report describes state that was true when it was written
-	// and is not true now, so two identical reports are a coincidence rather
-	// than the same fact. And a result with multimodal follow-up content is not
-	// its text — the image is what the model looks at, and a pointer would hand
-	// it a sentence instead.
-	if result.IsError || result.reportedJobs || len(result.Followup) > 0 || call.ID == "" {
+	// Two kinds of result are never content-addressed. An error is short and
+	// its whole value is being read where it happened. And a result with
+	// multimodal follow-up content is not its text — the image is what the
+	// model looks at, and a pointer would hand it a sentence instead.
+	if result.IsError || len(result.Followup) > 0 || call.ID == "" {
 		return body
 	}
-	sum := sha256.Sum256([]byte(body))
+	// THE JOB REPORT IS NOT PART OF THE FACT, SO IT IS NOT PART OF THE ADDRESS.
+	// [Toolbox.finishResult] foots a result with the state of every outstanding
+	// job, and that state carries an elapsed time — it differs on every single
+	// call. Hashing it made every result unique for as long as any job was out,
+	// which turned this whole mechanism off in exactly the sessions that run
+	// longest. So the body is addressed by what the TOOL said, and the report
+	// rides on the pointer that replaces it: the model still reads where its
+	// streams are, and it reads it about now rather than about three turns ago.
+	//
+	// A result that is NOTHING BUT a report has no fact under it to address, and
+	// two reports are never the same fact however alike they read, so it is
+	// carried whole — which is what [Result.reportedJobs] is narrowed to saying.
+	fact, report := body, ""
+	if result.reportedJobs {
+		fact = stripJobReport(body)
+		report = body[len(fact):]
+		if strings.TrimSpace(fact) == "" {
+			return body
+		}
+	}
+	sum := sha256.Sum256([]byte(fact))
 	hash := hex.EncodeToString(sum[:])
 	if earlier, repeated := o.first[hash]; repeated {
 		// A RE-READ OF RETIRED BYTES IS ANSWERED WITH THE BYTES. Once decay has
@@ -964,9 +982,12 @@ func (o *observations) admit(turn int, call ai.ToolCall, result Result) string {
 		}
 		// The bytes in hand are the canonical copy's bytes — that is what the
 		// hash match means — so the durable copy can be written from here, now,
-		// without going back to whatever produced it.
+		// without going back to whatever produced it. It is the FACT that is
+		// preserved: the earlier copy's own job report was about the earlier
+		// copy's moment, and writing this one's in its place would file a stale
+		// clock beside material that has none.
 		if earlier.path == "" {
-			if path, ok := o.fade.preserve(earlier.key, body); ok {
+			if path, ok := o.fade.preserve(earlier.key, fact); ok {
 				earlier.path = path
 				o.first[hash] = earlier
 			}
@@ -974,13 +995,13 @@ func (o *observations) admit(turn int, call ai.ToolCall, result Result) string {
 		// A pointer that is not shorter than what it replaces has saved
 		// nothing and cost the model a hop; the same discipline the decay
 		// stub applies to itself.
-		if pointer, reachable := o.pointerTo(earlier); reachable && len(pointer) < len(body) {
+		if pointer, reachable := o.pointerTo(earlier); reachable && len(pointer) < len(fact) {
 			// The earlier copy has now been read twice and is answerable from a
 			// durable address either way, so it is spent: the decay pass may
 			// retire it ahead of material the model has only read once. See
 			// decayer.retire.
 			o.fade.used(earlier.key)
-			return pointer
+			return pointer + report
 		}
 	}
 	o.first[hash] = observationCopy{turn: turn, key: call.ID, label: callLabel(call)}

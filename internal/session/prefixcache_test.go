@@ -338,6 +338,103 @@ func TestACardThatMovesBetweenTurnsCostsOnlyTheTail(t *testing.T) {
 	}
 }
 
+// TestARoutedMemoryChangeLeavesMessageZeroByteIdentical is the same finding
+// one beat faster, and the one this wave landed.
+//
+// The card moves when work lands. The memory block is re-chosen against the
+// person's own words at the START OF EVERY TURN (memory.go's refreshMemory) and
+// every line it keeps is re-stamped with an age label that is hourly for
+// anything learned today, so it moves on turns where nothing about the work
+// did — and while it rode in message[0] each of those turns re-priced every
+// token of the conversation behind it. It rides at the tail now, so the
+// assertion is the strong one: message[0] itself, byte for byte.
+func TestARoutedMemoryChangeLeavesMessageZeroByteIdentical(t *testing.T) {
+	completer := &beltCompleter{scriptedCompleter: scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("first"), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("second"), nil
+		},
+	}}}
+	agent, _ := newTestAgent(t, completer, nil)
+
+	// The block a task node is opened with, and the block a router hands back,
+	// are the same field: this session has no store, so what is set here is what
+	// the turn carries (agent.go's memoryBrief, memory.go's refreshMemory).
+	agent.mu.Lock()
+	agent.memoryText = "\n<memory>\n- indent: this person indents with tabs (learned today)\n</memory>\n"
+	agent.mu.Unlock()
+
+	events, err := agent.Submit(context.Background(), "one")
+	if err != nil {
+		t.Fatalf("Submit one: %v", err)
+	}
+	collect(t, events)
+
+	// The subject moved, so the router reached for something else.
+	agent.mu.Lock()
+	agent.memoryText = "\n<memory>\n- ports: the dev server answers on 8081 (learned yesterday)\n</memory>\n"
+	agent.mu.Unlock()
+
+	events, err = agent.Submit(context.Background(), "two")
+	if err != nil {
+		t.Fatalf("Submit two: %v", err)
+	}
+	collect(t, events)
+
+	first := wireMessages(t, completer.request(0))
+	second := wireMessages(t, completer.request(1))
+	if first[0] != second[0] {
+		t.Fatalf("message[0] moved, so every token of the conversation behind it is re-billed uncached\nwas:  %.600s\nnow:  %.600s",
+			first[0], second[0])
+	}
+	assertPrefix(t, "the turn after the routed memory moved", first, second)
+
+	// And it did reach the model, at the back — the prefix above is stable
+	// because the block moved to the tail and not because nothing happened.
+	tail := strings.Join(second[len(first):], "\n")
+	if !strings.Contains(tail, "answers on 8081") {
+		t.Fatalf("the newly routed memory never reached the request:\n%s", tail)
+	}
+	if !strings.Contains(tail, memoryNoteOpening) {
+		t.Fatalf("the block landed without the opening that says who is speaking:\n%s", tail)
+	}
+}
+
+// TestTheToolBlockMarshalsToTheSameBytesEveryTime. Every tool's schema in this
+// program is a `map[string]any` by the time it reaches the wire (the SDK's
+// ai.ToolFunction declares Parameters as one), and a map is the classic way to
+// put a random byte order in front of a conversation: the block rides ahead of
+// every message there is, so a schema whose keys came out in a different order
+// would cost the whole transcript on every single request.
+//
+// encoding/json sorts map keys, so this holds today and the test is here to say
+// that it is LOAD-BEARING rather than incidental — a future encoder that
+// preserved authored order, or a schema assembled by ranging over a map, would
+// be caught here rather than in a bill.
+func TestTheToolBlockMarshalsToTheSameBytesEveryTime(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+
+	first := wireTools(t, agent.definitions)
+	for round := range 8 {
+		if again := wireTools(t, agent.definitions); again != first {
+			t.Fatalf("the same belt marshalled differently on round %d — the tool block is not byte-stable", round)
+		}
+	}
+
+	// And built again from the same tools: a schema assembled by ranging over a
+	// map would be stable to re-marshal and unstable to re-build.
+	rebuilt, err := toolDefinitions(agent.tools)
+	if err != nil {
+		t.Fatalf("toolDefinitions: %v", err)
+	}
+	if again := wireTools(t, rebuilt); again != first {
+		t.Fatalf("the belt rebuilt from the same tools marshalled to different bytes\nwas:  %.400s\nnow:  %.400s",
+			first, again)
+	}
+}
+
 // TestASessionWithNothingToSayLandsNoNote. The emptiness law, at the one place
 // it costs money: a conversation with no card and no other window on the project
 // sends no note, no heading and no empty tags.

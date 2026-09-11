@@ -3012,3 +3012,61 @@ reasoning response keeps its existing handling.
 No. The connection wait pauses provider-switch timers. Once the endpoint is
 reachable, those timers restart, and that call is excluded from learned provider
 speed because the local outage was not time spent generating an answer.
+
+## Why a small model gets a shorter page and fewer tools — the lean profile
+
+On a model with a small context window, aforge sends a smaller set of
+instructions and a smaller tool list. Nothing is turned off by a setting and
+nobody is asked to choose. Lean applies in exactly two cases, and nothing else:
+
+- the model's context window is under 32,000 tokens — the figure the catalog or
+  the endpoint reports, which is what a local runner like llama.cpp, ollama or
+  LM Studio tells aforge about the model it has loaded; or
+- you put `AFORGE_PROMPT_PROFILE=lean` in front of the command.
+
+Lean changes four things:
+
+- `# Interrupts and steering` comes off the page. What it explains, each
+  interrupting message now says in its own first words.
+- Seven verbs wait one call away instead of riding in front of every request:
+  `propose_task`, `tasks`, `watch`, `track`, `commit`, `recall` and
+  `read_document`. They are all still here — `load_capability` fetches a group
+  and the schemas arrive on the next request, in the same turn.
+- `ask` is put straight in the tool list rather than waiting to be fetched, so
+  a model that makes one call per message can still put a question to you.
+- Saved memories are off. There is no `remember` verb and no `<memory>` block,
+  and the reply says so plainly if you ask. Nothing is deleted, and a larger
+  model brings them back. The record of what was said is untouched, and still
+  searchable.
+
+The project's own instructions still ride, cut at 2KiB instead of 8KiB, and
+only the first file found of `AGENTS.md` and `CLAUDE.md`. The reply says the
+file was cut and where the rest is.
+
+Why: everything in front of a request is re-sent on every round of every turn.
+On a 128,000-token window that is a few percent; on a 16,000-token one it is
+most of the room the model has to think in.
+
+## Is an open-weight or local model given the lean profile? Does deepseek or glm get a shorter page?
+
+Only if its context window is under 32,000 tokens, or you pinned it. Nothing
+about a model's licence, its vendor, its name or which crew seat it sits in
+makes a session lean.
+
+So an open-weight model with a large window is NOT lean. `deepseek-v4-flash` and
+`glm-5.3-flash` are served with 128,000 tokens of room, so they get the full
+page, the full tool list and saved memories, exactly like any other
+128,000-token model — including when they are the model your crew preset picked
+for the `worker` seat, and including when you then choose that same model in
+chat. Open weights are a licence, not a size.
+
+A model you run yourself usually is small, and it is recognised by the window it
+reports, not by its name: llama.cpp, ollama and LM Studio all tell aforge the
+window the loaded model was given.
+
+`AFORGE_PROMPT_PROFILE=lean` or `AFORGE_PROMPT_PROFILE=full` in front of the
+command pins it either way: lean on a large window, full on a small one. It is
+there for measuring the two arms against each other, and for an endpoint that
+reports a window its loaded model does not really have. There is no settings row
+for the profile yet. Any other value is not a pin at all and the window decides
+as usual.

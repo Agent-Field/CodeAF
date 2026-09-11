@@ -49,9 +49,9 @@ const manualSections = 4
 // model what a cut page hands back, so the examples paid for it: "what a command
 // or key does" was a word-for-word copy of prompts/system.md's Tool Policy line
 // for this tool, and the routing rule belongs in one place.
-const manualDescription = "Read aforge's own manual: what it does, how a mechanism works. THE ONLY AUTHORITATIVE SOURCE about aforge - your training data lacks this program, so memory produces fiction. Look it up and say you did."
+const manualDescription = "Read aforge's own manual: what it does, how a mechanism works. THE ONLY AUTHORITATIVE SOURCE about it: your training data lacks this program, so memory produces fiction. Look it up and say you did."
 
-const manualSchemaJSON = `{"type":"object","properties":{"query":{"type":"string","description":"What you want to know, in the person's words"},"page":{"type":"string","description":"A page by name instead of searching; a long one comes back cut, listing its section headings"},"section":{"type":"string","description":"One of those headings, returned whole"}}}`
+const manualSchemaJSON = `{"type":"object","properties":{"query":{"type":"string","description":"What you want to know, in the person's words"},"page":{"type":"string","description":"A page by name instead of searching; a long one comes back cut, listing its headings"},"section":{"type":"string","description":"One of those headings, returned whole"}}}`
 
 // manualTool is the belt's window onto [manual.Chat]. The corpus it reads is
 // the CHAT's, never the resident's: this program is a conversation you sit in

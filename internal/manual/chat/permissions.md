@@ -647,6 +647,66 @@ auxiliary calls somewhere, set one of the five crew classes
 A row your environment has pinned refuses like it does everywhere else:
 `<label> is set by <NAME>`.
 
+## Does aforge sign my commits — why is there a co-author on my commit, who is agentfield-bot, how do I turn the trailer off
+
+Yes, unless you turn it off. There are three marks and no others, and this is
+exactly what each one looks like.
+
+**A commit** ends with a blank line and one trailer:
+
+```
+Co-Authored-By: aforge <agentfield-bot@users.noreply.github.com>
+```
+
+**A pull request or an issue** ends its body with a line holding an em dash, and
+then one sentence:
+
+```
+—
+Drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=pull_request&utm_campaign=drafted_with) · reviewed and owned by the author
+```
+
+On an issue that link reads `utm_medium=issue` instead.
+
+**A comment** — on an issue, on a pull request, on a line of a review — ends
+with one small muted line, no em dash above it:
+
+```
+<sub>drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=comment&utm_campaign=drafted_with)</sub>
+```
+
+`agentfield-bot` is aforge's own GitHub account and the address is the one GitHub
+hands out for it. The marks are provenance — another pair of hands typed this —
+and they are the only trace left on your work.
+
+## Will it sign every comment it leaves — how gentle the comment line is, and where none of the three ever appear
+
+**A comment thread gets the line once.** The first comment aforge leaves in a
+thread carries it; every later comment in that same thread carries nothing. It
+is also left off entirely on a one-line reply, on anything inside a code block or
+a suggestion block, and on a comment you dictated word for word — those are your
+words and aforge does not sign them.
+
+None of the three ever appear in a commit subject, in a code file, in a README,
+in anything aforge writes for you such as a report or a deck, or in what it says
+back to you in this conversation. If you see one somewhere else, that is a fault
+worth reporting.
+
+**A repository that says no wins.** If a CONTRIBUTING file or a stated policy
+forbids AI trailers or generated-by lines, aforge leaves all three out and tells
+you it did.
+
+**To turn it off**, open `/settings` and switch the **attribution** row off, or
+set `AFORGE_ATTRIBUTION=0` in your environment. It is on by default. aforge
+cannot change this row for you — ask it to and it says so and points you at
+`/settings` — because a signature is yours to decide. A change lands on the next
+piece of work handed off, and on the next aforge you start.
+
+The commit a task writes when its work lands carries the same trailer. Those
+commits are authored as `aforge <aforge@localhost>` and always have been: aforge
+reads that name to tell its own commits from yours when it lands a branch. Your
+own commits are authored by you and are never touched.
+
 ## A timeout is not a deny — why it said "denied by the person" when nobody said no
 
 A wait that ends without an answer is not a person's no. The model used to be

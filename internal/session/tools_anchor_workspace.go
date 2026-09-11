@@ -82,6 +82,13 @@ func (a *Agent) AnchorWorkspace(path string) (string, error) {
 	}
 	a.tools = tools
 	a.definitions = definitions
+	// AND THE GROUPS THIS SHAPE IS HANDED GO BACK ON. The belt above was rebuilt
+	// from scratch, so a pre-armed group is back in the partition and off the
+	// tool list; without this a lean conversation would silently lose `ask` the
+	// moment it anchored to a project (tools_capabilities.go's [Agent.armPrearmed]).
+	if err := a.armPrearmed(); err != nil {
+		return "", err
+	}
 	if a.jobs != nil {
 		a.jobs.mu.Lock()
 		a.jobs.workspace = resolved

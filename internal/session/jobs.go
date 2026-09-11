@@ -84,6 +84,22 @@ const (
 	// a build log where the failure is; the whole log is still on disk and the
 	// note still names it.
 	jobExitTailLines = jobsDefaultTail
+
+	// jobExitNewsRule is the one clause a job's ending carries about ITSELF: it
+	// is news, and it asks for nothing.
+	//
+	// A HARNESS-AUTHORED MESSAGE CARRIES ITS OWN READING INSTRUCTION, which is
+	// the delivery class docs/design/prompt-diet/DESIGN.md §2 files this under
+	// and the pattern [standingNewsRule] was already written in — right down to
+	// the opening words, because a job's ending and a standing item's firing are
+	// the same kind of arrival and a model should not have to learn two frames
+	// for it. Saying it here costs the turn a job ends on; saying it on the page
+	// cost every request of every turn.
+	//
+	// IT NAMES WHAT IT IS FORBIDDING for [standingNewsRule]'s reason: a model
+	// holding `bash` reads an exit code as an invitation to run the thing again,
+	// and a model holding `jobs` reads a quiet job as something to go and check.
+	jobExitNewsRule = "— this already happened: relay it if it matters, never re-run it and never poll for it."
 )
 
 // jobState is what a job is doing now.
@@ -971,6 +987,11 @@ func (r *jobRegistry) settleExit(watched *job, code int) {
 		if last := watched.sink.lastNonEmptyLine(); last != "" {
 			note += ": " + clip(last, jobExitNoteLimit)
 		}
+		// AND THE NOTE SAYS, IN ITS OWN FRAME, THAT IT IS NEWS. It rides the
+		// steering lane and arrives as a user-role message, which read cold is
+		// indistinguishable from somebody typing "job 3 exited 0" — and a model
+		// reading it that way runs the command again to see what they meant.
+		note += "\n" + jobExitNewsRule
 		// AND THE OUTPUT COMES WITH IT. A watch's note is its own sentence and
 		// needs none of this; a bash job's ending is the moment its output finally
 		// means something, and a note that withheld it would be an invitation to

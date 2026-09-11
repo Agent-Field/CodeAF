@@ -202,7 +202,7 @@ func (a *Agent) divideFromSketch(ctx context.Context) (string, string) {
 // is on the other side of this line is the run, the check, the repair round and
 // the check again.
 func (a *Agent) landNeedsPerson(node *TaskNode, tree taskTree, why string, log io.Writer) TaskState {
-	merge, kept := keptWork(tree, node.title(), nil)
+	merge, kept := keptWork(tree, node.title(), nil, a.signsGitWork())
 	fmt.Fprintf(log, "no worker was started: %s\n", why)
 	node.finish(withYourCallLead(TaskFacts{Merge: merge}, why), kept, tree.branch, merge)
 	return TaskUnverified

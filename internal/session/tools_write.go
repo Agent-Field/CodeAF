@@ -27,7 +27,7 @@ import (
 // ordering instruction is load-bearing: salvage can only recover a cut call
 // whose append flag had already streamed, so the flag must come before the
 // content it qualifies.
-const appendSentence = " Set append:true to add the content to the END of the file instead of replacing it (state append before content in the arguments). Write very large files in parts: a first write, then append:true for the rest. If a large write is ever cut off mid-content, the complete lines that arrived are saved and the result tells you exactly how to continue with append — never resend what was already saved."
+const appendSentence = " append:true adds the content to the END of the file instead of replacing it (state append before content). Write a very large file in parts: one write, then appends. A write cut off mid-content keeps the complete lines that arrived, and the result says how to continue; never resend what was saved."
 
 // appendProperty is the one property the wrapper adds to pi's write schema.
 const appendProperty = `"append":{"type":"boolean","description":"Add the content to the end of the file instead of replacing it (default: false)"},`

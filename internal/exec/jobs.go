@@ -683,22 +683,22 @@ func (r *jobRegistry) report() string {
 		job := r.jobs[id]
 		last := lastLogLine(job.fullPath, r.results)
 		if job.state == jobRunning {
-			line := fmt.Sprintf("[job %d · running %s", id, job.age(now))
+			line := fmt.Sprintf("%s%d%srunning %s", jobReportLead, id, jobReportSep, job.age(now))
 			if last != "" {
-				line += " · last: " + last
+				line += jobReportSep + "last: " + last
 			}
-			lines = append(lines, line+"]")
+			lines = append(lines, line+jobReportClose)
 			continue
 		}
 		if job.terminalReported {
 			continue
 		}
 		job.terminalReported = true
-		line := fmt.Sprintf("[job %d · %s after %s", id, job.status(), job.age(now))
+		line := fmt.Sprintf("%s%d%s%s after %s", jobReportLead, id, jobReportSep, job.status(), job.age(now))
 		if last != "" && (job.state != jobExited || job.exitCode != 0) {
-			line += " · last: " + last
+			line += jobReportSep + "last: " + last
 		}
-		lines = append(lines, line+"]")
+		lines = append(lines, line+jobReportClose)
 	}
 	return clamp(strings.Join(lines, "\n"), r.results)
 }

@@ -1131,6 +1131,15 @@ type Config struct {
 	// it.
 	auditWindow time.Duration
 
+	// auditClock is what the checking window is measured against, and it is
+	// UNEXPORTED AND FOR TESTS ONLY ([Agent.auditNow]). The product's answer is
+	// [time.Now]; this exists because the ladder reads that clock several times
+	// on the way to a second call — once with the first checker closed and once
+	// more with the fresh one built — and the window can close between two of
+	// those readings. A real clock reproduces that gap only under load, and a
+	// test that cannot move the clock can only wait for it and hope.
+	auditClock func() time.Time
+
 	// AskConsent says somebody is watching this agent's events and will answer
 	// an EventConsentRequest with [Agent.ResolveConsent].
 	//
@@ -1173,6 +1182,28 @@ type Config struct {
 	// 'done' stops meaning 'proven'. The config row (task.audit) defaults on.
 	TaskAudit bool
 	Guardian  bool
+
+	// Attribution is the person's `attribution` row (internal/config's
+	// KeyAttribution, env AFORGE_ATTRIBUTION), and it says whether aforge signs
+	// the git work it does in their name: one trailer on a commit, one footer
+	// line on a pull request or an issue. It reaches both readers there are —
+	// the belt fact the model is told (beltfacts.go's [Config.signsGitWork]) and
+	// the mechanical commit a landing writes without asking anybody
+	// (task_run.go's [commitTaskWorkAs]).
+	//
+	// IT IS A RESOLVED BOOL AND NOT A PROFILE PATH, for the reason [TaskAudit]
+	// beside it is: a task node is handed no ProfileDir at all (see the field
+	// below, and the settings tools that come off the belt because of it), so a
+	// node that re-read the row itself would read the DEFAULT — which is on —
+	// and sign work for somebody who had turned signing off. The row is resolved
+	// once at the door and travels down with the work.
+	//
+	// FALSE IS THE ONLY VALUE A CALLER THAT SAID NOTHING MAY GET. The product
+	// default is on ([config.DefaultAttribution]) and the door resolves it, but a
+	// test, a harness leaf or a --once run that never mentioned attribution must
+	// not start putting a stranger's name in somebody's git history because a
+	// field was left blank.
+	Attribution bool
 
 	// ReplyGuardOff turns off the watch on replies that stop being language
 	// (internal/provider's streamguard.go). The config row (reply.guard)
@@ -1899,6 +1930,17 @@ type Config struct {
 	// aforge has been replaced on disk. It is private because the session owns
 	// when the reading reaches a turn; tests replace only the reading itself.
 	newerBuild func() string
+
+	// profile is which of the two fixed prefixes this session sends, SETTLED
+	// ONCE by newAgent before anything is built from it (promptprofile.go).
+	//
+	// It is a field on the config rather than on the agent because everything
+	// that reads it reads it before the agent exists — the page is rendered
+	// first and the belt is built from the same config a moment later — which is
+	// the law beltfacts.go's predicates are already written under. Empty means
+	// nobody has settled it, and [Config.promptProfile] then derives the answer
+	// live, which is what a test asking the question of a bare Config wants.
+	profile promptProfile
 }
 
 // Agent is one conversation. It is safe for concurrent use, but Submit
@@ -2012,6 +2054,12 @@ type Agent struct {
 	// ([Agent.rearmLoadedCapabilities]).
 	shelf      map[string][]bare.Tool
 	shelfOrder []string
+	// prearm is the third part of the same partition: the groups this shape is
+	// HANDED rather than asked to fetch, held here between [Agent.shelveDeferred]
+	// and [Agent.armPrearmed] so the loading verb's catalog never offers a group
+	// already on its way onto the belt (tools_capabilities.go). Nil on every
+	// shape that pre-arms nothing, which is every full-profile belt.
+	prearm []bare.Tool
 	// withdrawn is the record of a belt narrowed ON PURPOSE (withdrawn.go): the
 	// hands the harness took, why, and what is left. Nil whenever the belt is
 	// whole, which is nearly always.
@@ -2378,6 +2426,18 @@ type Agent struct {
 	// Empty is the ordinary state and renders nothing at all, which is nearly
 	// every conversation: a person who has attached no folder is told about none.
 	placesText string
+	// recordText is the `the record` block message[0] carries (question.go's
+	// [DecisionsSection]) and recordKey is the state of `decisions.jsonl` it was
+	// rendered from — its size and its modification time, which both move when a
+	// line is appended, by this window or by another one.
+	//
+	// IT IS CACHED BECAUSE message[0] IS REBUILT WHENEVER ANYTHING IN IT MOVES —
+	// a folder, a standing order, a memory set, a decision — and every one of
+	// those rebuilds used to open the file, scan it and unmarshal every line, for
+	// a string that changes only when a question is answered. The stat is the
+	// whole check, and it is cheap enough to make on every rebuild.
+	recordText string
+	recordKey  string
 	// elsewhereText is the <elsewhere> block (taskdelta.go): what the OTHER
 	// windows on this project landed and are running. It sits under mu beside
 	// cardText and rides where cardText rides, at the tail of the transcript —

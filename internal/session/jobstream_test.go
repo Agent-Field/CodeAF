@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -212,6 +213,44 @@ func TestTheJobFooterComesOffAgainExactly(t *testing.T) {
 		if got := stripJobFooter(grown); got != body {
 			t.Fatalf("a %v footer stripped to %q", elapsed, got)
 		}
+	}
+}
+
+// ── the cap, which the footer is budgeted inside rather than on top of ──────
+
+// A FOOTER NEVER GROWS A RESULT PAST THE CAP THE RESULT ALREADY RESPECTED. A
+// tool cuts its own output to fit [bare.MaxResultBytes]; the job footer and the
+// error→fix line are appended after that, and for as long as they were appended
+// on top of it every result the model read while a job was out was over the
+// bound the person was promised.
+func TestTheFootersAreBudgetedInsideTheResultCapAndNotOnTopOfIt(t *testing.T) {
+	t.Parallel()
+	footer := "\n\n[job 1] running 3m12s · last: case 41/120 scored"
+
+	// A result already at the cap gives up the room the footer needs.
+	full := strings.Repeat("x", bare.MaxResultBytes)
+	fitted := footersInsideTheCap(full, full+footer)
+	if len(fitted) > bare.MaxResultBytes {
+		t.Fatalf("a capped result plus a footer is %d bytes, want at most %d", len(fitted), bare.MaxResultBytes)
+	}
+	if !strings.HasSuffix(fitted, footer) {
+		t.Fatalf("the footer was the half that got cut:\n%.200q", fitted[len(fitted)-200:])
+	}
+	if !strings.Contains(fitted, "more bytes)") {
+		t.Fatalf("the cut was made silently: %.200q", fitted[:200])
+	}
+
+	// A result with room to spare is not touched at all.
+	small := "ok"
+	if grown := footersInsideTheCap(small, small+footer); grown != small+footer {
+		t.Fatalf("a small result was cut: %q", grown)
+	}
+
+	// AND A RESULT THAT WAS ALREADY OVER THE CAP ON ITS OWN IS LEFT ALONE: the
+	// footer is not what busted it, and this seam is not a second cap.
+	over := strings.Repeat("y", bare.MaxResultBytes*2)
+	if grown := footersInsideTheCap(over, over+footer); grown != over+footer {
+		t.Fatalf("an already-oversized result was cut here, at %d bytes", len(grown))
 	}
 }
 

@@ -492,6 +492,13 @@ var tuiWords = map[string]tuiWord{
 		screen: "esc interrupts · ctrl+c twice quits",
 		why:    "the notice a conversation greets on, and what a window that RESUMED an earlier one draws instead of home",
 	},
+	"questionWaitingWord": {
+		screen: " · waiting in this conversation · alt+a",
+		source: "waiting in this conversation",
+		why: "the row a place that is NOT the conversation draws over an open question " +
+			"(questiondelivery.go's questionWaitingLine). It stands in the roster's foot where the " +
+			"enter-door would be, so a task that landed `your call` and asked something is read here",
+	},
 	"tasksEnterInsideWord": {
 		screen: "enter go inside it",
 		why: "the roster's other door, over work no window is holding any more — it is the one that opens the " +

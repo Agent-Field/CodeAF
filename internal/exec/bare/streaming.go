@@ -59,11 +59,12 @@ import (
 	"sync"
 )
 
-// MaxResultLines and MaxResultBytes are the caps every tool RESULT in this
-// package is bounded by. They are exported so that a caller which has to bound
-// output of its own — the sentence a promoted bash call answers with, which is
-// the same output the same call would have returned had it finished — bounds it
-// by the same two numbers rather than inventing a third.
+// MaxResultLines and MaxResultBytes are the caps a belt that cannot say how
+// much room its model has bounds a tool RESULT by. They are exported so that a
+// caller which has to bound output of its own — the sentence a promoted bash
+// call answers with, which is the same output the same call would have returned
+// had it finished — bounds it by the same two numbers rather than inventing a
+// third. A caller that knows the window passes [Caps] instead.
 const (
 	MaxResultLines = defaultMaxLines
 	MaxResultBytes = defaultMaxBytes
@@ -75,7 +76,12 @@ const (
 // The tail rather than the head, for bash's own reason — the verdict of a
 // command is at the end of it — and through the same function, so a partial
 // answer and a complete one are cut by one rule.
-func TailForResult(text string) string { return truncateTail(text).content }
+func TailForResult(text string) string { return TailForResultAt(text, DefaultCaps()) }
+
+// TailForResultAt is [TailForResult] under the belt's own caps, for a caller
+// whose bash was built with them: the answer a promoted call hands back must be
+// cut where the call itself would have been cut, not somewhere else.
+func TailForResultAt(text string, caps Caps) string { return truncateTail(text, caps).content }
 
 // StreamingShell is the shell one command runs under, wrapped so its output
 // arrives line by line where the machine allows it.

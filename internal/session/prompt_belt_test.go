@@ -133,6 +133,17 @@ var beltShapes = []beltShape{{
 		config.taskID = 3
 	},
 }, {
+	// THE LEAN CONVERSATION (promptprofile.go): the same shipping door on a
+	// sixteen-thousand-token window, which shelves four more groups than a full
+	// belt and is HANDED the `questions` group rather than being told to fetch
+	// it. It is a shape here because the two halves of this law — the page names
+	// only what the belt has, and it says how a shelved verb arrives — are
+	// exactly what a second partition can break.
+	name: "a lean conversation on a small window",
+	build: func(t *testing.T, config *Config) {
+		config.ContextWindow = 16_000
+	},
+}, {
 	// A standing check's probe (standing_run.go): the parent's config with the
 	// conversation taken out of it, InTask, and no store — the throwaway agent
 	// it builds has no brain, so the config must not claim one.
@@ -335,6 +346,17 @@ func TestEveryConditionalToolThePageNamesHasAFragment(t *testing.T) {
 	composed := map[string]bool{}
 	for _, fact := range allBeltFacts() {
 		for _, name := range fact.tools {
+			composed[name] = true
+		}
+	}
+	// AND THE LEAN PROFILE COMPOSES ITS OWN LINE THE SAME WAY. The one sentence
+	// a lean page owes — the verbs waiting on the shelf and the group each is in
+	// — is built from [leanCapabilityGroups] and each row's own predicate
+	// (promptprofile.go's [Config.leanShelfPointer]), which is exactly what a
+	// beltFact is. So the names it spells are composed, not written into the
+	// page for everybody, and a row that stopped holding takes its names with it.
+	for _, group := range leanCapabilityGroups {
+		for _, name := range group.members {
 			composed[name] = true
 		}
 	}

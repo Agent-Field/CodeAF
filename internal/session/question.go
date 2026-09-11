@@ -1051,8 +1051,30 @@ func decidedByWord(by DecidedBy) string {
 	return string(by)
 }
 
+// decisionsSectionMost is how many decisions the section may list. It is
+// [standingWorldMost]'s figure for [standingWorldMost]'s reason — a block
+// somebody pays for on every request of every turn is a preamble and not an
+// archive — and it is read from there rather than typed again.
+//
+// THE CAP IS ON THE RENDERING AND NEVER ON THE RECORD. [Question.Check] is
+// asked against [Agent.Decisions], which stays whole: a gate that stopped
+// recognising a decision because eight newer ones were made would ask a person
+// something they had already settled, which is the one failure the record exists
+// to prevent.
+const decisionsSectionMost = standingWorldMost
+
 // DecisionsSection is the record as the model's context carries it: a heading
-// and one line per decision, oldest first.
+// and one line per decision, oldest first, bounded to the newest
+// [decisionsSectionMost] with a line saying how many older ones the file still
+// holds.
+//
+// THE NEWEST ARE THE ONES KEPT, which is the opposite of what the standing
+// section does and is right for the same reason that one leads with the
+// longest-standing: a standing order is a house rule that gets more binding with
+// age, and a decision is an answer to a question that came up — the one given
+// this morning is the one still shaping the work, and the one from eleven
+// questions ago is history. The older ones are named rather than dropped
+// silently, because a model that cannot see them can still go and read them.
 //
 // It answers with "" for a session that has decided nothing, and a caller adds
 // NOTHING for an empty section — a heading over no lines is the emptiness law
@@ -1061,10 +1083,18 @@ func DecisionsSection(records []DecisionRecord) string {
 	if len(records) == 0 {
 		return ""
 	}
-	lines := make([]string, 0, len(records)+1)
+	older := 0
+	if len(records) > decisionsSectionMost {
+		older = len(records) - decisionsSectionMost
+		records = records[older:]
+	}
+	lines := make([]string, 0, len(records)+2)
 	lines = append(lines, "the record")
 	for _, record := range records {
 		lines = append(lines, "- "+record.Line())
+	}
+	if older > 0 {
+		lines = append(lines, fmt.Sprintf("- and %d older, in %s", older, decisionsName))
 	}
 	return strings.Join(lines, "\n")
 }

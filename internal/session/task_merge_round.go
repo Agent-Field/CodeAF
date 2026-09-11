@@ -140,7 +140,7 @@ func (a *Agent) mergeRoundAtLanding(ctx context.Context, node *TaskNode, tree ta
 	// finishing line again, because the finishing line is what called this: one
 	// round is one round, and a recursion through it would be a node that merged
 	// its way round the bound.
-	landed, merge, detail, _ := landHome(node, tree, outcome.changed)
+	landed, merge, detail, _ := landHome(node, tree, outcome.changed, a.signsGitWork())
 	if !cameHome(merge) {
 		fmt.Fprintf(log, "merge round: it still would not land — %s\n", detail)
 		return "", false, mergeRoundFailedSentence(tree.branch, outcome.files)
@@ -590,7 +590,7 @@ func (a *Agent) landResolved(ctx context.Context, node *TaskNode, tree taskTree,
 		a.undoMergeRound(node, tree, log)
 		return
 	}
-	landed, merge, detail, why := landHome(node, tree, outcome.changed)
+	landed, merge, detail, why := landHome(node, tree, outcome.changed, a.signsGitWork())
 	if why == refusedByYourFiles {
 		// AND A ROUND THAT DISCOVERS THE OTHER ROAD ON ITS WAY HOME TAKES IT. A
 		// checkpoint written before this road had a name comes back with nothing
@@ -626,7 +626,7 @@ func (a *Agent) landResolved(ctx context.Context, node *TaskNode, tree taskTree,
 // card is still asking — which is the same bargain every other road out of
 // [taskTree.comeHome] keeps.
 func (a *Agent) landCarried(node *TaskNode, tree taskTree, changed []string, report string, log io.Writer) {
-	landed, merge, detail, _ := landHome(node, carryOnTheirWord(tree), changed)
+	landed, merge, detail, _ := landHome(node, carryOnTheirWord(tree), changed, a.signsGitWork())
 	if !cameHome(merge) {
 		fmt.Fprintf(log, "resolve: your own copies could not be carried aside — %s\n", detail)
 		node.finish(withReport(withYourCallLead(node.landingFacts(merge), detail), report), landed, tree.branch, merge)

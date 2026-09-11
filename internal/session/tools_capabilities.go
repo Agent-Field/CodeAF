@@ -50,6 +50,22 @@ const loadedLead = "Loaded: "
 type capabilityGroup struct {
 	name    string
 	members []string
+	// prose is the paragraph a model needs THE MOMENT IT LOADS THIS GROUP, and
+	// it rides in the load's own answer rather than in prompts/system.md.
+	//
+	// LONG MECHANICS ARE PAID FOR BY WHOEVER PULLS THEM. Existence belongs in
+	// the page — one line in the routing table, so the model can plan around a
+	// verb it is not carrying — and the contract belongs with the verb, in its
+	// own description. What is left over is the run of prose that only makes
+	// sense once you are INSIDE the thing: how to write a prompt that does not
+	// come back average, what a saved recipe is against a saved program, what a
+	// refused write means. That was 2.5 KB of message[0] on every request of
+	// every turn, for verbs the model could not call; here it is bought once,
+	// by the turn that reached for the group.
+	//
+	// A group with no prose simply says nothing extra, which is the right answer
+	// for `questions`: `ask`'s own description is the whole of its law.
+	prose string
 }
 
 // capabilityGroups is the whole partition, in the order the verb lists them.
@@ -60,17 +76,47 @@ type capabilityGroup struct {
 // stays carried and the other making verbs do not: looking at something the
 // person has just put in front of you is ordinary work, and making a film is not.
 var capabilityGroups = []capabilityGroup{{
-	name:    "questions",
+	name:    questionsGroup,
 	members: []string{"ask"},
 }, {
 	name:    "media",
 	members: []string{"generate_image", "speak", "generate_music", "generate_video", "edit_video"},
+	// THE PROMPT IS THE QUALITY, and this is where that law now lives. It was
+	// 853 bytes of prompts/system.md's Tool Policy on a belt whose every making
+	// verb is on this shelf; the page keeps the one line that says a prompt
+	// decides the result, and the reasoning arrives with the verbs.
+	prose: "When you MAKE media the prompt decides the quality, on every path — a generation tool, or a request a " +
+		"script of yours sends. What a prompt leaves open the model fills with its average, and a prompt built from " +
+		"the genre's own clichés (adjective piles included) asks for that average outright. Two things escape it: " +
+		"ANCHOR IN A REAL MEDIUM — a named print process, photographic setup or drafting tradition, which carries " +
+		"its own physics and its own different average — and SPECIFY POSITIVELY, since these models barely read " +
+		"negation (\"no glow\" glows; matte ink on cream paper cannot). Judge what came back against the brief AND " +
+		"against its genre; a first render is a draft, so read it back before you call it done. `manual` teaches the rest.",
 }, {
 	name:    "settings",
 	members: []string{"settings", "change_setting"},
+	// The pair's own descriptions carry the contract — what reads, what writes,
+	// that a list row is replaced whole, that a row restraining this session
+	// refuses on purpose. What is left is what to do with the refusal in front
+	// of the person, which is not a fact about the schema.
+	prose: "A refusal is the person's own machine answering and not an error to work around: relay it exactly as " +
+		"written, and point them at `/settings`, where they can make the change themselves. Never reach for `edit` " +
+		"or `write` on a config file instead — a hand-edited file is not what aforge reads.",
 }, {
 	name:    "harnesses",
 	members: []string{"build_harness", "list_harnesses", "propose_subharness", "list_subharnesses"},
+	// TWO DIFFERENT THINGS ARRIVE TOGETHER, which is the one fact none of the
+	// four descriptions can state on its own, and it is what prompts/system.md's
+	// PROGRAM_FACTS paragraphs were paying for on every request of a belt that
+	// carried neither verb.
+	prose: "Two different things arrive together. A **sub-harness** is a reusable RECIPE: a named, versioned " +
+		"procedure saved on this machine, which the turn offers by itself whenever somebody's words match it. " +
+		"`list_harnesses` shows them and `build_harness` designs one, as a task the person can open, watch and " +
+		"stop, ending in a card that saves it or discards it. A **subharness** is a saved PROGRAM rather than a " +
+		"recipe: typed input, a typed answer, only the tools it declared. `list_subharnesses` shows them and " +
+		"`propose_subharness` offers one with your line about why it matched. NOTHING RUNS BECAUSE YOU PROPOSED " +
+		"IT — the person answers that card and there is no clock that says yes for them. Build one only for a " +
+		"shape of work that will recur; propose one only when the work in front of you IS what that program is for.",
 }}
 
 // shelveDeferred is the last step of [Agent.belt]: it splits what the belt built
@@ -88,23 +134,43 @@ func (a *Agent) shelveDeferred(built []bare.Tool) []bare.Tool {
 	if !a.config.shelvesCapabilities() {
 		return built
 	}
+	// THE PARTITION IS THIS SHAPE'S AND NOT THE PACKAGE'S. A lean prefix shelves
+	// four more groups than a full one (promptprofile.go's
+	// [Config.capabilityShelf]), and it is asked of the config for the reason
+	// every other question on this road is: the page was composed from the same
+	// answer a moment ago, and the two must not be able to differ.
+	partition := a.config.capabilityShelf()
 	// Where each shelved name belongs, resolved once. A name in two groups would
 	// land in the first, which capabilities_test.go proves cannot happen.
 	group := make(map[string]string, 16)
-	for _, candidate := range capabilityGroups {
+	for _, candidate := range partition {
 		for _, member := range candidate.members {
 			if _, taken := group[member]; !taken {
 				group[member] = candidate.name
 			}
 		}
 	}
+	// AND THE GROUPS THIS SHAPE IS HANDED RATHER THAN ASKED TO FETCH. They are
+	// partitioned off here — not carried, not shelved — so that the loading
+	// verb's catalog never offers a group already on its way onto the belt, and
+	// armed at construction through the one arming door (agent.go's newAgent,
+	// [Agent.armPrearmed]).
+	prearmed := make(map[string]bool, 2)
+	for _, name := range a.config.prearmedGroups() {
+		prearmed[name] = true
+	}
 
-	shelf := make(map[string][]bare.Tool, len(capabilityGroups))
+	shelf := make(map[string][]bare.Tool, len(partition))
 	carried := make([]bare.Tool, 0, len(built))
+	var waiting []bare.Tool
 	for _, tool := range built {
 		name, shelved := group[tool.Name]
 		if !shelved {
 			carried = append(carried, tool)
+			continue
+		}
+		if prearmed[name] {
+			waiting = append(waiting, tool)
 			continue
 		}
 		shelf[name] = append(shelf[name], tool)
@@ -112,8 +178,8 @@ func (a *Agent) shelveDeferred(built []bare.Tool) []bare.Tool {
 
 	// Only the groups that actually have something on them, in the table's
 	// order: a group whose every member was gated off does not exist.
-	order := make([]string, 0, len(capabilityGroups))
-	for _, candidate := range capabilityGroups {
+	order := make([]string, 0, len(partition))
+	for _, candidate := range partition {
 		if len(shelf[candidate.name]) > 0 {
 			order = append(order, candidate.name)
 		}
@@ -121,6 +187,7 @@ func (a *Agent) shelveDeferred(built []bare.Tool) []bare.Tool {
 
 	a.armMu.Lock()
 	a.shelf, a.shelfOrder = shelf, order
+	a.prearm = waiting
 	a.armMu.Unlock()
 
 	// NOTHING SHELVED IS NO VERB: a model handed a loader over an empty shelf
@@ -139,6 +206,30 @@ func (a *Agent) clearShelf() {
 	a.armMu.Lock()
 	defer a.armMu.Unlock()
 	a.shelf, a.shelfOrder = nil, nil
+	// AND WHAT WAS WAITING TO BE HANDED OVER GOES WITH IT. A belt replaced
+	// wholesale is a belt somebody narrowed on purpose; arming a group into it
+	// afterwards would widen it again behind their back.
+	a.prearm = nil
+}
+
+// armPrearmed puts the groups this shape is HANDED onto the belt, and it is
+// called wherever a live conversation's belt is built or rebuilt from
+// [Agent.belt] — construction (agent.go's newAgent) and the anchoring rebuild
+// (tools_anchor_workspace.go). Anywhere else the belt is replaced wholesale by a
+// narrowing that must not be widened again ([Agent.clearShelf]).
+//
+// It is [Agent.armFamily] and nothing else: the same dedupe, the same append law,
+// the same refusal of a schema that will not parse. A group already carried
+// costs nothing here, which is what makes calling it after a rebuild safe.
+func (a *Agent) armPrearmed() error {
+	a.armMu.Lock()
+	waiting := append([]bare.Tool(nil), a.prearm...)
+	a.armMu.Unlock()
+	if len(waiting) == 0 {
+		return nil
+	}
+	_, err := a.armFamily(waiting)
+	return err
 }
 
 // shelvedNames and shelvedTools are the construction-time partition: what this
@@ -261,9 +352,24 @@ func (a *Agent) loadCapability(want string) (string, bool) {
 		return "Already loaded — " + strings.Join(toolNames(tools), ", ") +
 			" are in your tool list now. Use them; do not ask again.", false
 	}
+	// AND THE `Loaded: ` LINE STAYS FIRST AND UNCHANGED. checkpoint.go's
+	// [loadedAndNeverUsed] reads the armed names back off it, up to its first
+	// full stop, so the group's prose goes UNDER it — parted by a blank line,
+	// the way the page it came out of parted its own paragraphs.
 	return loadedLead + strings.Join(armed, ", ") +
 		". Full schemas arrive on your next model request. Continue in this same turn. " +
-		"These tools remain loaded while this engine runs.", false
+		"These tools remain loaded while this engine runs." + capabilityProse(want), false
+}
+
+// capabilityProse is one group's paragraph, ready to hang under a load's answer,
+// and the empty string where the group has none.
+func capabilityProse(name string) string {
+	for _, group := range capabilityGroups {
+		if group.name == name && group.prose != "" {
+			return "\n\n" + group.prose
+		}
+	}
+	return ""
 }
 
 // rearmLoadedCapabilities puts back the groups an EARLIER PROCESS of this
@@ -300,9 +406,23 @@ func (a *Agent) rearmLoadedCapabilities(restored []ai.Message) {
 }
 
 // capabilityGroupOf answers which group a tool name belongs to, for the tests
-// and gates that need the mapping without building a belt. Empty means carried.
+// and gates that need the mapping without building a belt. Empty means the name
+// is in no group at all and is therefore carried by every shape.
+//
+// IT WALKS BOTH TABLES because the mapping is a fact about the name and not
+// about the shape: `propose_task` is in the `tasks` group whether or not this
+// shape shelves that group. Whether it is actually held back is
+// [Config.shelvesTool], which is the question with a config behind it. The two
+// tables may not claim the same name, which promptprofile_test.go refuses.
 func capabilityGroupOf(tool string) string {
 	for _, group := range capabilityGroups {
+		for _, member := range group.members {
+			if member == tool {
+				return group.name
+			}
+		}
+	}
+	for _, group := range leanCapabilityGroups {
 		for _, member := range group.members {
 			if member == tool {
 				return group.name

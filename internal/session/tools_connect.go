@@ -57,7 +57,7 @@ const slackListChannelsDescription = "List the Slack channels the person can see
 
 const slackListChannelsSchemaJSON = `{"type":"object","properties":{"filter":{"type":"string","description":"Part of a channel name to keep (optional)"},"max":{"type":"integer","description":"How many channels to inspect (default: 50)"}},"additionalProperties":false}`
 
-const slackSendDescription = "Send one Slack message as the person, to a channel id or #name. It leaves as them and somebody in that channel can read it, so write what they would have written and expect them to be asked before it goes. thread_ts replies under the message whose ts came from slack_search."
+const slackSendDescription = "Send one Slack message as the person, to a channel id or #name. It leaves as them and somebody in that channel can read it, so write what they would have written and expect them to be asked before it goes. NEVER SEND THE SAME THING TWICE because the first went unanswered. thread_ts replies under the message whose ts came from slack_search."
 
 const slackSendSchemaJSON = `{"type":"object","properties":{"channel":{"type":"string","description":"Where it goes: a channel id or #name"},"text":{"type":"string","description":"The message itself, as plain text"},"thread_ts":{"type":"string","description":"The ts to reply under, as slack_search returned it (optional)"}},"required":["channel","text"],"additionalProperties":false}`
 
@@ -65,7 +65,7 @@ const calendarListDescription = "List the person's calendar events between two d
 
 const calendarListSchemaJSON = `{"type":"object","properties":{"from":{"type":"string","description":"The first day, as YYYY-MM-DD"},"to":{"type":"string","description":"The last day, inclusive, as YYYY-MM-DD"}},"required":["from","to"],"additionalProperties":false}`
 
-const gmailSendDescription = "Send one message from the person's own address. It leaves as them, it reaches the people you name, and nothing can call it back — so write what they would have written, and expect them to be asked before it goes. Several recipients are one comma-separated string. Say afterwards what went and to whom."
+const gmailSendDescription = "Send one message from the person's own address. It leaves as them, it reaches the people you name, and nothing can call it back — so write what they would have written, and expect them to be asked before it goes. NEVER SEND THE SAME THING TWICE because the first went unanswered; a reply is the person's to wait for. Several recipients are one comma-separated string. Say afterwards what went and to whom."
 
 const gmailSendSchemaJSON = `{"type":"object","properties":{"to":{"type":"string","description":"Who it goes to: one address, or several separated by commas"},"cc":{"type":"string","description":"Who is copied, separated by commas"},"subject":{"type":"string","description":"The subject line"},"body":{"type":"string","description":"The message itself, as plain text"}},"required":["to","subject","body"],"additionalProperties":false}`
 

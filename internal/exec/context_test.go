@@ -643,9 +643,10 @@ func TestBytesWithNoDurableAddressAreNeverPointedAt(t *testing.T) {
 }
 
 // Three kinds of result are never content-addressed, and each for its own
-// reason. An error's whole value is being read where it happened; a background
-// job report describes state that was true when it was written; and a result
-// carrying multimodal follow-up content is not its text at all.
+// reason. An error's whole value is being read where it happened; a result that
+// is nothing but a background-job report describes state that was true when it
+// was written and has no fact under it to address; and a result carrying
+// multimodal follow-up content is not its text at all.
 func TestErrorsJobReportsAndMultimodalResultsAreNeverPointedAt(t *testing.T) {
 	tools := NewToolbox(workspace(t), "3", nil)
 	carried := newObservations(newDecayer(map[string]string{}, tools.decaySpill))
@@ -657,7 +658,10 @@ func TestErrorsJobReportsAndMultimodalResultsAreNeverPointedAt(t *testing.T) {
 		t.Fatalf("a repeated error was replaced by a pointer: %q", clipForTest(second))
 	}
 
-	report := Result{Content: body, reportedJobs: true}
+	// A result whose whole body IS the report — the append's own shape when the
+	// tool said nothing — is carried every time, however alike two of them read.
+	bare := strings.Repeat("[job 1 · running 4s · last: still going]\n", 60)
+	report := Result{Content: bare, reportedJobs: true}
 	if first, second := carried.admit(1, call("j1", "job", `{}`), report),
 		carried.admit(2, call("j2", "job", `{}`), report); first != second {
 		t.Fatalf("a repeated job report was replaced by a pointer: %q", clipForTest(second))
@@ -667,6 +671,60 @@ func TestErrorsJobReportsAndMultimodalResultsAreNeverPointedAt(t *testing.T) {
 	if first, second := carried.admit(1, call("v1", "view_image", `{"path":"a.png"}`), looked),
 		carried.admit(2, call("v2", "view_image", `{"path":"a.png"}`), looked); first != second {
 		t.Fatalf("a repeated image result was replaced by a pointer: %q", clipForTest(second))
+	}
+}
+
+// THE JOB FOOTER MUST NOT DEFEAT DE-DUPLICATION. Every result the leaf hands
+// back while a job is out is footed with that job's elapsed time, so hashing the
+// whole string made every result unique — and the pointer that exists to keep a
+// re-read out of the window was off for the entire length of any session that
+// ran a background command. The body is what is addressed; the report rides
+// along on the pointer, about now rather than about three turns ago.
+func TestAFooteredResultIsPointedAtOnItsBodyAndKeepsItsOwnJobReport(t *testing.T) {
+	tools := NewToolbox(workspace(t), "3", nil)
+	carried := newObservations(newDecayer(map[string]string{"r1": "sh cat big.log"}, tools.decaySpill))
+	body := strings.Repeat("the same four hundred lines of the same file\n", 100)
+
+	first := carried.admit(1, call("r1", "sh", `{"cmd":"cat big.log"}`),
+		Result{Content: body + "\n\n[job 1 · running 4s · last: case 41/120]", reportedJobs: true})
+	if !strings.Contains(first, "the same four hundred lines") {
+		t.Fatalf("the first copy was not carried whole: %q", clipForTest(first))
+	}
+
+	again := carried.admit(2, call("r2", "sh", `{"cmd":"cat big.log"}`),
+		Result{Content: body + "\n\n[job 1 · running 39s · last: case 118/120]", reportedJobs: true})
+	if strings.Contains(again, "the same four hundred lines") {
+		t.Fatalf("the repeated body was carried again rather than pointed at: %q", clipForTest(again))
+	}
+	if !strings.Contains(again, "identical to the result of") {
+		t.Fatalf("the second copy is not a pointer: %q", clipForTest(again))
+	}
+	// AND THE MODEL STILL SEES WHERE ITS STREAMS ARE, at this moment and not the
+	// earlier one: the report that came with THIS result is what rides along.
+	if !strings.HasSuffix(again, "[job 1 · running 39s · last: case 118/120]") {
+		t.Fatalf("the pointer lost this call's job report: %q", clipForTest(again))
+	}
+	if strings.Contains(again, "running 4s") {
+		t.Fatalf("the pointer carries the earlier call's stale job report: %q", clipForTest(again))
+	}
+}
+
+// stripJobReport is [Toolbox.finishResult]'s append read backwards, and it is
+// narrow on purpose: a result whose own content mentions a job is not a footer.
+func TestStripJobReportTakesOnlyTheAppendedLines(t *testing.T) {
+	for _, c := range []struct{ text, want string }{
+		{"ok\n\n[job 1 · running 4s]", "ok"},
+		{"ok\n\n[job 1 · running 4s]\n[job 2 · exited 0 after 1m02s]", "ok"},
+		{"ok", "ok"},
+		{"[job 1 · running 4s]", ""},
+		// A body that merely talks about jobs keeps every byte of itself.
+		{"[job listing]\nnothing running", "[job listing]\nnothing running"},
+		{"see [job 1 · running 4s] above", "see [job 1 · running 4s] above"},
+		{"[job x · running 4s]", "[job x · running 4s]"},
+	} {
+		if got := stripJobReport(c.text); got != c.want {
+			t.Errorf("stripJobReport(%q) = %q, want %q", c.text, got, c.want)
+		}
 	}
 }
 

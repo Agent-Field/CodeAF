@@ -31,13 +31,14 @@ package session
 // and pi's truncation law that every other rung borrows.
 //
 // THE ANSWER OBEYS PI'S TRUNCATION LAW, not a second one. Extracted text is
-// text, a 400-page manual is a large file, and a model that learned "output is
-// truncated to 2000 lines or 50KB, use offset to continue" from read's
-// description gets exactly that here, footer wording included — the offset it
-// is told to use works, because the next call re-extracts and pages from the
-// same text. bare's truncation helpers are unexported, so this file MIRRORS
-// them and says so at each constant; the numbers are pinned to
-// internal/exec/bare/truncate.go and the sentences to bare's read tool.
+// text, a 400-page manual is a large file, and a model that learned from read's
+// description how far one read goes and how to page past it gets exactly that
+// here, footer wording included — the offset it is told to use works, because
+// the next call re-extracts and pages from the same text. bare's truncation
+// helpers are unexported, so this file MIRRORS them and says so; the SENTENCES
+// are pinned to bare's read tool and the NUMBERS are no longer copied at all —
+// the caps arrive as [bare.Caps] from the same belt the inner read was built
+// with, so a smaller window cuts an extracted PDF exactly where it cuts a file.
 
 import (
 	"errors"
@@ -79,7 +80,7 @@ func (a *Agent) pdfSense(shown, absolute string, offset, limit *int) (string, bo
 	text, err := pdfx.Extract(absolute)
 	switch {
 	case err == nil:
-		return piReadLaw(text, offset, limit), false, nil
+		return piReadLaw(a.resultCaps(), text, offset, limit), false, nil
 
 	case errors.Is(err, pdfx.ErrNoTextLayer):
 		// The honest sentence, and the way out in the same breath. A scanned
@@ -147,15 +148,6 @@ func resolveInWorkspace(path, workspace string) string {
 
 // ── pi's read law, mirrored ─────────────────────────────────────────────────
 
-// The numbers are pi's, pinned to internal/exec/bare/truncate.go. They are
-// mirrored rather than imported because bare's copies are unexported and bare
-// is frozen: a divergence would show up as a read whose footer promises one
-// budget and whose body carries another.
-const (
-	pdfMaxLines = 2000
-	pdfMaxBytes = 50 * 1024
-)
-
 // piReadLaw applies bare read's offset/limit/truncation pipeline to extracted
 // text, with bare's footer sentences verbatim.
 //
@@ -164,8 +156,8 @@ const (
 // file and nonsense for a PDF, where sed would print binary. Extracted PDF text
 // really can arrive as one enormous line (a page whose content stream never
 // emits a line break), so this path is reachable, and the useful answer there
-// is the first 50KB of it plus a sentence saying that is what happened.
-func piReadLaw(text string, offset, limit *int) string {
+// is the first cap's worth of it plus a sentence saying that is what happened.
+func piReadLaw(caps bare.Caps, text string, offset, limit *int) string {
 	allLines := strings.Split(text, "\n")
 	totalFileLines := len(allLines)
 
@@ -199,12 +191,12 @@ func piReadLaw(text string, offset, limit *int) string {
 		selected = strings.Join(allLines[startLine:], "\n")
 	}
 
-	content, truncated, truncatedBy, outputLines := truncateExtracted(selected)
+	content, truncated, truncatedBy, outputLines := truncateExtracted(selected, caps)
 
 	if truncatedBy == "first-line" {
 		return content + fmt.Sprintf(
 			"\n\n[Line %d is %s, exceeds %s limit. Showing its first %s.]",
-			startLineDisplay, sizeLabel(len(allLines[startLine])), sizeLabel(pdfMaxBytes), sizeLabel(len(content)),
+			startLineDisplay, sizeLabel(len(allLines[startLine])), sizeLabel(caps.MaxBytes), sizeLabel(len(content)),
 		)
 	}
 
@@ -214,7 +206,7 @@ func piReadLaw(text string, offset, limit *int) string {
 		if truncatedBy == "lines" {
 			return content + fmt.Sprintf("\n\n[Showing lines %d-%d of %d. Use offset=%d to continue.]", startLineDisplay, endLineDisplay, totalFileLines, nextOffset)
 		}
-		return content + fmt.Sprintf("\n\n[Showing lines %d-%d of %d (%s limit). Use offset=%d to continue.]", startLineDisplay, endLineDisplay, totalFileLines, sizeLabel(pdfMaxBytes), nextOffset)
+		return content + fmt.Sprintf("\n\n[Showing lines %d-%d of %d (%s limit). Use offset=%d to continue.]", startLineDisplay, endLineDisplay, totalFileLines, sizeLabel(caps.MaxBytes), nextOffset)
 	}
 
 	if userLimitedLines >= 0 && startLine+userLimitedLines < len(allLines) {
@@ -230,34 +222,34 @@ func piReadLaw(text string, offset, limit *int) string {
 // that fit both caps, counting the newline that joins each line to the previous
 // one, because that byte is real output the model pays for. The one addition is
 // the "first-line" verdict, which bare signals with a flag and this returns as
-// a reason, carrying the first 50KB of the line instead of nothing.
-func truncateExtracted(content string) (out string, truncated bool, by string, outputLines int) {
+// a reason, carrying the first cap's worth of the line instead of nothing.
+func truncateExtracted(content string, caps bare.Caps) (out string, truncated bool, by string, outputLines int) {
 	totalBytes := len(content)
 	lines := splitLinesForCounting(content)
-	if len(lines) <= pdfMaxLines && totalBytes <= pdfMaxBytes {
+	if len(lines) <= caps.MaxLines && totalBytes <= caps.MaxBytes {
 		return content, false, "", len(lines)
 	}
 
-	if len(lines) > 0 && len(lines[0]) > pdfMaxBytes {
-		return truncateToBytes(lines[0], pdfMaxBytes), true, "first-line", 1
+	if len(lines) > 0 && len(lines[0]) > caps.MaxBytes {
+		return truncateToBytes(lines[0], caps.MaxBytes), true, "first-line", 1
 	}
 
 	var kept []string
 	keptBytes := 0
 	by = "lines"
-	for index := range min(len(lines), pdfMaxLines) {
+	for index := range min(len(lines), caps.MaxLines) {
 		lineBytes := len(lines[index])
 		if index > 0 {
 			lineBytes++ // the newline separator
 		}
-		if keptBytes+lineBytes > pdfMaxBytes {
+		if keptBytes+lineBytes > caps.MaxBytes {
 			by = "bytes"
 			break
 		}
 		kept = append(kept, lines[index])
 		keptBytes += lineBytes
 	}
-	if len(kept) >= pdfMaxLines && keptBytes <= pdfMaxBytes {
+	if len(kept) >= caps.MaxLines && keptBytes <= caps.MaxBytes {
 		by = "lines"
 	}
 	return strings.Join(kept, "\n"), true, by, len(kept)
