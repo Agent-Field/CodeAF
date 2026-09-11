@@ -434,6 +434,9 @@ type Session struct {
 	// race to the writers, so the surface keeps the highest number it has seen
 	// and drops anything older (wire.go's [FactsPush]).
 	factsRev uint64
+	// weighOwed says a tool batch has ended and the facts have not been stated
+	// since its results joined the conversation ([weighsAgain]).
+	weighOwed bool
 
 	// closed is the conversation deliberately ended — [MethodClose], or the
 	// pipe dying on an engine whose life this pipe was.
@@ -1198,6 +1201,36 @@ func factsMoved(kind session.EventKind) bool {
 	return false
 }
 
+// weighsAgainLocked says whether this event is the first word of the request
+// that follows a tool batch, which is when what the conversation weighs is
+// stated again (the facts' ContextTokens).
+//
+// THE END OF A BATCH IS STATED ALREADY AND IS ONE STEP EARLY FOR THE WEIGHT. The
+// facts go out on every tool end ([factsMoved]) — the step's usage is banked by
+// then — but the session records the batch's RESULTS into the conversation only
+// after the last end has been published (internal/session's loop), so a reading
+// taken there weighs the conversation without the results that are about to be
+// sent. A surface drawing the weight of the request in flight — the chat's live
+// token column — saw a big file read join the conversation one whole step late.
+// The next request is the first moment the results are certainly in, and its
+// first word is the first event this pump sees from it.
+func (sess *Session) weighsAgainLocked(kind session.EventKind) bool {
+	switch kind {
+	case session.EventToolEnd, session.EventToolFailed:
+		sess.weighOwed = true
+	case session.EventTurnDone, session.EventError:
+		// The turn's own end states the facts whole, results and all.
+		sess.weighOwed = false
+	case session.EventTextDelta, session.EventReasoning, session.EventThinking,
+		session.EventToolForming, session.EventToolAnnounced:
+		if sess.weighOwed {
+			sess.weighOwed = false
+			return true
+		}
+	}
+	return false
+}
+
 // liveLocked is the stream still running, or zero. The newest wins when two are
 // somehow in flight at once: a session runs one turn at a time in practice, and
 // "the one that is going on right now" is the newer of two by any reading.
@@ -1333,6 +1366,7 @@ func (sess *Session) emit(id, generation uint64, event session.Event) {
 	if pending, ok := sess.agent.(interface{ PendingConnect() []string }); ok {
 		sess.held.settleConnect(pending.PendingConnect())
 	}
+	weighs := sess.weighsAgainLocked(event.Kind)
 	sess.mu.Unlock()
 
 	// THE FACTS GO FIRST, AHEAD OF THE EVENT THAT MOVED THEM. A surface settles
@@ -1341,7 +1375,7 @@ func (sess *Session) emit(id, generation uint64, event session.Event) {
 	// late and the status line would report the turn before this one. The agent
 	// has already sealed the turn by the time this event reaches the pump, so
 	// the reading taken here is the finished one.
-	if factsMoved(event.Kind) {
+	if factsMoved(event.Kind) || weighs {
 		sess.announce()
 	}
 
