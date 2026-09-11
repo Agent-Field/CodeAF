@@ -158,6 +158,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why can I not answer the question on this task page", "questions"},
 		{"how do I group chats", "collections"},
 		{"where do I file a task", "collections"},
+		// Two aforge commands on one collections database: the words somebody
+		// types after they have seen the refusal, not the words it is written in.
+		{"collections database is locked", "collections"},
+		{"two aforge commands writing collections at the same time", "collections"},
 		// Lanes behind a base of the person's own: the question the hostname gate
 		// (issue #373) used to answer wrongly, in the three ways it gets asked.
 		{"do lanes work with a custom base url", "lanes"},
@@ -176,6 +180,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// meet it: reading the figure, and finding it beside the call log.
 		{"what does the total at the end of aforge do include", "models-and-cost"},
 		{"why is the printed cost different from the call log", "models-and-cost"},
+		// A refused headless run names the project it worked in, asked in the two
+		// ways somebody meets an empty file list after spending time and money.
+		{"the run finished and my directory is empty where did the work go", "running-from-the-terminal"},
+		{"aforge do spent money and wrote no files", "running-from-the-terminal"},
 		// And the reader itself: a person with a log in front of them wants one
 		// call out of it, or wants the rows a program can read.
 		{"find one call in the log", "models-and-cost"},
@@ -443,6 +451,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// visible answer.
 		{"why is home empty over ssh", "places"},
 		{"someone else is typing", "staying-on-that-machine"},
+		{"why does aforge take ten seconds to start", "staying-on-that-machine"},
+		{"my conversation says it ends with this terminal", "staying-on-that-machine"},
+		{"aforge home path too long", "staying-on-that-machine"},
+		{"state folder is a longer path than a socket may be named in", "staying-on-that-machine"},
 		{"how fast is the connection", "screen"},
 		// The two live figures on the working block. People ask for them as
 		// "upload and download", as "the arrows", and as the question they are
@@ -467,6 +479,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is it still working or is it stuck", "screen"},
 		{"the tokens are not moving", "screen"},
 		{"why did the number on the right light up", "screen"},
+		{"the token numbers count up every time I open a task, is it still running", "screen"},
+		{"switching tabs makes the tokens count up again from zero", "screen"},
 		{"what is the +3.4k next to the up arrow", "screen"},
 		{"no token count inside a task", "screen"},
 		{"is the up arrow what I am billed for", "screen"},
@@ -1639,6 +1653,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did it make a quick task instead of a real one", "tasks"},
 		{"can a quick task start another quick task", "tasks"},
 		{"a quick task appeared under my task", "tasks"},
+		// AND WHAT IS THERE WHEN THEY COME BACK TOMORROW. Asked by somebody who
+		// reopened a conversation that had run four quick tasks in it and found
+		// the whole task column empty — every row, not only the quick ones —
+		// because a quick task is written down with no `DONE WHEN` and the check
+		// that read the record back refused the file whole over it.
+		{"I reopened the conversation and the task column is empty", "tasks"},
+		{"all my tasks disappeared after a restart", "tasks"},
+		{"does a quick task come back after I close aforge", "tasks"},
+		{"does a quick task resume when I reopen the conversation", "tasks"},
 		// The sixteenth wave, and every one of these is a real model choosing
 		// wrongly before the wording was fixed: a READ-ONLY survey that got a
 		// branch, a quick task cut at twenty files that ran out of rounds, and

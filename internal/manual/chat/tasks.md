@@ -197,7 +197,9 @@ Five limits, and they are the price of there being no ceremony:
 - **There is nothing to inspect afterwards.** No branch, no copy of the folder, no diff of
   its own. The only record of what it changed is your folder and its room.
 - **It does not outlive this window.** Work that has to keep going while the terminal is
-  closed is an ordinary task.
+  closed is an ordinary task. Its **row** does come back — a quick task you ran last week
+  is on the column with its answer when you reopen that conversation, see *A quick task
+  after a restart* below — but the working stops when the window does.
 - **It cannot be divided.** A quick task never splits itself into parts. Work too wide for
   one worker was never quick.
 - **It cannot land anything.** No merge, no branch kept, no conflict to resolve — those
@@ -206,6 +208,34 @@ Five limits, and they are the price of there being no ceremony:
 
 None of these are settings. A quick task that turns out to need any of them is a sign the
 work wanted an ordinary task, and you can say so mid-flight: stop it and ask for a task.
+
+## A quick task after a restart — the rows came back empty, my whole task column vanished after running quick tasks, does a quick task resume
+
+**A quick task's row comes back like every other row, and so does everything beside it.**
+Reopen the conversation and a quick task that finished is on the column `done`, with
+`quick` on its row, its checklist ticked as it left it, and its answer on its card.
+
+What each one does depends on where it had got to:
+
+- **Finished** — it comes back exactly as it landed. Nothing runs again.
+- **Running when the window closed** — it comes back `incomplete`, saying
+  `the quick task did not finish before aforge closed; whatever it wrote is in your folder`.
+  It is **not** started again, and that is deliberate: it was writing in your own folder
+  rather than a copy, so a second worker walking a half-done checklist over the top of the
+  first one's edits would not be a resume. `git diff` is the account of what it managed.
+- **Still waiting its turn** — behind another quick task that claimed the same file, say —
+  it never started, and it does not start now. Its checklist is not written down anywhere,
+  so there is nothing to start it from, and starting it as an ordinary task would give work
+  that asked for none of it a copy of your folder, a branch and a check. The row says so:
+  `the quick task never started before aforge closed, and it does not resume — ask for it again`.
+  Asking again costs a sentence.
+
+**If you remember a conversation reopening with an EMPTY column after quick tasks had run
+in it, that was a fault and it is fixed.** A quick task is checked by nobody, so it is
+written down with no `DONE WHEN` clause of its own — and the check that reads the record
+back refused any row without one, which threw the whole conversation's work away together:
+finished rows, running tasks, families and all. The rule still holds for every ordinary
+task; a quick task is now allowed the blank it is supposed to have.
 
 ## Quick task or a proper task — why it went quick instead of a real task, why a survey did not get a branch, and how aforge decides which road your work takes
 
@@ -1238,6 +1268,9 @@ you, and pushing it on would only make it poll.
 render landing, **a watch firing**: each of those wakes aforge and you get
 the sentence about it without typing anything. So you can start something, close the laptop
 lid on the conversation, and come back to the answer rather than to a card and silence.
+On a headless `--once --yolo` run with a budget, the command stays alive for those replies
+until no work is moving and no reply is in flight; without a budget, `--once` still exits
+after its one reply.
 `jobs list` shows what is still running, and `jobs output <id>` shows what it has said so far.
 
 **A watch is two kinds of news and only one of them wakes you.** Its ordinary updates — the
@@ -2304,7 +2337,10 @@ only place that work can be read from, and `/history` is the page that reads it.
 every task admitted here comes back as a row in its family — finished work included, and
 work that was interrupted comes back saying so on its card — and the `jobs` section
 redraws the jobs this conversation started, settled. Tasks and jobs are not lost when the
-terminal closes; the column is rebuilt, not carried.
+terminal closes; the column is rebuilt, not carried. **Quick tasks are in that too** — a
+finished one comes back `done` with its answer, and a conversation that ran them is never
+left with an empty column, which it was until this was fixed (*A quick task after a
+restart* has the whole of it).
 
 The rebuilt row reads its start and landing times from that same record. Work that landed
 in a previous session therefore keeps the time it actually landed instead of taking the

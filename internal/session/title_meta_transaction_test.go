@@ -96,8 +96,8 @@ func TestALongEarnedTitleSurvivesMetadataUsageAndReopen(t *testing.T) {
 	}
 }
 
-// A transaction may already own metaMu when recordUserLocked owns a.mu. It
-// must finish without reaching back for a.mu, or the two locks deadlock.
+// A transaction may already own the folder lock when recordUserLocked owns
+// a.mu. It must finish without reaching back for a.mu, or the two locks deadlock.
 func TestAMetadataPatchFinishesWhileAUserStampOwnsTheAgentLock(t *testing.T) {
 	a, dir := metadataTitleAgent(t)
 	snapshot := a.metaSnapshot()

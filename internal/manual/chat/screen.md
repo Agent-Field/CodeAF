@@ -204,7 +204,8 @@ naming model can answer within the same budget. If those attempts fail, the tab 
 
 **An existing name wins.** Naming runs once per session lifetime, and a chat that already
 has a name is not named again. Older saved names with a leaked `Full:` label are cleaned
-when read, and saved tab labels are limited to two words. Closing the session cancels unfinished naming. There is no
+when read — including one written behind a `-` or `1.` list marker — and saved tab labels
+are limited to two words. Closing the session cancels unfinished naming. There is no
 command or tab action to rename a conversation manually.
 
 **`Untitled` labels an unnamed tab and its breadcrumb root.** Elsewhere it is named
@@ -2055,6 +2056,21 @@ without the glow, because it has no fading ink to decay through.
 caption carries what the model wrote inside it, after its clock: `2s · ↓ 486`,
 counting the arguments of the calls it made. There is no `↑` on a step: one
 request carries the whole conversation, not the step it happens to be in.
+
+## The token numbers count up every time I open a task or switch tabs — is it running
+
+No — and they no longer do. A figure that comes onto the screen is drawn at its
+value on the first frame, dim and still: opening a task's page from the task
+column, taking a conversation up from a tab, or the first reading of a new
+turn. Those figures existed before you looked, so nothing about them is motion.
+
+Only a figure that **grows while you are watching** walks up to its new value
+and lights up. So on a page you have just opened, the column says nothing about
+activity until something actually arrives: a lit `↓` is the task writing now, a
+lit `↑` is something joining its next request. Two dim, unmoving figures on a
+task that says it is working means nothing is arriving at this moment — a tool
+running, or the model deciding what to say — and the task's row in the task
+column keeps its own clock.
 
 ## No token count inside a task — do the up and down figures show on a task's page, tokens in a task room
 
