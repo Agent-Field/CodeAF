@@ -3549,32 +3549,55 @@ func (n *TaskNode) spend() float64 {
 // guess, and a row written anywhere else would be a second definition of landed
 // (task_index.go).
 func (a *Agent) reportTaskNode(node *TaskNode) {
+	// The notice, the attempt it belongs to and the tag its result is judged by
+	// are read together, so a report composed here cannot be announced against a
+	// later life of the node ([TaskNode.claimNote], [TaskNode.resultOf]).
+	notice, attempt, tag := node.resultOf()
+	landed := notice.State != TaskRunning && notice.State != TaskQueued
+	// SAID ONCE PER ENDING, PER LIFE OF THE WORK. The identity is the attempt and
+	// the state ([noteClaim]), so a repeated announcement of one landing buys no
+	// second model turn, a node that ends somewhere else later is news again, and
+	// a report composed before the node was re-armed is refused rather than
+	// announced against the run happening now.
+	var claim noteClaim
+	claimed := false
+	if landed {
+		claim, claimed = node.claimNote(attempt)
+	}
 	// WHO IS BEING ASKED IS SETTLED BEFORE ANYBODY IS TOLD. The note below is
 	// written under this session's settle policy, and a card drawn from the event
 	// above it that still said the question was the person's would be the two
 	// halves of one landing disagreeing about whose move it is.
-	hands := a.handToModelOnAuto(node)
-	// AND A HAND-OVER TRAVELS ON THE NOTE OR COMES BACK. Every road below that puts
-	// no note in front of a reader — a duplicate refused, a delivery nobody took, a
-	// node that moved on before its news was composed — leaves a ticket no request
-	// will ever carry, and a question no turn will ever hand back. Given back here,
-	// with no lock held, after the landing's own update has gone out.
+	//
+	// AND ONLY BY THE REPORT WHOSE NOTE WILL CARRY IT. The hand-over is taken
+	// after the claim is won, because two reports of one ending can race: one that
+	// took the ticket and lost the claim gave it back while the other's note went
+	// out telling the model to settle the work the card had just handed back.
+	var hands []handOverTicket
+	if claimed {
+		if hands = a.handToModelOnAuto(node); hands != nil {
+			notice.Decider = TaskAskOwnerModel
+		}
+	}
+	// AND A HAND-OVER TRAVELS ON THE NOTE OR COMES BACK. A delivery nobody took
+	// leaves a ticket no request will ever carry, and a question no turn will ever
+	// hand back. Given back here, with no lock held, after the landing's own update
+	// has gone out.
 	carried := false
 	defer func() {
 		if !carried {
 			a.giveBackHandOvers(hands)
 		}
 	}()
-	// The notice, the attempt it belongs to and the tag its result is judged by
-	// are read together, so a report composed here cannot be announced against a
-	// later life of the node ([TaskNode.claimNote], [TaskNode.resultOf]).
-	notice, attempt, tag := node.resultOf()
 	a.emitTaskUpdate(notice)
-	if notice.State == TaskRunning || notice.State == TaskQueued {
+	if !landed {
 		return
 	}
 	a.recordTaskIndex(node)
 	note := taskNote(notice, taskURI(node.journalPath()), a.settlePolicy(), a.addressLanding(notice))
+	if !claimed {
+		return
+	}
 	// WHETHER IT IS WORTH A TURN OF ITS OWN depends on whether anybody is waiting
 	// for a sentence about it. An ordinary task was handed off and forgotten: it
 	// lands minutes later on a silent session, and the answer the person asked
@@ -3594,10 +3617,6 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 	if notice.Kind == TaskKindHarness {
 		// The mark follows the delivery road's law: it is made when a reader took
 		// the line, not when one was written for a session that has closed.
-		claim, claimed := node.claimNote(attempt)
-		if !claimed {
-			return
-		}
 		line := userText(note)
 		line.delivered = []durableDelivery{node.settlesNote(claim)}
 		if a.accept(delivery{origin: fromRuntime, kind: msgNotice, note: line}).accepted() {
@@ -3605,9 +3624,9 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 			return
 		}
 		node.releaseNote(claim)
-	} else {
-		carried = a.deliverTaskNote(node, attempt, tag, note, hands...)
+		return
 	}
+	carried = a.deliverTaskNote(node, claim, tag, note, hands)
 }
 
 // deliverTaskNote hands one landed node's news to WHOEVER ASKED FOR THE WORK:
@@ -3621,20 +3640,11 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 // of the person rather than nowhere. Sending it to both would tell the person's
 // model that work it never commissioned has just finished.
 //
-// hands are the settle policy's hand-over of this landing
-// ([Agent.handToModelOnAuto]), carried on the note to whichever reader takes it.
-// It answers whether a reader took it, and a caller that handed tickets in gives
-// them back when none did.
-func (a *Agent) deliverTaskNote(node *TaskNode, attempt int, tag TaskReplyTag, note string, hands ...handOverTicket) bool {
-	// SAID ONCE PER ENDING, PER LIFE OF THE WORK. The identity is the attempt and
-	// the state ([noteClaim]), so a repeated announcement of one landing buys no
-	// second model turn, a node that ends somewhere else later is news again, and
-	// a delivery composed before the node was re-armed is refused rather than
-	// announced against the run happening now.
-	claim, claimed := node.claimNote(attempt)
-	if !claimed {
-		return false
-	}
+// claim is the announcement this report won ([TaskNode.claimNote]), and hands
+// are the settle policy's hand-over of this landing ([Agent.handToModelOnAuto]),
+// carried on the note to whichever reader takes it. It answers whether a reader
+// took it, and the caller gives the tickets back when none did.
+func (a *Agent) deliverTaskNote(node *TaskNode, claim noteClaim, tag TaskReplyTag, note string, hands []handOverTicket) bool {
 	// AND THE ANNOUNCEMENT IS NOT WRITTEN DOWN UNTIL SOMEBODY HAS IT. The note
 	// carries what settles it ([durableDelivery]): the recipient's own record is
 	// the acknowledgement, and until then this landing stays owed, so a session

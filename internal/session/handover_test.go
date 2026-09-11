@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"runtime"
 	"strconv"
 	"strings"
@@ -57,9 +58,9 @@ func TestADisownedTurnLeavesTheNextTurnsDecisionAlone(t *testing.T) {
 }
 
 // AND A QUESTION THE POLICY HANDED OVER IS THE LIVE TURN'S TOO. With nobody
-// watching, a landing is the model's by policy ([Agent.handToModelOnAuto]) and
-// carries no press to stamp, so what keeps a let-go turn's floor off it is the
-// clean-up asking the turn number first.
+// watching, a landing is the model's by policy ([Agent.handToModelOnAuto]), and
+// what keeps a let-go turn's floor off it is the clean-up asking the turn number
+// first — before it reaches the ticket's own check.
 func TestADisownedTurnLeavesAPolicyHeldLandingAlone(t *testing.T) {
 	completer, stuck, reading, release := stuckThenReading()
 	defer release()
@@ -564,6 +565,165 @@ func TestALetGoTurnsFloorLeavesALandingTheNextTurnRead(t *testing.T) {
 	agent.handBackUnsettled(letGo)
 	if owner := agent.taskNode(id).decidedBy(); owner != TaskAskOwnerModel {
 		t.Fatalf("the let-go turn's floor took the landing the next turn is reading: %q is deciding", owner)
+	}
+}
+
+// A PIECE WAITING ON A STOPPED PARENT COMES BACK TO THE PERSON. It lands `your
+// call` while a sibling still runs, so its note waits on the parked worker's
+// queue: the runner parks again rather than start a turn about half the news.
+// Then the parent is stopped — its runner's context is cut and the retire closes
+// the worker — and no turn will ever read that note. The close dropped the queue
+// with the ticket on it, and the conversation's floor never takes back a ticket
+// nobody read, so the card said `aforge is deciding` until somebody took it back
+// or aforge restarted.
+func TestAPieceWaitingOnAStoppedParentComesBackToThePerson(t *testing.T) {
+	land := make(chan struct{})
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("c1", "propose_task", string(pieceArgs("read the law"))), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("c2", "propose_task", string(pieceArgs("read the index"))), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("handed both out"), nil
+		},
+	}}
+	// The index is still being read when the parent is stopped; the law lands.
+	nest := newNest(t, completer, func(node *TaskNode) {
+		if node.spec.title != "read the law" {
+			return
+		}
+		go func() {
+			<-land
+			node.finish("UNVERIFIED — the auditor answered neither VERIFIED nor REFUTED", nil, "", "")
+			node.graph.complete(node, TaskUnverified)
+		}()
+	})
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _, _ = runTaskChild(ctx, nest.node, nest.parent, "do the whole job", nest.node.config.Workspace,
+			taskLimits{maxSteps: taskMaxSteps, noProgress: taskNoProgress}, nest.parent.openRoom(), io.Discard)
+	}()
+	waitRequests(t, completer, 3)
+	waitQuiet(t, nest.node)
+	law := nest.graph.children(nest.parent.id)[0]
+	close(land)
+	waitDoneNode(t, law)
+	// Its note, with its ticket, is waiting on the parked worker's queue.
+	queuedPress(t, nest.node)
+
+	stop()
+	<-done
+	if err := nest.node.Close(); err != nil {
+		t.Fatalf("closing the worker: %v", err)
+	}
+	if owner := law.decidedBy(); owner != TaskAskOwnerPerson {
+		t.Fatalf("the stopped parent's worker never read the piece, and %q is still deciding it", owner)
+	}
+}
+
+// AND A PIECE THAT LANDS AFTER THE WORKER'S LAST REQUEST IS HELD FOR ITS NEXT
+// TURN. A worker's turn wakes no turn of its own; its runner starts the next one
+// for the news the end of this one drained (task_child_run.go's
+// [childRun.foldParts]). The end of the turn gave the question back first, so
+// the runner's turn was told to settle a piece whose card had its answers back.
+func TestAPieceThatMissesTheWorkersTurnIsHeldForTheNextOne(t *testing.T) {
+	land := make(chan struct{})
+	var family *nest
+	// The piece is looked up where the worker's steps run, because it is handed
+	// out inside the worker's own first turn.
+	law := func() *TaskNode { return family.graph.children(family.parent.id)[0] }
+	read := make(chan TaskAskOwner, 1)
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("c1", "propose_task", string(pieceArgs("read the law"))), nil
+		},
+		// THE PIECE LANDS WITH THE WORKER'S LAST REQUEST ALREADY OUT.
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			close(land)
+			select {
+			case <-law().done:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			return textResponse("handed the reading out"), nil
+		},
+		// AND THIS IS THE RUNNER'S TURN, THE ONE THAT READS IT.
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			read <- law().decidedBy()
+			return textResponse("the reading landed and I have looked at it"), nil
+		},
+	}}
+	family = newNest(t, completer, func(node *TaskNode) {
+		if node.parent == 0 {
+			return
+		}
+		go func() {
+			<-land
+			node.finish("UNVERIFIED — the auditor answered neither VERIFIED nor REFUTED", nil, "", "")
+			node.graph.complete(node, TaskUnverified)
+		}()
+	})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _, _ = runTaskChild(context.Background(), family.node, family.parent, "do the whole job",
+			family.node.config.Workspace, taskLimits{maxSteps: taskMaxSteps, noProgress: taskNoProgress},
+			family.parent.openRoom(), io.Discard)
+	}()
+
+	select {
+	case owner := <-read:
+		if owner != TaskAskOwnerModel {
+			t.Fatalf("the runner's turn reading the piece finds %q deciding, want the model", owner)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the runner never started the turn that reads the piece")
+	}
+	<-done
+	if owner := law().decidedBy(); owner != TaskAskOwnerPerson {
+		t.Fatalf("the turn that read the piece ended and %q is still deciding it", owner)
+	}
+}
+
+// A LANDING THE PERSON HOLDS IS NOT HANDED OVER BY ITS OWN ECHO. A second report
+// of an ending already announced is refused its note, so it may not take a
+// ticket either. Taken before the claim, it drew `aforge is deciding` over a card
+// the person had just taken back — a `d` pressed then was swallowed as a repeat —
+// and gave it back a moment later.
+func TestAReannouncedLandingThePersonHoldsStaysWithThem(t *testing.T) {
+	entered := make(chan struct{}, 1)
+	agent, _ := newTestAgent(t, parkedModel(entered), nil)
+	ctx, cancel := deadline(10 * time.Second)
+	defer cancel()
+	events, err := agent.Submit(ctx, "tidy the notes")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	awaitParked(t, entered)
+	id := landUnverified(t, agent)
+	if err := agent.TakeBackDecision(id); err != nil {
+		t.Fatalf("taking it back: %v", err)
+	}
+
+	agent.reportTaskNode(agent.taskNode(id))
+	agent.Interrupt()
+	var said []TaskAskOwner
+	for _, event := range collect(t, events) {
+		if event.Kind == EventTaskUpdate && event.Task != nil && event.Task.ID == id {
+			said = append(said, event.Task.Decider)
+		}
+	}
+	// The landing said aforge, the take-back said the person, and nothing after
+	// the take-back may say aforge again.
+	for i := 1; i < len(said); i++ {
+		if said[i-1] == TaskAskOwnerPerson && said[i] == TaskAskOwnerModel {
+			t.Fatalf("the card was told %v: the echo handed the person's card to aforge", said)
+		}
 	}
 }
 

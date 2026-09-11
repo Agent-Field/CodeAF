@@ -4470,8 +4470,9 @@ chips under them, one ask rather than two.
 
 **Work that lands as aforge's turn is ending is held for the turn that reads it.** The turn
 it arrived after never saw it, so that turn's end does not hand it back; the next turn
-reads it, and the question comes back when that one ends. Work no turn can read, because
-the conversation has closed, is yours from the start. And `d` on a card that already reads
+reads it, and the question comes back when that one ends. Work no turn can read — the
+conversation has closed, or the task it reported to was stopped first — is yours again at
+once. And `d` on a card that already reads
 `aforge is deciding` changes nothing and sends aforge nothing further.
 
 **And closing aforge ends the turn too.** If you quit, crash or come back to the
