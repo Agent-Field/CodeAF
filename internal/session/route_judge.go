@@ -473,6 +473,15 @@ func routeSubstantial(text string) bool {
 // conversation's own model rather than refusing — and an install with nothing
 // anywhere gets no judge at all, which is this feature absent rather than broken.
 func (a *Agent) askRouteJudge(ctx context.Context, model, asked, answered string) (routeVerdict, bool) {
+	// AND IT HAS A WINDOW OF ITS OWN, which it did not until 2026-09-11. This is
+	// the same question [Agent.askRouteAhead] asks four lines over, and that one
+	// has been bounded by [routeRaceWindow] since it was written; this one
+	// inherited the LOW TIER'S patience — two minutes — and sat at the end of a
+	// turn with the person's answer already on their screen and the turn not yet
+	// done. Two readers of one question cannot be owed different amounts of a
+	// person's evening.
+	ctx, done := context.WithTimeout(ctx, routeRaceWindow)
+	defer done()
 	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouter, model, routeJudgeBrief, routeJudgeQuestion(asked, answered), asked)
 	if !ok {
 		return routeVerdict{}, false
@@ -518,8 +527,70 @@ func (a *Agent) askRouteJudge(ctx context.Context, model, asked, answered string
 // better reader's answer thrown away at no saving whatever ([routeWidth] is what
 // the two readings come to).
 func (a *Agent) confirmRouteWork(ctx context.Context, model, asked, answered string) (routeVerdict, bool) {
+	// AND ITS WINDOW IS THE PRE-TURN CONFIRM'S, for [Agent.askRouteJudge]'s
+	// reason and rather more urgently: this was the MASTERMIND TIER'S ten minutes,
+	// at the end of a turn, with nothing else running and the person looking at a
+	// finished answer under a status line that would not go away. It is the same
+	// question [Agent.confirmRouteAhead] asks under [routeRaceConfirmWindow].
+	ctx, done := context.WithTimeout(ctx, routeRaceConfirmWindow)
+	defer done()
 	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouterConfirm, model, routeJudgeBrief, routeJudgeQuestion(asked, answered), asked)
 	return verdict, ok && verdict.Work
+}
+
+// ── THE POST-TURN JUDGE, BESIDE THE READER THAT SHARES ITS TURN ─────────────
+
+// judgeRace is [Agent.routeJudge] as a handle, so that the two readings at the
+// end of a turn happen AT THE SAME TIME rather than one after the other.
+//
+// THEY ARE NOT A RACE AGAINST EACH OTHER IN THE USUAL SENSE — neither cancels
+// the other and both answers are wanted. What they race is the person's patience:
+// the reader that asks whether the answer finished the ask is a mastermind call
+// of its own, and the cascade here is a cheap screen plus, rarely, a second
+// mastermind. Taken in series that is the longest stretch of an ordinary
+// tool-less message with nothing whatever happening on the screen; taken
+// together the turn waits for the slower of the two.
+//
+// AND THE ORDER OF EFFECTS IS UNCHANGED, which is the whole reason this is a
+// handle and not a fire-and-forget goroutine. What the judge DOES is start work,
+// and work must not appear over the top of a turn the other reader is about to
+// re-open — so the turn spends this last, after that reader has said the turn is
+// really over, and lets it go where it has not ([judgeRace.end]).
+type judgeRace struct {
+	reading *sidecar[struct{}]
+}
+
+// judgeAhead launches the post-turn cascade. Everything gated — a node, a
+// session nobody is watching, a trivial ask, a turn that used tools — returns a
+// nil handle, which settles instantly and costs the turn nothing.
+func (a *Agent) judgeAhead(ctx context.Context, hub *eventHub, user userMessage, usedTools bool, answer string) *judgeRace {
+	if usedTools || !a.config.AskConsent || a.config.InTask {
+		return nil
+	}
+	return &judgeRace{reading: readBeside(ctx, func(judgeCtx context.Context) struct{} {
+		a.routeJudge(judgeCtx, hub, user, usedTools, answer)
+		return struct{}{}
+	}, nil)}
+}
+
+// settle waits for the cascade to finish, which is where the work it may start
+// lands. It is bounded by the two windows the calls under it carry and by the
+// turn's own context, so it is not a wait that can outlast either.
+func (r *judgeRace) settle() {
+	if r == nil {
+		return
+	}
+	r.reading.settle()
+}
+
+// end lets the cascade go without waiting for it, for [routeRace.end]'s reason.
+// It is what a re-opened turn does with a question about an answer that no
+// longer exists.
+func (r *judgeRace) end() {
+	if r == nil {
+		return
+	}
+	r.reading.end()
 }
 
 // routeWidth is what TWO READINGS OF ONE REQUEST come to on breadth: armed if
@@ -655,74 +726,58 @@ func routeAheadQuestion(asked string) string {
 	return out.String()
 }
 
+// routeAnswer is the pre-turn read's answer: the verdict, and whether both
+// readers said work.
+type routeAnswer struct {
+	verdict routeVerdict
+	work    bool
+}
+
 // routeRace is the pre-turn read AS IT ACTUALLY RUNS: a question in flight
 // beside the turn it is about.
 //
-// IT IS A HANDLE AND NOT A GATE. The loop takes one at the front of the turn,
-// never waits on it, and asks it at each step boundary whether it has settled
-// yet ([routeRace.yes]) — so a race that is still thinking costs the turn one
-// non-blocking channel read per boundary, which is the whole of what this
-// mechanism may charge an ordinary message.
-//
-// THE VERDICT IS WRITTEN ONCE AND READ AFTER. `settled` closing is the only
-// synchronisation there is: the goroutine writes both fields before it closes,
-// every reader reads them after, and there is no lock because there is nothing
-// left to contend for.
+// IT IS A [sidecar] LIKE EVERY OTHER READING BESIDE THE WORK (sidecar.go), and
+// this is the reading that shape was taken FROM: the loop takes one at the front
+// of the turn, never waits on it, and asks it at each step boundary whether it
+// has settled yet ([routeRace.yes]) — so a race that is still thinking costs the
+// turn one non-blocking channel read per boundary, which is the whole of what
+// this mechanism may charge an ordinary message. It used to be its own goroutine
+// and its own channel and its own spent-once bit; all three are the sidecar's
+// now, and three other readings in this package that were awaited instead of
+// raced were rewritten onto the same door in the same change.
 type routeRace struct {
-	// stop ends the race. It is the turn's own hand on it: a verdict nobody can
-	// spend any more must not go on paying for a mastermind call.
-	stop    context.CancelFunc
-	settled chan struct{}
-	verdict routeVerdict
-	work    bool
-	// spent is the turn's own mark that this verdict has been taken, and it makes
-	// ONE VERDICT PER TURN a property of the race rather than of whoever reads it.
-	//
-	// IT MATTERS BECAUSE A YES CHANGES NOTHING VISIBLE. What it does is tighten
-	// the checkpoint's meter ([Agent.routeTriage]), which is a thing worth doing
-	// exactly once: a settled race that answered again at every boundary would
-	// keep re-pulling a rung that has already moved, and would go on holding a
-	// verdict the turn has finished with.
-	//
-	// IT NEEDS NO LOCK because it is written and read on the TURN'S goroutine
-	// alone. The race's own goroutine touches `verdict` and `work` and closes
-	// `settled`; it never sees this field, so there is nothing here to contend
-	// for.
-	spent bool
+	reading *sidecar[routeAnswer]
 }
 
 // yes reports the both-yes verdict IF ONE HAS ALREADY LANDED, and never waits.
-// A nil race — every gated turn — is a no, which is what lets the loop hold this
-// in one line with no branch around it.
 //
-// A SETTLED RACE ANSWERS ONCE. Whatever the caller does with the verdict, the
-// race has said its piece and has nothing further to offer this turn — including
-// when the answer it gave was a no, which cannot become a yes later.
+// A nil race — every gated turn — is a no, which is what lets the loop hold this
+// in one line with no branch around it. A SETTLED RACE ANSWERS ONCE
+// ([sidecar.take]): whatever the caller does with the verdict, the race has said
+// its piece and has nothing further to offer this turn — including when the
+// answer it gave was a no, which cannot become a yes later.
+//
+// IT MATTERS BECAUSE A YES CHANGES NOTHING VISIBLE. What it does is tighten the
+// checkpoint's meter ([Agent.routeTriage]), which is a thing worth doing exactly
+// once: a settled race that answered again at every boundary would keep
+// re-pulling a rung that has already moved.
 func (r *routeRace) yes() (routeVerdict, bool) {
-	if r == nil || r.spent {
+	if r == nil {
 		return routeVerdict{}, false
 	}
-	select {
-	case <-r.settled:
-		r.spent = true
-		return r.verdict, r.work
-	default:
+	answer, landed := r.reading.take()
+	if !landed {
 		return routeVerdict{}, false
 	}
+	return answer.verdict, answer.work
 }
 
-// end discards the race, whether or not it has answered.
-//
-// IT DOES NOT WAIT FOR THE GOROUTINE, deliberately. What it is called on is the
-// end of a turn, and a turn that waited here for a provider to notice a
-// cancelled context would have moved the hang this file removed from the front
-// of the turn to the back of it. The goroutine is bounded by its own two windows
-// either way, and what it writes after this point is read by nobody.
+// end discards the race, whether or not it has answered — [sidecar.end].
 func (r *routeRace) end() {
-	if r == nil || r.stop == nil {
+	if r == nil {
 		return
 	}
-	r.stop()
+	r.reading.end()
 }
 
 // routeAhead LAUNCHES the read at the front of a turn, called once from
@@ -825,17 +880,14 @@ func (a *Agent) routeAhead(ctx context.Context, user userMessage) *routeRace {
 	// person three turns of quiet for work that never began would be the same
 	// mistake a confirmed no would make. It is spent where the work actually
 	// starts ([Agent.handOverRunningTurn]).
-	raceCtx, stop := context.WithCancel(ctx)
-	race := &routeRace{stop: stop, settled: make(chan struct{})}
-	go func() {
-		defer close(race.settled)
+	return &routeRace{reading: readBeside(ctx, func(raceCtx context.Context) routeAnswer {
 		verdict, ok := a.askRouteAhead(raceCtx, asked)
 		if !ok || !verdict.Work {
-			return
+			return routeAnswer{}
 		}
 		confirmed, ok := a.confirmRouteAhead(raceCtx, asked)
 		if !ok {
-			return
+			return routeAnswer{}
 		}
 		// THE VERDICT THAT LANDS IS THE SCREEN'S, WITH THE CONFIRM'S BREADTH
 		// FOLDED IN. The goal and the done-condition stay the screen's because
@@ -843,9 +895,8 @@ func (a *Agent) routeAhead(ctx context.Context, user userMessage) *routeRace {
 		// either ([Agent.confirmRouteWork]); breadth is the one field both of
 		// them answer, and [routeWidth] is what two answers to it come to.
 		verdict.Wide = routeWidth(verdict, confirmed)
-		race.verdict, race.work = verdict, true
-	}()
-	return race
+		return routeAnswer{verdict: verdict, work: true}
+	}, nil)}
 }
 
 // routeTriage is where the race LANDS, called at every step boundary of the turn

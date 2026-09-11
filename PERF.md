@@ -2276,17 +2276,57 @@ clock, with no new timer or narrator call. Suffixes use spare columns; at narrow
 widths the dot uses the existing icon gutter. The laid-out activity row suppresses
 a duplicate footer pulse; detailed phase information remains in the footer.
 
-## Memory lookup before the first response
+## Memory lookup BESIDE the first response, and the law that keeps it there
 
-Pre-turn recall shares `lane.VisiblePatience` (10 seconds) across response repair
-and model fallback; a shorter caller deadline wins. This is a cancellation ceiling,
-not a sleep: successful lookup returns immediately and the ordinary learned lane
-controller can act earlier. `RoleRecall` values interactive, critical-path latency
-without publishing its private output. Other reflex operations share the existing
-`roles.PatienceFor(RoleReflex)` (45 seconds) across retries. Recall bypasses the
-ordinary session auxiliary adapter, so its own operation now owns these bounds.
-On recall failure, the main request proceeds without selected memories. The phase
-uses the existing session heartbeat and clears before the main request starts.
+**THE ONLY WAIT A PERSON EXPERIENCES IS THE MAIN MODEL GENERATING**
+(`internal/session/loop.go`'s header, and the gate in `loop_speed_test.go`). Two
+figures state it and both are asserted:
+
+| bound | figure | where |
+| --- | --- | --- |
+| person's message → the first request on the wire | **50 ms** = `lane.SpokenWithin`/20 | `paceLawBudget`, `internal/session/loop_speed_test.go` |
+| tool result → the next request on the wire | **50 ms** | same |
+
+Every auxiliary reading a turn makes runs beside the work and may only interrupt
+it. The one named exception is the guardian (`guardianAnswerWindow`, 10 s), which
+decides whether a tool runs at all and therefore has nothing to run beside; it now
+draws `checking whether this is safe to run` for the whole of that window.
+
+Pre-turn recall is started at `Agent.startTurnLocked`, beside the title, and is
+never awaited. What it finds is applied rather than dropped: before the request is
+assembled it rides that request; before the first token it buys **one** cut and
+re-ask (`errRecallCut`, no backoff, one per turn); after the first token it rides
+the next step and the turn's `pace` journal line records `recall:late`.
+
+`RoleRecall` patience is **0.2**, which is a **2 s** ceiling (act on silence: move
+to another machine) and an **18 s** give-up. The two used to be the same instant —
+`internal/reflex`'s `Route` read `Ceiling()` as its deadline — so no recall in this
+build was ever rescued off a slow machine. Measured 2026-09-11: 16 recalls, mean
+4.3 s, max 10.7 s, DekaLLM p50 5.5 s and Io Net 4.3 s against DeepInfra's 1.7 s.
+
+`RoleJudge` patience is **1.5** (**15 s** ceiling, **135 s** give-up) for the same
+reason: every caller of that role bounds itself at 30 s or less, so a 60 s ceiling
+could never fire, and the same census has four mark readings dying at
+30,001–30,002 ms having decided nothing.
+
+The mark's reading (`checkpointSketchWindow`, 30 s) is started at the boundary that
+crosses a mark and settled at the next one. A carry-on — nearly all of them — costs
+the turn one closed-channel test; a drawing with independent parts in it cuts the
+step in flight (`errMarkCut`) so the boundary it is spent at arrives at once.
+Measured 2026-09-11: 8.1 s between a tool result and the next step, deciding
+nothing.
+
+The two end-of-turn readers are raced against each other rather than taken in
+series, and both now carry a window: `askRouteJudge` at `routeRaceWindow` (20 s)
+and `confirmRouteWork` at `routeRaceConfirmWindow` (30 s). They inherited the low
+and mastermind tier patience — 2 minutes and **10 minutes** — with the person's
+answer already on the screen.
+
+Other reflex operations share the existing `roles.PatienceFor(RoleReflex)`
+(45 seconds) across retries. Recall bypasses the ordinary session auxiliary
+adapter, so its own operation now owns these bounds. On recall failure, the main
+request proceeds without selected memories. There is no phase word on the lookup
+any more: `preparing saved context` named a wait that no longer exists.
 
 Host attachment compares a build identity captured at process initialization,
 including timestamp precision beyond the minute shown on screen. This adds one

@@ -277,25 +277,51 @@ const Hysteresis = 250 * time.Millisecond
 
 // roles is the table. THERE ARE NO NUMBERS OUTSIDE IT.
 //
-// THE PATIENCE COLUMN WAS RE-MEASURED ON 2026-09-10 AND IS UNCHANGED. Each
-// multiplier is a percentile of the first token its own roles really see, and
-// all four land where they should: talk's 1 is ten seconds against a watched
-// turn's ninetieth at 8.4s; the unattended 3 is thirty seconds against a task
-// node's ninety-seventh (its ninety-fifth is 17.3s and its ninety-ninth 58.2s);
-// standing and judge's 6 is sixty seconds, just past that ninety-ninth; and the
-// probe's 0.5 is five seconds against a reflex's ninety-eighth (ninetieth
-// 0.9s, ninety-ninth 7.2s). Nobody watches an unattended call, so the cost of
-// waiting on one is zero and the cost of acting is money — which is why the
-// patient roles act at the ninety-seventh and the watched one at the ninetieth.
+// THE PATIENCE COLUMN WAS RE-MEASURED ON 2026-09-10. Each multiplier is a
+// percentile of the first token its own roles really see: talk's 1 is ten seconds
+// against a watched turn's ninetieth at 8.4s; the unattended 3 is thirty seconds
+// against a task node's ninety-seventh (its ninety-fifth is 17.3s and its
+// ninety-ninth 58.2s); standing's 6 is sixty seconds, just past that
+// ninety-ninth; and the probe's 0.5 is five seconds against a reflex's
+// ninety-eighth (ninetieth 0.9s, ninety-ninth 7.2s). Nobody watches an
+// unattended call, so the cost of waiting on one is zero and the cost of acting
+// is money — which is why the patient roles act at the ninety-seventh and the
+// watched one at the ninetieth.
+//
+// TWO OF THEM MOVED ON 2026-09-11, AND BOTH MOVED FOR ONE REASON: A CEILING
+// OUTSIDE ITS OWN CALLER'S WINDOW CAN NEVER FIRE.
+//
+//   - RECALL, 1 → 0.2. Its caller (internal/reflex's Route) bounded the whole
+//     routing pass at this role's CEILING, which made the two numbers the same
+//     number: the hazard controller was told to act on silence at exactly the
+//     instant the call was killed, so a recall on a slow machine was never once
+//     moved to a fast one. The 2026-09-11 census measured the consequence —
+//     sixteen recalls, mean 4.3s, max 10.7s, served by DekaLLM at a median of
+//     5.5s and Io Net at 4.3s while DeepInfra answered the same role in 1.7s.
+//     THE QUANTITY IS THE EARLIEST MOMENT AT WHICH SILENCE STOPS BEING NORMAL
+//     FOR THIS ROLE: above the fastest measured machine's median answer, so a
+//     healthy one is never cut mid-answer, and below the slow ones', so a slow
+//     one is always moved off. That interval is (1.7s, 4.3s) and two seconds is
+//     its low end — the soonest this can act without acting on a machine that is
+//     working. The give-up that scales with it is eighteen seconds, and the
+//     caller now reads THAT as its window so the rescue has somewhere to land.
+//   - JUDGE, 6 → 1.5. Every caller of this role bounds itself at thirty seconds
+//     or less — the mark's sketch, the two route confirms, the guardian's ten —
+//     and sixty seconds was outside all of them, so the same thing was true:
+//     nothing was ever moved off a silent judge machine, and the 2026-09-11
+//     census has four mark readings dying at 30,001–30,002 ms having done
+//     nothing. Fifteen seconds acts at half the sketch's window with half of it
+//     left for a second machine, and the give-up that scales with it is a hundred
+//     and thirty-five seconds, still well above every caller's own bound.
 var roles = map[Role]RoleFacts{
 	RoleTalk:           {Interactive: true, QualityNeed: 0.9, Horizon: 50, Visible: true, Streams: true, Verb: "writing", Patience: 1},
 	RoleLeafAttached:   {Interactive: true, QualityNeed: 0.9, Horizon: 50, Visible: true, Streams: true, Verb: "writing", Patience: 1},
 	RoleLeafUnattended: {Interactive: false, QualityNeed: 0.9, Horizon: 50, Visible: false, Streams: true, Verb: "writing", Patience: 3},
 	RoleStanding:       {Interactive: false, QualityNeed: 0.9, Horizon: 20, Visible: false, Streams: true, Verb: "writing", Patience: 6},
-	RoleRecall:         {Interactive: true, Critical: true, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 1},
+	RoleRecall:         {Interactive: true, Critical: true, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 0.2},
 	RoleMemory:         {Interactive: false, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 3},
 	RoleAuxiliary:      {Interactive: false, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 3},
-	RoleJudge:          {Interactive: false, Critical: true, QualityNeed: 0.95, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 6},
+	RoleJudge:          {Interactive: false, Critical: true, QualityNeed: 0.95, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 1.5},
 	RoleDesign:         {Interactive: false, Critical: true, QualityNeed: 0.9, Horizon: 20, Visible: false, Streams: true, Verb: "writing", Patience: 6},
 	RoleProbe:          {Interactive: false, Horizon: 1, Visible: false, Streams: true, Verb: "writing", Patience: 0.5},
 	// A hand's question: somebody IS waiting (the tool row is open in front of

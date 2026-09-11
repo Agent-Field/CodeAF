@@ -2554,7 +2554,13 @@ type Agent struct {
 	// words, and make a fresh request. It is under mu because Steer is the writer
 	// from the input goroutine while the loop installs and clears it.
 	generation *activeGeneration
-	steering   []userMessage
+	// recall is the pre-turn memory routing STARTED BESIDE THE TITLE and never
+	// waited on (memory.go's [recallAside]). It is under mu because
+	// [Agent.startTurnLocked] writes it with the lock held and the turn's own
+	// goroutine takes it a moment later; it is nil for every turn of a session
+	// that remembers nothing, which is the whole of the cost to those.
+	recall   *recallAside
+	steering []userMessage
 	// steerGrace is the one armed second look at a correction that arrived
 	// while a foreground bash was still too young to adopt (steer_grace.go).
 	// There is at most one, it is replaced rather than added to, and every exit

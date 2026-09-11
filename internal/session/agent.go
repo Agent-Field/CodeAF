@@ -1589,6 +1589,17 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 		// the first cannot buy two names.
 		a.startTitleLocked()
 	}
+	// AND THE RECALL STARTS HERE TOO, beside the title and for a stronger version
+	// of the title's own reason (memory.go's [Agent.startRecallLocked]). The name
+	// is merely something nobody should wait for; the recall is something the
+	// person WAS waiting for — 4.3 seconds on the 2026-09-11 census, before their
+	// model had been asked anything at all — and starting it at the one place a
+	// turn begins is what puts the whole of the turn's own preparation on top of
+	// it instead of behind it.
+	//
+	// IT IS STARTED UNDER THIS LOCK for the title's reason as well: two Submits
+	// racing to be the first must not each buy a route.
+	a.startRecallLocked(turnCtx, hub, user.text())
 	// THEIR NEXT WORDS ARE WHAT CHANGED. A generation Interrupt minted waits
 	// here for the sentence that follows Esc, and that sentence is the one
 	// decision the leftover handlers and this turn's opening share.

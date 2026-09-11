@@ -256,6 +256,15 @@ only, never the full text — and answers which two or three of them bear on thi
 message. Only those are put in front of the model, as a short `<memory>` block.
 Most messages need none, and an empty answer is the ordinary one.
 
+**That second step no longer stands in front of your answer.** It is started the
+instant your message is accepted and runs beside everything else — your own model
+is asked straight away, and the block is applied the moment it arrives. If it
+arrives before the first word appears, the request is quietly asked again with the
+block in and nothing on your screen changes. If it arrives after the first word,
+the block rides the next step of the same answer instead. It used to be awaited:
+every message paid for it before its first token, which measured at a mean of four
+seconds and a worst case of ten.
+
 The split is deliberate. Arithmetic is good at finding candidates and bad at
 telling a near-miss from a match; a model is the opposite. So the model's whole
 job is to throw out the lines that merely sound related — one
@@ -709,14 +718,34 @@ imported 12 memories from memory.md
 
 After that the file is gone from aforge's view and the store is the only memory.
 
-## Why does it say preparing saved context before answering?
+## It used to say preparing saved context — why is that gone, and does the lookup slow my answer down?
 
-`preparing saved context` means aforge is selecting relevant saved memories before
-asking the conversation model. It is not waiting for that model's first word yet.
-This lookup values response speed and shares the interactive silence limit across
-all its retries. If it cannot finish within that limit, the answer proceeds without
-selected memories. A shorter deadline from the caller wins. Saved memories are not
-deleted by a lookup timeout.
+It is gone because **the lookup is not a wait any more**, and a status word for
+something nobody is waiting on would be this screen naming its own machinery.
 
-Background memory keeping has the reflex tier's separate total deadline. These
-bounds do not promise that the main answer itself will finish within either limit.
+The lookup now runs beside your answer rather than in front of it. Your own model
+is asked the instant your message is accepted — nothing is asked of it first — and
+the memory lookup happens at the same time, on its own cheap model. Whatever it
+finds is still applied, always, in one of three ways:
+
+- back before the request is built, and the request carries it, exactly as before;
+- back while the request is in flight and before the first word has appeared: the
+  request is asked again, once, with the block in. You see nothing — there was
+  nothing on the screen yet — and the second ask is the cheap one, because the
+  provider already has the prompt;
+- back after the first word: the block rides the **next step** of the same answer.
+
+So the lookup never costs you time, and it is never thrown away either. The one
+thing it can cost is that a very short answer — one that finishes in a single step
+— may go out before a slow lookup lands, in which case that answer is given
+without the block and the lookup is written down in the record as late.
+
+**What it used to be.** The lookup was awaited: your model was not asked anything
+until a small memory model had answered. On a measured day that was a mean of
+**4.3 seconds** before the first token of every message, with a worst case of
+**10.7 seconds** — paid whether or not the lookup found anything, which most of
+the time it does not.
+
+**What bounds it now.** It acts on a silent machine after **two seconds** by
+moving to a different one, and stops trying after **eighteen**. Saved memories are
+never deleted by a lookup that ran out of time.
