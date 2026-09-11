@@ -8,9 +8,11 @@ package main
 // about them lives in this process: onboarding, --once, --debug, --no-host.
 
 import (
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -176,6 +178,30 @@ func TestTheShapeRefusalNamesWhatIsRunningAndWhatWasAsked(t *testing.T) {
 		if !strings.Contains(said, want) {
 			t.Fatalf("the sentence %q does not say %q", said, want)
 		}
+	}
+}
+
+// A FALLBACK NOTICE SPEAKS TO THE PERSON, NOT ABOUT THE HOST MACHINERY. The
+// path refusal names its limit and its way out, a host that never appeared says
+// what happened plainly, and a sentence already written for a person is not
+// rewritten on the way to the screen.
+func TestALongStatePathIsSaidInWordsAndNotInTheEnginesOwn(t *testing.T) {
+	tooLong := hostFallbackReason(enginehost.ErrSocketPathTooLong)
+	if !strings.Contains(tooLong, "AFORGE_HOME moves it somewhere shorter") {
+		t.Fatalf("the path refusal offers no way out: %q", tooLong)
+	}
+	if !strings.Contains(tooLong, strconv.Itoa(enginehost.SocketLimit)) {
+		t.Fatalf("the path refusal does not name the %d-byte limit: %q", enginehost.SocketLimit, tooLong)
+	}
+	noHost := hostFallbackReason(enginehost.ErrNoHostAnswered)
+	for name, said := range map[string]string{"too-long refusal": tooLong, "no-host refusal": noHost} {
+		if strings.Contains(said, "engine host") || strings.Contains(said, "no host answered") {
+			t.Fatalf("the %s speaks in machinery words: %q", name, said)
+		}
+	}
+	written := busyEngineHostSentence()
+	if got := hostFallbackReason(errors.New(written)); got != written {
+		t.Fatalf("a sentence already written for a person became %q, want %q", got, written)
 	}
 }
 
