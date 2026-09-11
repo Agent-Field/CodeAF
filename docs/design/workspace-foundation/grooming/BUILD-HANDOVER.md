@@ -117,3 +117,59 @@ care. The note can go to a parent worker (`taskNoteReaders`), whose own drain mu
 mark it read. A delivery nobody takes (`releaseNote`) must give the ticket back.
 Regression shape: `TestAHandOverThatMissesATurnIsHeldForTheTurnThatReadsIt` with
 `AskConsent` off, and the landing admitted from inside the scripted request.
+
+## Round 4: the settle-policy road
+
+Lane `codex/personal-settle-race`, base `9f72babb2`. `handToModelOnAuto` now makes the
+press's own write (`TaskNode.handsOverLocked`, shared with `handOver`) and answers its
+ticket. `reportTaskNode` puts it on the landing note (`postTaskMessage` →
+`userMessage.handsOver`) and gives it back when no note carries it. That covers a delivery
+nobody takes (`releaseNote`); since round 4b only the report that won the claim takes one. A node
+already handed over mints nothing, because a second ticket would strand the first.
+`handsUnsent`, `markHandOversRead` and `giveBackHandOvers` are unchanged. A parent
+worker drains the note with the same `drainSteering`, so its own request marks it read
+and its own floor hands it back.
+
+| Test (fails first) | Mutation → result |
+|---|---|
+| `TestALandingThatMissesATurnIsHeldForTheTurnThatReadsIt` | base product code → FAIL 50/50; policy mints no ticket → FAIL 3/3; note carries no ticket → FAIL 3/3 |
+| `TestAPiecesLandingIsHeldByTheWorkerThatReadsIt` | worker's drain does not mark → FAIL 3/3 (passes on base) |
+| `TestALandingNobodyTakesStaysWithThePerson` | base → FAIL; drop the give-back → FAIL 3/3 |
+| `TestALandingAnnouncedTwiceIsHandedOverOnce` | drop the `handed` guard → FAIL 3/3 |
+| `TestALetGoTurnsFloorLeavesALandingTheNextTurnRead` | base → FAIL; floor skips only unread → FAIL 3/3 |
+
+A drain that belongs to the live turn needs no new test: `drainSteering` refuses a
+let-go hub before it reads the queue, so the note's kind cannot matter
+(`TestALetGoTurnsDrainTakesNothingFromTheQueue`). A policy hold now has a reader stamp.
+
+**Lock discipline.** The ticket write is under `graph.mu` alone, in `handToModelOnAuto`,
+reached from `reportTaskNode` with no lock held. `settlePolicy`'s `a.mu` is released
+before `graph.mu` is taken. The note field is set on a local value before
+`deliverTo`. The read mark is where it was (after `a.mu` in `drainSteering`). The
+give-back is `reportTaskNode`'s deferred call, after delivery, with no lock held.
+
+**Behaviour that moved.** `d` on a card the policy already handed over is a second
+hand-over, refused with `already handed to aforge`. The local door drops that refusal
+(`question.go`'s `applyLanding`), so the press is a no-op and the card is unchanged; it
+used to queue a second note. The remote door (`remote/tasksettle.go`) still passes the
+refusal on as an error, which predates this lane.
+`TestHandingOneToTheModelLeavesTheNodeWhereItIs` now takes it back first.
+Race: the 25 hand-over and floor tests ran `-race -count=200`: 5000/5000 PASS, no data races.
+
+## Round 4b: the review of `2c73774f4`
+
+| Finding | Test (failed 5/5 on `2c73774f4`) | Fix → mutation → result |
+|---|---|---|
+| close drops a parked worker's ticket (blocker) | `TestAPieceWaitingOnAStoppedParentComesBackToThePerson` (`"model"`) | `Close` gives back `unreadHandsLocked` (queue + `handsUnsent`) after the turn's wait, lock released → drop the call → FAIL 3/3 |
+| ticket taken before the claim | `TestAReannouncedLandingThePersonHoldsStaysWithThem` (`[model person model person]`) | `reportTaskNode` claims first; only the winner takes a ticket → mint on `landed` → FAIL 3/3 |
+| piece after the worker's last request (old residue) | `TestAPieceThatMissesTheWorkersTurnIsHeldForTheNextOne` (`"person"`) | `orphanedHandsLocked` holds when `InTask && taskNotes > 0` → drop it → FAIL 3/3 |
+
+The concurrent-report race itself has no hook-free test. On the new order nothing
+happens between winning the claim and taking the ticket, so there is no interleaving
+left for a hook to hold, and the old one needed a seam inside `reportTaskNode`. The test
+pins what that race showed a person: an echo of an ending drew `aforge is deciding`
+over a card they held. `deliverTaskNote` now takes the won claim; the tests that pin
+the claim and the delivery alone call `announceTaskNote` (claim, then deliver, no ticket).
+The `taskNotes` hold relies on `postTaskNews`'s stated contract: a worker's runner
+re-enters it for the reports it was handed. A runner that stops closes the worker
+instead, and the close gives the tickets back.

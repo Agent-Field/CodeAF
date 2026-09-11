@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -215,6 +216,15 @@ func TestHandingOneToTheModelLeavesTheNodeWhereItIs(t *testing.T) {
 	agent, _, node := unverifiedFamily(t)
 	before := len(agent.steering)
 
+	// NOBODY IS WATCHING THIS SESSION, so the landing was the model's already, by
+	// policy, and a press on it is a second hand-over: it is refused and sends
+	// nothing. Taken back, the card is the person's to hand over again.
+	if err := agent.HandUnverifiedToModel(node.id); !errors.Is(err, ErrTaskHandedOver) {
+		t.Fatalf("a press on a landing the policy handed over answers %v, want it already handed over", err)
+	}
+	if err := agent.TakeBackDecision(node.id); err != nil {
+		t.Fatalf("taking the decision back: %v", err)
+	}
 	if err := agent.HandUnverifiedToModel(node.id); err != nil {
 		t.Fatalf("HandUnverifiedToModel: %v", err)
 	}
