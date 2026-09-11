@@ -264,3 +264,60 @@ func TestOneSentenceRetiresEveryQuestionStandingAtOnce(t *testing.T) {
 		t.Fatalf("a sentence left %d question(s) standing: %+v", len(open), open)
 	}
 }
+
+// ── the sentence is a claim, not a race ─────────────────────────────────────
+
+// TWO MAPS HOLD ONE QUESTION and this is the law that they are taken together.
+//
+// The assertion above that the withdrawal is said once and says the right thing
+// is true but PROBABILISTIC: closing the channel makes the `ask` lane runnable,
+// and its own deferred withdrawal ([Agent.rememberQuestion]) carries
+// [questionGoneReason]'s `the turn moved on without it` — the consent line's
+// fact, about the person's own act. `WithdrawQuestion` is claim-or-nothing, so
+// whichever road reached the word-book first decided what the person read, and a
+// test that waits for the first event asserts a coin flip.
+//
+// So this one holds the claim directly and with no goroutine in it: after the
+// talked-past ending has run under a.mu, the words are ALREADY off the book, and
+// the road that arrives second provably finds nothing and says nothing.
+func TestTalkingPastAQuestionClaimsItsWordsWithItsWait(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) { config.Interactive = true })
+	asks, stop := agent.WatchQuestions()
+	t.Cleanup(stop)
+
+	question := Question{ID: 1, Kind: QuestionAsk, Asker: Asker{Kind: AskerModel}, Head: "Which painting genres do you like?"}
+	agent.mu.Lock()
+	agent.asked.parkLocked(question.ID)
+	agent.mu.Unlock()
+	forget := agent.rememberQuestion(question)
+
+	agent.mu.Lock()
+	taken := agent.talkedPastQuestionsLocked()
+	// THE BOOK IS ALREADY EMPTY WHILE THE LOCK IS STILL HELD, which is the whole
+	// law: there is no window in which the other road could win.
+	if _, said := agent.claimQuestionLocked(QuestionAsk, question.Token(), true); said {
+		agent.mu.Unlock()
+		t.Fatal("the words are still on the book after the wait was ended: the `ask` lane's own withdrawal can still win")
+	}
+	agent.mu.Unlock()
+
+	if len(taken) != 1 || taken[0].ID != question.ID {
+		t.Fatalf("the ending answered %+v, want the one question it retired", taken)
+	}
+	agent.sayTheQuestionsCameDown(taken)
+	gone := waitForAsk(t, asks, EventQuestionWithdrawn)
+	if gone.Question.Withdrawn == nil || gone.Question.Withdrawn.Reason != askTalkedPastReason {
+		t.Fatalf("the withdrawal reads %+v, want %q", gone.Question.Withdrawn, askTalkedPastReason)
+	}
+
+	// And the losing road — the `ask` lane returning and running its own defer —
+	// says nothing at all.
+	forget()
+	select {
+	case event := <-asks:
+		if event.Kind == EventQuestionWithdrawn {
+			t.Fatalf("the lane's own withdrawal still spoke, and it reads %+v", event.Question.Withdrawn)
+		}
+	case <-time.After(200 * time.Millisecond):
+	}
+}
