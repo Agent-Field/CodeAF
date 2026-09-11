@@ -1,10 +1,10 @@
 ---
 kind: changed
-title: A task may hand out twenty pieces and tasks nest three deep, and the fan-out page says the goal is the whole job's wall time
+title: A task may hand out twenty pieces, tasks nest three deep, and the goal is the whole job's wall time
 pr: 874
 surface: [engine, chat]
 invalidates:
-  - "One task could hand out at most five pieces (`taskFanLimit = 5`), and a sixth was refused. The cap is twenty (`taskFanLimit = 20`), and the refusal reads `no: you have already handed out 20 pieces of this work, which is as many as one task may.`"
+  - "One task could hand out at most five pieces (`taskFanLimit = 5`), and a sixth was refused. The cap is twenty (`taskFanLimit = 20`), and the refusal reads `no: you have already handed out 20 pieces of this work, which is as many as one task may.` in full."
   - "Tasks nested two deep (`taskDepthLimit = 2`): the conversation's task could hand pieces out, and a piece could not. They nest three deep: a piece carries `propose_task`, `quick_task` and `tasks` and may split its own share, and a piece of a piece has none of them."
   - "The fan-out page told a worker to split when a step had `TWO OR THREE PARTS`, and it said unconditionally that a piece you hand out cannot hand out more. It now says split when a step has parts that do not need each other, however many, and says whether the worker's pieces may split in turn from that worker's depth."
   - "The five and the two were described as chosen bounds on decomposition. Neither decides how wide work goes. How much runs at once is `task.parallel` and the admission governor, and the fan cap is only a runaway stop."
