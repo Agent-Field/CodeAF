@@ -90,12 +90,12 @@ it in` and pointed at a worktree belonging to work it had never seen. A number n
 still means the newest task anywhere in the project that wears it, which is what a name is for.
 
 **Pressing it twice does nothing the first press did not do.** The second press answers
-`already handed to aforge` and sends the model nothing further — no second instruction, no
-second line about the same decision — and it is not shown to you as trouble, because the
-state it asks for is the state that already holds: the reason row goes on reading `aforge
-is deciding`. If you want it back, press `take it back` and the answers return to you. A
-press made as aforge finishes a reply is held for the reply that reads it; one no reply
-will read — you stopped it — comes straight back to you.
+`already handed to aforge` and sends the model nothing further, and it is not shown to you
+as trouble: the reason row goes on reading `aforge is deciding`. If you want it back, press
+`take it back` and the answers return to you. A press made as aforge finishes a reply is
+held for the reply that reads it; one no reply will read comes straight back and the row
+drops `aforge is deciding` — a reply you stopped, or a press while another model answers a
+picture your chat model cannot see.
 
 **A recovered task is this conversation's task.** Reopening a conversation brings its
 graph back — `recovered task graph: 1 done · 1 your call` — and everything the card offers

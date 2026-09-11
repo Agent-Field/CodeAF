@@ -142,6 +142,11 @@ func (a *Agent) Abandon(reason AbandonReason) (Usage, bool) {
 	// is what lets it sit here.
 	a.nudgePresence()
 	a.mu.Unlock()
+	// AND THIS IS THE TURN'S END, SO THE FLOOR IS HERE. Its goroutine may never
+	// unwind, and when it does its clean-up hands back nothing (agent.go's
+	// [Agent.startTurnLocked]), so what it was deciding comes back to the person
+	// now, beside what it never read.
+	a.handBackUnsettled()
 	a.giveBackHandOvers(orphaned)
 
 	// THE WAITS END FIRST, then the request is cut, then the surface is freed.
