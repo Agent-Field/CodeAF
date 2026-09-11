@@ -293,6 +293,17 @@ seconds and a standing pass sixty, because nobody is sitting in front of them
 and a second request costs money. They are never silent either — the same
 sentence is on their row.
 
+**Ten seconds always does something, even when a second request is too
+expensive.** aforge only runs a small number of rescues — a second request to
+another machine costs real money, so it keeps a small allowance and spends it
+where it helps most. When the allowance is gone and the machine has sent nothing
+at all, not one byte, aforge stops that attempt instead and asks somewhere else.
+Before 2026-09-10 it did neither: four tasks that evening sat on one machine for
+six and seven minutes after the ten seconds were up, because the only way to act
+was the one aforge could not afford. If the machine IS sending something — the
+router is talking, or the model is writing where you cannot see it — nothing is
+stopped, because nine such calls in ten turn out to be seconds from an answer.
+
 **A conversation turn gives up after ninety seconds** of not reaching any model
 at all, and tells you so in one line. It is the point where every model in the
 chain has had one fair try with a move between them: of the calls that recovered

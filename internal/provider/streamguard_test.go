@@ -1147,3 +1147,34 @@ func quietAfterNaming(lane string, lasting time.Duration) http.HandlerFunc {
 		}
 	}
 }
+
+// TestTheBufferedCapIsNotTheRolesToStretch is the number that let four streams
+// sit on one machine for six and seven minutes on 2026-09-10.
+//
+// The first two silence bounds are PATIENCE and scaling them by whose errand it
+// is is right. The buffered cap is not patience: it is a measured ceiling on
+// what an ENDPOINT may do — the longest a machine assembling an answer
+// server-side has ever legitimately taken while keeping the line warm — and a
+// machine does not earn the right to babble for longer because nobody is
+// watching. Stretched, it was seven and a half minutes for a task node and
+// fifteen for a standing pass, which is exactly the colon trickler this file's
+// header says the cap exists to stop.
+func TestTheBufferedCapIsNotTheRolesToStretch(t *testing.T) {
+	talk := boundsFor(lanes.RoleTalk)
+	for _, role := range []lanes.Role{lanes.RoleTalk, lanes.RoleLeafUnattended, lanes.RoleStanding, lanes.RoleJudge} {
+		bounds := boundsFor(role)
+		if bounds.buffered != talk.buffered {
+			t.Errorf("role %q may go quiet behind keepalives for %s against a watched turn's %s — "+
+				"the cap is a fact about endpoints, not about who is waiting", role, bounds.buffered, talk.buffered)
+		}
+		// AND THE OTHER TWO STILL SCALE, or this test would be pinning the
+		// wrong thing: patience really is the role's.
+		if role.Facts().Patience > 1 && bounds.first <= talk.first {
+			t.Errorf("role %q waits %s for a first token against a watched turn's %s — patience stopped scaling",
+				role, bounds.first, talk.first)
+		}
+	}
+	if got := boundsFor(lanes.RoleStanding).buffered; got != bufferedQuietBound {
+		t.Errorf("the most patient role's buffered cap is %s, want the flat %s", got, bufferedQuietBound)
+	}
+}

@@ -381,9 +381,28 @@ func boundsFor(role lanes.Role) stallBounds {
 		floor = gap
 	}
 	return stallBounds{
-		first:    max(stretch(stallFirstBound, patience), floor),
-		gap:      max(gap, floor),
-		buffered: max(stretch(stallBufferedBound, patience), floor),
+		first: max(stretch(stallFirstBound, patience), floor),
+		gap:   max(gap, floor),
+		// THE BUFFERED CAP IS NOT THE ROLE'S TO STRETCH, and this is the one
+		// line of the three that changed on 2026-09-10.
+		//
+		// The first two bounds are PATIENCE — how long this errand is willing to
+		// wait — and scaling them by whose errand it is is exactly right. The
+		// buffered cap is not patience: it is a measured ceiling on ENDPOINT
+		// BEHAVIOUR, the longest a machine assembling an answer server-side has
+		// ever legitimately taken while keeping the line warm (eighty-six
+		// seconds end to end, 2026-08-24), and a machine does not become
+		// entitled to babble for longer because nobody happens to be watching.
+		//
+		// Stretched, it was seven and a half minutes for a task node and fifteen
+		// for a standing pass, and that is precisely the "colon trickler owning
+		// this loop forever" the header above says the cap exists to prevent.
+		// Measured: four quick tasks on the evening of 2026-09-10 sat on one
+		// machine for 260, 370, 375 and 428 seconds before its first token, all
+		// four of them inside a 450-second stretched cap and all four of them
+		// past the flat one. The flat figure still holds every honest delivery
+		// this adapter has measured, with room to spare.
+		buffered: max(stallBufferedBound, floor),
 		floor:    floor,
 	}
 }
@@ -792,6 +811,11 @@ type stallWatch struct {
 // background errand, which waits longer rather than less.
 func newStallWatch(ctx context.Context, cancel context.CancelFunc, wall time.Duration, pace float64) *stallWatch {
 	watch := &stallWatch{cancel: cancel, clock: time.Now, bounds: boundsFor(RoleFrom(ctx)), arm: streamWatchFrom(ctx)}
+	// AND THE ARM LEARNS WHERE ITS SCISSORS ARE. The ceiling is the controller's
+	// and the cutting is this file's, so the one place that can act on a ceiling
+	// the purse refused needs both — see armwatch.go's THE CEILING PICKS ONE OR
+	// THE OTHER, NEVER NEITHER.
+	watch.arm.guardedBy(watch)
 	watch.born = watch.clock()
 	watch.quietSince = watch.born
 	watch.walled, watch.period, watch.pace = wall, wall, pace
@@ -1072,6 +1096,47 @@ func (w *stallWatch) verdict() context.CancelFunc {
 		w.tripped = &StreamCut{Reason: CutSilent, Waited: waited}
 	}
 	return w.cancel
+}
+
+// cutIdle ends a stream the CEILING gave up on rather than one a silence bound
+// did: the controller fired, the purse refused a second request, and not one
+// byte had reached this stream. It is the free half of armwatch.go's THE CEILING
+// PICKS ONE OR THE OTHER, NEVER NEITHER.
+//
+// IT IS THE SAME CUT EVERY OTHER REASON MAKES. [CutSilent] is already "this
+// request produced nothing", which is exactly true here; what differs is only
+// which clock decided, and the row records that separately
+// ([streamWatch.applied]). Naming the served machine is the whole point of
+// cutting rather than waiting — it is what lets the ledger strike the endpoint
+// so the next encode routes around it — and it is empty here far more often
+// than not, because a stream that has said nothing has usually not named anybody
+// either.
+//
+// The cancel runs outside the lock, for [stallWatch.fire]'s reason, and a watch
+// that has already tripped keeps its first verdict: a bound that fired is the
+// bound that ended the stream.
+func (w *stallWatch) cutIdle(served string, waited time.Duration) {
+	if w == nil {
+		return
+	}
+	w.mu.Lock()
+	if w.tripped != nil {
+		w.mu.Unlock()
+		return
+	}
+	if waited <= 0 {
+		waited = w.clock().Sub(w.quietSince)
+	}
+	w.tripped = &StreamCut{
+		Reason:   CutSilent,
+		Waited:   waited,
+		Provider: served,
+		Ran:      w.clock().Sub(w.born),
+	}
+	cut, cancel := w.tripped, w.cancel
+	w.mu.Unlock()
+	w.arm.boundApplied(cut)
+	cancel()
 }
 
 // cut is the trip, or nil. It is read after the stream has died, to tell a

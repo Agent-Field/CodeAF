@@ -94,7 +94,50 @@ type streamWatch struct {
 	// Recovery suspends the controller; recovered calls cannot teach lane timing.
 	recovering bool
 	recovered  bool
+	// guard is the silence watch over this same request, and free says the
+	// ceiling has decided to use it. See THE CEILING PICKS ONE OR THE OTHER,
+	// NEVER NEITHER below.
+	guard *stallWatch
+	free  bool
 }
+
+// ── THE CEILING PICKS ONE OR THE OTHER, NEVER NEITHER ───────────────────────
+//
+// A hedge is the PAID way to act on a silence — a second request, out of a purse
+// that is deliberately small (the waiting design's §B: two rescues per twenty
+// calls). A cut is the FREE way: end this attempt and let the layer above ask
+// another machine at once, paying the prompt again and nothing else.
+//
+// UNTIL THIS WAVE THE CEILING COULD CHOOSE NEITHER, and that is a hole rather
+// than a trade-off. `docs/design/waiting/DESIGN.md` §A clause 1 says the role's
+// ceiling is hard "regardless of belief"; it has to be hard regardless of PURSE
+// too, or the clause means "regardless of belief, when we happen to be able to
+// afford it". Measured on 2026-09-10: 2,186 attempts fired the ceiling, had the
+// purse refuse the arm, and then had NOTHING act — 648 of them went on for more
+// than six times the silence that had just been refused, to a ninety-ninth
+// percentile of 272 seconds and a worst case of 938. Four quick tasks that
+// evening waited on one machine for six and seven MINUTES before its first
+// token, every one of them ten seconds past a ceiling that had already fired.
+//
+// BUT THE FREE MOVE IS NOT FREE OF REGRET, so it is not taken on every refusal,
+// and the discriminator is one this layer already computes. Of the 2,186:
+//
+//	reason           n      ended cleanly anyway
+//	drift          1,268    92 %
+//	ceiling          518    75 %
+//	no heartbeat     250    31 %
+//
+// Cutting the first two would throw away nine calls in ten that were about to
+// answer and pay every one of their prompts again — strictly worse than waiting,
+// which is why the purse exists at all. `no heartbeat` is the other animal
+// entirely: it is [pathFaultReason], meaning not one byte has reached this
+// stream — no token, not even a router comment — and across the whole log those
+// attempts end cleanly 24 % of the time with a first token at the ninety-ninth
+// percentile of 505 seconds. Cutting them at the ceiling forfeits about three
+// calls in ten and rescues seven from waits measured in minutes.
+//
+// So: the ceiling acts. It hedges when it can afford to; when it cannot, and the
+// wire has said NOTHING AT ALL, it cuts and the next machine gets the question.
 
 type streamWatchContextKey struct{}
 
@@ -141,6 +184,7 @@ func (w *streamWatch) note(reading control.Reading) {
 	act := w.after(w.control.Note(reading), reading.At)
 	arm, race := w.arm, w.race
 	w.mu.Unlock()
+	w.takeFreeMove()
 
 	// FIRST VISIBLE PROGRESS TAKES THE VOICE. Whichever arm writes the first
 	// word a person can read is the arm they hear; the rest are held.
@@ -164,7 +208,29 @@ func (w *streamWatch) quiet(now time.Time) {
 	act := w.after(w.control.Quiet(now), now)
 	arm, race := w.arm, w.race
 	w.mu.Unlock()
+	w.takeFreeMove()
 	race.act(arm, act)
+}
+
+// takeFreeMove ends the attempt the ceiling gave up on, OUTSIDE every lock.
+//
+// The cut runs here rather than in [streamWatch.after] for the reason
+// [stallWatch.fire] gives about its own: cancelling a context runs whatever the
+// caller hung off it, and this process's locks may not be underneath somebody
+// else's code. It is idempotent — the guard refuses a second trip — so both
+// callers may run it unconditionally.
+func (w *streamWatch) takeFreeMove() {
+	if w == nil {
+		return
+	}
+	w.mu.Lock()
+	take, guard, served, waited := w.free, w.guard, w.served, w.silence
+	w.free = false
+	w.mu.Unlock()
+	if !take || guard == nil {
+		return
+	}
+	guard.cutIdle(served, waited)
 }
 
 // after records what the controller said, names the fault where there is one,
@@ -187,6 +253,16 @@ func (w *streamWatch) after(act control.Act, now time.Time) control.Act {
 		dead := w.tokens == 0 && w.beats == 0 && act.Silence >= lanes.DeadPathFloor
 		if dead {
 			act.Reason = pathFaultReason
+			// AND THE CEILING ACTS EVEN WHEN THE PURSE SAYS NO. A report is the
+			// controller saying it has weighed a second request and will not
+			// make one — because everything is believed slow, or because the
+			// purse is empty. On a path fault that leaves the question with a
+			// machine that has sent nothing at all, so the free move is taken
+			// instead: cut here, and the layer above asks somewhere else. See
+			// THE CEILING PICKS ONE OR THE OTHER, NEVER NEITHER.
+			if act.Kind == control.Report {
+				w.free = true
+			}
 		}
 		if w.acted.Kind == control.None {
 			w.acted, w.silence, w.fault = act, act.Silence, dead
@@ -272,7 +348,17 @@ func (w *streamWatch) sighting(model string, tokens int) (lanes.Sighting, bool) 
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.served == "" || w.first.IsZero() || w.fault || w.recovered {
+	// A PATH FAULT THAT LATER PRODUCED TOKENS WAS NOT A PATH FAULT. The claim
+	// is made the moment something is acted on, from what had arrived by then —
+	// nothing — and a stream that went on to write from a named machine has
+	// disproved it. Suppressing that measurement is how the WORST first tokens
+	// this build has ever seen taught the ledger nothing: four streams on one
+	// machine on 2026-09-10 took 260, 370, 375 and 428 seconds to their first
+	// token and every one of them was dropped here, so the sheet went on saying
+	// that machine answers in eight. A late first token from a named lane is a
+	// fact about that lane, and [LagTTFT] is already the line it falls the wrong
+	// side of.
+	if w.served == "" || w.first.IsZero() || w.recovered {
 		return lanes.Sighting{}, false
 	}
 	if tokens <= 0 {
@@ -432,4 +518,16 @@ func (w *streamWatch) written() int {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.tokens
+}
+
+// guardedBy hands this arm the silence watch over the same request, so a
+// ceiling the purse refused has something to act WITH. It is set once, by the
+// guard's own constructor, and is nil on every call with no guard.
+func (w *streamWatch) guardedBy(guard *stallWatch) {
+	if w == nil {
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.guard = guard
 }
