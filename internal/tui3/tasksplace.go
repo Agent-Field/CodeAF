@@ -304,6 +304,11 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, see
 	// and [tasksConversationRows] merges the pair. Asking [tasksMine.row]
 	// directly gets the half that has no folder on it, which is how every row of
 	// the folder a person is sitting in went on wearing its name.
+	//
+	// AND A WINDOW THE SCAN HAS NOT MET YET HAS NO FOLDER, which leaves every row
+	// wearing its project tag until it has. That is the right way for this to
+	// fail — a tag too many is a fact that is true, and a tag too few on the one
+	// frame a person is looking at is a row they cannot place.
 	for _, row := range r.chats {
 		if row.ID != "" && row.ID == strings.TrimSpace(mine.row.ID) {
 			r.folder = strings.TrimSpace(row.ProjectDir)
@@ -1480,7 +1485,8 @@ func tasksChatRow(line tasksLine, width int, now time.Time, folder, tilde string
 	// opened in a home directory and the same project word down every row of the
 	// folder the person was already sitting in — both retired by the
 	// mission-control ruling, and both drawn here until this change.
-	if project := chatProjectWord(chat.row.Project, chat.row.Workspace, chat.row.ProjectDir, folder, tilde); project != "" && project != chat.title {
+	folderOf := chatFolder{project: chat.row.Project, workspace: chat.row.Workspace, dir: chat.row.ProjectDir}
+	if project := chatProjectWord(folderOf, folder, tilde); project != "" && project != chat.title {
 		facts = append(facts, rowSay(project))
 	}
 	plan := rowPlan{primary: chat.title, fields: facts}
@@ -1581,13 +1587,23 @@ type tasksFact struct {
 // A SHUT FOLD'S COUNT comes first because it is not a fact about the work at all
 // — it is the row saying that three more rows are behind it, which is the
 // difference between a page a person believes they have read and one they have
-// not. The note is next because it is the only thing that can CORRECT the glyph —
-// a claim of running with nobody behind it, or work happening in another window —
-// and a row whose mark and whose words disagree is worse than a row missing a
-// fact. The age follows, because every section here is named by time and the age
-// is what a person scans down. Then WHERE THE WORK CAME FROM and WHAT IT IS
-// DOING, which are the two facts a person acts on: whose it is, and whether it
-// needs them.
+// not. The note is next because it is the only thing that can say the work is
+// happening SOMEWHERE ELSE, and a row whose mark and whose words disagree is
+// worse than a row missing a fact.
+//
+// THEN THE STATE, AND IT IS AHEAD OF THE AGE AND THE CONVERSATION BECAUSE IT IS
+// WHAT THE LIST IS READ FOR. A list of work answers one question before it
+// answers any other — does this need me — and the word that answers it is the
+// one thing on the row that must survive a narrow frame (tasktier.go's
+// [tierRowParts] states the same law for the column beside a conversation: it is
+// cut from the right and the verb is never what goes). It sat FIFTH for a while,
+// behind the age and the conversation, and the cost of that was exact: at
+// eighty-five columns a row nothing was running kept `The Skill Model Rebuild`
+// and dropped `incomplete`, so the page named the chat and hid the one fact a
+// person would have acted on.
+//
+// The age follows, because every section here is named by time and the age is
+// what a person scans down, and then WHERE THE WORK CAME FROM.
 //
 // AND MONEY IS LAST. It used to sit fourth, in front of the owner and the state,
 // and it was also the only fact on the row with an ink of its own — so `$3.10`
@@ -1630,9 +1646,9 @@ func tasksFacts(line tasksLine, now time.Time, pal palette) []tasksFact {
 	return []tasksFact{
 		{field: fold},
 		{field: rowSay(tasksNote(item))},
+		{field: tasksMiddleField(item)},
 		{field: tasksAgeField(item, now)},
 		{field: rowSay(source)},
-		{field: tasksMiddleField(item)},
 		{field: money, ink: placeMoneyInk(pal)},
 	}
 }
@@ -1762,15 +1778,32 @@ func tasksMiddleField(item tasksItem) rowField {
 	if full == "" {
 		return rowSay()
 	}
+	// A LIVE ROW'S ACTIVITY IS A DIFFERENT FACT AND NOT A LONGER SPELLING OF THIS
+	// ONE. `18 of 40 steps` and `working` answer two questions, and a ladder that
+	// stepped from one to the other would be law 2 spent on something it does not
+	// mean — a fact degrades to a SHORTER SPELLING OF ITSELF, never to its
+	// neighbour ([tasksMiddle] returns the activity whole when there is one).
+	if strings.TrimSpace(item.entry.Activity) != "" {
+		return rowSay(full)
+	}
 	status := item.status()
 	word, whole := strings.TrimSpace(status.Word), strings.TrimSpace(status.RowWord())
-	switch {
-	case whole == "" || whole == full:
-		return rowSay(full)
-	case word == "" || word == whole:
-		return rowSay(full, whole)
+	// THE RUNGS ARE WHAT IS LEFT AFTER THE DUPLICATES GO, and they are built by
+	// adding rather than by a ladder of cases: a row with no files has no long
+	// spelling, a state with no reason has no middle one, and a row with neither
+	// is one rung. A rung equal to the one above it is not a rung — the fitter
+	// would spend a width on a spelling that saves no cells — and a row that
+	// offered only its longest either fits or GOES, which is how a `your call`
+	// that changed no files came to draw nothing at all beyond its age on an
+	// ordinary hundred-column frame (rowfit.go's law 4 and its one caveat).
+	rungs := []string{full}
+	for _, shorter := range []string{whole, word} {
+		if shorter == "" || shorter == rungs[len(rungs)-1] {
+			continue
+		}
+		rungs = append(rungs, shorter)
 	}
-	return rowSay(full, whole, word)
+	return rowSay(rungs...)
 }
 
 // tasksCardHead is the first line of a phone card: the state and the name, in
@@ -1808,8 +1841,10 @@ func tasksCardTail(item tasksItem, now time.Time) string {
 // WHAT STATE IT IS IN.
 //
 // IT USED TO SAY BOTH, AND THAT IS HOW ONE ROW CAME TO SAY ITS STATE TWICE. A
-// row that claims to be running with nobody behind it took [taskRecordStoppedWord]
-// here, while [tasksMiddle] put the row's own state word in front of the outcome
+// row that claims to be running with nobody behind it took this page's own copy
+// of the word ([taskRecordStoppedWord], which is still what the room's orchestrate
+// line spends and is no longer where a ROW gets it), while [tasksMiddle] put the
+// row's own state word in front of the outcome
 // a few cells later — two facts, one reading, and a page drawing `stopped ·
 // stopped`. THE STATE WORD IS SAID ONCE, BY THE ONE FACT THAT IS ABOUT THE
 // STATE ([tasksMiddle] reads [session.TaskStatus.RowWord], which is the engine's

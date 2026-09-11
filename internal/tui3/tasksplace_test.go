@@ -650,7 +650,7 @@ func TestTheFactsOnATaskRowAreJoinedByOneSeparator(t *testing.T) {
 	// what the work did — so a narrow frame kept the figure and dropped the two
 	// facts a person acts on, on the one row of the page with an ink of its own.
 	wide := tasksDrawnRow(tasksPage(reading, 160), name)
-	if !strings.HasSuffix(wide, "5h · 2 files · done · $0.27") {
+	if !strings.HasSuffix(wide, "2 files · done · 5h · $0.27") {
 		t.Fatalf("at 160 columns the row reads\n  %s\nand the spend belongs after what the work did", wide)
 	}
 	narrow := tasksDrawnRow(tasksPage(reading, 60), name)
@@ -660,8 +660,8 @@ func TestTheFactsOnATaskRowAreJoinedByOneSeparator(t *testing.T) {
 	// AND THE WORD IS THE LAST THING IT GIVES UP. A list of work is read to find
 	// out whether anything needs a person, so the file count goes before the
 	// state does ([tasksMiddleField] ranks the spellings).
-	if !strings.HasSuffix(narrow, "· done") {
-		t.Fatalf("at 60 columns the row gave up the one word it is read for:\n  %s", narrow)
+	if !strings.Contains(narrow, "done") || strings.Contains(narrow, "2 files") {
+		t.Fatalf("at 60 columns the row reads\n  %s\nand the file count should have given way to the word", narrow)
 	}
 	for _, width := range []int{120, 80} {
 		if !strings.Contains(plain(tasksPage(reading, width)), "The Annual Toggle") {

@@ -123,7 +123,58 @@ func TestTheReadingKnowsTheFolderThisWindowIsSittingIn(t *testing.T) {
 	if r.folder != "/home/pat/code/aforge" {
 		t.Fatalf("the reading thinks this window is in %q, want the folder its own conversation names", r.folder)
 	}
-	if page := tasksPage(r, 100); strings.Contains(page, "aforge") && !strings.Contains(page, "Sweeping") {
+	// AND THE PAGE DOES NOT DRAW THAT FOLDER. The conversation's own title is on
+	// the page and its project's name is not, which is the whole of the rule.
+	if page := tasksPage(r, 100); strings.Contains(page, "aforge") {
 		t.Fatalf("the page drew the folder it is already in:\n%s", page)
+	}
+}
+
+// THE WORD IS THE LAST THING A ROW GIVES UP, and a list of work is read to find
+// out whether anything needs a person.
+//
+// Two rows lost it before this, at ordinary widths, and for two different
+// reasons. A row nobody is behind said `incomplete` in the NOTE field, which
+// ranked second — then the word moved into the fact that ranked fifth, behind the
+// age and the conversation the work came out of, so at eighty-five columns the
+// page kept `The Skill Model Rebuild` and dropped the one fact anybody would have
+// acted on. And a `your call` row that changed no files had only ONE spelling to
+// offer, because its file count and its state word collapsed into the same
+// string — and a field with one spelling either fits or goes (rowfit.go, law 4),
+// so a hundred-column frame drew its age and nothing else.
+func TestTheStateWordIsTheLastThingARowGivesUp(t *testing.T) {
+	now := time.Date(2026, time.September, 11, 9, 0, 0, 0, time.UTC)
+	pal := newPalette(tokens.NoColor, false)
+	for _, tc := range []struct {
+		why  string
+		item tasksItem
+	}{{
+		why: "a row that claims to be running with nobody behind it",
+		item: tasksItem{
+			entry: session.TaskIndexEntry{
+				ID: "1", SessionID: "room-a", Status: string(session.TaskRunning),
+				Label: "Rebuild the skill model from the 2024 backtest",
+			},
+			row: session.SessionRow{ID: "room-a", Title: "The Skill Model Rebuild"},
+		},
+	}, {
+		why: "a landing nobody could check that changed no files",
+		item: tasksItem{
+			entry: session.TaskIndexEntry{
+				ID: "2", SessionID: "room-a", Status: string(session.TaskUnverified),
+				Label: "Put the annual toggle on the pricing page and check the copy",
+				EndedAt: now.Add(-time.Hour),
+			},
+			row: session.SessionRow{ID: "room-a", Title: "The Skill Model Rebuild"},
+		},
+	}} {
+		word := taskStateWord(tc.item.entry, tc.item.runs)
+		for _, width := range []int{120, 100, 90, 85, 80} {
+			row := plain(tasksRow(tasksLine{kind: tasksLineTask, item: tc.item}, width, now, pal, false))
+			if !strings.Contains(row, word) {
+				t.Fatalf("at %d columns %s reads\n  %s\nand has given up %q, which is the one thing the list is read for",
+					width, tc.why, strings.TrimRight(row, " "), word)
+			}
+		}
 	}
 }

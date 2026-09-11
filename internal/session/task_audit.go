@@ -735,12 +735,18 @@ func checkerRanOut(window time.Duration) string {
 // the retry that follows it answers, and the verdict it reaches is what lands.
 // What keeps it here is the run where the retry does not answer either, where
 // this is the only account there is of where five minutes went.
-// AND THE BOUND IS SPELLED THE WAY EVERY OTHER ELAPSED TIME IN THIS PACKAGE IS
-// ([taskSpanWord]). [time.Duration.String] is the engine talking to itself: it
-// landed `one call ran 29.24078975s without answering` on a person's screen,
-// eight decimal places of a figure nobody can act on, and the nanoseconds were
-// never a fact about the run — they are the clock's resolution. The one
-// spelling of how long something took answers in the unit the reader is in.
+// AND THE BOUND IS SPELLED THE WAY EVERY OTHER MEASURED ELAPSED TIME IN THIS
+// PACKAGE IS ([taskSpanWord]). [time.Duration.String] is the engine talking to
+// itself: it landed `one call ran 29.24078975s without answering` on a person's
+// screen, eight decimal places of a figure nobody can act on, and the
+// nanoseconds were never a fact about the run — they are the clock's resolution.
+//
+// [checkerRanOut] BESIDE IT STILL SAYS `5m0s` AND THAT IS NOT AN OVERSIGHT. Its
+// figure is the window somebody CONFIGURED — a round number a person chose, in
+// the units they chose it in — and `5m 0s` would be an elapsed-time spelling put
+// on a ceiling. The two sentences can land on one card and say a duration two
+// ways because they are saying two different kinds of thing; what they may never
+// do is either of them in nanoseconds.
 func checkerStalled(bound time.Duration) string {
 	return "one call ran " + taskSpanWord(bound) + " without answering and was abandoned"
 }

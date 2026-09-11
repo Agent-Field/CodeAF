@@ -98,7 +98,7 @@ func recentCell(row switcherRow, in *homeGridInput) *homeCell {
 // settled the own-folder half of it — a row of this window's own bucket never
 // reaches here ([recentCell]) — so it hands no folder to compare.
 func chatProjectTag(row switcherRow, tilde string) string {
-	return chatProjectWord(row.project, row.session.Workspace, "", "", tilde)
+	return chatProjectWord(chatFolder{project: row.project, workspace: row.session.Workspace}, "", tilde)
 }
 
 // homeScratchRoots are the directories a throwaway folder is made at the top

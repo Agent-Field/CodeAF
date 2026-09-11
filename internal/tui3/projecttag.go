@@ -1,6 +1,9 @@
 package tui3
 
-import "strings"
+import (
+	"path/filepath"
+	"strings"
+)
 
 // projecttag.go holds THE ONE RULE about whether a row naming a conversation
 // also names the folder that conversation works in.
@@ -20,19 +23,49 @@ import "strings"
 // used to ask nobody at all, so a chat in the home directory arrived on it
 // wearing a lone `~` at the right of its name.
 
+// chatFolder is the three facts the rule needs about one conversation: what its
+// folder is CALLED, the tools root recorded for the conversation, and the
+// project directory it belongs to.
+//
+// IT IS A STRUCT AND NOT THREE STRINGS IN A ROW. Every one of them is a path or
+// a path's name, so a positional signature is one a caller can transpose and
+// still compile — and the failure that buys is silent, a tag drawn for the wrong
+// reason on a row nobody looks at twice.
+type chatFolder struct {
+	project   string
+	workspace string
+	dir       string
+}
+
 // chatProjectWord is that rule: the folder's word, and NOTHING where the folder
 // is not a project. `here` is the folder the window drawing the row is itself
 // standing in, and "" where the caller has no such folder to compare against —
-// which is the honest answer for a surface that draws several projects at once.
-func chatProjectWord(project, workspace, folder, here, tilde string) string {
-	project = strings.TrimSpace(project)
+// which is the honest answer for a surface that draws several projects at once,
+// and the answer a window whose own conversation the world scan has not met yet
+// falls back to ([readTasks] says so where it reads the folder).
+func chatProjectWord(chat chatFolder, here, tilde string) string {
+	project := strings.TrimSpace(chat.project)
 	switch {
 	case project == "" || project == "~":
 		return ""
-	case homeScratchFolder(workspace, tilde):
+	case homeScratchFolder(chat.workspace, tilde):
 		return ""
-	case here != "" && folder == here:
+	// BOTH SIDES ARE CLEANED, and not because either is known to be ragged: the
+	// check above this one cleans its paths, [session.Project]'s own path is a
+	// recorded workspace or a launch directory with no cleaning applied to
+	// either, and a rule that is byte-exact on one line and forgiving on the next
+	// is a rule nobody can predict.
+	case here != "" && sameFolder(chat.dir, here):
 		return ""
 	}
 	return project
+}
+
+// sameFolder is that comparison, spelled once.
+func sameFolder(a, b string) bool {
+	a, b = strings.TrimSpace(a), strings.TrimSpace(b)
+	if a == "" || b == "" {
+		return false
+	}
+	return filepath.Clean(a) == filepath.Clean(b)
 }

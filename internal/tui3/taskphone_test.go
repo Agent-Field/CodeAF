@@ -183,7 +183,10 @@ func TestThePhoneRosterScrollsToACardPastTheFold(t *testing.T) {
 	// AND IT IS DRAWN WHOLE. A card is two lines, so a window that counted rows
 	// rather than lines would leave the tail of the one a thumb scrolled to
 	// clipped at the fold.
-	if tail := tasksCardTail(last, a.now()); head+1 >= len(lines) || tail == "" || !strings.Contains(lines[head+1], taskStateWord(last.entry, last.runs)) {
+	// IT ASSERTS THE WHOLE TAIL AND NOT A WORD OF IT. A clipped tail still
+	// carries its first segment, so a test that looked for one would pass on
+	// exactly the frame this test exists to fail.
+	if tail := tasksCardTail(last, a.now()); head+1 >= len(lines) || tail == "" || !strings.Contains(lines[head+1], tail) {
 		t.Fatalf("the cursor's card is clipped at the fold:\n%s", joined)
 	}
 	for i, line := range lines {
