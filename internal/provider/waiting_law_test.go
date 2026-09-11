@@ -257,9 +257,23 @@ func TestTheCallLogSaysWhyItWaitedAndWhatItDid(t *testing.T) {
 // prior the design rests on is absent for them.
 func TestSetModelReachesTheBeat(t *testing.T) {
 	_, agent := waitingFile(t, "internal/session/agent.go")
-	set := waitingFunc(t, agent, "SetModel")
-	if waitingNames(set, "laneBeat") || waitingNames(set, "noteLaneModel") || waitingNames(set, "startLaneBeat") {
-		return
+	// THE DOOR OR THE ONE FUNCTION IT HANDS TO. `SetModel` is the exported door
+	// and its body is one line — the work, and the answer to "when does this
+	// land", live in `setModel` beside it (internal/session's steer.go states why
+	// the door cannot carry that answer). A law that only ever looked at the
+	// exported name would have failed on a rename that changed nothing, and it
+	// still cannot be satisfied by a door that does nothing: the beat has to be
+	// named somewhere on the road the pick actually takes.
+	road := []*ast.FuncDecl{waitingFunc(t, agent, "SetModel")}
+	for _, handedTo := range []string{"setModel"} {
+		if waitingNames(road[0], handedTo) {
+			road = append(road, waitingFunc(t, agent, handedTo))
+		}
+	}
+	for _, fn := range road {
+		if waitingNames(fn, "laneBeat") || waitingNames(fn, "noteLaneModel") || waitingNames(fn, "startLaneBeat") {
+			return
+		}
 	}
 	t.Error("internal/session/agent.go: SetModel never tells the lane beat about the new model, " +
 		"so a model picked after launch never gets a sheet (lane W4)")
