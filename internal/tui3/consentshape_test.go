@@ -64,7 +64,7 @@ func TestAlwaysOnBashOffersTheShapesBeforeItWritesAnything(t *testing.T) {
 
 	got := plain(frame(a))
 	for _, want := range []string{
-		"always?", "[1] git status*", "[2] git *", "[3] just this line", "[esc] never mind",
+		"always?", "1 git status*", "2 git *", "3 just this line", "esc never mind",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("the beat does not offer %q:\n%s", want, got)
@@ -143,7 +143,7 @@ func TestEscapeLeavesTheBeatWithoutAnsweringTheCall(t *testing.T) {
 	if !a.asking() {
 		t.Fatal("the question went away")
 	}
-	if got := plain(frame(a)); !strings.Contains(got, "allow? [1] allow once") {
+	if got := plain(frame(a)); !strings.Contains(got, "1  allow once") {
 		t.Fatalf("the offer did not come back:\n%s", got)
 	}
 	// And the answers still work, which is the whole of "the question is back".

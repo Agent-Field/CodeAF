@@ -407,7 +407,7 @@ func TestTheThirdSameShapedYesOffersARuleAndNeverTheFirst(t *testing.T) {
 	ask.ID = 999
 	ask.Subject = session.SubjectRef{Kind: session.SubjectCall, Name: "bash"}
 	lab.raise(ask)
-	if got := lab.plain(); !strings.Contains(got, "[r] make it a rule for everywhere") {
+	if got := lab.plain(); !strings.Contains(got, "r make it a rule for everywhere") {
 		t.Fatalf("the third same-shaped yes did not offer a rule:\n%s", got)
 	}
 }

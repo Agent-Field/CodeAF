@@ -395,20 +395,22 @@ func TestTheOfferLineAnswersToThePointerAtTheWiderWidths(t *testing.T) {
 	a.width = 120
 	row, block := askOffer(t, a)
 	line := plain(row)
-	at := strings.Index(line, "[2]")
-	if at < 0 || len(a.questionSpans) != 3 {
-		t.Fatalf("the answers row recorded %d targets on %q", len(a.questionSpans), line)
+	// AT THIS WIDTH THE ANSWERS ARE ROWS, so the targets are the panel's bands —
+	// one per answer, each spanning its whole row ([app.questionBands]).
+	if len(a.questionBands) != 3 {
+		t.Fatalf("the answers recorded %d targets on %q", len(a.questionBands), line)
 	}
-	// The WORD is part of the target and not decoration beside it: three cells is
-	// a target a person aims at, and "[2] always, this tool" is one they hit.
-	for _, span := range a.questionSpans {
-		if w := span.to - span.from; w < 4 {
-			t.Fatalf("an answer's target is %d cells wide: %+v", w, span)
+	// THE WHOLE ROW IS THE TARGET and not the word alone: an answer whose words
+	// wrapped is not a target that shrinks to its first line.
+	for _, band := range a.questionBands {
+		if w := band.span.to - band.span.from; w < a.width/2 {
+			t.Fatalf("an answer's target is %d cells wide: %+v", w, band)
 		}
 	}
-	// Measured once: the press answers, and the answers row is gone by the
-	// release.
-	x, y := at+4, chromeRowY(t, a, block)
+	// Measured once: the press answers, and the block is gone by the release.
+	// The widening yes is the second answer, which is the second band.
+	_ = block
+	x, y := a.questionBands[1].span.from+4, chromeRowY(t, a, a.questionBands[1].row)
 	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 	want := answered{id: 7, allow: true, scope: session.ConsentToolSession}

@@ -3479,6 +3479,15 @@ func (a *app) questionVerbKey(head questionShown, key string) (tea.Cmd, bool) {
 		if open == nil {
 			return nil, false
 		}
+		if head.commented != nil {
+			// A LANE WHOSE BOX IS NOT THE BOX IS TOLD, and it is told FIRST:
+			// home's errand pane draws this card beside a message box of its own
+			// pointed at another conversation, so the words go there and the
+			// pane arms itself ([questionShown.commented]).
+			head.commented()
+			a.touch()
+			return nil, true
+		}
 		if a.questionTakesOther(*open) {
 			if at := open.pick; at >= 0 && at < len(open.question.Options) {
 				open.other.with = questionOptionKeyAt(open.question, at)

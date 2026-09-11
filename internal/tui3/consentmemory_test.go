@@ -166,7 +166,7 @@ func TestWithNoWriteSeamTheCardIsTheOldCard(t *testing.T) {
 	a.width = 120
 	typeLine(t, a, "look")
 	settleAsk(a)
-	if got := plain(frame(a)); !strings.Contains(got, "[2] always, this tool (session)") {
+	if got := plain(frame(a)); !strings.Contains(got, "2  always, this tool (session)") {
 		t.Fatalf("the unwired offer changed its words:\n%s", got)
 	}
 	drive(t, a, key("2"))
@@ -190,7 +190,7 @@ func TestTheOfferNamesWhatTheAlwaysReaches(t *testing.T) {
 	settleAsk(a)
 	a.width = 120
 	got := plain(frame(a))
-	if !strings.Contains(got, "[2] always, this tool") || strings.Contains(got, "(session)") {
+	if !strings.Contains(got, "2  always, this tool") || strings.Contains(got, "(session)") {
 		t.Fatalf("the offer still promises a session-scoped always:\n%s", got)
 	}
 
