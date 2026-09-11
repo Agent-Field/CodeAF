@@ -3,6 +3,8 @@ package tui3
 import (
 	"strings"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -13,7 +15,7 @@ import (
 // by every form and by the manual." This file is that table.
 //
 // IT IS ONE TABLE BECAUSE FOUR READERS AGREE THROUGH IT. The line, the card and
-// the ratify row draw their answers row from it ([app.questionOffer]); the room
+// the ratify row draw their answers row from it ([app.questionKeyRow]); the room
 // reads it for its foot (lane S2 imports [questionKeys] rather than spelling a
 // second set); `internal/manual/chat/questions.md` lists exactly these keys and
 // exactly these words; and the tmux suite's needles come out of the same words.
@@ -50,6 +52,18 @@ type questionVerb struct {
 	// form. The emptiness law lives here: no pick means no `enter →` line, no
 	// rule to offer means no `r`, nothing real to undo means no `u`.
 	needs questionNeed
+	// tier is which of the two rows a question draws this key on: the primary
+	// keys are written into the frame's bottom edge and the rest stand on one
+	// dim row under the frame (owner ruling 2026-09-11, hints pick A).
+	//
+	// IT IS A COLUMN AND NOT A LIST OF NAMES SOMEWHERE ELSE. The primary tier is
+	// "what a person needs in order to answer this at all" — walk, take, later,
+	// and whatever key is the ANSWER on a shape that has one (`space` on a
+	// checklist, `a`/`b` on a pair) — and the secondary tier is everything that
+	// says something ABOUT the decision rather than giving it. A row that mixed
+	// them was the owner's "no hierarchy": answers, navigation, dismissal, four
+	// meta-verbs and a clock at one hue and one weight.
+	tier keyTier
 	// giveUp is the order a narrow row surrenders its keys in — the HIGHEST
 	// number goes first ([questionDropVerb]).
 	//
@@ -65,6 +79,19 @@ type questionVerb struct {
 	// are the only way to move a confirmation's cursor.
 	giveUp int
 }
+
+// keyTier is which of a question's two key rows a key is drawn on.
+type keyTier uint8
+
+const (
+	// keySecondary is the dim row under the frame. It is the ZERO VALUE because
+	// most of the table is a verb about the decision, and a key that forgets to
+	// say which tier it is on belongs on the quieter one.
+	keySecondary keyTier = iota
+	// keyPrimary is written into the frame's bottom edge: at most walk, take and
+	// later, plus the one key that answers a structured shape.
+	keyPrimary
+)
 
 // questionForms is a set of the forms one key belongs to.
 type questionForms uint8
@@ -148,6 +175,10 @@ const (
 	// reframe on a question with no list is just words, and the box already
 	// takes words.
 	needOptions
+	// needOther is the pointer standing on the `something else…` row, where the
+	// row is a box and the only keys that mean anything are the ones that send
+	// what is in it, go back to the list, or put the question off.
+	needOther
 	// needMoves is a question with something the ARROWS move that is not a
 	// cursor: a dial, or a hole with a short list of choices in it. It is a
 	// second row on [questionWalkKey] rather than a second word on the first,
@@ -192,6 +223,11 @@ const (
 	// batch, now, nothing written down.
 	questionSendKey  = "s"
 	questionAlikeKey = "g"
+	// questionBackKey is the up arrow ALONE, which is the one place on this
+	// surface a single arrow is a key in its own right: from the box at the foot
+	// of a panel there is nowhere below to go, so `↑` is not half of a pair. The
+	// routing reads `up` ([app.questionOtherKey]); this is the SPELLING.
+	questionBackKey = "↑"
 	// questionWalkKey is the PAIR of arrow keys, and it is spelled as the pair
 	// because that is how it is drawn and how it is learnt: `←→ pick` is one
 	// affordance, and a row that listed two keys for one act would be a row
@@ -230,15 +266,22 @@ const (
 // on it, and let the person type. Nothing is cancelled, so the word may not say
 // cancelled.
 var questionKeys = []questionVerb{
-	{key: questionEnterKey, word: "take it", forms: formsBlock | formsRoom | formsSheet, needs: needPick, giveUp: 1},
+	{key: questionEnterKey, word: "take it", forms: formsBlock | formsRoom | formsSheet, needs: needPick, tier: keyPrimary, giveUp: 1},
 	// THE SHEET'S TWO SIT WHERE A PERSON REACHES FOR THEM — beside `enter`,
 	// because answering a batch is open-one, answer, send — and only `g` is ever
 	// given up: `s` is the reason the sheet exists (a batch answered row by row
 	// and then not sent is a batch nobody answered), so it is ranked zero beside
 	// `esc`.
-	{key: questionSendKey, word: questionSheetSendWord, forms: formsSheet},
+	{key: questionSendKey, word: questionSheetSendWord, forms: formsSheet, tier: keyPrimary},
 	{key: questionAlikeKey, word: questionSheetSameWord, forms: formsSheet, giveUp: 2},
-	{key: questionLaterKey, word: "later", forms: formsBlock | formsRoom | formsSheet},
+	{key: questionLaterKey, word: "later", forms: formsBlock | formsRoom | formsSheet, tier: keyPrimary},
+	// THE TWO KEYS OF THE `something else…` ROW. They are rows of their own
+	// rather than second words on `enter` and the walk, because a key that reads
+	// one way on one row and another way on the next is two keys as far as
+	// anybody learning it is concerned — and while this row is a box, these two
+	// and `esc` are the only keys that are not typing.
+	{key: questionEnterKey, word: "send it", forms: formsCard, needs: needOther, tier: keyPrimary},
+	{key: questionBackKey, word: "back to the list", forms: formsCard, needs: needOther, tier: keyPrimary},
 	{key: questionOpenKey, word: "open it", forms: formsLine | formsCard, needs: needRoom, giveUp: 3},
 	{key: questionCommentKey, word: "change", forms: formsBlock | formsRoom, needs: needWords, giveUp: 5},
 	{key: questionCompareKey, word: "compare", forms: formsRoom, giveUp: 4},
@@ -251,14 +294,14 @@ var questionKeys = []questionVerb{
 	// them, and the band on the pointed answer already says there is a
 	// pointer — a row that kept `choose` and lost the line form for it would
 	// have spent the small shape on its own legend.
-	{key: questionWalkKey, word: "choose", forms: formsLine | formsRatify, needs: needWalk, giveUp: 2},
+	{key: questionWalkKey, word: "choose", forms: formsLine | formsRatify, needs: needWalk, tier: keyPrimary, giveUp: 2},
 	// AND THE ROOM SPELLS ITS WALK DOWNWARDS BECAUSE ITS ANSWERS STAND IN A
 	// COLUMN OF SECTIONS. It said `←→ choose` and neither key moved anything on
 	// it — the pair that walks its sections is `↑↓`, and the side arrows there
 	// open a section and fold it (questionroom.go). A row that names the keys
 	// that do nothing is worse than a row that names none: the owner pressed
 	// them, 2026-09-10, and reported "no arrow or click".
-	{key: questionWalkDownKey, word: "choose", forms: formsCard | formsRoom, needs: needWalk, giveUp: 2},
+	{key: questionWalkDownKey, word: "choose", forms: formsCard | formsRoom, needs: needWalk, tier: keyPrimary, giveUp: 2},
 	// THE RULE OFFER IS THE LAST THING GIVEN UP AFTER THE WAY OUT, because it
 	// is the only key here that is on the row ONCE: the third same-shaped yes
 	// happens once, and a row that dropped it to keep `[c] change` would have
@@ -274,23 +317,23 @@ var questionKeys = []questionVerb{
 	// (questionCols) and every ordinary room drew a blanks page with no key
 	// that moves between the holes. Ranked zero beside `a`/`b` and `←→ move
 	// it`; offered only where there is more than one hole ([needBlanks]).
-	{key: questionBlankKey, word: "next blank", forms: formsRoom, needs: needBlanks},
+	{key: questionBlankKey, word: "next blank", forms: formsRoom, needs: needBlanks, tier: keyPrimary},
 	// `space` IS THE CHECKLIST'S ANSWER AND IS RANKED WITH THE ANSWERS, which is
 	// this table's own law read on the one shape that was breaking it: "The
 	// options are never dropped at all: an offer with an answer missing is an
-	// offer that hides an answer" ([app.questionOffer]). Every other shape's
+	// offer that hides an answer" ([app.questionKeyRow]). Every other shape's
 	// answer key is already ranked zero — `a`/`b` on a pair, `←→` on a dial —
 	// and this one was ranked sixth, so at a hundred columns a checklist gave up
 	// the only verb that works it and drew as an ordinary list. Measured on a
 	// real screen: four answers, no marks anybody could act on, and `[c] change`
 	// kept in its place.
-	{key: questionToggleKey, word: "tick it", forms: formsCard | formsRoom, needs: needChecklist},
+	{key: questionToggleKey, word: "tick it", forms: formsCard | formsRoom, needs: needChecklist, tier: keyPrimary},
 	// A CHECKLIST IN THE CARD SENDS ON ENTER, once something is ticked. The
 	// card's rows carry the ticks themselves now, so the block is where a
 	// checklist is answered and not only where it is read; the row is offered
 	// only when there is something to send, because `enter` over an empty
 	// checklist would send nothing and say it sent.
-	{key: questionEnterKey, word: "send what is ticked", forms: formsCard, needs: needTicked},
+	{key: questionEnterKey, word: "send what is ticked", forms: formsCard, needs: needTicked, tier: keyPrimary},
 	// `tab` WALKS THE POINTER ON THE CARD, and it is on the row because a key
 	// that moves a mark nobody was told about is a key nobody presses; it is
 	// given up with `open it`, well after the verbs that change the question.
@@ -303,8 +346,8 @@ var questionKeys = []questionVerb{
 	// and the needs below are what decide it.
 	{key: questionSuggestKey, word: "take its suggestion", forms: formsRoom, needs: needChecklist, giveUp: 5},
 	{key: questionOrderKey, word: "order them", forms: formsRoom, needs: needOrdered, giveUp: 7},
-	{key: questionPairAKey, word: "the first", forms: formsRoom, needs: needPairs},
-	{key: questionPairBKey, word: "the second", forms: formsRoom, needs: needPairs},
+	{key: questionPairAKey, word: "the first", forms: formsRoom, needs: needPairs, tier: keyPrimary},
+	{key: questionPairBKey, word: "the second", forms: formsRoom, needs: needPairs, tier: keyPrimary},
 	{key: questionSameKey, word: "same either way", forms: formsRoom, needs: needPairs, giveUp: 3},
 	// THE ANSWER THAT IS NOT ON THE LIST. It is last in the table and nearly
 	// first to be given up, because it is the rarest answer to any question —
@@ -317,13 +360,101 @@ var questionKeys = []questionVerb{
 	// [questionWalkKey] rather than a second word on the first for the reason
 	// [needMoves] states: `pick` walks a cursor between two answers and `move it`
 	// changes the answer itself, and the two are never true at once.
-	{key: questionWalkKey, word: "move it", forms: formsCard | formsRoom, needs: needMoves},
+	{key: questionWalkKey, word: "move it", forms: formsCard | formsRoom, needs: needMoves, tier: keyPrimary},
 	// INSIDE THE ROOM `o` OPENS AN ANSWER RATHER THAN THE PAGE, which is why it
 	// is a second row rather than a second word: `[o] open it` on a card is a
 	// promise about a page, and repeating that promise on the page itself would
 	// be an offer to go where somebody already is. It is the first thing a narrow
 	// row gives up, because every answer already wears its own ▸/▾.
 	{key: questionOpenKey, word: "open this answer", forms: formsRoom, needs: needOptions, giveUp: 9},
+}
+
+// ── the one key row ─────────────────────────────────────────────────────────
+
+// questionKeyRow composes one row of keys at a width and paints it: the key in
+// the payload hue, its word dim, joined by the surface's own separator —
+// `↑↓ choose · enter take it · esc later`.
+//
+// IT IS THE ONE COMPOSER, and before this there were four. The block's answers
+// row painted the words bold and the keys plain (an off-by-one in its own
+// painter); the page's foot painted keys in the question hue and words dim; the
+// batch's row painted both in the question hue; and the rule above the block
+// spelled the same keys a third way, in cyan. Four paintings of one grammar is
+// four things to learn, and three of them were wrong about which cell a person
+// scans for.
+//
+// THE KEY IS THE PAYLOAD AND THE VERB IS PROSE (docs/DESIGN-LANGUAGE.md's THE
+// PAYLOAD RULE: "the hint slot lifts the key and never the verb beside it"), so
+// the key steps up to `data` and the word stays dim. The brackets are gone with
+// the four painters: `[enter] take it` spent three cells saying what the hue
+// already says.
+//
+// It degrades the way every row of keys on this surface degrades — by dropping
+// the least valuable key until what is left fits ([questionDropVerb]) — and a
+// row with nothing left that fits is cut rather than dropped, because a person
+// who cannot see `esc` is a person with no way off the question.
+func (a *app) questionKeyRow(q questionShown, keys []questionVerb, width int) string {
+	for {
+		row := a.paintQuestionKeys(q, keys)
+		if ansi.StringWidth(questionKeyWords(q, keys)) <= width {
+			return row
+		}
+		dropped, ok := questionDropVerb(keys)
+		if !ok {
+			return fit(row, width)
+		}
+		keys = dropped
+	}
+}
+
+// questionKeyWords is that row unpainted, which is what measures it.
+func questionKeyWords(q questionShown, keys []questionVerb) string {
+	parts := make([]string, 0, len(keys))
+	for _, verb := range keys {
+		parts = append(parts, questionKeySpelling(verb.key)+" "+questionVerbWord(q, verb))
+	}
+	return strings.Join(parts, questionKeyGap)
+}
+
+// paintQuestionKeys is [questionKeyWords] with the payload rule applied.
+func (a *app) paintQuestionKeys(q questionShown, keys []questionVerb) string {
+	var b strings.Builder
+	for i, verb := range keys {
+		if i > 0 {
+			b.WriteString(a.pal.dim(questionKeyGap))
+		}
+		b.WriteString(a.pal.data(questionKeySpelling(verb.key)))
+		b.WriteString(a.pal.dim(" " + questionVerbWord(q, verb)))
+	}
+	return b.String()
+}
+
+// questionKeyGap is the separator between two keys on a row, spelled once
+// because three rows use it and the manual quotes it.
+const questionKeyGap = " · "
+
+// questionVerbWord is one key's word on THIS question: the table's word, with
+// the two the question itself decides written in — how far a rule would reach,
+// and what `esc` actually does on a confirmation.
+func questionVerbWord(q questionShown, verb questionVerb) string {
+	switch verb.key {
+	case questionRuleKey:
+		return questionRuleWord(q.question)
+	case questionLaterKey:
+		return questionLaterWord(q.question)
+	}
+	return verb.word
+}
+
+// questionKeysOnTier is the keys of one tier, in the table's order.
+func questionKeysOnTier(keys []questionVerb, tier keyTier) []questionVerb {
+	out := make([]questionVerb, 0, len(keys))
+	for _, verb := range keys {
+		if verb.tier == tier {
+			out = append(out, verb)
+		}
+	}
+	return out
 }
 
 // questionVerbFor is one key's row in the table, by key. It is what a caller
@@ -344,7 +475,7 @@ func questionVerbFor(key string) (questionVerb, bool) {
 // what the cursor is on"; on the block that is the answer the asker recommends,
 // and on a sheet the cursor is on a ROW rather than an answer, so acting on it
 // opens that row. The substitution is done here for the same reason `r`'s is
-// done in [app.questionVerbParts] — the table holds one row per key, and a word
+// done in [app.paintQuestionKeys] — the table holds one row per key, and a word
 // that depends on what is being drawn is filled in by the drawer.
 func questionSheetKeyWord(verb questionVerb) string {
 	if verb.key == questionEnterKey {
@@ -386,6 +517,22 @@ const questionChipKey = "alt+a"
 // ONE reading, so a key drawn and a key taken cannot come apart.
 func (a *app) questionAnswerKeys(q questionShown, form questionForms) []questionVerb {
 	out := make([]questionVerb, 0, len(questionKeys))
+	// WHILE THE LAST ROW IS A BOX, EVERY LETTER TYPES. `c`, `d`, `?` and the
+	// rest are letters, and a row that went on offering them while somebody was
+	// writing an answer would be promising keys that put a `d` in their sentence
+	// — which is the modal trap this block exists not to have. What is left is
+	// the two keys that row draws and the way out.
+	if a.questionOthering(q) {
+		for _, verb := range questionKeys {
+			if !verb.forms.holds(form) {
+				continue
+			}
+			if verb.needs == needOther || verb.key == questionLaterKey {
+				out = append(out, verb)
+			}
+		}
+		return out
+	}
 	for _, verb := range questionKeys {
 		if !verb.forms.holds(form) {
 			continue
@@ -401,11 +548,18 @@ func (a *app) questionAnswerKeys(q questionShown, form questionForms) []question
 // questionOffers answers one key's condition.
 func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 	switch need {
+	case needOther:
+		return a.questionOthering(q)
 	case needPick:
+		// THE `something else…` ROW HAS NOTHING FOR `enter take it` TO TAKE: what
+		// enter does there is send the words, which is [needOther]'s own row.
+		if a.questionOthering(q) {
+			return false
+		}
 		// A CHECKLIST HAS NO PICK TO TAKE: `enter` sends what is ticked
 		// ([app.questionTickKey]), and a row saying `take the pick` beside
 		// `send what is ticked` is two promises on one key. The asker's
-		// suggestion is a word on its row instead ([questionSuggestedWord]).
+		// suggestion is a word on its row instead ([app.questionPanelOption]).
 		if q.question.Input.Kind == session.InputChecklist {
 			return false
 		}

@@ -125,6 +125,19 @@ func (f framed) draw(p palette, width int, rows []string) ([]string, hudSpan) {
 	return out, span
 }
 
+// rule is the frame FOLDED FLAT: one titled rule, drawn with the same pieces
+// and the same arithmetic as an edge, with no corners and nothing under it.
+//
+//	── ? Which storage for the session index? · 3 answers · ◆ SQLite ── space open ──
+//
+// A question put off is still the same object, one row tall — so it is the same
+// frame said in one row rather than a second drawing with a grammar of its own.
+func (f framed) rule(p palette, width int) string {
+	pieces := framePiecesOf(p)
+	row, _ := f.edge(p, pieces, pieces.edge, pieces.edge, f.title, f.aside, width)
+	return row
+}
+
 // edge is one horizontal edge with its words written into it: the corner, a
 // rule cell and a space, the left words, a run of rule, the right words, a
 // space and a rule cell, the corner. The run between the two is at least one

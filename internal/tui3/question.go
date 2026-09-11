@@ -204,6 +204,14 @@ type questionShown struct {
 	// a box whose meaning changed silently was the owner's "typing does not
 	// work · is there a separate typing place?" (2026-09-10).
 	writing string
+	// other is the person's OWN answer: the words typed into the panel's last
+	// row, and the answer they will travel with where they travel with one.
+	//
+	// IT LIVES ON THE QUESTION because it is one question's unfinished answer. A
+	// person half-way through writing an answer who is handed the next question
+	// in a queue must not find their sentence sitting on somebody else's panel —
+	// which is [questionShown.beat]'s reason, said about words.
+	other questionOther
 	// rule says `r make it a rule` is on this question's answers row: the third
 	// same-shaped yes has been given ([app.questionRuleOffered]).
 	rule bool
@@ -305,6 +313,28 @@ type questionShown struct {
 	clockAt   time.Time
 	clockFor  time.Duration
 	clockHeld bool
+}
+
+// questionOther is the answer that is not on the list, being written.
+//
+// THE ROW IS THE BOX AND THERE IS NO MODE. Before the owner's ruling of
+// 2026-09-11 a person had to press `c` first — a letter nothing on screen named,
+// which pointed the MESSAGE BOX at the question and said so in a row where the
+// answers had been. The last row is `something else…` now, the pointer arriving
+// on it is what opens it, and the message box below stays the person's.
+type questionOther struct {
+	// words is the sentence being typed, in the surface's own one-line editor,
+	// so the caret, the word jumps and the undo stack are the ones every other
+	// box on this surface has.
+	words editor
+	// with is the KEY of the answer these words travel with, or empty for words
+	// that answer on their own.
+	//
+	// IT IS A KEY AND NOT AN INDEX, so the zero value is the honest one: a person
+	// who walked onto this row is answering in words, and a person who pressed
+	// `c` on an answer is saying "this one, but not as it stands" and the row
+	// says which one ([questionOtherWith] draws it).
+	with string
 }
 
 // token is the one string this question is known by across the two maps below
@@ -883,6 +913,12 @@ func (a *app) questionRows(width int) []string {
 	}
 	head, ok := a.questionHead()
 	if !ok {
+		// A QUESTION PUT OFF FOLDS IN PLACE AND NOT TO THE FAR SIDE OF THE
+		// FRAME (owner ruling 2026-09-11, fold pick A): one titled rule where
+		// the panel was, saying what is waiting and how to open it again.
+		if folded, has := a.questionPutOff(); has && a.questionQuieted() {
+			out = append(out, a.questionFoldedRow(folded, width))
+		}
 		// THE SHEET STANDS DOWN FOR A QUESTION BEING READ, and this is the
 		// other half of that: with nothing on the block, the batch one step
 		// gathered is what the rows are spent on (questionsheet.go).
@@ -911,28 +947,43 @@ func (a *app) questionRows(width int) []string {
 	// of the block too, so a click was resolved one row out for every receipt
 	// standing — press the answers row under a receipt and the press landed on
 	// the row above it, which on a card is an answer nobody aimed at.
-	// [app.shiftQuestionMarks] is where the two readings are made one.
+	// [app.shiftQuestionMarks] is where the two readings are made one, and it is
+	// the ONLY place a mark is moved: a form that shifted its own bands as well
+	// would move them twice and put every target one row below the row a person
+	// aimed at.
 	base := len(out)
-	if a.questionNarrowed(head, width) {
+	// ONE CHOOSER DECIDES WHICH DRAWING THIS QUESTION GETS, and it reads the
+	// question's own properties rather than its kind (questionchooser.go).
+	switch a.questionViewOf(head, width) {
+	case viewNone:
+		// Nothing of this window is showing the question; the chip has it.
+		return out
+	case viewPhone:
 		// THE NARROW SHEET SAYS THE QUEUE COUNT ON ITS OWN FOOT, beside the
-		// clock, so it takes the rows whole (questionsheet.go).
+		// clock, so it takes the rows whole (questionnarrow.go).
 		out = append(out, a.questionNarrowRows(head, width)...)
 		a.shiftQuestionMarks(base)
 		return out
-	}
-	switch a.questionForm(head.question) {
-	case formsRatify:
-		out = append(out, a.questionRatifyRows(head, width)...)
-	case formsCard:
-		out = append(out, a.questionCardRows(head, width)...)
-	default:
+	case viewRow:
+		if head.question.Ask == session.AskRatify {
+			out = append(out, a.questionRatifyRows(head, width)...)
+			break
+		}
 		out = append(out, a.questionLineRows(head, width)...)
+	default:
+		out = append(out, a.questionPanelRows(head, width)...)
 	}
 	a.shiftQuestionMarks(base)
-	if aside := a.questionClockAside(head, width); aside != "" {
-		out = append(out, aside)
-	}
-	if more := len(a.questionOpen()) - 1; more > 0 {
+	// AND A RATIFY LINE IS NEVER COUNTED HERE: nothing waits on it, so a queue
+	// count that included one would put a number on the block no key can clear.
+	//
+	// (#954's clock aside is NOT appended here. It is a sentence, and the row
+	// under the frame is the second tier of KEYS and nothing else — a sentence
+	// mixed into it is the hierarchy the owner's hints ruling exists to prevent.
+	// It is drawn as the panel's own last body row instead, inside the frame:
+	// questionpanel.go's [app.questionPanelBody]. Agreed with lane A before
+	// either landed.)
+	if more := a.questionWaitingCount() - 1; more > 0 {
 		out = append(out, a.pal.dim(fit("  "+itoa(more)+" more", width)))
 	}
 	return out
@@ -944,6 +995,11 @@ func (a *app) questionRows(width int) []string {
 // what was just answered — and the pointer and the click resolve against the
 // block ([app.chromeAt]). Rather than teach every form where it happens to be
 // standing, the one place that stacks them says so afterwards, once.
+//
+// IT MOVES BOTH KINDS OF TARGET, which is why no form may move its own. A row
+// target is a band ([app.questionBands], whole rows on the panel and the sheet)
+// and a column target is a span ([app.questionSpans] on one row of a line), and
+// both are read against the block's own coordinates.
 func (a *app) shiftQuestionMarks(by int) {
 	if by == 0 {
 		return
@@ -978,60 +1034,79 @@ func (a *app) questionClockAside(head questionShown, width int) string {
 	if head.question.Deadline.Sub(a.now()) <= 0 {
 		return ""
 	}
-	return a.pal.dim(fit("  "+questionClockAsideWord, width))
+	// THE INDENT IS THE CALLER'S. This is drawn as a row INSIDE the frame now
+	// (questionpanel.go), which lays its own rows in the panel's gap; a "  " here
+	// as well was the block-level indent it wore while it hung under the frame.
+	return a.pal.dim(fit(questionClockAsideWord, width))
 }
 
 // questionClockAsideWord is that line, spelled once because the manual quotes it
 // and the tmux suite waits for it.
 const questionClockAsideWord = "any key stops the clock · you can still change the answer afterwards"
 
-// questionForm is which of the three forms this block draws one question in.
+// questionFoldedRow is the panel folded IN PLACE: one titled rule above the box,
+// saying what is still waiting and how to open it.
 //
-// FORMS PROMOTE AND NEVER DEMOTE (DESIGN.md). A lane that asked for a card gets
-// a card even where the block could have drawn it on one row, because the lane
-// is the thing that knows how much evidence there is; what this function
-// decides is the floor, for the lanes that named no form at all.
-func (a *app) questionForm(q session.Question) questionForms {
-	if q.Ask == session.AskRatify {
-		return formsRatify
+//	── ? Which storage for the session index? · 3 answers · ◆ SQLite ─── space open ──
+//
+// `esc` USED TO SEND A QUESTION TO THE STATUS LINE. The rows came off the screen
+// and what was left was a chip on the far side of the frame counting questions —
+// so a person who pressed the key that means *later* had to learn a chord to
+// find what they had put off. It folds here now, where it was, and the rule says
+// the three things somebody needs to decide whether to open it again: what was
+// asked, how many answers there are, and which one the asker would take.
+func (a *app) questionFoldedRow(q questionShown, width int) string {
+	parts := []string{strings.TrimSpace(q.question.Head)}
+	if n := len(q.question.Options); n > 1 {
+		parts = append(parts, itoa(n)+questionAnswersWord)
 	}
-	switch q.Form {
-	case session.FormCard, session.FormRoom, session.FormSheet:
-		return formsCard
-	case session.FormLine:
-		// THE ASKER'S `line` IS A WISH AND THE EVIDENCE DECIDES. A model wrote
-		// `form: line` over eight checklist answers and the row that came out
-		// was `[landscape] Landscapes & seascapes · [portrait] … [surrealis…` —
-		// cut at the edge, nothing under a hand. A line holds plain answers and
-		// no structured input — ticks, blanks, pairs and a dial are rows by
-		// nature, and an answer with something to say beside it needs a row to
-		// say it on. How MANY plain answers a line holds is the width's to
-		// decide ([app.questionOffer] falls to the card when they do not fit),
-		// because a form is the size the evidence needs and not a style.
-		if questionFitsALine(q) {
-			return formsLine
+	if key := questionPickKey(q.question); key != "" {
+		if at, ok := questionOptionAt(q.question, key); ok {
+			parts = append(parts, a.pal.warnBold(a.icon(tokens.GRecommended))+a.pal.dim(" "+
+				questionAnswerWord(q.question.Options[at], key, true)))
 		}
-		return formsCard
 	}
-	if len(q.Options) > 2 || strings.TrimSpace(q.Reason) != "" {
-		return formsCard
-	}
-	return formsLine
+	title := a.questionMarkFor(q.question) + a.pal.dim(" "+strings.Join(parts, " · "))
+	return framed{title: title, aside: a.pal.dim(questionOpenFoldWord)}.rule(a.pal, width)
 }
 
-// questionFitsALine is whether a question's evidence is the kind one row of
-// answers can hold: nothing to say beside any answer, and no blanks, ticks,
-// pairs or dial to walk. Width is judged where the row is drawn.
-func questionFitsALine(q session.Question) bool {
-	if q.Input.Kind != session.InputNone {
-		return false
+// questionAnswersWord is the rule's own count of what is behind it.
+const questionAnswersWord = " answers"
+
+// questionOpenFoldWord is how a folded question is opened again, and the key is
+// `space` for one reason: it is the one key a person presses over an empty box
+// that means nothing at all there. It works ONLY over an empty box
+// ([app.questionKey]), because a space inside a sentence is a space.
+const questionOpenFoldWord = questionToggleKey + " open"
+
+// questionPickKey is the key the asker recommended, or "".
+func questionPickKey(q session.Question) string {
+	if q.Pick == nil {
+		return ""
 	}
-	for _, option := range q.Options {
-		if strings.TrimSpace(option.Consequence) != "" || strings.TrimSpace(option.Body) != "" || len(option.Blocks) > 0 {
-			return false
+	return strings.TrimSpace(q.Pick.Key)
+}
+
+// questionWaitingCount is how many questions this conversation is holding for a
+// person right now — the folded ones counted, because `esc` is later and not
+// cancelled, and the ratify lines NOT counted, because nothing waits on one.
+func (a *app) questionWaitingCount() int {
+	n := 0
+	for _, q := range a.questions {
+		if questionWaits(q.question) {
+			n++
 		}
 	}
-	return true
+	return n
+}
+
+// questionWaits reports whether a question is one somebody is being waited on
+// for. Two rungs of the ladder are not: an assumptions card says what the asker
+// took for granted and goes on by itself, and a ratify line says what it has
+// already done ([questionAskSlot] is the same reading, about the mark).
+func questionWaits(q session.Question) bool {
+	_, waiting := questionAskSlot(q.Ask)
+	return waiting
 }
 
 // questionMark is the one-cell glyph at the head of a question, and it is the
@@ -1077,158 +1152,89 @@ func (a *app) questionMarkFor(q session.Question) string {
 	return a.pal.dim(a.icon(slot))
 }
 
-// questionLineRows is the line form: the subject's own row where there is one,
-// then head and answers together on one row, then the reason.
+// questionLineRows is the ONE-ROW view: the question and its answers on a single
+// row above the box, with the keys on a dim row under it.
+//
+// IT IS WHAT IS LEFT WHEN THERE IS NOTHING TO WEIGH. The chooser
+// (questionchooser.go) sends a question here only when its whole decision is its
+// answers' own words — no consequence, no body, no evidence, no pick with a
+// reason, no command to read — so a frame around it would be a box drawn around
+// one sentence.
 func (a *app) questionLineRows(q questionShown, width int) []string {
-	out := make([]string, 0, 3)
+	out := make([]string, 0, 4)
 	if row, ok := a.questionSubjectRow(q, width); ok {
 		out = append(out, row)
 	}
-	lead := a.questionLead(q, len(out) > 0)
 	a.questionSpans, a.questionSpanRow = nil, len(out)
 	if len(q.beat) > 0 {
-		out = append(out, a.questionBeatRow(q, formsLine, len(out), width))
+		out = append(out, a.questionBeatRow(q, len(out), width))
 	} else {
-		row, fitted := a.questionOffer(q, lead, formsLine, len(out), width)
-		if !fitted {
-			// A FORM PROMOTES RATHER THAN CUTTING AN ANSWER. The line puts the
-			// head and every answer on one row, and on a frame with no room for
-			// that the honest shape is the one that gives each answer a row of
-			// its own — not the same row with its tail cut off, which is an
-			// offer that hides an answer. DESIGN.md's forms promote and never
-			// demote; this is the floor moving up under a narrow terminal.
-			return a.questionCardRows(q, width)
-		}
-		out = append(out, row)
+		out = append(out, a.questionRowOffer(q, width))
 	}
-	if reason := strings.TrimSpace(q.question.Reason); reason != "" {
+	if reason := strings.TrimSpace(q.question.Reason); reason != "" && a.questionSubjectAt(q.question) < 0 {
 		out = append(out, a.pal.dim(fit("  "+reason, width)))
 	}
-	return out
-}
-
-// questionLead is what the line form opens with, in front of its answers.
-//
-// A PERMISSION WHOSE ROW IS ALREADY ON SCREEN ASKS IN ONE WORD. The head of an
-// approval question is `needs your ok to run bash` — the right sentence for home,
-// for the chip and for the receipt, where the call itself is nowhere in sight,
-// and the wrong one directly under the call's own row, where it repeats the
-// tool's name and spends twenty-six columns saying what the row above it says.
-// Two renderings of one call is the defect this block was built around; a second
-// SENTENCE about it is the same defect one size smaller.
-//
-// It is the one shape that gets a short word, and the reason is that it is the
-// one shape whose head is about its subject. Every other kind's head IS the
-// decision — `wants to start a task: rewrite the packer` says something the row
-// above cannot — so it is drawn whole.
-func (a *app) questionLead(q questionShown, subject bool) string {
-	if !subject || q.question.Ask != session.AskPermission {
-		return strings.TrimSpace(q.question.Head) + " "
-	}
-	return questionAllowWord
-}
-
-// questionAllowWord is that word, and the space on the end of it is part of it:
-// a lead is what goes in FRONT of the answers on the row, so the gap that
-// separates the two belongs to the lead rather than to the answer beside it. It
-// is a question rather than a label because the row it opens is the asking.
-const questionAllowWord = "allow? "
-
-// questionCardRows is the card form// questionCardRows is the card form: head, the reason and who asked, one row
-// per answer, then the answers row.
-func (a *app) questionCardRows(q questionShown, width int) []string {
-	out := a.questionCardBody(q, width)
-	a.questionSpans, a.questionSpanRow = nil, len(out)
-	if len(q.beat) > 0 {
-		// THE BEAT REPLACES THE ANSWERS ROW AND NOTHING ABOVE IT. The rows above
-		// are the question, which has not changed; what is one step further in
-		// is how it is being answered.
-		return append(out, a.questionBeatRow(q, formsCard, len(out), width))
-	}
-	row, _ := a.questionOffer(q, "", formsCard, len(out), width)
-	return append(out, row)
-}
-
-// questionCardBody is the card WITHOUT the row of keys at the foot of it: the
-// head, the attribution, the sentence with a hole in it, and one row per answer.
-//
-// IT IS SPLIT OFF FOR THE ONE PLACE A CARD IS DRAWN WHERE THE BLOCK'S KEYS ARE
-// NOT THE KEYS. Home's errand pane has a message box of its own pointed at
-// another conversation, so `enter` there sends a follow-up and `esc` hands the
-// keyboard back to the list — and an offer row promising `[enter] take the pick
-// · [esc] later` under that box would name two keys that do something else,
-// which is the one failure an answers row exists to prevent (room.go's
-// [app.roomHint] states it). The pane draws this and names its own keys
-// (homeexchange.go's [exchangeHint]).
-func (a *app) questionCardBody(q questionShown, width int) []string {
-	out := make([]string, 0, 8)
-	out = append(out, a.questionMarkFor(q.question)+" "+a.pal.ask(fit(strings.TrimSpace(q.question.Head), width-2)))
-	// THE REASON IS NOT SAID TWICE ON ONE SCREEN. Where the transcript is
-	// already drawing the thing this question is about — a task proposal's own
-	// block, three rows up, with the summary under its head — repeating that
-	// sentence here is the two-renderings defect this block exists to end, one
-	// size smaller. What is left is who asked, which the block above cannot say.
-	drawn := a.questionSubjectAt(q.question) >= 0
-	if line := a.questionAttribution(q.question, !drawn); line != "" {
-		// AND IT WRAPS RATHER THAN CUTS. This row is the one sentence a person
-		// has to READ before they answer — the stop card's promise, what moving
-		// a conversation costs — and half of a promise is worse than two rows
-		// of it. Home lends this card fifty columns and less, which is where a
-		// cut one was found: `its reply stops there; i…`. Every other row on the
-		// card is a word and a key and is cut as it always was.
-		for _, wrapped := range wrap(line, max(1, width-2)) {
-			out = append(out, a.pal.dim("  "+wrapped))
-		}
-	}
-	// THE SENTENCE WITH A HOLE IN IT GOES ABOVE THE ANSWERS, because it is part
-	// of what the answers are about: `start it` on a proposal starts it on the
-	// model in the hole, so the hole has to be read before the answer is given.
-	// It is the room's own renderer (questioninput.go), not a second one.
-	if q.holes.kind == session.InputBlanks {
-		out = append(out, a.questionCardBlankRows(&q.holes, width)...)
-	}
-	// EVERY ANSWER IS A ROW OF ITS OWN. The engine already bounds how many a
-	// question may carry ([session.Question.Check]); a second cap here once sent
-	// a checklist of eight onto one cut row with nothing pressable on it, which
-	// was the block at its most useless exactly where it was most needed.
-	options := q.question.Options
-	// The widest answer word on the card, which is the column every consequence
-	// beside it starts in ([app.questionCardOptionRows] says why).
-	pad := 0
-	for _, option := range options {
-		if w := ansi.StringWidth(strings.TrimSpace(option.Label)); w > pad {
-			pad = w
-		}
-	}
-	noteRows := a.questionCardNoteRows(len(options), len(out))
-	for i, option := range options {
-		// EVERY ANSWER ROW IS PRESSABLE ALONG ITS WHOLE WIDTH, which is the
-		// sheet's own bargain applied to the card ([questionBand] says why it is
-		// a row and not a span) — and EVERY ROW A LABEL WRAPS ONTO PRESSES THE
-		// SAME ANSWER, so a long answer is not a target that shrinks to its
-		// first line.
-		for _, line := range a.questionCardOptionRows(q, i, option, pad, width, noteRows) {
-			row := len(out)
-			out = append(out, a.questionHovered(line, row, width))
-			a.questionBands = append(a.questionBands, questionBand{
-				row: row, span: hudSpan{from: 0, to: width}, at: i,
-			})
-		}
-	}
-	// AND THE ONE LINE OVER A FREE-TEXT BOX IS THE LAST ROW OF THE CARD, because
-	// the box it is about is the row under the card ([session.InputShape.Prompt]
-	// calls it "the one line above a free-text box"). It is the asker saying what
-	// to type — "paste your Notion key", "the domain in your Datadog address" —
-	// and a question that asked for words with nothing saying which words is a
-	// box a person guesses at.
-	if q.question.Input.Kind == session.InputText {
-		if prompt := strings.TrimSpace(q.question.Input.Prompt); prompt != "" {
-			for _, wrapped := range wrap(prompt, max(1, width-2)) {
-				out = append(out, a.pal.dim("  "+wrapped))
-			}
-		}
+	if keys := a.questionRowKeys(q, width); keys != "" {
+		out = append(out, keys)
 	}
 	return out
+}
+
+// questionRowOffer is that row: the mark, the head, and every answer beside it,
+// the pointed one on the selected ground.
+//
+// NO ANSWER IS EVER DROPPED OR CUT. A row too narrow for every answer is a row
+// the chooser should not have chosen, so it says so by giving the question the
+// panel instead ([app.questionRowFits] is asked before this is drawn).
+func (a *app) questionRowOffer(q questionShown, width int) string {
+	spans := make([]choiceSpan, 0, len(q.question.Options))
+	line := a.questionMarkFor(q.question) + " " + a.pal.ink(strings.TrimSpace(q.question.Head))
+	at := 2 + ansi.StringWidth(strings.TrimSpace(q.question.Head))
+	for i, option := range q.question.Options {
+		key := questionOptionKeyAt(q.question, i)
+		word := questionAnswerWord(option, key, false)
+		mark := "   "
+		if i == q.pick && len(q.question.Options) > 1 {
+			mark = "  " + a.pal.warnBold(a.icon(tokens.GPointer))
+		}
+		cell := a.pal.data(key) + a.pal.ink(" "+word)
+		if i == q.pick && len(q.question.Options) > 1 {
+			cell = a.pal.background(cell, 0, a.pal.ramp.selected)
+		}
+		spans = append(spans, choiceSpan{from: at + 3, to: at + 3 + ansi.StringWidth(key+" "+word), at: i})
+		at += 3 + ansi.StringWidth(key+" "+word)
+		line += mark + cell
+	}
+	a.questionSpans = spans
+	return a.questionHovered(fit(line, width), a.questionSpanRow, width)
+}
+
+// questionRowFits reports whether the one-row view can hold this question's head
+// and every one of its answers at this width. The chooser asks before it sends a
+// question here: a form promotes rather than cutting an answer, and an offer
+// with an answer missing is an offer that hides an answer.
+func questionRowFits(q session.Question, width int) bool {
+	room := 2 + ansi.StringWidth(strings.TrimSpace(q.Head))
+	for i, option := range q.Options {
+		room += 3 + ansi.StringWidth(questionOptionKeyAt(q, i)+" "+questionAnswerWord(option, questionOptionKeyAt(q, i), false))
+	}
+	return room <= width
+}
+
+// questionRowKeys is the dim row under the one-row view: the keys that answer,
+// then the keys that say something about the decision, in the ONE key row
+// grammar every question on this surface uses ([app.questionKeyRow]).
+func (a *app) questionRowKeys(q questionShown, width int) string {
+	keys := a.questionAnswerKeys(q, formsLine)
+	if len(keys) == 0 {
+		return ""
+	}
+	room := max(width-2, 1)
+	row := a.questionKeyRow(q, keys, room)
+	if clock := a.questionClockWord(q); clock != "" && ansi.StringWidth(ansi.Strip(row))+len(questionKeyGap)+ansi.StringWidth(clock) <= room {
+		row += a.pal.dim(questionKeyGap + clock)
+	}
+	return "  " + row
 }
 
 // questionRatifyRows is the ratify line: the third rung of the ladder drawn as
@@ -1242,10 +1248,15 @@ func (a *app) questionRatifyRows(q questionShown, width int) []string {
 	head := strings.TrimSpace(q.question.Head)
 	a.questionSpans, a.questionSpanRow = nil, 0
 	line := a.questionMarkFor(q.question) + " " + a.pal.ink(head)
+	// ITS KEYS COME OFF THE ONE TABLE AND WEAR THE ONE GRAMMAR — the key in the
+	// payload hue, its word dim, no brackets ([app.questionKeyRow]). A ratify
+	// line has no answers to list, so the row is the head and that tail.
 	keys := a.questionAnswerKeys(q, formsRatify)
-	tail := a.questionKeyTail(q, keys)
-	if tail != "" && ansi.StringWidth(head)+ansi.StringWidth(tail)+2 <= width {
-		return []string{line + a.pal.ask(tail)}
+	if len(keys) > 0 {
+		room := width - ansi.StringWidth(head) - 4
+		if tail := questionKeyWords(q, keys); ansi.StringWidth(tail) <= room {
+			return []string{line + "  " + a.paintQuestionKeys(q, keys)}
+		}
 	}
 	return []string{fit(line, width)}
 }
@@ -1413,259 +1424,6 @@ func questionAskerWord(asker session.Asker) string {
 	return ""
 }
 
-// questionCardOptionRows is one answer on a card: its key, its word, and what taking
-// it produces.
-//
-// THE ASKER'S PICK IS MARKED AND THE MARK IS NOT A CURSOR. [session.Pick] is
-// what the thing asking RECOMMENDS, which is a fact about the question; the
-// cursor is where this person's keyboard is, which is a fact about them. Only
-// the confirmation kind has a cursor at all (see [questionSafeAt]), so on every
-// other card the one mark on the rows is the recommendation and cannot be
-// misread as "the key you are about to press".
-// questionCardNoteRows is how many rows the note under one answer may take on
-// the card: two when the screen has them, one when it does not, never none.
-//
-// THE CARD MAY NOT PUSH ITS OWN HEAD OFF THE SCREEN. Eight answers with three
-// rows of note each is thirty rows, and on a thirty-six-row terminal the
-// question itself scrolled away above the first note (2026-09-10, a real
-// screen) — a card whose question cannot be read is a list of answers to
-// nothing. So the answers are given at most half the screen less what the head
-// already spent, shared evenly, and a note that does not fit ends in `…` with
-// `[o] open it` holding the rest. The floor is one row rather than none
-// because a note cut to nothing is an answer nobody can weigh, and the
-// ceiling is two because a note is a note and not the page.
-func (a *app) questionCardNoteRows(answers, spent int) int {
-	_, height := a.size()
-	if answers < 1 {
-		return 2
-	}
-	left := height/2 - spent - 1
-	return max(1, min(2, left/answers-1))
-}
-
-func (a *app) questionCardOptionRows(q questionShown, at int, option session.AnswerOption, pad, width, noteRows int) []string {
-	key := strings.TrimSpace(option.Key)
-	if key == "" {
-		key = itoa(at + 1)
-	}
-	picked := q.question.Pick != nil && strings.TrimSpace(q.question.Pick.Key) == key
-	cursored := at == q.pick
-	// A CHECKLIST'S ROWS WEAR THEIR TICKS IN THE CARD, the way the page draws
-	// them (questioninput.go): the tick says what is ticked, the pointer says
-	// where `space` lands, and a digit toggles rather than answers. THE POINTER
-	// IS A MARK AND NOT ONLY A BAND, because the band is a background colour
-	// and a person on a plain screen — or reading a capture — was left to
-	// guess which row `tab` had reached. The asker's own pick does not wear
-	// the pointer here, where every other card gives it the pointer: on a
-	// checklist the pointer is the person's, and the pick is said in a word.
-	ticking := q.holes.kind == session.InputChecklist
-	ticked := ticking && at < len(q.holes.ticks) && q.holes.ticks[at]
-	if ticking && at == q.holes.focus {
-		cursored = true
-	}
-	// THE POINTER IS THE PERSON'S ON EVERY CARD and the asker's pick is a word
-	// on its row, never the pointer: a `▸` that meant "recommended" on one card
-	// and "where your enter lands" on the next was two marks in one glyph.
-	mark, plainMark := "  ", "  "
-	switch {
-	case ticked:
-		plainMark = a.icon(tokens.GSettled) + " "
-		mark = a.pal.askBold(plainMark)
-	case cursored:
-		plainMark = a.icon(tokens.GCollapsed) + " "
-		mark = a.pal.ask(plainMark)
-	}
-	word := strings.TrimSpace(option.Label)
-	if word == "" {
-		word = key
-	}
-	say := strings.TrimSpace(option.Consequence)
-	// THE ASKER'S PICK IS SAID IN THE CONSEQUENCE COLUMN, after what taking
-	// it produces, so the row keeps its one line and the labels their column.
-	if picked {
-		if say != "" {
-			say += " · " + questionSuggestedWord
-		} else {
-			say = questionSuggestedWord
-		}
-	}
-	// THE BODY IS DRAWN UNDER THE LABEL, dim and wrapped, because it is the
-	// note the asker wrote to tell one answer from the next — "what the tour
-	// would include" — and a card that drops it hands the person eight names
-	// and no way to weigh them. The line form has no room for it and is not
-	// chosen when there is one ([questionFitsALine]).
-	note := strings.TrimSpace(option.Body)
-	// THE LABEL WRAPS AND IS NEVER CUT. A row that fits keeps the consequence
-	// beside the label on the pad; one that does not puts the label on as many
-	// rows as it needs and the consequence dim on a row of its own under it —
-	// an answer whose words end in `…` is an answer nobody can weigh.
-	lead := "  " + plainMark + key + "  "
-	indent := strings.Repeat(" ", ansi.StringWidth(lead))
-	room := max(1, width-ansi.StringWidth(lead))
-	inline := say != "" && ansi.StringWidth(word) <= pad && pad+2+ansi.StringWidth(say) <= room
-	paint := func(text string) string {
-		if cursored {
-			return a.pal.background(text, 0, a.pal.ramp.selected)
-		}
-		return text
-	}
-	out := make([]string, 0, 4)
-	if inline {
-		tail := word
-		for ansi.StringWidth(tail) < pad {
-			tail += " "
-		}
-		out = append(out, paint(a.pal.ask("  ")+mark+a.pal.askBold(key)+a.pal.ask("  "+tail)+a.pal.dim("  "+say)))
-		say = ""
-	} else {
-		for i, wrapped := range wrap(word, room) {
-			if i == 0 {
-				out = append(out, paint(a.pal.ask("  ")+mark+a.pal.askBold(key)+a.pal.ask("  "+wrapped)))
-				continue
-			}
-			out = append(out, paint(a.pal.ask(indent+wrapped)))
-		}
-	}
-	if note != "" {
-		// THE NOTE READS IN THE PROSE INK, NOT THE DIM, AND FIRST: it is what
-		// the answer means, the sentence a person weighs, where the
-		// consequence is the aside that follows it. Two dim rows under one
-		// label read as one grey paragraph nobody could tell apart (the
-		// owner, 2026-09-10).
-		rows := wrap(note, room)
-		if len(rows) > noteRows {
-			rows = rows[:noteRows]
-			rows[len(rows)-1] = ansi.Truncate(rows[len(rows)-1]+" "+glyphMore, room, glyphMore)
-		}
-		for _, wrapped := range rows {
-			out = append(out, paint(a.pal.ink(indent+wrapped)))
-		}
-	}
-	if say != "" {
-		for _, wrapped := range wrap(say, room) {
-			out = append(out, paint(a.pal.dim(indent+wrapped)))
-		}
-	}
-	return out
-}
-
-// questionSuggestedWord is what a checklist card says beside the answer the
-// asker would tick, in place of the pointer every other card gives its pick.
-const questionSuggestedWord = "suggested"
-
-// questionOffer is the answers row: the digits that pick, then the keys from
-// [questionKeys] that this question actually offers, then the clock.
-//
-// LEAD IS WHAT GOES IN FRONT OF THE ANSWERS on the line form — the question's
-// own head, because a line is one row and the head has nowhere else to be. On a
-// card the head is already a row of its own and the lead is empty.
-//
-// IT DEGRADES BY DROPPING THE TAIL, NEVER BY CUTTING AN ANSWER. An offer with
-// its last option truncated is an offer that hides an answer; a person who
-// cannot see the clock still has every answer they had.
-func (a *app) questionOffer(q questionShown, lead string, form questionForms, row, width int) (string, bool) {
-	// THE ROW DEGRADES BY DROPPING ITS TAIL, NEVER BY CUTTING AN ANSWER, and it
-	// gives things up in this order: the verbs from the end backwards, then the
-	// clock, then the parenthetical inside an answer's own word. `esc` is never
-	// dropped — it is the way out, and a row with no way off it is the modal
-	// block this one replaces — and no ANSWER is ever dropped at all, because an
-	// offer with an answer missing is an offer that hides an answer.
-	if q.writing != "" {
-		// THE ROW IS THE PROMPT WHILE THE BOX IS THE QUESTION'S. A line keeps
-		// its head in front of it; a card's head is already on its own row.
-		a.questionSpans, a.questionSpanRow = nil, row
-		line := a.questionWritingRow(q)
-		if lead != "" {
-			line = lead + " " + line
-		}
-		return a.questionPaint(q, []string{line}, "", form, -1), true
-	}
-	keys := a.questionAnswerKeys(q, form)
-	clock := a.questionClock(q)
-	terse := false
-	for {
-		parts, spans, pointed := a.questionAnswerParts(q, lead, form, terse)
-		tail := a.questionVerbParts(q, keys, len(parts) > 0)
-		line := strings.Join(parts, "") + strings.Join(tail, "")
-		if ansi.StringWidth("  "+line+clock) <= width {
-			parts = append(parts, tail...)
-			a.questionSpans, a.questionSpanRow = spans, row
-			return a.questionHovered(a.questionPaint(q, parts, clock, form, pointed), row, width), true
-		}
-		if dropped, ok := questionDropVerb(keys); ok {
-			keys = dropped
-			continue
-		}
-		if clock != "" {
-			// THE CLOCK OUTLIVES EVERY VERB AND DIES BEFORE ANY ANSWER. It is
-			// the only thing on this row that says what happens if nobody
-			// presses anything, so it is worth more than `[d] you decide` — and
-			// it is worth less than an answer, because a countdown a person
-			// cannot see is still a countdown while an answer they cannot see
-			// is not an answer (the approval gate settled that half first).
-			clock = ""
-			continue
-		}
-		if !terse && questionTerser(q.question) {
-			// AND THE ASIDE INSIDE AN ANSWER GOES BEFORE THE ANSWER DOES. A
-			// parenthetical is by definition the part that could be left out —
-			// `always, this tool (session)` still says which tool and how far
-			// without it — and giving it up is the last thing on this row that
-			// costs a person nothing they were reading.
-			terse = true
-			continue
-		}
-		parts = append(parts, tail...)
-		a.questionSpans, a.questionSpanRow = spans, row
-		return a.pal.ask(fit("  "+strings.Join(parts, ""), width)), false
-	}
-}
-
-// questionAnswerParts is the answers half of the row: the paired cells
-// [app.questionPaint] inks, and where each answer landed in columns.
-//
-// Pairs: the words at even indices, the keys — the only bold cells on the row —
-// at odd ones, which is the approval block's own painting and is kept because
-// the keys are what a person is scanning for.
-func (a *app) questionAnswerParts(q questionShown, lead string, form questionForms, terse bool) ([]string, []choiceSpan, int) {
-	parts := make([]string, 0, len(q.question.Options)*2+8)
-	if lead != "" {
-		parts = append(parts, lead)
-	}
-	spans := make([]choiceSpan, 0, len(q.question.Options))
-	pointed := -1
-	if form == formsCard {
-		// The card already drew a row per answer, keys and all.
-		return parts, spans, pointed
-	}
-	// Both forms open with two cells — the line's mark and its space, the card's
-	// plain indent — so an answer's columns are the same arithmetic on either,
-	// which is what lets one press resolve against either row.
-	at := ansi.StringWidth(lead) + 2
-	for i, option := range q.question.Options {
-		key := strings.TrimSpace(option.Key)
-		if key == "" {
-			key = itoa(i + 1)
-		}
-		word := questionAnswerWord(option, key, terse)
-		chip, tail := "["+key+"]", " "+word
-		if i == q.pick && len(q.question.Options) > 1 {
-			// The pointed answer is the pair of parts the painter bands.
-			pointed = len(parts)
-		}
-		spans = append(spans, choiceSpan{
-			from: at, to: at + ansi.StringWidth(chip+tail), at: i,
-		})
-		at += ansi.StringWidth(chip + tail)
-		parts = append(parts, chip, tail)
-		if i < len(q.question.Options)-1 {
-			parts = append(parts, "", " · ")
-			at += 3
-		}
-	}
-	return parts, spans, pointed
-}
-
 // questionAnswerWord is one answer's word on a row, with its parenthetical left
 // off where the row has asked for the short spelling.
 func questionAnswerWord(option session.AnswerOption, key string, terse bool) string {
@@ -1737,46 +1495,39 @@ const questionBeatBack = "never mind"
 // swap: the way out is the FIRST thing dropped when the shapes will not fit
 // beside it. A person who can see the shapes can still press esc, and a shape
 // they cannot see is a shape they cannot choose.
-func (a *app) questionBeatRow(q questionShown, form questionForms, row, width int) string {
-	parts := make([]string, 0, len(q.beat)*2+3)
+func (a *app) questionBeatRow(q questionShown, row, width int) string {
 	spans := make([]choiceSpan, 0, len(q.beat))
-	parts = append(parts, questionBeatLead)
-	at := ansi.StringWidth(questionBeatLead) + 2
+	line := a.questionMarkFor(q.question) + " " + a.pal.ink(questionBeatLead)
+	at := 2 + ansi.StringWidth(questionBeatLead)
 	for i := range q.beat {
-		chip, tail := "["+itoa(i+1)+"]", " "+questionBeatShapeWord(q.beat, i)
-		spans = append(spans, choiceSpan{from: at, to: at + ansi.StringWidth(chip+tail), at: i})
-		at += ansi.StringWidth(chip + tail)
-		parts = append(parts, chip, tail)
-		if i < len(q.beat)-1 {
-			parts = append(parts, "", " · ")
-			at += 3
+		word := questionBeatShapeWord(q.beat, i)
+		// THE CURSOR IS ON THE SHAPE THE ARROWS LEFT IT ON (#919). A beat drawn
+		// with no cursor ate every arrow aimed at it: `←→` moved
+		// [questionShown.beatAt] and nothing on the row said so, so the only way
+		// to find out where the cursor was, was to press enter. It is drawn in
+		// the answers row's own grammar — the pointer in the gap that is already
+		// three cells wide, the chosen shape on the `selected` ground — so the
+		// beat and the row it replaced say "you are here" the same way, and the
+		// spans below keep measuring the same columns either way.
+		mark := "   "
+		cell := a.pal.data(itoa(i+1)) + a.pal.ink(" "+word)
+		if i == q.beatAt && len(q.beat) > 1 {
+			mark = "  " + a.pal.warnBold(a.icon(tokens.GPointer))
+			cell = a.pal.background(cell, 0, a.pal.ramp.selected)
 		}
+		spans = append(spans, choiceSpan{from: at + 3, to: at + 3 + ansi.StringWidth(itoa(i+1)+" "+word), at: i})
+		at += 3 + ansi.StringWidth(itoa(i+1)+" "+word)
+		line += mark + cell
 	}
-	full := append(append([]string{}, parts...), "", " · ", "["+questionLaterKey+"]", " "+questionBeatBack)
-	if ansi.StringWidth("  "+strings.Join(full, "")) <= width {
-		parts = full
+	// THE WAY OUT IS THE FIRST THING DROPPED when the shapes will not fit beside
+	// it: a person who can see the shapes can still press esc, and a shape they
+	// cannot see is a shape they cannot choose.
+	back := a.pal.dim(questionKeyGap) + a.pal.data(questionLaterKey) + a.pal.dim(" "+questionBeatBack)
+	if ansi.StringWidth("  "+ansi.Strip(line+back)) <= width {
+		line += back
 	}
 	a.questionSpans, a.questionSpanRow = spans, row
-	line := strings.Join(parts, "")
-	if ansi.StringWidth("  "+line) > width {
-		return a.pal.ask(fit("  "+line, width))
-	}
-	// THE CURSOR IS ON THE SHAPE THE ARROWS LEFT IT ON. One shape is two parts
-	// (the chip and its words) with two more between neighbours, which is what
-	// [questionBeatPart] reads; a row drawn with no cursor is the row this beat
-	// used to draw while eating every arrow aimed at it.
-	return a.questionPaint(q, parts, "", form, questionBeatPart(q.beatAt))
-}
-
-// questionBeatPart is which part of the beat's row one shape's chip is, so the
-// cursor and the row are laid out by one reading rather than two:
-// [app.questionBeatRow] appends a chip and its words per shape and a two-part
-// separator between neighbours.
-func questionBeatPart(at int) int {
-	if at < 0 {
-		return -1
-	}
-	return 1 + 4*at
+	return fit(line, width)
 }
 
 // questionBeatShapeWord is how one shape reads on the beat. The last one is the
@@ -1920,26 +1671,6 @@ func questionWideningKey(q session.Question) string {
 	return ""
 }
 
-// questionVerbParts is the tail of an answers row: the keys from
-// [questionKeys], as the paired cells [app.questionPaint] inks.
-func (a *app) questionVerbParts(q questionShown, keys []questionVerb, lead bool) []string {
-	parts := make([]string, 0, len(keys)*4)
-	for _, verb := range keys {
-		word := verb.word
-		if verb.key == questionRuleKey {
-			word = questionRuleWord(q.question)
-		}
-		if verb.key == questionLaterKey {
-			word = questionLaterWord(q.question)
-		}
-		if lead || len(parts) > 0 {
-			parts = append(parts, "", " · ")
-		}
-		parts = append(parts, "["+questionKeySpelling(verb.key)+"]", " "+word)
-	}
-	return parts
-}
-
 // questionLaterAt is the answer `esc` gives on a confirmation: THE LAST ONE.
 //
 // IT IS THE ANSWER THAT CHANGES NOTHING, and the last place is where every card
@@ -2002,45 +1733,6 @@ func questionKeySpelling(key string) string {
 	// there is nothing left to translate — and this stays as the ONE place a
 	// translation would go if a key ever needs one again.
 	return key
-}
-
-// questionKeyTail is the ratify row's keys, on one short tail. It is
-// [app.questionOffer]'s tail alone: a ratify line has no options to draw, so
-// the digits half of that row is always empty.
-func (a *app) questionKeyTail(q questionShown, keys []questionVerb) string {
-	if len(keys) == 0 {
-		return ""
-	}
-	parts := make([]string, 0, len(keys))
-	for _, verb := range keys {
-		parts = append(parts, "["+questionKeySpelling(verb.key)+"] "+verb.word)
-	}
-	return " · " + strings.Join(parts, " · ")
-}
-
-// questionPaint inks one answers row: the words in the question hue, the keys —
-// the only bold cells on it — inside them, and the clock's tail dim on the end.
-//
-// THE POINTED ANSWER WEARS THE SELECTED BAND on a line, chip and word together
-// (`pointed` is the chip's index in parts, -1 for none), because a line has no
-// column for a pointer mark and the band is what every other list on this
-// surface puts under the row a key would take.
-func (a *app) questionPaint(q questionShown, parts []string, clock string, form questionForms, pointed int) string {
-	out := a.pal.ask("  ")
-	if form == formsLine {
-		out = a.questionMarkFor(q.question) + " "
-	}
-	for i, part := range parts {
-		ink := a.pal.ask(part)
-		if i%2 == 1 {
-			ink = a.pal.askBold(part)
-		}
-		if pointed >= 0 && (i == pointed || i == pointed+1) {
-			ink = a.pal.background(ink, 0, a.pal.ramp.selected)
-		}
-		out += ink
-	}
-	return out + a.pal.dim(clock)
 }
 
 // questionHovered puts the background every pressable row on this surface takes
@@ -2881,6 +2573,25 @@ func (a *app) foldQuestion(q questionShown) {
 	a.touch()
 }
 
+// questionPutOff is the question a fold rule is standing for: the NEWEST one
+// put off, which is the one `space` and the chip both open ([app.raiseFolded]
+// says why the newest).
+func (a *app) questionPutOff() (questionShown, bool) {
+	at := -1
+	for i, q := range a.questions {
+		if !a.questionFolded[q.token()] {
+			continue
+		}
+		if at < 0 || q.question.Asked.After(a.questions[at].question.Asked) {
+			at = i
+		}
+	}
+	if at < 0 {
+		return questionShown{}, false
+	}
+	return a.questions[at], true
+}
+
 // raiseFolded is the chip's own key: it unfolds the NEWEST open question and
 // puts it back above the box.
 //
@@ -3089,6 +2800,16 @@ func (a *app) questionKeyTaken(head questionShown, msg tea.KeyPressMsg) (tea.Cmd
 		a.foldQuestion(head)
 		return nil, true
 	}
+	// THE `something else…` ROW IS A BOX WHILE THE POINTER IS ON IT, and it
+	// takes the keys a box takes — over an EMPTY message box, which is the law
+	// every letter on this surface is held to. With words in the box below, the
+	// letters are the composer's and the row is still drawn, still pressable,
+	// still answerable the moment the box is clear.
+	if a.questionOthering(head) && strings.TrimSpace(a.input.String()) == "" {
+		if cmd, taken := a.questionOtherKey(head, msg); taken {
+			return cmd, true
+		}
+	}
 	// A HALF-TYPED SENTENCE DOES NOT OUTRANK A CARD THE PERSON RAISED. Every
 	// question the engine asks leaves the box alone — the letters are theirs, the
 	// question waits, and `enter` sends the sentence rather than answering
@@ -3175,6 +2896,89 @@ func (a *app) questionEnter(head questionShown, typing bool) (tea.Cmd, bool) {
 		return nil, false
 	}
 	return a.questionAnswerKey(head, strings.TrimSpace(head.question.Pick.Key)), true
+}
+
+// ── your own answer ─────────────────────────────────────────────────────────
+
+// questionOthering reports whether the pointer is standing on the
+// `something else…` row, which is what makes that row a box.
+func (a *app) questionOthering(q questionShown) bool {
+	return a.questionTakesOther(q) && q.pick == questionOtherAt(q.question)
+}
+
+// questionWalkCount is how many rows the pointer walks: every answer, and the
+// `something else…` row where the question draws one.
+func (a *app) questionWalkCount(q questionShown) int {
+	if a.questionTakesOther(q) {
+		return len(q.question.Options) + 1
+	}
+	return len(q.question.Options)
+}
+
+// questionOtherKey is every key while the pointer is on the `something else…`
+// row: the row is a box, so it takes what a box takes.
+//
+// `enter` SENDS THE WORDS AS THE ANSWER, `↑` GOES BACK TO THE LIST, and `esc` is
+// still *later* (it is read before this, with every other question's esc). A key
+// this row does not know is handed back rather than swallowed — the block takes
+// only the keys it draws, and a box is not a reason to stop being that.
+func (a *app) questionOtherKey(head questionShown, msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	open := a.questionHeld(head.token())
+	if open == nil {
+		return nil, false
+	}
+	box := &open.other.words
+	switch key := msg.String(); key {
+	case questionEnterKey:
+		words := strings.TrimSpace(box.String())
+		if words == "" {
+			// AN EMPTY ANSWER IS NOT AN ANSWER. The key is taken rather than
+			// falling through to a pick this row does not have: enter on an empty
+			// box used to send a bare key, which reads as a decline.
+			return nil, true
+		}
+		answer := session.Answer{Change: words}
+		if with := strings.TrimSpace(open.other.with); with != "" && questionChangeCarriesThePointer(open.question) {
+			// THE WORDS TRAVEL WITH THE ANSWER THE PERSON CAME FROM, which is what
+			// `c` on a row means and what the row says while they type
+			// ([questionOtherWith]).
+			answer.Key, answer.Picked = with, []string{with}
+		}
+		box.reset()
+		open.other.with = ""
+		return a.answerQuestion(*open, answer), true
+	case "up", "shift+tab":
+		open.pick = max(questionOtherAt(open.question)-1, 0)
+		open.other.with = ""
+	case "down", "tab":
+		// THE LIST ENDS HERE AND NOTHING WRAPS, which is this block's own rule at
+		// both ends of every list it draws.
+		return nil, true
+	case "left", "ctrl+b":
+		box.left()
+	case "right", "ctrl+f":
+		box.right()
+	case "home", "ctrl+a":
+		box.home()
+	case "end", "ctrl+e":
+		box.end()
+	case "alt+left", "alt+b":
+		box.wordLeft()
+	case "alt+right", "alt+f":
+		box.wordRight()
+	case "backspace":
+		box.deleteBackward()
+	case "delete":
+		box.deleteForward()
+	default:
+		text := msg.Key().Text
+		if text == "" {
+			return nil, false
+		}
+		box.insert(text)
+	}
+	a.touch()
+	return nil, true
 }
 
 // questionWritingKey is every key while the box is pointed at the question
@@ -3341,9 +3145,9 @@ func (a *app) questionOptionKey(head questionShown, key string) (tea.Cmd, bool) 
 			walk = -1
 		}
 	}
-	if walk != 0 && len(head.question.Options) > 1 {
+	if walk != 0 && a.questionWalkCount(head) > 1 {
 		to := head.pick + walk
-		if to >= 0 && to < len(head.question.Options) {
+		if to >= 0 && to < a.questionWalkCount(head) {
 			a.moveQuestionPick(head, to)
 		}
 		return nil, true
@@ -3622,18 +3426,35 @@ func (a *app) questionVerbKey(head questionShown, key string) (tea.Cmd, bool) {
 		return a.questionMakeRule(head), true
 	case questionUndoKey:
 		return a.questionUndo(head), true
-	case questionCommentKey, questionAskBackKey:
+	case questionCommentKey:
+		// `c` IS A SHORTCUT TO THE ROW AND NOT A MODE. "I will take one of these,
+		// but not as it stands" is an answer with words, the panel's last row is
+		// where words are written, and this key moves the pointer there carrying
+		// the answer it was standing on — which the row then says out loud (`it
+		// goes with 1 SQLite`). Before the owner's ruling of 2026-09-11 it pointed
+		// the MESSAGE BOX at the question instead, which was a mode nothing on
+		// screen had named, and it was the reason a person could not find how to
+		// write an answer at all.
+		if open := a.questionHeld(head.token()); open != nil && a.questionTakesOther(*open) {
+			if at := open.pick; at >= 0 && at < len(open.question.Options) {
+				open.other.with = questionOptionKeyAt(open.question, at)
+			}
+			open.pick = questionOtherAt(open.question)
+			a.touch()
+			return nil, true
+		}
+		return nil, false
+	case questionAskBackKey:
 		if head.commented != nil {
 			// A LANE WHOSE BOX IS NOT THE BOX IS TOLD ([questionShown.commented]).
 			head.commented()
 			a.touch()
 		}
-		// BOTH POINT THE BOX AT THE QUESTION RATHER THAN ANSWERING. `c` is "I
-		// will take one of these but not as it stands" and `?` is "answer me
-		// this first"; each needs a sentence, and the box is where sentences
-		// are typed on this surface. The question stays open, the answers row
-		// becomes a prompt saying what the box is writing now, and the words
-		// go with the next enter ([app.questionWritingKey]).
+		// `?` POINTS THE BOX AT THE ASKER RATHER THAN ANSWERING. It is "answer me
+		// this first": it needs a sentence, the box is where sentences are typed
+		// on this surface, the question stays open, the panel's own keys say what
+		// the box is writing now, and the words go to the asker with the next
+		// enter ([app.questionWritingKey]).
 		//
 		// Nothing is opened: the box below is ALREADY live and always was,
 		// which is what NEVER MODAL means. What changes is what the box means,

@@ -120,7 +120,7 @@ func TestTheShellHighlightUsesOnlyReadingTiers(t *testing.T) {
 	if !strings.Contains(pal.shell("sleep 30"), sgr256(hueDim)+"30") {
 		t.Fatalf("a bare number is not dim: %q", pal.shell("sleep 30"))
 	}
-	for _, hue := range []hue{hueAccent, hueAdd, hueViolet, hueAsk} {
+	for _, hue := range []hue{hueAccent, hueAdd, hueViolet, hueWarn} {
 		if strings.Contains(painted, sgr256(hue)) {
 			t.Fatalf("a command line took signal hue %v:\n%q", hue, painted)
 		}
@@ -778,7 +778,7 @@ func TestTheLightLadderIsAuthoredAndDistinct(t *testing.T) {
 	seen := map[uint8]string{}
 	for name, h := range map[string]hue{
 		"ink": lightInk, "accent": lightAccent, "muted": lightMuted, "dim": lightDim,
-		"add": lightAdd, "del": lightDel, "bad": lightBad, "ask": lightAsk,
+		"add": lightAdd, "del": lightDel, "bad": lightBad,
 		"warn": lightWarn, "data": lightData, "hover": lightCursor, "violet": hueViolet,
 		// The streaming step is a role on this ladder like any other, and it owes
 		// the same rounding check — see [lightLive], and settle_test.go for what it
@@ -790,9 +790,10 @@ func TestTheLightLadderIsAuthoredAndDistinct(t *testing.T) {
 		}
 		seen[h.idx] = name
 	}
-	// The question hue must not collide with the operator violet on EITHER
-	// ladder — that is the whole reason there are two violets (styles.go).
-	if hueAsk.idx == hueViolet.idx || lightAsk.idx == hueViolet.idx {
+	// The question hue is the amber now (styles.go's [palette.ask]), and it owes
+	// the same distinctness the retired violet owed: a question's mark and the
+	// operator violet may not resolve to one index on either ladder.
+	if hueWarn.idx == hueViolet.idx || lightWarn.idx == hueViolet.idx {
 		t.Fatal("the question hue and the operator violet resolve to one index")
 	}
 }
@@ -2836,8 +2837,8 @@ func TestATaskProposalRendersTheDecisionAndHidesTheBrief(t *testing.T) {
 			break
 		}
 	}
-	if !strings.Contains(painted, sgr256(hueAsk)) {
-		t.Fatalf("the proposal is not painted in the question hue:\n%q", painted)
+	if !strings.Contains(painted, sgr256(hueWarn)) {
+		t.Fatalf("the proposal carries no mark in the question hue:\n%q", painted)
 	}
 	// This proposal has a clock: it starts automatically unless redirected.
 	if word, _ := a.stateWord(); word != taskStartingWord {

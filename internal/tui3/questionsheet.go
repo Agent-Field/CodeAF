@@ -426,7 +426,7 @@ func (a *app) questionSheetRow(s *questionSheet, at int, q session.Question, wid
 		return a.pal.ask(fit(text+"  "+tail, width))
 	}
 	gap := column - ansi.StringWidth(text)
-	// Painted in pieces rather than nested, for [app.questionCardOptionRows]'s
+	// Painted in pieces rather than nested, for [app.questionPanelOption]'s
 	// reason: these hues are raw SGR with an explicit reset, so a colour inside
 	// a colour ends the outer one early.
 	line := cursor + mark + a.pal.ask(" "+head) + strings.Repeat(" ", gap)
@@ -464,10 +464,10 @@ func questionSheetAnswers(q session.Question) string {
 	return strings.Join(parts, " · ")
 }
 
-// questionSheetOffer is the sheet's answers row, built from the one key table
-// and degraded the way every other answers row on this surface is: the tail
-// goes from the end backwards until what is left fits, and `s` and `esc` are
-// never given up ([app.questionOffer] states the same law for the block).
+// questionSheetOffer is the sheet's keys row. It is the ONE key row
+// ([app.questionKeyRow]) with the sheet's own words on the verbs: the key in the
+// payload hue, its word dim, given up from the end backwards until what is left
+// fits, and `s` and `esc` never given up.
 //
 // `s` WEARS ITS COUNT, which is the emptiness law read forwards: a send key
 // that said nothing about how much it would send is a key a person presses to
@@ -489,32 +489,11 @@ func (a *app) questionSheetOffer(s *questionSheet, width int) string {
 		}
 		keys = append(keys, verb)
 	}
-	for {
-		parts := make([]string, 0, len(keys)*4)
-		for _, verb := range keys {
-			if len(parts) > 0 {
-				parts = append(parts, "", " · ")
-			}
-			parts = append(parts, "["+questionKeySpelling(verb.key)+"]", " "+verb.word)
-		}
-		plain := "  " + strings.Join(parts, "")
-		if ansi.StringWidth(plain) <= width {
-			out := a.pal.ask("  ")
-			for i, part := range parts {
-				if i%2 == 1 {
-					out += a.pal.askBold(part)
-					continue
-				}
-				out += a.pal.ask(part)
-			}
-			return out
-		}
-		dropped, ok := questionDropVerb(keys)
-		if !ok {
-			return a.pal.ask(fit(plain, width))
-		}
-		keys = dropped
+	q := questionShown{}
+	if s.cursor >= 0 && s.cursor < len(s.questions) {
+		q.question = s.questions[s.cursor]
 	}
+	return "  " + a.questionKeyRow(q, keys, max(width-2, 0))
 }
 
 // ── the sheet on this surface ───────────────────────────────────────────────

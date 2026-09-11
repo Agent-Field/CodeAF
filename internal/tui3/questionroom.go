@@ -1146,38 +1146,14 @@ func (a *app) questionOfferKeys() []questionVerb {
 
 // questionOfferRow spells that offer as the one row a person reads. The words
 // and the give-up order are the table's; the painting is
-// [app.questionVerbParts]'s, so the foot of a page and the answers row of a card
+// [app.paintQuestionKeys]'s, so the foot of a page and the answers row of a card
 // are the same row drawn in two places.
 func (a *app) questionRoomOfferRow(width int) string {
-	head := a.qroom.head
-	keys := a.questionOfferKeys()
-	for {
-		parts := a.questionVerbParts(head, keys, false)
-		line := strings.Join(parts, "")
-		if ansi.StringWidth(line) <= width {
-			return a.questionPaintOffer(parts)
-		}
-		dropped, ok := questionDropVerb(keys)
-		if !ok {
-			return a.pal.dim(fit(line, width))
-		}
-		keys = dropped
-	}
-}
-
-// questionPaintOffer paints the alternating word/key pairs
-// [app.questionVerbParts] builds: the keys are what a person scans for, so they
-// are the only bold cells on the row.
-func (a *app) questionPaintOffer(parts []string) string {
-	var b strings.Builder
-	for i, part := range parts {
-		if i%2 == 1 {
-			b.WriteString(a.pal.dim(part))
-			continue
-		}
-		b.WriteString(a.pal.ask(part))
-	}
-	return b.String()
+	// THE ONE KEY ROW (questionkeys.go's [app.questionKeyRow]): the key in the
+	// payload hue, its word dim, dropped by rank until it fits. The page used to
+	// paint its own, in its own hues, which was one of four paintings of one
+	// grammar on this surface.
+	return a.questionKeyRow(a.qroom.head, a.questionOfferKeys(), width)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
