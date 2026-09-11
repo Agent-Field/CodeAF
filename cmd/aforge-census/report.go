@@ -395,8 +395,14 @@ func healthSection(out io.Writer, finishes []row, look settings) {
 			held.traced++
 			if *r.ConnReused {
 				held.warm++
-			} else if opening := r.DNSms + r.ConnectMs + r.TLSms; opening > 0 {
-				held.opening = append(held.opening, opening)
+			} else {
+				// A CONNECTION OPENED FRESH COUNTS EVEN WHEN IT COST NOTHING
+				// MEASURABLE. On a fast link the three parts together round to
+				// zero milliseconds, and dropping those rows would leave the
+				// median describing only the expensive handshakes — the
+				// emptiness law is about a figure nobody measured, and this one
+				// was measured and came out small.
+				held.opening = append(held.opening, r.DNSms+r.ConnectMs+r.TLSms)
 			}
 		}
 		class := r.statusClass()

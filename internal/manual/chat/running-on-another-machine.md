@@ -611,12 +611,20 @@ all work over `--host`. What to know is **whose machine they are on**:
 - Pausing or stopping one writes to the far machine's store, and a write that store
   refuses is shown as its own refusal rather than redrawn as done.
 
-**Home and the standing place both work, and both are about the far machine.** Home lists
-that machine's projects with each one's `◦` item band under it and the `p`/`s` keys live on
-them; the standing place lists both what stands on this conversation and what stands anywhere
-else on that machine. The `◦ 2 standing orders` count at the foot of the task column counts
-the far machine's items for the workspace this window is on, because over `--host` that path
-is the far machine's own.
+**Home works and is about the far machine; the standing place works in half.** Home lists
+that machine's projects with each one's `◦` item band under it, and the `p`/`s` keys live on
+them.
+
+The standing place over a connection draws ONE of its shelves: **what stands anywhere else
+on that machine**. The shelf for *what stands on this conversation*, and the one for
+*exceptions*, are both empty — not because nothing stands, but because the reading behind
+them is a door the connection does not carry. For the same reason the `◦ 2 standing orders`
+count at the foot of the task column is **absent** over `--host`: there is no line rather
+than a wrong number.
+
+To see and change what stands on the conversation itself, open it on the machine it runs on.
+This is a gap and not a design: the doors exist on that machine and nothing carries them
+across yet.
 
 Two readings are absent over a connection, and each says nothing rather than guessing:
 

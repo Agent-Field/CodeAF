@@ -1630,6 +1630,14 @@ func (s *server) serve(in io.Reader) (err error) {
 			// THE SURFACE SAID IT WAS GOING, and said so before it went, which
 			// is the fact version 1 could not express. The turn keeps running;
 			// this connection is simply over.
+			//
+			// THIS IS A SHORTCUT AND NO LONGER THE ROAD. [MethodDetach] is
+			// ordered, so the flag is stored on the lane long after the reader
+			// has looped back into Scan, and this test will essentially never
+			// be the thing that ends the loop. What ends it is the pipe: the
+			// surface closes it the moment the call returns, Scan reaches EOF,
+			// the lane drains, and [server.leave] reads a settled flag. Kept
+			// because it costs one atomic load and is honest when it does win.
 			return nil
 		}
 		if s.hungUp() {
@@ -2211,8 +2219,14 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		// TOLD. It buys a measurement of the machines the next turn will use and
 		// a connection already open when that turn goes out; it returns before
 		// anything is sent, spends nothing when the speed guard is off, and has
-		// its own budget inside (internal/session's lanenews.go). Nothing waits
-		// for the answer, so there is nothing to say back.
+		// its own budget inside (internal/session's lanenews.go).
+		//
+		// THE RESULT FRAME STILL GOES BACK AND IS DROPPED AT THE OTHER END.
+		// [server.dispatch] answers every call it runs, and this road does not
+		// know that nobody is waiting — [Client.deliver] drops a result whose
+		// id has no waiter, which is the same path a call that reached its
+		// deadline takes. It is an empty frame once per [typingHush] and buying
+		// a second frame KIND to avoid it would be a wire change for nothing.
 		//
 		// AN ENGINE WHOSE AGENT CANNOT HEAR IT DOES NOTHING, rather than
 		// refusing: a door with nothing behind it is a capability that is ABSENT

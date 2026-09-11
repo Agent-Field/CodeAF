@@ -100,50 +100,85 @@ func TestASendDoesNotHoldTheSocketShut(t *testing.T) {
 	}
 }
 
-// TestTwoSendsKeepTheOrderTheSurfaceSentThem is the other half: a turn left the
-// reader and must not have left the queue. The lane is one goroutine draining
-// one channel, so two sends run in the order their frames arrived — which is
-// the guarantee classOrdered was keeping and the only one a turn owes.
-func TestTwoSendsKeepTheOrderTheSurfaceSentThem(t *testing.T) {
-	far := &orderedSender{fakeAgent: &fakeAgent{model: "m"}}
-	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) {
-		return &Engine{Agent: far, Workspace: "/srv/app", SessionFile: "/srv/app/j.jsonl"}, nil
-	}})
-	if err != nil {
-		t.Fatalf("dial the loopback: %v", err)
-	}
-	t.Cleanup(func() { _ = loop.Close() })
-
-	agent := loop.Client.Agent()
-	for _, word := range []string{"first", "second", "third"} {
-		if _, err := agent.Submit(context.Background(), word); err != nil {
-			t.Fatalf("%s: %v", word, err)
+// TestTheOrderedLaneRunsWhatItWasGivenInOrder is the guarantee a turn owes,
+// tested on the thing that gives it.
+//
+// IT IS DELIBERATELY NOT DRIVEN THROUGH THE PROTOCOL. Every call on this wire is
+// a synchronous round trip, so three ordinary Submits in a row put ONE frame on
+// the lane at a time — a protocol-level ordering test would pass against a
+// goroutine per call and would be proving nothing. The queue is only ever more
+// than one deep when frames arrive faster than they run, which is what this
+// hands it, and the mechanism is small enough to state exactly.
+func TestTheOrderedLaneRunsWhatItWasGivenInOrder(t *testing.T) {
+	lane := newOrderedLane()
+	began := make(chan struct{})
+	var ran []uint64
+	go lane.run(func(frame Frame) {
+		if frame.ID == 1 {
+			// The first piece of work is slow, so everything behind it waits in
+			// the queue rather than arriving one at a time.
+			<-began
 		}
+		ran = append(ran, frame.ID)
+	})
+
+	handed := make(chan time.Duration, 1)
+	go func() {
+		start := time.Now()
+		for id := uint64(1); id <= 200; id++ {
+			lane.hand(Frame{Kind: "call", ID: id, Method: MethodSubmit})
+		}
+		handed <- time.Since(start)
+	}()
+
+	// THE HAND-IN NEVER WAITS FOR THE WORK. Two hundred frames go in while the
+	// first one is still running, which is the property that keeps the reader
+	// reading (orderedlane.go).
+	select {
+	case took := <-handed:
+		if took > time.Second {
+			t.Fatalf("handing two hundred frames to a busy lane took %v", took)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the hand-in is waiting for the work: the reader would be stopped")
 	}
-	far.mu.Lock()
-	defer far.mu.Unlock()
-	want := []string{"first", "second", "third"}
-	if len(far.heard) != len(want) {
-		t.Fatalf("the engine heard %v", far.heard)
+
+	close(began)
+	lane.close()
+	lane.wait()
+
+	if len(ran) != 200 {
+		t.Fatalf("the lane ran %d of 200 frames", len(ran))
 	}
-	for i, word := range want {
-		if far.heard[i] != word {
-			t.Fatalf("the engine heard %v, not %v", far.heard, want)
+	for i, id := range ran {
+		if id != uint64(i+1) {
+			t.Fatalf("frame %d ran in position %d: the lane is not a queue", id, i+1)
 		}
 	}
 }
 
-type orderedSender struct {
-	*fakeAgent
-	mu    sync.Mutex
-	heard []string
-}
-
-func (o *orderedSender) Submit(ctx context.Context, text string) (<-chan session.Event, error) {
-	o.mu.Lock()
-	o.heard = append(o.heard, text)
-	o.mu.Unlock()
-	return o.fakeAgent.Submit(ctx, text)
+// TestALaneClosedWithWorkOnItStillRunsThatWork is the other half of the
+// contract, and the reason [orderedLane.close] does not drop what it holds: a
+// frame that crossed the wire is a call the far end is waiting for an answer to,
+// and a connection going away is not a reason to leave it unanswered.
+func TestALaneClosedWithWorkOnItStillRunsThatWork(t *testing.T) {
+	lane := newOrderedLane()
+	for id := uint64(1); id <= 5; id++ {
+		lane.hand(Frame{ID: id})
+	}
+	lane.close()
+	ran := 0
+	go lane.run(func(Frame) { ran++ })
+	lane.wait()
+	if ran != 5 {
+		t.Fatalf("a closed lane ran %d of the 5 frames already handed to it", ran)
+	}
+	// AND NOTHING HANDED IN AFTER THE CLOSE RUNS. The connection is over; work
+	// accepted now would write into a session that has been told nobody is here.
+	lane.hand(Frame{ID: 6})
+	if ran != 5 {
+		t.Fatal("a lane that was closed took new work")
+	}
 }
 
 // TestAKeystrokeReachesTheEngineOnTheDefaultRoad is the typing door end to end:

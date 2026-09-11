@@ -20,6 +20,18 @@ import "sync"
 // day it was reached is stop reading the socket, which is the defect this type
 // exists to remove.
 //
+// THAT INVARIANT IS A LAW AND NOT A HOPE. [Client.notify] is the one mechanism
+// on this wire that writes a frame nobody waits for, and one line of it naming
+// an ordered method would turn the bound above into nothing;
+// [TestEveryNotifiedMethodOwesNobodyAnOrder] refuses exactly that. Two smaller
+// things the depth argument rests on, said out loud because a reader will ask:
+// a surface whose call reaches [callDeadline] is free to send another, so the
+// true bound is its outstanding calls plus one per deadline per goroutine — which
+// is what "bounded by that surface's own patience" means; and after a long
+// [MethodCompact] the lane replays ordered calls nobody is waiting for any more,
+// which is what the socket buffer did before this type existed and is therefore
+// the same behaviour rather than a new one.
+//
 // It is a type rather than a channel and a goroutine written inline because
 // "run these in the order they came, off the goroutine that received them" is a
 // shape, and a shape spelled out twice is two shapes that will disagree.

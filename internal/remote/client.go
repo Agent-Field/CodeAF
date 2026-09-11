@@ -146,8 +146,12 @@ type Client struct {
 	// collide even though both are uint64.
 	seq atomic.Uint64
 
-	// typing is the hush on the one frame nobody waits for (typing.go).
-	typing typingBeat
+	// typing is the hush on the one frame nobody waits for (typing.go), and
+	// hinting is whether one of those frames is on the wire right now — the
+	// whole of what keeps [Client.notify] off the caller's goroutine without
+	// letting goroutines pile up behind a wedged link.
+	typing  typingBeat
+	hinting atomic.Bool
 
 	// newsHeard is set the first time a "phase" or "lane" frame arrives, and it
 	// is half of how [Client.NewsSilent] answers: an engine that has sent one
@@ -973,10 +977,24 @@ func (c *Client) call(ctx context.Context, method string, args any) (json.RawMes
 // today — somebody is writing, which is true whether the engine acts on it or
 // not — and a door that needs to know it was heard must use [Client.call].
 //
-// AND IT NEVER BLOCKS AND NEVER FAILS. A hint sent onto a connection that is
-// dead, reconnecting, or simply slow is a hint the person will send again with
-// their next keystroke, so every one of those is silence rather than an error
-// somebody would have to decide what to do about.
+// AND IT NEVER BLOCKS THE CALLER, WHICH IS A LAW AND NOT AN ASPIRATION.
+// [Client.write] holds the writer's lock across a `Write` and a flush, and over
+// `--host` that pipe is an ssh process's stdin — so writing here would put a
+// blocking socket write on whatever goroutine sent the hint. The one caller is
+// a keystroke, on internal/tui3's update loop, which is the goroutine that
+// draws: a wedged-but-not-dead link would stop the terminal echoing what the
+// person types. That is the defect family this wave exists to remove, and it is
+// not being reintroduced one layer down (the owner's ruling: the only wait a
+// person feels is the main model generating).
+//
+// SO THE WRITE HAPPENS ON A GOROUTINE, AND AT MOST ONE IS EVER IN FLIGHT. A
+// hint is free to lose — the person will send another with their next character
+// — so a second one arriving while the first is still on the wire is DROPPED
+// rather than queued. That is what keeps this unbounded in neither goroutines
+// nor memory while [orderedLane], whose frames are not free to lose, is
+// unbounded in the one and bounded by the far end's patience in the other.
+// [TestEveryNotifiedMethodOwesNobodyAnOrder] is the law that keeps a call which
+// DOES need an answer off this road.
 func (c *Client) notify(method string, args any) {
 	var payload json.RawMessage
 	if args != nil {
@@ -992,7 +1010,15 @@ func (c *Client) notify(method string, args any) {
 	if unusable {
 		return
 	}
-	_ = c.write(Frame{Kind: "call", ID: c.seq.Add(1), Method: method, Payload: payload})
+	// A hint already on the wire is a hint this one has nothing to add to.
+	if !c.hinting.CompareAndSwap(false, true) {
+		return
+	}
+	frame := Frame{Kind: "call", ID: c.seq.Add(1), Method: method, Payload: payload}
+	go func() {
+		defer c.hinting.Store(false)
+		_ = c.write(frame)
+	}()
 }
 
 func (c *Client) callWithin(ctx context.Context, method string, args any, deadline time.Duration) (json.RawMessage, error) {

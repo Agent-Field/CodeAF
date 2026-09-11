@@ -17,16 +17,26 @@ import (
 // internal/provider's probe.go says so in its own header, and it is the half
 // nobody could see missing.
 //
-// IT WAS MISSING ON EVERY DEFAULT LAUNCH. The surface reaches for the
-// capability through an optional interface (internal/tui3's [typingAgent]),
-// which a `*session.Agent` satisfies and a `*remote.Agent` did not — and the
-// default road holds a `*remote.Agent` talking to a detached engine
-// (cmd/aforge/chatv3_local.go's v3TakeHostRoad is true for every launch but
-// `--no-host`, `--debug`, first-run setup and a hostless `--once`). So the
-// assertion failed silently, on the road every person is on, and the mechanism
-// built to keep a first token cheap ran only in tests and in `--no-host`.
-// [TestEverySurfaceDoorTheEngineHasCrossesTheWire] is what stops that class of
-// gap coming back quietly.
+// IT WAS BROKEN IN TWO PLACES AND BOTH ARE MENDED IN THE SAME CHANGE, because
+// mending one of them would have delivered nothing.
+//
+// THE SURFACE COULD NOT SEND IT. internal/tui3 reaches for the capability
+// through an optional interface ([typingAgent]), which a `*session.Agent`
+// satisfies and a `*remote.Agent` did not — and the default road holds a
+// `*remote.Agent` talking to a detached engine (cmd/aforge/chatv3_local.go's
+// v3TakeHostRoad is true for every launch but `--no-host`, `--debug`, first-run
+// setup and a hostless `--once`). So the assertion failed silently, on the road
+// every person is on. [TestEverySurfaceDoorTheEngineHasCrossesTheWire] is what
+// stops that class of gap coming back quietly.
+//
+// AND THE ENGINE COULD NOT ACT ON IT EITHER, WHICH IS THE OLDER HALF.
+// internal/session's [session.Agent.probeClientLanes] asserts an optional
+// prober on its completer, and every construction path wraps that completer in
+// `sessionCompleter` — which forwarded two methods and not this one. So even
+// in process, with the keystroke arriving perfectly, the assertion failed and
+// no probe had ever been bought. internal/session's
+// [TestTheCompleterWrapperForwardsEveryDoorTheAdapterOffers] is that layer's
+// version of the same law.
 
 // typingDoor is an agent that can be told a person has started writing. It is
 // an optional door on the engine's side for the reason it is one on the

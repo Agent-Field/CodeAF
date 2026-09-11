@@ -40,43 +40,97 @@ import (
 // known-red discipline (internal/ci), applied to the one asymmetry that has
 // twice shipped a feature nobody could reach.
 
+// absentDoor is one door the wire does not carry, and WHAT A PERSON MEETS
+// BECAUSE OF IT — which is the half the first version of this ledger left out
+// and the half that decides which of these gets fixed first.
+//
+// A capability that cannot work is ABSENT, NOT BROKEN (CLAUDE.md's design law),
+// and about half of these obey it: the page, the section or the count is simply
+// not drawn, and a person meets nothing. The other half do the inverse. The
+// surface's `a.hosted()` guard is `a.host != ""` and is set only on the
+// `--host <dest>` road, so on a BARE `aforge` — the default launch, and the one
+// that holds a `*remote.Agent` — every one of those guards is skipped, the local
+// branch runs, and the person is told a reason that is not the reason. `/remember`
+// says memory is switched off. `/land` says nothing is waiting. `/autonomy` says
+// the conversation has no project. All three are false, and all three send a
+// person to a settings page that will not help them.
+type absentDoor struct {
+	// says is the sentence a person meets, quoted as the code spells it, and
+	// EMPTY WHERE THE DOOR IS SILENTLY ABSENT. Empty is the law being obeyed;
+	// a sentence is the law being inverted, and those are the ones to land
+	// first.
+	says string
+	// loses is what does not work.
+	loses string
+}
+
 // doorsThatHaveNotCrossed is every optional door internal/tui3 asserts, that
 // `*session.Agent` answers and `*remote.Agent` does not, with what a person on
-// the default road loses by it. NEVER ADD A LINE. Landing a door removes one.
+// the default road meets instead. NEVER ADD A LINE. Landing a door removes one,
+// and [surfaceDoorLedger] comes down in the same commit.
 //
 // THEY ARE A FINDING AND NOT A DESIGN. Nothing on this list was decided to be
 // local-only; each is a door somebody wired to `*session.Agent` and nobody
-// carried across, and each is therefore a page or a key that does nothing on
-// the road every person is on. Writing them down is what turns a silence into
-// a number somebody can watch fall.
-var doorsThatHaveNotCrossed = map[string]string{
-	"abandonAgent":                    "abandoning a turn's second stage; the surface falls back to an ordinary stop",
-	"autonomyAgent":                   "READING the autonomy a project has set — the write half (SetAutonomy) crosses, so the sheet can be changed and not shown",
-	"elsewhereAgent":                  "the work this conversation started that is running somewhere else",
-	"folderLander":                    "landing a folder's changes from the chat; the page draws and the verb does nothing",
-	"harnessRunner":                   "running a harness the picker offered",
-	"leavableRunner":                  "watching orchestration runs, which leaves the run page dark",
-	"leavableWaker":                   "watching wakes, which leaves a woken turn unannounced",
-	"memoryAgent":                     "the memory page's whole four doors — what is remembered, remembering, forgetting, listing",
-	"orchAgent":                       "the orchestration room: its snapshot, a node's journal, steering it, answering it",
-	"promoteAgent":                    "promoting a call out of the background",
-	"runAgent":                        "listing orchestration runs",
-	"spellOutAgent":                   "spelling a reply out again in longer form",
-	"standingCountAgent":              "how many standing orders hold here, which the margin draws",
-	"standingHereAgent":               "the standing page's four doors — what holds here, an exception, standing one down, pausing one",
-	"subharnessAgent":                 "the subharness list, its intake form and running one",
-	"taskMentionAgent":                "the task index a mention completes from",
-	"taskRoomAgent":                   "watching one task and reading its journal; the room's steer door crosses and its two reading doors do not",
-	"taskWeightDoor":                  "one task's context tokens (the conversation's own ContextTokens crosses; the task's does not)",
-	"turnResumer":                     "resuming a turn that was stopped",
-	"wakeAgent":                       "reading wakes",
-	"workingNowAgent":                 "what is working right now, which the margin draws",
-	"interface{ LandingFor/1/2 }":     "the landing a folder already has, beside folderLander",
-	"interface{ PendingConsent/0/1 }": "which approvals are still open when a surface detaches",
+// carried across. Writing them down is what turns a silence into a number
+// somebody can watch fall, and #901 is the public account of it — the same
+// split, grouped into the five families they would actually be built in, with
+// the ruling it asks for first: a family at a time, not a door at a time.
+var doorsThatHaveNotCrossed = map[string]absentDoor{
+	// ── SAYS SOMETHING THAT IS NOT TRUE. Land these first.
+	"memoryAgent": {
+		says:  "memory is off for this session · turn it on under /settings",
+		loses: "/remember, /forget, /memories, /memory <query> and the memory place — memory is not off, it is unreachable",
+	},
+	"folderLander": {
+		says:  "nothing is waiting · what this conversation writes in the folder it is standing in is already there",
+		loses: "/land; and the `changes for … · /land` row above the box goes quiet too",
+	},
+	"autonomyAgent": {
+		says:  "this conversation has no project to keep question rules in",
+		loses: "reading the autonomy a project has set — the write half (SetAutonomy) crosses, so the sheet can be changed and not shown",
+	},
+	"subharnessAgent": {
+		says:  "no subharnesses here yet — a subharness is a saved program for work that comes round again.",
+		loses: "the subharness list, its intake form and running one",
+	},
+	"orchAgent": {
+		says:  "adaptive runs unavailable — this session has no orchestrator",
+		loses: "the orchestration room: its snapshot, a node's journal, steering it, answering it",
+	},
+	"harnessRunner": {
+		says:  "harnesses are unavailable here",
+		loses: "running a harness the picker offered",
+	},
+	"standingHereAgent": {
+		says:  "this window cannot change it",
+		loses: "the standing page's four doors — what holds here, an exception, standing one down, pausing one; the page draws only the elsewhere shelf",
+	},
+	"taskRoomAgent": {
+		says:  "this session has no task rooms",
+		loses: "watching one task and reading its journal; the room's steer door crosses and its two reading doors do not, so a room falls back to a read-only far reading, and a room the roster does not know meets this sentence with `· say it to main` on the end of it",
+	},
+
+	// ── SILENTLY ABSENT, which is the law obeyed. Still missing, still owed.
+	"abandonAgent":                    {loses: "abandoning a turn's second stage; the surface falls back to an ordinary stop"},
+	"elsewhereAgent":                  {loses: "the work this conversation started that is running somewhere else"},
+	"leavableRunner":                  {loses: "watching orchestration runs, which leaves the run page dark"},
+	"leavableWaker":                   {loses: "watching wakes, which leaves a woken turn unannounced"},
+	"promoteAgent":                    {loses: "promoting a call out of the background"},
+	"runAgent":                        {loses: "listing orchestration runs"},
+	"spellOutAgent":                   {loses: "spelling a reply out again in longer form"},
+	"standingCountAgent":              {loses: "the `◦ n standing orders` count the margin draws; there is no section at all"},
+	"taskMentionAgent":                {loses: "the task index an @-mention completes from, where the far reading is nil too"},
+	"taskWeightDoor":                  {loses: "one task's context tokens (the conversation's own ContextTokens crosses; the task's does not)"},
+	"turnResumer":                     {loses: "resuming a turn that was stopped"},
+	"wakeAgent":                       {loses: "reading wakes"},
+	"workingNowAgent":                 {loses: "what is working right now, which the margin draws"},
+	"interface{ LandingFor/1/2 }":     {loses: "the landing a folder already has, beside folderLander"},
+	"interface{ PendingConsent/0/1 }": {loses: "which approvals are still open when a surface detaches"},
 }
 
 // surfaceDoorLedger is the ratchet: the ledger above may shrink and may never
-// grow. Fix a door, delete its line, lower this number in the same commit.
+// grow, and shrinking it without lowering this number in the same commit is a
+// red as well ([ratchetComplaint]).
 const surfaceDoorLedger = 23
 
 // TestEverySurfaceDoorTheEngineHasCrossesTheWire is the law above.
@@ -131,13 +185,58 @@ func TestEverySurfaceDoorTheEngineHasCrossesTheWire(t *testing.T) {
 			t.Errorf("doorsThatHaveNotCrossed still lists %s, which now crosses the wire. Delete the line and lower surfaceDoorLedger.", name)
 		}
 	}
-	if len(doorsThatHaveNotCrossed) > surfaceDoorLedger {
-		t.Errorf("the ledger holds %d doors and the ratchet is %d: it may shrink and may never grow",
-			len(doorsThatHaveNotCrossed), surfaceDoorLedger)
+	// THE RATCHET FAILS IN BOTH DIRECTIONS, which is the whole of what makes it
+	// one. internal/ci's own says the second half out loud and it is the half
+	// that is easy to leave off: a ratchet left slack would let the next change
+	// put an entry back with the gate green throughout. So a ledger that has
+	// SHRUNK is a red too, until the number under it comes down in the same
+	// commit.
+	if got := len(doorsThatHaveNotCrossed); got != surfaceDoorLedger {
+		t.Error(ratchetComplaint("doorsThatHaveNotCrossed", got, surfaceDoorLedger))
 	}
 	if _, listed := doorsThatHaveNotCrossed["typingAgent"]; listed {
 		t.Error("typingAgent is the door this law was written for and it crosses the wire now (typing.go)")
 	}
+	// AND EVERY ENTRY SAYS WHAT IT COSTS. A line with no `loses` is a name
+	// somebody wrote down and did not look at, which is the ledger becoming the
+	// silence it was written to end.
+	surface := surfaceProse(t, filepath.Join(root, "internal", "tui3"))
+	for name, door := range doorsThatHaveNotCrossed {
+		if strings.TrimSpace(door.loses) == "" {
+			t.Errorf("%s is on the ledger with nothing said about what a person loses by it", name)
+		}
+		// AND A QUOTED SENTENCE IS ONE THE SURFACE ACTUALLY SPELLS. This is what
+		// keeps the silent/false split a fact rather than a note: respell the
+		// string, or delete the branch that prints it, and the entry that claims
+		// a person meets it fails here instead of quietly becoming fiction.
+		if door.says != "" && !strings.Contains(surface, door.says) {
+			t.Errorf("%s is on the ledger as saying %q and internal/tui3 no longer spells that.\n"+
+				"Either quote what it says now, or — if the sentence is gone — this door may have become silently absent, which is a different entry.",
+				name, door.says)
+		}
+	}
+}
+
+// surfaceProse is internal/tui3's own source as one blob, for the one question
+// the ledger asks of it: does the surface still spell this sentence.
+func surfaceProse(t *testing.T, dir string) string {
+	t.Helper()
+	var prose strings.Builder
+	listing, err := filepath.Glob(filepath.Join(dir, "*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range listing {
+		if strings.HasSuffix(path, "_test.go") {
+			continue
+		}
+		body, readErr := os.ReadFile(path)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		prose.Write(body)
+	}
+	return prose.String()
 }
 
 // TestEveryStreamOpenerIsOrdered refuses a method that names a stream and is
@@ -209,6 +308,14 @@ func walkGo(t *testing.T, dir string, visit func(string, *ast.File)) {
 		}
 		if entry.IsDir() {
 			if path != dir {
+				// THE WALK IS ONE PACKAGE DEEP AND SAYS SO WHEN THAT STOPS
+				// BEING ENOUGH. internal/tui3 is flat today; a sub-package
+				// appearing under it would take its assertions off this law
+				// silently, so the day one lands is a red rather than a
+				// coverage hole nobody meets.
+				if sub, _ := filepath.Glob(filepath.Join(path, "*.go")); len(sub) > 0 {
+					t.Errorf("%s has grown a sub-package with Go in it; this law walks one package deep", path)
+				}
 				return fs.SkipDir
 			}
 			return nil
@@ -343,7 +450,7 @@ type assertion struct {
 func agentAssertions(t *testing.T, _ *token.FileSet, dir string, known map[string]map[string]bool) []assertion {
 	var found []assertion
 	seen := map[string]bool{}
-	walkGo(t, dir, func(_ string, file *ast.File) {
+	walkGo(t, dir, func(where string, file *ast.File) {
 		ast.Inspect(file, func(node ast.Node) bool {
 			asserted, ok := node.(*ast.TypeAssertExpr)
 			if !ok || asserted.Type == nil {
@@ -355,7 +462,18 @@ func agentAssertions(t *testing.T, _ *token.FileSet, dir string, known map[strin
 			}
 			switch shape := asserted.Type.(type) {
 			case *ast.Ident:
-				if methods, declared := known[shape.Name]; declared && !seen[shape.Name] {
+				methods, declared := known[shape.Name]
+				if !declared {
+					// AN ASSERTION THIS LAW CANNOT RESOLVE IS NOT ONE IT MAY
+					// SKIP. Moving a door's interface into a sub-package would
+					// otherwise take it off the law with the gate green
+					// throughout, which is the evasion the ledger exists to
+					// stop.
+					t.Errorf("%s asserts %s on the agent and this law cannot find its declaration: "+
+						"an optional door must be declared where the law can read it", filepath.Base(where), shape.Name)
+					return true
+				}
+				if !seen[shape.Name] {
 					seen[shape.Name] = true
 					found = append(found, assertion{name: shape.Name, methods: methods})
 				}

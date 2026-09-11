@@ -380,15 +380,17 @@ const (
 	// MethodTyping is a person having started writing, and it is the only frame
 	// on this wire that nobody waits for ([Agent.Typing]).
 	//
-	// IT IS THE HALF THAT WAS MISSING FROM THE PROBE. internal/session's
-	// [session.Agent.Typing] buys a measurement of the two machines the next
-	// turn is most likely to use, and the second thing it buys is a WARM
-	// CONNECTION, so the real request's first token is not also paying for a
-	// handshake (internal/provider's probe.go says so in its own header). The
-	// surface asks for it through an optional interface, and until this door
-	// existed the assertion simply failed on the default road — which is every
-	// launch that is not `--no-host` — so the mechanism built to stop a
-	// think-pause costing a handshake was dead exactly where people run.
+	// IT IS ONE OF THE TWO HALVES THAT WERE MISSING FROM THE PROBE.
+	// internal/session's [session.Agent.Typing] buys a measurement of the two
+	// machines the next turn is most likely to use, and the second thing it
+	// buys is a WARM CONNECTION, so the real request's first token is not also
+	// paying for a handshake (internal/provider's probe.go says so in its own
+	// header). The surface asks for it through an optional interface, and until
+	// this door existed the assertion simply failed on the default road — which
+	// is every launch that is not `--no-host`. The other half was inside the
+	// engine and is mended in the same change (typing.go's header): the
+	// completer wrapper was swallowing the probing door, so the measurement had
+	// never been bought in process either.
 	//
 	// IT RIDES VERSION 14 RATHER THAN MOVING THE NUMBER, under the rule stated
 	// on [Version]: an engine that does not know it answers "no such method",

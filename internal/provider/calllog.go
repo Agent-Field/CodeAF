@@ -141,6 +141,11 @@ type callTrace struct {
 	// wire — whether the pool already had a connection, and where the time went
 	// when it did not. It is replaced per attempt for [callTrace.attemptID]'s
 	// reason: a row about attempt two may not carry attempt one's handshake.
+	//
+	// THE POINTER NEEDS NO LOCK FOR `open`'s REASON ABOVE — a trace belongs to
+	// one call and the transport under it is sequential. The mutex inside
+	// [connFacts] is a different question and a real one: those fields are
+	// written by `httptrace` hooks on the transport's own dial goroutines.
 	conn *connFacts
 	// body is the request as it was last encoded, kept ONLY when somebody
 	// asked for it: the old bodies pin, which puts it on the line of the
