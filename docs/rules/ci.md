@@ -157,6 +157,31 @@ run on 2026-08-31; #408 took the first five out. What it holds now, and which
 entries are Linux-only, is written in the file's own comments and nowhere else —
 `CLAUDE.md` no longer copies it, and neither does this page.
 
+## A test that fails only beside another suite
+
+It is a bug report, and it never goes on the ledger above. Reproduce it under
+load — a focused `-count=50` at `GOMAXPROCS=2` with a few `yes > /dev/null`
+beside it — and fix the CAUSE, which is almost always that the test measured the
+SCHEDULER and called it the road:
+
+- **Wait on the fact, never on a figure.** A fixed number of scripted rounds, a
+  margin between two wall-clock numbers, slack "to one short of the next mark" —
+  each of those is green on a quiet machine and red beside another suite, and
+  widening one is not a fix.
+- **A reading beside the work is waited on through the door that owns it.** A
+  scripted conversation answers in no time and never blocks, so a reading the
+  turn has just started may not have been scheduled at all; `internal/session`'s
+  `besideWatch` (sidecar.go) is told by `readBeside` itself when each reading
+  under a turn's context starts and lands, and a fixture that opts in
+  (`watchReadings`) answers only once none is in flight. The product carries no
+  watch, and a law test fails the build if it ever does.
+- **A scripted arm orders itself by a signal.** `internal/lane/lanestub`'s
+  `StallUntil` holds a stalled answer on a channel, and a first token is held by
+  giving the stub a clock of the scenario's own (`Server.SetClock`) — for
+  instance one whose waits end no sooner than the waiting controller has spoken.
+- **Never `t.Skip`, never a retry, never a wider timeout.** A bound is for
+  failing honestly when the fact never arrives, not for passing.
+
 ## What blocks a merge
 
 Required today: **`check`** on `dev`, **`cross build`** on `staging` and `main`.

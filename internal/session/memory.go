@@ -417,19 +417,27 @@ func (a *Agent) takeMemory(block string) {
 //
 // It runs on its own goroutine and NOT under a.mu, because it makes a provider
 // call. The lock is taken once at the end, for the two assignments.
-func (a *Agent) refreshMemory(ctx context.Context, hub *eventHub, cue string) bool {
+//
+// EVERY LINE IT SAYS GOES THROUGH [Agent.sayMemory], and never onto a stream it
+// was handed when it started. A reading beside the turn may run after the turn
+// it was started for has ended — it is never joined, and a busy machine can
+// leave it unscheduled until then — and a line said onto that turn's closed
+// stream is a line nobody ever reads. That is how a held supersession was lost:
+// it was taken off the queue here and said to a hub that had already closed.
+func (a *Agent) refreshMemory(ctx context.Context, cue string) bool {
 	if !a.remembers() {
 		return false
 	}
 	// The legacy file, once, before anything is routed — so a person whose
 	// standing preferences lived in memory.md is answered out of them on the
 	// very first turn after the upgrade rather than the second.
-	a.importMemoryFile(hub)
+	a.importMemoryFile()
 	// AND WHATEVER THE LAST POST-TURN PASS HAD NOWHERE TO SAY. It writes after
 	// the turn is sealed and its hub closed, so a supersession settled there has
-	// no stream; this is the first one it gets.
+	// no stream; this is the first one it gets, or, when this reading has
+	// outlived its own turn, the next.
 	for _, line := range a.memory.takeNotices() {
-		memoryNotice(hub, line)
+		a.sayMemory(line)
 	}
 
 	// AND THERE IS NO PHASE WORD ON IT ANY MORE. `preparing saved context` was an
@@ -439,7 +447,7 @@ func (a *Agent) refreshMemory(ctx context.Context, hub *eventHub, cue string) bo
 	// PERSON IS WAITING FOR (internal/lane's roles.go: only a visible role owns
 	// it), and what they are waiting for from the instant they press enter is the
 	// model's own first word.
-	block := a.routedMemory(ctx, cue, hub, true)
+	block := a.routedMemory(ctx, cue, a.sayMemory, true)
 
 	a.mu.Lock()
 	moved := a.memoryText != block
@@ -515,7 +523,12 @@ type recallAside struct {
 //
 // It takes no lock of its own: it is called with a.mu held, and the goroutine
 // below takes the lock when it needs it.
-func (a *Agent) startRecallLocked(ctx context.Context, hub *eventHub, cue string) {
+//
+// THE TURN'S HUB IT IS HANDED IS NOT WHERE THE RECALL SPEAKS. The reading may
+// outlive this turn, and even inside it a line sent before the turn's stream is
+// subscribed is a line its reader never gets, so every line goes through
+// [Agent.sayMemory], which reads whichever stream is live under the same lock.
+func (a *Agent) startRecallLocked(ctx context.Context, _ *eventHub, cue string) {
 	a.recall = nil
 	// [Agent.remembers] takes no lock — it reads two pointers fixed at
 	// construction — so it is legal under a.mu and is the same gate the routing
@@ -525,7 +538,7 @@ func (a *Agent) startRecallLocked(ctx context.Context, hub *eventHub, cue string
 	}
 	aside := &recallAside{agent: a}
 	aside.reading = readBeside(ctx,
-		func(readCtx context.Context) bool { return a.refreshMemory(readCtx, hub, cue) },
+		func(readCtx context.Context) bool { return a.refreshMemory(readCtx, cue) },
 		// AND THE ACT IS THE INTERRUPTION, which is the only power a reading beside
 		// the work has over it (sidecar.go). A block that moved and landed before
 		// the person read a word cuts the request so it can be sent again carrying
@@ -599,9 +612,11 @@ func (r *recallAside) end() {
 // decomposition row loop.go writes.
 func (r *recallAside) everAsked() bool { return r != nil && r.reading.everAsked() }
 
-// routedMemory is the whole pre-turn pass. record says whether the ids it
-// injected are this session's to count.
-func (a *Agent) routedMemory(ctx context.Context, cue string, hub *eventHub, record bool) string {
+// routedMemory is the whole pre-turn pass. say is where the one line about an
+// instruction to the store lands, and nil says nothing, which is a node's
+// reading borrowing its parent's store; record says whether the ids it injected
+// are this session's to count.
+func (a *Agent) routedMemory(ctx context.Context, cue string, say func(string), record bool) string {
 	if !a.remembers() {
 		return ""
 	}
@@ -646,7 +661,7 @@ func (a *Agent) routedMemory(ctx context.Context, cue string, hub *eventHub, rec
 		return ""
 	}
 	if routed.Cmd != nil {
-		a.runMemoryCommand(hub, *routed.Cmd)
+		a.runMemoryCommand(say, *routed.Cmd)
 	}
 	if len(routed.Inject) == 0 {
 		return ""
@@ -669,9 +684,12 @@ func (a *Agent) routedMemory(ctx context.Context, cue string, hub *eventHub, rec
 // It is answered in one dim line and nothing else. The person gave an
 // instruction and it either happened or it did not; a card, an event kind or a
 // paragraph would all be this surface making a ceremony out of a note.
-func (a *Agent) runMemoryCommand(hub *eventHub, cmd reflex.Cmd) {
+func (a *Agent) runMemoryCommand(say func(string), cmd reflex.Cmd) {
 	if strings.TrimSpace(cmd.Arg) == "" {
 		return
+	}
+	if say == nil {
+		say = func(string) {}
 	}
 	switch cmd.Name {
 	case "remember":
@@ -685,26 +703,18 @@ func (a *Agent) runMemoryCommand(hub *eventHub, cmd reflex.Cmd) {
 		if err != nil {
 			return
 		}
-		memoryNotice(hub, "remembered · "+memory.Title)
+		say("remembered · " + memory.Title)
 	case "forget":
 		title, err := a.forgetMatching(cmd.Arg)
 		if err != nil {
 			return
 		}
 		if title == "" {
-			memoryNotice(hub, "nothing matched · "+cmd.Arg)
+			say("nothing matched · " + cmd.Arg)
 			return
 		}
-		memoryNotice(hub, "forgot · "+title)
+		say("forgot · " + title)
 	}
-}
-
-// memoryNotice is the one line any of this ever says out loud.
-func memoryNotice(hub *eventHub, text string) {
-	if hub == nil {
-		return
-	}
-	hub.send(Event{Kind: EventNotice, Text: text})
 }
 
 // renderMemoryBlock writes the block and reports which lines actually made it
@@ -1024,18 +1034,27 @@ func (a *Agent) saySuperseded(oldTitle, newTitle string) {
 // sayMemory puts one dim line in front of the person, on the turn's own stream
 // when there is one and on the next turn's when there is not.
 //
-// THE HELD LINE IS NOT A COMPROMISE, it is where this pass lives. `remember`
-// and `forget` are settled by the router BEFORE the turn, so they have a hub.
-// The post-turn pass runs once the turn is sealed and its hub closed, on the
-// session's own lifetime — that is the whole reason nothing is waiting on it —
-// so a line written there has no stream in the room, and holding it until the
-// next refresh is what keeps it from being lost instead.
+// THE HELD LINE IS NOT A COMPROMISE, it is where this pass lives. The post-turn
+// pass runs once the turn is sealed and its hub closed, on the session's own
+// lifetime — that is the whole reason nothing is waiting on it — so a line
+// written there has no stream in the room, and holding it until the next
+// refresh is what keeps it from being lost instead. `remember` and `forget` are
+// settled by the recall beside the turn, which usually lands inside it and
+// sometimes after it, and this is the one door for both.
+//
+// THE LINE IS SAID UNDER a.mu, and that is what makes "when there is one" true.
+// Every road that ends a turn clears a.hub under this lock before it closes the
+// hub (agent.go's turn cleanup, [Agent.Abandon], the vision turn), and a turn
+// starts under it too, subscribing its stream before it lets go. So a line sent
+// here lands on a stream that is open and read, and a line that finds no hub
+// is held; there is no instant at which it is sent onto one that has closed.
+// A hub send is an append and a signal ([eventHub.send]), so the lock is held
+// for nothing longer than the steer drains already hold it.
 func (a *Agent) sayMemory(text string) {
 	a.mu.Lock()
-	hub := a.hub
-	a.mu.Unlock()
-	if hub != nil {
-		memoryNotice(hub, text)
+	defer a.mu.Unlock()
+	if a.hub != nil {
+		a.hub.send(Event{Kind: EventNotice, Text: text})
 		return
 	}
 	a.memory.queueNotice(text)
@@ -1184,7 +1203,7 @@ func (a *Agent) memoryContext() context.Context {
 // both the durable record that this already happened and the person's copy of
 // what they wrote. A second run finds no memory.md and does nothing; a person
 // who wants it back has the file.
-func (a *Agent) importMemoryFile(hub *eventHub) {
+func (a *Agent) importMemoryFile() {
 	if !a.remembers() {
 		return
 	}
@@ -1240,7 +1259,7 @@ func (a *Agent) importMemoryFile(hub *eventHub) {
 		return
 	}
 	if imported > 0 {
-		memoryNotice(hub, fmt.Sprintf("imported %d memories from memory.md", imported))
+		a.sayMemory(fmt.Sprintf("imported %d memories from memory.md", imported))
 	}
 }
 

@@ -68,7 +68,15 @@ func (r *reflexScript) aDeliberateFirstAnswer() {
 	r.deliberate = true
 }
 
-func (r *reflexScript) CompleteWithMessages(ctx context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+func (r *reflexScript) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	var request ai.Request
+	for _, option := range options {
+		_ = option(&request)
+	}
+	// On a turn a fixture has put a watch on, the conversation answers only once
+	// the recall beside it has landed ([answerWhenQuiet]). Before the lock, which
+	// the recall's own router call is answered under.
+	answerWhenQuiet(ctx, request)
 	system := ""
 	if len(messages) > 0 {
 		system = messageText(messages[0])
@@ -305,21 +313,9 @@ func TestTheRoutersRememberCommandWritesToTheStore(t *testing.T) {
 	agent, brain := brainAgent(t, script, nil)
 	remember(t, brain, "standup", "standup is at 9:15")
 
-	hub := newEventHub()
-	stream := hub.subscribe()
 	var seen []string
-	done := make(chan struct{})
-	go func() {
-		for event := range stream {
-			if event.Kind == EventNotice {
-				seen = append(seen, event.Text)
-			}
-		}
-		close(done)
-	}()
-	agent.routedMemory(context.Background(), "remember that I always deploy on Fridays", hub, true)
-	hub.close()
-	<-done
+	agent.routedMemory(context.Background(), "remember that I always deploy on Fridays",
+		func(line string) { seen = append(seen, line) }, true)
 
 	kept, err := brain.ListMemories("", 10)
 	if err != nil {
@@ -366,21 +362,9 @@ func TestForgettingWhatIsNotThereSaysSo(t *testing.T) {
 	agent, brain := brainAgent(t, script, nil)
 	remember(t, brain, "standup time", "standup is at 9:15")
 
-	hub := newEventHub()
-	stream := hub.subscribe()
 	var seen []string
-	done := make(chan struct{})
-	go func() {
-		for event := range stream {
-			if event.Kind == EventNotice {
-				seen = append(seen, event.Text)
-			}
-		}
-		close(done)
-	}()
-	agent.routedMemory(context.Background(), "forget everything about pineapples", hub, true)
-	hub.close()
-	<-done
+	agent.routedMemory(context.Background(), "forget everything about pineapples",
+		func(line string) { seen = append(seen, line) }, true)
 
 	if len(seen) != 1 || !strings.Contains(seen[0], "nothing matched") {
 		t.Fatalf("the answer was %v, want one line saying nothing matched", seen)
@@ -688,7 +672,7 @@ func TestTheOldMemoryFileIsImportedOnceAndRenamed(t *testing.T) {
 	script := &reflexScript{}
 	agent, brain := brainAgent(t, script, func(config *Config) { config.MemoryImport = path })
 
-	agent.importMemoryFile(nil)
+	agent.importMemoryFile()
 
 	kept, err := brain.ListMemories("", 10)
 	if err != nil {
@@ -709,7 +693,7 @@ func TestTheOldMemoryFileIsImportedOnceAndRenamed(t *testing.T) {
 		config.Memory = brain
 		config.MemoryImport = path
 	})
-	second.importMemoryFile(nil)
+	second.importMemoryFile()
 	again, _ := brain.ListMemories("", 10)
 	if len(again) != 2 {
 		t.Fatalf("a second run imported again: %v", titles(again))
@@ -1039,11 +1023,11 @@ func TestAnEmptyReflexFallsBackAndLeavesOneHonestTrail(t *testing.T) {
 	agent.mu.Lock()
 	agent.hub = hub
 	agent.mu.Unlock()
-	block := agent.routedMemory(context.Background(), "please use the useful memory now", hub, true)
+	block := agent.routedMemory(context.Background(), "please use the useful memory now", agent.sayMemory, true)
 	if !strings.Contains(block, "the useful remembered text") {
 		t.Fatalf("the low-tier fallback did not route the memory:\n%s", block)
 	}
-	agent.routedMemory(context.Background(), "please check the useful memory again", hub, true)
+	agent.routedMemory(context.Background(), "please check the useful memory again", agent.sayMemory, true)
 	agent.mu.Lock()
 	agent.hub = nil
 	agent.mu.Unlock()
@@ -1196,6 +1180,10 @@ func TestASupersessionSaysWhatItReplaced(t *testing.T) {
 		extract: `{"mem":1,"type":"fact","scope":"project","title":"deploys on Tuesdays","text":"Deploys go out on Tuesday mornings.","tags":[]}`,
 	}
 	agent, brain := brainAgent(t, script, nil)
+	// THE NEXT TURN'S RECALL IS WHAT SAYS IT, and that recall rides beside the
+	// turn: the conversation answers once it has landed, so the line is on the
+	// stream of the turn that said it rather than whichever turn came after.
+	watchReadings(t, agent)
 	fridays := remember(t, brain, "deploys on Fridays", "Deploys go out on Friday afternoons.")
 	script.mu.Lock()
 	script.decide = `{"op":"supersede","target_id":"` + fridays.ID + `","title":"deploys on Tuesdays","text":"Deploys go out on Tuesday mornings."}`
@@ -1203,33 +1191,45 @@ func TestASupersessionSaysWhatItReplaced(t *testing.T) {
 
 	collect(t, mustSubmit(t, agent, "we moved deploys to Tuesday mornings"))
 	// The pass writes after the turn is sealed, so the line is held until there
-	// is a stream to say it on. The next turn's refresh is that stream.
+	// is a stream to say it on. The next turn is that stream.
 	agent.memoryJobs.Wait()
 
-	hub := newEventHub()
-	stream := hub.subscribe()
-	var seen []string
-	done := make(chan struct{})
-	go func() {
-		for event := range stream {
-			if event.Kind == EventNotice {
-				seen = append(seen, event.Text)
-			}
-		}
-		close(done)
-	}()
-	agent.refreshMemory(context.Background(), hub, "what else is on today")
-	hub.close()
-	<-done
-	_ = agent.Close()
-
-	var said string
-	for _, line := range seen {
-		if strings.HasPrefix(line, "superseded · ") {
-			said = line
-		}
-	}
+	said := supersessionSaid(collect(t, mustSubmit(t, agent, "what else is on today")))
 	if said != "superseded · deploys on Fridays → deploys on Tuesdays" {
-		t.Fatalf("the supersession said %v, want it to name both halves", seen)
+		t.Fatalf("the supersession said %q, want it to name both halves", said)
 	}
+}
+
+// AND A READING THAT OUTLIVED ITS TURN SAYS NOTHING INTO THE DARK.
+//
+// The recall rides beside the turn and is never joined, so on a busy machine it
+// can run after the turn it was started for has ended, and it is the thing that
+// takes a held line off the queue. It used to say that line onto the stream it
+// had been handed when it started, which by then had closed: the supersession
+// was taken, said to nobody, and never said again. Measured on this package's
+// own test beside another suite, where the drain logged `ctxErr=context
+// canceled hubClosed=true` on every run that lost the line. A line taken with no
+// turn live now goes back on the queue, and the next turn says it.
+func TestAHeldLineOutlivesTheReadingThatTookIt(t *testing.T) {
+	const line = "superseded · deploys on Fridays → deploys on Tuesdays"
+	agent, _ := brainAgent(t, &reflexScript{route: `{"inject":[],"cmd":null}`}, nil)
+	watchReadings(t, agent)
+	agent.memory.queueNotice(line)
+
+	// The recall of a turn that has already ended, running now: no stream is live.
+	agent.refreshMemory(context.Background(), "we moved deploys to Tuesday mornings")
+
+	if said := supersessionSaid(collect(t, mustSubmit(t, agent, "what else is on today"))); said != line {
+		t.Fatalf("the next turn said %q, want the held line the late reading took", said)
+	}
+}
+
+// supersessionSaid is the supersession line a turn put on its stream, or "".
+func supersessionSaid(events []Event) string {
+	for _, text := range noticeTexts(events) {
+		if strings.HasPrefix(text, "superseded · ") {
+			return text
+		}
+	}
+	return ""
 }

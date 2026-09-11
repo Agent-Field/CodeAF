@@ -108,6 +108,8 @@ func readBeside[T any](ctx context.Context, ask func(context.Context) T, act fun
 	readCtx, stop := context.WithCancel(ctx)
 	side := &sidecar[T]{stop: stop, settled: make(chan struct{})}
 	side.asked.Store(true)
+	watch := besideWatchOn(ctx)
+	watch.started()
 	go func() {
 		answer := ask(readCtx)
 		side.answer = answer
@@ -115,8 +117,95 @@ func readBeside[T any](ctx context.Context, ask func(context.Context) T, act fun
 			act(answer)
 		}
 		close(side.settled)
+		// AND THE WATCH HEARS IT LAST, once the answer can be taken: whoever it
+		// lets go of finds the reading settled rather than a moment from it.
+		watch.landed()
 	}()
 	return side
+}
+
+// ── AND HOW A LANDING IS SEEN WITHOUT RACING IT ─────────────────────────────
+//
+// A reading lands whenever the scheduler lets it, and nothing in this package
+// may wait for one on the work's behalf; that is this file's law. A TEST that
+// pins an order between a reading and the work still has to know when the
+// reading has landed, and it cannot learn that from the calls it answered. An
+// answered call is a reading that has still to parse, act and settle, and a
+// reading the work started a moment ago may not have been scheduled at all: a
+// scripted conversation answers in no time and never blocks, so the goroutine
+// the turn has just started waits behind it for as many rounds as the machine
+// is busy. Every fixture that guessed (a count of the calls entered, a script
+// long enough on a quiet machine) was green alone and red beside another suite.
+//
+// SO THE DOOR SAYS. A watch carried on the work's context is told by
+// [readBeside] itself when each reading under it starts and when it has landed,
+// and [besideWatch.quiet] waits until none is in flight. It is [desk.settled]'s
+// bargain for the other half of this file: THE RUNNING PRODUCT CARRIES NO WATCH
+// AND NEVER WAITS ON ONE (sidecar_law_test.go holds it to that), and a context
+// without a watch costs a reading one lookup.
+
+// besideWatch counts the readings in flight under one context.
+type besideWatch struct {
+	mu     sync.Mutex
+	flying int
+	// calm is made on demand by [besideWatch.quiet] and closed when the last
+	// reading in flight lands, so a watch nobody waits on allocates nothing.
+	calm chan struct{}
+}
+
+type besideWatchKey struct{}
+
+// withBesideWatch carries a watch on ctx. Every reading started under it is
+// counted, which is the turn's own and anything the turn's context reaches.
+func withBesideWatch(ctx context.Context, watch *besideWatch) context.Context {
+	return context.WithValue(ctx, besideWatchKey{}, watch)
+}
+
+// besideWatchOn is the watch ctx carries, or nil, which every method answers.
+func besideWatchOn(ctx context.Context) *besideWatch {
+	watch, _ := ctx.Value(besideWatchKey{}).(*besideWatch)
+	return watch
+}
+
+func (w *besideWatch) started() {
+	if w == nil {
+		return
+	}
+	w.mu.Lock()
+	w.flying++
+	w.mu.Unlock()
+}
+
+func (w *besideWatch) landed() {
+	if w == nil {
+		return
+	}
+	w.mu.Lock()
+	w.flying--
+	if w.flying == 0 && w.calm != nil {
+		close(w.calm)
+		w.calm = nil
+	}
+	w.mu.Unlock()
+}
+
+// quiet waits until no reading under this watch is in flight. Every reading is
+// bounded by its own window and by the work's context, so the wait is too.
+func (w *besideWatch) quiet() {
+	if w == nil {
+		return
+	}
+	w.mu.Lock()
+	if w.flying == 0 {
+		w.mu.Unlock()
+		return
+	}
+	if w.calm == nil {
+		w.calm = make(chan struct{})
+	}
+	wait := w.calm
+	w.mu.Unlock()
+	<-wait
 }
 
 // take answers the reading IF IT HAS ALREADY LANDED, and never waits.

@@ -192,6 +192,55 @@ func (r *laneRig) patience(_ *testing.T, ceiling time.Duration) {
 	r.ceiling.Store(int64(ceiling))
 }
 
+// answersAfterTheWord makes this scenario's router spend no wait sooner than the
+// waiting controller has spoken: said the wait out loud, or switched.
+//
+// IT IS lanestub's StallUntil RULE FOR A FIRST TOKEN, which StallUntil cannot
+// hold. A scripted arm must order itself by a signal and never by elapsed time,
+// because a primary timed to answer "a little after the ceiling" asserts only
+// the slack between two wall-clock figures, and a starved machine eats it: the
+// ceiling's timer fires late, the first token arrives first, and the row says
+// nothing was done at all. So the primary's first token still waits as long as
+// it was scripted to, and then waits for the controller's word as well. The
+// clock is the stub's own seam ([lanestub.Server.SetClock]); a switch releases
+// it too, so a regression that sends the rescue fails on the rescue rather than
+// hanging.
+func (r *laneRig) answersAfterTheWord(t *testing.T) {
+	t.Helper()
+	spoken := make(chan struct{})
+	var once sync.Once
+	var previous func(PhaseNews)
+	previous = OnPhase(func(news PhaseNews) {
+		if news.Phase == PhaseAllSlow || news.Phase == PhaseSwitching {
+			once.Do(func() { close(spoken) })
+		}
+		if previous != nil {
+			previous(news)
+		}
+	})
+	t.Cleanup(func() { OnPhase(previous) })
+	r.server.SetClock(afterTheWord{Clock: lanestub.Real(), spoken: spoken})
+}
+
+// afterTheWord is a clock whose every wait ends no sooner than it was scripted
+// to AND no sooner than the controller has spoken. See [laneRig.answersAfterTheWord].
+type afterTheWord struct {
+	lanestub.Clock
+	spoken <-chan struct{}
+}
+
+func (c afterTheWord) Wait(ctx context.Context, d time.Duration) bool {
+	if !c.Clock.Wait(ctx, d) {
+		return false
+	}
+	select {
+	case <-c.spoken:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
 // rigScale is how much shorter every bound a scenario is judged against is than
 // the one a person is really given.
 //

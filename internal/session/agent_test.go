@@ -80,6 +80,10 @@ func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages [
 	snapshot := make([]ai.Message, len(messages))
 	copy(snapshot, messages)
 
+	// On a turn a fixture has put a watch on, the conversation answers only once
+	// the readings beside it have landed ([answerWhenQuiet]).
+	answerWhenQuiet(ctx, request)
+
 	s.mu.Lock()
 	// THE ASIDE IS CONSULTED BEFORE THE QUEUE IS TOUCHED, which is the whole of
 	// the law above: an errand recognised by its shape never reaches the step
@@ -1455,11 +1459,63 @@ func countMessages(a *Agent, text string) int {
 
 func mustSubmit(t *testing.T, agent *Agent, text string) <-chan Event {
 	t.Helper()
-	events, err := agent.Submit(context.Background(), text)
+	events, err := agent.Submit(watchedContext(agent), text)
 	if err != nil {
 		t.Fatalf("Submit(%q): %v", text, err)
 	}
 	return events
+}
+
+// ── a conversation that is read before it answers ───────────────────────────
+
+// readingWatches is the watch each fixture that asked for one has put on its
+// agent's turns (sidecar.go's [besideWatch]).
+var readingWatches sync.Map
+
+// watchReadings makes every turn this agent is sent through [watchedContext]
+// carry a watch on the readings beside it, which is how a scripted conversation
+// learns that one is in flight ([answerWhenQuiet]).
+//
+// IT IS FOR A FIXTURE WHOSE SCENARIO IS A READING LANDING IN TIME — a race that
+// must be spent at the first boundary, a drawing that must move the turn before
+// the script runs out — and whose readings are all answered at once. A fixture
+// that scripts a reader which waits on purpose would hold its own conversation
+// for as long as that reader waits.
+func watchReadings(t *testing.T, agent *Agent) {
+	t.Helper()
+	readingWatches.Store(agent, &besideWatch{})
+	t.Cleanup(func() { readingWatches.Delete(agent) })
+}
+
+// watchedContext is what a turn for this agent is submitted under: carrying its
+// watch when a fixture asked for one, and plain otherwise.
+func watchedContext(agent *Agent) context.Context {
+	if watch, ok := readingWatches.Load(agent); ok {
+		return withBesideWatch(context.Background(), watch.(*besideWatch))
+	}
+	return context.Background()
+}
+
+// answerWhenQuiet holds a scripted CONVERSATION request until every reading
+// beside its turn has landed, and returns at once for a turn with no watch.
+//
+// IT IS THE ORDER A REAL TURN USUALLY HAS, MADE EXACT. A real model spends
+// seconds on every step and the readings beside it are small, so they land in
+// the middle of it: a drawing that splits cuts the step it lands in, and the
+// boundary after it spends the drawing. A scripted model answers in no time,
+// so without this the turn could reach its last word before the reading it
+// started had even been scheduled. Held here, the reading lands INSIDE the
+// request, exactly where a real one would.
+//
+// THE CONVERSATION IS THE REQUEST THAT CARRIES THE BELT, and only it waits. A
+// reading's call rides the same completer on the same watch, and it is one of
+// the readings being waited for. It must be called outside the completer's own
+// lock, because those readings are answered under it.
+func answerWhenQuiet(ctx context.Context, request ai.Request) {
+	if len(request.Tools) == 0 {
+		return
+	}
+	besideWatchOn(ctx).quiet()
 }
 
 func rolesOf(messages []ai.Message) []string {

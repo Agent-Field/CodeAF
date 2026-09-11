@@ -14,6 +14,13 @@ import (
 // `budget`, which named a rolling process-wide allowance and therefore said
 // "some other request spent this one's rescue"; [planCannotPay] names the only
 // rail there is.
+//
+// A ANSWERS AFTER THE CONTROLLER HAS SPOKEN, by the order of events. Scripted at
+// sixty milliseconds against a ceiling of fifty, the claim rested on ten
+// milliseconds of wall clock: a loaded machine spends that before the ceiling's
+// timer fires, the first token arrives first, and the row then says nothing was
+// done at all — `action = ""`, measured one run in three hundred on this commit's
+// own parent under twelve busy cores ([laneRig.answersAfterTheWord]).
 func TestARescueTheCallCouldNotPayForSaysSoOnTheRow(t *testing.T) {
 	read := loggingTo(t)
 	rig := newLaneRig(t, "row/budget-refusal",
@@ -22,6 +29,7 @@ func TestARescueTheCallCouldNotPayForSaysSoOnTheRow(t *testing.T) {
 	)
 	rig.believes("A", 20, 2000)
 	rig.patience(t, 50*time.Millisecond)
+	rig.answersAfterTheWord(t)
 	noRescues(t)
 
 	ctx := WithLaneChoice(talking(), choiceFor(rig.model, 12*time.Millisecond))
