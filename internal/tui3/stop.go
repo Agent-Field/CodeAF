@@ -60,6 +60,22 @@ import (
 // raises the card instead of going in the box, and the card's default answer
 // puts it away again with nothing else changed.
 //
+// ── AND ONE ROW NEEDS NO CURSOR AT ALL (#892) ──
+//
+// The roster's keyboard was made askable (`alt+t`) on the argument that "while
+// the roster does not hold the keyboard there is no cursor and nothing is being
+// aimed at" — and with three rows on screen that is exactly right: a bare `x`
+// would have to guess which one, and guessing wrong ends an hour of work. But
+// ONE stoppable row is the case the argument was written against and does not
+// cover: there is nothing to choose between, so the keystroke cannot be aimed at
+// the wrong thing, and the law the argument serves — one bare keystroke over a
+// list should not be able to end an hour of work — is already satisfied by the
+// card, which asks and defaults to *keep going*, not by the focus requirement.
+// So with exactly one stoppable row visible, `x` raises that row's card without
+// `alt+t` first. Two or more keep today's behaviour and fall through, because
+// with nothing to aim at the only honest answer is the letter the key already
+// is.
+//
 // ── ESC IS STILL BACK, AND NEVER STOP ──
 //
 // esc closes a card, then a room, then a page, in that order, and it never ends
@@ -358,6 +374,58 @@ func (a *app) stopSay(line string) {
 
 // ── what is stoppable from where you are standing ───────────────────────────
 
+// railFocusNode is the node the roster's cursor is standing on, or nil — while
+// the roster does not hold the keyboard there is no cursor and nothing is being
+// aimed at (taskstrip.go's [app.stripFocused] reads the same two fields).
+func (a *app) railFocusNode() *taskNode {
+	if !a.railHold || a.railWhere.id == 0 {
+		return nil
+	}
+	return a.tasks[a.railWhere.id]
+}
+
+// stopVisibleCount is how many stoppable task rows the roster is drawing right
+// now, and which one the only such row is. It is asked only on the path where
+// the roster does NOT hold the keyboard ([app.stopHere]'s last resort), so the
+// answer is a fact about what is on the frame, not about where a cursor is.
+//
+// IT COUNTS WHAT THE COLUMN ACTUALLY DRAWS and not what the session holds,
+// because a row a fold is hiding is a row nobody can see and a keystroke aimed
+// at an unseen row is the guess this whole path exists to avoid: [app.railView]
+// is the one door onto the roster's geometry, the same door the pointer and the
+// frame are answered through, so this and they cannot disagree about what is
+// on screen. A FOLDED ROOT STANDS FOR WHAT IT HIDES, exactly as it does for the
+// pointer: one row covering a family is one target, and its `worst` node is the
+// work it is standing for ([app.railView] reads the same field for the pin).
+//
+// Counted here and not beside the caller so the one-row rule has one statement
+// rather than two copies a second caller could get wrong.
+func (a *app) stopVisible() (int, *taskNode) {
+	entries := a.railEntries()
+	var sole *taskNode
+	count := 0
+	for _, e := range entries {
+		node := e.node
+		if node == nil {
+			continue
+		}
+		if a.stopTaskTarget(node).empty() {
+			// A folded root carries nothing stoppable of its own but may be standing
+			// for a subtree that does. The work it stands for is the worst node it
+			// hid, which is the same reading the pin and the row's own glyph take.
+			if !e.folded || a.stopTaskTarget(e.worst).empty() {
+				continue
+			}
+			node = e.worst
+		}
+		if count++; count > 1 {
+			return count, nil
+		}
+		sole = node
+	}
+	return count, sole
+}
+
 // stopHere is the work `x` and the header's ✕ are aimed at, or the empty target
 // when there is nothing here to stop.
 //
@@ -384,17 +452,19 @@ func (a *app) stopHere() stopTarget {
 		}
 		return a.stopTaskTarget(a.tasks[a.room.id])
 	}
-	return a.stopTaskTarget(a.railFocusNode())
-}
-
-// railFocusNode is the node the roster's cursor is standing on, or nil — while
-// the roster does not hold the keyboard there is no cursor and nothing is being
-// aimed at (taskstrip.go's [app.stripFocused] reads the same two fields).
-func (a *app) railFocusNode() *taskNode {
-	if !a.railHold || a.railWhere.id == 0 {
-		return nil
+	// A HELD ROSTER IS STILL THE FIRST ANSWER OFF IT, because its cursor is where
+	// a person's eye is and the aim is already theirs. Below that, one visible
+	// stoppable row is aimed at without asking for the keyboard first — see the
+	// header's third law — and two or more are the case the focus requirement was
+	// written for: nothing to aim at, so the key is the letter it is.
+	if node := a.railFocusNode(); node != nil {
+		return a.stopTaskTarget(node)
 	}
-	return a.tasks[a.railWhere.id]
+	count, sole := a.stopVisible()
+	if count == 1 {
+		return a.stopTaskTarget(sole)
+	}
+	return stopTarget{}
 }
 
 // stopRunTarget is one adaptive run as a card can offer it, and the empty

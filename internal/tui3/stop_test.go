@@ -241,6 +241,72 @@ func TestXOverSettledWorkRaisesNothing(t *testing.T) {
 	}
 }
 
+// ONE STOPPABLE ROW NEEDS NO CURSOR AT ALL (#892), and this is the whole of the
+// ruling: with nothing to choose between, the keystroke cannot be aimed at the
+// wrong thing, and what keeps a bare key from ending an hour of work is the card
+// asking — not the roster holding the keyboard. So a bare `x`, over an empty box,
+// with no `alt+t` first, raises that row's card.
+func TestOneVisibleStoppableRowAnswersToABareX(t *testing.T) {
+	base, _, _ := roomApp(t)
+	agent := &stopFake{roomFake: base.agent.(*roomFake)}
+	base.agent = agent
+	// No hold, no cursor: the roster was never asked for.
+	if base.railHold {
+		t.Fatalf("the fixture started with the roster holding the keyboard")
+	}
+	drive(t, base, key("x"))
+	if !base.stopping() {
+		t.Fatalf("a bare x over the only stoppable row raised nothing")
+	}
+	showStop(base)
+	if base.stop.target.noun != stopTaskNoun {
+		t.Fatalf("the card offered to stop a %q", base.stop.target.noun)
+	}
+	// The card, not the key, ends the work — and the safe answer is where it opens.
+	if at := stopPick(t, base); at != stopKeepAt {
+		t.Fatalf("the cursor opened on %q", stopAnswers[at])
+	}
+	// AND THE KEY STILL EATS THE LETTER: it reached the target, so it never
+	// fell through to the composer as the letter it was.
+	if got := base.input.String(); got != "" {
+		t.Fatalf("the key typed %q on its way to the card", got)
+	}
+}
+
+// TWO OR MORE ROWS ARE THE CASE THE FOCUS REQUIREMENT WAS WRITTEN FOR: nothing
+// to aim at, so the key is the letter it is (#892).
+func TestTwoVisibleStoppableRowsKeepTheFocusRequirement(t *testing.T) {
+	base, _, _ := roomApp(t)
+	agent := &stopFake{roomFake: base.agent.(*roomFake)}
+	base.agent = agent
+	drive(t, base, streamEventMsg{gen: base.gen, ev: update(8, "Sweep the imports",
+		session.TaskRunning, session.TaskNotice{})})
+	if base.railHold {
+		t.Fatalf("the fixture started with the roster holding the keyboard")
+	}
+	drive(t, base, key("x"))
+	if base.stopping() {
+		t.Fatalf("a bare x guessed between two stoppable rows")
+	}
+	if got := base.input.String(); got != "x" {
+		t.Fatalf("the key was eaten; the box reads %q", got)
+	}
+	// AND alt+t STILL AIMS IT, which is the path the manual names: give the
+	// roster the keyboard, and the cursor answers for which row.
+	base.railTake(true)
+	base.railWhere = railSpot{id: 7}
+	base.touch()
+	base.input = editor{} // the letter is cleared; the question is what stops
+	drive(t, base, key("x"))
+	if !base.stopping() {
+		t.Fatalf("x under the hold raised nothing")
+	}
+	showStop(base)
+	if base.stop.target.noun != stopTaskNoun {
+		t.Fatalf("the card offered to stop a %q", base.stop.target.noun)
+	}
+}
+
 // ── the pointer ─────────────────────────────────────────────────────────────
 
 // THE ✕ IN THE ROOM'S HEADER RAISES THE SAME CARD the key does. Same question,

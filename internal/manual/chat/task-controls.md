@@ -39,7 +39,9 @@ rows. Short or narrow terminals retain the compact column and existing controls.
 Click `Stop task…` under Task setup, click `Stop` in the compact task header, or type
 `/stop` while inside the task. These open the same confirmation; work is stopped
 only after you choose `stop it`. The initial selection is `keep going`.
-`x` is also a shortcut, but only when the input is empty. A stopped task's branch
+`x` is also a shortcut, but only when the input is empty. When exactly one task row
+is visible it works without doing anything else first; when two or more are, walk to the
+task's row with `alt+t` first so the keystroke has a row to land on. A stopped task's branch
 is kept; a design task can discard its unsaved page, and the confirmation says
 which consequence applies. Runs and background jobs use their own existing
 stop confirmations. The header and controls stop the work on the open page.

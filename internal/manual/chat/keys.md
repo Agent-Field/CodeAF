@@ -2279,8 +2279,11 @@ you say what you want changed instead. The saved-shapes pages describe the row i
 
 **`x` asks to stop the work.** It is taken on the roster's focused row and inside a
 room or an adaptive run's page, and only over an empty message box — the moment there
-is a sentence in the box it is the letter `x`. It never stops anything by itself: it
-raises a card, and the card is answered below.
+is a sentence in the box it is the letter `x`. When the roster does not hold the keyboard
+and exactly one stoppable task row is visible, `x` takes that row straight away, because
+there is nothing to choose between; with two or more rows it does nothing until `alt+t`
+gives the roster a cursor to aim with. It never stops anything by itself: it raises a
+card, and the card is answered below.
 
 The tasks pages describe what rooms and the roster are for.
 
