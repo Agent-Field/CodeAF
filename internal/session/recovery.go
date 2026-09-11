@@ -62,6 +62,7 @@ import (
 	"sync"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -398,6 +399,9 @@ func (a *Agent) mutatingPath(call ai.ToolCall) (string, string, bool) {
 	if !writes {
 		return "", "", false
 	}
+	// The path bare's own tools will write: `@reports/r.md`, `~/…` and
+	// `file://…` are the files they name, not files of those names.
+	path = bare.NormalizePath(path)
 	workspace := strings.TrimSpace(a.config.Workspace)
 	if workspace == "" {
 		return "", "", false

@@ -832,7 +832,7 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 	fence := r.fenceFor(ctx, item)
 	published := false
 	if publish {
-		receipt, held, err := publishStandingReport(fence, item.Workspace, report, final, r.lastPublished(item, report))
+		receipt, held, err := publishStandingReport(fence, item.Workspace, report, final)
 		switch {
 		case held == withheldStopped:
 			return stoppedWhileItRan(outcome, end.saved, report, false), nil
@@ -849,21 +849,18 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 			outcome.Kind = standing.OutcomeNeedsYou
 			outcome.NeedsPerson = clip(reportChangedLine(runDir, report, final), standingOutcomeClip)
 			outcome.Text = outcome.NeedsPerson
-		case err != nil:
+		case held == withheldReportOwned:
+			withheld = held
+			outcome.Kind = standing.OutcomeNeedsYou
+			outcome.NeedsPerson = clip("report held back, not published: "+err.Error()+keepHeldDraft(runDir, final), standingOutcomeClip)
+			outcome.Text = outcome.NeedsPerson
+		case receipt == nil && err != nil:
 			withheld = withheldUnwritten
 			outcome.Kind = standing.OutcomeFailed
 			outcome.Text = "could not publish the report to " + report + ": " + err.Error()
 		default:
 			published = true
 			outcome.Published = receipt
-			if fence.store != nil {
-				// The receipt the next publication is compared against, kept
-				// where it is read in one step ([standing.Store.LastPublication]).
-				// A receipt that could not be kept leaves the next run finding
-				// a file aforge cannot vouch for, which it holds rather than
-				// writes over.
-				_ = fence.store.KeepPublication(item.ID, *receipt)
-			}
 			if occurred {
 				// Recorded the moment it exists, so a process that dies before
 				// the pass finishes still leaves the receipt behind — and the
@@ -872,7 +869,14 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 				occurrence.Published = receipt
 				_ = standing.WriteOccurrence(runDir, occurrence)
 			}
-			outcome.Text = clip("report updated: "+report+" — "+final, standingOutcomeClip)
+			updated := "report updated: " + report
+			if err != nil {
+				// A REPORT PLACED WITHOUT ITS RECEIPT IS SAID (the scale audit's
+				// L4): the next run will find a file aforge cannot vouch for and
+				// wait on the person, and they are owed the reason now.
+				updated += " (its receipt could not be kept: " + oneLine(err.Error()) + "; the next run will wait for you)"
+			}
+			outcome.Text = clip(updated+" — "+final, standingOutcomeClip)
 		}
 	}
 	// A RUN THAT CAME TO NOTHING TELLS NOBODY, because there is nothing to tell:
@@ -986,21 +990,27 @@ func (r *standingRunner) fenceFor(ctx context.Context, item standing.Item) effec
 	return fence
 }
 
-// lastPublished is the sha256 of the report this item last published to
-// report, or "" when it has published none there (or keeps no store to ask).
-func (r *standingRunner) lastPublished(item standing.Item, report string) string {
-	if r.root == "" || item.ID == "" {
-		return ""
+// atReport is [standing.Store.AtReport] for the fence's item: the report path's
+// lock, and its receipt handed to act. A runner with no store keeps no
+// receipts, so act is handed none and a report can only ever be created — and a
+// store that could not be opened is the same, since the fence's own act then
+// withholds it ([effectFence.act]).
+func (f effectFence) atReport(target, report string, act func(*standing.Receipt) (*standing.Receipt, error)) error {
+	if f.store == nil {
+		_, err := act(nil)
+		return err
 	}
-	store, err := standing.Open(r.root)
-	if err != nil {
-		return ""
+	return f.store.AtReport(target, f.id, report, act)
+}
+
+// otherOwner is the live item other than this one that keeps target, asked
+// under target's lock with the receipt read there. A fence with no store has
+// nobody else to ask about.
+func (f effectFence) otherOwner(target string, last *standing.Receipt) (standing.Item, bool) {
+	if f.store == nil {
+		return standing.Item{}, false
 	}
-	last, err := store.LastPublication(item.ID, report)
-	if err != nil || last == nil {
-		return ""
-	}
-	return last.SHA256
+	return f.store.OtherLiveOwner(target, f.id, last)
 }
 
 // heldReportFile is the run-folder file a draft is kept in when the report was
@@ -1184,7 +1194,18 @@ func standingReportBlock(item standing.Item, report string) string {
 // aforge's own acts and a person's stop; it does not hold off another
 // program's write, and no portable call replaces a file only if its contents
 // are still what they were.
-func publishStandingReport(fence effectFence, workspace, report, text, last string) (*standing.Publication, reportWithheld, error) {
+//
+// ── WHAT IT IS COMPARED WITH IS THE PATH'S RECEIPT (ruling R2) ──
+//
+// The file is compared with what aforge last put at that PATH, whichever item
+// put it there ([standing.Store.AtReport]): a successor publishing where its
+// stopped predecessor published is not writing over a person, and the file a
+// person agreed at the card to have replaced is adopted there too. The receipt
+// is read, the file compared, the report placed and the new receipt kept under
+// the path's own lock, so no other publisher of that path can come between
+// them. A placed report whose receipt could not be kept is answered with its
+// publication AND the error, and the caller says both.
+func publishStandingReport(fence effectFence, workspace, report, text string) (*standing.Publication, reportWithheld, error) {
 	root, target, err := reportTarget(workspace, report)
 	if err != nil {
 		return nil, notWithheld, err
@@ -1221,25 +1242,51 @@ func publishStandingReport(fence effectFence, workspace, report, text, last stri
 	if err := os.Chmod(name, 0o644); err != nil {
 		return nil, notWithheld, err
 	}
-	var found reportFile
-	held, err := fence.act(
-		func() reportWithheld {
-			if found = reportFileAt(target, last); found == reportChanged {
-				return withheldReportChanged
-			}
-			return notWithheld
-		},
-		func() error { return placeReport(name, target, found == reportAbsent) },
+	sum, at := sha256Hex(body), time.Now().UTC()
+	var (
+		found  reportFile
+		held   reportWithheld
+		placed bool
 	)
-	if errors.Is(err, os.ErrExist) {
+	var owner *standing.ReportOwnedError
+	err = fence.atReport(target, report, func(last *standing.Receipt) (*standing.Receipt, error) {
+		var failed error
+		held, failed = fence.act(
+			func() reportWithheld {
+				// ONE LIVE OWNER PER REPORT PATH. A receipt another live item
+				// earned does not clear this one: the two would replace each
+				// other's report on every run.
+				if other, owned := fence.otherOwner(target, last); owned {
+					owner = &standing.ReportOwnedError{Report: report, Owner: other}
+					return withheldReportOwned
+				}
+				if found = reportFileAt(target, last); found == reportChanged {
+					return withheldReportChanged
+				}
+				return notWithheld
+			},
+			func() error {
+				err := placeReport(name, target, found == reportAbsent)
+				placed = err == nil
+				return err
+			},
+		)
+		if !placed {
+			return nil, failed
+		}
+		return &standing.Receipt{Class: standing.ReceiptPublished, Item: fence.id, SHA256: sum, Bytes: len(body), At: at}, nil
+	})
+	switch {
+	case errors.Is(err, os.ErrExist):
 		// The name was taken between the look and the link: somebody made the
 		// file, and it is theirs.
 		return nil, withheldReportChanged, nil
-	}
-	if held != notWithheld || err != nil {
+	case held == withheldReportOwned:
+		return nil, held, owner
+	case !placed:
 		return nil, held, err
 	}
-	return &standing.Publication{Path: report, SHA256: sha256Hex(body), Bytes: len(body), At: time.Now().UTC()}, notWithheld, nil
+	return &standing.Publication{Path: report, SHA256: sum, Bytes: len(body), At: at}, notWithheld, err
 }
 
 // reportTarget resolves where a report would be written — the project's real
@@ -1298,15 +1345,15 @@ const (
 	reportChanged
 )
 
-// reportFileAt reads the file at target against what aforge last published
-// there (last, a sha256). A file that is there with no publication behind it
-// is not aforge's to replace.
-func reportFileAt(target, last string) reportFile {
+// reportFileAt reads the file at target against what aforge last put there
+// (last, the path's receipt). A file that is there with no receipt behind it is
+// not aforge's to replace.
+func reportFileAt(target string, last *standing.Receipt) reportFile {
 	current, err := os.ReadFile(target)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
 		return reportAbsent
-	case err == nil && last != "" && sha256Hex(string(current)) == last:
+	case err == nil && last != nil && sha256Hex(string(current)) == last.SHA256:
 		return reportUnchanged
 	}
 	return reportChanged

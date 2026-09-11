@@ -2025,3 +2025,36 @@ func standingNextUpdate(t *testing.T, lane <-chan Event) Event {
 		}
 	}
 }
+
+func (f *fakeStanding) AtSpec(id string, expected uint64, act func(standing.Item) error) error {
+	current, err := f.Get(id)
+	switch {
+	case err != nil:
+		return err
+	case current.Status == standing.StatusRetired:
+		return standing.ErrStopped
+	case current.SpecRevision != expected:
+		return standing.ErrConflict
+	}
+	return act(current)
+}
+
+func (f *fakeStanding) Revise(id string, expected uint64, change func(*standing.Item) error) (standing.Item, []string, error) {
+	current, err := f.Get(id)
+	if err != nil {
+		return current, nil, err
+	}
+	if current.SpecRevision != expected {
+		return current, nil, standing.ErrConflict
+	}
+	draft := current
+	if err := change(&draft); err != nil {
+		return current, nil, err
+	}
+	changed := standing.SpecChanges(current, draft)
+	if len(changed) == 0 {
+		return current, nil, standing.ErrUnchanged
+	}
+	draft.SpecRevision = expected + 1
+	return draft, changed, f.Save(draft)
+}

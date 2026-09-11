@@ -167,7 +167,8 @@ In a conversation with you, `place` explicitly adds a governing folder binding;
 `unplace` removes that binding. Both take `id` for the folder and optional `ref`
 for the work (default: this chat). Several bindings may apply. These actions do
 not move files, change old outputs or remove navigation references. A move between
-governing folders currently requires removing one binding and adding the other.
+governing folders is removing one binding and adding the other; for ongoing work,
+`stand` op edit with the new `placement` does both on one card.
 
 Use action `governing` to inspect current governing folders and their depths:
 zero means direct, higher values mean ancestors through governing placements.

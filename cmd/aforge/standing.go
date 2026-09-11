@@ -361,12 +361,17 @@ func standingWhenFlags(watch, every string) (standing.When, error) {
 		if _, err := filepath.Match(watch, "probe"); err != nil {
 			return standing.When{}, fmt.Errorf("--watch %q is not a pattern this can read: %w", watch, err)
 		}
-		return standing.When{Kind: standing.WhenFile, Glob: watch, Words: standing.WatchWords(watch)}, nil
+		when := standing.When{Kind: standing.WhenFile, Glob: watch}
+		when.Words = standing.WakeWords(when)
+		return when, nil
 	case every != "":
 		if _, err := standing.ParseEvery(every); err != nil {
 			return standing.When{}, err
 		}
-		return standing.When{Kind: standing.WhenEvery, Every: every, Words: "every " + every}, nil
+		// The chat's card falls back to the same words for the same rhythm.
+		when := standing.When{Kind: standing.WhenEvery, Every: every}
+		when.Words = standing.WakeWords(when)
+		return when, nil
 	}
 	return standing.When{}, errors.New("say what wakes it: --watch <glob> or --every <rhythm>")
 }
@@ -488,8 +493,9 @@ func standingEdit(out io.Writer, store *standing.Store, id string, f standingFla
 	if *f.asJSON {
 		return json.NewEncoder(out).Encode(revised)
 	}
-	fmt.Fprintf(out, "revised %s to version %d: %s\n", id, revised.SpecRevision, strings.Join(changed, ", "))
-	fmt.Fprintln(out, "the next run uses it; a run already under way keeps what it started with")
+	// The chat's edit answers in the same two lines ([session.StandingRevised]).
+	fmt.Fprintln(out, session.StandingRevised(revised, changed))
+	fmt.Fprintln(out, session.StandingNextRun)
 	return nil
 }
 

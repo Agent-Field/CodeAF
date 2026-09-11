@@ -227,6 +227,9 @@ func decodesItself(t reflect.Type) bool {
 // no field behind it is copied through untouched, which is how unknown fields
 // stay ignored.
 func coerceObject(raw json.RawMessage, text string, t reflect.Type, path string) (json.RawMessage, error) {
+	if inner, ok := encodedObject(text); ok {
+		return coerceObject(json.RawMessage(inner), inner, t, path)
+	}
 	if !strings.HasPrefix(text, "{") {
 		return nil, &toolArgumentError{field: path, repair: objectRepair(path)}
 	}
@@ -256,6 +259,27 @@ func coerceObject(raw json.RawMessage, text string, t reflect.Type, path string)
 		rebuilt[name] = fixed
 	}
 	return remarshal(rebuilt, raw)
+}
+
+// encodedObject is the object inside a JSON string that holds one whole JSON
+// object — `"does":"{\"kind\":\"task\"}"` — which is the object itself sent
+// once too often encoded, and nothing else. A live rails run sent `does` that
+// way six times running and was told six times that it takes an object
+// (2026-09-11). Free text in a string is not an object and stays refused:
+// reading prose as one would be guessing what it meant.
+func encodedObject(text string) (string, bool) {
+	if !strings.HasPrefix(text, `"`) {
+		return "", false
+	}
+	var inner string
+	if err := json.Unmarshal([]byte(text), &inner); err != nil {
+		return "", false
+	}
+	inner = strings.TrimSpace(inner)
+	if !strings.HasPrefix(inner, "{") || !json.Valid([]byte(inner)) {
+		return "", false
+	}
+	return inner, true
 }
 
 // coerceMap walks a JSON object against a Go map: every value takes the same

@@ -232,6 +232,9 @@ func TestTheWithheldCodesArePinned(t *testing.T) {
 		// Added by round 3b (2026-09-11), deliberately: a fence that cannot
 		// read the stop holds instead of falling through.
 		withheldStopUnknown: "stop-unknown",
+		// Added on the review of 417fa43a3 (2026-09-11), deliberately: another
+		// live item keeps the report path, and the two would take turns.
+		withheldReportOwned: "report-owned",
 	}
 	if len(withheldCodes) != len(want) {
 		t.Fatalf("withheldCodes has %d codes, the pinned set has %d", len(withheldCodes), len(want))

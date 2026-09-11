@@ -33,10 +33,7 @@ var cardWordsRoots = []string{".", "../tui", "../head", "../resident", "../sessi
 
 // cardWordsOwed are the reads the law still forgives, keyed "package/file:func",
 // each with who owes the switch. It only shrinks.
-var cardWordsOwed = map[string]string{
-	"session/tools_standing.go:standPropose": "the chat card's when line — the stand lane switches it to CardWords",
-	"session/tools_standing.go:standingRow":  "the stand list row the model reads — the stand lane switches it to CardWords",
-}
+var cardWordsOwed = map[string]string{}
 
 // cardWordsExempt are the reads that are not a surface saying what wakes an
 // item, and never will be, each with why.

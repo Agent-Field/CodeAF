@@ -147,6 +147,11 @@ func resolveToCwd(path, cwd string) string {
 	return filepath.Clean(filepath.Join(cwd, normalized))
 }
 
+// NormalizePath is the path bare's tools act on for the path a call names, for
+// a caller that has to know which file a call will touch before it runs (the
+// session's control plane). It is [normalizePath].
+func NormalizePath(path string) string { return normalizePath(path) }
+
 // normalizePath mirrors pi's normalizePath with normalizeUnicodeSpaces and
 // stripAtPrefix options: unicode spaces → regular space, strip leading @,
 // expand ~ — plus one rule of this program's own, [stripFileScheme].

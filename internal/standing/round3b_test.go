@@ -58,10 +58,11 @@ func TestTheLastPublicationIsReadFromItsReceiptNotTheHistory(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := store.KeepPublication(id, Publication{Path: "reports/r.md", SHA256: "abc", Bytes: 3}); err != nil {
+	// The receipt file an item kept before receipts were kept by path.
+	if err := os.WriteFile(filepath.Join(store.ItemDir(id), publicationsFile), []byte(`{"reports/r.md":{"path":"reports/r.md","sha256":"abc","bytes":3}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	last, err := store.LastPublication(id, "reports/./r.md")
+	last, err := store.legacyPublication(id, "reports/./r.md", "/project/reports/r.md")
 	if err != nil || last == nil || last.SHA256 != "abc" {
 		t.Fatalf("the kept receipt was not what answered: %+v %v", last, err)
 	}
@@ -98,11 +99,11 @@ func TestAnOlderItemsLastPublicationIsLookedForInItsNewestRunsOnly(t *testing.T)
 	if err := os.WriteFile(filepath.Join(store.ItemDir(id), runCounterFile), []byte("200\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if last, err := store.LastPublication(id, "reports/r.md"); err != nil || last != nil {
+	if last, err := store.legacyPublication(id, "reports/r.md", "/project/reports/r.md"); err != nil || last != nil {
 		t.Fatalf("a receipt 200 runs back was searched for: %+v %v", last, err)
 	}
 	record(190, "recent")
-	if last, err := store.LastPublication(id, "reports/r.md"); err != nil || last == nil || last.SHA256 != "recent" {
+	if last, err := store.legacyPublication(id, "reports/r.md", "/project/reports/r.md"); err != nil || last == nil || last.SHA256 != "recent" {
 		t.Fatalf("a receipt in the newest runs was not found: %+v %v", last, err)
 	}
 }

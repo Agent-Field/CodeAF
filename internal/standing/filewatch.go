@@ -82,9 +82,28 @@ func (it Item) CheckWatch() error {
 	if it.When.Kind != WhenFile {
 		return nil
 	}
+	// BRACES ARE NOT EXPANDED, SO THEY ARE REFUSED HERE, where an item is
+	// written. `{inbox/*,notes/*}` reads as those characters and matches
+	// nothing, and a watch that can never fire says nothing about it (the live
+	// one-path case, 2026-09-11). The ticker does not refuse an item written
+	// before this: it reads it as a watch that matches nothing ([bracedQuiet]).
+	// It asks, as the owner refusal does ([OwnedRemedy]): "tell the person" was
+	// read as a plan of two orders, and the first one was stopped for it.
+	if hasBraces(it.When.Glob) {
+		return fmt.Errorf("standing: the pattern %q uses braces, which a watch does not expand: one order watches one pattern. Watch a folder they are all under, if its report is not inside it; otherwise ask the person what to do instead: one order cannot watch those folders into one report, and two orders cannot keep one file — a stop is permanent", it.When.Glob)
+	}
 	_, err := watched(it.Workspace, it.When.Glob)
 	return err
 }
+
+// hasBraces says glob spells a set of alternatives a watch does not expand.
+func hasBraces(glob string) bool {
+	return strings.Contains(glob, "{") && strings.Contains(glob, ",") && strings.Contains(glob, "}")
+}
+
+// bracedQuiet is the check line of a watch written with braces before they
+// were refused: it matches nothing, which the item's page says plainly.
+const bracedQuiet = "its pattern uses braces, which a watch does not expand, so it matches nothing — change its pattern"
 
 // watched answers every path the pattern reaches, absolute, or the one line
 // saying why it cannot.

@@ -40,25 +40,63 @@ var ErrUnchanged = errors.New("nothing about the item would change")
 // Revise applies change to the item's specification when the caller's reading
 // of it is still current, and answers the item as written plus the names of
 // the parts that changed. expected is the [Item.SpecRevision] the caller read.
+//
+// A REPORT MOVED ONTO A PATH IS A CLAIM ON IT (owner.go): refused while another
+// live item keeps that path, decided under the path's lock with the revision
+// inside it. So the path the change leads to has to be known before the item's
+// lock is taken — a path's lock is never taken inside an item's — and change is
+// applied once to a reading to learn it. CHANGE MUST THEREFORE ONLY ASSIGN: it
+// is applied again, under the lock, to the item as it then is, and the fence on
+// the spec revision makes the two the same specification.
 func (s *Store) Revise(id string, expected uint64, change func(*Item) error) (Item, []string, error) {
+	before, err := s.Get(id)
+	if err != nil {
+		return Item{}, nil, err
+	}
+	draft := before.withOwnScope()
+	from, to := ReportPath(before), ""
+	if change(&draft) == nil {
+		to = ReportPath(draft)
+	}
+	if to == from || before.SpecRevision != expected {
+		return s.revise(id, expected, change)
+	}
+	var (
+		item    Item
+		changed []string
+	)
+	claim := func() error {
+		item, changed, err = s.revise(id, expected, change)
+		return err
+	}
+	if to == "" {
+		err = claim()
+	} else {
+		draft.ID = id
+		err = s.claimReport(draft, claim)
+	}
+	if err != nil {
+		return Item{}, nil, err
+	}
+	s.releaseReport(from, id)
+	return item, changed, nil
+}
+
+// revise is [Store.Revise] under the item's lock.
+func (s *Store) revise(id string, expected uint64, change func(*Item) error) (Item, []string, error) {
 	var changed []string
 	item, err := s.mutate(id, func(current *Item) error {
 		if current.Status == StatusRetired {
-			return errors.New("a stopped item must be set up afresh")
+			return ErrStopped
 		}
 		if current.SpecRevision != expected {
 			return ErrConflict
 		}
-		draft := *current
-		if current.Scope != nil {
-			scope := *current.Scope
-			scope.CollectionIDs = append([]string(nil), current.Scope.CollectionIDs...)
-			draft.Scope = &scope
-		}
+		draft := current.withOwnScope()
 		if err := change(&draft); err != nil {
 			return err
 		}
-		changed = specChanges(*current, draft)
+		changed = SpecChanges(*current, draft)
 		if len(changed) == 0 {
 			return ErrUnchanged
 		}
@@ -111,11 +149,24 @@ func (s *Store) Revise(id string, expected uint64, change func(*Item) error) (It
 	return item, changed, nil
 }
 
-// specChanges names the specification parts that differ, in a fixed order so
+// withOwnScope is a copy of it whose folder scope a change can write without
+// writing the original's.
+func (it Item) withOwnScope() Item {
+	if it.Scope != nil {
+		scope := *it.Scope
+		scope.CollectionIDs = append([]string(nil), it.Scope.CollectionIDs...)
+		it.Scope = &scope
+	}
+	return it
+}
+
+// SpecChanges names the specification parts that differ, in a fixed order so
 // a log line reads the same way every time. THE NAMES ARE READ BY THE PERSON —
-// in the item's log and in the terminal's receipt — so they are the words a
-// person would use for each part, never the field names.
-func specChanges(before, after Item) []string {
+// in the item's log, in the terminal's receipt and on the chat's edit card —
+// so they are the words a person would use for each part, never the field
+// names. It is exported for that card, which says before the yes what
+// [Store.Revise] will say after it.
+func SpecChanges(before, after Item) []string {
 	var changed []string
 	add := func(name string, differs bool) {
 		if differs {

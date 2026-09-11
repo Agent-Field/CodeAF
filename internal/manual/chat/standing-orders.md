@@ -113,6 +113,13 @@ that it shares the day's allowance — and, for work that runs, what one run doe
 report file and who writes it (or that it keeps none), the folder it goes in, and the rules that reach it. `esc` or `0` declines, and a card left unanswered
 when the turn ends sets nothing up: `the card was left unanswered — nothing was set up`.
 
+**What the yes agreed to is said back word for word.** After a yes the chat's answer
+carries the card's own `when ·`, `rule ·`, `costs ·`, `report ·` and `folder ·` lines,
+so what it tells you and what you answered cannot differ. Everything that wakes has a
+`when ·` line: when the model sent no words for it, the card says the timing the item
+holds — `every 30 minutes`, `when inbox/* changes`, `when this machine has been quiet
+for 2 hours`, `checks every 5 minutes: gh run list`, `at 18:00 on Fri 11 Sep`.
+
 Nothing is ever armed because a phrase looked like a rule. There is no matcher, no
 inference from your files, and no order aforge made up on your behalf.
 
@@ -748,14 +755,19 @@ Saying it in a conversation makes **the same order as far as a run can tell**
 (*Keep a report current from the chat*); its log opens `set up in the chat` and `show`
 says `through the chat`. Its record also keeps the conversation it came from, writes its
 reach `project` where the terminal leaves it empty (read as project), and may word when
-it wakes the chat's way. `aforge standing edit` edits either.
+it wakes the chat's way. `aforge standing edit` edits either, and so does the chat's
+edit, which is the same revision.
 
 ## Watch a folder and keep a report current — --watch, --report and what changed
 
 A `--watch` order reads the files its glob matches on every pass. `*` stays inside one
 folder; a whole `**` segment reaches down through every folder below, so
 `inbox/**/*.md` watches Markdown at any depth under `inbox` (links to folders are not
-followed). A watch that reaches more than **10000** files and folders is refused when
+followed). Braces are not expanded, so `{inbox/*,notes/*}` is refused (`… uses braces,
+which a watch does not expand: one order watches one pattern …`): watch a folder they are
+all under, when the report is not inside it; otherwise the chat asks you. One set up with braces before that is quiet,
+not failing: `its pattern uses braces, which a watch does not expand, so it matches
+nothing — change its pattern`. A watch that reaches more than **10000** files and folders is refused when
 you set it up or edit it: `inbox/** reaches more than 10000 files and folders, and a
 watch reads every one of them on every pass; watch a narrower pattern`. **The baseline is
 taken the moment you say yes** (or `add` runs, or `edit` changes the pattern): each file's
@@ -848,6 +860,76 @@ after your yes and before the work exists — at the terminal too; if that fails
 is set up: `nothing was set up: could not be placed in …`. Afterwards `aforge standing
 show` says `set up by: person, through the chat`.
 
+## Change ongoing work from the chat — edit what stands, keep what it read and published
+
+Say what is different — "also list who owns each request", "make it every hour" — and
+the chat changes the work that stands instead of setting up another beside it: `stand`
+with `op: edit`, the item's id (or your words for it) and only what changes. It is the
+change `aforge standing edit` makes, through the same store: a new version of the SAME
+item, which keeps what it has read and the report it publishes. The card leads with
+what changes and writes each changed line old → new (a long one from just before the
+change); every other line is drawn as it is:
+
+```
+changes · instructions — the same work; what it has read and published stays
+report · reports/inbox-report.md — aforge publishes this file; the run never writes it
+```
+
+A change to what it may do, its title, model, acceptance or step limit is drawn with
+its values: `grant · none → open a pull request but never merge it`. It has no `just
+once`. Nothing changes until the yes; then the answer is `revised <id> to version 2:
+instructions`, the card's lines, and `the next run uses it; a run already under way
+keeps what it started with`. Your first sentence stays its name.
+
+**Moving work to another folder is an edit too.** "Move it to my Work folder instead of
+Personal" draws `changes · folder` and `folder · Personal, … → Work — …`; the yes
+places it in Work and takes it out of every folder it is in at that moment (what
+`collections place` and `unplace` write) and answers `moved <id> to Work` — or `not
+moved: it was stopped after the card was drawn`.
+
+Refused: `nothing to change: send only what is different`; a yes on a card another edit
+overtook (`nothing was changed: it was changed elsewhere after the card was drawn`);
+a change of how far a rule reaches or of what kind of thing it is (stop it and propose
+the other); a stopped order, before any card (`a stopped item must be set up afresh`);
+words that name no order (`… send its id instead`); and an op called `change`.
+
+## A file already at the report path — the card says so, and the chat never writes it
+
+If the report file you name is already there and aforge never published it, the card's
+report line says so, and so does the answer after the yes:
+
+```
+report · reports/inbox-report.md — this file already exists (11 bytes, written 3m ago); aforge will replace it
+```
+
+That yes is informed: aforge records the file as `adopted` (its sha256, in the path's
+receipt), and the first report replaces it. If the file changed after the card was
+drawn it is not adopted — `report · … was not adopted: it changed after the card was
+drawn — the first report will wait for them until the file is moved aside` — and the
+first run is held as for any file you edited (`report-changed`).
+
+**The run never writes the report file and neither do you** — that is the chat's own
+rule. Its `write` and `edit` refuse the report of active work, however the path is
+spelled (`@reports/…`, `~/…`, `file://…`): `<path> is the report of "<words>" (<id>):
+aforge publishes this file, and neither the run nor you writes it. To change what it
+says, change the work — stand op edit with that id.` A stopped order's file is free.
+
+## Two orders on one report — one owner, at the terminal and in the chat
+
+A report file has one live owner. A second order on the same file is refused where it
+is written, whichever door asks — `aforge standing add --report`, `aforge standing edit
+--report`, the chat's card and its edit alike: `… is already the report of "…" (<id>),
+which has not been stopped — two orders cannot keep one file: edit that one to cover this,
+or ask the person — a stop is permanent`. The chat says so before any card, and it never
+stops the old order to make room: it widens that one with op edit, or asks you. Paused
+still owns; stopped does not, so an order set up after the old one stopped publishes
+where it did.
+
+Two orders that already shared a file are not left to take turns replacing each other's
+report: the one that last published keeps it, and the other's runs are held with the
+code `report-owned` and its draft kept, until one of them is stopped or edited to
+another file.
+
 ## Why wasn't my report published — the reason, and the withheld code in the record
 
 Only a run that came back clean publishes. Anything else fails the run, or waits on
@@ -873,6 +955,7 @@ comes to `failed`, never `landed`, with its code. A clean run carries none.
 | `not-written` | `could not publish the report to …` |
 | `report-changed` | `report held back, not published: … is not what aforge last published there …` |
 | `stop-unknown` | `the report was not published: aforge could not read whether this work was stopped (…)` |
+| `report-owned` | `report held back, not published: … is already the report of "…" (…), which has not been stopped …` |
 
 An answer is cut at the output limit only after aforge has asked for the rest twice,
 and a report counts only if the turn that wrote it was not cut: a later turn stands in
@@ -882,10 +965,11 @@ at a limit, and all of it holds for the rules check's one correction too.
 ## I edited the report file — aforge does not write over your changes
 
 The report is a file in your project, and you may open and annotate it. Just before
-aforge replaces it, it compares the file with what it last published there (the sha256
-of its last receipt). It replaces the file only if it is still exactly that, or is
-gone. If you changed it — or it was there before aforge first published — nothing is
-written over it: the run waits on you, its new report is kept as `held-report.md` in
+aforge replaces it, it compares the file with what aforge last put at that path (the
+sha256 of the path's own receipt — this order's, or a stopped one's, so an order set
+up afresh at the same path carries on publishing where the stopped one did). It
+replaces the file only if it is still exactly that, or is gone. If you changed it — or it
+appeared after the card that set the order up — nothing is written over it: the run waits on you, its new report is kept as `held-report.md` in
 the run's folder, and the line is `report held back, not published: … is not what
 aforge last published there … Move your copy aside to let the next run publish`, code
 `report-changed`. Move or delete your copy and the next run publishes. If the draft

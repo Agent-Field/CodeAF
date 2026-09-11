@@ -2006,6 +2006,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what have I got filed under my Alpha folder", "collections"},
 		{"file that watch under my Archive folder", "collections"},
 		{"I edited the report file and aforge did not publish over it", "standing-orders"},
+		// Wave 5 (R1, R3, R11): changing work that stands from the chat, a
+		// report path that already held a file, and the chat's write refused.
+		{"change the instructions of my inbox watch from the chat", "standing-orders"},
+		{"edit what stands without stopping it", "standing-orders"},
+		{"move my watch to my Work folder instead of Personal", "standing-orders"},
+		{"can two standing orders keep the same report file", "standing-orders"},
+		{"standing show says withheld: report-owned", "standing-orders"},
+		{"the card says this file already exists and aforge will replace it", "standing-orders"},
+		{"why won't the chat write my report file", "standing-orders"},
+		{"after I said yes does it tell me back what I agreed to", "standing-orders"},
+		{"my sentence said 3 runs a day and it was refused for cost_words", "keeping-an-eye"},
 		// Round 3b: the one window a replacement still has, the fence that
 		// cannot read the stop, and an answer that survives a crash.
 		{"can aforge still overwrite an edit I save to the report file", "standing-orders"},
