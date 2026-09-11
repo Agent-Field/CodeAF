@@ -1079,8 +1079,12 @@ func (a *Agent) stoppedSoup(text string, hub *eventHub) bool {
 func (a *Agent) endStoppedTurn(ctx context.Context, hub *eventHub, partial *partialBuffer, turn Usage, started time.Time, model string) {
 	a.keepPartial(partial, hub)
 	if door, stopped := stopCause(ctx); stopped && door != StopByPerson {
-		a.journalFailedCall(ctx, model, "", stopFor(door), 1, a.requestEstimate())
-		if said := stopSentence(door); said != "" {
+		cause := context.Cause(ctx)
+		if _, ours := StoppedBy(cause); !ours {
+			cause = stopFor(door)
+		}
+		a.journalFailedCall(ctx, model, "", cause, 1, a.requestEstimate())
+		if said := stopSentence(door, stopName(cause)); said != "" {
 			hub.send(Event{Kind: EventNotice, Text: said})
 		}
 	}
