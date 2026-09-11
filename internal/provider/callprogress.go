@@ -235,7 +235,7 @@ func callEndOf(facts recordFacts) CallEnd {
 // reader would draw their sum.
 //
 // Every method is nil-safe, so an unwatched call pays one nil check at each of
-// the four seams and nothing else.
+// the five seams and nothing else.
 type callProgress struct {
 	watcher CallWatcher
 	model   string
@@ -314,6 +314,14 @@ func (p *callProgress) paced(parked bool, at time.Time) {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	// A PARK ONLY EXISTS WHILE THE REQUEST DOES. The dispatcher takes the park
+	// back on every way out of its loop, including the way out of a call that has
+	// just been given up on — and the row that ended it has already been written
+	// by then, so speaking here would put a request going out AFTER its own
+	// ending, which is the one order a surface cannot draw.
+	if !p.open {
+		return
+	}
 	phase := CallStarted
 	if parked {
 		phase = CallPaced

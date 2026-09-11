@@ -347,4 +347,15 @@ func TestThePacingParkIsAPhaseOfTheCall(t *testing.T) {
 			t.Fatalf("report %d is %q, want %q", index, phases[index], phase)
 		}
 	}
+
+	// AND THE PARK IS TAKEN BACK ON THE WAY OUT OF A CALL THAT WAS GIVEN UP ON,
+	// after the row that ended it. A seam that spoke then would put a request
+	// going out after its own ending.
+	progress.paced(true, began.Add(4*time.Second))
+	progress.closed(CallEndRefused, nil)
+	before := len(log.all())
+	progress.paced(false, began.Add(5*time.Second))
+	if after := len(log.all()); after != before {
+		t.Fatalf("leaving the park spoke after the call had ended (%d reports, was %d)", after, before)
+	}
 }
