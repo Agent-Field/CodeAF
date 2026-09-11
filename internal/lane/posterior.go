@@ -305,6 +305,23 @@ type Belief struct {
 	// (825 of 1,010 in the three days to 2026-09-10).
 	Availability   Beta
 	AvailabilityAt time.Time
+	// Spread is how much ONE first token from this lane has been SEEN to move
+	// around what is believed about it, in nats of log-spread — zero on a lane
+	// nothing has been measured of, where the sheet's published dispersion
+	// ([ledger.Draw]) is the answer instead.
+	//
+	// IT IS NOT [Posterior.P] AND THE DIFFERENCE IS THE WHOLE POINT, which is
+	// the law [SpreadFloor] already states: P is the variance of the ESTIMATE
+	// and shrinks toward nothing after a few dozen observations, while how
+	// variable ONE DRAW is never shrinks below the lane's own variability. A
+	// machine that answers in a second half the time and in a minute the other
+	// half has a median nothing is unsure about and a tail that is the whole of
+	// what a person pays, and nothing on this type could say so.
+	//
+	// It is measured with the same three floats and the same pooled-and-floored
+	// law a thinking duration is ([chains.widen], [chains.draw]), folded on the
+	// same lock and in the same call as the median it sits beside.
+	Spread float64
 }
 
 // Serving is the expected share of requests this lane answers: one when nothing

@@ -561,7 +561,14 @@ func (c *chooser) Choose(req Request) Choice {
 		// every /model frame name a different machine.
 		width = 0
 	}
+	// THE ROLE'S OWN COLUMNS, READ ONCE. Everything below that treats one lane
+	// differently from another — the quantile the wait is read at, whether being
+	// far slower is a refusal or a ranking, whether a doubt may be settled at
+	// this request's expense — comes from here and from the beliefs, and from
+	// nothing else. See frontier.go's WHAT A ROLE'S OWN COLUMNS SAY.
+	waiting := patienceFor(req)
 	scored := make([]Scored, 0, len(survivors))
+	waits := make([]float64, 0, len(survivors))
 	perceived := make(map[ID]float64, len(survivors))
 	for _, candidate := range survivors {
 		belief := aged[candidate.ID]
@@ -576,7 +583,7 @@ func (c *chooser) Choose(req Request) Choice {
 		if rate <= 0 {
 			rate = candidate.Rate
 		}
-		felt := PerceivedSeconds(ttft/1000, rate, req.Visible, req.Hidden)
+		felt := waiting.expected(belief, req, ttft, rate)
 		// AND THE WAIT IS PAID ONCE PER SEND, NOT ONCE PER ANSWER. A lane that
 		// answers one request in five is asked five times for one answer, and
 		// each of those asks is a round trip the person sits through before the
@@ -588,6 +595,23 @@ func (c *chooser) Choose(req Request) Choice {
 		perceived[candidate.ID] = felt
 		candidate.Score = scoreOf(candidate.Price, felt, lambda)
 		scored = append(scored, candidate)
+		waits = append(waits, felt)
+	}
+	// AND WHAT THIS ROLE WILL NOT WAIT FOR COMES OUT OF THE SET ENTIRELY, rather
+	// than going to the back of it. A ranking is all the wire can be told with
+	// `provider.order`, which the router may ignore once `allow_fallbacks` is
+	// true; a machine that is off the table has to reach `provider.ignore`, and
+	// `ignore` is built below out of what is NOT in the frontier. So the refusal
+	// is applied here, before the order is drawn, and never as a sort key.
+	refused := beyondThePatience(scored, waits, waiting)
+	if len(refused) > 0 {
+		kept := make([]Scored, 0, len(scored))
+		for _, candidate := range scored {
+			if !refused[candidate.ID] {
+				kept = append(kept, candidate)
+			}
+		}
+		scored = kept
 	}
 	sort.SliceStable(scored, func(a, b int) bool {
 		if scored[a].Score != scored[b].Score {
@@ -620,6 +644,10 @@ func (c *chooser) Choose(req Request) Choice {
 	}
 	choice.Ignore = ignoredOf(scored, aged, choice.Order, lambda)
 	choice.Ignore = flooredInto(choice.Ignore, aged, choice.Order, lambda, req.Now)
+	// AND WHAT THE ROLE REFUSED IS NAMED ON THE WIRE, because a machine left out
+	// of the order is a machine the router is still free to choose. This is the
+	// only half of the veto the router can actually be made to honour.
+	choice.Ignore = refusedInto(choice.Ignore, refused, choice.Order)
 	// AND NOTHING ABOUT TIME. Where a rescue would go and when it would go
 	// there are [PlanFor]'s, built for every call out of the same frontier this
 	// carries — see the note on [Choice].
@@ -698,6 +726,42 @@ func flooredInto(ignore []string, aged map[ID]Belief, order []string, lambda flo
 	}
 	sort.Strings(floored)
 	return append(ignore, floored...)
+}
+
+// refusedInto names on the wire every machine this role refused for slowness
+// ([beyondThePatience]).
+//
+// IT IS NOT GATED ON λ AND THAT IS THE DIFFERENCE BETWEEN IT AND [ignoredOf].
+// That door refuses a lane for being slower than another one, which is an
+// objective a request with nobody waiting does not have — so it stays silent at
+// λ = 0. This one carries a refusal the ROLE made out of its own declared
+// patience, and a role that does not refuse for slowness produced an empty set
+// upstream, so there is nothing here to gate.
+//
+// A machine in the order is never also refused, for [dropRefusedHere]'s reason:
+// the two fields would say opposite things about one name in one object, which
+// is an empty serving set written by us about the machine we just asked for.
+func refusedInto(ignore []string, refused map[ID]bool, order []string) []string {
+	if len(refused) == 0 {
+		return ignore
+	}
+	named := map[string]bool{}
+	for _, lane := range order {
+		named[lane] = true
+	}
+	for _, lane := range ignore {
+		named[lane] = true
+	}
+	var slow []string
+	for id := range refused {
+		if named[id.Lane] {
+			continue
+		}
+		named[id.Lane] = true
+		slow = append(slow, id.Lane)
+	}
+	sort.Strings(slow)
+	return append(ignore, slow...)
 }
 
 func ignoredOf(scored []Scored, aged map[ID]Belief, order []string, lambda float64) []string {

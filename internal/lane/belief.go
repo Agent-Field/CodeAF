@@ -919,7 +919,18 @@ func (l *ledger) see(s Sighting) {
 		// it tripped an alarm about a step that never happened.
 		if l.wait.note(pairOf(s.ID), waited, noise, s.At) {
 			l.stepped(s.ID)
+			belief.TTFT = stepTo(waited, noise)
 		}
+		// AND THE SAME MEASUREMENT ALSO SAYS HOW FAR ONE DRAW SITS FROM THE
+		// MEDIAN, which is a different question about the same number and the
+		// one a person actually pays. See [Belief.Spread]: a machine whose first
+		// token is a second half the time and a minute the other half has a
+		// median nothing is unsure about, and the filter above cannot say so
+		// because its variance is the variance of the ESTIMATE. The dispersion
+		// account is the one a thinking duration already keeps, kept here for the
+		// quantity the sheet publishes only an aggregate of.
+		l.wait.widen(pairOf(s.ID)[LevelPair], waited)
+		belief.Spread = l.seenSpread(s.ID, drawSpread(prior.TTFT))
 	}
 	// A SHORT ANSWER TEACHES THE FIRST TOKEN AND NEVER THE RATE. A probe is one
 	// token sent on purpose and rates the handshake; a handful of tokens rates a
@@ -932,12 +943,29 @@ func (l *ledger) see(s Sighting) {
 			belief.Rate = belief.Rate.Update(written, noise)
 			if l.rate.note(pairOf(s.ID), written, noise, s.At) {
 				l.stepped(s.ID)
+				belief.Rate = stepTo(written, noise)
 			}
 		}
 	}
 	belief.At = s.At
 	l.beliefs[s.ID] = belief
 }
+
+// stepTo is the belief a change point leaves behind: THIS observation, at its
+// own noise, and nothing of what came before it.
+//
+// A CHANGE POINT IS A STATEMENT THAT THE OLD EVIDENCE IS ABOUT A DIFFERENT
+// MACHINE. The chain already resets its own pair component when the CUSUM
+// alarms, and the flat belief beside it — the one [Chooser.Choose] actually
+// reads — did not, so the filter went on damping every new reading with fifty
+// old ones that no longer described anything. The measured case is 2026-09-11:
+// one machine's generation rate fell about ninefold at 09:33 and the belief
+// admitted it for five more steps over thirty-three minutes, one of them a
+// nine-minute answer, because each collapse arrived as one observation against a
+// posterior far too certain to move. Adopting the observation outright is
+// exactly what [Posterior.Update] already does for a belief that knows nothing,
+// which is what a belief whose subject has just changed IS.
+func stepTo(z, noise float64) Posterior { return Posterior{}.Update(z, noise) }
 
 // stepped records that a change point has reset one pair's own component toward
 // its parents. It is called with the lock held.
@@ -1176,6 +1204,23 @@ func (l *ledger) Draw(id ID) (first, gap float64) {
 	l.restore()
 	prior := l.priors[id.key()]
 	return drawSpread(prior.TTFT), drawSpread(prior.Rate)
+}
+
+// seenSpread is how much ONE first token from this pair has been SEEN to vary,
+// and it may only ever be WIDER than what was published about it.
+//
+// THE POOLING SHARPENS AND A DISPERSION ABOUT A LANE MAY NOT. [chains.draw]'s
+// law — n draws carry n − 1 degrees of freedom about their own mean and the
+// prior is worth one more — is right for a quantity NOBODY publishes, where the
+// floor is a guess a real measurement should be allowed to improve on. A lane's
+// published p50-to-p90 distance is not a guess: it is an aggregate over far more
+// requests than this process will ever make, and a handful of similar answers
+// from it is not evidence that its tail is rarer than its publisher says. So the
+// measurement is taken where it widens and ignored where it would narrow, which
+// is the same asymmetry [SpreadFloor] states for a thought and [Ledger.Draw]
+// keeps for the hazard.
+func (l *ledger) seenSpread(id ID, published float64) float64 {
+	return math.Max(l.wait.draw(pairOf(id.key())[LevelPair], published), published)
 }
 
 // drawSpread is one published variance as a spread, and the prior where there
