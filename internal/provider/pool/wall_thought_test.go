@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"net/http"
@@ -58,6 +59,11 @@ type thinkingModel struct {
 	// cancel, when set, is called once the thought is on the wire: the caller
 	// going away mid-thought, without anybody sleeping to arrange it.
 	cancel context.CancelFunc
+	// failsWith, when set, is what every thinking call ends with instead of
+	// waiting for its context: a bound UNDER the wall — the dispatcher's
+	// patience for one attempt, the stream guard giving up — which ends the
+	// completion while the wall and the caller are both still waiting.
+	failsWith error
 
 	mu    sync.Mutex
 	asked []sent
@@ -94,6 +100,9 @@ func (m *thinkingModel) CompleteWithMessages(ctx context.Context, messages []ai.
 	}
 	if m.cancel != nil {
 		m.cancel()
+	}
+	if m.failsWith != nil {
+		return nil, m.failsWith
 	}
 	<-ctx.Done()
 	return nil, ctx.Err()
@@ -468,5 +477,126 @@ func TestTheBudgetFollowsTheTimeTheCallReallyHas(t *testing.T) {
 	if got := <-budget; got > want || want-got > 5 {
 		t.Fatalf("a call with %s of rail was told a budget of %.0f tokens, want the %.0f its share of that rail holds",
 			rail, got, want)
+	}
+}
+
+// ── the clocks under the wall ───────────────────────────────────────────────
+//
+// The wall is not the only timer over a completion. The dispatcher gives each
+// attempt its own patience and the stream guard bounds a stream that goes
+// quiet, and issue #927's second run (deepseek-v4.1-flash, 2026-09-11) lost its
+// size, bind and contract passes to one of those at 51 seconds — a quarter of
+// the way to the four-minute wall, with the thought as lost as if the wall had
+// taken it. So what the salvage asks is whether TIME ended the completion, not
+// which timer did.
+
+// TestAThoughtCutByAClockUnderTheWallIsAskedForToo is that run, at the scale of
+// a test: a wall nowhere near firing, a completion ended by a deadline below it,
+// and the thought asked about rather than thrown away.
+func TestAThoughtCutByAClockUnderTheWallIsAskedForToo(t *testing.T) {
+	model := &thinkingModel{
+		thought:   "Stage 1 is the note; stage 2 is the migration.",
+		answer:    `{"sizes":[]}`,
+		failsWith: fmt.Errorf("decode stream: %w", context.DeadlineExceeded),
+	}
+	// An hour of wall, so nothing here can be the wall's own doing.
+	client := Adopt(config.Config{}, model.Model(), model).WithCallWall(time.Hour)
+
+	response, err := client.CompleteWithMessages(context.Background(), planAsk())
+	if err != nil {
+		t.Fatalf("a completion cut by a clock under the wall lost its thought: %v", err)
+	}
+	if response.Text() != model.answer {
+		t.Fatalf("answer = %q, want the answer ask's", response.Text())
+	}
+	requests := model.requests()
+	if len(requests) != 2 {
+		t.Fatalf("the model was asked %d times, want the call and its answer ask", len(requests))
+	}
+	if got := textOf(requests[1].messages[len(planAsk())]); !strings.Contains(got, model.thought) {
+		t.Fatalf("the answer ask did not carry the thought: %q", got)
+	}
+}
+
+// TestAStreamTheGuardGaveUpOnKeepsItsThought is the other clock under the wall,
+// through the guard's own error type.
+func TestAStreamTheGuardGaveUpOnKeepsItsThought(t *testing.T) {
+	model := &thinkingModel{
+		thought:   "Binding stage 2 to stage 1.",
+		answer:    `{"bindings":[]}`,
+		failsWith: &provider.StreamCut{Reason: provider.CutStalled, Waited: 45 * time.Second},
+	}
+	client := Adopt(config.Config{}, model.Model(), model).WithCallWall(time.Hour)
+
+	response, err := client.CompleteWithMessages(context.Background(), planAsk())
+	if err != nil {
+		t.Fatalf("a stream the guard gave up on lost its thought: %v", err)
+	}
+	if response.Text() != model.answer {
+		t.Fatalf("answer = %q, want the answer ask's", response.Text())
+	}
+	if got := len(model.requests()); got != 2 {
+		t.Fatalf("the model was asked %d times, want the call and its answer ask", got)
+	}
+}
+
+// TestAClockUnderTheWallKeepsItsOwnAccount is the honesty half of the same
+// change: when the answer ask fails too, the caller is told what really stopped
+// the call. Only the wall's own deadline is the wall's to name.
+func TestAClockUnderTheWallKeepsItsOwnAccount(t *testing.T) {
+	patience := fmt.Errorf("decode stream: %w", context.DeadlineExceeded)
+	model := &thinkingModel{thought: "Thinking.", failsWith: patience}
+	client := Adopt(config.Config{}, model.Model(), model).WithCallWall(time.Hour)
+
+	_, err := client.CompleteWithMessages(context.Background(), planAsk())
+	if errors.Is(err, ErrCallWall) {
+		t.Fatalf("a call cut 4 minutes short of its wall was blamed on the wall: %v", err)
+	}
+	if !errors.Is(err, patience) {
+		t.Fatalf("error = %v, want the account the clock that cut it gave", err)
+	}
+	if !strings.Contains(err.Error(), "asked for the answer it had reached") {
+		t.Fatalf("the error does not say the answer was asked for: %v", err)
+	}
+}
+
+// TestNothingKeptUnderAnotherClockIsNotReworded is the same rule for a
+// completion that wrote nothing: there is nothing to ask about, and the error
+// travels exactly as it came.
+func TestNothingKeptUnderAnotherClockIsNotReworded(t *testing.T) {
+	patience := fmt.Errorf("decode stream: %w", context.DeadlineExceeded)
+	model := &thinkingModel{failsWith: patience}
+	client := Adopt(config.Config{}, model.Model(), model).WithCallWall(time.Hour)
+
+	_, err := client.CompleteWithMessages(context.Background(), planAsk())
+	if err.Error() != patience.Error() {
+		t.Fatalf("error = %v, want %v exactly", err, patience)
+	}
+	if got := len(model.requests()); got != 1 {
+		t.Fatalf("a completion that wrote nothing was asked %d times, want once", got)
+	}
+}
+
+// TestTheCauseIsSaidInWordsAPersonCanAct mirrors the receipt law one layer down:
+// a planning fault a person reads names the pass it happened in and says what
+// happened in the vocabulary the receipt uses, never the machinery's.
+func TestTheCauseIsSaidInWordsAPersonCanAct(t *testing.T) {
+	for _, said := range []struct {
+		err  error
+		want string
+	}{
+		// The sentence issue #927's second run put in front of a person.
+		{fmt.Errorf("size stage 1: %w", context.DeadlineExceeded), "size stage 1: " + RanOutOfTime},
+		{fmt.Errorf("contract Synthesis: %w", context.DeadlineExceeded), "contract Synthesis: " + RanOutOfTime},
+		// The wall's own error already names the cause, and is not made to
+		// say it twice.
+		{fmt.Errorf("%w after 4m0s", ErrCallWall), RanOutOfTime + " after 4m0s"},
+		// Anything that did not die of time is not touched.
+		{errors.New("the model refused this request"), "the model refused this request"},
+		{nil, ""},
+	} {
+		if got := CauseInWords(said.err); got != said.want {
+			t.Fatalf("CauseInWords(%v) = %q, want %q", said.err, got, said.want)
+		}
 	}
 }

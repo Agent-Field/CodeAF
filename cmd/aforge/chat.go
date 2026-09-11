@@ -5382,7 +5382,7 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 			return smallest(err)
 		}
 		if err != nil {
-			log.Printf("note: the plan for %s was drawn with faults (%v); running it as drawn", prefix, err)
+			log.Printf("note: the plan for %s was drawn with faults (%s); running it as drawn", prefix, pool.CauseInWords(err))
 		}
 		gatePlanDivision(graph, compiled.Goal)
 		// The acceptance checklist, on the one node that hands the finished
@@ -5403,7 +5403,7 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 		// shared prefix cold. It also carries the operator's reasoning setting.
 		contractUsage, err := plan.Contracts(settings.Context(ctx, compiled.Goal), structuring, graph, resident.ContractPlaybook(history), progress)
 		if err != nil {
-			log.Printf("note: could not write contracts: %v", err)
+			log.Printf("note: could not write contracts: %s", pool.CauseInWords(err))
 		}
 		// The planner talks to the provider through a raw client rather than
 		// through the billing seam, so its passes — spine, ground, fan-out,
@@ -5537,7 +5537,7 @@ func taskContract(ctx context.Context, settings config.Config, planClient *liveC
 	graph.Add(plan.Node{Kind: plan.KindWork, Summary: goal, Stage: 1})
 	usage, err := plan.Contracts(settings.Context(ctx, goal), structuring, graph, resident.ContractPlaybook(history), progress)
 	if err != nil {
-		log.Printf("note: could not write the working method: %v", err)
+		log.Printf("note: could not write the working method: %s", pool.CauseInWords(err))
 	}
 	journalPlanSpend(history, nil, planClient, "", usage)
 	return strings.TrimSpace(graph.Nodes[0].Contract)
@@ -5718,7 +5718,7 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 			}}}, nil
 		}
 		if err != nil {
-			log.Printf("note: the remainder for %s was drawn with faults (%v); running it as drawn", prefix, err)
+			log.Printf("note: the remainder for %s was drawn with faults (%s); running it as drawn", prefix, pool.CauseInWords(err))
 		}
 		gatePlanDivision(graph, goal)
 		// AND THE JOB'S OWN RULES ARE STAMPED ON THE REMAINDER BEFORE ANY OF IT
@@ -5732,7 +5732,7 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 		graph.SetConstraints(jobConstraints(history, anchor))
 		contractUsage, err := plan.Contracts(settings.Context(ctx, goal), structuring, graph, resident.ContractPlaybook(history), progress)
 		if err != nil {
-			log.Printf("note: could not write repair contracts: %v", err)
+			log.Printf("note: could not write repair contracts: %s", pool.CauseInWords(err))
 		}
 		journalPlanSpend(history, plans, planClient, prefix, graph.Usage, contractUsage)
 		subtree, err := resident.SubtreeFromPlan(graph, prefix)

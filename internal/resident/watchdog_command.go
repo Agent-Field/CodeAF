@@ -76,10 +76,13 @@ const commandStrikeLimit = 2
 const stalledReceipt = "I couldn't get this planned — " + ranOutOfTime + " twice. " +
 	"Say 'try again' to requeue it."
 
-// ranOutOfTime is the cause, spelled once for the two sentences that carry it:
-// the stage note a stalled command shows while it is tried again, and the
-// receipt it ends on.
-const ranOutOfTime = "the model thought past its time"
+// ranOutOfTime is the cause, and it is POOL'S SPELLING and not a second copy of
+// it. The same phrase has to appear in the sentences here — the stage note a
+// stalled command shows while it is tried again, and the receipt it ends on —
+// and in every planning fault a person reads on the way there
+// ([pool.CauseInWords], which cmd/aforge's plan notes go through). Two constants
+// saying the same thing would drift the day one of them was reworded.
+const ranOutOfTime = pool.RanOutOfTime
 
 // stalled reports that a command died of time rather than of anything about
 // the request.

@@ -945,8 +945,9 @@ thinks before answering is given a thinking budget worked out from that time and
 machine serving it writes. No budget is sent for a machine aforge has not yet measured or
 read a speed for, nor to a provider that has refused one; those calls think as the model
 does by default, under the same wall. A call still thinking
-when its time ends is asked once more, with what it had worked out in front of it and its
-thinking switched off, for the answer that work reached. Only if that runs out of time too
+when its time runs out — at that wall, or at any shorter bound the run puts on it — is asked
+once more, with what it had worked out in front of it and its thinking switched off, for the
+answer that work reached. Only if that runs out of time too
 does planning stop, and a request that stops that way twice ends with `I couldn't get this
 planned — the model thought past its time twice. Say 'try again' to requeue it.`
 

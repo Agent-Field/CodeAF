@@ -41,6 +41,47 @@ const stubRate = 210
 // in a second, where the shipped wall is four minutes.
 const wallInTest = time.Second
 
+// planningStages is every pass of the planning pipeline this suite can answer
+// for, each named by the opening line of its own prompt. The stage is read off
+// the REQUEST, so a stub cannot agree with the wall by counting calls.
+var planningStages = []struct{ stage, prompt string }{
+	{"compile", "You are the intent compiler"},
+	{"ground", "You settle what a goal leaves unsaid"},
+	{"spine", "You break a goal into its ordered stages"},
+	{"fanout", "You list the parts of one stage"},
+	{"size", "You judge whether each node is the right size"},
+	{"audit", "You check whether each node can actually be completed"},
+	{"bind", "You decide what each node must wait for"},
+	{"contracts", "You write the working method for one agent"},
+	{"accept", "You read one request and list the behaviours it states"},
+}
+
+// stageOf names the planning pass one request body belongs to, empty for
+// anything else the run asks about.
+func stageOf(body string) string {
+	for _, known := range planningStages {
+		if strings.Contains(body, known.prompt) {
+			return known.stage
+		}
+	}
+	return ""
+}
+
+// nodesAskedAbout reads the plan node ids one size or bind ask lists, so the
+// stub answers about the nodes it was actually shown. The ask renders them as
+// "3. Title — Summary", and the prompt's newlines arrive as the two characters
+// JSON spells them with.
+func nodesAskedAbout(body string) []int {
+	var ids []int
+	for _, line := range strings.Split(strings.ReplaceAll(body, `\n`, "\n"), "\n") {
+		var id int
+		if _, err := fmt.Sscanf(strings.TrimSpace(line), "%d. ", &id); err == nil && id > 0 {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
 // thinkUntilCut is the model from the incident: its thought on the stream, and
 // then nothing more until the caller gives up on it.
 func (s *scriptedBrain) thinkUntilCut(writer http.ResponseWriter, request *http.Request) {
@@ -142,28 +183,88 @@ func reasoningBudget(t *testing.T, body string) float64 {
 		} `json:"reasoning"`
 	}
 	if err := json.Unmarshal([]byte(body), &request); err != nil {
-		t.Fatalf("the compile body is not JSON: %v", err)
+		t.Fatalf("the request body is not JSON: %v", err)
 	}
 	return request.Reasoning.MaxTokens
 }
 
-// TestAPlanningModelThatThinksPastItsWallStillPlans is issue #927's
-// acceptance: the compile thinks until its wall, the wall asks once for the
-// answer that thought reached, and the run plans and settles. The model was
-// told its budget on the first request, and nothing anywhere says it stopped
-// answering.
+// bodiesFor is every request one planning stage was sent, in order.
+func (s *scriptedBrain) bodiesFor(stage string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.asked[stage]...)
+}
+
+// TestEveryPlanningStageThatThinksPastItsWallStillPlans is issue #927's
+// acceptance, over the whole pipeline. Every pass that reaches a model on the
+// planning road — the compile, and then ground, spine, fan-out, size, bind and
+// the contracts — is served by a model that thinks and never stops, and the run
+// still plans and settles. The second run on the issue (deepseek-v4.1-flash,
+// 2026-09-11) lost size, bind and contracts, not only the compile, which is why
+// this asks the same three questions of every stage rather than of the first.
+func TestEveryPlanningStageThatThinksPastItsWallStillPlans(t *testing.T) {
+	script := newScriptedBrain(t)
+	defer script.close()
+	script.plansAPipeline = true
+	script.thinksPastTheWallOn = map[string]bool{}
+	for _, stage := range planningStages {
+		script.thinksPastTheWallOn[stage.stage] = true
+	}
+
+	settled, log, err := planOnThinkingModel(t, script)
+	if err != nil || !settled {
+		t.Fatalf("a planner that thought past its wall at every stage cost the run its plan: settled=%v err=%v\n%s", settled, err, log)
+	}
+	// Every stage that ran is held to the whole contract. A stage the scripted
+	// plan never reaches asks nothing and is not asserted about; the count of
+	// those is pinned below so this cannot quietly become a one-stage test.
+	ran := 0
+	for _, known := range planningStages {
+		bodies := script.bodiesFor(known.stage)
+		if len(bodies) == 0 {
+			continue
+		}
+		ran++
+		// THE MODEL WAS TOLD HOW LONG IT HAD, on the first request of the stage.
+		told := reasoningBudget(t, bodies[0])
+		if most := 0.95 * stubRate * wallInTest.Seconds(); told <= 0 || told > math.Ceil(most) {
+			t.Fatalf("the %s pass was told a thinking budget of %.0f, want the %.0f its wall and its machine imply",
+				known.stage, told, most)
+		}
+		// AND WHAT IT THOUGHT WAS KEPT: every cut call is followed by an ask
+		// carrying the thought back.
+		if len(bodies) < 2 {
+			t.Fatalf("the %s pass was asked once; a pass cut with a thought on the wire is asked for its answer", known.stage)
+		}
+		thoughtCarried := false
+		for _, body := range bodies[1:] {
+			thoughtCarried = thoughtCarried || strings.Contains(body, scriptedThought)
+		}
+		if !thoughtCarried {
+			t.Fatalf("no ask on the %s pass carried the thought its cut kept", known.stage)
+		}
+	}
+	if ran < 6 {
+		t.Fatalf("only %d planning stages ran; this run is meant to exercise the pipeline, not the compile alone", ran)
+	}
+	if strings.Contains(log, "stopped answering") || strings.Contains(log, "context deadline exceeded") {
+		t.Fatalf("a run that planned told the person machinery or a silence that never happened:\n%s", log)
+	}
+}
+
+// TestAPlanningModelThatThinksPastItsWallStillPlans is the compile alone,
+// through the door the issue names: the pass thinks until its wall, the wall
+// asks once for the answer that thought reached, and the run settles.
 func TestAPlanningModelThatThinksPastItsWallStillPlans(t *testing.T) {
 	script := newScriptedBrain(t)
 	defer script.close()
-	script.thinksPastTheWall = true
+	script.thinksPastTheWallOn = map[string]bool{"compile": true}
 
 	settled, log, err := planOnThinkingModel(t, script)
 	if err != nil || !settled {
 		t.Fatalf("a model that thought past its wall cost the run its plan: settled=%v err=%v\n%s", settled, err, log)
 	}
-	script.mu.Lock()
-	compiles := append([]string(nil), script.compiles...)
-	script.mu.Unlock()
+	compiles := script.bodiesFor("compile")
 	if len(compiles) != 2 {
 		t.Fatalf("the compiler was sent %d requests, want the one it thought through and the ask for its answer", len(compiles))
 	}
@@ -186,24 +287,36 @@ func TestAPlanningModelThatThinksPastItsWallStillPlans(t *testing.T) {
 	}
 }
 
-// TestAPlanningModelThatAnswersInTimeIsAskedOnce is the control: the same
-// model, the same wall, the same belief, and a compile that answers — one
-// request, the budget on it, and no answer ask.
-func TestAPlanningModelThatAnswersInTimeIsAskedOnce(t *testing.T) {
+// TestAPlanningPipelineThatAnswersInTimeIsAskedOnce is the control for both
+// tests above: the same model, the same wall, the same belief, and a planner
+// whose every pass answers. Each pass is asked exactly once, carries the budget
+// its wall implies, and nothing is asked for an answer it already gave.
+func TestAPlanningPipelineThatAnswersInTimeIsAskedOnce(t *testing.T) {
 	script := newScriptedBrain(t)
 	defer script.close()
+	script.plansAPipeline = true
 
 	settled, log, err := planOnThinkingModel(t, script)
 	if err != nil || !settled {
 		t.Fatalf("the control run did not settle: settled=%v err=%v\n%s", settled, err, log)
 	}
-	if n := script.count("compile"); n != 1 {
-		t.Fatalf("a compile that answered in time was asked %d times, want once", n)
+	ran := 0
+	for _, known := range planningStages {
+		bodies := script.bodiesFor(known.stage)
+		if len(bodies) == 0 {
+			continue
+		}
+		ran++
+		for index, body := range bodies {
+			if strings.Contains(body, scriptedThought) {
+				t.Fatalf("the %s pass was asked for an answer it had already given", known.stage)
+			}
+			if reasoningBudget(t, body) <= 0 {
+				t.Fatalf("request %d of the %s pass carried no thinking budget", index+1, known.stage)
+			}
+		}
 	}
-	script.mu.Lock()
-	first := script.compiles[0]
-	script.mu.Unlock()
-	if reasoningBudget(t, first) <= 0 {
-		t.Fatal("the walled compile carried no thinking budget")
+	if ran < 6 {
+		t.Fatalf("only %d planning stages ran; the control is meant to run the same pipeline", ran)
 	}
 }

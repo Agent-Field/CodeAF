@@ -1244,6 +1244,17 @@ time, and until #927 it did two things wrong.
   left (`completionsPerCall`), so the answer ask always has the other half: a
   late round of a command whose rail is nearly spent is cut by its wall, and
   asked, rather than by the rail, and lost.
+- **Any clock's cut keeps what was thought**, not only the wall's. The wall is
+  one of three timers over a structuring completion: the dispatcher gives each
+  attempt its own patience (§A's `control.Plan.Deadline`, from
+  `lane.Role.GiveUp`) and the stream guard bounds a quiet stream (§L). Issue
+  #927's second run lost its size, bind and contract passes at 51 seconds, not
+  at four minutes, with the thought as lost as if the wall had taken it. So
+  `walled.completion` asks whether TIME ended the completion — a deadline
+  however wrapped, or a `provider.StreamCut` read through `provider.CutFrom` —
+  and never which timer did. The wall names only its own cut; any other clock's
+  error is handed back as it came, because it already says what stopped the
+  call and a second account of one event is how a receipt starts lying.
 - **The wall keeps what was thought** (`pool.walled`, `kept`). The partial is
   collected where it demonstrably exists — the stream events the completion
   raised while it was writing — by an observer that forwards every event
@@ -1282,7 +1293,25 @@ through the wall it was handed). And the door itself:
 `cmd/aforge`'s `TestAPlanningModelThatThinksPastItsWallStillPlans` runs
 `aforge do --json` against a compiler that never stops thinking and asserts the
 budget on the first body, the thought on the second, a settled run and no
-`stopped answering`; its control asks once.
+`stopped answering`. `TestEveryPlanningStageThatThinksPastItsWallStillPlans` is
+the same door with every pass of the pipeline — compile, ground, spine, fan-out,
+size, bind, audit, contracts — served by that model, and asks all three
+questions of each; the control runs the same pipeline answering in time and
+finds each pass asked exactly once. The clocks UNDER the wall are proved at the
+pool layer instead (`TestAThoughtCutByAClockUnderTheWallIsAskedForToo`,
+`TestAStreamTheGuardGaveUpOnKeepsItsThought`), with the error shapes the
+dispatcher's patience and the stream guard really leave: no stub can make a
+45-second silence bound fire in a test that finishes in seconds.
+
+### The cause is said once
+
+`pool.RanOutOfTime` is the phrase, and `pool.CauseInWords` is the one door every
+sentence carrying it goes through. A planning fault used to reach a person as
+`the plan for task-2 was drawn with faults (size stage 1: context deadline
+exceeded)`; the composer keeps the pass — which is what the person's next
+decision uses — and replaces the machinery with the cause the receipt names.
+`internal/resident`'s receipt and stage note read the same constant rather than
+a second copy of it.
 
 ### Still owed
 

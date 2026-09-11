@@ -2,6 +2,7 @@ package pool
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -74,7 +75,43 @@ const LongestCall = completionsPerCall * DefaultCallWall
 // package for one sentinel. Wrapping the standard error instead means the
 // watchdog asks the only question it actually has — "did this die of time?" —
 // with errors.Is.
-var ErrCallWall = fmt.Errorf("the model thought past its time: %w", context.DeadlineExceeded)
+var ErrCallWall = fmt.Errorf("%s: %w", RanOutOfTime, context.DeadlineExceeded)
+
+// RanOutOfTime is the cause, spelled ONCE for every sentence that carries it.
+//
+// Issue #927's receipt said "the model stopped answering", which was false —
+// every first token had arrived in under a second. The same falsehood has two
+// other spellings on the structuring road, and they are worse because they are
+// machinery: a planning stage that ends on a clock reaches the person as
+// `context deadline exceeded`, inside "the plan for task-2 was drawn with
+// faults (size stage 1: context deadline exceeded)". A person cannot act on
+// that sentence and it does not say what happened. [CauseInWords] is the one
+// door every such sentence goes through, and this is the one phrase it uses.
+const RanOutOfTime = "the model thought past its time"
+
+// CauseInWords is an error as a person should read it: whatever it says about
+// where it happened, with a clock's own vocabulary replaced by the cause.
+//
+// IT KEEPS THE PLACE AND REPLACES THE JARGON. "size stage 1: context deadline
+// exceeded" becomes "size stage 1: the model thought past its time", because
+// which pass ran out is information the person's next decision uses, while
+// `context deadline exceeded` is this program's internals leaking. An error
+// that did not die of time is handed back exactly as it came: this composer
+// renames one cause and invents nothing.
+func CauseInWords(err error) string {
+	if err == nil {
+		return ""
+	}
+	said := err.Error()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		return said
+	}
+	// The wall's own error already names the cause and then wraps the standard
+	// one, so the pair is collapsed first: a sentence that said it twice would
+	// be this composer talking over itself.
+	said = strings.ReplaceAll(said, RanOutOfTime+": "+context.DeadlineExceeded.Error(), RanOutOfTime)
+	return strings.ReplaceAll(said, context.DeadlineExceeded.Error(), RanOutOfTime)
+}
 
 // walled bounds one completion at a time. It is a decorator over router.Client
 // rather than a change inside the provider adapters because the wall is a
@@ -106,13 +143,18 @@ func (w walled) Model() string { return w.inner.Model() }
 //   - THE WALL IS TOLD. The completion is sent with the wall on it, so the effort
 //     ladder can give the thinking pass the budget the wall implies
 //     ([provider.WithThinkingWall]).
-//   - THE WALL KEEPS WHAT WAS THOUGHT. What streams is kept as it arrives
-//     ([kept]). A completion that reaches its wall with thought or answer on the
-//     wire is not thrown away: the model is asked ONCE more, on the same lineage,
-//     with what it had worked out in front of it and its thinking switched off,
-//     for the answer that work reached. Only when that ask runs out of time too —
-//     or when nothing had arrived at all, which is a completion with nothing to
-//     keep — does the caller get [ErrCallWall].
+//   - THE WALL KEEPS WHAT WAS THOUGHT — WHICHEVER CLOCK CUT IT. What streams is
+//     kept as it arrives ([kept]). A completion that ends on a clock with thought
+//     or answer on the wire is not thrown away: the model is asked ONCE more, on
+//     the same lineage, with what it had worked out in front of it and its
+//     thinking switched off, for the answer that work reached. The wall is not
+//     the only clock over a completion — the dispatcher gives an attempt its own
+//     patience and the stream guard bounds a quiet stream, and issue #927's
+//     second run lost its size, bind and contract passes to one of those at 51
+//     seconds, not to the four-minute wall — so what the salvage asks is whether
+//     TIME ended this completion, never which timer did. Only when the answer ask
+//     runs out too, or when nothing had arrived at all, does the caller get an
+//     error, and it is the one its own cut named ([ErrCallWall] for the wall's).
 //   - THE CALLER'S OWN CANCEL IS NEVER A PROVIDER FAILURE. A caller who went away
 //     gets their own context error back untouched, and nothing is asked again.
 //
@@ -123,27 +165,59 @@ func (w walled) Model() string { return w.inner.Model() }
 func (w walled) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
 	thought := &kept{}
 	first := w.allowance(ctx, completionsPerCall)
-	response, cut, err := w.completion(ctx, first, messages, options, thought)
-	if !cut {
+	response, how, err := w.completion(ctx, first, messages, options, thought)
+	if !how.cut() {
 		return response, err
 	}
 	asked, ok := thought.answerAsk(messages)
 	if !ok {
-		return nil, fmt.Errorf("%w after %s", ErrCallWall, first)
+		return nil, ranOut(how, first, err)
 	}
 	thought.tell(ctx)
 	// THINKING OFF IS PART OF THIS ASK'S CORRECTNESS, not an economy, so it is
 	// the required form: a seat's pinned effort must not put the model back into
 	// the deliberation it has just been stopped out of.
-	answer, _, err := w.completion(provider.WithRequiredReasoningEffort(ctx, provider.EffortOff),
+	answer, _, askErr := w.completion(provider.WithRequiredReasoningEffort(ctx, provider.EffortOff),
 		w.allowance(ctx, 1), asked, options, nil)
-	if err == nil || ctx.Err() != nil {
-		return answer, err
+	if askErr == nil || ctx.Err() != nil {
+		return answer, askErr
 	}
 	// The call died of time, and that is what the layer above is told whatever
 	// the answer ask then ran into: the watchdog's question is whether the work
 	// is worth another run, and it is exactly as worth one as it was before.
-	return nil, fmt.Errorf("%w after %s; asked for the answer it had reached: %v", ErrCallWall, first, err)
+	return nil, fmt.Errorf("%w; asked for the answer it had reached: %v", ranOut(how, first, err), askErr)
+}
+
+// ending is how one completion finished, in the only three kinds the wall acts
+// differently on.
+type ending int
+
+const (
+	// finished is a completion that came back, or failed for a reason of its
+	// own — a refusal, a bad request, a torn connection. Neither is the wall's
+	// business and both go straight back to the caller.
+	finished ending = iota
+	// atTheWall is the wall's own deadline: this decorator set it, this
+	// decorator told the model about it, and this decorator names it.
+	atTheWall
+	// onAnotherClock is a bound underneath the wall — the dispatcher's patience
+	// for one attempt, the stream guard's silence bounds — reached while the
+	// caller was still waiting. The thought is just as lost and just as
+	// salvageable, and the account of what happened is already the cut's own.
+	onAnotherClock
+)
+
+func (e ending) cut() bool { return e != finished }
+
+// ranOut is the error a cut completion leaves behind when its answer could not
+// be recovered: the wall names itself, and any other clock's error is handed
+// back exactly as it came, because it already says what stopped the call and
+// this decorator relabelling it would be a second account of one event.
+func ranOut(how ending, wall time.Duration, err error) error {
+	if how == atTheWall {
+		return fmt.Errorf("%w after %s", ErrCallWall, wall)
+	}
+	return err
 }
 
 // allowance is the wall one completion really runs under, and so the one the
@@ -168,11 +242,16 @@ func (w walled) allowance(ctx context.Context, completions int) time.Duration {
 	return wall
 }
 
-// completion runs one completion under the wall and reports whether the wall is
-// what ended it. The two expiries are told apart here and nowhere else: a caller
-// who cancelled gets their own context error back with cut false, whatever the
-// inner call said about it, and only a completion that outlived the wall while
-// its caller was still waiting is cut.
+// completion runs one completion under the wall and reports how it ended. The
+// expiries are told apart here and nowhere else: a caller who cancelled gets
+// their own context error back and is never salvaged for, the wall's own
+// deadline is [atTheWall], and a completion that ran out of time on any other
+// clock while its caller was still waiting is [onAnotherClock].
+//
+// A CLOCK IS RECOGNISED BY WHAT IT LEAVES, NOT BY WHOSE IT IS. There is no seam
+// through which this layer could ask the dispatcher or the stream guard whether
+// they gave up, and there should not be: what both leave behind is an error that
+// says time ran out, and that is the whole of what the salvage needs to know.
 //
 // `wall` is the completion's own [walled.allowance], and it is both the deadline
 // and what the model is told: the two are one figure by construction.
@@ -180,7 +259,7 @@ func (w walled) allowance(ctx context.Context, completions int) time.Duration {
 // `into`, when there is one, keeps what the completion streams. It is set on the
 // first completion only: the answer ask is the last thing this wall will ask, so
 // there is nothing its stream could be kept for.
-func (w walled) completion(ctx context.Context, wall time.Duration, messages []ai.Message, options []ai.Option, into *kept) (*ai.Response, bool, error) {
+func (w walled) completion(ctx context.Context, wall time.Duration, messages []ai.Message, options []ai.Option, into *kept) (*ai.Response, ending, error) {
 	callCtx, cancel := context.WithTimeout(ctx, wall)
 	defer cancel()
 	callCtx = provider.WithThinkingWall(callCtx, wall)
@@ -190,12 +269,31 @@ func (w walled) completion(ctx context.Context, wall time.Duration, messages []a
 	}
 	response, err := w.inner.CompleteWithMessages(callCtx, messages, options...)
 	if err == nil || ctx.Err() != nil {
-		return response, false, err
+		return response, finished, err
 	}
 	if callCtx.Err() != nil {
-		return nil, true, err
+		return nil, atTheWall, err
 	}
-	return response, false, err
+	if ranOutOfTime(err) {
+		return nil, onAnotherClock, err
+	}
+	return response, finished, err
+}
+
+// ranOutOfTime reports whether an error is a clock's and not the request's.
+//
+// Both shapes are here because both happen on the structuring road and both
+// lose a thought. A deadline under the wall — the dispatcher's own patience for
+// an attempt — arrives as context.DeadlineExceeded however deeply it is
+// wrapped; a stream the guard gave up on is read through the guard's own door
+// ([provider.CutFrom]), which exists precisely so that a decision about a cut is
+// not made by matching substrings of a sentence.
+func ranOutOfTime(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	_, cut := provider.CutFrom(err)
+	return cut
 }
 
 // kept is what one walled completion has streamed, held as it arrives.
