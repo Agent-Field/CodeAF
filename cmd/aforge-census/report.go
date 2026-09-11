@@ -40,7 +40,7 @@ func report(out io.Writer, path string, rows []row, look settings) {
 func finished(rows []row) []row {
 	var done []row
 	for _, r := range rows {
-		if r.finished() {
+		if r.Finished() {
 			done = append(done, r)
 		}
 	}
@@ -54,14 +54,14 @@ func finished(rows []row) []row {
 func window(rows []row) (time.Time, time.Time) {
 	var first, last time.Time
 	for _, r := range rows {
-		if r.at.IsZero() {
+		if r.At.IsZero() {
 			continue
 		}
-		if first.IsZero() || r.at.Before(first) {
-			first = r.at
+		if first.IsZero() || r.At.Before(first) {
+			first = r.At
 		}
-		if r.at.After(last) {
-			last = r.at
+		if r.At.After(last) {
+			last = r.At
 		}
 	}
 	return first, last
@@ -360,10 +360,10 @@ func healthSection(out io.Writer, finishes []row, look settings) {
 	pairs := map[string]*health{}
 	counted := 0
 	for _, r := range finishes {
-		if r.at.Before(since) || r.Model == "" {
+		if r.At.Before(since) || r.Model == "" {
 			continue
 		}
-		if r.exhaust() {
+		if r.Exhaust() {
 			// AN ARM WE CUT OFF SAYS NOTHING ABOUT THE MACHINE IT WAS SENT TO.
 			// It is left out of the health table altogether rather than counted
 			// as a failure of the lane that was still working on it when this
@@ -497,12 +497,12 @@ func surprises(out io.Writer, rows, finishes []row) {
 	started := map[string]bool{}
 	ended := map[string]bool{}
 	for _, r := range rows {
-		if r.raw != "" && r.Time == "" {
+		if r.Raw != "" && r.Time == "" {
 			unspelled++
 			continue
 		}
 		if r.ID != "" {
-			if r.finished() {
+			if r.Finished() {
 				ended[r.ID] = true
 			} else {
 				started[r.ID] = true
@@ -510,7 +510,7 @@ func surprises(out io.Writer, rows, finishes []row) {
 		}
 	}
 	for _, r := range finishes {
-		if ceiling := r.hazardCeiling(); ceiling > 0 && r.Millis > 2*ceiling {
+		if ceiling := r.HazardCeiling(); ceiling > 0 && r.Millis > 2*ceiling {
 			overCeiling++
 		}
 		if r.Served != "" && r.Lane != "" {
@@ -530,10 +530,10 @@ func surprises(out io.Writer, rows, finishes []row) {
 			cutByABound++
 			appliedBy[word]++
 		}
-		if r.exhaust() {
+		if r.Exhaust() {
 			exhausted++
 		}
-		if r.failed() {
+		if r.Failed() {
 			failures++
 			if r.Cost == 0 {
 				unpricedBad++

@@ -33,8 +33,8 @@ type chain struct {
 }
 
 // began and ended are the window the chain occupied.
-func (c chain) began() time.Time { return c.rows[0].at }
-func (c chain) ended() time.Time { return c.rows[len(c.rows)-1].at }
+func (c chain) began() time.Time { return c.rows[0].At }
+func (c chain) ended() time.Time { return c.rows[len(c.rows)-1].At }
 
 func (c chain) duration() time.Duration {
 	if len(c.rows) < 2 {
@@ -89,7 +89,7 @@ func chainsIn(rows []row) []chain {
 	grouped := map[key][]row{}
 	var order []key
 	for _, r := range rows {
-		if !r.finished() || r.Model == "" {
+		if !r.Finished() || r.Model == "" {
 			continue
 		}
 		at := key{tag: r.Tag, node: r.Node, model: r.Model}
@@ -101,12 +101,12 @@ func chainsIn(rows []row) []chain {
 	var chains []chain
 	for _, at := range order {
 		group := grouped[at]
-		sort.SliceStable(group, func(i, j int) bool { return group[i].at.Before(group[j].at) })
+		sort.SliceStable(group, func(i, j int) bool { return group[i].At.Before(group[j].At) })
 		current := chain{tag: at.tag, node: at.node, model: at.model}
 		for _, r := range group {
 			continues := len(current.rows) > 0 &&
 				r.Attempt > current.rows[len(current.rows)-1].Attempt &&
-				r.at.Sub(current.rows[len(current.rows)-1].at) <= chainGap
+				r.At.Sub(current.rows[len(current.rows)-1].At) <= chainGap
 			if !continues {
 				if len(current.rows) > 0 {
 					chains = append(chains, current)

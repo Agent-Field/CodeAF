@@ -3,6 +3,8 @@ package main
 import (
 	"regexp"
 	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/callrows"
 )
 
 // ── ONE SIGNATURE PER KIND OF FAILURE ───────────────────────────────────────
@@ -57,7 +59,7 @@ func (r row) signature() string {
 	if said == "" {
 		return ""
 	}
-	status := apiErrorStatus(strings.ToLower(said))
+	status := callrows.SaidStatus(strings.ToLower(said))
 	normalised := routerURL.ReplaceAllString(said, "<URL>")
 	normalised = address.ReplaceAllString(normalised, "<ADDR>")
 	normalised = duration.ReplaceAllString(normalised, "<DUR>")

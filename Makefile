@@ -399,5 +399,28 @@ census:
 	  $(LOG) $(if $(OUT),> $(OUT))
 	@$(if $(OUT),echo "the census is in $(OUT)")
 
+# ── THE REPLAY ──────────────────────────────────────────────────────────────
+#
+# `make replay` judges a chooser the only way a chooser can honestly be judged:
+# by the regret it would have paid over ten days of the model-call log this build
+# already writes. Every change to the machine chooser in the week to 2026-09-11
+# was argued from a screenshot and a ten-row grep; this is the instrument that
+# ends that, and docs/design/recovery/DESIGN.md §8 is where a change is required
+# to cite it.
+#
+#   make replay                             this machine's own log and journal
+#   make replay LOG=/path/calls.jsonl SIGHTINGS=/path/lanes.log
+#   make replay SINCE=2026-09-11T14:        one afternoon, for an incident
+#   make replay OUT=/tmp/replay.md          write it to a file instead of stdout
+#   make replay WINDOW=30m INCIDENTS=10     widen the estimator, show more moments
+#
+# It reads only; it never writes a belief file and never opens a connection.
+replay:
+	@go run ./cmd/aforge-replay \
+	  $(if $(LOG),-log $(LOG)) $(if $(SIGHTINGS),-sightings $(SIGHTINGS)) \
+	  $(if $(SINCE),-since $(SINCE)) $(if $(WINDOW),-window $(WINDOW)) \
+	  $(if $(MIN),-min $(MIN)) $(if $(INCIDENTS),-incidents $(INCIDENTS)) \
+	  $(if $(OUT),-out $(OUT))
+
 clean:
 	rm -rf bin
