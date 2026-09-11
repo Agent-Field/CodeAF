@@ -36,17 +36,36 @@ Nothing here is thrown away — what is folded is one keypress from open.
 `started 14:02` only when the record carries the instant the work began. Reopening the
 conversation does not replace that instant with the time you sat down.
 
-**The quoted sentence above the stamp is the report's first line that says something.** A
-task that answers with a diff, a command's output or a JSON block opens its report with the
-fence around that answer, and the card quotes the first line of prose under the fence —
-never the fence marker itself, which says nothing. A report that is all fence quotes its
-first line inside; a report with no prose at all draws the stamp with no quotation marks.
-
 An older record may carry a duration but no start or landing instant. When that duration is
 at least one second, the settled task page shows it in the header — for example `12m` —
 while the completion card omits the entire `started 14:02` segment. A shorter or absent
 duration leaves the header figure out too. The duration is never used to invent a
 wall-clock time.
+
+## The card quotes three backticks instead of a sentence — a code fence at the top of a task's report
+
+**The quoted line on a landed card is the report's first line that says something**, not its
+literal first line. A task that answers with a diff, a command's output or a JSON block
+opens its report with the code fence around that answer, and a fence marker — three
+backticks or three tildes, with or without a language word like `go` or `diff` after it — is
+punctuation rather than a sentence. Blank lines and fence markers are passed over, and the
+first line that is neither is what the card quotes.
+
+So a report that is nothing but a fenced block quotes the first line inside the block, which
+is the answer itself:
+
+```
+✓ ◆ Fix nil-map crash · done · 4m12s · 3 files
+  "the guard is in and the regression test passes" · started 14:02 · ctrl+o output
+```
+
+A report with no line to quote at all draws no quotation marks — an empty pair would be the
+card claiming the work said something. The card falls back to its subtitle and, failing
+that, to `started 14:02` on its own.
+
+Until 2026-09-11 the card took the report's first line literally, so work that answered
+inside a fence drew a quoted half of three backticks and nothing else — the one line the
+card exists for spent on the punctuation around the answer.
 
 ## Why most of the work is hidden on a task page — the `▸ worked` chips, the caption outline, and `ctrl+e`
 

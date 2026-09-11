@@ -19,8 +19,10 @@ result is *correctly* fenced. The defect was the surface reading the first line
 literally, which is a reading that only works for prose.
 
 The quoted half is now the first line of the report that says something —
-`firstProseLine` in `internal/tui3/render.go`, sitting beside the `mdFenceOpen`
-it borrows from, so the two agree on what a fence is. A report with no prose at
-all keeps the emptiness law it always had: the row falls back to the subtitle
-and, failing that, draws the start stamp alone rather than an empty pair of
-quotation marks.
+`firstProseLine` in `internal/tui3/render.go`, which passes over a blank line and
+a fence marker alike and returns the first line that is neither. It reads a
+marker through `mdFenceOpen`, the same door the renderer reads one through, so
+the surface has one opinion about what a fence is rather than two. A report with
+no line to quote keeps the emptiness law it always had: the row falls back to the
+subtitle and, failing that, draws the start stamp alone rather than an empty pair
+of quotation marks.

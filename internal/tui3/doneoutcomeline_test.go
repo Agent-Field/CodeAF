@@ -35,6 +35,7 @@ func TestFirstProseLineSkipsFencesBlankLinesAndWrappers(t *testing.T) {
 		{"a closed fence with nothing inside falls on", "```\n```\nthe suite passes", "the suite passes"},
 		{"an unclosed fence with nothing yet inside falls on", "```go\n\nthe suite passes", "the suite passes"},
 		{"an indented fence marker is still a fence", "  ```\nthe suite passes", "the suite passes"},
+		{"a marker is skipped wherever it stands, not only in front", "```\n```\n```diff\n- old\n+ new\n```", "- old"},
 		{"an empty report says nothing", "", ""},
 		{"a report of blank lines says nothing", "\n \n", ""},
 		{"a report of fence markers alone says nothing", "```\n", ""},
