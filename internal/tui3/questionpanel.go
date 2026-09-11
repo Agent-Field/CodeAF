@@ -252,7 +252,16 @@ func (a *app) questionPanelSplit(q questionShown, inner, spent int) []string {
 	for i := range list {
 		list[i] = questionPanelGap + list[i]
 	}
-	return append(rows, besides(a.pal, list, pane, left, inner)...)
+	rows = append(rows, besides(a.pal, list, pane, left, inner)...)
+	// AND A SENTENCE ABOUT THE WHOLE QUESTION CROSSES THE SEAM. A clock that
+	// will answer says what a person can do about it (#954); in a column half
+	// the panel wide that sentence is cut mid-word, and in the pane beside the
+	// list it would read as the pointer's own answer. So it is drawn under both
+	// panes, at the frame's own width, which is the width it was written for.
+	if aside := a.questionClockAside(q, room); aside != "" {
+		rows = append(rows, "", questionPanelGap+aside)
+	}
+	return rows
 }
 
 // questionOpenFullWord is the way to the rest of a cut, spelled from the key
