@@ -39,8 +39,6 @@ package standing
 //     file it treats as the person's, holding every run after it.
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -69,8 +67,10 @@ type Receipt struct {
 	// Path is the report's absolute path, as the publisher resolved it.
 	Path  string `json:"path"`
 	Class string `json:"class"`
-	// Item is the standing item that earned the receipt: provenance for a
-	// person reading the file, never a condition of the compare.
+	// Item is the standing item that earned the receipt. It clears a
+	// publication only for that item or for one that has been stopped: a
+	// receipt earned by another live item holds the publication instead
+	// ([Store.OtherLiveOwner], owner.go).
 	Item   string    `json:"item,omitempty"`
 	SHA256 string    `json:"sha256"`
 	Bytes  int       `json:"bytes"`
@@ -80,13 +80,10 @@ type Receipt struct {
 // receiptsDir is the folder report paths' receipts fan out under.
 const receiptsDir = "reports"
 
-// receiptFile is where path's receipt lives. Its lock is beside it with the
-// same name and .lock, so neither can be mistaken for the other.
-func (s *Store) receiptFile(path string) string {
-	sum := sha256.Sum256([]byte(filepath.Clean(path)))
-	name := hex.EncodeToString(sum[:])
-	return filepath.Join(s.root, receiptsDir, name[:2], name+".json")
-}
+// receiptFile is where path's receipt lives. Its lock and its owner record are
+// beside it under the same name ([Store.pathRecord]), so none can be mistaken
+// for another.
+func (s *Store) receiptFile(path string) string { return s.pathRecord(path, ".json") }
 
 // Receipt reads what aforge last put at path, or nil when it has put nothing
 // there. It takes no lock: it is for a card or a guard that says what it sees,
@@ -122,10 +119,8 @@ func (s *Store) Receipt(path string) (*Receipt, error) {
 // NO MODEL OR NETWORK CALL MAY RUN INSIDE act.
 func (s *Store) AtReport(path, id, report string, act func(last *Receipt) (*Receipt, error)) error {
 	file := s.receiptFile(path)
-	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
-		return err
-	}
-	return underLock(file[:len(file)-len(".json")]+".lock", func() error {
+	s.ensureOwners()
+	return s.underPathLock(path, func() error {
 		last, err := s.Receipt(path)
 		if err != nil {
 			return err

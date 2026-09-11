@@ -60,7 +60,9 @@ func (s *Store) Create(item Item) (Item, error) {
 	}
 	item.NextDue = due
 	s.baseline(&item)
-	if err := s.write(item); err != nil {
+	// ONE LIVE OWNER PER REPORT PATH, asked here at the write for both doors
+	// (owner.go): a path another live item keeps is refused, under its lock.
+	if err := s.claimReport(item, func() error { return s.write(item) }); err != nil {
 		_ = os.RemoveAll(s.readingsDir(item.ID))
 		return Item{}, err
 	}
@@ -140,12 +142,12 @@ func (s *Store) mutate(id string, change func(*Item) error) (Item, error) {
 // SetStatus applies the person's control to the latest document, preserving
 // every configuration field and every completed run. Retired items stay retired.
 func (s *Store) SetStatus(id string, status Status, reason string) (Item, error) {
-	return s.mutate(id, func(item *Item) error {
+	item, err := s.mutate(id, func(item *Item) error {
 		if status != StatusActive && status != StatusPaused && status != StatusRetired {
 			return errors.New("unknown standing status")
 		}
 		if item.Status == StatusRetired && status != StatusRetired {
-			return errors.New("a stopped item must be set up afresh")
+			return ErrStopped
 		}
 		// RESUME MEANS NOW. A file watch that was waiting out failed checks
 		// ([Ticker.noteFailure]) is looked at on the next pass, not after the
@@ -163,6 +165,12 @@ func (s *Store) SetStatus(id string, status Status, reason string) (Item, error)
 		}
 		return nil
 	})
+	// A STOPPED ITEM KEEPS NO REPORT PATH: its record goes, after the item's
+	// lock is let go, since a path's lock is never taken inside an item's.
+	if err == nil && status == StatusRetired {
+		s.releaseReport(ReportPath(item), item.ID)
+	}
+	return item, err
 }
 
 // AddException narrows the current item without replacing a concurrent edit or
@@ -494,6 +502,34 @@ func (s *Store) UnlessStopped(id string, act func() error) (stopped bool, err er
 		return act()
 	})
 	return stopped, err
+}
+
+// ErrStopped is a change asked of an item that has been stopped. Stopping is
+// permanent, at every door.
+var ErrStopped = errors.New("a stopped item must be set up afresh")
+
+// AtSpec runs act under the item's lock while it is not stopped and still at
+// spec revision expected: the fence [Store.Revise] holds a change to, for an
+// act that changes nothing in the item's own document — a move between folders
+// (the review of 417fa43a3: a move with no other change placed a stopped item).
+// act is handed the item as it is at that moment.
+// NO MODEL OR NETWORK CALL MAY RUN INSIDE act.
+func (s *Store) AtSpec(id string, expected uint64, act func(Item) error) error {
+	if err := checkID(id); err != nil {
+		return ErrNotFound
+	}
+	return s.underItemLock(id, func() error {
+		current, err := s.read(s.ItemPath(id))
+		switch {
+		case err != nil:
+			return err
+		case current.Status == StatusRetired:
+			return ErrStopped
+		case current.SpecRevision != expected:
+			return ErrConflict
+		}
+		return act(current)
+	})
 }
 
 // now is the store's clock. It is a field rather than a call to time.Now so a

@@ -863,30 +863,31 @@ the chat changes the work that stands instead of setting up another beside it: `
 with `op: edit`, the item's id (or your words for it) and only what changes. It is the
 change `aforge standing edit` makes, through the same store: a new version of the SAME
 item, which keeps what it has read and the report it publishes. The card leads with
-what changes and writes each changed line old → new (a long one from a few words before
-the change, so a change past the end of the line still shows); every other line is drawn
-as it is:
+what changes and writes each changed line old → new (a long one from just before the
+change); every other line is drawn as it is:
 
 ```
 changes · instructions — the same work; what it has read and published stays
 report · reports/inbox-report.md — aforge publishes this file; the run never writes it
 ```
 
-It has no `just once`. Nothing changes until the yes; then the answer is `revised <id>
-to version 2: instructions`, the card's lines, and `the next run uses it; a run already
-under way keeps what it started with`. The item's log keeps `revised in the chat to
-version 2: instructions — "<your words>"`, and your first sentence stays its name.
+A change to what it may do, its title, model, acceptance or step limit is drawn with
+its values: `grant · none → open a pull request but never merge it`. It has no `just
+once`. Nothing changes until the yes; then the answer is `revised <id> to version 2:
+instructions`, the card's lines, and `the next run uses it; a run already under way
+keeps what it started with`. Your first sentence stays its name.
 
 **Moving work to another folder is an edit too.** "Move it to my Work folder instead of
 Personal" draws `changes · folder` and `folder · Personal, … → Work — …`; the yes
-places it in Work and takes it out of Personal (what `collections place` and `unplace`
-write) and answers `moved <id> to Work`.
+places it in Work and takes it out of every folder it is in at that moment (what
+`collections place` and `unplace` write) and answers `moved <id> to Work` — or `not
+moved: it was stopped after the card was drawn`.
 
 Refused: `nothing to change: send only what is different`; a yes on a card another edit
 overtook (`nothing was changed: it was changed elsewhere after the card was drawn`);
 a change of how far a rule reaches or of what kind of thing it is (stop it and propose
-the other); a stopped order (set it up afresh); and an op called `change` (`no op called
-"change" — propose, list, edit, pause, resume or stop`).
+the other); a stopped order, before any card (`a stopped item must be set up afresh`);
+words that name no order (`… send its id instead`); and an op called `change`.
 
 ## A file already at the report path — the card says so, and the chat never writes it
 
@@ -904,13 +905,24 @@ drawn — the first report will wait for them until the file is moved aside` —
 first run is held as for any file you edited (`report-changed`).
 
 **The run never writes the report file and neither do you** — that is the chat's own
-rule. Its `write` and `edit` refuse the report of active work: `<path> is the report of
-"<words>" (<id>): aforge publishes this file, and neither the run nor you writes it. To
-change what it says, change the work — stand op edit with that id.`
+rule. Its `write` and `edit` refuse the report of active work, however the path is
+spelled (`@reports/…`, `~/…`, `file://…`): `<path> is the report of "<words>" (<id>):
+aforge publishes this file, and neither the run nor you writes it. To change what it
+says, change the work — stand op edit with that id.` A stopped order's file is free.
 
-Two active orders cannot keep one file: `… is already the report of "…" (<id>). To
-change that work, send op edit with its id; to replace it, stop it first.` An order set
-up after the old one stopped publishes where it did.
+## Two orders on one report — one owner, at the terminal and in the chat
+
+A report file has one live owner. A second order on the same file is refused where it
+is written, whichever door asks — `aforge standing add --report`, `aforge standing edit
+--report`, the chat's card and its edit alike: `… is already the report of "…" (<id>),
+which has not been stopped — two orders cannot keep one file: edit that one, or stop it
+first`. The chat says so before any card. Paused still owns; stopped does not, so an
+order set up after the old one stopped publishes where it did.
+
+Two orders that already shared a file are not left to take turns replacing each other's
+report: the one that last published keeps it, and the other's runs are held with the
+code `report-owned` and its draft kept, until one of them is stopped or edited to
+another file.
 
 ## Why wasn't my report published — the reason, and the withheld code in the record
 
@@ -937,6 +949,7 @@ comes to `failed`, never `landed`, with its code. A clean run carries none.
 | `not-written` | `could not publish the report to …` |
 | `report-changed` | `report held back, not published: … is not what aforge last published there …` |
 | `stop-unknown` | `the report was not published: aforge could not read whether this work was stopped (…)` |
+| `report-owned` | `report held back, not published: … is already the report of "…" (…), which has not been stopped …` |
 
 An answer is cut at the output limit only after aforge has asked for the rest twice,
 and a report counts only if the turn that wrote it was not cut: a later turn stands in
@@ -947,8 +960,8 @@ at a limit, and all of it holds for the rules check's one correction too.
 
 The report is a file in your project, and you may open and annotate it. Just before
 aforge replaces it, it compares the file with what aforge last put at that path (the
-sha256 of the path's own receipt, whichever of your orders put it there — so an order
-set up afresh at the same path carries on publishing where the stopped one did). It
+sha256 of the path's own receipt — this order's, or a stopped one's, so an order set
+up afresh at the same path carries on publishing where the stopped one did). It
 replaces the file only if it is still exactly that, or is gone. If you changed it — or it
 appeared after the card that set the order up — nothing is written over it: the run waits on you, its new report is kept as `held-report.md` in
 the run's folder, and the line is `report held back, not published: … is not what

@@ -560,54 +560,32 @@ func (a *Agent) standingAdopt(store standingStore, item standing.Item, found sta
 	return ""
 }
 
-// standingReportAt answers the standing work whose report is the file at path,
-// among what stands here and has not been stopped: the one owner a report path
-// has. Paths are compared as the filesystem resolves them now.
+// standingReportAt answers the standing work whose report is the file at path
+// and has not been stopped: the one owner a report path has (internal/standing's
+// owner.go). It reads the path's owner record and that one item, never every
+// item there is (the review of 417fa43a3, B2: every write read the whole store).
 func (a *Agent) standingReportAt(path string) (standing.Item, bool) {
-	items, err := a.standingHere()
+	receipts, err := a.standingReceipts()
 	if err != nil {
 		return standing.Item{}, false
 	}
-	want := resolvedFile(path)
-	for _, item := range items {
-		if item.Status != standing.StatusRetired && item.Does.Report != "" &&
-			resolvedFile(filepath.Join(item.Workspace, item.Does.Report)) == want {
-			return item, true
-		}
-	}
-	return standing.Item{}, false
+	return receipts.LiveOwner(path)
 }
 
-// standingReportTaken refuses work whose report is already another standing
-// item's. Two items publishing one file would each replace the other's report
-// on every run, and a person who wanted the first one different wants it edited.
+// standingReportTaken refuses work whose report is already another live
+// item's, before any card: the store refuses the same at the yes, for both
+// doors, and this says it while the model can still choose the edit.
 func (a *Agent) standingReportTaken(item standing.Item) string {
-	if item.Does.Report == "" {
+	path := standing.ReportPath(item)
+	if path == "" {
 		return ""
 	}
-	owner, taken := a.standingReportAt(filepath.Join(item.Workspace, item.Does.Report))
+	owner, taken := a.standingReportAt(path)
 	if !taken || owner.ID == item.ID {
 		return ""
 	}
 	return "Invalid arguments: " + item.Does.Report + " is already the report of " + strconv.Quote(owner.Words) + " (" + owner.ID +
 		"). To change that work, send op edit with its id; to replace it, stop it first."
-}
-
-// resolvedFile is path with its folder resolved through the filesystem as it is
-// now — the deepest part of it that exists — so one file reached two ways
-// compares equal.
-func resolvedFile(path string) string {
-	dir := filepath.Dir(filepath.Clean(path))
-	existing := deepestExisting(dir)
-	real, err := filepath.EvalSymlinks(existing)
-	if err != nil {
-		return filepath.Clean(path)
-	}
-	rest, err := filepath.Rel(existing, dir)
-	if err != nil {
-		return filepath.Clean(path)
-	}
-	return filepath.Join(real, rest, filepath.Base(path))
 }
 
 // standingNamedReport refuses work that runs whose call left does.report out

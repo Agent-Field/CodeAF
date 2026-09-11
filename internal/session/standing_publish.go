@@ -157,17 +157,19 @@ const (
 	// withheldNoReport: it ended on a tool call, with nothing said after it.
 	withheldNoReport
 
-	// The five below are decided after the turns, by the gates that own them,
+	// The six below are decided after the turns, by the gates that own them,
 	// and are the same answer carried on: the rules check held the report
 	// (standing_rules.go), the person stopped the item while it ran, the report
 	// could not be written, the report file was not what aforge last wrote
-	// there ([publishStandingReport]), or whether the item was stopped could not
-	// be read at the act ([effectFence]).
+	// there ([publishStandingReport]), whether the item was stopped could not
+	// be read at the act ([effectFence]), or another item that has not been
+	// stopped keeps the report path (internal/standing's owner.go).
 	withheldByRules
 	withheldStopped
 	withheldUnwritten
 	withheldReportChanged
 	withheldStopUnknown
+	withheldReportOwned
 )
 
 // withheldCodes is the one table of the codes a withheld run is recorded with
@@ -195,6 +197,10 @@ var withheldCodes = map[reportWithheld]string{
 	// taken at the moment of aforge's act, so whether the person had stopped it
 	// was unknown — and the act did not happen.
 	withheldStopUnknown: "stop-unknown",
+	// withheldReportOwned: another live item keeps the report path — its
+	// receipt or its owner record names it — and two orders publishing one
+	// file would replace each other's report on every run.
+	withheldReportOwned: "report-owned",
 }
 
 // code is the answer as it is recorded; "" for a run nothing withheld.

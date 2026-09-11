@@ -849,6 +849,11 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 			outcome.Kind = standing.OutcomeNeedsYou
 			outcome.NeedsPerson = clip(reportChangedLine(runDir, report, final), standingOutcomeClip)
 			outcome.Text = outcome.NeedsPerson
+		case held == withheldReportOwned:
+			withheld = held
+			outcome.Kind = standing.OutcomeNeedsYou
+			outcome.NeedsPerson = clip("report held back, not published: "+err.Error()+keepHeldDraft(runDir, final), standingOutcomeClip)
+			outcome.Text = outcome.NeedsPerson
 		case receipt == nil && err != nil:
 			withheld = withheldUnwritten
 			outcome.Kind = standing.OutcomeFailed
@@ -996,6 +1001,16 @@ func (f effectFence) atReport(target, report string, act func(*standing.Receipt)
 		return err
 	}
 	return f.store.AtReport(target, f.id, report, act)
+}
+
+// otherOwner is the live item other than this one that keeps target, asked
+// under target's lock with the receipt read there. A fence with no store has
+// nobody else to ask about.
+func (f effectFence) otherOwner(target string, last *standing.Receipt) (standing.Item, bool) {
+	if f.store == nil {
+		return standing.Item{}, false
+	}
+	return f.store.OtherLiveOwner(target, f.id, last)
 }
 
 // heldReportFile is the run-folder file a draft is kept in when the report was
@@ -1233,10 +1248,18 @@ func publishStandingReport(fence effectFence, workspace, report, text string) (*
 		held   reportWithheld
 		placed bool
 	)
+	var owner *standing.ReportOwnedError
 	err = fence.atReport(target, report, func(last *standing.Receipt) (*standing.Receipt, error) {
 		var failed error
 		held, failed = fence.act(
 			func() reportWithheld {
+				// ONE LIVE OWNER PER REPORT PATH. A receipt another live item
+				// earned does not clear this one: the two would replace each
+				// other's report on every run.
+				if other, owned := fence.otherOwner(target, last); owned {
+					owner = &standing.ReportOwnedError{Report: report, Owner: other}
+					return withheldReportOwned
+				}
 				if found = reportFileAt(target, last); found == reportChanged {
 					return withheldReportChanged
 				}
@@ -1258,6 +1281,8 @@ func publishStandingReport(fence effectFence, workspace, report, text string) (*
 		// The name was taken between the look and the link: somebody made the
 		// file, and it is theirs.
 		return nil, withheldReportChanged, nil
+	case held == withheldReportOwned:
+		return nil, held, owner
 	case !placed:
 		return nil, held, err
 	}
