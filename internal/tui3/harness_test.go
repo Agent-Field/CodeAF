@@ -90,7 +90,10 @@ func TestTheHarnessOfferIsOneRowWithBothAnswers(t *testing.T) {
 	// moving up under a narrow terminal (question.go's questionLineRows).
 	a.width = 60
 	narrow := plain(frame(a))
-	for _, want := range []string{"1  run it", "2  not now"} {
+	// At sixty columns this offer is one row: nothing about it is weighed —
+	// no consequence on an answer, no pick with a reason, nothing to look at —
+	// so the chooser gives it the row its evidence asks for (questionchooser.go).
+	for _, want := range []string{"1 run it", "2 not now"} {
 		if !strings.Contains(narrow, want) {
 			t.Fatalf("the narrow form lost %q:\n%s", want, narrow)
 		}
@@ -305,7 +308,10 @@ func TestTheNarrowHarnessRowKeepsTheModelAndLosesTheDescription(t *testing.T) {
 	if !strings.Contains(narrow, "model: anthropic/claude-opus-5") {
 		t.Fatalf("the narrow row dropped the model before the description:\n%s", narrow)
 	}
-	for _, want := range []string{"1  run it", "2  not now"} {
+	// At sixty columns this offer is one row: nothing about it is weighed —
+	// no consequence on an answer, no pick with a reason, nothing to look at —
+	// so the chooser gives it the row its evidence asks for (questionchooser.go).
+	for _, want := range []string{"1 run it", "2 not now"} {
 		if !strings.Contains(narrow, want) {
 			t.Fatalf("the narrow form lost %q:\n%s", want, narrow)
 		}

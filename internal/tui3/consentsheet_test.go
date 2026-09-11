@@ -355,35 +355,31 @@ func TestTheSheetLeavesTheAlwaysBandOffAQuestionThatCannotRememberIt(t *testing.
 }
 
 // THE WIDER FRAMES DID NOT NOTICE. The sheet is the phone tier's shape and only
-// the phone tier's: at sixty columns and above the block is the same three rows
-// — the call, the answers, the rule — in the same order.
+// the phone tier's: at sixty columns and above a permission is the panel — the
+// call on its first row, a row per answer, the keys in the frame's bottom edge —
+// and every one of those answer rows is a target.
 func TestTheWideBlockIsUnchangedByThePhoneSheet(t *testing.T) {
-	// Sixty columns is the promotion's own width and is
-	// [TestANarrowFrameGivesEveryAnswerARowRatherThanCuttingOne]'s: the answers
-	// row does not fit there and the card is what it becomes.
 	for _, width := range []int{80, 120, 200} {
 		_, a := phoneAsk(t)
 		a.width = width
 		rows := askRows(a)
-		if len(rows) != 3 {
+		if len(rows) != 9 {
 			t.Fatalf("at %d columns the block is %d rows:\n%s", width, len(rows),
 				strings.Join(rows, "\n"))
 		}
-		if !strings.Contains(rows[0], "rm -rf build") {
-			t.Fatalf("at %d columns the block does not open with the call: %q", width, rows[0])
+		// The top edge carries the head; the call and the policy's own words are
+		// the panel's first row, because a person allowing a call reads the call.
+		if !strings.Contains(rows[1], "rm -rf build") || !strings.Contains(rows[1], `bash pattern "rm -rf *"`) {
+			t.Fatalf("at %d columns the call is not the panel's first row: %q", width, rows[1])
 		}
-		offer, at := askOffer(t, a)
-		if at != 1 {
-			t.Fatalf("at %d columns the answers are on row %d, want the row under the call", width, at)
+		for _, want := range []string{"1  allow once", "3  deny"} {
+			if !strings.Contains(plain(strings.Join(rows, "\n")), want) {
+				t.Fatalf("at %d columns %q is not on a row of its own:\n%s", width, want,
+					strings.Join(rows, "\n"))
+			}
 		}
-		if !strings.Contains(plain(offer), "allow? [1] allow once") {
-			t.Fatalf("at %d columns the answers row is gone: %q", width, plain(offer))
-		}
-		if !strings.Contains(rows[2], `bash pattern "rm -rf *"`) {
-			t.Fatalf("at %d columns the rule is gone: %q", width, rows[2])
-		}
-		if len(a.questionBands) != 0 {
-			t.Fatalf("a band reached a %d-column frame: %+v", width, a.questionBands)
+		if len(a.questionBands) != 3 {
+			t.Fatalf("at %d columns the answers are not three targets: %+v", width, a.questionBands)
 		}
 		if got, want := a.questionHeight(), len(rows); got != want {
 			t.Fatalf("at %d columns the block claims %d rows and drew %d", width, got, want)

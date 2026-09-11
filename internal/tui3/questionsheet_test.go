@@ -117,10 +117,10 @@ func TestTheSheetDrawsGroupedRowsWithBothMarksAndItsOwnKeys(t *testing.T) {
 		a.icon(tokens.GSettled) + " read vendor/?",
 		a.icon(tokens.GNeedsHuman) + " write .github/?",
 		"1 allow once",
-		"[enter] " + questionSheetOpenWord,
-		"[" + questionSendKey + "] " + questionSheetSendWord + " (1)",
-		"[" + questionAlikeKey + "] " + questionSheetSameWord,
-		"[esc] later",
+		"enter " + questionSheetOpenWord,
+		questionSendKey + " " + questionSheetSendWord + " (1)",
+		questionAlikeKey + " " + questionSheetSameWord,
+		"esc later",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("sheet is missing %q:\n%s", want, text)
