@@ -1357,25 +1357,29 @@ func (r *hedgeRace) walkAvailable() bool {
 // took ([hedgeRace.exhausted], which is now the FULFILMENT of this promise
 // rather than a repair of a wrong guess).
 //
-// So there is nothing here about lanes, arms or the purse. A door that can hand
-// a refusal to an open race hands it over; whether another machine is worth
-// asking is the race's question and it is asked at the moment it is acted on.
+// ── THE WHOLE DECISION HAPPENS UNDER ONE LOCK ───────────────────────────────
 //
-// ── ONE HANDOFF PER QUESTION, AND THE SECOND DOOR CLIMBS ────────────────────
+// The question this asks is the same one `canWalk` asked — is there an untried,
+// serving, affordable machine left — and that question was never the defect. The
+// defect was that the ANSWER and the RECORD were two calls: the race could find a
+// winner, strike the lane, or spend the purse between them, and the note written
+// second said the first one had been relied on whether or not it was still true.
+// So the answer and the record are taken together here, and a door that is told
+// yes is a door whose refusal the race has already taken.
 //
-// A race takes ONE refusal. A later door finding the commitment already made is
-// told no and climbs the ladder itself, which is not a fallback — it is the
-// better of the two, because that door holds the shape of the request that has
-// just been refused and the race holds only the first one. The walk arm of the
-// measured ceiling race demands one machine; its own door drops that demand on
-// rung one and is answered, where a ladder restarted from the primary's capped
+// A DOOR TOLD NO CLIMBS THE LADDER ITSELF, and that is the better of the two
+// rather than a consolation: it holds the shape of the request that has just been
+// refused, where the race holds only the body. The last arm of the measured
+// ceiling race demands one machine and no ceiling; its own door drops that demand
+// on rung one and is answered, where a ladder restarted from the primary's capped
 // body pays an extra rung to arrive at the same place.
 //
-// AND THE PROMISE IS STILL KEPT EITHER WAY. If that second door never comes —
-// the arm dies of a 429, which is not a routing refusal and reaches no door at
-// all, exactly as the 2026-09-10 race did — the ladder this call took is climbed
-// by [hedgeRace.exhausted] when every arm has ended. What cannot happen is the
-// old shape: two doors both relying on a prediction, and nobody climbing.
+// AND THE PROMISE IS KEPT WHEN NO DOOR COMES AT ALL. An arm can die of something
+// that reaches no refusal door — the 2026-09-10 race's last arm died of a 429 —
+// and then nobody would have climbed what this took. [hedgeRace.exhausted] is
+// where the race keeps it, once every arm has ended with nobody committed. That
+// is the difference from `canWalk`: this is a promise the race holds, not a guess
+// a door made about somebody else's future.
 //
 // The latest body is kept: it is the router's most recent account of this
 // question, which is what a ladder that runs out quotes.
@@ -1385,12 +1389,22 @@ func (r *hedgeRace) takeRefusal(body []byte) bool {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.winner >= 0 || r.ladderRan || r.ladderOwed {
+	if r.winner >= 0 || r.ladderRan || len(r.arms) >= maxArms {
 		return false
 	}
-	r.ladderOwed = true
-	r.ladderFirst = append([]byte(nil), body...)
-	return true
+	for _, alt := range r.plan.Alts {
+		lane := strings.TrimSpace(alt.Lane)
+		if lane == "" || r.tried[strings.ToLower(lane)] || !lanes.Serves(r.model, lane) {
+			continue
+		}
+		if !r.budget.Affordable(waitNow(), r.estimateLocked(lane, r.expected)) {
+			return false
+		}
+		r.ladderOwed = true
+		r.ladderFirst = append([]byte(nil), body...)
+		return true
+	}
+	return false
 }
 
 // ranLadder records that a door climbed the ladder itself.
