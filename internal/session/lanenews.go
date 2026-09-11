@@ -142,6 +142,12 @@ func OnLaneNews(fn func(LaneNews)) (previous func(LaneNews)) {
 	return previous
 }
 
+// laneNewsDesk is where a finished request's news is left for the surface, for
+// the reason [phaseDesk] exists and through the same mechanism: this is a LEDGER
+// rather than a state, so the desk keeps every telling in the order it was told
+// and drops none of them (sidecar.go).
+var laneNewsDesk desk
+
 // postLaneNews tells whoever is listening. It never blocks on a reader that is
 // slow and never panics on one that is not there: a measurement must not be
 // able to break the turn it measured.
@@ -158,7 +164,7 @@ func postLaneNews(news LaneNews) {
 	if news.At.IsZero() {
 		news.At = time.Now()
 	}
-	reader(news)
+	laneNewsDesk.tell(func() { reader(news) })
 }
 
 // laneNewsFrom turns one finished request into the news a surface draws.

@@ -43,9 +43,32 @@ type reflexScript struct {
 	// routeInputs is what each router call was actually SHOWN, which is the
 	// half of the request that changed: the shortlist is the thing under test.
 	routeInputs []string
+	// deliberate makes the TURN'S FIRST ANSWER take a moment, the way a real
+	// model's does, instead of coming back before anything else has run.
+	//
+	// IT EXISTS BECAUSE THE LOOKUP NO LONGER PRECEDES THE TURN. It is started
+	// beside the person's own model and applied to whichever request is still
+	// ahead of it (loop.go's law): landing before the first token, it CUTS the
+	// request and the turn asks again carrying the block. A fixture whose model
+	// answers in microseconds never reaches that road — the answer is finished
+	// before the lookup has been made — so a test that is about WHAT THE TURN
+	// CARRIED would be asserting a scheduling accident. One deliberate first
+	// answer is the ordinary conversation, where a model takes seconds.
+	//
+	// It respects the request's own context, which is the whole point: the cut is
+	// what ends this wait.
+	deliberate bool
 }
 
-func (r *reflexScript) CompleteWithMessages(_ context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+// aDeliberateFirstAnswer makes the turn's first request take its time. See
+// [reflexScript.deliberate].
+func (r *reflexScript) aDeliberateFirstAnswer() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.deliberate = true
+}
+
+func (r *reflexScript) CompleteWithMessages(ctx context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
 	system := ""
 	if len(messages) > 0 {
 		system = messageText(messages[0])
@@ -86,6 +109,19 @@ func (r *reflexScript) CompleteWithMessages(_ context.Context, messages []ai.Mes
 	answer := r.answer
 	if answer == "" {
 		answer = "done"
+	}
+	if r.deliberate {
+		r.deliberate = false
+		r.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			// The recall landed and cut this request; the turn asks again with the
+			// block in, which is the road under test.
+			r.mu.Lock()
+			return nil, ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
+		r.mu.Lock()
 	}
 	return textResponse(answer), nil
 }
@@ -217,6 +253,10 @@ func TestTheRoutedMemoriesAreRenderedIntoTheBlock(t *testing.T) {
 // somehow carried the block without the page could not pass.
 func TestTheBlockIsInTheRequestTheTurnRidesOn(t *testing.T) {
 	script := &reflexScript{answer: "reformatted"}
+	// THE LOOKUP RUNS BESIDE THE TURN NOW, so what this asserts is the case where
+	// it lands in time: the turn's answer waits for the router exactly as a real
+	// model's seconds do ([reflexScript.holdForRoute]).
+	script.aDeliberateFirstAnswer()
 	agent, brain := brainAgent(t, script, nil)
 	tabs := remember(t, brain, "prefers tabs", "prefers tabs over spaces in Go")
 	script.route = `{"inject":["` + tabs.ID + `"],"cmd":null}`
@@ -535,6 +575,8 @@ func TestAFailedExtractionBreaksNothingAndWritesNothing(t *testing.T) {
 // fixstore.go keeps with a fix it offered that then failed.
 func TestOnlyAMemoryThatHelpedIsCountedAsUsed(t *testing.T) {
 	script := &reflexScript{}
+	// The ledger is about a block the turn CARRIED, so the turn waits for it.
+	script.aDeliberateFirstAnswer()
 	agent, brain := brainAgent(t, script, nil)
 	tabs := remember(t, brain, "prefers tabs", "prefers tabs over spaces in Go")
 	dark := remember(t, brain, "prefers dark themes", "uses a dark theme everywhere")

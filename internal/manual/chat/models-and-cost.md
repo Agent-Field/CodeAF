@@ -397,7 +397,12 @@ every part ever takes runs on the brief it leaves behind.
 `markreader` and `handoff` are the two calls a long answer makes (*Tasks*). `markreader` is
 asked at most three times, and only on an answer that has already spent ten rounds of tool
 calls, plus once at the end of any answer that touched a tool at all — it reads the account of
-the work and says what is left of your question. `handoff` writes the instruction the task
+the work and says what is left of your question. **It runs beside the work rather than
+stopping it**: the next step of the answer goes out immediately and the reading happens
+alongside it, so a reading that says "carry on" — which is nearly all of them — costs you
+nothing at all. A reading that says the work has independent parts in it stops the step where
+it stands and hands the answer over. It used to be awaited, and a measured one held the work
+for 8.1 seconds to decide nothing. `handoff` writes the instruction the task
 opens on when an answer is handed over. Both sit on mastermind for the same measured reason:
 a cheap model asked "is this finished" answered `(done)` about half-finished work 15 times out
 of 18, and that is the one answer that quietly drops a handover you were owed. There is no
@@ -664,8 +669,12 @@ sent the lowest level it offers instead of a switch-off it would refuse, so `off
 ## Why reflex has its own model class
 
 `reflex` is the only role called **twice on every message** — once
-before, to pick which remembered lines belong in this one, and once after, to decide
-whether the exchange held anything worth keeping (what-i-remember). That is why it has a
+beside your own model's first request, to pick which remembered lines belong in this one, and
+once after, to decide whether the exchange held anything worth keeping (what-i-remember).
+**Neither of them is ever waited for**: the first used to be, and the answer to every message
+was held behind it for a measured mean of 4.3 seconds. Both now run alongside your answer,
+and what they find is applied to whichever step of the answer is still ahead of them. That is
+why it has a
 class of its own rather than sharing "small work", and why it is the one row where a large
 model is an expensive mistake rather than a preference. Both calls are folded into the
 session's total, not into the message that triggered them, so `/cost` includes them
@@ -794,7 +803,9 @@ for, and there is no state for "a small thing did not work".
 **Each of these calls also has its own patience**, taken from its class rather than from a
 per-call setting: a reflex call has **45s**, a cheap-class call **2m**, a capable-class one
 **5m**, and a mastermind call **10m**. Some calls set something tighter still and keep it —
-the guardian answers in ten seconds or not at all. What this replaced was the ordinary
+the guardian answers in ten seconds or not at all, the memory lookup moves to another machine
+after **two seconds** and stops after **eighteen**, and the two readers at the end of an
+answer get **20s** and **30s**. What this replaced was the ordinary
 five-to-fifteen-minute bound a completion carries, which is right for your own turn and
 absurd for eight words of title.
 

@@ -101,6 +101,13 @@ func TestASubmissionStampsTheFolder(t *testing.T) {
 	before := time.Now()
 	collect(t, mustSubmitTo(t, agent, "why does the box flicker?"))
 
+	// THE STAMP IS A DEFERRED WRITE, so this test goes through the exit door
+	// before it reads the file back — which is what [Agent.SettleWrites]'s own doc
+	// asks of "every test that reads one of those files back" (placemeta.go). Read
+	// without it, `lastUserAt` is whatever the scheduler had got to, and on a
+	// loaded machine that is the zero time.
+	agent.SettleWrites()
+
 	meta, err := LoadMeta(dir)
 	if err != nil {
 		t.Fatal(err)

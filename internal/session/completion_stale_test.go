@@ -89,7 +89,7 @@ func sketchResponse(shape string, err error) (*ai.Response, error) {
 // assert is partly what the file says the seam decided.
 func finishedAgent(t *testing.T, completer Completer, path string) *Agent {
 	t.Helper()
-	answerTheNamerOffTheQueue(completer)
+	answerTheReadingsOffTheQueue(completer)
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.AskConsent = true
 		config.Divide = true
@@ -140,7 +140,7 @@ func grindingFinishedScript(count int, dowry string, sketch string) []step {
 	return steps
 }
 
-// countTheNamer is [answerTheNamerOffTheQueue] that also COUNTS, because "the
+// countTheNamer is [answerTheReadingsOffTheQueue] that also COUNTS, because "the
 // namer was never asked" is an assertion about money and the only way to make it
 // is to watch the errand lane itself.
 func countTheNamer(completer *scriptedCompleter) *atomic.Int64 {

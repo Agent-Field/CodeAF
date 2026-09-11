@@ -1871,3 +1871,65 @@ func TestBothBriefsAskForOneObjectAndOnlyOneOfThemMentionsAnAnswer(t *testing.T)
 		t.Fatal("the pre-turn brief does not teach the three shapes only a request can show")
 	}
 }
+
+// ── the order of the two readers at a turn's end ────────────────────────────
+
+// A JUDGE THAT HAS ALREADY ANSWERED HAS STILL STARTED NOTHING.
+//
+// The two end-of-turn readers race each other so the turn waits for the slower
+// rather than for both (loop.go). What that must not change is the ORDER OF
+// EFFECTS: what the judge DOES is start work, and work must not appear over the
+// top of a turn the other reader is about to re-open or hand over — the person
+// would be shown a task about an answer that is being withdrawn, and the
+// re-opened pass would judge the same request all over again.
+//
+// So the reading answers a [judgeRuling] and the TURN spends it. Read from the
+// mechanism's own law: TAKE is where an answer can still be SPENT, and an answer
+// that has already spent itself is not one (sidecar.go). This is the test of
+// that, at the seam, because the two roads it is about are a turn shape apart.
+func TestAJudgesRulingIsSpentByTheTurnAndNotByTheReading(t *testing.T) {
+	completer := &routeCompleter{answer: "Here is what I would look at.", verdict: routeYes, confirm: routeYes}
+	agent, _, nodes := routeAgent(t, completer)
+	asked := userMessage{message: textMessage("user", routeAsk)}
+
+	// A READING THAT SAYS YES, taken in full.
+	judge := agent.judgeAhead(context.Background(), asked, false, "Here is what I would look at.")
+	ruling, ok := judge.takeAtTheEnd()
+	if !ok || !ruling.start {
+		t.Fatalf("the judge answered %+v, want a ruling that asks for a start", ruling)
+	}
+	if completer.asked() == 0 || completer.confirms() == 0 {
+		t.Fatalf("the cascade was not run: %d screens, %d confirms", completer.asked(), completer.confirms())
+	}
+	// AND NOTHING HAS HAPPENED. This is the whole finding: before this the two
+	// calls above started a task from inside their own goroutine, so a turn the
+	// re-open reader was about to re-open had work on the rail already.
+	if count := nodes.count(); count != 0 {
+		t.Fatalf("%d tasks were started by the READING; a reading decides and the turn acts", count)
+	}
+	if admitted := admitted(agent.graph()); admitted != 0 {
+		t.Fatalf("%d tasks were admitted by the reading alone", admitted)
+	}
+
+	// A TURN THAT RE-OPENS LETS THE RULING GO, and lets go of the name it was
+	// holding with it.
+	judge.end()
+	if count := nodes.count(); count != 0 {
+		t.Fatalf("%d tasks survived a turn that let the ruling go", count)
+	}
+
+	// AND THE SAME RULING, SPENT BY A TURN THAT REALLY ENDED, STARTS EXACTLY ONE.
+	// Applying the decision at the end rather than from inside the reading must
+	// not lose it — that is the other half of loop.go's law.
+	hub := newEventHub()
+	second := agent.judgeAhead(context.Background(), asked, false, "Here is what I would look at.")
+	landed, ok := second.takeAtTheEnd()
+	if !ok || !landed.start {
+		t.Fatalf("the second reading answered %+v, want a ruling that asks for a start", landed)
+	}
+	agent.applyRouteJudge(hub, landed)
+	waitFor(t, "the task the turn started to run", func() bool { return nodes.count() == 1 })
+	if count := nodes.count(); count != 1 {
+		t.Fatalf("%d tasks were started by one applied ruling, want exactly one", count)
+	}
+}

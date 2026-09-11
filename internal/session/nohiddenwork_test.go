@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/offpath"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -147,12 +148,29 @@ func TestConsultingTheFixStoreWritesNothingOnThePath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "fixes.json")
 	store := newFixStore(path)
 
+	// THE DEFERRED WRITE IS HELD WHILE THE READ PATH RUNS, and holding it is what
+	// makes this a law rather than a race. [offpath.Write.Owe] starts its
+	// goroutine at once and that goroutine is as entitled to the processor as this
+	// one — so a bare stat after five consultations asks whether the scheduler got
+	// there first, which on a loaded box it does. Held, the file can only exist if
+	// the READ PATH ITSELF wrote it, which is the whole claim.
+	release := make(chan struct{})
+	store.countersOnce.Do(func() {
+		store.countersWrite = offpath.Deferred(func() {
+			<-release
+			store.mu.Lock()
+			defer store.mu.Unlock()
+			store.saveLocked()
+		})
+	})
+
 	for range 5 {
 		store.consult("bash\x00no such file")
 	}
 	if _, err := os.Stat(path); err == nil {
 		t.Fatal("consulting the store wrote its file on the read path")
 	}
+	close(release)
 
 	// The counters are not lost: they land when the deferred write is settled,
 	// which is the exit door and this test's door.

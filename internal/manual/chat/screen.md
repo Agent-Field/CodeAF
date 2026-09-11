@@ -3309,12 +3309,55 @@ same clock:
 | The word | What is happening |
 |---|---|
 | `running <tool>` | one call on the belt is executing |
-| `checking` | a reader is deciding whether the answer finished the ask, or whether it should have been work |
-| `taking stock` | the work stopped mid-round and a second model is being shown an account of it and asked what is left of what you asked for — ten to thirty seconds |
+| `checking` | a reader is deciding whether the answer finished the ask, or whether it should have been work. The two are asked **at the same time** rather than one after the other, so this stage lasts as long as the slower of them and not both |
+| `checking whether this is safe to run` | the safety stand-in is being asked whether one command is plainly safe, before you are asked about it. This is **the one reading that really does come first** — it decides whether the command runs at all — and it answers in ten seconds or not at all |
+| `taking stock` | a second model is being shown an account of the work so far and asked what is left of what you asked for. **The work does not stop for it**: the next step goes out straight away and the reading happens alongside it. If the reading says what is left has independent parts in it, the step is stopped where it stands and the answer is handed over |
 | `tidying` | the conversation is being compacted |
 | `briefing a worker` | your turn is being handed to a task, and the instruction it opens on is being written — fifteen to thirty seconds is normal (see *How tasks run*) |
 
 Each of them is taken off the screen the moment the wait ends.
+
+## What happens when I send a message — does anything run before the model is asked, what runs before my answer, and why the wait is only the model
+
+**Nothing runs before the model is asked.** From the instant you press enter, the
+only thing standing between you and the first word is your own model writing it.
+No lookup, no judge, no reader is asked anything before your own request goes out.
+
+That is a rule this build holds itself to, and it is measured: the request leaves
+within milliseconds of your message, and the next request of a multi-step answer
+leaves within milliseconds of the tool result before it.
+
+Everything else aforge asks on your behalf during a turn runs **beside** the
+answer, never in front of it:
+
+- the **memory lookup**, picking which remembered lines belong in this message
+  (*What I remember*);
+- the **naming** of the conversation, on your first message (*Why does my tab say
+  Untitled*);
+- the **work-or-words judge**, asking whether what you typed was really a job for
+  a task (*Tasks*);
+- the **step captions** over a running batch;
+- the **reading of a long answer**, asking what is left of your question;
+- the **keeping pass** after the turn, deciding whether the exchange held anything
+  worth remembering.
+
+None of them can delay you, and none of them is thrown away either. A reading that
+answers in time is applied to the step in front of it. One that answers late is
+applied to the **next** step of the same answer, or written into the record as
+late. A reading that says the work should stop can stop it — that is the only
+power any of them has over your turn.
+
+**There is exactly one exception**, and it is named on purpose: the safety
+stand-in, if you have turned it on. It decides whether a command runs at all, so
+there is nothing for it to run alongside and nothing it could be applied to
+afterwards. It gets ten seconds and the status line says
+`checking whether this is safe to run` for the whole of them.
+
+**The end of an answer is a different wait.** Once the model has stopped writing
+there is no work left to run beside, so the two readers that decide whether the
+answer finished your ask and whether it should have been work are asked **at the
+same time** and the line says `checking` until the slower of them is back.
+
 
 ## A stage that lasts minutes keeps drawing — the phase went blank, the status line disappeared while it was still working, does a slow stage stop being shown
 

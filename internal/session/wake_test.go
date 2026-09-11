@@ -549,7 +549,7 @@ func TestExitingJobWakesAnIdleSession(t *testing.T) {
 	// this the namer takes the single scripted step and the woken turn runs off
 	// the end of the script. Answering it by SHAPE is agent_test.go's remedy for
 	// exactly this race.
-	answerTheNamerOffTheQueue(completer)
+	answerTheReadingsOffTheQueue(completer)
 	agent, _ := newTestAgent(t, completer, nil)
 
 	id := startJob(t, agent, "echo undefined symbol; exit 3")

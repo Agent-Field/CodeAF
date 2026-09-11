@@ -163,6 +163,45 @@ func (a *Agent) endGeneration(active *activeGeneration) error {
 	return context.Cause(active.ctx)
 }
 
+// cutGeneration is [Agent.Steer]'s own move, offered to the MACHINE: stop the
+// request in flight without stopping the turn, so the loop comes back to its
+// boundary and re-assembles.
+//
+// IT IS THE ONE DOOR, and that is why it is here rather than in each caller. A
+// steer reaches into a.generation under a.mu because only the lock can tell a
+// live attempt from one that returned a microsecond ago; a second reader writing
+// the same two lines somewhere else is how a build ends up with two answers to
+// "is there anything to cut". The readings in loop.go and checkpoint.go — a
+// recall that landed before the first token, a mark that says hand this over —
+// both come through here.
+//
+// It reports whether anything was actually cut, which is the fact a caller with
+// ONE cut to spend has to have: a generation that has not started yet needs none
+// (the transcript it will be assembled from already carries the change), and a
+// caller told otherwise would spend its allowance on nothing.
+func (a *Agent) cutGeneration(cause error) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.generation == nil {
+		return false
+	}
+	a.generation.cancel(cause)
+	return true
+}
+
+// The two machine cuts, beside [errSteerCut] which is the person's.
+//
+// NEITHER IS A FAILURE AND NEITHER IS SHOWN. A steer says "stop, I am typing";
+// these say "what you are about to be sent has changed" and "somebody has read
+// this turn and it is being handed over", and both are answered by the loop
+// rather than reported to the person — see loop.go's THE ONLY WAIT A PERSON
+// EXPERIENCES law for why the readings behind them are allowed to interrupt work
+// and never to precede it.
+var (
+	errRecallCut = errors.New("session: generation cut to carry the recalled memories")
+	errMarkCut   = errors.New("session: generation cut by the mark's reading")
+)
+
 // turnSteer is one steer as the AGENT holds it while it waits: the note the
 // events carry, and the stream the person who sent it is reading.
 //
