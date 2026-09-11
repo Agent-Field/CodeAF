@@ -299,15 +299,10 @@ func (a *app) questionPageListWant(width int) int {
 	gutter := len(questionPanelGap) + len(questionPanelGap)
 	// Every answer's word stands in one column as wide as the widest of them
 	// ([app.questionPanelRow]'s pad), and the pick's mark with its word stands
-	// at the right edge of the list — so the list asks for both together.
-	words := 0
-	for _, option := range q.Options {
-		words = max(words, ansi.StringWidth(strings.TrimSpace(option.Label)))
-	}
-	want := gutter + lead + words + len(questionPanelGap)
-	if q.Pick != nil {
-		want += 2 + ansi.StringWidth(a.icon(tokens.GRecommended)+" "+questionRecommendedWord) + 2
-	}
+	// at the right edge of the list — so the list asks for both together, in the
+	// one account of it ([app.questionListWant]). The third gap is the page's
+	// own: it indents its list one gap inside the seam where the panel does not.
+	want := gutter + len(questionPanelGap) + a.questionListWant(q, lead)
 	if a.questionRoomTakesOther() {
 		want = max(want, gutter+lead+ansi.StringWidth(questionPanelOtherWord)+len(questionPanelGap))
 	}
@@ -356,16 +351,11 @@ func (a *app) questionPageList(left int) ([]string, []int) {
 	q := a.questionRoomShown()
 	inner := max(left-len(questionPanelGap), 1)
 	listRoom := max(inner-2*len(questionPanelGap), 1)
-	pad := 0
-	for _, option := range q.question.Options {
-		if w := ansi.StringWidth(strings.TrimSpace(option.Label)); w <= listRoom/2 {
-			pad = max(pad, w)
-		}
-	}
+	pad := questionLabelPad(q.question.Options, listRoom)
 	out := make([]string, 0, len(q.question.Options)+8)
 	at := make([]int, 0, cap(out))
 	for i, option := range q.question.Options {
-		for _, line := range a.questionPanelOption(q, i, option, pad, listRoom, questionBeside) {
+		for _, line := range a.questionPanelOption(q, i, option, pad, listRoom, questionBeside, questionHoverPage) {
 			out, at = append(out, questionPanelGap+line), append(at, i)
 		}
 	}
@@ -373,7 +363,7 @@ func (a *app) questionPageList(left int) ([]string, []int) {
 		other := questionOtherAt(q.question)
 		focused := room.focus == other
 		for _, line := range a.questionPanelRow(q, itoa(other+1), "", questionPanelOtherWord,
-			"", "", pad, listRoom, focused, a.questionHovering(other)) {
+			"", "", pad, listRoom, focused, a.questionHovering(questionHoverPage, other)) {
 			out, at = append(out, questionPanelGap+line), append(at, other)
 		}
 	}
@@ -461,16 +451,11 @@ func (a *app) questionPageColumn(width int) ([]string, []int) {
 	q := a.questionRoomShown()
 	inner := max(width-len(questionPanelGap), 1)
 	listRoom := max(inner-2*len(questionPanelGap), 1)
-	pad := 0
-	for _, option := range q.question.Options {
-		if w := ansi.StringWidth(strings.TrimSpace(option.Label)); w <= listRoom/2 {
-			pad = max(pad, w)
-		}
-	}
+	pad := questionLabelPad(q.question.Options, listRoom)
 	lead := len(questionPanelGap) + questionPanelLead(q.question, listRoom)
 	indent := strings.Repeat(" ", lead)
 	for i, option := range q.question.Options {
-		for _, line := range a.questionPanelOption(q, i, option, pad, listRoom, questionRowOnly) {
+		for _, line := range a.questionPanelOption(q, i, option, pad, listRoom, questionRowOnly, questionHoverPage) {
 			out, at = append(out, questionPanelGap+line), append(at, i)
 		}
 		if i != room.focus {
@@ -492,7 +477,7 @@ func (a *app) questionPageColumn(width int) ([]string, []int) {
 	if a.questionRoomTakesOther() {
 		other := questionOtherAt(q.question)
 		for _, line := range a.questionPanelRow(q, itoa(other+1), "", questionPanelOtherWord,
-			"", "", pad, listRoom, room.focus == other, a.questionHovering(other)) {
+			"", "", pad, listRoom, room.focus == other, a.questionHovering(questionHoverPage, other)) {
 			out, at = append(out, questionPanelGap+line), append(at, other)
 		}
 		if room.focus == other {

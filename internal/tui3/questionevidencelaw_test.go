@@ -23,7 +23,7 @@ import (
 //   - the words that label a case line are READ in questionevidence.go and
 //     nowhere else (their declarations stand where the page's other words are
 //     spelled), so a new drawing of the case has to go through [questionCase];
-//   - the six block renderers are called by [app.questionBlockRows] and by each
+//   - the five block renderers are called by [app.questionBlockRows] and by each
 //     other in questionblocks.go, and from no other file, so a new drawing of
 //     evidence cannot grow a diagram painter of its own.
 

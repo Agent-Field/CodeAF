@@ -266,6 +266,19 @@ func TestQuestionScreens(t *testing.T) {
 		l.tick(questionSettle)
 		l.press("o")
 	})
+	// AND THE SPLIT PAGE BESIDE THE TASK COLUMN, which is the one combination
+	// every other shot here stowed the column to avoid. A hundred and forty
+	// columns less the column's own leaves a body still over [railSlimFloor], so
+	// the page splits AND the rail stands — and that is exactly where the page's
+	// two rules were drawn in different frames: the top rule in the body, the
+	// foot's rule in the full terminal, running on under the rail. A picture of
+	// it is the only thing that would have shown it, so there is one now.
+	shot("page-140-column", func(l *questionLab) {
+		l.a.width, l.a.height = 140, 40
+		l.raise(demoQuestionReading())
+		l.tick(questionSettle)
+		l.press("o")
+	})
 	// AND A LAYOUT BLOCK ON THE PAGE, whose two panes stand side by side when
 	// each one's widest line fits its half and stack when one does not.
 	shot("page-layout-120", func(l *questionLab) {

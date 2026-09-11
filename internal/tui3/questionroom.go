@@ -331,6 +331,11 @@ func (a *app) raiseQuestionRoom(head questionShown) {
 		scope:    questionDefaultScope(q),
 		shown:    a.now(),
 		dirty:    true,
+		// NO SEAM UNTIL THE BODY HAS DRAWN ONE. The foot's rule reads this rather
+		// than working the split out a second time, so before the first lay it
+		// must say "one column" — a junction is a claim about where the body
+		// split, and on the frame a page opens in the body has not answered yet.
+		seam: -1,
 	}
 	// THE PAGE OPENS WHERE THE BLOCK'S POINTER STOOD. A person who walked to the
 	// second answer and pressed `o` to read it opened the page ABOUT the second
@@ -581,8 +586,15 @@ func (a *app) questionFootRows(width int) []string {
 	if room == nil || width <= 0 {
 		return nil
 	}
+	// THE RULE THAT CLOSES THE PAGE IS DRAWN IN THE PAGE'S OWN FRAME, NOT THE
+	// TERMINAL'S. The body is charged for the task column ([app.bodyWidth]) and
+	// the foot is chrome drawn at the full frame width, so a rule spanning
+	// `width` ran on under the rail while the page's top rule stopped at the
+	// body's edge — two edges of one object ending in different columns. With
+	// the column up on a 140-cell terminal the body is still wide enough to
+	// split, which is exactly when it showed.
 	rule := func(words string) string {
-		return besideRule(a.pal, width, a.questionRoomSeam(), tokens.GFrameTeeUp, words)
+		return besideRule(a.pal, a.bodyWidth(), a.questionRoomSeam(), tokens.GFrameTeeUp, words)
 	}
 	switch {
 	case room.refused != "":
@@ -598,16 +610,21 @@ func (a *app) questionFootRows(width int) []string {
 	return []string{rule(a.questionComposeWords()), a.questionRoomOfferRow(width)}
 }
 
-// questionRoomSeam is where the page's two panes meet at the body's width, or -1
-// on a page of one column. The foot's rule asks it so the junction it draws is
-// the seam the body drew.
+// questionRoomSeam is where the page's two panes meet, or -1 on a page of one
+// column.
+//
+// IT IS WHAT THE BODY ACTUALLY DREW, read back rather than worked out again.
+// [app.questionRoomView] stores the seam of the layout it painted, and the body
+// is laid before the chrome that carries this foot ([app.chatFrameLines] calls
+// bodyRows and then chrome), so the junction the foot draws cannot be a column
+// the body did not split at. Recomputing it here was the same arithmetic in a
+// second place, and the moment [app.questionPageListWant] changed, the two edges
+// of one frame would have met the seam in different columns.
 func (a *app) questionRoomSeam() int {
-	width := a.bodyWidth()
-	if !a.questionRoomBeside(width) {
+	if a.qroom == nil {
 		return -1
 	}
-	left, _ := besideSplit(width, a.questionPageListWant(width))
-	return left
+	return a.qroom.seam
 }
 
 // questionPromptWord is the sentence that replaces the compose words while the

@@ -124,23 +124,14 @@ func (a *app) questionScopeRow(q questionShown, room int) string {
 // the lifetime travels with the answer when one is given ([questionScopeOf]),
 // so a person who cycles this and then presses `esc` has written no rule, which
 // is what makes it safe to press.
+// THE WALK ITSELF IS [questionScopeAfter] AND IS NOT SPELLED TWICE. This is the
+// key — it finds the question the key was pressed on and marks the surface dirty;
+// which lifetime comes next is one rule, asked here and by the page's own `t`.
 func (a *app) questionScopeNext(head questionShown) {
 	open := a.questionHeld(head.token())
-	if open == nil {
+	if open == nil || len(questionScopes(open.question)) == 0 {
 		return
 	}
-	scopes := questionScopes(open.question)
-	if len(scopes) == 0 {
-		return
-	}
-	now := questionScopeNow(*open)
-	for i, one := range scopes {
-		if one == now {
-			open.scope = scopes[(i+1)%len(scopes)]
-			a.touch()
-			return
-		}
-	}
-	open.scope = scopes[0]
+	open.scope = questionScopeAfter(open.question, questionScopeNow(*open))
 	a.touch()
 }

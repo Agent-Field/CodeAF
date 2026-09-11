@@ -329,3 +329,82 @@ func TestTheClockSaysWhatCanBeDoneAboutItAtTheFramesOwnWidth(t *testing.T) {
 		t.Errorf("the page dropped the clock's own line:\n%s", got)
 	}
 }
+
+// TestThePagesTwoRulesEndInTheSameColumnWithTheTaskColumnUp is the drawing bug
+// the whole screens table hid: every split shot stowed the column, and the e2e
+// scenario stows it too.
+//
+// THE PAGE'S TWO RULES ARE TWO EDGES OF ONE OBJECT. The body draws at
+// [app.bodyWidth], which is charged for the task column, and the foot is chrome
+// drawn at the full frame width — so the top rule stopped at the body's edge
+// while the foot's ran on under the rail. It only shows where the body is still
+// wide enough to split WITH the column standing, which is a 140-cell terminal.
+func TestThePagesTwoRulesEndInTheSameColumnWithTheTaskColumnUp(t *testing.T) {
+	a, _ := standingInAQuestionAt(t, demoQuestionReading(), 140, 40)
+	if a.railAway {
+		t.Fatal("this test needs the task column UP; the lab stowed it")
+	}
+	body := a.bodyWidth()
+	if !a.questionRoomBeside(body) {
+		t.Fatalf("the body is %d cells and did not split; the case this test is about cannot arise", body)
+	}
+	rows := a.questionRoomRows(body)
+	top := ""
+	for _, r := range rows {
+		if strings.Contains(plain(r.text), tokens.GlyphFrameTeeDown) {
+			top = plain(r.text)
+			break
+		}
+	}
+	if top == "" {
+		t.Fatalf("the page drew no top rule at %d cells:\n%s", body, pageText(a))
+	}
+	foot := plain(a.questionFootRows(a.width)[0])
+	if ansi.StringWidth(top) != ansi.StringWidth(foot) {
+		t.Errorf("the page's rules end in different columns: top %d, foot %d\ntop:  %q\nfoot: %q",
+			ansi.StringWidth(top), ansi.StringWidth(foot), top, foot)
+	}
+	// AND THE JUNCTIONS STAND IN ONE COLUMN, which is the seam the body drew
+	// rather than one worked out a second time. Measured in CELLS and not bytes:
+	// every one of these glyphs is three bytes wide and one column wide.
+	column := func(row, glyph string) int {
+		at := strings.Index(row, glyph)
+		if at < 0 {
+			return -1
+		}
+		return ansi.StringWidth(row[:at])
+	}
+	if got, want := column(foot, tokens.GlyphFrameTeeUp), column(top, tokens.GlyphFrameTeeDown); got != want {
+		t.Errorf("the junctions are in different columns: top %d, foot %d\ntop:  %q\nfoot: %q", want, got, top, foot)
+	}
+	if a.questionRoomSeam() != a.qroom.seam {
+		t.Errorf("the foot's seam (%d) is not the seam the body stored (%d)", a.questionRoomSeam(), a.qroom.seam)
+	}
+}
+
+// TestACardDrawingAQuestionsAnswersUnfoldsNoEvidence holds the bound on the door
+// two other surfaces draw these rows through.
+//
+// A CARD CANNOT GROW BY EVERY DIAGRAM AN ANSWER BROUGHT. The task record's
+// landing card ([app.taskRecordLandingRows]) and home's errand pane both draw
+// [app.questionPanelBody], and neither owns its height — so the split and the
+// unfold are the panel's and the page's, which do.
+func TestACardDrawingAQuestionsAnswersUnfoldsNoEvidence(t *testing.T) {
+	lab := newQuestionLab(t)
+	q := demoQuestionReading()
+	shown := questionShown{question: q, shown: lab.a.now(), pick: questionPointerStart(q)}
+	body := strings.Join(questionPlainRows(lab.a.questionPanelBody(shown, 96)), "\n")
+	// The case's own labels are what the evidence draws, wherever it is drawn.
+	for _, word := range []string{questionThenWord, questionWhyWord, questionConfidenceLabel} {
+		if strings.Contains(body, strings.TrimSpace(word)) {
+			t.Errorf("a card's rows carry an answer's case (%q):\n%s", word, body)
+		}
+	}
+	// AND EVERY ANSWER IS STILL THERE — bounding the evidence may not cost the
+	// list the thing it is for.
+	for _, option := range q.Options {
+		if !strings.Contains(body, strings.TrimSpace(option.Label)) {
+			t.Errorf("a card's rows dropped the answer %q:\n%s", option.Label, body)
+		}
+	}
+}
