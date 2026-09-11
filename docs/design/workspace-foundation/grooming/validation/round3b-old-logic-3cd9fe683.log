@@ -1,0 +1,155 @@
+# Round 3b old-logic proofs. Worktree /tmp/opus-r3b-old detached at 3cd9fe683 (lane head before round 3b = wave 4 b87a4e756 + record).
+# Seams added to the old worktree for injection only, behaviour unchanged (git diff below).
+diff --git a/internal/session/sessionfile.go b/internal/session/sessionfile.go
+index 13f6c8384..1e1582f29 100644
+--- a/internal/session/sessionfile.go
++++ b/internal/session/sessionfile.go
+@@ -2908,9 +2908,13 @@ func (s *sessionFile) sync() {
+ 	}
+ 	// A filesystem that cannot sync (a tmpfs, a pipe) has already done all it
+ 	// can, as Close says.
+-	_ = s.file.Sync()
++	_ = syncJournal(s.file)
+ }
+ 
++// syncJournal is the seam the round-3b proof injects a failing sync through;
++// the old logic's behaviour is unchanged.
++var syncJournal = func(f *os.File) error { return f.Sync() }
++
+ // Close flushes the file, releases the claim, and closes the descriptor.
+ // Writes are unbuffered appends, so the flush is the kernel's; Close is what
+ // makes the file safe for another aforge to open. Calling it twice is safe.
+diff --git a/internal/standing/store.go b/internal/standing/store.go
+index 6fc450875..189c54863 100644
+--- a/internal/standing/store.go
++++ b/internal/standing/store.go
+@@ -617,10 +617,14 @@ func syncDir(dir string) error {
+ 		return nil
+ 	}
+ 	defer folder.Close()
+-	_ = folder.Sync()
++	_ = syncFolder(folder)
+ 	return nil
+ }
+ 
++// syncFolder is the seam the round-3b proof injects a failing sync through;
++// the old logic's behaviour is unchanged.
++var syncFolder = func(f *os.File) error { return f.Sync() }
++
+ // newID is 16 random hex characters, the same shape and the same reasoning as a
+ // session id: enough to name every item a machine will ever hold with nobody
+ // coordinating.
+
+## old-fence.log
+--- FAIL: TestAPassCancelledBeforeTheFenceWasMadePublishesNothing (0.01s)
+    standing_fence_test.go:45: a pass cancelled before its fence was made published (held 0, err <nil>)
+--- FAIL: TestACancellationWhileTheFileIsComparedHoldsTheRename (0.01s)
+    standing_fence_test.go:84: a pass cancelled during the comparison was renamed over the file: receipt &{Path:reports/r.md SHA256:0433c1632be541d62a7178420ba16bdfb57f4c25ff4a22bf629e123fd5f1c9a2 Bytes:34 At:2026-09-11 05:09:33.001911519 +0000 UTC}, held "", err <nil>
+--- FAIL: TestAnItemLockThatCannotBeTakenWithholdsThePublication (0.01s)
+    standing_fence_test.go:106: a publication whose stop could not be read went ahead (held "")
+--- FAIL: TestAStoreThatCannotBeOpenedWithholdsThePublication (0.00s)
+    standing_fence_test.go:125: a publication with no readable store went ahead (held "")
+--- FAIL: TestANoteHeldByACancellationIsNotAlsoLanded (0.02s)
+    standing_fence_test.go:180: outcome landed · "cut-off" · "Three flaky tests, all the same timeout.; the pass was cut off before its note was delivered"; want failed · cut-off saying the note was not delivered
+--- FAIL: TestACutAfterThePublicationKeepsTheLandingAndSaysTheNoteDidNotGo (0.02s)
+    standing_fence_test.go:213: outcome landed · "cut-off" · published true · "report updated: reports/r.md — # Report\n- placed before the cut; the pass was cut off before its note was delivered"; want landed, no code, the note named
+--- FAIL: TestAHeldDraftThatCouldNotBeKeptIsSaidOnTheLine (0.02s)
+    standing_fence_test.go:347: the line hides that the draft was lost: "report held back, not published: reports/r.md is not what aforge last published there — it was changed, or it was there before aforge wrote it — so aforge did not write over it. Move your copy aside to let the next run publish"
+--- FAIL: TestARuleHoldWhoseDraftCouldNotBeKeptSaysSo (0.03s)
+    standing_fence_test.go:370: outcome needs-you · "held-by-rules" · "report held back, not published: it does not keep a rule placed on this work — “Inbox reports never quote email addresses; write [redacted] instead.”: the report says “priya@example.com, still” — still there. The previous report is unchanged"; want held-by-rules saying the draft could not be kept
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/session	1.525s
+FAIL
+
+## old-fold.log
+    standing_fold_test.go:77: a settled fold left 3 notes for every later attach to look through
+--- FAIL: TestASettledFoldLeavesNothingPending (0.03s)
+--- PASS: TestAFoldRecordedBeforeACrashIsNotFoldedAgainAndItsInboxIsConsumed (0.02s)
+    standing_fold_test.go:135: the inbox was consumed after the record's sync failed
+--- FAIL: TestAFailedJournalSyncStopsTheSettlement (0.01s)
+    standing_fold_test.go:161: an attach consumed an inbox whose record never synced
+--- FAIL: TestAnAttachAfterAFailedSyncDoesNotConsumeTheInbox (0.01s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/session	0.179s
+FAIL
+
+## old-standing.log
+    round3b_proof_test.go:33: a folder sync that failed with an I/O error was read as success: <nil>
+--- FAIL: TestAFolderSyncThatFailsIsAFailedWrite (0.01s)
+    round3b_proof_test.go:73: a receipt 200 runs back was searched for: &{Path:reports/r.md SHA256:ancient Bytes:0 At:0001-01-01 00:00:00 +0000 UTC} <nil>
+--- FAIL: TestAnOlderItemsLastPublicationIsLookedForInItsNewestRunsOnly (1.26s)
+--- PASS: TestTwoProcessesMintingRunsNeverShareANumber (0.61s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/standing	1.877s
+FAIL
+ok  	github.com/Agent-Field/aforge-v2/internal/standing	0.627s
+
+## old-answers.log
+    answers_durable_test.go:75: the doorstep was cleared although the answer's record never reached the disk
+--- FAIL: TestAnAnswerWhoseRecordNeverReachedTheDiskIsAppliedAfterTheCrash (0.02s)
+    answers_durable_test.go:131: an answer the record already held was applied a second time
+--- FAIL: TestAnAnswerAlreadyRecordedIsNotAppliedAgainAfterACrash (0.01s)
+    answers_durable_test.go:160: the refused answer left no record:
+--- FAIL: TestARefusedAnswerIsRecordedWithItsReason (0.00s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/session	0.141s
+FAIL
+
+## old-absent.log
+--- PASS: TestAFinishedReportIsNotParkedByTheShellCallsAfterIt (0.02s)
+--- PASS: TestNoUngrantedCallParksAFinishedReport (0.01s)
+    standing_armed_proof_test.go:29: an ungranted family tool was armed into an unattended run: [slack_post]
+--- FAIL: TestAToolArmedIntoAnUnattendedRunIsAskedForItsGrantToo (0.00s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/session	0.131s
+FAIL
+
+## old-race (B2a first publication, AFORGE_RACE_ITERATIONS=4000 at 3cd9fe683)
+--- FAIL: TestAFirstPublicationAndARacingCreateNeverBothSucceed (3.87s)
+    standing_fence_test.go:326: iteration 1173: the racing writer created the file and aforge still placed its report over it: "ours
+" (err <nil>)
+
+## new-race (same, at the round-3b tree, 4000 iterations)
+--- PASS: TestAFirstPublicationAndARacingCreateNeverBothSucceed (16.13s)
+PASS
+ok  	github.com/Agent-Field/aforge-v2/internal/session	16.182s
+
+## pre-wave-4 84b423d87: the chat door's absent-shell class (worktree /tmp/opus-r3b-prew4)
+    standing_absent_test.go:69: the shipped floor put a shell on an unattended run's belt
+--- FAIL: TestAFinishedReportIsNotParkedByTheShellCallsAfterIt (0.02s)
+    standing_absent_test.go:112: an ungranted call parked a finished report: {Kind:needs-you Text:<report>
+--- FAIL: TestNoUngrantedCallParksAFinishedReport (0.01s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/session	0.271s
+FAIL
+
+## mutation: inbox dedupe removed (receipt TestAFoldRecordedBeforeACrash...)
+    standing_fold_test.go:111: a fold the record already held was folded again (1)
+--- FAIL: TestAFoldRecordedBeforeACrashIsNotFoldedAgainAndItsInboxIsConsumed (0.02s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/session	0.073s
+FAIL
+
+## mutation: run-counter item lock removed (receipt TestTwoProcessesMinting..., with reaping)
+--- FAIL: TestTwoProcessesMintingRunsNeverShareANumber (0.58s)
+    round3b_proof_test.go:163: run numbers are not 1..100 once each: [1 1 2 2 3 3 4 4 5 5 6 6 7 7 8 8 9 9 10 10 11 11 12 12 13 13 14 14 15 15 16 16 17 17 18 18 19 19 20 20 21 21 22 22 23 23 24 24 25 25 26 26 27 27 28 28 29 29 30 30 31 31 32 32 33 33 34 34 35 35 36 36 37 37 38 38 39 39 40 40 41 41 42 42 43 43 44 44 45 45 46 46 47 47 48 48 49 49 50 50]
+FAIL
+--- FAIL: TestTwoProcessesMintingRunsNeverShareANumber (0.58s)
+    round3b_proof_test.go:163: run numbers are not 1..100 once each: [1 1 2 2 3 3 4 4 5 5 6 6 7 7 8 8 9 9 10 10 11 11 12 12 13 13 14 14 15 15 16 16 17 17 18 18 19 19 20 20 21 21 22 22 23 23 24 24 25 25 26 26 27 27 28 28 29 29 30 30 31 31 32 32 33 33 34 34 35 35 36 36 37 37 38 38 39 39 40 40 41 41 42 42 43 43 44 44 45 45 46 46 47 47 48 48 49 49 50 50]
+FAIL
+--- FAIL: TestTwoProcessesMintingRunsNeverShareANumber (0.57s)
+    round3b_proof_test.go:163: run numbers are not 1..100 once each: [1 1 2 2 3 3 4 4 5 5 6 6 7 7 8 8 9 9 10 10 11 11 12 12 13 13 14 14 15 15 16 16 17 17 18 18 19 19 20 20 21 21 22 22 23 23 24 24 25 25 26 26 27 27 28 28 29 29 30 30 31 31 32 32 33 33 34 34 35 35 36 36 37 37 38 38 39 39 40 40 41 41 42 42 43 43 44 44 45 45 46 46 47 47 48 48 49 49 50 50]
+FAIL
+
+## mutation: the last turn's ending decides (receipt wordless continuation); then unmutated
+    standing_wordless_proof_test.go:23: the cut report was published after a wordless turn: "# Report\n- the first part\n- the second part\n" (outcome {Kind:landed Text:report updated: reports/r.md — # Report
+--- FAIL: TestAReportCutAtTheLimitIsNotRehabilitatedByAWordlessTurn (0.04s)
+    standing_wordless_proof_test.go:42: cut then wordless: "unclosed-report", want output-limit
+--- FAIL: TestSilenceAfterAReportKeepsWhateverThatReportsOwnTurnSaid (0.00s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/session	0.123s
+FAIL
+--- unmutated 3cd9fe683:
+--- PASS: TestAReportCutAtTheLimitIsNotRehabilitatedByAWordlessTurn (0.03s)
+--- PASS: TestSilenceAfterAReportKeepsWhateverThatReportsOwnTurnSaid (0.00s)
+ok  	github.com/Agent-Field/aforge-v2/internal/session	0.115s

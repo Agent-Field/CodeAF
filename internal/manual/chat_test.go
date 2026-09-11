@@ -1993,6 +1993,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// cannot read the stop, and an answer that survives a crash.
 		{"can aforge still overwrite an edit I save to the report file", "standing-orders"},
 		{"standing show says withheld: stop-unknown", "standing-orders"},
+		{"my report was held back and the draft could not be kept", "standing-orders"},
 		{"if aforge is killed right after I answer from home is my answer lost", "home"},
 		{"edit a standing order after it is set up", "standing-orders"},
 		{"how do I make this permanent", "standing-orders"},
