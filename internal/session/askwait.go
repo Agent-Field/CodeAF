@@ -147,10 +147,22 @@ func (asked *askedOfThePerson) claimLocked(id uint64) (*askOpen, bool) {
 // IT IS THE BOUND ON THE ONE THING HERE THAT OUTLIVES BEING ANSWERED. A settled
 // entry is kept so `c change` can put the question back and say what it
 // replaced; kept forever, the book would grow for the life of a session with
-// every question ever answered in it. The number is the surface's own: at most
-// [tui3's questionRecordsKept] receipts are drawn at once and the key is live
-// only while the receipt is, so a handful more than can ever be on screen is
-// exactly enough to make every offer on the screen work and nothing more.
+// every question ever answered in it.
+//
+// THE CONSTRAINT IS WHAT MATTERS AND THE NUMBER FOLLOWS IT: this must be at
+// least as large as the most receipts any surface offers `c change` or `u undo`
+// on at once, or a key drawn on the screen would be refused by this book. In
+// tui3 that figure is `questionRecordsKept`, which is TWO — the two receipts
+// above the box, each live for about half a minute.
+//
+// It is four rather than two because this engine cannot see how many surfaces
+// are drawing it. A second window attached to the same conversation keeps
+// receipts of its own, and the `--host` link's window is a third; each one is
+// offering its own keys against this one book. Twice the figure of the only
+// surface anybody can count is slack bought cheaply — four entries — against a
+// refusal a person would read as the program forgetting what they just decided.
+// The floor is the sentence above; the doubling is the guess, and it is written
+// down as a guess so that raising the surface's figure is known to reach here.
 const askSettledKept = 4
 
 // forgetOldSettledLocked drops the oldest settled entries past that bound. Ids
