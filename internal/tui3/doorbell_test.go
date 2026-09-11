@@ -10,7 +10,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -137,24 +136,50 @@ func TestTheNewsReadersNeverWaitForTheLoop(t *testing.T) {
 		session.TellPhase(session.PhaseNews{Phase: "writing", Model: "a/b", Role: "talk", Detail: string(rune('a' + i%26))})
 		session.TellLane(session.LaneNews{Model: "a/b", Lane: "friendli", Role: "talk"})
 	}
-	// AND TWO THOUSAND POSTS OWE THE LOOP EXACTLY ONE FRAME. The desk already
-	// holds every one of them; a frame draws the desk, so one frame is all of it.
+	// AND THE NEWS REACHED THE DOOR, which is the other half of the law: a
+	// reader that never rang would also never have waited.
 	//
-	// THE RING IS WAITED FOR AND NOT ASSUMED, and that is a correction to the
-	// first cut of this test. `session.TellPhase` hands the news to a desk that
-	// delivers on a goroutine of its own (session's phasenews.go,
-	// `phaseDesk.tell`), so a post RETURNING is not the handler having run — and
-	// on a loaded box it had not: this read 0 owed frames during a laws run with
-	// twenty other packages compiling beside it. What the law is actually about
-	// is above this line and is unchanged: two thousand posts with nothing
-	// draining the door all returned, and a reader that waited would still be
-	// waiting. The slot holds one token at most by construction, so what is
-	// waited for here is that the door was rung at all.
-	for waited := 0; len(door.rung) == 0 && waited < 20000; waited++ {
-		runtime.Gosched()
+	// IT IS WAITED FOR BY TAKING THE TOKEN, not by polling the slot, and that is
+	// the second correction this test has needed. `session.TellPhase` hands the
+	// news to a desk that delivers on a goroutine of its own (session's
+	// phasenews.go, `phaseDesk.tell`), so a post RETURNING is not the handler
+	// having run. The first cut asserted the slot immediately and read 0 during a
+	// laws run; the second spun on [runtime.Gosched], which yields this goroutine
+	// but cannot make the scheduler run the desk's — with twenty packages
+	// compiling beside it, twenty thousand yields went by in microseconds and it
+	// read 0 again. A blocking receive waits for the event itself, however long
+	// the box takes to get round to it, so nothing here is a judgement about
+	// speed (PERF.md).
+	//
+	// HOW MANY FRAMES TWO THOUSAND POSTS OWE is the coalescing law and is asserted
+	// where it can be settled — [TestTwoThousandRingsOweOneFrame], on the door
+	// itself. It cannot be read off the slot here: the desk is still delivering
+	// while this line runs, so a slot found holding one token and a slot found
+	// empty are both correct, and which one is seen is a fact about the scheduler
+	// rather than about the door.
+	select {
+	case <-door.rung:
+	case <-time.After(time.Minute):
+		t.Fatal("two thousand posts never rang the door at all: the news readers are not reaching it")
+	}
+}
+
+// AND TWO THOUSAND RINGS OWE THE LOOP EXACTLY ONE FRAME. The desk already holds
+// every piece of news; a frame draws the desk, so one frame is all of it — which
+// is the whole reason the door has one slot and a ring into a full one is
+// dropped rather than queued.
+//
+// IT IS ASKED OF THE DOOR AND NOT OF THE READERS, so there is nothing to wait
+// for and nothing to be flaky about: every ring here has already happened by the
+// time the count is read.
+func TestTwoThousandRingsOweOneFrame(t *testing.T) {
+	door := newDoorbell(newsMsg{})
+	defer door.close()
+	for range 2000 {
+		door.ring()
 	}
 	if owed := len(door.rung); owed != 1 {
-		t.Fatalf("two thousand posts left %d frames owed, want exactly one", owed)
+		t.Fatalf("two thousand rings left %d frames owed, want exactly one", owed)
 	}
 }
 
