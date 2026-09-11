@@ -601,7 +601,7 @@ func bindSiblingTrees(text, trees, dir string) string {
 		}
 		into := dir
 		if under != "" {
-			into = filepath.Join(dir, under)
+			into = underCopy(dir, under)
 		}
 		text = replaceWholePath(text, alias.spelling, into)
 	}
