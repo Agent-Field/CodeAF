@@ -137,6 +137,11 @@ type callTrace struct {
 	// enters on its own context and gets its own — and the transport under it is
 	// sequential.
 	open *openAttempt
+	// conn is what the transport had to do to get the CURRENT attempt onto the
+	// wire — whether the pool already had a connection, and where the time went
+	// when it did not. It is replaced per attempt for [callTrace.attemptID]'s
+	// reason: a row about attempt two may not carry attempt one's handshake.
+	conn *connFacts
 	// body is the request as it was last encoded, kept ONLY when somebody
 	// asked for it: the old bodies pin, which puts it on the line of the
 	// model-call log, or the debug record, which is where bodies live now
@@ -475,6 +480,13 @@ func (c *Client) record(facts recordFacts) {
 	}
 	if facts.id != "" {
 		record.ID = facts.id
+	}
+	// WHAT THE CONNECTION ITSELF COST, on the row that ends the attempt it was
+	// measured on. It is stamped after the id is settled because the facts are
+	// filed under the attempt they belong to and a closing row is written about
+	// an attempt that has already been overtaken (see [recordFacts.id]).
+	if facts.phase != calllog.PhaseStart && facts.knobs.trace != nil {
+		facts.knobs.trace.stampConn(&record)
 	}
 	if facts.attempt == 0 && facts.knobs.trace != nil {
 		// A row about the whole call says how many times it went out; a row

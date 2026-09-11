@@ -372,11 +372,30 @@ type Frame struct {
 const (
 	// Agent — payloads are the method's own argument struct below; results are
 	// the return values likewise.
-	MethodSubmit          = "Submit"                 // SubmitArgs → StreamRef, then "event" frames
-	MethodSubmitImage     = "SubmitImage"            // SubmitImageArgs → StreamRef, then "event" frames
-	MethodSubmitFiles     = "SubmitFiles"            // SubmitFilesArgs → StreamRef, then "event" frames
-	MethodFollowUp        = "FollowUp"               // SubmitArgs → StreamRef, then "event" frames
-	MethodSteer           = "Steer"                  // SubmitArgs → StreamRef, then "event" frames
+	MethodSubmit      = "Submit"      // SubmitArgs → StreamRef, then "event" frames
+	MethodSubmitImage = "SubmitImage" // SubmitImageArgs → StreamRef, then "event" frames
+	MethodSubmitFiles = "SubmitFiles" // SubmitFilesArgs → StreamRef, then "event" frames
+	MethodFollowUp    = "FollowUp"    // SubmitArgs → StreamRef, then "event" frames
+	MethodSteer       = "Steer"       // SubmitArgs → StreamRef, then "event" frames
+	// MethodTyping is a person having started writing, and it is the only frame
+	// on this wire that nobody waits for ([Agent.Typing]).
+	//
+	// IT IS THE HALF THAT WAS MISSING FROM THE PROBE. internal/session's
+	// [session.Agent.Typing] buys a measurement of the two machines the next
+	// turn is most likely to use, and the second thing it buys is a WARM
+	// CONNECTION, so the real request's first token is not also paying for a
+	// handshake (internal/provider's probe.go says so in its own header). The
+	// surface asks for it through an optional interface, and until this door
+	// existed the assertion simply failed on the default road — which is every
+	// launch that is not `--no-host` — so the mechanism built to stop a
+	// think-pause costing a handshake was dead exactly where people run.
+	//
+	// IT RIDES VERSION 14 RATHER THAN MOVING THE NUMBER, under the rule stated
+	// on [Version]: an engine that does not know it answers "no such method",
+	// the surface drops the answer it was never waiting for, and what is lost is
+	// a pre-warm nobody can see. Nothing goes dark, so nothing is refused at the
+	// door.
+	MethodTyping          = "Typing"                 // nothing → nothing, and nothing waits
 	MethodStopWork        = "StopWork"               // nothing → nothing; stop this conversation, retaining history
 	MethodInterrupt       = "Interrupt"              // InterruptArgs, or nothing → nothing
 	MethodCompact         = "Compact"                // nothing → nothing (error carries the failure)

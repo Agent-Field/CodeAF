@@ -267,6 +267,37 @@ type Record struct {
 	// any row, because nothing wrote it.
 	RetryAfterS float64 `json:"retry_after,omitempty"`
 
+	// ── what the connection itself cost
+	//
+	// A COLD POOL AND A SLOW MODEL ARE INDISTINGUISHABLE IN `ttft_ms`, and
+	// separating them is what these four are for. The wait before the first
+	// token includes everything the transport had to do before a byte of the
+	// request left this machine: resolve the name, open the socket, finish the
+	// handshake. On a warm pool all three are zero and the whole of `ttft_ms`
+	// belongs to the endpoint; on a cold one a hundred to four hundred
+	// milliseconds of it is ours, and a census that could not see the
+	// difference read every think-pause as the model getting slower.
+	//
+	// They are written from `net/http/httptrace`, which costs nothing: the
+	// hooks fire on the transport's own goroutine and record instants.
+
+	// ConnReused is whether this attempt rode a connection the pool already
+	// had. It is the single most useful field of the four, and it is spelled
+	// as a bool rather than inferred from a zero handshake because "the pool
+	// was warm" and "nothing was measured" are different facts.
+	//
+	// FALSE IS WRITTEN OUT. The emptiness law leaves an unknown blank, and a
+	// cold connection is not unknown — it is the finding. So the row carries
+	// `conn_reused:false` where a fresh connection was opened, and carries the
+	// field not at all where no trace was taken (a probe, a document post).
+	ConnReused *bool `json:"conn_reused,omitempty"`
+	// DNSms, ConnectMs and TLSms are the three parts of opening one, in
+	// milliseconds, and every one of them is absent on a reused connection
+	// because none of them happened.
+	DNSms     int64 `json:"dns_ms,omitempty"`
+	ConnectMs int64 `json:"connect_ms,omitempty"`
+	TLSms     int64 `json:"tls_ms,omitempty"`
+
 	// ── why it waited, and what was done about it
 	//
 	// The four fields above say what was BELIEVED before the request went out.

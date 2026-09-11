@@ -2,32 +2,30 @@ package remote
 
 // ── THE ROAD IS CLASSED, NOT FREE-FOR-ALL ───────────────────────────────────
 //
-// callClass is which side of the road a method travels on, and it is THE ONE
-// PREDICATE that decides it: the engine's reader asks it whether [server.invoke]
-// may leave the reader goroutine, and nothing else in this package asks that
-// question anywhere else. A list sprinkled through the switch in
-// [server.invoke] would be a second answer waiting to disagree with this one,
-// and one method in the wrong place there is a keystroke queued behind a getter
-// — which is what this file was written for.
+// callClass is WHAT A METHOD OWES THE ONES AROUND IT, and it is THE ONE
+// PREDICATE that decides where the method runs: [server.serve] asks it and
+// nothing else in this package asks that question anywhere else. A list
+// sprinkled through the switch in [server.invoke] would be a second answer
+// waiting to disagree with this one, and one method in the wrong place there is
+// a keystroke queued behind a getter — which is what this file was written for.
 //
-// ORDERED stays on the reader, in the order the surface sent it: anything that
-// opens a stream or changes the conversation's shape. A stream's first event
-// cannot overtake the result that names it ([server.release] is one slot for
-// that reason), and a surface that sets a model and then submits means those
-// two things in that order (server.go's file header). Compact is the one that
-// pays for this — it does the work itself and holds the reader for as long as
-// the summarizer takes.
+// ORDERED is anything that opens a stream or changes the conversation's shape.
+// What it owes is an ORDER, twice over: a stream's first event may not overtake
+// the result that names it ([server.release] is one slot for that reason), and
+// a surface that sets a model and then submits means those two things in that
+// order (server.go's file header).
 //
 // A GETTER is a read. The surface asks half of them from its update loop, so
-// they cannot hold the reader (a listing that blocked a keystroke was the
-// measured defect) and they cannot wait longer than [callDeadline] (a terminal
-// that has stopped repainting).
+// they may not queue behind anything (a listing that blocked a keystroke was
+// the measured defect) and they may not wait longer than [callDeadline] (a
+// terminal that has stopped repainting).
 //
 // AN ACT is a person's small write — answering a card, taking the keyboard,
-// interrupting. It runs off the reader for the getter's reason, said the other
-// way round: a key is not queued behind a listing. It waits the same
-// [callDeadline] a getter does, and the note below the classes says why the
-// longer window it was given first had to come back out.
+// interrupting, saying they have started typing. It owes nothing to anything
+// for the getter's reason said the other way round: a key is not queued behind
+// a listing. It waits the same [callDeadline] a getter does, and the note below
+// the classes says why the longer window it was given first had to come back
+// out.
 //
 // AND LETTING EITHER OF THEM OVERTAKE AN ORDERED CALL COSTS NOTHING, which is
 // the whole licence for this split and is worth stating plainly: EVERY CALL ON
@@ -36,13 +34,37 @@ package remote
 // answer in hand before the second frame is written, so two calls whose order
 // matters were already ordered by the caller and cannot be reordered here; two
 // made from different goroutines were never ordered by anything, before this
-// change or after it. What the reader still owes is the order WITHIN one call —
-// the result frame before the first event of the stream it names — and that is
-// exactly what stays on it.
+// change or after it.
 //
 // A METHOD THIS FUNCTION HAS NOT HEARD OF IS ORDERED. A door that lands next
-// year stays on the reader until someone decides it is a getter or a small
-// act, which is the same allow-list shape [watcherMay] uses.
+// year keeps its place in the queue until someone decides it is a getter or a
+// small act, which is the same allow-list shape [watcherMay] uses.
+//
+// ── AND ORDERED NEVER MEANT "ON THE READER" ─────────────────────────────────
+//
+// That was the confusion this file carried until 2026-09-11, and it is why a
+// keystroke could sit behind a send. Running the ordered bodies on the
+// goroutine that reads the socket gave the order for free and took the READING
+// away with it: [MethodSubmit] alone rebinds the client, re-reads the person's
+// standing orders, reassembles the system prompt, journals the message and
+// starts the naming errand before it returns, and for all of that the engine
+// was not reading its own pipe. A person who pressed Enter and then Esc was
+// queued behind their own send. [MethodCompact] was the extreme case — it does
+// the summarizer's work itself — and it was described here as the price of
+// being ordered, which it never was.
+//
+// SO THE READER READS, AND NOTHING ELSE. Every class runs its body off it; what
+// a class chooses is WHICH goroutine ([callClass.road]). Ordered calls go to
+// the connection's one [orderedLane] — one goroutine, arrival order, which is
+// exactly the guarantee the reader was giving and is now given by the thing
+// that actually needs it. Getters and small acts owe each other nothing, so
+// each takes a goroutine of its own.
+//
+// AND THE ORDERED LANE IS THE ONLY OWNER OF [server.pending]. Every method that
+// names a stream is ordered, so the one slot is written and read by one
+// goroutine and needs no lock. A method that opened a stream from any other
+// class would be racing it, which is what [TestEveryStreamOpenerIsOrdered]
+// refuses.
 
 type callClass int
 
@@ -51,6 +73,31 @@ const (
 	classGetter
 	classAct
 )
+
+// road is WHERE a class of call runs, and this is the one place a class is
+// turned into a goroutine. [server.serve] switches on it and nothing else
+// decides it, so a method's road is a property of its class rather than a
+// branch at the site that happens to read the socket.
+//
+// NEITHER ROAD IS THE READER. That is the law of this file said as a type: the
+// goroutine that reads the socket has no third option to be given.
+type road int
+
+const (
+	// inOrder is the connection's one ordered lane: off the reader, and in the
+	// order the frames arrived (orderedlane.go).
+	inOrder road = iota
+	// onItsOwn is a goroutine per call. A getter and a small act owe nothing to
+	// each other, so neither owes a queue.
+	onItsOwn
+)
+
+func (c callClass) road() road {
+	if c == classOrdered {
+		return inOrder
+	}
+	return onItsOwn
+}
 
 // ── AND AN ACT DOES NOT GET A LONGER WINDOW THAN A GETTER ───────────────────
 //
@@ -103,13 +150,16 @@ func classify(method string) callClass {
 		MethodConsent, MethodConsentRemember,
 		MethodStandingResolve, MethodHarness, MethodConnect, MethodConnectKey,
 		MethodNoteConnected,
-		MethodTake, MethodAnswerLaneOffer, MethodInterrupt:
+		MethodTake, MethodAnswerLaneOffer, MethodInterrupt,
+		MethodTyping:
 		return classAct
 	default:
 		return classOrdered
 	}
 }
 
-// staysOnReader is [classify] as the engine's reader asks it: stream-opening
-// and shape-changing calls stay here; getters and small acts run off it.
-func staysOnReader(method string) bool { return classify(method) == classOrdered }
+// opensAStream reports whether calls of this class may name a stream, which is
+// the same question as "may they write [server.pending]". Exactly one class
+// may, one goroutine runs that class, and [server.dispatch] starts the pump for
+// exactly that one — which is the whole of why the slot needs no lock.
+func (c callClass) opensAStream() bool { return c == classOrdered }

@@ -4,28 +4,31 @@ package remote
 // answers frames about it. It is what `aforge engine` runs after it has changed
 // into the workspace and assembled an agent exactly the way `aforge chat` does.
 //
-// The shape is one reader and one writer, and everything else follows from it.
-// Calls that open a stream or change the conversation's shape still arrive and
-// are answered in the order the surface made them, on this goroutine
-// ([classify] is the one predicate). A surface that sets a model and then
-// submits a message means those two things in that order and nothing here may
-// reorder them. The one exception is a turn's events, which arrive on a
+// The shape is one reader, one writer, and one ORDERED LANE, and everything
+// else follows from it. Calls that open a stream or change the conversation's
+// shape still arrive and are answered in the order the surface made them — on
+// the lane, which is one goroutine that is not this one ([classify] is the one
+// predicate, orderedlane.go is the mechanism). A surface that sets a model and
+// then submits a message means those two things in that order and nothing here
+// may reorder them. The one exception is a turn's events, which arrive on a
 // channel the session owns and are pumped by a goroutine of their own — that
 // is the whole reason Submit answers with a stream id instead of a transcript.
 //
-// GETTERS AND SMALL ACTS RUN OFF THIS GOROUTINE. A listing that held the
-// reader used to queue a person's keystroke behind it until [callDeadline]
-// fired and the surface declared the connection gone, while the engine went
-// on to apply the key. That is the defect: a person's act is not queued
-// behind an unrelated getter.
+// NOTHING AT ALL RUNS ON THE READER. A listing that held it used to queue a
+// person's keystroke behind it until [callDeadline] fired and the surface
+// declared the connection gone, while the engine went on to apply the key; a
+// SEND held it for the whole of the engine's preamble and did the same thing to
+// every frame behind it. Both are the same defect — a person's act queued
+// behind work that had nothing to do with it — and the reader now does the one
+// job its name claims.
 //
-// ORDER IS WORTH MORE THAN OVERLAP for the calls that stay here, and the one
-// that pays for it is Compact: it is the only method that does the work itself
-// rather than starting it, so a compaction pass holds the reader for as long
-// as the summarizer takes and the ordered calls behind it wait. Handing Compact
-// a goroutine would buy a live status line during a compaction and cost the
-// guarantee that a /model followed by a message is a message on the new model
-// — a bad trade, and a bug nobody would reproduce twice.
+// ORDER IS WORTH MORE THAN OVERLAP for the calls on the lane, and the one that
+// pays for it is Compact: it is the only method that does the work itself
+// rather than starting it, so a compaction pass holds the lane for as long as
+// the summarizer takes and the ordered calls behind it wait. Handing Compact a
+// goroutine would buy nothing the reader does not already give — the status
+// line stays live because the socket stays read — and would cost the guarantee
+// that a /model followed by a message is a message on the new model.
 //
 // ── VERSION 2: THE CONVERSATION IS NOT THE CONNECTION ────────────────────────
 //
@@ -59,6 +62,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
@@ -1520,10 +1524,21 @@ type server struct {
 	joined string
 
 	// pending is the stream a call has just opened and dispatch has not yet let
-	// speak. It is one slot rather than a queue because only an ordered call
-	// opens a stream, and those stay on the reader, one at a time ([classify]).
+	// speak. It is one slot rather than a queue, and it needs no lock, because
+	// only an ORDERED call opens a stream and every ordered call on this
+	// connection runs on the one lane below, one at a time
+	// ([callClass.opensAStream]).
 	pending *pending
-	// side is every getter or small act this connection has handed off the
+	// ordered is that lane: every call that owes an order, in the order the
+	// surface sent it, on one goroutine that is not the reader.
+	//
+	// IT IS WHY A KEYSTROKE NO LONGER WAITS FOR A SEND. Everything the engine
+	// does between Submit and the first request leaving — the client rebind,
+	// the standing orders, the system prompt, the journal write, the naming
+	// errand — used to run on the reader, and every frame behind it on this
+	// socket waited for all of it (callclass.go's header).
+	ordered *orderedLane
+	// side is every getter and small act this connection has handed off the
 	// reader. The serve loop waits for it before leave, so a listing still
 	// running does not write into a session that has already been closed.
 	side sync.WaitGroup
@@ -1537,8 +1552,13 @@ type server struct {
 	// conversation itself is over. Neither set, and a reader that stops, is a
 	// TORN PIPE, whose meaning depends on whether anything is holding the
 	// conversation (see the bottom of [server.serve]).
-	detached bool
-	goodbye  bool
+	// They are atomics because they are decided on the ordered lane and read by
+	// the reader loop, which is the one place in this file where two goroutines
+	// look at the same fact. The reader's read is a HINT that lets it stop a
+	// frame early; the reading that matters is [server.leave]'s, and that one
+	// happens after the lane has drained.
+	detached atomic.Bool
+	goodbye  atomic.Bool
 }
 
 func (s *server) serve(in io.Reader) (err error) {
@@ -1573,22 +1593,40 @@ func (s *server) serve(in io.Reader) (err error) {
 		return nil
 	}
 
+	// THE ORDERED LANE IS OPENED WITH THE CONNECTION AND DRAINED BEFORE IT
+	// LEAVES. The drain is deferred here rather than at the top so that it runs
+	// BEFORE the leave the first defer registered — deferred calls run in
+	// reverse — which is what makes [server.leave] read a `detached` or a
+	// `goodbye` that was decided on the lane a moment ago.
+	s.ordered = newOrderedLane()
+	go s.ordered.run(s.dispatch)
+	defer func() {
+		s.ordered.close()
+		s.ordered.wait()
+	}()
+
 	for scan.Scan() {
 		frame, err := readCall(scan.Bytes())
 		if err != nil {
 			s.fatal(err.Error())
 			return err
 		}
-		if staysOnReader(frame.Method) {
-			s.dispatch(frame)
-		} else {
+		// WHERE A CALL RUNS IS ITS CLASS'S PROPERTY AND NOT A DECISION TAKEN
+		// HERE (callclass.go's [callClass.road]). This switch is the whole of
+		// the reader's part in it, so a method added next year travels the road
+		// its class names without anybody touching the loop that reads the
+		// socket.
+		switch classify(frame.Method).road() {
+		case inOrder:
+			s.ordered.hand(frame)
+		default:
 			s.side.Add(1)
 			go func(call Frame) {
 				defer s.side.Done()
 				s.dispatch(call)
 			}(frame)
 		}
-		if s.detached {
+		if s.detached.Load() {
 			// THE SURFACE SAID IT WAS GOING, and said so before it went, which
 			// is the fact version 1 could not express. The turn keeps running;
 			// this connection is simply over.
@@ -1640,7 +1678,7 @@ func (s *server) leave() {
 		return
 	}
 	sess.detach(s)
-	if s.goodbye {
+	if s.goodbye.Load() {
 		_ = sess.closeLeaving()
 		return
 	}
@@ -1805,10 +1843,10 @@ func (s *server) dispatch(call Frame) {
 	}
 	_ = s.send(result)
 	// And only now does a turn opened by that call begin to speak.
-	// GETTERS AND SMALL ACTS NEVER OPEN A STREAM, so they must not touch
-	// pending: two of them running at once would race the one slot, and one
-	// of them could steal a stream an ordered call had just named.
-	if staysOnReader(call.Method) {
+	// ONLY A TURN EVER OPENS A STREAM, so only a turn releases one: two calls
+	// of any other class running at once would race the one slot, and one of
+	// them could steal a stream a turn had just named ([callClass.opensAStream]).
+	if classify(call.Method).opensAStream() {
 		s.release()
 	}
 }
@@ -2168,6 +2206,22 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		// clock, so the engine contributes no timestamp and no machine-clock skew.
 		return nil, nil
 
+	case MethodTyping:
+		// SOMEBODY IS WRITING, WHICH IS THE CHEAPEST THING THIS ENGINE IS EVER
+		// TOLD. It buys a measurement of the machines the next turn will use and
+		// a connection already open when that turn goes out; it returns before
+		// anything is sent, spends nothing when the speed guard is off, and has
+		// its own budget inside (internal/session's lanenews.go). Nothing waits
+		// for the answer, so there is nothing to say back.
+		//
+		// AN ENGINE WHOSE AGENT CANNOT HEAR IT DOES NOTHING, rather than
+		// refusing: a door with nothing behind it is a capability that is ABSENT
+		// (the design law), and a task node's agent is deliberately silent here.
+		if door, ok := agent.(typingDoor); ok {
+			door.Typing()
+		}
+		return nil, nil
+
 	case MethodSubmit:
 		args, err := arg[SubmitArgs](call)
 		if err != nil {
@@ -2287,7 +2341,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		// here rather than at the hang-up that follows, which is the same work
 		// done a moment earlier and with somebody still listening for the
 		// failure.
-		s.goodbye = true
+		s.goodbye.Store(true)
 		return nil, sess.closeLeaving()
 
 	case MethodDetach:
@@ -2295,7 +2349,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		// Nothing is interrupted and nothing is closed; the reader loop sees
 		// this flag on its next pass and ends the connection, leaving the turn
 		// to finish (wire.go's MethodDetach states the whole case).
-		s.detached = true
+		s.detached.Store(true)
 		return nil, nil
 
 	case MethodHeldQuestions:
@@ -2659,8 +2713,8 @@ type pending struct {
 	events <-chan session.Event
 }
 
-// release starts whatever the call just opened. It runs on the reader
-// goroutine, after the result is on the wire, and it starts the pump even when
+// release starts whatever the call just opened. It runs on the ordered lane,
+// after the result is on the wire, and it starts the pump even when
 // that write failed: the channel has a session writing into it, and a channel
 // nobody drains is a turn that never finishes.
 //

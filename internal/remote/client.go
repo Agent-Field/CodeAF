@@ -146,6 +146,9 @@ type Client struct {
 	// collide even though both are uint64.
 	seq atomic.Uint64
 
+	// typing is the hush on the one frame nobody waits for (typing.go).
+	typing typingBeat
+
 	// newsHeard is set the first time a "phase" or "lane" frame arrives, and it
 	// is half of how [Client.NewsSilent] answers: an engine that has sent one
 	// has the news whether or not its welcome said so ([Welcome.News]).
@@ -957,6 +960,39 @@ func (c *Client) bury(cause error) {
 // call is one round trip: a frame out, a result back, or the class's deadline.
 func (c *Client) call(ctx context.Context, method string, args any) (json.RawMessage, error) {
 	return c.callWithin(ctx, method, args, callDeadline)
+}
+
+// notify is a frame with NOBODY WAITING FOR IT: it is written and forgotten,
+// and the engine's answer is dropped by [Client.deliver] the way it drops the
+// answer to any call that has given up.
+//
+// IT IS THE SHAPE FOR A HINT AND NOT FOR AN INSTRUCTION, and the difference is
+// worth stating because everything else on this wire is a round trip on
+// purpose. A call that is answered is how one end learns that the other end
+// agreed; a hint has nothing to agree to. [MethodTyping] is the whole of it
+// today — somebody is writing, which is true whether the engine acts on it or
+// not — and a door that needs to know it was heard must use [Client.call].
+//
+// AND IT NEVER BLOCKS AND NEVER FAILS. A hint sent onto a connection that is
+// dead, reconnecting, or simply slow is a hint the person will send again with
+// their next keystroke, so every one of those is silence rather than an error
+// somebody would have to decide what to do about.
+func (c *Client) notify(method string, args any) {
+	var payload json.RawMessage
+	if args != nil {
+		encoded, err := json.Marshal(args)
+		if err != nil {
+			return
+		}
+		payload = encoded
+	}
+	c.mu.Lock()
+	unusable := c.dead != nil || c.reconnecting
+	c.mu.Unlock()
+	if unusable {
+		return
+	}
+	_ = c.write(Frame{Kind: "call", ID: c.seq.Add(1), Method: method, Payload: payload})
 }
 
 func (c *Client) callWithin(ctx context.Context, method string, args any, deadline time.Duration) (json.RawMessage, error) {

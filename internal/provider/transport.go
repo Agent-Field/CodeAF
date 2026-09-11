@@ -35,6 +35,51 @@ const (
 	streamIdleTimeout     = 2 * time.Minute
 )
 
+// ── THE POOL'S OWN TABLE: ONE VALUE, ONE REASON ─────────────────────────────
+//
+// EVERY NUMBER HERE IS THIS BUILD'S ANSWER AND NOT THE STANDARD LIBRARY'S.
+// `http.DefaultTransport` is a sensible default for a program nobody measured;
+// it was measured here, and one of its answers was costing a person a TLS
+// handshake every time they stopped to read. A value inherited silently is a
+// decision nobody took, so each of the four below is set on purpose and says
+// why, and [TestTheSharedTransportStatesEveryValueItRelieson] fails the build
+// if one of them goes back to being inherited.
+//
+//   - idleConnTimeout is how long THIS END keeps a connection nobody is using.
+//     The default is ninety seconds, which is shorter than a person reads for.
+//     Someone who takes two minutes over an answer and then types again found
+//     an empty pool and paid DNS, TCP and TLS — a hundred to four hundred
+//     milliseconds — inside the next request's own `httpClient.Do`, invisibly,
+//     because `ttft_ms` cannot tell a handshake from a slow model (conntrace.go
+//     is what tells them apart now). The figure below is not a guess: the far
+//     end's own idle window is the real bound, and it was measured against the
+//     live router on 2026-09-11 by holding connections idle for 30 s, 2, 5, 10
+//     and 15 minutes and asking `httptrace` whether the next request rode the
+//     same socket. THE MEASUREMENT IS RECORDED IN docs/changes/unreleased.
+//     Ours sits under it, because a socket this end believes in and the far end
+//     has already closed is a request that fails and is sent again — the
+//     expensive way to discover the same thing.
+//   - forceAttemptHTTP2 is why a warm pool is cheap at all against the router:
+//     one connection carries every request this process makes, so the pool that
+//     matters is one socket rather than [limiterCeiling] of them. It is on in
+//     the standard library's default and off in a transport somebody built by
+//     hand, which is exactly the accident this states out loud.
+//   - tlsHandshakeTimeout bounds the part of a cold connection this file exists
+//     to stop paying for. Ten seconds is the standard library's figure and it
+//     is far too long for a handshake that is going to work: a router lane that
+//     has not finished one in this long is a path to somewhere else, and the
+//     ladder above has somewhere else to go (dispatch.go).
+//   - expectContinueTimeout is stated to say that it never applies: nothing in
+//     this package sends `Expect: 100-continue`, so the wait it bounds is a
+//     wait no request of ours takes. It is kept at a second rather than
+//     disabled because a zero here means "wait forever" for the one request
+//     that might one day carry the header through a proxy at AFORGE_BASE_URL.
+const (
+	idleConnTimeout       = 4 * time.Minute
+	tlsHandshakeTimeout   = 10 * time.Second
+	expectContinueTimeout = time.Second
+)
+
 var (
 	transportOnce sync.Once
 	shared        *http.Transport
@@ -59,6 +104,14 @@ func buildTransports() {
 	if shared.MaxIdleConns < 2*limiterCeiling {
 		shared.MaxIdleConns = 2 * limiterCeiling
 	}
+	// And the four the table above states. They are assigned here rather than
+	// left to the clone so that a base transport somebody replaces — the
+	// process-global this function is careful about above — cannot quietly
+	// change any of them.
+	shared.IdleConnTimeout = idleConnTimeout
+	shared.ForceAttemptHTTP2 = true
+	shared.TLSHandshakeTimeout = tlsHandshakeTimeout
+	shared.ExpectContinueTimeout = expectContinueTimeout
 
 	streaming = shared.Clone()
 	streaming.ResponseHeaderTimeout = responseHeaderTimeout
