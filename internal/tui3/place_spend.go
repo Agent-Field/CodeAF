@@ -808,14 +808,19 @@ const (
 // surface advertising a key that does nothing.
 func (placeSpend) hint(a *app) string {
 	var parts []string
-	parts = append(parts, a.spend.lens.word()+" · "+spendLensWord)
-	if a.spend.lens == spendLensModels {
-		parts = append(parts, spendGroupKeyWord, spendSortKeyWord)
-	}
-	if a.spend.lens == spendLensDays {
-		parts = append(parts, spendSortKeyWord)
-		if stop := a.spendStopAt(a.spend.cursor); stop.day.USD > 0 {
-			parts = append(parts, "enter opens that day")
+	// AN EMPTY MACHINE HAS NO LENS TO CYCLE. The foot used to name `[ ] lenses`
+	// over a whisper with nothing behind it, which advertised a key that moved
+	// nothing a person could see.
+	if a.spend.held || !a.spend.reading.empty() {
+		parts = append(parts, a.spend.lens.word()+" · "+spendLensWord)
+		if a.spend.lens == spendLensModels {
+			parts = append(parts, spendGroupKeyWord, spendSortKeyWord)
+		}
+		if a.spend.lens == spendLensDays {
+			parts = append(parts, spendSortKeyWord)
+			if stop := a.spendStopAt(a.spend.cursor); stop.day.USD > 0 {
+				parts = append(parts, "enter opens that day")
+			}
 		}
 	}
 	if stop := a.spendStopAt(a.spend.cursor); stop.fold {
