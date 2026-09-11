@@ -145,7 +145,13 @@ def main():
                 print(f"  run {i+1}: no answered call in the log (record {record})"); failed += 1; continue
             r = answered[-1]
             served = r["served"]; asked = r.get("lane")
-            tokens = r.get("completion_tokens") or 300
+            if not r.get("completion_tokens"):
+                # No usage on the row means no answer length, and a felt wait
+                # cannot be compared with a lane's rate without one. Say so
+                # rather than judge on a number that was never measured.
+                print(f"  run {i+1}: not judged (no usage on the answered call) asked={asked} served={served} ttft={r.get('ttft_ms')}ms ms={r.get('ms')} calls={len(calls)}")
+                continue
+            tokens = r["completion_tokens"]
             # The felt wait for THIS run's own answer length: what the person sat
             # through, against what the best probed lane would have taken for the
             # same length. Every token counts as waited-for (a reasoning model's
