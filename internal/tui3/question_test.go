@@ -274,7 +274,7 @@ func TestEscIsLaterAndCancelsNothing(t *testing.T) {
 	if lab.a.questionCount() != 1 {
 		t.Fatalf("the folded question stopped being counted: %d", lab.a.questionCount())
 	}
-	if seg := lab.a.questionSegment(); !strings.Contains(seg, "1 question") {
+	if seg := lab.a.questionSegment(); !strings.Contains(seg, "allow this?") {
 		t.Fatalf("the chip does not carry the folded question: %q", seg)
 	}
 	lab.a.raiseFolded()

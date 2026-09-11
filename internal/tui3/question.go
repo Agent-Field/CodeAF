@@ -3785,7 +3785,8 @@ func (a *app) questionRowMark(i int) chromeRow {
 
 // ── the chip ────────────────────────────────────────────────────────────────
 
-// questionSegment is the status line's chip: `? 3 questions · alt+a`.
+// questionSegment is the status line's chip: `? allow this? · alt+a`, and
+// `? 3 questions · alt+a` when there is more than one.
 //
 // IT IS REACHABLE FROM EVERY PAGE, which is the whole reason it is on the
 // status row rather than in the block: the block is above the box in a
@@ -3793,18 +3794,54 @@ func (a *app) questionRowMark(i int) chromeRow {
 // has no block to look at. The chip is the one thing that is always there while
 // anything is waiting.
 //
+// IT CARRIES THE QUESTION'S OWN WORDS (owner ruling 2026-09-11). `1 question`
+// says that something is waiting and nothing about whether it is worth crossing
+// the room for; the head says which decision is parked, and a person who can
+// read it from the status row does not have to open anything to know.
+//
+// AND IT NEVER COUNTS A LINE THAT IS NOT WAITING. A ratify line is a statement
+// about something already done ([questionWaits]); counting it put a number on
+// the status row that no key could clear.
+//
 // THE EMPTINESS LAW. Nothing open is nothing drawn — never `0 questions`.
 func (a *app) questionSegment() string {
-	count := a.questionCount()
+	count := a.questionWaitingCount() + a.sheetOpen()
 	if count == 0 {
 		return ""
 	}
-	word := " questions"
-	if count == 1 {
-		word = " question"
+	mark := a.icon(tokens.GNeedsHuman) + " "
+	if count > 1 {
+		return mark + itoa(count) + " questions · " + questionChipKey
 	}
-	return a.icon(tokens.GNeedsHuman) + " " + itoa(count) + word + " · " + questionChipKey
+	if head := a.questionChipWords(); head != "" {
+		return mark + head + " · " + questionChipKey
+	}
+	return mark + "1 question · " + questionChipKey
 }
+
+// questionChipWords is the head the chip carries, cut to what a status segment
+// may spend. It is the NEWEST waiting question's, which is the one the chip's
+// own key raises ([app.raiseFolded]) — a chip naming one question and opening
+// another would be worse than a chip naming none.
+func (a *app) questionChipWords() string {
+	for i := len(a.questions) - 1; i >= 0; i-- {
+		if !questionWaits(a.questions[i].question) {
+			continue
+		}
+		head := strings.TrimSpace(a.questions[i].question.Head)
+		if head == "" {
+			return ""
+		}
+		return fit(head, questionChipWordsMax)
+	}
+	return ""
+}
+
+// questionChipWordsMax is how many cells of the head the chip may spend. It is
+// the width of the longest thing the status row carries beside it, measured
+// rather than chosen: past this the segment pushes the clock and the spend off
+// their own row, and the status line's segments each own their width.
+const questionChipWordsMax = 34
 
 // questionChipKeyPress is [questionChipKey] from wherever a person is standing:
 // it brings the newest open question back above the box, and takes them to the

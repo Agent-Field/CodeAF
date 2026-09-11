@@ -398,7 +398,7 @@ func TestEscapeIsLaterOnAnApprovalQuestionAndAnswersNothing(t *testing.T) {
 	if !a.asking() {
 		t.Fatal("esc took the question off the block instead of folding it")
 	}
-	if got := plain(frame(a)); !strings.Contains(got, "1 question · "+questionChipKey) {
+	if got := plain(frame(a)); !strings.Contains(got, "needs your ok to run edit · "+questionChipKey) {
 		t.Fatalf("the folded question is not counted on the chip:\n%s", got)
 	}
 	// And the chip brings it back.

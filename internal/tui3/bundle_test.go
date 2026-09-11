@@ -3343,7 +3343,7 @@ func TestEscFoldsTheProposalRatherThanDecliningItOrTheTurn(t *testing.T) {
 	if strings.Contains(taskAsk(a), "1  start it") {
 		t.Fatalf("the folded question is still drawing its answers:\n%s", taskAsk(a))
 	}
-	if seg := plain(a.questionSegment()); !strings.Contains(seg, "1 question") {
+	if seg := plain(a.questionSegment()); !strings.Contains(seg, "wants to start a task") {
 		t.Fatalf("the chip does not carry the folded question: %q", seg)
 	}
 	// And the decline is the digit the row draws.
