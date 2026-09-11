@@ -508,7 +508,7 @@ func openChatV3Host(launch hostLaunch) error {
 		return &engineConn{client: beside.client, shut: beside.close}, nil
 	})
 	defer fleet.closeAll()
-	options := hostOptions(fleet, welcome, launch.pick)
+	options, _ := hostOptions(fleet, welcome, launch.pick)
 	// THE SAME WAY THE SURFACE IS RUN AT EVERY OTHER DOOR (chatv3_surface.go):
 	// the byte meter and the logger redirect are the terminal's business rather
 	// than this connection's, and a door does not state them for itself.
@@ -576,7 +576,7 @@ func correctHostChoices(agent *remote.Agent, launch hostLaunch, welcome remote.W
 // The boot connection is still where every reading about the MACHINE goes; what
 // the fleet adds is the pair of seams that open a conversation BESIDE this one,
 // each on a connection of its own (chatv3_beside.go).
-func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) tui3.Options {
+func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Options, config.Config) {
 	client, agent, dest := fleet.client(), fleet.agent(), fleet.dest
 	// THE PICKER'S LIST IS RESOLVED WITHOUT CREDENTIALS. The catalog is opened
 	// with whatever this machine happens to have — usually nothing, because the
@@ -732,6 +732,10 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) tui3.Opt
 		Link: hostLink(seams),
 		// ── WHAT IS DELIBERATELY NOT WIRED ──────────────────────────────────
 		//
+		// These absences belong to --host and --at. The linked-local road uses
+		// this builder too, then [localDoors] in chatv3_local.go puts back the
+		// stores whose engine and surface are on this same machine.
+		//
 		// Connections: the accounts panel signs in through a browser HERE and
 		// stores the result HERE, while the session reads the store THERE. A
 		// panel wired to this machine's manager would offer rows that landed in
@@ -760,6 +764,12 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) tui3.Opt
 		// model a local conversation starts on because somebody switched models on
 		// a remote one. The switch itself still takes — it goes over the wire like
 		// everything else — it simply does not outlive the session.
+		//
+		// Sources and ApplyModelSources: the model-service profile belongs to the
+		// engine's machine too. A far surface must neither draw this laptop's
+		// services nor write one here and claim the engine can use it. The local
+		// road hands its resolved set to the surface, while the engine re-reads
+		// that same profile through the existing model-set call.
 		//
 		// AND THE FILE DOOR IS NOT A SEAM HERE EITHER, which is worth saying
 		// because it looks like an omission and is not. Remote files — the links
@@ -821,7 +831,7 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) tui3.Opt
 			}
 			return agent, next.SessionFile, nil
 		}
-		return options
+		return options, settings
 	}
 	// AND A DOOR THAT CAN GETS THE WHOLE SEAM AND NOT THE OLDER HALF OF IT.
 	// [tui3.Options.Start] and [tui3.Options.Open] hand back a conversation with
@@ -830,7 +840,7 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) tui3.Opt
 	// there is exactly one door and no road on which a swap can still happen.
 	options.Start = fleet.start
 	options.Open = fleet.open
-	return options
+	return options, settings
 }
 
 // ── what the engine says about the room ─────────────────────────────────────

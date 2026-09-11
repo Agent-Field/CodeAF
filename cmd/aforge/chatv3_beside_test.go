@@ -238,7 +238,7 @@ func besideFleet(t *testing.T, far *farMachine) *engineFleet {
 func besideDoor(t *testing.T, far *farMachine) (tui3.Options, *engineFleet, func()) {
 	t.Helper()
 	fleet := besideFleet(t, far)
-	options := hostOptions(fleet, fleet.client().Welcome(), false)
+	options, _ := hostOptions(fleet, fleet.client().Welcome(), false)
 	return options, fleet, fleet.closeAll
 }
 

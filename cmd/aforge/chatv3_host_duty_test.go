@@ -256,7 +256,7 @@ func TestTheHostDoorPrimesItsReadingsWithoutAFault(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	logged := faultLog(t)
 	client := hostedClient(t)
-	options := hostOptions(onePipeFleet("devbox", client), client.Welcome(), false)
+	options, _ := hostOptions(onePipeFleet("devbox", client), client.Welcome(), false)
 	if options.World == nil || options.Ledger == nil {
 		t.Fatal("the door handed over no world or ledger seam")
 	}
