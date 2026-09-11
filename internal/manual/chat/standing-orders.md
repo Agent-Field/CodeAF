@@ -831,7 +831,9 @@ the chat changes the work that stands instead of setting up another beside it: `
 with `op: edit`, the item's id (or your words for it) and only what changes. It is the
 change `aforge standing edit` makes, through the same store: a new version of the SAME
 item, which keeps what it has read and the report it publishes. The card leads with
-what changes and writes each changed line old → new; every other line is drawn as it is:
+what changes and writes each changed line old → new (a long one from a few words before
+the change, so a change past the end of the line still shows); every other line is drawn
+as it is:
 
 ```
 changes · instructions — the same work; what it has read and published stays

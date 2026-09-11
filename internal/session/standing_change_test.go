@@ -407,3 +407,41 @@ func TestAnEditCardSaysTheOldAndTheNewAndKeepsTheRest(t *testing.T) {
 		t.Fatalf("a declined edit changed the work: %+v", after.When)
 	}
 }
+
+// TestAnEditCardShowsAChangePastTheClip is the live lifecycle run of
+// 2026-09-11 (W5-A, run 1): "also list who owns each request" appended a
+// sentence to instructions longer than a card line, both versions clipped to
+// the same first 160 characters, and the card said `changes · instructions`
+// over one unchanged `does ·` line — a yes asked for on a change nobody could
+// see. The line now starts where the two texts begin to differ.
+func TestAnEditCardShowsAChangePastTheClip(t *testing.T) {
+	long := "Read anything new in inbox/ (files whose modification time is after the last digest's mtime or after this task's first run if there is no digest yet). For each new file, add one line to the digest."
+	d := newChatDoor(t, &scriptedCompleter{steps: []step{
+		standCall("s1", inboxWork(map[string]any{"does": map[string]any{"instructions": long}})),
+		finalText("set up"),
+	}}, nil)
+	d.proposeInbox(t, d.yes)
+	item := d.only(t)
+	edit, _ := json.Marshal(map[string]any{"op": "edit", "id": item.ID, "does": map[string]any{"instructions": strings.Replace(long, "add one line", "add one line naming who owns each request", 1)}})
+	d.agent.client = &scriptedCompleter{steps: []step{standCall("s2", string(edit)), finalText("changed")}}
+	var card *StandingNotice
+	d.submitAnswering(t, "also list who owns each request", func(event Event) {
+		card = event.Standing
+		d.agent.ResolveStanding(event.Standing.ID, StandingAnswer{})
+	})
+	if card == nil {
+		t.Fatal("no card was drawn")
+	}
+	var does string
+	for _, term := range card.Terms {
+		if strings.HasPrefix(term, standingDoesTag) {
+			does = term
+		}
+	}
+	if !strings.Contains(does, " → ") || !strings.Contains(does, "who owns each request") {
+		t.Fatalf("the does line hides the change: %q", does)
+	}
+	if want := "does · …add one line to the digest. → …add one line naming who owns each request to the digest."; does != want {
+		t.Fatalf("the does line reads\n%q, want\n%q", does, want)
+	}
+}
