@@ -54,8 +54,11 @@ package session
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -68,7 +71,8 @@ import (
 // The two refusals this file makes, and both are about the CALLER rather than
 // about the disk: a key the question does not take, and a session with no
 // folder to leave anything in. Everything that can go wrong with the file
-// system is dropped in silence instead (see [Agent.drainAnswers]).
+// system leaves the doorstep for the next beat instead, and says nothing to
+// the person (see [Agent.drainAnswers]).
 var (
 	errUnknownAnswer   = errors.New("session: that question does not take that answer")
 	errNoSessionFolder = errors.New("session: that conversation has no folder to answer into")
@@ -622,6 +626,12 @@ type Answer struct {
 	// the person taking the work over rather than by an answer to it. It is
 	// meaningful on [QuestionSubharnessAsk] alone.
 	TakingOver bool `json:"takingOver,omitempty"`
+	// Delivery names this one leaving of an answer on a doorstep, minted by
+	// the window that left it ([deliverAnswer]). It is what the session's
+	// record keeps the answer under, so a drain replayed after a crash can
+	// tell an answer it already took from a new one ([DrainAnswers]). A line
+	// written before it existed is named by its own bytes ([readAnswers]).
+	Delivery string `json:"delivery,omitempty"`
 }
 
 // Keys is what was picked, however the answer spelled it: [Answer.Picked] where
@@ -709,6 +719,9 @@ func deliverAnswer(sessionDir string, answer Answer) error {
 	if dir == "" {
 		return errNoSessionFolder
 	}
+	if strings.TrimSpace(answer.Delivery) == "" {
+		answer.Delivery = NewSessionID()
+	}
 	line, err := json.Marshal(answer)
 	if err != nil {
 		return err
@@ -732,19 +745,62 @@ func deliverAnswer(sessionDir string, answer Answer) error {
 // and only then removes them. A folder with nothing on its doorstep is an empty
 // slice and no error, which is the ordinary case on every beat of every session
 // that was never answered from anywhere. A nil apply only reads and consumes.
+// Every answer apply refused comes back in the error, named, so a refusal is
+// never dropped where nobody can see it.
 //
 // THE RENAME IS THE READ'S OWN LOCK, and it is the whole of the concurrency
 // story here: whoever wins the rename owns those lines, and a write racing it
 // lands in a fresh file the next beat drains.
 //
-// AND THE FILE GOES ONLY AFTER THE ANSWERS ARE APPLIED (the scale audit's law
-// L3, finding F2). It used to be removed on the way out of the read, before a
-// single answer reached its lane, and a staged file left by a process killed
-// in between was never read again. Every staged file is read again now, and a
-// second application is harmless by construction: an answer is keyed by the
-// question it answers, and a question nobody is waiting on — including one
-// already answered — falls through its resolver untouched ([Agent.applyAnswer]).
-func DrainAnswers(sessionDir string, apply func(Answer)) ([]Answer, error) {
+// This is the drain with NO RECORD to keep answers in — a caller that only
+// reads, or a session with no journal. A live session drains through its
+// journal instead ([Agent.drainAnswers]), which is what makes an answer
+// survive a crash.
+func DrainAnswers(sessionDir string, apply func(Answer) error) ([]Answer, error) {
+	return drainAnswersInto(sessionDir, apply, nil)
+}
+
+// answerRecord is where a drain keeps what it did with each answer before the
+// doorstep is cleared — the session's journal ([Agent.drainAnswers]).
+type answerRecord struct {
+	// holds answers whether the record already has this delivery: a drain
+	// replayed after a crash between the record and the removal.
+	holds func(delivery string) bool
+	// keep writes what became of one answer — taken, or refused and why —
+	// and answers whether the line reached the record.
+	keep func(answer Answer, refused error) bool
+	// durable makes what keep wrote survive a power cut, and answers whether
+	// it did.
+	durable func() error
+}
+
+// errAnswerNotRecorded is a drain that could not write an answer's line into
+// the session's record; its doorstep is left for the next beat.
+var errAnswerNotRecorded = errors.New("session: an answer could not be written into the conversation's record")
+
+// drainAnswersInto is the drain, with or without a record to keep answers in.
+//
+// ── THE DOORSTEP IS CLEARED ONLY AFTER THE RECORD IS DURABLE (law L3) ──
+//
+// It used to be cleared the moment every answer had been handed to its lane,
+// whatever the lane did with it and whether anything had written it down (the
+// third review, B3). A lane's hand-off is a channel in memory, so a process
+// that died between the hand-off and the lane's own effect lost the answer
+// with the doorstep already gone. It is the inbox's law now, applied exactly
+// ([Agent.drainStandingInbox]): each answer is recorded under its delivery id,
+// the record is synced, and only then is the doorstep removed. A process killed
+// before the record leaves the doorstep for the next life, which applies the
+// answer to whatever is waiting on it then; one killed after the record and
+// before the removal leaves a doorstep whose every answer the record already
+// holds, and those are skipped by their ids rather than handed over twice. A
+// record that cannot be written or synced clears nothing, and says so.
+//
+// IT IS STILL NOT EXACTLY ONCE, and does not claim to be. An answer applied
+// and then lost with an unsynced record is applied again in the next life if
+// something is waiting on it there; that is the direction this must fail in.
+// And nothing here makes a lane's own effect durable: a lane that acted on the
+// answer before the crash has acted.
+func drainAnswersInto(sessionDir string, apply func(Answer) error, record *answerRecord) ([]Answer, error) {
 	path := AnswersPath(sessionDir)
 	if strings.TrimSpace(sessionDir) == "" {
 		return nil, nil
@@ -757,24 +813,57 @@ func DrainAnswers(sessionDir string, apply func(Answer)) ([]Answer, error) {
 		return nil, err
 	}
 	sort.Strings(staged)
-	var answers []Answer
+	var read []Answer
 	for _, file := range staged {
-		read, err := readAnswers(file)
+		answers, err := readAnswers(file)
 		if err != nil {
-			return answers, err
+			return nil, err
 		}
-		answers = append(answers, read...)
+		read = append(read, answers...)
 	}
-	sort.SliceStable(answers, func(a, b int) bool { return answers[a].At.Before(answers[b].At) })
-	if apply != nil {
-		for _, answer := range answers {
-			apply(answer)
+	sort.SliceStable(read, func(a, b int) bool { return read[a].At.Before(read[b].At) })
+	var (
+		taken    []Answer
+		problems []error
+		kept     = true
+		seen     = map[string]bool{}
+	)
+	for _, answer := range read {
+		// The same line in two staged files — a crash between two renames —
+		// is one answer.
+		if seen[answer.Delivery] {
+			continue
+		}
+		seen[answer.Delivery] = true
+		if record != nil && record.holds(answer.Delivery) {
+			continue
+		}
+		var refused error
+		if apply != nil {
+			refused = apply(answer)
+		}
+		if refused != nil {
+			problems = append(problems, fmt.Errorf("the %s answer to %s was not taken: %w", answer.Kind, answerToken(answer), refused))
+		}
+		if record != nil && !record.keep(answer, refused) {
+			kept = false
+		}
+		taken = append(taken, answer)
+	}
+	if record != nil {
+		if !kept {
+			return taken, errors.Join(append(problems, errAnswerNotRecorded)...)
+		}
+		if err := record.durable(); err != nil {
+			return taken, errors.Join(append(problems, err)...)
 		}
 	}
 	for _, file := range staged {
-		_ = os.Remove(file)
+		if err := os.Remove(file); err != nil && !os.IsNotExist(err) {
+			problems = append(problems, err)
+		}
 	}
-	return answers, nil
+	return taken, errors.Join(problems...)
 }
 
 // readAnswers reads one staged answers file.
@@ -799,6 +888,13 @@ func readAnswers(path string) ([]Answer, error) {
 			// answered and nobody left to tell.
 			continue
 		}
+		if strings.TrimSpace(answer.Delivery) == "" {
+			// A line from before delivery ids: its own bytes are the one
+			// thing that names it the same way on every read, as an inbox
+			// note from before ids is named (internal/standing's inbox.go).
+			sum := sha256.Sum256(raw)
+			answer.Delivery = "line-" + hex.EncodeToString(sum[:8])
+		}
 		answers = append(answers, answer)
 	}
 	return answers, scanner.Err()
@@ -815,32 +911,56 @@ func readAnswers(path string) ([]Answer, error) {
 // folder — a memory-only conversation, a task node — has no presence and
 // therefore no doorstep either.
 //
-// EVERY FAILURE IS SILENCE, as every other write in that file is. A session
-// must not stall or say anything because a directory would not answer; the
-// answer is simply not applied, and the person's window still has the question
-// on it.
+// EVERY ANSWER IS RECORDED IN THE JOURNAL BEFORE THE DOORSTEP IS CLEARED, taken
+// or refused ([drainAnswersInto] for the law, [journalAnswer] for the line). A
+// refusal is not dropped: its reason is in the record beside the answer, where
+// the conversation's own reader finds it. What stays silent is the session:
+// a session must not stall or say anything to the person because a directory
+// would not answer, so a drain that could not record simply leaves the doorstep
+// for the next beat, and the person's window still has the question on it.
+//
+// A SESSION WITH NO JOURNAL HAS NO RECORD TO KEEP AN ANSWER IN, and consumes
+// on application, as every session did before the record existed.
 func (a *Agent) drainAnswers() {
 	dir := strings.TrimSpace(a.config.Place.Dir)
 	if dir == "" {
 		return
 	}
-	_, _ = DrainAnswers(dir, a.applyAnswer)
+	a.mu.Lock()
+	file := a.file
+	a.mu.Unlock()
+	if file == nil {
+		_, _ = DrainAnswers(dir, a.applyAnswer)
+		return
+	}
+	_, _ = drainAnswersInto(dir, a.applyAnswer, &answerRecord{
+		holds: func(delivery string) bool { return file.recorded(answerDeliveryID(delivery)) },
+		keep: func(answer Answer, refused error) bool {
+			return file.appendAnswer(journalAnswerOf(answer, refused))
+		},
+		durable: file.sync,
+	})
+}
+
+// answerDeliveryID is the durable delivery id one answer is recorded under.
+func answerDeliveryID(delivery string) deliveryID {
+	return deliveryID("answer:" + delivery)
 }
 
 // applyAnswer hands one answer to the lane it belongs to, THROUGH THE SAME
-// RESOLVER A SURFACE USES (the first law in this file's header). An id nobody is
-// waiting on falls through those resolvers untouched, which is what makes a
-// stale answer a no-op rather than a special case here.
-func (a *Agent) applyAnswer(answer Answer) {
+// RESOLVER A SURFACE USES (the first law in this file's header), and answers
+// what that resolver said. An id nobody is waiting on falls through those
+// resolvers untouched, which is what makes a stale answer a no-op rather than a
+// special case here.
+func (a *Agent) applyAnswer(answer Answer) error {
 	// AND IT GOES THROUGH THE ONE DOOR, which is what keeps that law literally
 	// true rather than nearly true. [Agent.ResolveQuestion] is the only thing
 	// in this package that knows which resolver a lane's answer belongs to;
 	// this file used to be a second, shorter copy of that knowledge, covering
 	// three lanes of the eleven. An answer for a lane the door does not take
-	// comes back with a refusal and is dropped here, because a file on a
-	// doorstep has nobody left to tell.
+	// comes back with a refusal, and the drain records it.
 	if answer.From == "" {
 		answer.From = answerFromHome
 	}
-	_ = a.ResolveQuestion(answer)
+	return a.ResolveQuestion(answer)
 }

@@ -202,7 +202,7 @@ The round-2 review of `c7ec2566f` judged the four second-review fixes credible a
   - Outcomes: `stopped` or `cut-off`. A stop after the write leaves the report and sends no note (`stopped while it ran: its report was published before the stop`).
 - **Compare-and-swap.** Before the rename, the target is compared with the sha256 of the item's last publication to that path (`Store.LastPublication`, newest first).
   - It is replaced only if unchanged, or absent.
-  - A changed file, or one there before aforge's first publication, is never written over. The draft goes to `held-report.md` in the run folder, and the run comes to `needs-you` with the new code `report-changed`: `report held back, not published: … Move your copy aside to let the next run publish`.
+  - A changed file, or one there before aforge's first publication, is not written over (round 3b corrected this claim: a first publication is now a create that refuses a taken name, and a replacement keeps a microseconds window between its compare and its rename; see BUILD-ROUND-3B.md). The draft goes to `held-report.md` in the run folder, and the run comes to `needs-you` with the new code `report-changed`: `report held back, not published: … Move your copy aside to let the next run publish`.
   - The remaining window is the instant between the compare and the rename. A person's editor takes no lock aforge can share.
 
 **Scale audit.**

@@ -199,6 +199,10 @@ func (a *Agent) armServed(ctx context.Context, service connectStatus, connected,
 			strings.Join(append(unreadable, doubled...), ", ") +
 			". Do the work without it and say so plainly."
 	}
+	// AND WORK WITH NOBODY TO ASK GETS ONLY WHAT IT IS GRANTED ([Agent.grantedOnly]).
+	if tools = a.grantedOnly(tools); len(tools) == 0 {
+		return connected + ungrantedFamily
+	}
 	armed, err := a.armFamily(tools)
 	if err != nil {
 		return connected + ", but its tools could not be loaded: " + err.Error()

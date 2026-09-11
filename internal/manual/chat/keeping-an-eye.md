@@ -928,8 +928,9 @@ happened. If it was not, it went to whichever chat of that project you did have
 open; and if none was, the news waited, and the next time you open a conversation
 there it is folded into **one** note that begins `while you were away` — one line
 per thing, with when, your own words, what happened, and the run folder to open
-for the whole story. Two hours away with nothing to report is nothing at all:
-silence is the design. The four addresses in order are under "Where a reminder
+for the whole story. It is cleared only once that note is saved on disk; a crash
+first means the next open folds it again, never twice. Two hours away with nothing
+to report is nothing at all: silence is the design. The four addresses in order are under "Where a reminder
 arrives".
 
 A firing's run folder is a normal session folder outside your projects, so its

@@ -1,0 +1,198 @@
+
+== LIVE MODEL DEMO — local files only, model deepseek/deepseek-v4-flash, at most $0.25 a run, $2 a day
+aforge:  aforge 1ad80ad3f (dirty) built 2026-09-11 01:48 · go1.26.5 linux/arm64
+home:    /tmp/opus-localwork/live10-run08/home
+project: /tmp/opus-localwork/live10-run08/project
+
+== Folders, and a rule placed on each
+Launch=680a2df26458b20d6ee6eedddae35d38 Marketing=33ee79f1e0b3c7b85cf1fcd3f0ec225d
+$ aforge standing add --hold --scope 680a2df26458b20d6ee6eedddae35d38 --workspace /tmp/opus-localwork/live10-run08/project --words Inbox reports for Launch never quote email addresses or phone numbers; write [redacted].
+set up 272ef009eb40d296: Inbox reports for Launch never quote email addresses or phone numbers; write [redacted].
+a rule: applies in Launch (directly placed work only)
+$ aforge standing add --hold --scope 33ee79f1e0b3c7b85cf1fcd3f0ec225d --workspace /tmp/opus-localwork/live10-run08/project --words Marketing review notes cite the spec line behind every finding and never edit the copy itself.
+set up 9d1e31374097362e: Marketing review notes cite the spec line behind every finding and never edit the copy itself.
+a rule: applies in Marketing (directly placed work only)
+
+== Ongoing work: keep an inbox report current (placed in Launch)
+inbox work: c354af6b945f56bf
+
+== Ongoing work: review launch copy when the product spec changes (placed in Marketing)
+review work: dc7f029376e6ad38
+
+== First pass: every watch takes its baseline; nothing runs
+$ aforge standing check
+2 checked
+ok: 0 run(s)
+ok: 0 run(s)
+
+== A new inbox note starts a run; the report is checked against the Launch rule, then published
+$ aforge standing check
+2 checked · 1 ran
+ok: run 000001 landed on v1, woken by added inbox/2026-09-10-standup.md, published reports/inbox-report.md; checked against 1 rule(s): kept
+--- reports/inbox-report.md
+# Inbox Report — 2026-09-11
+
+## New Decisions
+- **Launch moves to Friday.** (Standup 2026-09-10)
+
+## Open Requests / Owners
+| Request | Owner | Status |
+|---|---|---|
+| Confirm the venue | Priya [redacted] | Waiting on Priya |
+| Own the press release | *unassigned* | Needs a volunteer |
+
+## Needs the Person
+- **Press release ownership** is unclaimed. Someone needs to pick it up or be assigned.
+ok: no raw contact detail in inbox-report.md
+
+== Edit the work: the NEXT run uses the new instructions; the last run keeps what it had
+$ aforge standing edit c354af6b945f56bf --instructions Read the files under inbox/ that changed (use the read tool; do not run shell commands). Write a Markdown table of open requests with columns Request, Owner, Due; unknown owners are 'unassigned'. Then list decisions.
+revised c354af6b945f56bf to version 2: instructions
+the next run uses it; a run already under way keeps what it started with
+$ aforge standing check
+2 checked · 1 ran
+ok: run 000002 landed on v2, woken by modified inbox/2026-09-10-standup.md, published reports/inbox-report.md; checked against 1 rule(s): kept
+--- reports/inbox-report.md
+# Inbox Report — 2026-09-11
+
+## Open Requests
+
+| Request | Owner | Due |
+|---|---|---|
+| Confirm the venue | unassigned | — |
+| Press release | Bob | Wednesday |
+
+## Decisions
+- **Launch moves to Friday.** (2026-09-10 standup)
+ok: no raw contact detail in inbox-report.md
+ok: the report is now a table
+
+== Pause: a new note waits; nothing runs
+$ aforge standing pause c354af6b945f56bf
+paused · Keep an eye on the inbox folder and keep reports/inbox-report.md current.
+not checked and not run until resumed; what it knows is kept
+$ aforge standing check
+1 checked
+ok: 2 run(s)
+
+== Resume: the change made while paused is picked up, not lost
+$ aforge standing resume c354af6b945f56bf
+resumed · Keep an eye on the inbox folder and keep reports/inbox-report.md current.
+$ aforge standing check
+2 checked · 1 ran
+ok: run 000003 landed on v2, woken by added inbox/2026-09-11-budget.md, published reports/inbox-report.md; checked against 1 rule(s): kept
+ok: no raw contact detail in inbox-report.md
+
+== Product changes: the marketing review runs, and the copy is untouched
+$ aforge standing check
+2 checked · 1 ran
+ok: run 000001 landed on v1, woken by modified product/spec.md, published marketing/review-notes.md; checked against 1 rule(s): not-checkable
+ok: 3 run(s)
+--- marketing/review-notes.md
+# Marketing review notes
+
+**Source material:** `product/spec.md`
+**Reviewed document:** `marketing/launch-copy.md`
+
+## Unsupported claims
+
+| Claim in copy | Spec line | Issue |
+|---|---|---|
+| "Works offline, anywhere" | `Offline support: removed in this release.` | Spec explicitly removes offline support. Claim is false. |
+| "Export to CSV, PDF and Excel in one click" | `Export: CSV only.` | Spec limits export to CSV. Claims of PDF and Excel export are unsupported. |
+ok: launch-copy.md unchanged
+
+== Stop: final
+$ aforge standing stop c354af6b945f56bf
+stopped · Keep an eye on the inbox folder and keep reports/inbox-report.md current.
+it will not run again; its history stays in aforge standing show c354af6b945f56bf
+$ aforge standing check
+1 checked
+ok: 3 run(s)
+ok: stopped work does not resume
+
+== An idle pass runs nothing and publishes nothing twice
+$ aforge standing check
+1 checked
+ok: 3 run(s)
+ok: 1 run(s)
+ok: both reports unchanged
+
+== Cause and effect, per run
+$ aforge standing show c354af6b945f56bf
+c354af6b945f56bf  retired  Keep an eye on the inbox folder and keep reports/inbox-report.md current.
+  retired: stopped by you
+  wakes when inbox/* changes
+  workspace: /tmp/opus-localwork/live10-run08/project
+  instructions (version 2): Read the files under inbox/ that changed (use the read tool; do not run shell commands). Write a Markdown table of open requests with columns Request, Owner, Du…
+  report: reports/inbox-report.md
+  set up by: person, through the terminal
+  folder: 680a2df26458b20d6ee6eedddae35d38 Launch (placed directly)
+  rule reaching it: 272ef009eb40d296 Inbox reports for Launch never quote email addresses or phone numbers; write [redacted].
+  ran 3 time(s); last came to landed · spent $0.0149
+runs, newest first:
+  000003  finished · landed · instructions v2 · Sep 11 02:29:33
+      woken: the files you are watching changed
+      added inbox/2026-09-11-budget.md
+      came to: report updated: reports/inbox-report.md — # Inbox Report — 2026-09-11 ## Open Requests | Request | Owner | Due | |---|---|---| | Confirm the venue | Priya |…
+      checked against 1 rule(s): 1 kept
+        rule 272ef009eb40d296 “Inbox reports for Launch never quote email addresses or phone numbers; write [redacted].” (obligation): kept — the report says “# Inbox Report — 2026-09-11 ## Open Requests | Request | Owner | Due | |---|---|---| | Confirm the venue | Priya | — | | Press release | Bob | Wednesday | #…”
+      cost $0.0077
+      published reports/inbox-report.md (279 bytes, sha256 92efe0b80d0f)
+      journal: /tmp/opus-localwork/live10-run08/home/v3/standing/c354af6b945f56bf/runs/000003/transcript.jsonl
+  000002  finished · landed · instructions v2 · Sep 11 02:28:30
+      woken: the files you are watching changed
+      modified inbox/2026-09-10-standup.md
+      came to: report updated: reports/inbox-report.md — # Inbox Report — 2026-09-11 ## Open Requests | Request | Owner | Due | |---|---|---| | Confirm the venue | unassig…
+      checked against 1 rule(s): 1 kept
+        rule 272ef009eb40d296 “Inbox reports for Launch never quote email addresses or phone numbers; write [redacted].” (obligation): kept — the report says “# Inbox Report — 2026-09-11 ## Open Requests | Request | Owner | Due | |---|---|---| | Confirm the venue | unassigned | — | | Press release | Bob | Wednesda…”
+      cost $0.0043
+      published reports/inbox-report.md (231 bytes, sha256 9488bc6d8a5d)
+      journal: /tmp/opus-localwork/live10-run08/home/v3/standing/c354af6b945f56bf/runs/000002/transcript.jsonl
+  000001  finished · landed · instructions v1 · Sep 11 02:27:38
+      woken: the files you are watching changed
+      added inbox/2026-09-10-standup.md
+      came to: report updated: reports/inbox-report.md — # Inbox Report — 2026-09-11 ## New Decisions - **Launch moves to Friday.** (Standup 2026-09-10) ## Open Requests /…
+      checked against 1 rule(s): 1 kept
+        rule 272ef009eb40d296 “Inbox reports for Launch never quote email addresses or phone numbers; write [redacted].” (obligation): kept — the report says “Priya [redacted]”
+      cost $0.0029
+      published reports/inbox-report.md (399 bytes, sha256 c8b3ac9ef704)
+      journal: /tmp/opus-localwork/live10-run08/home/v3/standing/c354af6b945f56bf/runs/000001/transcript.jsonl
+log:
+  2026-09-11T02:27:38-04:00  set up at the terminal
+  2026-09-11T02:28:30-04:00  the files you are watching changed — landed: report updated: reports/inbox-report.md — # Inbox Report — 2026-09-11  ## New Decisions - **Launch moves to Friday.** (Standup 2026-09-10)  ## Open Requests / Owners | Request | Owner | Status | |…
+  2026-09-11T02:28:30-04:00  revised at the terminal to version 2: instructions
+  2026-09-11T02:29:33-04:00  the files you are watching changed — landed: report updated: reports/inbox-report.md — # Inbox Report — 2026-09-11  ## Open Requests  | Request | Owner | Due | |---|---|---| | Confirm the venue | unassigned | — | | Press release | Bob | We…
+  2026-09-11T02:29:33-04:00  paused at the terminal
+  2026-09-11T02:29:33-04:00  resumed at the terminal
+  2026-09-11T02:30:50-04:00  the files you are watching changed — landed: report updated: reports/inbox-report.md — # Inbox Report — 2026-09-11  ## Open Requests  | Request | Owner | Due | |---|---|---| | Confirm the venue | Priya | — | | Press release | Bob | Wednesd…
+  2026-09-11T02:32:22-04:00  stopped at the terminal
+$ aforge standing show dc7f029376e6ad38
+dc7f029376e6ad38  active  When the product spec changes, review the launch copy against it.
+  wakes when product/* changes
+  workspace: /tmp/opus-localwork/live10-run08/project
+  instructions (version 1): Compare marketing/launch-copy.md with product/spec.md (use the read tool; do not run shell commands). List every claim in the copy the spec does not support, qu…
+  report: marketing/review-notes.md
+  set up by: person, through the terminal
+  folder: 33ee79f1e0b3c7b85cf1fcd3f0ec225d Marketing (placed directly)
+  rule reaching it: 9d1e31374097362e Marketing review notes cite the spec line behind every finding and never edit the copy itself.
+  ran 1 time(s); last came to landed · spent $0.0142
+runs, newest first:
+  000001  finished · landed · instructions v1 · Sep 11 02:30:50
+      woken: the files you are watching changed
+      modified product/spec.md
+      came to: report updated: marketing/review-notes.md — # Marketing review notes **Source material:** `product/spec.md` **Reviewed document:** `marketing/launch-copy.md` …
+      checked against 1 rule(s): 1 not checkable
+        rule 9d1e31374097362e “Marketing review notes cite the spec line behind every finding and never edit the copy itself.” (obligation): not checkable — the report says “**Reviewed document:** `marketing/launch-copy.md`”: The report cannot show whether the reviewed launch copy file was edited.
+      cost $0.0142
+      published marketing/review-notes.md (473 bytes, sha256 c58d7fa4e836)
+      journal: /tmp/opus-localwork/live10-run08/home/v3/standing/dc7f029376e6ad38/runs/000001/transcript.jsonl
+log:
+  2026-09-11T02:27:38-04:00  set up at the terminal
+  2026-09-11T02:32:22-04:00  the files you are watching changed — landed: report updated: marketing/review-notes.md — # Marketing review notes  **Source material:** `product/spec.md` **Reviewed document:** `marketing/launch-copy.md`  ## Unsupported claims  | Claim in copy…
+
+== Spend in this home
+model calls: 14  spend: $0.0292 (every model call in this home, from its usage ledger)
+
+DEMO PASSED — every step held, on aforge 1ad80ad3f (dirty) built 2026-09-11 01:48 · go1.26.5 linux/arm64, model deepseek/deepseek-v4-flash.
+Kept at /tmp/opus-localwork/live10-run08 — export AFORGE_HOME=/tmp/opus-localwork/live10-run08/home to keep exploring with /home/santosh/src/aforge-personal-e2e/bin/aforge standing ...

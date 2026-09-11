@@ -1,0 +1,31 @@
+package session
+
+import (
+	"encoding/json"
+	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+)
+
+// A TOOL ARMED AFTER THE BELT WAS BUILT IS STILL ON THE BELT. A connected
+// account's family arrives through use_service, at the tail, after the grant
+// filter ran over everything else (wave 4's known limit): in a firing, an
+// ungranted family tool would be present and refused, which is the parked
+// report again. The grant is asked of arriving tools too.
+func TestAToolArmedIntoAnUnattendedRunIsAskedForItsGrantToo(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.InTask = true
+		config.ApprovalPolicy = shippedFloorForTest()
+	})
+	family := []bare.Tool{
+		{Name: "slack_post", Description: "post a message", Schema: json.RawMessage(`{"type":"object"}`)},
+		{Name: "grep", Description: "already held", Schema: json.RawMessage(`{"type":"object"}`)},
+	}
+	armed, err := agent.armFamily(family)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if beltNameSet(agent.beltTools())["slack_post"] || len(armed) != 0 {
+		t.Fatalf("an ungranted family tool was armed into an unattended run: %v", armed)
+	}
+}

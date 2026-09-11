@@ -483,7 +483,12 @@ func (a *Agent) armFamily(tools []bare.Tool) ([]string, error) {
 	var arriving []bare.Tool
 	var names []string
 	for _, tool := range tools {
-		if held[tool.Name] {
+		// A TOOL ARMED AFTER THE BELT WAS BUILT IS STILL ON THE BELT, so it is
+		// asked for its grant like every other ([Config.grants]). Each caller
+		// has already said what it left off ([Agent.grantedOnly]); this is the
+		// backstop, so no door that arms a family can put an ungranted verb in
+		// front of work with nobody to ask.
+		if held[tool.Name] || !a.config.grants(tool.Name) {
 			continue
 		}
 		arriving = append(arriving, tool)
@@ -507,6 +512,30 @@ func (a *Agent) armFamily(tools []bare.Tool) ([]string, error) {
 	a.definitions = grownDefinitions
 	return names, nil
 }
+
+// grantedOnly is tools less every one work with nobody to ask may not run
+// without asking ([Config.grants]) — everything, anywhere else.
+//
+// A connected account's family arrives through use_service after the belt's
+// own grant filter has run (tools.go), and wave 4 found it passing untouched: in
+// an unattended run an ungranted family tool would be present and refused, and
+// a refusal there parks a finished report on a question nobody can answer. So
+// the doors that arm a family ask this first and say what it left, and
+// [Agent.armFamily] asks it again.
+func (a *Agent) grantedOnly(tools []bare.Tool) []bare.Tool {
+	kept := make([]bare.Tool, 0, len(tools))
+	for _, tool := range tools {
+		if a.config.grants(tool.Name) {
+			kept = append(kept, tool)
+		}
+	}
+	return kept
+}
+
+// ungrantedFamily is what use_service answers when a connected account's whole
+// family is off an unattended run's belt.
+const ungrantedFamily = ", but work that runs while nobody is watching may use none of its tools without asking, and nobody is here to ask. " +
+	"Do the work without it and say so plainly."
 
 // NoteConnected is the other door: an account connected from the SURFACE, with
 // no tool call waiting on it — /connect while the conversation sits idle.

@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Round 3b live10: ten serial live local-file demos at the round-3b commit. One run at a time;
+# stops early if cumulative spend passes the guard. Spend is read from each
+# run's own usage ledger, so a failed run is counted too. Never prints the key.
+set -uo pipefail
+cd /home/santosh/src/aforge-personal-e2e
+guard=0.45
+total=0
+out=/tmp/opus-localwork
+summary=$out/live10-summary.txt
+: > "$summary"
+echo "BINARY $(bin/aforge version | head -1)" >> "$summary"
+for n in 01 02 03 04 05 06 07 08 09 10; do
+  dir=$out/live10-run$n
+  log=$out/live10-run$n.log
+  start=$(date -u +%FT%TZ)
+  DEMO_DIR="$dir" scripts/demo-local-work.sh > "$log" 2>&1 < /dev/null
+  code=$?
+  read -r calls spend < <(python3 - "$dir/home/v3/usage.jsonl" <<'PY'
+import json, sys
+t=0.0; c=0
+try:
+    for l in open(sys.argv[1]):
+        r=json.loads(l); t+=r.get("usd",0) or 0; c+=r.get("calls",0) or 0
+except FileNotFoundError: pass
+print(c, round(t, 4))
+PY
+)
+  verdict=$(sed 's/\x1b\[[0-9;]*m//g' "$log" | grep -oE 'DEMO (PASSED|FAILED)' | tail -1)
+  total=$(python3 -c "print(round($total + ${spend:-0}, 4))")
+  echo "run$n start=$start exit=$code verdict=${verdict:-none} calls=$calls spend=\$$spend cumulative=\$$total" >> "$summary"
+  if python3 -c "import sys; sys.exit(0 if $total > $guard else 1)"; then
+    echo "STOPPED: cumulative spend \$$total passed the \$$guard guard" >> "$summary"; break
+  fi
+done
+echo "FINISHED $(date -u +%FT%TZ) total=\$$total" >> "$summary"
