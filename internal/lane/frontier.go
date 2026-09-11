@@ -85,18 +85,6 @@ const (
 	// request and therefore reproducible.
 	probeInEvery = 10
 
-	// ShortPatience is the longest a role's declared ceiling may be for that
-	// role to choose its machine with a VETO rather than with a ranking.
-	//
-	// It is [VisiblePatience] and not a number of its own, because the question
-	// it answers is the one that constant answers: how long somebody who is
-	// waiting will wait. A role patient enough to be given more than this — a
-	// task node's thirty seconds, a standing pass's minute — is one where a
-	// slower machine is simply a slower answer and refusing one could leave the
-	// work with nowhere to go. See [rolePatience] for the other half of the test and
-	// for why both halves are needed.
-	ShortPatience = VisiblePatience
-
 	// PriceCeilingMultiple is how far above the cheapest acceptable lane's own
 	// output tariff another lane may charge, with nobody waiting.
 	//
@@ -264,7 +252,7 @@ func doubted(belief Belief, req Request) bool {
 //	the patience?      act on a silence. A machine believed to still be silent
 //	                   then is not a fallback, it is the fault.
 //
-// THE ONE READING IS [rolePatience.felt] AND EVERY POLICY IS DERIVED FROM IT. The
+// THE ONE READING IS [rolePatience.expected] AND EVERY POLICY IS DERIVED FROM IT. The
 // order, the veto, the refusal list and the tie-break are four uses of one
 // number, computed once per candidate, so that no two of them can come to
 // disagree about which machine is the fast one. The two measured cases this was
@@ -293,12 +281,29 @@ type rolePatience struct {
 	read bool
 }
 
-// patienceOf reads a request's role columns. A request that named no role reads
-// as [RoleUnknown], which is the table's own answer for a name nobody added —
-// a patient, unwatched background errand — and never as a zero struct.
+// patienceFor reads a request's role columns.
+//
+// A REQUEST THAT NAMED NO ROLE HAS NO DEADLINE, AND THEREFORE REFUSES NOTHING.
+// [RoleUnknown]'s row is a sensible default for how a call BEHAVES — patient,
+// unwatched, exploring a little — and it is a bad answer to "what is this call
+// unwilling to wait for", because nobody said. Reading its thirty seconds as a
+// declared deadline would strike machines off the wire's table on behalf of
+// every call site in the tree that has not yet been taught to say what it is
+// for, which is a real refusal made out of a default nobody wrote down.
+//
+// So the ceiling is zero for an unnamed role and [beyondThePatience] refuses
+// nothing, while the two behavioural columns still read from [RoleUnknown]'s
+// row — those are about how this call is treated, not about what it will
+// refuse. It is the same reading internal/provider's workloadFor keeps at the
+// other end of the seam ([Role.Known] there too), so the two packages cannot
+// come to mean different things by "unknown".
 func patienceFor(req Request) rolePatience {
 	facts := req.Role.Facts()
-	return rolePatience{ceiling: req.Role.Ceiling(), waited: facts.Interactive, read: facts.Visible}
+	said := rolePatience{waited: facts.Interactive, read: facts.Visible}
+	if req.Role.Known() {
+		said.ceiling = req.Role.Ceiling()
+	}
+	return said
 }
 
 // probes reports whether a request in this role may be spent settling a doubt
@@ -401,9 +406,25 @@ func (p rolePatience) expected(belief Belief, req Request, ttft, rate float64) f
 // the moment it is the best there is.
 //
 // waits holds each candidate's expectation, in the order the candidates are
-// given. A candidate with no expectation — nothing measured, nothing published —
-// is not refused, for [ignoredOf]'s reason: we name the lanes we are SURE about,
-// never the ones we have been unlucky with.
+// given.
+//
+// A CANDIDATE WITH NO EXPECTATION IS NOT REFUSED, AND THE TEST FOR THAT IS THE
+// FINITENESS OF THE NUMBER. [PerceivedSeconds] answers +∞ for a machine whose
+// generation rate is not believed at all — "this lane never finishes", reported
+// as such rather than as a large figure somebody might then compare — and a
+// machine nothing has been measured of is exactly the shape that produces it: a
+// lane that has only ever answered short, or only ever been probed, has a
+// first-token belief and no rate belief, because [ledger.see] teaches the rate
+// only past [ratedFloor]. Refusing THAT is refusing a machine for want of
+// evidence rather than because of it, which is the very fault this whole change
+// exists to end — the veto list built from what we know while the router picks
+// from what exists. So it is ranked last on its infinity, as it always was, and
+// stays in the set where a hedge, a walk or a rescue can still reach it. It is
+// [ignoredOf]'s rule once more: we name the lanes we are SURE about, never the
+// ones we have been unlucky with.
+//
+// A role with no declared ceiling refuses nothing, which is the honest reading
+// of a call site that did not say what it was for; see [patienceFor].
 func beyondThePatience(candidates []Scored, waits []float64, p rolePatience) map[ID]bool {
 	if p.ceiling <= 0 {
 		return nil
@@ -411,7 +432,7 @@ func beyondThePatience(candidates []Scored, waits []float64, p rolePatience) map
 	deadline := p.ceiling.Seconds()
 	refused := map[ID]bool{}
 	for index, candidate := range candidates {
-		if wait := waits[index]; wait > deadline {
+		if wait := waits[index]; finite(wait) && wait > deadline {
 			refused[candidate.ID] = true
 		}
 	}
@@ -448,8 +469,8 @@ func beyondThePatience(candidates []Scored, waits []float64, p rolePatience) map
 // after it profits from — a good bet on an errand and a bad one in front of a
 // keypress, where the whole of the call is dead time and the same doubt could be
 // settled by the next background pass for nothing. So the promotion is off for
-// every role [rolePatience.vetoes] names, which is a property of the role and not a
-// list of them. The demotion stays: ranking a doubted machine last costs nobody
+// every role [rolePatience.probes] refuses the draw to, which is a property of the
+// role and not a list of them. The demotion stays: ranking a doubted machine last costs nobody
 // anything.
 //
 // probe is the draw, in [0,1), and the caller supplies it because this file may

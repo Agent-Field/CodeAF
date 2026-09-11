@@ -1,7 +1,10 @@
 package lane
 
 import (
+	"go/ast"
+	"go/token"
 	"math"
+	"strings"
 	"testing"
 	"time"
 )
@@ -291,24 +294,211 @@ func TestNoProbeRidesARoleSomebodyIsWaitingOn(t *testing.T) {
 	}
 }
 
-// TestEveryRolesPolicyComesFromItsColumns is the other law, and it is the
-// owner's architecture bar written as a test: behaviour is derived from declared
-// properties, never from a role's name. Two roles that declare the same three
-// columns must be treated identically by every policy in this package.
-func TestEveryRolesPolicyComesFromItsColumns(t *testing.T) {
-	seen := map[[3]any]Role{}
-	for _, role := range Roles() {
-		p := patienceFor(Request{Role: role})
-		key := [3]any{p.ceiling, p.waited, p.read}
-		if first, already := seen[key]; already {
-			if patienceFor(Request{Role: first}) != p {
-				t.Errorf("roles %q and %q declare the same columns and get different policies", first, role)
-			}
+// TestTheChoiceNamesNoRoleAndNoMachine is the owner's architecture bar written
+// as a law the build holds, and it is the one this file exists to keep.
+//
+// BEHAVIOUR IS DERIVED FROM DECLARED PROPERTIES AND FROM MEASURED BELIEFS. Not
+// from a role's NAME — which is a second role table, disagreeing with the first
+// one within a month — and not from a machine's, which is a list somebody has to
+// maintain against a fleet that moves. The two files that decide where a request
+// goes are held to it here with go/ast, so the day somebody writes `if role ==
+// RoleRecall` in the chooser, or `if id.Lane == "…"`, the build says where.
+//
+// WHAT IT LOOKS FOR IS A COMPARISON, because a comparison is where a name
+// becomes a branch. A string literal is otherwise perfectly ordinary in these
+// files — an import path, a sentence for the picker, the published vocabulary of
+// quantization names — and a law that refused all of them would be refusing
+// prose. What it may not be is the right-hand side of a test against a lane.
+//
+// The test files are exempt and must be: a fixture has to name the role it is
+// staging and the machines in its pool, which is what makes it a fixture.
+func TestTheChoiceNamesNoRoleAndNoMachine(t *testing.T) {
+	fset, files := sources(t)
+	deciding := map[string]bool{"choose.go": true, "frontier.go": true}
+	for name, file := range files {
+		if !deciding[name] {
 			continue
 		}
-		seen[key] = role
-		if p.ceiling <= 0 {
-			t.Errorf("role %q has no ceiling, so nothing here can say what it will not wait for", role)
+		ast.Inspect(file, func(node ast.Node) bool {
+			binary, ok := node.(*ast.BinaryExpr)
+			if !ok || (binary.Op != token.EQL && binary.Op != token.NEQ) {
+				return true
+			}
+			sides := [2]ast.Expr{binary.X, binary.Y}
+			for index, side := range sides {
+				if role := roleConstant(side); role != "" {
+					t.Errorf("%s: a choice is made by comparing against the role %s; derive it from the role's columns instead",
+						fset.Position(binary.Pos()), role)
+				}
+				// A machine can only arrive in one of these files off the wire,
+				// so a comparison between something spelled `…Lane…` and a
+				// literal is somebody hard-coding a fleet.
+				if literal, isText := side.(*ast.BasicLit); isText && literal.Kind == token.STRING && literal.Value != `""` {
+					if mentionsLane(sides[1-index]) {
+						t.Errorf("%s: a machine is named in code as %s; every lane name here came off the wire a moment ago",
+							fset.Position(binary.Pos()), literal.Value)
+					}
+				}
+			}
+			return true
+		})
+	}
+}
+
+// mentionsLane reports whether this expression is about a machine's name — an
+// `ID.Lane`, a `candidate.ID.Lane`, a variable somebody called `lane`. It is a
+// spelling test and that is the honest bound on it: the law it serves is about
+// a habit a reader can see, not about types.
+func mentionsLane(expr ast.Expr) bool {
+	named := false
+	ast.Inspect(expr, func(node ast.Node) bool {
+		if ident, ok := node.(*ast.Ident); ok && strings.Contains(strings.ToLower(ident.Name), "lane") {
+			named = true
 		}
+		return !named
+	})
+	return named
+}
+
+// roleConstant answers the name of the [Role] constant this expression is, and
+// empty when it is not one. A role constant is spelled `RoleX` in this package
+// and `lane.RoleX` outside it, and both shapes are checked so the law does not
+// depend on where somebody writes the comparison.
+func roleConstant(expr ast.Expr) string {
+	switch found := expr.(type) {
+	case *ast.Ident:
+		if strings.HasPrefix(found.Name, "Role") && found.Name != "Role" && found.Name != "RoleFacts" {
+			return found.Name
+		}
+	case *ast.SelectorExpr:
+		return roleConstant(found.Sel)
+	}
+	return ""
+}
+
+// TestTwoRolesWithTheSameColumnsGetTheSameChoice is the behavioural half of the
+// law above: not only is no name compared, two roles the table describes
+// identically really do come out of [Chooser.Choose] with the same answer over
+// the same pool.
+//
+// It is asserted over the whole role table rather than over a chosen pair, so a
+// role added tomorrow is covered by it.
+func TestTwoRolesWithTheSameColumnsGetTheSameChoice(t *testing.T) {
+	const model = "vendor/same-columns"
+	pool := []Belief{
+		beliefAt(model, "quicksilver", 800, 400, 1.6),
+		beliefAt(model, "brass", 900, 400, 1.2),
+		beliefAt(model, "molasses", 1000, 16, 0.8),
+	}
+	// EVERY DECLARED COLUMN THE CHOOSER READS IS IN THE KEY, and Horizon is one
+	// of them: it scales how wide the exploration draws are, so two roles with
+	// the same patience and a different horizon SHOULD be answered differently.
+	// Leaving it out was what made this law's first run fail on `memory` against
+	// `leaf.unattended` — a real difference, correctly derived from the table.
+	type columns struct {
+		ceiling time.Duration
+		waited  bool
+		read    bool
+		horizon int
+	}
+	seen := map[columns]struct {
+		role   Role
+		choice Choice
+	}{}
+	for _, role := range Roles() {
+		// The moment is pinned so that two roles are asked the same question:
+		// the sampler is seeded on it (seedFor).
+		req := askFor(model, role, 0, 200)
+		req.Now = noon
+		p := patienceFor(req)
+		key := columns{p.ceiling, p.waited, p.read, role.Facts().Horizon}
+		choice := chooserOn(&fakeLedger{beliefs: pool}).Choose(req)
+		first, already := seen[key]
+		if !already {
+			seen[key] = struct {
+				role   Role
+				choice Choice
+			}{role, choice}
+			continue
+		}
+		if strings.Join(choice.Order, ",") != strings.Join(first.choice.Order, ",") ||
+			strings.Join(choice.Ignore, ",") != strings.Join(first.choice.Ignore, ",") {
+			t.Errorf("roles %q and %q declare the same columns and were answered differently: %v/%v against %v/%v",
+				first.role, role, choice.Order, choice.Ignore, first.choice.Order, first.choice.Ignore)
+		}
+	}
+	if len(seen) < 2 {
+		t.Fatal("every role in the table declares the same columns, so this law proved nothing")
+	}
+}
+
+// TestAMachineWithNoRateBeliefIsRankedLastAndNeverRefused is B1 of the review,
+// and it is the fault this whole change exists to end, seen from the other side.
+//
+// A lane that has only ever answered SHORT has a first-token belief and no rate
+// belief at all — [ledger.see] teaches the rate only past [ratedFloor], which is
+// thirty-two tokens — and that is the reflex tier's own shape. Its expectation
+// is +∞ by [PerceivedSeconds]'s own design, which is the honest reading of "this
+// lane is not believed to finish" and NOT evidence that it is slow. Refusing it
+// would be striking a machine off the wire's table for want of evidence rather
+// than because of it.
+func TestAMachineWithNoRateBeliefIsRankedLastAndNeverRefused(t *testing.T) {
+	const model = "vendor/short-answers-only"
+	unrated := beliefAt(model, "unrated", 500, 400, 1.0)
+	unrated.Rate = Posterior{}
+	choice := choiceOver(t, askFor(model, RoleProbe, 0, 200),
+		beliefAt(model, "quicksilver", 800, 400, 1.6),
+		beliefAt(model, "brass", 900, 400, 1.2),
+		unrated,
+	)
+	if namesLane(choice.Ignore, "unrated") {
+		t.Fatalf("ignore = %v; a machine nothing has been measured of was refused for want of evidence", choice.Ignore)
+	}
+	found := false
+	for _, candidate := range choice.Frontier {
+		if candidate.ID.Lane == "unrated" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("the unrated machine left the frontier, where a hedge, a walk or a rescue could still reach it")
+	}
+	if last := choice.Frontier[len(choice.Frontier)-1]; last.ID.Lane != "unrated" {
+		t.Fatalf("the frontier ends with %q; a machine believed not to finish belongs last", last.ID.Lane)
+	}
+}
+
+// TestAChangePointForgetsHowVariableTheMachineWas is B4 of the review. The
+// dispersion account has no forgetting of its own and is persisted, so without
+// this a machine that had one bad hour is widened for ever on a tail it no
+// longer has — the absorbing gate this package ended everywhere else.
+func TestAChangePointForgetsHowVariableTheMachineWas(t *testing.T) {
+	const model = "vendor/one-bad-hour"
+	id := ID{Model: model, Lane: "fickle"}
+	ledger := newLedger()
+	at := time.Now().Add(-2 * time.Hour)
+	// An hour of wild first tokens, alternating a second and a minute.
+	for round := 0; round < 20; round++ {
+		first := 1 * time.Second
+		if round%2 == 1 {
+			first = 60 * time.Second
+		}
+		at = at.Add(time.Minute)
+		ledger.Note(Sighting{ID: id, TTFT: first, Gen: time.Second, Tokens: 40, At: at})
+	}
+	erratic, _ := ledger.Belief(id)
+	if erratic.Spread <= SpreadTightest {
+		t.Fatalf("the erratic hour left a dispersion of %.3f nats, so the fixture is not the one described", erratic.Spread)
+	}
+	// Then the machine settles somewhere else entirely and stays there, which is
+	// what trips the change point.
+	for round := 0; round < 20; round++ {
+		at = at.Add(time.Minute)
+		ledger.Note(Sighting{ID: id, TTFT: 400 * time.Millisecond, Gen: time.Second, Tokens: 40, At: at})
+	}
+	settled, _ := ledger.Belief(id)
+	if settled.Spread >= erratic.Spread {
+		t.Fatalf("after the machine settled, one draw is still believed to vary by %.3f nats against the old %.3f; the change point kept the regime it said was over",
+			settled.Spread, erratic.Spread)
 	}
 }

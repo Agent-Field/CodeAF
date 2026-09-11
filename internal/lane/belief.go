@@ -917,10 +917,7 @@ func (l *ledger) see(s Sighting) {
 		// rides on OUR OWN sightings and never on the sheet: a half-hour
 		// aggregate re-published every beat would re-assert one surprise until
 		// it tripped an alarm about a step that never happened.
-		if l.wait.note(pairOf(s.ID), waited, noise, s.At) {
-			l.stepped(s.ID)
-			belief.TTFT = stepTo(waited, noise)
-		}
+		belief.TTFT = l.folded(&l.wait, s.ID, belief.TTFT, waited, noise, s.At)
 		// AND THE SAME MEASUREMENT ALSO SAYS HOW FAR ONE DRAW SITS FROM THE
 		// MEDIAN, which is a different question about the same number and the
 		// one a person actually pays. See [Belief.Spread]: a machine whose first
@@ -941,14 +938,27 @@ func (l *ledger) see(s Sighting) {
 		if rate := s.Rate(); rate > 0 {
 			written, noise := math.Log(rate), variance(prior.Rate)
 			belief.Rate = belief.Rate.Update(written, noise)
-			if l.rate.note(pairOf(s.ID), written, noise, s.At) {
-				l.stepped(s.ID)
-				belief.Rate = stepTo(written, noise)
-			}
+			belief.Rate = l.folded(&l.rate, s.ID, belief.Rate, written, noise, s.At)
 		}
 	}
 	belief.At = s.At
 	l.beliefs[s.ID] = belief
+}
+
+// folded puts one observation through a chain's change-point test and answers
+// the flat belief that should stand afterwards — the one handed in when nothing
+// stepped, and [stepTo]'s when something did.
+//
+// IT IS ONE DOOR BECAUSE A CHANGE POINT HAS ONE MEANING. The wait chain and the
+// rate chain ask the same question of two quantities, and two copies of "alarm,
+// then reset the belief beside it" is how the two come to disagree about what an
+// alarm is for. Called with the lock held.
+func (l *ledger) folded(of *chains, id ID, held Posterior, z, noise float64, at time.Time) Posterior {
+	if !of.note(pairOf(id), z, noise, at) {
+		return held
+	}
+	l.stepped(id)
+	return stepTo(z, noise)
 }
 
 // stepTo is the belief a change point leaves behind: THIS observation, at its

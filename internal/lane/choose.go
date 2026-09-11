@@ -738,9 +738,11 @@ func flooredInto(ignore []string, aged map[ID]Belief, order []string, lambda flo
 // patience, and a role that does not refuse for slowness produced an empty set
 // upstream, so there is nothing here to gate.
 //
-// A machine in the order is never also refused, for [dropRefusedHere]'s reason:
-// the two fields would say opposite things about one name in one object, which
-// is an empty serving set written by us about the machine we just asked for.
+// A machine in the order is never also refused, and the reason is the router's
+// own arithmetic rather than a preference of ours: the two fields would say
+// opposite things about one name in one object, which is an empty serving set
+// written by us about the machine we just asked for. internal/provider keeps
+// the identical rule where it drops the machines that refused THIS call.
 func refusedInto(ignore []string, refused map[ID]bool, order []string) []string {
 	if len(refused) == 0 {
 		return ignore

@@ -320,7 +320,18 @@ type Belief struct {
 	//
 	// It is measured with the same three floats and the same pooled-and-floored
 	// law a thinking duration is ([chains.widen], [chains.draw]), folded on the
-	// same lock and in the same call as the median it sits beside.
+	// same lock and in the same call as the median it sits beside, and FORGOTTEN
+	// WITH THAT MEDIAN when a change point fires ([chains.note]) — the two are
+	// readings of one body of evidence, and an account that kept the old regime's
+	// variance would widen a machine for ever on a tail it no longer has.
+	//
+	// IT IS THE FIRST TOKEN'S DISPERSION AND NOT THE RATE'S, deliberately. A
+	// machine whose GENERATION rate swings is not held here at all: a rate that
+	// moves within a regime is what the posterior's own spread covers, and a rate
+	// that moves BETWEEN regimes — the 2026-09-11 ninefold collapse — is the
+	// change point's job, which is why the rate chain has an alarm on it and no
+	// dispersion account. Adding a second one would be two answers to "how fast
+	// does this machine write" with nothing deciding between them.
 	Spread float64
 }
 

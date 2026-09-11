@@ -400,10 +400,11 @@ enough to reach the ordinary ceiling can then trigger action.
 ## Why a fast machine was skipped, or a cheap one never used — how long the work has to wait decides which machines it may go to
 
 Every kind of call this build makes says how long it is willing to wait before
-something is done about a silence: about five seconds for the quick lookups
-behind a keypress, ten for a chat turn or a step of a task you are watching,
-thirty for work running in the background, a minute for a standing pass. That
-number is not only a stopwatch. It is also what decides which machines the
+something is done about a silence: ten seconds for a chat turn, for a step of a
+task you are watching, and for the quick lookups behind a keypress; thirty for
+work running in the background; a minute for a standing pass; five seconds for
+the one-token checks aforge makes of a machine itself. That number is not only a
+stopwatch. It is also what decides which machines the
 request is allowed to go to at all.
 
 Before sending, aforge works out for every machine serving the model how long
