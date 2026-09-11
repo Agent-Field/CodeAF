@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -138,6 +139,20 @@ func TestTheNewsReadersNeverWaitForTheLoop(t *testing.T) {
 	}
 	// AND TWO THOUSAND POSTS OWE THE LOOP EXACTLY ONE FRAME. The desk already
 	// holds every one of them; a frame draws the desk, so one frame is all of it.
+	//
+	// THE RING IS WAITED FOR AND NOT ASSUMED, and that is a correction to the
+	// first cut of this test. `session.TellPhase` hands the news to a desk that
+	// delivers on a goroutine of its own (session's phasenews.go,
+	// `phaseDesk.tell`), so a post RETURNING is not the handler having run — and
+	// on a loaded box it had not: this read 0 owed frames during a laws run with
+	// twenty other packages compiling beside it. What the law is actually about
+	// is above this line and is unchanged: two thousand posts with nothing
+	// draining the door all returned, and a reader that waited would still be
+	// waiting. The slot holds one token at most by construction, so what is
+	// waited for here is that the door was rung at all.
+	for waited := 0; len(door.rung) == 0 && waited < 20000; waited++ {
+		runtime.Gosched()
+	}
 	if owed := len(door.rung); owed != 1 {
 		t.Fatalf("two thousand posts left %d frames owed, want exactly one", owed)
 	}
