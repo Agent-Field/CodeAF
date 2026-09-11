@@ -124,3 +124,44 @@ The cause was the move of recognition out of the tool description.
 With those sentences on the page only, the conversation began doing the work
 (writing the report) in 7 of 10 runs, against 0 of 10 for the control.
 Restoring them brought the rate back to 2 of 10 and the journey to 7 of 10.
+
+## E — the restored text: `stand`'s description and schema verbatim from 05c8aec12, and the page without "and no `rails`"
+
+These runs were serial and detached, with a $0.12 guard. They spent $0.1186.
+The whole four-batch spend above plus this one is $0.4164.
+
+| Run | Journey | Why (if failed) | does.report filled | Unasked limit: sent / stood on the card | Card named the reach (folder line; altitude) | Chat called write | `op` omitted | Unasked model |
+|---|---|---|---|---|---|---|---|---|
+| 01 | FAIL | report-changed | yes | no / no | yes; project | 1 | 0 | no |
+| 02 | FAIL | ? | yes | no / no | yes; project | 0 | 0 | no |
+| 03 | FAIL | the live pass did not finish clean (exit -1) | yes | no / no | yes; project | 0 | 0 | no |
+| 04 | FAIL | the live pass did not finish clean (exit -1) | yes | yes / no | yes; project | 0 | 0 | no |
+| 05 | PASS | — | yes | yes / no | yes; project | 0 | 0 | no |
+| 06 | PASS | — | yes | no / no | yes; project | 0 | 0 | no |
+| 07 | PASS | — | yes | no / no | yes; project | 0 | 0 | no |
+| 08 | PASS | — | yes | no / no | yes; project | 0 | 0 | no |
+| 09 | PASS | — | yes | yes / no | yes; project | 0 | 0 | yes |
+| 10 | PASS | — | yes | no / no | yes; project | 0 | 0 | no |
+
+**6/10** journey · does.report 10/10 · unasked limit sent 3/10, stood 0/10 · card named reach 10/10 · chat wrote the report 1/10 · `op` omitted 0/10 · unasked model 1/10
+
+**6/10. Below the 9/10 bar set for this control, so the lane stopped here.** It
+did not change the text further.
+
+The product text differs from control C (10/10, same day) by one page clause.
+Where the four failures fall:
+- **Run 01: model, chat side.** The conversation wrote the report file before
+  proposing, and the pass held the report (`report-changed`). This is the
+  known pre-write. Round 2 saw it once in 10 on this text.
+- **Run 02: pass, cause not established.** `standing check` said
+  `1 checked` and recorded 0 runs after `inbox/today.md` was written. The
+  item's log has no check line. That item carried a `when.hint` on a file
+  watch.
+- **Runs 03 and 04: the test driver.** `aforge standing check` hit the
+  journey's 3-minute context (`localwork_e2e_test.go:321`), exit -1, on slow
+  endpoints. This is round 2's run-06 defect: the driver's cap, not the item's
+  own deadline.
+
+The chat side did its job in 9 of 10 runs: `does.report` 10/10, the card
+named the reach 10/10, and no unasked limit stood. Three of the four failures
+are downstream of the text `stand` carries.
