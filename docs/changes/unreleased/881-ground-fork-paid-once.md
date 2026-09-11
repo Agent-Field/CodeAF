@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: A task no longer pays for a fork it will not use, and its runner asks git once a batch instead of once a call
+title: A task no longer pays for a fork it will not use, and its runner reads git once a batch
 pr: 881
 surface: [engine, docs]
 invalidates:
