@@ -272,8 +272,9 @@ const (
 // intermediate look at a job somebody asked about, but the sentence that used to
 // invite a poll loop is gone and replaced by the fact that makes polling
 // pointless: A FINISHED JOB REPORTS ITSELF. Every outstanding job's state also
-// rides at the foot of every tool result (jobfooter.go), so "is it still going,
-// and what did it last say" is answered without a call at all. The measured cost
+// rides at the foot of a tool result whenever it has moved since the last one
+// this turn carried (jobfooter.go), so "is it still going, and what did it last
+// say" is answered without a call at all. The measured cost
 // of the old wording was a model that answered `sleep 30 && tail` nine times to
 // an empty log and then killed the work.
 //

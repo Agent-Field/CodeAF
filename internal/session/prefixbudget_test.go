@@ -345,10 +345,23 @@ const fixedPrefixBudget = 48_000
 // The diet's target for this arm is 12,000 bytes
 // (docs/design/prompt-diet/DESIGN.md §6) and nothing in this wave reaches it,
 // which is worth saying plainly rather than rounding away. The two numbers that
-// would move it are both named: `ask`'s schema is 4,277 bytes — thirty percent
-// of the whole lean tool block, and the one carried verb nobody has been through
-// — and the page's 16,825 is the shared CORE minus one section, so it comes down
-// when CORE does and not before.
+// would move it were both named on landing: `ask`'s schema, and the page's
+// 16,825, which is the shared CORE minus one section and so comes down when CORE
+// does and not before.
+//
+// `ask` HAS NOW BEEN THROUGH, AND THE NUMBER CAME DOWN WITH IT (2026-09-10).
+// It was 4,277 bytes of the tool block, thirty percent of the lean arm, because
+// it is the one verb that is shelved on a full belt and PRE-ARMED on a lean one
+// (promptprofile.go) — the schema a small model pays for on every request and a
+// frontier model never sees. It is 3,844 now: no field left, no enum left, and
+// what went was prose saying a field's own name back at the model (`"Block
+// kind"` beside the list of block kinds, `"Subject kind"`, `"Turn waits"`,
+// `"Certainty"` on a low/medium/high enum, and the same six repeated inside the
+// evidence block, which is spliced into the schema TWICE) plus the tail of the
+// two long ones. The lean prefix went 31,006 → 30,573, and the budget below went
+// down with it rather than staying where it was: page 16,825 unchanged, tool
+// block 14,181 → 13,748. The full arm is untouched at 38,742, byte for byte,
+// which is what a shelved verb means.
 //
 // AND IT CARRIES A LITTLE HEADROOM, DELIBERATELY. Pinned to the exact
 // measurement it was the one number in the tree that made the shared page
@@ -361,7 +374,7 @@ const fixedPrefixBudget = 48_000
 // THEREAFTER IT ONLY EVER RATCHETS DOWN, in the ledger discipline the full
 // budget above is kept under: a lane that takes bytes out lowers it in the same
 // commit, and nothing ever raises it again.
-const leanPrefixBudget = 32_500
+const leanPrefixBudget = 31_500
 
 // leanWindow is the window the lean budget is weighed at. Sixteen thousand
 // tokens is the shape the profile was written for — a local open-weight model —

@@ -184,6 +184,39 @@ func TestEveryToolResultCarriesTheStateOfEveryRunningJob(t *testing.T) {
 	}
 }
 
+// AND IT IS SAID ONCE PER CHANGE, NOT ONCE PER RESULT. A turn with one job out
+// and a batch of calls used to pay for the same three facts on every one of
+// them; an identical footer tells the model nothing it is not already reading
+// further up the same turn.
+func TestAnUnchangedJobFooterIsNotSaidTwiceInOneTurn(t *testing.T) {
+	agent, _ := jobsAgent(t)
+	id := startJob(t, agent, "sleep 5")
+	defer agent.jobs.kill(context.Background(), id)
+
+	ep := agent.newEpisode()
+	first := agent.withJobState(ep, toolResult{text: "one"})
+	if !strings.Contains(first.text, fmt.Sprintf("[job %d] running ", id)) {
+		t.Fatalf("the first result of the turn did not carry the job:\n%q", first.text)
+	}
+	// The same turn, the same second, the same three facts: nothing to add.
+	if second := agent.withJobState(ep, toolResult{text: "two"}); second.text != "two" {
+		t.Fatalf("the footer was repeated unchanged:\n%q", second.text)
+	}
+
+	// A CHANGE BRINGS IT STRAIGHT BACK, and the elapsed second is a change like
+	// any other, so the footer is rewritten the moment the reading moves.
+	waitFor(t, "the job's elapsed time to move a second", func() bool {
+		return agent.withJobState(ep, toolResult{text: "three"}).text != "three"
+	})
+
+	// AND EVERY TURN STARTS WITH NOTHING REMEMBERED, so a person's next message
+	// never finds the state of their work missing from the first result.
+	next := agent.withJobState(agent.newEpisode(), toolResult{text: "four"})
+	if !strings.Contains(next.text, fmt.Sprintf("[job %d] running ", id)) {
+		t.Fatalf("a new turn did not carry the job on its first result:\n%q", next.text)
+	}
+}
+
 // ── the strip, which is what keeps the footer out of every comparison ───────
 
 // THE FOOTER IS NOT INFORMATION ABOUT THE WORK. It carries an elapsed time, so

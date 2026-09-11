@@ -1723,14 +1723,17 @@ order:
    well.
 4. **routing** — what every request prefers among the endpoints: `latency`, `price`, `off`.
    With `off` nothing is measured, so the two rows above it have no machine to name.
-5. **crew** — the five below, chosen as one word: `frugal`, `balanced`, `max`. It is a cycle
+5. **prompt profile** — how much aforge tells the model before you type: `auto`, `lean`,
+   `full`. Another cycle row. `auto` reads the model's context window and goes lean under
+   32,000 tokens (see *Models, context, and what it costs*).
+6. **crew** — the five below, chosen as one word: `frugal`, `balanced`, `max`. It is a cycle
    row: enter or space walks it. Answer any of the five yourself and it reads `custom`.
-6. **reflex** — `near-free · reads every turn — memory, titles, safety`
-7. **small work** — `cheap · the small calls — names, digests, the safety gate`
-8. **worker** — `does the work · every task, its parts, every run node — most of the bill`
-9. **careful work** — `careful · checks what must not be wrong — audits, compaction, vision`
-10. **mastermind** — `thinks · plans runs and designs harnesses — add :low, :medium or :high`
-11. **pinned roles**, and hanging off it the **roles** list — one row per auxiliary call
+7. **reflex** — `near-free · reads every turn — memory, titles, safety`
+8. **small work** — `cheap · the small calls — names, digests, the safety gate`
+9. **worker** — `does the work · every task, its parts, every run node — most of the bill`
+10. **careful work** — `careful · checks what must not be wrong — audits, compaction, vision`
+11. **mastermind** — `thinks · plans runs and designs harnesses — add :low, :medium or :high`
+12. **pinned roles**, and hanging off it the **roles** list — one row per auxiliary call
     aforge makes for itself, grouped under its class. Those rows come from the running binary
     rather than the settings registry.
 

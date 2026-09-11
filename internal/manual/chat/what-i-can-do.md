@@ -260,17 +260,25 @@ first line.
 **It gets told, and it never has to poll.** Two things arrive without anybody
 asking for them.
 
-**While a job runs**, every tool result aforge reads carries one line per
-outstanding job at the bottom of it, the way a shell prints its background jobs
-under the prompt:
+**While a job runs**, the tool results aforge reads carry one line per
+outstanding job at the bottom of them, the way a shell prints its background
+jobs under the prompt:
 
 ```
 [job 1] running 3m12s · last: scored case 41
 ```
 
 Three facts — it is alive, it has been alive this long, this is the last thing it
-said — on every result, so "is it still going" is answered before it can be
-asked. A finished or killed job drops off the list immediately.
+said — so "is it still going" is answered before it can be asked. A finished or
+killed job drops off the list immediately.
+
+**The line is repeated only when it changes.** Within one turn, a result whose
+job line would say exactly what the last one said leaves it off: the same three
+facts are already in front of aforge, further up the same turn. The moment
+anything moves — a second more elapsed, a new last line, a job starting or
+ending — the line is back. Every turn starts fresh, so the first result of a
+turn with work out always carries it. A turn that made twenty tool calls with
+one job out used to pay for the same sentence twenty times.
 
 **When a job ends**, its exit code, last non-empty output line, output tail and
 path to the full log arrive in the conversation on their own:

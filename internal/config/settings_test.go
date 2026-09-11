@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1317,5 +1318,66 @@ func TestTaskCountdownDefaultAndPersistedValues(t *testing.T) {
 	}
 	if got := TaskAutoApproveAt(dir); got != 0 {
 		t.Fatalf("persisted no-clock value = %d, want 0", got)
+	}
+}
+
+// THE PROMPT PROFILE IS A ROW NOW, and this is the round trip: three words, a
+// default that decides nothing, a persisted choice that survives a reread, and
+// a pin that holds the row read-only for one launch.
+//
+// The last case is the one worth writing down. Every other pinned row in this
+// sheet reads a word it does not recognise as its own default; this one falls
+// through to the person's choice instead, because the engine already rules that
+// an unrecognised pin is not a pin (internal/session's promptprofile.go), and a
+// sheet that answered differently would put two laws on one variable.
+func TestThePromptProfileRowRoundTripsAndItsPinWinsForOneLaunch(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(EnvPromptProfile, "")
+	row, ok := registry(t, dir).Row(KeyPromptProfile)
+	if !ok {
+		t.Fatal("the prompt profile is not registered")
+	}
+	if row.Category != CategoryModels || row.Kind != SettingChoice || row.Label != "prompt profile" {
+		t.Fatalf("the prompt profile row = %+v", row)
+	}
+	if want := []string{PromptProfileAuto, PromptProfileLean, PromptProfileFull}; !slices.Equal(row.Choices, want) {
+		t.Fatalf("the row offers %v, want %v", row.Choices, want)
+	}
+	if row.Value() != PromptProfileAuto || PromptProfileAt(dir) != PromptProfileAuto {
+		t.Fatalf("the prompt profile does not default to auto: %q", row.Value())
+	}
+	if err := row.Apply("nearly"); err == nil {
+		t.Fatal("the row took a word that is not one of its three")
+	}
+
+	if err := row.Apply("lean"); err != nil {
+		t.Fatal(err)
+	}
+	if got := PromptProfileAt(dir); got != PromptProfileLean {
+		t.Fatalf("lean did not persist: %q", got)
+	}
+	reread, _ := registry(t, dir).Row(KeyPromptProfile)
+	if reread.Value() != PromptProfileLean {
+		t.Fatalf("the reread row lost the persisted choice: %q", reread.Value())
+	}
+
+	t.Setenv(EnvPromptProfile, "full")
+	if got := PromptProfileAt(dir); got != PromptProfileFull {
+		t.Fatalf("the pin lost to the persisted row: %q", got)
+	}
+	pinned, _ := registry(t, dir).Row(KeyPromptProfile)
+	name, isPinned := pinned.PinnedBy()
+	if !isPinned || name != EnvPromptProfile {
+		t.Fatalf("the prompt profile row did not report its pin: %q", name)
+	}
+	if err := pinned.Apply("lean"); err == nil || !strings.Contains(err.Error(), name) {
+		t.Fatalf("a pinned prompt profile accepted an edit: %v", err)
+	}
+
+	// AND A WORD THE LIST DOES NOT HAVE IS NOT AN ANSWER, so the row the person
+	// chose still stands rather than being cancelled by a typo in their shell.
+	t.Setenv(EnvPromptProfile, "leaner")
+	if got := PromptProfileAt(dir); got != PromptProfileLean {
+		t.Fatalf("a mistyped pin overrode the persisted row: %q", got)
 	}
 }

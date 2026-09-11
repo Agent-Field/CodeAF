@@ -303,6 +303,19 @@ type episode struct {
 	captionMu sync.Mutex
 	captionN  int
 
+	// jobFooterSent is the last job-state footer this turn appended to a tool
+	// result, and it is here so that the next result can leave it off when
+	// nothing about the outstanding work has moved (jobfooter.go states the law
+	// and the measurement). The turn is the unit because the turn is what the
+	// model reads in one piece: a new episode remembers nothing, so the first
+	// result of every turn with work out carries the footer.
+	//
+	// It is guarded for [episode.captionN]'s reason: a batch runs its calls on
+	// goroutines of their own, and a batch of six results rendered inside the
+	// same second is exactly the case this field exists for.
+	jobFooterMu   sync.Mutex
+	jobFooterSent string
+
 	// asking is the person's message THE REQUEST NOW GOING OUT is answering,
 	// stamped where the horizon is stamped and read by the one tool that may act
 	// under their authority (task_forward.go). It is guarded for [episode.captionN]'s
@@ -312,6 +325,25 @@ type episode struct {
 	// forward what they typed into the middle of it.
 	askingMu sync.Mutex
 	asking   personSource
+}
+
+// jobFooterChanged takes one rendered footer and answers whether it says
+// anything this turn has not already said, remembering it either way.
+//
+// AN EPISODE THAT DOES NOT EXIST HAS SAID NOTHING. A caller with no turn around
+// it — a small test, a door that builds a result by hand — gets the footer, so
+// the absence of a turn can never be the reason the model was told less.
+func (ep *episode) jobFooterChanged(footer string) bool {
+	if ep == nil {
+		return true
+	}
+	ep.jobFooterMu.Lock()
+	defer ep.jobFooterMu.Unlock()
+	if ep.jobFooterSent == footer {
+		return false
+	}
+	ep.jobFooterSent = footer
+	return true
 }
 
 // newEpisode builds one turn's control plane and runs `episode-init`.

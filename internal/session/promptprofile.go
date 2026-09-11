@@ -41,13 +41,28 @@ package session
 // and LM Studio all report the window they were loaded with, and that is the fact
 // this file reads. Where they do not, [promptProfileEnv] pins it.
 //
-// [promptProfileEnv] is the second and last way in: a pin, for a bench cell, a
-// test, or a person whose endpoint reports a window its loaded model does not
-// really have. There is no settings row for it yet and there should be — see
-// docs/changes — but a pin is not a dial, and it is spelled the way every other
-// pin of that kind in this tree is (internal/splitgate's Mode): the words are
-// exact, and anything else — a typo, a stale word, nothing at all — is not a pin
-// at all rather than a silent move onto the other arm.
+// ── AND THERE ARE TWO WAYS TO OVERRULE THE WINDOW, IN ONE VOCABULARY ──
+//
+// The window is right almost every time and wrong in one recognisable case: an
+// endpoint that reports a window its loaded model does not really have. A
+// derived state with nowhere to read it and nowhere to correct it is a state
+// nobody can argue with, so there are two ways to say otherwise and they take
+// THE SAME THREE WORDS — `auto`, `lean`, `full` (internal/config's
+// [config.PromptProfileModes]):
+//
+//   - THE SETTINGS ROW, `prompt.profile` ([config.KeyPromptProfile]), which is
+//     what a person changes and what /settings draws. It reaches this file as
+//     [Config.PromptProfile], put there by the door that opened the session.
+//   - [config.EnvPromptProfile], which pins it for ONE LAUNCH, over the row, for
+//     a bench cell or a test measuring one arm against the other. The sheet
+//     renders the row read-only while it is set and says which variable owns it,
+//     which is what every other pinned row in that sheet does.
+//
+// `auto` is the default and decides nothing: it is the word for "the window
+// knows". And a word that is not one of the three is not an answer at all
+// rather than a silent move onto the other arm — the reversal
+// internal/splitgate's Mode states at length, and the reason the row and the
+// pin share one list instead of keeping two.
 //
 // ── WHAT LEAN ACTUALLY CHANGES ──
 //
@@ -82,6 +97,8 @@ package session
 import (
 	"os"
 	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/config"
 )
 
 // promptProfile is which of the two prefixes this agent sends. It is a word
@@ -94,9 +111,9 @@ const (
 	// profileFull is the shipped prefix: every law on the page, every ordinary
 	// verb in the tool block. It is what a frontier window gets and what every
 	// shape got before this file existed.
-	profileFull promptProfile = "full"
+	profileFull promptProfile = config.PromptProfileFull
 	// profileLean is the Pi-sized prefix.
-	profileLean promptProfile = "lean"
+	profileLean promptProfile = config.PromptProfileLean
 )
 
 // lean is the one question the rest of the package asks of a profile.
@@ -116,8 +133,10 @@ const (
 	// to maintain and a window is a fact the catalog already carries.
 	leanWindowThreshold = 32_000
 
-	// promptProfileEnv pins the profile for a test or a bench cell.
-	promptProfileEnv = "AFORGE_PROMPT_PROFILE"
+	// promptProfileEnv is [config.EnvPromptProfile] under the name this package
+	// reads it by. It is one string and not two: the sheet renders the row it
+	// pins read-only from the same constant.
+	promptProfileEnv = config.EnvPromptProfile
 
 	// leanInstructionLimit bounds the project's own instruction file on a lean
 	// prefix, where [agentsFileLimit] bounds it on a full one.
@@ -156,14 +175,23 @@ func (c Config) promptProfile() promptProfile {
 func settlePromptProfile(c Config) promptProfile { return resolvePromptProfile(c) }
 
 // resolvePromptProfile is the derivation itself, most specific answer first:
-// THE PIN, THEN THE WINDOW, AND NOTHING ELSE. There is deliberately no third
-// rung — no model name, no vendor, no crew seat — because every one of those is
-// a guess about a model's size standing in for the figure the model itself
-// reports, and the guess was wrong about the open-weight models this build ships
-// with (see the law at the top of this file).
+// THE PIN, THEN THE ROW, THEN THE WINDOW, AND NOTHING ELSE. There is
+// deliberately no fourth rung — no model name, no vendor, no crew seat —
+// because every one of those is a guess about a model's size standing in for
+// the figure the model itself reports, and the guess was wrong about the
+// open-weight models this build ships with (see the law at the top of this
+// file).
+//
+// The two rungs above the window are the same question asked twice with
+// different lifetimes: the pin is for this launch, the row is until somebody
+// changes it. Both answer `auto` by saying nothing, and then the window decides
+// exactly as it did before either existed.
 func resolvePromptProfile(c Config) promptProfile {
-	if pinned, ok := pinnedPromptProfile(); ok {
+	if pinned, ok := promptProfileWord(os.Getenv(promptProfileEnv)); ok {
 		return pinned
+	}
+	if chosen, ok := promptProfileWord(c.PromptProfile); ok {
+		return chosen
 	}
 	if c.promptWindow() < leanWindowThreshold {
 		return profileLean
@@ -171,17 +199,19 @@ func resolvePromptProfile(c Config) promptProfile {
 	return profileFull
 }
 
-// pinnedPromptProfile reads [promptProfileEnv].
+// promptProfileWord reads one of the three words the row and the pin share, and
+// says whether it decided anything.
 //
-// AN UNRECOGNISED PIN IS NOT A PIN. The two words are exact and everything else
-// leaves the derivation to decide, so a stale or mistyped variable in somebody's
-// shell cannot quietly move a conversation onto the other arm — the reversal
-// internal/splitgate's Mode states at length, for the same reason.
-func pinnedPromptProfile() (promptProfile, bool) {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(promptProfileEnv))) {
-	case string(profileLean):
+// `auto` DECIDES NOTHING, AND NEITHER DOES ANYTHING ELSE. That is one rule
+// rather than two: the default word and a mistyped one both leave the next rung
+// to answer, so a stale variable in somebody's shell cannot quietly move a
+// conversation onto the other arm and cannot quietly cancel the row a person
+// did choose either.
+func promptProfileWord(raw string) (promptProfile, bool) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case config.PromptProfileLean:
 		return profileLean, true
-	case string(profileFull):
+	case config.PromptProfileFull:
 		return profileFull, true
 	}
 	return "", false
