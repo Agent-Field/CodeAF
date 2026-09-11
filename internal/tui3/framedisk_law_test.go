@@ -27,14 +27,28 @@ package tui3
 //     and without this edge the one call that started this lane would not have
 //     been on the graph at all.
 //
-// WHAT IT DOES NOT WALK, SAID OUT LOUD: a method on some OTHER value the frame
-// happens to hold — `p.rows()`, `e.word()`, `r.ref()`. Following those by name
-// alone drags in every same-named method in an eleven-thousand-line package and
-// turns this law into a forty-line allowlist that nobody reads, which is worse
-// than no law. The cover is that a value this package hands around — an entry, a
-// picker, a palette, a row — holds no disk of its own: the [app] method that
-// hands it the value is on the graph, and a value method that grew a syscall
-// would have to be handed a path by one of those.
+// WHAT IT DOES NOT WALK, SAID OUT LOUD, because a law whose reach a reader
+// cannot predict is a law that lies by omission:
+//
+//   - A METHOD ON SOME OTHER VALUE the frame happens to hold — `p.rows()`,
+//     `e.word()`, `r.ref()`. Following those by name alone drags in every
+//     same-named method in an eleven-thousand-line package and turns this law
+//     into a forty-line allowlist that nobody reads, which is worse than no law.
+//     The cover is that a value this package hands around — an entry, a picker, a
+//     palette, a row — holds no disk of its own: the [app] method that hands it
+//     the value is on the graph, and a value method that grew a syscall would
+//     have to be handed a path by one of those.
+//   - ANOTHER PACKAGE'S BODY. The walk parses THIS directory, so a call into
+//     internal/config, internal/home or cmd/aforge is a leaf. That is how a real
+//     per-frame read hid for a while: the door installs [Options.ModelsForService]
+//     from cmd/aforge, whose own last line read the model cache off disk, and
+//     nothing here could see it. The seam is followed to the FIELD (below); what
+//     is on the other side of it is the other package's law to keep.
+//   - A METHOD VALUE PASSED AS AN ARGUMENT — `watch(a.load)` — because only a
+//     call's own Fun is read as an edge.
+//   - `go a.method()` is walked as though it were on the loop, while
+//     `go func(){ a.method() }()` is not. That is strict rather than loose, so it
+//     costs a false positive and never a miss.
 //
 // THE ALLOWLIST IS THE INTERESTING PART OF THIS FILE. Every name on it is a
 // MEMOISED DOOR: it reads the disk once per file per epoch and the frame reads
@@ -66,23 +80,80 @@ var updateProcessDoors = map[string]string{}
 
 // The syscalls a frame may not make, spelled as this package spells them.
 var frameForbidden = map[string]map[string]bool{
+	// os.UserHomeDir is DELIBERATELY ABSENT: on unix it reads $HOME and touches
+	// nothing, so forbidding it would be the law making a claim about a function
+	// that costs what a map lookup costs. Everything else here is a syscall.
 	"os": {
 		"Stat": true, "Lstat": true, "ReadFile": true, "Open": true,
 		"OpenFile": true, "ReadDir": true, "Create": true, "WriteFile": true,
 		"Remove": true, "RemoveAll": true, "MkdirAll": true, "Rename": true,
+		"Getwd": true, "Chdir": true, "Readlink": true, "Symlink": true,
+		"Truncate": true, "DirFS": true,
 	},
-	"exec":     {"Command": true, "CommandContext": true, "LookPath": true},
-	"filepath": {"Glob": true, "Walk": true, "WalkDir": true},
+	"exec": {"Command": true, "CommandContext": true, "LookPath": true},
+	// EvalSymlinks is an lstat for every segment of the path, which is the most
+	// expensive thing on this list on a machine with an automounted home
+	// (PERF.md's hosted-home row).
+	"filepath": {"Glob": true, "Walk": true, "WalkDir": true, "EvalSymlinks": true},
 	"net":      {"*": true},
 	"http":     {"*": true},
 }
 
 // processForbidden is the narrower question the update loop is asked: not
 // whether it reads a file — it may, it is `open` and `tick` — but whether it
-// waits on a PROCESS or the network while a person is typing.
+// STARTS A PROCESS or waits on the network while a person is typing.
+//
+// BUILDING A COMMAND IS NOT STARTING ONE. exec.Command resolves a name on PATH
+// and records a miss without forking, and a door that must say "no way to open"
+// on the frame that needs it may do exactly that on the loop (opener.go). What
+// the loop may not do is START the process — [processStarts] on a command, which
+// the walk finds by the name the command was bound to — and that is the rule
+// that caught `/workspace`'s two `git` processes.
 var processForbidden = map[string]map[string]bool{
-	"exec": {"Command": true, "CommandContext": true, "LookPath": true},
 	"http": {"*": true},
+}
+
+// processStarts is every method that forks or waits on an *exec.Cmd. The walk has
+// no types, so it applies these only to a name the same function bound to
+// exec.Command or exec.CommandContext, or to such a call directly.
+var processStarts = map[string]bool{
+	"Start": true, "Run": true, "Output": true, "CombinedOutput": true, "Wait": true,
+}
+
+// commandNames is every local in one body bound to a command: `cmd :=
+// exec.Command(…)`. Closures are included, because `run := func(…)` in
+// [gitHead] is where the binding and the start both live.
+func commandNames(body ast.Node) map[string]bool {
+	names := map[string]bool{}
+	ast.Inspect(body, func(n ast.Node) bool {
+		assign, ok := n.(*ast.AssignStmt)
+		if !ok {
+			return true
+		}
+		for i, lhs := range assign.Lhs {
+			ident, ok := lhs.(*ast.Ident)
+			if ok && i < len(assign.Rhs) && buildsCommand(assign.Rhs[i]) {
+				names[ident.Name] = true
+			}
+		}
+		return true
+	})
+	return names
+}
+
+// buildsCommand is whether one expression is a call to exec.Command or
+// exec.CommandContext.
+func buildsCommand(expr ast.Expr) bool {
+	call, ok := expr.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	return ok && pkg.Name == "exec" && (sel.Sel.Name == "Command" || sel.Sel.Name == "CommandContext")
 }
 
 // surfaceGraph is this package as the law reads it.
@@ -126,10 +197,14 @@ func receiverName(fn *ast.FuncDecl) string {
 	return fn.Recv.List[0].Names[0].Name
 }
 
+func newSurfaceGraph() *surfaceGraph {
+	return &surfaceGraph{fset: token.NewFileSet(), decls: map[string]*ast.FuncDecl{}, seams: map[string][]string{}}
+}
+
+// readSurfaceGraph is this package's non-test sources, as the law reads them.
 func readSurfaceGraph(t *testing.T) *surfaceGraph {
 	t.Helper()
-	fset := token.NewFileSet()
-	g := &surfaceGraph{fset: fset, decls: map[string]*ast.FuncDecl{}, seams: map[string][]string{}}
+	g := newSurfaceGraph()
 	entries, err := os.ReadDir(".")
 	if err != nil {
 		t.Fatal(err)
@@ -139,36 +214,11 @@ func readSurfaceGraph(t *testing.T) *surfaceGraph {
 		if item.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
 			continue
 		}
-		file, err := parser.ParseFile(fset, filepath.Join(".", name), nil, 0)
+		file, err := parser.ParseFile(g.fset, filepath.Join(".", name), nil, 0)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
-		for _, decl := range file.Decls {
-			fn, ok := decl.(*ast.FuncDecl)
-			if !ok || fn.Body == nil {
-				continue
-			}
-			g.decls[nodeName(receiverType(fn), fn.Name.Name)] = fn
-		}
-		// A FUNC-TYPED FIELD IS AN EDGE TOO. `a.gitProbe = gitHead` is what makes
-		// `a.gitProbe(dir)` two `git` processes, and without this the one call
-		// this file exists to have caught would not have been on the graph at all.
-		ast.Inspect(file, func(n ast.Node) bool {
-			assign, ok := n.(*ast.AssignStmt)
-			if !ok {
-				return true
-			}
-			for i, lhs := range assign.Lhs {
-				sel, ok := lhs.(*ast.SelectorExpr)
-				if !ok || i >= len(assign.Rhs) {
-					continue
-				}
-				if rhs, ok := assign.Rhs[i].(*ast.Ident); ok {
-					g.seams[sel.Sel.Name] = append(g.seams[sel.Sel.Name], rhs.Name)
-				}
-			}
-			return true
-		})
+		g.add(file)
 	}
 	if len(g.decls) == 0 {
 		t.Fatal("no sources read: the law walked an empty package")
@@ -176,16 +226,54 @@ func readSurfaceGraph(t *testing.T) *surfaceGraph {
 	return g
 }
 
+// add files one source file's declarations and seams.
+func (g *surfaceGraph) add(file *ast.File) {
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Body == nil {
+			continue
+		}
+		g.decls[nodeName(receiverType(fn), fn.Name.Name)] = fn
+	}
+	// A NAME THAT HOLDS A FUNCTION IS AN EDGE TOO, and this package installs
+	// one four ways: `a.gitProbe = gitHead`, `var processOpener = startOpener`,
+	// `modelsForService: opts.ModelsForService` in a composite literal, and a
+	// literal written straight into any of those. All four are collected, by
+	// the NAME the call site will spell — the field's or the variable's — and
+	// [surfaceGraph.reach] follows them.
+	//
+	// THE FIRST SPELLING WAS THE ONLY ONE THIS LAW KNEW, and the gap was not
+	// academic: `processOpener` is a package-level var holding [startOpener],
+	// which ran a process ON the update loop on a keystroke. A law that follows
+	// one spelling of indirection and not the others is a law whose name is true
+	// only of the code somebody happened to check.
+	g.readSeams(file)
+}
+
 // handedOff is every function literal in one body that this package HANDS TO
 // SOMEBODY ELSE TO RUN rather than running itself: the `func() tea.Msg` a method
-// returns, one passed to tea.Batch, tea.Sequence or a tick, and one started with
-// `go`. Those are the off-loop escape hatch — [app.probeGit] is the worked
+// returns, one passed to a [handOffDoors] call, and one started with `go`. Those are the off-loop escape hatch — [app.probeGit] is the worked
 // example — and what they do is not what the loop does.
 //
 // Every OTHER literal in a body runs inside it. `run := func(args …string)` in
 // [gitHead] is the case that made this distinction necessary: skipping every
 // literal meant the two `git` processes the whole lane is about were invisible to
 // the law that exists to find them.
+// handOffDoors is every call in this repository that takes a closure TO RUN
+// ELSEWHERE, as data: anything in bubbletea's package (a command, a batch, a
+// tick), and internal/guard's Go, which is this repository's one door for "start
+// this on a goroutine and recover it if it panics". A literal handed to one of
+// them is not run by the body that wrote it.
+var handOffDoors = map[string]map[string]bool{
+	"tea":   {"*": true},
+	"guard": {"Go": true},
+}
+
+func runsElsewhere(pkg, name string) bool {
+	calls, ok := handOffDoors[pkg]
+	return ok && (calls["*"] || calls[name])
+}
+
 func handedOff(body ast.Node) map[*ast.FuncLit]bool {
 	off := map[*ast.FuncLit]bool{}
 	mark := func(expr ast.Expr) {
@@ -203,7 +291,7 @@ func handedOff(body ast.Node) map[*ast.FuncLit]bool {
 			mark(node.Call.Fun)
 		case *ast.CallExpr:
 			if sel, ok := node.Fun.(*ast.SelectorExpr); ok {
-				if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "tea" {
+				if pkg, ok := sel.X.(*ast.Ident); ok && runsElsewhere(pkg.Name, sel.Sel.Name) {
 					for _, arg := range node.Args {
 						mark(arg)
 					}
@@ -215,6 +303,73 @@ func handedOff(body ast.Node) map[*ast.FuncLit]bool {
 	return off
 }
 
+// readSeams collects every name in one file that holds a function, so that a
+// call through it is an edge like any other. A literal is filed under a name of
+// its own so the walk can reach its body.
+func (g *surfaceGraph) readSeams(file *ast.File) {
+	lit := 0
+	// note files one right-hand side under the name it was installed as.
+	var note func(name string, rhs ast.Expr)
+	note = func(name string, rhs ast.Expr) {
+		switch value := rhs.(type) {
+		case *ast.Ident:
+			g.seams[name] = append(g.seams[name], value.Name)
+		case *ast.SelectorExpr:
+			// A method value or another package's function: the name is all the
+			// walk can use, and this package's own declaration of it — if there
+			// is one — is what it will find.
+			g.seams[name] = append(g.seams[name], value.Sel.Name)
+		case *ast.FuncLit:
+			// A LITERAL IS GIVEN A NAME so the walk has something to visit. The
+			// name cannot collide with a declaration: it is not an identifier.
+			lit++
+			made := "func literal " + g.fset.Position(value.Pos()).String()
+			g.decls[made] = &ast.FuncDecl{Name: ast.NewIdent("literal"), Body: value.Body}
+			g.seams[name] = append(g.seams[name], made)
+		}
+	}
+	ast.Inspect(file, func(n ast.Node) bool {
+		switch node := n.(type) {
+		case *ast.AssignStmt:
+			for i, lhs := range node.Lhs {
+				if i >= len(node.Rhs) {
+					continue
+				}
+				// A FIELD, AND DELIBERATELY NOT A LOCAL. Seams are filed by name,
+				// so `look := func(…)` inside one function would lend its body to
+				// every other function with a local called `look` — which is not an
+				// over-approximation a reader can act on, it is a fictional call
+				// chain. A field and a package-level name are spelled once in the
+				// package and are the two shapes that actually carry indirection
+				// out of the function that made them.
+				if target, ok := lhs.(*ast.SelectorExpr); ok {
+					note(target.Sel.Name, node.Rhs[i])
+				}
+			}
+		case *ast.ValueSpec:
+			// `var processOpener = startOpener`, and every other package-level
+			// name that holds a function. (A `var` inside a function body reaches
+			// here too; that is the same shape spelled in a smaller scope.)
+			for i, name := range node.Names {
+				if i < len(node.Values) {
+					note(name.Name, node.Values[i])
+				}
+			}
+		case *ast.CompositeLit:
+			// `modelsForService: opts.ModelsForService` — which is how EVERY seam
+			// the door installs on [Options] reaches this package.
+			for _, element := range node.Elts {
+				if pair, ok := element.(*ast.KeyValueExpr); ok {
+					if key, ok := pair.Key.(*ast.Ident); ok {
+						note(key.Name, pair.Value)
+					}
+				}
+			}
+		}
+		return true
+	})
+}
+
 // callsIn is every name one body reaches, and every forbidden call it makes
 // itself. intoClosures says whether EVERY function literal counts as part of
 // this body — it does for the frame, which runs everything it builds — and when
@@ -224,6 +379,7 @@ func (g *surfaceGraph) callsIn(fn *ast.FuncDecl, forbidden map[string]map[string
 	intoClosures bool) (names []string, bad []string) {
 	self, recv := receiverName(fn), receiverType(fn)
 	off := handedOff(fn.Body)
+	commands := commandNames(fn.Body)
 	var walk func(ast.Node)
 	walk = func(node ast.Node) {
 		ast.Inspect(node, func(n ast.Node) bool {
@@ -241,6 +397,16 @@ func (g *surfaceGraph) callsIn(fn *ast.FuncDecl, forbidden map[string]map[string
 			case *ast.Ident:
 				names = append(names, nodeName("", fun.Name))
 			case *ast.SelectorExpr:
+				// A PROCESS STARTED, on a command this body built — bound to a
+				// name, or chained straight off exec.Command.
+				if processStarts[fun.Sel.Name] {
+					bound, _ := fun.X.(*ast.Ident)
+					if buildsCommand(fun.X) || (bound != nil && commands[bound.Name]) {
+						bad = append(bad, "exec.Cmd."+fun.Sel.Name+" at "+
+							g.fset.Position(call.Pos()).String())
+						return true
+					}
+				}
 				ident, ok := fun.X.(*ast.Ident)
 				if !ok {
 					return true
@@ -280,10 +446,15 @@ func (g *surfaceGraph) reach(roots []string, forbidden map[string]map[string]boo
 			return
 		}
 		seen[name] = true
-		// A func-typed field reaches whatever this package assigns to it. Field
-		// names arrive here bare — no receiver type in front of them — which is
-		// exactly how [surfaceGraph.readSeams] filed them.
-		for _, next := range g.seams[name] {
+		// A name that holds a function reaches whatever this package installed in
+		// it. Call sites arrive here two ways — `a.field(…)` pushes the bare field
+		// name, `plainName(…)` pushes `.plainName` — and [surfaceGraph.readSeams]
+		// filed both under the bare name.
+		for _, next := range g.seams[strings.TrimPrefix(name, ".")] {
+			if _, made := g.decls[next]; made {
+				visit(next)
+				continue
+			}
 			visit(nodeName("", next))
 		}
 		fn, known := g.decls[name]
@@ -343,4 +514,123 @@ func TestTheUpdateLoopStartsNoProcessOfItsOwn(t *testing.T) {
 	roots := []string{"app.Update"}
 	reportSins(t, "the update loop waited on a process:",
 		g.reach(roots, processForbidden, updateProcessDoors, false))
+}
+
+// THE LAW'S OWN LAW: every shape of indirection the head of this file claims to
+// follow, planted in a package of its own and found. A walk that is green over
+// the real package proves only that nothing it can SEE is wrong; this proves
+// what it can see. Each planted source is the smallest spelling of one shape the
+// real package uses, and the planted sin is named so the assertion can say which
+// shape went blind.
+func TestTheLawSeesEveryShapeOfIndirectionItClaims(t *testing.T) {
+	const planted = `package tui3
+
+import (
+	"os"
+	"os/exec"
+
+	"github.com/Agent-Field/aforge-v2/internal/guard"
+)
+
+type app struct{ probe func(); door func() }
+
+// A field assigned a function: a.gitProbe = gitHead.
+func fieldTarget() { os.Stat("field") }
+
+// A package-level var holding a function: var processOpener = startOpener.
+var viaVar = varTarget
+func varTarget() { exec.Command("var").Run() }
+
+// A composite-literal key: modelsForService: opts.ModelsForService.
+func literalKeyTarget() { os.ReadFile("key") }
+
+// A literal written straight into a package var.
+var inlineLiteral = func() { os.Open("literal") }
+
+func (a *app) View() {
+	a.probe = fieldTarget
+	a.probe()
+	viaVar()
+	a.door()
+	inlineLiteral()
+	a.other()
+}
+
+// The constructor that installs the door, as newApp installs every Options seam.
+func build() *app { return &app{door: literalKeyTarget} }
+
+// A LOCAL named like another function's local must NOT lend it a body.
+func (a *app) other() { look := func() {}; look() }
+func unrelated()      { look := func() { os.Stat("fictional") }; look() }
+
+// The update loop: a closure handed to guard.Go runs elsewhere; the same work
+// written inline runs on the loop.
+func (a *app) Update() {
+	guard.Go("x", func() { exec.Command("elsewhere").Run() })
+	run := func() { exec.Command("inline").Run() }
+	run()
+}
+`
+	g := newSurfaceGraph()
+	file, err := parser.ParseFile(g.fset, "planted.go", planted, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.add(file)
+
+	frame := g.reach([]string{"app.View"}, frameForbidden, nil, true)
+	for _, want := range []struct{ shape, node string }{
+		{"a field assigned a function", ".fieldTarget"},
+		{"a package-level var holding a function", ".varTarget"},
+		{"a composite-literal key", ".literalKeyTarget"},
+	} {
+		if len(frame[want.node]) == 0 {
+			t.Errorf("the walk is blind to %s: %s was not reached", want.shape, want.node)
+		}
+	}
+	literal := false
+	for node := range frame {
+		if strings.HasPrefix(node, "func literal") {
+			literal = true
+		}
+	}
+	if !literal {
+		t.Error("the walk is blind to a literal written straight into a package var")
+	}
+	if _, fictional := frame[".unrelated"]; fictional {
+		t.Error("a local closure lent its body to another function's local of the same name")
+	}
+	for node, sins := range frame {
+		for _, sin := range sins {
+			if strings.Contains(sin, "fictional") || strings.Contains(node, "unrelated") {
+				t.Errorf("a fictional call chain reached %s: %s", node, sin)
+			}
+		}
+	}
+
+	// The two planted process starts, found by the line their argument is on so
+	// the assertion does not depend on counting lines by hand.
+	lineOf := func(needle string) string {
+		for i, line := range strings.Split(planted, "\n") {
+			if strings.Contains(line, needle) {
+				return "planted.go:" + itoa(i+1) + ":"
+			}
+		}
+		t.Fatalf("the planted source lost %q", needle)
+		return ""
+	}
+	loop := g.reach([]string{"app.Update"}, processForbidden, nil, false)
+	inline, elsewhere := false, false
+	for _, sins := range loop {
+		for _, sin := range sins {
+			inline = inline || strings.Contains(sin, lineOf(`"inline"`))
+			elsewhere = elsewhere || strings.Contains(sin, lineOf(`"elsewhere"`))
+		}
+	}
+	if !inline {
+		t.Errorf("the update law missed a process started by a closure the loop runs itself: %v", loop)
+	}
+	if elsewhere {
+		t.Error("the update law walked a closure handed to guard.Go, which runs elsewhere")
+	}
 }

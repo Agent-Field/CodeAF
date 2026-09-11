@@ -23,9 +23,16 @@ package tui3
 //
 //   - [learned.of] IS THE FRAME'S DOOR AND IT READS NOTHING. It answers the memo
 //     and, on a miss, writes the name down as asked-for. A frame that meets a
-//     name nobody has read yet draws what it draws for a fact it does not have —
-//     which for both callers is the fallback they already drew for a file that
-//     could not be read — and the loop catches up before the next frame.
+//     name nobody has read yet draws what it draws for a fact it does not have,
+//     and the loop catches up before the next frame.
+//
+//     WHAT THAT IS, IS THE CALLER'S OWN FALLBACK AND NOT ALWAYS ABSENCE. A
+//     picture nobody has stat'd draws the nothing it already drew for a file it
+//     could not stat. A model list nobody has read falls to the rung BELOW it,
+//     which is [BuiltinModels] — five names rather than none — so a frame that
+//     met that miss shows different rows, not an empty box. Both are the answer
+//     the caller already had for "the list is not here"; neither is a blank
+//     where something used to be.
 //
 //   - [learned.learn] IS THE LOOP'S DOOR. It reads the name NOW, on the calling
 //     goroutine, and files what came back. Every caller of it is `open`, a tick,
@@ -98,8 +105,24 @@ func (l *learned[T]) learn(name string) T {
 	return fact
 }
 
+// memoMax is how many names one memo keeps. It is a bound on THE BEAT rather
+// than on memory — [learned.refresh] reads everything held, so an unbounded memo
+// is a tick that grows for the life of the window — and it is sized the way
+// [pictureCacheMax] is sized, against one frame's working set with room over it:
+// sixteen times the preview cache, because a name costs a map entry where a
+// preview costs its painted rows.
+//
+// Past it the memo is dropped WHOLE rather than evicted, for [pictureCacheMax]'s
+// reason: an eviction order is more machinery than the problem has, and the cost
+// of being wrong is that the names still on screen are read again — once, on the
+// loop, by [learned.catchUp].
+const memoMax = 16 * pictureCacheMax
+
 // lay files one reading under its name.
 func (l *learned[T]) lay(name string, fact T) {
+	if len(l.facts) >= memoMax {
+		l.facts = nil
+	}
 	if l.facts == nil {
 		l.facts = make(map[string]T, 8)
 	}
@@ -137,14 +160,23 @@ func (l *learned[T]) catchUp() bool {
 // refresh reads every name this memo holds, again. It is the TICK's door, and it
 // is how a file that changed behind this surface's back is noticed at all:
 // nothing on the machine tells a terminal that a png was overwritten or that
-// another process rewrote the model cache, so the beat asks.
+// another window rewrote the model cache, so the beat asks.
 //
-// IT RE-READS EVERYTHING RATHER THAN ONLY WHAT IS ON SCREEN, and it can afford
-// to: the beat is ten seconds and a warm stat is about a microsecond, so a
-// session that has met five hundred pictures pays half a millisecond every ten
-// seconds — against the three hundred and sixty syscalls a second the frame was
-// paying. Re-reading only the visible names would trade that for a second set to
-// keep and a name that goes stale in a way nothing else in this file can.
+// IT RE-READS EVERYTHING RATHER THAN ONLY WHAT IS ON SCREEN. Re-reading only the
+// visible names would need a second set to keep, and it would let a name go
+// stale in a way nothing else in this file can — a fact laid in by `open` that no
+// frame has drawn yet would never be asked about again.
+//
+// WHAT A BEAT COSTS IS THE READER'S OWN COST, AND THE TWO READERS ARE NOT ALIKE.
+// A picture's is a warm stat, about a microsecond, so a session holding [memoMax]
+// of them pays about a millisecond every ten seconds against the three hundred
+// and sixty syscalls a second the frame was paying. A model list's is an
+// os.ReadFile and a JSON parse of the whole catalog — tens of kilobytes — and
+// that one rides the beat only because another window running `aforge models
+// --refresh` is the one writer this process cannot be told about; every writer
+// INSIDE it already calls [app.forgetModelList]. A reader more expensive than
+// that does not belong on a memo without a cheaper way to ask whether anything
+// moved.
 func (l *learned[T]) refresh() {
 	for name := range l.facts {
 		l.facts[name] = l.read(name)
