@@ -171,11 +171,21 @@ func (a *app) autonomyRowNext(row *autonomyRow) {
 		a.sheet.msg = autonomyNoProjectWord
 		return
 	}
+	// WHAT IT IS NOW COMES FROM THE PAGE'S OWN READING, not from a second ask.
+	//
+	// THIS IS A CALL OVER A CONNECTION AND NOT A MAP LOOKUP. On the ordinary
+	// launch the surface talks to its own engine process, so every one of these
+	// is a round trip — and this key used to make THREE of them for one press:
+	// read what it is, write what it becomes, read it back. The page already
+	// holds the reading it opened with ([sheet.autonomy]) and is the only thing
+	// that writes to it, so the press costs the one call that changes something.
+	// The keystroke is on the update loop, which is exactly where a surface may
+	// not wait on a network.
+	next := session.Policy{Kind: session.PolicyAsk}
 	// THE UNWRITTEN RULE IS `ask me`, and it is unwritten rather than stored:
 	// a project with no rules has no entries at all, so the empty reading and
 	// [session.PolicyAsk] are the same answer and both walk on to the middle one.
-	next := session.Policy{Kind: session.PolicyAsk}
-	switch agent.Autonomy()[row.kind].Kind {
+	switch a.sheet.autonomy[row.kind].Kind {
 	case session.PolicyRecommendThenAuto:
 		next.Kind = session.PolicyDecide
 	case session.PolicyDecide:
@@ -188,7 +198,14 @@ func (a *app) autonomyRowNext(row *autonomyRow) {
 		return
 	}
 	a.autonomyChanged()
-	a.sheet.autonomy = a.autonomyReading()
+	// AND THE PAGE'S READING MOVES WITH THE WRITE RATHER THAN BEING FETCHED
+	// AGAIN. The engine took this exact rule — it said so by not refusing — so
+	// re-asking would be a second round trip to be told what this line already
+	// knows. A refusal returns above without touching it.
+	if a.sheet.autonomy == nil {
+		a.sheet.autonomy = map[session.AskKind]session.Policy{}
+	}
+	a.sheet.autonomy[row.kind] = next
 	row.word = autonomyPersonWord(next)
 	a.sheet.msg = string(row.kind) + " · " + row.word + " · for this project"
 }
