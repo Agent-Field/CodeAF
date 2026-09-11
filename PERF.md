@@ -1987,6 +1987,38 @@ the `usage` table, so both now see an interrupted leaf's spend. Pinned by
 Written against ink s9 of 2026-08-29, where three leaves were landed early by a
 bound the record could not name.
 
+**Recalibrated 2026-09-11: the grant is 250,000, and it is one number.** It stood
+at 150,000, calibrated from a turn costing about 11k input tokens and a
+well-sized leaf finishing in 8 to 16 of them. Measured against a real repository
+issue — #898, the frame law widened to see a package function that takes the
+surface as a parameter, run headless on `z-ai/glm-5.3`, run `04c2404b26072e41` —
+neither half of that calibration held: the median call carried 14.2k prompt
+tokens, and the leaves that did the work ran 14 to 41 turns. Every one of them
+was landed mid-edit by the grant.
+
+| leaf | turns | spent | of grant |
+| --- | --- | --- | --- |
+| Issue 898 frame law fix | 14 | 184,411 | 150,000 |
+| finish-issue-898 | 41 | 190,524 | 164,462 |
+| Answer remaining offenders | 14 | 268,971 | 211,852 |
+
+A grant above the constant is the constant plus the dependency term
+`gatheringGrant` adds; the overshoot past each is the landing reserve, sized at
+`landingTokenShare` of the grant. The run then re-planned around every landing —
+five rounds and seven nodes for one issue, 43 minutes, $2.11, and a delivery
+gate that refused at the end for want of time — while the work itself was
+correct and committed after the first two leaves. **Every split is paid for
+twice**: once in a fresh planning round, and once in the context the next leaf
+has to be told again. 250,000 is the smallest round grant covering every leaf
+above, and deliberately no larger: 400,000 permitted ~37 turns and every leaf
+ran to exactly that.
+
+`exec.DefaultLeafTokens` is now the only place the figure is written. `aforge
+exec`, `aforge run` and the chat surface read it; `internal/exec`'s
+`TestTheLeafGrantIsSpelledOnce` fails the build on a second spelling, because
+four copies had to be recalibrated together by somebody who knew all four
+existed.
+
 A leaf carried **five** ceilings. Three of them could land it and all three set
 `Exhausted = StopBudget`, so the journal said *"it was still working when it ran
 out of its tokens"* and the surface printed the grant — which in that run was
