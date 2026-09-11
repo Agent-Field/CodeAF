@@ -262,21 +262,30 @@ func (a *app) openTargetFolderPick(query string) tea.Cmd {
 	return cmd
 }
 
-// closeFolderSheet is every way out of the browser that is not a confirm — esc,
-// and the `esc · cancel` target on the sheet's foot — with the ONE thing the
-// sheet home opened owes on the way: home comes back.
+// closeFolderSheet is the one way out of the browser — esc, the `esc · cancel`
+// target on the sheet's foot, and a confirm — with the ONE thing the sheet home
+// opened owes on the way: home comes back.
 //
 // ESC CHANGES NOTHING (folderpick.go's law) and coming back to home is not a
 // change: it is the screen a person was on when they typed the command, and the
 // sheet only replaced it because a place cannot draw a modal.
+//
+// THE SHEET IS THE ONLY SURFACE HERE THAT COVERS RATHER THAN REPLACES. The
+// ordinary frame revealed after it closes often has rows shorter than the
+// sheet, and the incremental renderer does not always overwrite the cells the
+// sheet lit beyond those rows. Padding cannot repair that: the renderer clears
+// its cell buffer before every frame, so explicit trailing spaces and absent
+// cells produce the same diff. This is one full repaint at the one moment this
+// surface has a layer to undraw, routed through one door so none of the ways out
+// can leave the layer behind.
 func (a *app) closeFolderSheet() tea.Cmd {
 	home := a.folder.forTarget
 	a.folder.close()
 	a.touch()
 	if home {
-		return a.openHome()
+		return tea.Batch(tea.ClearScreen, a.openHome())
 	}
-	return nil
+	return tea.ClearScreen
 }
 
 // openContextPick is the browser, opened FROM MEMORY. The only work on this path

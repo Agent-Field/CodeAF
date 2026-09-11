@@ -259,9 +259,7 @@ func (a *app) folderConfirm() tea.Cmd {
 			}
 		}
 	}
-	a.folder.close()
-	a.touch()
-	return a.folderTakeCmd(takes)
+	return tea.Batch(a.closeFolderSheet(), a.folderTakeCmd(takes))
 }
 
 // targetFolderConfirm is a confirm on the sheet home opened: the folder becomes
@@ -293,11 +291,10 @@ func (a *app) targetFolderConfirm(takes []folderTake) tea.Cmd {
 		}
 		files = append(files, take)
 	}
-	a.folder.close()
+	back := a.closeFolderSheet()
 	// HOME COMES BACK FIRST AND THE SENTENCE IS SAID SECOND. Raising home builds
 	// a fresh [homeView] (home.go's [app.raiseHome]), so a line said before it
 	// would be a line thrown away.
-	back := a.openHome()
 	if where != "" {
 		a.target.where = where
 		a.home.say(targetMovedWord+a.hostedPath(shortPath(where, a.tilde, 0)), "")
