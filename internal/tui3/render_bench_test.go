@@ -3,10 +3,14 @@ package tui3
 import (
 	"encoding/json"
 	"fmt"
+	"image/png"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // The surface repaints at 30 Hz for as long as anything is alive on it — a
@@ -224,5 +228,69 @@ func BenchmarkAppendText(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+// BenchmarkFramePictures is the frame with a dozen pictures open on it, which is
+// what an image-heavy conversation looks like while somebody scrolls it: every
+// expanded picture is drawn again on every paint ([app.pictureRows]), thirty
+// times a second, for as long as anything on screen is moving.
+//
+// IT IS THE MEASUREMENT THE PICTURE MEMO WAS BUILT AGAINST. The preview cache
+// has always made the DECODE once-only; what was not once-only was the key,
+// which carried the file's modification time and its size and therefore cost one
+// os.Stat per visible picture per frame — twelve syscalls a frame, three hundred
+// and sixty a second, taken from inside View. The stat is a fact the loop learns
+// now (learned.go), so this benchmark should be pure composition.
+func BenchmarkFramePictures(b *testing.B) {
+	dir := b.TempDir()
+	agent := &fakeAgent{model: "bench/model"}
+	a := newApp(nil, Options{Agent: agent, Workspace: dir})
+	a.width, a.height = 100, 40
+	a.tmux = false
+	a.entries = nil
+	a.welcome = welcome{spent: true}
+	a.pal = newPalette(tokens.TrueColor, false)
+	for i := 0; i < 12; i++ {
+		name := fmt.Sprintf(".aforge-v3/images/plate-%d.png", i)
+		writeBenchPicture(b, filepath.Join(dir, name))
+		a.entries = append(a.entries,
+			entry{kind: entryUser, text: fmt.Sprintf("draw plate %d", i)},
+			entry{kind: entryTool, tool: "generate_image", open: true, status: toolOK, detail: toolDetail{
+				Args:   `{"prompt":"a plate"}`,
+				Output: name + " — 64×32 png, 1.2KB, generated on paint/model",
+			}})
+	}
+	// `open`'s own walk, which is what a resumed conversation gets: every picture
+	// on screen stat'd before the first frame asks about one.
+	a.learnShownPictures()
+	a.touch()
+	a.frame()
+	if drawn := paintedRows(plainRows(a)); drawn == 0 {
+		b.Fatal("the fixture drew no pictures at all")
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		a.dirty = true
+		a.frame()
+	}
+}
+
+// writeBenchPicture puts one small png where the fixture says it is.
+func writeBenchPicture(b *testing.B, path string) {
+	b.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		b.Fatal(err)
+	}
+	file, err := os.Create(path)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if err := png.Encode(file, wideTestPicture()); err != nil {
+		b.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		b.Fatal(err)
 	}
 }

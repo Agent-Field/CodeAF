@@ -8,6 +8,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+
+	modelcatalog "github.com/Agent-Field/aforge-v2/internal/catalog"
 )
 
 // ── ASKING THE ROUTER FOR TODAY'S LIST, FROM INSIDE /model ─────────────────
@@ -154,6 +156,12 @@ func (a *app) fetchModels() tea.Cmd {
 func (a *app) modelsFetched(msg modelsFetchedMsg) {
 	a.modelsFetching, a.pick.fetching = false, false
 	a.touch()
+	// THE DOOR REWRITES THE CACHE ON DISK WHEN A FETCH LANDS (cmd/aforge's
+	// v3 door), so this is the moment the memo behind the picker's second rung
+	// stopped being true. Dropping it here is what makes ctrl+r a fresh list on
+	// every road onto it rather than only on the one the fetch came back through
+	// (models.go's [app.forgetModelList]).
+	a.forgetModelList("", modelcatalog.DefaultBaseURL)
 	list := keepModels(msg.rows, chatModel)
 	err := msg.err
 	if err == nil && (len(list) == 0 || msg.at.IsZero()) {

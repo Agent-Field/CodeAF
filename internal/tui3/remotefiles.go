@@ -854,6 +854,11 @@ func (a *app) prefetchReplayedPictures() tea.Cmd {
 // rooms load asynchronously and local room doors read their journal only when
 // the person opens the page, so neither can rely on the conversation's Init.
 func (a *app) prefetchRoomPictures() tea.Cmd {
+	// AND THE PAGE'S OWN PICTURES ARE STAT'D WHATEVER MACHINE THEY ARE ON. A room
+	// opened after `open` is the other way a picture reaches the frame without an
+	// arrival firing for it, so the walk that covers a resumed conversation covers
+	// this too (imagepreview.go's [app.learnShownPictures], learned.go).
+	a.learnShownPictures()
 	if a.rfiles == nil || a.room == nil {
 		return nil
 	}
@@ -939,6 +944,11 @@ func (a *app) remotePrefetched(msg remotePrefetchedMsg) tea.Cmd {
 	}
 	r.setRef(msg.target, msg.blob)
 	r.learn(msg.target, remoteFact{file: true, size: msg.size, uri: a.mintRemoteURL(msg.target)})
+	// AND THE MIRROR'S OWN COPY IS NOW A FILE ON THIS DISK, which is the first
+	// moment a frame could draw it — so the stat for it is taken here, at the
+	// landing, rather than by the frame that draws it (imagepreview.go's
+	// [app.learnMirroredPicture], learned.go).
+	a.learnMirroredPicture(msg.blob)
 	a.restyleEntries()
 	a.touch()
 	return tea.Batch(a.wake(), a.startReplayedPictureFetches())

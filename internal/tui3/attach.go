@@ -895,10 +895,19 @@ func (a *app) submitImagesShown(text, shown string) tea.Cmd {
 	// reason and by the same law: a door onto the transcript that dropped the mark
 	// would be a picture-carrying message the history could not place
 	// (turncontext.go).
+	paths := chipPaths(pictures)
 	a.said(entry{
 		kind: entryUser, text: userLine(shown, chips, a.pal), turn: a.turn,
-		context: a.turnContext(), pictures: chipPaths(pictures), picturesHere: true,
+		context: a.turnContext(), pictures: paths, picturesHere: true,
 	})
+	// AND EACH FILE IS STAT'D HERE, AT ITS ARRIVAL, because the row above is
+	// about to be drawn with a thumbnail in it and `body` may not ask the disk
+	// anything (learned.go, imagepreview.go's [app.learnPicture]). These bytes
+	// were on this machine a moment ago — the tray had to read them to put a chip
+	// up — so the reading costs a stat on a file already in the page cache.
+	for _, picture := range paths {
+		a.learnPicture(picture, true)
+	}
 	// And it is marked until the far end has it, for [app.submittingShown]'s
 	// reason and by the same door (echo.go). A message carrying files has a
 	// LONGER gap than a plain one — the bytes go up before the turn opens — so
