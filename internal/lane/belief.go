@@ -961,7 +961,14 @@ func (l *ledger) NoteOutcome(o Outcome) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.restore()
-	l.weigh(o)
+	// A REFUSAL MOVES AVAILABILITY AND NOTHING ELSE. The quality axis is about
+	// answers that arrived; charging it for one that did not would let a busy
+	// pool read as a lane that writes bad tool calls, and gate it out for the
+	// hour QualityHalfLife remembers rather than the minutes a queue lasts.
+	if !o.Refused {
+		l.weigh(o)
+	}
+	l.weighAvailability(o)
 	l.keep(record{At: o.At, Out: &o})
 }
 
@@ -990,6 +997,41 @@ func (l *ledger) weigh(o Outcome) {
 	// next lane of this provider nobody has judged starts leaning the way its
 	// provider has been shown to lean rather than at the flat prior.
 	l.judged.observe(o.ID, o.Accepted, o.At, prior)
+	l.beliefs[o.ID] = belief
+}
+
+// AvailabilityHalfLife is how long a refusal is remembered. Five minutes is the
+// strike ledger's own cooldown (internal/provider's ignoreCooldown) and the
+// window a rate-limited pool typically takes to open again; forgetting faster
+// would send the request straight back, forgetting slower would hold a lane
+// out of the order over a queue that has long since drained.
+const AvailabilityHalfLife = 5 * time.Minute
+
+// availabilityPrior is one answered request and no refusal: a lane nobody has
+// seen refuse is believed to serve. One rather than eight, so that a single
+// refusal halves the belief and four of them cost five sends per answer — the
+// shape the log actually showed — where a heavier prior would need a dozen
+// refusals to say what the first one already said.
+var availabilityPrior = Beta{A: 1, B: 0}
+
+// weighAvailability folds one outcome into the availability axis. Every outcome
+// moves it — an answer is an answer whatever its quality — and it is the one
+// axis a Refused outcome moves, because a refusal says nothing about the
+// quality of an answer that never arrived.
+func (l *ledger) weighAvailability(o Outcome) {
+	belief := l.beliefs[o.ID]
+	belief.ID = o.ID
+	l.dress(&belief)
+	if !belief.Availability.Known() {
+		belief.Availability = availabilityPrior
+	}
+	if !belief.AvailabilityAt.IsZero() && !o.At.IsZero() {
+		belief.Availability = belief.Availability.Toward(availabilityPrior, o.At.Sub(belief.AvailabilityAt), AvailabilityHalfLife)
+	}
+	belief.Availability = belief.Availability.Observe(!o.Refused)
+	if !o.At.IsZero() {
+		belief.AvailabilityAt = o.At
+	}
 	l.beliefs[o.ID] = belief
 }
 
