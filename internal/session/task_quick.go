@@ -199,6 +199,32 @@ func quickWordUnder(graph *TaskGraph, spec *quickTaskSpec) string {
 // (task_store.go's [interrupt] states why it settles rather than resuming).
 const quickInterruptedReport = "the quick task did not finish before aforge closed; whatever it wrote is in your folder"
 
+// quickLostReport is what a quick task that was STILL WAITING ITS TURN settles
+// with when the window closed under it. It says the two things that are true of
+// it: it never started, so nothing of it is anywhere to go and look at, and it
+// is not coming back — asking again costs a sentence
+// ([nothingIsComingBackForIt] carries why it cannot simply resume).
+//
+// It is a separate sentence from [quickInterruptedReport] rather than a reuse of
+// it, because that one tells somebody to look in their folder for work this one
+// never did.
+const quickLostReport = "the quick task never started before aforge closed, and it does not resume — ask for it again"
+
+// quickReportOnClose is which of the two a quick node caught by the close
+// settles with, and it is the one place that is decided: what separates them is
+// whether the work HAPPENED, and a row that told somebody to go and look in
+// their folder for work that never started would send them after nothing.
+//
+// A queued record is the one that never started, and it reaches [interrupt] at
+// all only because its list is not in the checkpoint, so it cannot be run as a
+// quick node either ([nothingIsComingBackForIt] carries that argument).
+func quickReportOnClose(record taskRecord) string {
+	if record.State == TaskQueued {
+		return quickLostReport
+	}
+	return quickInterruptedReport
+}
+
 // ── the door ────────────────────────────────────────────────────────────────
 
 // quickTaskDescription is what the model reads before it calls, and the middle
@@ -448,6 +474,14 @@ func (a *Agent) newQuickSpec(line string, items, files []string, dependsOn []uin
 		// deliverable and an acceptance are left EMPTY rather than invented,
 		// because nothing will ever check this node and a "DONE WHEN" nobody reads
 		// is a contract that is not one.
+		//
+		// THE BLANK IS DECLARED RATHER THAN IMPLIED, and that is what keeps it
+		// from being read as a half-written record: [kindsWithoutAcceptance] says
+		// this kind carries none, and every reader of the field asks that
+		// declaration rather than this literal ([acceptanceHolds]). The two were
+		// allowed to drift once, and the checkpoint's validator — which refuses a
+		// node with no acceptance, rightly — threw away the whole of a
+		// conversation's task graph over the blank this line leaves on purpose.
 		summary:   line,
 		brief:     line,
 		dependsOn: dependsOn,
