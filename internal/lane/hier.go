@@ -430,6 +430,20 @@ func (c *chains) note(of subject, z, R float64, now time.Time) bool {
 	}
 	c.put(LevelPair, leaf, node{P: levelVariance(LevelPair), At: now})
 	delete(c.Drift, leaf)
+	// AND THE DISPERSION ACCOUNT GOES WITH THE MEDIAN, because they are two
+	// readings of the same evidence and the alarm has just said that evidence is
+	// about a different machine.
+	//
+	// [chains.widen] is Welford with no forgetting of any kind, and it is
+	// persisted, so the distance BETWEEN two regimes lands in its sum of squares
+	// permanently: a machine that spent one hour answering in a minute instead of
+	// a second would be believed erratic for the life of the file, widened by
+	// exp(z90·σ) on every request a person watches, and refusable for ever on a
+	// tail it no longer has. That is the absorbing gate this package went out of
+	// its way to end everywhere else — see [Beta.Toward] and the quality ageing
+	// in choose.go. Forgetting it here costs the accuracy of one account that was
+	// describing a machine which no longer exists.
+	delete(c.Spread, leaf)
 	return true
 }
 

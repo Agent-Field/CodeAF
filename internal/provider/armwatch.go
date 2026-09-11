@@ -99,6 +99,15 @@ type streamWatch struct {
 	// NEVER NEITHER below.
 	guard *stallWatch
 	free  bool
+	// progress is whoever asked to watch this call run (callprogress.go), and
+	// nil on every call nobody is watching — which is nearly all of them.
+	//
+	// IT IS SET ONCE, BEFORE THIS WATCH IS SHARED ([withStreamWatch] below, from
+	// the goroutine that goes on to start the arm), so it is read without the
+	// lock: taking the lock to reach it would put the reader's callback inside
+	// the critical section the read loop and the beat are already contending
+	// for, which is the one thing a seam called per delta may not do.
+	progress *callProgress
 }
 
 // ── THE CEILING PICKS ONE OR THE OTHER, NEVER NEITHER ───────────────────────
@@ -150,6 +159,15 @@ type streamWatch struct {
 type streamWatchContextKey struct{}
 
 func withStreamWatch(ctx context.Context, watch *streamWatch) context.Context {
+	// AND THIS IS WHERE THE QUESTION'S REPORTER IS PICKED UP, because it is the
+	// one line in the process that has both the caller's context and the arm that
+	// is about to be run from it (callprogress.go). Doing it here rather than at
+	// the construction site is what lets any caller attach the seam without
+	// hedge.go being changed for them — and the reporter is the QUESTION'S, so
+	// both arms of a race report into one row under their own arm numbers.
+	if watch != nil && watch.progress == nil {
+		watch.progress = callProgressOn(ctx)
+	}
 	return context.WithValue(ctx, streamWatchContextKey{}, watch)
 }
 
@@ -191,7 +209,23 @@ func (w *streamWatch) note(reading control.Reading) {
 	spoke := reading.Visible > 0
 	act := w.after(w.control.Note(reading), reading.At)
 	arm, race := w.arm, w.race
+	// The two counts as they now stand, read here rather than by the seam below
+	// so that nothing outside this package ever takes this lock. Hidden is the
+	// remainder because [streamWatch.tokens] is both channels together.
+	visible, hidden := w.visible, w.tokens-w.visible
 	w.mu.Unlock()
+	// AND WHOEVER ASKED TO WATCH THIS CALL HEARS THE SAME MOMENT. It is the one
+	// forwarding this seam needs: every streamed delta in the process reaches
+	// this method, so there is no second decoder and no second count
+	// (callprogress.go).
+	//
+	// A BEAT IS NOT A FIRST TOKEN. The router's comment line proves the path and
+	// nothing else, exactly as it moves nothing in the controller above; passing
+	// it on would have a surface announce that the model had started writing
+	// because the gateway said hello.
+	if reading.Visible > 0 || reading.Hidden > 0 {
+		w.progress.note(w.arm, reading.At, visible, hidden)
+	}
 	w.takeFreeMove()
 
 	// FIRST VISIBLE PROGRESS TAKES THE VOICE. Whichever arm writes the first
@@ -329,6 +363,11 @@ func (w *streamWatch) serve(lane string) {
 		model = w.race.model
 	}
 	w.mu.Unlock()
+	if first {
+		// The machine that is really answering, forwarded to whoever is watching
+		// this call run (callprogress.go). It is said once per request.
+		w.progress.serving(w.arm, lane)
+	}
 	if !first || model == "" {
 		return
 	}
@@ -533,6 +572,39 @@ func (w *streamWatch) written() int {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.tokens
+}
+
+// callOpened and callLanded are the two ends of ONE ATTEMPT, forwarded to
+// whoever asked to watch this call run (callprogress.go).
+//
+// THEY ARE DRIVEN FROM THE MODEL-CALL LOG'S OWN TWO ROWS (calllog.go's
+// [Client.record]) and from nowhere else, because those rows are the two
+// moments this whole process already agrees on: the log's law is that every
+// attempt writes a start row and exactly one row that ends it, kept by a door
+// no path can return past. A seam with its own idea of when a request went out
+// would be a second answer to a question that already has one, free to disagree
+// with the row a person autopsies.
+func (w *streamWatch) callOpened(at time.Time) {
+	if w == nil {
+		return
+	}
+	w.progress.opened(w.arm, at)
+}
+
+func (w *streamWatch) callLanded(end CallEnd, err error) {
+	if w == nil {
+		return
+	}
+	w.progress.landed(w.arm, end, err)
+}
+
+// callPaced is this call parking on a provider's pacing, and leaving that park
+// (dispatch.go, which flips both this and the older bool from one site).
+func (w *streamWatch) callPaced(parked bool, at time.Time) {
+	if w == nil {
+		return
+	}
+	w.progress.paced(w.arm, parked, at)
 }
 
 // guardedBy hands this arm the silence watch over the same request, so a

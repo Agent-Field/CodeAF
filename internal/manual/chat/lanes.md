@@ -397,6 +397,69 @@ If aforge has never measured a visible rate for that lane, it invents none and
 cannot judge a crawl this way. Only a period with no visible progress long
 enough to reach the ordinary ceiling can then trigger action.
 
+## Why a fast machine was skipped, or a cheap one never used — how long the work has to wait decides which machines it may go to
+
+Every kind of call this build makes says how long it is willing to wait before
+something is done about a silence: ten seconds for a chat turn, for a step of a
+task you are watching, and for the quick lookups behind a keypress; thirty for
+work running in the background; a minute for a standing pass; five seconds for
+the one-token checks aforge makes of a machine itself. That number is not only a
+stopwatch. It is also what decides which machines the
+request is allowed to go to at all.
+
+Before sending, aforge works out for every machine serving the model how long
+it expects the WHOLE answer to take there — how long until the first word, plus
+how long the rest takes at the speed that machine writes, plus the fact that a
+machine which refuses four requests in five is really being asked five times.
+Machines are ranked by that number, and any machine whose number is longer than
+the wait this kind of call is willing to sit through is **left off the request
+altogether**, by name, so the provider cannot fall back onto it.
+
+There is no separate rule and no threshold anybody picked. A machine is refused
+exactly when the answer is expected to take longer than this work waits. Two
+things follow from that, and both are deliberate:
+
+- **The same machine is refused for one kind of call and used for another.** A
+  machine that takes twenty seconds is out of the question for something in
+  front of your typing and perfectly fine for a standing pass.
+- **Nothing is ever refused when there is nothing better.** If every machine
+  serving a model is beyond the limit, none of them is refused — the request
+  goes to the best of them rather than nowhere.
+
+The speed that counts is the whole answer and not just the first word. A machine
+can say its first word promptly and then write at two tokens a second, which is
+a healthy start and a four-minute answer; that is what the 2026-09-11 reading of
+a task step stuck for three and a half minutes turned out to be.
+
+## A machine that is usually fast and sometimes takes a minute
+
+For the answers you READ as they arrive, aforge does not rank machines by their
+typical speed. It ranks them by how long an unlucky request takes.
+
+A machine that starts in three seconds nine times out of ten and in a minute the
+tenth is not a three-second machine to whoever drew the tenth, and a typical
+figure cannot tell it apart from one that takes three seconds every time. So for
+anything you watch, each machine is judged at roughly its own worst-in-ten, using
+how much its answers have actually been seen to vary rather than an assumed
+figure. A machine that is genuinely steady is barely moved by this and loses
+nothing; an erratic one falls behind a slightly slower machine that is reliable.
+
+For work nobody reads as it arrives, the typical figure is used instead — those
+calls are many and small and what matters is their total.
+
+## When a machine suddenly gets slower than it has ever been
+
+Beliefs about a machine are built from many answers, which normally makes them
+steady and occasionally makes them stubborn: one bad answer against fifty good
+ones barely moves anything. So aforge also watches for a **step change** — a
+run of answers that is not bad luck but a different machine than the one it was
+measuring. When it sees one, the old evidence is thrown away rather than
+averaged, and the next choice is made on what is happening now.
+
+Before this, a machine whose writing speed collapsed about ninefold was still
+being chosen five steps later, over half an hour, because each slow answer
+arrived as one reading against a belief far too settled to move.
+
 ## When every lane is slow
 
 Sometimes there is nowhere better to go — everything serving that model is
