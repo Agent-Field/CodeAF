@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Asking back gets an answer with the question still open, and the chip counts only what waits on you
-pr: 956
+pr: 960
 surface: [chat]
 invalidates:
   - "The chat manual said an ask-back reaches the model only once you have answered whenever the work is parked on the question. That is no longer true of a question the model itself asked: the sentence goes back as the result of the call the model is parked on, carrying a note that the question is still on your screen, so the reply comes back while you are still deciding. It is still true of a permission, a task proposal and a standing card, which are not asked by a parked call — the manual now says which is which."
