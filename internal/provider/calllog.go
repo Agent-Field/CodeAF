@@ -120,6 +120,23 @@ type callTrace struct {
 	// row written after the transport returned always names the attempt that
 	// actually produced the answer.
 	attemptID string
+	// open is the attempt that has a start row on the wire and nothing under it
+	// yet, and nil whenever the log is square.
+	//
+	// IT IS WHAT MAKES A FINISH ROW UNCONDITIONAL. Every path in this package
+	// that ends an attempt writes its row, and the file says so in five separate
+	// comments — and on 527 of 16,921 attempts over the ten days to 2026-09-10
+	// it did not happen, because an exit nobody had thought of returned past all
+	// of them. A law kept by every path remembering to keep it is a law with one
+	// counter-example per exit, so it is kept HERE instead: the transport
+	// remembers what it opened and closes whatever is still open
+	// ([Client.closeOpenAttempt]).
+	//
+	// IT IS NOT GUARDED BY A LOCK and does not need one. A trace belongs to ONE
+	// call — [knobsFrom] mints a fresh one per entry, and each arm of a race
+	// enters on its own context and gets its own — and the transport under it is
+	// sequential.
+	open *openAttempt
 	// body is the request as it was last encoded, kept ONLY when somebody
 	// asked for it: the old bodies pin, which puts it on the line of the
 	// model-call log, or the debug record, which is where bodies live now
@@ -129,6 +146,94 @@ type callTrace struct {
 }
 
 func newCallTrace() *callTrace { return &callTrace{} }
+
+// openAttempt is one attempt that went out and has not been written down yet:
+// everything the closing row would need if nothing else ever writes one.
+//
+// It keeps the request and the knobs AS THEY WERE WHEN THE ATTEMPT WENT OUT,
+// because the ladder relaxes knobs between rungs and a row built from the
+// current ones would describe a request that never travelled.
+type openAttempt struct {
+	id      string
+	attempt int
+	began   time.Time
+	request *ai.Request
+	knobs   callKnobs
+	stream  bool
+}
+
+// The words [calllog.Record.Ended] uses. They are constants for the reason the
+// `learned` names are: a value a person greps a log for may not be spelled two
+// ways, and these four are the whole vocabulary.
+//
+// THEY DESCRIBE WHO CLOSED THE ROW AND NOT WHAT THE CALL MEANT. Why a call
+// failed is the taxonomy's business and is on the row already; this says only
+// that the path which ended this attempt did not write its own row.
+const (
+	// endedHopped is another attempt beginning before this one was written —
+	// a retry, a repaired shape, a ladder rung.
+	endedHopped = "hopped"
+	// endedCancelled and endedDeadline are the caller's own context ending the
+	// call: a hedge loser, a person's stop key, a role's patience.
+	endedCancelled = "cancelled"
+	endedDeadline  = "deadline"
+	// endedAbandoned is the one that should never happen and did: the call
+	// returned, the context is fine, and nothing wrote the row.
+	endedAbandoned = "abandoned"
+)
+
+// track is what one row this trace wrote does to the open attempt: a start row
+// opens one, and any other row about the same attempt closes it.
+func (t *callTrace) track(facts recordFacts, id string) {
+	if t == nil {
+		return
+	}
+	if facts.phase != calllog.PhaseStart {
+		if t.open != nil && t.open.id == id {
+			t.open = nil
+		}
+		return
+	}
+	t.open = &openAttempt{
+		id:      id,
+		attempt: facts.attempt,
+		began:   facts.began,
+		request: facts.request,
+		knobs:   facts.knobs,
+		stream:  facts.stream,
+	}
+}
+
+// closeOpenAttempt writes the row for an attempt nothing else wrote, and does
+// nothing at all when the log is already square — which is every ordinary call.
+//
+// It is called from two places and they are the only two: the moment a new
+// attempt begins ([Client.record], where the word is "hopped"), and the way out
+// of the transport's own doors, where the word comes from the caller's context.
+func (c *Client) closeOpenAttempt(ctx context.Context, trace *callTrace, ended string) {
+	if trace == nil || trace.open == nil {
+		return
+	}
+	open := trace.open
+	trace.open = nil
+	c.record(recordFacts{
+		ctx: ctx, request: open.request, knobs: open.knobs, stream: open.stream,
+		attempt: open.attempt, began: open.began, ended: ended, id: open.id,
+	})
+}
+
+// endedBy is the word for a call that came back to its door with an attempt
+// still open. The caller's own context is the only thing that can say more than
+// "nobody wrote it".
+func endedBy(ctx context.Context) string {
+	if ctx == nil || ctx.Err() == nil {
+		return endedAbandoned
+	}
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return endedDeadline
+	}
+	return endedCancelled
+}
 
 // begin opens one attempt: a fresh pairing token, and one more on the count.
 // The token is minted here rather than at the write so that every row about
@@ -165,6 +270,21 @@ type recordFacts struct {
 	status  int
 	served  string
 	err     error
+	// ttft is how long this attempt's first token really took, on the paths
+	// that know it for themselves.
+	//
+	// THE WATCH'S OWN FIGURE IS ONLY EVER ON A RACED CALL, and a stream that was
+	// cut or refused halfway through is exactly the row where the figure matters
+	// and exactly the row a race may not have been running on. A failed attempt
+	// that produced a first token and then died is a machine that is ALIVE and
+	// slow; one that produced nothing is a path that never opened, and nothing
+	// else on the row separates them.
+	ttft time.Duration
+	// retryAfter is the comeback time a refusal named, where it named one. It is
+	// carried rather than derived because the header is read once, by the loop
+	// that hands it to the limiter, and re-reading a body that has been drained
+	// is not possible (retry.go).
+	retryAfter time.Duration
 	// response is the assembled answer, on the row that has one.
 	response        *ai.Response
 	reasoningTokens int
@@ -180,6 +300,14 @@ type recordFacts struct {
 	// phase is calllog.PhaseStart on the row written as a call goes out, and
 	// empty on the row that ends it.
 	phase string
+	// ended is set ONLY on a row the transport wrote because nothing else did
+	// (calllog.Record.Ended).
+	ended string
+	// id names the attempt this row is about when it is NOT the trace's current
+	// one. A closing row is written after the attempt it is about has been
+	// overtaken, so reading the id off the trace would pair it with the wrong
+	// start row — which is the very mis-pairing the closing row exists to end.
+	id string
 }
 
 // logNow is the wall clock the model-call log stamps its rows from, and it is
@@ -196,6 +324,13 @@ func logNow() time.Time { return time.Now() }
 // record writes one row. It is the only writer, and it never fails a call:
 // everything under it is best-effort by construction (internal/calllog).
 func (c *Client) record(facts recordFacts) {
+	// A NEW ATTEMPT CLOSES THE ONE BEFORE IT. Reaching here with a start row
+	// while another attempt is still open means that attempt ended and its path
+	// did not write it down — a retry, a repaired shape, a ladder rung — and the
+	// row goes out now rather than never (callTrace.open).
+	if facts.phase == calllog.PhaseStart {
+		c.closeOpenAttempt(facts.ctx, facts.knobs.trace, endedHopped)
+	}
 	// Built even when the file is off: the log's in-memory half (calllog.Last)
 	// is what the headless waiting line reads, and the file's own switch is
 	// read where the file is written.
@@ -212,7 +347,7 @@ func (c *Client) record(facts recordFacts) {
 		Tag:       callTag(facts.ctx),
 		Node:      callNode(facts.ctx),
 		Model:     model,
-		Served:    strings.TrimSpace(facts.served),
+		Served:    recordedServed(facts),
 		Effort:    c.recordedEffort(model, facts.knobs),
 		EffortPin: c.recordedEffortPin(model, facts.knobs),
 		// The ceiling that TRAVELLED, from the one function that works it out
@@ -234,6 +369,19 @@ func (c *Client) record(facts recordFacts) {
 	if facts.err != nil {
 		record.Error = calllog.ClipError(namedCancel(facts.ctx, facts.err))
 	}
+	// ── A FAILURE IS PRICED LIKE AN ANSWER, BECAUSE IT WAS BILLED LIKE ONE
+	//
+	// This block used to run only on the row that carried a whole answer, so a
+	// stream cut at eighteen thousand tokens, a 429 delivered after a 200 had
+	// opened and a connection torn halfway through a reply each left a row
+	// saying the call cost nothing. Over the ten days to 2026-09-10 that was
+	// 1,884 of 1,887 in-stream failures: $201.15 of recorded spend with $0.00
+	// attributed to anything that went wrong (docs/design/recovery/census-
+	// 20260910.md §8, finding 6).
+	//
+	// The tokens were generated and the provider counted them. Whether this
+	// process could USE the answer is a different question from what it cost,
+	// and only one of the two is a fact about the money.
 	if facts.response != nil {
 		record.Finish = FinishReason(facts.response)
 		if usage := facts.response.Usage; usage != nil {
@@ -246,6 +394,12 @@ func (c *Client) record(facts recordFacts) {
 		}
 		record.ReasoningTokens = facts.reasoningTokens
 	}
+	if facts.ttft > 0 {
+		record.TTFTms = facts.ttft.Milliseconds()
+	}
+	if facts.retryAfter > 0 {
+		record.RetryAfterS = facts.retryAfter.Seconds()
+	}
 	// ── WHY IT WAITED AND WHAT WAS DONE ABOUT IT
 	//
 	// The controller is what knows: which machine was asked for, when it was
@@ -255,8 +409,26 @@ func (c *Client) record(facts recordFacts) {
 	// the row of the request it rescued says what happened to that one.
 	if wait, watched := streamWatchFrom(facts.ctx).facts(); watched {
 		record.Lane = wait.lane
-		record.DeadlineMs = wait.deadline.Milliseconds()
-		record.TTFTms = wait.ttft.Milliseconds()
+		record.HazardCeilingMs = wait.deadline.Milliseconds()
+		// WHAT WAS PLANNED AND WHAT HAPPENED ARE TWO FIELDS, AND THE ROW MAY
+		// CARRY BOTH. The ceiling above is when the watch was going to start
+		// thinking about a second machine; these two are the bound that actually
+		// ended the attempt, and they stay empty on every attempt no bound of
+		// ours ended, which is almost all of them.
+		record.AppliedMs = wait.applied.Milliseconds()
+		record.AppliedWord = wait.appliedWord
+		// AN ARM THAT LOST A RACE IS EXHAUST AND NOT A FAILURE, and its row is
+		// the only place that can say so: the error it carries is `context
+		// canceled`, indistinguishable in the file from a caller walking away.
+		record.Exhaust = wait.exhaust
+		if record.TTFTms == 0 {
+			// The watch's reading is the FALLBACK and not the source. A raced
+			// call has both; an unwatched one has only what the stream loop
+			// measured for itself, and a row whose own figure was overwritten
+			// by a zero from a watch that never saw a token would be a first
+			// token this build had and threw away.
+			record.TTFTms = wait.ttft.Milliseconds()
+		}
 		record.SilenceMs = wait.silence.Milliseconds()
 		record.Action = wait.action
 		record.Reason = wait.reason
@@ -283,6 +455,9 @@ func (c *Client) record(facts recordFacts) {
 	if facts.knobs.trace != nil {
 		record.ID = facts.knobs.trace.attemptID
 	}
+	if facts.id != "" {
+		record.ID = facts.id
+	}
 	if facts.attempt == 0 && facts.knobs.trace != nil {
 		// A row about the whole call says how many times it went out; a row
 		// about one attempt already said which attempt it was.
@@ -294,6 +469,8 @@ func (c *Client) record(facts recordFacts) {
 		}
 		record.ResponseBody = string(facts.responseBody)
 	}
+	record.Ended = facts.ended
+	facts.knobs.trace.track(facts, record.ID)
 	calllog.Append(record)
 	c.recordBodies(facts, record, model)
 }
@@ -346,6 +523,64 @@ func (c *Client) recordBodies(facts recordFacts, record calllog.Record, model st
 		}
 	}
 	recorder.Call(facts.ctx, body)
+}
+
+// firstTokenAfter is how long this attempt waited for its first token, and zero
+// when no token ever came. Zero is the honest answer there and the emptiness
+// law leaves it off the row: a stream that never wrote is not a stream whose
+// first token was instant, and the difference is the difference between a
+// machine that is alive and slow and a path that never opened.
+//
+// IT IS MEASURED ON THE CLIENT'S OWN SEAM and not on the log's wall clock, for
+// the same reason the two are separate at all (logNow): both instants come from
+// the stream loop, which a test scripts, and subtracting a scripted instant
+// from a real one would be a measurement of the test harness.
+func firstTokenAfter(began, first time.Time) time.Duration {
+	if began.IsZero() || first.IsZero() || !first.After(began) {
+		return 0
+	}
+	return first.Sub(began)
+}
+
+// recordedServed is the machine that ANSWERED this attempt, and nothing at all
+// when nobody can say who that was.
+//
+// TWO SOURCES AND NEVER A THIRD.
+//
+//  1. The stream's own `provider` field, which is the machine naming itself.
+//  2. The one machine this request DEMANDED, when it demanded exactly one: a
+//     router asked for a single-machine `only` either answers from that machine
+//     or refuses, so the demand and the answer are the same fact by
+//     construction. This is what puts a name on the row of a 429 — a refusal
+//     from a pool that never opened a stream to name itself.
+//
+// THE LANE IS NOT A SOURCE, AND THAT IS THE LAW THIS FUNCTION EXISTS TO STATE.
+// `lane` is who the preference ASKED FOR. The two disagreed on 3,728 of 10,107
+// finishes over the ten days to 2026-09-10, and every per-lane belief this
+// build holds — velocity, strikes, pacing, the sheet's own uptime — has been
+// written against the asked-for name, which is how a machine gets struck for
+// another machine's refusal (docs/design/recovery/DESIGN.md §1's third
+// reading). Filling an empty `served` with `lane` would make that disagreement
+// permanently invisible, so it is never done.
+func recordedServed(facts recordFacts) string {
+	if served := strings.TrimSpace(facts.served); served != "" {
+		return served
+	}
+	return soleDemandedLane(facts.knobs)
+}
+
+// soleDemandedLane is the one machine this request was pinned to, and "" when
+// it was free to be routed anywhere. A rescue demands the single arm it walked
+// to (hedge.go's [hedgePreference]) and a person's pin is one machine
+// (lanes.go), so either is a commitment the router cannot answer around.
+func soleDemandedLane(knobs callKnobs) string {
+	if lane := strings.TrimSpace(knobs.hedgeLane); lane != "" {
+		return lane
+	}
+	if knobs.laneChoice != nil && len(knobs.laneChoice.Only) == 1 {
+		return strings.TrimSpace(knobs.laneChoice.Only[0])
+	}
+	return ""
 }
 
 // builtString reads a builder that may never have been made. The streamed

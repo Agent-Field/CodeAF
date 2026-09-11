@@ -147,6 +147,14 @@ type Profile struct {
 	// same full queue answered the live router's bare probe on 2026-09-10.
 	Paced      bool
 	PacedAfter time.Duration
+	// PacedFor is the comeback time this full pool NAMES, in its `Retry-After`
+	// header, the way a real one does. Zero is a pool that refuses and says
+	// nothing about when to come back, which is the commoner shape.
+	//
+	// IT IS THE ONLY THING THAT MAKES A SECOND SEND TO THE SAME MACHINE LEGAL
+	// (docs/design/recovery/DESIGN.md §3), so it is what a scenario about
+	// repeating a request has to be able to state.
+	PacedFor time.Duration
 
 	// Tools, Quant, Context, MaxOut, Uptime and Caches are the gate facts the
 	// sheet publishes. Uptime is a percentage.
@@ -1232,6 +1240,9 @@ func (s *Server) servePaced(w http.ResponseWriter, r *http.Request, clock Clock,
 		if !clock.Wait(r.Context(), lane.PacedAfter) {
 			s.cancelled(lane.Name)
 			return
+		}
+		if lane.PacedFor > 0 {
+			w.Header().Set("Retry-After", fmt.Sprintf("%d", int(lane.PacedFor.Seconds())))
 		}
 		writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": refusal})
 		return

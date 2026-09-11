@@ -1106,7 +1106,7 @@ func TestTheRowSaysWhyItWaitedAndWhatWasDone(t *testing.T) {
 		if row.SilenceMs <= 0 {
 			t.Fatal("the row records an action and no silence, so nobody can say when it was taken")
 		}
-		if row.DeadlineMs <= 0 {
+		if row.HazardCeilingMs <= 0 {
 			t.Fatal("the row records no deadline, so nobody can say whether it was set in the right place")
 		}
 		if row.WaitS <= 0 {
