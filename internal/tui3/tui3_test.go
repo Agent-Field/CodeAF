@@ -927,6 +927,12 @@ func key(s string) tea.KeyPressMsg {
 		// the ctrl fall-through builds single-rune chords with one modifier, and
 		// this one carries two.
 		return tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl | tea.ModShift}
+	case "alt+shift+s":
+		// The tasks place's `sort the other way round` (taskstable.go). It is
+		// spelled out because the alt fall-through above builds single-rune
+		// chords with ONE modifier, and a chord that silently became the zero key
+		// is a test pressing nothing — which is this helper's own stated law.
+		return tea.KeyPressMsg{Code: 's', Mod: tea.ModAlt | tea.ModShift}
 	case "shift+left":
 		return tea.KeyPressMsg{Code: tea.KeyLeft, Mod: tea.ModShift}
 	case "shift+right":

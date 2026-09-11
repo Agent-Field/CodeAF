@@ -34,7 +34,7 @@ func BenchmarkTasksConversationHistory(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+		reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 		_ = reading.lay(120)
 	}
 }

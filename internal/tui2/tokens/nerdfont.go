@@ -267,6 +267,15 @@ var vocabulary = []GlyphBinding{
 		UsualTint: Cyan, NFAmbiguous: true, AutoUpgrade: true,
 	},
 	{
+		ID: GFilter, Name: "Filter", Meaning: "narrowing what is already on the page",
+		Plain: GlyphFilter, NerdFont: "\uF002", NFName: "nf-fa-search",
+		// THE ASCII IS `/` AND NOT `?`. A screen reader on this page hears `?`
+		// for every row of work waiting on a person, and the filter box very
+		// often sits directly above one.
+		ASCII:     "/",
+		UsualTint: Cyan, NFAmbiguous: true, AutoUpgrade: true,
+	},
+	{
 		ID: GWrite, Name: "Write", Meaning: "a call that wrote something down",
 		Plain: GlyphWrite, NerdFont: "\uF040", NFName: "nf-fa-pencil",
 		ASCII:     "*",

@@ -190,7 +190,9 @@ you can start something from. On the **tasks** place it reads `› type to filte
 because there is nothing to send from there — `enter` opens the row under the cursor and
 nothing else — so the shared prompt was inviting an instruction into a slot that could only
 ever narrow a list. The moment you type, the box is your text on every place alike, and a
-click puts the caret where you clicked.
+click puts the caret where you clicked — **except on tasks**, where the letters draw on the
+control row at the top of the list instead, beside the `⌕` mark, so that what you typed is
+above the rows it changed rather than two lines below them.
 
 ## The scope chip — what is the here ~/aforge-v2 thing next to the box
 

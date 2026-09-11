@@ -93,6 +93,12 @@ func TestOneGlyphOneMeaning(t *testing.T) {
 		GlyphFileDocument: "a page of text, at two scales: a call that read one, and one on an " +
 			"attachment chip — and the tier draws BOTH as nf-fa-file_text, so nothing the floor " +
 			"draws apart is collapsed",
+		GlyphSearch: "looking for something, at two distances: a call that went out to the world, " +
+			"and the box that narrows what is already on the page — and the tier draws BOTH as " +
+			"nf-fa-search, so nothing the floor draws apart is collapsed. They are two SLOTS " +
+			"rather than one because they part company at the ASCII tier and nowhere else: a " +
+			"search is heard as `?`, and `?` is already this product's mark for work waiting on " +
+			"a person, which is the row a filter box most often sits directly above",
 	}
 	plainOwner := map[string]string{}
 	for _, b := range Vocabulary() {

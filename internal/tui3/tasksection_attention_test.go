@@ -97,7 +97,7 @@ func tasksSame(a, b []string) bool {
 func TestAConversationsQuestionDoesNotRefileItsRunningTasks(t *testing.T) {
 	now := time.Date(2026, time.September, 6, 13, 11, 0, 0, time.UTC)
 	world, win := tasksAskingWorld(now, true)
-	reading := readTasks(world, tasksMine{}, win, now.Add(-time.Hour), now)
+	reading := readTasks(world, tasksMine{}, win, tasksSort{}, now.Add(-time.Hour), now)
 
 	needs := tasksSectionLabels(reading, tasksNeeds)
 	if !tasksSame(needs, []string{"rotate the certificate"}) {
@@ -135,7 +135,7 @@ func TestAConversationsQuestionDoesNotRefileItsRunningTasks(t *testing.T) {
 func TestTheRunningCountSurvivesAConversationsQuestion(t *testing.T) {
 	now := time.Date(2026, time.September, 6, 13, 11, 0, 0, time.UTC)
 	world, win := tasksAskingWorld(now, true)
-	reading := readTasks(world, tasksMine{}, win, now.Add(-time.Hour), now)
+	reading := readTasks(world, tasksMine{}, win, tasksSort{}, now.Add(-time.Hour), now)
 
 	want := strings.Join([]string{
 		"1 " + tasksSectionWord(tasksNeeds),
@@ -152,7 +152,7 @@ func TestTheRunningCountSurvivesAConversationsQuestion(t *testing.T) {
 	// The mark on a working row is the working one. A row filed under `needs your
 	// look` wears the steer mark ([tasksGlyph]), which is the half of this defect
 	// a person actually sees.
-	rows := reading.rows(120, newPalette(tokens.NoColor, false))
+	rows := tasksOpen(reading).rows(120, newPalette(tokens.NoColor, false))
 	line := ""
 	for _, drawn := range rows {
 		if strings.Contains(drawn, "read 40 filings") {
@@ -178,8 +178,8 @@ func TestTheGroupingIsTheSameWhetherOrNotTheConversationIsAsking(t *testing.T) {
 	now := time.Date(2026, time.September, 6, 13, 11, 0, 0, time.UTC)
 	calmWorld, win := tasksAskingWorld(now, false)
 	askingWorld, _ := tasksAskingWorld(now, true)
-	calm := readTasks(calmWorld, tasksMine{}, win, now.Add(-time.Hour), now)
-	asking := readTasks(askingWorld, tasksMine{}, win, now.Add(-time.Hour), now)
+	calm := readTasks(calmWorld, tasksMine{}, win, tasksSort{}, now.Add(-time.Hour), now)
+	asking := readTasks(askingWorld, tasksMine{}, win, tasksSort{}, now.Add(-time.Hour), now)
 
 	for _, section := range tasksSectionOrder {
 		want := tasksSectionLabels(calm, section)
@@ -213,11 +213,11 @@ func TestWorkNobodyCouldCheckStillNeedsYourLook(t *testing.T) {
 		Projects: []session.Project{{Name: "media", Sessions: []session.SessionRow{quiet}}},
 		Read:     now,
 	}
-	reading := readTasks(world, tasksMine{}, session.LastDays(now, 7), now.Add(-time.Hour), now)
+	reading := readTasks(world, tasksMine{}, session.LastDays(now, 7), tasksSort{}, now.Add(-time.Hour), now)
 	if got := tasksSectionLabels(reading, tasksNeeds); !tasksSame(got, []string{"verify the pro model's pricing"}) {
 		t.Fatalf("work nobody could check is not under %q: %v", tasksSectionWord(tasksNeeds), got)
 	}
-	page := strings.Join(reading.rows(120, newPalette(tokens.NoColor, false)), "\n")
+	page := strings.Join(tasksOpen(reading).rows(120, newPalette(tokens.NoColor, false)), "\n")
 	if !strings.Contains(page, tokens.GlyphNeedsHuman+" verify the pro model's pricing") {
 		t.Fatalf("the row needing a decision did not wear %q:\n%s", tokens.GlyphNeedsHuman, page)
 	}
@@ -245,7 +245,7 @@ func TestTheNeedsSectionIsTheWorksOwnReading(t *testing.T) {
 		world.Projects = append(world.Projects, session.Project{
 			Name: "aforge", Sessions: []session.SessionRow{gone},
 		})
-		reading := readTasks(world, tasksMine{}, win, now.Add(-time.Hour), now)
+		reading := readTasks(world, tasksMine{}, win, tasksSort{}, now.Add(-time.Hour), now)
 		if len(reading.items) == 0 {
 			t.Fatalf("the reading drew nothing to judge (asking=%v)", asking)
 		}

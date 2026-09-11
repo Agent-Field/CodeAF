@@ -93,8 +93,52 @@ func (a *app) roomSetupInk(text string, node *taskNode) string {
 		return a.pal.dim(text)
 	}
 	model := strings.TrimSpace(node.model)
-	return tasksPaintTail(text, []tasksFact{
+	return roomPaintTail(text, []roomFact{
 		{field: rowSay(a.roomSpend(node)), ink: a.pal.ink},
 		{field: rowSay(model, modelBase(model)), ink: a.pal.narr},
 	}, a.pal.dim, a.pal)
+}
+
+// roomFact is one fact of a room's head line: what it can say, in the spellings
+// the fitter chooses between, and the ink it is painted in when it survives.
+//
+// IT LIVES HERE NOW AND IT USED TO BE THE TASKS PLACE'S. That page drew a ranked
+// tail of six facts and this was its shape; the page is a TABLE now
+// (taskstable.go), with fixed columns and nothing to paint fact by fact, and a
+// `tasks`-named type that only the room used would be a name pointing at a page
+// that no longer has one.
+type roomFact struct {
+	field rowField
+	// ink is nil for everything the surface draws dim, which is nearly all of it.
+	// A fact with an ink of its own has it because the ink is part of the fact.
+	ink func(string) string
+}
+
+// roomPaintTail paints a fitted tail fact by fact.
+//
+// IT PAINTS THE SEPARATORS ITSELF because a hue nested inside a hue ends at the
+// inner one's reset (room.go's [app.roomHeadWord] states the same rule), so a
+// tail carrying a money figure may not be painted whole. Anything the fitter
+// spelled that no fact answers to — the halves of a sentence that had a ` · ` of
+// its own inside it — is the dim every other fact wears.
+func roomPaintTail(tail string, facts []roomFact, rest func(string) string, pal palette) string {
+	if tail == "" {
+		return ""
+	}
+	ink := func(said string) string {
+		for _, fact := range facts {
+			if fact.ink == nil || said == "" {
+				continue
+			}
+			if said == fact.field.full || said == fact.field.short || said == fact.field.tiny {
+				return fact.ink(said)
+			}
+		}
+		return rest(said)
+	}
+	said := strings.Split(tail, rowSep)
+	for i := range said {
+		said[i] = ink(said[i])
+	}
+	return strings.Join(said, pal.dim(rowSep))
 }

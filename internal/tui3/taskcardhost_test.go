@@ -72,6 +72,9 @@ func farCardLab(t *testing.T, answer func(uri string) (session.TaskRecord, error
 // delivers whatever the reading answered.
 func pressFarCard(t *testing.T, a *app) {
 	t.Helper()
+	// The work is behind its conversation's fold, which opens shut; a person gets
+	// there with `→` and so does this ([openTaskFolds]).
+	openTaskFolds(a)
 	width, height := a.size()
 	_, hits, _, _ := a.taskSheetFrame(width, height)
 	row := -1
@@ -316,6 +319,7 @@ func TestAHostedTaskCardSaysItIsStillReading(t *testing.T) {
 	a, _ := farCardLab(t, func(string) (session.TaskRecord, error) {
 		return session.TaskRecord{}, nil
 	})
+	openTaskFolds(a)
 	width, height := a.size()
 	_, hits, _, _ := a.taskSheetFrame(width, height)
 	for y, hit := range hits {

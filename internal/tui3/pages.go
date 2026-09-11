@@ -198,6 +198,10 @@ type place interface {
 	window(a *app, key string) bool
 	// box is the composer this place types into — the shared one by default.
 	box(a *app) *editor
+	// boxOnBody reports that this place draws what is typed into its box in a row
+	// of its OWN body, so the foot draws the resting sentence and never the
+	// letters. It is false everywhere but tasks ([placeTasks.boxOnBody]).
+	boxOnBody() bool
 	// resting is WHAT THAT BOX SAYS WITH NOTHING TYPED IN IT, and "" takes the
 	// router's own sentence.
 	//
@@ -307,6 +311,7 @@ func (placeBase) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // which is what makes a permanent bottom line a composer rather than seven boxes
 // that each forget ([app.compose]).
 func (placeBase) box(a *app) *editor { return &a.compose }
+func (placeBase) boxOnBody() bool    { return false }
 
 // ── THERE IS NO DEFAULT hint, AND THAT IS THE WHOLE POINT ───────────────────
 //
@@ -1178,7 +1183,7 @@ func placeFrameWithBar(a *app, width, height int,
 		// picker's own hint stands in while nothing is typed.
 		draftRows, draftCX, draftCY = draftBlock(&a.target.pick.filter, pal, width-2, 1,
 			a.target.pick.hintAt(width-2-ansi.StringWidth(prompt)), "")
-	case box != nil && !box.empty():
+	case box != nil && !box.empty() && !a.placeBoxOnBody():
 		draftRows, draftCX, draftCY = draftBlock(box, pal, width-2, homeDraftRows, "", "")
 	}
 	draftHeight := len(draftRows)
@@ -1606,6 +1611,12 @@ const (
 // goes to the filter ([placeTasks.box]), and the shared prompt was inviting an
 // instruction into a slot that could only ever narrow a list ([place.resting]
 // carries the whole of that story).
+// placeBoxOnBody is that hook asked of whichever place is standing.
+func (a *app) placeBoxOnBody() bool {
+	pl := a.showing()
+	return pl != nil && pl.boxOnBody()
+}
+
 func (a *app) placeRestWord() string {
 	if pl := a.showing(); pl != nil {
 		if said := strings.TrimSpace(pl.resting(a)); said != "" {

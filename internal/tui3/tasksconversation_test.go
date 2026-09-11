@@ -72,7 +72,7 @@ func tasksChatFixture() (session.World, session.UsageWindow, time.Time) {
 
 func tasksChatReading() tasksReading {
 	world, win, now := tasksChatFixture()
-	return readTasks(world, tasksMine{}, win, time.Time{}, now)
+	return readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 }
 
 // tasksChatApp is that fixture on a surface, with the freshness stamps pinned so
@@ -85,7 +85,7 @@ func tasksChatApp(t *testing.T) *app {
 	a.clock = func() time.Time { return now }
 	a.raisePlace(pageTasks)
 	a.taskSheet.world = world
-	a.taskSheet.reading = readTasks(world, tasksMine{}, win, time.Time{}, now)
+	a.taskSheet.reading = readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 	a.taskSheet.awayAt, a.taskSheet.mineAt = a.elsewhere().Read, a.railStamp
 	a.taskSheet.cursor = a.tasksSettle(0)
 	return a
@@ -110,13 +110,29 @@ func tasksLineOf(t *testing.T, lines []tasksLine, name string) tasksLine {
 	return tasksLine{}
 }
 
-// tasksPointAt parks the cursor on the line one name is drawn on.
+// tasksPointAt parks the cursor on the line one name is drawn on, OPENING
+// WHATEVER FOLD IS OVER IT — which is what a person does with `→` on the way to
+// the row they came for, now that every conversation and every family opens shut
+// ([tasksReading.opens]). A test that is ABOUT a fold looks at the layout itself
+// rather than asking for a cursor.
 func tasksPointAt(t *testing.T, a *app, name string) int {
 	t.Helper()
-	r := a.tasksFiltered()
+	if at, found := tasksCursorOn(a, name); found {
+		return at
+	}
+	openTaskFolds(a)
+	if at, found := tasksCursorOn(a, name); found {
+		return at
+	}
 	width, _ := a.size()
-	lines := r.lay(width)
-	for at, line := range lines {
+	t.Fatalf("no row on the page is called %q:\n%s", name, tasksPage(a.tasksFiltered(), width))
+	return -1
+}
+
+// tasksCursorOn is that search over the page exactly as it stands.
+func tasksCursorOn(a *app, name string) (int, bool) {
+	width, _ := a.size()
+	for at, line := range a.tasksFiltered().lay(width) {
 		named := ""
 		switch line.kind {
 		case tasksLineChat:
@@ -128,24 +144,29 @@ func tasksPointAt(t *testing.T, a *app, name string) int {
 		}
 		if named == name {
 			a.taskSheet.cursor = at
-			return at
+			return at, true
 		}
 	}
-	t.Fatalf("no row on the page is called %q:\n%s", name, tasksPage(r, width))
-	return -1
+	return 0, false
 }
 
 // THE WORK HANGS UNDER THE CHAT THAT ASKED FOR IT, and the chat is a row.
 func TestEveryPieceOfWorkIsDrawnUnderItsOwnConversation(t *testing.T) {
 	r := tasksChatReading()
-	lines := r.lay(120)
+	// EVERY CONVERSATION OPENS SHUT (the owner's ruling, 2026-09-11) and what this
+	// test is about is the SHAPE behind that fold, so it reads the page after `→`.
+	if shut := tasksLineOf(t, r.lay(120), "shipping the gate"); !shut.folds || shut.open {
+		t.Fatalf("a conversation came out folds=%v open=%v, and every fold on this page opens shut",
+			shut.folds, shut.open)
+	}
+	lines := tasksOpen(r).lay(120)
 
 	chat := tasksLineOf(t, lines, "shipping the gate")
 	if chat.kind != tasksLineChat {
 		t.Fatalf("the conversation came out as a line of kind %v", chat.kind)
 	}
 	if !chat.folds || !chat.open {
-		t.Fatalf("the conversation came out as folds=%v open=%v, and a page of chat titles with the work behind them is not this place",
+		t.Fatalf("an opened conversation came out as folds=%v open=%v, and a page of chat titles with the work behind them is not this place",
 			chat.folds, chat.open)
 	}
 	// TWO ROOTS AND NOT FOUR: the unchecked row and the parser, with the parser's
@@ -226,7 +247,9 @@ func TestAConversationRowIsNeitherRunnableNorCancellable(t *testing.T) {
 // person is being asked for.
 func TestAConversationStandsUnderItsMostUrgentWorkWithoutRefilingIt(t *testing.T) {
 	r := tasksChatReading()
-	lines := r.lay(120)
+	// The page after `→`: where a conversation is FILED is the claim here, and
+	// its work has to be on the page to say the second half of it.
+	lines := tasksOpen(r).lay(120)
 
 	head, seen := "", map[string]string{}
 	for _, line := range lines {
@@ -276,7 +299,11 @@ func TestAConversationStandsUnderItsMostUrgentWorkWithoutRefilingIt(t *testing.T
 // read one level of family and stopped.
 func TestWorkNestsToWhateverDepthTheRecordCarries(t *testing.T) {
 	r := tasksChatReading()
+	// The conversation and the two families are opened by hand: everything on
+	// this page opens shut ([tasksReading.opens]) and the claim here is about the
+	// DEPTH under them.
 	r.open = map[tasksKey]bool{
+		tasksChatKey("room-a"):       true,
 		{session: "room-a", id: "2"}: true,
 		{session: "room-a", id: "3"}: true,
 	}
@@ -302,8 +329,8 @@ func TestWorkNestsToWhateverDepthTheRecordCarries(t *testing.T) {
 		t.Fatalf("a worker with workers of its own wears %q rather than its fold", lexer.kin)
 	}
 	// SHUT AGAIN, WHAT IS BEHIND THE FOLD IS BEHIND IT — at every depth.
-	r.open = map[tasksKey]bool{{session: "room-a", id: "2"}: true}
-	page := tasksPage(r, 120)
+	r.open = map[tasksKey]bool{tasksChatKey("room-a"): true, {session: "room-a", id: "2"}: true}
+	page := tasksPageFolded(r, 120)
 	if !strings.Contains(page, "port the lexer") || strings.Contains(page, "port the token table") {
 		t.Fatalf("a shut worker did not take its own workers with it:\n%s", page)
 	}
@@ -319,6 +346,9 @@ func TestWorkNestsToWhateverDepthTheRecordCarries(t *testing.T) {
 // over a conversation is a key that visibly does nothing.
 func TestAConversationFoldRemembersBeingShut(t *testing.T) {
 	a := tasksChatApp(t)
+	// The conversation opens shut, so this starts from the page after `→` — the
+	// claim is that `←` is remembered, and a fold already shut cannot say it.
+	openTaskFolds(a)
 	tasksPointAt(t, a, "shipping the gate")
 
 	if !a.taskSheetFold(false) {
@@ -326,7 +356,7 @@ func TestAConversationFoldRemembersBeingShut(t *testing.T) {
 	}
 	r := a.tasksFiltered()
 	width, _ := a.size()
-	page := tasksPage(r, width)
+	page := tasksPageFolded(r, width)
 	if !strings.Contains(page, "shipping the gate") {
 		t.Fatalf("shutting a conversation took its own row off the page:\n%s", page)
 	}
@@ -341,14 +371,14 @@ func TestAConversationFoldRemembersBeingShut(t *testing.T) {
 	}
 	// AND IT IS STILL SHUT AFTER THE PAGE REBUILDS UNDER IT.
 	world, win, now := tasksChatFixture()
-	a.taskSheet.reading = readTasks(world, tasksMine{}, win, time.Time{}, now)
-	if strings.Contains(tasksPage(a.tasksFiltered(), width), "rotate the certificate") {
+	a.taskSheet.reading = readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
+	if strings.Contains(tasksPageFolded(a.tasksFiltered(), width), "rotate the certificate") {
 		t.Fatal("a rebuild opened a conversation somebody had shut")
 	}
 	if !a.taskSheetFold(true) {
 		t.Fatal("`→` did nothing over a shut conversation")
 	}
-	if !strings.Contains(tasksPage(a.tasksFiltered(), width), "rotate the certificate") {
+	if !strings.Contains(tasksPageFolded(a.tasksFiltered(), width), "rotate the certificate") {
 		t.Fatal("`→` over a shut conversation did not put its work back")
 	}
 }
@@ -373,7 +403,7 @@ func TestTheCursorKeepsAConversationAcrossARebuild(t *testing.T) {
 		SessionID: "room-a", ID: "9", Label: "size the corpus",
 		Status: string(session.TaskRunning),
 	})
-	a.taskSheet.reading = readTasks(world, tasksMine{}, win, time.Time{}, now)
+	a.taskSheet.reading = readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 
 	line, found := a.taskSheet.lineOf(a, was)
 	if !found {
@@ -437,7 +467,7 @@ func TestACircularRecordStillDrawsEveryRowOnce(t *testing.T) {
 	world := session.World{Projects: []session.Project{
 		{Name: "aforge", Sessions: []session.SessionRow{row}},
 	}, Read: now}
-	r := readTasks(world, tasksMine{}, session.LastDays(now, 7), time.Time{}, now)
+	r := readTasks(world, tasksMine{}, session.LastDays(now, 7), tasksSort{}, time.Time{}, now)
 	r.unfolded = true
 
 	if len(r.items) != 4 {
@@ -463,13 +493,13 @@ func TestAnOrphanedChildIsStillDrawn(t *testing.T) {
 	world := session.World{Projects: []session.Project{
 		{Name: "aforge", Sessions: []session.SessionRow{row}},
 	}, Read: now}
-	r := readTasks(world, tasksMine{}, session.LastDays(now, 7), time.Time{}, now)
+	r := readTasks(world, tasksMine{}, session.LastDays(now, 7), tasksSort{}, time.Time{}, now)
 
 	page := tasksPage(r, 120)
 	if !strings.Contains(page, "the worker whose run is gone") {
 		t.Fatalf("an orphan is off the page entirely:\n%s", page)
 	}
-	line := tasksLineOf(t, r.lay(120), "the worker whose run is gone")
+	line := tasksLineOf(t, tasksOpen(r).lay(120), "the worker whose run is gone")
 	if strings.Contains(line.kin, tasksKinCont) || strings.Contains(line.kin, tasksKinLast) {
 		t.Fatalf("an orphan is drawn under a row that is not there: kin=%q", line.kin)
 	}
@@ -480,9 +510,10 @@ func TestAnOrphanedChildIsStillDrawn(t *testing.T) {
 // different task in every one of them.
 func TestTwoConversationsWearingTheSameIdKeepTheirOwnFolds(t *testing.T) {
 	r := tasksChatReading()
-	// Both conversations in the fixture have a task numbered 1.
-	r.open = map[tasksKey]bool{tasksChatKey("room-b"): false}
-	page := tasksPage(r, 120)
+	// Both conversations in the fixture have a task numbered 1, and both open
+	// shut — so one is opened by hand and the other left where it started.
+	r.open = map[tasksKey]bool{tasksChatKey("room-a"): true, tasksChatKey("room-b"): false}
+	page := tasksPageFolded(r, 120)
 	if !strings.Contains(page, "rotate the certificate") {
 		t.Fatalf("shutting one conversation shut another's work:\n%s", page)
 	}
@@ -507,7 +538,7 @@ func TestWorkOutOfAnUnnamedConversationIsDrawnWithNoRowOverIt(t *testing.T) {
 	world := session.World{Projects: []session.Project{
 		{Name: "aforge", Sessions: []session.SessionRow{row}},
 	}, Read: now}
-	r := readTasks(world, tasksMine{}, session.LastDays(now, 7), time.Time{}, now)
+	r := readTasks(world, tasksMine{}, session.LastDays(now, 7), tasksSort{}, time.Time{}, now)
 
 	lines := r.lay(120)
 	for _, line := range lines {

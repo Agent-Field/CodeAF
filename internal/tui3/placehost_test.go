@@ -152,6 +152,7 @@ func TestTheTasksPlaceOverHostDrawsTheFarMachinesWork(t *testing.T) {
 		}, true
 	}
 	a.showPage(pageTasks)
+	openTaskFolds(a)
 	text := placeText(a)
 	if !strings.Contains(text, "widening the pipe") {
 		t.Fatalf("the tasks place did not draw the far machine's work:\n%s", text)
