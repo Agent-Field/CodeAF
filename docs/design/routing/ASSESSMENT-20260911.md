@@ -110,7 +110,7 @@ seconds of perceived wait above the oracle.
 ```sh
 REPLAY_LOG=$HOME/.aforge/logs/calls.jsonl REPLAY_SINCE=2026-09-08 \
   go test -tags replay -run '^TestReplayLog$' -count=1 -v ./internal/lane/
-REPLAY_TASK_LAMBDA0=1 ...   # tasks at λ=0, prices seeded from ~/.aforge/v3/lanes.json
+REPLAY_FACTS=1 REPLAY_TASK_LAMBDA0=1 ...   # tasks at λ=0, facts and prices seeded from ~/.aforge/v3/lanes.json
 ```
 
 | deepseek-v4.1-flash, 913 requests | asked a lane that 429'd < 5 min ago | mean regret | median regret |
@@ -213,7 +213,15 @@ and no lane below the service floor is picked more than the probe cadence allows
 The live probe (`docs/design/routing/probe.py`, `OPENROUTER_API_KEY` in the environment) is the "now" check before
 and after.
 
-## What was not done
+## What shipped
 
-No code on the routing path was changed. The replay bench and this page are the
-whole of the change.
+The pull request after this one carries four of the six: the wire ceiling on a
+belief-ordered request is raised until every lane the order names fits under it, λ
+has a floor of a quarter of a person's attention (`lane.UnattendedValue`), a paced pool
+is an `Outcome{Refused: true}` on a new availability axis that divides the expected
+wait, and a service floor (6 s first token, 15 tok/s,
+half of requests answered; the rate floor sits under the reading rate) refuses a lane the ledger is sure about without ever
+emptying the set. Not shipped: the quality gate keeps its upper bound — measured
+again, a 0.65 mean on six observations already fails it, and the lanes that looked
+well-judged while failing were failing through refusals the availability axis now
+records — and censored timing for cut streams is still owed.

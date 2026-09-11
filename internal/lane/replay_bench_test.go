@@ -123,8 +123,15 @@ func TestReplayLog(t *testing.T) {
 	var kept struct {
 		Beliefs []Belief `json:"beliefs"`
 	}
-	if raw, err := os.ReadFile(os.ExpandEnv("$HOME/.aforge/v3/lanes.json")); err == nil {
-		_ = json.Unmarshal(raw, &kept)
+	// REPLAY_FACTS=1 seeds each lane's sheet facts (prices, quantization,
+	// limits) from the persisted ledger, so that a price-only policy (λ = 0) can
+	// be reproduced. Off by default: the facts also carry the four-bit gate,
+	// which refuses the lane the log measures as best for glm-5.3-flash, and a
+	// bench comparing timing policies should not be deciding that question.
+	if os.Getenv("REPLAY_FACTS") != "" {
+		if raw, err := os.ReadFile(os.ExpandEnv("$HOME/.aforge/v3/lanes.json")); err == nil {
+			_ = json.Unmarshal(raw, &kept)
+		}
 	}
 	mk := func(name string, o bool) *variant {
 		l := newLedger()
@@ -134,7 +141,7 @@ func TestReplayLog(t *testing.T) {
 		}
 		return &variant{name: name, ledger: l, chooser: &chooser{ledger: l, pages: newSheet()}, outcome429: o}
 	}
-	variants := []*variant{mk("as-shipped (429 teaches nothing)", false), mk("429 → refused outcome", true)}
+	variants := []*variant{mk("as-shipped (429 teaches nothing)", false), mk("429 → refused outcome (availability axis)", true)}
 
 	type tally struct {
 		n, agree, noOpinion, pickRecent429, askedRecent429, oracleRecent429 int
@@ -248,7 +255,7 @@ func TestReplayLog(t *testing.T) {
 			recent429[model][lane] = r.at
 			for _, v := range variants {
 				if v.outcome429 {
-					v.ledger.NoteOutcome(Outcome{ID: ID{Model: model, Lane: lane}, Accepted: false, Reason: "rate", At: r.at})
+					v.ledger.NoteOutcome(Outcome{ID: ID{Model: model, Lane: lane}, Refused: true, Reason: "rate", At: r.at})
 				}
 			}
 		}

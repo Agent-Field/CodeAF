@@ -27,11 +27,33 @@ type homeLab struct {
 	// places root on purpose: a directory made under the root would be read back
 	// as another bucket, and the test would grow a project nobody wrote.
 	work string
+	// pinned is the moment this lab's surface calls now, and zero for the real
+	// wall clock — which is what every test whose subject is not a date wants.
+	//
+	// A TEST WHOSE SUBJECT IS A CALENDAR DAY MUST PIN THIS. `today` is a day in
+	// the person's own zone ([session.SpendToday]), so a ledger line written an
+	// hour before a real [time.Now] falls on YESTERDAY for the hour after
+	// midnight — and the test that asserted on it was green for twenty-three
+	// hours a day and red for the other one (#860).
+	pinned time.Time
 }
 
 func newHomeLab(t *testing.T) *homeLab {
 	t.Helper()
 	return &homeLab{t: t, root: t.TempDir(), work: t.TempDir()}
+}
+
+// pin fixes this lab's clock at midday of the day now falls in, and answers that
+// moment for the test to write its fixture against.
+//
+// MIDDAY AND NOT NOW, so that "an hour ago" and "in a moment" are both the same
+// calendar day whatever hour the suite happens to run at. It must be called
+// before [homeLab.app].
+func (l *homeLab) pin(now time.Time) time.Time {
+	l.t.Helper()
+	now = now.Local()
+	l.pinned = time.Date(now.Year(), now.Month(), now.Day(), 12, 0, 0, 0, now.Location())
+	return l.pinned
 }
 
 // workspace is a project folder that REALLY EXISTS, and it answers its path.
@@ -149,6 +171,11 @@ func (l *homeLab) app(standing string) *app {
 	// went red the first time anything on the machine cost a cent.
 	a.usageLedger = filepath.Join(l.root, session.UsageLedgerName)
 	a.file = standing
+	// AND THE CLOCK IS THE LAB'S WHERE IT PINNED ONE ([homeLab.pin]).
+	if !l.pinned.IsZero() {
+		at := l.pinned
+		a.clock = func() time.Time { return at }
+	}
 	a.resume = func(string) (Agent, error) { return &fakeAgent{model: "m"}, nil }
 	// AND THE WHOLE SEAM, because home is the switcher: enter on another
 	// project's row asks for a conversation in THAT workspace, which the older
@@ -1802,7 +1829,10 @@ func TestHomeIsTheFirstFrameOfAnOrdinaryLaunch(t *testing.T) {
 // the day's money on the machine, and the frame itself.
 func TestTheGreetingsFirstFrameCarriesTheSpend(t *testing.T) {
 	lab := newHomeLab(t)
-	now := time.Now()
+	// THE CLOCK IS PINNED BECAUSE THE SUBJECT IS A DAY. `today` is the person's
+	// own calendar day, so the line an hour back below belongs to it only if the
+	// surface's now is not itself within an hour of midnight ([homeLab.pin]).
+	now := lab.pin(time.Now())
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one the door picked", "/tmp/alpha", now)
 	lab.session("-tmp-alpha", "aaaa000000000002", "yesterday's chat", "/tmp/alpha", now.Add(-20*time.Hour))
 	// TODAY'S ROW IS DATED NOW, NOT AN HOUR AGO. An hour before now is

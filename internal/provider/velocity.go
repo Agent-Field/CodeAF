@@ -1232,6 +1232,7 @@ func (c *Client) refuseLane(model string, refusal laneRefusal, wait time.Duratio
 		// from here on routes around it instead of queueing behind it, the
 		// remaining attempts of this very call included (retry.go).
 		c.notePacedProvider(model, refusal.Lane, wait)
+		c.noteLaneRefused(model, refusal.Lane, "paced")
 		return true
 	}
 	// AN ACCOUNT'S EXCLUSION IS WRITTEN FOR EVERY MODEL, and it is written here
@@ -1245,6 +1246,11 @@ func (c *Client) refuseLane(model string, refusal laneRefusal, wait time.Duratio
 	if !refusal.struck() {
 		return false
 	}
+	// A STRUCK LANE IS NOT TOLD TO THE AVAILABILITY AXIS. It already reaches
+	// the belief twice — [refuseServing]'s thirty-minute hold on the serving set
+	// and the quality outcome terminal_error.go files — and a third entry would
+	// count one refusal three times. The paced branch above is the one that
+	// was silent, and the one the 429 loop lived in.
 	c.refuseServing(model, refusal)
 	return c.velocity.pace(model, refusal.Lane, 0)
 }
