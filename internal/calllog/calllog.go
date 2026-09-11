@@ -165,6 +165,23 @@ type Record struct {
 	Status int    `json:"status,omitempty"`
 	Millis int64  `json:"ms,omitempty"`
 	Finish string `json:"finish,omitempty"`
+	// Ended is on the row NOBODY ON THE PATH WROTE.
+	//
+	// EVERY START ROW GETS A ROW UNDER IT. That is the law this field exists to
+	// keep, and it was not kept: 527 of 16,921 attempts over the ten days to
+	// 2026-09-10 had a start row and nothing beside it, which every reader of
+	// this file — a person, `aforge logs`, the census — reads as a call that is
+	// still in flight. Six of them were one turn on a model the catalog holds no
+	// endpoints for, where the ladder ran out and returned without writing
+	// anything.
+	//
+	// So the transport closes whatever it left open, and this word says who
+	// closed it and why: "hopped" when another attempt began before this one's
+	// row was written, "cancelled" and "deadline" when the caller's own context
+	// ended the call, and "abandoned" when the call simply returned and nothing
+	// wrote the row. It is ABSENT on every row a path wrote for itself, which is
+	// almost all of them.
+	Ended string `json:"ended,omitempty"`
 
 	// ── the lane, and the wait it made (docs/ARCHITECTURE.md, Decision 10)
 	//

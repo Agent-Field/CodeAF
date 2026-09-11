@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/lane/lanestub"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -155,5 +156,162 @@ func TestAFailedAttemptCarriesWhatItCost(t *testing.T) {
 	}
 	if !priced {
 		t.Fatal("the cut left no row carrying the error at all")
+	}
+}
+
+// TestEveryStartRowGetsARowUnderIt is the law, and it is asserted over the
+// WHOLE log rather than over one scenario, because the way it was broken was an
+// exit nobody had thought of.
+//
+// Over the ten days to 2026-09-10, 527 of 16,921 attempts had a start row and
+// nothing beside it — which every reader of this file, a person and the census
+// alike, reads as a call that is still in flight. Six of them were one turn on
+// a model the catalog holds no endpoints for, where the ladder ran out and
+// returned without writing anything. Five separate comments in this package
+// state the law; a law kept by every path remembering to keep it has one
+// counter-example per exit, so the transport now closes what it opened
+// (calllog.go's [callTrace.open]).
+func TestEveryStartRowGetsARowUnderIt(t *testing.T) {
+	for _, scene := range []struct {
+		name  string
+		lanes []lanestub.Lane
+		ask   func(*testing.T, *laneRig) context.Context
+	}{
+		{
+			name:  "a clean answer",
+			lanes: []lanestub.Lane{{Name: "A", Profile: lanestub.Profile{TTFT: 2 * time.Millisecond, Rate: 2000, Tokens: 8}}},
+			ask: func(_ *testing.T, rig *laneRig) context.Context {
+				return WithLaneChoice(talking(), choiceFor(rig.model, 0))
+			},
+		},
+		{
+			name: "a pool that was full and had nowhere to fall back to",
+			lanes: []lanestub.Lane{{Name: "A", Profile: lanestub.Profile{
+				Paced: true, PacedFor: 30 * time.Second, TTFT: 2 * time.Millisecond, Rate: 2000,
+			}}},
+			ask: func(t *testing.T, _ *laneRig) context.Context {
+				ctx, giveUp := context.WithTimeout(
+					WithLaneChoice(talking(), lanes.Choice{Only: []string{"A"}}), time.Second)
+				t.Cleanup(giveUp)
+				return ctx
+			},
+		},
+		{
+			name: "a machine that refuses everything it is asked",
+			lanes: []lanestub.Lane{{Name: "A", Profile: lanestub.Profile{
+				FailWith: 404, TTFT: 2 * time.Millisecond, Rate: 2000,
+			}}},
+			ask: func(_ *testing.T, rig *laneRig) context.Context {
+				return WithLaneChoice(talking(), choiceFor(rig.model, 0))
+			},
+		},
+		{
+			name: "a caller who gave up before the first token",
+			lanes: []lanestub.Lane{{Name: "A", Profile: lanestub.Profile{
+				TTFT: 5 * time.Second, Rate: 2000, Tokens: 8,
+			}}},
+			ask: func(t *testing.T, rig *laneRig) context.Context {
+				ctx, giveUp := context.WithTimeout(
+					WithLaneChoice(talking(), choiceFor(rig.model, 0)), 30*time.Millisecond)
+				t.Cleanup(giveUp)
+				return ctx
+			},
+		},
+	} {
+		t.Run(scene.name, func(t *testing.T) {
+			read := loggingTo(t)
+			rig := newLaneRig(t, "unclosed/"+strings.ReplaceAll(scene.name, " ", "-"), scene.lanes...)
+			// The answer is not the assertion; the LOG is. Every one of these
+			// scenes is allowed to fail, and three of them are meant to.
+			_, _ = rig.client.CompleteWithMessages(scene.ask(t, rig), userMessages("hello"))
+
+			started, finished := map[string]int{}, map[string]int{}
+			for _, row := range read() {
+				if row.ID == "" {
+					continue
+				}
+				if row.Phase == "start" {
+					started[row.ID]++
+					continue
+				}
+				finished[row.ID]++
+			}
+			if len(started) == 0 {
+				t.Fatal("nothing went out at all, so this scene proves nothing")
+			}
+			for id, opens := range started {
+				if opens != 1 {
+					t.Errorf("attempt %s opened %d times", id, opens)
+				}
+				switch finished[id] {
+				case 1:
+				case 0:
+					t.Errorf("attempt %s has a start row and nothing under it, which reads as a call still in flight", id)
+				default:
+					t.Errorf("attempt %s was ended %d times", id, finished[id])
+				}
+			}
+			for id := range finished {
+				if started[id] == 0 {
+					t.Errorf("attempt %s was ended without ever having gone out", id)
+				}
+			}
+		})
+	}
+}
+
+// TestAnAttemptNothingWroteIsClosedByTheTransport is the mechanism under the
+// law above, tested at the seam rather than through a scenario — because the
+// exits it guards are the ones nobody has thought of yet, and a test that could
+// only reach today's exits would stop covering it the day a new one is written.
+func TestAnAttemptNothingWroteIsClosedByTheTransport(t *testing.T) {
+	read := loggingTo(t)
+	client, _ := newTestClient(t, Config{Model: "vendor/model"})
+	request := &ai.Request{Model: "vendor/model", Messages: []ai.Message{{Role: "user"}}}
+	knobs := callKnobs{trace: newCallTrace()}
+
+	// One attempt goes out and its path never writes it down; a second begins.
+	knobs.trace.begin()
+	client.record(recordFacts{
+		ctx: context.Background(), request: request, knobs: knobs, stream: true,
+		attempt: 1, began: logNow(), phase: calllog.PhaseStart,
+	})
+	first := knobs.trace.attemptID
+	knobs.trace.begin()
+	client.record(recordFacts{
+		ctx: context.Background(), request: request, knobs: knobs, stream: true,
+		attempt: 2, began: logNow(), phase: calllog.PhaseStart,
+	})
+	second := knobs.trace.attemptID
+
+	// And then the call comes back to its door with the second still open.
+	cancelled, giveUp := context.WithCancel(context.Background())
+	giveUp()
+	client.closeOpenAttempt(cancelled, knobs.trace, endedBy(cancelled))
+
+	closed := map[string]string{}
+	opened := map[string]bool{}
+	for _, row := range read() {
+		if row.Phase == calllog.PhaseStart {
+			opened[row.ID] = true
+			continue
+		}
+		closed[row.ID] = row.Ended
+	}
+	if len(opened) != 2 {
+		t.Fatalf("two attempts went out and the log holds %d start rows", len(opened))
+	}
+	if closed[first] != endedHopped {
+		t.Errorf("the attempt another one began over was closed as %q, want %q", closed[first], endedHopped)
+	}
+	if closed[second] != endedCancelled {
+		t.Errorf("the attempt still open when the caller gave up was closed as %q, want %q", closed[second], endedCancelled)
+	}
+	// And closing twice writes nothing: a log that invented a second ending for
+	// one attempt would be worse than the missing row it is here to prevent.
+	before := len(read())
+	client.closeOpenAttempt(context.Background(), knobs.trace, endedAbandoned)
+	if after := len(read()); after != before {
+		t.Errorf("closing a square log wrote %d more rows", after-before)
 	}
 }

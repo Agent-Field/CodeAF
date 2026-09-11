@@ -422,6 +422,13 @@ func callLogLine(record calllog.Record, answered bool, now time.Time) string {
 	if record.EmptyAtCeiling {
 		fields = append(fields, "empty at the ceiling")
 	}
+	// AND THE ROW NOBODY ON THE PATH WROTE says so. It is the one row on the
+	// line that is a defect in the record rather than a fact about a call, and a
+	// reader counting attempts has to be able to see which of them are these
+	// (internal/calllog's Ended).
+	if ended := strings.TrimSpace(record.Ended); ended != "" {
+		fields = append(fields, "closed: "+ended)
+	}
 	// WHAT THE PROVIDER ITSELF ASKED FOR. A refusal that named a comeback time
 	// is the only refusal this build may answer with the same bytes to the same
 	// machine, so the figure it named is the one thing a reader has to be able

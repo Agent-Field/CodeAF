@@ -419,8 +419,10 @@ func surprises(out io.Writer, rows, finishes []row) {
 		absurd      int
 		unspelled   int
 		noTag       int
+		unwritten   int
 		wildest     float64
 	)
+	endedBy := map[string]int{}
 	started := map[string]bool{}
 	ended := map[string]bool{}
 	for _, r := range rows {
@@ -448,6 +450,10 @@ func surprises(out io.Writer, rows, finishes []row) {
 		}
 		if r.Tag == "" {
 			noTag++
+		}
+		if r.Ended != "" {
+			unwritten++
+			endedBy[r.Ended]++
 		}
 		if r.failed() {
 			failures++
@@ -480,6 +486,10 @@ func surprises(out io.Writer, rows, finishes []row) {
 	fmt.Fprintf(out, "| carried no tag | %d | %d |\n", noTag, len(finishes))
 	fmt.Fprintf(out, "| a wait or a cost no second could hold | %d | %d |\n", absurd, len(finishes))
 	fmt.Fprintf(out, "| a row JSON could not spell and lost | %d | %d |\n", unspelled, len(rows))
+	fmt.Fprintf(out, "| closed by the transport because no path wrote it | %d | %d |\n", unwritten, len(finishes))
+	if unwritten > 0 {
+		fmt.Fprintf(out, "\nClosed as: %s.\n", topOf(endedBy, 6))
+	}
 	if wildest > absurdSeconds {
 		fmt.Fprintf(out, "\nThe largest figure in seconds on any row is %g.\n", wildest)
 	}

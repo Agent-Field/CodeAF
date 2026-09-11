@@ -145,17 +145,24 @@ const (
 	classMalformed statusClass = "400"
 	classOther     statusClass = "other status"
 	classNote      statusClass = "note only"
+	// classUnwritten is the row the transport wrote because nothing on the path
+	// did (`ended`). It is its own class rather than folded in with the others
+	// because it is the one class that is a defect in the RECORD rather than a
+	// fact about a call.
+	classUnwritten statusClass = "closed by the transport"
 )
 
 // classesInOrder is the order the table prints, worst-understood last.
 var classesInOrder = []statusClass{
 	classClean, classInStream, classPaced, classTransport,
-	classRouting, classMalformed, classOther, classNote,
+	classRouting, classMalformed, classOther, classUnwritten, classNote,
 }
 
 func (r row) statusClass() statusClass {
 	failing := strings.TrimSpace(r.Error) != ""
 	switch {
+	case r.Ended != "" && r.Status == 0 && !failing:
+		return classUnwritten
 	case r.Status == 200 && !failing:
 		return classClean
 	case r.Status == 200:
