@@ -691,10 +691,12 @@ func (h *hazard) costAlt() (Alternative, bool) {
 // act is the ladder: which of the six this moment is, in the order
 // docs/ARCHITECTURE.md already sets.
 //
-// The purse is asked LAST and only when a hedge is really about to go out,
-// because asking it is spending it: [internal/lane.Budget.Allow] counts the arm
-// it allows, and a controller that polled it while deciding to report something
-// else would spend somebody's allowance on a decision nobody acted on.
+// The purse is asked LAST and only when a hedge is really about to go out.
+// It no longer SPENDS anything by being asked — there is no rolling allowance
+// left for a poll to drain ([internal/lane.Spending] is a reading of this
+// plan's own budget) — and it is still asked last, because a controller that
+// priced an arm while deciding to report something else would be pricing a
+// decision nobody took.
 // AND AT THE CEILING λ STOPS DECIDING. What a second is worth is what makes a
 // wait worth money, and for a role nobody is watching it is nothing — but the
 // ceiling is not about money at all. It is the promise that no call this build

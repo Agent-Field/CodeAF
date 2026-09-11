@@ -115,16 +115,16 @@ type streamWatch struct {
 
 // ── THE CEILING PICKS ONE OR THE OTHER, NEVER NEITHER ───────────────────────
 //
-// A hedge is the PAID way to act on a silence — a second request, out of a purse
-// that is deliberately small (the waiting design's §B: two rescues per twenty
-// calls). A cut is the FREE way: end this attempt and let the layer above ask
-// another machine at once, paying the prompt again and nothing else.
+// A hedge is the PAID way to act on a silence — a second request, priced against
+// what this call may spend rescuing itself ([control.Plan.SpendUSD]). A cut is
+// the FREE way: end this attempt and let the layer above ask another machine at
+// once, paying the prompt again and nothing else.
 //
-// UNTIL THIS WAVE THE CEILING COULD CHOOSE NEITHER, and that is a hole rather
+// UNTIL THAT WAVE THE CEILING COULD CHOOSE NEITHER, and that is a hole rather
 // than a trade-off. `docs/design/waiting/DESIGN.md` §A clause 1 says the role's
-// ceiling is hard "regardless of belief"; it has to be hard regardless of PURSE
-// too, or the clause means "regardless of belief, when we happen to be able to
-// afford it". Measured on 2026-09-10: 2,186 attempts fired the ceiling, had the
+// ceiling is hard "regardless of belief"; it has to be hard regardless of what
+// this call can afford too, or the clause means "regardless of belief, when we
+// happen to be able to afford it". Measured on 2026-09-10: 2,186 attempts fired the ceiling, had the
 // purse refuse the arm, and then had NOTHING act — 648 of them went on for more
 // than six times the silence that had just been refused, to a ninety-ninth
 // percentile of 272 seconds and a worst case of 938. Four quick tasks that

@@ -407,3 +407,63 @@ func TestEightStreamsFinishingAtOnceIsOneLedger(t *testing.T) {
 		}
 	}
 }
+
+// ── THE 2026-09-11 COLLAPSE, REPLAYED ───────────────────────────────────────
+
+// morphRow is the sheet's account of the machine in that day's evidence: sixty
+// tokens a second, which is what it really did all morning.
+func morphRow() Row {
+	return Row{
+		ID: ID{Model: "deepseek/deepseek-v4.1-flash", Lane: "Morph"},
+		Facts: Facts{
+			Tools: true, Quant: "fp8", MaxOut: 32_000, Context: 345_000,
+			Uptime5m: 100, PriceIn: 0.0000009, PriceOut: 0.00000132, Caches: true,
+		},
+		TTFTp50: 1900, TTFTp75: 2400, TTFTp90: 3100, TTFTp99: 5000,
+		Ratep50: 60, Ratep75: 70, Ratep90: 84, Ratep99: 110,
+	}
+}
+
+// TestACollapsedRateIsBelievedByTheBeliefTheChooserReads is the replay of the
+// 09:33 series and the 14:29 sighting: a morning at sixty tokens a second, then
+// 604 tokens in 82 seconds.
+//
+// WHAT IT GUARDS IS THE AGREEMENT AND NOT A NUMBER. Both accounts of the same
+// quantity are read back — the flat belief the chooser ranks on and the chain
+// the waiting controller waits against — because the defect was never that
+// neither learned. The chain learned it on the first sighting; the flat belief
+// was still saying eleven tokens a second at the end of the afternoon while the
+// chain said six, and the chooser reads the flat one.
+func TestACollapsedRateIsBelievedByTheBeliefTheChooserReads(t *testing.T) {
+	l := newLedger()
+	row := morphRow()
+	l.Prime(row, SheetWeight)
+	at := noon
+	// The morning: 600 tokens in ten seconds, over and over.
+	for range 10 {
+		l.Note(Sighting{ID: row.ID, TTFT: 1900 * time.Millisecond, Gen: 10 * time.Second, Tokens: 600, At: at})
+		at = at.Add(2 * time.Minute)
+	}
+	if belief, _ := l.Belief(row.ID); math.Abs(belief.Rate.Mean()-60) > 6 {
+		t.Fatalf("a morning at sixty tokens a second was believed at %.1f", belief.Rate.Mean())
+	}
+	// And the collapse, in the numbers the row carried: ttft 3993, 82.19s of
+	// generation, 604 completion tokens.
+	l.Note(Sighting{ID: row.ID, TTFT: 3993 * time.Millisecond, Gen: 82190 * time.Millisecond, Tokens: 604, At: at})
+
+	belief, _ := l.Belief(row.ID)
+	chain, _ := l.Rate(row.ID, at).Predict()
+	if math.Abs(belief.Rate.Mean()-math.Exp(chain)) > 1e-9 {
+		t.Fatalf("the two accounts of one rate disagree: the chooser reads %.2f t/s, the controller waits against %.2f t/s",
+			belief.Rate.Mean(), math.Exp(chain))
+	}
+	// AND THE FIGURE IS THE ANSWER'S OWN, never one written here. 604 tokens in
+	// 82.19 seconds is 7.35 a second; a belief still nearer the morning's sixty
+	// than the afternoon's seven is a belief the next request will act on, and
+	// acting on it means going back to this machine.
+	measured := 604 / 82.19
+	if belief.Rate.Mean() > 2*measured {
+		t.Fatalf("after 604 tokens in 82 seconds the machine was still believed at %.1f t/s, against the %.1f it measured",
+			belief.Rate.Mean(), measured)
+	}
+}

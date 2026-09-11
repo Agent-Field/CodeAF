@@ -1,9 +1,11 @@
 package provider
 
 import (
+	"context"
 	"testing"
 	"time"
 
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/lane/lanestub"
 )
 
@@ -52,4 +54,100 @@ func TestAStalledLaneArmsARescueWithoutATerminalError(t *testing.T) {
 		t.Fatalf("Requests(B) = %d, want one rescue arm", got)
 	}
 	waitFor(t, func() bool { return rig.server.Cancels("A") == 1 })
+}
+
+// ── A WIRE THAT IS WRITING AND STILL LOSING THE PERSON'S AFTERNOON ──────────
+
+// slowWireRig stages the 2026-09-11 call on the wire: a machine the choice
+// expected sixty tokens a second from, delivering seven, beside one that is
+// believed fast and is.
+func slowWireRig(t *testing.T, name string) *laneRig {
+	t.Helper()
+	rig := newLaneRig(t, name,
+		lanestub.Lane{Name: "A", Profile: lanestub.Profile{
+			TTFT: 40 * time.Millisecond, Rate: 7, Tokens: 40, Heartbeats: true,
+		}},
+		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
+	)
+	// What the choice expected of the machine it named, which is the bar the
+	// stream is held to.
+	rig.believes("A", 40, 60)
+	rig.believes("B", 5, 2000)
+	rig.patience(t, 150*time.Millisecond)
+	return rig
+}
+
+// unattended is the role of a task node nobody is sitting in front of: it still
+// has a λ ([lane.UnattendedValue]), because a task still ends when its slowest
+// call ends.
+func unattended() context.Context {
+	return WithRole(context.Background(), lanes.RoleLeafUnattended)
+}
+
+// TestAWireBelowItsPromisedPaceIsRescuedOnAnUnattendedTask is the owner's own
+// call, staged. The machine writes — there is no silence and no error — and it
+// writes an eighth as fast as the machine the question was sent to. The rescue
+// costs about what the call was going to cost anyway, and the call's own budget
+// affords it; under the deleted window it did not, and a person watched 604
+// tokens arrive over 86 seconds.
+func TestAWireBelowItsPromisedPaceIsRescuedOnAnUnattendedTask(t *testing.T) {
+	rig := slowWireRig(t, "slowwire/rescued")
+
+	report := &HedgeReport{}
+	ctx := WithHedgeReport(unattended(), report)
+	ctx = WithLaneChoice(ctx, choiceFor(rig.model, 0))
+
+	response, err := rig.client.CompleteWithMessages(ctx, userMessages("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Hedged() {
+		t.Fatal("a wire writing at an eighth of the pace it was asked for was never rescued")
+	}
+	if winner, _ := report.Lanes(); winner != "B" {
+		t.Fatalf("winner = %q, want the answer from the machine that kept the pace", winner)
+	}
+	if tokens := answerTokens(response); tokens != 24 {
+		t.Fatalf("the answer is %d tokens, want B's 24", tokens)
+	}
+	if got := rig.server.Requests("B"); got != 1 {
+		t.Fatalf("Requests(B) = %d, want the one rescue the pace earned", got)
+	}
+}
+
+// TestAWireBelowItsPaceWithNothingToSpendSaysSoAndIsSpent is the other half of
+// the same call: nothing can be started, and a report is still a move.
+//
+// THREE THINGS ARE ASSERTED BECAUSE THREE THINGS USED TO BE MISSING. The row
+// names the rail that really refused — the call's own budget, not some other
+// request's allowance. The person is told the answer is arriving too slowly to
+// read, which neither `writing` nor `all lanes slow` could honestly say. And the
+// machine is written down as spent for this question, so no arm and no attempt
+// of it goes back to the machine that earned the report.
+func TestAWireBelowItsPaceWithNothingToSpendSaysSoAndIsSpent(t *testing.T) {
+	read := loggingTo(t)
+	rig := slowWireRig(t, "slowwire/nothing-to-spend")
+	noRescues(t)
+	told := listen(t)
+
+	ctx := WithLaneChoice(unattended(), choiceFor(rig.model, 0))
+	if _, err := rig.client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
+		t.Fatal(err)
+	}
+	if got := rig.server.Requests("B"); got != 0 {
+		t.Fatalf("Requests(B) = %d, want no rescue from a call that may spend nothing", got)
+	}
+	rows := ended(read())
+	if len(rows) != 1 {
+		t.Fatalf("ended rows = %d, want the one call's row", len(rows))
+	}
+	if got := rows[0].Refused; got != planCannotPay {
+		t.Fatalf("refused = %q, want %q — the rail that really refused", got, planCannotPay)
+	}
+	if _, ok := told.find(PhaseBelowPace); !ok {
+		for _, news := range told.all() {
+			t.Logf("PHASE %q detail=%q", news.Phase, news.Detail)
+		}
+		t.Fatal("a person watched an answer crawl and was never told it was crawling")
+	}
 }

@@ -119,7 +119,7 @@ func (s scriptedController) Acted(control.Kind) bool                            
 // THE SHAPE: four quick tasks, one machine, first tokens at 260, 370, 375 and
 // 428 seconds. On every one the hazard fired at its ten-second ceiling with
 // `no heartbeat` — not a token, not a router comment — and the row says
-// `refused: budget`. The purse (two rescues per twenty calls) declined the arm,
+// `refused: plan cannot pay`. The purse declined the arm,
 // and then NOTHING acted for another six minutes. Acting meant hedging, hedging
 // was purse-gated, and so the waiting design's §A clause 1 — the ceiling is hard
 // "regardless of belief" — quietly meant "when we can afford it".

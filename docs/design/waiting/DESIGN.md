@@ -247,9 +247,12 @@ anywhere in this design.
 
 `Hedge` may fire more than once. What bounds it is money, not a counter:
 
-- **Arms are bounded by the purse**, which is today's `lane.Budget` unchanged:
-  at most a tenth of the last hour's spend, counted in requests rather than in
-  minutes. `maxArms = 4` stays as the absolute cap on one question.
+- **Arms are bounded by the purse**, which since 2026-09-11 is the CALL'S OWN
+  budget (`control.Plan.SpendUSD`: its patience converted through λ) rather than
+  the rolling `lane.Budget` this section was written against — that one allowed
+  two rescues in any twenty requests and a tenth of the last hour's spend, and it
+  refused by arrival order. `maxArms = 4` stays as the absolute cap on one
+  question, and it is now the only thing that counts arms.
 - **First visible progress takes the voice.** Whichever arm writes the first
   word a person can read is the arm they hear; the others are held, exactly as
   today's one-voice rule holds them.
@@ -800,7 +803,7 @@ func (Role) Ceiling() time.Duration
 ```
 
 **Public names kept:** `lane.Choice`, `lane.Chooser`, `lane.Ledger`,
-`lane.Sighting`, `lane.Outcome`, `lane.Belief`, `lane.Budget`,
+`lane.Sighting`, `lane.Outcome`, `lane.Belief`, `lane.Spending`,
 `lane.PerceivedSeconds`, `lane.Lambda`, `provider.HedgeReport`,
 `provider.PhaseNews`, `provider.SetLanePin`.
 

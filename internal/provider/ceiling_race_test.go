@@ -123,29 +123,41 @@ func TestARefusedCeilingClimbsTheLadderWhenThePurseFundsNoWalk(t *testing.T) {
 	}
 }
 
-func TestARefusedRescueClimbsTheLadderWhenThePurseFundsNoSecondWalk(t *testing.T) {
+// TestAWalkKeepsWalkingWhileTheModEL_HAS_ANOTHER_MACHINE is what the deleted
+// purse used to hide.
+//
+// IT USED TO STOP AT ONE, AND THAT WAS A COUNT AND NOT A REASON. The walk was
+// bounded by a rolling allowance of two rescues in any twenty requests, so the
+// second machine a refusal earned was refused for a number about other requests
+// — and the call climbed the relaxation ladder while machines that had said
+// nothing at all were still standing. What bounds a walk now is the serving set
+// and [maxArms], which are facts about THIS question.
+func TestAWalkKeepsWalkingWhileTheModelHasAnotherMachine(t *testing.T) {
 	rig := newPricedLaneRig(t, "ceiling/one-walk", ceilingRaceLanes(true)...)
 	ctx := WithLaneChoice(talking(), ceilingRaceChoice(rig.model))
 
 	response, err := rig.client.CompleteWithMessages(ctx, userMessages("hello"))
 	if err != nil {
-		t.Fatalf("the relaxed rescue did not answer: %v", err)
+		t.Fatalf("the walk did not answer: %v", err)
 	}
 	if got := answerTokens(response); got != 19 {
 		t.Fatalf("the answer is %d tokens, want Together's 19", got)
 	}
 	asks := rig.server.Asks()
 	if len(asks) != 3 {
-		t.Fatalf("%d requests went out, want the capped primary, one walk, and one relaxed retry", len(asks))
+		t.Fatalf("%d requests went out, want the capped primary and two walks", len(asks))
 	}
 	if asks[0].MaxPrice == nil {
 		t.Fatal("the refused primary carried no ceiling, so this test proves nothing")
 	}
+	// THE FIRST WALK GOES TO THE MACHINE THE FRONTIER NAMED, and it is refused
+	// because the sheet is all that offers it; the second goes to the next one,
+	// which answers. Neither carries the ceiling the primary was refused over.
 	if !demandedOnly(asks[1], "Fireworks") || asks[1].MaxPrice != nil {
-		t.Fatalf("the walk carried only=%v max_price=%+v, want an uncapped Fireworks demand", asks[1].Only, asks[1].MaxPrice)
+		t.Fatalf("the first walk carried only=%v max_price=%+v, want an uncapped Fireworks demand", asks[1].Only, asks[1].MaxPrice)
 	}
-	if len(asks[2].Only) != 0 || asks[2].MaxPrice != nil {
-		t.Fatalf("the relaxed retry carried only=%v max_price=%+v", asks[2].Only, asks[2].MaxPrice)
+	if !demandedOnly(asks[2], "Together") || asks[2].MaxPrice != nil {
+		t.Fatalf("the second walk carried only=%v max_price=%+v, want an uncapped Together demand", asks[2].Only, asks[2].MaxPrice)
 	}
 	for _, ask := range asks {
 		if ask.Model != rig.model {

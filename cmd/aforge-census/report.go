@@ -489,9 +489,15 @@ func surprises(out io.Writer, rows, finishes []row) {
 		wildest     float64
 	)
 	var (
-		cutByABound int
-		exhausted   int
+		cutByABound  int
+		exhausted    int
+		rescueDenied int
 	)
+	// refusedBy is what stopped a rescue the controller had already called for,
+	// by the machine word the row carries. It is a reading of its own because a
+	// rescue that was ASKED FOR and did not happen is the one shape a census of
+	// waits cannot see any other way: the row looks like an ordinary slow call.
+	refusedBy := map[string]int{}
 	appliedBy := map[string]int{}
 	endedBy := map[string]int{}
 	started := map[string]bool{}
@@ -530,6 +536,10 @@ func surprises(out io.Writer, rows, finishes []row) {
 			cutByABound++
 			appliedBy[word]++
 		}
+		if word := strings.TrimSpace(r.Refused); word != "" {
+			rescueDenied++
+			refusedBy[word]++
+		}
 		if r.Exhaust() {
 			exhausted++
 		}
@@ -567,11 +577,15 @@ func surprises(out io.Writer, rows, finishes []row) {
 	fmt.Fprintf(out, "| closed by the transport because no path wrote it | %d | %d |\n", unwritten, len(finishes))
 	fmt.Fprintf(out, "| cut by a bound this build set, and says which | %d | %d |\n", cutByABound, len(finishes))
 	fmt.Fprintf(out, "| exhaust of a race that was won, counted as a failure until now | %d | %d |\n", exhausted, len(finishes))
+	fmt.Fprintf(out, "| a rescue the controller called for that never left, and says why | %d | %d |\n", rescueDenied, len(finishes))
 	if unwritten > 0 {
 		fmt.Fprintf(out, "\nClosed as: %s.\n", topOf(endedBy, 6))
 	}
 	if cutByABound > 0 {
 		fmt.Fprintf(out, "\nCut by: %s.\n", topOf(appliedBy, 6))
+	}
+	if rescueDenied > 0 {
+		fmt.Fprintf(out, "\nRescues refused by: %s.\n", topOf(refusedBy, 6))
 	}
 	if wildest > absurdSeconds {
 		fmt.Fprintf(out, "\nThe largest figure in seconds on any row is %g.\n", wildest)

@@ -878,6 +878,37 @@ func (l *ledger) Note(s Sighting) {
 	l.keep(record{At: s.At, Sight: &s})
 }
 
+// ── ONE QUANTITY, ONE ACCOUNT ───────────────────────────────────────────────
+//
+// TWO FILTERS OVER ONE NUMBER IS THE DEFECT. Every sighting used to move two
+// separate beliefs about the same thing: the flat [Belief.Rate] the chooser reads
+// and ranks on, and the four-level chain the waiting controller reads. They were
+// fed the same observation with the same noise and reached different answers,
+// because the chain's gain is the sum of four component variances over that sum
+// plus the noise while the flat filter's is one variance over one — so the chain
+// absorbs about four fifths of a surprise where the flat belief absorbs a
+// seventh.
+//
+// What that costs is a machine this process KNOWS is slow and goes on choosing.
+// Measured on 2026-09-11: one endpoint's rate collapsed to about seven tokens a
+// second; by the end of the afternoon the chain said six and the flat belief the
+// chooser reads still said eleven, and the change point that exists to reconcile
+// them never fired — it cannot, because a step the chain absorbs in one
+// observation leaves no run of surprises for a CUSUM to accumulate (the sum
+// peaked at 3.4 against an alarm of 4 and then decayed).
+//
+// SO THE FLAT BELIEF IS THE CHAIN, READ FLAT. It is the same [flatten] the
+// chooser already uses for a pair it holds no flat belief about, applied to every
+// pair instead of only to the cold ones — one account of one quantity, one gain,
+// and nothing left for an alarm to keep in step.
+//
+// IT IS SET ONLY FOR THE QUANTITY A SIGHTING ACTUALLY TAUGHT. A chain always
+// answers, because it is a sum of priors before it is a sum of measurements, and
+// an answer from a prior is not a measurement: writing it into the flat belief
+// would make every pair "known" and take away the one thing the chooser uses to
+// tell a machine it has never timed from one it has. The untaught axis keeps
+// being aged as it always was.
+
 // see is [ledger.Note]'s arithmetic without the door. It is called with the
 // lock held, by the door and by a replay of the journal.
 func (l *ledger) see(s Sighting) {
@@ -911,13 +942,12 @@ func (l *ledger) see(s Sighting) {
 			noise = variance(prior.TTFT) * 0.5
 		}
 		waited := math.Log(msOf(s.TTFT))
-		belief.TTFT = belief.TTFT.Update(waited, noise)
 		// AND THE SAME MEASUREMENT REACHES ALL FOUR LEVELS, which is what makes
 		// the next pair nobody has measured predictable. The change-point test
 		// rides on OUR OWN sightings and never on the sheet: a half-hour
 		// aggregate re-published every beat would re-assert one surprise until
 		// it tripped an alarm about a step that never happened.
-		belief.TTFT = l.folded(&l.wait, s.ID, belief.TTFT, waited, noise, s.At)
+		l.folded(&l.wait, s.ID, waited, noise, s.At)
 		// AND THE SAME MEASUREMENT ALSO SAYS HOW FAR ONE DRAW SITS FROM THE
 		// MEDIAN, which is a different question about the same number and the
 		// one a person actually pays. See [Belief.Spread]: a machine whose first
@@ -928,6 +958,11 @@ func (l *ledger) see(s Sighting) {
 		// quantity the sheet publishes only an aggregate of.
 		l.wait.widen(pairOf(s.ID)[LevelPair], waited)
 		belief.Spread = l.seenSpread(s.ID, drawSpread(prior.TTFT))
+		// AND THE FLAT BELIEF IS THAT CHAIN, READ FLAT. See ONE QUANTITY, ONE
+		// ACCOUNT above: the Kalman update three lines up moved a second filter
+		// over the same number, at a seventh of this one's gain, and the belief
+		// the chooser reads was the slow one.
+		belief.TTFT = flatten(l.wait.look(pairOf(s.ID), s.At))
 	}
 	// A SHORT ANSWER TEACHES THE FIRST TOKEN AND NEVER THE RATE. A probe is one
 	// token sent on purpose and rates the handshake; a handful of tokens rates a
@@ -937,45 +972,35 @@ func (l *ledger) see(s Sighting) {
 	if !s.Probe && s.Tokens >= ratedFloor && s.Gen > 0 {
 		if rate := s.Rate(); rate > 0 {
 			written, noise := math.Log(rate), variance(prior.Rate)
-			belief.Rate = belief.Rate.Update(written, noise)
-			belief.Rate = l.folded(&l.rate, s.ID, belief.Rate, written, noise, s.At)
+			l.folded(&l.rate, s.ID, written, noise, s.At)
+			belief.Rate = flatten(l.rate.look(pairOf(s.ID), s.At))
 		}
 	}
 	belief.At = s.At
 	l.beliefs[s.ID] = belief
 }
 
-// folded puts one observation through a chain's change-point test and answers
-// the flat belief that should stand afterwards — the one handed in when nothing
-// stepped, and [stepTo]'s when something did.
+// folded puts one observation through a chain's change-point test and records a
+// step where there was one.
 //
 // IT IS ONE DOOR BECAUSE A CHANGE POINT HAS ONE MEANING. The wait chain and the
 // rate chain ask the same question of two quantities, and two copies of "alarm,
 // then reset the belief beside it" is how the two come to disagree about what an
 // alarm is for. Called with the lock held.
-func (l *ledger) folded(of *chains, id ID, held Posterior, z, noise float64, at time.Time) Posterior {
+//
+// IT NO LONGER HANDS A BELIEF BACK. It used to answer what the flat belief
+// should be afterwards — the one passed in when nothing stepped, and this
+// observation adopted outright when something did — because the flat belief was
+// a second filter that had to be reset when the chain's own reset left it
+// behind. There is no second filter (see ONE QUANTITY, ONE ACCOUNT), so the
+// alarm resets the pair component and its dispersion account and there is
+// nothing else left for it to repair.
+func (l *ledger) folded(of *chains, id ID, z, noise float64, at time.Time) {
 	if !of.note(pairOf(id), z, noise, at) {
-		return held
+		return
 	}
 	l.stepped(id)
-	return stepTo(z, noise)
 }
-
-// stepTo is the belief a change point leaves behind: THIS observation, at its
-// own noise, and nothing of what came before it.
-//
-// A CHANGE POINT IS A STATEMENT THAT THE OLD EVIDENCE IS ABOUT A DIFFERENT
-// MACHINE. The chain already resets its own pair component when the CUSUM
-// alarms, and the flat belief beside it — the one [Chooser.Choose] actually
-// reads — did not, so the filter went on damping every new reading with fifty
-// old ones that no longer described anything. The measured case is 2026-09-11:
-// one machine's generation rate fell about ninefold at 09:33 and the belief
-// admitted it for five more steps over thirty-three minutes, one of them a
-// nine-minute answer, because each collapse arrived as one observation against a
-// posterior far too certain to move. Adopting the observation outright is
-// exactly what [Posterior.Update] already does for a belief that knows nothing,
-// which is what a belief whose subject has just changed IS.
-func stepTo(z, noise float64) Posterior { return Posterior{}.Update(z, noise) }
 
 // stepped records that a change point has reset one pair's own component toward
 // its parents. It is called with the lock held.
