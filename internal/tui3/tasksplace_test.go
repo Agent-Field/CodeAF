@@ -585,8 +585,28 @@ func tasksPolishFixture() (session.World, session.UsageWindow, time.Time) {
 	return world, session.LastDays(now, 14), now
 }
 
-// tasksPage is the whole page as a person reads it, with no colour on it.
+// tasksOpen is one reading with every fold open, for the tests that are about
+// something other than folding.
+//
+// EVERY CONVERSATION AND EVERY FAMILY OPENS SHUT (the owner's ruling — see
+// [tasksReading.opens]). A test written to look at a piece of work would be
+// looking at the root standing over it instead, so it says which it means by
+// asking for this. The tests that are ABOUT the folds do not call it.
+func tasksOpen(r tasksReading) tasksReading {
+	r.unfolded = true
+	return r
+}
+
+// tasksPage is the whole page as a person reads it, with no colour on it AND
+// WITH EVERY FOLD OPEN — which is the page after `→`, and the page nearly every
+// test through here was written against ([tasksOpen] says why it has to be
+// asked for now). A test about the folds themselves lays the reading out itself.
 func tasksPage(r tasksReading, width int) string {
+	return tasksPageFolded(tasksOpen(r), width)
+}
+
+// tasksPageFolded is that page exactly as the place would draw it, folds and all.
+func tasksPageFolded(r tasksReading, width int) string {
 	rows := r.rows(width, newPalette(tokens.NoColor, false))
 	for i := range rows {
 		rows[i] = plain(rows[i])

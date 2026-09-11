@@ -255,8 +255,43 @@ func TestSOnTheTasksStripStopsThatTaskThroughTheEnginesDoor(t *testing.T) {
 // still need, and it is asked here once rather than in forty places.
 func openTaskPlaceWithRows(a *app) bool {
 	a.showPage(pageTasks)
+	// AND IT OPENS THE FOLDS, because these tests are about the ROWS.
+	//
+	// The place itself opens every conversation and every family SHUT (the owner's
+	// ruling, 2026-09-11 — [tasksReading.opens] states it and says why), so a test
+	// written to look at a piece of work would be looking at the root standing
+	// over it instead. A person reaches the same page with `→`; a test says so by
+	// calling this. The tests that are about the FOLDS ask for the place without
+	// it ([TestEveryConversationOpensShut] and its neighbours).
+	openTaskFolds(a)
 	if len(a.taskSheet.reading.items) > 0 {
 		a.taskSheetPointAt(a.taskSheet.reading.items[0].entry)
 	}
 	return a.at(pageTasks) && len(a.taskSheet.reading.items) > 0
+}
+
+// openTaskFolds opens every fold on the page, the way pressing `→` down the list
+// would — and it is remembered in the PLACE's own fold map rather than on the
+// reading, because a reading is replaced whole every few seconds
+// ([tasksPlace.regroup]) and a flag set on one would be gone by the next frame.
+func openTaskFolds(a *app) {
+	if a.taskSheet.opened == nil {
+		a.taskSheet.opened = map[tasksKey]bool{}
+	}
+	width, _ := a.size()
+	// Families nest, so opening one can reveal another; this walks until a pass
+	// finds nothing left shut. The depth is the record's own and is small.
+	for i := 0; i < tasksKinLevels+2; i++ {
+		r := a.tasksFiltered()
+		shut := false
+		for _, line := range r.lay(width) {
+			if line.folds && !line.open {
+				a.taskSheet.opened[line.family] = true
+				shut = true
+			}
+		}
+		if !shut {
+			return
+		}
+	}
 }

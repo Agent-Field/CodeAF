@@ -1516,7 +1516,7 @@ func (p *tasksPlace) hint(a *app) string {
 	// rather than of the row under the cursor — and because it names the key the
 	// page is on, which is the only thing about the order the control row does not
 	// already draw ([tasksControlRow] wears the arrow).
-	parts = append(parts, tasksSortHint(a.taskSheet.order))
+	parts = append(parts, tasksSortHint(a.taskSheet.order), tasksFilterHint)
 	return strings.Join(parts, railSep)
 }
 
@@ -1723,9 +1723,21 @@ func (placeTasks) note(a *app, width int) []string     { return a.taskSheet.note
 func (placeTasks) hint(a *app) string                  { return a.taskSheet.hint(a) }
 func (placeTasks) changed(a *app, since time.Time) int { return a.taskSheet.changed(a, since) }
 
-// box is the type-to-filter box: every printable key is the filter, which is the
-// one thing this page can do with a letter.
-func (placeTasks) box(a *app) *editor { return &a.taskSheet.query }
+// box is NOTHING ON THIS PLACE, AND THAT IS THE FILTER BOX MOVING RATHER THAN
+// GOING.
+//
+// The composer at the foot WAS this page's filter: every printable key went to
+// [tasksPlace.query], and the router drew that editor's letters two rows under
+// the list they were narrowing. The table put the box where the typing is about
+// — the first row of the list, under the head and over the rows
+// ([tasksControlRow]) — and a box drawn in both places would be one person's
+// letters on screen twice, which is the defect this page's own title row was
+// removed for.
+//
+// SO THE FOOT KEEPS THE INVITATION AND LOSES THE ECHO ([placeTasks.resting]):
+// `› type to filter this list` stands there whatever is typed, and the letters
+// appear once, in the row that is narrowing.
+func (placeTasks) box(a *app) *editor { return nil }
 
 // resting is what that box says when nothing is typed in it, and it is THIS
 // PLACE'S sentence rather than the router's (pages.go's [place.resting]).
@@ -1736,6 +1748,12 @@ func (placeTasks) box(a *app) *editor { return &a.taskSheet.query }
 // into the slot they are about: one sentence, in the place a person is looking
 // when they wonder what typing here will do.
 func (placeTasks) resting(a *app) string { return tasksTypeWord }
+
+// tasksFilterHint is that same invitation on the FOOT'S KEY LINE, which the
+// ruling of 2026-09-11 asks for beside the sort chord: a chord nobody can find
+// is a chord that does not exist, and the filter is the other half of what the
+// keyboard does here.
+const tasksFilterHint = "type to filter"
 
 // bar is the phone lane's foot: the key legend becomes a `‹ back` band a thumb
 // leaves by (taskphone.go). The count above it stays — a bar is the way out, and
