@@ -24,6 +24,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"testing"
 
 	configpkg "github.com/Agent-Field/aforge-v2/internal/config"
@@ -76,8 +77,17 @@ var prefixShapes = []prefixShape{{
 }}
 
 // conversationDoor wires what cmd/aforge's interactive door wires, including the
-// two seams that decide whole sections of the page: somebody watching who can
-// answer a card, and a store for `stand` to leave something in.
+// seams that decide whole sections of the page and whole tools on the belt:
+// somebody watching who can answer a card, a store for `stand` to leave
+// something in, and the collections database `collections` and
+// `shared_context` read and write (chatv3.go fills all three for every door
+// that is a conversation: `v3Standing`, then `v3Organization`).
+//
+// IT IS THE ONE DEFINITION OF THAT SHAPE. [v3ShapedAgent] and so the prefix
+// budget build through it, because the budget weighed a hand-assembled belt
+// with no standing store and no collections database for as long as two copies
+// of this list existed, and so never saw 14 KB the real door sent on every
+// request (prefixbudget_test.go's ledger).
 func conversationDoor(t *testing.T, config *Config) {
 	t.Helper()
 	config.AskConsent = true
@@ -89,6 +99,7 @@ func conversationDoor(t *testing.T, config *Config) {
 	config.OrchestrateRunner = func(context.Context, string, string, float64) (string, error) { return "", nil }
 	config.Standing = &Standing{}
 	config.standingItems = &fakeStanding{}
+	config.Organization = &Organization{Path: filepath.Join(t.TempDir(), "collections.db")}
 }
 
 // TestTheFixedPrefixOfEveryShapeIsMeasured prints the bill each door pays and
