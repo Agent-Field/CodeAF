@@ -154,9 +154,10 @@ type inflight struct {
 	answer chan tea.Msg
 	// at is when the command answered, written before the send on `answer` and
 	// therefore safe to read after the receive. It is compared against the
-	// deadline so that a waiter or tick which came back late is dropped exactly
-	// as the old harness dropped it; ordinary work crossing its larger ceiling
-	// is named as stuck instead of disappearing.
+	// deadline so that a waiter which came back late is dropped exactly as the
+	// old harness dropped it; ordinary work crossing its larger ceiling is named
+	// as stuck instead of disappearing. Ticks use the synchronous harness clock
+	// and never enter this set.
 	at time.Time
 }
 
@@ -288,12 +289,11 @@ func (d *harnessDriver) collect() []tea.Msg {
 				// returns nothing too: a message the suite has never been given
 				// is not one to start giving it here.
 				//
-				// ONLY A TICK OR A NAMED WAITER CAN REACH HERE, because those are
-				// the only commands [harnessDriver.run] leaves running, and they
-				// are exactly the two kinds allowed to disappear. [droppedWork] is
-				// the guard on that: widening [overlappable] to something that
-				// finishes would otherwise put a silent drop back on this line
-				// without a word.
+				// ONLY A NAMED WAITER CAN REACH HERE, because the harness clock is
+				// resolved synchronously and waiters are the only commands
+				// [harnessDriver.run] leaves running. [droppedWork] is the guard on
+				// that: widening [overlappable] to something that finishes would
+				// otherwise put a silent drop back on this line without a word.
 				waited := p.at.Sub(p.started)
 				noteCommand(p.cmd, waited, false)
 				droppedWork(p.cmd, waited)
@@ -305,8 +305,8 @@ func (d *harnessDriver) collect() []tea.Msg {
 			if now.After(p.deadline) {
 				// Dropped, exactly as before, and its goroutine stays parked on
 				// the channel nobody will write to — see [TestMain]'s count. The
-				// same guard as above: nothing but a tick or a named waiter is
-				// running here today, and [droppedWork] is what keeps that true.
+				// same guard as above: nothing but a named waiter is running here
+				// today, and [droppedWork] is what keeps that true.
 				noteCommand(p.cmd, budgetFor(p.cmd), false)
 				droppedWork(p.cmd, now.Sub(p.started))
 				continue
@@ -372,10 +372,11 @@ func (d *harnessDriver) settle() []tea.Msg {
 //
 // IT IS CALLED FROM EVERY PLACE A COMMAND CAN BE GIVEN UP ON, which today means
 // it fires only out of [runInline] — the two in [harnessDriver.collect] stand
-// over commands that are all ticks and waiters. That is the point of putting it
-// in all three: the silent drop this fixes was not a line anybody wrote on
-// purpose, it was a deadline that had grown to cover more than it was meant to,
-// and a guard on one of the three exits would let the same thing happen again.
+// over named waiters, because the harness clock never enters the live set. That
+// is the point of putting it in all three: the silent drop this fixes was not a
+// line anybody wrote on purpose, it was a deadline that had grown to cover more
+// than it was meant to, and a guard on one of the three exits would let the same
+// thing happen again.
 func droppedWork(cmd tea.Cmd, waited time.Duration) {
 	symbol := cmdSymbol(cmd)
 	if symbol == teaTickSymbol || waiterSymbol(symbol) {
