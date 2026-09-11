@@ -415,29 +415,32 @@ func (a *Agent) seedStandingPath(from, to string) {
 	_ = copyPath(from, to)
 }
 
-// startStandingTree cuts the working copy AHEAD OF THE WRITE THAT WILL NEED IT.
+// standingTreesOwed asks for one pass that MAKES THE SET OF WORKING COPIES MATCH
+// WHAT THE RULES SAY IT SHOULD BE, and it returns at once.
 //
-// It is called from the one door a folder is referred through
-// ([Agent.ReferPlace]) and it returns at once: the cut runs beside whatever the
-// person does next, which is read their own screen and type. By the time a tool
-// call wants the copy, [Agent.cutStandingTree]'s own lock is either free with
-// the copy already made or held by this — and a write that arrives in the middle
-// waits for the cut that is already running rather than starting a second one.
+// It is the one thing both doors that can change that answer say. Referring a
+// folder ([Agent.ReferPlace]) adds one that should have a copy; saying "work in
+// this one directly" ([Agent.SetPlaceMode]) takes one away, and clearing that
+// word puts it back. None of them needs to know what the pass will do — only
+// that the answer has moved — which is why there is one verb here and not a
+// start and a stop.
 //
-// A CUT THAT FAILS HERE IS NOT ANNOUNCED AND NOT REMEMBERED AS A FAILURE. The
-// person has not asked for anything yet, and the first write still takes the same
-// road and still gets the same sentence if it cannot be made — this is a head
-// start, never a gate.
-func (a *Agent) startStandingTree(place PlaceRef) {
-	if strings.TrimSpace(place.Path) == "" {
-		return
-	}
-	if !keptAside(place, a.workspaceStoodIn()) {
-		return
-	}
+// NOTHING IT DOES HAPPENS ON THE PERSON'S PATH. A cut is a `git worktree add` or
+// a whole recursive copy; a retire asks git whether a copy may go, or walks one.
+// All of it runs beside whatever the person does next, which is read their own
+// screen and type. By the time a tool call wants a copy,
+// [Agent.cutStandingTree]'s own lock is either free with the copy already made
+// or held by this, and a write that arrives in the middle waits for the cut
+// already running rather than starting a second one.
+//
+// WHAT IT DOES IS NOT ANNOUNCED AND NOT REMEMBERED AS A FAILURE. A cut that
+// cannot be made leaves the first write to take the road it took yesterday and
+// get the same sentence; a copy that may not be removed is simply kept. This is
+// a head start and a tidy-up, never a gate.
+func (a *Agent) standingTreesOwed() {
 	if strings.TrimSpace(a.treesDir()) == "" {
-		// Nowhere to put one. cutStandingTree says so to a caller that asked;
-		// nobody asked yet.
+		// Nowhere to keep a copy, so there is no set to make match.
+		// cutStandingTree says so to a caller that asked; nobody asked yet.
 		return
 	}
 	a.treesAhead().Owe()
@@ -457,25 +460,32 @@ func (a *Agent) placeHere() Place {
 func (a *Agent) treesDir() string { return a.placeHere().Trees() }
 
 // treesAhead is the one deferred piece of work behind every referred folder:
-// "cut a working copy of anything referred that has none".
+// "the folders that may be copied have a copy, and the folders that may not do
+// not". One pass, one direction, no memory of what asked for it.
 //
 // IT IS ONE WRITE AND NOT ONE PER FOLDER, which is what makes three folders
 // dropped on the window at once cost one goroutine and cut three copies in the
 // order they were referred, rather than three goroutines contending on
 // [Agent.treeCut]. [offpath.Write]'s coalescing does the whole of that: a refer
-// arriving while a cut is running owes one more pass, and that pass looks at the
-// set as it stands then.
+// or a said word arriving while a cut is running owes one more pass, and that
+// pass looks at the set as it stands then — so a folder referred and then said
+// "in place" about, faster than a copy can be taken, is answered by one pass
+// that finds the word already there and never cuts at all.
 //
-// IT ASKS [keptAside] EXACTLY AS THE WRITE PATH DOES. The head start may never
-// reach a folder the write path would have left alone, or it would cut a branch
-// and a worktree in the person's own repository for a folder they only meant to
-// stand in.
+// IT ASKS [keptAside] EXACTLY AS THE WRITE PATH DOES, in both directions. A
+// folder that may not be copied must not be given one here, or it would be a
+// branch and a worktree in the person's own repository for a folder they only
+// meant to stand in; and one that may not be copied ANY MORE has its copy handed
+// back ([Agent.retireUntouchedTree]), because the word that took the permission
+// away always arrives after the copy — a mode is a fact about a place, so the
+// place is referred first.
 func (a *Agent) treesAhead() *offpath.Write {
 	a.treesOnce.Do(func() {
 		a.treesWrite = offpath.Deferred(func() {
 			workspace := a.workspaceStoodIn()
 			for _, place := range a.referredPlaces() {
 				if !keptAside(place, workspace) {
+					a.retireUntouchedTree(place.Path)
 					continue
 				}
 				if _, held := a.standingTreeFor(place.Path); held {
@@ -735,7 +745,7 @@ func (a *Agent) Land(folder string) (FolderLanding, error) {
 //
 // It exists for one moment, and the order of that moment cannot be otherwise: a
 // mode is a fact ABOUT a place, so the place is referred first and the person's
-// "work in this one directly" arrives second — after [Agent.startStandingTree]
+// "work in this one directly" arrives second — after [Agent.standingTreesOwed]
 // has already had its head start. Without this, their own word about their own
 // folder would be honoured by every future write while a branch and a worktree
 // they never asked for sat in their repository, belonging to nothing.
@@ -800,13 +810,21 @@ func (a *Agent) retireUntouchedTree(folder string) {
 // comes to hold something — a file written into it that was never in the folder,
 // and a file rewritten to a different length.
 //
+// A FILE DELETED FROM THE COPY IS DELIBERATELY NOT WORK, and it is the one shape
+// the enumeration above leaves out on purpose. The walk is of the copy, so a path
+// the folder has and the copy does not is never reached. That is the right answer
+// rather than a gap: removing the copy leaves the folder holding the file, which
+// is where it already is and where the person can still see it. Nothing of theirs
+// is destroyed by forgetting a deletion that never left the copy — and a deletion
+// IS lost, which is the same thing that happens to it under [Agent.Land], where a
+// mirror lays back only what was written.
+//
 // WHAT IT CANNOT SEE, written down rather than guarded against: an existing file
 // edited to EXACTLY its old length. Seeing that means reading both copies of
-// every file in the folder, which is the whole cost the copy was made to avoid
-// and would be paid on a word a person says in passing. The unreadable copy is
-// treated as holding work for the same reason the refusals above are: this
-// function's only destructive act is removal, so every answer it is unsure of
-// is "keep".
+// every file in the folder, which is the whole cost the copy was made to avoid.
+// The unreadable copy is treated as holding work for the same reason the refusals
+// above are: this function's only destructive act is removal, so every answer it
+// is unsure of is "keep".
 func mirrorHoldsWork(folder, dir string) bool {
 	held := false
 	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {

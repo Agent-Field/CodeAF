@@ -133,6 +133,9 @@ func TestAFolderSaidToBeWorkedInDirectlyIsWrittenDirectly(t *testing.T) {
 	if err := agent.SetPlaceMode(repo, "in place"); err != nil {
 		t.Fatalf("SetPlaceMode: %v", err)
 	}
+	// The pass that makes the copies match the word is owed, not run on the
+	// person's path — so it is settled before it is counted.
+	agent.SettleWrites()
 
 	writeThrough(t, agent, filepath.Join(repo, "shared.txt"), "straight in\n")
 	if got := readFile(t, filepath.Join(repo, "shared.txt")); got != "straight in\n" {
@@ -193,6 +196,9 @@ func TestSayingInPlaceAfterTheCopyWasCutTakesItBack(t *testing.T) {
 	if err := agent.SetPlaceMode(repo, "in place"); err != nil {
 		t.Fatalf("SetPlaceMode: %v", err)
 	}
+	// The pass that makes the copies match the word is owed, not run on the
+	// person's path — so it is settled before it is counted.
+	agent.SettleWrites()
 	if trees := agent.StandingTrees(); len(trees) != 0 {
 		t.Fatalf("the copy outlived the word that retired it: %+v", trees)
 	}
@@ -225,6 +231,9 @@ func TestSayingInPlaceKeepsACopyThatAlreadyHoldsWork(t *testing.T) {
 	if err := agent.SetPlaceMode(repo, "in place"); err != nil {
 		t.Fatalf("SetPlaceMode: %v", err)
 	}
+	// The pass that makes the copies match the word is owed, not run on the
+	// person's path — so it is settled before it is counted.
+	agent.SettleWrites()
 	trees := agent.StandingTrees()
 	if len(trees) != 1 {
 		t.Fatalf("the work was thrown away with the copy: %+v", trees)
@@ -284,6 +293,7 @@ func TestACopyIsKeptWhenItHoldsWorkTheBeltDidNotWrite(t *testing.T) {
 			if err := agent.SetPlaceMode(repo, "in place"); err != nil {
 				t.Fatalf("SetPlaceMode: %v", err)
 			}
+			agent.SettleWrites()
 
 			if _, err := os.Stat(left); err != nil {
 				t.Fatalf("%s was destroyed: %v", left, err)
@@ -315,6 +325,7 @@ func TestACopyOfAPlainFolderIsKeptWhenItHoldsWork(t *testing.T) {
 	if err := agent.SetPlaceMode(folder, "in place"); err != nil {
 		t.Fatalf("SetPlaceMode: %v", err)
 	}
+	agent.SettleWrites()
 	if _, err := os.Stat(left); err != nil {
 		t.Fatalf("%s was destroyed: %v", left, err)
 	}
@@ -335,6 +346,7 @@ func TestACopyOfAPlainFolderHoldingNothingIsStillGivenBack(t *testing.T) {
 	if err := agent.SetPlaceMode(folder, "in place"); err != nil {
 		t.Fatalf("SetPlaceMode: %v", err)
 	}
+	agent.SettleWrites()
 	if kept := agent.StandingTrees(); len(kept) != 0 {
 		t.Fatalf("a copy holding nothing was kept: %+v", kept)
 	}

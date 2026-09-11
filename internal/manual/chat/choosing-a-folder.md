@@ -460,7 +460,10 @@ to say why.
 Saying "work in it directly" always wins, even said afterwards. Because a folder
 has to be chosen before you can say anything about it, the copy has usually
 already been taken by then — so it is given back: the branch and the working copy
-go, and the folder is edited directly from that moment.
+go, and the folder is edited directly from that moment. The giving back happens
+beside you rather than while you wait, so it can take a second or two longer than
+the reply; nothing waits on it, because the next write already goes where you
+said.
 
 **A copy that holds anything at all is never given back.** Not only what the
 model's `write` and `edit` put there — a file a shell command made, something a
