@@ -771,7 +771,7 @@ func TestAnAnswerGivenOnThePageLeavesOneRecordAndItSaysYou(t *testing.T) {
 		t.Fatalf("the page stayed up after it was answered:\n%s", footText(a))
 	}
 	block := plain(strings.Join(a.questionRows(a.width), "\n"))
-	if got := strings.Count(block, "decided "); got != 1 {
+	if got := strings.Count(block, "→ sqlite beside the project"); got != 1 {
 		t.Fatalf("one answer left %d records:\n%s", got, block)
 	}
 	if strings.Contains(block, "another window") {
@@ -806,7 +806,7 @@ func TestTheLanesNewsAboutAnAnswerGivenHereAddsNoSecondLine(t *testing.T) {
 		Kind: session.EventQuestionAnswered, Question: &q, Answer: &answer,
 	})
 	block := plain(strings.Join(a.questionRows(a.width), "\n"))
-	if got := strings.Count(block, "decided "); got != 1 {
+	if got := strings.Count(block, "→ sqlite beside the project"); got != 1 {
 		t.Fatalf("the lane's news made it %d records:\n%s", got, block)
 	}
 }
@@ -986,8 +986,12 @@ func TestAnAnswersLabelBodyAndAsidesAreThreeDifferentInks(t *testing.T) {
 	if head == "" || body == "" || aside == "" {
 		t.Fatalf("the open answer should draw a heading, a body and an aside:\n%s", pageText(a))
 	}
-	if !strings.Contains(head, a.pal.askBold("1 postgres")) {
-		t.Errorf("the label should be bold in the question hue: %q", head)
+	// THE KEY IS THE PAYLOAD HUE AND THE WORD IS BOLD INK, which is the panel's
+	// own grammar for an answer (owner ruling 2026-09-11, colour pick C: the
+	// amber stays on the marks).
+	if !strings.Contains(head, a.pal.data("1")) ||
+		!strings.Contains(head, a.pal.bold(a.pal.ink("postgres"))) {
+		t.Errorf("the label is not the key in the payload hue and the word in bold ink: %q", head)
 	}
 	if !strings.Contains(body, a.pal.ink("Rows already carry a foreign key into it and the migration is one file.")) {
 		t.Errorf("the body should be the prose ink: %q", body)
@@ -1098,10 +1102,10 @@ func TestTheQuestionsOwnEvidenceIsOneTitledSectionAboveTheAnswers(t *testing.T) 
 func TestTheFootNamesTheArrowsThatWalkTheSections(t *testing.T) {
 	a, _ := standingInAQuestion(t, demoQuestionReading())
 	foot := footText(a)
-	if !strings.Contains(foot, "["+questionWalkDownKey+"] "+questionKeyWord(questionWalkDownKey)) {
+	if !strings.Contains(foot, questionWalkDownKey+" "+questionKeyWord(questionWalkDownKey)) {
 		t.Errorf("the foot should offer the pair that walks the sections:\n%s", foot)
 	}
-	if strings.Contains(foot, "["+questionWalkKey+"] "+questionKeyWord(questionWalkKey)) {
+	if strings.Contains(foot, questionWalkKey+" "+questionKeyWord(questionWalkKey)) {
 		t.Errorf("the foot must not name a pair that walks nothing here:\n%s", foot)
 	}
 }

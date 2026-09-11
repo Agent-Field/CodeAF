@@ -1,7 +1,10 @@
 package tui3
 
 import (
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -177,26 +180,38 @@ func consentAsk() session.Question {
 	}
 }
 
-// TestTheLineDrawsItsHeadItsAnswersAndItsReasonAndNothingElse is the line
-// form's whole shape, asserted as rows rather than as a substring: a block that
-// grew a row nobody decided on is a block that moved the box.
+// TestTheLineDrawsItsHeadItsAnswersAndItsReasonAndNothingElse is the whole
+// shape of a permission, asserted as rows rather than as a substring: a block
+// that grew a row nobody decided on is a block that moved the box.
+//
+// IT IS THE PANEL AND NOT A LINE. A person allowing a call has to READ the call
+// (owner ruling 2026-09-11, consent pick B), so the chooser sends every
+// permission here: the head and who is asking in the frame's top edge, the call
+// and the policy's own words on the first row, a blank, a row per answer, a
+// blank, the keys that answer in the bottom edge, and the quieter keys on one
+// dim row under it.
+//
+// AND NO LIFETIMES ROW, though this fixture offers two. The consent gate reads
+// an answer's key and never [session.Answer.Scope], so the row is off a
+// permission until the engine honours it ([questionScopes], and the count here
+// is what notices if it comes back before that).
 func TestTheLineDrawsItsHeadItsAnswersAndItsReasonAndNothingElse(t *testing.T) {
 	lab := newQuestionLab(t)
 	lab.raise(consentAsk())
 	rows := lab.rows()
-	if len(rows) != 2 {
-		t.Fatalf("the line took %d rows, not two:\n%s", len(rows), lab.screen())
+	if len(rows) != 9 {
+		t.Fatalf("the panel took %d rows, not nine:\n%s", len(rows), lab.screen())
 	}
-	head := plain(rows[0])
-	for _, want := range []string{"allow this?", "[1] allow once", "[2] always", "[3] deny", "[esc] later"} {
-		if !strings.Contains(head, want) {
-			t.Fatalf("the answers row does not say %q:\n%s", want, head)
+	screen := plain(strings.Join(rows, "\n"))
+	for _, want := range []string{"allow this?", "1  allow once", "2  always", "3  deny", "esc later"} {
+		if !strings.Contains(screen, want) {
+			t.Fatalf("the panel does not say %q:\n%s", want, screen)
 		}
 	}
 	if !strings.Contains(plain(rows[1]), `bash pattern "rm -rf *"`) {
-		t.Fatalf("the reason is not under it: %q", rows[1])
+		t.Fatalf("the call's own words are not the first row: %q", rows[1])
 	}
-	if strings.Contains(head, "cancel") {
+	if strings.Contains(screen, "cancel") {
 		t.Fatal("esc still says cancel; it is `later` now and nothing is cancelled")
 	}
 }
@@ -254,13 +269,21 @@ func TestEscIsLaterAndCancelsNothing(t *testing.T) {
 	if len(lab.answer) != 0 {
 		t.Fatalf("esc answered something: %+v", lab.answer)
 	}
-	if rows := lab.rows(); len(rows) != 0 {
-		t.Fatalf("the folded question is still drawing rows:\n%s", strings.Join(rows, "\n"))
+	// A QUESTION PUT OFF FOLDS IN PLACE TO ONE TITLED RULE (owner ruling
+	// 2026-09-11, fold pick A): it never jumps to the status line, and the rule
+	// says what is waiting and which key opens it again.
+	folded := lab.rows()
+	if len(folded) != 1 {
+		t.Fatalf("the folded question is not one rule:\n%s", strings.Join(folded, "\n"))
+	}
+	if row := plain(folded[0]); !strings.Contains(row, "allow this?") ||
+		!strings.Contains(row, questionOpenFoldWord) {
+		t.Fatalf("the folded rule does not say what is waiting or how to open it: %q", row)
 	}
 	if lab.a.questionCount() != 1 {
 		t.Fatalf("the folded question stopped being counted: %d", lab.a.questionCount())
 	}
-	if seg := lab.a.questionSegment(); !strings.Contains(seg, "1 question") {
+	if seg := lab.a.questionSegment(); !strings.Contains(seg, "allow this?") {
 		t.Fatalf("the chip does not carry the folded question: %q", seg)
 	}
 	lab.a.raiseFolded()
@@ -335,10 +358,24 @@ func TestTheAnswerLeavesTheEnginesOwnRecordWhereTheQuestionWas(t *testing.T) {
 	if !strings.Contains(rows[0], want.Line()) {
 		t.Fatalf("the receipt is not the record's own line:\n%q\nwanted %q", rows[0], want.Line())
 	}
-	for _, said := range []string{"decided", "allow once", "you", "14:02", "c change"} {
+	// THE SETTLED MARK OPENS IT, and the row says what was decided, by whom and
+	// when — and what is still possible about it, which is a key only because
+	// #954 built the door behind it. The key was taken OFF this row for a while,
+	// when it named a door that did not exist; it is back with the door and not
+	// before, which is the manual law said about a keyboard.
+	for _, said := range []string{tokens.Plain.Glyph(tokens.GSettled), "allow once", "you", "14:02"} {
 		if !strings.Contains(rows[0], said) {
 			t.Fatalf("the receipt does not say %q: %q", said, rows[0])
 		}
+	}
+	if strings.Contains(rows[0], "decided") {
+		t.Fatalf("the receipt still opens with the word `decided`: %q", rows[0])
+	}
+	// AND EVERY KEY IT NAMES HAS A DOOR. The two readings the receipt offers keys
+	// from are the two the keys themselves ask, so a row cannot name one the
+	// press would refuse.
+	if strings.Contains(rows[0], questionCommentKey+" change") && !questionCanChange(lab.a.questionRecords[0]) {
+		t.Fatalf("the receipt offers a key with no door behind it: %q", rows[0])
 	}
 }
 
@@ -393,7 +430,7 @@ func TestTheThirdSameShapedYesOffersARuleAndNeverTheFirst(t *testing.T) {
 	ask.ID = 999
 	ask.Subject = session.SubjectRef{Kind: session.SubjectCall, Name: "bash"}
 	lab.raise(ask)
-	if got := lab.plain(); !strings.Contains(got, "[r] make it a rule for everywhere") {
+	if got := lab.plain(); !strings.Contains(got, "r make it a rule for everywhere") {
 		t.Fatalf("the third same-shaped yes did not offer a rule:\n%s", got)
 	}
 }
@@ -416,52 +453,128 @@ func TestACardDrawsARowPerAnswerAndMarksTheAskersPick(t *testing.T) {
 		Stakes: session.StakesCostly,
 	})
 	rows := questionPlainRows(lab.rows())
-	if len(rows) != 5 {
+	// THE FRAME'S OWN TWO ROWS ARE THE FIRST AND THE LAST, the head is written
+	// into the top edge with who is asking beside it, and the keys into the
+	// bottom edge — so the drawing is the head, the asker's sentence, a blank,
+	// a row per answer, the pick's case under the pointer, a blank, the keys,
+	// and the quieter keys under the frame.
+	if len(rows) != 9 {
 		t.Fatalf("the card took %d rows:\n%s", len(rows), lab.screen())
 	}
-	if !strings.Contains(rows[0], "wants to start a task: rewrite the packer") {
-		t.Fatalf("the head is not the first row: %q", rows[0])
+	if !strings.Contains(rows[0], "wants to start a task: rewrite the packer") || !strings.Contains(rows[0], product) {
+		t.Fatalf("the head and who is asking are not the top edge: %q", rows[0])
 	}
-	if !strings.Contains(rows[1], "it will run on its own branch") || !strings.Contains(rows[1], product) {
-		t.Fatalf("the attribution row is wrong: %q", rows[1])
+	if !strings.Contains(rows[1], "it will run on its own branch") {
+		t.Fatalf("the asker's sentence is not under the head: %q", rows[1])
 	}
-	mark := tokens.Plain.Glyph(tokens.GCollapsed)
-	if !strings.Contains(rows[2], mark) || !strings.Contains(rows[2], "start it") {
-		t.Fatalf("the asker's pick is not marked: %q", rows[2])
+	// THE POINTER OPENS ON THE ASKER'S PICK AND THE PICK IS SAID IN A WORD.
+	// They are two marks with two meanings — `▸` is where enter lands, `◆
+	// recommended` is what the asker would take — and on this question they
+	// are on one row because the person has not moved yet.
+	pointer, pick := tokens.Plain.Glyph(tokens.GPointer), tokens.Plain.Glyph(tokens.GRecommended)
+	if !strings.Contains(rows[3], pointer) || !strings.Contains(rows[3], "start it") ||
+		!strings.Contains(rows[3], pick+" "+questionRecommendedWord) {
+		t.Fatalf("the asker's pick is not marked: %q", rows[3])
 	}
-	if strings.Contains(rows[3], mark) {
-		t.Fatalf("a second answer carries the pick mark: %q", rows[3])
+	if !strings.Contains(rows[4], "it starts on its own unless you say otherwise") {
+		t.Fatalf("the pick's case is not under the pointed row: %q", rows[4])
 	}
-	if !strings.Contains(rows[3], "nothing runs") {
-		t.Fatalf("the consequence is missing: %q", rows[3])
+	if strings.Contains(rows[5], pointer) || strings.Contains(rows[5], pick) {
+		t.Fatalf("a second answer carries a mark of the first: %q", rows[5])
 	}
-	if !strings.Contains(rows[4], "[enter] take it") {
-		t.Fatalf("the answers row does not offer enter: %q", rows[4])
+	if !strings.Contains(rows[5], "nothing runs") {
+		t.Fatalf("the consequence is missing: %q", rows[5])
+	}
+	if !strings.Contains(rows[7], "enter take it") || !strings.Contains(rows[7], "esc later") {
+		t.Fatalf("the bottom edge does not carry the keys that answer: %q", rows[7])
+	}
+	if !strings.Contains(rows[8], "c change") || strings.Contains(rows[7], "c change") {
+		t.Fatalf("the quieter keys are not the tier under the frame: %q / %q", rows[7], rows[8])
 	}
 }
 
-// TestEnterTakesThePickAndOtherwiseTheAnswerThatLosesNothing is where the
-// pointer stands when the asker named no pick, and it is the half of the
-// pointer that keeps it safe.
+// TestEnterOnAPermissionDeniesUntilTheEngineGradesTheCall is where the pointer
+// stands when the asker named no pick, and it is the half of the pointer that
+// keeps it safe.
 //
-// Enter takes the answer the pointer is on, so on a gate the engine raised
-// BECAUSE a call could not be taken back — `rm -rf *` — a pointer that started
-// on the first answer would make `enter` mean `allow once`. Measured: it did.
-// The lane already says which answer costs nothing ([session.AnswerOption.
-// Safe]) and that is the one the pointer opens on.
-func TestEnterTakesThePickAndOtherwiseTheAnswerThatLosesNothing(t *testing.T) {
+// `enter` takes the answer the pointer is on, so a permission whose pointer
+// opened on the first answer would make `enter` mean `allow once` — on a gate
+// over `rm -rf *` as readily as over a `git status` the rules had merely not
+// seen before. The lane already says which answer costs nothing
+// ([session.AnswerOption.Safe]) and that is the one EVERY permission opens on.
+//
+// IT IS ONE RULE AND IT IS NOT KEYED ON THE STAKES, which is what this test is
+// shaped to prove. The 2026-09-11 design ruling was that an ordinary call should
+// open on `allow once` and only a grave one on deny; the owner's follow-up the
+// same day was DENY-FIRST UNTIL GRADED, because nothing upstream grades a call —
+// the gate stamps `costly` on every consent alike and internal/approval never
+// produces irreversible at all ([TestTheGateGradesNoCallAsIrreversibleAndMarks\
+// DenyTheSafeAnswer] in internal/session holds that down). A by-stakes rule
+// would therefore have read "ordinary" for a recursive delete in production and
+// its grave branch would have been reachable only from a fixture — which is
+// exactly how the version of this test that FORCED `StakesIrreversible` by hand
+// passed while `enter` allowed everything a person actually met.
+//
+// So it walks every stakes a permission can carry rather than choosing one, and
+// states the rule's ONE exception with it: a permission a lane marked plainly
+// REVERSIBLE is not hands-only and opens on its first answer. Nothing produces
+// one today — the gate stamps `costly` — and the day something does, this is
+// where the claim is written down rather than discovered.
+func TestEnterOnAPermissionDeniesUntilTheEngineGradesTheCall(t *testing.T) {
+	for _, one := range []struct {
+		stakes session.Stakes
+		// refuses says the pointer opens on the answer that loses nothing, so
+		// `enter` on an untouched frame denies the call.
+		refuses bool
+	}{
+		{session.StakesCostly, true},       // what the gate actually stamps
+		{session.StakesIrreversible, true}, // what it would stamp if it graded
+		{session.StakesReversible, false},  // the documented exception
+	} {
+		t.Run(string(one.stakes), func(t *testing.T) {
+			lab := newQuestionLab(t)
+			ask := consentAsk()
+			ask.Form = session.FormCard
+			ask.Stakes = one.stakes
+			lab.raise(ask)
+			lab.tick(questionSettle)
+			lab.rows()
+
+			// THE ANSWER IS READ OFF THE QUESTION AND NOT SPELLED HERE: a test
+			// naming `3` would still pass the day the engine renumbered its
+			// answers and moved the refusal somewhere else.
+			want := 0
+			if one.refuses {
+				want = questionSafeAt(ask)
+				if ask.Options[want].Label != "deny" {
+					t.Fatalf("the answer that loses nothing is not the refusal: %q",
+						ask.Options[want].Label)
+				}
+			}
+			head, _ := lab.a.questionHead()
+			if head.pick != want {
+				t.Fatalf("the pointer opened on answer %d, not %d", head.pick, want)
+			}
+			if !lab.press("enter") {
+				t.Fatal("enter should take the answer the pointer is on")
+			}
+			key := ask.Options[want].Key
+			if len(lab.answer) != 1 || lab.answer[0].FirstKey() != key {
+				t.Fatalf("enter answered %+v, not %q", lab.answer, key)
+			}
+		})
+	}
+}
+
+// TestEnterTakesTheAskersPickWhereThereIsOne is the other half of the same key,
+// and the reason the rule above is written BELOW the pick and not above it: an
+// asker that recommended an answer said so on the row a person is reading, and
+// `enter` taking the recommendation IS the pointer's law. A task proposal is
+// unaffected by anything the permission rule does.
+func TestEnterTakesTheAskersPickWhereThereIsOne(t *testing.T) {
 	lab := newQuestionLab(t)
 	ask := consentAsk()
 	ask.Form = session.FormCard
-	lab.raise(ask)
-	lab.tick(questionSettle)
-	if !lab.press("enter") {
-		t.Fatal("enter should take the answer the pointer is on")
-	}
-	if len(lab.answer) != 1 || lab.answer[0].FirstKey() != "3" {
-		t.Fatalf("enter on a gate with no pick should deny, not allow: %+v", lab.answer)
-	}
-	lab.answer = nil
 	ask.Pick = &session.Pick{Key: "1", Reason: "the narrow answer"}
 	ask.Stakes = session.StakesReversible
 	lab.raise(ask)
@@ -588,7 +701,7 @@ func TestTheRatifyLineSaysWhatWasDoneAndHowToUndoIt(t *testing.T) {
 		t.Fatalf("the ratify line took %d rows:\n%s", len(rows), lab.screen())
 	}
 	for _, said := range []string{
-		tokens.Plain.Glyph(tokens.GSettled), "renamed 12 files under src/", "[u] undo", "[c] change",
+		tokens.Plain.Glyph(tokens.GSettled), "renamed 12 files under src/", "u undo", "c change",
 	} {
 		if !strings.Contains(rows[0], said) {
 			t.Fatalf("the ratify line does not say %q: %q", said, rows[0])
@@ -618,7 +731,7 @@ func TestARatifiedActOffersTheWayBackWithoutBeingTold(t *testing.T) {
 		},
 		Stakes: session.StakesReversible,
 	})
-	if got := lab.plain(); !strings.Contains(got, "[u] undo") {
+	if got := lab.plain(); !strings.Contains(got, "u undo") {
 		t.Fatalf("the ratify line offers no way back: %q", got)
 	}
 	// AND THE KEY REACHES THE UNWIND THE ASKER DESCRIBED, which is the whole of
@@ -715,8 +828,9 @@ func TestAnAssumptionsCardWearsItsOwnMarkAndItsOwnClock(t *testing.T) {
 func TestAQuestionThatIsWaitingKeepsTheAttentionMark(t *testing.T) {
 	lab := newQuestionLab(t)
 	lab.raise(consentAsk())
+	// The mark is written into the frame's top edge, where the head is.
 	head := questionPlainRows(lab.rows())[0]
-	if !strings.HasPrefix(head, tokens.Plain.Glyph(tokens.GNeedsHuman)+" ") {
+	if !strings.Contains(head, tokens.Plain.Glyph(tokens.GNeedsHuman)+" allow this?") {
 		t.Fatalf("a permission lost the attention mark: %q", head)
 	}
 }
@@ -759,7 +873,7 @@ func TestOneQuestionIsOneQuestionAndTheRestAreCounted(t *testing.T) {
 	if !strings.Contains(got, "2 more") {
 		t.Fatalf("the queue count is missing:\n%s", got)
 	}
-	if strings.Count(got, "[esc] later") != 1 {
+	if strings.Count(got, "esc later") != 1 {
 		t.Fatalf("more than one question is being drawn:\n%s", got)
 	}
 }
@@ -993,7 +1107,7 @@ func TestTheReceiptGivesUpAClauseRatherThanLosingItsTail(t *testing.T) {
 	}
 	for _, kept := range []string{
 		"which store should the ledger sit on? → sqlite beside the project",
-		"you", "14:02", questionCommentKey + " change",
+		"you", "14:02",
 	} {
 		if !strings.Contains(row, kept) {
 			t.Fatalf("the receipt lost %q: %q", kept, row)
@@ -1007,7 +1121,7 @@ func TestTheReceiptGivesUpAClauseRatherThanLosingItsTail(t *testing.T) {
 	// AND WHO DECIDED SURVIVES A ROW TOO NARROW EVEN FOR THE QUESTION, because
 	// it is the one thing on the line nobody can work out for themselves.
 	narrow := plain(lab.a.questionRecordRow(lab.a.questionRecords[0], 70))
-	if !strings.Contains(narrow, "you") || !strings.Contains(narrow, questionCommentKey+" change") {
+	if !strings.Contains(narrow, "you") {
 		t.Fatalf("a narrow receipt stopped saying who decided: %q", narrow)
 	}
 	// AND AT A WIDTH THAT HOLDS EVERYTHING, NOTHING IS GIVEN UP.
@@ -1068,20 +1182,24 @@ func TestAChecklistAskedForAsALineIsACardWithARowPerAnswer(t *testing.T) {
 	if !strings.Contains(screen, "Turner, Hokusai") {
 		t.Fatalf("the note under the first answer is not drawn:\n%s", screen)
 	}
-	if !strings.Contains(screen, "5  Impressionism") || !strings.Contains(screen, "Impressionism                    suggested") {
+	// THE PICK IS A WORD AT THE RIGHT EDGE OF ITS ROW in every view, and a
+	// checklist's rows carry their tick in a cell between the key and the word,
+	// so the digit that toggles a row is still on it.
+	if !strings.Contains(screen, "5   Impressionism") ||
+		!strings.Contains(screen, tokens.GlyphRecommended+" "+questionRecommendedWord) {
 		t.Fatalf("the asker's pick is not said on its row:\n%s", screen)
 	}
-	if !strings.Contains(screen, tokens.GlyphCollapsed+" 1  Landscapes") {
+	if !strings.Contains(screen, tokens.GlyphPointer+" 1   Landscapes") {
 		t.Fatalf("the pointer does not start on the first row:\n%s", screen)
 	}
-	if strings.Contains(screen, "take the pick") || !strings.Contains(screen, "[tab] next row") {
+	if strings.Contains(screen, "take the pick") || !strings.Contains(screen, "tab next row") {
 		t.Fatalf("the key row is wrong for a checklist:\n%s", screen)
 	}
 	if strings.Contains(screen, "…") {
 		t.Fatalf("an answer was cut instead of given its own row:\n%s", screen)
 	}
 	for i, label := range labels {
-		if !strings.Contains(screen, itoa(i+1)+"  "+label) {
+		if !strings.Contains(screen, itoa(i+1)+"   "+label) {
 			t.Fatalf("answer %d is not on a row of its own:\n%s", i+1, screen)
 		}
 	}
@@ -1099,24 +1217,24 @@ func TestAChecklistAskedForAsALineIsACardWithARowPerAnswer(t *testing.T) {
 	lab.press("3")
 	lab.press("7")
 	screen = lab.plain()
-	if !strings.Contains(screen, tokens.GlyphSettled+" 3  Still life") || !strings.Contains(screen, tokens.GlyphSettled+" 7  History") {
+	if !strings.Contains(screen, "3 "+tokens.GlyphSettled+" Still life") || !strings.Contains(screen, "7 "+tokens.GlyphSettled+" History") {
 		t.Fatalf("the ticked rows do not wear their ticks:\n%s", screen)
 	}
 	if !strings.Contains(screen, "send what is ticked") {
 		t.Fatalf("the key row does not say enter sends:\n%s", screen)
 	}
 	lab.press("3")
-	if screen = lab.plain(); strings.Contains(screen, tokens.GlyphSettled+" 3  Still life") {
+	if screen = lab.plain(); strings.Contains(screen, "3 "+tokens.GlyphSettled+" Still life") {
 		t.Fatalf("a second press did not untick the row:\n%s", screen)
 	}
 	// A digit leaves the pointer on its row, tab walks it on, and space ticks
 	// where it stands.
 	lab.press("tab")
-	if screen = lab.plain(); !strings.Contains(screen, tokens.GlyphCollapsed+" 4  Abstract") {
+	if screen = lab.plain(); !strings.Contains(screen, tokens.GlyphPointer+" 4   Abstract") {
 		t.Fatalf("tab did not walk the pointer to the next row:\n%s", screen)
 	}
 	lab.press("space")
-	if screen = lab.plain(); !strings.Contains(screen, tokens.GlyphSettled+" 4  Abstract") {
+	if screen = lab.plain(); !strings.Contains(screen, "4 "+tokens.GlyphSettled+" Abstract") {
 		t.Fatalf("space did not tick the pointed row:\n%s", screen)
 	}
 	lab.press("space")
@@ -1142,7 +1260,9 @@ func TestALongAnswerWrapsOntoRowsThatPressTheSameAnswer(t *testing.T) {
 		},
 	})
 	screen := lab.plain()
-	if strings.Contains(screen, "…") {
+	// The only ellipsis a panel is allowed is the `something else…` row, which
+	// is an answer that OPENS rather than one that was cut.
+	if strings.Contains(strings.ReplaceAll(screen, questionPanelOtherWord, ""), "…") {
 		t.Fatalf("an answer was cut:\n%s", screen)
 	}
 	for _, piece := range []string{"1  Keep the sqlite file", "derived table", "one file, slower starts", "2  Postgres"} {
@@ -1176,8 +1296,15 @@ func TestThreePlainAnswersStillDrawAsOneRow(t *testing.T) {
 		Reason: "nobody has read it", Stakes: session.StakesReversible,
 		Options: []session.AnswerOption{{Key: "1", Label: "publish it"}, {Key: "2", Label: "hold it"}, {Key: "3", Label: "ask Sam"}},
 	})
-	if screen := lab.plain(); !strings.Contains(screen, "[1] publish it · [2] hold it · [3] ask Sam") {
+	// NO BRACKETS ANYWHERE ON THIS SURFACE ANY MORE: a key is the payload hue
+	// and its word is dim, on the row exactly as on the panel's edges.
+	screen := lab.plain()
+	if !strings.Contains(screen, tokens.GlyphPointer+"1 publish it") ||
+		!strings.Contains(screen, "2 hold it") || !strings.Contains(screen, "3 ask Sam") {
 		t.Fatalf("three plain answers left the line:\n%s", screen)
+	}
+	if strings.Contains(screen, "[1]") {
+		t.Fatalf("the row still spells its keys in brackets:\n%s", screen)
 	}
 }
 
@@ -1205,9 +1332,9 @@ func TestSwitchingConversationsLeavesTheOtherOnesQuestionsBehind(t *testing.T) {
 	}
 }
 
-// AND THE CARD MAY NOT PUSH ITS OWN HEAD OFF THE SCREEN: on a short terminal
-// the note under each of eight answers is held to one row ending in the more
-// mark, and the whole card stays inside half the screen.
+// AND THE PANEL MAY NOT PUSH ITS OWN HEAD OFF THE SCREEN: eight answers each
+// carrying a paragraph draw one note — the pointed answer's — held to two rows,
+// and the whole panel stays inside half the screen.
 func TestALongNoteUnderEveryAnswerIsCutToWhatTheScreenHolds(t *testing.T) {
 	lab := newQuestionLab(t)
 	lab.a.width, lab.a.height = 120, 36
@@ -1222,20 +1349,25 @@ func TestALongNoteUnderEveryAnswerIsCutToWhatTheScreenHolds(t *testing.T) {
 		Reason: "a tour needs a shape", Options: options,
 		Input: session.InputShape{Kind: session.InputChecklist}, Stakes: session.StakesReversible,
 	})
+	// THE NOTE IS UNDER THE POINTER AND NOWHERE ELSE (owner ruling 2026-09-11,
+	// recommended pick A). Eight answers each carrying a paragraph is a panel
+	// taller than the conversation under it; the pointer is the person saying
+	// which one they are weighing, and `o open full` holds the rest.
 	screen := lab.plain()
-	if n := strings.Count(screen, glyphMore); n != 8 {
-		t.Fatalf("expected every note cut once, saw %d marks:\n%s", n, screen)
+	if n := strings.Count(screen, glyphMore); n > 1 {
+		t.Fatalf("a note was drawn for an answer nobody is on, %d marks:\n%s", n, screen)
 	}
-	if strings.Contains(screen, "same stillness") {
-		t.Fatalf("a note ran to its end on a screen that has no room for it:\n%s", screen)
+	if strings.Count(screen, "Chardin") != 1 {
+		t.Fatalf("the note is drawn for more than the pointed answer:\n%s", screen)
 	}
-	if rows := lab.a.questionHeight(); rows > 8*2+3 {
-		t.Fatalf("the card spends %d rows of a 36-row screen:\n%s", rows, screen)
+	if rows := lab.a.questionHeight(); rows > 8+2*questionPanelBodyRows+6 {
+		t.Fatalf("the panel spends %d rows of a 36-row screen:\n%s", rows, screen)
 	}
-	// On a tall screen the same note gets two rows.
-	lab.a.height = 80
-	if screen = lab.plain(); !strings.Contains(screen, "Chardin") {
-		t.Fatalf("a tall screen still cuts the note to one row:\n%s", screen)
+	// And the pointer moved onto another answer takes the note with it.
+	lab.tick(time.Second)
+	lab.press("tab")
+	if screen = lab.plain(); !strings.Contains(screen, "2   Genre 2") || strings.Count(screen, "Chardin") != 1 {
+		t.Fatalf("the note did not follow the pointer:\n%s", screen)
 	}
 }
 
@@ -1257,27 +1389,30 @@ func TestArrowsWalkThePointerOnACardAndEnterTakesIt(t *testing.T) {
 		Pick: &session.Pick{Key: "2", Reason: "most guidance"},
 	})
 	screen := lab.plain()
-	if !strings.Contains(screen, tokens.GlyphCollapsed+" 2  Adaptive") {
+	if !strings.Contains(screen, tokens.GlyphPointer+" 2  Adaptive") {
 		t.Fatalf("the pointer does not start on the asker's pick:\n%s", screen)
 	}
-	if !strings.Contains(screen, "needs a watch · suggested") {
+	// THE PICK IS A MARK AND A WORD AT THE RIGHT EDGE OF ITS ROW, never a word
+	// appended to what the answer costs (owner ruling 2026-09-11, recommended
+	// pick A) — `needs a watch · suggested` read as one more thing it would do.
+	if !strings.Contains(screen, tokens.GlyphRecommended+" "+questionRecommendedWord) {
 		t.Fatalf("the asker's pick is not said on its row:\n%s", screen)
 	}
-	if !strings.Contains(screen, "[↑↓] choose") || !strings.Contains(screen, "[enter] take it") {
+	if !strings.Contains(screen, "↑↓ choose") || !strings.Contains(screen, "enter take it") {
 		t.Fatalf("the key row does not say how the pointer works:\n%s", screen)
 	}
 	lab.tick(time.Second)
 	lab.press("down")
-	if screen = lab.plain(); !strings.Contains(screen, tokens.GlyphCollapsed+" 3  Free timer") {
+	if screen = lab.plain(); !strings.Contains(screen, tokens.GlyphPointer+" 3  Free timer") {
 		t.Fatalf("down did not walk the pointer:\n%s", screen)
 	}
 	lab.press("up")
 	lab.press("up")
-	if screen = lab.plain(); !strings.Contains(screen, tokens.GlyphCollapsed+" 1  Fixed") {
+	if screen = lab.plain(); !strings.Contains(screen, tokens.GlyphPointer+" 1  Fixed") {
 		t.Fatalf("up did not walk the pointer back:\n%s", screen)
 	}
 	lab.press("up")
-	if screen = lab.plain(); !strings.Contains(screen, tokens.GlyphCollapsed+" 1  Fixed") {
+	if screen = lab.plain(); !strings.Contains(screen, tokens.GlyphPointer+" 1  Fixed") {
 		t.Fatalf("the pointer walked off the top:\n%s", screen)
 	}
 	lab.press("enter")
@@ -1297,10 +1432,11 @@ func TestArrowsWalkThePointerOnALineAndEnterTakesIt(t *testing.T) {
 		Options: []session.AnswerOption{{Key: "1", Label: "json"}, {Key: "2", Label: "yaml"}, {Key: "3", Label: "toml"}},
 	})
 	screen := lab.plain()
-	if !strings.Contains(screen, "[1] json · [2] yaml · [3] toml") {
+	if !strings.Contains(screen, "1 json") || !strings.Contains(screen, "2 yaml") ||
+		!strings.Contains(screen, "3 toml") {
 		t.Fatalf("the line did not draw:\n%s", screen)
 	}
-	if !strings.Contains(screen, "[enter] take it") {
+	if !strings.Contains(screen, "enter take it") {
 		t.Fatalf("enter is not offered on a question with answers:\n%s", screen)
 	}
 	lab.tick(time.Second)
@@ -1335,7 +1471,8 @@ func TestTheTaskRecordPageDrawsTheLandingQuestionAndTakesItsKeys(t *testing.T) {
 	width, height := lab.a.size()
 	lines, _, _, _ := lab.a.taskCardFrame(width, height)
 	screen := ansi.Strip(strings.Join(lines, "\n"))
-	for _, want := range []string{"tier-B subs landed", "nobody could check it", "[a] accept · [n] not right · [s] tell it", "←→ choose · enter take it"} {
+	for _, want := range []string{"tier-B subs landed", "nobody could check it",
+		"a  accept", "n  not right", "s  tell it", "←→ choose · enter take it"} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("the record page is missing %q:\n%s", want, screen)
 		}
@@ -1343,7 +1480,7 @@ func TestTheTaskRecordPageDrawsTheLandingQuestionAndTakesItsKeys(t *testing.T) {
 	// Another session's task wearing the same number draws no question.
 	lab.a.taskSheet.detail.SessionID = "zzz999"
 	lines, _, _, _ = lab.a.taskCardFrame(width, height)
-	if strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "[a] accept") {
+	if strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "a  accept") {
 		t.Fatal("another session's task borrowed this one's question")
 	}
 	lab.a.taskSheet.detail.SessionID = "abc123"
@@ -1378,19 +1515,34 @@ func TestChangeAndAskBackTurnTheRowIntoAPromptAndEnterSendsTheWords(t *testing.T
 	aimed(lab.a)
 	lab.press("c")
 	screen := lab.plain()
-	if !strings.Contains(screen, "change: say what you want different, then enter · it goes with [2] Adaptive · esc back") {
+	// `c` IS A SHORTCUT TO THE `something else…` ROW and that row IS the box
+	// (owner ruling 2026-09-11, your-own-answer pick A). There is no hidden
+	// mode and no sentence explaining one: the pointer is on the row, the row
+	// says which answer the words will travel with, and the keys that mean
+	// anything while it is open are the only ones the edge names.
+	if !strings.Contains(screen, questionOtherWithWord+"2 Adaptive") {
 		t.Fatalf("c did not turn the row into a prompt:\n%s", screen)
 	}
-	if strings.Contains(screen, "[d] you decide") {
+	if !strings.Contains(screen, "enter send it") || !strings.Contains(screen, "↑ back to the list") {
+		t.Fatalf("the row's own two keys are not on the edge:\n%s", screen)
+	}
+	if strings.Contains(screen, "d you decide") {
 		t.Fatalf("the keys are still offered while the box is writing:\n%s", screen)
 	}
-	if lab.press("d") {
-		t.Fatal("a letter was taken as a verb while the box is writing")
+	// A LETTER IS A LETTER ON THIS ROW: `d` types a `d` rather than handing the
+	// decision back, which is what "the row is the box" has to mean for every
+	// key that is also a verb somewhere else.
+	if !lab.press("d") {
+		t.Fatal("a letter did not reach the row's own box")
 	}
 	if len(lab.answer) != 0 {
 		t.Fatalf("a letter answered: %+v", lab.answer)
 	}
-	lab.a.input.setText("keep the sensors optional")
+	open := lab.a.questionHeld(lab.a.questions[0].token())
+	if open == nil {
+		t.Fatal("the question is not open any more")
+	}
+	open.other.words.setText("keep the sensors optional")
 	lab.press("enter")
 	if len(lab.answer) != 1 || lab.answer[0].Key != "2" || lab.answer[0].Change != "keep the sensors optional" {
 		t.Fatalf("enter did not send the words with the pointed answer · %+v", lab.answer)
@@ -1414,7 +1566,7 @@ func TestChangeAndAskBackTurnTheRowIntoAPromptAndEnterSendsTheWords(t *testing.T
 		t.Fatalf("? did not turn the row into a prompt:\n%s", screen)
 	}
 	lab.press("esc")
-	if screen = lab.plain(); !strings.Contains(screen, "[enter] take it") || strings.Contains(screen, "ask back: type") {
+	if screen = lab.plain(); !strings.Contains(screen, "enter take it") || strings.Contains(screen, "ask back: type") {
 		t.Fatalf("esc did not point the box back at the conversation:\n%s", screen)
 	}
 	if len(lab.a.questions) != 1 {
@@ -1468,7 +1620,7 @@ func TestAnAnswerTheDoorNeverAcknowledgedIsStillThisWindowsAnswer(t *testing.T) 
 	if !strings.Contains(got, "you") {
 		t.Fatalf("the receipt does not say who decided:\n%s", got)
 	}
-	if count := strings.Count(got, "decided "); count != 1 {
+	if count := strings.Count(got, "→ allow once"); count != 1 {
 		t.Fatalf("one answer left %d receipts:\n%s", count, got)
 	}
 	if len(lab.a.questions) != 0 {
@@ -1508,5 +1660,58 @@ func TestAnAnswerThisWindowLostStillWearsTheOtherWindowsName(t *testing.T) {
 	got := lab.plain()
 	if !strings.Contains(got, "another window") {
 		t.Fatalf("a key pressed on another screen was drawn as this window's:\n%s", got)
+	}
+}
+
+// TestEnterOnTheEnginesOwnPermissionDeniesTheCall presses `enter` on the
+// question THIS ENGINE ASKS about `rm -rf *`, rather than on one this file made
+// up to look like it.
+//
+// That distinction is the whole reason the test exists. The version of the
+// pointer rule that shipped in #933's first push was proved against a fixture
+// that set `StakesIrreversible` by hand; the engine's gate stamps
+// [session.StakesCostly] on every consent it raises, so the fixture described a
+// frame nobody ever meets and the rule it proved allowed `rm -rf *` on `enter`
+// in production while the test stayed green.
+//
+// So the object comes off disk, from internal/session/testdata, and
+// TestTheGateGradesNoCallAsIrreversibleAndMarksDenyTheSafeAnswer in that package
+// is what keeps the file equal to what `consentAsk` returns. Neither test can go
+// green on a lie on its own: one holds the engine to the file, this one holds the
+// surface to the engine.
+func TestEnterOnTheEnginesOwnPermissionDeniesTheCall(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "session", "testdata", "consentask-rm-rf.json"))
+	if err != nil {
+		t.Fatalf("read the engine's own consent question: %v", err)
+	}
+	var ask session.Question
+	if err := json.Unmarshal(raw, &ask); err != nil {
+		t.Fatalf("decode the engine's own consent question: %v", err)
+	}
+	// The file is the gate's answer about a recursive delete, so a test that
+	// stopped being about one would say nothing worth knowing.
+	if ask.Ask != session.AskPermission || ask.Subject.Kind != session.SubjectCall {
+		t.Fatalf("the file no longer holds a permission about a call: %+v", ask)
+	}
+
+	lab := newQuestionLab(t)
+	lab.raise(ask)
+	lab.tick(questionSettle)
+	lab.rows()
+
+	safe := questionSafeAt(ask)
+	if ask.Options[safe].Label != "deny" {
+		t.Fatalf("the answer that loses nothing is not the refusal: %q", ask.Options[safe].Label)
+	}
+	head, _ := lab.a.questionHead()
+	if head.pick != safe {
+		t.Fatalf("the pointer opened on %q, not on `deny`", ask.Options[head.pick].Label)
+	}
+	if !lab.press("enter") {
+		t.Fatal("enter was not taken by the engine's own permission")
+	}
+	if len(lab.answer) != 1 || lab.answer[0].FirstKey() != ask.Options[safe].Key {
+		t.Fatalf("enter on `rm -rf *` answered %+v, not the refusal %q",
+			lab.answer, ask.Options[safe].Key)
 	}
 }

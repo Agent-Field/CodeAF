@@ -64,7 +64,7 @@ func TestAlwaysOnBashOffersTheShapesBeforeItWritesAnything(t *testing.T) {
 
 	got := plain(frame(a))
 	for _, want := range []string{
-		"always?", "[1] git status*", "[2] git *", "[3] just this line", "[esc] never mind",
+		"always?", "1 git status*", "2 git *", "3 just this line", "esc never mind",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("the beat does not offer %q:\n%s", want, got)
@@ -143,7 +143,7 @@ func TestEscapeLeavesTheBeatWithoutAnsweringTheCall(t *testing.T) {
 	if !a.asking() {
 		t.Fatal("the question went away")
 	}
-	if got := plain(frame(a)); !strings.Contains(got, "allow? [1] allow once") {
+	if got := plain(frame(a)); !strings.Contains(got, "1  allow once") {
 		t.Fatalf("the offer did not come back:\n%s", got)
 	}
 	// And the answers still work, which is the whole of "the question is back".
@@ -211,14 +211,16 @@ func TestWithNoWriteSeamThereIsNoBeat(t *testing.T) {
 func TestTheBeatAnswersToThePointer(t *testing.T) {
 	_, a, saved := shapeAsk(t, "git status --short")
 	drive(t, a, key("2"))
-	row, block := askOffer(t, a)
-	line := plain(row)
-	at := strings.Index(line, "[2]")
-	if at < 0 {
-		t.Fatalf("the beat drew %q", line)
+	// The beat's shapes are one row inside the frame, and the spans the layout
+	// wrote say where each shape's cells are ([app.questionBeatRow]).
+	rows := a.questionRows(a.width)
+	if len(a.questionSpans) < 2 {
+		t.Fatalf("the beat recorded %d targets:\n%s", len(a.questionSpans),
+			plain(strings.Join(rows, "\n")))
 	}
 	// Measured once: the press answers, and the answers row is gone by the release.
-	x, y := at+4, chromeRowY(t, a, block)
+	second := a.questionSpans[1]
+	x, y := second.from+1, chromeRowY(t, a, a.questionSpanRow)
 	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 	if len(saved.commands) != 1 || saved.commands[0] != "git *" {
@@ -239,7 +241,7 @@ func TestThePhoneSheetLaysTheShapesOutAsBands(t *testing.T) {
 	drive(t, a, key("2"))
 
 	rows := strings.Join(askRows(a), "\n")
-	for _, want := range []string{"[1] git status*", "[2] git *", "[3] just this line", "[esc] never mind"} {
+	for _, want := range []string{"1  git status*", "2  git *", "3  just this line", "esc  never mind"} {
 		if !strings.Contains(rows, want) {
 			t.Fatalf("the sheet has no band for %q:\n%s", want, rows)
 		}
@@ -274,7 +276,7 @@ func TestTwoBashQuestionsPairToTheirOwnRowsByCallID(t *testing.T) {
 	}
 	drive(t, a, key("2"))
 	got := plain(frame(a))
-	if !strings.Contains(got, "[1] npm test*") {
+	if !strings.Contains(got, "1 npm test*") {
 		t.Fatalf("the beat offers shapes for the wrong call:\n%s", got)
 	}
 	drive(t, a, key("3"))

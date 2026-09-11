@@ -1585,7 +1585,7 @@ func (a *app) exchangePane(ex *homeExchange, width, room int, pal palette) []str
 				// thing on the column, and separating them would put a decision on
 				// a different part of the screen from the thing being decided.
 				at := len(out)
-				out = append(out, a.questionCardBody(*ex.ask, width)...)
+				out = append(out, a.questionPanelBody(*ex.ask, width)...)
 				ex.askAt = make([]int, len(ex.ask.question.Options))
 				for i := range ex.askAt {
 					ex.askAt[i] = -1

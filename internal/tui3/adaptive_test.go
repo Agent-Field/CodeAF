@@ -323,7 +323,7 @@ func TestTheDerivedSignalHuesKeepTheirBand(t *testing.T) {
 			m := groundOf(t, ground.hex)
 			got := adaptRamp(m)
 			var lightness []float64
-			for _, h := range []hue{got.accent, got.add, got.del, got.bad, got.ask, got.warn, got.data} {
+			for _, h := range []hue{got.accent, got.add, got.del, got.bad, got.warn, got.data} {
 				lightness = append(lightness, lightnessOf(h))
 			}
 			sort.Float64s(lightness)
@@ -352,7 +352,7 @@ func TestTheDerivedSignalHuesKeepTheirBand(t *testing.T) {
 func TestTheSignalHuesAreVerifiedAgainstTheMeasuredGround(t *testing.T) {
 	worstOn := func(r ramp, at float64) float64 {
 		worst := 0.0
-		for i, h := range []hue{r.accent, r.add, r.del, r.bad, r.ask, r.warn, r.data} {
+		for i, h := range []hue{r.accent, r.add, r.del, r.bad, r.warn, r.data} {
 			if got := contrastOn(h, at); i == 0 || got < worst {
 				worst = got
 			}

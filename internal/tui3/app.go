@@ -923,6 +923,11 @@ type app struct {
 	sel int
 	// hot is what the pointer is over (hover.go). The zero value is nothing.
 	hot hoverAt
+	// hotAnswer is which of the open question's answers the pointer is over, or
+	// -1. It is derived from the bands of the last paint at the top of the
+	// block's own layout ([app.questionRows]) so that an answer's row is painted
+	// once, on the ground it belongs on.
+	hotAnswer int
 	// drag is the left button's gesture in flight — a parked body click, or a
 	// sweep whose rows wear the selection — and the flash pair under it is what
 	// the status line says the last sweep copied (dragselect.go).
@@ -3008,6 +3013,13 @@ func (a *app) Init() tea.Cmd {
 	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
 		a.watchRuns(), a.watchQuestions(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
 		a.linkPingTick(), a.prefetchReplayedPictures(), a.countConversations(), tea.RequestBackgroundColor,
+		// AND WHAT THIS PROJECT DOES WITH A QUESTION WHILE NOBODY IS THERE, once,
+		// here (autonomysheet.go's [app.readAutonomy]). It is a door, so it may not
+		// be asked from the update loop where it is READ — when a question is
+		// raised, and on the settings page — and reading it on the way up means
+		// neither of those ever pays a round trip. The fold re-stamps whatever
+		// questions the attach already replayed.
+		a.readAutonomy(),
 		// AND THE PULSE'S OWN BEAT, whose first reading is taken now rather than
 		// ten seconds from now (pulsebeat.go).
 		pulseNow,
@@ -6680,8 +6692,7 @@ func (a *app) slash(line string) tea.Cmd {
 		if rest != "" {
 			return a.changeAutonomy(rest)
 		}
-		a.noteBlock(a.autonomySheetText())
-		return nil
+		return a.sayAutonomy()
 
 	case "quit":
 		// /quit CLOSES THE CONVERSATION IN FRONT, and leaves only when it was the

@@ -149,7 +149,16 @@ func TestTheChipCountsTheWaitingOneBesideTheRatify(t *testing.T) {
 	if n := lab.a.questionCount(); n != 1 {
 		t.Fatalf("the chip counts %d with one ratify and one permission open, want just the permission", n)
 	}
-	if chip := plain(lab.a.questionSegment()); !strings.Contains(chip, "1 question") {
+	// AND IT SAYS WHICH ONE, in that question's own words rather than as a
+	// number (owner ruling 2026-09-11): with exactly one thing waiting, a count
+	// is a fact somebody has to press a key to act on. The count above is what
+	// proves the ratify was filtered; this proves the words are the right
+	// question's.
+	chip := plain(lab.a.questionSegment())
+	if !strings.Contains(chip, "allow this?") {
 		t.Fatalf("the chip does not name the one thing that IS waiting: %q", chip)
+	}
+	if strings.Contains(chip, "created_at") {
+		t.Fatalf("the chip named the ratify nothing is waiting on: %q", chip)
 	}
 }

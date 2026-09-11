@@ -308,6 +308,27 @@ import (
 // their change do nothing; and it answers `Question.Hold` with no such method
 // while its clock goes on counting, so the pick is taken under the hand of
 // somebody who pressed a key to stop exactly that. NEVER TO SILENCE.
+//
+// AND VERSION 15 CARRIES THE READ SIDE OF THE QUESTION RULES, which is the other
+// half of the same number and travelled with it rather than moving it again.
+// [MethodSetAutonomy] crossed alone: this wire could WRITE a project's rules and
+// never read them
+// back. That was not a remote-only fault — the ordinary launch talks to its own
+// engine through this client — so `/autonomy` and the settings rows beside it
+// answered `this conversation has no project to keep question rules in` on every
+// machine, whatever project it was in, because the door they asserted did not
+// exist. [MethodAutonomy] is the missing half and carries
+// `map[session.AskKind]session.Policy` down.
+//
+// AND THE NUMBER MOVES FOR THE SAME REASON VERSION 14'S DID, which is why this
+// could not ride 14. A version-14 engine answers this call with "no such method"
+// and the client can only report that it could not read the rules; ridden
+// silently, an empty answer is INDISTINGUISHABLE FROM A PROJECT THAT KEEPS NO
+// RULES, and every row on the settings page would say `ask me` while the engine
+// was quietly on `decide`. A wrong account of what may happen without a person
+// is the one thing this lane must never give, so the refusal is at the door and
+// the nil that comes back is drawn as "not read" rather than as "nothing set"
+// (client.Autonomy, and settingsautonomy.go's own reading).
 const Version = 15
 
 // AND THE NEWS FRAMES RIDE THAT SAME NUMBER, for the reason the places methods
@@ -469,7 +490,16 @@ const (
 	// on the engine's side, which is why it is a call and not a local file: a
 	// window attached over `--host` is setting the dial on the machine the work
 	// is happening on.
-	MethodSetAutonomy   = "SetAutonomy"       // AutonomyArgs → nothing (or a refusal)
+	MethodSetAutonomy = "SetAutonomy" // AutonomyArgs → nothing (or a refusal)
+	// MethodAutonomy IS THE OTHER HALF OF THE DOOR ABOVE, and it was missing.
+	// A surface could WRITE one of these rules over the wire and never read one
+	// back, so every window on the ordinary road — the surface talks to its own
+	// engine process through exactly this client — asked the question and got
+	// "this conversation has no project to keep question rules in", whatever
+	// project it was in. `/autonomy` printed that sentence on a machine with the
+	// rules sitting in `.aforge/autonomy.json`, and the settings rows that read
+	// the same door drew nothing at all.
+	MethodAutonomy      = "Autonomy"          // nothing → map[AskKind]Policy
 	MethodHarness       = "ResolveHarness"    // HarnessArgs → nothing
 	MethodConnect       = "ResolveConnect"    // ConnectArgs → nothing
 	MethodConnectKey    = "ResolveConnectKey" // ConnectArgs → nothing

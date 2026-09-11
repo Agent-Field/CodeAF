@@ -84,9 +84,9 @@ func TestThePhoneSheetLaysTheAnswersOutAsBands(t *testing.T) {
 		"? bash",                  // the title rule names what is asking
 		"rm -rf build",            // the command, in the region of its own
 		`bash pattern "rm -rf *"`, // the policy's own words for why
-		"[1] allow once",
-		"[3] deny",
-		"[2] always",
+		"1  allow once",
+		"3  deny",
+		"2  always",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("the sheet is missing %q:\n%s", want, joined)
@@ -95,7 +95,7 @@ func TestThePhoneSheetLaysTheAnswersOutAsBands(t *testing.T) {
 	// The line of words the wider frames draw is NOT on it — that is the whole
 	// of this wave: one offer sentence at forty-four columns is the shape that
 	// did not fit.
-	if strings.Contains(joined, "allow? [1] allow once") {
+	if strings.Contains(joined, "allow? ") {
 		t.Fatalf("the phone frame still drew the one-line offer:\n%s", joined)
 	}
 	// Nothing on it is wider than the frame.
@@ -212,7 +212,7 @@ func TestATapOnABandAnswersTheQuestion(t *testing.T) {
 			rows := askRows(a)
 			at := -1
 			for i, row := range rows {
-				if strings.Contains(row, tc.word) && strings.Contains(row, "[") {
+				if strings.Contains(plain(row), "  "+tc.word) {
 					at = i
 				}
 			}
@@ -355,35 +355,35 @@ func TestTheSheetLeavesTheAlwaysBandOffAQuestionThatCannotRememberIt(t *testing.
 }
 
 // THE WIDER FRAMES DID NOT NOTICE. The sheet is the phone tier's shape and only
-// the phone tier's: at sixty columns and above the block is the same three rows
-// — the call, the answers, the rule — in the same order.
+// the phone tier's: at sixty columns and above a permission is the panel — the
+// call on its first row, a row per answer, the keys in the frame's bottom edge —
+// and every one of those answer rows is a target.
+//
+// NINE ROWS AND NOT ELEVEN, because a permission draws no lifetimes row: the
+// gate reads an answer's key and never [session.Answer.Scope]
+// ([questionScopes]).
 func TestTheWideBlockIsUnchangedByThePhoneSheet(t *testing.T) {
-	// Sixty columns is the promotion's own width and is
-	// [TestANarrowFrameGivesEveryAnswerARowRatherThanCuttingOne]'s: the answers
-	// row does not fit there and the card is what it becomes.
 	for _, width := range []int{80, 120, 200} {
 		_, a := phoneAsk(t)
 		a.width = width
 		rows := askRows(a)
-		if len(rows) != 3 {
-			t.Fatalf("at %d columns the block is %d rows:\n%s", width, len(rows),
+		if len(rows) != 9 {
+			t.Fatalf("at %d columns the block is %d rows, not nine:\n%s", width, len(rows),
 				strings.Join(rows, "\n"))
 		}
-		if !strings.Contains(rows[0], "rm -rf build") {
-			t.Fatalf("at %d columns the block does not open with the call: %q", width, rows[0])
+		// The top edge carries the head; the call and the policy's own words are
+		// the panel's first row, because a person allowing a call reads the call.
+		if !strings.Contains(rows[1], "rm -rf build") || !strings.Contains(rows[1], `bash pattern "rm -rf *"`) {
+			t.Fatalf("at %d columns the call is not the panel's first row: %q", width, rows[1])
 		}
-		offer, at := askOffer(t, a)
-		if at != 1 {
-			t.Fatalf("at %d columns the answers are on row %d, want the row under the call", width, at)
+		for _, want := range []string{"1  allow once", "3  deny"} {
+			if !strings.Contains(plain(strings.Join(rows, "\n")), want) {
+				t.Fatalf("at %d columns %q is not on a row of its own:\n%s", width, want,
+					strings.Join(rows, "\n"))
+			}
 		}
-		if !strings.Contains(plain(offer), "allow? [1] allow once") {
-			t.Fatalf("at %d columns the answers row is gone: %q", width, plain(offer))
-		}
-		if !strings.Contains(rows[2], `bash pattern "rm -rf *"`) {
-			t.Fatalf("at %d columns the rule is gone: %q", width, rows[2])
-		}
-		if len(a.questionBands) != 0 {
-			t.Fatalf("a band reached a %d-column frame: %+v", width, a.questionBands)
+		if len(a.questionBands) != 3 {
+			t.Fatalf("at %d columns the answers are not three targets: %+v", width, a.questionBands)
 		}
 		if got, want := a.questionHeight(), len(rows); got != want {
 			t.Fatalf("at %d columns the block claims %d rows and drew %d", width, got, want)
@@ -399,20 +399,22 @@ func TestTheOfferLineAnswersToThePointerAtTheWiderWidths(t *testing.T) {
 	a.width = 120
 	row, block := askOffer(t, a)
 	line := plain(row)
-	at := strings.Index(line, "[2]")
-	if at < 0 || len(a.questionSpans) != 3 {
-		t.Fatalf("the answers row recorded %d targets on %q", len(a.questionSpans), line)
+	// AT THIS WIDTH THE ANSWERS ARE ROWS, so the targets are the panel's bands —
+	// one per answer, each spanning its whole row ([app.questionBands]).
+	if len(a.questionBands) != 3 {
+		t.Fatalf("the answers recorded %d targets on %q", len(a.questionBands), line)
 	}
-	// The WORD is part of the target and not decoration beside it: three cells is
-	// a target a person aims at, and "[2] always, this tool" is one they hit.
-	for _, span := range a.questionSpans {
-		if w := span.to - span.from; w < 4 {
-			t.Fatalf("an answer's target is %d cells wide: %+v", w, span)
+	// THE WHOLE ROW IS THE TARGET and not the word alone: an answer whose words
+	// wrapped is not a target that shrinks to its first line.
+	for _, band := range a.questionBands {
+		if w := band.span.to - band.span.from; w < a.width/2 {
+			t.Fatalf("an answer's target is %d cells wide: %+v", w, band)
 		}
 	}
-	// Measured once: the press answers, and the answers row is gone by the
-	// release.
-	x, y := at+4, chromeRowY(t, a, block)
+	// Measured once: the press answers, and the block is gone by the release.
+	// The widening yes is the second answer, which is the second band.
+	_ = block
+	x, y := a.questionBands[1].span.from+4, chromeRowY(t, a, a.questionBands[1].row)
 	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 	want := answered{id: 7, allow: true, scope: session.ConsentToolSession}

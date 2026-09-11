@@ -37,6 +37,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // tuiWord is one literal the tmux suite waits for on a real screen.
@@ -410,8 +412,11 @@ var tuiWords = map[string]tuiWord{
 
 	// ── a question answered from another window ──────────────────────────────
 	"consentAskWord": {
-		screen: "allow? ",
-		why:    "a conversation stopped on a permission question",
+		screen: "needs your ok to run",
+		pkg:    "internal/session",
+		why: "a conversation stopped on a permission question. It is the HEAD the engine writes, " +
+			"which the panel writes into the frame's top edge (the questions wave retired `allow? ` " +
+			"and every other bracketed offer row: a key is the payload hue and its word is dim now)",
 	},
 	"answersAllowOnce": {
 		screen: "allow once",
@@ -654,18 +659,16 @@ var tuiWords = map[string]tuiWord{
 			"which fused a state and a source-control fact into one phrase on the row that says the state",
 	},
 	"settleAnswersRow": {
-		screen: "[a] accept · [n] not right · [s] tell it",
+		screen: "a  accept",
 		source: "tell it",
 		pkg:    "internal/session",
-		why: "THE WHOLE ANSWERS ROW, in the one order every card draws it. It is waited for as one string " +
-			"because three separate searches would pass on a card that drew the columns on two rows, or in " +
-			"the other order, or without the third — and the third is the one the ruling is emphatic about. " +
-			"The row is composed by the question block from the landing question's own answers now " +
-			"(docs/design/questions/DESIGN.md, `card / room (task-states row unchanged)`), so the WORDS are " +
-			"searched for where the engine spells them",
+		why: "THE FIRST ANSWER ON ITS OWN ROW. The three answers were one bracketed row until the " +
+			"questions wave gave every answer a row of its own with the pointer on it, so a single " +
+			"string can no longer stand for all three; the words are still the engine's, which is where " +
+			"they are searched for, and the two spaces are the panel's own column",
 	},
 	"settleConflictAnswers": {
-		screen: "[a] resolve it · [n] drop it",
+		screen: "a resolve it",
 		source: "resolve it",
 		pkg:    "internal/session",
 		why: "a conflict's own two verbs on the same two columns. A conflict's yes is NOT an accept: it " +
@@ -806,10 +809,15 @@ var tuiWords = map[string]tuiWord{
 			"Never a hidden rule (DESIGN.md's RULES ARE OFFERED, VISIBLE, FORGETTABLE)",
 	},
 	"questionReceiptWord": {
-		screen: "decided ",
-		source: "  decided ",
+		screen: tokens.GlyphSettled + " ",
+		source: tokens.GlyphSettled,
+		pkg:    tokensPkg,
 		why: "THE ANSWER IS THE RECORD: a dim line stays exactly where the question was, because the " +
-			"transcript is what happened and `you were asked and said this` is part of it",
+			"transcript is what happened and `you were asked and said this` is part of it. It " +
+			"opened with the word `decided` until the owner's after-you-answer ruling " +
+			"(2026-09-11) made it the vocabulary's settled mark and the decision's own " +
+			"sentence — `✓ <head> → <answer> · you · 14:02` — so the mark is the needle and it " +
+			"is spelled where every mark on this surface is spelled",
 	},
 	"questionReceiptYouWord": {
 		screen: " · you · ",
@@ -917,13 +925,16 @@ var tuiWords = map[string]tuiWord{
 		why:    "and it says how many rows took it, because a spread nobody can count is a spread nobody can check",
 	},
 	"consentOldOfferWord": {
-		screen: "allow? ",
-		why: "the approval gate's OWN offer row, which is what the oldest and most common asker in " +
-			"this product still draws. It is in this table so questions_e2e_test.go can wait for the " +
-			"moment the older block is up and then say what the wave's grammar is missing from it",
+		screen: "enter take it",
+		source: "take it",
+		pkg:    tui3Pkg,
+		why: "the keys the panel writes into its bottom edge, which is how a screen says a question " +
+			"is up and waiting on a person. It was `allow? [1] allow once` — the approval gate's own " +
+			"offer row — until the questions wave gave every question one frame, one key table and one " +
+			"spelling for a key (owner ruling 2026-09-11, hints pick A)",
 	},
 	"consentOldCancelWord": {
-		screen: "[esc] cancel",
+		screen: "esc cancel",
 		source: " cancel",
 		why: "and the word that block spells for `esc`. THE QUESTIONS WAVE RETIRED IT — `esc` is later " +
 			"and cancels nothing — so this row standing is the migration's own ledger, read off a screen",

@@ -352,7 +352,7 @@ func (a *app) questionSheetRows(s *questionSheet, width int) []string {
 		return nil
 	}
 	out := make([]string, 0, len(s.questions)+4)
-	out = append(out, a.questionMark()+" "+a.pal.ask(fit(
+	out = append(out, a.questionMark()+" "+a.pal.ink(fit(
 		itoa(len(s.questions))+plural(" question", len(s.questions))+questionSheetTogether, width-2)))
 	group := session.AskKind("")
 	for i, q := range s.questions {
@@ -381,10 +381,13 @@ func (a *app) questionSheetRows(s *questionSheet, width int) []string {
 // [session.AnswerOption.Key], never numbered by position, so `2` means what that
 // question says `2` means on the row it is drawn on and nothing else.
 func (a *app) questionSheetRow(s *questionSheet, at int, q session.Question, width int) string {
-	cursor, plainCursor := a.pal.ask("  "), "  "
+	// THE POINTER IS THE POINTER EVERYWHERE (owner ruling 2026-09-11): `▸`, in
+	// the one amber the marks wear, and never the fold's own chevron — which is
+	// a different claim on every other row of this surface.
+	cursor, plainCursor := "  ", "  "
 	if at == s.cursor {
-		plainCursor = a.icon(tokens.GCollapsed) + " "
-		cursor = a.pal.ask(plainCursor)
+		plainCursor = a.icon(tokens.GPointer) + " "
+		cursor = a.pal.warnBold(a.icon(tokens.GPointer)) + " "
 	}
 	answer, given := s.answered(q)
 	// EACH ROW WEARS ITS OWN SHAPE'S MARK. A sheet is questions of several
@@ -407,7 +410,7 @@ func (a *app) questionSheetRow(s *questionSheet, at int, q session.Question, wid
 	}
 	text := plainCursor + plainMark + " " + head
 	if tail == "" {
-		return a.pal.ask(fit(text, width))
+		return fit(cursor+mark+" "+a.pal.ink(head), width)
 	}
 	// THE ANSWERS ARE IN A COLUMN, AND THE COLUMN IS SET BY THE LONGEST
 	// SENTENCE IN THE SHEET RATHER THAN BY THE EDGE OF THE SCREEN.
@@ -423,17 +426,19 @@ func (a *app) questionSheetRow(s *questionSheet, at int, q session.Question, wid
 		column = width - ansi.StringWidth(tail)
 	}
 	if column < ansi.StringWidth(text)+2 {
-		return a.pal.ask(fit(text+"  "+tail, width))
+		return fit(cursor+mark+" "+a.pal.ink(head)+"  "+a.pal.dim(tail), width)
 	}
 	gap := column - ansi.StringWidth(text)
-	// Painted in pieces rather than nested, for [app.questionCardOptionRows]'s
+	// Painted in pieces rather than nested, for [app.questionPanelOption]'s
 	// reason: these hues are raw SGR with an explicit reset, so a colour inside
 	// a colour ends the outer one early.
-	line := cursor + mark + a.pal.ask(" "+head) + strings.Repeat(" ", gap)
-	if given {
-		return line + a.pal.dim(tail)
-	}
-	return line + a.pal.ask(tail)
+	//
+	// THE WORDS ARE INK AND THE ANSWERS DIM, which is the panel's own grammar on
+	// a list: the sheet used to paint every cell of every row in the question
+	// hue, so a batch of five questions was five amber rows and the mark that
+	// says which of them is still waiting had nothing to stand out from.
+	line := cursor + mark + " " + a.pal.ink(head) + strings.Repeat(" ", gap)
+	return line + a.pal.dim(tail)
 }
 
 // answerColumn is where every row's answers begin: one cell past the longest
@@ -464,10 +469,10 @@ func questionSheetAnswers(q session.Question) string {
 	return strings.Join(parts, " · ")
 }
 
-// questionSheetOffer is the sheet's answers row, built from the one key table
-// and degraded the way every other answers row on this surface is: the tail
-// goes from the end backwards until what is left fits, and `s` and `esc` are
-// never given up ([app.questionOffer] states the same law for the block).
+// questionSheetOffer is the sheet's keys row. It is the ONE key row
+// ([app.questionKeyRow]) with the sheet's own words on the verbs: the key in the
+// payload hue, its word dim, given up from the end backwards until what is left
+// fits, and `s` and `esc` never given up.
 //
 // `s` WEARS ITS COUNT, which is the emptiness law read forwards: a send key
 // that said nothing about how much it would send is a key a person presses to
@@ -489,32 +494,11 @@ func (a *app) questionSheetOffer(s *questionSheet, width int) string {
 		}
 		keys = append(keys, verb)
 	}
-	for {
-		parts := make([]string, 0, len(keys)*4)
-		for _, verb := range keys {
-			if len(parts) > 0 {
-				parts = append(parts, "", " · ")
-			}
-			parts = append(parts, "["+questionKeySpelling(verb.key)+"]", " "+verb.word)
-		}
-		plain := "  " + strings.Join(parts, "")
-		if ansi.StringWidth(plain) <= width {
-			out := a.pal.ask("  ")
-			for i, part := range parts {
-				if i%2 == 1 {
-					out += a.pal.askBold(part)
-					continue
-				}
-				out += a.pal.ask(part)
-			}
-			return out
-		}
-		dropped, ok := questionDropVerb(keys)
-		if !ok {
-			return a.pal.ask(fit(plain, width))
-		}
-		keys = dropped
+	q := questionShown{}
+	if s.cursor >= 0 && s.cursor < len(s.questions) {
+		q.question = s.questions[s.cursor]
 	}
+	return "  " + a.questionKeyRow(q, keys, max(width-2, 0))
 }
 
 // ── the sheet on this surface ───────────────────────────────────────────────

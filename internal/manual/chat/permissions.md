@@ -7,16 +7,34 @@ one call and draws a question above the input box. The call does not run until
 you answer, and the conversation is paused on it.
 
 The row above the question is **the call's own transcript row**, re-used rather
-than described again — so what you approve is what you read. Under it, the
-answers row reads, literally:
+than described again — so what you approve is what you read. The question itself
+hangs in a frame above the box, with the command on its first row and one row per
+answer:
 
 ```
-? allow? [1] allow once · [2] always, this command · [3] deny · [c] change · [esc] later · 7s
+╭─ ? needs your ok to run bash ──────────────────────── bash · 7s ─╮
+│ rm -rf build · bash pattern "rm -rf *"                           │
+│                                                                  │
+│   1  allow once                                                  │
+│   2  always, this command                                        │
+│ ▸ 3  deny                                           safe answer  │
+│                                                                  │
+╰─ ↑↓ choose · enter take it · esc later ──────────────────────────╯
+  c change · ? ask back · 1–3 jump
 ```
 
-with the wait mode on the end — ` · 7s`, or ` · paused` once you have touched it
-or the reminder ran out, or ` · waiting` when the countdown is off. Silence is
-never a no.
+The tool's own name and the wait mode are the aside in the top edge — ` · 7s`,
+or ` · paused` once you have touched it or the reminder ran out, or ` · waiting`
+when the countdown is off. Silence is never a no.
+
+**The pointer opens on `3 deny`, on every permission**, and that answer says
+`safe answer` on its row. So **`enter` on a permission you have not moved the
+pointer on denies the call.** Allowing is a key you choose — `1`, or `↑` onto it
+and then `enter` — and refusing is the one that is already under your hand.
+
+Nothing on a permission is painted in the question's amber except the marks —
+the `?`, the pointer and the recommendation — because the command is the thing
+you are here to read.
 
 - `1` — allow this one call. The transcript row is annotated `allowed`.
 - `3` — refuse this one call. The row is annotated `denied`. The model is handed
@@ -26,16 +44,21 @@ never a no.
 - `c` — refuse or allow **in words**. It puts the cursor in the box (which was
   never taken away); type your sentence and press `enter`, and the words go to
   the model as the answer.
-- `esc` — **later**. The question folds away to the chip on the status line and
-  **nothing is answered**. The call stays blocked and the conversation stays
+- `enter` — take the answer the pointer is on, which on a permission is `deny`
+  until you move it.
+- `esc` — **later**. The question folds in place to one titled rule, the chip on
+  the status line carries its words, and **nothing is answered**. The call stays blocked and the conversation stays
   paused on it. This is the one word here that changed meaning: `esc` used to be
   spelled `cancel` and cancelling meant denying, which was the safe reading when
   the block was a modal nobody could leave.
 
-`t`, `d`, `y`, `n` and `a` are not keys on this question. They were the block's
-keys before every question in aforge moved onto one renderer with one key
-grammar; a hand that remembers them is answering a question that no longer takes
-them, so they do nothing here (`y`, `n` and `a` type themselves into the box).
+`d`, `y`, `n` and `a` are not keys on this question. They were the block's keys
+before every question in aforge moved onto one renderer with one key grammar; a
+hand that remembers them is answering a question that no longer takes them, so
+they do nothing here (`y`, `n` and `a` type themselves into the box). `t` is not
+a key on a permission either — it types itself into the box like any other
+letter (see **How long an answer lasts** below for why the lifetimes row is not
+offered here).
 
 **A key it does not draw belongs to your draft.** The question is not modal: the
 box below it is live, typing goes into your message, and the question is still
@@ -58,7 +81,7 @@ offers it.
 
 **It does not have to be answered in this window.** A conversation stopped on
 this question says so on **home**, with the same three answers on the row —
-`1 allow once · 2 always · 3 deny` — so a question raised in a terminal you are
+`1 allow once`, `2 always`, `3 deny` — so a question raised in a terminal you are
 not looking at can be answered from the dashboard (home's own page states the
 limits, and what `2 always` banks when it is pressed there).
 
@@ -84,53 +107,59 @@ expiry while its question is behind the start page, it pauses instead of denying
 the call. The unanswered question is still there when you return, with `paused`
 on its row.
 
-## What the answers row does on a narrow terminal
+## What the permission frame does on a narrow terminal
 
-The one-row form needs about eighty columns. Below that it gives things up in a
-fixed order, and **it never cuts an answer off the end** — an offer with an
-answer missing is an offer that hides an answer.
+A permission is always the **frame**, at every width down to the phone sheet —
+there is a command to read before you allow it, and a question with something to
+read is never squeezed onto one row. What narrows is the frame, not the form.
 
-1. The verbs go first, from the least useful backwards. `[c] change` goes before
-   the clock does.
-2. Then the clock. A countdown you cannot see is still a countdown; an answer you
-   cannot see is not an answer.
-3. Then the aside inside an answer's own word: `always, this tool (session)`
-   becomes `always, this tool`.
-4. Then the question **promotes to a card** — the head on one row, one row per
-   answer with its key, and the verbs underneath:
+At about seventy columns and up it is drawn whole:
 
 ```
-? needs your ok to run bash
-  bash pattern "rm -rf *" · aforge
-    1  allow once
-    2  always, this tool
-    3  deny
-  [esc] later
+╭─ ? needs your ok to run bash ─────────────────────────────── bash ─╮
+│ bash · bash pattern "rm -rf *" · aforge                            │
+│                                                                    │
+│   1  allow once                                                    │
+│   2  always, this tool                                             │
+│ ▸ 3  deny                                             safe answer  │
+│                                                                    │
+╰─ ↑↓ choose · enter take it · esc later ────────────────────────────╯
+  c change · ? ask back · 1–3 jump
 ```
 
-`[esc]` is never given up at any width: it is the way out, and a row with no way
-off it is the modal this block replaced.
+The bottom edge carries exactly `↑↓ choose · enter take it · esc later` at every
+width and never gives any of it up: those three are the way in and the way out,
+and a frame with no way off it is the modal this block replaced. Everything else
+is on the dim row underneath, and **that** row is what gives way, dropped from
+the right: `1–3 jump` goes first, then `? ask back`, then `c change`.
+
+The command itself **wraps** rather than being cut, and says so with `…` if even
+the wrap was not enough. An answer is never dropped at any width: an offer with
+an answer missing is an offer that hides an answer.
 
 ## The approval question on a phone-sized terminal
 
-Under sixty columns the question becomes a **bottom sheet**, because `[1]` is
-three cells for a thumb that covers ten:
+Under about sixty columns the frame becomes a **bottom sheet**, because a digit
+is three cells for a thumb that covers ten:
 
 ```
-───── ? bash ─────────────
- git commit -m "wave"
- bash pattern "git *"
-──────────────────────────
- [1] allow once
- [2] always, this command
- [3] deny
- 2 more                 8s
+─── ? bash ───────────────────────────────────────────
+ needs your ok to run bash
+ bash pattern "rm -rf *" · aforge
+──────────────────────────────────────────────────────
+   1  allow once
+   2  always, this tool
+ ▸ 3  deny
+ ↑↓ choose · enter take it · esc later
 ```
 
-Each answer is a **band the full width of the frame** — the whole row is the
-target, not just its key. The command **wraps** instead of being cut, up to six
-lines, and says so with `…` if even that was not enough. The clock keeps its own
-corner, bottom right and off the bands, so reaching past it cannot answer. The
+Two plain rules instead of a box, the head and the command between them, and the
+answers under. The pointer is the same pointer and it still opens on the answer
+that loses nothing, so `enter` here denies too.
+
+Each answer is a **band the full width of the sheet** — the whole row is the
+target, not just its key. The clock, where a question has one, keeps its own
+corner, bottom right and off the bands, so reaching past it cannot answer; the
 queue count sits beside it. Every row of the sheet swallows a press, so a press
 that misses a band cannot reach the transcript underneath it.
 
@@ -143,7 +172,7 @@ read as the no.
 An answered question leaves one dim line where it stood:
 
 ```
-  decided needs your ok to run bash → allow once · you · 14:02 · c change
+  ✓ needs your ok to run bash → allow once · you · 14:02 · c change · ◐ working
 ```
 
 It is the same sentence the model reads in `the record`, so what you saw and
@@ -295,7 +324,27 @@ nowhere, it is one of these:
 Nothing here is a pause you can resume: aforge has no key that suspends a
 session and none that wakes one.
 
-## How long an answer lasts: once, this session, or written down — how to make it stop asking every time
+## How long an answer lasts: once, this session, or written down — how to make it stop asking every time, stop asking me for this, remember this
+
+**On a permission, the lifetime is the answer you press, and there is no
+separate row for it.** `1 allow once` is once, `2 always…` is the widening yes,
+and what `2` banks is the whole of the decision — the sections below say exactly
+how wide each shape is. aforge draws no lifetimes row on a permission frame and
+`t` does nothing there, because the gate reads the answer key and nothing else:
+a row that let you pick `for this project` and then quietly granted one call
+would be this surface making a promise about safety that nothing behind it keeps.
+
+Some other kinds of question do carry a row of lifetimes under their answers —
+drawn in your own words with a tick on the one that is on, walked by `t how
+long`, starting on **just this once** always. Pressing `t` changes that row and
+nothing else: nothing is written and nothing is answered until you give an
+answer, so you can cycle it, press `esc`, and have written no rule.
+
+Where that row is drawn, **two things are never offered on it**: a lifetime the
+question did not itself offer — only the asker knows whether a rule for this
+shape can be written at all — and any lifetime at all on something
+**irreversible**, which is asked about every single time, the row absent rather
+than refusing.
 
 - **Once** — `1`, `3` and a typed answer under `c` answer this call and nothing
   else. `esc` answers nothing at all: it puts the question off.
@@ -324,7 +373,7 @@ For `bash`, and only for bash, pressing `2` **does not answer yet**. It replaces
 the answers row, in place, with the shapes the rule could be written as:
 
 ```
-always? [1] git status*  ·  [2] git *  ·  [3] just this line  ·  [esc] never mind
+always? 1 git status*  ·  2 git *  ·  3 just this line  ·  esc never mind
 ```
 
 So pressing always on `git status` can bank `git status*`, or `git *`, or the

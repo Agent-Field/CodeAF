@@ -523,9 +523,11 @@ func TestAOneOffReminderCardDrawsTwoChips(t *testing.T) {
 	if a.stand.settled() {
 		t.Fatalf("`3` settled the card as %q", a.stand.verdict)
 	}
-	// The hint under the box names the keys the card drew and not one more.
+	// The derivation names the keys the card drew and not one more. (The slot
+	// itself is quiet while the block draws them — hints pick A — and this is
+	// the reading behind it, which is where the defect would be.)
 	const twoHint = "1 yes, set it up · 0 no · esc later"
-	if got := a.questionHint(); got != twoHint {
+	if got := a.questionHintFor(); got != twoHint {
 		t.Fatalf("the hint is %q, want %q", got, twoHint)
 	}
 	// And the two it did draw still work. (The stray `3` is in the box, which is
@@ -536,6 +538,17 @@ func TestAOneOffReminderCardDrawsTwoChips(t *testing.T) {
 	if len(agent.answered) != 1 || !agent.answered[0].answer.Approved {
 		t.Fatalf("`1` did not stand it up, the engine saw %v", agent.answered)
 	}
+}
+
+// questionHintFor is the hint's own derivation for whatever question is open,
+// which is what these tests are about: the slot that shows it is quiet while the
+// block draws its own keys.
+func (a *app) questionHintFor() string {
+	head, ok := a.questionHead()
+	if !ok {
+		return ""
+	}
+	return a.questionHintOn(head)
 }
 
 // standBlock is the question block above the box, plain — which is where a
@@ -562,7 +575,7 @@ func TestAWatchCardStillDrawsThreeChips(t *testing.T) {
 		t.Fatalf("a watch lost its `%s` answer:\n%s", standOnceWord, block)
 	}
 	const threeHint = "1 yes, set it up · 3 just once · 0 no · esc later"
-	if got := a.questionHint(); got != threeHint {
+	if got := a.questionHintFor(); got != threeHint {
 		t.Fatalf("the hint is %q, want %q", got, threeHint)
 	}
 	drive(t, a, key2("3"))
