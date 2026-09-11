@@ -287,7 +287,7 @@ func TestObservationWindowIsSizedFromContextNotSpend(t *testing.T) {
 	// document has to fit inside the memory meant to hold it.
 	const reReadSubject = 26 << 10
 	// What the old arithmetic gave the default leaf budget.
-	const spendSizedWindow = defaultLeafTokens / 6
+	const spendSizedWindow = DefaultLeafTokens / 6
 
 	unknown := observationWindow(0)
 	if unknown < reReadSubject {

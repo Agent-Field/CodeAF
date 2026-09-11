@@ -3533,12 +3533,15 @@ func groomChatRooms(graph *store.Store, keep string) {
 // latency that matters is the work itself. A project runs the full planning
 // pipeline and splices the resulting graph, which is where parallel workers
 // pay for the planning pass.
-// chatLeafTurns and chatLeafTokens mirror the headless run defaults exactly:
-// the same runaway backstop and the same binding per-leaf token budget, so a
-// worker in the chat surface is the same worker the benchmarks measured.
+// chatLeafTurns and chatLeafTokens ARE the headless run defaults, read from the
+// executor that owns them rather than restated here: a worker in the chat
+// surface is the same worker the benchmarks measured, and the only way to keep
+// that true is for there to be one number. This comment used to promise the two
+// "mirror" each other, which is an intention where the one-source-of-truth law
+// wants an interpolation — and a promise in a comment is how two numbers drift.
 const (
 	chatLeafTurns  = 200
-	chatLeafTokens = 150_000
+	chatLeafTokens = exec.DefaultLeafTokens
 
 	// A reflex gets four exchanges and one eighth of a normal chat leaf's
 	// token allowance: enough to use a tool and report its result, but small

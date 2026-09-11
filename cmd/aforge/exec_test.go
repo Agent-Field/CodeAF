@@ -45,7 +45,7 @@ func TestExecLegacyExitCodeIsTheOldTable(t *testing.T) {
 }
 
 func TestExecDeadline(t *testing.T) {
-	if got := execDeadline(150_000, 0); got != 15*time.Minute {
+	if got := execDeadline(exec.DefaultLeafTokens, 0); got != 15*time.Minute {
 		t.Fatalf("default deadline = %s, want 15m", got)
 	}
 	if got := execDeadline(2_000_000, 0); got != 40*time.Minute {
@@ -164,7 +164,8 @@ func execFlagsForTest(t *testing.T, args ...string) (*flag.FlagSet, *int, *int, 
 	flags.SetOutput(io.Discard)
 	maxTurns := flags.Int("max-turns", 200, "")
 	renamedFlag(flags, "turns", "max-turns")
-	maxTokens := flags.Int("token-budget", 150000, "")
+	// The default is the executor's own grant, as the real door builds it.
+	maxTokens := flags.Int("token-budget", exec.DefaultLeafTokens, "")
 	renamedFlag(flags, "budget", "token-budget")
 	wall := &wallFlag{}
 	flags.Var(wall, "timeout", "")
@@ -184,8 +185,8 @@ func TestApplyExecEnvLeavesDefaultsAlone(t *testing.T) {
 	if err := applyExecEnv(flags, fakeEnv(nil), turns, budget, wall); err != nil {
 		t.Fatal(err)
 	}
-	if *turns != 200 || *budget != 150000 || wall.wall != 0 {
-		t.Fatalf("max-turns/token-budget/timeout = %d/%d/%s, want 200/150000/0s", *turns, *budget, wall.wall)
+	if *turns != 200 || *budget != exec.DefaultLeafTokens || wall.wall != 0 {
+		t.Fatalf("max-turns/token-budget/timeout = %d/%d/%s, want 200/%d/0s", *turns, *budget, wall.wall, exec.DefaultLeafTokens)
 	}
 }
 
@@ -277,7 +278,7 @@ func TestApplyExecEnvIgnoresEmptyVariables(t *testing.T) {
 	if err := applyExecEnv(flags, env, turns, budget, wall); err != nil {
 		t.Fatal(err)
 	}
-	if *turns != 200 || *budget != 150000 || wall.wall != 0 {
+	if *turns != 200 || *budget != exec.DefaultLeafTokens || wall.wall != 0 {
 		t.Fatalf("max-turns/token-budget/timeout = %d/%d/%s, want the defaults", *turns, *budget, wall.wall)
 	}
 }

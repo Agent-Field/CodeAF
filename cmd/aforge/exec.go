@@ -39,7 +39,11 @@ func runExec(args []string) error {
 	maxTurns := newCountFlag(flags, "max-turns", 200, "turns to allow",
 		"runaway backstop on agent iterations (env AFORGE_EXEC_TURNS)")
 	renamedFlag(flags, "turns", "max-turns")
-	maxTokens := newCountFlag(flags, "token-budget", 150000, "tokens to allow",
+	// THE DEFAULT IS THE EXECUTOR'S OWN GRANT, not a number restated at this
+	// door. It was spelled here, in run.go and in the chat surface, so four
+	// places had to be recalibrated together and the help text could tell a
+	// person a figure the loop no longer used.
+	maxTokens := newCountFlag(flags, "token-budget", exec.DefaultLeafTokens, "tokens to allow",
 		"token budget for this run (env AFORGE_EXEC_BUDGET)")
 	renamedFlag(flags, "budget", "token-budget")
 	// A DURATION FLAG TAKES A DURATION, on every door that has one. This was an

@@ -3,10 +3,12 @@ package main
 import (
 	"bytes"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/exec"
 )
 
 // exitCodeOf reads an error the way [execute] does, so a test can assert the
@@ -402,7 +404,11 @@ func TestABadCountNamesTheFlagAndWhatItTakes(t *testing.T) {
 	}{
 		{"--max-turns", "a whole number of turns to allow, such as 200"},
 		{"--turns", "a whole number of turns to allow, such as 200"},
-		{"--token-budget", "a whole number of tokens to allow, such as 150000"},
+		// THE EXAMPLE IS THE DEFAULT, READ FROM THE ONE PLACE IT IS WRITTEN. This
+		// row spelled 150000, so recalibrating the grant turned it red for naming
+		// a figure nothing used any more — the fourth copy of a number whose whole
+		// point is that there is one (exec.DefaultLeafTokens).
+		{"--token-budget", "a whole number of tokens to allow, such as " + strconv.Itoa(exec.DefaultLeafTokens)},
 	} {
 		t.Run(typed.flag, func(t *testing.T) {
 			_, errs := captureUsage(t)

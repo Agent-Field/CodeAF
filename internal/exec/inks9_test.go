@@ -67,18 +67,18 @@ func TestTheInkLeafIsNotLandedByHowMuchTextWentPast(t *testing.T) {
 	}
 
 	// And it no longer stops the leaf.
-	if exhausted(outcome, defaultLeafTokens) {
+	if exhausted(outcome, DefaultLeafTokens) {
 		t.Fatalf("the ink leaf was landed with %d of %d tokens of billed work unspent",
-			defaultLeafTokens-spent(outcome), defaultLeafTokens)
+			DefaultLeafTokens-spent(outcome), DefaultLeafTokens)
 	}
-	if spent(outcome) >= defaultLeafTokens {
-		t.Fatalf("spent() = %d, want a leaf still inside its %d grant", spent(outcome), defaultLeafTokens)
+	if spent(outcome) >= DefaultLeafTokens {
+		t.Fatalf("spent() = %d, want a leaf still inside its %d grant", spent(outcome), DefaultLeafTokens)
 	}
 
 	// THE EVIDENCE IS NOT THROWN AWAY, IT IS DEMOTED. A leaf whose transcript
 	// has gone round many times over is told to wrap up — which costs a
 	// sentence — instead of being landed, which costs its work.
-	if used := budgetUsed(outcome, defaultLeafTokens, ctxbudget.DefaultWorkingSetTokens); used <= wrapUpAt {
+	if used := budgetUsed(outcome, DefaultLeafTokens, ctxbudget.DefaultWorkingSetTokens); used <= wrapUpAt {
 		t.Fatalf("budgetUsed = %.2f, want the reuse pressure to still raise the wrap-up warning past %.2f",
 			used, wrapUpAt)
 	}
