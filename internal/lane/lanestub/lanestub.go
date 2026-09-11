@@ -363,6 +363,13 @@ type Server struct {
 	// teach nothing at all, so the widened retry fails too and the question
 	// stays open.
 	refusesAll bool
+	// refusesWith is a refusal STAGED BY ITS OWN PARTS: a status, a sentence and
+	// the error envelope's `code`. The two flags above are shapes this stub knows
+	// by heart; this is the one a scenario names, and it exists because the code
+	// field is a fact a client reads structurally — the request-did-not-fit
+	// envelope is `code: "context_length_exceeded"` and nothing else about it
+	// tells a reader that (internal/provider's overflowRefusal).
+	refusesWith *stagedRefusal
 }
 
 // New starts a router serving one model over the given lanes, in the order they
@@ -475,6 +482,28 @@ func (s *Server) RefusesEverything() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.refusesAll = true
+}
+
+// stagedRefusal is one refusal named by its parts.
+type stagedRefusal struct {
+	status  int
+	message string
+	code    string
+}
+
+// RefusesWith makes this base answer every completion with one named refusal:
+// this status, this sentence, and this `code` in the error envelope. An empty
+// code leaves the envelope's own default, which is the status.
+//
+// IT IS FOR THE REFUSALS A LANE CANNOT STAGE. A full pool, an account exclusion
+// and an emptied set are all facts about MACHINES, and this stub stages them by
+// describing machines. A request that did not fit the window is a fact about the
+// REQUEST — no lane is implicated, no lane can be described to produce it — so it
+// is named directly. It is set before any request is made.
+func (s *Server) RefusesWith(status int, message, code string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.refusesWith = &stagedRefusal{status: status, message: message, code: code}
 }
 
 // SetClock replaces the clock. It is set before any request is made.
@@ -748,6 +777,13 @@ func (s *Server) serveCompletion(w http.ResponseWriter, r *http.Request) {
 	if s.refusesAll {
 		s.mu.Unlock()
 		writeError(w, http.StatusBadRequest, "this base is having an afternoon", "")
+		return
+	}
+	if staged := s.refusesWith; staged != nil {
+		s.mu.Unlock()
+		// THE ASK IS ON THE RECORD AND NO LANE IS CHARGED FOR IT, exactly as for
+		// the preference refusal below: nothing served this request.
+		writeCodedError(w, staged.status, staged.message, staged.code)
 		return
 	}
 	if s.refusesPrefs && ask.Provider != nil {
@@ -1376,6 +1412,20 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 // of the live router's own not-found page for an address it does not serve,
 // cut to the two tags that make it a page and not an envelope.
 const routelessBody = "<!DOCTYPE html><title>Not Found</title>"
+
+// writeCodedError is [writeError] with the envelope's `code` said explicitly
+// rather than defaulted to the status. The router types that field as a number
+// AND as a string, which is the whole reason a client reads it leniently; this
+// writes the string form, which is the one that carries a name.
+func writeCodedError(w http.ResponseWriter, status int, message, code string) {
+	failure := map[string]any{"message": message}
+	if strings.TrimSpace(code) == "" {
+		failure["code"] = status
+	} else {
+		failure["code"] = code
+	}
+	writeJSON(w, status, map[string]any{"error": failure})
+}
 
 func writeError(w http.ResponseWriter, status int, message, lane string) {
 	body := map[string]any{"error": map[string]any{"message": message, "code": status}}

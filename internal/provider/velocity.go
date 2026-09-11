@@ -1151,7 +1151,7 @@ func (c *Client) refuseUpstream(request *ai.Request, knobs callKnobs, err error,
 	// row all see one fact instead of two ([nameServed]).
 	err = nameServed(err, served)
 	refusal := c.refusalObject(request, knobs, err)
-	markRouting(err, refusal)
+	markRefusal(err, refusal)
 	c.refuseLane(c.modelFor(request), refusal, wait)
 	return refusal
 }

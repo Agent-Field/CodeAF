@@ -300,7 +300,7 @@ func TestASettledTaskWithGreenChecksIsNotCarriedOnAsUnfinished(t *testing.T) {
 	agent.personAsk = asked
 	agent.mu.Unlock()
 	graph := stubbedGraph(agent, func(node *TaskNode) {
-		node.checkSaid(provider.VerdictVerifiedSuccess, 0)
+		node.checkSaid(provider.ReadingVerifiedSuccess, 0)
 		node.finish("the suite is green", nil, "", "")
 		node.graph.complete(node, TaskDone)
 	})
@@ -748,7 +748,7 @@ func TestASettledCheckedLandingIsTheAskFinished(t *testing.T) {
 		t.Fatal("a done landing nobody checked read as the ask finished")
 	}
 
-	node.checkSaid(provider.VerdictVerifiedSuccess, 0)
+	node.checkSaid(provider.ReadingVerifiedSuccess, 0)
 	if !agent.turnSettledItsAsk() {
 		t.Fatal("a done landing whose check passed did not read as the ask finished")
 	}
@@ -769,7 +769,7 @@ func TestASettledCheckedLandingIsTheAskFinished(t *testing.T) {
 	}
 
 	failed := landOne(agent, TaskFailed, "wire the handlers", "incomplete")
-	failed.checkSaid(provider.VerdictVerifiedSuccess, 0)
+	failed.checkSaid(provider.ReadingVerifiedSuccess, 0)
 	agent.mu.Lock()
 	agent.turnResults = []uint64{failed.id}
 	agent.owedAsks = []owedAsk{{text: "wire the handlers", from: owedByResult, task: failed.id}}
