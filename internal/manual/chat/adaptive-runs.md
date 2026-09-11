@@ -229,7 +229,7 @@ still work for one release and each says so once on stderr: *budget* is a word a
 everywhere else in this product, so a token count wearing it read as dollars.
 
 Two of those carry figures worth knowing: it stops itself after 200 turns, and it stops
-when the run has spent 150,000 tokens. Either one ending the run is a stop, not a failure,
+when the run has spent 220,000 tokens. Either one ending the run is a stop, not a failure,
 and the machine-readable result says which — it carries the worker's `answer`, the reason
 it stopped, what it used, and the files it made. **A run that failed also carries
 `error`**: the reason in the same words a person would read on the error stream, so a
