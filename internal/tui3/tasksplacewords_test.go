@@ -162,7 +162,7 @@ func TestTheStateWordIsTheLastThingARowGivesUp(t *testing.T) {
 		item: tasksItem{
 			entry: session.TaskIndexEntry{
 				ID: "2", SessionID: "room-a", Status: string(session.TaskUnverified),
-				Label: "Put the annual toggle on the pricing page and check the copy",
+				Label:   "Put the annual toggle on the pricing page and check the copy",
 				EndedAt: now.Add(-time.Hour),
 			},
 			row: session.SessionRow{ID: "room-a", Title: "The Skill Model Rebuild"},

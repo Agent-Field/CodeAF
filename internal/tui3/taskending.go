@@ -88,4 +88,3 @@ func halted(ending session.TaskEnding) bool {
 // docs/design/task-states/DESIGN.md). The same cell in both glyph tiers,
 // because ! is already a character a screen with no Unicode has.
 const glyphHalted = "!"
-
