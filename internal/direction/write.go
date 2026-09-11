@@ -41,19 +41,6 @@ func (w *writeTx) fenced(f Fence) (Revision, error) {
 	return cur, nil
 }
 
-// receiptRequired is the one rule for where authority is recorded: on every
-// revision entering accepted, rejected or withdrawn, and on a superseded
-// revision a person made. Nowhere else.
-func receiptRequired(state State, author AuthorClass) bool {
-	switch state {
-	case Accepted, Rejected, Withdrawn:
-		return true
-	case Superseded:
-		return author == AuthorPerson
-	}
-	return false
-}
-
 // personReceipt turns a person's receipt into the stored one, if the state
 // carries one.
 func (w *writeTx) personReceipt(r PersonReceipt, state State) Receipt {
@@ -63,60 +50,10 @@ func (w *writeTx) personReceipt(r PersonReceipt, state State) Receipt {
 	return Receipt{Actor: ActorPerson, Door: r.door, Ref: r.ref, At: w.at}
 }
 
-// checkAuthority is the write path's own statement of who may write what,
-// applied to every revision whatever door built it. The doors refuse first and
-// say why; this is the check none of them can forget.
-func checkAuthority(r Revision) error {
-	if !r.State.fits(r.Kind) {
-		return fmt.Errorf("%w: a %s cannot be %s", ErrTransition, r.Kind, r.State)
-	}
-	if r.Author.Class.writer() && r.State != Proposed && r.State != Informational {
-		return fmt.Errorf("%w: a %s writer can only propose or note", ErrTransition, r.Author.Class)
-	}
-	has := r.Receipt != (Receipt{})
-	if need := receiptRequired(r.State, r.Author.Class); need != has {
-		if need {
-			return fmt.Errorf("%w: a %s revision records who gave it authority", ErrNoReceipt, r.State)
-		}
-		return invalid("a %s revision carries no receipt", r.State)
-	}
-	if !has {
-		return nil
-	}
-	if r.Receipt.At.IsZero() || !workspace.ValidLine(r.Receipt.Ref, maxRef) {
-		return invalid("a receipt names its act and its time")
-	}
-	switch r.Author.Class {
-	case AuthorPerson:
-		if r.Receipt.Actor != ActorPerson {
-			return invalid("a person's revision carries a person receipt")
-		}
-		switch r.Receipt.Door {
-		case DoorCard, DoorTerminal, DoorPage, DoorStatement:
-		default:
-			return invalid("unknown receipt door %q", r.Receipt.Door)
-		}
-	case AuthorMigration:
-		switch r.Receipt.Actor {
-		case ActorPerson, ActorLegacyDelegated, ActorLegacyUnknown:
-		default:
-			return invalid("unknown receipt actor %q", r.Receipt.Actor)
-		}
-		switch r.Receipt.Door {
-		case DoorCard, DoorTerminal, DoorPage, DoorMigration:
-		default:
-			return invalid("an imported receipt keeps its own door or says migration, not %q", r.Receipt.Door)
-		}
-	default:
-		return fmt.Errorf("%w: only a person or an import records authority", ErrTransition)
-	}
-	return nil
-}
-
 // put writes one revision and moves the record to it. A record's first
 // revision creates its identity; prev is the revision it follows, if any.
 func (w *writeTx) put(r Revision, prev *Revision) error {
-	if err := checkAuthority(r); err != nil {
+	if err := permit(prev, r); err != nil {
 		return err
 	}
 	if err := w.checkReferences(r, prev); err != nil {
@@ -309,27 +246,16 @@ func (s *Store) Note(ctx context.Context, d Draft, by Actor) (Revision, error) {
 }
 
 // Revise changes a record's wording, places or links and keeps its identity
-// and state. A writer may revise its own proposal or finding; only the person
-// may revise an accepted record, and that revision carries their receipt.
+// and state. The person revises any live record, and a revision of an
+// accepted one carries their receipt; the model revises only its own
+// proposal (§4.1). permit decides; this door only names the missing receipt.
 func (s *Store) Revise(ctx context.Context, f Fence, d Draft, by Actor) (Revision, error) {
 	if err := by.check(); err != nil {
 		return Revision{}, err
 	}
 	return s.transition(ctx, f, func(w *writeTx, cur Revision) (Revision, error) {
-		if d.Kind != cur.Kind {
-			return Revision{}, invalid("a revision keeps the record's kind")
-		}
-		switch cur.State {
-		case Proposed, Informational:
-			if !by.person() && by.author != cur.Author {
-				return Revision{}, fmt.Errorf("%w: a writer revises only its own %s record", ErrTransition, cur.State)
-			}
-		case Accepted:
-			if !by.person() {
-				return Revision{}, fmt.Errorf("%w: only the person revises an accepted record", ErrNoReceipt)
-			}
-		default:
-			return Revision{}, fmt.Errorf("%w: a %s record is not revised", ErrTransition, cur.State)
+		if cur.State == Accepted && !by.person() {
+			return Revision{}, fmt.Errorf("%w: only the person revises an accepted record", ErrNoReceipt)
 		}
 		next, err := w.compose(d, cur.ID, cur.Revision+1, cur.State, by.author, &cur)
 		if err != nil {
@@ -352,9 +278,6 @@ func (s *Store) Revise(ctx context.Context, f Fence, d Draft, by Actor) (Revisio
 func (s *Store) Accept(ctx context.Context, f Fence, r PersonReceipt) (Revision, error) {
 	var fromProposal bool
 	return s.personChange(ctx, f, r, func(w *writeTx, cur Revision) (Revision, error) {
-		if !cur.Kind.directive() || (cur.State != Proposed && cur.State != Withdrawn) {
-			return Revision{}, fmt.Errorf("%w: a %s %s is not accepted", ErrTransition, cur.State, cur.Kind)
-		}
 		fromProposal = cur.State == Proposed
 		return w.byPerson(cur, Accepted, "", r)
 	}, func(w *writeTx, accepted Revision) error {
@@ -371,24 +294,17 @@ func (s *Store) Accept(ctx context.Context, f Fence, r PersonReceipt) (Revision,
 // proposed again by anyone but the person.
 func (s *Store) Reject(ctx context.Context, f Fence, r PersonReceipt) (Revision, error) {
 	return s.personChange(ctx, f, r, func(w *writeTx, cur Revision) (Revision, error) {
-		if cur.State != Proposed {
-			return Revision{}, fmt.Errorf("%w: only a proposal is rejected", ErrTransition)
-		}
 		return w.byPerson(cur, Rejected, "", r)
 	}, nil)
 }
 
-// Withdraw stops an accepted record or a finding from applying, with the
-// person's reason, and keeps its history. A withdrawn rule comes back only
-// through Accept.
+// Withdraw stops an accepted record from applying, with the person's reason,
+// and keeps its history. A withdrawn record comes back only through Accept.
 func (s *Store) Withdraw(ctx context.Context, f Fence, reason string, r PersonReceipt) (Revision, error) {
 	if !workspace.ValidLine(reason, maxReason) {
 		return Revision{}, invalid("a withdrawal says why in at most %d bytes", maxReason)
 	}
 	return s.personChange(ctx, f, r, func(w *writeTx, cur Revision) (Revision, error) {
-		if cur.State != Accepted && cur.State != Informational {
-			return Revision{}, fmt.Errorf("%w: a %s record is not withdrawn", ErrTransition, cur.State)
-		}
 		return w.byPerson(cur, Withdrawn, reason, r)
 	}, nil)
 }
@@ -424,9 +340,6 @@ func (s *Store) Unlink(ctx context.Context, f Fence, kind LinkKind, to string, r
 }
 
 func (w *writeTx) relink(cur Revision, links []Link, r PersonReceipt) (Revision, error) {
-	if cur.Lane() == laneNone {
-		return Revision{}, fmt.Errorf("%w: a %s record's links are closed", ErrTransition, cur.State)
-	}
 	d := cur.draft()
 	d.Links = links
 	next, err := w.compose(d, cur.ID, cur.Revision+1, cur.State, Author{Class: AuthorPerson, Ref: r.ref}, &cur)
@@ -437,9 +350,10 @@ func (w *writeTx) relink(cur Revision, links []Link, r PersonReceipt) (Revision,
 	return next, nil
 }
 
-// Supersede writes a new record that replaces one or more old ones, and moves
-// every old one to superseded in the same transaction, each fenced. It is all
-// or nothing: one old record that moved refuses the whole replacement.
+// Supersede writes a new accepted rule or decision that replaces one or more
+// accepted ones, and moves every old one to superseded in the same
+// transaction, each fenced. It is all or nothing: one old record that moved,
+// or that is not accepted, refuses the whole replacement.
 func (s *Store) Supersede(ctx context.Context, d Draft, olds []Fence, r PersonReceipt) (Revision, error) {
 	if !r.valid() {
 		return Revision{}, ErrNoReceipt
@@ -450,10 +364,6 @@ func (s *Store) Supersede(ctx context.Context, d Draft, olds []Fence, r PersonRe
 	id, err := workspace.NewID()
 	if err != nil {
 		return Revision{}, err
-	}
-	state := Accepted
-	if d.Kind == Finding {
-		state = Informational
 	}
 	links := append(make([]Link, 0, len(d.Links)+len(olds)), d.Links...)
 	named := make(map[string]bool, len(olds))
@@ -467,7 +377,7 @@ func (s *Store) Supersede(ctx context.Context, d Draft, olds []Fence, r PersonRe
 	d.Links = links
 	var written Revision
 	err = s.write(ctx, func(w *writeTx) error {
-		next, err := w.compose(d, id, 1, state, Author{Class: AuthorPerson, Ref: r.ref}, nil)
+		next, err := w.compose(d, id, 1, Accepted, Author{Class: AuthorPerson, Ref: r.ref}, nil)
 		if err != nil {
 			return err
 		}
@@ -498,9 +408,6 @@ func (w *writeTx) supersedeLinked(by Revision, r PersonReceipt) error {
 		if err != nil {
 			return err
 		}
-		if old.Lane() == laneNone {
-			return fmt.Errorf("%w: a %s record is not superseded", ErrTransition, old.State)
-		}
 		next, err := w.byPerson(old, Superseded, "", r)
 		if err != nil {
 			return err
@@ -513,8 +420,11 @@ func (w *writeTx) supersedeLinked(by Revision, r PersonReceipt) error {
 }
 
 // byPerson is a state change the person makes: the same content, a new state,
-// their receipt.
+// their receipt. It is a change of state, never a revision in place.
 func (w *writeTx) byPerson(cur Revision, state State, reason string, r PersonReceipt) (Revision, error) {
+	if cur.State == state {
+		return Revision{}, fmt.Errorf("%w: %s is already %s", ErrTransition, cur.ID, state)
+	}
 	next, err := w.compose(cur.draft(), cur.ID, cur.Revision+1, state, Author{Class: AuthorPerson, Ref: r.ref}, &cur)
 	if err != nil {
 		return Revision{}, err

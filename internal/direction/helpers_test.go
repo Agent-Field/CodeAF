@@ -39,7 +39,7 @@ func card(t *testing.T, proposal string) PersonReceipt {
 
 func folder(t *testing.T, s *Store, name string) string {
 	t.Helper()
-	c, err := s.Workspace().Create(context.Background(), name)
+	c, err := s.ws.Create(context.Background(), name)
 	if err != nil {
 		t.Fatal(err)
 	}

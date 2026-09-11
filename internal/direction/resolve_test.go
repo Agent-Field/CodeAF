@@ -26,21 +26,21 @@ func (w world) folder(name string) string { return folder(w.t, w.s, name) }
 // nest places child inside parent: a governing edge.
 func (w world) nest(parent, child string) {
 	w.t.Helper()
-	if err := w.s.Workspace().AddPlacement(w.ctx, parent, workspace.Ref{Kind: workspace.CollectionKind, ID: child}); err != nil {
+	if err := w.s.ws.AddPlacement(w.ctx, parent, workspace.Ref{Kind: workspace.CollectionKind, ID: child}); err != nil {
 		w.t.Fatal(err)
 	}
 }
 
 func (w world) place(folder string, ref workspace.Ref) {
 	w.t.Helper()
-	if err := w.s.Workspace().AddPlacement(w.ctx, folder, ref); err != nil {
+	if err := w.s.ws.AddPlacement(w.ctx, folder, ref); err != nil {
 		w.t.Fatal(err)
 	}
 }
 
 func (w world) unplace(folder string, ref workspace.Ref) {
 	w.t.Helper()
-	if err := w.s.Workspace().RemovePlacement(w.ctx, folder, ref); err != nil {
+	if err := w.s.ws.RemovePlacement(w.ctx, folder, ref); err != nil {
 		w.t.Fatal(err)
 	}
 }
@@ -48,16 +48,18 @@ func (w world) unplace(folder string, ref workspace.Ref) {
 // reference files a ref in a folder as a reference membership: relevance, not authority.
 func (w world) reference(folder string, ref workspace.Ref) {
 	w.t.Helper()
-	if err := w.s.Workspace().Add(w.ctx, folder, ref); err != nil {
+	if err := w.s.ws.Add(w.ctx, folder, ref); err != nil {
 		w.t.Fatal(err)
 	}
 }
 
-// accept proposes a draft and has the person accept it.
+// accept has the person propose a draft and accept it. The person proposes,
+// because the exclusions and precedence links a draft may carry are theirs
+// alone to write (§4.1).
 func (w world) accept(d Draft) Revision {
 	w.t.Helper()
 	must := musts(w.t)
-	return must(w.s.Accept(w.ctx, must(w.s.Propose(w.ctx, d, model)).Fence(), card(w.t, "yes")))
+	return must(w.s.Accept(w.ctx, must(w.s.Propose(w.ctx, d, AsPerson(card(w.t, "proposed")))).Fence(), card(w.t, "yes")))
 }
 
 func (w world) resolve(refs ...workspace.Ref) Effective {
@@ -376,7 +378,7 @@ func TestR11ALegacyWorkspaceMatchesImportedRecordsByCleanedPath(t *testing.T) {
 		Legacy: Legacy{Store: LegacyStanding, ID: "hold-1", Version: "1/1", SHA256: strings.Repeat("a", 64)},
 		Revisions: []ImportRevision{{Draft: rule("reports never include phone numbers",
 			Target{Kind: TargetLegacyWorkspace, Ref: "/work/launch"}), State: Accepted,
-			Receipt: Receipt{Actor: ActorPerson, Door: DoorCard, Ref: "proposal-1"}}},
+			Receipt: Receipt{Actor: ActorLegacyPerson, Door: DoorCard, Ref: "proposal-1"}}},
 	}
 	res, err := w.s.Import(w.ctx, ImportRun{ID: "run", Mode: "apply", Binary: "test"}, item)
 	if err != nil {
@@ -419,7 +421,7 @@ func TestC15ATripsOwnBudgetSurvivesUnlinkingAndReachesNoOtherTrip(t *testing.T) 
 	w.reference(europe, chat("trip-t"))
 	w.place(europe, chat("trip-u"))
 	budget := w.accept(rule("trip T is at most $150 a night", chatTarget("trip-t")))
-	if err := w.s.Workspace().Remove(w.ctx, europe, chat("trip-t")); err != nil {
+	if err := w.s.ws.Remove(w.ctx, europe, chat("trip-t")); err != nil {
 		t.Fatal(err)
 	}
 	if governs(w.resolve(chat("trip-t")), budget.ID) == nil {
