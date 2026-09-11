@@ -1179,10 +1179,13 @@ measure pace with until it is over.
   measurement over the whole period, and it cannot pass the ceiling. A drip
   cannot buy a second period however many tokens it sends.
 - **Carry the partial `write` across the cut** (salvage, or the continuation
-  hedge). Out of scope, and owed. A wall cut still throws the reply away whole.
-  The seams are `hedgeRace.flip` (the continuation hedge `hedge.go` already
-  names) and `internal/session/salvage.go` (the output-limit salvage); whoever
-  builds it extends one of those rather than writing a second repair path.
+  hedge). Out of scope here, and still owed on this road: a stream-wall cut on
+  the chat road still throws the reply away whole. The seams are
+  `hedgeRace.flip` (the continuation hedge `hedge.go` already names) and
+  `internal/session/salvage.go` (the output-limit salvage). The structuring
+  slots' call wall — a different wall, one completion under a fixed four
+  minutes — keeps what it cut since issue #927; §M says how, and why it could
+  not be done by handing the partial back through the provider.
 
 Also owed, and small: a thought is folded back into the model's thinking
 distribution only when the first word of *text* ends it (`client.go`'s
@@ -1190,6 +1193,134 @@ distribution only when the first word of *text* ends it (`client.go`'s
 duration clock nothing. Closing the thought on the first call fragment is the
 same law, but it re-announces `StreamThinking` on interleaved turns and was left
 for a change that can check every surface's reading of that event.
+
+## M. The call wall is told, and keeps what was thought (issue #927)
+
+The structuring slots — the one that talks and the one that plans, on the
+resident and on `aforge do` — bound every completion at
+`pool.DefaultCallWall`, four minutes. §L's stream wall bounds a reply that is
+not working; this one bounds a completion that is working and has run out of
+time, and until #927 it did two things wrong.
+
+### What was true
+
+- **The model was never told.** No planning call carried a reasoning knob:
+  `config.Config.Context` sends `WithConfiguredReasoningEffort(ctx,
+  c.Reasoning)`, and the default is `provider.EffortNone`. GLM 5.3 runs at its
+  published default — `max` — when nothing is sent, so an open-ended grounding
+  prompt on a long request thought for the whole four minutes on one machine
+  and answered in 2.3 s with 16 reasoning tokens on another, inside the same
+  run. Which side of the wall a call landed on was luck.
+- **The cut kept nothing.** `walled.CompleteWithMessages` returned `nil,
+  ErrCallWall`, and nothing above could have done better: a raced call's
+  `hedgeRace.abandon` returns the caller's deadline and nothing else, so the
+  partial response in `client.go`'s decode-error branch never reaches anyone.
+  Four minutes of billed thought became `output: None`.
+- **The command rail cut honest work.** `resident.commandWall` was ten
+  minutes, argued as twice the worst honest case. Both of #927's strikes were
+  that rail, not the call wall: compile 225 s, grounding to the wall, spine to
+  165 s, and a fan-out still running at ten minutes. The receipt then said
+  `the model stopped answering twice`, which was the one account of the
+  event that was false — every first token arrived in under a second.
+
+### What is true now
+
+- **The wall is told** (`provider.WithThinkingWall`, `effortladder.go`). Every
+  walled completion carries its wall to the effort ladder, which derives a
+  thinking budget for a pass nobody else sized: `share(level) × believed rate ×
+  wall`. The rate is the lane belief the waiting controller plans against
+  (`lanes.PaceFor`), read for the machine the request asked for — or the
+  slowest the sheet lists, when it asked for none — and only for a pair the
+  ledger actually holds; the share is the router's documented allocation of a
+  ceiling to thinking at that level (`thinkingShare`). A word somebody chose
+  stands; a rung's own budget yields only to a smaller wall; a model that
+  thinks only when asked is not asked. The budget rides the level the pass
+  runs at anyway, and the call log names it `max within 4m0s` rather than by
+  its count, so the thinking-duration belief keyed on that string stays one key.
+- **The wall told is the one that binds** (`walled.allowance`). A completion
+  runs under the slot's wall or its share of the caller's own deadline,
+  whichever is shorter, and that one figure is both what cuts it and what the
+  model is told. The first completion's share is half of what the caller has
+  left (`completionsPerCall`), so the answer ask always has the other half: a
+  late round of a command whose rail is nearly spent is cut by its wall, and
+  asked, rather than by the rail, and lost.
+- **Any clock's cut keeps what was thought**, not only the wall's. The wall is
+  one of three timers over a structuring completion: the dispatcher gives each
+  attempt its own patience (§A's `control.Plan.Deadline`, from
+  `lane.Role.GiveUp`) and the stream guard bounds a quiet stream (§L). Issue
+  #927's second run lost its size, bind and contract passes at 51 seconds, not
+  at four minutes, with the thought as lost as if the wall had taken it. So
+  `walled.completion` asks whether TIME ended the completion — a deadline
+  however wrapped, or a `provider.StreamCut` read through `provider.CutFrom` —
+  and never which timer did. The wall names only its own cut; any other clock's
+  error is handed back as it came, because it already says what stopped the
+  call and a second account of one event is how a receipt starts lying.
+- **The wall keeps what was thought** (`pool.walled`, `kept`). The partial is
+  collected where it demonstrably exists — the stream events the completion
+  raised while it was writing — by an observer that forwards every event
+  unchanged to whoever the caller had listening. A completion that reaches its
+  wall with thought or answer on the wire is asked ONCE more: the caller's
+  messages, the thought, any answer it had begun and any tool call it had
+  begun writing (as words, never as a call) as the assistant's turn, and an
+  answer ask, with
+  thinking switched off (required, so a seat's pin cannot re-open it) and the
+  request's own shape still on. Only when that ask also fails is the caller
+  given `ErrCallWall`. A completion that wrote nothing is not asked again —
+  there is nothing to answer from, and a retry is the layer above's.
+- **The rail is counted in calls** (`resident.commandWall = spliceRounds ×
+  pool.LongestCall`): five sequential structuring rounds of a splice, each at
+  most a completion and its answer ask. The receipt names the cause: `the model
+  thought past its time`.
+
+### Why not a second salvage path
+
+The owner's constraint was one mechanism. There was no cut salvage on any road
+to reuse (§L's bullet above), and the ones that look like it are different
+shapes: `shaped`'s continuation repairs an object cut at the output limit, from
+a response that exists; `session/salvage.go` repairs a severed tool call's
+arguments. The wall's partial exists only as a stream, so it is kept at the
+one layer that both hears the stream and knows the wall fired, and every
+walled caller — the compiler, every plan pass, briefs, the head — gets it
+without a line of its own.
+
+### Laws
+
+`pool`'s `TestEveryCompletionThroughAWallIsToldItsWall` (a walled completion is
+sent from `walled.completion` alone, and that function carries the wall);
+`plan`'s `TestPlanningReachesAModelOnlyThroughTheClientItIsHanded` (planning
+and the compiler build no client of their own, so every planning call goes
+through the wall it was handed). And the door itself:
+`cmd/aforge`'s `TestAPlanningModelThatThinksPastItsWallStillPlans` runs
+`aforge do --json` against a compiler that never stops thinking and asserts the
+budget on the first body, the thought on the second, a settled run and no
+`stopped answering`. `TestEveryPlanningStageThatThinksPastItsWallStillPlans` is
+the same door with every pass of the pipeline — compile, ground, spine, fan-out,
+size, bind, audit, contracts — served by that model, and asks all three
+questions of each; the control runs the same pipeline answering in time and
+finds each pass asked exactly once. The clocks UNDER the wall are proved at the
+pool layer instead (`TestAThoughtCutByAClockUnderTheWallIsAskedForToo`,
+`TestAStreamTheGuardGaveUpOnKeepsItsThought`), with the error shapes the
+dispatcher's patience and the stream guard really leave: no stub can make a
+45-second silence bound fire in a test that finishes in seconds.
+
+### The cause is said once
+
+`pool.RanOutOfTime` is the phrase, and `pool.CauseInWords` is the one door every
+sentence carrying it goes through. A planning fault used to reach a person as
+`the plan for task-2 was drawn with faults (size stage 1: context deadline
+exceeded)`; the composer keeps the pass — which is what the person's next
+decision uses — and replaces the machinery with the cause the receipt names.
+`internal/resident`'s receipt and stage note read the same constant rather than
+a second copy of it.
+
+### Still owed
+
+Issue #927's third fix: the grounding, spine and fan-out prompts state the depth
+the question warrants, in the same sentence that states the answer's shape. It
+is not here because it changes what every planning pass is told on every
+request, which is a change to the quality of plans and has to be measured
+against the planning bench before it lands, not argued into a fix for a wall.
+The wall's budget bounds the thinking; it does not choose it.
 
 ## What this deliberately does not do
 
