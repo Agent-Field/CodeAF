@@ -387,6 +387,16 @@ type callKnobs struct {
 	// not wired in, and every non-streamed call, which has no watch to agree
 	// with and makes its own inside the encoder.
 	laneChoice *lanes.Choice
+	// refused is every machine that has already said no to THIS CALL, and it is
+	// what makes each attempt a different request rather than the same one
+	// (retry.go's [refusedHere]). It is a pointer for the reason trace is: the
+	// knobs travel by value through the repair, relax and ladder chains, and
+	// "who has already refused this call" must not be copied along the way.
+	//
+	// NIL IS A CALLER THAT COMPOSED ITS OWN BYTES — the document path posts a
+	// multipart form rather than a completion, so there is nothing for the
+	// encoder to write again and its body is kept exactly as it was handed over.
+	refused *refusedHere
 	// trace is what ONE CALL accumulates on its way to an answer — how many
 	// times it went out, what its refusals taught, the body it last carried —
 	// for the model-call log (calllog.go). It is a pointer because the knobs
@@ -404,6 +414,7 @@ func knobsFrom(ctx context.Context) callKnobs {
 		horizon:   callHorizonFrom(ctx),
 		hedgeLane: hedgeLaneFrom(ctx),
 		reasoning: MessageReasoningFrom(ctx),
+		refused:   &refusedHere{},
 		trace:     newCallTrace(),
 	}
 	// The choice this call was already made on, if it was. See
@@ -1180,7 +1191,7 @@ func (c *Client) machineryCut(ctx context.Context, request *ai.Request, response
 	}
 	cut := &StreamCut{Reason: CutMachinery}
 	c.stampCut(cut, served, began, tokens)
-	cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
+	cut.Rerouted = c.noteCutProvider(ctx, c.modelFor(request), served)
 	// AND THE BELIEF LEARNS THAT THIS LANE SERVED SOMETHING UNUSABLE, which is
 	// the claim the strike above cannot make: a strike expires in five minutes
 	// and says only "not now", while an endpoint serving its model's unparsed
@@ -1211,7 +1222,7 @@ func (c *Client) rescuedStreamCut(ctx context.Context, request *ai.Request, resp
 		cut = &StreamCut{Reason: CutBabble}
 	}
 	c.stampCut(cut, served, began, tokens)
-	cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
+	cut.Rerouted = c.noteCutProvider(ctx, c.modelFor(request), served)
 	c.noteLaneOutcome(c.modelFor(request), served, cut.Reason.word(), false)
 	c.releaseEndpoint(ctx, c.modelFor(request))
 	return cut
@@ -1510,7 +1521,7 @@ func (c *Client) completeWithMessagesStreaming(
 	soup := func() (*ai.Response, bool, error) {
 		cut := &StreamCut{Reason: CutBabble}
 		c.stampCut(cut, served, began, stall.tokens())
-		cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
+		cut.Rerouted = c.noteCutProvider(ctx, c.modelFor(request), served)
 		// Soup is the plainest possible statement that this lane's answers
 		// cannot be used, so it is the plainest thing the quality belief can
 		// learn (lanes.go's noteLaneOutcome).
@@ -1542,7 +1553,7 @@ func (c *Client) completeWithMessagesStreaming(
 				// Whether the ledger took the lane away travels ON the cut: the
 				// turn loop decides how many more times to ask this model from
 				// it, and it has no other way to know ([StreamCut.Rerouted]).
-				cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
+				cut.Rerouted = c.noteCutProvider(ctx, c.modelFor(request), served)
 				// AND THE BELIEF LEARNS IT TOO. A stream this process gave up on
 				// produced no usable answer, whichever bound decided, and that is
 				// a claim about the lane's ANSWERS rather than about its speed —
