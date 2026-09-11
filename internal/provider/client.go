@@ -470,10 +470,26 @@ func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs call
 	// model (endpoints.go) every attempt below this line is on the model named
 	// here — so the record is exact. What reads it is the layer that owns the one
 	// remaining model hop, which used to index a chain blind (modelstried.go).
-	noteModelTried(ctx, c.modelFor(request))
+	model := c.modelFor(request)
+	// AND A MODEL THIS PROCESS HAS ALREADY BEEN TOLD THE ROUTER DOES NOT CARRY IS
+	// NOT SENT AT ALL (withdrawn.go). The router answered for itself the first
+	// time; sending again buys the identical 404 and, worse, a whole shape ladder
+	// climbed on a request no shape can rescue — three start rows thirty
+	// milliseconds apart, measured on 2026-09-10 22:39, every turn. The refusal is
+	// handed back with the mark on it, so one verdict is read from one call site
+	// and the move is the one move there is.
+	if WithdrawnModel(model) {
+		return nil, withdrawnRefusal(model)
+	}
+	noteModelTried(ctx, model)
 	response, err := c.sendRecovered(ctx, request, knobs, stream)
+	// AN ANSWER MEANS IT IS CARRIED AGAIN. A memo nothing clears takes a model
+	// away for the life of the process on the strength of one bad minute.
+	if err == nil && response != nil && response.StatusCode < 400 {
+		carriedAgain(model)
+	}
 	if err != nil || (response != nil && response.StatusCode >= 400) {
-		c.releaseEndpoint(ctx, c.modelFor(request))
+		c.releaseEndpoint(ctx, model)
 	}
 	return response, err
 }

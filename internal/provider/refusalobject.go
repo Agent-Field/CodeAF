@@ -321,6 +321,9 @@ func (c *Client) laneRefusalFor(model, demanded string, err error) laneRefusal {
 	// buys is downstream: the verdict hops the model at once instead of paying
 	// the whole transport budget for three more identical refusals (#838).
 	if c.withdrawnModel(model, refusal.Status, body) {
+		// AND IT IS REMEMBERED, so the next turn hops before it sends rather than
+		// paying the whole shape ladder to be told the same thing (withdrawn.go).
+		noteWithdrawn(model)
 		return laneRefusal{Withdrawn: true}
 	}
 	if !c.routingRefusal(model, refusal.Status, body) {

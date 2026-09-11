@@ -721,9 +721,14 @@ func forgetLanes(t *testing.T) {
 	t.Setenv(home.EnvVar, t.TempDir())
 	lanes.Default().Reset()
 	lanes.ForgetPrefixes()
+	// AND THE WITHDRAWN MEMO, which is this package's own and per process: a test
+	// that inherited another's would find a model it never refused missing from
+	// every chain (withdrawn.go).
+	ForgetWithdrawnModels()
 	t.Cleanup(func() {
 		lanes.Default().Reset()
 		lanes.ForgetPrefixes()
+		ForgetWithdrawnModels()
 	})
 }
 

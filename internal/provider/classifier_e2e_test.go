@@ -33,8 +33,12 @@ const overflowEnvelope = "This endpoint's maximum context length is 65536 tokens
 // It is what makes "the router no longer carries this model" a fact rather than
 // the absence of a catalog — [Client.withdrawnModel] demands the positive form.
 func knownCatalog(missing string) func(string) (float64, float64, bool) {
+	// FOLDED THE WAY THE CATALOG IS ASKED. [Client.catalogKnowsModel] normalises
+	// the id before it asks, so a fixture comparing the raw spelling answers
+	// "known" about the very model it was written to withhold.
+	gone := normalizeModel(missing)
 	return func(model string) (float64, float64, bool) {
-		if model == missing {
+		if normalizeModel(model) == gone {
 			return 0, 0, false
 		}
 		return 0.66e-6, 1.98e-6, true
@@ -121,6 +125,10 @@ func TestEveryRefusalShapeProducesOneVerdictFromOneCallSite(t *testing.T) {
 		rig := newLaneRigWithPrice(t, "recovery/withdrawn", nil,
 			lanestub.Lane{Name: "A", Profile: lanestub.Profile{Tools: true}},
 		)
+		if !lanes.WireSheet(rig.server.URL(), "", sheetFetcher{}, true) {
+			t.Fatal("the sheet did not wire to the stub")
+		}
+		t.Cleanup(func() { lanes.WireSheet("", "", nil, false) })
 		rig.client.config.ModelPrice = knownCatalog(rig.model)
 		rig.server.RefusesWith(404, "No endpoints found for "+rig.model+".", "")
 		_, err := rig.client.CompleteWithMessages(talking(), userMessages("hello"))
@@ -179,5 +187,68 @@ func TestTheOverflowCodeIsReadBeforeItsSentence(t *testing.T) {
 	}
 	if !overflowRefusal(400, "", "This endpoint's maximum context length is 65536 tokens") {
 		t.Fatal("the hint arm stopped catching a body that carries no code at all")
+	}
+}
+
+// TestAWithdrawnModelIsRememberedAndNotSentAgain is the second measured turn of
+// 2026-09-10 22:39.
+//
+// The conversation's model was one the router carries with zero endpoints. Every
+// turn sent it three times — the shape ladder climbing rungs on a request no
+// shape could rescue, thirty milliseconds apart — before moving to a model that
+// answered, and the NEXT turn did the whole thing again and moved somewhere else,
+// because nothing remembered what the first had just found out.
+//
+// So the fact is kept for the process (withdrawn.go) and it is read in the two
+// places that can act on it: the request is not sent at all, and the chain a hop
+// picks from does not offer the model.
+func TestAWithdrawnModelIsRememberedAndNotSentAgain(t *testing.T) {
+	rig := newLaneRigWithPrice(t, "recovery/remembered", nil,
+		lanestub.Lane{Name: "A", Profile: lanestub.Profile{Tools: true}},
+	)
+	// THE BASE HAS TO HAVE SHOWN IT SERVES A SET, which is [Client.withdrawnModel]'s
+	// own gate and the reason a plain OpenAI-compatible endpoint's first 404 can
+	// never be read as a model going away.
+	if !lanes.WireSheet(rig.server.URL(), "", sheetFetcher{}, true) {
+		t.Fatal("the sheet did not wire to the stub")
+	}
+	t.Cleanup(func() { lanes.WireSheet("", "", nil, false) })
+	rig.client.config.ModelPrice = knownCatalog(rig.model)
+	rig.client.config.Fallbacks = []string{rig.model, "other/model"}
+	rig.server.RefusesWith(404, "No endpoints found for "+rig.model+".", "")
+
+	if _, err := rig.client.CompleteWithMessages(talking(), userMessages("hello")); err == nil {
+		t.Fatal("the router carries no endpoints for this model; the call should have failed")
+	}
+	first := len(rig.server.Asks())
+	if first == 0 {
+		t.Fatal("nothing reached the router, so this test proves nothing about the second turn")
+	}
+	if !WithdrawnModel(rig.model) {
+		t.Fatal("a model the router answered for itself about was not remembered")
+	}
+
+	// THE SECOND TURN SENDS NOTHING AT ALL, and still produces exactly one
+	// verdict with exactly one move.
+	_, err := rig.client.CompleteWithMessages(talking(), userMessages("hello again"))
+	if err == nil {
+		t.Fatal("the second call answered on a model the router does not carry")
+	}
+	if got := len(rig.server.Asks()); got != first {
+		t.Fatalf("%d requests went out on the second turn, want none", got-first)
+	}
+	evidence := Evidence(err)
+	evidence.Attempt, evidence.FallbackAvailable = 1, true
+	verdict := taxonomy.Classify(evidence, taxonomy.Limits{}.Floored())
+	if verdict.Class != taxonomy.Transport || !verdict.Hops() {
+		t.Fatalf("the remembered refusal read as %s, want the next model", verdict)
+	}
+
+	// AND THE CHAIN DOES NOT OFFER IT, so a hop cannot land back on it — which is
+	// why two turns of one conversation used to move to two different models.
+	for _, candidate := range rig.client.FallbackModels("some/origin") {
+		if candidate == rig.model {
+			t.Fatalf("the chain still offers %s after the router put it down", candidate)
+		}
 	}
 }

@@ -121,6 +121,10 @@ func newLaneRigWithPrice(
 	// suite that saved its scripted beliefs into somebody's ledger would be a
 	// suite that cost them their afternoon.
 	t.Setenv(home.EnvVar, t.TempDir())
+	// The withdrawn memo is this package's own and per process, so a rig empties
+	// it for the same reason it empties the ledger (withdrawn.go).
+	ForgetWithdrawnModels()
+	t.Cleanup(ForgetWithdrawnModels)
 	model := "openrouter/" + name
 	server := lanestub.New(model, lanesOffered...)
 	t.Cleanup(server.Close)

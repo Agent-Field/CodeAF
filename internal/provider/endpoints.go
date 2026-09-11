@@ -853,7 +853,24 @@ func (c *Client) attemptShaped(
 // quiet often enough to have spent its budget. The precedence and the cap stay
 // here, in [Client.fallbackChain], because a second place that decided which
 // model comes next would be a second answer to drift from this one.
-func (c *Client) FallbackModels(model string) []string { return c.fallbackChain(model) }
+// AND A MODEL THE ROUTER HAS PUT DOWN IS NOT OFFERED. The chain is where a hop
+// picks its target, so a model already known to have no endpoints must not be on
+// it — otherwise the hop lands on a second 404 and the turn pays twice for one
+// fact (withdrawn.go, measured 2026-09-10 22:39). Dropping it HERE rather than at
+// the caller is what keeps the order deterministic: two turns of one conversation
+// asked the same question and moved to different models, because each rediscovered
+// the withdrawal for itself.
+func (c *Client) FallbackModels(model string) []string {
+	chain := c.fallbackChain(model)
+	carried := chain[:0]
+	for _, candidate := range chain {
+		if WithdrawnModel(candidate) {
+			continue
+		}
+		carried = append(carried, candidate)
+	}
+	return carried
+}
 
 // fallbackChain is the models to try after the ladder, in order.
 //
