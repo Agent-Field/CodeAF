@@ -255,15 +255,78 @@ func drainAnsweringTasks(t *testing.T, events <-chan Event, answer func(Event)) 
 type ranNodes chan *TaskNode
 
 // await is the next node to run, or a failure. Nothing here polls.
+//
+// IT SAYS WHAT IT OBSERVED AND NOT WHAT IT CONCLUDED (#967, #968). It used to
+// fail with `no node ran`, which is a claim about the scheduler; what it can
+// actually see is that nothing arrived on this channel before a deadline, and on
+// a box with another package's suite running those are different facts. A reader
+// given the first spends their first hour in the task graph. The failure below
+// says the deadline, the wait, and that a timeout is what it is — the diagnosis
+// is left to whoever has the graph in front of them.
+//
+// Measured 2026-09-11: `TestAPersonsTurnIsNeverBoundedByTheWall` failed 3 times
+// in 54 runs on a clean `dev` this way, every one of them beside another suite,
+// and the message sent two lanes into the wall law rather than into the clock.
 func (r ranNodes) await(t *testing.T) *TaskNode {
 	t.Helper()
+	patience := awaitPatience(t)
+	started := time.Now()
 	select {
 	case node := <-r:
 		return node
-	case <-time.After(5 * time.Second):
-		t.Fatal("no node ran")
+	case <-time.After(patience):
+		t.Fatal(awaitTimeoutWord("a node to run", time.Since(started)))
 		return nil
 	}
+}
+
+// awaitTimeoutWord is what a wait that ran out says, spelled once so that every
+// helper in this package says it the same way and so that a test can read it
+// without a failing test to read it from.
+//
+// THE FIRST CLAUSE IS THE OBSERVATION AND THERE IS NO SECOND CLAUSE DIAGNOSING
+// IT. What the caller knows is that nothing arrived; whether the seam never
+// fired, ran late, or ran and lost its answer is exactly what it cannot see.
+// The two lines after it are there because the first thing a reader needs is
+// whether to believe the red at all.
+func awaitTimeoutWord(what string, waited time.Duration) string {
+	return fmt.Sprintf("waited %s for %s and nothing arrived: that is a TIMEOUT, which on a loaded box is not yet evidence the seam never fired.\n"+
+		"  Run it alone before reading the seam: a red that only appears beside another suite is this deadline, and a red that survives alone is the seam.\n"+
+		"  The wait scales with the run's own -timeout (awaitPatience), so a slow box is given room there and never by raising a number in this file.",
+		waited.Round(time.Millisecond), what)
+}
+
+// awaitPatience is how long [ranNodes.await] and its neighbours give a seam, and
+// it is DERIVED FROM THE RUN'S OWN BUDGET rather than typed in.
+//
+// A FIXED NUMBER HERE IS A STOPWATCH, WHICH PERF.md:24 BANS FOR THE REASON THIS
+// FILE KEEPS PROVING: "A stopwatch is a fact about the weather. A suite whose red
+// means the box was busy is a suite people learn to re-run instead of read." The
+// five seconds this replaced was such a number, and raising it to thirty would
+// have made the same red take six times as long to arrive. What makes the
+// difference is that `-timeout` — which this repository already tells people to
+// raise on a loaded box (CLAUDE.md, tui3 at 15m) — now buys patience here too.
+//
+// A quarter of what is left, because several waits often follow one another in a
+// single test and one of them must not eat the budget the others need. The floor
+// keeps a short `-timeout` honest; the ceiling keeps a generous one from turning
+// a genuine hang into a run that looks stuck.
+func awaitPatience(t *testing.T) time.Duration {
+	t.Helper()
+	deadline, ok := t.Deadline()
+	if !ok {
+		// NO DEADLINE IS `-timeout 0`, which is somebody deliberately waiting as
+		// long as it takes. Be generous rather than clever.
+		return time.Minute
+	}
+	share := time.Until(deadline) / 4
+	if share < 5*time.Second {
+		return 5 * time.Second
+	}
+	if share > time.Minute {
+		return time.Minute
+	}
+	return share
 }
 
 // admitted is how many nodes are in the graph, which — unlike a run — is
