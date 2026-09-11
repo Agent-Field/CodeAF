@@ -1785,12 +1785,16 @@ function, and if you ever see them differ, that is a bug worth reporting.
 the provider — every step of a turn is its own request — so this figure is normally larger
 than the number of times you have spoken.
 
-It counts **every** request, not only the ones in your turns: naming the session, a judge
-deciding where something should be routed, looking at a picture, every request a task's
-own agent made on its own lane, and every request a harness run made while it walked its
-program. That is deliberate, because the `spend` line above it is the
+It counts every request that is written down, not only the ones in your turns: naming the
+session, a judge deciding where something should be routed, looking at a picture, every
+request a task's own agent made on its own lane, and every request a harness run made
+while it walked its program. That is deliberate, because the `spend` line above it is the
 sum over exactly those requests — a smaller count beside it would be a bill divided by the
 wrong number.
+
+**One request is not written down and so is not in either figure**: the one-token
+measurement sent while you are typing. Your provider bills it and aforge does not count
+it — there is a section on that below, `Spend that /cost does not show`.
 
 `empty reflex answers` appears only when that failure happened. Those requests remain in
 the token, call and spend totals because the provider billed them; the separate count says
@@ -2749,7 +2753,7 @@ Turn it off if you are paying for every token and never mind waiting. With it of
 are one row because they are one promise: aforge may spend a little extra to keep an
 answer moving.
 
-## Why aforge sends something when you start typing — the one-token measurement
+## Does aforge send anything while I am typing — the one-token measurement it sends before you press enter
 
 While you are typing, and before you press enter, aforge sends **one token** to each of
 the two lanes your next message would most likely go to, and times how long the first
@@ -2763,11 +2767,46 @@ token out, twice.
 
 **How often.** At most one pair every **twenty seconds** per model, however fast you
 type — so a long message buys one, not one per keystroke. None at all when the **speed
-guard** is off, when `routing` is `off`, when the lane row says `openrouter`, or when
-the connection pool is already being rate-limited.
+guard** is off, when `routing` is `off`, when the lane row says `openrouter`, when the
+pool is already backing off a rate limit, when aforge is still recovering a dropped
+connection, or when **nobody is waiting on that model** — a task working on its own and
+an errand buy none, because the measurement exists to shorten a wait somebody is sitting
+through.
 
 **Nothing ever waits for it.** It is sent and forgotten; a message you send a moment
 later does not wait on it, and a probe that fails teaches nothing and changes nothing.
+
+**It is not in `/cost`.** It is a real request to a real provider and your provider bills
+you for it, and aforge's own figures do not include it. The next section says why, what
+it adds up to, and where to see it.
+
+## Spend that /cost does not show — why the typing measurement is missing from the figures
+
+There is exactly one request aforge makes that its own money figures do not count: the
+**one-token measurement** it sends while you are typing, to warm the connection and time
+the machine your next message is heading for. Your provider bills you for it. `/cost`,
+the status line, the spend place (`alt+3`) and the total at the end of `aforge do` all
+leave it out, and so do the call-log rows and `aforge-census`.
+
+**Why it is missing.** Those figures are all counts of the **call log**, and the
+measurement deliberately writes no row there — it skips the shaping, the retries and the
+record on purpose, so that what it times is one clean request to one named machine and
+not a retry of one. And it hangs up **at the first word**, so the token count a provider
+sends at the end of a reply never arrives: there is no measured figure to add up, only
+the fixed shape of the request.
+
+**What it comes to.** Ten tokens in and one token out, twice — about **two hundredths of
+a cent** a pair, at most one pair every twenty seconds per model, and only while somebody
+is actually sitting there waiting. An unbroken hour of typing is a few cents. It cannot
+run in the background, and a task working on its own buys none.
+
+**How to see it anyway.** Every measurement it buys is appended to
+`~/.aforge/v3/lanes.log`, one line of JSON each, with the ones bought this way marked as
+probes. That file is the record of what was sent.
+
+**How to make it zero.** Settings → Providers → **speed guard**, off. The same row governs
+asking a second machine when an answer is slow to start, so turning it off stops both.
+`routing off` and a lane row set to `openrouter` also stop it.
 
 ## The lane row in settings — auto, pinned, pinned but borrowable, openrouter
 

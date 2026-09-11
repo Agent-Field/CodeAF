@@ -1993,6 +1993,29 @@ func (f sessionCompleter) CompleteWithMessages(ctx context.Context, messages []a
 	return f.inner.CompleteWithMessages(ctx, messages, options...)
 }
 
+// ProbeLanes passes the keystroke's pre-warm through, and does nothing at all
+// for an inner completer that cannot buy one ([laneProber]).
+//
+// IT IS THE DOOR THIS WRAPPER SWALLOWED. [FallbackModels] below was written
+// against exactly this hazard and the sentence it carries is the whole of why
+// this one is here: the wrapper is the ONE thing every request an agent makes
+// goes through, so an optional door it does not forward is a door the
+// conversation does not have. Nobody forwarded this one, and because
+// [Agent.installSessionClient] wraps on every construction path, the assertion
+// in [Agent.probeClientLanes] had never once succeeded in a built agent — on the
+// default road or in process. The probe that exists so a turn's first token is
+// not also paying for a TLS handshake had therefore never fired at all, and the
+// test that covered it built an Agent literal and skipped the wrapper.
+// [TestTheCompleterWrapperForwardsEveryDoorTheAdapterOffers] is what stops the
+// next one going the same way.
+func (f sessionCompleter) ProbeLanes(ctx context.Context, model string) {
+	prober, ok := f.inner.(laneProber)
+	if !ok {
+		return
+	}
+	prober.ProbeLanes(ctx, model)
+}
+
 // FallbackModels passes the adapter's chain through, and answers nil for an
 // inner completer that has none ([modelChain]).
 //

@@ -331,6 +331,17 @@ type health struct {
 	clean    int
 	millis   []int64
 	failures map[statusClass]int
+	// traced is how many of these finishes said anything about their
+	// connection, and warm how many of those rode one the pool already had.
+	// The pair is kept rather than a rate because a log written by a build
+	// older than the tracing carries neither, and a share computed over rows
+	// that could not answer would read as a cold pool rather than as silence.
+	traced int
+	warm   int
+	// opening is how long the ones that were NOT warm spent resolving,
+	// connecting and shaking hands — the part of `ms` that was never the
+	// model's.
+	opening []int64
 }
 
 // healthSection is the clean-answer rate and median latency of each (model,
@@ -376,6 +387,24 @@ func healthSection(out io.Writer, finishes []row, look settings) {
 		}
 		held.n++
 		counted++
+		// WHAT THE CONNECTION COST, kept beside the answer's own time. A cold
+		// pool and a slow model are the same number in `ms` and in `ttft_ms`,
+		// and these two columns are the whole of the difference
+		// (internal/provider's conntrace.go).
+		if r.ConnReused != nil {
+			held.traced++
+			if *r.ConnReused {
+				held.warm++
+			} else {
+				// A CONNECTION OPENED FRESH COUNTS EVEN WHEN IT COST NOTHING
+				// MEASURABLE. On a fast link the three parts together round to
+				// zero milliseconds, and dropping those rows would leave the
+				// median describing only the expensive handshakes — the
+				// emptiness law is about a figure nobody measured, and this one
+				// was measured and came out small.
+				held.opening = append(held.opening, r.DNSms+r.ConnectMs+r.TLSms)
+			}
+		}
 		class := r.statusClass()
 		if class == classClean {
 			held.clean++
@@ -399,18 +428,32 @@ func healthSection(out io.Writer, finishes []row, look settings) {
 		fmt.Fprint(out, "No pair has been asked enough times to say anything about.\n\n")
 		return
 	}
-	fmt.Fprintln(out, "| model | served | n | ok % | median ms | top failures |")
-	fmt.Fprintln(out, "| --- | --- | ---: | ---: | ---: | --- |")
+	fmt.Fprintln(out, "| model | served | n | ok % | median ms | warm % | opening ms | top failures |")
+	fmt.Fprintln(out, "| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |")
 	for _, held := range ordered {
 		spelledFailures := map[string]int{}
 		for class, n := range held.failures {
 			spelledFailures[string(class)] = n
 		}
-		fmt.Fprintf(out, "| %s | %s | %d | %s | %s | %s |\n",
+		fmt.Fprintf(out, "| %s | %s | %d | %s | %s | %s | %s | %s |\n",
 			cell(held.model), cell(held.machine), held.n,
-			trimShare(held.clean, held.n), median(held.millis), topOf(spelledFailures, 3))
+			trimShare(held.clean, held.n), median(held.millis),
+			warmth(held.warm, held.traced), median(held.opening),
+			topOf(spelledFailures, 3))
 	}
 	fmt.Fprintln(out)
+}
+
+// warmth is how often this pair rode a connection the pool already had, and
+// nothing at all for rows written by a build that did not measure it. THE
+// EMPTINESS LAW MATTERS HERE MORE THAN ANYWHERE ELSE IN THIS TABLE: a zero
+// would read as a pool that is always cold, which is exactly the finding this
+// column exists to report, and reporting it from silence would be a lie.
+func warmth(warm, traced int) string {
+	if traced == 0 {
+		return "—"
+	}
+	return trimShare(warm, traced)
 }
 
 // median is the middle of what was measured, and nothing at all when nothing

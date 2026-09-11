@@ -140,11 +140,19 @@ func TestADeadlineOnALiveConnectionDoesNotSayTheConnectionIsGone(t *testing.T) {
 }
 
 func TestTheCallClassKeepsAKeystrokeOffTheReader(t *testing.T) {
-	if staysOnReader(MethodQuestionResolve) || staysOnReader(MethodTranscript) || staysOnReader(MethodPing) {
-		t.Fatal("a getter or a small act stayed on the reader")
+	for _, method := range []string{MethodQuestionResolve, MethodTranscript, MethodPing, MethodTyping} {
+		if classify(method).road() != onItsOwn {
+			t.Fatalf("%s is a getter or a small act and owes nobody a queue", method)
+		}
 	}
-	if !staysOnReader(MethodSubmit) || !staysOnReader(MethodCompact) || !staysOnReader(MethodSetModel) {
-		t.Fatal("a stream or a shape change left the reader")
+	// AND NOTHING AT ALL RUNS ON THE READER NOW. Everything the engine does
+	// between Submit and the first request leaving used to run there and
+	// everything behind it on this socket waited (callclass.go); what an
+	// ordered call owes is an order, and the lane is what gives it.
+	for _, method := range []string{MethodSubmit, MethodCompact, MethodSetModel} {
+		if classify(method).road() != inOrder {
+			t.Fatalf("%s owes an order and is not on the ordered lane", method)
+		}
 	}
 	// AND AN ACT IS NOT A CLASS OF ITS OWN ON THE CLOCK, which is a law with a
 	// measurement behind it (callclass.go): a longer window for a keystroke buys
