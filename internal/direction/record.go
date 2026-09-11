@@ -28,6 +28,13 @@ type Author struct {
 // Receipt is the authority a revision carries, as stored. It is present
 // exactly on revisions entering accepted, rejected or withdrawn, and on a
 // superseded revision a person made; it is the zero value everywhere else.
+//
+// At, on a receipt this runtime made, is THE WRITE'S TIME: read inside the
+// write transaction once it holds the writer lock, so it is never a caller's
+// clock and receipts on one store order as their commits do. It is not the
+// instant the person answered — that act is named by Ref — and it precedes
+// the commit by at most the transaction's own few statements. An imported
+// receipt keeps the time the old store recorded, or its revision's.
 type Receipt struct {
 	Actor ReceiptActor `json:"actor,omitempty"`
 	Door  Door         `json:"door,omitempty"`

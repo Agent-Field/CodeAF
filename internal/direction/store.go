@@ -42,10 +42,13 @@ func open(opener func(string) (*workspace.Store, error), path string) (*Store, e
 }
 
 // Close releases the handle.
+//
+// THE HANDLE IS NEVER HANDED OUT. The workspace store under it has raw
+// transaction doors that skip every check this package makes, so nothing
+// exported here returns it, a transaction, or anything that reaches either
+// (receipt_law_test.go holds that). A caller that needs the organization
+// opens it with workspace.Open.
 func (s *Store) Close() error { return s.ws.Close() }
-
-// Workspace is the organization half of the same handle.
-func (s *Store) Workspace() *workspace.Store { return s.ws }
 
 // Current returns a record's current revision, whatever its state.
 func (s *Store) Current(ctx context.Context, id string) (Revision, error) {

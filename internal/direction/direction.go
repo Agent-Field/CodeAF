@@ -155,15 +155,25 @@ func (c AuthorClass) writer() bool {
 }
 
 // ReceiptActor is who gave a revision its authority. Only a person receipt is
-// minted now; the two legacy actors exist only on imported revisions, so an
-// old rule keeps governing and stays labelled rather than being dressed up.
+// minted now, and only from a PersonReceipt; the legacy actors exist only on
+// imported revisions, so an old rule keeps governing and stays labelled
+// rather than being dressed up (design §3.2, F9).
 type ReceiptActor string
 
 const (
-	ActorPerson          ReceiptActor = "person"
+	ActorPerson ReceiptActor = "person"
+	// ActorLegacyPerson is an old store's record that a person adopted it
+	// through that store's own door. It is evidence copied, not an act this
+	// runtime saw, so it is never the person.
+	ActorLegacyPerson    ReceiptActor = "legacy_person"
 	ActorLegacyDelegated ReceiptActor = "legacy_delegated"
 	ActorLegacyUnknown   ReceiptActor = "legacy_unknown"
 )
+
+// legacy reports the actors an import may copy.
+func (a ReceiptActor) legacy() bool {
+	return a == ActorLegacyPerson || a == ActorLegacyDelegated || a == ActorLegacyUnknown
+}
 
 // Door is how a receipt reached the runtime.
 type Door string

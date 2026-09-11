@@ -176,9 +176,16 @@ func TestRejectedWordingIsNotProposedAgainByAnyoneButThePerson(t *testing.T) {
 	s := openTest(t)
 	must := musts(t)
 	text := "always copy the whole team on every email"
-	must(s.Reject(ctx, must(s.Propose(ctx, rule(text), As(AuthorExtractor, "tidy"))).Fence(), card(t, "no")))
-	for _, by := range []Actor{As(AuthorExtractor, "tidy"), model, As(AuthorRun, "occurrence-9"), As(AuthorSteward, "s")} {
-		if _, err := s.Propose(ctx, rule(text), by); !errors.Is(err, ErrRejectedText) {
+	must(s.Reject(ctx, must(s.Propose(ctx, rule(text), model)).Fence(), card(t, "no")))
+	// Each writer asks in the one shape §4.1 lets it propose, so the refusal
+	// is the rejected wording and nothing else.
+	extracted := rule(text)
+	extracted.Kind, extracted.QuoteOrigin = Decision, ModelExtracted
+	occurrence := rule(text)
+	occurrence.Source = Source{Class: SourceOccurrence, ID: "occurrence-9"}
+	for by, d := range map[Actor]Draft{As(AuthorExtractor, "tidy"): extracted, model: rule(text),
+		As(AuthorRun, "occurrence-9"): occurrence, As(AuthorSteward, "s"): rule(text)} {
+		if _, err := s.Propose(ctx, d, by); !errors.Is(err, ErrRejectedText) {
 			t.Errorf("%s proposed rejected wording again: %v", by.author.Class, err)
 		}
 	}
@@ -194,9 +201,11 @@ func TestRejectedWordingIsNotProposedAgainByAnyoneButThePerson(t *testing.T) {
 }
 
 // Every bound refuses the request whole, and a refused write stores nothing.
+// The person writes here, so every refusal is a bound and not §4.1.
 func TestBoundsRefuseTheWholeRecord(t *testing.T) {
 	ctx := context.Background()
 	s := openTest(t)
+	person := AsPerson(card(t, "bounds"))
 	targets := make([]Target, MaxTargets+1)
 	for i := range targets {
 		targets[i] = chatTarget(fmt.Sprint("chat-", i))
@@ -239,24 +248,24 @@ func TestBoundsRefuseTheWholeRecord(t *testing.T) {
 			return d
 		}(),
 	} {
-		if _, err := s.Propose(ctx, d, model); !errors.Is(err, ErrInvalid) {
+		if _, err := s.Propose(ctx, d, person); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
 	// Exactly at each bound is accepted.
 	d := rule(strings.Repeat("x", 65536), targets[:MaxTargets]...)
 	d.Exclusions, d.Links, d.Quote = exclusions[:MaxExclusions], links[:MaxLinks], strings.Repeat("q", MaxQuote)
-	if _, err := s.Propose(ctx, d, model); err != nil {
+	if _, err := s.Propose(ctx, d, person); err != nil {
 		t.Fatalf("a record exactly at every bound: %v", err)
 	}
 	// A folder that does not exist, and a link to a record that does not, are
 	// refused too — this store owns both and can say so.
-	if _, err := s.Propose(ctx, rule("x", folderTarget(strings.Repeat("f", 32), Direct)), model); err == nil {
+	if _, err := s.Propose(ctx, rule("x", folderTarget(strings.Repeat("f", 32), Direct)), person); err == nil {
 		t.Error("proposed onto a folder that does not exist")
 	}
 	missing := rule("x")
 	missing.Links = []Link{{Kind: Overrides, To: strings.Repeat("b", 32)}}
-	if _, err := s.Propose(ctx, missing, model); !errors.Is(err, ErrNotFound) {
+	if _, err := s.Propose(ctx, missing, person); !errors.Is(err, ErrNotFound) {
 		t.Errorf("linked to a record that does not exist: %v", err)
 	}
 	var records int
@@ -309,8 +318,9 @@ func TestAStatementReceiptComesOnlyFromThePersonsOwnWords(t *testing.T) {
 }
 
 // Imports are idempotent by content, keep the old identity when told to, copy
-// the old receipt class without promoting it, append when the source changed,
-// and may create what no other writer can: a legacy workspace place.
+// the old receipt class without promoting it, append when a newer version of
+// the source arrives, and may create what no other writer can: a legacy
+// workspace place.
 func TestImportIsIdempotentByContentAndNeverMintsAPerson(t *testing.T) {
 	ctx := context.Background()
 	s := openTest(t)
@@ -343,7 +353,7 @@ func TestImportIsIdempotentByContentAndNeverMintsAPerson(t *testing.T) {
 		t.Fatalf("the imported hold: %+v", rec)
 	}
 	changed := hold
-	changed.Legacy.SHA256 = hash("v2")
+	changed.Legacy.Version, changed.Legacy.SHA256 = "4/1", hash("v2")
 	changed.Revisions = []ImportRevision{hold.Revisions[0]}
 	changed.Revisions[0].Draft.Text = "Reports never include phone numbers or emails."
 	appended, err := s.Import(ctx, run, changed)
@@ -355,8 +365,8 @@ func TestImportIsIdempotentByContentAndNeverMintsAPerson(t *testing.T) {
 	contextID := strings.Repeat("c", 32)
 	ctxItem := ImportItem{Legacy: Legacy{Store: LegacyContexts, ID: contextID, Version: "2", SHA256: hash("ctx")}, ID: contextID,
 		Revisions: []ImportRevision{
-			{Draft: finding("Venue holds 40 people.", chatTarget("chat")), State: Informational},
-			{Draft: finding("Venue holds 40 people.", chatTarget("chat")), State: Withdrawn,
+			{Draft: finding("Venue holds 40 people.", chatTarget("chat")), State: Informational, WrittenAt: created},
+			{Draft: finding("Venue holds 40 people.", chatTarget("chat")), State: Withdrawn, WrittenAt: created.Add(time.Hour),
 				Receipt: Receipt{Actor: ActorLegacyUnknown, Door: DoorMigration, Ref: run.ID}},
 		}}
 	got, err := s.Import(ctx, run, ctxItem)

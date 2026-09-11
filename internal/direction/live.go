@@ -35,6 +35,7 @@ type liveSource struct {
 	hasExclusions bool
 	hasLinks      bool
 	targets       []Target
+	dangling      bool // the pointer names a revision that does not exist
 }
 
 // liveRows IS THE ONE DERIVATION of the live index from a current revision,
@@ -107,17 +108,28 @@ func resolvedLinkKinds() string {
 // expectedLive derives every live row from the revisions. It reads every
 // current revision, so it is for Rebuild and Verify only — repair, never a
 // path a conversation waits on (L6).
+//
+// A POINTER TO NOTHING IS DRIFT, NOT AN EMPTY RECORD. A record whose pointer
+// names a revision that does not exist has no rows to derive, so an inner
+// join would pass it silently while the records themselves are broken; the
+// outer join counts it and both Verify and Rebuild refuse.
 func expectedLive(ctx context.Context, q querier) ([]liveRow, error) {
-	sources, err := collect(ctx, q, `SELECT r.record_id,r.revision,r.kind,r.state,r.written_at,
- EXISTS(SELECT 1 FROM direction_exclusions e WHERE e.record_id=r.record_id AND e.revision=r.revision),
- EXISTS(SELECT 1 FROM direction_links k WHERE k.record_id=r.record_id AND k.revision=r.revision AND k.link_kind IN (`+resolvedLinkKinds()+`))
- FROM direction_records d JOIN direction_revisions r ON r.record_id=d.id AND r.revision=d.revision`, nil,
+	sources, err := collect(ctx, q, `SELECT d.id,d.revision,ifnull(r.kind,''),ifnull(r.state,''),ifnull(r.written_at,''),
+ r.record_id IS NULL,
+ EXISTS(SELECT 1 FROM direction_exclusions e WHERE e.record_id=d.id AND e.revision=d.revision),
+ EXISTS(SELECT 1 FROM direction_links k WHERE k.record_id=d.id AND k.revision=d.revision AND k.link_kind IN (`+resolvedLinkKinds()+`))
+ FROM direction_records d LEFT JOIN direction_revisions r ON r.record_id=d.id AND r.revision=d.revision`, nil,
 		func(row scanner) (liveSource, error) {
 			var src liveSource
-			return src, row.Scan(&src.id, &src.revision, &src.kind, &src.state, &src.writtenAt, &src.hasExclusions, &src.hasLinks)
+			return src, row.Scan(&src.id, &src.revision, &src.kind, &src.state, &src.writtenAt, &src.dangling, &src.hasExclusions, &src.hasLinks)
 		})
 	if err != nil {
 		return nil, err
+	}
+	for _, src := range sources {
+		if src.dangling {
+			return nil, fmt.Errorf("%w: %s points at revision %d, which does not exist", ErrDrift, src.id, src.revision)
+		}
 	}
 	type located struct {
 		id string
