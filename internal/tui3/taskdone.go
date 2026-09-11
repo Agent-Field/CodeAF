@@ -866,6 +866,13 @@ func (a *app) doneDetail(card *taskDone, width int) []string {
 	if len(card.changed) > 0 {
 		say(wrap(doneChangedLabel+strings.Join(card.changed, " · "), room)...)
 	}
+	// AND THE DELIVERY ROWS ARE SILENT OVER WORK THAT HAD NO DELIVERY. A quick
+	// node runs in the folder the person is already in (session's TaskKindQuick):
+	// it publishes no branch, no merge word and usually no changed list, so all
+	// three rows fall away by themselves and the card is its answer and its
+	// facts. That is the emptiness law doing the work, and it is written down
+	// here because "no branch row" is exactly the sort of absence somebody later
+	// mistakes for a bug and fills in.
 	if card.branch != "" {
 		branch := card.branch
 		// THROUGH THE TABLE, NEVER THE TOKEN (task.go's [mergeScreenWords]): the

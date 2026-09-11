@@ -248,14 +248,6 @@ func (a *Agent) controlPlaneFor() *controlPlane {
 	// already refused is a call there is nothing left to say about — and it is a
 	// no-op on every agent that is not inside a task, which is every conversation.
 	plane.register(taskGitGuard{agent: a})
-	// AND A HAND'S ROUND BUDGET, which is a citizen only on a hand (fork.go). It
-	// is registered conditionally rather than made a no-op on every agent because
-	// post-feedback is on the step boundary of every turn this program runs, and
-	// a citizen that did nothing there would still be a lock taken and a slice
-	// walked on each of them.
-	if a.config.handLeash != nil {
-		plane.register(a.config.handLeash)
-	}
 	return plane
 }
 
@@ -383,6 +375,10 @@ func (ep *episode) preAction(ctx context.Context, hub *eventHub, call ai.ToolCal
 	for _, hook := range ep.plane.preAction {
 		rewritten, refused, allowed := hook.PreAction(ctx, ep, hub, call)
 		if !allowed {
+			// WHO SAID NO IS RECORDED HERE, at the one place every veto passes
+			// through, rather than inside each citizen — a hook added next
+			// month cannot forget to name itself.
+			refused.refusedBy = hook.Name()
 			return call, refused, false
 		}
 		call = rewritten

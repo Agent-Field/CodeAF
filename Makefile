@@ -2,7 +2,7 @@
 # anywhere else — so a stale copy can't shadow a fresh one.
 BINARY := bin/aforge
 
-.PHONY: all build build-check debug demo-home embed manual-pack-law furrow test test-focus test-report test-quick test-touched test-touched-preflight pr-ready test-laws fmt-check test-packed-manual test-remote vet check size clean \
+.PHONY: all build build-check debug demo-home embed manual-pack-law furrow test test-focus test-report test-quick test-touched test-touched-preflight pr-ready test-laws fmt-check test-packed-manual test-remote test-e2e test-e2e-tui vet check size clean \
         changelog changelog-new changelog-check changelog-preview
 
 # What the shipped binary is allowed to weigh, in bytes, checked in beside the
@@ -252,6 +252,19 @@ test-packed-manual: embed
 # on the day the pipeline cannot yet run it.
 test-remote:
 	go test -tags docker_e2e -count=1 -run TestRemoteTwoMachines -timeout 20m ./internal/e2e/
+
+# THE AMBIENT SURFACE, ALONE. TestTUIE2E fits in about seventeen minutes; the
+# full tagged package does not fit in forty (ManualOnTheWire, QuestionsE2E and
+# the roomfeed twins run first and eat the budget). This is the door for the
+# seventeen-minute ambient proof. Needs OPENROUTER_API_KEY, tmux and bin/aforge.
+test-e2e-tui: build
+	go test -tags e2e -count=1 -timeout 40m -v -run '^TestTUIE2E$$' ./internal/e2e/
+
+# THE WHOLE TAGGED PACKAGE. Two hours is the measured fit on Spark once every
+# live-model lane is included; prefer test-e2e-tui when only the ambient surface
+# is under change.
+test-e2e: build
+	go test -tags e2e -count=1 -timeout 120m -v ./internal/e2e/
 
 # ── the demo home ───────────────────────────────────────────────────────────
 #

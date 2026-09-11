@@ -3,8 +3,10 @@ package session
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // YOUR OWN COPIES OF THE FILES THE TASK WROTE.
@@ -65,7 +67,7 @@ func TestALandingWillNotMoveYourUntrackedCopiesByItself(t *testing.T) {
 	// watching it at all, which is the whole of the shape.
 	writeFile(t, filepath.Join(repo, "sheet.md"), "my own draft\n")
 
-	merge, detail, clashing, why := tree.comeHome("write the sheet", []string{"sheet.md"})
+	merge, detail, clashing, why := tree.comeHome("write the sheet", []string{"sheet.md"}, false)
 	if merge != mergeConflicted {
 		t.Fatalf("merge = %q (%s), want it refused", merge, detail)
 	}
@@ -94,7 +96,7 @@ func TestTheirWordCarriesTheirCopiesAsideAndKeepsBoth(t *testing.T) {
 	writeFile(t, filepath.Join(repo, "sheet.md"), "my own draft\n")
 	writeFile(t, filepath.Join(repo, "notes.md"), "my own notes\n")
 
-	merge, detail, _, _ := carryOnTheirWord(tree).comeHome("write the sheet", []string{"sheet.md", "notes.md"})
+	merge, detail, _, _ := carryOnTheirWord(tree).comeHome("write the sheet", []string{"sheet.md", "notes.md"}, false)
 	if !cameHome(merge) {
 		t.Fatalf("merge = %q (%s), want it home on their word", merge, detail)
 	}
@@ -129,7 +131,7 @@ func TestACarriedCopyThatDoesNotClashGoesStraightBack(t *testing.T) {
 	_ = os.Remove(filepath.Join(tree.dir, "sheet.md"))
 	writeFile(t, filepath.Join(tree.dir, "other.md"), "the task's other file\n")
 
-	merge, detail, _, _ := carryOnTheirWord(tree).comeHome("write the sheet", []string{"other.md"})
+	merge, detail, _, _ := carryOnTheirWord(tree).comeHome("write the sheet", []string{"other.md"}, false)
 	if !cameHome(merge) {
 		t.Fatalf("merge = %q (%s), want it home", merge, detail)
 	}
@@ -279,6 +281,96 @@ func TestALandingRaisesItsQuestionAndTakesItBack(t *testing.T) {
 	case again := <-lane:
 		t.Fatalf("a settled node published %v again", again.Kind)
 	default:
+	}
+}
+
+// A LANDING ANSWER REACHES EVERY WATCHER EVEN WHEN NOTHING WAS BANKED. The
+// raise used to emit without rememberQuestion, so ResolveQuestion saw
+// said=false and skipped EventQuestionAnswered — the window that sent the
+// answer closed itself, a --host replica that only dropped on answered kept
+// drawing the open question.
+func TestALandingAnswerEmitsEvenWhenNothingWasBanked(t *testing.T) {
+	agent := quietAgent(t)
+	graph := stubbedGraph(agent, func(node *TaskNode) {})
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "write the sheet", brief: "b", acceptance: "a"})
+	node := graph.node(id)
+	node.finish(yourCallLead(TaskFacts{Merge: mergeInPlace})+"nobody could check it in 5m0s",
+		[]string{"sheet.md"}, "", mergeInPlace)
+	node.graph.mu.Lock()
+	node.Ground = agent.config.Workspace
+	node.Mode = TaskModeFolder
+	node.graph.mu.Unlock()
+	graph.complete(node, TaskUnverified)
+
+	lane, stop := agent.WatchQuestions()
+	defer stop()
+	// Drain the OpenQuestions replay (and any raise publishLandingQuestion
+	// already put out) so the assert below is about the answer event.
+	deadline := time.Now().Add(200 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		select {
+		case <-lane:
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+	// Forget any bank the raise left, so this is the unbanked road the --host
+	// replica hit: claimQuestion answers false and the answered event must
+	// still fire.
+	agent.mu.Lock()
+	delete(agent.questionWords, questionToken(QuestionLanding, strconv.FormatUint(id, 10)))
+	agent.mu.Unlock()
+
+	if err := agent.ResolveQuestion(Answer{
+		Kind: QuestionLanding, ID: id, Key: LandingYesKey, Picked: []string{LandingYesKey},
+	}); err != nil {
+		t.Fatalf("ResolveQuestion: %v", err)
+	}
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		select {
+		case ev := <-lane:
+			if ev.Kind != EventQuestionAnswered {
+				continue
+			}
+			if ev.Answer == nil || ev.Answer.FirstKey() != LandingYesKey {
+				t.Fatalf("answered event carried %+v", ev.Answer)
+			}
+			if ev.Question == nil || ev.Question.ID != id {
+				t.Fatalf("the answered event carried %+v", ev.Question)
+			}
+			return
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	t.Fatal("no EventQuestionAnswered after an unbanked landing accept")
+}
+
+// A SETTLED LANDING STILL WITHDRAWS WHEN THE STANDING MAP WAS EMPTY. Restored
+// graphs and WatchQuestions replay leave landingAsked blank while the surface
+// still draws the derived question; settle must take it back from the bank.
+func TestASettledLandingWithdrawsFromTheBankAlone(t *testing.T) {
+	agent := &Agent{}
+	lane, stop := agent.WatchQuestions()
+	defer stop()
+
+	q := agent.landingQuestion(PendingDecision{Notice: TaskNotice{
+		ID: 7, Title: "write the sheet", State: TaskUnverified, Merge: mergeInPlace,
+	}})
+	_ = agent.rememberQuestion(q)
+	agent.emitQuestion(EventQuestion, q, nil)
+	raised := <-lane
+	if raised.Kind != EventQuestion {
+		t.Fatalf("raise published %v", raised.Kind)
+	}
+	if agent.landingAsked(7) != "" {
+		t.Fatalf("fixture must leave landingAsked empty, got %q", agent.landingAsked(7))
+	}
+
+	agent.publishLandingQuestion(TaskNotice{ID: 7, Title: "write the sheet", State: TaskDone, Merge: mergeMerged})
+	gone := <-lane
+	if gone.Kind != EventQuestionWithdrawn || gone.Question == nil || gone.Question.Kind != QuestionLanding {
+		t.Fatalf("settle retired %v on %+v", gone.Kind, gone.Question)
 	}
 }
 

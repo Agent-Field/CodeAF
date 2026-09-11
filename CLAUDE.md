@@ -24,15 +24,16 @@ carry vocabulary or assumptions between them.
 `dev` is the trunk and the default branch. Five rules, and they are here rather
 than only in `docs/rules/` because they are the ones that must never be looked up:
 
-- **Branch off `dev`, and open the pull request against `dev`.** Never against
-  `main`, which is parked fifteen hundred commits back at the released v0.1.0.
+- **Branch off `dev`, and open the pull request against `dev`.** `main` is the
+  release pointer, not a place feature work lands.
 - **Never push directly to `dev`, `staging` or `main`, and never force-push any
-  of the three.**
-- **`staging` moves by fast-forward onto a commit that is already on `dev`** —
-  `git push origin <sha>:staging`, never a merge. `main` is not in the pipeline
-  yet and nothing promotes to it.
-- **Nothing publishes by itself.** A release is a semver tag on a commit that is
-  on `staging`, cut by a person; the workflow refuses a tag that is anywhere else.
+  of the three.** Promotion is the deliberate fast-forward below.
+- **`staging` and `main` move by fast-forward onto tested `dev` history** —
+  `git push origin <sha>:staging`, then `git push origin <sha>:main`, never a merge.
+- **Pushes publish channel builds.** `dev` and `staging` publish their named
+  channels; `main` publishes an rc. A person cuts stable by dispatching `Release`
+  on `main`. The workflow refuses rc or stable commits not already on `staging`,
+  and staging commits not already on `dev`.
 - **Every pull request carries a change entry** in `docs/changes/unreleased/` —
   `make changelog-new PR=<n> KIND=<kind> SLUG=<slug>`, and the `check` job
   demands it.
@@ -293,15 +294,25 @@ terminal against a real model, and it is how a wave verifies that the surface
 still behaves:
 
 ```sh
-go test -tags e2e -count=1 -timeout 40m -v ./internal/e2e/
-go test -tags e2e -run TestTUIE2E -count=1 -timeout 40m -v ./internal/e2e/   # just the nine TUI subtests
+make test-e2e-tui                                              # TestTUIE2E alone, ~17m, 40m ceiling
+make test-e2e                                                 # whole tagged package, 120m ceiling
+go test -tags e2e -run TestTUIE2E -count=1 -timeout 40m -v ./internal/e2e/
 ```
 
-It needs `OPENROUTER_API_KEY` and `tmux`, costs a few cents, and takes about
-**seventeen minutes** for the whole tagged package (`TestTUIE2E` alone is about
-ten, most of it one subtest waiting out a five-minute standing pass). It SKIPS
+It needs a provider key and `tmux`, costs a few cents. `TestTUIE2E` alone is
+about **seventeen minutes** (most of it one subtest waiting out a five-minute
+standing pass). The whole tagged package does not fit in forty minutes —
+ManualOnTheWire, QuestionsE2E and the roomfeed twins run first and eat the
+budget — so `make test-e2e` gives it two hours. It SKIPS
 rather than fails with no key, no tmux or no `bin/aforge`, so run `make build`
-first. Iterate one subtest at a time — `-run 'TestTUIE2E/<name>'` — rather than
+first. **The key is resolved the way the product resolves one** — `liveKey` in
+`internal/e2e/livekey_test.go` goes through `config.APIKeyAt`, so
+`OPENROUTER_API_KEY`, `OPENAI_API_KEY` and the profile's own `api_key` row all
+run the suite. Gating on the variable alone skipped on every machine whose key
+was pasted into the first-run setup, and a skipped end-to-end suite reports
+green without running (#576); the untagged
+`TestEveryLaneAsksForItsKeyTheWayTheProductDoes` fails a lane that reads a key
+variable itself. Iterate one subtest at a time — `-run 'TestTUIE2E/<name>'` — rather than
 paying for the whole thing, and capture the output to a file: the screens it logs
 are far too wide to read through a pipe.
 

@@ -177,7 +177,7 @@ change what Enter opens. Without color both markers remain visible; ASCII mode u
 straight corners and a plain dot. Short windows give up inner vertical space before
 the selected row.
 
-## Why does my tab say Untitled — when does a chat get its name, my new chat has no title, the tab says Untitled instead of the conversation name
+## Why does my tab say Untitled — when does a chat get its name, how do I rename this conversation, my new chat has no title, the tab says Untitled instead of the conversation name
 
 **Naming starts when your first message is accepted.** The small model on the `title`
 role works in the background alongside the answer. Each naming ask has twenty seconds to

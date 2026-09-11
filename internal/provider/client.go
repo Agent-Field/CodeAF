@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/lane/control"
+	"github.com/Agent-Field/aforge-v2/internal/trace"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -467,6 +468,13 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	// answers a refusal by sending a different request has to write the refused
 	// one down first (calllog.go's logNow, and [Client.widenPastTheRetiredPin]).
 	began := logNow()
+	// THE RACE'S OWN LADDER ARM SKIPS STRAIGHT TO THE LADDER (hedge.go's
+	// [hedgeRace.exhausted]). The request as it stands has already been refused
+	// by the arm that deferred it, so sending it again would pay the same 404 to
+	// learn nothing; what is owed is the climb.
+	if first, owed := ladderOwedFrom(ctx); owed {
+		return c.recoverFromRefusal(ctx, request, knobs, stream, first)
+	}
 	response, err := c.sendRepaired(ctx, request, knobs, stream)
 	if err != nil {
 		return c.recoverFromPacing(ctx, request, knobs, stream, err)
@@ -521,13 +529,20 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	// contribution. Concurrent calls and expiring cooldowns may have changed
 	// the shared ledger by the time the refusal returns.
 	sent := refusedWirePreferences(response)
-	if c.velocity != nil && ignoredEverything(peek) && sent != nil && len(sent.Ignore) > 0 {
+	if c.velocity != nil && listEmptied(peek) && sent != nil && len(sent.Ignore) > 0 {
 		c.velocity.refuseCoveringIgnore(model)
 		// A demand defines its own set and says nothing about other machines.
 		if len(sent.Only) == 0 {
 			c.velocity.learnUnreachable(model, sent.Ignore)
 		}
 	}
+	// AND A REFUSAL THE ACCOUNT'S OWN SETTINGS CAUSED IS LEARNED EVEN WHEN IT
+	// NAMES NO MACHINE (accountset.go). A demanded machine is filed by the strike
+	// above; a request with no demand — a ceiling and a ranking — is refused about
+	// the set its filters left, and when the router's count of that set and the
+	// sheet's agree exactly, those machines are the account's to exclude. Without
+	// this, the ceiling that only they fit under was sent again on every turn.
+	learnExcludedFromTheSet(model, sent, peek)
 
 	// AND THE SECOND IS A PERSON'S OWN PIN (lanepin.go, issue #456). A pin the
 	// router says it cannot serve for this model is stood down for that model,
@@ -559,13 +574,25 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	// evidence really is about the request rather than the endpoint.
 	// That is rungs two and three of the ladder in docs/ARCHITECTURE.md, in the
 	// order they are written down.
-	if streamWatchFrom(ctx).canWalk() {
+	//
+	// AND THE HAND-OFF IS WRITTEN DOWN ON THE RACE, because it is a promise and
+	// until 2026-09-10 nobody held it. `canWalk` is a PREDICTION that the walk
+	// will carry this refusal; the walk can still decline, and a later arm can
+	// die of something that never reaches this door — the measured race's last
+	// arm died of a 429 — so the ladder the prediction deferred was skipped and
+	// the person got the router's sentence. The race now owns that question:
+	// when every arm is dead and nobody committed, a ladder this door deferred
+	// and nobody ran is run by the race itself (hedge.go's [hedgeRace.exhausted]).
+	watch := streamWatchFrom(ctx)
+	if watch.canWalk() {
+		watch.deferLadder(peek)
 		return &http.Response{
 			StatusCode: response.StatusCode,
 			Header:     response.Header,
 			Body:       rewound(peek, io.NopCloser(strings.NewReader(""))),
 		}, nil
 	}
+	watch.ranLadder()
 	return c.recoverFromRefusal(ctx, request, knobs, stream, peek)
 }
 
@@ -1392,6 +1419,16 @@ func (c *Client) completeWithMessagesStreaming(
 	// counts come from. Zero until one arrives, which is "the provider did not
 	// break its output down" and never "it did not think".
 	reasoningTokens := 0
+	// The working itself, kept ONLY while somebody is recording this run
+	// (internal/trace). A streamed answer is assembled from its frames and the
+	// thinking is never part of the assembled reply, so this is the one moment
+	// the record can see it at all — and holding a model's whole deliberation
+	// in memory on every ordinary run, for nobody, is exactly the cost the
+	// switch exists to avoid.
+	var thoughtRecord *strings.Builder
+	if trace.For(ctx) != nil {
+		thoughtRecord = &strings.Builder{}
+	}
 
 	// Read once per call rather than once per event: the session does not
 	// change mid-stream, and this loop already runs against the connection's
@@ -1733,6 +1770,9 @@ func (c *Client) completeWithMessagesStreaming(
 				for _, event := range events[:count] {
 					event.Session = session
 					split.reasoning(event.Delta)
+					if thoughtRecord != nil {
+						thoughtRecord.WriteString(event.Delta)
+					}
 					observer(event)
 					if thoughts != nil && event.Delta != "" && thoughts.write(event.Delta) {
 						return soup()
@@ -1756,6 +1796,9 @@ func (c *Client) completeWithMessagesStreaming(
 					// folded back like any other (answer.go, and the close above).
 					thinking, thoughtBegan = true, c.clock()
 					observer(StreamEvent{Kind: StreamThinking, Session: session})
+				}
+				if thoughtRecord != nil {
+					thoughtRecord.WriteString(workingText)
 				}
 				observer(StreamEvent{Kind: StreamReasoning, Delta: workingText, FromAnswer: true, Session: session})
 			}
@@ -1914,6 +1957,7 @@ func (c *Client) completeWithMessagesStreaming(
 		ctx: ctx, request: request, knobs: knobs, stream: true,
 		began: logBegan, status: httpResponse.StatusCode, served: served,
 		response: response, reasoningTokens: reasoningTokens, learned: learned,
+		reasoning: builtString(thoughtRecord),
 	})
 	// Both paths or neither, exactly as the learning above: a streamed answer
 	// is billed by the provider the same way a whole-body one is, and a ledger
@@ -2178,6 +2222,15 @@ type APIError struct {
 	// [maxRawClip]. It is the sentence that says what the 400 actually was, and
 	// it is the one thing "Provider returned error" never contains.
 	Raw string
+	// Routing says the ROUTER emptied the endpoint set for this request — a
+	// list, a policy, a price ceiling or a demand left it nothing to ask — so
+	// another machine or another model can serve the same bytes. It is decided
+	// ONCE, by the refusal classifier at the refusal door (refusalobject.go,
+	// [Client.refuseUpstream]), and carried here so that nobody downstream has
+	// to decide it again from the sentence: it is the difference between "try
+	// somewhere else" and "our own request is wrong", which [APIError.OurRequest]
+	// and internal/taxonomy both read.
+	Routing bool
 }
 
 // Error keeps the SDK's exact error phrasing, and names the upstream when the
@@ -2228,8 +2281,14 @@ func (e *APIError) FromUpstream() bool {
 // — spends the deadline to be told the same thing. 429 is excluded because it is
 // pacing rather than a verdict on the request, and it has its own patience
 // (retry.go).
+//
+// AND A ROUTING REFUSAL IS NOT OURS EITHER ([APIError.Routing]). It names no
+// upstream for the same reason our own malformed bytes name none — nobody was
+// asked — and that is the only thing the two have in common: this one is a
+// list or a setting that emptied the set, and the measured turn of 2026-09-10
+// ended on "the request itself was refused" because the two were read as one.
 func (e *APIError) OurRequest() bool {
-	if e == nil || e.FromUpstream() {
+	if e == nil || e.FromUpstream() || e.Routing {
 		return false
 	}
 	return e.Status >= 400 && e.Status < 500 && e.Status != http.StatusTooManyRequests
@@ -2244,6 +2303,25 @@ func RefusalFrom(err error) (*APIError, bool) {
 		return refusal, true
 	}
 	return nil, false
+}
+
+// RoutingRefusal reports that an error is the router saying NOTHING IT CAN
+// REACH will serve this request as it stands — and that somewhere else still
+// can: another machine once the list comes off, another model after that. It is
+// the typed fact [APIError.Routing] carries, asked from anywhere in a chain.
+//
+// A SPENT LADDER IS NOT ONE. [RefusalError] is what the endpoint ladder returns
+// once it has relaxed the request, dropped the ceiling and walked the fallback
+// models without an answer; it wraps the router's last refusal, and reading
+// THAT as somewhere left to go would send a caller round the whole ladder again
+// to be told the same thing. What it carries is a diagnosis for a person.
+func RoutingRefusal(err error) bool {
+	var spent *RefusalError
+	if errors.As(err, &spent) {
+		return false
+	}
+	refusal, ok := RefusalFrom(err)
+	return ok && refusal.Routing
 }
 
 // firstSentence is the readable head of an upstream body: its first sentence, or

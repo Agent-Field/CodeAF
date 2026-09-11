@@ -47,8 +47,9 @@
 //	go test -tags e2e -run 'TestQuestionsE2E/ALine' -count=1 -timeout 15m -v ./internal/e2e/
 //	go test -tags e2e -run TestQuestionsE2E -count=1 -timeout 90m -v ./internal/e2e/
 //
-// It SKIPS rather than fails with no OPENROUTER_API_KEY, no tmux or no
-// bin/aforge, exactly as the suite beside it does.
+// It SKIPS rather than fails with no provider key, no tmux or no bin/aforge,
+// exactly as the suite beside it does — and the key is resolved by the product's
+// own three roads, through [liveKey].
 package e2e
 
 import (
@@ -941,7 +942,7 @@ func questionsHeadless(t *testing.T) {
 			`pick {"key":"1"}.`)
 	command.Dir = ws
 	command.Env = append(os.Environ(), "AFORGE_HOME="+home,
-		"OPENROUTER_API_KEY="+strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY")))
+		config.APIKeyEnv+"="+liveKey(t))
 	out, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("aforge chat --once: %v\n%s", err, out)

@@ -159,6 +159,7 @@ func transcriptFrom(replayed replayedSession, err error) Record {
 		delivered: replayed.delivered,
 		steers:    replayed.steers,
 		captions:  replayed.captions,
+		tooks:     replayed.tooks,
 	}
 	overlap := replayed.overlap
 	if overlap > len(replayed.messages) {

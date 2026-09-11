@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -29,19 +30,34 @@ import (
 // window. `behind` describes a position on a screen nobody can see, which makes
 // it furniture; `open` describes what is true.
 
-// THERE IS NO CAP ON HOW MANY CONVERSATIONS THIS PROCESS HOLDS. There was one —
-// eight — and its own comment said that a cap hit in practice by somebody who
-// was not testing it is evidence the number is wrong. It was hit in a day of
-// ordinary use, and the owner's ruling on 2026-08-31 was to remove the limit
-// rather than to raise it: "that is pointless".
+// NO DOOR ONTO A CONVERSATION IS EVER REFUSED FOR HOW MANY ARE ALREADY OPEN.
+// There was a cap — eight — and its own comment said that a cap hit in practice
+// by somebody who was not testing it is evidence the number is wrong. It was hit
+// in a day of ordinary use, and the owner's ruling on 2026-08-31 was to remove
+// the limit rather than to raise it: "that is pointless". That ruling stands, and
+// nothing below is a limit: the fiftieth `/new` opens exactly like the first.
 //
-// WHAT ONE OPEN CONVERSATION COSTS is still what it always was — a few
-// goroutines, its transcript, one file descriptor and a five-second presence
-// tick — and nothing evicts. So the memory of a window grows with the number of
-// conversations somebody opens, and stops growing when they stop; `/quit` and
-// `ctrl+w` on the switcher are what give one back. A future lane that wants a
-// number here should read that history first: a limit is not the answer to a
-// cost nobody has measured being a problem.
+// WHAT ONE OPEN CONVERSATION COSTS is what it always was — a few goroutines, its
+// transcript, one file descriptor, a five-second presence tick and its
+// transcript's lock. What used to be true of that cost is that NOTHING GAVE IT
+// BACK except a person's own `/quit` or `ctrl+w`, so a window left running for a
+// day grew with every conversation somebody had opened in it and never shrank.
+//
+// SO THE KEEPER SWEEPS ITS COLDEST QUIET CONVERSATION INSTEAD OF REFUSING A NEW
+// ONE ([app.sweepKept]). Past [keptCeiling] open, the conversation that has been
+// left the longest is let go of — but ONLY if letting go of it costs the person
+// nothing: nothing turning in it, nothing waiting on them, no news they have not
+// seen, no words of theirs still in its box ([app.keptQuiet] is the whole list).
+// Where no held conversation answers that, the window goes on holding more than
+// the ceiling. A REFUSAL AND A CLOSE ARE BOTH WORSE THAN A NUMBER BEING EXCEEDED,
+// which is the trade this design makes and the reason the ceiling is soft.
+//
+// AND LETTING GO IS NOT ENDING SOMEBODY'S WORK. It goes through [leaveAgent], the
+// same judgement `quit` makes: a hosted conversation is detached and goes on
+// running on its engine, and an in-process one — which nothing else could run —
+// is closed. Either way its transcript is on disk and every door reopens it.
+// The keeper forgets the conversation on the frame; the agent is taken off
+// afterwards ([leaveOffFrame]), so Interrupt and Close cannot stall a keystroke.
 
 // WorkspaceGoneWord is what any door says about a workspace that is not there.
 // It names the path the caller gave and nothing beyond it, because the caller is
@@ -301,8 +317,18 @@ func (w *behindWatch) landedSince() int {
 }
 
 // stop ends the watcher and gives every lane back. Calling it twice is calling
-// it once.
-func (w *behindWatch) stop() { w.once.Do(func() { close(w.quit) }) }
+// it once. A watcher that was never started — a test double, or a nil one —
+// is already stopped.
+func (w *behindWatch) stop() {
+	if w == nil {
+		return
+	}
+	w.once.Do(func() {
+		if w.quit != nil {
+			close(w.quit)
+		}
+	})
+}
 
 // startBehindWatch subscribes to everything this agent has and drains it.
 func startBehindWatch(key string, agent Agent, out chan<- behindStirMsg) *behindWatch {
@@ -560,6 +586,13 @@ func (a *app) behindStir(note behindStirMsg) tea.Cmd {
 	case landed:
 		banner = a.notifyBehind(held, notifyDoneWord)
 	}
+	// A CONVERSATION THAT HAS JUST STOPPED WORKING IS THE OTHER MOMENT THE SWEEP
+	// CAN ACT, and without it a window left holding cold conversations only ever
+	// collects one when somebody opens another (this surface has no idle ticker).
+	// The conversation this stir came from cannot be what it takes: a stir that
+	// raised either banner above raised it because there is a question in there or
+	// a turn landed in it, and [app.keptQuiet] refuses both.
+	a.sweepKept()
 	return tea.Batch(next, banner)
 }
 
@@ -624,6 +657,11 @@ func (a *app) stow(conv Conversation, side *aside) {
 		watch: startBehindWatch(key, conv.Agent, a.stirs),
 	}
 	a.rememberOpen(key)
+	// AND THE KEEPER GIVES BACK WHAT IT CAN, on the one keystroke that grew it. The
+	// conversation just stowed is the youngest thing in there and can never be
+	// what the sweep takes ([keptIdleGrace]), so this collects a conversation
+	// somebody stopped thinking about rather than the one they just left.
+	a.sweepKept()
 }
 
 // rememberOpen puts a key on top of the previous-stack, which is the order `tab`
@@ -959,9 +997,10 @@ func (a *app) leaveFront(let func(Agent), say bool) (tea.Cmd, bool) {
 // PARALLEL BECAUSE THE GRACES OVERLAP RATHER THAN SUM. [session.Agent.Close] is
 // bounded on every axis and its phases are sequential, so a row of closes is
 // that many times the wait — and every one of those clocks exists precisely so a
-// quit never waits on somebody else's courtesy. Nothing caps how many
-// conversations a window holds, so a serial quit would get slower the more of
-// them somebody had open; this one does not.
+// quit never waits on somebody else's courtesy. The keeper's ceiling is soft
+// and a window can hold more conversations than the switcher draws, so a
+// serial quit would get slower the more of them somebody had open; this one
+// does not.
 func (a *app) leaveEverything() {
 	agents := make([]Agent, 0, len(a.behind)+1)
 	if a.agent != nil {
@@ -995,6 +1034,15 @@ func leaveAgent(agent Agent) {
 	}
 	agent.InterruptFor(session.StopByLeaving)
 	_ = agent.Close()
+}
+
+// leaveOffFrame is [leaveAgent] started away from the caller. Detach and
+// Interrupt-and-Close can wait; the update path cannot. [app.leaveEverything]
+// starts the same work in a goroutine and waits, because the process is going
+// away. The sweep only starts it — the keeper has already forgotten the
+// conversation, and a keystroke is not charged for the close.
+func leaveOffFrame(agent Agent) {
+	go leaveAgent(agent)
 }
 
 // workOutlivesExit reports whether this conversation's work would keep going
@@ -1080,20 +1128,183 @@ func (a *app) closeKept(file string) bool {
 	if key == "" || held == nil {
 		return false
 	}
+	a.letGoKept(key, held, func(agent Agent) {
+		agent.InterruptFor(session.StopByLeaving)
+		if err := agent.Close(); err != nil {
+			a.note("close failed: " + err.Error())
+		}
+	})
+	return true
+}
+
+// letGoKept is the bookkeeping every road out of the keeper shares, with WHAT
+// LETTING GO MEANS left to the caller — the one thing a person's `ctrl+w` and the
+// sweep below do not agree about. It is [app.leaveFront]'s shape said for a
+// conversation nobody is looking at, and for its reason: a second copy of these
+// five lines would be the second answer to whether a steer still waiting on a
+// write may cross into the conversation that replaced this one.
+func (a *app) letGoKept(key string, held *kept, let func(Agent)) {
 	delete(a.behind, key)
 	a.forget(key)
 	// Its unsettled corrections go before its record is cleared, for
 	// [app.closeFront]'s reason.
 	a.forgetSteerOwner(draftOwnerOf(a.host, held.conv.Workspace, held.conv.SessionFile))
-	held.watch.stop()
+	if held.watch != nil {
+		held.watch.stop()
+	}
 	if held.conv.Agent != nil {
-		held.conv.Agent.InterruptFor(session.StopByLeaving)
-		if err := held.conv.Agent.Close(); err != nil {
-			a.note("close failed: " + err.Error())
-		}
+		let(held.conv.Agent)
 	}
 	if held.conv.DraftFile != "" {
 		dropDraftFile(held.conv.DraftFile)
 	}
-	return true
+}
+
+// ── the sweep: what gives a conversation's cost back ────────────────────────
+
+// keptCeiling is how many conversations this window holds — the one on screen and
+// every one in the keeper — before the sweep starts looking for one to let go of.
+//
+// IT IS A CEILING AND NOT A CAP, and the difference is the whole of the design
+// above: nothing is ever refused for this number, and a window whose held
+// conversations are all busy sails past it. The number is the switcher card's
+// own row count ([hopShown]): a person who can see every conversation they have
+// open on one card has not lost track of any of them, and the first one this
+// sweep can take is by definition one they have not looked at in a quarter of
+// an hour.
+const keptCeiling = hopShown
+
+// keptIdleGrace is how long a conversation has to have been left alone before the
+// sweep will consider it, measured from the moment it was detached ([aside.since])
+// — which is the same figure the switcher's row draws as "since you last looked".
+//
+// FIFTEEN MINUTES IS LONG ENOUGH THAT SWITCHING AROUND COSTS NOTHING. Somebody
+// working across four projects is in and out of each of them inside a minute, and
+// every one of those conversations is younger than this grace, so the sweep never
+// reaches them however many are open. What it reaches is the conversation opened
+// before lunch and not thought about since.
+const keptIdleGrace = 15 * time.Minute
+
+// The two sentences the sweep says, and they differ in the only fact a person
+// would act on: whether the work in there went with it.
+const (
+	keptSweptWord     = "quiet a while — open it again from home"
+	keptSweptOnWord   = "quiet a while — its work keeps running"
+	keptSweptNameWord = "let go · "
+)
+
+// sweepKept lets go of the coldest quiet conversations this window holds until it
+// is back under [keptCeiling], and does nothing at all when none of them can be
+// let go of without costing the person something.
+//
+// THE ORDER IS COLDEST FIRST, and it is [app.prev]'s own order read from the
+// bottom: that stack is the conversations this window has been in, most recent
+// last ([app.rememberOpen]), so walking it forwards is walking from the one left
+// longest ago. Keys it holds that the keeper does not are stepped over — the
+// conversation in front is on that stack too, and it is never a candidate.
+//
+// IT IS CALLED WHERE THE TWO FACTS IT READS CHANGE, and nowhere else: [app.stow],
+// which is the only place the keeper grows, and [app.behindStir], which is where
+// a conversation says it has stopped working. There is no idle ticker on this
+// surface and this is not the lane that gets one (render.go) — so a window left
+// completely alone keeps what it holds, and the first keystroke that opens
+// another conversation is what collects it.
+//
+// THE AGENT LEAVES OFF THIS FRAME. Both callers sit on Bubble Tea's update
+// path, and [leaveAgent] is the same wait `quit` makes — a Detach on a hosted
+// conversation, Interrupt and Close on an in-process one. The keeper forgets
+// the conversation here so the ceiling and the switcher move on this keystroke;
+// the agent is taken off afterwards ([leaveOffFrame]), the way
+// [app.leaveEverything] already starts that work in a goroutine.
+func (a *app) sweepKept() {
+	if len(a.behind) == 0 {
+		return
+	}
+	now := a.now()
+	for a.openCount() > keptCeiling {
+		key, held := a.coldestQuiet(now)
+		if held == nil {
+			return
+		}
+		// Both read while the conversation is still held, and said after it is
+		// gone: the name comes off its own agent, and whether its work outlives
+		// this window is what picks the sentence (quitarm.go's own question).
+		name, running := hopTitle(held.conv.Agent, held.side), workOutlivesExit(held.conv.Agent)
+		a.letGoKept(key, held, leaveOffFrame)
+		said := keptSweptWord
+		if running {
+			said = keptSweptOnWord
+		}
+		a.note(keptSweptNameWord + name + " — " + said)
+		a.touch()
+	}
+}
+
+// coldestQuiet is the held conversation that has been left the longest and can be
+// let go of for nothing, or no conversation at all.
+func (a *app) coldestQuiet(now time.Time) (string, *kept) {
+	for _, key := range a.prev {
+		held := a.behind[key]
+		if held != nil && a.keptQuiet(held, now) {
+			return key, held
+		}
+	}
+	return "", nil
+}
+
+// keptQuiet is the whole list of what makes a held conversation free to let go
+// of, and EVERY LINE OF IT IS A REASON NOT TO. A conversation that fails one of
+// them is one whose person would come back to something missing, so the sweep
+// leaves it alone and the window holds more than the ceiling instead.
+//
+// NOTHING HERE OPENS A FILE OR CROSSES A WIRE. The work a conversation is doing is
+// read off its watcher's cached flags, which the drain already computes for the
+// tab strip (tabsignal.go's law), and never from [session.Agent.TaskIndex], which
+// reads a file, or from a presence file written on a five-second heartbeat. The
+// one door it does knock on is [session.Agent.NeedsPerson], because a question is
+// the fact this must not be wrong about and the watcher's copy of it is only as
+// fresh as the last edge it saw.
+//
+// A CONVERSATION WITH NO WATCHER IS NEVER SWEPT. That is a conversation over a
+// shared handle, or one this window only remembers, and an unset flag on it is
+// "nothing known" rather than "nothing running" — the tab strip's own law about
+// what an absent watcher is allowed to claim.
+func (a *app) keptQuiet(held *kept, now time.Time) bool {
+	if held == nil || held.watch == nil || held.conv.Agent == nil {
+		return false
+	}
+	w := held.watch
+	// A conversation another window has asked for or has already opened is
+	// leaving by its own road, with its own sentence; the sweep does not race
+	// those two endings (takeover.go).
+	if w.takeover.Load() || w.moved.Load() {
+		return false
+	}
+	// Work in flight, of any of the four kinds this surface knows about.
+	if w.turning.Load() || w.tasking.Load() || w.jobbing.Load() {
+		return false
+	}
+	// A question, and news of a turn that ended in there that the person has not
+	// been shown yet. Letting either go would be throwing away the very thing
+	// they left the conversation open for.
+	if w.waits.Load() || needsPerson(held.conv.Agent) {
+		return false
+	}
+	if w.landed.Load() || w.landedSince() > 0 {
+		return false
+	}
+	// AND THE WORDS IN ITS BOX ARE THE PERSON'S OWN. A draft, a picture on it, a
+	// document behind a paste tag, a message that has left the box and not
+	// settled, a line typed at one of its task pages: any of them and this
+	// conversation is somebody's unfinished sentence rather than a cost.
+	if held.side == nil {
+		return false
+	}
+	side := held.side
+	if strings.TrimSpace(side.draft) != "" || len(side.chips) > 0 || len(side.pastes) > 0 || len(side.sends) > 0 || len(side.composers) > 0 {
+		return false
+	}
+	// And it has to have been left alone for long enough that letting go of it is
+	// not a surprise. An undated sidecar is not evidence of age, so it waits.
+	return !side.since.IsZero() && now.Sub(side.since) >= keptIdleGrace
 }

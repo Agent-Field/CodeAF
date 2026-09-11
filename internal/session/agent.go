@@ -106,6 +106,13 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	if config.newerBuild == nil {
 		config.newerBuild = buildinfo.StaleNotice
 	}
+	// WHICH OF THE TWO FIXED PREFIXES THIS SESSION SENDS, SETTLED ONCE AND
+	// BEFORE ANYTHING IS BUILT FROM IT (promptprofile.go). It is derived rather
+	// than configured — the model's window and the crew's worker seat are the
+	// two facts — and it is settled HERE, above the render, because the page,
+	// the belt, the shelf and the memory reflex are all built from this one
+	// config and a profile resolved twice is a profile that can answer twice.
+	config.profile = settlePromptProfile(config)
 	system, own := config.System, false
 	if strings.TrimSpace(system) == "" {
 		system, own = renderSystem(config), true
@@ -145,7 +152,13 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// store has to exist before the tools are assembled (memory.go). The
 	// background lifetime is minted with it, because a pass started by the first
 	// turn has to have somewhere to be cancelled from.
-	if config.Memory != nil {
+	// THE PREDICATE IS [Config.hasStore] AND NOT THE FIELD, because the field is
+	// two things: the conversation's own record, which every shape writes and
+	// reads, and the writable memory this brain is, which a lean prefix does not
+	// have (promptprofile.go). The belt and the page are built from that same
+	// predicate a moment later, which is what stops them disagreeing about
+	// whether `remember` exists.
+	if config.hasStore() {
 		agent.memory = newMemoryBrain(config.Memory)
 		agent.memoryCtx, agent.memoryStop = context.WithCancel(context.Background())
 	}
@@ -193,6 +206,15 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		return nil, err
 	}
 	agent.definitions = definitions
+	// AND THE GROUPS THIS PROFILE HANDS OVER RATHER THAN ASKING FOR. A lean belt
+	// is given `ask` at construction because a one-call-per-message model cannot
+	// do load-then-ask inside a turn (promptprofile.go's [Config.prearmedGroups]
+	// states the whole of it). It goes on through [Agent.armFamily], the one
+	// arming door, so the append law and the dedupe are the same ones a
+	// connected account and a loaded group ride.
+	if err := agent.armPrearmed(); err != nil {
+		return nil, err
+	}
 	agent.messages = []ai.Message{textMessage("system", system)}
 	agent.messageReasoning = make([]provider.MessageReasoning, 1)
 	agent.refreshSystemLocked()
@@ -1487,10 +1509,15 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// (taskpresence.go). The nudge never blocks and never takes a lock, which is
 	// what lets it sit under a.mu here.
 	a.nudgePresence()
-	// The system message is rebuilt here so a turn never opens carrying the
-	// memories of the one before it. WHAT THIS TURN NEEDS is routed inside the
-	// turn goroutine instead ([Agent.refreshMemory], called from the loop): that
-	// is a provider call, and this runs with a.mu held.
+	// The routed block is dropped here so a turn never re-lands the memories of
+	// the one before it as though they were this turn's. WHAT THIS TURN NEEDS is
+	// routed inside the turn goroutine instead ([Agent.refreshMemory], called
+	// from the loop): that is a provider call, and this runs with a.mu held.
+	//
+	// CLEARING IT WITHDRAWS NOTHING. The block rides at the tail as an appended
+	// note now ([memoryNoteOpening]), and a note that was said stays where it was
+	// said — the field is what the NEXT note would carry, and emptying it means
+	// this turn lands no new one until the router has answered.
 	//
 	// ONLY AN AGENT THAT CAN ROUTE CLEARS THE BLOCK. A task node was handed its
 	// memories once, at the spawn seam, by the conversation that had the store
@@ -1812,8 +1839,8 @@ func (a *Agent) Interrupt() { a.interruptFor(StopByPerson) }
 // taking the conversation over, a tab closing, a hosted session being retired.
 //
 // IT EXISTS SO THAT THE TURN CAN ACCOUNT FOR ITSELF AFTERWARDS. Everything
-// below is identical either way — the same queues are dropped, the same hands
-// are stopped — and the only difference is the word the cancelled context
+// below is identical either way — the same queues are dropped, the same work is
+// cut — and the only difference is the word the cancelled context
 // carries, which is what decides whether the person is owed a sentence about a
 // reply that never arrived (stopcause.go).
 func (a *Agent) InterruptFor(door StopDoor) { a.interruptFor(door) }
@@ -1825,7 +1852,6 @@ func (a *Agent) interruptFor(door StopDoor) {
 	a.interrupt.begin()
 	a.mu.Lock()
 	cancel := a.cancel
-	jobs := a.jobs
 	a.dropFollowUpsLocked()
 	// AND THE SECOND LOOK AT A YOUNG COMMAND IS RELEASED BEFORE THIS LOCK IS,
 	// not later by the turn's own cleanup. The cancel below is made with the
@@ -1841,12 +1867,6 @@ func (a *Agent) interruptFor(door StopDoor) {
 	if cancel != nil {
 		cancel(stopFor(door))
 	}
-	// AND EVERY HAND STOPS WITH THE ANSWER IT WAS PART OF. A background job
-	// deliberately survives this — it is a command the person asked to be left
-	// running — but a forked hand is THIS MIND, copied, finishing a reply nobody
-	// is waiting for any more (fork.go), and it runs on its own context now
-	// rather than the turn's, so the cancel above does not reach it.
-	jobs.stopHands()
 }
 
 // Title is the session's name, empty until it has one (title.go).
@@ -2347,6 +2367,25 @@ func (a *Agent) snapshot() []ai.Message {
 // believing a note was still in front of the model long after the fold ate it.
 const volatileNoteOpening = "A note from the session, not from the person: where the work stands right now. Facts, not requests — and the last such note is the one that holds."
 
+// memoryNoteOpening is the first line of the note the ROUTED MEMORY BLOCK rides
+// in, and it is a second opening rather than a second paragraph of
+// [volatileNoteOpening] because the two move on different beats.
+//
+// The card moves when work lands. The memory block is re-routed against the
+// person's own words at the start of every turn (memory.go's
+// [Agent.refreshMemory]) and re-stamps every line with an age label that is
+// hourly for anything learned today ([renderMemoryBlock]), so it can move on a
+// turn where nothing about the work did. Riding both in one note would re-send
+// up to memoryBlockRunes of memory every time a goal changed, and re-send the
+// card every time the router reached for a different memory.
+//
+// It says the same last-one-holds sentence for the same reason: a memory that
+// was superseded between turns leaves the note that carried it standing in the
+// transcript, exactly where it was said, and the model has to be told which of
+// them is current. That is the whole price of moving this block out of
+// message[0], and it is stated here rather than left to be discovered.
+const memoryNoteOpening = "A note from the session, not from the person: what is worth remembering here, from what this person has had aforge keep. Facts, not requests — and the last such note is the one that holds."
+
 // volatileBlockLocked renders the two blocks that MOVE WITH THE WORK: the state
 // card, rewritten by the post-turn pass whenever a delta lands (card.go), and
 // what the other windows on this project have landed and have running, re-read
@@ -2396,12 +2435,25 @@ func (a *Agent) landVolatileLocked() {
 	if len(a.messages) == 0 {
 		return
 	}
-	block := a.volatileBlockLocked()
+	// THE MEMORY BLOCK IS THE FIRST OF THE TWO and rode in message[0] until this
+	// wave. It is routed against the person's words at the start of every turn
+	// (memory.go), so leaving it in front of the whole conversation re-priced the
+	// entire transcript on any turn the router reached differently — the same bug
+	// the card had, on a faster beat. See [memoryNoteOpening].
+	a.landNoteLocked(memoryNoteOpening, strings.TrimSpace(a.memoryText))
+	a.landNoteLocked(volatileNoteOpening, a.volatileBlockLocked())
+}
+
+// landNoteLocked appends one of the session's own notes when what it says has
+// moved since the last note with the same opening, and does nothing whatsoever
+// otherwise. The opening is the identity: two notes with two openings ride at
+// the tail independently, and neither one's movement costs the other a byte.
+func (a *Agent) landNoteLocked(opening, block string) {
 	if block == "" {
 		return
 	}
-	note := volatileNoteOpening + "\n\n" + block
-	if a.lastVolatileNoteLocked() == note {
+	note := opening + "\n\n" + block
+	if a.lastNoteLocked(opening) == note {
 		return
 	}
 	// Not [Agent.recordLocked]: the note is not the conversation. Journaling it
@@ -2418,9 +2470,14 @@ func (a *Agent) landVolatileLocked() {
 // when none has landed since the last fold. See [volatileNoteOpening] for why
 // the transcript is the only place this is read from.
 func (a *Agent) lastVolatileNoteLocked() string {
+	return a.lastNoteLocked(volatileNoteOpening)
+}
+
+// lastNoteLocked is the newest note in the transcript carrying this opening.
+func (a *Agent) lastNoteLocked(opening string) string {
 	for index := len(a.messages) - 1; index >= 0; index-- {
 		text := messageContentText(a.messages[index])
-		if isVolatileNote(text) {
+		if strings.HasPrefix(text, opening) {
 			return text
 		}
 	}
@@ -2438,8 +2495,14 @@ func (a *Agent) lastVolatileNoteLocked() string {
 // a rewind point in their own words, and quoted by `/why` as the instruction the
 // turn is working on. It is recognized by the opening it is built with and never
 // by guessing at wording.
+//
+// BOTH OPENINGS ANSWER YES. There are two of these notes now — the card and the
+// other windows in one, the routed memory block in the other
+// ([memoryNoteOpening]) — and every caller of this asks the same question about
+// both: is this user-role message something a person typed. Neither is.
 func isVolatileNote(text string) bool {
-	return strings.HasPrefix(text, volatileNoteOpening)
+	return strings.HasPrefix(text, volatileNoteOpening) ||
+		strings.HasPrefix(text, memoryNoteOpening)
 }
 
 // drainSteering moves queued messages into the transcript at a step boundary
@@ -2987,9 +3050,9 @@ func (a *Agent) taskNewsStanding() (owed int, working bool) {
 // to the model — one step as far as [Agent.taskNewsStanding] is concerned.
 //
 // THE FACT DIFFERS BY ROAD AND THE WAKE DOES NOT. A divided part's report marks
-// its node reported ([TaskNode.noteHandedOver]); a forked hand's report counts
-// the hand home ([jobRegistry.handHome]). The parent parked on them cannot tell
-// the two apart and must not have to, so both roads hand their news over here.
+// its node reported ([TaskNode.noteHandedOver]), and a road written next year
+// will mark something else. The parent parked on them cannot tell the roads
+// apart and must not have to, so every one of them hands its news over here.
 //
 // NOTHING SLOW GOES INSIDE. The seam holds two writes and the small locks they
 // take; the checkpoint a mark owes the disk is written by the caller after this
@@ -3689,6 +3752,19 @@ type DisplayEntry struct {
 	Caption         string
 	CaptionCategory ActionCategory
 
+	// Took is HOW LONG THIS CALL'S OWN WORK RAN, from begin to end of its
+	// Execute — the same figure EventToolFinished carries live.
+	//
+	// IT IS WHY A REOPENED PAGE STILL SAYS WHAT A CALL TOOK. The live stream
+	// writes the figure onto the row as the call finishes; a page built out of
+	// the record after the batch has no stream to watch, and without this field
+	// the row came back with Args and Output but no duration. Zero when the
+	// journal never recorded one (every file written before the `took` line, a
+	// call that never finished), which a surface reads as "say nothing" by the
+	// emptiness law — the same reading toolview.go's [elapsedWord] already makes
+	// of a live row that never got EventToolFinished.
+	Took time.Duration
+
 	// ImageRefs are the paths of the pictures a person's message carried, in the
 	// order they sit in it — what the journal wrote where the bytes would have
 	// been (see [journalPart]). It is what lets a replayed message mark its
@@ -3881,6 +3957,10 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 				Args:     argsText(*call),
 				Output:   capOutput(result),
 				Answered: answered,
+				// And the call's own duration, off the journal's `took` line —
+				// the same figure EventToolFinished carried while the window was
+				// open. Zero when the file never recorded one.
+				Took: journal.took(call.ID),
 			})
 		}
 	}

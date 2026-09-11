@@ -1648,7 +1648,7 @@ which is the whole machine's ledger rather than this conversation's — it was a
 |---|---|
 | `spend` | the money, printed only when it is above zero — this conversation **and every task it started** |
 | `conversation` | what the conversation's own calls cost |
-| `tasks` | what the work it started has cost, running or finished — tasks, the hands a reply forked, and the nodes of an adaptive run |
+| `tasks` | what the work it started has cost, running or finished — tasks and the nodes of an adaptive run |
 | `tokens` | `48.1k in · 3.2k out`, or one half alone, or the combined figure |
 | `cache` | `31.2k read · saved $0.0180` — the money half only when a price pair was published |
 | `model calls` | **requests to the provider**, deliberately not "turns" |
@@ -1670,15 +1670,15 @@ books stay exact; only what the line paints is in motion.
 resumed conversation, or switching to another one, lands on that conversation's own
 bill at once. A screen-reader session never eases a number.
 
-## Does the status line's money include what my tasks are spending, or what its hands are spending — yes, live
+## Does the status line's money include what my tasks are spending — yes, live
 
 **The `$` on the status line is the whole tree: this conversation and every task it
 started, at every depth, while they are still running.** It is one figure, not two, and it
 is the same figure `/cost` leads with.
 
-**Hands and adaptive runs are in it too.** A reply that splits itself into hands, and a
-node of an adaptive run, are both work this conversation started: their money is on the
-row while they are still working, under `tasks` when you ask `/cost` for the halves.
+**Adaptive runs are in it too.** A node of an adaptive run is work this conversation
+started: its money is on the row while it is still working, under `tasks` when you ask
+`/cost` for the halves.
 
 It used to be the conversation's own half alone. A task's money only reaches the
 conversation's books when the task **closes**, so a family working for two hours left the
@@ -1818,10 +1818,10 @@ Five things are worth knowing about it:
 - **Work is counted once.** A task's own requests are recorded where they were made. Its total
   is added to the conversation that started it afterwards, and that addition is deliberately
   not written here, or the same money would be counted twice. **That holds for every kind of
-  work, not only tasks** — the hands a reply forks and the nodes of an adaptive run each
-  record their own requests and are added up afterwards the same way. Until this was fixed
-  both were on this file twice, so a day that included a fork or a run read high, and the
-  daily limit was reached before that much had actually been spent.
+  work, not only tasks** — the nodes of an adaptive run record their own requests and are
+  added up afterwards the same way. Until this was fixed they were on this file twice, so a
+  day that included a run read high, and the daily limit was reached before that much had
+  actually been spent.
 
 The status line shows **this conversation and its task family**, combining the current
 ledger reading with the conversation meter. `/cost` prints that same scope with its
@@ -2022,7 +2022,7 @@ above — do not describe this conversation as filling to 60%.
 
 ## A task or a worker on another model gets that model's window
 
-Work that leaves the conversation — a task's worker, an adaptive run's worker, a fork, the
+Work that leaves the conversation — a task's worker, an adaptive run's worker, the
 reader that checks a task — often runs on a different model from the one you are talking
 to. Each of those asks the same model catalog the conversation asks, for **its own** model,
 so a worker on a million-token model folds at a million-token model's line.
@@ -2443,17 +2443,22 @@ With `routing: off` there is nothing measured, so there is no lane to choose, no
 
 ## "0 endpoints … guardrail restrictions and data policy" — paid model training violation, what it means and what aforge does
 
-This sentence means OpenRouter applied aforge's price cap first, leaving one endpoint, and
-then excluded that endpoint under your OpenRouter account's privacy setting because its
-provider may train on prompts. It does not mean the model disappeared or that your prompt
-was rejected.
+This sentence means the endpoints your request was down to were all excluded by your
+OpenRouter account's privacy setting, because their providers may train on prompts. It
+does not mean the model disappeared or that your prompt was rejected. The request can be
+down to one endpoint because aforge's price cap left only one, because it asked for one
+machine by name, or because its list of slow machines covered the rest.
 
-aforge first relaxes the endpoint filter and asks again under the same cap. If the router
-still refuses that wider request, aforge drops the cap and asks the same model a third time.
-The attempt lines say `relaxed the endpoint filter` and then `dropped the price ceiling`.
-A rescue request or a request pinned to one lane never carries the cap, because that lane
-has already passed aforge's price choice. Once the price rung is reached, the cap stays off
-that model for the rest of this session, including the next rescue.
+aforge answers it without ending your turn. A machine asked for by name is remembered as
+out of reach for your account — for every model, for a day, across restarts — and the
+answer moves to another machine. So is the one machine the price cap left, when the
+router's count and aforge's list of machines agree on which it was. A price cap that only
+out-of-reach machines fit under is not sent at all, so the next turn is not refused. When there is nowhere left to move, aforge relaxes the
+endpoint filter and lets the router choose, then drops the cap and asks again. The attempt
+lines say `relaxed the endpoint filter` and then `dropped the price ceiling`. A rescue
+request or a request pinned to one lane never carries the cap, because that lane has
+already passed aforge's price choice. Once the price rung is reached, the cap stays off
+that model for the rest of this session.
 
 You can change the account policy at `https://openrouter.ai/settings/privacy`, choose
 another model, or pin a lane that serves this model. Pinning chooses the provider for this
@@ -2975,10 +2980,12 @@ session keeps the bodies you asked for rather than rotating them away after a fe
 calls.
 
 That pin is also the old spelling of one switch — `AFORGE_DEBUG=1`, `--debug`, or `/debug`
-in a conversation — which keeps the **debug record** of a run in a folder of its own. The
-bodies are moving there, so that this file stays small enough to grep and a long run
-cannot rotate away the failure you came for. The debug-record page says where the folder
-is and what is in it today.
+in a conversation — which keeps the **debug record** of a run in a folder of its own.
+The bodies live there now (each model call under `calls/`, each tool call and each
+choice on `events.jsonl`), so this file can stay small enough to grep and a long run
+cannot rotate away the failure you came for. The pin still also writes the bodies onto
+the log for one release, so a shell history that uses the old word still gets them. The
+debug-record page says where the folder is and what is in it.
 
 **Why did that call fail?** The line says. A `→ 400` carries the endpoint's own first
 sentence; a line with no status at all is a request that never reached an endpoint; a line
@@ -3005,3 +3012,61 @@ reasoning response keeps its existing handling.
 No. The connection wait pauses provider-switch timers. Once the endpoint is
 reachable, those timers restart, and that call is excluded from learned provider
 speed because the local outage was not time spent generating an answer.
+
+## Why a small model gets a shorter page and fewer tools — the lean profile
+
+On a model with a small context window, aforge sends a smaller set of
+instructions and a smaller tool list. Nothing is turned off by a setting and
+nobody is asked to choose. Lean applies in exactly two cases, and nothing else:
+
+- the model's context window is under 32,000 tokens — the figure the catalog or
+  the endpoint reports, which is what a local runner like llama.cpp, ollama or
+  LM Studio tells aforge about the model it has loaded; or
+- you put `AFORGE_PROMPT_PROFILE=lean` in front of the command.
+
+Lean changes four things:
+
+- `# Interrupts and steering` comes off the page. What it explains, each
+  interrupting message now says in its own first words.
+- Seven verbs wait one call away instead of riding in front of every request:
+  `propose_task`, `tasks`, `watch`, `track`, `commit`, `recall` and
+  `read_document`. They are all still here — `load_capability` fetches a group
+  and the schemas arrive on the next request, in the same turn.
+- `ask` is put straight in the tool list rather than waiting to be fetched, so
+  a model that makes one call per message can still put a question to you.
+- Saved memories are off. There is no `remember` verb and no `<memory>` block,
+  and the reply says so plainly if you ask. Nothing is deleted, and a larger
+  model brings them back. The record of what was said is untouched, and still
+  searchable.
+
+The project's own instructions still ride, cut at 2KiB instead of 8KiB, and
+only the first file found of `AGENTS.md` and `CLAUDE.md`. The reply says the
+file was cut and where the rest is.
+
+Why: everything in front of a request is re-sent on every round of every turn.
+On a 128,000-token window that is a few percent; on a 16,000-token one it is
+most of the room the model has to think in.
+
+## Is an open-weight or local model given the lean profile? Does deepseek or glm get a shorter page?
+
+Only if its context window is under 32,000 tokens, or you pinned it. Nothing
+about a model's licence, its vendor, its name or which crew seat it sits in
+makes a session lean.
+
+So an open-weight model with a large window is NOT lean. `deepseek-v4-flash` and
+`glm-5.3-flash` are served with 128,000 tokens of room, so they get the full
+page, the full tool list and saved memories, exactly like any other
+128,000-token model — including when they are the model your crew preset picked
+for the `worker` seat, and including when you then choose that same model in
+chat. Open weights are a licence, not a size.
+
+A model you run yourself usually is small, and it is recognised by the window it
+reports, not by its name: llama.cpp, ollama and LM Studio all tell aforge the
+window the loaded model was given.
+
+`AFORGE_PROMPT_PROFILE=lean` or `AFORGE_PROMPT_PROFILE=full` in front of the
+command pins it either way: lean on a large window, full on a small one. It is
+there for measuring the two arms against each other, and for an endpoint that
+reports a window its loaded model does not really have. There is no settings row
+for the profile yet. Any other value is not a pin at all and the window decides
+as usual.

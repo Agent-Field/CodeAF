@@ -289,7 +289,7 @@ var tuiWords = map[string]tuiWord{
 	// ── what stands, and what it costs ───────────────────────────────────────
 	"homeKeepingWord": {
 		screen: " standing order",
-		why:    "the count at the foot of the task column while something stands, and a door onto the standing place — `◦ 2 standing orders`, respelled from `keeping an eye on 2` on 2026-09-09 because that named nothing a person could type, and moved off the status row on the same day",
+		why:    "the count at the foot of the task column while something stands, and a door onto the standing place — `◦ 2 standing orders`, respelled from `keeping an eye on 2` on 2026-09-09 because that named nothing a person could type, and moved off the status row on the same day; /status and the phone sheet keep the same words under `watching`",
 	},
 	"homeWatchLabel": {
 		screen: "keeping watch",
@@ -491,6 +491,13 @@ var tuiWords = map[string]tuiWord{
 	"landingKeysWord": {
 		screen: "esc interrupts · ctrl+c twice quits",
 		why:    "the notice a conversation greets on, and what a window that RESUMED an earlier one draws instead of home",
+	},
+	"questionWaitingWord": {
+		screen: " · waiting in this conversation · alt+a",
+		source: "waiting in this conversation",
+		why: "the row a place that is NOT the conversation draws over an open question " +
+			"(questiondelivery.go's questionWaitingLine). It stands in the roster's foot where the " +
+			"enter-door would be, so a task that landed `your call` and asked something is read here",
 	},
 	"tasksEnterInsideWord": {
 		screen: "enter go inside it",
@@ -728,7 +735,7 @@ var tuiWords = map[string]tuiWord{
 	"questionBlankKeyWord": {
 		screen: "[tab] next blank",
 		source: "next blank",
-		why:    "how a sentence with holes in it is walked through",
+		why:    "how a sentence with holes in it is walked through — the blanks shape's own verb, ranked with the answers so a hundred-column foot keeps it",
 	},
 	"questionPairAWord": {
 		screen: "[a] the first",

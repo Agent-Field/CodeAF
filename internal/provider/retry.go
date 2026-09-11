@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
+	"github.com/Agent-Field/aforge-v2/internal/trace"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -123,10 +124,11 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	attempts := 0
 	var recoveryCtx context.Context
 	reconnected := false
-	// The body this call is carrying, kept for the model-call log and ONLY when
-	// somebody asked for bodies (calllog.go). On every ordinary run this is nil
-	// and the person's prompts never leave the process.
-	if knobs.trace != nil && calllog.Bodies() {
+	// The body this call is carrying, kept ONLY when somebody asked for it: the
+	// old bodies pin, which puts it on the line of the model-call log, or the
+	// debug record, which is where bodies are moving to (calllog.go). On every
+	// ordinary run this is nil and the person's prompts never leave the process.
+	if knobs.trace != nil && (calllog.Bodies() || trace.For(ctx) != nil) {
 		knobs.trace.body = body
 	}
 	// Rate limits get more patience than faults: they are the provider
@@ -332,6 +334,17 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		if !rateLimited && retryElsewhere(ctx, knobs) {
 			return nil, lastErr
 		}
+		// AND A RESCUE WHOSE ONE MACHINE IS THE FULL POOL GOES BACK AT ONCE.
+		// A rescue demands exactly one machine (hedge.go's [hedgePreference]),
+		// so when the 429 names THAT machine every retry of this body is the
+		// same request to the same queue — the live replay of the 2026-09-10
+		// race spent twenty-eight seconds and six requests doing it. It is not
+		// the account-wide limit the rule above protects (that 429 names
+		// nobody), and the race always has an answer for it now: the walk, or
+		// the ladder a door deferred ([hedgeRace.exhausted]).
+		if rateLimited && demandedPoolIsFull(knobs, lastErr) {
+			return nil, lastErr
+		}
 		// Non-rate-limit faults keep the original, shorter patience.
 		if !rateLimited && attempt >= maxAttempts-1 {
 			break
@@ -344,6 +357,16 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	// was bounded by: a patient call has no constant to name, and a fault that
 	// broke out after three attempts never had six.
 	return nil, fmt.Errorf("after %d attempts: %w", attempts, lastErr)
+}
+
+// demandedPoolIsFull reports that a 429 names the one machine this request
+// demanded as a rescue — a queue this body can never leave.
+func demandedPoolIsFull(knobs callKnobs, err error) bool {
+	if knobs.hedgeLane == "" {
+		return false
+	}
+	refusal, ok := RefusalFrom(err)
+	return ok && refusal.Status == http.StatusTooManyRequests && equalLane(refusal.Provider, knobs.hedgeLane)
 }
 
 func retryElsewhere(ctx context.Context, knobs callKnobs) bool {

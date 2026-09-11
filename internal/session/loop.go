@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/effort"
+	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/redact"
@@ -1238,6 +1239,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		if rung != effort.None {
 			attemptCtx = provider.WithConfiguredEffortRung(ctx, rung)
 		}
+		recordEffort(attemptCtx, model, rung)
 		// What this call is FOR, for the model-call log. A conversation's own
 		// turn and a task child's turn run the identical loop, and the one thing
 		// that tells them apart is whether this agent IS a node — so the word
@@ -1370,8 +1372,12 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		}
 		// A CUT IS NEVER READ AS PROSE. It is a typed failure the guard raised
 		// about a stream that was served, so neither the overflow sentence nor
-		// the retryable-shape list has anything to say about it.
-		if !isCut {
+		// the retryable-shape list has anything to say about it — AND NEITHER IS
+		// A ROUTING REFUSAL, for the same reason: the transport has already said
+		// what it is ([provider.RoutingRefusal]), and its 404 matches no
+		// retryable pattern, which is how the measured turn of 2026-09-10 ended
+		// on a refusal the next attempt would have landed.
+		if !isCut && !provider.RoutingRefusal(err) {
 			errMsg := err.Error()
 			if isContextOverflow(errMsg) || !isRetryable(errMsg) {
 				return nil, model, err
@@ -1793,6 +1799,12 @@ type toolResult struct {
 	// on [Event.HarnessMade], and every counter that judges the model by its
 	// steps skips it — the harness's failures are the harness's steps.
 	harness bool
+	// refusedBy names the pre-action citizen that said no, and is empty on
+	// every result that is not a veto. Nobody is shown it: it exists so the
+	// debug record can say WHO refused a call, because a refusal recorded as a
+	// failure sends somebody debugging the tool instead of the gate
+	// (internal/trace's ToolEvent).
+	refusedBy string
 }
 
 // ── the early-start law ─────────────────────────────────────────────────────
@@ -2270,7 +2282,19 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 // been found to carry the tool: a call for a tool that does not exist is
 // answered "Unknown tool", never asked about. A question about a tool nobody
 // has is a question with no right answer.
+// AND IT IS WHERE THE DEBUG RECORD LEARNS ABOUT TOOLS. Everything a call can
+// become — it ran, it failed, a door refused it before it ran, the hand was not
+// on the belt at all — comes back through this one function, so the record is
+// written around it rather than inside the four exits below (debugrecord.go).
 func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
+	started := time.Now()
+	result := a.dispatchTool(ctx, ep, hub, call, rendered)
+	recordToolCall(ctx, call, result, started, time.Since(started))
+	return result
+}
+
+// dispatchTool is the dispatch itself: find the hand, ask the doors, run it.
+func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
 	for _, tool := range a.beltTools() {
 		if tool.Name != call.Function.Name {
 			continue
@@ -2307,13 +2331,20 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 		// OVER, and what it cost, is known here and is stale by the time the
 		// slowest sibling returns. Sent from inside the execution so the early
 		// start (warmBatch.consider) is measured the same way the batch is.
+		took := time.Since(started)
+		// AND THE RECORD KEEPS THE FIGURE where the event is sent, with the same
+		// id: a page opened after the batch — or a room rebuilt from the journal
+		// after a landing — has no stream to watch, and without this line the
+		// rows came back with Args and Output but no duration (sessionfile.go's
+		// [sessionFile.appendTook]).
+		a.file.appendTook(call.ID, took)
 		if hub != nil {
 			hub.send(Event{
 				Kind:   EventToolFinished,
 				Tool:   call.Function.Name,
 				Args:   rendered,
 				CallID: call.ID,
-				Took:   time.Since(started),
+				Took:   took,
 			})
 		}
 		if err != nil {
@@ -2390,7 +2421,45 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 // before it existed.
 func (a *Agent) finishToolResult(ep *episode, call ai.ToolCall, result toolResult) toolResult {
 	result.text = redact.Secrets(result.text)
-	return a.withJobState(ep.noteToolOutcome(call, result))
+	body := result.text
+	result = a.withJobState(ep.noteToolOutcome(call, result))
+	result.text = footersInsideTheCap(body, result.text)
+	return result
+}
+
+// footersInsideTheCap keeps what this chokepoint appends INSIDE the bound the
+// result already respected, rather than on top of it.
+//
+// EVERY CAP IN THIS PROGRAM IS A PROMISE ABOUT WHAT THE MODEL WILL BE HANDED,
+// and both of the appends above are made after the tool has already cut its
+// output to fit [bare.MaxResultBytes]. A 50 KB read plus a job footer plus a
+// fix line was 50 KB and change — small on one call and not small at all on the
+// fortieth, which is a window the person never agreed to spend. So the BODY
+// gives up the room, exactly as task_audit.go's boundedResult does it: the
+// footers are what the model most needs to see, and the body is the half it can
+// go and read the rest of.
+//
+// A result that was ALREADY over the cap on its own is left alone. The footer is
+// not what busted it, and a chokepoint that quietly cut every oversized result
+// would be a second cap with no notice on it — a read_document's own bound, or a
+// task's report, would be cut here by a rule written for a shell command.
+func footersInsideTheCap(body, grown string) string {
+	if len(grown) <= bare.MaxResultBytes {
+		return grown
+	}
+	// The appends are suffixes of the body with its trailing newlines trimmed
+	// (jobfooter.go's withJobState, fixrecall.go's fixAnnotate), so what is not
+	// the body is the footers, exactly.
+	trimmed := strings.TrimRight(body, "\n")
+	if trimmed == "" || !strings.HasPrefix(grown, trimmed) || len(trimmed) > bare.MaxResultBytes {
+		return grown
+	}
+	footers := grown[len(trimmed):]
+	room := bare.MaxResultBytes - len(footers) - capMarkerRoom
+	if room <= 0 {
+		return grown
+	}
+	return capBytes(trimmed, room) + footers
 }
 
 // glossField names the argument that says what a call is DOING, per tool. A
@@ -2709,6 +2778,13 @@ func capOutput(text string) string { return capBytes(text, outputLimit) }
 // from the one a person's screen is drawn with (task_audit.go's boundedResult),
 // and two truncations with two ways of marking the cut would be two answers to
 // "is this the whole thing".
+// capMarkerRoom is what [capBytes] needs for the "… (N more bytes)" it writes in
+// place of what it cut, and it is the slack a caller leaves when it is fitting a
+// body and a footer into one budget together. It is generous on purpose: the
+// count inside it is an unbounded integer and the marker must never be the thing
+// that pushes the pair back over the cap it was measured against.
+const capMarkerRoom = 32
+
 func capBytes(text string, limit int) string {
 	if len(text) <= limit {
 		return text

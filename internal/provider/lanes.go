@@ -10,6 +10,7 @@ import (
 	"time"
 
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/trace"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -450,6 +451,18 @@ func (c *Client) laneChoiceFor(knobs callKnobs, model string, request *ai.Reques
 	if retired {
 		named = ""
 	}
+	// AND A STRICT PIN ON A MACHINE THE ACCOUNT ITSELF EXCLUDES IS RETIRED FOR
+	// THIS MODEL BEFORE IT IS SENT (internal/lane's account.go). The router has
+	// already said, about another model, that this account cannot reach that
+	// machine for any model; demanding it here would buy the identical 404 to
+	// be told so again. It is retired exactly as a refused pin is — the row on
+	// disk untouched, the person told once in the retirement's own sentence —
+	// and a borrowable pin needs nothing, because it is only a preference the
+	// router skips by itself.
+	if named != "" && !pin.Borrow && lanes.AccountExcludes(named) {
+		retirePin(named, model)
+		named = ""
+	}
 	if named != "" && !pin.Borrow {
 		// The candidate set survives and the ranking does not: see above.
 		return lanes.Choice{Only: []string{named}, Frontier: choice.Frontier}, true
@@ -495,7 +508,55 @@ func (c *Client) withLaneChoice(ctx context.Context, request *ai.Request) contex
 		return ctx
 	}
 	choice.Order, choice.Only, choice.Ignore = prefs.Order, prefs.Only, prefs.Ignore
+	recordLaneChoice(ctx, model, choice)
 	return WithLaneChoice(ctx, choice)
+}
+
+// recordLaneChoice writes the routing decision to the debug record. It is
+// written here rather than at the encoder because THIS is where the choice is
+// made once and where what actually reached the wire is known — the sampled
+// ranking, the person's pin folded in, the machines struck off.
+//
+// A ROUTE IS THE HARDEST THING TO RECONSTRUCT AFTERWARDS. The model-call log
+// says which machine answered; it cannot say which were asked for first, which
+// were refused a turn, or why — and "why did it go there?" is the question a
+// person switches the record on to answer.
+func recordLaneChoice(ctx context.Context, model string, choice lanes.Choice) {
+	recorder := trace.For(ctx)
+	if recorder == nil {
+		return
+	}
+	asked := choice.Order
+	if len(choice.Only) > 0 {
+		// A demand is not a ranking (applyLaneChoice): the request goes to
+		// exactly these machines or it does not go, so they are the choice and
+		// there are no alternatives left to name.
+		asked = choice.Only
+	}
+	if len(asked) == 0 {
+		return
+	}
+	recorder.Decision(ctx, trace.Decision{
+		Kind:         "lane",
+		Subject:      model,
+		Choice:       asked[0],
+		Reason:       choice.Why,
+		Alternatives: append(append([]string(nil), asked[1:]...), struck(choice.Ignore)...),
+	})
+}
+
+// struck spells the machines this choice took OFF the table, so a record reads
+// as the whole decision rather than only its winner. They are marked because an
+// alternative that was ruled out and one that was merely ranked second are two
+// different facts, and a flat list of names cannot tell them apart.
+func struck(ignore []string) []string {
+	var names []string
+	for _, lane := range ignore {
+		if lane != "" {
+			names = append(names, "not "+lane)
+		}
+	}
+	return names
 }
 
 // namesEndpoint reports whether a preference list already names an endpoint.

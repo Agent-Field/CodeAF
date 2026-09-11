@@ -91,6 +91,16 @@ row carry the ground and how the task stood on it.
 
 ## Does a task touch my working copy? — where does my task work, what the card calls the task's directory
 
+**A quick task is the exception, and not a small one.** It has no checkout and no branch
+at all: it works in the folder this conversation is standing in — your own working copy —
+which is what lets it start the instant it is asked for and finish with nothing to merge.
+**It does not take the folder off you while it runs.** You keep editing and the chat keeps
+writing; what a quick task holds is only the files it named when it started and the ones
+it has already written, and a write of one of those is refused with the task named until
+it finishes. Two quick tasks that name the same file run one after the other rather than
+at once. The *tasks* page has it under *What a quick task is*. Everything below is about
+the ordinary kind.
+
 By default, no. Each code task gets its own checkout of **the repository the work is about**
 — its ground, resolved from what this conversation has been reading and editing (above) — on
 its own branch, so you can keep working in yours while it runs. If your request explicitly
@@ -632,13 +642,6 @@ outside them with `No task "…" among the pieces you handed out.` Its brief is 
 whole world; the project's history is not its to read. The tasks page has the whole of it,
 under *When a task splits its own work*.
 
-**And it can use hands.** `fork` is on a task's belt for the same reason it is on the
-conversation's: a task worker is a mind in the middle of its own work, so it can copy
-itself into two to four hands inside one of its own turns, in its own copy of the
-repository, and stitch what they bring back. The tasks page has the whole of it, under
-*Hands*. The one agent that cannot fork is a hand — the fork is one level deep, and a hand
-simply does not have the tool.
-
 Approval inside a task is allow-everything, with the critical floor still under it (things
 like `rm -rf /`, `mkfs`, redirecting onto a raw disk, shutdown). When a call hits that
 floor there is nobody to ask, so the task reads the refusal
@@ -683,8 +686,8 @@ instructions describe the tools it actually carries:
   be able to make. A task asked to change a preference says it cannot from a
   task and points you at `/settings`; it is told never to edit a config file instead.
 - **Look up an earlier conversation.** `search_conversations` reads the index in
-  its parent's history through a read-only interface, including in nested tasks
-  and forked hands. The task's checker can independently read the same source.
+  its parent's history through a read-only interface, including in nested tasks.
+  The task's checker can independently read the same source.
   It can search all indexed places and open an exchange by
   an opaque source reference. It cannot write memories through that interface.
   If the parent has memory off and no history source, the tool remains absent.

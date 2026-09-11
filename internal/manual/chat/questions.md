@@ -112,6 +112,13 @@ reading as something you said.
 When the autonomy dial takes a recommendation, the record identifies the answer
 as `aforge, on your settings`; it never makes that answer look like yours.
 
+**The whole record is on disk; the model is handed the newest few.** What rides at
+the top of every request is the newest eight decisions plus one line saying how
+many older ones `decisions.jsonl` still holds — a record that grew all day would
+be re-sent, and paid for, on every message you send. Nothing is lost: the file
+keeps every line, and the `already decided:` refusal above is checked against all
+of them however old.
+
 ## Why did it not ask me, or why did it go ahead by itself?
 
 The model is instructed to ask last. It first reads `the record`, then states a
@@ -778,9 +785,11 @@ Some questions are a sentence with holes in it rather than a list of answers:
 
     land them in [ ~/notes ] as [ a new file ] and keep the old copy: [ no ▾ ]
 
-`tab` moves to the next hole and `shift+tab` back. Both stop at the ends rather
-than wrapping. Typing fills a hole; `←→` walks the choices where a hole has a
-short list of them.
+`tab` moves to the next hole (`[tab] next blank` on the page's foot) and
+`shift+tab` back. Both stop at the ends rather than wrapping. Typing fills a
+hole; `←→` walks the choices where a hole has a short list of them. The walk is
+the shape's own verb — it stays on the foot at a hundred columns, the way
+`[space] tick it` stays on a checklist.
 
 Each hole opens on whatever the asker already knew, so you are not retyping it.
 Under the sentence, one dim line says what the hole you are in takes — a file or
@@ -947,7 +956,7 @@ picks one before anything is written.
 While a beat is up, the digits belong to it — `3` is the third shape and not the
 third answer — and `esc` backs out of the beat rather than putting the question
 off.
-## Questions on another machine, and on the engine behind an ordinary aforge
+## Questions over the session host and on another machine — do questions work over --host, and on the engine behind an ordinary aforge
 
 **A question reaches you wherever the conversation is, and you answer it where
 you are standing.** That is true on all three roads and there is nothing to turn
