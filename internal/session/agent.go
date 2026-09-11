@@ -627,6 +627,9 @@ func (a *Agent) SetModel(model string) {
 	}
 	a.mu.Lock()
 	a.model = model
+	if a.clientPool != nil {
+		a.clientPool.setSeat(model)
+	}
 	if !a.running {
 		a.rebindClientLocked(model)
 	}

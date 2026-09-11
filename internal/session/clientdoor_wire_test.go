@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -43,6 +44,26 @@ type clientDoorServer struct {
 	calls    []clientDoorCall
 	requests []clientDoorRequest
 	content  string
+}
+
+// forbiddenClientDoorServer makes an accidental default-service request fail
+// at the real HTTP boundary, while retaining a count for the final assertion.
+// A mock completer could only prove that the test had bypassed clientFor too.
+type forbiddenClientDoorServer struct {
+	*httptest.Server
+	calls atomic.Int64
+}
+
+func newForbiddenClientDoorServer(t *testing.T) *forbiddenClientDoorServer {
+	t.Helper()
+	server := &forbiddenClientDoorServer{}
+	server.Server = httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		server.calls.Add(1)
+		t.Errorf("default service received %s %s", request.Method, request.URL.Path)
+		writer.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(server.Close)
+	return server
 }
 
 func newClientDoorServer(t *testing.T, content string) *clientDoorServer {
@@ -250,6 +271,145 @@ func TestTheCrewReachesItsOwnServiceWhileTheChatIsElsewhere(t *testing.T) {
 	chat := directServer.allCalls()
 	if len(chat) != 1 || chat[0].authorization != "Bearer direct-chat-key" || clientDoorModel(t, chat[0]) != "fake-small" {
 		t.Fatalf("direct service calls = %+v, want only the chat model on its own bearer", chat)
+	}
+}
+
+func TestACrewSeatFallsToTheSeatedModelWhenTheDefaultServiceHasNoKey(t *testing.T) {
+	defaultServer := newForbiddenClientDoorServer(t)
+	directServer := newClientDoorServer(t, "done")
+	defaultSource := modelsource.DefaultSource(defaultServer.URL)
+	directSource := modelsource.Source{ID: "direct", Written: "direct", Address: directServer.URL}
+	agent, err := New(Config{
+		Workspace: t.TempDir(), Model: "direct/stub/old-seat",
+		Sources: modelsource.NewSet(
+			modelsource.Connected{Source: defaultSource, Address: defaultServer.URL},
+			modelsource.Connected{Source: directSource, Key: "direct-seat-key", Address: directServer.URL},
+		),
+		RolesSource: tierSettings(map[string]string{
+			roles.TierKey(roles.TierReflex): "crew/reflex",
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = agent.Close() })
+
+	// The construction-time seat is deliberately made stale. The model picked
+	// live is the one the unavailable crew rung must fall to.
+	agent.SetModel("direct/stub/conversation")
+	_, answered, err := agent.callRole(t.Context(), roles.RoleReflex, agent.Model(), []ai.Message{textMessage("user", "answer")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if answered != "direct/stub/conversation" {
+		t.Fatalf("answer was recorded on %q, want the seated model", answered)
+	}
+	if got := directServer.allCalls(); len(got) != 1 || got[0].authorization != "Bearer direct-seat-key" || clientDoorModel(t, got[0]) != "stub/conversation" {
+		t.Fatalf("connected service calls = %+v, want the seated model's bare slug", got)
+	}
+	if got := defaultServer.calls.Load(); got != 0 {
+		t.Fatalf("default service received %d requests", got)
+	}
+}
+
+func TestACrewSeatFallsToAKeyOptionalSeatedService(t *testing.T) {
+	defaultServer := newForbiddenClientDoorServer(t)
+	localServer := newClientDoorServer(t, "done")
+	defaultSource := modelsource.DefaultSource(defaultServer.URL)
+	localSource := modelsource.Source{
+		ID: "ollama", Written: "ollama", Address: localServer.URL, KeyOptional: true,
+	}
+	agent, err := New(Config{
+		Workspace: t.TempDir(), Model: "ollama/llama3.2",
+		Sources: modelsource.NewSet(
+			modelsource.Connected{Source: defaultSource, Address: defaultServer.URL},
+			modelsource.Connected{Source: localSource, Address: localServer.URL},
+		),
+		RolesSource: tierSettings(map[string]string{
+			roles.TierKey(roles.TierReflex): "crew/reflex",
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = agent.Close() })
+	_, answered, err := agent.callRole(t.Context(), roles.RoleReflex, agent.Model(), []ai.Message{textMessage("user", "answer")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if answered != "ollama/llama3.2" {
+		t.Fatalf("answer was recorded on %q, want the key-optional seat", answered)
+	}
+	if got := localServer.allCalls(); len(got) != 1 || got[0].authorization != "" || clientDoorModel(t, got[0]) != "llama3.2" {
+		t.Fatalf("key-optional service calls = %+v", got)
+	}
+	if got := defaultServer.calls.Load(); got != 0 {
+		t.Fatalf("default service received %d requests", got)
+	}
+}
+
+func TestAChildAgentFallsToTheSeatedModelWhenTheDefaultServiceHasNoKey(t *testing.T) {
+	defaultServer := newForbiddenClientDoorServer(t)
+	directServer := newClientDoorServer(t, "child done")
+	defaultSource := modelsource.DefaultSource(defaultServer.URL)
+	directSource := modelsource.Source{ID: "direct", Written: "direct", Address: directServer.URL}
+	agent, err := New(Config{
+		Workspace: t.TempDir(), Model: "direct/stub/conversation",
+		Sources: modelsource.NewSet(
+			modelsource.Connected{Source: defaultSource, Address: defaultServer.URL},
+			modelsource.Connected{Source: directSource, Key: "direct-seat-key", Address: directServer.URL},
+		),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = agent.Close() })
+	child, err := agent.newChildAgent(Config{Workspace: t.TempDir(), Model: "crew/worker"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = child.Close() })
+
+	drainTurn(t, child, "work")
+	if got := directServer.allCalls(); len(got) != 1 || got[0].authorization != "Bearer direct-seat-key" || clientDoorModel(t, got[0]) != "stub/conversation" {
+		t.Fatalf("connected service calls = %+v, want the parent's seated model", got)
+	}
+	if got := defaultServer.calls.Load(); got != 0 {
+		t.Fatalf("default service received %d requests", got)
+	}
+}
+
+func TestACrewSeatKeepsTheDefaultServiceWhenItsKeyIsPresent(t *testing.T) {
+	defaultServer := newClientDoorServer(t, "crew done")
+	directServer := newClientDoorServer(t, "direct done")
+	defaultSource := modelsource.DefaultSource(defaultServer.URL)
+	directSource := modelsource.Source{ID: "direct", Written: "direct", Address: directServer.URL}
+	agent, err := New(Config{
+		Workspace: t.TempDir(), Model: "direct/stub/conversation",
+		Sources: modelsource.NewSet(
+			modelsource.Connected{Source: defaultSource, Key: "default-crew-key", Address: defaultServer.URL},
+			modelsource.Connected{Source: directSource, Key: "direct-seat-key", Address: directServer.URL},
+		),
+		RolesSource: tierSettings(map[string]string{
+			roles.TierKey(roles.TierReflex): "crew/reflex",
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = agent.Close() })
+	_, answered, err := agent.callRole(t.Context(), roles.RoleReflex, agent.Model(), []ai.Message{textMessage("user", "answer")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if answered != "crew/reflex" {
+		t.Fatalf("answer was recorded on %q, want the crew seat", answered)
+	}
+	if got := defaultServer.allCalls(); len(got) != 1 || got[0].authorization != "Bearer default-crew-key" || clientDoorModel(t, got[0]) != "crew/reflex" {
+		t.Fatalf("default service calls = %+v", got)
+	}
+	if got := directServer.allCalls(); len(got) != 0 {
+		t.Fatalf("connected service received the crew call: %+v", got)
 	}
 }
 

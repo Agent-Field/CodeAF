@@ -14,6 +14,21 @@ then shows the service, door, safe spelling of its key, region and order.
 The default service remains first. With two or more services, `/model` groups models by
 service in that order; with only the default service, the picker remains ungrouped.
 
+## Using aforge with only a direct service — no OpenRouter key at all
+
+Yes. When the conversation is on a model from a connected service, that service can carry
+the turn without an OpenRouter key. Pressing `enter` sends the message; the setup screen
+does not open, and aforge does not show
+`openrouter is not connected · enter on your message connects in a browser, or export OPENROUTER_API_KEY`.
+Ollama counts as connected without a key because its local service explicitly needs none.
+
+The crew follows the same road. Its small background calls — naming a session, titling a
+task, the reflex and the judges — normally use the configured crew models. If one of those
+models belongs to the default service and that service has no key, the call instead uses
+the conversation's model on the connected service. Tools, tasks and child agents launched
+from that turn inherit the same rule, so none of them makes an OpenRouter request. If the
+default service does have a key, the crew keeps using its configured models as usual.
+
 ## When a newly connected model service starts working in this conversation
 
 On a plain launch on this machine, a successful connection with a pasted key is live in

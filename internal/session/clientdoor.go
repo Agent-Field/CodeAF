@@ -32,36 +32,83 @@ type modelAccount struct {
 type modelClientPool struct {
 	mu      sync.Mutex
 	config  Config
+	seat    string
 	clients map[modelAccount]Completer
 }
 
 func newModelClientPool(config Config, model string, client Completer) *modelClientPool {
-	pool := &modelClientPool{config: config, clients: make(map[modelAccount]Completer)}
+	pool := &modelClientPool{config: config, seat: strings.TrimSpace(model), clients: make(map[modelAccount]Completer)}
 	pool.clients[accountFor(config, model)] = client
 	return pool
+}
+
+// seatedModel is THE ONE PLACE A MODEL BECOMES A DIFFERENT MODEL, and it
+// exists for one state: a profile with no default-provider key and a connected
+// service carrying the conversation. ANY PART A SERVICE CANNOT FILL FALLS TO
+// THE MODEL ALREADY IN THE SEAT. The default service must be the set's first
+// member, because an unqualified model falls to that member; resolving both
+// names before changing either keeps the address, bearer and wire slug together
+// in one call.
+// The caller holds p.mu so the live seat and service set are one snapshot.
+func (p *modelClientPool) seatedModel(model string) string {
+	model = strings.TrimSpace(model)
+	seat := strings.TrimSpace(p.seat)
+	if seat == "" || seat == model {
+		return model
+	}
+	services := p.config.Sources.OrDefault(p.config.APIKey, p.config.BaseURL)
+	if !strings.EqualFold(services.Default().Source.ID, modelsource.DefaultID) {
+		return model
+	}
+	service, _ := services.For(model)
+	if !strings.EqualFold(service.Source.ID, modelsource.DefaultID) || modelServiceCanAnswer(service) {
+		return model
+	}
+	seated, _ := services.For(seat)
+	if seated.Source.ID == "" || strings.EqualFold(seated.Source.ID, modelsource.DefaultID) || !modelServiceCanAnswer(seated) {
+		return model
+	}
+	return seat
+}
+
+func modelServiceCanAnswer(service modelsource.Connected) bool {
+	return strings.TrimSpace(service.Key) != "" || service.Source.KeyOptional
+}
+
+// setSeat moves the one live fallback beside the source snapshot. A model
+// chosen after launch must carry the next turn; construction-time config is a
+// receipt of how the conversation opened, not an answer about where it sits.
+func (p *modelClientPool) setSeat(model string) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	p.seat = strings.TrimSpace(model)
+	p.mu.Unlock()
 }
 
 // clientFor resolves model and its wire slug from one snapshot, then reuses or
 // constructs the adapter for that complete account. Construction opens no
 // connection, so holding the lock prevents two simultaneous children from
 // minting two adapters and, more importantly, two competing lane-prober seams.
-func (p *modelClientPool) clientFor(model string) (Completer, string, modelAccount, error) {
+func (p *modelClientPool) clientFor(model string) (Completer, string, string, modelAccount, error) {
 	if p == nil {
-		return nil, "", modelAccount{}, errNoCompleter
+		return nil, "", "", modelAccount{}, errNoCompleter
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	model = p.seatedModel(model)
 	configured := p.config.clientConfig(model, providerTimeout)
 	want := accountFor(p.config, model)
 	if client := p.clients[want]; client != nil {
-		return client, configured.Model, want, nil
+		return client, configured.Model, model, want, nil
 	}
 	client, err := newProviderClient(p.config, model)
 	if err != nil {
-		return nil, "", modelAccount{}, err
+		return nil, "", model, modelAccount{}, err
 	}
 	p.clients[want] = client
-	return client, configured.Model, want, nil
+	return client, configured.Model, model, want, nil
 }
 
 // setSources moves the pool to a freshly resolved profile and forgets every
@@ -201,7 +248,7 @@ func (a *Agent) childClient(config Config) (Completer, modelAccount, *modelClien
 	if !managed || pool == nil {
 		return unwrapCompleter(current), modelAccount{}, nil, false, nil
 	}
-	client, _, resolved, err := pool.clientFor(config.Model)
+	client, _, _, resolved, err := pool.clientFor(config.Model)
 	return client, resolved, pool, true, err
 }
 
@@ -323,7 +370,7 @@ func (a *Agent) rebindClientLocked(model string) {
 	if !a.managedClient {
 		return
 	}
-	inner, _, want, err := a.clientPool.clientFor(model)
+	inner, _, _, want, err := a.clientPool.clientFor(model)
 	if want == a.clientAccount {
 		return
 	}
@@ -347,42 +394,52 @@ func (a *Agent) rebindClientLocked(model string) {
 // THIS IS THE ONLY DOOR THAT MAY PUT A MODEL OVERRIDE ON A SESSION REQUEST. An
 // override changes only the slug in the request; choosing the client here first
 // is what changes the address and bearer with it.
-func (a *Agent) completerFor(model string) (Completer, string, error) {
+func (a *Agent) completerFor(model string) (Completer, string, string, error) {
 	if a == nil {
-		return nil, "", errNoCompleter
+		return nil, "", "", errNoCompleter
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.client == nil {
-		return nil, "", errNoCompleter
+		return nil, "", "", errNoCompleter
 	}
 	if !a.managedClient {
 		configured := a.config.clientConfig(model, providerTimeout)
-		return a.client, configured.Model, nil
+		return a.client, configured.Model, model, nil
 	}
-	inner, wire, want, err := a.clientPool.clientFor(model)
+	inner, wire, called, want, err := a.clientPool.clientFor(model)
 	if err != nil {
-		return nil, "", err
+		return nil, "", called, err
 	}
 	if want == a.clientAccount {
-		return a.client, wire, nil
+		return a.client, wire, called, nil
 	}
 	if wrapper, ok := a.client.(sessionCompleter); ok {
 		wrapper.inner = inner
-		return wrapper, wire, nil
+		return wrapper, wire, called, nil
 	}
-	return inner, wire, nil
+	return inner, wire, called, nil
 }
 
 // completeWithModel is [Agent.completerFor] joined to the one wire-model
 // option. Keeping the two operations inseparable makes it impossible to change
 // a slug while accidentally retaining another service's address and bearer.
 func (a *Agent) completeWithModel(ctx context.Context, messages []ai.Message, model string, options ...ai.Option) (*ai.Response, error) {
-	client, wire, err := a.completerFor(model)
+	response, _, err := a.completeWithNamedModel(ctx, messages, model, options...)
+	return response, err
+}
+
+// completeWithNamedModel keeps the model that answered attached to the same
+// resolution that chose its account. Errand receipts need that identity when a
+// missing default-service key moved the call onto the live seat; asking the pool
+// a second time afterwards could observe a different model or source set.
+func (a *Agent) completeWithNamedModel(ctx context.Context, messages []ai.Message, model string, options ...ai.Option) (*ai.Response, string, error) {
+	client, wire, called, err := a.completerFor(model)
 	if err != nil {
-		return nil, err
+		return nil, called, err
 	}
-	return client.CompleteWithMessages(ctx, messages, append(options, ai.WithModel(wire))...)
+	response, err := client.CompleteWithMessages(ctx, messages, append(options, ai.WithModel(wire))...)
+	return response, called, err
 }
 
 type unavailableCompleter struct{ err error }

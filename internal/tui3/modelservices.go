@@ -687,6 +687,31 @@ func (a *app) modelIsDirect(model string) bool {
 	return service.Source.ID != "" && !strings.EqualFold(service.Source.ID, modelsource.DefaultID)
 }
 
+// defaultProviderNeeded is the ONE answer to "does this person still owe us an
+// OpenRouter key before they can say anything". A CONNECTED SERVICE THAT CAN
+// CARRY THE CONVERSATION IS THE PROVIDER: opening the default service's browser
+// door over it would stop a working turn in order to collect a key that turn
+// does not use. Blank is usable only when the service says so explicitly, which
+// is how a local Ollama seat remains a real seat rather than a broken key row.
+func (a *app) defaultProviderNeeded() bool {
+	if a.routerConnect == nil || config.APIKeyConfigured(a.profileDir) {
+		return false
+	}
+	return !a.connectedServiceCarriesModel()
+}
+
+// connectedServiceCarriesModel is the service half of the prerequisite: the
+// current model resolves away from the default service and that account can
+// answer. Keeping it named lets the non-browser setup seam describe its own
+// missing key without teaching that older seam a second version of this rule.
+func (a *app) connectedServiceCarriesModel() bool {
+	service, _ := a.sources.For(a.model)
+	if service.Source.ID == "" || strings.EqualFold(service.Source.ID, modelsource.DefaultID) {
+		return false
+	}
+	return strings.TrimSpace(service.Key) != "" || service.Source.KeyOptional
+}
+
 func modelUsesService(model, written string) bool {
 	model = strings.TrimSpace(model)
 	written = strings.TrimSpace(written)

@@ -7,7 +7,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -1363,15 +1362,15 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	if windowsDroppedLineShape(line) && a.inputDroppedLine(line) {
 		return a.edited()
 	}
-	// A MODEL MESSAGE WITH NO DEFAULT-PROVIDER KEY OPENS THE CONNECTION BEFORE
-	// THE DRAFT IS CLEARED. This is the returning half of the key gate: a person
-	// who pressed esc to read an existing conversation can still type naturally,
-	// and enter gives them the browser door rather than spending their words on
-	// the provider's "no API key" refusal. Slash commands stay local and keep
-	// working — /help and /settings do not need a model — and a custom endpoint
-	// has no OpenRouter seam, so it keeps its own credential path.
+	// A MODEL MESSAGE THAT STILL NEEDS THE DEFAULT PROVIDER OPENS ITS CONNECTION
+	// BEFORE THE DRAFT IS CLEARED. This is the returning half of the key gate: a
+	// person who pressed esc to read an existing conversation can still type
+	// naturally, and enter gives them the browser door rather than spending their
+	// words on the provider's "no API key" refusal. Slash commands stay local and
+	// keep working — /help and /settings do not need a model — and a connected
+	// service carrying this model has its own working credential path.
 	if !strings.HasPrefix(line, "/") && (line != "" || held) &&
-		a.routerConnect != nil && !config.APIKeyConfigured(a.profileDir) {
+		a.defaultProviderNeeded() {
 		a.openSetup(false)
 		return nil
 	}

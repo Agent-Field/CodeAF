@@ -218,13 +218,13 @@ func TestChangingThePlanPauseSettingReplacesTheLiveClient(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer agent.Close()
-	before, _, _, err := agent.clientPool.clientFor("z-ai/glm-5.3-flash")
+	before, _, _, _, err := agent.clientPool.clientFor("z-ai/glm-5.3-flash")
 	if err != nil {
 		t.Fatal(err)
 	}
 	connected.PlanPaused = account.PlanPausedUseMeter
 	agent.SetSources(modelsource.NewSet(sources.Default(), connected))
-	after, _, _, err := agent.clientPool.clientFor("z-ai/glm-5.3-flash")
+	after, _, _, _, err := agent.clientPool.clientFor("z-ai/glm-5.3-flash")
 	if err != nil {
 		t.Fatal(err)
 	}

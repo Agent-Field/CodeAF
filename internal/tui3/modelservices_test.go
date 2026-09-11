@@ -700,6 +700,132 @@ func TestADirectModelKeepsItsServiceInStatusAndCarriesNoLane(t *testing.T) {
 	t.Fatal("the direct model was not in the picker")
 }
 
+func TestATurnOnAConnectedServiceSendsWithNoDefaultProviderKey(t *testing.T) {
+	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY"} {
+		t.Setenv(pin, "")
+	}
+	dir := t.TempDir()
+	base := testDefaultService("")
+	direct := testDirectService("https://direct.example/v1")
+	sources := modelsource.NewSet(base, direct)
+	agent := &fakeAgent{model: "deepseek-direct/deepseek-v4-pro"}
+	a := modelServiceTestAppWithAgent(t, dir, agent.model, sources, nil, agent)
+	a.routerConnect = func(context.Context) (OpenRouterFlow, error) { return nil, nil }
+	a.input.setText("hello")
+	runSubmit(t, a.enter())
+
+	if len(agent.sent) != 1 || agent.sent[0] != "hello" {
+		t.Fatalf("connected service was sent %v, want the turn", agent.sent)
+	}
+	if a.setup.open {
+		t.Fatal("enter opened the default provider over a connected service")
+	}
+	for _, line := range noteTexts(a) {
+		if strings.Contains(line, "openrouter is not connected") {
+			t.Fatalf("connected service drew the default-provider note: %q", line)
+		}
+	}
+}
+
+func TestAConnectedServiceKeepsSetupSilentAboutTheDefaultProvider(t *testing.T) {
+	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY", "AFORGE_DAILY_BUDGET"} {
+		t.Setenv(pin, "")
+	}
+	dir := t.TempDir()
+	base := testDefaultService("")
+	direct := testDirectService("https://direct.example/v1")
+	a := newApp(t.Context(), Options{
+		Agent:      &fakeAgent{model: "deepseek-direct/deepseek-v4-pro"},
+		Workspace:  t.TempDir(),
+		ProfileDir: dir,
+		Sources:    modelsource.NewSet(base, direct),
+		Setup:      true,
+		ConnectOpenRouter: func(context.Context) (OpenRouterFlow, error) {
+			return nil, nil
+		},
+	})
+	if !a.setup.open || len(a.setup.steps) != 1 || a.setup.step() != setupControls {
+		t.Fatalf("the direct-only setup asked %+v, want only controls", a.setup.steps)
+	}
+	pressSetup(a, key("esc"))
+	for _, line := range noteTexts(a) {
+		if strings.Contains(line, "openrouter") {
+			t.Fatalf("direct-only setup left an OpenRouter note: %q", line)
+		}
+	}
+}
+
+func TestAKeyOptionalServiceCarriesATurnWithNoDefaultProviderKey(t *testing.T) {
+	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY"} {
+		t.Setenv(pin, "")
+	}
+	base := testDefaultService("")
+	local := modelsource.Connected{
+		Source:  modelsource.Source{ID: "ollama", Written: "ollama", KeyOptional: true},
+		Address: "http://localhost:11434/v1",
+	}
+	agent := &fakeAgent{model: "ollama/llama3.2"}
+	a := modelServiceTestAppWithAgent(t, t.TempDir(), agent.model, modelsource.NewSet(base, local), nil, agent)
+	a.routerConnect = func(context.Context) (OpenRouterFlow, error) { return nil, nil }
+	a.input.setText("hello locally")
+	runSubmit(t, a.enter())
+	if len(agent.sent) != 1 || agent.sent[0] != "hello locally" || a.setup.open {
+		t.Fatalf("key-optional service sent %v with setup open=%v", agent.sent, a.setup.open)
+	}
+}
+
+func TestATurnOnTheDefaultServiceStillOpensSetupWithNoDefaultProviderKey(t *testing.T) {
+	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY"} {
+		t.Setenv(pin, "")
+	}
+	dir := t.TempDir()
+	base := testDefaultService("")
+	direct := testDirectService("https://direct.example/v1")
+	agent := &fakeAgent{model: config.DefaultModel}
+	a := modelServiceTestAppWithAgent(t, dir, agent.model, modelsource.NewSet(base, direct), nil, agent)
+	a.routerConnect = func(context.Context) (OpenRouterFlow, error) { return nil, nil }
+	a.input.setText("keep these words")
+
+	if cmd := a.enter(); cmd != nil {
+		t.Fatal("the missing default provider submitted a turn")
+	}
+	if !a.setup.open || a.setup.step() != setupKey {
+		t.Fatalf("the default provider's setup did not open: %+v", a.setup)
+	}
+	if len(agent.sent) != 0 || a.input.String() != "keep these words" {
+		t.Fatalf("the gate sent %v and kept draft %q", agent.sent, a.input.String())
+	}
+}
+
+func TestDirectOnlyCommandsInventNoDefaultProviderUsage(t *testing.T) {
+	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY"} {
+		t.Setenv(pin, "")
+	}
+	base := testDefaultService("")
+	direct := testDirectService("https://direct.example/v1")
+	a := modelServiceTestApp(t, t.TempDir(), "deepseek-direct/deepseek-v4-pro",
+		modelsource.NewSet(base, direct), []Model{{ID: config.DefaultModel}})
+	a.sourceModels[direct.Source.ID] = []Model{{ID: "deepseek-v4-pro"}}
+
+	for _, command := range []string{"/status", "/cost"} {
+		a.slash(command)
+		answer := strings.ToLower(lastNote(t, a))
+		for _, invented := range []string{"$0.00", "0 tok", "openrouter"} {
+			if strings.Contains(answer, invented) {
+				t.Fatalf("%s invented %q in %q", command, invented, answer)
+			}
+		}
+	}
+	a.openPicker()
+	rendered := plain(strings.Join(a.pick.rows(100, a.pick.height(100), a.pal, -1, a.reasoningFor), "\n"))
+	if !strings.Contains(rendered, "deepseek-direct") || !strings.Contains(rendered, "deepseek-direct/deepseek-v4-pro") {
+		t.Fatalf("/model lost the connected service and its model:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "openrouter") || !strings.Contains(rendered, config.DefaultModel) {
+		t.Fatalf("/model lost the keyless default service's existing group or model:\n%s", rendered)
+	}
+}
+
 func TestDisconnectingReplacesTheLiveClientBeforeTheNextRequest(t *testing.T) {
 	defaultServer := sourcestub.New(config.DefaultModel)
 	defer defaultServer.Close()

@@ -37,6 +37,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I use ollama", "services"},
 		{"does z-ai use my coding plan first", "services"},
 		{"why is my service called z-ai-direct", "services"},
+		{"do I need an openrouter key if I connected z.ai", "services"},
+		{"I only have a zhipu key can I use aforge", "services"},
 		{"what happens when my plan runs out", "services"},
 		{"will it spend pay as you go automatically", "services"},
 		{"why are only four glm models listed", "services"},
