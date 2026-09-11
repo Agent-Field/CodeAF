@@ -1162,3 +1162,24 @@ func TestNothingAndPastPricingAreNotFloats(t *testing.T) {
 }
 
 func sameReach(a, b Seconds) bool { return a.reach == b.reach }
+
+// TestAFigureThatOverflowedIsPastPricingAndNeverAFigure is the third road to
+// the same place the two named states already cover. A cost computed from a
+// belief whose variance ran away is `exp(μ + P/2)` — +Inf, or a finite absurdity
+// like the 1.99e+146 the first census found in the `cost_s` column of the
+// model-call log — and a figure nobody could state is exactly what
+// [PastPricing] means.
+func TestAFigureThatOverflowedIsPastPricingAndNeverAFigure(t *testing.T) {
+	for _, broken := range []float64{math.Inf(1), math.Inf(-1), math.NaN()} {
+		got := Measured(broken)
+		if _, isFigure := got.Get(); isFigure {
+			t.Errorf("Measured(%v) answered a number", broken)
+		}
+		if !sameReach(got, PastPricing()) {
+			t.Errorf("Measured(%v) is neither a figure nor past pricing", broken)
+		}
+	}
+	if seconds, isFigure := Measured(4.5).Get(); !isFigure || seconds != 4.5 {
+		t.Errorf("an ordinary figure stopped being one: %v %v", seconds, isFigure)
+	}
+}

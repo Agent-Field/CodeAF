@@ -1369,12 +1369,13 @@ func (c *Client) completeWithMessagesStreaming(
 	if httpResponse.StatusCode >= 400 {
 		payload, _ := io.ReadAll(io.LimitReader(httpResponse.Body, maxErrorPeek))
 		refusal := apiError(httpResponse.StatusCode, payload)
+		comeback := retryAfter(httpResponse)
 		c.record(recordFacts{
 			ctx: ctx, request: request, knobs: knobs, stream: true,
 			began: logBegan, status: httpResponse.StatusCode,
-			err: refusal, responseBody: payload,
+			err: refusal, responseBody: payload, retryAfter: comeback,
 		})
-		c.refuseUpstream(request, knobs, refusal, "", retryAfter(httpResponse))
+		c.refuseUpstream(request, knobs, refusal, "", comeback)
 		return nil, false, refusal
 	}
 	// AN ENDPOINT THAT ANSWERED IN ONE PIECE IS NOT A STREAM, AND SAYS SO IN ITS
@@ -1605,6 +1606,12 @@ func (c *Client) completeWithMessagesStreaming(
 				c.record(recordFacts{
 					ctx: ctx, request: request, knobs: knobs, stream: true,
 					began: logBegan, status: httpResponse.StatusCode, served: served, err: cut,
+					// A CUT STREAM WAS PAID FOR (calllog.go's pricing block).
+					// Whatever this process could not use, the provider counted
+					// and billed, and the row that says how much is the only
+					// place the money and the failure appear together.
+					response: response, reasoningTokens: reasoningTokens,
+					ttft: firstTokenAfter(began, firstToken),
 				})
 				c.settle(ctx, c.modelFor(request), response, cut.Reason.word(), content.Len())
 				return nil, false, cut
@@ -1616,6 +1623,8 @@ func (c *Client) completeWithMessagesStreaming(
 			c.record(recordFacts{
 				ctx: ctx, request: request, knobs: knobs, stream: true,
 				began: logBegan, status: httpResponse.StatusCode, served: served, err: decodeErr,
+				response: response, reasoningTokens: reasoningTokens,
+				ttft: firstTokenAfter(began, firstToken),
 			})
 			c.settle(ctx, c.modelFor(request), response, receiptTornReason, content.Len())
 			return nil, false, decodeErr
@@ -1667,6 +1676,8 @@ func (c *Client) completeWithMessagesStreaming(
 			c.record(recordFacts{
 				ctx: ctx, request: request, knobs: knobs, stream: true,
 				began: logBegan, status: httpResponse.StatusCode, served: served, err: refusal,
+				response: response, reasoningTokens: reasoningTokens,
+				ttft: firstTokenAfter(began, firstToken),
 			})
 			c.releaseEndpoint(ctx, c.modelFor(request))
 			c.settle(ctx, c.modelFor(request), response, receiptRefusalReason, content.Len())
@@ -1883,6 +1894,7 @@ func (c *Client) completeWithMessagesStreaming(
 			ctx: ctx, request: request, knobs: knobs, stream: true,
 			began: logBegan, status: httpResponse.StatusCode, served: served, err: err,
 			response: response, reasoningTokens: reasoningTokens,
+			ttft: firstTokenAfter(began, firstToken),
 		})
 		c.settle(ctx, c.modelFor(request), response, receiptRefusalReason, content.Len())
 		return nil, false, err
@@ -1966,6 +1978,8 @@ func (c *Client) completeWithMessagesStreaming(
 		c.record(recordFacts{
 			ctx: ctx, request: request, knobs: knobs, stream: true,
 			began: logBegan, status: httpResponse.StatusCode, served: served, err: cut,
+			response: response, reasoningTokens: reasoningTokens,
+			ttft: firstTokenAfter(began, firstToken),
 		})
 		c.bill(ctx, c.modelFor(request), response)
 		return nil, false, cut
@@ -1978,6 +1992,8 @@ func (c *Client) completeWithMessagesStreaming(
 		c.record(recordFacts{
 			ctx: ctx, request: request, knobs: knobs, stream: true,
 			began: logBegan, status: httpResponse.StatusCode, served: served, err: cut,
+			response: response, reasoningTokens: reasoningTokens,
+			ttft: firstTokenAfter(began, firstToken),
 		})
 		c.bill(ctx, c.modelFor(request), response)
 		return nil, false, cut
@@ -2004,6 +2020,7 @@ func (c *Client) completeWithMessagesStreaming(
 		began: logBegan, status: httpResponse.StatusCode, served: served,
 		response: response, reasoningTokens: reasoningTokens, learned: learned,
 		reasoning: builtString(thoughtRecord),
+		ttft:      firstTokenAfter(began, firstToken),
 	})
 	// Both paths or neither, exactly as the learning above: a streamed answer
 	// is billed by the provider the same way a whole-body one is, and a ledger

@@ -466,6 +466,12 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			ctx: ctx, request: request, knobs: knobs, stream: stream,
 			attempt: attempts, began: attemptBegan,
 			status: response.StatusCode, err: lastErr, responseBody: peek,
+			// THE COMEBACK TIME GOES ON THE ROW, because it is the only thing
+			// that makes a repeated send to a refusing machine legal
+			// (docs/design/recovery/DESIGN.md §3). It was never recorded until
+			// 2026-09-10, so eleven hundred paced refusals could not be checked
+			// against what the provider itself had asked for.
+			retryAfter: named,
 		})
 		// EVERY REFUSAL THIS LOOP DRAWS GOES THROUGH THE ONE DOOR, and what is
 		// done about it is decided there from what the refusal says rather than

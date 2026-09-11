@@ -184,12 +184,22 @@ type Record struct {
 	// token and the last arrive together and no endpoint's queue is separable
 	// from its writing — and absent is honest there rather than instant.
 	TTFTms int64 `json:"ttft_ms,omitempty"`
-	// DeadlineMs is when the watch was going to start thinking about a second
-	// request, derived at send time from the belief about the lane expected to
-	// serve rather than from any constant. It is on the row because a hedge
-	// that fired is only half a story: the rows where the deadline was set and
-	// NOT reached are what say the deadline was set in the right place.
-	DeadlineMs int64 `json:"deadline_ms,omitempty"`
+	// HazardCeilingMs is when the watch was going to start thinking about a
+	// second request, derived at send time from the belief about the lane
+	// expected to serve rather than from any constant. It is on the row because
+	// a hedge that fired is only half a story: the rows where the ceiling was
+	// set and NOT reached are what say it was set in the right place.
+	//
+	// IT WAS CALLED `deadline_ms` UNTIL 2026-09-10 AND IT WAS NEVER A DEADLINE.
+	// Nothing ends a call when it passes; it is the moment the wait controller
+	// starts pricing a rescue. Under the old name the census read it as the
+	// bound that applied to the attempt and found the field "fiction" — 7,937
+	// rows saying 10,000 beside an `ms` that ran to 937,777, and 2,720 finishes
+	// apparently running past twice their own deadline. Every one of those was
+	// a healthy call outliving a hazard ceiling, which is the ordinary case. The
+	// figure was right and the NAME was the lie, so the name moved
+	// (docs/design/recovery/DESIGN.md §7, wave R0).
+	HazardCeilingMs int64 `json:"hazard_ceiling_ms,omitempty"`
 	// Lane is the machine the preference named — the first entry of the
 	// `provider.order` this request carried, or the pin it carried instead.
 	// Empty for a call to an endpoint that is not a router, and for one sent
@@ -199,6 +209,17 @@ type Record struct {
 	// another lane. Both halves of the pair leave their own rows; this is what
 	// says they were a pair.
 	Hedged bool `json:"hedged,omitempty"`
+	// RetryAfterS is the comeback instruction a refusal carried, in seconds —
+	// the `Retry-After` header, or the wait the router named in its own body.
+	//
+	// IT IS THE ONE NUMBER THAT MAKES A SAME-MACHINE RETRY LEGAL. The rule the
+	// recovery design states is that the same bytes go back to the same machine
+	// only when there is nowhere else to send them and then only for as long as
+	// that machine itself asked — so a log that never recorded what was asked
+	// for could not say whether a single one of eleven hundred paced retries
+	// obeyed it. Over the ten days to 2026-09-10 the field was never present on
+	// any row, because nothing wrote it.
+	RetryAfterS float64 `json:"retry_after,omitempty"`
 
 	// ── why it waited, and what was done about it
 	//

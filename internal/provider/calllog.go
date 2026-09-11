@@ -165,6 +165,21 @@ type recordFacts struct {
 	status  int
 	served  string
 	err     error
+	// ttft is how long this attempt's first token really took, on the paths
+	// that know it for themselves.
+	//
+	// THE WATCH'S OWN FIGURE IS ONLY EVER ON A RACED CALL, and a stream that was
+	// cut or refused halfway through is exactly the row where the figure matters
+	// and exactly the row a race may not have been running on. A failed attempt
+	// that produced a first token and then died is a machine that is ALIVE and
+	// slow; one that produced nothing is a path that never opened, and nothing
+	// else on the row separates them.
+	ttft time.Duration
+	// retryAfter is the comeback time a refusal named, where it named one. It is
+	// carried rather than derived because the header is read once, by the loop
+	// that hands it to the limiter, and re-reading a body that has been drained
+	// is not possible (retry.go).
+	retryAfter time.Duration
 	// response is the assembled answer, on the row that has one.
 	response        *ai.Response
 	reasoningTokens int
@@ -212,7 +227,7 @@ func (c *Client) record(facts recordFacts) {
 		Tag:       callTag(facts.ctx),
 		Node:      callNode(facts.ctx),
 		Model:     model,
-		Served:    strings.TrimSpace(facts.served),
+		Served:    recordedServed(facts),
 		Effort:    c.recordedEffort(model, facts.knobs),
 		EffortPin: c.recordedEffortPin(model, facts.knobs),
 		// The ceiling that TRAVELLED, from the one function that works it out
@@ -234,6 +249,19 @@ func (c *Client) record(facts recordFacts) {
 	if facts.err != nil {
 		record.Error = calllog.ClipError(namedCancel(facts.ctx, facts.err))
 	}
+	// ── A FAILURE IS PRICED LIKE AN ANSWER, BECAUSE IT WAS BILLED LIKE ONE
+	//
+	// This block used to run only on the row that carried a whole answer, so a
+	// stream cut at eighteen thousand tokens, a 429 delivered after a 200 had
+	// opened and a connection torn halfway through a reply each left a row
+	// saying the call cost nothing. Over the ten days to 2026-09-10 that was
+	// 1,884 of 1,887 in-stream failures: $201.15 of recorded spend with $0.00
+	// attributed to anything that went wrong (docs/design/recovery/census-
+	// 20260910.md §8, finding 6).
+	//
+	// The tokens were generated and the provider counted them. Whether this
+	// process could USE the answer is a different question from what it cost,
+	// and only one of the two is a fact about the money.
 	if facts.response != nil {
 		record.Finish = FinishReason(facts.response)
 		if usage := facts.response.Usage; usage != nil {
@@ -246,6 +274,12 @@ func (c *Client) record(facts recordFacts) {
 		}
 		record.ReasoningTokens = facts.reasoningTokens
 	}
+	if facts.ttft > 0 {
+		record.TTFTms = facts.ttft.Milliseconds()
+	}
+	if facts.retryAfter > 0 {
+		record.RetryAfterS = facts.retryAfter.Seconds()
+	}
 	// ── WHY IT WAITED AND WHAT WAS DONE ABOUT IT
 	//
 	// The controller is what knows: which machine was asked for, when it was
@@ -255,8 +289,15 @@ func (c *Client) record(facts recordFacts) {
 	// the row of the request it rescued says what happened to that one.
 	if wait, watched := streamWatchFrom(facts.ctx).facts(); watched {
 		record.Lane = wait.lane
-		record.DeadlineMs = wait.deadline.Milliseconds()
-		record.TTFTms = wait.ttft.Milliseconds()
+		record.HazardCeilingMs = wait.deadline.Milliseconds()
+		if record.TTFTms == 0 {
+			// The watch's reading is the FALLBACK and not the source. A raced
+			// call has both; an unwatched one has only what the stream loop
+			// measured for itself, and a row whose own figure was overwritten
+			// by a zero from a watch that never saw a token would be a first
+			// token this build had and threw away.
+			record.TTFTms = wait.ttft.Milliseconds()
+		}
 		record.SilenceMs = wait.silence.Milliseconds()
 		record.Action = wait.action
 		record.Reason = wait.reason
@@ -346,6 +387,64 @@ func (c *Client) recordBodies(facts recordFacts, record calllog.Record, model st
 		}
 	}
 	recorder.Call(facts.ctx, body)
+}
+
+// firstTokenAfter is how long this attempt waited for its first token, and zero
+// when no token ever came. Zero is the honest answer there and the emptiness
+// law leaves it off the row: a stream that never wrote is not a stream whose
+// first token was instant, and the difference is the difference between a
+// machine that is alive and slow and a path that never opened.
+//
+// IT IS MEASURED ON THE CLIENT'S OWN SEAM and not on the log's wall clock, for
+// the same reason the two are separate at all (logNow): both instants come from
+// the stream loop, which a test scripts, and subtracting a scripted instant
+// from a real one would be a measurement of the test harness.
+func firstTokenAfter(began, first time.Time) time.Duration {
+	if began.IsZero() || first.IsZero() || !first.After(began) {
+		return 0
+	}
+	return first.Sub(began)
+}
+
+// recordedServed is the machine that ANSWERED this attempt, and nothing at all
+// when nobody can say who that was.
+//
+// TWO SOURCES AND NEVER A THIRD.
+//
+//  1. The stream's own `provider` field, which is the machine naming itself.
+//  2. The one machine this request DEMANDED, when it demanded exactly one: a
+//     router asked for a single-machine `only` either answers from that machine
+//     or refuses, so the demand and the answer are the same fact by
+//     construction. This is what puts a name on the row of a 429 — a refusal
+//     from a pool that never opened a stream to name itself.
+//
+// THE LANE IS NOT A SOURCE, AND THAT IS THE LAW THIS FUNCTION EXISTS TO STATE.
+// `lane` is who the preference ASKED FOR. The two disagreed on 3,728 of 10,107
+// finishes over the ten days to 2026-09-10, and every per-lane belief this
+// build holds — velocity, strikes, pacing, the sheet's own uptime — has been
+// written against the asked-for name, which is how a machine gets struck for
+// another machine's refusal (docs/design/recovery/DESIGN.md §1's third
+// reading). Filling an empty `served` with `lane` would make that disagreement
+// permanently invisible, so it is never done.
+func recordedServed(facts recordFacts) string {
+	if served := strings.TrimSpace(facts.served); served != "" {
+		return served
+	}
+	return soleDemandedLane(facts.knobs)
+}
+
+// soleDemandedLane is the one machine this request was pinned to, and "" when
+// it was free to be routed anywhere. A rescue demands the single arm it walked
+// to (hedge.go's [hedgePreference]) and a person's pin is one machine
+// (lanes.go), so either is a commitment the router cannot answer around.
+func soleDemandedLane(knobs callKnobs) string {
+	if lane := strings.TrimSpace(knobs.hedgeLane); lane != "" {
+		return lane
+	}
+	if knobs.laneChoice != nil && len(knobs.laneChoice.Only) == 1 {
+		return strings.TrimSpace(knobs.laneChoice.Only[0])
+	}
+	return ""
 }
 
 // builtString reads a builder that may never have been made. The streamed

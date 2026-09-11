@@ -392,11 +392,129 @@ func (s *store) hold(fold func(storeState, []record, int) (storeState, bool)) er
 // writeState stamps and writes one state atomically.
 func writeState(path string, held storeState) error {
 	held.Version, held.At = stateVersion, time.Now().UTC()
+	held = spellable(held)
 	data, err := json.Marshal(held)
 	if err != nil {
 		return err
 	}
 	return writeAtomic(path, data)
+}
+
+// ── A NUMBER JSON CANNOT SPELL MAY NOT COST THE WHOLE FILE ──────────────────
+//
+// THE LAW: THIS STORE NEVER WRITES A FLOAT THAT IS NOT A NUMBER.
+//
+// encoding/json refuses the entire document on one NaN or one infinity, and
+// what it refuses here is not a row but the whole of what this process has
+// learned. On 2026-09-10 that had been happening for days —
+// `the belief file could not be compacted: json: unsupported value: NaN` —
+// which meant every compaction failed, the journal beside the file kept
+// growing, and every load replayed all of it.
+//
+// THE ARITHMETIC IS FIXED AT THE SOURCE and this is the guard behind it
+// ([Posterior.Predict] bounds the widening, [Posterior.Update] refuses to fold
+// an observation into a belief that is not a number, [age] clamps
+// unconditionally). The guard is kept anyway, for the reason internal/calllog
+// keeps finite.go: a defect in one of a dozen float-bearing structures must
+// cost the value it is about and never the file it is in.
+//
+// A BELIEF THAT IS NOT A NUMBER IS DROPPED WHOLE, exactly as a belief that
+// names no lane is ([attributed]). Repairing half of one would leave a record
+// asserting a mean nobody measured with a certainty nobody computed, and the
+// honest state of a filter whose arithmetic went wrong is that it knows
+// nothing about that pair.
+func spellable(held storeState) storeState {
+	kept := held.Beliefs[:0]
+	for _, belief := range held.Beliefs {
+		if !belief.spellable() {
+			continue
+		}
+		kept = append(kept, belief)
+	}
+	held.Beliefs = kept
+
+	priors := held.Priors[:0]
+	for _, prior := range held.Priors {
+		if !finite(prior.TTFT) || !finite(prior.Rate) {
+			continue
+		}
+		priors = append(priors, prior)
+	}
+	held.Priors = priors
+
+	workloads := held.Workloads[:0]
+	for _, workload := range held.Workloads {
+		if !finite(workload.Visible) || !finite(workload.Hidden) || !finite(workload.Weight) {
+			continue
+		}
+		workloads = append(workloads, workload)
+	}
+	held.Workloads = workloads
+
+	held.Wait = spellableChains(held.Wait)
+	held.Rate = spellableChains(held.Rate)
+	held.Think = spellableChains(held.Think)
+	held.Judged = spellableTallies(held.Judged)
+	return held
+}
+
+// spellable reports whether every number this belief carries is one.
+func (b Belief) spellable() bool {
+	return finite(b.TTFT.X) && finite(b.TTFT.P) &&
+		finite(b.Rate.X) && finite(b.Rate.P) &&
+		finite(b.Quality.A) && finite(b.Quality.B)
+}
+
+// spellableChains drops the levels of a hierarchy whose numbers stopped being
+// numbers. A level that is dropped is a level the next load rebuilds from the
+// beliefs it replays, which is the same road a fresh machine takes.
+func spellableChains(held chains) chains {
+	if !finite(held.Pace) {
+		held.Pace = 0
+	}
+	if !spellableNode(held.World) {
+		held.World = node{}
+	}
+	spellableNodes(held.Lane)
+	spellableNodes(held.Model)
+	spellableNodes(held.Pair)
+	for key, value := range held.Drift {
+		if !finite(value.Up) || !finite(value.Down) {
+			delete(held.Drift, key)
+		}
+	}
+	for key, value := range held.Spread {
+		if !finite(value.Mean) || !finite(value.M2) {
+			delete(held.Spread, key)
+		}
+	}
+	return held
+}
+
+func spellableNodes(held map[string]node) {
+	for key, value := range held {
+		if !spellableNode(value) {
+			delete(held, key)
+		}
+	}
+}
+
+func spellableNode(held node) bool { return finite(held.X) && finite(held.P) }
+
+// spellableTallies drops the quality evidence whose counts stopped being
+// numbers, by the same rule.
+func spellableTallies(held tallies) tallies {
+	for key, value := range held.Lane {
+		if !finite(value.A) || !finite(value.B) {
+			delete(held.Lane, key)
+		}
+	}
+	for key, value := range held.Model {
+		if !finite(value.A) || !finite(value.B) {
+			delete(held.Model, key)
+		}
+	}
+	return held
 }
 
 // lockSuffix names the file that serialises writers of the belief file.
