@@ -2,9 +2,11 @@ package tui3
 
 import (
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -156,6 +158,20 @@ func TestAnErrorWithNoRetriesKeepsThePlainLine(t *testing.T) {
 	notes := failureNotes(a.entries)
 	if len(notes) != 1 || notes[0] != "error: the request is too large for this model" {
 		t.Fatalf("a single failure did not draw the plain error line: %v", notes)
+	}
+}
+
+func TestAPaymentRefusalPutsTheVendorsWordsOnScreenWithoutARetryStory(t *testing.T) {
+	a := failingTurn(t)
+	a.event(session.Event{Kind: session.EventError, Err: &provider.APIError{
+		Status:  http.StatusTooManyRequests,
+		Body:    `{"code":"1113","message":"Insufficient balance or no resource package. Please recharge."}`,
+		Message: "Insufficient balance or no resource package. Please recharge.",
+	}})
+	page := plain(strings.Join(plainRows(a), "\n"))
+	if !strings.Contains(page, "Insufficient balance or no resource package. Please recharge.") ||
+		strings.Contains(page, "asking again") || strings.Contains(page, "could not be reached") {
+		t.Fatalf("payment refusal screen =\n%s", page)
 	}
 }
 

@@ -718,7 +718,7 @@ func pacingExhausted(err error) bool {
 		}
 		err = unwrapped.Unwrap()
 	}
-	return api != nil && api.Status == http.StatusTooManyRequests
+	return api != nil && api.Status == http.StatusTooManyRequests && !api.AccountCannotPay()
 }
 
 // recoverFromPacing offers the chain to a call the provider paced into the

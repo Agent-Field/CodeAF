@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/lane/control"
+	"github.com/Agent-Field/aforge-v2/internal/paymentrefusal"
 	"github.com/Agent-Field/aforge-v2/internal/trace"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -2261,10 +2262,24 @@ func (e *APIError) FromUpstream() bool {
 // pacing rather than a verdict on the request, and it has its own patience
 // (retry.go).
 func (e *APIError) OurRequest() bool {
-	if e == nil || e.FromUpstream() {
+	if e == nil {
+		return false
+	}
+	if paymentrefusal.Matches(e.Status, []byte(e.Body)) {
+		return true
+	}
+	if e.FromUpstream() {
 		return false
 	}
 	return e.Status >= 400 && e.Status < 500 && e.Status != http.StatusTooManyRequests
+}
+
+// AccountCannotPay reports the terminal authenticated-account refusal shared
+// by connect and the live transport. It reads the original body, never Error's
+// formatted sentence, so a plain pacing 429 cannot become terminal by wording
+// added inside this process.
+func (e *APIError) AccountCannotPay() bool {
+	return e != nil && paymentrefusal.Matches(e.Status, []byte(e.Body))
 }
 
 // RefusalFrom recovers the provider's refusal from anywhere in an error chain,

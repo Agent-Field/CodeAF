@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
+	"github.com/Agent-Field/aforge-v2/internal/paymentrefusal"
 	"github.com/Agent-Field/aforge-v2/internal/trace"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -275,7 +276,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			}
 			continue
 		}
-		rateLimited := response.StatusCode == http.StatusTooManyRequests
+		potentialRateLimit := response.StatusCode == http.StatusTooManyRequests
 		// Error bodies can stall too. They are read below before a retry, so
 		// they need the same idle bound as successful streaming bodies.
 		if stream {
@@ -285,13 +286,23 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// because it is what tells the limiter how wide this 429's window is:
 		// one window, one halving (limiter.go).
 		var named time.Duration
-		if rateLimited {
+		if potentialRateLimit {
 			named = retryAfter(response)
 		}
-		sharedLimiter.release(rateLimited, named)
 		if !retryableStatus(response.StatusCode) {
+			sharedLimiter.release(false, 0)
 			return response, nil
 		}
+		// Drain a bounded prefix before deciding what this 429 means. Status alone
+		// cannot distinguish a busy queue from an authenticated account that cannot
+		// pay, and only the former should narrow the shared limiter or be retried.
+		peek, _ := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
+		payment := paymentrefusal.Matches(response.StatusCode, peek)
+		rateLimited := potentialRateLimit && !payment
+		if !rateLimited {
+			named = 0
+		}
+		sharedLimiter.release(rateLimited, named)
 		if rateLimited {
 			providerWait = named
 			if pacedSince.IsZero() {
@@ -306,9 +317,8 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				notice(true)
 			}
 		}
-		// Drain a bounded prefix before closing so the connection can be reused
-		// and the eventual error still says what the provider complained about.
-		peek, _ := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
+		// Close after the bounded read so the connection can be reused and the
+		// eventual error still says what the provider complained about.
 		response.Body.Close()
 		cancelAttempt()
 		lastErr = apiError(response.StatusCode, peek)
@@ -326,6 +336,9 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// is handed over rather than left in this loop; a 429 naming nobody is
 		// this account's own ceiling and writes nothing at all.
 		c.refuseUpstream(request, knobs, lastErr, "", named)
+		if payment {
+			return nil, lastErr
+		}
 		// One watched request has one recovery owner. When its existing race
 		// can fund an alternative, return the fault there instead of waiting
 		// and replaying the same encoded request up to three times first.
