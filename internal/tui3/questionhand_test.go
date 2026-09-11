@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // ── WHOSE KEYS THESE ARE ────────────────────────────────────────────────────
@@ -451,5 +452,53 @@ func TestARefusalInAFrameOnlyPutsItsOwnQuestionBack(t *testing.T) {
 	}
 	if said := plain(lastNote(t, lab.a)); !strings.Contains(said, errQuestionTest.Error()) {
 		t.Fatalf("the engine's refusal never reached the person: %q", said)
+	}
+}
+
+// ── THE PHONE TIER DRAWS WHERE THE KEYBOARD IS STANDING ─────────────────────
+//
+// `↑↓` walk this form's answers exactly as they walk the card's. Nothing was
+// drawn for it: a person on a phone-width terminal moved a cursor they could
+// not see and pressed `enter` on whichever row it had reached. The background
+// under the hot row is the MOUSE's and says nothing on a screen nobody is
+// hovering.
+func TestThePhoneSheetDrawsThePointerTheArrowsMove(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.a.width = 52
+	lab.raise(session.Question{
+		ID: 9301, Kind: session.QuestionConsent, Ask: session.AskPermission,
+		Head: "run the migration?", Asker: session.Asker{Kind: session.AskerModel},
+		Options: []session.AnswerOption{
+			{Key: "1", Label: "allow once"},
+			{Key: "2", Label: "always, this command"},
+			{Key: "3", Label: "deny"},
+		},
+	})
+	lab.tick(questionSettle * 2)
+	mark := lab.a.icon(tokens.GCollapsed)
+	pointed := func() string {
+		for _, row := range questionPlainRows(lab.rows()) {
+			if strings.Contains(row, mark) {
+				return row
+			}
+		}
+		return ""
+	}
+	start := pointed()
+	if start == "" {
+		t.Fatal("the phone sheet draws no pointer at all, so enter lands on a row nobody can see")
+	}
+	head, _ := lab.a.questionHead()
+	if want := strings.TrimSpace(head.question.Options[head.pick].Label); !strings.Contains(start, want) {
+		t.Fatalf("the pointer is drawn on %q and enter would take %q", start, want)
+	}
+	lab.press("up")
+	moved := pointed()
+	if moved == start {
+		t.Fatalf("the arrow moved the cursor and the sheet drew it in the same place: %q", moved)
+	}
+	head, _ = lab.a.questionHead()
+	if want := strings.TrimSpace(head.question.Options[head.pick].Label); !strings.Contains(moved, want) {
+		t.Fatalf("after the arrow the pointer is on %q and enter would take %q", moved, want)
 	}
 }
