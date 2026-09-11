@@ -130,7 +130,7 @@ func (c *MediaClient) GenerateMusic(ctx context.Context, request MusicRequest) (
 		return nil, fmt.Errorf("marshal music request: %w", err)
 	}
 
-	response, err := c.do(ctx, "/chat/completions", body)
+	response, err := c.do(ctx, "/chat/completions", body, request.Model)
 	if err != nil {
 		return nil, err
 	}

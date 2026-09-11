@@ -105,7 +105,7 @@ func (c *MediaClient) Transcribe(ctx context.Context, request TranscriptionReque
 		Model:      model,
 		InputAudio: transcriptionAudio{Data: base64.StdEncoding.EncodeToString(request.Data), Format: format},
 		Language:   strings.TrimSpace(request.Language),
-	}, &decoded)
+	}, &decoded, model)
 	if err != nil {
 		return nil, err
 	}
