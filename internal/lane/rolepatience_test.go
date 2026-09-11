@@ -319,30 +319,78 @@ func TestTheChoiceNamesNoRoleAndNoMachine(t *testing.T) {
 		if !deciding[name] {
 			continue
 		}
+		named := func(where ast.Node, role string) {
+			t.Errorf("%s: a choice is made from the role %s by name; derive it from the role's columns instead",
+				fset.Position(where.Pos()), role)
+		}
+		machine := func(where ast.Node, literal string) {
+			t.Errorf("%s: a machine is named in code as %s; every lane name here came off the wire a moment ago",
+				fset.Position(where.Pos()), literal)
+		}
 		ast.Inspect(file, func(node ast.Node) bool {
-			binary, ok := node.(*ast.BinaryExpr)
-			if !ok || (binary.Op != token.EQL && binary.Op != token.NEQ) {
-				return true
-			}
-			sides := [2]ast.Expr{binary.X, binary.Y}
-			for index, side := range sides {
-				if role := roleConstant(side); role != "" {
-					t.Errorf("%s: a choice is made by comparing against the role %s; derive it from the role's columns instead",
-						fset.Position(binary.Pos()), role)
+			switch found := node.(type) {
+			// A COMPARISON is the obvious way a name becomes a branch.
+			case *ast.BinaryExpr:
+				if found.Op != token.EQL && found.Op != token.NEQ {
+					return true
 				}
-				// A machine can only arrive in one of these files off the wire,
-				// so a comparison between something spelled `…Lane…` and a
-				// literal is somebody hard-coding a fleet.
-				if literal, isText := side.(*ast.BasicLit); isText && literal.Kind == token.STRING && literal.Value != `""` {
-					if mentionsLane(sides[1-index]) {
-						t.Errorf("%s: a machine is named in code as %s; every lane name here came off the wire a moment ago",
-							fset.Position(binary.Pos()), literal.Value)
+				sides := [2]ast.Expr{found.X, found.Y}
+				for index, side := range sides {
+					if role := roleConstant(side); role != "" {
+						named(found, role)
 					}
+					// A machine can only arrive in one of these files off the
+					// wire, so a comparison between something spelled `…Lane…`
+					// and a literal is somebody hard-coding a fleet.
+					if text := stringLiteral(side); text != "" && mentionsLane(sides[1-index]) {
+						machine(found, text)
+					}
+				}
+			// A SWITCH IS THE SAME BRANCH WITH NO OPERATOR IN IT, which is how
+			// the first version of this law was got past: a case list holds bare
+			// identifiers and the comparison the compiler makes is invisible to
+			// go/ast. `switch role { case RoleRecall: }` is exactly the thing
+			// the bar forbids and it contains no [ast.BinaryExpr] at all.
+			case *ast.SwitchStmt:
+				for _, statement := range found.Body.List {
+					clause, ok := statement.(*ast.CaseClause)
+					if !ok {
+						continue
+					}
+					for _, expr := range clause.List {
+						if role := roleConstant(expr); role != "" {
+							named(clause, role)
+						}
+						if text := stringLiteral(expr); text != "" && mentionsLane(found.Tag) {
+							machine(clause, text)
+						}
+					}
+				}
+			// AND A TABLE KEYED ON A ROLE IS A SECOND ROLE TABLE, which is the
+			// same fault spelled as data rather than as control flow — and, like
+			// the switch, it is a [ast.KeyValueExpr] and not a comparison. The
+			// one table lives in roles.go and this law holds the two files that
+			// decide where a request goes, so there is no legitimate key of this
+			// shape in either of them.
+			case *ast.KeyValueExpr:
+				if role := roleConstant(found.Key); role != "" {
+					named(found, role)
 				}
 			}
 			return true
 		})
 	}
+}
+
+// stringLiteral is the text of this expression when it is a non-empty string
+// literal, and empty otherwise — so that the three arms above ask the question
+// once rather than three times.
+func stringLiteral(expr ast.Expr) string {
+	literal, ok := expr.(*ast.BasicLit)
+	if !ok || literal.Kind != token.STRING || literal.Value == `""` {
+		return ""
+	}
+	return literal.Value
 }
 
 // mentionsLane reports whether this expression is about a machine's name — an
