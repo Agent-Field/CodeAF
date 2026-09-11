@@ -11,6 +11,90 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 )
 
+// An anchor can be the first writer of a conversation's identity now that the
+// opening-message stamp lands behind the person's path. It must write a whole
+// identity, and an older metadata transaction must preserve that anchoring.
+func TestAnchoringBeforeTheFirstStampWritesAWholeIdentity(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "0123456789abcdef")
+	place := Place{Dir: dir, Owned: true}
+	place.Workspace = place.Work()
+	if err := os.MkdirAll(place.Work(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	agent, err := newAgent(Config{
+		Workspace: place.Work(), Place: place, SessionFile: place.Transcript(), Model: "test/model",
+	}, &scriptedCompleter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = agent.Close() })
+
+	if _, err := os.Stat(place.MetaPath()); !os.IsNotExist(err) {
+		t.Fatalf("new conversation already has meta.json: %v", err)
+	}
+	stale := agent.metaSnapshot()
+	anchored, err := agent.AnchorWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err := LoadMeta(dir)
+	if err != nil || meta.ID == "" || meta.Workspace != anchored || meta.Owned {
+		raw, _ := os.ReadFile(place.MetaPath())
+		t.Fatalf("first anchor wrote an unreadable identity: %+v %v\n%s", meta, err, raw)
+	}
+
+	agent.updateMeta(dir, stale, func(meta *Meta) { meta.Title = "parser migration failures" })
+	agent.writeSpendSnapshot(dir, stale, .5, 270)
+	meta, err = LoadMeta(dir)
+	if err != nil || meta.Owned || meta.Workspace != anchored || meta.Title != "parser migration failures" || meta.Tokens != 270 {
+		t.Fatalf("old snapshot undid first-write anchoring: %+v %v", meta, err)
+	}
+}
+
+// And an anchor over a conversation that already has one owns its two fields and
+// no others: the totals and the model another writer put there are still there
+// afterwards, which is the whole point of the folder's lock (#695).
+func TestAnchoringOverAWrittenIdentityKeepsTheFieldsItDoesNotOwn(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "0123456789abcdef")
+	place := Place{Dir: dir, Owned: true}
+	place.Workspace = place.Work()
+	if err := os.MkdirAll(place.Work(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	agent, err := newAgent(Config{
+		Workspace: place.Work(), Place: place, SessionFile: place.Transcript(), Model: "test/model",
+	}, &scriptedCompleter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = agent.Close() })
+	agent.mu.Lock()
+	agent.stampUserLocked("diagnose parser migration failures")
+	agent.mu.Unlock()
+	agent.SettleWrites()
+
+	written, err := LoadMeta(dir)
+	if err != nil || written.ID == "" {
+		t.Fatalf("the stamp left no identity to anchor over: %+v %v", written, err)
+	}
+	written.Model, written.SpentUSD, written.Tokens = "other/model", .5, 270
+	if err := SaveMeta(dir, written); err != nil {
+		t.Fatal(err)
+	}
+
+	anchored, err := agent.AnchorWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err := LoadMeta(dir)
+	if err != nil || meta.Workspace != anchored || meta.Owned {
+		t.Fatalf("the anchor did not land: %+v %v", meta, err)
+	}
+	if meta.Model != "other/model" || meta.Tokens != 270 || meta.SpentUSD != .5 {
+		t.Fatalf("the anchor wrote over a field it does not own: %+v", meta)
+	}
+}
+
 func TestAnchoringAnOwnedSessionPersistsAndReloadsProjectInstructions(t *testing.T) {
 	repo := newTestRepo(t)
 	if err := os.Mkdir(filepath.Join(repo, "subdir"), 0o755); err != nil {

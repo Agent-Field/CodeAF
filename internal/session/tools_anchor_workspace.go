@@ -111,6 +111,19 @@ func (a *Agent) anchorMetaLocked(dir, workspace string) error {
 		if err != nil {
 			return fmt.Errorf("read conversation place: %w", err)
 		}
+		// AN ANCHOR CAN BE THE FIRST WRITER OF THIS FILE, now that the opening
+		// message's stamp is owed behind the person's path rather than written on
+		// it (placemeta.go's [Agent.metaStamp]). [LoadMeta] answers an identity-less
+		// meta.json with a blank Meta exactly as it answers a missing one, so an
+		// anchor that saved back what it had just read would leave the anchoring in
+		// a file nothing can read — and the next transaction carrying a snapshot
+		// taken before the anchor would seed ownership and workspace out of that
+		// snapshot and undo it. A blank read is therefore filled whole here. A file
+		// that already holds an identity is left alone: this transaction owns two
+		// fields, and every other one belongs to whoever wrote it.
+		if strings.TrimSpace(meta.ID) == "" {
+			meta = a.fillMetaLocked(meta)
+		}
 		meta.Workspace, meta.Owned = workspace, false
 		if err := SaveMeta(dir, meta); err != nil {
 			return fmt.Errorf("save conversation place: %w", err)
