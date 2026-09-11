@@ -498,9 +498,13 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// watchdog, which fires it on stall or on Close.
 		attemptCtx, cancelAttempt := attemptContext(ctx, stream)
 		var sent atomic.Bool
-		attemptCtx = httptrace.WithClientTrace(attemptCtx, &httptrace.ClientTrace{
-			WroteRequest: func(httptrace.WroteRequestInfo) { sent.Store(true) },
-		})
+		// AND THE CONNECTION IS MEASURED AS WELL AS THE ANSWER. The hooks cost
+		// nothing and they are the only thing that can separate a cold pool from
+		// a slow model in `ttft_ms` — a person who read an answer for two minutes
+		// and then typed again used to pay a whole handshake inside this Do, and
+		// the log filed every millisecond of it as the endpoint being slow
+		// (conntrace.go).
+		attemptCtx = httptrace.WithClientTrace(attemptCtx, knobs.trace.openConn(&sent))
 
 		// AND THE BYTES ARE WRITTEN HERE, immediately before the send, which is
 		// the same timing [Client.providerPreferences] exists for: the machine
