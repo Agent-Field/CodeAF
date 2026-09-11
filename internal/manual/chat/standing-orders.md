@@ -757,8 +757,12 @@ folder; a whole `**` segment reaches down through every folder below, so
 `inbox/**/*.md` watches Markdown at any depth under `inbox` (links to folders are not
 followed). A watch that reaches more than **10000** files and folders is refused when
 you set it up or edit it: `inbox/** reaches more than 10000 files and folders, and a
-watch reads every one of them on every pass; watch a narrower pattern`. The first
-reading is the baseline and runs nothing. After that a run starts only when a matching
+watch reads every one of them on every pass; watch a narrower pattern`. **The baseline is
+taken the moment you say yes** (or `add` runs, or `edit` changes the pattern): each file's
+name, size and time, never its contents. It runs nothing, and a file that lands a minute
+later is reported by the next check. Because the baseline holds no contents, a file saved
+again unchanged before that first check does count as a change; hashing every file at the
+yes would read up to 10000 files while you wait. After that a run starts only when a matching
 file was added, changed or removed, and the run is told exactly which: `added
 inbox/a.md`, `modified inbox/a.md`. **A file touched, or saved again with the same
 text, is not a change**: when its size or time moves, its contents are compared with
@@ -785,6 +789,34 @@ checked again at every write.
 A run that failed or was held back does not use up its changes: the next run is told
 about them again. Nothing here uses an account or a connector: the order reads local
 files and writes one local file.
+
+## Only when — a file watch with a condition, and the line a ping says
+
+A file watch set up in the chat can carry a condition (`when.hint`): "only when a client
+asks for a quote". It is judged each time the watched files change, against what
+changed — which files were added, modified or removed, their sizes (`39 → 96 bytes`),
+and how each changed file now ends (its last 1024 bytes, at most 4 files, all of it held
+to 8 KiB like a probe's output). A file whose link leads outside the project is named,
+never shown. A condition that says no uses up those changes; one that could not be
+asked leaves them for the next check, and a watch whose checks keep failing — no key
+for the judging model, a pattern grown past its limit — waits 5 minutes, then 10, 20, 40,
+then an hour between tries, its log taking one line per step; home shows it as `could not
+check`, not as a time. Resuming it, or editing its condition, tries again at once and keeps
+the changes it was holding. `aforge standing list` and
+`show` say it as `wakes whenever a file changes inside inbox/clients/, only when: …`.
+
+A condition needs something to judge. On a moment, a rhythm, an idle wait or a rule it
+is refused at setup: `when.hint is a condition, judged against what a file watch saw
+change or what a probe found; an every item gathers nothing to judge it against — leave
+when.hint out, or use kind file or probe`. One set up before that refusal is never
+judged: `it has a condition with nothing to judge it against, so it waits — set it up
+again without the condition`.
+
+A line to say (`does.say`) arrives as one line. `{{evidence}}` is its only
+placeholder: on a file watch it becomes `1 file added: support/t1.md` (three names, then
+`and N more`), on a probe the check's one-sentence finding — never the file listing. Any
+other `{{…}}` is refused: `does.say uses {{file}}, which nothing fills — the only
+placeholder is {{evidence}}, …`; so is `{{evidence}}` on a kind that gathers nothing.
 
 ## Keep a report current from the chat — the card's does, report, folder and rule lines
 

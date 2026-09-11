@@ -626,9 +626,10 @@ func standingList(out io.Writer, store *standing.Store, asJSON bool) error {
 	return nil
 }
 
-// standingWakesLine says what wakes an item, in its own words.
+// standingWakesLine says what wakes an item, in its own words — and for a
+// watch with a condition, the condition, as the card says it.
 func standingWakesLine(item standing.Item) string {
-	words := strings.TrimSpace(item.When.Words)
+	words := item.When.CardWords()
 	if item.When.Kind == standing.WhenHold {
 		if words == "" {
 			return "a rule: it rides into the work it reaches"

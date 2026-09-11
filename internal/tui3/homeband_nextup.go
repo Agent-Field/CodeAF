@@ -66,10 +66,11 @@ func standByNextDue(views []StandingItemView) {
 		if holdA {
 			return a.Created.After(b.Created)
 		}
-		if a.NextDue.IsZero() != b.NextDue.IsZero() {
-			return !a.NextDue.IsZero()
+		dueA, dueB := a.Appointment(), b.Appointment()
+		if dueA.IsZero() != dueB.IsZero() {
+			return !dueA.IsZero()
 		}
-		return !a.NextDue.IsZero() && a.NextDue.Before(b.NextDue)
+		return !dueA.IsZero() && dueA.Before(dueB)
 	})
 }
 
@@ -91,13 +92,19 @@ func standWhenClause(item standing.Item, now time.Time) string {
 	if item.When.Kind == standing.WhenHold {
 		return standHoldsWord
 	}
-	if !item.NextDue.IsZero() {
-		return "in " + nextUpAge(item.NextDue.Sub(now))
+	// A WATCH WAITING OUT FAILED CHECKS SAYS SO, and not how long the wait is:
+	// the wait is not an appointment ([standing.Item.Appointment]), and the
+	// check line on its card says what went wrong.
+	if item.When.Kind == standing.WhenFile && item.FailedChecks > 0 {
+		return standing.CouldNotCheck
+	}
+	if due := item.Appointment(); !due.IsZero() {
+		return "in " + nextUpAge(due.Sub(now))
 	}
 	if item.When.Kind == standing.WhenProbe && !item.LastChecked.IsZero() {
 		return "checked " + sinceAt(item.LastChecked, now) + " ago"
 	}
-	return strings.TrimSpace(item.When.Words)
+	return item.When.CardWords()
 }
 
 func nextUpAge(d time.Duration) string {
