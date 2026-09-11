@@ -34,6 +34,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // WatchLimit is the most files and folders one watch may read on a pass.
@@ -192,7 +193,7 @@ func contentHash(path string, info fs.FileInfo, last fileEntry) string {
 	if last.Hash != "" && last.Size == info.Size() && last.MTime == info.ModTime().UnixNano() {
 		return last.Hash
 	}
-	file, err := os.Open(path)
+	file, err := openRegular(path)
 	if err != nil {
 		return ""
 	}
@@ -202,4 +203,29 @@ func contentHash(path string, info fs.FileInfo, last fileEntry) string {
 		return ""
 	}
 	return hex.EncodeToString(hash.Sum(nil))
+}
+
+// errNotRegular is a path that turned out, once opened, not to be a file.
+var errNotRegular = errors.New("not a regular file")
+
+// openRegular opens a file to read ONLY IF IT IS A REGULAR FILE, and never
+// waits to find out.
+//
+// A PIPE OPENED TO READ WAITS FOR A WRITER, and the pass has nobody to give up
+// on it: one named pipe in a watched folder stopped every standing item behind
+// it, forever (wave 5 review). Every caller asks the file's kind before it
+// opens, and this closes the gap between that look and the open — a pipe put
+// in the file's place is opened without waiting (O_NONBLOCK is nothing to a
+// regular file) and refused by what the open handle says it is.
+func openRegular(path string) (*os.File, error) {
+	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		file.Close()
+		return nil, errNotRegular
+	}
+	return file, nil
 }

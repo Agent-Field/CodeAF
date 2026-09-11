@@ -83,10 +83,9 @@ func writeFile(t *testing.T, path, text string) {
 func TestAFiringRecordsItsCauseBeforeItRunsAndWhatChanged(t *testing.T) {
 	now := time.Date(2026, 9, 10, 9, 0, 0, 0, time.UTC)
 	store := openStore(t, now)
-	made, workspace := watching(t, store)
-	writeFile(t, filepath.Join(workspace, "inbox", "old.md"), "old")
+	made, workspace := watchingPattern(t, store, "inbox/*", map[string]string{"inbox/old.md": "old"})
 	runner := &occurrenceRunner{}
-	mustTick(t, newTicker(store, runner, now)) // the baseline
+	mustTick(t, newTicker(store, runner, now)) // nothing has changed since the yes
 
 	writeFile(t, filepath.Join(workspace, "inbox", "new.md"), "new")
 	writeFile(t, filepath.Join(workspace, "inbox", "old.md"), "old, longer")
@@ -198,7 +197,7 @@ func TestAFinishedButUnrecordedOccurrenceIsNotRunTwice(t *testing.T) {
 	mustTick(t, newTicker(store, runner, now))
 	writeFile(t, filepath.Join(workspace, "inbox", "a.md"), "a")
 	before, _ := store.Get(made.ID)
-	digest, _, _, err := fingerprint(workspace, "inbox/*", nil)
+	digest, _, _, err := fingerprint(workspace, "inbox/*", nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +260,8 @@ func TestReviseIsFencedOnTheInstructionsVersion(t *testing.T) {
 		t.Fatalf("an empty revision: %v", err)
 	}
 	revised, changed, err := store.Revise(made.ID, 1, func(it *Item) error { it.When.Glob = "notes/*"; return nil })
-	if err != nil || revised.SpecRevision != 2 || revised.Fingerprint != "" || strings.Join(changed, ",") != "what wakes it" {
+	// A NEW PATTERN'S BASELINE IS TAKEN AT THE EDIT, not left for the next pass.
+	if err != nil || revised.SpecRevision != 2 || revised.Fingerprint == "" || strings.Join(changed, ",") != "what wakes it" {
 		t.Fatalf("revised %+v changed %v err %v", revised, changed, err)
 	}
 	if _, _, err := store.Revise(made.ID, 1, func(it *Item) error { it.Words = "stale"; return nil }); !errors.Is(err, ErrConflict) {
@@ -375,7 +375,7 @@ func TestAnOccurrenceThatPublishedBeforeItsProcessDiedIsRecordedNotRerun(t *test
 	mustTick(t, newTicker(store, runner, now))
 	writeFile(t, filepath.Join(workspace, "inbox", "a.md"), "a")
 	before, _ := store.Get(made.ID)
-	digest, _, _, err := fingerprint(workspace, "inbox/*", nil)
+	digest, _, _, err := fingerprint(workspace, "inbox/*", nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}

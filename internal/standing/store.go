@@ -59,7 +59,9 @@ func (s *Store) Create(item Item) (Item, error) {
 		return Item{}, err
 	}
 	item.NextDue = due
+	s.baseline(&item)
 	if err := s.write(item); err != nil {
+		_ = os.RemoveAll(s.readingsDir(item.ID))
 		return Item{}, err
 	}
 	return item, nil

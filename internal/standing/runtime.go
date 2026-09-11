@@ -10,6 +10,7 @@ func (s *Store) recordRuntime(before, after Item) error {
 		sameSchedule := reflect.DeepEqual(current.When, before.When)
 		current.LastChecked = after.LastChecked
 		current.LastCheckLine = after.LastCheckLine
+		current.FailedChecks = after.FailedChecks
 		current.SpentUSD += after.SpentUSD - before.SpentUSD
 		if after.Runs > before.Runs {
 			current.Runs += after.Runs - before.Runs

@@ -206,7 +206,10 @@ func TestTickIsSilentOnAFileWatchesFirstReading(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// THE FIRST READING IS THE BASELINE AND IS SILENT.
+	// THE BASELINE IS TAKEN AT THE YES, AND THE FIRST PASS OVER IT IS SILENT.
+	if made.Fingerprint == "" {
+		t.Fatal("the yes took no baseline")
+	}
 	first := mustTick(t, newTicker(store, runner, now))
 	if first.Fired != 0 || first.Checked != 1 {
 		t.Fatalf("the first reading is %+v, wanted a quiet check", first)
@@ -221,8 +224,8 @@ func TestTickIsSilentOnAFileWatchesFirstReading(t *testing.T) {
 	if base.Fingerprint == "" {
 		t.Fatal("the baseline reading was not kept")
 	}
-	if base.LastCheckLine != "nothing has changed yet" {
-		t.Fatalf("the baseline says %q", base.LastCheckLine)
+	if base.LastCheckLine != "nothing has changed" {
+		t.Fatalf("the first pass says %q", base.LastCheckLine)
 	}
 	if _, err := os.Stat(store.LogPath(made.ID)); !os.IsNotExist(err) {
 		t.Fatalf("a quiet check wrote a log line: %v", err)

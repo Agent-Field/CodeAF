@@ -97,7 +97,7 @@ func standWhenClause(item standing.Item, now time.Time) string {
 	if item.When.Kind == standing.WhenProbe && !item.LastChecked.IsZero() {
 		return "checked " + sinceAt(item.LastChecked, now) + " ago"
 	}
-	return strings.TrimSpace(item.When.Words)
+	return item.When.CardWords()
 }
 
 func nextUpAge(d time.Duration) string {
