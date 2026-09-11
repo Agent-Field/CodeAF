@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -160,8 +161,8 @@ func TestASilentEndpointIsAskedTwiceBeforeTheTurnGivesUp(t *testing.T) {
 	}
 	collected := collect(t, events)
 
-	if got := countOfKind(collected, EventRetrying); got != silentRetries {
-		t.Fatalf("retries announced = %d, want %d", got, silentRetries)
+	if got := countOfKind(collected, EventRetrying); got != taxonomy.SilentCutAttempts-1 {
+		t.Fatalf("retries announced = %d, want %d", got, taxonomy.SilentCutAttempts-1)
 	}
 	failure, failed := firstOfKind(collected, EventError)
 	if !failed {

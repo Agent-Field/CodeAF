@@ -11,7 +11,9 @@ import (
 // seven places:
 //
 //	a press on a tab word   goes to that place
-//	a press on a body row   moves that place's cursor, and never acts
+//	a press on a body row   is `enter` on it: the cursor lands and the row
+//	                        opens, and a click never spends (pages.go's
+//	                        [place.press])
 //	the pointer resting     previews the row it is over, and moves nothing —
 //	                        over a tab word, that preview is the word's own ink
 //	the wheel               walks the cursor, three rows a tick, and over the
@@ -223,6 +225,42 @@ func placeHoverMoved(at *int, next int, a *app) bool {
 // frame saying what it is for rather than bouncing anybody out of it.
 func (a *app) walkPage(back bool) tea.Cmd {
 	return a.showPage(nextPage(a.page, back))
+}
+
+// ── the pointer, on home's rule ─────────────────────────────────────────────
+
+// placeTargetPress is a press on one of the two doors home's rule carries: the
+// model, and the folder the next conversation opens in. It reports whether it
+// took the press.
+//
+// EACH FACT IS EDITED ON THE LINE THAT SHOWS IT, which is the law the money
+// segment in the status line already follows and the reason there is no
+// settings page anywhere in this gesture: pressing the model is `alt+o` and
+// pressing the folder is `alt+w`, so the pointer and the keyboard reach the
+// same two doors by the same two names.
+//
+// THE COLUMNS ARE THE ONES THE FRAME DREW (homedraft.go's [app.targetLegend]
+// writes them as the line is laid out) — never a second computation of where
+// the label should have been, which is this file's own first law.
+func (a *app) placeTargetPress(x, y int) (tea.Cmd, bool) {
+	// A layer or a list that has taken the keyboard has taken the rule with it:
+	// the legend under the composer layer is that layer's, and the model list
+	// over the target is drawn where the body was.
+	if !a.at(pageHome) || a.composer.open || a.target.pick.open {
+		return nil, false
+	}
+	if a.targetRow < 1 || y != a.targetRow {
+		return nil, false
+	}
+	switch {
+	case a.targetModelSpan.holds(x):
+		a.openTargetPicker()
+		return nil, true
+	case a.targetFolderSpan.holds(x):
+		a.moveTarget()
+		return nil, true
+	}
+	return nil, false
 }
 
 // ── the pointer, in the box ─────────────────────────────────────────────────

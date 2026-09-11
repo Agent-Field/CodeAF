@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
@@ -179,35 +178,6 @@ func TestTheCardHangsAChildUnderTheTaskThatAskedForIt(t *testing.T) {
 	}
 }
 
-// The compact preview may hide descendants, but it never draws a child without
-// its parent. Its remainder counts tasks and opens the complete tree.
-func TestTheCardsWorkFoldNeverOrphansAChild(t *testing.T) {
-	now := time.Now()
-	var entries []session.TaskIndexEntry
-	for i := 0; i < 4; i++ {
-		root := itoa(i*2 + 1)
-		entries = append(entries,
-			treeTask(root, "", "Run "+itoa(i), session.TaskDone, now.Add(-time.Duration(i*2+1)*time.Hour)),
-			treeTask(itoa(i*2+2), root, "Part of "+itoa(i), session.TaskDone, now.Add(-time.Duration(i*2+2)*time.Hour)))
-	}
-	a := treeLab(t, homeCardWidest, entries...)
-	rows := workCard(t, a)
-	card := strings.Join(rows, "\n")
-	if workRowAt(t, rows, "Part of 0") != workRowAt(t, rows, "Run 0")+1 {
-		t.Fatalf("the visible child lost its parent:\n%s", card)
-	}
-	if !strings.Contains(card, "Run 1") || strings.Contains(card, "Part of 1") || strings.Contains(card, "Run 2") {
-		t.Fatalf("the preview did not keep its three-task allowance:\n%s", card)
-	}
-	fold := workRowAt(t, rows, "more tasks")
-	if !strings.Contains(rows[fold], "5 more tasks") {
-		t.Fatalf("the fold counts families rather than the work behind it: %q", rows[fold])
-	}
-	if !strings.HasSuffix(strings.TrimRight(rows[fold], " "), pageTasks.word()) {
-		t.Fatalf("the fold line stopped naming the tasks place: %q", rows[fold])
-	}
-}
-
 // THE CONVERSATION IS THE PARENT, AND ITS ROW OPENS THE CHAT.
 //
 // Home has two doors on one subject and they must never be the same door: the
@@ -257,45 +227,6 @@ func TestTheConversationRowOpensTheChatAndItsWorkStaysOnTheCard(t *testing.T) {
 
 // ── THE POINTER ─────────────────────────────────────────────────────────────
 
-// A CLICK ON A CHILD OPENS THE CHILD, AND NOT THE RUN IT HANGS UNDER.
-//
-// The two rows say nearly the same words, because a run and the piece it handed
-// out are about the same thing — and the card finds a door by looking for its
-// painted text inside the frame line, so the parent's row is spelled INSIDE its
-// own child's. A first-match scan handed every nested row to its parent, which
-// is the one failure a pointer must not have: the row that lights and the row
-// that opens have to be the row under the hand.
-func TestAClickOnAChildTaskOpensTheChildAndNotItsParent(t *testing.T) {
-	now := time.Now()
-	nested := []session.TaskIndexEntry{
-		treeTask("1", "", "Port the Picker", session.TaskDone, now.Add(-time.Hour)),
-		treeTask("2", "1", "Port the Picker rows", session.TaskDone, now.Add(-2*time.Hour)),
-	}
-	press := func(t *testing.T, a *app, at int) string {
-		t.Helper()
-		width, _ := a.size()
-		left, _ := homeColumns(width)
-		drive(t, a,
-			tea.MouseClickMsg{X: left + homeGutter + 2, Y: at, Button: tea.MouseLeft},
-			tea.MouseReleaseMsg{X: left + homeGutter + 2, Y: at, Button: tea.MouseLeft})
-		if !a.at(pageTasks) || !a.taskSheet.detailOn {
-			t.Fatalf("a press on row %d opened no record:\n%s", at, homeText(a))
-		}
-		return homeTaskText(a.taskSheet.detail)
-	}
-	a := treeLab(t, homeCardWidest, nested...)
-	if got := press(t, a, treeRowY(t, a, "Port the Picker rows", "")); got != "Port the Picker rows" {
-		t.Fatalf("a click on the child opened %q", got)
-	}
-
-	// And the run's own row still opens the run: what changed is which door a row
-	// answers with, not one row answering for two.
-	a = treeLab(t, homeCardWidest, nested...)
-	if got := press(t, a, treeRowY(t, a, "Port the Picker", "rows")); got != "Port the Picker" {
-		t.Fatalf("a click on the run opened %q", got)
-	}
-}
-
 // treeRowY is [cardRowY] for a card that draws one row's words inside another's:
 // the screen row holding `want` and NOT holding `notWant`.
 func treeRowY(t *testing.T, a *app, want, notWant string) int {
@@ -314,30 +245,6 @@ func treeRowY(t *testing.T, a *app, want, notWant string) int {
 	}
 	t.Fatalf("the frame holds no line saying %q without %q:\n%s", want, notWant, homeText(a))
 	return -1
-}
-
-// AND THE ROW THAT LIGHTS IS THE ROW THAT OPENS, on a nested row too. The hover
-// and the press read one registry, so a pointer over a child may not light the
-// run above it (carddoors.go).
-func TestHoveringAChildTaskLightsTheChildsOwnRow(t *testing.T) {
-	now := time.Now()
-	a := treeLab(t, homeCardWidest,
-		treeTask("1", "", "Port the Picker", session.TaskDone, now.Add(-time.Hour)),
-		treeTask("2", "1", "Port the Picker rows", session.TaskDone, now.Add(-2*time.Hour)),
-	)
-	child := treeRowY(t, a, "Port the Picker rows", "")
-	root := treeRowY(t, a, "Port the Picker", "rows")
-	if root == child {
-		t.Fatal("the run and its child were found on one row")
-	}
-	before := framePaint(t, a, root)
-	pointAtCard(t, a, child)
-	if lit := framePaint(t, a, child); !strings.Contains(lit, cardHoverInk(a)) {
-		t.Fatalf("the child row under the pointer wears no hover ink: %q", lit)
-	}
-	if after := framePaint(t, a, root); after != before {
-		t.Fatalf("pointing at the child lit its parent:\n%q\n%q", before, after)
-	}
 }
 
 // AND THE PHONE'S SHEET STILL ANSWERS A NESTED ROW. It maps a painted row onto

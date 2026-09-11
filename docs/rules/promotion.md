@@ -39,6 +39,22 @@ If step 4 is rejected as a non-fast-forward, **do not force it.** It means
 `staging` is somewhere `dev` has not been, which should be impossible and is
 worth understanding before anything else happens.
 
+## staging → main
+
+`main` moves by the same deliberate fast-forward, after the chosen commit has
+soaked on `staging`:
+
+```sh
+git fetch origin
+SHA=$(git rev-parse origin/staging)
+git merge-base --is-ancestor $SHA origin/dev && echo "on dev"
+git push origin $SHA:main
+```
+
+That push publishes the next rc automatically. If it is rejected as a
+non-fast-forward, do not force it; understand why `main` contains history that
+is not behind `staging`.
+
 ## Releasing
 
 **Roll the changelog up first, on `dev`, through a pull request.**
@@ -48,49 +64,35 @@ make changelog VERSION=v0.2.0        # writes CHANGELOG.md, eats the loose entri
 ```
 
 That has to land on `dev` and be promoted like anything else — never committed
-onto `staging`, which would break the fast-forward the whole model rests on. So
-the order is: roll up on `dev`, promote that commit to `staging`, then tag it.
-The release workflow reads the `## v0.2.0` section back out of `CHANGELOG.md` for
-the release notes, which is what makes the roll-up worth doing rather than
-paperwork. [changelog.md](changelog.md) says why the entries exist at all.
+onto a pointer. The order is: roll up on `dev`, promote that commit to `staging`,
+let it soak, then fast-forward `main`. The push to `main` automatically publishes
+the next `vX.Y.Z-rc.N` prerelease. The workflow refuses it unless the commit is
+already on `staging`.
 
-A release is then a semver tag on a commit that is on `staging`, cut by a person.
+Cut stable by opening Actions → `Release` on `main`, choosing `stable`, and
+dispatching it. `component=patch` closes the highest open rc line; `minor` or
+`major` starts that new stable line from the latest stable tag. Stable notes come
+from its `## <tag>` section in `CHANGELOG.md` and the release takes the *Latest*
+badge. [changelog.md](changelog.md) says why the roll-up lands first.
 
-```sh
-git fetch origin
-git tag -a v0.2.0 origin/staging -m "AForge v0.2.0"
-git push origin v0.2.0
-```
+To open a new minor rc line without moving `main` again, dispatch `Release` on
+`main` with `channel=rc` and `component=minor`. Once an rc line is open, later rc
+dispatches continue it regardless of the component choice.
 
-That, and only that, publishes. There is no branch trigger anywhere in
-`.github/workflows/` — a merge landing on a branch never becomes a download
-somebody else installs. `release-binaries.yml` also **refuses to publish a tag
-whose commit is not on `origin/staging`**, because tagging is the one step of the
-promotion that no branch rule can police.
-
-`v0.2.0` takes the *Latest* badge. Anything else — `v0.2.0-rc.1` — publishes as a
-prerelease and leaves *Latest* pointing at the last stable one.
-
-`workflow_dispatch` on the same workflow builds the six binaries and uploads them
-as workflow artifacts without publishing. Use it to look at a build.
+`existing_version` is the repair road: dispatch on the branch required by that
+channel and name an existing tag. The workflow rebuilds its commit, replaces the
+assets, and reapplies the stable or prerelease marks without creating a tag.
 
 ## Rolling back
 
-**In order of preference, and the first two are almost always the answer:**
+Users can pin a known tag while a repair moves forward:
 
-1. **Re-release the previous tag.** The product ships as tagged binaries, so
-   "roll back production" means pointing people at `v0.1.0` again. No branch
-   moves; nothing anybody has pulled is rewritten.
-2. **Revert on `dev`, then promote forward.** `git revert` the squashed commit,
-   let it go through the normal pull request, then fast-forward `staging` onto
-   the result. `staging` only ever moves forward, which is what keeps it
-   trustworthy.
-3. **Never `push --force` a branch to an earlier commit.** It rewrites history
-   other people and other machines have already pulled, and it is the one action
-   the fast-forward rule exists to prevent.
+```sh
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | VERSION=v0.2.0 bash
+```
 
-## main
-
-`main` is parked at `v0.1.0` and is not part of this. Nothing promotes to it,
-nothing releases from it. [branching.md](branching.md#main-is-parked-on-purpose)
-says why and what changes when v2 is cut.
+To make an older stable the default again without moving a branch, run `gh
+release edit <tag> --latest`. For the lasting fix, revert on `dev` through a pull
+request and promote the revert through `staging` and `main`. Never force-push a
+pointer backwards; forward-only history is what makes a promoted commit the
+same commit people already tested.

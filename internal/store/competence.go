@@ -370,7 +370,7 @@ func (s *Store) addTerritoryCompetence(
 func addProfileCompetence(accumulator func(string, ScopeKind) *competenceAccumulator, measured *profile.Profile) {
 	records, modifiedAt := measured.RecordsSnapshot()
 	for _, record := range records {
-		if !knownProfileBucket(record.Size) || record.Verdict == provider.VerdictProviderFailure {
+		if !knownProfileBucket(record.Size) || record.Verdict == provider.ReadingProviderFailure {
 			continue
 		}
 		accumulated := accumulator("profile:"+record.Size, CompetenceProfile)

@@ -16,6 +16,8 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/lane/control"
+	"github.com/Agent-Field/aforge-v2/internal/paymentrefusal"
+	"github.com/Agent-Field/aforge-v2/internal/trace"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -33,6 +35,16 @@ type Config struct {
 	APIKey  string
 	BaseURL string
 	Model   string
+	// Direct says this account is a connected service with one road rather than
+	// a router with a set of serving lanes. It suppresses every lane preference,
+	// sheet and probe at the transport boundary; a direct service must never be
+	// asked for OpenRouter's endpoints document merely because another account
+	// in the process uses it.
+	Direct bool
+	// KeyOptional is true only for a service such as a local Ollama runner that
+	// explicitly accepts an empty key. The ordinary keyless client remains the
+	// first-run state and refuses before the wire.
+	KeyOptional bool
 	// Effort is the operator's own pin carried by the model value this client
 	// was built from, such as `vendor/model:high`. It belongs to this client
 	// rather than a context because one run holds several differently pinned
@@ -146,6 +158,10 @@ type Client struct {
 	// now is the clock those measurements are taken against, seamed like wait
 	// so a test can state a two-second first token without waiting two seconds.
 	now func() time.Time
+	// withdrawn is which models this client has been told the router does not
+	// carry (withdrawn.go). It is beside `encodes` for the same reason: a fact
+	// about one router and one account, over the span of one conversation.
+	withdrawn withdrawnMemo
 	// encodes is what this client already knows its transcript and its tool
 	// block serialize to (memo.go). It changes nothing about the bytes and is
 	// carried per client because a transcript belongs to a conversation.
@@ -219,9 +235,11 @@ func NewClient(config Config) (*Client, error) {
 	// AND THE LANE SHEET LEARNS WHERE THE ROUTER IS, here and nowhere else
 	// (lanes.go). It opens no connection: it hands `internal/lane` the base, the
 	// bearer and the one thing that package may not own, and the fetching is a
-	// beat the session starts and stops. A client pointed somewhere that is not
-	// a router wires nothing, because there is no sheet there to read.
-	client.wireLaneSheet()
+	// beat the session starts and stops. A connected direct service is explicitly
+	// absent from this process-wide seam because it has no sheet to read.
+	if !config.Direct {
+		client.wireLaneSheet()
+	}
 	return client, nil
 }
 
@@ -262,7 +280,7 @@ func (c *Client) SetAPIKey(key string) error {
 func (c *Client) apiKeyNow() (string, error) {
 	c.keyMu.RLock()
 	defer c.keyMu.RUnlock()
-	if c.apiKey == "" {
+	if c.apiKey == "" && !c.config.KeyOptional {
 		return "", ErrNoAPIKey
 	}
 	return c.apiKey, nil
@@ -313,7 +331,7 @@ func (c *Client) ExecuteToolCallLoop(
 	// the loop is a fact about the SHIPPED ROUTER's own dialect — the
 	// categories header, the refusal ladder — and not about whether some base
 	// carries a `provider` object (prefcarry.go).
-	if c.shippedRouterHint() {
+	if c.shippedRouterHint() || c.config.KeyOptional {
 		return c.executeOwnToolCallLoop(ctx, messages, tools, config, call, options...)
 	}
 	base := c.sdkClient()
@@ -386,6 +404,16 @@ type callKnobs struct {
 	// not wired in, and every non-streamed call, which has no watch to agree
 	// with and makes its own inside the encoder.
 	laneChoice *lanes.Choice
+	// refused is every machine that has already said no to THIS CALL, and it is
+	// what makes each attempt a different request rather than the same one
+	// (retry.go's [refusedHere]). It is a pointer for the reason trace is: the
+	// knobs travel by value through the repair, relax and ladder chains, and
+	// "who has already refused this call" must not be copied along the way.
+	//
+	// NIL IS A CALLER THAT COMPOSED ITS OWN BYTES — the document path posts a
+	// multipart form rather than a completion, so there is nothing for the
+	// encoder to write again and its body is kept exactly as it was handed over.
+	refused *refusedHere
 	// trace is what ONE CALL accumulates on its way to an answer — how many
 	// times it went out, what its refusals taught, the body it last carried —
 	// for the model-call log (calllog.go). It is a pointer because the knobs
@@ -403,6 +431,7 @@ func knobsFrom(ctx context.Context) callKnobs {
 		horizon:   callHorizonFrom(ctx),
 		hedgeLane: hedgeLaneFrom(ctx),
 		reasoning: MessageReasoningFrom(ctx),
+		refused:   &refusedHere{},
 		trace:     newCallTrace(),
 	}
 	// The choice this call was already made on, if it was. See
@@ -453,9 +482,44 @@ func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs call
 	// on every call after the sentence has been said.
 	tellRetiredPins(ctx)
 	tellUncarriedPins(ctx)
+	// AND THE MODEL IS WRITTEN DOWN BEFORE THE REQUEST LEAVES. This is the one
+	// door every send passes through, and since the adapter stopped changing the
+	// model (endpoints.go) every attempt below this line is on the model named
+	// here — so the record is exact. What reads it is the layer that owns the one
+	// remaining model hop, which used to index a chain blind (modelstried.go).
+	model := c.modelFor(request)
+	// AND THE CALL'S ONE BUDGET IS STAMPED HERE, ON THE ONE DOOR EVERY SEND
+	// PASSES THROUGH (dispatch.go's [Client.dispatchPlan]).
+	//
+	// IT MUST BE ABOVE THE RECOVERIES AND NOT INSIDE THEM. A repaired 400, a
+	// retired pin, a widened preference and every rung of the relaxation ladder
+	// all come back through [Client.send] with a new body, and each of them
+	// building a plan of its own would be a call whose deadline restarted every
+	// time it recovered from anything — which is the product this wave deleted,
+	// wearing one name. A race has already stamped its own (hedge.go), and every
+	// arm of it inherits that one deadline and that one list of moves.
+	if _, held := callPlanFrom(ctx); !held {
+		ctx = withCallPlan(ctx, lanes.PlanFor(lanes.Choice{}, lanes.Pace{}, RoleFrom(ctx), dispatchNow()))
+	}
+	// AND A MODEL THIS PROCESS HAS ALREADY BEEN TOLD THE ROUTER DOES NOT CARRY IS
+	// NOT SENT AT ALL (withdrawn.go). The router answered for itself the first
+	// time; sending again buys the identical 404 and, worse, a whole shape ladder
+	// climbed on a request no shape can rescue — three start rows thirty
+	// milliseconds apart, measured on 2026-09-10 22:39, every turn. The refusal is
+	// handed back with the mark on it, so one verdict is read from one call site
+	// and the move is the one move there is.
+	if c.WithdrawnModel(model) {
+		return nil, withdrawnRefusal(model)
+	}
+	noteModelTried(ctx, model)
 	response, err := c.sendRecovered(ctx, request, knobs, stream)
+	// AN ANSWER MEANS IT IS CARRIED AGAIN. A memo nothing clears takes a model
+	// away for the life of the process on the strength of one bad minute.
+	if err == nil && response != nil && response.StatusCode < 400 {
+		c.withdrawn.carriedAgain(model)
+	}
 	if err != nil || (response != nil && response.StatusCode >= 400) {
-		c.releaseEndpoint(ctx, c.modelFor(request))
+		c.releaseEndpoint(ctx, model)
 	}
 	return response, err
 }
@@ -467,9 +531,20 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	// answers a refusal by sending a different request has to write the refused
 	// one down first (calllog.go's logNow, and [Client.widenPastTheRetiredPin]).
 	began := logNow()
+	// THE RACE'S OWN LADDER ARM SKIPS STRAIGHT TO THE LADDER (hedge.go's
+	// [hedgeRace.exhausted]). The request as it stands has already been refused
+	// by the arm that deferred it, so sending it again would pay the same 404 to
+	// learn nothing; what is owed is the climb.
+	if first, owed := ladderOwedFrom(ctx); owed {
+		return c.recoverFromRefusal(ctx, request, knobs, stream, first)
+	}
 	response, err := c.sendRepaired(ctx, request, knobs, stream)
 	if err != nil {
-		return c.recoverFromPacing(ctx, request, knobs, stream, err)
+		// AND IT TRAVELS BACK WHOLE. A 429 the attempt loop ran out of patience
+		// on used to be answered here by walking the fallback models, silently,
+		// on a budget nobody above could see (endpoints.go's deleted
+		// recoverFromPacing). The layer that owns the turn owns the model.
+		return nil, err
 	}
 	if !endpointRefusalStatus(response.StatusCode) {
 		return response, nil
@@ -501,14 +576,14 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	//
 	// THE STRIKE IS THE FIRST OF THEM, and it was missing (issue #456). It
 	// fired only where a refusal surfaced to a caller as a 4xx
-	// ([Client.refuseUpstream]'s three call sites); a routing refusal the
+	// ([Client.refuseUpstream]'s call sites); a routing refusal the
 	// LADDER absorbed never reached one, so the machine that had just said it
 	// cannot serve this model was left standing in the serving set and the next
 	// turn chose it again. "This machine refused this model" is true whatever
 	// the recovery below does with the request, and it is recorded at the seam
 	// where it is known.
 	refusal := c.refusalObject(request, knobs, apiError(status, peek))
-	c.strikeRefusal(model, refusal)
+	c.refuseLane(model, refusal, 0)
 	// AND THE SAME MEMO IS TAKEN FOR THE IGNORE LIST, from the only authority on
 	// how many machines serve a model. This process holds the lanes it has timed
 	// and no denominator, so it cannot tell a veto that narrowed a set of five
@@ -521,13 +596,20 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	// contribution. Concurrent calls and expiring cooldowns may have changed
 	// the shared ledger by the time the refusal returns.
 	sent := refusedWirePreferences(response)
-	if c.velocity != nil && ignoredEverything(peek) && sent != nil && len(sent.Ignore) > 0 {
+	if c.velocity != nil && listEmptied(peek) && sent != nil && len(sent.Ignore) > 0 {
 		c.velocity.refuseCoveringIgnore(model)
 		// A demand defines its own set and says nothing about other machines.
 		if len(sent.Only) == 0 {
 			c.velocity.learnUnreachable(model, sent.Ignore)
 		}
 	}
+	// AND A REFUSAL THE ACCOUNT'S OWN SETTINGS CAUSED IS LEARNED EVEN WHEN IT
+	// NAMES NO MACHINE (accountset.go). A demanded machine is filed by the strike
+	// above; a request with no demand — a ceiling and a ranking — is refused about
+	// the set its filters left, and when the router's count of that set and the
+	// sheet's agree exactly, those machines are the account's to exclude. Without
+	// this, the ceiling that only they fit under was sent again on every turn.
+	learnExcludedFromTheSet(model, sent, peek)
 
 	// AND THE SECOND IS A PERSON'S OWN PIN (lanepin.go, issue #456). A pin the
 	// router says it cannot serve for this model is stood down for that model,
@@ -559,13 +641,30 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	// evidence really is about the request rather than the endpoint.
 	// That is rungs two and three of the ladder in docs/ARCHITECTURE.md, in the
 	// order they are written down.
-	if streamWatchFrom(ctx).canWalk() {
+	//
+	// AND THE HAND-OFF IS A COMMITMENT, IN ONE CALL. It used to be two: `canWalk`,
+	// a PREDICTION that the walk would carry this refusal, and then `deferLadder`,
+	// a note saying this door had relied on one. The walk could still decline, and
+	// a later arm could die of something that never reaches this door — the
+	// measured race's last arm died of a 429 — so the ladder the prediction
+	// deferred was skipped and the person got the router's own sentence.
+	//
+	// [streamWatch.takeRefusal] answers and records together, and what it answers
+	// is not "the walk will do it" but "the race OWNS this now": it makes its own
+	// moves, and if every arm ends with nobody committed it climbs the ladder it
+	// took here (hedge.go's [hedgeRace.exhausted]). A door whose race takes the
+	// refusal returns the refusal's own body with the status stripped, so the arm
+	// unwinds without a second request; a door whose race declines — a race already
+	// won, a ladder already climbed, or no controller at all — climbs it itself.
+	watch := streamWatchFrom(ctx)
+	if watch.takeRefusal(peek) {
 		return &http.Response{
 			StatusCode: response.StatusCode,
 			Header:     response.Header,
 			Body:       rewound(peek, io.NopCloser(strings.NewReader(""))),
 		}, nil
 	}
+	watch.ranLadder()
 	return c.recoverFromRefusal(ctx, request, knobs, stream, peek)
 }
 
@@ -906,7 +1005,7 @@ func (c *Client) completionInOnePiece(
 	// failure plane the streamed one does, and for the same reason — every
 	// headless worker answers whole, and a guard on one transport is a guard a
 	// change of default silently removes.
-	if cut := c.machineryCut(ctx, request, &response, served, began, responseText(&response)); cut != nil {
+	if cut := c.machineryCut(ctx, request, &response, served, began, tokensIn(responseText(&response))); cut != nil {
 		c.record(recordFacts{
 			ctx: ctx, request: request, knobs: knobs, stream: stream,
 			began: logBegan, status: status, served: served, err: cut,
@@ -1116,21 +1215,22 @@ func outputTokens(response *ai.Response, text string) int {
 }
 
 // stampCut writes onto a cut the three facts only the read loop holds: who the
-// stream said was serving it, how long it had been open, and how much answer had
-// arrived. See [StreamCut.Provider] for who reads them.
+// stream said was serving it, how long it had been open, and how much the model
+// had written. See [StreamCut.Provider] for who reads them.
 //
 // The token figure is the estimate, because a cut stream never delivered a usage
 // block — the provider counts at the end and there was no end. It is the same
 // estimator a finished stream falls back to (outputTokens), so a row that says
 // "eleven hundred tokens in eighteen minutes" is comparable with the call rows
-// beside it.
-func (c *Client) stampCut(cut *StreamCut, served string, began time.Time, text string) {
+// beside it — and on a guarded stream it is the stream wall's own count
+// ([stallWatch.tokens]), so the row and the decision it records are one figure.
+func (c *Client) stampCut(cut *StreamCut, served string, began time.Time, tokens int) {
 	if cut == nil {
 		return
 	}
 	cut.Provider = strings.TrimSpace(served)
 	cut.Ran = c.clock().Sub(began)
-	cut.Tokens = outputTokens(nil, text)
+	cut.Tokens = tokens
 }
 
 // machineryCut reads a COMPLETE answer for the fourth failure plane — the
@@ -1143,7 +1243,7 @@ func (c *Client) stampCut(cut *StreamCut, served string, began time.Time, text s
 // do, for the same reasons written at their site: the lane is struck so the
 // ladder's next ask lands somewhere else, and the endpoint pin is released
 // because an endpoint serving unparsed grammar is failing this lineage.
-func (c *Client) machineryCut(ctx context.Context, request *ai.Request, response *ai.Response, served string, began time.Time, text string) *StreamCut {
+func (c *Client) machineryCut(ctx context.Context, request *ai.Request, response *ai.Response, served string, began time.Time, tokens int) *StreamCut {
 	// It answers to the same switch the degeneration guard does, because it is
 	// the same kind of judgment — a reading of the reply's shape — and `reply
 	// guard off` promises the person sees whatever arrives.
@@ -1151,8 +1251,8 @@ func (c *Client) machineryCut(ctx context.Context, request *ai.Request, response
 		return nil
 	}
 	cut := &StreamCut{Reason: CutMachinery}
-	c.stampCut(cut, served, began, text)
-	cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
+	c.stampCut(cut, served, began, tokens)
+	cut.Rerouted = c.noteCutProvider(ctx, c.modelFor(request), served)
 	// AND THE BELIEF LEARNS THAT THIS LANE SERVED SOMETHING UNUSABLE, which is
 	// the claim the strike above cannot make: a strike expires in five minutes
 	// and says only "not now", while an endpoint serving its model's unparsed
@@ -1170,7 +1270,7 @@ func (c *Client) machineryCut(ctx context.Context, request *ai.Request, response
 // It answers only on a rescue (`hedgeLane` is set). The primary of a
 // hedged race is judged in [hedgeRace.refuseCorrupt], because that is
 // the moment the race would otherwise name a winner.
-func (c *Client) rescuedStreamCut(ctx context.Context, request *ai.Request, response *ai.Response, served string, began time.Time, text string) *StreamCut {
+func (c *Client) rescuedStreamCut(ctx context.Context, request *ai.Request, response *ai.Response, served string, began time.Time, tokens int) *StreamCut {
 	if hedgeLaneFrom(ctx) == "" {
 		return nil
 	}
@@ -1182,8 +1282,8 @@ func (c *Client) rescuedStreamCut(ctx context.Context, request *ai.Request, resp
 	if !ok {
 		cut = &StreamCut{Reason: CutBabble}
 	}
-	c.stampCut(cut, served, began, text)
-	cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
+	c.stampCut(cut, served, began, tokens)
+	cut.Rerouted = c.noteCutProvider(ctx, c.modelFor(request), served)
 	c.noteLaneOutcome(c.modelFor(request), served, cut.Reason.word(), false)
 	c.releaseEndpoint(ctx, c.modelFor(request))
 	return cut
@@ -1283,6 +1383,13 @@ func (c *Client) completeWithMessagesStreaming(
 	// from them and the trace inside them is what counts its attempts
 	// (calllog.go).
 	knobs := knobsFrom(ctx)
+	// AND WHATEVER THIS CALL LEAVES OPEN IS CLOSED ON THE WAY OUT. Every path
+	// below writes the row for the attempt it ended, and five comments in this
+	// package say so — and 527 attempts over ten days still left a start row
+	// with nothing under it, because an exit nobody had thought of returned past
+	// all of them. The law is kept here instead of by every path remembering it
+	// (calllog.go's [callTrace.open]). It does nothing on an ordinary call.
+	defer func() { c.closeOpenAttempt(ctx, knobs.trace, endedBy(ctx)) }()
 	// The lane watch this stream reports to, nil on every call that is not an
 	// arm of a race (hedge.go). Every use of it below is a nil-safe method
 	// call, so an unwatched stream pays one nil check per delta.
@@ -1295,12 +1402,13 @@ func (c *Client) completeWithMessagesStreaming(
 	if httpResponse.StatusCode >= 400 {
 		payload, _ := io.ReadAll(io.LimitReader(httpResponse.Body, maxErrorPeek))
 		refusal := apiError(httpResponse.StatusCode, payload)
+		comeback := retryAfter(httpResponse)
 		c.record(recordFacts{
 			ctx: ctx, request: request, knobs: knobs, stream: true,
 			began: logBegan, status: httpResponse.StatusCode,
-			err: refusal, responseBody: payload,
+			err: refusal, responseBody: payload, retryAfter: comeback,
 		})
-		c.refuseUpstream(request, knobs, refusal)
+		c.refuseUpstream(request, knobs, refusal, "", comeback)
 		return nil, false, refusal
 	}
 	// AN ENDPOINT THAT ANSWERED IN ONE PIECE IS NOT A STREAM, AND SAYS SO IN ITS
@@ -1340,8 +1448,9 @@ func (c *Client) completeWithMessagesStreaming(
 	//
 	// AND THE WALL STARTS WITH IT (streamguard.go's THE WALL). It opens at the
 	// lineage's widest — no chunk has named a serving endpoint yet — and
-	// narrows to the lane's own the moment one does, below.
-	stall := newStallWatch(ctx, cutStream, c.streamWall(c.modelFor(request), ""))
+	// narrows to the lane's own the moment one does, below. The pace it is
+	// judged at when it fires travels with it, by the same rule.
+	stall := newStallWatch(ctx, cutStream, c.streamWall(c.modelFor(request), ""), c.streamPace(c.modelFor(request), ""))
 	defer stall.stop()
 	// THE MOMENT THE ENDPOINT OWES AN ANSWER is the moment this arm's wait
 	// really began, and it is taken from the reading above rather than from a
@@ -1390,6 +1499,16 @@ func (c *Client) completeWithMessagesStreaming(
 	// counts come from. Zero until one arrives, which is "the provider did not
 	// break its output down" and never "it did not think".
 	reasoningTokens := 0
+	// The working itself, kept ONLY while somebody is recording this run
+	// (internal/trace). A streamed answer is assembled from its frames and the
+	// thinking is never part of the assembled reply, so this is the one moment
+	// the record can see it at all — and holding a model's whole deliberation
+	// in memory on every ordinary run, for nobody, is exactly the cost the
+	// switch exists to avoid.
+	var thoughtRecord *strings.Builder
+	if trace.For(ctx) != nil {
+		thoughtRecord = &strings.Builder{}
+	}
 
 	// Read once per call rather than once per event: the session does not
 	// change mid-stream, and this loop already runs against the connection's
@@ -1470,8 +1589,8 @@ func (c *Client) completeWithMessagesStreaming(
 	// and none of it reaches the transcript.
 	soup := func() (*ai.Response, bool, error) {
 		cut := &StreamCut{Reason: CutBabble}
-		c.stampCut(cut, served, began, content.String())
-		cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
+		c.stampCut(cut, served, began, stall.tokens())
+		cut.Rerouted = c.noteCutProvider(ctx, c.modelFor(request), served)
 		// Soup is the plainest possible statement that this lane's answers
 		// cannot be used, so it is the plainest thing the quality belief can
 		// learn (lanes.go's noteLaneOutcome).
@@ -1499,11 +1618,11 @@ func (c *Client) completeWithMessagesStreaming(
 				// that cannot say who was serving or how much answer had
 				// arrived is the row that made this whole bound guesswork the
 				// first time ([StreamCut.Provider]).
-				c.stampCut(cut, served, began, content.String())
+				c.stampCut(cut, served, began, stall.tokens())
 				// Whether the ledger took the lane away travels ON the cut: the
 				// turn loop decides how many more times to ask this model from
 				// it, and it has no other way to know ([StreamCut.Rerouted]).
-				cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
+				cut.Rerouted = c.noteCutProvider(ctx, c.modelFor(request), served)
 				// AND THE BELIEF LEARNS IT TOO. A stream this process gave up on
 				// produced no usable answer, whichever bound decided, and that is
 				// a claim about the lane's ANSWERS rather than about its speed —
@@ -1520,6 +1639,12 @@ func (c *Client) completeWithMessagesStreaming(
 				c.record(recordFacts{
 					ctx: ctx, request: request, knobs: knobs, stream: true,
 					began: logBegan, status: httpResponse.StatusCode, served: served, err: cut,
+					// A CUT STREAM WAS PAID FOR (calllog.go's pricing block).
+					// Whatever this process could not use, the provider counted
+					// and billed, and the row that says how much is the only
+					// place the money and the failure appear together.
+					response: response, reasoningTokens: reasoningTokens,
+					ttft: firstTokenAfter(began, firstToken),
 				})
 				c.settle(ctx, c.modelFor(request), response, cut.Reason.word(), content.Len())
 				return nil, false, cut
@@ -1531,6 +1656,8 @@ func (c *Client) completeWithMessagesStreaming(
 			c.record(recordFacts{
 				ctx: ctx, request: request, knobs: knobs, stream: true,
 				began: logBegan, status: httpResponse.StatusCode, served: served, err: decodeErr,
+				response: response, reasoningTokens: reasoningTokens,
+				ttft: firstTokenAfter(began, firstToken),
 			})
 			c.settle(ctx, c.modelFor(request), response, receiptTornReason, content.Len())
 			return nil, false, decodeErr
@@ -1552,7 +1679,7 @@ func (c *Client) completeWithMessagesStreaming(
 				// The first naming is what narrows the wall onto the lane that
 				// is actually serving; [stallWatch.rewall] does it once and
 				// measures the new bound from when the stream opened.
-				stall.rewall(c.streamWall(c.modelFor(request), chunk.Provider))
+				stall.rewall(c.streamWall(c.modelFor(request), chunk.Provider), c.streamPace(c.modelFor(request), chunk.Provider))
 				// And it narrows the SILENCE bound the same way, onto what this
 				// lane's measured rate says a gap between two tokens should be
 				// ([stallWatch.regap]). The two travel together because they
@@ -1570,16 +1697,21 @@ func (c *Client) completeWithMessagesStreaming(
 		// exactly as the same refusal arriving before the headers would (sse.go
 		// says what it cost when this field was not read at all).
 		if refusal := streamRefusal(chunk.Error); refusal != nil {
-			if named, ok := RefusalFrom(refusal); ok && named.Provider == "" && served != "" {
-				// The stream named who was serving it even when the error object
-				// did not, and that name is what the ledger and the journal need.
-				named.Provider = served
-			}
+			// THE DOOR IS ASKED BEFORE THE ROW IS WRITTEN, because it is the
+			// door that folds the name of the machine this stream was being
+			// served by onto a refusal that carried none (velocity.go's
+			// [Client.refuseUpstream] → [nameServed]) — and that name is what
+			// the ledger, every later reader of [RefusalFrom], and this row
+			// need. A 429 in here is paced against that machine exactly as the
+			// same 429 arriving as a status would be; the two paths share one
+			// function so they cannot drift apart again.
+			c.refuseUpstream(request, knobs, refusal, served, 0)
 			c.record(recordFacts{
 				ctx: ctx, request: request, knobs: knobs, stream: true,
 				began: logBegan, status: httpResponse.StatusCode, served: served, err: refusal,
+				response: response, reasoningTokens: reasoningTokens,
+				ttft: firstTokenAfter(began, firstToken),
 			})
-			c.refuseUpstream(request, knobs, refusal)
 			c.releaseEndpoint(ctx, c.modelFor(request))
 			c.settle(ctx, c.modelFor(request), response, receiptRefusalReason, content.Len())
 			return nil, false, refusal
@@ -1600,6 +1732,10 @@ func (c *Client) completeWithMessagesStreaming(
 			// on: what the person is shown, what the response accumulates, what
 			// the babble guard reads, and what the phase clock calls this moment.
 			answerText, workingText := split.content(choice.Delta.Content)
+			// AND A TOOL CALL'S ARGUMENTS ARE ANSWER TOO, which is the other half
+			// of the same reading and the one the split cannot make: they arrive
+			// on their own field. See the reading below for why.
+			callText := choice.Delta.callText()
 			// Reasoning counts as the first token. It is the endpoint writing —
 			// billed, streamed, and the thing the person is waiting through —
 			// and a reasoning model that thinks for a minute before its first
@@ -1617,19 +1753,19 @@ func (c *Client) completeWithMessagesStreaming(
 					widestGap = now.Sub(lastWrite)
 				}
 				lastWrite = now
-				stall.progress()
+				// The wall counts what was written and is not moved by it
+				// (streamguard.go's THE WALL BOUNDS A REPLY THAT IS NOT WORKING).
+				stall.progress(choice.Delta.written())
 				// AND THE SAME PROGRESS IS ONE READING FOR THE CONTROLLER.
 				//
 				// THE TWO COUNTS ARE NOT INTERCHANGEABLE. A token of answer is
 				// text on the screen and is the only thing that can reset the
 				// deadline while its measured rate keeps up; a token of thought
-				// — or a fragment of a call being assembled — is billed,
-				// streamed work that shows nothing, so it keeps the stream alive
-				// and moves the phase without counting as progress a person
-				// could watch disappear. A
-				// reasoning delta reported as a first token is what let a stall
-				// sixty seconds into a run of thought wait on a transport bound
-				// two and a half minutes away.
+				// is billed, streamed work that shows nothing, so it keeps the
+				// stream alive and moves the phase without counting as progress
+				// a person could watch disappear. A reasoning delta reported as
+				// a first token is what let a stall sixty seconds into a run of
+				// thought wait on a transport bound two and a half minutes away.
 				//
 				// AND WHAT COUNTS AS ANSWER IS THE SPLIT'S ANSWER, not the
 				// channel the bytes arrived on (answer.go). A model whose
@@ -1638,9 +1774,22 @@ func (c *Client) completeWithMessagesStreaming(
 				// would reset the very clock that is supposed to be running
 				// through a run of thought. The split decides answer from
 				// working; this decides waiting.
+				//
+				// A TOOL CALL'S ARGUMENTS ARE THE ANSWER ARRIVING, AND THEY ARE
+				// NOT THOUGHT. A fragment of a call is billed and streamed exactly
+				// as answer text is, it is drawn as it forms (the forming event
+				// below), and a person waiting on a `write` is waiting on the
+				// answer — the file IS the reply. Thought is hidden because a
+				// rescue would not have to repeat it for anybody; a call's
+				// arguments are what a rescue would have to write again, which is
+				// the cost the controller prices ([control.Reading.Visible]).
+				// Reading them as hidden measured a ten-minute `write` against
+				// how long this model THINKS, judged the "thought" pathologically
+				// long, and raised a rescue that wrote eighteen thousand tokens
+				// nobody kept (2026-09-10).
 				visible, hidden := 0, 1
-				if answerText != "" {
-					visible, hidden = visibleProgress.add(answerText), 0
+				if answerText != "" || callText != "" {
+					visible, hidden = visibleProgress.add(answerText)+visibleProgress.add(callText), 0
 				}
 				watch.note(control.Reading{At: waitNow(), Visible: visible, Hidden: hidden})
 				// AND THE SAME PROGRESS MOVES THE PHASE CLOCK, which is the
@@ -1653,9 +1802,10 @@ func (c *Client) completeWithMessagesStreaming(
 				// THE CLOCK IS TOLD WHAT THE SPLIT DECIDED and not what channel
 				// the bytes arrived on (answer.go): a model whose working comes
 				// fenced inside `content` is THINKING, and a clock that read the
-				// channel would tell the person it was writing their reply.
+				// channel would tell the person it was writing their reply. A
+				// call being assembled is writing it, for the reason above.
 				if watch.speaking() {
-					if answerText != "" {
+					if answerText != "" || callText != "" {
 						phase.enter(PhaseWriting, "")
 					} else if workingText != "" || choice.Delta.thinking() {
 						phase.enter(PhaseThinking, "")
@@ -1710,6 +1860,9 @@ func (c *Client) completeWithMessagesStreaming(
 				for _, event := range events[:count] {
 					event.Session = session
 					split.reasoning(event.Delta)
+					if thoughtRecord != nil {
+						thoughtRecord.WriteString(event.Delta)
+					}
 					observer(event)
 					if thoughts != nil && event.Delta != "" && thoughts.write(event.Delta) {
 						return soup()
@@ -1733,6 +1886,9 @@ func (c *Client) completeWithMessagesStreaming(
 					// folded back like any other (answer.go, and the close above).
 					thinking, thoughtBegan = true, c.clock()
 					observer(StreamEvent{Kind: StreamThinking, Session: session})
+				}
+				if thoughtRecord != nil {
+					thoughtRecord.WriteString(workingText)
 				}
 				observer(StreamEvent{Kind: StreamReasoning, Delta: workingText, FromAnswer: true, Session: session})
 			}
@@ -1771,6 +1927,7 @@ func (c *Client) completeWithMessagesStreaming(
 			ctx: ctx, request: request, knobs: knobs, stream: true,
 			began: logBegan, status: httpResponse.StatusCode, served: served, err: err,
 			response: response, reasoningTokens: reasoningTokens,
+			ttft: firstTokenAfter(began, firstToken),
 		})
 		c.settle(ctx, c.modelFor(request), response, receiptRefusalReason, content.Len())
 		return nil, false, err
@@ -1850,10 +2007,12 @@ func (c *Client) completeWithMessagesStreaming(
 	// not the answer was language. It sits on BOTH epilogues or on neither,
 	// exactly as the learning below: the leak is a property of the endpoint,
 	// not of the transport that carried it.
-	if cut := c.machineryCut(ctx, request, response, served, began, content.String()); cut != nil {
+	if cut := c.machineryCut(ctx, request, response, served, began, stall.tokens()); cut != nil {
 		c.record(recordFacts{
 			ctx: ctx, request: request, knobs: knobs, stream: true,
 			began: logBegan, status: httpResponse.StatusCode, served: served, err: cut,
+			response: response, reasoningTokens: reasoningTokens,
+			ttft: firstTokenAfter(began, firstToken),
 		})
 		c.bill(ctx, c.modelFor(request), response)
 		return nil, false, cut
@@ -1862,10 +2021,12 @@ func (c *Client) completeWithMessagesStreaming(
 	// to accept the first arm that closed, and F20 persisted the mojibake
 	// that arrived after a 429. The check is here, before StreamFinished,
 	// so a corrupt rescue leaves as a failed arm and never as a response.
-	if cut := c.rescuedStreamCut(ctx, request, response, served, began, content.String()); cut != nil {
+	if cut := c.rescuedStreamCut(ctx, request, response, served, began, stall.tokens()); cut != nil {
 		c.record(recordFacts{
 			ctx: ctx, request: request, knobs: knobs, stream: true,
 			began: logBegan, status: httpResponse.StatusCode, served: served, err: cut,
+			response: response, reasoningTokens: reasoningTokens,
+			ttft: firstTokenAfter(began, firstToken),
 		})
 		c.bill(ctx, c.modelFor(request), response)
 		return nil, false, cut
@@ -1891,6 +2052,8 @@ func (c *Client) completeWithMessagesStreaming(
 		ctx: ctx, request: request, knobs: knobs, stream: true,
 		began: logBegan, status: httpResponse.StatusCode, served: served,
 		response: response, reasoningTokens: reasoningTokens, learned: learned,
+		reasoning: builtString(thoughtRecord),
+		ttft:      firstTokenAfter(began, firstToken),
 	})
 	// Both paths or neither, exactly as the learning above: a streamed answer
 	// is billed by the provider the same way a whole-body one is, and a ledger
@@ -1995,7 +2158,12 @@ func (c *Client) StreamComplete(ctx context.Context, prompt string, options ...a
 		request.Stream = true
 		// Retrying happens entirely before the first byte of the stream is
 		// handed over, so a reconnect can never duplicate delivered chunks.
-		httpResponse, err := c.sendShaped(ctx, request, knobsFrom(ctx), true)
+		// The same unconditional close the streamed door arms, for the same
+		// reason: this path returns on four errors and writes no row on any of
+		// them (calllog.go's [callTrace.open]).
+		rawKnobs := knobsFrom(ctx)
+		defer func() { c.closeOpenAttempt(ctx, rawKnobs.trace, endedBy(ctx)) }()
+		httpResponse, err := c.sendShaped(ctx, request, rawKnobs, true)
 		if err != nil {
 			errs <- err
 			return
@@ -2042,7 +2210,9 @@ func (c *Client) newHTTPRequest(ctx context.Context, request *ai.Request, body [
 		return nil, err
 	}
 	httpRequest.Header.Set("Content-Type", "application/json")
-	httpRequest.Header.Set("Authorization", "Bearer "+apiKey)
+	if apiKey != "" {
+		httpRequest.Header.Set("Authorization", "Bearer "+apiKey)
+	}
 	if stream {
 		httpRequest.Header.Set("Accept", "text/event-stream")
 	}
@@ -2155,6 +2325,42 @@ type APIError struct {
 	// [maxRawClip]. It is the sentence that says what the 400 actually was, and
 	// it is the one thing "Provider returned error" never contains.
 	Raw string
+	// Routing says the ROUTER emptied the endpoint set for this request — a
+	// list, a policy, a price ceiling or a demand left it nothing to ask — so
+	// another machine or another model can serve the same bytes. It is decided
+	// ONCE, by the refusal classifier at the refusal door (refusalobject.go,
+	// [Client.refuseUpstream]), and carried here so that nobody downstream has
+	// to decide it again from the sentence: it is the difference between "try
+	// somewhere else" and "our own request is wrong", which [APIError.OurRequest]
+	// and internal/taxonomy both read.
+	Routing bool
+	// Account says the list that emptied the set is the ACCOUNT'S OWN — a
+	// privacy switch, a paid-training guardrail, a standing ignore list — which
+	// is true of every model rather than of this one. It is only ever set beside
+	// Routing: the MOVE is the same (somewhere else), and what it adds is which
+	// list, for the ledger and for the journal line.
+	Account bool
+	// Withdrawn says THE ROUTER NO LONGER CARRIES THIS MODEL. The machines are
+	// fine and the request is fine; the id is gone, so there is no machine to
+	// rotate to and no shape to relax, and the only move is another model.
+	//
+	// Before it, such a 404 was indistinguishable from an emptied set and spent
+	// the whole transport budget buying three more identical refusals (#838).
+	Withdrawn bool
+	// Overflow says the request DID NOT FIT the model's window.
+	//
+	// IT IS DECIDED FROM STRUCTURE AT THIS DOOR AND NOWHERE ELSE. A seven-branch
+	// regex over the provider's prose used to answer it in internal/session, and
+	// it ran AFTER the verdict was computed and returned before the verdict could
+	// be read — a string deciding what a typed classification had already
+	// answered. What sets it now is the request-too-large status and the error
+	// envelope's own `code`, with the sentence kept only as a hint for a body
+	// that carries neither ([overflowRefusal]).
+	Overflow bool
+	// Code is the error envelope's `code`, as text. The router types that field
+	// as a number, as a string, and sometimes omits it, so it is normalised here
+	// once rather than decoded at each reader.
+	Code string
 }
 
 // Error keeps the SDK's exact error phrasing, and names the upstream when the
@@ -2205,11 +2411,35 @@ func (e *APIError) FromUpstream() bool {
 // — spends the deadline to be told the same thing. 429 is excluded because it is
 // pacing rather than a verdict on the request, and it has its own patience
 // (retry.go).
+//
+// AND A ROUTING REFUSAL IS NOT OURS EITHER ([APIError.Routing]). It names no
+// upstream for the same reason our own malformed bytes name none — nobody was
+// asked — and that is the only thing the two have in common: this one is a
+// list or a setting that emptied the set, and the measured turn of 2026-09-10
+// ended on "the request itself was refused" because the two were read as one.
 func (e *APIError) OurRequest() bool {
-	if e == nil || e.FromUpstream() {
+	if e == nil {
+		return false
+	}
+	// AN EMPTY ACCOUNT IS OURS TO STOP WHOEVER WAS ASKED, so this is read
+	// before the two "nobody was asked" answers below. A payment refusal is a
+	// fact about the account rather than about one upstream or one list, and
+	// walking to another machine spends the identical refusal again.
+	if paymentrefusal.Matches(e.Status, []byte(e.Body)) {
+		return true
+	}
+	if e.FromUpstream() || e.Routing {
 		return false
 	}
 	return e.Status >= 400 && e.Status < 500 && e.Status != http.StatusTooManyRequests
+}
+
+// AccountCannotPay reports the terminal authenticated-account refusal shared
+// by connect and the live transport. It reads the original body, never Error's
+// formatted sentence, so a plain pacing 429 cannot become terminal by wording
+// added inside this process.
+func (e *APIError) AccountCannotPay() bool {
+	return e != nil && paymentrefusal.Matches(e.Status, []byte(e.Body))
 }
 
 // RefusalFrom recovers the provider's refusal from anywhere in an error chain,
@@ -2221,6 +2451,25 @@ func RefusalFrom(err error) (*APIError, bool) {
 		return refusal, true
 	}
 	return nil, false
+}
+
+// RoutingRefusal reports that an error is the router saying NOTHING IT CAN
+// REACH will serve this request as it stands — and that somewhere else still
+// can: another machine once the list comes off, another model after that. It is
+// the typed fact [APIError.Routing] carries, asked from anywhere in a chain.
+//
+// A SPENT LADDER IS NOT ONE. [RefusalError] is what the endpoint ladder returns
+// once it has relaxed the request, dropped the ceiling and walked the fallback
+// models without an answer; it wraps the router's last refusal, and reading
+// THAT as somewhere left to go would send a caller round the whole ladder again
+// to be told the same thing. What it carries is a diagnosis for a person.
+func RoutingRefusal(err error) bool {
+	var spent *RefusalError
+	if errors.As(err, &spent) {
+		return false
+	}
+	refusal, ok := RefusalFrom(err)
+	return ok && refusal.Routing
 }
 
 // firstSentence is the readable head of an upstream body: its first sentence, or
@@ -2299,8 +2548,32 @@ func apiError(status int, payload []byte) error {
 		}
 		failure.Provider = strings.TrimSpace(decoded.Error.Metadata.ProviderName)
 		failure.Raw = clipRaw(decoded.Error.Metadata.Raw)
+		failure.Code = envelopeCode(decoded.Error.Code)
 	}
+	// THE ONE SHAPE THAT NEEDS NO DOOR. Every other structural fact on this error
+	// depends on what the CLIENT knows — whether this base routes, whether the
+	// catalog carries the model — and is stamped at the refusal door
+	// (refusalobject.go's [Client.markRefusal]). "It did not fit" depends on
+	// nothing but the refusal itself, so it is answered where the refusal is
+	// built and is therefore true of every APIError this build makes, including
+	// the ones a stream raises in-band.
+	failure.Overflow = overflowRefusal(status, failure.Code, failure.Message, failure.Raw)
 	return failure
+}
+
+// envelopeCode normalises the error envelope's `code` to text. The router types
+// it as a number, as a string, and sometimes omits it — which is why [errorBody]
+// takes it as raw JSON — so the three spellings are folded here, once, rather
+// than at each reader.
+func envelopeCode(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		return strings.TrimSpace(text)
+	}
+	return strings.TrimSpace(strings.Trim(string(raw), `"`))
 }
 
 // clipRaw reads the upstream's own body out of the metadata, whichever of the

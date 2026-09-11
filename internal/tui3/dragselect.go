@@ -496,7 +496,7 @@ func (a *app) dragYank(drag dragSelect) tea.Cmd {
 	// an idle status line forever.
 	return tea.Batch(
 		tea.Raw(osc52(strings.Join(pieces, "\n"), a.tmux)),
-		tea.Tick(dragFlashFor, func(time.Time) tea.Msg { return dragFlashMsg{} }),
+		surfaceTick(dragFlashFor, func(time.Time) tea.Msg { return dragFlashMsg{} }),
 	)
 }
 

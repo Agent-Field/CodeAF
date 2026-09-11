@@ -199,9 +199,9 @@ func jobNameSubject(info jobInfo, workspace string) string {
 // caller's only response to that is to leave the job named as it was.
 func (a *Agent) jobName(ctx context.Context, subject string) string {
 	a.mu.Lock()
-	model, closed, client := a.model, a.closed, a.client
+	model, closed := a.model, a.closed
 	a.mu.Unlock()
-	if closed || client == nil {
+	if closed || !a.hasClient() {
 		return ""
 	}
 	// IT CARRIES ITS OWN DEADLINE for the shaper's reason: the provider's client

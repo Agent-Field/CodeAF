@@ -197,6 +197,82 @@ func (a *app) openFolderPick(query string) tea.Cmd {
 	return a.openContextPick(query, true)
 }
 
+// openTargetFolderPick is /folder, /place and /dir TYPED AT HOME: the same one
+// browser, opened about the conversation home is about to start rather than
+// about the one this window is holding behind the screen.
+//
+// IT IS THE SAME SHEET AND NOT A SECOND ONE. Home's own answer to "which
+// folder" used to be one line under the box — `alt+w moves the next conversation
+// · or type a path` — which named a chord and a gesture and drew nothing a
+// person could walk. The owner's word for it was that they did not notice it.
+// So the command opens the browser every other surface opens, with three
+// differences that all come from the same fact — the conversation this is about
+// does not exist yet (folderpick.go's [folderPick.forTarget]):
+//
+//   - NO FOLDER DOOR IS REQUIRED. A pin is a string on this window; nothing is
+//     referred to any agent, so a session that cannot hold a folder is no reason
+//     to refuse the sheet.
+//   - IT OPENS WHERE THE NEXT CONVERSATION WOULD ([app.targetWhere]) rather than
+//     on the folders the conversation behind home is already about.
+//   - `esc` AND A CONFIRM BOTH LAND BACK ON HOME. The sheet takes the frame, so
+//     home has to close under it (a place cannot draw a bottom-anchored modal,
+//     pages.go's [app.closeModals] tells that story) — and a person who typed a
+//     command on home and pressed esc has not asked to leave home.
+//
+// OVER A CONNECTION IT REFUSES ON HOME'S OWN LINE. The folders this process can
+// read are the laptop's and the work is on the other machine, which is
+// [folderRemoteWord]'s argument said about the target: the pin would name a
+// directory the next conversation cannot open.
+func (a *app) openTargetFolderPick(query string) tea.Cmd {
+	if a.hosted() {
+		a.home.say(folderRemoteWord, "")
+		return nil
+	}
+	cmd := a.openContextPick(query, false)
+	if !a.folder.open {
+		// It refused and said why. Nothing here can improve on that.
+		return cmd
+	}
+	a.folder.forTarget = true
+	// AND NOTHING ON THIS SHEET IS `held`. The map was filled with the folders
+	// the conversation BEHIND home is about, which on this sheet would offer
+	// `remove this folder` for a folder the next conversation has never had.
+	a.folder.held = nil
+	if query == "" {
+		if where := strings.TrimSpace(a.targetWhere()); where != "" {
+			a.folder.openAt(where, "")
+		}
+	}
+	a.touch()
+	return cmd
+}
+
+// closeFolderSheet is the one way out of the browser — esc, the `esc · cancel`
+// target on the sheet's foot, and a confirm — with the ONE thing the sheet home
+// opened owes on the way: home comes back.
+//
+// ESC CHANGES NOTHING (folderpick.go's law) and coming back to home is not a
+// change: it is the screen a person was on when they typed the command, and the
+// sheet only replaced it because a place cannot draw a modal.
+//
+// THE SHEET IS THE ONLY SURFACE HERE THAT COVERS RATHER THAN REPLACES. The
+// ordinary frame revealed after it closes often has rows shorter than the
+// sheet, and the incremental renderer does not always overwrite the cells the
+// sheet lit beyond those rows. Padding cannot repair that: the renderer clears
+// its cell buffer before every frame, so explicit trailing spaces and absent
+// cells produce the same diff. This is one full repaint at the one moment this
+// surface has a layer to undraw, routed through one door so none of the ways out
+// can leave the layer behind.
+func (a *app) closeFolderSheet() tea.Cmd {
+	home := a.folder.forTarget
+	a.folder.close()
+	a.touch()
+	if home {
+		return tea.Batch(tea.ClearScreen, a.openHome())
+	}
+	return tea.ClearScreen
+}
+
 // openContextPick is the browser, opened FROM MEMORY. The only work on this path
 // is ranking candidates that were already known; everything that touches a disk
 // — the picks and the index of repositories under `~`, the facts about the row
@@ -305,7 +381,7 @@ func (a *app) contextStart() string {
 func (a *app) folderKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc":
-		return a.closeContextSheet()
+		return a.closeFolderSheet()
 
 	case "enter":
 		return a.folderConfirm()

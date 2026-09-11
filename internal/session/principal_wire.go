@@ -53,13 +53,13 @@ func newPrincipalFor(a *Agent) Principal {
 	//
 	// A goal owner holds the WHOLE ask, spends a budget against it, and sweeps
 	// what the session left behind. None of those is a thing a worker owns: a
-	// node has a brief and an auditor of its own, a fork's hand has a scope, an
-	// errand is forty cells that close with home. Every one of them is built
-	// from a fresh Config literal today and would inherit none of this — but two
-	// roads COPY the conversation's config wholesale (standing_run.go), and a
-	// third written next year will too. The guard belongs here, once, where the
-	// answer is decided, rather than as a line every copier has to remember.
-	if a.config.InTask || a.config.Errand || a.config.inHand {
+	// node has a brief and an auditor of its own, an errand is forty cells that
+	// close with home. Every one of them is built from a fresh Config literal
+	// today and would inherit none of this — but two roads COPY the
+	// conversation's config wholesale (standing_run.go), and a third written
+	// next year will too. The guard belongs here, once, where the answer is
+	// decided, rather than as a line every copier has to remember.
+	if a.config.InTask || a.config.Errand {
 		return NewPerson()
 	}
 	// AND A CONVERSATION SOMEBODY IS STEERING WORKS FOR THE PERSON STEERING
@@ -248,7 +248,7 @@ func (a *Agent) landings() ([]Landing, bool, taskFlight) {
 			Delivered: merge == mergeKept && branch != "" && len(changed) > 0 && retained == "",
 			Elsewhere: node.parent != a.config.taskID,
 			Produced:  node.producedResult(),
-			Checked:   node.checkAnswer() == provider.VerdictVerifiedSuccess,
+			Checked:   node.checkAnswer() == provider.ReadingVerifiedSuccess,
 			// The signature is the failure's own first line, which is what the
 			// audit wrote when it said what was missing. IT IS A STAND-IN AND
 			// SAYS SO: the classification lane at the provider boundary is where
@@ -541,6 +541,6 @@ func landingFromNotice(notice TaskNotice) Landing {
 		Ending:    notice.Ending,
 		Files:     notice.Changed,
 		Merged:    notice.Merge == mergeMerged,
-		Checked:   notice.Checked == provider.VerdictVerifiedSuccess,
+		Checked:   notice.Checked == provider.ReadingVerifiedSuccess,
 	}
 }

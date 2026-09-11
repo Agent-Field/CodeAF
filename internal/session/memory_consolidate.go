@@ -230,18 +230,17 @@ func NewMemoryTidy(parent Config, brainPath, root string, idle standing.Idle) st
 			if built != nil {
 				return
 			}
-			client, built = provider.NewClient(provider.Config{
-				APIKey:  parent.APIKey,
-				BaseURL: parent.BaseURL,
-				Model:   model,
-				Timeout: providerTimeout,
-				Routing: provider.StaticRouting(parent.Routing),
-			})
+			settings := parent.clientConfig(model, providerTimeout)
+			// The pass carries its model explicitly; use the bare id chosen by the
+			// service door so the prefix never reaches the vendor's wire.
+			model = settings.Model
+			settings.Routing = provider.StaticRouting(parent.Routing)
+			client, built = provider.NewClient(settings)
 		})
 		if built != nil {
 			return standing.Tidied{}, built
 		}
-		return tidyPass{brain: brain, client: client, model: model, root: root, mark: mark}.run(ctx)
+		return tidyPass{brain: brain, completer: client, model: model, root: root, mark: mark}.run(ctx)
 	}
 }
 
@@ -253,11 +252,11 @@ func NewMemoryTidy(parent Config, brainPath, root string, idle standing.Idle) st
 // to a provider — and this owns everything else. Splitting them there is what
 // lets the gate, the plan and every refusal be tested without either.
 type tidyPass struct {
-	brain  *store.Store
-	client Completer
-	model  string
-	root   string
-	mark   consolidateMark
+	brain     *store.Store
+	completer Completer
+	model     string
+	root      string
+	mark      consolidateMark
 }
 
 // run is the pass proper: read what is remembered, decide whether it is worth a
@@ -277,7 +276,7 @@ func (p tidyPass) run(ctx context.Context) (standing.Tidied, error) {
 	bounded, cancel := context.WithTimeout(ctx, consolidateWindow)
 	defer cancel()
 
-	plan, usd, err := consolidateAsk(bounded, p.client, p.model, batch)
+	plan, usd, err := consolidateAsk(bounded, p.completer, p.model, batch)
 	if err != nil {
 		return standing.Tidied{USD: usd}, err
 	}
@@ -359,8 +358,7 @@ func consolidateAsk(ctx context.Context, client Completer, model string, batch [
 		[]ai.Message{
 			textMessage("system", consolidatePrompt),
 			textMessage("user", consolidateListing(batch)),
-		},
-		ai.WithModel(model))
+		})
 	if err != nil {
 		return consolidatePlan{}, 0, err
 	}

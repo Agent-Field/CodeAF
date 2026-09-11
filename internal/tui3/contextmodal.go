@@ -126,23 +126,6 @@ func (w contextWin) holds(x, y int) bool {
 // being open and nothing else: there is one chooser and it is always modal.
 func (a *app) contextModalShowing() bool { return a.folder.open }
 
-// closeContextSheet is the one way out of the chooser, and it asks for the
-// whole screen back on the way.
-//
-// THE SHEET IS THE ONLY SURFACE HERE THAT COVERS RATHER THAN REPLACES. The
-// ordinary frame revealed after it closes often has rows shorter than the
-// sheet, and the incremental renderer does not always overwrite the cells the
-// sheet lit beyond those rows. Padding cannot repair that: the renderer clears
-// its cell buffer before every frame, so explicit trailing spaces and absent
-// cells produce the same diff. This is one full repaint at the one moment this
-// surface has a layer to undraw, routed through one door so none of the ways out
-// can leave the layer behind.
-func (a *app) closeContextSheet() tea.Cmd {
-	a.folder.close()
-	a.touch()
-	return tea.ClearScreen
-}
-
 // ── the frame ───────────────────────────────────────────────────────────────
 
 // contextModalOver composites the sheet onto a finished chat frame and answers
@@ -349,6 +332,13 @@ func contextGlyphs(pal palette) contextGlyph {
 // manual the same question.
 func (a *app) contextHeadRule(inner int, glyph contextGlyph) string {
 	title := contextTitleWord
+	if a.folder.forTarget {
+		// THE SHEET HOME OPENED IS NOT ADDING CONTEXT TO ANYTHING. It is choosing
+		// where the next conversation opens (folderpick.go's [folderPick.forTarget]),
+		// and a title claiming otherwise would be the frame disagreeing with its own
+		// action row.
+		title = contextTargetTitleWord
+	}
 	left := a.pal.dim(glyph.rule) + " " + a.pal.bold(a.pal.ink(title)) + " "
 	used := 1 + 1 + ansi.StringWidth(title) + 1
 	where := ""
@@ -369,6 +359,10 @@ func (a *app) contextHeadRule(inner int, glyph contextGlyph) string {
 // `folder` because the same sheet chooses files, and it is a constant because
 // the manual quotes it exactly as it is spelled here.
 const contextTitleWord = "add context"
+
+// contextTargetTitleWord is what the same sheet calls itself when home opened it
+// for the target — the folder the next conversation will open in.
+const contextTargetTitleWord = "the next conversation's folder"
 
 // contextCancelWord is the explicit way out, drawn on the foot rule and
 // pressable. It names the key AND the act, because the key is the fast way and
@@ -429,7 +423,9 @@ func (a *app) contextModalPress(x, y int) (tea.Cmd, bool) {
 		return nil, true
 	}
 	if y == win.cancelY && win.cancel.holds(x) {
-		return a.closeContextSheet(), true
+		// The same way out `esc` takes, so the sheet home opened lands back on
+		// home whichever of the two a person used (folderplace.go).
+		return a.closeFolderSheet(), true
 	}
 	if y == win.boxY && x >= win.boxX {
 		// THE BOX TAKES A PRESS THE WAY THE DRAFT DOES: the caret lands under the

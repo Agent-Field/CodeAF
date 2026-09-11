@@ -435,8 +435,9 @@ of it.
 
 **When home greets you instead, there is no welcome box at all.** On a machine that holds
 a conversation other than the one your launch opened, the first frame is the home screen
-(see the home page), and the box is retired before it ever draws — home's list is every
-conversation in every project, which is the box's four recent rows and more. Two
+(see the home page), and the box is retired before it ever draws — home's `where you
+were` panel, with the search behind its fold, is every conversation in every project, which
+is the box's four recent rows and more. Two
 greeters would be one too many. It does not appear behind home either: `esc` out of home
 lands you on the ordinary prompt.
 
@@ -484,8 +485,9 @@ reaches an idle chat, a background tab, or a hosted chat after the connection is
 no refresh or follow-up message is needed.
 
 Each ask is bounded to twenty seconds so a slow cheap endpoint yields to the existing
-fallback promptly. Temporary provider failures get up to three attempts within the
-two-minute parent window, using short increasing delays. Closing the session cancels this work. Failed or invalid naming
+fallback promptly. Temporary provider failures are asked again for as long as the
+two-minute parent window lasts, with a wait that doubles in front of each ask; nothing
+counts the asks. Closing the session cancels this work. Failed or invalid naming
 leaves the conversation usable with its existing placeholder; an existing name is never
 overwritten. Title calls remain billed to the session and cost history, separately from
 an unrelated turn that happens to be running when the name arrives.
@@ -765,8 +767,9 @@ runs — in every spelling, `$(gh auth token)` inside another command included. 
 how tasks run has the whole of it. Here, in the conversation, the command is yours and runs as it always
 did.
 
-**What is recognised**, by shape rather than by service, so a provider that mints the same
-shape is covered without aforge having heard of it:
+**What is recognised** includes every key aforge holds: its exact value is redacted,
+whatever its shape. Results are also checked for these familiar shapes when the value did
+not come from aforge's own settings:
 
 - GitHub tokens — `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, and fine-grained `github_pat_`
 - keys in the `sk-` family — OpenAI, Anthropic, OpenRouter, and everything else using it

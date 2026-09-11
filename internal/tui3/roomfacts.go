@@ -96,5 +96,5 @@ func (a *app) roomSetupInk(text string, node *taskNode) string {
 	return tasksPaintTail(text, []tasksFact{
 		{field: rowSay(a.roomSpend(node)), ink: a.pal.ink},
 		{field: rowSay(model, modelBase(model)), ink: a.pal.narr},
-	}, a.pal)
+	}, a.pal.dim, a.pal)
 }
