@@ -778,8 +778,10 @@ produce and what done means are handed over with every address at or below the p
 rewritten as the same address inside the task's own copy — so
 `/Users/you/code/yours/internal/widget.go` reaches the task as
 `…/trees/1/internal/widget.go`, and a task that follows its own contract is writing where it
-is allowed to. A path that is **not** under the project is left exactly as written, so a
-contract that really does point somewhere else still earns the refusal below. **Your own
+is allowed to. A path that is **not** under the project is left exactly as written — except
+the conversation's own `work` folder and another task's copy under this conversation's
+`trees/`, which move the same way as the project, below — so a contract that really does
+point somewhere else still earns the refusal below. **Your own
 words are never rewritten**: they are quoted to the task exactly as you typed them, with the
 folders named beside them so it knows which one a path in your sentence means here. And
 what it reads at that address is **its own copy, as the project stood when it started** —
@@ -796,6 +798,23 @@ that names the folders says so outright: `…/work/flow.md` reaches the task as
 conversation opened **in** a project keeps no such folder and nothing extra is rewritten for
 it. Before this, the brief named the conversation's own folder, the task's first write there
 was refused, and it had to invent that address for itself.
+
+## A later task is not pointed at an earlier task's copy
+
+**Another copy of the same folder, under this conversation's `trees/`, is rewritten
+into this task's own copy.** A task that already ran named the directory it stood in —
+`…/trees/1/internal/widget.go` — and the conversation that proposes the next piece of
+work writes that address into WHAT TO PRODUCE instead of yours. That path is not
+under the project, so it used to reach the new task exactly as written. The new task
+stands in `…/trees/2`, followed the address it was given, and was refused "is outside
+your copy" about a directory this conversation had invented. An earlier tree of the
+same conversation is a copy of the same folder, so the address is handed over as the
+same path under **this** task's own copy: `…/trees/1/internal/widget.go` reaches the
+later task as `…/trees/2/internal/widget.go`. A path that is genuinely somewhere else
+on the machine is still left as written, and still earns that refusal. A path that
+is under the project itself still binds as the project's copy, and only what that
+leaves behind is read as another task's tree. The person's own words are still
+quoted as they typed them.
 
 **Writing anywhere else is refused before it runs**, and the task reads the refusal and
 carries on. It covers every hand that names its target:

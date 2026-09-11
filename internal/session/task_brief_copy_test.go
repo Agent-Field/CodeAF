@@ -265,7 +265,11 @@ func TestTheBriefStatesTheConversationsOwnFolderWhereverItIsNamed(t *testing.T) 
 		"/s/work/flow.md", "/s/work/flow.md is there", "", AdmissionContext{}, taskOrigin{}, own)
 	for _, want := range []string{
 		briefCopyHeading,
-		"This conversation's own folder, /s/work, is the one exception.",
+		// IT SAYS "AN EXCEPTION" AND NOT "THE ONE EXCEPTION" since #839, which
+		// gave the rule above it a second exception: another task's copy under
+		// this conversation's trees/. A document that counts its own exceptions
+		// wrongly is a document a worker is right to stop trusting.
+		"This conversation's own folder, /s/work, is an exception.",
 		"the same path under /s/trees/1/work",
 		briefMakeHeading + "\n\n/s/trees/1/work/flow.md",
 		briefDoneHeading + "\n\n/s/trees/1/work/flow.md is there",
@@ -292,7 +296,7 @@ func TestTheBriefStatesTheConversationsOwnFolderWhereverItIsNamed(t *testing.T) 
 	borrowed := newTaskCopy("/x/repo", "/s/trees/1", "")
 	plain := composeBrief(briefWhole, "fix /x/repo/internal/widget.go", "change /x/repo/internal/widget.go",
 		"", "", "", AdmissionContext{}, taskOrigin{}, borrowed)
-	if strings.Contains(plain, "is the one exception") {
+	if strings.Contains(plain, "is an exception") {
 		t.Fatalf("a borrowed session was told about a folder it does not have:\n%s", plain)
 	}
 	quiet := composeBrief(briefWhole, "make the widget say new", "change internal/widget.go",
@@ -360,6 +364,185 @@ func TestBindingTheConversationsFolderDoesNotMoveAPathAlreadyInsideTheCopy(t *te
 	}
 	if got := swallowed.bind("/x/repo/internal/widget.md"); got != already {
 		t.Fatalf("dropping the ancestor also dropped the ground map: %q", got)
+	}
+}
+
+// AND ANOTHER TREE OF THIS CONVERSATION BINDS TOO, to the same path inside
+// the copy this task was given.
+//
+// THE DEFECT THIS PINS (#839). The conversation learns the address of a
+// task's private copy from the first worker's report, so the model that
+// proposes the next piece of work writes `<session>/trees/1/…` into the
+// contract. That path is not under the ground and not under work/, so both
+// earlier rules left it as written, and the worker standing in
+// `<session>/trees/2` was refused "is outside your copy" about a directory
+// the harness itself had invented. Another tree of the same conversation is
+// a copy of the same folder; the equivalent address is the same path under
+// this one.
+func TestAnotherTreeOfTheSameConversationIsWrittenAsThePathInsideThisCopy(t *testing.T) {
+	place := Place{Dir: "/s", Owned: true}
+	own := taskCopyFor(taskTree{ground: "/x/repo", dir: "/s/trees/2", mode: TaskModeWorktree, place: place})
+
+	for _, one := range []struct {
+		why  string
+		text string
+		want string
+	}{
+		{"another tree itself is this copy", "/s/trees/1", "/s/trees/2"},
+		{"a file under another tree keeps its suffix", "/s/trees/1/internal/widget.go", "/s/trees/2/internal/widget.go"},
+		{"a path said mid-sentence is still a path", "finish /s/trees/1/internal/widget.go", "finish /s/trees/2/internal/widget.go"},
+		{"the worker's own copy is left as written", "/s/trees/2/internal/widget.go", "/s/trees/2/internal/widget.go"},
+		{"the ground still binds beside it", "/x/repo/go.mod", "/s/trees/2/go.mod"},
+		{"the conversation's own folder still binds beside it", "/s/work/notes.md", "/s/trees/2/work/notes.md"},
+		{"both a sibling tree and the ground in one sentence both move",
+			"the last attempt left /s/trees/1/internal/widget.go unfinished; the project is /x/repo/internal/widget.go",
+			"the last attempt left /s/trees/2/internal/widget.go unfinished; the project is /s/trees/2/internal/widget.go"},
+		{"the trees folder itself is not a tree", "/s/trees", "/s/trees"},
+		{"a sibling sharing the name prefix is untouched", "/s/trees-old/1/widget.go", "/s/trees-old/1/widget.go"},
+		{"a longer name it is only a suffix of is untouched", "/other/s/trees/1/widget.go", "/other/s/trees/1/widget.go"},
+		{"a genuinely other repository is untouched", "/Users/you/code/theirs/NOTES.md", "/Users/you/code/theirs/NOTES.md"},
+	} {
+		if got := own.bind(one.text); got != one.want {
+			t.Errorf("%s: bind(%q) = %q, want %q", one.why, one.text, got, one.want)
+		}
+	}
+
+	// THE GROUND RULE WINS WHERE BOTH COULD APPLY. A trees folder that sits
+	// under the ground is dropped, so `/s/trees/1/…` is the ground's to bind
+	// and becomes this copy's `trees/1/…` rather than this copy's `…`.
+	underGround := taskCopyFor(taskTree{ground: "/s", dir: "/s/trees/2", mode: TaskModeWorktree, place: place})
+	if got, want := underGround.bind("/s/trees/1/internal/widget.go"), "/s/trees/2/trees/1/internal/widget.go"; got != want {
+		t.Errorf("ground did not win over a sibling tree: bind() = %q, want %q", got, want)
+	}
+
+	// A LEGACY TREE CARRIES THE ZERO PLACE, so there is no trees folder to
+	// bind and a sibling address stands as written — the document this
+	// composed before the session had a folder of its own.
+	legacy := taskCopyFor(taskTree{ground: "/x/repo", dir: "/s/trees/2", mode: TaskModeWorktree, place: Place{}})
+	if got := legacy.bind("/s/trees/1/internal/widget.go"); got != "/s/trees/1/internal/widget.go" {
+		t.Errorf("the legacy layout invented a trees folder: %q", got)
+	}
+}
+
+// AND THE WORKER IS TOLD, because the sentence that used to end the section
+// is false about another tree of this conversation once it binds: "a path
+// that is not under the ground stands as written" was the whole rule, and a
+// worker that trusted it would go on writing at an address it is still
+// refused.
+func TestTheBriefStatesAnotherTreeOfThisConversationWhereverItIsNamed(t *testing.T) {
+	place := Place{Dir: "/s", Owned: true}
+	own := taskCopyFor(taskTree{ground: "/x/repo", dir: "/s/trees/2", mode: TaskModeWorktree, place: place})
+
+	opening := composeBrief(briefWhole, "that did not work, try again", "the last attempt left /s/trees/1/internal/widget.go unfinished",
+		"/s/trees/1/internal/widget.go", "/s/trees/1/internal/widget.go says new", "", AdmissionContext{}, taskOrigin{}, own)
+	for _, want := range []string{
+		briefCopyHeading,
+		"Another task in this conversation has a copy of its own under " + place.Trees() + ", and that is an exception too.",
+		"the same path under /s/trees/2",
+		briefMakeHeading + "\n\n/s/trees/2/internal/widget.go",
+		briefDoneHeading + "\n\n/s/trees/2/internal/widget.go says new",
+	} {
+		if !strings.Contains(opening, want) {
+			t.Fatalf("the document is missing %q:\n%s", want, opening)
+		}
+	}
+	// AND THE PERSON'S OWN SENTENCE IS STILL QUOTED AS THEY TYPED IT.
+	quoted := composeBrief(briefPiece, "finish what is in /s/trees/1/internal/widget.go please", "finish it",
+		"/s/trees/1/internal/widget.go", "it says new", "", AdmissionContext{}, taskOrigin{}, own)
+	if !strings.Contains(quoted, "finish what is in /s/trees/1/internal/widget.go please") {
+		t.Fatalf("the person's own path was rewritten:\n%s", quoted)
+	}
+	if !strings.Contains(quoted, briefCopyHeading) {
+		t.Fatalf("a brief whose only moved address was another tree was told nothing:\n%s", quoted)
+	}
+
+	// AND A BRIEF THAT NAMES NO OTHER TREE IS TOLD NOTHING ABOUT ONE. The
+	// ordinary worktree task is the first task in a fresh conversation, where
+	// there are no other copies at all; a paragraph about them would be a
+	// folder the worker never saw named, and one more address for it to wander
+	// to. The document such a task opens on is the one it opened on before.
+	ordinary := composeBrief(briefWhole, "make the widget say new", "change /x/repo/internal/widget.go so it says new",
+		"/x/repo/internal/widget.go", "/x/repo/internal/widget.go says new", "", AdmissionContext{}, taskOrigin{}, own)
+	if !strings.Contains(ordinary, briefCopyHeading) {
+		t.Fatalf("a brief naming the ground was told nothing about its copy:\n%s", ordinary)
+	}
+	if strings.Contains(ordinary, place.Trees()+"\n") || strings.Contains(ordinary, "Another task in this conversation") {
+		t.Fatalf("a brief that names no other tree was told about one anyway:\n%s", ordinary)
+	}
+}
+
+// AND ANOTHER TREE SPELLED THROUGH A SYMLINK IS STILL THAT TREE. The trees
+// folder is spelled the way [Place.Trees] resolves it while a contract's
+// addresses are spelled the way their author was standing, and on a Mac those
+// two differ by a `/private` nobody typed — which is exactly the machine the
+// full tagged package that found #839 runs on. A rewrite comparing bytes alone
+// would leave the worker pointed at the other tree, which is the whole defect
+// with one spelling changed. The link is made by hand rather than borrowed from
+// the machine, so this holds on every platform.
+func TestBindFollowsAnAliasSpellingOfAnotherTree(t *testing.T) {
+	root := t.TempDir()
+	trees := filepath.Join(root, "trees")
+	if err := os.MkdirAll(filepath.Join(trees, "1", "internal"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A lookalike beside it, reachable through its own link: the whole-path rule
+	// holds for an alias as it does for the folder's own spelling, or a rewrite
+	// would invent a way into a directory nobody asked about.
+	if err := os.MkdirAll(filepath.Join(root, "trees-old", "1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(root, "alias")
+	if err := os.Symlink(trees, alias); err != nil {
+		t.Skipf("this filesystem does not make symlinks: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(root, "trees-old"), alias+"-old"); err != nil {
+		t.Fatal(err)
+	}
+
+	// THE COPY IS SPELLED THE WAY THE ENGINE SPELLS IT, which is canonically:
+	// [taskOwnFolder] resolves the directory before git ever registers it, so
+	// the folder that decides "this is my own copy" and the folder an alias
+	// resolves to are one spelling.
+	copyDir := canonicalPath(filepath.Join(trees, "2"))
+	own := newTaskCopyOf("/x/repo", copyDir, "", canonicalPath(trees))
+	inCopy := func(parts ...string) string {
+		return filepath.Join(append([]string{copyDir}, parts...)...)
+	}
+	for _, one := range []struct {
+		why  string
+		text string
+		want string
+	}{
+		{"another tree through an alias is this copy", filepath.Join(alias, "1"), copyDir},
+		{"a file under it keeps its suffix", filepath.Join(alias, "1", "internal", "widget.go"), inCopy("internal", "widget.go")},
+		{"a path said mid-sentence is still a path", "finish " + filepath.Join(alias, "1", "internal", "widget.go"),
+			"finish " + inCopy("internal", "widget.go")},
+		{"this worker's own copy through an alias is left as written", filepath.Join(alias, "2", "internal", "widget.go"),
+			filepath.Join(alias, "2", "internal", "widget.go")},
+		{"the trees folder itself through an alias is not a tree", alias, alias},
+		{"a lookalike alias is untouched", filepath.Join(alias+"-old", "1", "go.mod"), filepath.Join(alias+"-old", "1", "go.mod")},
+	} {
+		if got := own.bind(one.text); got != one.want {
+			t.Errorf("%s: bind(%q) = %q, want %q", one.why, one.text, got, one.want)
+		}
+	}
+
+	// AND THE OTHER WAY ROUND, which is the spelling the defect actually
+	// arrives in: the session names its own folder however it was opened while
+	// the copies inside it are named as git resolved them, so the address a
+	// worker reports — and the next contract carries — is the resolved one.
+	throughAlias := newTaskCopyOf("/x/repo", copyDir, "", alias)
+	for _, one := range []struct {
+		why  string
+		text string
+		want string
+	}{
+		{"a resolved address under another tree still binds", filepath.Join(trees, "1", "internal", "widget.go"), inCopy("internal", "widget.go")},
+		{"the alias spelling binds beside it", filepath.Join(alias, "1", "internal", "widget.go"), inCopy("internal", "widget.go")},
+	} {
+		if got := throughAlias.bind(one.text); got != one.want {
+			t.Errorf("%s: bind(%q) = %q, want %q", one.why, one.text, got, one.want)
+		}
 	}
 }
 
