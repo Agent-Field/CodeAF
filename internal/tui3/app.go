@@ -838,6 +838,19 @@ type app struct {
 	file      string
 	build     string
 	resumed   bool
+	// errandHome is the person's own home directory, resolved ONCE at `open` and
+	// held: the `~` project an item that belongs to no repository runs in
+	// ([app.errandPlace], [app.readBareBands], and homeexchange.go's
+	// [errandHomeDir] is where it comes from).
+	//
+	// IT IS A FIELD BECAUSE THE FRAME ASKS FOR IT. The composer's own line names
+	// where a send lands on every paint — `app.View → … → a.composerOpensAt →
+	// a.errandPlace` — and the two syscalls behind the answer are two syscalls
+	// per frame, which is the law in framedisk_law_test.go. A process does not
+	// change its home directory or the directory it was started in while it runs,
+	// so one reading at `open` is the whole of what there is to know: this is
+	// learned.go's shape for a fact with one name rather than a file per name.
+	errandHome string
 	// previews holds the pictures this surface has already drawn as half blocks
 	// (imagepreview.go), keyed by the file, its mtime and the shape it was drawn
 	// for. An open picture call is re-rendered on every frame, and decoding a
@@ -2689,6 +2702,10 @@ func newApp(ctx context.Context, opts Options) *app {
 	// named once, here, and driven by name nowhere afterwards.
 	a.pictures = newLearned(statPictureFile)
 	a.modelLists = newLearned(readModelCacheName)
+	// AND THE HOME DIRECTORY IS ONE OF THEM, with one name rather than a file per
+	// name: the frame names where an errand with no project of its own lands, and
+	// the answer is a fact about the process and not about the frame asking.
+	a.errandHome = errandHomeDir()
 	a.learning = []memo{&a.pictures, &a.modelLists}
 	// AND THE MODEL CACHES ARE READ HERE, at `open`, before the shelf below asks
 	// the memo for any of them (models.go's [app.learnModelLists]).

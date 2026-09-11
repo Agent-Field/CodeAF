@@ -1132,7 +1132,7 @@ func (a *app) standBandsOf(world session.World) (bands map[string][]StandingItem
 func (a *app) readBareBands(bands map[string][]StandingItemView, known map[string]bool) ([]homeBare, []StandingItemView) {
 	var out []homeBare
 	var fired []StandingItemView
-	paths := []string{errandHomeDir(), strings.TrimSpace(a.workspace)}
+	paths := []string{a.errandHome, strings.TrimSpace(a.workspace)}
 	if a.hosted() {
 		// The home directory belongs to the surface machine and is not a path the
 		// far standing store can answer. Until Standing.All can enumerate bare
