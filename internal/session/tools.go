@@ -3,6 +3,7 @@ package session
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
@@ -246,6 +247,13 @@ func (a *Agent) belt() []bare.Tool {
 	// already has is the only video work there is. It rides last because it is
 	// what the other five's output is assembled WITH.
 	tools = append(tools, a.videoEditTools()...)
+	// WORK WITH NOBODY TO ASK CARRIES ONLY WHAT IT IS GRANTED ([Config.grants]).
+	// It is the one gate here that reads the approval policy rather than a
+	// seam, and it runs over the whole belt because a grant is about a tool's
+	// name and not about which family built it: every name the policy would
+	// refuse outright or send to a person nobody is there to be is left off,
+	// and the page is composed from the same predicate (beltfacts.go).
+	tools = slices.DeleteFunc(tools, func(tool bare.Tool) bool { return !a.config.grants(tool.Name) })
 	// AND THE LAST STEP IS NOT A GATE. Everything above has already decided what
 	// this build can offer; this splits what survived into what the model carries
 	// from the first turn and what waits one call away on a named shelf, and puts

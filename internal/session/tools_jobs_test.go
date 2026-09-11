@@ -155,7 +155,7 @@ func TestBashDescriptionStatesTheArmedBackgroundClock(t *testing.T) {
 		strconv.Itoa(BashCeilingSeconds)+" when unset") {
 		t.Fatalf("the bash schema does not derive the timeout ceiling: %s", schema)
 	}
-	if strings.Contains(systemPrompt, "up to 600s") || !strings.Contains(systemPrompt, "finishes or its armed bound") {
+	if prompt := promptWithBeltFacts(agent.config); strings.Contains(prompt, "up to 600s") || !strings.Contains(prompt, "finishes or its armed bound") {
 		t.Fatalf("the system prompt still promises the timeout-only posture")
 	}
 

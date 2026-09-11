@@ -97,7 +97,7 @@ func TestGoverningNeverClipsMandatoryHolds(t *testing.T) {
 	for i := 0; i < standingWorldMost+3; i++ {
 		items = append(items, standing.Item{ID: fmt.Sprint(i), Words: fmt.Sprintf("required-condition-%d", i), When: standing.When{Kind: standing.WhenHold}})
 	}
-	block := renderStandingWorld(items, "")
+	block := renderStandingWorld(items, nil, "")
 	for _, item := range items {
 		if !strings.Contains(block, item.Words) {
 			t.Fatalf("mandatory direction omitted: %s", item.Words)

@@ -1852,6 +1852,13 @@ type Config struct {
 	// thing that knows which promise is the runner that built this config.
 	standingItemID string
 
+	// readRoot is the one directory this agent's reading hands may reach, and
+	// empty — anywhere — for every agent but a firing (readroot.go). It is a
+	// capability on the config, set by the runner that built it, for
+	// [Config.standingItemID]'s reason: only that runner knows the work has
+	// nobody watching it.
+	readRoot string
+
 	// cause is what admitted this execution, when the door that built it knows
 	// (context_trace.go's [executionCause]). Only the standing runner fills it
 	// today, from the occurrence record the pass wrote into the run folder
@@ -2381,7 +2388,7 @@ type Agent struct {
 	standingText           string
 	organizationText       string
 	organizationRecords    []workspace.ContextRecord
-	governingCollections   map[string]int
+	governingPlaces        []workspace.GoverningCollection
 	governingRecords       []standing.Item
 	organizationReadError  string
 	governingReadError     string

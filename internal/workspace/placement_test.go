@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -209,5 +210,52 @@ PRAGMA application_id=%d; PRAGMA user_version=2;`, extra, applicationID))
 				t.Fatalf("lost context during upgrade: %v, %v", records, err)
 			}
 		})
+	}
+}
+
+// WHAT IS PLACED IN A FOLDER IS READ FROM THE FOLDER. Only direct placements
+// are listed, never a reference and never a placement one folder down, and the
+// read walks the placements key rather than the table.
+func TestPlacedListsOnlyWhatIsPlacedDirectlyInTheFolder(t *testing.T) {
+	ctx := context.Background()
+	s := openTestStore(t, filepath.Join(t.TempDir(), "placed.db"))
+	top := createTestCollection(t, s, "Company")
+	alpha := createTestCollection(t, s, "Alpha")
+	work := Ref{Kind: StandingKind, ID: "f15796736d0826e5"}
+	filed := Ref{Kind: ConversationKind, ID: "chat"}
+	if err := s.AddPlacement(ctx, alpha.ID, work); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddPlacement(ctx, top.ID, Ref{Kind: CollectionKind, ID: alpha.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Add(ctx, alpha.ID, filed); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.Placed(ctx, alpha.ID); err != nil || !reflect.DeepEqual(got, []Ref{work}) {
+		t.Fatalf("placed in Alpha: %+v, %v", got, err)
+	}
+	if got, err := s.Placed(ctx, top.ID); err != nil || !reflect.DeepEqual(got, []Ref{{Kind: CollectionKind, ID: alpha.ID}}) {
+		t.Fatalf("placed in Company: %+v, %v", got, err)
+	}
+	if _, err := s.Placed(ctx, "deadbeef"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a missing folder answered %v", err)
+	}
+	rows, err := s.db.QueryContext(ctx, "EXPLAIN QUERY PLAN "+placedQuery, alpha.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var plan []string
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan = append(plan, detail)
+	}
+	if len(plan) != 1 || !strings.HasPrefix(plan[0], "SEARCH placements USING ") || !strings.Contains(plan[0], "(collection_id=?)") {
+		t.Fatalf("the placed read's plan is %q", plan)
 	}
 }

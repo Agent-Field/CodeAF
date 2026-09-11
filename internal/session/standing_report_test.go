@@ -191,7 +191,7 @@ func ruledRunner(t *testing.T, root string, model *scriptedCompleter, verdicts .
 		questions = append(questions, messageText(messages[len(messages)-1]))
 		if len(verdicts) == 0 {
 			t.Error("the report was checked more often than scripted")
-			return textResponse(`{"kept": true}`), true
+			return textResponse(keptVerdict), true
 		}
 		verdict := verdicts[0]
 		verdicts = verdicts[1:]
@@ -222,7 +222,11 @@ func saying(text string) step {
 	}
 }
 
-const brokenVerdict = `{"kept": false, "rule": "Inbox reports never quote email addresses", "quote": "alice@example.com", "why": "it quotes an email address"}`
+// The check's two answers about [privacyRule], one rule of one kind.
+const (
+	keptVerdict   = `{"rules": [{"rule": 1, "kind": "prohibition", "verdict": "kept"}]}`
+	brokenVerdict = `{"rules": [{"rule": 1, "kind": "prohibition", "verdict": "broken", "quote": "alice@example.com", "why": "it quotes an email address"}]}`
+)
 
 // A REPORT THAT BREAKS A RULE IS SENT BACK ONCE WITH THE EVIDENCE, and the
 // corrected report is what is published. The correction names the rule and
@@ -238,7 +242,7 @@ func TestAReportThatBreaksARuleIsCorrectedOnceBeforeItIsPublished(t *testing.T) 
 			return textResponse("# Report\n- Ask [redacted] to confirm the venue."), nil
 		},
 	}}
-	runner, questions := ruledRunner(t, root, model, brokenVerdict, `{"kept": true}`)
+	runner, questions := ruledRunner(t, root, model, brokenVerdict, keptVerdict)
 	runDir := admittedRun(t, root)
 	outcome, err := runner.Run(context.Background(), reporting(workspace), runDir, "")
 	if err != nil {
@@ -303,8 +307,8 @@ func TestAReportThatStillBreaksARuleIsHeldBackAndThePreviousOneStays(t *testing.
 func TestAFindingThatDoesNotQuoteTheReportIsNotAFinding(t *testing.T) {
 	root, workspace := t.TempDir(), t.TempDir()
 	model := &scriptedCompleter{steps: []step{saying("# Report\nall quiet")}}
-	invented := `{"kept": false, "rule": "Inbox reports never quote email addresses", "quote": "bob@example.com", "why": "an address"}`
-	runner, questions := ruledRunner(t, root, model, invented, `{"kept": true}`)
+	invented := `{"rules": [{"rule": 1, "kind": "prohibition", "verdict": "broken", "quote": "bob@example.com", "why": "an address"}]}`
+	runner, questions := ruledRunner(t, root, model, invented, keptVerdict)
 	outcome, err := runner.Run(context.Background(), reporting(workspace), admittedRun(t, root), "")
 	if err != nil {
 		t.Fatal(err)
@@ -440,7 +444,6 @@ func TestARefusedWriteOfTheRunsOwnReportIsNotAQuestionForThePerson(t *testing.T)
 		},
 		saying("I cannot write the file; someone with permission needs to place it."),
 	}}
-	// Every write asks, as the builtin rules make it ask, and nobody is there.
 	asking := &approval.Policy{Default: approval.ActionPrompt}
 	runner := standingChildRunner(t, root, model)
 	runner.parent.ApprovalPolicy = asking
@@ -448,14 +451,20 @@ func TestARefusedWriteOfTheRunsOwnReportIsNotAQuestionForThePerson(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls := model.seen; len(calls) < 2 || !strings.Contains(messageText(calls[1][len(calls[1])-1]), "nobody to ask") {
-		t.Fatalf("the write was not refused as an unattended write: %d requests", len(calls))
+	// Every write asks under that policy and nobody is there, so `write` is not
+	// on the run's belt at all (standing_grant_test.go): the call is answered as
+	// a tool it does not have, and the file is never the model's own copy.
+	if calls := model.seen; len(calls) < 2 || !strings.Contains(messageText(calls[1][len(calls[1])-1]), "Unknown tool: write") {
+		t.Fatalf("the write was not answered as a tool the run does not have: %d requests", len(calls))
 	}
 	raw, _ := os.ReadFile(filepath.Join(workspace, "reports", "r.md"))
 	if string(raw) != body+"\n" || outcome.Kind != "landed" || outcome.NeedsPerson != "" || outcome.Published == nil {
 		t.Fatalf("published %q outcome %+v", raw, outcome)
 	}
-	// Any OTHER refused write is still a question for the person.
+	// A write of ANY OTHER file is the same absent tool, not a question for the
+	// person: nothing anybody could allow is waiting. (A granted tool meeting a
+	// real boundary is still one — TestAGrantedToolMeetingItsBoundaryStillWaitsOnThePerson.)
+	workspace = t.TempDir()
 	other, _ := json.Marshal(map[string]string{"path": filepath.Join(workspace, "notes.md"), "content": "x"})
 	model = &scriptedCompleter{steps: []step{
 		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
@@ -469,7 +478,10 @@ func TestARefusedWriteOfTheRunsOwnReportIsNotAQuestionForThePerson(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if outcome.Kind != standing.OutcomeNeedsYou || outcome.NeedsPerson == "" {
-		t.Fatalf("a refused write of another file did not wait on the person: %+v", outcome)
+	if outcome.Kind != "landed" || outcome.NeedsPerson != "" || outcome.Published == nil {
+		t.Fatalf("an absent write of another file held the report: %+v", outcome)
+	}
+	if _, err := os.Stat(filepath.Join(workspace, "notes.md")); !os.IsNotExist(err) {
+		t.Fatalf("the absent write ran: %v", err)
 	}
 }

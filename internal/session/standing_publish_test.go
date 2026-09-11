@@ -128,7 +128,7 @@ func TestACorrectionStoppedAtTheStepLimitPublishesNothing(t *testing.T) {
 		readingStep(workspace, "<report>\n# Report\n- Ask [redacted] to confirm.\n</report>"),
 		saying("<report>\n# Report\n- after the limit\n</report>"),
 	}}
-	runner, _ := ruledRunner(t, root, model, brokenVerdict, `{"kept": true}`)
+	runner, _ := ruledRunner(t, root, model, brokenVerdict, keptVerdict)
 	item := reporting(workspace)
 	item.Does.MaxSteps = 1
 	outcome, err := runner.Run(context.Background(), item, admittedRun(t, root), "")
@@ -188,7 +188,7 @@ func TestACorrectionCutAtTheOutputLimitIsNotPublished(t *testing.T) {
 		cutAtTheLimit(" to confirm"),
 		cutAtTheLimit(" the venue, and"),
 	}}
-	runner, _ := ruledRunner(t, root, model, brokenVerdict, `{"kept": true}`)
+	runner, _ := ruledRunner(t, root, model, brokenVerdict, keptVerdict)
 	outcome, err := runner.Run(context.Background(), reporting(workspace), admittedRun(t, root), "")
 	if err != nil {
 		t.Fatal(err)

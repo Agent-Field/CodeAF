@@ -64,7 +64,8 @@ const standingUsage = `  aforge standing [list] [--json]       everything standi
   aforge standing check
       run one check of everything standing now, the pass the timer runs
       --watch is a glob inside the workspace, checked on every pass; a run
-      starts only when a matching file was added, changed or removed.
+      starts only when a matching file was added, removed or its contents
+      changed. A ** segment reaches every folder below it.
       --report is a path inside the workspace the run's final reply is
       written to, replacing the last one. This door never turns on the
       background timer.`
@@ -720,14 +721,12 @@ func writeStandingRecord(out io.Writer, record standingRecord) error {
 		fmt.Fprintf(out, "  set up by: %s, through %s\n", item.Adoption.Actor, via)
 	}
 	for _, place := range record.Placements {
-		how := "placed directly"
-		if place.Depth > 0 {
-			how = fmt.Sprintf("placed %d folder(s) below", place.Depth)
-		}
-		fmt.Fprintf(out, "  folder: %s %s (%s)\n", place.ID, place.Name, how)
+		fmt.Fprintf(out, "  folder: %s %s (%s)\n", place.ID, place.Name, placementHow(place.Depth))
 	}
+	ruleWords := map[string]string{}
 	for _, rule := range record.Rules {
 		fmt.Fprintf(out, "  rule reaching it: %s %s\n", rule.ID, oneLineOf(rule.Words))
+		ruleWords[rule.ID] = rule.Words
 	}
 	if record.RulesError != "" {
 		fmt.Fprintln(out, "  rules could not be read: "+record.RulesError)
@@ -785,17 +784,21 @@ func writeStandingRecord(out io.Writer, record standingRecord) error {
 			fmt.Fprintln(out, "      came to: "+came)
 		}
 		if check := run.RuleCheck; check != nil {
-			line := fmt.Sprintf("      checked against %d rule(s): %s", len(check.Rules), check.Verdict)
+			line := fmt.Sprintf("      checked against %d rule(s): %s", len(check.Rules), ruleCheckSummary(check))
 			if check.Rewrote {
 				line += " after one correction"
 			}
 			fmt.Fprintln(out, line)
+			for _, verdict := range check.Verdicts {
+				fmt.Fprintln(out, "        "+ruleVerdictLine(verdict, ruleWords))
+			}
 			if check.First != "" {
 				fmt.Fprintln(out, "      sent back once: "+oneLineOf(check.First))
 			}
-			if check.Verdict == "broken" {
+			// A record written before per-rule verdicts keeps its one finding.
+			if check.Verdict == "broken" && len(check.Verdicts) == 0 {
 				fmt.Fprintln(out, "      still breaks: “"+oneLineOf(check.Rule)+"” — the report said “"+oneLineOf(check.Quote)+"”")
-			} else if check.Verdict != "kept" && check.Why != "" {
+			} else if check.Verdict != "kept" && check.Verdict != "broken" && check.Why != "" {
 				fmt.Fprintln(out, "      "+oneLineOf(check.Why))
 			}
 			if check.Held != "" {
@@ -803,7 +806,14 @@ func writeStandingRecord(out io.Writer, record standingRecord) error {
 			}
 		}
 		if run.USD > 0 {
-			fmt.Fprintf(out, "      cost $%.4f\n", run.USD)
+			line := fmt.Sprintf("      cost $%.4f", run.USD)
+			// THE LIMIT DID NOT HOLD, AND THE RECORD SAYS SO. It is checked
+			// between requests, so one request can carry a run past it; a cost
+			// printed alone would read as a limit that held.
+			if over := run.OverLimit(); over > 0 {
+				line += fmt.Sprintf(" · $%.4f over its $%.4f limit: the limit is checked between requests, and one request went past it", over, run.PerRunUSD)
+			}
+			fmt.Fprintln(out, line)
 		}
 		if run.Published != nil {
 			fmt.Fprintf(out, "      published %s (%d bytes, sha256 %s)\n", run.Published.Path, run.Published.Bytes, shortHash(run.Published.SHA256))
@@ -822,6 +832,49 @@ func writeStandingRecord(out io.Writer, record standingRecord) error {
 		}
 	}
 	return nil
+}
+
+// ruleCheckSummary is a check's answer over all its rules: counted from the
+// per-rule record where there is one, so a check that could not see a rule never
+// reads as "kept", and the recorded summary word for a record written before
+// per-rule verdicts existed.
+func ruleCheckSummary(check *standing.RuleCheck) string {
+	if len(check.Verdicts) == 0 {
+		return check.Verdict
+	}
+	counts := map[string]int{}
+	for _, verdict := range check.Verdicts {
+		counts[verdict.Verdict]++
+	}
+	var parts []string
+	for _, code := range []string{standing.RuleKept, standing.RuleBroken, standing.RuleNotCheckable} {
+		if counts[code] > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", counts[code], strings.ReplaceAll(code, "-", " ")))
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+// ruleVerdictLine is one rule's truth as `show` prints it: the rule by id and
+// its words where they are known, what kind of rule the check read it as, and
+// what it found — the words that keep an obligation or break a prohibition, or
+// what is missing, or why the report cannot show it.
+func ruleVerdictLine(verdict standing.RuleVerdict, words map[string]string) string {
+	line := "rule " + verdict.ID
+	if text := words[verdict.ID]; text != "" {
+		line += " “" + oneLineOf(text) + "”"
+	}
+	line += " (" + verdict.Kind + "): " + strings.ReplaceAll(verdict.Verdict, "-", " ")
+	switch {
+	case verdict.Quote != "":
+		line += " — the report says “" + oneLineOf(verdict.Quote) + "”"
+		if verdict.Verdict != standing.RuleKept && verdict.Why != "" {
+			line += ": " + oneLineOf(verdict.Why)
+		}
+	case verdict.Why != "":
+		line += " — " + oneLineOf(verdict.Why)
+	}
+	return line
 }
 
 func oneLineOf(text string) string {

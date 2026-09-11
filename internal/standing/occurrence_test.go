@@ -198,7 +198,7 @@ func TestAFinishedButUnrecordedOccurrenceIsNotRunTwice(t *testing.T) {
 	mustTick(t, newTicker(store, runner, now))
 	writeFile(t, filepath.Join(workspace, "inbox", "a.md"), "a")
 	before, _ := store.Get(made.ID)
-	digest, _, _, err := fingerprint(workspace, "inbox/*")
+	digest, _, _, err := fingerprint(workspace, "inbox/*", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,7 +375,7 @@ func TestAnOccurrenceThatPublishedBeforeItsProcessDiedIsRecordedNotRerun(t *test
 	mustTick(t, newTicker(store, runner, now))
 	writeFile(t, filepath.Join(workspace, "inbox", "a.md"), "a")
 	before, _ := store.Get(made.ID)
-	digest, _, _, err := fingerprint(workspace, "inbox/*")
+	digest, _, _, err := fingerprint(workspace, "inbox/*", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

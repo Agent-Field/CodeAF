@@ -245,7 +245,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	a.refreshStandingLocked()
 	a.refreshSystemLocked()
 	governingError := a.governingReadError
-	executionID := a.recordContextExposureLocked(owner, a.organizationRecords, a.governingRecords, a.organizationReadError+governingError, a.governingCollections)
+	executionID := a.recordContextExposureLocked(owner, a.organizationRecords, a.governingRecords, a.organizationReadError+governingError, placementDepths(a.governingPlaces))
 	traceFailed := a.file != nil && executionID == ""
 	a.mu.Unlock()
 	defer a.finishContextExposure(executionID)
