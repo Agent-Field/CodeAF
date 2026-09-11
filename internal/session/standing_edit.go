@@ -1,0 +1,603 @@
+package session
+
+// standing_edit.go is `stand`'s edit: changing ongoing work that already
+// stands, in place, on the person's yes (ruling R1).
+//
+// ── ONE VERB, THE TERMINAL'S, AND ONE ROAD ──
+//
+// `aforge standing edit <id>` has always changed an item in place — a new
+// instructions version (specRevision+1) of the SAME item, keeping what it has
+// read and what it has published — through [standing.Store.Revise]. The chat
+// had no such verb (`change` was an op that only refused), so a person's "also
+// list who owns each request" became a stop and a new card, whose first pass
+// swallowed a change as its baseline and whose first run was held at the file
+// its predecessor had published: the chat protocol's lifecycle, move and policy
+// cases, 2026-09-11. `op: edit` is now that verb, spelled the terminal's way,
+// and its yes goes through the same store revision the terminal's does.
+//
+// ── THE CARD SAYS WHAT CHANGES AND KEEPS WHAT DOES NOT ──
+//
+// An edit card is the item's own card with each line that changes written
+// `old → new`, every line that does not change as it is, and a first line
+// naming the parts that change — the names [standing.SpecChanges] gives the log
+// and the terminal. Nothing is revised until the yes, and the yes is fenced on
+// the version the card was drawn from: a card answered after somebody else's
+// edit changes nothing and says so (the scale audit's L2).
+//
+// ── A MOVE IS AN EDIT OF WHERE IT IS PLACED ──
+//
+// "Move it to my Work folder" is sent as an edit with placement — the models'
+// own first reach in the live move case — and its card draws `folder · old →
+// new`. The yes places the work in the new folder and takes it out of the old,
+// through the same [workspace.Store.AddPlacement] and RemovePlacement that
+// `collections place` and `unplace` (and `aforge collections place|unplace`)
+// write. Told to do it in two calls, a model placed and never unplaced, and the
+// runs kept both folders' rules (2026-09-11).
+//
+// ── WHAT AN EDIT DOES NOT DO ──
+//
+// It does not widen or narrow how far a rule reaches, turn one kind of work
+// into another, or reword the person's own sentence, which every row leads
+// with: the words sent with an edit are the words of the change, and they go
+// in the item's log beside it.
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"reflect"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/aforge-v2/internal/workspace"
+)
+
+// The first line of an edit card, and what the rest of it keeps.
+const (
+	standingChangesTag  = "changes · "
+	standingChangesKept = " — the same work; what it has read and published stays"
+)
+
+// StandingNextRun is what a revision means for the runs, said once for both
+// doors: `aforge standing edit` prints it and the chat's edit answers with it.
+const StandingNextRun = "the next run uses it; a run already under way keeps what it started with"
+
+// StandingRevised is the receipt of a revision, in the grammar both doors use:
+// `revised <id> to version N: instructions, report`.
+func StandingRevised(item standing.Item, changed []string) string {
+	return fmt.Sprintf("revised %s to version %d: %s", item.ID, item.SpecRevision, strings.Join(changed, ", "))
+}
+
+// standingRevisedLine is what a model is told the instant a change stands, for
+// [standingRatifiedLine]'s reason: it is the whole of what it may say next.
+const standingRevisedLine = "They answered the card. Your WHOLE reply is one short line saying what changed: no preamble, no working out, no naming this tool or its arguments, and do not ask again."
+
+// standEdit changes one item that stands, on the person's yes.
+func (a *Agent) standEdit(ctx context.Context, parsed standArguments) (string, bool, error) {
+	store := a.standingItems()
+	if store == nil {
+		return "there is nothing here to read", true, nil
+	}
+	// AN EDIT IS NAMED AS PAUSE, RESUME AND STOP ARE: by id, else by the
+	// person's own words. Three of five live lifecycle runs sent the item's
+	// sentence in words and no id, as they do for the other three.
+	current, problem := a.standingNamed(parsed)
+	switch {
+	case problem != "" && strings.TrimSpace(parsed.ID) == "" && strings.HasPrefix(problem, "nothing here matches"):
+		return problem + standingEditNaming, true, nil
+	case problem != "":
+		return problem, true, nil
+	case current.Status == standing.StatusRetired:
+		// REFUSED BEFORE THE CARD, NOT AFTER THE YES: a card for work that
+		// can never change again asks the person a question with no answer.
+		return "nothing was changed: " + standing.ErrStopped.Error() + " — it was stopped, so propose it again", true, nil
+	}
+	parsed, limits, problem := standingNamedLimits(parsed)
+	if problem != "" {
+		return problem, true, nil
+	}
+	draft, problem := standingEdited(current, parsed, time.Now())
+	if problem != "" {
+		return problem, true, nil
+	}
+	from := a.standingPlacedNow(ctx, current)
+	to, problem := a.standingMovedTo(ctx, parsed, draft, from)
+	if problem != "" {
+		return problem, true, nil
+	}
+	revising := standing.SpecChanges(current, draft)
+	changed := revising
+	if moving := !sameFolders(from, to); moving {
+		changed = append(changed[:len(changed):len(changed)], standingFolderChange)
+	}
+	if len(changed) == 0 {
+		return "nothing to change: send only what is different" + standingDroppedLine(limits), true, nil
+	}
+	found, problem := a.standingEditChecks(current, draft)
+	if problem != "" {
+		return problem, true, nil
+	}
+	shownBefore, shownAfter := standingShownChange(current, draft)
+	notice := StandingNotice{
+		Item:      draft,
+		WhenWords: standingChange(current.When.CardWords(), draft.When.CardWords()),
+		CostWords: standingChange(a.standingCostWords(current, standingKnownLimits(current, standingLimits{})),
+			a.standingCostWords(draft, standingKnownLimits(draft, limits))),
+		Guessed: parsed.Guessed,
+		Terms: append(standingEditTerms(changed, a.standingWorkTerms(ctx, shownBefore, from, standingReportFile{}), a.standingWorkTerms(ctx, shownAfter, to, found)),
+			standingValueTerms(current, draft)...),
+		// A CHANGE HAS NO `just once`: doing it once is not a smaller version of
+		// changing work that keeps running.
+		Options: standingEditOptions(draft),
+	}
+	answer, err := a.askStanding(ctx, &notice)
+	switch {
+	case errors.Is(err, errStandingUnwatched):
+		return "nobody is here to say yes — this can only be changed in a conversation", true, nil
+	case errors.Is(err, errStandingUnanswered):
+		return "the card was left unanswered — nothing was changed", false, nil
+	case err != nil:
+		return "the card was never answered: the turn ended first", true, nil
+	case !answer.Approved:
+		if correction := strings.TrimSpace(answer.Change); correction != "" {
+			return "the person changed it: " + correction + "\nNothing was changed yet. Send the edit again with that.", false, nil
+		}
+		return "nothing was changed: the person said no.", false, nil
+	}
+	revised, said, problem := a.standingRevise(store, current, draft, revising, parsed.Words)
+	if problem != "" {
+		return problem, true, nil
+	}
+	if !sameFolders(from, to) {
+		said = a.standingRefolder(ctx, store, revised, said, to)
+	}
+	// NO UPDATE ROW IS SENT. The surface draws four shapes of news and none of
+	// them is "changed" (tui3's standUpdateRow draws an unknown word as
+	// `stopped`), and a row that said the work stopped would be worse than the
+	// one line the model now writes.
+	return said + standingCardLines(notice) + a.standingAdopt(store, revised, found) +
+		standingDroppedLine(limits) + "\n" + StandingNextRun + "\n" + standingRevisedLine, false, nil
+}
+
+// standingFolderChange is the name a move gives the parts an edit changes, as
+// [standing.SpecChanges] names the rest.
+const standingFolderChange = "folder"
+
+// standingEditNaming follows "nothing here matches" on an edit sent with no
+// id. WORDS ON AN EDIT NAME THE ITEM, as on pause, resume and stop; a model
+// that sent the change there is told where the change goes. A field of its own
+// for the words of the change was the other road, and it was not taken: it
+// would be a second spelling of the person's words in every call, paid in the
+// fixed prefix, for a line in the item's log.
+const standingEditNaming = " On an edit, words names the item by the person's own words for it: send its id instead (op list shows it), and put the change in the fields it changes."
+
+// standingRevise is the store revision of an edit's yes, when it changes the
+// item's spec: the revised item and its receipt, or the refusal of a yes that
+// came too late. An edit that only moves the work revises nothing, and says so
+// in the move's own words.
+func (a *Agent) standingRevise(store standingStore, current, draft standing.Item, changed []string, words string) (standing.Item, string, string) {
+	if len(changed) == 0 {
+		return current, "", ""
+	}
+	revised, _, err := store.Revise(current.ID, current.SpecRevision, func(item *standing.Item) error {
+		item.When, item.Does, item.Rails, item.Brief, item.Grant = draft.When, draft.Does, draft.Rails, draft.Brief, draft.Grant
+		return nil
+	})
+	switch {
+	case errors.Is(err, standing.ErrConflict):
+		return current, "", "nothing was changed: it was changed elsewhere after the card was drawn — read it again with op list and send the edit again"
+	case err != nil:
+		return current, "", "nothing was changed: " + err.Error()
+	}
+	// The item's log, in the terminal's grammar ("revised at the terminal to
+	// version N: …"), with the person's own words for the change after it —
+	// unless those words are the item's own sentence, sent to name it.
+	logged := fmt.Sprintf("revised in the chat to version %d: %s", revised.SpecRevision, strings.Join(changed, ", "))
+	if words = strings.TrimSpace(words); words != "" && words != current.Words {
+		logged += " — " + strconv.Quote(words)
+	}
+	_ = store.Log(revised.ID, logged)
+	return revised, StandingRevised(revised, changed), ""
+}
+
+// standingMovedTo is where an edit moves work: the folder its placement
+// names, resolved and refused as a proposal's is, or where it is now.
+func (a *Agent) standingMovedTo(ctx context.Context, parsed standArguments, draft standing.Item, from standingPlacement) (standingPlacement, string) {
+	if strings.TrimSpace(parsed.Placement) == "" {
+		return from, ""
+	}
+	return a.standingPlacementFor(ctx, parsed, draft)
+}
+
+// standingRefolder places work in its new folders and takes it out of the
+// ones it is in AT THE YES, and adds what happened to the edit's receipt.
+//
+// IT IS FENCED AS A REVISION IS (L2). A move is decided under the item's lock
+// while the item is not stopped and still at the version the card — or the
+// revision just made — left it ([standing.Store.AtSpec]), and the folders it
+// leaves are read there, not when the card was drawn: a move with no other
+// change used to skip the revision and place a stopped item, and to unplace
+// only the folders it had read before the person answered. It places before
+// it unplaces, so a failure between the two leaves the work under both
+// folders' rules — never under none.
+func (a *Agent) standingRefolder(ctx context.Context, store standingStore, item standing.Item, said string, to standingPlacement) string {
+	lead := ""
+	if said != "" {
+		lead = said + "\n"
+	}
+	var moved string
+	err := store.AtSpec(item.ID, item.SpecRevision, func(now standing.Item) error {
+		moved = a.standingMoveFolders(ctx, store, now, a.standingPlacedNow(ctx, now), to)
+		return nil
+	})
+	switch {
+	case errors.Is(err, standing.ErrStopped):
+		return lead + "not moved: it was stopped after the card was drawn"
+	case errors.Is(err, standing.ErrConflict):
+		return lead + "not moved: it was changed elsewhere after the card was drawn — read it again with op list and send the move again"
+	case err != nil:
+		return lead + "not moved: " + oneLine(err.Error())
+	}
+	return lead + moved
+}
+
+// standingMoveFolders is the move itself, under [standingRefolder]'s fence.
+func (a *Agent) standingMoveFolders(ctx context.Context, store standingStore, item standing.Item, from, to standingPlacement) string {
+	moved := "moved " + item.ID + " to " + to.names()
+	if len(to.folders) == 0 {
+		moved = "moved " + item.ID + " out of " + from.names()
+	}
+	if err := a.placeInFolders(ctx, item.ID, standingPlacement{folders: foldersNotIn(to, from)}); err != nil {
+		return moved + " — not done: could not be placed in " + to.names() + ": " + oneLine(err.Error())
+	}
+	if len(to.folders) > 0 {
+		_ = store.Log(item.ID, "moved in the chat: "+to.logLine())
+	}
+	leaving := standingPlacement{folders: foldersNotIn(from, to)}
+	if err := a.unplaceFromFolders(ctx, item.ID, leaving); err != nil {
+		return moved + " — but it is still placed in " + leaving.names() + ": " + oneLine(err.Error())
+	}
+	if len(leaving.folders) > 0 {
+		_ = store.Log(item.ID, "unplaced in the chat from folder "+strings.Join(leaving.ids(), ", "))
+	}
+	return moved
+}
+
+// standingValueTerms is an edit card's lines for the changes no other line
+// shows, each with its values old → new: what it may do (the grant, which is
+// the permission record), the title, the model, how anybody checks the work,
+// and the step limit. A card that named only the part — `what it may do` —
+// asked for a yes to words nobody had read (the review of 417fa43a3).
+func standingValueTerms(before, after standing.Item) []string {
+	var terms []string
+	add := func(tag, old, new, none string) {
+		if old == new {
+			return
+		}
+		shown := func(value string) string {
+			if value = oneLine(value); value == "" {
+				return none
+			}
+			return clip(value, standingCardClip)
+		}
+		terms = append(terms, tag+" · "+shown(old)+" → "+shown(new))
+	}
+	steps := func(n int) string {
+		if n <= 0 {
+			n = standingRunSteps
+		}
+		return strconv.Itoa(n)
+	}
+	add("grant", before.Grant, after.Grant, "none")
+	add("title", before.Brief.Title, after.Brief.Title, "none")
+	add("model", before.Does.Model, after.Does.Model, "the configured one")
+	add("acceptance", before.Does.Acceptance, after.Does.Acceptance, "none")
+	add("steps", steps(before.Does.MaxSteps), steps(after.Does.MaxSteps), "")
+	return terms
+}
+
+// foldersNotIn is the folders of one placement that the other does not hold.
+func foldersNotIn(place, other standingPlacement) []workspace.Collection {
+	var out []workspace.Collection
+	for _, folder := range place.folders {
+		if !slices.Contains(other.ids(), folder.ID) {
+			out = append(out, folder)
+		}
+	}
+	return out
+}
+
+// sameFolders answers whether two placements hold the same folders.
+func sameFolders(a, b standingPlacement) bool {
+	return len(foldersNotIn(a, b)) == 0 && len(foldersNotIn(b, a)) == 0
+}
+
+// standingEdited is current with what the call changes applied, or the refusal
+// of a change an edit does not make. Only what the call sent is changed.
+func standingEdited(current standing.Item, parsed standArguments, now time.Time) (standing.Item, string) {
+	if problem := standingEditRefusal(current, parsed); problem != "" {
+		return current, problem
+	}
+	draft := current
+	if parsed.When.Kind != "" {
+		when, problem := standingWhen(parsed, now)
+		if problem != "" {
+			return current, problem
+		}
+		if (when.Kind == standing.WhenHold) != (current.When.Kind == standing.WhenHold) {
+			return current, "Invalid arguments: an edit cannot make a rule wake or stop something waking — stop it and propose the other"
+		}
+		// THE SAME WAKING SENT AGAIN IS NO CHANGE TO IT. A model resending the
+		// whole call would otherwise hand the item fallback words for the words
+		// it has, and a changed waking starts its schedule and its watch over.
+		if !standingSameWaking(current.When, when) {
+			draft.When = when
+		}
+	}
+	if words := strings.TrimSpace(parsed.WhenWords); words != "" && draft.When.Kind != standing.WhenHold {
+		draft.When.Words = words
+	}
+	if problem := standingEditedDoes(&draft, parsed); problem != "" {
+		return current, problem
+	}
+	if parsed.Rails.PerRunUSD != nil || parsed.Rails.MaxPerDay != nil || strings.TrimSpace(parsed.Rails.Expires) != "" {
+		rails, problem := standingRails(parsed, draft.When, now)
+		if problem != "" {
+			return current, problem
+		}
+		if parsed.Rails.PerRunUSD != nil {
+			draft.Rails.PerRunUSD = rails.PerRunUSD
+		}
+		if parsed.Rails.MaxPerDay != nil {
+			draft.Rails.MaxPerDay = rails.MaxPerDay
+		}
+		if strings.TrimSpace(parsed.Rails.Expires) != "" {
+			draft.Rails.Expires = rails.Expires
+		}
+	}
+	if title := strings.TrimSpace(parsed.Title); title != "" {
+		draft.Brief.Title = title
+	}
+	if grant := strings.TrimSpace(parsed.Grant); grant != "" {
+		draft.Grant = grant
+	}
+	return draft, ""
+}
+
+// standingEditRefusal is the refusal of a change an edit does not make, each
+// naming the road that does make it.
+func standingEditRefusal(current standing.Item, parsed standArguments) string {
+	kind := standing.ActionKind(strings.ToLower(strings.TrimSpace(parsed.Does.Kind)))
+	switch {
+	case len(parsed.Does.Retired) > 0:
+		return standingRetiredBrief
+	case parsed.FolderScope != nil || strings.TrimSpace(parsed.Altitude) != "":
+		return "Invalid arguments: an edit keeps how far it reaches — stop it and propose it with the new reach"
+	case kind != "" && kind != current.Does.Kind:
+		return "Invalid arguments: an edit keeps what the work is — " + standingKindOf(current) + " — so stop it and propose the other"
+	}
+	return ""
+}
+
+// standingKindOf is what an item is, as a refusal names it.
+func standingKindOf(item standing.Item) string {
+	switch {
+	case item.When.Kind == standing.WhenHold:
+		return "a rule"
+	case item.Does.Kind == standing.ActionSay:
+		return "a line to say"
+	}
+	return "work that runs"
+}
+
+// standingEditedDoes applies what the call changes about what a firing does.
+// A rule's words for its runs are its instructions, as the terminal's
+// `--instructions` writes them on a hold.
+func standingEditedDoes(draft *standing.Item, parsed standArguments) string {
+	if text := strings.TrimSpace(parsed.Does.Instructions); text != "" {
+		switch {
+		case draft.When.Kind == standing.WhenHold:
+			draft.Brief.Prompt = text
+		case draft.Does.Kind == standing.ActionTask:
+			draft.Does.Brief = text
+		default:
+			return "Invalid arguments: a line to say changes with does.say"
+		}
+	}
+	if say := strings.TrimSpace(parsed.Does.Say); say != "" {
+		if draft.Does.Kind != standing.ActionSay {
+			return "Invalid arguments: does.say is the line a say item delivers, and this one runs work"
+		}
+		draft.Does.Say = say
+	}
+	if parsed.Does.Report != nil {
+		if draft.Does.Kind != standing.ActionTask {
+			return "Invalid arguments: only work that runs keeps a report"
+		}
+		draft.Does.Report = *parsed.Does.Report
+	}
+	if acceptance := strings.TrimSpace(parsed.Does.Acceptance); acceptance != "" {
+		draft.Does.Acceptance = acceptance
+	}
+	if model := strings.TrimSpace(parsed.Does.Model); model != "" {
+		draft.Does.Model = model
+	}
+	if parsed.Does.MaxSteps < 0 {
+		return "Invalid arguments: does.max_steps cannot be negative"
+	}
+	if parsed.Does.MaxSteps > 0 {
+		draft.Does.MaxSteps = parsed.Does.MaxSteps
+	}
+	return ""
+}
+
+// standingEditChecks asks the changed item what a new one is asked before its
+// card — the item's own admission law, its watch, and its report — and answers
+// what a new report path already holds.
+func (a *Agent) standingEditChecks(current, draft standing.Item) (standingReportFile, string) {
+	if err := draft.Validate(); err != nil {
+		return standingReportFile{}, "Invalid arguments: " + err.Error()
+	}
+	// Asked when [standing.Store.Revise] asks it, a new waking or a new line,
+	// so a yes is never refused for what the card could have said.
+	if !reflect.DeepEqual(current.When, draft.When) || current.Does.Say != draft.Does.Say {
+		if err := draft.CheckWatch(); err != nil {
+			return standingReportFile{}, err.Error()
+		}
+	}
+	if draft.Does.Report == current.Does.Report {
+		return standingReportFile{}, ""
+	}
+	if err := CheckStandingReport(draft.Workspace, draft.Does.Report); err != nil {
+		return standingReportFile{}, "Invalid arguments: does.report " + err.Error()
+	}
+	if problem := a.standingReportTaken(draft); problem != "" {
+		return standingReportFile{}, problem
+	}
+	return a.standingForeignReport(draft), ""
+}
+
+// standingSameWaking answers whether two wakings wake the same way, whatever
+// words each is said in.
+func standingSameWaking(a, b standing.When) bool {
+	a.Words, b.Words = "", ""
+	return reflect.DeepEqual(a, b)
+}
+
+// standingChange is one line of an edit card: the new words, or `old → new`
+// when they differ from the old ones.
+func standingChange(before, after string) string {
+	if before == after || before == "" || after == "" {
+		return after
+	}
+	return before + " → " + after
+}
+
+// standingWorkTerms is an item's card lines for an edit: its card's terms, or
+// for a rule, the one line of what it says.
+func (a *Agent) standingWorkTerms(ctx context.Context, item standing.Item, place standingPlacement, found standingReportFile) []string {
+	if terms := a.standingTerms(ctx, item, place, found); len(terms) > 0 {
+		return terms
+	}
+	return []string{standingRuleTag + clip(oneLine(item.Prompt()), standingCardClip)}
+}
+
+// standingChangeContext is how many unchanged words an edit card keeps before
+// the first changed one, so the change is read in its sentence.
+const standingChangeContext = 3
+
+// standingShownChange is the two versions of an item as its edit card draws
+// them: each text the edit changes, from a few words before where the two
+// begin to differ.
+//
+// A CHANGE PAST THE CLIP IS STILL SHOWN. Instructions longer than a card line
+// that differ only after it clip to one identical line, and the card asked for
+// a yes on a change nobody could see (the live lifecycle run of 2026-09-11,
+// "also list who owns each request").
+func standingShownChange(before, after standing.Item) (standing.Item, standing.Item) {
+	before.Does.Brief, after.Does.Brief = standingFromTheChange(before.Does.Brief, after.Does.Brief)
+	before.Does.Say, after.Does.Say = standingFromTheChange(before.Does.Say, after.Does.Say)
+	before.Brief.Prompt, after.Brief.Prompt = standingFromTheChange(before.Brief.Prompt, after.Brief.Prompt)
+	return before, after
+}
+
+// standingFromTheChange is two texts that differ, each from
+// [standingChangeContext] words before the first difference and led by `…`
+// when that is not their start. Texts that do not differ, and two that each
+// fit a card line, are kept whole.
+func standingFromTheChange(before, after string) (string, string) {
+	if before == after || (len(before) <= standingCardClip && len(after) <= standingCardClip) {
+		return before, after
+	}
+	same := 0
+	for same < len(before) && same < len(after) && before[same] == after[same] {
+		same++
+	}
+	start, words := same, 0
+	for ; start > 0; start-- {
+		if before[start-1] == ' ' {
+			if words == standingChangeContext {
+				break
+			}
+			words++
+		}
+	}
+	if start == 0 {
+		return before, after
+	}
+	return "…" + before[start:], "…" + after[start:]
+}
+
+// standingEditTerms is the edit card's terms: the parts that change, then the
+// item's lines with each that changes written `old → new`.
+func standingEditTerms(changed, before, after []string) []string {
+	terms := []string{standingChangesTag + strings.Join(changed, ", ") + standingChangesKept}
+	for at, term := range after {
+		if at < len(before) && before[at] != term {
+			if tag, _, ok := strings.Cut(term, " · "); ok && strings.HasPrefix(before[at], tag+" · ") {
+				term = before[at] + " → " + strings.TrimPrefix(term, tag+" · ")
+			}
+		}
+		terms = append(terms, term)
+	}
+	return terms
+}
+
+// standingEditOptions is an edit card's answers: a card's own, without `just
+// once`.
+func standingEditOptions(item standing.Item) []AnswerOption {
+	var options []AnswerOption
+	for _, option := range StandingOptions(item) {
+		if option.Key != StandingOnceKey {
+			options = append(options, option)
+		}
+	}
+	return options
+}
+
+// standingKnownLimits is which of an item's limits an edit card names: those
+// the call sent and kept, and any the item holds that differ from the quiet
+// defaults — an edit card must not hide a limit set when the work was made. A
+// limit an edit dropped leaves the item's own standing, so it is named by that.
+func standingKnownLimits(item standing.Item, sent standingLimits) standingLimits {
+	known := sent
+	if known.perRun != limitKept && item.Rails.PerRunUSD != standDefaultPerRunUSD {
+		known.perRun = limitKept
+	} else if known.perRun == limitDropped {
+		known.perRun = limitUnsent
+	}
+	if known.perDay != limitKept && item.Rails.MaxPerDay != standDefaultMaxPerDay {
+		known.perDay = limitKept
+	} else if known.perDay == limitDropped {
+		known.perDay = limitUnsent
+	}
+	return known
+}
+
+// standingPlacedNow is where an item that stands is placed now — the folders
+// it is placed in directly — so an edit card's folder and rule lines are the
+// ones its runs will read.
+func (a *Agent) standingPlacedNow(ctx context.Context, item standing.Item) standingPlacement {
+	if item.Does.Kind != standing.ActionTask || a.config.Organization == nil {
+		return standingPlacement{}
+	}
+	store, err := a.config.Organization.open(false)
+	if err != nil {
+		return standingPlacement{}
+	}
+	defer store.Close()
+	places, err := store.GoverningCollections(ctx, workspace.Ref{Kind: workspace.StandingKind, ID: item.ID})
+	if err != nil {
+		return standingPlacement{}
+	}
+	var place standingPlacement
+	for _, folder := range places {
+		if folder.Depth == 0 {
+			place.folders = append(place.folders, folder.Collection)
+		}
+	}
+	return place
+}

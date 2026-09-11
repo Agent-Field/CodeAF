@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -60,7 +61,9 @@ func (s *Store) Create(item Item) (Item, error) {
 	}
 	item.NextDue = due
 	s.baseline(&item)
-	if err := s.write(item); err != nil {
+	// ONE LIVE OWNER PER REPORT PATH, asked here at the write for both doors
+	// (owner.go): a path another live item keeps is refused, under its lock.
+	if err := s.claimReport(item, func() error { return s.write(item) }); err != nil {
 		_ = os.RemoveAll(s.readingsDir(item.ID))
 		return Item{}, err
 	}
@@ -140,12 +143,12 @@ func (s *Store) mutate(id string, change func(*Item) error) (Item, error) {
 // SetStatus applies the person's control to the latest document, preserving
 // every configuration field and every completed run. Retired items stay retired.
 func (s *Store) SetStatus(id string, status Status, reason string) (Item, error) {
-	return s.mutate(id, func(item *Item) error {
+	item, err := s.mutate(id, func(item *Item) error {
 		if status != StatusActive && status != StatusPaused && status != StatusRetired {
 			return errors.New("unknown standing status")
 		}
 		if item.Status == StatusRetired && status != StatusRetired {
-			return errors.New("a stopped item must be set up afresh")
+			return ErrStopped
 		}
 		// RESUME MEANS NOW. A file watch that was waiting out failed checks
 		// ([Ticker.noteFailure]) is looked at on the next pass, not after the
@@ -163,6 +166,12 @@ func (s *Store) SetStatus(id string, status Status, reason string) (Item, error)
 		}
 		return nil
 	})
+	// A STOPPED ITEM KEEPS NO REPORT PATH: its record goes, after the item's
+	// lock is let go, since a path's lock is never taken inside an item's.
+	if err == nil && status == StatusRetired {
+		s.releaseReport(ReportPath(item), item.ID)
+	}
+	return item, err
 }
 
 // AddException narrows the current item without replacing a concurrent edit or
@@ -229,20 +238,29 @@ func (s *Store) Get(id string) (Item, error) {
 // one truncated by a full disk, must not be able to stop every other standing
 // thing a person owns from being checked.
 func (s *Store) List() ([]Item, error) {
+	items, _, err := s.listReadable()
+	return items, err
+}
+
+// listReadable is [Store.List] and the ids of the documents it skipped.
+func (s *Store) listReadable() ([]Item, []string, error) {
+	listReads.Add(1)
 	entries, err := os.ReadDir(s.root)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			return nil, nil, nil
 		}
-		return nil, err
+		return nil, nil, err
 	}
 	items := make([]Item, 0, len(entries))
+	var skipped []string
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
 		}
 		item, err := s.read(filepath.Join(s.root, entry.Name()))
 		if err != nil {
+			skipped = append(skipped, strings.TrimSuffix(entry.Name(), ".json"))
 			continue
 		}
 		items = append(items, item)
@@ -253,8 +271,17 @@ func (s *Store) List() ([]Item, error) {
 		}
 		return items[a].Created.After(items[b].Created)
 	})
-	return items, nil
+	return items, skipped, nil
 }
+
+// listReads counts the reads of every item this process has made, for the laws
+// that say a path which runs on every write never makes one (L6).
+var listReads atomic.Int64
+
+// ListReads is how many times this process has read every item ([Store.List]).
+// It is the figure a test of an interactive road reads before and after, so a
+// scan that crept back in is seen where it runs, not guessed from the code.
+func ListReads() int64 { return listReads.Load() }
 
 // ForWorkspace is List filtered to one project, the grouping home draws.
 func (s *Store) ForWorkspace(workspace string) ([]Item, error) {
@@ -496,6 +523,34 @@ func (s *Store) UnlessStopped(id string, act func() error) (stopped bool, err er
 	return stopped, err
 }
 
+// ErrStopped is a change asked of an item that has been stopped. Stopping is
+// permanent, at every door.
+var ErrStopped = errors.New("a stopped item must be set up afresh")
+
+// AtSpec runs act under the item's lock while it is not stopped and still at
+// spec revision expected: the fence [Store.Revise] holds a change to, for an
+// act that changes nothing in the item's own document — a move between folders
+// (the review of 417fa43a3: a move with no other change placed a stopped item).
+// act is handed the item as it is at that moment.
+// NO MODEL OR NETWORK CALL MAY RUN INSIDE act.
+func (s *Store) AtSpec(id string, expected uint64, act func(Item) error) error {
+	if err := checkID(id); err != nil {
+		return ErrNotFound
+	}
+	return s.underItemLock(id, func() error {
+		current, err := s.read(s.ItemPath(id))
+		switch {
+		case err != nil:
+			return err
+		case current.Status == StatusRetired:
+			return ErrStopped
+		case current.SpecRevision != expected:
+			return ErrConflict
+		}
+		return act(current)
+	})
+}
+
 // now is the store's clock. It is a field rather than a call to time.Now so a
 // test can hold a whole store still, exactly as the ticker's Now does.
 func (s *Store) now() time.Time {
@@ -547,7 +602,19 @@ func (s *Store) writeUnlocked(item Item) error {
 // a tick that are both about to finish in microseconds, and a refusal there
 // would lose an edit for no reason a person could understand.
 func (s *Store) underItemLock(id string, write func() error) error {
-	lock, err := os.OpenFile(s.itemLockPath(id), os.O_CREATE|os.O_RDWR, 0o600)
+	return underLock(s.itemLockPath(id), write)
+}
+
+// underLock holds the flock on the file at path, made if it is missing, for the
+// length of act, and blocks until it can. It is the one way this package takes
+// a lock on a record — an item's document or a report path's receipt.
+//
+// A PATH'S LOCK IS TAKEN BEFORE AN ITEM'S AND NEVER AFTER ONE. A publication
+// holds its report path's lock and asks the item's stop inside it
+// ([Store.AtReport], [Store.UnlessStopped]); nothing holding an item's lock
+// reaches for a path's, so the two orders can never meet.
+func underLock(path string, act func() error) error {
+	lock, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return err
 	}
@@ -556,7 +623,7 @@ func (s *Store) underItemLock(id string, write func() error) error {
 		return err
 	}
 	defer func() { _ = filelock.Unlock(lock) }()
-	return write()
+	return act()
 }
 
 // itemLockPath deliberately does NOT end in .json, so List never meets it.

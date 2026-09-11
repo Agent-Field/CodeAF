@@ -262,6 +262,12 @@ about is not raised again every five minutes. When the answer is neither a clear
 yes nor a clear no, aforge treats it as a no and the log says
 `there was no clear answer, so nothing was said`.
 
+**The card shows the line before you say yes**, because it is all you will ever
+receive: `says · CI on main is red: [what the check found]` — the part in brackets
+is where the finding will stand (`[which files changed]` on a file watch). Its `when ·`
+line says a file watch's condition too: `whenever a file changes inside inbox/clients/,
+only when: …`.
+
 ## How long do I have to answer the card — the card does not time out
 
 As long as it takes. The card carries **no clock**: no countdown, no bar, and no
@@ -518,7 +524,11 @@ your number is the default, and `no per-run limit` when you said there is none. 
 limit the model picked that you never named is dropped before the card, and the card
 says the default that stands in its place — `at most 10 runs a day (the default)` —
 so a number you did not choose never cuts your work short unseen, and one you did is
-never quietly replaced.
+never quietly replaced. A limit your own sentence names — "no more than 3 runs a day",
+"at most $2" — that reaches `stand` without the words the card says it in is refused
+before any card (`… came with no cost_words, and their sentence names a limit`), and
+so are the words sent without the limit (`cost_words "once a day" came with no rails`):
+the model sends both, and your limit is never dropped for a default.
 
 A check that fires nothing still costs the look and the one small judgement call,
 so it shares the allowance even when it has nothing to say.

@@ -175,6 +175,8 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item Item) (failure error)
 			pass.Skipped++
 			pass.Notes = append(pass.Notes, shorten(item.Words, 60)+": its time ran out")
 			_ = t.Store.Log(item.ID, "its time ran out — no longer watching")
+			// A RETIRED ITEM OWNS NO REPORT PATH (L9), however it retired.
+			t.Store.releaseReport(ReportPath(current), current.ID)
 		}
 		return nil
 	}
@@ -328,6 +330,15 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 			return sighting{state: stateAsleep}, nil
 		}
 		item.NextDue = time.Time{}
+		if hasBraces(item.When.Glob) {
+			// A WATCH WRITTEN WITH BRACES BEFORE THEY WERE REFUSED matches
+			// nothing. It is quiet, said once in its log and on its page, and
+			// never a failed check in the model's words every pass.
+			if item.LastCheckLine != bracedQuiet {
+				_ = t.Store.Log(item.ID, bracedQuiet)
+			}
+			return sighting{state: stateQuiet, line: bracedQuiet}, nil
+		}
 		previous := item.Fingerprint
 		last, _ := t.Store.reading(item.ID, previous)
 		digest, listing, files, err := fingerprint(item.Workspace, item.When.Glob, last, true)
@@ -593,6 +604,11 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, before, item Item, now ti
 	logErr := t.Store.Log(item.ID, firingLine(found, outcome))
 	runtimeErr := t.Store.recordRuntime(before, item)
 	recorded = runtimeErr == nil
+	if recorded && item.Status == StatusRetired {
+		// A reminder that fired owns its report path no longer (L9); the
+		// release reads the item again, so an edit that won keeps it.
+		t.Store.releaseReport(ReportPath(item), item.ID)
+	}
 	return errors.Join(ledgerErr, logErr, runtimeErr)
 }
 
