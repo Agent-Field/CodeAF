@@ -268,7 +268,6 @@ func (p *tasksPlace) regroup(a *app) {
 // FROM — asking it again from inside would be the freshness check calling itself.
 func (p *tasksPlace) rowAt(a *app, line int) (tasksKey, bool) {
 	r := p.filtered(a)
-	width, _ := a.size()
 	return r.nameAt(r.lay(a.taskSheetListWidth()), line)
 }
 
@@ -848,6 +847,13 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.taskSheetTyped()
 
 	default:
+		// A DIGIT ANSWERS THE ROW UNDER THE CURSOR where the pane is drawing that
+		// answer beside it, and is a character everywhere else. The pane's own verb
+		// line is what decides, so no key is taken that nothing on the frame names
+		// (taskpane.go's [app.taskPaneKey]).
+		if cmd, took := a.taskPaneKey(key); took {
+			return cmd, true
+		}
 		// EVERY PRINTABLE KEY IS THE FILTER, which is the one thing this page can
 		// do with a letter: the frame is the page, so there is no draft underneath
 		// for a keystroke to reach, and a record of four hundred tasks is found by
@@ -865,7 +871,12 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// EVERY OTHER KEY IS SWALLOWED. The page is the whole frame, so there is
 	// nothing underneath for a key to mean anything to, and a chord that fell
 	// through would act on a surface that is not on screen.
-	return nil, true
+	//
+	// AND EVERY KEY THAT MOVED THE CURSOR LETS THE PANE FOLLOW IT. The arms above
+	// walk, fold and filter, and all three can leave the cursor on a row whose
+	// report has not been read; one call here is what arms that read, rather than
+	// six ([app.taskPaneFollow] drops the ones that have nothing to do).
+	return a.taskPaneFollow(), true
 }
 
 // taskSheetMove walks the stops, which is what steps the cursor over the head

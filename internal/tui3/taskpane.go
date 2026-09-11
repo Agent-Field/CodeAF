@@ -101,6 +101,16 @@ func taskPaneList(width int) int {
 	return width - cols - ansi.StringWidth(railSeam)
 }
 
+// taskSheetListWidth is that same answer asked of the frame this window is on,
+// which is what every "which row is the cursor on" question has to lay the
+// reading out at: a cursor that counted lines of a hundred-and-twenty-two-cell
+// layout while the list was drawn in seventy-two would stand on a different row
+// from the one under the band.
+func (a *app) taskSheetListWidth() int {
+	width, _ := a.size()
+	return taskPaneList(width)
+}
+
 // ── one row of the split ────────────────────────────────────────────────────
 
 // taskPaneVerb is one clause of the pane's verb line as it was DRAWN: the key it
@@ -169,21 +179,39 @@ func taskPaneHitsOf(hits []placeHit) []taskPaneHit {
 // reading fits names, facts and the family column against the room it was given
 // ([tasksReading.lay]), and a list told it had a hundred and twenty-two cells
 // while it was drawn in seventy-two would cut every row in the wrong place.
+//
+// AND THE PAGE'S HEAD SENTENCE KEEPS THE WHOLE FRAME. It is the one line here
+// that is about the PLACE rather than about a row — how much is held, how far
+// back the window reaches, and the shift-arrows that move it — and that control
+// is bound only where it is drawn ([placeWindowFits], [tasksPlace.window]). A
+// head cut to the list's half would unbind four keys on a frame wide enough to
+// offer them, which is why the seam starts under it and not beside it.
 func (a *app) taskSheetBody(width, room int) []placeRow {
 	left := taskPaneList(width)
-	rows := a.taskSheet.body(a, left, room)
-	if left == width {
-		return rows
+	if left == width || a.taskSheet.reading.held == 0 {
+		// A PLACE WITH NOTHING IN IT SPENDS THE FRAME TEACHING WHAT IT IS
+		// ([tasksTeach]), and a seam drawn beside that prose would be a rule with
+		// nothing on either side of it.
+		return a.taskSheet.body(a, width, room)
 	}
+	rows := a.taskSheet.body(a, left, room)
+	r := a.tasksFiltered()
 	pane := a.taskPaneRows(width-left-ansi.StringWidth(railSeam), room)
 	seam := a.pal.dim(railSeam)
 	out := make([]placeRow, 0, len(rows))
 	for at, row := range rows {
+		list, _ := row.hit.(taskSheetHit)
+		if a.taskSheet.top+at == 0 {
+			out = append(out, placeRow{
+				text: r.headLine(width),
+				hit:  taskSplitHit{list: list},
+			})
+			continue
+		}
 		text, hit := "", taskPaneHit{}
 		if at < len(pane) {
 			text, hit = pane[at].text, pane[at].hit
 		}
-		list, _ := row.hit.(taskSheetHit)
 		out = append(out, placeRow{
 			text: taskPanePad(row.text, left) + seam + text,
 			hit:  taskSplitHit{list: list, pane: hit},

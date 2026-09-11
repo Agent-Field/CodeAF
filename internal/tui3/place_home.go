@@ -496,7 +496,7 @@ func (placeHome) changed(a *app, since time.Time) int { return 0 }
 // (homemouse.go). The router hands the gesture straight over.
 func (placeHome) press(a *app, y int) (tea.Cmd, bool) { return nil, false }
 func (placeHome) hover(a *app, y int) bool            { return false }
-func (placeHome) wheel(a *app, delta int) bool        { return false }
+func (placeHome) wheel(a *app, delta int) (tea.Cmd, bool) { return nil, false }
 
 // key is home's whole grammar, which is the oldest on this surface and the one
 // every other place borrowed from (home.go's [app.homeKey]). The router is read

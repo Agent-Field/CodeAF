@@ -946,10 +946,10 @@ func (placeMemory) hover(a *app, y int) bool {
 	return placeHoverMoved(&a.mem.hover, next, a)
 }
 
-func (placeMemory) wheel(a *app, delta int) bool {
+func (placeMemory) wheel(a *app, delta int) (tea.Cmd, bool) {
 	a.mem.move(delta)
 	a.touch()
-	return true
+	return nil, true
 }
 
 // key is this place's own reading of a key the router did not take
