@@ -521,7 +521,8 @@ so a number you did not choose never cuts your work short unseen, and one you di
 never quietly replaced. A limit your own sentence names — "no more than 3 runs a day",
 "at most $2" — that reaches `stand` without the words the card says it in is refused
 before any card (`… came with no cost_words, and their sentence names a limit`), and
-the model sends it again with them: your limit is never dropped for a default.
+so are the words sent without the limit (`cost_words "once a day" came with no rails`):
+the model sends both, and your limit is never dropped for a default.
 
 A check that fires nothing still costs the look and the one small judgement call,
 so it shares the allowance even when it has nothing to say.

@@ -494,3 +494,30 @@ func TestAnEditNamedByTheirWordsFindsTheItem(t *testing.T) {
 		t.Fatalf("the item's own sentence was logged as the words of the change: %q", log)
 	}
 }
+
+// TestTheirLimitsWordsWithNoLimitAreRefused is the live rails run of
+// 2026-09-11 (W5-A, run 1): refused for sending max_per_day 1 without
+// cost_words, the model sent cost_words "once a day" and dropped the rail, and
+// the person said yes to `shares the day's allowance` over their own limit. A
+// proposal whose sentence names a limit and whose cost_words say it, with no
+// rail to bind it, is refused naming the rails.
+func TestTheirLimitsWordsWithNoLimitAreRefused(t *testing.T) {
+	words := "keep an eye on inbox/ and keep reports/inbox.md current, but don't let it run more than once a day"
+	d := newChatDoor(t, &scriptedCompleter{steps: []step{
+		standCall("s1", inboxWork(map[string]any{"words": words, "cost_words": "once a day", "does": map[string]any{"report": "reports/inbox.md"}})),
+		standCall("s2", inboxWork(map[string]any{"words": words, "cost_words": "once a day", "rails": map[string]any{"max_per_day": 1}, "does": map[string]any{"report": "reports/inbox.md"}})),
+		finalText("set up"),
+	}}, nil)
+	var cards []StandingNotice
+	events := d.submitAnswering(t, words, func(event Event) {
+		cards = append(cards, *event.Standing)
+		d.yes(event)
+	})
+	out := toolOutputs(events, "stand")
+	if len(out) != 2 || !strings.Contains(out[0], "rails.max_per_day") || !strings.Contains(out[0], "once a day") {
+		t.Fatalf("the stand results were %q, want the first refused naming the rail", out)
+	}
+	if len(cards) != 1 || !strings.HasPrefix(cards[0].CostWords, "at most 1 run a day") {
+		t.Fatalf("the cards drawn were %+v, want one saying at most 1 run a day", cards)
+	}
+}

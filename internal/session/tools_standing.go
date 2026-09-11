@@ -507,6 +507,9 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 	// measure against the SAME instant; two readings a microsecond apart would
 	// be two answers to one question in a function whose whole subject is when.
 	parsed, limits, problem := standingNamedLimits(parsed)
+	if problem == "" {
+		problem = standingUnboundLimit(parsed)
+	}
 	if problem != "" {
 		return problem, true, nil
 	}
@@ -1128,9 +1131,37 @@ func standingNamedLimits(parsed standArguments) (standArguments, standingLimits,
 	}
 	if said := standingSaidLimit.FindString(parsed.Words); said != "" && len(limits.dropped) > 0 {
 		return parsed, limits, "Invalid arguments: " + strings.Join(limits.dropped, ", ") + " came with no cost_words, and their sentence names a limit — " +
-			strconv.Quote(said) + ". Send cost_words with their words for it, so the card says the limit they set."
+			strconv.Quote(said) + standingSaidRail(said) + ". Send that rail with cost_words, their words for it, and no limit they did not name, so the card says the limit they set."
 	}
 	return parsed, limits, ""
+}
+
+// standingUnboundLimit refuses a proposal whose cost_words carry a limit the
+// person's sentence names while no rail binds it, or "". Refused for a limit
+// with no cost_words, a live model sent the words and dropped the limit (the
+// chat protocol's rails case, 2026-09-11), and the card said the day's
+// allowance over "don't let it run more than once a day". An edit is not asked
+// this: a rail it leaves out is the rail the item keeps.
+func standingUnboundLimit(parsed standArguments) string {
+	if strings.TrimSpace(parsed.CostWords) == "" || parsed.Rails.PerRunUSD != nil || parsed.Rails.MaxPerDay != nil {
+		return ""
+	}
+	said := standingSaidLimit.FindString(parsed.Words)
+	if said == "" {
+		return ""
+	}
+	return "Invalid arguments: cost_words " + strconv.Quote(parsed.CostWords) + " came with no rails, and their sentence names a limit — " +
+		strconv.Quote(said) + standingSaidRail(said) + ". Send that rail with the cost_words, so the limit binds and the card says it."
+}
+
+// standingSaidRail is the rail a limit in their sentence sets: a count of runs
+// is max_per_day and a sum of money per_run_usd — so a refusal names the one
+// they set, and not a second limit nobody said.
+func standingSaidRail(said string) string {
+	if strings.Contains(strings.ToLower(said), "day") {
+		return " (rails.max_per_day)"
+	}
+	return " (rails.per_run_usd)"
 }
 
 // standingSaidLimit finds a limit in a person's own sentence: a count of runs a
