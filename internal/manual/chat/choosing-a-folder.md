@@ -64,6 +64,22 @@ whole gesture is `/folder` then `enter`.
 `esc` leaves everything exactly as it was: your half-written message comes back untouched,
 and nothing has been chosen.
 
+## Tell it which project to work on
+
+`/folder`, then pick the directory. The conversation says `folder · ~/code/agentfield`
+and is about that project from then on: its exact path is written into my
+instructions, along with its own `AGENTS.md` or `CLAUDE.md` rules if it has any,
+so you never have to say which folder you meant again.
+
+To add a second project, run `/folder` again — what the conversation is about
+grows as you name folders. What does NOT move is where aforge is standing: the
+directory you started it in is the one the status line shows and the one a bare
+`notes.md` means, for the life of the conversation. `## What choosing a folder
+actually does` below has the whole of that distinction.
+
+To start a new conversation already pointed at a project, `/folder` on the home
+screen picks the folder the next one opens in.
+
 ## The add context sheet over --host — another machine, over ssh
 
 Over `--host`, a bare `/attach` opens the add context sheet on the machine you are sitting
