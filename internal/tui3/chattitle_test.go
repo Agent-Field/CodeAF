@@ -32,15 +32,16 @@ func (a *twoTitleAgent) ShortTitle() string { return a.short }
 // AND NOTHING IN THE SURFACE DOES — the second half is a field being written by
 // [session.EventTitleChanged] and read on the next frame.
 
-// The unnamed conversation is drawn under a word that is a NAME's placeholder,
-// and never under the word this surface uses for the conversation as a place.
+// The unnamed conversation is drawn under the SAME word the switcher and entry
+// line use, and never under the word this surface uses for the conversation as
+// a place.
 func TestAnUnnamedConversationIsNotDrawnUnderThePlaceWord(t *testing.T) {
 	a := newTestApp(&fakeAgent{})
 
-	if got := a.chatDisplayName(); got != untitledConversationWord {
-		t.Fatalf("an unnamed conversation is called %q, not %q", got, untitledConversationWord)
+	if got := a.chatDisplayName(); got != unnamedConversationWord {
+		t.Fatalf("an unnamed conversation is called %q, not %q", got, unnamedConversationWord)
 	}
-	if untitledConversationWord == roomCrumbRoot {
+	if unnamedConversationWord == roomCrumbRoot {
 		t.Fatalf("the name placeholder and the place word are the same string %q — "+
 			"a person cannot tell a conversation with no name from one that is called that",
 			roomCrumbRoot)
@@ -58,7 +59,7 @@ func TestAnUnnamedConversationIsNotDrawnUnderThePlaceWord(t *testing.T) {
 // that triggered it, and the surface takes it without being asked twice.
 func TestTheNameArrivesOnItsEventAndReplacesThePlaceholder(t *testing.T) {
 	a := newTestApp(&fakeAgent{})
-	if got := a.chatDisplayName(); got != untitledConversationWord {
+	if got := a.chatDisplayName(); got != unnamedConversationWord {
 		t.Fatalf("the conversation started out called %q", got)
 	}
 
@@ -109,7 +110,7 @@ func TestANamedConversationIsNeverRedrawnAsUnnamed(t *testing.T) {
 		// DRAWN and is still a name (names.go's [readableName]).
 		"port_b_parser_fix",
 	} {
-		if got := chatTabName(name); got == untitledConversationWord {
+		if got := chatTabName(name); got == unnamedConversationWord {
 			t.Fatalf("the named conversation %q was drawn as unnamed", name)
 		}
 	}
@@ -119,7 +120,7 @@ func TestANamedConversationIsNeverRedrawnAsUnnamed(t *testing.T) {
 	// AND WHITESPACE IS NOT A NAME. A title line that is a space is the same
 	// fact as no title line, and drawing a blank tab would be a door with
 	// nothing written on it (chattabs.go drops one).
-	if got := chatTabName("   "); got != untitledConversationWord {
+	if got := chatTabName("   "); got != unnamedConversationWord {
 		t.Fatalf("a blank name drew %q rather than the placeholder", got)
 	}
 }
@@ -142,7 +143,7 @@ func TestTheStartPageTabIsNotTheUnnamedConversation(t *testing.T) {
 	if !strings.Contains(strip, "New chat") {
 		t.Fatalf("the start page's tab does not say what the page is:\n%q", strip)
 	}
-	if strings.Contains(strip, untitledConversationWord) {
+	if strings.Contains(strip, unnamedConversationWord) {
 		t.Fatalf("the start page borrowed the placeholder for a conversation that does not exist:\n%q", strip)
 	}
 	// AND THE CONVERSATION BEHIND IT IS STILL ON THE ROW UNDER ITS OWN NAME.
@@ -155,15 +156,15 @@ func TestTheStartPageTabIsNotTheUnnamedConversation(t *testing.T) {
 func TestTitleArrivalUpdatesTheTabAndTaskBreadcrumbTogether(t *testing.T) {
 	a := newTestApp(&fakeAgent{})
 	a.width, a.height = 120, 40
-	if got := plain(tabsRowOf(a)); !strings.Contains(got, untitledConversationWord) {
+	if got := plain(tabsRowOf(a)); !strings.Contains(got, unnamedConversationWord) {
 		t.Fatalf("missing unnamed tab: %q", got)
 	}
-	if a.chatCrumbWord() != untitledConversationWord {
+	if a.chatCrumbWord() != unnamedConversationWord {
 		t.Fatal("breadcrumb disagrees with unnamed tab")
 	}
 	a.applyEvent(session.Event{Kind: session.EventTitleChanged, Text: "porting the parser"}, false)
 	got := plain(tabsRowOf(a))
-	if !strings.Contains(got, "porting the parser") || strings.Contains(got, untitledConversationWord) || a.chatCrumbWord() != "porting the parser" {
+	if !strings.Contains(got, "porting the parser") || strings.Contains(got, unnamedConversationWord) || a.chatCrumbWord() != "porting the parser" {
 		t.Fatalf("title event did not update the visible navigation: %q", got)
 	}
 }

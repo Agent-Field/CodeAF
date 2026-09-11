@@ -270,20 +270,30 @@ func TestTheSwitcherIsFrozenTheMomentItOpens(t *testing.T) {
 // TestTheSwitcherSaysWhatChangedWhileYouWereAway is the note column, which is
 // what makes this a catch-up rather than a list of names.
 func TestTheSwitcherSaysWhatChangedWhileYouWereAway(t *testing.T) {
-	if got := hopNote(true, 4, 2); got != hopAskingWord {
+	if got := hopNote(tabNeedsPerson, 4, 2); got != hopAskingWord {
 		t.Fatalf("a conversation that wants a person says %q", got)
 	}
-	if got := hopNote(false, 3, 1); got != "3 tasks running" {
+	if got := hopNote(tabWorking, 3, 1); got != "3 tasks running" {
 		t.Fatalf("three nodes turning says %q", got)
 	}
-	if got := hopNote(false, 1, 0); got != "1 task running" {
+	if got := hopNote(tabWorking, 1, 0); got != "1 task running" {
 		t.Fatalf("one node turning says %q", got)
 	}
-	if got := hopNote(false, 0, 2); got != hopLandedWord {
+	if got := hopNote(tabIdle, 0, 2); got != hopLandedWord {
 		t.Fatalf("a turn that ended while away says %q", got)
 	}
-	if got := hopNote(false, 0, 0); got != hopNothingWord {
+	if got := hopNote(tabIdle, 0, 0); got != hopNothingWord {
 		t.Fatalf("a quiet conversation says %q", got)
+	}
+	// AND WORK NOTHING COUNTED STILL SAYS SO. A queued node and a background job
+	// are both work the project index does not count, and the row that wears the
+	// working mark for them must not fall through to the quiet words beside it —
+	// which is the disagreement #708 was: `◐` on the tab, `nothing new` here.
+	if got := hopNote(tabWorking, 0, 0); got != tabSignalWord(tabWorking) {
+		t.Fatalf("work with no count says %q", got)
+	}
+	if got := hopNote(tabWorking, 0, 3); got != tabSignalWord(tabWorking) {
+		t.Fatalf("work over a turn that landed while away says %q", got)
 	}
 }
 

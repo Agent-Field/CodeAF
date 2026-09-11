@@ -38,22 +38,17 @@ import (
 // own, read back as words when it arrived as one token.
 func (a *app) sessionName() string { return readableName(a.title) }
 
-// unnamedConversationWord is what a conversation with no name yet is CALLED in
-// the one column that exists to let a person tell one conversation from
-// another. It is the word this surface already uses for the same fact — the
-// entry line's `new conversation · …`, [hopNewWord] on the ring — rather than a
-// ninth spelling of it.
+// unnamedConversationWord is what a conversation with no name yet is CALLED on
+// its tab, in its breadcrumb root, and on the switcher card. It is the word the
+// entry line already uses for the same fact — `new conversation · …` — and it
+// is one word in all those places because one thing has one name.
 const unnamedConversationWord = "new conversation"
-
-// A compact placeholder identifies unnamed tabs and breadcrumb roots. Actual
-// titles, including a conversation explicitly named main, keep their names.
-const untitledConversationWord = "Untitled"
 
 func chatTabName(raw string) string {
 	if name := readableName(strings.TrimSpace(raw)); name != "" {
 		return name
 	}
-	return untitledConversationWord
+	return unnamedConversationWord
 }
 
 // EventTitleChanged updates a.title and invalidates the frame when naming finishes.
