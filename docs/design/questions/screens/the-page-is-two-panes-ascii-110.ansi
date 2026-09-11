@@ -1,0 +1,29 @@
+ [1m[38;5;103maforge[0m                                                                                            [38;5;248mfri 5:51pm[39m
+  [38;5;248m Home    [1m[38;5;254m[48;5;238m   new conversation  × [0m[38;5;248m  + [39m
+[38;5;248m──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+[39m  [1m[38;5;136m?[0m [38;5;238mwhich store should the ledger sit on?[39m                                 [38;5;248maforge asks · the turn waits on it[39m
+  [38;5;248ma schema change is next and it is cheaper before there are rows[39m
+
+[38;5;248m--------------------------------------------------------------------------------------------------------------
+[39m [48;5;254m [1m[38;5;136m▸[0m[48;5;254m [38;5;31m1[39m  [38;5;238mpostgres      [39m               [1m[38;5;136m*[0m[38;5;248m[48;5;254m recommended[39m  [38;5;248m[49m [39m [1m[38;5;238mpostgres[0m
+    [38;5;31m2[39m  [38;5;238msqlite beside the project[39m                   [38;5;248m [39m [38;5;238mRows already carry a foreign key into it and the[39m
+    [38;5;31m3[39m  [38;5;238ma file per day[39m                              [38;5;248m [39m [38;5;238mmigration is one file.[39m
+    [38;5;31m4[39m  [38;5;238msomething else…[39m                             [38;5;248m [39m [38;5;238m+ one place to back up[39m
+                                                   [38;5;248m [39m [38;5;238m- another service to run locally[39m
+                                                   [38;5;248m [39m
+                                                   [38;5;248m [39m [38;5;248mthen · the ledger and the rest of the project share one[39m
+                                                   [38;5;248m [39m [38;5;248mconnection[39m
+                                                   [38;5;248m [39m [38;5;248mwhy this one · because it is the only store the[39m
+                                                   [38;5;248m [39m [38;5;248mreporting job already reads[39m
+                                                   [38;5;248m [39m [38;5;248mwould switch if the ledger ever has to run on a machine[39m
+                                                   [38;5;248m [39m [38;5;248mwith no server on it[39m
+                                                   [38;5;248m [39m [38;5;248mconfidence · fairly sure[39m
+                                                   [38;5;248m [39m
+                                                   [38;5;248m [39m [38;5;248mwhat it would look like[39m
+                                                   [38;5;248m [39m [38;5;238m  app --> pg --> report[39m
+                                                   [38;5;248m [39m
+[38;5;248m-[39m [38;5;238manswering 1 postgres · just this once[39m [38;5;248m----------------------------------------------------------------------
+[39m  [38;5;31m↑↓[38;5;248m choose · [38;5;31menter[38;5;248m take it · [38;5;31mesc[38;5;248m later · [38;5;31m→[38;5;248m detail[39m        [38;5;31mx[38;5;248m compare · [38;5;31m?[38;5;248m ask back · [38;5;31md[38;5;248m you decide · [38;5;31mt[38;5;248m how long[39m
+ [38;5;248m› [39m
+                                                                                                          [38;5;248midle

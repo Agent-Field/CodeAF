@@ -1,0 +1,40 @@
+ [1m[38;5;110maforge[0m                                                                                                                          [38;5;243mfri 5:54pm[39m
+  [38;5;243m Home    [1m[38;5;237m[48;5;252m   new conversation  × [0m[38;5;243m  + [39m
+[38;5;243m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+[39m  [1m[38;5;186m[0m [38;5;252mwhich store should the ledger sit on?[39m                                                               [38;5;243maforge asks · the turn waits on it[39m
+  [38;5;243ma schema change is next and it is cheaper before there are rows[39m
+
+[38;5;243m───────────────────────────────────────────────────┬────────────────────────────────────────────────────────────────────────────────────────
+[39m [48;5;237m [1m[38;5;186m▸[0m[48;5;237m [38;5;116m1[39m  [38;5;252mpostgres      [39m               [1m[38;5;186m[0m[38;5;243m[48;5;237m recommended[39m  [38;5;243m[49m│[39m [1m[38;5;252mpostgres[0m
+    [38;5;116m2[39m  [38;5;252msqlite beside the project[39m                   [38;5;243m│[39m [38;5;252mRows already carry a foreign key into it and the migration is one file.[39m
+    [38;5;116m3[39m  [38;5;252ma file per day[39m                              [38;5;243m│[39m [38;5;252m+ one place to back up[39m
+    [38;5;116m4[39m  [38;5;252msomething else…[39m                             [38;5;243m│[39m [38;5;252m- another service to run locally[39m
+                                                   [38;5;243m│[39m
+                                                   [38;5;243m│[39m [38;5;243mthen · the ledger and the rest of the project share one connection[39m
+                                                   [38;5;243m│[39m [38;5;243mwhy this one · because it is the only store the reporting job already reads[39m
+                                                   [38;5;243m│[39m [38;5;243mwould switch if the ledger ever has to run on a machine with no server on it[39m
+                                                   [38;5;243m│[39m [38;5;243mconfidence · fairly sure[39m
+                                                   [38;5;243m│[39m
+                                                   [38;5;243m│[39m [38;5;243mwhat it would look like[39m
+                                                   [38;5;243m│[39m [38;5;252m  app --> pg --> report[39m
+                                                   [38;5;243m│[39m
+                                                   [38;5;243m│[39m
+                                                   [38;5;243m│[39m
+                                                   [38;5;243m│[39m
+                                                   [38;5;243m│[39m
+                                                   [38;5;243m│[39m
+                                                   [38;5;243m│[39m
+                                                   [38;5;243m│[39m
+                                                   [38;5;243m│[39m
+                                                   [38;5;243m│[39m
+                                                   [38;5;243m│[39m
+                                                   [38;5;243m│[39m
+                                                   [38;5;243m│[39m
+                                                   [38;5;243m│[39m
+                                                   [38;5;243m│[39m
+                                                   [38;5;243m│[39m
+[38;5;243m─[39m [38;5;252manswering 1 postgres · just this once[39m [38;5;243m───────────┴────────────────────────────────────────────────────────────────────────────────────────
+[39m  [38;5;116menter[38;5;243m take it · [38;5;116mesc[38;5;243m later · [38;5;116m↑↓[38;5;243m scroll · [38;5;116m←[38;5;243m back to the answers[39m              [38;5;116mc[38;5;243m change · [38;5;116mx[38;5;243m compare · [38;5;116m?[38;5;243m ask back · [38;5;116md[38;5;243m you decide · [38;5;116mt[38;5;243m how long[39m
+ [38;5;243m› [39m
+                                                                                                                                        [38;5;243midle
