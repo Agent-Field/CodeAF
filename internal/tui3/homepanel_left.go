@@ -22,9 +22,19 @@ import (
 // own ledger rows ([switcherReading.addLedger]), each carrying its door.
 type leftPanel struct{ homePanelBase }
 
+// SAID ONCE ACROSS THE COLUMNS. A landing whose check is still the person's is
+// drawn by `needs you`'s `to check` group, one column over and higher up the
+// page ([needsChecking]); this panel drew it a second time, as an ordinary thing
+// that happened while nobody was looking. It comes back here the moment it stops
+// being a question — answered, or aged out of the group — because then it IS
+// just something that happened.
 func (leftPanel) rows(in *homeGridInput) homePanelRows {
+	checking := needsChecking(in)
 	lines := make([]homeLine, 0, len(in.ledger))
 	for _, row := range in.ledger {
+		if row.task != nil && checking[row.task.SessionID+"/"+row.task.ID] {
+			continue
+		}
 		lines = append(lines, leftLine(row))
 	}
 	out := homePanelCut(panelLeft, lines)

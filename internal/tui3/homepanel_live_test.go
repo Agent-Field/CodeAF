@@ -120,25 +120,147 @@ func TestNeedsYouOrdersTheWaitsAndDrawsAnswersOnTheTopRowOnly(t *testing.T) {
 	}
 }
 
-// A TASK THE RECORD MARKS AS YOUR CALL IS A ROW OF ITS OWN, and enter aims at
-// the task rather than at the conversation's live edge. Work nobody could check
-// says what the person can do about it, and draws no second `enter` beside that.
+// A TASK THE RECORD MARKS AS YOUR CALL IS A ROW OF THE `to check` GROUP, one
+// line of its own, under a group line that says what the group is. enter aims at
+// the task rather than at the conversation's live edge.
 func TestNeedsYouCarriesATaskWaitingOnYourCall(t *testing.T) {
 	l := newLiveLab(t)
 	l.task("-alpha", session.TaskIndexEntry{ID: "4", SessionID: "aaaa000000000002", Label: "fix the flaky sieve",
-		Title: "fix the flaky sieve", Status: string(session.TaskUnverified), EndedAt: l.now.Add(-30 * time.Minute)})
+		Title: "fix the flaky sieve", Status: string(session.TaskUnverified), EndedAt: l.now.Add(-30 * time.Minute),
+		FilesChanged: 3})
 	a := l.open()
 	rows := panelRows(a, panelNeeds)
-	if len(rows) != 1 || rows[0].title != "fix the flaky sieve" || rows[0].sub != needsUncheckedWord || rows[0].subRight != "" {
-		t.Fatalf("the task's call is not a row of needs you that says what to do: %+v", rows)
+	if len(rows) != 1 || rows[0].title != "fix the flaky sieve" || rows[0].tag != "3 files" {
+		t.Fatalf("the task's call is not a one-line row of needs you: %+v", rows)
 	}
-	if frame := homeText(a); !strings.Contains(frame, "landed unchecked · enter to look") || strings.Contains(frame, "nobody could check it") {
-		t.Fatalf("the row under the call does not say what to do:\n%s", frame)
+	if rows[0].mark != cellMarkNone {
+		t.Fatalf("a landing wears a mark: %+v", rows[0])
+	}
+	frame := homeText(a)
+	if !strings.Contains(frame, needsCheckWord+" · 1") || !strings.Contains(frame, needsCheckClause) {
+		t.Fatalf("the group line does not name the group and say what it is:\n%s", frame)
+	}
+	if strings.Contains(frame, "landed unchecked") {
+		t.Fatalf("the retired sub-line is still drawn:\n%s", frame)
 	}
 	for _, line := range panelLines(a, panelNeeds) {
 		if line.cell.kind == cellRow && (line.task == nil || line.task.ID != "4") {
 			t.Fatalf("the row does not carry the task its door opens: %+v", line)
 		}
+	}
+}
+
+// THE GROUP LINE IS DRAWN ONLY WHERE THE GROUP HAS ROWS, and it is not a stop:
+// the cursor walks from the last question straight onto the first landing.
+func TestToCheckDrawsNoGroupLineWithoutLandings(t *testing.T) {
+	l := newLiveLab(t)
+	l.live("-beta", "bbbb000000000001", session.SessionPresence{State: session.PresenceWaiting,
+		Question: consentQuestionAt(7, "needs your ok to run bash", l.now.Add(-2*time.Hour))})
+	a := l.open()
+	if frame := homeText(a); strings.Contains(frame, needsCheckClause) {
+		t.Fatalf("a group with no rows drew its line:\n%s", frame)
+	}
+	for _, line := range panelLines(a, panelNeeds) {
+		if line.cell.kind == cellGroup {
+			t.Fatalf("a group line was built with no rows under it")
+		}
+	}
+}
+
+// BLOCKING FIRST, HOWEVER OLD THE LANDING IS: a consent asked a minute ago sits
+// above a landing from a week back, and the landing is under the group line.
+func TestNeedsBlockingRowsSortFirst(t *testing.T) {
+	l := newLiveLab(t)
+	l.live("-beta", "bbbb000000000001", session.SessionPresence{State: session.PresenceWaiting,
+		Question: consentQuestionAt(7, "needs your ok to run bash", l.now.Add(-time.Minute))})
+	l.task("-alpha", session.TaskIndexEntry{ID: "4", SessionID: "aaaa000000000002", Label: "fix the flaky sieve",
+		Title: "fix the flaky sieve", Status: string(session.TaskUnverified), EndedAt: l.now.Add(-40 * time.Hour)})
+	a := l.open()
+	rows := panelRows(a, panelNeeds)
+	if len(rows) != 2 || rows[0].title != "Pricing Site" || rows[1].title != "fix the flaky sieve" {
+		t.Fatalf("the week-old landing did not sort under the fresh question: %+v", rows)
+	}
+	if rows[0].mark != cellMarkNeeds || rows[1].mark != cellMarkNone {
+		t.Fatalf("the mark is not on the stopped row alone: %+v", rows)
+	}
+	kinds := []homeCellKind{}
+	for _, line := range panelLines(a, panelNeeds) {
+		kinds = append(kinds, line.cell.kind)
+	}
+	if len(kinds) < 4 || kinds[0] != cellHead || kinds[1] != cellRow || kinds[len(kinds)-2] != cellGroup {
+		t.Fatalf("the group line does not stand between the question and the landing: %v", kinds)
+	}
+}
+
+// THE LANDINGS ARE NEWEST FIRST, which is the opposite of the questions above
+// them and is said in [needsPanel.rows].
+func TestToCheckDrawsTheNewestLandingFirst(t *testing.T) {
+	l := newLiveLab(t)
+	for i, ago := range []time.Duration{30 * time.Minute, 5 * time.Hour} {
+		id := itoa(i + 1)
+		l.task("-alpha", session.TaskIndexEntry{ID: id, SessionID: "aaaa000000000002", Label: "call " + id,
+			Title: "call " + id, Status: string(session.TaskUnverified), EndedAt: l.now.Add(-ago)})
+	}
+	a := l.open()
+	if rows := panelRows(a, panelNeeds); len(rows) != 2 || rows[0].title != "call 1" || rows[1].title != "call 2" {
+		t.Fatalf("to check is not newest first: %+v", rows)
+	}
+}
+
+// ONE LINE AT REST AND TWO UNDER THE CURSOR: the landing grows the report's
+// first sentence and the task's own two answers, and the words are the ask's.
+func TestALandingGrowsItsReportAndAnswersUnderTheCursor(t *testing.T) {
+	l := newLiveLab(t)
+	l.task("-alpha", session.TaskIndexEntry{ID: "4", SessionID: "aaaa000000000002", Label: "fix the flaky sieve",
+		Title: "fix the flaky sieve", Status: string(session.TaskUnverified), EndedAt: l.now.Add(-30 * time.Minute)})
+	a := l.open()
+	at := -1
+	for i, line := range a.home.lines {
+		if line.task != nil && line.task.ID == "4" {
+			at = i
+		}
+	}
+	if at < 0 {
+		t.Fatal("the landing is not a line of the column")
+	}
+	if frame := homeText(a); homeLineAfter(frame, "fix the flaky sieve") != "" &&
+		strings.Contains(homeLineAfter(frame, "fix the flaky sieve"), "nobody could check it") {
+		t.Fatalf("the landing grew its line with the cursor elsewhere:\n%s", frame)
+	}
+	a.home.cursor = at
+	frame := homeText(a)
+	under := homeLineAfter(frame, "fix the flaky sieve")
+	if !strings.Contains(under, "nobody could check it") {
+		t.Fatalf("the cursor row did not grow its report:\n%s", frame)
+	}
+	if !strings.Contains(under, session.LandingYesKey+" accept") || !strings.Contains(under, session.LandingNoKey+" not right") {
+		t.Fatalf("the grown line does not carry the ask's own answers:\n%s", frame)
+	}
+}
+
+// AND THE KEY THE GROWN LINE DRAWS IS THE KEY THAT ANSWERS IT, through the one
+// door a landing is answered by anywhere ([app.homeAnswerLanding]).
+func TestALandingUnderTheCursorTakesItsOwnAnswerKey(t *testing.T) {
+	l := newLiveLab(t)
+	l.task("-alpha", session.TaskIndexEntry{ID: "4", SessionID: "aaaa000000000002", Label: "fix the flaky sieve",
+		Title: "fix the flaky sieve", Status: string(session.TaskUnverified), EndedAt: l.now.Add(-30 * time.Minute)})
+	a := l.open()
+	var left []string
+	a.leaveAnswer = func(dir string, kind session.QuestionKind, id uint64, key string) error {
+		left = append(left, string(kind)+"/"+itoa64(id)+"/"+key)
+		return nil
+	}
+	for i, line := range a.home.lines {
+		if line.task != nil && line.task.ID == "4" {
+			a.home.cursor = i
+		}
+	}
+	homeText(a)
+	if _, took := a.homeGridAnswer(session.LandingYesKey); !took {
+		t.Fatal("the landing under the cursor did not take its own accept key")
+	}
+	if len(left) != 1 || left[0] != string(session.QuestionLanding)+"/4/"+session.LandingYesKey {
+		t.Fatalf("the accept did not reach the conversation's doorstep as a landing answer: %v", left)
 	}
 }
 
@@ -153,12 +275,18 @@ func TestNeedsYouAgesOldCallsOntoTheFold(t *testing.T) {
 			Status: string(session.TaskUnverified), EndedAt: l.now.Add(-ago)})
 	}
 	a := l.open()
-	if rows := panelRows(a, panelNeeds); len(rows) != 2 || rows[0].title != "call 2" || rows[1].title != "call 1" {
+	if rows := panelRows(a, panelNeeds); len(rows) != 2 || rows[0].title != "call 1" || rows[1].title != "call 2" {
 		t.Fatalf("needs you is not the two fresh calls: %+v", rows)
 	}
 	frame := homeText(a)
-	if !strings.Contains(frame, "needs you · 2") || !strings.Contains(frame, "3 older · tasks") {
-		t.Fatalf("the heading does not count what is listed, or the fold does not count what aged:\n%s", frame)
+	// AND THE HEADING COUNTS THE QUESTIONS, NOT THE LANDINGS. With nothing
+	// stopped it draws its word alone (the emptiness law); the landings are
+	// counted on the group's own line and the aged ones on the fold.
+	if !strings.Contains(frame, "needs you") || strings.Contains(frame, "needs you · ") {
+		t.Fatalf("the heading counted the landings:\n%s", frame)
+	}
+	if !strings.Contains(frame, needsCheckWord+" · 2") || !strings.Contains(frame, "3 older · tasks") {
+		t.Fatalf("the group does not count what is listed, or the fold what aged:\n%s", frame)
 	}
 }
 

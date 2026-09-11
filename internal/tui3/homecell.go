@@ -112,6 +112,8 @@ func (a *app) homeLineRows(line homeLine, at, width int, pal palette, heading bo
 		texts, head = []string{homeCellHead(cell, width, pal, heading)}, at
 	case cellWhisper, cellFold:
 		texts = []string{homeCellQuiet(cell, width, pal, lit)}
+	case cellGroup:
+		texts = []string{homeCellGroup(cell, width, pal)}
 	case cellBar:
 		texts = []string{homeCellBand(homeCellLeadBlank+homeSpendMeter(cell.share, width-homeGridLead, pal), width, pal, lit)}
 	case cellSpark:
@@ -200,6 +202,18 @@ func homeSparkCells(values []float64) []string {
 	return out
 }
 
+// homeCellGroup is a group's own line inside a panel: its word and count at the
+// left and its clause at the right, both dim, under the rows' own lead
+// ([homePanelGroup]).
+//
+// IT IS DIMMER THAN A HEADING ON PURPOSE. A panel's heading is the places' one
+// heading ink and marks itself when the cursor is in it ([homeCellHead]); a
+// group is a sorting of rows INSIDE one panel, and a second thing on the column
+// wearing heading ink would read as a second panel.
+func homeCellGroup(cell *homeCell, width int, pal palette) string {
+	return homeCellLeadBlank + switcherSides(max(1, width-homeGridLead), cell.title, cell.right, pal.dim, pal.dim)
+}
+
 // homeCellQuiet is a whisper or a fold: dim words under the rows' own lead.
 func homeCellQuiet(cell *homeCell, width int, pal palette, lit bool) string {
 	text := homeCellLeadBlank + pal.dim(fit(cell.title, max(0, width-homeGridLead)))
@@ -216,15 +230,18 @@ func homeCellBand(text string, width int, pal palette, lit bool) string {
 }
 
 // homeCellRow paints a row and the line under it.
+// A ROW THAT GROWS DRAWS ITS SECOND LINE ONLY UNDER THE CURSOR, and the band
+// covers both of them: the two lines are one row, and a ground that stopped
+// half way would read as two ([homeCell.grows]).
 func (a *app) homeCellRow(line homeLine, at, width int, pal palette, lit bool) []string {
 	cell := line.cell
 	body := homeCellBody(a.homeCellDoor(cell, at, width-homeGridLead), width-homeGridLead, pal, lit)
 	rows := []string{homeCellBand(a.homeCellLead(cell, at, pal)+body, width, pal, lit)}
-	if cell.sub != "" {
-		under := switcherSides(max(1, width-homeGridLead), cell.sub, a.homeRowAnswers(line), pal.dim, pal.muted)
-		rows = append(rows, homeCellLeadBlank+under)
+	if cell.sub == "" || (cell.grows && at != a.home.cursor) {
+		return rows
 	}
-	return rows
+	under := switcherSides(max(1, width-homeGridLead), cell.sub, a.homeRowAnswers(line, at), pal.dim, pal.muted)
+	return append(rows, homeCellBand(homeCellLeadBlank+under, width, pal, lit && cell.grows))
 }
 
 // homeCellLead is the row's mark and the air after it, or two blank cells.

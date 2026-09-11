@@ -94,7 +94,7 @@ func (f machineFacts) nearCeiling() bool {
 // read with it. It runs on a beat and never on a draw.
 func (a *app) readMachine(now time.Time, sessions []session.SessionRow, bands map[string][]StandingItemView) {
 	a.readMachineMoney(now)
-	a.machine.hands, a.machine.wants = machineCounts(sessions, bands, a.exchanges)
+	a.machine.hands, a.machine.wants = machineCounts(now, sessions, bands, a.exchanges)
 }
 
 // readMachineMoney is the money half alone: what the day has cost, and the
@@ -127,8 +127,15 @@ func (a *app) readMachineMoney(now time.Time) {
 // draws and these figures are about the MACHINE, so a count taken from the rows
 // on screen would fall the moment a ninth thing started — which is the opposite
 // of what the figure means.
-func machineCounts(sessions []session.SessionRow, bands map[string][]StandingItemView, exchanges []*homeExchange) (hands, wants int) {
+func machineCounts(now time.Time, sessions []session.SessionRow, bands map[string][]StandingItemView, exchanges []*homeExchange) (hands, wants int) {
 	for _, row := range sessions {
+		// AND A LANDING NOBODY HAS CHECKED IS A WANT TOO, counted through the
+		// panel's own reading of it (homepanel_needs.go's [needsCallOf] and
+		// [needsAged]) rather than through a second test here. It is what makes
+		// `N want you` the sum of the two groups of `needs you`: the count and
+		// the rows are the same arithmetic, so a pulse over a home can no longer
+		// claim a number the panel under it does not show.
+		wants += machineChecks(now, row)
 		switch {
 		case row.Archived:
 		case row.NeedsPerson():
@@ -167,6 +174,27 @@ func machineCounts(sessions []session.SessionRow, bands map[string][]StandingIte
 		}
 	}
 	return hands, wants
+}
+
+// machineChecks is how many of one conversation's landings are waiting to be
+// checked — the `to check` group's rows for that conversation, counted with the
+// group's own reading.
+//
+// AN ARCHIVED CONVERSATION IS NOT COUNTED, for the same reason its own row is
+// not: it has been put away, and work put away is not waiting on anybody.
+func machineChecks(now time.Time, row session.SessionRow) int {
+	if row.Archived {
+		return 0
+	}
+	n := 0
+	for i := range row.Tasks.Rows {
+		entry := row.Tasks.Rows[i]
+		if _, ok := needsCallOf(row, entry); !ok || needsAged(needsCallAt(entry), now) {
+			continue
+		}
+		n++
+	}
+	return n
 }
 
 // machineSpentToday is WHAT THIS MACHINE HAS SPENT TODAY, and it is the usage
