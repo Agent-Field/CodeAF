@@ -575,8 +575,38 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			named = retryAfter(response)
 		}
 		sharedLimiter.release(rateLimited, named)
+		// ── A REFUSAL THAT NAMED A MACHINE IS THAT MACHINE'S, AND THE OTHERS
+		// HAVE SAID NOTHING ─────────────────────────────────────────────────
+		//
+		// THE OWNER'S RULING, 2026-09-10: "that is in OpenRouter, that does not
+		// matter — if we get any such error or error in general we need to
+		// recover." An account-policy 404 and a 400 the router RELAYED from the
+		// endpoint it picked are neither a person's mistake nor a fact about the
+		// model: they are one machine saying no, and the answer to them is the
+		// same walk a 429 gets. Until this line they ended the call, and the
+		// rotation that eventually moved was the SESSION's — three whole turns
+		// apart, each learning the same fact over again through the ledger
+		// (refusal_test.go's `TestThreeAttemptsAfterAnUpstreamRefusalReach…`).
+		//
+		// A REFUSAL THAT NAMED NOBODY IS NOT THIS. That one is the router
+		// reading our own bytes and saying no, and every machine alive will say
+		// the same thing about the same request ([taxonomy.Evidence.OurBytes]);
+		// it is handed back whole, exactly as it always was. So is anything this
+		// adapter can repair by itself — a knob it guessed wrong about reaches
+		// [Client.sendRepaired] a layer up, and walking it would spend a machine
+		// to discover a fact the memo already answers.
+		var peek []byte
 		if !retryableStatus(response.StatusCode) {
-			return response, nil
+			if !relayedByAMachine(response.StatusCode) || c.repairable(c.modelFor(request), knobs) ||
+				len(knobs.reasoning) > 0 {
+				return response, nil
+			}
+			read, _ := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
+			if upstream, ok := routerErrorEnvelope(read); !ok || upstream == "" {
+				response.Body = rewound(read, response.Body)
+				return response, nil
+			}
+			peek = read
 		}
 		if rateLimited {
 			providerWait = named
@@ -594,7 +624,10 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		}
 		// Drain a bounded prefix before closing so the connection can be reused
 		// and the eventual error still says what the provider complained about.
-		peek, _ := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
+		// A relayed refusal above has already read it and must not read it twice.
+		if peek == nil {
+			peek, _ = io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
+		}
 		response.Body.Close()
 		cancelAttempt()
 		lastErr = apiError(response.StatusCode, peek)
@@ -690,6 +723,22 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// keeping them apart is how the same question came to have two answers
 		// that could disagree. See [Client.handBack].
 		if c.handBack(ctx, knobs, refusal.Lane, rateLimited) {
+			return nil, lastErr
+		}
+		// ── AN EXCLUSION THAT DID NOT TAKE IS NOWHERE ELSE TO GO ────────────
+		//
+		// A relayed 4xx above bought this call one move, and the move is only
+		// worth taking if it really was a move: a second refusal from a machine
+		// this call has ALREADY vetoed is the router telling us, in the only way
+		// it can, that the veto changed nothing — either the pool is that one
+		// machine or this base does not honour `provider.ignore`. Either way
+		// there is no other endpoint to reach and the honest thing is to hand
+		// the refusal back, which is what the layer above knows how to answer
+		// (the ladder, then the session's one model hop).
+		//
+		// A 429 IS NOT THIS: the pool's own hold is read by [Client.pacedOut]
+		// above, which knows about windows this loop does not.
+		if peek != nil && !fresh {
 			return nil, lastErr
 		}
 		// AND THE SHORTER PATIENCE FOR A FAULT IS GONE WITH THE LONGER ONE FOR A
@@ -899,11 +948,36 @@ func attemptContext(ctx context.Context, stream bool) (context.Context, context.
 	return context.WithCancel(ctx)
 }
 
-// retryableStatus separates "try again" from "this will never work". A 4xx other
-// than 429 is a request we built wrong, and repeating it just spends the
-// deadline three times over.
+// retryableStatus separates "try again" from "this will never work" ON THE
+// STATUS ALONE. A 429 is the provider pacing us and a 5xx is it failing; both
+// are worth asking again.
+//
+// IT IS NO LONGER THE WHOLE ANSWER FOR A 4XX, and that is the change of
+// docs/design/recovery/DESIGN.md §3: "a 4xx is a request we built wrong" is true
+// only of a 4xx the ROUTER answered for itself. One it RELAYED is an endpoint's
+// verdict on this request, and the model's other endpoints have said nothing —
+// see [relayedByAMachine] and the walk in [Client.send].
 func retryableStatus(status int) bool {
 	return status == http.StatusTooManyRequests || status >= 500
+}
+
+// relayedByAMachine reports whether a status is one a router relays on an
+// endpoint's behalf, which is the half of the question the STATUS can answer.
+// The other half — whether this particular body actually named one — is
+// [routerErrorEnvelope]'s, and both have to be yes.
+//
+// 401, 402 and 403 are deliberately not here. A key that is wrong, an account
+// with no credit and a key without permission are facts about THIS PROCESS, and
+// every machine behind every model will answer them identically; walking the
+// pool to hear it four more times is the shape this whole design deletes,
+// pointed the wrong way.
+func relayedByAMachine(status int) bool {
+	switch status {
+	case http.StatusBadRequest, http.StatusNotFound, http.StatusRequestTimeout,
+		http.StatusConflict, http.StatusUnprocessableEntity:
+		return true
+	}
+	return false
 }
 
 // ordinalOf spells which of how many attempts this is, the way a person says

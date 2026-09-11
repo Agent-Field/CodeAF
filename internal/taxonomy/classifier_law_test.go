@@ -137,14 +137,14 @@ var factPackages = []string{"internal/taxonomy/", "internal/provider/"}
 // fourth rule about what a 4xx means, which is the defect, and the test fails
 // on one whether or not somebody adds it here.
 //
-// internal/session/auxiliary.go's `errandWalksOn` spells `Status >= 400 &&
-// Status < 500 && Upstream == ""` by hand, which is now exactly
-// [Evidence.OurBytes] — and, since an errand cannot compact, [Evidence.Overflow]
-// beside it. The file belongs to another lane of this wave, so the one-line
-// replacement is requested rather than taken.
-var seamsOwed = map[string]string{
-	"internal/session/auxiliary.go": "errandWalksOn: !evidence.OurBytes && !evidence.Overflow",
-}
+// IT IS EMPTY, AND THAT IS THE POINT OF IT. The one entry was
+// internal/session/auxiliary.go's `errandWalksOn`, which spelled `Status >= 400
+// && Status < 500 && Upstream == ""` by hand; it reads `!evidence.OurBytes &&
+// !evidence.Overflow` since the dispatcher wave (docs/design/recovery/DESIGN.md
+// §4), so the carve-out came off with it. An empty list means the law below
+// covers every file in the module outside the two fact packages — leave it that
+// way.
+var seamsOwed = map[string]string{}
 
 // TestOnlyTheTaxonomyTurnsAStatusIntoAMove refuses the shape that produced four
 // waves of the same defect: a caller reading a provider error's status and
