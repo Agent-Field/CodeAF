@@ -93,7 +93,7 @@ type toolAsk struct {
 	part   ai.ContentPart
 }
 
-// ask sends one question and returns the answer.
+// askModel sends one question and returns the answer.
 //
 // NOTHING OF THIS CONVERSATION GOES WITH IT: no system prompt, no transcript, no
 // tools. The model is being asked what is in a file, not being made a second
@@ -159,8 +159,8 @@ func (a *Agent) askModel(ctx context.Context, question toolAsk) (string, error) 
 // the sentence a model reads names the FILE and the model that was asked, and
 // this door knows neither in the caller's own vocabulary.
 const (
-	errToolAskRanOut      = errStr("the model did not answer in time")
-	errToolAskSaidNothing = errStr("the model returned no answer")
+	errToolAskRanOut      = errStr("did not answer in time")
+	errToolAskSaidNothing = errStr("returned no answer")
 )
 
 // toolCallTag is how a hand's call is named in the model-call log. One prefix,
