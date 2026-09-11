@@ -1189,10 +1189,10 @@ func (r *hedgeRace) commit(arm int) {
 	}
 	r.winner = arm
 	r.flip(arm)
-	losers := make([]context.CancelFunc, 0, len(r.arms))
+	losers := make([]*hedgeArm, 0, len(r.arms))
 	for _, one := range r.arms {
 		if one.index != arm {
-			losers = append(losers, one.cancel)
+			losers = append(losers, one)
 		}
 	}
 	close(r.decided)
@@ -1200,8 +1200,16 @@ func (r *hedgeRace) commit(arm int) {
 	r.withdraw()
 	// Outside the lock, because a cancel wakes the loser's read loop, which
 	// will want this lock on its way out.
-	for _, cancel := range losers {
-		cancel()
+	for _, loser := range losers {
+		// AND A LOSER IS MARKED BEFORE IT IS CUT, because the cut is what its own
+		// read loop will see and a read loop cannot tell being beaten from being
+		// broken. This is the only place that knows the difference: the arm did
+		// not fail, it was overtaken, and its end row is the exhaust of a race
+		// somebody else won rather than a failure anybody should read
+		// ([streamWatch.lostRace]). Marking after the cancel would race the very
+		// goroutine the mark is for.
+		loser.watch.lostRace()
+		loser.cancel()
 	}
 }
 
