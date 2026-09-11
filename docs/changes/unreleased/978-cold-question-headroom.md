@@ -28,3 +28,18 @@ new one beside it. Splitting is the better instrument where there is room,
 because a section past the cap is a defect on its own terms and not only when a
 probe happens to find it. This change does not do that for choosing-a-folder.md's
 nine over-cap sections; that is its own piece of work.
+
+**Checked against:** `## What choosing a folder actually does — this conversation
+is now about it`, on the same page. The new section's first draft said the chosen
+folder's name is on the status line; that section says the opposite and is right
+— choosing a folder makes the conversation ABOUT it, while the directory aforge
+is standing in does not move. The claim was corrected before this shipped and the
+new section now points at that one rather than restating it.
+
+That line is here deliberately, as lane P's proposed shape for a problem the gates
+cannot catch: CLAUDE.md says the manual gates check that a name is MENTIONED,
+never that the claim around it is true, and a lane landing a capability is already
+obliged to grep the corpus for the old denial — an obligation with nothing behind
+it. Naming, in the entry, which other section you checked your claim against is
+not a gate. It is a prompt to do the read, written where a reviewer can see
+whether it was done.
