@@ -35,8 +35,8 @@ package tui3
 //     tool call is nothing beside the tool call; one stat per frame is a syscall
 //     storm.
 //
-//   - [learned.refresh] IS THE TICK'S DOOR: read again, under every name still
-//     held, so a file somebody overwrote behind this surface's back is noticed on
+//   - [learned.refresh] IS THE TICK'S DOOR: read again, under every name it
+//     holds, so a file somebody overwrote behind this surface's back is noticed on
 //     the beat rather than never. The beat is the pulse's ten seconds
 //     (pulsebeat.go), which is what this surface already pays to read the world.
 //
@@ -58,12 +58,9 @@ type learned[T any] struct {
 	read func(name string) T
 	// facts is what has been read, by name.
 	facts map[string]T
-	// held is the names in facts, in the order they were first learned, because
-	// [learned.refresh] re-reads them and a map's order is not one.
-	held []string
 	// asked is what the FRAME wanted and the memo could not answer. It is drained
 	// by [learned.catchUp] on the loop.
-	asked []string
+	asked map[string]bool
 }
 
 func newLearned[T any](read func(name string) T) learned[T] {
@@ -81,12 +78,10 @@ func (l *learned[T]) of(name string) (T, bool) {
 	if name == "" || l.read == nil {
 		return none, false
 	}
-	for _, already := range l.asked {
-		if already == name {
-			return none, false
-		}
+	if l.asked == nil {
+		l.asked = make(map[string]bool, 4)
 	}
-	l.asked = append(l.asked, name)
+	l.asked[name] = true
 	return none, false
 }
 
@@ -103,56 +98,33 @@ func (l *learned[T]) learn(name string) T {
 	return fact
 }
 
-// lay files one reading under its name, keeping the order [learned.refresh]
-// walks.
+// lay files one reading under its name.
 func (l *learned[T]) lay(name string, fact T) {
 	if l.facts == nil {
 		l.facts = make(map[string]T, 8)
 	}
-	if _, known := l.facts[name]; !known {
-		l.held = append(l.held, name)
-	}
 	l.facts[name] = fact
-	l.drop(name)
+	delete(l.asked, name)
 }
 
 // forget drops one name, for the one caller who KNOWS the bytes under it moved
 // and will not wait for the beat to find out.
 func (l *learned[T]) forget(name string) {
 	delete(l.facts, name)
-	for i, held := range l.held {
-		if held == name {
-			l.held = append(l.held[:i], l.held[i+1:]...)
-			break
-		}
-	}
-	l.drop(name)
-}
-
-// drop takes one name off the asked-for list.
-func (l *learned[T]) drop(name string) {
-	for i, want := range l.asked {
-		if want == name {
-			l.asked = append(l.asked[:i], l.asked[i+1:]...)
-			return
-		}
-	}
+	delete(l.asked, name)
 }
 
 // catchUp reads whatever the last frame asked about and could not be told. It is
 // the loop's, once a message, and it is a BACKSTOP: every name this surface can
 // see coming is learned at its arrival instead, and this is what keeps the ones
 // nobody hooked to one message late rather than to never.
+//
 // It answers whether it read anything, because a fact that arrived after the
 // frame that wanted it is a frame the surface owes itself again.
 func (l *learned[T]) catchUp() bool {
-	if len(l.asked) == 0 {
-		return false
-	}
-	asking := l.asked
-	l.asked = nil
 	read := false
-	for _, name := range asking {
+	for name := range l.asked {
+		delete(l.asked, name)
 		if _, known := l.facts[name]; known {
 			continue
 		}
@@ -162,11 +134,19 @@ func (l *learned[T]) catchUp() bool {
 	return read
 }
 
-// refresh reads every name again. It is the TICK's door, and it is how a file
-// that changed behind this surface's back is noticed at all: nothing on the
-// machine tells a terminal that a png was overwritten, so the beat asks.
+// refresh reads every name this memo holds, again. It is the TICK's door, and it
+// is how a file that changed behind this surface's back is noticed at all:
+// nothing on the machine tells a terminal that a png was overwritten or that
+// another process rewrote the model cache, so the beat asks.
+//
+// IT RE-READS EVERYTHING RATHER THAN ONLY WHAT IS ON SCREEN, and it can afford
+// to: the beat is ten seconds and a warm stat is about a microsecond, so a
+// session that has met five hundred pictures pays half a millisecond every ten
+// seconds — against the three hundred and sixty syscalls a second the frame was
+// paying. Re-reading only the visible names would trade that for a second set to
+// keep and a name that goes stale in a way nothing else in this file can.
 func (l *learned[T]) refresh() {
-	for _, name := range l.held {
+	for name := range l.facts {
 		l.facts[name] = l.read(name)
 	}
 	l.catchUp()
