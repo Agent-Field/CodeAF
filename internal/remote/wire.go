@@ -835,6 +835,13 @@ type Welcome struct {
 	// POSTURE, NOT THE SURFACE'S PROFILE: zero is a real off answer, so absence
 	// cannot be filled from a local default without inventing a deadline.
 	BashBackgroundAfterSeconds int `json:"bashBackgroundAfterSeconds,omitempty"`
+	// ProfileDir is the engine process's resolved profile directory. A plain
+	// linked-local surface uses it for writes because the daemon may predate the
+	// terminal's current profile override. An older peer sends none and the
+	// surface falls back to its own resolved directory; linked-local launches
+	// retire a daemon whose build differs, so that compatibility reading is
+	// theoretical on the road that consumes it. No protocol version moves.
+	ProfileDir string `json:"profileDir,omitempty"`
 	// Encoding is the one frame payload encoding selected from Hello.Encodings,
 	// or empty when this connection stays on ordinary JSON payloads.
 	Encoding string `json:"encoding,omitempty"`
