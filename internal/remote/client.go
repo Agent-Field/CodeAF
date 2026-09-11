@@ -146,6 +146,11 @@ type Client struct {
 	// collide even though both are uint64.
 	seq atomic.Uint64
 
+	// newsHeard is set the first time a "phase" or "lane" frame arrives, and it
+	// is half of how [Client.NewsSilent] answers: an engine that has sent one
+	// has the news whether or not its welcome said so ([Welcome.News]).
+	newsHeard atomic.Bool
+
 	// calls is every call waiting for its result, and streams every open turn.
 	// Both are guarded by mu. Observers are independent view subscriptions;
 	// their ids belong to this connection and never enter turn replay cursors.

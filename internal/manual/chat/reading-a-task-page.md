@@ -228,6 +228,10 @@ task's own phase words while it is in a stage that is producing nothing, exactly
 conversation's line reads them: `running go test · 41s`, `connecting · 1.2s`, `paced ·
 retry in 6s`.
 
+**The machine is named whoever served it** — `task glm-5.2 · via z-ai` when the vendor
+serves its own model — and while the task's first answer is still being written, as soon
+as the machine writing it has named itself.
+
 **It does not go quiet because your conversation is idle.** That is the ordinary state
 while a task runs: you hand the work out, your turn ends, and the task works for minutes
 with nothing happening in the conversation. The row keeps drawing the task's own reading

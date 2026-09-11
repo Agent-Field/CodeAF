@@ -1121,6 +1121,10 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// engine without a dial from a conversation whose dial is off.
 		Effort:     effortKnown(sess.agent),
 		TaskSettle: taskSettleKnown(sess.agent),
+		// Whether this conversation's news reaches the surface at all, asked the
+		// way the newsroom files it ([Session.fileNews]): an engine that cannot
+		// name its conversation fans nothing out, and says so here.
+		News: newsKeyOf(sess.agent) != "",
 	}
 }
 

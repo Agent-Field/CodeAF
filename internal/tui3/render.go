@@ -2480,6 +2480,14 @@ func (a *app) servedRiderAt(width int) string {
 // read as the sighting having been lost rather than as the vendor having served
 // its own model. The sheet's `served` row keeps the old rule, because the row
 // above it there is the model's WHOLE routing address (statusdeck.go).
+//
+// THE RULING WAS KEPT HERE AND BROKEN ONE CALL DOWN until 2026-09-10: the lane
+// layer's rider, which speaks first, still went silent for a vendor serving its
+// own model, and the ledger fallback below it is in-process only — so over an
+// engine host, where the ledger is filled in the engine's process and never in
+// this one, `deepseek/…` served by DeepSeek drew no `via` at all. The seam now
+// asks [app.talkLaneRider], which never suppresses and which also names the
+// machine the request in flight is on, so `via` is there from the first answer.
 func (a *app) modelRiderAt(width int) string {
 	room := width
 	if room >= 0 {
@@ -2488,7 +2496,7 @@ func (a *app) modelRiderAt(width int) string {
 			room = 0
 		}
 	}
-	if rider := a.laneRider(false); rider != "" {
+	if rider := a.talkLaneRider(); rider != "" {
 		if width < 0 || ansi.StringWidth(rider) <= width {
 			return rider
 		}

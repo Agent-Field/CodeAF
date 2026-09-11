@@ -827,9 +827,13 @@ func TestAHiddenRolesAnswerNeverTakesTheServedSegment(t *testing.T) {
 		t.Fatal("the talk turn's own answer drew nothing")
 	}
 
+	// AND IT DOES NOT BLANK IT EITHER. The errand's news used to REPLACE the
+	// answer's on the desk, and the rider — which draws no hidden role — then
+	// drew nothing at all: one more way `via` vanished after an answer. It is
+	// dropped at the door now, and the answer's sighting stands.
 	PostLaneNews(LaneNews{Model: flash, Lane: "CoreWeave", Role: lane.RoleAuxiliary, TTFT: 90 * time.Millisecond, Rate: 400})
-	if got := a.laneRider(true); got != "" {
-		t.Fatalf("a naming errand took the status line: %q", got)
+	if got := a.laneRider(true); got != talk {
+		t.Fatalf("a naming errand moved the status line to %q, want the answer's %q", got, talk)
 	}
 }
 

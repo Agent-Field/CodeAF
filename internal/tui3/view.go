@@ -803,34 +803,18 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 
 // statusRow is the HUD's status row — one row, or two on a narrow frame where
 // the right edge stops sharing with the ledger (render.go's [app.statusRows]),
-// and a two-row deck at phone width — with the reasoning level on whatever
-// model segment that shape has: "claude-sonnet-4.5:high" where a level has been
-// dialled, and the bare model id where none has.
+// and a two-row deck at phone width.
 //
-// The level belongs beside the model because it is a fact about what the next
-// request will cost and how long it will take, and the model's name is where a
-// person already looks for both. It is spelled with a colon rather than a fourth
-// segment for the same reason it is spelled that way on the picker row: it is
-// not a thing beside the model, it is how this model is being run.
-//
-// The splice happens by LENDING the model field its suffixed form for the length
-// of one call. [app.status] reads a.model directly (render.go), the frame is
-// drawn on the model goroutine one row at a time, and the alternative is a
-// second copy of the status line's segment layout — width budget, narrow-frame
-// dropping and all — kept in step with the first by nothing but attention.
-//
-// WHAT IT REACHES IS THE PHONE DECK'S ROW 2 ([app.deckModelRow]). The wide row
-// carries no model of its own since 2026-09-09 — the conversation's is on the
-// seam, which builds its own levelled word (foot.go's [app.seamIdentity]), and a
-// room's chip names the NODE's model, which is not this field at all.
+// IT USED TO LEND [app.model] ITS LEVELLED FORM for the length of this call —
+// "claude-sonnet-4.5:high" — so that the phone deck's chip, which reads the
+// field, would carry the reasoning level. And every other reading inside the
+// same draw took the lent id too: the live rate at the right edge asks the phase
+// desk for the conversation's news BY NAME ([app.talkKeys]), found nothing under
+// `id:level`, and drew no tok/s at all for any model with a level dialled — with
+// or without an engine host. The deck now asks for its levelled word directly
+// (statusdeck.go's [app.deckModelRow]), and this field is never rewritten on the
+// way to a frame.
 func (a *app) statusRow(width int) []string {
-	level := a.reasoningFor(a.model)
-	if level == "" || a.model == "" {
-		return a.statusRows(width)
-	}
-	id := a.model
-	a.model = id + ":" + level
-	defer func() { a.model = id }()
 	return a.statusRows(width)
 }
 

@@ -2613,8 +2613,10 @@ as before, and a word this grammar does not know is simply a word to search for.
 
 Beside your model on the line above the message box, `via <name>` is the lane that
 actually answered, and it is a fact rather than a decision: it is the name that came back
-on the answer. It goes quiet when no answer has been timed in the last ten minutes, and
-at no other moment.
+on the answer. While an answer is being written it names the machine writing it, as soon
+as that machine has named itself — so the first answer of a conversation carries it too.
+It goes quiet only when nothing is being written and no answer has come back in the last
+ten minutes.
 
 **It is drawn whoever served, the vendor's own machines included.** `glm-5.3-flash · via
 z-ai` is not a line saying the same thing twice: the model is spelled there as its
@@ -2663,7 +2665,9 @@ provider.only preference permits only: coreweave` — the same spot reads
 `refused · trying nextbit…`. That machine is then finished for this model: it is not asked
 again, and it leaves the set aforge chooses from for thirty minutes. If the
 machine the answer moved to refuses as well, the promise is withdrawn rather than left on
-the screen, and the row reads `nextbit refused`.
+the screen, and the row reads `nextbit refused`. If the second lane fails for any other
+reason, or the turn is stopped while it is out, the promise comes off too and the row goes
+back to naming the machine that answered last.
 
 If the second lane wins, the line reads `via coreweave · rescued` for that answer once the
 request has finished, and goes back to normal on the next one.

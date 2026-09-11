@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -130,6 +131,15 @@ type LinkSeam struct {
 	// has said the only thing that needs saying. Its error is a link that is
 	// down or an engine that did not answer, and it is SHOWN.
 	Take func() error
+
+	// NewsSilent says the engine at the far end has given no sign that it sends
+	// the status line's news — the provider beside the model and the live tok/s
+	// at the right edge (internal/remote's [remote.Client.NewsSilent]). Nil is a
+	// local session, whose news never crosses a wire.
+	//
+	// IT IS ASKED ONCE A WHOLE ANSWER HAS COME BACK ([app.sayNewsSilence]), and
+	// answers from fields already held, under [LinkSeam.Note]'s law.
+	NewsSilent func() bool
 }
 
 // HeldQuestion is one card raised while no window was attached to the
@@ -311,6 +321,55 @@ func (a *app) takeLinkNotice() {
 	if said := a.link.Notice(); said != "" {
 		a.note(said)
 	}
+}
+
+// ── 2b. an engine that sends no news ───────────────────────────────────────
+
+// newsSilenceNote is the one sentence a window says when the engine it is on is
+// from before the status line's news crossed a connection. It is in the
+// engine-host sentences' own voice (cmd/aforge's busyEngineHostSentence): the
+// machine is older, nothing is wrong, and it says when that changes.
+const newsSilenceNote = "this conversation's engine is an older aforge, so the provider and tok/s are not shown — they come back once it picks up this build"
+
+// sayNewsSilence says [newsSilenceNote] once per window, the first time a turn
+// that produced an answer ends on an engine that has sent no news.
+//
+// THE DEFECT IT ANSWERS. The news frames rode an existing wire version on
+// purpose, so a surface attached to an engine from before them — which the door
+// does, rather than retire a busy one — drew no `via` and no rate and nothing
+// saying why, and the owner read the gap as those two vanishing at random. The
+// engine's version is not the question; whether the news arrives is, so that is
+// what is asked ([LinkSeam.NewsSilent]).
+//
+// AN ANSWER HAS TO HAVE ARRIVED, because that is what makes silence a fact. An
+// engine with the news posts a phase on every request it makes, so a turn that
+// wrote an answer with no phase beside it was run by one without; a turn that
+// failed before it asked anything proves nothing and says nothing.
+func (a *app) sayNewsSilence() {
+	if a.newsSilenceSaid || a.link.NewsSilent == nil || !a.turnAnswered() {
+		return
+	}
+	if !a.link.NewsSilent() {
+		return
+	}
+	a.newsSilenceSaid = true
+	a.note(newsSilenceNote)
+}
+
+// turnAnswered reports whether the turn that is ending wrote any answer at all.
+// It walks the ending turn's own entries from the end, the way [app.settleTurn]
+// does, and stops at the first entry of an older turn.
+func (a *app) turnAnswered() bool {
+	for i := len(a.entries) - 1; i >= 0; i-- {
+		e := a.entries[i]
+		if e.turn != a.turn {
+			return false
+		}
+		if e.kind == entryAssistant && strings.TrimSpace(e.text) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // ── 3. the questions that waited ────────────────────────────────────────────

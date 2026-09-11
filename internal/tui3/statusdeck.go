@@ -144,9 +144,15 @@ func (a *app) deckTopRow(width int) string {
 // along with the full routing address (see [app.identity] for the same trade at
 // every other width). A pinned lane is NOT the rider and stays: it is part of
 // the word ([app.modelWord]), because it is an instruction rather than news.
+//
+// AND THE CONVERSATION'S CHIP CARRIES THE REASONING LEVEL, spelled onto the id —
+// `kimi-k3:high` — which is the one place the deck says how hard the model is
+// being asked to think. It is asked for as a word ([app.modelWordAt]) rather
+// than lent through [app.model] for the draw, which is what hid the live rate
+// (view.go's [app.statusRow] tells that story).
 func (a *app) deckModelRow(width int) string {
 	right, plainRight := a.deckAmbient(width)
-	chip := a.modelWord()
+	chip := a.modelWordAt(a.reasoningFor(a.model))
 	// A ROOM RENAMES THIS ROW TOO, which is the wide row's own law at phone width
 	// (render.go's [app.identityParts]): row 1 has already renamed itself to the
 	// task, and a row 2 still naming the session's model would be the deck's half

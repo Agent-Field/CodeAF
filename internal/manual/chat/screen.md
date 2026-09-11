@@ -678,8 +678,11 @@ is a claim about now and who is attribution.
 (`glm-5.3-flash · via z-ai`). It was hidden in that case until 2026-09-09, on the
 argument that the id already said it — but the model is spelled here as its basename,
 so the vendor half of the address is not on the screen at all, and a rider that came and
-went with the endpoint read as a lost sighting. It goes quiet only when no endpoint has
-been timed in the last ten minutes.
+went with the endpoint read as a lost sighting. It names the machine writing the answer
+in flight as soon as that machine has named itself, the one that answered last after
+that, and goes quiet only when nothing is being written and no answer has come back in
+the last ten minutes. "Provider missing or tok/s not showing" below lists every reason
+either one is absent.
 
 **When the line is too narrow, it says less rather than cutting.** The left end gives
 things up in this order, and each step is a shorter *true* sentence:
@@ -855,6 +858,34 @@ your original request. Several finished tasks answered by one turn make several 
 arrival order. A reply to something you just typed has no task line, and a task with no
 recorded request shows its name without an empty quote. These lines return with the reply
 after `/resume`; the finished-task strip above the input is unchanged.
+
+## Provider missing or tok/s not showing — why via or the rate is not there, no rate after a follow-up
+
+`via <machine>` on the line above the message box and the live `38 tok/s` at the right
+edge of the status row are what the machine running the conversation reports as it
+works. When one is missing, it is one of these, and each is on purpose:
+
+- **Nothing is being written right now.** The rate is drawn only while the answer is
+  being thought or written and its first few tokens have arrived. Waiting for the first
+  word, a retry, a tool running, or idle: no rate — the phase words, or nothing.
+- **The working line is showing.** While the line under the conversation carries the
+  phase words, the right edge does not repeat them.
+- **Nothing has answered for ten minutes and nothing is being written.** `via` names the
+  machine writing the answer as soon as it has named itself, then the one that answered
+  last, for ten minutes.
+- **A note saying** `this conversation's engine is an older aforge, so the provider and
+  tok/s are not shown — they come back once it picks up this build`. The session host
+  holding the conversation predates these readings crossing to your window. It is said
+  once, after an answer. A host on an older build retires as soon as it is holding
+  nothing, and the next one runs this build.
+
+**What no longer hides them**, since 2026-09-10: a reasoning level set on the model
+(`/model`, `--reasoning`); a vendor serving its own model (`deepseek/…` answered by
+DeepSeek reads `via deepseek`); the first answer of a conversation, or a follow-up after
+a quiet stretch; a rescue to another machine that failed or was cut short; and a model
+changed while a turn was running, a fallback onto another model, or a model changed from
+another window. Inside a task's page the same readings are the task's own — see the task
+page's status line.
 
 ## The status line at the bottom — the numbers, grouped, and the state word
 
@@ -1310,7 +1341,8 @@ three:
 Row 1 is **what this is** (the session name, or the workspace place if it has not named
 itself) against **what it has cost** (spend, and the context percent only — the
 fraction is what the sheet is for), with a `▸` on the end. Row 2 is **what is
-answering** (the model basename, no rider) against **what is still moving**
+answering** (the model basename, no rider, with the reasoning level spelled on when one
+is set — `kimi-k3:high`) against **what is still moving**
 (`⏺ N running`, `N jobs`, then the state word). Identity left, telemetry right, the gap
 as the only separator, same as the wide row.
 
