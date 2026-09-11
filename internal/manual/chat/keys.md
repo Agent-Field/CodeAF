@@ -2019,7 +2019,9 @@ starts a new one in that row's folder, though `enter` on a row of the `projects`
 the way home offers now. On a standing item's row — in `needs you` while it asks, in
 `running` while it fires — **`ctrl+e` pauses** it, **`ctrl+x` stops it for good**, and
 **`ctrl+v` raises how hard that item thinks** one rung. Each chord acts on the row under
-your pointer when there is one, the cursor's row otherwise.
+your pointer when there is one, the cursor's row otherwise. The machine's own default is
+not on this chord — it is the `thinking` row of `/settings`, and *ctrl+v — how hard the
+thing you are looking at thinks* says why.
 
 With the mouse: a click puts the cursor on a row and a second click on that row opens it.
 The wheel walks the list three rows a turn, and the **tab bar above the panels is a
@@ -2784,11 +2786,15 @@ reaches the **tab bar** now, so that card is gone. To change how hard this machi
 default, open `/settings` and walk to the **`thinking`** row, which is the setting both
 roads always wrote.
 
-**It climbs and it wraps.** Each press goes one rung up, and `max` wraps back to `low`. It
-never returns to "nobody said" — clearing a rung hands the work back to whatever stands
-over it, which is a decision rather than something a wheel does on its way past. Set a
-thing back to nothing by name instead: `/effort auto` or the top row of `/effort` for this
-conversation, and the `thinking` row's own `auto` for the machine.
+**It climbs, and what happens off the top is the scope's own answer.** Each press goes one
+rung up. A conversation's rung and a standing item's rung wrap from `max` back to `low` and
+never return to "nobody said" — clearing one hands the work back to whatever stands over
+it, which is a decision rather than something a wheel does on its way past. Clear the
+conversation with `/effort auto` or the top row of `/effort`; clear an item where its rung
+is written down.
+A task's rung, and the level `ctrl+t` dials onto one model in `/model`, come back to `auto`
+off the top instead, because the surface is the only door that sets either and so has to be
+the door that clears them.
 
 **The rung reads as a quiet clause where the thing already states its facts.** A task's is
 under `Task setup` (or `Next run setup` after it settles) in the expanded
