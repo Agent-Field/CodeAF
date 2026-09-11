@@ -271,8 +271,16 @@ func newTestAgent(t *testing.T, completer Completer, mutate func(*Config)) (*Age
 	// A SESSION'S DEFERRED WRITES ARE SETTLED BEFORE ITS DIRECTORIES GO AWAY, the
 	// same call an exit door owes ([Agent.SettleWrites], placemeta.go). Cleanups
 	// run last-registered-first, so this lands before the tempdirs above it.
-	t.Cleanup(func() { _ = agent.Close() })
+	//
+	// AND THE SETTLE IS AFTER THE CLOSE, which is the order these two were in the
+	// wrong way round. [Agent.Close] settles on its own way in, so a settle in
+	// front of it is a settle of what the session owed a moment ago; what can
+	// still be owed is what the CLOSE itself sets in motion — a node stopped, a
+	// follow-up dropped, a place referred on the way out — and a write owed there
+	// lands on a directory the runner has already taken away
+	// (`TempDir RemoveAll cleanup: directory not empty`).
 	t.Cleanup(agent.SettleWrites)
+	t.Cleanup(func() { _ = agent.Close() })
 	return agent, workspace
 }
 
