@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: nothing hidden happens on a turn — one file memo, one off-path reading, one deferred write, one door for a hand asking a model
-pr: 0
+pr: 876
 surface: [chat, engine, docs]
 invalidates:
   - "`read` on a picture, a recording or a video made an untagged, unannounced model call that could run for the ten-minute general completion bound. Every model call a HAND makes now goes through one door (`internal/session/toolask.go`): tagged `tool:<name>` in the call log, carrying the node inside a task, drawing a phase the person reads (`looking at error.png`, `listening to memo.m4a`, `watching run.mp4`), bounded by `lane.RoleTool.GiveUp()` and capped at what a tool result may show. A structural law fails the build on any `tools_*.go` that calls `completeWithModel` itself."
