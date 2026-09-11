@@ -22,15 +22,24 @@ import (
 // beatRoom is a running node's page with the pulse held the way a reading
 // leaves it: the row on the beat side, and the reading flag that says it was
 // read rather than merely empty.
-func beatRoom(t *testing.T, row session.TaskBeatRow) *app {
+//
+// THE CALL'S AGE IS GIVEN AND THE INSTANTS ARE DERIVED FROM THE APP'S OWN
+// CLOCK, never from [time.Now]. This surface is driven by a fixture clock that
+// does not sit near the wall clock, so a row built from the real one puts the
+// request's start in the app's future, the elapsed comes out negative, and
+// [countUpWord] answers "" — which reads on a failure exactly like the header
+// refusing to draw. The first draft of this file did that and reported the
+// feature broken while it worked.
+func beatRoom(t *testing.T, open time.Duration) *app {
 	t.Helper()
 	a := headRoom(t)
-	a.room.beat, a.room.beatRead = row, true
+	a.room.beat, a.room.beatRead = anOpenCall(a.now().Add(-open)), true
 	a.room.dirty = true
 	return a
 }
 
-// anOpenCall is a beat row whose request has gone out and not come back.
+// anOpenCall is a beat row whose request has gone out and not come back:
+// a finish older than the start is the sidecar's whole meaning of "in a call".
 func anOpenCall(started time.Time) session.TaskBeatRow {
 	return session.TaskBeatRow{
 		Started:         started.Add(-time.Hour),
@@ -45,8 +54,7 @@ func anOpenCall(started time.Time) session.TaskBeatRow {
 // call's own elapsed, spelled the way the chat foot spells it, in place of the
 // task's own age and its `still working`.
 func TestTheHeaderDrawsTheOpenCallWhileThePulseSaysOneIsInFlight(t *testing.T) {
-	opened := time.Now().Add(-11 * time.Minute)
-	a := beatRoom(t, anOpenCall(opened))
+	a := beatRoom(t, 11*time.Minute)
 	line := plain(a.roomFactsLine(160))
 	for _, want := range []string{"11m", "working"} {
 		if !strings.Contains(line, want) {
@@ -73,8 +81,7 @@ func TestTheHeaderDrawsTheOpenCallWhileThePulseSaysOneIsInFlight(t *testing.T) {
 // the clock is the live count-up every moving figure on this surface uses. A
 // header that invented a second spelling would be two answers to "how fast".
 func TestTheCallSegmentSpellsItselfExactlyAsTheChatFootDoes(t *testing.T) {
-	opened := time.Now().Add(-95 * time.Second)
-	a := beatRoom(t, anOpenCall(opened))
+	a := beatRoom(t, 95*time.Second)
 	if got := a.roomOpenCallWord(a.roomNode()); !strings.Contains(got, "1m 35s") {
 		t.Fatalf("the open call's clock is not the live count-up: %q", got)
 	}
@@ -89,10 +96,10 @@ func TestTheCallSegmentSpellsItselfExactlyAsTheChatFootDoes(t *testing.T) {
 // request_finished newer, is the sidecar saying no call is open, and the live
 // segment reverts to the task's own elapsed time and its ordinary ladder.
 func TestTheHeaderGoesBackToTheTaskClockWhenTheCallComesBack(t *testing.T) {
-	finished := time.Now().Add(-time.Minute)
-	row := anOpenCall(finished)
-	row.RequestFinished = finished.Add(time.Second)
-	a := beatRoom(t, row)
+	a := beatRoom(t, time.Minute)
+	// The one field that turns an open call into an answered one, and the times
+	// stay on the app's own clock for the reason [beatRoom] states.
+	a.room.beat.RequestFinished = a.room.beat.RequestStarted.Add(time.Second)
 	line := plain(a.roomFactsLine(160))
 	if strings.Contains(line, "11m") || strings.Contains(line, "10m") {
 		t.Fatalf("a closed call's clock stayed on the header: %q", line)
