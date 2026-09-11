@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -105,6 +106,45 @@ func TestTheLeafGrantIsSpelledOnce(t *testing.T) {
 				return true
 			})
 		})
+	}
+}
+
+// THE HEADLESS REFERENCE STATES THE GRANT TOO, AND IT IS NOT MARKDOWN THIS
+// PACKAGE MAY IGNORE.
+//
+// docs/HEADLESS.md's flag table gives a default for every flag `aforge exec`
+// and `aforge run` take, and the `--token-budget` row is the grant written out
+// for somebody reading the reference instead of the help. It is the SEVENTH
+// place this figure has lived, and it was the one still saying 150000 after
+// #918 wrote the constant once and after internal/manual's truth table took
+// custody of the chat corpus's copy — found by sweeping for the old number by
+// hand, which is the blind spot the law above states plainly and this one
+// closes for the one document where it bit.
+//
+// It checks the flag's own row and not merely the page, because a reference
+// mentions a number in several sentences and only one of them is the default a
+// reader will type. The row's shape is the gate: a `--token-budget N` cell
+// followed by the default in backticks. If the table is reshaped the law goes
+// red rather than quiet, and reshaping it is a deliberate act that can afford
+// to edit one line here.
+func TestTheHeadlessReferenceStatesTheGrantTheDoorsApply(t *testing.T) {
+	const page = "docs/HEADLESS.md"
+	path := filepath.Join(repoRoot(t), filepath.FromSlash(page))
+	text, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("cannot read %s, so this law cannot see what it tells a reader: %v", page, err)
+	}
+	row := regexp.MustCompile("`--token-budget N`[^|]*\\|\\s*`(\\d+)`")
+	match := row.FindStringSubmatch(string(text))
+	if match == nil {
+		t.Fatalf("%s no longer has a --token-budget row with a number for its default.\n"+
+			"Teach this law the table's new shape rather than dropping the check, or the grant "+
+			"stops being answerable to the reference a person reads instead of --help", page)
+	}
+	if want := strconv.Itoa(DefaultLeafTokens); match[1] != want {
+		t.Errorf("%s says --token-budget defaults to %s; exec.DefaultLeafTokens is %s.\n"+
+			"A reference that states a default is read by somebody deciding whether to pass the flag at all",
+			page, match[1], want)
 	}
 }
 

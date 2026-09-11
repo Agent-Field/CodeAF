@@ -286,8 +286,18 @@ func TestObservationWindowIsSizedFromContextNotSpend(t *testing.T) {
 	// The measured re-read subject: whatever else changes, one ordinary
 	// document has to fit inside the memory meant to hold it.
 	const reReadSubject = 26 << 10
-	// What the old arithmetic gave the default leaf budget.
-	const spendSizedWindow = DefaultLeafTokens / 6
+	// What the old arithmetic gave the default leaf budget, FROZEN AT WHAT IT
+	// ACTUALLY GAVE rather than recomputed from today's grant. The claim this
+	// line supports is historical — the context-derived window beats the window
+	// the spend ceiling used to buy — and the spend ceiling was 150,000 when the
+	// derivation was replaced, so a sixth of it was 25,000 and always will be.
+	// Recomputing it from [DefaultLeafTokens] made this test fail whenever the
+	// grant ROSE, which is backwards: a larger grant does not shrink the memory
+	// a leaf is given, and the window has not read the grant since
+	// [observationWindow] became [ctxbudget.ObservationBytes] of the model's own
+	// context. Re-coupling them here was the last thread between the two, and
+	// #920 could not raise the grant until it was cut.
+	const spendSizedWindow = 25_000
 
 	unknown := observationWindow(0)
 	if unknown < reReadSubject {
