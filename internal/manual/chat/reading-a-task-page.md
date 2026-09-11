@@ -190,9 +190,11 @@ Every word it draws:
 
 - `queued` — admitted and not started; nothing is in its way but a free slot. Where it is
   held behind named work instead, it reads `waits: <the work it waits on>`.
-- `sizing the work` — the reading that decides whether this job is handed out in parts and
-  how. It is the first thing a brand new task does, before its worker has said a word, and
-  it is why a page can sit there for a few seconds with nothing on it.
+- `sizing the work` — the task's worker asked to hand parts of its work out and is waiting
+  while a reading decides whether, and how. A brand new task never waits on it: its worker
+  starts at once, and any parts somebody drew are weighed beside it. While the reading
+  runs, the page shows the request it is waiting on under the worker's last line (see
+  *Why is a task I just started showing an empty page*).
 - `working` — its worker is getting on with it. This is the ordinary one.
 - `checking what it left` — the worker has stopped and what it produced is being read.
 - `closing gaps · round 1 of 2` — the check found something and a round is closing it.
@@ -301,7 +303,8 @@ the page says it in one dim line, above whatever else it already knows:
 - a finished task whose transcript is gone from the disk keeps its report and says
   `this task's transcript is not here any more`
 - a task that is queued, or one still working with nothing written for it yet, says
-  `nothing on this page yet — it fills in as the task works`
+  `nothing on this page yet — it fills in as the task works` — except while a model is
+  being asked on its behalf, when the line is that request instead
 - a page waiting on a read that is genuinely in flight — which is what opening a task on
   another machine or in another conversation does — says
   `loading this task's conversation…`. A page with nothing on the way never says it
@@ -346,10 +349,17 @@ used to sit under the page.
 The line comes off the moment there is anything to draw, because it answers one question
 — why is there nothing here — and a page with something on it is not asking it.
 
-If the page is long but the frame is short, scroll: the wheel over the page, `pgup`, or
-`↑` over an empty box all move it. `ctrl+l` is not the key here — it returns the
-conversation to its latest line, and inside a task scrolling down to the bottom does the
-same for the task's page.
+**While the task says `sizing the work`, the page shows the request it is waiting on** —
+under the worker's transcript, or in that line's place on a page with nothing written yet:
+the thinking mark while the model thinks, which model of how many, how long the request has
+been out, what has come back (`↓`, thought included) and the machine answering:
+
+```
+✳ asking deepseek/deepseek-v4.1-flash · 1 of 2 · thinking 41s · ↓ 4,465 · deepinfra
+```
+
+Before anything comes back it reads `first word 3.1s` and has no mark, no `↓` and no
+machine. It goes the moment the reading ends.
 
 ## Watch a background job's log — the page tails it live, where is the log
 

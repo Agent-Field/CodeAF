@@ -226,9 +226,9 @@ func (b billedCompleter) CompleteWithMessages(ctx context.Context, messages []ai
 // ── the pre-turn block ──────────────────────────────────────────────────────
 
 // memoryBlock is THE ONE SEAM every caller uses: the conversation before a
-// turn, and a task node when its context is assembled (task_run.go). cue is
-// what the block is chosen against — the message just typed, or the brief the
-// node is about to work from.
+// turn, and a task node's reading beside its work ([nodeMemory]). cue is what
+// the block is chosen against — the message just typed, or the brief the node
+// is working from.
 //
 // It returns "" for everything that could go wrong, and that is the contract:
 // no store, an empty index, a cue with nothing in it to route against, a
@@ -240,6 +240,163 @@ func (b billedCompleter) CompleteWithMessages(ctx context.Context, messages []ai
 // counters would credit the parent's memories with retrievals nobody made.
 func (a *Agent) memoryBlock(ctx context.Context, cue string) string {
 	return a.routedMemory(ctx, cue, nil, false)
+}
+
+// ── what a task node is handed ──────────────────────────────────────────────
+
+// nodeMemory is the block one task node's brief was routed to, read ONCE per
+// node run and BESIDE the work rather than in front of it (task_beside.go).
+//
+// IT USED TO BE A CONSTRUCTOR ARGUMENT, and that is the shape this replaces. The
+// router was asked inside [Agent.newTaskAgentOn], so every worker a node built
+// waited on one reflex call before it existed — six seconds on the measured node,
+// serially, between the working copy and everything else — and a node that built
+// a second worker, a repair round and a merge resolver asked the same question of
+// the same brief four times. The cue is the node's assembled brief, which is
+// settled at admission and does not move while the node runs, so one answer is
+// the answer for every worker the node builds.
+//
+// MEMORY IS AN AID, NOT A CONTRACT, and that is what lets it arrive late. A worker
+// whose first request goes out before the router has answered opens without the
+// block, and the block rides the next request that worker makes: a task worker
+// never clears what it was handed ([Agent.remembers] is false on a node) and the
+// drain before every request lands it at the tail (agent.go's
+// [Agent.landVolatileLocked]). That drain IS the join point — whatever has
+// arrived by the time a request is assembled goes with it, and nothing waits.
+//
+// It fails open exactly as [Agent.memoryBlock] does: no store, no reflex, no
+// answer, and every worker opens with the prompt it always did.
+type nodeMemory struct {
+	// id is the node this reading was routed for. A context carrying it may reach
+	// a constructor building a DIFFERENT node's worker, and a part must never be
+	// handed its parent's memories under its own brief.
+	id uint64
+	// start routes the brief the first time any worker asks for it, and the
+	// runner may ask for it earlier to overlap the working copy being made.
+	start  sync.Once
+	route  func(context.Context) string
+	ctx    context.Context
+	reader *besideWork
+
+	mu      sync.Mutex
+	settled bool
+	block   string
+	// waiting is every worker built before the answer came back. They are handed
+	// it when it does, and a worker closed by then takes nothing
+	// ([Agent.takeMemory]).
+	waiting []*Agent
+}
+
+type nodeMemoryKey struct{}
+
+// withNodeMemory puts one node's memory reading on the node's context, for every
+// worker the node goes on to build. It starts nothing: a node whose body never
+// builds a worker (a saved program's run) makes no reflex call, which is what it
+// made before this existed. The second answer is the one join point, and the
+// node's runner defers it.
+func (a *Agent) withNodeMemory(ctx context.Context, node *TaskNode) (context.Context, func()) {
+	if a == nil || node == nil || !a.remembers() {
+		return ctx, func() {}
+	}
+	cue := node.assembledBrief()
+	memory := &nodeMemory{
+		id:    node.id,
+		ctx:   ctx,
+		route: func(ctx context.Context) string { return a.memoryBlock(ctx, cue) },
+	}
+	return context.WithValue(ctx, nodeMemoryKey{}, memory), memory.end
+}
+
+// nodeMemoryOn is the reading a node's context carries for that node, or nil.
+func nodeMemoryOn(ctx context.Context, node *TaskNode) *nodeMemory {
+	memory, _ := ctx.Value(nodeMemoryKey{}).(*nodeMemory)
+	if memory == nil || node == nil || memory.id != node.id {
+		return nil
+	}
+	return memory
+}
+
+// begin starts the routing if nobody has yet. It is idempotent, so the runner
+// can ask for it early and the constructor can ask for it again.
+func (m *nodeMemory) begin() {
+	if m == nil {
+		return
+	}
+	m.start.Do(func() {
+		m.reader = beside(m.ctx, func(ctx context.Context) {
+			m.settle(m.route(ctx))
+		})
+	})
+}
+
+// settle is the router's answer arriving: kept for every worker still to come,
+// and handed to every worker already waiting. The workers are handed it outside
+// this reading's lock, because [Agent.takeMemory] takes the worker's own.
+func (m *nodeMemory) settle(block string) {
+	for _, worker := range m.keep(block) {
+		worker.takeMemory(block)
+	}
+}
+
+// keep records the answer and gives up the list of workers waiting on it.
+func (m *nodeMemory) keep(block string) []*Agent {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.settled, m.block = true, block
+	waiting := m.waiting
+	m.waiting = nil
+	return waiting
+}
+
+// handTo gives one worker the node's block: at once when it has arrived, and the
+// moment it arrives otherwise.
+func (m *nodeMemory) handTo(worker *Agent) {
+	if m == nil || worker == nil {
+		return
+	}
+	m.begin()
+	if block, arrived := m.arrivedFor(worker); arrived {
+		worker.takeMemory(block)
+	}
+}
+
+// arrivedFor answers the block when it has come back, and otherwise puts the
+// worker on the list [nodeMemory.settle] hands it to.
+func (m *nodeMemory) arrivedFor(worker *Agent) (string, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.settled {
+		m.waiting = append(m.waiting, worker)
+		return "", false
+	}
+	return m.block, true
+}
+
+// end is the join point [Agent.withNodeMemory] hands the runner.
+func (m *nodeMemory) end() {
+	if m == nil {
+		return
+	}
+	// A READING NOBODY STARTED IS SHUT HERE, so a worker built after the node's
+	// run is over cannot start one that would outlive it. The Once is also what
+	// makes the reader safe to read: it was written inside the same Once.
+	m.start.Do(func() {})
+	m.reader.end()
+}
+
+// takeMemory is a task worker receiving the block its node's brief was routed
+// to. It lands on the next request this worker assembles, and it replaces
+// nothing a person typed: a worker has no turn of its own to route against.
+func (a *Agent) takeMemory(block string) {
+	if block == "" {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		return
+	}
+	a.memoryText = block
 }
 
 // refreshMemory is the conversation's own call: route this turn's message, hand

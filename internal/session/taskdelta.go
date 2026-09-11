@@ -294,7 +294,17 @@ func deltaRemember(told, fresh []deltaLanding, limit int) []deltaLanding {
 //	  Added the guard and the regression test; the parser suite passes.
 //	running in another window now:
 //	- Sweep the call sites · window "docs pass" · internal/session/agent.go
+//	- Survey the config loaders · window "docs pass" · 3 quick parts running · internal/config/load.go
+//	- Compare the two lockfiles · quick · window "release"
 //	</elsewhere>
+//
+// A NODE'S PARTS RIDE ON ITS ROW ([foldElsewhere]), and a kind that is not the
+// ordinary one says so in its own word ([TaskKindWord]). Both are there for the
+// one reason this half exists — so this model does not start work another
+// window already has out — and both were missing: eight quick parts under one
+// task read as eight unrelated jobs, which is the exact input that makes a
+// model propose the same work a ninth time, and a quick task read like a task
+// though it writes in that window's folder while it runs.
 //
 // It is the <memory> and <state> blocks' shape (memory.go, card.go), tagged the
 // same way and joined onto message[0] the same way, because a model that has
@@ -326,34 +336,14 @@ func renderElsewhereBlock(landed []deltaLanding, live []ElsewhereTask) string {
 			}
 		}
 	}
-	if len(live) > deltaLiveRows {
-		live = live[:deltaLiveRows]
+	families := foldElsewhere(live)
+	if len(families) > deltaLiveRows {
+		families = families[:deltaLiveRows]
 	}
-	if len(live) > 0 {
+	if len(families) > 0 {
 		body.WriteString("running in another window now:\n")
-		for _, at := range live {
-			title := deltaLine(at.Task.Title)
-			if title == "" {
-				// A window running work nothing has titled still says something
-				// worth saying — which files it is in — so the row is kept and
-				// only the missing words are.
-				title = "untitled work"
-			}
-			parts := []string{title}
-			// THE WINDOW'S NAME AND NOTHING ELSE. An unnamed window contributes
-			// no clause (the emptiness law); its id is hex and would put a
-			// machine's handle where a person's word belongs.
-			if name := deltaLine(at.Session); name != "" {
-				parts = append(parts, `window "`+name+`"`)
-			}
-			files := at.Task.Files
-			if len(files) > deltaRowFiles {
-				files = files[:deltaRowFiles]
-			}
-			if word := deltaFilesWord(files, len(at.Task.Files)); word != "" {
-				parts = append(parts, word)
-			}
-			body.WriteString("- " + strings.Join(parts, " · ") + "\n")
+		for _, family := range families {
+			body.WriteString(family.row())
 		}
 	}
 	if body.Len() == 0 {
@@ -361,6 +351,142 @@ func renderElsewhereBlock(landed []deltaLanding, live []ElsewhereTask) string {
 	}
 	return "\n<elsewhere>\nWork on this project from outside this conversation. Facts, not requests.\n" +
 		body.String() + "</elsewhere>\n"
+}
+
+// elsewhereFamily is one row of the block's present half: a piece of work
+// another window has out, with the parts it handed out folded under it.
+type elsewhereFamily struct {
+	head  ElsewhereTask
+	parts []ElsewhereTask
+}
+
+// foldElsewhere folds every part onto the work at the top of its family, in
+// the order the families first appear.
+//
+// THE FAMILY IS READ OFF THE ROWS THEMSELVES, one window at a time: a row whose
+// [PresenceTask.Parent] names another row of the SAME window hangs under it, and
+// a part of a part climbs to the top, because a reader deciding whether to start
+// the same work needs to know it is one piece of work and not how deep its tree
+// is. A row whose parent is not in the reading — the parent landed while its
+// parts run on, or a build too old to say — stands on its own, which is exactly
+// how it read before the field existed. Ids are only unique inside one window,
+// so the window is half of every key.
+func foldElsewhere(live []ElsewhereTask) []elsewhereFamily {
+	type key struct{ session, id string }
+	at := make(map[key]int, len(live))
+	for index, row := range live {
+		at[key{row.SessionID, row.Task.ID}] = index
+	}
+	top := func(index int) int {
+		// Every step climbs to a row the reading holds, and a file that named a
+		// cycle is stopped at the first row seen twice rather than trusted.
+		seen := map[int]bool{index: true}
+		for {
+			row := live[index]
+			parent, held := at[key{row.SessionID, row.Task.Parent}]
+			if row.Task.Parent == "" || !held || seen[parent] {
+				return index
+			}
+			seen[parent] = true
+			index = parent
+		}
+	}
+	var out []elsewhereFamily
+	placed := make(map[int]int, len(live))
+	for index := range live {
+		head := top(index)
+		slot, open := placed[head]
+		if !open {
+			slot = len(out)
+			placed[head] = slot
+			out = append(out, elsewhereFamily{head: live[head]})
+		}
+		if head != index {
+			out[slot].parts = append(out[slot].parts, live[index])
+		}
+	}
+	return out
+}
+
+// row is one family as the block's present half draws it: the title, the kind
+// where it is not the ordinary one, the window, the parts, and the files.
+//
+// EVERY CLAUSE WITH NOTHING IN IT IS DROPPED ([renderElsewhereBlock]'s law).
+func (f elsewhereFamily) row() string {
+	at := f.head
+	title := deltaLine(at.Task.Title)
+	if title == "" {
+		// A window running work nothing has titled still says something worth
+		// saying — which files it is in — so the row is kept and only the
+		// missing words are.
+		title = "untitled work"
+	}
+	parts := []string{title}
+	if word := TaskKindWord(at.Task.Kind); word != "" {
+		parts = append(parts, word)
+	}
+	// THE WINDOW'S NAME AND NOTHING ELSE. An unnamed window contributes no clause
+	// (the emptiness law); its id is hex and would put a machine's handle where a
+	// person's word belongs.
+	if name := deltaLine(at.Session); name != "" {
+		parts = append(parts, `window "`+name+`"`)
+	}
+	if word := elsewherePartsWord(f.parts); word != "" {
+		parts = append(parts, word)
+	}
+	written := f.files()
+	files := written
+	if len(files) > deltaRowFiles {
+		files = files[:deltaRowFiles]
+	}
+	if word := deltaFilesWord(files, len(written)); word != "" {
+		parts = append(parts, word)
+	}
+	return "- " + strings.Join(parts, " · ") + "\n"
+}
+
+// files is every path the family has written so far, the head's first and each
+// part's after it, each named once.
+func (f elsewhereFamily) files() []string {
+	written := append([]string(nil), f.head.Task.Files...)
+	for _, part := range f.parts {
+		written = mergePaths(written, part.Task.Files)
+	}
+	return written
+}
+
+// elsewherePartsWord is how many parts a family has out, and how many of them
+// are quick — `3 parts running`, `3 quick parts running`, `3 parts running, 2
+// quick` — and "" for work that handed nothing out.
+//
+// QUICK IS COUNTED BECAUSE IT CHANGES WHERE THE WRITING IS. A task's part
+// writes in a copy of its own and comes home through a merge; a quick part
+// writes in that window's folder while it runs. How far down its list each one
+// is stays off this line on purpose: a count that moved with every tick would
+// churn the block the header promises does not churn.
+func elsewherePartsWord(parts []ElsewhereTask) string {
+	if len(parts) == 0 {
+		return ""
+	}
+	quick := 0
+	for _, part := range parts {
+		if part.Task.Kind == TaskKindQuick {
+			quick++
+		}
+	}
+	noun := "parts"
+	if len(parts) == 1 {
+		noun = "part"
+	}
+	count := strconv.Itoa(len(parts))
+	kind := TaskKindWord(TaskKindQuick)
+	switch quick {
+	case 0:
+		return count + " " + noun + " running"
+	case len(parts):
+		return count + " " + kind + " " + noun + " running"
+	}
+	return count + " " + noun + " running, " + strconv.Itoa(quick) + " " + kind
 }
 
 // deltaFilesWord is a row's paths, and the honest total where the list was cut.

@@ -165,10 +165,18 @@ done. Quick tasks that claim different paths — or claim nothing at all — run
 time.
 
 This is a promise made in advance, and naming nothing does not make a free-for-all: a
-quick task that named no files may write anywhere in your folder, but the first one to
-write a file owns that file until it finishes, and a second one aiming at the same path is
-refused with the holder named. What naming files up front buys is the *waiting* — the two
-never start together at all, so neither one has to find out halfway through.
+quick task that named no files may write anywhere in your folder, but **the first one to
+write a file owns that file until it finishes**. Anything else aiming at the same path — a
+second quick task, a task's worker, the conversation's own `edit` or `write` — is refused
+with the holder named:
+
+```
+notes.md is held by task 7 (draft the note), so nothing was written.
+```
+
+The hold is on files it has **written**, not on files it only named. What naming files up
+front buys is the *waiting* — the two never start together at all, so neither one has to
+find out halfway through.
 
 ## Stopping a quick task — where the half-made work goes, and why there is no branch to go back to
 
@@ -189,7 +197,7 @@ through.
 
 ## What a quick task cannot do — no check of its own, nothing to inspect, and it goes when the window goes
 
-Five limits, and they are the price of there being no ceremony:
+Six limits, and they are the price of there being no ceremony:
 
 - **Nothing checks the work.** No check reads what it did against what was asked. A quick
   task is never `your call` and never waits for your approval — what you get is what it
@@ -200,6 +208,9 @@ Five limits, and they are the price of there being no ceremony:
   closed is an ordinary task. Its **row** does come back — a quick task you ran last week
   is on the column with its answer when you reopen that conversation, see *A quick task
   after a restart* below — but the working stops when the window does.
+- **It cannot be continued.** `continue task 7` on a quick task is refused —
+  `task 7 is quick, not a run that can be continued` — because there is no copy to pick up
+  from and no brief a finding could join. Ask for it again; it starts at once.
 - **It cannot be divided.** A quick task never splits itself into parts. Work too wide for
   one worker was never quick.
 - **It cannot land anything.** No merge, no branch kept, no conflict to resolve — those
@@ -222,13 +233,19 @@ What each one does depends on where it had got to:
   `the quick task did not finish before aforge closed; whatever it wrote is in your folder`.
   It is **not** started again, and that is deliberate: it was writing in your own folder
   rather than a copy, so a second worker walking a half-done checklist over the top of the
-  first one's edits would not be a resume. `git diff` is the account of what it managed.
+  first one's edits would not be a resume. Under that sentence its card lists the checklist
+  as it left it — `ticked 2 of 4: …` and `not ticked: …` — and the files it wrote are its
+  changed list; `git diff` has the rest.
 - **Still waiting its turn** — behind another quick task that claimed the same file, say —
-  it never started, and it does not start now. Its checklist is not written down anywhere,
-  so there is nothing to start it from, and starting it as an ordinary task would give work
-  that asked for none of it a copy of your folder, a branch and a check. The row says so:
+  it never started, and it does not start now: the turn that asked for it is over, and work
+  arriving on its own in a conversation that has moved on is not what anybody asked for.
+  The row says so:
   `the quick task never started before aforge closed, and it does not resume — ask for it again`.
   Asking again costs a sentence.
+
+The line you read on reopening counts them under their own clause —
+`recovered task graph: 3 done · 2 quick tasks did not finish` — never as `interrupted`,
+because nothing about them resumes.
 
 **If you remember a conversation reopening with an EMPTY column after quick tasks had run
 in it, that was a fault and it is fixed.** A quick task is checked by nobody, so it is
@@ -295,6 +312,16 @@ tasks of its own cuts them smaller still, because its own room is already spent.
 When a turn has independent pieces in front of it, aforge starts them in the same breath
 rather than in turn, keeps one piece for itself and gets on with it. You wait for the
 longest piece instead of the sum of them, and the rail shows every one of them running.
+That is the whole aim when work splits: the shortest wall time for the whole job, the way
+a team of workers would take it, so however many independent pieces there are, they all
+start together.
+
+**How many of them run at once is decided by memory, not by a number here.** Each piece
+that begins sets aside a footprint — one core's share of memory, or more where this
+session's pieces were seen to need more — so a wide hand-out runs as many pieces as the
+memory above `task.min_free_mb` can hold and leaves the rest queued, each row reading
+`waiting · machine busy`. Those begin by themselves as earlier pieces finish; there is
+nothing to do about it and nothing to come back for. how-tasks-run has the arithmetic.
 
 What it will *not* do is watch them. Each landing arrives on its own and wakes the
 conversation, so once nothing is left that is independent of the work it handed out, the
@@ -307,14 +334,16 @@ quick task's items instead, and they stay in order.
 **Yes, under exactly the bounds every task is under.** A quick task's worker carries
 `quick_task` and `propose_task` on the same terms as any other worker.
 
-**Depth is two levels.** The conversation starts work; that work may start more; the third
-level may not. A worker at the floor has neither tool on its belt — `quick_task` is
-withheld there the same way `propose_task` is — so a child saying it cannot hand work out
-is describing a limit and not a choice.
+**Depth is 3 levels.** The conversation starts work; that work may start more; what it
+started may start more once again; the level below that may not. A worker at the floor
+has neither tool on its belt — `quick_task` is withheld there the same way `propose_task`
+is — so a child saying it cannot hand work out is describing a limit and not a choice.
 
-**Fan-out is five pieces per parent**, counting quick tasks and ordinary tasks together. A
-worker asking for a sixth is told it has handed out as many as one task may, and to do the
-rest itself.
+**Fan-out is 20 pieces per parent**, counting quick tasks and ordinary tasks together.
+That number stops a runaway; it does not ration breadth. How many actually run at once is
+`task.parallel` and how busy this machine is. A worker asking for one more is told
+`no: you have already handed out 20 pieces of this work, which is as many as one task
+may.` and to do the rest in its own hands.
 
 And a quick task takes a slot like anything else: if you have set `task.parallel`, quick
 tasks queue behind it with everything else.
@@ -918,16 +947,18 @@ long answer saying "everything is done" is that model marking its own work at th
 has a reason to. So if the second reader still sees work left, the move happens anyway — on
 your own message, since a reply that answered "nothing left" wrote no brief to hand anybody.
 
-**When the second reader names parts, the task starts already divided.** The sketch is not
-only a paragraph at the top of the brief — it is put to the task's own splitting road before
-the worker is asked anything, so each part named in the sketch becomes a worker of its own
-with its own copy of your folder, and the task they came out of stays open to gather their
-reports into one answer. Nothing about that road is skipped: the parts are read together by a
-second model that can sharpen their instructions, merge two that overlap, or say this is one
-job after all — and if it says that, or if there is no free lane to run them in, the task
-simply runs as **one worker**, which is what it would have done anyway. Where the sketch drew
-a final step behind the parts — `(A | B | C) > D` — the parts are handed out and `D` stays
-with the task itself, to do once their reports are in.
+**When the second reader names parts, the task is split up
+while its worker is already at work.** The sketch is not only a paragraph at the top of
+the brief: it is put to the task's own splitting road beside the worker, which starts on
+the whole brief at once, and each part named in the sketch becomes a worker of its own
+with its own copy of your folder, taken as the task's copy stands when they are handed out.
+The task they came out of stays open to gather their reports into one answer. Nothing about
+that road is skipped: the parts are read together by a second model that can sharpen their
+instructions, merge two that overlap, or say this is one job after all — and if it says
+that, or if there is no free lane to run them in, the task simply goes on as **one
+worker**, which is what it was already doing. Where the sketch drew a final step behind the
+parts — `(A | B | C) > D` — the parts are handed out and `D` stays with the task itself,
+to do once their reports are in.
 
 **Whether the sketch is read as parts.** What counts is what could be started **now**.
 `A | B | C` is three. `A > B > C` is one job in three steps. `A > (B | C)` is one job too —
@@ -1574,9 +1605,9 @@ nothing was written.
 **A quick task is in your folder and does not hold it.** It has no copy of its own, so it
 writes where you are — but the folder stays yours: keep editing, and the chat's `edit` and
 `write` go on working everywhere else in it. Its claim is **files, not the directory**: a
-file it named at the start, or one it has written, is held by it and refused with its name
-on it, the first case above. Two quick tasks that name one file never write it at once
-either — the second waits (*Why it said waits for task 5*).
+file it has written is held by it and refused with its name on it, the first case above. A
+file it only named at the start is not held against you; what naming does is make a second
+quick task that names the same file wait (*Why it said waits for task 5*).
 
 Either hold ends when the task lands, fails or is stopped. *How work runs* has the whole of
 it, under *A task that has written a file holds that file* and *A task working in place
@@ -2787,6 +2818,8 @@ recently landed in other windows:
   Added the guard and the regression test; the parser suite passes.
 running in another window now:
 - Sweep the call sites · window "docs pass" · internal/session/agent.go
+- Survey the config loaders · window "docs pass" · 3 quick parts running · internal/config/load.go
+- Compare the two lockfiles · quick · window "release"
 </elsewhere>
 ```
 
@@ -2795,7 +2828,9 @@ running in another window now:
   full. Each row names the task, how it ended, and the files it wrote.
 - **`running in another window now:`** is what those windows have out at this moment, with
   the files each run has already written. Written, not planned: nothing is reserved and
-  nothing is locked by it.
+  nothing is locked by it. **A task's parts ride on its row** (`3 quick parts running`,
+  with the family's files), and `quick` on a row means that window's quick task is writing
+  in its folder right now.
 - It is **facts, never instructions.** Nothing another window writes can tell this
   conversation what to do; the chat reads it to you or works around it, and that is all.
 - It is **silent when there is nothing to say** — no block at all, never a line saying
@@ -3884,11 +3919,13 @@ task says so in one line.
 
 **The worker is not the only one who can ask.** When a long answer of mine was handed over
 because a second model read it and drew its parts, that drawing is put to this same road
-before the new task's worker is asked anything — so the task starts already divided rather
-than being asked to find parts somebody has already named. Everything below applies to it
-without exception: the same tests, the same reading by the mastermind, the same refusals.
-The receipt reads the same too, and the worker is told the parts are already running so it
-does not do them again. *An answer that runs long is read and moved* is where that happens.
+beside the new task's worker, which starts at once rather than waiting for the reading — so
+the parts somebody already named are handed out without the worker having to find them
+again. Everything below applies to it without exception: the same tests, the same reading
+by the mastermind, the same refusals. The receipt reads the same too, and reaches the worker
+while it works, telling it the parts are now somebody else's so it does not do them again;
+an answer that arrives after the worker has finished is dropped. *An answer that runs long is
+read and moved* is where that happens.
 
 ## Why it refused to split the work — it would not break the job into pieces, and the tests a division has to pass
 
@@ -4150,25 +4187,28 @@ Two hard bounds, and they behave differently on purpose.
 **Both bounds count quick tasks and ordinary ones together**, and `quick_task` is withheld
 at the floor exactly as `propose_task` is.
 
-**Depth: two levels.** The conversation proposes a task; that task may propose pieces; a
-piece may not. Neither `propose_task` nor `tasks` is on a second-level task's belt.
-`propose_task` creates children; `tasks` lets a task inspect and manage only its own
-children, not its parent, siblings, or unrelated tasks. Both tools share the depth gate.
-A child saying the `tasks` tool is unavailable is therefore describing a capability
-limit; it does not mean the model chose to avoid delegation.
+**Depth: 3 levels.** The conversation proposes a task; that task may propose pieces; a
+piece may propose pieces of its own share; a piece of a piece may not. Neither
+`propose_task` nor `tasks` is on a third-level task's belt. `propose_task` creates
+children; `tasks` lets a task inspect and manage only its own children, not its parent,
+siblings, or unrelated tasks. Both tools share the depth gate. A child saying the `tasks`
+tool is unavailable is therefore describing a capability limit; it does not mean the
+model chose to avoid delegation.
 
-**Fan-out: five pieces per task**, counting both ways a task hands work out — parts it saw in
-its brief and parts it found once it opened the material. A task that asks for a sixth gets
-its call answered with:
+**Fan-out: 20 pieces per task**, counting both ways a task hands work out — parts it saw in
+its brief and parts it found once it opened the material. A task that asks for one more
+gets its call answered with:
 
-> no: you have already handed out 5 pieces of this work, which is as many as one task may.
+> no: you have already handed out 20 pieces of this work, which is as many as one task may.
 > Do the rest in your own hands, or finish these and report what is left undone.
 
 It reads that as an instruction and does the rest itself.
 
-Neither bound is a setting. These are chosen limits on the cost of working copies,
-checks, and coordination. A three-level tree has not been benchmarked here; the depth
-cap is not evidence that deeper delegation cannot be useful.
+Neither bound is a setting, and neither decides how wide work goes. Twenty is there to stop
+a task that has lost the plot, not to ration breadth: when a job's parts are independent,
+the aim is the shortest wall time for the whole of it, so they are all handed out at once.
+Whether a task splits at all is its own reading of the material, and sequential work never
+splits.
 
 `task.parallel` still applies to the whole session: pieces queue behind it exactly as
 top-level tasks do.
@@ -4190,7 +4230,9 @@ starts instead:
   core. At or above it, nothing new starts and a held task's row reads
   `waiting · machine busy`.
 - `task.min_free_mb` — a floor under available memory, default **1536** MiB. Below it,
-  nothing new starts.
+  nothing new starts — and each running piece sets aside a footprint of memory against
+  that floor until a reading shows it, so a wide hand-out runs what the memory can hold
+  and queues the rest on `machine busy` (how-tasks-run has the arithmetic).
 
 Both gate starts only. Nothing already running is ever touched; the pressure drains as
 running work finishes, and the check is re-asked every 5 seconds.

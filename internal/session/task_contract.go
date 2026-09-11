@@ -480,6 +480,14 @@ type TaskNotice struct {
 	// countdown (task.autoapprove_seconds). A zero Deadline means the clock is
 	// off or has been held by typing, and only an answer resolves the proposal.
 	Deadline time.Time
+	// Withdrawn is set on the one rebroadcast of a proposal that takes it back
+	// before anybody's answer admitted it, and it is the reason in the engine's
+	// words. It happens to exactly one kind of proposal: one whose card went up
+	// while the message carrying the call was still arriving, when that message
+	// then did not go through (task.go's [Agent.stageTask]). A surface settles
+	// the card with it — whatever its own clock has drawn by then — because
+	// nothing was started and nothing is waiting on the card any more.
+	Withdrawn string
 
 	// ModelOptions is the shortlist a `model` argument raised that fits more
 	// than one model this install has (taskmodel.go). It is empty for every
@@ -729,10 +737,15 @@ const (
 	// IT IS A LIFE OF THE NODE AND NOT A STEP OF A TOOL CALL, which is why it
 	// belongs on this list beside the other three. The reading is a full call to
 	// the tier that thinks — measured at thirteen seconds, and bounded by the
-	// role's own tier — and it happens twice in a node's life where the
-	// harness submits a drawing on the worker's behalf before its first request
-	// (task_divide_sketch.go): a card that has just appeared, with a clock going
-	// up and nothing else on it, for as long as the reading lasts.
+	// role's own tier — and the worker that asked for it sits inside its own
+	// `divide_work` call for all of it.
+	//
+	// IT IS DRAWN ONLY WHERE SOMEBODY WAITS ON IT (task_divide.go's
+	// [Agent.sizingWait]). It used to be drawn over the drawing the harness put
+	// before a node's first request as well, which held a brand new card on this
+	// word for three and a half minutes on the measured node; that drawing is
+	// weighed beside a worker that is already at work now (task_divide_sketch.go),
+	// and the row says what the worker is doing instead.
 	TaskPhaseSizing = "sizing"
 )
 
@@ -772,4 +785,61 @@ type TaskPhaseNotice struct {
 	// ([mendingLine], [taskFindingLine]) and never a paraphrase — the machinery's
 	// names for what happened are not on this wire.
 	Text string
+	// Call is THE REQUEST THIS PHASE IS WAITING ON, while it is out, and nil
+	// the rest of the time — before the first request goes, between two rungs
+	// of a ladder, and on every phase that runs no call of its own
+	// (task_calltrail.go).
+	//
+	// IT RIDES THE PHASE AND NOT A LANE OF ITS OWN because it is the phase's
+	// own news: the sizing word says the work is being sized, Text says which
+	// model was asked, and this says what that model is doing right now. One
+	// notice carries all three so that a surface copying the notice whole — as
+	// every one does — can never draw a live call under a phase that has moved
+	// on.
+	Call *TaskCall
+}
+
+// TaskCall is one request a node is waiting on, as far as it has got: the
+// model asked and the machine answering, when it went out and when anything
+// first came back, and how much has come back since.
+//
+// IT IS THE SURFACE'S HALF OF internal/provider's [provider.CallProgress], and
+// deliberately less of it. How a call ENDED is not here, because an ended call
+// is not drawn — the ladder's own sentence in [TaskPhaseNotice.Text] says what
+// became of it — and the error that ended it would not survive the wire a
+// hosted window reads this on (internal/remote's EventWire carries every
+// field of an event as JSON). Which concurrent arm of the question this is is
+// not here either: the notice carries the one arm nearest an answer
+// ([callTrail.leading]), because that is the one a person is waiting on.
+//
+// THE COUNTS ARE THE STREAM'S OWN RUNNING ESTIMATE and never the bill, for the
+// provider's reason: the usage receipt is what money is counted from, and it
+// is on the node's journal as the call's own line once the call is over.
+type TaskCall struct {
+	// Model is what was asked, and Served the machine answering it — "" until
+	// the stream names one, which a surface draws as nothing.
+	Model  string
+	Served string
+	// Started is when the request went out, and FirstToken when anything —
+	// thought or answer — first came back. FirstToken is zero until it does,
+	// which is the moment a person is waiting through.
+	Started    time.Time
+	FirstToken time.Time
+	// Tokens is the answer as it arrives and Reasoning the thought underneath
+	// it. Both are running totals that only climb.
+	Tokens    int
+	Reasoning int
+	// Phase is where the request is now, in internal/provider's own words for
+	// it: out with nothing back, parked on a provider's pacing, thinking, or
+	// writing. It is never [provider.CallEnded] here.
+	Phase provider.CallPhase
+}
+
+// Received is everything the request has had back — the answer and the thought
+// under it — which is the one figure that moves while a person waits on it.
+func (c *TaskCall) Received() int {
+	if c == nil {
+		return 0
+	}
+	return c.Tokens + c.Reasoning
 }

@@ -1136,14 +1136,19 @@ type Config struct {
 	// it.
 	auditWindow time.Duration
 
-	// auditClock is what the checking window is measured against, and it is
-	// UNEXPORTED AND FOR TESTS ONLY ([Agent.auditNow]). The product's answer is
-	// [time.Now]; this exists because the ladder reads that clock several times
-	// on the way to a second call — once with the first checker closed and once
-	// more with the fresh one built — and the window can close between two of
-	// those readings. A real clock reproduces that gap only under load, and a
-	// test that cannot move the clock can only wait for it and hope.
-	auditClock func() time.Time
+	// clock is THE AGENT'S ONE READING OF THE WORLD'S TIME, and it is UNEXPORTED
+	// AND FOR TESTS ONLY ([Agent.now]). The product's answer is [time.Now].
+	//
+	// It exists because the checking ladder reads the clock several times on the
+	// way to a second call — once with the first checker closed and once more
+	// with the fresh one built — and the window can close between two of those
+	// readings. A real clock reproduces that gap only under load, and a test that
+	// cannot move the clock can only wait for it and hope. It is one field rather
+	// than one per caller for the reason every other "one door" here is: a second
+	// movable clock is a test that pins one of them and is surprised by the
+	// other. The other caller today is the trail that records a request's own
+	// length (task_calltrail.go).
+	clock func() time.Time
 
 	// AskConsent says somebody is watching this agent's events and will answer
 	// an EventConsentRequest with [Agent.ResolveConsent].
@@ -1775,21 +1780,12 @@ type Config struct {
 	// (task_run.go's newTaskAgentOn).
 	quickItems func(done int, add []string) string
 
-	// memoryBrief is the <memory> block a task node OPENS WITH: the parent
-	// routed it against this node's brief at the spawn seam, because a node has
-	// no turn of its own to route against and no store of its own to route into
-	// (memory.go, task_run.go's newTaskAgent).
-	//
-	// It is private for roomThread's reason: no surface sets it, the executor
-	// does — and a node is handed the WORDS rather than the store, so a family
-	// of eight nodes cannot become eight writers on one brain.
-	memoryBrief string
 	// fixesDir is the project bucket the error→fix sidecar keeps its file in
 	// (fixstore.go), and it is set only when this agent is a NODE. A node's
 	// session file is a journal inside its parent's place rather than a place of
 	// its own, so it cannot derive the bucket for itself; handed one, a family of
 	// eight workers and the conversation that spawned them all learn from the
-	// same file. It is private for memoryBrief's reason: no surface sets it, the
+	// same file. It is private for roomThread's reason: no surface sets it, the
 	// executor does (task_run.go, orchestrate.go).
 	fixesDir string
 	// droppings is THE FAMILY'S SESSION FOLDER, carried by an agent that has no
@@ -1808,7 +1804,7 @@ type Config struct {
 	// deliverablesDir). This row carries the ONE fact a worker needs — where the
 	// harness keeps its own litter — and nothing else.
 	//
-	// It is private for memoryBrief's reason: no surface sets it, the constructor
+	// It is private for roomThread's reason: no surface sets it, the constructor
 	// that builds the worker does.
 	droppings Place
 	// ownSpace marks a worker standing in THE CONVERSATION'S OWN SPACE rather
@@ -1837,8 +1833,8 @@ type Config struct {
 	// this node's own children.
 	taskID uint64
 	// taskDepth is how many tasks deep this agent sits: 0 in the conversation, 1
-	// in a task the conversation proposed, 2 in a sub-task of that one.
-	// taskDepthLimit is the floor, and an agent standing on it is handed no
+	// in a task the conversation proposed, 2 in a sub-task of that one, and so
+	// on. taskDepthLimit is the floor, and an agent standing on it is handed no
 	// propose_task at all (tools.go) — absent, not refusing.
 	taskDepth int
 

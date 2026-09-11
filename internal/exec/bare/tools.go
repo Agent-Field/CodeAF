@@ -34,6 +34,10 @@ type Tool struct {
 	Description string
 	Schema      json.RawMessage
 	Execute     func(ctx context.Context, args json.RawMessage) (text string, isError bool, err error)
+	// staged is set by [StagedTool] and by nothing else, and it is unexported
+	// so that stays true: see stage.go for why being safe to start early is a
+	// tool's shape and never a claim it makes about itself.
+	staged bool
 }
 
 // AllTools returns all seven pi tools in registry order: read, bash, edit,

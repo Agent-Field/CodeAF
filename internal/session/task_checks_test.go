@@ -48,7 +48,7 @@ func declaringNode(checks ...string) *TaskNode {
 // verify nothing, spun for the whole deadline, and the node landed needing a
 // person. The declared check now opens, and nothing next to it does.
 func TestTheCheckerRunsTheCheckTheWorkDeclaredAndNothingElse(t *testing.T) {
-	door := auditDoorFor(declaringNode("bash run_tests.sh"), "")
+	door := auditDoorFor(declaringNode("bash run_tests.sh"), standingOn(""))
 
 	if refusal, ok := auditRefusal("bash run_tests.sh", door.allowed); !ok {
 		t.Fatalf("the checker may not run the check the work itself names: %s", refusal)
@@ -91,7 +91,7 @@ func TestTheCheckerRunsTheCheckTheWorkDeclaredAndNothingElse(t *testing.T) {
 // check.
 func TestADeclaredCheckKeepsTheWildcardTheWorkWroteIt(t *testing.T) {
 	dir := checkedTree(t, "run_tests.sh")
-	door := auditDoorFor(declaringNode("run_tests.*"), dir)
+	door := auditDoorFor(declaringNode("run_tests.*"), standingOn(dir))
 	if refusal, ok := auditRefusal("run_tests.sh", door.allowed); !ok {
 		t.Fatalf("the wildcard the work wrote does not admit the file it names: %s", refusal)
 	}
@@ -119,7 +119,7 @@ func TestOnlyCommandShapedTextBecomesADeclaredCheck(t *testing.T) {
 	if len(got) != 2 || got[0] != "make check" || got[1] != "curl example.com" {
 		t.Fatalf("the declared checks came back as %q", got)
 	}
-	door := auditDoorFor(declaringNode(got...), "")
+	door := auditDoorFor(declaringNode(got...), standingOn(""))
 	if refusal, ok := auditRefusal("make check", door.allowed); !ok {
 		t.Fatalf("the check the contract actually names is refused: %s", refusal)
 	}
@@ -182,7 +182,7 @@ func TestOnlyARunnableSpanBecomesADeclaredCheck(t *testing.T) {
 				continue
 			}
 		}
-		got := runnableChecks([]string{one.span}, one.ground)
+		got := runnableChecks([]string{one.span}, standingOn(one.ground))
 		if one.door && len(got) != 1 {
 			t.Errorf("%s (%q) is runnable here and did not become a check: %q", one.what, one.span, got)
 		}
@@ -196,7 +196,7 @@ func TestOnlyARunnableSpanBecomesADeclaredCheck(t *testing.T) {
 	// on that list is a command that is about to be run — and a declaration is not
 	// a promise that the thing declared exists.
 	declared := auditDoorFor(declaringNode("origin", "main", "Agent-Field/agentfield",
-		"js/polynomial-redos"), tree)
+		"js/polynomial-redos"), standingOn(tree))
 	if len(declared.checks) != 0 {
 		t.Fatalf("a contract naming words that are not programs opened doors onto them: %q", declared.checks)
 	}
@@ -226,7 +226,7 @@ func TestNothingInANodesProseBecomesACheckerDoor(t *testing.T) {
 	node := checkedNode("repair the tox configuration, checking with `run_tests.sh`",
 		"`run_tests.sh` passes")
 	node.spec.request = "the reproduction ends with:\n$ chmod 000 tox.ini"
-	door := auditDoorFor(node, tree)
+	door := auditDoorFor(node, standingOn(tree))
 	if len(door.checks) != 0 {
 		t.Fatalf("a node that declared no verification still has checks: %q", door.checks)
 	}
@@ -242,7 +242,7 @@ func TestNothingInANodesProseBecomesACheckerDoor(t *testing.T) {
 	// AND THE SAME DOCUMENT WITH THE CHECK DECLARED RUNS IT. What moved is where
 	// the command comes from, not whether a check can be made.
 	node.Checks = []string{"bash run_tests.sh"}
-	declared := auditDoorFor(node, tree)
+	declared := auditDoorFor(node, standingOn(tree))
 	if refusal, ok := doorRefusal("bash run_tests.sh", declared); !ok {
 		t.Fatalf("the declared check does not open the node's door: %s", refusal)
 	}
@@ -259,7 +259,7 @@ func TestANodesDoneWhenThatIsThePastedAskCarriesNoStepOutOfIt(t *testing.T) {
 	tree := checkedTree(t, "tox.ini", "run_tests.sh")
 	node := checkedNode("repair the tox configuration", routeAskAcceptance+
 		"check it with `run_tests.sh`\nthe reproduction ends with:\n$ chmod 000 tox.ini")
-	door := auditDoorFor(node, tree)
+	door := auditDoorFor(node, standingOn(tree))
 
 	if len(door.checks) != 0 {
 		t.Fatalf("the ask-fallback done-condition opened a node door: %q\n%s", door.checks, door.offer())
@@ -285,7 +285,7 @@ func TestAWorkerReceiptIsNeverACheckerDoor(t *testing.T) {
 			result: "Finished release"},
 		toolReceipt{tool: "bash", args: `{"command":"shutdown -h now"}`, result: "refused"},
 	)
-	door := auditDoorFor(node, dir)
+	door := auditDoorFor(node, standingOn(dir))
 	if len(door.checks) != 0 {
 		t.Fatalf("what the worker ran became a door: %q", door.checks)
 	}
@@ -374,7 +374,7 @@ func TestCheckerAdmissionHasNoProseHarvest(t *testing.T) {
 // nobody answered. The window follows whether there is a check and nothing else
 // — never the size of the work.
 func TestAnAuditWithNothingToRunConcludesLongBeforeTheDeadline(t *testing.T) {
-	empty := auditDoorFor(checkedNode("write a paragraph about the API", "the paragraph is there"), "")
+	empty := auditDoorFor(checkedNode("write a paragraph about the API", "the paragraph is there"), standingOn(""))
 	if len(empty.checks) != 0 {
 		t.Fatalf("a node that declares and ran nothing has checks: %q", empty.checks)
 	}
@@ -390,7 +390,7 @@ func TestAnAuditWithNothingToRunConcludesLongBeforeTheDeadline(t *testing.T) {
 		}
 	}
 
-	full := auditDoorFor(declaringNode("make check"), "")
+	full := auditDoorFor(declaringNode("make check"), standingOn(""))
 	if window := full.window(); window != auditDeadline {
 		t.Fatalf("an audit with a check to run gets %s, want the full %s", window, auditDeadline)
 	}
@@ -495,7 +495,7 @@ func writeCheckFile(t *testing.T, dir, name, body string, mode os.FileMode) stri
 // the work never declared, still does not.
 func TestOneFileIsOneCheckHoweverTheCheckerSpellsIt(t *testing.T) {
 	dir := checkedTree(t, "run_tests.sh", "other.sh")
-	door := auditDoorFor(declaringNode("bash run_tests.sh"), dir)
+	door := auditDoorFor(declaringNode("bash run_tests.sh"), standingOn(dir))
 
 	for _, spelling := range []string{
 		"run_tests.sh",
@@ -553,7 +553,7 @@ func TestOneFileIsOneCheckHoweverTheCheckerSpellsIt(t *testing.T) {
 // shut for the same reason it was shut before.
 func TestAWildcardCheckNamesTheFileOnDisk(t *testing.T) {
 	dir := checkedTree(t, "run_tests.sh", "other.sh")
-	door := auditDoorFor(declaringNode("run_tests.*"), dir)
+	door := auditDoorFor(declaringNode("run_tests.*"), standingOn(dir))
 	for _, spelling := range []string{"run_tests.sh", "./run_tests.sh", "bash run_tests.sh"} {
 		if refusal, ok := doorRefusal(spelling, door); !ok {
 			t.Fatalf("the wildcard the work wrote does not admit %q: %s", spelling, refusal)
@@ -576,7 +576,7 @@ func TestATwoWordSpellingMustNameTheFilesOwnInterpreter(t *testing.T) {
 	writeCheckFile(t, dir, "direct.py", "#!/usr/bin/python3\nprint(1)\n", 0o755)
 	writeCheckFile(t, dir, "found.sh", "#!/usr/bin/env bash\nexit 0\n", 0o755)
 	writeCheckFile(t, dir, "flagged.py", "#!/usr/bin/env -S python3 -u\nprint(1)\n", 0o755)
-	door := auditDoorFor(declaringNode("direct.py", "found.sh", "flagged.py"), dir)
+	door := auditDoorFor(declaringNode("direct.py", "found.sh", "flagged.py"), standingOn(dir))
 
 	for _, spelling := range []string{
 		// The program the line names, and any path that reaches that program.
@@ -636,7 +636,7 @@ func TestAFileThatDeclaresNoInterpreterIsRunTheWayTheWorkRanIt(t *testing.T) {
 	// The executable bit alone is a file saying that running it happens, which is
 	// what makes the bare spellings work — but it names no program, so no word
 	// may stand in front of it.
-	marked := auditDoorFor(declaringNode("plain.sh"), dir)
+	marked := auditDoorFor(declaringNode("plain.sh"), standingOn(dir))
 	for _, spelling := range []string{"plain.sh", "./plain.sh", filepath.Join(dir, "plain.sh")} {
 		if refusal, ok := doorRefusal(spelling, marked); !ok {
 			t.Fatalf("an executable check refused its own bare spelling %q: %s", spelling, refusal)
@@ -648,7 +648,7 @@ func TestAFileThatDeclaresNoInterpreterIsRunTheWayTheWorkRanIt(t *testing.T) {
 
 	// A file with neither fact is data until the work says otherwise — and when
 	// the work says otherwise, that spelling and no other is the door.
-	declared := auditDoorFor(declaringNode("bash data.txt"), dir)
+	declared := auditDoorFor(declaringNode("bash data.txt"), standingOn(dir))
 	if refusal, ok := doorRefusal("bash data.txt", declared); !ok {
 		t.Fatalf("the work's own spelling of its own check was refused: %s", refusal)
 	}
@@ -665,7 +665,7 @@ func TestAFileThatDeclaresNoInterpreterIsRunTheWayTheWorkRanIt(t *testing.T) {
 	// happened; it does not put the file under contract as verification.
 	ran := auditDoorFor(checkedNode("build it", "it builds",
 		toolReceipt{tool: "bash", args: `{"command":"bash ranonly.sh"}`, result: "exit 0"},
-	), dir)
+	), standingOn(dir))
 	for _, refused := range []string{"bash ranonly.sh", "ranonly.sh", "./ranonly.sh"} {
 		if _, ok := doorRefusal(refused, ran); ok {
 			t.Fatalf("%q was admitted on the strength of a receipt", refused)

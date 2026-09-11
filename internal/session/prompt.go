@@ -149,6 +149,31 @@ var dividePrompt string
 // the constant.
 const fanLimitToken = "FAN_LIMIT"
 
+// pieceDepthToken is the other thing the fan-out page cannot spell for itself:
+// whether the pieces this worker hands out may split in turn. That depends on
+// how deep the worker stands, so no one sentence is true on every page that
+// carries it, and the clause is chosen where the depth is known.
+const pieceDepthToken = "PIECE_DEPTH"
+
+// fanoutPage is the fan-out page as one worker is handed it, with both of the
+// numbers it reasons from read off the code that enforces them. A worker whose
+// pieces will themselves be given the verb is told so, because a part it can
+// hand out whole is a part it plans differently from one it must keep small
+// enough for a single pair of hands; a worker whose pieces stand on the floor is
+// told they do not have the tool. The page is composed once, at construction,
+// from the worker's own depth, so it is as fixed as every other line of
+// message[0].
+func fanoutPage(config Config) string {
+	pieces := "a piece you hand out cannot hand out more — it does not have the tool"
+	if fansOutAt(config.taskDepth + 1) {
+		pieces = "a piece you hand out may split its own share under the same cap"
+	}
+	return strings.NewReplacer(
+		fanLimitToken, strconv.Itoa(taskFanLimit),
+		pieceDepthToken, pieces,
+	).Replace(strings.TrimRight(fanoutPrompt, "\n"))
+}
+
 // disciplineToken is where prompts/system.md says the working discipline goes.
 // The page names the place and [disciplinePrompt] holds the words, for the same
 // reason [fanLimitToken] exists: the second place a thing is written is the
@@ -258,7 +283,7 @@ func renderSystemAt(config Config, now time.Time) string {
 	// CLAUDE.md and the belt is built from the same predicate).
 	if config.mayFanOut() {
 		out.WriteString("\n\n")
-		out.WriteString(strings.ReplaceAll(strings.TrimRight(fanoutPrompt, "\n"), fanLimitToken, strconv.Itoa(taskFanLimit)))
+		out.WriteString(fanoutPage(config))
 	}
 	// AND THE PAGE ABOUT DISCOVERING WIDTH, on exactly the predicate the belt
 	// is built from, so the prompt and the toolbelt can never disagree about

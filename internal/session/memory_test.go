@@ -719,7 +719,8 @@ func TestTheOldMemoryFileIsImportedOnceAndRenamed(t *testing.T) {
 // ── what a task node opens with ─────────────────────────────────────────────
 
 // A node has no turn of its own to route against, so the conversation routes
-// for it — against the brief — and hands down the WORDS.
+// for it — against the brief — and hands down the WORDS ([Agent.takeMemory]),
+// whenever the reading beside its work answers.
 func TestATaskNodeOpensWithTheMemoryItsBriefNeeded(t *testing.T) {
 	script := &reflexScript{}
 	agent, brain := brainAgent(t, script, nil)
@@ -732,11 +733,12 @@ func TestATaskNodeOpensWithTheMemoryItsBriefNeeded(t *testing.T) {
 	}
 
 	child, err := newAgent(Config{
-		Workspace: t.TempDir(), Model: "test/model", System: "SYSTEM", memoryBrief: block,
+		Workspace: t.TempDir(), Model: "test/model", System: "SYSTEM",
 	}, script)
 	if err != nil {
 		t.Fatalf("newAgent: %v", err)
 	}
+	child.takeMemory(block)
 	// The block rides at the TAIL, in its own note, and lands on the drain
 	// immediately before the first request (agent.go's memoryNoteOpening) — so
 	// what a node opens with is read out of the transcript rather than out of
@@ -762,6 +764,133 @@ func TestATaskNodeOpensWithTheMemoryItsBriefNeeded(t *testing.T) {
 	record, _, _ := brain.MemoryRecord(tabs.ID)
 	if record.UseCount != 0 {
 		t.Fatalf("the spawn seam counted %d retrievals", record.UseCount)
+	}
+}
+
+// MEMORY IS AN AID, NOT A CONTRACT, AND A LATE ONE RIDES THE NEXT REQUEST.
+//
+// The router used to be asked inside the worker's constructor, so the worker did
+// not exist until it had answered. It is read beside the work now (memory.go's
+// [nodeMemory]): a worker whose first request goes out first opens without the
+// block, and the block is on the very next request that worker makes, through the
+// same drain every request is assembled by.
+//
+// The order is made by the test: the router is released by the worker's first
+// request and has finished before that request is answered, so the second
+// request of the same turn is the first one it can ride.
+func TestMemoryThatAnswersLateRidesTheWorkersNextRequest(t *testing.T) {
+	const block = "<memory>prefers tabs over spaces in Go</memory>"
+	release := make(chan struct{})
+	memory := &nodeMemory{id: 1, ctx: context.Background(), route: func(context.Context) string {
+		<-release
+		return block
+	}}
+	worker := &lateMemoryWorker{memory: memory, release: release}
+	agent, err := newAgent(Config{Workspace: t.TempDir(), Model: "test/model", System: "SYSTEM", InTask: true}, worker)
+	if err != nil {
+		t.Fatalf("newAgent: %v", err)
+	}
+	t.Cleanup(func() { _ = agent.Close() })
+
+	memory.handTo(agent)
+	collect(t, mustSubmit(t, agent, "start on the first file"))
+	memory.end()
+
+	if len(worker.asked) != 2 {
+		t.Fatalf("the worker made %d requests, want the tool step and the answer", len(worker.asked))
+	}
+	if strings.Contains(worker.asked[0], "prefers tabs") {
+		t.Fatalf("the FIRST request carried a block the router had not answered yet:\n%s", worker.asked[0])
+	}
+	if !strings.Contains(worker.asked[1], "prefers tabs") {
+		t.Fatalf("the block that came back mid-turn never rode the next request:\n%s", worker.asked[1])
+	}
+}
+
+// lateMemoryWorker answers a worker's two requests: the first with a tool call,
+// having let the router go and waited for it to finish, and the second with the
+// end of the turn.
+type lateMemoryWorker struct {
+	memory  *nodeMemory
+	release chan struct{}
+	asked   []string
+}
+
+func (w *lateMemoryWorker) CompleteWithMessages(_ context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+	var asked strings.Builder
+	for _, message := range messages {
+		asked.WriteString(messageText(message))
+		asked.WriteString("\n")
+	}
+	w.asked = append(w.asked, asked.String())
+	if len(w.asked) == 1 {
+		close(w.release)
+		<-w.memory.reader.done
+		return toolResponse("call-1", "bash", `{"command":"true"}`), nil
+	}
+	return textResponse("Done."), nil
+}
+
+// AND THE CONSTRUCTOR NEVER WAITS FOR IT. A worker built for a node whose reading
+// has not answered exists at once, and is handed the block the moment it lands.
+func TestATaskWorkerIsBuiltWithoutWaitingForItsMemory(t *testing.T) {
+	script := &reflexScript{}
+	agent, brain := brainAgent(t, script, nil)
+	tabs := remember(t, brain, "prefers tabs", "prefers tabs over spaces in Go")
+	script.route = `{"inject":["` + tabs.ID + `"],"cmd":null}`
+	graph := agent.graph()
+	graph.run = func(*TaskNode) {}
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "reformat", request: "reformat every Go file in internal/session",
+		brief: "reformat every Go file in internal/session", acceptance: "gofmt reports nothing", model: "test/model"})
+	node := graph.node(id)
+
+	ctx, end := agent.withNodeMemory(context.Background(), node)
+	release := make(chan struct{})
+	reading := nodeMemoryOn(ctx, node)
+	route := reading.route
+	reading.route = func(ctx context.Context) string {
+		<-release
+		return route(ctx)
+	}
+
+	worker, err := agent.newTaskAgent(ctx, t.TempDir(), node, "")
+	if err != nil {
+		t.Fatalf("newTaskAgent: %v", err)
+	}
+	t.Cleanup(func() { _ = worker.Close() })
+	worker.mu.Lock()
+	early := worker.memoryText
+	worker.mu.Unlock()
+	if early != "" {
+		t.Fatalf("the worker was built holding a block the router had not answered: %q", early)
+	}
+
+	close(release)
+	end()
+	worker.mu.Lock()
+	late := worker.memoryText
+	worker.mu.Unlock()
+	if !strings.Contains(late, "prefers tabs over spaces in Go") {
+		t.Fatalf("the router's answer never reached the worker built before it: %q", late)
+	}
+	// AND ONE READING SERVES EVERY WORKER THE NODE BUILDS. A second worker — a
+	// repair round, a resolver — is handed the answer already in hand, and the
+	// router is not asked again.
+	routes, _, _ := script.counts()
+	second, err := agent.newTaskAgent(ctx, t.TempDir(), node, "-repair1")
+	if err != nil {
+		t.Fatalf("newTaskAgent for the second worker: %v", err)
+	}
+	t.Cleanup(func() { _ = second.Close() })
+	second.mu.Lock()
+	handed := second.memoryText
+	second.mu.Unlock()
+	if !strings.Contains(handed, "prefers tabs over spaces in Go") {
+		t.Fatalf("the second worker was not handed the node's block: %q", handed)
+	}
+	if again, _, _ := script.counts(); again != routes {
+		t.Fatalf("the router was asked %d more times for a brief it had already answered", again-routes)
 	}
 }
 

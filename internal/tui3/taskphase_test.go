@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // WHAT THE COLUMN SAYS WHILE THE WORKER IS NOT THE ONE WORKING.
@@ -334,5 +335,121 @@ func TestTheBriefingPhaseNamesWhoTheBriefIsFor(t *testing.T) {
 	bare := phaseFields(PhaseNews{Phase: provider.PhaseBriefing, Since: time.Now()}, time.Now())
 	if len(bare) != 2 || bare[0].full != "briefing" {
 		t.Fatalf("an unnamed briefing draws %v", bare)
+	}
+}
+
+// ── THE REQUEST A LIFE IS WAITING ON ────────────────────────────────────────
+
+// sizingCall is the reading of 2026-09-11 as the engine sends it, eleven and a
+// half seconds after it went out: the model has started thinking, on a machine
+// that has named itself.
+func sizingCall(started time.Time, phase provider.CallPhase, reasoning, tokens int) *session.TaskCall {
+	call := &session.TaskCall{
+		Model: "deepseek/deepseek-v4.1-flash", Served: "DeepInfra", Started: started,
+		Reasoning: reasoning, Tokens: tokens, Phase: phase,
+	}
+	if reasoning+tokens > 0 {
+		call.FirstToken = started.Add(11500 * time.Millisecond)
+	}
+	return call
+}
+
+// sizingLadder is the ladder's own sentence under the phase word
+// (session's task_divide.go sizingLine).
+const sizingLadder = "asking deepseek/deepseek-v4.1-flash · 1 of 2"
+
+// THE REQUEST IS DRAWN, ON THE RAIL AND IN THE ROOM.
+//
+// THE MEASURED FAILURE: task 5 of conversation de9eabcb10cc1e45 read `sizing the
+// work` on its row, the model's id under it and `nothing on this page yet` in
+// its room for 219 seconds, while that model wrote 4,465 tokens of thought. The
+// frames this test logs are the before and the after of that screen.
+func TestARequestASizingIsWaitingOnIsDrawnOnTheRailAndInTheRoom(t *testing.T) {
+	a, _, advance := taskApp(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Modernise the adapters", session.TaskRunning, runningNotice())})
+	node := a.tasks[7]
+	a.room = a.newRoom(7, "Modernise the adapters")
+	started := a.now()
+	sizing := func(call *session.TaskCall) {
+		ev := phaseMove(7, session.TaskPhaseSizing, 0, 0, sizingLadder)
+		ev.TaskPhase.Call = call
+		drive(t, a, taskEventMsg{gen: a.taskGen, ev: ev})
+	}
+	frame := func() (rail, room string) {
+		a.room.dirty = true
+		return plain(strings.Join(a.railPhase(node, underWidth(railWideCols)), "\n")), roomText(a)
+	}
+
+	// BEFORE: the phase and the ladder, and nothing that moves.
+	sizing(nil)
+	advance(41 * time.Second)
+	rail, room := frame()
+	t.Logf("before, the rail:\n%s\nbefore, the room:\n%s", rail, room)
+	if !strings.Contains(room, roomYetWord) {
+		t.Fatalf("with no request out the page should still say why it is empty:\n%s", room)
+	}
+
+	// AFTER: the same moment, with the request riding the phase.
+	sizing(sizingCall(started, provider.CallThinking, 4465, 0))
+	rail, room = frame()
+	t.Logf("after, the rail:\n%s\nafter, the room:\n%s", rail, room)
+	rows := strings.Split(rail, "\n")
+	if len(rows) != 2 {
+		t.Fatalf("the rail drew %d rows for a sizing with a request out, want the phase and the ladder:\n%s", len(rows), rail)
+	}
+	for _, want := range []string{taskSizingWord, "thinking 41s", "↓ 4,465"} {
+		if !strings.Contains(rows[0], want) {
+			t.Fatalf("the rail's phase row %q does not carry %q", rows[0], want)
+		}
+	}
+	if !strings.HasPrefix(rows[1], "asking deepseek/") {
+		t.Fatalf("the rail's second row is %q, want the ladder's own sentence", rows[1])
+	}
+	mark := plain(a.icon(tokens.GThought))
+	want := mark + " " + sizingLadder + " · thinking 41s · ↓ 4,465 · deepinfra"
+	if !strings.Contains(room, want) {
+		t.Fatalf("the room does not draw the request thinking:\nwant %q\n in  %q", want, room)
+	}
+	if strings.Contains(room, roomYetWord) {
+		t.Fatalf("the room says nothing is happening under a request that is thinking:\n%s", room)
+	}
+
+	// THE FIGURE MOVES WITH WHAT ARRIVES, and the mark leaves when the answer
+	// starts: the model is writing, not thinking.
+	sizing(sizingCall(started, provider.CallWriting, 4465, 320))
+	if _, room = frame(); !strings.Contains(room, "writing 41s · ↓ 4,785") || strings.Contains(room, mark+" ") {
+		t.Fatalf("a request writing its answer is drawn as:\n%s", room)
+	}
+}
+
+// NOTHING IS DRAWN FOR A FIGURE NOBODY HAS. A request that has only just gone out
+// has no first token, no count and no machine yet, and its row is its word and
+// its wait — no `↓ 0`, no `via`, no thinking mark.
+func TestARequestWithNothingBackDrawsOnlyItsWait(t *testing.T) {
+	a, _, advance := taskApp(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Modernise the adapters", session.TaskRunning, runningNotice())})
+	a.room = a.newRoom(7, "Modernise the adapters")
+	started := a.now()
+	advance(3100 * time.Millisecond)
+	ev := phaseMove(7, session.TaskPhaseSizing, 0, 0, sizingLadder)
+	ev.TaskPhase.Call = &session.TaskCall{Model: "deepseek/deepseek-v4.1-flash", Started: started, Phase: provider.CallStarted}
+	drive(t, a, taskEventMsg{gen: a.taskGen, ev: ev})
+
+	room := roomText(a)
+	if !strings.Contains(room, sizingLadder+" · first word 3.1s") {
+		t.Fatalf("the waiting request is drawn as:\n%s", room)
+	}
+	for _, absent := range []string{"↓", "via", plain(a.icon(tokens.GThought)) + " "} {
+		if strings.Contains(room, absent) {
+			t.Fatalf("a request with nothing back drew %q:\n%s", absent, room)
+		}
+	}
+
+	// AND IT GOES WHEN THE NODE GOES BACK TO WORK, with everything else the
+	// phase put on the row.
+	drive(t, a, taskEventMsg{gen: a.taskGen, ev: phaseMove(7, session.TaskPhaseWorking, 0, 0, "")})
+	a.room.dirty = true
+	if room := roomText(a); strings.Contains(room, "first word") {
+		t.Fatalf("a node back at work still draws the request:\n%s", room)
 	}
 }

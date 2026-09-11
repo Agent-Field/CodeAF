@@ -850,7 +850,7 @@ func TestASketchRoadDivisionWritesNoCommit(t *testing.T) {
 	family.graph.run = func(*TaskNode) {}
 	before := strings.TrimSpace(gitOut(t, family.tree.dir, "rev-parse", "HEAD"))
 
-	said, person := family.worker.divideFromSketch(context.Background())
+	said, person, _ := weighBeside(t, family.worker)
 	if person != "" {
 		t.Fatalf("the sketch road came back with a person's own job: %q", person)
 	}
@@ -909,21 +909,45 @@ func TestASealCarriesAWorldWhoseFurrowMarkerIsHidden(t *testing.T) {
 }
 
 // THE FORK RUNG HAS THE SAME CORNER, and a person whose `.gitignore` lists it
-// used to lose the rung the same way.
-func TestAForkSealsAWorldWhosePrivateCornerIsIgnored(t *testing.T) {
+// used to lose the rung the same way. It seals through the same door as the
+// snapshot now ([universeBranch]), so what is pinned here is the fork's half of
+// that door: the branch cut at the seal, standing clean, with the corner out.
+//
+// AND THE PERSON'S HOOKS HAVE NO SAY IN A MACHINE COMMIT. The fork's `.git` is a
+// copy of theirs, hooks included, and the old seal ran `git checkout -b` and
+// `git commit` — so a commit-msg rule or a post-checkout script that refused
+// refused the whole rung, on a repository the snapshot rung (which writes with
+// `commit-tree`) grounded without a word. Both hooks here refuse everything.
+func TestAForkSealsItsWorldPastTheCornerAndThePersonsHooks(t *testing.T) {
 	repo := newTestRepo(t)
 	writeFile(t, filepath.Join(repo, ".gitignore"), aforgeDroppings+"/\n")
 	mustGit(t, repo, "add", ".gitignore")
 	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "ignore the corner")
+	for _, hook := range []string{"commit-msg", "pre-commit", "post-checkout"} {
+		path := filepath.Join(repo, ".git", "hooks", hook)
+		writeFile(t, path, "#!/bin/sh\necho 'no machine commits here' >&2\nexit 1\n")
+		if err := os.Chmod(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
 	writeFile(t, filepath.Join(repo, "wip.txt"), "the parent's unfinished line\n")
 	writeFile(t, filepath.Join(repo, aforgeDroppings, "notes.md"), "private\n")
 
-	commit, ok := sealForkWorld(repo, "task/fork-seal", "the whole job")
-	if !ok || commit == "" {
-		t.Fatalf("the fork rung answered %q, %v; want the parent's world sealed", commit, ok)
+	commit, err := sealGroundWork(repo, "the whole job")
+	if err != nil || commit == "" {
+		t.Fatalf("the seal answered %q, %v; want the parent's world sealed", commit, err)
 	}
-	listed := gitOut(t, repo, "ls-tree", "-r", "--name-only", commit)
+	if err := standOnSeal(repo, "task/fork-seal", commit); err != nil {
+		t.Fatalf("the branch could not be cut at the seal: %v", err)
+	}
+	listed := gitOut(t, repo, "ls-tree", "-r", "--name-only", "task/fork-seal")
 	if !strings.Contains(listed, "wip.txt") || strings.Contains(listed, aforgeDroppings) {
 		t.Fatalf("the sealed world is wrong:\n%s", listed)
+	}
+	if head := strings.TrimSpace(gitOut(t, repo, "rev-parse", "--abbrev-ref", "HEAD")); head != "task/fork-seal" {
+		t.Fatalf("the fork stands on %q, want its task branch", head)
+	}
+	if status := gitOut(t, repo, "status", "--porcelain"); strings.TrimSpace(status) != "" {
+		t.Fatalf("the fork does not wake up clean:\n%s", status)
 	}
 }

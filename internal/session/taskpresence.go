@@ -224,16 +224,32 @@ type PresenceTask struct {
 	// written by a build older than this field; a surface draws nothing for any
 	// of them.
 	Activity string `json:"activity,omitempty"`
-	// Done and Total are how far an ADAPTIVE RUN has got: nodes settled, of the
-	// nodes its planner has laid out so far ([orchestrate.Snapshot]). Total moves
-	// as the planner amends the graph, so this is a count and never a promise of
-	// the end.
+	// Done and Total are how far work that COUNTS ITS OWN PROGRESS has got: for
+	// an ADAPTIVE RUN, nodes settled of the nodes its planner has laid out so far
+	// ([orchestrate.Snapshot]); for a QUICK TASK, items ticked of the items on its
+	// list so far — the same two numbers its own row reads as `quick · 2/4`. Total
+	// moves in both, as the planner amends the graph or the worker adds a step, so
+	// this is a count and never a promise of the end.
 	//
-	// BOTH ARE ZERO FOR WORK THAT DOES NOT COUNT THIS WAY — a task node, and a
-	// run whose planner has not laid anything out yet — and a surface draws no
-	// `0 of 0` for them (the emptiness law).
+	// BOTH ARE ZERO FOR WORK THAT DOES NOT COUNT THIS WAY — an ordinary task, a
+	// quick task with no list, and a run whose planner has not laid anything out
+	// yet — and a surface draws no `0 of 0` for them (the emptiness law).
 	Done  int `json:"done,omitempty"`
 	Total int `json:"total,omitempty"`
+	// Kind is what sort of node this is ([TaskKind]), and absent for the
+	// ordinary one — an adaptive run's row, which is not a node, leaves it off
+	// too. It crosses the window because the two kinds are different facts to a
+	// reader deciding whether to start the same work: a task writes in a copy of
+	// its own and comes home through a merge, and a quick task writes IN THAT
+	// WINDOW'S FOLDER while it runs.
+	Kind TaskKind `json:"kind,omitempty"`
+	// Parent is the id of the node that handed this one out, in [PresenceTask.ID]'s
+	// own spelling, and absent for work the conversation started itself. It is
+	// what lets a reader fold a family onto one row: eight quick parts under one
+	// task are one piece of work with eight hands, and read flat they were eight
+	// unrelated jobs — exactly the picture that makes another window's model
+	// propose the same work a ninth time.
+	Parent string `json:"parent,omitempty"`
 }
 
 // PresenceJob is one background job a live session has running right now — a
@@ -1098,7 +1114,7 @@ func (a *Agent) presenceTasks() []PresenceTask {
 		if phase == "" {
 			activity = node.room.recorder().activity()
 		}
-		out = append(out, PresenceTask{
+		row := PresenceTask{
 			ID:        strconv.FormatUint(node.id, 10),
 			Title:     strings.TrimSpace(node.spec.title),
 			State:     string(node.state),
@@ -1112,7 +1128,18 @@ func (a *Agent) presenceTasks() []PresenceTask {
 			// [PresenceTask.Files] for why that emptiness is unknown and not an
 			// answer.
 			Files: append([]string(nil), node.wrote...),
-		})
+			Kind:  node.kind,
+		}
+		if node.parent != 0 {
+			row.Parent = strconv.FormatUint(node.parent, 10)
+		}
+		// A QUICK TASK'S LIST IS ITS PROGRESS, read under the lock the `items`
+		// tool writes it under ([TaskNode.quickListChange]) — the same two numbers
+		// [quickDoing] puts on its own row.
+		if quick := node.spec.quick; quick != nil {
+			row.Done, row.Total = quick.doneCountLocked(), len(quick.items)
+		}
+		out = append(out, row)
 	}
 	return out
 }

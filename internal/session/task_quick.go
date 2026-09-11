@@ -92,20 +92,22 @@ type quickClaim struct {
 	path string
 }
 
-// newQuickTaskSpec is THE ONE DOOR EVERY QUICK SPEC COMES THROUGH, on every
-// road, and it exists because the second road forgot a field.
+// newQuickTaskSpec is the one constructor of a quick node's BODY — the line, the
+// list, the claim and the ticks — and it has exactly two callers: the admission
+// door ([Agent.newQuickSpec]) and the record that brings a body back from a
+// checkpoint ([quickRecord.body]).
 //
-// A spec assembled with a composite literal is a spec whose `done` is whatever
-// that literal happened to say, and the ceiling road's literal said nothing
-// (checkpoint_quick.go) — so a node handed a drawing arrived with three items
+// It exists because a body assembled with a composite literal is a body whose
+// `done` is whatever that literal happened to say. The ceiling road once built
+// its own and said nothing, so a node handed a drawing arrived with three items
 // and no ticks to put against them, and the first `items {"done": 1}` its
-// worker made indexed past the end of a slice of length zero. A nil check at
-// the index would have answered that one call; a constructor answers every road
-// that is ever written, including the ones that do not exist yet.
+// worker made indexed past the end of a slice of length zero. That road now
+// admits through the same door as the tool (checkpoint_quick.go), and the
+// constructor is what keeps a third road from growing the same fault.
 //
 // `waits` is deliberately not a parameter. It is admission's own finding and is
-// hung on the spec by the door that admits ([Agent.newQuickSpec]); the ceiling
-// road has no admission of that kind and would only ever pass nil.
+// hung on the body by the door that admits; a body read back from a record
+// waits for nothing, because the moment it described is over.
 func newQuickTaskSpec(line string, items, files []string) *quickTaskSpec {
 	spec := &quickTaskSpec{line: line, items: items, files: files}
 	spec.growDoneLocked()
@@ -114,14 +116,13 @@ func newQuickTaskSpec(line string, items, files []string) *quickTaskSpec {
 
 // growDoneLocked holds the spec's one invariant: DONE IS PARALLEL TO ITEMS.
 //
-// IT IS HELD BY THE SPEC AND NOT BY ITS CALLERS, which is the whole point. Both
-// readers of `done` already tolerate a short slice — [quickTaskSpec.nextItemLocked]
-// bounds its index and [quickTaskSpec.doneCountLocked] ranges over what is there
-// — so the only place the parallel could ever be broken loudly is the WRITE, and
-// the write is one line in one function. Growing here means a spec restored from
-// a checkpoint, built by a road nobody has written yet, or decoded from a store
-// that dropped the field cannot take a turn down with it: the worst it can do is
-// start the list untickled, which is exactly what a fresh node looks like.
+// IT IS HELD AT THE TWO PLACES A LIST IS MADE LONGER, which are the only places
+// it could be broken: the constructor, and an `add` appending to a running list
+// ([TaskNode.quickListChange]). Both readers of `done` tolerate a short slice
+// anyway — [quickTaskSpec.nextItemLocked] bounds its index and
+// [quickTaskSpec.doneCountLocked] ranges over what is there — so the tick, the
+// one write that indexes, is safe because nothing can reach it with a body the
+// constructor did not make.
 //
 // It never shrinks. A `done` longer than `items` would mean items were removed,
 // which nothing does, and throwing ticks away to make a slice fit would be the
@@ -202,27 +203,56 @@ const quickInterruptedReport = "the quick task did not finish before aforge clos
 // quickLostReport is what a quick task that was STILL WAITING ITS TURN settles
 // with when the window closed under it. It says the two things that are true of
 // it: it never started, so nothing of it is anywhere to go and look at, and it
-// is not coming back — asking again costs a sentence
-// ([nothingIsComingBackForIt] carries why it cannot simply resume).
+// is not coming back — asking again costs a sentence (task_store.go's
+// [interrupt] carries why it does not resume).
 //
 // It is a separate sentence from [quickInterruptedReport] rather than a reuse of
 // it, because that one tells somebody to look in their folder for work this one
 // never did.
 const quickLostReport = "the quick task never started before aforge closed, and it does not resume — ask for it again"
 
-// quickReportOnClose is which of the two a quick node caught by the close
-// settles with, and it is the one place that is decided: what separates them is
-// whether the work HAPPENED, and a row that told somebody to go and look in
-// their folder for work that never started would send them after nothing.
+// quickReportOnClose is the whole report a quick node caught by the close
+// settles with, and it is the one place that is decided: which of the two
+// endings above it was, and then THE LIST, ticked and not.
 //
-// A queued record is the one that never started, and it reaches [interrupt] at
-// all only because its list is not in the checkpoint, so it cannot be run as a
-// quick node either ([nothingIsComingBackForIt] carries that argument).
+// WHAT SEPARATES THE TWO ENDINGS IS WHETHER THE WORK HAPPENED. A queued record
+// never started, and a row that told somebody to go and look in their folder for
+// work that never started would send them after nothing. It is read off the
+// state the record ARRIVED in, so [interrupt] asks before it overwrites it.
+//
+// AND THE LIST IS THE ACCOUNT, because nothing else survives the worker
+// ([taskRecord.Quick]). Its transcript died with the process, its last message
+// was never written, and what the person has is their own folder and this — so
+// a report that said only "did not finish" would leave them to reconstruct from
+// `git diff` how far down a list they cannot see it got. The words are "ticked"
+// and "not ticked" and never "done" and "not done": a tick is a claim the worker
+// made about itself, and an item it finished without ticking is exactly as
+// possible as the reverse. A node with no list says the ending alone (the
+// emptiness law), and so does a record written before the list was carried.
 func quickReportOnClose(record taskRecord) string {
+	report := quickInterruptedReport
 	if record.State == TaskQueued {
-		return quickLostReport
+		report = quickLostReport
 	}
-	return quickInterruptedReport
+	body := record.Quick
+	if body == nil || len(body.Items) == 0 {
+		return report
+	}
+	var ticked, open []string
+	for index, item := range body.Items {
+		if index < len(body.Done) && body.Done[index] {
+			ticked = append(ticked, item)
+			continue
+		}
+		open = append(open, item)
+	}
+	if len(ticked) > 0 {
+		report += fmt.Sprintf("\nticked %d of %d: %s", len(ticked), len(body.Items), strings.Join(ticked, " · "))
+	}
+	if len(open) > 0 {
+		report += "\nnot ticked: " + strings.Join(open, " · ")
+	}
+	return report
 }
 
 // ── the door ────────────────────────────────────────────────────────────────
@@ -303,6 +333,35 @@ type quickArguments struct {
 	Model     string   `json:"model"`
 }
 
+// quickAsk is one quick node AS A ROAD HANDS IT OVER, before anything about it
+// has been decided: what to do, the list, the files it means to write, the ids
+// it waits on, and the two names a caller may give it. It is the tool's wire
+// form with the wire taken off, and it is the whole of what either road knows —
+// the tool parses one out of a call ([Agent.startQuickTask]) and the ceiling
+// reads one out of a drawing ([Agent.quickFromDrawing]).
+//
+// IT IS DELIBERATELY NOT A SPEC. Everything a quick node IS beyond these six
+// fields — where it runs, how it stands on its ground, that nobody names it,
+// that it carries no done-condition, whose family it is in — is a consequence
+// of the kind, and a road that could say any of it would be a road that could
+// say it differently. Those are decided in one place, [Agent.newQuickSpec].
+type quickAsk struct {
+	line      string
+	items     []string
+	files     []string
+	dependsOn []uint64
+	title     string
+	model     string
+}
+
+// askOf is the wire form read as an ask. It is a function rather than a
+// conversion because the wire's field names are the model's and the ask's are
+// this package's, and the two are allowed to drift apart.
+func (parsed quickArguments) askOf() quickAsk {
+	return quickAsk{line: parsed.Line, items: parsed.Items, files: parsed.Files,
+		dependsOn: parsed.DependsOn, title: parsed.Title, model: parsed.Model}
+}
+
 // quickTools is the belt door for `quick_task`.
 //
 // AT THE FLOOR OF THE TREE THE TOOL IS ABSENT, NOT REFUSING, and it is withheld
@@ -344,47 +403,69 @@ func (a *Agent) startQuickTask(_ context.Context, args json.RawMessage) (string,
 	if err := decodeToolArguments(args, &parsed); err != nil {
 		return "Invalid arguments: " + err.Error(), true, nil
 	}
-	// THE LOOK AND THE ADMIT ARE ONE MOVE. The write claim is read out of the
-	// graph by [Agent.newQuickSpec] and written into it by [TaskGraph.admit], and
-	// a batch of quick calls runs concurrently (loop.go) — so without this gate
-	// two doors claiming one path would each find the graph empty of the other
-	// and each start. Any other door that grows a quick node has to hold it over
-	// the same pair; nothing else in this package touches it.
+	id, spec, refusal := a.admitQuick(parsed.askOf())
+	if refusal.said != "" {
+		return refusal.said, true, nil
+	}
+	return quickStartedWord(id, spec), false, nil
+}
+
+// admitQuick is THE ONE DOOR A QUICK NODE COMES THROUGH, whichever road asked
+// for it: it builds the spec, takes the fan slot, reserves the id and admits,
+// and answers the id and the spec it admitted — or the one sentence that says
+// why nothing was.
+//
+// THERE WERE TWO DOORS AND THEY DISAGREED. The ceiling's handover built its
+// quick node by hand and admitted it through the route judge's launcher, and
+// the node that came out was a different object from the tool's: an invented
+// done-condition where the tool's was empty, a working copy's mode where the
+// tool's was in place, a naming call the verb promises not to make, no `where`
+// on the index row, no family, and no look at the write claims. Every one of
+// those was a sentence somebody had to remember to write on a second road. Now
+// there is one road, and nothing about a quick node is decided anywhere else.
+//
+// THE LOOK AND THE ADMIT ARE ONE MOVE. The write claim is read out of the graph
+// by [Agent.newQuickSpec] and written into it by [TaskGraph.admit], and a batch
+// of quick calls runs concurrently (loop.go) — so without [TaskGraph.quickGate]
+// two doors claiming one path would each find the graph empty of the other and
+// each start. The gate is taken here and nowhere else, which is what makes
+// "every quick node is admitted under it" a fact about this function rather
+// than a promise every caller keeps.
+//
+// THE SLOT IS TAKEN BEFORE THE NODE IS, so a batch emitted together cannot walk
+// through the fan cap ([TaskGraph.claimChild]). Nothing between the claim and
+// the admission can fail, and [TaskGraph.admit] hands the slot back itself as
+// the node starts counting for itself, so there is no release path to remember.
+func (a *Agent) admitQuick(ask quickAsk) (uint64, taskSpec, quickRefusal) {
 	graph := a.graph()
 	graph.quickGate.Lock()
 	defer graph.quickGate.Unlock()
 
-	spec, refusal := a.newQuickSpec(parsed.Line, parsed.Items, parsed.Files, parsed.DependsOn)
+	spec, refusal := a.newQuickSpec(ask)
 	if refusal != "" {
-		return refusal, true, nil
+		return 0, taskSpec{}, quickRefusal{said: refusal}
 	}
-	if title := strings.TrimSpace(parsed.Title); title != "" {
-		spec.title = clip(firstLine(title), titleLimit)
-	}
-	// WHICH HANDS THE WORK LEAVES ON, on [Agent.proposeTask]'s own terms and
-	// through the same resolver (taskmodel.go). THE SHORTLIST IS CLOSED HERE
-	// rather than carried: a word that fits several models is settled on a card
-	// for a task, and a quick task has no card, so the closest match is taken and
-	// the work starts — which is the promise the verb makes.
-	choice := a.resolveTaskModel(strings.TrimSpace(parsed.Model))
-	if choice.problem != "" {
-		return choice.problem, true, nil
-	}
-	spec.model = choice.model
-	if len(choice.options) > 0 {
-		spec.model = settleTaskModel(choice.options, "")
-	}
-	// THE SLOT IS TAKEN BEFORE THE NODE IS, so a batch of quick calls emitted
-	// together cannot walk through the fan cap ([TaskGraph.claimChild]). Nothing
-	// between here and admission can fail, and [TaskGraph.admit] hands the slot
-	// back itself as the node starts counting for itself, so there is no release
-	// path for this door to remember.
 	if refused := graph.claimChild(spec.parent); refused != "" {
-		return refused, true, nil
+		return 0, taskSpec{}, quickRefusal{said: refused, fanFull: true}
 	}
 	id := graph.reserve()
 	graph.admit(id, spec)
-	return quickStartedWord(id, spec), false, nil
+	return id, spec, quickRefusal{}
+}
+
+// quickRefusal is what the one door answers when nothing was admitted: the
+// sentence whoever asked reads, and whether what declined was the parent task's
+// fan cap rather than the ask itself.
+//
+// THE DOOR SAYS WHICH REFUSAL IT WAS, because only the door knows. The two are
+// one sentence to a model — it is being told no either way — but they are not one
+// event to a person reading a session file afterwards, and the ceiling road has to
+// write a word down for that reader (checkpoint_quick.go). "There was nothing to
+// hand over" and "this task has already handed out all it may" are different
+// answers, and the second one is not a fault of the turn that was carried on.
+type quickRefusal struct {
+	said    string
+	fanFull bool
 }
 
 // quickStartedWord is the receipt, and it mirrors `propose_task`'s: the id
@@ -411,16 +492,24 @@ func quickStartedWord(id uint64, spec taskSpec) string {
 }
 
 // newQuickSpec builds the [taskSpec] for one quick node, or the one sentence
-// the model reads back instead.
+// the reader gets back instead. It is called by [Agent.admitQuick] and by
+// nothing else, and it is the ONE PLACE a quick node's shape is decided: every
+// field below that is not the ask's own is a consequence of the kind.
 //
 // REFUSALS ARE RESULTS THE MODEL READS, NEVER ERRORS, which is this package's
 // law for every door: a scope written the wrong way round or a dependency on a
 // number that is not a task is a call the model can make again, correctly.
 //
-// THE TITLE IS THE LINE AND NOBODY IS ASKED TO NAME IT. `named` is set so the
-// naming call never happens ([TaskGraph.nameNode]): a quick task's whole promise
-// is that it starts now, and spending a model call on a better row title before
-// it does would be the harness charging the person for the promise it just broke.
+// THE LINE IS KEPT WHOLE AND ONLY ITS FIRST LINE NAMES THE ROW. The line is the
+// worker's whole job ([quickBrief] opens on it), and on the ceiling's road it is
+// the person's own message, which may run to a paragraph; cutting it to its
+// first line would hand the worker a fragment of what was asked. The row's
+// title and the one-line gloss are that first line, clipped.
+//
+// AND NOBODY IS ASKED TO NAME IT. `named` is set so the naming call never
+// happens ([TaskGraph.nameNode]): a quick task's whole promise is that it starts
+// now, and spending a model call on a better row title before it does would be
+// the harness charging the person for the promise it just broke.
 //
 // AND THE WRITE CLAIMS ARE SERIALISED HERE, at admission, because this is where
 // the frontier can still be told about it. Every running or queued quick node in
@@ -428,24 +517,23 @@ func quickStartedWord(id uint64, spec taskSpec) string {
 // `depends_on`, and [TaskGraph.readinessLocked] does the waiting from there —
 // so two quick nodes that claim one path run one after the other with no retry
 // and nothing new in the frontier. The look and the admission are one move
-// under [TaskGraph.quickGate], which the door holds: a batch of calls runs
-// concurrently, and two doors that each looked before either admitted would
-// each have found the graph empty of the other.
-func (a *Agent) newQuickSpec(line string, items, files []string, dependsOn []uint64) (taskSpec, string) {
-	line = firstLine(strings.TrimSpace(line))
+// under [TaskGraph.quickGate], which [Agent.admitQuick] holds.
+func (a *Agent) newQuickSpec(ask quickAsk) (taskSpec, string) {
+	line := strings.TrimSpace(ask.line)
 	if line == "" {
 		return taskSpec{}, "`line` is empty. Say in one sentence what this quick task is to do, and call again."
 	}
-	kept := make([]string, 0, len(items))
-	for _, item := range items {
+	kept := make([]string, 0, len(ask.items))
+	for _, item := range ask.items {
 		if item = strings.TrimSpace(item); item != "" {
 			kept = append(kept, item)
 		}
 	}
-	scope, refusal := normalizeWriteScope(a.config.Workspace, files)
+	scope, refusal := normalizeWriteScope(a.config.Workspace, ask.files)
 	if refusal != "" {
 		return taskSpec{}, refusal
 	}
+	dependsOn := append([]uint64(nil), ask.dependsOn...)
 	// A DEPENDENCY THAT CAN NEVER RESOLVE IS REFUSED AT THE DOOR, on
 	// [Agent.refuseProposedTask]'s terms and through the same reader: an id no
 	// node carries or one whose node already failed is a wait that only ever ends
@@ -460,20 +548,40 @@ func (a *Agent) newQuickSpec(line string, items, files []string, dependsOn []uin
 	if missing, failed := a.graph().doomedDependencies(dependsOn); len(missing)+len(failed) > 0 {
 		return taskSpec{}, dependencyRefusal(missing, failed)
 	}
+	// WHICH HANDS THE WORK LEAVES ON, on [Agent.proposeTask]'s own terms and
+	// through the same resolver (taskmodel.go). THE SHORTLIST IS CLOSED HERE
+	// rather than carried: a word that fits several models is settled on a card
+	// for a task, and a quick task has no card, so the closest match is taken and
+	// the work starts — which is the promise the verb makes. A road that names no
+	// model gets the one every task that names none gets.
+	choice := a.resolveTaskModel(strings.TrimSpace(ask.model))
+	if choice.problem != "" {
+		return taskSpec{}, choice.problem
+	}
+	model := choice.model
+	if len(choice.options) > 0 {
+		model = settleTaskModel(choice.options, "")
+	}
+	gloss := firstLine(line)
+	title := clip(gloss, titleLimit)
+	if named := strings.TrimSpace(ask.title); named != "" {
+		title = clip(firstLine(named), titleLimit)
+	}
 	quick := newQuickTaskSpec(line, kept, scope)
 	quick.waits = a.graph().quickClaimsOn(a.config.Workspace, scope)
 	for _, claim := range quick.waits {
 		dependsOn = append(dependsOn, claim.id)
 	}
 	return taskSpec{
-		title: clip(line, titleLimit),
+		title: title,
 		named: true,
-		// THE SUMMARY, THE BRIEF AND THE LINE ARE ONE SENTENCE SAID ONCE. A task's
-		// three are three different documents a model groomed; a quick task has no
-		// grooming, so the honest answer to all of them is the line — and a
-		// deliverable and an acceptance are left EMPTY rather than invented,
-		// because nothing will ever check this node and a "DONE WHEN" nobody reads
-		// is a contract that is not one.
+		model: model,
+		// THE BRIEF IS THE LINE, AND THE GLOSS IS ITS FIRST LINE. A task's summary,
+		// brief and acceptance are three different documents a model groomed; a
+		// quick task has no grooming, so the honest answer to the first two is the
+		// line — and a deliverable and an acceptance are left EMPTY rather than
+		// invented, because nothing will ever check this node and a "DONE WHEN"
+		// nobody reads is a contract that is not one.
 		//
 		// THE BLANK IS DECLARED RATHER THAN IMPLIED, and that is what keeps it
 		// from being read as a half-written record: [kindsWithoutAcceptance] says
@@ -482,7 +590,7 @@ func (a *Agent) newQuickSpec(line string, items, files []string, dependsOn []uin
 		// allowed to drift once, and the checkpoint's validator — which refuses a
 		// node with no acceptance, rightly — threw away the whole of a
 		// conversation's task graph over the blank this line leaves on purpose.
-		summary:   line,
+		summary:   gloss,
 		brief:     line,
 		dependsOn: dependsOn,
 		parent:    a.config.taskID,
@@ -630,9 +738,18 @@ func (n *TaskNode) quickDoor() func(int, []string) string {
 // graph's lock itself and announces under it. The word is composed while the
 // list is held still and said afterwards, which is this package's ordinary
 // shape for "read a fact, then tell the world about it".
+//
+// AND THE LIST REACHES THE DISK IN THE SAME BREATH. The checklist IS this node's
+// graph (docs/design/quick-task/DESIGN.md), and every other transition a node
+// makes is checkpointed as it happens; a tick that lived only in memory and in
+// the row's rendered word was a tick a restart could not report, so a quick
+// task that got three items down a list of four came back saying nothing about
+// any of them. The write is taken after the lock is gone and holds nothing
+// while it runs ([TaskGraph.checkpoint]).
 func (n *TaskNode) quickItemChange(done int, add []string) string {
 	reply, word := n.quickListChange(done, add)
 	n.doingNow(word)
+	n.graph.checkpoint()
 	return reply
 }
 
@@ -652,16 +769,14 @@ func (n *TaskNode) quickItemChange(done int, add []string) string {
 // landing, a row left `running` for as long as the window stayed open. Measured
 // on a real run, 2026-09-10.
 //
-// The tick itself can no longer fault ([quickTaskSpec.growDoneLocked] holds the
-// parallel), and the defer stands anyway: the law is that NOTHING taken under
-// this lock is allowed to keep it, not that this particular line is safe today.
+// The tick itself cannot fault — every body is made by [newQuickTaskSpec], which
+// holds the parallel, and the one append below grows it again — and the defer
+// stands anyway: the law is that NOTHING taken under this lock is allowed to
+// keep it, not that this particular line is safe today.
 func (n *TaskNode) quickListChange(done int, add []string) (string, string) {
 	spec := n.spec.quick
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
-	// The list is made whole before it is written to, so a spec that reached
-	// here from a road that built it by hand ticks rather than faults.
-	spec.growDoneLocked()
 	var reply string
 	switch {
 	case done >= 1 && done <= len(spec.items):
@@ -806,9 +921,12 @@ func (a *Agent) runQuickNode(ctx context.Context, node *TaskNode, listed *job) T
 	// pointed at their own folder, and it is the exact opposite of what a quick
 	// task is for: two of them run at once, and the person goes on typing and
 	// editing while they do. What bounds this worker instead is the claim it made
-	// — [Config.writeScope] on the belt's two writers — and the serialisation at
-	// admission that puts two nodes claiming one path one after the other. So the
-	// node carries Ground and Mode for the CARD, and no worktree at all.
+	// — [Config.writeScope] on the belt's two writers — the serialisation at
+	// admission that puts two nodes claiming one path one after the other, and
+	// the hold every node without a tree has on the paths it has WRITTEN
+	// ([TaskGraph.fileOwner]): a file this worker saved is its file until it
+	// lands, and the chat or a sibling aiming at it is refused with its name. So
+	// the node carries Ground and Mode for the CARD, and no worktree at all.
 	child, err := a.newTaskAgent(ctx, a.config.Workspace, node, "")
 	if err != nil {
 		node.finish("the quick task could not be started: "+err.Error(), nil, "", "")

@@ -418,7 +418,7 @@ func TestAResultInFlightKeepsTheTargetItWasComposedAgainst(t *testing.T) {
 		t.Fatalf("second revision: %v", err)
 	}
 
-	agent.deliverTaskNote(node, attempt, tag, "task 1 finished: inventory.csv written")
+	agent.deliverTaskNote(node, attempt, tag, "task 1 finished: inventory.csv written", "")
 	agent.drainSteering(nil)
 
 	asked := agent.turnAsk()

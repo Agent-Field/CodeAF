@@ -112,6 +112,25 @@ type delivery struct {
 	origin messageOrigin
 	kind   messageKind
 	note   userMessage
+	// record is THE SAME MESSAGE AS A RECORD KEEPS IT, for a reader that writes
+	// it down rather than acting on it — a parent whose worker has stopped
+	// reading keeps a piece's news in its report (task_latefold.go), and a
+	// person reads that report. It is the sender's to compose because only the
+	// sender knows which half of its note is instruction to an actor: a landing
+	// note opens by telling a model which word to say back ([landingNoteLead]),
+	// and a report that carried that sentence would hand it to a person, or to
+	// the next model as a second order about somebody else's word. Empty means
+	// the note says nothing but what happened, and is its own record.
+	record string
+}
+
+// recorded is what a reader that keeps this message rather than acting on it
+// writes down ([delivery.record]).
+func (d delivery) recorded() string {
+	if d.record != "" {
+		return d.record
+	}
+	return d.note.text()
 }
 
 // deliveryState is what became of a delivery. The three answers are different

@@ -54,7 +54,7 @@ func TestAPartsReportGoesToTheWorkerThatAskedForIt(t *testing.T) {
 	nest := newNest(t, nil, nil)
 	part := pieceUnder(t, nest.graph, nest.parent.id, "currency")
 
-	nest.session.deliverTaskNote(part, part.attemptNow(), part.resultTag(), "task 2 finished: currency")
+	nest.session.deliverTaskNote(part, part.attemptNow(), part.resultTag(), "task 2 finished: currency", "")
 
 	if got := queuedText(nest.node); len(got) != 1 || !strings.Contains(got[0], "currency") {
 		t.Fatalf("the parent's worker holds %#v, want the report it asked for", got)
@@ -67,33 +67,39 @@ func TestAPartsReportGoesToTheWorkerThatAskedForIt(t *testing.T) {
 	}
 }
 
-// AND IT REACHES THE PERSON WHEN THE WORKER HAS STOPPED READING. The runner
-// withdraws the seat the moment its reading is over (task_child_run.go), and
-// before this the report was enqueued onto that agent anyway — queued on
-// somebody who would never drain it, then marked and checkpointed as announced,
-// so nothing ever said it again in this life or any later one.
-func TestAPartsReportReachesThePersonWhenTheSeatIsEmpty(t *testing.T) {
+// AND WHEN THE WORKER HAS STOPPED READING, THE PARENT ITSELF TAKES IT. The
+// runner withdraws the seat the moment its reading is over (task_child_run.go),
+// and a report enqueued onto that agent anyway would be queued on somebody who
+// will never drain it. The parent is still open — its check and its landing are
+// ahead of it — so the report is folded into the parent's own report
+// (task_latefold.go) rather than handed to a person who never commissioned the
+// piece. Only a parent that has settled sends it on to the conversation
+// ([TestAChildLandingAfterItsParentSettledReachesTheConversation]).
+func TestAPartsReportIsFoldedIntoItsParentWhenTheSeatIsEmpty(t *testing.T) {
 	nest := newNest(t, nil, nil)
 	part := pieceUnder(t, nest.graph, nest.parent.id, "currency")
 	nest.parent.openRoom().speaking(nil)
 
-	nest.session.deliverTaskNote(part, part.attemptNow(), part.resultTag(), "task 2 finished: currency")
+	nest.session.deliverTaskNote(part, part.attemptNow(), part.resultTag(), "task 2 finished: currency", "")
 
 	if got := queuedText(nest.node); len(got) != 0 {
 		t.Fatalf("the withdrawn worker was handed %#v, and nothing will ever drain it", got)
 	}
-	if got := queuedText(nest.session); len(got) != 1 || !strings.Contains(got[0], "currency") {
-		t.Fatalf("the conversation holds %#v, want the report nobody else could read", got)
+	if got := queuedText(nest.session); len(got) != 0 {
+		t.Fatalf("the conversation was told about work it did not commission: %#v", got)
+	}
+	if report := nest.parent.notice().Report; !strings.Contains(report, "currency") {
+		t.Fatalf("the parent's report is %q, want the piece nobody else in the family could read", report)
 	}
 	if !part.reported() {
-		t.Fatal("a report the conversation took is not marked as handed over")
+		t.Fatal("a report the parent folded is not marked as handed over")
 	}
 }
 
 // AND A WORKER THAT CLOSED BETWEEN THE CHOICE AND THE HAND-OVER IS NOT THE
 // READER EITHER. The old road asked whether the agent was open and then
 // enqueued to it; a close in that window answered false and the answer was
-// dropped on the floor.
+// dropped on the floor. The seat refuses and the parent, still open, keeps it.
 func TestAPartsReportSkipsAWorkerThatHasClosed(t *testing.T) {
 	nest := newNest(t, nil, nil)
 	part := pieceUnder(t, nest.graph, nest.parent.id, "arithmetic")
@@ -101,10 +107,13 @@ func TestAPartsReportSkipsAWorkerThatHasClosed(t *testing.T) {
 		t.Fatalf("closing the worker: %v", err)
 	}
 
-	nest.session.deliverTaskNote(part, part.attemptNow(), part.resultTag(), "task 2 finished: arithmetic")
+	nest.session.deliverTaskNote(part, part.attemptNow(), part.resultTag(), "task 2 finished: arithmetic", "")
 
-	if got := queuedText(nest.session); len(got) != 1 || !strings.Contains(got[0], "arithmetic") {
-		t.Fatalf("the conversation holds %#v, want the report a closed worker could not take", got)
+	if report := nest.parent.notice().Report; !strings.Contains(report, "arithmetic") {
+		t.Fatalf("the parent's report is %q, want the report a closed worker could not take", report)
+	}
+	if got := queuedText(nest.session); len(got) != 0 {
+		t.Fatalf("the conversation was told about work it did not commission: %#v", got)
 	}
 }
 
@@ -164,7 +173,7 @@ func TestAClosedReaderRefusesRatherThanAccepts(t *testing.T) {
 // exactly where the reader is resolved. The seat is emptied inside that window —
 // which is what the runner's own withdrawal does — and the report must then be
 // somewhere a person will read it, with nothing left on the queue of a worker
-// that has stopped reading.
+// that has stopped reading: the parent's own report, while the parent is open.
 func TestAReportThatRacesTheWithdrawalIsNotSwallowed(t *testing.T) {
 	nest := newNest(t, nil, nil)
 	part := pieceUnder(t, nest.graph, nest.parent.id, "currency")
@@ -174,7 +183,7 @@ func TestAReportThatRacesTheWithdrawalIsNotSwallowed(t *testing.T) {
 	delivered := make(chan struct{})
 	go func() {
 		defer close(delivered)
-		nest.session.deliverTaskNote(part, part.attemptNow(), part.resultTag(), "task 2 finished: currency")
+		nest.session.deliverTaskNote(part, part.attemptNow(), part.resultTag(), "task 2 finished: currency", "")
 	}()
 	// The delivery is now blocked on the room's lock with its reader unresolved.
 	// The withdrawal wins the race, under the same lock, exactly as the runner's
@@ -191,8 +200,11 @@ func TestAReportThatRacesTheWithdrawalIsNotSwallowed(t *testing.T) {
 	if got := queuedText(nest.node); len(got) != 0 {
 		t.Fatalf("the withdrawn worker was handed %#v", got)
 	}
-	if got := queuedText(nest.session); len(got) != 1 {
-		t.Fatalf("the conversation holds %#v, want the one report that lost the race", got)
+	if report := nest.parent.notice().Report; !strings.Contains(report, "currency") {
+		t.Fatalf("the parent's report is %q, want the one report that lost the race", report)
+	}
+	if got := queuedText(nest.session); len(got) != 0 {
+		t.Fatalf("the conversation was told about work it did not commission: %#v", got)
 	}
 }
 
@@ -203,7 +215,7 @@ func TestAReportThatWinsTheRaceIsOwedNewsAfterTheWithdrawal(t *testing.T) {
 	nest := newNest(t, nil, nil)
 	part := pieceUnder(t, nest.graph, nest.parent.id, "currency")
 
-	nest.session.deliverTaskNote(part, part.attemptNow(), part.resultTag(), "task 2 finished: currency")
+	nest.session.deliverTaskNote(part, part.attemptNow(), part.resultTag(), "task 2 finished: currency", "")
 	nest.parent.openRoom().speaking(nil)
 
 	owed, _ := nest.node.taskNewsStanding()
@@ -239,8 +251,8 @@ func TestOneEndingAnnouncedTwiceIsOneNote(t *testing.T) {
 	nest := newNest(t, nil, nil)
 	part := pieceUnder(t, nest.graph, nest.parent.id, "currency")
 
-	nest.session.deliverTaskNote(part, part.attemptNow(), part.resultTag(), "task 2 finished: currency")
-	nest.session.deliverTaskNote(part, part.attemptNow(), part.resultTag(), "task 2 finished: currency")
+	nest.session.deliverTaskNote(part, part.attemptNow(), part.resultTag(), "task 2 finished: currency", "")
+	nest.session.deliverTaskNote(part, part.attemptNow(), part.resultTag(), "task 2 finished: currency", "")
 
 	if got := queuedText(nest.node); len(got) != 1 {
 		t.Fatalf("the worker holds %#v, want the one announcement of one ending", got)
@@ -258,11 +270,11 @@ func TestANodeThatEndsSomewhereElseIsAnnouncedAgain(t *testing.T) {
 	part.state = TaskUnverified
 	part.graph.mu.Unlock()
 
-	nest.session.deliverTaskNote(part, part.attemptNow(), part.resultTag(), "task 2 your call: currency")
+	nest.session.deliverTaskNote(part, part.attemptNow(), part.resultTag(), "task 2 your call: currency", "")
 	part.graph.mu.Lock()
 	part.state = TaskDone
 	part.graph.mu.Unlock()
-	nest.session.deliverTaskNote(part, part.attemptNow(), part.resultTag(), "task 2 finished: currency")
+	nest.session.deliverTaskNote(part, part.attemptNow(), part.resultTag(), "task 2 finished: currency", "")
 
 	if got := queuedText(nest.node); len(got) != 2 {
 		t.Fatalf("the worker holds %#v, want both endings", got)
@@ -315,7 +327,7 @@ func TestAnOldAttemptsDeliveryCannotAnnounceTheNewOne(t *testing.T) {
 
 	// The new attempt ends differently, and that ending is news.
 	endWith(t, part, TaskDone)
-	nest.session.deliverTaskNote(part, part.attemptNow(), part.resultTag(), "task 2 finished: currency")
+	nest.session.deliverTaskNote(part, part.attemptNow(), part.resultTag(), "task 2 finished: currency", "")
 	if got := queuedText(nest.node); len(got) != 1 || !strings.Contains(got[0], "finished") {
 		t.Fatalf("the worker holds %#v, want the new attempt's own ending", got)
 	}
@@ -349,7 +361,7 @@ func TestAReportComposedForAnEarlierAttemptIsRefused(t *testing.T) {
 	if err := nest.graph.reopen(part, "try the other table"); err != nil {
 		t.Fatalf("continuing the task: %v", err)
 	}
-	nest.session.deliverTaskNote(part, was, wasTag, "task 2 failed: currency")
+	nest.session.deliverTaskNote(part, was, wasTag, "task 2 failed: currency", "")
 
 	if got := queuedText(nest.node); len(got) != 0 {
 		t.Fatalf("the worker was told %#v about a life of the node that is over", got)
@@ -370,16 +382,19 @@ func endWith(t *testing.T, node *TaskNode, state TaskState) {
 
 // AND NEWS NOBODY TOOK IS NOT WRITTEN DOWN AS ANNOUNCED. The mark is what stops
 // a resumed session re-telling finished work, so making it for a delivery that
-// reached nobody is how a report disappears for good.
+// reached nobody is how a report disappears for good. Nobody is every reader
+// refusing: the worker has stopped reading, the parent has settled so it keeps
+// no more pieces, and the conversation has closed.
 func TestAReportNobodyTookIsNotMarkedAsAnnounced(t *testing.T) {
 	nest := newNest(t, nil, nil)
 	part := pieceUnder(t, nest.graph, nest.parent.id, "currency")
 	nest.parent.openRoom().speaking(nil)
+	endWith(t, nest.parent, TaskDone)
 	if err := nest.session.Close(); err != nil {
 		t.Fatalf("closing the conversation: %v", err)
 	}
 
-	nest.session.deliverTaskNote(part, part.attemptNow(), part.resultTag(), "task 2 finished: currency")
+	nest.session.deliverTaskNote(part, part.attemptNow(), part.resultTag(), "task 2 finished: currency", "")
 
 	if part.reported() {
 		t.Fatal("a report that reached nobody is marked as handed over, so nothing will ever say it again")

@@ -506,7 +506,7 @@ func (a *Agent) applyRouteJudge(hub *eventHub, ruling judgeRuling) {
 	// AND WITH NO DIVISION DRAWN, because nobody has drawn one: this door reads a
 	// REQUEST nobody has worked on yet, and the shape of what is left of a turn is
 	// a question only a mark can answer (checkpoint.go's [drawnDivision]).
-	a.launchRouteTask(hub, ruling.verdict, ruling.verdict.Goal, drawnDivision{}, ruling.ahead, nil)
+	a.launchRouteTask(hub, ruling.verdict, ruling.verdict.Goal, drawnDivision{}, ruling.ahead)
 }
 
 // routeSubstantial reports whether a message is worth a model call. It counts
@@ -1115,13 +1115,11 @@ func (a *Agent) confirmRouteAhead(ctx context.Context, asked string) (routeVerdi
 // still in flight rides the spec, and the graph waits for it rather than asking
 // again.
 //
-// AND IT CARRIES THE QUICK NODE'S OWN SPEC, where the road that reached here
-// decided the work belongs to one (checkpoint_quick.go). It is a PARAMETER
-// beside [drawnDivision] and for the same reason: no judge writes it, and the
-// two are mutually exclusive — a drawing is parts to hand OUT and a quick spec
-// is those parts as one worker's ordered items. nil is every other door and
-// leaves this function exactly as it was.
-func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title string, drawn drawnDivision, ahead *nameAhead, quick *quickTaskSpec) (string, uint64) {
+// IT STARTS ORDINARY WORK AND NOTHING ELSE. A quick node is never admitted here:
+// every quick node on every road comes through [Agent.admitQuick], because the
+// things this function decides — a done-condition, a place on the ground
+// ladder, a name, a width to arm — are the things a quick node does not have.
+func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title string, drawn drawnDivision, ahead *nameAhead) (string, uint64) {
 	// THE LAST LINE OF THE FLOOR (spawnfloor.go). Both roads into this function
 	// already return above on a one-command ask; a reserved id for work that
 	// must not start would be the floor leaking a node number into a conversation
@@ -1133,7 +1131,6 @@ func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title strin
 	id := graph.reserve()
 	spec := taskSpec{
 		drawn:   drawn,
-		quick:   quick,
 		title:   routeTaskTitle(title),
 		summary: verdict.Why,
 		// THE PERSON'S OWN MESSAGE RIDES ALONG, as it does on every other door
@@ -1205,13 +1202,6 @@ func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title strin
 	// the rest, on the rail.
 	said := "this looked like work, so task " +
 		strconv.FormatUint(id, 10) + " " + word + ": " + spec.title
-	// AND A QUICK NODE SAYS THE WHOLE THING IN ONE LINE. The road that sent it
-	// here does not write its own line above this one, because the two facts a
-	// person is owed — their turn was moved, and the work is carrying on IN THIS
-	// FOLDER — are one small event and read as one ([checkpointQuickNote]).
-	if quick != nil {
-		said = checkpointQuickLine(spec.title)
-	}
 	hub.send(Event{Kind: EventNotice, Text: said})
 	return said, id
 }

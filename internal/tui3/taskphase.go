@@ -2,7 +2,9 @@ package tui3
 
 import (
 	"strings"
+	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -35,6 +37,16 @@ import (
 // rather than abandoned, how far through that it is, and what was found. So:
 // "checking what it left", "closing gaps · round 1 of 1", "sizing the work", and
 // the finding under it in the checker's own sentence.
+//
+// AND WHEN A LIFE IS WAITING ON A REQUEST, THE REQUEST IS DRAWN. The sizing
+// reading of 2026-09-11 thought for 219 seconds under a row that said the model's
+// id and nothing else, which is the phase word's own defect one level down: the
+// row said what the node was doing and not whether anything was happening. So
+// the engine sends the request with the phase ([session.TaskPhaseNotice.Call])
+// and this file draws it the way the rest of the surface draws a call: what it
+// is doing in the provider's own words — `first word`, `thinking`, `writing` —
+// how long it has been out, what has come back (↓, the token column's own
+// figure) and the machine answering. Every piece is drawn only when it is known.
 
 const (
 	// taskCheckingWord is a node under the check that reads what its worker
@@ -111,10 +123,33 @@ func taskPhaseLine(node *taskNode) string {
 // person can read them a second later, while "the check did not accept this, and
 // here is what it said" is the one thing on this surface that explains why work
 // somebody thought was finished is being done again.
+//
+// AND A LIFE WAITING ON A REQUEST CARRIES IT ON THE PHASE'S OWN ROW, where the
+// word is short and leaves the cells a figure needs: `sizing the work · thinking
+// 41s · ↓ 4,465 · deepinfra`, shedding from the right as the column narrows and
+// never shedding the word ([app.callFields] ranks the rest). The model's name
+// stays on the second row inside the ladder's sentence, because which model was
+// asked is the sentence's to say, and a figure beside a clipped id is two halves
+// of nothing.
+//
+// THE CLOCK HERE IS THE NODE'S OWN AND THE ROOM'S IS THE SURFACE'S, and that is
+// deliberate rather than an oversight. This row is drawn against [app.taskNow],
+// which FREEZES while somebody is standing in the node's room — a number
+// climbing in the corner of the screen is pressure applied to a person who has
+// already gone to look — and the room's own row ([app.roomCallRow]) counts on
+// [app.now], because inside the room the seconds this request has been out are
+// exactly what they went there to see.
 func (a *app) railPhase(node *taskNode, width int) []string {
-	line := fit(taskPhaseLine(node), width)
+	word := taskPhaseLine(node)
+	line := fit(word, width)
 	if line == "" {
 		return nil
+	}
+	if call := node.phaseCall; call != nil {
+		fields := append([]rowField{rowSay(word)}, a.callFields(call, a.taskNow(node))...)
+		if said := rowLed(fields, width); said != "" {
+			line = said
+		}
 	}
 	rows := []string{a.pal.dim(line)}
 	if finding := fit(node.phaseFinding, width); finding != "" && len(rows) < railUnderRows {
@@ -147,4 +182,65 @@ func (a *app) taskPhaseMoved(ev session.Event) {
 	}
 	node.phase, node.phaseRound, node.phaseRounds = move.Phase, move.Round, move.Rounds
 	node.phaseFinding = strings.TrimSpace(move.Text)
+	node.phaseCall = move.Call
+}
+
+// callPhaseWords is internal/provider's account of where one request is, said in
+// the words the phase clock already speaks for the conversation's own requests
+// (phase.go's [phaseFields]). It is a table because it is a translation between
+// two vocabularies the provider owns, and a switch here would be a third.
+var callPhaseWords = map[provider.CallPhase]provider.Phase{
+	provider.CallStarted:  provider.PhaseFirstWord,
+	provider.CallPaced:    provider.PhasePaced,
+	provider.CallThinking: provider.PhaseThinking,
+	provider.CallWriting:  provider.PhaseWriting,
+}
+
+// callFields is one live request as the ranked facts a row is fitted with
+// (rowfit.go): how long it has been out, led by what it is doing; what has come
+// back; and the machine answering. The row it joins supplies its own lead — the
+// phase word on the rail, the ladder's sentence in the room ([app.roomCallRow]).
+//
+// THE CLOCK IS THE REQUEST'S AGE, from the moment it went out, and it is spelled
+// the way [phaseFields] spells a clock: in tenths while nothing has come back,
+// because the difference between 1.2s and 3.1s is all those seconds say, and in
+// whole seconds once the model is working. A narrow row keeps the figure and lets
+// the word go.
+//
+// ↓ IS [session.TaskCall.Received], thought and answer together, because both
+// are the model's writing and the bill counts both — the token column's own rule
+// ([modelWrote]). The machine is spelled by [phaseServing], the one place a
+// machine answering is spelled, so it reads the same here as on the status line.
+//
+// IT IS NOT [phaseFields], AND THE TWO DIFFER IN WHAT THEY ARE HANDED RATHER
+// THAN IN WHAT THEY BELIEVE. That function draws the conversation's own turn off
+// a [PhaseNews], which carries a phase's own start and, on a pacing wait, the
+// router's `Retry-After` — so it can say `paced · retry in 6s`, a real moment
+// this build will act at. A request reported through [provider.CallProgress]
+// carries neither: one moment (when it went out) and no deadline at all. So this
+// row says `paced 6s` — how long the park has lasted, which is the only true
+// thing there is to say about it here — and a countdown invented from nothing
+// would be the one thing phase.go's own header refuses. What it keeps that the
+// status line's paced arm drops is the MACHINE, because a task row is otherwise
+// silent: out here a person has the model segment beside the clock, and in a
+// node's row the machine answering is news.
+func (a *app) callFields(call *session.TaskCall, now time.Time) []rowField {
+	phase := callPhaseWords[call.Phase]
+	word := string(phase)
+	clock := rowSay(word)
+	if !call.Started.IsZero() {
+		since := max(now.Sub(call.Started), 0)
+		spelled := countUpWord(since)
+		if phaseWaiting(phase) {
+			spelled = tookWord(since)
+		}
+		if spelled != "" {
+			clock = rowSay(strings.TrimSpace(word+" "+spelled), spelled)
+		}
+	}
+	return []rowField{
+		clock,
+		rowSay(a.tokenDownWord(call.Received())),
+		phaseServing(PhaseNews{Lane: call.Served}),
+	}
 }

@@ -164,12 +164,23 @@ type fakeMachine struct {
 	reading machineReading
 	known   bool
 	ticks   int
+	// reads counts the times the host was asked, so a test can tell one
+	// reading serving a whole pass from a reading taken per node.
+	reads int
 }
 
 func (m *fakeMachine) read() (machineReading, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.reads++
 	return m.reading, m.known
+}
+
+// readCount is how many times the host has been asked so far.
+func (m *fakeMachine) readCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.reads
 }
 
 func (m *fakeMachine) set(reading machineReading, known bool) {
@@ -271,7 +282,7 @@ func TestBothRowsAtZeroBuildsNoGovernorAtAll(t *testing.T) {
 	if governor := newAdmissionGovernor(0, 0); governor != nil {
 		t.Fatal("both checks off should leave no governor to consult")
 	}
-	if newAdmissionGovernor(0, 0).holds() {
+	if !newAdmissionGovernor(0, 0).admits(taskFanLimit) {
 		t.Fatal("a nil governor held admission")
 	}
 }

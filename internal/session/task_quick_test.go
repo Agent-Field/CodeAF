@@ -572,26 +572,34 @@ func transcriptCarries(agent *Agent, needle string) bool {
 
 // A QUICK TASK CAUGHT BY THE CLOSE SETTLES AND NEVER COMES BACK.
 //
-// What tells the runner to hand a node to the quick body is `taskSpec.quick`,
-// and that field is not in the checkpoint — so a quick node put back on the
-// frontier is one the next session would run as an ORDINARY WORKER: a copy of
-// the folder, a branch and a check, for work whose whole promise was that it
-// had none of those. It is the design's and the run's own law
-// (task_store.go's [interrupt]) and it is pinned here because the fall-through
-// under it is what an unlisted kind silently gets.
+// Its body is on the record now, so it could be rebuilt; it is settled because
+// it must not be restarted — its worker's context and its caller's turn died
+// with the process (task_store.go's [interrupt]). The report is the list, ticked
+// and not, because the list is the only account of the work that survived. A
+// record written before the body was carried settles on the ending alone.
 func TestAQuickTaskCaughtByTheCloseSettlesRatherThanResuming(t *testing.T) {
-	settled, branch := interrupt(taskRecord{Kind: TaskKindQuick, State: TaskRunning}, "")
+	record := taskRecord{Kind: TaskKindQuick, State: TaskRunning, Wrote: []string{"notes.md"},
+		Quick: &quickRecord{Line: "walk the two", Items: []string{"one", "two"}, Done: []bool{true, false}}}
+	settled, branch := interrupt(record, "")
 	if settled.State != TaskFailed {
-		t.Fatalf("an interrupted quick task came back %q — the next session would run it as a worker in a worktree", settled.State)
+		t.Fatalf("an interrupted quick task came back %q — the next session would start it again", settled.State)
 	}
-	if settled.Report != quickInterruptedReport {
-		t.Fatalf("it settled saying %q, want %q", settled.Report, quickInterruptedReport)
+	want := quickInterruptedReport + "\nticked 1 of 2: one\nnot ticked: two"
+	if settled.Report != want {
+		t.Fatalf("it settled saying %q, want %q", settled.Report, want)
+	}
+	if len(settled.Changed) != 1 || settled.Changed[0] != "notes.md" {
+		t.Fatalf("it settled with %q changed, want what it had written", settled.Changed)
 	}
 	if settled.EndedAt.IsZero() {
 		t.Fatal("a quick task that settles on the close carries no ending time, so its row rebuilds undated")
 	}
 	if branch != "" {
 		t.Fatalf("an interrupted quick task named branch %q, and it has none to name", branch)
+	}
+	old, _ := interrupt(taskRecord{Kind: TaskKindQuick, State: TaskRunning}, "")
+	if old.State != TaskFailed || old.Report != quickInterruptedReport {
+		t.Fatalf("a record from before the body was carried settled %q saying %q", old.State, old.Report)
 	}
 }
 
@@ -767,11 +775,9 @@ func TestAQuickTaskWhoseTurnEndsOnAnErrorLandsRatherThanHanging(t *testing.T) {
 // piece of running work, the whole family, gone, and one line in a log file
 // saying the checkpoint was corrupt. Measured on a real one, 2026-09-11.
 //
-// WHAT IT DOES NOT ASSERT IS THE LIST. A quick node's items and ticks are not on
-// the record at all, so a restored one comes back with none — which is why one
-// that has not finished settles rather than going back on the frontier
-// ([nothingIsComingBackForIt]). Carrying the list is the record's own shape and
-// is somebody else's change; this one is the rule the decoder asks.
+// AND THE LIST COMES BACK WITH IT. The record carries the body — the line, the
+// items and the ticks ([taskRecord.Quick]) — so a finished quick node reopens
+// with its checklist as it left it, and the next checkpoint writes it back.
 func TestAQuickTaskComesBackFromTheCheckpoint(t *testing.T) {
 	items := []string{"read the schema", "read the migration", "say which disagrees"}
 	completer := newQuickLanes([]step{
@@ -840,6 +846,15 @@ func TestAQuickTaskComesBackFromTheCheckpoint(t *testing.T) {
 	if report := back.notice().Report; !strings.Contains(report, "the migration") {
 		t.Fatalf("its answer did not survive: %q", report)
 	}
+	if back.spec.quick == nil {
+		t.Fatal("it came back without its body, so nothing tells the runner it is quick")
+	}
+	if got := back.spec.quick.items; strings.Join(got, "|") != strings.Join(items, "|") {
+		t.Fatalf("it came back with the items %q, want %q", got, items)
+	}
+	if ticks := back.spec.quick.done; len(ticks) != 3 || ticks[0] || !ticks[1] || ticks[2] {
+		t.Fatalf("it came back with the ticks %v, want the one the worker made on item 2", ticks)
+	}
 }
 
 // THE RULE STAYS STRICT FOR ORDINARY WORK, and that is the half of this fix
@@ -880,11 +895,13 @@ func TestOnlyAQuickNodeMayCarryNoAcceptance(t *testing.T) {
 // work that has an acceptance, a parent and a dependency. Every one of those
 // nodes was thrown away together, so the conversation reopened empty.
 //
-// The queued quick node is the other half of the ruling. A quick node's list is
-// not on the record, so nothing here can rebuild the body it would run — and the
-// one thing that must never happen to it is being handed to an ORDINARY worker: a
+// The queued quick node is the other half of the ruling. Its body could be
+// rebuilt now, but nothing of a quick task outlives its window — the turn that
+// asked for it is over — and the one thing that must never happen to it is being
+// started on its own in the next session, least of all as an ORDINARY worker: a
 // copy of the folder, a branch and a check for work whose whole promise was that
-// it had none of those. It settles, and says so.
+// it had none of those. It settles, says so, and is counted under the quick
+// clause rather than as interrupted work that resumes.
 func TestACheckpointFromAConversationThatRanQuickTasksDecodes(t *testing.T) {
 	const content = `{"type":"tasks","version":1,"seq":7,"nodes":[
 		{"id":1,"title":"index.html — Y2K chrome home","summary":"s","brief":"b","acceptance":"","kind":"quick","state":"done","noted":true},
@@ -944,8 +961,8 @@ func TestACheckpointFromAConversationThatRanQuickTasksDecodes(t *testing.T) {
 	if waiting.parent != 5 {
 		t.Fatalf("it lost its family: parent %d, want 5", waiting.parent)
 	}
-	if recovery.done != 5 || recovery.waiting != 1 || recovery.interrupted != 1 {
-		t.Fatalf("recovery counted %+v, want 5 done, 1 waiting and the one that never started", recovery)
+	if recovery.done != 5 || recovery.waiting != 1 || recovery.quick != 1 || recovery.interrupted != 0 {
+		t.Fatalf("recovery counted %+v, want 5 done, 1 waiting and the quick one that never started", recovery)
 	}
 }
 
@@ -964,7 +981,7 @@ func TestEveryKindsAcceptanceMatchesWhatItDeclares(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.Workspace = t.TempDir()
 	})
-	quick, refusal := agent.newQuickSpec("compare the pair", []string{"one"}, nil, nil)
+	quick, refusal := agent.newQuickSpec(quickAsk{line: "compare the pair", items: []string{"one"}})
 	if refusal != "" {
 		t.Fatalf("the quick door refused its own test call: %s", refusal)
 	}

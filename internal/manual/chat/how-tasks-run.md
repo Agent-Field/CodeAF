@@ -258,24 +258,29 @@ wrote — and your own copy of them is never touched.
 **When it cannot be done that way**, the task falls back to a copy made by git, and then
 what your `.gitignore` covers is the one thing it does not have. Two reasons:
 
-- furrow could not take that folder on this machine — the binary will not run, the folder
-  will not attach, the fork failed. Nothing is refused and nothing is reported: the copy is
-  simply made the other way.
+- furrow could not take that folder on this machine — it would not attach, the fork
+  failed, or either step took longer than its bound (attaching and forking each get a
+  minute, so the longest wait is about two). The task's log says so, with furrow's reason
+  and the cost: `a fork of the whole folder was tried and could not be made`. aforge then
+  **stops trying on that folder** — later tasks say `a fork of the whole folder was not
+  tried`, with that reason and when it last failed — until aforge or the furrow it carries
+  is updated. If it was your folder that changed (a hook removed, signing turned off),
+  delete its line from `~/.aforge/v3/universe-falls.json` and the next task tries again.
 - the folder is a **linked worktree** — its `.git` is a file naming another repository
   rather than a directory of its own. aforge never copies one of those whole, because a
   byte-exact copy would write the task's commits into the repository that file points at
   and move a checkout you are standing in.
 
-Everything else is the same either way: your uncommitted edits and your untracked files
-travel on both roads, the task works on `task/<title>-<6 hex>`, and its work comes home as
-a merge into your branch — unless the checkout is protected, detached, on another branch,
-or on a commit you moved after the cut, in which case the branch is kept and named for you
-instead. Commits from aforge's own landings do not count as you moving it.
+Everything else is the same either way: your uncommitted edits and untracked files travel
+on both roads, the task works on `task/<title>-<6 hex>`, and its work comes home as a merge
+into your branch — unless the checkout is protected, detached, on another branch, or on a
+commit you moved after the cut, in which case the branch is kept and named for you instead.
+Commits from aforge's own landings do not count as you moving it.
 
-**To see which one a task got,** open its page: the first line of its log says what world
-it worked in — `its world is a fork of <folder> as it stood, taken whole` for the whole
-copy, and `its world is a branch off <folder> as it stood, uncommitted work included` for
-the git one.
+**To see which one a task got,** open its page: the log says what world it worked in —
+`its world is a fork of <folder> as it stood, taken whole` for the whole copy, and `its
+world is a branch off <folder> as it stood, uncommitted work included` for the git one —
+and then `its world was made in <time>`.
 
 **Copying your folder whole writes one thing into it:** a `.furrow/` directory, which
 furrow keeps its own ids in. aforge adds that name to your repository's
@@ -383,7 +388,9 @@ cart.py is held by task 2 (discount code entry), so nothing was written.
 ```
 
 The hold is one file at a time, not the directory. A second task that tries the same file
-is refused the same way: one owner per file. The write is not routed into the task — it is
+is refused the same way: one owner per file. **A quick task holds what it has written the
+same way**, though it writes in your folder rather than a checkout of its own — it never
+holds the folder, only the files it has saved so far. The write is not routed into the task — it is
 refused so the two copies cannot drift. You can still edit that file yourself in your own
 editor; this is a rule about the chat's tools, not a lock on disk.
 
@@ -629,14 +636,16 @@ that no transcript ever showed you is exactly what a task must not be able to ma
 **A piece is told it owns the piece.** Your message travels to every task and sub-task
 verbatim, and a task that was cut out of it opens on one line saying so: do what this brief
 and its `done when` name, and leave the rest of that message to whoever kept it — including
-handing work out, which a piece does not repeat. Your words still win about the piece it was
-given, and where its brief cannot be done without going against you, it says so in its report
-instead of quietly widening the job. A top-level task, with nobody between it and you, still
-reads your message as the whole of what was asked for.
+any handing out your message asks for, which a piece does not repeat. A piece whose own
+share turns out to have parts may still split that share. Your words still win about the
+piece it was given, and where its brief cannot be done without going against you, it says so
+in its report instead of quietly widening the job. A top-level task, with nobody between it
+and you, still reads your message as the whole of what was asked for.
 
 **It keeps `propose_task` and `tasks`, as a pair.** A task may hand pieces of its own work
-out when its brief holds parts that do not need each other — at most **5**, and a piece it
-hands out cannot hand out more — and `tasks` is how it then watches them. Inside a task
+out when its brief holds parts that do not need each other, at most **20** of them, and
+`tasks` is how it then watches them. Tasks nest at most **3** deep, so a piece it hands out
+may split its own share once more and a piece of that piece cannot. Inside a task
 both are scoped to its own family: `tasks` lists the pieces it handed out and refuses an id
 outside them with `No task "…" among the pieces you handed out.` Its brief is still its
 whole world; the project's history is not its to read. The tasks page has the whole of it,
@@ -1011,6 +1020,18 @@ where the branch went:
 - `its branch task/… was kept: feat/x has moved on since the work was cut — inspect the retained task branch before choosing a destination`
 - `it was stopped; its branch task/… was kept` (when it made nothing)
 - `it worked directly in the workspace: there was no repository to branch`
+
+**A piece that comes home after its task has stopped working is folded into that task's own
+report.** A task that hands pieces out is held open while they run and reads each one's
+result as it lands. That reading ends when the last piece it was waiting for is in — and the
+task itself is not over then: its check, its repair round and its landing are still ahead,
+which on a checked task is minutes. A piece landing in that window is added to the end of the
+task's report as the piece's own landing line — `task 9 done: <title> · transcript …` — its
+report, and what it changed, so it reaches you inside that task's landing rather than as a
+separate answer about work you never asked for directly. A restart does not tell it a second
+time. The check does not see it: the checker is given the work's own account of itself,
+written before that piece came home, and it is not asked a second time. Only a piece that
+lands after its task has already landed is announced on its own.
 
 The task's own tool rows never enter the chat. They go to its journal and its room only.
 
@@ -1475,6 +1496,19 @@ The commands its `bash` will accept come from two places:
   not verification, so a checker holding only these can read your work but cannot exercise
   it.
 
+**A check is run against the task's own copy, whatever folder it names.** A brief is written
+in the folder the work is *about* — usually your checkout — so a check often names a file
+there by its full path, `grep -q rewritten /home/you/project/report.txt`. The task never
+wrote in that folder: it worked in a copy, and the check is run on a copy too. So every
+address in a check that stands at or under the folder the work is about is read **where the
+check is being run** — the clean copy of what the work would ship, and, for the
+before-and-after reading, the commit the work was cut from. An address that is somewhere
+else on the machine entirely is left exactly as it was written, and is read there.
+
+Before this, a check with a full path read your own folder while the work sat in a copy: it
+answered as though nothing had been done, the checker went hunting for files its own check
+had named, and correct work landed `your call · nobody could check it`.
+
 ## How a named check matches what the checker runs
 
 **Nothing else is a door, and that is deliberate.** Not a command backticked in the brief or
@@ -1728,8 +1762,8 @@ closes the gaps that look named. **Every one of them is `running`** — nothing 
 and nothing was undone between them — so the card, the rail row, the room header and the
 home row say which of them it is in:
 
-- `sizing the work` — a reading is deciding whether this job is handed out in parts, and
-  how. See *A task that has only just appeared and says sizing the work* below.
+- `sizing the work` — the task's worker asked to hand parts of its work out and is waiting
+  while a reading decides whether, and how. See *What sizing the work means* below.
 - `checking what it left` — the worker is finished and its work is being read.
 - `closing gaps · round 1 of 1` — a fresh worker is closing what the look found. The
   second number is `task.repair_rounds` (default 1), so with the default you will only
@@ -1775,36 +1809,33 @@ whole cost is on the one task's bill, because you asked for one piece of work.
 the heartbeat is the thing to read — see the heartbeat section on this page for telling a
 working task from a hung one.
 
-## A task that has only just appeared and says sizing the work — task stuck before starting, why is my new task doing nothing, sizing the work how long, task appeared and then nothing happened
+## What sizing the work means — my task says sizing the work, how long does sizing the work take, task appeared and then nothing happened, why is my new task doing nothing
 
-`sizing the work` is the one life a task can be in **before its worker has said a word**,
-and it is the answer to "a task appeared, the clock is going, and nothing is happening".
+`sizing the work` means a task's worker found the job wider than one pair of hands,
+**asked to hand parts of it out**, and is waiting while a model on the thinking tier reads
+the parts and decides whether, and how.
 
-It means a model is reading the job and deciding **whether it is handed out in parts, and
-how**. It happens in two places:
+**A new task never waits on it.** When work is moved out of a reply that had parts in it
+(`this has parts · handing it to a task that can take them side by side`), the parts
+somebody drew are read **beside** the task's worker, which starts at once on the whole
+brief — so a task that has just appeared shows its worker's own calls, not this word. When
+that reading answers: parts are handed out as workers of their own, each from the task's
+copy of the folder as it stood at that moment, and the task gathers their reports (the
+roster says `split into 3 parts:`); one job, or nobody to ask, changes nothing, because the
+worker is already doing it as one; work only a person can do stops the worker (*A task that
+landed needing your look without doing anything*); and an answer that arrives after the
+worker has finished is dropped.
 
-- **Just after the task appears**, when the work was moved out of a reply that had parts
-  in it (`this has parts · handing it to a task that can take them side by side`). Somebody
-  has already drawn the parts, and this reading is what decides whether they are admitted.
-- **Mid-run**, when a worker has opened the material, found the job wider than one pair of
-  hands, and asked to hand it out.
-
-**How long is normal.** It is one full model call on the tier that thinks: **ten to thirty
+**How long is normal.** One full model call on the tier that thinks: **ten to thirty
 seconds**, measured at thirteen. It is bounded at **ten minutes for the whole reading** —
 that tier's own patience — but a model that goes quiet is cut in tens of seconds by the
-guard every request runs under, so the ten minutes is what a reading being written may
-take and never how long you wait for one that is not coming. It carries no numbers — how
-many parts there are is exactly what it is deciding — and the roster says what happened
-afterwards, either `split into 3 parts:` or the task carrying on as one worker. *What the
-row under sizing the work says* below is the line that names the model being asked.
+guard every request runs under. It carries no numbers: how many parts there are is what it
+is deciding. *What the row under sizing the work says* below names the model being asked.
 
-**Nothing is wrong if it ends with no parts.** A reading that says the work is one job is
-a normal ending: the task runs as one worker, nothing is cancelled, and nothing is lost.
-
-**Cheap refusals draw nothing.** Where a division is turned down without a reading at all —
-no lane is free to pick the parts up, or a width floor you turned on says the material names
-too few items — the whole thing takes microseconds and no word is drawn for it. Only the reading is a wait,
-so only the reading is said.
+**Nothing is wrong if it ends with no parts.** The task carries on as one worker, nothing
+is cancelled, and nothing is lost. Where a division is turned down without a reading at all
+— no lane free for the parts, or a width floor you turned on — it takes microseconds and no
+word is drawn.
 
 ## What the row under sizing the work says — which model is being asked, sizing says asking a model, my task said a model did not answer in time, nobody answered going with the parts as drawn, asking again
 
@@ -1812,9 +1843,15 @@ While a task says `sizing the work`, the **second row of its block says what is 
 the reading**, and it changes as the reading goes:
 
 ```
-▏ sizing the work
+▏ sizing the work · thinking 41s · ↓ 4,465 · deepinfra
 ▏ asking z-ai/glm-5.3 · 1 of 2
 ```
+
+**The first row says what the model is doing while it reads.** `first word 3.1s` while
+nothing has come back, `thinking 41s` while it thinks, `writing` once the answer arrives —
+the clock is how long that request has been out. `↓ 4,465` is everything it has sent back
+so far, thought included, and the last word is the machine answering. A figure nobody has
+yet is not drawn, and a narrow column drops the machine first and the clock last.
 
 `1 of 2` is which model of how many are lined up to be asked. When only one is lined up
 there is nothing to count and the row just says `asking <model>`.
@@ -1892,7 +1929,7 @@ nobody would say — or the work held and one of the files it wrote moved under 
 ran, which is its own section below — or the work held and its branch would not merge
 cleanly, or the folder it was going to lay its work back over holds an edit of your own in
 one of those files — or what was left of the work turned out to be something no worker can
-do at all, which lands this way before a worker is ever started (*A task that landed needing
+do at all, which stops the task's worker and lands this way (*A task that landed needing
 your look without doing anything*). The task is neither done nor incomplete: nothing merges,
 the branch is kept, and nothing waiting on it fails. The reason beside the word is one of
 the six on the tasks page — `nobody could check it`, `the check did not pass it: <gaps>`,
@@ -2010,19 +2047,20 @@ it in five minutes.
 
 ## A task that landed needing your look without doing anything — task did nothing, only I can approve this, my task stopped straight away and says it needs a person
 
-Sometimes a task lands as `your call` within seconds, having written nothing, spent
-almost nothing and touched no files. That is not a failure and nothing went wrong. It means
+Sometimes a task lands as `your call` soon after it starts, having written little or
+nothing and spent little. That is not a failure and nothing went wrong. It means
 what was left of the work is **not work a worker can do**: an approving review only a named
 person may give, a credential or an account nobody here holds, a decision that is yours to
 make, or a step that is somebody else's system doing something by itself.
 
 It is found by the same `mastermind` model that reads a task's parts before it splits (the
-tasks page, *when a task turns out to be too wide for one worker*). That reading happens
-**before the task's worker is asked anything**, and when it comes back saying nobody here
-can do this, the task stops there rather than starting one. The report is that reading's own
-sentence, in its words — `nobody could check it — an approving review GitHub will
+tasks page, *when a task turns out to be too wide for one worker*). That reading runs
+**beside the task's worker**, which has already started, and when it comes back saying
+nobody here can do this, the worker is stopped where it is — the one time a started worker
+is interrupted — and whatever it wrote is kept on the branch. The report is that reading's
+own sentence, in its words — `nobody could check it — an approving review GitHub will
 only accept from a human who isn't the author`, say — so what you are being asked to do is
-the first line on the card.
+the first line on the card, with what the worker had said under it.
 
 Everything else about the landing is the ordinary `your call` landing above: nothing
 merges, the branch is kept, nothing waiting on it fails, and the chips on the card
@@ -2030,10 +2068,9 @@ are the door. Usually the right one is to do the thing yourself and then accept 
 say what you want done instead and start the work again.
 
 **Why this exists.** Before it did, a task whose whole remainder was two GitHub approvals
-was read correctly, told nobody, and ran anyway: nine minutes and about $1.24 across the
-run, the check, a repair round and the check again, spent editing a file in an empty copy
-of the repository while it looked for something it could do — and then failed by the check.
-The reading that would have saved all of it had already been paid for.
+was read correctly, told nobody, and ran anyway: nine minutes and about $1.24 spent editing
+a file in an empty copy of the repository while it looked for something it could do — and
+then failed by the check.
 
 ## Why my task says your call when it finished fine — another window changed the same file
 
@@ -2360,8 +2397,8 @@ By default, **no limit**. `task.parallel` is 0 (blank) out of the box, and 0 mea
 A cap, if you set one, is a **queue and never a refusal**: a ready task past the cap sits
 and starts when a slot frees.
 
-The real ceiling is the machine. Before each scheduling pass, aforge asks whether one more
-task may start:
+The real ceiling is the machine. Before starting **each** task, aforge asks whether one
+more may start:
 
 | Setting | What it reads | Default | Effect |
 | --- | --- | --- | --- |
@@ -2371,6 +2408,18 @@ task may start:
 Either one set to 0 turns that check off. Readings are cached for **1 second**. When a
 task is held back this way it is re-asked every **5 seconds** — a machine getting quieter
 is not an event, so it has to be looked at on a clock.
+
+**How many start at once when a lot of work is handed out together.** A task that has just
+started is invisible to the memory reading — its own memory arrives with its first build,
+minutes later — so each task that starts **sets aside a footprint** of memory until a
+reading shows it, and the next one is judged against what is left. A footprint is the
+larger of two figures this machine gives: one core's share of its memory (`MemTotal` ÷
+cores, so 2 GiB on a 16 GiB eight-core laptop) and the most memory per task aforge has
+watched this session's tasks actually hold. A quiet machine therefore starts roughly **one
+task per core's share of the memory above the floor**; the rest wait saying `machine busy`
+and start as the earlier ones finish or as a reading shows room. Nothing is counted twice —
+as a running task's memory appears in the reading, what is set aside for it falls by as
+much.
 
 This gates **starts only**. Nothing already running is ever touched; pressure drains as
 running tasks finish.
@@ -2455,6 +2504,10 @@ When a session comes back:
   closed; nothing was saved`, and it is never handed to an ordinary worker. Nothing reaches
   the harness registry until you approve the card, so an unfinished design left nothing
   behind to pick up — ask for it again and it is designed from the start;
+- **a quick task does not resume either, running or still waiting.** It comes back
+  **failed**, its note listing the items it had ticked, the ones it had not, and the files
+  it wrote. Its worker's reading and the turn waiting for its answer are gone, so ask for
+  it again instead (*What a quick task cannot do*);
 - then the queue is turned again: a queued task whose prerequisites are still done starts
   now.
 
@@ -2465,8 +2518,9 @@ one:
 recovered task graph: 2 done · 1 interrupted (branch task/fix-it-9c1a2f kept) · 1 waiting
 ```
 
-The counts are done, failed, needing a look, interrupted, designs that did not finish, and
-waiting. A design's own clause is `1 design did not finish (nothing saved)`. The branch
+The counts are done, failed, needing a look, interrupted, designs that did not finish, quick
+tasks that did not finish, and waiting. A design's own clause is `1 design did not finish
+(nothing saved)`; a quick task's is `1 quick task did not finish`. The branch
 clause reads `no branch kept`, `branch X kept` or `branches X, Y kept`. Any completion notes
 that were never delivered appear underneath.
 

@@ -116,7 +116,7 @@ func TestTheCheckerAssessesTheWorkWithoutRunningItASecondTime(t *testing.T) {
 		toolReceipt{tool: "bash", args: `{"command":"./count.sh"}`, result: "exit 0"},
 		toolReceipt{tool: "bash", args: `{"command":"cat build.log"}`, result: "QUARTZLINE"},
 	)
-	door := auditDoorFor(node, ground)
+	door := auditDoorFor(node, standingOn(ground))
 	if len(door.checks) != 0 {
 		t.Fatalf("a node that declared no check was handed a door onto %q", door.checks)
 	}
@@ -161,7 +161,7 @@ func TestADeclaredCheckRunsAndRejectsAWrongArtifact(t *testing.T) {
 	writeCheckFile(t, ground, "build.log", "GRANITE\n", 0o644)
 
 	node := declaringNode("./verify.sh")
-	door := auditDoorFor(node, ground)
+	door := auditDoorFor(node, standingOn(ground))
 	if len(door.checks) != 1 {
 		t.Fatalf("the declared verification did not open the door: %q", door.checks)
 	}
@@ -208,7 +208,7 @@ func TestQuotedAndExecutedCommandsAreNotAdmittedAsCheckerVerbs(t *testing.T) {
 	node.spec.request = "here is what I did:\n$ ./deploy.sh --prod"
 	node.Checks = []string{"./verify.sh"}
 
-	door := auditDoorFor(node, ground)
+	door := auditDoorFor(node, standingOn(ground))
 	if len(door.checks) != 1 || door.checks[0] != "./verify.sh" {
 		t.Fatalf("the door is %q, want the one command the contract declared", door.checks)
 	}
@@ -272,7 +272,7 @@ func TestDeclaredChecksSurviveTheCheckpointAndAnOldRecordDeclaresNone(t *testing
 	if family := older.familyChecks(); len(family) != 1 {
 		t.Fatalf("the older record's own record of what it owns was lost: %q", family)
 	}
-	door := auditDoorFor(older, t.TempDir())
+	door := auditDoorFor(older, standingOn(t.TempDir()))
 	if len(door.checks) != 0 {
 		t.Fatalf("an older record was guessed into a door: %q", door.checks)
 	}
@@ -302,7 +302,7 @@ func TestARevisionRevokesTheOldGoalsOwnAndFamilyChecks(t *testing.T) {
 
 	// Before the person says anything, the contract stands and its checker holds
 	// both the node's own check and the family's declared one.
-	if door := auditDoorFor(node, ground); len(door.checks) != 2 {
+	if door := auditDoorFor(node, standingOn(ground)); len(door.checks) != 2 {
 		t.Fatalf("the admitted contract opens %q, want the node's own check and the family's", door.checks)
 	}
 
@@ -322,7 +322,7 @@ func TestARevisionRevokesTheOldGoalsOwnAndFamilyChecks(t *testing.T) {
 	if !held.current() || held.written != version {
 		t.Fatalf("the verification was left stamped for another revision: %+v", held)
 	}
-	door := auditDoorFor(node, ground)
+	door := auditDoorFor(node, standingOn(ground))
 	if len(door.checks) != 0 {
 		t.Fatalf("the checker still holds a check made about the old goal: %q", door.checks)
 	}
@@ -365,7 +365,7 @@ func TestARevisionMayDeclareTheNewGoalsOwnChecks(t *testing.T) {
 	if len(held.checks) != 1 || held.checks[0] != "go test ./export -run TestCSV" {
 		t.Fatalf("the corrected goal is checked by %q", held.checks)
 	}
-	if door := auditDoorFor(node, t.TempDir()); len(door.checks) != 1 {
+	if door := auditDoorFor(node, standingOn(t.TempDir())); len(door.checks) != 1 {
 		t.Fatalf("the corrected goal's own check does not open its door: %q", door.checks)
 	}
 
@@ -521,7 +521,7 @@ func TestAProposalCarriesItsDeclaredChecksOntoTheNode(t *testing.T) {
 	if got := node.repeatableChecks(); len(got) != 2 {
 		t.Fatalf("the admitted node is checked by %q", got)
 	}
-	if door := auditDoorFor(node, t.TempDir()); len(door.checks) != 2 {
+	if door := auditDoorFor(node, standingOn(t.TempDir())); len(door.checks) != 2 {
 		t.Fatalf("the node's own checker was handed %q", door.checks)
 	}
 

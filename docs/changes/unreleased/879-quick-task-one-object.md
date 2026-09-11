@@ -1,0 +1,24 @@
+---
+kind: fixed
+title: A quick task comes through one door, its checkpoint rebuilds it, and it holds the files it wrote
+pr: 879
+surface: [chat, engine, docs]
+invalidates:
+  - "#869 expected that once the record carried a quick node's list, a queued quick node could resume as a quick node instead of settling. The list is carried now, and a queued quick node still settles: the turn that asked for it is over, and it would run in the new session's folder rather than its caller's."
+  - "`taskRecord` carried a quick node's kind and not its body, so a restored quick node had `spec.quick == nil` and its ticks were lost. The record now carries `quick: {line, items, done, files}`, a tick checkpoints, and `restoreNode` rebuilds the body."
+  - "A quick node was settled on restart only if it was running, and it was counted as `interrupted (no branch kept)`. A quick node that was running or still queued now settles as `failed`, its report lists which items were ticked and which were not, and the recovery line counts it as `N quick tasks did not finish`."
+  - "`continue task N` re-queued a quick task, and a restored one then ran as an ordinary worker in a worktree. It is now refused with `task N is quick, not a run that can be continued`."
+  - "The ceiling's handover admitted its quick node through `launchRouteTask(…, quick)`, with an invented acceptance, a worktree mode, a naming call and depth 0. Every quick node now comes through `Agent.admitQuick(quickAsk)`, and `launchRouteTask` no longer takes a quick parameter."
+  - "`fileOwner` held written files only for nodes with a branch, so a running quick task held nothing and the chat could overwrite a file it had half-written. Every running node that does not hold its whole tree (`TaskNode.holdsTreeLocked`) now owns the paths it has written, and a write to one of them is refused with the holder named (`<file> is held by task N (<title>), so nothing was written.`)."
+  - "The chat manual said a file a quick task *named* at the start is held against the chat. It is not. Only files it has written are held; a named file only makes a second quick task that names the same file wait."
+  - "`PresenceTask` had no kind or parent, and `<elsewhere>` listed another window's quick parts as separate rows. It now carries `kind` and `parent`, plus `done`/`total` taken from a quick task's items, and the block folds the parts onto their head row (`3 quick parts running`)."
+  - "The ceiling's handover started a naming request before it knew which road the turn was taking, so every write-free carry-on paid a model for a name a quick node can never use. The request is now made below that branch, and a quick carry-on asks for no name at all."
+  - "A quick carry-on refused by its parent task's fan cap was written into the session file as `dropped:no-brief`, which it was not. That ending is now `dropped:parent-fan-full`, and the one door says which of its refusals happened."
+  - "`TaskNode.Expects` was never written to the checkpoint. It is written now: the brief section is always restored, and the preflight manifest is restored only onto a node that never ran."
+---
+
+Found by the task-start wave on the owner's own `tasks.json`, and built on #869,
+which made the checkpoint load. The two doors had
+built two different objects, and the record could name a quick node but could
+not rebuild it. The fix makes the kind decide the shape in one place, and makes
+the record carry the list.

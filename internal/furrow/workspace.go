@@ -463,7 +463,14 @@ func (w *Workspace) MergeFork(ctx context.Context, fork, check string, preview b
 		args = append(args, "--check", check)
 	}
 	if preview {
+		// A preview plans and materializes nothing, so it is a read and is
+		// bounded like one — exactly as [Workspace.restore] bounds its own. A
+		// merge that lands runs the person's check, and how long that takes is
+		// theirs.
 		args = append(args, "--dry-run")
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, readTimeout)
+		defer cancel()
 	}
 
 	stdout, stderr, err := w.run(ctx, args...)
@@ -636,6 +643,12 @@ func (w *Workspace) Fork(ctx context.Context, name, destination string) (Fork, e
 	if destination = strings.TrimSpace(destination); destination != "" {
 		args = append(args, "--destination", destination)
 	}
+	// BOUNDED LIKE THE ATTACH IT FOLLOWS, and for the same reason: furrow seals
+	// the workspace as it stands before it copies it, which is one read of the
+	// whole folder. This was the one call on the harness's own road with no bound
+	// at all, and it is made in front of a task's first model request.
+	ctx, cancel := context.WithTimeout(ctx, wholeWorkspaceTimeout)
+	defer cancel()
 
 	stdout, stderr, err := w.run(ctx, args...)
 	if err != nil && len(documents(stdout)) == 0 {

@@ -26,8 +26,8 @@ package session
 // without a reading was admitted without context too.
 //
 // SO THE CONTEXT IS COMPOSED, ONCE, BY THIS FILE, AND BOTH ROADS COME THROUGH IT
-// ([Agent.divideOnce] is the single call site, and the sketch road reaches it by
-// putting its drawing to that same door). A worker writes a scope; the harness
+// ([Agent.admitDivision] is the single call site, and the sketch road reaches it
+// by putting its drawing to that same door). A worker writes a scope; the harness
 // writes everything around it. Nothing is left to a model remembering to repeat
 // itself, which is the same law the person's own words are carried under
 // (task_brief.go): what the code already holds is never asked of a model.
@@ -179,6 +179,20 @@ func (f divisionFamily) partBrief(index int, scope string) string {
 		sections = append(sections, scope)
 	}
 	return strings.Join(sections, "\n\n")
+}
+
+// partOwnWords is [divisionFamily.partBrief] read backwards: the scope whoever
+// divided the work wrote for this part, with the family's context taken off the
+// front. A brief no division composed wears no heading and is its author's own
+// words whole. The LAST heading is the one read, because a part of a part carries
+// its parent's own heading inside the ground composed around it, and the scope
+// always comes last. It is asked only of a piece's brief ([Agent.armDivision]),
+// because a root's was never composed and a heading in it is its author's.
+func partOwnWords(brief string) string {
+	if at := strings.LastIndex(brief, divisionThisPart+"\n"); at >= 0 {
+		return brief[at+len(divisionThisPart)+1:]
+	}
+	return brief
 }
 
 // siblings is the sentence naming what somebody else owns right now, or an empty

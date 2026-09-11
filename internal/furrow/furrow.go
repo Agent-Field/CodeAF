@@ -315,12 +315,47 @@ func Open(ctx context.Context, root string) *Workspace {
 	return &Workspace{root: absoluteRoot(root), binary: presence.Path}
 }
 
-// attachTimeout bounds the one call that can be slow. Attaching a workspace
-// reads every file in it once to seal the first snapshot, so it is the only
-// thing in this package whose cost is the person's project rather than
-// furrow's; a minute is generous for the repositories aforge works in and short
-// enough that a task waiting on it is never waiting on a hang.
-const attachTimeout = 60 * time.Second
+// wholeWorkspaceTimeout bounds the two calls whose cost is the person's project
+// rather than furrow's. Attaching a workspace reads every file in it once to
+// seal the first snapshot, and forking one seals the workspace as it stands
+// before it copies it, so both are one read of the whole folder; a minute is
+// generous for the repositories aforge works in and short enough that a task
+// waiting on either is never waiting on a hang.
+//
+// IT IS ONE NUMBER FOR BOTH because they are one cost. The fork had no bound at
+// all while every read beside it had one, which is how a task's start came to
+// wait on a subprocess nothing could cut. It is a variable for exactly the
+// reason [embedded] is: a test has to be able to say "a furrow that hangs"
+// without waiting a minute to hear it.
+var wholeWorkspaceTimeout = 60 * time.Second
+
+// ErrNotHere is what [Attach] answers on a machine with no furrow to run at all.
+// It is the one refusal that costs nothing and says nothing about the folder,
+// so it is the one a caller may want to tell apart from a furrow that ran and
+// said no.
+var ErrNotHere = errors.New("furrow is not on this machine")
+
+// Program names the furrow this package would run — its path, size and
+// modification time — or "" when there is none. It runs nothing, so asking is
+// one stat.
+//
+// IT EXISTS FOR A CALLER THAT REMEMBERS WHAT FURROW DID. A furrow that could not
+// make something for a folder yesterday may be able to today, and the thing
+// that changed is nearly always the program: an aforge carrying a newer pin
+// writes a newer binary under a newer name ([furrowbin]), and a person who
+// points [BinaryEnvVar] at their own build has changed it too. A memory keyed on
+// this string forgets itself the moment either happens.
+func Program() string {
+	binary, err := lookBinary()
+	if err != nil {
+		return ""
+	}
+	info, err := os.Stat(binary)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%s %d %d", binary, info.Size(), info.ModTime().UnixNano())
+}
 
 // Attach is [Open] for a caller that is willing to ATTACH THE FOLDER ITSELF.
 //
@@ -337,8 +372,12 @@ const attachTimeout = 60 * time.Second
 // somebody's project would be doing more than the write it was consenting to.
 //
 // Every failure answers nil, exactly as [Open] does, and the caller falls to
-// whatever it would have done on a machine without furrow.
-func Attach(ctx context.Context, root string) *Workspace {
+// whatever it would have done on a machine without furrow. THE NIL NOW COMES
+// WITH ITS REASON, in furrow's own words where furrow gave any: a caller that
+// falls to its rung below and cannot say why is a caller whose every task paid
+// for an attach nobody could debug — [ErrNotHere] for the machine with nothing
+// to run, and furrow's first line for everything else.
+func Attach(ctx context.Context, root string) (*Workspace, error) {
 	// ONE ATTACH AT A TIME PER FOLDER, and this is not a nicety. Five `furrow
 	// watch` runs started on one folder in the same instant were measured: one
 	// succeeds and the other four fail outright. The callers that do that are
@@ -351,22 +390,31 @@ func Attach(ctx context.Context, root string) *Workspace {
 	unlock := lockAttach(absoluteRoot(root))
 	defer unlock()
 	if workspace := Open(ctx, root); workspace != nil {
-		return workspace
+		return workspace, nil
 	}
 	binary, err := lookBinary()
 	if err != nil {
-		return nil
+		return nil, ErrNotHere
 	}
-	attachCtx, cancel := context.WithTimeout(ctx, attachTimeout)
+	attachCtx, cancel := context.WithTimeout(ctx, wholeWorkspaceTimeout)
 	defer cancel()
-	if _, _, err := runBinary(attachCtx, binary, absoluteRoot(root), "--json", "watch", "--no-daemon"); err != nil {
-		return nil
+	if _, stderr, err := runBinary(attachCtx, binary, absoluteRoot(root), "--json", "watch", "--no-daemon"); err != nil {
+		return nil, failure(stderr, err)
 	}
 	// The cached answer was taken before the attach and now says the opposite of
 	// what is true. Dropping it is the whole reason this cannot simply call
 	// Detect again.
 	Forget()
-	return Open(ctx, root)
+	if workspace := Open(ctx, root); workspace != nil {
+		return workspace, nil
+	}
+	// Attached and still not open: furrow took the folder and then would not
+	// answer for it, which is its status's own sentence to give.
+	reason := Detect(ctx, root).Reason
+	if reason == "" {
+		reason = "it attached the folder and then would not answer for it"
+	}
+	return nil, errors.New("furrow could not do that: " + strings.TrimPrefix(reason, "Error: "))
 }
 
 // ── the process seam ─────────────────────────────────────────────────────────
@@ -402,6 +450,10 @@ func (w *Workspace) run(ctx context.Context, args ...string) (stdout []byte, std
 	return runBinary(ctx, w.binary, w.root, args...)
 }
 
+// pipeGrace is how long a furrow that was stopped may keep its output open
+// through a child before the wait on it is abandoned ([runBinary]).
+const pipeGrace = time.Second
+
 func runBinary(ctx context.Context, binary, root string, args ...string) ([]byte, string, error) {
 	full := args
 	if root != "" {
@@ -417,6 +469,12 @@ func runBinary(ctx context.Context, binary, root string, args ...string) ([]byte
 	// contract from its side rather than relying on how a session happened to
 	// be launched.
 	command.Stdin = nil
+	// A BOUND HAS TO BE ABLE TO END THE WAIT AND NOT ONLY THE PROCESS. Cancelling
+	// the context kills furrow, but a child it started still holds the output
+	// pipes open, and without this the Run below would wait on those pipes for as
+	// long as the child lives — which is a timeout that kills something and then
+	// waits anyway.
+	command.WaitDelay = pipeGrace
 	err := command.Run()
 	return out.Bytes(), errOut.String(), err
 }

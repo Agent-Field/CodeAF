@@ -20,9 +20,10 @@ package session
 //
 // ── SO THE HARNESS SUBMITS IT, AND THROUGH THE EXISTING ROAD ──
 //
-// This file builds a [divideArguments] out of the drawing and puts it to
-// [Agent.divideOnce] — the same body `divide_work` reaches, with the node's own
-// worker as the caller. Not a second spawning road, not a shortcut past anything:
+// This file builds a [divideArguments] out of the drawing and puts it to the same
+// body `divide_work` reaches ([Agent.weighDivision], then [Agent.admitDivision]),
+// with the node's own worker as the caller. Not a second spawning road, not a
+// shortcut past anything:
 //
 //   - THE EVIDENCE GATE reads what a mastermind actually judged (see
 //     [drawnDivision.evidence]), and refuses below the floor exactly as it always
@@ -34,37 +35,70 @@ package session
 //   - THE CAPACITY GATE still refuses to divide what nobody is free to pick up.
 //   - THE REVIEWER still reads the parts together and may amend, merge or refuse
 //     them, and A REFUSAL IS THE WHOLE ANSWER: the task runs as one worker, which
-//     is what every converted cell does today. Nothing is cancelled and nothing is
-//     lost.
-//   - THE PARENT STAYS. The parts are admitted under the node before its worker's
-//     first request, so the runner's tail loop finds children outstanding the
-//     moment the worker's own turn ends, holds the node open, and folds every
-//     report into it (task_run.go's [runTaskChild]) — which is the same
-//     coordinating state a worker that called the verb mid-run lands in, reached
-//     by the same code rather than by a second version of it.
+//     is what it was already doing. Nothing is cancelled and nothing is lost.
+//   - THE PARENT STAYS. The parts are admitted under the node while its worker is
+//     still reading, so the runner's tail loop finds children outstanding when the
+//     worker's own turn ends, holds the node open, and folds every report into it
+//     (task_child_run.go's [childRun.foldParts]) — which is the same coordinating
+//     state a worker that called the verb mid-run lands in, reached by the same
+//     code rather than by a second version of it.
 //
-// ── WHERE IT IS SUBMITTED, AND WHY THERE ──
+// ── BESIDE THE WORKER, NEVER IN FRONT OF IT ──
 //
-// At the top of [Agent.workTaskNode], after the worker is built and before it is
-// handed its brief. That is the earliest moment there is a caller to divide ON
-// BEHALF OF: the verb belongs to a node's agent, its gates are asked of that
-// node's place in the graph, and its parts are owned by it. Admission time is
-// too early — the node has no worker, no worktree and no lane — and anything
-// after the first request is the failure this file exists to close.
+// WHAT WAS TRUE: the drawing was put before the worker's first request, and the
+// worker waited for the whole of the reading. On node 5 of conversation
+// de9eabcb10cc1e45 that reading was two hundred and nineteen seconds of one model
+// thinking — a stream that produced tokens the whole time and so was never cut —
+// and the worker's first request went out four minutes and eighteen seconds after
+// the turn that handed the work over had ended. The person saw a new card with a
+// clock on it and nothing else.
 //
-// It also means the two gates see exactly what they would have seen a moment
-// later: the parent is running and holding a lane, so [TaskGraph.freeHands]
-// counts what it counts for any other division, and no rule had to be written for
-// this one.
+// WHAT IS TRUE NOW: the reading starts when the worker is built, beside it
+// (task_beside.go), and the worker's first request goes out at once on the brief
+// it would have had anyway — the drawing at its head included. The same model is
+// asked the same question about the same parts; only when it is asked has moved.
+// When the answer lands ([Agent.deliverBeside]):
+//
+//   - PARTS: they are admitted exactly as before, and the receipt goes onto the
+//     worker's own queue, so it reads it at its next step. A worker whose turn has
+//     already ended parks on the parts like any worker that handed work out, and
+//     reads the receipt with their reports.
+//   - A REFUSAL, OR NOBODY TO ASK: nothing happens. The worker is already doing
+//     the work as one worker, which is what a refusal always meant.
+//   - WORK NO WORKER CAN DO: the worker is stopped — the one case where a started
+//     worker is interrupted, and a rare one — and the node lands on the person
+//     with the reader's own sentence, keeping whatever the worker wrote
+//     ([Agent.landNeedsPerson]).
+//   - AND IF THE WORKER HAS ALREADY SAID ITS LAST WORD, OR HANDED WORK OUT OF ITS
+//     OWN ACCORD, the answer is dropped and written down as dropped. Parts admitted
+//     under a worker that will never read again would be parts nobody folds, and a
+//     second division laid over one the worker already made would be two answers
+//     to one question.
+//
+// THE LAST CASE IS DECIDED UNDER THE LOCK THE RUNNER'S TAIL READS ITS NEWS UNDER.
+// The tail decides the worker is finished by reading "is any part still out, is
+// any report still owed" as one fact ([Agent.taskNewsStanding]), and the answer is
+// admitted, or dropped, under that same hold. So there is no instant in which the
+// tail has decided the worker is done and the parts are being admitted anyway:
+// either the parts exist when the tail looks, and it folds them, or the tail has
+// already withdrawn the worker from its room, and the reading sees that and drops.
+//
+// WHAT THIS COSTS, SAID PLAINLY. On a drawing the reader approves, the worker has
+// spent the length of the reading on work that is then handed to parts; they
+// start from its copy of the folder as it stood at that moment, so what it wrote is
+// on their disk rather than lost, and the parts start exactly when they started
+// before — the reading was always in front of them. On every drawing the reader
+// refuses, or cannot be asked about, the worker has had the whole of the reading
+// to work in instead of waiting through it.
 //
 // ── AND THE WORKER IS TOLD, IN THE WORDS IT WOULD HAVE READ ANYWAY ──
 //
 // A worker that called the verb reads [divisionDone] as its tool result. A worker
-// the harness divided for reads THE SAME SENTENCES, at the end of its brief: what
-// was handed out, that it must not wait for the parts, and that the work is not
-// finished until it has made one deliverable out of their reports. Writing a
-// second wording for the same fact is how the two paths would come to mean
-// different things.
+// the harness divided for reads THE SAME SENTENCES on its queue, under one line of
+// the harness's own ([divisionHandedOutBeside]): what was handed out, that it
+// must not wait for the parts, and that the work is not finished until it has
+// made one deliverable out of their reports. Writing a second wording for the same
+// fact is how the two paths would come to mean different things.
 
 import (
 	"context"
@@ -98,23 +132,22 @@ type drawnDivision struct {
 // question.
 func (d drawnDivision) proposes() bool { return d.sketch.split() }
 
-// divideFromSketch puts the drawing this node was admitted with to the division
-// road, on the worker's behalf, and answers two things: what the worker is told
-// about it — an empty string when nothing was handed out, whatever the reason —
-// and THE PERSON'S OWN JOB, which is empty on every road but one.
-//
-// THE SECOND ANSWER IS WHY THIS FUNCTION IS ASKED BEFORE THE FIRST REQUEST AND
-// NOT AFTER IT. The reviewer that reads a drawn division may come back saying the
-// work left over is not work for any worker at all — an approving review only a
-// person may give, a credential nobody here holds — and it says it having read
-// the parts, the evidence and the brief together, for about two cents, before
-// this node has spent anything. That finding used to reach exactly nobody: it was
-// journalled, the empty string above was returned, and the worker ran anyway. On
-// the cell that produced this wave that was nine minutes, $1.24, a repair round
-// and two checks, spent fixing a file in an empty repository over two GitHub
-// approvals nothing in this building was ever going to be allowed to give. So the
-// sentence is handed back, and [Agent.workTaskNode] lands the node on it
-// ([Agent.landNeedsPerson]) instead of starting a worker.
+// sizingBeside is the drawing this node was admitted with, being weighed beside
+// the node's first worker.
+type sizingBeside struct {
+	reading *besideWork
+	// person and receipt are what the reading came to: the reader's own sentence
+	// where it stopped the worker because what is left is not work for any
+	// worker, and the receipt the worker was handed where parts were admitted.
+	// Both are written by the reading and read only after [sizingBeside.end] has
+	// joined it, which is what makes them safe to read without a lock.
+	person  string
+	receipt string
+}
+
+// sizeBeside starts the drawing's reading beside this worker, and answers nil
+// when there is nothing to weigh. stopWork is the worker's own run's cancel,
+// which the reading holds for exactly one answer.
 //
 // IT ASKS THE SAME THREE QUESTIONS THE BELT ASKS BEFORE IT OFFERS THE VERB
 // ([Agent.mayDivide]): the road is on, this agent is a worker that may have
@@ -124,62 +157,117 @@ func (d drawnDivision) proposes() bool { return d.sketch.split() }
 // the one caller in the building exempt from the rule.
 //
 // AND IT IS SUBMITTED ONCE. A node that already has children has already been
-// divided — by this, or by its own first worker before a provider fault sent
+// divided — by an earlier worker of this same node, before a provider fault sent
 // [Agent.workTaskNode] round again — and dividing the same work twice would hand
-// out five parts nobody drew.
-func (a *Agent) divideFromSketch(ctx context.Context) (string, string) {
+// out parts nobody drew.
+func (a *Agent) sizeBeside(ctx context.Context, room *taskRoom, stopWork context.CancelFunc) *sizingBeside {
 	if !a.mayDivide() {
-		return "", ""
+		return nil
 	}
 	graph := a.graph()
-	parent := a.config.taskID
-	node := graph.node(parent)
-	if node == nil || len(graph.children(parent)) > 0 {
-		return "", ""
+	node := graph.node(a.config.taskID)
+	if node == nil || len(graph.children(node.id)) > 0 {
+		return nil
 	}
 	drawn := node.drawn()
 	if !drawn.proposes() {
-		return "", ""
+		return nil
 	}
 	proposal, ok := drawn.proposal()
 	if !ok {
-		return "", ""
+		return nil
 	}
 	args, err := json.Marshal(proposal)
 	if err != nil {
+		return nil
+	}
+	sizing := &sizingBeside{}
+	sizing.reading = beside(ctx, func(ctx context.Context) {
+		division := a.weighDivision(ctx, args, askedBeside)
+		sizing.person, sizing.receipt = a.deliverBeside(ctx, room, &division, drawn, stopWork)
+		a.recordDivision(division)
+	})
+	return sizing
+}
+
+// end joins the reading and answers the person's own job, empty on every road
+// but the one where the reading stopped the worker for it.
+func (s *sizingBeside) end() string {
+	if s == nil {
+		return ""
+	}
+	s.reading.end()
+	return s.person
+}
+
+// handedOut is the receipt the worker was given for the parts, and an empty
+// string wherever nothing was handed out. It is read after [sizingBeside.end],
+// by a second worker built for the same node: the same node with the same parts
+// already running must read the same sentence.
+func (s *sizingBeside) handedOut() string {
+	if s == nil {
+		return ""
+	}
+	return s.receipt
+}
+
+// deliverBeside is the reading's answer reaching the worker it was started
+// beside, and it answers the person's own job where the worker was stopped for
+// one and the receipt where parts were handed out.
+//
+// A REFUSAL REACHES NOBODY. The worker never asked, so there is no answer to put
+// a refusal in, and a refusal's whole meaning — carry on as one worker — is what
+// the worker is already doing. The record says what the reading found.
+//
+// EVERYTHING ELSE IS DECIDED UNDER THE WORKER'S HANDOVER HOLD, the lock the
+// runner's tail reads "is any part still out, is any report owed" under
+// ([Agent.taskNewsStanding]). The file header says why that is what makes a late
+// answer safe: the tail cannot decide the worker is finished in the middle of
+// this, and this cannot admit parts after the tail has decided it. THE HOLD IS
+// TAKEN ONCE PER NODE AND COVERS ONE ADMISSION — a commit of the worker's own
+// files and a handful of admits — so the tail's next read waits that long at
+// most, and only on the one pass it coincides with.
+func (a *Agent) deliverBeside(ctx context.Context, room *taskRoom, division *weighedDivision, drawn drawnDivision, stopWork context.CancelFunc) (string, string) {
+	if !division.admissible() && division.person == "" {
 		return "", ""
 	}
-	answer, person, _ := a.divideOnce(ctx, args, divisionBySketch)
-	// THE PERSON'S JOB IS CARRIED STRAIGHT OUT, and nothing below it runs. There
-	// are no parts to describe on this road and no worker to describe them to.
-	if person != "" {
-		return "", person
-	}
-	// WHETHER THE PARTS EXIST IS ASKED OF THE GRAPH AND NEVER OF THE SENTENCE.
-	// Every refusal on that road is an ordinary receipt written for a person to
-	// read over a worker's shoulder, and matching prose to decide whether work was
-	// handed out would put a road behind a wording somebody is free to improve.
-	if len(graph.children(parent)) == 0 {
+	a.handover.Lock()
+	defer a.handover.Unlock()
+	// THE WORKER IS STILL READING WHILE IT HOLDS THE ROOM. The runner withdraws
+	// it at its last read (task_child_run.go) and on every road out of the run,
+	// and a reading its owner has ended is one nobody is waiting for.
+	if ctx.Err() != nil || room.speaker() != a {
+		division.drop("the worker had finished before the reading answered")
 		return "", ""
 	}
-	var out strings.Builder
-	out.WriteString(divisionAlreadyHandedOut)
-	out.WriteString("\n")
-	out.WriteString(answer)
-	if after := drawn.afterParts(); after != "" {
-		out.WriteString("\n")
-		out.WriteString(after)
+	if division.person != "" {
+		stopWork()
+		return division.person, ""
 	}
-	return out.String(), ""
+	if len(a.graph().children(a.config.taskID)) > 0 {
+		division.drop("the worker had already handed work out")
+		return "", ""
+	}
+	said := a.admitDivision(division)
+	// WHETHER THE PARTS EXIST IS ASKED OF THE RECORD AND NEVER OF THE SENTENCE.
+	// The two refusals admission can still make — the fan cap and a family world
+	// that would not freeze — are receipts written for a worker that asked, and
+	// this one did not.
+	if division.line.Admitted == 0 {
+		return "", ""
+	}
+	receipt := withReport(divisionHandedOutBeside, withReport(said, drawn.afterParts()))
+	a.enqueueNote(briefNote(receipt))
+	return "", receipt
 }
 
 // landNeedsPerson settles a node whose work turned out to be work only a person
-// can do, WITHOUT EVER STARTING A WORKER FOR IT.
+// can do, keeping whatever its worker had written before it was stopped.
 //
 // IT IS NOT A NEW ENDING, and that is deliberate down to the line: it is
 // [Agent.landShifted] with a different reason (task_run.go), which is itself the
 // unverified landing reached by a third road. The branch is committed and kept
-// ([keptWork]) exactly as it is for the landing nobody could judge, the report
+// ([keepHome]) exactly as it is for the landing nobody could judge, the report
 // leads with [yourCallLead] in the same person's words, and everything
 // downstream — the settle card, the rail's mark, the note's `your call` word,
 // the bubbling of a still-undecided child up to whoever is left to decide
@@ -192,32 +280,34 @@ func (a *Agent) divideFromSketch(ctx context.Context) (string, string) {
 // ON A PERSON is this one. Failing it would put a ✗ beside work that was read
 // correctly and stopped early, and done would claim something happened.
 //
-// THE REASON RIDES IN THE REPORT AND NOWHERE ELSE, which is what puts it in front
-// of both readers without a second channel: the person reads it on the card, whose
-// first line is this one, and the model reads it inside the landing note. There is
-// no worker's own account to stand under it, because there was no worker.
+// THE REASON LEADS THE REPORT, which is what puts it in front of both readers
+// without a second channel: the person reads it on the card, whose first line is
+// this one, and the model reads it inside the landing note. What the worker had
+// said before it was stopped stands under it, because that is the person's only
+// account of what is already in the kept branch.
 //
-// AND IT IS CALLED BEFORE THE FIRST REQUEST, which is the whole saving. The
-// worktree and the child agent are already made by then and both are cheap; what
-// is on the other side of this line is the run, the check, the repair round and
-// the check again.
-func (a *Agent) landNeedsPerson(node *TaskNode, tree taskTree, why string, log io.Writer) TaskState {
-	merge, kept := keptWork(tree, node.title(), nil, a.signsGitWork())
-	fmt.Fprintf(log, "no worker was started: %s\n", why)
-	node.finish(withYourCallLead(TaskFacts{Merge: merge}, why), kept, tree.branch, merge)
+// IT IS NO LONGER CALLED BEFORE A WORKER STARTS. The reading that finds this runs
+// beside the worker now (the file header says why), so the saving is everything
+// AFTER the stop — the rest of the run, the check, the repair round and the check
+// again — rather than the whole of it.
+func (a *Agent) landNeedsPerson(node *TaskNode, tree taskTree, why string, changed []string, report string, log io.Writer) TaskState {
+	merge, changed := keepHome(node, tree, changed, a.signsGitWork())
+	fmt.Fprintf(log, "the worker was stopped: %s\n", why)
+	node.finish(withReport(withYourCallLead(TaskFacts{Merge: merge}, why), report), changed, tree.branch, merge)
 	return TaskUnverified
 }
 
-// divisionAlreadyHandedOut is the one sentence of the harness's own that stands
-// over the receipt, and it says the single thing the worker cannot work out for
-// itself: this happened before it started, so the parts are already running.
+// divisionHandedOutBeside is the one sentence of the harness's own that stands
+// over the receipt, and it says the two things the worker cannot work out for
+// itself: parts it never asked to hand out are now somebody else's, and they
+// start from its copy of the folder as it stood when they were handed out.
 //
 // EVERYTHING ELSE IS [divisionDone]'S WORDS, unchanged. What a worker needs to
 // know after a division — do not wait, the reports arrive here, this is not
 // finished until they are one deliverable — is already written for the worker that
 // asked, and a second wording of it is how the two paths come to mean different
 // things.
-const divisionAlreadyHandedOut = "PARTS OF THIS WORK ARE ALREADY IN OTHER HANDS. Before you started, the pieces named above were handed out:"
+const divisionHandedOutBeside = "PARTS OF THIS WORK ARE NOW IN OTHER HANDS. The pieces below were handed out from this copy of the folder as it stood then, so what had been written by that moment is on their disk. They are theirs: do not do them yourself."
 
 // drawn is the division this node was admitted with, or an empty one. It is
 // [taskSpec.drawn] read under the graph's lock, which is the only way anything

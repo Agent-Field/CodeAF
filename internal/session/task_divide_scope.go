@@ -109,7 +109,7 @@ func scopeCollisions(parts []dividePart, tree string) []string {
 // to hand the worker, or an empty string where the parts own separate work.
 //
 // IT IS ONE FUNCTION BECAUSE THE CHECK IS ASKED TWICE, on the two sets of parts
-// that can exist ([Agent.divideOnce] says where each stands). Two spellings of
+// that can exist ([Agent.weighDivision] says where each stands). Two spellings of
 // "the parts may not share a path" would be two rules, and the day they
 // disagreed the honest one would be whichever set of parts the reader in front
 // of you was holding (design-law §ONE SOURCE OF TRUTH).

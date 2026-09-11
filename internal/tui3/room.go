@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -3336,6 +3337,14 @@ func (a *app) roomRows(width int) []row {
 	case len(out) == 0:
 		out = a.roomRecordRows(out, inner)
 	}
+	// AND A LIFE WAITING ON A REQUEST SAYS WHAT THE REQUEST IS DOING, under
+	// whatever the page already holds — the transcript of a worker that asked for
+	// its work to be divided, or, on a page nothing has been written to yet, the
+	// brief. It is the next thing that will happen to this work, so it stands
+	// where the next thing would appear ([app.roomCallRow]).
+	if call, ok := a.roomCallRow(inner); ok {
+		out = append(out, call)
+	}
 	// AND A READING PAGE WITH NO WAY TO ASK ITS OWNER SAYS SO, once, under
 	// whatever it did read. It is not a refusal and not an error — the transcript
 	// above it is real — it is the one thing the page cannot know, said rather
@@ -3477,8 +3486,61 @@ func (a *app) roomRecordRows(out []row, width int) []row {
 			out = append(out, row{text: a.pal.dim(line), entry: -1})
 		}
 	}
-	// AND LAST, WHY THERE IS NO TRANSCRIPT UNDER ANY OF IT.
+	// AND LAST, WHY THERE IS NO TRANSCRIPT UNDER ANY OF IT — unless a request is
+	// out on the work's behalf, which is the better answer to that question and
+	// is drawn under these rows by the caller ([app.roomCallRow]). A request
+	// thinking for three minutes under `nothing on this page yet` was the page
+	// telling a person nothing was happening while something was.
+	if a.roomCall() != nil {
+		return out
+	}
 	return append(out, row{text: a.pal.dim(fit(a.roomBlankWord(), width)), entry: -1})
+}
+
+// roomCall is the request the open room's node is waiting on, and nil when there
+// is none or when the page is over ([session.TaskPhaseNotice.Call]).
+func (a *app) roomCall() *session.TaskCall {
+	if a.room == nil || a.room.done {
+		return nil
+	}
+	if node := a.roomNode(); node != nil {
+		return node.phaseCall
+	}
+	return nil
+}
+
+// roomCallRow is that request drawn as one row: the thinking mark while the
+// model thinks, the ladder's own sentence — which model, which of how many — and
+// the request's facts after it ([app.callFields]).
+//
+//	✳ asking deepseek/deepseek-v4.1-flash · 1 of 2 · thinking 41s · ↓ 4,465 · deepinfra
+//
+// THE MARK IS THE THOUGHT'S OWN SLOT while reasoning is what is arriving, which
+// is the one sign on this surface that means "the model is thinking", and it
+// comes through the vocabulary's door ([app.icon]) so each terminal draws its own
+// tier's spelling of it. Any other moment of the request — out with nothing
+// back, parked, writing — wears the wait mark the room's live row wears between
+// calls ([app.compactWaitMark]).
+//
+// THE SENTENCE LEADS AND IS KEPT WHOLE, and the facts after it shed from the
+// right (rowfit.go's first law): which model is being asked is what the row is
+// ABOUT, and a clock beside half a model's name is a clock about nobody.
+func (a *app) roomCallRow(width int) (row, bool) {
+	call := a.roomCall()
+	if call == nil {
+		return row{}, false
+	}
+	mark := a.compactWaitMark()
+	if call.Phase == provider.CallThinking {
+		mark = a.pal.dim(a.icon(tokens.GThought))
+	}
+	gutter := ansi.StringWidth(mark) + 1
+	fields := append([]rowField{rowSay(a.roomNode().phaseFinding)}, a.callFields(call, a.now())...)
+	said := rowLed(fields, width-gutter)
+	if said == "" {
+		return row{}, false
+	}
+	return row{text: mark + " " + a.pal.dim(said), entry: -1}, true
 }
 
 // roomBlankWord is the one line an empty page ends on: WHY there is nothing

@@ -371,7 +371,12 @@ var beltFacts = []beltFact{{
 // does independent pieces one after another, because that is what one thread
 // of reasoning feels like from the inside, and the person waits the sum of them
 // for an answer that could have cost the longest. So the middle paragraph is
-// the arithmetic, and the last one is the conduct that keeps the win: do the
+// the arithmetic and then the goal it serves, stated ONCE HERE AND NOWHERE
+// ELSE: this is the one paragraph every agent that can hand work out reads,
+// the conversation whose fan-out is uncapped included, so the fan-out page a
+// task node also reads does not say it again (the law registry's
+// `handoff.wall-time-goal` fails a second copy on any page). The last
+// paragraph is the conduct that keeps the win: do the
 // piece you kept, never look in on running work, and end the turn when nothing
 // independent of it is left. Both lean on laws already written — the page's own
 // `HANDED-OFF WORK IS NOT WORK THAT REMAINS` and [taskHandoffWakeSentence] on
@@ -396,14 +401,15 @@ var handoffFacts = []beltFact{{
 		"So WEIGH THE CLOCK BEFORE YOU BEGIN, and again each time the material shows you\n" +
 		"more than you knew. WHEN THE ASK ITSELF NAMES SEVERAL THINGS, THOSE ARE THE\n" +
 		"PARTS: the person has already done the dividing, and work with parts in it is\n" +
-		"not yours to grind through inline. What they wait on is wall time, not calls:\n" +
-		"pieces done in your own hands cost their sum, and independent pieces handed out\n" +
-		"in one breath cost the longest of them alone. Working through them yourself is\n" +
-		"the slowest order there is, and the one you fall into unless you choose\n" +
-		"otherwise. So when what is ahead has parts that do not need each other, HAND\n" +
-		"THEM OUT AND KEEP ONE, before you open the first of them, and do it even where\n" +
-		"each part is plainly something you could do yourself. That you could is not the\n" +
-		"question. The clock is. When the parts\n" +
+		"not yours to grind through inline. Pieces done in your own hands cost their sum,\n" +
+		"and independent pieces handed out in one breath cost the longest of them alone.\n" +
+		"THE GOAL IS THE SHORTEST WALL TIME FOR THE WHOLE JOB: when what is ahead has\n" +
+		"parts that do not need each other, hand them all out at once, however many there\n" +
+		"are, before you open the first, the way one mind with a team of workers would,\n" +
+		"and keep one to begin yourself, rather than working through them in turn, the\n" +
+		"order you fall into unless you choose otherwise. Do it even where each part is\n" +
+		"plainly something you could do yourself. That you could is not the question. The\n" +
+		"clock is. When the parts\n" +
 		"feed each other, keep them together: your own steps, or one quick task's items.\n" +
 		"One read, one edit, one command is never worth a hand-off. What must be checked\n" +
 		"and landed on its own, or must survive you, is a task; what you will read and\n" +
