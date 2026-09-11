@@ -549,3 +549,79 @@ func TestAModelsOwnQuestionTravelsInPresenceAndAnAnswerComesBack(t *testing.T) {
 	}
 	waitForNoQuestion(t, dir)
 }
+
+// AN ANSWER LEFT WHILE THE CONVERSATION WAS CLOSED IS APPLIED AS IT OPENS, not
+// on the heartbeat of a process that did not exist. This is the defect home's
+// `answered · waiting for it to pick that up` was named for: the landing's
+// answer went onto the doorstep of a conversation with no process behind it,
+// and the only drain was a heartbeat nothing was running — so the row said
+// waiting forever. The conversation's own constructor drains the doorstep now,
+// once the graph the answer applies to is back.
+func TestAnAnswerLeftWhileTheWindowWasShutIsAppliedAsItOpens(t *testing.T) {
+	// THE GROUND IS REAL. The answer this test sends is a NO, which settles the
+	// landing where it stands without reaching for its working copy — an accept
+	// would go looking for the branch's tree, which a checkpoint restored onto a
+	// fresh process does not carry, and that is the settle road's own affair and
+	// not the door under test.
+	repo := newTestRepo(t)
+	dir := filepath.Join(t.TempDir(), "cccc1111cccc2222")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("session folder: %v", err)
+	}
+	// The conversation's whole graph, written the way a close left it: one
+	// landing nobody could check, waiting on the person, with its work on a
+	// branch of the ground. The constructor's recovery reads exactly this.
+	document := taskDocument{
+		Type: taskDocumentType, Version: taskFileVersion, Seq: 1,
+		Nodes: []taskRecord{{
+			ID: 1, Title: "Port the parser", Brief: "port it", Acceptance: "it parses",
+			State: TaskUnverified, Ground: repo, Branch: "task/parser",
+		}},
+	}
+	raw, err := json.Marshal(document)
+	if err != nil {
+		t.Fatalf("checkpoint: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, placeTasks), raw, 0o600); err != nil {
+		t.Fatalf("writing the checkpoint: %v", err)
+	}
+	// AND THE ANSWER IS ON THE DOORSTEP BEFORE ANY PROCESS IS. That is the whole
+	// shape: the person answered from home, home wrote the file, and the
+	// conversation was a folder on a disk with nothing running.
+	if err := WriteAnswer(dir, QuestionLanding, 1, LandingNoKey); err != nil {
+		t.Fatalf("leaving the answer: %v", err)
+	}
+
+	// OPENING THE CONVERSATION IS THE ACT UNDER TEST. No surface, no first turn,
+	// no five-second wait — the constructor is where the answer lands, because
+	// that is the first moment a process exists that can apply it.
+	agent, err := newAgent(Config{
+		Workspace:   repo,
+		Model:       "test/model",
+		System:      "SYSTEM",
+		Place:       Place{Dir: dir, Workspace: repo},
+		SessionFile: filepath.Join(dir, placeTranscript),
+	}, &scriptedCompleter{})
+	if err != nil {
+		t.Fatalf("opening the conversation: %v", err)
+	}
+	t.Cleanup(func() { _ = agent.Close() })
+
+	node := agent.taskNode(1)
+	if node == nil {
+		t.Fatal("the landing did not come back with the conversation")
+	}
+	// THE ANSWER WAS APPLIED, THROUGH THE ONE DOOR, BEFORE ANY HEARTBEAT COULD
+	// HAVE. TaskFailed is the no: the person said the work does not hold and the
+	// node was failed where it stood. Anything still unverified is the old
+	// defect standing up again — the answer still on the doorstep, the row still
+	// saying waiting.
+	if state := node.stateNow(); state != TaskFailed {
+		t.Fatalf("the landing is %q after the conversation opened, want it refused — the doorstep answer sat waiting for a process", state)
+	}
+	// AND THE DOORSTEP IS EMPTY, so a heartbeat that does arrive finds nothing
+	// to apply a second time.
+	if _, err := os.Stat(AnswersPath(dir)); !os.IsNotExist(err) {
+		t.Fatalf("the doorstep was left behind: %v", err)
+	}
+}

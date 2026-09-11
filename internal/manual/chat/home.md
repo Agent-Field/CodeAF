@@ -168,8 +168,11 @@ is waiting on it. **Not yet a question the model raised with `ask`**: that row s
 
 Home leaves the answer on the other window's doorstep, so the row says
 `answered · waiting for it to pick that up` until that window applies it — a second or
-two. If it could not be left at all, it says
-`could not leave that answer — open the conversation and answer it there`.
+two while that window is running, or the moment it next opens when it was shut: a
+conversation drains its doorstep as it opens, so an answer you left for a closed
+conversation is settled the next time it runs, before its first turn. If it could not be
+left at all, it says `could not leave that answer — open the conversation and answer it
+there`.
 
 **The first answer wins.** When two windows answer one question, the second is told who
 answered and what they chose; it is never merged into a third answer nobody gave.
@@ -206,8 +209,8 @@ Three ways to settle it, and they are the same door:
   `[d] let aforge decide this one`;
 - **home** — walk onto its row in `to check` and press `1` or `2`. The conversation applies
   it on its own beat; if it is not running, the answer waits on its doorstep and is applied
-  the next time that conversation runs, and the row says
-  `answered · waiting for it to pick that up` meanwhile;
+  the moment that conversation next opens — the constructor drains the doorstep before
+  anything else — and the row says `answered · waiting for it to pick that up` meanwhile;
 - **the task's room** — enter on its roster row opens it, and the same chips stand at the
   foot of the page; `a`, `n`, `s` and `d` over an empty box answer it with nothing
   selected;
