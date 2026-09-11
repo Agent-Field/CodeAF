@@ -88,7 +88,8 @@ func (a *Agent) metaStamp() *stampWriter {
 }
 
 // SettleWrites waits until everything this session owes a file BEHIND a person's
-// path has landed: the meta.json stamp and the fix shelf's counters.
+// path has landed: the meta.json stamp, the fix shelf's counters, and the
+// working copy of any folder referred but not yet cut.
 //
 // IT IS THE ONE EXIT DOOR, and there is one rather than one per owner because a
 // caller closing a session should not have to know which parts of it defer a
@@ -101,6 +102,7 @@ func (a *Agent) SettleWrites() {
 	}
 	a.metaStamp().settle()
 	a.fixShelfFor().settle()
+	a.treesAhead().Settle()
 }
 
 // stampWriter is [offpath.Write] with the patch it is to perform carried beside

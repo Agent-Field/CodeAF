@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: nothing hidden happens on a turn — one file memo, one off-path reading, one deferred write, one door for a hand asking a model
+title: nothing hidden happens on a turn — one file memo, one off-path reading, one deferred write
 pr: 876
 surface: [chat, engine, docs]
 invalidates:

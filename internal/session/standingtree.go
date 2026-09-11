@@ -387,18 +387,35 @@ func (a *Agent) startStandingTree(place PlaceRef) {
 	if strings.TrimSpace(place.Path) == "" {
 		return
 	}
-	if _, held := a.standingTreeFor(place.Path); held {
-		return
-	}
 	if strings.TrimSpace(a.config.Place.Trees()) == "" {
 		// Nowhere to put one. cutStandingTree says so to a caller that asked;
 		// nobody asked yet.
 		return
 	}
-	offpath.Take(func() struct{} {
-		_, _ = a.cutStandingTree(place)
-		return struct{}{}
+	a.treesAhead().Owe()
+}
+
+// treesAhead is the one deferred piece of work behind every referred folder:
+// "cut a working copy of anything referred that has none".
+//
+// IT IS ONE WRITE AND NOT ONE PER FOLDER, which is what makes three folders
+// dropped on the window at once cost one goroutine and cut three copies in the
+// order they were referred, rather than three goroutines contending on
+// [Agent.treeCut]. [offpath.Write]'s coalescing does the whole of that: a refer
+// arriving while a cut is running owes one more pass, and that pass looks at the
+// set as it stands then.
+func (a *Agent) treesAhead() *offpath.Write {
+	a.treesOnce.Do(func() {
+		a.treesWrite = offpath.Deferred(func() {
+			for _, place := range a.referredPlaces() {
+				if _, held := a.standingTreeFor(place.Path); held {
+					continue
+				}
+				_, _ = a.cutStandingTree(place)
+			}
+		})
 	})
+	return a.treesWrite
 }
 
 // cutStandingTree makes the working copy, once — ahead of the first write when

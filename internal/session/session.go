@@ -31,6 +31,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/modelsource"
+	"github.com/Agent-Field/aforge-v2/internal/offpath"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/search"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -2951,6 +2952,11 @@ type Agent struct {
 	// toolCompact is the reduced form of this session's frozen tool history,
 	// carried between requests rather than rebuilt on each one (toolcompact.go).
 	toolCompact toolCompactMemo
+
+	// treesWrite cuts the working copy of a referred folder AHEAD of the first
+	// write into it, and treesOnce builds it on the first refer (standingtree.go).
+	treesOnce  sync.Once
+	treesWrite *offpath.Write
 
 	title      string
 	titleTried bool
