@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 )
 
 // The concurrency doctrine: aforge sets no artificial ceiling on how much work
@@ -49,6 +51,13 @@ const (
 	limiterHealEvery = 5 * time.Second
 )
 
+// limiterSpokenWithin is what the slot queue actually reads, and it is
+// [lane.SpokenWithin]. The constant is the figure — one source of truth for the
+// manual page and for the law — and this exists only so a test can prove the
+// machinery in milliseconds rather than in the second it describes, exactly as
+// [stallFirstBound] and its siblings do for the guard.
+var limiterSpokenWithin = lanes.SpokenWithin
+
 // adaptiveLimiter is shared by every request a client sends.
 type adaptiveLimiter struct {
 	mu        sync.Mutex
@@ -80,19 +89,49 @@ func newAdaptiveLimiter() *adaptiveLimiter {
 // whether it held a slot, and returning one it never had drove inFlight
 // negative — at which case `inFlight < capacity` is permanently true and
 // admission control silently stops admitting anything at all.
+//
+// AND IT SAYS SO WHILE IT WAITS. This is the first of the four silent waits the
+// recovery design names (§2 problem 8): a 429 storm halves the ceiling to one
+// slot, every other call in the process queues here, and until this wave they
+// queued with NOTHING on the screen — the request is not on the wire yet, so
+// none of the stream's own phases has started, and the person read a blank line
+// for as long as the burst lasted. A wait that is real is reported.
+//
+// THE MODEL COMES OFF THE CONTEXT rather than through the signature, because
+// the signature is retry.go's and this is the only fact this wait needs from
+// it. [modelWaitedOn] is empty on a call nobody is watching, which is exactly
+// the call whose phase would go nowhere.
 func (l *adaptiveLimiter) acquire(ctx context.Context) error {
+	model := modelWaitedOn(ctx)
 	wait := l.enter()
 	if wait == nil {
 		return nil
 	}
-	select {
-	case <-ctx.Done():
-		l.abandon(wait)
-		return ctx.Err()
-	case <-wait:
-		// The releasing goroutine kept the slot counted on our behalf, so
-		// there is nothing to increment and nothing to re-check.
-		return nil
+	// THE WORD IS `connecting` AND THE DEADLINE IS EMPTY, both deliberately. To
+	// the person this is the request going out and taking a moment to do it —
+	// there is no second thing happening — and the emptiness law says an
+	// unknown is drawn as nothing rather than as a countdown to a moment
+	// nobody can name: a slot comes free when some other call finishes, and
+	// this process does not know when that is.
+	since := l.now()
+	spoken := time.NewTimer(limiterSpokenWithin)
+	defer spoken.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			l.abandon(wait)
+			return ctx.Err()
+		case <-wait:
+			// The releasing goroutine kept the slot counted on our behalf, so
+			// there is nothing to increment and nothing to re-check.
+			return nil
+		case <-spoken.C:
+			notePhase(ctx, model, PhaseConnecting, "", since, time.Time{}, "")
+			// Said again on the beat every other wait in this package uses, so
+			// a queue that outlasts [PhaseWindow] does not take itself off the
+			// screen while it is still holding the call.
+			spoken.Reset(phaseBeat)
+		}
 	}
 }
 

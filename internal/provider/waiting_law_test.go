@@ -284,3 +284,151 @@ func TestEveryStreamingRoleIsBoundedAndMediaIsNot(t *testing.T) {
 		t.Error("media streams tokens now, so it belongs inside the controller and its exclusion is stale")
 	}
 }
+
+// ── EVERY WAIT IN THE REQUEST PATH IS SPOKEN ────────────────────────────────
+
+// spokenWaitExceptions are the functions in this package that park on a timer
+// and are RIGHT to say nothing, each with the reason it is right.
+//
+// AN ALLOWLIST IS A CONFESSION AND IS MEANT TO READ LIKE ONE. Every name here
+// is a place a person could in principle be waiting with nothing on the screen,
+// and the only defence is that nobody is: the wait is a background beat nobody
+// is blocked on, or it is bounded by a figure too small for anyone to perceive,
+// or the phase for it is posted by the caller that owns the story. A name added
+// here without one of those three sentences beside it is the law being switched
+// off rather than satisfied.
+var spokenWaitExceptions = map[string]string{
+	// The clock seam itself: it is what every narrated wait in this package
+	// sleeps on, so demanding that it narrate would be circular.
+	"waitContext": "the timer seam every other wait is built from",
+	// A beat is not a wait. Nobody is blocked on these: they wake a goroutine
+	// that then decides whether there is anything to say, and what it says goes
+	// out through the phase clock at that point.
+	"(*hedgeRace).rearm":  "a beat that wakes the controller; the act it takes is what speaks",
+	"(*stallWatch).watch": "the silence beat; a cut it decides on is composed upstream",
+	// Bounded far under what a person can perceive. [lane.SpokenWithin] is one
+	// second and these are hundredths of it.
+	"(*Client).drainReceipts": "receipts are fetched after the answer has landed; nobody is waiting",
+	// THE ONE THE RECOVERY DESIGN NAMES AND THE ONE IT IS WRONG ABOUT.
+	// `abandonGrace` is listed in §2 problem 8 beside the limiter's slot, and it
+	// is a different case: [hedgeRace.drainArms] is only ever reached from
+	// [hedgeRace.abandon], which is entered BECAUSE the caller's context is
+	// already done — the person pressed stop, or the turn was taken over. A
+	// phase posted to somebody who has already left is noise, and the grace is
+	// one second whether or not it is spent. What the arms owe is their log
+	// rows, which they write themselves, and that is what the drain is for.
+	"(*hedgeRace).drainArms": "entered only after the caller cancelled; there is nobody left to tell",
+}
+
+// TestEveryWaitInTheRequestPathIsSpoken is the recovery design's clause 4 as a
+// law: `no select on a timer in the request path without a notePhase`
+// (`docs/design/recovery/DESIGN.md` §3).
+//
+// FOUR WAITS WERE SILENT and the census could not see any of them, because a
+// wait with no phase leaves no row and no line — it is indistinguishable, from
+// every surface above it, from a process that is doing nothing. The one this
+// wave closed is the limiter's slot queue: a 429 storm halves the process-wide
+// ceiling to one slot and every other call in the process parks there BEFORE
+// its request is on the wire, so not one of the stream's own phases has started
+// and the person reads a blank line for the length of somebody else's burst.
+//
+// WHAT IT READS IS A SELECT WITH A TIMER ARM IN IT. That is the shape of a wait
+// this package can hold a person in — `time.After`, a `time.Timer`'s C, a
+// `time.Ticker`'s C — and it is deliberately syntactic: a law that had to
+// understand which waits are reachable from a request would be a law that gets
+// the answer wrong quietly. The exceptions are named above, each with its
+// reason.
+func TestEveryWaitInTheRequestPathIsSpoken(t *testing.T) {
+	root := funnelRepoRoot(t)
+	dir := filepath.Join(root, "internal", "provider")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read internal/provider: %v", err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		fset := token.NewFileSet()
+		parsed, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, parser.ParseComments)
+		if err != nil {
+			t.Fatalf("parse internal/provider/%s: %v", name, err)
+		}
+		for _, decl := range parsed.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Body == nil {
+				continue
+			}
+			if !selectsOnATimer(fn.Body) {
+				continue
+			}
+			spelled := spokenWaitName(fn)
+			if _, excused := spokenWaitExceptions[spelled]; excused {
+				continue
+			}
+			if saysAPhase(fn.Body) {
+				continue
+			}
+			t.Errorf("internal/provider/%s: %s parks on a timer and says nothing — "+
+				"a wait that is real is reported (docs/design/waiting/DESIGN.md). "+
+				"Post a notePhase with an honest deadline, or name it in spokenWaitExceptions "+
+				"with the sentence that says why nobody is waiting on it.",
+				name, spelled)
+		}
+	}
+}
+
+// spokenWaitName spells a declaration the way the allowlist does: bare for a
+// function, `(*Type).Method` for a method, so a name there is unambiguous.
+func spokenWaitName(fn *ast.FuncDecl) string {
+	if fn.Recv == nil || len(fn.Recv.List) == 0 {
+		return fn.Name.Name
+	}
+	var receiver string
+	switch typed := fn.Recv.List[0].Type.(type) {
+	case *ast.StarExpr:
+		if ident, ok := typed.X.(*ast.Ident); ok {
+			receiver = "(*" + ident.Name + ")"
+		}
+	case *ast.Ident:
+		receiver = typed.Name
+	}
+	return receiver + "." + fn.Name.Name
+}
+
+// selectsOnATimer reports whether this body parks on a clock inside a select:
+// a `time.After` call, or a receive from something spelled `.C`. Both are what
+// a wait a person can be held in looks like in this package.
+func selectsOnATimer(body *ast.BlockStmt) bool {
+	parks := false
+	ast.Inspect(body, func(n ast.Node) bool {
+		stmt, ok := n.(*ast.SelectStmt)
+		if !ok {
+			return !parks
+		}
+		ast.Inspect(stmt, func(inner ast.Node) bool {
+			switch typed := inner.(type) {
+			case *ast.SelectorExpr:
+				if typed.Sel.Name == "After" || typed.Sel.Name == "Tick" || typed.Sel.Name == "C" {
+					parks = true
+				}
+			}
+			return !parks
+		})
+		return !parks
+	})
+	return parks
+}
+
+// saysAPhase reports whether this body reaches the one phase pipe, by any of
+// the three doors: the plain post, the clock a request carries, or the beat
+// that keeps one alive.
+func saysAPhase(body *ast.BlockStmt) bool {
+	for _, door := range []string{"notePhase", "postPhase", "announce", "say", "enter", "firstWord", "switching", "asking", "allSlow", "tellTheWait"} {
+		if waitingNames(body, door) {
+			return true
+		}
+	}
+	return false
+}

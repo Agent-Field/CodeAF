@@ -16,7 +16,7 @@ import "time"
 type Limits struct {
 	// TransportAttempts is N: how many tries one request gets on its own tier
 	// before the transport policy gives up on it. It is the TOTAL, first attempt
-	// included, so 4 is one try and three retries.
+	// included, so 3 is one try and two retries.
 	TransportAttempts int
 
 	// TransportBackoff is the first wait. Each further attempt doubles it, so
@@ -34,10 +34,15 @@ type Limits struct {
 	TierCapUSD float64
 }
 
-// The floors. They are what a caller that resolved nothing still gets, and every
-// one of them is DELIBERATELY THE BEHAVIOUR THIS BUILD ALREADY HAD: four
-// attempts on the wire doubling from two seconds, and a stronger tier bought on
+// The floors. They are what a caller that resolved nothing still gets: three
+// attempts on the wire doubling from one second, and a stronger tier bought on
 // the first measured failure.
+//
+// THE WIRE PAIR WAS FOUR AND TWO SECONDS and both came down on 2026-09-10, for
+// the reason each of them now states: the fourth attempt was blind and the
+// waiting was latency a person paid for a machine that was never going to
+// answer. The tier pair is untouched and is still exactly the behaviour this
+// build already had.
 //
 // K FLOORS AT ONE, WHICH IS NOT WHERE THE BILL CAME FROM. The argument for
 // buying on the first finding is a good one and it is written out in
@@ -48,11 +53,28 @@ type Limits struct {
 // person who wants the tier held back further raises this; the default changes
 // nothing about a harness that is working.
 const (
-	// DefaultTransportAttempts is four: one try and three retries, the ladder the
-	// turn loop already ran.
-	DefaultTransportAttempts = 4
-	// DefaultTransportBackoff is two seconds, doubling: 2s, 4s, 8s.
-	DefaultTransportBackoff = 2 * time.Second
+	// DefaultTransportAttempts is three: one try, one repeat, and then the move.
+	//
+	// IT WAS FOUR, AND THE FOURTH WAS SPENT BLIND. A transport fault is the
+	// network on this machine far more often than it is the far end — the call
+	// census of 2026-09-10 puts the whole network family at 6.8% of failures —
+	// and the chains it produced re-sent into a dead resolver rather than
+	// waiting for it: three `no such host` chains ran 1,113s, 1,005s and 787s
+	// and answered nothing. The origin being unreachable is already owned by
+	// the connectivity gate (internal/provider's connectivity.go), which probes
+	// the real origin, says so on the phase pipe while it waits, and gives up
+	// after its own window. A fourth blind re-send buys nothing that gate does
+	// not buy better, and it spends the turn's ninety seconds
+	// ([lane.TurnGiveUp]) doing it.
+	DefaultTransportAttempts = 3
+	// DefaultTransportBackoff is one second, doubling: 1s, 2s.
+	//
+	// IT WAS TWO, and at four attempts that was eight seconds of a ninety-second
+	// turn spent asleep before anything had moved. The wait exists to let a
+	// rate window drain, which is a claim about the machine that refused; when
+	// the next move is a DIFFERENT machine there is nothing to drain and the
+	// sleep is pure latency the person pays for.
+	DefaultTransportBackoff = time.Second
 	// DefaultSemanticFailures is one. See above.
 	DefaultSemanticFailures = 1
 	// DefaultTierCapUSD is twenty-five dollars, and it is nearly inert on a

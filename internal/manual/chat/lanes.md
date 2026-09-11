@@ -263,6 +263,68 @@ ceiling was reported as a stall at exactly the ceiling while it was writing at
 full rate, and one measured turn wrote 6,174 tokens of reasoning in 108 seconds
 and was called slow ten seconds in.
 
+## How long aforge waits before it does something — is it ten seconds, five, two minutes, and why the line is never blank
+
+Two different clocks, and mixing them up is why waiting used to feel slow.
+
+**The first is speech, and it is one second.** Any wait aforge is holding you in
+says what it is waiting for within a second of starting. Nothing is cut at one
+second and nothing is retried; it is the moment the line has to stop being
+blank. So `connecting`, `first word`, `thinking`, `paced`, `waiting for
+connection` — one of those is on the status line the whole time, with the clock
+counting up under it.
+
+**The second is action, and it is ten seconds.** Ten seconds of nothing arriving
+is when aforge stops waiting and does something about it: a second request to
+another machine, and the line changes to `switching`. That is a ceiling, not a
+target — a machine aforge has timed is acted on at its own measured pace, which
+for a fast one is a second or two.
+
+Ten seconds is measured, not chosen. Across ten days of real calls the first
+word of a conversation turn arrives in 1.6 seconds at the middle, 8.4 seconds
+for nine turns in ten, and 13 seconds for nineteen in twenty. Acting at five
+seconds would touch twice as many calls and rescue a smaller share of them,
+because under ten seconds almost everything still quiet is an ordinary call in
+progress. Of the calls still silent at ten seconds, more than three quarters
+answer perfectly well.
+
+**Work nobody is watching waits longer, on purpose.** A task node gets thirty
+seconds and a standing pass sixty, because nobody is sitting in front of them
+and a second request costs money. They are never silent either — the same
+sentence is on their row.
+
+**Ten seconds always does something, even when a second request is too
+expensive.** aforge only runs a small number of rescues — a second request to
+another machine costs real money, so it keeps a small allowance and spends it
+where it helps most. When the allowance is gone and the machine has sent nothing
+at all, not one byte, aforge stops that attempt instead and asks somewhere else.
+Before 2026-09-10 it did neither: four tasks that evening sat on one machine for
+six and seven minutes after the ten seconds were up, because the only way to act
+was the one aforge could not afford. If the machine IS sending something — the
+router is talking, or the model is writing where you cannot see it — nothing is
+stopped, because nine such calls in ten turn out to be seconds from an answer.
+
+**A conversation turn gives up after ninety seconds** of not reaching any model
+at all, and tells you so in one line. It is the point where every model in the
+chain has had one fair try with a move between them: of the calls that recovered
+in ten days of logs, two thirds had landed by then, and the ones that took
+longer were spending the time asking the same machine again — which aforge no
+longer does.
+
+**Nothing waits behind a busy moment in silence.** When every request aforge is
+allowed to have in the air at once is already in the air — which happens when
+several windows and a task are working at the same time, or a machine has been
+pacing the account — the next call queues. It says `connecting` while it does,
+with no countdown, because nothing in aforge knows which of the calls ahead of it
+will finish first, and a countdown to a moment nobody can name is worse than
+none.
+
+**A reply that is arriving is never cut for taking a long time.** The clocks
+above are all clocks on SILENCE. A model writing steadily is left alone however
+long the answer is; the only bound on a reply that is still arriving is twenty
+minutes, which no healthy reply in ten days of logs has come close to — the
+longest was twelve minutes.
+
 ## Why is it writing one word at a time — it never stopped, it just crawled
 
 A stream does not have to stop completely to need rescuing. Once aforge has

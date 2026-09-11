@@ -114,9 +114,18 @@ func (c *Client) waitConnection(ctx context.Context, model, target string, start
 	watch := streamWatchFrom(ctx)
 	watch.pauseConnection()
 	defer watch.resumeConnection()
+	// THE DEADLINE ON THIS WAIT IS REAL AND WAS BEING THROWN AWAY. A connection
+	// wait ends on its own at [connectionRecoveryWindow] past the moment it
+	// started, with a [ConnectionUnavailableError] the ladder above will not
+	// spend another window on — so there IS a moment at which this build acts,
+	// and a countdown drawn to it is a countdown that means something. It used
+	// to post a zero here, which the emptiness law correctly draws as nothing,
+	// and the person watching a dead Wi-Fi was told the wait was real but never
+	// how long this build would give it.
+	until := w.since.Add(connectionRecoveryWindow)
 	announce := func() {
 		if watch.speaking() {
-			notePhase(ctx, model, PhaseConnectionLost, "", w.since, time.Time{}, "")
+			notePhase(ctx, model, PhaseConnectionLost, "", w.since, until, "")
 		}
 	}
 	announce()
