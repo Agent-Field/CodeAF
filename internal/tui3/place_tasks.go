@@ -96,6 +96,16 @@ type tasksPlace struct {
 	tailKept   bool
 	tailUnread bool
 
+	// paneTail is one report per row of the record, read off the loop when the
+	// cursor settles and kept for as long as the place is open (taskpane.go).
+	// A key that is PRESENT with an empty value is a row that was read and had
+	// nothing to say, which is why this is read as presence-and-value.
+	paneTail map[tasksKey]string
+	// paneGen counts the cursor's moves, so a settle armed by an earlier one can
+	// be told from the settle armed by the move that stopped
+	// ([app.taskPaneFollow]).
+	paneGen uint64
+
 	// reading is the whole page: every authority's answer to "what has this
 	// machine run", grouped once (tasksplace.go). EVERYTHING ON THE FRAME IS
 	// DRAWN FROM IT — the body, the note line, the tally, the cursor, the
@@ -259,15 +269,14 @@ func (p *tasksPlace) regroup(a *app) {
 func (p *tasksPlace) rowAt(a *app, line int) (tasksKey, bool) {
 	r := p.filtered(a)
 	width, _ := a.size()
-	return r.nameAt(r.lay(width), line)
+	return r.nameAt(r.lay(a.taskSheetListWidth()), line)
 }
 
 // lineOf is the line the work named by one key is on, in the reading this place
 // is holding now.
 func (p *tasksPlace) lineOf(a *app, want tasksKey) (int, bool) {
 	r := p.filtered(a)
-	width, _ := a.size()
-	lines := r.lay(width)
+	lines := r.lay(a.taskSheetListWidth())
 	for at := range lines {
 		if name, ok := r.nameAt(lines, at); ok && name == want {
 			return at, true
@@ -631,8 +640,7 @@ func tasksMatches(item tasksItem, needle string) bool {
 // "which rows answer to the keyboard" and the four keys cannot disagree.
 func (p *tasksPlace) stops(a *app) []int {
 	r := a.tasksFiltered()
-	width, _ := a.size()
-	lines := r.lay(width)
+	lines := r.lay(a.taskSheetListWidth())
 	out := make([]int, 0, len(lines))
 	for i := range lines {
 		// A CONVERSATION IS A STOP LIKE ANY ROW OF WORK ([tasksReading.picks]).
@@ -673,16 +681,14 @@ func (a *app) tasksSettle(from int) int {
 // ([app.taskSheetChat]) or not at all.
 func (a *app) taskSheetCurrent() (tasksItem, bool) {
 	r := a.tasksFiltered()
-	width, _ := a.size()
-	return r.at(r.lay(width), a.taskSheet.cursor)
+	return r.at(r.lay(a.taskSheetListWidth()), a.taskSheet.cursor)
 }
 
 // taskSheetChat is the conversation under the cursor, and false over a row of
 // work or a page with nothing under it.
 func (a *app) taskSheetChat() (tasksChat, bool) {
 	r := a.tasksFiltered()
-	width, _ := a.size()
-	return r.chatAt(r.lay(width), a.taskSheet.cursor)
+	return r.chatAt(r.lay(a.taskSheetListWidth()), a.taskSheet.cursor)
 }
 
 // taskSheetFold opens or shuts the family under the cursor, and reports whether
@@ -695,8 +701,7 @@ func (a *app) taskSheetChat() (tasksChat, bool) {
 // key, two rungs, both of them drawn on the row.
 func (a *app) taskSheetFold(open bool) bool {
 	r := a.tasksFiltered()
-	width, _ := a.size()
-	lines := r.lay(width)
+	lines := r.lay(a.taskSheetListWidth())
 	at := a.taskSheet.cursor
 	if at < 0 || at >= len(lines) {
 		return false
@@ -1045,6 +1050,12 @@ func (a *app) taskSheetPress(x, y int) tea.Cmd {
 		a.taskCardPress(x, y)
 		return nil
 	}
+	// THE PANE'S OWN VERB LINE ANSWERS FIRST, because it is the one thing on this
+	// frame to the RIGHT of the seam that a press acts on and a click there must
+	// never fall through to the row it is drawn beside (taskpane.go).
+	if cmd, took := a.taskPanePress(x, y); took {
+		return cmd
+	}
 	width, height := a.size()
 	painted, hits, _, _ := a.taskSheetFrame(width, height)
 	if y < 0 || y >= len(hits) {
@@ -1059,9 +1070,17 @@ func (a *app) taskSheetPress(x, y int) tea.Cmd {
 	if hits[y].kind != taskSheetHitRow {
 		return nil
 	}
+	// THE CURSOR MOVES FIRST, AND WHETHER THAT IS THE WHOLE GESTURE DEPENDS ON
+	// WHETHER THERE IS A PREVIEW TO MOVE IT INTO. Where the frame splits, the
+	// pane is what the first click buys — the row's record, without leaving the
+	// list — and the second click on the SAME row is what opens it, which is the
+	// pointer grammar home already keeps (THE POINTER PREVIEWS AND THE CURSOR
+	// SELECTS, pages.go's [app.placeBodyHover]). Where there is no pane there is
+	// nothing for a first click to show, so one click opens as it always did.
+	was, moved := a.taskSheet.cursor, a.taskSheet.cursor != hits[y].index
 	a.taskSheet.cursor = hits[y].index
 	r := a.tasksFiltered()
-	lines := r.lay(width)
+	lines := r.lay(taskPaneList(width))
 	if at := a.taskSheet.cursor; at >= 0 && at < len(lines) && lines[at].folds {
 		line := lines[at]
 		foldX := ansi.StringWidth(tasksBareLead) + ansi.StringWidth(line.kin) - 2
@@ -1072,6 +1091,10 @@ func (a *app) taskSheetPress(x, y int) tea.Cmd {
 				return nil
 			}
 		}
+	}
+	_ = was
+	if moved && taskPaneOpen(width) {
+		return a.taskPaneFollow()
 	}
 	return a.taskSheetEnter()
 }
@@ -1155,7 +1178,12 @@ func (a *app) taskSheetFrame(width, height int) ([]string, []taskSheetHit, int, 
 	// card's own frame ([app.taskCardPress]), and a list hit reported for a row
 	// the list did not draw is exactly how a click opens the wrong task.
 	lines, hits, caretX, caretY := a.placeDraw(placeTasks{}, width, height)
-	return lines, placeHitsOf(hits, taskSheetHit{}), caretX, caretY
+	// AND A SPLIT FRAME'S ROWS ANSWER FOR BOTH HALVES, so the list's half is
+	// taken out here rather than by every reader of a hit (taskpane.go's
+	// [taskSheetHitsOf]). A row of a split body wears one hit carrying two, and a
+	// reader that asked for a bare list hit would have got nothing on every row —
+	// which is a list where no click and no hover lands.
+	return lines, taskSheetHitsOf(hits), caretX, caretY
 }
 
 // body is the place's own rows and the hit map the frame stores beside them.
@@ -1542,7 +1570,7 @@ func (placeTasks) tick(a *app, now time.Time) bool {
 }
 
 func (placeTasks) body(a *app, width, room int) []placeRow {
-	return a.taskSheet.body(a, width, room)
+	return a.taskSheetBody(width, room)
 }
 func (placeTasks) stops(a *app) []int { return a.taskSheet.stops(a) }
 
@@ -1646,10 +1674,12 @@ func (placeTasks) hover(a *app, y int) bool {
 	return true
 }
 
-func (placeTasks) wheel(a *app, delta int) bool {
+func (placeTasks) wheel(a *app, delta int) (tea.Cmd, bool) {
 	a.taskSheetScroll(delta)
 	a.touch()
-	return true
+	// THE WHEEL MOVES THIS PLACE'S CURSOR, so the pane beside the list follows it
+	// exactly as it follows an arrow key (taskpane.go's [app.taskPaneFollow]).
+	return a.taskPaneFollow(), true
 }
 
 // owns is the task room — the card drawn over the roster — and the door home is
@@ -1708,8 +1738,7 @@ func (a *app) placeFold(open bool) bool {
 // "" where the cursor is not on one — the emptiness law said about a key.
 func (a *app) taskSheetFoldWord() string {
 	r := a.tasksFiltered()
-	width, _ := a.size()
-	lines := r.lay(width)
+	lines := r.lay(a.taskSheetListWidth())
 	at := a.taskSheet.cursor
 	if at < 0 || at >= len(lines) || !lines[at].folds {
 		return ""
