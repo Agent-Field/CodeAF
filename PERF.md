@@ -1987,14 +1987,14 @@ the `usage` table, so both now see an interrupted leaf's spend. Pinned by
 Written against ink s9 of 2026-08-29, where three leaves were landed early by a
 bound the record could not name.
 
-**Recalibrated 2026-09-11: the grant is 250,000, and it is one number.** It stood
-at 150,000, calibrated from a turn costing about 11k input tokens and a
-well-sized leaf finishing in 8 to 16 of them. Measured against a real repository
-issue — #898, the frame law widened to see a package function that takes the
-surface as a parameter, run headless on `z-ai/glm-5.3`, run `04c2404b26072e41` —
-neither half of that calibration held: the median call carried 14.2k prompt
-tokens, and the leaves that did the work ran 14 to 41 turns. Every one of them
-was landed mid-edit by the grant.
+**Measured 2026-09-11: the grant is too small for real repository work, and
+three invariants pin it where it is (#920).** It is 150,000, calibrated from a
+turn costing about 11k input tokens and a well-sized leaf finishing in 8 to 16
+of them. Against a real issue — #898, the frame law widened to see a package
+function that takes the surface as a parameter, run headless on `z-ai/glm-5.3`,
+run `04c2404b26072e41` — neither half held: the median call carried 14.2k prompt
+tokens and the leaves that did the work ran 14 to 41 turns. Every one was landed
+mid-edit.
 
 | leaf | turns | spent | of grant |
 | --- | --- | --- | --- |
@@ -2002,16 +2002,23 @@ was landed mid-edit by the grant.
 | finish-issue-898 | 41 | 190,524 | 164,462 |
 | Answer remaining offenders | 14 | 268,971 | 211,852 |
 
-A grant above the constant is the constant plus the dependency term
-`gatheringGrant` adds; the overshoot past each is the landing reserve, sized at
-`landingTokenShare` of the grant. The run then re-planned around every landing —
-five rounds and seven nodes for one issue, 43 minutes, $2.11, and a delivery
-gate that refused at the end for want of time — while the work itself was
-correct and committed after the first two leaves. **Every split is paid for
-twice**: once in a fresh planning round, and once in the context the next leaf
-has to be told again. 250,000 is the smallest round grant covering every leaf
-above, and deliberately no larger: 400,000 permitted ~37 turns and every leaf
-ran to exactly that.
+A grant above the constant is the constant plus `gatheringGrant`'s dependency
+term; the overshoot past each is the landing reserve at `landingTokenShare`,
+working as designed. What it cost was the re-planning around every landing: five
+rounds and seven nodes for one issue, 43 minutes, $2.11, and a delivery gate
+that refused at the end for want of time — while the work itself was correct and
+committed after the first two leaves. **Every split is paid for twice**, once in
+a fresh planning round and once in the context the next leaf must be told again.
+
+It cannot simply be raised, and that is the more useful half of the reading.
+Raising it to 250,000 turns three tests red, none of which should be moved to
+let a number through: `TestObservationWindowIsSizedFromContextNotSpend` compares
+the 32,768-byte context-derived window against `DefaultLeafTokens/6`, so the
+grant may not reach 196,608 until the window is re-derived;
+`TestACacheDiscountedRunawayLandsOnItsMoney` holds a 98%-cached runaway under
+1.4M raw tokens, and at about 5.8× the grant 250,000 pushed 1,442,112; and that
+test's closing cost/raw separation coincides at 190,000. The grant is
+load-bearing rather than a knob, and #920 carries the work of moving it.
 
 `exec.DefaultLeafTokens` is now the only place the figure is written. `aforge
 exec`, `aforge run` and the chat surface read it; `internal/exec`'s
