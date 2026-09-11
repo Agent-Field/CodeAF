@@ -264,6 +264,13 @@ func TestBeliefsDecayWhenUnobserved(t *testing.T) {
 // A caller that built its own controller would be a caller with its own idea of
 // when to act, and the surface's countdown and the transport's alarm would be
 // two numbers that agree until the day one of them is fixed.
+//
+// THE EXCEPTIONS ARE VALUES A PLAN IS MADE OF AND NEVER CONTROLLERS. A
+// [control.Survival] is a belief and a [control.MoveLog] is an empty list of
+// what a call has tried; neither decides anything, and both are fields of the
+// plan [PlanFor] builds — which is the one place a plan IS built, so filling
+// them in anywhere else is the drift this law is about rather than an exception
+// to it.
 func TestTheControllerIsBuiltFromTheOneFactory(t *testing.T) {
 	fset, files := sources(t)
 	for name, file := range files {
@@ -280,7 +287,8 @@ func TestTheControllerIsBuiltFromTheOneFactory(t *testing.T) {
 				return true
 			}
 			ident, ok := selector.X.(*ast.Ident)
-			if ok && ident.Name == "control" && selector.Sel.Name != "Survival" {
+			planValues := map[string]bool{"Survival": true, "NewMoveLog": true}
+			if ok && ident.Name == "control" && !planValues[selector.Sel.Name] {
 				t.Errorf("%s builds control.%s outside the factory", fset.Position(call.Pos()), selector.Sel.Name)
 			}
 			return true

@@ -44,6 +44,7 @@ package control
 
 import (
 	"math"
+	"strings"
 	"time"
 )
 
@@ -272,11 +273,55 @@ type Purse interface {
 
 // Plan is everything one controller is built with. It is built for EVERY
 // token-generating call, including the calls no lane preference was made for.
+//
+// ── IT IS ALSO THE CALL'S ONE BUDGET ────────────────────────────────────────
+//
+// It was the hazard's alone until 2026-09-10. The hazard reads it to decide
+// WHEN a wait has gone on long enough; the dispatcher (internal/provider's
+// dispatch.go) reads the same object to decide WHAT to do when a call has
+// failed, and writes its moves back into [Plan.Moves]. One plan, one deadline,
+// one list of what has been tried — which is the whole of
+// docs/design/recovery/DESIGN.md §3 clause 1, and the reason the eleven budgets
+// of its §2 could be deleted rather than tuned.
 type Plan struct {
 	// Lane is the machine expected to serve, empty when nobody was named. It is
 	// re-pointed by [Controller.Serving] the moment the stream says who is
 	// really answering.
 	Lane string
+	// Model is what is being asked, and every move of one plan carries it. The
+	// dispatcher NEVER changes it: there is exactly one model hop in this build
+	// and it belongs to the session (docs/design/recovery/DESIGN.md §4).
+	Model string
+	// Deadline is when this call stops trying, in the person's own time, and it
+	// is the ONLY bound on how long a failed call may go on recovering.
+	//
+	// IT REPLACED A PRODUCT NOBODY COULD STATE. Attempts times paced sends
+	// times arms times rungs times models, each with its own wall clock over
+	// it, is not a number anybody could have told a person before this field
+	// existed; `lane.Role.GiveUp` is, and it is measured (lane/roles.go's
+	// [TurnGiveUp]). A zero moment is NO deadline, which is the honest reading
+	// for a plan somebody built by hand and the reason [Plan.Spent] asks.
+	Deadline time.Time
+	// SpendUSD is what this whole call may cost, zero being unbounded. It is
+	// the second half of one budget: the purse below bounds one ACT, and this
+	// bounds the call that keeps taking them.
+	SpendUSD float64
+	// Moves is what this question has already tried, shared by every arm of it.
+	// A nil log is empty and decides nothing.
+	Moves *MoveLog
+	// Comeback is what the machine that last refused asked us to wait, zero
+	// when it asked for nothing. It is the one input [Next] needs that changes
+	// between moves, and it is what makes the single legal repeat legal.
+	Comeback time.Duration
+	// Shapes are the relaxation rungs this particular request has, in the order
+	// they are climbed, spelled as the person reads them ("removed reasoning").
+	// A request carrying no tools, no cap and no knob has none, and then the
+	// ladder is not a move this call has.
+	Shapes []string
+	// Role is who the call is being made for, spelled as `lane.Role` spells it.
+	// It is carried rather than looked up so the dispatcher, the hazard and the
+	// row all read the same word.
+	Role string
 	// Ceiling is the hard bound on time-to-action for this call: past it the
 	// controller acts whatever it believes, because a belief that says "keep
 	// waiting" past a person's patience is a belief answering the wrong
@@ -320,6 +365,66 @@ type Plan struct {
 	// Began is when the request went out.
 	Began time.Time
 }
+
+// Spent reports whether this call has run out of the one thing that bounds it.
+//
+// IT IS THE ONLY PLACE A CLOCK ENDS A CALL. Everything the eleven controllers
+// used to end a call with — three faults, six paced sends, sixty patient ones,
+// two minutes of watched pacing, ten of patient pacing, four arms, seven rungs
+// — is gone, and this is what is left. A plan with no deadline is never spent,
+// which is the honest reading for one somebody built by hand.
+func (p Plan) Spent(now time.Time) bool {
+	return !p.Deadline.IsZero() && !now.Before(p.Deadline)
+}
+
+// Left is how much of the deadline remains, zero once it is spent and zero when
+// there is no deadline at all. It is what a countdown is drawn from.
+func (p Plan) Left(now time.Time) time.Duration {
+	if p.Deadline.IsZero() || !now.Before(p.Deadline) {
+		return 0
+	}
+	return p.Deadline.Sub(now)
+}
+
+// serving is every machine this request may go to, best belief first: the head
+// of the choice, then the alternatives the frontier named.
+//
+// AN EMPTY SET IS AN OPEN SET AND NEVER A SET OF ONE. "This request may go
+// anywhere the router likes" is a real and common state — no preference was
+// carried, the chooser held fewer than two beliefs, the base is not a router —
+// and reading it as one machine wide would be this build inventing a pool it
+// cannot see. [Next] answers an open set with a machine move every time, and
+// what bounds the walk is the deadline, because nothing else honestly can.
+func (p Plan) serving() []string {
+	set := make([]string, 0, len(p.Alts)+1)
+	seen := map[string]bool{}
+	add := func(lane string) {
+		lane = strings.TrimSpace(lane)
+		if lane == "" {
+			return
+		}
+		key := strings.ToLower(lane)
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		set = append(set, lane)
+	}
+	add(p.Lane)
+	for _, alt := range p.Alts {
+		add(alt.Lane)
+	}
+	return set
+}
+
+// head is the machine a shape move is expected to go back to: the one the
+// choice named, or nobody.
+func (p Plan) head() string { return strings.TrimSpace(p.Lane) }
+
+// Serving is [Plan.serving] for a caller that has to SAY how many machines
+// there are — the ordinal a person reads, `2 of 5`, whose denominator was a
+// constant nobody could justify until this field existed.
+func (p Plan) Serving() []string { return p.serving() }
 
 // ── WHAT THE CONTROLLER SAYS ────────────────────────────────────────────────
 

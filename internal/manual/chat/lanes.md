@@ -311,6 +311,25 @@ in ten days of logs, two thirds had landed by then, and the ones that took
 longer were spending the time asking the same machine again — which aforge no
 longer does.
 
+**And that one number is the whole of how long a failed call goes on trying.**
+There is no separate allowance for how many times to ask, how long to wait out a
+busy machine, how many machines to walk, or how many things to take off the
+request — each of those was its own number until 2026-09-11, and together they
+came to a total nobody could have told you. Now there is a clock, it scales with
+who the work is for, and it is the same clock for every kind of failure:
+
+| whose work | gives up after |
+| --- | --- |
+| a turn you are watching, or a task node with its room open | 90 seconds |
+| a task node nobody is watching, a memory pass, a side errand | 4 minutes 30 |
+| a standing order, a check, a design pass | 9 minutes |
+| the one-token measurement behind the model list | 45 seconds |
+
+While it is trying, the status row counts the machines rather than the tries:
+`2 of 5` means the second of five machines that can serve this model, and when
+aforge cannot tell how many there are it shows no number instead of a made-up
+one.
+
 **Nothing waits behind a busy moment in silence.** When every request aforge is
 allowed to have in the air at once is already in the air — which happens when
 several windows and a task are working at the same time, or a machine has been
@@ -409,6 +428,17 @@ A refusal is final for that machine, immediately:
   see is the most useful one — a machine's rate limit and its wait before an
   earlier machine's refusal.
 
+**A machine refusing your request is a move too, not the end of the turn.** When
+the answer carries the name of the machine that produced it — a `400`, a `404`,
+an account policy, a model that machine will not serve — that is one machine's
+answer about this request and the others have said nothing about it, so aforge
+sends the next one straight to a different machine with that one left off. It is
+the same walk a busy machine gets, and until 2026-09-11 it was not: the turn
+ended there, and the move only happened on your *next* message, after aforge had
+remembered the refusal. What still ends a turn is a refusal that names **nobody**
+— that is the router reading the request itself and saying no, and every machine
+alive would say the same thing.
+
 If a later machine accepts the request and starts writing but that stream is
 cut, the cut is the failure aforge acts on. The partial reply is cleared and the
 existing bounded call retry routes around the machine that failed. An earlier
@@ -454,10 +484,14 @@ its own.
   through a reply was handed the next request, and the one after that — three
   times in a minute and a half, on one measured turn.
 - **A rate limit that names nobody is your whole account**, not one machine, and
-  nothing is stepped around: there is nowhere better to go. aforge waits it out —
-  up to **two minutes** on a turn you are sitting in front of, ten inside a task —
-  and then hands you what the provider said. Sending the same request to a second
-  machine would only spend the account's allowance faster.
+  nothing is stepped around: there is nowhere better to go. aforge waits it out
+  for as long as that kind of work is given — **ninety seconds** on a turn you
+  are sitting in front of, four and a half minutes inside a task, nine for a
+  standing order — and then hands you what the provider said. Sending the same
+  request to a second machine would only spend the account's allowance faster.
+  (Before 2026-09-11 these were separate numbers of their own, two minutes and
+  ten; there is one clock now and it is the same one everything else on this
+  page is measured against.)
 
 ## What all providers have been ignored means — a refusal from nobody
 

@@ -172,8 +172,17 @@ func TestARefusalOnAModelTheCatalogDoesNotKnowIsSurfaced(t *testing.T) {
 // `error.metadata.provider_name` is present exactly when the router forwarded
 // somebody else's refusal — which means the routing layer DID find something to
 // try, the opposite of "nothing can serve this shape". That failure has its own
-// answer (refusal_test.go's lane rotation) and must not be answered by stripping
-// the person's request instead.
+// answer — the WALK, one machine at a time — and must not be answered by
+// stripping the person's request instead.
+//
+// AND THE WALK IS NOW TAKEN INSIDE THE CALL RATHER THAN THREE TURNS LATER
+// (docs/design/recovery/DESIGN.md §3). It used to be the session's: a relayed
+// 4xx ended the call, and the rotation happened only because the ledger
+// remembered the refusing machine into the NEXT turn. So this is two requests
+// now, not one — the refusal, and the one move that finds out whether the veto
+// took. Here it does not (this router answers the same relayed 400 whatever it
+// is sent), and a machine already vetoed refusing again is the router saying
+// there is nowhere else; the refusal goes back whole at that point.
 func TestARelayedUpstreamRefusalDoesNotClimbTheLadder(t *testing.T) {
 	const relayed = `{"error":{"message":"Provider returned error","code":400,` +
 		`"metadata":{"provider_name":"Baidu","raw":"internal server failure"}}}`
@@ -185,8 +194,14 @@ func TestARelayedUpstreamRefusalDoesNotClimbTheLadder(t *testing.T) {
 		noticeContext(context.Background(), &notices), userMessages("hi"), toolRequest()...); err == nil {
 		t.Fatal("a relayed 400 answered successfully")
 	}
-	if got := len(recorded.bodies); got != 1 {
-		t.Fatalf("made %d requests, want exactly 1 — an upstream's refusal is not the ladder's", got)
+	if got := len(recorded.bodies); got != 2 {
+		t.Fatalf("made %d requests, want the refusal and one move — an upstream's refusal is a walk, "+
+			"never the ladder", got)
+	}
+	// AND THE MOVE WAS A REAL ONE: the second body vetoed the machine that
+	// refused the first, which is what makes it a different request.
+	if !contains(ignoredEndpoints(recorded.bodies[1]), "Baidu") {
+		t.Fatalf("the second request did not exclude the machine that refused: %v", recorded.bodies[1])
 	}
 	if len(notices) != 0 {
 		t.Fatalf("notices = %#v, want nothing stripped off the request over an upstream fault", notices)

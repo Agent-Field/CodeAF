@@ -157,7 +157,7 @@ func (h *poolHandler) wire(attempt int) wirePrefs {
 // (velocity.go's [sharedVelocity]) and the registry's own (internal/lane). A
 // scenario that inherited the one before it would open with its machines already
 // refused and prove nothing about the walk it is here to prove.
-func poolClient(t *testing.T, name string, handler *poolHandler) *Client {
+func poolClient(t *testing.T, name string, handler http.Handler) *Client {
 	t.Helper()
 	t.Setenv(home.EnvVar, t.TempDir())
 	client, err := NewClient(Config{APIKey: "k", BaseURL: "https://openrouter.ai/api/v1",

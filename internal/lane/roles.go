@@ -324,6 +324,31 @@ func (r Role) Ceiling() time.Duration {
 	return time.Duration(patience * float64(VisiblePatience))
 }
 
+// GiveUp is how long a call in this role may spend reaching a model before it
+// stops trying, and it is the WHOLE of that bound — the one deadline
+// docs/design/recovery/DESIGN.md §4 replaced eleven budgets with.
+//
+// IT IS THE CEILING'S ARITHMETIC APPLIED TO THE OTHER MEASURED NUMBER. The
+// ceiling is when we ACT on a silence ([VisiblePatience] × the role's patience);
+// this is when we stop acting at all ([TurnGiveUp] × the same patience), so the
+// two scale together off one column and a role cannot be patient about one and
+// impatient about the other. Talk is ninety seconds, a task node's four and a
+// half minutes, a standing pass's nine, a probe's forty-five seconds.
+//
+// WHAT IT REPLACED, and why none of those numbers is missed: six attempts and
+// two minutes for a watched call, sixty attempts and ten minutes for a patient
+// one, three transport faults, eight free moves, four arms and one ladder arm —
+// each bounding a different axis, their product nobody's number, and the census
+// of 2026-09-10 measuring what it produced (chains of seventeen identical sends
+// over eleven minutes, ending refused). A person can be told this one.
+func (r Role) GiveUp() time.Duration {
+	patience := r.Facts().Patience
+	if patience <= 0 {
+		patience = roles[RoleUnknown].Patience
+	}
+	return time.Duration(patience * float64(TurnGiveUp))
+}
+
 // Roles is every role in the table, for the structural test that insists each
 // one is exercised. The order is not meaningful.
 func Roles() []Role {
