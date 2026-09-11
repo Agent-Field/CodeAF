@@ -177,12 +177,11 @@ func (w *Write) drain() {
 //
 // IT DRAINS AND IT DOES NOT CLOSE. A Write settled is a Write ready, and an
 // [Write.Owe] after a Settle starts the performer again exactly as the first one
-// did. That is deliberate and it is used mid-life, not only at exit: a caller
-// that has to act on the state a write leaves behind — the session's
-// "work in this folder directly", which settles the working-copy cut so it can
-// decide about a copy that is no longer being made — settles, acts, and goes on
-// owing writes afterwards. A door that latched shut on its first use could not
-// serve that, and the two would have become two mechanisms.
+// did. That is deliberate, because the exit door and the test's door are the same
+// door and only one of them is the end of anything: a test settles in the middle
+// of a life, reads the file back, and goes on to owe three more writes with the
+// same object. A door that latched shut on its first use would have needed a
+// second door for that, and the two would have drifted.
 func (w *Write) Settle() {
 	if w == nil {
 		return

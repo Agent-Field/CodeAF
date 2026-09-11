@@ -133,6 +133,9 @@ func TestAFolderSaidToBeWorkedInDirectlyIsWrittenDirectly(t *testing.T) {
 	if err := agent.SetPlaceMode(repo, "in place"); err != nil {
 		t.Fatalf("SetPlaceMode: %v", err)
 	}
+	// The pass that makes the copies match the word is owed, not run on the
+	// person's path — so it is settled before it is counted.
+	agent.SettleWrites()
 
 	writeThrough(t, agent, filepath.Join(repo, "shared.txt"), "straight in\n")
 	if got := readFile(t, filepath.Join(repo, "shared.txt")); got != "straight in\n" {
@@ -193,6 +196,9 @@ func TestSayingInPlaceAfterTheCopyWasCutTakesItBack(t *testing.T) {
 	if err := agent.SetPlaceMode(repo, "in place"); err != nil {
 		t.Fatalf("SetPlaceMode: %v", err)
 	}
+	// The pass that makes the copies match the word is owed, not run on the
+	// person's path — so it is settled before it is counted.
+	agent.SettleWrites()
 	if trees := agent.StandingTrees(); len(trees) != 0 {
 		t.Fatalf("the copy outlived the word that retired it: %+v", trees)
 	}
@@ -225,6 +231,9 @@ func TestSayingInPlaceKeepsACopyThatAlreadyHoldsWork(t *testing.T) {
 	if err := agent.SetPlaceMode(repo, "in place"); err != nil {
 		t.Fatalf("SetPlaceMode: %v", err)
 	}
+	// The pass that makes the copies match the word is owed, not run on the
+	// person's path — so it is settled before it is counted.
+	agent.SettleWrites()
 	trees := agent.StandingTrees()
 	if len(trees) != 1 {
 		t.Fatalf("the work was thrown away with the copy: %+v", trees)
@@ -234,6 +243,115 @@ func TestSayingInPlaceKeepsACopyThatAlreadyHoldsWork(t *testing.T) {
 	}
 	if waiting := agent.UnlandedChanges(); len(waiting) != 1 {
 		t.Fatalf("the chip lost the way back to the work: %+v", waiting)
+	}
+}
+
+// AND WORK THE BELT DID NOT WRITE IS WORK ALL THE SAME. A shell command, a
+// script the model ran, a task standing in that ground — none of them reach
+// [noteStandingWrite], so [StandingTree.Wrote] is empty while the copy holds an
+// hour of somebody's afternoon. Until 2026-09-11 the retire forced the removal
+// and deleted it with no refusal and no sentence.
+//
+// The three cases are the three ways git itself refuses a removal, because git's
+// refusal IS the guard now: a file it has never seen, a file staged for a commit
+// that has not happened, and a tracked file edited in place.
+func TestACopyIsKeptWhenItHoldsWorkTheBeltDidNotWrite(t *testing.T) {
+	for _, aCase := range []struct {
+		name  string
+		leave func(t *testing.T, copyDir string) string
+	}{
+		{"a file git has never seen", func(t *testing.T, copyDir string) string {
+			path := filepath.Join(copyDir, "made-by-bash.txt")
+			writeFile(t, path, "an hour of work\n")
+			return path
+		}},
+		{"a file staged but not committed", func(t *testing.T, copyDir string) string {
+			path := filepath.Join(copyDir, "staged.txt")
+			writeFile(t, path, "ready to commit\n")
+			mustGit(t, copyDir, "add", "staged.txt")
+			return path
+		}},
+		{"a tracked file edited in place", func(t *testing.T, copyDir string) string {
+			path := filepath.Join(copyDir, "shared.txt")
+			writeFile(t, path, "changed by a shell command\n")
+			return path
+		}},
+	} {
+		t.Run(aCase.name, func(t *testing.T) {
+			repo := newTestRepo(t)
+			agent, _, _ := standingLab(t, repo) // refers the folder, which starts the cut
+			agent.SettleWrites()
+			trees := agent.StandingTrees()
+			if len(trees) != 1 {
+				t.Fatalf("no copy was cut to hold anything: %+v", trees)
+			}
+			left := aCase.leave(t, trees[0].Dir)
+			if wrote := agent.StandingTrees()[0].Wrote; len(wrote) != 0 {
+				t.Fatalf("the belt recorded it after all, and this case proves nothing: %+v", wrote)
+			}
+
+			if err := agent.SetPlaceMode(repo, "in place"); err != nil {
+				t.Fatalf("SetPlaceMode: %v", err)
+			}
+			agent.SettleWrites()
+
+			if _, err := os.Stat(left); err != nil {
+				t.Fatalf("%s was destroyed: %v", left, err)
+			}
+			if kept := agent.StandingTrees(); len(kept) != 1 {
+				t.Fatalf("the record went and took the way back to the work with it: %+v", kept)
+			}
+			if branches := gitOut(t, repo, "branch", "--list", trees[0].Branch); strings.TrimSpace(branches) == "" {
+				t.Fatalf("the branch of a copy that was kept was deleted")
+			}
+		})
+	}
+}
+
+// THE SAME PROMISE ON A PLAIN FOLDER, which has no git to refuse for it and is
+// compared with the folder it was copied from instead.
+func TestACopyOfAPlainFolderIsKeptWhenItHoldsWork(t *testing.T) {
+	folder := t.TempDir()
+	writeFile(t, filepath.Join(folder, "notes.txt"), "as it was\n")
+	agent, _, _ := standingLab(t, folder)
+	agent.SettleWrites()
+	trees := agent.StandingTrees()
+	if len(trees) != 1 || trees[0].Mode != TaskModeMirror {
+		t.Fatalf("a plain folder was not mirrored: %+v", trees)
+	}
+	left := filepath.Join(trees[0].Dir, "made-by-bash.txt")
+	writeFile(t, left, "an hour of work\n")
+
+	if err := agent.SetPlaceMode(folder, "in place"); err != nil {
+		t.Fatalf("SetPlaceMode: %v", err)
+	}
+	agent.SettleWrites()
+	if _, err := os.Stat(left); err != nil {
+		t.Fatalf("%s was destroyed: %v", left, err)
+	}
+	if kept := agent.StandingTrees(); len(kept) != 1 {
+		t.Fatalf("the record went with it: %+v", kept)
+	}
+}
+
+// AND THE CONTROL, on the road that has no git: a copy of a plain folder that
+// holds nothing is still given back whole.
+func TestACopyOfAPlainFolderHoldingNothingIsStillGivenBack(t *testing.T) {
+	folder := t.TempDir()
+	writeFile(t, filepath.Join(folder, "notes.txt"), "as it was\n")
+	agent, _, _ := standingLab(t, folder)
+	agent.SettleWrites()
+	cut := agent.StandingTrees()[0]
+
+	if err := agent.SetPlaceMode(folder, "in place"); err != nil {
+		t.Fatalf("SetPlaceMode: %v", err)
+	}
+	agent.SettleWrites()
+	if kept := agent.StandingTrees(); len(kept) != 0 {
+		t.Fatalf("a copy holding nothing was kept: %+v", kept)
+	}
+	if _, err := os.Stat(cut.Dir); !os.IsNotExist(err) {
+		t.Fatalf("the copy is still on disk at %s", cut.Dir)
 	}
 }
 
