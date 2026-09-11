@@ -217,6 +217,20 @@ func (a *Agent) startAskClock(open *askOpen) {
 	a.mu.Unlock()
 }
 
+// stopAskClocksLocked is the session's own end of the book's close, called from
+// [Agent.Close] beside [Agent.stopSteerGraceLocked] — the two laws are one law,
+// and steer_grace.go's file comment states it: NOTHING ARMED OUTLIVES THE
+// SESSION THAT ARMED IT.
+//
+// IT IS A SEAM AND NOT A SECOND RULE. Everything it does is the book's
+// ([askedOfThePerson.stopClocksLocked], which stops each armed clock and drops
+// each settled entry); this exists so that `agent.go` names an ask-lane verb
+// rather than reaching into another file's map, and so that the one place a
+// reader looks for what Close lets go of finds this lane in the list.
+//
+// It is called with a.mu already held, like every other `Locked` verb here.
+func (a *Agent) stopAskClocksLocked() { a.asked.stopClocksLocked() }
+
 // askClockRanOut takes the asker's own pick for the person, through the one door
 // every other answer goes through — so it is recorded, announced and delivered
 // exactly as a key press would be, and marked as what it is.
