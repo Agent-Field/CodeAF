@@ -2268,7 +2268,7 @@ you answer it**:
 │ every Monday at 9, post the standup note from the git log
 │ when · Mondays at 9am
 │ where · for this project
-│ costs · about $0.02 a run, at most once a day
+│ costs · shares the day's allowance
 │ [ 1 yes, set it up ]  [ 2 change when or where ]  [ 3 just once ]  [ 0 no ]
 │ I'll keep doing this Mondays at 9am, for this project, until you stop it
 ╰────────────────────────────────────────────────────────────────────────────
@@ -2276,7 +2276,8 @@ you answer it**:
 
 Three bands make it different from the card that proposes a task: **`when ·`**, in
 the words you said or the words it worked out; **`where ·`**, how far it reaches;
-and **`costs ·`** — what one run may spend and how often it may run. A watch that
+and **`costs ·`** — what binds its spending: any limit you named, then the day's
+allowance it shares. A watch that
 has to *look* at something adds `checked every 5 minutes`, because that is when
 the looking happens; a reminder does not, because nothing is examined between now
 and Monday.

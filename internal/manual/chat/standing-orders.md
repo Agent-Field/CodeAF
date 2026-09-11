@@ -110,7 +110,7 @@ good. (On the standing orders page, press `→` on the row and the same two verb
 Every one of them arrives as a card in the conversation, and **nothing is created until
 you answer it**. The card carries your sentence, when it wakes, where it reaches, and
 that it shares the day's allowance — and, for work that runs, what one run does, the
-report file and who writes it, the folder it goes in, and the rules that reach it. `esc` or `0` declines, and a card left unanswered
+report file and who writes it (or that it keeps none), the folder it goes in, and the rules that reach it. `esc` or `0` declines, and a card left unanswered
 when the turn ends sets nothing up: `the card was left unanswered — nothing was set up`.
 
 Nothing is ever armed because a phrase looked like a rule. There is no matcher, no
@@ -673,8 +673,9 @@ Honest limits, so you do not rely on something that is not built:
   (*Does the report keep my folder's rules*).
 - **Rules are never silently omitted.** All governing holds are retained (up to 64 holds and 64 KiB of rendered governing text); optional appointments fill the remaining room up to eight ordinary rows. Oversized governing inputs stop execution with an explicit error.
 - **Money is not per order.** The card says it shares the day's allowance — the same
-  machine-wide `daily_budget_usd` setting everything standing uses. If you named a
-  per-run or per-day limit yourself, the card says your limit back instead.
+  machine-wide `daily_budget_usd` setting everything standing uses. A per-run or per-day
+  limit you named yourself leads the costs line (`up to $1.00 a run · …`); one you never
+  named is not kept.
 - **There is no outward lane.** No phone, no email, no desktop notification. News lands
   in a chat you have open, or waits — the keeping-an-eye page has the order it is
   delivered in.
@@ -788,8 +789,8 @@ files and writes one local file.
 
 In a conversation, just say it: "keep an eye on my inbox folder and keep
 reports/inbox-report.md current". It is the same order `aforge standing add --watch
---report --place` makes. The card for work that runs has four more lines under
-`where ·`, and they are what a yes agrees to:
+--report --place` makes. The card for work that runs has more lines under `where ·`,
+and they are what a yes agrees to:
 
 ```
 does · Read the changed files in inbox/ and write a short report of new decisions …
@@ -798,17 +799,20 @@ folder · Launch, where this conversation is placed — its rules reach every ru
 rule · Inbox reports never quote email addresses; write [redacted] instead.
 ```
 
-**Which folder.** A folder you name goes on the card. Otherwise the work goes in the folder
-this conversation is placed in (`, where this conversation is placed`), and a conversation
-in no folder makes work in none — `folder · none — it can be placed in one later`; you are
-never asked for a folder first. The `rule ·` lines are the rules that reach it now, read the
-way its runs will read them (`rules · none reach this work yet` when there are none), up to
-five and then `rules · and N more`. The folder is bound after your yes and before the work
-exists — at the terminal too — so the work never runs outside it; if binding fails nothing
-is set up: `nothing was set up: could not be placed in …`. A line to say and a rule are
-never placed — a rule names its folders itself. After the yes, `aforge standing
-show` says `set up by: person, through the chat` and runs it exactly as it runs a
-terminal-made order.
+Work that keeps no file says so: `report · none — no file is kept current`. If your
+sentence names a file and the setup left the report out, it is asked again before any card.
+
+**Which folder.** A folder you name goes on the card. Otherwise the work goes in the
+folders this conversation is placed in (`, where this conversation is placed`; with two,
+`their rules reach every run`), and a conversation in no folder makes work in none —
+`folder · none — it can be placed in one later`; you are never asked for a folder first.
+Only you can bind a folder: a delegated run is refused (`placing work in a folder needs
+the person's answer in a conversation`). The `rule ·` lines are the rules that reach it
+now, read as its runs read them (`rules · none reach this work yet`), up to five, then
+`rules · and N more`; past 64 the card warns every run would stop. The folder is bound
+after your yes and before the work exists — at the terminal too; if that fails nothing
+is set up: `nothing was set up: could not be placed in …`. Afterwards `aforge standing
+show` says `set up by: person, through the chat`.
 
 ## Why wasn't my report published — the reason, and the withheld code in the record
 

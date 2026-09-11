@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/workspace"
@@ -103,6 +105,10 @@ func inboxWork(extra map[string]any) string {
 	for key, value := range extra {
 		if key == "does" {
 			for field, v := range value.(map[string]any) {
+				if v == nil {
+					delete(does, field) // a field the call leaves out
+					continue
+				}
 				does[field] = v
 			}
 			continue
@@ -482,4 +488,208 @@ func TestAWatchWithNoWordsOfItsOwnSaysWhenItWakes(t *testing.T) {
 	if card, _ := said.proposeInbox(t, said.yes); card.WhenWords != "whenever something lands in my inbox" {
 		t.Fatalf("the model's own words were replaced: %q", card.WhenWords)
 	}
+}
+
+// ── what the measurement of ten live runs found (2026-09-11) ────────────────
+
+// A FILE THE PERSON NAMED IS ASKED ABOUT AS THE REPORT. One live run in ten set
+// "keep reports/inbox-report.md current" up as work that keeps nothing: the
+// call left does.report out, and the card, truthfully, promised no file. Now the
+// call is refused with the field named and both honest answers; the path makes
+// the terminal's item, and an explicit "" makes work that keeps no file — which
+// the card then says in so many words.
+func TestAFileTheSentenceNamesIsAskedAboutAsTheReport(t *testing.T) {
+	noReport := inboxWork(map[string]any{"does": map[string]any{"report": nil}})
+	d := newChatDoor(t, &scriptedCompleter{steps: []step{
+		standCall("s1", noReport),
+		standCall("s2", inboxWork(nil)),
+		finalText("set up"),
+	}}, nil)
+	card, events := d.proposeInbox(t, d.yes)
+	refusal := `Invalid arguments: their sentence names reports/inbox-report.md — send does.report "reports/inbox-report.md" if each run keeps that file current, or does.report "" if the work only reads it`
+	if out := toolOutputs(events, "stand"); len(out) != 2 || !strings.HasPrefix(out[0], refusal+"\n") {
+		t.Fatalf("the stand results were %q, want the refusal first:\n%s", out, refusal)
+	}
+	if card.Terms[1] != "report · reports/inbox-report.md — aforge publishes this file; the run never writes it" || d.only(t).Does.Report != "reports/inbox-report.md" {
+		t.Fatalf("the retried call's card reads %q", card.Terms[1])
+	}
+
+	reads := newChatDoor(t, &scriptedCompleter{steps: []step{
+		standCall("s1", inboxWork(map[string]any{"does": map[string]any{"report": ""}})),
+		finalText("set up"),
+	}}, nil)
+	card, _ = reads.proposeInbox(t, reads.yes)
+	if card.Terms[1] != "report · none — no file is kept current" || reads.only(t).Does.Report != "" {
+		t.Fatalf("work that keeps no file reads %q", card.Terms[1])
+	}
+}
+
+// A WORD IS A FILE ONLY WHEN IT READS AS ONE, and the file the watch itself
+// reaches is what wakes the work, never its report.
+func TestOnlyAFileOutsideTheWatchIsAskedAbout(t *testing.T) {
+	for word, want := range map[string]bool{
+		"reports/inbox-report.md": true, "notes.txt": true, "data/2026.csv": true,
+		"e.g": false, "v1.2": false, "3.5": false, "inbox/*.md": false, "https://example.com/a.md": false, "inbox": false,
+	} {
+		if got := standingLooksLikeFile(word); got != want {
+			t.Errorf("standingLooksLikeFile(%q) = %v, want %v", word, got, want)
+		}
+	}
+	var parsed standArguments
+	if err := json.Unmarshal([]byte(inboxWork(map[string]any{"words": "keep an eye on inbox/today.md, e.g. new decisions", "does": map[string]any{"report": nil}})), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	item := standing.Item{When: standing.When{Kind: standing.WhenFile, Glob: "inbox/*"}, Does: standing.Action{Kind: standing.ActionTask}}
+	if problem := standingNamedReport(parsed, item); problem != "" {
+		t.Fatalf("a watched file was asked about as a report: %q", problem)
+	}
+}
+
+// LIMITS THE PERSON DID NOT NAME ARE DROPPED, AND THE CARD SAYS WHAT BINDS.
+// Eight of ten live calls sent spending limits nobody asked for ($0.50 a run,
+// 24 runs a day) and no cost_words, and the card's costs line was empty: the
+// person agreed to limits they never saw. Unnamed limits now fall back to the
+// quiet defaults; a named one is kept and the card states it from the item.
+func TestLimitsThePersonDidNotNameAreDroppedAndTheCardSaysWhatBinds(t *testing.T) {
+	unasked := newChatDoor(t, &scriptedCompleter{steps: []step{
+		standCall("s1", inboxWork(map[string]any{"rails": map[string]any{"per_run_usd": 0.5, "max_per_day": 24}})),
+		finalText("set up"),
+	}}, nil)
+	card, events := unasked.proposeInbox(t, unasked.yes)
+	if rails := unasked.only(t).Rails; rails.PerRunUSD != standDefaultPerRunUSD || rails.MaxPerDay != standDefaultMaxPerDay {
+		t.Fatalf("unnamed limits stood: %+v", rails)
+	}
+	if card.CostWords != "shares the day's allowance" {
+		t.Fatalf("the card's costs line = %q", card.CostWords)
+	}
+	if out := toolOutput(t, events, "stand"); !strings.Contains(out, "\ncosts: shares the day's allowance\n") {
+		t.Fatalf("the model was not told what binds: %q", out)
+	}
+
+	named := newChatDoor(t, &scriptedCompleter{steps: []step{
+		standCall("s1", inboxWork(map[string]any{"rails": map[string]any{"per_run_usd": 1}, "cost_words": "at most a dollar a run"})),
+		finalText("set up"),
+	}}, nil)
+	card, _ = named.proposeInbox(t, named.yes)
+	if rails := named.only(t).Rails; rails.PerRunUSD != 1 || rails.MaxPerDay != standDefaultMaxPerDay {
+		t.Fatalf("a named limit did not stand: %+v", rails)
+	}
+	if card.CostWords != "up to $1.00 a run · shares the day's allowance" {
+		t.Fatalf("a named limit's costs line = %q", card.CostWords)
+	}
+}
+
+// WORK IN TWO FOLDERS SAYS BOTH, IS PLACED IN BOTH, AND IS READ BY BOTH'S RULES.
+func TestWorkInTwoFoldersSaysBothAndIsPlacedInBoth(t *testing.T) {
+	d := newChatDoor(t, &scriptedCompleter{steps: []step{standCall("s1", inboxWork(nil)), finalText("set up")}}, nil)
+	ctx := context.Background()
+	launch, marketing := d.folder(t, "Launch"), d.folder(t, "Marketing")
+	for _, folder := range []workspace.Collection{launch, marketing} {
+		if err := d.org.AddPlacement(ctx, folder.ID, d.chat); err != nil {
+			t.Fatal(err)
+		}
+	}
+	d.rule(t, "RULE-LAUNCH-7: no email addresses.", launch.ID)
+	d.rule(t, "RULE-MKT-9: cite the spec.", marketing.ID)
+	card, _ := d.proposeInbox(t, d.yes)
+	folderTerm, rules := card.Terms[2], strings.Join(card.Terms[3:], "\n")
+	if !strings.HasPrefix(folderTerm, "folder · ") || !strings.HasSuffix(folderTerm, ", where this conversation is placed — their rules reach every run") ||
+		!strings.Contains(folderTerm, "Launch") || !strings.Contains(folderTerm, "Marketing") {
+		t.Fatalf("two folders read %q", folderTerm)
+	}
+	if !strings.Contains(rules, "RULE-LAUNCH-7") || !strings.Contains(rules, "RULE-MKT-9") {
+		t.Fatalf("the card quoted %q, want both folders' rules", rules)
+	}
+	item := d.only(t)
+	placed, err := d.org.GoverningCollections(ctx, workspace.Ref{Kind: workspace.StandingKind, ID: item.ID})
+	if err != nil || len(placed) != 2 {
+		t.Fatalf("the work is placed in %v (%v), want both", placed, err)
+	}
+	raw, _ := os.ReadFile(d.store.LogPath(item.ID))
+	if !strings.Contains(string(raw), "placed in folders ") || !strings.Contains(string(raw), "; their rules reach this work") {
+		t.Fatalf("the item's log reads:\n%s", raw)
+	}
+}
+
+// AN INHERITED FOLDER IS WRITTEN UNDER COLLECTIONS' LAW. A delegated answer may
+// not bind a folder by naming one, and it may not bind the conversation's own
+// either: work set up without the binding would run outside the rules this
+// conversation is under, so it is refused. A conversation in no folder binds
+// nothing and is not refused.
+func TestAStewardCannotBindTheConversationsFolderToWork(t *testing.T) {
+	d := newChatDoor(t, nil, nil)
+	ctx := context.Background()
+	launch := d.folder(t, "Launch")
+	var parsed standArguments
+	if err := json.Unmarshal([]byte(inboxWork(nil)), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	item, problem := d.agent.standingItem(parsed, time.Now())
+	if problem != "" {
+		t.Fatal(problem)
+	}
+	d.agent.principal = &Steward{}
+	if _, problem := d.agent.standingPlacementFor(ctx, parsed, item); problem != "" {
+		t.Fatalf("a conversation in no folder was refused under a steward: %q", problem)
+	}
+	if err := d.org.AddPlacement(ctx, launch.ID, d.chat); err != nil {
+		t.Fatal(err)
+	}
+	if _, problem := d.agent.standingPlacementFor(ctx, parsed, item); problem != standingPlacementLaw+" — this conversation is placed in Launch" {
+		t.Fatalf("a steward bound the conversation's folder: %q", problem)
+	}
+	d.agent.principal = nil
+	if place, problem := d.agent.standingPlacementFor(ctx, parsed, item); problem != "" || place.names() != "Launch" {
+		t.Fatalf("the person's own conversation = %+v %q", place, problem)
+	}
+}
+
+// THE HOLD-LIMIT GATE IS ON THE CARD. A run whose rules outnumber what a run may
+// carry stops before it acts; the card says so before the yes instead of
+// quoting five rules and counting the rest. The folder is named, because a
+// conversation placed there itself would meet the same gate before it could
+// call anything.
+func TestACardSaysWhenItsRulesAreMoreThanARunCanCarry(t *testing.T) {
+	d := newChatDoor(t, nil, nil)
+	launch := d.folder(t, "Launch")
+	d.agent.client = &scriptedCompleter{steps: []step{standCall("s1", inboxWork(map[string]any{"placement": launch.ID})), finalText("set up")}}
+	for n := 0; n <= governingHoldLimit; n++ {
+		d.rule(t, fmt.Sprintf("RULE-%d: say so.", n), launch.ID)
+	}
+	card, _ := d.proposeInbox(t, d.yes)
+	want := fmt.Sprintf("rules · %d reach this work, more than the %d a run can carry — every run would stop until they are narrowed", governingHoldLimit+1, governingHoldLimit)
+	if got := card.Terms[len(card.Terms)-1]; got != want || len(card.Terms) != 4 {
+		t.Fatalf("the card's terms end %q (%d terms), want %q", got, len(card.Terms), want)
+	}
+}
+
+// AFTER THE ONE LINE, THE MODEL IS STILL TOLD WHAT CHECKS THE WORK. The person's
+// row about background checks is said once ever; the model's result carries the
+// fact every time, so its reply about the second item is never a guess.
+func TestTheModelHearsWhatChecksTheWorkAfterTheOneLine(t *testing.T) {
+	store := newFakeStanding(t)
+	watch := &fakeWatch{}
+	standRatify(t, store, watch, t.TempDir())
+	events := standRatify(t, store, watch, t.TempDir())
+	if line := backgroundLine(events); line != "" {
+		t.Fatalf("the person was told again: %q", line)
+	}
+	if out := toolOutput(t, events, "stand"); !strings.Contains(out, "\n"+standingBackgroundLine+"\n") {
+		t.Fatalf("the model was not told checks are on: %q", out)
+	}
+	watch.installed = false // the person turned the row off since
+	if out := toolOutput(t, standRatify(t, store, watch, t.TempDir()), "stand"); !strings.Contains(out, "\n"+standingBackgroundOff+"\n") {
+		t.Fatalf("the model was not told checks are off: %q", out)
+	}
+}
+
+// toolOutputs is every result one named tool gave in a turn, in order.
+func toolOutputs(events []Event, tool string) []string {
+	var out []string
+	for _, event := range events {
+		if event.Tool == tool && (event.Kind == EventToolEnd || event.Kind == EventToolFailed) {
+			out = append(out, event.Output)
+		}
+	}
+	return out
 }

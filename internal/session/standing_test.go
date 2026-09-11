@@ -294,9 +294,13 @@ func TestStandingPersonNamedRailsSurviveAndTheCardQuotesThem(t *testing.T) {
 	if len(store.created) != 1 || store.created[0].Rails.PerRunUSD != 1 || store.created[0].Rails.MaxPerDay != 2 {
 		t.Fatalf("created rails = %+v, want the person's 1 and 2", store.created)
 	}
+	// THE CARD STATES THEM FROM THE ITEM, not from the model's words about
+	// them (since the chat door's measurement, 2026-09-11): a costs line that
+	// quoted cost_words could say "a dollar" over a limit of fifty cents, or
+	// nothing at all over one it never mentioned.
 	card, found := firstOfKind(collected, EventStandingProposal)
-	if !found || card.Standing.CostWords != "at most a dollar a run, twice today" {
-		t.Fatalf("card cost = %+v, want the person's words verbatim", card.Standing)
+	if want := "up to $1.00 a run · at most 2 runs a day · shares the day's $20.00 allowance"; !found || card.Standing.CostWords != want {
+		t.Fatalf("card cost = %q, want %q", card.Standing.CostWords, want)
 	}
 }
 
@@ -383,7 +387,7 @@ func TestStandingValidateRefusesANegativeRailAndNotAnExplicitZero(t *testing.T) 
 	args := json.RawMessage(`{"op":"propose","words":"remind me later",` +
 		`"when":{"kind":"at","at":` + strconv.Quote(at) + `},` +
 		`"does":{"kind":"say","say":"time to leave"},` +
-		`"rails":{"per_run_usd":-1}}`)
+		`"rails":{"per_run_usd":-1},"cost_words":"minus a dollar a run"}`)
 
 	text, isError, err := agent.standTool(context.Background(), args)
 	if err != nil || !isError || !strings.Contains(text, "a per-run budget cannot be negative") {
