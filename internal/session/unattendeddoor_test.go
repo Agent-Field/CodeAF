@@ -605,7 +605,7 @@ func gapReadingSteps(count int, sketch, brief, left string) []step {
 // owner to read the ending at all.
 func seamAgent(t *testing.T, completer Completer, unattended bool) (*Agent, string) {
 	t.Helper()
-	answerTheNamerOffTheQueue(completer)
+	answerTheReadingsOffTheQueue(completer)
 	dir := t.TempDir()
 	transcript := filepath.Join(dir, "transcript.jsonl")
 	agent, _ := newTestAgent(t, completer, func(config *Config) {

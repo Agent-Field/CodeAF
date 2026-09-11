@@ -76,10 +76,10 @@ import (
 // The namer is answered off the queue because a promoted command becomes a job,
 // and a job is named by a small call on a goroutine of its own (jobname.go). Left
 // alone it takes whichever scripted step it lands on, which is a red that has
-// nothing to do with the wait ([answerTheNamerOffTheQueue]).
+// nothing to do with the wait ([answerTheReadingsOffTheQueue]).
 func jobNest(t *testing.T, completer *scriptedCompleter) *nest {
 	t.Helper()
-	answerTheNamerOffTheQueue(completer)
+	answerTheReadingsOffTheQueue(completer)
 	here := newNest(t, completer, nil)
 	// Written before the run's goroutine exists, which is the only instant at
 	// which this field has a single reader.

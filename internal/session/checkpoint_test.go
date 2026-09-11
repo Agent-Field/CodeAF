@@ -458,7 +458,7 @@ const (
 // past-the-end answer would then be read as a sketch and as a brief.
 const checkpointSlack = checkpointMarks + 3
 
-// answerTheNamerOffTheQueue installs the aside every handover fixture needs
+// answerTheReadingsOffTheQueue installs the aside every handover fixture needs
 // ([scriptedCompleter.aside]).
 //
 // THE NAMER IS NOT ONE OF THE TURN'S ROUNDS, so it must not spend one of the
@@ -479,16 +479,46 @@ const checkpointSlack = checkpointMarks + 3
 // against.
 //
 // A completer that is not scripted has no queue to protect and is left alone.
-func answerTheNamerOffTheQueue(completer Completer) {
+func answerTheReadingsOffTheQueue(completer Completer) {
 	scripted, ok := completer.(*scriptedCompleter)
 	if !ok {
 		return
 	}
 	scripted.aside = func(messages []ai.Message) (*ai.Response, bool) {
-		if !isNameCall(messages) {
+		if isNameCall(messages) {
+			return textResponse(""), true
+		}
+		// AND THE MARK'S DRAWING, for the namer's reason and since the same day.
+		// It is a READING BESIDE THE WORK now (sidecar.go): it is started at the
+		// boundary that crosses a mark and the turn goes straight on to its next
+		// request, so the two land on this fixture in whatever order the scheduler
+		// picks. Left on the positional queue it took whichever step the turn was
+		// about to ride — which is #392 exactly, one mechanism along.
+		//
+		// THE ANSWER COMES OUT OF THE SCRIPT ITSELF AND SPENDS NO STEP. Every
+		// generator in this file answers the drawing identically from every one of
+		// its steps ([grindingSteps], [stoppingSteps]), so asking the first step
+		// what it would have drawn is the same answer the queue would have given,
+		// taken without consuming anything. A generator that does NOT answer the
+		// drawing hands back a tool call, and this falls through to the queue so
+		// that fixture behaves exactly as it always did.
+		if !askedForSketch(messages) {
 			return nil, false
 		}
-		return textResponse(""), true
+		scripted.mu.Lock()
+		var first step
+		if len(scripted.steps) > 0 {
+			first = scripted.steps[0]
+		}
+		scripted.mu.Unlock()
+		if first == nil {
+			return nil, false
+		}
+		drawn, err := first(context.Background(), messages)
+		if err != nil || drawn == nil || len(drawn.ToolCalls()) > 0 {
+			return nil, false
+		}
+		return drawn, true
 	}
 }
 
@@ -537,7 +567,7 @@ func checkpointWritingAgent(t *testing.T, completer Completer, mutate ...func(*C
 // read by. Everything else is [newTestAgent]'s.
 func checkpointAgent(t *testing.T, completer Completer, mutate ...func(*Config)) *Agent {
 	t.Helper()
-	answerTheNamerOffTheQueue(completer)
+	answerTheReadingsOffTheQueue(completer)
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.AskConsent = true
 		config.RolesSource = tierSettings(map[string]string{
@@ -642,10 +672,19 @@ func finalAnswer(text string) step {
 }
 
 // marksRead is how many times the sidecar was actually asked.
+//
+// IT COUNTS BOTH LANES. The drawing is answered off the queue now
+// ([answerTheReadingsOffTheQueue]), so a fixture that only looked at the
+// positional requests would report a mechanism that never fired.
 func marksRead(completer *scriptedCompleter) int {
 	read := 0
 	for index := range completer.requests() {
 		if askedForSketch(completer.request(index)) {
+			read++
+		}
+	}
+	for _, asked := range completer.asideRequestsSeen() {
+		if askedForSketch(asked) {
 			read++
 		}
 	}
@@ -1359,7 +1398,7 @@ func TestADowryOfMachineMarkupIsRefusedAndNeverBecomesTheName(t *testing.T) {
 	}
 	// AND THE LINE THE PERSON READS IS ABOUT THEIR WORK. The namer runs AHEAD of
 	// this line now, on purpose (#333), and the fixture answers it with no name
-	// ([answerTheNamerOffTheQueue]) — so what is left to read here is the
+	// ([answerTheReadingsOffTheQueue]) — so what is left to read here is the
 	// told-after line as the road itself draws it, off the person's own sentence.
 	notice := routeNotice(collected)
 	if notice == "" {

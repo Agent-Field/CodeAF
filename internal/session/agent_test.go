@@ -104,7 +104,7 @@ func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages [
 	// than about the errand: three tests in this package are ABOUT the namer —
 	// they assert its ordering against the work, its request and the tier it ran
 	// on — and a request answered here is one they can no longer see. They opt in
-	// with [answerTheNamerOffTheQueue] instead.
+	// with [answerTheReadingsOffTheQueue] instead.
 	//
 	// The answer is silence, which is what an errand nobody could reach already
 	// gives its caller and what every caller in this package already handles. A
@@ -185,6 +185,16 @@ func (s *scriptedCompleter) requests() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.seen)
+}
+
+// asideRequestsSeen is WHAT the aside answered off the queue, for a fixture that
+// has to count one kind of errand among them.
+func (s *scriptedCompleter) asideRequestsSeen() [][]ai.Message {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	seen := make([][]ai.Message, len(s.asides))
+	copy(seen, s.asides)
+	return seen
 }
 
 // asideRequests is how many errands the aside answered off the queue.
