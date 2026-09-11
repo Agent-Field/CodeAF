@@ -100,6 +100,14 @@ func laneBeatModels(settings config.Config, model string) []string {
 	var models []string
 	seen := make(map[string]bool, 3)
 	for _, slot := range []string{model, settings.Model, settings.PlanModel} {
+		account := config.ClientConfigFor(settings.Sources.OrDefault(settings.APIKey, settings.BaseURL), slot)
+		if account.Direct {
+			continue
+		}
+		// Resolve the account only to decide whether the model has a sheet. Keep
+		// the model's own id for the ledger: a default-router model may itself
+		// begin with "openrouter/", which is vendor vocabulary rather than a
+		// connected-service qualifier.
 		slot = lanes.LedgerModel(slot)
 		if slot == "" || seen[slot] {
 			continue

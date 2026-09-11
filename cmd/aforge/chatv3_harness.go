@@ -120,12 +120,9 @@ func v3RunHarness(store *subharness.Store, settings config.Config, model, worksp
 	if store == nil {
 		return nil
 	}
-	client, err := provider.NewClient(provider.Config{
-		APIKey:  settings.APIKey,
-		BaseURL: settings.BaseURL,
-		Model:   model,
-		Timeout: harnessTimeout,
-	})
+	configured := settings.ClientConfig(model)
+	configured.Timeout = harnessTimeout
+	client, err := provider.NewClient(configured)
 	if err != nil {
 		return nil
 	}

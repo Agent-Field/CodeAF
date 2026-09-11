@@ -23,8 +23,8 @@ func TestMeter(t *testing.T) {
 	if _, known := PriceOf("z-ai/glm-5.2:free"); !known {
 		t.Fatalf("an endpoint suffix is not a different model")
 	}
-	if _, known := PriceOf("kimi-k3"); !known {
-		t.Fatalf("a bare model name matches its vendor's row")
+	if _, known := PriceOf("kimi-k3"); known {
+		t.Fatalf("a bare model name is not its vendor's row")
 	}
 	price, known := PriceOf("somebody/new-model")
 	if known {
@@ -32,6 +32,39 @@ func TestMeter(t *testing.T) {
 	}
 	if price.Out <= 0 {
 		t.Fatalf("an unpriced model is not a free model")
+	}
+}
+
+func TestABareNameIsNotAVendorsRow(t *testing.T) {
+	for id, want := range prices {
+		bare := id[strings.LastIndex(id, "/")+1:]
+		for _, suffix := range []string{"", ":free", "@2026-01"} {
+			t.Run("bare "+bare+suffix, func(t *testing.T) {
+				got, known := PriceOf(bare + suffix)
+				if known || got != unpriced {
+					t.Fatalf("PriceOf(%q) = %+v, %v; want %+v, false", bare+suffix, got, known, unpriced)
+				}
+			})
+
+			t.Run("qualified "+id+suffix, func(t *testing.T) {
+				got, known := PriceOf(id + suffix)
+				if !known || got != want {
+					t.Fatalf("PriceOf(%q) = %+v, %v; want %+v, true", id+suffix, got, known, want)
+				}
+			})
+		}
+	}
+
+	for _, id := range []string{"somebody/new-model", "", "   "} {
+		t.Run("unpriced "+id, func(t *testing.T) {
+			got, known := PriceOf(id)
+			if known || got != unpriced {
+				t.Fatalf("PriceOf(%q) = %+v, %v; want %+v, false", id, got, known, unpriced)
+			}
+			if id == "somebody/new-model" && got.Out <= 0 {
+				t.Fatalf("an unpriced model is not a free model: %+v", got)
+			}
+		})
 	}
 }
 

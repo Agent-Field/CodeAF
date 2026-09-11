@@ -563,6 +563,40 @@ func TestAPlainLoopbackBaseGetsASheetFromItsOwnAnswer(t *testing.T) {
 	}
 }
 
+// TestADirectClientDoesNotRepointTheDefaultLaneSheet pins the account boundary
+// at the constructor where it used to be crossed. A connected service owns one
+// road and therefore has no lane sheet; merely constructing its client must not
+// make the process beat ask that service about the default router's model.
+func TestADirectClientDoesNotRepointTheDefaultLaneSheet(t *testing.T) {
+	forgetLanes(t)
+	const model = "openrouter/default-model"
+	defaultRouter := lanestub.New(model,
+		lanestub.Lane{Name: "default-road", Profile: lanestub.Profile{TTFT: 20 * time.Millisecond, Rate: 400, Tokens: 8, Tools: true}},
+	)
+	t.Cleanup(defaultRouter.Close)
+	directService := lanestub.New("vendor/direct-model",
+		lanestub.Lane{Name: "only-road", Profile: lanestub.Profile{TTFT: 20 * time.Millisecond, Rate: 400, Tokens: 8, Tools: true}},
+	)
+	t.Cleanup(directService.Close)
+
+	if _, err := NewClient(Config{APIKey: "default-key", BaseURL: defaultRouter.URL(), Model: model}); err != nil {
+		t.Fatalf("build the default router client: %v", err)
+	}
+	if _, err := NewClient(Config{APIKey: "direct-key", BaseURL: directService.URL(), Model: "vendor/direct-model", Direct: true}); err != nil {
+		t.Fatalf("build the direct service client: %v", err)
+	}
+
+	if err := lanes.Default().Sheet().Refresh(context.Background(), model); err != nil {
+		t.Fatalf("refresh the default router's sheet after constructing a direct client: %v", err)
+	}
+	if got := defaultRouter.Sheets(lanes.LedgerModel(model)); got != 1 {
+		t.Fatalf("the default router received %d sheet requests, want 1", got)
+	}
+	if got := directService.Sheets(lanes.LedgerModel(model)); got != 0 {
+		t.Fatalf("constructing a direct client repointed the process sheet and sent it %d requests", got)
+	}
+}
+
 // TestABaseWithNoEndpointsPageIsAskedOnce is acceptance 2 through the real
 // transport: the stub answers completions and 404s every endpoints page, the
 // client is wired to it regardless, and after the base's one answer nothing

@@ -2952,7 +2952,6 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 	a.mu.Lock()
 	parent := a.config
 	model := a.model
-	client := unwrapCompleter(a.client)
 	// EVERY ATTEMPT GETS ITS OWN JOURNAL, AND THE NONCE IS WHAT MAKES THE NEXT
 	// AUDITOR FRESH. The path carries a timestamp to the second, and two audits of
 	// one node — the retry after a non-answer, the check after a repair round —
@@ -2981,7 +2980,7 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 	if named := strings.TrimSpace(on); named != "" {
 		judge = named
 	}
-	auditor, err := newAgent(Config{
+	auditor, err := a.newChildAgent(Config{
 		// A checker can independently read the source a worker cited, without
 		// gaining the writable memory store or any additional mutation tool.
 		ConversationHistory: parent.conversationHistory(),
@@ -2994,6 +2993,7 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 		Model:     judge,
 		APIKey:    parent.APIKey,
 		BaseURL:   parent.BaseURL,
+		Sources:   parent.Sources,
 		// The window of the model the AUDITOR runs, which the roles ladder has
 		// very often made a different one from the node's
 		// (loop.go's [Agent.childWindow]).
@@ -3023,7 +3023,7 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 		RolesSource: parent.RolesSource,
 		// Beside the ladder it overrides, for task_run.go's reason.
 		OneModel: parent.OneModel,
-	}, client)
+	})
 	if err != nil {
 		return nil, err
 	}

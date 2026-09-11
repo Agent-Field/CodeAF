@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/paymentrefusal"
 	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -73,6 +74,9 @@ const (
 	// than written off ([Client.refuseLane]) — and because a fact that reaches
 	// no reader at all is the defect this class closes.
 	refusalPaced
+	// refusalPayment is an authenticated account that cannot fund the request.
+	// It is terminal for the whole account, not a wait and not one lane's fault.
+	refusalPayment
 )
 
 // laneRefusal is one refusal as every reader of it needs it.
@@ -279,6 +283,9 @@ func (c *Client) laneRefusalFor(model, demanded string, err error) laneRefusal {
 	refusal, ok := RefusalFrom(err)
 	if !ok {
 		return laneRefusal{}
+	}
+	if paymentrefusal.Matches(refusal.Status, []byte(refusal.Body)) {
+		return laneRefusal{Kind: refusalPayment, Terminal: true}
 	}
 	demanded = strings.TrimSpace(demanded)
 	if refusal.Status == http.StatusTooManyRequests {

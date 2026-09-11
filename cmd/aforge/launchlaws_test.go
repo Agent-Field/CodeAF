@@ -24,8 +24,8 @@ import (
 
 // deadCatalogEndpoint points the catalog at a server that refuses immediately,
 // which is what makes every count below a fact about the launch rather than
-// about the network: the fetch fails, the catalog falls back to its compiled-in
-// rows, and nothing here ever reaches OpenRouter or the person's own cache.
+// about the network: the fetch fails, this custom base honestly has no rows,
+// and nothing here ever reaches OpenRouter or the person's own cache.
 func deadCatalogEndpoint(t *testing.T) {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -72,23 +72,22 @@ func TestTheSubharnessWiringAsksTheCatalogNothingThatWaits(t *testing.T) {
 // than a law: the number is what the path costs today, it is too high, and the
 // only direction it may move without a conversation is down.
 //
-// The sixteen are two families:
+// The eleven are two families:
 //
 //   - ONE from subharness.go's [buildLinear], described above.
-//   - FIFTEEN from [v3RunHarness] (chatv3.go's harness seam), which builds the
-//     harness tool bridge EAGERLY at launch. [session.HarnessBelt] arms the
-//     media hands, each of those asks [v3MediaModel] which model would draw,
-//     see, speak or sing, and every one of those questions goes through
-//     config.CandidateMediaModel to a blocking listing. Nothing drawn in the
-//     first frame depends on any of it — the answers are wanted the first time
-//     somebody asks for a picture, minutes later — so this is a whole family of
-//     fetches held in front of a dark terminal, and it is written down here so
-//     that it is a known debt rather than a discovery.
+//   - TEN from [v3RunHarness] (chatv3.go's harness seam), which builds the
+//     harness tool bridge EAGERLY at launch. This fixture's catalog is empty,
+//     so the count covers the capability questions that leave all five media
+//     hands off the belt. It does not cover the additional catalog reads paid
+//     when a listing advertises those models and the media family is armed.
+//     Nothing drawn in the first frame depends on any of it — the answers are
+//     wanted the first time somebody asks for a picture, minutes later — so
+//     this is a known lower bound on the debt rather than the whole family.
 //
 // A change that lowers this is a change that made the launch faster; lower the
 // constant with it. A change that raises it has put a fetch in front of the
 // first frame, which is the thing this file exists to stop.
-const v3LaunchBlockingReads = 16
+const v3LaunchBlockingReads = 11
 
 // TestTheLaunchesBlockingCatalogReadsDoNotGrow is the ratchet.
 func TestTheLaunchesBlockingCatalogReadsDoNotGrow(t *testing.T) {

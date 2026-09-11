@@ -29,6 +29,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		page     string
 	}{
 		{"what can you do", "what-i-can-do"},
+		{"can I use my own deepseek key", "services"},
+		{"how do I connect glm", "services"},
+		{"how do I add an api key for another provider", "services"},
+		{"why can't it make pictures any more", "services"},
+		{"how do I remove a key", "services"},
+		{"can I use ollama", "services"},
 		// The questions object (docs/design/questions/DESIGN.md), asked the
 		// six ways somebody meets it: the shapes, the clock, the record, the
 		// refusals, answering from elsewhere, and what is not built.
@@ -2469,6 +2475,26 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 				pages = append(pages, section.Page)
 			}
 			t.Errorf("%q should reach %s; it reached %v", ask.question, ask.page, pages)
+		}
+	}
+}
+
+func TestTheServicesPageNamesCustomListingDiscoveryAndDisconnectConfirmation(t *testing.T) {
+	page, ok := Chat().Page("services")
+	if !ok {
+		t.Fatal("services page is missing")
+	}
+	for _, sentence := range []string{
+		"enter again to disconnect",
+		"the disconnected sentence first and then says",
+		"A direct-service row and status line draw no `via` at all and open no lane\nsheet",
+		"That written host name is the row's name everywhere",
+		"a **Something else** service must provide the compatible chat path",
+		"tries `GET <base>/models` first",
+		"When that address is absent, aforge connects the service without inventing rows",
+	} {
+		if !strings.Contains(page, sentence) {
+			t.Errorf("services page does not state %q", sentence)
 		}
 	}
 }

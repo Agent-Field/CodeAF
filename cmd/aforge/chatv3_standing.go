@@ -182,6 +182,7 @@ func v3StandingPosture(settings config.Config) (session.Config, error) {
 		Model:          v3TalkModel("", settings),
 		APIKey:         settings.APIKey,
 		BaseURL:        settings.BaseURL,
+		Sources:        settings.Sources,
 		CompactEnabled: true,
 		ProfileDir:     settings.ProfileDir,
 		ArtifactsIndex: artifactsIndexPath(),

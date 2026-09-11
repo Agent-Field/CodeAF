@@ -187,7 +187,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/model` | — | `<slug>` | switches the model to that slug |
 | `/image` | — | `<path>` | attaches a picture; tab completes the path |
 | `/settings` | `/set`, `/config` | — | opens the fullscreen settings panel (also ctrl+,) |
-| `/connect` | `/connections` | — | opens the connected-accounts panel |
+| `/connect` | `/connections` | — | opens the connection panel; its `models` group holds model services, followed by connected accounts |
 | `/new` | `/clear`, `/clean`, `/reset` | — | closes this session and starts a fresh one |
 | `/resume` | `/sessions` | — | opens the earlier-conversations picker |
 | `/compact` | — | — | summarizes the conversation now |
@@ -1490,9 +1490,11 @@ status sheet. Change that machine's profile there.
 
 ## /connect — your connected accounts
 
-`/connect` (or `/connections`) opens the connected-accounts panel, where you pick a
-service from a list and connect it. There is no argument form. The accounts page covers
-what each account can do once it is connected.
+`/connect` (or `/connections`) opens the connection panel. Its pinned `models` group
+holds the five built-in model services plus every one already connected; the account
+catalog groups follow it. Pick a row and connect it. There is no argument form. The
+[services page](services.md) covers model keys, and the accounts page covers what each
+account can do once it is connected.
 
 Refusals, exactly as written:
 

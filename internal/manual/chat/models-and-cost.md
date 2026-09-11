@@ -37,7 +37,7 @@ This affects routing estimates; it is not proof of a cache hit. A provider may
 evict cached input, and compaction or a rewrite can change earlier text even when
 the conversation identity stays the same.
 
-## Which model am I talking to, which model is it using right now, and how do I switch or change it
+## How do I pick a different model — which model am I talking to, which model is it using right now, and how do I switch or change it
 
 The model in use is written on the legend line directly above the message box, after the
 conversation's name (`porting the parser · glm-5.3-flash`). There are two doors to the
@@ -290,6 +290,8 @@ that followed your conversation would put the most expensive model in the build 
 cheapest questions in it — a call made twice every turn on a frontier model is a bill nobody
 agreed to. Closed models that are cheaper on their own vendor's platform than through the
 router are deliberately not in any preset; you can still pin one on any row.
+You can also connect that vendor yourself as a direct service; the
+[services page](services.md) explains its names, limits and missing Phase 1 cost record.
 
 **Why these ids.** They were picked on 2026-09-01 off the catalog's own published scores —
 OpenRouter republishes Artificial Analysis's coding and agentic indexes on every model row
@@ -2492,7 +2494,7 @@ With `routing: off` there is nothing measured, so there is no lane to choose, no
 
 ## "0 endpoints … guardrail restrictions and data policy" — paid model training violation, what it means and what aforge does
 
-This sentence means the endpoints your request was down to were all excluded by your
+On the default service, this sentence means the endpoints your request was down to were all excluded by your
 OpenRouter account's privacy setting, because their providers may train on prompts. It
 does not mean the model disappeared or that your prompt was rejected. The request can be
 down to one endpoint because aforge's price cap left only one, because it asked for one
@@ -2513,6 +2515,9 @@ You can change the account policy at `https://openrouter.ai/settings/privacy`, c
 another model, or pin a lane that serves this model. Pinning chooses the provider for this
 home — including terminal runs and background work; it does not change your OpenRouter
 privacy setting.
+
+A direct service does not use OpenRouter's endpoint list, price cap, or data-policy
+negotiation. Its single lane sends directly to the service you connected.
 
 ## Choose a provider — pinning the endpoint that serves your model, and what the lanes under a model row are
 

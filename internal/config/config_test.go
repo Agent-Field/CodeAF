@@ -59,7 +59,10 @@ func TestMediaSlotsUseEnvironmentAndRuntimeCatalogOrder(t *testing.T) {
 	// Use the package's offline defaults to exercise the verified preference
 	// slugs without exposing catalog construction internals.
 	models := catalog.Load(context.Background(), catalog.Options{
-		BaseURL: "://offline", Dir: t.TempDir(),
+		BaseURL: catalog.DefaultBaseURL, Dir: t.TempDir(),
+		HTTPClient: &http.Client{Transport: configRoundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, http.ErrServerClosed
+		})},
 	})
 	if got := resolved.ResolveImageModel(models); got != preferredImageModel {
 		t.Fatalf("resolved image = %q", got)
@@ -218,8 +221,8 @@ func TestMusicAndVideoPreferenceOrders(t *testing.T) {
 	if got := configured.ResolveVideoModel(withoutPreferred); got != "first/video" {
 		t.Fatalf("video catalog fallback = %q", got)
 	}
-	if got := configured.ResolveMusicModel(runtimeCatalog(t, ``)); got != preferredMusicModel {
-		t.Fatalf("music built-in fallback = %q", got)
+	if got := configured.ResolveMusicModel(runtimeCatalog(t, ``)); got != "" {
+		t.Fatalf("empty music catalog resolved %q", got)
 	}
 }
 

@@ -148,7 +148,7 @@ func (a *Agent) fillSubharnessCard(card *SubharnessCard) {
 		// paying to make a decision the program already made.
 		return
 	}
-	if a.client == nil {
+	if !a.hasClient() {
 		return
 	}
 	material := a.intakeMaterial()
@@ -165,7 +165,7 @@ func (a *Agent) fillSubharnessCard(card *SubharnessCard) {
 	// A side errand of the turn's, and it names itself one: nobody is waiting on
 	// a form being filled in, and nobody is reading its stream
 	// (internal/lane's roles.go).
-	response, err := a.client.CompleteWithMessages(
+	response, err := a.completeWithModel(
 		provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary),
 		[]ai.Message{
 			textMessage("system", intakeSystem),
@@ -173,7 +173,7 @@ func (a *Agent) fillSubharnessCard(card *SubharnessCard) {
 				"\n\nWhat has been said:\n"+material+
 				"\n\n"+intakePrompt),
 		},
-		ai.WithModel(model), ai.WithJSONMode())
+		model, ai.WithJSONMode())
 	if err != nil || response == nil {
 		return
 	}

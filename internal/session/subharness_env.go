@@ -199,17 +199,17 @@ func (e *subharnessEnv) AI(ctx context.Context, promptRef string, input any, opt
 	if opts.Effort != provider.EffortNone {
 		call = provider.WithConfiguredReasoningEffort(call, opts.Effort)
 	}
-	options := []ai.Option{ai.WithModel(e.model)}
+	var options []ai.Option
 	if !opts.Schema.Empty() {
 		options = append(options, ai.WithSchema(json.RawMessage(opts.Schema)))
 	}
-	response, err := e.agent.client.CompleteWithMessages(call, []ai.Message{
+	response, err := e.agent.completeWithModel(call, []ai.Message{
 		textMessage("system", prompt),
 		// THE INPUT GOES LAST, as its own message and as JSON. The prompt is the
 		// asset under review and the input is the material; two messages keep
 		// them apart for the model the way the bundle keeps them apart on disk.
 		textMessage("user", string(body)),
-	}, options...)
+	}, e.model, options...)
 	if err != nil {
 		return exec.Answer{}, e.failed(exec.CallAI, promptRef, body, started, err)
 	}

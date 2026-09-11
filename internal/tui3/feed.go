@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -1344,12 +1345,37 @@ func (f *feed) retry(ev session.Event) {
 // refusal of our own bytes — would be the surface inventing a struggle that
 // never happened. So the count decides the words, and with no count the line is
 // the plain one it has always been.
-func (f *feed) failureNote(err error) string {
+// A VENDOR THAT SAID WHY IN PLAIN WORDS IS QUOTED, NOT CLASSIFIED. An account
+// with no funds answers the same way every time and there is nothing to try
+// again, so the line is the one the connect row already writes: the service,
+// what happened to the account, and the vendor's sentence. `error:`,
+// `API error` and a bare `(429)` are this program's vocabulary rather than the
+// person's, and a status number is the one part of that answer nobody can act
+// on.
+func (f *feed) failureNote(err error, service string) string {
+	if said, ok := cannotPayWords(err); ok && strings.TrimSpace(service) != "" {
+		return serviceCannotPayWord(service, said)
+	}
 	text := errText(err)
 	if seen := f.asksSeen(); seen > 0 {
 		return failureRow(gaveUpFailure(text, seen))
 	}
 	return errorNoteWord + text
+}
+
+// cannotPayWords is the vendor's own sentence when a refusal is the terminal
+// account-cannot-pay shape, and false for every other error. It reads the
+// refusal object rather than the formatted sentence, so a pacing 429 cannot
+// become this by wording added inside this process.
+func cannotPayWords(err error) (string, bool) {
+	refusal, ok := provider.RefusalFrom(err)
+	if !ok || !refusal.AccountCannotPay() {
+		return "", false
+	}
+	if said := strings.TrimSpace(refusal.Message); said != "" {
+		return said, true
+	}
+	return strings.TrimSpace(refusal.Body), true
 }
 
 // countAsk records one more try of this turn's request and answers how many had

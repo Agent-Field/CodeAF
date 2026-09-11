@@ -149,7 +149,13 @@ func buildRouter(panel Panel, base provider.Config, dir, opener string) (*Router
 			price = unknownPrice
 		}
 		config := base
-		config.Model = spec.Slug
+		if panel.ClientConfig != nil {
+			config = panel.ClientConfig(spec.Slug)
+		} else {
+			// Hand-built panels in tests and embedders predate the factory. Their
+			// scalar base remains the compatibility path when none was supplied.
+			config.Model = spec.Slug
+		}
 		client, err := provider.NewClient(config)
 		if err != nil {
 			return nil, fmt.Errorf("router: %s: %w", spec.Slug, err)

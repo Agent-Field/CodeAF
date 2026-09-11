@@ -706,12 +706,12 @@ func (p *orchestratePlanner) think(ctx context.Context, messages []ai.Message) (
 // sees.
 func (p *orchestratePlanner) ask(ctx context.Context, messages []ai.Message) (string, error) {
 	ctx = p.call.context(ctx)
-	response, err := p.agent.client.CompleteWithMessages(
+	response, err := p.agent.completeWithModel(
 		// The plan a run is steered by: nobody reads it arriving, and it has to
 		// be right rather than soon (internal/lane's roles.go).
 		provider.WithRole(provider.WithoutStream(ctx), lane.RoleDesign),
 		messages,
-		ai.WithModel(p.call.model))
+		p.call.model)
 	if err != nil {
 		return "", err
 	}
@@ -1042,7 +1042,6 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 	// this session's own when they match (loop.go's [Agent.childWindow] states
 	// the whole argument, and newTaskAgent asks for it the same way).
 	window := a.childWindow(model)
-	client := unwrapCompleter(a.client)
 	journal := orchestrateJournalPath(a.sessionID(), e.id, node.ID)
 	// The rung this session's own next turn would ask for, carried into the node
 	// as its floor exactly as a task node inherits it (task_run.go's
@@ -1059,7 +1058,7 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 	}
 	a.mu.Unlock()
 
-	child, err := newAgent(Config{
+	child, err := a.newChildAgent(Config{
 		// An adaptive run's worker shares the project's error→fix file for a task
 		// node's reason (task_run.go's newTaskAgent, fixstore.go).
 		fixesDir: a.config.fixesBucket(),
@@ -1080,6 +1079,7 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 		Model:         model,
 		APIKey:        parent.APIKey,
 		BaseURL:       parent.BaseURL,
+		Sources:       parent.Sources,
 		ContextWindow: window,
 		// And the catalog with it, for the reason newTaskAgent hands it down:
 		// a worker that switches its own model has to be able to learn that
@@ -1110,7 +1110,7 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 		MediaModel:                 parent.MediaModel,
 		MediaPick:                  parent.MediaPick,
 		DocumentEngine:             parent.DocumentEngine,
-	}, client)
+	})
 	if err != nil {
 		return nil, err
 	}

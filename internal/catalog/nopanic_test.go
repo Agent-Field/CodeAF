@@ -38,7 +38,7 @@ func TestALazyCatalogFaultDegradesToTheKnownDefaults(t *testing.T) {
 	logged := quietCatalogLog(t)
 
 	lazy := LoadLazy(context.Background(), Options{
-		BaseURL: "https://example.invalid", Dir: t.TempDir(), HTTPClient: faultingCatalogClient(),
+		BaseURL: DefaultBaseURL, Dir: t.TempDir(), HTTPClient: faultingCatalogClient(),
 	})
 
 	answered := make(chan bool, 1)
@@ -71,7 +71,7 @@ func TestALazyCatalogFaultDegradesToTheKnownDefaults(t *testing.T) {
 func TestAnEagerCatalogFaultDegradesToTheKnownDefaults(t *testing.T) {
 	quietCatalogLog(t)
 	eager := Load(context.Background(), Options{
-		BaseURL: "https://example.invalid", Dir: t.TempDir(), HTTPClient: faultingCatalogClient(),
+		BaseURL: DefaultBaseURL, Dir: t.TempDir(), HTTPClient: faultingCatalogClient(),
 	})
 	if !eager.Supports("krea/krea-2-medium-turbo", "output", "image") {
 		t.Fatal("a faulted eager load must degrade to the known modality defaults")

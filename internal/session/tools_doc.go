@@ -92,15 +92,13 @@ type DocumentParser interface {
 // A missing key is an ERROR HERE and not a nil client, so the tool's refusal
 // can say which thing is missing instead of "not configured".
 var newDocClient = func(config Config) (DocumentParser, error) {
-	if strings.TrimSpace(config.APIKey) == "" {
+	settings := config.documentConfig(providerTimeout)
+	service := config.serviceFor(config.Model)
+	wantsKey := service.Source.KeyShape == nil || !service.Source.KeyShape("")
+	if wantsKey && strings.TrimSpace(settings.APIKey) == "" {
 		return nil, errors.New("this session has no API key")
 	}
-	client, err := provider.NewClient(provider.Config{
-		APIKey:  config.APIKey,
-		BaseURL: config.BaseURL,
-		Model:   config.Model,
-		Timeout: providerTimeout,
-	})
+	client, err := provider.NewClient(settings)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +114,7 @@ var newDocClient = func(config Config) (DocumentParser, error) {
 // never reads a document from building a client it will never call.
 type documentRung struct {
 	once   sync.Once
-	client DocumentParser
+	parser DocumentParser
 	err    error
 
 	// mu guards memo, whose writers are tool calls running in parallel inside
@@ -417,14 +415,14 @@ func (a *Agent) documentModel(kind documentKind) string {
 // documentParser builds the client once, on first use, and hands back the same
 // error every time it could not be built.
 func (a *Agent) documentParser() (DocumentParser, error) {
-	a.docs.once.Do(func() { a.docs.client, a.docs.err = newDocClient(a.config) })
+	a.docs.once.Do(func() { a.docs.parser, a.docs.err = newDocClient(a.config) })
 	if a.docs.err != nil {
 		return nil, a.docs.err
 	}
-	if a.docs.client == nil {
+	if a.docs.parser == nil {
 		return nil, errors.New("no document client")
 	}
-	return a.docs.client, nil
+	return a.docs.parser, nil
 }
 
 func (a *Agent) documentMemo(key string) (documentExtraction, bool) {

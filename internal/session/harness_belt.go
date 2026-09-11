@@ -185,7 +185,7 @@ func (a *Agent) harnessSeams() HarnessBeltSeams {
 		Media:          a.config.Media,
 		MediaModel:     a.config.MediaModel,
 		MediaPick:      a.config.MediaPick,
-		Seer:           a.client,
+		Seer:           a.routedCompleter(),
 		Place:          a.config.Place,
 		ArtifactsIndex: a.config.ArtifactsIndex,
 	}

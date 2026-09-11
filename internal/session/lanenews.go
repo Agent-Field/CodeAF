@@ -287,17 +287,13 @@ func (a *Agent) Typing() {
 	if !provider.LaneGuardOn() {
 		return
 	}
-	prober, ok := a.client.(laneProber)
-	if !ok {
-		return
-	}
 	a.mu.Lock()
 	model, closed := a.model, a.closed
 	a.mu.Unlock()
 	if closed || strings.TrimSpace(model) == "" {
 		return
 	}
-	prober.ProbeLanes(a.probeContext(), model)
+	a.probeClientLanes(a.probeContext(), model)
 }
 
 // probeContext is the context a probe rides: the session's own, so that a

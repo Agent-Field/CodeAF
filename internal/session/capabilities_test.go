@@ -146,6 +146,39 @@ func drain(t *testing.T, events <-chan Event) {
 	}
 }
 
+// A SERVICE WITHOUT A LIST PRODUCES AN EMPTY MEDIA RESOLVER. The ordinary
+// absence door then removes every generation verb from offeredTools; Sources
+// changes which client a model call reaches, but adds no duplicate belt rule.
+func TestAListinglessServiceLeavesMediaOffTheOfferedBelt(t *testing.T) {
+	profile := t.TempDir()
+	if err := configpkg.WriteSources(profile, []configpkg.PersistedSource{{
+		ID: "z-ai", Written: "z-ai", Region: "intl", Key: "direct-secret", Order: 1,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	sources := configpkg.ResolveSources(profile, "default-secret", configpkg.DefaultBaseURL)
+
+	withListing, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Media = &scriptedMedia{}
+		config.MediaModel = allMediaModels()
+	})
+	withoutListing, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Model = "z-ai/glm-4.6"
+		config.Sources = sources
+		config.Media = &scriptedMedia{}
+		config.MediaModel = func(string) string { return "" }
+	})
+
+	for _, name := range []string{"generate_image", "speak", "generate_music", "generate_video"} {
+		if !withListing.offers(name) {
+			t.Fatalf("the comparison belt does not offer %s", name)
+		}
+		if withoutListing.offers(name) {
+			t.Errorf("a listing-less service still offers %s", name)
+		}
+	}
+}
+
 // ── the whole road, in one turn ─────────────────────────────────────────────
 
 // THE ACCEPTANCE. A model that wants a shelved verb loads its group and then

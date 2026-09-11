@@ -71,9 +71,12 @@ var prices = map[string]Price{
 var unpriced = Price{In: 1.25, Out: 10.00}
 
 // PriceOf is one model's row, and whether the table actually holds one. The id
-// is matched the way the wire spells it and then the way a person does:
-// suffixes an endpoint adds (":free", "@2026-01") are cut, and a bare model
-// name matches the vendor-qualified row it belongs to.
+// is matched the way the wire spells it, with suffixes an endpoint adds
+// (":free", "@2026-01") cut before the lookup.
+//
+// A BARE NAME IS NOT A VENDOR'S ROW. A vendor serving a model on its own base
+// does not charge the router's price for it, and a wrong price is worse than no
+// price because it looks right.
 func PriceOf(model string) (Price, bool) {
 	name := strings.ToLower(strings.TrimSpace(model))
 	if cut := strings.IndexAny(name, ":@"); cut > 0 {
@@ -84,11 +87,6 @@ func PriceOf(model string) (Price, bool) {
 	}
 	if price, known := prices[name]; known {
 		return price, true
-	}
-	for id, price := range prices {
-		if id == name || strings.HasSuffix(id, "/"+name) {
-			return price, true
-		}
 	}
 	return unpriced, false
 }

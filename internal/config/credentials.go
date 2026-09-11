@@ -46,5 +46,8 @@ func Credentials(profileDir string) []string {
 	// and not one ([APIKeyAt]) — the row names only the first — so a person
 	// running with OPENAI_API_KEY set would have registered nothing at all.
 	add(APIKeyAt(profileDir))
+	for _, service := range ResolveSources(profileDir, APIKeyAt(profileDir), DefaultBaseURL).All()[1:] {
+		add(service.Key)
+	}
 	return found
 }

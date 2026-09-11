@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/lane/control"
+	"github.com/Agent-Field/aforge-v2/internal/paymentrefusal"
 	"github.com/Agent-Field/aforge-v2/internal/trace"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -34,6 +35,16 @@ type Config struct {
 	APIKey  string
 	BaseURL string
 	Model   string
+	// Direct says this account is a connected service with one road rather than
+	// a router with a set of serving lanes. It suppresses every lane preference,
+	// sheet and probe at the transport boundary; a direct service must never be
+	// asked for OpenRouter's endpoints document merely because another account
+	// in the process uses it.
+	Direct bool
+	// KeyOptional is true only for a service such as a local Ollama runner that
+	// explicitly accepts an empty key. The ordinary keyless client remains the
+	// first-run state and refuses before the wire.
+	KeyOptional bool
 	// Effort is the operator's own pin carried by the model value this client
 	// was built from, such as `vendor/model:high`. It belongs to this client
 	// rather than a context because one run holds several differently pinned
@@ -224,9 +235,11 @@ func NewClient(config Config) (*Client, error) {
 	// AND THE LANE SHEET LEARNS WHERE THE ROUTER IS, here and nowhere else
 	// (lanes.go). It opens no connection: it hands `internal/lane` the base, the
 	// bearer and the one thing that package may not own, and the fetching is a
-	// beat the session starts and stops. A client pointed somewhere that is not
-	// a router wires nothing, because there is no sheet there to read.
-	client.wireLaneSheet()
+	// beat the session starts and stops. A connected direct service is explicitly
+	// absent from this process-wide seam because it has no sheet to read.
+	if !config.Direct {
+		client.wireLaneSheet()
+	}
 	return client, nil
 }
 
@@ -267,7 +280,7 @@ func (c *Client) SetAPIKey(key string) error {
 func (c *Client) apiKeyNow() (string, error) {
 	c.keyMu.RLock()
 	defer c.keyMu.RUnlock()
-	if c.apiKey == "" {
+	if c.apiKey == "" && !c.config.KeyOptional {
 		return "", ErrNoAPIKey
 	}
 	return c.apiKey, nil
@@ -318,7 +331,7 @@ func (c *Client) ExecuteToolCallLoop(
 	// the loop is a fact about the SHIPPED ROUTER's own dialect — the
 	// categories header, the refusal ladder — and not about whether some base
 	// carries a `provider` object (prefcarry.go).
-	if c.shippedRouterHint() {
+	if c.shippedRouterHint() || c.config.KeyOptional {
 		return c.executeOwnToolCallLoop(ctx, messages, tools, config, call, options...)
 	}
 	base := c.sdkClient()
@@ -2197,7 +2210,9 @@ func (c *Client) newHTTPRequest(ctx context.Context, request *ai.Request, body [
 		return nil, err
 	}
 	httpRequest.Header.Set("Content-Type", "application/json")
-	httpRequest.Header.Set("Authorization", "Bearer "+apiKey)
+	if apiKey != "" {
+		httpRequest.Header.Set("Authorization", "Bearer "+apiKey)
+	}
 	if stream {
 		httpRequest.Header.Set("Accept", "text/event-stream")
 	}
@@ -2403,10 +2418,28 @@ func (e *APIError) FromUpstream() bool {
 // list or a setting that emptied the set, and the measured turn of 2026-09-10
 // ended on "the request itself was refused" because the two were read as one.
 func (e *APIError) OurRequest() bool {
-	if e == nil || e.FromUpstream() || e.Routing {
+	if e == nil {
+		return false
+	}
+	// AN EMPTY ACCOUNT IS OURS TO STOP WHOEVER WAS ASKED, so this is read
+	// before the two "nobody was asked" answers below. A payment refusal is a
+	// fact about the account rather than about one upstream or one list, and
+	// walking to another machine spends the identical refusal again.
+	if paymentrefusal.Matches(e.Status, []byte(e.Body)) {
+		return true
+	}
+	if e.FromUpstream() || e.Routing {
 		return false
 	}
 	return e.Status >= 400 && e.Status < 500 && e.Status != http.StatusTooManyRequests
+}
+
+// AccountCannotPay reports the terminal authenticated-account refusal shared
+// by connect and the live transport. It reads the original body, never Error's
+// formatted sentence, so a plain pacing 429 cannot become terminal by wording
+// added inside this process.
+func (e *APIError) AccountCannotPay() bool {
+	return e != nil && paymentrefusal.Matches(e.Status, []byte(e.Body))
 }
 
 // RefusalFrom recovers the provider's refusal from anywhere in an error chain,

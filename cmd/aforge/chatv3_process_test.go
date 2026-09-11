@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui3"
 )
@@ -70,6 +71,60 @@ func TestEveryLaunchCarriesTheProcessesOwnStores(t *testing.T) {
 	}
 	if first.Settings.ProfileDir != proc.ProfileDir {
 		t.Fatal("a launch resolved its own profile")
+	}
+}
+
+// THE FIXTURE IS A SERVICE NOBODY HAS WATCHED ANSWER. It was z-ai until a live
+// run watched api.z.ai return ten models and that row began saying so, which
+// left this test's own premise false — the subject is a service with no model
+// list, so the fixture has to be one. moonshot is the shipped row still marked
+// unobserved; if a live run ever watches it answer too, move this to a custom
+// row rather than weakening what is asserted below.
+func TestARealLaunchOnAListinglessServiceHasNoMediaPair(t *testing.T) {
+	proc := v3TestProcess(t)
+	row := config.PersistedSource{ID: "moonshot", Written: "moonshot", Region: "intl", Key: "moonshot-key", Order: 1}
+	if err := config.WriteSources(proc.ProfileDir, []config.PersistedSource{row}); err != nil {
+		t.Fatal(err)
+	}
+	sources := config.ResolveSources(proc.ProfileDir, proc.Settings.APIKey, proc.Settings.BaseURL)
+	proc.setModelSources(sources)
+	launch, err := openV3Launch(proc, v3Options{Model: "moonshot/kimi-k3", Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if launch.Config.Media != nil || launch.Config.MediaModel != nil || launch.Config.MediaPick != nil {
+		t.Fatal("the real launch retained a media pair from the default service")
+	}
+	if direct, ok := launch.Config.Sources.ByID("moonshot"); !ok || direct.Source.Listing != modelsource.ListingNone {
+		t.Fatalf("launch did not carry the listing-less service: %+v, %t", direct, ok)
+	}
+	if rows := launch.Models.ModelsNow(); len(rows) != 0 {
+		t.Fatalf("listing-less launch borrowed %d default-service catalog rows", len(rows))
+	}
+}
+
+// AND THE OTHER HALF, which is what the z-ai change exposed: a service that DOES
+// publish a list still makes no media unless its own catalog names a model that
+// can. The curated fallbacks are the default service's ids and a direct vendor
+// has never heard of them, so arming the pair on a listing alone would put four
+// verbs on the belt that cannot succeed.
+func TestARealLaunchOnADirectListingServiceWithNoMediaRowsHasNoMediaPair(t *testing.T) {
+	proc := v3TestProcess(t)
+	row := config.PersistedSource{ID: "z-ai", Written: "z-ai", Region: "intl", Key: "zai-key", Order: 1}
+	if err := config.WriteSources(proc.ProfileDir, []config.PersistedSource{row}); err != nil {
+		t.Fatal(err)
+	}
+	sources := config.ResolveSources(proc.ProfileDir, proc.Settings.APIKey, proc.Settings.BaseURL)
+	proc.setModelSources(sources)
+	launch, err := openV3Launch(proc, v3Options{Model: "z-ai/glm-5.3", Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if direct, ok := launch.Config.Sources.ByID("z-ai"); !ok || direct.Source.Listing != modelsource.ListingModels {
+		t.Fatalf("the observed listing row did not reach the launch: %+v, %t", direct, ok)
+	}
+	if launch.Config.Media != nil || launch.Config.MediaModel != nil || launch.Config.MediaPick != nil {
+		t.Fatal("a direct service whose catalog names no media model was armed with the default service's")
 	}
 }
 

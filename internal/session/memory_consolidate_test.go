@@ -81,7 +81,7 @@ func tidyBrain(t *testing.T, script Completer, rows ...store.Memory) (tidyPass, 
 			t.Fatalf("add memory %q: %v", row.Title, err)
 		}
 	}
-	return tidyPass{brain: brain, client: script, model: "tidy-model", root: root}, brain, root
+	return tidyPass{brain: brain, completer: script, model: "tidy-model", root: root}, brain, root
 }
 
 func activeTitles(t *testing.T, brain *store.Store) []string {

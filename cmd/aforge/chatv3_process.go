@@ -40,6 +40,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/connect"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/history"
+	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
@@ -176,11 +177,13 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
 	}
 	models := catalog.LoadLazy(context.Background(), discovery)
+	shelf := newV3ModelShelf(models, discovery)
+	shelf.setSources(settings.Sources)
 	return &v3Process{
 		Settings:   settings,
 		ProfileDir: settings.ProfileDir,
 		Models:     models,
-		Shelf:      newV3ModelShelf(models, discovery),
+		Shelf:      shelf,
 		Harnesses:  subharness.Default(),
 		Memory:     v3Memory(settings.ProfileDir),
 		Artifacts:  artifactsIndexPath(),
@@ -248,12 +251,34 @@ func (p *v3Process) setAPIKey(key string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.Settings.APIKey = strings.TrimSpace(key)
+	p.Settings.Sources = p.Settings.Sources.WithDefaultKey(p.Settings.APIKey)
 	for _, agent := range p.agents {
 		if err := agent.SetAPIKey(key); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// setModelSources makes a profile connection live for every retained
+// conversation and for launches opened later in this process.
+func (p *v3Process) setModelSources(sources modelsource.Set) {
+	if sources.Empty() {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.Settings.Sources = sources
+	p.Shelf.setSources(sources)
+	for _, agent := range p.agents {
+		agent.SetSources(sources)
+	}
+}
+
+func (p *v3Process) currentAccount() (string, modelsource.Set) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.Settings.APIKey, p.Settings.Sources
 }
 
 // apiKey is the key the process holds now, which may be newer than the one any
@@ -421,13 +446,11 @@ func (s *v3Seam) launch(workspace string) (*v3Launch, error) {
 	// with, and a /new built from it would open a conversation that refuses
 	// every request. A copy is patched rather than the boot itself, because the
 	// boot is shared and this is a reading, not a change to it.
-	if strings.TrimSpace(launch.Config.APIKey) == "" {
-		if key := s.proc.apiKey(); key != "" {
-			keyed := *launch
-			keyed.Config.APIKey = key
-			launch = &keyed
-		}
-	}
+	key, sources := s.proc.currentAccount()
+	current := *launch
+	current.Config.APIKey = key
+	current.Config.Sources = sources
+	launch = &current
 	return launch, nil
 }
 

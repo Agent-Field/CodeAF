@@ -52,14 +52,62 @@ package main
 // sound is a speaker rather than a listener.
 
 import (
+	"context"
 	"log"
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
+
+// v3CatalogForModel resolves published capabilities from the service that
+// serves model. A listing-less service gets an empty catalog without a fetch,
+// which keeps every media verb absent. A listing-capable direct service gets
+// its own source-scoped lazy catalog rather than borrowing OpenRouter's rows.
+//
+// The third answer is WHETHER THIS SERVICE CAN MAKE MEDIA AT ALL, which is not
+// the same question as whether it publishes a model list. The default service
+// can: its curated fallback names are its own ids and its catalog carries the
+// rows. A DIRECT service can only if its own catalog says so — the fallbacks
+// are OpenRouter's ids (config.FallbackMediaModel) and a direct vendor has
+// never heard of them, so arming the pair on a listing alone puts four verbs on
+// the belt that cannot succeed and re-opens the hole the empty catalog closed.
+// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN.
+func v3CatalogForModel(ctx context.Context, settings config.Config, model string, defaults *catalog.Catalog) (*catalog.Catalog, string, bool) {
+	set := settings.Sources.OrDefault(settings.APIKey, settings.BaseURL)
+	service, bare := set.For(model)
+	if strings.EqualFold(service.Source.ID, modelsource.DefaultID) {
+		return defaults, bare, true
+	}
+	if service.Source.Listing == modelsource.ListingNone {
+		return &catalog.Catalog{}, bare, false
+	}
+	direct := catalog.LoadLazy(ctx, catalog.Options{
+		Source: service.Source.ID, BaseURL: service.Address, APIKey: service.Key,
+		Dir: settings.ProfileDir,
+	})
+	return direct, bare, v3ServesMedia(direct)
+}
+
+// v3ServesMedia is whether this catalog PUBLISHES a row that makes something,
+// asked without waiting: a catalog still warming answers no, and the launch
+// leaves the verbs off rather than arming a hand whose model it cannot name.
+// The next launch arms them once the rows are on disk, which is the same trade
+// every other question about a warming catalog already makes.
+func v3ServesMedia(models *catalog.Catalog) bool {
+	if models == nil {
+		return false
+	}
+	for _, modality := range []string{"image", "speech", "music", "video"} {
+		if len(models.ModelsWithOutput(modality)) > 0 {
+			return true
+		}
+	}
+	return false
+}
 
 // v3MediaSlot is the settings slot each modality's first rung reads. Vision is
 // the one that is not a capability slot: "looking" has always been its own
