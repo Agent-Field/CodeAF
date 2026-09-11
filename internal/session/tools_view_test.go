@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -233,9 +234,9 @@ func TestViewImageAnswersWhenTheSeerNeverDoes(t *testing.T) {
 			return nil, ctx.Err()
 		},
 	}}
-	restore := viewLookWindow
-	viewLookWindow = 20 * time.Millisecond
-	t.Cleanup(func() { viewLookWindow = restore })
+	restore := toolAskWindow
+	toolAskWindow = 20 * time.Millisecond
+	t.Cleanup(func() { toolAskWindow = restore })
 
 	agent, workspace := newTestAgent(t, completer, withSlot(map[string]string{"vision": "vendor/slot-eyes"}))
 	writeImage(t, workspace, "render.png", "BYTES")
@@ -275,9 +276,9 @@ func TestViewImageAnswersWhenTheSeerNeverDoes(t *testing.T) {
 // for the turn: both are sent as soon as the batch this call is in finishes,
 // which for a single-call batch is the moment the tool returns.
 func TestViewImageEndsItsRowOnBothEndings(t *testing.T) {
-	restore := viewLookWindow
-	viewLookWindow = 20 * time.Millisecond
-	t.Cleanup(func() { viewLookWindow = restore })
+	restore := toolAskWindow
+	toolAskWindow = 20 * time.Millisecond
+	t.Cleanup(func() { toolAskWindow = restore })
 
 	for _, testCase := range []struct {
 		name string
@@ -362,10 +363,16 @@ func TestViewImageEndsItsRowOnBothEndings(t *testing.T) {
 	}
 }
 
-// And the window is the one already written down. A second number here would be
-// a second answer to "how long may one completion take" (agent.go).
-func TestViewLookWindowIsTheProviderTimeout(t *testing.T) {
-	if viewLookWindow != providerTimeout {
-		t.Fatalf("the look window is %s, want providerTimeout (%s)", viewLookWindow, providerTimeout)
+// And the window is DERIVED FROM THE ROLE and is not a duration anybody typed.
+// It used to be [providerTimeout] — ten minutes, a second budget beside the
+// deadline the dispatcher already builds from the role — and the whole of the
+// recovery design's §4 is that there is ONE such bound (toolask.go).
+func TestAToolsAskIsBoundedByItsRoleAndNotByANumber(t *testing.T) {
+	if want := lane.RoleTool.GiveUp(); toolAskWindow != want {
+		t.Fatalf("a tool's ask waits %s, want lane.RoleTool.GiveUp() (%s)", toolAskWindow, want)
+	}
+	if toolAskWindow >= providerTimeout {
+		t.Fatalf("a tool's ask waits %s, which is no shorter than the general completion bound %s — "+
+			"the point of the role is that somebody is watching this one", toolAskWindow, providerTimeout)
 	}
 }
