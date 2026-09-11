@@ -119,16 +119,18 @@ func (a *app) questionNarrowRows(q questionShown, width int) []string {
 	// pressed `enter` on whichever row it had reached. The background under the
 	// hot row is the MOUSE's ([app.questionBandRow]) and says nothing on a
 	// screen nobody is hovering.
-	at := q.pick
-	if len(q.beat) > 0 {
-		at = q.beatAt
-	}
 	band := func(key, word string, i int) {
 		row := len(out)
 		// THE BAND IS RECORDED BEFORE IT IS PAINTED, because the paint asks the
 		// bands which answer this row is ([app.questionBandMarks]) — the marks
 		// belong to the answer and not to the row's position.
-		bands = append(bands, questionBand{row: row, span: hudSpan{from: 0, to: width}, at: at})
+		//
+		// AND `i` IS THE ANSWER THIS BAND IS, never where the cursor happens to
+		// be. A band carries the index a PRESS resolves to ([app.questionBandAt]),
+		// so recording the cursor here made every row claim to be the answer under
+		// the pointer: the pointer drew on the first band whatever the arrows had
+		// done, and a tap on `allow once` resolved as `deny`.
+		bands = append(bands, questionBand{row: row, span: hudSpan{from: 0, to: width}, at: i})
 		a.questionBands = bands
 		out = append(out, a.questionBandRow(row, key, word, width))
 	}

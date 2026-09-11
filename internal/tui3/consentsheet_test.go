@@ -356,16 +356,19 @@ func TestTheSheetLeavesTheAlwaysBandOffAQuestionThatCannotRememberIt(t *testing.
 
 // THE WIDER FRAMES DID NOT NOTICE. The sheet is the phone tier's shape and only
 // the phone tier's: at sixty columns and above a permission is the panel — the
-// call on its first row, a row per answer, how long the answer lasts under them
-// (questionscope.go — this gate offers two lifetimes), the keys in the frame's
-// bottom edge — and every one of those answer rows is a target.
+// call on its first row, a row per answer, the keys in the frame's bottom edge —
+// and every one of those answer rows is a target.
+//
+// NINE ROWS AND NOT ELEVEN, because a permission draws no lifetimes row: the
+// gate reads an answer's key and never [session.Answer.Scope]
+// ([questionScopes]).
 func TestTheWideBlockIsUnchangedByThePhoneSheet(t *testing.T) {
 	for _, width := range []int{80, 120, 200} {
 		_, a := phoneAsk(t)
 		a.width = width
 		rows := askRows(a)
-		if len(rows) != 11 {
-			t.Fatalf("at %d columns the block is %d rows:\n%s", width, len(rows),
+		if len(rows) != 9 {
+			t.Fatalf("at %d columns the block is %d rows, not nine:\n%s", width, len(rows),
 				strings.Join(rows, "\n"))
 		}
 		// The top edge carries the head; the call and the policy's own words are

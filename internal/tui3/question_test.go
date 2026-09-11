@@ -187,16 +187,20 @@ func consentAsk() session.Question {
 // IT IS THE PANEL AND NOT A LINE. A person allowing a call has to READ the call
 // (owner ruling 2026-09-11, consent pick B), so the chooser sends every
 // permission here: the head and who is asking in the frame's top edge, the call
-// and the policy's own words on the first row, a row per answer, how long the
-// answer lasts under them (questionscope.go — this fixture offers two
-// lifetimes), the keys that answer in the bottom edge, and the quieter keys on
-// one dim row under it.
+// and the policy's own words on the first row, a blank, a row per answer, a
+// blank, the keys that answer in the bottom edge, and the quieter keys on one
+// dim row under it.
+//
+// AND NO LIFETIMES ROW, though this fixture offers two. The consent gate reads
+// an answer's key and never [session.Answer.Scope], so the row is off a
+// permission until the engine honours it ([questionScopes], and the count here
+// is what notices if it comes back before that).
 func TestTheLineDrawsItsHeadItsAnswersAndItsReasonAndNothingElse(t *testing.T) {
 	lab := newQuestionLab(t)
 	lab.raise(consentAsk())
 	rows := lab.rows()
-	if len(rows) != 11 {
-		t.Fatalf("the panel took %d rows, not eleven:\n%s", len(rows), lab.screen())
+	if len(rows) != 9 {
+		t.Fatalf("the panel took %d rows, not nine:\n%s", len(rows), lab.screen())
 	}
 	screen := plain(strings.Join(rows, "\n"))
 	for _, want := range []string{"allow this?", "1  allow once", "2  always", "3  deny", "esc later"} {
