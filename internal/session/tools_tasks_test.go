@@ -11,6 +11,7 @@ package session
 // took one would be testing the runner again.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +20,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // A MODEL CAN LOOK AT WORK THAT IS STILL GOING. It names the task, and what
@@ -568,7 +571,7 @@ func TestHandingAYourCallToTheModelAndItsResolveAreOneRoad(t *testing.T) {
 	// what leaves a your-call landing in the PERSON'S hands: with nobody watching
 	// the model holds every one of them by policy ([Agent.settlePolicy]) and the
 	// card this test is about is never drawn.
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+	agent, _ := newTestAgent(t, stillThinking(), func(config *Config) {
 		config.Place, config.AskConsent = Place{Dir: mine}, true
 	})
 	graph := stubbedGraph(agent, func(node *TaskNode) {
@@ -605,7 +608,7 @@ func TestHandingAYourCallToTheModelAndItsResolveAreOneRoad(t *testing.T) {
 // twice sent the model two identical lines about one decision it was already
 // holding; the answer now is the plain fact.
 func TestHandingTheSameDecisionOverTwiceSaysItIsAlreadyHandedOver(t *testing.T) {
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+	agent, _ := newTestAgent(t, stillThinking(), func(config *Config) {
 		config.AskConsent = true
 	})
 	graph := stubbedGraph(agent, func(node *TaskNode) {
@@ -619,7 +622,7 @@ func TestHandingTheSameDecisionOverTwiceSaysItIsAlreadyHandedOver(t *testing.T) 
 	if err := agent.HandUnverifiedToModel(id); err != nil {
 		t.Fatalf("handing the decision over: %v", err)
 	}
-	said := len(steeringQueue(agent))
+	said := handOverLines(agent)
 	err := agent.HandUnverifiedToModel(id)
 	if err == nil {
 		t.Fatal("a second hand-over was taken as a fresh one")
@@ -634,8 +637,8 @@ func TestHandingTheSameDecisionOverTwiceSaysItIsAlreadyHandedOver(t *testing.T) 
 	if !errors.Is(err, ErrTaskHandedOver) || errors.Is(err, ErrTaskDecided) {
 		t.Fatalf("the second press answers with %v, which a surface cannot tell from a settled node", err)
 	}
-	if again := len(steeringQueue(agent)); again != said {
-		t.Fatalf("the second press enqueued %d more lines for the model", again-said)
+	if again := handOverLines(agent); again != said || said != 1 {
+		t.Fatalf("the model was handed this decision in %d lines after two presses, want 1 (%d after the first)", again, said)
 	}
 	// AND TAKING IT BACK MAKES A HAND-OVER POSSIBLE AGAIN: the refusal is about
 	// who is holding the question, not a door that closes for good.
@@ -655,7 +658,7 @@ func TestHandingTheSameDecisionOverTwiceSaysItIsAlreadyHandedOver(t *testing.T) 
 // refusal would put trouble on a card whose question was answered correctly.
 // Every other refusal on that key is still handed back.
 func TestAnsweringLetAforgeDecideTwiceStandsRatherThanRefusing(t *testing.T) {
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+	agent, _ := newTestAgent(t, stillThinking(), func(config *Config) {
 		config.AskConsent = true
 	})
 	graph := stubbedGraph(agent, func(node *TaskNode) {
@@ -670,15 +673,15 @@ func TestAnsweringLetAforgeDecideTwiceStandsRatherThanRefusing(t *testing.T) {
 	if err := agent.applyLanding(answer, LandingDecideKey, ""); err != nil {
 		t.Fatalf("the first press: %v", err)
 	}
-	said := len(steeringQueue(agent))
+	said := handOverLines(agent)
 	if err := agent.applyLanding(answer, LandingDecideKey, ""); err != nil {
 		t.Fatalf("the second press was refused: %v", err)
 	}
 	// AND IT SENT NOTHING A SECOND TIME. Standing is not repeating: the model is
 	// already holding this decision and a second identical line about it is the
 	// defect, not the refusal.
-	if again := len(steeringQueue(agent)); again != said {
-		t.Fatalf("the second press enqueued %d more lines for the model", again-said)
+	if again := handOverLines(agent); again != said || said != 1 {
+		t.Fatalf("the model was handed this decision in %d lines after two presses, want 1 (%d after the first)", again, said)
 	}
 	if node := agent.taskNode(id); node == nil || node.decidedBy() != TaskAskOwnerModel {
 		t.Fatal("the node is not held by aforge after two presses")
@@ -695,6 +698,140 @@ func TestAnsweringLetAforgeDecideTwiceStandsRatherThanRefusing(t *testing.T) {
 	if err := agent.applyLanding(answer, LandingDecideKey, ""); err == nil {
 		t.Fatal("a press on a settled node was taken as a hand-over")
 	}
+}
+
+// A PRESS THAT MISSES A TURN IS HELD FOR THE TURN THAT READS IT.
+//
+// The landing wakes a turn, and the person presses "let aforge decide" while
+// that turn's one request is already in flight — so the note waits on the
+// queue, the turn ends, and the end of it drains the note and wakes the next
+// turn to answer it. The floor at that first end used to hand the question back
+// before the drain: the next turn was told the person had asked the model to
+// decide while the node said the person was deciding, and a second press on the
+// card redrawn with its chips was taken as a fresh one and sent the model a
+// second copy. Found 2026-09-11 in TestHandingTheSameDecisionOverTwice… failing
+// one run in forty under load; the floor hands back an unread press in most
+// runs of that test, and only the order of its reads hid it.
+func TestAHandOverThatMissesATurnIsHeldForTheTurnThatReadsIt(t *testing.T) {
+	type reading struct {
+		decider TaskAskOwner
+		again   error
+	}
+	read := make(chan reading, 1)
+	pressed := make(chan error, 1)
+	var (
+		agent *Agent
+		id    uint64
+		// first is the landing's own request, and it is read and written only
+		// under the completer's lock, which is the lock the aside runs under.
+		first = true
+	)
+	completer := &scriptedCompleter{}
+	completer.aside = func(messages []ai.Message) (*ai.Response, bool) {
+		asked, last := false, ""
+		for _, message := range messages {
+			last = messageText(message)
+			asked = asked || strings.Contains(last, handOverLead)
+		}
+		switch {
+		case strings.Contains(last, "[still asked]"):
+			return nil, false
+		case first && !asked:
+			// THE PRESS LANDS WITH THIS TURN'S LAST REQUEST ALREADY OUT.
+			first = false
+			pressed <- agent.HandUnverifiedToModel(id)
+			return textResponse("I will read the branch."), true
+		case asked:
+			// AND THIS IS THE TURN THAT READS IT: the node must still be the
+			// model's, and a second press must still be the same hand-over.
+			select {
+			case read <- reading{agent.taskNode(id).decidedBy(), agent.HandUnverifiedToModel(id)}:
+			default:
+			}
+			return textResponse("I have looked at it."), true
+		}
+		return nil, false
+	}
+	agent, _ = newTestAgent(t, completer, func(config *Config) {
+		config.AskConsent = true
+	})
+	updates, stop := agent.WatchTaskUpdates()
+	defer stop()
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		node.finish("UNVERIFIED — the auditor answered neither VERIFIED nor REFUTED", nil, "", "")
+		node.graph.complete(node, TaskUnverified)
+	})
+	id = graph.reserve()
+	graph.admit(id, taskSpec{title: "Hidden rental digs", named: true, brief: "b", acceptance: "a"})
+
+	select {
+	case err := <-pressed:
+		if err != nil {
+			t.Fatalf("handing the decision over: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the landing never woke a turn to press into")
+	}
+	var got reading
+	select {
+	case got = <-read:
+	case <-time.After(10 * time.Second):
+		t.Fatal("no turn ever read the hand-over")
+	}
+	if got.decider != TaskAskOwnerModel {
+		t.Fatalf("the turn reading the hand-over finds %q deciding, want the model", got.decider)
+	}
+	if !errors.Is(got.again, ErrTaskHandedOver) {
+		t.Fatalf("a second press while the model reads the first answers %v, want it already handed over", got.again)
+	}
+	// AND THE FLOOR STILL HOLDS: the turn that read it and did not settle it
+	// hands it back when it ends, so the question is never held by nobody.
+	deadline := time.After(10 * time.Second)
+	for {
+		select {
+		case event := <-updates:
+			if event.Task != nil && event.Task.ID == id && event.Task.Decider == TaskAskOwnerPerson {
+				if lines := handOverLines(agent); lines != 1 {
+					t.Fatalf("the model was handed this decision in %d lines, want 1", lines)
+				}
+				return
+			}
+		case <-deadline:
+			t.Fatalf("the question is still %q after the turn that read it ended", agent.taskNode(id).decidedBy())
+		}
+	}
+}
+
+// stillThinking is a model whose turn is still in its request when the test
+// looks, so that no turn END hands a question back underneath the test's reads.
+// A turn that ends without settling what it was handed gives it back by law
+// ([Agent.handBackUnsettled]), and a test about the press that raced one of those
+// was asserting a moment rather than a fact. The road through a turn's end is
+// [TestAHandOverThatMissesATurnIsHeldForTheTurnThatReadsIt]'s. Every step parks
+// until the session's close cuts it, so an errand that takes a step does not
+// hand the turn an answer.
+func stillThinking() *scriptedCompleter {
+	park := func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	return &scriptedCompleter{steps: []step{park, park, park, park}}
+}
+
+// handOverLines counts the hand-over lines the model has been given or will be:
+// the transcript and the queue, read under the one lock a drain moves a line
+// from one to the other under, so that a drain in between cannot move the count.
+func handOverLines(agent *Agent) int {
+	agent.mu.Lock()
+	defer agent.mu.Unlock()
+	lines := 0
+	for _, message := range agent.messages {
+		lines += strings.Count(messageText(message), handOverLead)
+	}
+	for _, message := range agent.steering {
+		lines += strings.Count(message.text(), handOverLead)
+	}
+	return lines
 }
 
 // agedTaskNode backdates one settled node's landing, so a test can build the

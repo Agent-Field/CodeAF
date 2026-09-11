@@ -1131,6 +1131,11 @@ type userMessage struct {
 	// request actually carried the words.
 	directions []uint64
 
+	// handsOver are the presses this message hands to the model (task_audit.go's
+	// [handOverTicket]), read off the queue by every drain for [directions]'
+	// reason: a press is read when a request carries its note, and not before.
+	handsOver []handOverTicket
+
 	// crossed is what the record keeps about a line the person sent ACROSS to
 	// this agent from the room they were standing in (task_room.go's
 	// [Agent.SteerTask]) — the instant they sent it, and the engine's own one-fact
@@ -1648,6 +1653,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// there must be no window in which a Submit could start a turn and
 			// have the follow-up land behind it, out of the order the person
 			// typed them in.
+			started := false
 			if next, ok := a.nextFollowUpLocked(completed); ok {
 				// context.Background rather than the finished turn's: the
 				// Submit that would have carried a context never happened, and
@@ -1655,7 +1661,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 				// started. Interrupt and Close still reach it — both go through
 				// a.cancel, which this call replaces.
 				a.startTurnLocked(context.Background(), next.message, next.stream)
+				started = true
 			} else if completed && unanswered && a.wakeLocked() {
+				started = true
 				// SOMETHING LANDED IN THE LAST SECONDS OF THIS TURN. A task's
 				// note, or the person typing while the answer was still
 				// streaming: steering lands at a STEP boundary, and a turn whose
@@ -1674,7 +1682,13 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 				// turn somebody stopped. A person who interrupted gets the note in
 				// their transcript and silence, which is what they asked for.
 			}
+			// AND A HAND-OVER NOBODY IS NOW GOING TO READ GOES BACK. The floor
+			// above left the presses this turn never carried for the turn that
+			// would; when none is starting, they are questions in the transcript
+			// with nobody to answer them, and the card is the person's again.
+			orphaned := a.orphanedHandsLocked(started)
 			a.mu.Unlock()
+			a.giveBackHandOvers(orphaned)
 		}()
 		// A faulted turn must end its streams with a reason rather than take
 		// the process down: the person is holding a live channel.
@@ -2492,10 +2506,16 @@ func (a *Agent) drainSteering(hub *eventHub) int {
 	a.taskNotes = 0
 	includeAmbient := opening || boundaryNoteHeld(a.steering)
 	landed, _ := a.drainQueuedLocked(hub, includeAmbient)
+	// AND EVERY HAND-OVER PRESS IN THE TRANSCRIPT IS IN THIS REQUEST: the ones
+	// this drain just wrote, and the ones a turn's end wrote with no request to
+	// carry them ([Agent.handsUnsent]).
+	hands := a.handsUnsent
+	a.handsUnsent = nil
 	a.mu.Unlock()
 	// Outside this agent's lock, because it takes the graph's (assignment.go) and
 	// there is no order in which those two are ever taken the other way round.
 	a.markDirectionsCarried(carried)
+	markHandOversRead(hands)
 	return landed
 }
 
@@ -2521,6 +2541,19 @@ func (a *Agent) drainSteeringLocked(hub *eventHub) (int, bool) {
 	return a.drainQueuedLocked(hub, true)
 }
 
+// orphanedHandsLocked takes [Agent.handsUnsent] from a turn's end that started
+// no next turn, with a.mu held, for [Agent.giveBackHandOvers] to hand back once
+// the lock is let go of. A turn end that did start one leaves the list for that
+// turn's first drain, which is the request that carries them.
+func (a *Agent) orphanedHandsLocked(started bool) []handOverTicket {
+	if started {
+		return nil
+	}
+	orphaned := a.handsUnsent
+	a.handsUnsent = nil
+	return orphaned
+}
+
 // drainQueuedLocked drains steering and, when includeAmbient says this is a
 // legal boundary for it, the ambient queue. External background-news lines
 // become one authored user-role message; control guidance and a person's steer
@@ -2533,6 +2566,12 @@ func (a *Agent) drainQueuedLocked(hub *eventHub, includeAmbient bool) (int, bool
 		a.ambient = nil
 	}
 	sourceCount := len(queued)
+	// THE PRESSES ARE READ OFF BEFORE THE BATCHING, which folds the notes that
+	// carry them into one message. They wait on [Agent.handsUnsent] for whichever
+	// request carries them, and only [Agent.drainSteering] knows that one is next.
+	for _, message := range queued {
+		a.handsUnsent = append(a.handsUnsent, message.handsOver...)
+	}
 	queued = coalesceSessionNotes(queued)
 	owed := false
 	for _, message := range queued {

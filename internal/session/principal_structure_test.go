@@ -57,6 +57,10 @@ var wakeRoads = map[string]string{
 		"and nobody else — a worker's turns are its runner's to start ([Agent.wakeLocked] " +
 		"declines inside a task) — so it never reaches the wake a person would have to be " +
 		"there for, and it is marked as the session's own words rather than as theirs",
+	"HandUnverifiedToModel": "the person's own press of \"let aforge decide\" on a card in front of " +
+		"them, so somebody is there by construction. It is addressed to the MODEL, which is asked " +
+		"to decide in their place, and it builds its own note rather than taking the generic lane " +
+		"because the note carries the press it answers ([handOverTicket])",
 	"postTaskMessage": "THE ONE THAT MATTERED, and the seam both roads into a landed node's " +
 		"news take ([Agent.deliverTaskNote] announces the ending, " +
 		"[Agent.bubbleUnverifiedChildren] re-addresses what is still owed). The note is built " +

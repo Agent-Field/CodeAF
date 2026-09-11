@@ -2664,6 +2664,14 @@ type Agent struct {
 	// end and then starts one of its own.
 	followups []followUp
 
+	// handsUnsent are the hand-over presses whose notes a drain has written into
+	// the transcript without a request carrying them — a turn's END drain, or an
+	// abandon's (task_audit.go's [handOverTicket]). The next request carries them,
+	// so the drain before it takes this list and marks them read
+	// ([Agent.drainSteering]); a turn end that starts no next turn takes it
+	// instead and gives them back ([Agent.giveBackHandOvers]).
+	handsUnsent []handOverTicket
+
 	// wakeLanes are the standing subscriptions to turns the session started by
 	// itself ([Agent.Wakes]) — a task landing on an idle conversation, which is
 	// the one turn no Submit is holding a channel for. Each carries the woken
