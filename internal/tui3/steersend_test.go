@@ -120,7 +120,9 @@ func (f *namedRoomFake) asked() []session.SteerSource {
 // typeSteer puts a sentence in the box and presses enter, WITHOUT running the
 // command the keypress hands back. That command is the crossing, so holding it
 // is a send that is still on its way — which is the state every test in this
-// file is about, and it is a state and not a sleep.
+// file is about, and it is a state and not a sleep. The record write which
+// releases that crossing is run here too, so a harness that loses its answer is
+// reported at that boundary rather than as a later claim that no send crossed.
 func typeSteer(t *testing.T, a *app, line string) tea.Cmd {
 	t.Helper()
 	a.input.setText(line)
@@ -141,20 +143,28 @@ func typeSteer(t *testing.T, a *app, line string) tea.Cmd {
 
 // steerAfterKeeping lets the send's own record write finish and hands back the
 // crossing it releases. Nothing else in the keypress's batch is a message the
-// surface has to see — the rest is a repaint and the ordinary debounce.
+// surface has to see — the rest is a repaint and the ordinary debounce. A send
+// still waiting when no write answer came back is the harness's failure and is
+// named here; a write which releases no crossing remains legitimate when the
+// send is queued behind another one.
 func steerAfterKeeping(t *testing.T, a *app, cmd tea.Cmd) tea.Cmd {
 	t.Helper()
 	var out []tea.Cmd
+	kept := 0
 	for _, msg := range runCmd(cmd) {
-		kept, ok := msg.(draftKeptMsg)
+		written, ok := msg.(draftKeptMsg)
 		if !ok {
 			continue
 		}
-		if kept.err != nil {
-			t.Fatalf("the send's own record could not be written: %v", kept.err)
+		kept++
+		if written.err != nil {
+			t.Fatalf("the send's own record could not be written: %v", written.err)
 		}
-		_, crossing := a.Update(kept)
+		_, crossing := a.Update(written)
 		out = append(out, crossing)
+	}
+	if kept == 0 && len(a.outbox.waiting) > 0 {
+		t.Fatal("the send's own record write never answered the harness; the send is still waiting on that write, so this is the harness's news and not the surface refusing to cross it")
 	}
 	if len(out) == 0 {
 		return nil
