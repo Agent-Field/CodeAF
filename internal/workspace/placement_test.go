@@ -157,7 +157,7 @@ PRAGMA application_id=%d; PRAGMA user_version=%d;`, applicationID, version))
 			if got, err := s.Members(ctx, "folder"); err != nil || !reflect.DeepEqual(got, []Ref{ref}) {
 				t.Fatalf("migration lost references: %v, %v", got, err)
 			}
-			if version := readUserVersion(t, path); version != schemaVersion {
+			if version := readUserVersion(t, path); version != ordinaryVersion {
 				t.Fatalf("version=%d", version)
 			}
 			if err := s.AddPlacement(ctx, "folder", ref); err != nil {

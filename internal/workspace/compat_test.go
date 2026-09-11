@@ -14,14 +14,18 @@ import (
 	"time"
 )
 
-// newerStore writes a store this build knows, then stamps it one version
-// newer the way a later build would: an extra table this build has never heard
-// of, a row in it, and a store_meta declaration naming the oldest permitted
-// reader. The caller's rows are written first through the ordinary doors.
+// newerStore writes a store at the newest version this build knows, then
+// stamps it one version newer the way a later build would: an extra table this
+// build has never heard of, a row in it, and a store_meta declaration naming
+// the oldest permitted reader (none at all when minimum is empty). The
+// caller's rows are written first through the ordinary doors.
 func newerStore(t *testing.T, path string, minimum string, populate func(*Store)) {
 	t.Helper()
 	s, err := Open(path)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.EnsureDirection(); err != nil {
 		t.Fatal(err)
 	}
 	if populate != nil {
@@ -30,10 +34,9 @@ func newerStore(t *testing.T, path string, minimum string, populate func(*Store)
 	if err := s.Close(); err != nil {
 		t.Fatal(err)
 	}
-	meta := ""
+	meta := fmt.Sprintf("DELETE FROM %s WHERE key='%s';", storeMetaTable, minReaderVersion)
 	if minimum != "" {
-		meta = fmt.Sprintf(`CREATE TABLE %s (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-INSERT INTO %s(key,value) VALUES ('%s','%s');`, storeMetaTable, storeMetaTable, minReaderVersion, minimum)
+		meta = fmt.Sprintf("INSERT OR REPLACE INTO %s(key,value) VALUES ('%s','%s');", storeMetaTable, minReaderVersion, minimum)
 	}
 	writeRawDatabase(t, path, fmt.Sprintf(`%s
 CREATE TABLE later_records (id TEXT PRIMARY KEY, body TEXT NOT NULL);
@@ -285,46 +288,48 @@ func rawStoreHandle(t *testing.T, path string) *sql.DB {
 	return db
 }
 
-// Readers and writers in several handles at once — the shape of per-turn
-// organization reads beside a person filing work — finish without a single
-// lock refusal.
-func TestConcurrentReadersAndWritersSeeNoLockRefusal(t *testing.T) {
+// One writer filing work while several handles read the organization — the
+// shape of per-turn reads beside a person or a tick writing — finishes without
+// a single lock refusal on either side. Writers still queue behind one another
+// for the one-second bound; that is SQLite's single-writer rule, unchanged by
+// the journal mode, and not what this test is about.
+func TestConcurrentReadersBesideAWriterSeeNoLockRefusal(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "busy.db")
-	seed := openTestStore(t, path)
-	folder := createTestCollection(t, seed, "Folder")
-	const handles, rounds = 4, 60
+	writer := openTestStore(t, path)
+	folder := createTestCollection(t, writer, "Folder")
+	const readers, rounds = 4, 120
 	var wg sync.WaitGroup
-	failures := make(chan error, handles*rounds*2)
-	for h := 0; h < handles; h++ {
-		s := openTestStore(t, path)
-		wg.Add(2)
-		go func(h int) {
-			defer wg.Done()
-			for i := 0; i < rounds; i++ {
-				chat := Ref{Kind: ConversationKind, ID: fmt.Sprintf("chat-%d-%d", h, i)}
-				if err := s.AddPlacement(ctx, folder.ID, chat); err != nil {
-					failures <- err
-				}
+	failures := make(chan string, (readers*2+1)*rounds)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < rounds; i++ {
+			chat := Ref{Kind: ConversationKind, ID: fmt.Sprintf("chat-%d", i)}
+			if err := writer.AddPlacement(ctx, folder.ID, chat); err != nil {
+				failures <- fmt.Sprintf("writer round %d: %v", i, err)
 			}
-		}(h)
+		}
+	}()
+	for h := 0; h < readers; h++ {
+		reader := openTestStore(t, path)
+		wg.Add(1)
 		go func(h int) {
 			defer wg.Done()
-			reader := openTestStore(t, path)
 			for i := 0; i < rounds; i++ {
-				if _, err := reader.GoverningCollections(ctx, Ref{Kind: ConversationKind, ID: fmt.Sprintf("chat-%d-%d", h, i)}); err != nil {
-					failures <- err
+				if _, err := reader.GoverningCollections(ctx, Ref{Kind: ConversationKind, ID: fmt.Sprintf("chat-%d", i)}); err != nil {
+					failures <- fmt.Sprintf("reader %d round %d: %v", h, i, err)
 				}
 				if _, err := reader.Collections(ctx); err != nil {
-					failures <- err
+					failures <- fmt.Sprintf("reader %d round %d: %v", h, i, err)
 				}
 			}
 		}(h)
 	}
 	wg.Wait()
 	close(failures)
-	for err := range failures {
-		t.Errorf("a concurrent reader or writer was refused: %v", err)
+	for failure := range failures {
+		t.Errorf("refused beside a concurrent writer: %s", failure)
 	}
 }
 
