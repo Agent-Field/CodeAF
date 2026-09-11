@@ -2079,10 +2079,18 @@ func alsoTried(hopped []string) string {
 
 // timesWord counts the way a person counts. Small numbers have words.
 //
-// It runs to six because the ladder a person actually walks is four rungs by
-// default ([taxonomy.DefaultTransportAttempts]) and settings can lengthen it a
-// little, and `was asked 4 times` in the middle of a sentence somebody reads
-// while their turn is failing is the harness counting rather than speaking.
+// It runs to six because that is about as far as a ladder bounded by a turn's
+// give-up gets on a real pool, and `was asked 4 times` in the middle of a
+// sentence somebody reads while their turn is failing is the harness counting
+// rather than speaking. PAST SIX IT IS A NUMERAL, which is the honest thing: a
+// person who really was asked nine times should read nine, and a build that
+// spelled every figure would be inventing English for a number nobody says.
+//
+// THE CEILING USED TO BE A CONSTANT'S. It was four rungs by default
+// (`taxonomy.DefaultTransportAttempts`) plus a little room for a person who had
+// raised it, and that constant is deleted: what a call may spend is a deadline
+// now, so how many times it was asked is something only the call can say
+// afterwards and never something this word can be sized from.
 func timesWord(n int) string {
 	switch n {
 	case 1:

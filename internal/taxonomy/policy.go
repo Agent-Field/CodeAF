@@ -173,10 +173,12 @@ func (transportPolicy) Decide(e Evidence, l Limits) Verdict {
 // transportBudget is how much of this model's budget is gone and how much it
 // had, and the two kinds of spending are the whole of it.
 //
-// A REQUEST THAT FAILED spends an ordinary attempt off [Limits.TransportAttempts]
-// — the ladder the person configured, with its doubling wait in front of each
-// rung — because a refusal, a reset or a deadline is evidence that the endpoint
-// is failing and time is the thing that mends it.
+// A REQUEST THAT FAILED SPENDS NOTHING HERE. A refusal, a reset or a deadline is
+// evidence that the endpoint is failing and TIME is the thing that mends it, so
+// what bounds asking again is the caller's own deadline and not a count kept in
+// this file (the paragraph at the foot of this comment has the measurement).
+// What is left of the old pair is the WAIT that goes in front of each rung,
+// which is [Limits.TransportBackoff] and is still the person's to lengthen.
 //
 // A STREAM THE GUARD CUT spends a shorter allowance, because it is not that
 // evidence: the request was served, at once, and the REPLY came apart. Nothing
