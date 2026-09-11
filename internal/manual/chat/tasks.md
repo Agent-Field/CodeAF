@@ -564,7 +564,7 @@ no other decision on this screen is drawn. The question is above the box:
   The parser drops a key on an empty map. · aforge
   ▸ 1  start it
     2  no
-  [enter] take it · [esc] later · [c] change · start it in 9s
+  enter take it · esc later · c change · start it in 9s
 ```
 
 `▸` marks the answer the clock is about to take. The question is **not modal**: the message
@@ -2197,7 +2197,7 @@ opens the page again:
      The process is ended; its log is kept.
      1  stop it
      2  keep going
-   [enter] take it · [esc] keep going · [←→] choose
+   enter take it · esc keep going · ←→ choose
 ```
 
 `1` and `2` move the cursor onto the answer they name; `enter` is what decides.
@@ -4517,7 +4517,7 @@ unwrapped; `esc` cancels and leaves your words exactly where they are in the box
 The same question also rises on a task that is **still running** but momentarily has
 nobody inside to read a line — while it says `checking what it left`, or in the seconds
 its work is landing. That guard reads `<title> cannot read this right now — [m] send to
-main · [esc] cancel`: no revive, because the work is not over and starting it again would
+main · esc cancel`: no revive, because the work is not over and starting it again would
 make a duplicate. Wait for the check to land, or send the thought to main.
 
 Whenever a task stops for any reason it wears its own word — `stopped` when you ended it,
@@ -4574,7 +4574,7 @@ or not that conversation is open. Pressing that row opens the conversation that 
 work **with the task's own record card in front of it**. It stays on the strip for as long
 as it takes: nothing ages it out, and only your decision moves it.
 
-## What your call can be asking — the six questions, and what [a] and [n] mean on each
+## What your call can be asking — the six questions, and what a and n mean on each
 
 There are exactly six things a `your call` row can be asking, and each closes with its own
 two answers — a yes and a no, in the words that question deserves. One of the six has two
@@ -4601,7 +4601,7 @@ always the same three columns in the same order with the same keys — only the 
 change:
 
 ```
-[a] <yes> · [n] <no> · [s] tell it
+a <yes> · n <no> · s tell it
 ```
 
 So `[a]` is always **yes to what the row is asking** and `[n]` is always **no to it**, and
@@ -4633,20 +4633,20 @@ not drawn, and its letter does nothing rather than failing when you press it.
 
 ## How do I accept a task — what accept and not right actually do
 
-- **`[a] accept`** — you looked and you are taking the work. Its branch follows the same
+- **`a accept`** — you looked and you are taking the work. Its branch follows the same
   landing as checked work: it merges into an ordinary checked-out branch, or is kept off a
   protected, moved or detached checkout. Everything queued behind it unblocks. The report
   leads `you took this as done`. If that merge conflicts nothing
   is forced: your checkout is left exactly as it was, the branch is kept, and the task comes
   back as `your call · conflicts with your branch` with the clashing files named.
-- **`[n] not right`** — you looked and it is not finished. The task becomes `incomplete`,
+- **`n not right`** — you looked and it is not finished. The task becomes `incomplete`,
   its branch is kept, and its previous report is kept under the refusal. Its dependents do
   not advance and land `incomplete · was blocked by another task`. The report leads
   `incomplete — you said it is not finished`.
-- **`[s] tell it`** — you have something to say rather than an answer to give; the next
+- **`s tell it`** — you have something to say rather than an answer to give; the next
   section but one is about that.
 
-**A card with no answer left to give draws no chips at all.** `[s] tell it` and `[d]` both
+**A card with no answer left to give draws no chips at all.** `s tell it` and `[d]` both
 MOVE the question rather than answering it, so a row that offered only those would have
 stopped being a question — the card draws them beside an answer or not at all.
 
@@ -4678,11 +4678,11 @@ and the task comes back to you reading
 ```
 ? ◆ Port the parser · your call · 6m40s · 2 files · branch kept · task/parser
   conflicts with your branch: parser.go, parser_test.go
-  [a] resolve it · [n] drop it · [s] tell it
+  a resolve it · n drop it · s tell it
 ```
 
-- **`[a] resolve it`** tries to bring the two versions together and land the work.
-- **`[n] drop it`** says the work is not to be taken. The task settles as not finished and
+- **`a resolve it`** tries to bring the two versions together and land the work.
+- **`n drop it`** says the work is not to be taken. The task settles as not finished and
   **its branch is kept**, so nothing is thrown away and you can still read what it wrote.
 
 Where git would not say which files it was about, the sentence simply stops after
@@ -4704,13 +4704,13 @@ quietly would put its version over yours without anybody looking, so it stops an
 ```
 ? ◆ Port the parser · your call · 6m40s · 2 files · branch kept · task/parser
   your branch changed the same files while it worked: parser.go, lex.go
-  [a] resolve it · [n] drop it · [s] tell it
+  a resolve it · n drop it · s tell it
 ```
 
-It is the same question a conflict asks and it takes the same two answers. **`[a] resolve
+It is the same question a conflict asks and it takes the same two answers. **`a resolve
 it`** brings your branch into the task's branch — often with nothing for anyone to resolve,
 since the two would have merged — checks the two changes together and lands the work.
-**`[n] drop it`** keeps the branch and takes nothing, so both versions survive and merging
+**`n drop it`** keeps the branch and takes nothing, so both versions survive and merging
 is yours to do when you want it.
 
 This row used to read `nobody could check it`, which was untrue twice over: it **was**
@@ -4740,14 +4740,14 @@ was, and asks:
   s  tell it
 ```
 
-**`[a] resolve it`** lands the branch and carries your own copies aside and back: where the
+**`a resolve it`** lands the branch and carries your own copies aside and back: where the
 task wrote the same file, your copy is kept beside it as `<name>.yours`, and where it did
 not, your copy goes straight back where it was. **Nothing of yours is ever deleted.** The
-answer says so before you press it. **`[n] drop it`** keeps the branch and takes nothing.
+answer says so before you press it. **`n drop it`** keeps the branch and takes nothing.
 
 **This is the one landing that asks on a card rather than on one row.** Every other `your
-call` puts its three answers on a single row above the message box — `[a] <yes> · [n] <no>
-· [s] tell it` — because the reason is already on the landing card in the conversation and
+call` puts its three answers on a single row above the message box — `a <yes> · n <no>
+· s tell it` — because the reason is already on the landing card in the conversation and
 one row is enough. Here `[a]` **moves files of yours**, and a sentence saying so has
 nowhere to go on a row, so the block gives each answer a line of its own and writes the
 consequence beside the one it belongs to. You never press this key blind.
@@ -4756,9 +4756,9 @@ This road used to read `conflicts with your branch`, which was untrue — there 
 of yours in it — and `[a]` spent a merge round, which merges *branches* and cannot see an
 untracked file at all, so it refused a second time in exactly the same words.
 
-## Tell it something instead of answering — [s] tell it, and why saying looks good does not accept
+## Tell it something instead of answering — s tell it, and why saying looks good does not accept
 
-`[s] tell it` is the third chip on **every** `your call` card, and it is not a third answer.
+`s tell it` is the third chip on **every** `your call` card, and it is not a third answer.
 It opens the task's own page with the message box pointed at it, so what you type there is
 sent to the task as a correction.
 
@@ -4771,14 +4771,14 @@ changed yet.
 
 ## Why does it say aforge is deciding — and how do I take a task back
 
-When `task.settle` is `auto`, or after you press `[d] you decide` on one card, aforge is
+When `task.settle` is `auto`, or after you press `d you decide` on one card, aforge is
 reading that work and will answer it. **The row says so rather than going quiet**, on the
 reason line:
 
 ```
 ? Port the parser
   nobody could check it · aforge is deciding
-  [a] accept · [n] not right · [s] tell it
+  a accept · n not right · s tell it
 ```
 
 **The answers stay drawn, and answering is how you take it back.** Pressing `[a]` or `[n]`
@@ -4810,7 +4810,7 @@ Yes. The setting is **`task.settle`**, in `/settings` under Session as
 Which of the two a card follows is fixed when it lands, so changing the row does not reach
 back and take the chips off a card that was already asking.
 
-**`[d] let aforge decide this one` is on the card and changes no setting.** It is drawn
+**`d let aforge decide this one` is on the card and changes no setting.** It is drawn
 dimmer than the three columns, because it is not one of the answers: it hands **this one
 card** to aforge and leaves `task.settle` exactly where it was. It used to be spelled
 `decide these for me` and it used to flip the setting for good — a persistent preference
@@ -4860,7 +4860,7 @@ again through its `tasks` tool — and you can ask for it in words: "have anothe
 task 7". What is gone is the chip, because on a card it read as one of the two answers when
 it was neither.
 
-`[a] resolve it` on a conflict spends **one more** of round 2 on demand. Where there is no
+`a resolve it` on a conflict spends **one more** of round 2 on demand. Where there is no
 working copy left, or a round is already running, it says so in one line rather than
 looking as though it did something.
 
@@ -4915,7 +4915,7 @@ task waits for you. Which failure it was decides what happens when you answer.
   bringing the two versions together first, inside the task's own working copy and never in
   your checkout; only when that round cannot do it does the task go back to
   `your call · conflicts with your branch` with the clashing files named, and its chips read
-  `[a] resolve it · [n] drop it`.
+  `a resolve it · n drop it`.
 
 The how-tasks-run page has the sentences each of those lands with, under *My task could not
 save what it wrote*.
@@ -4946,7 +4946,7 @@ the question block above the message box, reading
 ```
 ? <the task's name>
   <the reason it is asking>
-  [a] <yes> · [n] <no> · [s] tell it
+  a <yes> · n <no> · s tell it
 ```
 
 It is there in the conversation, in the task's own room, and on the `/tasks` page — the

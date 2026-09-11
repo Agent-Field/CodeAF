@@ -7,16 +7,31 @@ one call and draws a question above the input box. The call does not run until
 you answer, and the conversation is paused on it.
 
 The row above the question is **the call's own transcript row**, re-used rather
-than described again — so what you approve is what you read. Under it, the
-answers row reads, literally:
+than described again — so what you approve is what you read. The question itself
+hangs in a frame above the box, with the command on its first row and one row per
+answer:
 
 ```
-? allow? [1] allow once · [2] always, this command · [3] deny · [c] change · [esc] later · 7s
+╭─ ? needs your ok to run bash ──────────────────────── bash · 7s ─╮
+│ rm -rf build · bash pattern "rm -rf *"                           │
+│                                                                  │
+│   1  allow once                                                  │
+│   2  always, this command                                        │
+│ ▸ 3  deny                                           safe answer  │
+│                                                                  │
+╰─ ↑↓ choose · enter take it · esc later ──────────────────────────╯
+  c change · ? ask back · 1–3 jump
 ```
 
-with the wait mode on the end — ` · 7s`, or ` · paused` once you have touched it
-or the reminder ran out, or ` · waiting` when the countdown is off. Silence is
-never a no.
+The tool's own name and the wait mode are the aside in the top edge — ` · 7s`,
+or ` · paused` once you have touched it or the reminder ran out, or ` · waiting`
+when the countdown is off. Silence is never a no.
+
+**The pointer opens on `deny`** and the row says `safe answer`: a call that
+cannot be taken back is one where `enter` must not mean yes. Nothing on a
+permission is painted in the question's amber except the marks — the `?`, the
+pointer and the recommendation — because the command is the thing you are here
+to read.
 
 - `1` — allow this one call. The transcript row is annotated `allowed`.
 - `3` — refuse this one call. The row is annotated `denied`. The model is handed
@@ -26,8 +41,10 @@ never a no.
 - `c` — refuse or allow **in words**. It puts the cursor in the box (which was
   never taken away); type your sentence and press `enter`, and the words go to
   the model as the answer.
-- `esc` — **later**. The question folds away to the chip on the status line and
-  **nothing is answered**. The call stays blocked and the conversation stays
+- `enter` — take the answer the pointer is on, which on a permission is `deny`
+  until you move it.
+- `esc` — **later**. The question folds in place to one titled rule, the chip on
+  the status line carries its words, and **nothing is answered**. The call stays blocked and the conversation stays
   paused on it. This is the one word here that changed meaning: `esc` used to be
   spelled `cancel` and cancelling meant denying, which was the safe reading when
   the block was a modal nobody could leave.
@@ -58,7 +75,7 @@ offers it.
 
 **It does not have to be answered in this window.** A conversation stopped on
 this question says so on **home**, with the same three answers on the row —
-`1 allow once · 2 always · 3 deny` — so a question raised in a terminal you are
+`1 allow once`, `2 always`, `3 deny` — so a question raised in a terminal you are
 not looking at can be answered from the dashboard (home's own page states the
 limits, and what `2 always` banks when it is pressed there).
 
@@ -90,7 +107,7 @@ The one-row form needs about eighty columns. Below that it gives things up in a
 fixed order, and **it never cuts an answer off the end** — an offer with an
 answer missing is an offer that hides an answer.
 
-1. The verbs go first, from the least useful backwards. `[c] change` goes before
+1. The verbs go first, from the least useful backwards. `c change` goes before
    the clock does.
 2. Then the clock. A countdown you cannot see is still a countdown; an answer you
    cannot see is not an answer.
@@ -105,7 +122,7 @@ answer missing is an offer that hides an answer.
     1  allow once
     2  always, this tool
     3  deny
-  [esc] later
+  esc later
 ```
 
 `[esc]` is never given up at any width: it is the way out, and a row with no way
@@ -121,9 +138,9 @@ three cells for a thumb that covers ten:
  git commit -m "wave"
  bash pattern "git *"
 ──────────────────────────
- [1] allow once
- [2] always, this command
- [3] deny
+ 1 allow once
+ 2 always, this command
+ 3 deny
  2 more                 8s
 ```
 
@@ -324,7 +341,7 @@ For `bash`, and only for bash, pressing `2` **does not answer yet**. It replaces
 the answers row, in place, with the shapes the rule could be written as:
 
 ```
-always? [1] git status*  ·  [2] git *  ·  [3] just this line  ·  [esc] never mind
+always? 1 git status*  ·  2 git *  ·  3 just this line  ·  esc never mind
 ```
 
 So pressing always on `git status` can bank `git status*`, or `git *`, or the

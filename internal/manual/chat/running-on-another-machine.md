@@ -279,9 +279,9 @@ to the wrong machine, and before that it refused to open.
 ## Can I accept a task, or say it is not right, from a connected window
 
 Yes. A landing that comes home as **your call** draws the same card here that it draws on
-the machine it ran on — the reason on one row and `[a] accept · [n] not right · [s] tell it`
-under it, with `[d] let aforge decide this one` beside them — and every one of those keys is
-spent on the engine that owns the work. A conflict's `[a] resolve it` spends its merge round
+the machine it ran on — the reason on one row and `a accept · n not right · s tell it`
+under it, with `d let aforge decide this one` beside them — and every one of those keys is
+spent on the engine that owns the work. A conflict's `a resolve it` spends its merge round
 over there too.
 
 This was broken until 2026-09-09 and the way it was broken is worth knowing, because you may

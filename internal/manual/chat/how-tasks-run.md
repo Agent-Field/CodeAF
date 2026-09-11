@@ -488,7 +488,7 @@ what the task itself produced.
 
 **Only a round that fails reaches you.** The task then lands as
 **`your call · conflicts with your branch: <the files>`**, its chips read
-`[a] resolve it · [n] drop it · [s] tell it`, and the report names the files that changed
+`a resolve it · n drop it · s tell it`, and the report names the files that changed
 on both sides:
 
 `conflicts with your branch — its branch task/edit-the-parser-9c1a2f did not merge cleanly and was kept: internal/auth/session.go changed on both sides`
@@ -1982,7 +1982,7 @@ identical either way.
 and every other headless door run with no surface to raise a card on, no settings panel and
 nobody to read a landing that says it is waiting on somebody — so a task that needs a look
 there would stop the run for good, and that was measured stopping a ten-hour run. Such a
-session takes the same road your own `[d] let aforge decide this one` takes: aforge reads the
+session takes the same road your own `d let aforge decide this one` takes: aforge reads the
 report and the work and settles the task itself, with the same standing escape to say it
 cannot tell. It never goes the other way — a session you are sitting in front of keeps the
 row you set, and a blank row still means aforge asks you.
@@ -2100,9 +2100,9 @@ your branch changed the same files while it worked: internal/tui3/home.go
 ```
 
 That is the same question a merge conflict asks — two versions of one file, and only you
-know which survives — so it takes the same two answers: **`[a] resolve it`** brings your
+know which survives — so it takes the same two answers: **`a resolve it`** brings your
 branch into the task's branch, checks the two changes together and lands the work, and
-**`[n] drop it`** keeps the branch and takes nothing. It does **not** read `nobody could
+**`n drop it`** keeps the branch and takes nothing. It does **not** read `nobody could
 check it`: this work was checked, and it held.
 
 **It is never handed to the model**, whatever `task.settle` says, for the reason a conflict

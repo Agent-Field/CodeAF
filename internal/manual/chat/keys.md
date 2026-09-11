@@ -2296,7 +2296,7 @@ The tasks pages describe what rooms and the roster are for.
      Its work halts; the branch it wrote on is kept.
      1  stop it
      2  keep going
-   [enter] take it · [esc] keep going · [←→] choose
+   enter take it · esc keep going · ←→ choose
 ```
 
 The head is the question and nothing else; the sentence under it is the promise —
@@ -2349,7 +2349,7 @@ or a part of one it handed out itself:
 **`d` you decide is not on a landing's row.** The three answers and the way out are the
 whole of it, and no key on this surface ever does something that is not drawn on the screen
 in front of you. Where a landing draws each answer on a line of its own — the one road that
-does, because its `[a]` moves files of yours — `[d] you decide` is on it. The standing
+does, because its `[a]` moves files of yours — `d you decide` is on it. The standing
 choice is `task.settle` in `/settings` under Session, and it is the right place for it: a
 letter that hands one landing over changes nothing about the next one.
 
@@ -2357,8 +2357,8 @@ While `task.settle` is `auto` the reason row also reads `aforge is deciding`; th
 stay drawn, and pressing one yourself is how you take the question back.
 
 **The words on `a` and `n` change with the question and the keys never do.** A card whose
-branch clashed with yours reads `[a] resolve it · [n] drop it`; one the check did not pass
-reads `[a] accept anyway`. There is always a third column, `[s] tell it`.
+branch clashed with yours reads `a resolve it · n drop it`; one the check did not pass
+reads `a accept anyway`. There is always a third column, `s tell it`.
 
 **`check again` is not offered.** aforge retries a check that never answered by itself,
 on another model, before the card ever appears — so there is nothing left for you to
@@ -2460,7 +2460,7 @@ Only the left button acts. A press is resolved in this order:
    spawn card, which opens the node's room, or its brief if there is no node yet; and
    a landed card, which opens its full context. The answers to a landing that is your
    call are not on that card: they are on the question block above the message box,
-   where each of `[a] accept`, `[n] not right` and `[s] tell it` is its own target and a
+   where each of `a accept`, `n not right` and `s tell it` is its own target and a
    press between them does nothing.
 
 **A file path is a different kind of target.** Everything numbered above is a click

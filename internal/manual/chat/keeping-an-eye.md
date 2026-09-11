@@ -297,7 +297,7 @@ every decision on this screen is put, and every answer carries what it costs bes
      1  yes, set it up   it keeps happening until you stop it
      3  just once        it happens now, and nothing is kept
      0  no               nothing happens, now or later
-   [enter] take it · [c] change · [esc] later · [↑↓] choose
+   enter take it · c change · esc later · ↑↓ choose
 ```
 
 - **`1 yes, set it up`** — it gets set up and starts happening, and goes on until you stop

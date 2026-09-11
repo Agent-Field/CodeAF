@@ -268,7 +268,7 @@ digit and its own dim sentence saying what taking it does:
      1  keep running  it keeps going here; find it under Chats, and ctrl+shift+t brings the tab back
      2  stop work     the reply, tasks and jobs stop; nothing is deleted
      3  cancel        nothing changes
-   [enter] take it · [esc] cancel · [←→] choose
+   enter take it · esc cancel · ←→ choose
 ```
 
 | Answer | What it does |
@@ -789,8 +789,9 @@ when you have closed the task column, this session has run something, and no act
 running-turn hint has the slot. It is the whole of what the frame says about a roster
 that is not on screen, and it says nothing at all when nothing has been run.
 
-While a question is waiting, the legend's left label goes violet along with the status
-word below it, so the question is pointed at from both sides.
+While a question is waiting, the legend's left label and the status word below it go
+amber together, so the question is pointed at from both sides — and the slot never
+re-lists the question's own answers, which the panel above the box is already drawing.
 
 The pinned header at the top of a room says `esc/← main` in its own words, and unlike the
 legend it answers to a press: click it and you are back in the conversation. Clicking the
@@ -2856,8 +2857,13 @@ spinner, and headings; a neutral narration grey for the reply's working prose, o
 under the body; dim for everything the surface says about itself — stats, notes, hunk
 markers, the status line; add and del for a diff's `+` and `−`; bad for `✕`, `exit N`
 and an overdue context meter; amber for a bound about to be reached **and for anything
-waiting on you**; a mint green for **money and only money**; and violet for **the
-question hue inside a conversation**.
+waiting on you, everywhere**; and a mint green for **money and only money**.
+
+There is no separate question colour any more. A question wears the amber on its three
+marks — `?`, the pointer `▸` and the recommended `◆` — and nothing else: its words are
+ordinary ink, its asides dim, its frame's edge dim, and the row its pointer is on takes
+the same selected ground every list on this surface uses. Colour is stroke here, never
+fill: no row of a question is painted in the question's colour.
 
 **The accent budget is one thing per screen, and it is always the live one.** Whatever is
 running, selected, hovered, or waiting on you takes the accent — the row under the
@@ -2905,9 +2911,9 @@ the subject and nothing else, and **nothing on a place is ever italic**.
 **Three of the chat's colours do not appear on a place**, and that is the one thing about
 a place's palette that is not simply the chat's:
 
-- **The question's violet.** In a conversation, violet means aforge is waiting on you —
-  the consent block, its glyph, its choices. On a place that reading is the amber, so a
-  list says "this stopped on somebody" in one colour rather than two.
+- **A colour of its own for questions.** There was one — a violet inside a conversation,
+  the amber on a place — and one reading in two colours is two readings. A question is
+  amber on its marks wherever it is drawn, in a conversation and on a place alike.
 - **The payload cyan** that lifts a model id or a figure out of a quiet line. On a place
   a datum lifts by being the subject: it takes the body ink.
 - **The finished tick's olive green.** The `✓` already says the work landed; a place draws
