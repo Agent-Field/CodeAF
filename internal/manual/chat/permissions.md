@@ -172,7 +172,7 @@ read as the no.
 An answered question leaves one dim line where it stood:
 
 ```
-  ✓ needs your ok to run bash → allow once · you · 14:02 · ◐ working
+  ✓ needs your ok to run bash → allow once · you · 14:02 · c change · ◐ working
 ```
 
 It is the same sentence the model reads in `the record`, so what you saw and

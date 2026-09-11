@@ -531,7 +531,7 @@ accepting it; an answer to one reaches the model as a message. It belongs to the
 turn that did the thing, so one you never looked at goes when that turn ends.
 
 ```
-  ✓ renamed 12 files under src/  esc later
+  ✓ renamed 12 files under src/  esc later · c change
 ```
 
 **An assumptions card** wears `≈` instead of `?` for the same reason: it is not
@@ -695,7 +695,7 @@ rather than guessing.
 Answering leaves one dim line where the question was:
 
 ```
-  ✓ allow this? → allow once · you · 14:02 · ◐ working
+  ✓ allow this? → allow once · you · 14:02 · c change · ◐ working
 ```
 
 What was asked, what you picked, anything you said beside it, who decided, and
