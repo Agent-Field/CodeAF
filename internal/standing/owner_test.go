@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -96,5 +97,17 @@ func TestTheOwnersBeforeTheRecordAreRecordedOnce(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(store.root, receiptsDir, ownersMarker)); err != nil {
 		t.Fatalf("the one-time record left no marker: %v", err)
+	}
+}
+
+// A WATCH DOES NOT EXPAND BRACES. The live one-path run of 2026-09-11 edited a
+// watch to `{inbox/*,notes/*}` to add a folder; the matcher reads braces as
+// the characters, so the watch matched nothing and never fired, silently. It
+// is refused where both doors ask, naming what to do instead.
+func TestAWatchWithBracesIsRefused(t *testing.T) {
+	item := ownedItem(t.TempDir(), "reports/r.md")
+	item.When.Glob = "{inbox/*,notes/*}"
+	if err := item.CheckWatch(); err == nil || !strings.Contains(err.Error(), "braces") {
+		t.Fatalf("a watch with braces was taken: %v", err)
 	}
 }
