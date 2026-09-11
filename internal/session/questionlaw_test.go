@@ -52,11 +52,24 @@ const questionPutBack = "putBackQuestion"
 // person reading it and hand it a fresh settle guard and a fresh reading clock
 // mid-decision. It banks the same question under the same token and says it
 // once more, which every surface upserts.
+//
+// THE PROTECTION IS THE CALLER'S GUARD AND NOT THIS FUNCTION. What makes it a
+// re-statement rather than a second raise door is that its one caller takes the
+// entry out of the book first ([Agent.holdAsk]: `open := a.asked.atLocked(id)`,
+// and nothing happens when that is nil), so only a question already raised can
+// reach it. A lane that called it without that check would be using the
+// exception as a shortcut onto the screen, which is the hole this law exists to
+// close — arriving through the allowance instead of around it.
 const questionRestate = "restateQuestion"
 
 func TestEveryQuestionIsRaisedThroughTheOneDoor(t *testing.T) {
 	for _, call := range []string{"emitQuestion", "rememberQuestion"} {
 		for _, site := range callSitesIn(t, ".", call) {
+			// The two allowances are not raises: one puts back a question this
+			// engine refused, and one says a STANDING question again with its
+			// deadline gone — raising that one afresh would put `no longer
+			// needed` on the screen of the person reading it, and hand it a
+			// fresh settle guard and a fresh reading clock mid-decision.
 			if site.fn == questionDoor || site.fn == questionPutBack || site.fn == questionRestate {
 				continue
 			}

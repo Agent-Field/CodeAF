@@ -142,6 +142,42 @@ func (asked *askedOfThePerson) claimLocked(id uint64) (*askOpen, bool) {
 	return open, true
 }
 
+// askSettledKept is how many ANSWERED questions this book keeps for a revision.
+//
+// IT IS THE BOUND ON THE ONE THING HERE THAT OUTLIVES BEING ANSWERED. A settled
+// entry is kept so `c change` can put the question back and say what it
+// replaced; kept forever, the book would grow for the life of a session with
+// every question ever answered in it. The number is the surface's own: at most
+// [tui3's questionRecordsKept] receipts are drawn at once and the key is live
+// only while the receipt is, so a handful more than can ever be on screen is
+// exactly enough to make every offer on the screen work and nothing more.
+const askSettledKept = 4
+
+// forgetOldSettledLocked drops the oldest settled entries past that bound. Ids
+// are minted in order ([Agent.askSeq]), so the smallest settled id is the oldest
+// decision and the first to go.
+func (asked *askedOfThePerson) forgetOldSettledLocked() {
+	for {
+		settled, oldest := 0, uint64(0)
+		for id, open := range asked.parked {
+			if open == nil || open.settled == nil {
+				continue
+			}
+			settled++
+			if oldest == 0 || id < oldest {
+				oldest = id
+			}
+		}
+		if settled <= askSettledKept || oldest == 0 {
+			return
+		}
+		if open := asked.parked[oldest]; open != nil && open.clock != nil {
+			open.clock.Stop()
+		}
+		delete(asked.parked, oldest)
+	}
+}
+
 // stopClocksLocked stops every clock this book has armed, because NOTHING ARMED
 // OUTLIVES THE SESSION THAT ARMED IT (steer_grace.go states the same law for a
 // steer's grace). A clock that fired after the door shut would answer a question
@@ -149,9 +185,20 @@ func (asked *askedOfThePerson) claimLocked(id uint64) (*askOpen, bool) {
 // and the decision would still be in the record, where the next run of this
 // conversation reads it as something the person settled.
 func (asked *askedOfThePerson) stopClocksLocked() {
-	for _, open := range asked.parked {
-		if open != nil && open.clock != nil {
+	for id, open := range asked.parked {
+		if open == nil {
+			continue
+		}
+		if open.clock != nil {
 			open.clock.Stop()
+		}
+		if open.settled != nil {
+			// AND NOTHING SETTLED OUTLIVES THE SESSION EITHER. A receipt kept so
+			// its decision could be changed is a receipt nobody can change once
+			// the door has shut; the questions still OPEN are left exactly where
+			// they are, because a session leaving does not answer them and the
+			// next one has its own book.
+			delete(asked.parked, id)
 		}
 	}
 }
@@ -188,6 +235,7 @@ func (asked *askedOfThePerson) answerLocked(id uint64, answer Answer) (*askOpen,
 	if open.clock != nil {
 		open.clock.Stop()
 	}
+	asked.forgetOldSettledLocked()
 	// THE WAIT IS CLAIMED AND THE ENTRY STAYS. Nothing else can reach this
 	// channel afterwards, so a correction that arrives once the call has taken
 	// its answer and gone is a MESSAGE rather than a send into a channel nobody
@@ -290,19 +338,21 @@ func (asked *askedOfThePerson) talkedPastLocked() []uint64 {
 func (asked *askedOfThePerson) retireLocked() []*askOpen {
 	var gone []*askOpen
 	for id, open := range asked.parked {
-		if open == nil || open.wait != nil || questionOutlivesTurn(open.q) {
+		if open == nil || open.wait != nil {
 			continue
 		}
 		if open.settled != nil {
-			// AN ANSWERED QUESTION IS NOT RETIRED, IT IS CLEARED. Nothing is
-			// drawn for it any more — the answer took its row down — and what is
-			// left is the entry a revision reads. It goes without a withdrawal,
-			// because withdrawing a question somebody has answered would put
-			// `no longer needed` on the screen about their own decision.
-			if open.clock != nil {
-				open.clock.Stop()
-			}
-			delete(asked.parked, id)
+			// AN ANSWERED QUESTION IS NOT RETIRED AT ALL. Nothing is drawn for it
+			// — the answer took its row down — and withdrawing it would put `no
+			// longer needed` on somebody's screen about their own decision. What
+			// is left is the entry a revision reads, and its bound is
+			// [askedOfThePerson.forgetOldSettledLocked] rather than this sweep:
+			// a turn very often ENDS on the answer that settled it, and clearing
+			// it here would take `c change` away one frame after the receipt
+			// offered it.
+			continue
+		}
+		if questionOutlivesTurn(open.q) {
 			continue
 		}
 		if taken, parked := asked.claimLocked(id); parked {

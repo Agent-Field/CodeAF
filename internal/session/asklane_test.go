@@ -6,6 +6,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -562,4 +563,87 @@ func TestARatifyDoesNotStopTheTurnAndIsNotWaitingOnYou(t *testing.T) {
 	// AND IT IS THE RUNG'S OWN ANSWER, NOT THE ASKER'S ([AskKind.Waits]): a
 	// ratify that writes `blocking: {turn: true}` still stops nothing, which is
 	// pinned from the other end by TestARatifyThatAskedToStopTheTurnStopsNothing.
+}
+
+// THE BOOK DOES NOT GROW FOR THE LIFE OF A SESSION. A settled question is kept
+// so its answer can be changed while the receipt offering that is on screen, and
+// the oldest go once more are kept than can ever be drawn — otherwise every
+// question ever answered in a long conversation stays in the one book.
+func TestTheBookKeepsOnlyTheNewestAnsweredQuestions(t *testing.T) {
+	a := askTestAgent(t, true)
+	const rounds = askSettledKept + 3
+	for round := range rounds {
+		// A DIFFERENT QUESTION EACH TIME, because the gate refuses one a record
+		// has already answered — which is the ladder's first rung and not this
+		// law's subject.
+		raw := strings.Replace(askNotWaiting, "Which storage shape should this use?",
+			"Which storage shape should round "+strconv.Itoa(round)+" use?", 1)
+		if _, _, err := a.executeAsk(context.Background(), json.RawMessage(raw)); err != nil {
+			t.Fatal(err)
+		}
+		q := waitForOneQuestion(t, a)
+		if err := a.ResolveQuestion(Answer{Kind: QuestionAsk, ID: q.ID, Key: "1"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a.mu.Lock()
+	held := len(a.asked.parked)
+	newest := a.asked.atLocked(uint64(rounds))
+	oldest := a.asked.atLocked(1)
+	a.mu.Unlock()
+	if held != askSettledKept {
+		t.Fatalf("the book holds %d answered questions, want %d", held, askSettledKept)
+	}
+	if newest == nil {
+		t.Fatal("the newest decision is not there to be changed")
+	}
+	if oldest != nil {
+		t.Fatal("the oldest decision is still in the book")
+	}
+	// AND THE ONE THE RECEIPT IS ABOUT CAN STILL BE CHANGED, which is the whole
+	// reason any of them are kept.
+	change := Answer{Kind: QuestionAsk, ID: uint64(rounds), Key: "2", Revises: true}
+	if err := a.ResolveQuestion(change); err != nil {
+		t.Fatalf("the newest decision could not be changed: %v", err)
+	}
+	// A decision that has left the book is refused in words rather than silently
+	// applied to nothing.
+	if err := a.ResolveQuestion(Answer{Kind: QuestionAsk, ID: 1, Key: "2", Revises: true}); err == nil {
+		t.Fatal("a decision the book no longer holds was changed anyway")
+	}
+}
+
+// AND NOTHING SETTLED OUTLIVES THE SESSION. A receipt kept so its decision could
+// be changed is one nobody can change once the door has shut.
+//
+// IT CALLS THE BOOK'S OWN CLOSE BECAUSE [Agent.Close] DOES NOT YET, and that is
+// the one-line seam named in this lane's report: `agent.go` is another lane's
+// file, and `a.stopAskClocksLocked()` belongs beside `a.stopSteerGraceLocked()`
+// there. What this pins is the half that is mine — that the book really does
+// clear what it was keeping.
+func TestClosingTheSessionClearsWhatWasKeptForARevision(t *testing.T) {
+	a := askTestAgent(t, true)
+	if _, _, err := a.executeAsk(context.Background(), json.RawMessage(askNotWaiting)); err != nil {
+		t.Fatal(err)
+	}
+	q := waitForOneQuestion(t, a)
+	if err := a.ResolveQuestion(Answer{Kind: QuestionAsk, ID: q.ID, Key: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	a.mu.Lock()
+	kept := a.asked.atLocked(q.ID) != nil
+	a.mu.Unlock()
+	if !kept {
+		t.Fatal("the decision was not kept for a change while the session was open")
+	}
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	a.mu.Lock()
+	a.asked.stopClocksLocked()
+	left := a.asked.atLocked(q.ID)
+	a.mu.Unlock()
+	if left != nil {
+		t.Fatal("a settled question outlived the session that answered it")
+	}
 }
