@@ -455,6 +455,26 @@ func TestARoomsUpFigureIsTheLatestRequestAndNotASum(t *testing.T) {
 	}
 }
 
+// A HOSTED NODE'S RAIL COUNTS ITS TOKENS FROM ITS NOTICES. A window with no
+// lane to the worker never hears its steps end, so the engine's own count on
+// the row it publishes is the only one it gets — and a local pilot's larger
+// count is never taken back by a notice that carries less.
+func TestAHostedNodesTokensComeFromItsNotices(t *testing.T) {
+	a, _, _ := taskApp(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Fix the nil-map crash",
+		session.TaskRunning, session.TaskNotice{})})
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Fix the nil-map crash",
+		session.TaskRunning, session.TaskNotice{CostUSD: 0.12, Tokens: 48200})})
+	if got := a.tasks[7].tokens; got != 48200 {
+		t.Fatalf("the node's tokens read %d, want the notice's 48200", got)
+	}
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Fix the nil-map crash",
+		session.TaskRunning, session.TaskNotice{CostUSD: 0.2})})
+	if got := a.tasks[7].tokens; got != 48200 {
+		t.Fatalf("a row without a token figure took the count away: %d", got)
+	}
+}
+
 // farJournal is a hosted node's journal tail in the shape internal/session
 // writes it: message lines, and one `call` line per request banked beside them
 // (sessionfile.go's appendCall) — plus an errand's call, which is not the work.

@@ -2074,8 +2074,8 @@ long time `↓` starts from what that window holds and counts up from there.
 A room opened on a task that was already running shows `↑` from the newest
 request in its record and `↓` from the moment the task writes anything. The
 column leaves when the task finishes.
-The price on the task's row moves at each step that spends, not only when the
-task changes state.
+The price and the token count on the task's row in the task column move at each
+step that spends, not only when the task changes state.
 
 A run's read-only transcript inside an adaptive run's page draws no column: it
 is a record being read back, not work being watched.

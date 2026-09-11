@@ -143,6 +143,12 @@ func TestANodesPriceIsPublishedAtEachStepThatMovedIt(t *testing.T) {
 				if ev.Task.CostUSD != 0.25 {
 					t.Fatalf("the row carried %v, want the worker's live 0.25", ev.Task.CostUSD)
 				}
+				// And its tokens, counted the same way: the one figure a window
+				// with no lane to the worker can draw them from.
+				used := child.Usage()
+				if want := used.Input + used.Output; want == 0 || ev.Task.Tokens != want {
+					t.Fatalf("the row carried %d tokens, want the worker's live %d", ev.Task.Tokens, want)
+				}
 				priced++
 			}
 		case <-deadline:

@@ -3343,11 +3343,14 @@ func (n *TaskNode) notice() TaskNotice {
 	// The spend is read BEFORE the graph lock is taken, and it has to be: it
 	// asks the room for the child agent and the child agent for its own usage,
 	// each of which is a lock of its own. Taking them under the graph's would be
-	// a second lock order in a package that has one.
-	cost := n.spend()
+	// a second lock order in a package that has one. The tokens are read the
+	// same way for the same reason.
+	cost, tokens := n.spend(), n.burned()
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
-	return n.noticeLocked(cost)
+	notice := n.noticeLocked(cost)
+	notice.Tokens = tokens
+	return notice
 }
 
 // resultOf is ONE LANDING, WHOLE: the notice a surface draws, the attempt it
@@ -3532,6 +3535,24 @@ func (n *TaskNode) spend() float64 {
 	// remembers who is still owed for until the fold happens.
 	if child := room.billed(); child != nil {
 		return frozen + child.Usage().CostUSD
+	}
+	return frozen
+}
+
+// burned is [TaskNode.spend] in tokens — input plus output, the frozen folds
+// plus the worker still in the room (or still owed for) — read by the same
+// road and under the same lock order, for the same reason.
+func (n *TaskNode) burned() int {
+	n.graph.mu.Lock()
+	room, frozen := n.room, n.input+n.output
+	n.graph.mu.Unlock()
+	child := room.speaker()
+	if child == nil {
+		child = room.billed()
+	}
+	if child != nil {
+		used := child.Usage()
+		return frozen + used.Input + used.Output
 	}
 	return frozen
 }
