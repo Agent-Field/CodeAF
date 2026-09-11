@@ -67,14 +67,19 @@ const (
 // the cells it stands over have to be the same cells, and two answers to where
 // the `cost` column is is a click that sorts by the wrong thing.
 //
-// `room` is the cells the ROW has, after the place's left edge and the family
-// column in front of it have been spent.
-func tasksColumns(room int, key tasksSortKey) (state, second, name int) {
+// `width` is THE LIST'S WHOLE WIDTH, with nothing spent out of it yet. Every
+// caller passes that same figure — the paint, the control row over it and the
+// pointer resolving a press — and a row's own lead comes out of the NAME it
+// returns ([tasksTableRow] says why). Asked of what one row's lead left, the
+// ninety-cell floor would fall on a worker four levels down a family a few cells
+// before it fell on the conversation standing over it, and one frame would draw
+// the state column on some of its rows.
+func tasksColumns(width int, key tasksSortKey) (state, second, name int) {
 	second = key.cells()
-	if room >= tasksStateFloor {
+	if width >= tasksStateFloor {
 		state = tasksStateCells
 	}
-	if name = room - state - second - tasksColumnAir; name >= tasksNameFloor {
+	if name = width - state - second - tasksColumnAir; name >= tasksNameFloor {
 		return state, second, name
 	}
 	// A FRAME WITH NO ROOM FOR A NAME DROPS THE COLUMNS AND KEEPS THE NAME, in
@@ -82,11 +87,11 @@ func tasksColumns(room int, key tasksSortKey) (state, second, name int) {
 	// it has not named has said nothing at all (rowfit.go, law 1).
 	if state > 0 {
 		state = 0
-		if name = room - second - tasksColumnAir; name >= tasksNameFloor {
+		if name = width - second - tasksColumnAir; name >= tasksNameFloor {
 			return state, second, name
 		}
 	}
-	if name = room - tasksColumnAir; name < 1 {
+	if name = width - tasksColumnAir; name < 1 {
 		name = 1
 	}
 	return 0, 0, name

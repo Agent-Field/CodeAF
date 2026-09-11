@@ -217,7 +217,7 @@ func TestWorkNobodyCouldCheckStillNeedsYourLook(t *testing.T) {
 	if got := tasksSectionLabels(reading, tasksNeeds); !tasksSame(got, []string{"verify the pro model's pricing"}) {
 		t.Fatalf("work nobody could check is not under %q: %v", tasksSectionWord(tasksNeeds), got)
 	}
-	page := strings.Join(reading.rows(120, newPalette(tokens.NoColor, false)), "\n")
+	page := strings.Join(tasksOpen(reading).rows(120, newPalette(tokens.NoColor, false)), "\n")
 	if !strings.Contains(page, tokens.GlyphNeedsHuman+" verify the pro model's pricing") {
 		t.Fatalf("the row needing a decision did not wear %q:\n%s", tokens.GlyphNeedsHuman, page)
 	}

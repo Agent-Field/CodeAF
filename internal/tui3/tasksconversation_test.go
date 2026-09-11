@@ -299,7 +299,11 @@ func TestAConversationStandsUnderItsMostUrgentWorkWithoutRefilingIt(t *testing.T
 // read one level of family and stopped.
 func TestWorkNestsToWhateverDepthTheRecordCarries(t *testing.T) {
 	r := tasksChatReading()
+	// The conversation and the two families are opened by hand: everything on
+	// this page opens shut ([tasksReading.opens]) and the claim here is about the
+	// DEPTH under them.
 	r.open = map[tasksKey]bool{
+		tasksChatKey("room-a"):       true,
 		{session: "room-a", id: "2"}: true,
 		{session: "room-a", id: "3"}: true,
 	}
@@ -325,8 +329,8 @@ func TestWorkNestsToWhateverDepthTheRecordCarries(t *testing.T) {
 		t.Fatalf("a worker with workers of its own wears %q rather than its fold", lexer.kin)
 	}
 	// SHUT AGAIN, WHAT IS BEHIND THE FOLD IS BEHIND IT — at every depth.
-	r.open = map[tasksKey]bool{{session: "room-a", id: "2"}: true}
-	page := tasksPage(r, 120)
+	r.open = map[tasksKey]bool{tasksChatKey("room-a"): true, {session: "room-a", id: "2"}: true}
+	page := tasksPageFolded(r, 120)
 	if !strings.Contains(page, "port the lexer") || strings.Contains(page, "port the token table") {
 		t.Fatalf("a shut worker did not take its own workers with it:\n%s", page)
 	}
@@ -495,7 +499,7 @@ func TestAnOrphanedChildIsStillDrawn(t *testing.T) {
 	if !strings.Contains(page, "the worker whose run is gone") {
 		t.Fatalf("an orphan is off the page entirely:\n%s", page)
 	}
-	line := tasksLineOf(t, r.lay(120), "the worker whose run is gone")
+	line := tasksLineOf(t, tasksOpen(r).lay(120), "the worker whose run is gone")
 	if strings.Contains(line.kin, tasksKinCont) || strings.Contains(line.kin, tasksKinLast) {
 		t.Fatalf("an orphan is drawn under a row that is not there: kin=%q", line.kin)
 	}

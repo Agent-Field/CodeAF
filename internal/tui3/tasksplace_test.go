@@ -295,7 +295,7 @@ func TestOnePieceOfWorkIsDrawnOnceAcrossEveryAuthority(t *testing.T) {
 	// here to open and nothing landed for a mention to point at — what the row
 	// opens is the card that says so ([tasksItem.pick] states the reversal) — and
 	// a row a person can see and cannot aim at is the defect that produced.
-	lines := reading.lay(120)
+	lines := tasksOpen(reading).lay(120)
 	stops := 0
 	for i := range lines {
 		if _, ok := reading.at(lines, i); ok {
@@ -503,7 +503,9 @@ func TestARunningParentKeepsItsRefusedChildUnderIt(t *testing.T) {
 			t.Fatalf("family member %q was filed under %q, want running", item.entry.Label, tasksSectionWord(item.section))
 		}
 	}
-	reading.open = map[tasksKey]bool{tasksFamilyOf(rows[0]): true}
+	// The conversation over the family is opened by hand with it; what this test
+	// is about is what stands UNDER the running parent.
+	reading.open = map[tasksKey]bool{tasksChatKey("room-a"): true, tasksFamilyOf(rows[0]): true}
 	found := false
 	for _, line := range reading.lay(120) {
 		if line.kind == tasksLineTask && line.item.entry.ID == "2" {

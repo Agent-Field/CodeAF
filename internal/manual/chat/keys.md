@@ -2186,8 +2186,9 @@ column actually drew. Their keyboard equivalents for standing are the commands t
 `+ /task` puts in the box. **No new key is added to the column by either of them.** `enter`
 on the `jobs` label toggles the section; `enter` on a job row opens that job's page.
 
-**Under 60 columns the roster page is a thumb's, not a keyboard's.** Its rows are two-line
-cards a tap opens, its foot is a `‹ back` bar in place of the key legend
+**Under 60 columns the TASKS PAGE this column reaches is a thumb's, not a keyboard's** — the
+column itself is unchanged, and its own keys are the ones above. The page's rows become
+two-line cards a tap opens, its foot is a `‹ back` bar in place of the key legend
 `enter open its room · alt+s sort · type to filter`, and the strip that opens it is one full-width door
 (`▸ 3 tasks · 1 running`) rather than a row of chips. Mouse motion is ignored — a tap opens
 in one gesture. The tasks page describes the phone flow in full.

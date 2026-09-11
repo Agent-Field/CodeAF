@@ -377,7 +377,7 @@ func tasksNewer(a, b tasksItem, now time.Time) bool {
 // is running opened `out of <the conversation you are sitting in>`, which is the
 // one sentence on that page a person would act on, and it named the wrong owner.
 // A row with nothing behind it is the emptiness law's own answer, and every
-// reader of this already drops an empty title ([tasksFacts],
+// reader of this already drops an empty title ([tasksChatRow],
 // [app.taskCardSourceLine]).
 func tasksRowFor(world session.World, mine tasksMine, entry session.TaskIndexEntry) session.SessionRow {
 	id := strings.TrimSpace(entry.SessionID)
@@ -502,7 +502,7 @@ type tasksLine struct {
 	chat tasksChat
 	// under says THE CONVERSATION THIS ROW CAME OUT OF IS ALREADY NAMED ABOVE IT,
 	// by the chat row it hangs under or by the piece of work it was cut out of.
-	// The row then spends those cells on its own name instead ([tasksFacts]).
+	// The row then spends those cells on its own name instead ([tasksChatRow]).
 	under bool
 	// owner is the line index of the task this line belongs to, and -1 on prose
 	// and air. It is what the cursor stands on, what a press resolves to, and

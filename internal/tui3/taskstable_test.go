@@ -304,9 +304,13 @@ func TestSortingByCostOrdersEveryLevelAndSaysSo(t *testing.T) {
 			back = append(back, tasksLabel(line.item.entry))
 		}
 	}
-	if strings.Join(back, " / ") != "pages one two / put the annual toggle up" &&
-		back[len(back)-1] != "check the copy" {
-		t.Fatalf("reversed, the conversation reads %q", strings.Join(back, " / "))
+	// THE TWO CLAIMS ARE TWO ASSERTIONS. The priced rows swap, and the unpriced
+	// one stays at the bottom — and they are checked apart because they are
+	// independent: the sink is the same way up whichever way the column points
+	// ([tasksSortKey.less]), so an `&&` over the pair would be an order check
+	// that could never fire.
+	if want := "pages one two / put the annual toggle up"; !strings.HasPrefix(strings.Join(back, " / "), want) {
+		t.Fatalf("reversed, the conversation reads %q, want the cheapest first", strings.Join(back, " / "))
 	}
 	if back[len(back)-1] != "check the copy" {
 		t.Fatalf("reversed, the row nobody priced came off the bottom: %q", strings.Join(back, " / "))

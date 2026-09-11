@@ -980,7 +980,8 @@ func (a *app) taskCardBody(entry session.TaskIndexEntry, width int) []string {
 	var facts []string
 	// WHERE IT CAME OUT OF, because the page a person opens to learn MORE may
 	// not know less than the row they opened it from. The row carries the
-	// conversation (tasksplace.go's [tasksFacts]); the card dropped it, and on a
+	// conversation (tasksplace.go's [tasksChatRow] names it on the root the work
+	// hangs under); the card dropped it, and on a
 	// machine with three projects and twelve conversations `Port the picker onto
 	// the new list` alone does not say which codebase it touched.
 	if line := a.taskCardSourceLine(entry); line != "" {
