@@ -417,7 +417,7 @@ func TestTheFloorHandsAnUnsettledDecisionBack(t *testing.T) {
 	defer stop()
 	drainTaskLane(lane)
 
-	agent.handBackUnsettled()
+	agent.handBackUnsettled(agent.turnSeq)
 	if node.decider != TaskAskOwnerPerson {
 		t.Fatalf("the decision is still held by %q", node.decider)
 	}
@@ -449,7 +449,7 @@ func TestTheFloorSaysNothingAboutASettledNode(t *testing.T) {
 	node.state = TaskDone
 	graph.mu.Unlock()
 
-	agent.handBackUnsettled()
+	agent.handBackUnsettled(agent.turnSeq)
 	if _, told := nextTaskNotice(lane); told {
 		t.Fatal("the floor published an update about a node that was decided")
 	}
@@ -634,7 +634,7 @@ func TestTheFloorOnlyTakesBackWhatThisTurnWasAsked(t *testing.T) {
 	graph.nodes[1], graph.nodes[2] = root, piece
 
 	worker := &Agent{config: Config{tasker: graph, taskID: 1}}
-	worker.handBackUnsettled()
+	worker.handBackUnsettled(worker.turnSeq)
 	if piece.decider != TaskAskOwnerPerson {
 		t.Fatalf("the worker did not take back its own piece's question (%q)", piece.decider)
 	}
@@ -646,7 +646,7 @@ func TestTheFloorOnlyTakesBackWhatThisTurnWasAsked(t *testing.T) {
 	root.state = TaskUnverified
 	graph.mu.Unlock()
 	conversation := &Agent{config: Config{tasker: graph}}
-	conversation.handBackUnsettled()
+	conversation.handBackUnsettled(conversation.turnSeq)
 	if root.decider != TaskAskOwnerPerson {
 		t.Fatalf("the conversation did not take back its own question (%q)", root.decider)
 	}

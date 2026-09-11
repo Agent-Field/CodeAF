@@ -81,11 +81,10 @@ reads the branch and answers with accept, not right, or check it again.
 
 **If the card stayed `your call`, the model's door used to be narrower than yours.** Your
 press finds the task by its id in the conversation you are sitting in. The model's `tasks`
-tool looked the number up in the **project's** list of finished work — and every
-conversation in a project appends to that one list, while task numbers start again at 1
-in each conversation. So "task 2" could match a different conversation's task 2, and the
-model was told `task 2 ran in an earlier conversation, so there is no graph left to settle
-it in` and pointed at a worktree belonging to work it had never seen. A number now means
+tool looked the number up in the **project's** list of finished work, shared by every
+conversation while task numbers start again at 1 in each. So "task 2" could match a
+different conversation's task 2, and the model was told `task 2 ran in an earlier
+conversation, so there is no graph left to settle it in`. A number now means
 **this conversation's** task, so the two doors reach the same work. A *name* — `@hidden-rental-digs` —
 still means the newest task anywhere in the project that wears it, which is what a name is for.
 
@@ -93,9 +92,10 @@ still means the newest task anywhere in the project that wears it, which is what
 `already handed to aforge` and sends the model nothing further, and it is not shown to you
 as trouble: the reason row goes on reading `aforge is deciding`. If you want it back, press
 `take it back` and the answers return to you. A press made as aforge finishes a reply is
-held for the reply that reads it; one no reply will read comes straight back and the row
-drops `aforge is deciding` — a reply you stopped, or a press while another model answers a
-picture your chat model cannot see.
+held for the reply that reads it. One no reply will read comes back and the row drops
+`aforge is deciding`: when the reply ends, if you stopped it or `conversation limit
+reached` keeps aforge from starting the next one; and when the answer ends, for a press
+made while another model answers a picture your chat model cannot see.
 
 **A recovered task is this conversation's task.** Reopening a conversation brings its
 graph back — `recovered task graph: 1 done · 1 your call` — and everything the card offers

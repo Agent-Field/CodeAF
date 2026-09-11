@@ -1600,7 +1600,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// decision out of the replacement's hands. The abandon ran this turn's
 			// floor at the moment it let go, so a disowned turn hands back nothing.
 			if a.turnIs(seq) {
-				a.handBackUnsettled()
+				a.handBackUnsettled(seq)
 			}
 			a.mu.Lock()
 			// A DISOWNED TURN CLEANS UP NOTHING. [Agent.Abandon] has already done
@@ -2491,6 +2491,18 @@ func (a *Agent) drainSteering(hub *eventHub) int {
 	// the first moment there is no lock to write a checkpoint under.
 	defer a.settleDeliveries()
 	a.mu.Lock()
+	// A DRAIN BELONGS TO THE LIVE TURN, and the hub is that turn's own handle:
+	// set when it starts and cleared by its clean-up or by [Agent.Abandon], in the
+	// same hold that moves [Agent.turnSeq]. A turn the abandon let go of can come
+	// unstuck in the instant before its context is cut, pass the loop's cancel
+	// check and arrive here — and what is queued now is the next turn's, or
+	// nobody's yet. Taking it would mark a press read by a turn that will never
+	// answer and whose clean-up hands nothing back.
+	if a.hub != hub {
+		a.mu.Unlock()
+		return 0
+	}
+	turn := a.turnSeq
 	opening := !a.running || len(a.messages) == a.turnFloor
 	// AND THE VOLATILE NOTE LANDS HERE, ahead of the steering, for the reason the
 	// drain itself is here: this seam runs immediately before the next request
@@ -2521,7 +2533,7 @@ func (a *Agent) drainSteering(hub *eventHub) int {
 	// Outside this agent's lock, because it takes the graph's (assignment.go) and
 	// there is no order in which those two are ever taken the other way round.
 	a.markDirectionsCarried(carried)
-	markHandOversRead(hands)
+	markHandOversRead(hands, turn)
 	return landed
 }
 
