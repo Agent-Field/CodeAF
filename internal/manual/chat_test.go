@@ -449,6 +449,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is via missing next to the model", "screen"},
 		{"no tok/s when I set a reasoning level", "screen"},
 		{"it says the engine is an older aforge so the provider and tok/s are not shown", "screen"},
+		// And the questions the 2026-09-10 column answers: ↑ became the size of
+		// the request instead of the summed bill, the side that moved lights
+		// up, a jump leaves a receipt, and a hosted task's page draws it too.
+		{"is it still working or is it stuck", "screen"},
+		{"the tokens are not moving", "screen"},
+		{"why did the number on the right light up", "screen"},
+		{"what is the +3.4k next to the up arrow", "screen"},
+		{"no token count inside a task", "screen"},
+		{"is the up arrow what I am billed for", "screen"},
 		{"my click does nothing on the server", "opening-files-from-that-machine"},
 		{"does export save to my laptop", "commands"},
 		{"which machine's settings are these", "commands"},

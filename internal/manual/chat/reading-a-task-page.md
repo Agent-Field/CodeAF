@@ -24,6 +24,10 @@ covers the work behind it. Anything you steered into it, drawn where you said it
 at the end. And pinned above all of it, one line saying what it is doing, how long it has
 been going, what it has cost and how many calls it has made.
 
+While the task works, its live work carries the same `↑`/`↓` token column the conversation
+does — `↑` the task's newest request, `↓` what it has written — on a task running through
+this machine's engine too (see "No token count inside a task" on the screen page).
+
 Nothing here is thrown away — what is folded is one keypress from open.
 
 ## When did this task start — the task page says nothing where the time should be, or `started` is blank on a finished task

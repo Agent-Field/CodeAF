@@ -64,6 +64,9 @@ type childRun struct {
 	limits taskLimits
 	room   *taskRoom
 	log    io.Writer
+	// spendTold is the node's price as this run last published it
+	// ([childRun.tellSpend]), so a step that moved no money says nothing.
+	spendTold float64
 
 	changed  []string
 	seen     map[string]bool
@@ -327,9 +330,49 @@ func (r *childRun) observe(event Event) {
 		fmt.Fprintf(r.log, "· %s\n", event.Hint)
 	case EventToolEnd, EventToolFailed:
 		r.step(event)
+		r.tellSpend()
+	case EventTurnDone:
+		r.tellSpend()
 	case EventError:
 		r.failure = event.Err
 	}
+}
+
+// tellSpend publishes the node's row again when what it has spent has moved
+// since the row was last published by this run.
+//
+// A NODE'S PRICE USED TO MOVE ONLY WHEN ITS STATE DID. The notice is the one
+// fact about a node that crosses to every surface — the roster, the rail, a
+// hosted window on another machine ([Agent.WatchTaskUpdates]) — and it went out
+// from setState and nowhere else, so between "running" and "done" every
+// surface without a lane to the worker drew a price from the moment the node
+// started. A surface on this machine hid that by adding up the steps it heard
+// on its own lane; a hosted one has no such lane, and its column stood still
+// for as long as the work ran.
+//
+// SO THE ROW GOES OUT AGAIN AT EACH STEP'S END, and only when the money moved.
+// Each end of a batch is where the step's request has already been banked
+// ([Agent.bank]), and the TurnDone is where the last one of a Submit has. A
+// batch of eight calls is one step and one notice, because the second end finds
+// the same price as the first; an unpriced model publishes nothing at all.
+// Every surface already takes a same-state row whose price rose as news
+// (tui3's taskUpdate), and an older one ignores what it does not need — so a
+// row published more often is the whole of the change, on a lane that already
+// crosses the wire.
+func (r *childRun) tellSpend() {
+	if r.node == nil || r.node.graph == nil {
+		return
+	}
+	home := r.node.graph.home
+	if home == nil {
+		return
+	}
+	cost := r.node.spend()
+	if cost <= r.spendTold {
+		return
+	}
+	r.spendTold = cost
+	home.emitTaskUpdate(r.node.notice())
 }
 
 // step reads ONE FINISHED TOOL CALL, which is the only unit available from out

@@ -641,6 +641,13 @@ type TaskNotice struct {
 	// model, or a node that has not started — and it is NOT the same claim as
 	// "it cost nothing", so a surface draws no figure at all for it.
 	CostUSD float64
+	// Tokens is what this node has burned, input plus output, read the same
+	// way as CostUSD: what its folded hands spent, plus the worker still in the
+	// room ([TaskNode.burned]). It is the one figure a surface with no lane to
+	// the worker — a window on another machine — can draw a node's tokens from.
+	// Zero is "nobody counted", and absent from rows that did not carry it (the
+	// roster replay, a row from a build before it existed).
+	Tokens int
 }
 
 // TaskAnswer is the surface's reply to a proposal. Approved with an empty

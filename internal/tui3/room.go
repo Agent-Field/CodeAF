@@ -121,6 +121,15 @@ type taskSteerDoor interface {
 	SteerTask(id uint64, text string) (session.SteerReceipt, error)
 }
 
+// taskWeightDoor is what one node's worker weighs — the size of the request it
+// has in flight, the figure a room's ↑ draws (tokencol.go). It is a door of its
+// own because only an engine that holds the worker can answer it: a hosted room
+// has no lane and reads the same fact off the node's journal instead
+// (roomrefresh.go). Zero is "nobody is working that node right now".
+type taskWeightDoor interface {
+	TaskContextTokens(id uint64) int
+}
+
 func (a *app) taskSteerDoors() (taskSteerDoor, bool) {
 	door, ok := a.agent.(taskSteerDoor)
 	return door, ok
@@ -283,6 +292,10 @@ type taskRoom struct {
 	// what they have always meant to every reader of them — the fields moved
 	// house, not name.
 	feed
+	// requests is the newest request lines the last journal reading held, for a
+	// page with no lane: what lets the next reading count only what is new
+	// (roomrefresh.go's [taskRoom.takeRequests]).
+	requests []session.RequestLine
 	// unfolded is the page's OWN fold state, keyed by the page's own turns. It is
 	// not the conversation's map for the reason the entries are not the
 	// conversation's list: a turn number means nothing outside the list it counts
@@ -628,8 +641,15 @@ func (a *app) openRoom(id uint64, title string) {
 		title = taskIDWord(id)
 	}
 	room := a.newRoom(id, title)
-	room.entries, room.turn = a.roomRecord(
-		session.ReadTranscript(doors.TaskJournal(id)), roomTail)
+	record := session.ReadTranscript(doors.TaskJournal(id))
+	room.entries, room.turn = a.roomRecord(record, roomTail)
+	// ↑ FROM THE FIRST FRAME, where the journal can say it: the newest request
+	// the node banked is the weight of what it last sent, and the worker's own
+	// answer replaces it on the next beat ([app.usageBack]). ↓ is deliberately
+	// NOT seeded from the same lines — the lane's step totals add the running
+	// step's whole bill when it ends, and a seed would count its earlier
+	// requests twice (tokencol.go).
+	room.col.weight = record.Requests.Latest
 	// AND WHAT THIS NODE HAS ALREADY STARTED JOINS THE SESSION'S COUNTS. Opening
 	// the page is the moment this surface first READS a node's history, and a
 	// background job it started an hour ago is as alive as one it starts while
@@ -1153,6 +1173,13 @@ func (a *app) roomEvent(ev session.Event) tea.Cmd {
 		// speculatively, before anybody has clicked anything (remotefiles.go).
 		// Nil on every local session.
 		after = a.prefetchWritten(ev)
+		// And the node's weight has just moved — its step is billed and its
+		// result is joining what it sends next — so the beat asks now
+		// ([app.usageOwed], [taskWeightDoor]).
+		a.usageOwed = true
+
+	case session.EventToolFailed:
+		a.usageOwed = true
 
 	case session.EventTurnDone:
 		// THE STEP IS FINISHED AND ON DISK — the same event internal/session's
@@ -1163,14 +1190,20 @@ func (a *app) roomEvent(ev session.Event) tea.Cmd {
 		// revision the review pass writes are two replies on one lane, and
 		// without this they arrived as one unbroken wall of JSON.
 		room.closeLive()
-		// AND ONE STEP'S ACCOUNTING IS ADDED TO THE PAGE'S COLUMN, the way the
-		// pilot adds it to the node's bill (task.go's [taskNode.liveCost]): a
-		// node is driven through many Submits, this is the end of one, and the
-		// figures at the right edge of its live work are the sum of them. The
-		// column is not opened afresh per step because the work the block stands
-		// for is the node's whole run, and the block leaves when the run does.
-		room.col.up += ev.Usage.Input
-		room.col.down += ev.Usage.Output
+		// AND ONE STEP'S OUTPUT IS ADDED TO THE PAGE'S ↓, the way the pilot adds
+		// it to the node's bill (task.go's [taskNode.liveCost]): a node is driven
+		// through many Submits, this is the end of one, and what came back over
+		// its live work is the sum of them. The column is not opened afresh per
+		// step because the work the block stands for is the node's whole run, and
+		// the block leaves when the run does. The mark goes down with it, so ↓
+		// goes on moving with what arrives after (tokencol.go's [tokenCol.bill]).
+		//
+		// ↑ IS NOT SUMMED, and that is the point of the change that put this
+		// sentence here. The step's Input is every request of that step added
+		// together; ↑ is ONE request — the node's newest — and it comes from the
+		// worker itself on the usage beat ([taskWeightDoor]).
+		room.col.bill(room.col.down+ev.Usage.Output, room.turnWritten(), room.turn)
+		a.usageOwed = true
 
 	case session.EventError:
 		// THE NODE'S OWN FAILURES ARE ROWS ON ITS PAGE, in the conversation's

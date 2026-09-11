@@ -93,6 +93,76 @@ type Record struct {
 	// answer can be wrong. There is at most one, because a reading either stopped
 	// AT a line or was refused the whole file, never both.
 	Unreadable string
+	// Requests is what the record's own request lines say about the work it
+	// holds — the other half of a page watching a node it has no lane to
+	// ([RequestBooks]).
+	Requests RequestBooks
+}
+
+// RequestBooks is what a journal's `call` lines — ONE PER MODEL REQUEST the
+// conversation made, banked beside the seal that sums them ([Agent.addUsage])
+// — say about the work in the bytes that were read.
+//
+// IT EXISTS FOR A PAGE WITH NO LANE. A surface watching a node on this machine
+// hears its steps as they end; a surface watching one on ANOTHER machine is
+// handed a bounded tail of its journal and nothing else, and every live figure
+// it draws has to come out of those bytes. The request lines are the only place
+// the provider's own counts are written down per request, so they are read by
+// the same scan that rebuilds the transcript — one record, one reading — rather
+// than by a second parser of the same file.
+//
+// ONLY THE CONVERSATION'S OWN REQUESTS ARE COUNTED. An errand's call — a title,
+// a memory reflex, a review — is written with its role on it and is not the
+// work's writing ([Agent.journalRoleCall]); counting it would make a page's ↓
+// jump for a sentence nobody on the page wrote.
+//
+// THE READING IS BOUNDED BY WHAT WAS READ. A tail opens mid-file, so Recent is
+// the requests in the tail and not the whole run above it. Latest is always
+// there when any request is: the newest line is the last one written.
+type RequestBooks struct {
+	// Latest is the prompt the newest request sent, whole — what that request
+	// weighed. The providers aforge speaks to count cached prompt tokens INSIDE
+	// the prompt figure (an OpenAI-shaped usage block, which is what OpenRouter
+	// returns); a line whose cached share is LARGER than its prompt can only
+	// have been counted the other way, and has the two added back together.
+	Latest int
+	// Recent is the newest requests in the reading, oldest first, at most
+	// [requestsKept] of them. It is a LIST rather than a sum because a reader
+	// of successive tails needs to tell the requests it has already counted
+	// from the ones that are new: the window slides as the file grows, and a sum
+	// over it would shrink every time an old request fell off the top.
+	Recent []RequestLine
+}
+
+// RequestLine is one request as its line spells it: what it sent and what came
+// back.
+type RequestLine struct {
+	Input, Output int
+}
+
+// requestsKept bounds [RequestBooks.Recent]. A page reads a new tail four times
+// a second and a node makes a request every few seconds, so the overlap between
+// two readings is never more than a handful; the bound is for the whole-file
+// reading a resume makes, which walks every request the conversation ever made
+// and needs none of them.
+const requestsKept = 64
+
+// observe folds one request line in.
+func (b *RequestBooks) observe(call journalCall) {
+	if strings.TrimSpace(call.Role) != "" {
+		return
+	}
+	prompt := call.Input
+	if call.CacheRead > prompt {
+		prompt += call.CacheRead
+	}
+	if prompt > 0 {
+		b.Latest = prompt
+	}
+	if len(b.Recent) == requestsKept {
+		b.Recent = append(b.Recent[:0], b.Recent[1:]...)
+	}
+	b.Recent = append(b.Recent, RequestLine{Input: prompt, Output: call.Output})
 }
 
 // ReadTranscript is one session file, at rest, as display entries — the shape
@@ -170,6 +240,7 @@ func transcriptFrom(replayed replayedSession, err error) Record {
 		Earlier:    shapeEntries(replayed.earlier, journal),
 		Floor:      len(shapeEntries(replayed.messages[:overlap], journal)),
 		Unreadable: unreadPastLine(replayed.unread),
+		Requests:   replayed.requests,
 	}
 }
 
