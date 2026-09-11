@@ -551,9 +551,13 @@ func TestThePauseGateAnswersAPress(t *testing.T) {
 	// The row's screen position, resolved the way the frame resolves it: the
 	// page hangs from the top and the slack falls below it.
 	y := a.bodyTop() + (at - a.roomOffsetFor(len(rows), a.viewHeight()))
-	if !a.orchPress(x, y) {
+	cmd, took := a.orchPress(x, y)
+	if !took {
 		t.Fatal("the press landed on no target at all")
 	}
+	// The door is asked from the command the press hands back (offloop.go), so
+	// the answer reaches the engine when that command runs.
+	drive(t, a, runCmd(cmd)...)
 	if len(agent.answers) != 1 || agent.answers[0] != "r1: "+orchFinish {
 		t.Fatalf("the press answered %v, want finish", agent.answers)
 	}
@@ -663,7 +667,7 @@ func TestThePhoneTierGivesEveryChipThreeRows(t *testing.T) {
 		}
 	}
 	y := a.bodyTop() + at - a.roomOffsetFor(len(rows), a.viewHeight())
-	if !a.orchPress(1, y) {
+	if _, took := a.orchPress(1, y); !took {
 		t.Fatal("the last row of a phone chip is not pressable")
 	}
 	if got := a.orchOf().card; got != "rfcs" {

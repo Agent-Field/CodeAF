@@ -1139,6 +1139,34 @@ func (a *app) viewHeight() int {
 	return 0
 }
 
+// startPageBody is the body region the START PAGE would find, which is not the
+// body region there is now.
+//
+// THE QUESTION BLOCK COMES DOWN WHEN THAT PAGE GOES UP. It is drawn over the
+// conversation whose question it is, and [app.questionRows] answers nothing at
+// all while [app.startingChat] — every key on the page is one of the page's own
+// or part of its first message, so a row offering answers there would offer keys
+// that cannot honestly act. So the rows the block is holding are rows the page
+// is about to reclaim, and measuring the frame as it stands would refuse the
+// page over its own space: on a twenty-row terminal with a permission waiting,
+// `ctrl+t` did exactly nothing, and said nothing either (#677, found on the
+// taller frame lane P draws a consent in).
+//
+// IT IS THE ONLY QUESTION THIS ANSWERS. A page whose own content will not fit is
+// still the page's business ([startTinyWord]); what is settled here is whether
+// there is a body region for it to stand in.
+func (a *app) startPageBody() int {
+	// IT IS [app.viewHeight]'S OWN ARITHMETIC WITH THE BLOCK GIVEN BACK, rather
+	// than that function's answer plus the block: viewHeight floors at zero, so a
+	// frame that is short by more rows than the block is holding would come back
+	// as room there is not.
+	_, height := a.size()
+	if body := height - a.chromeHeight() + a.questionHeight() - a.topHeight(); body > 0 {
+		return body
+	}
+	return 0
+}
+
 // topHeight is everything the frame pins ABOVE the body region: the room's focus
 // header, and the task strip under it (taskstrip.go).
 //

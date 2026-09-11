@@ -199,6 +199,13 @@ a permission, a task proposal, a standing offer.
 Press `enter` on the row instead. It brings that conversation here, and the
 question is above the box where it was raised, with its own keys on it.
 
+**And a question takes keys only where it is drawn.** If a page is over the
+conversation — the start page a new chat opens on, a task's page, the rewind
+timeline, a place — the block is not on screen, so none of its keys are live:
+everything you type belongs to what you are looking at. `ctrl+t` then typing
+`hello there` used to grant a waiting tool on the `t` and leave `here` in the
+box. Close the page and the question is back with its keys.
+
 ## The other window answered it, or two windows answered at the same time
 
 The first answer is the decision. A window that finds out somebody else answered
@@ -216,6 +223,12 @@ Nothing is merged. A later answer than that is simply late; it is ignored, and
 nothing is said about it.
 
 ## The answer I pressed was refused, or the engine did not answer in time
+
+**Your answer lands the instant you give it.** The question closes and its
+receipt appears at once, before the engine has said anything back. Waiting for
+the round trip first used to cost about ten seconds a keystroke and left the
+screen unchanged for all of it. If the engine then refuses, the question comes
+back with the reason on it.
 
 An answer the engine turned down is said on screen in the engine's own words —
 the work finished, somebody else answered first, the conversation moved.
@@ -244,15 +257,27 @@ While you are away:
 
 - a question your project's rule may take is taken, and its receipt says
   `aforge, on your settings` decided it
-- everything else stays open, and the desktop notification says the conversation
-  is `waiting on you`
+- everything else stays open; the desktop notification says the conversation is
+  `waiting on you`, and it is **pinned** rather than left to fade, so it is still
+  there when you come back
+- the first key, click or focus after you return re-delivers what is still
+  waiting, so a notice that timed out on the desktop while you were gone is not
+  a question you never hear about
 - the terminal bell rings **once**, and only for a question something is blocked
   on. A question nothing is waiting on never rings, and no question rings twice
 
 A rule never takes a question that cannot be taken back, and never takes a
 clarification — the answer to that one is something only you have.
 
-## Stop it deciding things while I am away — /autonomy
+## Stop asking me this — can it decide by itself, will it decide for me, and how do I turn that off — /autonomy
+
+Short answers first. **Can it decide by itself?** Only where you have said it
+may. **Will it decide for me?** Not unless a rule you wrote covers that kind of
+question, and never for anything destructive. **Stop asking me this:** write the
+rule for that kind, with `D` on the question in front of you or with
+`/autonomy <kind> decide`. **How do I turn that off:** `/autonomy <kind> ask`
+puts it back to asking you every time, and `/autonomy` on its own shows every
+row as it stands.
 
 `/autonomy` shows what this project does with each kind of question while you are
 away:
@@ -457,7 +482,7 @@ the row.
 
 | key | what it does |
 | --- | --- |
-| `1`–`9` | take that answer |
+| `1`–`9` | take that answer — these work straight away |
 | `enter` | take the answer the pointer is on — it starts on the recommended one |
 | `↑` `↓` `←` `→` | move the pointer (`↑↓` on a card, `←→` on a line; both pairs work on both). On the **page** a question opens into, `↑↓` walk the answers and `←→` fold and open the one you are on |
 | `esc` | later. Nothing is cancelled |
@@ -481,9 +506,19 @@ words in it every ordinary key belongs to the box, and pressing `enter` sends
 what you typed as your answer rather than as a message — on a question the
 conversation is waiting on. Only `esc` stays the question's.
 
-**A letter is the question's only over an empty box.** `d`, `r`, `u` and the
-rest do nothing while you are mid-sentence, because a letter that acted on a
-question while somebody was typing would be unforgivable.
+**A letter is the question's only once you have aimed at it.** `d`, `c`, `o`,
+`r`, `u`, `x`, `?`, `D` are each the first letter of a word people type into the
+box — the `d` of "do the schema first" used to hand the call back to the asker
+and leave "o the schema first" behind — so the question does not take one until
+you have looked at it: press `↑`, `↓`, `tab` or `enter`, or click an answer, and
+the letters are the question's from then on. Any of those is enough, and the
+question gives the keyboard back when it goes, so the next one starts the same
+way.
+
+**The numbered answers are not on that road.** `1`–`9`, and the letters printed
+on an answer itself (`a`, `n`, `s` on a landing), take that answer the moment the
+row is on screen. A key drawn in front of you as `[1] allow once` is pressable,
+always.
 
 ## Pressing esc — later, and nothing is cancelled
 

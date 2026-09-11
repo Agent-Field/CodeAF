@@ -757,24 +757,35 @@ func (r *orchRun) gateAnswers() []string {
 // orchAnswer resolves the gate. The run's own answer is what changes the run;
 // this page only says what was asked for, and lets the next poll show what came
 // of it.
-func (a *app) orchAnswer(answer string) {
+func (a *app) orchAnswer(answer string) tea.Cmd {
 	run := a.orchOf()
 	doors, ok := a.orchDoors()
 	if run == nil || run.gate == nil || !ok {
-		return
+		return nil
 	}
-	if _, err := doors.ResolveOrchestrate(run.id, answer); err != nil {
-		// The engine's own sentence, kept: a gate that could not be answered is a
-		// run still sitting on its cap, and a page that swallowed the reason would
-		// leave a person pressing the same key again.
-		run.notes = append(run.notes, err.Error())
-		a.roomTouched()
-		return
-	}
+	// THE GATE IS ANSWERED ON THE KEYSTROKE AND THE ENGINE IS TOLD FROM A
+	// COMMAND (offloop.go). A refusal comes back as the engine's own sentence on
+	// the row — a gate that could not be answered is a run still sitting on its
+	// cap, and a page that swallowed the reason would leave a person pressing
+	// the same key again — and the gate goes back up with it.
+	gate := run.gate
 	run.gate, run.answered = nil, true
 	run.acts = append(run.acts, orchAnswerWord(answer))
 	a.room.stick = true
 	a.roomTouched()
+	id := run.id
+	return a.offLoop(func() func(bool) tea.Cmd {
+		_, err := doors.ResolveOrchestrate(id, answer)
+		return func(here bool) tea.Cmd {
+			if err == nil || !here {
+				return nil
+			}
+			run.notes = append(run.notes, strings.TrimSpace(err.Error()))
+			run.gate, run.answered = gate, false
+			a.roomTouched()
+			return nil
+		}
+	})
 }
 
 // orchAnswerWord is the answer as the row and the echo say it.
@@ -990,7 +1001,7 @@ func (a *app) orchOpenPick() tea.Cmd {
 		}
 		switch pick := run.pick; {
 		case pick.answer != "":
-			a.orchAnswer(pick.answer)
+			return a.orchAnswer(pick.answer)
 		case pick.node != "":
 			a.orchCardOpen(pick.node)
 		}
@@ -1167,14 +1178,15 @@ func (a *app) orchAscend() {
 // offer rows do (taskstrip.go, harness.go). A press that lands on no target
 // falls through untouched — the empty parts of this page are still the way out
 // of the room (app.go's [app.press]).
-func (a *app) orchPress(x, y int) bool {
+func (a *app) orchPress(x, y int) (tea.Cmd, bool) {
 	spot, ok := a.orchSpotAt(x, y)
 	if !ok {
-		return false
+		return nil, false
 	}
+	var cmd tea.Cmd
 	switch {
 	case spot.answer != "":
-		a.orchAnswer(spot.answer)
+		cmd = a.orchAnswer(spot.answer)
 	case spot.run != "":
 		a.orchDescend(spot.run)
 	case spot.transcript != "":
@@ -1182,7 +1194,7 @@ func (a *app) orchPress(x, y int) bool {
 	case spot.node != "":
 		a.orchCardOpen(spot.node)
 	}
-	return true
+	return cmd, true
 }
 
 // orchSpotAt is that hit-test on its own: which target of this page the pointer

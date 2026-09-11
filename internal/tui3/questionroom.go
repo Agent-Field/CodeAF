@@ -418,6 +418,22 @@ func (a *app) closeQuestionRoom() {
 	a.touch()
 }
 
+// closeQuestionPage closes the page when it is open OVER THIS QUESTION, and
+// leaves it alone otherwise.
+//
+// IT IS THE ONE DOOR FOR "THIS QUESTION IS OVER" (question.go's
+// [app.closeQuestion] and [app.withdrawQuestion] both call it), because the two
+// ways a question ends are the two ways a page is left standing on a decision
+// that has been made: answered here or in another window, and withdrawn by the
+// asker. Either way the rows underneath are gone, so a page still drawing them
+// is a page answering for a question nobody is waiting on.
+func (a *app) closeQuestionPage(token string) {
+	if a.qroom == nil || a.qroom.head.token() != token {
+		return
+	}
+	a.closeQuestionRoom()
+}
+
 // questionDefaultScope is the scope the foot starts on: the narrowest one the
 // question offered, which is always `once` where it offered any.
 //
@@ -1097,14 +1113,27 @@ func (a *app) questionSetDial() tea.Cmd {
 		a.questionRoomTouched()
 		return nil
 	}
-	if err := door.SetAutonomy(room.head.question.Ask, session.Policy{Kind: session.PolicyDecide}); err != nil {
-		room.refused = strings.TrimSpace(err.Error())
-		a.questionRoomTouched()
-		return nil
-	}
-	room.refused = questionDecideKindDone
-	a.questionRoomTouched()
-	return nil
+	// THE RULE IS WRITTEN FROM A COMMAND (offloop.go) and the foot says what the
+	// engine said about it — which is the one thing here worth waiting to know,
+	// because the engine refuses a rule over a clarification and over anything
+	// destructive. What it does not do is hold the frame while it waits.
+	kind := room.head.question.Ask
+	return a.offLoop(func() func(bool) tea.Cmd {
+		err := door.SetAutonomy(kind, session.Policy{Kind: session.PolicyDecide})
+		return func(here bool) tea.Cmd {
+			if !here || a.qroom == nil || a.qroom != room {
+				return nil
+			}
+			if err != nil {
+				room.refused = strings.TrimSpace(err.Error())
+			} else {
+				room.refused = questionDecideKindDone
+				a.autonomyChanged()
+			}
+			a.questionRoomTouched()
+			return nil
+		}
+	})
 }
 
 // questionOfferKeys is which of the grammar's keys this question offers, and it
@@ -1366,7 +1395,53 @@ func (a *app) questionMoveFocus(delta int) {
 		room.input.focus = at
 	}
 	room.focus = at
+	a.questionRoomShowFocus()
 	a.questionRoomTouched()
+}
+
+// questionRoomShowFocus KEEPS THE FOCUSED ANSWER IN VIEW, and it is the one
+// place this page's window is moved for anything other than the wheel.
+//
+// THE DEFECT IT CLOSES: `↓` walked the focus and nothing scrolled, so on a page
+// with an attachment at the top and an answer open — which is most pages worth
+// opening — the arrows walked down into rows below the fold and the screen did
+// not change. A person pressing an arrow and seeing nothing move reads it as a
+// key that does nothing.
+//
+// IT SCROLLS THE LEAST IT CAN, so a page that is already showing the row it
+// walked to does not jump: the row is brought just inside the top or the bottom
+// edge and no further, which is the reading position a person built by
+// scrolling being kept rather than re-anchored under them.
+func (a *app) questionRoomShowFocus() {
+	room := a.qroom
+	height := a.viewHeight()
+	if room == nil || height <= 0 {
+		return
+	}
+	// THE ROWS ARE ASKED FOR AFTER THE MOVE, because the map from row to answer
+	// is written by the drawing ([questionRoom.spots]) and the move may have
+	// opened or folded a section under it.
+	rows := a.questionRoomRows(a.bodyWidth())
+	first, last := -1, -1
+	for at, of := range room.spots {
+		if of != room.focus {
+			continue
+		}
+		if first < 0 {
+			first = at
+		}
+		last = at
+	}
+	if first < 0 {
+		return
+	}
+	switch {
+	case first < room.offset:
+		room.offset = first
+	case last >= room.offset+height:
+		room.offset = last - height + 1
+	}
+	room.offset = questionClamp(room.offset, 0, max(0, len(rows)-height))
 }
 
 // questionFoldFocus opens the answer the focus is on, or folds it.
@@ -1581,20 +1656,17 @@ func (a *app) questionAnswer(answer session.Answer) tea.Cmd {
 		})
 	}
 	room.input.fill(&answer)
-	door, ok := a.agent.(questionDoor)
-	if !ok {
+	if _, ok := a.agent.(questionDoor); !ok {
 		room.refused = questionNoDoorWord
 		a.questionRoomTouched()
 		return nil
 	}
-	if answer.DecidedBy == "" {
-		answer.DecidedBy = session.DecidedByPerson
-	}
-	if err := door.ResolveQuestion(answer); err != nil {
-		room.refused = strings.TrimSpace(err.Error())
-		a.questionRoomTouched()
-		return nil
-	}
+	// AND THE DOOR IS ASKED THROUGH THE ONE ANSWERING ROAD (question.go's
+	// [app.answerQuestions]), which is where the sent stamp, the record, the
+	// off-loop call and the reopen all live. This page had a copy of every one
+	// of those beside it, and a copy of a road is a second set of rules about
+	// what an answer does the first day one of them moves.
+	sent := a.answerQuestion(room.head, answer)
 	a.input.reset()
 	// THE ANSWER IS THE RECORD, AND THERE IS ONE RECORD.
 	//
@@ -1615,9 +1687,8 @@ func (a *app) questionAnswer(answer session.Answer) tea.Cmd {
 	// waiting underneath it. Measured on a real screen before either half of
 	// this landed: an answer given on this page, in this window, drew
 	// `another window` on its own receipt.
-	a.closeQuestion(room.head, answer)
 	a.closeQuestionRoom()
-	return nil
+	return sent
 }
 
 // questionNoDoorWord is what the foot says on a session that can draw a question

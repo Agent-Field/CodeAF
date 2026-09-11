@@ -516,16 +516,50 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	// its first half twice. The atomic door hands back entries that stop where
 	// the turn's work begins and a stream that carries the turn whole, so the
 	// split cannot race the turn ending between the two.
+	//
+	// AND IT IS READ FROM A COMMAND, NOT FROM THE LOOP (offloop.go). The record
+	// lives in the engine's process — a session host on this machine, or another
+	// machine entirely — so this door is a call over a pipe, and a switch that
+	// made it from Update was a window that could not draw, could not take a key
+	// and could not read its own conversation's news for as long as the far end
+	// took. What it costs is one frame of an empty transcript, which is the
+	// frame the person is switching away from anyway.
 	var joined tea.Cmd
 	if door, ok := agent.(attachReplayer); ok {
-		entries, events, stop := door.AttachReplay()
-		a.replayList(entries)
-		if events != nil {
-			joined = a.adoptTurn(events, stop)
-		}
+		joined = a.offLoop(func() func(bool) tea.Cmd {
+			entries, events, stop := door.AttachReplay()
+			return func(here bool) tea.Cmd {
+				if !here {
+					// THE PERSON MOVED ON WHILE THE RECORD WAS COMING. Drawing
+					// it now would put another conversation's transcript on this
+					// screen, and the stream that came with it belongs to a turn
+					// nobody in this window is watching — so it is handed back
+					// rather than left running with no reader.
+					if stop != nil {
+						stop()
+					}
+					return nil
+				}
+				a.replayList(entries)
+				var back []tea.Cmd
+				if events != nil {
+					back = append(back, a.adoptTurn(events, stop))
+				}
+				// AND A QUESTION THIS CONVERSATION WAS NEVER ANSWERED IS ASKED
+				// AGAIN, here rather than beside the lanes below, because it is
+				// the one thing on the switch that can START work rather than
+				// draw what is already there — and it must see the screen
+				// exactly as the replay above left it, including whether that
+				// replay handed this window a turn that is still running
+				// (takeover.go's [app.resumeStoppedTurn]).
+				back = append(back, a.resumeStoppedTurn())
+				a.touch()
+				return tea.Batch(back...)
+			}
+		})
 	} else {
 		a.replay()
-		joined = a.joinTurn()
+		joined = tea.Batch(a.joinTurn(), a.resumeStoppedTurn())
 	}
 	a.noteStandingHere()
 	a.measureContext()
@@ -578,12 +612,6 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	if joined != nil {
 		cmds = append(cmds, joined)
 	}
-	// AND A QUESTION THIS CONVERSATION WAS NEVER ANSWERED IS ASKED AGAIN. It is
-	// last because it is the one thing here that can START work rather than draw
-	// what is already there, and it must see the screen exactly as the replay
-	// above left it — including whether that replay handed this window a turn
-	// that is still running (takeover.go's [app.resumeStoppedTurn]).
-	cmds = append(cmds, a.resumeStoppedTurn())
 	a.touch()
 	return tea.Batch(cmds...)
 }

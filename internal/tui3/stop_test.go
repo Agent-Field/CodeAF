@@ -439,7 +439,7 @@ func TestTheFuelGateStopUsesTheSameWord(t *testing.T) {
 	run := a.orchOf()
 	run.gate = &orchGate{id: 1, text: "$2.00 of $2.00"}
 	run.pick = orchTarget{answer: orchStop}
-	a.orchAnswer(orchStop)
+	spend(t, a, a.orchAnswer(orchStop))
 	if len(agent.orch.answers) != 1 || !strings.HasSuffix(agent.orch.answers[0], orchestrate.GateStop) {
 		t.Fatalf("the gate's stop went to %v", agent.orch.answers)
 	}

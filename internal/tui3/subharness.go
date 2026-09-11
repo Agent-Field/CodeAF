@@ -1019,10 +1019,10 @@ func (a *app) awaitingSubharness() bool { return a.subPage.open && a.subPage.car
 // SubharnessInput is the one place a card becomes an input); sending this
 // surface's own reading of an untouched form would be a second spelling of it,
 // which is the drift the one-source-of-truth law exists to stop.
-func (a *app) answerSubharnessOffer(run bool) {
+func (a *app) answerSubharnessOffer(run bool) tea.Cmd {
 	card := a.subPage.card
 	if !card.asked() {
-		return
+		return nil
 	}
 	var input json.RawMessage
 	if run && card.touched {
@@ -1030,21 +1030,28 @@ func (a *app) answerSubharnessOffer(run bool) {
 	}
 	id := card.offer
 	a.subPage.close()
+	var sent tea.Cmd
 	if agent, ok := a.subharnessOfferSeam(); ok {
-		agent.ResolveSubharness(id, run, input)
+		// FROM A COMMAND, NEVER FROM THE LOOP (offloop.go): the page closes on
+		// the keystroke and the engine is told on the next goroutine.
+		sent = a.offLoop(func() func(bool) tea.Cmd {
+			agent.ResolveSubharness(id, run, input)
+			return nil
+		})
 	}
 	a.touch()
+	return sent
 }
 
 // takeSubharnessAnswer acts on the chip the cursor is on, whether a digit, an
 // arrow's enter or the row's own key asked for it.
-func (a *app) takeSubharnessAnswer(at int) {
+func (a *app) takeSubharnessAnswer(at int) tea.Cmd {
 	card := a.subPage.card
 	if !card.asked() || at < 0 || at >= len(card.row()) {
-		return
+		return nil
 	}
 	card.choice = at
-	a.answerSubharnessOffer(at != card.declineAt())
+	return a.answerSubharnessOffer(at != card.declineAt())
 }
 
 // moveSubharnessAnswer walks the answers and STOPS at their ends rather than
@@ -1122,7 +1129,7 @@ func (a *app) subCardKey(msg tea.KeyPressMsg) tea.Cmd {
 		// leave that turn parked for a quarter of an hour on an answer the person
 		// has already given by pressing the dismiss key.
 		if c.asked() {
-			a.answerSubharnessOffer(false)
+			cmd = a.answerSubharnessOffer(false)
 			break
 		}
 		// BACK OUT BY ONE. A card opened off the list goes back to the list; one
@@ -1139,7 +1146,7 @@ func (a *app) subCardKey(msg tea.KeyPressMsg) tea.Cmd {
 			if c.asked() {
 				// The answers row, and enter takes the chip the cursor is on —
 				// which is what enter means everywhere else on this surface.
-				a.takeSubharnessAnswer(c.choice)
+				cmd = a.takeSubharnessAnswer(c.choice)
 				break
 			}
 			cmd = a.runSubharness()
@@ -1171,7 +1178,7 @@ func (a *app) subCardKey(msg tea.KeyPressMsg) tea.Cmd {
 			if msg.String() == session.StandingNoKey {
 				at = c.declineAt()
 			}
-			a.takeSubharnessAnswer(at)
+			cmd = a.takeSubharnessAnswer(at)
 			break
 		}
 		listNavigate(msg, &editor{}, c.move, func() {}, subRowsMax-1)

@@ -585,3 +585,86 @@ func questionOwnsBox(q session.Question) bool {
 	}
 	return q.Blocking.Turn || q.Input.Kind == session.InputText
 }
+
+// ── THE BOX KEEPS THE FIRST LETTER ──────────────────────────────────────────
+//
+// WHAT WAS MEASURED, on dev@333acc67d. A question is on the block, the box
+// under it is empty, and the person begins their next sentence: `do the schema
+// first` handed the call back to the asker on its first letter
+// ([questionDecideKey]) and left `o the schema first` in the box. `change the
+// column instead` opened the change prompt on its `c`. `remove the old rows`
+// wrote a rule. None of those keys was aimed at the block; each was the first
+// character of a sentence, and what stayed in the box was the rest of it.
+//
+// THE RULE, AND IT IS WRITTEN HERE BECAUSE THIS IS THE TABLE THE KEYS IT IS
+// ABOUT LIVE IN: A VERB ON THIS TABLE BELONGS TO THE BOX UNTIL THE QUESTION HAS
+// THE HAND. `d`, `c`, `o`, `r`, `u`, `x`, `?`, `D`, `s`, `g` are every one of
+// them the first letter of a word somebody types into a chat box, and the block
+// does not take one from a person who has not yet aimed at it.
+//
+// AIMING IS A KEY THAT COULD NEVER BE TEXT, or a click on the block's own rows:
+// `↑↓` choosing, `tab` walking, `enter` taking, `esc` putting it off, the mouse
+// landing on an answer. That is the owner's own grammar for this block read in
+// the order a hand uses it — choose, then take it, then put it off
+// (docs/design/questions/picked) — and every one of those gestures is somebody
+// looking at the question rather than at the box.
+//
+// AND THE ANSWERS' OWN KEYS ARE NOT ON THIS ROAD. `1`-`9`, and the letters a
+// lane fixes on an option itself (task-states' `a`, `n`, `s`), NAME an answer
+// that is drawn on the row in front of the person — `[1] allow once` is a
+// promise this surface makes in ink, and a key that is drawn as pressable and
+// is not pressable is a worse defect than the one this rule closes. They answer
+// the moment the row is on screen, exactly as they always did. The verbs are
+// the half where the harm is and the drawing costs nothing: a row still says
+// `[d] you decide`, and the first `d` of a sentence goes where the sentence is
+// going.
+//
+// A QUESTION THE PERSON THEMSELVES RAISED IS EXEMPT, and that is not a special
+// case but the same rule from the other side: the stop card and the tab-close
+// card are put up BY a keystroke, so the hand is already on them, and both have
+// taken the whole keyboard while they were up since before this block existed
+// (stop.go, tabclose.go).
+//
+// AND THE HAND IS PER QUESTION. It is given up when the question is answered,
+// put off, or replaced by the next one — so the first letter into an empty box
+// is the box's again for every question in turn, rather than once per session.
+
+// questionAimKey reports whether a key aims at the block: a key that is not a
+// character a sentence could carry, pressed while the block is up.
+func questionAimKey(key string) bool {
+	switch key {
+	case "up", "down", "left", "right", "tab", "shift+tab", questionEnterKey, questionLaterKey:
+		return true
+	}
+	return false
+}
+
+// questionTextKey reports whether a key is one a sentence could start with —
+// every key that arrives as a single character.
+//
+// `space` is deliberately not one: bubbletea spells it `space` rather than
+// `" "`, nobody begins a sentence with it, and it is the checklist's tick.
+func questionTextKey(key string) bool {
+	return len([]rune(key)) == 1
+}
+
+// questionHasTheHand reports whether the block may take a verb that could have
+// been the first letter of a sentence.
+//
+// THE HAND IS THE TOKEN IT WAS AIMED AT, and that is the whole of why there is
+// no place that gives it back. A flag had to be dropped everywhere a question
+// could leave the front — answered, folded, withdrawn, replaced by the next one
+// in the queue — and every site that was missed was a question inheriting a
+// keyboard aimed at a different one: `esc` on the first of two folded it and
+// left the second holding the hand, so the next `d` decided a question nobody
+// had looked at. A token cannot be inherited: it either names the question in
+// front or it names one that is not.
+func (a *app) questionHasTheHand(q session.Question) bool {
+	if questionRaisedHere(q) {
+		return true
+	}
+	return a.questionHand != "" && a.questionHand == questionTokenOf(q)
+}
+
+// aimQuestion is the person looking at one question rather than at the box.
+func (a *app) aimQuestion(token string) { a.questionHand = token }

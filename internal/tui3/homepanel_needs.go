@@ -562,17 +562,34 @@ func (a *app) homeAnswerLanding(line homeLine, key string) (tea.Cmd, bool) {
 		return nil, false
 	}
 	if a.answeringHere(row) {
-		doors, ok := a.questionDoors()
-		if !ok {
+		if _, ok := a.questionDoors(); !ok {
 			return nil, false
 		}
-		sent := session.Answer{At: time.Now(), Kind: session.QuestionLanding, ID: question.ID,
-			Key: answer, Picked: []string{answer}, DecidedBy: session.DecidedByPerson}
-		if err := doors.ResolveQuestion(sent); err != nil {
-			return nil, false
+		// THROUGH THE ONE ANSWERING DOOR, OFF THE LOOP (question.go's
+		// [app.answerQuestion], offloop.go). This row used to ask the engine
+		// from here and wait for it, which is the ten-second freeze on home's
+		// own band: the window could not draw, could not take a key, and could
+		// not read the news its own answer caused. The row says what it sent on
+		// the keystroke, exactly as it did; what changed is that it no longer
+		// waits to be told.
+		sent := session.Answer{
+			Kind: session.QuestionLanding, ID: question.ID,
+			Key: answer, Picked: []string{answer},
 		}
+		// AND THE WHOLE QUESTION WHERE THE LANE LEFT ONE. Home's row carries it
+		// ([session.PresenceQuestion.Full]) and it is what the receipt is
+		// written from; the bare shape below is the honest fallback for a row
+		// whose lane described nothing.
+		asked := session.Question{
+			Kind: session.QuestionLanding, ID: question.ID, Ask: session.AskLanding,
+			Head: strings.TrimSpace(question.Text),
+		}
+		if question.Full != nil {
+			asked = *question.Full
+		}
+		cmd := a.answerQuestion(questionShown{question: asked}, sent)
 		a.home.say(answerSentWord+label, "")
-		return nil, true
+		return cmd, true
 	}
 	dir := strings.TrimSpace(row.Dir)
 	if a.leaveAnswer == nil || dir == "" {

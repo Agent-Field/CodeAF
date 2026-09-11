@@ -300,7 +300,8 @@ func TestHomeAnswersItsOwnWindowThroughItsOwnResolver(t *testing.T) {
 	a.openHome()
 	a.home.point(mine)
 
-	a.homeKey(key("1"))
+	// The answer travels on the command the key hands back (offloop.go).
+	spend(t, a, a.homeKey(key("1")))
 	if sent != 0 {
 		t.Fatal("this window left an answer on its own doorstep instead of answering it")
 	}
@@ -408,7 +409,7 @@ func TestHomeDecliningItsOwnStandingCardSettlesItAsNotSetUp(t *testing.T) {
 	a.openHome()
 	a.home.point(mine)
 
-	a.homeKey(key(session.StandingNoKey))
+	spend(t, a, a.homeKey(key(session.StandingNoKey)))
 	if sent != 0 {
 		t.Fatal("this window left an answer on its own doorstep instead of answering it")
 	}

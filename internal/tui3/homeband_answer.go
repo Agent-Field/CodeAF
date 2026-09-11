@@ -406,20 +406,26 @@ func (a *app) answerHere(question session.PresenceQuestion, key string) (tea.Cmd
 			// (consent.go's [app.answerWith]): the same receipt, the same record
 			// and the same annotated row as the same answer pressed in front of
 			// the question.
-			a.answerWith(action.Allow, action.Scope)
-			return nil, true
+			return a.answerWith(action.Allow, action.Scope), true
 		}
 		if a.agent != nil {
-			a.agent.ResolveConsentRemember(question.ID, action.Allow, action.Scope)
-			return nil, true
+			// FROM A COMMAND, NEVER FROM THE LOOP (offloop.go): home's band
+			// answers over the same wire the block's keys do.
+			agent := a.agent
+			return a.offLoop(func() func(bool) tea.Cmd {
+				agent.ResolveConsentRemember(question.ID, action.Allow, action.Scope)
+				return nil
+			}), true
 		}
 	case session.QuestionTask:
-		if a.answerTaskWith(question.ID, key) {
-			return nil, true
+		if cmd, took := a.answerTaskWith(question.ID, key); took {
+			return cmd, true
 		}
 		if agent, ok := a.tasker(); ok {
-			agent.ResolveTask(question.ID, action.Task)
-			return nil, true
+			return a.offLoop(func() func(bool) tea.Cmd {
+				agent.ResolveTask(question.ID, action.Task)
+				return nil
+			}), true
 		}
 	case session.QuestionStanding:
 		if card := a.stand; card != nil && card.id == question.ID && !card.settled() {
@@ -441,8 +447,10 @@ func (a *app) answerHere(question session.PresenceQuestion, key string) (tea.Cmd
 			}
 		}
 		if agent, ok := a.stander(); ok {
-			agent.ResolveStanding(question.ID, action.Standing)
-			return nil, true
+			return a.offLoop(func() func(bool) tea.Cmd {
+				agent.ResolveStanding(question.ID, action.Standing)
+				return nil
+			}), true
 		}
 	}
 	return nil, false
@@ -463,16 +471,15 @@ func (a *app) answerWholeQuestion(question session.PresenceQuestion, key string)
 	if _, ok := whole.Option(key); !ok {
 		return nil, false
 	}
-	doors, ok := a.questionDoors()
-	if !ok {
-		return nil, false
-	}
-	answer := session.Answer{
-		At: time.Now(), Kind: whole.Kind, ID: whole.ID, Ref: whole.Ref, Ask: whole.Ask,
-		Key: key, Picked: []string{key}, DecidedBy: session.DecidedByPerson,
-	}
-	if err := doors.ResolveQuestion(answer); err != nil {
-		return nil, false
-	}
-	return nil, true
+	// AND IT GOES THROUGH THE ONE ANSWERING DOOR (question.go's
+	// [app.answerQuestions]). Home had its own copy of the road — its own
+	// [app.offLoop], its own refusal sentence — and a second copy of a road is a
+	// second set of rules about what an answer does: this one wrote no receipt,
+	// left no sent stamp, and so read its own answer coming back down the
+	// questions lane as another window's. The question was never drawn on this
+	// page, so there is no row here to put back; everything else about answering
+	// is the same act and is now the same code.
+	return a.answerQuestion(questionShown{question: *whole}, session.Answer{
+		Key: key, Picked: []string{key},
+	}), true
 }

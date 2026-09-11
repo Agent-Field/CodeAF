@@ -1284,14 +1284,53 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	surface := newApp(ctx, opts)
 	p := tea.NewProgram(surface, program...)
-	// AND THE ENGINE IS GIVEN SOMEWHERE TO PUT THE LANE NEWS. Which machine
-	// answered, and whether a rescue went out while somebody was waiting, are
-	// facts only the layer that sent the request can see, and the arrow between
-	// that layer and this one only points this way — so it is pushed
-	// (internal/session's lanenews.go) and this is where the push lands. It is
-	// registered for the life of the program and taken down when it ends, so a
-	// second surface in one process cannot inherit the first one's desk.
-	previousLaneReader := session.OnLaneNews(func(news session.LaneNews) {
+	// AND THE ENGINE IS GIVEN SOMEWHERE TO PUT ITS NEWS, and the loop a door to
+	// be rung through that never waits for it ([listenForNews], doorbell.go). They
+	// are registered for the life of the program and taken down when it ends, so
+	// a second surface in one process cannot inherit the first one's desk.
+	defer listenForNews(surface.news)()
+	defer surface.news.close()
+	defer surface.leaving.close()
+	// AND THE DOOR LINE ENDS WITH THE WINDOW, after what is already in it has
+	// been asked (offloop.go): a person's last keystroke before they close a
+	// window is still an answer somebody gave.
+	defer surface.doorLine.close()
+	defer forwardSignals(p, surface.leaving)()
+	_, err := p.Run()
+	// THE TAB IS HANDED BACK ON EVERY ROAD OUT, after the program has stopped
+	// writing and whatever stopped it (title.go's [titleFarewell]).
+	out := opts.Output
+	if out == nil {
+		out = os.Stdout
+	}
+	titleFarewell(out, surface)
+	return err
+}
+
+// listenForNews is where the engine's news lands in this process, and it
+// returns the function that puts the previous readers back.
+//
+// TWO READERS, ONE WAY IN. The lane news says what the last answer DID — which
+// machine answered, whether a rescue went out while somebody was waiting — and
+// the phase news says what the request in flight is doing right now:
+// connecting, waiting for the first word, thinking, paced, switching, or
+// running a tool between requests. Only the layer holding the stream can see
+// either, and the arrow between that layer and this one only points this way,
+// so both are pushed (internal/session's lanenews.go and phasenews.go) and both
+// land here: filed on this package's desk, then a frame asked for.
+//
+// THE FRAME IS ASKED FOR THROUGH THE DOORBELL AND NEVER WAITED FOR (doorbell.go). These
+// readers run on whatever goroutine the news arrived on — a provider's stream
+// between two deltas, or the wire client's reader between two frames — and
+// internal/session documents that neither may be held by a reader. The second
+// one is the defect doorbell.go opens with: a reader parked on a busy loop held the
+// very frame that loop was waiting for, and an answered question froze the
+// window for ten seconds. A status line that has changed is still a frame that
+// has to be drawn, and nothing else is going to ask for one: a rescue drawn at
+// the next keystroke is a rescue nobody saw, and a clock that only moved at the
+// next keystroke is a clock nobody was watching.
+func listenForNews(door *doorbell) (restore func()) {
+	previousLane := session.OnLaneNews(func(news session.LaneNews) {
 		PostLaneNews(LaneNews{
 			Model:  news.Model,
 			Lane:   news.Lane,
@@ -1314,40 +1353,16 @@ func Run(ctx context.Context, opts Options) error {
 			Session: news.Session,
 			At:      news.At,
 		})
-		// A status line that has changed is a frame that has to be drawn, and
-		// nothing else on this surface is going to ask for one: the news arrives
-		// on the stream's own goroutine, between two events, and a rescue that
-		// was only drawn at the next keystroke would be a rescue nobody saw.
-		p.Send(laneNewsMsg{})
+		door.ring()
 	})
-	defer session.OnLaneNews(previousLaneReader)
-	// AND THE SAME DOOR FOR THE PHASE CLOCK. The lane news above says what the
-	// last answer DID; this says what the one in flight is doing right now —
-	// connecting, waiting for the first word, thinking, paced, switching, or
-	// running a tool between requests — and only the layer holding the stream
-	// can see any of it (internal/session's phasenews.go, forwarding
-	// internal/provider's phase.go). It is registered and taken down exactly as
-	// the lane reader is, for exactly the same reason: a second surface in one
-	// process must not inherit the first one's desk.
-	previousPhaseReader := session.OnPhaseNews(func(news session.PhaseNews) {
+	previousPhase := session.OnPhaseNews(func(news session.PhaseNews) {
 		PostPhaseNews(news)
-		// A phase changes on the stream's own goroutine, between two events, and
-		// nothing else on this surface is going to ask for a frame — a clock
-		// that only moved at the next keystroke would be a clock nobody was
-		// watching, which is the whole complaint this seam answers.
-		p.Send(phaseNewsMsg{})
+		door.ring()
 	})
-	defer session.OnPhaseNews(previousPhaseReader)
-	defer forwardSignals(p)()
-	_, err := p.Run()
-	// THE TAB IS HANDED BACK ON EVERY ROAD OUT, after the program has stopped
-	// writing and whatever stopped it (title.go's [titleFarewell]).
-	out := opts.Output
-	if out == nil {
-		out = os.Stdout
+	return func() {
+		session.OnPhaseNews(previousPhase)
+		session.OnLaneNews(previousLane)
 	}
-	titleFarewell(out, surface)
-	return err
 }
 
 // forwardSignals turns an outside request to leave into a message the surface
@@ -1384,9 +1399,14 @@ func Run(ctx context.Context, opts Options) error {
 // hands the screen back on a bounded best effort; putting a tidy terminal ahead
 // of a person who has asked twice to leave would turn the escape hatch into the
 // same trap it is there to break.
-func forwardSignals(p *tea.Program) func() {
+func forwardSignals(p *tea.Program, leaving *doorbell) func() {
 	return leave.On(
-		func() { p.Send(sigQuitMsg{}) },
+		// THROUGH THE DOORBELL, NEVER Program.Send (doorbell.go). A signal that arrives
+		// while the loop is busy is a token in the slot, taken the moment the
+		// loop is free; a handler parked on Send is a goroutine a busy loop can
+		// hold, and the second signal's forced exit is the only thing that
+		// would be left to end it.
+		leaving.ring,
 		func() { _ = p.ReleaseTerminal() },
 	)
 }

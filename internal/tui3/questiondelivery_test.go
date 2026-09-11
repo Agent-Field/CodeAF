@@ -230,9 +230,11 @@ func TestHomeAnswersALaneItHasNoOlderPathFor(t *testing.T) {
 		Kind: whole.Kind, ID: whole.ID, Text: whole.Head,
 		Options: whole.Options, Full: &whole,
 	}
-	if _, took := a.answerWholeQuestion(presence, "2"); !took {
+	cmd, took := a.answerWholeQuestion(presence, "2")
+	if !took {
 		t.Fatal("home would not answer a lane it has no older path for")
 	}
+	spend(t, a, cmd)
 	if len(gave) != 1 || gave[0].Key != "2" || gave[0].Kind != session.QuestionAsk {
 		t.Fatalf("the one door was handed %#v", gave)
 	}

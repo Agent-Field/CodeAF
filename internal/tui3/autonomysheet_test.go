@@ -36,7 +36,7 @@ func newAutonomyApp() *app {
 
 func TestAutonomyShowsAndChangesThisProjectsRules(t *testing.T) {
 	a := newAutonomyApp()
-	a.slash("/autonomy")
+	spend(t, a, a.slash("/autonomy"))
 	text := plain(lastNote(t, a))
 	for _, want := range []string{
 		autonomyHeadWord, "permission", autonomyAskWord,
@@ -46,11 +46,11 @@ func TestAutonomyShowsAndChangesThisProjectsRules(t *testing.T) {
 			t.Fatalf("/autonomy lost %q:\n%s", want, text)
 		}
 	}
-	a.slash("/autonomy choice recommend 28s")
+	spend(t, a, a.slash("/autonomy choice recommend 28s"))
 	if got := plain(lastNote(t, a)); got != "choice · recommend, auto in 28s · for this project" {
 		t.Fatalf("change = %q", got)
 	}
-	a.slash("/autonomy")
+	spend(t, a, a.slash("/autonomy"))
 	if got := plain(lastNote(t, a)); !strings.Contains(got, "choice           recommend, auto in 28s") {
 		t.Fatalf("the sheet did not read back what was stored:\n%s", got)
 	}
@@ -58,11 +58,11 @@ func TestAutonomyShowsAndChangesThisProjectsRules(t *testing.T) {
 
 func TestAutonomyPrintsTheEnginesRefusalForTheTwoRowsNobodyMayChange(t *testing.T) {
 	a := newAutonomyApp()
-	a.slash("/autonomy clarification recommend 5s")
+	spend(t, a, a.slash("/autonomy clarification recommend 5s"))
 	if got := plain(lastNote(t, a)); !strings.Contains(got, "never runs on a clock") {
 		t.Fatalf("clarification = %q", got)
 	}
-	a.slash("/autonomy confirmation decide")
+	spend(t, a, a.slash("/autonomy confirmation decide"))
 	if got := plain(lastNote(t, a)); !strings.Contains(got, "it always asks") {
 		t.Fatalf("confirmation = %q", got)
 	}
@@ -70,7 +70,7 @@ func TestAutonomyPrintsTheEnginesRefusalForTheTwoRowsNobodyMayChange(t *testing.
 
 func TestAQuestionUnderAProjectRuleWearsItOnTheRow(t *testing.T) {
 	a := newAutonomyApp()
-	a.slash("/autonomy choice recommend 30s")
+	spend(t, a, a.slash("/autonomy choice recommend 30s"))
 	q := deliveryQuestion(1, session.AskChoice, true)
 	q.Policy = session.Policy{Kind: session.PolicyRecommendThenAuto, After: 30 * time.Second}
 	q.Deadline = a.now().Add(28 * time.Second)
@@ -103,7 +103,9 @@ func TestDWritesTheProjectRuleAndSaysSo(t *testing.T) {
 	q := deliveryQuestion(1, session.AskChoice, true)
 	a.raiseQuestion(questionShown{question: q})
 	head, _ := a.questionHead()
-	a.questionDial(head)
+	// AND WHAT `D` HANDED BACK IS RUN. The dial is written through the engine's
+	// door, which is asked from a command and never from the loop (offloop.go).
+	spend(t, a, a.questionDial(head))
 	if rule := agent.rules[session.AskChoice]; rule.Kind != session.PolicyDecide {
 		t.Fatalf("D left this project's rule at %#v", rule)
 	}
