@@ -90,28 +90,48 @@ const phaseWindow = provider.PhaseWindow
 // own shape (lanes.go's [laneNewsMsg]) said again for the other seam.
 type phaseNewsMsg struct{}
 
-// newsDeskKey is the name one piece of news is filed under on either of this
+// newsDeskKeys is every name one piece of news is filed under on either of this
 // package's two desks — this file's phases and lanes.go's sightings.
 //
-// IT IS THE SUBJECT, AND THE MODEL ONLY WHERE THERE IS NO SUBJECT. The subject
-// is an identity — this conversation, or this one node of it — and it is what
-// both desks are keyed by; the model is an address, which is why keying by it
-// let two nodes on one model id overwrite each other (see the header).
+// IT IS THE SUBJECT WHEN THERE IS ONE. The subject is an identity — one node of
+// a conversation — and a node's news is filed under nothing else; the model is
+// an address, which is why keying by it let two nodes on one model id overwrite
+// each other (see the header).
 //
-// THE FALLBACK IS THE COMPATIBILITY BARGAIN AND NOT A SECOND OPINION. Every
-// producer that names no subject, and every older peer across a connection, is
-// talking about the conversation ([provider.PhaseNews.Subject]), and before
-// this field existed the conversation's news was filed under its model — so a
-// subject-less piece of news goes exactly where it has always gone, and the
-// conversation's row is byte-for-byte what it was.
+// THE CONVERSATION'S OWN NEWS IS FILED UNDER THE CONVERSATION, AND UNDER ITS
+// MODEL BESIDE IT. The conversation is the empty subject by the engine's own
+// compatibility bargain ([provider.PhaseNews.Subject]), and it used to be filed
+// under its model and nothing else. That was an address again, and the address
+// moved while the identity did not: a model picked mid-turn changes this
+// window's id at once while the engine finishes the turn on the old one, a
+// stream-cut hop answers on another model, and a model changed from another
+// window reaches the connection without reaching this window's field. Each
+// filed the rate and the machine under a name nobody here was asking for, and
+// the owner read it as `via` and tok/s vanishing at random. The conversation's
+// id ([provider.PhaseNews.Session], the engine's own [session.Agent.NewsKey]) is
+// what every one of those keeps, so it is the first name.
+//
+// THE MODEL COPY IS THE COMPATIBILITY BARGAIN AND NOT A SECOND OPINION. An older
+// peer across a connection sends no conversation at all, and a window that
+// cannot name its own conversation yet has nothing to ask the first name with —
+// both are served exactly as before this change, off the model. The window asks
+// the conversation first and the model second ([app.talkKeys]), so the copy is
+// only ever read where the identity could not be.
 //
 // It is one function because two desks must not key differently: a room that
 // found its node's phase and not its node's lane would draw half a truth.
-func newsDeskKey(subject, model string) string {
+func newsDeskKeys(subject, conversation, model string) []string {
 	if subject = strings.TrimSpace(subject); subject != "" {
-		return subject
+		return []string{subject}
 	}
-	return strings.TrimSpace(model)
+	keys := make([]string, 0, 2)
+	if conversation = strings.TrimSpace(conversation); conversation != "" {
+		keys = append(keys, conversation)
+	}
+	if model = strings.TrimSpace(model); model != "" && model != conversation {
+		keys = append(keys, model)
+	}
+	return keys
 }
 
 // phaseDesk is the latest phase per subject, and nothing else.
@@ -174,10 +194,10 @@ func PostPhaseNews(news PhaseNews) {
 	news.Detail = strings.TrimSpace(news.Detail)
 	news.Then = strings.TrimSpace(news.Then)
 	news.Subject = strings.TrimSpace(news.Subject)
+	news.Session = strings.TrimSpace(news.Session)
 	if news.Model == "" || !news.Role.Visible() {
 		return
 	}
-	key := newsDeskKey(news.Subject, news.Model)
 	if news.At.IsZero() {
 		news.At = time.Now()
 	}
@@ -186,9 +206,20 @@ func PostPhaseNews(news PhaseNews) {
 	}
 	phases.mu.Lock()
 	defer phases.mu.Unlock()
+	for _, key := range newsDeskKeys(news.Subject, news.Session, news.Model) {
+		phases.fileLocked(key, news)
+	}
+}
+
+// fileLocked puts one phase on the desk under one of its names. The caller holds
+// the desk's lock. It is split out of [PostPhaseNews] because the conversation's
+// own news has two names ([newsDeskKeys]) and each keeps its own wait — the
+// model copy may be shared with a peer that filed there first, and a wait's
+// start is a fact about whoever is reading that name.
+func (d *phaseDesk) fileLocked(key string, news PhaseNews) {
 	if news.Phase == "" {
-		delete(phases.latest, key)
-		delete(phases.waits, key)
+		delete(d.latest, key)
+		delete(d.waits, key)
 		return
 	}
 	// ONE INSTANT FOR THE WHOLE WAIT, AND THE CLOCK NEVER RUNS BACKWARDS.
@@ -213,15 +244,15 @@ func PostPhaseNews(news PhaseNews) {
 	// poster that knows an EARLIER start than the desk does wins: internal
 	// provider's allSlow deliberately keeps the wait's own instant, and this
 	// must never round that forward.
-	switch began := phases.waits[key]; {
+	switch began := d.waits[key]; {
 	case !phaseWaiting(news.Phase):
-		delete(phases.waits, key)
+		delete(d.waits, key)
 	case began.IsZero() || news.Since.Before(began):
-		phases.waits[key] = news.Since
+		d.waits[key] = news.Since
 	default:
 		news.Since = began
 	}
-	phases.latest[key] = news
+	d.latest[key] = news
 }
 
 // phaseNewsFor is the latest phase of one subject, false when none is running.
@@ -246,14 +277,38 @@ func forgetPhases() {
 
 // ── WHICH SUBJECT A WINDOW IS A WINDOW ONTO ─────────────────────────────────
 
-// talkSubject is the conversation's own place on the desks: no subject at all,
-// which files it under its model ([newsDeskKey]) exactly as it has always been
-// filed.
+// talkKeys is the conversation's own place on the desks, as the names to ask in
+// order: THE CONVERSATION FIRST, AND ITS MODEL ONLY WHERE NOTHING WAS FILED UNDER
+// IT ([newsDeskKeys] states the bargain from the filing side).
 //
-// It is a method rather than a bare `a.model` so that the two desks ask the
-// same question in the same words, and so that the one place the conversation's
-// key is decided is the one place a reader has to look.
-func (a *app) talkSubject() string { return newsDeskKey("", a.model) }
+// THE CONVERSATION IS THE ENGINE'S OWN NAME FOR IT, read off the journal this
+// window is drawing — the same reading [app.roomSubject] builds a node's name
+// from, so the two cannot disagree about which conversation this is. A window
+// with no journal yet has no first name to ask, and asks the model alone.
+//
+// THE MODEL IS READ BARE, FROM THE FIELD THE DRAW NEVER LENDS. The status row
+// used to spell the reasoning level onto [app.model] for the length of one draw
+// (view.go's [app.statusRow]), and every desk lookup inside that draw asked for
+// `id:level` — a name nothing is ever filed under — so a person who had set a
+// level saw no rate at all, with or without an engine host.
+//
+// It is a method so that the two desks ask the same question in the same
+// words, and so that the one place the conversation's key is decided is the one
+// place a reader has to look.
+func (a *app) talkKeys() []string {
+	return newsDeskKeys("", a.taskSheetSelfID(), a.model)
+}
+
+// talkPhase is the newest phase filed under the conversation's own names, asked
+// in [app.talkKeys]' order: the first name with anything on it answers.
+func (a *app) talkPhase() (PhaseNews, bool) {
+	for _, key := range a.talkKeys() {
+		if news, ok := phaseNewsFor(key); ok {
+			return news, true
+		}
+	}
+	return PhaseNews{}, false
+}
 
 // roomSubject is the subject the OPEN ROOM is a window onto, and "" when there
 // is no room or when nothing here can name its conversation.
@@ -288,7 +343,7 @@ func (a *app) roomSubject() string {
 // livePhase is the phase THE CONVERSATION is in right now, false when there is
 // none or when the one on the desk has gone stale ([phaseWindow]).
 func (a *app) livePhase() (PhaseNews, bool) {
-	news, ok := phaseNewsFor(a.talkSubject())
+	news, ok := a.talkPhase()
 	if !ok {
 		return PhaseNews{}, false
 	}

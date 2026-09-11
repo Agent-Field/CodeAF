@@ -406,5 +406,6 @@ func hostLink(seams hostSeams) tui3.LinkSeam {
 		DrivingChanged: seams.DrivingChanged,
 		Take:           seams.Take,
 		Follow:         hostFollow(seams),
+		NewsSilent:     seams.NewsSilent,
 	}
 }

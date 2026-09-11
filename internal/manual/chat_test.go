@@ -432,6 +432,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what do the up and down arrows next to working mean", "screen"},
 		{"how many tokens is this turn using right now", "screen"},
 		{"do the token arrows show inside a task room", "screen"},
+		// The owner's own words for the gap, 2026-09-10: "at some times I don't see
+		// infra provider and tok/sec … maybe when I have follow up".
+		{"provider missing", "screen"},
+		{"tok/s not showing", "screen"},
+		{"no rate after a follow-up", "screen"},
+		{"sometimes I don't see the infra provider and tok/sec", "screen"},
+		{"why is via missing next to the model", "screen"},
+		{"no tok/s when I set a reasoning level", "screen"},
+		{"it says the engine is an older aforge so the provider and tok/s are not shown", "screen"},
 		{"my click does nothing on the server", "opening-files-from-that-machine"},
 		{"does export save to my laptop", "commands"},
 		{"which machine's settings are these", "commands"},

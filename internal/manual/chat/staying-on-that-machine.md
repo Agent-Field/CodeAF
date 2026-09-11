@@ -423,8 +423,16 @@ conversation inside the window you are looking at — the session host holds it,
 process of its own, so that closing the terminal does not end the work. Everything the
 status row says about a request in flight is measured in that process and pushed to your
 window as it changes: the live `38 tok/s` at the right edge, `via <machine>` beside the
-model once an answer lands, the phase words (`connecting · 1.2s`, `first word …`,
-`thinking`, `writing`), and the `served` row in `/status`.
+model as soon as the machine writing the answer has named itself, the phase words
+(`connecting · 1.2s`, `first word …`, `thinking`, `writing`), and the `served` row in
+`/status`. They are filed under the conversation rather than under its model, so a
+model change in the middle of a turn, a fallback, or a change made from another window
+cannot hide them.
+
+A host started by an **older aforge** may not send them at all. The window then says so
+once, after an answer — `this conversation's engine is an older aforge, so the provider
+and tok/s are not shown — they come back once it picks up this build` — and the host
+retires as soon as it is holding nothing, so the next one runs this build.
 
 The host sends each window only its own conversation's readings, so two terminals on two
 different chats never show each other's clocks. *Running on another machine* has the same
