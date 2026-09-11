@@ -138,6 +138,22 @@ func TestRealRouterNeverRefusesItselfTwice(t *testing.T) {
 			[]ai.Message{{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: "Reply with the single word: ready."}}}},
 			ai.WithMaxTokens(8))
 		if err != nil {
+			// A POOL THAT IS FULL UPSTREAM IS THE WORLD, NOT THE LAW UNDER TEST.
+			// This file strikes every machine it sees answer, so by the late rounds
+			// the set the router may still use is a handful of machines this run
+			// has not reached yet, and a shared pool among them being rate-limited
+			// that minute ends the request with the pool's own 429 — which names
+			// the machine and is no refusal of ours. On 2026-09-10 that was Baidu
+			// at round 14, identically on dev and on the branch, and a Fatalf here
+			// read the busy world as a broken law. The thinning stops instead, and
+			// the two assertions below judge the rounds that ran: the count of
+			// refusals is unchanged, and a run that stopped before thinning a set
+			// worth thinning still fails on the machine count.
+			if refusal, ok := provider.RefusalFrom(err); ok &&
+				refusal.Status == http.StatusTooManyRequests && refusal.FromUpstream() {
+				t.Logf("round %2d  the set left is busy upstream (%s); thinning stops here", round, refusal.Provider)
+				break
+			}
 			t.Fatalf("round %d of %d: %v", round, realIgnoreRounds, err)
 		}
 		if answer == nil || len(answer.Choices) == 0 {
