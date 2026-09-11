@@ -247,10 +247,13 @@ func TestOnlyModelsThatAnswerInTextReachThePicker(t *testing.T) {
 		t.Fatalf("the door's list came through as %v, want %v", got, chatOnly)
 	}
 
-	// The cache rung, written with the same mixture.
+	// The cache rung, written with the same mixture. THE SURFACE IS TOLD, because
+	// a file rewritten behind a running window is a fact only the beat can find —
+	// the frame reads the memo and never the disk (learned.go).
 	if err := WriteModelCache(mixedModels); err != nil {
 		t.Fatalf("WriteModelCache: %v", err)
 	}
+	a.refreshLearning()
 	a.models = nil
 	if got := modelIDs(a.modelList()); strings.Join(got, ",") != strings.Join(chatOnly, ",") {
 		t.Fatalf("the cache let %v through, want %v", got, chatOnly)

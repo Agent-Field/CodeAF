@@ -8,6 +8,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+
+	modelcatalog "github.com/Agent-Field/aforge-v2/internal/catalog"
 )
 
 // ── ASKING THE ROUTER FOR TODAY'S LIST, FROM INSIDE /model ─────────────────
@@ -165,6 +167,16 @@ func (a *app) modelsFetched(msg modelsFetchedMsg) {
 		a.note(ModelsFetchFailed + " · " + strings.Join(strings.Fields(err.Error()), " "))
 		return
 	}
+	// AND A FETCH THAT LANDED REWROTE THE CACHE ON DISK (cmd/aforge's v3 door),
+	// so this is the moment the memo behind the picker's second rung stopped
+	// being true. Dropping it here is what makes ctrl+r a fresh list on every
+	// road onto it rather than only on the one the fetch came back through
+	// (models.go's [app.forgetModelList]).
+	//
+	// IT IS AFTER THE FAILURE CHECK because a fetch that failed wrote nothing:
+	// dropping the memo there would throw away a good reading to punish a bad
+	// call, and the next frame would fall to the built-ins.
+	a.forgetModelList("", modelcatalog.DefaultBaseURL)
 	if a.pick.open && a.pick.refresh {
 		a.pick.restock(list)
 	}

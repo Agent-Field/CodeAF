@@ -169,6 +169,67 @@ func CachedModelsFor(source, base string) []Model {
 	return cleanModels(cached.Models)
 }
 
+// ── THE CACHE AS A FACT THE LOOP LEARNED ────────────────────────────────────
+//
+// [CachedModelsFor] is a file read, and a frame that has to name a model reaches
+// it — through [app.modelsForDefault] and [app.modelsForConnectedService] —
+// whenever the door handed this surface no catalog. That is the first-run
+// screen, every window opened with no key, and every window whose fetch has not
+// landed yet: the ones where the list matters most were the ones re-reading the
+// whole file thirty times a second.
+//
+// So the read is a memo now, on the surface's ONE mechanism for a fact the loop
+// learned and the frame reads (learned.go). The name a reading is filed under is
+// the service and the base it belongs to, joined, because that pair is what
+// decides which file on disk answers and whose rows are in it.
+
+// modelCacheName joins the pair into the one name the memo files a reading
+// under. It is a function rather than a format string at each site because the
+// name is also what [readModelCacheName] takes apart again, and a join and a
+// split that disagree would serve one service's rows under another's name.
+func modelCacheNameFor(source, base string) string { return source + "\x00" + base }
+
+// readModelCacheName is the memo's one reading: the pair, taken apart, read off
+// the disk. It is installed on [app.modelLists] at construction and called from
+// nowhere else.
+func readModelCacheName(name string) []Model {
+	source, base, _ := strings.Cut(name, "\x00")
+	return CachedModelsFor(source, base)
+}
+
+// cachedModelsFor is THE FRAME'S DOOR onto a service's cached rows: the memo,
+// and nothing else. An empty answer is "nobody has read that file yet" as much
+// as it is "the file holds nothing", and both draw the same thing — the rung
+// below, which is the built-ins (see this file's head). The loop fills the memo
+// at `open` ([app.learnModelLists]), on the pulse's beat and whenever a fetch
+// rewrites a file ([app.forgetModelList]).
+func (a *app) cachedModelsFor(source, base string) []Model {
+	models, _ := a.modelLists.of(modelCacheNameFor(source, base))
+	return models
+}
+
+// cachedModels is the same door for the default pair, which is what a surface
+// with no connected service asks about.
+func (a *app) cachedModels() []Model {
+	return a.cachedModelsFor("", modelcatalog.DefaultBaseURL)
+}
+
+// learnModelLists is `open`'s reading: the default pair and every service this
+// profile has connected, read before the first frame asks about any of them.
+func (a *app) learnModelLists() {
+	a.modelLists.learn(modelCacheNameFor("", modelcatalog.DefaultBaseURL))
+	for _, service := range a.sources.All() {
+		a.modelLists.learn(modelCacheNameFor(service.Source.ID, service.Address))
+	}
+}
+
+// forgetModelList is for the one caller who KNOWS the file under a pair just
+// changed — a fetch that wrote it, ctrl+r asking for a fresh list — and will not
+// wait for the beat to find out.
+func (a *app) forgetModelList(source, base string) {
+	a.modelLists.forget(modelCacheNameFor(source, base))
+}
+
 // WriteModelCache replaces the cache with models. It is called from the door
 // after a catalog fetch has succeeded — never from the picker, which must not
 // spend I/O on the keystroke path — and it writes through a temporary file so a

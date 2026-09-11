@@ -1851,7 +1851,7 @@ func (a *app) modelsForDefault(keep modelFilter) []Model {
 			return list
 		}
 	}
-	if list := keepModels(CachedModels(), keep); len(list) > 0 {
+	if list := keepModels(a.cachedModels(), keep); len(list) > 0 {
 		return list
 	}
 	return keepModels(BuiltinModels(), keep)

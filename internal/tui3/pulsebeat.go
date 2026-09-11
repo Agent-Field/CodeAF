@@ -67,6 +67,12 @@ func pulseNow() tea.Msg { return pulseTickMsg{} }
 // pulseBeat answers one beat: it asks for the walk when no home is open, and
 // always asks for the next beat.
 func (a *app) pulseBeat() tea.Cmd {
+	// AND IT IS THE TICK THE DISK MEMOS RIDE. Nothing on this machine tells a
+	// terminal that a picture was overwritten or that another window rewrote the
+	// model cache, so the only way to know is to ask again — and this is the beat
+	// this surface already pays for, on the loop, where the fourth law says a
+	// reading belongs (learned.go's [app.refreshLearning]).
+	a.refreshLearning()
 	if a.at(pageHome) {
 		return pulseTick()
 	}

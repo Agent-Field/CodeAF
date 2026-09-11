@@ -52,16 +52,30 @@ func openerCommand() (string, []string) {
 
 // startOpener hands the target to the platform and does not wait for whatever
 // opens it: a browser left open must not hold a goroutine here.
+//
+// THE NAME IS RESOLVED HERE AND THE PROCESS IS STARTED ELSEWHERE. Six doors call
+// this from the update loop on a keystroke — ctrl+o, `o open folder`, /connect,
+// the first-run sign-in, /files — and every one of them chooses its sentence from
+// the error on the frame that needs it. exec.Command looks the opener up on PATH
+// and records a miss in command.Err WITHOUT STARTING ANYTHING, and that miss is
+// the answer those doors act on: no `xdg-open` on a headless box. The fork itself
+// is handed to a goroutine, so the loop never starts a process of its own
+// (framedisk_law_test.go). A fork that then fails is a link that did not open,
+// which is the case the link written under every handoff exists for.
 func startOpener(target string) error {
 	name, args := openerCommand()
 	if name == "" {
 		return errors.New("this machine has no way to open a browser")
 	}
 	command := exec.Command(name, append(append([]string(nil), args...), target)...)
-	if err := command.Start(); err != nil {
+	if command.Err != nil {
 		return errors.New("the browser did not open")
 	}
-	guard.Go("tui3/open", func() { _ = command.Wait() })
+	guard.Go("tui3/open", func() {
+		if command.Start() == nil {
+			_ = command.Wait()
+		}
+	})
 	return nil
 }
 
