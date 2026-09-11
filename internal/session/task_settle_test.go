@@ -354,7 +354,7 @@ func TestAStalledCheckerIsNamedAsAStallEvenWhenItSpentTheWindow(t *testing.T) {
 // same red the test above trips under load, where it passes twenty runs of
 // twenty on its own and fails one full suite in three.
 //
-// THE CLOCK IS THE SEAM ([Config.auditClock]), and here it steps a quarter of
+// THE CLOCK IS THE SEAM ([Config.clock]), and here it steps a quarter of
 // the window on every reading, so the gap that only opens on a loaded box is
 // open on every run: the fourth reading leaves a tenth of the window and asks
 // for a fresh checker, the fifth finds the window closed. What the landing owes
@@ -398,7 +398,7 @@ func TestASecondCallTheWindowRefusedIsNotSaidToHaveBeenAsked(t *testing.T) {
 		config.AskConsent = false
 		config.TaskAutoApproveSeconds = 0
 		config.auditWindow = window
-		config.auditClock = func() time.Time {
+		config.clock = func() time.Time {
 			return opened.Add(time.Duration(readings.Add(1)-1) * (window / 4))
 		}
 	})

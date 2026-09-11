@@ -71,9 +71,19 @@ type quickTaskSpec struct {
     done  []bool   // parallel to items; set by the `items` tool; read under graph.mu
 }
 
-// newQuickSpec builds the taskSpec for a quick node. parent is 0 from the
-// conversation. Refusals are results the model reads, never errors.
-func (a *Agent) newQuickSpec(line string, items, files []string, dependsOn []uint64) (taskSpec, string)
+// admitQuick is the ONE door every quick node comes through, on every road
+// (2026-09-11, see "One door, one record, one hold" below). newQuickSpec is
+// its only caller-side constructor. Refusals are results the reader gets back,
+// never errors, and the door says which refusal it was: a model reads one
+// sentence either way, but the ceiling road writes the fan cap down under its
+// own word.
+func (a *Agent) admitQuick(ask quickAsk) (id uint64, spec taskSpec, refusal quickRefusal)
+func (a *Agent) newQuickSpec(ask quickAsk) (taskSpec, string)
+
+type quickRefusal struct {
+    said    string // the one sentence whoever asked reads
+    fanFull bool   // the parent task's fan cap declined it, not the ask itself
+}
 
 // quickTools is the belt door: `quick_task`, withheld at taskDepthLimit exactly
 // as propose_task is (task.go:463).
@@ -193,3 +203,103 @@ ssh spark 'export PATH=$HOME/.local/bin:$PATH; set -a; . ~/.config/fleet/secrets
 
 Push the branch first. tui3 gets `-timeout 20m`. Four tui3 tests are red on dev since #798
 and are being fixed by another session on `fix/798-harness-clock-reds`; do not touch them.
+
+## One door, one record, one hold — 2026-09-11 (task-start wave, lane Q)
+
+Measured on dev `6a3b478cf` and on the owner's own `tasks.json`. Six things were true
+of the quick task that this section replaces.
+
+**The graph would not load once a quick task had run.** `newQuickSpec` leaves the
+done-condition empty by design, the record wrote it without `omitempty`, and
+`decodeTasks` refused the whole document on an empty one — so every conversation that
+had run a quick task resumed with no tasks at all, its ordinary tasks included. #869
+fixed that first, and this lane builds on it: whether a node owes a done-condition is a
+property of its kind (`kindsWithoutAcceptance`, read through `acceptanceHolds` by the
+builder's law test and by the decoder), and `quick` is the one kind that owes none.
+
+**The record labelled a quick node and could not rebuild it.** `taskRecord` had the kind
+and not the body, so `restoreNode` came back with `spec.quick == nil` — nothing told the
+runner it was quick — and ticks lived only in memory and in the row's rendered word. Now
+the record carries `quick: {line, items, done, files}` under `omitempty` (ordinary
+records are byte-for-byte unchanged), `restoreNode` rebuilds the body through the one
+body constructor `newQuickTaskSpec`, and a tick checkpoints like every other transition
+(`TaskNode.quickItemChange`). Before and after, one quick node:
+
+```json
+{"id":1,"title":"compare the schema with the migration","summary":"compare the schema with the migration",
+ "brief":"compare the schema with the migration","where":"in place","acceptance":"",
+ "ground":"/home/me/proj","groundMode":"in place","depth":1,"state":"running",
+ "wrote":["notes.md"],"model":"…","startedAt":"…","kind":"quick"}
+
+{"id":1,"title":"compare the schema with the migration","summary":"compare the schema with the migration",
+ "brief":"compare the schema with the migration","where":"in place","acceptance":"",
+ "ground":"/home/me/proj","groundMode":"in place","depth":1,"state":"running",
+ "wrote":["notes.md"],"model":"…","startedAt":"…","kind":"quick",
+ "quick":{"line":"compare the schema with the migration",
+          "items":["read the schema","read the migration","say which disagrees"],
+          "done":[true,false,false],"files":["notes.md"]}}
+```
+
+**So the restart rule changed its reason, and its reach.** A quick node is settled on the
+close not because it cannot be rebuilt but because it must not be restarted: its
+worker's context and its caller's turn died with the process, and a worker started
+again would open on the line alone, in whatever folder the new runner stands in.
+#869 had already extended the settle to a quick node that was still *waiting*, on the
+ground that its list was not on the record; the list is on the record now, and the
+waiting one still settles — one left queued would start on its own in a session that
+has forgotten why it was asked for (`nothingIsComingBackForIt`). The report is the
+list (`ticked 2 of 4: …`, `not ticked: …`), the changed list is what it wrote, and the
+recovery line counts it under its own clause, `N quick tasks did not finish`, rather
+than as `interrupted (no branch kept)` — a resume and a branch it never had. The
+continue verb refuses kind `quick` in the same switch and the same sentence as a design
+and a saved shape's run.
+
+**Two doors built two objects.** The ceiling's handover (`checkpoint_quick.go`)
+assembled its quick node by hand and admitted it through the route judge's launcher:
+an invented done-condition, the ground ladder's mode (a working copy) instead of in
+place, a naming call the verb promises not to make, no `where`, depth 0 and no owner,
+and no look at the write claims. Now there is one door, `Agent.admitQuick(quickAsk)`:
+it holds `quickGate` over the look and the admit, builds the spec through
+`newQuickSpec` — the one place mode, ground, `where`, `named`, the empty done-condition,
+the family and the model are decided — takes the fan slot and admits. The tool parses a
+`quickAsk` out of a call and the ceiling reads one out of a drawing; `launchRouteTask`
+no longer knows quick exists. The line is kept whole (the ceiling's line is the
+person's own message, which may be a paragraph); only its first line titles the row.
+
+**And the ceiling road no longer pays for a name it cannot use.** `nameAhead` used to be
+started above the branch that chooses this road, so every write-free carry-on sent a real
+request to a real model and cancelled it microseconds later — for a node `newQuickSpec`
+admits `named`, which `TaskGraph.nameNode` therefore leaves alone. The ask now stands
+below the branch, where the road is already known; the full road still has the brief
+writer's call to land in, so nothing is lost by asking a moment later
+(`TestAQuickCarryOnAsksForNoNameAndTheFullRoadStillDoes` counts the requests on both
+roads). The other refusal the road can meet is the fan cap: a ceiling reached *inside* a
+task carries on to a child of that task, so `claimChild` can decline it, and that ending
+is journalled as `dropped:parent-fan-full` rather than as the `dropped:no-brief` it
+borrowed — a session file should not send a reader looking for a brief that was never
+the problem.
+
+**A running quick task held nothing it wrote.** `claimOver` skips a node with no working
+copy and `fileOwner` skipped any node without a branch, so the one kind of node writing
+in the person's own folder was the one whose half-written file the chat or a sibling
+could overwrite — while the manual said the first writer owned it. Now both claims read
+one derivation, `TaskNode.holdsTreeLocked`: a node holding its tree is answered by
+`claimOver` for every path in it, and every other running node owns the paths it has
+written, by name (`fileOwner`). A quick task still never holds the folder, and a file it
+only *named* is still only a sequencing promise between quick tasks, never a hold on
+the person.
+
+**Another window's quick parts read as unrelated jobs.** `PresenceTask` now carries
+`Kind`, `Parent` (the id in its own spelling), and `Done`/`Total` filled from a quick
+node's list. `renderElsewhereBlock` folds a window's rows onto the top of each family
+(`foldElsewhere`) and names a non-ordinary kind with `TaskKindWord`, so the model reads
+`- Survey the config loaders · window "docs pass" · 3 quick parts running · …` as one
+piece of work. The tick count stays off the block: it would churn a block that
+promises not to.
+
+**And `TaskNode.Expects` is now on the record.** It was left off on the grounds that a
+restored node had already answered its preflight, which was false for a node that had
+never started, and the brief section it feeds (`instructionOn`) came back empty for
+every restored node. The spec's copy is always restored; the preflight manifest only
+onto a record that never ran (`expectsOwed`).
+

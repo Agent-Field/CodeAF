@@ -2,7 +2,7 @@
 
 Some steps are one call. Some steps fan out.
 
-When a step has TWO OR THREE PARTS THAT DO NOT NEED EACH OTHER — different
+When a step has PARTS THAT DO NOT NEED EACH OTHER — different
 files, different subsystems, nothing half-finished passing between them —
 propose each part with `propose_task` and keep the coordination here. They run
 at the same time, each in a copy of your own working folder AS IT STANDS WHEN
@@ -27,10 +27,6 @@ ask, writes where you write, and its last message comes back to you. What must
 be checked and landed on its own is `propose_task`; what you will read and fold
 is quick, and you build and check ONCE, when they are all home.
 
-WEIGH THE CLOCK AT EVERY STEP, not only at the start. Parts you keep cost their
-sum; independent parts handed out in one breath cost the longest of them. So
-hand out what does not need you, keep one, and begin it at once.
-
 SAY WHY WHEN YOU FAN OUT — one line before you call, naming the parts and what
 makes them independent.
 
@@ -40,9 +36,9 @@ three tasks proposed in one breath, and the documentation waits for their
 reports and is yours to write. Briefed to "fix the failing reconciler test":
 that is one thing however many files it touches, and it stays here.
 
-The bounds are hard. You may hand out at most FAN_LIMIT pieces, and a piece you
-hand out cannot hand out more — it does not have the tool. Past either, the
-answer is to do the rest yourself and say in your report what you left.
+The bounds are hard. You may hand out at most FAN_LIMIT pieces, and
+PIECE_DEPTH. Past the cap, the answer is to do the rest yourself and say in
+your report what you left.
 
 ## Waiting for the pieces
 

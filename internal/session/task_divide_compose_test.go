@@ -6,7 +6,6 @@ package session
 // read back off the node the graph actually admitted.
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -143,7 +142,7 @@ func TestASketchPartAndAWorkerWrittenPartGetTheSameFamilyContext(t *testing.T) {
 		"A is the flaking auth test, B is the release notes"))
 
 	drawn := newDivideNestFrom(t, spec, 0, &scriptedCompleter{}, nil)
-	drawn.node.divideFromSketch(context.Background())
+	weighBeside(t, drawn.node)
 
 	// The same two parts as the drawing bore, said by a worker instead: the
 	// legend's words as the scope, and the name the sketch road mints from it.

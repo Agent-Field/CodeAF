@@ -244,6 +244,14 @@ func (a *Agent) tasksTool() bare.Tool {
 // node sees the pieces it handed out itself and nothing wider, which is this
 // tool's own scope law said about a different set of rows.
 func (a *Agent) taskSearchText(query string, limit int, scope string) string {
+	// A NODE'S ROWS ARE ITS WHOLE FAMILY ([Agent.taskRows]), and a family is
+	// bounded by [taskFanLimit], so a node that names no limit is shown all of
+	// it. The project's default ([taskSearchLimit]) is for a conversation reading
+	// history; a parent shown half the pieces it handed out plans around pieces
+	// it believes it never started.
+	if limit <= 0 && a.config.taskID != 0 {
+		limit = taskFanLimit
+	}
 	out := taskRowsTextLimit(a.taskRows(), query, limit)
 	if !a.tellsElsewhere() {
 		return a.taskConversationHint(out)

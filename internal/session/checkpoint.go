@@ -3941,15 +3941,6 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 		// discarding the reason it did not decline.
 		draft = reading.remainder()
 	}
-	// THE NAME IS ASKED FOR HERE, once NO ending above this line can still take
-	// the road: the await, the drop and the steward's own two endings are all
-	// behind it. It used to be started above both model calls so the rail row was
-	// never drawn under the person's raw sentence, and it still has the writer's
-	// call below to land in — the longest stretch of the stage — so nothing is
-	// lost by asking a moment later. A completed request no longer pays a namer
-	// for a task nobody starts (taskname.go's [nameAhead]).
-	ahead := a.nameAhead(asked)
-	defer ahead.release()
 	// AND A TURN THAT ONLY READ GOES SOMEWHERE ELSE ENTIRELY, on a road that
 	// writes no brief because the drawing already is one (checkpoint_quick.go).
 	//
@@ -3958,10 +3949,27 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// at all and the kind of node it would have moved to changes none of that.
 	// Before, because the two calls below are the whole of what this road exists
 	// to skip: a worktree nobody opens and a ninety-second writer producing a
-	// paragraph the items say better.
+	// paragraph the items say better — AND THE NAME, which is asked for under
+	// this branch rather than over it. THE NAMING ERRAND BELONGS TO THE ROAD THAT
+	// NAMES: a quick node is never named ([Agent.newQuickSpec] admits it named, so
+	// [TaskGraph.nameNode] leaves it alone), and asking above this line meant every
+	// quick carry-on sent a real request to a real model and cancelled it
+	// microseconds later — a call paid for, and an answer nobody was ever going to
+	// read.
 	if quick := a.quickFromDrawing(read, asked); quick != nil {
-		return a.handOverAsQuick(ctx, hub, turn, started, model, verdict, asked, quick, ahead)
+		return a.handOverAsQuick(ctx, hub, turn, started, model, *quick)
 	}
+	// THE NAME IS ASKED FOR HERE, once NO ending above this line can still take
+	// the road and the road itself is known: the await, the drop, the steward's own
+	// two endings and the quick node are all behind it. It used to be started above
+	// both model calls so the rail row was never drawn under the person's raw
+	// sentence, and it still has the writer's call below to land in — the longest
+	// stretch of the stage — so nothing is lost by asking a moment later. A
+	// completed request no longer pays a namer for a task nobody starts, and a
+	// quick carry-on no longer pays one for a row nothing renames (taskname.go's
+	// [nameAhead]).
+	ahead := a.nameAhead(asked)
+	defer ahead.release()
 	// AND THE BRIEF IS WRITTEN BY SOMEBODY WHO DID NOT SPEND THE TURN.
 	//
 	// THE DRAFT IS THE FINDINGS AND THE WRITER IS THE JUDGEMENT, which is the split
@@ -4200,7 +4208,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// closing remark of a finished answer. The person's sentence is the one thing
 	// on this road nobody writes, so it is the one thing that cannot come back as
 	// machinery — and the namer improves it a second later anyway (taskname.go).
-	said, id := a.launchRouteTask(hub, verdict, asked, drawn, ahead, nil)
+	said, id := a.launchRouteTask(hub, verdict, asked, drawn, ahead)
 
 	// THE GAP IS SPENT, because the person has just been interrupted by a task and
 	// does not care which of the moments noticed. routeJudgeGap exists so that work

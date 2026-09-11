@@ -164,10 +164,6 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// session may name itself and the errand starts on the first message rather
 	// than at the end of a turn (title.go).
 	agent.titleCtx, agent.titleStop = context.WithCancel(context.Background())
-	// And the block a task node was OPENED with, if it was opened with one: the
-	// parent routed it at the spawn seam and handed it down here, because a node
-	// has no turn of its own to route against (task_run.go).
-	agent.memoryText = config.memoryBrief
 	// The registry is built before the belt because the belt closes over it:
 	// bash's background path and the jobs tool are both views onto this one
 	// object, and it is the agent's own steering queue they report into.
@@ -1535,10 +1531,12 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// said — the field is what the NEXT note would carry, and emptying it means
 	// this turn lands no new one until the router has answered.
 	//
-	// ONLY AN AGENT THAT CAN ROUTE CLEARS THE BLOCK. A task node was handed its
-	// memories once, at the spawn seam, by the conversation that had the store
-	// (memory.go's memoryBrief); it has nothing to replace them with, and
-	// clearing them on its first turn would take away the one thing it was given.
+	// ONLY AN AGENT THAT CAN ROUTE CLEARS THE BLOCK. A task node is handed its
+	// memories by the conversation that has the store, which reads them beside
+	// the node's work and hands them over whenever they land (memory.go's
+	// [nodeMemory], [Agent.takeMemory]); it has nothing to replace them with, and
+	// clearing them would take away the one thing it was given — and would race
+	// a block that arrives while this turn is opening.
 	if a.remembers() {
 		a.memoryText = ""
 	}
@@ -3130,10 +3128,24 @@ func (a *Agent) taskNewsStanding() (owed int, working bool) {
 // will mark something else. The parent parked on them cannot tell the roads
 // apart and must not have to, so every one of them hands its news over here.
 //
-// NOTHING SLOW GOES INSIDE. The seam holds two writes and the small locks they
-// take; the checkpoint a mark owes the disk is written by the caller after this
-// returns, because a lock a parked runner takes on every pass is not a lock to
-// write a file under.
+// NOTHING SLOW GOES INSIDE, AND WHAT IS INSIDE IS THERE TO KEEP TWO WRITES IN
+// ORDER. This seam holds two writes and the small locks they take; the
+// checkpoint a mark owes the disk is written by the caller after this returns,
+// because a lock a parked runner takes on every pass is not a lock to write a
+// file under.
+//
+// The rule this lock is held by is the same for every holder, here and
+// elsewhere: a hold is allowed only when it is BOUNDED — local work whose end
+// this process decides — and only when holding it is what keeps two facts one
+// fact for whoever reads them next. Admitting a division's parts is the other
+// holder that meets the bar: the claim, the freeze and the admits are local, and
+// they are held together with the withdrawal check so that the reader above
+// either sees the parts outstanding or sees them never admitted, with no instant
+// between. A hold that waits on a person, on a model or on the network is never
+// allowed here, whatever it would make atomic: the parked runner takes this lock
+// on every pass, and a wait of that kind is not this process's to end.
+// TestWhatIsDoneUnderTheHandoverLockIsBounded holds every holder to that: each
+// call made under the hold is written down in the law with the reason it ends.
 func (a *Agent) handOverTaskNews(settled func()) {
 	a.handover.Lock()
 	defer a.handover.Unlock()
