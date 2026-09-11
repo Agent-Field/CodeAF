@@ -1,5 +1,5 @@
- [1m[38;5;110maforge[0m                                                                                  [38;5;243mfri 4:54pm[39m
-  [38;5;243m Home    [1m[38;5;237m[48;5;252m ◐ dual simultaneous  × [0m[38;5;243m  + [39m
+ [1m[38;5;110maforge[0m                                                                                  [38;5;243mfri 7:57pm[39m
+  [38;5;243m Home    [1m[38;5;237m[48;5;252m ◐ new conversation  × [0m[38;5;243m  + [39m
 [38;5;243m────────────────────────────────────────────────────────────────────────────────────────────────────
 
 
@@ -12,10 +12,10 @@
     [38;5;110m[{"key":"1","label":"allow once"},{"key":"2","label":"skip it"}]. The second: head "read[39m
     [38;5;110mgo.mod?", kind permission, form line, reason "the module path decides the import", stakes[39m
     [38;5;110mreversible, options [{"key":"1","label":"allow once"},{"key":"2","label":"skip it"}].[39m
-                                                                                                   [38;5;252m❮
-[39m    [38;5;235m$ load_capability 1 call[39m
-    [38;5;238m» ask 2 calls[39m
-    [38;5;103m▪ [39m                                                                            [38;5;235m↑[38;5;243m 15.6k[39m  [38;5;238m↓[38;5;252m 893[39m
+
+    [38;5;235m$ load_capability 1 call[39m                                                                       [38;5;252m❮
+[39m    [38;5;238m» ask 2 calls[39m
+    [38;5;103m▪ [39m                                                                            [38;5;235m↑[38;5;243m 15.6k[39m  [38;5;235m↓[38;5;243m 352[39m
 
 
 
@@ -23,14 +23,14 @@
 
 
 
-[38;5;243m─ dual simultaneous permissio… · deepseek/deepseek-v4-flash · ⠿ auto · via wafer ─── [38;5;116mesc[38;5;243m interrupt ─
+
+
+[38;5;243m─ q-tabs · deepseek/deepseek-v4-flash · ⠿ auto · via wafer · main ────────────────── [38;5;116mesc[38;5;243m interrupt ─
 ╭─[39m [38;5;243m○ package.json[39m   [38;5;243m○ go.mod[39m   [1m[38;5;186m●[0m [38;5;252mreview[39m [38;5;243m──────────────────────────────────────────────────[39m [38;5;243mreview[39m [38;5;243m─╮
 │[39m                                                                                                  [38;5;243m│
 │[39m [38;5;243m○[39m [38;5;252mpackage.json[39m   [38;5;243mnot answered — ← to go back[39m                                                     [38;5;243m│
 │[39m [38;5;243m○[39m [38;5;252mgo.mod[39m         [38;5;243mnot answered — ← to go back[39m                                                     [38;5;243m│
 │[39m                                                                                                  [38;5;243m│
-│[39m [38;5;243mnothing answered yet — ← to go back[39m                                                              [38;5;243m│
-│[39m                                                                                                  [38;5;243m│
 ╰─[39m [38;5;116m←[38;5;243m back · [38;5;116mesc[38;5;243m later[39m [38;5;243m─────────────────────────────────────────────────────────────────────────────╯
 [39m [38;5;243m› [39m
- [38;5;252m$0.0062[38;5;243m · [38;5;252m⟲ 26% cached[38;5;243m   [38;5;252m15.6k/1M · 1%[38;5;243m   [38;5;173mYOLO[39m                [38;5;186m? 2 questions · alt+a[38;5;243m · [38;5;146m⠇[39m [38;5;146mworking[38;5;243m · [38;5;146m7s
+ [38;5;252m$0.0026[38;5;243m · ⟲ 28% cached   [38;5;252m15.6k/1M · 1%[38;5;243m   [38;5;173mYOLO[39m                [38;5;186m? 2 questions · alt+a[38;5;243m · [38;5;146m⠋[39m [38;5;146mworking[38;5;243m · [38;5;146m6s

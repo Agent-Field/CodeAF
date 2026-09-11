@@ -107,9 +107,6 @@ const (
 	// It says where the answer is given, because a review a person cannot act
 	// on from is a list of complaints.
 	questionNotAnsweredWord = "not answered — ← to go back"
-	// questionNothingHeldWord is the review with nothing held at all. There is
-	// no send row then (the emptiness law), so this row is the whole of it.
-	questionNothingHeldWord = "nothing answered yet — ← to go back"
 	// questionResumesWord is what sending everything does, and it is said only
 	// where it is true: every question in the set is holding the turn.
 	questionResumesWord = "the turn resumes with every answer"
@@ -300,11 +297,18 @@ func (a *app) questionSetReviewing(set []questionShown) bool {
 
 // questionGrouped reports whether the set is asked as ONE permission frame.
 //
-// IT IS WHAT THE ANSWERS ARE, NOT WHAT THE QUESTIONS ARE CALLED. A set is one
-// permission decision when every question in it asks permission AND offers a
-// plain grant and an answer that loses nothing — because `allow all` and `deny
-// all` are those two answers given to each question in its own keys, and a
-// question with no such pair has nothing for either row to give it.
+// BOTH CLAUSES ARE LOAD-BEARING, and they answer different questions. Asking
+// PERMISSION is what lets the frame use permission's words: `allow all 4` and
+// `deny all` are a sentence about granting, and two confirmations from one step
+// — `stop this task?`, `close this tab?` — would wear it as a lie however their
+// answers happen to be shaped. Offering a plain GRANT AND AN ANSWER THAT LOSES
+// NOTHING is what lets those two rows do anything: each is that question's own
+// answer given in its own keys ([questionGrantAndSafe]), so a question with no
+// such pair has nothing for either row to give it.
+//
+// What is NOT here is any reading of the head or of [session.Question.Kind]: the
+// set itself is keyed on the engine's step ([questionSetOf]) and the frame on
+// the answers, never on how a question is spelled.
 func (a *app) questionGrouped(set []questionShown) bool {
 	if len(set) < 2 || a.questionSetNow(set).apart {
 		return false
@@ -700,8 +704,9 @@ func (a *app) questionSetRows(set []questionShown, width int) []string {
 }
 
 // questionTabRows is one tab: the question's own sentence first, then exactly
-// the rows a panel of one draws under it ([app.questionPanelBody]), with the
-// tabs in the top edge and `←→ question` in the bottom one.
+// what a panel of one draws under it ([app.questionPanelInside]) — its answers,
+// or its beat's shapes where it is part-way through the widening answer — with
+// the tabs in the top edge and `←→ question` in the bottom one.
 func (a *app) questionTabRows(set []questionShown, at, width int) []string {
 	q := set[at]
 	inner := frameInner(width)
@@ -715,19 +720,10 @@ func (a *app) questionTabRows(set []questionShown, at, width int) []string {
 		}
 		rows = append(rows, questionPanelGap+lead+a.pal.ink(line))
 	}
-	first := len(a.questionBands)
-	rows = append(rows, a.questionPanelBody(q, inner)...)
-	// The body counts its bands from its own top, and the frame's top edge and
-	// the sentence stand above it.
-	for i := first; i < len(a.questionBands); i++ {
-		a.questionBands[i].row += 1 + 1 + len(headRows)
-	}
-	keys := a.questionAnswerKeys(q, formsCard)
-	edge := append(questionSetVerbs(formsTabs), questionKeysOnTier(keys, keyPrimary)...)
-	keyRow := a.questionKeyRow(q, edge, frameEdgeRoom(width))
-	if q.writing != "" {
-		keyRow = a.pal.dim(fit(a.questionWritingRow(q), frameEdgeRoom(width)))
-	}
+	// The frame's top edge, the blank row and the sentence all stand above what
+	// the question itself draws, and the inside records its marks knowing it.
+	body, keyRow, keys := a.questionPanelInside(q, width, inner, 1+1+len(headRows), questionSetVerbs(formsTabs))
+	rows = append(rows, body...)
 	aside := a.pal.dim(itoa(at+1) + questionOfWord + itoa(len(set)))
 	panel := framed{
 		title: a.questionTabStrip(set, at, frameEdgeRoom(width)-ansi.StringWidth(ansi.Strip(aside))-2),
@@ -755,7 +751,7 @@ func (a *app) questionReviewRows(set []questionShown, width int) []string {
 	rows := []string{""}
 	held := 0
 	for i, q := range set {
-		mark, words := a.pal.dim(a.icon(tokens.GTabOpen)), a.pal.dim(questionNotAnsweredWord)
+		mark, words := a.pal.dim(a.icon(tokens.GStepPending)), a.pal.dim(questionNotAnsweredWord)
 		if q.staged != nil {
 			held++
 			mark, words = a.pal.dim(a.icon(tokens.GSettled)), a.pal.ink(questionHeldWords(q))
@@ -770,7 +766,11 @@ func (a *app) questionReviewRows(set []questionShown, width int) []string {
 	rows = append(rows, "")
 	keys := questionSetVerbs(formsReview)
 	if held == 0 {
-		rows = append(rows, questionPanelGap+a.pal.dim(fit(questionNothingHeldWord, room)), "")
+		// A REVIEW WITH NOTHING HELD SAYS SO BY WHAT IS NOT THERE. Every row
+		// already reads `not answered — ← to go back` and the send row is absent,
+		// so a sentence under them saying the same thing a third time is the
+		// emptiness law's "never a line saying a group is empty" — and on a set
+		// of two it printed one sentence three times.
 		keys = questionDropVerbKey(keys, questionEnterKey)
 	} else {
 		aside := ""
@@ -905,6 +905,14 @@ func (a *app) questionTabStrip(set []questionShown, at, room int) string {
 	overhead := (len(set)+1)*(2+len(gap)) - len(gap) + ansi.StringWidth(questionReviewWord)
 	share := (room - overhead) / len(set)
 	parts := make([]string, 0, len(set)+1)
+	// THE MARKS ARE THE STEP DOTS' OWN, because a strip of tabs is a sequence
+	// with a place in it and that is what those two marks already say: the
+	// filled dot is where you are and the hollow one is still to come. Minting
+	// a pair of tab-shaped glyphs drew the same two cells in all three tiers
+	// under two more names, which is the one-glyph-one-meaning law's whole
+	// subject. `✓` keeps its own meaning — settled — and a tab wears it only
+	// once its question has an answer held.
+	held := 0
 	for i, q := range set {
 		label := ""
 		if share >= 3 {
@@ -912,17 +920,28 @@ func (a *app) questionTabStrip(set []questionShown, at, room int) string {
 		}
 		switch {
 		case i == at:
-			parts = append(parts, a.pal.warnBold(a.icon(tokens.GTabHere))+" "+a.pal.ink(label))
+			parts = append(parts, a.pal.warnBold(a.icon(tokens.GStepDone))+" "+a.pal.ink(label))
 		case q.staged != nil:
+			held++
 			parts = append(parts, a.pal.dim(a.icon(tokens.GSettled)+" "+label))
 		default:
-			parts = append(parts, a.pal.dim(a.icon(tokens.GTabOpen)+" "+label))
+			parts = append(parts, a.pal.dim(a.icon(tokens.GStepPending)+" "+label))
 		}
 	}
-	if at < 0 {
-		parts = append(parts, a.pal.warnBold(a.icon(tokens.GTabHere))+" "+a.pal.ink(questionReviewWord))
-	} else {
+	if at >= 0 && set[at].staged != nil {
+		held++
+	}
+	// AND THE REVIEW IS SETTLED ONLY WHEN THERE IS NOTHING LEFT TO HOLD. It wore
+	// the tick whenever it was not the tab on screen, so `✓ review` stood over a
+	// set nobody had answered — the one mark on this surface that means "done",
+	// promising it about the one tab that had not been opened.
+	switch {
+	case at < 0:
+		parts = append(parts, a.pal.warnBold(a.icon(tokens.GStepDone))+" "+a.pal.ink(questionReviewWord))
+	case held == len(set):
 		parts = append(parts, a.pal.dim(a.icon(tokens.GSettled)+" "+questionReviewWord))
+	default:
+		parts = append(parts, a.pal.dim(a.icon(tokens.GStepPending)+" "+questionReviewWord))
 	}
 	return strings.Join(parts, gap)
 }

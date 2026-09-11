@@ -1,5 +1,5 @@
- [1m[38;5;110maforge[0m                                                    [38;5;186m1 want you[39m · [38;5;115m$0.0062 / $500[39m · [38;5;243mfri 4:55pm[39m
-  [38;5;243m Home    [1m[38;5;237m[48;5;252m ◐ dual simultaneous  × [0m[38;5;243m  + [39m
+ [1m[38;5;110maforge[0m                                                    [38;5;186m1 want you[39m · [38;5;115m$0.0026 / $500[39m · [38;5;243mfri 7:57pm[39m
+  [38;5;243m Home    [1m[38;5;237m[48;5;252m ◐ new conversation  × [0m[38;5;243m  + [39m
 [38;5;243m────────────────────────────────────────────────────────────────────────────────────────────────────
 
 
@@ -15,7 +15,7 @@
 
     [38;5;235m$ load_capability 1 call[39m
     [38;5;238m» ask 2 calls[39m
-    [38;5;103m▪ [38;5;243m  13s[39m                                                                       [38;5;235m↑[38;5;243m 15.6k[39m  [38;5;238m↓[38;5;252m 928[39m   [38;5;252m❮
+    [38;5;103m▪ [38;5;243m  13s[39m                                                                       [38;5;235m↑[38;5;243m 15.6k[39m  [38;5;235m↓[38;5;243m 763[39m   [38;5;252m❮
 
 
 
@@ -29,8 +29,8 @@
 
 
 
-[38;5;243m─ dual simultaneous permissio… · deepseek/deepseek-v4-flash · ⠿ auto · via wafer ─── [38;5;116mesc[38;5;243m interrupt ─
-  ✓ read package.json? → allow once · you · 16:55 · ⠋ working[39m
-[38;5;243m  ✓ read go.mod? → allow once · you · 16:55 · ⠋ working[39m
+[38;5;243m─ q-tabs · deepseek/deepseek-v4-flash · ⠿ auto · via wafer · main ────────────────── [38;5;116mesc[38;5;243m interrupt ─
+  ✓ read package.json? → allow once · you · 19:57 · c change · ⠙ working[39m
+[38;5;243m  ✓ read go.mod? → allow once · you · 19:57 · c change · ⠙ working[39m
  [38;5;243m› [39m
- [38;5;110m$0.0074[38;5;243m · [38;5;110m⟲ saved $0.0006 · 18% cached[38;5;243m   15.6k/1M · 1%   [38;5;173mYOLO[39m                       [38;5;146m⠋[39m [38;5;146mworking[38;5;243m · [38;5;146m17s
+ [38;5;110m$0.0057[38;5;243m · [38;5;110m⟲ saved $0.0004 · 27% cached[38;5;243m   15.6k/1M · 1%   [38;5;173mYOLO[39m                       [38;5;146m⠙[39m [38;5;146mworking[38;5;243m · [38;5;146m15s

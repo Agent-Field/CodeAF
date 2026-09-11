@@ -240,6 +240,26 @@ gone to the engine yet. The review lists what is held and offers `send all 2`.*
 *`enter`. Both answers go through the one door in tab order, in one command, and each
 leaves its own receipt.*
 
+## Several approvals at once — one frame
+
+![four reads in one batch](screens/four-reads-in-one-batch-are-one-permission-frame-raised.png)
+*Four `read` calls the model asked for in one message are ONE frame: a row per thing
+wanted, then `allow all 4 · one by one · deny all`. The pointer opens on `deny all` and
+says `safe answer` — every permission opens on the answer that loses nothing until the
+calls are graded (#953). There is no lifetime row: a consent's answer scope never reaches
+the gate, so the frame offers only what it can honour.*
+
+![one by one](screens/four-reads-in-one-batch-are-one-permission-frame-one-by-one.png)
+*`2`. The same four open as tabs, each with its own keys, so a person who wants to read
+the files before granting can.*
+
+![the review, a mix held](screens/four-reads-in-one-batch-are-one-permission-frame-review.png)
+*`1 1 1 3`. Three allowed and one denied, held rather than sent; the review offers
+`send all 4`.*
+
+![sent](screens/four-reads-in-one-batch-are-one-permission-frame-sent.png)
+*`enter`. The deny goes through the same door as the allows, in one command.*
+
 ## Two windows
 
 ![the first window asks](screens/another-window-answers-and-the-first-says-who-raised.png)

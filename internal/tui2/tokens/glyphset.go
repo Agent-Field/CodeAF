@@ -116,8 +116,6 @@ const (
 	GScopeUp
 	GPointer
 	GRecommended
-	GTabHere
-	GTabOpen
 	GFrameTopLeft
 	GFrameTopRight
 	GFrameBottomLeft

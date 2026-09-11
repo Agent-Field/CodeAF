@@ -71,23 +71,18 @@ func TestEveryBindingMeasuresOneCellInBothTiers(t *testing.T) {
 // TestOneGlyphOneMeaning is 12's first clause enforced: a glyph means exactly
 // one thing product-wide.
 //
-// Four plain glyphs deliberately serve more than one slot — ○ is queued, step
-// pending and a question tab still to come, ● is a step done and the question
-// tab being shown, ◐ is working and step running, ⚑ is waits-on and step
-// blocked — because those ARE one meaning read at two scales, which is why the
+// Three plain glyphs deliberately serve two slots each — ○ is queued and step
+// pending, ◐ is working and step running, ⚑ is waits-on and step blocked —
+// because those pairs ARE one meaning read at two scales, which is why the
 // whole-cell upgrade can rewrite them without knowing which slot it is looking
-// at. Every such pair is named below, so a FIFTH one has to be argued for in
+// at. Every such pair is named below, so a FOURTH one has to be argued for in
 // this test rather than discovered on a screen. The tier side is held to the
 // same rule from the other direction: two slots may share an icon only where
 // they already share the plain glyph, or the tier would collapse a distinction
 // the floor draws.
 func TestOneGlyphOneMeaning(t *testing.T) {
 	deliberate := map[string]string{
-		GlyphStepPending: "queued, at two scales — and a question of several still waiting for its answer, " +
-			"which is the same claim about a tab: still to come",
-		GlyphStepDone: "a filled dot in a row of dots: a plan step that is behind you, and the one tab of a " +
-			"set of questions the panel is showing — both rows say where the sequence has got to, and " +
-			"the tier draws both as nf-fa-circle, so nothing the floor draws apart is collapsed",
+		GlyphStepPending: "queued, at two scales",
 		GlyphPointer: "a small right triangle: the row your key goes into — the fold you open, and " +
 			"the answer your enter takes on a question. Two slots so the question's pointer can be " +
 			"amber and move under a hand while a fold mark stays a dim fact",

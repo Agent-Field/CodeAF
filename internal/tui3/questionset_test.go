@@ -204,16 +204,20 @@ func TestTheReviewSendsWhatIsHeldAndLeavesTheRestOpen(t *testing.T) {
 	}
 }
 
-// A REVIEW WITH NOTHING HELD HAS NOTHING TO SEND, and says where the answers
-// are given instead (the emptiness law).
+// A REVIEW WITH NOTHING HELD HAS NOTHING TO SEND, and says where the answers are
+// given on the rows themselves — once each, and never a fourth sentence under
+// them saying the set is empty (the emptiness law).
 func TestAReviewWithNothingHeldOffersNoSend(t *testing.T) {
 	lab := setLab(t)
 	for i := 0; i < 3; i++ {
 		lab.press("right")
 	}
 	drawn := lab.plain()
-	if !strings.Contains(drawn, questionNothingHeldWord) || strings.Contains(drawn, "enter send") {
+	if strings.Contains(drawn, "enter send") {
 		t.Fatalf("an empty review offered to send:\n%s", drawn)
+	}
+	if got, want := strings.Count(drawn, questionNotAnsweredWord), 3; got != want {
+		t.Fatalf("an empty review says where to answer %d times, want %d (one per row):\n%s", got, want, drawn)
 	}
 	lab.press("enter")
 	if len(lab.answer) != 0 {
@@ -362,6 +366,40 @@ func TestPermissionsFromOneStepAreOneFrame(t *testing.T) {
 	for i, answer := range lab.answer {
 		if answer.ID != uint64(i+1) || answer.Key != "1" {
 			t.Fatalf("answer %d went out as %d/%q", i, answer.ID, answer.Key)
+		}
+	}
+}
+
+// A TAB PART-WAY THROUGH THE WIDENING ANSWER DRAWS THE BEAT, not the answers it
+// replaced. `always` on a tab opens the shapes, and from that moment the digits
+// pick a shape and `esc` backs out of the beat ([app.questionSetOwnsKey] hands
+// both back to the question) — so a tab still drawing its answer rows, with
+// `←→ question` on its edge, would be naming keys that do something else. It is
+// the one drawing, [app.questionPanelInside], for the panel of one and the tab
+// alike.
+func TestATabPartWayThroughTheWideningAnswerDrawsTheBeat(t *testing.T) {
+	lab := newQuestionLab(t)
+	for i, target := range []string{"git status --short", "go build ./..."} {
+		lab.raise(setPermission(lab, uint64(i+1), "step:9", "bash", target, session.StakesCostly))
+	}
+	for i := range lab.a.questions {
+		lab.a.questions[i].shapes = func() []string { return []string{"git *", "git status*", "git status --short"} }
+	}
+	lab.tick(questionSettle * 2)
+	lab.rows()
+	// `one by one` opens the group as tabs, and `always` on the tab opens the beat.
+	lab.press("2")
+	lab.press("2")
+
+	drawn := lab.plain()
+	for _, want := range []string{"3 just this line", "1–3 shape", questionBeatBack} {
+		if !strings.Contains(drawn, want) {
+			t.Fatalf("the tab does not draw the beat's %q:\n%s", want, drawn)
+		}
+	}
+	for _, gone := range []string{"allow once", questionTabWord} {
+		if strings.Contains(drawn, gone) {
+			t.Fatalf("the tab still draws %q while the shapes are up:\n%s", gone, drawn)
 		}
 	}
 }

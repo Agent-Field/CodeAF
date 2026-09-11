@@ -936,6 +936,13 @@ var tuiWords = map[string]tuiWord{
 		screen: "one by one",
 		why:    "the frame's way back to answering each permission on its own, which opens them as tabs",
 	},
+	"questionGroupSafeWord": {
+		screen: "safe answer",
+		why: "DENY-FIRST UNTIL THE CALLS ARE GRADED: the pointer on a grouped permission opens on the " +
+			"answer that loses nothing, and the row says why it is there. Without this on the screen " +
+			"the suite never checked the pointer at all, and four captured screens went on showing " +
+			"`allow all` under it long after the ruling moved (questionpanel.go's questionSafeWord)",
+	},
 	"consentOldOfferWord": {
 		screen: "enter take it",
 		source: "take it",

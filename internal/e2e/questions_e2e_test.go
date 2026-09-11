@@ -820,9 +820,10 @@ func questionsAssumption(t *testing.T) {
 
 // ── several at once ─────────────────────────────────────────────────────────
 
-// questionsSheet is BATCHED AT THE BOUNDARY: two questions raised inside one
-// step arrive together, `g` gives the answer just given to every row like it,
-// and `s` sends what is answered.
+// questionsTabs is SEVERAL QUESTIONS FROM ONE STEP ARE ONE PANEL: two questions
+// the model asked in one message arrive as one panel with a tab each, `←→` move
+// between them, `enter` holds an answer rather than sending it, and the review
+// sends every held answer through the one door in one command.
 func questionsTabs(t *testing.T) {
 	r := questionRig(t, "q-tabs", nil)
 	steer(t, r, `Call the ask tool TWICE IN THE SAME MESSAGE — two tool calls at once, `+
@@ -891,6 +892,11 @@ func questionsGroup(t *testing.T) {
 		screenSays(t, screen, name, "the frame lists what each call wants")
 	}
 	screenSays(t, screen, say(t, "questionGroupApartWord"), "the way to answer them one at a time")
+	// AND THE POINTER IS ON THE ANSWER THAT LOSES NOTHING, which is the whole of
+	// the deny-first ruling as a person meets it. Nothing here read the pointer
+	// until this line, so four screens captured before the ruling stayed in the
+	// repository showing `▸ allow all 4` and no test could tell.
+	screenSays(t, screen, say(t, "questionGroupSafeWord"), "the pointer opens on deny all, and says why")
 	shot(t, r, "raised")
 
 	press(t, r, "2")

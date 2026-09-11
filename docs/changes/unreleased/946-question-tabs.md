@@ -25,7 +25,7 @@ invalidates:
     confirmation question never joins a set or a frame."
   - "docs/design/questions/DESIGN.md said questions were BATCHED AT THE BOUNDARY. It now says
     ONE STEP, ONE PANEL, and the gallery's 'Several at once — the sheet' screens are replaced
-    by the tabs screens."
+    by the tabs screens, with a 'Several approvals at once — one frame' section beside them."
 ---
 
 The step was always the engine's to know: a model that calls three tools at once raises
