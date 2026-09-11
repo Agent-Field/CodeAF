@@ -201,7 +201,7 @@ func TestTheOfferNamesWhatTheAlwaysReaches(t *testing.T) {
 	typeLine(t, b, "check the tree")
 	settleAsk(b)
 	b.width = 120
-	if got := plain(frame(b)); !strings.Contains(got, "[2] always, this command") {
+	if got := plain(frame(b)); !strings.Contains(got, "2  always, this command") {
 		t.Fatalf("the bash offer does not say it is about the command:\n%s", got)
 	}
 }

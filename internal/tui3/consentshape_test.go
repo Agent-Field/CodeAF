@@ -211,14 +211,16 @@ func TestWithNoWriteSeamThereIsNoBeat(t *testing.T) {
 func TestTheBeatAnswersToThePointer(t *testing.T) {
 	_, a, saved := shapeAsk(t, "git status --short")
 	drive(t, a, key("2"))
-	row, block := askOffer(t, a)
-	line := plain(row)
-	at := strings.Index(line, "[2]")
-	if at < 0 {
-		t.Fatalf("the beat drew %q", line)
+	// The beat's shapes are one row inside the frame, and the spans the layout
+	// wrote say where each shape's cells are ([app.questionBeatRow]).
+	rows := a.questionRows(a.width)
+	if len(a.questionSpans) < 2 {
+		t.Fatalf("the beat recorded %d targets:\n%s", len(a.questionSpans),
+			plain(strings.Join(rows, "\n")))
 	}
 	// Measured once: the press answers, and the answers row is gone by the release.
-	x, y := at+4, chromeRowY(t, a, block)
+	second := a.questionSpans[1]
+	x, y := second.from+1, chromeRowY(t, a, a.questionSpanRow)
 	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 	if len(saved.commands) != 1 || saved.commands[0] != "git *" {
