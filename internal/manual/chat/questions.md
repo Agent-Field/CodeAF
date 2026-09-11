@@ -285,30 +285,42 @@ While you are away:
 A rule never takes a question that cannot be taken back, and never takes a
 clarification — the answer to that one is something only you have.
 
-## Stop asking me this — can it decide by itself, will it decide for me, and how do I turn that off — /autonomy
+## Stop it deciding things while I am away, can it decide by itself, will it decide for me, how do I turn that off — the settings row and /autonomy
 
 Short answers first. **Can it decide by itself?** Only where you have said it
 may. **Will it decide for me?** Not unless a rule you wrote covers that kind of
 question, and never for anything destructive. **Stop asking me this:** write the
-rule for that kind, with `D` on the question in front of you or with
-`/autonomy <kind> decide`. **How do I turn that off:** `/autonomy <kind> ask`
+rule for that kind — the settings row below, `D` on the question in front of
+you, or `/autonomy <kind> decide`. **How do I turn that off:** `/autonomy <kind> ask`
 puts it back to asking you every time, and `/autonomy` on its own shows every
 row as it stands.
 
-`/autonomy` shows what this project does with each kind of question while you are
-away:
+**Open settings** (`ctrl+,` or `/settings`) and look under **Safety** for
+`questions while you are away`. There is a row per kind of question, and `enter`
+walks the answer round three words:
 
 ```
 questions while you are away
-permission       ask me · change
-choice           recommend, auto in 30s · change
-clarification    ask me · clarification never runs on a clock
-confirmation     ask me · destructive always asks
+permission        ask me
+choice            recommend then go · 30s
+judgement         ask me
+clarification     ask me · never runs on a clock
+confirmation      ask me · destructive always asks
+landing           decide yourself
+assumptions       recommend then go · 10m
+already done      ask me
 ```
 
-Change one with `/autonomy <kind> ask`, `/autonomy <kind> recommend 30s` or
+- **`ask me`** — it waits for you, however long that takes.
+- **`recommend then go`** — it shows you what it would do, waits, and then does
+  it if nobody answers. The row says how long it waits.
+- **`decide yourself`** — it answers questions of that shape without you.
+
+**`/autonomy` is the same rules from the box**, and it is how you name a wait of
+your own: `/autonomy <kind> ask`, `/autonomy <kind> recommend 30s`,
 `/autonomy <kind> decide`. `D` on a question does the same thing for that
-question's kind and tells you it did.
+question's kind and tells you it did. There is one store behind all three doors,
+so they can never disagree.
 
 Two rows can never be changed: **confirmation always asks**, because it is what
 is asked before something destructive, and **clarification never runs on a

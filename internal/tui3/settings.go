@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
@@ -855,6 +856,11 @@ type sheetItem struct {
 	service *modelServiceRow
 	// role is set on the rows of the roles section, on exactly those terms.
 	role *roleRow
+	// autonomy is set on the rows that say what this project does with a
+	// question while nobody is there (settingsautonomy.go), on the same terms:
+	// they are kept by the engine rather than by the registry, and they draw
+	// through this page's own row grammar.
+	autonomy *autonomyRow
 	// read is set on a row of the Spending tab that is a RECEIPT and not a
 	// setting — `today`, and the two rails this build has but does not keep a
 	// registry row for (settingspend.go). It hangs here for [sheetItem.conn]'s
@@ -898,6 +904,12 @@ type sheet struct {
 	// rows below it are about settings, and a value that changed under a person
 	// reading them would be a list that moved while they looked at it.
 	sessionModel string
+
+	// autonomy is what this project does with a question of each shape while
+	// nobody is there, read when the page opens (settingsautonomy.go). It is nil
+	// for a conversation with no project to keep rules in, and the section then
+	// draws nothing at all.
+	autonomy map[session.AskKind]session.Policy
 
 	// items is the current list — one tab's rows, or every tab's matches under
 	// their headings while a search is on. cursor indexes it and skips headings.
@@ -1153,6 +1165,12 @@ func (a *app) raiseSettings() {
 	a.sheet = sheet{
 		registry:     a.registry(),
 		profileDir:   a.profileDir,
+		// AND WHAT THIS PROJECT DOES WITH A QUESTION WHILE NOBODY IS THERE, read
+		// once for the visit like every other live reading on this page: the rows
+		// are the engine's rather than the registry's (settingsautonomy.go), and
+		// a page that asked the engine per frame would be paying for an answer
+		// that changes only when somebody changes it.
+		autonomy: a.autonomyReading(),
 		conns:        a.conns,
 		modelRows:    a.modelConnectionRows,
 		sources:      a.sources,
@@ -1271,6 +1289,14 @@ func (s *sheet) build() {
 			if row.Key == config.KeyModelRoles {
 				s.items = append(s.items, s.roleItems("")...)
 			}
+			// AND THE AUTONOMY ROWS HANG OFF THE LAST OF THE THREE ROWS THEY
+			// STAND BESIDE. `ask before running` says what happens when the model
+			// wants to run something; these say what happens to every OTHER kind
+			// of question when nobody answers it, which is the same question
+			// asked one step wider (settingsautonomy.go).
+			if row.Key == config.KeyConsentTimeout {
+				s.items = append(s.items, s.autonomyItems("")...)
+			}
 		}
 		s.cursor = s.clampCursor(s.cursor)
 		return
@@ -1298,6 +1324,18 @@ func (s *sheet) build() {
 					s.items = append(s.items, sheetItem{head: title})
 				}
 				s.items = append(s.items, matched...)
+			}
+		}
+		// AND THE AUTONOMY ROWS ANSWER A SEARCH THEMSELVES, for the roles
+		// section's reason: nobody looking for these types `consent timeout`.
+		// They search for "away", or "decide", or "autonomy" — words that are on
+		// the heading and in the value rather than in a registry key.
+		if title == tabSafety {
+			if matched := s.autonomyItems(query); len(matched) > 0 {
+				if len(s.items) == start {
+					s.items = append(s.items, sheetItem{head: title})
+				}
+				s.items = append(s.items, matched[1:]...)
 			}
 		}
 		if len(s.items) > start && first < 0 {
@@ -1896,6 +1934,10 @@ func (a *app) activate() tea.Cmd {
 		return a.startModelConnect(modelConnectionStatus(source, true), true)
 	}
 	s.msg = ""
+	if item.autonomy != nil {
+		a.autonomyRowNext(item.autonomy)
+		return nil
+	}
 	if item.role != nil {
 		// A ROLE IS A MODEL CHOICE, so it opens the picker the class rows open
 		// and for their reason — a row that asks "which model" and offers a blank
@@ -2737,6 +2779,9 @@ func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, bo
 	}
 	if item.role != nil {
 		return s.roleRowLines(item.role, selected, hovered, width, pal)
+	}
+	if item.autonomy != nil {
+		return s.autonomyRowLines(item.autonomy, selected, hovered, width, pal)
 	}
 	// A READING IS A ROW WITH NOTHING TO EDIT — `today`, and the two rails this
 	// build enforces somewhere a settings row cannot reach (settingspend.go). It
