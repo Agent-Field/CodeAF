@@ -402,10 +402,15 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 			// one answer would drift the moment somebody set the row back to ask
 			// in the panel and went on not being asked here for the rest of the
 			// session. Everything else keeps the memo it always had.
-			if a.rememberCapability(call.Function.Name, json.RawMessage(call.Function.Arguments), answer.allow) {
+			// WHAT IT BOUGHT IS WRITTEN DOWN WHERE IT IS BOUGHT, so changing
+			// your mind on the receipt can take back exactly this and nothing
+			// else ([Agent.undoGrant]).
+			if made, wrote := a.rememberCapability(call.Function.Name, json.RawMessage(call.Function.Arguments), answer.allow); wrote {
+				a.rememberGrant(call.Function.Name, made)
 				return answer, nil
 			}
 			a.rememberConsent(call.Function.Name, answer.allow)
+			a.rememberGrant(call.Function.Name, grantMade{})
 		}
 		return answer, nil
 	case <-ctx.Done():
@@ -421,6 +426,59 @@ func (a *Agent) rememberConsent(tool string, allow bool) {
 		a.consentMemo = make(map[string]bool, 1)
 	}
 	a.consentMemo[tool] = allow
+}
+
+// grantMade is the standing half of a yes, remembered so it can be TAKEN BACK.
+//
+// A widening yes is written into more than one place, and which one depends on
+// what the tool is: an ordinary tool gets the session memo above, and a
+// connected service's tool gets a capability left on in the person's own account
+// settings ([Agent.rememberCapability]) INSTEAD of the memo. A revision that
+// only deleted the memo therefore said "the permission is taken back" on the
+// receipt while the account went on being allowed — so what was granted is
+// written down here at the moment it is granted, and [Agent.undoGrant] is the
+// one door that takes back all of it.
+type grantMade struct {
+	service    string
+	capability string
+}
+
+// rememberGrant banks what a standing yes bought, keyed by the tool it was about
+// — the same key the memo uses, because a second yes for one tool replaces the
+// first and undoing the newest is what changing your mind on a receipt means.
+func (a *Agent) rememberGrant(tool string, made grantMade) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.grants == nil {
+		a.grants = make(map[string]grantMade, 1)
+	}
+	a.grants[tool] = made
+}
+
+// undoGrant takes back everything a standing yes bought for one tool: the memo
+// that stops this session asking again, and the capability left on in the
+// person's account settings where the yes was written there instead.
+//
+// THE THIRD STORE IS THE SURFACE'S AND CANNOT BE REACHED FROM HERE. A yes given
+// as a RULE is written to the person's settings by the window that asked
+// (tui3's `app.rememberAlways`), where `/permissions` shows it; the surface
+// removes its own with `app.forgetAlways` on the same key press that sends the
+// revision. That is the whole of what this engine cannot do, and it is named
+// here so the next reader does not conclude there are two doors.
+func (a *Agent) undoGrant(tool string) {
+	a.mu.Lock()
+	delete(a.consentMemo, tool)
+	made, granted := a.grants[tool]
+	delete(a.grants, tool)
+	connected := a.connect
+	a.mu.Unlock()
+	if !granted || connected == nil || made.service == "" || made.capability == "" {
+		return
+	}
+	// BACK TO ASKING, NOT TO NO. The person is taking back a standing yes, and
+	// what they had before they gave it was a question — turning it into a
+	// refusal would deny the next call something they never said no to.
+	_ = connected.SetCapabilityState(made.service, made.capability, connect.StateAsk)
 }
 
 func (a *Agent) rememberedConsent(tool string) (bool, bool) {

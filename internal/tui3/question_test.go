@@ -32,6 +32,9 @@ type questionScript struct {
 	open   []session.Question
 	lane   chan session.Event
 	answer func(session.Answer) error
+	// held is every clock this window asked the engine to stop
+	// (questionchange_test.go).
+	held []questionHeldCall
 }
 
 func (q *questionScript) OpenQuestions() []session.Question { return q.open }
@@ -975,6 +978,12 @@ func TestTheReceiptGivesUpAClauseRatherThanLosingItsTail(t *testing.T) {
 			Labels: []string{"sqlite beside the project"},
 			Change: "2, but keep the sqlite file as the source of truth and write the migration first",
 			By:     session.DecidedByPerson, At: lab.at,
+		},
+		// The question is on the receipt because `c change` puts it back, and
+		// the row only offers the key where it would work (questionchange.go).
+		question: session.Question{
+			ID: 1, Kind: session.QuestionAsk, Head: "which store should the ledger sit on?",
+			Options: []session.AnswerOption{{Key: "1", Label: "one file"}, {Key: "2", Label: "sqlite beside the project"}},
 		},
 		at: lab.at, reversible: true,
 	})
