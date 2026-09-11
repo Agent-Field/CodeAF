@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -81,8 +82,14 @@ func TestATaskWhoseStreamResetOnceIsRetriedAndLandsDone(t *testing.T) {
 	if notice.Ending != "" {
 		t.Fatalf("a done node carries an ending %q", notice.Ending)
 	}
-	if time.Since(started) < 2*time.Second {
-		t.Fatal("the reset was not waited out before the retry")
+	// THE WAIT IS THE PRODUCT'S OWN AND IS READ FROM IT. This was `2 * time.
+	// Second`, which was [taxonomy.DefaultTransportBackoff] written out a second
+	// time, and it failed the moment that constant came down to a second — about
+	// a figure this test is not asking about. What it IS asking is that the
+	// reset was waited out at all rather than re-sent instantly.
+	if waited := time.Since(started); waited < taxonomy.DefaultTransportBackoff {
+		t.Fatalf("the retry went out after %s, inside the %s this build waits after a reset",
+			waited, taxonomy.DefaultTransportBackoff)
 	}
 }
 

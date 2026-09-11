@@ -296,6 +296,11 @@ var (
 	stallWallMeasured  = streamWallMeasuredFloor
 	stallWallCeiling   = streamWallCeiling
 	stallGapLumpTokens = streamGapLumpTokens
+	// stallGapFloor is [LagGap], the least any DERIVED gap may be, and it is
+	// here for the same reason as the six above: the arithmetic of [gapFor] is
+	// stated in seconds and a test proving that a gap NARROWS to a lane's own
+	// rate would otherwise have to sit through fifteen of them.
+	stallGapFloor = LagGap
 )
 
 // ── THE BOUNDS BELONG TO THE ROLE, AND THEY SIT ABOVE THE CONTROLLER ────────
@@ -366,7 +371,7 @@ type stallBounds struct {
 func boundsFor(role lanes.Role) stallBounds {
 	patience := stallPatience(role)
 	gap := stretch(stallGapBound, patience)
-	floor := transportHeadroom * role.Ceiling()
+	floor := transportHeadroom * stallCeiling(role)
 	// A FLOOR MAY NOT OUTRANK THE BOUND IT STANDS UNDER. In the shipped figures
 	// it never comes close — the flat gap is four and a half ceilings and the
 	// floor is two — and this line is what keeps the seam a seam: a test proving
@@ -376,9 +381,28 @@ func boundsFor(role lanes.Role) stallBounds {
 		floor = gap
 	}
 	return stallBounds{
-		first:    max(stretch(stallFirstBound, patience), floor),
-		gap:      max(gap, floor),
-		buffered: max(stretch(stallBufferedBound, patience), floor),
+		first: max(stretch(stallFirstBound, patience), floor),
+		gap:   max(gap, floor),
+		// THE BUFFERED CAP IS NOT THE ROLE'S TO STRETCH, and this is the one
+		// line of the three that changed on 2026-09-10.
+		//
+		// The first two bounds are PATIENCE — how long this errand is willing to
+		// wait — and scaling them by whose errand it is is exactly right. The
+		// buffered cap is not patience: it is a measured ceiling on ENDPOINT
+		// BEHAVIOUR, the longest a machine assembling an answer server-side has
+		// ever legitimately taken while keeping the line warm (eighty-six
+		// seconds end to end, 2026-08-24), and a machine does not become
+		// entitled to babble for longer because nobody happens to be watching.
+		//
+		// Stretched, it was seven and a half minutes for a task node and fifteen
+		// for a standing pass, and that is precisely the "colon trickler owning
+		// this loop forever" the header above says the cap exists to prevent.
+		// Measured: four quick tasks on the evening of 2026-09-10 sat on one
+		// machine for 260, 370, 375 and 428 seconds before its first token, all
+		// four of them inside a 450-second stretched cap and all four of them
+		// past the flat one. The flat figure still holds every honest delivery
+		// this adapter has measured, with room to spare.
+		buffered: max(stallBufferedBound, floor),
 		floor:    floor,
 	}
 }
@@ -394,6 +418,17 @@ func (b stallBounds) narrow(gap time.Duration) time.Duration {
 func stretch(bound time.Duration, patience float64) time.Duration {
 	return time.Duration(float64(bound) * patience)
 }
+
+// stallCeiling is the controller's time-to-action for a role, and it is
+// [lane.Role.Ceiling] and nothing else.
+//
+// IT IS A VARIABLE FOR THE SAME REASON THE THREE BOUNDS ARE: the seam. The floor
+// under every bound here is [transportHeadroom] ceilings, so a test that
+// shortens the transport to milliseconds and leaves this at ten seconds is a
+// test whose floor has quietly swallowed every figure it set — and the one law
+// that then cannot be proven at all is the one that matters most, that a gap
+// NARROWS onto the lane's own measured rate. Production reads the table.
+var stallCeiling = func(role lanes.Role) time.Duration { return role.Ceiling() }
 
 // stallPatience is the role's multiplier, READ BACK OFF ITS CEILING rather than
 // out of the facts table, so that a bound and the ceiling it has to clear can
@@ -460,8 +495,8 @@ func gapFor(rate float64) time.Duration {
 		return stallGapBound
 	}
 	gap := time.Duration(float64(stallGapLumpTokens) / rate * float64(time.Second))
-	if gap < LagGap {
-		gap = LagGap
+	if gap < stallGapFloor {
+		gap = stallGapFloor
 	}
 	if gap > stallGapBound {
 		gap = stallGapBound
@@ -754,6 +789,12 @@ type stallWatch struct {
 	// reason exactly: a bound that could be moved repeatedly by chunks would
 	// not be a bound.
 	regapped bool
+	// arm is this request's place in the wait report, nil on a call with no
+	// controller. It exists for ONE fact travelling ONE way: when a bound here
+	// ends a stream, the row has to be able to say WHICH bound, and this layer
+	// is the only thing that knows. See [streamWatch.applied] for what the row
+	// was saying instead and what that cost the census.
+	arm *streamWatch
 }
 
 // newStallWatch starts both clocks: the silence timer, and the wall.
@@ -769,7 +810,12 @@ type stallWatch struct {
 // re-stating it). A call that named none reads as [lane.RoleUnknown], a hidden
 // background errand, which waits longer rather than less.
 func newStallWatch(ctx context.Context, cancel context.CancelFunc, wall time.Duration, pace float64) *stallWatch {
-	watch := &stallWatch{cancel: cancel, clock: time.Now, bounds: boundsFor(RoleFrom(ctx))}
+	watch := &stallWatch{cancel: cancel, clock: time.Now, bounds: boundsFor(RoleFrom(ctx)), arm: streamWatchFrom(ctx)}
+	// AND THE ARM LEARNS WHERE ITS SCISSORS ARE. The ceiling is the controller's
+	// and the cutting is this file's, so the one place that can act on a ceiling
+	// the purse refused needs both — see armwatch.go's THE CEILING PICKS ONE OR
+	// THE OTHER, NEVER NEITHER.
+	watch.arm.guardedBy(watch)
 	watch.born = watch.clock()
 	watch.quietSince = watch.born
 	watch.walled, watch.period, watch.pace = wall, wall, pace
@@ -872,6 +918,7 @@ func (w *stallWatch) regap(gap time.Duration) {
 // The cancel runs outside the lock, for [stallWatch.fire]'s reason.
 func (w *stallWatch) overran() {
 	if cancel := w.overrunVerdict(); cancel != nil {
+		w.arm.boundApplied(w.cut())
 		cancel()
 	}
 }
@@ -990,6 +1037,10 @@ func (w *stallWatch) alive() {
 // return can slip past (internal/guard's lockdefer_test.go states the law).
 func (w *stallWatch) fire() {
 	if cancel := w.verdict(); cancel != nil {
+		// THE ROW LEARNS WHICH BOUND ENDED IT, before the cancel unwinds the
+		// request and the attempt is recorded. Outside the lock, for the same
+		// reason the cancel is.
+		w.arm.boundApplied(w.cut())
 		cancel()
 	}
 }
@@ -1045,6 +1096,46 @@ func (w *stallWatch) verdict() context.CancelFunc {
 		w.tripped = &StreamCut{Reason: CutSilent, Waited: waited}
 	}
 	return w.cancel
+}
+
+// cutIdle ends a stream the CEILING gave up on rather than one a silence bound
+// did: the controller fired, the purse refused a second request, and not one
+// byte had reached this stream. It is the free half of armwatch.go's THE CEILING
+// PICKS ONE OR THE OTHER, NEVER NEITHER.
+//
+// IT IS THE SAME CUT EVERY OTHER REASON MAKES, and that is the whole of why it
+// is enough. [CutSilent] is already "this request produced nothing", which is
+// exactly true here; what differs is only which clock decided, and the row
+// records that separately ([streamWatch.applied]). Because it is an ordinary
+// cut it leaves through the ordinary door — the decode loop's cut path in
+// client.go stamps it with the machine the stream named ([Client.stampCut]) and
+// asks the ledger to strike that machine, which is what sets [StreamCut.
+// Rerouted] — so the attempt loop reads it as a no-backoff move that vetoes the
+// served endpoint, and the next send goes somewhere else. NOTHING HERE SETS
+// `Provider` OR `Rerouted`: a cut that stamped itself would be a second answer
+// to "who was serving", and a cut that claimed a reroute the ledger had not
+// made would be a lie the turn loop counts endpoint diversity from.
+//
+// The cancel runs outside the lock, for [stallWatch.fire]'s reason, and a watch
+// that has already tripped keeps its first verdict: a bound that fired is the
+// bound that ended the stream.
+func (w *stallWatch) cutIdle(waited time.Duration) {
+	if w == nil {
+		return
+	}
+	w.mu.Lock()
+	if w.tripped != nil {
+		w.mu.Unlock()
+		return
+	}
+	if waited <= 0 {
+		waited = w.clock().Sub(w.quietSince)
+	}
+	w.tripped = &StreamCut{Reason: CutSilent, Waited: waited}
+	cut, cancel := w.tripped, w.cancel
+	w.mu.Unlock()
+	w.arm.boundApplied(cut)
+	cancel()
 }
 
 // cut is the trip, or nil. It is read after the stream has died, to tell a

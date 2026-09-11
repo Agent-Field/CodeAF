@@ -635,3 +635,18 @@ func phaseClockFrom(ctx context.Context) *phaseClock {
 	clock, _ := ctx.Value(phaseClockContextKey{}).(*phaseClock)
 	return clock
 }
+
+// modelWaitedOn is the model this request is for, read off the clock the call
+// is already keeping, and empty on a call with no clock.
+//
+// IT EXISTS FOR THE WAITS THAT ARE NOT THE STREAM'S. A phase row is keyed on a
+// model, and a seam that waits before the request is on the wire — the
+// limiter's slot queue, the connectivity probe — has the fact in its context
+// and not in its signature. Empty means nobody is listening, in which case the
+// phase it would compose has nowhere to go anyway.
+func modelWaitedOn(ctx context.Context) string {
+	if clock := phaseClockFrom(ctx); clock != nil {
+		return clock.model
+	}
+	return ""
+}

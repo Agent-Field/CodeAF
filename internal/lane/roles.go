@@ -135,7 +135,63 @@ type RoleFacts struct {
 // measured world has — the slowest lane of seventeen starts at 3.0s at the
 // median and 9.3s at the ninetieth — so a healthy lane never reaches it and a
 // stalled one always does.
+//
+// RE-MEASURED ON 2026-09-10 AND KEPT, against 16,427 finished attempts and the
+// 10,028 of them that recorded a first token (the reading is beside this wave
+// as `af-rec-r4.patience.md`). A watched turn's first token is 1.6s at the
+// median, 8.4s at the ninetieth and 13.1s at the ninety-fifth, so ten seconds
+// is this build's own ninety-second percentile — which is where Dean and
+// Barroso's rule for a hedged request ("issue the second near the ninety-fifth
+// percentile of the expected latency, and one or two percent of extra requests
+// removes most of the tail") and Nielsen's ten-second limit on holding a
+// person's attention land on the same number from opposite directions.
+//
+// AND FIVE WOULD BE WORSE ON BOTH COUNTS, which is the answer to the obvious
+// question. Acting at five seconds touches 28.9% of all calls against 13.9% at
+// ten — twice the traffic — and the yield per extra request FALLS, from 22.1
+// rescues per hundred to 17.6, because under ten seconds almost everything
+// still silent is an ordinary call in progress rather than one in trouble. The
+// knee, where silence stops being normal and starts predicting failure, is
+// between ten and fifteen seconds: of the calls still silent at 5s, 10s, 15s
+// and 20s, 82%, 78%, 73% and 70% still answered cleanly.
 const VisiblePatience = 10 * time.Second
+
+// SpokenWithin is how long any wait in the request path may last before the
+// person is told what it is waiting for.
+//
+// IT IS NOT A TIMEOUT AND NOTHING IS CUT AT IT. It is the other half of
+// [VisiblePatience], and the half this build was missing: ten seconds is when
+// we MOVE, and until this wave it was also the first moment a person heard
+// anything at all. A wait that is real is reported (`docs/design/waiting/
+// DESIGN.md`), and four waits in the request path had no voice — the limiter's
+// slot, the empty-200 re-ask, the abandon grace and the connectivity probe.
+//
+// ONE SECOND, because that is the oldest measured number in this whole subject:
+// Miller 1968 and Card 1991 through Nielsen 1993, one second is the limit of a
+// person's uninterrupted flow of thought, and past it they notice the delay and
+// the system owes them a sign that it is working. It costs nothing — a phase
+// line is words, not a request — so there is no trade to make against it.
+const SpokenWithin = time.Second
+
+// TurnGiveUp is how long a conversation turn may spend reaching a model before
+// the person is told it could not be reached.
+//
+// IT IS A BOUND THAT DID NOT EXIST. A turn's give-up was the product of every
+// controller under it — attempts times arms times rungs times models — which is
+// nobody's number, and in practice unbounded: the call census of 2026-09-10
+// found chains of sixteen and seventeen identical sends running eleven minutes
+// and still ending refused.
+//
+// NINETY SECONDS, measured. Of the 167 retry chains in ten days that reached a
+// clean answer, 29% landed within thirty seconds, 56% within sixty and 66%
+// within ninety; 120 seconds buys nine points more and costs the person another
+// half-minute of a dead cursor. The ten points between sixty and ninety are
+// exactly where the SECOND MACHINE lands, which is the other fact from the same
+// reading: 126 of those 167 winning chains used two distinct machines and only
+// 41 won on one. So ninety seconds is one fair try at every model in the chain
+// with a move between them, and the third of today's winners that falls outside
+// it is made of same-machine repeats that the never-repeat rule deletes.
+const TurnGiveUp = 90 * time.Second
 
 // ActionFloor is the shortest silence worth acting on, whatever a belief says.
 //
@@ -198,6 +254,17 @@ const SpreadTightest = 0.15
 const Hysteresis = 250 * time.Millisecond
 
 // roles is the table. THERE ARE NO NUMBERS OUTSIDE IT.
+//
+// THE PATIENCE COLUMN WAS RE-MEASURED ON 2026-09-10 AND IS UNCHANGED. Each
+// multiplier is a percentile of the first token its own roles really see, and
+// all four land where they should: talk's 1 is ten seconds against a watched
+// turn's ninetieth at 8.4s; the unattended 3 is thirty seconds against a task
+// node's ninety-seventh (its ninety-fifth is 17.3s and its ninety-ninth 58.2s);
+// standing and judge's 6 is sixty seconds, just past that ninety-ninth; and the
+// probe's 0.5 is five seconds against a reflex's ninety-eighth (ninetieth
+// 0.9s, ninety-ninth 7.2s). Nobody watches an unattended call, so the cost of
+// waiting on one is zero and the cost of acting is money — which is why the
+// patient roles act at the ninety-seventh and the watched one at the ninetieth.
 var roles = map[Role]RoleFacts{
 	RoleTalk:           {Interactive: true, QualityNeed: 0.9, Horizon: 50, Visible: true, Streams: true, Verb: "writing", Patience: 1},
 	RoleLeafAttached:   {Interactive: true, QualityNeed: 0.9, Horizon: 50, Visible: true, Streams: true, Verb: "writing", Patience: 1},
