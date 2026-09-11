@@ -11,7 +11,6 @@ import (
 	"time"
 
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
-	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // ── THE LEDGER ──────────────────────────────────────────────────────────────
@@ -386,7 +385,7 @@ func TestTheLedgerRecordsWithRoutingOff(t *testing.T) {
 	if _, ignore := ledger.preferences(model); len(ignore) != 1 || ignore[0] != "Sundial" {
 		t.Fatalf("a session with routing off learned nothing: ignore = %v", ignore)
 	}
-	if prefs := client.providerPreferences(model, callKnobs{}, &ai.Request{Model: model}); prefs != nil {
+	if prefs := client.providerPreferences(model, callKnobs{}); prefs != nil {
 		t.Fatalf("a session with routing off sent a preference anyway: %+v", prefs)
 	}
 }
@@ -635,7 +634,7 @@ func TestNamedCutRefusesTheEndpointOnTheNextRequest(t *testing.T) {
 	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err == nil {
 		t.Fatal("the stalled first stream landed, want a guard cut")
 	}
-	prefs := client.providerPreferences(model, callKnobs{intent: IntentInteractive}, &ai.Request{})
+	prefs := client.providerPreferences(model, callKnobs{intent: IntentInteractive})
 	if prefs == nil || !equalStrings(prefs.Order, []string{"quicksilver"}) ||
 		!equalStrings(prefs.Ignore, []string{"molasses"}) {
 		t.Fatalf("preferences after cut = %#v, want the named endpoint refused behind the healthy lane", prefs)
@@ -659,7 +658,7 @@ func TestUnnamedCutNotesNothing(t *testing.T) {
 	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err == nil {
 		t.Fatal("the stalled first stream landed, want a guard cut")
 	}
-	prefs := client.providerPreferences("vendor/fast-model", callKnobs{intent: IntentInteractive}, &ai.Request{})
+	prefs := client.providerPreferences("vendor/fast-model", callKnobs{intent: IntentInteractive})
 	if prefs == nil || !equalStrings(prefs.Order, []string{"quicksilver"}) || len(prefs.Ignore) != 0 {
 		t.Fatalf("preferences after unnamed cut = %#v, want no endpoint attributed", prefs)
 	}
@@ -695,7 +694,7 @@ func TestABlindCutIsFiledAgainstTheMachineWeAskedFor(t *testing.T) {
 	}
 	// AND THE NEXT SEND CARRIES IT AT ONCE. A cut is a move, not a fault to sit
 	// out: the veto is on the very next body rather than after a backoff.
-	prefs := client.providerPreferences("vendor/fast-model", callKnobs{}, &ai.Request{})
+	prefs := client.providerPreferences("vendor/fast-model", callKnobs{})
 	if prefs == nil || !equalStrings(prefs.Ignore, []string{"quicksilver"}) {
 		t.Fatalf("the next request carries %#v, want the cut machine vetoed", prefs)
 	}
@@ -720,7 +719,7 @@ func TestRoutingOffStillNotesACutAndAsksForNothing(t *testing.T) {
 	if _, ignore := client.velocity.preferences("vendor/fast-model"); !equalStrings(ignore, []string{"molasses"}) {
 		t.Fatalf("routing off recorded ignore=%v, want the machine that went quiet", ignore)
 	}
-	if prefs := client.providerPreferences("vendor/fast-model", callKnobs{}, &ai.Request{}); prefs != nil {
+	if prefs := client.providerPreferences("vendor/fast-model", callKnobs{}); prefs != nil {
 		t.Fatalf("routing off asked the wire for %+v, want nothing at all", prefs)
 	}
 }

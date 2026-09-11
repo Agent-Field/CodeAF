@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"go/ast"
 	"os"
 	"strings"
 	"testing"
@@ -53,5 +54,91 @@ func TestNothingOnTheSendPathRefreshesASheet(t *testing.T) {
 	}
 	if scanned == 0 {
 		t.Fatal("no sources were scanned, so this law passed vacuously")
+	}
+}
+
+// ── ONE CALL, ONE DRAW ──────────────────────────────────────────────────────
+//
+// A lane choice is a SAMPLED decision: `internal/lane`'s seed mixes in the
+// moment it is asked at, so asking twice about one request gives two different
+// answers. One call encodes its request many times — once per attempt, once for
+// every rung of the relaxation ladder, once more for the object the refusal door
+// re-derives — and while the encoder was free to draw one of its own, each of
+// those encodes could be a different request to a different set of machines. The
+// plan above them reads the call's choice ([requestSet]), so a choice the
+// encoder kept to itself left the move generator walking a set the wire had
+// never carried, and the waiting line could name nothing.
+//
+// The law is therefore about WHO MAY ASK, and it is a short list with a reason
+// on every line rather than a rule about where the call sits.
+
+// asksTheChooser are the functions that may put a question to
+// [lane.Chooser.Choose], and what each one's question is ABOUT. Nothing else in
+// this package may ask, because everything else in it is composing a request
+// that has already been decided.
+var asksTheChooser = map[string]string{
+	// ONE CALL'S OWN DECISION, drawn before the first byte leaves and read by the
+	// watch, the plan and every encode under it (lanes.go's withLaneChoice).
+	"drawLaneChoice": "the one draw a call makes",
+	// AND THE PROBE'S QUESTION IS ABOUT A MODEL AND NOT ABOUT A CALL. It buys a
+	// measurement of the two lanes at the head of a model's frontier seconds
+	// before anybody asks for anything, so there is no call to be consistent
+	// with — it IS the thing that gives the next call something to choose
+	// between (probe.go).
+	"ProbeLanes": "which two lanes are worth measuring, asked of a model",
+}
+
+// drawsTheChoice is who may call [Client.drawLaneChoice], and there is one: the
+// function that stamps the answer on the call's context so that everything under
+// it reads the same set of machines.
+var drawsTheChoice = map[string]string{
+	"withLaneChoice": "stamps the one answer on the call",
+}
+
+// TestOnlyOneFunctionDrawsACallsLane holds one call to one set of machines.
+func TestOnlyOneFunctionDrawsACallsLane(t *testing.T) {
+	permitted := map[string]map[string]string{
+		"Choose":         asksTheChooser,
+		"drawLaneChoice": drawsTheChoice,
+	}
+	asked := map[string]bool{}
+	for name, file := range providerSources(t) {
+		for _, decl := range file.Decls {
+			function, ok := decl.(*ast.FuncDecl)
+			if !ok {
+				continue
+			}
+			ast.Inspect(function, func(node ast.Node) bool {
+				call, ok := node.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				selector, ok := call.Fun.(*ast.SelectorExpr)
+				if !ok {
+					return true
+				}
+				callers, watched := permitted[selector.Sel.Name]
+				if !watched {
+					return true
+				}
+				if _, allowed := callers[function.Name.Name]; !allowed {
+					t.Errorf("%s: %s calls %s — a call draws its lane ONCE, in withLaneChoice, and "+
+						"everything below it reads knobs.laneChoice. If this question is about a model "+
+						"rather than about a call, add it to the list with the sentence that says so",
+						name, function.Name.Name, selector.Sel.Name)
+					return true
+				}
+				asked[selector.Sel.Name+" from "+function.Name.Name] = true
+				return true
+			})
+		}
+	}
+	for callee, callers := range permitted {
+		for name := range callers {
+			if !asked[callee+" from "+name] {
+				t.Errorf("%s is permitted to call %s and no longer does — delete the line rather than "+
+					"leaving a permission nobody uses", name, callee)
+			}
+		}
 	}
 }

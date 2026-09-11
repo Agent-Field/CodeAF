@@ -201,7 +201,7 @@ func TestAPinnedLaneCanRaiseAnOffer(t *testing.T) {
 	)
 	pinned(t, LanePin{Lane: "brass"})
 
-	choice, made := client.laneChoiceFor(callKnobs{}, model, &ai.Request{Model: model, Messages: userMessages("hello")})
+	choice, made := client.drawLaneChoice(callKnobs{}, model, &ai.Request{Model: model, Messages: userMessages("hello")})
 	if !made {
 		t.Fatal("a pin made no choice at all, so nothing downstream is watched")
 	}

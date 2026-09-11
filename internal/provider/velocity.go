@@ -347,7 +347,7 @@ func (c *Client) priceCeiling(model string) *maxPrice {
 // pinning anything is never asked, never answers, and its requests are
 // byte-for-byte the requests it got before this law existed. The moment somebody
 // pins a lane, that pin IS the asking.
-func (c *Client) providerPreferences(model string, knobs callKnobs, request *ai.Request) *providerPrefs {
+func (c *Client) providerPreferences(model string, knobs callKnobs) *providerPrefs {
 	if !c.carriesPreferences() {
 		return nil
 	}
@@ -406,7 +406,14 @@ func (c *Client) providerPreferences(model string, knobs callKnobs, request *ai.
 	// — so when there is a belief its order replaces the ranking above. When
 	// there is not, and on the first call of every fresh machine there is not,
 	// nothing here changes and the request goes out exactly as it always did.
-	c.applyLaneChoice(prefs, model, knobs, request, held)
+	//
+	// IT NO LONGER TAKES THE REQUEST, and the absence is the whole of this
+	// change: the belief is asked ONCE PER CALL rather than once per encode
+	// ([Client.withLaneChoice]), so by the time the object is being composed
+	// there is nothing left to ask — only the call's own answer to read off its
+	// knobs. A parameter kept "in case the encoder needs to decide again" would
+	// be the door back to the defect.
+	c.applyLaneChoice(prefs, model, knobs, held)
 	return prefs
 }
 
@@ -420,14 +427,14 @@ func (c *Client) providerPreferences(model string, knobs callKnobs, request *ai.
 // half could not see the demand [hedgePreference] adds afterwards, so a pinned
 // request was offered no first rung and climbed every other one still pinned to
 // the machine that had refused it (issue #266).
-func (c *Client) wirePreferences(model string, knobs callKnobs, request *ai.Request) *providerPrefs {
+func (c *Client) wirePreferences(model string, knobs callKnobs) *providerPrefs {
 	if knobs.noProvider {
 		// THE ONE ENCODE THAT ASKS THE OPPOSITE QUESTION. See [callKnobs] —
 		// this is the widened retry that finds out whether a base's 400 was
 		// about the field, and it can only find out by sending none.
 		return nil
 	}
-	prefs := hedgePreference(c.providerPreferences(model, knobs, request), knobs)
+	prefs := hedgePreference(c.providerPreferences(model, knobs), knobs)
 	if knobs.relaxed.has(relaxEndpointFilter) {
 		prefs = relaxedPreferences(prefs)
 	}
