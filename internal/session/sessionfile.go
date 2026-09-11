@@ -159,6 +159,24 @@ type sessionEntry struct {
 	// is not one, and from every file written before it existed.
 	Caption *journalCaption `json:"caption,omitempty"`
 
+	// Took is a `took` line: how long ONE tool call's own work ran, keyed by the
+	// call's id (loop.go's EventToolFinished).
+	//
+	// IT IS ITS OWN LINE FOR THE CAPTION'S REASON. The finish is known the
+	// instant the tool returns, and the tool MESSAGE that answers it is journaled
+	// only after the whole batch has run — so there is no result line open to
+	// write the figure into when it is measured. Anchored by call id, it is the
+	// same identity a live surface pairs on, so the record and the stream name
+	// the duration the same way.
+	//
+	// WITHOUT IT A REOPENED PAGE LOSES THE FIGURE. The live stream writes it onto
+	// the row as EventToolFinished arrives; a page that opens after the batch —
+	// or a room rebuilt from the journal after a landing — has only the record,
+	// and a record that carried Args and Output but not Took drew the rows with
+	// no duration at all. Absent from every line that is not one, and from every
+	// file written before the line existed.
+	Took *journalTook `json:"took,omitempty"`
+
 	// Deliveries names the durable deliveries this line is the record of
 	// ([durableDelivery]): a landing's news, identified by session, task,
 	// attempt and ending. It is what lets a resumed session tell a landing it
@@ -499,9 +517,19 @@ type journalCall struct {
 // IT IS EVIDENCE AND NEVER SPEND, for [journalCall]'s reason and one more: a
 // failed call was not billed, so there is nothing here to sum.
 type journalError struct {
-	Model      string `json:"model,omitempty"`
-	Endpoint   string `json:"endpoint,omitempty"`
-	Role       string `json:"role,omitempty"`
+	Model    string `json:"model,omitempty"`
+	Endpoint string `json:"endpoint,omitempty"`
+	Role     string `json:"role,omitempty"`
+	// Door is WHICH DOOR ENDED THE TURN, for the one kind of failed call that
+	// is not a provider's: a turn this machine stopped from the inside
+	// (stopcause.go). It is the [StopDoor] itself and not the sentence built
+	// from it, because the whole point of a door is that a reader can ask which
+	// one it was without comparing prose — and the reader this field exists for
+	// is the one that decides whether the question is still owed an answer
+	// (resume.go). Absent on every call a provider failed and on every file
+	// written before it existed, and a stop this build cannot name is a stop it
+	// will not act on.
+	Door       string `json:"door,omitempty"`
 	Status     int    `json:"status,omitempty"`
 	Provider   string `json:"provider,omitempty"`
 	Message    string `json:"message,omitempty"`
@@ -824,6 +852,17 @@ type journalCaption struct {
 	Category ActionCategory `json:"category,omitempty"`
 }
 
+// journalTook is ONE call's own duration as the journal holds it: which call,
+// and how long it ran from begin to end of its Execute.
+//
+// DurationMS rather than a stamped interval, because the journal is not a clock
+// — it is a figure the surface already knew live (Event.Took) and must be able
+// to say again after a reopen. Zero is never written (see [sessionFile.appendTook]).
+type journalTook struct {
+	CallID     string `json:"callId"`
+	DurationMS int64  `json:"durationMs"`
+}
+
 // journalPartImage names the one non-text part a person's message can carry
 // today. It is a field rather than an implied shape so a file written now stays
 // readable when there is a second kind.
@@ -1001,6 +1040,15 @@ type sessionFile struct {
 	// to be recovered from, and a replay without this index falls back to
 	// recomposing a sentence out of tool names.
 	captions map[string]journalCaption
+
+	// tooks is HOW LONG EACH CALL RAN, keyed by the call's own id ([journalTook]).
+	//
+	// It lives here for the captions' reason: a call's duration is not a message
+	// either — the model never reads one — and the tool result that answers the
+	// call is journaled AFTER the batch, so the figure measured at finish has
+	// nowhere else to sit. A replay without this index draws finished rows with
+	// no duration, which is the lie a room opened after landing used to tell.
+	tooks map[string]journalTook
 
 	// restored is what this conversation had already spent when the file was
 	// opened: the SUM of its usage lines, replayed once and never updated after.
@@ -1206,6 +1254,60 @@ func (s *sessionFile) appendCaption(callID, text string, category ActionCategory
 	s.captions[callID] = mark
 	s.mu.Unlock()
 	s.writeLine(sessionEntry{Type: "caption", Caption: &mark, Timestamp: stamp()})
+}
+
+// took returns how long this call ran, or 0 when the journal never recorded one
+// — which is every call in a file written before the `took` line existed, and
+// every call that never finished.
+//
+// The NIL RECEIVER answers zero, for the reason [sessionFile.caption] answers
+// empty: a session with no file wrote no journal, so there is nothing to have
+// measured.
+func (s *sessionFile) took(callID string) time.Duration {
+	if s == nil {
+		return 0
+	}
+	callID = strings.TrimSpace(callID)
+	if callID == "" {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	mark, told := s.tooks[callID]
+	if !told || mark.DurationMS <= 0 {
+		return 0
+	}
+	return time.Duration(mark.DurationMS) * time.Millisecond
+}
+
+// appendTook journals one call's own duration against the call it is about.
+//
+// IT IS CALLED WHERE EventToolFinished IS SENT and with the same id, so the
+// record and the live stream cannot disagree about which call the figure names.
+// A second finish of the same id simply lands after the first; the replay takes
+// the last, which is what a surface would have been left looking at.
+//
+// A zero or negative duration is not written: the emptiness law applied to a
+// figure — a call that finished before a frame could have drawn it running is
+// still a call whose duration the surface omits (toolview.go's elapsedFloor),
+// and a line saying "0ms" would only grow the file.
+func (s *sessionFile) appendTook(callID string, took time.Duration) {
+	if s == nil {
+		return
+	}
+	callID = strings.TrimSpace(callID)
+	ms := took.Milliseconds()
+	if callID == "" || ms <= 0 {
+		return
+	}
+	mark := journalTook{CallID: callID, DurationMS: ms}
+	s.mu.Lock()
+	if s.tooks == nil {
+		s.tooks = make(map[string]journalTook, 4)
+	}
+	s.tooks[callID] = mark
+	s.mu.Unlock()
+	s.writeLine(sessionEntry{Type: "took", Took: &mark, Timestamp: stamp()})
 }
 
 // rememberSteer marks one message as a splice, in a map the caller owns — the
@@ -1444,6 +1546,7 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 	journal.noteDeliveries = replayed.noteDeliveries
 	journal.steers = replayed.steers
 	journal.captions = replayed.captions
+	journal.tooks = replayed.tooks
 	journal.restored = replayed.usage
 
 	if !replayed.existed {
@@ -1584,6 +1687,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		scanned    int
 		spent      Usage
 		created    []fileChange
+		requests   RequestBooks
 	)
 	// The picture index is built as the messages are, because this is the one
 	// pass that holds both halves at once: the reference the journal wrote and
@@ -1599,6 +1703,10 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 	// news about a batch that is not carried by any message, so this pass is the
 	// only place it can be picked up (see [sessionFile.captions]).
 	captions := make(map[string]journalCaption)
+	// And the took index, for the captions' reason: a `took` line is news about
+	// one call's duration that is not carried by any message (see
+	// [sessionFile.tooks]).
+	tooks := make(map[string]journalTook)
 	replyTags := make(map[string][]TaskReplyTag)
 	delivered := make(map[string]bool)
 	noteDeliveries := make(map[string][]string)
@@ -1606,6 +1714,14 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 	// an ordinary user message once it has been rebuilt, and the mark that says
 	// it was typed INTO the turn above it is on the line (steer.go).
 	steers := make(map[string]SteerMark)
+	// asked and stopped are THE TAIL OF THE CONVERSATION AS A SHAPE: whether the
+	// last line of the transcript is a question the person typed themselves, and
+	// whether the only thing after it is this machine stopping the turn that was
+	// answering it (resume.go). They are read here rather than off the rebuilt
+	// messages because the door is on the `error` LINE and the line is gone by
+	// the time anybody has a transcript.
+	asked := false
+	var stopped StopDoor
 	scanner := bufio.NewScanner(reader)
 	// A tool result can be tens of kilobytes; the default 64KiB token limit
 	// would end the replay at the first big one.
@@ -1655,6 +1771,15 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			if entry.Role == "" {
 				continue
 			}
+			// EVERY MESSAGE CLOSES THE SHAPE AND ONLY ONE OPENS IT. A line of
+			// the model's — its words, its tool calls, the results that came
+			// back — is an answer that arrived, and the person's question is no
+			// longer the last thing said. A note the session wrote itself is not
+			// the person asking, and a sentence spliced into a turn that was
+			// already running belongs to a turn that had already produced
+			// something (steer.go), so neither of those opens it either.
+			asked = entry.Role == "user" && !entry.Note && entry.Steer == nil
+			stopped = ""
 			message := replayedMessage(entry, rebuild)
 			rememberParts(images, message, entry.Parts)
 			if entry.Note {
@@ -1683,6 +1808,10 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// holds every line of the conversation above the marker, and without
 			// this the boundary would masquerade as the beginning of the chat.
 			//
+			// AND IT CLOSES THE TAIL SHAPE for [readJournal]'s `rewind` reason:
+			// a pass that rewrites the window rewrites what the last line of the
+			// conversation is.
+			//
 			// It is taken with the SAME reducer state that is about to be
 			// discarded — rewind cuts already applied, an older marker's window
 			// already in place — so the region is the transcript exactly as it
@@ -1693,6 +1822,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// The LAST marker wins because each one overwrites the snapshot the
 			// one before it took. See [replayedSession.earlier] for why the
 			// nested regions are not stacked.
+			asked, stopped = false, ""
 			earlier = append(earlier[:0], messages...)
 			// Everything before this marker is what the pass replaces. The
 			// name is not a message and survives the cut: a compacted session
@@ -1732,6 +1862,18 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 				continue
 			}
 			captions[mark.CallID] = mark
+		case "took":
+			// ONE CALL'S OWN DURATION. It rebuilds no message — nothing was ever
+			// said to the model here — so it only indexes, and the LAST line for
+			// a call wins the way a caption's last line does.
+			if entry.Took == nil {
+				continue
+			}
+			mark := *entry.Took
+			if strings.TrimSpace(mark.CallID) == "" || mark.DurationMS <= 0 {
+				continue
+			}
+			tooks[mark.CallID] = mark
 		case "steer":
 			// A STEER THAT FELL THROUGH, and nothing is rebuilt from it
 			// ([sessionFile.appendSteerFellThrough]). Those words never reached
@@ -1745,6 +1887,11 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// line was forgotten about.
 			continue
 		case "rewind":
+			// AND A LINE THAT TAKES MESSAGES BACK CLOSES THE SHAPE. What the tail
+			// of the transcript now is cannot be read off the lines this pass has
+			// walked past, so the honest answer about a question still owed an
+			// answer is that this reading does not have one.
+			asked, stopped = false, ""
 			// The turn this line took back. Everything after it in the file is
 			// ordinary conversation again — a rewind is followed by the person
 			// saying the thing better — so the replay drops N and keeps reading
@@ -1785,18 +1932,37 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 				spent.Turns += used.Calls
 			}
 		case "call":
-			// DROPPED ON PURPOSE, and this arm exists to say so rather than to
-			// leave it to the switch falling off the end. A call line is the
-			// SHAPE of one request — who served it, how much of its prompt was
-			// warm — and every dollar on it is already counted in the seal that
-			// closed its turn. Folding it in here would bill the session twice
-			// for the same money.
+			// NEVER BILLED, and this arm exists to say so rather than to leave it
+			// to the switch falling off the end. A call line is the SHAPE of one
+			// request — who served it, how much of its prompt was warm — and every
+			// dollar on it is already counted in the seal that closed its turn.
+			// Folding it into `spent` would bill the session twice for the same
+			// money.
+			//
+			// IT IS READ FOR ITS SHAPE, which is what it was written for: the
+			// size of each request and what came back from it, for a page that
+			// watches this work with no lane to it ([RequestBooks]).
+			if entry.Call != nil {
+				requests.observe(*entry.Call)
+			}
 		case "error":
 			// DROPPED ON PURPOSE, for the reason a call line is, and one of its
 			// own: a failed call cost nothing to bill and put nothing in the
 			// transcript. It is evidence for whoever reads the file afterwards,
 			// and replaying it would put a provider's refusal into somebody's
 			// conversation as though the model had said it.
+			//
+			// ONE BIT OF IT IS READ, AND IT IS NOT A MESSAGE. A row naming a
+			// door is this machine saying it stopped the turn itself, and a row
+			// naming none is a provider that said no — which is a thing that
+			// happened on the way to an answer and never a reason the question
+			// stopped being asked, so it leaves the shape exactly as it was
+			// (resume.go).
+			if asked && entry.Error != nil {
+				if door := StopDoor(strings.TrimSpace(entry.Error.Door)); door != "" {
+					stopped = door
+				}
+			}
 		case "abandoned":
 			// DROPPED ON PURPOSE, for the reason a call line is and one of its
 			// own. Every dollar on it is already counted — the calls it sums each
@@ -1866,7 +2032,16 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		// the one AFTER the last one counted.
 		unread = scanned + 1
 	}
+	// AND THE SHAPE IS CHECKED AGAINST THE TRANSCRIPT IT PRODUCED, not only
+	// against the lines it was read off. A file whose last line said one thing
+	// and whose rebuilt tail says another — a reading that stopped early, a
+	// repair yet to come — is a file this reading cannot honestly claim ends on a
+	// question nobody answered, and the safe answer is that it does not.
+	if len(messages) == 0 || messages[len(messages)-1].Role != "user" {
+		stopped = ""
+	}
 	return replayedSession{
+		stopped:        stopped,
 		messages:       messages,
 		unread:         unread,
 		reasoning:      reasoning,
@@ -1882,8 +2057,10 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		noteDeliveries: noteDeliveries,
 		steers:         steers,
 		captions:       captions,
+		tooks:          tooks,
 		usage:          spent,
 		created:        created,
+		requests:       requests,
 		existed:        lines > 0,
 	}, nil
 }
@@ -2021,6 +2198,9 @@ func legacyCompactionNote(summary string) string {
 // should not have to count positions to know which bool is which.
 type replayedSession struct {
 	messages []ai.Message
+	// requests is what the file's request lines said, read beside the rebuild
+	// for a page watching the work with no lane to it ([RequestBooks]).
+	requests RequestBooks
 	// reasoning is aligned with messages. Legacy lines and rewritten messages
 	// carry zero entries, which means they serialize exactly as before.
 	reasoning []provider.MessageReasoning
@@ -2071,6 +2251,9 @@ type replayedSession struct {
 	// captions is what the narrator said about each batch, keyed by the batch's
 	// first call id — the index [sessionFile.captions] is opened holding.
 	captions map[string]journalCaption
+	// tooks is how long each call ran, keyed by the call's own id — the index
+	// [sessionFile.tooks] is opened holding.
+	tooks map[string]journalTook
 	// unread is the 1-based line of the file this reading could not get past, and
 	// zero for a file read to its end. Everything above it is in `messages`; the
 	// number is what lets a caller say WHICH line rather than "something went
@@ -2087,6 +2270,12 @@ type replayedSession struct {
 	// ([journalCreated]).
 	created []fileChange
 	existed bool
+	// stopped is THE DOOR THAT ENDED THE LAST TURN WITH NOTHING SAID, and "" —
+	// which is nearly every file — for a conversation that does not end on an
+	// unanswered question. It is set only for the exact shape resume.go acts on:
+	// the person's own words as the last message, and after them a stop this
+	// machine made and no answer of any kind (see [readJournal]).
+	stopped StopDoor
 }
 
 // repairTranscript makes a replayed transcript legal to send.
@@ -2134,18 +2323,11 @@ func repairTranscript(messages []ai.Message) []ai.Message {
 		break
 	}
 
-	seen := make(map[string]bool)
+	paired := toolResultCalls(messages)
 	repaired := messages[:0]
-	for _, message := range messages {
-		if message.Role == "tool" {
-			if message.ToolCallID == "" || !seen[message.ToolCallID] {
-				continue
-			}
-			repaired = append(repaired, message)
+	for index, message := range messages {
+		if message.Role == "tool" && paired[index] == nil {
 			continue
-		}
-		for _, call := range message.ToolCalls {
-			seen[call.ID] = true
 		}
 		repaired = append(repaired, message)
 	}

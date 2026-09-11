@@ -146,6 +146,39 @@ func drain(t *testing.T, events <-chan Event) {
 	}
 }
 
+// A SERVICE WITHOUT A LIST PRODUCES AN EMPTY MEDIA RESOLVER. The ordinary
+// absence door then removes every generation verb from offeredTools; Sources
+// changes which client a model call reaches, but adds no duplicate belt rule.
+func TestAListinglessServiceLeavesMediaOffTheOfferedBelt(t *testing.T) {
+	profile := t.TempDir()
+	if err := configpkg.WriteSources(profile, []configpkg.PersistedSource{{
+		ID: "z-ai", Written: "z-ai", Region: "intl", Key: "direct-secret", Order: 1,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	sources := configpkg.ResolveSources(profile, "default-secret", configpkg.DefaultBaseURL)
+
+	withListing, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Media = &scriptedMedia{}
+		config.MediaModel = allMediaModels()
+	})
+	withoutListing, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Model = "z-ai/glm-4.6"
+		config.Sources = sources
+		config.Media = &scriptedMedia{}
+		config.MediaModel = func(string) string { return "" }
+	})
+
+	for _, name := range []string{"generate_image", "speak", "generate_music", "generate_video"} {
+		if !withListing.offers(name) {
+			t.Fatalf("the comparison belt does not offer %s", name)
+		}
+		if withoutListing.offers(name) {
+			t.Errorf("a listing-less service still offers %s", name)
+		}
+	}
+}
+
 // ── the whole road, in one turn ─────────────────────────────────────────────
 
 // THE ACCEPTANCE. A model that wants a shelved verb loads its group and then
@@ -492,39 +525,6 @@ func TestLoadingAGroupDoesNotLoosenTheGateOverIt(t *testing.T) {
 	}
 }
 
-// ── a narrowed belt inherits no cupboard ────────────────────────────────────
-
-// A HAND HAS THE SHELF ITS BELT HAS, WHICH IS NONE. `forkBelt` is an allowlist
-// and never names the loading verb, so the shelf is unreachable in any case —
-// this asserts the cupboard is empty as well, because a narrowing meant to be
-// total that left one standing would be a capability surviving by accident.
-func TestAHandInheritsNeitherTheLoadingVerbNorTheShelf(t *testing.T) {
-	caller, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) { config.System = "" })
-	seed, page := caller.forkSeed()
-	hand, err := caller.newHandAgent(forkPart{Role: "one", Scope: []string{"a"}}, seed, page, &handLeash{limit: forkRounds})
-	if err != nil {
-		t.Fatalf("newHandAgent: %v", err)
-	}
-	t.Cleanup(func() { _ = hand.Close() })
-
-	if hand.hasTool(loadCapabilityToolName) {
-		t.Fatalf("a hand carries the loading verb: %v", shelfBeltNames(hand))
-	}
-	if shelved := hand.shelvedNames(); len(shelved) != 0 {
-		t.Fatalf("a hand inherited a shelf holding %v", shelved)
-	}
-	for _, never := range []string{"settings", "change_setting", "build_harness", "generate_image"} {
-		if hand.offers(never) {
-			t.Fatalf("a hand offers %s, which its allowlist never named", never)
-		}
-	}
-	// AND THE CALLER STILL HAS ITS OWN. Clearing the hand's shelf must not reach
-	// through to the mind that forked it.
-	if len(caller.shelvedNames()) == 0 {
-		t.Fatal("forking emptied the caller's own shelf")
-	}
-}
-
 // ── a load that cannot happen is a failure ──────────────────────────────────
 
 // A CALL THAT LOADED NOTHING IS ANSWERED AS AN ERROR, THROUGH THE REAL DOOR.
@@ -634,11 +634,7 @@ func TestAShapeThatCarriesItsToolsIsNeverToldToLoadThem(t *testing.T) {
 				t.Errorf("%s: carries `%s` though it shelves nothing", shape.name, loadCapabilityToolName)
 			}
 		}
-		// A hand opens on its caller's page word for word, and the caller is a
-		// conversation that does shelve — so what this shape answers for is the
-		// tail fork.go appends (prompt_belt_test.go states the same law).
-		page := strings.TrimPrefix(minted.page, minted.inherited)
-		if strings.Contains(page, loadCapabilityToolName) {
+		if strings.Contains(minted.page, loadCapabilityToolName) {
 			t.Errorf("%s: its page names `%s`, which is not on its belt", shape.name, loadCapabilityToolName)
 		}
 	}
@@ -853,6 +849,86 @@ func TestTheCapabilityTableIsWellFormed(t *testing.T) {
 	}
 }
 
+// ── the prose that rides with a load ────────────────────────────────────────
+
+// A GROUP'S LONG MECHANICS ARE BOUGHT BY WHOEVER PULLS THEM, and this is the
+// both-ways proof of the delivery the prompt diet moved them to
+// (docs/design/prompt-diet/DESIGN.md §2, the ON DEMAND class).
+//
+// FORWARD: the paragraph that used to sit in prompts/system.md for every request
+// of every turn — how to write a media prompt that does not come back average,
+// what a saved recipe is against a saved program, what a refused setting write
+// means — arrives in the answer to the load that fetches those verbs, which is
+// the first moment anybody can use it.
+//
+// BACKWARD, AND THIS IS THE HALF THAT BREAKS SILENTLY: checkpoint.go's
+// [loadedAndNeverUsed] reads the armed names off the `Loaded: ` line, up to its
+// FIRST FULL STOP, to build the synthetic continuation that sends a stalled turn
+// back in. Prose written above that line, or a group name with a full stop in
+// it, turns that nudge into a list of sentence fragments. So the lead stays
+// first and the parse is re-run here on the real answer.
+func TestALoadAnswersWithItsGroupsProseUnderAnUnchangedLoadedLine(t *testing.T) {
+	agent := shelfAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Media = &scriptedMedia{}
+		config.MediaModel = allMediaModels()
+		config.HarnessCards = true
+		config.Subharnesses = registryWith(t, &fakeGeneralist{}, &fakeRunner{manifest: theProgram()})
+	})
+
+	for _, group := range capabilityGroups {
+		answer, failed := agent.loadCapability(group.name)
+		if failed {
+			t.Fatalf("loading %s failed: %s", group.name, answer)
+		}
+		if !strings.HasPrefix(answer, loadedLead) {
+			t.Fatalf("the %s load does not open with %q: %s", group.name, loadedLead, answer)
+		}
+
+		// THE PARSE checkpoint.go MAKES, on this exact string.
+		names := strings.Split(strings.TrimSpace(strings.SplitN(strings.TrimPrefix(answer, loadedLead), ".", 2)[0]), ", ")
+		for _, name := range names {
+			if strings.TrimSpace(name) == "" || strings.Contains(name, "\n") {
+				t.Errorf("the %s load's first sentence does not read back as tool names: %q", group.name, names)
+			}
+		}
+
+		if group.prose == "" {
+			// `questions` has none, and a load that invented one would be a
+			// paragraph nobody wrote.
+			continue
+		}
+		if !strings.Contains(answer, "\n\n"+group.prose) {
+			t.Errorf("the %s load does not carry its own prose under a blank line:\n%s", group.name, answer)
+		}
+		if strings.Index(answer, group.prose) < strings.Index(answer, "\n") {
+			t.Errorf("the %s group's prose is above the Loaded line, where checkpoint.go reads names", group.name)
+		}
+	}
+}
+
+// AND THE PROSE IS NOT A SECOND COPY OF THE PAGE. The whole point of moving it
+// is that message[0] stopped carrying it, so a lane that puts a sentence back on
+// the page and leaves it here as well has paid twice for one law.
+func TestAGroupsProseIsNotAlsoOnThePage(t *testing.T) {
+	page := widestPage()
+	for _, group := range capabilityGroups {
+		if group.prose == "" {
+			continue
+		}
+		// A key sentence out of the middle of each paragraph, long enough that
+		// an accidental match is not a thing that happens.
+		for _, sentence := range strings.Split(group.prose, ". ") {
+			sentence = strings.TrimSpace(sentence)
+			if len(sentence) < 60 {
+				continue
+			}
+			if strings.Contains(page, sentence) {
+				t.Errorf("the %s group's prose is on the page too, so it is paid for on every request as well as on the load: %q", group.name, sentence)
+			}
+		}
+	}
+}
+
 // THE EVERYDAY BELT IS UNTOUCHED. The saving is only worth having if the tools a
 // conversation reaches for on the turn it needs them are still in front of it,
 // so this pins the list that must never move onto a shelf.
@@ -865,7 +941,7 @@ func TestTheEverydayVerbsAreStillCarried(t *testing.T) {
 	for _, everyday := range []string{
 		"read", "write", "edit", "bash", "grep", "find", "ls",
 		"read_document", "jobs", "watch", "manual",
-		"propose_task", "tasks", "fork", "track", "commit", "recall",
+		"propose_task", "tasks", "track", "commit", "recall",
 		"remember", "search_conversations", "view_image",
 	} {
 		if !agent.hasTool(everyday) {
@@ -931,5 +1007,138 @@ func TestShelvingTakesMoreOffTheToolBlockThanItPutsOn(t *testing.T) {
 	// group that stopped paying its way would fall through this.
 	if saved < 4*loader {
 		t.Fatalf("shelving holds back %d bytes and spends %d to do it, which is not a trade worth a round trip", len(held), loader)
+	}
+}
+
+// ── a load that is never used ───────────────────────────────────────────────
+
+// A TURN THAT LOADS A GROUP AND STOPS WITHOUT CALLING ANYTHING IN IT IS SENT
+// BACK ONCE. `load_capability` says "Continue in this same turn"; a model that
+// answers with a plan and no call has ended the turn with the thing it loaded
+// for never done. Seen on 2026-09-10 in the person's own conversation: the
+// model loaded `ask`, wrote "Let me make the question." and stopped.
+func TestATurnThatLoadsAGroupAndStopsIsSentBackOnce(t *testing.T) {
+	recorder := &blockRecorder{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("c1", loadCapabilityToolName, `{"group":"settings"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("Now I will look up the budget. Let me read the setting."), nil
+		},
+		// The nudge lands and the model does what it said it would.
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("c2", "settings", `{"search":"budget"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("here is what that row says"), nil
+		},
+		// A later turn that calls nothing is left alone: the load belongs to
+		// the turn before, and that turn used it.
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("you are welcome"), nil
+		},
+	}}
+	agent := shelfAgent(t, recorder, func(config *Config) {
+		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
+		config.Media = &scriptedMedia{}
+		config.MediaModel = allMediaModels()
+	})
+
+	events, err := agent.Submit(context.Background(), "what is my daily budget set to?")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := collect(t, events)
+
+	if got := recorder.requests(); got != 4 {
+		t.Fatalf("the loop made %d requests; want 4 — load, the stop, the nudged call, the answer", got)
+	}
+	transcript := transcriptText(agent)
+	if !strings.Contains(transcript, checkpointLoadNudgeLead([]string{"settings", "change_setting"})) {
+		t.Errorf("the turn was not sent back naming what it loaded:\n%s", transcript)
+	}
+	if !saidSomething(noticeTexts(collected), checkpointLoadNudgeNote) {
+		t.Errorf("nobody told the person why the turn went on; notices were %q", noticeTexts(collected))
+	}
+	answer := recorder.resultAt(t, 3, "c2")
+	if !strings.Contains(answer, `settings mentioning "budget"`) {
+		t.Errorf("the nudged call did not run the loaded tool:\n%s", answer)
+	}
+
+	events, err = agent.Submit(context.Background(), "thanks")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	later := collect(t, events)
+	if got := recorder.requests(); got != 5 {
+		t.Fatalf("the second turn made %d requests in all; want 5 — a turn that loaded nothing is not sent back", got)
+	}
+	if saidSomething(noticeTexts(later), checkpointLoadNudgeNote) {
+		t.Error("a turn that loaded nothing was sent back for a load an earlier turn made")
+	}
+}
+
+// AND ONCE MEANS ONCE. A model that ignores the nudge has decided, and the turn
+// ends on its second stop rather than being argued with.
+func TestTheLoadNudgeIsGivenOnceATurn(t *testing.T) {
+	recorder := &blockRecorder{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("c1", loadCapabilityToolName, `{"group":"settings"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("Let me read the setting."), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("On reflection you can read it under /settings yourself."), nil
+		},
+	}}
+	agent := shelfAgent(t, recorder, func(config *Config) {
+		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
+		config.Media = &scriptedMedia{}
+		config.MediaModel = allMediaModels()
+	})
+	events, err := agent.Submit(context.Background(), "what is my daily budget set to?")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := collect(t, events)
+	if got := recorder.requests(); got != 3 {
+		t.Fatalf("the loop made %d requests; want 3 — one nudge and then the turn ends", got)
+	}
+	if n := strings.Count(transcriptText(agent), "[carry on] You loaded"); n != 1 {
+		t.Errorf("the turn was sent back %d times; want exactly once", n)
+	}
+	if n := strings.Count(strings.Join(noticeTexts(collected), "\n"), checkpointLoadNudgeNote); n != 1 {
+		t.Errorf("the person was told %d times; want once", n)
+	}
+}
+
+// AND A TURN THAT ENDS BY ASKING THE PERSON SOMETHING IS LEFT ALONE, as
+// everywhere else: a question addressed to somebody else is not the harness's
+// to answer with a nudge.
+func TestALoadFollowedByAQuestionToThePersonIsNotSentBack(t *testing.T) {
+	recorder := &blockRecorder{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("c1", loadCapabilityToolName, `{"group":"settings"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("Do you mean today's limit, or the monthly one?"), nil
+		},
+	}}
+	agent := shelfAgent(t, recorder, func(config *Config) {
+		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
+		config.Media = &scriptedMedia{}
+		config.MediaModel = allMediaModels()
+	})
+	events, err := agent.Submit(context.Background(), "what is my budget set to?")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := collect(t, events)
+	if got := recorder.requests(); got != 2 {
+		t.Fatalf("the loop made %d requests; want 2 — a question to the person ends the turn", got)
+	}
+	if saidSomething(noticeTexts(collected), checkpointLoadNudgeNote) {
+		t.Error("a turn that ended asking the person was sent back")
 	}
 }

@@ -30,6 +30,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 // Spec is one model on the panel.
@@ -51,6 +53,10 @@ type Spec struct {
 // measured and no price is known, the panel is tried as written.
 type Panel struct {
 	Models []Spec `json:"models"`
+
+	// ClientConfig resolves each model's own account. It is runtime wiring and
+	// never part of the JSON an operator writes.
+	ClientConfig func(model string) provider.Config `json:"-"`
 
 	// MaxOutputPrice refuses a model dearer than this, in $/M output tokens. It
 	// is a sanity cap rather than a budget: a typo in a slug that resolves to a

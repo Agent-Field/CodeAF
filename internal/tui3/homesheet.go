@@ -534,19 +534,19 @@ func (a *app) homeAnswerBands(ctx bandContext) ([]string, []homeSheetHit) {
 // word, in the question's own hue.
 //
 // IT IS consent.go's BAND at one remove and deliberately not its function.
-// [app.consentBand] asks whether the pointer is over the block it belongs to,
+// [app.questionBandRow] asks whether the pointer is over the block it belongs to,
 // and there is no block here — only a card in a sheet. What is shared is the
 // thing that matters: a key on this surface is bold and violet wherever it is
 // offered, the row is the target at every width this tier has, and the one cell
-// of margin is the same one ([consentBandPad]).
+// of margin is the same one ([questionBandPad]).
 func (a *app) homeAnswerBand(chip answerChip, width int, pal palette) string {
 	word := chip.label
-	if room := width - len(consentBandPad) - ansi.StringWidth(chip.key) - 1; ansi.StringWidth(word) > room {
+	if room := width - len(questionBandPad) - ansi.StringWidth(chip.key) - 1; ansi.StringWidth(word) > room {
 		word = fit(word, room)
 	}
 	// The phone's chip is the wide tier's chip, said in the same amber
 	// ([app.answerChipLines] holds the reasoning).
-	return pal.warn(consentBandPad) + pal.warnBold(chip.key) + pal.warn(" "+word)
+	return pal.warn(questionBandPad) + pal.warnBold(chip.key) + pal.warn(" "+word)
 }
 
 // ── the errand's sheet ──────────────────────────────────────────────────────

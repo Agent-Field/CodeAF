@@ -620,13 +620,13 @@ func MapChecks(ctx context.Context, settings config.Config, client *pool.Client,
 	}, mapSchema, &answer)
 	if err != nil || response == nil {
 		if shaped.Unreadable(err) {
-			provider.Report(mapCtx, provider.VerdictFormatFailure)
+			provider.Report(mapCtx, provider.ReadingFormatFailure)
 		} else {
-			provider.Report(mapCtx, provider.VerdictProviderFailure)
+			provider.Report(mapCtx, provider.ReadingProviderFailure)
 		}
 		return mapping
 	}
-	provider.Report(mapCtx, provider.VerdictVerifiedSuccess)
+	provider.Report(mapCtx, provider.ReadingVerifiedSuccess)
 	// Merged by position, and only where the answer named a check that actually
 	// exists. A model that invents a check name has answered about a project it
 	// imagined, and admitting it would let a hallucinated test satisfy a real

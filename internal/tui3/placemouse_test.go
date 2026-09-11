@@ -61,27 +61,28 @@ func placeBodyRowOf(t *testing.T, hits []int, line int) int {
 
 // ── the tab bar ─────────────────────────────────────────────────────────────
 
-// A TAB WORD IS A DOOR. The bar names seven rooms and draws a band on the one
-// you are in; a bar that answered a press with nothing would be seven labels.
+// A TAB WORD IS A DOOR. The bar names four rooms — and the one you are in, when
+// it is one of the others — and draws a band on that one; a bar that answered a
+// press with nothing would be four labels.
 func TestClickingATabWordGoesToThatPlace(t *testing.T) {
 	a := placeApp(t)
 	// The frame is drawn first, because a press resolves against the bar that
 	// was actually painted — the width ladder can drop words.
 	placeFrameText(a)
-	x, ok := placeTabColumnOf(a, pageSearch)
+	x, ok := placeTabColumnOf(a, pageSpend)
 	if !ok {
-		t.Fatal("the search tab is not on this bar")
+		t.Fatal("the spend tab is not on this bar")
 	}
 	drive(t, a, tea.MouseClickMsg{X: x, Y: placeTabRow, Button: tea.MouseLeft})
-	if a.page != pageSearch {
-		t.Fatalf("clicking the search tab left the router on %q", a.page.word())
+	if a.page != pageSpend {
+		t.Fatalf("clicking the spend tab left the router on %q", a.page.word())
 	}
 	// AND THE PLACE YOU ARE ALREADY IN IS NOT REOPENED BY A PRESS ON ITS OWN
 	// WORD — pressing where you are standing is not a gesture.
 	placeFrameText(a)
-	x, ok = placeTabColumnOf(a, pageSearch)
+	x, ok = placeTabColumnOf(a, pageSpend)
 	if !ok {
-		t.Fatal("the search tab left the bar it is banded on")
+		t.Fatal("the spend tab left the bar it is banded on")
 	}
 	typeInto(t, a, "keep")
 	drive(t, a, tea.MouseClickMsg{X: x, Y: placeTabRow, Button: tea.MouseLeft})

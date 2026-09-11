@@ -132,8 +132,21 @@ func TestSessionFileRoundTrip(t *testing.T) {
 		t.Fatalf("journal holds %d call lines of the conversation's own, want one per answered request (2)",
 			called-errands)
 	}
+	// AND ONE `took` LINE PER FINISHED CALL (sessionfile.go's appendTook). This
+	// turn asked ls once, so the journal holds that figure beside the tool
+	// result — a fact about the session, not a message. Zero when the call
+	// finished under a millisecond (emptiness law); never more than one.
+	tooks := 0
+	for _, line := range lines {
+		if strings.Contains(line, `"type":"took"`) {
+			tooks++
+		}
+	}
+	if tooks > 1 {
+		t.Fatalf("journal holds %d took lines, want at most 1 for one finished call", tooks)
+	}
 	// system is never journaled: it is rendered fresh on every open.
-	if got, want := len(lines)-titles-used-called, 1+len(want)-1; got != want {
+	if got, want := len(lines)-titles-used-called-tooks, 1+len(want)-1; got != want {
 		t.Fatalf("journal has %d message lines, want %d (header + every message but system)", got, want)
 	}
 }

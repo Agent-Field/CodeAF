@@ -10,6 +10,7 @@ import (
 	"time"
 
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/trace"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -295,7 +296,12 @@ func promptTokens(request *ai.Request) int {
 
 // tokensIn is the estimate above, over one string. See [outputTokens], which is
 // its other caller and the reason it is stated in one place.
-func tokensIn(text string) int { return len(text) / charsPerToken }
+func tokensIn(text string) int { return tokensOf(len(text)) }
+
+// tokensOf is the same estimate over a count of bytes, for a reader that kept
+// the count rather than the text — the stream wall, which has no reason to hold
+// ten minutes of a reply in memory to know how long it was ([stallWatch.tokens]).
+func tokensOf(bytes int) int { return bytes / charsPerToken }
 
 // applyLaneChoice puts the belief's preference on a request that is about to go
 // out, and does nothing at all when there is no belief to put.
@@ -376,6 +382,21 @@ func (c *Client) applyLaneChoice(prefs *providerPrefs, model string, knobs callK
 		}
 		prefs.Order = order
 		prefs.Sort = ""
+		// AND THE PRICE CEILING IS RAISED TO COVER WHAT THE ORDER NAMES.
+		// `max_price` is the router's list price times 1.25, and the list price
+		// of a model is its CHEAPEST endpoint, so the ceiling vetoed every lane
+		// more than a quarter dearer than the cheapest — before the router had
+		// read the order at all. Recorded on 2026-09-11
+		// (docs/design/routing/ASSESSMENT-20260911.md): the belief asked for
+		// GMICloud, Novita, Fireworks; the ceiling of $0.75 left one of them;
+		// the account's data policy excluded that one; 404. The frontier has
+		// already priced every lane it named with the person's own λ
+		// (frontier.go's underPriceCeiling), so the ceiling that belongs on
+		// this request is one every named lane fits under. It stays a ceiling
+		// — the ladder's price rung and the account-set memo still have
+		// something to relax — and a lane whose tariff nobody knows raises it
+		// by nothing, because a bound on an unknown price is a guess.
+		prefs.MaxPrice = ceilingCovering(prefs.MaxPrice, model, order)
 	}
 	for _, lane := range choice.Ignore {
 		if lane == "" || lane == pinned || namesEndpoint(prefs.Order, lane) || namesEndpoint(prefs.Ignore, lane) {
@@ -445,6 +466,18 @@ func (c *Client) laneChoiceFor(knobs callKnobs, model string, request *ai.Reques
 	if retired {
 		named = ""
 	}
+	// AND A STRICT PIN ON A MACHINE THE ACCOUNT ITSELF EXCLUDES IS RETIRED FOR
+	// THIS MODEL BEFORE IT IS SENT (internal/lane's account.go). The router has
+	// already said, about another model, that this account cannot reach that
+	// machine for any model; demanding it here would buy the identical 404 to
+	// be told so again. It is retired exactly as a refused pin is — the row on
+	// disk untouched, the person told once in the retirement's own sentence —
+	// and a borrowable pin needs nothing, because it is only a preference the
+	// router skips by itself.
+	if named != "" && !pin.Borrow && lanes.AccountExcludes(named) {
+		retirePin(named, model)
+		named = ""
+	}
 	if named != "" && !pin.Borrow {
 		// The candidate set survives and the ranking does not: see above.
 		return lanes.Choice{Only: []string{named}, Frontier: choice.Frontier}, true
@@ -490,7 +523,55 @@ func (c *Client) withLaneChoice(ctx context.Context, request *ai.Request) contex
 		return ctx
 	}
 	choice.Order, choice.Only, choice.Ignore = prefs.Order, prefs.Only, prefs.Ignore
+	recordLaneChoice(ctx, model, choice)
 	return WithLaneChoice(ctx, choice)
+}
+
+// recordLaneChoice writes the routing decision to the debug record. It is
+// written here rather than at the encoder because THIS is where the choice is
+// made once and where what actually reached the wire is known — the sampled
+// ranking, the person's pin folded in, the machines struck off.
+//
+// A ROUTE IS THE HARDEST THING TO RECONSTRUCT AFTERWARDS. The model-call log
+// says which machine answered; it cannot say which were asked for first, which
+// were refused a turn, or why — and "why did it go there?" is the question a
+// person switches the record on to answer.
+func recordLaneChoice(ctx context.Context, model string, choice lanes.Choice) {
+	recorder := trace.For(ctx)
+	if recorder == nil {
+		return
+	}
+	asked := choice.Order
+	if len(choice.Only) > 0 {
+		// A demand is not a ranking (applyLaneChoice): the request goes to
+		// exactly these machines or it does not go, so they are the choice and
+		// there are no alternatives left to name.
+		asked = choice.Only
+	}
+	if len(asked) == 0 {
+		return
+	}
+	recorder.Decision(ctx, trace.Decision{
+		Kind:         "lane",
+		Subject:      model,
+		Choice:       asked[0],
+		Reason:       choice.Why,
+		Alternatives: append(append([]string(nil), asked[1:]...), struck(choice.Ignore)...),
+	})
+}
+
+// struck spells the machines this choice took OFF the table, so a record reads
+// as the whole decision rather than only its winner. They are marked because an
+// alternative that was ruled out and one that was merely ranked second are two
+// different facts, and a flat list of names cannot tell them apart.
+func struck(ignore []string) []string {
+	var names []string
+	for _, lane := range ignore {
+		if lane != "" {
+			names = append(names, "not "+lane)
+		}
+	}
+	return names
 }
 
 // namesEndpoint reports whether a preference list already names an endpoint.
@@ -770,9 +851,11 @@ func LaneSheetCertain(base string) bool {
 // calls Refresh. Wiring the same base twice is harmless: the sheet keeps what
 // that base already answered, and forgets it only when the base itself moves.
 //
-// EVERY NON-EMPTY BASE IS WIRED. Whether there is an endpoints page at it is
-// the base's own to say, once, and the sheet remembers ([LaneSheetCertain]
-// says why the hostname is a hint here and not the decision).
+// EVERY NON-EMPTY ROUTER BASE IS WIRED. Whether there is an endpoints page at
+// it is the base's own to say, once, and the sheet remembers
+// ([LaneSheetCertain] says why the hostname is a hint here and not the
+// decision). A connected direct service never comes through this door because
+// it owns one road and must not repoint the default account's process sheet.
 func WireLaneSheet(base, key string) {
 	base = strings.TrimSpace(base)
 	if base == "" {
@@ -783,9 +866,10 @@ func WireLaneSheet(base, key string) {
 
 // wireLaneSheet points the live lane sheet at the router this client talks to.
 //
-// IT IS CALLED FROM THE CONSTRUCTOR AND FROM NOWHERE ELSE IN THIS PACKAGE. It
-// is still a write to a process-wide seam, and a write repeated per request
-// is a lock taken in front of somebody's first token for no gain.
+// IT IS CALLED FROM THE CONSTRUCTOR FOR THE DEFAULT ROUTER ACCOUNT AND FROM
+// NOWHERE ELSE IN THIS PACKAGE. It is still a write to a process-wide seam,
+// and a write repeated per request is a lock taken in front of somebody's
+// first token for no gain.
 //
 // A CLIENT BUILT WITHOUT A KEY STILL WIRES. `/models/{id}/endpoints` is a
 // public document, so a session that opens on the first-run screen and is
@@ -825,9 +909,11 @@ func (c *Client) wireLaneSheet() {
 // Reason is a short machine-readable word for the log and never a sentence a
 // person reads ([lanes.Outcome] says so itself).
 func (c *Client) noteLaneOutcome(model, served, reason string, accepted bool) {
-	if c.routing() == RoutingOff {
-		return
-	}
+	// THE LEDGER ALWAYS RECORDS (velocity.go's [Client.refuseLane]). The routing
+	// gate that used to stand here is gone with its three siblings: a usable
+	// answer is the evidence that lets a doubted lane back into the candidate
+	// set (internal/lane's frontier.go), so a session that records refusals and
+	// not successes is a session whose lanes only ever get worse.
 	served = strings.TrimSpace(served)
 	model = laneModel(model)
 	// A BELIEF SITE (#433), keyed on the same answer the wire is: what is being
@@ -845,6 +931,63 @@ func (c *Client) noteLaneOutcome(model, served, reason string, accepted bool) {
 		Accepted: accepted,
 		Reason:   reason,
 		At:       laneNow(),
+	})
+}
+
+// coverMargin is the room left above the dearest named lane's tariff, so that
+// a router rounding a price up by a hair does not refuse the lane it was asked
+// for on the strength of its own arithmetic.
+const coverMargin = 1.05
+
+// ceilingCovering is the wire ceiling raised until every lane in the order fits
+// under it: the existing ceiling where it already covers them, the dearest named
+// tariff plus [coverMargin] where it does not. A lane whose tariff is unknown
+// raises nothing. A nil ceiling stays nil: the sort-word path and a model with
+// no published price never had one to raise.
+func ceilingCovering(ceiling *maxPrice, model string, order []string) *maxPrice {
+	if ceiling == nil || len(order) == 0 {
+		return ceiling
+	}
+	const perMillion = 1_000_000
+	raised := *ceiling
+	for _, lane := range order {
+		belief, ok := lanes.Default().Ledger().Belief(lanes.ID{Model: laneModel(model), Lane: lane})
+		if !ok || belief.Facts.PriceOut <= 0 {
+			// A LANE WITH NO KNOWN TARIFF LEAVES THE CEILING WHERE IT IS. Raising
+			// it for a price nobody knows would be a guess, and dropping it would
+			// take the ladder's price rung and the account-set memo with it; the
+			// router answers a lane over the ceiling the way it always has, and
+			// the ladder relaxes it the way it always has.
+			continue
+		}
+		if out := belief.Facts.PriceOut * perMillion * coverMargin; out > raised.Completion {
+			raised.Completion = out
+		}
+		if in := belief.Facts.PriceIn * perMillion * coverMargin; in > raised.Prompt {
+			raised.Prompt = in
+		}
+	}
+	return &raised
+}
+
+// noteLaneRefused tells the belief that a named pool did not answer at all — a
+// 429 naming its pool. It is the availability axis ([lanes.Outcome]'s
+// Refused), and it exists because the strike ledger's five-minute `ignore` was
+// the ONLY memory of a refusal: per client, undone by the set-empty release, and
+// written over by the belief's own order on the same wire object. The belief
+// now hears it too, and prices the lane by the sends an answer costs. The
+// attribution law is [Client.noteLaneOutcome]'s: no named lane, nothing said.
+func (c *Client) noteLaneRefused(model, lane, reason string) {
+	lane = strings.TrimSpace(lane)
+	model = laneModel(model)
+	if !c.carriesPreferences() || model == "" || lane == "" {
+		return
+	}
+	lanes.Default().Ledger().NoteOutcome(lanes.Outcome{
+		ID:      lanes.ID{Model: model, Lane: lane},
+		Refused: true,
+		Reason:  reason,
+		At:      laneNow(),
 	})
 }
 

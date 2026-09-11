@@ -64,8 +64,6 @@ func TestNothingHereOpensAConnectionOrDrawsAnything(t *testing.T) {
 	forbidden := []string{
 		"net/http",
 		"github.com/Agent-Field/aforge-v2/internal/provider",
-		"github.com/Agent-Field/aforge-v2/internal/tui",
-		"github.com/Agent-Field/aforge-v2/internal/tui2",
 		"github.com/Agent-Field/aforge-v2/internal/tui3",
 		"github.com/Agent-Field/aforge-v2/internal/session",
 	}

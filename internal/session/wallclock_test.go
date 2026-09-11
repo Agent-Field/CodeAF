@@ -228,7 +228,10 @@ func TestAWallWithNothingOutWritesNothing(t *testing.T) {
 	})
 	lane, stop := agent.WatchWakes()
 	defer stop()
-	time.Sleep(wallSettleTick + 100*time.Millisecond)
+	spendWall(t, agent)
+	if agent.endRunOnTheWall() {
+		t.Fatal("a wall with nothing moving took an ending")
+	}
 	if rows := wallDecisions(t, journal); len(rows) != 0 {
 		t.Fatalf("a wall with nothing moving wrote decisions: %+v", rows)
 	}
@@ -274,7 +277,10 @@ func TestTheWallDoesNotSealATurnThatIsSpeaking(t *testing.T) {
 	work.agent.mu.Lock()
 	work.agent.running = true
 	work.agent.mu.Unlock()
-	time.Sleep(wallSettleTick + 300*time.Millisecond)
+	spendWall(t, work.agent)
+	if work.agent.endRunOnTheWall() {
+		t.Fatal("the wall sealed a turn that was still speaking")
+	}
 	if rows := wallDecisions(t, work.journal); len(rows) != 0 {
 		t.Fatalf("the wall wrote an ending over a speaking turn: %+v", rows)
 	}
@@ -286,7 +292,10 @@ func TestTheWallDoesNotSealATurnThatIsSpeaking(t *testing.T) {
 	work.agent.mu.Lock()
 	work.agent.running = false
 	work.agent.mu.Unlock()
-	events := collect(t, awaitWallStream(t, lane, 2*wallSettleTick))
+	if !work.agent.endRunOnTheWall() {
+		t.Fatal("the wall did not take its ending after the turn stopped")
+	}
+	events := collect(t, awaitWallStream(t, lane, time.Second))
 	if len(events) != 1 || events[0].Kind != EventNotice {
 		t.Fatalf("the ending after the turn carried %v", kinds(events))
 	}

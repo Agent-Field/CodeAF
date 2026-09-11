@@ -219,7 +219,7 @@ func (l *Ledger) Read(class provider.CallClass, queries []Query) []Reading {
 // Observe folds one outcome in, and only the outcomes that are evidence: a
 // provider failure says nothing about a model and an unverified success says
 // nothing about an answer.
-func (l *Ledger) Observe(model string, class provider.CallClass, prior float64, verdict provider.Verdict) {
+func (l *Ledger) Observe(model string, class provider.CallClass, prior float64, verdict provider.Reading) {
 	positive, graded := verdict.Graded()
 	if !graded || model == "" {
 		return

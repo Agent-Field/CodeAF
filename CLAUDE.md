@@ -2,35 +2,38 @@
 
 ## Which surface is which
 
-Three chat surfaces live here. Getting this wrong wastes a whole recon pass, so check
+One chat surface lives here, beside the resident that shares its binary and the
+component library it draws with. Getting this wrong wastes a whole recon pass, so check
 before you read.
 
 | Path | What it is |
 | --- | --- |
 | `internal/tui3` | **v3 — the live surface.** Entry `cmd/aforge/chatv3.go`. Bare `aforge` and `aforge chat` both open it. |
 | `internal/session` | **the v3 engine** — the agent, the turn loop, the toolbelt, tasks. |
-| `internal/tui2` | REMOVED as a surface on 2026-08-31. What remains (`tokens`, `blocks`, `prose`, `modelui`, `reltime`) is the shared component library v3 draws with. |
-| `internal/tui` | v1, and the visual north star: restrained, dim telemetry, no borders. |
+| `internal/tui2` | REMOVED as a surface on 2026-08-31, and its compositor, its `blocks` engine and its model picker followed. What remains (`tokens`, `prose`, `reltime`, and `modelui`'s model words) is the shared component library v3 draws with. |
 | `internal/head`, `internal/resident` | the v1 **resident** — a different product in the same binary. |
 
 v3 is a **session you sit in front of**. The resident is an employee that keeps working
 while the terminal is closed. They share a repository and almost nothing else — do not
 carry vocabulary or assumptions between them.
 
+`docs/DESIGN-LANGUAGE.md` is the visual north star: restrained, dim telemetry, no borders.
+
 ## Branches — where work goes
 
 `dev` is the trunk and the default branch. Five rules, and they are here rather
 than only in `docs/rules/` because they are the ones that must never be looked up:
 
-- **Branch off `dev`, and open the pull request against `dev`.** Never against
-  `main`, which is parked fifteen hundred commits back at the released v0.1.0.
+- **Branch off `dev`, and open the pull request against `dev`.** `main` is the
+  release pointer, not a place feature work lands.
 - **Never push directly to `dev`, `staging` or `main`, and never force-push any
-  of the three.**
-- **`staging` moves by fast-forward onto a commit that is already on `dev`** —
-  `git push origin <sha>:staging`, never a merge. `main` is not in the pipeline
-  yet and nothing promotes to it.
-- **Nothing publishes by itself.** A release is a semver tag on a commit that is
-  on `staging`, cut by a person; the workflow refuses a tag that is anywhere else.
+  of the three.** Promotion is the deliberate fast-forward below.
+- **`staging` and `main` move by fast-forward onto tested `dev` history** —
+  `git push origin <sha>:staging`, then `git push origin <sha>:main`, never a merge.
+- **Pushes publish channel builds.** `dev` and `staging` publish their named
+  channels; `main` publishes an rc. A person cuts stable by dispatching `Release`
+  on `main`. The workflow refuses rc or stable commits not already on `staging`,
+  and staging commits not already on `dev`.
 - **Every pull request carries a change entry** in `docs/changes/unreleased/` —
   `make changelog-new PR=<n> KIND=<kind> SLUG=<slug>`, and the `check` job
   demands it.
@@ -87,9 +90,18 @@ convention. `.github/rulesets/` holds the rules ready to apply.
   than touching their tree. (`chat-v3-task` was the trunk until 2026-08-31 and no
   longer exists; anything still naming it is stale.)
 
-`make check` is vet, the tests, the build, and the binary-size ratchet in `SIZE-BUDGET`.
-The performance laws it and the suite enforce — and the rule that changing any cap
-changes the doc in the same commit — are in [PERF.md](PERF.md).
+**Before opening a pull request on this laptop, run `make pr-ready`.** That is
+the light gate plus fresh tests for the Go packages changed from `origin/dev`
+(or `BASE=<commit>`). It is the same bar CI uses to merge into `dev`. Do **not**
+run `make check`, bare `go test ./...`, or a full `go test ./internal/tui3` /
+`./internal/session` as the merge ritual — those thrash the box and are not what
+the pull-request gate demands. Edit with `make test-focus`; prove the change
+with `make test-touched` or `make pr-ready`. `make check` remains the full-tree
+build, test and size ritual for Spark, staging, or an intentional full laptop
+run. Concurrent full runs of `tui3` or `session` share one per-box lock so two
+agents cannot stack those binaries. The performance laws those targets enforce —
+and the rule that changing any cap changes the doc in the same commit — are in
+[PERF.md](PERF.md).
 
 `make demo-home` builds a **throwaway home with something on every place** — three
 projects, twelve conversations, standing orders, memories, a fourteen-day spending
@@ -170,8 +182,10 @@ error).
 Violations get rejected in review, and some are pinned by tests.
 
 - **The emptiness law.** Unknown or zero renders as *nothing* — never `$0.00`, never
-  `0 tok`. (One deliberate exception: the live status line keeps `$0.00` so its segments
-  do not jump sideways. `/status` and `/cost` drop the line.)
+  `0 tok`. (Two deliberate exceptions: the live status line keeps `$0.00` so its segments
+  do not jump sideways, and `/status` and `/cost` drop the line; and a home PANEL with
+  nothing in it keeps its heading and one dim line naming what arrives there — never
+  a sentence saying it is empty — docs/design/home-mission-control/DESIGN.md §4.)
 - **No machinery vocabulary in anything a person reads.** `auditor`, `verdict`,
   `verified`, `refuted` are banned. Work is *running*, *finishing*, *done*, *incomplete*,
   or *your call*. (`needs your look`, `awaiting review` and `unverified` were the old
@@ -182,13 +196,16 @@ Violations get rejected in review, and some are pinned by tests.
   designer are both written this way.
 - **Comments are full-sentence prose** stating the *why*, with ALL-CAPS for a stated law.
   Match the surrounding density; this codebase comments heavily and deliberately.
-- **Every icon comes from the vocabulary, through its one door.** `internal/tui2/tokens`
-  holds every mark a person sees — task states, the step gutter's action families, chrome —
-  each a slot with three spellings (a Font Awesome 4 icon, the geometric floor, one ASCII
-  character for a screen reader), resolved by `tokens.GlyphSet.Glyph(id)` and reached from
-  the surface through `palette.glyph` / `app.icon`. A mark spelled as a literal draws the
-  plain floor forever, because a literal cannot know which repertoire the terminal is on.
-  `internal/tui3/iconvocab_test.go` fails the build on one, on every pull request;
+- **Every icon comes from the vocabulary, through its one door — in EVERY surface
+  package.** `internal/tui2/tokens` holds every mark a person sees — task states, the step
+  gutter's action families, file kinds, chrome — each a slot with three spellings (a Font
+  Awesome 4 icon, the geometric floor, one ASCII character for a screen reader), resolved by
+  `tokens.GlyphSet.Glyph(id)` and reached from the surface through `palette.glyph` /
+  `app.icon` in `internal/tui3`. A mark spelled as a literal draws the plain floor forever,
+  because a literal cannot know which repertoire the terminal is on. One terminal shows ONE
+  tier everywhere: every surface folds the Display row (`step icons`) over
+  `tokens.DetectGlyphSet` the same way. `internal/iconlaw` walks `internal/tui3`,
+  `internal/head` and `internal/resident` and fails the build on one, on every pull request;
   [docs/design/icons/DESIGN.md](docs/design/icons/DESIGN.md) is the law and the table.
 - **One source of truth.** A number that appears in two places will drift — interpolate it
   from the constant. `propose_task`'s schema said the step default was 40 while the
@@ -203,6 +220,10 @@ Several Claude sessions often work this repo at once, in the same working tree.
 - Run `ListAgents` before assuming whose work something is.
 - Re-run `go build ./...` after fetching: another lane's half-finished file can break the
   tree for everyone.
+- **Proof must be robust and must not waste the box.** Prefer `test-focus` while
+  editing and `pr-ready` before the pull request. Do not stack full heavy-package
+  suites beside another agent; if the suite lock refuses, wait or keep using
+  `test-focus` rather than starting a second `tui3`/`session` compile.
 - Feature waves are built in git worktrees off `dev` (`git worktree add
   ~/af-<name> -b <branch> origin/dev`), land through a pull request, then the
   worktrees and branches are removed. GitHub deletes the remote branch on merge.
@@ -227,8 +248,9 @@ be running as though it hung. Use the repository targets for shorter loops:
 
 ```sh
 make test-focus PKGS=./internal/tui3 RUN='^TestTheRegression$$' # one named test
-make test PKGS='./internal/tui3 ./internal/session' TEST_FLAGS='-count=1'
+make test-touched                                              # fresh changed-package proof
 make test-quick                                                # light feedback, not acceptance
+make pr-ready                                                  # local pull-request parity
 make test-report PKGS=./internal/tui3 REPORT=/tmp/tui3.json    # fresh tests, timings and progress
 ```
 
@@ -237,8 +259,12 @@ results are fresh. Its JSON distinguishes cached packages, lists incomplete
 packages after an abrupt end, and sorts completed tests slowest-first; a cut run
 still writes that report and still exits non-zero. The quick target checks build,
 vet, formatting, the packed manual, well-formed change entries, the manual gates,
-and laws; it does not replace the full affected-package run or a final uncached
-relevant suite.
+and laws; it does not replace acceptance. `make test-touched` derives the same
+package set as the pull-request gate and runs it through the known-red ledger with `-count=1`;
+`make pr-ready` combines that proof with the light gate. Pass `BASE=<commit>`
+when the comparison should not be `origin/dev`. The target refuses uncommitted
+Go or module files: commit the candidate first so the local diff is exactly the
+diff CI will test, without absorbing another session's edits.
 
 **The tests that fail on a clean tree are listed in `.github/known-red.txt` and
 nowhere else.** `make test` skips them by name, and so does CI, through the same
@@ -269,15 +295,25 @@ terminal against a real model, and it is how a wave verifies that the surface
 still behaves:
 
 ```sh
-go test -tags e2e -count=1 -timeout 40m -v ./internal/e2e/
-go test -tags e2e -run TestTUIE2E -count=1 -timeout 40m -v ./internal/e2e/   # just the nine TUI subtests
+make test-e2e-tui                                              # TestTUIE2E alone, ~17m, 40m ceiling
+make test-e2e                                                 # whole tagged package, 120m ceiling
+go test -tags e2e -run TestTUIE2E -count=1 -timeout 40m -v ./internal/e2e/
 ```
 
-It needs `OPENROUTER_API_KEY` and `tmux`, costs a few cents, and takes about
-**seventeen minutes** for the whole tagged package (`TestTUIE2E` alone is about
-ten, most of it one subtest waiting out a five-minute standing pass). It SKIPS
+It needs a provider key and `tmux`, costs a few cents. `TestTUIE2E` alone is
+about **seventeen minutes** (most of it one subtest waiting out a five-minute
+standing pass). The whole tagged package does not fit in forty minutes —
+ManualOnTheWire, QuestionsE2E and the roomfeed twins run first and eat the
+budget — so `make test-e2e` gives it two hours. It SKIPS
 rather than fails with no key, no tmux or no `bin/aforge`, so run `make build`
-first. Iterate one subtest at a time — `-run 'TestTUIE2E/<name>'` — rather than
+first. **The key is resolved the way the product resolves one** — `liveKey` in
+`internal/e2e/livekey_test.go` goes through `config.APIKeyAt`, so
+`OPENROUTER_API_KEY`, `OPENAI_API_KEY` and the profile's own `api_key` row all
+run the suite. Gating on the variable alone skipped on every machine whose key
+was pasted into the first-run setup, and a skipped end-to-end suite reports
+green without running (#576); the untagged
+`TestEveryLaneAsksForItsKeyTheWayTheProductDoes` fails a lane that reads a key
+variable itself. Iterate one subtest at a time — `-run 'TestTUIE2E/<name>'` — rather than
 paying for the whole thing, and capture the output to a file: the screens it logs
 are far too wide to read through a pipe.
 
@@ -316,3 +352,11 @@ make test-remote          # three containers, no API key, ~50s; SKIPS GREEN with
 machine, `--host localhost` is a real connection over a real ssh pipe and exercises
 everything except the shared-disk law — `docs/remote-access-testing.md` §3.0 has the tmux
 recipe for driving the surface and killing the link on purpose.
+
+## Learned User Preferences
+
+- Keep designs and local verification robust without wasting laptop time or CPU: prefer deterministic clocks and focused/`pr-ready` paths over real sleeps or unconstrained full `internal/tui3` / `internal/session` suites on a shared box.
+
+## Learned Workspace Facts
+
+- Concurrent full runs of `internal/tui3` or `internal/session` (and full-tree `make test` / `test-report`) take the per-box lock in `scripts/one-suite.sh` and refuse instead of stacking; `make test-focus` and lighter checks stay unlocked.

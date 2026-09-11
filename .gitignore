@@ -19,6 +19,11 @@ bench/swarm/results/
 # this checkout, and an untracked file at its root is what another lane's
 # `git add` sweeps up.
 /test-report.json
+# The prompt-diet bench writes its evidence and its builds OUTSIDE any checkout
+# (~/bench-diet-out and ~/bench-diet-build), because a cell's workspace nested
+# inside this repository hands the model the harness instead of its fixture.
+# This line is the backstop for an --out somebody points back in here anyway.
+bench/prompt-diet/out/
 # The manuals are generated for packed release builds. Their Markdown folders
 # are the tracked source; committing these shared binaries causes every branch
 # that documents a feature to conflict with every other one.

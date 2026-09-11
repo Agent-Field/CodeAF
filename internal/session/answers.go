@@ -231,9 +231,19 @@ func AnswerOptions(kind QuestionKind) []AnswerOption {
 			{Key: "3", Label: "deny", Safe: true},
 		}
 	case QuestionTask:
+		// THE WORD IS WHAT THE ANSWER DOES, and it is spelled that way because
+		// of the clock. A proposal is the one question in this engine whose
+		// silence answers, and a surface says so by putting the pick's own
+		// label in front of the time left — `start it in 9s`. `yes in 9s`
+		// named no action at all, which is a promise a person cannot check.
 		return []AnswerOption{
-			{Key: "1", Label: "yes"},
-			{Key: "2", Label: "no"},
+			{Key: "1", Label: "start it"},
+			// AND THE ONE THAT LOSES NOTHING SAYS SO. The decline is where a
+			// proposal's safety is: no work opens, no branch is cut, nothing
+			// is spent. A surface reads that mark to know which answer a
+			// cursor may rest on and which yes is worth counting towards a
+			// habit ([AnswerOption.Safe]).
+			{Key: "2", Label: "no", Safe: true},
 		}
 	case QuestionStanding:
 		return []AnswerOption{
@@ -247,10 +257,11 @@ func AnswerOptions(kind QuestionKind) []AnswerOption {
 			{Key: "2", Label: "not now", Safe: true},
 		}
 	case QuestionHarness, QuestionSubharness:
-		return []AnswerOption{
-			{Key: "1", Label: "run it"},
-			{Key: "2", Label: "not now", Safe: true},
-		}
+		// THE OFFER'S PAIR, and it is [HarnessOptions]' own answer for the shape
+		// an offer is. The harness lane asks TWO different questions and this
+		// list is the one a kind alone can name; the other is a judgement about a
+		// page and takes three answers ([HarnessOptions] holds both).
+		return HarnessOptions(AskPermission)
 	case QuestionFuel:
 		return []AnswerOption{
 			{Key: "1", Label: "add more", Consequence: "the run carries on"},
@@ -271,6 +282,67 @@ func AnswerOptions(kind QuestionKind) []AnswerOption {
 		}
 	}
 	return nil
+}
+
+// The keys the harness lane's two questions are answered with.
+//
+// THE LANE ASKS TWO DIFFERENT QUESTIONS AND THEY DO NOT SHARE A ROW. An OFFER —
+// "run harness research?" — is a permission with a free no; a finished DESIGN is
+// a judgement about a page somebody spent minutes writing, and the three things
+// a person wants to do with it are keep it, ask for it to be different, and
+// throw it away. Both go back through [Agent.ResolveHarness] and both are
+// [QuestionHarness], which is why the keys are spelled here together rather than
+// in two files that would drift.
+//
+// `1` IS THE YES ON BOTH, which is what lets [Agent.applyToLane] read one digit:
+// `run it` and `save it` are the answer that makes the thing real.
+const (
+	// HarnessRunKey runs the offered program.
+	HarnessRunKey = "1"
+	// HarnessNotNowKey declines the offer, and costs nothing: the turn the
+	// person typed runs unchanged.
+	HarnessNotNowKey = "2"
+	// HarnessSaveKey keeps the finished design.
+	HarnessSaveKey = "1"
+	// HarnessChangeKey asks for it to be different, and RESOLVES NOTHING — the
+	// page stays exactly where it is, still waiting, and the answer is a
+	// sentence said to the design's own thread ([AnswerResolves] is where that
+	// is enforced, and tui3's harnesscard.go tells the story of what this key
+	// used to do instead: it dropped the page).
+	HarnessChangeKey = "2"
+	// HarnessDropKey throws the page away.
+	HarnessDropKey = "3"
+)
+
+// HarnessOptions is what one of the harness lane's two questions may be
+// answered with, and the SHAPE OF THE DECISION is what tells them apart.
+//
+// IT IS THE SHAPE AND NOT A SECOND KIND. [Agent.harnessQuestion] already reads a
+// finished page as [AskJudgement] and an offer as [AskPermission] — "a design is
+// a judgement and not a permission: the page is written, and what is being asked
+// is whether it is right" — so asking the shape is asking the one fact that has
+// already been decided, rather than minting a lane whose answers travel back
+// through the same resolver anyway.
+//
+// THE WORDS ARE THE CARD'S OWN. A design card in the conversation said
+// `[enter] save · [e] change it · [esc] drop` before this list existed, and a
+// person who learned those three verbs there must read the same three here.
+func HarnessOptions(ask AskKind) []AnswerOption {
+	if ask == AskJudgement {
+		return []AnswerOption{
+			{Key: HarnessSaveKey, Label: "save it", Consequence: "it is kept, and can be run from now on"},
+			{Key: HarnessChangeKey, Label: "change it", Consequence: "say what is wrong and it is written again"},
+			// NOT MARKED SAFE, AND NOTHING HERE IS. Dropping a page is minutes of
+			// work gone and there is nothing to go back to; `later` is the answer
+			// that loses nothing on a judgement, and `later` is esc rather than an
+			// option ([AskKind] has no clock on this shape, so waiting is free).
+			{Key: HarnessDropKey, Label: "drop it", Consequence: "the page is thrown away"},
+		}
+	}
+	return []AnswerOption{
+		{Key: HarnessRunKey, Label: "run it"},
+		{Key: HarnessNotNowKey, Label: "not now", Safe: true},
+	}
 }
 
 // The keys a landed task's `your call` is answered with, and the two beside
@@ -513,6 +585,11 @@ type Answer struct {
 	// mapping — goes on working unchanged; [Answer.Keys] is how this package
 	// reads either.
 	Picked []string `json:"picked,omitempty"`
+	// Labels are the words on the answers in Picked, in the same order. They
+	// are written only on the copy of an answer handed back to the asker that
+	// raised the question through `ask` (tools_ask.go), so a model reads what
+	// `2` meant without a table of its own; the record keeps the keys.
+	Labels []string `json:"labels,omitempty"`
 	// Change is what was said BESIDE the pick: "2, but keep the sqlite file as
 	// the source of truth". It is the half of an answer that carries the
 	// person's intent, and a lane that can take words does something with it —
@@ -599,16 +676,34 @@ const answerFromHome = "home"
 // session being answered is in another process. A key the kind does not take is
 // refused here rather than written and dropped later — the surface that offered
 // the chip is the one that can still say something about it.
+//
+// THE REFUSAL IS THE KIND'S OWN LIST WHERE THERE IS ONE, AND THE QUESTION'S
+// EVERYWHERE ELSE. [AnswerOptions] answers for the eight lanes whose keys are
+// fixed by the lane rather than by what is being asked; for the rest — the
+// model's own `ask`, a running sub-harness, the stuck-turn question — THE
+// QUESTION CARRIES ITS OWN OPTIONS ([PresenceQuestion.Options], written by the
+// session that is waiting) and this table has nothing to say about them. It used
+// to refuse them anyway, so every answer given from home to a question the model
+// raised came back `could not leave that answer — open the conversation and
+// answer it there`: the chips were drawn off the question's own options, the key
+// was checked against them, and then this door threw it away. A surface has
+// already asked [PresenceQuestion.Label] before it reaches here, which is the
+// narrower list and the honest one.
 func WriteAnswer(sessionDir string, kind QuestionKind, id uint64, key string) error {
-	if _, ok := AnswerFromKey(kind, key); !ok {
+	if strings.TrimSpace(key) == "" {
+		return errUnknownAnswer
+	}
+	if _, ok := AnswerFromKey(kind, key); !ok && len(AnswerOptions(kind)) > 0 {
 		return errUnknownAnswer
 	}
 	return deliverAnswer(sessionDir, Answer{
-		At:   time.Now(),
-		Kind: kind,
-		ID:   id,
-		Key:  strings.TrimSpace(key),
-		From: answerFromHome,
+		At:        time.Now(),
+		Kind:      kind,
+		ID:        id,
+		Key:       strings.TrimSpace(key),
+		Picked:    []string{strings.TrimSpace(key)},
+		DecidedBy: DecidedByPerson,
+		From:      answerFromHome,
 	})
 }
 

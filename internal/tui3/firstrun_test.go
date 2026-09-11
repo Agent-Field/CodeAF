@@ -125,7 +125,7 @@ func TestEnterConnectsOpenRouterInTheBrowserAndHandsTheKeyToThisProcess(t *testi
 	t.Cleanup(func() { processOpener = was })
 
 	screen := setupScreen(a)
-	for _, want := range []string{"connect openrouter", "sign in once in your browser", "enter connects in browser", "paste a key"} {
+	for _, want := range []string{"connect openrouter", "default service", "sign in once in your browser", "enter connects in browser", "paste a key"} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("the browser connection must say %q; got:\n%s", want, screen)
 		}
@@ -152,8 +152,11 @@ func TestEnterConnectsOpenRouterInTheBrowserAndHandsTheKeyToThisProcess(t *testi
 	if next == nil {
 		t.Fatal("arriving on the controls armed no beat for the example panel")
 	}
-	if _, ok := next().(setupDemoMsg); !ok {
-		t.Fatalf("the key started something other than the panel's beat: %T", next())
+	// The beat is longer than the harness clock's budget, so it is waited out
+	// deliberately rather than asked of a clock that answers polls with nothing.
+	beat := waitOut(next)
+	if _, ok := beat.(setupDemoMsg); !ok {
+		t.Fatalf("the key started something other than the panel's beat: %T", beat)
 	}
 	if got := config.PersistedAPIKey(dir); got != flow.key {
 		t.Fatalf("profile key = %q, want browser key", got)

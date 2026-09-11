@@ -30,11 +30,21 @@ write*).
 | `write` | Creates or overwrites one file, making parent directories as needed; with `append:true` it adds to the end instead |
 | `edit` | Replaces exact strings inside one file |
 
-`read` output is cut at **2000 lines or 50KB**, whichever comes first, and the
+`read` output is cut at a line count or a size, whichever comes first, and the
 cut is announced so paging is possible:
 `[Showing lines 1-2000 of 5000. Use offset=2001 to continue.]`. An offset past
 the end is an error: `Offset 900 is beyond end of file (120 lines total)`.
-A single line over 50KB is reported, not shown.
+A single line over the size cap is reported, not shown.
+
+## How much of a file does one read return — what is the truncation limit
+
+**The limit follows the model's context window: a tenth of it, and never more
+than 2000 lines or 50KB.** That default pair is what a 128,000-token window gets
+and what every larger model gets, so on the frontier models nothing has changed.
+A smaller model is cut proportionally sooner — a 16k model at 250 lines or
+6.25KB — because one file may not fill most of what the model can hold. Every
+tool description quotes the pair actually in force, and a cut always says how to
+continue.
 
 `read` also opens **PDFs** — it extracts the text layer locally and for free,
 with the same line and size caps.
@@ -88,6 +98,12 @@ save; nothing was written.` A cut that severs any **other** tool call — a
 `bash` command, an `edit` — never runs on a guessed tail: the call is refused
 with `nothing was run` and a suggestion to retry in smaller pieces.
 
+A long write is **not** cut for taking a long time: a `write` streaming at its endpoint's
+normal speed runs as long as it needs, up to 20 minutes. Only one that has slowed to a drip
+is cut, with `the reply ran past … without finishing and was cut`, and that cut saves
+nothing — the whole reply is thrown away and asked again (see *A reply that never
+finished*).
+
 `read` never asks your permission. `edit` and `write` follow whatever approval
 mode you are in, which asks by default.
 
@@ -126,8 +142,8 @@ directory. Default **500 entries**, and at the cap:
 `500 entries limit reached. Use limit=1000 for more`. A bad path answers
 `Path not found: <path>`.
 
-All three are capped at 50KB of output, and all three are pure reads, so none of
-them asks your permission.
+All three are capped at the same size as `read` — the model's own cap, 50KB by
+default — and all three are pure reads, so none of them asks your permission.
 
 ## Can you run tests for me or start a dev server?
 
@@ -144,7 +160,8 @@ with the environment aforge itself was started with.
 
 - stdout and stderr arrive interleaved in one buffer, in the order they were
   written.
-- Output is cut to the **last 2000 lines or 50KB**. When that happens the whole
+- Output is cut to the **last** lines that fit `read`'s own cap — 2000 lines or
+  50KB by default, less on a smaller model. When that happens the whole
   output is spilled to a temp file and the footer names it, e.g.
   `[Showing lines 900-1000 of 100000. Full output: /tmp/pi-bash-….log]`.
 - Empty output reads `(no output)`.
@@ -243,24 +260,25 @@ first line.
 **It gets told, and it never has to poll.** Two things arrive without anybody
 asking for them.
 
-**While a job runs**, every tool result aforge reads carries one line per
-outstanding job at the bottom of it, the way a shell prints its background jobs
-under the prompt:
+**While a job runs**, the tool results aforge reads carry one line per
+outstanding job at the bottom of them, the way a shell prints its background
+jobs under the prompt:
 
 ```
 [job 1] running 3m12s · last: scored case 41
 ```
 
 Three facts — it is alive, it has been alive this long, this is the last thing it
-said — on every result, so "is it still going" is answered before it can be
-asked. A finished or killed job drops off the list immediately.
+said — so "is it still going" is answered before it can be asked. A finished or
+killed job drops off the list immediately.
 
-**A forked hand is on that same footer**, named, because a hand is a job too (see
-"Hands" in the tasks page):
-
-```
-[job 4] running 12m03s · hand 2 — the docs · last: edit docs/api.md
-```
+**The line is repeated only when it changes.** Within one turn, a result whose
+job line would say exactly what the last one said leaves it off: the same three
+facts are already in front of aforge, further up the same turn. The moment
+anything moves — a second more elapsed, a new last line, a job starting or
+ending — the line is back. Every turn starts fresh, so the first result of a
+turn with work out always carries it. A turn that made twenty tool calls with
+one job out used to pay for the same sentence twenty times.
 
 **When a job ends**, its exit code, last non-empty output line, output tail and
 path to the full log arrive in the conversation on their own:
@@ -365,16 +383,11 @@ The `jobs` tool looks at all of this. Its `action` is `list`, `output` or `kill`
   `No background jobs.` A job that started life as a foreground command and was
   kept as a job — by the background-after clock, its timeout, or `ctrl+g` — has
   exactly this row, with no mark saying where it came from: it is a job like any
-  other. A forked **hand** is in
-  this list too, as `job 4 · hand 2 · running · 12.0s · the docs`, and its status
-  when it ends is `finished` — a hand has no exit code, it has a report.
 - `output` — the last lines from the in-memory tail, **50 by default and 200 at
   most**, with a footer naming the full log:
   `[job 1 · running · showing last 50 lines · full log: <path>]`.
 - `kill` — SIGTERM to the process group, SIGKILL after a **2-second** grace.
-  Answers `job 1 killed`. Killing a **hand** answers
-  `hand 2 (job 4) stopped; what it had already written is still in your working
-  copy and may be half-made — no report is coming`.
+  Answers `job 1 killed`.
 
 Unknown ids answer `No job 9.`; a finished job answers `Job 1 already exited(0).`
 
@@ -478,8 +491,8 @@ Nothing further ever comes from that watch: it is over, which is exactly why its
 last note is the one worth waking for. `jobs list` no longer shows it running,
 and its whole tick history stays at `jobs output <id>`.
 
-A background command exiting, a video or music render landing and a forked hand
-coming home wake a reply the same way. The tasks page has the rest of it under
+A background command exiting and a video or music render landing wake a reply the
+same way. The tasks page has the rest of it under
 *Waiting on something, and the limit on carrying on*.
 
 ## Can you tell me when something has finished — how do I know it went quiet or stopped changing?
@@ -585,8 +598,9 @@ Limits, refused before anything is sent: **10MB** for an image, **25MB** for
 audio, **64MB** for video —
 `<path> is over the 25MB audio limit`.
 
-The answer is paged like any read — 2000 lines or 50KB, with
-`Use offset=… to continue.` — and it is **remembered for the conversation**, so
+The answer is paged like any read — the same cap, 2000 lines or 50KB by
+default — with `Use offset=… to continue.`, and it is **remembered for the
+conversation**, so
 paging through a long transcript costs nothing extra.
 
 When no model is set for a sense, `read` says so instead of showing you binary:
@@ -770,9 +784,10 @@ composition, any text verbatim, and anything malformed.
 It reads **png, jpeg, webp and gif**, up to **10MB**. The answer names who
 looked: `seen by <model>: <what it saw>`. The picture itself is **not** added to
 the conversation, so everything you need about one image is worth asking in a
-single call. **You see it too**: the picture is drawn under the `view_image` row
-in colour as soon as the call finishes, and opening the row shows it bigger with
-what the looking model said beneath.
+single call. **You can see it too**: the finished `view_image` row has **preview**
+and **open original** controls. It starts collapsed. Opening the preview shows a
+low-resolution terminal picture with what the looking model said beneath; opening
+the original uses your system viewer for full-quality inspection.
 
 Refusals, in its own words. The last three name the picture by its **whole
 absolute path**, however you spelled it in the call:
@@ -906,6 +921,22 @@ assigned work while below the two-level depth limit; a leaf at that limit does
 the remaining work itself. `tasks` inside a task is scoped to the pieces it
 handed out. `watch` remains absent inside tasks.
 
+**There is a second, smaller road: `quick_task`.** It starts a task that works in
+the folder this conversation is in — no copy of the folder, no branch, no check,
+no merge — with a `line` saying what to do and an ordered list of `items` it
+works through and ticks off. It starts at once, with no card to accept, and its
+**last message is its answer**. The worker keeps its own checklist with the
+`items` tool (`items` is on a quick worker's belt and nowhere else), and the row
+reads `quick · 2/4 · <what it is on>` while it runs. Which road a piece of work
+takes: if you will read the result and carry on, it is quick; if it must be
+checked and merged on its own, or survive the window closing, it is a task.
+Width does not decide it — a survey of four packages is four quick tasks, one
+each, while a wide *change* that has to build is one task. Independent pieces
+are started in the same breath rather than one after another, so you wait for
+the longest and not for the sum, and each one is kept to a few files and a few
+minutes so it does not run out of room. *Quick task or a proper task* and *How
+big one quick task should be*, on the tasks page, are the whole of it.
+
 The tasks pages in this manual cover how a task runs, what it costs and what you
 see while it works.
 
@@ -990,6 +1021,11 @@ note in square brackets that begins `[Cut: … bytes of …. The rest of this pa
 in its sections — ask for the same page again with section set to one of:` and
 then lists every heading on that page, one to a line, before it closes.
 
+That list is bounded too — half of what one read hands over, which is twice the
+room the longest page in this manual needs — and if a page ever had more headings
+than that the list would stop and close with `(… and 3 more)` rather than run on.
+No page is near it today.
+
 Those headings are the addresses of the rest. Ask for the same page with one of
 them in `section` and that part comes back whole, however far past the cut it
 sat. A heading that is not on the page is refused by name, and the refusal lists
@@ -1062,8 +1098,9 @@ when needed. `load_capability` adds one group to the tool list. The full descrip
 and arguments arrive on the next model request **within the same turn**; aforge
 continues without waiting for another message from you.
 
-There are up to three groups. The catalog lists only tools available on this machine:
+There are up to four groups. The catalog lists only tools available on this machine:
 
+- **`questions`** — `ask`, the model's own question to you (the questions page).
 - **`media`** — `generate_image`, `speak`, `generate_music`, `generate_video` and
   `edit_video`, where configured. `edit_video` needs ffmpeg; the generation tools
   each need a model. `view_image` stays directly available.
@@ -1079,6 +1116,13 @@ Deferring these descriptions reduces ordinary request size, at the cost of one
 extra model request on first use and a changed provider prefix when a group loads.
 The small catalog still travels with ordinary requests. This saves schema bytes;
 it does not guarantee a lower bill or a faster answer on every task.
+
+**If it loads a group and then stops without using it**, the turn is sent back once:
+the status line says `it loaded a tool and stopped before using it · asking it to go on`,
+and the model is told, in the same turn, that the tool is in its list and to call it or
+say why it no longer needs it. It happens once per turn; a model that stops again has
+decided, and the turn ends. It never happens when the model's last words were a question
+to you.
 
 **How long it lasts.** Loaded tools remain available while the engine runs. A group
 cannot be unloaded, and loading it again changes nothing. Reopening restores groups

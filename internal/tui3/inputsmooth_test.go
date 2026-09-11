@@ -587,7 +587,11 @@ func TestAQuietStreamDeliversItsOneEventAtOnce(t *testing.T) {
 	}
 }
 
-const scrollAllocationCeiling = 220
+// scrollAllocationCeiling is PERF.md's number. It moved from 220 to 230 on
+// 2026-09-10 when the conversation's head gained the pulse row (head.go): the
+// frame composes the machine's four clauses on every paint, which measured ten
+// allocations over the 217 the frame cost without it.
+const scrollAllocationCeiling = 230
 
 // THE CACHE KEY INCLUDES THE INK THAT PAINTED IT. Width and content can stay
 // unchanged while a terminal reports a different ground; a row keyed only by

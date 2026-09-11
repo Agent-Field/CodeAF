@@ -57,7 +57,8 @@ func TestAlwaysOnAPlainToolWritesTheToolsAllow(t *testing.T) {
 		consentEvent(7, "read", "read internal/session/consent.go", `tool "read"`),
 	})
 	typeLine(t, a, "look at the gate")
-	drive(t, a, key("a"))
+	settleAsk(a)
+	drive(t, a, key("2"))
 
 	if len(agent.answers) != 1 || agent.answers[0] != (answered{id: 7, allow: true, scope: session.ConsentToolSession}) {
 		t.Fatalf("the session was answered %+v", agent.answers)
@@ -79,7 +80,8 @@ func TestAlwaysOnBashWritesTheWholeCommandLine(t *testing.T) {
 		consentEvent(7, "bash", "bash "+command, `tool "bash"`),
 	})
 	typeLine(t, a, "commit it")
-	drive(t, a, key("a"))
+	settleAsk(a)
+	drive(t, a, key("2"))
 	if len(saved.commands) != 0 {
 		t.Fatalf("the always wrote before the shape was chosen: %v", saved.commands)
 	}
@@ -101,7 +103,8 @@ func TestASavedAlwaysLeavesAReceiptOnTheRow(t *testing.T) {
 		consentEvent(7, "read", "read consent.go", `tool "read"`),
 	})
 	typeLine(t, a, "look")
-	drive(t, a, key("a"))
+	settleAsk(a)
+	drive(t, a, key("2"))
 
 	if got := plain(frame(a)); !strings.Contains(got, "always · saved — /permissions to change") {
 		t.Fatalf("the row does not say what was saved or where to change it:\n%s", got)
@@ -118,7 +121,8 @@ func TestAFailedWriteIsDroppedAndClaimsNothing(t *testing.T) {
 	})
 	saved.err = errors.New("the profile directory is read-only")
 	typeLine(t, a, "look")
-	drive(t, a, key("a"))
+	settleAsk(a)
+	drive(t, a, key("2"))
 
 	if len(agent.answers) != 1 || !agent.answers[0].allow {
 		t.Fatalf("the answer did not stand: %+v", agent.answers)
@@ -144,7 +148,8 @@ func TestADenyIsNeverPersisted(t *testing.T) {
 		consentEvent(7, "bash", "bash rm -rf build", `bash pattern "rm -rf *"`),
 	})
 	typeLine(t, a, "clean it")
-	drive(t, a, key("n"))
+	settleAsk(a)
+	drive(t, a, key("3"))
 	if len(saved.tools)+len(saved.commands) != 0 {
 		t.Fatalf("a no was written down: %v %v", saved.tools, saved.commands)
 	}
@@ -158,12 +163,13 @@ func TestWithNoWriteSeamTheCardIsTheOldCard(t *testing.T) {
 		toolBegin("read", "read consent.go"),
 		consentEvent(7, "read", "read consent.go", `tool "read"`),
 	})
-	typeLine(t, a, "look")
 	a.width = 120
-	if got := plain(frame(a)); !strings.Contains(got, "[a] always, this tool (session)") {
+	typeLine(t, a, "look")
+	settleAsk(a)
+	if got := plain(frame(a)); !strings.Contains(got, "[2] always, this tool (session)") {
 		t.Fatalf("the unwired offer changed its words:\n%s", got)
 	}
-	drive(t, a, key("a"))
+	drive(t, a, key("2"))
 	if len(agent.answers) != 1 || agent.answers[0].scope != session.ConsentToolSession {
 		t.Fatalf("the session was answered %+v", agent.answers)
 	}
@@ -181,9 +187,10 @@ func TestTheOfferNamesWhatTheAlwaysReaches(t *testing.T) {
 		consentEvent(7, "read", "read consent.go", `tool "read"`),
 	})
 	typeLine(t, a, "look")
+	settleAsk(a)
 	a.width = 120
 	got := plain(frame(a))
-	if !strings.Contains(got, "[a] always, this tool") || strings.Contains(got, "(session)") {
+	if !strings.Contains(got, "[2] always, this tool") || strings.Contains(got, "(session)") {
 		t.Fatalf("the offer still promises a session-scoped always:\n%s", got)
 	}
 
@@ -192,8 +199,9 @@ func TestTheOfferNamesWhatTheAlwaysReaches(t *testing.T) {
 		consentEvent(7, "bash", "bash git status", `tool "bash"`),
 	})
 	typeLine(t, b, "check the tree")
+	settleAsk(b)
 	b.width = 120
-	if got := plain(frame(b)); !strings.Contains(got, "[a] always, this command") {
+	if got := plain(frame(b)); !strings.Contains(got, "[2] always, this command") {
 		t.Fatalf("the bash offer does not say it is about the command:\n%s", got)
 	}
 }
@@ -206,8 +214,9 @@ func TestThePhoneBandNamesTheCommandToo(t *testing.T) {
 	})
 	a.width, a.height = 44, 30
 	typeLine(t, a, "check the tree")
+	settleAsk(a)
 	rows := strings.Join(askRows(a), "\n")
-	if !strings.Contains(rows, "[a] always, this command") {
+	if !strings.Contains(rows, "[2] always, this command") {
 		t.Fatalf("the band does not name the command:\n%s", rows)
 	}
 }
@@ -221,7 +230,8 @@ func TestABashCallWithNoReadableCommandWritesNothing(t *testing.T) {
 		consentEvent(7, "bash", "bash git status", `tool "bash"`),
 	})
 	typeLine(t, a, "check the tree")
-	drive(t, a, key("a"))
+	settleAsk(a)
+	drive(t, a, key("2"))
 
 	if len(saved.commands) != 0 {
 		t.Fatalf("a rule was written from a gloss: %v", saved.commands)

@@ -24,18 +24,24 @@ Use the smallest proof that answers the current question:
 1. `make test-focus PKGS=./internal/tui3 RUN='^TestExactRegression$$'` runs one
    named regression. Add `TEST_FLAGS='-count=1'` when the test result itself must
    be fresh; without it, Go may reuse a cached test result.
-2. `make test PKGS='./internal/tui3 ./internal/session' TEST_FLAGS='-count=1'`
-   runs affected packages through the repository's timeout and known-red ledger.
+2. `make test-touched` derives the same package set as the pull-request gate
+   from `origin/dev` (or `BASE=<commit>`) and runs it fresh through the
+   repository's timeout and known-red ledger. It fails closed on uncommitted Go
+   or module files; commit the candidate so it can prove the exact PR diff.
 3. `make test-quick` mirrors the deterministic light PR checks: build, vet,
    format, packed manual, well-formed change entries, manual gates, and laws.
    Whether the branch adds a change entry needs the pull request's base commit,
    so only CI checks that half. It is quick feedback, not acceptance.
-4. `make test-report PKGS='./internal/tui3 ./internal/session' REPORT=/tmp/tests.json`
+4. `make pr-ready` is local pull-request acceptance: the light gate, manual
+   probes, and `test-touched`, without a full-tree suite or binary-size build.
+5. `make test-report PKGS='./internal/tui3 ./internal/session' REPORT=/tmp/tests.json`
    forces fresh test execution, keeps the separate Go build cache, prints a
    heartbeat and completed slow tests, and writes a machine-readable duration
    report sorted slowest-first.
-5. Freeze the candidate, then run one final uncached relevant suite with the
-   same resource caps. A whole-tree run still goes through `scripts/one-suite.sh`.
+6. `make check` remains the full-tree Spark/staging ritual. A full `make test`
+   or `test-report` containing `internal/tui3` or `internal/session` goes
+   through `scripts/one-suite.sh` so only one heavy suite runs on a box at a
+   time. `test-focus`, manual probes and unrelated packages stay unlocked.
 
 `-count=1` disables reuse of prior test results; it does not discard Go's build
 cache. Cold compilation and fresh test execution are therefore separate facts

@@ -29,6 +29,16 @@ const (
 	// question open. It travels separately from Resolve because typing is not an
 	// answer and a deleted draft must leave the hold in force.
 	MethodTaskHold = "Task.Hold"
+	// MethodTaskSettle answers a landing that came home as the person's call:
+	// accept it, say it is not finished, spend one more merge round on a branch
+	// that would not fasten, hand the question to the model, or take it back.
+	//
+	// FIVE ACTS AND ONE METHOD, because they are one question being answered and
+	// the surface draws them as one row (internal/tui3's tasksettle.go). Which act
+	// is asked for is a field of [TaskSettleArgs] rather than five method names,
+	// so an engine that speaks this method speaks all of it — a half-answered card
+	// is the shape this whole door exists to end.
+	MethodTaskSettle = "Task.Settle"
 	// MethodTaskPending is the proposals the far engine is still waiting on. A
 	// surface asks it where the local one reads [session.Agent.PendingTasks] —
 	// when a turn ends with a proposal card still on screen — because a card
@@ -193,6 +203,44 @@ type TaskResolveArgs struct {
 // TaskHoldArgs names the proposal whose first typed rune stopped its clock.
 type TaskHoldArgs struct {
 	ID uint64 `json:"id"`
+}
+
+// TaskSettleArgs is one person's answer to one landing.
+//
+// THE THREE FLAGS ARE NOT RESOLUTIONS AND ARE KEPT APART FROM ONE. `accept` and
+// `not right` are the engine's own words ([session.TaskResolution]) and travel in
+// Resolution; the merge round, the hand-over and the take-back RESOLVE NOTHING —
+// each moves the question rather than answering it — so folding them into the
+// same field would put three acts that settle no task into the vocabulary of the
+// two that do.
+//
+// An engine reads at most one of them: the flags are tested before Resolution,
+// in the order below, and an argument with none of them set is a resolution.
+type TaskSettleArgs struct {
+	ID uint64 `json:"id"`
+	// Merge spends one more merge round on a branch that clashed. It is the
+	// conflict card's yes, and it takes nothing as done.
+	Merge bool `json:"merge,omitempty"`
+	// Hand gives this one decision to the model. Back takes it away again.
+	Hand bool `json:"hand,omitempty"`
+	Back bool `json:"back,omitempty"`
+	// Resolution is `accept`, `reaudit` or `refute` — [session.TaskResolution] as
+	// it crosses — and Why is the sentence a caller may put on the record with it.
+	Resolution string `json:"resolution,omitempty"`
+	Why        string `json:"why,omitempty"`
+}
+
+// TaskSettled is the answer, and its ONE FIELD IS THE ONE THING A SENTENCE
+// CANNOT CARRY: whether the question was already gone.
+//
+// A landing can be settled from four places at once — this card, another window,
+// the model's own `tasks … resolve`, a check that finally answered — and
+// whichever answer arrives second finds nothing to spend. That is a card
+// catching up rather than a fault, and the surface draws it as one
+// ([session.ErrTaskDecided]). Every other refusal stays the engine's own
+// sentence and arrives as the call's error.
+type TaskSettled struct {
+	Decided bool `json:"decided,omitempty"`
 }
 
 // TaskSetupArgs binds a setup change to the conversation whose task was drawn.
