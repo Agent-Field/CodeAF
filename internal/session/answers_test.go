@@ -164,7 +164,12 @@ func TestTheTaskProposalTravelsInPresenceAndAnAnswerComesBack(t *testing.T) {
 
 	answers := make(chan TaskAnswer, 1)
 	go func() {
-		answer, err := agent.askTask(context.Background(), 7, taskSpec{title: "port the resume picker"}, "")
+		wait, err := agent.openTask(context.Background(), 7, taskSpec{title: "port the resume picker"}, "")
+		if err != nil {
+			t.Errorf("the proposal could not be put: %v", err)
+			return
+		}
+		answer, err := wait.answer()
 		if err != nil {
 			t.Errorf("the proposal ended in an error: %v", err)
 		}
