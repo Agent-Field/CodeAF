@@ -735,8 +735,14 @@ func checkerRanOut(window time.Duration) string {
 // the retry that follows it answers, and the verdict it reaches is what lands.
 // What keeps it here is the run where the retry does not answer either, where
 // this is the only account there is of where five minutes went.
+// AND THE BOUND IS SPELLED THE WAY EVERY OTHER ELAPSED TIME IN THIS PACKAGE IS
+// ([taskSpanWord]). [time.Duration.String] is the engine talking to itself: it
+// landed `one call ran 29.24078975s without answering` on a person's screen,
+// eight decimal places of a figure nobody can act on, and the nanoseconds were
+// never a fact about the run — they are the clock's resolution. The one
+// spelling of how long something took answers in the unit the reader is in.
 func checkerStalled(bound time.Duration) string {
-	return "one call ran " + bound.String() + " without answering and was abandoned"
+	return "one call ran " + taskSpanWord(bound) + " without answering and was abandoned"
 }
 
 // checkerWindowClosed is what a person reads BESIDE A CALL'S OWN ACCOUNT when

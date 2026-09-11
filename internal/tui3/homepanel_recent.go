@@ -93,11 +93,12 @@ func recentCell(row switcherRow, in *homeGridInput) *homeCell {
 // and a scratch folder at the top of the temporary directory, whose word is a
 // name somebody made up for a minute (DESIGN §1, "what is retired"). The
 // projects panel still lists both, as the paths they are.
+// The rule itself is [chatProjectWord] (projecttag.go), because the tasks place
+// asks the same question about the same conversations. This panel has already
+// settled the own-folder half of it — a row of this window's own bucket never
+// reaches here ([recentCell]) — so it hands no folder to compare.
 func chatProjectTag(row switcherRow, tilde string) string {
-	if row.project == "~" || homeScratchFolder(row.session.Workspace, tilde) {
-		return ""
-	}
-	return row.project
+	return chatProjectWord(row.project, row.session.Workspace, "", "", tilde)
 }
 
 // homeScratchRoots are the directories a throwaway folder is made at the top

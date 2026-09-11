@@ -504,8 +504,15 @@ func TestARunningParentKeepsItsRefusedChildUnderIt(t *testing.T) {
 			if got := taskStateWord(line.item.entry, line.item.runs); got != taskRecordStoppedWord {
 				t.Fatalf("refused child state = %q, want %q", got, taskRecordStoppedWord)
 			}
-			if got := tasksMiddle(line.item.entry); got != rows[1].Outcome {
-				t.Fatalf("refused child reason = %q, want %q", got, rows[1].Outcome)
+			// AND THE REASON IS THE ENGINE'S SENTENCE AND NOT THE RECORD'S RAW
+			// OUTCOME. The row used to print [session.TaskIndexEntry.Outcome]
+			// straight through for a refused landing, which is one of the three
+			// hand-rolled compositions [tasksMiddle] replaced with
+			// [session.TaskStatus.RowWord] — the join that says the word once and
+			// drops a reason that merely restates it.
+			want := line.item.status().RowWord()
+			if got := tasksMiddle(line.item); got != want {
+				t.Fatalf("refused child reason = %q, want %q", got, want)
 			}
 		}
 	}
@@ -634,8 +641,8 @@ func TestTheFactsOnATaskRowAreJoinedByOneSeparator(t *testing.T) {
 	world, win, now := tasksPolishFixture()
 	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
 	const name = "Put the annual toggle on the pricing page"
-	// AND THEY DEGRADE BY SPELLING RATHER THAN BY ENDING THE TAIL (law 2): the
-	// detail sentence is seventy-seven cells at its longest and seven at its
+	// AND THEY DEGRADE BY SPELLING RATHER THAN BY ENDING THE TAIL (law 2): what
+	// the work came to is `2 files · done` at its longest and `done` at its
 	// shortest, and each width says the longest it has room for.
 	//
 	// THE SPEND IS LAST AND IS THEREFORE THE FIRST THING GIVEN UP. It used to sit
@@ -643,16 +650,22 @@ func TestTheFactsOnATaskRowAreJoinedByOneSeparator(t *testing.T) {
 	// what the work did — so a narrow frame kept the figure and dropped the two
 	// facts a person acts on, on the one row of the page with an ink of its own.
 	wide := tasksDrawnRow(tasksPage(reading, 160), name)
-	if !strings.HasSuffix(wide, "5h · 2 files · Annual is the default and the monthly price stays visible beside it. · $0.27") {
+	if !strings.HasSuffix(wide, "5h · 2 files · done · $0.27") {
 		t.Fatalf("at 160 columns the row reads\n  %s\nand the spend belongs after what the work did", wide)
 	}
+	narrow := tasksDrawnRow(tasksPage(reading, 60), name)
+	if strings.Contains(narrow, "$0.27") {
+		t.Fatalf("at 60 columns the row kept its spend:\n  %s", narrow)
+	}
+	// AND THE WORD IS THE LAST THING IT GIVES UP. A list of work is read to find
+	// out whether anything needs a person, so the file count goes before the
+	// state does ([tasksMiddleField] ranks the spellings).
+	if !strings.HasSuffix(narrow, "· done") {
+		t.Fatalf("at 60 columns the row gave up the one word it is read for:\n  %s", narrow)
+	}
 	for _, width := range []int{120, 80} {
-		row := tasksDrawnRow(tasksPage(reading, width), name)
-		if strings.Contains(row, "$0.27") {
-			t.Fatalf("at %d columns the row kept its spend:\n  %s", width, row)
-		}
 		if !strings.Contains(plain(tasksPage(reading, width)), "The Annual Toggle") {
-			t.Fatalf("at %d columns the row gave up the conversation it came out of:\n  %s", width, row)
+			t.Fatalf("at %d columns the page gave up the conversation the work came out of", width)
 		}
 	}
 }
@@ -806,7 +819,7 @@ func TestTheListAndThePageSayOneWordAboutWorkThatFailed(t *testing.T) {
 		EndedAt: now.AddDate(0, 0, -8), Outcome: "the package manager refused the archive",
 	}
 	word := taskStateWord(entry, false)
-	if got := tasksMiddle(entry); !strings.HasPrefix(got, word+rowSep) {
+	if got := tasksMiddle(tasksItem{entry: entry}); !strings.HasPrefix(got, word+rowSep) {
 		t.Fatalf("the list says\n  %s\nand its own page says\n  %s\nwhich must be the first word of both", got, word)
 	}
 	a := &app{pal: newPalette(tokens.NoColor, false)}

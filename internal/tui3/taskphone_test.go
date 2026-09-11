@@ -116,7 +116,11 @@ func TestThePhoneRosterRowsAreTwoLineCards(t *testing.T) {
 		if strings.Contains(line, "Sweep the call sites") {
 			name = i
 		}
-		if strings.Contains(line, "it came home clean") {
+		// The tail is what the work came to and how long ago: the row's own
+		// state word and its age ([tasksCardTail]). It used to be the record's
+		// raw outcome sentence, which on every graded row was the state word
+		// again in different clothes ([tasksMiddle] says why that went).
+		if strings.Contains(line, "done · 3h") {
 			tail = i
 		}
 	}
@@ -179,7 +183,7 @@ func TestThePhoneRosterScrollsToACardPastTheFold(t *testing.T) {
 	// AND IT IS DRAWN WHOLE. A card is two lines, so a window that counted rows
 	// rather than lines would leave the tail of the one a thumb scrolled to
 	// clipped at the fold.
-	if head+1 >= len(lines) || !strings.Contains(lines[head+1], "it came home clean") {
+	if tail := tasksCardTail(last, a.now()); head+1 >= len(lines) || tail == "" || !strings.Contains(lines[head+1], taskStateWord(last.entry, last.runs)) {
 		t.Fatalf("the cursor's card is clipped at the fold:\n%s", joined)
 	}
 	for i, line := range lines {
