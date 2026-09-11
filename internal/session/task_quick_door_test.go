@@ -140,36 +140,8 @@ func TestAQuickNodeSurvivesItsCheckpointWithItsTicksAndSettlesOnTheClose(t *test
 	if waiting.stateNow() != TaskFailed {
 		t.Fatalf("the waiting quick node came back %q — it would start on its own in the next session", waiting.stateNow())
 	}
-	if report, _, _, _ := waiting.leavings(); report != quickNeverStartedReport {
-		t.Fatalf("the waiting quick node settled saying %q, want %q", report, quickNeverStartedReport)
-	}
-}
-
-// THE FILE THE OWNER'S LAPTOP ACTUALLY WROTE DECODES.
-//
-// Four quick nodes with an empty done-condition beside an ordinary node: the
-// shape of a real tasks.json that `ignoring corrupt task checkpoint` threw away
-// whole, taking the ordinary node with it. An ordinary node with no
-// done-condition is still refused — the exemption is the kind's, not a hole.
-func TestACheckpointHoldingQuickNodesBesideATaskDecodes(t *testing.T) {
-	var nodes []string
-	for id := 1; id <= 4; id++ {
-		nodes = append(nodes, fmt.Sprintf(`{"id":%d,"title":"read part %d","brief":"read part %d","acceptance":"","state":"done","kind":"quick","depth":1,"where":"in place","groundMode":"in place"}`, id, id, id))
-	}
-	nodes = append(nodes, `{"id":5,"title":"fix the loader","brief":"fix the loader","acceptance":"the loader test passes","state":"queued","depends_on":[1,2,3,4]}`)
-	file := fmt.Sprintf(`{"type":%q,"version":%d,"seq":5,"nodes":[%s]}`, taskDocumentType, taskFileVersion, strings.Join(nodes, ","))
-
-	document, err := decodeTasks([]byte(file))
-	if err != nil {
-		t.Fatalf("a checkpoint with quick nodes in it was refused: %v", err)
-	}
-	if len(document.Nodes) != 5 {
-		t.Fatalf("decoded %d nodes, want all five", len(document.Nodes))
-	}
-
-	ordinary := strings.Replace(file, `"acceptance":"the loader test passes"`, `"acceptance":""`, 1)
-	if _, err := decodeTasks([]byte(ordinary)); err == nil {
-		t.Fatal("an ordinary node with no done-condition was accepted")
+	if report, _, _, _ := waiting.leavings(); report != quickLostReport {
+		t.Fatalf("the waiting quick node settled saying %q, want %q", report, quickLostReport)
 	}
 }
 

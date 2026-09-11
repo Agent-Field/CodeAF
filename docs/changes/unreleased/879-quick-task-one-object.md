@@ -1,10 +1,10 @@
 ---
 kind: fixed
-title: A quick task comes through one door, survives its checkpoint, and holds the files it wrote
+title: A quick task comes through one door, its checkpoint rebuilds it, and it holds the files it wrote
 pr: 879
 surface: [chat, engine, docs]
 invalidates:
-  - "A checkpoint that held a quick node was refused whole (`ignoring corrupt task checkpoint`, node N has no acceptance), so a conversation that had run `quick_task` resumed with no tasks at all. The decoder now accepts an empty done-condition for kind `quick`, and only for that kind."
+  - "#869 expected that once the record carried a quick node's list, a queued quick node could resume as a quick node instead of settling. The list is carried now, and a queued quick node still settles: the turn that asked for it is over, and it would run in the new session's folder rather than its caller's."
   - "`taskRecord` carried a quick node's kind and not its body, so a restored quick node had `spec.quick == nil` and its ticks were lost. The record now carries `quick: {line, items, done, files}`, a tick checkpoints, and `restoreNode` rebuilds the body."
   - "A quick node was settled on restart only if it was running, and it was counted as `interrupted (no branch kept)`. A quick node that was running or still queued now settles as `failed`, its report lists which items were ticked and which were not, and the recovery line counts it as `N quick tasks did not finish`."
   - "`continue task N` re-queued a quick task, and a restored one then ran as an ordinary worker in a worktree. It is now refused with `task N is quick, not a run that can be continued`."
@@ -15,7 +15,8 @@ invalidates:
   - "`TaskNode.Expects` was never written to the checkpoint. It is written now: the brief section is always restored, and the preflight manifest is restored only onto a node that never ran."
 ---
 
-Found by the task-start wave on the owner's own `tasks.json`. The two doors had
+Found by the task-start wave on the owner's own `tasks.json`, and built on #869,
+which made the checkpoint load. The two doors had
 built two different objects, and the record could name a quick node but could
 not rebuild it. The fix makes the kind decide the shape in one place, and makes
 the record carry the list.

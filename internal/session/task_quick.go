@@ -200,31 +200,41 @@ func quickWordUnder(graph *TaskGraph, spec *quickTaskSpec) string {
 // (task_store.go's [interrupt] states why it settles rather than resuming).
 const quickInterruptedReport = "the quick task did not finish before aforge closed; whatever it wrote is in your folder"
 
-// quickNeverStartedReport is the same ending for a quick task that was still
-// WAITING when the process died — behind a claim, a dependency or the parallel
-// cap. It had written nothing, so the sentence says so rather than pointing
-// somebody at their folder for work that never happened.
-const quickNeverStartedReport = "the quick task had not started when aforge closed; nothing of it ran"
+// quickLostReport is what a quick task that was STILL WAITING ITS TURN settles
+// with when the window closed under it. It says the two things that are true of
+// it: it never started, so nothing of it is anywhere to go and look at, and it
+// is not coming back — asking again costs a sentence (task_store.go's
+// [interrupt] carries why it does not resume).
+//
+// It is a separate sentence from [quickInterruptedReport] rather than a reuse of
+// it, because that one tells somebody to look in their folder for work this one
+// never did.
+const quickLostReport = "the quick task never started before aforge closed, and it does not resume — ask for it again"
 
-// quickClosedReport is the whole report a quick node settles with when the
-// process ended under it, composed from what its record kept: which of the two
+// quickReportOnClose is the whole report a quick node caught by the close
+// settles with, and it is the one place that is decided: which of the two
 // endings above it was, and then THE LIST, ticked and not.
 //
-// THE LIST IS THE ACCOUNT, because nothing else survives the worker. Its
-// transcript died with the process, its last message was never written, and
-// what the person has is their own folder and this — so a report that said only
-// "did not finish" would leave them to reconstruct from `git diff` how far down
-// a list they cannot see it got. The words are "ticked" and "not ticked" and
-// never "done" and "not done": a tick is a claim the worker made about itself,
-// and an item it finished without ticking is exactly as possible as the reverse.
+// WHAT SEPARATES THE TWO ENDINGS IS WHETHER THE WORK HAPPENED. A queued record
+// never started, and a row that told somebody to go and look in their folder for
+// work that never started would send them after nothing. It is read off the
+// state the record ARRIVED in, so [interrupt] asks before it overwrites it.
 //
-// A node with no list says the ending alone (the emptiness law), and so does a
-// record written before the list was carried.
-func quickClosedReport(body *quickRecord, started bool) string {
-	report := quickNeverStartedReport
-	if started {
-		report = quickInterruptedReport
+// AND THE LIST IS THE ACCOUNT, because nothing else survives the worker
+// ([taskRecord.Quick]). Its transcript died with the process, its last message
+// was never written, and what the person has is their own folder and this — so
+// a report that said only "did not finish" would leave them to reconstruct from
+// `git diff` how far down a list they cannot see it got. The words are "ticked"
+// and "not ticked" and never "done" and "not done": a tick is a claim the worker
+// made about itself, and an item it finished without ticking is exactly as
+// possible as the reverse. A node with no list says the ending alone (the
+// emptiness law), and so does a record written before the list was carried.
+func quickReportOnClose(record taskRecord) string {
+	report := quickInterruptedReport
+	if record.State == TaskQueued {
+		report = quickLostReport
 	}
+	body := record.Quick
 	if body == nil || len(body.Items) == 0 {
 		return report
 	}
@@ -556,9 +566,15 @@ func (a *Agent) newQuickSpec(ask quickAsk) (taskSpec, string) {
 		// quick task has no grooming, so the honest answer to the first two is the
 		// line — and a deliverable and an acceptance are left EMPTY rather than
 		// invented, because nothing will ever check this node and a "DONE WHEN"
-		// nobody reads is a contract that is not one. The store knows that an
-		// empty done-condition is this kind's and no other's (task_store.go's
-		// [decodeTasks]).
+		// nobody reads is a contract that is not one.
+		//
+		// THE BLANK IS DECLARED RATHER THAN IMPLIED, and that is what keeps it
+		// from being read as a half-written record: [kindsWithoutAcceptance] says
+		// this kind carries none, and every reader of the field asks that
+		// declaration rather than this literal ([acceptanceHolds]). The two were
+		// allowed to drift once, and the checkpoint's validator — which refuses a
+		// node with no acceptance, rightly — threw away the whole of a
+		// conversation's task graph over the blank this line leaves on purpose.
 		summary:   gloss,
 		brief:     line,
 		dependsOn: dependsOn,

@@ -205,8 +205,10 @@ of the quick task that this section replaces.
 **The graph would not load once a quick task had run.** `newQuickSpec` leaves the
 done-condition empty by design, the record wrote it without `omitempty`, and
 `decodeTasks` refused the whole document on an empty one — so every conversation that
-had run a quick task resumed with no tasks at all, its ordinary tasks included. Now the
-decoder accepts an empty done-condition for kind `quick` and for no other kind.
+had run a quick task resumed with no tasks at all, its ordinary tasks included. #869
+fixed that first, and this lane builds on it: whether a node owes a done-condition is a
+property of its kind (`kindsWithoutAcceptance`, read through `acceptanceHolds` by the
+builder's law test and by the decoder), and `quick` is the one kind that owes none.
 
 **The record labelled a quick node and could not rebuild it.** `taskRecord` had the kind
 and not the body, so `restoreNode` came back with `spec.quick == nil` — nothing told the
@@ -235,8 +237,10 @@ body constructor `newQuickTaskSpec`, and a tick checkpoints like every other tra
 close not because it cannot be rebuilt but because it must not be restarted: its
 worker's context and its caller's turn died with the process, and a worker started
 again would open on the line alone, in whatever folder the new runner stands in.
-The rule now covers a quick node that was still *waiting* too — one left queued would
-start on its own in a session that has forgotten why it was asked for. The report is the
+#869 had already extended the settle to a quick node that was still *waiting*, on the
+ground that its list was not on the record; the list is on the record now, and the
+waiting one still settles — one left queued would start on its own in a session that
+has forgotten why it was asked for (`nothingIsComingBackForIt`). The report is the
 list (`ticked 2 of 4: …`, `not ticked: …`), the changed list is what it wrote, and the
 recovery line counts it under its own clause, `N quick tasks did not finish`, rather
 than as `interrupted (no branch kept)` — a resume and a branch it never had. The

@@ -461,6 +461,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is it still working or is it stuck", "screen"},
 		{"the tokens are not moving", "screen"},
 		{"why did the number on the right light up", "screen"},
+		{"the token numbers count up every time I open a task, is it still running", "screen"},
+		{"switching tabs makes the tokens count up again from zero", "screen"},
 		{"what is the +3.4k next to the up arrow", "screen"},
 		{"no token count inside a task", "screen"},
 		{"is the up arrow what I am billed for", "screen"},
@@ -1633,6 +1635,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did it make a quick task instead of a real one", "tasks"},
 		{"can a quick task start another quick task", "tasks"},
 		{"a quick task appeared under my task", "tasks"},
+		// AND WHAT IS THERE WHEN THEY COME BACK TOMORROW. Asked by somebody who
+		// reopened a conversation that had run four quick tasks in it and found
+		// the whole task column empty — every row, not only the quick ones —
+		// because a quick task is written down with no `DONE WHEN` and the check
+		// that read the record back refused the file whole over it.
+		{"I reopened the conversation and the task column is empty", "tasks"},
+		{"all my tasks disappeared after a restart", "tasks"},
+		{"does a quick task come back after I close aforge", "tasks"},
+		{"does a quick task resume when I reopen the conversation", "tasks"},
 		// The sixteenth wave, and every one of these is a real model choosing
 		// wrongly before the wording was fixed: a READ-ONLY survey that got a
 		// branch, a quick task cut at twenty files that ran out of rounds, and

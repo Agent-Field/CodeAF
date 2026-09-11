@@ -2713,7 +2713,7 @@ Endings are checked in a fixed order, and the first match wins:
 | 3 | A step limit fired **and the work did not hold when it was checked** | `stopped: 200 steps and no finish`, `stopped: 6 steps without progress`, or `stopped at repeat checkpoint: <what the second look said>` |
 | 4 | The checkpoints ran out | `ran out of time` |
 | 5 | You stopped it (`jobs kill`) | `stopped before it finished` |
-| 5b | The session closed or detached | paused — it resumes, it is not failed. A sub-harness **design** is the exception: `the design did not finish before aforge closed; nothing was saved` |
+| 5b | The session closed or detached | paused — it resumes, it is not failed. Two kinds do not resume: a sub-harness **design** reads `the design did not finish before aforge closed; nothing was saved`, and a **quick** task that was running reads `the quick task did not finish before aforge closed; whatever it wrote is in your folder` — it was writing in your own folder, so what it managed is already there |
 | 6 | The connection to the model dropped — a reset, a closed socket — after the call's own retries and one more worker on the same model | `lost the connection to the model: <err>` |
 | 6b | The model provider refused the request — an API error, a model that is not there | `it ended with an error: <err>`, and the row reads `the model provider refused it` |
 | 6c | The run errored | `it ended with an error: <err>` |

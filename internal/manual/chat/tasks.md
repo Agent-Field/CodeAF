@@ -205,12 +205,9 @@ Six limits, and they are the price of there being no ceremony:
 - **There is nothing to inspect afterwards.** No branch, no copy of the folder, no diff of
   its own. The only record of what it changed is your folder and its room.
 - **It does not outlive this window.** Work that has to keep going while the terminal is
-  closed is an ordinary task. Close aforge under a quick task — running, or still waiting
-  its turn — and when the conversation opens again it is `incomplete`, never started over.
-  The recovery line counts it as `1 quick task did not finish`, and its note says
-  `the quick task did not finish before aforge closed; whatever it wrote is in your folder`
-  (or `the quick task had not started when aforge closed; nothing of it ran`) with its
-  list under that — `ticked 2 of 4: …` and `not ticked: …` — and the files it wrote.
+  closed is an ordinary task. Its **row** does come back — a quick task you ran last week
+  is on the column with its answer when you reopen that conversation, see *A quick task
+  after a restart* below — but the working stops when the window does.
 - **It cannot be continued.** `continue task 7` on a quick task is refused —
   `task 7 is quick, not a run that can be continued` — because there is no copy to pick up
   from and no brief a finding could join. Ask for it again; it starts at once.
@@ -222,6 +219,40 @@ Six limits, and they are the price of there being no ceremony:
 
 None of these are settings. A quick task that turns out to need any of them is a sign the
 work wanted an ordinary task, and you can say so mid-flight: stop it and ask for a task.
+
+## A quick task after a restart — the rows came back empty, my whole task column vanished after running quick tasks, does a quick task resume
+
+**A quick task's row comes back like every other row, and so does everything beside it.**
+Reopen the conversation and a quick task that finished is on the column `done`, with
+`quick` on its row, its checklist ticked as it left it, and its answer on its card.
+
+What each one does depends on where it had got to:
+
+- **Finished** — it comes back exactly as it landed. Nothing runs again.
+- **Running when the window closed** — it comes back `incomplete`, saying
+  `the quick task did not finish before aforge closed; whatever it wrote is in your folder`.
+  It is **not** started again, and that is deliberate: it was writing in your own folder
+  rather than a copy, so a second worker walking a half-done checklist over the top of the
+  first one's edits would not be a resume. Under that sentence its card lists the checklist
+  as it left it — `ticked 2 of 4: …` and `not ticked: …` — and the files it wrote are its
+  changed list; `git diff` has the rest.
+- **Still waiting its turn** — behind another quick task that claimed the same file, say —
+  it never started, and it does not start now: the turn that asked for it is over, and work
+  arriving on its own in a conversation that has moved on is not what anybody asked for.
+  The row says so:
+  `the quick task never started before aforge closed, and it does not resume — ask for it again`.
+  Asking again costs a sentence.
+
+The line you read on reopening counts them under their own clause —
+`recovered task graph: 3 done · 2 quick tasks did not finish` — never as `interrupted`,
+because nothing about them resumes.
+
+**If you remember a conversation reopening with an EMPTY column after quick tasks had run
+in it, that was a fault and it is fixed.** A quick task is checked by nobody, so it is
+written down with no `DONE WHEN` clause of its own — and the check that reads the record
+back refused any row without one, which threw the whole conversation's work away together:
+finished rows, running tasks, families and all. The rule still holds for every ordinary
+task; a quick task is now allowed the blank it is supposed to have.
 
 ## Quick task or a proper task — why it went quick instead of a real task, why a survey did not get a branch, and how aforge decides which road your work takes
 
@@ -2320,7 +2351,10 @@ only place that work can be read from, and `/history` is the page that reads it.
 every task admitted here comes back as a row in its family — finished work included, and
 work that was interrupted comes back saying so on its card — and the `jobs` section
 redraws the jobs this conversation started, settled. Tasks and jobs are not lost when the
-terminal closes; the column is rebuilt, not carried.
+terminal closes; the column is rebuilt, not carried. **Quick tasks are in that too** — a
+finished one comes back `done` with its answer, and a conversation that ran them is never
+left with an empty column, which it was until this was fixed (*A quick task after a
+restart* has the whole of it).
 
 The rebuilt row reads its start and landing times from that same record. Work that landed
 in a previous session therefore keeps the time it actually landed instead of taking the
