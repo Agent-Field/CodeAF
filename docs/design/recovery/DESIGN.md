@@ -348,7 +348,12 @@ it. `errandWalksOn` reads the evidence and `taxonomy`'s `seamsOwed` is empty.
   the race is built. `MoveLog.Release` is what a shared log needed that a private
   map had for free — a race claims a machine before it prices it, and a purse
   that says no must not leave a machine reading as tried that nothing was sent
-  to. **`maxArms` and `ladderArms` are KEPT deliberately**, with the sentence
+  to. It is also what keeps a move honest about WHERE THE BYTES WENT: `provider.
+  order` is advisory once `allow_fallbacks` is on (R1, #850), so the dispatcher
+  gives its claim back the moment a refusal names a different pool and writes the
+  pool that really refused in its place — otherwise a call that demanded one
+  machine and was fanned past it would read as having tried the machine it never
+  reached. **`maxArms` and `ladderArms` are KEPT deliberately**, with the sentence
   saying why in the code: they bound how many copies of one question are in
   flight AT ONCE, which is money and concurrency (Dean & Barroso), never how many
   times it may be asked again.
