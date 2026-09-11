@@ -3,8 +3,10 @@
 2026-09-11. Lane `codex/personal-chatdoor` (Claude Code Opus on Spark), base
 `caa0c5bb7` on `codex/personal-ai-backend`. Round 1: `b06934cf3`, `4ae907108`,
 `178dc0740`. Round 2 (after wave 4 and a ten-run measurement): merges `32779ccc6`
-and `ae12800ab`, then `a3b400036` and `3dd2eeb32` (see *Round 2* below). Not
-merged; the coordinator merges after review.
+and `ae12800ab`, then `a3b400036` and `3dd2eeb32` (see *Round 2* below). Round 3
+(the named count and the review's conditions): `760d69229`, then the merge
+with round 3b, `eb814321b` (see *Round 3*). Not merged; the coordinator merges
+after review.
 
 ## Outcome
 
@@ -387,6 +389,143 @@ throwaway detached worktree since removed, with 29 and 8 failures in 1,200 runs.
 So they are a race in task hand-over, not this lane's, and a bug report for its
 owner.
 
+## Round 3 — a named count of runs, the review's conditions, and round 3b
+
+### The blocker: a count the person named was dropped
+
+Round 2's `standingNamedMoney` kept `rails.per_run_usd` and `rails.max_per_day`
+only when the call sent `cost_words`. The schema described `cost_words` as money
+only: "When the person named money, quote their limit in their words". So "no
+more than 3 runs a day", sent faithfully as `max_per_day: 3` with no
+`cost_words`, became the default 10. The card said only `shares the day's
+allowance` and never mentioned the change.
+
+The fix is in `tools_standing.go`:
+- **`cost_words` covers a count as well as money.** "When the person named a
+  limit — money, or how many runs — quote it in their words: "at most a dollar
+  a run", "no more than 3 a day". A rail sent without it is dropped."
+- **Each rail has its own fate.** `standingNamedLimits` marks each one unsent,
+  kept or dropped, where round 2 had one money gate for both, and it replaces
+  `standingNamedMoney`.
+- **Every rail the call sent is on the costs line**, even when it equals the
+  default. A dropped rail is shown with `(the default)`: `at most 10 runs a day
+  (the default) · shares the day's allowance`.
+- **The tool result names every dropped limit.** `limits not kept, because
+  cost_words quoted no limit the person named: rails.max_per_day 3 — say only
+  what costs: says`. This is fix 3 from the round-2 measurement (*The proposed
+  seam* above).
+
+**Regression:** `TestANamedCountOfRunsStandsOnItsOwnWordsAndADroppedOneIsNamed`
+(`standing_chatdoor_test.go`). It sends `max_per_day` with and without
+`cost_words`. Its pre-fix failures were recorded at `1c587d446` in a throwaway
+detached worktree, since removed:
+
+```
+standing_chatdoor_test.go:716: cost_words still speaks only of money, so a named count has no words to stand on: "When the person named money, quote their limit in their words — \"at most a dollar a run\". Omit when they named none; aforge quotes the shared allowance."
+```
+
+With that assertion skipped, it failed on the card:
+
+```
+standing_chatdoor_test.go:740: the card hides the default that replaced the count: "shares the day's allowance", want "at most 10 runs a day (the default) · shares the day's allowance"
+```
+
+### The review's other conditions
+
+Each regression below FAILS with its fix reverted in place and passes with the
+fix restored. Each fix was reverted in this tree and then restored byte for
+byte from a copy.
+
+| Fix | Effect | Regression | With the fix reverted |
+| --- | --- | --- | --- |
+| **The named-report refusal.** Two files, `~` and absolute paths, `..`, and files the watch reaches. `standingNamedReport` filters every candidate through `standingCouldReport`, which is the item's own `Validate` with that report (so no absolute path and no `..`) and no `~`, and through `Watches`. It removes duplicates and lists every file that is left. `standingLooksLikeFile` needs an extension of 2–8 letters or digits that starts with a letter, so `e.g.` and `v1.2` are not files. | One file keeps round 2's wording. Several read `their sentence names reports/a.md, notes/b.md — send does.report with the one each run keeps current, or does.report "" if the work only reads them`. | `TestOnlyAFileOutsideTheWatchIsAskedAbout`, rewritten on a real item from `standingItem`. Round 2's hand-built item failed `Validate`, so that test could not see the difference. | `:554: a file that could never be the report was asked about: "Invalid arguments: their sentence names inbox/sub/notes.md, ~/notes.md, /etc/ho…`, and for two files only the first was named |
+| **A negative rail with no `cost_words` is refused, not dropped.** | `a per-run budget cannot be negative` / `an item needs a max per day` | `TestANegativeLimitWithNoWordsIsRefusedNotDropped` | `:804: a card was drawn for a negative limit` |
+| **`folder_scope` goes through `mayBindFolders`.** Round 2 checked only for a steward. | `folder rules need the person's answer in a conversation`, for a steward and when nobody is there to ask | `TestAFolderRuleIsBoundOnlyWhereFoldersMayBeBound` | `:828: nobody to ask: a folder rule answered "nobody is here to say yes — this can only be set up in a conversation…"`, a later gate's refusal |
+| **A named limit shows even at the default, and there is never a `$0.00`.** | `at most 10 runs a day · …`; `per_run_usd: 0` reads `no per-run limit` | `TestANamedLimitShowsEvenAtTheDefaultAndNoCapIsNeverZeroDollars` | `:782: … said "at most ten a day" reads "shares the day's allowance"`, and `… said "no limit per run" reads "up to $0.00 a run · …"` |
+| **The 64 KiB gate is on the card** beside the 64-rule gate (`governingPromptBytes`). | `rules · their words come to N KiB, more than the 64 KiB a run can carry — every run would stop until they are narrowed` | `TestACardSaysWhenItsRulesAreMoreWordsThanARunCanCarry` | `:848: the card's terms end "rules · and 15 more" (9 terms)` |
+
+Two corrections are to text:
+- **The attribution in *Open finding*.** Round 2 said the refusal was what the
+  review directed. The review offered a refusal or a card question, and this
+  lane chose the refusal as the smaller seam.
+- **The manual's "same order as `standing add`" claim.** It now narrows the
+  claim to "the same order as far as a run can tell" and names the
+  differences. The origin reads `set up in the chat` and `through the chat`.
+  The record keeps the conversation it came from. The reach is written
+  `project` where the terminal leaves it empty, which reads as project. The
+  wake may be worded the chat's way.
+
+The manual carries `at most 3 runs a day`, `(the default)`, `no per-run limit`
+and the 64 KiB gate, and two probes were added.
+
+### Merge with round 3b and its two conflicts
+
+`eb814321b` merges `origin/codex/personal-ai-backend` at `e373ab411` (round 3b).
+Both conflicts keep round 3b's behaviour:
+- **`internal/session/standing_run.go`, the fence and publish seam.** Round 3b's
+  `reportFile`/`reportFileAt` (the first report created by a hard link, and the
+  fence at the act) replaces `unchangedSince`. `publishStandingReport` is round
+  3b's body with one change: this lane's `reportTarget(workspace, report)`
+  supplies the root and the target, in place of the inline
+  EvalSymlinks/join/`deepestExisting` check. The semantics are the same.
+  `CheckStandingReport` stays for the card.
+- **The answers path, in the change entry.** Round 3b's reworded inbox/answers
+  line is kept verbatim, and this lane's lines follow it. This lane never
+  touched `answers.go` or `question.go`. A standing answer drained from the
+  doorstep still goes through `ResolveQuestion` to `ResolveStanding`. An answer
+  nobody is waiting on is a no-op, so a replay cannot run placement or creation
+  a second time.
+
+### Known gap, recorded for the orchestrator (not fixed)
+
+**`TestTheFixedPrefixStaysUnderItsBudget` never weighs `stand`, `collections` or
+`shared_context`.** Its belt, `v3ShapedAgent`, has no standing store and no
+`Organization`, so none of the three tools is on it.
+`TestTheFixedPrefixOfEveryShapeIsMeasured` weighs `stand` through
+`conversationDoor`, but it is a measurement with no budget, and it has no
+`Organization` either.
+
+They were weighed on the same belt with both seams wired, by a throwaway test in
+a detached worktree (since removed):
+
+| Revision | Measured by the test | With the three tools | `stand` | `collections` | `shared_context` |
+| --- | --- | --- | --- | --- | --- |
+| `e373ab411` (round 3b, before this merge) | 47,911 | 61,327 | 10,165 | 1,456 | 1,792 |
+| `eb814321b` (this lane merged) | 47,942 | 62,201 | 11,008 | 1,456 | 1,792 |
+
+So a conversation with both seams wired, which is the interactive door's shape,
+sends about 62 KB against a 48,000-byte budget. Most of that gap is on the
+feature branch already. This lane's share is 843 bytes of `stand` schema and 31
+bytes of prompt.
+
+The fix belongs to the budget's owner. One route is to wire a standing store and
+an `Organization` into `v3ShapedAgent` and then decide the budget or the trim.
+Either change moves a ratchet, so it is out of this lane.
+
+### Validation
+
+`chatdoor-validate-r3.sh.txt` ran twice on `eb814321b` against a tracked-clean
+tree, with `GOMAXPROCS=4 GOFLAGS=-p=2`. Both runs passed 14 of 14 steps. The
+second log is `chatdoor-validate-r3-eb814321b.log`.
+
+The steps:
+- vet and the e2e vet;
+- the `standing`, `workspace` and `workspaceview` suites;
+- **the whole `internal/manual/...`** suite;
+- **the whole `internal/session`** suite, unfiltered (226 s);
+- the selected `cmd/aforge` tests and the four tui3 card tests;
+- the untagged e2e table;
+- `make test-laws`, `make changelog-check`, `make build` and `make
+  test-packed-manual`;
+- `TestLocalWorkJourney` and `TestChatDoorJourney`.
+
+The two task hand-over race tests under *Upstream flakes* did not fail in
+either run. They remain the known race, and a separate lane is fixing them.
+
+The round-1 ten-run measurement proposal is now tracked beside this file as
+`validation/chatdoor-live10.md`. It is the receipt for the causes and fixes that
+round 2 and this round answer.
+
 ## Decisions taken inside the brief
 
 - **Default placement.** Work goes in every folder the conversation is placed in
@@ -418,7 +557,8 @@ what the brief stated.
 10 in the measurement. Round 1 left this open. It said that reading the
 model's *instructions* for a path would be a band-aid.
 
-Round 2 answers it at the tool-result seam, as the review directed. It reads
+Round 2 answers it at the tool-result seam. The review offered a refusal or a
+card question; this lane chose the refusal as the smaller seam. It reads
 the *person's own sentence* (`words`, verbatim), not the model's text. A file
 named there, when the call left `does.report` out, is refused before any card
 with both honest answers:
@@ -435,8 +575,9 @@ tool it was not granted.
   carries only the tools its rules grant, so under the default rules there is
   no `bash` or `write` to reach for. Round 2's measurement checks this live.
 - **An empty `costs ·` when the model sent rails without `cost_words`** was
-  true in round 1 and is fixed in round 2 (unnamed limits dropped, costs written
-  from the item).
+  true in round 1. Round 2 fixed it: unnamed limits are dropped and the costs
+  line is written from the item. Round 3 keeps a count of runs the person named,
+  and it shows and names every limit it drops (*Round 3*).
 - **The chat is driven through the session's seams, not the TUI.** Both
   journeys run a real `session.Agent` in the test process, with the card
   answered through `ResolveStanding`. The card as drawn is proved by the tui3
