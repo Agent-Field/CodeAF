@@ -97,8 +97,6 @@ import (
 // [standDescription], which owns all three by name). A belt without `stand`
 // loses nothing either — that section opens by saying it is about the tool. The
 // prompt went 21,495 → 20,712 and the prefix is 47,531, which is 469 under.
-// (INVERTED ON 2026-09-11: the page section owns all three now and
-// [standDescription] points at it — see the entry that set the budget below.)
 // THE HANDOFF LAW PAID FOR ITSELF OUT OF A SENTENCE SAID TWICE (2026-09-04). A
 // live run ended a turn that had handed its work to a task and was told the ask
 // was not finished, so the page now says a handed-off outcome is not work that
@@ -151,31 +149,35 @@ import (
 // request. It reported 47,942 while the door sent 67,034. It builds through
 // [conversationDoor] now, which is chatv3.go's list and no second copy of it.
 //
-// What that first honest measurement was paid down with: `stand` held its
-// recognition twice — the discharge test, anchoring, waking or holding and the
-// passed-moment recomputation in its own description AND on the page section
-// built from the same predicate — so those are now said once, on the page, and
-// the description points at them (tools_standing.go's [standDescription]). The
-// limits law is NOT said once: the page states it as a law and each of the six
-// fields it governs keeps its own "only when they named it" clause, because the
-// field is where the model decides. `stand` went 11,008 → 5,749 and the page
-// 23,898 → 24,607.
+// WHAT PAID IT DOWN, AND WHAT A LIVE MEASUREMENT PUT BACK. `stand`'s schema is
+// now one line per field: what a refusal says at the moment it applies (a moment
+// gone, an expiry inside one check of the first firing, a does on a hold) and
+// what the manual's keeping-an-eye page answers (where a `say` arrives) left
+// it. The limits law is NOT said once: each of the six fields it governs keeps
+// its own "only when they named it" clause, because the field is where the model
+// decides. The same lane also moved recognition — the discharge test, anchoring,
+// the inbox-report recipe — out of [standDescription] onto the page, and ten
+// live chat-door journeys then passed 3 of 10 against 10 of 10 for the old text
+// on the same day: the conversation wrote the report file itself before
+// proposing, in 7 of them. That move was reverted (tools_standing.go says why),
+// as were five field sentences the autopsy implicated (`op`, `instructions`,
+// `report`, `model`, `placement`), and the final text passed 7 of 10
+// (docs/design/workspace-foundation/grooming/validation/prefix-live10.md).
+// `stand` went 11,008 → 8,514.
 //
-// The door then measured 62,484 bytes: 24,607 of page and 37,877 of tool block
-// over 26 tools, of which the eight above are 13,825 (`stand` 5,749,
+// The door then measured 64,580 bytes: 23,938 of page and 40,642 of tool block
+// over 26 tools, of which the eight above are 16,590 (`stand` 8,514,
 // `shared_context` 1,792, `search_conversations` 1,613, `collections` 1,456,
 // `use_service` 999, `remember` 994, `services` 695, `context_trace` 527). The
 // budget is that measurement plus a tenth, rounded up to the thousand — the
 // founding rule of this constant, applied to the shape it was always meant to
 // bound. THIS IS A SHAPE CORRECTION AND NOT A LANE RAISING THE NUMBER: 48,000
 // bounded a belt this door never had, and the bytes it did not see were already
-// being sent. The review's two restorations then put 113 bytes back — `altitude`
-// maps "everywhere" to machine again, and a hold's one rail is `expires` — for
-// 62,597, which the same rule still rounds to 69,000. The next failure against
-// it is paid for out of a second copy and not raised, exactly as every entry
-// above was.
+// being sent. The next failure against 72,000 is paid for out of a second copy
+// and not raised, exactly as every entry above was — and a second copy in
+// `stand`'s description is paid for with a live journey, not by this test.
 //
-// 69,000 BOUNDS THE SHIPPING DEFAULT DOOR, NOT EVERY DOOR. The fixture carries
+// 72,000 BOUNDS THE SHIPPING DEFAULT DOOR, NOT EVERY DOOR. The fixture carries
 // what the door carries on every machine; these it carries only on some, and
 // they are unweighed: `web_search` and `web_fetch` (a search provider is
 // configured, chatv3.go's `v3Search`), `view_image` (a media client and a vision
@@ -199,7 +201,7 @@ import (
 //     prompts/system.md's `AND WHAT YOU HAVE ALREADY LEARNED GOES WITH IT`;
 //   - never wait or poll for what was handed off — 4: `propose_task`, `fork`,
 //     `jobs` and `tasks`, each in its own description.
-const fixedPrefixBudget = 69_000
+const fixedPrefixBudget = 72_000
 
 // widestPage is the page at its heaviest: prompts/system.md with every one of
 // its tool-naming facts in the PRESENT case (beltfacts.go).

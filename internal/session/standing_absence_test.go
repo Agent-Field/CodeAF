@@ -65,15 +65,6 @@ func TestTheSectionWithoutSchedulingDeniesOnlyScheduling(t *testing.T) {
 func TestTheSectionWithSchedulingStillTeachesTheMechanics(t *testing.T) {
 	present := standingSectionFor(true)
 	for _, want := range []string{
-		// RECOGNITION LIVES HERE AND NOWHERE ELSE since 2026-09-11: `stand`'s
-		// own description points at this section rather than repeating it, so
-		// the page losing the discharge test or the anchoring rule would leave
-		// the verb with no statement of when an acceptance criterion is not a
-		// card — the worst failure the tool has (tools_standing.go).
-		"THE DISCHARGE TEST",
-		"A demonstrative or present tense about the thing under",
-		"acceptance is never a card",
-		"THEIRS TO NAME, NEVER YOURS",
 		"WAKING OR HOLDING",
 		"`when.kind: hold`",
 		"UNSURE MEANS INSTRUCTION PLUS AN OFFER",
