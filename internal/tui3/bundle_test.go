@@ -3178,7 +3178,7 @@ func TestTheProposalChoicesAnswerByPointerAndByKey(t *testing.T) {
 	}
 	// AND THE RECEIPT IS ABOVE THE BOX, in the words the engine writes into
 	// decisions.jsonl (question.go's [app.recordQuestion]).
-	if !strings.Contains(taskAsk(a), "decided "+session.TaskProposalLead+"Fix the nil-map crash") {
+	if !strings.Contains(taskAsk(a), session.TaskProposalLead+"Fix the nil-map crash → start it") {
 		t.Fatalf("the answer left no receipt:\n%s", taskAsk(a))
 	}
 

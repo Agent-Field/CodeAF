@@ -349,10 +349,17 @@ func TestTheAnswerLeavesTheEnginesOwnRecordWhereTheQuestionWas(t *testing.T) {
 	if !strings.Contains(rows[0], want.Line()) {
 		t.Fatalf("the receipt is not the record's own line:\n%q\nwanted %q", rows[0], want.Line())
 	}
-	for _, said := range []string{"decided", "allow once", "you", "14:02", "c change"} {
+	// THE SETTLED MARK OPENS IT, and the row says what was decided, by whom and
+	// when — and nothing about changing it, because no key on this surface
+	// re-opens an answered question yet (owner ruling 2026-09-11, and the
+	// addendum's "do not offer the keys" until the revision door lands).
+	for _, said := range []string{tokens.Plain.Glyph(tokens.GSettled), "allow once", "you", "14:02"} {
 		if !strings.Contains(rows[0], said) {
 			t.Fatalf("the receipt does not say %q: %q", said, rows[0])
 		}
+	}
+	if strings.Contains(rows[0], questionCommentKey+" change") {
+		t.Fatalf("the receipt offers a key with no door behind it: %q", rows[0])
 	}
 }
 
@@ -1024,7 +1031,7 @@ func TestTheReceiptGivesUpAClauseRatherThanLosingItsTail(t *testing.T) {
 	}
 	for _, kept := range []string{
 		"which store should the ledger sit on? → sqlite beside the project",
-		"you", "14:02", questionCommentKey + " change",
+		"you", "14:02",
 	} {
 		if !strings.Contains(row, kept) {
 			t.Fatalf("the receipt lost %q: %q", kept, row)
@@ -1038,7 +1045,7 @@ func TestTheReceiptGivesUpAClauseRatherThanLosingItsTail(t *testing.T) {
 	// AND WHO DECIDED SURVIVES A ROW TOO NARROW EVEN FOR THE QUESTION, because
 	// it is the one thing on the line nobody can work out for themselves.
 	narrow := plain(lab.a.questionRecordRow(lab.a.questionRecords[0], 70))
-	if !strings.Contains(narrow, "you") || !strings.Contains(narrow, questionCommentKey+" change") {
+	if !strings.Contains(narrow, "you") {
 		t.Fatalf("a narrow receipt stopped saying who decided: %q", narrow)
 	}
 	// AND AT A WIDTH THAT HOLDS EVERYTHING, NOTHING IS GIVEN UP.
@@ -1537,7 +1544,7 @@ func TestAnAnswerTheDoorNeverAcknowledgedIsStillThisWindowsAnswer(t *testing.T) 
 	if !strings.Contains(got, "you") {
 		t.Fatalf("the receipt does not say who decided:\n%s", got)
 	}
-	if count := strings.Count(got, "decided "); count != 1 {
+	if count := strings.Count(got, "→ allow once"); count != 1 {
 		t.Fatalf("one answer left %d receipts:\n%s", count, got)
 	}
 	if len(lab.a.questions) != 0 {

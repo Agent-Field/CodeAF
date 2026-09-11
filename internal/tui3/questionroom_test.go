@@ -771,7 +771,7 @@ func TestAnAnswerGivenOnThePageLeavesOneRecordAndItSaysYou(t *testing.T) {
 		t.Fatalf("the page stayed up after it was answered:\n%s", footText(a))
 	}
 	block := plain(strings.Join(a.questionRows(a.width), "\n"))
-	if got := strings.Count(block, "decided "); got != 1 {
+	if got := strings.Count(block, "→ sqlite beside the project"); got != 1 {
 		t.Fatalf("one answer left %d records:\n%s", got, block)
 	}
 	if strings.Contains(block, "another window") {
@@ -806,7 +806,7 @@ func TestTheLanesNewsAboutAnAnswerGivenHereAddsNoSecondLine(t *testing.T) {
 		Kind: session.EventQuestionAnswered, Question: &q, Answer: &answer,
 	})
 	block := plain(strings.Join(a.questionRows(a.width), "\n"))
-	if got := strings.Count(block, "decided "); got != 1 {
+	if got := strings.Count(block, "→ sqlite beside the project"); got != 1 {
 		t.Fatalf("the lane's news made it %d records:\n%s", got, block)
 	}
 }

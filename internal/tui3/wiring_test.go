@@ -272,7 +272,7 @@ func TestAConsentQuestionShowsTheCallTheOfferAndTheRule(t *testing.T) {
 		t.Fatalf("the answers survived the answer:\n%s", got)
 	}
 	// AND THE ANSWER LEFT ITS RECEIPT where the question was.
-	if !strings.Contains(got, "decided") {
+	if !strings.Contains(got, "→ allow once") {
 		t.Fatalf("the answer left no receipt:\n%s", got)
 	}
 }

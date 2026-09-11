@@ -372,9 +372,9 @@ type questionRecord struct {
 	// at is when it stopped being a question, which is what the fade below
 	// [questionRecordFor] measures.
 	at time.Time
-	// reversible says the receipt offers `c change`. An irreversible decision
-	// says `cannot change` instead, and the engine's own [session.
-	// DecisionRecord.Line] already writes that half.
+	// reversible says whether this decision could be walked back at all. An
+	// irreversible one says `cannot change` on the row, which is the engine's own
+	// [session.DecisionRecord.Line]'s half of it.
 	reversible bool
 	// question is what was asked, kept so that `c change` can put it back on the
 	// block with its answers exactly as they were read the first time
@@ -382,6 +382,11 @@ type questionRecord struct {
 	// not the words on the answers nobody picked, which is what somebody
 	// changing their mind is choosing between.
 	question session.Question
+	// entries is how many rows the conversation held when the answer was given,
+	// which is how the receipt's working tail knows the model has not spoken yet
+	// ([app.questionReceiptTail]). It is a count and not a clock: the tail is
+	// about something ARRIVING, and the thing that arrives is a row.
+	entries int
 }
 
 // ── what is open, and which one is drawn ────────────────────────────────────
@@ -2157,12 +2162,22 @@ func (a *app) questionRecordRow(record questionRecord, width int) string {
 // that is the surface's — `c change` names a key on this keyboard, so it is
 // never given up and never counted against the record's own words.
 func (a *app) questionReceiptLine(record questionRecord, width int) string {
-	const lead = "  decided "
+	// THE RECEIPT OPENS WITH THE SETTLED MARK AND NOT THE WORD `decided` (owner
+	// ruling 2026-09-11, after-you-answer pick A): `✓ <head> → <answer> · you ·
+	// 14:02`. The mark is the vocabulary's ([tokens.GSettled], the same one the
+	// ratify line wears) and it says what the word said in one cell, which is
+	// what leaves room for the answer's own words on a narrow row.
+	lead := "  " + a.icon(tokens.GSettled) + " "
 	// WHAT IS OFFERED IS WHAT THE KEY WILL DO, asked of the same two readings the
 	// keys ask (questionchange.go): `c change` puts the question back, and
 	// `u undo` hands back a permission that granted something standing. A
 	// reversible decision this door would refuse says nothing at all, which is
 	// what `cannot change` was for.
+	//
+	// AND THEY ARE OFFERED BECAUSE THE DOORS EXIST (#954). This row carried
+	// `c change` with nothing behind it for a while and the key was taken off
+	// rather than left lying; it is back in the same change as the door, which is
+	// the bargain that was written down at the time.
 	change := ""
 	if questionCanUndo(record) {
 		change += session.DecisionSep + questionUndoKey + " undo"
@@ -2170,6 +2185,10 @@ func (a *app) questionReceiptLine(record questionRecord, width int) string {
 	if questionCanChange(record) {
 		change += session.DecisionSep + questionCommentKey + " change"
 	}
+	// AND THE TAIL TURNS UNTIL THE MODEL SAYS SOMETHING, which is the other half
+	// of what a person wants from this row: the decision is taken, and the work
+	// it was holding up has started again.
+	change += a.questionReceiptTail(record)
 	clauses := record.record.LineClauses()
 	for {
 		text := lead + questionJoinClauses(clauses) + change
@@ -2198,6 +2217,39 @@ func (a *app) questionReceiptLine(record questionRecord, width int) string {
 		head = clauses[0].Text
 	}
 	return lead + fit(head, max(0, width-ansi.StringWidth(lead)-ansi.StringWidth(keep))) + keep
+}
+
+// questionReceiptTail is what the receipt says after the decision's own words:
+// that the turn is moving again.
+//
+// THE WORK RESUMES ON THE ANSWER AND THE ROW SAYS SO UNTIL THE MODEL'S FIRST
+// OUTPUT (owner ruling 2026-09-11). A block that vanished into a still line left
+// a person watching an unmoving screen wondering whether their key had landed;
+// the tail is that key's receipt, in the one moving glyph this surface spends
+// ([tokens.Spinner], on the house grid so it never beats against another).
+// It is derived and never a timer: the moment there is anything to read the
+// conversation is drawing it, and this stops.
+func (a *app) questionReceiptTail(record questionRecord) string {
+	if record.withdrawn != "" || a.state != stateWorking || !a.questionQuietSince(record) {
+		return ""
+	}
+	mark := tokens.Spinner(a.paints / spinnerStep)
+	if a.linear || a.pal.ascii {
+		mark = glyphRunASCII
+	}
+	return session.DecisionSep + mark + " " + questionResumedWord
+}
+
+// questionResumedWord is what that tail says. It is the state in a person's
+// words — the same word the status line uses for the same fact — rather than
+// machinery describing itself.
+const questionResumedWord = "working"
+
+// questionQuietSince reports whether nothing has been written into the
+// conversation since a moment: the receipt's tail turns until the first thing
+// the model says lands under it.
+func (a *app) questionQuietSince(record questionRecord) bool {
+	return record.entries > 0 && len(a.entries) <= record.entries
 }
 
 // questionJoinClauses is the clauses that are left, as one line.
@@ -2567,6 +2619,7 @@ func (a *app) recordQuestion(q questionShown, answer session.Answer) {
 	a.questionRecords = append(a.questionRecords, questionRecord{
 		record: record, head: record.Head, at: answer.At, reversible: record.Reversible(),
 		question: q.question,
+		entries:  len(a.entries),
 	})
 }
 
