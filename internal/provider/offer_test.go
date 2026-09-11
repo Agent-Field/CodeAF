@@ -29,9 +29,14 @@ import (
 // nowhere for a `y` to go — the request would report the wait and nothing else.
 // That is a fact about `internal/lane`'s chooser rather than about this file,
 // and it is why the pin's own row is written with both.
+// AND IT SAYS SO IN THE FIELD THAT MEANS IT. `Only` is what a demand and a pin
+// have in common — every routed call demands the set the chooser admitted — and
+// [lanes.Choice.Pinned] is what only a pin has: a person's own word, which is
+// what turns the act from a rescue into a question.
 func pinnedChoice(model, pin string, alternatives ...string) lanes.Choice {
 	choice := lanes.Choice{
 		Only:     []string{pin},
+		Pinned:   true,
 		Frontier: []lanes.Scored{{ID: lanes.ID{Model: model, Lane: pin}, TTFT: 2, Rate: 2000, Price: 0.01}},
 	}
 	for _, lane := range alternatives {

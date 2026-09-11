@@ -118,7 +118,11 @@ func TestStrictPinDoesNotWalkToAnotherEndpointAfterTransportFailure(t *testing.T
 		answering(reply{status: 503, body: `{"error":{"message":"temporarily unavailable","metadata":{"provider_name":"A"}}}`}))
 	client.wait = func(context.Context, time.Duration) error { return nil }
 	choice := choiceFor(client.config.Model, time.Second)
-	choice.Only, choice.Order = []string{"A"}, nil
+	// A STRICT PIN IS THE PERSON'S OWN WORD AND IT SAYS SO. `Only` alone is what
+	// every routed call now carries — the set the chooser admitted, which this
+	// build may leave the moment it stops working — so the scenario has to state
+	// the fact it is about rather than leave it to be inferred from one name.
+	choice.Only, choice.Order, choice.Pinned = []string{"A"}, nil, true
 	ctx := WithLaneChoice(WithStreamObserver(talking(), func(StreamEvent) {}), choice)
 	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err == nil {
 		t.Fatal("the only permitted endpoint failed but the request succeeded")

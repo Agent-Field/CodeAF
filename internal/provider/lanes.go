@@ -355,33 +355,33 @@ func (c *Client) applyLaneChoice(prefs *providerPrefs, model string, knobs callK
 		return
 	}
 	choice := *knobs.laneChoice
-	// A DEMAND IS NOT A RANKING, so it replaces the object rather than joining
-	// it. `Only` is what a pin sends (lanepin.go): the request goes to exactly
-	// that machine or it does not go, which is the sentence the picker and the
-	// manual both promise — "every request for this conversation goes to that
-	// lane and nowhere else". The sort word comes off because there is nothing
-	// left to sort, the ledger's order comes off because it is a ranking over
-	// machines this request may not use, and `allow_fallbacks` goes to false
-	// because a fallback is precisely the thing a pin refuses.
+	// A DEMAND IS THE SET THE REQUEST MAY GO TO AT ALL, and it is STATED rather
+	// than suggested. `provider.order` is advice: with `allow_fallbacks` true the
+	// router reads the list, weighs it against its own load, and is free to serve
+	// the request from a machine the list never named — which it does. Over ten
+	// days of the call log the machine this build asked for first served 29 % of
+	// the time and the machine a strict preference NAMED served 93 %, so every
+	// gate the chooser applied was spending its evidence on a set the router was
+	// free to ignore. `only` is the half the router must honour, so the admitted
+	// set goes there and the ledger's own order comes off with the sort word:
+	// both are rankings over machines this request may not use.
 	//
-	// THE PRICE CEILING COMES OFF TOO. The chooser's frontier already admitted
-	// and priced the demanded machine; applying the router's coarser model-list
-	// ceiling afterwards can only contradict that decision and make a serving
-	// lane look as though it refused the model.
-	if len(choice.Only) > 0 {
-		only := make([]string, 0, len(choice.Only))
-		for _, lane := range choice.Only {
-			if lane != "" {
-				only = append(only, lane)
-			}
-		}
-		if len(only) > 0 {
-			no := false
-			prefs.Only, prefs.Order, prefs.Sort = only, nil, ""
-			prefs.AllowFallbacks = &no
-			prefs.MaxPrice = nil
-			return
-		}
+	// THE RANKING STAYS, INSIDE IT. A demand says WHICH MACHINES and the order
+	// below says IN WHAT SEQUENCE, and they are two different sentences about one
+	// set — internal/lane builds the order out of the same admitted candidates
+	// (choose.go's [lane.demandOf]), so nothing in the order can fall outside the
+	// demand.
+	//
+	// THE PRICE CEILING COMES OFF. The chooser's frontier already admitted and
+	// priced every demanded machine with the person's own λ; applying the
+	// router's coarser model-list ceiling afterwards can only contradict that
+	// decision and make a serving lane look as though it refused the model.
+	demand := namedLanes(choice.Only)
+	if len(demand) > 0 {
+		no := false
+		prefs.Only, prefs.Order, prefs.Sort = demand, nil, ""
+		prefs.AllowFallbacks = &no
+		prefs.MaxPrice = nil
 	}
 	// AND THE AFFINITY PIN YIELDS TO A REFUSAL, which is the one thing a warm
 	// prefix cannot buy its way past.
@@ -396,7 +396,14 @@ func (c *Client) applyLaneChoice(prefs *providerPrefs, model string, knobs callK
 	// refused on its own declared patience (internal/lane's beyondThePatience),
 	// and it goes on this body's `ignore` below rather than at the front of its
 	// order.
-	if pinned != "" && namesEndpoint(choice.Ignore, pinned) {
+	//
+	// AND A MACHINE OUTSIDE THE DEMAND IS THE SAME FACT STATED POSITIVELY. The
+	// admitted set is what the role would wait for; a machine that is not in it
+	// is one the frontier ruled out, and leading the order with it would either
+	// be ignored by the router or — under `allow_fallbacks: false` — name a
+	// machine the same object forbids.
+	if pinned != "" && (namesEndpoint(choice.Ignore, pinned) ||
+		(len(demand) > 0 && !namesEndpoint(demand, pinned))) {
 		pinned = ""
 	}
 	if len(choice.Order) > 0 {
@@ -517,7 +524,13 @@ func (c *Client) drawLaneChoice(knobs callKnobs, model string, request *ai.Reque
 	}
 	if named != "" && !pin.Borrow {
 		// The candidate set survives and the ranking does not: see above.
-		return lanes.Choice{Only: []string{named}, Frontier: choice.Frontier}, true
+		//
+		// AND THIS IS THE ONE PLACE `Pinned` IS WRITTEN, because this is the one
+		// place that knows a PERSON named the machine. Every other call demands a
+		// set too ([lane.demandOf]), and a set we admitted is ours to relax while
+		// a machine somebody typed is not: the difference decides whether a stall
+		// is rescued or asked about ([control.Plan.Pinned]).
+		return lanes.Choice{Only: []string{named}, Frontier: choice.Frontier, Pinned: true}, true
 	}
 	// AND A PIN THAT MAY BE BORROWED IS A PREFERENCE, so it goes in front of
 	// the belief's own ranking rather than replacing it: the named machine is
@@ -525,6 +538,16 @@ func (c *Client) drawLaneChoice(knobs callKnobs, model string, request *ai.Reque
 	// where it is so a rescue has somewhere to go when the pin stalls.
 	if named != "" {
 		choice.Order = append([]string{named}, withoutEndpoint(choice.Order, named)...)
+		// AND IT JOINS THE DEMAND, because a demand is the set the request may go
+		// to at all: asked for first inside a set that does not contain it, the
+		// machine a person named is a machine the same object forbids. It comes
+		// off the veto list for the same reason — `only` and `ignore` naming one
+		// machine is an empty serving set written by us about the machine we were
+		// asked for.
+		if len(choice.Only) > 0 {
+			choice.Only = append([]string{named}, withoutEndpoint(choice.Only, named)...)
+		}
+		choice.Ignore = withoutEndpoint(choice.Ignore, named)
 	}
 	return choice, !choice.Empty()
 }
@@ -625,6 +648,18 @@ func struck(ignore []string) []string {
 		}
 	}
 	return names
+}
+
+// namedLanes is a lane list with the empty names taken out, which is the only
+// cleaning a list that came from a belief or a person's row ever needs.
+func namedLanes(lanes []string) []string {
+	named := make([]string, 0, len(lanes))
+	for _, lane := range lanes {
+		if lane != "" {
+			named = append(named, lane)
+		}
+	}
+	return named
 }
 
 // namesEndpoint reports whether a preference list already names an endpoint.

@@ -652,11 +652,75 @@ func (c *chooser) Choose(req Request) Choice {
 	// of the order is a machine the router is still free to choose. This is the
 	// only half of the veto the router can actually be made to honour.
 	choice.Ignore = refusedInto(choice.Ignore, refused, choice.Order)
+	// AND WHAT SURVIVED ALL OF IT IS DEMANDED RATHER THAN SUGGESTED (demandOf).
+	choice.Only = demandOf(scored, choice.Ignore)
 	// AND NOTHING ABOUT TIME. Where a rescue would go and when it would go
 	// there are [PlanFor]'s, built for every call out of the same frontier this
 	// carries — see the note on [Choice].
 	choice.Why = whyOf(scored[0], perceived[scored[0].ID])
 	return choice
+}
+
+// demandOf is the set this request may go to at all: every machine the role
+// admitted and this choice did not veto, in the order it ranked them.
+//
+// ── WHY A DEMAND AND NOT A RANKING ──────────────────────────────────────────
+//
+// `provider.order` is ADVICE. With `allow_fallbacks` true the router reads the
+// list, weighs it against its own load and price, and is free to serve the
+// request from a machine the list never named — which it does, often. Measured
+// over ten days of the call log (L10's replay, 2026-09-11): the machine this
+// build asked for FIRST served 29 % of the time, while the machine a strict
+// preference NAMED served 93 %. Every gate above this line — the capability
+// gate, the Pareto prune, the price ceiling, the quality floor, and above all
+// [beyondThePatience], which takes out the machines whose expected time to a
+// usable answer is longer than this role will wait — spent its evidence on a
+// set the router was then free to ignore.
+//
+// So the admitted set is stated as `provider.only`, which the router may not go
+// outside, and the ranking travels inside it as before. What the frontier
+// refused is refused, and the cost is accepted and named: a pool whose every
+// admitted machine is busy REFUSES and the call walks (internal/lane/control's
+// [Next] relaxes the shape, then hands the model to the session) rather than
+// being served by whoever happened to be free.
+//
+// ── WHY TWO ─────────────────────────────────────────────────────────────────
+//
+// THE THRESHOLD IS THE ROUTER'S OWN RULE AND NOT A NUMBER THIS FILE CHOSE. A
+// demand of ONE machine is a pin: `only: [x]` with fallbacks off means the
+// request goes to x or it does not go, which is somebody's INSTRUCTION and not a
+// belief's opinion — internal/provider builds exactly that object for a person's
+// strict pin and for a rescue's arm, and the rest of the build reads a one-wide
+// demand as a pin (its `demandedLane`, the single legal same-machine repeat).
+// A belief that has admitted one machine has nothing to demand, because
+// demanding it would be this build pinning somebody to a machine they never
+// asked for; it ranks the one it has and leaves the router its fallbacks.
+//
+// THE VETOES ARE SUBTRACTED AND NOT SENT BESIDE IT, because `only` and `ignore`
+// naming one machine is an empty serving set written by us, in one object, about
+// a machine we just asked for — the same rule [refusedInto] keeps one line up
+// and internal/provider keeps where it drops the machines that refused a call.
+// A machine can be in the frontier and still be vetoed: [ignoredOf] names the
+// candidates this process is SURE are far slower than the best, and the ranking
+// above only has room for [orderNames] of them.
+func demandOf(scored []Scored, ignore []string) []string {
+	if len(scored) < 2 {
+		return nil
+	}
+	vetoed := make(map[string]bool, len(ignore))
+	for _, lane := range ignore {
+		vetoed[lane] = true
+	}
+	demand := make([]string, 0, len(scored))
+	for _, candidate := range scored {
+		if candidate.ID.Lane != "" && !vetoed[candidate.ID.Lane] {
+			demand = append(demand, candidate.ID.Lane)
+		}
+	}
+	if len(demand) < 2 {
+		return nil
+	}
+	return demand
 }
 
 // orderNames is how many lanes the router is told to try in order. Three is the

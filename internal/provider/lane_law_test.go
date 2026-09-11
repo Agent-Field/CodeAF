@@ -142,3 +142,102 @@ func TestOnlyOneFunctionDrawsACallsLane(t *testing.T) {
 		}
 	}
 }
+
+// ── A PIN IS A PERSON'S WORD, AND IT IS NEVER COUNTED ───────────────────────
+//
+// `Only` carries two different facts that look identical on the wire: the set
+// this process admitted, which is ours to relax the moment it stops working,
+// and the one machine somebody typed, which is not. [control.Plan.Pinned] is
+// what tells the build which it is holding, and everything it changes is
+// person-facing: a stall on a pinned machine becomes `switch to auto? (y)`
+// instead of a rescue, and the primary arm stops walking off a transient fault.
+//
+// It was `len(choice.Only) > 0` until the chooser began demanding its own
+// admitted set, at which point that sentence made every ordinary call pinned —
+// the question asked about machines nobody chose, and no rescue sent. So the
+// law: a pin may be WRITTEN only where a person's own row is read, and may
+// never be DERIVED from a list of names.
+
+// pinsACall is who may put a pin on a choice or a plan. Clearing one is not on
+// this list and needs no permission: a rescue's own arm and a reconnection are
+// both this process's doing, and neither of them is anybody's instruction.
+var pinsACall = map[string]string{
+	// THE ONE READING OF A PERSON'S ROW (lanepin.go's lanePinFor), which is the
+	// only place in this build that knows a machine was named by hand.
+	"drawLaneChoice": "reads the person's own row",
+	// AND THE ONE PLACE THE PLAN IS BUILT, which copies the choice's own word
+	// across rather than inferring one.
+	"planFor": "copies the choice's word onto the plan",
+}
+
+// TestOnlyAPersonsOwnRowPinsACall is that law.
+func TestOnlyAPersonsOwnRowPinsACall(t *testing.T) {
+	written := map[string]bool{}
+	for name, file := range providerSources(t) {
+		for _, decl := range file.Decls {
+			function, ok := decl.(*ast.FuncDecl)
+			if !ok {
+				continue
+			}
+			ast.Inspect(function, func(node ast.Node) bool {
+				value, where := pinWrite(node)
+				if value == nil {
+					return true
+				}
+				// Clearing a pin is always allowed: see above.
+				if ident, ok := value.(*ast.Ident); ok && ident.Name == "false" {
+					return true
+				}
+				if _, allowed := pinsACall[function.Name.Name]; !allowed {
+					t.Errorf("%s: %s pins a call at %s — a pin is a PERSON's one machine, written where "+
+						"their own row is read and nowhere else. A request that merely names machines is "+
+						"a demand, and a demand is ours to relax", name, function.Name.Name, where)
+					return true
+				}
+				if namesTheDemand(value) {
+					t.Errorf("%s: %s derives a pin from `Only` — that field now carries the chooser's own "+
+						"admitted set as well as a person's pin, so counting it pins everybody", name, function.Name.Name)
+				}
+				written[function.Name.Name] = true
+				return true
+			})
+		}
+	}
+	for name := range pinsACall {
+		if !written[name] {
+			t.Errorf("%s is permitted to pin a call and no longer does — delete the line rather than "+
+				"leaving a permission nobody uses", name)
+		}
+	}
+}
+
+// pinWrite is the value being written to a `Pinned` field, or nil.
+func pinWrite(node ast.Node) (ast.Expr, string) {
+	switch written := node.(type) {
+	case *ast.AssignStmt:
+		for index, target := range written.Lhs {
+			selector, ok := target.(*ast.SelectorExpr)
+			if !ok || selector.Sel.Name != "Pinned" || index >= len(written.Rhs) {
+				continue
+			}
+			return written.Rhs[index], "an assignment"
+		}
+	case *ast.KeyValueExpr:
+		if key, ok := written.Key.(*ast.Ident); ok && key.Name == "Pinned" {
+			return written.Value, "a literal"
+		}
+	}
+	return nil, ""
+}
+
+// namesTheDemand reports whether an expression reads the demanded set.
+func namesTheDemand(value ast.Expr) bool {
+	found := false
+	ast.Inspect(value, func(node ast.Node) bool {
+		if ident, ok := node.(*ast.Ident); ok && ident.Name == "Only" {
+			found = true
+		}
+		return !found
+	})
+	return found
+}
