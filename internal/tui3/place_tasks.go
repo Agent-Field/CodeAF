@@ -54,7 +54,16 @@ type tasksPlace struct {
 	// this surface is rather than a string of its own: backspace, ctrl+u and
 	// ctrl+w are edits a person's hands already know, and a second implementation
 	// of them would be a second set of bugs in them.
+	//
+	// IT IS ON SCREEN NOW, as the first row of the list ([tasksControlRow]). It
+	// used to be invisible, with a note line UNDER the rows saying back what had
+	// been typed — a correction printed below the thing it was correcting.
 	query editor
+	// order is which column the list is sorted by and which way. It is the
+	// PLACE's, beside the folds and for the same reason: the reading is replaced
+	// whole every time a node lands, and an order kept there would reset itself
+	// under somebody who had just chosen one.
+	order tasksSort
 
 	// detail is the row of the record this place is standing INSIDE, and
 	// detailOn is what says it is (taskrecord.go). Together they are the place's
@@ -198,7 +207,7 @@ func (a *app) takeTaskReading() tasksPlace {
 		mine:   mine,
 		awayAt: a.elsewhere().Read,
 		mineAt: a.railStamp,
-		reading: readTasks(world, mine, session.LastDays(now, taskSheetDays),
+		reading: readTasks(world, mine, session.LastDays(now, taskSheetDays), tasksSort{},
 			session.LastLookAt(a.looksRoot(), pageTasks.word()), now),
 	}
 }
@@ -251,7 +260,7 @@ func (p *tasksPlace) regroup(a *app) {
 	was, held := p.rowAt(a, p.cursor)
 	p.awayAt, p.mineAt = at, stamp
 	p.mine = a.taskSheetMine()
-	p.reading = readTasks(p.world, p.mine, p.reading.win, p.reading.seen, p.reading.now)
+	p.reading = readTasks(p.world, p.mine, p.reading.win, p.order, p.reading.seen, p.reading.now)
 	if !held {
 		return
 	}
@@ -290,6 +299,12 @@ func (p *tasksPlace) lineOf(a *app, want tasksKey) (int, bool) {
 func (p *tasksPlace) filtered(a *app) tasksReading {
 	r := p.reading
 	r.open = p.opened
+	// THE ORDER IS THE PLACE'S TOO, and it is joined here for the same reason the
+	// folds are: this is the one door onto the reading, so a key pressed between
+	// two frames reaches every one of its readers at once ([tasksReading.tree]
+	// rebuilds the shape when the order it was built in is not the one being
+	// asked for).
+	r.order = p.order
 	needle := a.taskSheetFilter()
 	if needle == "" {
 		return r
@@ -343,7 +358,7 @@ func (p *tasksPlace) filtered(a *app) tasksReading {
 		}
 	}
 	r.chats = chats
-	tree = tasksTreeOf(kept, r.now, chats...)
+	tree = tasksTreeOf(kept, r.now, r.order, chats...)
 	r.shape = &tree
 	return r
 }
@@ -1040,7 +1055,7 @@ func (p *tasksPlace) window(a *app, key string) bool {
 	if next == before {
 		return false
 	}
-	p.reading = readTasks(p.world, p.mine, next, p.reading.seen, a.now())
+	p.reading = readTasks(p.world, p.mine, next, p.order, p.reading.seen, a.now())
 	p.top = 0
 	p.cursor = a.tasksSettle(0)
 	return true

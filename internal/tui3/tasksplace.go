@@ -214,6 +214,11 @@ type tasksReading struct {
 	// the folder a person is already in tells one row from no other.
 	folder string
 	tilde  string
+	// order is the column this page is sorted by and which way, handed in by the
+	// place the way the folds are ([tasksReading.open] states the same law): a
+	// snapshot is replaced whole every time a node lands, and an order that lived
+	// on the reading would reset itself under somebody who had just chosen one.
+	order tasksSort
 }
 
 // tasksKey is what identifies ONE piece of work across every authority: the
@@ -234,8 +239,8 @@ func tasksKeyOf(entry session.TaskIndexEntry) tasksKey {
 // means in one pass: the file, then this project's in-memory index and live
 // graph, then the other windows — which are reading a presence file written
 // seconds ago and are the only authority for work that has not landed.
-func readTasks(world session.World, mine tasksMine, win session.UsageWindow, seen, now time.Time) tasksReading {
-	r := tasksReading{win: win.Normalized(), seen: seen, now: now, tilde: mine.tilde}
+func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by tasksSort, seen, now time.Time) tasksReading {
+	r := tasksReading{win: win.Normalized(), seen: seen, now: now, tilde: mine.tilde, order: by}
 	// order keeps the pass stable: a map alone would re-order the page on every
 	// frame it was rebuilt, and the sections below are drawn in the order the
 	// rows arrived within each one.
@@ -328,7 +333,7 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, see
 	// AND THE ORDER THE ROWS ARRIVE IN IS THE ORDER THE PAGE DRAWS THEM, settled
 	// once here so that every reader of [tasksReading.items] — the tally, the
 	// filter, the layout — walks one list in one order.
-	tree := tasksTreeOf(visible, now, r.chats...)
+	tree := tasksTreeOf(visible, now, by, r.chats...)
 	r.items = tree.order()
 	r.shape = &tree
 	// WHAT THE PLACE IS HOLDING IS COUNTED HERE, ONCE, off the rows before any
@@ -513,6 +518,13 @@ type tasksLine struct {
 	// kids is how many pieces of work are under this root, which the row says
 	// out loud while the fold is shut. Zero everywhere else.
 	kids int
+	// rank is the row's answer to every sort key, FOLDED WITH EVERYTHING UNDER IT
+	// ([tasksRank.fold]). A row with work beneath it shows the family's total,
+	// because a shut fold stands in for what it is hiding and an open one is the
+	// sum of the rows under it — which is what `$0.49` over `$0.47` and `$0.02`
+	// reads as. It is carried on the LINE and not re-derived in the paint, for the
+	// same reason the fold mark is: it is a fact about the layout.
+	rank tasksRank
 }
 
 // tasksBareLead is the cell in front of every row of work: the place's one left
@@ -819,6 +831,18 @@ type tasksChat struct {
 	// live work is dated `now` for ranking and says nothing at all about when
 	// ([tasksEntryAt] and [tasksEntryStamp] hold the two halves apart).
 	at time.Time
+	// rank is every sort key's answer for this conversation AT ONCE, folded from
+	// the work under it ([tasksRank.fold]): the newest age, the total spend, the
+	// total files, the most urgent state. It is what the row is ORDERED by and
+	// what its own key cell SAYS, which are one question.
+	rank tasksRank
+	// word is the state word the most urgent piece of work under it wears, and it
+	// is what the conversation's `state` cell says after the count: `5 your call`,
+	// `9 done`. A conversation has no state of its own and this is not one.
+	word string
+	// state is where that puts it, kept beside the word so the cell and the
+	// section cannot be worked out two ways.
+	state tasksSection
 }
 
 // tasksGroup is what one section holds: a conversation and the work under it,
@@ -847,18 +871,50 @@ type tasksTree struct {
 	up     map[tasksKey]tasksKey
 	at     map[tasksKey]tasksItem
 	filed  map[tasksKey]tasksSection
+	// rank is every row's answer to every sort key, folded with everything under
+	// it. It is computed once here because the comparison is asked at every level
+	// and a walk per comparison is a walk per log n.
+	rank map[tasksKey]tasksRank
+	// sort is the order this shape was BUILT in, and it is kept so the reading can
+	// tell a cached shape from one that has to be built again ([tasksReading.tree]).
+	// A tree is a sorted thing; two sorts are two trees.
+	sort tasksSort
+}
+
+// tasksSort is the whole of what a person has chosen about the order: which key,
+// and which way. It is one value so that the place, the reading and the tree
+// cannot hold two thirds of an answer between them.
+type tasksSort struct {
+	key  tasksSortKey
+	back bool
+}
+
+// on returns this sort with a key pressed: the same key again REVERSES, and a
+// different one starts that key the way round it is naturally read
+// ([tasksSortKey.ahead]).
+//
+// IT IS ONE RULE FOR THE KEYBOARD AND THE POINTER ALIKE. `s` cycles to the next
+// key and a click names one directly, and both land here, so a label clicked
+// twice and a key cycled round to itself behave the same way.
+func (s tasksSort) on(key tasksSortKey) tasksSort {
+	if s.key == key {
+		return tasksSort{key: key, back: !s.back}
+	}
+	return tasksSort{key: key}
 }
 
 // tasksTreeOf builds that shape, and it is the ONE place the page's structure is
 // decided — the layout and the section headings both read this rather than each
 // walking the rows their own way. The tally deliberately reads each piece of
 // work's own state instead ([tasksReading.tally]).
-func tasksTreeOf(items []tasksItem, now time.Time, chats ...session.SessionRow) tasksTree {
+func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...session.SessionRow) tasksTree {
 	t := tasksTree{
 		kids:  map[tasksKey][]tasksItem{},
 		up:    make(map[tasksKey]tasksKey, len(items)),
 		at:    make(map[tasksKey]tasksItem, len(items)),
 		filed: make(map[tasksKey]tasksSection, len(items)),
+		rank:  make(map[tasksKey]tasksRank, len(items)),
+		sort:  order,
 	}
 	for _, item := range items {
 		t.at[tasksKeyOf(item.entry)] = item
@@ -917,8 +973,34 @@ func tasksTreeOf(items []tasksItem, now time.Time, chats ...session.SessionRow) 
 		}
 		roots = append(roots, item)
 	}
+	// EVERY ROW'S RANK IS FOLDED BEFORE ANYTHING IS ORDERED, because a parent is
+	// compared by what is under it and a walk per comparison would be a walk per
+	// log n. The roots are done after the groups are formed, since a root's fold
+	// reaches every generation below it.
+	for _, item := range items {
+		key := tasksKeyOf(item.entry)
+		t.rank[key] = tasksRankOf(item, now)
+	}
+	var folded func(item tasksItem) tasksRank
+	folded = func(item tasksItem) tasksRank {
+		key := tasksKeyOf(item.entry)
+		rank := tasksRankOf(item, now)
+		for _, kid := range t.kids[key] {
+			rank = rank.fold(folded(kid))
+		}
+		t.rank[key] = rank
+		return rank
+	}
+	for _, root := range roots {
+		folded(root)
+	}
+	// AND THE ORDER IS THE CHOSEN ONE, AT EVERY LEVEL. The tree never flattens:
+	// what changes with the key is which of two SIBLINGS comes first, never
+	// whether a row is still under its parent.
 	for key, kids := range t.kids {
-		sort.SliceStable(kids, func(i, j int) bool { return tasksNewer(kids[i], kids[j], now) })
+		sort.SliceStable(kids, func(i, j int) bool {
+			return t.sort.key.less(t.rank[tasksKeyOf(kids[i].entry)], t.rank[tasksKeyOf(kids[j].entry)], t.sort.back)
+		})
 		t.kids[key] = kids
 	}
 
@@ -972,19 +1054,30 @@ func tasksTreeOf(items []tasksItem, now time.Time, chats ...session.SessionRow) 
 	for i := range t.groups {
 		g := &t.groups[i]
 		g.section = tasksSectionCount
+		g.chat.rank = tasksRankZero()
 		if g.named {
 			g.order, g.chat.at = g.chat.row.At, g.chat.row.At
+			g.chat.rank.name = g.chat.title
 			if g.chat.row.NeedsPerson() {
 				g.section = tasksNeeds
 			} else if g.chat.row.Live && g.chat.row.Presence.State == session.PresenceWorking {
 				g.section = tasksRunning
 			}
 		}
+		// urgent is the piece of work whose state the conversation's own cell says
+		// after its count. It is the SAME row that decides which section the whole
+		// conversation stands under, so the heading a person reads and the word on
+		// the row under it cannot disagree.
+		var urgent *tasksItem
 		for _, root := range g.roots {
 			t.under(root, func(item tasksItem, _ int) {
 				g.held++
 				if item.section < g.section {
 					g.section = item.section
+				}
+				if urgent == nil || item.section < urgent.section {
+					held := item
+					urgent = &held
 				}
 				if stamp := tasksEntryAt(item.entry, now); stamp.After(g.order) {
 					g.order = stamp
@@ -994,23 +1087,38 @@ func tasksTreeOf(items []tasksItem, now time.Time, chats ...session.SessionRow) 
 				}
 			})
 		}
+		for _, root := range g.roots {
+			g.chat.rank = g.chat.rank.fold(t.rank[tasksKeyOf(root.entry)])
+		}
 		if g.section == tasksSectionCount {
 			g.section = tasksEarlier
 		}
-		sort.SliceStable(g.roots, func(a, b int) bool { return tasksNewer(g.roots[a], g.roots[b], now) })
+		g.chat.state = g.section
+		if urgent != nil {
+			g.chat.word = taskStateWord(urgent.entry, urgent.runs)
+			if urgent.live != nil {
+				g.chat.word = urgent.live.Word
+			}
+		}
+		sort.SliceStable(g.roots, func(a, b int) bool {
+			return t.sort.key.less(t.rank[tasksKeyOf(g.roots[a].entry)], t.rank[tasksKeyOf(g.roots[b].entry)], t.sort.back)
+		})
 		g.chat.kids = len(g.roots)
 		for _, root := range g.roots {
 			t.under(root, func(item tasksItem, _ int) { t.filed[tasksKeyOf(item.entry)] = g.section })
 		}
 	}
-	// THE MOST URGENT CONVERSATION IS AT THE TOP AND THE REST READ NEWEST FIRST,
-	// which is the same ranking the rows themselves have always had, applied one
-	// level up.
+	// THE MOST URGENT CONVERSATION IS AT THE TOP, AND INSIDE ONE SECTION THE
+	// CONVERSATIONS ARE ORDERED BY THE SAME KEY THEIR OWN ROWS ARE — by their
+	// AGGREGATE, which is the question a person sorting by cost is asking about a
+	// conversation. The section outranks the key because the sections are what the
+	// page is FOR: a heading a sort could reorder under would be a page whose own
+	// argument moved when somebody clicked a column.
 	sort.SliceStable(t.groups, func(a, b int) bool {
 		if t.groups[a].section != t.groups[b].section {
 			return t.groups[a].section < t.groups[b].section
 		}
-		return t.groups[a].order.After(t.groups[b].order)
+		return t.sort.key.less(t.groups[a].chat.rank, t.groups[b].chat.rank, t.sort.back)
 	})
 	return t
 }
@@ -1110,24 +1218,33 @@ func (t tasksTree) column() bool {
 // tree is the shape of THIS reading, built from the rows it is holding at this
 // instant — which is what makes a filtered page a tree of what survived rather
 // than a tree with holes in it.
+// AND A SHAPE BUILT IN ANOTHER ORDER IS NOT THIS READING'S SHAPE. A tree is a
+// sorted thing — the order decides which of two siblings comes first at every
+// level — so the cached one is used only while it was built the way this reading
+// is asking for. Pressing a sort key does not rebuild anything: it changes the
+// answer this comparison gives, and the next frame notices.
 func (r tasksReading) tree() tasksTree {
-	if r.shape != nil {
+	if r.shape != nil && r.shape.sort == r.order {
 		return *r.shape
 	}
-	return tasksTreeOf(r.items, r.now, r.chats...)
+	return tasksTreeOf(r.items, r.now, r.order, r.chats...)
 }
 
 // opens reports whether one foldable row is open: what a person set, and the
 // row's own default where they have set nothing.
 //
-// A CONVERSATION OPENS AND A FAMILY DOES NOT, and the two defaults are opposite
-// on purpose. The fold under a task exists to keep eight workers from burying
-// six other things this machine did, and it opens on demand; the fold under a
-// CONVERSATION is the page's own structure, and a page that opened with every
-// conversation shut would be a list of chat titles with the work — the thing
-// this place is for — hidden one keypress behind each of them.
+// EVERYTHING OPENS SHUT (owner, 2026-09-11). A conversation used to open showing
+// its work, on the argument that a page of chat titles hides the thing the place
+// is for. What that argument missed is the SIZE of a real record: a hundred
+// conversations with a hundred and ninety subtasks under them is a page nobody
+// can scan, and the work a person came for is behind the ninety conversations
+// they did not want. A shut root says what it is holding and how urgent the most
+// urgent of it is ([tasksChatStateField]), which is enough to decide whether to
+// open it — and `→` opens it.
 //
-// AND A QUERY OPENS EVERYTHING ([tasksReading.unfolded]).
+// AND A QUERY OPENS EVERYTHING ([tasksReading.unfolded]). A row that matched and
+// is sitting behind a shut fold is a row the query appears not to have found, and
+// the person's own folds come back when the query clears.
 func (r tasksReading) opens(key tasksKey) bool {
 	if r.unfolded {
 		return true
@@ -1135,7 +1252,7 @@ func (r tasksReading) opens(key tasksKey) bool {
 	if open, set := r.open[key]; set {
 		return open
 	}
-	return key.chat()
+	return false
 }
 
 // rows is the whole page painted with no cursor anywhere on it, which is what a
