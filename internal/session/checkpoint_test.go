@@ -478,6 +478,11 @@ const checkpointSlack = checkpointMarks + 3
 // person's own words, which is what every assertion on these pages was written
 // against.
 //
+// A TEST THAT IS ABOUT THE DRAWING'S OWN REQUEST OPTS BACK OUT with
+// [answerOnlyTheNamerOffTheQueue], for the reason the namers are not defaulted in
+// agent_test.go: a reading answered off the queue is a reading that test can no
+// longer see.
+//
 // A completer that is not scripted has no queue to protect and is left alone.
 func answerTheReadingsOffTheQueue(completer Completer) {
 	scripted, ok := completer.(*scriptedCompleter)
@@ -525,6 +530,21 @@ func answerTheReadingsOffTheQueue(completer Completer) {
 			return nil, false
 		}
 		return drawn, true
+	}
+}
+
+// answerOnlyTheNamerOffTheQueue is [answerTheReadingsOffTheQueue] WITHOUT the
+// drawing, and it is how a test that asserts on the drawing's own request gets it
+// back on the positional queue where it can be read.
+//
+// It is safe exactly where the drawing is not racing a turn — a test that calls
+// [Agent.readMark] itself has no turn to race.
+func answerOnlyTheNamerOffTheQueue(scripted *scriptedCompleter) {
+	scripted.aside = func(messages []ai.Message) (*ai.Response, bool) {
+		if isNameCall(messages) {
+			return textResponse(""), true
+		}
+		return nil, false
 	}
 }
 
@@ -1877,6 +1897,10 @@ func TestTheMarkReaderIsSentTheDigestAndNotTheTranscript(t *testing.T) {
 		},
 	}}
 	agent := checkpointAgent(t, completer)
+	// THIS TEST IS ABOUT THE DRAWING'S OWN REQUEST, so the drawing goes back on the
+	// queue where the assertions below can read it. There is no turn here to race
+	// it — [Agent.readMark] is called directly.
+	answerOnlyTheNamerOffTheQueue(completer)
 	// The result immediately follows the assistant batch that requested it.
 	workedTurn(agent, "read the four modules and fix what is broken", 1)
 	agent.mu.Lock()

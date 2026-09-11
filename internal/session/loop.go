@@ -719,7 +719,16 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// answer — and it is let go of on every way out, including the ones that end
 	// the turn mid-round, so no reading outlives the turn that bought it.
 	marked := &markAside{}
-	defer marked.end()
+	// AND A DRAWING THE TURN RAN OUT OF STEPS TO SPEND IS STILL WRITTEN DOWN. A
+	// reading rides beside the work and is spent at the next boundary, which is
+	// the right rule for every boundary but the LAST one: a mark crossed by the
+	// round that ends a turn — a re-open is a round — has no next boundary to be
+	// spent at, and a drawing dropped there is a drawing whose ledger never
+	// learns, which is the half of this file's law that is easy to lose.
+	defer func() {
+		a.closeMarkAside(marked)
+		marked.end()
+	}()
 
 	// AND THE TURN WRITES DOWN WHAT IT SPENT ITS TIME ON, in one row, on every
 	// way out (see [Agent.journalTurnPace]). It is the evidence this file's law is

@@ -2794,12 +2794,49 @@ func (m *markAside) take() (markReading, bool) {
 	return m.reading.take()
 }
 
+// settle waits for a reading that has not answered yet. It is [sidecar.settle]
+// and carries that method's whole warning: it is for an ENDING and nowhere else
+// ([Agent.closeMarkAside] is the one caller).
+func (m *markAside) settle() (markReading, bool) {
+	if m == nil {
+		return markReading{}, false
+	}
+	return m.reading.settle()
+}
+
 // end discards the reading, whether or not it has answered — [sidecar.end].
 func (m *markAside) end() {
 	if m == nil {
 		return
 	}
 	m.reading.end()
+}
+
+// closeMarkAside spends a drawing at the ONE boundary that has no next one: the
+// end of the turn.
+//
+// It journals and never moves the work, and that is the whole of the difference
+// from [Agent.checkpointSettle]. By the time this runs the turn has already been
+// decided — its ending road has asked its own reader what is left of the ask and
+// either re-opened the turn, handed it over, or let it finish — so a drawing that
+// landed on the way past DECIDED NOTHING, and it is written down as the carry-on
+// it was, exactly as the ceiling's own reading is (the branch in
+// [Agent.checkpointRound] says why).
+//
+// AND IT IS THE ONE PLACE THIS FILE WAITS, for the reason the CEILING's own
+// reading is still read in line: the turn is ENDING, so there is nothing left to
+// run beside, and [sidecar.settle] exists for exactly that moment (sidecar.go).
+// A reading bought at a mark and then thrown away is a mastermind call paid for
+// and a ledger line nobody can ever count, and loop.go's law says a decision is
+// APPLIED or written down, never dropped. What it costs is bounded twice over —
+// by [checkpointSketchWindow] and by the drawing having started a whole round
+// earlier — and it is only ever paid by a turn whose LAST round crossed a rung.
+func (a *Agent) closeMarkAside(aside *markAside) {
+	landed, ok := aside.settle()
+	if !ok {
+		return
+	}
+	a.journalMarkRead(landed.read, landed.mark, landed.rounds, landed.read.sketch.carryOnDecision())
 }
 
 // checkpointSettle is the other half of [Agent.checkpointRound]: the reading

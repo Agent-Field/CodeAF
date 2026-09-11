@@ -2310,7 +2310,11 @@ could never fire, and the same census has four mark readings dying at
 30,001–30,002 ms having decided nothing.
 
 The mark's reading (`checkpointSketchWindow`, 30 s) is started at the boundary that
-crosses a mark and settled at the next one. A carry-on — nearly all of them — costs
+crosses a mark and settled at the next one — or, when the round that crossed the
+mark is the one that ENDS the turn and there is no next boundary, at the turn's
+close (`Agent.closeMarkAside`), which is the second of the two places this engine
+waits on a reading and waits for the same reason the guardian does: there is
+nothing left to run beside. A carry-on — nearly all of them — costs
 the turn one closed-channel test; a drawing with independent parts in it cuts the
 step in flight (`errMarkCut`) so the boundary it is spent at arrives at once.
 Measured 2026-09-11: 8.1 s between a tool result and the next step, deciding
