@@ -49,9 +49,11 @@ import (
 // ── THE ROWS, DRAWN HERE SO THEY STAY TRUE ──
 //
 // The body region, at 92 columns, a choice with three answers and the first one
-// open. `?` is [tokens.GNeedsHuman]; an answer's LABEL is the question hue and
-// the weight together, exactly as the card spells one; an answer's body is ink;
-// every attribution, consequence, reason and confidence is dim.
+// open. `?` is [tokens.GNeedsHuman] and wears the question's amber; an answer's
+// KEY is the payload hue and its LABEL is bold ink — the hue was on the label
+// until the owner retired it (colour pick C, 2026-09-11: COLOUR IS STROKE AND
+// NEVER FILL), and the weight carries what the colour was carrying. An answer's
+// body is ink; every attribution, consequence, reason and confidence is dim.
 //
 // ── THE HIERARCHY, WHICH IS THE POINT OF THE SHAPE ──
 //

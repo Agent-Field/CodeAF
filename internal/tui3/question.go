@@ -1157,10 +1157,15 @@ func questionWaits(q session.Question) bool {
 //
 // AMBER, ALWAYS, AND ONLY HERE. `?` is [tokens.GNeedsHuman], whose binding says
 // "waiting on a human (always amber)" in the vocabulary itself, and amber on
-// this surface means that and nothing else. The block's WORDS keep the
-// conversation's question hue ([palette.ask]), which docs/DESIGN-LANGUAGE.md
-// pins and this wave does not move; the MARK is what carries the meaning, so
-// the mark is what wears the meaning's colour.
+// this surface means that and nothing else.
+//
+// THE BLOCK'S WORDS ARE ORDINARY INK, and that is the half of this comment the
+// owner's colour ruling of 2026-09-11 rewrote. They kept a question hue of their
+// own — a violet spent on the head, every answer label and every key — while
+// home, the places and the chip said the same "waiting on you" in this amber, so
+// one meaning wore two colours and whole rows stood in a status hue. The violet
+// is retired from both ladders (docs/DESIGN-LANGUAGE.md), and the marks carry
+// the meaning: this one, the pointer and the recommended diamond.
 func (a *app) questionMark() string {
 	return a.pal.warnBold(a.icon(tokens.GNeedsHuman))
 }
