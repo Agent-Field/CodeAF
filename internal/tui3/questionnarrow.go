@@ -219,9 +219,12 @@ func (a *app) questionNarrowWords(q questionShown) (string, string) {
 // seam above the draft makes (render.go's legend) — a line that was already
 // there, carrying the one word that says what this is.
 func (a *app) questionNarrowTitle(name string, width int) string {
-	// AMBER IS THE MARK AND NOTHING ELSE, which is the hue law said about a
-	// title: the `?` carries "somebody is waiting on you" and the word beside it
-	// is the question's own, in the question's own hue.
+	// AMBER IS THE MARK AND NOTHING ELSE (colour pick C), which is the hue law
+	// said about a title: the `?` carries "somebody is waiting on you" and the
+	// word beside it is ORDINARY INK. It was painted in the hue too — bold, in
+	// the rule, on the one drawing a person reads with a thumb over half of it —
+	// and a title shouting what the mark beside it already says is this law
+	// broken where it is least affordable.
 	mark := a.icon(tokens.GNeedsHuman)
 	word := strings.TrimSpace(name)
 	label := " " + mark + " " + word + " "
@@ -235,7 +238,7 @@ func (a *app) questionNarrowTitle(name string, width int) string {
 		rest = 0
 	}
 	return a.pal.dim(strings.Repeat("─", lead)) +
-		a.pal.ask(" ") + a.questionMark() + a.pal.askBold(" "+word+" ") +
+		a.pal.dim(" ") + a.questionMark() + a.pal.ink(" "+word+" ") +
 		a.pal.dim(strings.Repeat("─", rest))
 }
 

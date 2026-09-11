@@ -57,20 +57,27 @@ func TestNoQuestionRowIsPaintedInTheQuestionHue(t *testing.T) {
 			Options: []session.AnswerOption{{Key: "1", Label: "publish"}, {Key: "2", Label: "hold"}},
 		}},
 	} {
-		lab := newQuestionLab(t)
-		lab.a.width = 110
-		lab.raise(shape.q)
-		for i, row := range lab.rows() {
-			// The marks are allowed the hue and nothing else is, so they come
-			// out before the row is read.
-			bare := row
-			for _, mark := range []tokens.GlyphID{tokens.GNeedsHuman, tokens.GPointer, tokens.GRecommended, tokens.GSettled} {
-				glyph := lab.a.icon(mark)
-				bare = strings.ReplaceAll(bare, lab.a.pal.warnBold(glyph), "")
-				bare = strings.ReplaceAll(bare, lab.a.pal.warn(glyph), "")
-			}
-			if strings.Contains(bare, amber) {
-				t.Fatalf("%s paints row %d in the question hue:\n%q", shape.name, i, bare)
+		// EVERY WIDTH, because the widths are different drawings and the law is
+		// one. This test walked the wide frame only, so it never saw the phone
+		// sheet paint its title word in the hue — bold, in the rule, on the one
+		// drawing a person reads with a thumb over half of it.
+		for _, width := range []int{110, 50} {
+			lab := newQuestionLab(t)
+			lab.a.width = width
+			lab.raise(shape.q)
+			for i, row := range lab.rows() {
+				// The marks are allowed the hue and nothing else is, so they come
+				// out before the row is read.
+				bare := row
+				for _, mark := range []tokens.GlyphID{tokens.GNeedsHuman, tokens.GPointer, tokens.GRecommended, tokens.GSettled} {
+					glyph := lab.a.icon(mark)
+					bare = strings.ReplaceAll(bare, lab.a.pal.warnBold(glyph), "")
+					bare = strings.ReplaceAll(bare, lab.a.pal.warn(glyph), "")
+				}
+				if strings.Contains(bare, amber) {
+					t.Fatalf("%s paints row %d in the question hue at %d columns:\n%q",
+						shape.name, i, width, bare)
+				}
 			}
 		}
 	}
