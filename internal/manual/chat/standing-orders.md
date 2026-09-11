@@ -757,8 +757,10 @@ folder; a whole `**` segment reaches down through every folder below, so
 `inbox/**/*.md` watches Markdown at any depth under `inbox` (links to folders are not
 followed). A watch that reaches more than **10000** files and folders is refused when
 you set it up or edit it: `inbox/** reaches more than 10000 files and folders, and a
-watch reads every one of them on every pass; watch a narrower pattern`. The first
-reading is the baseline and runs nothing. After that a run starts only when a matching
+watch reads every one of them on every pass; watch a narrower pattern`. **The files are
+read the moment you say yes** (or `add` or `edit` runs); that reading is the baseline and
+runs nothing, so a file that lands a minute later is reported by the next check, never
+folded into the baseline. After that a run starts only when a matching
 file was added, changed or removed, and the run is told exactly which: `added
 inbox/a.md`, `modified inbox/a.md`. **A file touched, or saved again with the same
 text, is not a change**: when its size or time moves, its contents are compared with
@@ -794,8 +796,10 @@ changed — which files were added, modified or removed, their sizes (`39 → 96
 and how each changed file now ends (its last 1024 bytes, at most 4 files, all of it held
 to 8 KiB like a probe's output). A file whose link leads outside the project is named,
 never shown. A condition that says no uses up those changes; one that could not be
-asked leaves them for the next check. `aforge standing list` and `show` say it as
-`wakes whenever a file changes inside inbox/clients/, only when …`.
+asked leaves them for the next check, and a watch whose checks keep failing — no key
+for the judging model, a pattern grown past its limit — waits 5 minutes, then 10, 20, 40,
+then an hour between tries, its log taking one line per step. `aforge standing list` and
+`show` say it as `wakes whenever a file changes inside inbox/clients/, only when: …`.
 
 A condition needs something to judge. On a moment, a rhythm, an idle wait or a rule it
 is refused at setup: `when.hint is a condition, judged against what a file watch saw

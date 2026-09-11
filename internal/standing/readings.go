@@ -61,33 +61,38 @@ func (s *Store) readingPath(id, digest string) string {
 // keepReading writes this reading's manifest and removes every other manifest
 // except the ones named in keep — the reading the document still names, and
 // the one a run that did not finish was measured from ([Store.unreportedSince]).
-// Best effort: a manifest that could not be written costs the next firing its
-// change list ([Occurrence.ChangesUnknown]) and never the firing itself.
+// The pass treats it as best effort: a manifest that could not be written
+// costs the next firing its change list ([Occurrence.ChangesUnknown]) and never
+// the firing itself. The error is for [Store.baseline], which names no reading
+// it could not keep.
 //
 // A MANIFEST ALREADY ON DISK IS REWRITTEN WHEN refresh SAYS ITS TIMES MOVED.
 // The digest names contents, so a touched file leaves it the same; rewriting
 // the manifest under it with the new times is what lets the next pass carry
 // the file's hash instead of reading the file again on every pass.
-func (s *Store) keepReading(id, digest string, files map[string]fileEntry, refresh bool, keep ...string) {
-	if checkID(id) != nil || digest == "" {
-		return
+func (s *Store) keepReading(id, digest string, files map[string]fileEntry, refresh bool, keep ...string) error {
+	if err := checkID(id); err != nil {
+		return err
+	}
+	if digest == "" {
+		return errors.New("a reading with no digest")
 	}
 	dir := s.readingsDir(id)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return
+		return err
 	}
 	if _, err := os.Stat(s.readingPath(id, digest)); err != nil || refresh {
 		data, err := json.Marshal(files)
 		if err != nil {
-			return
+			return err
 		}
 		if err := writeAtomic(s.readingPath(id, digest), data); err != nil {
-			return
+			return err
 		}
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return
+		return nil
 	}
 	for _, entry := range entries {
 		name := strings.TrimSuffix(entry.Name(), ".json")
@@ -96,6 +101,38 @@ func (s *Store) keepReading(id, digest string, files map[string]fileEntry, refre
 		}
 		_ = os.Remove(filepath.Join(dir, entry.Name()))
 	}
+	return nil
+}
+
+// baseline takes a file watch's first reading AT THE YES — [Store.Create], and
+// [Store.Revise] when what it watches changes — and names it on the item.
+//
+// A BASELINE TAKEN AT THE FIRST PASS SWALLOWED THE GAP (wave 5, ruling R10). The
+// first pass came up to five minutes after the yes, or whenever a window next
+// opened, and read everything it found as the baseline — so the ticket that
+// landed a minute after the person said "tell me when a ticket comes in" was
+// never told. Taken here, anything that changes after the yes is a change.
+//
+// IT STATS AND NEVER READS. The walk is the pass's own ([watched]), bounded by
+// [WatchLimit] entries and already made once by [Item.CheckWatch] a moment
+// before; no file's contents are read, so a yes costs at most ten thousand
+// stats however large the files are. The first pass fills in the hashes, and
+// the reading's times stand for contents until then — so a file saved again
+// unchanged in that gap is the one touch that counts as a change.
+//
+// A reading that cannot be taken or kept leaves the item with none, and its
+// first pass takes the baseline as it always did. keep names a reading the
+// item still names, so a revision that fails after this leaves it on disk.
+func (s *Store) baseline(item *Item, keep ...string) {
+	if item.When.Kind != WhenFile {
+		return
+	}
+	item.Fingerprint = ""
+	digest, _, files, err := fingerprint(item.Workspace, item.When.Glob, nil, false)
+	if err != nil || s.keepReading(item.ID, digest, files, true, keep...) != nil {
+		return
+	}
+	item.Fingerprint = digest
 }
 
 // reading is the manifest kept under a digest. The error is the honest answer

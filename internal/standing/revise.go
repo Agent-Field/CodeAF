@@ -76,14 +76,17 @@ func (s *Store) Revise(id string, expected uint64, change func(*Item) error) (It
 			// A NEW CADENCE STARTS FROM NOW. The old rhythm's next moment
 			// belongs to a schedule the person has just replaced, and firing
 			// on it would be the old order speaking once more after it was
-			// changed. The fingerprint goes for the same reason: a file watch
-			// on a new glob has no baseline yet.
+			// changed. The fingerprint goes for the same reason, and a file
+			// watch takes its new pattern's baseline here, at the edit's yes
+			// ([Store.baseline]); so does the count of failed checks, which
+			// were checks of a waking that no longer exists.
 			due, err := firstDue(*current, s.now())
 			if err != nil {
 				return err
 			}
 			current.NextDue = due
-			current.Fingerprint = ""
+			current.FailedChecks = 0
+			s.baseline(current, current.Fingerprint)
 		}
 		// A NEW WAKING OR A NEW LINE IS ASKED WHAT A NEW ITEM IS ASKED: whether
 		// its pattern can be read, whether its condition has anything to be

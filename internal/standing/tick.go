@@ -233,6 +233,7 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item Item) (failure error)
 	if err != nil {
 		return err
 	}
+	item.FailedChecks = 0
 	switch found.state {
 	case stateAsleep:
 		// Nothing was looked at, so nothing is written. An item that says it
@@ -321,9 +322,15 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 		found = sighting{state: stateReady, line: "it was the time you asked for"}
 
 	case WhenFile:
+		// A WATCH WHOSE LAST CHECKS COULD NOT BE MADE WAITS OUT ITS BACKOFF
+		// ([Ticker.noteFailure]); nothing else gives a file watch a moment.
+		if !item.NextDue.IsZero() && now.Before(item.NextDue) {
+			return sighting{state: stateAsleep}, nil
+		}
+		item.NextDue = time.Time{}
 		previous := item.Fingerprint
 		last, _ := t.Store.reading(item.ID, previous)
-		digest, listing, files, err := fingerprint(item.Workspace, item.When.Glob, last)
+		digest, listing, files, err := fingerprint(item.Workspace, item.When.Glob, last, true)
 		if err != nil {
 			return sighting{}, err
 		}
@@ -343,10 +350,12 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 		t.Store.keepReading(item.ID, digest, files, !maps.Equal(last, files), previous, since)
 		switch {
 		case first:
-			// THE FIRST READING IS THE BASELINE AND IS SILENT. Everything on
+			// A WATCH WITH NO BASELINE TAKES ONE HERE, SILENTLY. Everything on
 			// disk looks new to a watch that has never looked, and telling a
 			// person their whole repository just changed would be the last time
-			// they trusted one of these.
+			// they trusted one of these. A watch takes its baseline at the yes
+			// ([Store.baseline]); this is for one made before that, or whose
+			// reading could not be kept then.
 			return sighting{state: stateQuiet, line: "nothing has changed yet"}, nil
 		case !changed:
 			return sighting{state: stateQuiet, line: "nothing has changed"}, nil
@@ -724,12 +733,51 @@ func firingLine(found sighting, outcome Outcome) string {
 
 // noteFailure writes a failure onto the item so the card can say what went
 // wrong, rather than showing a watch that silently stopped working weeks ago.
+//
+// A FAILURE THAT KEEPS HAPPENING IS TRIED LESS OFTEN AND WRITTEN DOWN LESS
+// OFTEN (L9). A judge with no key fails on every pass, forever, and every
+// failure used to be tried again five minutes later and appended to the
+// item's log — a log with no end, growing by a line a pass. Now the wait
+// after each failure in a row doubles ([failureWait]) and the log takes a line
+// only when the wait grows: five lines on the way up to the ceiling, then
+// nothing more until a check is made. The check line always carries the
+// latest failure, so nothing about it is hidden.
+//
+// ONLY A FILE WATCH IS HELD BACK BY THE WAIT, because it alone has no moment of
+// its own: a rhythm and a probe are already asked no sooner than their next
+// moment, which the look moved on before it failed.
 func (t *Ticker) noteFailure(before, item Item, failure error) {
 	now := t.clock()
 	item.LastChecked = now
 	item.LastCheckLine = "could not check: " + shorten(oneLine(failure.Error()), 200)
+	item.FailedChecks++
+	wait := failureWait(item, item.FailedChecks)
+	if item.When.Kind == WhenFile {
+		item.NextDue = now.Add(wait)
+	}
 	_ = t.Store.recordRuntime(before, item)
-	_ = t.Store.Log(item.ID, item.LastCheckLine)
+	if item.FailedChecks == 1 || wait > failureWait(item, item.FailedChecks-1) {
+		_ = t.Store.Log(item.ID, item.LastCheckLine)
+	}
+}
+
+// FailureCeiling is the longest a watch waits after checks that could not be
+// made, before it tries again.
+const FailureCeiling = time.Hour
+
+// failureWait is the wait after the nth check in a row that could not be made:
+// one [Interval], doubled for each failure before it, never past the item's
+// own rhythm where it has one (a probe's) or [FailureCeiling].
+func failureWait(item Item, failures int) time.Duration {
+	ceiling := FailureCeiling
+	if item.When.Kind == WhenProbe && item.When.ProbeEvery > 0 {
+		ceiling = min(ceiling, item.When.ProbeEvery)
+	}
+	wait := Interval
+	for n := 1; n < failures && wait < ceiling; n++ {
+		wait *= 2
+	}
+	return min(wait, ceiling)
 }
 
 // expiryOf answers when an item stops being watched. A WhenAt item expires a
@@ -758,7 +806,7 @@ func expiryOf(item Item) (time.Time, bool) {
 // times where it has none, so a file touched without being changed leaves it
 // the same. The listing beside it is what the firing is told, since a hash is
 // evidence of nothing to a model or to a person.
-func fingerprint(workspace, glob string, last map[string]fileEntry) (string, string, map[string]fileEntry, error) {
+func fingerprint(workspace, glob string, last map[string]fileEntry, read bool) (string, string, map[string]fileEntry, error) {
 	matches, err := watched(workspace, glob)
 	if err != nil {
 		return "", "", nil, err
@@ -779,7 +827,9 @@ func fingerprint(workspace, glob string, last map[string]fileEntry) (string, str
 			name = relative
 		}
 		entry := fileEntry{Size: info.Size(), MTime: info.ModTime().UnixNano()}
-		entry.Hash = contentHash(match, info, last[name])
+		if read {
+			entry.Hash = contentHash(match, info, last[name])
+		}
 		if entry.Hash != "" {
 			fmt.Fprintf(digest, "%s|%d|%s\n", name, entry.Size, entry.Hash)
 		} else {

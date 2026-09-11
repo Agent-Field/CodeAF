@@ -26,6 +26,7 @@ package standing
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -196,29 +197,40 @@ func sizeWords(change Change, before, now map[string]fileEntry) string {
 	return fmt.Sprintf("%d → %d bytes", before[change.Path].Size, now[change.Path].Size)
 }
 
-// excerpt is the last [ConditionExcerpt] bytes of one changed file.
+// excerpt is the last [ConditionExcerpt] bytes of one changed file. A folder
+// says nothing; anything else that is not a file — a pipe, a socket, a device
+// — is named as [notRegular] and never opened.
 //
 // A FILE OUTSIDE THE PROJECT IS NEVER SHOWN. The judgment is a model call, and
 // a link inside a watched folder that leads to somebody's keys is a file the
 // work itself could not read; the condition is held to the same border and is
-// shown the file's name and size instead.
+// shown the file's name and size instead. The link is resolved ONCE, and the
+// resolved target is what is looked at and opened, so nothing can be put in
+// the link's place between the check and the read.
 func excerpt(workspace, name string) (string, bool) {
 	path := name
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(workspace, name)
 	}
-	if !insideProject(workspace, path) {
+	target, inside := resolveInside(workspace, path)
+	if !inside {
 		return "", false
 	}
-	file, err := os.Open(path)
+	info, err := os.Stat(target)
+	switch {
+	case err != nil || info.IsDir():
+		return "", false
+	case !info.Mode().IsRegular():
+		return notRegular, true
+	}
+	file, err := openRegular(target)
+	if errors.Is(err, errNotRegular) {
+		return notRegular, true
+	}
 	if err != nil {
 		return "", false
 	}
 	defer file.Close()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return "", false
-	}
 	offset := max(0, info.Size()-ConditionExcerpt)
 	data := make([]byte, ConditionExcerpt)
 	n, _ := file.ReadAt(data, offset)
@@ -233,18 +245,23 @@ func excerpt(workspace, name string) (string, bool) {
 	return text, true
 }
 
-// insideProject answers whether path, links followed, is inside workspace.
-func insideProject(workspace, path string) bool {
+// notRegular stands in the evidence for a changed entry that is not a file.
+const notRegular = "(not a regular file, not shown)"
+
+// resolveInside answers path with its links followed, and whether that is
+// inside workspace.
+func resolveInside(workspace, path string) (string, bool) {
 	root, err := filepath.EvalSymlinks(workspace)
 	if err != nil {
-		return false
+		return "", false
 	}
 	target, err := filepath.EvalSymlinks(path)
 	if err != nil {
-		return false
+		return "", false
 	}
 	relative, err := filepath.Rel(root, target)
-	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+	inside := err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+	return target, inside
 }
 
 // clipHead keeps the start of a text, because a condition's evidence puts the

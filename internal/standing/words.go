@@ -289,7 +289,8 @@ func WatchWords(glob string) string { return "when " + glob + " changes" }
 // CardWords is the `when ·` line a card, a list and a record draw for what
 // wakes an item: its own words, and for a file watch with a condition, the
 // watch and the condition in one sentence — `whenever a file changes inside
-// inbox/clients/, only when a .md file changed in a client's folder`.
+// inbox/clients/, only when: a .md file changed in a client's folder`. The
+// colon is what lets any condition follow, a clause or a noun phrase alike.
 //
 // A CONDITIONED WATCH IS SAID FROM THE RECORD, NOT FROM THE WORDS. The words
 // are the model's reading of the person's cadence, and "whenever a file
@@ -301,10 +302,10 @@ func (w When) CardWords() string {
 	if w.Kind != WhenFile || condition == "" {
 		return strings.TrimSpace(w.Words)
 	}
-	return "whenever " + watchSubject(w.Glob) + ", only when " + condition
+	return "whenever " + watchSubject(w.Glob) + ", only when: " + condition
 }
 
-// conditionWords is a hint as the end of "only when …": one line, without the
+// conditionWords is a hint as the end of "only when: …": one line, without the
 // "yes when" the hint is written to its judge with.
 func conditionWords(hint string) string {
 	hint = oneLine(hint)

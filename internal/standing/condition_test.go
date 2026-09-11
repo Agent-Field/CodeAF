@@ -252,18 +252,18 @@ func TestASayPingIsTheComposedLineNotTheReading(t *testing.T) {
 	}
 }
 
-// THE CARD SAYS THE CONDITION. A conditioned watch reads `whenever … only when
-// …` from the record; a watch with no condition keeps its own words.
+// THE CARD SAYS THE CONDITION. A conditioned watch reads `whenever …, only
+// when: …` from the record; a watch with no condition keeps its own words.
 func TestTheCardSaysAWatchsCondition(t *testing.T) {
 	for _, c := range []struct {
 		when When
 		want string
 	}{
 		{When{Kind: WhenFile, Glob: "inbox/clients/**/*", Words: "whenever a file changes inside inbox/clients/", Hint: "any .md file change inside a client subfolder"},
-			"whenever a file changes inside inbox/clients/, only when any .md file change inside a client subfolder"},
+			"whenever a file changes inside inbox/clients/, only when: any .md file change inside a client subfolder"},
 		{When{Kind: WhenFile, Glob: "notes/spec.md", Hint: "yes when the offline section changed"},
-			"whenever notes/spec.md changes, only when the offline section changed"},
-		{When{Kind: WhenFile, Glob: "*.md", Hint: "a new draft"}, "whenever a file matching *.md changes, only when a new draft"},
+			"whenever notes/spec.md changes, only when: the offline section changed"},
+		{When{Kind: WhenFile, Glob: "*.md", Hint: "a new draft"}, "whenever a file matching *.md changes, only when: a new draft"},
 		{When{Kind: WhenFile, Glob: "inbox/*", Words: "when inbox/* changes"}, "when inbox/* changes"},
 		{When{Kind: WhenProbe, Words: "when CI goes red", Hint: "yes when conclusion=failure"}, "when CI goes red"},
 	} {
@@ -317,5 +317,52 @@ func TestAConditionsEvidenceIsBounded(t *testing.T) {
 	}
 	if got := strings.Count(evidence, "--- inbox/"); got != conditionExcerpts {
 		t.Fatalf("%d files were opened, wanted %d", got, conditionExcerpts)
+	}
+}
+
+// A CONDITION THAT CANNOT BE ASKED BACKS OFF, AND SAYS SO ONCE PER STEP (L9).
+// A judge with no key fails on every pass; the watch waits twice as long after
+// each failure, up to an hour, and its log grows by one line per step rather
+// than one per pass — two hours of passes are a handful of tries, not
+// twenty-four, and a handful of lines.
+func TestAConditionThatKeepsFailingBacksOff(t *testing.T) {
+	now := time.Date(2026, 9, 11, 9, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+	made, workspace := clientsWatch(t, store)
+	runner := &occurrenceRunner{}
+	mustTick(t, newTicker(store, runner, now))
+	writeNested(t, filepath.Join(workspace, "inbox", "clients", "gamma", "thread.md"), "Gamma: hello\n")
+
+	asked := 0
+	failing := func(context.Context, Judgment) (bool, string, float64, error) {
+		asked++
+		return false, "", 0, errors.New("no key for the judging model")
+	}
+	at := now
+	for pass := 0; pass < 24; pass++ {
+		at = at.Add(Interval)
+		store.clock = held(at)
+		ticker := newTicker(store, runner, at)
+		ticker.Sentinel = failing
+		mustTick(t, ticker)
+	}
+	if asked > 6 {
+		t.Fatalf("a judgment that cannot be made was tried %d times in two hours", asked)
+	}
+	raw, err := os.ReadFile(store.LogPath(made.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lines := strings.Count(string(raw), "could not check"); lines > 6 {
+		t.Fatalf("the item's log grew by %d failure lines in two hours:\n%s", lines, raw)
+	}
+
+	sentinel, _ := evidenceJudge("inbox/clients/gamma/thread.md")
+	at = at.Add(time.Hour)
+	store.clock = held(at)
+	ticker := newTicker(store, runner, at)
+	ticker.Sentinel = sentinel
+	if pass := mustTick(t, ticker); pass.Fired != 1 {
+		t.Fatalf("the watch did not come back when its judgment did: %+v", pass)
 	}
 }
