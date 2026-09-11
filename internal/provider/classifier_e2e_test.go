@@ -224,7 +224,7 @@ func TestAWithdrawnModelIsRememberedAndNotSentAgain(t *testing.T) {
 	if first == 0 {
 		t.Fatal("nothing reached the router, so this test proves nothing about the second turn")
 	}
-	if !WithdrawnModel(rig.model) {
+	if !rig.client.WithdrawnModel(rig.model) {
 		t.Fatal("a model the router answered for itself about was not remembered")
 	}
 

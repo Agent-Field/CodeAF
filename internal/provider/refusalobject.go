@@ -323,7 +323,7 @@ func (c *Client) laneRefusalFor(model, demanded string, err error) laneRefusal {
 	if c.withdrawnModel(model, refusal.Status, body) {
 		// AND IT IS REMEMBERED, so the next turn hops before it sends rather than
 		// paying the whole shape ladder to be told the same thing (withdrawn.go).
-		noteWithdrawn(model)
+		c.withdrawn.noteWithdrawn(model)
 		return laneRefusal{Withdrawn: true}
 	}
 	if !c.routingRefusal(model, refusal.Status, body) {

@@ -147,6 +147,10 @@ type Client struct {
 	// now is the clock those measurements are taken against, seamed like wait
 	// so a test can state a two-second first token without waiting two seconds.
 	now func() time.Time
+	// withdrawn is which models this client has been told the router does not
+	// carry (withdrawn.go). It is beside `encodes` for the same reason: a fact
+	// about one router and one account, over the span of one conversation.
+	withdrawn withdrawnMemo
 	// encodes is what this client already knows its transcript and its tool
 	// block serialize to (memo.go). It changes nothing about the bytes and is
 	// carried per client because a transcript belongs to a conversation.
@@ -478,7 +482,7 @@ func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs call
 	// milliseconds apart, measured on 2026-09-10 22:39, every turn. The refusal is
 	// handed back with the mark on it, so one verdict is read from one call site
 	// and the move is the one move there is.
-	if WithdrawnModel(model) {
+	if c.WithdrawnModel(model) {
 		return nil, withdrawnRefusal(model)
 	}
 	noteModelTried(ctx, model)
@@ -486,7 +490,7 @@ func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs call
 	// AN ANSWER MEANS IT IS CARRIED AGAIN. A memo nothing clears takes a model
 	// away for the life of the process on the strength of one bad minute.
 	if err == nil && response != nil && response.StatusCode < 400 {
-		carriedAgain(model)
+		c.withdrawn.carriedAgain(model)
 	}
 	if err != nil || (response != nil && response.StatusCode >= 400) {
 		c.releaseEndpoint(ctx, model)

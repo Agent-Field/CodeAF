@@ -309,7 +309,13 @@ func (c *Client) catalogKnowsModel(model string) bool {
 // this has none, so `listEmptied` is asked first and its answer wins
 // (refusalobject.go reads the two as one object).
 func (c *Client) withdrawnModel(model string, status int, payload []byte) bool {
-	if !endpointRefusalStatus(status) || !c.baseServesLanes() || c.config.ModelPrice == nil {
+	// A 404 AND NOTHING ELSE, which is the one place this parts company with
+	// [endpointRefusalStatus]. That helper also takes a 400 because a router
+	// really does refuse an unservable PARAMETER with one — and a 400 is the
+	// router saying something about the request it was handed, never that the
+	// model has gone. Reading one as a withdrawal took a model away for the rest
+	// of the conversation on the strength of a single bad body.
+	if status != http.StatusNotFound || !c.baseServesLanes() || c.config.ModelPrice == nil {
 		return false
 	}
 	if upstream, ok := routerErrorEnvelope(payload); !ok || upstream != "" {
@@ -864,7 +870,7 @@ func (c *Client) FallbackModels(model string) []string {
 	chain := c.fallbackChain(model)
 	carried := chain[:0]
 	for _, candidate := range chain {
-		if WithdrawnModel(candidate) {
+		if c.WithdrawnModel(candidate) {
 			continue
 		}
 		carried = append(carried, candidate)
