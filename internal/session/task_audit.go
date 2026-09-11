@@ -2464,9 +2464,18 @@ func (n *TaskNode) handOver() (uint64, error) {
 	if n.handed {
 		return 0, fmt.Errorf("task %d is %s: %w", n.id, handedAlreadyWord, ErrTaskHandedOver)
 	}
+	return n.handsOverLocked(), nil
+}
+
+// handsOverLocked is THE ONE WRITE THAT HANDS A NODE'S QUESTION TO THE MODEL,
+// with the graph held, and it answers the new ticket. The press above makes it
+// and so does a landing under the settle policy (task_run.go's
+// [Agent.handToModelOnAuto]), so the two roads cannot disagree about what a
+// hand-over is or about when one is read.
+func (n *TaskNode) handsOverLocked() uint64 {
 	n.handPress++
 	n.decider, n.handed, n.handReader = TaskAskOwnerModel, true, 0
-	return n.handPress, nil
+	return n.handPress
 }
 
 // handOverTicket is one press, named on the note that asks the model to decide.
