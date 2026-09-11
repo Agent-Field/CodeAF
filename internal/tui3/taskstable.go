@@ -189,8 +189,8 @@ func tasksChatStateField(chat tasksChat) rowField {
 // columns move is a tail with extra steps. Only the NAME flexes (rowfit.go law
 // 1), and the lead eats into the name.
 func tasksTableRow(lead string, leadCells int, name string, state, second rowField,
-	secondInk func(string) string, room int, key tasksSortKey, pal palette, lit bool) string {
-	stateCells, secondCells, nameCells := tasksColumns(room, key)
+	secondInk func(string) string, width int, key tasksSortKey, pal palette, lit bool) string {
+	stateCells, secondCells, nameCells := tasksColumns(width, key)
 	nameCells = max(nameCells-leadCells, 1)
 	said := fit(name, nameCells)
 	out := lead + placeSubject(said, lit, pal) + pad(nameCells-ansi.StringWidth(said))
@@ -265,15 +265,17 @@ func tasksControlLabels(by tasksSort) (state, second string) {
 
 // tasksControlRow is that line: the mark, then what has been typed or the dim
 // invitation to type it, and at the right the two labels.
-func tasksControlRow(query string, by tasksSort, room int, pal palette) string {
+func tasksControlRow(query string, by tasksSort, width int, pal palette) string {
 	stateLabel, secondLabel := tasksControlLabels(by)
 	mark := pal.glyph(tokens.GFilter)
 	// THE BOX IS LAID OUT WHERE THE NAMES ARE AND THE LABELS OVER THEIR OWN
-	// COLUMNS, both out of [tasksColumns] — so the label a person clicks and the
-	// cells it stands over are the same cells at every width, and the two lines
-	// cannot drift apart as the frame moves.
-	stateCells, secondCells, nameCells := tasksColumns(room, by.key)
-	boxCells := max(nameCells-ansi.StringWidth(mark)-1, 1)
+	// COLUMNS, both out of [tasksColumns] asked of the same LIST width every row
+	// is — so the label a person clicks and the cells it stands over are the same
+	// cells at every width, and the two lines cannot drift apart as the frame
+	// moves. The place's left edge is spent out of the box, exactly as a row
+	// spends it out of the name.
+	stateCells, secondCells, nameCells := tasksColumns(width, by.key)
+	boxCells := max(nameCells-ansi.StringWidth(tasksBareLead)-ansi.StringWidth(mark)-1, 1)
 	// WHAT IS TYPED IS IN THE READING INK AND THE INVITATION IS DIM. A person has
 	// to be able to tell the words they typed from the words the box came with.
 	// The invitation is [tasksFilterHint] and not the foot's longer sentence
@@ -283,7 +285,7 @@ func tasksControlRow(query string, by tasksSort, room int, pal palette) string {
 	if query != "" {
 		said, ink = fit(query, boxCells), pal.ink
 	}
-	out := pal.dim(mark) + " " + ink(said) + pad(boxCells-ansi.StringWidth(said))
+	out := tasksBareLead + pal.dim(mark) + " " + ink(said) + pad(boxCells-ansi.StringWidth(said))
 	if stateCells > 0 {
 		label := fit(stateLabel, stateCells)
 		out += pal.dim(label) + pad(stateCells-ansi.StringWidth(label))
@@ -303,9 +305,10 @@ func tasksControlRow(query string, by tasksSort, room int, pal palette) string {
 // is exactly how a click comes to sort by the wrong thing, which is the argument
 // the frame and the hit map are one function for (place_tasks.go).
 //
-// `x` is the cell inside the ROW — the place's left edge already spent.
-func tasksControlHit(x, room int, by tasksSort) (tasksSortKey, bool) {
-	stateCells, secondCells, nameCells := tasksColumns(room, by.key)
+// `x` is the cell of the LIST's line and `width` the list's own width — which on
+// a frame split for the pane is not the frame's ([app.taskSheetListWidth]).
+func tasksControlHit(x, width int, by tasksSort) (tasksSortKey, bool) {
+	stateCells, secondCells, nameCells := tasksColumns(width, by.key)
 	switch {
 	case stateCells > 0 && x >= nameCells && x < nameCells+stateCells:
 		return tasksByState, true

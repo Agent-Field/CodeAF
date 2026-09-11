@@ -1309,7 +1309,7 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bo
 	case tasksLineAir:
 		return ""
 	case tasksLineControl:
-		return lead + tasksControlRow(r.query, r.order, room, pal)
+		return tasksControlRow(r.query, r.order, width, pal)
 	case tasksLineWord:
 		if i == 0 {
 			// THE HEAD LINE IS THE WINDOW'S CONTROL TOO (SCREEN 3d), drawn by the
@@ -1321,7 +1321,7 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bo
 		}
 		return placeLead + placeHeading(fit(line.text, width-len(placeLead)), pal)
 	case tasksLineChat:
-		return lead + tasksChatRow(line, room, r.now, r.folder, r.tilde, r.order, pal, lit)
+		return tasksChatRow(line, width, r.now, r.folder, r.tilde, r.order, pal, lit)
 	case tasksLineTail:
 		indent := strings.Repeat(" ", taskSheetPhoneIndent)
 		tail := room - taskSheetPhoneIndent - ansi.StringWidth(line.kin)
@@ -1341,7 +1341,7 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bo
 		}
 		return lead + pal.dim(line.kin) + tasksCardHead(line.item, card, pal, lit)
 	}
-	return lead + tasksRow(line, room, r.now, r.order, pal, lit)
+	return tasksRow(line, width, r.now, r.order, pal, lit)
 }
 
 // tasksUnderWord is what a shut fold says about the work it is holding.
@@ -1645,7 +1645,7 @@ func tasksChatRow(line tasksLine, width int, now time.Time, folder, tilde string
 	// A ROOT HAS NO MARK and its name starts where the marks are, which is the
 	// rule (spec.md §2): a conversation is not a piece of work and has no state
 	// of its own to wear one for.
-	return tasksTableRow(pal.dim(line.kin), ansi.StringWidth(line.kin), name,
+	return tasksTableRow(tasksBareLead+pal.dim(line.kin), ansi.StringWidth(tasksBareLead+line.kin), name,
 		tasksChatStateField(chat), tasksKeyField(by.key, line.rank, now),
 		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)
 }
@@ -1660,15 +1660,17 @@ func tasksChatRow(line tasksLine, width int, now time.Time, folder, tilde string
 // stands for — and the layout is where all three were decided
 // ([tasksReading.lay]); the paint may not re-derive any of them.
 //
-// IT FITS AGAINST THE ROOM AND NOT THE FRAME: the caller has already spent the
-// place's left edge and the family column, and the two-line phone lane is
-// [tasksCardHead]'s ([tasksReading.paint] routes to it before this is called), so
-// the tier question is settled before we are here.
+// IT IS HANDED THE LIST'S WHOLE WIDTH AND SPENDS ITS OWN LEAD — the place's left
+// edge, the family column and the mark — out of the name, so the columns are
+// asked of one width for every row of the frame and the 90-cell floor means the
+// list is ninety cells wide ([tasksTableRow]). The two-line phone lane is
+// [tasksCardHead]'s ([tasksReading.paint] routes to it before this is called),
+// so the tier question is settled before we are here.
 func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palette, lit bool) string {
 	item := line.item
 	glyph, glyphInk := tasksGlyph(item, pal)
-	lead := pal.dim(line.kin) + glyphInk(glyph) + " "
-	cells := ansi.StringWidth(line.kin) + ansi.StringWidth(glyph) + 1
+	lead := tasksBareLead + pal.dim(line.kin) + glyphInk(glyph) + " "
+	cells := ansi.StringWidth(tasksBareLead+line.kin) + ansi.StringWidth(glyph) + 1
 	return tasksTableRow(lead, cells, tasksLabel(item.entry),
 		tasksStateField(line), tasksKeyField(by.key, line.rank, now),
 		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit)

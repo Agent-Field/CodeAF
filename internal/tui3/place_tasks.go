@@ -1136,7 +1136,7 @@ func (a *app) taskSheetPress(x, y int) tea.Cmd {
 	// through [tasksControlHit]) — a pointer with its own idea of where a column
 	// sits is exactly how a click comes to sort by the wrong thing.
 	if hits[y].kind == taskSheetHitControl {
-		if key, ok := tasksControlHit(x-len(tasksBareLead), width-len(tasksBareLead), a.taskSheet.order); ok {
+		if key, ok := tasksControlHit(x, a.taskSheetListWidth(), a.taskSheet.order); ok {
 			a.taskSheetSortBy(key)
 		}
 		return nil

@@ -123,6 +123,55 @@ func TestTheTasksTableHoldsItsColumnsToTheCellAtEveryWidth(t *testing.T) {
 	}
 }
 
+// A TABLE'S COLUMNS DO NOT MOVE. Every row of one frame — a conversation with no
+// mark, a worker four levels down a family, a loner — puts its `state` cell in
+// the same cells and ends on the same cell. The row's lead is spent out of the
+// NAME ([tasksTableRow]); a row that measured its columns from what its own lead
+// left put them one or two cells further left on every level of a family, which
+// is the defect this law was written after.
+func TestEveryRowOfOneFramePutsItsColumnsInTheSameCells(t *testing.T) {
+	world, win, now := tasksTableFixture()
+	reading := tasksOpen(readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now))
+	pal := newPalette(tokens.NoColor, false)
+	// EVERY WIDTH FROM THE PHONE'S EDGE UP, because the defect lived at the
+	// floor: a row that asked [tasksColumns] of what its own lead left crossed
+	// the ninety-cell line a few cells before a root did, so on a frame a little
+	// over ninety a worker drew no state column under a conversation that did.
+	for width := 60; width <= 130; width++ {
+		stateCells, _, nameCells := tasksColumns(width, tasksByAge)
+		if stateCells == 0 {
+			continue
+		}
+		start := nameCells
+		lines := reading.lay(width)
+		checked := 0
+		for i, line := range lines {
+			var want string
+			switch line.kind {
+			case tasksLineTask:
+				want = rowTail([]rowField{tasksStateField(line)}, stateCells)
+			case tasksLineChat:
+				want = rowTail([]rowField{tasksChatStateField(line.chat)}, stateCells)
+			default:
+				continue
+			}
+			row := []rune(plain(reading.paint(lines, i, width, pal, false)))
+			if len(row) != width {
+				t.Fatalf("at %d cells a row is %d cells wide:\n  %q", width, len(row), string(row))
+			}
+			cell := strings.TrimRight(string(row[start:start+stateCells]), " ")
+			if cell != strings.TrimSpace(want) || row[start-1] != ' ' {
+				t.Fatalf("at %d cells the state column of\n  %q\nreads %q at cell %d, want %q",
+					width, string(row), cell, start, want)
+			}
+			checked++
+		}
+		if checked < 8 && width == 90 {
+			t.Fatalf("at %d cells the law was asked of %d rows, and the fixture has three conversations and six rows of work", width, checked)
+		}
+	}
+}
+
 // THE STATE CELL IS NEVER BLANK ON A ROW OF WORK. It is the one thing this list
 // is read for, and a hole in that column is a row a person has to open to find
 // out whether it wants them.
@@ -272,77 +321,78 @@ func TestSortingByCostOrdersEveryLevelAndSaysSo(t *testing.T) {
 // this page goes into the filter, so a bare `s` would cost a person `sweep`,
 // `stop` and `site`.
 func TestAPressOnTheCostLabelSortsTheListByCost(t *testing.T) {
-	a := tasksTableApp(t)
-	if a.taskSheet.order.key != tasksByAge {
-		t.Fatalf("the page opens sorted by %q", a.taskSheet.order.key.word())
+	// AT A FRAME THE PANE SPLITS AND AT ONE IT DOES NOT. The list is drawn in 72
+	// of 122 cells while the pane stands beside it, and a hit map that measured
+	// its columns from the FRAME put every label fifty cells to the right of the
+	// word a person was pointing at — so at 122 no click on a label sorted
+	// anything. The press here is at the cell the label is PAINTED in.
+	for _, width := range []int{122, 100} {
+		a := tasksTableApp(t)
+		a.width = width
+		if a.taskSheet.order.key != tasksByAge {
+			t.Fatalf("the page opens sorted by %q", a.taskSheet.order.key.word())
+		}
+		// A PRESS ON THE COLUMN ALREADY SORTED TURNS IT ROUND.
+		x, y := tasksLabelAt(t, a, tasksByAge.word())
+		a.taskSheetPress(x, y)
+		if now := a.taskSheet.order; now.key != tasksByAge || !now.back {
+			t.Fatalf("at %d cells a press on the age label left the page on %q back=%v", width, now.key.word(), now.back)
+		}
+		// AND THE STATE LABEL BESIDE IT IS ITS OWN COLUMN — where there is one.
+		if stateCells, _, _ := tasksColumns(a.taskSheetListWidth(), tasksByAge); stateCells > 0 {
+			x, y = tasksLabelAt(t, a, tasksByState.word())
+			a.taskSheetPress(x, y)
+			if a.taskSheet.order.key != tasksByState {
+				t.Fatalf("at %d cells a press on the state label sorted by %q", width, a.taskSheet.order.key.word())
+			}
+		}
+		// AND THE SECOND LABEL IS THE SORT KEY'S OWN COLUMN WHATEVER IT IS
+		// SHOWING: walked round to cost with the chord, a press on `cost ↓` is a
+		// press on cost. The chord and the pointer are one door.
+		for i := 0; i < int(tasksSortKeyCount)+1 && a.taskSheet.order.key != tasksByCost; i++ {
+			drive(t, a, key(tasksSortKeyChord))
+		}
+		if _, second := tasksControlLabels(a.taskSheet.order); second != "cost "+tasksSortDown {
+			t.Fatalf("%q never reached cost: the second label reads %q", tasksSortKeyChord, second)
+		}
+		x, y = tasksLabelAt(t, a, tasksByCost.word())
+		a.taskSheetPress(x, y)
+		if now := a.taskSheet.order; now.key != tasksByCost || !now.back {
+			t.Fatalf("at %d cells a press on the cost label left the page on %q back=%v", width, now.key.word(), now.back)
+		}
+		// AND THE OTHER CHORD TURNS THE COLUMN THE PAGE IS ON ROUND, rather than
+		// walking back a key: what a person means by shift here is "the other
+		// way", not "the previous column".
+		was := a.taskSheet.order
+		drive(t, a, key(tasksSortBackChord))
+		if now := a.taskSheet.order; now.key != was.key || now.back == was.back {
+			t.Fatalf("%q left the page sorted by %q back=%v, want cost the other way round",
+				tasksSortBackChord, now.key.word(), now.back)
+		}
 	}
+}
+
+// tasksLabelAt is the screen cell a column label is PAINTED in, found on the
+// control row of the frame the place really drew — which is the only honest
+// place for a pointer test to aim: the arithmetic is what is under test.
+func tasksLabelAt(t *testing.T, a *app, label string) (int, int) {
+	t.Helper()
 	width, height := a.size()
 	lines, hits, _, _ := a.taskSheetFrame(width, height)
-	y := -1
-	for at, hit := range hits {
-		if hit.kind == taskSheetHitControl {
-			y = at
-			break
+	for y, hit := range hits {
+		if hit.kind != taskSheetHitControl {
+			continue
 		}
-	}
-	if y < 0 {
-		t.Fatalf("the control row answers no press:\n%s", strings.Join(lines, "\n"))
-	}
-	// The cell the `age` label is drawn in, asked of the hit map the way the row
-	// itself is laid out.
-	room := width - len(tasksBareLead)
-	stateCells, secondCells, nameCells := tasksColumns(room, a.taskSheet.order.key)
-	x := len(tasksBareLead) + nameCells + stateCells + secondCells - 1
-	a.taskSheetPress(x, y)
-	if a.taskSheet.order.key != tasksByAge {
-		t.Fatalf("a press on the age label sorted by %q", a.taskSheet.order.key.word())
-	}
-	if !a.taskSheet.order.back {
-		t.Fatal("a press on the column already sorted did not turn it round")
-	}
-	// AND THE SECOND LABEL IS THE SORT KEY'S OWN COLUMN WHATEVER IT IS SHOWING:
-	// walked round to cost, a press on `cost ↓` is a press on cost.
-	for i := 0; i < int(tasksSortKeyCount)+1 && a.taskSheet.order.key != tasksByCost; i++ {
-		drive(t, a, key(tasksSortKeyChord))
-	}
-	if _, second := tasksControlLabels(a.taskSheet.order); second != "cost "+tasksSortDown {
-		t.Fatalf("the page is not on cost: the second label reads %q", second)
-	}
-	a.taskSheetPress(x, y)
-	if now := a.taskSheet.order; now.key != tasksByCost || !now.back {
-		t.Fatalf("a press on the cost label left the page on %q back=%v", now.key.word(), now.back)
-	}
-	a.taskSheetSortBy(tasksByAge)
-	a.taskSheetSortBy(tasksByAge)
-
-	// AND THE STATE LABEL BESIDE IT IS ITS OWN COLUMN.
-	a.taskSheetPress(len(tasksBareLead)+nameCells, y)
-	if a.taskSheet.order.key != tasksByState {
-		t.Fatalf("a press on the state label sorted by %q", a.taskSheet.order.key.word())
-	}
-	// AND THE CHORD REACHES COST, which no label on an age-sorted page is
-	// standing over — the two doors are the same door.
-	for i := 0; i < int(tasksSortKeyCount)+1; i++ {
-		if a.taskSheet.order.key == tasksByCost {
-			break
+		row := []rune(plain(lines[y]))
+		for x := 0; x+len(label) <= len(row); x++ {
+			if string(row[x:x+len(label)]) == label {
+				return x + 1, y
+			}
 		}
-		drive(t, a, key(tasksSortKeyChord))
+		t.Fatalf("the control row does not draw %q:\n  %s", label, string(row))
 	}
-	if a.taskSheet.order.key != tasksByCost {
-		t.Fatalf("%q never reached cost: it is on %q", tasksSortKeyChord, a.taskSheet.order.key.word())
-	}
-	if _, second := tasksControlLabels(a.taskSheet.order); second != "cost "+tasksSortDown {
-		t.Fatalf("sorted by cost the second label reads %q", second)
-	}
-	// AND THE OTHER CHORD TURNS THE COLUMN THE PAGE IS ON ROUND, rather than
-	// walking back a key: what a person means by shift here is "the other way",
-	// not "the previous column".
-	was := a.taskSheet.order
-	drive(t, a, key(tasksSortBackChord))
-	if now := a.taskSheet.order; now.key != was.key || now.back == was.back {
-		t.Fatalf("%q left the page sorted by %q back=%v, want cost the other way round",
-			tasksSortBackChord, now.key.word(), now.back)
-	}
+	t.Fatalf("the control row answers no press:\n%s", strings.Join(lines, "\n"))
+	return 0, 0
 }
 
 // THE PAGE'S OWN TWO KEYS ARE NAMED ON EVERY FRAME, INCLUDING THE ONE IT OPENS
