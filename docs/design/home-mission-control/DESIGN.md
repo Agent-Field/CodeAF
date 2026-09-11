@@ -60,13 +60,29 @@ own keys, each a door to the place that owns it. The chat list is one panel.
 5. **A short terminal squeezes in priority order.** `next up` and `spend` give
    way first, then `since you left`, then `running`; `needs you` and `where you
    were` shrink last. A squeezed panel keeps its heading and `N more · <place>`.
+   A GROUP INSIDE A PANEL folds before the panel gives up a row above it: the
+   rows of `needs you`'s `to check` group sit at the foot of the panel's list, so
+   the ordinary bottom-up cut spends them first, and when none is left the
+   group's line goes and the fold names it — `8 to check · tasks` (#884).
 6. **Preselect the previous thing.** On double-space the cursor is on the chat
    you were in before this one (this window's own stack, `chattabs.go`
    `tabList`). Enter is a switch in two keys; esc goes back.
-7. **Digits answer the top question from anywhere on home.** No cursor move.
-   The answers are drawn on the row so the key is never a guess.
+7. **One row of the frame draws its answers, and the key answers it from
+   anywhere on home.** No cursor move. That row is the one under the cursor when
+   it can take an answer and the top answerable row otherwise (#884), so a digit
+   works on a frame nobody has walked and a landing somebody HAS walked onto is
+   the row the key means. The answers are drawn on the row so the key is never a
+   guess. THE WORDS ARE THE QUESTION'S OWN EVERYWHERE; the KEYS are too wherever
+   the question's own keys are digits, which is every card a conversation stops
+   on. The one exception is a landing in `to check`, whose keys are `[a]`/`[n]`
+   on its card, in its room and on its record and are `1`/`2` here — because a
+   bare letter on home types (home.go: the foot promises "type to search or start
+   something new" and the promise has no asterisk), and the drawn digit is the
+   one printable exception this screen makes. The digit is mapped back to
+   `session.LandingYesKey`/`LandingNoKey` before the answer leaves the surface.
 8. **Two marks, one accent, one hint line.** `GlyphNeedsHuman` in `hueWarn` for
-   a person, the single spinner cell for work. Nothing else wears a glyph or a
+   a person — a conversation or a watch that has STOPPED, never a landing on
+   `to check`, which has already finished — the single spinner cell for work. Nothing else wears a glyph or a
    colour. Money is a number. Key hints live on the foot and the alt map, never
    inside a panel.
 9. **Nothing grows past its budget.** Every panel folds inside itself with
