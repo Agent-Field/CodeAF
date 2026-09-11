@@ -330,7 +330,16 @@ if has_layer c; then
       # know about; without it the harness inherits nothing but the key, which
       # is the open-model policy working as designed. The call log is what layer
       # D reads for the tool block's own bytes.
-      CONV_PASS_ENV="AFORGE_CALL_LOG AFORGE_CALL_LOG_BODIES" \
+      #
+      # AND THE CALLER'S OWN LIST IS ADDED TO IT, NEVER REPLACED BY IT. This line
+      # used to assign the two names flat, which silently dropped whatever the
+      # caller had asked to carry — and the one recipe in this tree that needs
+      # that (BENCH.md §4a's lean cell, `CONV_PASS_ENV=AFORGE_PROMPT_PROFILE`)
+      # therefore measured the FULL profile and read as a lean arm that saved
+      # nothing. The e2e cells below never had the problem because they inherit
+      # the whole environment; only bench/conversation filters, which is what
+      # made the failure invisible: half the run was lean and half was not.
+      CONV_PASS_ENV="AFORGE_CALL_LOG AFORGE_CALL_LOG_BODIES${CONV_PASS_ENV:+ $CONV_PASS_ENV}" \
       AFORGE_CALL_LOG="$OUT/cells/conversation.calllog.jsonl" \
       AFORGE_CALL_LOG_BODIES=1 \
       AFORGE_BIN="$AFORGE_BIN" \
