@@ -510,6 +510,14 @@ var tuiWords = map[string]tuiWord{
 		screen: "enter open its room",
 		why:    "the roster's foot over a node this window's graph is still holding: the door into the LIVE room",
 	},
+	"tasksUntitledWord": {
+		screen: "new conversation",
+		why: "the name the tasks place gives a conversation that has said nothing yet (#915): the row the " +
+			"launch's own first session puts on the page, which used to draw that session's raw id. The " +
+			"word is [unnamedConversationWord] — one constant behind every surface that calls a nameless " +
+			"chat by this — and its one string literal stands in internal/tui3/names.go beside the same " +
+			"words home's own row draws, so this gate holds the spelling without a second copy of it here",
+	},
 	"landingKeysWord": {
 		screen: "esc interrupts · ctrl+c twice quits",
 		why:    "the notice a conversation greets on, and what a window that RESUMED an earlier one draws instead of home",
