@@ -450,3 +450,72 @@ func TestARetryAfterNamesTheWindowAndTheBurstInsideItCutsOnce(t *testing.T) {
 			l.capacity, limiterGrowthEvery, want+1)
 	}
 }
+
+// TestAStarvedSlotQueueSaysItIsWaiting is the first of the recovery design's
+// four silent waits, closed (§2 problem 8, §7 row R4).
+//
+// THE SHAPE IT PINS: a burst of rate limits halves the process-wide ceiling,
+// every other call in the process parks in [adaptiveLimiter.acquire] BEFORE its
+// request reaches the wire, and until this wave not one of them said anything —
+// the stream's own phases had not started, so the person read a blank line for
+// the length of somebody else's burst. A wait that is real is reported
+// (`docs/design/waiting/DESIGN.md`).
+//
+// The ceiling is set to one and two calls are made, so the second is genuinely
+// starved rather than merely slow. [limiterSpokenWithin] is shortened the way
+// every other bound in this package is for a test; what is asserted is that the
+// phase arrives INSIDE it, which is the law ([lane.SpokenWithin]).
+func TestAStarvedSlotQueueSaysItIsWaiting(t *testing.T) {
+	const spoken = 20 * time.Millisecond
+	old := limiterSpokenWithin
+	limiterSpokenWithin = spoken
+	defer func() { limiterSpokenWithin = old }()
+
+	heard := make(chan PhaseNews, 8)
+	previous := OnPhase(func(news PhaseNews) {
+		select {
+		case heard <- news:
+		default:
+		}
+	})
+	defer OnPhase(previous)
+
+	l := newAdaptiveLimiter()
+	l.capacity = 1
+	ctx := withPhaseClock(context.Background(), &phaseClock{model: "sim/model", now: time.Now})
+	if err := l.acquire(ctx); err != nil {
+		t.Fatalf("the first call could not take the only slot: %v", err)
+	}
+
+	queued := make(chan error, 1)
+	go func() { queued <- l.acquire(ctx) }()
+
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case news := <-heard:
+			if news.Phase != PhaseConnecting {
+				continue
+			}
+			if news.Model != "sim/model" {
+				t.Fatalf("the wait was reported against %q, want the model the call is for", news.Model)
+			}
+			if !news.Deadline.IsZero() {
+				t.Fatalf("the slot wait drew a countdown to %s — nothing in this process knows when a slot comes free, "+
+					"and the emptiness law draws an unknown as nothing", news.Deadline)
+			}
+			if !news.Waiting() {
+				t.Fatal("the slot wait is not reported as a wait, so no surface will draw a clock under it")
+			}
+			l.release(false, 0)
+			if err := <-queued; err != nil {
+				t.Fatalf("the queued call never got its slot: %v", err)
+			}
+			return
+		case err := <-queued:
+			t.Fatalf("the second call was admitted without ever waiting (%v) — the test proved nothing", err)
+		case <-deadline:
+			t.Fatalf("a call starved of a slot said nothing for two seconds; it owes a phase within %s", spoken)
+		}
+	}
+}

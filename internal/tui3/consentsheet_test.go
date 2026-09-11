@@ -16,7 +16,7 @@ import (
 // Under sixty columns the block becomes a bottom sheet: the same three answers,
 // laid out as full-width bands a thumb can hit, over a command region that wraps
 // instead of being cut. Every assertion here is about the phone tier or about
-// the frames that must not have noticed it (consent.go).
+// the frames that must not have noticed it (questionsheet.go).
 
 // phoneAsk raises one question on a forty-four column frame — a phone in a
 // terminal, which is the width this wave is measured at.
@@ -28,6 +28,7 @@ func phoneAsk(t *testing.T) (*wiredAgent, *app) {
 	})
 	a.width, a.height = 44, 30
 	typeLine(t, a, "clean the tree")
+	settleAsk(a)
 	if !a.asking() {
 		t.Fatal("the question never came up")
 	}
@@ -37,7 +38,7 @@ func phoneAsk(t *testing.T) (*wiredAgent, *app) {
 // sheetRows is the block as a reader sees it, laid out at the frame's width.
 func askRows(a *app) []string {
 	out := make([]string, 0, 8)
-	for _, line := range a.consentRows(a.width) {
+	for _, line := range a.questionRows(a.width) {
 		out = append(out, plain(line))
 	}
 	return out
@@ -63,7 +64,7 @@ func chromeRowY(t *testing.T, a *app, block int) int {
 	t.Helper()
 	_, marks, _, _ := a.chrome(a.width)
 	for at, mark := range marks {
-		if mark.kind == chromeChoices && mark.index == block {
+		if mark.kind == chromeQuestion && mark.index == block {
 			return at + a.height - len(marks)
 		}
 	}
@@ -83,9 +84,9 @@ func TestThePhoneSheetLaysTheAnswersOutAsBands(t *testing.T) {
 		"? bash",                  // the title rule names what is asking
 		"rm -rf build",            // the command, in the region of its own
 		`bash pattern "rm -rf *"`, // the policy's own words for why
-		"[y] allow",
-		"[n] deny",
-		"[a] always",
+		"[1] allow once",
+		"[3] deny",
+		"[2] always",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("the sheet is missing %q:\n%s", want, joined)
@@ -94,7 +95,7 @@ func TestThePhoneSheetLaysTheAnswersOutAsBands(t *testing.T) {
 	// The line of words the wider frames draw is NOT on it — that is the whole
 	// of this wave: one offer sentence at forty-four columns is the shape that
 	// did not fit.
-	if strings.Contains(joined, "allow? [y] yes") {
+	if strings.Contains(joined, "allow? [1] allow once") {
 		t.Fatalf("the phone frame still drew the one-line offer:\n%s", joined)
 	}
 	// Nothing on it is wider than the frame.
@@ -106,16 +107,16 @@ func TestThePhoneSheetLaysTheAnswersOutAsBands(t *testing.T) {
 	// AND THE GEOMETRY AGREES WITH THE DRAWING. The sheet's height is counted
 	// rather than derived because its command region wraps; a block whose height
 	// and whose rows disagreed would put the caret a row off the box.
-	if got, want := a.consentHeight(), len(rows); got != want {
+	if got, want := a.questionHeight(), len(rows); got != want {
 		t.Fatalf("the block claims %d rows and drew %d", got, want)
 	}
 
 	// THE TARGETS. Three of them, each its own row, each at least ten cells.
-	if len(a.askTaps) != 3 {
-		t.Fatalf("the sheet recorded %d targets, want three: %+v", len(a.askTaps), a.askTaps)
+	if len(a.questionBands) != 3 {
+		t.Fatalf("the sheet recorded %d targets, want three: %+v", len(a.questionBands), a.questionBands)
 	}
 	seen := map[int]bool{}
-	for _, tap := range a.askTaps {
+	for _, tap := range a.questionBands {
 		if w := tap.span.to - tap.span.from; w < 10 {
 			t.Fatalf("a band is %d cells wide, which is a target a thumb misses: %+v", w, tap)
 		}
@@ -123,7 +124,7 @@ func TestThePhoneSheetLaysTheAnswersOutAsBands(t *testing.T) {
 			t.Fatalf("a band is not the width of the frame: %+v", tap)
 		}
 		if seen[tap.row] {
-			t.Fatalf("two answers share row %d: %+v", tap.row, a.askTaps)
+			t.Fatalf("two answers share row %d: %+v", tap.row, a.questionBands)
 		}
 		seen[tap.row] = true
 	}
@@ -134,7 +135,7 @@ func TestThePhoneSheetLaysTheAnswersOutAsBands(t *testing.T) {
 	_, marks, _, _ := a.chrome(a.width)
 	blocks := 0
 	for _, mark := range marks {
-		if mark.kind == chromeChoices {
+		if mark.kind == chromeQuestion {
 			blocks++
 		}
 	}
@@ -155,6 +156,7 @@ func TestTheSheetWrapsTheCommandInsteadOfCuttingIt(t *testing.T) {
 	})
 	a.width, a.height = 44, 30
 	typeLine(t, a, "ship it")
+	settleAsk(a)
 
 	region := commandRegion(t, askRows(a))
 	if len(region) < 2 {
@@ -174,17 +176,22 @@ func TestTheSheetWrapsTheCommandInsteadOfCuttingIt(t *testing.T) {
 	_, b := wired([]session.Event{toolBegin("bash", huge), consentEvent(8, "bash", huge, "")})
 	b.width, b.height = 44, 30
 	typeLine(t, b, "ship it")
+	settleAsk(b)
 
 	capped := askRows(b)
 	region2 := commandRegion(t, capped)
-	if len(region2) != consentSheetLines {
+	// The region's last row is the REASON, which is not the command: the gate
+	// says why it is asking whether or not the policy gave words for it
+	// ([session.ConsentFallbackReason]).
+	region2 = region2[:len(region2)-1]
+	if len(region2) != questionNarrowLines {
 		t.Fatalf("the command region is %d rows, want the cap of %d:\n%s",
-			len(region2), consentSheetLines, strings.Join(region2, "\n"))
+			len(region2), questionNarrowLines, strings.Join(region2, "\n"))
 	}
 	if !strings.HasSuffix(region2[len(region2)-1], glyphMore) {
 		t.Fatalf("the capped command does not say it was cut: %q", region2[len(region2)-1])
 	}
-	if got, want := b.consentHeight(), len(capped); got != want {
+	if got, want := b.questionHeight(), len(capped); got != want {
 		t.Fatalf("the block claims %d rows and drew %d", got, want)
 	}
 }
@@ -196,7 +203,7 @@ func TestATapOnABandAnswersTheQuestion(t *testing.T) {
 		word string
 		want answered
 	}{
-		{"allow", answered{id: 7, allow: true, scope: session.ConsentOnce}},
+		{"allow once", answered{id: 7, allow: true, scope: session.ConsentOnce}},
 		{"deny", answered{id: 7, allow: false, scope: session.ConsentOnce}},
 		{"always", answered{id: 7, allow: true, scope: session.ConsentToolSession}},
 	} {
@@ -271,7 +278,7 @@ func TestAPressOnTheSheetNeverFallsThrough(t *testing.T) {
 func TestTheSheetsClockSitsBottomRightAndPausesOnKey(t *testing.T) {
 	_, a := phoneAsk(t)
 	a.askWait = 9 * time.Second
-	a.startAskClock()
+	startAskClock(a, a.now(), false)
 
 	rows := askRows(a)
 	foot := rows[len(rows)-1]
@@ -283,23 +290,24 @@ func TestTheSheetsClockSitsBottomRightAndPausesOnKey(t *testing.T) {
 	}
 	// It is not inside a target: the last band is above it, and a clock a person
 	// cannot touch without answering is a clock that answers by accident.
-	for _, tap := range a.askTaps {
+	for _, tap := range a.questionBands {
 		if tap.row == len(rows)-1 {
 			t.Fatalf("the countdown shares a row with an answer: %+v", tap)
 		}
 	}
 
-	// The pause, unchanged: every key stops the clock, the answers included.
+	// The hold, unchanged: every key the block reads stops the clock, the
+	// answers included.
 	drive(t, a, key("x"))
-	if !a.askPaused {
-		t.Fatal("a key did not pause the countdown")
+	if !askHeld(a) {
+		t.Fatal("a key did not stop the reading clock")
 	}
 	foot = askRows(a)[len(rows)-1]
 	if !strings.Contains(foot, "paused") {
 		t.Fatalf("the paused clock does not say so: %q", foot)
 	}
-	if a.askAnimating() {
-		t.Fatal("the paused countdown is still asking for frames")
+	if a.questionAnimating() {
+		t.Fatal("the held countdown is still asking for frames")
 	}
 }
 
@@ -315,8 +323,9 @@ func TestTheSheetSaysHowManyQuestionsAreBehindIt(t *testing.T) {
 	})
 	a.width, a.height = 44, 30
 	typeLine(t, a, "build it")
-	if len(a.asks) != 2 {
-		t.Fatalf("the surface holds %d questions, want two", len(a.asks))
+	settleAsk(a)
+	if askCount(a) != 2 {
+		t.Fatalf("the surface holds %d questions, want two", askCount(a))
 	}
 	if got := strings.Join(askRows(a), "\n"); !strings.Contains(got, "1 more") {
 		t.Fatalf("the sheet does not count what is behind it:\n%s", got)
@@ -331,24 +340,28 @@ func TestTheSheetLeavesTheAlwaysBandOffAQuestionThatCannotRememberIt(t *testing.
 	_, a := wired([]session.Event{toolBegin("bash", "bash make test"), ask})
 	a.width, a.height = 44, 30
 	typeLine(t, a, "run the tests")
+	settleAsk(a)
 
 	rows := askRows(a)
-	if got := strings.Join(rows, "\n"); strings.Contains(got, "[a] always") {
+	if got := strings.Join(rows, "\n"); strings.Contains(got, "] always") {
 		t.Fatalf("the widening yes is on a question that would drop it:\n%s", got)
 	}
-	if len(a.askTaps) != 2 {
-		t.Fatalf("the sheet recorded %d targets, want two: %+v", len(a.askTaps), a.askTaps)
+	if len(a.questionBands) != 2 {
+		t.Fatalf("the sheet recorded %d targets, want two: %+v", len(a.questionBands), a.questionBands)
 	}
-	if got, want := a.consentHeight(), len(rows); got != want {
+	if got, want := a.questionHeight(), len(rows); got != want {
 		t.Fatalf("the block claims %d rows and drew %d", got, want)
 	}
 }
 
 // THE WIDER FRAMES DID NOT NOTICE. The sheet is the phone tier's shape and only
-// the phone tier's: at sixty columns and above the block is the same four rows,
-// the same line of words, in the same order.
+// the phone tier's: at sixty columns and above the block is the same three rows
+// — the call, the answers, the rule — in the same order.
 func TestTheWideBlockIsUnchangedByThePhoneSheet(t *testing.T) {
-	for _, width := range []int{60, 80, 120, 200} {
+	// Sixty columns is the promotion's own width and is
+	// [TestANarrowFrameGivesEveryAnswerARowRatherThanCuttingOne]'s: the answers
+	// row does not fit there and the card is what it becomes.
+	for _, width := range []int{80, 120, 200} {
 		_, a := phoneAsk(t)
 		a.width = width
 		rows := askRows(a)
@@ -359,44 +372,47 @@ func TestTheWideBlockIsUnchangedByThePhoneSheet(t *testing.T) {
 		if !strings.Contains(rows[0], "rm -rf build") {
 			t.Fatalf("at %d columns the block does not open with the call: %q", width, rows[0])
 		}
-		if !strings.Contains(rows[consentOfferRow], "allow? [y] yes") {
-			t.Fatalf("at %d columns the offer line is gone: %q", width, rows[consentOfferRow])
+		offer, at := askOffer(t, a)
+		if at != 1 {
+			t.Fatalf("at %d columns the answers are on row %d, want the row under the call", width, at)
+		}
+		if !strings.Contains(plain(offer), "allow? [1] allow once") {
+			t.Fatalf("at %d columns the answers row is gone: %q", width, plain(offer))
 		}
 		if !strings.Contains(rows[2], `bash pattern "rm -rf *"`) {
 			t.Fatalf("at %d columns the rule is gone: %q", width, rows[2])
 		}
-		if strings.Contains(strings.Join(rows, "\n"), "[y] allow") {
-			t.Fatalf("a band reached a %d-column frame:\n%s", width, strings.Join(rows, "\n"))
+		if len(a.questionBands) != 0 {
+			t.Fatalf("a band reached a %d-column frame: %+v", width, a.questionBands)
 		}
-		if got, want := a.consentHeight(), len(rows); got != want {
+		if got, want := a.questionHeight(), len(rows); got != want {
 			t.Fatalf("at %d columns the block claims %d rows and drew %d", width, got, want)
 		}
 	}
 }
 
-// AND THE OFFER LINE IS A TARGET TOO. Every answer on this surface is a key and
+// AND THE ANSWERS ROW IS A TARGET TOO. Every answer on this surface is a key and
 // a tap at every width — the phone sheet is the shape that changes, not the
 // bargain.
 func TestTheOfferLineAnswersToThePointerAtTheWiderWidths(t *testing.T) {
 	agent, a := phoneAsk(t)
 	a.width = 120
-	line := plain(a.consentOffer(a.width))
-	at := strings.Index(line, "[a]")
-	if at < 0 || len(a.askTaps) != 4 {
-		t.Fatalf("the offer recorded %d targets on %q", len(a.askTaps), line)
+	row, block := askOffer(t, a)
+	line := plain(row)
+	at := strings.Index(line, "[2]")
+	if at < 0 || len(a.questionSpans) != 3 {
+		t.Fatalf("the answers row recorded %d targets on %q", len(a.questionSpans), line)
 	}
 	// The WORD is part of the target and not decoration beside it: three cells is
-	// a target a person aims at, and "[a] always" is one they hit.
-	for _, tap := range a.askTaps {
-		if tap.row != consentOfferRow {
-			t.Fatalf("an offer target is on row %d: %+v", tap.row, tap)
-		}
-		if w := tap.span.to - tap.span.from; w < 4 {
-			t.Fatalf("an offer target is %d cells wide: %+v", w, tap)
+	// a target a person aims at, and "[2] always, this tool" is one they hit.
+	for _, span := range a.questionSpans {
+		if w := span.to - span.from; w < 4 {
+			t.Fatalf("an answer's target is %d cells wide: %+v", w, span)
 		}
 	}
-	// Measured once: the press answers, and the offer row is gone by the release.
-	x, y := at+4, chromeRowY(t, a, consentOfferRow)
+	// Measured once: the press answers, and the answers row is gone by the
+	// release.
+	x, y := at+4, chromeRowY(t, a, block)
 	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 	want := answered{id: 7, allow: true, scope: session.ConsentToolSession}

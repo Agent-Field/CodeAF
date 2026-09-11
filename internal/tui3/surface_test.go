@@ -507,9 +507,11 @@ func TestALongDraftScrollsInsideTheBoxAndLeavesTheChromeAlone(t *testing.T) {
 		t.Fatalf("the conversation is %d rows, want %d", got, tall-(draftRows-1))
 	}
 	// The status line is the LAST row of the frame, and a six-line paste does
-	// not push it anywhere (view.go).
+	// not push it anywhere (view.go). It is asked for by the state word rather
+	// than by the model: the model came off this row on 2026-09-09 and is on the
+	// seam above the box (foot.go).
 	painted := strings.Split(plain(frame(a)), "\n")
-	if len(painted) != a.height || !strings.Contains(painted[len(painted)-1], a.model) {
+	if len(painted) != a.height || !strings.Contains(painted[len(painted)-1], "idle") {
 		t.Fatalf("the frame lost its status line:\n%s", strings.Join(painted, "\n"))
 	}
 }

@@ -5,8 +5,6 @@ import (
 	"strings"
 	"time"
 
-	tea "charm.land/bubbletea/v2"
-
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 )
@@ -99,6 +97,11 @@ func (a *app) finishHarnessCard(ev session.Event) {
 	page := *ev.Harness
 	c.page, c.phase, c.hint, c.thought = &page, "", "", ""
 	c.ended = time.Now()
+	// AND THE QUESTION IS RAISED, above the box where every decision on this
+	// surface is put. The page itself stays in the feed — it is what is being
+	// judged and it is ordinary scrollable content — and the three answers are
+	// the block's (question.go, docs/design/questions/DESIGN.md).
+	a.raiseQuestion(a.harnessDesignShown(ev, c))
 	// The room's one-line ticker is stale news the moment the page lands: left
 	// alone it kept saying "subharness · reviewing · …" under a design that was
 	// already awaiting the person's look, because no further progress event was
@@ -129,6 +132,14 @@ func (a *app) withdrawHarnessCard(ev session.Event) {
 	if c == nil {
 		return
 	}
+	// AND ITS QUESTION GOES WITH IT. There is nothing to judge while the page is
+	// being written again, so a card left on the block would be asking about a
+	// page that is no longer there ([app.withdrawQuestion] says so in one dim
+	// line rather than simply vanishing).
+	a.withdrawQuestion(session.Question{
+		ID: ev.ID, Kind: session.QuestionHarness, Ask: session.AskJudgement,
+		Head: strings.TrimSpace(c.page.Id.Name),
+	}, harnessRewriteWord)
 	c.page, c.state, c.thought = nil, "", ""
 	c.phase, c.hint = "rewriting", firstLineOf(ev.Text)
 	c.attempt, c.attempts, c.bytes, c.stalled = 0, 0, 0, false
@@ -240,12 +251,16 @@ func (a *app) harnessPageRows(c *harnessCard, width int, selected bool) []string
 		}
 		rows = append(rows, a.pal.dim(fit(harnessCardLead+"thought for "+taskSpanWord(end.Sub(c.began)), width)))
 	}
-	actions := harnessCardActions
-	if c.state != "" {
-		actions = c.state
+	// THE ANSWERS ARE NOT ON THIS CARD. They are the question, and every question
+	// this engine hands a person is drawn once, above the box, by the block
+	// (question.go). What the card keeps is the ANSWER once it has been given —
+	// `saved as weekly-digest v1`, `dropped` — because a page in a transcript
+	// somebody reads back a week later has to say what became of it.
+	if c.state == "" {
+		return rows
 	}
-	c.buttonRow = actions
-	return append(rows, "", a.pal.dim(fit(harnessCardLead+actions, width)))
+	c.buttonRow = c.state
+	return append(rows, "", a.pal.dim(fit(harnessCardLead+c.state, width)))
 }
 
 // harnessPageHead is the card's first line with the name lifted out of it: the
@@ -262,78 +277,70 @@ func (a *app) harnessPageHead(name, head string, room int, selected bool) string
 	return paint(lead) + a.pal.dim(fit(rest, room-used))
 }
 
-// harnessCardKey routes the three keys on a SELECTED design card, and reports
-// whether it took one.
+// harnessDesignShown is one finished page as the block holds it: the engine's
+// own question object, plus what this program does about an answer.
 //
-// EVERY GUARD HERE IS [app.settleCardKey]'S GUARD, and for the reason that file
-// states in full: `e` and `enter` and `esc` are the keys a person types with,
-// so a card that answered them while somebody was writing a sentence would have
-// resolved a design out from under a paragraph whose first word happened to be
-// "even". It went unguarded for a wave, and it cost exactly that — a bare `e`
-// mid-sentence walked into the design's room, and on home the same three keys
-// never reached the box a person was typing into.
-func (a *app) harnessCardKey(msg tea.KeyPressMsg) bool {
-	if a.at(pageSettings) || a.at(pageHome) || a.pick.open || a.copy.on || a.rew.on ||
-		a.roomOpen() || a.chordsStandDown() {
-		return false
+// THE OBJECT IS THE ENGINE'S OWN BUILDER ([session.HarnessQuestion]), which
+// reads a finished page as a JUDGEMENT and gives it its three answers —
+// `save it`, `change it`, `drop it` — where an offer to run a saved program is a
+// permission with two ([session.HarnessOptions]). One lane, two questions, one
+// builder.
+func (a *app) harnessDesignShown(ev session.Event, c *harnessCard) questionShown {
+	return questionShown{
+		question: session.HarnessQuestion(ev.ID, ev),
+		answered: func(answer session.Answer) session.Answer {
+			a.resolveHarnessCard(c, answer.FirstKey())
+			return answer
+		},
 	}
-	if a.sel < 0 || a.sel >= len(a.entries) {
-		return false
-	}
-	c := a.entries[a.sel].harness
-	if c == nil || c.page == nil || c.state != "" {
-		return false
-	}
-	switch msg.String() {
-	case "enter":
-		a.resolveHarnessCard(c, "save")
-	case "e":
-		a.resolveHarnessCard(c, "improve")
-	case "esc":
-		a.resolveHarnessCard(c, "drop")
-	default:
-		return false
-	}
-	return true
 }
 
-// resolveHarnessCard is the one place a design is answered from, whichever door
-// the answer came through — this card's keys, its clickable columns, or the
-// approval row pinned in the design's own room (roomapproval.go).
+// resolveHarnessCard is what this PROGRAM does about a design's answer: the card
+// in the feed keeps what was decided, and a change walks into the design's room.
 //
-// ── WHAT `e` USED TO DO, AND WHY IT DOES NOT ANY MORE ──
+// IT DECIDES NOTHING. The answer has already been given by the time this runs and
+// is on its way to [session.Agent.ResolveQuestion], which reads the lane off it
+// and hands it to `ResolveHarness` — or, on a change, to nothing at all
+// ([session.AnswerResolves]).
 //
-// `e` was labelled "improve" and it DROPPED THE DESIGN. It called ResolveHarness
-// with false — the same call the discard key makes — and then put "Improve
-// harness X: " in the message box, so that asking for a change quietly destroyed
-// the page you were asking about and started a second design from scratch,
-// minutes of model work and a name that would land as a second version. Nothing
-// on screen said so. A person who pressed it and then changed their mind had
-// nothing left to go back to.
+// ── WHAT `change it` USED TO DO, AND WHY IT DOES NOT ANY MORE ──
 //
-// It is a DOOR now. The design stays exactly where it is, still waiting, and the
-// key walks into its room — which is the place a change is actually made:
-// saying what is wrong there hands the page back to the designer and it is
-// rewritten and put in front of you again (session's revise_design). The state
-// is not set, because nothing was resolved.
-func (a *app) resolveHarnessCard(c *harnessCard, action string) {
-	if action == "save" {
-		if a.agent != nil {
-			a.agent.ResolveHarness(c.id, true, "")
-		}
-		c.state = "saved as " + c.page.Id.Name + " v1"
-	}
-	if action == "drop" {
-		if a.agent != nil {
-			a.agent.ResolveHarness(c.id, false, "")
-		}
-		c.state = "dropped"
-	}
-	if action == "improve" {
+// It was labelled "improve", it was `e`, and it DROPPED THE DESIGN. It called
+// ResolveHarness with false — the same call the discard key makes — and then put
+// "Improve harness X: " in the message box, so that asking for a change quietly
+// destroyed the page you were asking about and started a second design from
+// scratch, minutes of model work and a name that would land as a second version.
+// Nothing on screen said so. A person who pressed it and then changed their mind
+// had nothing left to go back to.
+//
+// It is a DOOR now. The design stays exactly where it is, still waiting — the
+// engine's own door refuses to resolve it — and the answer walks into its room,
+// which is the place a change is actually made: saying what is wrong there hands
+// the page back to the designer and it is rewritten and put in front of you again
+// (session's revise_design).
+func (a *app) resolveHarnessCard(c *harnessCard, key string) {
+	switch key {
+	case session.HarnessSaveKey:
+		c.state = harnessSavedWord + c.page.Id.Name + harnessVersionWord
+	case session.HarnessDropKey:
+		c.state = harnessDroppedWord
+	case session.HarnessChangeKey:
 		a.openHarnessRoom(c)
 	}
 	a.touch()
 }
+
+// The two things a settled design card keeps, in the words the row reads
+// afterwards. They are sentences and not states, because the row is read once,
+// later, by somebody reconstructing what happened.
+const (
+	harnessSavedWord   = "saved as "
+	harnessVersionWord = " v1"
+	harnessDroppedWord = "dropped"
+	// harnessRewriteWord is why a design's question was taken back: the page is
+	// being written again, so there is nothing to judge until the next one lands.
+	harnessRewriteWord = "you asked for it to be different, and it is being written again"
+)
 
 // openHarnessRoom walks into the design's own room and points the box at it.
 //
@@ -360,56 +367,10 @@ func (a *app) openHarnessRoom(c *harnessCard) {
 	a.openRoom(c.task, title)
 }
 
-// harnessNoRoomWord is what `e` says when there is no room to open: the honest
-// version of "this build cannot do that", naming the door that still works.
-const harnessNoRoomWord = "this design has no room to open — answer the card here"
-
-// The card's action row, in three pieces, so that the columns a press is
-// resolved against are MEASURED off the row that was drawn rather than guessed
-// at beside it. They were two hardcoded numbers, and they were already a cell or
-// two out of step with the words they were meant to sit under.
-//
-// THE MIDDLE ONE READS "change it" AND NOT "improve", because that is what it
-// does now: it opens the design's room, where saying what is wrong hands the
-// page back to the designer ([app.resolveHarnessCard] tells the whole story of
-// what that key used to do instead).
-const (
-	harnessCardSave   = "[enter] save"
-	harnessCardChange = "[e] change it"
-	harnessCardDrop   = "[esc] drop"
-	harnessCardGap    = "   "
-)
-
-const harnessCardActions = harnessCardSave + harnessCardGap + harnessCardChange + harnessCardGap + harnessCardDrop
-
-func (a *app) harnessCardPress(i, x int) {
-	if i < 0 || i >= len(a.entries) {
-		return
-	}
-	c := a.entries[i].harness
-	if c == nil || c.page == nil || c.state != "" {
-		return
-	}
-	// THE COLUMNS THE ROW WAS DRAWN IN COME OFF THE PRESS FIRST. The actions are
-	// laid down behind [harnessCardLead], and the whole card sits inside the
-	// transcript's reading gutter (gutter.go) — neither of which the words below
-	// know anything about. The lead was already missing here before the gutter
-	// existed, which is why `save` answered a press two columns left of the word
-	// and `drop` answered one two columns left of ITS word; the gutter would have
-	// made it four.
-	x -= textGutterCols(a.bodyWidth()) + len(harnessCardLead)
-	// Each answer owns its own words and the gap that follows them, which is the
-	// offer row's rule (harness.go's recordHarnessTaps): a press just past a word
-	// is a person aiming at it.
-	switch changeAt := len(harnessCardSave + harnessCardGap); {
-	case x < changeAt:
-		a.resolveHarnessCard(c, "save")
-	case x < changeAt+len(harnessCardChange+harnessCardGap):
-		a.resolveHarnessCard(c, "improve")
-	default:
-		a.resolveHarnessCard(c, "drop")
-	}
-}
+// harnessNoRoomWord is what `change it` says when there is no room to open: the
+// honest version of "this build cannot do that", naming the door that still
+// works.
+const harnessNoRoomWord = "this design has no room to open — save it or drop it above the box"
 
 func min(a, b int) int {
 	if a < b {

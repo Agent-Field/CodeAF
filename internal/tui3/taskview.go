@@ -76,16 +76,6 @@ const (
 	// work, in the order it happened, and the word a person uses for the thing
 	// that came before this one is the word that goes on it.
 	taskSheetPastHead = "earlier"
-	// taskSheetEmpty is the last line of the teaching prose on a machine that has
-	// run nothing ([tasksTeach]) — what to do about the empty page, in the words
-	// the person would have to type.
-	//
-	// IT USED TO BE WHAT /history SAID INSTEAD OF OPENING. The argument was that
-	// the emptiness law reaches modals and a fullscreen page with nothing on it is
-	// the loudest possible way of saying nothing; what a fresh machine actually
-	// got was a command that appeared not to work, and every other door onto the
-	// place refusing with it. The place opens now and this sentence is on it.
-	taskSheetEmpty = "no tasks yet — /task <brief> starts one"
 )
 
 // The two words a row of the project's RECORD says about a claim of running,
@@ -641,11 +631,10 @@ type taskSheetHit struct {
 // reading of the row ([taskEntryStatus]) spelled by the one table that spells
 // readings ([taskPresenceWord], taskstatus.go).
 //
-// IT IS ONE FUNCTION BECAUSE THREE SURFACES SAY IT. Home's task lines
-// ([homeTaskWord]), the record card's first line ([app.taskCardWhenLine],
-// taskrecord.go) and this file's own tail all answer the same question about the
-// same row, and three spellings of "needs your look" is three chances for two
-// screens to disagree about one finished task.
+// IT IS ONE FUNCTION BECAUSE TWO SURFACES SAY IT. The record card's first line
+// ([app.taskCardWhenLine], taskrecord.go) and this file's own tail answer the
+// same question about the same row, and two spellings of "your call" is two
+// chances for two screens to disagree about one finished task.
 //
 // THE READING IS WHERE THE JUDGEMENTS LIVE NOW, and three of them changed when
 // it arrived: a row a person stopped says `stopped` rather than `failed`, a run

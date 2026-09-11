@@ -1,0 +1,364 @@
+name: Release
+
+# PUSHES PUBLISH CHANNELS. `dev` and `staging` name disposable builds, while a
+# push to `main` opens or continues an rc line. A stable release remains a
+# person's decision through workflow_dispatch. Tags pushed by hand do nothing;
+# this workflow creates tags without writing commits onto the release pointers.
+on:
+  push:
+    branches:
+      - dev
+      - staging
+      - main
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Release channel
+        type: choice
+        options:
+          - stable
+          - rc
+          - dev
+          - staging
+        default: stable
+      component:
+        description: Semver component for a new stable or rc line
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+      existing_version:
+        description: Optional release tag to build and publish again
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_REPOSITORY: Agent-Field/aforge-v2
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.channel || (github.ref_name == 'main' && 'rc' || github.ref_name) }}
+  # A burst on dev only needs its newest build. Every other channel is a
+  # deliberate promotion or release decision and is allowed to finish.
+  cancel-in-progress: ${{ (github.event_name == 'push' && github.ref_name == 'dev') || (github.event_name == 'workflow_dispatch' && inputs.channel == 'dev') }}
+
+jobs:
+  # The channel, source commit and tag are decided together. THE BRANCH ORDER
+  # IS CHECKED HERE, BEFORE ANY BUILD: main releases are already on staging,
+  # and a staging build is already on dev. A re-publish takes the same guard as
+  # a first publish, because the mere existence of a tag proves no promotion.
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      channel: ${{ steps.resolve.outputs.channel }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      sha: ${{ steps.resolve.outputs.sha }}
+      existing: ${{ steps.resolve.outputs.existing }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Check the release order and resolve the tag
+        id: resolve
+        env:
+          INPUT_CHANNEL: ${{ inputs.channel }}
+          INPUT_COMPONENT: ${{ inputs.component }}
+          INPUT_EXISTING_VERSION: ${{ inputs.existing_version }}
+        run: |
+          set -euo pipefail
+
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            channel="$GITHUB_REF_NAME"
+            [ "$channel" != "main" ] || channel="rc"
+            component="patch"
+            existing=""
+          else
+            channel="${INPUT_CHANNEL:-stable}"
+            component="${INPUT_COMPONENT:-patch}"
+            existing="${INPUT_EXISTING_VERSION:-}"
+          fi
+
+          git fetch --tags --force
+          tag=""
+          sha="$GITHUB_SHA"
+          republish=false
+          if [ -n "$existing" ]; then
+            tag="$existing"
+            if ! sha=$(git rev-parse --verify "refs/tags/${tag}^{commit}"); then
+              echo "Release tag ${tag} does not exist; choose an existing_version from the Releases page."
+              exit 1
+            fi
+            if ! existing_kind=$(go run ./cmd/aforge-release kind "$tag"); then
+              existing_kind="other"
+            fi
+            if [ "$existing_kind" != "$channel" ]; then
+              echo "Release tag ${tag} is ${existing_kind}, but the chosen channel is ${channel}; choose a tag whose kind matches ${channel}."
+              exit 1
+            fi
+            republish=true
+          fi
+
+          case "$channel" in
+            stable|rc) required_ref="refs/heads/main" ;;
+            dev) required_ref="refs/heads/dev" ;;
+            staging) required_ref="refs/heads/staging" ;;
+          esac
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$GITHUB_REF" != "$required_ref" ]; then
+            echo "Release channel ${channel} must be dispatched on ${required_ref#refs/heads/}; choose that branch and run Release again."
+            exit 1
+          fi
+
+          case "$channel" in
+            stable|rc)
+              git fetch --no-tags origin +refs/heads/staging:refs/remotes/origin/staging
+              if ! git merge-base --is-ancestor "$sha" origin/staging; then
+                echo "$sha is not on origin/staging; fix it with: git push origin $sha:staging"
+                exit 1
+              fi
+              ;;
+            staging)
+              git fetch --no-tags origin +refs/heads/dev:refs/remotes/origin/dev
+              if ! git merge-base --is-ancestor "$sha" origin/dev; then
+                echo "$sha is not on origin/dev; the commit must reach dev through a pull request before it can be fast-forwarded onto staging."
+                exit 1
+              fi
+              ;;
+          esac
+
+          if [ -z "$existing" ]; then
+            if [ "$channel" = "dev" ] || [ "$channel" = "staging" ]; then
+              # The channel resolver deliberately does not read stdin. Keeping
+              # git tag out of a pipe prevents its writer dying with SIGPIPE
+              # under pipefail once the repository has enough tags.
+              tag=$(go run ./cmd/aforge-release next \
+                --channel "$channel" --sha "$sha" --date "$(date -u +%Y%m%d)")
+            else
+              tag=$(git tag --list | go run ./cmd/aforge-release next \
+                --channel "$channel" --component "$component")
+            fi
+          fi
+
+          {
+            echo "channel=$channel"
+            echo "tag=$tag"
+            echo "sha=$sha"
+            echo "existing=$republish"
+          } >> "$GITHUB_OUTPUT"
+          echo "$channel release $tag from $sha"
+
+  test:
+    needs: prepare
+    if: needs.prepare.outputs.channel != 'dev'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      # This is a last look at the narrow surface a released binary needs to
+      # start. The full suite ran before staging; dev just passed its pull
+      # request gate and deliberately does not pay for this second look.
+      - name: Test release surface
+        run: |
+          set -euo pipefail
+          # The known-red ledger only shrinks, so an empty ledger is a success
+          # state and must not leave an empty -skip expression in the way.
+          skip="$(awk '!/^#/ && NF {print}' .github/known-red.txt | paste -sd'|' -)"
+          test_args=()
+          [ -z "$skip" ] || test_args=(-skip "^(${skip})$")
+          go test "${test_args[@]}" \
+            ./cmd/aforge \
+            ./internal/config \
+            ./internal/exec/... \
+            ./internal/filelock \
+            ./internal/lease
+
+  # ONE BUILD JOB HOLDS ALL SIX TARGETS. Besides keeping one artifact, the loop
+  # matters because furrow's staging folder contains exactly one platform at a
+  # time; every target prepares its own bytes immediately before compilation.
+  build:
+    needs: [prepare, test]
+    if: always() && needs.prepare.result == 'success' && (needs.test.result == 'success' || needs.test.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build all targets with their furrow
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          go generate ./internal/manual
+          built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          buildinfo_package="$(go list -m)/internal/buildinfo"
+          targets=(
+            "darwin amd64"
+            "darwin arm64"
+            "linux amd64"
+            "linux arm64"
+            "windows amd64"
+            "windows arm64"
+          )
+          for target in "${targets[@]}"; do
+            read -r goos goarch <<< "$target"
+            extension=""
+            if [ "$goos" = "windows" ]; then
+              rm -f internal/furrowbin/cache/furrow-*.gz
+              extension=".exe"
+            else
+              env -u GOOS -u GOARCH go run ./internal/furrowbin/cmd/fetch \
+                -goos "$goos" -goarch "$goarch"
+            fi
+            GOOS="$goos" GOARCH="$goarch" go build \
+              -tags=aforge_packed_manual \
+              -trimpath \
+              -ldflags="-s -w -X ${buildinfo_package}.rev=${TAG} -X ${buildinfo_package}.dirty=false -X ${buildinfo_package}.builtAt=${built_at}" \
+              -o "dist/aforge-${goos}-${goarch}${extension}" \
+              ./cmd/aforge
+          done
+          (cd dist && sha256sum aforge-* > checksums.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aforge-release
+          path: dist/*
+          if-no-files-found: error
+
+  # PUBLISH SAYS always() FOR THE SAME REASON build DOES. GitHub skips a job
+  # whose dependency chain contains a skipped job unless the job's own condition
+  # says otherwise, and the chain here always contains one: `test` is skipped on
+  # every dev build by design. The first live run on 2026-09-11 (dev, ef36c3770)
+  # proved it — prepare and build green, eight minutes of binaries uploaded, and
+  # publish skipped without a word, so no dev release existed. The two explicit
+  # results below are the whole gate: a red build still publishes nothing.
+  publish:
+    needs: [prepare, build]
+    if: always() && needs.prepare.result == 'success' && needs.build.result == 'success'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: aforge-release
+          path: dist
+      - name: Write release notes
+        id: notes
+        env:
+          CHANNEL: ${{ needs.prepare.outputs.channel }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.sha }}
+        run: |
+          set -euo pipefail
+          cat > install.md <<EOF
+          Install this ${CHANNEL} build:
+
+          \`\`\`sh
+          curl -fsSL https://raw.githubusercontent.com/${RELEASE_REPOSITORY}/${RELEASE_SHA}/scripts/install.sh | bash -s -- --${CHANNEL}
+          curl -fsSL https://raw.githubusercontent.com/${RELEASE_REPOSITORY}/${RELEASE_SHA}/scripts/install.sh | VERSION=${TAG} bash
+          \`\`\`
+
+          EOF
+          if [ "$CHANNEL" = "stable" ]; then
+            if awk -v tag="## ${TAG} " 'index($0, tag) == 1 {f=1; next} f && /^## / {exit} f' \
+                 CHANGELOG.md > changelog-notes.md && [ -s changelog-notes.md ]; then
+              { cat changelog-notes.md; echo; cat install.md; } > notes.md
+              echo "generated=false" >> "$GITHUB_OUTPUT"
+              echo "Release notes taken from the ${TAG} section of CHANGELOG.md."
+            else
+              echo "generated=true" >> "$GITHUB_OUTPUT"
+              echo "::warning::CHANGELOG.md has no '## ${TAG}' section. Falling back to generated notes."
+            fi
+          else
+            cp install.md notes.md
+            echo "generated=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANNEL: ${{ needs.prepare.outputs.channel }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.sha }}
+          REPUBLISH: ${{ needs.prepare.outputs.existing }}
+          GENERATED_NOTES: ${{ steps.notes.outputs.generated }}
+        run: |
+          set -euo pipefail
+          if [ "$CHANNEL" = "stable" ]; then
+            marks=(--latest --prerelease=false)
+          else
+            marks=(--latest=false --prerelease)
+          fi
+
+          if [ "$REPUBLISH" = "true" ]; then
+            gh release upload "$TAG" dist/* --repo "$RELEASE_REPOSITORY" --clobber
+            gh release edit "$TAG" --repo "$RELEASE_REPOSITORY" --title "AForge $TAG" "${marks[@]}"
+          else
+            if [ "$GENERATED_NOTES" = "true" ]; then
+              notes=(--generate-notes --notes-file install.md)
+            else
+              notes=(--notes-file notes.md)
+            fi
+            if gh release view "$TAG" --repo "$RELEASE_REPOSITORY" >/dev/null 2>&1; then
+              # A RELEASE BELONGS TO ITS TAG'S COMMIT. The tag is the reliable
+              # attachment GitHub publishes, so an ordinary retry may clobber
+              # only when that commit is exactly the one whose bytes were built.
+              git fetch --tags --force
+              if ! existing_sha=$(git rev-parse --verify "refs/tags/${TAG}^{commit}"); then
+                echo "Release $TAG exists, but its tag commit could not be resolved; use the existing_version dispatch to repair it deliberately."
+                exit 1
+              fi
+              if [ "$existing_sha" != "$RELEASE_SHA" ]; then
+                echo "Release $TAG points at $existing_sha, not $RELEASE_SHA; use the existing_version dispatch to repair it deliberately."
+                exit 1
+              fi
+              gh release upload "$TAG" dist/* --repo "$RELEASE_REPOSITORY" --clobber
+              gh release edit "$TAG" --repo "$RELEASE_REPOSITORY" --title "AForge $TAG" "${marks[@]}"
+            else
+              gh release create "$TAG" dist/* \
+                --repo "$RELEASE_REPOSITORY" \
+                --target "$RELEASE_SHA" \
+                --title "AForge $TAG" \
+                "${notes[@]}" \
+                "${marks[@]}"
+            fi
+          fi
+
+          if [ "$CHANNEL" = "dev" ] || [ "$CHANNEL" = "staging" ]; then
+            # The listing could hide disposable tags only after stable and rc
+            # releases alone exceed this thousand-entry bound. Each disposable
+            # channel is kept at forty, so pagination is unnecessary until then.
+            gh release list --repo "$RELEASE_REPOSITORY" --limit 1000 \
+              --json tagName,createdAt --jq '.[] | [.tagName, .createdAt] | @tsv' > releases.tsv
+            go run ./cmd/aforge-release prune --channel "$CHANNEL" < releases.tsv > expired-tags.txt
+            while IFS= read -r expired; do
+              [ -z "$expired" ] || gh release delete "$expired" \
+                --repo "$RELEASE_REPOSITORY" --cleanup-tag --yes
+            done < expired-tags.txt
+          fi

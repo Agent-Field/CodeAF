@@ -28,10 +28,17 @@ const (
 	// two numbers for one bargain drift apart.
 	manualPageCap = bare.ResultByteCap
 	// manualListCap bounds the lists that tell the model what to ask for next
-	// — the page names, a page's headings. A quarter of a page is room for
-	// every heading of the longest page there is, twice over, so the list is
-	// whole in practice and cannot become the flood it exists to prevent.
-	manualListCap = manualPageCap / 4
+	// — the page names, a page's headings. THE LIST IS A CEILING, NOT AN
+	// ALLOWANCE: nothing is padded out to it, so raising it costs a reader
+	// nothing until a page actually has that many headings. Half a page is room
+	// for every heading of the longest page there is, twice over — tasks is
+	// that page, and its 138 headings come to a little under 13,000 bytes —
+	// so the list is whole in practice and still cannot become the flood it
+	// exists to prevent. It was a QUARTER of a page until 2026-09-09, which was
+	// the same claim measured against a tasks page half the size; the page grew
+	// past it, [TestEverySectionTheCutNamesComesBackWhole] went red on a section
+	// nobody had touched, and the number that was wrong was this one.
+	manualListCap = manualPageCap / 2
 )
 
 // boundedPage returns a page whole when it fits and a cut one when it does not,

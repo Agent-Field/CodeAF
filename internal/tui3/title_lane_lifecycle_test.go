@@ -14,6 +14,11 @@ func TestAQueuedTitleCannotRenameTheConversationAfterDetach(t *testing.T) {
 	stale := titleEventMsg{gen: a.titleGen, ev: session.Event{Kind: session.EventTitleChanged, Text: "parser migration"}}
 	a.detachConversation()
 	a.title = "database recovery"
+	// The rename above is this test's own doing, and the terminal's title
+	// follows the name (title.go), so it is told before the stale event
+	// arrives: the only command that may come out of [app.Update] below is
+	// one the stale event caused, which is the thing this law forbids.
+	a.titleSent = terminalTitle(a)
 	if a.titleLane != nil {
 		t.Fatal("detach retained the old title lane")
 	}

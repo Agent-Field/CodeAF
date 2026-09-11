@@ -18,8 +18,8 @@ import (
 // CEILING rather than a target: a 60-column terminal wraps at 60.
 //
 // The number is here rather than in tokens because it is a property of reading,
-// not of this palette: tokens' breakpoints describe how many panes fit on a
-// screen, and this describes how long a sentence may be inside one.
+// not of the shared palette: it describes how long a sentence may be inside a
+// pane.
 const DefaultMeasure = 88
 
 // Options is everything a render depends on. It is a value, and [Render] is a

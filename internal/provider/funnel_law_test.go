@@ -587,8 +587,23 @@ func funnelLaneImport(file *ast.File) string {
 var funnelModelSetters = []string{"ParseDocument", "newRequest", "probeLane"}
 
 // funnelModelChangers are the functions that may change the model on a request
-// that already has one, and they are rung four.
-var funnelModelChangers = []string{"recoverFromPacing", "recoverFromRefusal"}
+// that already has one.
+//
+// THERE ARE NONE, AND THE EMPTY LIST IS THE LAW. It held two — the endpoint
+// ladder's own walk and the pacing door's — and rung four used to live here, in
+// the adapter, drawing from the same `FallbackModels` that internal/session's
+// turn loop draws from, with neither knowing the other had already tried a model
+// (docs/design/recovery/DESIGN.md §2.2). Live evidence from 2026-09-10 22:32 says
+// what it cost beyond the double spend: the adapter's hop carried the ORIGINAL
+// model's `provider.only` to the new model and was answered `404 No allowed
+// providers are available for the selected model`, because a lane pin is per
+// model and nothing re-derived it.
+//
+// The adapter relaxes a request's SHAPE. Rung four belongs to the layer that
+// owns the turn and knows what it has spent (internal/session's nextFallback,
+// reading [ModelsTried]); internal/taxonomy's classifier_law_test.go holds the
+// other half, that the chain itself has one reader here.
+var funnelModelChangers = []string{}
 
 // TestOnlyTheLadderChangesTheModel is law (d).
 //

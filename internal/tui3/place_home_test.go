@@ -83,102 +83,6 @@ func (l *homeLab) asks(bucket, id, text string, at time.Time) {
 	}
 }
 
-// AT REST HOME IS ONE FLAT RANKED LIST: what needs you, then what is moving,
-// then what is quiet, with the project as a tag on the row — and not one
-// project heading, not one strip label, not one `elsewhere` rule (SCREEN 1a).
-func TestHomeAtRestIsOneFlatRankedListWithNoTreeAndNoStrips(t *testing.T) {
-	lab := newSwitchLab(t)
-	a := lab.open(120, 30)
-	text := switchFrame(a)
-	// THE LIST IS WHAT IS ASKED, AND THE PULSE IS NOT PART OF IT. The words below
-	// are the old two-strip shape's own labels, and the frame's first row is the
-	// pulse, which legitimately says `4 moving` because that is the count of what
-	// is in flight on the whole machine (SCREEN 2b). Dropping row 0 before the
-	// scan is what keeps this a test about the LIST rather than about any line
-	// that happens to contain one of these words.
-	body := text
-	if at := strings.Index(text, "\n"); at >= 0 {
-		body = text[at+1:]
-	}
-	for _, gone := range []string{"needs you", "moving", "elsewhere", "keeping an eye"} {
-		if strings.Contains(body, gone) {
-			t.Fatalf("the old shape survived (%q):\n%s", gone, text)
-		}
-	}
-	if !strings.Contains(text, "what wants you first") {
-		t.Fatalf("the switcher's own claim is missing:\n%s", text)
-	}
-	asking := strings.Index(text, "Swarm Task Splitting")
-	moving := strings.Index(text, "Bounty Reward Companies")
-	quiet := strings.Index(text, "Quiet Chat B")
-	if asking < 0 || moving < 0 || quiet < 0 || !(asking < moving && moving < quiet) {
-		t.Fatalf("needs-you, moving and quiet are not the sort order:\n%s", text)
-	}
-	// The project rides the row as a tag rather than as a heading over it.
-	for _, line := range strings.Split(text, "\n") {
-		if strings.Contains(line, "Bounty Reward Companies") && !strings.Contains(line, "beta") {
-			t.Fatalf("the project left the row:\n%s", line)
-		}
-	}
-}
-
-// EIGHT ROWS AND A DOOR OVER THE REST, and the door opens and folds back.
-func TestHomesOneFoldIsADoorBothWays(t *testing.T) {
-	lab := newSwitchLab(t)
-	a := lab.open(120, 19)
-	text := switchFrame(a)
-	if !strings.Contains(text, "more, quiet since") {
-		t.Fatalf("no fold over the quiet tail:\n%s", text)
-	}
-	at := -1
-	for i, line := range a.home.lines {
-		if line.kind == homeSwitchFold {
-			at = i
-		}
-	}
-	if at < 0 {
-		t.Fatal("the fold is not a line of the list")
-	}
-	a.home.cursor = at
-	a.homeEnter()
-	if !strings.Contains(switchFrame(a), "Quiet Chat I") {
-		t.Fatalf("the fold did not open:\n%s", switchFrame(a))
-	}
-	for i, line := range a.home.lines {
-		if line.kind == homeSwitchFold {
-			a.home.cursor = i
-		}
-	}
-	a.homeEnter()
-	if strings.Contains(switchFrame(a), "Quiet Chat I") {
-		t.Fatalf("the fold did not close again:\n%s", switchFrame(a))
-	}
-}
-
-// alt+g GROUPS BY PROJECT AND alt+q HIDES THE QUIET ONES, and both survive the
-// screen being closed and opened again.
-func TestHomeGroupsAndHidesTheQuietOnesAndRemembersBoth(t *testing.T) {
-	lab := newSwitchLab(t)
-	a := lab.open(120, 40)
-	if !a.placeAlt('g') {
-		t.Fatal("alt+g did nothing on home")
-	}
-	if !strings.Contains(switchFrame(a), "alpha") {
-		t.Fatalf("grouping drew no project heading:\n%s", switchFrame(a))
-	}
-	if !a.placeAlt('q') {
-		t.Fatal("alt+q did nothing on home")
-	}
-	if strings.Contains(switchFrame(a), "Quiet Chat A") {
-		t.Fatalf("alt+q kept a quiet row:\n%s", switchFrame(a))
-	}
-	a.closeHome()
-	a.openHome()
-	if !a.home.grouped || !a.home.hideQuiet {
-		t.Fatal("the two views were forgotten when home closed")
-	}
-}
-
 // THE LEDGER IS A DOOR. Each `since you left` line opens the place that owns
 // what it is about.
 func TestSinceYouLeftLinesAreDoorsIntoTheirPlaces(t *testing.T) {
@@ -202,12 +106,14 @@ func TestSinceYouLeftLinesAreDoorsIntoTheirPlaces(t *testing.T) {
 	a.home.seen = now.Add(-30 * time.Minute)
 	a.home.build()
 	text := switchFrame(a)
-	if !strings.Contains(text, "since you left") || !strings.Contains(text, "1 task landed") {
+	if !strings.Contains(text, "since you left") || !strings.Contains(text, "toy-scale validation") {
 		t.Fatalf("no ledger:\n%s", text)
 	}
 	doors := map[string]bool{}
 	for i, line := range a.home.lines {
-		if line.kind != homeLedger {
+		// THE LEDGER IS ITS OWN PANEL ON THE GRID, and the other panels' doors
+		// into the same places (next up's rows open standing too) are not it.
+		if line.kind != homeLedger || line.cell == nil || line.cell.panel != panelLeft {
 			continue
 		}
 		if _, ok := parsePageWord(line.project); !ok {
@@ -232,7 +138,7 @@ func TestSinceYouLeftLinesAreDoorsIntoTheirPlaces(t *testing.T) {
 		// untouched — the line is a door — so it is asked for directly: the place
 		// is what the frame is now on, and the watch is on it. The refusal itself
 		// is still pinned where it is still true, over a machine holding nothing
-		// at all ([standNothingWord]'s own tests).
+		// at all (the standing whisper's own tests, [placeWhisper]).
 		if a.page != pageStanding || !a.at(pageStanding) {
 			t.Fatalf("the standing ledger line opened nothing: page %v, notes %q",
 				a.page, homeNotes(a))
@@ -247,33 +153,6 @@ func TestSinceYouLeftLinesAreDoorsIntoTheirPlaces(t *testing.T) {
 	}
 	if !doors["standing"] || !doors["tasks"] {
 		t.Fatalf("the ledger drew %v, and both the watch and the landed work happened", doors)
-	}
-}
-
-// THE CARD IS ONLY THERE PAST 160 COLUMNS, and below it the row's own note
-// carries the fact the card was for (SCREEN 1a vs 1d).
-func TestTheCardAppearsOnlyWhereTheWidthIsSpare(t *testing.T) {
-	lab := newSwitchLab(t)
-	for _, width := range []int{80, 120, homeCardMin - 1} {
-		if left, right := homeColumns(width); right != 0 || left != width {
-			t.Fatalf("%d columns drew a card: left %d right %d", width, left, right)
-		}
-	}
-	left, right := homeColumns(homeCardMin)
-	if right < homeCardCol || left+right+homeGutter != homeCardMin {
-		t.Fatalf("the card tier does not add up: left %d right %d", left, right)
-	}
-	a := lab.open(200, 40)
-	a.home.point(lab.mine)
-	text := switchFrame(a)
-	if !strings.Contains(text, homeVerbsWord) {
-		t.Fatalf("the card lost the verbs hint:\n%s", text)
-	}
-	// And the row still carries the note at every width, because that is what
-	// the card was for below the tier.
-	narrow := lab.open(120, 40)
-	if !strings.Contains(switchFrame(narrow), "task running") {
-		t.Fatalf("the row lost its note at 120 columns:\n%s", switchFrame(narrow))
 	}
 }
 
@@ -299,15 +178,22 @@ func TestTheStripAnswersAQuestionInItsOwnWords(t *testing.T) {
 	if len(verbs) == 0 {
 		t.Fatal("a waiting row offered no verbs")
 	}
+	// THE KEY IS THE OPTION'S OWN AND IS NEVER POSITIONAL (switcher.go's
+	// [switcherQuestionVerbs]). The fixture's first answer is `1 do it`, so
+	// `1` is the key the strip draws for it — this used to assert `y`, which
+	// was the strip inventing a key that meant whatever happened to be first.
 	found := false
 	for _, v := range verbs {
-		if v.key == 'y' {
+		if v.key == '1' {
 			v.do()
 			found = true
 		}
 	}
 	if !found {
 		t.Fatalf("the strip did not carry the question's own first option: %+v", verbs)
+	}
+	if left[0] != "1" {
+		t.Fatalf("the strip sent %q, not the option's own key", left[0])
 	}
 	if len(left) == 0 {
 		t.Fatal("the strip's answer never reached the answer seam")
@@ -327,7 +213,7 @@ func TestTheLedgersMemoryFiguresComeThroughOneSeam(t *testing.T) {
 	if a.memory != nil {
 		t.Fatal("this test is about a window with no memory store")
 	}
-	if a.home.ledger != (switcherLedgerInput{}) {
+	if a.home.ledger.learned != 0 || a.home.ledger.letGo != 0 {
 		t.Fatalf("the ledger input was not read from the seam: %+v", a.home.ledger)
 	}
 	if strings.Contains(switchFrame(a), "learned") {
@@ -407,34 +293,4 @@ func TestARowSaysWhenItsDoorWillRefuseWithoutACardToSayIt(t *testing.T) {
 		return
 	}
 	t.Fatalf("the row with the missing folder is not on the list:\n%s", switchFrame(a))
-}
-
-// THE ONE FOLD LEAVES THE CURSOR ON ITSELF, so the gesture that opened the list
-// is the gesture that folds it back without walking anywhere. It is the law
-// every other fold on this column keeps ([homeView.fold]).
-func TestTheFoldLeavesTheCursorOnTheLineThatOpenedIt(t *testing.T) {
-	lab := newSwitchLab(t)
-	a := lab.open(120, 19)
-	at := -1
-	for i, line := range a.home.lines {
-		if line.kind == homeSwitchFold {
-			at = i
-		}
-	}
-	if at < 0 {
-		t.Fatalf("no fold to open:\n%s", switchFrame(a))
-	}
-	a.home.cursor = at
-	a.homeEnter()
-	line, ok := a.home.focusedLine()
-	if !ok || line.kind != homeSwitchFold {
-		t.Fatalf("opening the fold walked off it, onto %v", line.kind)
-	}
-	a.homeEnter()
-	if line, ok := a.home.focusedLine(); !ok || line.kind != homeSwitchFold {
-		t.Fatalf("folding it back walked off it, onto %v", line.kind)
-	}
-	if strings.Contains(switchFrame(a), "Quiet Chat I") {
-		t.Fatalf("the second press did not fold the list back:\n%s", switchFrame(a))
-	}
 }

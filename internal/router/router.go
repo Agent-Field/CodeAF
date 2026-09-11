@@ -149,7 +149,13 @@ func buildRouter(panel Panel, base provider.Config, dir, opener string) (*Router
 			price = unknownPrice
 		}
 		config := base
-		config.Model = spec.Slug
+		if panel.ClientConfig != nil {
+			config = panel.ClientConfig(spec.Slug)
+		} else {
+			// Hand-built panels in tests and embedders predate the factory. Their
+			// scalar base remains the compatibility path when none was supplied.
+			config.Model = spec.Slug
+		}
 		client, err := provider.NewClient(config)
 		if err != nil {
 			return nil, fmt.Errorf("router: %s: %w", spec.Slug, err)
@@ -283,7 +289,7 @@ func (r *Router) cascade(ctx context.Context, call *provider.Call, messages []ai
 		if err != nil {
 			// Transport, not ability. It moves no rating, and the next rung is
 			// tried anyway because the work still has to happen.
-			attempt.Verdict = provider.VerdictProviderFailure
+			attempt.Verdict = provider.ReadingProviderFailure
 			r.record(ctx, attempt, nil, elapsed)
 			tried = append(tried, pick.spec.Slug)
 			failures = append(failures, fmt.Errorf("%s: %w", pick.spec.Slug, err))
@@ -302,10 +308,10 @@ func (r *Router) cascade(ctx context.Context, call *provider.Call, messages []ai
 		// It parsed and it carried the fields it promised. Whether it is *right*
 		// is the call site's to say, so the verdict is held open until it does —
 		// and stays unverified, moving nothing, if it never does.
-		attempt.Verdict = provider.VerdictUnverifiedSuccess
+		attempt.Verdict = provider.ReadingUnverifiedSuccess
 		id := r.record(ctx, attempt, response, elapsed)
 		resolved, run := resolvedOf(response), provider.CacheKeyFrom(ctx)
-		call.Observe(func(final provider.Verdict) {
+		call.Observe(func(final provider.Reading) {
 			r.observe(pick, class, resolved, final)
 			r.events.Append(Event{Call: id, Run: run, Class: string(class), Model: pick.spec.Slug,
 				Resolved: resolved, Verdict: final, Final: true})
@@ -421,17 +427,17 @@ func (r *Router) leaf(ctx context.Context, call *provider.Call, messages []ai.Me
 	response, err := pick.client.CompleteWithMessages(pick.affinity(ctx), messages, options...)
 	elapsed := time.Since(started)
 	if err != nil {
-		attempt.Verdict = provider.VerdictProviderFailure
+		attempt.Verdict = provider.ReadingProviderFailure
 		r.record(ctx, attempt, nil, elapsed)
 		return nil, err
 	}
 	// One row per turn rather than one per leaf. A leaf's cost is the sum of its
 	// turns and only the loop knows when the last one was, so the log records
 	// what it can see and the verdict row below closes the account.
-	attempt.Verdict = provider.VerdictUnverifiedSuccess
+	attempt.Verdict = provider.ReadingUnverifiedSuccess
 	id := r.record(ctx, attempt, response, elapsed)
 	resolved, run := resolvedOf(response), provider.CacheKeyFrom(ctx)
-	call.Observe(func(final provider.Verdict) {
+	call.Observe(func(final provider.Reading) {
 		r.observe(pick, class, resolved, final)
 		r.events.Append(Event{Call: id, Run: run, Class: string(provider.ClassExecLeaf),
 			Shape: call.Shape(), Model: pick.spec.Slug,
@@ -683,7 +689,7 @@ func ratingOf(scored []ranked, target *rung) ranked {
 
 // observe folds one attempt's verdict into the ledger, against the snapshot the
 // provider says actually served it.
-func (r *Router) observe(pick *rung, class provider.CallClass, resolved string, verdict provider.Verdict) {
+func (r *Router) observe(pick *rung, class provider.CallClass, resolved string, verdict provider.Reading) {
 	model := pick.spec.Slug
 	if resolved != "" && resolved != model {
 		r.ledger.Alias(model, resolved)
@@ -748,21 +754,21 @@ func (u *rung) affinity(ctx context.Context) context.Context {
 // means here. An empty reply is called out separately because it is not a
 // malformed answer, it is the runaway-reasoning mode: full price, nothing
 // delivered, and the probe lab's single largest failure class.
-func verify(response *ai.Response, schema json.RawMessage) provider.Verdict {
+func verify(response *ai.Response, schema json.RawMessage) provider.Reading {
 	text := strings.TrimSpace(response.Text())
 	if text == "" {
-		return provider.VerdictEmptyResponse
+		return provider.ReadingEmptyResponse
 	}
 	if len(schema) == 0 {
 		return ""
 	}
 	var decoded map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(unfence(text)), &decoded); err != nil {
-		return provider.VerdictFormatFailure
+		return provider.ReadingFormatFailure
 	}
 	for _, field := range requiredOf(schema) {
 		if _, present := decoded[field]; !present {
-			return provider.VerdictFormatFailure
+			return provider.ReadingFormatFailure
 		}
 	}
 	return ""

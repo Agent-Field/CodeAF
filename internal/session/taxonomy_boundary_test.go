@@ -47,12 +47,16 @@ func journaledFailures(t *testing.T, path string) []journalFailure {
 	return rows
 }
 
-// (a) FOUR MALFORMED 400s ARE FOUR TRANSPORT RETRIES AND NOT A PURCHASE.
+// (a) A STORM OF MALFORMED 400s IS TRANSPORT RETRIES AND NOT A PURCHASE.
 //
 // This is the shape that started it. The tier must not move, the endpoint is the
-// only thing the retry changes, and every one of the four is on the file as
+// only thing the retry changes, and every one of them is on the file as
 // transport — so a bench can count them and nothing downstream can read them as
 // evidence about the model.
+//
+// HOW MANY THERE ARE IS THE DEADLINE'S ANSWER NOW. `taxonomy.DefaultTransportAttempts`
+// was four and then three; the count is deleted, so the fixture states the same
+// figure as a length of time the test's own clock spends ([impatient]).
 func TestFourMalformedRefusalsAreTransportAndTheTierNeverMoves(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	var calls atomic.Int64
@@ -62,6 +66,7 @@ func TestFourMalformedRefusalsAreTransportAndTheTierNeverMoves(t *testing.T) {
 		return nil, malformedUpstream(upstreams[(int(n)-1)%len(upstreams)])
 	})}
 	agent := checkpointAgent(t, completer, func(config *Config) { config.SessionFile = path })
+	impatient(t, agent, turnLadderAttempts)
 
 	events, err := agent.Submit(context.Background(), "port the language server")
 	if err != nil {
@@ -69,17 +74,21 @@ func TestFourMalformedRefusalsAreTransportAndTheTierNeverMoves(t *testing.T) {
 	}
 	collect(t, events)
 
-	if got := calls.Load(); got != int64(taxonomy.DefaultTransportAttempts) {
-		t.Fatalf("the request was sent %d times, want the transport ladder's %d",
-			got, taxonomy.DefaultTransportAttempts)
+	// ONE MORE THAN A REFUSAL STORM'S, and the difference is the rule rather
+	// than the fixture: a mangled tool call is not an endpoint under strain, so
+	// the first move away from it costs no wait at all (loop.go's
+	// [nextMoveWait]) and the deadline pays for one further request.
+	if got := calls.Load(); got != int64(turnLadderAttempts+1) {
+		t.Fatalf("the request was sent %d times, want the %d the deadline pays for",
+			got, turnLadderAttempts+1)
 	}
 	if got := agent.Model(); got != "test/model" {
 		t.Fatalf("the turn ended on %q; a transport failure moved the tier", got)
 	}
 	rows := journaledFailures(t, path)
-	if len(rows) != taxonomy.DefaultTransportAttempts {
+	if len(rows) != turnLadderAttempts+1 {
 		t.Fatalf("%d classification lines for %d attempts: %+v",
-			len(rows), taxonomy.DefaultTransportAttempts, rows)
+			len(rows), turnLadderAttempts+1, rows)
 	}
 	for i, row := range rows {
 		if row.Class != string(taxonomy.Transport) {
@@ -136,6 +145,7 @@ func TestAnEmptyReplyIsRetriedAndTheTurnCarriesOn(t *testing.T) {
 		},
 	}}
 	agent := checkpointAgent(t, completer, func(config *Config) { config.SessionFile = path })
+	impatient(t, agent, turnLadderAttempts)
 
 	events, err := agent.Submit(context.Background(), "port the language server")
 	if err != nil {
@@ -254,7 +264,7 @@ func TestFindingsBuyOneLiftAfterTheCountIsReached(t *testing.T) {
 func TestAFindingWithDeadCallsUnderItBuysNothing(t *testing.T) {
 	agent, node, path := boundaryGateAgent(t, map[string]string{roles.TierKey(roles.TierHigh): carefulTier})
 	tally := agent.tallyFor(node)
-	for i := 0; i < taxonomy.DefaultTransportAttempts; i++ {
+	for i := 0; i < turnLadderAttempts; i++ {
 		tally.Wire()
 	}
 
@@ -341,7 +351,15 @@ func TestARunThatDiedOnTheWireDoesNotMoveTheNode(t *testing.T) {
 		t.Fatal("four bad responses moved a whole task onto a dearer model")
 	}
 	// A refusal the ROUTER made on its own account is our own bytes being read
-	// and rejected: no endpoint and no model will fix it, so it is the work's.
+	// and rejected: no endpoint will fix it, so the node moves rather than
+	// staying where it is.
+	//
+	// IT IS FILED AS A SHAPE AND NO LONGER AS THE WORK, which is the honest
+	// reading and the one a person gets a different sentence from. Nothing was
+	// learned about the job here; what could not be served is the request. The
+	// MOVE is unchanged — this is still not the wire, so the node does not stay —
+	// and that is why the assertion below is about the class rather than about
+	// the answer.
 	if !agent.movesForFailure(node, refusalOf(400, "no endpoints found that support tool use", "", ""), io.Discard) {
 		t.Fatal("a request no endpoint will ever serve was held on the same model")
 	}
@@ -349,8 +367,9 @@ func TestARunThatDiedOnTheWireDoesNotMoveTheNode(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("%d classification lines for two run failures: %+v", len(rows), rows)
 	}
-	if rows[0].Class != string(taxonomy.Transport) || rows[1].Class != string(taxonomy.Work) {
-		t.Fatalf("classes = %q, %q; want transport then work", rows[0].Class, rows[1].Class)
+	if rows[0].Class != string(taxonomy.Transport) || rows[1].Class != string(taxonomy.Shape) {
+		t.Fatalf("classes = %q, %q; want transport then the request's own shape",
+			rows[0].Class, rows[1].Class)
 	}
 }
 

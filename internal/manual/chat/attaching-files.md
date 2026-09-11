@@ -63,17 +63,24 @@ on the tray above the message box, and it goes with the next thing you send.
 /attach                     the browser, so you can find the file and look at it first
 ```
 
-**With nothing after it, `/attach` opens the add context sheet, including over `--host`.**
-It is the same framed window `/folder` opens locally, in the same place and already browsing
-— the conversation stays visible behind it, dimmed, and does not answer a click while it is
-up. It stands in the folder this window is working in, unless the conversation already holds
-a folder: the subdirectories and then the files with their sizes, and a preview of whatever
-the cursor is on. aforge's own state folder is never where it opens. Moving the cursor shows
-you a file; it does not attach it. `alt+m` chooses one, or several, and the last row of the
-sheet says `attach this file · <path>` — or `attach 2 files` once you have chosen more than
-one — and `enter` does exactly what it says. Over `--host`, this sheet browses the machine
-you are sitting at and selected files travel with the message. "Choosing a folder" is the
-full account of that sheet, its keys and its preview.
+**On the home screen a bare `/attach` does not open that sheet** — it says
+`type the path after /attach · or drop the file here`, and `/folder` is the browser there.
+Everything below is about `/attach` inside a conversation; *Attaching a file from home* has
+the home half.
+
+**With nothing after it inside a conversation, `/attach` opens the add context sheet,
+including over `--host`.** It is the same framed window `/folder` opens locally, in the
+same place and already browsing — the conversation stays visible behind it, dimmed, and does
+not answer a click while it is up. It stands first in a folder the conversation already
+holds, otherwise in the folder this window is working in, then in your home directory;
+aforge's own state folder is never where an owned conversation opens it. The sheet shows the
+subdirectories and then the files with their sizes, and previews the thing under the cursor
+— source with syntax colour, a picture drawn in the terminal's own cells, a PDF's text.
+Moving the cursor shows you a file; it does not attach it. `alt+m` chooses one, or several,
+and the last row says `attach this file · <path>` — or `attach 2 files` once you have chosen
+more than one — and `enter` does exactly what it says. Over `--host`, the sheet browses the
+machine you are sitting at and selected files travel with the message. "Choosing a folder"
+is the full account of that sheet, its keys and its preview.
 
 Path rules are `/image`'s: `~` is your home directory, a bare name is under the directory
 this conversation is about, and an absolute path is left alone. Tab completes the path as
@@ -417,12 +424,32 @@ folder this conversation is standing in, so you can find the file rather than be
 know its path. It opens over `--host` too, browsing the machine you are sitting at, because
 files travel. See "Choosing a folder".
 
-**A folder is not refused locally any more.** `/attach ~/code/thing` used to answer
+**A folder is refused only where it cannot reach the conversation.** `/attach ~/code/thing`
+used to answer
 `<name> is a folder · attach a file`; locally it now goes to the folder door and says
 `folder · ~/code/thing`. Over `--host`, it registers nothing and says
 `choosing a folder is not available over --host yet — the folders here are this machine's, not the ones the conversation is on.`
-Dropping a folder on the window still refuses with the old
+On home it pins the next conversation's folder instead and says
+`next conversation opens in ~/code/thing`, because there is no conversation there to attach
+one to. Dropping a folder on the window still refuses with the old
 `<name> is a folder · attach a file` sentence — see "Choosing a folder".
+
+## Attaching a file from home — /attach on the home screen, before there is a conversation
+
+**Home has a tray of its own and `/attach <path>` fills it.** No conversation is opened for
+it: the chip appears above home's box, home says
+`attached · server.log · rides with the next conversation`, and the file is attached to the
+first message of whatever conversation you start next. `/image <path>` is the same for a
+picture, and a drop or a paste onto home does it with no command at all.
+
+**A bare `/attach` there asks for the path** — `type the path after /attach · or drop the file
+here` — rather than opening the browser. `/folder` is the browser on local home, and it is
+aimed at which folder the next conversation opens in (see "Choosing a folder"). Over
+`--host`, `/folder` says why this machine's folder cannot be that far conversation's folder.
+
+**The tray survives the walk.** Attach a file on home, go into a conversation, come back: it
+is still there. Home's tray row cannot be clicked; a chip comes off on a conversation's own
+tray, where the `✕` is.
 
 A few refusals come from the far machine instead and arrive with `engine:` in front of
 them — the file arrived with no usable name, or with a name that was really a path:
@@ -452,7 +479,8 @@ so `/attach` is the general word and `/image` is the specific one.
 
 On the tray the two are told apart by their own glyph — `▣ #1 shot.png` for a picture,
 `▤ server.log` for a file — and by the number, which only a picture carries. In the
-transcript a picture keeps its `[#1 shot.png]` marker and draws a thumbnail underneath;
+transcript a picture keeps its `[#1 shot.png]` marker and a collapsed control underneath
+with **preview** and **open original** actions;
 an ordinary file remains the `[server.log]` marker alone.
 
 ## Drag a file in, or paste a path

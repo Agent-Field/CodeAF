@@ -336,12 +336,12 @@ func TestWatchUntilDeliversFinalNoteAndStops(t *testing.T) {
 	}
 
 	waitFor(t, "the watch to stop", func() bool { return !agent.jobs.find(id).running() })
+	waitSignal(t, agent.jobs.find(id).done, "the stopped watch loop to return")
 	if list := agent.jobs.list(); !strings.Contains(list, "stopped") {
 		t.Fatalf("list does not show the stop: %q", list)
 	}
-	// A stopped watch ticks no more, and says no more.
+	// A returned watch loop has no ticker left that could speak again.
 	before := agent.jobs.find(id).tickCount()
-	time.Sleep(time.Duration(watchMinEvery)*time.Second + 500*time.Millisecond)
 	if after := agent.jobs.find(id).tickCount(); after != before {
 		t.Fatalf("a stopped watch ticked again: %d → %d", before, after)
 	}
@@ -561,9 +561,9 @@ func TestWatchQuietFiresWhenTheOutputStopsMoving(t *testing.T) {
 	}
 
 	waitFor(t, "the watch to stop", func() bool { return !agent.jobs.find(id).running() })
-	// It ends the way `until` ends: no more ticks, and no more notes.
+	waitSignal(t, agent.jobs.find(id).done, "the quiet watch loop to return")
+	// It ends the way `until` ends: its returned loop has no ticker left.
 	before := agent.jobs.find(id).tickCount()
-	time.Sleep(time.Duration(watchMinEvery)*time.Second + 500*time.Millisecond)
 	if after := agent.jobs.find(id).tickCount(); after != before {
 		t.Fatalf("a quiet watch ticked on after it fired: %d → %d", before, after)
 	}

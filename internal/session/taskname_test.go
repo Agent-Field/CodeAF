@@ -535,7 +535,7 @@ func TestANameAskedAheadIsOnTheTaskWhenItIsAnnounced(t *testing.T) {
 	if got := ahead.wait(); got != "issue 252 check" {
 		t.Fatalf("the name asked ahead is %q", got)
 	}
-	said, id := agent.launchRouteTask(newEventHub(), routeVerdict{Work: true, Goal: "say whether issue 252 is done", Why: "an audit"}, asked, drawnDivision{}, ahead)
+	said, id := agent.launchRouteTask(newEventHub(), routeVerdict{Work: true, Goal: "say whether issue 252 is done", Why: "an audit"}, asked, drawnDivision{}, ahead, nil)
 	if !strings.HasSuffix(said, ": issue 252 check") {
 		t.Fatalf("the told-after line is %q; want it to end in the name", said)
 	}
@@ -566,7 +566,7 @@ func TestANameStillInFlightAtAdmissionIsWaitedFor(t *testing.T) {
 
 	const asked = "look at issue 252 and tell me whether it is done"
 	ahead := agent.nameAhead(asked)
-	said, id := agent.launchRouteTask(newEventHub(), routeVerdict{Work: true, Goal: asked, Why: "an audit"}, asked, drawnDivision{}, ahead)
+	said, id := agent.launchRouteTask(newEventHub(), routeVerdict{Work: true, Goal: asked, Why: "an audit"}, asked, drawnDivision{}, ahead, nil)
 	if strings.Contains(said, "issue 252 check") {
 		t.Fatalf("the told-after line %q waited for a name that had not landed", said)
 	}

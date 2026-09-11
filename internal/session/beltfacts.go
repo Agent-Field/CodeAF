@@ -1,6 +1,10 @@
 package session
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/exec"
+)
 
 // THE PROMPT NAMES EXACTLY THE TOOLS THE CALL CARRIES.
 //
@@ -41,9 +45,9 @@ const (
 	beltFactsToken    = "BELT_FACTS"
 	handoffFactsToken = "HANDOFF_FACTS"
 	programFactsToken = "PROGRAM_FACTS"
-	// AND THE FOURTH IS A WHOLE SECTION AND NOT A RUN OF SENTENCES. What keeps
-	// working after the window closes is `stand`'s section from its heading down
-	// ([standingFacts]), so the token stands where the heading stood.
+	// AND THE FOURTH IS A PARAGRAPH OF ITS OWN AND NOT A RUN OF BULLETS. What
+	// can be left behind to fire later is `stand`'s alone ([standingFacts]), so
+	// the token stands on its own line where the section used to open.
 	standingFactsToken = "STANDING_FACTS"
 )
 
@@ -55,17 +59,22 @@ const (
 // functions read these SAME predicates, which is what makes it impossible for
 // the two to disagree about a tool.
 
-// hasStore says whether this agent was opened with the store behind it. The
-// store is memory AND the FTS index over every message ever posted, so it is
-// the one fact under both `remember` and `search_conversations` (memory.go,
-// tools_conversations.go). A task node is handed none (task_run.go sets no
-// Config.Memory), and neither is a conversation with memory off.
+// hasStore controls writable memory and its prompt extraction. Conversation
+// search has its own read-only predicate so workers can inherit just that door.
 //
-// [Agent.remembers] is the same fact asked of a live agent — it reads the brain
-// newAgent builds from exactly this field — and the belt keeps asking it there
-// because every memory road dereferences that brain. prompt_belt_test.go pins
-// the two to the same answer for every shape.
-func (c Config) hasStore() bool { return c.Memory != nil }
+// AND A LEAN PREFIX HAS NO WRITABLE MEMORY (promptprofile.go). The reflex is two
+// model calls on every turn on top of the one the person is waiting for, which
+// on a small open-weight seat is the most expensive thing in the turn that
+// nobody asked for — so the brain is not built (agent.go's newAgent), `remember`
+// is not on the belt, and the page's own "Without `remember`, say plainly that
+// memory is off" clause becomes the truth rather than a fallback.
+//
+// THE STORE ITSELF IS UNTOUCHED, and that distinction is the whole of this line.
+// Config.Memory is also the conversation's own RECORD — the chat log every
+// session writes and `search_conversations` reads — and taking that away would
+// be a session that forgets what was said, which is not what "the reflex is off"
+// means and is not what any window is short of.
+func (c Config) hasStore() bool { return c.Memory != nil && !c.promptProfile().lean() }
 
 // maySeeSettings says whether the settings pair belongs on this belt
 // (tools_settings.go). It comes off inside a task for the sharpest reason on
@@ -87,12 +96,32 @@ func (c Config) shelvesCapabilities() bool { return !c.InTask }
 // conversation, and a node has none.
 func (c Config) mayWatch() bool { return !c.InTask }
 
+// mayAsk is unconditional; only the conversation shelf changes whether the
+// schema is carried now or loaded on the next request.
+func (c Config) mayAsk() bool { return true }
+
 // mayProposeTask says whether the task pair — `propose_task` and the `tasks`
 // window onto what it started — belongs on this belt: always in a conversation,
 // and in a node only when it was handed the conversation's graph and is not
 // standing on the floor of the tree ([Agent.mayProposeTask] is this asked of a
 // live agent, and task.go states the fan-out law it comes from).
 func (c Config) mayProposeTask() bool { return !c.InTask || c.mayFanOut() }
+
+// mayQuickTask says whether `quick_task` belongs on this belt, and it is
+// [Config.mayProposeTask] and not a second reading of it (task_quick.go).
+//
+// THE TWO VERBS COME AND GO TOGETHER because they answer one question — is
+// there anywhere for work to go from here — and a belt that carried one without
+// the other would be telling a model half a truth about its own depth. It is
+// written as its own predicate rather than as the other one spelled twice
+// because the page's bullet is about THIS verb, and a fact naming the wrong
+// predicate is a sentence nobody can check.
+func (c Config) mayQuickTask() bool { return c.mayProposeTask() }
+
+// mayTickItems says whether `items` belongs on this belt (task_quick.go), and
+// it is the presence of the node's own list door and nothing else: a quick
+// task's worker has one, and every other agent this package builds has none.
+func (c Config) mayTickItems() bool { return c.quickItems != nil }
 
 // hasConnect says whether the accounts pair belongs on this belt
 // (tools_connect.go). It is written as the hub CONSTRUCTOR'S OWN ANSWER rather
@@ -114,11 +143,29 @@ func (c Config) hasConnect() bool { return newConnectHub(c) != nil }
 // standing section is composed from.
 func (c Config) mayStand() bool { return c.standingStore() != nil }
 
-// mayFork says whether `fork` belongs on this belt (fork.go). It is off in a
-// hand and nowhere else, which is the whole of the depth-one law: a chat turn
-// and a task worker are both minds mid-work with a context worth copying, and a
-// hand is not, because the fork is one deep.
-func (c Config) mayFork() bool { return !c.inHand }
+// signsGitWork says whether the attribution law belongs on this belt: the
+// person has the `attribution` row on ([Config.Attribution]). It used to carry
+// a second half — a fork's hand was told nothing because its `bash` was rebuilt
+// read-only — and that half went with `fork` itself: every shape this package
+// still builds carries a `bash` that could make a commit.
+func (c Config) signsGitWork() bool { return c.Attribution }
+
+// signsGitWork is [Config.signsGitWork] asked of a live agent, so that the
+// harness's OWN commits and the sentence the model is told come off one
+// predicate. The commits a landing
+// writes are not on any belt — nobody is asked about them — and a build where
+// the model was told to sign while the landing quietly did not would be two
+// answers to one row (task_run.go's [signed]).
+func (a *Agent) signsGitWork() bool { return a.config.signsGitWork() }
+
+// attributionTrailer is [exec.AttributionTrailer] under a name the rest of this
+// package can say. The files where the harness writes its OWN commits —
+// task_run.go and task_branch_protection.go — both import os/exec as `exec`, so
+// neither can name internal/exec without an alias that reads as a second
+// package. This is a constant assignment and not a second copy: the bytes live
+// in one place, internal/exec's own test pins them, and a trailer reworded
+// there is reworded here by the compiler.
+const attributionTrailer = exec.AttributionTrailer
 
 // mayDesignHarness says whether the two harness hands belong on this belt
 // (tools_harness.go): a store to write the page into, a runner to run what was
@@ -170,6 +217,10 @@ type beltFact struct {
 
 // beltFacts is the whole of it, in the order the section reads.
 var beltFacts = []beltFact{{
+	tools:   []string{"ask", loadCapabilityToolName},
+	holds:   Config.mayAsk,
+	shelved: "- `ask` waits in the `questions` group; `load_capability` fetches it.",
+}, {
 	// THE CLOCK, whose second sentence is the one place the session facts named a
 	// conditional verb for everybody. The first sentence is true of every shape —
 	// the `Project` footer is rendered for all of them — and the second was
@@ -189,45 +240,67 @@ var beltFacts = []beltFact{{
 	holds: Config.mayProposeTask,
 	present: "- ON `propose_task` NEVER NAME THE METHOD: a task is always given its own copy, so \"work in this repo directly\", a branch or a checkout is never yours to specify.\n" +
 		"- Earlier work referred to but not pointed at (\"the reconciler task\", \"same as before\"): call `tasks` with their words BEFORE answering.\n" +
+		// AND THE TWO TRIGGERS THAT LOST THEIR HOME when the tool descriptions
+		// gave up their routing prose (docs/design/prompt-diet/DESIGN.md §4).
+		// [tasksDescription] says what an id DOES; what it cannot say is when to
+		// reach for one, and the second half is a refusal: "continue task N" is
+		// the `continue` field on a task that already exists, and a model that
+		// answers it with a fresh proposal mints a second task with a fresh brief
+		// and a fresh working copy (task_continue.go, F23/F25).
+		"- Look inside running or landed work with `tasks` and its id; \"continue task N\" is that id with `continue`, never a fresh `propose_task`.\n" +
 		"- A `tasks` row is a citation, not the work: its transcript URI is the JSONL journal of all that node said, called and got back, and `read` takes a row's URIs exactly as printed, `file://` and all. `grep` a journal or `read` it with `offset`/`limit`, never expand an outcome line into work you did not read, and say so when a row prints no transcript. A `[Task reference: ...]` block already carries those URIs.\n" +
-		// THE `id` SENTENCE IS NOT REPEATED HERE EITHER, for the reason the one
-		// below states: [tasksDescription] already says an id reads, steers,
-		// continues or settles one piece of work and is how you look inside
-		// running work. What paid for `propose_task`'s `checks` field is this
-		// second copy of a law the model holds whenever it holds the verb.
-		"- To send the person's current correction to a running task, use `tasks` with `id` and `forward: true`. `say` is your own coordination.\n" +
-		// THE CONTINUE SENTENCE IS NOT REPEATED HERE. `tasks` own description
-		// carries it word for word ([tasksDescription]), and the prefix is a
-		// budget: what pays for the handoff law in prompts/system.md is this
-		// second copy of a law the model already holds whenever it holds the verb.
-		// THE FOUR WORDS ARE THE SURFACE'S OWN (task_status.go's tier words), so a
-		// model relaying a landing says what the person is already looking at. The
-		// verbs are the three the tool's schema takes ([TaskResolutions]) with the
-		// person's words for two of them beside, because "not right" is what the
-		// card says and `refute` is what the call takes.
-		"- A LANDED TASK SAYS `done`, `stopped`, `incomplete` (with the reason) or `your call`. On `your call` your verbs are `tasks` id `resolve` with accept, refute (say it is not right) or reaudit (have it checked again), plus `forward` to steer it; a CONFLICT is never yours to accept — say what clashes and leave the merge to them. If the tool says there is no graph, say so and point at the row's branch or working copy.",
+		// THE `id` AND `continue` SENTENCES ARE NOT REPEATED HERE.
+		// [tasksDescription] already says an id reads, steers, continues or settles
+		// one piece of work and is how you look inside running work, and the prefix
+		// is a budget: what paid for `propose_task`'s `checks` field, and for the
+		// handoff law in prompts/system.md, is this second copy of a law the model
+		// holds whenever it holds the verb.
+		//
+		// AND THE CLAUSE ABOUT `say` IS HERE BECAUSE THIS IS WHERE `say` IS NAMED.
+		// A model asked to stop a task and holding no stop verb reached for the
+		// nearest thing on the belt and said "stop, do not continue" into the work;
+		// it kept running, and the check read what came back as an ordinary
+		// unfinished run. The verb exists now ([tasksDescription] carries what it
+		// does), so what this line owes is the boundary between the two.
+		//
+		// THE FOUR WORDS HAVE LEFT THIS PAGE, and so have the verbs a `your call`
+		// takes. A landing now announces itself: task_run.go's [landingNoteLead]
+		// carries the tier word and says to give it back, [settleClause] names the
+		// address with its verbs interpolated from [TaskResolutions], a clash with
+		// the person's own branch is refused where it happens ([conflictNotYours],
+		// [shiftNotYours]), and a verb reaching for a graph that has closed is
+		// refused in the tool's own reply (tools_tasks.go). Every one of those was
+		// bought on each request of every turn in order to be told a second time on
+		// the one turn it mattered (docs/design/prompt-diet/DESIGN.md §2).
+		"- To send the person's current correction to a running task, use `tasks` with `id` and `forward: true`. `say` is your own coordination and ends nothing; `stop` ends a task.",
 	absent: "- THE RECORD OF EARLIER WORK IS NOT REACHABLE FROM HERE and none of this work goes to anybody else: answer from the brief and from what is in front of you, and say plainly when something earlier is referred to that you cannot see. A `[Task reference: ...]` block you were handed carries transcript URIs, and `read` takes one exactly as printed, `file://` and all: `grep` a journal or `read` it with `offset`/`limit`, and never expand an outcome line into work you did not read.",
 }, {
 	tools:   []string{"search_conversations"},
-	holds:   Config.hasStore,
-	present: "- For what was said, call `search_conversations` ONCE with their own words.",
+	holds:   Config.hasConversationHistory,
+	present: "- When asked to find a past conversation or report what was said or decided elsewhere, call `search_conversations` BEFORE answering, even if a saved memory suggests the answer. Memories guide the query; source messages establish what was said. Copy a returned ref to read more and check corrections.",
 	absent:  "- What was said in earlier conversations cannot be looked up from here, so answer out of what is in this window rather than reconstructing it.",
 }, {
-	tools:   []string{"watch"},
-	holds:   Config.mayWatch,
-	present: "- Start ONE `watch` to follow something that changes.",
-	absent:  "- There is no `watch` here: a foreground `bash` call is how you wait for something to finish.",
+	tools:  []string{"watch"},
+	holds:  Config.mayWatch,
+	absent: "- There is no `watch` here: a foreground `bash` call is how you wait for something to finish.",
 }, {
 	tools: []string{"use_service"},
 	holds: Config.hasConnect,
-	present: "- A connected account is the person's own and you act in it on their behalf, so call `use_service` when the work needs one; nothing is connected without them saying yes, and its tools arrive in your tool list on your next request, still this turn. Most arrive as one `<id>_request` tool naming the address its paths hang off, with the service's published documentation as the schema: `get` is free to try, `post`, `put`, `patch` and `delete` are asked about first. A few serve named tools instead, and an account with more tools than a conversation holds answers with its whole list, so call again with `tools` naming the few this needs.\n" +
-		"- Sending a message and putting something on a calendar reach other people in the person's name and cannot be undone, so they are asked first: write what they would have written, with real recipients and times, and never send twice because the first was not answered.\n" +
-		"- The person decides what each account may be used for, one sentence at a time: what they turned off is absent rather than failing, and a tool saying so is their standing answer, so do the rest without it and say what you could not do.",
-	// NOTHING IS SAID WHERE THERE IS NO HUB, and the three lines above travel
-	// together for that reason: two of them are about how an account behaves
-	// once it is reached, which is not a limit anybody needs told. An agent
-	// with no accounts seam has no account to act in, no consent to relay and
-	// nothing to do instead.
+	// ONE EXISTENCE LINE, AND THE ETIQUETTE RIDES WITH THE VERBS IT GOVERNS.
+	// This was three bullets and 1,142 bytes, and each of the two that went is
+	// said again by the tool it is about, in front of the model at the moment it
+	// calls: [serviceRequestDescription] names the address, spells which methods
+	// read and which act, and says outright which half the person has turned off
+	// ("get reads, and that is all this account may be used for"); `gmail_send`,
+	// `slack_send` and `calendar_create` each say that the call leaves in the
+	// person's name, that they are asked before it goes, and that it cannot be
+	// called back; [useServiceDescription] says a request is never made twice for
+	// the same account and that nothing connects without the person agreeing.
+	// What is left is the one thing the page must say BEFORE any of them is on
+	// the belt: that the accounts are there and which verb reaches them.
+	present: "- A connected account is the person's own and you act in it on their behalf, so call `use_service` when the work needs one; its tools arrive in your tool list on your next request, still this turn, and each one states its own limits and what it asks them about first.",
+	// NOTHING IS SAID WHERE THERE IS NO HUB. An agent with no accounts seam has
+	// no account to act in, no consent to relay and nothing to do instead.
 	absent: "",
 }, {
 	// AND `load_capability` IS ONE OF THIS SENTENCE'S TOOLS, in the shelved
@@ -235,107 +308,189 @@ var beltFacts = []beltFact{{
 	// is gated on [Config.maySeeSettings] and nothing else, so a shape holding
 	// this fact has the settings group, and a non-empty shelf always carries the
 	// loading verb (tools_capabilities.go).
-	tools:   []string{"settings", "change_setting", loadCapabilityToolName},
-	holds:   Config.maySeeSettings,
-	present: "- A preference changed goes through `settings` for the row and `change_setting` for the write, never `edit` or `write` on a config file. Relay a refusal as written and point at `/settings`.",
-	shelved: "- A preference changed goes through `settings` for the row and `change_setting` for the write, never `edit` or `write` on a config file. Both wait in the `settings` group, so call `load_capability` and carry straight on: they are in your tool list on your next request, this same turn. Relay a refusal as written and point at `/settings`.",
+	tools: []string{"settings", "change_setting", loadCapabilityToolName},
+	holds: Config.maySeeSettings,
+	// AND THE ROUTING IS ALL THAT IS LEFT HERE. What to do with a refusal — relay
+	// it as written, point them at `/settings` — is the `settings` group's own
+	// prose (tools_capabilities.go), read by the turn that fetched the pair,
+	// because it is not a fact anybody needs before there is a refusal to relay,
+	// and what `load_capability` does once it is called is that verb's own
+	// description (lane C's registry files it there).
+	present: "- A preference changed goes through `settings` for the row and `change_setting` for the write, never `edit` or `write` on a config file.",
+	shelved: "- A preference changed goes through `settings` for the row and `change_setting` for the write, never `edit` or `write` on a config file. Both wait in the `settings` group and `load_capability` fetches them.",
 	absent:  "- YOU CANNOT CHANGE A PREFERENCE FROM INSIDE A TASK: say so and point at `/settings`, and never `edit` or `write` a config file instead.",
+}, {
+	// THE ATTRIBUTION LAW, AND IT IS THE RESIDENT'S OWN WORDING RATHER THAN A
+	// SECOND ONE (internal/exec's [exec.AttributionLaw]). Both surfaces do git
+	// work in the same person's name into the same history, and two paragraphs
+	// about the same four bytes would drift into two laws — the trailer is
+	// provenance, so a trailer spelled differently in a task than in the
+	// conversation is provenance that cannot be counted.
+	//
+	// IT NAMES `bash` BECAUSE `bash` IS WHERE IT HAPPENS. This is the only place
+	// the model can commit or open a pull request at all; the mechanical commit
+	// a landing writes is not the model's and carries the same trailer without
+	// being told (task_run.go's [commitTaskWorkAs]).
+	//
+	// AND THE ABSENT CASE IS EMPTY ON PURPOSE. Attribution off is not a limit
+	// anybody needs told about — the ordinary commit with no trailer IS the
+	// answer — and a sentence saying "do not sign" would spend the prefix
+	// teaching the model to think about signing on every turn of a person who
+	// switched it off.
+	tools:   []string{"bash"},
+	holds:   Config.signsGitWork,
+	present: "- " + exec.AttributionLaw,
+	absent:  "",
 }}
 
-// handoffFacts is `## Work or words`: the ways work leaves this turn, one row
-// per verb, so that the list a model reads is the list of verbs it has.
+// handoffFacts is `## Work or words`: the ways work leaves this turn, composed
+// from the belt so that what a model reads is what it actually has.
 //
-// THE LEAD-IN RIDES `propose_task` AND NOT THE LIST. "Launch first, then
-// answer" is the instruction of an agent that has somewhere to launch at; on
-// the floor of the tree there is nowhere, and the truth there is the opposite
-// instruction — the work is yours, so open it. Everything else in the section
-// names no verb and stays in the page for everybody: what a hand-off costs,
-// that the question is asked again while you work, and that what you learned
-// goes with it.
+// IT IS A PICTURE AND NOT A RULE LIST, which is the owner's ruling of
+// 2026-09-10 and a reversal of how this section was written. What it hands the
+// model is what it HAS and what each thing COSTS — one mind with a clock; a
+// quick task that is a copy of its abilities where it stands; a task that is a
+// worker in a copy of the folder, checked and merged; the arithmetic that
+// pieces kept cost their sum and pieces handed out cost the longest of them —
+// and the model does its own reasoning from that. There are no shapes of work
+// enumerated here, because a list of shapes is a list somebody has to keep
+// true: the moment it says "a survey is quick" it has stopped teaching and
+// started matching, and the next request is one nobody wrote a row for.
+//
+// IT REPLACED A LIST THAT SORTED ON WIDTH, and the list was measurably wrong.
+// Until this ruling the first bullet read "WIDE WORK — a sweep across many
+// files, research across many sources … ONE `propose_task` with `wide` set.
+// That is the default road", and a real model applied it exactly as written:
+// asked for a READ-ONLY survey of four packages it answered "wide survey across
+// four packages — sizing it before I hand it off" and bought a worktree, a
+// check and a landing for four files nothing was going to write. Width was
+// never the question, and a second rule saying so would have been one more row
+// to match against.
+//
+// THE CLOCK IS THE HALF THAT WAS NEVER STATED AT ALL. A model left to itself
+// does independent pieces one after another, because that is what one thread
+// of reasoning feels like from the inside, and the person waits the sum of them
+// for an answer that could have cost the longest. So the middle paragraph is
+// the arithmetic, and the last one is the conduct that keeps the win: do the
+// piece you kept, never look in on running work, and end the turn when nothing
+// independent of it is left. Both lean on laws already written — the page's own
+// `HANDED-OFF WORK IS NOT WORK THAT REMAINS` and [taskHandoffWakeSentence] on
+// every receipt — and say only the part neither of them says.
+//
+// THE ABSENT CASE IS THE OPPOSITE INSTRUCTION AND NOT A SHORTER ONE. On the
+// floor of the tree there is nowhere to hand anything, so a picture of two
+// roads is a picture of two roads that are not there; what is true there is
+// that the work is yours, so open it. Both verbs are on a belt together or on
+// neither ([Config.mayQuickTask]), which is what lets one fragment name them
+// both and be true wherever it renders.
 var handoffFacts = []beltFact{{
-	tools: []string{"propose_task"},
+	tools: []string{"propose_task", quickTaskToolName},
 	holds: Config.mayProposeTask,
-	present: "WORK — research across sources, changes across files, anything with several\n" +
-		"independent parts, anything they would otherwise watch a spinner for — is NOT\n" +
-		"yours to do inline. Launch first, then answer:\n" +
-		"  - WIDE WORK — a sweep across many files, research across many sources, the\n" +
-		"    same change over many independent items: ONE `propose_task` with `wide`\n" +
-		"    set. That is the default road: the worker opens the material and hands the\n" +
-		"    real parts out under itself, each a worker in a copy of its own,\n" +
-		"    folding their reports into one deliverable. Do not decompose it\n" +
-		"    here, since the parts are only visible from inside, and never split related\n" +
-		"    work, which shards the context it shares.\n" +
-		"  - One self-contained linear job: `propose_task`, without `wide`.",
+	present: "You are one mind with a clock, and two ways to put more minds on the work run\n" +
+		"beside you. A `quick_task` is a copy of your abilities working where you stand:\n" +
+		"it starts the instant you ask, reads and writes in this same folder, and its\n" +
+		"last message comes back to you as a note. A `propose_task` is a worker in a copy\n" +
+		"of the folder, checked and merged when it finishes, that outlives this window.\n" +
+		"Both are yours to steer and to stop, and both wake you when they land.\n" +
+		"\n" +
+		"So WEIGH THE CLOCK BEFORE YOU BEGIN, and again each time the material shows you\n" +
+		"more than you knew. WHEN THE ASK ITSELF NAMES SEVERAL THINGS, THOSE ARE THE\n" +
+		"PARTS: the person has already done the dividing, and work with parts in it is\n" +
+		"not yours to grind through inline. What they wait on is wall time, not calls:\n" +
+		"pieces done in your own hands cost their sum, and independent pieces handed out\n" +
+		"in one breath cost the longest of them alone. Working through them yourself is\n" +
+		"the slowest order there is, and the one you fall into unless you choose\n" +
+		"otherwise. So when what is ahead has parts that do not need each other, HAND\n" +
+		"THEM OUT AND KEEP ONE, before you open the first of them, and do it even where\n" +
+		"each part is plainly something you could do yourself. That you could is not the\n" +
+		"question. The clock is. When the parts\n" +
+		"feed each other, keep them together: your own steps, or one quick task's items.\n" +
+		"One read, one edit, one command is never worth a hand-off. What must be checked\n" +
+		"and landed on its own, or must survive you, is a task; what you will read and\n" +
+		"carry on with is quick, and a quick task is a small thing: a few files, a few\n" +
+		"minutes.\n" +
+		"\n" +
+		"AFTER HANDING OUT YOU ARE NOT WAITING. Do the piece you kept, or answer what you\n" +
+		"can. Each landing comes to you as a note, and starts a turn if yours has ended,\n" +
+		"so fold them as they arrive. When nothing independent of what you handed out\n" +
+		"remains, end your turn. That is how you wait.",
 	absent: "WORK IS YOURS TO DO HERE. There is nowhere to launch it at from where you\n" +
 		"stand, so a sweep across many files, research across many sources or the same\n" +
 		"change over many items is work you open and carry yourself, in the order that\n" +
 		"finishes it.",
 }, {
-	tools: []string{"fork"},
-	holds: Config.mayFork,
-	present: "  - SEVERAL PARTS OF THE REPLY YOU ARE ALREADY WRITING, on files that do not\n" +
-		"    touch: `fork`, mid-work only, once you can name the slices.",
-	// A hand is told nothing, because the fork is one deep and there is no
-	// second-best road to point it at (fork.go's forkTools).
-	absent: "",
-}, {
 	tools:   []string{"build_harness", loadCapabilityToolName},
 	holds:   Config.mayDesignHarness,
-	present: "  - A shape of work that will recur: `build_harness`.",
-	shelved: "  - A shape of work that will recur: `build_harness`, in the `harnesses` group.",
+	present: "AND A SHAPE OF WORK THAT WILL RECUR is neither of them: `build_harness` designs it once and saves it.",
+	shelved: "AND A SHAPE OF WORK THAT WILL RECUR is neither of them: `build_harness` designs it once and saves it, in the `harnesses` group.",
 	absent:  "",
 }, {
 	tools:   []string{"propose_subharness", loadCapabilityToolName},
 	holds:   Config.mayProposeSubharness,
-	present: "  - A shape of work a saved program ALREADY does: `propose_subharness`.",
-	shelved: "  - A shape of work a saved program ALREADY does: `propose_subharness`, in the `harnesses` group.",
+	present: "AND A SHAPE OF WORK A SAVED PROGRAM ALREADY DOES: `propose_subharness`.",
+	shelved: "AND A SHAPE OF WORK A SAVED PROGRAM ALREADY DOES: `propose_subharness`, in the `harnesses` group.",
 	absent:  "",
 }}
 
-// programFacts is what a saved recipe and a saved program ARE. Each paragraph
-// exists to make its own two verbs usable, so it travels with them: a build
-// that cannot design one has no reason to carry the definition, and a worker
-// paid for both paragraphs on every request of every turn.
+// programFacts is the ROUTING LINE for saved recipes and saved programs: which
+// verb exists here, and — where they are shelved — the group to load it from.
+//
+// WHAT A SAVED RECIPE AND A SAVED PROGRAM *ARE* IS NO LONGER HERE. Both
+// paragraphs were mechanics for verbs this belt is not carrying, bought on every
+// request of every turn against a group the model has to fetch before it can
+// call anything. They are now the `harnesses` group's own prose
+// (tools_capabilities.go), emitted under the `Loaded:` line by the load that
+// fetches the verbs — which is the turn that first needs to know the difference
+// — and the four descriptions each state their own contract in full besides.
+//
+// THE PAGE STILL NAMES THE VERBS IT CAN VOUCH FOR, because a model cannot ask
+// for a group whose tools it has never heard of: `list_harnesses` and
+// `build_harness` are here on their own predicate, `propose_subharness` is in
+// [handoffFacts]'s road list on ITS predicate, and tools_harness_test.go holds
+// the page to the first two by name. `list_subharnesses` is named nowhere on the
+// page, which is always safe — the loading verb's own catalog lists it, and the
+// group's prose says what it is for.
 var programFacts = []beltFact{{
 	tools: []string{"list_harnesses", "build_harness", loadCapabilityToolName},
 	holds: Config.mayDesignHarness,
-	present: "A **sub-harness** is a reusable recipe: a named, versioned procedure saved\n" +
-		"here, and offered by the turn when somebody's words match. `list_harnesses`\n" +
-		"lists them, `build_harness` designs one.",
-	shelved: "A **sub-harness** is a reusable recipe: a named, versioned procedure saved\n" +
-		"here, and offered by the turn when somebody's words match. `list_harnesses`\n" +
-		"lists them, `build_harness` designs one, and `load_capability` with\n" +
-		"`harnesses` puts both in your tool list on your next request, this same turn.",
-	absent: "",
-}, {
-	tools: []string{"list_subharnesses", "propose_subharness"},
-	holds: Config.mayProposeSubharness,
-	present: "A **subharness** is a saved PROGRAM rather than a recipe: typed input, a typed\n" +
-		"answer, only the tools it declared. `list_subharnesses` lists them and\n" +
-		"`propose_subharness` offers one with your line about why it matched. NOTHING\n" +
-		"RUNS BECAUSE YOU PROPOSED IT: the person answers that card, so propose only when\n" +
-		"the work IS what a program is for.",
-	shelved: "A **subharness** is a saved PROGRAM rather than a recipe: typed input, a typed\n" +
-		"answer, only the tools it declared. `list_subharnesses` lists them and\n" +
-		"`propose_subharness` offers one with your line about why it matched, both from\n" +
-		"the same `harnesses` group. NOTHING\n" +
-		"RUNS BECAUSE YOU PROPOSED IT: the person answers that card, so propose only when\n" +
-		"the work IS what a program is for.",
+	present: "A **sub-harness** is a reusable recipe this machine has saved and offers by\n" +
+		"itself when somebody's words match: `list_harnesses` lists them,\n" +
+		"`build_harness` designs one.",
+	shelved: "A **sub-harness** is a reusable recipe this machine has saved and offers by\n" +
+		"itself when somebody's words match: `list_harnesses` lists them,\n" +
+		"`build_harness` designs one. Both wait in the `harnesses` group, so call\n" +
+		"`load_capability`: it fetches them and says what each verb there is for.",
 	absent: "",
 }}
 
-// standingFacts is `# Things that keep working after this window`, and it is a
-// WHOLE SECTION composed from one predicate rather than a run of bullets.
+// standingFacts is what the page says about work that outlives this window, and
+// it is now ONE SENTENCE where it was a 2,482-byte section.
 //
-// The section used to open by saying it was about a tool — "When your tool list
-// carries `stand`" — which is the page admitting in its own first clause that it
-// is writing 2.4KB for readers who do not have the verb. Every worker in a task
-// room is one of those: a node is handed no standing store (task_run.go), and so
-// are `--once` and a firing's own headless session (tools.go states why). They
-// were paying for the waking kinds, the card's four answers, the RFC3339
-// arithmetic and the background-checks row on every request of every turn, for a
-// tool that is not on their belt — and the clause that named the condition is
-// gone from the present case because the predicate below IS that condition.
+// EXISTENCE IS THE PAGE'S; MECHANICS RIDE WITH THE VERB; CONSEQUENCES RIDE WITH
+// THE EVENT. Those are the three classes the prompt diet files every law under
+// (docs/design/prompt-diet/DESIGN.md §2), and the old section was all three of
+// them stacked in message[0]:
+//
+//   - EXISTENCE — that a sentence can be left behind rather than done — is the
+//     only part needed BEFORE the model plans, because "remind me at 6" has to
+//     be recognised as `stand`'s before anything else happens. That is the
+//     sentence below, and it stays.
+//   - MECHANICS — the waking kinds, the hold, `when.in` against `when.at`, the
+//     RFC3339 arithmetic, what a card offers, what it costs — are needed at the
+//     CALL, and tools_standing.go's [standDescription] and [standSchemaJSON]
+//     already own every one of them, at greater length and beside the field
+//     each governs. The page was the second copy.
+//   - CONSEQUENCES — what to do when one fires — are needed only on the turn one
+//     fires, and standing_run.go's [standingNewsRule] is already appended to the
+//     firing's own line: "this already happened. Relay it to the person in one
+//     line. Do not call stand again for it". The page was the second copy of
+//     that too, and a page that explains a message the message explains itself
+//     is a page paid for on every request for a turn most sessions never have.
+//
+// The rest — background checks running with no window open, the card's four
+// answers, that "remind me in 1 minute" IS the timer — is ON DEMAND: the chat
+// manual's keeping-an-eye and standing-orders pages carry all of it in the words
+// a person asks it in, and `manual` is a tool the model has.
 //
 // The absent case is the sentence the page already carried for it, which is why
 // this row leaves [promptNamesBeyondTheBelt] with one entry fewer: that ledger is
@@ -343,53 +498,16 @@ var programFacts = []beltFact{{
 var standingFacts = []beltFact{{
 	tools: []string{"stand"},
 	holds: Config.mayStand,
-	present: "# Things that keep working after this window\n" +
-		"Some of what a person says is not work for now but something to leave behind\n" +
-		"with `stand`: \"remind me at 6\", \"tell me when CI goes red\",\n" +
-		"\"every Monday draft the update\", \"always run the tests\". Doing one instead\n" +
-		"of proposing it answers a request they did not make. Send their sentence\n" +
-		"verbatim, what wakes it, what a firing does, and its rails; the card prices it.\n" +
-		"\n" +
-		"WAKING OR HOLDING. A standing sentence naming a moment, a rhythm or a condition\n" +
-		"gets the waking kind it names: `at`, `every`, `file`, `idle`, `probe`. One\n" +
-		"naming none of them, a rule or preference (\"always ...\", \"we use X here\"), is\n" +
-		"`when.kind: hold`: it never fires and never spends, riding into every\n" +
-		"conversation and task it reaches, and is sent with no `does` and no `rails`.\n" +
-		"\n" +
-		"UNSURE MEANS INSTRUCTION PLUS AN OFFER: bind it to the work in front\n" +
-		"of you AND offer the standing version in one line at the end of your reply.\n" +
-		"Never a card on a guess.\n" +
-		"\n" +
-		"SAYING WHEN. For a distance from now (\"in 1 minute\") ALWAYS send `when.in` with\n" +
-		"a Go duration (\"1m\", \"1h30m\") and NEVER work a stamp out for it, since aforge\n" +
-		"resolves it against the real clock as you call. For a moment they NAMED (\"at 6\")\n" +
-		"work the RFC3339 stamp out from `Now` yourself, in the same offset, as `when.at`.\n" +
-		"One or the other, never both. A MOMENT ALREADY GONE IS REFUSED: work it out\n" +
-		"again from THE TIME THE TOOL GAVE YOU, the `now:` line every `stand` result ends\n" +
-		"with. AND NEVER TELL THEM YOU CANNOT HOLD A TIMER: \"remind me in 1 minute\" is a\n" +
-		"standing one-off, `when.in: \"1m\"` with `does.kind: say`, and that IS the timer.\n" +
-		"\n" +
-		"A CARD OFFERS `yes, set it up`, an outright no, `just once` on anything but a\n" +
-		"one-off reminder, and `change when or where`, whose answer returns as their own\n" +
-		"words to re-propose with.\n" +
-		"\n" +
-		"WHERE A FIRING ARRIVES: the person, not a room, so never promise a reminder\n" +
-		"\"here\" as though this window were the only door. NOTHING STANDS UNTIL THEY SAY\n" +
-		"YES, and an unanswered card declines. Say what now stands and what it costs, and\n" +
-		"never re-ask an answered card.\n" +
-		"\n" +
-		"BACKGROUND CHECKS ARE ON AND NOBODY IS ASKED: the first thing that ever stands\n" +
-		"turns on this machine's own timer, so items are checked with no aforge window\n" +
-		"open. Never promise otherwise, and turn the `background checks` row in /settings\n" +
-		"if they ask.\n" +
-		"\n" +
-		"A LINE THAT OPENS `[something you set up fired]` IS NEWS AND NOT A REQUEST: the\n" +
-		"thing already ran, so relay it to the person in one line and never call `stand`\n" +
-		"again for it.",
-	// AND THE ABSENT CASE NAMES NO VERB, which is what lets the section go with
-	// it: a heading over one sentence is a heading nobody needs, and a sentence
-	// naming a tool this belt does not carry is the lie the whole file exists to
-	// prevent (prompt_belt_test.go asks it of every shape).
+	present: "SOMETHING TO LEAVE BEHIND — a reminder, a watch on the world, a rhythm, a rule\n" +
+		"that binds work nobody has done yet — is `stand`'s: \"remind me at 6\", \"tell me\n" +
+		"when CI goes red\", \"every Monday draft the update\", \"always run the tests\".\n" +
+		"PROPOSE IT, and never do it instead of proposing it, which answers a request\n" +
+		"they did not make. `stand`'s own description says how to tell one from the work\n" +
+		"in front of you and how to say when.",
+	// AND THE ABSENT CASE NAMES NO VERB: a sentence naming a tool this belt does
+	// not carry is the lie the whole file exists to prevent (prompt_belt_test.go
+	// asks it of every shape). Neither case carries a heading any more, because
+	// a heading over one sentence is a heading nobody needs.
 	//
 	// IT DENIES SCHEDULING AND NOTHING ELSE. An earlier wording said nothing
 	// this agent does keeps working once the window closes, which is far wider
@@ -440,7 +558,7 @@ type promptSection struct {
 
 var promptSections = []promptSection{
 	{token: beltFactsToken, facts: beltFacts, join: "\n"},
-	{token: handoffFactsToken, facts: handoffFacts, join: "\n"},
+	{token: handoffFactsToken, facts: handoffFacts, join: "\n\n"},
 	{token: programFactsToken, facts: programFacts, join: "\n\n"},
 	{token: standingFactsToken, facts: standingFacts, join: "\n\n"},
 }
@@ -454,12 +572,15 @@ func renderBeltFacts(config Config, facts []beltFact, join string) string {
 		text := fact.absent
 		if fact.holds(config) {
 			text = fact.present
-			// AND THE SHELVED WORDING ONLY WHERE THE SHAPE ACTUALLY SHELVES.
-			// A worker or a task node carries these tools directly, so telling
-			// it to call `load_capability` — which is not on its belt at all —
-			// would be the very defect this file exists to prevent, written the
-			// other way round.
-			if fact.shelved != "" && config.shelvesCapabilities() {
+			// AND THE SHELVED WORDING ONLY WHERE THE SHAPE ACTUALLY SHELVES
+			// THESE TOOLS. A worker or a task node carries them directly, so
+			// telling it to call `load_capability` — which is not on its belt at
+			// all — would be the very defect this file exists to prevent,
+			// written the other way round. The question is asked per FACT rather
+			// than per shape because a lean prefix is handed the `questions`
+			// group at construction (promptprofile.go's [Config.shelvesFact]):
+			// it shelves plenty and carries `ask`.
+			if fact.shelved != "" && config.shelvesFact(fact) {
 				text = fact.shelved
 			}
 		}
@@ -512,4 +633,7 @@ func promptWithBeltFacts(config Config) string {
 // The value is the marker the test looks for in the absent case.
 var promptNamesBeyondTheBelt = map[string]string{
 	"remember": "Without `remember`, say plainly that memory is off",
+	// A hand inherits the caller's page but intentionally carries a smaller,
+	// closed belt; its appended tail is the truthful capability account.
+	"ask": "Use `ask` only as the last rung",
 }

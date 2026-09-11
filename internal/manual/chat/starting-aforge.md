@@ -50,6 +50,9 @@ A `--once` or piped run cannot open a browser and still stops at the door with
 `aforge chat needs a model to talk with.` Its next line says to run bare `aforge` in a
 terminal to connect OpenRouter, or to export `OPENROUTER_API_KEY` (or `OPENAI_API_KEY`). A
 custom `AFORGE_BASE_URL` is never offered the OpenRouter connection.
+That variable still changes only the default service. To add a supported second place
+models come from, connect a service through `/connect`; the [services page](services.md)
+explains the checked connection and picker names.
 
 **The first frame is home** — every project on this machine and every conversation
 in them — with the conversation this directory would have opened loaded and ready

@@ -149,34 +149,30 @@ func TestTheRoomHeaderAndItsMarkLightSeparately(t *testing.T) {
 
 // ── the stop card ───────────────────────────────────────────────────────────
 
-// THE TWO ANSWERS ARE THE TWO ENDS OF ONE DECISION, so exactly one of them
-// lights: a band across the row would promise "stop it" under a hand reaching
-// for "keep going".
+// THE ANSWER UNDER THE POINTER LIGHTS AND NOTHING ELSE DOES. The card is the
+// question block's now (question.go), which puts each answer on a row of its own
+// — so exactly one row lights, and a band across the whole card would promise
+// "stop it" under a hand reaching for "keep going".
 func TestTheStopCardsAnswersLightOneAtATime(t *testing.T) {
 	a, _ := stopApp(t)
 	drive(t, a, key("x"))
 	width, _ := a.size()
-	a.guardRows(width) // the layout is what writes the spans
-	row, ok := stopCardRow(a)
-	if !ok || len(a.stop.spans) != len(stopAnswers) {
-		t.Fatalf("the card is not on the frame with its targets: row=%v spans=%d", ok, len(a.stop.spans))
+	rows := a.questionRows(width) // the layout is what writes the bands
+	if len(a.questionBands) != len(stopAnswers) {
+		t.Fatalf("the card drew %d pressable answers, want %d", len(a.questionBands), len(stopAnswers))
 	}
-
-	for at := range stopAnswers {
-		drive(t, a, motionTo(a.stop.spans[at].from+1, row))
-		if !a.hoveringStopAnswer(at) {
-			t.Fatalf("the pointer on answer %d recorded %+v", at, a.hot)
+	for _, band := range a.questionBands {
+		y := chromeRowY(t, a, band.row)
+		drive(t, a, motionTo(band.span.from+1, y))
+		rows = a.questionRows(width)
+		if !strings.Contains(rows[band.row], hoverBg()) {
+			t.Fatalf("hovering answer %d did not light its row:\n%s", band.at, plain(strings.Join(rows, "\n")))
 		}
-		line := a.stopRows(width)[1]
-		if got := strings.Count(line, hoverBg()); got != 1 {
-			t.Fatalf("hovering answer %d lit %d things on the row:\n%q", at, got, line)
+		// AND THE QUESTION ABOVE THE ANSWERS IS A SENTENCE, which answers to
+		// nothing and never lights.
+		if strings.Contains(rows[0], hoverBg()) {
+			t.Fatalf("hovering answer %d lit the question itself:\n%s", band.at, plain(strings.Join(rows, "\n")))
 		}
-	}
-
-	// The question above the answers is a sentence and answers to nothing.
-	drive(t, a, motionTo(2, row-1))
-	if a.hot.kind != hoverNothing {
-		t.Fatalf("the card's question answered the pointer: %+v", a.hot)
 	}
 }
 
@@ -217,10 +213,11 @@ func TestATrayChipLightsOnItsOwnCells(t *testing.T) {
 	a.attach(filepath.Join(dir, "one.png"))
 	a.attach(filepath.Join(dir, "two.png"))
 
-	width, height := a.size()
-	rows, _, _, _ := a.chrome(width)
-	at := len(rows) - 1 - a.overlayHeight() - a.inputHeight()
-	y := height - len(rows) + at
+	// The tray is the input block's FIRST row, read off the layout's own marks
+	// rather than counted back from the foot of the chrome: the breathing blank
+	// moved under the box on 2026-09-09 and a count would be a row out
+	// (attach.go's [app.chipTrayTarget] says the whole of it).
+	y := trayRow(a)
 	labels := chipLabels(a.chips, a.pal)
 	x := len(inputPad) + ansi.StringWidth(labels[0]) + len(chipGap) + 1
 
@@ -228,7 +225,7 @@ func TestATrayChipLightsOnItsOwnCells(t *testing.T) {
 	if !a.hoveringChip(1) {
 		t.Fatalf("the pointer on the second chip recorded %+v", a.hot)
 	}
-	strip := a.chipStrip(width - len(inputPad))
+	strip := a.chipStrip(a.width - len(inputPad))
 	if got := strings.Count(strip, hoverBg()); got != 1 {
 		t.Fatalf("hovering one picture lit %d things on the tray:\n%q", got, strip)
 	}

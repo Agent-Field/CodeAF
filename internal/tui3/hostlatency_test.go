@@ -80,6 +80,7 @@ func (f *farAgent) Steer(text string) (<-chan session.Event, error) {
 }
 
 func (f *farAgent) Interrupt()                        {}
+func (f *farAgent) InterruptFor(session.StopDoor)     {}
 func (f *farAgent) Compact(ctx context.Context) error { return nil }
 func (f *farAgent) Close() error                      { return nil }
 func (f *farAgent) Model() string                     { return f.model }
