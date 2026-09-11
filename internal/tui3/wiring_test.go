@@ -205,31 +205,36 @@ func TestAConsentQuestionShowsTheCallTheOfferAndTheRule(t *testing.T) {
 		toolBegin("bash", "bash rm -rf build"),
 		consentEvent(7, "bash", "bash rm -rf build", `bash pattern "rm -rf *"`),
 	})
-	// An ordinary terminal, which is the width the line form is measured at: a
-	// narrower one promotes to the card rather than cutting an answer off the
-	// end (see [TestANarrowFrameGivesEveryAnswerARowRatherThanCuttingOne]).
+	// An ordinary terminal. A permission is the panel at every width — a person
+	// allowing a call has to read the call — and below sixty columns it is the
+	// phone sheet (see [TestANarrowFrameGivesEveryAnswerARowRatherThanCuttingOne]).
 	a.width = 80
 	typeLine(t, a, "clean the tree")
 	settleAsk(a)
 
 	got := plain(frame(a))
 	for _, want := range []string{
-		"rm -rf build",          // the row the transcript already drew
-		"allow? [1] allow once", // the answers, by the digits every question takes
-		"[3] deny",
-		"] always",                // the widening yes
-		"[esc] later",             // and the way out, which cancels nothing
+		"rm -rf build",            // the row the transcript already drew, and the panel's first row
+		"1  allow once",           // the answers, a row each, by the digits every question takes
+		"3  deny",                 //
+		"2  always",               // the widening yes
+		"esc later",               // and the way out, which cancels nothing
 		`bash pattern "rm -rf *"`, // the policy's own words for why
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("the question is missing %q:\n%s", want, got)
 		}
 	}
+	// AND NOTHING ABOVE THE PANEL LISTS THE ANSWERS AGAIN (hints pick A): the
+	// slot on the seam is the ordinary legend while the panel draws its own keys.
+	if strings.Contains(got, "allow? ") {
+		t.Fatalf("the rule above the block is still re-listing the answers:\n%s", got)
+	}
 	// A FRAME WITH ROOM SAYS HOW FAR THE WIDENING YES GOES. The short spelling
 	// on a narrower frame is the same answer with its aside dropped — never one
 	// with an answer truncated off the end.
 	a.width = 120
-	if wide := plain(frame(a)); !strings.Contains(wide, "[2] always, this tool (session)") {
+	if wide := plain(frame(a)); !strings.Contains(wide, "2  always, this tool (session)") {
 		t.Fatalf("the wide answers row does not say how far always reaches:\n%s", wide)
 	}
 
@@ -258,8 +263,8 @@ func TestAConsentQuestionShowsTheCallTheOfferAndTheRule(t *testing.T) {
 	if !strings.Contains(got, "rm -rf build") || !strings.Contains(got, "allowed") {
 		t.Fatalf("the answered call lost its row or its annotation:\n%s", got)
 	}
-	if strings.Contains(got, "allow? [1]") {
-		t.Fatalf("the answers row survived the answer:\n%s", got)
+	if strings.Contains(got, "1  allow once") {
+		t.Fatalf("the answers survived the answer:\n%s", got)
 	}
 	// AND THE ANSWER LEFT ITS RECEIPT where the question was.
 	if !strings.Contains(got, "decided") {
@@ -282,7 +287,7 @@ func TestTheAlwaysKeyIsHiddenAndInertOnAQuestionThatCannotRememberIt(t *testing.
 	if strings.Contains(got, "always") {
 		t.Fatalf("an inert answer is on the row:\n%s", got)
 	}
-	if !strings.Contains(got, "[1] allow once") || !strings.Contains(got, "[3] deny") {
+	if !strings.Contains(got, "1  allow once") || !strings.Contains(got, "3  deny") {
 		t.Fatalf("the two real answers went with it:\n%s", got)
 	}
 
@@ -393,7 +398,7 @@ func TestEscapeIsLaterOnAnApprovalQuestionAndAnswersNothing(t *testing.T) {
 	}
 	// And the chip brings it back.
 	drive(t, a, tea.KeyPressMsg{Code: 'a', Mod: tea.ModAlt})
-	if got := plain(frame(a)); !strings.Contains(got, "allow?") {
+	if got := plain(frame(a)); !strings.Contains(got, "1  allow once") {
 		t.Fatalf("the chip did not raise the folded question:\n%s", got)
 	}
 }
@@ -431,7 +436,7 @@ func TestANarrowFrameGivesEveryAnswerARowRatherThanCuttingOne(t *testing.T) {
 	settleAsk(a)
 
 	got := plain(frame(a))
-	for _, want := range []string{"1  allow once", "2  always", "3  deny", "[esc] later"} {
+	for _, want := range []string{"1  allow once", "2  always", "3  deny", "esc later"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("at sixty columns the card is missing %q:\n%s", want, got)
 		}

@@ -1995,6 +1995,16 @@ func (a *app) questionHint() string {
 	if !ok {
 		return ""
 	}
+	// THE SLOT ABOVE THE BLOCK DOES NOT RE-LIST THE ANSWERS (owner ruling
+	// 2026-09-11, hints pick A). Every view but the chip's draws the answers and
+	// their keys itself, two rows below this one, and a rule that spelled them
+	// again — in a second order, with its own idea of which keys exist — was the
+	// owner's "the hint line names keys that are not there". Where the question
+	// is NOT on this screen the slot is the only place its keys can be said, and
+	// there it still says them.
+	if width, _ := a.size(); a.questionViewOf(head, width) != viewNone {
+		return ""
+	}
 	return a.questionHintOn(head)
 }
 

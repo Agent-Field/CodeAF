@@ -274,7 +274,7 @@ func TestTwoBashQuestionsPairToTheirOwnRowsByCallID(t *testing.T) {
 	}
 	drive(t, a, key("2"))
 	got := plain(frame(a))
-	if !strings.Contains(got, "[1] npm test*") {
+	if !strings.Contains(got, "1 npm test*") {
 		t.Fatalf("the beat offers shapes for the wrong call:\n%s", got)
 	}
 	drive(t, a, key("3"))

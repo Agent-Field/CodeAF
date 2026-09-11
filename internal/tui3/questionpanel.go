@@ -76,6 +76,9 @@ const (
 // one column.
 func (a *app) questionPanelRows(q questionShown, width int) []string {
 	inner := frameInner(width)
+	if len(q.beat) > 0 {
+		return a.questionPanelBeat(q, width, inner)
+	}
 	first := len(a.questionBands)
 	rows := a.questionPanelBody(q, inner)
 	keys := a.questionAnswerKeys(q, formsCard)
@@ -98,6 +101,32 @@ func (a *app) questionPanelRows(q questionShown, width int) []string {
 	if second := a.questionPanelSecond(q, keys, width); second != "" {
 		out = append(out, second)
 	}
+	return out
+}
+
+// questionPanelBeat is the widening answer asking how far it goes, drawn in the
+// same frame rather than in a drawing of its own: the shapes take the rows the
+// answers had, and the bottom edge says the two keys that mean anything while
+// they are up.
+//
+// IT IS ONE ROW OF SHAPES AND NOT A ROW EACH, because the shapes are one
+// question's answers ([app.questionBeatRow] holds the spans a click resolves
+// against, and they are a row's worth).
+func (a *app) questionPanelBeat(q questionShown, width, inner int) []string {
+	row := a.questionBeatRow(q, 2, inner)
+	// The frame's side is one cell, so every span the beat recorded stands one
+	// column further right than the row itself counted it.
+	for i := range a.questionSpans {
+		a.questionSpans[i].from++
+		a.questionSpans[i].to++
+	}
+	panel := framed{
+		title: a.questionPanelTitle(q, width),
+		aside: a.questionPanelAside(q, width),
+		keys: a.pal.data("1–"+itoa(len(q.beat))) + a.pal.dim(" shape") +
+			a.pal.dim(questionKeyGap) + a.pal.data(questionLaterKey) + a.pal.dim(" "+questionBeatBack),
+	}
+	out, _ := panel.draw(a.pal, width, []string{"", row, ""})
 	return out
 }
 
@@ -613,7 +642,11 @@ func questionDigitsWord(q session.Question) string {
 	if len(q.Options) < 2 {
 		return ""
 	}
-	return "1–" + itoa(len(q.Options))
+	// THE KEYS ARE THE ANSWERS' OWN and not a count of them: a question whose
+	// second answer was dropped keeps `1` and `3` on the two that are left, and
+	// a row that said `1–2` there would name a key nothing answers.
+	first, last := questionOptionKeyAt(q, 0), questionOptionKeyAt(q, len(q.Options)-1)
+	return first + "–" + last
 }
 
 // questionJumpWord is what the digits do: they move the pointer onto an answer
