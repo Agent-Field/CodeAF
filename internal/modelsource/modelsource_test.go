@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -37,9 +38,9 @@ func TestUnqualifiedIdsStayOnTheDefaultService(t *testing.T) {
 	}
 }
 
-func TestVendoredRowsAreTheDecidedFive(t *testing.T) {
+func TestVendoredRowsAreTheDecidedSeven(t *testing.T) {
 	rows := Vendored()
-	want := []string{"deepseek", "z-ai", "moonshot", "ollama", "custom"}
+	want := []string{"deepseek", "z-ai", "moonshot", "minimax", "qwen", "ollama", "custom"}
 	if len(rows) != len(want) {
 		t.Fatalf("vendored rows = %d, want %d", len(rows), len(want))
 	}
@@ -47,15 +48,17 @@ func TestVendoredRowsAreTheDecidedFive(t *testing.T) {
 		if rows[i].ID != want[i] {
 			t.Errorf("row %d = %q, want %q", i, rows[i].ID, want[i])
 		}
-		if rows[i].Plan || rows[i].KeyPrefix != "" {
-			t.Errorf("row %s set phase-five facts", rows[i].ID)
-		}
 		if rows[i].Probe.Timeout != ProbeTimeout {
 			t.Errorf("row %s probe timeout = %s, want %s", rows[i].ID, rows[i].Probe.Timeout, ProbeTimeout)
 		}
 	}
-	if !rows[3].KeyOptional || rows[0].KeyOptional || rows[1].KeyOptional || rows[2].KeyOptional || rows[4].KeyOptional {
+	if !rows[5].KeyOptional {
 		t.Fatal("only Ollama may omit its key")
+	}
+	for index, row := range rows {
+		if index != 5 && row.KeyOptional {
+			t.Fatalf("%s unexpectedly accepts a blank key", row.ID)
+		}
 	}
 }
 
@@ -85,7 +88,9 @@ func TestVendoredListingHintsAndProbeModelsMatchTheProviderSurvey(t *testing.T) 
 		// survey's old K2 preview is gone and no replacement is guessed: with no
 		// unambiguous cheapest current model, deferring proof beats spending on
 		// an invented id, which is the mistake this whole law exists about.
-		{"moonshot", ListingNone, ""},
+		{"moonshot", ListingNone, "kimi-k2.7-code"},
+		{"minimax", ListingNone, "MiniMax-M3"},
+		{"qwen", ListingNone, "qwen3.8-flash"},
 		{"ollama", ListingModels, ""},
 		{"custom", ListingModels, ""},
 	}
@@ -98,6 +103,45 @@ func TestVendoredListingHintsAndProbeModelsMatchTheProviderSurvey(t *testing.T) 
 		}
 		if row.Probe.Method != "GET" || row.Probe.Address != "/models" {
 			t.Errorf("row %s does not try the listing first: %+v", row.ID, row.Probe)
+		}
+	}
+}
+
+func TestAKeyPrefixOrdersDoorsAndNeverSkipsOne(t *testing.T) {
+	source := Source{Doors: []Door{
+		{ID: "metered", Metered: true},
+		{ID: "plan", KeyPrefix: "sk-plan-"},
+		{ID: "other"},
+	}}
+	got := source.OrderedDoors("sk-plan-example")
+	if len(got) != 3 || got[0].ID != "plan" || got[1].ID != "metered" || got[2].ID != "other" {
+		t.Fatalf("ordered doors = %+v", got)
+	}
+	if ordinary := source.OrderedDoors("another-shape"); len(ordinary) != 3 || ordinary[0].ID != "metered" {
+		t.Fatalf("an unmatched key changed policy order: %+v", ordinary)
+	}
+}
+
+func TestOnlyWireDistinctBillingProductsShipAsSeparateDoors(t *testing.T) {
+	rows := Vendored()
+	byID := make(map[string]Source, len(rows))
+	for _, row := range rows {
+		byID[row.ID] = row
+	}
+	if minimax := byID["minimax"]; len(minimax.Doors) != 0 || minimax.Address == "" {
+		t.Fatalf("MiniMax claims distinguishable billing doors without wire evidence: %+v", minimax.Doors)
+	}
+	for _, id := range []string{"moonshot", "qwen"} {
+		source := byID[id]
+		if len(source.Doors) != 2 {
+			t.Fatalf("%s doors = %+v, want the documented plan and metered hosts", id, source.Doors)
+		}
+		if strings.TrimRight(source.Doors[0].Address, "/") == strings.TrimRight(source.Doors[1].Address, "/") {
+			t.Fatalf("%s labels one wire as two billing products: %+v", id, source.Doors)
+		}
+		metered, ok := source.MeteredDoor()
+		if !ok || metered.ID != source.Doors[1].ID {
+			t.Fatalf("%s metered identity = %+v, found=%t", id, metered, ok)
 		}
 	}
 }
