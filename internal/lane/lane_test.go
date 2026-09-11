@@ -231,16 +231,16 @@ func TestEverySeamAnswersAndNoneOfThemInventsANumber(t *testing.T) {
 	}
 }
 
-// TestABudgetThatCannotCountRefuses is the one implementation that could cost
+// TestAPurseThatSpendsNothingRefuses is the one implementation that could cost
 // somebody money if it guessed.
 //
-// It said so by refusing everything while lane L-C had not built the counting.
-// Now that it counts, the law it holds is the one that survives: a budget with
-// no allowance allows nothing, which is how hedging is switched off, and
-// hedge.go carries the rest of its behaviour.
-func TestABudgetThatCannotCountRefuses(t *testing.T) {
-	if NewBudget(0, 0.1).Allow(time.Now(), 0.0001) {
-		t.Fatal("a budget with no allowance allowed a hedge")
+// It used to be a budget with no allowance — the counting rail this build no
+// longer has — and the law that survived the deletion is the one a person's own
+// switch depends on: `SetLaneGuard(false)` is a purse that refuses everything,
+// and hedge.go carries the rest of its behaviour.
+func TestAPurseThatSpendsNothingRefuses(t *testing.T) {
+	if NoSpending().Allows(0.0001, time.Now()) {
+		t.Fatal("a purse that spends nothing allowed a rescue")
 	}
 }
 

@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/lane/lanestub"
 )
 
@@ -27,7 +26,6 @@ func TestAStalledLaneArmsARescueWithoutATerminalError(t *testing.T) {
 	)
 	// THE PURSE ALLOWS ONE RESCUE, so keepalives cannot turn a live but
 	// stalled stream into an unbounded wait.
-	SetHedgeBudget(lanes.NewBudget(1, 0))
 	rig.patience(t, 150*time.Millisecond)
 
 	report := &HedgeReport{}

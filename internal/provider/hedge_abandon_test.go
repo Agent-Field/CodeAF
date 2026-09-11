@@ -19,8 +19,6 @@ import (
 	"errors"
 	"testing"
 	"time"
-
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 )
 
 func TestACancelledRaceAnswersAtOnceAndDrainsItsArmsBehindTheCaller(t *testing.T) {
@@ -29,7 +27,6 @@ func TestACancelledRaceAnswersAtOnceAndDrainsItsArmsBehindTheCaller(t *testing.T
 	// the whole second — which is exactly the arm [abandonGrace] was written
 	// for, and exactly the one a caller must not be behind.
 	race := &hedgeRace{
-		budget:  lanes.DefaultBudget(),
 		results: make(chan armResult, 2),
 		arms:    []*hedgeArm{{index: 0}, {index: 1}},
 		winner:  -1,

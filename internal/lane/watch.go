@@ -114,7 +114,7 @@ type Pace struct {
 // and not twice.
 func PlanFor(choice Choice, pace Pace, role Role, now time.Time) control.Plan {
 	head := HeadOf(choice)
-	return control.Plan{
+	plan := control.Plan{
 		Lane:    head,
 		Ceiling: role.Ceiling(),
 		Floor:   ActionFloor,
@@ -135,7 +135,32 @@ func PlanFor(choice Choice, pace Pace, role Role, now time.Time) control.Plan {
 		Deadline: now.Add(role.GiveUp()),
 		Role:     string(role),
 		Moves:    control.NewMoveLog(),
+		// AND THE MONEY IS THE SAME SENTENCE SAID IN DOLLARS. λ is what a second
+		// of this call's wait is worth, in seconds per dollar, so the longest wait
+		// still in front of it divided by λ is what buying that wait back may
+		// cost. It is derived here, once, for the reason the deadline is: a
+		// second place that named a figure would be a second answer to "what may
+		// this call spend rescuing itself" (see [control.Plan.SpendUSD]).
+		SpendUSD: spendable(role),
 	}
+	plan.Purse = Spending(plan)
+	return plan
+}
+
+// spendable is [control.Plan.SpendUSD] for one role: what this call's own
+// patience is worth, in dollars.
+//
+// A ROLE NOBODY WAITS ON SPENDS NOTHING, and that is λ at zero rather than a
+// case here — the controller already refuses to act for such a role below its
+// ceiling ([hazard.reachable]), and dividing by zero to say so again would be
+// the same rule written twice. Today no role answers zero ([Lambda]'s floor is
+// [UnattendedValue]), so the guard is against a plan somebody builds by hand.
+func spendable(role Role) float64 {
+	lambda := role.Lambda()
+	if lambda <= 0 {
+		return 0
+	}
+	return role.GiveUp().Seconds() / lambda
 }
 
 // PaceFor is what THIS PROCESS believes about one pair right now.
@@ -293,28 +318,6 @@ func alternatives(choice Choice, head string) []control.Alternative {
 	}
 	return alts
 }
-
-// Spending is a budget as the rail the controller asks before it acts.
-//
-// It is a small adapter and not a method on [Budget] because the direction of
-// the dependency matters: the controller may not know what a budget is, and the
-// budget may not know what a controller is. A nil budget refuses, which is how
-// hedging is switched off and has always been.
-func Spending(budget *Budget) control.Purse { return purse{budget} }
-
-type purse struct{ budget *Budget }
-
-// Allows ASKS AND DOES NOT SPEND, which is [Budget.Affordable] and deliberately
-// not [Budget.Allow].
-//
-// The two halves of a rescue are two different moments. The controller asks
-// whether an arm is affordable while it is still deciding — a reading, and one
-// it may take several times over one silence — and the race takes the allowance
-// at the instant the arm really goes out, which is the decision. A controller
-// that reserved would leave allowances held by every request that recovered on
-// its own, and one that counted here as well would charge the budget twice for
-// one arm.
-func (p purse) Allows(usd float64, now time.Time) bool { return p.budget.Affordable(now, usd) }
 
 // ── DRIVING IT ──────────────────────────────────────────────────────────────
 

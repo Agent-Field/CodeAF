@@ -1033,7 +1033,7 @@ func runProofSeed(w *world, s scenario, c proofCase, seed, n, speedup int, trace
 
 	p := &prover{
 		world: w, scen: s, kase: c, seed: seed, stub: stub, ledger: ledger,
-		budget: lane.DefaultBudget(), client: &http.Client{},
+		client:  &http.Client{},
 		speedup: speedup, total: n, at: theMoment, trace: trace, pace: pace, mix: mix,
 		policy: policy,
 	}
@@ -1172,7 +1172,6 @@ type prover struct {
 	seed    int
 	stub    *lanestub.Server
 	ledger  lane.Ledger
-	budget  *lane.Budget
 	client  *http.Client
 	speedup int
 	total   int
@@ -1373,7 +1372,7 @@ func (p *prover) headFor(choice lane.Choice) string {
 func (p *prover) plan(choice lane.Choice, head string) control.Plan {
 	plan := lane.PlanFor(choice, p.paceFor(head), proofRole, p.at)
 	plan.Pinned = len(choice.Only) > 0
-	plan.Purse = lane.Spending(p.budget)
+	plan.Purse = lane.Spending(plan)
 	plan.Think = lane.Thinks(p.world.model, "", p.at)
 	return plan
 }
@@ -1523,8 +1522,9 @@ func (p *prover) mark(out *trial, act control.Act, asked time.Time, late time.Du
 // answer carries out the first act.
 //
 // A HEDGE GOES OUT AS A DEMAND, to the lane the controller named, and the purse
-// is SPENT here rather than where it was asked: [lane.Budget.Allow] counts the
-// arm it allows, and the controller only ever asked whether one was affordable.
+// is asked again here rather than trusted from where the controller asked it:
+// the price is this arm's own and the rail is the CALL'S BUDGET
+// ([lane.Spending]), which asks and never spends, so asking twice costs nothing.
 // An offer with a reader is left standing, because a pin is asked and this bench
 // has nobody to answer with. An offer with nobody there becomes the borrow §E
 // describes — and that conversion is this file's, not the build's.
@@ -1534,10 +1534,9 @@ func (p *prover) answer(ctx context.Context, act control.Act, primary *armed, se
 		return false
 	}
 	price := p.priceOf(act.Lane)
-	if !p.budget.Allow(p.at, price) {
+	if purse := p.plan(lane.Choice{}, act.Lane).Purse; purse != nil && !purse.Allows(price, p.at) {
 		return false
 	}
-	p.budget.NoteHedge(price, p.at)
 	out.armed, out.armPrice = true, price
 	out.usd += price
 	arm := p.open(ctx, nil, []string{act.Lane})
@@ -1598,8 +1597,6 @@ func (p *prover) close(index int, served string, out trial) {
 	if out.thought && out.answered {
 		lane.NoteThought(p.world.model, "", thinkFor, p.at)
 	}
-	p.budget.NoteRequest(p.at)
-	p.budget.NoteSpend(out.usd, p.at)
 	if p.trace {
 		fmt.Fprintf(os.Stderr, "proof %-22s/%d %4d  served %-14s %-36s action %7.2fs  s %7.2fs  $%.6f%s\n",
 			p.kase.name, p.seed, index, served, kindWords[out.kind]+"/"+out.reason+fmt.Sprintf(" W%.2f A%.2f", out.wait, out.cost), out.action, out.silence, out.usd,
@@ -1962,17 +1959,17 @@ func proofGates(rows []proofRow, store, mix, policy string) []proofGate {
 		return out
 	}
 	if !steady || !natural {
-		// THE PURSE IS WHAT BOUNDS SPENDING NOTHING ELSE BOUNDS, and it is what
-		// grades the bill wherever §K's own clause is not deciding it: on a cold
-		// store, where the arms are exploration, and on the stress mix, where
-		// the total is mostly correct rescues. The ceiling is read off the
-		// shipped budget rather than restated here, because a figure written
-		// down twice is a figure that will drift from the one the build
-		// enforces.
-		purse := 100 * lane.DefaultBudget().Share()
+		// WHAT BOUNDS SPENDING IS NOW PER CALL, SO THE AGGREGATE BAR IS THE
+		// BENCH'S OWN. The shipped rail is [control.Plan.SpendUSD] — one call's
+		// patience converted through λ — and it publishes no share of a bill for
+		// a grader to read. A bench is the thing that states a bar, so this one
+		// states it: a tenth of the bill is what the deleted purse allowed, and
+		// holding the new rail to the old number is what makes the replacement a
+		// claim rather than a hope.
+		const purse = 10.0
 		out = append(out, proofGate{
 			Criterion: "loser spend inside the purse",
-			Threshold: fmt.Sprintf("<= %.0f%% of the bill, which lane.DefaultBudget() allows", purse),
+			Threshold: fmt.Sprintf("<= %.0f%% of the bill, which the deleted purse allowed", purse),
 			Measured:  fmt.Sprintf("%.2f%% of $%.4f", spendPct, usd),
 			Where:     "every case",
 			Value:     spendPct, Gated: true, Pass: spendPct <= purse})

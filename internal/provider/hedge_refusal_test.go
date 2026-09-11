@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/lane/lanestub"
 )
 
@@ -20,7 +19,7 @@ func TestARescueTheAllowanceRefusedSaysSoOnTheRow(t *testing.T) {
 	)
 	rig.believes("A", 20, 2000)
 	rig.patience(t, 50*time.Millisecond)
-	SetHedgeBudget(lanes.NewBudget(0, 0))
+	noRescues(t)
 
 	ctx := WithLaneChoice(talking(), choiceFor(rig.model, 12*time.Millisecond))
 	if _, err := rig.client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {

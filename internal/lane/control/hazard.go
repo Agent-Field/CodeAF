@@ -292,7 +292,7 @@ func (h *hazard) Note(reading Reading) Act {
 				// The belief is per token, while one event may contain a whole
 				// batch. Normalize its interval so healthy batching keeps credit.
 				perToken := gap.Seconds() / float64(reading.Visible)
-				surprise := (math.Log(perToken) - h.plan.Gap.Mu) / h.plan.Gap.Sigma
+				surprise := (math.Log(perToken) - h.pace()) / h.plan.Gap.Sigma
 				h.drift = h.drift*decay + surprise
 				h.weight = h.weight*decay + 1
 			}
@@ -309,6 +309,46 @@ func (h *hazard) Note(reading Reading) Act {
 		h.delta = h.now
 	}
 	return h.verdict()
+}
+
+// ── THE PACE A STREAM IS HELD TO IS NOT ITS OWN ─────────────────────────────
+//
+// A MACHINE MAY NOT SET ITS OWN BAR. The gap belief the drift sum used to be
+// measured against is the SERVING lane's, re-pointed by [Controller.Serving] the
+// moment the stream says who is really answering — so a machine that has been
+// collapsing all afternoon is judged against the collapse. That is a closed
+// circle and it was measured as one: on 2026-09-11 one endpoint's believed rate
+// fell to about 6 tokens a second, after which every stream it served at 7 was
+// "keeping up", the rate never read as collapsed, and the ceiling went on
+// measuring a wire that was writing. The belief learning made the guard weaker,
+// which is the opposite of what learning is for.
+//
+// So the bar is the pace THIS QUESTION COULD BE GETTING: the best machine its
+// own plan could move to, and the serving lane's own belief where that is
+// better or where there is nowhere to move. It is the same quantity the payoff
+// half of the inequality already prices ([hazard.cost] reads
+// [Alternative.Rate]), asked of the abnormality half, which is #891 §1 in one
+// function.
+
+// pace is that bar, as the log of the seconds between two visible tokens —
+// the same unit and sign convention [Plan.Gap] is in, so the surprise below is
+// unchanged arithmetic with a different centre.
+//
+// THE SPREAD IS STILL THE SERVING LANE'S and deliberately so: how variable ONE
+// gap is is a property of the machine we are on, while where the gap OUGHT to
+// sit is a property of where we could be instead. Borrowing an alternative's
+// dispersion would be judging this stream's jitter against another machine's.
+func (h *hazard) pace() float64 {
+	best := h.plan.Gap.Mu
+	for _, alt := range h.plan.Alts {
+		if alt.Rate <= 0 {
+			continue
+		}
+		if gap := -math.Log(alt.Rate); gap < best {
+			best = gap
+		}
+	}
+	return best
 }
 
 // keepingUp reports whether the measured visible rate still earns progress.

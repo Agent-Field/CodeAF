@@ -24,7 +24,10 @@ type streamWatch struct {
 	race *hedgeRace
 	arm  int
 
-	mu      sync.Mutex
+	mu sync.Mutex
+	// plan is what this arm's controller is built from, kept so that EVERY
+	// ATTEMPT can be given one ([streamWatch.attempt]).
+	plan    control.Plan
 	control control.Controller
 	// deadline is the moment the controller last said it wanted waking at. The
 	// beat sleeps until it rather than polling, so it is compared on every
@@ -176,6 +179,60 @@ func withStreamWatch(ctx context.Context, watch *streamWatch) context.Context {
 func streamWatchFrom(ctx context.Context) *streamWatch {
 	watch, _ := ctx.Value(streamWatchContextKey{}).(*streamWatch)
 	return watch
+}
+
+// ── EVERY ATTEMPT IS WATCHED, AND IT IS THE SAME CONTROLLER EACH TIME ───────
+//
+// THE LAW: ONE CONTROLLER PER ATTEMPT OF EVERY REQUEST — the primary's, a
+// rescue arm's, and every re-ask under either of them. A watch belongs to an
+// ARM and an arm can send many times: the refusal loop under it re-encodes and
+// re-sends ([Client.send]), and until 2026-09-11 all of those attempts shared
+// one controller built at the moment the arm started. That is not a watch, it is
+// a watch of the first attempt with the rest of them inside its shadow.
+//
+// THE MEASURED CASE (2026-09-11 14:32, the owner's task). Attempt 1 drew a
+// relayed refusal; attempt 2 asked GMICloud, was served by another machine, and
+// ran 363 SECONDS — and its row carried no action, no reason and no silence at
+// all, while the 86-second attempt before it had at least said `ceiling`. Three
+// of this type's once-only rules are why, and each of them is right for one
+// attempt and wrong for a call: [streamWatch.acted] keeps the FIRST act, so the
+// row of a later attempt can never be written; the controller's own `acted` fires
+// a report once per controller; and a purse refusal is final per controller. So
+// the second attempt of a recovered call was, by construction, unwatched.
+//
+// Re-arming is not forgetting. WHAT BELONGS TO THE QUESTION STAYS — the deadline
+// and the move log are the plan's and the plan is not rebuilt — and what belongs
+// to ONE SEND is what starts again: when this send went out, what it has written,
+// who answered it, and what was done about its wait.
+
+// attempt re-arms this watch for one send of its arm, and it is called by the
+// send loop before every one of them ([Client.send]).
+//
+// IT IS UNCONDITIONAL AND HAS NO ATTEMPT NUMBER IN IT. A branch on "is this the
+// first" would be the same rule written twice — the first send is a send like
+// any other — and the first controller [hedgeRace.startArm] built is replaced by
+// one dated from the moment the bytes really leave, which is the moment the
+// person's wait actually starts.
+func (w *streamWatch) attempt(now time.Time) {
+	if w == nil || w.race == nil || w.race.build == nil {
+		return
+	}
+	plan := w.plan
+	plan.Began = now
+	plan.Alts = w.race.untriedAlts()
+	w.mu.Lock()
+	w.control = w.race.build(plan)
+	w.began, w.first, w.last, w.gap = now, time.Time{}, time.Time{}, 0
+	w.tokens, w.visible, w.beats = 0, 0, 0
+	w.served = ""
+	w.acted, w.silence, w.fault = control.Act{}, 0, false
+	w.applied, w.appliedWord = 0, ""
+	w.deadline = w.control.Deadline()
+	if !w.deadline.IsZero() {
+		w.armed = w.deadline.Sub(now)
+	}
+	w.mu.Unlock()
+	w.race.rearm()
 }
 
 // note folds one moment of the stream into the controller and does whatever it

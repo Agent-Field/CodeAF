@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/lane/lanestub"
 )
 
@@ -210,7 +209,6 @@ func TestEachArmOfARaceIsWatchedAndTheLoserIsNotAFailure(t *testing.T) {
 	// shape of a belief: ordinary jitter is never a surprise and a long silence
 	// is nothing else.
 	rig.believes("A", 2, 250)
-	SetHedgeBudget(lanes.NewBudget(1, 0))
 
 	log := &progressLog{}
 	report := &HedgeReport{}

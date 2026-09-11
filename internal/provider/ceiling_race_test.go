@@ -54,7 +54,6 @@ func ceilingRaceLanes(excludeFirstRescue bool) []lanestub.Lane {
 
 func TestARaceWalkDoesNotMistakeAnEndpointRefusalForAPriceRefusal(t *testing.T) {
 	rig := newPricedLaneRig(t, "ceiling/walk", ceilingRaceLanes(false)...)
-	SetHedgeBudget(lanes.NewBudget(6, 0))
 	ctx := WithLaneChoice(talking(), ceilingRaceChoice(rig.model))
 
 	response, err := rig.client.CompleteWithMessages(ctx, userMessages("hello"))
@@ -95,7 +94,7 @@ func TestARaceWalkDoesNotMistakeAnEndpointRefusalForAPriceRefusal(t *testing.T) 
 
 func TestARefusedCeilingClimbsTheLadderWhenThePurseFundsNoWalk(t *testing.T) {
 	rig := newPricedLaneRig(t, "ceiling/empty-purse", ceilingRaceLanes(false)...)
-	SetHedgeBudget(lanes.NewBudget(0, 0))
+	noRescues(t)
 	var notices []string
 	ctx := noticeContext(WithLaneChoice(talking(), ceilingRaceChoice(rig.model)), &notices)
 
@@ -126,7 +125,6 @@ func TestARefusedCeilingClimbsTheLadderWhenThePurseFundsNoWalk(t *testing.T) {
 
 func TestARefusedRescueClimbsTheLadderWhenThePurseFundsNoSecondWalk(t *testing.T) {
 	rig := newPricedLaneRig(t, "ceiling/one-walk", ceilingRaceLanes(true)...)
-	SetHedgeBudget(lanes.NewBudget(1, 0))
 	ctx := WithLaneChoice(talking(), ceilingRaceChoice(rig.model))
 
 	response, err := rig.client.CompleteWithMessages(ctx, userMessages("hello"))

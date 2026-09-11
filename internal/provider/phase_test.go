@@ -294,7 +294,7 @@ func TestNoCountdownIsDrawnOverARescueNobodyCanAfford(t *testing.T) {
 	)
 	rig.believes("A", 20, 2000)
 	// A budget with no bucket is how the speed guard is switched off.
-	SetHedgeBudget(lanes.NewBudget(0, 0))
+	noRescues(t)
 
 	ctx := WithLaneChoice(talking(), choiceFor(rig.model, 12*time.Millisecond))
 	if _, err := rig.client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {

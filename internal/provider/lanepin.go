@@ -156,25 +156,21 @@ func PinnedFor(model string) string {
 }
 
 // SetLaneGuard turns the speed guard on or off, and it is the ONE switch: it
-// moves the hedge budget and the probe together, because both are the same
-// promise to a person — that this build may spend a little extra to keep an
-// answer moving — and a row that turned off half of it would be a row nobody
-// could reason about.
+// moves the rescue and the probe together, because both are the same promise to
+// a person — that this build may spend a little extra to keep an answer moving —
+// and a row that turned off half of it would be a row nobody could reason about.
 //
-// OFF IS A BUDGET THAT ALLOWS NOTHING rather than a flag the race consults. The
-// budget is already the one gate every hedge passes through ([hedgeRace.hedge]),
-// so a zero allowance is the whole of "do not rescue" with no second path to
-// keep in step. The probe reads the flag directly, because a probe is not
-// budgeted in dollars — it is gated on whether anybody is waiting.
+// OFF IS A PURSE THAT REFUSES EVERYTHING rather than a flag the race consults.
+// The purse is already the one gate every rescue passes through
+// ([hedgeRace.affords]), so a purse that says no is the whole of "do not rescue"
+// with no second path to keep in step — and it is written onto the plan where
+// every arm of the question reads it (waitplan.go). The probe reads the flag
+// directly, because a probe is not priced in dollars: it is gated on whether
+// anybody is waiting.
 func SetLaneGuard(on bool) {
 	lanePinMu.Lock()
 	laneGuard = on
 	lanePinMu.Unlock()
-	if on {
-		SetHedgeBudget(nil)
-		return
-	}
-	SetHedgeBudget(lanes.NewBudget(0, 0))
 }
 
 // LaneGuardOn reports whether the speed guard is on.

@@ -595,6 +595,13 @@ func phaseFields(news PhaseNews, now time.Time) []rowField {
 		// what this surface did before — is a person watching a line that says
 		// nothing while a real wait runs.
 		return []rowField{rowSay("all lanes slow"), rowSay("still waiting"), rowSay(countUpWord(since))}
+	case provider.PhaseBelowPace:
+		// THE ANSWER IS ARRIVING AND IT IS TOO SLOW TO READ, and there is no
+		// faster machine to move it to. It is a different sentence from the one
+		// above because it is a different fact — words ARE appearing — and a
+		// person told "still waiting" while watching text arrive would stop
+		// believing this row. The clock is the wait's own and it counts up.
+		return []rowField{rowSay("answering slowly"), rowSay("nowhere faster"), rowSay(countUpWord(since))}
 	case provider.PhaseChecking, provider.PhaseTidying, provider.PhaseTakingStock:
 		// THREE WORDS WITH ONE SHAPE: a stage named by nothing but itself, and
 		// the clock a person is reading it against. `taking stock` shares the arm

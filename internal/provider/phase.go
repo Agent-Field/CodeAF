@@ -105,6 +105,23 @@ const (
 	// exactly where it was and the surface goes on counting up from the moment
 	// the wait began.
 	PhaseAllSlow Phase = "all lanes slow"
+	// PhaseBelowPace is the other half of [control.Report], and it is the half
+	// this build used to say nothing about: the endpoint IS writing, and it is
+	// writing too slowly to be worth reading, and no second machine can be
+	// started to fix it.
+	//
+	// IT IS NOT [PhaseAllSlow] AND IT IS NOT [PhaseWriting]. A person told "all
+	// lanes slow · still waiting" while words are appearing is being told about a
+	// silence they can see is not happening; a person told "writing" while 604
+	// tokens take 86 seconds is being told about a stream that is technically
+	// alive and practically stopped. On 2026-09-11 that exact call showed a
+	// person one nudge and then nothing for eighty-six seconds, because neither
+	// of the two existing words was true and the honest third one did not exist.
+	//
+	// IT IS NOT A WAIT IN [PhaseNews.Waiting]'s sense, deliberately: the answer is
+	// arriving, so the surface goes on drawing it and this word sits beside it
+	// rather than in place of it.
+	PhaseBelowPace Phase = "below pace"
 	// PhaseSwitchingModel is the LAST rung of the ladder and the only one that
 	// changes what a person asked for: every lane of the model has been tried
 	// and a fallback model is being asked instead. Then names it.
@@ -611,6 +628,22 @@ func (p *phaseClock) allSlow(detail string) {
 	// The wait's own moment survives: [phaseClock.enter] would restart it.
 	p.phase = PhaseAllSlow
 	p.say(detail, now)
+}
+
+// belowPace says this stream is writing too slowly to be worth reading and
+// nothing can be started about it ([PhaseBelowPace]).
+//
+// It keeps the moment for the same reason [phaseClock.allSlow] does: nothing has
+// changed about what the endpoint is doing, so the count a person is reading goes
+// on counting from where it was.
+func (p *phaseClock) belowPace(detail string) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.phase = PhaseBelowPace
+	p.say(detail, p.now())
 }
 
 type phaseClockContextKey struct{}

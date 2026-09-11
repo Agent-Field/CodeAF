@@ -168,7 +168,6 @@ type hedgeRace struct {
 	observer StreamObserver
 	report   *HedgeReport
 	phase    *phaseClock
-	budget   *lanes.Budget
 	base     context.Context
 	messages []ai.Message
 	options  []ai.Option
@@ -272,7 +271,6 @@ func (c *Client) raceFor(ctx context.Context, observer StreamObserver, build con
 		observer: observer,
 		report:   HedgeReportFrom(ctx),
 		phase:    phaseClockFrom(ctx),
-		budget:   currentHedgeBudget(),
 		speaker:  0,
 		winner:   -1,
 		held:     map[int][]StreamEvent{},
@@ -469,9 +467,6 @@ func (r *hedgeRace) abandon(ctx context.Context, seen map[int]armResult) (*ai.Re
 // than the race actually spent.
 func (r *hedgeRace) accountForTheAbandoned(seen map[int]armResult) {
 	r.drainArms(seen)
-	now := waitNow()
-	r.budget.NoteRequest(now)
-	r.budget.NoteSpend(r.spent(seen), now)
 }
 
 // drainArms collects what the arms report as they stop, for at most
@@ -516,7 +511,7 @@ func (r *hedgeRace) startArm(index int, lane string, ladder []byte) {
 		plan.Pinned = false
 	}
 	plan.Alts = r.untriedAlts()
-	watch := &streamWatch{race: r, arm: index, control: r.build(plan), began: now}
+	watch := &streamWatch{race: r, arm: index, plan: plan, control: r.build(plan), began: now}
 	watch.deadline = watch.control.Deadline()
 	if !watch.deadline.IsZero() {
 		watch.armed = watch.deadline.Sub(now)
@@ -670,6 +665,9 @@ func (r *hedgeRace) act(from int, act control.Act) {
 		if r.rescueOnStall(from, act) {
 			return
 		}
+		// AND A REPORT IS STILL A MOVE. Nothing could be started for this
+		// question; the next one need not meet the same machine.
+		r.exhaust(from, act)
 		// A FIRST PROMPT STILL OWES THE DOOR even when no second arm can
 		// start. Saying nothing here is the 90s hang: the stream guard is
 		// the next thing that acts, and `/model` is never named.
@@ -688,8 +686,98 @@ func (r *hedgeRace) act(from int, act control.Act) {
 	}
 }
 
-// hedge is another arm: budgeted, to a machine nobody has asked yet, and never
-// past [maxArms].
+// exhaust is the move a live wire below the pace still has when no second
+// request can be started, and the sentence that goes with it.
+//
+// ── A REPORT USED TO BE THE END OF THE STORY, AND IT IS NOT ─────────────────
+//
+// [control.Report] means "nothing can be started about this wait". Until
+// 2026-09-11 that is all it did: the row said `action report`, and the question
+// went on being answered by the machine that had earned the report, at the pace
+// that earned it. The measured case is one endpoint writing 604 tokens in 86
+// seconds with a person watching a single nudge and nothing else.
+//
+// Two things are still true when nothing can be started, and this is both of
+// them.
+//
+// THE MACHINE IS SPENT FOR THIS QUESTION. [control.Next] is the one move
+// generator and it never hands back a machine already on the plan's move log, so
+// writing the SERVING machine down there is the whole of "no arm and no attempt
+// of this question goes back to it" — the same law and the same list a refusal
+// already writes into (dispatch.go), asked of a machine that answered instead of
+// one that refused. It is asked of [control.Next] rather than decided here: a
+// question with nowhere else to go gets [control.MoveNone] and nothing is
+// written, because taking away the only machine there is would be worse than the
+// pace.
+//
+// AND THE PERSON IS TOLD. [PhaseBelowPace] is the word for a stream that is
+// writing too slowly to read with nowhere faster to send it, and it is said here
+// because this is the one place that knows both halves.
+func (r *hedgeRace) exhaust(from int, act control.Act) {
+	if r == nil || act.Reason != control.RateReason {
+		return
+	}
+	served := r.armServed(from)
+	if served == "" {
+		return
+	}
+	if move := control.Next(r.plan, r.plan.Moves.List()); move.Kind == control.MoveMachine {
+		r.claimMove(served)
+	}
+	r.phase.belowPace("")
+}
+
+// armServed is the machine one arm's stream said was answering it, empty while
+// nothing has named one — the attribution law, kept here as everywhere else.
+func (r *hedgeRace) armServed(index int) string {
+	r.mu.Lock()
+	arm := r.armAt(index)
+	r.mu.Unlock()
+	if arm == nil {
+		return ""
+	}
+	return arm.watch.lane()
+}
+
+// planCannotPay is what a row says when the one thing that stopped a rescue was
+// the CALL'S OWN BUDGET: what this question may spend buying its wait back,
+// which is its patience converted through λ ([control.Plan.SpendUSD]).
+//
+// IT REPLACED THE WORD `budget`, WHICH NAMED THE WRONG THING. That word meant a
+// rolling process-wide allowance — two rescues in any twenty requests — so a row
+// carrying it said "some other request spent this one's rescue", which is a fact
+// about arrival order and not about this call at all. There is no such
+// allowance any more (internal/lane's hedge.go), and a refusal that reaches a
+// row now names the only rail there is.
+const planCannotPay = "plan cannot pay"
+
+// affords reports whether this call's own budget can pay for one more arm on
+// this machine.
+//
+// IT IS THE ONE DOOR, asked by the controller's hedge, by the stall rescue, by
+// the walk past a refusal and by the surface before it draws a countdown over a
+// rescue — because a promise the rail was always going to refuse is the surface
+// lying about the machinery ([hedgeRace.affordableAlt]). It ASKS AND DOES NOT
+// SPEND ([lane.Spending]), so asking it twice over one silence costs nothing and
+// no question is charged for an arm it never started.
+func (r *hedgeRace) affords(alt string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.affordsLocked(alt)
+}
+
+// affordsLocked is the same reading for a caller already holding the lock. A
+// plan with no purse is UNBOUNDED and not empty: nobody priced it, which is the
+// state of every plan a test or a bench builds by hand.
+func (r *hedgeRace) affordsLocked(alt string) bool {
+	if r.plan.Purse == nil {
+		return true
+	}
+	return r.plan.Purse.Allows(r.estimateLocked(alt, r.expected), waitNow())
+}
+
+// hedge is another arm: paid for out of the call's own budget, to a machine
+// nobody has asked yet, and never past [maxArms].
 func (r *hedgeRace) hedge(from int, act control.Act, alt string) {
 	var why string
 	wanted := alt
@@ -699,13 +787,13 @@ func (r *hedgeRace) hedge(from int, act control.Act, alt string) {
 		r.recordHedge(wanted, why, false)
 		return
 	}
-	if !r.budget.Allow(waitNow(), r.estimate(alt, r.expected)) {
+	if !r.affords(alt) {
 		r.mu.Lock()
 		r.refused = true
-		r.rememberRefusalLocked("budget")
+		r.rememberRefusalLocked(planCannotPay)
 		r.releaseMove(alt)
 		r.mu.Unlock()
-		r.recordHedge(alt, "budget", false)
+		r.recordHedge(alt, planCannotPay, false)
 		return
 	}
 	r.mu.Lock()
@@ -762,11 +850,11 @@ func (r *hedgeRace) recordHedge(alt, reason string, fired bool) {
 // rescueOnStall starts the second arm a stall is owed, without waiting for
 // the primary to die.
 //
-// THE PURSE STILL GATES THIS. A wait at the ceiling is the role's bound, but
-// answering it with another request is spending and follows the same law as
-// every other hedge. claim is asked `past` so an earlier refusal may be
-// reconsidered if the rolling budget has since opened; [lanes.Budget.Allow]
-// makes the decision again at the moment the rescue would start.
+// THE CALL'S OWN BUDGET STILL GATES THIS. A wait at the ceiling is the role's
+// bound, but answering it with another request is spending and follows the same
+// law as every other hedge. claim is asked `past` so an earlier refusal may be
+// reconsidered — a machine that has sat past the ceiling without dying must not
+// go unanswered because a slowness hedge was refused a moment earlier.
 func (r *hedgeRace) rescueOnStall(from int, act control.Act) bool {
 	if r == nil || r.base == nil || r.base.Err() != nil {
 		return false
@@ -776,10 +864,10 @@ func (r *hedgeRace) rescueOnStall(from int, act control.Act) bool {
 		r.rememberRefusal(why)
 		return false
 	}
-	if !r.budget.Allow(waitNow(), r.estimate(alt, r.expected)) {
+	if !r.affords(alt) {
 		r.mu.Lock()
 		r.refused = true
-		r.rememberRefusalLocked("budget")
+		r.rememberRefusalLocked(planCannotPay)
 		r.releaseMove(alt)
 		r.mu.Unlock()
 		return false
@@ -889,7 +977,7 @@ func (r *hedgeRace) claim(preferred string, past bool) (lane, why string) {
 	// caller stops at a refusal, which is what keeps one refusal from
 	// becoming a poll.
 	if r.refused && !past {
-		return "", "budget"
+		return "", planCannotPay
 	}
 	// AND THE RESERVATION IS A MOVE ON THE PLAN. [control.MoveLog.Add] answers
 	// false for a machine this question has already taken, so the claim and the
@@ -1111,7 +1199,7 @@ func (r *hedgeRace) affordableAlt() (string, bool) {
 	if alt == "" || refused || full {
 		return "", false
 	}
-	return alt, r.budget.Affordable(waitNow(), r.estimate(alt, r.expected))
+	return alt, r.affords(alt)
 }
 
 // walk is the second rung: the rescue we sent was refused or broke, nobody has
@@ -1122,7 +1210,8 @@ func (r *hedgeRace) affordableAlt() (string, bool) {
 // by the controller; this is a response to a lane that has FAILED, and the
 // request it replaces is already gone. That is why it is not gated by the
 // purse's earlier refusal — one refusal must not spend the rescue a slow lane
-// is still owed — and why it is gated by the budget and by [maxArms] instead.
+// is still owed — and why it is gated by the call's own budget and by [maxArms]
+// instead.
 //
 // THE PRIMARY IS NEVER WALKED FROM. An arm that is still streaming has not
 // failed, and the controller is the only thing allowed to give up on it.
@@ -1158,7 +1247,7 @@ func (r *hedgeRace) walk(from int, cause error) {
 	r.mu.Lock()
 	index := len(r.arms)
 	r.mu.Unlock()
-	if !r.budget.Allow(waitNow(), r.estimate(alt, r.expected)) {
+	if !r.affords(alt) {
 		return
 	}
 	r.report.started(refusal.news(alt))
@@ -1432,7 +1521,7 @@ func (r *hedgeRace) walkAvailable() bool {
 		if lane == "" || r.plan.Moves.Tried(lane) || !lanes.Serves(r.model, lane) {
 			continue
 		}
-		return r.budget.Affordable(waitNow(), r.estimateLocked(lane, r.expected))
+		return r.affordsLocked(lane)
 	}
 	return false
 }
@@ -1501,7 +1590,7 @@ func (r *hedgeRace) takeRefusal(body []byte) bool {
 		if lane == "" || r.plan.Moves.Tried(lane) || !lanes.Serves(r.model, lane) {
 			continue
 		}
-		if !r.budget.Affordable(waitNow(), r.estimateLocked(lane, r.expected)) {
+		if !r.affordsLocked(lane) {
 			return false
 		}
 		r.ladderOwed = true
@@ -1674,7 +1763,6 @@ func (r *hedgeRace) settle(result armResult, seen map[int]armResult) (*ai.Respon
 	r.withdraw()
 	r.mu.Lock()
 	arms := append([]*hedgeArm(nil), r.arms...)
-	hedged := len(arms) > 1
 	model := r.model
 	r.mu.Unlock()
 	// The model as the ANSWER spelled it, because a router may pin a variant
@@ -1717,16 +1805,15 @@ func (r *hedgeRace) settle(result armResult, seen map[int]armResult) (*ai.Respon
 			lanes.Default().Ledger().Note(sighting)
 		}
 	}
-	// The two denominators of the budget: every dollar this adapter is seen to
-	// spend, and every request it is seen to make. Both are noted on every
-	// watched call, hedged or not — the rate limit is counted in REQUESTS rather
-	// than in minutes, so a request that never reports leaves the allowance
-	// looking emptier than it is.
-	now := waitNow()
-	r.budget.NoteRequest(now)
-	r.budget.NoteSpend(r.spent(seen), now)
+	// AND NOTHING IS BILLED TO A WINDOW. There were two rolling denominators here
+	// — every dollar this adapter was seen to spend and every request it was seen
+	// to make — and both belonged to a process-wide allowance that no longer
+	// exists (internal/lane's hedge.go). What a call may spend is its own budget,
+	// asked before an arm goes out and never tallied afterwards, so the only money
+	// this loop still adds up is what the ROW says: the waste, which is a figure a
+	// person reads and not a rail anything is decided on.
 	winner, loser, primary := "", "", ""
-	var waste, second float64
+	var waste float64
 	for _, arm := range arms {
 		if arm.index == result.index {
 			winner = laneOf(arm)
@@ -1743,16 +1830,6 @@ func (r *hedgeRace) settle(result armResult, seen map[int]armResult) (*ai.Respon
 		if arm.index == 0 {
 			primary = laneOf(arm)
 		}
-		if arm.index > 0 {
-			// EVERY RESCUE IS CHARGED, not only the first one. The walk can put
-			// a third and a fourth request on the wire, and a budget that only
-			// ever saw the second would let a walk spend the session's whole
-			// share while believing it had spent one arm's.
-			second += r.armCost(seen, arm)
-		}
-	}
-	if hedged {
-		r.budget.NoteHedge(second, now)
 	}
 	r.report.note(func(report *HedgeReport) {
 		report.winner, report.loser, report.primary = winner, loser, primary
