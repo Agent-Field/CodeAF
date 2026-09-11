@@ -241,7 +241,11 @@ also takes the index lock when it refreshes, which the worker's own `git add` ne
 **What is true now.** A `treeWatch` is read **at most once a batch**, by the first call
 of the batch that could have changed the tree (`couldChangeTheTree`, keyed on the
 belt's classes). Reading hands, harness refusals and saves that name their file ask
-nothing. The reading is an `offpath.Reading`, the type lane L6 (#876) built for
+nothing. A batch whose only change WAS a save would leave the fingerprint a batch
+behind the tree, and the next batch's first command would be handed the movement the
+save made — so that batch spends its one reading at the end of itself
+(`childRun.batchSettled`), for the fingerprint and for no verdict, at the moment the
+batch is over and the next request has not gone. The reading is an `offpath.Reading`, the type lane L6 (#876) built for
 looped.go's twin of this reading, settled within `lane.Hysteresis`. A tree git cannot
 read that fast is credited a batch late and does not hold the drain. The watch belongs
 to the run, and `runTaskChild` closes it on the way out, which kills a reading in flight

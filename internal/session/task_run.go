@@ -6074,7 +6074,7 @@ func (n *TaskNode) reported() bool {
 // own working state was punished for exploring. When a hand is added to belt(),
 // it belongs here or it belongs to [savingTools], and one of the two is almost
 // always true; a hand that is neither is caught by the worktree anyway
-// ([worktreeMoved]) on any step where it actually left something behind.
+// ([treeWatch]) on any batch where it actually left something behind.
 //
 // What is deliberately ABSENT: every hand in [savingTools] (they are counted as
 // the file they saved, one branch up — except on a call that saved nothing,
@@ -6134,7 +6134,7 @@ var knowledgeTools = map[string]bool{
 // says nothing about which one this was — so a command whose output the node has
 // never read counts as the world answering a question it has never asked, and
 // the writing half of the same call is answered by the worktree, one caller up
-// ([worktreeMoved]), which asks it of every hand rather than of this one.
+// ([childRun.batchMoved]), which asks it of the batch rather than of this hand.
 //
 // It RECORDS AS IT ANSWERS, so the caller must ask it on every step and never
 // behind a short-circuit: a result that was already progress for some other
@@ -6184,7 +6184,7 @@ func couldHaveTaught(event Event) bool {
 // answers:
 //
 //   - it SAVED a file ([producedAFile], on a call that ended rather than failed);
-//   - it CHANGED THE WORKTREE ([worktreeMoved]), which is the backstop under
+//   - it CHANGED THE WORKTREE ([childRun.batchMoved]), which is the backstop under
 //     every hand nobody classified;
 //   - it TAUGHT the node something ([taughtSomething] → [progressLedger.read]),
 //     which is now three questions and not one — see the ledger for why.
@@ -6311,7 +6311,7 @@ const aforgeDroppings = ".aforge-v3"
 // A call that saved something under a name it did NOT give — generate_image
 // with no path, which lands under a timestamped name of its own — is not
 // nameable from the arguments and is not listed here as a file. It is still
-// progress: the worktree noticed it ([worktreeMoved]). What it is NOT is
+// progress: the worktree noticed it ([treeWatch]). What it is NOT is
 // something that comes home on its own. Inside a node the unnamed picture lands
 // in the harness's own corner (landing.go's ImagesDir over a node's empty
 // Place), which is the one directory a landing never stages; a node whose

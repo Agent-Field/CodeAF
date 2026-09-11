@@ -75,12 +75,14 @@ type childRun struct {
 	seen    map[string]bool
 	ledger  *progressLedger
 	// tree is the node's working copy, read at most once a batch ([treeWatch]).
-	// inFlight counts the calls this batch has begun and not yet finished, and
-	// treeAsked says the batch's one reading has been spent — a batch is the
-	// calls between the first begin after nothing was open and the last end.
+	// inFlight counts the calls this batch has begun and not yet finished,
+	// treeAsked says the batch's one reading has been spent, and treeSaved says
+	// something in this batch saved a file — a batch is the calls between the
+	// first begin after nothing was in flight and the last end.
 	tree      *treeWatch
 	inFlight  int
 	treeAsked bool
+	treeSaved bool
 	failure   error
 	stopped   string
 	steps     int
@@ -346,6 +348,7 @@ func (r *childRun) observe(event Event) {
 	case EventToolEnd, EventToolFailed:
 		r.batchEnded()
 		r.step(event)
+		r.batchSettled()
 		r.tellSpend()
 	case EventTurnDone:
 		r.tellSpend()
@@ -400,9 +403,9 @@ func (r *childRun) tellSpend() {
 // and never EventToolFailed, because an edit whose oldText did not match changed
 // nothing and a node repeating it is the exact spin the counter exists to
 // catch), a step that left the worktree different from how it found it
-// ([worktreeMoved]), or a step that TAUGHT the node something it did not know
-// ([taughtSomething]). What the counter kills is the fourth thing: the same call
-// again, changing nothing, learning nothing.
+// ([childRun.batchMoved]), or a step that TAUGHT the node something it did not
+// know ([taughtSomething]). What the counter kills is the fourth thing: the same
+// call again, changing nothing, learning nothing.
 //
 // AND "TAUGHT" IS ASKED OF THE SHAPE IT WAS BUILT FOR. A reading taken over a
 // deliverable that has just changed is information by construction, and so is a
@@ -909,7 +912,7 @@ func (r *childRun) now() time.Time { return r.child.taskClockNow() }
 // goes below nothing.
 func (r *childRun) batchBegan() {
 	if r.inFlight == 0 {
-		r.treeAsked = false
+		r.treeAsked, r.treeSaved = false, false
 	}
 	r.inFlight++
 }
@@ -920,12 +923,30 @@ func (r *childRun) batchEnded() {
 	}
 }
 
+// batchSettled is the end of a batch: its last call has been read, the next
+// request has not gone, and nothing in the world is writing in this tree.
+//
+// A BATCH WHOSE ONLY CHANGE WAS A SAVE NEVER ASKED THE TREE, because a save that
+// names its file is its own evidence — so the watch's fingerprint would be one
+// batch out of date, and the next batch's first command would be credited with
+// the movement that save made. One reading here, whose answer nobody is given,
+// puts the fingerprint back on the tree. The batch still asks at most once: this
+// is the reading the batch did not spend.
+func (r *childRun) batchSettled() {
+	if r.inFlight > 0 || r.treeAsked || !r.treeSaved {
+		return
+	}
+	r.treeAsked = true
+	_ = r.tree.moved(lane.Hysteresis)
+}
+
 // batchMoved answers whether THIS call moved the node's working copy. THE TREE
 // IS ASKED ONCE A BATCH, by the first call of it that could have changed
 // anything ([couldChangeTheTree]), and that call is the one that moved it
 // ([treeWatch]). Every other call of the batch reads the answer as spent, which
 // is what a second `git status` of the same finished batch would have said.
 func (r *childRun) batchMoved(event Event, saved bool) bool {
+	r.treeSaved = r.treeSaved || saved
 	if r.treeAsked || !couldChangeTheTree(event, saved) {
 		return false
 	}
@@ -959,6 +980,14 @@ func (r *childRun) batchMoved(event Event, saved bool) bool {
 // have changed anything ([couldChangeTheTree]), and that call is the one that
 // moved it; the rest of the batch reads the answer as spent. A batch made only
 // of reading hands asks nothing at all, which is most of a node's exploring.
+//
+// AND A BATCH WHOSE ONLY CHANGE WAS A SAVE SPENDS ITS READING AT THE END OF
+// ITSELF ([childRun.batchSettled]). A save that names its file is its own
+// evidence and asks nothing, which would leave this fingerprint one batch behind
+// the tree — and the next batch's first command would then be handed movement
+// that was the save's. That reading takes no verdict; it only puts the
+// fingerprint back on the tree, at the one moment in a run when the batch is
+// over and the next request has not gone.
 //
 // AND THE READING IS TAKEN BESIDE THE RUNNER, NOT IN FRONT OF IT. It is an
 // [offpath.Reading] — the one shape this build has for "a fact gathered in the

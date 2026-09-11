@@ -37,6 +37,7 @@ func batch(run *childRun, calls ...Event) []bool {
 		run.batchEnded()
 		_, wrote := changedPath(call, "")
 		moved[index] = run.batchMoved(call, wrote && call.Kind == EventToolEnd)
+		run.batchSettled()
 	}
 	return moved
 }
@@ -77,16 +78,19 @@ func TestABatchAsksItsTreeOnceAndReadingHandsNever(t *testing.T) {
 	// A save that names its file is its own evidence and asks nothing; neither
 	// does a call the harness refused, which never reached the world.
 	if moved := batch(run, edit, refused); moved[0] || moved[1] {
-		t.Fatalf("moved = %v; a named save and a refusal need no reading", moved)
+		t.Fatalf("moved = %v; a named save and a refusal are not credited by the tree", moved)
 	}
-	if n := readings.Load(); n != 1 {
-		t.Fatalf("a named save or a refusal asked the tree; readings = %d, want still 1", n)
+	// Neither of them asked the tree for a verdict, and the reading the batch did
+	// not spend is spent at the end of it so the fingerprint does not go stale
+	// (TestABatchThatOnlySavedLeavesNoStaleFingerprint).
+	if n := readings.Load(); n != 2 {
+		t.Fatalf("readings = %d after a batch that only saved, want its one end-of-batch reading", n)
 	}
 
 	// And the next batch has its own one reading to spend.
 	batch(run, bash)
-	if n := readings.Load(); n != 2 {
-		t.Fatalf("the next batch's command did not ask the tree; readings = %d, want 2", n)
+	if n := readings.Load(); n != 3 {
+		t.Fatalf("the next batch's command did not ask the tree; readings = %d, want 3", n)
 	}
 }
 
@@ -167,5 +171,50 @@ func TestTheRunnerReadsItsTreeOnlyThroughTheWatch(t *testing.T) {
 			}
 			return true
 		})
+	}
+}
+
+// A BATCH THAT ONLY SAVED PUTS THE FINGERPRINT BACK WHERE THE TREE IS. A save
+// names its file and needs no reading, so without this the watch would still be
+// holding the fingerprint from before the save — and the next batch's first
+// command would be handed the movement the save made, resetting the no-progress
+// counter for a command that did nothing.
+func TestABatchThatOnlySavedLeavesNoStaleFingerprint(t *testing.T) {
+	var readings atomic.Int64
+	var tree atomic.Value
+	tree.Store("before")
+	watch := newTreeWatch(t.TempDir())
+	watch.read = func(context.Context, string) string {
+		readings.Add(1)
+		return tree.Load().(string)
+	}
+	t.Cleanup(watch.close)
+	run := &childRun{tree: watch}
+
+	bash := Event{Kind: EventToolEnd, Tool: "bash", Args: `{"command":"go build"}`}
+	edit := Event{Kind: EventToolEnd, Tool: "edit", Args: `{"path":"a.go","oldText":"a","newText":"b"}`}
+
+	// A first batch, so the fingerprint is on the tree rather than on nothing.
+	batch(run, bash)
+	if n := readings.Load(); n != 1 {
+		t.Fatalf("readings = %d after the first batch, want 1", n)
+	}
+
+	// A batch of saves alone: nobody is credited by the tree, and the reading it
+	// did not spend is spent at the end of it.
+	tree.Store("after the save")
+	if moved := batch(run, edit, edit); moved[0] || moved[1] {
+		t.Fatalf("moved = %v; a save that names its file is credited by its file", moved)
+	}
+	if n := readings.Load(); n != 2 {
+		t.Fatalf("readings = %d after a batch of saves, want the batch's own one", n)
+	}
+
+	// And the command in the next batch is not handed the save's movement.
+	if moved := batch(run, bash); moved[0] {
+		t.Fatal("a command that changed nothing was credited with the save's movement from the batch before")
+	}
+	if n := readings.Load(); n != 3 {
+		t.Fatalf("readings = %d, want one for each of the three batches", n)
 	}
 }
