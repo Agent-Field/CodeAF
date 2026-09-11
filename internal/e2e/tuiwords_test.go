@@ -477,6 +477,13 @@ var tuiWords = map[string]tuiWord{
 		screen: "/task <brief> starts work",
 		why:    "the greeting's own starter line, and the door a person is pointed at before they have typed anything",
 	},
+	"refusedCallRowWord": {
+		screen: "the call was refused",
+		pkg:    "internal/tui3",
+		why: "the whole of what a refused call's row draws for the person (feed.go's refusedCallWord), and the tail " +
+			"of task.go's taskFormingRefused card. The schema's own `Invalid arguments:` sentence is mail for the model: " +
+			"it stays in the tool result and behind ctrl+o, and the suite asserts it is ABSENT from the screen",
+	},
 
 	// ── the roster column, and the difference between empty and ignorant ─────
 	//
