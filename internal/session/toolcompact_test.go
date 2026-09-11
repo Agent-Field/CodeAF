@@ -630,14 +630,75 @@ func TestTheOneLineFallbackStillNamesASource(t *testing.T) {
 
 // BenchmarkCompactToolHistory is evidence rather than a gate: the walk is linear
 // in the call count by construction, and this is what the constant looks like.
+//
+// `cold` is a fresh agent per iteration, which is what this pass cost on EVERY
+// request before the memo existed; `warm` is one agent asked again, which is
+// what a second request of the same round costs now.
 func BenchmarkCompactToolHistory(b *testing.B) {
 	for _, rounds := range []int{100, 400, 1600} {
 		messages := toolCompactMessages(rounds, 1)
-		b.Run(fmt.Sprintf("rounds=%d", rounds), func(b *testing.B) {
+		b.Run(fmt.Sprintf("cold/rounds=%d", rounds), func(b *testing.B) {
 			for iteration := 0; iteration < b.N; iteration++ {
 				compactedFixture(messages, len(messages), nil)
 			}
 		})
+		b.Run(fmt.Sprintf("warm/rounds=%d", rounds), func(b *testing.B) {
+			agent := &Agent{}
+			agent.compactToolHistory(messages, len(messages), nil)
+			b.ResetTimer()
+			for iteration := 0; iteration < b.N; iteration++ {
+				agent.compactToolHistory(messages, len(messages), nil)
+			}
+		})
+	}
+}
+
+// THE FROZEN PREFIX IS REDUCED ONCE, NOT ONCE PER REQUEST. The prefix cannot
+// change by definition — the turn records its boundary before its first request
+// — and this pass was rebuilding every reduced view from scratch on each one,
+// digesting the whole of every old result to find its pointer each time.
+func TestAFrozenPrefixIsReducedOncePerConversationAndNotPerRequest(t *testing.T) {
+	messages := toolCompactMessages(60, 1)
+	var pointers int
+	source := resultSource(func(ai.Message) string {
+		pointers++
+		return "logs/stubs/x.txt"
+	})
+
+	agent := &Agent{}
+	first := agent.compactToolHistory(messages, len(messages), source)
+	afterFirst := pointers
+	if afterFirst == 0 {
+		t.Fatal("the first pass resolved no pointers, so there is nothing to memoise")
+	}
+
+	second := agent.compactToolHistory(messages, len(messages), source)
+	if pointers != afterFirst {
+		t.Fatalf("a second request over the same frozen prefix resolved %d more pointers, want none",
+			pointers-afterFirst)
+	}
+	// AND IT IS THE SAME BYTES, which is what the provider's encode memo needs:
+	// a view recomposed per request compares equal only after walking its text.
+	for index := range first {
+		if messageContentText(first[index]) != messageContentText(second[index]) {
+			t.Fatalf("message %d differs between two requests of one round", index)
+		}
+	}
+
+	// A MESSAGE THAT ACTUALLY MOVED IS REDUCED AGAIN. The end-of-turn stubbing
+	// pass rewrites frozen results in place, and a memo that answered for one of
+	// those would be describing a result that is no longer there.
+	moved := append([]ai.Message(nil), messages...)
+	for index, message := range moved {
+		if message.Role == "tool" {
+			moved[index] = replaceToolText(message, strings.Repeat("changed ", 4000))
+			break
+		}
+	}
+	before := pointers
+	agent.compactToolHistory(moved, len(moved), source)
+	if pointers == before {
+		t.Fatal("a frozen result that was rewritten was answered from the memo")
 	}
 }
 

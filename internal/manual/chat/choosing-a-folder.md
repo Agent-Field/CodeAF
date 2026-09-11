@@ -421,6 +421,17 @@ been shown what changed and said so. See `## /land` below.
 are standing in and touches whatever it names, including files in a folder you chose. Only
 the model's `read`, `write` and `edit` go through the copy.
 
+**The copy is made the moment you choose the folder, not the first time something
+is written.** You may see one dim line while it happens — `preparing · a working
+copy of <folder>` — which is a branch being taken or, for a plain folder, a copy
+being made. It runs while you are reading your own screen, so by the time the
+model writes anything it is already there. It used to be made inside that first
+write instead, which is why an edit into a large repository used to sit for
+seconds with nothing on screen to say why.
+
+If the copy cannot be made at all, nothing is refused: the write goes to the real
+folder, exactly as it would have before you chose one.
+
 ## /land — merge what you did into my folder, put the changes in, land the work, I committed or rebased before landing
 
 `/land` on its own shows what is waiting and moves nothing:

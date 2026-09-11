@@ -80,10 +80,12 @@ const (
 	// Calling it auxiliary bought it a background errand's patience, which is how
 	// a look at a screenshot came to be allowed four and a half minutes.
 	//
-	// IT IS NOT [RoleMedia] EITHER. Media is work that MAKES something — a
-	// picture, a piece of music, a transcription — and is drawn as drawing; this
-	// is a model reading something and answering in text, and the answer is a
-	// tool result rather than anything a person reads arriving.
+	// IT IS NOT [RoleMedia] EITHER, and the difference there is what comes back.
+	// Media is work that MAKES something — a picture, a piece of music — and
+	// produces no token stream at all, which is what excludes it from the token
+	// controller. This produces TEXT, so it is watched like every other role that
+	// does; what is not true of it is that anybody READS that text arriving,
+	// which is [RoleFacts.Visible] and is false here.
 	RoleTool Role = "tool"
 	// THERE IS NO ROLE FOR A HEDGE, and the absence is the law. The second
 	// request of a race is the SAME ERRAND as the first — the same person is
@@ -298,11 +300,12 @@ var roles = map[Role]RoleFacts{
 	RoleProbe:          {Interactive: false, Horizon: 1, Visible: false, Streams: true, Verb: "writing", Patience: 0.5},
 	// A hand's question: somebody IS waiting (the tool row is open in front of
 	// them), the answer is not on the path to anything else, it is one shot with
-	// no conversation behind it, its text is never drawn, it is never streamed,
-	// and it is as impatient as talk because the wait is the person's own.
-	RoleTool: {Interactive: true, QualityNeed: 0.8, Horizon: 1, Visible: false, Streams: false, Verb: "writing", Patience: 1},
-	RoleMedia:          {Interactive: true, Horizon: 1, Visible: true, Streams: false, Verb: "drawing", Patience: 6},
-	RoleUnknown:        {Interactive: false, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 3},
+	// no conversation behind it, its text is never DRAWN though it is text and is
+	// watched as text, and it is as impatient as talk because the wait is the
+	// person's own.
+	RoleTool:    {Interactive: true, QualityNeed: 0.8, Horizon: 1, Visible: false, Streams: true, Verb: "writing", Patience: 1},
+	RoleMedia:   {Interactive: true, Horizon: 1, Visible: true, Streams: false, Verb: "drawing", Patience: 6},
+	RoleUnknown: {Interactive: false, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 3},
 }
 
 // Facts is what is believed about a role. An unregistered role reads as
