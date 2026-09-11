@@ -137,6 +137,99 @@ func TestANamedRefusalGoesToAnotherMachineWithNoWait(t *testing.T) {
 	}
 }
 
+// TestOnlyADemandExemptsAMachineFromTheVetoLaw is the law the exemption states,
+// asked of the exemption itself.
+//
+// THE EXEMPTION IS FOR A REQUEST THAT DEMANDED ONE MACHINE, because the encoder
+// leaves a demand down to its last name exactly as it stands and never vetoes it
+// ([Client.dropRefusedHere]) — so that machine was never taken off anything and
+// its refusal proves nothing about whether vetoes work.
+//
+// A CANDIDATE SET OF ONE IS NOT A DEMAND. It is this build's own belief about
+// which machines are worth choosing between — an advisory ranking sent with
+// fallbacks left on, every name of which the encoder vetoes freely — and a model
+// this process has timed exactly one machine for has a set of one while the
+// router still has the whole pool. The exemption used to ask [requestSet], which
+// answers the WIDER question ("which machines may this request go to") and folds
+// that belief in with the two real demands, so the narrowest belief this build
+// can hold was exempted from the law its own doc comment described.
+func TestOnlyADemandExemptsAMachineFromTheVetoLaw(t *testing.T) {
+	t.Parallel()
+	one := func(names ...string) *lanes.Choice {
+		choice := &lanes.Choice{Order: names}
+		for _, name := range names {
+			choice.Frontier = append(choice.Frontier, lanes.Scored{ID: lanes.ID{Lane: name}})
+		}
+		return choice
+	}
+	demand := func(names ...string) *lanes.Choice {
+		choice := one(names...)
+		choice.Only = names
+		return choice
+	}
+	for _, probe := range []struct {
+		what  string
+		knobs callKnobs
+		want  bool
+	}{
+		{"a rescue's arm demands the machine it was sent to",
+			callKnobs{hedgeLane: "Wafer"}, true},
+		{"a person's strict pin demands the machine they named",
+			callKnobs{laneChoice: demand("Wafer")}, true},
+		{"a demand of two is not one machine wide",
+			callKnobs{laneChoice: demand("Wafer", "Novita")}, false},
+		{"a candidate set of one is a belief, not a demand",
+			callKnobs{laneChoice: one("Wafer")}, false},
+		{"a candidate set of two is not either",
+			callKnobs{laneChoice: one("Wafer", "Novita")}, false},
+		{"a call that named nothing demands nothing",
+			callKnobs{}, false},
+	} {
+		if got := demandedThisOne(probe.knobs, "Wafer"); got != probe.want {
+			t.Errorf("%s: the machine reads as demanded=%v, want %v", probe.what, got, probe.want)
+		}
+	}
+	// AND A REFUSAL FROM NOBODY IS NOT A DEMAND FOR ANYBODY, whatever was asked
+	// for: with no name on the refusal there is no machine for the law to be
+	// about, so the exemption may not fire on the demand alone.
+	if demandedThisOne(callKnobs{hedgeLane: "Wafer"}, "") {
+		t.Error("a refusal that named nobody exempted the machine the request demanded")
+	}
+}
+
+// TestOneMachineBelievedInIsStillNotADemand is the same law on the wire: a call
+// whose whole candidate set is the machine that keeps refusing it still finds
+// that out once and hands the refusal up, rather than paying for the discovery
+// again.
+func TestOneMachineBelievedInIsStillNotADemand(t *testing.T) {
+	rig, waits := wafered(t, "wafer/onebelief", true)
+	// The chooser has timed one machine and ranks only it. Nothing demands it:
+	// `Only` is empty, so the body goes out with fallbacks on and the router is
+	// free to serve anybody — and does, with the machine that keeps refusing.
+	choice := asking(rig.model)
+	choice.Order = []string{"Wafer"}
+	choice.Frontier = choice.Frontier[:1]
+	choice.Frontier[0].ID.Lane = "Wafer"
+	ctx := WithLaneChoice(WithPatientRateLimits(talking()), choice)
+
+	_, err := rig.client.CompleteWithMessages(ctx, userMessages("hello"))
+
+	for _, ask := range rig.server.Asks() {
+		if len(ask.Only) > 0 {
+			t.Fatalf("the body demanded %v; this scenario is about an ADVISORY set and proves nothing if one is sent", ask.Only)
+		}
+	}
+	if sent := rig.server.Requests("Wafer"); sent > 2 {
+		t.Errorf("the call sent %d requests to a machine it had already vetoed, want at most the one that proved the veto useless", sent)
+	}
+	if spent := total(waits()); spent > lanes.VisiblePatience {
+		t.Errorf("the call waited %s on one machine it merely believed in, want no more than %s", spent, lanes.VisiblePatience)
+	}
+	if err != nil && !strings.Contains(err.Error(), "429") {
+		t.Fatalf("the call failed with %v, want the pacing a model hop is offered on", err)
+	}
+}
+
 // total is how long a call asked to be paused for, all told.
 func total(waits []time.Duration) time.Duration {
 	var spent time.Duration

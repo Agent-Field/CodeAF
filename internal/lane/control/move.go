@@ -248,9 +248,15 @@ func Next(plan Plan, history []Move) Move {
 		// comeback the refusal named, once, and then the model, which is the
 		// session's and is always faster than a window.
 		if plan.AccountRefused {
+			//
+			// AND THE WAIT NAMES NO MACHINE, because no machine earned it. The
+			// head of the serving set is this build's best belief about where the
+			// next request would go; writing it here would file the account's own
+			// ceiling against a machine that had nothing to do with it, on the
+			// log line and in the sentence a person reads.
 			if plan.Comeback > 0 && !madeKind(history, MoveWait) {
 				return Move{
-					Kind: MoveWait, Model: plan.Model, Lane: plan.head(),
+					Kind: MoveWait, Model: plan.Model,
 					Shape: shape, Wait: plan.Comeback,
 				}
 			}

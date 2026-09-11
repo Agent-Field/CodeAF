@@ -409,7 +409,7 @@ func (workPolicy) Class() Class { return Work }
 
 func (workPolicy) Decide(e Evidence, _ Limits) Verdict {
 	reason := "the work did not come back done"
-	if e.Status >= 400 && e.Upstream == "" {
+	if e.Status >= 400 && !e.Named() {
 		reason = "the request itself was refused"
 	}
 	return Verdict{Action: ActionReport, Reason: reason}

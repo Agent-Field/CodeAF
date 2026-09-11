@@ -262,7 +262,10 @@ func TestANilMoveLogIsEmptyAndDecidesNothing(t *testing.T) {
 // a machine move it could not name.
 func TestAnAccountCeilingGetsOneComebackAndThenTheModel(t *testing.T) {
 	t.Parallel()
-	plan := planOf("m", nil, nil, 3*time.Second)
+	// THE SET HAS A HEAD, which is what gives the last assertion teeth: this
+	// build believes `A` is where the next request would go, and the wait must
+	// still name nobody, because nobody is who the account's ceiling was about.
+	plan := planOf("m", []string{"A", "B"}, nil, 3*time.Second)
 	plan.AccountRefused = true
 
 	made := walk(plan)

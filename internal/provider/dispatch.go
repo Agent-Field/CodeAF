@@ -303,15 +303,33 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	// body and every machine is behind the same ceiling, which is the move
 	// generator's ([control.Plan.AccountRefused]).
 	accountPaced := false
-	// sentVeto is what the body now in flight was WRITTEN AGAINST: the machines
-	// that had already refused this call at the moment it was encoded, which is
-	// exactly the list [Client.dropRefusedHere] read to build the veto on it.
+	// sentVeto is EVERY MACHINE THAT HAD ALREADY REFUSED THIS CALL when the body
+	// now in flight was encoded — the exact list [Client.dropRefusedHere] read to
+	// compose that body.
+	//
+	// IT IS NOT ALWAYS THE `ignore` LIST THE BYTES CARRY, and the difference is
+	// deliberate rather than an approximation. A demanded name is never also
+	// vetoed, and [velocityLedger.keepTheSetServable] releases one refused name
+	// from the veto when the vetoes would otherwise empty the set. In both cases
+	// a machine on this list is one the body asked for again ON PURPOSE — not
+	// because it might have been forgiven, but because this process had nowhere
+	// else to send the request. So a refusal from it means the same thing the
+	// failed veto means, which is why the law below reads this list rather than
+	// the object: there is no other endpoint to reach.
 	//
 	// IT IS SNAPSHOTTED AT THE ENCODE AND NEVER READ BACK AT THE REFUSAL. The
 	// list is shared by every arm of one question ([refusedHere]), so a sibling
 	// arm adding a name while this body was on the wire would make it look as
-	// though this body's veto had failed — when this body never carried it.
+	// though this body had asked for a machine it never named.
+	//
+	// IT STARTS AT WHAT THE CALLER'S OWN ENCODE SAW, because a recovered send
+	// re-enters this loop at attempt 0 with a body the ladder already composed
+	// against these same names ([Client.sendRecovered]); starting empty cost the
+	// law one extra send to the same machine on every rung.
 	var sentVeto []string
+	if knobs.refused != nil {
+		sentVeto = knobs.refused.list()
+	}
 	// move is what the plan says to do next, and it is empty on the first pass
 	// because the first send is not a recovery from anything.
 	var move control.Move
@@ -455,16 +473,23 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				ordinalOf(attempts, width()), now, now, "")
 			providerWait = 0
 		} else if attempt > 0 && !reconnected {
-			// AND THE WAIT THE MACHINE ITSELF NAMED OUTRANKS OUR DOUBLING. A
-			// [control.MoveWait] is the one legal repeat there is — the same
-			// bytes to the same machine, because the set is one wide — and the
-			// comeback on it is what that machine asked for. Every other pass
-			// through here is a fault being re-asked, where nobody named a wait
-			// and the doubling is all there is.
-			if move.Kind == control.MoveWait && move.Wait > 0 {
-				providerWait = move.Wait
-			}
+			// AND THE WAIT THE MACHINE ITSELF NAMED IS THE WHOLE WAIT, not a
+			// floor under our doubling. A [control.MoveWait] is the one legal
+			// repeat there is — the same bytes to the same machine, because the
+			// set is one wide or the ceiling is over the whole key — and the
+			// comeback on it is a fact the answer carried, not a guess. Passing
+			// it through [backoffFor] made it the LARGER of what was asked for
+			// and 2^(attempt-1) rungs of a doubling that exists for the case
+			// where nobody asked for anything: a comeback of three seconds met
+			// on the fourth attempt was served as eleven, and a person who had
+			// been told `back in 3s` watched a longer clock.
+			//
+			// The cap is still the cap: [maxProviderWait] bounds one wait
+			// whatever asked for it, which is what keeps an interrupt prompt.
 			delay := backoffFor(attempt, providerWait)
+			if move.Kind == control.MoveWait && move.Wait > 0 {
+				delay = min(move.Wait, maxProviderWait)
+			}
 			// AND IT IS NEVER LONGER THAN WHAT IS LEFT OF THE CALL. A wait that
 			// outlives the deadline is a person watching a countdown to a moment
 			// this build has already decided not to reach.
@@ -869,12 +894,15 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		//
 		// A refusal that NAMED a machine bought this call one move, and the move
 		// is only worth taking if it really was a move: an answer from a machine
-		// THE BODY THAT WENT OUT HAD JUST VETOED is the router telling us, in the
-		// only way it can, that the veto changed nothing — either the pool is
-		// that one machine or this base does not honour `provider.ignore`.
-		// Either way there is no other endpoint to reach and the honest thing is
-		// to hand the refusal back, which is what the layer above knows how to
-		// answer (the ladder, then the session's one model hop).
+		// THAT HAD ALREADY REFUSED THIS CALL is the router telling us, in the
+		// only way it can, that we are back where we started — either the veto
+		// changed nothing (the pool is that one machine, or this base does not
+		// honour `provider.ignore`), or the body asked for that machine again
+		// because nothing else in the set was still servable ([sentVeto] says
+		// which cases those are). Either way there is no other endpoint to reach
+		// and the honest thing is to hand the refusal back, which is what the
+		// layer above knows how to answer (the ladder, then the session's one
+		// model hop).
 		//
 		// IT IS ASKED OF THE EVIDENCE AND NO LONGER OF THE STATUS. It used to
 		// read `relayed` — a 4xx that would not otherwise have been retried — so
@@ -889,7 +917,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// A REFUSAL THAT NAMED NOBODY IS NOT THIS. Nothing was vetoed, so no veto
 		// failed; that road is the wait and then the model
 		// ([control.Plan.AccountRefused]).
-		if namesEndpoint(sentVeto, refusal.Lane) && !demandedAlone(knobs, refusal.Lane) {
+		if namesEndpoint(sentVeto, refusal.Lane) && !demandedThisOne(knobs, refusal.Lane) {
 			return nil, lastErr
 		}
 		// AND THE SHORTER PATIENCE FOR A FAULT IS GONE WITH THE LONGER ONE FOR A
@@ -909,9 +937,8 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	return nil, fmt.Errorf("after %d attempts: %w", attempts, lastErr)
 }
 
-// demandedAlone reports that this request DEMANDED this one machine and nothing
-// else — a rescue's arm, a person's strict pin, a pool narrowed to its last
-// member.
+// demandedThisOne reports that this request DEMANDED this one machine and
+// nothing else — a rescue's arm, or a person's strict pin.
 //
 // IT IS WHAT KEEPS "THE VETO DID NOT TAKE" AN HONEST QUESTION. The encoder
 // leaves a demand down to its last machine exactly as it stands and never vetoes
@@ -919,13 +946,23 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 // request was never taken off anything and its refusal proves nothing about
 // whether a veto works. That case is the one legal same-machine move and is
 // answered above, by the comeback the machine asked for itself.
-func demandedAlone(knobs callKnobs, lane string) bool {
+//
+// IT ASKS THE DEMAND AND NOTHING ELSE, which is why it goes through
+// [demandedLane] rather than [requestSet]. `requestSet` answers a wider
+// question — "which machines may this request go to" — and with no demand at all
+// it answers with the chooser's ADVISORY candidate set, a ranking sent with
+// fallbacks left on. A model this build has timed exactly one machine for has a
+// candidate set of one while the router still has the whole pool, so reading
+// that as a demand would exempt the narrowest belief this process can hold from
+// the law above and drop it back onto the measured chain. The encoder vetoes an
+// advisory name freely; only a demand is spared.
+func demandedThisOne(knobs callKnobs, lane string) bool {
 	lane = strings.TrimSpace(lane)
 	if lane == "" {
 		return false
 	}
-	demand := requestSet(knobs)
-	return len(demand) == 1 && namesEndpoint(demand, lane)
+	demanded, _ := demandedLane(knobs)
+	return demanded != "" && strings.EqualFold(strings.TrimSpace(demanded), lane)
 }
 
 // ── THE RUNG IS A MOVE LIKE ANY OTHER ───────────────────────────────────────

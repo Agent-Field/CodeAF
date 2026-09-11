@@ -259,16 +259,20 @@ func (a *app) retargetTask(id uint64, model string) {
 	// not, so the pair steps to ink and the scaffolding stays dim (payload.go).
 	a.noteFacts(taskIDWord(id)+" · model · "+model, taskIDWord(id), model)
 	if a.room != nil && a.room.id == id {
-		// AND THE TIMING IS WHAT IS TRUE, which "its next turn takes it" was not.
-		// A running node is told at once — the engine writes the model onto the
-		// node and onto the worker in the same breath (session's RetargetTask) —
-		// so the change lands on the next REQUEST that step makes, which is
-		// usually seconds away and never a whole turn. It also outranks the
-		// rescue: a step whose model stops answering comes back to the one chosen
-		// here rather than walking a chain (session's nextNodeModel). A person
-		// told "next turn" while a step was stuck waited for a boundary that was
-		// twenty minutes off and typed `continue` to try to force it.
-		timing := "the next request takes it"
+		// AND THE TIMING IS WHAT IS TRUE. "Its next turn takes it" was true when
+		// it was written — the engine latched the model once per turn — and a
+		// turn is a whole step, so a person told it while a step was stuck waited
+		// for a boundary twenty minutes off and typed `continue` to try to force
+		// it — and it was ALSO the whole of what the room said, which is what made
+		// it read as "nothing happens until this finishes".
+		//
+		// SO IT SAYS THE HALF THAT ANSWERS THEM TOO. A step whose model stops
+		// answering comes back to the model chosen HERE rather than walking
+		// aforge's own fallback chain (session's nextNodeModel), so a pick made
+		// over a stuck step is where the work lands rather than somewhere nobody
+		// named. Cutting the request in flight is a separate change to the turn
+		// loop's own law and is not this one.
+		timing := "the next turn takes it; a rescue goes to it first"
 		if taskSetupLater(a.roomNode()) {
 			timing = "saved for when you continue"
 		}

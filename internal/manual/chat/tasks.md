@@ -4332,12 +4332,14 @@ read the model on the task's own card.
 
 What that does, exactly:
 
-- **It takes effect on the task's next request.** The call the worker is in the middle of
-  finishes on the model it started on — killing a request in flight would throw away work
-  you have already paid and waited for — and everything after it is on the new model. The
-  room says exactly that: `model · <id> · the next request takes it`. Until 2026-09-11 it
-  said `its next turn takes it`, which read as a whole step away and could be twenty
-  minutes on a long one; a request is usually seconds.
+- **It takes effect on the task's next turn — and if the step is stuck, the rescue goes to
+  your model first.** The call the worker is in the middle of finishes on the model it
+  started on, and so does the rest of that step: killing a request in flight would throw
+  away work you have already paid and waited for. What changed on 2026-09-11 is where the
+  step goes when the model it is on stops answering — **it goes to the one you picked**,
+  rather than to the next name in aforge's own fallback list. So a pick made over a step
+  that is grinding on a machine that will not answer is where the work lands. The room says
+  both halves: `model · <id> · the next turn takes it; a rescue goes to it first`.
 - **And nothing quietly takes it back.** When a task's model stops answering, aforge moves
   the work to another one rather than failing it — but if you have picked a model in this
   room, that pick is where it moves to, not the next name in aforge's own fallback list.
