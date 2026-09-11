@@ -311,15 +311,14 @@ func (a *app) taskPaneRecord(item tasksItem, width int) []taskPaneRow {
 		return taskPaneDraw(taskRecordBands(bands), nil)
 	}
 
-	if line := a.taskPaneFacts(entry); line != "" {
-		facts := []string{fit(pal.dim(line), width)}
-		if where := a.taskPaneWhere(entry); where != "" {
-			facts = append(facts, fit(pal.dim(where), width))
-		}
-		bands = append(bands, facts)
-	} else if where := a.taskPaneWhere(entry); where != "" {
-		bands = append(bands, []string{fit(pal.dim(where), width)})
+	var facts []string
+	if line := a.taskPaneFacts(entry, width); line != "" {
+		facts = append(facts, fit(pal.dim(line), width))
 	}
+	for _, row := range a.taskPaneWhere(entry) {
+		facts = append(facts, fit(pal.dim(row), width))
+	}
+	bands = append(bands, facts)
 
 	if report := a.taskPaneReport(entry); report != "" {
 		var said []string
@@ -358,40 +357,68 @@ func taskPaneDraw(body []string, verbs *taskPaneRow) []taskPaneRow {
 // scans are the same four either way. Each clause with nothing behind it is
 // dropped rather than drawn as a zero, so a row that spent nothing and wrote
 // nothing draws no line at all.
-func (a *app) taskPaneFacts(entry session.TaskIndexEntry) string {
+func (a *app) taskPaneFacts(entry session.TaskIndexEntry, width int) string {
 	var segs []string
+	model := ""
 	if entry.FilesChanged > 0 {
 		segs = append(segs, itoa(entry.FilesChanged)+plural(" file", entry.FilesChanged))
 	}
 	if entry.Cost > 0 {
 		segs = append(segs, dollars(entry.Cost))
 	}
-	if model := strings.TrimSpace(entry.Model); model != "" {
+	if model = strings.TrimSpace(entry.Model); model != "" {
 		segs = append(segs, model)
 	}
 	if !entry.EndedAt.IsZero() {
 		segs = append(segs, session.TaskAgeWord(a.now().Sub(entry.EndedAt))+" ago")
 	}
-	return strings.Join(segs, railSep)
+	line := strings.Join(segs, railSep)
+	// THE MODEL IS THE CLAUSE THIS LINE GIVES UP, and it is the only one it can
+	// afford to: rowfit.go's law 3 says a row degrades by dropping the least
+	// useful fact rather than by cutting the last one, and the age is the clause
+	// the cut would land on — `anthropic/claude-opus-4.1 · 2…` is a line that
+	// spent thirty cells on the rate and then could not say when. What the work
+	// wrote, what it cost and how long ago it landed are what a person scans;
+	// which machine charged for it is on the card one keypress away.
+	if ansi.StringWidth(line) <= width || model == "" {
+		return line
+	}
+	kept := make([]string, 0, len(segs)-1)
+	for _, seg := range segs {
+		if seg != model {
+			kept = append(kept, seg)
+		}
+	}
+	return strings.Join(kept, railSep)
 }
 
-// taskPaneWhere is where the work was left: the branch it is on, and the word
-// the ground ladder keeps for the copy of the repository it happened in.
+// taskPaneWhere is where the work was left: the branch it is on, and the ground
+// ladder's own word for the copy of your folder it happened in.
 //
 // THE WORD IS THE ENGINE'S ([taskCardGroundWord] asks it), because the rung is
-// the only thing that knows whether the directory was a worktree or a whole
-// fork — and a surface that spelled its own answer would be a second source for
-// one fact, which is the drift that card was already in.
-func (a *app) taskPaneWhere(entry session.TaskIndexEntry) string {
-	branch := taskRecordBranch(entry)
-	if branch == "" {
-		return ""
+// the only thing that knows whether the directory was a branch of the person's
+// repository or a copy of their folder — and a surface that spelled its own
+// answer would be a second source for one fact, which is the drift that card was
+// already in.
+//
+// THEY ARE TWO ROWS AND NOT ONE. The engine's words are whole clauses — `a branch
+// of your repository`, `its own copy of the folder` — so a pane clamped to
+// sixty-four cells that joined them to a branch name would cut the clause that
+// says whether the person's own files were touched, which is the half of this
+// band worth keeping.
+//
+// A ROW WHOSE RUNG NOBODY WROTE DOWN SAYS NOTHING ABOUT IT. [taskCardGroundWord]
+// falls back to the bare place word there, which names a directory this band is
+// not drawing — the emptiness law, applied to a fact the record never carried.
+func (a *app) taskPaneWhere(entry session.TaskIndexEntry) []string {
+	var rows []string
+	if branch := taskRecordBranch(entry); branch != "" {
+		rows = append(rows, taskCardBranchWord+" "+branch)
 	}
-	line := taskCardBranchWord + " " + branch
 	if word := taskCardGroundWord(entry); word != taskCardPlaceWord {
-		line += railSep + "in a " + word
+		rows = append(rows, word)
 	}
-	return line
+	return rows
 }
 
 // taskPaneReport is the first paragraph of what the node said at the end, or ""

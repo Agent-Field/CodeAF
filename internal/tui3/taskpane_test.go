@@ -445,17 +445,17 @@ func TestAPaneOverARowWithNothingToSayDrawsNothingForIt(t *testing.T) {
 		t.Fatal("no row under the cursor")
 	}
 	bare := session.TaskIndexEntry{ID: item.entry.ID, SessionID: item.entry.SessionID, Title: "a bare row"}
-	if line := a.taskPaneFacts(bare); line != "" {
+	if line := a.taskPaneFacts(bare, 44); line != "" {
 		t.Fatalf("a row with no facts drew %q", line)
 	}
-	if line := a.taskPaneWhere(bare); line != "" {
-		t.Fatalf("a row with no branch drew %q", line)
+	if rows := a.taskPaneWhere(bare); len(rows) != 0 {
+		t.Fatalf("a row with no branch and no rung drew %q", rows)
 	}
 	if rows := a.taskPaneFiles(bare, 40); len(rows) != 0 {
 		t.Fatalf("a row that wrote nothing drew %d file rows", len(rows))
 	}
 	for _, banned := range []string{"$0.00", "0 files", "0 file"} {
-		if line := a.taskPaneFacts(bare); strings.Contains(line, banned) {
+		if line := a.taskPaneFacts(bare, 44); strings.Contains(line, banned) {
 			t.Fatalf("the facts line drew %q", banned)
 		}
 	}
