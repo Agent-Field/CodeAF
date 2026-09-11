@@ -330,6 +330,35 @@ While it is trying, the status row counts the machines rather than the tries:
 aforge cannot tell how many there are it shows no number instead of a made-up
 one.
 
+## How long aforge keeps trying, and the one setting that changes it
+
+The table above is the whole answer, and **`response.attempts` is the one thing
+you can turn about it**. It is a multiplier on those times, not a number of
+requests: `3` means three times as long — four and a half minutes on a turn you
+are watching instead of ninety seconds — and the default is `1`, which is exactly
+the table. Set it on the **Providers** tab of `/settings`, or with
+`AFORGE_RESPONSE_ATTEMPTS`.
+
+```
+response.attempts: 3      # every give-up above, three times as long
+```
+
+**It used to be a count of sends, and it is not any more.** Until 2026-09-11 it
+said how many times one request would be repeated — so asking for more patience
+bought more identical requests inside the same deadline, which ended the call
+anyway. The intent behind the setting was always "try harder before you tell me
+you could not", and trying harder is time: more machines walked, more shapes of
+the request tried, longer waited out of a busy pool. **What it will never buy is
+the same bytes sent to the same machine again.** If you had written a number into
+this row when it meant sends, it now means that many times the patience — a `3`
+you set to get three tries is three times ninety seconds.
+
+**Nothing else in aforge counts attempts.** Not the turn, not a task's worker,
+not the naming errand, not the side calls that write a title or judge a route.
+Each of them runs until its own clock above is gone, and the one number in a
+failure sentence — `after 4 attempts` — is what that call actually spent, never a
+ceiling it was allowed.
+
 **Nothing waits behind a busy moment in silence.** When every request aforge is
 allowed to have in the air at once is already in the air — which happens when
 several windows and a task are working at the same time, or a machine has been

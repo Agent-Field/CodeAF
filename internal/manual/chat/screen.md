@@ -194,8 +194,9 @@ title does not wait for the answer to finish.
 Hover over a tab to reveal its full title beneath it. Long titles wrap; the tab and
 conversation stay in place, and the preview disappears when the pointer leaves.
 
-**Temporary failures and unusable names retry automatically.** There are up to three naming attempts, with
-short increasing delays, within a two-minute overall window. You do not need to send
+**Temporary failures and unusable names retry automatically.** Naming asks again, with
+short increasing delays, for as long as a **two-minute** window lasts — the window is the
+whole of the bound and there is no count of attempts. You do not need to send
 another message. A failed title never interrupts the answer or changes its working state.
 Empty answers, instruction echoes and placeholders are rejected, and the next configured
 naming model can answer within the same budget. If those attempts fail, the tab remains

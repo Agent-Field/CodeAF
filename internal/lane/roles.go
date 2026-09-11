@@ -1,6 +1,9 @@
 package lane
 
-import "time"
+import (
+	"sync/atomic"
+	"time"
+)
 
 // ── ROLES: WHO IS ASKING, AND WHAT THAT IS WORTH ────────────────────────────
 //
@@ -341,12 +344,64 @@ func (r Role) Ceiling() time.Duration {
 // each bounding a different axis, their product nobody's number, and the census
 // of 2026-09-10 measuring what it produced (chains of seventeen identical sends
 // over eleven minutes, ending refused). A person can be told this one.
+// AND THE PERSON'S OWN PATIENCE MULTIPLIES IT ([UsePatience]), because the one
+// thing they could ever turn about how hard this build tries is a statement
+// about how long they are willing to wait — which is this figure and nothing
+// else now.
 func (r Role) GiveUp() time.Duration {
 	patience := r.Facts().Patience
 	if patience <= 0 {
 		patience = roles[RoleUnknown].Patience
 	}
-	return time.Duration(patience * float64(TurnGiveUp))
+	return time.Duration(patience * asked() * float64(TurnGiveUp))
+}
+
+// ── WHAT A PERSON MAY TURN ──────────────────────────────────────────────────
+//
+// `response.attempts` was a COUNT OF SENDS until 2026-09-11: a person who
+// wanted the harness to try harder set it to eight, and what they bought was
+// eight identical requests inside a deadline that stopped at ninety seconds
+// anyway — a number that multiplied the transport's own and bounded nothing
+// (docs/design/recovery/DESIGN.md §7). It is the same intent read the honest
+// way now: more patience, which is more TIME, on the one figure that really
+// ends a call. Three is three times ninety seconds for a turn, and the default
+// of one is exactly the measured behaviour this build already had.
+//
+// IT IS A PROCESS-WIDE FIGURE AND THERE IS ONE DOOR, because a deadline is
+// built in two places that cannot read a profile — `lane.PlanFor` and
+// internal/provider's dispatcher — and a setting that reached one of them and
+// not the other would be a person told two different things about the same
+// wait. internal/session publishes it the moment it resolves the profile's
+// limits (taxonomy_boundary.go); until something does, every role is its own
+// measured figure, which is the right answer for a process nobody configured.
+var patience atomic.Int64
+
+// patienceScale is how [UsePatience] keeps a fraction in an integer: a factor is
+// stored as thousandths, so 1.0 is 1000 and a person may say 1.5.
+const patienceScale = 1000
+
+// UsePatience publishes the person's own patience factor, floored at one — a
+// factor under one is somebody asking this build to give up sooner than the
+// measurement says a turn takes, which is not a patience anybody wants and reads
+// as the default.
+func UsePatience(factor float64) {
+	if factor < 1 {
+		factor = 1
+	}
+	patience.Store(int64(factor * patienceScale))
+}
+
+// Patience is the factor in force, for a caller that has to SHOW it.
+func Patience() float64 { return asked() }
+
+// asked is the factor as the arithmetic wants it, and it is 1 until somebody
+// publishes one.
+func asked() float64 {
+	stored := patience.Load()
+	if stored <= patienceScale {
+		return 1
+	}
+	return float64(stored) / patienceScale
 }
 
 // Roles is every role in the table, for the structural test that insists each
