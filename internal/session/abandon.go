@@ -111,6 +111,7 @@ func (a *Agent) Abandon(reason AbandonReason) (Usage, bool) {
 	// The goroutine still running under it captured the old one and will find
 	// them different, which is its instruction to clean up nothing (see
 	// [Agent.startTurnLocked]).
+	ended := a.turnSeq
 	a.turnSeq++
 	// WHATEVER THE PERSON TYPED AT THIS TURN STILL BELONGS TO THE TRANSCRIPT,
 	// which is the same law the ordinary ending keeps and for the same reason: a
@@ -142,6 +143,12 @@ func (a *Agent) Abandon(reason AbandonReason) (Usage, bool) {
 	// is what lets it sit here.
 	a.nudgePresence()
 	a.mu.Unlock()
+	// AND THIS IS THE TURN'S END, SO THE FLOOR IS HERE. Its goroutine may never
+	// unwind, and when it does its clean-up hands back nothing (agent.go's
+	// [Agent.startTurnLocked]), so what it was deciding comes back to the person
+	// now, beside what it never read. The session is already free here, and the
+	// number is what keeps this floor off a press a turn started since has read.
+	a.handBackUnsettled(ended)
 	a.giveBackHandOvers(orphaned)
 
 	// THE WAITS END FIRST, then the request is cut, then the surface is freed.

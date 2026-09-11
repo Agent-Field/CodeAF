@@ -408,6 +408,10 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 	a.cancel = cancel
 	done := make(chan struct{})
 	a.done = done
+	// AND IT IS NUMBERED, for the reason every turn is: [Agent.Abandon] can let go
+	// of it, and the number is how its clean-up learns that it has.
+	a.turnSeq++
+	seq := a.turnSeq
 	a.recordUserLocked(kept)
 	events := hub.subscribe()
 
@@ -418,6 +422,16 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 		defer hub.close()
 		defer func() {
 			a.mu.Lock()
+			// A DISOWNED TURN CLEANS UP NOTHING, and the number is the whole test,
+			// as it is for [Agent.startTurnLocked]. The abandon has already drained
+			// the queues, cleared running and closed `done`; doing it again closed a
+			// closed channel — a panic nothing here recovers — and ended whatever
+			// turn the session had started since. The same guard is what makes the
+			// close below happen once.
+			if a.turnSeq != seq {
+				a.mu.Unlock()
+				return
+			}
 			// A VISION TURN HAS NO STEP BOUNDARY — it is one provider call — so a
 			// sentence spliced into it can only ever fall through, and it does so
 			// by the same law every other turn keeps (steer.go's

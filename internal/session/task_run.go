@@ -777,22 +777,31 @@ type TaskNode struct {
 	// announcing the end raced past.
 	stopped bool
 	// handed is the receipt for THIS SESSION'S own hand-over press: the person
-	// asked aforge to decide this one card, and the note that asks it has been
-	// put in front of the model. It is not the same fact as [TaskNode.decider]
-	// being the model — a landing under `task.settle = auto` writes that by
-	// policy and presses nothing — and it travels with the owner through
-	// [TaskNode.givesBackLocked] so a hand-back leaves no receipt behind
-	// (task_audit.go's [TaskNode.wasHandedOver] states the whole rule).
+	// asked aforge to decide this one card, and nothing has taken it back. A
+	// second press is refused on it (task_audit.go's [TaskNode.handOver]).
+	//
+	// IT IS NOT "THE MODEL IS DECIDING", and the difference is the whole of why it
+	// is its own fact. Under `task.settle = auto` — and in every headless run,
+	// where nobody is there to be asked — a landing marks the model as the decider
+	// by POLICY ([Agent.handToModelOnAuto]), which is not a press and carries no
+	// note. Refusing the press on that would refuse the first one.
+	//
+	// IT IS IN MEMORY AND NEVER ON THE RECORD, for [taskRecord.Decider]'s own
+	// reason: a hand-over lasts at most one turn — the floor takes it back at the
+	// end of the model's turn and a resumed session takes it back on load — so a
+	// receipt that survived either would refuse a press for a turn that is over.
+	// It travels with the owner through [TaskNode.givesBackLocked], so a
+	// hand-back leaves no receipt behind.
 	handed bool
 	// handPress numbers the presses that have handed this node over, and it is
 	// the ticket each one's note carries (task_audit.go's [handOverTicket]).
-	// handUnread says the current press's note is still waiting for a request to
-	// carry it — on the steering queue, or drained into the transcript at a turn's
-	// end with the next turn not yet asking — and it is what keeps the end-of-turn
-	// floor off a question the turn that is ending never read
+	// handReader is the number of the turn whose request carried the current
+	// press's note, and 0 while none has — it is on the steering queue, or drained
+	// into the transcript at a turn's end with the next turn not yet asking. It is
+	// what keeps a turn's floor off a press that turn never read
 	// ([Agent.handBackUnsettled]). Both live in memory only, for [handed]'s reason.
 	handPress  uint64
-	handUnread bool
+	handReader uint64
 	// stopReason is what whoever pulled the stop said they were stopping it FOR,
 	// and "" for every stop that came with no words — which is every one a person
 	// pulls, their card being a decision and not a sentence (cancel.go). It is
@@ -4069,7 +4078,9 @@ func (a *Agent) handToModelOnAuto(node *TaskNode) {
 // [EventTaskUpdate] into the row it is drawing, and the notice now carries who is
 // deciding ([TaskNotice.Decider]), so the hand-back is one more update about a
 // node rather than a channel of its own.
-func (a *Agent) handBackUnsettled() {
+//
+// seq is the turn whose end this is, which is what a press is checked against.
+func (a *Agent) handBackUnsettled(seq uint64) {
 	graph := a.tasker()
 	if graph == nil {
 		return
@@ -4081,13 +4092,14 @@ func (a *Agent) handBackUnsettled() {
 		if node == nil || node.decider != TaskAskOwnerModel || !a.readsTheDecisionLocked(node) {
 			continue
 		}
-		// AND ONLY A QUESTION THIS TURN WAS ASKED. A press whose note no request
-		// has carried arrived after this turn's last one went out; the end of this
-		// turn is about to drain it and start the turn that reads it, and that
-		// turn's end is the one that gives it back (task_audit.go's
-		// [handOverTicket]). Checked here, under the lock the write is made under,
-		// because the press can land at any instant up to this one.
-		if node.handUnread {
+		// AND ONLY A PRESS THIS TURN READ. One whose note no request has carried
+		// arrived after this turn's last one went out; the end of this turn is
+		// about to drain it and start the turn that reads it, and that turn's end
+		// is the one that gives it back (task_audit.go's [handOverTicket]). One
+		// another turn carried is that turn's — the floor of a turn let go of can
+		// run after its replacement has read a press. Checked here, under the lock
+		// the write is made under, because either can happen up to this instant.
+		if node.handed && node.handReader != seq {
 			continue
 		}
 		node.givesBackLocked()
