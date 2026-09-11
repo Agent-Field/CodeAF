@@ -340,11 +340,17 @@ const (
 	tasksSortBackChord = "alt+shift+s"
 )
 
-// tasksSortHint is how the foot names them, in the hint slot's own grammar: the
-// key, then what it does.
-func tasksSortHint(by tasksSort) string {
-	return tasksSortKeyChord + " sort: " + by.key.word()
-}
+// tasksSortHint is how the foot names the chord, in the hint slot's own grammar:
+// the key, then what it does.
+//
+// IT NAMES THE KEY AND NOT THE COLUMN THE PAGE IS ON. It said `alt+s sort: age`
+// for a while and the five cells that cost were exactly the five that did not
+// fit: at a hundred columns the foot's fitter dropped this clause AND the filter
+// beside it, so the one width most people are on named neither of the page's two
+// keys — which is the defect the ruling that put them here was written against.
+// WHICH column the list is on is already drawn, on the control row's own label,
+// wearing the arrow ([tasksControlLabels]); the foot's job is the key.
+func tasksSortHint(by tasksSort) string { return tasksSortKeyChord + " sort" }
 
 // ── the reason, off the row and under the cursor ────────────────────────────
 

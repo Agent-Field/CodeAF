@@ -54,7 +54,7 @@ func TestTheTasksFootIsScreenOneEWordForWord(t *testing.T) {
 	// sorting is a chord, and a chord nobody can find is a chord that does not
 	// exist. The filter is named beside it because nothing else on the frame says
 	// that a letter goes into the box on the control row rather than to the page.
-	const want = "enter open its room · → verbs: stop it · alt+s sort: age · type to filter"
+	const want = "enter open its room · → verbs: stop it · alt+s sort · type to filter"
 	if got := a.taskSheetKeysLine(); got != want {
 		t.Fatalf("the foot reads\n  %q\nwant\n  %q", got, want)
 	}
@@ -104,7 +104,7 @@ func TestTheTasksFootSaysOnlyWhatIsTrueOfTheRowUnderIt(t *testing.T) {
 	if !ok || item.entry.Title != "Port the parser" {
 		t.Fatalf("the walk did not reach the earlier conversation's row: %+v", item)
 	}
-	const want = "enter go inside it · alt+s sort: age · type to filter"
+	const want = "enter go inside it · alt+s sort · type to filter"
 	if got := a.taskSheetKeysLine(); got != want {
 		t.Fatalf("over work another conversation ran the foot reads\n  %q\nwant\n  %q", got, want)
 	}
@@ -213,7 +213,7 @@ func TestTheTasksFootNamesNoVerbWithoutTheEnginesDoor(t *testing.T) {
 	// The cursor's row is a family, and [openTaskPlaceWithRows] has opened it —
 	// so the fold clause is the `←` half. What this test is about is what is NOT
 	// here: no verb at all, on a session with no door onto stopping.
-	const want = "enter open its room · ← fold it back up · alt+s sort: age · type to filter"
+	const want = "enter open its room · ← fold it back up · alt+s sort · type to filter"
 	if got := a.taskSheetKeysLine(); got != want {
 		t.Fatalf("the foot reads\n  %q\nwant\n  %q", got, want)
 	}

@@ -1579,7 +1579,7 @@ every section at once and is drawn on the **control row** at the top of the list
 the right of that control row sorts by it. `→` opens the row's
 verbs, and this place has one: `s stop it`, over a task this conversation is holding that is
 still queued or running. Its foot is assembled from what is true of the row under the
-cursor — `enter open its room · → verbs: stop it · alt+s sort: age · type to filter` over a task this
+cursor — `enter open its room · → verbs: stop it · alt+s sort · type to filter` over a task this
 window is running, `enter go inside it` on a task another conversation ran, which has no room to open,
 and one of three clauses on a task another aforge **window** is running:
 `enter go to that conversation` when this terminal is holding that conversation, which
@@ -2188,7 +2188,7 @@ on the `jobs` label toggles the section; `enter` on a job row opens that job's p
 
 **Under 60 columns the roster page is a thumb's, not a keyboard's.** Its rows are two-line
 cards a tap opens, its foot is a `‹ back` bar in place of the key legend
-`enter open its room · alt+s sort: age · type to filter`, and the strip that opens it is one full-width door
+`enter open its room · alt+s sort · type to filter`, and the strip that opens it is one full-width door
 (`▸ 3 tasks · 1 running`) rather than a row of chips. Mouse motion is ignored — a tap opens
 in one gesture. The tasks page describes the phone flow in full.
 

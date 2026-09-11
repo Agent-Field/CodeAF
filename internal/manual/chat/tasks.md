@@ -5094,7 +5094,8 @@ because on this place every printable key goes into the filter: `s` alone would 
 **Or click a label.** The two column labels are drawn at the right of the control row at the
 top of the list, over the columns they name, and pressing one sorts by it. Pressing the one
 already sorted turns it round. The sorted label wears the arrow: `cost ↓` newest or dearest
-first, `cost ↑` the other way. The foot names the key the list is on (`alt+s sort: cost`).
+first, `cost ↑` the other way. The foot names the chord (`alt+s sort`) and the label wears the
+column.
 
 **Sorting happens inside each level of the tree, and the tree never flattens.** The sections
 keep their order — a sort may not move `your call` below `finished today` — main chats order
@@ -5130,7 +5131,7 @@ under the cursor**, and never from a fixed sentence. Over a task this window is 
 reads
 
 ```
-enter open its room · → verbs: stop it · alt+s sort: age · type to filter · alt+. map · tab next place
+enter open its room · → verbs: stop it · alt+s sort · type to filter · alt+. map · tab next place
 ```
 
 The last two keys are on every place and the router adds them. What comes before them
@@ -5151,9 +5152,9 @@ changes with the cursor:
 
 The last two clauses are about the **page** rather than the row, and they are always there:
 
-- `alt+s sort: <key>` names the chord and the column the list is on. A chord nobody can find
-  is a chord that does not exist, and every printable key here belongs to the filter, so
-  sorting cannot be a bare letter.
+- `alt+s sort` names the chord. A chord nobody can find is a chord that does not exist, and
+  every printable key here belongs to the filter, so sorting cannot be a bare letter. WHICH
+  column the list is on is on the control row's own label, wearing the arrow.
 - `type to filter`, because nothing else on the frame says that a letter goes into the box on
   the control row rather than to the page's own keys. While a filter **is** on, that slot
   says `esc clear the filter` instead — the one fact the box itself cannot show is that esc
