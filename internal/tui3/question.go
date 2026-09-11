@@ -709,21 +709,27 @@ func questionPointerStart(q session.Question) int {
 		}
 	}
 	// AND WHERE NOBODY RECOMMENDED ANYTHING AND NOBODY BUT A PERSON MAY ANSWER,
-	// THE POINTER OPENS ON THE ANSWER THAT LOSES NOTHING ([questionHandsOnly]).
+	// THE STAKES DECIDE WHERE THE POINTER STANDS — never the tool's name, never
+	// the kind (owner ruling 2026-09-11, consent pick B).
 	//
-	// IT IS THE HALF OF THE POINTER THAT KEEPS IT SAFE. `enter` takes the answer
-	// the pointer is on, so a pointer that started on the first answer of a
-	// consent gate made `enter` mean `allow once` — on a question the engine
-	// raised BECAUSE the call could not be taken back. Measured on the gate for
-	// `rm -rf *`: enter allowed it.
+	// AN IRREVERSIBLE CALL OPENS ON THE ANSWER THAT LOSES NOTHING. `enter` takes
+	// the answer the pointer is on, so a pointer on the first answer of a gate
+	// over `rm -rf` or a force-push made `enter` mean `allow once` on the one
+	// call that cannot be taken back. That frame also carries no `always` and no
+	// clock: there is nothing about it that may happen without a person.
+	//
+	// AND AN ORDINARY ONE OPENS ON `allow once`, which is the other half of the
+	// same ruling and the half that was wrong. Every gate opened on deny for a
+	// year, including the ones over a `git status` the rules merely had not seen
+	// before — so the key a person presses to get on with their work was the key
+	// that stopped it, and the safe default was worn smooth by the calls it did
+	// not need to protect anybody from.
 	//
 	// IT IS BELOW THE PICK AND NOT ABOVE IT, which is the whole of why a task
 	// proposal is unaffected: an asker that recommended an answer said so on the
 	// row a person is reading (`suggested`), and `enter` taking the
-	// recommendation IS the pointer's law. A gate recommends nothing — there is
-	// no pick on one — so the two conditions can never both be true, and the
-	// answer that loses nothing is the only honest place left to stand.
-	if questionHandsOnly(q) {
+	// recommendation IS the pointer's law.
+	if questionHandsOnly(q) && q.Stakes == session.StakesIrreversible {
 		return questionSafeAt(q)
 	}
 	// AND EVERY OTHER QUESTION OPENS ON ITS FIRST ANSWER. The safe mark is not

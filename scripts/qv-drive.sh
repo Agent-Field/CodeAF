@@ -42,7 +42,9 @@ JSON
 capture() {
   local fixture="$1" cols="$2" theme="$3" tier="$4"; shift 4
   local name="$fixture-${cols}c-$theme-$tier"
-  [ $# -gt 0 ] && name="$name-$(echo "$*" | tr ' ' '-')"
+  # The keys are part of the screen's name, with everything a filename cannot
+  # carry spelled out of it.
+  [ $# -gt 0 ] && name="$name-$(echo "$*" | tr ' /:' '---')"
 
   tmux kill-session -t "$SESSION" 2>/dev/null
   local env=(
@@ -67,7 +69,12 @@ capture() {
     "env $(printf '%q ' "${env[@]}") $(printf '%q' "$BIN")"
   sleep 3
   for key in "$@"; do
-    tmux send-keys -t "$SESSION" "$key"
+    # A key named `text:<words>` is TYPED, letter by letter, the way a person
+    # types it; anything else is one named key (`Escape`, `Down`, `Enter`).
+    case "$key" in
+      text:*) tmux send-keys -l -t "$SESSION" "${key#text:}" ;;
+      *)      tmux send-keys -t "$SESSION" "$key" ;;
+    esac
     sleep 0.8
   done
   sleep 0.5

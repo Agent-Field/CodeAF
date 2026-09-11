@@ -15,23 +15,31 @@ answer:
 ╭─ ? needs your ok to run bash ──────────────────────── bash · 7s ─╮
 │ rm -rf build · bash pattern "rm -rf *"                           │
 │                                                                  │
-│   1  allow once                                                  │
+│ ▸ 1  allow once                                                  │
 │   2  always, this command                                        │
-│ ▸ 3  deny                                           safe answer  │
+│   3  deny                                           safe answer  │
 │                                                                  │
+│  ✓ just this once · for this project · from now on               │
 ╰─ ↑↓ choose · enter take it · esc later ──────────────────────────╯
-  c change · ? ask back · 1–3 jump
+  c change · ? ask back · t how long · 1–3 jump
 ```
 
 The tool's own name and the wait mode are the aside in the top edge — ` · 7s`,
 or ` · paused` once you have touched it or the reminder ran out, or ` · waiting`
 when the countdown is off. Silence is never a no.
 
-**The pointer opens on `deny`** and the row says `safe answer`: a call that
-cannot be taken back is one where `enter` must not mean yes. Nothing on a
-permission is painted in the question's amber except the marks — the `?`, the
-pointer and the recommendation — because the command is the thing you are here
-to read.
+**Where the pointer opens is decided by the stakes, and by nothing else** —
+never by which tool it is:
+
+- **An ordinary call** opens on `1 allow once`, so `enter` allows it. Most gates
+  are here: the rules had simply not seen this command before.
+- **A call that cannot be taken back** — `rm -rf`, a force-push, a dropped table
+  — opens on `3 deny`, and the row says `safe answer`. That frame also carries
+  no `always` and no countdown: nothing about it may happen without you.
+
+Nothing on a permission is painted in the question's amber except the marks —
+the `?`, the pointer and the recommendation — because the command is the thing
+you are here to read.
 
 - `1` — allow this one call. The transcript row is annotated `allowed`.
 - `3` — refuse this one call. The row is annotated `denied`. The model is handed
@@ -41,18 +49,22 @@ to read.
 - `c` — refuse or allow **in words**. It puts the cursor in the box (which was
   never taken away); type your sentence and press `enter`, and the words go to
   the model as the answer.
-- `enter` — take the answer the pointer is on, which on a permission is `deny`
-  until you move it.
+- `enter` — take the answer the pointer is on: `allow once` on an ordinary call,
+  `deny` on one that cannot be taken back.
+- `t` — **how long** the answer lasts. It walks the row of lifetimes under the
+  answers and writes nothing until you answer.
 - `esc` — **later**. The question folds in place to one titled rule, the chip on
   the status line carries its words, and **nothing is answered**. The call stays blocked and the conversation stays
   paused on it. This is the one word here that changed meaning: `esc` used to be
   spelled `cancel` and cancelling meant denying, which was the safe reading when
   the block was a modal nobody could leave.
 
-`t`, `d`, `y`, `n` and `a` are not keys on this question. They were the block's
-keys before every question in aforge moved onto one renderer with one key
-grammar; a hand that remembers them is answering a question that no longer takes
-them, so they do nothing here (`y`, `n` and `a` type themselves into the box).
+`d`, `y`, `n` and `a` are not keys on this question. They were the block's keys
+before every question in aforge moved onto one renderer with one key grammar; a
+hand that remembers them is answering a question that no longer takes them, so
+they do nothing here (`y`, `n` and `a` type themselves into the box). `t` is a
+key again, and it is a different one: it walks the row of lifetimes rather than
+answering anything.
 
 **A key it does not draw belongs to your draft.** The question is not modal: the
 box below it is live, typing goes into your message, and the question is still

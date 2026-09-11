@@ -397,7 +397,7 @@ func demoWeighed(*app) session.Question {
 		},
 		Pick: &session.Pick{
 			Key: "1", Reason: "it survives a crash mid-write and the rest do not",
-			Confidence: session.ConfidenceFairly, WouldChange: "if the index has to be read from another machine",
+			Confidence: session.ConfidenceFairly, WouldChange: "the index ever has to be read from another machine",
 		},
 	}
 }

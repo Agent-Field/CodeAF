@@ -990,7 +990,15 @@ have one is to close this and talk.
 
 ## Can I just let it decide — stop asking me this kind of thing
 
-`d` hands one decision back.
+**There is a row for it where settings are browsed.** Open settings (`ctrl+,`,
+or `/settings`), go to **Safety**, and the section *questions while you are
+away* has one row per kind of question — permission, choice, judgement, landing,
+assumptions — each saying `ask me`, `recommend then go · 30s` or `decide
+yourself`, and `enter` walks it round the three. Searching settings for "away"
+or "decide" finds them. It is kept per project. `/autonomy` is the same rules
+from the box, and it is the way to name a wait of your own.
+
+And on one question in front of you, `d` hands that decision back.
 
 **The first press shows you what it would take and why** — `it would take 1
 postgres — because it is the only store the reporting job already reads` — and

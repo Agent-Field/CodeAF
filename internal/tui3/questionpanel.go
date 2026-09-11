@@ -716,8 +716,34 @@ func questionDigitsWord(q session.Question) string {
 	// THE KEYS ARE THE ANSWERS' OWN and not a count of them: a question whose
 	// second answer was dropped keeps `1` and `3` on the two that are left, and
 	// a row that said `1–2` there would name a key nothing answers.
-	first, last := questionOptionKeyAt(q, 0), questionOptionKeyAt(q, len(q.Options)-1)
-	return first + "–" + last
+	//
+	// AND A RANGE IS ONLY DRAWN WHERE THE KEYS RUN. `1–3` over the answers `1`
+	// and `3` names `2` as a key, which is the same lie one row further on: the
+	// engine drops the widening answer from a gate it may not offer one on
+	// (consent.go), so this is the ORDINARY shape of an irreversible permission
+	// rather than an edge. Where they do not run, each key is said.
+	keys := make([]string, 0, len(q.Options))
+	for at := range q.Options {
+		keys = append(keys, questionOptionKeyAt(q, at))
+	}
+	if questionKeysRun(keys) {
+		return keys[0] + "–" + keys[len(keys)-1]
+	}
+	return strings.Join(keys, " ")
+}
+
+// questionKeysRun reports whether these answer keys are the consecutive digits
+// a range spelling would claim they are.
+func questionKeysRun(keys []string) bool {
+	for i, key := range keys {
+		if len(key) != 1 || key[0] < '0' || key[0] > '9' {
+			return false
+		}
+		if i > 0 && key[0] != keys[i-1][0]+1 {
+			return false
+		}
+	}
+	return true
 }
 
 // questionJumpWord is what the digits do: they move the pointer onto an answer

@@ -112,3 +112,62 @@ func TestAQuestionWithOneLifetimeDrawsNoRow(t *testing.T) {
 		t.Fatalf("a question with one lifetime offers the key:\n%s", screen)
 	}
 }
+
+// AND THE DIGITS ROW NAMES NO KEY NOTHING ANSWERS. An irreversible permission is
+// the ordinary shape this happens on: the engine drops the widening answer from
+// a gate it may not offer one on, leaving `1` and `3`, and a row that said `1–3`
+// would be offering a key that does nothing.
+func TestTheDigitsRowOnlyDrawsARangeWhereTheKeysRun(t *testing.T) {
+	q := consentAsk()
+	q.Stakes = session.StakesIrreversible
+	kept := q.Options[:0:0]
+	for _, option := range q.Options {
+		if option.Widening {
+			continue
+		}
+		kept = append(kept, option)
+	}
+	q.Options = kept
+	if got := questionDigitsWord(q); got != "1 3" {
+		t.Fatalf("the digits row says %q over the answers 1 and 3", got)
+	}
+	if got := questionDigitsWord(consentAsk()); got != "1–3" {
+		t.Fatalf("three answers that run are not drawn as a range: %q", got)
+	}
+}
+
+// WHERE THE POINTER OPENS ON A PERMISSION IS DECIDED BY THE STAKES, and by
+// nothing else (owner ruling 2026-09-11, consent pick B).
+//
+// An irreversible call opens on the answer that loses nothing, because `enter`
+// takes what the pointer is on and that call cannot be taken back. An ordinary
+// one opens on `allow once`: every gate opened on deny for a year, including the
+// ones over a command the rules had merely not seen before, so the key a person
+// presses to get on with their work was the key that stopped it.
+func TestWhereThePermissionPointerOpensIsDecidedByTheStakes(t *testing.T) {
+	ordinary := consentAsk()
+	if got := questionPointerStart(ordinary); got != 0 {
+		t.Fatalf("an ordinary permission opens on answer %d, not `allow once`", got)
+	}
+	grave := consentAsk()
+	grave.Stakes = session.StakesIrreversible
+	if got := questionPointerStart(grave); got != questionSafeAt(grave) {
+		t.Fatalf("an irreversible permission opens on answer %d, not the answer that loses nothing", got)
+	}
+	// AND THE TOOL'S NAME IS NEVER READ. The same stakes over a different call
+	// stand in the same place.
+	grave.Subject = session.SubjectRef{Kind: session.SubjectCall, Name: "read"}
+	if got := questionPointerStart(grave); got != questionSafeAt(grave) {
+		t.Fatalf("the pointer moved when the tool's name changed: %d", got)
+	}
+	// AND A CONFIRMATION IS UNTOUCHED: it keeps stop.go's law whatever its
+	// stakes say, because it was raised by a person's own gesture.
+	stop := session.Question{
+		ID: 9, Kind: session.QuestionTask, Ask: session.AskConfirmation,
+		Asker: session.Asker{Kind: session.AskerSurface}, Stakes: session.StakesReversible,
+		Options: []session.AnswerOption{{Key: "1", Label: "stop it"}, {Key: "2", Label: "keep going", Safe: true}},
+	}
+	if got := questionPointerStart(stop); got != 1 {
+		t.Fatalf("a confirmation opens on answer %d, not the answer that loses nothing", got)
+	}
+}

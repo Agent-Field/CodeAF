@@ -469,7 +469,16 @@ const (
 	// on the engine's side, which is why it is a call and not a local file: a
 	// window attached over `--host` is setting the dial on the machine the work
 	// is happening on.
-	MethodSetAutonomy   = "SetAutonomy"       // AutonomyArgs → nothing (or a refusal)
+	MethodSetAutonomy = "SetAutonomy" // AutonomyArgs → nothing (or a refusal)
+	// MethodAutonomy IS THE OTHER HALF OF THE DOOR ABOVE, and it was missing.
+	// A surface could WRITE one of these rules over the wire and never read one
+	// back, so every window on the ordinary road — the surface talks to its own
+	// engine process through exactly this client — asked the question and got
+	// "this conversation has no project to keep question rules in", whatever
+	// project it was in. `/autonomy` printed that sentence on a machine with the
+	// rules sitting in `.aforge/autonomy.json`, and the settings rows that read
+	// the same door drew nothing at all.
+	MethodAutonomy      = "Autonomy"          // nothing → map[AskKind]Policy
 	MethodHarness       = "ResolveHarness"    // HarnessArgs → nothing
 	MethodConnect       = "ResolveConnect"    // ConnectArgs → nothing
 	MethodConnectKey    = "ResolveConnectKey" // ConnectArgs → nothing
