@@ -83,7 +83,7 @@ func pieceArgs(title string) json.RawMessage {
 
 // handOut makes one proposal from inside the node and returns what the model was
 // told. Nothing is asked: there is nobody in a worktree to show a card to, so the
-// clock approves at once ([Agent.askTask]).
+// clock approves at once ([Agent.openTask]).
 func (n *nest) handOut(t *testing.T, title string) string {
 	t.Helper()
 	answer, _, err := n.node.proposeTask(context.Background(), pieceArgs(title))

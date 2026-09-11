@@ -1059,7 +1059,7 @@ var (
 // askStanding emits one proposal and waits for the person — for as long as
 // that takes.
 //
-// IT IS [Agent.askTask] WITH THE CLOCK TAKEN OFF, which is the file header's
+// IT IS [Agent.openTask] AND [taskWait.answer] WITH THE CLOCK TAKEN OFF, which is the file header's
 // first law in one function:
 //
 //   - WATCHED: no deadline is sent and no timer is started. The card stands
