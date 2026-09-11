@@ -478,6 +478,12 @@ func TestAnOlderEnginesNewsFrameLandsWithNoConversationOnIt(t *testing.T) {
 	// The shape an engine from before this field writes: no "session" key.
 	c.phaseFrame(json.RawMessage(`{"phase":"writing","model":"a/b","role":"talk","lane":"friendli","rate":38}`))
 	c.laneNewsFrame(json.RawMessage(`{"model":"a/b","lane":"friendli","role":"talk"}`))
+	// THE NEWS IS LEFT ON A DESK AND HANDED ON BY THE DESK'S OWN GOROUTINE
+	// (internal/session's sidecar.go), so that a slow surface can never hold up the
+	// turn it is describing — which means arriving is a moment later than posting,
+	// and every other test on this page already waits for it.
+	waitForNews(t, "the older engine's frames to reach the desks",
+		func() bool { return len(phases()) > 0 && len(lanes()) > 0 })
 	if got := phases(); len(got) != 1 || got[0].Session != "" || got[0].Lane != "friendli" {
 		t.Fatalf("an older engine's phase landed as %+v, want friendli with no conversation named", got)
 	}
