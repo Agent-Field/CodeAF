@@ -2369,8 +2369,8 @@ By default, **no limit**. `task.parallel` is 0 (blank) out of the box, and 0 mea
 A cap, if you set one, is a **queue and never a refusal**: a ready task past the cap sits
 and starts when a slot frees.
 
-The real ceiling is the machine. Before each scheduling pass, aforge asks whether one more
-task may start:
+The real ceiling is the machine. Before starting **each** task, aforge asks whether one
+more may start:
 
 | Setting | What it reads | Default | Effect |
 | --- | --- | --- | --- |
@@ -2380,6 +2380,18 @@ task may start:
 Either one set to 0 turns that check off. Readings are cached for **1 second**. When a
 task is held back this way it is re-asked every **5 seconds** — a machine getting quieter
 is not an event, so it has to be looked at on a clock.
+
+**How many start at once when a lot of work is handed out together.** A task that has just
+started is invisible to the memory reading — its own memory arrives with its first build,
+minutes later — so each task that starts **sets aside a footprint** of memory until a
+reading shows it, and the next one is judged against what is left. A footprint is the
+larger of two figures this machine gives: one core's share of its memory (`MemTotal` ÷
+cores, so 2 GiB on a 16 GiB eight-core laptop) and the most memory per task aforge has
+watched this session's tasks actually hold. A quiet machine therefore starts roughly **one
+task per core's share of the memory above the floor**; the rest wait saying `machine busy`
+and start as the earlier ones finish or as a reading shows room. Nothing is counted twice —
+as a running task's memory appears in the reading, what is set aside for it falls by as
+much.
 
 This gates **starts only**. Nothing already running is ever touched; pressure drains as
 running tasks finish.

@@ -114,52 +114,18 @@ it asks for": the message's instruction, not the piece's own reading of its shar
   becomes ready together is therefore admitted on one reading. At five pieces that was a
   small burst; at twenty it is twenty checkouts and twenty builds starting against a
   reading taken before any of them. That is the governor's shape, not the cap's, and it
-  is not worked around in the cap. It is issue
-  [#878](https://github.com/Agent-Field/aforge-v2/issues/878), and lane G owns the fix.
+  is not worked around in the cap. It was issue
+  [#878](https://github.com/Agent-Field/aforge-v2/issues/878), fixed in the governor by
+  the last section of this document.
 
 ### The governor seam (#878)
 
-**What is true today.**
-
-- `runFrontier` (`task_run.go`) asks `g.governor.holds()` once, before it takes the
-  graph's lock.
-- It then walks every queued node, and `holdOnStartingLocked` answers each one from that
-  same `busy` bool.
-- The reading is load per core against `DefaultTaskMaxLoad` (1.5) and MemAvailable
-  against `DefaultTaskMinFreeMB` (1536 MB), behind a one-second cache
-  (`task_pressure.go`).
-- Nothing in it accounts for a node the pass itself has just started. A node's memory
-  arrives seconds after admission, when its checkout is carved and its first build runs,
-  and load average is a one-minute decayed figure. So no reading taken inside the burst
-  can see the burst. With `task.parallel` unset, every ready node in the pass starts.
-
-**The shape the fix takes.** Two changes, one mechanism:
-
-1. **The frontier asks the governor per admission, not once per pass.** Each node that
-   would take a slot is put to the governor at the moment it would start, so the answer
-   can differ between the first node of a batch and the twentieth. The reading itself
-   stays behind its cache and outside the graph's lock. What moves is the question, which
-   becomes "may THIS node start, given what has been admitted since the reading".
-2. **A reservation per admitted node, counted against the memory floor until a reading
-   taken after that node started.** The governor keeps the nodes it has admitted since its
-   last fresh reading and subtracts a per-node footprint from MemAvailable for each of
-   them.
-   - A reservation is released by the first reading taken after the node started, which is
-     the first reading that can see the node's own memory. It is never released by a timer.
-   - The footprint is a belief measured from nodes that actually ran on this machine, not
-     a constant somebody picked, for the same reason the count was never the resource
-     (`task_pressure.go`'s header).
-   - Until a node has been measured on this machine, there is no honest number to
-     reserve. The design question #878 carries is what stands in until then: the peak of
-     the last nodes seen, or one start per fresh reading. It also carries where that
-     measurement lives.
-
-**What does not change.**
-
-- Nothing running is stopped.
-- A machine this package cannot measure still never holds.
-- A node that takes no slot is held by neither ceiling.
-- The fan cap stays a runaway stop and is not lowered to stand in for any of the above.
+This subsection carried the seam while the fix was owed: the frontier asked the governor
+once per pass, every ready node started on that one answer, and the design question was
+what footprint to reserve before any node had been measured. It landed as the section
+**The admission governor: a reservation, and one question per admission** at the end of
+this document, which says what was true, what is true now, and what stands in for a
+footprint before one is measured.
 
 ## The ground a task stands on (lane S1)
 
@@ -257,3 +223,107 @@ tree another way.
 | --- | --- | --- | --- |
 | aforge-v2 clone, 5,706 files | 61.6 ms | 8.3 ms | 0 |
 | 50-file repository | 11.3 ms | 1.5 ms | 0 |
+
+## The admission governor: a reservation, and one question per admission (#878)
+
+**What was true.** `runFrontier` asked the machine once — `busy :=
+g.governor.holds()`, taken before the graph's lock, behind a one-second cache —
+and then marked *every* ready node running against that one bool. It was the
+right shape for one node and the wrong shape for a fan. Twenty parts handed out
+in one breath were twenty agents, twenty worktrees and, minutes later, twenty
+builds, and all twenty were admitted against a reading taken before any of them
+existed. Neither half of the reading could have caught it: load average is a
+one-minute decayed figure, and a node's memory arrives with its first build, so
+the reading that finally shows the burst is taken long after the burst was
+admitted. The shape was reachable before from uncapped conversation roots; with
+the fan raised to twenty it became the ordinary path at four times the width.
+
+**What is true now.** The governor keeps a **reservation** for the work it has
+let in, and the frontier consults it **once per admission** rather than once per
+pass.
+
+- Every running node is expected to need one node's **footprint** of memory.
+- What the running nodes already hold is **visible** in the reading: the
+  resident memory of this process and everything it started, above what that
+  tree held at a reading taken while this graph ran nothing.
+- The part of their footprints not yet visible is taken off `MemAvailable`
+  before the floor is compared:
+
+      projected = MemAvailable − max(0, running × footprint − visible)
+
+  and one more node starts only while `projected` is at or above
+  `task.min_free_mb`.
+
+The count passed in is the graph's own `running`, which already includes every
+node the same pass has started, so the second node of a fan is judged against
+the machine the first one leaves behind. Nothing is counted twice: as a node's
+memory becomes visible, `MemAvailable` falls by what `visible` rises by, so the
+projection stands still while the reading catches up and moves only when a node
+settles or the machine frees memory of its own.
+
+**The footprint is measured, and the prior is the machine's own shape.** It is
+the larger of:
+
+- `peakShareMB` — the most visible memory per running node any reading of this
+  session has seen. It only rises, for the same reason the kernel's own
+  `ru_maxrss` is a high-water mark: a figure that fell whenever the nodes
+  happened to be between builds would hand the room back just before the next
+  build needs it.
+- one core's share of this machine's memory, `MemTotal ÷ cores`. A node is
+  local work whose heaviest act is a compiler or a test run, which takes a core
+  and memory in the proportion the machine was built in. It is what a node is
+  assumed to need before anything has been measured — and a footprint of zero
+  there would admit a whole first fan against a reading that cannot see it,
+  which is the burst this exists to stop.
+
+A consequence worth stating plainly: a quiet machine starts about **one node per
+core's share of the memory above the floor** — four on a 16 GiB eight-core
+laptop, sixteen on this 122 GiB twenty-core box — and holds the rest with
+`waitingMachineBusy`, which the rail draws as `waiting · machine busy`. Held
+nodes start as earlier ones settle, or when a later reading shows room; the
+five-second poll is still the only clock, because a machine getting quieter is
+not an event this process can hear.
+
+**Why the reservation is memory and not load.** Memory is the resource that
+fails rather than slows: a machine short of cores runs every build slower and
+finishes all of them, and a machine short of memory kills one or swaps until
+nothing finishes. And bounding admitted nodes by memory already bounds the CPU
+burst, because a footprint is at least one core's share — so a quiet machine
+admits at most about one node per core, which is one machine's worth of
+compilers rather than twenty. The load half stays exactly what it was: the
+reading of a machine busy with somebody else's work.
+
+**What the visible half reads.** `treeResidentMB` walks this process and its
+descendants through each thread's `/proc/<pid>/task/<tid>/children` file and
+sums `statm`'s resident pages. It follows the tree down rather than reading
+every process on the box and sorting out whose is whose, so what it costs scales
+with what this process started: a full `/proc` scan measured 13 ms on a machine
+running 1,600 processes, and this runs on the frontier's own goroutine. The
+kernel promises the children file exactly only for a stopped tree, so a process
+born or reaped as it is read can be missed — the right precision for a figure
+re-read every second.
+
+**Boundaries, stated rather than hidden.** The reading is `/proc`'s, so on macOS
+and Windows the governor still says "cannot say" and never holds, exactly as
+before. And each conversation's graph keeps its own governor and so its own
+reservation, while the visible half is this whole process: two conversations in
+one process fanning out at the same moment each read the other's visible work as
+covering part of its own reservation, and one reading taken during the other's
+build can raise this graph's measured footprint for the rest of the session,
+because that figure only rises. The floor on the reading itself still holds for
+both. The fix is one account for the whole process, which needs every
+`TaskGraph.running` mutation behind one door; it is
+[#907](https://github.com/Agent-Field/aforge-v2/issues/907), not a clamp here.
+
+**Deleted.** `admissionGovernor.holds`, the once-per-pass `busy` bool and the
+`busy` parameter of `holdOnStartingLocked`; `TaskGraph.machineBusy`, which asked
+the governor a second time from the division's receipt — a question about a node
+that did not exist yet. The receipt now reads what the frontier decided
+(`TaskGraph.machineHolds`), and says *some* of the parts are waiting, because a
+fan wider than the machine is half started and half held.
+
+**The law.** `TestEveryStartIsJudgedByTheGovernor` (`go/ast`, so it is on the
+laws gate) fails if a node is moved to `TaskRunning` anywhere but `runFrontier`,
+if `runFrontier` stops asking `holdOnStartingLocked` before that move, or if
+`admits`/`observe` gain a second caller. A node *born* running is named in
+`bornRunning` with its reason.
