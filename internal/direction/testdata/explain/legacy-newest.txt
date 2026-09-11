@@ -1,0 +1,3 @@
+SEARCH g USING INDEX direction_legacy_record (record_id=?)
+SCALAR SUBQUERY n
+  SEARCH direction_legacy USING INDEX sqlite_autoindex_direction_legacy_1 (source_store=? AND source_id=?)

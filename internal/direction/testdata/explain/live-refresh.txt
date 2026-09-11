@@ -1,0 +1,1 @@
+SEARCH direction_live USING COVERING INDEX direction_live_record (record_id=?)

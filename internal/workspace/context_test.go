@@ -534,7 +534,7 @@ INSERT INTO memberships(collection_id,kind,ref_id,session_id,target_collection)
         ('marketing','collection','product','','product');
 PRAGMA application_id=%d; PRAGMA user_version=1`, versionOneSchema, applicationID))
 	s := openTestStore(t, path)
-	if got := readUserVersion(t, path); got != schemaVersion {
+	if got := readUserVersion(t, path); got != ordinaryVersion {
 		t.Fatalf("the store is at version %d after opening", got)
 	}
 	collections, err := s.Collections(ctx)
@@ -566,7 +566,7 @@ PRAGMA application_id=%d; PRAGMA user_version=1`, versionOneSchema, applicationI
 	if err != nil || len(again) != 1 || again[0].ID != record.ID {
 		t.Fatalf("reopening lost the record: %v, %v", contextIDs(again), err)
 	}
-	if got := readUserVersion(t, path); got != schemaVersion {
+	if got := readUserVersion(t, path); got != ordinaryVersion {
 		t.Fatalf("the second open moved the version to %d", got)
 	}
 }

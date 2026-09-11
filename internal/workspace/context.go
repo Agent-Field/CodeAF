@@ -56,6 +56,10 @@ const (
 	// MaxContextTargets is the target bound spelled for callers who have to stay
 	// inside it. It is the same number, not a second one.
 	MaxContextTargets = maxContextTargets
+	// MaxContextTitle and MaxContextText are the same title and text bounds,
+	// spelled for the direction records that inherit them.
+	MaxContextTitle = maxContextTitle
+	MaxContextText  = maxContextText
 	// MaxContextPage is the most records one page carries. A caller asking for
 	// more is given this many rather than refused, so a surface that guesses too
 	// high still gets an answer it can draw.
@@ -604,6 +608,15 @@ func validateContext(title, text string, source Ref, targets []Ref) ([]Ref, erro
 	}
 	return kept, nil
 }
+
+// ValidLine and ValidProse are this store's two text rules, spelled for the
+// other records kept in it, so a title or a body means the same thing in every
+// table of this database.
+func ValidLine(s string, limit int) bool  { return validText(s, limit) }
+func ValidProse(s string, limit int) bool { return validProse(s, limit) }
+
+// NewID mints a record identity the way this store mints its own.
+func NewID() (string, error) { return newID() }
 
 // validProse accepts the body of a finding, which is prose and therefore keeps
 // its line breaks and tabs. Every other control character is refused, so a
