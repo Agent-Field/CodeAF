@@ -126,7 +126,9 @@ func TestAPressWhereAHiddenQuestionUsedToBeAnswersNothing(t *testing.T) {
 
 	drive(t, lab.a, key(newChatChord))
 	_ = frame(lab.a)
-	if lab.a.questionPress(x, y) {
+	// The press hands back the command an answer travels on now (offloop.go), so
+	// what is read is whether it was TAKEN.
+	if _, took := lab.a.questionPress(x, y); took {
 		t.Fatal("a press where the hidden question used to be was taken")
 	}
 	if len(lab.answer) != 0 || lab.a.questionCount() != 1 {
