@@ -404,8 +404,8 @@ func (a *Agent) startQuickTask(_ context.Context, args json.RawMessage) (string,
 		return "Invalid arguments: " + err.Error(), true, nil
 	}
 	id, spec, refusal := a.admitQuick(parsed.askOf())
-	if refusal != "" {
-		return refusal, true, nil
+	if refusal.said != "" {
+		return refusal.said, true, nil
 	}
 	return quickStartedWord(id, spec), false, nil
 }
@@ -436,21 +436,36 @@ func (a *Agent) startQuickTask(_ context.Context, args json.RawMessage) (string,
 // through the fan cap ([TaskGraph.claimChild]). Nothing between the claim and
 // the admission can fail, and [TaskGraph.admit] hands the slot back itself as
 // the node starts counting for itself, so there is no release path to remember.
-func (a *Agent) admitQuick(ask quickAsk) (uint64, taskSpec, string) {
+func (a *Agent) admitQuick(ask quickAsk) (uint64, taskSpec, quickRefusal) {
 	graph := a.graph()
 	graph.quickGate.Lock()
 	defer graph.quickGate.Unlock()
 
 	spec, refusal := a.newQuickSpec(ask)
 	if refusal != "" {
-		return 0, taskSpec{}, refusal
+		return 0, taskSpec{}, quickRefusal{said: refusal}
 	}
 	if refused := graph.claimChild(spec.parent); refused != "" {
-		return 0, taskSpec{}, refused
+		return 0, taskSpec{}, quickRefusal{said: refused, fanFull: true}
 	}
 	id := graph.reserve()
 	graph.admit(id, spec)
-	return id, spec, ""
+	return id, spec, quickRefusal{}
+}
+
+// quickRefusal is what the one door answers when nothing was admitted: the
+// sentence whoever asked reads, and whether what declined was the parent task's
+// fan cap rather than the ask itself.
+//
+// THE DOOR SAYS WHICH REFUSAL IT WAS, because only the door knows. The two are
+// one sentence to a model — it is being told no either way — but they are not one
+// event to a person reading a session file afterwards, and the ceiling road has to
+// write a word down for that reader (checkpoint_quick.go). "There was nothing to
+// hand over" and "this task has already handed out all it may" are different
+// answers, and the second one is not a fault of the turn that was carried on.
+type quickRefusal struct {
+	said    string
+	fanFull bool
 }
 
 // quickStartedWord is the receipt, and it mirrors `propose_task`'s: the id

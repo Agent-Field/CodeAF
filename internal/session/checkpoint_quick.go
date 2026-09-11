@@ -78,6 +78,15 @@ import (
 // started.
 const checkpointQuickNote = "this has parts · a quick task is taking them here, in this folder: "
 
+// checkpointCeilingFanFull is the ending this road takes when a carry-on INSIDE a
+// task would be one child too many for that task ([TaskGraph.claimChild]). It is
+// spelled `dropped:` like every other non-moving ending and belongs to
+// checkpoint.go's register of them; it is declared beside the only road that takes
+// it because it is the only road that can be refused that way — a conversation's
+// own carry-on has no parent to be the child of, and the full road takes no fan
+// slot at all.
+const checkpointCeilingFanFull = "dropped:parent-fan-full"
+
 // checkpointQuickLine is that line with the node's name on the end of it.
 func checkpointQuickLine(title string) string {
 	return checkpointQuickNote + title
@@ -204,9 +213,12 @@ func sketchItems(sketch checkpointSketch) []string {
 // armed to divide either: the door never arms a quick node, because the items
 // ARE the division and task_divide.go refuses the kind outright.
 //
-// THE NAME ASKED FOR AHEAD IS NOT USED. A quick node is never named
-// ([Agent.newQuickSpec]), so the call [Agent.handOverRunningTurn] started for the
-// other road is let go unclaimed when that function returns ([nameAhead.release]).
+// AND NO NAME IS ASKED FOR ON THIS ROAD AT ALL. A quick node is admitted named
+// ([Agent.newQuickSpec]), so [Agent.handOverRunningTurn] asks for the other road's
+// name UNDER the branch that comes here rather than over it — for as long as it
+// asked above, every write-free carry-on paid a model for a row nothing renames
+// (taskname.go's [nameAhead], and
+// [TestAQuickCarryOnAsksForNoNameAndTheFullRoadStillDoes] holds the line).
 func (a *Agent) handOverAsQuick(ctx context.Context, hub *eventHub, turn *Usage, started time.Time,
 	model string, ask quickAsk) checkpointHandover {
 	// THE CLOCK COMES OFF FIRST. The briefing stage the person is watching ends
@@ -217,13 +229,27 @@ func (a *Agent) handOverAsQuick(ctx context.Context, hub *eventHub, turn *Usage,
 		return checkpointHandover{decision: checkpointCeilingAbandoned}
 	}
 	id, spec, refusal := a.admitQuick(ask)
-	if refusal != "" {
-		// THE DOOR DECLINED THE ASK, and on this road the only ask it can decline
-		// is a line with nothing in it — [Agent.quickFromDrawing] never hands over
-		// files or dependencies, and a conversation's fan is not capped. That is
-		// the full road's no-brief ending, and it is taken the same way: nothing
-		// started, so nothing is sealed and nothing is written into the
-		// transcript, and the turn carries on.
+	if refusal.said != "" {
+		// THE DOOR DECLINED, AND WHICH REFUSAL IT WAS IS WRITTEN DOWN AS ITSELF.
+		//
+		// Two of the door's refusals can reach this road and no more:
+		// [Agent.quickFromDrawing] hands over neither files nor dependencies nor a
+		// model, so what is left is a line with nothing in it — which is the full
+		// road's no-brief ending and means the same thing here — and the fan cap.
+		//
+		// THE FAN CAP IS NOT "NO BRIEF", and saying so was the one dishonest word
+		// on this road. A ceiling reached inside a task carries on to a CHILD of
+		// that task ([Agent.newQuickSpec] takes the parent from the config), so
+		// [TaskGraph.claimChild] can refuse it where a conversation's own carry-on
+		// is never refused — and a session file saying `dropped:no-brief` about a
+		// turn that had a perfectly good list to hand over sends whoever reads it
+		// looking for the wrong bug.
+		//
+		// EITHER WAY NOTHING IS SEALED and nothing is written into the transcript,
+		// and the turn carries on holding its own work.
+		if refusal.fanFull {
+			return checkpointHandover{decision: checkpointCeilingFanFull}
+		}
 		return checkpointHandover{decision: checkpointCeilingNoBrief}
 	}
 	// THE TOLD-AFTER LINE, and it is the one line a person reads about this

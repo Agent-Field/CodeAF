@@ -170,8 +170,11 @@ a piece of work and not a conversation: a chat with three tasks out is three row
 ```
 
 The line under a task is what its worker is doing, else the life it is in (`checking what
-it left`), else `working` or `queued`, and `2 of 5` is how far a run has got. A job is one
-line — its command, its project, and how long it has been `up`. A watch mid-pass is its own
+it left`), else `working` or `queued`, and `2 of 5` is how far a run has got. On a quick
+task that same `N of N` counts its ticked items instead — a quick task with four things on
+its list and two ticked shows `2 of 4` — and it is drawn for another window's quick task as
+readily as for this one's. A job is one line — its command, its project, and how long it
+has been `up`. A watch mid-pass is its own
 words, what the pass is doing and how long ago it began. A row another terminal holds says
 `another window`, and `enter` brings its conversation here.
 

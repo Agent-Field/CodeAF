@@ -74,9 +74,16 @@ type quickTaskSpec struct {
 // admitQuick is the ONE door every quick node comes through, on every road
 // (2026-09-11, see "One door, one record, one hold" below). newQuickSpec is
 // its only caller-side constructor. Refusals are results the reader gets back,
-// never errors.
-func (a *Agent) admitQuick(ask quickAsk) (id uint64, spec taskSpec, refusal string)
+// never errors, and the door says which refusal it was: a model reads one
+// sentence either way, but the ceiling road writes the fan cap down under its
+// own word.
+func (a *Agent) admitQuick(ask quickAsk) (id uint64, spec taskSpec, refusal quickRefusal)
 func (a *Agent) newQuickSpec(ask quickAsk) (taskSpec, string)
+
+type quickRefusal struct {
+    said    string // the one sentence whoever asked reads
+    fanFull bool   // the parent task's fan cap declined it, not the ask itself
+}
 
 // quickTools is the belt door: `quick_task`, withheld at taskDepthLimit exactly
 // as propose_task is (task.go:463).
@@ -258,8 +265,19 @@ the family and the model are decided — takes the fan slot and admits. The tool
 `quickAsk` out of a call and the ceiling reads one out of a drawing; `launchRouteTask`
 no longer knows quick exists. The line is kept whole (the ceiling's line is the
 person's own message, which may be a paragraph); only its first line titles the row.
-The name the ceiling asks for ahead (`checkpoint.go`) is now released unclaimed; asking
-for it only after the quick branch is decided is the remaining seam in that file.
+
+**And the ceiling road no longer pays for a name it cannot use.** `nameAhead` used to be
+started above the branch that chooses this road, so every write-free carry-on sent a real
+request to a real model and cancelled it microseconds later — for a node `newQuickSpec`
+admits `named`, which `TaskGraph.nameNode` therefore leaves alone. The ask now stands
+below the branch, where the road is already known; the full road still has the brief
+writer's call to land in, so nothing is lost by asking a moment later
+(`TestAQuickCarryOnAsksForNoNameAndTheFullRoadStillDoes` counts the requests on both
+roads). The other refusal the road can meet is the fan cap: a ceiling reached *inside* a
+task carries on to a child of that task, so `claimChild` can decline it, and that ending
+is journalled as `dropped:parent-fan-full` rather than as the `dropped:no-brief` it
+borrowed — a session file should not send a reader looking for a brief that was never
+the problem.
 
 **A running quick task held nothing it wrote.** `claimOver` skips a node with no working
 copy and `fileOwner` skipped any node without a branch, so the one kind of node writing

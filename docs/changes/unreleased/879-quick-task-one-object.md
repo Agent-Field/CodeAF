@@ -12,6 +12,8 @@ invalidates:
   - "`fileOwner` held written files only for nodes with a branch, so a running quick task held nothing and the chat could overwrite a file it had half-written. Every running node that does not hold its whole tree (`TaskNode.holdsTreeLocked`) now owns the paths it has written, and a write to one of them is refused with the holder named (`<file> is held by task N (<title>), so nothing was written.`)."
   - "The chat manual said a file a quick task *named* at the start is held against the chat. It is not. Only files it has written are held; a named file only makes a second quick task that names the same file wait."
   - "`PresenceTask` had no kind or parent, and `<elsewhere>` listed another window's quick parts as separate rows. It now carries `kind` and `parent`, plus `done`/`total` taken from a quick task's items, and the block folds the parts onto their head row (`3 quick parts running`)."
+  - "The ceiling's handover started a naming request before it knew which road the turn was taking, so every write-free carry-on paid a model for a name a quick node can never use. The request is now made below that branch, and a quick carry-on asks for no name at all."
+  - "A quick carry-on refused by its parent task's fan cap was written into the session file as `dropped:no-brief`, which it was not. That ending is now `dropped:parent-fan-full`, and the one door says which of its refusals happened."
   - "`TaskNode.Expects` was never written to the checkpoint. It is written now: the brief section is always restored, and the preflight manifest is restored only onto a node that never ran."
 ---
 
