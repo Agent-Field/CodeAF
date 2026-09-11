@@ -312,6 +312,7 @@ func (q *quietAgent) FollowUp(text string) (<-chan session.Event, error) {
 }
 func (q *quietAgent) Steer(text string) (<-chan session.Event, error)           { return q.FollowUp(text) }
 func (q *quietAgent) Interrupt()                                                {}
+func (q *quietAgent) InterruptFor(session.StopDoor)                             {}
 func (q *quietAgent) Compact(context.Context) error                             { return nil }
 func (q *quietAgent) Close() error                                              { return nil }
 func (q *quietAgent) Model() string                                             { return "a/b" }

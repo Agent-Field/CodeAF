@@ -706,12 +706,12 @@ func (p *orchestratePlanner) think(ctx context.Context, messages []ai.Message) (
 // sees.
 func (p *orchestratePlanner) ask(ctx context.Context, messages []ai.Message) (string, error) {
 	ctx = p.call.context(ctx)
-	response, err := p.agent.client.CompleteWithMessages(
+	response, err := p.agent.completeWithModel(
 		// The plan a run is steered by: nobody reads it arriving, and it has to
 		// be right rather than soon (internal/lane's roles.go).
 		provider.WithRole(provider.WithoutStream(ctx), lane.RoleDesign),
 		messages,
-		ai.WithModel(p.call.model))
+		p.call.model)
 	if err != nil {
 		return "", err
 	}
@@ -1042,7 +1042,6 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 	// this session's own when they match (loop.go's [Agent.childWindow] states
 	// the whole argument, and newTaskAgent asks for it the same way).
 	window := a.childWindow(model)
-	client := unwrapCompleter(a.client)
 	journal := orchestrateJournalPath(a.sessionID(), e.id, node.ID)
 	// The rung this session's own next turn would ask for, carried into the node
 	// as its floor exactly as a task node inherits it (task_run.go's
@@ -1059,7 +1058,7 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 	}
 	a.mu.Unlock()
 
-	child, err := newAgent(Config{
+	child, err := a.newChildAgent(Config{
 		// An adaptive run's worker shares the project's error→fix file for a task
 		// node's reason (task_run.go's newTaskAgent, fixstore.go).
 		fixesDir: a.config.fixesBucket(),
@@ -1080,6 +1079,7 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 		Model:         model,
 		APIKey:        parent.APIKey,
 		BaseURL:       parent.BaseURL,
+		Sources:       parent.Sources,
 		ContextWindow: window,
 		// And the catalog with it, for the reason newTaskAgent hands it down:
 		// a worker that switches its own model has to be able to learn that
@@ -1110,7 +1110,7 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 		MediaModel:                 parent.MediaModel,
 		MediaPick:                  parent.MediaPick,
 		DocumentEngine:             parent.DocumentEngine,
-	}, client)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -1300,11 +1300,11 @@ func orchestrateJournalPath(session, run, node string) string {
 // refusal is a result the model READS — it can pick a different file and carry
 // on — because a veto that ended the turn would cost it its work.
 //
-// IT HAS TWO CITIZENS NOW and they want it for opposite reasons. A node of an
+// IT HAS TWO CITIZENS and they want it for opposite reasons. A node of an
 // adaptive run is scoped so that nodes running in DIFFERENT places do not both
-// claim the same corner of the plan; a fork's hand is scoped so that hands
+// claim the same corner of the plan; a quick task is scoped so that quick tasks
 // running in THE SAME working copy cannot collide at all, which is what stands
-// in for the worktree a hand does not get (fork.go).
+// in for the worktree a quick task does not get.
 //
 // IT BINDS THE CALLS WHOSE TARGET IS A KNOWN PATH — edit, write, and the three
 // edit_video actions that write the file they name (recovery.go's [mutatedPath],
@@ -1321,10 +1321,8 @@ func orchestrateJournalPath(session, run, node string) string {
 // timestamped name in the session's own video folder, which nothing can read out
 // of the arguments, so that call goes unscoped exactly as generate_image's does.
 //
-// What bounds a node's shell is the same thing that bounds every other agent's —
-// the approval floor; what bounds a hand's is that a hand's bash cannot write at
-// all (fork.go's [forkBelt]), which is the one place this hole is closed rather
-// than named.
+// What bounds a node's shell is the same thing that bounds every other agent's:
+// the approval floor.
 type writeGuard struct{ agent *Agent }
 
 func (writeGuard) Name() string { return "write-scope" }
@@ -1655,8 +1653,12 @@ func (a *Agent) newOrchestrateFamily(goal, planner string, runID ...string) *orc
 		// on the row that closes it: this is the one seam that knows, because an
 		// adaptive run has no TaskNode to carry a kind for it
 		// (session's TaskKindAdaptive).
-		Kind:          TaskKindAdaptive,
-		Status:        string(TaskRunning),
+		Kind:   TaskKindAdaptive,
+		Status: string(TaskRunning),
+		// AND IT CARRIES ITS START, which is the one fact about a running row
+		// that does not go stale: every other window reads this line while the
+		// run goes, and [TaskIndexEntry.Duration] counts up from it.
+		StartedAt:     family.started,
 		SessionID:     session,
 		TranscriptURI: orchestrateFamilyURI(session, family.run),
 	})
@@ -2100,6 +2102,7 @@ func (f *orchestrateFamily) recordRoot(notice TaskNotice, snap orchestrate.Snaps
 		Cost:          snap.Fuel.Spent,
 		Model:         f.model,
 		DurationMS:    time.Since(f.started).Milliseconds(),
+		StartedAt:     f.started,
 		EndedAt:       time.Now(),
 		SessionID:     session,
 		TranscriptURI: orchestrateFamilyURI(session, f.run),

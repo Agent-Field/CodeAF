@@ -3,6 +3,7 @@ package session
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -363,9 +364,15 @@ func TestALandingAsksTheProjectsOwnFilesAndDropsItsOwnFamily(t *testing.T) {
 		PresenceTask{ID: "9", Title: "the manual pass", State: string(TaskRunning),
 			Files: []string{"internal/tui3/rail.go"}})
 
-	reason := agent.groundShift(parent, []string{
+	reason, moved := agent.groundShift(parent, []string{
 		"internal/tui3/home.go", "internal/tui3/task.go", "internal/tui3/rail.go",
 	})
+	// AND THE FILES COME BACK BESIDE THE SENTENCE, over both sources at once,
+	// because the landing that follows names them on the row it asks its question
+	// on (task_status.go's [taskShiftReason]).
+	if want := []string{"internal/tui3/home.go", "internal/tui3/rail.go"}; !slices.Equal(moved, want) {
+		t.Fatalf("the moved files are %v, not %v", moved, want)
+	}
 	if !strings.Contains(reason, `"rail permanence" changed internal/tui3/home.go while this ran`) {
 		t.Fatalf("the other window's landing is missing:\n%s", reason)
 	}
@@ -394,8 +401,8 @@ func TestALandingNobodyIsNearAsksAndHearsNothing(t *testing.T) {
 	appendTaskIndex(filepath.Join(bucket, taskIndexName),
 		landedRow("4", "theirs", "rail permanence", time.Now().Add(-20*time.Minute), "internal/tui3/home.go"))
 
-	if reason := agent.groundShift(node, []string{"internal/parse/row.go"}); reason != "" {
-		t.Fatalf("a landing nobody was near was flagged: %s", reason)
+	if reason, moved := agent.groundShift(node, []string{"internal/parse/row.go"}); reason != "" || len(moved) > 0 {
+		t.Fatalf("a landing nobody was near was flagged: %s %v", reason, moved)
 	}
 }
 

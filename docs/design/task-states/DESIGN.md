@@ -84,7 +84,25 @@ reads `incomplete` plus one of these reasons, spelled once in
 faulted row may be coloured bad, every other incomplete row is dim.
 
 A `done` row carries the merge as a FACT LINE, not a state: `merged`,
-`branch kept` (only when keeping was asked for), or nothing for in-place work.
+`branch kept`, or nothing for in-place work.
+
+**`branch kept` appears whenever the landing kept the branch, and asking for it
+is only one of the four ways that happens.** The other three are the landing
+refusing a destination it must not write (`keptLandingSentence`,
+internal/session/task_branch_protection.go): the checkout is on a protected
+name — `main`, `master`, `dev`, `staging`, `trunk`, `production`, `release` and
+the rest of that one list, plus whatever a remote calls its default — the
+checkout is not on a branch at all, or the branch has moved since the work was
+cut and the movement was not aforge's own. Every one of those is the engine
+behaving, and the card's own report says WHICH: `its branch task/parser was
+kept: your checkout is on main, which tasks do not merge into automatically`.
+
+This is worth knowing before you write a test: on the repository a fresh
+checkout gives you, an ordinary `/task` landing keeps its branch and never
+merges, so nothing a person does in that checkout can clash with anything. A
+fixture that wants the conflict shape moves off the trunk first, and leaves its
+clashing change UNCOMMITTED — committing moves the branch, which is the fourth
+reason above (`internal/e2e`'s `testStatesConflict`).
 
 ### your call
 
@@ -101,9 +119,19 @@ ALWAYS the same three columns in the same order with the same keys:
 | starts on your word | consent card before the run (`taskWaitingWord` today) | start | don't |
 | design ready to approve | harness asking | approve | decline |
 | conflicts with your branch: <files> | merge conflicted after the merge round failed | resolve it (spends one more merge round) | drop it (refute; branch kept) |
+| your branch changed the same files while it worked: <files> | the ground moved under work that HELD its check (`TaskFacts.Shifted`) | resolve it (spends one more merge round) | drop it (refute; branch kept) |
 | nobody could check it | TaskUnverified, checker gave no answer after failover | accept | not right |
 | the check did not pass it: <gaps> | ResultHeld / held landing | accept anyway | not right |
 | paused at the <cap> cap | fuel gate | raise the cap | stop it |
+
+**Two roads reach the conflict row, and the ask kind stays one.** A branch that
+would not fasten and a ground that moved under one that would are the same
+shape — two versions of the same files, one on the task's branch and one on
+yours — so they close with the same two answers, and only the sentence differs.
+The fact that decides which sentence is `TaskFacts.Shifted`, never the prose:
+the shifted landing keeps the merge word `kept`, because its branch WOULD have
+merged and its check DID pass. It used to fall through to `nobody could check
+it`, which was false in both halves.
 
 `[s] tell it` is the third column on every card. It puts the composer into the
 existing steer mode (steer.go, `glyphSteer`) addressed to that task, the
@@ -134,7 +162,40 @@ decision is back with the person and the card draws its chips. If the model's
 last message asked the person a question about that task, the chips are the
 answer surface for that question: model text above, chips below, one ask.
 
-Conflicts are never handed to the model. It cannot merge by decree.
+**And a process ending is the end of every turn it was holding.** Who is
+deciding rides the checkpoint (`taskRecord.Decider`, task_store.go) with the
+emptiness law — a record that says nothing says the person — so a graph coming
+off the disk carries the fact rather than losing it. The floor then fires on the
+way in: **every node the record says the model was holding is handed to the
+person as the checkpoint is read** (`TaskGraph.handBackOnLoad`, out of
+`rehydrate`), before the frontier turns, before anything is drawn, and before
+the checkpoint is rewritten, so the file stops saying it too. That covers the
+restart, the re-attach and the engine that died mid-turn, and it is what makes
+the shape testable at all: a fixture can now seed a card aforge was deciding,
+which is why the acceptance could not provoke this shape before.
+
+`readsTheDecisionLocked`'s question — is this the turn the decision was handed
+into — is not asked on that road. There are no turns on it; every agent that was
+holding anything died with the process.
+
+**The project index deliberately does not carry the decider.** That file is what
+work *came to*, appended once and never rewritten, and who holds a question
+lasts at most one turn — a row on disk saying `aforge is deciding` about a
+conversation that closed hours ago is a claim nothing can correct. It is
+`TaskIndexEntry.Activity`'s rule about a present that ends seconds after it is
+recorded, said about a second momentary fact.
+
+**One holder, and the questions wave reads it.** A landed `your call` reaches
+`internal/session/question.go` as a derived `Question`, and its `Policy` is read
+off `TaskAsk.Owner` (`landingPolicy`): the model holding it is `PolicyDecide`,
+the person is `PolicyAsk`. There is no second holder and **no second timer** —
+`PolicyRecommendThenAuto` and its deadline belong to the `ask` tool's own timed
+assumptions (`tools_ask.go`), while the floor is the end of a turn rather than a
+clock.
+
+Conflicts are never handed to the model. It cannot merge by decree, and a
+ground that moved is the same refusal: the note says `their own branch changed
+the same files while this worked, and that is not yours to accept`.
 
 ## What the engine tries before anything is your call
 
@@ -230,7 +291,7 @@ type TaskAskKind string
 const (
     TaskAskStart    TaskAskKind = "start"     // starts on your word
     TaskAskApprove  TaskAskKind = "approve"   // design ready to approve
-    TaskAskConflict TaskAskKind = "conflict"  // conflicts with your branch
+    TaskAskConflict TaskAskKind = "conflict"  // conflicts with your branch, OR the ground moved
     TaskAskCheck    TaskAskKind = "check"     // nobody could check it
     TaskAskHeld     TaskAskKind = "held"      // the check did not pass it
     TaskAskCap      TaskAskKind = "cap"       // paused at the cap
@@ -241,6 +302,7 @@ const (
 type TaskAsk struct {
     Kind   TaskAskKind
     Reason string   // the row sentence, complete, e.g. "conflicts with your branch: a.go, b.go"
+                    // or "your branch changed the same files while it worked: a.go, b.go"
     Yes    string   // "accept", "resolve it", "start", "approve", "accept anyway", "raise the cap"
     No     string   // "not right", "drop it", "don't", "decline", "stop it"
     Owner  TaskAskOwner // who holds the decision right now

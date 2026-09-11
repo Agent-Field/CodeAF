@@ -248,18 +248,31 @@ func TestTheReadingThatSizesTheWorkIsDrawnAndThenClears(t *testing.T) {
 		t.Fatalf("the reviewer was asked %d times, want the one reading this is about", reviewer.reads())
 	}
 
-	moves := phaseMovesAbout(t, updates, nest.parent.id, 2)
-	want := []string{TaskPhaseSizing, TaskPhaseWorking}
+	moves := phaseMovesAbout(t, updates, nest.parent.id, 3)
+	want := []string{TaskPhaseSizing, TaskPhaseSizing, TaskPhaseWorking}
 	if got := taskPhaseWords(moves); strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("the node's phases were %v, want %v", got, want)
 	}
-	// AND THE READING CARRIES NO NUMBERS AND NO FINDING, which is the emptiness
-	// law on this wire: how many parts there are is what the reading is deciding,
-	// so there is nothing true to say about them yet.
+	// AND THE READING CARRIES NO NUMBERS, which is the emptiness law on this
+	// wire: how many parts there are is what the reading is deciding, so there is
+	// nothing true to say about them yet.
+	//
+	// IT DOES CARRY THE ERRAND, and that is 2026-09-10's change. The reading
+	// opens with nothing under it, says which model it is asking the moment it
+	// asks, and clears when the node goes back to its own work — the middle row
+	// being the one a person watching a reading that takes minutes actually needs
+	// (task_divide.go's [sizingLine]).
+	said := make([]string, 0, len(moves))
 	for _, move := range moves {
-		if move.Round != 0 || move.Rounds != 0 || move.Text != "" {
-			t.Fatalf("a %s move carried round %d of %d and %q", move.Phase, move.Round, move.Rounds, move.Text)
+		if move.Round != 0 || move.Rounds != 0 {
+			t.Fatalf("a %s move carried round %d of %d", move.Phase, move.Round, move.Rounds)
 		}
+		said = append(said, move.Text)
+	}
+	// The ladder here is one rung — the conversation's own model — so the row
+	// names it and counts nothing, which is the emptiness law again.
+	if wantSaid := []string{"", "asking test/model", ""}; strings.Join(said, "|") != strings.Join(wantSaid, "|") {
+		t.Fatalf("the rows under the phase read %q, want %q", said, wantSaid)
 	}
 	// AND THE NODE IS BACK AT ITS OWN WORK, on the pulse other windows read as
 	// well as on the wire.

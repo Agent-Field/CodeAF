@@ -2,11 +2,14 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 )
 
 // rateLimitedUntil answers 429 for the first `limit` requests and then answers
@@ -37,33 +40,52 @@ func pacedClient(t *testing.T, handler http.Handler) *Client {
 	return client
 }
 
-// A CONVERSATION GIVES UP. A person is watching the cursor, and an error they
-// can act on beats a silence they cannot.
-func TestAWatchedCallGivesUpOnPacingAfterTheBoundedPatience(t *testing.T) {
+// A CONVERSATION GIVES UP, AND WHAT ENDS IT IS THE DEADLINE.
+//
+// It used to be a count — six attempts, `rateLimitAttempts` — and the count is
+// deleted with the other five budgets this loop owned
+// (docs/design/recovery/DESIGN.md §4). What bounds a watched call now is
+// `lane.Role.GiveUp` for the role it was made in: ninety seconds for a
+// conversation's turn, and the waits it asked for count against that whether or
+// not the seam below really slept them.
+func TestAWatchedCallGivesUpOnPacingWhenItsDeadlineIsSpent(t *testing.T) {
 	var mu sync.Mutex
 	served := 0
 	client := pacedClient(t, rateLimitedUntil(1000, &served, &mu))
 	client.wait = func(context.Context, time.Duration) error { return nil }
 
+	began := time.Now()
 	if _, err := client.CompleteWithMessages(context.Background(), userMessages("a")); err == nil {
 		t.Fatal("every attempt was rate limited; the call should have failed")
+	}
+	// IT ENDS AT ONCE IN REAL TIME. The waits were stubbed out, so the ninety
+	// seconds it believes it spent cost the test nothing — which is the whole
+	// reason the dispatcher charges itself for a wait it asked for.
+	if took := time.Since(began); took > 20*time.Second {
+		t.Fatalf("a stubbed-out wait still took %s of wall clock", took)
 	}
 	mu.Lock()
 	attempts := served
 	mu.Unlock()
-	if attempts != rateLimitAttempts {
-		t.Fatalf("a watched call made %d attempts, want the bounded %d", attempts, rateLimitAttempts)
+	if attempts < 2 {
+		t.Fatalf("a watched call made %d attempts; a 429 is answered by moving, not by giving up", attempts)
+	}
+	// AND IT IS THE DEADLINE THAT STOPPED IT, not a count: the backoffs it paid
+	// (700ms doubling to the one-minute cap) reach `lane.RoleUnknown`'s give-up
+	// in far fewer sends than the sixty a patient call used to be allowed.
+	if attempts > 16 {
+		t.Fatalf("a watched call made %d attempts inside one deadline; the doubling should have spent it sooner", attempts)
 	}
 }
 
-// A TASK CHILD KEEPS GOING. Nobody is watching it and a worktree of real work
-// is behind it, so it waits the pacing out well past the number of attempts
-// that ends a conversation's call — as far as its own budget, which the test
-// below this one spends.
+// A TASK CHILD KEEPS GOING, and it keeps going for LONGER rather than for more
+// attempts: `lane.RoleLeafUnattended`'s patience of three scales the same
+// give-up the watched call above is bounded by, so a node waits four and a half
+// minutes where a turn waits ninety seconds.
 func TestATaskChildWaitsPacingOutPastTheBoundedPatience(t *testing.T) {
 	var mu sync.Mutex
 	served := 0
-	const paced = rateLimitAttempts * 4
+	const paced = 8
 	client := pacedClient(t, rateLimitedUntil(paced, &served, &mu))
 	var waits []time.Duration
 	client.wait = func(_ context.Context, delay time.Duration) error {
@@ -111,8 +133,15 @@ func TestAPatientCallGivesUpOnceItsPatienceIsSpent(t *testing.T) {
 	mu.Lock()
 	attempts := served
 	mu.Unlock()
-	if attempts != patientAttempts {
-		t.Fatalf("a patient call made %d attempts, want the capped %d", attempts, patientAttempts)
+	// AND IT IS THE DEADLINE THAT ENDS IT, not `patientAttempts`. Sixty attempts
+	// against a per-wait cap was an hour of pacing on paper and an arithmetic
+	// backstop in practice; a task node's give-up is four and a half minutes and
+	// it is a number a person could be told.
+	if attempts < 2 {
+		t.Fatalf("a patient call made %d attempts; a 429 is answered by moving first", attempts)
+	}
+	if attempts > 20 {
+		t.Fatalf("a patient call made %d attempts inside one deadline", attempts)
 	}
 	// It comes out of the SAME DOOR every other provider failure comes out of:
 	// the provider's own words, wrapped in the attempt count. internal/session
@@ -122,30 +151,41 @@ func TestAPatientCallGivesUpOnceItsPatienceIsSpent(t *testing.T) {
 	}
 }
 
-// The other currency. A count of attempts does not bound TIME when the provider
-// names the waits: six attempts each told to come back in a minute is five
-// minutes of somebody watching a cursor.
-func TestPatienceIsBoundedByTheClockAsWellAsTheCount(t *testing.T) {
-	fresh := time.Now()
-	long := time.Now().Add(-3 * time.Minute)
-	forever := time.Now().Add(-11 * time.Minute)
-
-	if outOfPatience(false, 1, fresh) {
-		t.Fatal("a watched call gave up on its first retry")
+// THERE IS ONE CURRENCY AND IT IS TIME.
+//
+// There used to be two, because neither bounded what the other could not:
+// attempts bounded a provider that says "not yet" instantly and forever, and a
+// wall clock bounded one that names its own waits. A deadline bounds both — a
+// provider that refuses at connection speed spends it on backoffs, and one that
+// names minute-long windows spends it on those — and the two currencies, with
+// their four constants, are deleted.
+//
+// WHAT SCALES IT IS THE ROLE AND NOTHING ELSE. `lane.TurnGiveUp` × the role's
+// own patience column, which is the same column `lane.VisiblePatience` is
+// scaled by, so a role cannot be patient about when to act and impatient about
+// when to stop.
+func TestOneDeadlineIsTheWholeOfHowLongACallMayTake(t *testing.T) {
+	for _, row := range []struct {
+		role lanes.Role
+		want time.Duration
+	}{
+		{lanes.RoleTalk, 90 * time.Second},
+		{lanes.RoleLeafAttached, 90 * time.Second},
+		{lanes.RoleLeafUnattended, 270 * time.Second},
+		{lanes.RoleStanding, 9 * time.Minute},
+		{lanes.RoleProbe, 45 * time.Second},
+		{lanes.RoleUnknown, 270 * time.Second},
+	} {
+		if got := row.role.GiveUp(); got != row.want {
+			t.Errorf("%s gives up after %s, want %s", row.role, got, row.want)
+		}
 	}
-	if !outOfPatience(false, 1, long) {
-		t.Fatalf("a watched call was still paced after 3m, past the %s budget", watchedPacingBudget)
-	}
-	if outOfPatience(true, 1, long) {
-		t.Fatalf("a task node gave up after 3m, inside its %s budget", patientPacingBudget)
-	}
-	if !outOfPatience(true, 1, forever) {
-		t.Fatalf("a task node was still paced after 11m, past the %s budget", patientPacingBudget)
-	}
-	// A call that has met no 429 at all is not on the clock: pacing is measured
-	// from the first one, so real work done before it costs nothing.
-	if outOfPatience(true, 1, time.Time{}) {
-		t.Fatal("a call that was never paced was judged to have spent its patience")
+	// AND EVERY ROLE HAS ONE. A role with no deadline would be a call outside
+	// the invariant, and there is no such role.
+	for _, role := range lanes.Roles() {
+		if role.GiveUp() <= 0 {
+			t.Errorf("%s has no deadline", role)
+		}
 	}
 }
 
@@ -171,8 +211,15 @@ func TestPatienceDoesNotExtendToFaults(t *testing.T) {
 	mu.Lock()
 	attempts := served
 	mu.Unlock()
-	if attempts != maxAttempts {
-		t.Fatalf("a patient call retried a fault %d times, want the fault patience %d", attempts, maxAttempts)
+	// A FAULT IS RE-ASKED AND IT IS PAID FOR. `maxAttempts` was the private
+	// three-fault budget; what bounds a fault storm now is the same deadline
+	// everything else is bounded by, and the doubling backoff is what stops it
+	// being spent at connection speed.
+	if attempts < 2 {
+		t.Fatalf("a broken provider was asked %d times; one fault is forgiven", attempts)
+	}
+	if attempts > 20 {
+		t.Fatalf("a broken provider was asked %d times inside one deadline", attempts)
 	}
 }
 
@@ -273,5 +320,97 @@ func TestPacingIsTakenBackWhenTheCallGivesUp(t *testing.T) {
 	}
 	if len(said) != 2 || !said[0] || said[1] {
 		t.Fatalf("the pacing notice said %v, want one park and one release", said)
+	}
+}
+
+// TestTheOneKnobBuysTimeAndNeverASecondSend is the brief's own acceptance for
+// the fold, and it asserts BOTH halves of what `response.attempts` had to become.
+//
+// `attempts: 3` USED TO BE THREE SENDS. It is three times the patience now — a
+// 270-second talk deadline where the measurement says 90 — and the thing that
+// must NOT move with it is how many requests the call is allowed to make: a
+// person asking for more patience is asking to be waited for, never for the same
+// bytes to be posted to the same machine again. So the same `machines × shapes +
+// 1` bound `control.Next` keeps at a factor of one is checked here at a factor of
+// three, on the wire, against a pool that refuses everything.
+//
+// THE CLOCK IS THE SAME FICTION [TestOneDeadlineBoundsEverything] states: the
+// wait seam is stubbed and the dispatcher charges itself for every wait it asked
+// for, so a four-and-a-half-minute deadline is proved in microseconds.
+func TestTheOneKnobBuysTimeAndNeverASecondSend(t *testing.T) {
+	t.Cleanup(func() { lanes.UsePatience(1) })
+
+	// FIRST, WHAT THE PERSON BOUGHT. Every role is scaled, because the factor is
+	// about the person and the column is about the work.
+	lanes.UsePatience(3)
+	for _, row := range []struct {
+		role lanes.Role
+		want time.Duration
+	}{
+		{lanes.RoleTalk, 270 * time.Second},
+		{lanes.RoleLeafAttached, 270 * time.Second},
+		{lanes.RoleProbe, 135 * time.Second},
+	} {
+		if got := row.role.GiveUp(); got != row.want {
+			t.Errorf("at three times the patience %s gives up after %s, want %s", row.role, got, row.want)
+		}
+	}
+	// AND A FACTOR UNDER ONE IS NOT A SHORTER DEADLINE. It is somebody asking
+	// this build to give up sooner than the measurement says a turn takes, and
+	// it reads as the default.
+	lanes.UsePatience(0.25)
+	if got := lanes.RoleTalk.GiveUp(); got != lanes.TurnGiveUp {
+		t.Errorf("a quarter of the patience gave %s, want the measured %s", got, lanes.TurnGiveUp)
+	}
+
+	// SECOND, WHAT IT DID NOT BUY. A pool of four machines that all refuse, run
+	// at three times the patience: the call may take 270 seconds and it may not
+	// make one send more than it could at 90.
+	lanes.UsePatience(3)
+	kept := watchedPlan(t)
+	pool := &scriptedPool{script: map[string]int{}}
+	for index := range 4 {
+		name := fmt.Sprintf("Machine%d", index)
+		pool.roster = append(pool.roster, name)
+		pool.script[name] = http.StatusTooManyRequests
+	}
+	client := poolClient(t, "patience-three", pool)
+	var asked []time.Duration
+	client.wait = func(_ context.Context, delay time.Duration) error {
+		asked = append(asked, delay)
+		return nil
+	}
+	ctx := WithLaneChoice(context.Background(), lanes.Choice{Order: pool.roster})
+	ctx = WithRole(ctx, lanes.RoleTalk)
+
+	began := time.Now()
+	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err == nil {
+		t.Fatal("a pool where every machine refuses should not have answered")
+	}
+	believed := time.Since(began)
+	for _, delay := range asked {
+		believed += delay
+	}
+	if bound := 270*time.Second + maxProviderWait; believed > bound {
+		t.Fatalf("the call ran %s against a 270s deadline (one wait of slack is %s): waits %v",
+			believed, maxProviderWait, asked)
+	}
+	// AND THE DEADLINE IT RAN UNDER REALLY WAS THE SCALED ONE. The bound above
+	// is satisfied by a call that ends early, and this call DOES end early —
+	// four machines and three rungs run out long before four and a half minutes
+	// do, which is the whole point: patience is what a call MAY spend, never
+	// what it must. So the plan the dispatcher was built with is read directly,
+	// and it is the only honest way to say the multiplier arrived.
+	//
+	// The window is read to the second: the deadline and `Began` are stamped a
+	// few microseconds apart by a real clock, and a test that demanded they be
+	// equal to the nanosecond would be testing the clock.
+	if window := kept.Deadline.Sub(kept.Began).Round(time.Second); window != 270*time.Second {
+		t.Fatalf("the call ran under a %s deadline, want the 90s talk give-up times three", window)
+	}
+	sends := pool.sends()
+	if limit := 4*(1+len(relaxRungs)) + 1; len(sends) > limit {
+		t.Fatalf("three times the patience made %d sends over four machines, bound %d: %v",
+			len(sends), limit, sends)
 	}
 }

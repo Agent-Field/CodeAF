@@ -191,7 +191,7 @@ func TestTheMediaResolverStillAnswersOnAnOfflineCatalog(t *testing.T) {
 		return nil, http.ErrServerClosed
 	})}
 	models := catalog.Load(context.Background(), catalog.Options{
-		BaseURL: "https://openrouter.example/api/v1", Dir: t.TempDir(), HTTPClient: offline,
+		BaseURL: catalog.DefaultBaseURL, Dir: t.TempDir(), HTTPClient: offline,
 	})
 	resolve := v3MediaModel(models, t.TempDir(), nil)
 

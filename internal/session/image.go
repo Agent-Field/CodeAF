@@ -404,7 +404,7 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 	a.running = true
 	hub := newEventHub()
 	a.hub = hub
-	turnCtx, cancel := context.WithCancel(ctx)
+	turnCtx, cancel := context.WithCancelCause(ctx)
 	a.cancel = cancel
 	done := make(chan struct{})
 	a.done = done
@@ -413,7 +413,8 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 
 	go func() {
 		completed := false
-		defer cancel()
+		// No cause: the turn is finishing, not being stopped (stopcause.go).
+		defer cancel(nil)
 		defer hub.close()
 		defer func() {
 			a.mu.Lock()
@@ -488,8 +489,8 @@ func (a *Agent) runVision(ctx context.Context, hub *eventHub, live ai.Message, s
 	// a transcription — and this one streams an answer into the room the person
 	// is reading, delta by delta, above. So it is talk, and it owns the clock
 	// for as long as it is writing (internal/lane's roles.go).
-	response, err := a.client.CompleteWithMessages(
-		provider.WithRole(ctx, lane.RoleTalk), []ai.Message{live}, ai.WithModel(seer))
+	response, err := a.completeWithModel(
+		provider.WithRole(ctx, lane.RoleTalk), []ai.Message{live}, seer)
 	if err == nil && response != nil {
 		a.addAuxiliaryUsage(response, seer, 1)
 	}

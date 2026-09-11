@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -332,6 +333,108 @@ func TestAStalledCheckerIsNamedAsAStallEvenWhenItSpentTheWindow(t *testing.T) {
 	}
 	if pending[0].Waiting() != taskUnverifiedNews {
 		t.Fatalf("the row says it is %q, want the person's own words", pending[0].Waiting())
+	}
+}
+
+// AND A SECOND CALL THE WINDOW REFUSED IS NOT A SECOND CALL.
+//
+// The window is read TWICE on the way to a retry ([auditPace.bound]): once with
+// the first checker closed, to decide whether building a fresh one is worth it,
+// and once more with it built, against the time that call actually has. Between
+// those two readings sits the whole cost of building a checker, and on a loaded
+// box that is enough to spend what was left — the first reading finds room, the
+// second finds none, and the call is never made.
+//
+// What a person read then was one sentence saying the same thing twice with the
+// wrong figure in it: `nobody could check it — asked twice, and neither call
+// answered — nobody could check it in 40ms`. Both halves were untrue. `asked
+// twice` was said over a call nobody made, and the window was quoted at a
+// checker that was never asked, while the one call that WAS made — asked, held
+// its stream for its whole bound and cut — lost its account entirely. It is the
+// same red the test above trips under load, where it passes twenty runs of
+// twenty on its own and fails one full suite in three.
+//
+// THE CLOCK IS THE SEAM ([Config.auditClock]), and here it steps a quarter of
+// the window on every reading, so the gap that only opens on a loaded box is
+// open on every run: the fourth reading leaves a tenth of the window and asks
+// for a fresh checker, the fifth finds the window closed. What the landing owes
+// then is what the branch one rung up already says — the first call's own
+// account, with the window's closing as a clause on the end of it. One cause,
+// said once.
+func TestASecondCallTheWindowRefusedIsNotSaidToHaveBeenAsked(t *testing.T) {
+	repo := newGoModuleRepo(t)
+	t.Setenv("HOME", t.TempDir())
+
+	hang := func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	completer := &routedCompleter{
+		parent: []step{
+			proposeCall("Add the greeting", "write greet.go"),
+			finalText("handed off"),
+		},
+		child: []step{
+			writeCall("call-src", "greet.go", "package greet\n\nfunc Greet() string { return \"hi\" }\n"),
+			finalText("Wrote greet.go with the greeting."),
+		},
+		// The first call hangs until it is cut at its share. THE SECOND IS NEVER
+		// MADE, and the step for it is here so that a run which does make it gets
+		// the same nothing — the sentence about asking twice would then be true,
+		// and this test would be about something else.
+		audit: []step{hang, hang},
+	}
+	// The window a test can wait out, cut by the same whole numbers the product's
+	// five minutes are ([auditCallShare], [auditCallFloorShare]).
+	const window = 40 * time.Millisecond
+	// EVERY READING MOVES THE CLOCK ON BY A QUARTER OF THE WINDOW: the window
+	// opens, a call starts with three quarters left, the stalled call is cut with
+	// half left, the retry is asked for with a quarter left — which clears the
+	// floor — and the reading inside that attempt finds the window closed.
+	var readings atomic.Int64
+	opened := time.Now()
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+		config.auditWindow = window
+		config.auditClock = func() time.Time {
+			return opened.Add(time.Duration(readings.Add(1)-1) * (window / 4))
+		}
+	})
+	graph := agent.graph()
+	collect(t, mustSubmit(t, agent, "add a greeting"))
+
+	node := graph.node(1)
+	waitDoneNode(t, node)
+	notice := node.notice()
+
+	if notice.State != TaskUnverified {
+		t.Fatalf("state = %q, want it waiting on a person (report %q)", notice.State, notice.Report)
+	}
+	// THE ONE CALL THAT WAS MADE KEEPS ITS ACCOUNT, and the window's closing is
+	// the clause that says why nobody was asked again.
+	if !strings.Contains(notice.Report, "without answering and was abandoned") {
+		t.Fatalf("the report forgets the one call that was made (the clock was read %d times):\n%s",
+			readings.Load(), notice.Report)
+	}
+	if !strings.Contains(notice.Report, checkerWindowClosed) {
+		t.Fatalf("the report never says why nobody was asked again (the clock was read %d times):\n%s",
+			readings.Load(), notice.Report)
+	}
+	// AND THE QUESTION IS ASKED ONCE. The landing's lead and three of the
+	// checker's own sentences all open with the same words, so a report carrying
+	// two of them IS the defect — a person reading it is told twice that nobody
+	// could check the work, with a figure belonging to the other clause.
+	if said := strings.Count(notice.Report, taskAskCheckReason); said != 1 {
+		t.Fatalf("the report says %q %d times, want once (the clock was read %d times):\n%s",
+			taskAskCheckReason, said, readings.Load(), notice.Report)
+	}
+	if strings.Contains(notice.Report, checkerRanOut(window)) {
+		t.Fatalf("the report quotes the window at a checker nobody asked:\n%s", notice.Report)
+	}
+	if strings.Contains(notice.Report, checkerAskedTwice) {
+		t.Fatalf("the report says two calls were made and the window refused the second:\n%s", notice.Report)
 	}
 }
 

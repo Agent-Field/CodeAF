@@ -4,8 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	tea "charm.land/bubbletea/v2"
-
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 )
@@ -20,6 +18,13 @@ func (d *designingAgent) ResolveHarness(id uint64, run bool, model string) {
 	d.answers = append(d.answers, harnessAnswer{id: id, run: run, model: model})
 }
 func (d *designingAgent) HarnessDesigns() <-chan session.Event { return d.lane }
+
+// ONE DOOR, which is the block's own law about where an answer goes
+// (session's [session.Agent.ResolveQuestion]). A fake that lacked it took every
+// answer and told nothing, which is a green test about a question nobody heard.
+func (d *designingAgent) ResolveQuestion(answer session.Answer) error {
+	return resolveThroughLanes(d, answer)
+}
 
 func designedPage() subharness.Harness {
 	return subharness.Harness{Id: subharness.Id{Name: "research-helper", Desc: "Research a topic with cited sources"}, Program: subharness.Program{Nodes: []subharness.Node{{Id: "plan", Kind: subharness.KindAgentLoop, Fields: subharness.Fields{"brief": "plan the research"}}, {Id: "fetch", Kind: subharness.KindAgentLoop, Fields: subharness.Fields{"brief": "fetch the sources"}}, {Id: "verify", Kind: subharness.KindVerify, Fields: subharness.Fields{"check": "every claim cites a source"}}}, Edges: []subharness.Edge{{"plan", "fetch"}, {"fetch", "verify"}}}, Whitelist: []string{"read", "grep"}, Verify: subharness.Verify{Ladder: subharness.VerifyReport}}
@@ -59,7 +64,7 @@ func TestHarnessProgressCollapsesIntoFeedCard(t *testing.T) {
 	p := designedPage()
 	a.designEvent(session.Event{Kind: session.EventHarnessDesignDone, ID: 7, Harness: &p})
 	got := plain(frame(a))
-	for _, want := range []string{"research-helper", "plan the research", "check — every claim cites a source", harnessCardChange} {
+	for _, want := range []string{"research-helper", "plan the research", "check — every claim cites a source", session.HarnessChangeKey + "  change it"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("card is missing %q:\n%s", want, got)
 		}
@@ -239,28 +244,67 @@ func TestASessionWithNoDesignerOpensNoLane(t *testing.T) {
 	}
 }
 
-// THE TWO KEYS THAT ANSWER, and each of them answers what it says.
-func TestHarnessCardKeysSaveAndDrop(t *testing.T) {
+// designAsked puts one finished page in the feed with its question up and past
+// the settle guard, which is where a person is when they answer it.
+func designAsked(t *testing.T) (*designingAgent, *app) {
+	t.Helper()
+	agent := &designingAgent{fakeAgent: &fakeAgent{model: "m"}}
+	a := newTestApp(agent)
+	p := designedPage()
+	a.finishHarnessCard(session.Event{ID: 9, Harness: &p})
+	a.sel = len(a.entries) - 1
+	harnessSettled(t, a)
+	return agent, a
+}
+
+// THE THREE DIGITS THAT ANSWER, and each of them answers what it says.
+//
+// THEY USED TO BE `enter`, `e` AND `esc`, which is a grammar this surface no
+// longer has: every question the engine hands a person is answered by the number
+// beside the answer, `enter` takes the pick, and `esc` means LATER
+// (questionkeys.go's one table). A design's page was the last block asking with
+// keys of its own.
+func TestADesignsThreeAnswersEachDoWhatTheySay(t *testing.T) {
 	for _, tc := range []struct {
-		key, word string
-		run       bool
-	}{{"enter", "saved as research-helper v1", true}, {"esc", "dropped", false}} {
-		t.Run(tc.key, func(t *testing.T) {
-			agent := &designingAgent{fakeAgent: &fakeAgent{model: "m"}}
-			a := newTestApp(agent)
-			p := designedPage()
-			a.finishHarnessCard(session.Event{ID: 9, Harness: &p})
-			a.sel = len(a.entries) - 1
-			a.harnessCardKey(tea.KeyPressMsg{Code: []rune(tc.key)[0], Text: tc.key})
+		name, key, word string
+		answered        bool
+		run             bool
+	}{
+		{"save it", session.HarnessSaveKey, "saved as research-helper v1", true, true},
+		{"drop it", session.HarnessDropKey, "dropped", true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			agent, a := designAsked(t)
+			drive(t, a, key(tc.key))
 			c := a.entries[a.sel].harness
 			if c.state != tc.word {
-				t.Fatalf("state %q", c.state)
+				t.Fatalf("the card in the feed says %q, want %q", c.state, tc.word)
 			}
-			if len(agent.answers) != 1 || agent.answers[0].run != tc.run {
-				t.Fatalf("answer %+v", agent.answers)
+			if len(agent.answers) != 1 || agent.answers[0].run != tc.run || agent.answers[0].id != 9 {
+				t.Fatalf("the engine was told %+v", agent.answers)
+			}
+			// AND THE QUESTION IS GONE, because the answer is the record.
+			if a.questionOpenOn(session.QuestionHarness, 9) != nil {
+				t.Fatal("an answered design is still being asked about")
 			}
 		})
 	}
+	// AND `esc` IS LATER RATHER THAN A NO. The page keeps standing, the chip
+	// keeps counting it, and nothing has been decided about it — which is the one
+	// meaning of this key everywhere on the block (question.go's esc law).
+	t.Run("esc is later", func(t *testing.T) {
+		agent, a := designAsked(t)
+		drive(t, a, key("esc"))
+		if len(agent.answers) != 0 {
+			t.Fatalf("esc resolved the design: %+v", agent.answers)
+		}
+		if got := a.entries[a.sel].harness.state; got != "" {
+			t.Fatalf("esc settled the card: %q", got)
+		}
+		if a.questionCount() != 1 {
+			t.Fatalf("the chip counts %d questions after a question was put off", a.questionCount())
+		}
+	})
 }
 
 // AND `e` DESTROYS NOTHING, which is the whole of what changed about it.
@@ -272,12 +316,8 @@ func TestHarnessCardKeysSaveAndDrop(t *testing.T) {
 // actually made, and the card is left exactly as it was: unanswered, on screen,
 // still answerable.
 func TestAskingToChangeADesignNeverDropsIt(t *testing.T) {
-	agent := &designingAgent{fakeAgent: &fakeAgent{model: "m"}}
-	a := newTestApp(agent)
-	p := designedPage()
-	a.finishHarnessCard(session.Event{ID: 9, Harness: &p})
-	a.sel = len(a.entries) - 1
-	a.harnessCardKey(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	agent, a := designAsked(t)
+	drive(t, a, key(session.HarnessChangeKey))
 	c := a.entries[a.sel].harness
 	if len(agent.answers) != 0 {
 		t.Fatalf("a key that only asks for a change answered the card: %+v", agent.answers)
@@ -288,63 +328,57 @@ func TestAskingToChangeADesignNeverDropsIt(t *testing.T) {
 	if strings.Contains(a.input.String(), "Improve harness") {
 		t.Fatalf("the prefill that stood in for a rewrite is still here: %q", a.input.String())
 	}
+	// AND THE QUESTION IS STILL UP, which is what "changes nothing" means on the
+	// block: the engine's own door refuses to resolve a design on this answer
+	// ([session.AnswerResolves]), so the page is still there to be judged when
+	// the rewrite lands.
+	if a.questionOpenOn(session.QuestionHarness, 9) == nil {
+		t.Fatal("asking for a change closed the question it was asked on")
+	}
 }
 
-// AND IT ANSWERS NOTHING WHILE SOMEBODY IS TYPING, which is the guard it was
-// missing.
+// AND IT ANSWERS NOTHING WHILE THE KEY IS AIMED SOMEWHERE ELSE.
 //
-// `enter`, `e` and `esc` are the three keys a design card reads, and two of them
-// are keys a person writes with. The card was dispatched with no guard at all
-// (input.go's key order claimed it had every guard `x` has, and it had none), so
-// a bare `e` in the middle of "even the tests pass" walked into the design's
-// room with the sentence still in the box, and on home — where every printable
-// key belongs to the box a conversation starts in — the same three keys never
-// reached it.
+// The card used to read `enter`, `e` and `esc` with no guard at all (input.go's
+// key order claimed it had every guard `x` has, and it had none), so a bare `e`
+// in the middle of "even the tests pass" walked into the design's room with the
+// sentence still in the box. The answers are digits on the block now, and the
+// block's own law is the guard: EVERY PRINTABLE KEY BELONGS TO THE COMPOSER the
+// moment there are words in the box, and a page that takes the whole frame is a
+// page whose keys are its own.
 func TestADesignCardAnswersNothingWhileTheKeyIsAimedSomewhereElse(t *testing.T) {
-	// A sentence in the box: the key types, and the card is left standing.
-	agent := &designingAgent{fakeAgent: &fakeAgent{model: "m"}}
-	a := newTestApp(agent)
-	p := designedPage()
-	a.finishHarnessCard(session.Event{ID: 9, Harness: &p})
-	a.sel = len(a.entries) - 1
-	a.input.setText("even th")
-	drive(t, a, key("e"))
+	// A sentence in the box: the digit types, and the page is left standing.
+	_, a := designAsked(t)
+	a.input.setText("give me 100")
+	drive(t, a, key(session.HarnessSaveKey))
 	if got := a.entries[a.sel].harness.state; got != "" {
-		t.Fatalf("a letter typed mid-sentence answered the card: %q", got)
+		t.Fatalf("a digit typed mid-sentence answered the design: %q", got)
 	}
-	if got := a.input.String(); got != "even the" {
-		t.Fatalf("the letter did not reach the draft: %q", got)
+	if got := a.input.String(); got != "give me 1001" {
+		t.Fatalf("the digit did not reach the draft: %q", got)
 	}
 	if a.room != nil {
-		t.Fatalf("a letter typed mid-sentence opened a room: %+v", a.room)
+		t.Fatalf("a digit typed mid-sentence opened a room: %+v", a.room)
 	}
 
-	// And on home the three keys are home's, whichever of them it is.
-	for _, name := range []string{"e", "enter", "esc"} {
-		agent := &designingAgent{fakeAgent: &fakeAgent{model: "m"}}
-		a := newTestApp(agent)
-		p := designedPage()
-		a.finishHarnessCard(session.Event{ID: 9, Harness: &p})
-		a.sel = len(a.entries) - 1
+	// And on home the three digits are home's, whichever of them it is.
+	for _, name := range []string{session.HarnessSaveKey, session.HarnessChangeKey, session.HarnessDropKey} {
+		agent, a := designAsked(t)
 		a.openHome()
 		drive(t, a, key(name))
 		if got := a.entries[a.sel].harness.state; got != "" {
-			t.Fatalf("%s on home answered the card underneath it: %q", name, got)
+			t.Fatalf("%s on home answered the design underneath it: %q", name, got)
 		}
 		if len(agent.answers) != 0 {
 			t.Fatalf("%s on home resolved the design: %+v", name, agent.answers)
 		}
 	}
-	// The letter is the one that proves home GOT it, rather than that nobody did.
-	agent = &designingAgent{fakeAgent: &fakeAgent{model: "m"}}
-	a = newTestApp(agent)
-	p = designedPage()
-	a.finishHarnessCard(session.Event{ID: 9, Harness: &p})
-	a.sel = len(a.entries) - 1
+	// The digit is the one that proves home GOT it, rather than that nobody did.
+	_, a = designAsked(t)
 	a.openHome()
-	drive(t, a, key("e"))
-	if got := a.home.box.String(); got != "e" {
-		t.Fatalf("the letter reached home's box as %q, want %q", got, "e")
+	drive(t, a, key(session.HarnessSaveKey))
+	if got := a.home.box.String(); got != session.HarnessSaveKey {
+		t.Fatalf("the digit reached home's box as %q, want %q", got, session.HarnessSaveKey)
 	}
 }
 
@@ -362,6 +396,10 @@ func (d *designingRoomAgent) ResolveHarness(id uint64, run bool, model string) {
 }
 func (d *designingRoomAgent) HarnessDesigns() <-chan session.Event { return d.lane }
 
+func (d *designingRoomAgent) ResolveQuestion(answer session.Answer) error {
+	return resolveThroughLanes(d, answer)
+}
+
 // AND IT WALKS INTO THE ROOM when the design has one, because that is where the
 // thread holding the page is listening.
 func TestAskingToChangeADesignOpensItsRoom(t *testing.T) {
@@ -373,7 +411,8 @@ func TestAskingToChangeADesignOpensItsRoom(t *testing.T) {
 	p := designedPage()
 	a.finishHarnessCard(session.Event{ID: 4, Harness: &p, Task: &session.TaskNotice{ID: 4}})
 	a.sel = len(a.entries) - 1
-	a.harnessCardKey(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	harnessSettled(t, a)
+	drive(t, a, key(session.HarnessChangeKey))
 	if a.room == nil || a.room.id != 4 {
 		t.Fatalf("the design's room did not open: %+v", a.room)
 	}

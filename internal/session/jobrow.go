@@ -272,22 +272,54 @@ func (a *Agent) jobRowID(job int) (uint64, bool) {
 // this session has no stop verb for a job, and a surface must not read one into
 // the spelling (cancel.go owns that vocabulary and does not use this word).
 func (a *Agent) jobsWorkingNow() []WorkNode {
-	if a.jobs == nil {
-		return nil
-	}
 	var out []WorkNode
-	for _, one := range a.jobs.all() {
-		info := one.info()
-		// A task node is the graph's row and the graph's count. See the header.
-		if info.kind == jobKindTask || info.state != jobRunning {
-			continue
-		}
+	for _, info := range a.runningJobs() {
 		out = append(out, WorkNode{
 			ID:    "job:" + strconv.Itoa(info.id),
 			Title: jobRowTitle(info),
 			State: WorkRunning,
-			Born:  one.started,
+			Born:  info.started,
 		})
+	}
+	return out
+}
+
+// presenceJobs is the same live jobs as another window reads them off this
+// session's presence file ([PresenceJob]): the handle, the row's own title, the
+// folder the process was started in and when it forked.
+//
+// IT IS [Agent.jobsWorkingNow]'S LIST, SPELLED FOR A FILE. Both read
+// [Agent.runningJobs], so the column beside this conversation and the row home
+// draws in another window can never disagree about which jobs are out — the
+// same one-filter rule the task half keeps with [SessionPresence.Holds].
+func (a *Agent) presenceJobs() []PresenceJob {
+	var out []PresenceJob
+	for _, info := range a.runningJobs() {
+		out = append(out, PresenceJob{
+			ID:        strconv.Itoa(info.id),
+			Title:     jobRowTitle(info),
+			Dir:       info.dir,
+			StartedAt: info.started,
+		})
+	}
+	return out
+}
+
+// runningJobs is every job of this conversation's that is running right now,
+// in the registry's order, with the task nodes left out — a node is the graph's
+// row and the graph's count (see this file's header). It is the ONE filter both
+// halves above read.
+func (a *Agent) runningJobs() []jobInfo {
+	if a.jobs == nil {
+		return nil
+	}
+	var out []jobInfo
+	for _, one := range a.jobs.all() {
+		info := one.info()
+		if info.kind == jobKindTask || info.state != jobRunning {
+			continue
+		}
+		out = append(out, info)
 	}
 	return out
 }

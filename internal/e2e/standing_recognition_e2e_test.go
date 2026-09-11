@@ -10,8 +10,6 @@ package e2e
 //	go test -tags e2e -run TestStandingRecognitionE2E -count=1 -v ./internal/e2e/
 
 import (
-	"os"
-	"strings"
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
@@ -19,9 +17,7 @@ import (
 )
 
 func TestStandingRecognitionE2E(t *testing.T) {
-	if strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY")) == "" {
-		t.Skip("no OPENROUTER_API_KEY: this lane drives a real model")
-	}
+	liveKey(t)
 
 	tests := []struct {
 		name         string

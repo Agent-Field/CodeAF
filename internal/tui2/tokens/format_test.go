@@ -350,11 +350,8 @@ func TestTokenLookupsDoNotAllocate(t *testing.T) {
 		"Token.Color":  func() { _ = Cyan.Color(FocusDimmed) },
 		"Token.Index":  func() { _ = Green.Index(ANSI256, FocusNormal) },
 		"ResolveToken": func() { _ = ResolveToken(HueBroken, StateLive) },
-		"IdentityFor":  func() { _ = IdentityFor("wisp-parity") },
-		"IdentityNext": func() { _ = IdentityNext("wisp-parity", Identity3) },
 		"Gauge":        func() { _ = Gauge(0.62) },
 		"Spinner":      func() { _ = Spinner(7) },
-		"ContextToken": func() { _ = ContextToken(120_000, 200_000) },
 	}
 	for name, fn := range checks {
 		if n := testing.AllocsPerRun(200, fn); n != 0 {

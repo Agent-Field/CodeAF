@@ -13,6 +13,7 @@ package session
 // — the half that matters most — what does NOT move with it.
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -193,29 +194,68 @@ func TestRetargetTaskMovesNothingButTheNodeItNames(t *testing.T) {
 	land()
 }
 
-// A SETTLED NODE IS REFUSED IN THE ROOM'S OWN WORDS. Its model is a fact about
-// what happened: a person may read it and nothing may edit it.
-func TestRetargetTaskRefusesANodeThatIsNotRunning(t *testing.T) {
-	agent, node, _, land := retargetAgent(t)
+// A saved continuation choice leaves the completed attempt and its worker intact.
+func TestRetargetTaskSavesContinuationWithoutRewritingTheAttempt(t *testing.T) {
+	agent, node, child, land := retargetAgent(t)
 	land()
 	waitDoneNode(t, node)
-
-	err := agent.RetargetTask(node.id, "claude-sonnet-5")
-	if err == nil {
-		t.Fatal("a settled node accepted a new model")
+	before := node.notice()
+	if before.Brief != "b" || before.Acceptance != "a" {
+		t.Fatal("task snapshot omitted its original contract")
 	}
-	if want := "is done, not running"; !strings.Contains(err.Error(), want) {
-		t.Fatalf("the refusal reads %q, want the room's own wording %q", err, want)
+	if err := agent.RetargetTask(node.id, "claude-sonnet-5"); err != nil {
+		t.Fatal(err)
 	}
-	// And the refusal changed nothing: the row still names what the work ran on.
-	if got := node.model(); got != "anthropic/claude-opus-5" {
-		t.Fatalf("a refused retarget still moved the node to %q", got)
+	if err := agent.SetTaskEffort(node.id, "high"); err != nil {
+		t.Fatal(err)
+	}
+	after := node.notice()
+	if after.State != before.State || after.Model != before.Model || after.Report != before.Report || child.Model() != before.Model {
+		t.Fatal("saving continuation settings changed the completed attempt")
+	}
+	if after.NextModel != "anthropic/claude-sonnet-5" {
+		t.Fatalf("next model: %q", after.NextModel)
+	}
+	node.graph.mu.Lock()
+	record := node.recordLocked()
+	node.graph.mu.Unlock()
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var disk taskRecord
+	if err := json.Unmarshal(encoded, &disk); err != nil {
+		t.Fatal(err)
+	}
+	restored := restoreNode(newTaskGraph(), disk)
+	if restored.nextModel != after.NextModel || restored.nextEffort == nil || *restored.nextEffort != "high" || restored.spec.model != before.Model {
+		t.Fatal("continuation setup did not survive the checkpoint record")
+	}
+	seen := make(chan string, 1)
+	node.graph.mu.Lock()
+	node.graph.run = func(n *TaskNode) {
+		seen <- n.model() + "/" + n.effortRung().String()
+		n.finish("continued", nil, "", "")
+		n.graph.complete(n, TaskDone)
+	}
+	node.graph.mu.Unlock()
+	if err := agent.ContinueTask(node.id, "continue the work"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case got := <-seen:
+		if got != "anthropic/claude-sonnet-5/high" {
+			t.Fatalf("continued worker setup: %s", got)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("continuation never ran")
+	}
+	waitDoneNode(t, node)
+	if node.notice().NextModel != "" {
+		t.Fatal("consumed model choice remains pending")
 	}
 }
 
-// THE OTHER TWO REFUSALS: an id this session never admitted, and a word no model
-// here answers to. Both are sentences a caller can act on rather than a silent
-// no-op.
 func TestRetargetTaskRefusesAnUnknownIdAndAnUnknownModel(t *testing.T) {
 	agent, node, _, land := retargetAgent(t)
 	defer land()
@@ -284,5 +324,71 @@ func TestRetargetTaskTakesDownTheToolUseRescuesOwnNote(t *testing.T) {
 	}
 	if got := node.notice().Mending; got != "adding amp-labs to the report" {
 		t.Fatalf("a repair round's line was taken down with the rescue's: %q", got)
+	}
+}
+
+// A PICK MADE WHILE THE GATE IS READING THE WORK IS THE NEXT RUN'S, AND THE ROW
+// KEEPS THE MODEL THAT ACTUALLY RAN.
+//
+// This is the defect the phase read exists for. A node stays TaskRunning across
+// its worker, the check and every repair round, and its worker stops reading the
+// moment [runTaskChild] returns — minutes before a checked node settles. Reading
+// the state alone, this door rewrote the frozen spec of work that was already
+// finished, so the row, the checkpoint and the landed card all named a model that
+// never ran a token of it while the bill named the one that did.
+//
+// It was measured: a node admitted on the worker tier with all nineteen of its
+// calls billed there, and a card claiming the install's low tier because a pick
+// landed during the check.
+func TestAModelPickedWhileTheCheckReadsBecomesTheNextRunsAndLeavesTheRowAlone(t *testing.T) {
+	agent, node, _, land := retargetAgent(t)
+	defer land()
+
+	// The check's own two facts, in the order the runner produces them: the
+	// worker's reading is over, and the node has entered the gate's phase.
+	node.openRoom().speaking(nil)
+	node.living(TaskPhaseChecking)
+
+	if err := agent.RetargetTask(node.id, "claude-sonnet-5"); err != nil {
+		t.Fatalf("RetargetTask during the check: %v", err)
+	}
+	notice := node.notice()
+	if notice.Model != "anthropic/claude-opus-5" {
+		t.Fatalf("the row names %q, want the model the work actually ran on", notice.Model)
+	}
+	if notice.NextModel != "anthropic/claude-sonnet-5" {
+		t.Fatalf("the pick was lost rather than kept for the next run: %q", notice.NextModel)
+	}
+	// AND THE SPEC ITSELF IS UNTOUCHED, which is the half a row cannot show: it is
+	// what the checkpoint writes and what a resumed session would draw.
+	node.graph.mu.Lock()
+	frozen := node.spec.model
+	node.graph.mu.Unlock()
+	if frozen != "anthropic/claude-opus-5" {
+		t.Fatalf("the frozen admitted id moved to %q", frozen)
+	}
+}
+
+// AND A WORKER THAT IS STILL READING IS STILL MOVED, which is the ordinary case
+// and the reason the read above is one condition rather than a refusal: the phase
+// answers "is there a turn left to take this", and while the node's own worker
+// holds it the answer is yes.
+func TestAModelPickedWhileTheWorkerReadsStillMovesTheWork(t *testing.T) {
+	agent, node, child, land := retargetAgent(t)
+	defer land()
+
+	node.living(TaskPhaseWorking)
+	if err := agent.RetargetTask(node.id, "claude-sonnet-5"); err != nil {
+		t.Fatalf("RetargetTask while the worker reads: %v", err)
+	}
+	notice := node.notice()
+	if notice.Model != "anthropic/claude-sonnet-5" {
+		t.Fatalf("the row names %q, want the model just picked", notice.Model)
+	}
+	if notice.NextModel != "" {
+		t.Fatalf("a pick that moved the live work also armed the next run: %q", notice.NextModel)
+	}
+	if got := child.Model(); got != "anthropic/claude-sonnet-5" {
+		t.Fatalf("the worker in the room is still on %q", got)
 	}
 }

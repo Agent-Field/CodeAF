@@ -8,14 +8,9 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
-// The line builder. It is this package's own, deliberately: internal/tui2/blocks
-// has the same measurements, and importing them would close the tokens → blocks
-// edge into a cycle the first time a block wanted to draw prose. What is
-// duplicated is thirty lines of arithmetic over one shared ruler; what would be
-// duplicated by sharing is a dependency direction.
-//
-// The ruler is x/ansi, the same one blocks measures with, so a row built here
-// and a row built there agree about what a cell is.
+// The line builder is this package's own so the renderer stays independent of
+// every surface. Its thirty lines of arithmetic use x/ansi, the same ruler the
+// surfaces use, so they agree about what a cell is.
 
 // cells is the printable width of s: escape sequences count zero, wide runes
 // count two. The ASCII fast path is worth having because most prose is ASCII
@@ -195,9 +190,8 @@ func (p painter) fg(t tokens.Token) string {
 	return p.styler.Fg(t)
 }
 
-// paint wraps text in the escape sequences its style asks for. It obeys the
-// blocks contract that painting must not change printable width: only escapes
-// are added, never a printable byte.
+// paint wraps text in the escape sequences its style asks for. Painting must
+// not change printable width: only escapes are added, never a printable byte.
 //
 // The simple case — a foreground and nothing else — goes through
 // [tokens.Styler.PaintToken], so a run that is a single glyph still gets the

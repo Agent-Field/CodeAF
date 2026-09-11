@@ -120,8 +120,7 @@ type standingPlace struct {
 // person is on for their first week, and the owner found it by running the
 // binary on a fresh home: the tab was drawn, the key did nothing. SCREEN 1f'S
 // PREAMBLE IS THE LAW: an almost-empty place is the best teacher on the machine,
-// so the sentence that used to be the refusal ([standNothingWord]) is the first
-// line of the body instead ([standingTeach]).
+// so the place opens on its heading and whisper instead ([placeWhisper]).
 func (p *standingPlace) open(a *app) tea.Cmd {
 	rows, win := a.standingPlaceReading()
 	// WHETHER THE MACHINE HOLDS ANYTHING IS ASKED OF THE UNSCOPED PARTS, because
@@ -158,23 +157,13 @@ func (p *standingPlace) close(a *app) {
 // "nothing reads the disk on a draw".
 func (p *standingPlace) body(a *app, width, room int) []placeRow {
 	if !p.held {
-		// THE TEACHING PROSE IS THE WHOLE OF AN EMPTY PLACE, drawn instead of the
+		// THE WHISPER IS THE WHOLE OF AN EMPTY PLACE, drawn instead of the
 		// header row rather than under it: the header carries the time window
 		// ([standingHeaderRow]), and a control naming a span of days on a machine
 		// that has never held a standing order is a control about nothing. A list
 		// emptied by the window keeps its header ([standingPlace.held] says why).
-		rows := make([]placeRow, 0, room)
-		for _, line := range standingTeach(a.pal) {
-			if len(rows) >= room {
-				break
-			}
-			rows = append(rows, placeRow{text: " " + line, hit: -1})
-		}
-		for len(rows) < room {
-			rows = append(rows, placeRow{text: "", hit: -1})
-		}
 		p.top, p.shown, p.owner = 0, 0, nil
-		return rows
+		return placeWhisperRows(pageStanding, width, room, a.pal)
 	}
 	lines, owner, top, shown := standingLines(
 		p.rows, p.win, p.cursor, p.top, width, room, p.hover, a.pal, a.now())
@@ -533,14 +522,10 @@ func (p *standingPlace) current() (standing.Item, bool) {
 	return row.view.Item, ok
 }
 
-// press resolves a click on one of the page's rows.
-//
-// THE POINTER MOVES THE CURSOR AND NEVER ACTS, which is where this page parts
-// company with the panel it borrows its shape from. /permissions asks before it
-// drops, so a mis-aimed click there costs a second press; every verb here is a
-// key, and enter takes a person out of the conversation they are sitting in — a
-// click that did that would be a gesture nobody could aim.
-func (p *standingPlace) press(a *app, y int) tea.Cmd {
+// press resolves a click on one of the page's rows to the order it names, and
+// reports whether it landed on one; the place then enters it ([place.press]).
+// Every verb here is still a key.
+func (p *standingPlace) press(a *app, y int) bool {
 	// A ROW OF THE TERMINAL BECOMES A ROW OF THE BODY BY SUBTRACTING THE HEAD,
 	// and the head is one number for every place ([placeHeadRows]). It used to
 	// resolve against the chrome's overlay marks, which is what an overlay had
@@ -551,11 +536,11 @@ func (p *standingPlace) press(a *app, y int) tea.Cmd {
 		// A heading, a "not here" line, a "last look" paragraph, or a blank under
 		// the last row: a line belonging to no order. It is swallowed rather than
 		// resolved to whichever row it happened to be nearest.
-		return nil
+		return false
 	}
 	p.cursor = at
 	a.touch()
-	return nil
+	return true
 }
 
 // ── the writes ──────────────────────────────────────────────────────────────
@@ -938,9 +923,11 @@ func (placeStanding) summary(a *app) string {
 	return standingSummary(a.standingPlaceViews(), a.now())
 }
 
-func (placeStanding) press(a *app, y int) bool {
-	a.orders.press(a, y)
-	return true
+func (placeStanding) press(a *app, y int) (tea.Cmd, bool) {
+	if a.orders.press(a, y) {
+		return a.orders.enter(a), true
+	}
+	return nil, true
 }
 
 // hover is A SCREEN LINE OF THE BLOCK and not a row index, because that is what

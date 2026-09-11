@@ -120,12 +120,16 @@ func TestHomeDrawsTheAnswersToAnotherWindowsQuestion(t *testing.T) {
 			t.Fatalf("the card does not offer %q:\n%s", chip, text)
 		}
 	}
-	// AND ONLY WHERE THE CURSOR IS. The band is the card's, and the card is the
-	// row under the cursor — a second row's chips would be two questions on
-	// screen with one keyboard between them.
+	// AND ONCE, ON THE ROW, WHEREVER THE CURSOR IS. The grid draws a question's
+	// answers on its `needs you` row and a digit answers the top one from
+	// anywhere (homegrid.go's [app.homeGridAnswer]) — so the chips neither
+	// follow the cursor off the row nor appear a second time at the foot.
+	if n := strings.Count(text, "3 deny"); n != 1 {
+		t.Fatalf("the chips are drawn %d times with the cursor on their row:\n%s", n, text)
+	}
 	lab.a.home.point(lab.a.file)
-	if text := homeText(lab.a); strings.Contains(text, "3 deny") {
-		t.Fatalf("the chips followed the cursor off the row they belong to:\n%s", text)
+	if n := strings.Count(homeText(lab.a), "3 deny"); n != 1 {
+		t.Fatalf("the chips are drawn %d times with the cursor elsewhere:\n%s", n, homeText(lab.a))
 	}
 }
 
@@ -416,5 +420,67 @@ func TestHomeDecliningItsOwnStandingCardSettlesItAsNotSetUp(t *testing.T) {
 	}
 	if a.stand == nil || a.stand.verdict != standNoWord {
 		t.Fatalf("the card in this window settled as %q, want %q", a.stand.verdict, standNoWord)
+	}
+}
+
+// askQuestion is a question the MODEL raised, as another window reads it: the
+// whole object beside the four fields every older reader knows, and answers that
+// are the model's own words rather than a lane's fixed table.
+func askQuestion(id uint64, head string) session.PresenceQuestion {
+	whole := session.Question{
+		ID: id, Kind: session.QuestionAsk, Ask: session.AskPermission,
+		Form: session.FormLine, Asker: session.Asker{Kind: session.AskerModel},
+		Head: head, Reason: "the draft has not been read by anybody else",
+		Options: []session.AnswerOption{
+			{Key: "1", Label: "publish it"},
+			{Key: "2", Label: "hold it", Safe: true},
+		},
+		Stakes: session.StakesReversible, Asked: time.Now(),
+	}
+	return session.PresenceQuestion{
+		Kind: whole.Kind, ID: whole.ID, Text: whole.Head,
+		Options: whole.Options, Asked: whole.Asked, Full: &whole,
+	}
+}
+
+// EVERY LANE'S ANSWERS REACH THE ROW, AND THE DOORSTEP TAKES THEM.
+//
+// This is the whole path a person walks when a conversation in another window
+// stops on a question the model raised: the chips come off the question's own
+// options, the digit is checked against those options, and the answer is left in
+// the folder that session drains. The seam here is the REAL one
+// ([session.WriteAnswer]) and not the lab's recorder, because the defect was
+// entirely on the far side of it — the door refused every lane whose keys the
+// kind's own table does not fix, so the chips drew, the key landed, and home
+// said `could not leave that answer` about a question it had just offered to
+// answer.
+func TestHomeAnswersAQuestionTheModelRaisedThroughTheRealDoorstep(t *testing.T) {
+	lab := newAnswerLab(t, askQuestion(7, "publish the draft?"), time.Now())
+	lab.a.leaveAnswer = session.WriteAnswer
+
+	text := homeText(lab.a)
+	for _, chip := range []string{"1 publish it", "2 hold it"} {
+		if !strings.Contains(text, chip) {
+			t.Fatalf("home does not offer %q for the model's own question:\n%s", chip, text)
+		}
+	}
+
+	lab.a.homeKey(key("1"))
+	if said := homeText(lab.a); strings.Contains(said, answerFailedWord) {
+		t.Fatalf("the doorstep refused an answer home had just offered:\n%s", said)
+	}
+	raw, err := os.ReadFile(session.AnswersPath(lab.dir))
+	if err != nil {
+		t.Fatalf("nothing reached the doorstep: %v", err)
+	}
+	var answer session.Answer
+	if err := json.Unmarshal(raw, &answer); err != nil {
+		t.Fatalf("the doorstep holds %q: %v", raw, err)
+	}
+	if answer.Kind != session.QuestionAsk || answer.ID != 7 || answer.FirstKey() != "1" {
+		t.Fatalf("the answer reads %+v, want the ask lane's question 7 answered 1", answer)
+	}
+	if said := homeText(lab.a); !strings.Contains(said, answerSentWord+"publish it") {
+		t.Fatalf("home did not say what it just answered:\n%s", said)
 	}
 }

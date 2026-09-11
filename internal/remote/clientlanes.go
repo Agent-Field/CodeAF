@@ -41,13 +41,15 @@ func (c *Client) laneFrame(name laneName, payload json.RawMessage) {
 }
 
 // laneLocked is the stream one lane is delivering onto, called with c.mu held.
-// One lane crosses today; the switch is where a second would join it.
+// The switch is where a lane joins them.
 func (c *Client) laneLocked(name laneName) *stream {
 	switch name {
 	case laneDesign:
 		return c.designs
 	case laneTitle:
 		return c.titles
+	case laneQuestion:
+		return c.questions
 	}
 	return nil
 }
@@ -60,6 +62,8 @@ func (c *Client) setLaneLocked(name laneName, lane *stream) *stream {
 		c.designs = lane
 	case laneTitle:
 		c.titles = lane
+	case laneQuestion:
+		c.questions = lane
 	}
 	return previous
 }
@@ -68,9 +72,14 @@ func (c *Client) setLaneLocked(name laneName, lane *stream) *stream {
 // learns it is over rather than waiting on a channel nobody will write.
 func (c *Client) buryLanes() {
 	c.mu.Lock()
-	ending := []*stream{c.designs, c.titles}
-	c.designs, c.titles = nil, nil
+	ending := []*stream{c.designs, c.titles, c.questions}
+	c.designs, c.titles, c.questions = nil, nil, nil
 	c.mu.Unlock()
+	// AND WHAT THIS SURFACE BELIEVED WAS OPEN GOES WITH THE LANE. A connection
+	// that has ended cannot be asked, and a list of questions kept past it is a
+	// list nothing can ever take a row off — the engine's own answer to what is
+	// open arrives as the replay onto the NEXT subscription (questionlane.go).
+	c.asked.forgetAll()
 	for _, lane := range ending {
 		if lane != nil {
 			lane.finish()
@@ -213,11 +222,16 @@ func (c *Client) announceTitle(title, short string) {
 // The welcome restores the cache, but the UI also needs a notification if the
 // name arrived during the gap. If it is still pending, the new server needs its
 // own subscription; the old pipe's subscription was closed with that pipe.
+//
+// IT IS ONE OF THREE AND IT ASKS THE ONE QUESTION THEY ALL ASK. Whether this
+// window is still in the conversation it left is [conversationSwitched]'s
+// answer, spelled once for the rail, the harness lane and this one
+// (redial.go's [Client.retakeLanes] is what calls this).
 func (c *Client) retakeTitle(left string, welcome Welcome) {
 	c.mu.Lock()
 	watching := c.titles != nil
 	c.mu.Unlock()
-	if !watching || left != welcome.SessionFile {
+	if !watching || conversationSwitched(left, welcome.SessionFile) {
 		return
 	}
 	if welcome.Facts != nil {

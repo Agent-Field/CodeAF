@@ -165,37 +165,30 @@ func TestThePaletteFillsTheFrameAndSaysWhatIsHidden(t *testing.T) {
 	}
 }
 
-// ── AN EMPTY STATE MUST SAY WHAT TO DO NEXT, IN A VERB ──────────────────────
+// ── AN EMPTY STATE MUST SAY WHAT TO DO NEXT ─────────────────────────────────
 //
 // Search was three declarative statements with no example query; spend never
-// said that nothing had been spent, so a developer could not tell "no rows yet"
-// from "the ledger could not be read"; memory explained what memory is over a
-// page with no shelves, and its foot then promised `enter open a shelf · alt+s
-// walk the shelves` over nothing to open, filter or walk. The tasks place, one
-// `tab` away, already had the shape all three lacked.
+// said what arrives on it; memory explained what memory is over a page with no
+// shelves, and its foot then promised `enter open a shelf · alt+s walk the
+// shelves` over nothing to open, filter or walk. Each place's whisper now names
+// the one thing that puts something there (placeprose.go's [placeWhisper]), and
+// this holds every one of them to naming it: a command to type, words to say,
+// or the act that fills the page.
 func TestAnEmptyPlaceSaysWhatToDoNext(t *testing.T) {
 	pal := newPalette(0, false)
-
-	// SEARCH — the asker's own words, and what a searchable thing looks like.
-	teach := strings.Join(searchTeach(pal), "\n")
-	if !strings.Contains(ansi.Strip(teach), searchExampleWord) {
-		t.Errorf("the search teaching page never says what to type:\n%s", ansi.Strip(teach))
+	doors := map[page]string{
+		pageTasks: "/task", pageStanding: `"remind me at 6"`, pageMemory: "/remember",
+		pageSearch: "type a word", pageSpend: "as it runs",
+	}
+	for id, door := range doors {
+		if !strings.Contains(placeWhisper[id].whisper, door) {
+			t.Errorf("the %s whisper never names what puts something there (%q): %q",
+				id.word(), door, placeWhisper[id].whisper)
+		}
 	}
 
-	// SPEND — the sentence that tells an empty ledger from an unread one.
-	if !strings.Contains(spendTeach, spendTeachEmptyWord) {
-		t.Errorf("the spend teaching prose never says nothing has been spent:\n%s", spendTeach)
-	}
-
-	// MEMORY — the verb, and a foot that promises only what is bound.
+	// MEMORY — a foot that promises only what is bound.
 	bare := readMemory(store.MemoryShelves{}, nil, "", time.Time{})
-	body := ""
-	for _, line := range bare.rows(120, pal) {
-		body += ansi.Strip(line) + "\n"
-	}
-	if !strings.Contains(body, memoryEmptyWord) {
-		t.Errorf("the memory page with nothing on it never says what to do next:\n%s", body)
-	}
 	a := newTestApp(nil)
 	a.width, a.height = 120, 40
 	a.mem.reading = bare
@@ -210,17 +203,17 @@ func TestAnEmptyPlaceSaysWhatToDoNext(t *testing.T) {
 			foot, placeHintTail+" · "+memoryBareHint)
 	}
 
-	// AND A PAGE THAT IS ONLY NEARLY EMPTY STILL SAYS ITS SHELF KEYS. The
-	// teaching prose stands until there are eight lines, and "nothing learned
-	// yet" over three visible shelves would be the page contradicting its body.
+	// AND A PAGE WITH ONE LINE ON IT IS A PAGE, NOT A LESSON. The head row is
+	// there from the first memory on and the whisper is gone, so the eighth
+	// memory no longer swaps three paragraphs for a head row in one frame.
 	some := readMemory(store.MemoryShelves{Total: 3, Held: 3,
 		Shelves: []store.MemoryShelf{{Scope: store.MemoryScopeUser, Held: 3}}}, nil, "", time.Time{})
 	shown := ""
 	for _, line := range some.rows(120, pal) {
 		shown += ansi.Strip(line) + "\n"
 	}
-	if strings.Contains(shown, memoryEmptyWord) {
-		t.Errorf("a page with three memories on it says nothing is learned yet:\n%s", shown)
+	if !strings.Contains(shown, "3 held") || strings.Contains(shown, placeWhisper[pageMemory].whisper) {
+		t.Errorf("a page with three memories on it is not headed by its count:\n%s", shown)
 	}
 }
 
