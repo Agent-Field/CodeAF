@@ -607,9 +607,12 @@ func (w *loopWatch) materialProgress(calls []ai.ToolCall, results []toolResult) 
 // the whole point of the reading is that it is the one claim nobody can argue
 // with.
 //
-// It keeps its OWN fingerprint rather than sharing the runner's cell: reading a
-// transition consumes it, and two readers sharing one cell would each see half
-// the movement (task_run.go's [worktreeMoved] is that cell's only owner).
+// It keeps its OWN fingerprint rather than sharing the task road's: READING A
+// TRANSITION CONSUMES IT, so two readers over one cell would each see half the
+// movement. The task road reads the tree once per batch through a door of its
+// own, and the two never meet — which is the law here, and is deliberately
+// stated without naming the function on the other side of it, because that
+// function has already been rewritten once and the law did not move with it.
 //
 // ── AND IT IS READ BESIDE THE TURN, NOT IN FRONT OF IT ──────────────────────
 //
