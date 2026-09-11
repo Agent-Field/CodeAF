@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: a test wait that runs out says it timed out, instead of naming a cause it never saw
-pr: 975
+pr: 976
 surface: [engine]
 invalidates:
   - "`internal/session`'s test helpers `ranNodes.await` and `heldProposal.await` failed with `no node ran` and `the held proposal never returned` — claims about a seam, from a helper that can only observe that nothing arrived on a channel. They say what they waited for and that it was a TIMEOUT now, spelled once in `awaitTimeoutWord` and pinned by a test. A red on either used to send a reader into the task graph; it now sends them to run the test alone first."
