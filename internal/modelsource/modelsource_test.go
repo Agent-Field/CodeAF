@@ -59,6 +59,13 @@ func TestVendoredRowsAreTheDecidedFive(t *testing.T) {
 	}
 }
 
+// THE ROWS RECORD THE BEST KNOWN TRUTH, AND OBSERVATION OUTRANKS THE SURVEY.
+// This law was written pinning each row to B-provider-landscape.md, which is
+// right only until somebody watches the endpoint answer. Z.ai is the worked
+// example: the survey calls its /models undocumented, a live run got 200 and
+// ten models, and reading the survey's silence as absence is what refused a
+// valid key. So a row that has been observed says what was observed, and the
+// survey is what the rest are held to until somebody looks.
 func TestVendoredListingHintsAndProbeModelsMatchTheProviderSurvey(t *testing.T) {
 	want := []struct {
 		id         string
@@ -66,12 +73,18 @@ func TestVendoredListingHintsAndProbeModelsMatchTheProviderSurvey(t *testing.T) 
 		probeModel string
 	}{
 		{"deepseek", ListingModels, ""},
-		// Z.ai's listing was undocumented rather than absent. The connect door
-		// asks it first; glm-5.3-flash is the current cheap fallback, never the
-		// superseded glm-4.6 named by the original survey brief.
-		{"z-ai", ListingNone, "glm-5.3-flash"},
-		// The survey's old K2 preview is gone. With no unambiguous cheapest current
-		// Moonshot model, deferring proof is safer than spending on a guessed id.
+		// OBSERVED on 2026-09-10 against api.z.ai: 200 and ten models. The row
+		// says so rather than repeating the survey's "undocumented", so the
+		// hint and the behaviour cannot disagree. glm-5.3-flash stays as the
+		// fallback for a region that does not answer, and is the current cheap
+		// model rather than the superseded glm-4.6 the first brief named.
+		{"z-ai", ListingModels, "glm-5.3-flash"},
+		// UNOBSERVED. The survey says undocumented, which after Z.ai is known to
+		// be weak evidence — but nobody has watched this endpoint, so the hint
+		// stays what the survey says and the connect door asks anyway. The
+		// survey's old K2 preview is gone and no replacement is guessed: with no
+		// unambiguous cheapest current model, deferring proof beats spending on
+		// an invented id, which is the mistake this whole law exists about.
 		{"moonshot", ListingNone, ""},
 		{"ollama", ListingModels, ""},
 		{"custom", ListingModels, ""},

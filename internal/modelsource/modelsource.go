@@ -27,9 +27,12 @@ const ProbeTimeout = 10 * time.Second
 type Listing int
 
 const (
-	// ListingNone says the survey found no documented model list.
+	// ListingNone is the first-try hint for a service no listing has been
+	// observed on. It does NOT foreclose one: connect asks anyway, and a
+	// service that answers is treated as a listing service from that moment.
 	ListingNone Listing = iota
-	// ListingModels says the survey found a documented model list.
+	// ListingModels is the first-try hint for a service whose model list is
+	// documented or has been seen to answer.
 	ListingModels
 )
 
@@ -232,7 +235,13 @@ func Vendored() []Source {
 				{ID: "intl", Name: "International", Address: "https://api.z.ai/api/paas/v4"},
 				{ID: "cn", Name: "China", Address: "https://open.bigmodel.cn/api/paas/v4"},
 			},
-			Listing: ListingNone, ProbeModel: "glm-5.3-flash", Probe: listingProbe(),
+			// OBSERVED, NOT SURVEYED. B-provider-landscape.md records Z.ai's
+			// /models as undocumented; a live run against api.z.ai answered 200
+			// with ten models. The survey's silence was read as absence once and
+			// it cost a valid key its connection, so this row says what the
+			// endpoint actually does. The fallback model stays for the regions
+			// or the day it stops.
+			Listing: ListingModels, ProbeModel: "glm-5.3-flash", Probe: listingProbe(),
 		},
 		{
 			ID: "moonshot", Written: "moonshot", Name: "Moonshot", KeyEnv: "MOONSHOT_API_KEY",
