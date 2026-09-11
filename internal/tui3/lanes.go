@@ -391,11 +391,33 @@ func laneViews(model string, now time.Time) []laneView {
 		view.TTFT = ttft.Mean() / 1000
 		view.Rate = rate.Mean()
 		view.Wait = ttft.Quantile(laneWaitZ) / 1000
-		view.Tail, view.Vague = laneTail(ttft.Quantile(laneTailZ)/1000, view.TTFT)
+		view.Tail, view.Vague = laneTailOf(ttft, view.TTFT)
 		views = append(views, view)
 	}
 	sortLanes(views)
 	return views
+}
+
+// laneTailOf is [laneTail] asked of a belief rather than of a figure, and it is
+// the door [laneViews] uses.
+//
+// A BELIEF THAT HAS WIDENED AS FAR AS IT IS ALLOWED TO SAYS NOTHING ABOUT ITS
+// WORST CASE, and the spread is the only place that fact still shows. Ageing
+// doubles the spread every half-life ([lane.Posterior.Predict]) and
+// [lane.MaxSpread] is where that doubling stops — a floor under the arithmetic
+// and not a judgement, put there so the one unbounded expression in that package
+// cannot reach a number no reader of it can hold. The row used to read the
+// overflow itself: before the clamp a lane nobody had heard from since yesterday
+// arrived with a p99 of +Inf, which [laneTail] caught. Now it arrives at exactly
+// the ceiling, where σ ≈ 2.4 makes the p99 a couple of hundred times the median —
+// a perfectly finite figure that is still arithmetic and not a measurement. So
+// the emptiness law is applied to the BELIEF, where the doubt lives, rather than
+// to the one symptom of it that a later clamp took away.
+func laneTailOf(ttft lane.Posterior, median float64) (tail float64, vague bool) {
+	if ttft.P >= lane.MaxSpread {
+		return 0, true
+	}
+	return laneTail(ttft.Quantile(laneTailZ)/1000, median)
 }
 
 // laneTail is the p99 first token in seconds when it is worth a word on a row,
@@ -403,11 +425,8 @@ func laneViews(model string, now time.Time) []laneView {
 // about its worst case at all.
 //
 // A TAIL IS ONLY A TAIL WHEN IT IS FAR ENOUGH PAST THE MEDIAN to be a different
-// experience — five times — AND WHEN IT IS A WAIT SOMEBODY COULD HAVE HAD. The
-// ageing widens a belief's spread by half-lives ([lane.Posterior.Predict]), so a
-// lane nobody has heard from since yesterday has a p99 of exp(something huge):
-// +Inf, which the row printed as `tail 9223372036854775807s`. A figure that is
-// not finite, or longer than any request is allowed to stay open
+// experience — five times — AND WHEN IT IS A WAIT SOMEBODY COULD HAVE HAD. A
+// figure that is not finite, or longer than any request is allowed to stay open
 // ([provider.WallCeiling]), is arithmetic and not a measurement, and the
 // emptiness law draws it as nothing — including not as `no tail`, which is a
 // claim about the worst case too.
