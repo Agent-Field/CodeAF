@@ -359,3 +359,114 @@ func TestFourLedgersOverOneFileKeepEverybodysBeliefs(t *testing.T) {
 			writers*each, held)
 	}
 }
+
+// ── THE STORE NEVER WRITES A FLOAT THAT IS NOT A NUMBER ─────────────────────
+//
+// encoding/json refuses a whole document on one NaN, and what it refuses here
+// is everything this process has learned. For days before 2026-09-10 that is
+// exactly what happened —
+// `the belief file could not be compacted: json: unsupported value: NaN` —
+// so every compaction failed, the journal grew instead, and every load replayed
+// all of it (docs/design/recovery/census-20260910.md §8, finding 8).
+
+// TestABeliefThatIsNotANumberCostsItselfAndNeverTheFile is the law: a value the
+// arithmetic got wrong is dropped, and everything beside it is written.
+func TestABeliefThatIsNotANumberCostsItselfAndNeverTheFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "lanes.json")
+	sound := Belief{
+		ID:   ID{Model: "vendor/model", Lane: "sound"},
+		TTFT: Posterior{X: math.Log(300), P: 0.04},
+		Rate: Posterior{X: math.Log(40), P: 0.04},
+	}
+	poisoned := Belief{
+		ID:   ID{Model: "vendor/model", Lane: "poisoned"},
+		TTFT: Posterior{X: math.NaN(), P: math.NaN()},
+		Rate: Posterior{X: math.Inf(1), P: 0.04},
+	}
+	held := storeState{Beliefs: []Belief{sound, poisoned}}
+	held.Wait.Pace = math.Inf(1)
+	held.Wait.Lane = map[string]node{
+		"sound":    {X: 1, P: 0.2},
+		"poisoned": {X: math.NaN(), P: 0.2},
+	}
+	held.Judged.Lane = map[string]tally{
+		"sound":    {Beta: Beta{A: 3, B: 1}},
+		"poisoned": {Beta: Beta{A: math.NaN(), B: 1}},
+	}
+	held.Priors = []spread{{TTFT: 0.3, Rate: 0.2}, {TTFT: math.NaN(), Rate: 0.2}}
+
+	if err := writeState(path, held); err != nil {
+		t.Fatalf("one bad number cost the whole file: %v", err)
+	}
+	back := readState(path)
+	if len(back.Beliefs) != 1 || back.Beliefs[0].ID.Lane != "sound" {
+		t.Fatalf("beliefs written back: %+v", back.Beliefs)
+	}
+	if _, kept := back.Wait.Lane["poisoned"]; kept {
+		t.Error("a hierarchy level whose numbers stopped being numbers was written down")
+	}
+	if _, kept := back.Wait.Lane["sound"]; !kept {
+		t.Error("the level beside it was dropped too, which is the file paying for its neighbour")
+	}
+	if back.Wait.Pace != 0 {
+		t.Errorf("the world's pace was written as %v", back.Wait.Pace)
+	}
+	if _, kept := back.Judged.Lane["poisoned"]; kept {
+		t.Error("quality evidence that is not a number was written down")
+	}
+	if len(back.Priors) != 1 {
+		t.Errorf("priors written back: %+v", back.Priors)
+	}
+}
+
+// TestAgeingNeverReachesANumberNobodyCanHold is the source of that NaN, and it
+// is one unbounded doubling: variance grows by 2^(dt/half-life) with nothing
+// above it, and a lane the sheet publishes no spread for used to skip the clamp
+// entirely. A week of sitting still overflowed to +Inf, and the next
+// observation folded +Inf/(+Inf+R) into NaN.
+func TestAgeingNeverReachesANumberNobodyCanHold(t *testing.T) {
+	belief := Posterior{X: math.Log(1200), P: defaultSpread * defaultSpread}
+	// A fortnight, which is well past where the doubling used to overflow.
+	aged := age(belief, 14*24*time.Hour, 0)
+	if math.IsInf(aged.P, 0) || math.IsNaN(aged.P) {
+		t.Fatalf("a fortnight of sitting still aged a belief to %v", aged.P)
+	}
+	if aged.P > SheetWeight*defaultSpread*defaultSpread {
+		t.Errorf("ageing made a belief worth less than the public sheet: P = %v", aged.P)
+	}
+	// And the raw prediction, which the scorer calls directly with no clamp of
+	// its own, is bounded too.
+	predicted := belief.Predict(365*24*time.Hour, HalfLife)
+	if !finite(predicted.P) || predicted.P > MaxSpread {
+		t.Errorf("a year of ageing predicted P = %v, want no more than %v", predicted.P, MaxSpread)
+	}
+	// And a belief that is already poisoned is treated as no belief rather than
+	// folded into a new observation, so nothing can stay NaN once it is.
+	repaired := Posterior{X: math.NaN(), P: math.NaN()}.Update(math.Log(500), 0.04)
+	if !finite(repaired.X) || !finite(repaired.P) {
+		t.Errorf("an observation folded into a poisoned belief left %v", repaired)
+	}
+}
+
+// TestWritingTheStateNeverReachesIntoTheLedgerItWasGiven is the other half of
+// the law above, and the one a race detector would otherwise find first: a
+// compaction is handed a SHALLOW copy of the ledger's own state, so its maps
+// are the live ones. Dropping a value by deleting from them would reach into a
+// hierarchy another goroutine is folding observations into.
+func TestWritingTheStateNeverReachesIntoTheLedgerItWasGiven(t *testing.T) {
+	live := map[string]node{
+		"sound":    {X: 1, P: 0.2},
+		"poisoned": {X: math.NaN(), P: 0.2},
+	}
+	held := storeState{}
+	held.Wait.Lane = live
+	if err := writeState(filepath.Join(t.TempDir(), "lanes.json"), held); err != nil {
+		t.Fatal(err)
+	}
+	if len(live) != 2 {
+		t.Fatalf("writing the file deleted from the ledger's own map: %d entries left", len(live))
+	}
+	if _, kept := live["poisoned"]; !kept {
+		t.Error("the caller's map lost an entry to a write")
+	}
+}

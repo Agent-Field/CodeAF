@@ -1003,7 +1003,7 @@ So spec shape varies by *scale* but never by *harness*.
 
 ### How to reproduce
 
-Everything is on the pod (`root@216.81.151.50 -p 12708`, key `~/.ssh/runpod_ed25519`).
+Everything is on the pod (`root@<pod-host> -p <port>`, key `~/.ssh/<key>`).
 Binaries `/root/aforge-{chatv2,trunk}`; stores `/root/stores/<arm>-<task>/<task>.db`;
 logs `/root/logs/<arm>-<task>.{stdout.json,stderr.log,wall,rc}`; task prompts
 `/root/task{C,N,P}.txt`; runner `/root/runone2.sh`.
@@ -1856,8 +1856,8 @@ carry the 8-way-load caveat in §9.2.
 
 ### 9.8 How to reproduce (campaign 2)
 
-Everything is on the same pod (`root@216.81.151.50 -p 12708`, key
-`~/.ssh/runpod_ed25519`), under `/root/ab2/`:
+Everything is on the same pod (`root@<pod-host> -p <port>`, key
+`~/.ssh/<key>`), under `/root/ab2/`:
 
 ```
 /root/aforge-chatv2      61923d7  (sha256 b31b6c8c…, == fresh build of committed HEAD)

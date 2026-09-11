@@ -142,7 +142,7 @@ func (c *Client) streamClient() *http.Client {
 // until a lane exists to name, which is the real floor ([Client.ProbeLanes]
 // reads the frontier and an empty one buys nothing).
 func InstallLaneProber(c *Client, waiting lanes.ProbeGate) bool {
-	if c == nil || !c.carriesPreferences() {
+	if c == nil || c.config.Direct || !c.carriesPreferences() {
 		return false
 	}
 	gate := func(model string) bool {

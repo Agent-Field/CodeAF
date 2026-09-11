@@ -17,10 +17,9 @@
 //
 // It is pure: two functions of their arguments, no ambient `time.Now`, no
 // state, and no dependency beyond the standard library. `now` is a parameter so
-// a frame can latch ONE instant and format every cell in it from that instant —
-// the same discipline blocks.Clock applies to animation (8.1.3), for the same
-// reason: cells derived from separate reads of the clock disagree with each
-// other on the frame where the second ticks.
+// a frame can latch ONE instant and format every cell in it from that instant.
+// Cells derived from separate reads of the clock disagree with each other on
+// the frame where the second ticks.
 //
 // It is NOT the width-stable live cell. `tokens.Elapsed` is that — "45s, 5m,
 // 1h02, 99d23", fixed width, no jitter, for a column that re-renders every

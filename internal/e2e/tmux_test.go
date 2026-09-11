@@ -10,9 +10,10 @@
 // model, do what the manual says it does. So this file starts tmux, sends the
 // bytes a keyboard sends, and reads the screen back with `capture-pane`.
 //
-// IT SKIPS RATHER THAN FAILS when it cannot be honest: no OPENROUTER_API_KEY,
-// no tmux, no built binary. A suite that "passes" by not talking to a model is
-// a suite lying about the only thing it was written to check.
+// IT SKIPS RATHER THAN FAILS when it cannot be honest: no provider key on any
+// road the product reads, no tmux, no built binary. A suite that "passes" by
+// not talking to a model is a suite lying about the only thing it was written
+// to check. The key is resolved through [liveKey], not by reading one variable.
 //
 // EVERY RUN IS ITS OWN MACHINE. Each rig gets its own AFORGE_HOME under
 // t.TempDir() — the whole state root moves with that one variable
@@ -32,6 +33,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/config"
 )
 
 // pollEvery is how often waitFor reads the screen. It is a quarter second
@@ -50,12 +53,14 @@ type rig struct {
 }
 
 // requireTmuxAndKey skips the whole suite unless it can be run honestly.
+//
+// THE KEY IS RESOLVED THE WAY THE PRODUCT RESOLVES IT, through [liveKey] — the
+// two variables and then the profile's own `api_key` row. A gate that read one
+// variable skipped on every machine whose key was pasted into the first-run
+// setup, and printed `ok` for a suite that never talked to anything (#576).
 func requireTmuxAndKey(t *testing.T) string {
 	t.Helper()
-	key := strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))
-	if key == "" {
-		t.Skip("no OPENROUTER_API_KEY: this suite talks to a real model or it says nothing")
-	}
+	key := liveKey(t)
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("no tmux on PATH: this suite drives the real binary in a real terminal")
 	}
@@ -115,6 +120,16 @@ func newHome(t *testing.T, overrides map[string]any) string {
 	// The model this suite is about, and the gate posture every scenario but
 	// the consent one wants.
 	rows["model.talk"] = "deepseek/deepseek-v4-flash"
+	// AND THE MARKS ARE PINNED TO THE PLAIN TIER, for the same reason
+	// [newWorld] pins them: tokens.DetectGlyphSet turns the nerd-font tier ON
+	// for any terminal it cannot veto, and tmux under TERM=xterm-256color is
+	// none of the three it vetoes — so a landing head that the vocabulary
+	// spells `✓` comes back off capture-pane as U+F00C, a private-use byte no
+	// needle in tuiwords_test.go could honestly pin and nobody reading this
+	// suite would recognise. The plain floor is a designed tier rather than a
+	// degradation, a person reaches it by choosing `plain` in the same Display
+	// row, and it is the one this suite asserts against.
+	rows[config.KeyIcons] = config.IconsPlain
 	if _, ok := rows["tools.approvalMode"]; !ok {
 		rows["tools.approvalMode"] = "allow"
 	}
@@ -156,7 +171,13 @@ func emptyHome(t *testing.T) string {
 // band on home reads.
 func newWorkspace(t *testing.T, name string, dirty bool) string {
 	t.Helper()
-	ws := filepath.Join(t.TempDir(), name)
+	return workspaceAt(t, filepath.Join(t.TempDir(), name), dirty)
+}
+
+// workspaceAt seeds the same repository at a caller-chosen path when the
+// path length itself is part of a terminal layout scenario.
+func workspaceAt(t *testing.T, ws string, dirty bool) string {
+	t.Helper()
 	if err := os.MkdirAll(ws, 0o755); err != nil {
 		t.Fatalf("workspace: %v", err)
 	}
@@ -188,9 +209,76 @@ func newWorkspace(t *testing.T, name string, dirty bool) string {
 // outright and is the one that always lands.
 func start(t *testing.T, name, home, ws string, cols, rows int, args ...string) *rig {
 	t.Helper()
-	return startWithEnv(t, []string{"OPENROUTER_API_KEY=" + strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))},
+	// THE RIG IS HANDED THE KEY THE PRODUCT WOULD HAVE FOUND, whichever road it
+	// came down: a key that lives only in the profile reaches the child through
+	// the variable here, exactly as a key exported in the shell does.
+	r := startWithEnv(t, []string{config.APIKeyEnv + "=" + liveKey(t)},
 		name, home, ws, cols, rows, args...)
+	r.skipSetup(t)
+	return r
 }
+
+// skipSetup presses esc until the first-run flow is off the screen, and it is
+// part of [start] rather than of any one scenario because EVERY SCENARIO HERE IS
+// ABOUT WHAT IS BEHIND IT.
+//
+// A STATE ROOT BUILT ONE MINUTE AGO OPENS ON THE SETUP HOWEVER COMPLETE THE
+// PROFILE IT COPIED IS. The marker that says the setup has been seen is a file in
+// that root ([newHome] writes a config.json and nothing else), so every rig here
+// meets the flow — and the flow is SEVERAL STEPS, so one esc leaves the one under
+// it and whatever the scenario types next goes into that step's own box. That is
+// how a suite came to record a model answering "" to `what is 2+2`, a home with
+// no foot rule, and a task brief typed into a daily-limit field.
+//
+// [startFresh] deliberately does NOT go through this door: a machine that has
+// never run aforge is the subject of its own subtest, and skipping the screen it
+// exists to read would be skipping the test.
+func (r *rig) skipSetup(t *testing.T) {
+	t.Helper()
+	// IT WAITS FOR THE SCREEN BEFORE IT PRESSES AT IT. [startWithEnv] gives the
+	// app three seconds to reach its first frame, and the first-run flow is not
+	// always on it yet — so a door that captured once and found no setup returned
+	// happily and left every scenario behind it typing into a screen that arrived
+	// a second later. The wait is short because the flow is the FIRST thing this
+	// binary draws when it is going to draw it at all.
+	appears := time.Now().Add(setupPatience)
+	for !r.setupIsUp() {
+		if time.Now().After(appears) {
+			// No setup on this machine, which is an ordinary state root with the
+			// marker already in it.
+			return
+		}
+		time.Sleep(pollEvery)
+	}
+	for press := 0; press < 6; press++ {
+		r.keys("Escape")
+		time.Sleep(900 * time.Millisecond)
+		if !r.setupIsUp() {
+			return
+		}
+	}
+	t.Logf("the setup was still on screen after six escapes:\n%s", r.capture())
+}
+
+// setupIsUp reports whether the first-run flow is on the frame right now.
+func (r *rig) setupIsUp() bool {
+	screen := r.capture()
+	return strings.Contains(screen, setupSkipKeysWord) || strings.Contains(screen, setupTitleWord)
+}
+
+// setupPatience is how long [rig.skipSetup] waits for the flow to draw before
+// deciding this machine is not going to show one.
+const setupPatience = 8 * time.Second
+
+// The two sentences that say the first-run flow is up. They are the SUITE'S OWN
+// copies of internal/tui3's [setupSkipKeysWord] and the setup title, and they are
+// spelled here rather than reached through [say] because tuiwords_test.go's own
+// gate reads this file and every other one for the names it hands out — a door
+// used by [start] itself has to stand before any scenario asks for a word.
+const (
+	setupSkipKeysWord = "esc skips setup"
+	setupTitleWord    = "setting up"
+)
 
 // keylessEnv is every variable a fresh-install run must not inherit: the two the
 // key resolution reads in order (internal/config's APIKeyAt), the three capability
@@ -264,12 +352,54 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 		r.kill()
 	})
 	r.resize(cols, rows)
+	// Keep a crashed terminal readable so failures include the program's error.
+	if out, err := exec.Command("tmux", "set-option", "-w", "-t", name, "remain-on-exit", "on").CombinedOutput(); err != nil {
+		t.Fatalf("tmux remain-on-exit: %v\n%s", err, out)
+	}
 	respawn := exec.Command("tmux", "respawn-window", "-k", "-t", name, "-c", ws, strings.Join(quoted, " "))
 	if out, err := respawn.CombinedOutput(); err != nil {
 		t.Fatalf("tmux respawn-window: %v\n%s", err, out)
 	}
-	// And the app has to be past its first frame before it can be typed at.
-	time.Sleep(3 * time.Second)
+	// The local engine connection can outlast a fixed launch delay. Wait for
+	// an interactive surface before typing, or the first request is lost.
+	//
+	// THE SETUP IS ONE OF THOSE SURFACES AND IT IS FOUR STEPS, NOT A TITLE. Only
+	// the FIRST step is headed `setting up`; the three after it wear their own
+	// headings (`Models and spending` is step three), so a list that recognised
+	// the flow by its title alone declared a terminal dead the moment the door
+	// opened on a later step — which is exactly what a state root whose profile
+	// is complete does now. The flow's FOOT is on every step of it, and the
+	// greeting's foot is the other screen a launch lands on, so both are here.
+	//
+	// AND A PLACE IS RECOGNISED BY ITS BOX AND NOT BY ITS FOOT. Home's resting
+	// foot is one sentence among several: a launch that meets a lock lands on
+	// home with the held row pointed and armed, and the foot then says what the
+	// next enter would do instead (internal/tui3's takeover.go) — so a window
+	// that had arrived, drawn the whole screen and offered somebody a keystroke
+	// was declared dead by this list. [placeRestWord] is the prompt in the box at
+	// the foot of EVERY place at rest, whatever the line under it says.
+	//
+	// AND A SCREEN THAT IS ASKING SOMETHING IS THE MOST INTERACTIVE SURFACE
+	// THERE IS. The box at the foot of a place holds ONE thing at a time, and a
+	// question raised in this workspace takes it: the prompt becomes the ask and
+	// its options (`needs your ok to run bash · 1 allow once · …`), so a window
+	// that arrived and is waiting on a keystroke wears neither foot above. The
+	// engine's own first option and home's hint for the row are the two ways
+	// that screen says so.
+	//
+	// AND HOME'S PANELS ARE ONE OF THOSE SURFACES. A launch into a project that
+	// already holds a conversation opens on home's panels rather than on a
+	// greeting, so a scenario that opens a SECOND window on one project — which
+	// is what answering from another window takes — was declared dead at
+	// forty-five seconds while looking at a perfectly live one. `needs you` is
+	// drawn on every desktop home, whatever it holds: an empty panel keeps its
+	// heading.
+	if hit, _ := r.waitForAny(45*time.Second, say(t, "homeFootWord"), say(t, "placeRestWord"),
+		say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "setupSkipWord"),
+		say(t, "landingKeysWord"), say(t, "welcomeStarterKeysWord"),
+		say(t, "answersAllowOnce"), say(t, "homeAnswerHint"), say(t, "homeNeedsHeading")); hit == "" {
+		t.Fatal("the terminal never reached an interactive surface")
+	}
 	return r
 }
 
@@ -321,6 +451,17 @@ func (r *rig) altEnter() { r.lit("\x1b\r") }
 func (r *rig) mouseTo(col, row int) {
 	r.t.Helper()
 	r.lit(fmt.Sprintf("\x1b[<35;%d;%dM", col, row))
+	time.Sleep(400 * time.Millisecond)
+}
+
+// mouseClick is a left-button press and release at a 1-based cell. The body
+// acts on release (dragselect.go), so a motion alone is not a click — the same
+// SGR pair the unit harness builds as MouseClickMsg + MouseReleaseMsg.
+func (r *rig) mouseClick(col, row int) {
+	r.t.Helper()
+	r.lit(fmt.Sprintf("\x1b[<0;%d;%dM", col, row))
+	time.Sleep(50 * time.Millisecond)
+	r.lit(fmt.Sprintf("\x1b[<0;%d;%dm", col, row))
 	time.Sleep(400 * time.Millisecond)
 }
 
@@ -446,7 +587,7 @@ func (r *rig) dump() {
 		}
 		fmt.Fprintf(&b, "  %s (%d bytes)\n", rel, size)
 		switch filepath.Base(path) {
-		case "transcript.jsonl", "inbox.jsonl", "log", "wake.log":
+		case "transcript.jsonl", "inbox.jsonl", "log", "wake.log", "usage.jsonl", "calls.jsonl":
 			if raw, err := os.ReadFile(path); err == nil && len(raw) > 0 {
 				fmt.Fprintf(&b, "%s\n", clip(string(raw), 4000))
 			}
@@ -544,9 +685,14 @@ func seedDecidedFamily(t *testing.T, home, ws string) string {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("seed family: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "transcript.jsonl"), nil, 0o644); err != nil {
-		t.Fatalf("seed family: %v", err)
-	}
+	// THE JOURNAL HAS SOMEBODY'S WORDS IN IT, and an empty one is not a cheaper
+	// fixture — it is a different screen. A conversation with nothing in it opens
+	// on the greeting, which on the machine's FIRST conversation stands through
+	// typing (welcome.go's welcomeStandsThroughTyping) and stands the chord keys
+	// down while it is up (stop.go), so the card's own answer letters are refused.
+	// It is also nothing like the shape this fixture is for: a landing that is
+	// somebody's call arrives in a conversation they started the work from.
+	statesSeedTranscript(t, dir, sid, ws, "rebuild the index and port the parser")
 	at := time.Now().Add(-3 * time.Minute)
 	meta := map[string]any{
 		"id": sid, "title": "The nested gate", "workspace": ws,
@@ -585,9 +731,8 @@ func seedUndecidedRoot(t *testing.T, home, ws string) string {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("seed undecided root: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "transcript.jsonl"), nil, 0o644); err != nil {
-		t.Fatalf("seed undecided root: %v", err)
-	}
+	// With the person's own words in it, for [seedDecidedFamily]'s reason.
+	statesSeedTranscript(t, dir, sid, ws, "review the pull request diff")
 	at := time.Now().Add(-3 * time.Minute)
 	writeJSON(t, filepath.Join(dir, "meta.json"), map[string]any{
 		"id": sid, "title": "The review gate", "workspace": ws,
@@ -598,8 +743,9 @@ func seedUndecidedRoot(t *testing.T, home, ws string) string {
 		"nodes": []map[string]any{{
 			"id": 1, "title": "Review the pull request diff", "brief": "review it", "acceptance": "the diff is correct",
 			"state": "unverified", "merge": "inplace",
-			"report": "finished, but needs your look — nobody could check it in 5m0s",
-			"ground": ws, "groundMode": "folder", "elapsed_ms": 42000,
+			"report":  "finished, but needs your look — nobody could check it in 5m0s",
+			"changed": []string{"diff-review.md"},
+			"ground":  ws, "groundMode": "folder", "elapsed_ms": 42000,
 		}},
 	})
 	return dir

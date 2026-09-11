@@ -128,6 +128,33 @@ type Profile struct {
 	// Heartbeats emits the router's own comment lines before the first token,
 	// which is the free signal that tells a dead path apart from a slow lane.
 	Heartbeats bool
+	// Paced stages a machine whose pool is full: it ACCEPTS the request — the
+	// router answers 200 and holds the stream open with its comment lines for
+	// PacedAfter — and then delivers the upstream's 429 INSIDE that 200, naming
+	// itself, which is the exact shape the live router produced on 2026-09-10
+	// (`status 200 … API error (429): Provider returned error (via Io Net)`
+	// after seventeen seconds of silence).
+	//
+	// AND THE ROUTER FALLS BACK PAST IT WHEN IT MAY. A request that demands
+	// nothing — no `only`, fallbacks not forbidden — is the router's free choice,
+	// and the router answers an upstream's full queue by asking the next
+	// machine, which is why a relaxed request lands where a demanded one died.
+	// The paced lane is still counted as asked; the answer comes from the next
+	// allowed lane. Only a request with nowhere else to go gets the 429.
+	//
+	// A ZERO PacedAfter IS THE OTHER TRANSPORT: the router refuses at once with
+	// an HTTP 429 naming the pool, before any stream opens — which is how the
+	// same full queue answered the live router's bare probe on 2026-09-10.
+	Paced      bool
+	PacedAfter time.Duration
+	// PacedFor is the comeback time this full pool NAMES, in its `Retry-After`
+	// header, the way a real one does. Zero is a pool that refuses and says
+	// nothing about when to come back, which is the commoner shape.
+	//
+	// IT IS THE ONLY THING THAT MAKES A SECOND SEND TO THE SAME MACHINE LEGAL
+	// (docs/design/recovery/DESIGN.md §3), so it is what a scenario about
+	// repeating a request has to be able to state.
+	PacedFor time.Duration
 
 	// Tools, Quant, Context, MaxOut, Uptime and Caches are the gate facts the
 	// sheet publishes. Uptime is a percentage.
@@ -183,6 +210,19 @@ type Lane struct {
 	// lands on the next lane and never notices; a request that DEMANDS it
 	// (`only`) gets the router's real refusal, in the router's own words.
 	SheetOnly bool
+
+	// AccountExcluded is a lane the router SERVES this model from and that the
+	// ACCOUNT'S OWN SETTINGS take away — the paid-model-training privacy switch
+	// on openrouter.ai/settings/privacy, measured against the owner's account on
+	// 2026-09-10 for DeepSeek, Fireworks and Wafer.
+	//
+	// IT IS A FACT ABOUT THE ACCOUNT AND THE MACHINE, NOT ABOUT ONE MODEL. The
+	// router drops the lane from every model's set before it asks anybody, so a
+	// request that merely ranks it lands on the next lane and never notices,
+	// while a request whose set it was the whole of — a demand, or a veto list
+	// that left only it — gets the router's real refusal, body and metadata
+	// both ([accountRefusal]).
+	AccountExcluded bool
 }
 
 // ── THE CLOCK ───────────────────────────────────────────────────────────────
@@ -274,6 +314,9 @@ type Ask struct {
 	Order        []string
 	Only         []string
 	Ignore       []string
+	// NoFallbacks is `allow_fallbacks: false` on the wire: the router may not
+	// look past the machines the request named.
+	NoFallbacks bool
 	// MaxPrice is the router's price ceiling in dollars per million tokens.
 	MaxPrice *struct {
 		Prompt     float64
@@ -328,6 +371,13 @@ type Server struct {
 	// teach nothing at all, so the widened retry fails too and the question
 	// stays open.
 	refusesAll bool
+	// refusesWith is a refusal STAGED BY ITS OWN PARTS: a status, a sentence and
+	// the error envelope's `code`. The two flags above are shapes this stub knows
+	// by heart; this is the one a scenario names, and it exists because the code
+	// field is a fact a client reads structurally — the request-did-not-fit
+	// envelope is `code: "context_length_exceeded"` and nothing else about it
+	// tells a reader that (internal/provider's overflowRefusal).
+	refusesWith *stagedRefusal
 }
 
 // New starts a router serving one model over the given lanes, in the order they
@@ -440,6 +490,28 @@ func (s *Server) RefusesEverything() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.refusesAll = true
+}
+
+// stagedRefusal is one refusal named by its parts.
+type stagedRefusal struct {
+	status  int
+	message string
+	code    string
+}
+
+// RefusesWith makes this base answer every completion with one named refusal:
+// this status, this sentence, and this `code` in the error envelope. An empty
+// code leaves the envelope's own default, which is the status.
+//
+// IT IS FOR THE REFUSALS A LANE CANNOT STAGE. A full pool, an account exclusion
+// and an emptied set are all facts about MACHINES, and this stub stages them by
+// describing machines. A request that did not fit the window is a fact about the
+// REQUEST — no lane is implicated, no lane can be described to produce it — so it
+// is named directly. It is set before any request is made.
+func (s *Server) RefusesWith(status int, message, code string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.refusesWith = &stagedRefusal{status: status, message: message, code: code}
 }
 
 // SetClock replaces the clock. It is set before any request is made.
@@ -669,11 +741,14 @@ type wireAsk struct {
 		Content json.RawMessage `json:"content"`
 	} `json:"messages"`
 	Provider *struct {
-		Sort     string   `json:"sort"`
-		Order    []string `json:"order"`
-		Only     []string `json:"only"`
-		Ignore   []string `json:"ignore"`
-		MaxPrice *struct {
+		Sort   string   `json:"sort"`
+		Order  []string `json:"order"`
+		Only   []string `json:"only"`
+		Ignore []string `json:"ignore"`
+		// AllowFallbacks is nil when the request said nothing, which the
+		// router reads as true.
+		AllowFallbacks *bool `json:"allow_fallbacks"`
+		MaxPrice       *struct {
 			Prompt     float64 `json:"prompt"`
 			Completion float64 `json:"completion"`
 		} `json:"max_price"`
@@ -696,6 +771,7 @@ func (s *Server) serveCompletion(w http.ResponseWriter, r *http.Request) {
 	if ask.Provider != nil {
 		record.Sort = ask.Provider.Sort
 		record.Order, record.Only, record.Ignore = ask.Provider.Order, ask.Provider.Only, ask.Provider.Ignore
+		record.NoFallbacks = ask.Provider.AllowFallbacks != nil && !*ask.Provider.AllowFallbacks
 		if ask.Provider.MaxPrice != nil {
 			record.MaxPrice = &struct {
 				Prompt     float64
@@ -709,6 +785,13 @@ func (s *Server) serveCompletion(w http.ResponseWriter, r *http.Request) {
 	if s.refusesAll {
 		s.mu.Unlock()
 		writeError(w, http.StatusBadRequest, "this base is having an afternoon", "")
+		return
+	}
+	if staged := s.refusesWith; staged != nil {
+		s.mu.Unlock()
+		// THE ASK IS ON THE RECORD AND NO LANE IS CHARGED FOR IT, exactly as for
+		// the preference refusal below: nothing served this request.
+		writeCodedError(w, staged.status, staged.message, staged.code)
 		return
 	}
 	if s.refusesPrefs && ask.Provider != nil {
@@ -731,7 +814,38 @@ func (s *Server) serveCompletion(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 
 	lane, serving, found := pick(lanes, record)
+	// A FULL POOL IS FALLEN PAST WHEN THE REQUEST ALLOWS IT, exactly as the
+	// router does ([Profile.Paced]). The paced machine was asked, so it is
+	// counted; the answer is the next allowed machine's.
+	for found && lane.Paced && !record.NoFallbacks && len(record.Only) == 0 {
+		next, _, more := pick(lanes, Ask{
+			Only: record.Only, Order: record.Order, MaxPrice: record.MaxPrice,
+			Ignore: append(append([]string(nil), record.Ignore...), lane.Name),
+		})
+		if !more {
+			break
+		}
+		s.mu.Lock()
+		s.requests[lane.Name]++
+		s.mu.Unlock()
+		record.Ignore = append(append([]string(nil), record.Ignore...), lane.Name)
+		lane = next
+	}
 	if !found {
+		// THE ACCOUNT'S OWN SETTINGS EMPTIED THE SET, and the router says so in
+		// its own words and metadata ([accountRefusal]). It is asked before the
+		// demand sentence below because the router asks it first: the lane IS
+		// serving this model, so "permits only" would be a lie about the
+		// catalog.
+		if excluded := accountEmptied(lanes, record); excluded > 0 {
+			s.mu.Lock()
+			for _, demanded := range record.Only {
+				s.requests[canonical(lanes, demanded)]++
+			}
+			s.mu.Unlock()
+			writeJSON(w, http.StatusNotFound, accountRefusal(excluded, len(lanes)))
+			return
+		}
 		// A DEMAND THAT NAMED NOBODY THE ROUTER SERVES GETS THE ROUTER'S OWN
 		// SENTENCE ABOUT IT, which is a different refusal from an empty set
 		// with no demand in it and is answered differently by everything
@@ -779,6 +893,10 @@ func (s *Server) serveCompletion(w http.ResponseWriter, r *http.Request) {
 		writeError(w, lane.FailWith, "the lane refused", lane.Name)
 		return
 	}
+	if lane.Paced {
+		s.servePaced(w, r, clock, lane, ask.Stream)
+		return
+	}
 	if !ask.Stream {
 		s.serveWhole(w, r, clock, id, named, ask, lane, record)
 		return
@@ -814,6 +932,11 @@ func pick(lanes []Lane, ask Ask) (Lane, []Lane, bool) {
 		if names(ask.Ignore, lane.Name) {
 			continue
 		}
+		// The account's own settings are the router's last filter and it
+		// applies it to every request ([Lane.AccountExcluded]).
+		if lane.AccountExcluded {
+			continue
+		}
 		allowed = append(allowed, lane)
 	}
 	if len(allowed) == 0 {
@@ -827,6 +950,68 @@ func pick(lanes []Lane, ask Ask) (Lane, []Lane, bool) {
 		}
 	}
 	return allowed[0], serving, true
+}
+
+// accountEmptied is how many machines the ACCOUNT'S settings took out of a set
+// that would otherwise have held something — zero when the set was empty for
+// another reason (a demand for a machine the router does not serve, a ceiling
+// nothing is under, a veto list that covered everything).
+func accountEmptied(lanes []Lane, ask Ask) int {
+	excluded := 0
+	for _, lane := range lanes {
+		if lane.SheetOnly || !lane.AccountExcluded {
+			continue
+		}
+		if len(ask.Only) > 0 && !names(ask.Only, lane.Name) {
+			continue
+		}
+		if names(ask.Ignore, lane.Name) {
+			continue
+		}
+		if ask.MaxPrice != nil &&
+			(lane.PriceIn*1_000_000 > ask.MaxPrice.Prompt || lane.PriceOut*1_000_000 > ask.MaxPrice.Completion) {
+			continue
+		}
+		excluded++
+	}
+	return excluded
+}
+
+// accountRefusal is the router's real refusal when the account's privacy
+// setting removed every machine a request's set held, copied from the body the
+// live router answered on 2026-09-10 for `provider.only: ["DeepSeek"]` on
+// deepseek/deepseek-v4.1-flash — sentence, metadata and all.
+//
+// THE METADATA IS THE HALF THAT MATTERS. `ineligibility_reasons` names WHY each
+// machine was removed, in a machine word, with the URL of the setting that
+// removed it; that is what lets a reader decide "this is the account, for every
+// model" without parsing the sentence, and a stub that sent the sentence alone
+// would be testing the hint instead of the structure.
+func accountRefusal(excluded, published int) map[string]any {
+	reason := fmt.Sprintf("%d endpoint excluded", excluded)
+	if excluded != 1 {
+		reason = fmt.Sprintf("%d endpoints excluded", excluded)
+	}
+	message := fmt.Sprintf("%d endpoints out of %d requested are available matching your guardrail restrictions and data policy. ", 0, excluded) +
+		"We removed them for the following reasons (an endpoint may have matched multiple reasons):\n" +
+		"Paid model training violation (account settings): " + reason + "; configurable at https://openrouter.ai/settings/privacy"
+	return map[string]any{"error": map[string]any{
+		"message": message,
+		"code":    http.StatusNotFound,
+		"metadata": map[string]any{
+			"input_endpoint_count": excluded,
+			"ineligibility_reasons": []any{map[string]any{
+				"reason":         "paid-model-training-violation-by-account",
+				"endpoint_count": excluded,
+				"configure_url":  "https://openrouter.ai/settings/privacy",
+			}},
+			"routing_funnel": []any{
+				map[string]any{"step": "Initial Endpoints", "endpoint_count": published},
+				map[string]any{"step": "Filter by Allowed Providers", "endpoint_count": excluded},
+			},
+			"failed_routing_step": "Filter by Guardrails",
+		},
+	}}
 }
 
 // dataPolicyRefusal is the router's real account-policy refusal after its price
@@ -1037,6 +1222,53 @@ func (s *Server) serveStream(w http.ResponseWriter, r *http.Request, clock Clock
 	write("data: [DONE]\n\n")
 }
 
+// servePaced is a full pool answering a request that had nowhere else to go
+// ([Profile.Paced]): the router accepts, says nothing but its comment lines for
+// PacedAfter, and then hands over the upstream's 429 inside the 200 it already
+// sent, naming the machine the way the live router does. A request that did not
+// stream gets the same refusal as an ordinary 429.
+func (s *Server) servePaced(w http.ResponseWriter, r *http.Request, clock Clock, lane Lane, stream bool) {
+	refusal := map[string]any{
+		"message": "Provider returned error",
+		"code":    http.StatusTooManyRequests,
+		"metadata": map[string]any{
+			"provider_name": lane.Name,
+			"raw":           "temporarily rate-limited upstream. Please retry shortly",
+		},
+	}
+	if !stream || lane.PacedAfter <= 0 {
+		if !clock.Wait(r.Context(), lane.PacedAfter) {
+			s.cancelled(lane.Name)
+			return
+		}
+		if lane.PacedFor > 0 {
+			w.Header().Set("Retry-After", fmt.Sprintf("%d", int(lane.PacedFor.Seconds())))
+		}
+		writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": refusal})
+		return
+	}
+	ctx := r.Context()
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+	flush := http.NewResponseController(w)
+	_ = flush.Flush()
+	const beats = 3
+	for beat := 0; beat < beats; beat++ {
+		if !clock.Wait(ctx, lane.PacedAfter/beats) {
+			s.cancelled(lane.Name)
+			return
+		}
+		if _, err := fmt.Fprint(w, ": OPENROUTER PROCESSING\n\n"); err != nil || flush.Flush() != nil {
+			s.cancelled(lane.Name)
+			return
+		}
+	}
+	frame, _ := json.Marshal(map[string]any{"error": refusal})
+	_, _ = fmt.Fprint(w, "data: "+string(frame)+"\n\n")
+	_ = flush.Flush()
+}
+
 // serveWhole answers a request that did not ask to stream. It exists so that
 // nothing in this stub has to be special-cased by a caller that streams
 // sometimes; the timings are honoured the same way.
@@ -1191,6 +1423,20 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 // of the live router's own not-found page for an address it does not serve,
 // cut to the two tags that make it a page and not an envelope.
 const routelessBody = "<!DOCTYPE html><title>Not Found</title>"
+
+// writeCodedError is [writeError] with the envelope's `code` said explicitly
+// rather than defaulted to the status. The router types that field as a number
+// AND as a string, which is the whole reason a client reads it leniently; this
+// writes the string form, which is the one that carries a name.
+func writeCodedError(w http.ResponseWriter, status int, message, code string) {
+	failure := map[string]any{"message": message}
+	if strings.TrimSpace(code) == "" {
+		failure["code"] = status
+	} else {
+		failure["code"] = code
+	}
+	writeJSON(w, status, map[string]any{"error": failure})
+}
 
 func writeError(w http.ResponseWriter, status int, message, lane string) {
 	body := map[string]any{"error": map[string]any{"message": message, "code": status}}

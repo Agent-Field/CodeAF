@@ -929,10 +929,10 @@ func setupTitle(s *setupFlow) string {
 // ever sees said `openaf` in the letterforms and `aforge` in the sentence under
 // them.
 const (
-	setupKeyWord = product + " talks to models through openrouter, on your key and your card. " +
+	setupKeyWord = product + " talks to models on its default service through openrouter, on your key and your card. " +
 		"nothing is sent until you do."
 	setupKeyURL      = "https://openrouter.ai/settings/keys"
-	setupConnectWord = "sign in once in your browser. openrouter makes a key for this profile; " +
+	setupConnectWord = "sign in once in your browser. openrouter makes the default service's key for this profile; " +
 		product + " stores it on this machine. no prompt is sent and no model is called."
 	setupConnectStartingWord = "opening a private return address on this machine…"
 	setupConnectWaitingWord  = "finish signing in in your browser. this page will continue when openrouter sends you back."

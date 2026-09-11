@@ -298,13 +298,15 @@ func TestAPacedProviderWaitIsClampedToTheCooldown(t *testing.T) {
 	}
 }
 
-// pacedProviderName reads the router's own 429 body, and only that: a refusal
-// shaped any other way answers "" and keeps the pacing behaviour it always had.
-func TestPacedProviderNameReadsTheRoutersMetadata(t *testing.T) {
+// The router's own 429 body is read for the pool that refused, by the one
+// reader every refusal is built through ([apiError]): a refusal shaped any
+// other way names nobody and keeps the account-wide pacing it always had.
+func TestAPacedRefusalCarriesTheRoutersNamedPool(t *testing.T) {
 	routed := `{"error":{"message":"Provider returned error","code":429,` +
 		`"metadata":{"raw":"model is temporarily rate-limited upstream","provider_name":"Sundial"}}}`
-	if got := pacedProviderName([]byte(routed)); got != "Sundial" {
-		t.Fatalf("named provider = %q, want Sundial", got)
+	named, ok := RefusalFrom(apiError(429, []byte(routed)))
+	if !ok || named.Provider != "Sundial" {
+		t.Fatalf("named provider = %q, want Sundial", named.Provider)
 	}
 	for _, body := range []string{
 		`{"error":{"message":"too many requests","code":429}}`,
@@ -312,9 +314,80 @@ func TestPacedProviderNameReadsTheRoutersMetadata(t *testing.T) {
 		`not json at all`,
 		``,
 	} {
-		if got := pacedProviderName([]byte(body)); got != "" {
-			t.Fatalf("body %q named %q, want nothing", body, got)
+		refusal, ok := RefusalFrom(apiError(429, []byte(body)))
+		if !ok {
+			t.Fatalf("body %q built no refusal", body)
 		}
+		if refusal.Provider != "" {
+			t.Fatalf("body %q named %q, want nothing", body, refusal.Provider)
+		}
+	}
+}
+
+// ── THE LEDGER IS KEYED ON WHO SERVED, NEVER ON WHO WE CHOSE ────────────────
+//
+// THE MEASURED FAILURE (docs/design/recovery/census-20260910.md §8, finding 4).
+// 3,728 of 10,107 finished attempts have a serving machine that is not the lane
+// this process chose, and on 358 of the errors that name a provider the `(via
+// X)` contradicts the lane outright — `lane: Fireworks` / `via DeepInfra` 104
+// times. A ledger keyed on the choice rather than on the answer paces the
+// innocent machine and leaves the saturated one in the order.
+func TestARefusalIsPacedAgainstTheMachineThatServedIt(t *testing.T) {
+	ledger, clock := testLedger()
+	client := &Client{config: Config{BaseURL: "https://openrouter.ai/api/v1"}, velocity: ledger}
+	const model = "vendor/split-model"
+	// Both machines are known, so the ledger has an opinion it could get wrong.
+	ledger.observe(model, "Fireworks", 100*time.Millisecond, 64, time.Second, 0)
+	ledger.observe(model, "DeepInfra", 100*time.Millisecond, 64, time.Second, 0)
+
+	// The choice named Fireworks; the wire says DeepInfra answered and its queue
+	// is full.
+	refusal := client.laneRefusalFor(model, "Fireworks",
+		apiError(http.StatusTooManyRequests, []byte(
+			`{"error":{"message":"Provider returned error","metadata":{"provider_name":"DeepInfra"}}}`)))
+	if refusal.Lane != "DeepInfra" {
+		t.Fatalf("the refusal was filed against %q, want the machine that served it", refusal.Lane)
+	}
+	client.refuseLane(model, refusal, 0)
+
+	_, ignore := ledger.preferences(model)
+	if len(ignore) != 1 || ignore[0] != "DeepInfra" {
+		t.Fatalf("ignore = %v, want only the machine that refused", ignore)
+	}
+	clock.advance(time.Second)
+
+	// AND A POOL THAT NAMED NOBODY IS THE MACHINE WE DEMANDED, when the request
+	// permitted exactly one. There is no other machine the queue could have been.
+	alone := client.laneRefusalFor(model, "Fireworks",
+		apiError(http.StatusTooManyRequests, []byte(`{"error":{"message":"slow down"}}`)))
+	if alone.Lane != "Fireworks" {
+		t.Fatalf("a 429 under a demand of one machine was filed against %q, want Fireworks", alone.Lane)
+	}
+	// With nothing demanded there is nobody to blame and nothing is written.
+	anonymous := client.laneRefusalFor(model, "",
+		apiError(http.StatusTooManyRequests, []byte(`{"error":{"message":"slow down"}}`)))
+	if anonymous.Lane != "" {
+		t.Fatalf("an account-wide pacing was filed against %q, want nobody", anonymous.Lane)
+	}
+}
+
+// AND A LEDGER THAT CONFIGURATION USED TO SWITCH OFF IS A LEDGER THAT CANNOT
+// TELL THE NEXT ATTEMPT WHERE NOT TO GO. Three gates stood on this door
+// (docs/design/recovery/DESIGN.md §2, problem 9); what is configured now is only
+// what is EMITTED, which [TestRoutingOffSendsNoPreferencesAndMeasuresNothing]
+// still holds to.
+func TestTheLedgerRecordsWithRoutingOff(t *testing.T) {
+	ledger, _ := testLedger()
+	client := &Client{config: Config{BaseURL: "https://openrouter.ai/api/v1",
+		Routing: StaticRouting(RoutingOff)}, velocity: ledger}
+	const model = "vendor/unsteered-model"
+
+	client.refuseLane(model, laneRefusal{Kind: refusalPaced, Lane: "Sundial"}, 0)
+	if _, ignore := ledger.preferences(model); len(ignore) != 1 || ignore[0] != "Sundial" {
+		t.Fatalf("a session with routing off learned nothing: ignore = %v", ignore)
+	}
+	if prefs := client.providerPreferences(model, callKnobs{}, &ai.Request{Model: model}); prefs != nil {
+		t.Fatalf("a session with routing off sent a preference anyway: %+v", prefs)
 	}
 }
 
@@ -466,8 +539,15 @@ func TestRequestSortsOnPriceWhenAsked(t *testing.T) {
 	}
 }
 
-// Off is a real answer and it is total: no preference object, and no ledger.
-func TestRoutingOffSendsNoPreferencesAndMeasuresNothing(t *testing.T) {
+// Off is a real answer and it is about the WIRE: no preference object, ever.
+//
+// IT USED TO BE ABOUT THE LEDGER TOO and is not any more. "A session that asked
+// for no routing asked for no ledger" was the old sentence here, and it left the
+// one thing that could tell a failed attempt where not to go switched off while
+// every other controller on the path went on acting
+// (docs/design/recovery/DESIGN.md §2, problem 9). The reading is kept; only the
+// steering is refused, which is what the person actually asked for.
+func TestRoutingOffSendsNoPreferencesAndStillMeasures(t *testing.T) {
 	client, recorded := routedClient(t, RoutingOff, answered(plainAnswer))
 	if _, err := client.CompleteWithMessages(context.Background(), userMessages("hello")); err != nil {
 		t.Fatal(err)
@@ -477,8 +557,8 @@ func TestRoutingOffSendsNoPreferencesAndMeasuresNothing(t *testing.T) {
 			t.Fatalf("provider = %v with routing off, want the field absent entirely", raw["provider"])
 		}
 	}
-	if sighting, ok := client.velocity.lastServed("vendor/fast-model"); ok {
-		t.Fatalf("measured %+v with routing off — a session that asked for no routing asked for no ledger", sighting)
+	if _, ok := client.velocity.lastServed("vendor/fast-model"); !ok {
+		t.Fatal("a session with routing off measured nothing at all, so nothing it learns can ever be walked back")
 	}
 }
 
@@ -585,14 +665,63 @@ func TestUnnamedCutNotesNothing(t *testing.T) {
 	}
 }
 
-func TestRoutingOffNotesNothingForACut(t *testing.T) {
+// A CUT THAT NAMED NOBODY STILL NAMES THE MACHINE WE ASKED FOR.
+//
+// THE ONE STALL SHAPE THAT COULD NOT REROUTE (docs/design/recovery/DESIGN.md §2,
+// problem 11). A stream that died before any chunk said who was serving it
+// struck nothing at all, so `StreamCut.Rerouted` was false, the taxonomy
+// shortened the allowance rather than forcing a different machine, and the next
+// attempt landed on the same lane deterministically. This process WROTE the
+// request, so it knows what it asked for; that is the honest answer when the
+// wire gave none, and it is a five-minute prior rather than a verdict.
+func TestABlindCutIsFiledAgainstTheMachineWeAskedFor(t *testing.T) {
+	client, _ := cutThenAnswerClient(t, RoutingLatency, "")
+	ctx := WithLaneChoice(WithStreamObserver(context.Background(), func(StreamEvent) {}),
+		lanes.Choice{Order: []string{"quicksilver"}})
+	began := time.Now()
+	_, err := client.CompleteWithMessages(ctx, userMessages("hello"))
+	cut, ok := CutFrom(err)
+	if !ok {
+		t.Fatalf("err = %v, want a guard cut", err)
+	}
+	if cut.Provider != "" {
+		t.Fatalf("the stream named %q, want a cut that named nobody", cut.Provider)
+	}
+	if !cut.Rerouted {
+		t.Fatal("a blind cut rerouted nothing, so the next attempt goes back to the same machine")
+	}
+	if _, ignore := client.velocity.preferences("vendor/fast-model"); !equalStrings(ignore, []string{"quicksilver"}) {
+		t.Fatalf("ignore = %v, want the machine this request asked for first", ignore)
+	}
+	// AND THE NEXT SEND CARRIES IT AT ONCE. A cut is a move, not a fault to sit
+	// out: the veto is on the very next body rather than after a backoff.
+	prefs := client.providerPreferences("vendor/fast-model", callKnobs{}, &ai.Request{})
+	if prefs == nil || !equalStrings(prefs.Ignore, []string{"quicksilver"}) {
+		t.Fatalf("the next request carries %#v, want the cut machine vetoed", prefs)
+	}
+	if took := time.Since(began); took > time.Second {
+		t.Fatalf("the cut took %s to become a veto, want it on the next body", took)
+	}
+}
+
+// A cut IS recorded with routing off, and nothing is asked for on the wire.
+//
+// THE LAW MOVED HERE (docs/design/recovery/DESIGN.md §2, problem 9). A ledger a
+// configuration row switches off is a ledger that cannot tell the next attempt
+// where not to go, and a machine that went quiet mid-answer is exactly the fact
+// the next attempt most needs. What `routing off` means is that nothing derived
+// from the ledger is sent.
+func TestRoutingOffStillNotesACutAndAsksForNothing(t *testing.T) {
 	client, _ := cutThenAnswerClient(t, RoutingOff, "molasses")
 	ctx := WithStreamObserver(context.Background(), func(StreamEvent) {})
 	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err == nil {
 		t.Fatal("the stalled first stream landed, want a guard cut")
 	}
-	if order, ignore := client.velocity.preferences("vendor/fast-model"); len(order) != 0 || len(ignore) != 0 {
-		t.Fatalf("routing off recorded order=%v ignore=%v, want no cut ledger entry", order, ignore)
+	if _, ignore := client.velocity.preferences("vendor/fast-model"); !equalStrings(ignore, []string{"molasses"}) {
+		t.Fatalf("routing off recorded ignore=%v, want the machine that went quiet", ignore)
+	}
+	if prefs := client.providerPreferences("vendor/fast-model", callKnobs{}, &ai.Request{}); prefs != nil {
+		t.Fatalf("routing off asked the wire for %+v, want nothing at all", prefs)
 	}
 }
 

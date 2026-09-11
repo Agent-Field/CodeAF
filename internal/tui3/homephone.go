@@ -21,7 +21,7 @@ package tui3
 //	 › ▲ fix the nil-map crash
 //	     waiting on you · 12m
 //	   ▲ every Monday, the weekly update
-//	     needs your look · Mondays 9am
+//	     your call · Mondays 9am
 //	   ▸ …2 more
 //
 //	 running
@@ -513,7 +513,11 @@ func (a *app) homePhoneFrame(width, height int) ([]string, []int, int, int) {
 		add("", -1)
 	}
 
-	add(pal.dim(rule(width)), -1)
+	// AND THE PHONE'S RULE SAYS THE TARGET TOO. It was the first thing this tier
+	// dropped — the scope chip is absent from the whole narrow frame — which left
+	// the one screen with the least room the one screen that never said where a
+	// sentence would land (homedraft.go's [app.targetPhoneRule]).
+	add(a.targetPhoneRule(width, pal), -1)
 	caretX, caretY := 0, 0
 	if a.home.box.empty() {
 		add(" "+pal.dim(hintFit(homeFootWord, width-2)), -1)
@@ -882,17 +886,16 @@ func (a *app) homeBarPress(x, y int, targets []homeBarTarget) (tea.Cmd, bool) {
 
 // homePhonePress resolves a tap on the inbox.
 //
-// THERE IS NO HOVER ON GLASS, so there is no two-step either: a press SELECTS
-// AND OPENS in one gesture. The wide screen's two-step exists because a card
-// beside the list previews what a second press would open — there is no second
-// column here to preview into, and a person who has to tap a row twice to see
-// it has been charged for a preview they never got.
+// A press SELECTS AND OPENS in one gesture, which is the wide screen's own
+// grammar too (home.go's [app.homePress]): a row is `enter` under the pointer.
+// There is no hover on glass to preview it first, so the tap is the whole of
+// it.
 func (a *app) homePhonePress(x, y int) tea.Cmd {
 	defer a.sweepExchanges()
 	if a.homeSheetShowing() {
 		return a.homeSheetPress(x, y)
 	}
-	// THE FRAME IS LAID OUT BEFORE IT IS READ, which is [app.consentPress]'s law
+	// THE FRAME IS LAID OUT BEFORE IT IS READ, which is [app.questionPress]'s law
 	// and load-bearing for the same reason: drawing the bar is what writes its
 	// spans, and reading them first would be reading where the targets were on
 	// the frame before this one.

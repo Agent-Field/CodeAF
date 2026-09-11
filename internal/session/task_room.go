@@ -656,9 +656,8 @@ func (a *Agent) spoken(text string, waiting bool, origin messageOrigin, directio
 	return delivery{origin: origin, kind: msgDirection, note: carryingDirection(note, direction)}
 }
 
-// RetargetTask moves ONE RUNNING NODE onto another model, from its next turn on.
-// Unknown id, a node that is not running, and a word no model here answers to are
-// each an error naming which.
+// RetargetTask chooses one task's model for its next turn or continuation.
+// Unknown ids, unsupported task kinds and unknown models are refused.
 //
 // IT IS THE SANCTIONED EXCEPTION TO THE FREEZE, and the header of this file says
 // why in full: the id is settled at admission so that a `/model` in the
@@ -668,11 +667,13 @@ func (a *Agent) spoken(text string, waiting bool, origin messageOrigin, directio
 // after this one still takes the ordinary ladder — `task.model` from settings,
 // else the conversation's ([Agent.defaultTaskModel]).
 //
-// A SETTLED NODE IS REFUSED IN THE SAME WORDS EVERY OTHER ROOM DOOR REFUSES ONE:
-// `task 7 is done, not running`. There is nothing left to move it onto — the run
-// is over, the child agent is closed, the report is written — and the model on a
-// landed row is a fact about what happened, which a person may read and must not
-// be able to edit.
+// Settled ordinary tasks save a separate continuation choice. Their historical
+// model and state stay unchanged until ContinueTask starts the next attempt.
+//
+// SO DOES A RUNNING NODE WHOSE WORK IS BEING CHECKED, for the reason spelled out
+// at the read below: the worker's reading is over, there is no turn left for the
+// pick to reach, and moving the frozen id would make the row name a model that
+// never ran the work.
 //
 // THE WORD RESOLVES THROUGH ADMISSION'S OWN LADDER (taskmodel.go), so a room and
 // a proposal cannot disagree about what "opus 5" means. A word that fits more
@@ -697,9 +698,6 @@ func (a *Agent) RetargetTask(id uint64, model string) error {
 	if node == nil {
 		return fmt.Errorf("no task %d in this session", id)
 	}
-	if state := node.stateNow(); state != TaskRunning {
-		return fmt.Errorf("task %d is %s, not running", id, state)
-	}
 	choice := a.resolveTaskModel(model)
 	switch {
 	case choice.problem != "":
@@ -707,7 +705,52 @@ func (a *Agent) RetargetTask(id uint64, model string) error {
 	case len(choice.options) > 0:
 		return errors.New(taskModelVague(model, choice.options))
 	}
-	node.retarget(choice.model)
+	// THE CHECK HAS NO READER, SO A PICK IT CANNOT BE SHOWN IS THE NEXT RUN'S AND
+	// NOT THIS ONE'S. Read before the graph lock, because [TaskNode.lifeNow] takes
+	// it.
+	//
+	// A node is TaskRunning across three lives — its own worker, the gate reading
+	// what that worker left, and every repair round — and the state is honest
+	// about the NODE, never about who is inside it. The worker's reading is over
+	// the moment [runTaskChild] returns, which on a checked node is minutes before
+	// anything settles. This door used to read the state alone, so a pick made in
+	// that window rewrote the FROZEN SPEC of work that had already finished: the
+	// row, the checkpoint and the card all named a model that never ran a token of
+	// it, while the bill named the one that did. It was measured on a real run —
+	// a node admitted on the worker tier with all nineteen of its calls billed
+	// there, and a card claiming the low tier because the pick landed during the
+	// check.
+	//
+	// IT IS THE SAME READING THE STEERING DOOR ALREADY MAKES OFF THE SAME WORD
+	// ([Agent.deliverTaskDirection]), which is why this is one condition rather
+	// than a second mechanism: both doors are asking "is there a turn left to take
+	// this", and until now only one of them knew that the state could not answer.
+	//
+	// AND IT LANDS WHERE A SETTLED NODE'S PICK ALREADY LANDS, so no surface learns
+	// a new word for it: the room draws "next model <id>" and the panel heads
+	// itself "Next run setup" (internal/tui3's roomModelWord, roompanel.go), and
+	// the model the work actually ran on keeps the row.
+	checking := node.lifeNow() == TaskPhaseChecking
+
+	node.graph.mu.Lock()
+	// live is "there is a turn left for this pick to reach", which is the question
+	// the spec may be moved on — never the bare state.
+	live := node.state == TaskRunning && !checking
+	switch {
+	case live, node.state == TaskQueued:
+		node.retargetLocked(choice.model)
+	case node.state == TaskRunning, node.state == TaskDone, node.state == TaskFailed, node.state == TaskUnverified:
+		if node.kind == TaskKindHarness || node.kind == TaskKindSubharness {
+			node.graph.mu.Unlock()
+			return fmt.Errorf("task %d cannot be continued", id)
+		}
+		node.nextModel = choice.model
+	default:
+		state := node.state
+		node.graph.mu.Unlock()
+		return fmt.Errorf("task %d is %s, not available for model changes", id, state)
+	}
+	node.graph.mu.Unlock()
 	// The child is told directly as well as through the spec, because the two
 	// answer for two different moments. A node whose worker is already up reads
 	// its model off the agent, so the agent has to be moved; a node that is
@@ -717,7 +760,11 @@ func (a *Agent) RetargetTask(id uint64, model string) error {
 	// the only reason a nil child here is silence rather than the error
 	// [Agent.SteerTask] returns for it: there is nobody to talk to, but there is
 	// something to change, and it has just been changed.
-	if child := node.openRoom().speaker(); child != nil {
+	//
+	// THE THIRD MOMENT — a worker whose reading is already over — never reaches
+	// here at all any more: it was the one case where a nil child meant the pick
+	// had nowhere to go, and it is answered above as the next run's model.
+	if child := node.openRoom().speaker(); live && child != nil {
 		child.SetModel(choice.model)
 	}
 	// The checkpoint is what makes the pick survive the session, exactly as the
@@ -808,6 +855,30 @@ func (a *Agent) TaskJournal(id uint64) string {
 	node.setJournal(path)
 	node.graph.checkpoint()
 	return path
+}
+
+// TaskContextTokens is what one node's worker weighs right now — the request it
+// has in flight, the figure a node's page draws as ↑ — or zero when nobody is
+// working the node: an unknown id, a node that has not started or has ended,
+// or the moment between one hand and the next.
+//
+// IT ASKS THE WORKER IN THE ROOM, whoever that is: the same [taskRoom.speaker]
+// the node's live spend is read from ([TaskNode.spend]), so a repair round or a
+// design thread standing in the room is the one whose weight is drawn, because
+// it is the one sending. The graph lock is let go before the worker is asked,
+// for the spend's reason: the worker's answer is a lock of its own.
+func (a *Agent) TaskContextTokens(id uint64) int {
+	node := a.taskNode(id)
+	if node == nil {
+		return 0
+	}
+	node.graph.mu.Lock()
+	room := node.room
+	node.graph.mu.Unlock()
+	if child := room.speaker(); child != nil {
+		return child.ContextTokens()
+	}
+	return 0
 }
 
 // taskNode finds one admitted node, without BUILDING a graph that a question

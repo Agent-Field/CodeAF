@@ -176,7 +176,7 @@ func TestIdentityWheelSurvives256(t *testing.T) {
 // TestSGRSequencesAreValidAndPrecomputed: every escape string the table holds
 // must be a real SGR sequence that a terminal will consume without printing
 // anything. Measuring them with the same ANSI-aware ruler the renderer uses
-// proves they add zero cells — the invariant blocks' Styler contract depends
+// proves they add zero cells — the invariant every width-stable painter depends
 // on.
 func TestSGRSequencesAreValidAndPrecomputed(t *testing.T) {
 	for _, tok := range All() {

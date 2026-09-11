@@ -19,7 +19,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
-	"github.com/Agent-Field/aforge-v2/internal/command"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/consent"
 	"github.com/Agent-Field/aforge-v2/internal/craft"
@@ -214,7 +213,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// for them, which is the first time they can possibly matter. Everything
 	// here is the same resolution in the same order as before; only the moment
 	// moves, from in front of the first frame to behind it.
-	mediaModels := command.NewMediaModels(baseMedia, func(tools *exec.MediaTools) {
+	mediaModels := NewMediaModels(baseMedia, func(tools *exec.MediaTools) {
 		tools.ImageModel = firstNonEmptyString(tools.ImageModel, settings.ResolveImageModel(modelCatalog))
 		tools.SpeechModel = firstNonEmptyString(tools.SpeechModel, settings.ResolveSpeechModel(modelCatalog))
 		tools.MusicModel = firstNonEmptyString(tools.MusicModel, settings.ResolveMusicModel(modelCatalog))
@@ -1535,7 +1534,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 									evidence.Quote, evidence.Quotes = held.Quote, held.Citations
 									evidence.Mechanical, evidence.Finding = true, held.Finding
 									evidence.Constraint = held.Constraint
-									outcome.Verdict = provider.VerdictSemanticFailure
+									outcome.Verdict = provider.ReadingSemanticFailure
 								}
 							}
 							log.Printf("quorum: revised after reject")
@@ -1699,7 +1698,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 							// Falling back to an engine re-run here would buy the
 							// spend this path exists to refuse.
 							composedOnly = false
-							outcome.Verdict = provider.VerdictSemanticFailure
+							outcome.Verdict = provider.ReadingSemanticFailure
 						} else {
 							spent.PromptTokens += composition.Usage.PromptTokens
 							spent.CompletionTokens += composition.Usage.CompletionTokens
@@ -1801,7 +1800,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						// fix. See revision.GroundedInTheWorld, and
 						// docs/design/gate/SETTLEMENT.md §8.
 						evidence.PolishClosed = revision.RepairClosed(closed, unmet, reread, evidence.Unmoved)
-						outcome.Verdict = provider.VerdictSemanticFailure
+						outcome.Verdict = provider.ReadingSemanticFailure
 						revised = true
 						if evidence.PolishClosed {
 							// The same distinction the first gate makes; drawing it
@@ -1830,7 +1829,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 							evidence.Constraint = closed.Constraint
 						}
 					} else {
-						outcome.Verdict = provider.VerdictSemanticFailure
+						outcome.Verdict = provider.ReadingSemanticFailure
 					}
 					switch {
 					case evidence.PolishClosed:
@@ -3304,16 +3303,6 @@ func withDocumentAttachmentBrief(brief string, paths []string) string {
 	}
 	return strings.TrimSpace(brief) + strings.TrimRight(addition.String(), "\n")
 }
-
-// What an errand still borrows from internal/command, under the spellings this
-// package's own prose uses. The commander itself — every capability a surface
-// reached the machine through — went with the surface that reached it (#329);
-// these three are ordinary helpers a process with no terminal needs.
-var (
-	loadChatPrefs       = command.LoadPrefs
-	attachmentStoreRoot = command.AttachmentStoreRoot
-	newSessionID        = command.NewSessionID
-)
 
 // liveClient and messageClientPool are internal/provider/pool's Client and
 // Pool. The provider seam moved out of this file in the Wave 1 dissolution;

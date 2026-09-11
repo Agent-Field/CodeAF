@@ -39,6 +39,23 @@ package session
 // decoder inventing a dialect. The refusal names the corrected call, which is
 // all a model that did send one would need.
 //
+// WHAT IS DONE, BECAUSE IT WAS OBSERVED — every loose form below was sent by a
+// model on this build, and each is taken only because the value it carries is
+// the value that was meant, spelled another way. A number in a cell of a text
+// table is that number's spelling (coerceMap) — and only there: a number where a
+// named text argument was wanted is still refused. A list or an object that
+// arrives AS A JSON STRING holding its own JSON text — `"options":"[{\"key\":\"1\",…}]"` — is
+// unwrapped once and read as the list it holds. deepseek-v4-flash sent `ask` that
+// way three calls running on 2026-09-10, every one refused with "options takes a
+// list", and the turn ended on the loop guard with the person never shown a
+// question. The text inside was the right list; only its wrapping was wrong, and
+// a decoder that can see the right list and refuses it anyway is a decoder that
+// prefers its grammar to the person's question. The same model, more often,
+// opens that quote and never closes it until the end of the arguments, so the
+// list AND every field after it arrive inside one string (unswallowTail); that
+// is read back as the object it was. A string whose contents are neither is
+// still refused, in a sentence that says it arrived as text.
+//
 // Unknown fields stay ignored, exactly as they were: DisallowUnknownFields is
 // off here as it was at all thirty-nine sites this replaced, and a key with no
 // field behind it is passed through untouched rather than refused.
@@ -126,6 +143,12 @@ func decodeToolArguments(args json.RawMessage, into any) error {
 		return err
 	}
 	if err := json.Unmarshal(fixed, into); err != nil {
+		// A type that decodes itself may have already written the refusal in
+		// this decoder's own words (Pick does); it is passed through whole.
+		var own *toolArgumentError
+		if errors.As(err, &own) {
+			return own
+		}
 		return &toolArgumentError{field: mismatchField(err), repair: mismatchRepair(err)}
 	}
 	return nil
@@ -228,12 +251,16 @@ func decodesItself(t reflect.Type) bool {
 // stay ignored.
 func coerceObject(raw json.RawMessage, text string, t reflect.Type, path string) (json.RawMessage, error) {
 	if !strings.HasPrefix(text, "{") {
-		return nil, &toolArgumentError{field: path, repair: objectRepair(path)}
+		if inner, held := unwrapEncoded(raw, text, '{'); held {
+			return coerceObject(inner, string(inner), t, path)
+		}
+		return nil, &toolArgumentError{field: path, repair: objectRepair(path) + arrivedAsText(text)}
 	}
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &fields); err != nil {
 		return nil, &toolArgumentError{field: path, repair: objectRepair(path)}
 	}
+	unswallowTail(fields, t)
 	// The keys are walked in sorted order so that a rebuilt object is the same
 	// bytes every time; nothing downstream reads the order, and a decoder whose
 	// output moved would be a decoder nobody could write a test against.
@@ -262,7 +289,10 @@ func coerceObject(raw json.RawMessage, text string, t reflect.Type, path string)
 // type, and the keys are the model's own.
 func coerceMap(raw json.RawMessage, text string, t reflect.Type, path string) (json.RawMessage, error) {
 	if !strings.HasPrefix(text, "{") {
-		return nil, &toolArgumentError{field: path, repair: objectRepair(path)}
+		if inner, held := unwrapEncoded(raw, text, '{'); held {
+			return coerceMap(inner, string(inner), t, path)
+		}
+		return nil, &toolArgumentError{field: path, repair: objectRepair(path) + arrivedAsText(text)}
 	}
 	var entries map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &entries); err != nil {
@@ -275,7 +305,19 @@ func coerceMap(raw json.RawMessage, text string, t reflect.Type, path string) (j
 	sortStrings(names)
 	rebuilt := make(map[string]json.RawMessage, len(entries))
 	for _, name := range names {
-		fixed, err := coerceArgument(entries[name], t.Elem(), joinArgPath(path, name))
+		value := entries[name]
+		// A CELL OF A TEXT TABLE TAKES A NUMBER AS ITS OWN SPELLING. `ask`'s
+		// comparison axes are a map of text values, and a model that writes
+		// `"complexity": 1` there has answered in the only way a number can be
+		// written (2026-09-10, deepseek-v4-flash, `Complexity takes text … not
+		// 1`); "1" is exactly what it meant, and the keys are its own, so there
+		// is no named argument here for a number to be the wrong type of.
+		if t.Elem().Kind() == reflect.String {
+			if cell := strings.TrimSpace(string(value)); cell != "" && shape(cell) == shapeNumber {
+				value = json.RawMessage(strconv.Quote(cell))
+			}
+		}
+		fixed, err := coerceArgument(value, t.Elem(), joinArgPath(path, name))
 		if err != nil {
 			return nil, err
 		}
@@ -293,7 +335,10 @@ func coerceList(raw json.RawMessage, text string, t reflect.Type, path string) (
 		return raw, nil
 	}
 	if !strings.HasPrefix(text, "[") {
-		return nil, &toolArgumentError{field: path, repair: listRepair(path)}
+		if inner, held := unwrapEncoded(raw, text, '['); held {
+			return coerceList(inner, string(inner), t, path)
+		}
+		return nil, &toolArgumentError{field: path, repair: listRepair(path) + arrivedAsText(text)}
 	}
 	var items []json.RawMessage
 	if err := json.Unmarshal(raw, &items); err != nil {
@@ -370,7 +415,12 @@ func coerceFraction(raw json.RawMessage, text, path string) (json.RawMessage, er
 }
 
 // coerceText guards a string argument. A number or a bell sent where words were
-// wanted gets the quoted form back as the corrected call.
+// wanted gets the quoted form back as the corrected call — and that stays a
+// refusal for a NAMED text argument, because `bash {"command":17}` is not a
+// command spelled oddly, it is a call that meant nothing, and running "17" after
+// asking the person's permission for it would be worse than saying so
+// (invalid_shell_consent_test.go). The one place a number IS its own spelling
+// is a cell of a text table, and coerceMap takes it there.
 func coerceText(raw json.RawMessage, text, path string) (json.RawMessage, error) {
 	switch shape(text) {
 	case shapeString:
@@ -425,6 +475,142 @@ func listRepair(path string) string {
 		return "the arguments must be one JSON object"
 	}
 	return leafName(path) + " takes a list"
+}
+
+// unswallowTail repairs the one malformation a model has been seen produce
+// again and again on a large nested call: it opens a QUOTE where a list or an
+// object should begin and then writes the rest of the arguments — that value,
+// every field after it and the closing brace — as one JSON-escaped string.
+// What arrives is a valid object with three fields where nine were meant:
+//
+//	{"head":"…","kind":"choice","options":"[{…}], \"pick\": {…}, \"stakes\": \"costly\"}"}
+//
+// deepseek-v4-flash did this on eleven of eleven refused `ask` calls measured on
+// 2026-09-10, and the fields inside the string were the person's whole question.
+// The tell is exact: the string is not JSON on its own, but `{"options":` put in
+// front of it closes into a well-formed object whose first field is the one the
+// string sat in. When that is so, the object it was is read in place of the
+// string: the field takes its real value and every other field it carried is
+// added, unless the outer object already had one by that name — what the model
+// wrote at the top level is never overwritten by what was inside the string.
+// Only a field wanting a list, an object or a map is tried, because a text field
+// can legitimately hold anything at all.
+func unswallowTail(fields map[string]json.RawMessage, t reflect.Type) {
+	for name, raw := range fields {
+		text := strings.TrimSpace(string(raw))
+		if !strings.HasPrefix(text, `"`) {
+			continue
+		}
+		field, known := structField(t, name)
+		if !known || !wantsAContainer(field.Type) {
+			continue
+		}
+		var held string
+		if err := json.Unmarshal(raw, &held); err != nil || json.Valid([]byte(held)) {
+			// Empty, not a string, or a string that IS a JSON value on its own —
+			// that last one is unwrapEncoded's case, not this one.
+			continue
+		}
+		// The object is read with a decoder rather than Unmarshal because what
+		// follows it is the model's spill and not the value: the same model,
+		// having lost its place, closes the tail with `}]` (a bracket after the
+		// brace, closing a list it was no longer in) or runs straight on into a
+		// leaked control token and prose. Once the object has closed it is
+		// whole, and nothing after it can add to it (the spill law, below).
+		var tail map[string]json.RawMessage
+		if err := json.NewDecoder(strings.NewReader(`{"` + name + `":` + heldText(held))).Decode(&tail); err != nil {
+			continue
+		}
+		own, has := tail[name]
+		if !has {
+			continue
+		}
+		fields[name] = own
+		for other, value := range tail {
+			if _, present := fields[other]; !present {
+				fields[other] = value
+			}
+		}
+		// One string can only ever be the tail once.
+		return
+	}
+}
+
+// wantsAContainer reports whether a field's type is a list, an object or a
+// map — the shapes a model has been seen open a quote in front of.
+func wantsAContainer(t reflect.Type) bool {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	switch t.Kind() {
+	case reflect.Struct, reflect.Map:
+		return true
+	case reflect.Slice, reflect.Array:
+		return t.Elem().Kind() != reflect.Uint8
+	}
+	return false
+}
+
+// unwrapEncoded reads a JSON string that holds JSON text of the wanted shape —
+// `"[{...}]"` where a list was asked for — and hands back the value it holds,
+// so the caller can read it as the list or object it always was. It unwraps
+// ONCE: the value inside is read by the same coercion that asked, so a string
+// inside a string is refused there in the ordinary way, and a string holding
+// anything but the wanted opener is not touched at all. What follows the first
+// complete value is the model's spill (the spill law, below) and is dropped.
+func unwrapEncoded(raw json.RawMessage, text string, opener byte) (json.RawMessage, bool) {
+	if !strings.HasPrefix(text, `"`) {
+		return nil, false
+	}
+	var held string
+	if err := json.Unmarshal(raw, &held); err != nil {
+		return nil, false
+	}
+	held = strings.TrimSpace(held)
+	if held == "" || held[0] != opener {
+		return nil, false
+	}
+	var first json.RawMessage
+	if err := json.NewDecoder(strings.NewReader(heldText(held))).Decode(&first); err != nil {
+		return nil, false
+	}
+	return first, true
+}
+
+// heldText is the one escape a model has been seen get wrong inside a string
+// it wrapped by mistake: a backslash followed by a REAL newline, where a
+// diagram's line break should have been `\n`. Inside JSON text a backslash
+// before a newline is not an escape at all, and there is nothing else it could
+// have meant, so it is read as the newline. No other bad escape is touched — a
+// `\q` is still a refusal, because guessing at it would be inventing.
+func heldText(held string) string {
+	return strings.ReplaceAll(held, "\\\n", "\\n")
+}
+
+// THE SPILL LAW, which both repairs above share and which is stated once
+// because it is a claim about a model and not about JSON: INSIDE A STRING A
+// MODEL WRAPPED BY MISTAKE, WHAT FOLLOWS THE FIRST COMPLETE VALUE IS NOT PART
+// OF THE VALUE. Measured 2026-09-10 on deepseek-v4-flash: a stray `]` after the
+// closing brace; a leaked `<｜…｜>` control token and a paragraph of prose after
+// a complete list; and, most often, nothing at all. A value that has closed is
+// whole, and a decoder that refused it for what came after would be refusing
+// the person's question over the model's stutter. Nothing is ever read OUT of
+// the spill — a pick that fell into it is a pick the asker did not make.
+
+// arrivedAsText is the clause added to a list or object refusal when what
+// arrived was a JSON string, because "takes a list" alone reads as a lie to a
+// model that can see a list right there inside the quotes. It shows the model
+// the opening of what it sent and says the one thing to change.
+func arrivedAsText(text string) string {
+	if !strings.HasPrefix(text, `"`) {
+		return ""
+	}
+	const glimpse = 24
+	shown := text
+	if runes := []rune(shown); len(runes) > glimpse {
+		shown = string(runes[:glimpse]) + "…"
+	}
+	return "; it arrived as text, " + shown + " — send the value itself, not a string holding it"
 }
 
 // argumentRepair reads a tool result back and answers the repair sentence the

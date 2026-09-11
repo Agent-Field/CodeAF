@@ -319,10 +319,10 @@ func (a *Agent) taskName(ctx context.Context, subject string) string {
 // admission has a row already drawn under it ([taskNameAheadWindow]).
 func (a *Agent) taskNameWithin(ctx context.Context, subject string, window time.Duration) string {
 	a.mu.Lock()
-	model, closed, client := a.model, a.closed, a.client
+	model, closed := a.model, a.closed
 	source := a.config.RolesSource
 	a.mu.Unlock()
-	if closed || client == nil {
+	if closed || !a.hasClient() {
 		return ""
 	}
 	// IT CARRIES ITS OWN DEADLINE for the shaper's reason: the provider's client

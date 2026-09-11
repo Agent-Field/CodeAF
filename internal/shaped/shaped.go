@@ -155,7 +155,7 @@ func Answer(ctx context.Context, client Completer, ask Ask, into any) (*ai.Respo
 
 	response, err := client.CompleteWithMessages(ctx, ask.Messages, ask.request()...)
 	if err != nil {
-		provider.Report(ctx, provider.VerdictProviderFailure)
+		provider.Report(ctx, provider.ReadingProviderFailure)
 		return nil, err
 	}
 	// A MODEL THAT NAMED ITSELF IS BETTER EVIDENCE THAN A ROUTER'S PIN. The pin
@@ -183,9 +183,9 @@ func Answer(ctx context.Context, client Completer, ask Ask, into any) (*ai.Respo
 		// is the weather and moves nothing — rating a model down because its
 		// endpoint was busy would make the most popular model look weakest.
 		if Unreadable(err) {
-			provider.Report(ctx, provider.VerdictFormatFailure)
+			provider.Report(ctx, provider.ReadingFormatFailure)
 		} else {
-			provider.Report(ctx, provider.VerdictProviderFailure)
+			provider.Report(ctx, provider.ReadingProviderFailure)
 		}
 		return repaired, err
 	}

@@ -35,6 +35,12 @@ import (
 // this package's own name, so a surface imports one package rather than two.
 type PhaseNews = provider.PhaseNews
 
+// Phase is the word for what is happening, and it is [provider.Phase] under
+// this package's own name for [PhaseNews]'s reason: ONE VOCABULARY, and a
+// reader that has to import two packages to name a phase and the news carrying
+// it is two spellings waiting to happen.
+type Phase = provider.Phase
+
 // The phases a turn has that a request does not. They are spelled in
 // internal/provider for the reason above — one vocabulary — and named here so a
 // reader of this package can see the whole list in one place.
@@ -367,6 +373,19 @@ type phaseHeart struct {
 // a branch, and runTurn's own deferred end (loop.go) is the backstop that fires
 // even on a panic.
 func (a *Agent) tellPhase(phase provider.Phase, detail string, since time.Time) {
+	a.tellPhaseThen(phase, detail, "", since)
+}
+
+// tellPhaseThen is [Agent.tellPhase] with the one field only a MOVE has: the
+// thing being moved to.
+//
+// It exists for [provider.PhaseSwitchingModel], which lost its only producer
+// when the adapter stopped changing the model (internal/provider's endpoints.go,
+// docs/design/recovery/DESIGN.md §2.2). The word belongs to the layer that now
+// owns the hop, and it has to carry the target, because a status line that said
+// `switching model` without naming the model would be telling somebody their
+// answer is changing hands and refusing to say to whom.
+func (a *Agent) tellPhaseThen(phase provider.Phase, detail, then string, since time.Time) {
 	if a == nil {
 		return
 	}
@@ -382,13 +401,22 @@ func (a *Agent) tellPhase(phase provider.Phase, detail string, since time.Time) 
 	// clock counts the whole stage; a held phase with no start on it would have
 	// its clock reset to zero by every beat, which reads as a stage restarting
 	// over and over rather than one that is lasting.
+	// AND IT CARRIES WHAT THE STAGE IS ABOUT AS WELL AS WHOSE IT IS. The session
+	// names the conversation, which a node shares with its parent and with every
+	// sibling; the subject names THIS node ([Agent.newsSubject]). Without it a
+	// surface had nothing to key a desk by but the model, so two nodes on one
+	// model id overwrote each other's stage and a node's own room could never be
+	// asked what its own node was doing.
 	news := PhaseNews{
-		Phase:  phase,
-		Since:  since,
-		Detail: detail,
-		Model:  model,
-		Role:   a.laneRole(),
-		At:     now,
+		Phase:   phase,
+		Since:   since,
+		Detail:  detail,
+		Then:    strings.TrimSpace(then),
+		Model:   model,
+		Role:    a.laneRole(),
+		Session: a.newsKey(),
+		Subject: a.newsSubject(),
+		At:      now,
 	}
 	a.phase.mu.Lock()
 	defer a.phase.mu.Unlock()
@@ -410,7 +438,11 @@ func (a *Agent) endPhase() {
 	a.mu.Lock()
 	model := a.model
 	a.mu.Unlock()
-	over := PhaseNews{Model: model, Role: a.laneRole()}
+	// THE END OF A STAGE NAMES THE SAME SUBJECT THE START DID, or it would clear
+	// somebody else's clock: a surface files an empty phase by removing that
+	// subject's entry, and an unnamed end would take the conversation's row down
+	// while a node stopped.
+	over := PhaseNews{Model: model, Role: a.laneRole(), Session: a.newsKey(), Subject: a.newsSubject()}
 	a.phase.mu.Lock()
 	defer a.phase.mu.Unlock()
 	a.dropHeldPhaseLocked()

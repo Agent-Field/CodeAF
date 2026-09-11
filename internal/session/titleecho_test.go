@@ -145,8 +145,15 @@ func TestASessionNamedWithTheInstructionKeepsThePlaceholder(t *testing.T) {
 	}
 }
 
-// Invalid replies have bounded retries, and later turns do not reset the budget.
+// Invalid replies have a bounded LADDER, and later turns do not reset it.
+//
+// WHAT BOUNDS IT IS [titleWindow] AND NOT A COUNT (`titleAttempts`, deleted —
+// docs/design/recovery/DESIGN.md §7). The asks are the window divided by the
+// doubling wait in front of each of them: nothing, then 1s, 2s, 4s … so the
+// eighth would be asked 127 seconds in, past the two minutes, and seven are
+// asked. The clock is the test's ([onATestClock]), so none of that is spent.
 func TestARefusedNameHasBoundedRetriesWithinTheSession(t *testing.T) {
+	onATestTitleClock(t)
 	completer := naming(&scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("first"), nil },
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("second"), nil },
@@ -155,13 +162,18 @@ func TestARefusedNameHasBoundedRetriesWithinTheSession(t *testing.T) {
 	collect(t, mustSubmit(t, agent, "why is the tokenizer slow?"))
 	agent.titleJobs.Wait()
 	collect(t, mustSubmit(t, agent, "and the parser?"))
-	if got := completer.asks(); got != titleAttempts {
-		t.Fatalf("asks = %d, want %d", got, titleAttempts)
+	if got := completer.asks(); got != titleAsksInAWindow {
+		t.Fatalf("asks = %d, want %d", got, titleAsksInAWindow)
 	}
 	if got := agent.Title(); got != "" {
 		t.Fatalf("Title() = %q", got)
 	}
 }
+
+// titleAsksInAWindow is how many asks fit in [titleWindow] at the doubling wait
+// [nextTitleWait] pays: 0s, 1s, 2s, 4s, 8s, 16s, 32s is seven asks by 63
+// seconds, and the eighth would be asked at 127, past the two minutes.
+const titleAsksInAWindow = 7
 
 // ── the ones already on disk ────────────────────────────────────────────────
 
