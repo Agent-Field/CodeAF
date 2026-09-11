@@ -784,6 +784,16 @@ func (a *app) questionHeight() int {
 // It is laid out by [app.chrome], directly above the input, because that is
 // where this surface puts everything it wants answered.
 func (a *app) questionRows(width int) []string {
+	// THE NEW-CHAT PAGE OWNS THE WHOLE COMPOSER. It is drawn over the
+	// conversation whose question this is, and every key on it is either one of
+	// the page's own four keys or part of its first message. Drawing an answer
+	// row there would offer keys that cannot honestly act on it. Clear the
+	// geometry too: a pointer press in cells where the question stood on the
+	// previous frame must not answer it through stale spans.
+	if a.startingChat() {
+		a.questionBands, a.questionSpans = nil, nil
+		return nil
+	}
 	if len(a.questions) == 0 && len(a.questionRecords) == 0 && a.sheetOpen() == 0 {
 		// The empty block, on the empty path: no spans to clear because none
 		// were written, and nothing allocated (see [app.questionOpen]).
@@ -2559,6 +2569,13 @@ func (a *app) questionKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// sheet has the rows, so the sheet has the keyboard (questionsheet.go).
 		return a.questionSheetKey(msg)
 	}
+	// THE START PAGE TAKES EVERY KEY BEFORE THE CONVERSATION BEHIND IT. Unlike
+	// the other whole-frame places below, it has a composer of its own, so a
+	// digit or escape answered here would resolve a question nobody can see with
+	// a key aimed at somebody's first message.
+	if a.startingChat() {
+		return nil, false
+	}
 	if a.questionOffFrame() && !questionRaisedHere(head.question) {
 		// AND A BLOCK THAT IS NOT ON THE FRAME TAKES NO KEYS EITHER, which is
 		// the same law about a different way of being invisible. The stamp below
@@ -2594,7 +2611,7 @@ func (a *app) questionKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // which is exactly why the block is the only place a design's page is answered
 // from now (harnesscard.go).
 func (a *app) questionOffFrame() bool {
-	return a.pasteEdit.open || a.setup.open || a.showing() != nil ||
+	return a.startingChat() || a.pasteEdit.open || a.setup.open || a.showing() != nil ||
 		a.jobPageOpen() || a.rewSheet.open || a.deck.open || a.expandShowing()
 }
 

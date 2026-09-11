@@ -60,6 +60,24 @@ When more than one question is queued a `N more` line appears. Questions are
 answered oldest first, and each gets its own countdown when it reaches the
 front.
 
+## I pressed ctrl+t while it was asking — where did the question go, and did my typing answer it
+
+The question stays open and unanswered in the chat you came from. The **New chat**
+start page takes every key while it is on screen: letters and digits go into its
+first-message box, `enter` starts the new conversation, and `esc` returns to the
+chat behind it. Nothing typed on that page can allow, deny, postpone or otherwise
+answer the waiting question.
+
+The question block is not drawn on the start page because its answer keys do
+nothing there. The chat that is asking keeps `?` on its tab, and **Chats** says
+`asking you something`. Press `esc` or select that chat to go back; the same
+question returns with its numbered answers live.
+
+Walking away does not turn silence into a no. If an approval countdown reaches
+expiry while its question is behind the start page, it pauses instead of denying
+the call. The unanswered question is still there when you return, with `paused`
+on its row.
+
 ## What the answers row does on a narrow terminal
 
 The one-row form needs about eighty columns. Below that it gives things up in a
