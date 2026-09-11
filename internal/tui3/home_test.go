@@ -1835,13 +1835,8 @@ func TestTheGreetingsFirstFrameCarriesTheSpend(t *testing.T) {
 	now := lab.pin(time.Now())
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one the door picked", "/tmp/alpha", now)
 	lab.session("-tmp-alpha", "aaaa000000000002", "yesterday's chat", "/tmp/alpha", now.Add(-20*time.Hour))
-	// TODAY'S ROW IS DATED NOW, NOT AN HOUR AGO. An hour before now is
-	// YESTERDAY for the first hour of any day, so this test failed every night
-	// between midnight and one — the greeting read today as 0 because the row
-	// meant to be today's had fallen out of the day. The current instant is the
-	// only time that is always inside today.
 	writeUsageLines(t, filepath.Join(lab.root, session.UsageLedgerName), []session.UsageLine{
-		{At: now, USD: 1.25, Calls: 1, Model: "anthropic/claude-opus-5"},
+		{At: now.Add(-time.Hour), USD: 1.25, Calls: 1, Model: "anthropic/claude-opus-5"},
 		{At: now.AddDate(0, 0, -3), USD: 2.00, Calls: 1, Model: "anthropic/claude-opus-5"},
 	})
 
