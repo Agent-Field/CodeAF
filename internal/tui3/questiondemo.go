@@ -76,7 +76,8 @@ func (a *app) openDemoQuestion(env func(string) string) {
 	if !known {
 		return
 	}
-	a.raiseQuestionRoom(questionShown{question: build(), shown: a.now()})
+	q := build()
+	a.raiseQuestionRoom(questionShown{question: q, shown: a.now(), pick: questionPointerStart(q)})
 	// THE SETTLE GUARD IS SPENT BEFORE THE FIRST FRAME on a fixture, and only on
 	// a fixture. It exists to protect a person from a page that appeared under a
 	// hand already moving; a page raised by the launch itself appeared under
@@ -258,11 +259,17 @@ func demoQuestionLayout() session.Question {
 // OWN BUILDERS wherever there is one, so a fixture cannot drift from the thing
 // it is a picture of.
 var blockDemos = map[string]func() session.Question{
-	"standing":      demoStandingCard,
-	"harness-offer": demoHarnessOffer,
-	"design":        demoHarnessDesign,
-	"connect":       demoConnectOffer,
-	"connect-key":   demoConnectKey,
+	// THE EVIDENCE ON THE PANEL (lane R): the page's own worked example and its
+	// layout case, raised onto the block instead of the page, so the list with
+	// the evidence beside it — and, narrower, unfolded under the pointer — can be
+	// seen without a model.
+	"evidence":        demoQuestionReading,
+	"evidence-layout": demoQuestionLayout,
+	"standing":        demoStandingCard,
+	"harness-offer":   demoHarnessOffer,
+	"design":          demoHarnessDesign,
+	"connect":         demoConnectOffer,
+	"connect-key":     demoConnectKey,
 }
 
 // demoStandingCard is the reminder a turn proposed: a choice with four answers

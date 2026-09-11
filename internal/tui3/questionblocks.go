@@ -32,8 +32,9 @@ import (
 //   - image — the surface's existing picture path ([app.pictureRowsFor]), which
 //     is the same renderer, cache and half-cell painting a picture in the
 //     conversation gets. A terminal that cannot paint gets the path and `o open`.
-//   - layout — two pre-formatted panes side by side above 100 columns, stacked
-//     below, which is DESIGN.md's own number.
+//   - layout — two pre-formatted panes side by side wherever both fit whole,
+//     stacked where they do not, because a pane cut to fit is a pane that has
+//     stopped being pre-formatted.
 //
 // ── NO BOX DRAWING ──
 //
@@ -78,7 +79,7 @@ func (a *app) questionBlockRows(block session.Block, indent, width int) []string
 	case session.BlockImage:
 		body = a.questionImageLines(block, inner)
 	case session.BlockLayout:
-		body = a.questionLayoutLines(block, inner, width)
+		body = a.questionLayoutLines(block, inner)
 	default:
 		for _, line := range wrap(strings.TrimSpace(block.Body), inner) {
 			body = append(body, a.pal.ink(line))
@@ -216,35 +217,28 @@ func (a *app) questionImageLines(block session.Block, width int) []string {
 	return out
 }
 
-// questionPane fits one pre-formatted line to a column, padding on the right and
-// trimming nothing: the spaces inside a drawing are the drawing.
-func questionPane(text string, width int) string {
-	if width <= 1 {
-		return ""
-	}
-	text = fit(text, width-1)
-	if pad := width - ansi.StringWidth(text); pad > 0 {
-		return text + strings.Repeat(" ", pad)
-	}
-	return text
-}
-
 // questionLayoutLines draws two pre-formatted panes beside each other, or under
-// each other on a page too narrow to hold both.
+// each other where the two will not both fit whole.
 //
 // THE PANES ARE [session.Block.Rows], ONE ENTRY PER PANE. It is the field the
 // object already has for structured content, and a layout IS two lists of lines;
 // carving them out of one Body with a separator would mean inventing a separator
 // that a pane could contain.
-func (a *app) questionLayoutLines(block session.Block, width, full int) []string {
+//
+// THE WIDTH IS THE CONTENT'S, NOT A NUMBER. A layout block used to go side by
+// side above a hundred columns of PAGE; drawn in the pane beside a list, the same
+// block has seventy, and two panes of seventeen-character lines stacked there for
+// no reason a person could see. What the number stood in for is "a pane cut to
+// thirty characters has stopped being pre-formatted", so that is the test: each
+// pane's widest line fits its half, or the two stack.
+func (a *app) questionLayoutLines(block session.Block, width int) []string {
 	panes := block.Rows
 	if len(panes) == 0 {
 		return a.questionDiagramLines(block, width)
 	}
-	if len(panes) == 1 || full < questionLayoutFloor {
-		// STACKED, WITH A BLANK BETWEEN THEM. DESIGN.md's own number: two panes
-		// side by side above 100 columns and stacked below, because a pane cut to
-		// thirty characters is a pane that has stopped being pre-formatted.
+	half := (width - 1) / 2
+	if len(panes) == 1 || questionPaneWidest(panes[0]) > half || questionPaneWidest(panes[1]) > width-half-1 {
+		// STACKED, WITH A BLANK BETWEEN THEM.
 		out := make([]string, 0, 16)
 		for i, pane := range panes {
 			if i > 0 {
@@ -256,23 +250,24 @@ func (a *app) questionLayoutLines(block session.Block, width, full int) []string
 		}
 		return out
 	}
-	left, right := panes[0], panes[1]
-	half := (width - 2) / 2
-	tall := max(len(left), len(right))
-	out := make([]string, 0, tall)
-	for i := range tall {
-		l, r := "", ""
-		if i < len(left) {
-			l = expandTabs(left[i])
-		}
-		if i < len(right) {
-			r = expandTabs(right[i])
-		}
-		// THE PANES ARE PRE-FORMATTED, SO THE LEFT ONE IS PADDED AND NEVER
-		// TRIMMED. [questionCell] trims — it is a table cell, where a stray space
-		// is noise — and running a pane through it flattened every indent inside
-		// the drawing the asker made.
-		out = append(out, a.pal.ink(questionPane(l, half+1))+a.pal.ink(fit(r, half)))
+	// THE PANES ARE PRE-FORMATTED, SO NOTHING IN THEM IS TRIMMED: the spaces
+	// inside a drawing are the drawing. They are laid by the one side-by-side
+	// ([besides]), whose seam is the frame's own side.
+	lefts, rights := make([]string, 0, len(panes[0])), make([]string, 0, len(panes[1]))
+	for _, line := range panes[0] {
+		lefts = append(lefts, a.pal.ink(expandTabs(line)))
 	}
-	return out
+	for _, line := range panes[1] {
+		rights = append(rights, a.pal.ink(expandTabs(line)))
+	}
+	return besides(a.pal, lefts, rights, half, width)
+}
+
+// questionPaneWidest is the widest line of one pane, measured as it is drawn.
+func questionPaneWidest(pane []string) int {
+	widest := 0
+	for _, line := range pane {
+		widest = max(widest, ansi.StringWidth(expandTabs(line)))
+	}
+	return widest
 }

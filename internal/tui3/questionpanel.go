@@ -81,7 +81,7 @@ func (a *app) questionPanelRows(q questionShown, width int) []string {
 	}
 	first := len(a.questionBands)
 	title, headRows := a.questionPanelHead(q, width, inner)
-	rows := append(headRows, a.questionPanelBody(q, inner)...)
+	rows := append(headRows, a.questionPanelEvidenced(q, width, inner, len(headRows))...)
 	keys := a.questionAnswerKeys(q, formsCard)
 	keyRow := a.questionKeyRow(q, questionKeysOnTier(keys, keyPrimary), frameEdgeRoom(width))
 	if q.writing != "" {
@@ -140,6 +140,127 @@ func (a *app) questionPanelBeat(q questionShown, width, inner int) []string {
 	return out
 }
 
+// questionPanelEvidenced is the panel's body where its answers brought
+// something to look at, and the ordinary body where they did not.
+//
+// THE CHOOSER HAS ALREADY DECIDED WHICH (questionchooser.go): at a width with
+// room for two panes the answers stand in a list with the evidence of the one
+// the pointer is on beside them ([viewSplit], preview pick A); narrower, the
+// answer the pointer is on unfolds its evidence under its own row
+// (preview-narrow pick B). Either way the evidence is given the rows that keep
+// the panel inside [app.questionPanelTall], and a cut is said on its last row.
+func (a *app) questionPanelEvidenced(q questionShown, width, inner, headRows int) []string {
+	if !questionAnswersCarryBlocks(q.question) {
+		return a.questionPanelBody(q, inner)
+	}
+	// The rows the panel spends that are not evidence: its two edges, the
+	// second tier of keys under it, and the head where it would not fit the edge.
+	spent := headRows + questionPanelFrameRows
+	if a.questionViewOf(q, width) == viewSplit {
+		return a.questionPanelSplit(q, inner, spent)
+	}
+	// MEASURED, NOT GUESSED: the body is laid once with no evidence under the
+	// pointer, which is exactly the rows the answers themselves take, and what
+	// is left of the panel's height is what the evidence may have.
+	first := len(a.questionBands)
+	bare := a.questionPanelBodyIn(q, inner, 0)
+	a.questionBands = a.questionBands[:first]
+	return a.questionPanelBodyIn(q, inner, max(a.questionPanelTall()-spent-len(bare), 1))
+}
+
+// questionPanelFrameRows is how many rows a panel draws around its body: the top
+// edge, the bottom edge, and the one dim row of keys under the frame.
+const questionPanelFrameRows = 3
+
+// questionPanelTall is the most rows a panel may take above the box.
+//
+// HALF THE FRAME, AND THE REASON IS THE CONVERSATION. A question is about the
+// work above it, so it never takes more of the screen than that work keeps: a
+// panel taller than half the frame is a panel that has pushed the thing it is
+// asking about off the screen. What does not fit is cut with its count and the
+// way to the rest (`o open full`), where the page has the whole frame.
+func (a *app) questionPanelTall() int {
+	_, height := a.size()
+	return height / 2
+}
+
+// questionPanelSplit is the body laid out as two panes: the answers in a list on
+// the left, the evidence of the one the pointer is on at the right.
+//
+//	│                                      │                                       │
+//	│ ▸ 1  Stacked         ◆ recommended   │ Stacked                               │
+//	│   2  Marks only                      │ every name stays visible              │
+//	│   3  Hidden behind a key             │                                       │
+//	│   4  something else…                 │ then · costs three rows of transcript │
+//
+// THE LIST CARRIES ONLY WHAT TELLS THE ANSWERS APART AT A GLANCE — the pointer,
+// the key, the word and the pick's mark. What an answer leaves true moves into
+// the pane, labelled, because the pane is where the pointer is already saying
+// "this one"; drawn on the row as well, it would be said twice on one screen.
+func (a *app) questionPanelSplit(q questionShown, inner, spent int) []string {
+	rows := make([]string, 0, len(q.question.Options)+8)
+	room := max(inner-2*len(questionPanelGap), 1)
+	rows = append(rows, a.questionPanelContext(q, room)...)
+	top := len(rows)
+	lead := questionPanelLead(q.question, room)
+	// The list is as wide as its widest row needs: the lead, the word, and the
+	// pick's mark with its word at the right.
+	pad, want := 0, 0
+	for _, option := range q.question.Options {
+		pad = max(pad, ansi.StringWidth(strings.TrimSpace(option.Label)))
+	}
+	want = len(questionPanelGap) + lead + pad + 2 + ansi.StringWidth(questionRecommendedWord) + 2 + len(questionPanelGap)
+	if a.questionTakesOther(q) {
+		want = max(want, len(questionPanelGap)+lead+ansi.StringWidth(questionPanelOtherWord)+len(questionPanelGap))
+	}
+	left, right := besideSplit(inner, want)
+	listRoom := max(left-2*len(questionPanelGap), 1)
+	pad = min(pad, listRoom/2)
+	list := []string{""}
+	band := func(at int) {
+		// A PRESS ON THE LIST PRESSES AN ANSWER, AND A PRESS ON THE EVIDENCE
+		// PRESSES NOTHING: the pane is prose and pictures, and a click aimed at
+		// a diagram that answered the question would be the worst press on this
+		// surface. The span is the frame's side and the list's own cells.
+		a.questionBands = append(a.questionBands, questionBand{
+			row: top + len(list), span: hudSpan{from: 0, to: left + 1}, at: at,
+		})
+	}
+	for i, option := range q.question.Options {
+		for _, line := range a.questionPanelOption(q, i, option, pad, listRoom, questionBeside) {
+			band(i)
+			list = append(list, line)
+		}
+	}
+	if a.questionTakesOther(q) {
+		other := questionOtherAt(q.question)
+		for _, line := range a.questionPanelOther(q, pad, listRoom) {
+			band(other)
+			list = append(list, line)
+		}
+	}
+	if row := a.questionScopeRow(q, listRoom); row != "" {
+		list = append(list, "", row)
+	}
+	list = append(list, "")
+	evidence := a.questionEvidenceRows(q.question, q.pick, max(right-2*len(questionPanelGap), 1), true)
+	fits := max(len(list)-1, a.questionPanelTall()-spent-len(rows)-1)
+	pane := []string{""}
+	for _, line := range a.questionCut(evidence, fits, a.questionOpenFullWord()) {
+		pane = append(pane, questionPanelGap+line)
+	}
+	for i := range list {
+		list[i] = questionPanelGap + list[i]
+	}
+	return append(rows, besides(a.pal, list, pane, left, inner)...)
+}
+
+// questionOpenFullWord is the way to the rest of a cut, spelled from the key
+// table so the offer and the key cannot drift apart.
+func (a *app) questionOpenFullWord() string {
+	return questionKeySpelling(questionOpenKey) + " " + questionKeyWord(questionOpenKey)
+}
+
 // questionPanelBody is the panel WITHOUT its frame: the rows a person reads and
 // presses, laid out at `inner` cells.
 //
@@ -151,6 +272,13 @@ func (a *app) questionPanelBeat(q questionShown, width, inner int) []string {
 // one failure a key row exists to prevent. The pane draws this and names its own
 // keys (homeexchange.go's [exchangeHint]).
 func (a *app) questionPanelBody(q questionShown, inner int) []string {
+	return a.questionPanelBodyIn(q, inner, -1)
+}
+
+// questionPanelBodyIn is [app.questionPanelBody] with the rows the evidence
+// under the pointer may take, where the answers brought any; below zero is no
+// bound, which is the errand pane's and the task record's own scrolling column.
+func (a *app) questionPanelBodyIn(q questionShown, inner, evidence int) []string {
 	room := max(inner-2*len(questionPanelGap), 1)
 	rows := make([]string, 0, len(q.question.Options)+6)
 	// THE FIRST ROWS ARE WHAT HAS TO BE READ BEFORE ANSWERING — the command a
@@ -177,7 +305,8 @@ func (a *app) questionPanelBody(q questionShown, inner int) []string {
 		}
 	}
 	for i, option := range q.question.Options {
-		for _, line := range a.questionPanelOption(q, i, option, pad, room) {
+		under := questionUnder(evidence)
+		for _, line := range a.questionPanelOption(q, i, option, pad, room, under) {
 			// EVERY ROW AN ANSWER TAKES PRESSES THAT ANSWER, which is the sheet's
 			// own bargain applied here: an answer whose words wrapped is not a
 			// target that shrinks to its first line.
@@ -386,9 +515,28 @@ func (a *app) questionPanelAside(q questionShown, width int) string {
 // `model`.
 const questionAsksWord = " asks"
 
+// questionUnder is how much an answer's rows carry under the pointer, which is
+// decided by where the question's evidence is drawn.
+type questionUnder int
+
+const (
+	// questionBeside is a list whose evidence stands in a pane beside it: the row
+	// is the answer's word and its marks, and nothing the pane already says.
+	questionBeside questionUnder = -2
+	// questionUnbounded unfolds the evidence under the pointer with no bound, for
+	// a column that scrolls on its own.
+	questionUnbounded questionUnder = -1
+	// questionRowOnly is the answer's row with what it leaves true beside its
+	// word and nothing under it: the page's one column, which unfolds the
+	// evidence under the pointer itself, with the person's own notes beside it.
+	questionRowOnly questionUnder = -3
+)
+
 // questionPanelOption is one answer's rows: the row itself, and — only while the
-// pointer is on it — what the asker said about it.
-func (a *app) questionPanelOption(q questionShown, at int, option session.AnswerOption, pad, room int) []string {
+// pointer is on it — what the asker said about it. `under` is how many rows of
+// evidence may stand under the pointer on a question whose answers brought some,
+// or one of the two shapes above.
+func (a *app) questionPanelOption(q questionShown, at int, option session.AnswerOption, pad, room int, under questionUnder) []string {
 	key := questionOptionKeyAt(q.question, at)
 	focused := at == q.pick
 	picked := q.question.Pick != nil && strings.TrimSpace(q.question.Pick.Key) == key
@@ -397,6 +545,14 @@ func (a *app) questionPanelOption(q questionShown, at int, option session.Answer
 		word = key
 	}
 	say := strings.TrimSpace(option.Consequence)
+	if under == questionBeside || (focused && questionUnfolds(q.question, under)) {
+		// WHAT TAKING IT LEAVES TRUE MOVES INTO THE EVIDENCE, as its first
+		// labelled line (`then ·`), wherever the evidence is drawn for this
+		// answer — beside the list, or unfolded under this row (preview-narrow
+		// pick B). Said on the row as well, it would be said twice, and cut the
+		// first time.
+		say = ""
+	}
 	// A CHECKLIST'S ROWS CARRY THEIR TICKS in a cell of their own between the
 	// key and the word, so the digit that toggles a row is still on it and the
 	// pointer still says where `space` lands — the old card let a tick stand in
@@ -421,7 +577,7 @@ func (a *app) questionPanelOption(q questionShown, at int, option session.Answer
 		aside = a.pal.dim(questionSafeWord)
 	}
 	rows := a.questionPanelRow(q, key, tick, word, say, aside, pad, room, focused, a.questionHovering(at))
-	if !focused {
+	if !focused || under == questionBeside || under == questionRowOnly {
 		return rows
 	}
 	// UNDER THE POINTER, AND ONLY THERE: what this answer means, and — where it
@@ -430,7 +586,7 @@ func (a *app) questionPanelOption(q questionShown, at int, option session.Answer
 	// and the pointer is the person saying which one they are weighing.
 	lead := questionPanelLead(q.question, room)
 	indent := questionPanelGap + strings.Repeat(" ", lead-len(questionPanelGap))
-	for _, line := range a.questionPanelUnder(q, at, option, room-lead) {
+	for _, line := range a.questionPanelUnder(q, at, option, room-lead, under) {
 		rows = append(rows, indent+line)
 	}
 	return rows
@@ -440,6 +596,11 @@ func (a *app) questionPanelOption(q questionShown, at int, option session.Answer
 // the pointer's own kind as well as the derived index, so a stale index cannot
 // light a row on a frame where the pointer is somewhere else entirely.
 func (a *app) questionHovering(at int) bool {
+	if a.qroom != nil {
+		// THE PAGE'S ROWS ARE THE PANEL'S ROWS (questionpage.go), and the
+		// pointer over one of them is resolved by the page's own hit-test.
+		return a.hoveringQuestionOption(at)
+	}
 	return a.hot.kind == hoverChoices && a.hotAnswer == at
 }
 
@@ -562,9 +723,34 @@ func (a *app) questionPanelRow(q questionShown, key, tick, word, say, aside stri
 	return out
 }
 
+// questionUnfolds reports whether the answer the pointer is on unfolds its whole
+// evidence under its row: on the page's one column always, and on a panel
+// whose answers brought something to look at.
+func questionUnfolds(q session.Question, under questionUnder) bool {
+	return under == questionRowOnly || (under != questionBeside && questionAnswersCarryBlocks(q))
+}
+
 // questionPanelUnder is what stands under the focused answer: its body in the
 // reading ink, and the pick's own case where this is the pick.
-func (a *app) questionPanelUnder(q questionShown, at int, option session.AnswerOption, room int) []string {
+//
+// WHERE THE ANSWERS BROUGHT SOMETHING TO LOOK AT, IT IS THE EVIDENCE, UNFOLDED
+// (preview-narrow pick B): the same account the pane beside a wide panel draws
+// ([app.questionEvidenceRows]), without the word the row above already says,
+// cut to the rows the panel has left. A panel whose answers are words alone keeps rec A's fold — the
+// body and one line of the pick's case — because a labelled column under a row
+// of words is a card pretending to be a page.
+func (a *app) questionPanelUnder(q questionShown, at int, option session.AnswerOption, room int, under questionUnder) []string {
+	if questionAnswersCarryBlocks(q.question) {
+		if under == 0 {
+			// The measuring pass ([app.questionPanelEvidenced]): the answers alone.
+			return nil
+		}
+		rows := a.questionEvidenceRows(q.question, at, max(room, 8), false)
+		if under == questionUnbounded {
+			return rows
+		}
+		return a.questionCut(rows, int(under), a.questionOpenFullWord())
+	}
 	out := make([]string, 0, 3)
 	if body := strings.TrimSpace(option.Body); body != "" {
 		for i, line := range wrap(body, max(room, 8)) {
@@ -589,35 +775,6 @@ const questionPanelSayFloor = 12
 // the pointer. Two: a note is a note and not the page, and `o open full` holds
 // the rest.
 const questionPanelBodyRows = 2
-
-// questionPickCase is the asker's case for its pick, on one line: why it would
-// take this, how sure it is, and what would change its mind.
-//
-// THE EMPTINESS LAW. A pick with no reason, no confidence and nothing that would
-// change its mind draws no line at all — never an empty one, and never the word
-// "unknown".
-func questionPickCase(q session.Question, key string) string {
-	if q.Pick == nil || strings.TrimSpace(q.Pick.Key) != key {
-		return ""
-	}
-	parts := make([]string, 0, 3)
-	if reason := strings.TrimSpace(q.Pick.Reason); reason != "" {
-		parts = append(parts, reason)
-	}
-	if sure := questionConfidenceWord(q.Pick.Confidence); sure != "" {
-		parts = append(parts, sure)
-	}
-	if would := questionAfterIf(q.Pick.WouldChange); would != "" {
-		// THROUGH THE ROOM'S OWN JOINER ([questionAfterIf]), because this row is
-		// the same clause said shorter. Asked what would change its mind a model
-		// answers "If the index has to be read from another machine", and the row
-		// drew `would switch if if the index has…` — the defect the room already
-		// fixed on 2026-09-10, arriving here the day the panel started drawing
-		// the same sentence.
-		parts = append(parts, questionWouldSwitchWord+would)
-	}
-	return strings.Join(parts, " · ")
-}
 
 // questionPanelOther is the last row: the answer that is not on the list, and
 // the box it becomes while the pointer is on it.
