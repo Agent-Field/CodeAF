@@ -59,11 +59,25 @@ func (w WatchTooLarge) Error() string {
 	return fmt.Sprintf("%s reaches more than %d files and folders, and a watch reads every one of them on every pass; watch a narrower pattern", w.Glob, WatchLimit)
 }
 
-// CheckWatch refuses a file watch whose pattern cannot be read or reaches more
+// CheckWatch refuses what the pass could not honour as written: a condition
+// with nothing to judge it against, a say line with a placeholder nothing fills
+// (condition.go), and a file watch whose pattern cannot be read or reaches more
 // than [WatchLimit] entries. It is checked where an item is set up or its
-// waking changes ([Store.Create], [Store.Revise]), and by whoever asks a person
-// first, so the refusal is heard before a yes that could only fail.
+// waking or its line changes ([Store.Create], [Store.Revise]), and by whoever
+// asks a person first, so the refusal is heard before a yes that could only
+// fail.
+//
+// IT IS NOT PART OF [Item.Validate], ON PURPOSE. Validate runs on every write
+// of a document, a pause and a quiet check included, and an item made before
+// one of these refusals existed must still be pausable and stoppable. A
+// refusal about what an item SAYS belongs where the person says it.
 func (it Item) CheckWatch() error {
+	if err := it.checkCondition(); err != nil {
+		return err
+	}
+	if err := it.checkSay(); err != nil {
+		return err
+	}
 	if it.When.Kind != WhenFile {
 		return nil
 	}

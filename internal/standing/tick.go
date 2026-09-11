@@ -273,6 +273,9 @@ type sighting struct {
 	state    state
 	line     string
 	evidence string
+	// summary is the evidence as the one line a say carries in place of
+	// [EvidencePlaceholder]: what changed, or what the check found.
+	summary string
 	// changes are the files a watch saw change, and changesUnknown says the
 	// previous reading could not be read — never the same as "none changed".
 	changes        []Change
@@ -348,12 +351,35 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 		case !changed:
 			return sighting{state: stateQuiet, line: "nothing has changed"}, nil
 		}
-		changes, readErr := t.Store.changesSince(item.ID, since, files)
+		before, readErr := t.Store.reading(item.ID, since)
+		unknown := readErr != nil
+		var changes []Change
+		if !unknown {
+			changes = changesBetween(before, files)
+		}
 		found = sighting{
 			state: stateReady, line: "the files you are watching changed",
-			evidence: changesText(changes, readErr != nil, since != previous) + "\nALL MATCHING FILES:\n" + listing,
-			changes:  changes, changesUnknown: readErr != nil, since: since,
+			evidence: changesText(changes, unknown, since != previous) + "\nALL MATCHING FILES:\n" + listing,
+			summary:  changesSummary(changes, unknown),
+			changes:  changes, changesUnknown: unknown, since: since,
 		}
+		if strings.TrimSpace(item.When.Hint) == "" {
+			return found, nil
+		}
+		// A WATCH'S CONDITION IS JUDGED ON WHAT CHANGED (condition.go). A
+		// judgment that could not be made leaves the watch where it was, so the
+		// next pass asks about the same changes; a judgment that said no has
+		// seen them, and they are spent.
+		yes, line, err := t.judge(ctx, item, now, conditionEvidence(item.Workspace, changes, before, files, unknown, listing))
+		if err != nil {
+			item.Fingerprint = previous
+			return sighting{}, err
+		}
+		if !yes {
+			return sighting{state: stateQuiet, line: line}, nil
+		}
+		found.line = line
+		return found, nil
 
 	case WhenIdle:
 		if t.Idle == nil {
@@ -397,24 +423,19 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 		if !yes {
 			return sighting{state: stateQuiet, line: line}, nil
 		}
-		return sighting{state: stateReady, line: line, evidence: evidence}, nil
+		return sighting{state: stateReady, line: line, evidence: evidence, summary: probeSummary(line, evidence)}, nil
 
 	default:
 		return sighting{}, errors.New("standing: an unknown kind of watch: " + string(item.When.Kind))
 	}
 
-	// A hint on a kind that does not need judgment asks for it anyway: "every
-	// weekday at 8, IF there is anything worth saying". The sentinel is given no
-	// evidence, because there is none — only the person's words and the hint.
-	if item.When.Hint != "" {
-		yes, line, err := t.judge(ctx, item, now, "")
-		if err != nil {
-			return sighting{}, err
-		}
-		if !yes {
-			return sighting{state: stateQuiet, line: line}, nil
-		}
-		found.line = line
+	// A CONDITION IS NEVER JUDGED BLIND. A moment, a rhythm and a quiet machine
+	// gather nothing, and a sentinel asked "has it happened?" with nothing in
+	// front of it answers from the words alone — which is a guess, billed. Such
+	// a condition is refused at setup ([Item.CheckWatch]); one that stood
+	// before that refusal existed waits, and its check line says why.
+	if strings.TrimSpace(item.When.Hint) != "" {
+		return sighting{state: stateQuiet, line: conditionUnjudged}, nil
 	}
 	return found, nil
 }
@@ -472,7 +493,9 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, before, item Item, now ti
 	)
 	switch item.Does.Kind {
 	case ActionSay:
-		outcome, err = t.Runner.Say(ctx, item, strings.ReplaceAll(item.Does.Say, "{{evidence}}", found.evidence))
+		// A SAY IS ONE LINE A PERSON READS, so it carries the one-line summary
+		// and never the reading the work is handed (condition.go).
+		outcome, err = t.Runner.Say(ctx, item, strings.ReplaceAll(item.Does.Say, EvidencePlaceholder, found.summary))
 	case ActionTask:
 		key := occurrenceKey(before, now)
 		// AN OCCURRENCE THAT ALREADY FINISHED IS RECORDED, NOT RUN AGAIN. Its

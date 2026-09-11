@@ -331,8 +331,11 @@ func TestTickJudgesAProbeAndOnlySpendsOnAYes(t *testing.T) {
 	if pass.Fired != 1 || pass.Said != 1 {
 		t.Fatalf("a yes is %+v", pass)
 	}
-	if len(runner.said) != 1 || runner.said[0] != "CI is red: conclusion=failure" {
-		t.Fatalf("the evidence did not reach what it said: %v", runner.said)
+	// A SAY CARRIES THE ONE LINE, NOT THE OUTPUT (condition.go): the judgment's
+	// own sentence stands where {{evidence}} was, and the probe's output is the
+	// judgment's to read, never the person's.
+	if len(runner.said) != 1 || runner.said[0] != "CI is red: the world says yes" {
+		t.Fatalf("the finding did not reach what it said: %v", runner.said)
 	}
 	fired, err := store.Get(made.ID)
 	if err != nil {
@@ -360,53 +363,6 @@ func TestTickJudgesAProbeAndOnlySpendsOnAYes(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), "the world says yes") {
 		t.Fatalf("the log line is %q", string(raw))
-	}
-}
-
-func TestTickAsksTheSentinelWhenAnItemCarriesAHint(t *testing.T) {
-	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
-	store := openStore(t, now)
-	runner := &fakeRunner{}
-	sentinel, asked := answers(false, true)
-
-	routine := reminder("every weekday at 8, tell me what needs a reply", time.Time{})
-	routine.When = When{Kind: WhenEvery, Every: "5m", Hint: "yes when there is anything worth saying"}
-	made, err := store.Create(routine)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	due := now.Add(6 * time.Minute)
-	store.clock = held(due)
-	ticker := newTicker(store, runner, due)
-	ticker.Sentinel = sentinel
-	pass := mustTick(t, ticker)
-	if pass.Fired != 0 || pass.Checked != 1 {
-		t.Fatalf("a hint that said no still fired: %+v", pass)
-	}
-	if runner.probeSeen != 0 {
-		t.Fatalf("a hint on a rhythm ran a probe %d times", runner.probeSeen)
-	}
-	if *asked != 1 {
-		t.Fatalf("the sentinel was asked %d times", *asked)
-	}
-	quietItem, err := store.Get(made.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if quietItem.LastCheckLine != "nothing worth telling you" {
-		t.Fatalf("the check line is %q", quietItem.LastCheckLine)
-	}
-	if !quietItem.NextDue.After(due) {
-		t.Fatalf("a hint that said no did not move the rhythm on: %s", quietItem.NextDue)
-	}
-
-	later := quietItem.NextDue.Add(time.Minute)
-	store.clock = held(later)
-	ticker = newTicker(store, runner, later)
-	ticker.Sentinel = sentinel
-	if pass := mustTick(t, ticker); pass.Fired != 1 {
-		t.Fatalf("a hint that said yes did not fire: %+v", pass)
 	}
 }
 

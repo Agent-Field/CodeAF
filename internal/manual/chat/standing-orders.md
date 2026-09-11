@@ -786,6 +786,30 @@ A run that failed or was held back does not use up its changes: the next run is 
 about them again. Nothing here uses an account or a connector: the order reads local
 files and writes one local file.
 
+## Only when — a file watch with a condition, and the line a ping says
+
+A file watch set up in the chat can carry a condition (`when.hint`): "only when a client
+asks for a quote". It is judged each time the watched files change, against what
+changed — which files were added, modified or removed, their sizes (`39 → 96 bytes`),
+and how each changed file now ends (its last 1024 bytes, at most 4 files, all of it held
+to 8 KiB like a probe's output). A file whose link leads outside the project is named,
+never shown. A condition that says no uses up those changes; one that could not be
+asked leaves them for the next check. `aforge standing list` and `show` say it as
+`wakes whenever a file changes inside inbox/clients/, only when …`.
+
+A condition needs something to judge. On a moment, a rhythm, an idle wait or a rule it
+is refused at setup: `when.hint is a condition, judged against what a file watch saw
+change or what a probe found; an every item gathers nothing to judge it against — leave
+when.hint out, or use kind file or probe`. One set up before that refusal is never
+judged: `it has a condition with nothing to judge it against, so it waits — set it up
+again without the condition`.
+
+A line to say (`does.say`) arrives as one line. `{{evidence}}` is its only
+placeholder: on a file watch it becomes `1 file added: support/t1.md` (three names, then
+`and N more`), on a probe the check's one-sentence finding — never the file listing. Any
+other `{{…}}` is refused: `does.say uses {{file}}, which nothing fills — the only
+placeholder is {{evidence}}, …`; so is `{{evidence}}` on a kind that gathers nothing.
+
 ## Keep a report current from the chat — the card's does, report, folder and rule lines
 
 In a conversation, just say it: "keep an eye on my inbox folder and keep

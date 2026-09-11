@@ -63,8 +63,8 @@ func TestStandingOwnerLateExpiryPreservesEditedDeadline(t *testing.T) {
 func TestStandingOwnerPauseResumeInvalidatesEarlierJudgment(t *testing.T) {
 	now := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
 	store := openStore(t, now)
-	item := reminder("remind me", now.Add(-time.Minute))
-	item.When.Hint = "if there is news"
+	item := reminder("tell me if there is news", time.Time{})
+	item.When = When{Kind: WhenProbe, Probe: Probe{Command: "true"}, Hint: "if there is news"}
 	made, err := store.Create(item)
 	if err != nil {
 		t.Fatal(err)
