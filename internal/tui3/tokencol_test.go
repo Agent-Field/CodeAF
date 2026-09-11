@@ -287,27 +287,60 @@ func TestABeatOvertakenByAMeasureLeavesTheWeightAlone(t *testing.T) {
 func TestTheFiguresWalkTowardTheBooks(t *testing.T) {
 	a := liveStepsApp(t)
 	a.turnBegan = liveStepsBase
+	// The first reading ARRIVES ([chaseFigure]); only what follows it walks.
 	a.takeContext(14200)
+	a.take(session.Usage{Output: 256})
+	a.tickTokenCol(1, false)
+	a.takeContext(18000)
 	a.take(session.Usage{Output: 512})
 	a.tickTokenCol(1, false)
 	up, down := a.col.drawn(a.turnWritten(), a.turn, true, false)
-	if up <= 0 || up >= 14200 {
+	if up <= 14200 || up >= 18000 {
 		t.Fatalf("what went up popped rather than walked: %d", up)
 	}
-	if down <= 0 || down >= 512 {
+	if down <= 256 || down >= 512 {
 		t.Fatalf("what came back popped rather than walked: %d", down)
 	}
 	for range 20 {
 		a.tickTokenCol(1, false)
 	}
-	if up, down = a.col.drawn(a.turnWritten(), a.turn, true, false); up != 14200 || down != 512 {
+	if up, down = a.col.drawn(a.turnWritten(), a.turn, true, false); up != 18000 || down != 512 {
 		t.Fatalf("the walk never arrived: ↑%d ↓%d", up, down)
 	}
 }
 
+// A FIGURE THAT WAS NOT ON THE SCREEN ARRIVES WHOLE AND UNLIT. Taking a
+// conversation up from a tab opens its column at nothing, and the weight and
+// the books it then reads existed before anybody looked: counting them up from
+// zero and lighting them on the way drew a page being redrawn as work moving.
+func TestTakingUpATabShowsItsFiguresWholeAndUnlit(t *testing.T) {
+	a := liveStepsApp(t)
+	a.turnBegan = liveStepsBase
+	a.takeContext(9000)
+	a.take(session.Usage{Output: 128})
+	for range 40 {
+		a.tickTokenCol(1, false)
+	}
+	// The switch: every meter about the conversation being left goes, and the
+	// one being taken up is read afresh.
+	a.resetMeters()
+	a.turnBegan = liveStepsBase
+	a.takeContext(79600)
+	a.take(session.Usage{Output: 37600})
+	a.tickTokenCol(1, false)
+	up, down := a.col.drawn(a.turnWritten(), a.turn, true, false)
+	if up != 79600 || down != 37600 {
+		t.Fatalf("the conversation's figures counted up instead of arriving: ↑%d ↓%d", up, down)
+	}
+	if p := a.tokenPairOf(a.conversation()); p.upLit != 0 || p.downLit != 0 {
+		t.Fatalf("figures that only arrived are lit as though they moved: ↑%d ↓%d", p.upLit, p.downLit)
+	}
+}
+
 // AND A TURN OPENS AT NOTHING. A pair left standing at the last turn's totals
-// would spend the first second of this one counting DOWN.
-func TestEveryTurnCountsUpFromNothing(t *testing.T) {
+// would spend the first second of this one counting DOWN; from nothing, the new
+// turn's first reading arrives whole ([chaseFigure]).
+func TestEveryTurnOpensItsColumnAtNothing(t *testing.T) {
 	a := liveStepsApp(t)
 	a.col = tokenCol{down: 512, weight: 14200, shownUp: 14200, shownDown: 512}
 	a.turnBegan = time.Time{}
@@ -415,6 +448,38 @@ func TestATaskRoomCarriesItsOwnColumn(t *testing.T) {
 	a.room.dirty = true
 	if page := roomText(a); hasColumn(page) {
 		t.Fatalf("the column outlived the node's run:\n%s", page)
+	}
+}
+
+// OPENING A TASK PAGE DOES NOT REPLAY THE CLIMB. The owner's report: every
+// time a task was taken from the rail, its page counted `↑ 79.6k  ↓ 37.6k` up
+// from zero and lit both figures, then did the same climb to the same figures
+// on the next visit — a page being built, drawn as a task being busy. A room is
+// a new page with its column at nothing, so its first reading ARRIVES: whole,
+// on the first frame, and at rest. The next visit is the same.
+func TestOpeningATaskPageShowsItsFiguresWholeAndUnlit(t *testing.T) {
+	a, fake, _ := roomApp(t)
+	a.agent = &weighedRoomFake{roomFake: fake, weight: 79600}
+	fake.journal = midFlightJournal(t)
+	for visit := 1; visit <= 2; visit++ {
+		a.openRoom(7, "Build site/product.html")
+		a.width = 100
+		a.touch()
+		drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{
+			Kind: session.EventTurnDone, Usage: session.Usage{Input: 79600, Output: 37600},
+		}})
+		a.usageAsking = false
+		a.usageBack(a.usageKick()().(usageMsg))
+		// One slot of the ordinary clock — not a snap — is all it takes.
+		a.tickTokenCol(1, false)
+		p := a.tokenPairOf(a.room.deck())
+		if p.up != 79600 || p.down != 37600 {
+			t.Fatalf("visit %d: the page counted its figures up instead of showing them: ↑%d ↓%d", visit, p.up, p.down)
+		}
+		if p.upLit != 0 || p.downLit != 0 {
+			t.Fatalf("visit %d: figures that only arrived are lit as though the task moved: ↑%d ↓%d", visit, p.upLit, p.downLit)
+		}
+		a.closeRoom()
 	}
 }
 
@@ -546,7 +611,11 @@ func glowApp(t *testing.T) (*app, func(time.Duration)) {
 	at := liveStepsBase.Add(9 * time.Second)
 	a.clock = func() time.Time { return at }
 	a.turnBegan = liveStepsBase
+	// The turn's first reading ARRIVES unlit ([chaseFigure]); what lights ↓ is
+	// what comes back after it.
 	a.takeContext(14200)
+	a.take(session.Usage{Output: 256})
+	a.tickTokenCol(1, false)
 	a.take(session.Usage{Output: 512})
 	for range 40 {
 		a.tickTokenCol(1, false)

@@ -461,6 +461,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is it still working or is it stuck", "screen"},
 		{"the tokens are not moving", "screen"},
 		{"why did the number on the right light up", "screen"},
+		{"the token numbers count up every time I open a task, is it still running", "screen"},
+		{"switching tabs makes the tokens count up again from zero", "screen"},
 		{"what is the +3.4k next to the up arrow", "screen"},
 		{"no token count inside a task", "screen"},
 		{"is the up arrow what I am billed for", "screen"},
