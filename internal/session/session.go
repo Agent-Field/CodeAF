@@ -2942,6 +2942,16 @@ type Agent struct {
 	// title is the session's name and titleTried marks the one attempt at
 	// generating it (title.go). A resumed session loads its name from the
 	// journal, so it never re-names itself.
+	// metaStampWriter is the one deferred write this session owes meta.json, and
+	// metaStampOnce builds it on the first stamp rather than on every agent:
+	// a session that never speaks starts no goroutine (placemeta.go).
+	metaStampOnce   sync.Once
+	metaStampWriter *stampWriter
+
+	// toolCompact is the reduced form of this session's frozen tool history,
+	// carried between requests rather than rebuilt on each one (toolcompact.go).
+	toolCompact toolCompactMemo
+
 	title      string
 	titleTried bool
 	shortTitle string

@@ -73,6 +73,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/offpath"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 // StandingTree is one conversation's own working copy of one referred folder:
@@ -367,13 +370,53 @@ func (a *Agent) seedStandingPath(from, to string) {
 	_ = copyPath(from, to)
 }
 
-// cutStandingTree makes the working copy, once, on the first write.
+// startStandingTree cuts the working copy AHEAD OF THE WRITE THAT WILL NEED IT.
+//
+// It is called from the one door a folder is referred through
+// ([Agent.ReferPlace]) and it returns at once: the cut runs beside whatever the
+// person does next, which is read their own screen and type. By the time a tool
+// call wants the copy, [Agent.cutStandingTree]'s own lock is either free with
+// the copy already made or held by this — and a write that arrives in the middle
+// waits for the cut that is already running rather than starting a second one.
+//
+// A CUT THAT FAILS HERE IS NOT ANNOUNCED AND NOT REMEMBERED AS A FAILURE. The
+// person has not asked for anything yet, and the first write still takes the same
+// road and still gets the same sentence if it cannot be made — this is a head
+// start, never a gate.
+func (a *Agent) startStandingTree(place PlaceRef) {
+	if strings.TrimSpace(place.Path) == "" {
+		return
+	}
+	if _, held := a.standingTreeFor(place.Path); held {
+		return
+	}
+	if strings.TrimSpace(a.config.Place.Trees()) == "" {
+		// Nowhere to put one. cutStandingTree says so to a caller that asked;
+		// nobody asked yet.
+		return
+	}
+	offpath.Take(func() struct{} {
+		_, _ = a.cutStandingTree(place)
+		return struct{}{}
+	})
+}
+
+// cutStandingTree makes the working copy, once — ahead of the first write when
+// the folder was referred through [Agent.ReferPlace], and on that write itself
+// otherwise.
 //
 // The two roads are the task modes' own and are chosen the same way
 // [prepareTaskTreeOn] chooses them: a repository with something to branch from
 // gets a worktree off its HEAD, and everything else gets a copy of the folder.
 // There is no third road today; the universe furrow would give is the seam this
 // file's header names.
+//
+// AND IT SAYS WHAT IT IS DOING FOR AS LONG AS IT LASTS. A recursive copy of a
+// folder is seconds on anything large, and whether it is running ahead of a
+// write or inside one, a person is owed the word — [provider.PhasePreparing] is
+// the phase this package already uses for work done before a turn can proceed
+// (memory.go), and the detail names the folder so the sentence is about
+// something they recognize rather than about machinery.
 func (a *Agent) cutStandingTree(place PlaceRef) (StandingTree, error) {
 	// ONE CUT PER FOLDER, WHATEVER ARRIVES AT ONCE. Two tool calls in one turn
 	// can both find no copy and both start cutting, and the loser would leave a
@@ -392,6 +435,10 @@ func (a *Agent) cutStandingTree(place PlaceRef) (StandingTree, error) {
 		// always did. Absent, not broken.
 		return StandingTree{}, errors.New("this conversation has no folder to keep a working copy in")
 	}
+	a.tellPhase(provider.PhasePreparing,
+		"a working copy of "+filepath.Base(place.Path), time.Now())
+	defer a.endPhase()
+
 	name := slugify(filepath.Base(place.Path))
 	dir := canonicalPath(filepath.Join(trees, "folder-"+name+"-"+shortID()))
 	tree := StandingTree{Folder: place.Path, Dir: dir, Cut: time.Now()}

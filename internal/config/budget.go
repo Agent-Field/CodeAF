@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/Agent-Field/aforge-v2/internal/filememo"
 	"github.com/Agent-Field/aforge-v2/internal/home"
 )
 
@@ -46,21 +48,45 @@ func WriteDailyBudgetUSD(profileDir string, amount float64) error {
 	return writeProfileValue(profileDir, KeyDailyBudget, amount)
 }
 
-// readProfileConfig is the single reader of the profile's config.json. A file
-// that is not there yet is an empty object, not an error.
+// profileConfigMemo is the profile's config.json, PARSED AT MOST ONCE PER
+// CHANGE.
+//
+// THE DEFECT IT CLOSES, measured on 2026-09-11: this file answers questions that
+// are asked on a keystroke and on a turn — [APIKeyConfigured] runs on EVERY
+// Enter the person presses (internal/tui3's input.go) and [FirstPrompt] on EVERY
+// turn (internal/session's loop.go) — and every one of those calls was a fresh
+// os.ReadFile and a fresh encoding/json pass over a file that changes about once
+// a week. Neither call site knew it was paying for a read; each of the eight
+// readers below was written separately and each looked free on its own.
+//
+// THE MEMO IS KEYED ON THE FILE AND ON THIS PROCESS'S OWN WRITES.
+// internal/filememo spends one stat to decide whether it may answer, and
+// [SettingsGeneration] is folded in beside it so a value this process persisted
+// can never be served back stale, whatever a filesystem's timestamp resolution
+// is. What the memo does not see is what the counter below already documents it
+// cannot: a config.json edited by hand in another process, which has always
+// landed on the next launch.
+var profileConfigMemo = filememo.Stamped(SettingsGeneration,
+	func(_ string, data []byte, missing bool) (map[string]json.RawMessage, error) {
+		// A file that is not there yet is an empty object, not an error.
+		if missing {
+			return map[string]json.RawMessage{}, nil
+		}
+		values := make(map[string]json.RawMessage)
+		if err := json.Unmarshal(data, &values); err != nil {
+			return nil, fmt.Errorf("read config: %w", err)
+		}
+		return values, nil
+	})
+
+// readProfileConfig is the single reader of the profile's config.json.
+//
+// EVERY CALLER GETS THE SAME MAP AND NOBODY MAY WRITE IT. A memo hands back the
+// value it holds rather than a copy, so the eight readers in this package treat
+// what comes out of here as read-only — which every one of them already did,
+// because the only writer is [writeProfileValues] and it builds its own map.
 func readProfileConfig(profileDir string) (map[string]json.RawMessage, error) {
-	raw, err := os.ReadFile(BudgetConfigPath(profileDir))
-	if os.IsNotExist(err) {
-		return map[string]json.RawMessage{}, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("read config: %w", err)
-	}
-	values := make(map[string]json.RawMessage)
-	if err := json.Unmarshal(raw, &values); err != nil {
-		return nil, fmt.Errorf("read config: %w", err)
-	}
-	return values, nil
+	return profileConfigMemo.Read(BudgetConfigPath(profileDir))
 }
 
 // writeProfileValue is the single writer every persisted setting goes through:
@@ -88,10 +114,16 @@ func writeProfileValues(profileDir string, updates map[string]any) error {
 	// and a failure that named a different row on every attempt would be a
 	// failure nobody could search for.
 	key := errorKey(updates)
-	values, err := readProfileConfig(profileDir)
+	held, err := readProfileConfig(profileDir)
 	if err != nil {
 		return fmt.Errorf("write config: preserve existing file: %w", err)
 	}
+	// THE WRITER OWNS ITS OWN MAP. [readProfileConfig] hands back the map its
+	// memo is holding, and adding a row to that map in place would rewrite what
+	// every reader in this package is about to be told the file says — including
+	// on the path where the write itself then fails.
+	values := make(map[string]json.RawMessage, len(held)+len(updates))
+	maps.Copy(values, held)
 	for name, value := range updates {
 		encodedValue, err := json.Marshal(value)
 		if err != nil {
@@ -157,10 +189,18 @@ func errorKey(updates map[string]any) string {
 // auxiliary model is resolved on the path of a turn, and a file read there would
 // be a syscall per call for a file that changes once a week.
 //
-// So every write bumps a counter, and a reader compares one integer. This is not
-// a cache of the file's contents — this package deliberately holds none, because
-// a stale settings value is worse than a slow one — it is the SIGNAL a cache
-// somewhere else invalidates on.
+// So every write bumps a counter, and a reader compares one integer. It is the
+// SIGNAL a cache somewhere else invalidates on — the v3 door's crew source, and
+// since 2026-09-11 this package's OWN parsed view of config.json
+// ([profileConfigMemo]), which folds this counter into its freshness key so that
+// the one thing a file's timestamp cannot be trusted to report — a write this
+// process just made — is reported by the process that made it.
+//
+// (It said here, until that memo existed, that this package deliberately held no
+// cache because a stale settings value is worse than a slow one. Both halves of
+// that stayed true and the conclusion did not: the memo is not allowed to be
+// stale, because it re-stats the file on every read and reads this counter
+// beside it.)
 //
 // WHAT IT DOES NOT SEE, stated plainly: a config.json edited by hand in another
 // process, and a project file (`<workspace>/.aforge-v3/config.json`) edited by

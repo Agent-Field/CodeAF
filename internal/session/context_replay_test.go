@@ -64,7 +64,7 @@ func TestContextReplayCompactedResultKeepsItsOwnToolName(t *testing.T) {
 		contextReplayCall("call_1", "ls", `{"path":"."}`),
 		contextReplayResult("call_1", "NEWEST BATCH"),
 	}
-	compacted := compactToolHistory(messages, len(messages), func(ai.Message) string { return "fixture.txt" })
+	compacted := compactedFixture(messages, len(messages), func(ai.Message) string { return "fixture.txt" })
 	got := messageContentText(compacted[2])
 	if !strings.Contains(got, "[reduced view: read") {
 		t.Fatalf("compacted old read named another tool: %s", got)

@@ -147,6 +147,8 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/offpath"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -302,6 +304,9 @@ type loopWatch struct {
 	dir      string
 	dirt     string
 	dirtRead bool
+	// dirtAhead is a reading of that worktree taken BESIDE the turn rather than
+	// in front of it, and nil when none is out ([loopWatch.treeMoved]).
+	dirtAhead *offpath.Reading[string]
 	// clock and ledger are the turn's account of ITSELF rather than of its
 	// repetitions: when the work last changed, and how much of what has come
 	// back since was new (novelty.go). The ledger also supplies the structural
@@ -605,11 +610,36 @@ func (w *loopWatch) materialProgress(calls []ai.ToolCall, results []toolResult) 
 // It keeps its OWN fingerprint rather than sharing the runner's cell: reading a
 // transition consumes it, and two readers sharing one cell would each see half
 // the movement (task_run.go's [worktreeMoved] is that cell's only owner).
+//
+// ── AND IT IS READ BESIDE THE TURN, NOT IN FRONT OF IT ──────────────────────
+//
+// `git status --untracked-files=all` is ten to thirty milliseconds on a small
+// repository and SECONDS on a large one, and this used to run it inline: every
+// batch of a conversation that contained a shell command stopped here, between
+// the tools finishing and the next request being assembled, while git walked the
+// person's whole worktree. Nothing in that reading is needed to compose the
+// request; it is needed to decide whether to say a sentence about a loop.
+//
+// So the reading is taken with [offpath.Take] and settled with a bound
+// ([worktreeDirtJoin]). On a repository git can answer inside that bound —
+// which is every ordinary project — the answer is exactly what it always was.
+// On one it cannot, the reading is NOT thrown away and NOT waited on: it stays
+// in flight beside the model round trip that follows, and the next batch takes
+// it for nothing. The signal is then a batch late on a huge tree, which is the
+// right trade against putting several seconds of git in front of a person once
+// per batch forever.
 func (w *loopWatch) treeMoved() bool {
 	if w.dir == "" {
 		return false
 	}
-	dirt := worktreeDirt(w.dir)
+	if w.dirtAhead == nil {
+		w.dirtAhead = offpath.Take(func() string { return worktreeDirtReading(w.dir) })
+	}
+	dirt, settled := w.dirtAhead.Settle(worktreeDirtJoin)
+	if !settled {
+		return false
+	}
+	w.dirtAhead = nil
 	if !w.dirtRead {
 		w.dirtRead = true
 		w.dirt = dirt
@@ -621,6 +651,28 @@ func (w *loopWatch) treeMoved() bool {
 	w.dirt = dirt
 	return true
 }
+
+// worktreeDirtJoin is the longest this watch will hold a turn while its own
+// reading of the worktree finishes.
+//
+// IT IS NOT A NUMBER CHOSEN HERE. The quantity it has to be is "short enough
+// that nobody can tell it happened", because this wait is never announced —
+// there is no phase for it and there must not be one, since a line saying
+// `checking the folder` for thirty milliseconds is noise. This build already
+// knows what imperceptible means and writes it down once: [lane.Hysteresis] is
+// "about the smallest difference in waiting anybody notices", and it is the
+// threshold the whole recovery controller declines to act below for exactly
+// that reason. A join at that value is by construction a join nobody feels, and
+// it is far above what git needs on an ordinary project — which is why the
+// ordinary project keeps today's exact behaviour and only a tree too big to
+// read quickly takes the reading a batch late.
+var worktreeDirtJoin = lane.Hysteresis
+
+// worktreeDirtReading is the reading itself, named here so a test can record
+// what was run without staging a repository — and so that this watch and the
+// task runner's own counter cannot drift into two readings of one thing
+// (task_run.go's [worktreeDirt] is the only implementation).
+var worktreeDirtReading = worktreeDirt
 
 // count folds one call and its result into the turn's clock: a step taken, what
 // the result brought back, and whether the work itself moved.

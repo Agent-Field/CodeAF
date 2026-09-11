@@ -158,6 +158,15 @@ func (a *Agent) ReferPlace(path string, arrival PlaceArrival) (PlaceRef, error) 
 	}
 	ref := PlaceRef{Path: dir, Chose: chose, Arrival: arrival, Referred: time.Now(), Repository: repository}
 	a.refer(ref)
+	// AND THE WORKING COPY IS STARTED NOW, NOT ON THE FIRST WRITE. Cutting one is
+	// a `git worktree add` or a whole recursive copy of the folder, and it used to
+	// happen INSIDE the tool call that first wrote a file — so the model's first
+	// `edit` on a referred repository sat there while git checked out a tree, with
+	// nothing on the screen to say why. Nothing about that work needs the write to
+	// have happened; everything it needs is known the moment the person names the
+	// folder, which is this moment, and there are seconds of a person reading their
+	// own screen to do it in (standingtree.go's [Agent.cutStandingTree]).
+	a.startStandingTree(ref)
 	return ref, nil
 }
 

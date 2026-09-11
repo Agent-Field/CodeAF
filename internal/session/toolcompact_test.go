@@ -76,7 +76,7 @@ func toolResultPayloadBytes(messages []ai.Message) int {
 
 func TestCompactToolHistoryKeepsNewestVerbatimAndSystemUntouched(t *testing.T) {
 	original := toolCompactMessages(6, 1)
-	got := compactToolHistory(original, len(original), nil)
+	got := compactedFixture(original, len(original), nil)
 
 	if messageContentText(got[0]) != messageContentText(original[0]) {
 		t.Fatalf("system prompt moved: %q", messageContentText(got[0]))
@@ -104,14 +104,14 @@ func TestCompactToolHistoryKeepsNewestVerbatimAndSystemUntouched(t *testing.T) {
 			continue
 		}
 		if !strings.Contains(messageContentText(message), strings.Repeat("x", toolCompactResultBytes)) {
-			t.Fatal("compactToolHistory mutated an input result")
+			t.Fatal("compactedFixture mutated an input result")
 		}
 	}
 }
 
 func TestCompactToolHistoryKeepsAParallelNewestBatchVerbatim(t *testing.T) {
 	original := toolCompactMessages(4, 3)
-	got := compactToolHistory(original, len(original), nil)
+	got := compactedFixture(original, len(original), nil)
 	texts := toolTextsOf(got)
 	if len(texts) != 6 {
 		t.Fatalf("tool results = %d, want 6", len(texts))
@@ -134,7 +134,7 @@ func TestCompactToolHistoryBoundsOldResultsToTheDigestBudget(t *testing.T) {
 	// the same budget the checkpoint reader already proved.
 	const rounds = 80
 	original := toolCompactMessages(rounds, 1)
-	got := compactToolHistory(original, len(original), nil)
+	got := compactedFixture(original, len(original), nil)
 	texts := toolTextsOf(got)
 	if texts[len(texts)-1] != toolCompactOutput(rounds-1) {
 		t.Fatal("newest result was compacted to make the budget")
@@ -287,7 +287,7 @@ func TestLiveCompactToolHistoryKeepsNewestReadable(t *testing.T) {
 		t.Fatal(err)
 	}
 	messages := toolCompactMessages(5, 1)
-	history := compactToolHistory(messages, len(messages), nil)
+	history := compactedFixture(messages, len(messages), nil)
 	history = append(history, textMessage("user",
 		"Reply with only the last line of the newest tool result, nothing else."))
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
@@ -349,7 +349,7 @@ func headedMessages(rounds int) []ai.Message {
 func TestAReducedResultKeepsBothEndsAndNamesItsSource(t *testing.T) {
 	original := headedMessages(4)
 	source := func(message ai.Message) string { return "logs/stubs/" + message.ToolCallID + ".txt" }
-	got := compactToolHistory(original, len(original), source)
+	got := compactedFixture(original, len(original), source)
 	texts := toolTextsOf(got)
 
 	for index, text := range texts[:len(texts)-1] {
@@ -474,7 +474,7 @@ func TestAMarginalReducedViewIsDeclinedWhenItsPointerEatsTheSaving(t *testing.T)
 			"make the pointer longer or the result larger", reclaim, len(marginal))
 	}
 
-	got := compactToolHistory(messages, len(messages), source)
+	got := compactedFixture(messages, len(messages), source)
 	if text := toolTextsOf(got)[0]; text != marginal {
 		t.Fatalf("a rewrite worth %d bytes was made anyway:\n%.200q",
 			len(marginal)-len(view), text)
@@ -485,7 +485,7 @@ func TestAMarginalReducedViewIsDeclinedWhenItsPointerEatsTheSaving(t *testing.T)
 	heavy := append([]ai.Message(nil), messages...)
 	heavy[3] = ai.Message{Role: "tool", ToolCallID: "call-0",
 		Content: []ai.ContentPart{{Type: "text", Text: toolCompactOutput(0)}}}
-	if text := toolTextsOf(compactToolHistory(heavy, len(heavy), source))[0]; !strings.HasPrefix(text, compactReducedMarker) {
+	if text := toolTextsOf(compactedFixture(heavy, len(heavy), source))[0]; !strings.HasPrefix(text, compactReducedMarker) {
 		t.Fatalf("a %d-byte result was left verbatim:\n%.200q", len(toolCompactOutput(0)), text)
 	}
 }
@@ -495,7 +495,7 @@ func TestAMarginalReducedViewIsDeclinedWhenItsPointerEatsTheSaving(t *testing.T)
 // nothing — the one failure stub.go's law forbids.
 func TestAReducedResultWithNoStoreOrJournalIsHonestAboutIt(t *testing.T) {
 	original := headedMessages(3)
-	got := compactToolHistory(original, len(original), nil)
+	got := compactedFixture(original, len(original), nil)
 	for index, text := range toolTextsOf(got) {
 		if index == 2 {
 			continue
@@ -514,7 +514,7 @@ func TestAReducedResultWithNoStoreOrJournalIsHonestAboutIt(t *testing.T) {
 // request after it.
 func TestCompactToolHistoryKeepsEveryCallPairedWithItsResult(t *testing.T) {
 	original := toolCompactMessages(40, 2)
-	got := compactToolHistory(original, len(original), nil)
+	got := compactedFixture(original, len(original), nil)
 	if len(got) != len(original) {
 		t.Fatalf("snapshot has %d messages, want the same %d", len(got), len(original))
 	}
@@ -543,8 +543,8 @@ func TestCompactToolHistoryKeepsEveryCallPairedWithItsResult(t *testing.T) {
 func TestCompactToolHistoryRepeatsItselfExactly(t *testing.T) {
 	original := headedMessages(60)
 	source := func(message ai.Message) string { return "logs/stubs/" + message.ToolCallID + ".txt" }
-	first := compactToolHistory(original, len(original), source)
-	second := compactToolHistory(original, len(original), source)
+	first := compactedFixture(original, len(original), source)
+	second := compactedFixture(original, len(original), source)
 	for index := range first {
 		if messageContentText(first[index]) != messageContentText(second[index]) {
 			t.Fatalf("message %d differs between two passes over the same frozen prefix", index)
@@ -552,7 +552,7 @@ func TestCompactToolHistoryRepeatsItselfExactly(t *testing.T) {
 	}
 	// And a pass over an already-reduced view leaves it alone: the marker is
 	// what makes a reduction final.
-	again := compactToolHistory(first, len(first), source)
+	again := compactedFixture(first, len(first), source)
 	for index := range first {
 		if messageContentText(first[index]) != messageContentText(again[index]) {
 			t.Fatalf("message %d was reduced a second time: %.120q", index, messageContentText(again[index]))
@@ -567,7 +567,7 @@ func TestCompactToolHistoryRepeatsItselfExactly(t *testing.T) {
 func TestTheBudgetWalkCarriesTheSameTotalItWouldRecompute(t *testing.T) {
 	for _, rounds := range []int{4, 40, 400} {
 		original := toolCompactMessages(rounds, 1)
-		got := compactToolHistory(original, len(original), nil)
+		got := compactedFixture(original, len(original), nil)
 		var old []int
 		cut := newestToolBatchStart(got)
 		for index, message := range got {
@@ -608,7 +608,7 @@ func TestTheBudgetWalkCarriesTheSameTotalItWouldRecompute(t *testing.T) {
 func TestTheOneLineFallbackStillNamesASource(t *testing.T) {
 	original := toolCompactMessages(200, 1)
 	source := func(message ai.Message) string { return "logs/stubs/" + message.ToolCallID + ".txt" }
-	got := compactToolHistory(original, len(original), source)
+	got := compactedFixture(original, len(original), source)
 	lines := 0
 	for index, message := range got {
 		if message.Role != "tool" || index >= newestToolBatchStart(got) {
@@ -635,7 +635,7 @@ func BenchmarkCompactToolHistory(b *testing.B) {
 		messages := toolCompactMessages(rounds, 1)
 		b.Run(fmt.Sprintf("rounds=%d", rounds), func(b *testing.B) {
 			for iteration := 0; iteration < b.N; iteration++ {
-				compactToolHistory(messages, len(messages), nil)
+				compactedFixture(messages, len(messages), nil)
 			}
 		})
 	}
@@ -1138,4 +1138,10 @@ func TestAFailedFilingFallsToTheJournalWithoutSpinning(t *testing.T) {
 	if again := agent.fullResultPointer(message, place); again != first {
 		t.Fatalf("the second answer moved: %q then %q", first, again)
 	}
+}
+
+// compactedFixture is [Agent.compactToolHistory] for a test that has no agent:
+// a fresh one per call, so no test can be handed another test's memo.
+func compactedFixture(messages []ai.Message, frozen int, source resultSource) []ai.Message {
+	return (&Agent{}).compactToolHistory(messages, frozen, source)
 }

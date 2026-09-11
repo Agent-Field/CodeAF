@@ -56,7 +56,6 @@ import (
 	"unicode"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
-	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -394,42 +393,42 @@ const (
 	senseWatchPrompt  = "Describe this video: what happens, on-screen text, speech content, style."
 )
 
-// senseOneShot is runVision's shape as a tool result: ONE CALL, ONE ANSWER, and
-// nothing of this conversation in it.
+// senseOneShot is one rung of a sense asking one model, THROUGH THE BELT'S ONE
+// DOOR FOR THAT (toolask.go). Everything a tool-made model call owes — the tag
+// that names it in the log, the phase the person reads, the ceiling on the
+// answer, the bound on the wait, the bill folded into the session — is that
+// door's, said once there rather than four times here.
 //
-// No system prompt, no transcript, no tools. The model is being asked what is in
-// a file, not being made a second agent with a second memory of this session —
-// and the file's bytes never enter the transcript, so the chat model does not
-// carry a megabyte of base64 on every step of every turn after this one.
+// What this adds is the SENTENCE the person and the model see while it runs:
+// `read` is one verb over four kinds of file, so the phase has to say which
+// sense is being used and on what — `looking at shot.png` and `listening to
+// memo.m4a` are different waits and a person watching should be able to tell.
+func (a *Agent) senseOneShot(ctx context.Context, model, doing, prompt string, attachment ai.ContentPart) (string, error) {
+	return a.askModel(ctx, toolAsk{
+		tool: "read", doing: doing, model: model, prompt: prompt, part: attachment,
+	})
+}
+
+// senseDoing is what a person reads while one of these runs: the verb for the
+// sense and the file it is about, in a person's own words.
 //
-// The usage folds into the SESSION total and never the turn's
-// ([Agent.addAuxiliaryUsage]), the same treatment the title, the compaction
-// summary and read_document's rungs get, and for the same reason: the person
-// pays for it, but no turn of theirs ran on that model.
-func (a *Agent) senseOneShot(ctx context.Context, model, prompt string, attachment ai.ContentPart) (string, error) {
-	message := ai.Message{Role: "user", Content: []ai.ContentPart{
-		{Type: "text", Text: prompt},
-		attachment,
-	}}
-	// It is an ERRAND and says so: the answer is a tool result rather than the
-	// room's reply, and the bill above already puts it in the session's pocket
-	// rather than the turn's (internal/lane's roles.go).
-	response, err := a.completeWithModel(
-		provider.WithRole(ctx, lane.RoleAuxiliary), []ai.Message{message}, model)
-	if response != nil {
-		a.addAuxiliaryUsage(response, model, 1)
+// THE VERBS COME FROM THE SENSE AND NOT FROM A LIST OF NAMES. Each kind of file
+// already carries which sense it needs ([senseKind]), so the word is read off
+// that rather than off the extension or the model — which is what keeps a format
+// added to the table tomorrow from arriving with no word at all.
+func senseDoing(kind senseKind, shown string) string {
+	verb := ""
+	switch kind {
+	case senseImage:
+		verb = "looking at"
+	case senseAudio:
+		verb = "listening to"
+	case senseVideo:
+		verb = "watching"
+	default:
+		return ""
 	}
-	if err != nil {
-		return "", err
-	}
-	answer := ""
-	if response != nil {
-		answer = strings.TrimSpace(response.Text())
-	}
-	if answer == "" {
-		return "", fmt.Errorf("no answer")
-	}
-	return answer, nil
+	return verb + " " + filepath.Base(shown)
 }
 
 func dataURL(mediaType string, data []byte) string {
@@ -461,9 +460,8 @@ func (a *Agent) imageSense(ctx context.Context, memo *senseMemo, shown, absolute
 		return cached.note + piReadLaw(a.resultCaps(), cached.text, offset, limit), false, nil
 	}
 
-	answer, err := a.senseOneShot(ctx, seer, senseImagePrompt, ai.ContentPart{
-		Type: "image_url", ImageURL: &ai.ImageURLData{URL: dataURL(entry.mediaType, data)},
-	})
+	answer, err := a.senseOneShot(ctx, seer, senseDoing(senseImage, shown), senseImagePrompt,
+		ai.ContentPart{Type: "image_url", ImageURL: &ai.ImageURLData{URL: dataURL(entry.mediaType, data)}})
 	if err != nil {
 		return fmt.Sprintf("could not look at %s — %s: %s", shown, seer, oneLineReason(err.Error())), true, nil
 	}
@@ -563,11 +561,10 @@ func (a *Agent) audioSense(ctx context.Context, memo *senseMemo, shown, absolute
 	}
 
 	if listener != "" {
-		answer, err := a.senseOneShot(ctx, listener, senseListenPrompt, ai.ContentPart{
-			Type: "input_audio", InputAudio: &ai.InputAudioData{
+		answer, err := a.senseOneShot(ctx, listener, senseDoing(senseAudio, shown), senseListenPrompt,
+			ai.ContentPart{Type: "input_audio", InputAudio: &ai.InputAudioData{
 				Data: base64.StdEncoding.EncodeToString(data), Format: entry.format,
-			},
-		})
+			}})
 		if err == nil {
 			reading := senseReading{note: senseNote("audio", listener), text: answer}
 			memo.put(key, reading)
@@ -663,9 +660,8 @@ func (a *Agent) videoSense(ctx context.Context, memo *senseMemo, shown, absolute
 		return cached.note + piReadLaw(a.resultCaps(), cached.text, offset, limit), false, nil
 	}
 
-	answer, err := a.senseOneShot(ctx, watcher, senseWatchPrompt, ai.ContentPart{
-		Type: "video_url", VideoURL: &ai.VideoURLData{URL: dataURL(entry.mediaType, data)},
-	})
+	answer, err := a.senseOneShot(ctx, watcher, senseDoing(senseVideo, shown), senseWatchPrompt,
+		ai.ContentPart{Type: "video_url", VideoURL: &ai.VideoURLData{URL: dataURL(entry.mediaType, data)}})
 	if err != nil {
 		return fmt.Sprintf("could not watch %s — %s: %s", shown, watcher, oneLineReason(err.Error())), true, nil
 	}
