@@ -152,6 +152,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why can I not answer the question on this task page", "questions"},
 		{"how do I group chats", "collections"},
 		{"where do I file a task", "collections"},
+		// Two aforge commands on one collections database: the words somebody
+		// types after they have seen the refusal, not the words it is written in.
+		{"collections database is locked", "collections"},
+		{"two aforge commands writing collections at the same time", "collections"},
 		// Lanes behind a base of the person's own: the question the hostname gate
 		// (issue #373) used to answer wrongly, in the three ways it gets asked.
 		{"do lanes work with a custom base url", "lanes"},
@@ -170,6 +174,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// meet it: reading the figure, and finding it beside the call log.
 		{"what does the total at the end of aforge do include", "models-and-cost"},
 		{"why is the printed cost different from the call log", "models-and-cost"},
+		// A refused headless run names the project it worked in, asked in the two
+		// ways somebody meets an empty file list after spending time and money.
+		{"the run finished and my directory is empty where did the work go", "running-from-the-terminal"},
+		{"aforge do spent money and wrote no files", "running-from-the-terminal"},
 		// And the reader itself: a person with a log in front of them wants one
 		// call out of it, or wants the rows a program can read.
 		{"find one call in the log", "models-and-cost"},
@@ -437,6 +445,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// visible answer.
 		{"why is home empty over ssh", "places"},
 		{"someone else is typing", "staying-on-that-machine"},
+		{"why does aforge take ten seconds to start", "staying-on-that-machine"},
+		{"my conversation says it ends with this terminal", "staying-on-that-machine"},
+		{"aforge home path too long", "staying-on-that-machine"},
+		{"state folder is a longer path than a socket may be named in", "staying-on-that-machine"},
 		{"how fast is the connection", "screen"},
 		// The two live figures on the working block. People ask for them as
 		// "upload and download", as "the arrows", and as the question they are

@@ -62,7 +62,7 @@ const (
 	placeName = "workspace"
 )
 
-// socketLimit is the most bytes a unix socket path may weigh.
+// SocketLimit is the most bytes a unix socket path may weigh.
 //
 // It is 104 rather than Linux's own 108 because THE SMALLEST LIMIT IS THE ONE
 // THAT TRAVELS: macOS stops at 104, the same aforge home can be shared over a
@@ -70,12 +70,24 @@ const (
 // for a reason nobody could see would be worse than one honest refusal
 // everywhere. Exceeding it is not a fault — AFORGE_HOME can be anywhere — so it
 // is answered as "no host today" and the caller falls back to the pipe.
-const socketLimit = 104
+const SocketLimit = 104
+
+// ErrSocketPathTooLong is a state root deeper than a unix socket may be named
+// in, and it is the one failure on this road that is settled BEFORE anything
+// is started: no lock, no process, no wait. The caller can therefore name this
+// refusal separately from a host that had somewhere to listen but did not come
+// up.
+var ErrSocketPathTooLong = errors.New("engine host: the state path is too long for a socket")
+
+// ErrNoHostAnswered is a host that had somewhere to listen but did not answer
+// before the birth wait ran out. It stays distinct from [ErrSocketPathTooLong]
+// so the caller can tell a failed start from one that was never possible.
+var ErrNoHostAnswered = errors.New("engine host: no host answered")
 
 // SocketPathFits exposes the shared Unix-socket ceiling to other doors that
 // place a socket under the aforge state root. Keeping the number here prevents
 // ssh control sockets and engine-host sockets from drifting across platforms.
-func SocketPathFits(path string) bool { return len(path) <= socketLimit }
+func SocketPathFits(path string) bool { return len(path) <= SocketLimit }
 
 // Dir is where the host for one workspace keeps its socket: a directory under
 // ~/.aforge/v3/hosts, resolved through internal/home so AFORGE_HOME moves it
@@ -125,7 +137,7 @@ func SocketPath(workspace string) (string, error) {
 	}
 	socket := filepath.Join(dir, socketName)
 	if !SocketPathFits(socket) {
-		return "", fmt.Errorf("engine host: %s is too long a path for a socket", socket)
+		return "", fmt.Errorf("%s is too long a path for a socket: %w", socket, ErrSocketPathTooLong)
 	}
 	return socket, nil
 }
@@ -165,6 +177,14 @@ const spawnWait = 10 * time.Second
 // Every failure answers the same way: no connection and a reason, which the
 // caller reads as "serve this one on the pipe".
 func Attach(workspace string, spawn func() error) (net.Conn, error) {
+	// A PATH A SOCKET CAN NEVER BE NAMED IN IS ANSWERED BEFORE ANYTHING IS
+	// STARTED. Every other failure here is worth a spawn and a wait, because a
+	// host that is not there yet may be there in a second; this one cannot be —
+	// the host would be born unable to listen and die into its own log while
+	// this launch paid the whole [spawnWait] for a question already answered.
+	if _, err := SocketPath(workspace); err != nil {
+		return nil, err
+	}
 	if conn, err := Dial(workspace); err == nil {
 		return conn, nil
 	}
@@ -198,7 +218,7 @@ func waitForHost(workspace string, within time.Duration) (net.Conn, error) {
 			return conn, nil
 		}
 		if time.Now().After(deadline) {
-			return nil, errors.New("engine host: no host answered")
+			return nil, ErrNoHostAnswered
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -332,17 +352,30 @@ func Stop(workspace string) (bool, error) {
 // process asking for it is `aforge engine` under sshd, and when the connection
 // drops sshd takes down everything in that session's process group — which is
 // exactly the death this package exists to survive. So the child gets a session
-// of its own ([detach]) and none of the parent's pipes: its stdout is the one
-// thing that must never carry a stray byte, because a host's stdout is nothing
-// at all and its parent's is the protocol.
-func Spawn(name string, args ...string) error {
+// of its own ([detach]) and none of the parent's input or output: its stdout is
+// the one thing that must never carry a stray byte, because a host's stdout is
+// nothing at all and its parent's is the protocol.
+//
+// STDERR IS THE ONE PIPE THAT LEAVES LAST WORDS BEHIND. A host that dies at
+// birth is the one process that knew the reason, and sending that reason to
+// /dev/null made the failure unknowable; it appends to the same host log that a
+// running [Host] writes, with /dev/null as the best-effort fallback when that
+// log cannot be opened.
+func Spawn(workspace, name string, args ...string) error {
 	null, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
 	if err != nil {
 		return fmt.Errorf("engine host: %w", err)
 	}
 	defer null.Close()
+	stderr := io.Writer(null)
+	if dir, err := where(workspace); err == nil {
+		if log, err := os.OpenFile(filepath.Join(dir, logName), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
+			defer log.Close()
+			stderr = log
+		}
+	}
 	command := exec.Command(name, args...)
-	command.Stdin, command.Stdout, command.Stderr = null, null, null
+	command.Stdin, command.Stdout, command.Stderr = null, null, stderr
 	detach(command)
 	if err := command.Start(); err != nil {
 		return fmt.Errorf("engine host: %w", err)
