@@ -3087,12 +3087,16 @@ func (a *app) questionWriting() bool {
 // question: what the box means now, which answer the words go with, and the
 // way back. It replaces the keys, because the keys are letters and every
 // letter types while this row is up.
-// IT IS `?` ALONE NOW. `c` used to point the box here too, and the owner's
-// ruling of 2026-09-11 (your own answer, pick A) gave changing an answer a row
-// of its own on the panel instead — so the one thing left that writes to a
-// question through the composer is asking the asker back, where there is no
-// answer to attach the words to.
+// TWO KEYS REACH IT NOW AND NOT FOUR. `?` asks the asker back, where there is
+// no answer to attach the words to; `c` reaches it only on a question that asked
+// for WORDS, where there is no `something else…` row to write them in — the
+// owner's ruling of 2026-09-11 (your own answer, pick A) gave every other
+// question that row instead, and the row says which answer the words go with
+// rather than a sentence three rows below the pointer.
 func (a *app) questionWritingRow(q questionShown) string {
+	if q.writing == questionCommentKey {
+		return questionCommentKeyWord + questionWritingGap + "esc back"
+	}
 	return questionAskBackKeyWord + questionWritingGap + "the question stays open" + questionWritingGap + "esc back"
 }
 
@@ -3448,7 +3452,11 @@ func (a *app) questionVerbKey(head questionShown, key string) (tea.Cmd, bool) {
 		// the MESSAGE BOX at the question instead, which was a mode nothing on
 		// screen had named, and it was the reason a person could not find how to
 		// write an answer at all.
-		if open := a.questionHeld(head.token()); open != nil && a.questionTakesOther(*open) {
+		open := a.questionHeld(head.token())
+		if open == nil {
+			return nil, false
+		}
+		if a.questionTakesOther(*open) {
 			if at := open.pick; at >= 0 && at < len(open.question.Options) {
 				open.other.with = questionOptionKeyAt(open.question, at)
 			}
@@ -3456,7 +3464,16 @@ func (a *app) questionVerbKey(head questionShown, key string) (tea.Cmd, bool) {
 			a.touch()
 			return nil, true
 		}
-		return nil, false
+		// AND WHERE THE ANSWER IS ALREADY TYPED INTO THE MESSAGE BOX, `c` POINTS
+		// THAT BOX AT THE QUESTION. A question that asked for words
+		// ([session.InputText]) has no `something else…` row to move to — its own
+		// answer IS a sentence, the composer is where sentences are written on
+		// this surface, and the row above it says so while it is armed
+		// ([app.questionWritingRow]). One key, one meaning: "I am about to say
+		// this in my own words".
+		open.writing = questionCommentKey
+		a.touch()
+		return nil, true
 	case questionAskBackKey:
 		if head.commented != nil {
 			// A LANE WHOSE BOX IS NOT THE BOX IS TOLD ([questionShown.commented]).

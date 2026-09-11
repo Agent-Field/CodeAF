@@ -2287,13 +2287,23 @@ func TestTheHintSlotFollowsTheStateAndIsEmptyAtRest(t *testing.T) {
 	}
 	a.pick.open = false
 
-	// A call parked on a person offers the keys that answer it — the SAME keys
-	// the question block draws, which is what makes the hint safe to act on and
-	// is why the slot is DERIVED from the question rather than spelled here
-	// (question.go's [app.questionHint]).
+	// A call parked on a person says NOTHING here while the block above the box
+	// is drawing its own keys (owner ruling 2026-09-11, hints pick A): the slot
+	// three rows under the panel repeating the panel's keys, in its own order,
+	// was the owner's "the hint line names keys that are not there".
 	a.entries = append(a.entries, entry{kind: entryTool, tool: "bash", status: toolConsent})
 	raiseAsk(a, 7, "bash")
-	hint := a.hintWord()
+	if hint := a.hintWord(); strings.Contains(hint, "allow once") {
+		t.Fatalf("the slot is re-listing the answers the block draws: %q", hint)
+	}
+	// AND THE DERIVATION IS STILL ONE DERIVATION, for the places that DO say the
+	// answers from outside the block — home's narrow foot, and a question the
+	// chip alone is carrying (question.go's [app.questionHintOn]).
+	head, ok := a.questionHead()
+	if !ok {
+		t.Fatal("the question is not open")
+	}
+	hint := a.questionHintOn(head)
 	for _, want := range []string{"1 allow once", "3 deny", "2 always", "esc later"} {
 		if !strings.Contains(hint, want) {
 			t.Fatalf("the consent hint %q is missing %q", hint, want)
