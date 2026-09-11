@@ -12,10 +12,16 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/paymentrefusal"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/trace"
 )
 
 const keyModelSources = "model_sources"
+
+const (
+	PlanPausedWait     = "wait"
+	PlanPausedUseMeter = "use pay-as-you-go"
+)
 
 // PersistedSource is one non-default service in the profile. Address is kept
 // only for custom services; a vendored row derives it from its region.
@@ -26,6 +32,13 @@ type PersistedSource struct {
 	Address string `json:"address,omitempty"`
 	Key     string `json:"key,omitempty"`
 	KeyEnv  string `json:"key_env,omitempty"`
+	// Door is the billing road explicitly proved at connect time. Empty belongs
+	// to a pre-door row and resolves to its old metered address, never to a new
+	// subscription road that has not been proved for that key.
+	Door string `json:"door,omitempty"`
+	// PlanPaused is the person's per-service answer. Empty is wait, preserving
+	// the fixed-price account unless they deliberately opt into metered spend.
+	PlanPaused string `json:"when_plan_paused,omitempty"`
 	// Listed records what the service itself answered at connect time. Nil is an
 	// older row that still follows the vendored hint; false and true override it.
 	Listed *bool `json:"listed,omitempty"`
@@ -63,6 +76,10 @@ func WriteSources(profileDir string, rows []PersistedSource) error {
 		row.Written = strings.TrimSpace(row.Written)
 		row.Region = strings.TrimSpace(row.Region)
 		row.KeyEnv = strings.TrimSpace(row.KeyEnv)
+		row.Door = strings.TrimSpace(row.Door)
+		if strings.TrimSpace(row.PlanPaused) != PlanPausedUseMeter {
+			row.PlanPaused = ""
+		}
 		if row.ID != "custom" {
 			row.Address = ""
 		} else {
@@ -130,10 +147,17 @@ func resolveSources(defaultKey, defaultBase string, rows []PersistedSource, keyA
 				source.Listing = modelsource.ListingNone
 			}
 		}
+		door := resolvedSourceDoor(row, source)
 		address := resolvedSourceAddress(row, source)
+		var overflow *modelsource.Door
+		if metered, ok := source.MeteredDoor(); ok && door.ID != "" && !door.Metered {
+			metered.Address = resolvedDoorAddress(row, source, metered)
+			overflow = &metered
+		}
 		source.Address = address
 		connected = append(connected, modelsource.Connected{
 			Source: source, Key: keyAt(row, source), Address: address,
+			Door: door, Overflow: overflow, PlanPaused: resolvedPlanPaused(row),
 		})
 	}
 	return modelsource.NewSet(connected...)
@@ -143,12 +167,63 @@ func resolvedSourceAddress(row PersistedSource, source modelsource.Source) strin
 	if source.ID == "custom" {
 		return strings.TrimRight(strings.TrimSpace(row.Address), "/")
 	}
+	if door := resolvedSourceDoor(row, source); door.ID != "" {
+		return resolvedDoorAddress(row, source, door)
+	}
+	return resolvedRegionAddress(row, source)
+}
+
+func resolvedRegionAddress(row PersistedSource, source modelsource.Source) string {
+	if address := selectedRegionAddress(row, source); address != "" {
+		return address
+	}
+	return strings.TrimRight(strings.TrimSpace(source.Address), "/")
+}
+
+func selectedRegionAddress(row PersistedSource, source modelsource.Source) string {
 	for _, region := range source.Regions {
 		if strings.EqualFold(strings.TrimSpace(region.ID), strings.TrimSpace(row.Region)) {
 			return strings.TrimRight(strings.TrimSpace(region.Address), "/")
 		}
 	}
-	return strings.TrimRight(strings.TrimSpace(source.Address), "/")
+	return ""
+}
+
+func resolvedSourceDoor(row PersistedSource, source modelsource.Source) modelsource.Door {
+	for _, door := range source.Doors {
+		if strings.EqualFold(strings.TrimSpace(door.ID), strings.TrimSpace(row.Door)) {
+			door.Address = resolvedDoorAddress(row, source, door)
+			return door
+		}
+	}
+	// A row connected before billing doors existed was on the metered region.
+	// Keeping it there is both backward compatibility and the money law: a
+	// reload may not silently move an account to a different billing product.
+	if strings.TrimSpace(row.Door) == "" {
+		for _, door := range source.Doors {
+			if door.Metered {
+				door.Address = resolvedDoorAddress(row, source, door)
+				return door
+			}
+		}
+	}
+	return modelsource.Door{}
+}
+
+func resolvedDoorAddress(row PersistedSource, source modelsource.Source, door modelsource.Door) string {
+	if door.Metered {
+		if region := selectedRegionAddress(row, source); region != "" {
+			return region
+		}
+	}
+	return strings.TrimRight(strings.TrimSpace(door.Address), "/")
+}
+
+func resolvedPlanPaused(row PersistedSource) string {
+	if strings.TrimSpace(row.PlanPaused) == PlanPausedUseMeter {
+		return PlanPausedUseMeter
+	}
+	return PlanPausedWait
 }
 
 // ConnectService proves a key and says what it reaches, and writes nothing on
@@ -185,6 +260,9 @@ func ConnectService(ctx context.Context, profileDir string, row PersistedSource,
 	}
 	if src.KeyShape != nil && !src.KeyShape(key) {
 		return modelsource.Outcome{Kind: modelsource.OutcomeWrongShape}, nil
+	}
+	if len(src.Doors) > 1 {
+		return connectServiceDoors(ctx, profileDir, row, src, key)
 	}
 	address := resolvedSourceAddress(row, src)
 	listing := src.Probe
@@ -248,12 +326,93 @@ func ConnectService(ctx context.Context, profileDir string, row PersistedSource,
 	return modelsource.Outcome{Kind: modelsource.OutcomeConnected}, nil
 }
 
+func connectServiceDoors(ctx context.Context, profileDir string, row PersistedSource, src modelsource.Source, key string) (modelsource.Outcome, error) {
+	probe := src.DoorProbe()
+	if probe.Method == "" || probe.Address == "" {
+		return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, nil
+	}
+	lastWords := ""
+	unanswered := false
+	for _, door := range src.OrderedDoors(key) {
+		address := resolvedDoorAddress(row, src, door)
+		status, body, answered := runServiceProbe(ctx, address, key, probe)
+		if !answered {
+			unanswered = true
+			continue
+		}
+		classification := paymentrefusal.Classify(status, body)
+		if classification == paymentrefusal.NoPlan || classification == paymentrefusal.Payment {
+			lastWords = withoutExactSecret(vendorWords(body), key)
+			continue
+		}
+		if classification == paymentrefusal.WindowExhausted {
+			// A spent window proves this door: the key authenticated and the plan
+			// exists. Walking onward would make a paid probe and persist a metered
+			// binding even though the person's setting still says wait.
+			return connectAtDoor(ctx, profileDir, row, src, key, door, true, paymentrefusal.ResetAt(body))
+		}
+		if !acceptsStatus(probe.Accepts, status) {
+			return modelsource.Outcome{Kind: modelsource.OutcomeRefused, VendorSaid: withoutExactSecret(vendorWords(body), key)}, nil
+		}
+
+		return connectAtDoor(ctx, profileDir, row, src, key, door, false, "")
+	}
+	if lastWords != "" && !unanswered {
+		return modelsource.Outcome{Kind: modelsource.OutcomeAccountCannotPay, VendorSaid: lastWords}, nil
+	}
+	return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, nil
+}
+
+func connectAtDoor(ctx context.Context, profileDir string, row PersistedSource, src modelsource.Source, key string, door modelsource.Door, paused bool, reset string) (modelsource.Outcome, error) {
+	address := resolvedDoorAddress(row, src, door)
+	row.Door = door.ID
+	outcome := modelsource.Outcome{
+		Kind: modelsource.OutcomeConnected, Door: door,
+		PlanPaused: paused, PlanReset: strings.TrimSpace(reset),
+	}
+	if metered, ok := src.MeteredDoor(); ok && !door.Metered {
+		metered.Address = resolvedDoorAddress(row, src, metered)
+		outcome.Overflow = &metered
+	}
+	if len(door.Models) > 0 {
+		listed := true
+		row.Listed = &listed
+		outcome.Listed = true
+		outcome.ModelIDs = append([]string(nil), door.Models...)
+		outcome.Models = len(outcome.ModelIDs)
+	} else if listing := src.Probe; listing.Method != "" || listing.Address != "" {
+		listStatus, listBody, listAnswered := runServiceProbe(ctx, address, key, listing)
+		if listAnswered && acceptsStatus(listing.Accepts, listStatus) {
+			if listed, ok := listedOutcome(listBody); ok {
+				outcome = listed
+				outcome.Door = door
+				outcome.PlanPaused = paused
+				outcome.PlanReset = strings.TrimSpace(reset)
+				if metered, found := src.MeteredDoor(); found && !door.Metered {
+					metered.Address = resolvedDoorAddress(row, src, metered)
+					outcome.Overflow = &metered
+				}
+				value := true
+				row.Listed = &value
+			}
+		} else if listAnswered && listingIsAbsent(listStatus) {
+			value := false
+			row.Listed = &value
+		}
+	}
+	if err := persistConnectedSource(profileDir, row); err != nil {
+		return modelsource.Outcome{}, err
+	}
+	return outcome, nil
+}
+
 func runServiceProbe(ctx context.Context, address, key string, probe modelsource.Probe) (int, []byte, bool) {
 	request, err := http.NewRequestWithContext(ctx, probe.Method, strings.TrimRight(address, "/")+probe.Address, bytes.NewBufferString(probe.Body))
 	if err != nil {
 		return 0, nil, false
 	}
 	request.Header.Set("Accept", "application/json")
+	request.Header.Set("User-Agent", provider.DirectUserAgent)
 	if probe.Body != "" {
 		request.Header.Set("Content-Type", "application/json")
 	}

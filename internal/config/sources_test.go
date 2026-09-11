@@ -150,6 +150,7 @@ func TestAListingWinsEvenWhenTheBillableProbeCannotBePaid(t *testing.T) {
 	server.RefuseCompletion(http.StatusTooManyRequests, `{"code":"1113","message":"Insufficient balance or no resource package. Please recharge."}`)
 	source := vendoredSource(t, "z-ai")
 	source.Address = server.URL()
+	source.Doors = nil
 	row := PersistedSource{ID: source.ID, Written: source.Written, Key: "zai-key", Order: 1}
 	dir := t.TempDir()
 	outcome, err := ConnectService(context.Background(), dir, row, source, nil)
@@ -173,6 +174,7 @@ func TestAListinglessProbeConnectsWithoutInventingACount(t *testing.T) {
 	server.Listingless()
 	source := vendoredSource(t, "z-ai")
 	source.Address = server.URL()
+	source.Doors = nil
 	row := PersistedSource{ID: source.ID, Written: source.Written, Key: "zai-key", Order: 1}
 	outcome, err := ConnectService(context.Background(), t.TempDir(), row, source, nil)
 	if err != nil || outcome.Kind != modelsource.OutcomeConnected || outcome.Listed || outcome.Models != 0 {
@@ -194,6 +196,7 @@ func TestAPaymentRefusalAcceptsTheKeyAndStoresTheAccount(t *testing.T) {
 	server.RefuseCompletion(http.StatusTooManyRequests, `{"code":"1113","message":"Insufficient balance or no resource package. Please recharge."}`)
 	source := vendoredSource(t, "z-ai")
 	source.Address = server.URL()
+	source.Doors = nil
 	dir := t.TempDir()
 	outcome, err := ConnectService(context.Background(), dir, PersistedSource{
 		ID: source.ID, Written: source.Written, Key: "zai-key", Order: 1,
@@ -205,6 +208,168 @@ func TestAPaymentRefusalAcceptsTheKeyAndStoresTheAccount(t *testing.T) {
 	rows := PersistedSources(dir)
 	if len(rows) != 1 || rows[0].Key != "zai-key" || rows[0].Listed == nil || *rows[0].Listed {
 		t.Fatalf("authenticated account was not stored as listing-less: %+v", rows)
+	}
+}
+
+func twoDoorSource(t *testing.T, plan, metered *sourcestub.Server) modelsource.Source {
+	t.Helper()
+	source := vendoredSource(t, "z-ai")
+	source.Doors = []modelsource.Door{
+		{ID: "coding-plan", Name: "coding plan", Address: plan.URL(), Models: []string{"glm-5.3-flash"}},
+		{ID: "metered", Name: "pay-as-you-go", Address: metered.URL(), Metered: true},
+	}
+	source.Probe.Timeout = 100 * time.Millisecond
+	return source
+}
+
+func TestAPlanKeyBindsToThePlanDoor(t *testing.T) {
+	t.Setenv("ZHIPU_API_KEY", "")
+	plan, metered := sourcestub.New("too-wide"), sourcestub.New("metered")
+	defer plan.Close()
+	defer metered.Close()
+	metered.RefuseCompletion(http.StatusTooManyRequests, `{"code":"1113","message":"empty"}`)
+	dir := t.TempDir()
+	outcome, err := ConnectService(context.Background(), dir, PersistedSource{
+		ID: "z-ai", Written: "z-ai", Key: "plan-test-key", Order: 1,
+	}, twoDoorSource(t, plan, metered), nil)
+	if err != nil || outcome.Kind != modelsource.OutcomeConnected || outcome.Door.ID != "coding-plan" ||
+		!reflect.DeepEqual(outcome.ModelIDs, []string{"glm-5.3-flash"}) {
+		t.Fatalf("plan outcome = %+v, %v", outcome, err)
+	}
+	if len(plan.Requests()) != 1 || len(metered.Requests()) != 0 || plan.Requests()[0].Agent != provider.DirectUserAgent {
+		t.Fatalf("requests: plan=%d metered=%d", len(plan.Requests()), len(metered.Requests()))
+	}
+	rows := PersistedSources(dir)
+	if len(rows) != 1 || rows[0].Door != "coding-plan" {
+		t.Fatalf("bound row = %+v", rows)
+	}
+}
+
+func TestAnExhaustedWindowBindsThePlanAndDoesNotSpendAMeteredProbe(t *testing.T) {
+	t.Setenv("ZHIPU_API_KEY", "")
+	plan, metered := sourcestub.New("too-wide"), sourcestub.New("metered")
+	defer plan.Close()
+	defer metered.Close()
+	plan.RefuseCompletion(http.StatusTooManyRequests, `{"code":"1316","message":"Usage limit reached for the past 5 hours. Your limit will reset at 18:30 UTC"}`)
+	dir := t.TempDir()
+	outcome, err := ConnectService(context.Background(), dir, PersistedSource{
+		ID: "z-ai", Written: "z-ai", Key: "paused-plan-test-key", Order: 1,
+	}, twoDoorSource(t, plan, metered), nil)
+	if err != nil || outcome.Kind != modelsource.OutcomeConnected || outcome.Door.ID != "coding-plan" ||
+		!outcome.PlanPaused || outcome.PlanReset != "18:30 UTC" || outcome.Overflow == nil || !outcome.Overflow.Metered {
+		t.Fatalf("paused plan outcome = %+v, %v", outcome, err)
+	}
+	// A spent window proves the key authenticated and the plan exists. Treating
+	// it as a refusal would buy a metered probe and persist that paid road while
+	// the person's setting still says wait.
+	if len(plan.Requests()) != 1 || len(metered.Requests()) != 0 {
+		t.Fatalf("paused connection spent elsewhere: plan=%d metered=%d", len(plan.Requests()), len(metered.Requests()))
+	}
+	if rows := PersistedSources(dir); len(rows) != 1 || rows[0].Door != "coding-plan" || rows[0].PlanPaused != "" {
+		t.Fatalf("paused plan binding = %+v", rows)
+	}
+}
+
+func TestAKeyWithNoPlanFallsBackToPayAsYouGo(t *testing.T) {
+	t.Setenv("ZHIPU_API_KEY", "")
+	plan, metered := sourcestub.New(), sourcestub.New("glm-5.3-flash")
+	defer plan.Close()
+	defer metered.Close()
+	plan.RefuseCompletion(http.StatusTooManyRequests, `{"code":"1309","message":"plan expired"}`)
+	dir := t.TempDir()
+	outcome, err := ConnectService(context.Background(), dir, PersistedSource{
+		ID: "z-ai", Written: "z-ai", Key: "metered-test-key", Order: 1,
+	}, twoDoorSource(t, plan, metered), nil)
+	if err != nil || outcome.Kind != modelsource.OutcomeConnected || outcome.Door.ID != "metered" || outcome.Models != 1 {
+		t.Fatalf("metered outcome = %+v, %v", outcome, err)
+	}
+	if len(plan.Requests()) != 1 || len(metered.Requests()) != 2 {
+		t.Fatalf("requests: plan=%d metered=%d", len(plan.Requests()), len(metered.Requests()))
+	}
+	if rows := PersistedSources(dir); len(rows) != 1 || rows[0].Door != "metered" {
+		t.Fatalf("bound row = %+v", rows)
+	}
+}
+
+func TestEveryDoorRefusingIsStillCannotPay(t *testing.T) {
+	t.Setenv("ZHIPU_API_KEY", "")
+	plan, metered := sourcestub.New(), sourcestub.New()
+	defer plan.Close()
+	defer metered.Close()
+	plan.RefuseCompletion(http.StatusTooManyRequests, `{"code":"1311","message":"model is not in this plan"}`)
+	metered.RefuseCompletion(http.StatusTooManyRequests, `{"code":"1113","message":"Please recharge."}`)
+	dir := t.TempDir()
+	outcome, err := ConnectService(context.Background(), dir, PersistedSource{
+		ID: "z-ai", Written: "z-ai", Key: "refused-test-key", Order: 1,
+	}, twoDoorSource(t, plan, metered), nil)
+	if err != nil || outcome.Kind != modelsource.OutcomeAccountCannotPay || outcome.VendorSaid != "Please recharge." {
+		t.Fatalf("refused outcome = %+v, %v", outcome, err)
+	}
+	if len(PersistedSources(dir)) != 0 {
+		t.Fatal("every refused door still stored a service")
+	}
+}
+
+func TestABadKeyDoesNotWalkEveryDoor(t *testing.T) {
+	t.Setenv("ZHIPU_API_KEY", "")
+	plan, metered := sourcestub.New(), sourcestub.New()
+	defer plan.Close()
+	defer metered.Close()
+	plan.RefuseCompletion(http.StatusUnauthorized, `{"error":{"message":"token expired or incorrect"}}`)
+	outcome, err := ConnectService(context.Background(), t.TempDir(), PersistedSource{
+		ID: "z-ai", Written: "z-ai", Key: "bad-test-key", Order: 1,
+	}, twoDoorSource(t, plan, metered), nil)
+	if err != nil || outcome.Kind != modelsource.OutcomeRefused || outcome.VendorSaid != "token expired or incorrect" {
+		t.Fatalf("bad-key outcome = %+v, %v", outcome, err)
+	}
+	if len(plan.Requests()) != 1 || len(metered.Requests()) != 0 {
+		t.Fatalf("bad key walked doors: plan=%d metered=%d", len(plan.Requests()), len(metered.Requests()))
+	}
+}
+
+func TestOnlyAnExplicitReconnectRebindsTheDoor(t *testing.T) {
+	t.Setenv("ZHIPU_API_KEY", "")
+	plan, metered := sourcestub.New(), sourcestub.New("glm-5.3-flash")
+	defer plan.Close()
+	defer metered.Close()
+	source := twoDoorSource(t, plan, metered)
+	dir := t.TempDir()
+	row := PersistedSource{ID: "z-ai", Written: "z-ai", Key: "reconnect-test-key", Order: 1}
+	if outcome, err := ConnectService(context.Background(), dir, row, source, nil); err != nil || outcome.Door.ID != "coding-plan" {
+		t.Fatalf("first connection = %+v, %v", outcome, err)
+	}
+	plan.RefuseCompletion(http.StatusTooManyRequests, `{"code":"1309","message":"plan expired"}`)
+	before, ok := ResolveSources(dir, "", "").ByID("z-ai")
+	if !ok || before.Door.ID != "coding-plan" || before.Address != "https://api.z.ai/api/coding/paas/v4" {
+		t.Fatalf("reload silently rebound the door: %+v, found=%t", before, ok)
+	}
+	row = PersistedSources(dir)[0]
+	reconnectSource := before.Source
+	reconnectSource.Doors = source.Doors
+	if outcome, err := ConnectService(context.Background(), dir, row, reconnectSource, nil); err != nil || outcome.Door.ID != "metered" {
+		t.Fatalf("explicit reconnect = %+v, %v", outcome, err)
+	}
+	after, ok := ResolveSources(dir, "", "").ByID("z-ai")
+	if !ok || after.Door.ID != "metered" || after.Address != "https://api.z.ai/api/paas/v4" {
+		t.Fatalf("reconnected source = %+v, found=%t", after, ok)
+	}
+}
+
+func TestAOneDoorServiceIsUnchanged(t *testing.T) {
+	t.Setenv("DEEPSEEK_API_KEY", "")
+	server := sourcestub.New("deepseek-chat")
+	defer server.Close()
+	source := vendoredSource(t, "deepseek")
+	source.Address = server.URL()
+	outcome, err := ConnectService(context.Background(), t.TempDir(), PersistedSource{
+		ID: source.ID, Written: "deepseek-direct", Key: "sk-direct-1234567890", Order: 1,
+	}, source, nil)
+	if err != nil || outcome.Kind != modelsource.OutcomeConnected || outcome.Door.ID != "" || outcome.Models != 1 {
+		t.Fatalf("one-door outcome = %+v, %v", outcome, err)
+	}
+	requests := server.Requests()
+	if len(requests) != 1 || requests[0].Method != http.MethodGet {
+		t.Fatalf("one-door requests = %+v", requests)
 	}
 }
 
@@ -333,6 +498,7 @@ func TestNoServiceKeyReachesTheRecordWhateverItsShape(t *testing.T) {
 	server.Listingless()
 	source := vendoredSource(t, "z-ai")
 	source.Address = server.URL()
+	source.Doors = nil
 	row := PersistedSource{ID: "z-ai", Written: "z-ai", Order: 1}
 	outcome, err := ConnectService(context.Background(), dir, row, source, nil)
 	if err != nil || outcome.Kind != modelsource.OutcomeConnected {
@@ -356,6 +522,7 @@ func TestARefusalCannotEchoTheSubmittedKey(t *testing.T) {
 	server.Refuse(401, `{"error":{"message":"account `+key+` has no credit"}}`)
 	source := vendoredSource(t, "z-ai")
 	source.Address = server.URL()
+	source.Doors = nil
 	outcome, err := ConnectService(context.Background(), t.TempDir(), PersistedSource{
 		ID: "z-ai", Written: "z-ai", Key: key, Order: 1,
 	}, source, nil)
