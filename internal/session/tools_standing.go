@@ -268,7 +268,7 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"does":{"type":"object","description":"What a firing does. Every waking kind needs one; a hold takes NONE, and sending one with a hold is refused.","properties":{` +
 	`"kind":{"type":"string","enum":["say","task"],"description":"say delivers one line to the person: into this conversation when it is open, else whichever conversation of this project they are in, else waiting on home and in the next one they open. task runs its instructions in a session of its own, unattended, with a cost row."},` +
 	`"say":{"type":"string","description":"The line to deliver. {{evidence}} in it is replaced by what the probe found."},` +
-	`"instructions":{"type":"string","description":"THE WORK one run does, written whole: nobody will be there to ask. {{evidence}} is replaced by what the probe found."},` +
+	`"instructions":{"type":"string","description":"THE WORK one run does, written whole: nobody will be there to ask. With does.report, say what the report holds and never to write the file or make its folder: the run can only read, and its final answer is published. {{evidence}} is replaced by what the probe found."},` +
 	`"report":{"type":"string","description":"Only when they asked for a file kept current: its path inside the project. Each run's final answer IS the report, and aforge publishes it there, replacing the last one; the run never writes it. Never inside what when.glob watches."},` +
 	`"acceptance":{"type":"string","description":"How anybody checks the work is done."},` +
 	`"model":{"type":"string","description":"Model for the work, only when the person named one."},` +
@@ -757,6 +757,12 @@ func standingWhen(parsed standArguments, now time.Time) (standing.When, string) 
 		}
 	case standing.WhenFile:
 		when.Glob = strings.TrimSpace(parsed.When.Glob)
+		// The terminal door's own words for the same watch, as a fallback the
+		// model's when_words replace: a card and a record that said nothing
+		// about when a watch wakes are a watch nobody can check.
+		if when.Glob != "" {
+			when.Words = standing.WatchWords(when.Glob)
+		}
 	case standing.WhenIdle:
 		idle, err := time.ParseDuration(strings.TrimSpace(parsed.When.IdleFor))
 		if err != nil {

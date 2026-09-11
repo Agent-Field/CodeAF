@@ -358,7 +358,7 @@ func TestRealChatDoorJourney(t *testing.T) {
 	}
 	item := chat.chatItem(t)
 	t.Logf("LIVE ITEM %s when=%+v does.report=%q instructions=%q", item.ID, item.When, item.Does.Report, item.Does.Brief)
-	if item.When.Kind != standing.WhenFile || item.Does.Kind != standing.ActionTask || item.Does.Report != "reports/inbox-report.md" || item.SpecRevision != 1 {
+	if item.When.Kind != standing.WhenFile || item.When.Words == "" || card.WhenWords == "" || item.Does.Kind != standing.ActionTask || item.Does.Report != "reports/inbox-report.md" || item.SpecRevision != 1 {
 		t.Fatalf("the model's item is not the inbox report work: %+v", item)
 	}
 	if card.Terms[1] != "report · reports/inbox-report.md — aforge publishes this file; the run never writes it" ||

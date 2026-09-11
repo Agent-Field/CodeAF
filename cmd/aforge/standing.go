@@ -360,7 +360,7 @@ func standingWhenFlags(watch, every string) (standing.When, error) {
 		if _, err := filepath.Match(watch, "probe"); err != nil {
 			return standing.When{}, fmt.Errorf("--watch %q is not a pattern this can read: %w", watch, err)
 		}
-		return standing.When{Kind: standing.WhenFile, Glob: watch, Words: "when " + watch + " changes"}, nil
+		return standing.When{Kind: standing.WhenFile, Glob: watch, Words: standing.WatchWords(watch)}, nil
 	case every != "":
 		if _, err := standing.ParseEvery(every); err != nil {
 			return standing.When{}, err
