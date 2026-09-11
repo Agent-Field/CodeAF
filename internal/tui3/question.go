@@ -817,6 +817,14 @@ func (a *app) questionRows(width int) []string {
 	if width < 1 {
 		return nil
 	}
+	if a.questionOffFrame() {
+		// A QUESTION IS DRAWN WHERE IT CAN BE ANSWERED AND NOWHERE ELSE — the
+		// drawing half of the rule [app.questionOffFrame] states for keys. The
+		// start page keeps the chrome under it, so without this the approval
+		// block sat at the foot of that page offering `allow once` to a
+		// keyboard that belonged to the page (#677).
+		return nil
+	}
 	out := make([]string, 0, 8)
 	for _, record := range a.questionRecordsShown() {
 		out = append(out, a.questionRecordRow(record, width))
@@ -2683,6 +2691,17 @@ func (a *app) questionKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // own door. A room is deliberately not on it: a room keeps the chrome under it,
 // which is exactly why the block is the only place a design's page is answered
 // from now (harnesscard.go).
+//
+// THE START PAGE IS ON IT, AND IT IS #677 (sev:critical). A shell command was
+// waiting for approval; `ctrl+t` opened the new-chat page and `hello there`
+// typed into its box left `here` in it — the `t` had granted the tool for the
+// whole session and `sleep 300` ran. `esc`, which that page's own legend offers
+// as "keeps the chat you were in", denied a task proposal behind it instead.
+// The page holds a half-written first message, so a question arriving must not
+// take it down (that is the half home does not have); the other half of home's
+// rule is exactly this one — A QUESTION IS ANSWERED WHERE IT IS DRAWN AND
+// NOWHERE ELSE. It is not cancelled, the tab still wears `?`, and every key
+// comes back with the conversation the moment the page is closed.
 func (a *app) questionOffFrame() bool {
 	return a.startingChat() || a.pasteEdit.open || a.setup.open || a.showing() != nil ||
 		a.jobPageOpen() || a.rewSheet.open || a.deck.open || a.expandShowing()
