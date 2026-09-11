@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -467,5 +468,29 @@ func TestAMoveByEditNamesTheFolderToTakeItOutOf(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the refusal does not name %q: %q", want, text)
 		}
+	}
+}
+
+// TestAnEditNamedByTheirWordsFindsTheItem is three of five live lifecycle runs
+// of 2026-09-11 (W5-A): the model sent op edit with the item's own sentence in
+// words and no id — as it does for pause and stop, and as stand's description
+// says all four take "an id or the person's own words" — and was refused for
+// the missing id. An edit is named the way the other three are.
+func TestAnEditNamedByTheirWordsFindsTheItem(t *testing.T) {
+	d := newChatDoor(t, &scriptedCompleter{steps: []step{standCall("s1", inboxWork(nil)), finalText("set up")}}, nil)
+	d.proposeInbox(t, d.yes)
+	item := d.only(t)
+	edit, _ := json.Marshal(map[string]any{"op": "edit", "words": item.Words, "does": map[string]any{"instructions": "Read the changed files in inbox/ and list each request with who owns it."}})
+	d.agent.client = &scriptedCompleter{steps: []step{standCall("s2", string(edit)), finalText("changed")}}
+	events := d.submitAnswering(t, "also list who owns each request", d.yes)
+	if out := toolOutput(t, events, "stand"); !strings.HasPrefix(out, "revised "+item.ID+" to version 2: instructions") {
+		t.Fatalf("an edit named by its words answered %q", out)
+	}
+	if after := d.only(t); after.ID != item.ID || after.SpecRevision != 2 {
+		t.Fatalf("the edit did not revise the item: %+v", after)
+	}
+	log, _ := os.ReadFile(d.store.LogPath(item.ID))
+	if strings.Contains(string(log), "— "+strconv.Quote(item.Words)) {
+		t.Fatalf("the item's own sentence was logged as the words of the change: %q", log)
 	}
 }
