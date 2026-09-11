@@ -4468,6 +4468,13 @@ its chips — you do not have to notice it. And where the model's last message a
 about that task, the chips are the answer surface for that question: its words above, the
 chips under them, one ask rather than two.
 
+**Work that lands as aforge's turn is ending is held for the turn that reads it.** The turn
+it arrived after never saw it, so that turn's end does not hand it back; the next turn
+reads it, and the question comes back when that one ends. Work no turn can read — the
+conversation has closed, or the task it reported to was stopped first — is yours again at
+once. And `d` on a card that already reads
+`aforge is deciding` changes nothing and sends aforge nothing further.
+
 **And closing aforge ends the turn too.** If you quit, crash or come back to the
 conversation later, a task aforge was deciding is yours again the moment the conversation
 opens — the card draws its chips rather than the `aforge is deciding` row, because the turn
