@@ -140,10 +140,9 @@ type folderListing struct {
 	// subdirectories (folderfiles.go).
 	files []folderFile
 	err   error
-	// cut marks a directory whose rows were bounded at [folderRowsCap]. It is
-	// SAID on the foot rather than hidden, because a person looking for a name
-	// that is not on screen needs to know whether it is absent or merely beyond
-	// the bound.
+	// cut marks a directory whose rows were bounded at [folderRowsCap]. Nothing
+	// reads it yet, so the current pane stops without announcing whether a name
+	// is absent or merely beyond the bound.
 	cut bool
 	// done marks an answer that has arrived, so an empty list that IS the answer
 	// is told apart from a level nobody has read yet.

@@ -48,8 +48,8 @@ type folderFile struct {
 // half a million entries in it is a directory nobody scrolls, and holding every
 // name would be this surface spending a person's memory on rows they will never
 // reach. The bound is generous — five thousand is far past what anybody pages
-// through — and the fact that it was reached is SAID rather than hidden
-// ([folderListing.cut] and [folderCutWord]).
+// through. [folderListing.cut] records that it was reached, but nothing draws
+// that fact yet.
 const folderRowsCap = 5000
 
 // folderSizeCap is how many files this browser will stat for their sizes. Two
@@ -57,8 +57,8 @@ const folderRowsCap = 5000
 // visible wait for a column of numbers nobody asked for.
 const folderSizeCap = 2000
 
-// folderCutWord is what the foot says about a directory whose rows were
-// bounded. It is a constant because the manual quotes it exactly.
+// folderCutWord is written for a directory whose rows were bounded. Nothing
+// draws it yet, so no page may quote it as something a person sees.
 const folderCutWord = "more of this folder is not shown"
 
 // rows is how many rows this listing offers — the directories and then the

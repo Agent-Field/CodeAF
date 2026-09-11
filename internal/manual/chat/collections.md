@@ -22,6 +22,12 @@ task numbers repeat across conversations. You can file the same task in several
 collections alongside related chats and files. Filing does not move, copy, start
 or stop the task; its original conversation still owns its execution.
 
+The conversation ID is the 16-hex name of the folder holding its journal at
+`~/.aforge/v3/projects/<the workspace path with its separators turned to dashes>/<id>/transcript.jsonl`;
+it is the same ID the transcript header carries, and `AFORGE_HOME` moves the root.
+`aforge collections show <collection-id>` prints the IDs already filed back to you.
+There is no command that lists conversation IDs.
+
 ## Creating, listing and renaming collections
 
 Run `aforge collections` or `aforge collections list` to list collections.
