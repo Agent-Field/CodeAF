@@ -255,6 +255,10 @@ type CheckRun struct {
 	Command string
 	Passed  bool
 	Tail    string
+	// Unread says why this check was not started. NOBODY LOOKED IS A FACT, AND A
+	// FACT ABOUT THE RUN REACHES THE RECORD: it is neither a pass nor a failure,
+	// and an empty value means the command was read normally.
+	Unread string
 	// Failures carries stable identities read from a failed command's own
 	// output. Empty remains honest for a non-test validation or output the
 	// generic reader cannot parse: the command is red, but what failed is unknown.
@@ -571,6 +575,11 @@ func (r Remains) attributableRed() []string {
 func (r Remains) redChecks() []string {
 	var out []string
 	for _, check := range r.Checks {
+		// A CHECK NOBODY STARTED IS NOT A CHECK THAT FAILED. Its reason travels
+		// on the reading and is named at the ending instead.
+		if check.Unread != "" {
+			continue
+		}
 		if !check.Passed {
 			out = append(out, check.Command)
 		}
@@ -589,7 +598,7 @@ func (r Remains) newCheckFailures() []CheckRun {
 	}
 	var fresh []CheckRun
 	for _, run := range r.Checks {
-		if run.Passed || unread[run.Command] {
+		if run.Passed || run.Unread != "" || unread[run.Command] {
 			continue
 		}
 		names, changed := verify.NewCommandFailure(old[run.Command], r.WasFailingTests[run.Command], run.Failures)
@@ -854,6 +863,7 @@ type Steward struct {
 	// ending seams. The network call runs outside this lock; closing the channel
 	// publishes the frozen result to every waiter.
 	deliveryReading chan struct{}
+	checkMemory     checkMemories
 
 	// wall and money are the CEILINGS; started and spent are how the figures
 	// against them are read. spent is a closure onto the session's own
