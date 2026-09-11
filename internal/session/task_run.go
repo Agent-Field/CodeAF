@@ -784,6 +784,15 @@ type TaskNode struct {
 	// [TaskNode.givesBackLocked] so a hand-back leaves no receipt behind
 	// (task_audit.go's [TaskNode.wasHandedOver] states the whole rule).
 	handed bool
+	// handPress numbers the presses that have handed this node over, and it is
+	// the ticket each one's note carries (task_audit.go's [handOverTicket]).
+	// handUnread says the current press's note is still waiting for a request to
+	// carry it — on the steering queue, or drained into the transcript at a turn's
+	// end with the next turn not yet asking — and it is what keeps the end-of-turn
+	// floor off a question the turn that is ending never read
+	// ([Agent.handBackUnsettled]). Both live in memory only, for [handed]'s reason.
+	handPress  uint64
+	handUnread bool
 	// stopReason is what whoever pulled the stop said they were stopping it FOR,
 	// and "" for every stop that came with no words — which is every one a person
 	// pulls, their card being a decision and not a sentence (cancel.go). It is
@@ -4070,6 +4079,15 @@ func (a *Agent) handBackUnsettled() {
 	for _, id := range graph.order {
 		node := graph.nodes[id]
 		if node == nil || node.decider != TaskAskOwnerModel || !a.readsTheDecisionLocked(node) {
+			continue
+		}
+		// AND ONLY A QUESTION THIS TURN WAS ASKED. A press whose note no request
+		// has carried arrived after this turn's last one went out; the end of this
+		// turn is about to drain it and start the turn that reads it, and that
+		// turn's end is the one that gives it back (task_audit.go's
+		// [handOverTicket]). Checked here, under the lock the write is made under,
+		// because the press can land at any instant up to this one.
+		if node.handUnread {
 			continue
 		}
 		node.givesBackLocked()

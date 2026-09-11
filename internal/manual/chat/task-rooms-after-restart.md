@@ -172,7 +172,7 @@ answering one yourself is how you take the question back, and anything aforge wa
 say it may still say.
 
 **And it comes back to you by itself.** A task never stays unowned past the end of a turn:
-if aforge's turn ends with the question still unanswered, the decision moves back to you
+if the aforge turn that read it ends with the question unanswered, the decision moves back to you
 and the card draws its chips, whether or not you noticed it had been handed over. Where
 aforge's last message asked you something about that task, those chips are the answer
 surface for that question — its words above, the chips below, one ask.
