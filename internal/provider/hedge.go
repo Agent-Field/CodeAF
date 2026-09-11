@@ -1360,8 +1360,22 @@ func (r *hedgeRace) walkAvailable() bool {
 // So there is nothing here about lanes, arms or the purse. A door that can hand
 // a refusal to an open race hands it over; whether another machine is worth
 // asking is the race's question and it is asked at the moment it is acted on.
-// The only refusals it declines are the ones nobody can answer: a race that has
-// already won, and a ladder that has already been climbed.
+//
+// ── ONE HANDOFF PER QUESTION, AND THE SECOND DOOR CLIMBS ────────────────────
+//
+// A race takes ONE refusal. A later door finding the commitment already made is
+// told no and climbs the ladder itself, which is not a fallback — it is the
+// better of the two, because that door holds the shape of the request that has
+// just been refused and the race holds only the first one. The walk arm of the
+// measured ceiling race demands one machine; its own door drops that demand on
+// rung one and is answered, where a ladder restarted from the primary's capped
+// body pays an extra rung to arrive at the same place.
+//
+// AND THE PROMISE IS STILL KEPT EITHER WAY. If that second door never comes —
+// the arm dies of a 429, which is not a routing refusal and reaches no door at
+// all, exactly as the 2026-09-10 race did — the ladder this call took is climbed
+// by [hedgeRace.exhausted] when every arm has ended. What cannot happen is the
+// old shape: two doors both relying on a prediction, and nobody climbing.
 //
 // The latest body is kept: it is the router's most recent account of this
 // question, which is what a ladder that runs out quotes.
@@ -1371,7 +1385,7 @@ func (r *hedgeRace) takeRefusal(body []byte) bool {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.winner >= 0 || r.ladderRan {
+	if r.winner >= 0 || r.ladderRan || r.ladderOwed {
 		return false
 	}
 	r.ladderOwed = true

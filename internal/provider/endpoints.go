@@ -626,7 +626,7 @@ func (c *Client) recoverFromRefusal(
 	plan := c.relaxationPlan(request, knobs, model)
 	total := len(plan)
 	if total == 0 {
-		return nil, c.refusalError(request, knobs, model, nil, nil, 1, first)
+		return nil, c.refusalError(request, knobs, model, nil, 1, first)
 	}
 
 	last := first
@@ -666,7 +666,7 @@ func (c *Client) recoverFromRefusal(
 		last = payload
 	}
 
-	return nil, c.refusalError(request, knobs, model, stripped, nil, attempt+1, last)
+	return nil, c.refusalError(request, knobs, model, stripped, attempt+1, last)
 }
 
 // widenPastTheUncarriedPreference is the ONE retry that finds out whether a
@@ -789,7 +789,7 @@ func (c *Client) widenPastTheRetiredPin(
 		payload = first
 	}
 	return nil, c.refusalError(request, knobs, c.modelFor(request),
-		[]string{rung(relaxEndpointFilter).name}, nil, 2, payload)
+		[]string{rung(relaxEndpointFilter).name}, 2, payload)
 }
 
 // attemptShaped sends one shaped attempt and separates the two outcomes the
@@ -907,8 +907,6 @@ type RefusalError struct {
 	Params []string
 	// Stripped is what the chain took off, in the order it did.
 	Stripped []string
-	// Tried is the fallback models attempted after the ladder ran out.
-	Tried []string
 	// Attempts is how many requests were sent in total, the first one included.
 	Attempts int
 	// Refusal is the provider's own last words, kept whole so nothing this
@@ -928,9 +926,6 @@ func (e *RefusalError) Error() string {
 	if len(e.Stripped) > 0 {
 		out.WriteString("; retried without " + strings.Join(e.Stripped, ", then without "))
 	}
-	if len(e.Tried) > 0 {
-		out.WriteString("; also tried " + strings.Join(e.Tried, ", "))
-	}
 	if e.Refusal != nil && strings.TrimSpace(e.Refusal.Message) != "" {
 		out.WriteString(`. the provider said: "` + strings.TrimSpace(e.Refusal.Message) + `"`)
 	}
@@ -942,15 +937,19 @@ func (e *RefusalError) Error() string {
 // carried rather than a general suggestion. What a person can do about this is
 // always one of two things — send less, or ask somebody else — and the sentence
 // says which "less" is available on this particular call.
+//
+// IT NO LONGER NAMES OTHER MODELS, because this layer no longer tries any. The
+// diagnosis is about the request's SHAPE — what it carried and what came off —
+// and the model is the turn's to move (internal/session's nextFallback). A third
+// branch here used to say "none of the fallbacks could serve it either", which
+// was a sentence about a walk this ladder made on a budget nobody above it could
+// see; the layer that hops now says what it tried, in its own words, because it
+// is the layer that knows (loop.go's alsoTried).
 func (e *RefusalError) advice() string {
-	switch {
-	case len(e.Stripped) == 0:
+	if len(e.Stripped) == 0 {
 		return "try a different model, or a different base URL if this one is not a router"
-	case len(e.Tried) > 0:
-		return "try a different model with /model — none of the fallbacks could serve it either"
-	default:
-		return "try a different model with /model, or set models.fallbacks so this can move on its own"
 	}
+	return "try a different model with /model, or set models.fallbacks so this can move on its own"
 }
 
 // Unwrap keeps the provider's refusal reachable, so a caller that classifies
@@ -974,7 +973,7 @@ func (c *Client) refusalError(
 	request *ai.Request,
 	knobs callKnobs,
 	model string,
-	stripped, tried []string,
+	stripped []string,
 	attempts int,
 	payload []byte,
 ) error {
@@ -982,7 +981,6 @@ func (c *Client) refusalError(
 		Model:    model,
 		Params:   c.sentParams(request, knobs, model),
 		Stripped: stripped,
-		Tried:    tried,
 		Attempts: attempts,
 	}
 	if decoded, ok := apiError(http.StatusNotFound, payload).(*APIError); ok {

@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -465,6 +466,12 @@ func Evidence(err error) taxonomy.Evidence {
 	// reading THAT as an emptied set would send the caller round it again to be
 	// told the same thing.
 	evidence.Routing = RoutingRefusal(err)
+	// AND A SPENT LADDER IS A BUDGET RATHER THAN A CLASS. [RoutingRefusal] answers
+	// false for one on purpose — there is no machine and no shape left HERE — and
+	// that is a different sentence from "nothing was learned", which is what the
+	// boundary needs. Both are true at once and each is said once.
+	var ladder *RefusalError
+	evidence.Spent = errors.As(err, &ladder)
 	evidence.Account = evidence.Routing && refusal.Account
 	evidence.Withdrawn = refusal.Withdrawn
 	evidence.Unserved = accountUnserved(refusal.Status)

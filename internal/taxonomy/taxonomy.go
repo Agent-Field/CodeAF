@@ -20,7 +20,7 @@
 // None of those is a judgement about the work, and until this package none of
 // them could be told apart from one.
 //
-// ── THE THREE CLASSES ───────────────────────────────────────────────────────
+// ── THE FOUR CLASSES ────────────────────────────────────────────────────────
 //
 // [Transport] is the wire: nobody answered, or somebody answered with something
 // that was not an answer. It is retried on the SAME tier with the endpoint
@@ -32,9 +32,16 @@
 // after [Limits.SemanticFailures] of them, under a cost cap, and it comes back
 // down again the moment a check passes.
 //
-// [Work] is the work: the job could not be done, or the request itself is what
-// is wrong. There is nothing to retry and nothing to buy, so this package takes
-// no action at all and hands the verdict to the caller with the evidence on it.
+// [Work] is the work: the job could not be done. There is nothing to retry and
+// nothing to buy, so this package takes no action at all and hands the verdict to
+// the caller with the evidence on it.
+//
+// [Shape] is the REQUEST: a transcript longer than the model's window, or bytes
+// the router itself read and refused. It joined the other three on 2026-09-10,
+// and what stood where it belongs was a pair of regexes in internal/session's
+// turn loop that ran over the provider's prose AFTER the verdict was computed and
+// returned before the verdict could be read. Its moves are real — make the
+// request smaller, or change its shape — which is why it is not [Work].
 //
 // ── ONE BOUNDARY, NOT A SWITCH IN EVERY CALLER ──────────────────────────────
 //
@@ -250,6 +257,21 @@ type Evidence struct {
 	// [Work]: compaction that did not fit is a request that is not going to fit,
 	// and asking for it twice is a loop.
 	Compacted bool
+
+	// Spent says the TRANSPORT'S OWN SHAPE LADDER has been climbed and has run
+	// out: the price ceiling dropped, the reasoning knob off, the output cap off,
+	// the tools off, and the router still refusing (internal/provider's
+	// [provider.RefusalError]).
+	//
+	// IT IS A BUDGET THAT IS GONE AND NOT A JUDGEMENT. Nothing about the work has
+	// been learned and nothing about the model has; what has been established is
+	// that no SHAPE of this request will be served, which leaves exactly one move
+	// — another model — and that move belongs to the caller. So it is Transport
+	// with its budget declared spent, never [Work]: a turn that reads it as the
+	// work ends with the router's own sentence on the screen while a chain the
+	// person configured sits unasked, which is the failure
+	// docs/design/recovery/DESIGN.md §5 is written about.
+	Spent bool
 
 	// Unserved says THE ACCOUNT could not be served at all: no key, a key this
 	// model is not permitted, a balance that ran out. It arrives as a 401, a 402
@@ -530,6 +552,12 @@ func classOf(e Evidence) Class {
 	// ([transportPolicy.Decide]) — the person has to act — but a task node that
 	// died on it must not be charged for the job (#513).
 	if e.Unserved {
+		return Transport
+	}
+	// AND A SPENT SHAPE LADDER IS THE WIRE WITH ONE MOVE LEFT, for the reason
+	// [Evidence.Spent] states: every shape of this request has been refused, which
+	// is a fact about who can serve it and not about the job.
+	if e.Spent {
 		return Transport
 	}
 	switch {

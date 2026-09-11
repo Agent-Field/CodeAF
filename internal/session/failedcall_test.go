@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -170,6 +171,17 @@ func TestATurnWhoseLastCallErroredIsNotReopened(t *testing.T) {
 	completer := &scriptedCompleter{steps: brokenSteps(checkpointMarkAt(2), &remainsAsks,
 		func(context.Context, []ai.Message) (*ai.Response, error) { return nil, refusal })}
 	agent := checkpointAgent(t, completer)
+	// AND THE LADDER IS WALKED AT A TEST'S SPEED. An upstream's own 4xx is the
+	// wire — another machine behind the same model may serve it — so the turn
+	// spends its transport budget on it with 2s, 4s and 8s between the rungs.
+	// That is the product's schedule and it is not what this test is about; what
+	// this test is about is what happens AFTER the ladder runs out.
+	//
+	// It used to end on the first refusal, and not because anything decided it
+	// should: the turn loop matched the sentence against `isRetryable`, found
+	// nothing, and returned — over the top of a verdict that had already read the
+	// same failure as the wire (loop.go's deleted regex).
+	impatient(t, agent, taxonomy.DefaultTransportAttempts)
 	stubbedGraph(agent, func(node *TaskNode) {})
 
 	events, err := agent.Submit(context.Background(), "port the language server and get the golden tests passing")

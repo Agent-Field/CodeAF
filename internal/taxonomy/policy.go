@@ -117,6 +117,15 @@ func (transportPolicy) Decide(e Evidence, l Limits) Verdict {
 	if e.Unserved {
 		return Verdict{Action: ActionReport, Reason: ReasonUnauthorized, Attempts: spent}
 	}
+	// AND A SPENT SHAPE LADDER HAS NO ATTEMPTS LEFT TO SPEND EITHER. The transport
+	// has already sent this question in every shape it has; asking again buys the
+	// identical diagnosis, and the only move left is the caller's own chain.
+	if e.Spent {
+		if e.FallbackAvailable {
+			return Verdict{Action: ActionHop, Reason: ReasonUnservable, Attempts: spent}
+		}
+		return Verdict{Action: ActionGiveUp, Reason: ReasonUnservable, Attempts: spent}
+	}
 	if spent < allowed {
 		return Verdict{
 			Action:   ActionRetry,
@@ -245,6 +254,8 @@ func transportReason(e Evidence) string {
 		return ReasonWithdrawn
 	case e.Unserved:
 		return ReasonUnauthorized
+	case e.Spent:
+		return ReasonUnservable
 	case e.Empty:
 		return ReasonEmpty
 	case e.Malformed:
@@ -290,6 +301,7 @@ const (
 	ReasonUnreached    = "the request did not reach anybody"
 	ReasonWithdrawn    = "the model is no longer carried"
 	ReasonUnauthorized = "this account could not be served"
+	ReasonUnservable   = "no shape of this request could be served"
 	ReasonOverflow     = "the request did not fit"
 	ReasonTooBig       = "the request did not fit even after it was shortened"
 	ReasonOurBytes     = "the request itself could not be served"
