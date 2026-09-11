@@ -224,7 +224,7 @@ func TestTheHintSlotNamesTheAlwaysKeyOnlyWhereItWouldAct(t *testing.T) {
 	if strings.Contains(hint, "always") {
 		t.Fatalf("the slot promised a key the block above it refused: %q", hint)
 	}
-	for _, want := range []string{"y allow", "n deny"} {
+	for _, want := range []string{"1 allow once", "3 deny"} {
 		if !strings.Contains(hint, want) {
 			t.Fatalf("the slot lost %q with it: %q", want, hint)
 		}
@@ -235,7 +235,7 @@ func TestTheHintSlotNamesTheAlwaysKeyOnlyWhereItWouldAct(t *testing.T) {
 	memo.Memo = true
 	_, b := wired([]session.Event{toolBegin("bash", "bash make vet"), memo})
 	typeLine(t, b, "go on")
-	if hint := b.legendRight(b.width); !strings.Contains(hint, "a always") {
+	if hint := b.legendRight(b.width); !strings.Contains(hint, "2 always") {
 		t.Fatalf("an ordinary question lost its always key: %q", hint)
 	}
 }

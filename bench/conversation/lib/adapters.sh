@@ -503,8 +503,22 @@ arm_tui_argv() {
       # --max-hours is set inside the rig's own cap so the session ends on its
       # own law and writes its ending before the driver stops watching.
       local hours; hours="$(python3 -c "print(round(max($cap - 60, 60) / 3600, 4))")"
-      ARM_READY_RE='· idle'
-      ARM_BUSY_RE='(· (working|interrupted)|[0-9]+ running)'
+      # THE SEPARATOR IS NOT PART OF THE MARKER. This was `· idle`, and on
+      # 2026-09-10 — after the seven-panel home landed — a fresh screen drew the
+      # state word at the right edge of the status row with nothing in front of
+      # it, so the needle matched nothing and every interactive aforge cell
+      # recorded `unsupported` at the ready wait. Measured on the Spark that
+      # day: `followup-while-working` and `work-result-recalled` both ended
+      # `noready` after 91s against a pane whose last line read `idle`.
+      #
+      # That is the rot #184 named, in this suite instead of the e2e one: a
+      # calibration regex is a claim about a person-facing string, and a
+      # respelling ends the measurement without ending the run. Both spellings
+      # are accepted now — the old one wherever the separator is still drawn,
+      # and the word at the end of its own line otherwise — so no historical
+      # row changes meaning and a screen that goes back to the dot still reads.
+      ARM_READY_RE='(· idle|idle[[:space:]]*$)'
+      ARM_BUSY_RE='(· (working|interrupted)|(working|interrupted)[[:space:]]*$|[0-9]+ running)'
       ARM_ASK_RE='waiting · your call'
       ARM_DOOR_NOTE='markers from internal/tui3/render.go (stateWord, waitingWord), matched against a live pane in /private/tmp/af-conversation-ops/host-live-01'
       # Hosted, like any other conversation: the interactive door is the one

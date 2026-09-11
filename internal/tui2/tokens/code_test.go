@@ -126,7 +126,7 @@ func TestCodeSlotNames(t *testing.T) {
 // TestProseGlyphsShareTheirBytes is the anti-drift pin the file comment
 // promises: each prose glyph is a NAMED SLOT over a byte the vocabulary already
 // ships, and the two must never become two different marks for one meaning —
-// the same argument blocks.CutMark's twin test makes.
+// the same byte cannot silently acquire two meanings.
 func TestProseGlyphsShareTheirBytes(t *testing.T) {
 	for _, pair := range []struct{ name, prose, twin string }{
 		{"bullet", GlyphProseBullet, GlyphSeparator},

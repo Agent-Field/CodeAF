@@ -522,7 +522,7 @@ func (a *app) openSession(chosen Session) (tea.Cmd, string) {
 	// of the person who asked for it. The previous conversation is already ended,
 	// by the engine, as part of the swap (internal/remote's Session.swap).
 	if leaving != nil && !a.shared {
-		leaving.Interrupt()
+		leaving.InterruptFor(session.StopByLeaving)
 		if err := leaving.Close(); err != nil {
 			a.note("close failed: " + err.Error())
 		}
@@ -829,6 +829,15 @@ func (a *app) welcomeFits() bool {
 	if !a.welcome.open {
 		return false
 	}
+	// AND NEVER UNDER A QUESTION SOMEBODY OPENED OUT (questionroom.go). The
+	// greeting is a unit drawn in the MIDDLE of the frame and the question's page
+	// is the body region, so the two would be drawn through each other — which is
+	// exactly the reason the start page is answered in [app.bodyRows] rather than
+	// in the draw alone. A question raised on the first turn of a session is not
+	// rare: it is the ladder working.
+	if a.questionRoomOpen() {
+		return false
+	}
 	return a.welcomeRoom()
 }
 
@@ -837,8 +846,22 @@ func (a *app) welcomeFits() bool {
 // for would put a person in front of a hidden unit with the conversation behind
 // it already put away (chatstart.go).
 func (a *app) welcomeRoom() bool {
-	width, height := a.size()
-	return height >= welcomeMinRows && width >= welcomeMinCols
+	width, _ := a.size()
+	return a.welcomeRowsLeft() >= welcomeMinRows && width >= welcomeMinCols
+}
+
+// welcomeRowsLeft is the height the greeting may spend: the frame LESS THE HEAD
+// over it (head.go).
+//
+// THE UNIT IS DRAWN UNDER THE HEAD, SO IT IS MEASURED UNDER IT. Its floors and its
+// recent list were sized against the whole terminal while the head over it was
+// one row or none; the head is the places' four rows now, and a greeting that
+// did not know would be three rows taller than the frame on a sixteen-row
+// terminal — cut off at the bottom, with the strip above it answering a click
+// on a row that was no longer the strip.
+func (a *app) welcomeRowsLeft() int {
+	_, height := a.size()
+	return height - a.topHeight()
 }
 
 // welcomeHolds reports whether the message box is drawn INSIDE the unit this
@@ -973,9 +996,17 @@ func (a *app) welcomeUnit(width int) ([]string, []welcomeMark, int, int) {
 		// restored draft six rows tall in a twelve-row window would push the
 		// wordmark off the top, so the box gets what is left after the rest of
 		// the unit and the status row have taken theirs.
-		_, height := a.size()
-		box := max(1, min(draftRows, height-a.statusHeight(width)-8))
-		block, x, row := draftBlockWithTags(&a.input, pal, unit, box, "", a.roomLead(unit), a.input.demotedTags)
+		box := max(1, min(draftRows, a.welcomeRowsLeft()-a.statusHeight(width)-8))
+		// AND A SECRET IS MASKED WHEREVER THE BOX IS DRAWN. The greeting lifts
+		// the real draft into the middle of the frame, and a question asking for
+		// a credential is answered in exactly that box — so the one rule about
+		// never drawing a key back has to be read here too (input.go's
+		// [app.secretDraftBlock]). It was not, and a key typed on a conversation
+		// nobody had spoken in yet went onto the screen in the clear.
+		block, x, row := a.secretDraftBlock(unit)
+		if block == nil {
+			block, x, row = draftBlockWithTags(&a.input, pal, unit, box, "", a.roomLead(unit), a.input.demotedTags)
+		}
 		caretX, caretRow = lead+x, len(rows)+row
 		for _, line := range block {
 			add(line, welcomeMark{kind: welcomeRowInput})
@@ -1016,8 +1047,7 @@ func (a *app) welcomeUnit(width int) ([]string, []welcomeMark, int, int) {
 	// the list is cut to what fits with a row of slack to spare, and a list that
 	// would fit no row at all is not drawn — its heading is a label earned by a
 	// real row, never a row spent on absence.
-	_, height := a.size()
-	spare := height - a.statusHeight(width) - len(rows) - 1
+	spare := a.welcomeRowsLeft() - a.statusHeight(width) - len(rows) - 1
 	shown := min(len(w.recent), spare-2)
 	if shown > 0 {
 		add("", welcomeMark{})

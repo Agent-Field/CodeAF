@@ -32,7 +32,8 @@ thirty-six blank rows and both `/help` and `/manual` were below the fold. It is 
 floor now: on a tall terminal the whole table is on the screen at once, on a short one the
 list is clamped so the status line and a row of conversation survive, and the list scrolls
 under the cursor either way. **Where rows are still hidden the list says how many**, in the
-same `▸ 25 more` line the search place and the spend place draw. At phone width fewer rows
+same `▸ 25 more` spelling the search place and the spend place draw, though there it is
+a door and here it is only a count. At phone width fewer rows
 show, each with its description on its own line. Rows highlight under the mouse pointer,
 but a click does not run a row — this list has no mouse commit.
 
@@ -186,7 +187,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/model` | — | `<slug>` | switches the model to that slug |
 | `/image` | — | `<path>` | attaches a picture; tab completes the path |
 | `/settings` | `/set`, `/config` | — | opens the fullscreen settings panel (also ctrl+,) |
-| `/connect` | `/connections` | — | opens the connected-accounts panel |
+| `/connect` | `/connections` | — | opens the connection panel; its `models` group holds model services, followed by connected accounts |
 | `/new` | `/clear`, `/clean`, `/reset` | — | closes this session and starts a fresh one |
 | `/resume` | `/sessions` | — | opens the earlier-conversations picker |
 | `/compact` | — | — | summarizes the conversation now |
@@ -217,8 +218,8 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/history` | — | — | opens the full-screen tasks place — every task this machine has run, filterable (also ctrl+.) |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/status` | `/info`, `/context` | `--json` | prints the same facts as one JSON object, keys in the same order |
-| `/search` | — | — | opens the search place — everything said on this machine (also `alt+6`) |
-| `/spend` | — | — | opens the spend place — what this machine has cost, by the day (also `alt+5`) |
+| `/search` | — | — | opens the search place — everything said on this machine (also `alt+7`) |
+| `/spend` | — | — | opens the spend place — what this machine has cost, by the day (also `alt+3`) |
 | `/cost` | `/usage`, `/tokens` | — | prints what this conversation has spent, and on what |
 | `/budget` | `/limits` | — | what aforge may spend · every limit on one tab |
 | `/budget` | `/limits` | `<amount>` | sets the day's limit · `none` removes it |
@@ -323,7 +324,7 @@ with a fresh agent and a fresh session file.
 
 **It adds one rather than closing this one.** The conversation you were in is left open
 behind it — still streaming its turn, still running its tasks — and `tab` over an empty
-message box goes back. The status line then reads `2 open`.
+message box goes back. The **tab strip** above the transcript then shows both.
 
 **The one exception is a conversation nobody has used yet**: no transcript, no turn ever
 run, nothing out and nothing waiting. That one is closed and replaced, because closing it
@@ -342,9 +343,11 @@ It ends with a note that says which of the two happened: `new conversation · <p
 when it added one, and `new session · <path>` — or just `new session` with no file — when
 it replaced a fresh empty one.
 
-**How many conversations are already open is never a reason to refuse.** There is no cap:
-the ninth and the fiftieth `/new` open exactly like the first, and the one you were in is
-left running. Nothing closes one for you — that is what `/quit` is for.
+**How many conversations are already open is never a reason to refuse.** The ninth and
+the fiftieth `/new` open exactly like the first, and the one you were in is left running.
+Past twelve open, a quiet conversation you have not looked at for fifteen minutes may be
+let go of — home's page under *How many conversations can one terminal hold* is the whole of
+that. `/quit` is still how you close the one in front.
 
 Reasoning level does not survive: `/new` forgets the level you set on a model.
 
@@ -643,10 +646,17 @@ session holds right now.
 
 The labels come in this order, and each is dropped when its value is empty: `session`,
 `task` (only inside a task room), `model` (the full routing address, with `:level` when a
-reasoning level is set), `crew`, `task model` (only in a room), `served`, then the telemetry
-words — `search`, `background`, `changes`, `spend`, `context`, `compacts at`, `cache`,
-`rate`, `compaction`, `approvals`, `connection`, `state` — then `tasks`, `keeping watch`,
-`place`, `keys`, and last `build` and `file`. Labels are padded into two aligned columns.
+reasoning level is set), `crew`, `task model` (only in a room), `served`, `search`, then the
+telemetry words — `spend`, `cache`, `context`, `compacts at`, `compaction`, `background`,
+`approvals`, `changes`, `rate`, `open`, `watching`, `speed`, `connection`, `state` — then
+`tasks`, `keeping watch`, `place`, `keys`, and last `build` and `file`. Labels are padded
+into two aligned columns.
+
+Four of those words are facts this command and the phone's sheet carry and the status row
+does not: `changes` (`Σ +128 −14`), `rate` (`1.2k tok/s avg`, this turn's output over its
+whole wall time — the right edge of the row shows the live `38 tok/s` instead), `open`
+(`2 open · 1 waiting`) and `watching` (the standing count, which is drawn at the foot of the
+task column). `crew` is a fifth and has its own line above.
 
 The `crew` line sits directly under `model` and reads the preset word — or `custom` — and
 the three classes:
@@ -655,13 +665,13 @@ the three classes:
 crew     max · brain kimi-k3 · hands glm-5.3 · checks kimi-k3
 ```
 
-On the live status line the same fact is one short segment — `crew max`, or
-`crew custom` — at the head of the telemetry, beside the model on the left, and it is among
-the first segments a narrow row gives up. The `crew` line here and on the phone's status
-sheet is the full reading. Every ordinary launch has a crew — one is never unset, only
-`custom` — so the line and the segment are always there; the one session that shows
-neither is a **remote** one opened with `--host`, where the crew belongs to the other
-machine.
+The crew is **not on the status line**. It was one short segment there — `crew max`, or
+`crew custom` — at the head of the telemetry until 2026-09-09, and it came off: the row is
+a ledger of things you act on from it, and a preset is changed on a page. The `crew` line
+here and on the phone's status sheet is where it is read now, in full. Every ordinary
+launch has a crew — one is never unset, only `custom` — so the line is always there; the
+one session that shows none is a **remote** one opened with `--host`, where the crew
+belongs to the other machine.
 
 `/status` differs from the on-screen status sheet in two deliberate ways:
 
@@ -709,12 +719,12 @@ and the note's leading `· `; strip those before feeding it to a parser.
 ## /search and /spend — the typed doors onto those two places
 
 `/search` opens the **search place** — everything that has been said on this machine,
-found by the words you remember of it. It is the same place `alt+6` opens and the same
+found by the words you remember of it. It is the same place `alt+7` opens and the same
 place `tab` walks to. It takes no argument: the place *is* a box, and typing in it
 searches.
 
 `/spend` opens the **spend place** — what this machine has cost, by the day, by the model
-and by what it was for. It is the same place `alt+5` opens.
+and by what it was for. It is the same place `alt+3` opens.
 
 **`/spend` used to be an alias of `/cost` and is not any more.** The two answer different
 questions: `/cost` is *this conversation's* bill, printed into the conversation, and the
@@ -834,7 +844,7 @@ memories are dropped with `/forget`.
 `/model` with nothing after it opens the model picker: a filter box in the input line's
 place with a short list of models under it. It is bottom-anchored, so the conversation
 shrinks above it and nothing pops up over what you were reading. Pressing the model's
-name in the status line opens the same picker.
+name on the legend line above the box opens the same picker.
 
 `/model <slug>` switches straight to that slug: no list, no confirmation, and no check
 that the slug exists in any list. If the slug is in no known list, the context window is
@@ -852,17 +862,24 @@ reasoning effort of the model under the cursor through
 `auto → low → medium → high → xhigh → max → auto`, which is the same walk a task's own
 thinking control takes. enter switches.
 
+**→ or tab on a model opens its lanes and walks the cursor into them**, onto the pinned
+lane or `auto`; enter pins, ← or tab walks back out. *Lanes → Pinning one lane yourself*
+has the rest.
+
 esc leaves and changes **nothing** — your half-typed draft, the model in use and the
 frame all come back as they were. The filter is forgotten when the picker closes.
 
 The cursor opens on the model in use, which is also the marked row, so enter with nothing
-typed confirms rather than changes.
+typed confirms rather than changes. Emptying the filter with ctrl+u puts it back there.
 
-The placeholder in the empty filter box is the only place the picker explains itself:
+The placeholder in the empty filter box reads:
 
 ```
-filter · ↑↓ · → lanes · ctrl+t effort · enter · esc
+filter · ↑↓ · → lanes · ctrl+t effort · ctrl+r refresh · enter · esc
 ```
+
+and the hint slot above the box follows the cursor: `→ lanes · enter switch · esc` on a
+model, `enter choose · ← back · esc` inside its lanes.
 
 Choosing a model sets it on the agent, teaches the surface its context window and tells
 the session — compaction fires at a fraction of that window, so this is not decoration —
@@ -872,7 +889,8 @@ model a remote session opens on is that machine's to resolve.
 
 ## What the model picker lists, and what it will not do
 
-The picker **never fetches**. The list is what is already known, tried in this order,
+The picker **never fetches on its own** — it fetches only when you ask, with `ctrl+r` (see
+"Refreshing the model list" below). The list is what is already known, tried in this order,
 each rung used only when the one above it came back empty after filtering:
 
 1. the catalog handed in at launch,
@@ -908,6 +926,33 @@ Limits:
 - The reasoning level lives on the agent, per model id, so it survives switching away and
   back. `/new` forgets it.
 - There is no mouse commit on the picker's rows.
+
+## Refreshing the model list — a new model is not in /model, the list is out of date
+
+The list `/model` shows is fetched from the router at most once a day, so a model a
+provider shipped this morning may not be in it yet. With the picker open, press
+**`ctrl+r`** to fetch the newest list now. The placeholder names it — `ctrl+r refresh` —
+and when your filter matches nothing the list says `no model matches · ctrl+r fetches the
+newest list`. Nothing on screen shows how old the list is; when in doubt, press it.
+
+While it runs, the list's first line reads `fetching the newest list…` and the picker keeps
+working: type, move, switch. A second `ctrl+r` while one is out does nothing. It waits at
+most fifteen seconds.
+
+When it lands, the list is filtered again by what you typed, the cursor goes back to the
+model in use, and the conversation gets one note: `models · 612 · 9 new ·` and up to three
+of the new ids, or `models · 612 · nothing new`. A model that left the list is not
+mentioned. The new list is saved (`~/.aforge/v3/models.json`), so the next `aforge` opens on
+it. From a terminal, `aforge models --refresh` does the same.
+
+If it fails, the list stays exactly as it was and the note says why in one line —
+`could not fetch the model list · dial tcp: lookup openrouter.ai: no such host` — and
+`ctrl+r` is offered again.
+
+Where it is absent: only `/model` (and the model word in a task's status line, which opens
+the same list) has the key. Every other model list — the settings panel's rows, home's, the
+`alt+o model` one — does not: there `ctrl+r` does nothing and nothing names it. Over `--host` it works and fetches on this
+machine, whose list of names the picker shows.
 
 ## /resume — open an earlier conversation
 
@@ -980,60 +1025,57 @@ conversation — drops into it. Home stays out of the way when you named a conve
 (`--session`, `aforge resume`), on a `--once` or `--host` run, and on a machine whose only
 conversation is the one already open. There is no welcome box when home greets you. Not
 greeting you is not the same as being out of reach: `/home`, or `space` twice on an empty
-box, opens it on a one-conversation machine and on an empty one alike — over `--host` it
-refuses.
+box, opens it on a one-conversation machine and on an empty one alike, and over `--host`
+it opens the far machine's.
 
 There is no argument form. There are three other ways in: **`alt+1`**, home being the first
-of seven places; **`space` twice** on an empty box; and **`tab`** from any other place. Projects are dim
-headings, one line per conversation under each: a glyph (`?` waiting on you, `◐` running,
-`✕` left unfinished, `○` at rest), the name, what it has going on, and how long since you
-spoke in it. A conversation stopped on a question sorts to the top of its project and the
-right half shows the line it is stopped on. Quiet
-conversations past the first four per project collapse to `▸ 3 more, quiet since 2d`. The
-right half shows whatever the cursor is on — its tasks, what it spent, the last thing said.
+of the four places on the tab bar; **`space` twice** on an empty box; and **`tab`** from any
+other place.
 
-`↑`/`↓` walk, `enter` opens, `esc` closes back into the conversation you came from.
-**Typing does two things at once**: what you type is a new conversation waiting to be sent
-AND a live search over every project on the machine. The top row — `start a new
-conversation: "…"` — holds the cursor, so type-and-enter still starts a chat; one `↓` steps
-onto the matches and `enter` opens one instead. **A line that starts with `/` is the third
-thing typing can be**: it is a command, not a conversation — the command list opens over
-the box while it is typed, and enter runs it (see *Typing a slash to see the command list*).
-The foot reads exactly
-`type to search or start something new · ↑↓ pick · enter open`.
+**It is seven panels**, in one column under 110 cells, two from 110 and three from 170:
+`needs you` (every question waiting on you, a digit answers the top one from anywhere),
+`where you were` (this window's conversation, then the most recent, then
+`N more · type to find one`) and `projects` (every folder, `enter` starts a chat there) on
+the left; `running` (every task, job and firing watch), `since you left` (what landed while
+you were away), `spend` (today and the fortnight) and `next up` (reminders, soonest first)
+on the right. An empty panel keeps its heading and one dim line naming what arrives there.
+
+`↑`/`↓` walk a column, `←`/`→` cross columns, `enter` opens, `esc` closes back into the
+conversation you came from. **Typing does two things at once**: what you type is a new
+conversation waiting to be sent AND a live search over every project on the machine — the
+panels give way to the matches, with `start a new conversation: "…"` directly above the box
+holding the cursor, so type-and-enter still starts a chat. **A line that starts with `/` is
+the third thing typing can be**: a command, run rather than sent (see *Typing a slash to see
+the command list*). The foot reads exactly
+`type to search or start something new · ↑↓ pick · enter open · tab next place`.
 
 Search matches conversation names, project names, task titles and **what tasks came to** —
-the one-sentence outcome — so `postgres` finds the chat whose work mentioned it. A project
-folds its quiet conversations into `▸ 13 more, quiet since 1d`; that line is a door (`enter`
-or `→` opens it, `←` folds it), and searching sees through the fold.
+the one-sentence outcome — so `postgres` finds the chat whose work mentioned it, including
+the ones no panel is drawing.
 
-**`enter` opens any row on the screen, in any project.** The conversation you were in is
-left **open** behind it — still streaming, still running its tasks — and the new one is
-built on its own workspace with that project's own permissions, crew and spend ceiling.
-Nothing is carried across, because a second project is a second conversation rather than
-this one moving. `tab` over an empty message box goes back. Home's page has the whole of
-it under *Open another project from home*.
+**`enter` opens any conversation on the screen, in any project**, and `enter` on a
+`projects` row starts a fresh one in that folder. The conversation you were in is left
+**open** behind it — still streaming, still running its tasks — and the new one is built on
+its own workspace with that project's own permissions, crew and spend ceiling. Nothing is
+carried across, because a second project is a second conversation rather than this one
+moving. `tab` over an empty message box goes back. Home's page has the whole of it.
 
 Refusals, exactly as written:
 
 ```
-nothing here yet — say something and this fills up
 no conversation matches
 /new is unavailable here
 that folder is gone · <path>
 ```
 
-The first is not a refusal: it is what an empty home says where its rows will be, with the
-box and the keys at the foot still live — typing there offers
-`start a new conversation: "…"` as it does anywhere. It is said over `--host` too, where the
-rows are the **far** machine's and that machine may simply not have been used yet. `/new is
-unavailable here` is what the typing-to-start box says where no fresh-session seam exists.
-The last is `enter` on a project whose folder has been deleted or moved since its last
-conversation: home stays up and nothing is opened. **How many conversations this terminal
-already holds is never a refusal** — there is no cap on that.
-
-`that folder is gone` is never said over `--host`: the folders are the far machine's and this
-one cannot stat them, so nothing is claimed either way (the Places page has the whole of it).
+`no conversation matches` is a search that found nothing — the `start a new conversation`
+row is still there. `/new is unavailable here` is what the typing-to-start box says where no
+fresh-session seam exists. The last is `enter` on a row whose folder has been deleted or
+moved since its last conversation: home stays up and nothing is opened. **How many
+conversations this terminal already holds is never a refusal.** Past twelve, a quiet
+one left alone may be let go of; that is not a refusal of the one you asked for.
+A task another window is running cannot be stopped from home: its `running` row says
+`another window` and offers no stop.
 
 ## /permissions — what runs without asking
 
@@ -1172,8 +1214,8 @@ through the marked door when its turn comes. On a build with no ambient side it 
 **Bare, it opens a page.** A short list under the message box of what stands over this
 conversation, on up to three shelves, with `p` to pause one, `s` to stop one, `n` to except
 this place and `enter` to open the conversation that asked for it. With nothing standing it
-opens all the same, on three dim lines beginning
-`nothing stands here yet — say what should always be true, and I'll hold it.`
+opens all the same, on its heading `standing orders` and one dim line:
+`reminders, watches and routines · "remind me at 6" or "every morning at 9"`
 Nothing is written into the conversation either way.
 
 Nothing on the page is ever named at the command line — the words are always a new order,
@@ -1200,8 +1242,8 @@ immediately after the tag makes it plain prose.
 
 **A bare `/task` opens the full-screen task page** — the same page `/history` and `ctrl+.`
 open, holding every task this project has ever run. It does *not* print a usage line, and
-it starts nothing. On a project that has never run one it opens the page anyway, and the
-page says what tasks are and ends `no tasks yet — /task <brief> starts one`. The `+ /task`
+it starts nothing. On a project that has never run one it opens the page anyway, headed
+`tasks` over one line: `work you send off with /task lands here, and its record stays`. The `+ /task`
 row at the foot of the task column types `/task ` into your box, which is why the word on
 its own has an answer worth giving.
 
@@ -1363,8 +1405,9 @@ this directory has out right now**, marked `another window` on the right. Those 
 no cursor and `enter` does nothing on them: there is no room here and nothing has landed for
 a mention to point at. They are how you find out that the directory is busy somewhere else.
 
-On a project that has never run a task the page opens on its own teaching prose, ending
-`no tasks yet — /task <brief> starts one`. The tasks pages describe the page in full.
+On a project that has never run a task the page opens on its heading and one line,
+`work you send off with /task lands here, and its record stays`. The tasks pages describe the
+page in full.
 
 ## /crew — the five models aforge uses on its own behalf, read beside the one you talk to
 
@@ -1393,7 +1436,7 @@ each of the five can be pinned on its own in /settings → Providers
 ```
 
 The first line says what the presets change and what they do not. The second is **seat
-one** — `you talk to · <model>`, spelled as the status line spells it — with no marker and
+one** — `you talk to · <model>`, spelled as the legend above the box spells it — with no marker and
 no highlight, because nothing in this chooser can move it. Then the three presets: the one
 in force wears a highlighted ground, `›` is where **enter** is aimed and it opens on yours,
 ↑ / ctrl+p and ↓ / ctrl+n move, and **esc** closes without changing anything. The last
@@ -1425,15 +1468,15 @@ a command you can type. See "Why is one word in a line brighter than the rest" o
 screen page.
 
 The last clause names, by id, the one seat the command did not touch: the model you are
-talking to, in the same spelling the status line's model segment uses, so you can check it
-against the foot of the frame. `/crew` never changes that model and never offers to; only
+talking to, in the same spelling the legend above the box uses, so you can check it
+against the line over your own prompt. `/crew` never changes that model and never offers to; only
 `/model` does. When the session has no model yet the clause reads
 `the model you talk to is untouched — /model changes that`.
 
 **The change is live.** The next call aforge makes on its own uses the new crew — no
 relaunch, and no waiting for the next session. To read the crew back afterwards: the live
-status line says `crew max` beside the model, `/status` prints the `crew` line under
-`model`, `/settings` → Providers has the crew row, and bare `/crew` opens on yours.
+`/status` prints the `crew` line under `model`, the phone's status sheet has the same row,
+`/settings` → Providers has the crew row, and bare `/crew` opens on yours.
 
 **That promise is local-session only.** Over `--host` the session resolves its crew from
 the other machine, and there is no crew write across the connection — so `/crew` refuses
@@ -1443,14 +1486,16 @@ rather than writing this laptop's profile behind your back:
 devbox owns the crew · change it on that machine
 ```
 
-For the same reason a remote window shows no `crew` segment on the status line and no
-`crew` line in `/status`. Change that machine's profile there.
+For the same reason a remote window shows no `crew` line in `/status` and none on the
+status sheet. Change that machine's profile there.
 
 ## /connect — your connected accounts
 
-`/connect` (or `/connections`) opens the connected-accounts panel, where you pick a
-service from a list and connect it. There is no argument form. The accounts page covers
-what each account can do once it is connected.
+`/connect` (or `/connections`) opens the connection panel. Its pinned `models` group
+holds the five built-in model services plus every one already connected; the account
+catalog groups follow it. Pick a row and connect it. There is no argument form. The
+[services page](services.md) covers model keys, and the accounts page covers what each
+account can do once it is connected.
 
 Refusals, exactly as written:
 
@@ -1681,14 +1726,17 @@ order:
    well.
 4. **routing** — what every request prefers among the endpoints: `latency`, `price`, `off`.
    With `off` nothing is measured, so the two rows above it have no machine to name.
-5. **crew** — the five below, chosen as one word: `frugal`, `balanced`, `max`. It is a cycle
+5. **prompt profile** — how much aforge tells the model before you type: `auto`, `lean`,
+   `full`. Another cycle row. `auto` reads the model's context window and goes lean under
+   32,000 tokens (see *Models, context, and what it costs*).
+6. **crew** — the five below, chosen as one word: `frugal`, `balanced`, `max`. It is a cycle
    row: enter or space walks it. Answer any of the five yourself and it reads `custom`.
-6. **reflex** — `near-free · reads every turn — memory, titles, safety`
-7. **small work** — `cheap · the small calls — names, digests, the safety gate`
-8. **worker** — `does the work · every task, its parts, every run node — most of the bill`
-9. **careful work** — `careful · checks what must not be wrong — audits, compaction, vision`
-10. **mastermind** — `thinks · plans runs and designs harnesses — add :low, :medium or :high`
-11. **pinned roles**, and hanging off it the **roles** list — one row per auxiliary call
+7. **reflex** — `near-free · reads every turn — memory, titles, safety`
+8. **small work** — `cheap · the small calls — names, digests, the safety gate`
+9. **worker** — `does the work · every task, its parts, every run node — most of the bill`
+10. **careful work** — `careful · checks what must not be wrong — audits, compaction, vision`
+11. **mastermind** — `thinks · plans runs and designs harnesses — add :low, :medium or :high`
+12. **pinned roles**, and hanging off it the **roles** list — one row per auxiliary call
     aforge makes for itself, grouped under its class. Those rows come from the running binary
     rather than the settings registry.
 
@@ -1735,8 +1783,10 @@ hear, and everything else follows the general chat rule. Its legend is
 Because the picker is the same component, everything true of `/model`'s ranking, its rows
 and its ctrl+t effort knob is true here too — **including the lanes** on the row that has
 them. On **your model**, `→` or `tab` unfolds the endpoints serving the model under the
-cursor and `enter` on one pins it, exactly as under `/model`, and the legend says
-`↑↓ move · → or tab lanes · enter choose · esc cancel · type to filter`. The media slots
+cursor, walks the cursor into them, and `enter` on one pins it, exactly as under
+`/model`. The legend says `↑↓ move · → or tab lanes · enter choose · esc cancel · type to filter`
+on a model and `↑↓ move · ← or tab back · enter choose · esc cancel · type to filter`
+inside its lanes. The media slots
 have no lane row behind them, so nothing unfolds there and the legend does not offer the
 key.
 
@@ -1873,8 +1923,8 @@ run `aforge --help` for every command and the environment table.
 It goes to **standard output** and the command leaves with **0**. Asking a program what
 it takes is not a failure, so a Makefile or a CI step that runs `aforge do --help` to
 check the binary is healthy reads a command that worked. This includes the commands that take
-no flags at all — `aforge show --help`, `aforge models --help` and `aforge cache --help`
-answer the same way rather than reading `--help` as a filename or ignoring it.
+no flags at all — `aforge show --help` and `aforge cache --help` answer the same way
+rather than reading `--help` as a filename or ignoring it.
 
 **A flag that does not exist is still a refusal**, and it is said once, on the **error
 stream**, and leaves with **1**:

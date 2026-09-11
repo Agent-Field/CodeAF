@@ -64,12 +64,18 @@ func TestSearchGroupsSeveralTurnsIntoOneConversation(t *testing.T) {
 	}
 }
 
-func TestSearchMarksMatchingWordsInBold(t *testing.T) {
+// A MATCH IS A DATUM AND IT STEPS UP ONE ROLE (THE PAYLOAD RULE), and it is not
+// bold: bold is the band's mark on a place, so a word bold on every row was a
+// second emphasis spent outside it (PLACES-AUDIT.md finding 10).
+func TestSearchLiftsMatchingWordsAsData(t *testing.T) {
 	hits, world := searchFixture()
-	pal := newPalette(tokens.TrueColor, false)
+	pal := newPalette(tokens.TrueColor, false).onPlaces()
 	page := strings.Join(readSearch("report", hits, world, searchTestNow).rows(120, pal), "\n")
-	if !strings.Contains(page, pal.bold("report")) && !strings.Contains(page, pal.bold("Report")) {
-		t.Fatalf("the matching word was not bold in %q", page)
+	if !strings.Contains(page, pal.data("report")) && !strings.Contains(page, pal.data("Report")) {
+		t.Fatalf("the matching word was not lifted in %q", page)
+	}
+	if strings.Contains(page, pal.bold("report")) {
+		t.Fatalf("the matching word is bold outside the band in %q", page)
 	}
 }
 
@@ -92,18 +98,35 @@ func TestSearchShowsTwelveConversationsThenFoldsTheRest(t *testing.T) {
 	}
 	r := readSearch("needle", hits, session.World{}, searchTestNow)
 	page := strings.Join(r.rows(120, newPalette(tokens.NoColor, false)), "\n")
-	if strings.Count(page, tokens.GlyphPromptChat) != searchShown || !strings.Contains(page, tokens.GlyphCollapsed+" 3 more") {
+	if strings.Count(page, "   conversation ") != searchShown || !strings.Contains(page, tokens.GlyphCollapsed+" 3 more") {
 		t.Fatalf("the result cap did not draw twelve doors and a fold:\n%s", page)
+	}
+	// AND THE FOLD IS A DOOR BOTH WAYS: it is a stop, and open it draws every
+	// result and the line that puts them back, on the same row index.
+	fold := -1
+	for i, row := range r.rows(120, newPalette(tokens.NoColor, false)) {
+		if strings.Contains(row, "3 more") {
+			fold = i
+		}
+	}
+	if !r.foldAt(fold) || !r.stop(fold) {
+		t.Fatalf("the fold line at body line %d is not a stop", fold)
+	}
+	open := r.unfolding(true)
+	page = strings.Join(open.rows(120, newPalette(tokens.NoColor, false)), "\n")
+	if strings.Count(page, "   conversation ") != len(hits) || !strings.Contains(page, tokens.GlyphExpanded+" 3 fewer") {
+		t.Fatalf("the open fold did not draw every result and the way back:\n%s", page)
+	}
+	if !open.foldAt(fold+len(hits)-searchShown) || open.foldAt(fold) {
+		t.Fatal("the open fold line is not where the open page drew it")
 	}
 }
 
 func TestSearchTeachesAnEmptyPageAndSaysWhenNothingMatches(t *testing.T) {
 	pal := newPalette(tokens.NoColor, false)
 	teach := strings.Join(readSearch("", nil, session.World{}, searchTestNow).rows(120, pal), "\n")
-	for _, want := range []string{"every message in every conversation", "typing here searches", "enter opens the conversation at the matching turn"} {
-		if !strings.Contains(teach, want) {
-			t.Fatalf("the empty page did not teach %q:\n%s", want, teach)
-		}
+	if !strings.Contains(teach, placeWhisper[pageSearch].whisper) {
+		t.Fatalf("the empty page does not say what arrives here:\n%s", teach)
 	}
 	none := strings.Join(readSearch("amber rail", nil, session.World{}, searchTestNow).rows(120, pal), "\n")
 	if !strings.Contains(none, `nothing on this machine says "amber rail"`) {
@@ -130,9 +153,10 @@ func TestSearchCursorStopsOnlyOnConversationRows(t *testing.T) {
 	stops := 0
 	for i, row := range rows {
 		_, ok := r.at(i)
-		// The body's one-cell lead comes off first: every row of this place hangs
-		// from column 2 now, the way tasks, standing and spend already did.
-		want := strings.HasPrefix(row, " "+tokens.GlyphPromptChat+" ")
+		// A result wears the row's two-cell lead after the body's one, and nothing
+		// else on the page does: the legend and the fold hang from the body's own
+		// column (placeprose.go's THE FIVE-LEVEL SCALE).
+		want := strings.HasPrefix(row, " "+searchLead)
 		if ok != want {
 			t.Fatalf("row %d mapped=%v, conversation-row=%v: %q", i, ok, want, row)
 		}
@@ -211,7 +235,7 @@ func TestTypingOnTheSearchPlaceAsksOnlyAfterTheQuietInterval(t *testing.T) {
 	hits, _ := searchFixture()
 	fake := &searchFakeStore{hits: hits}
 	a := searchLab(t, fake)
-	if !strings.Contains(placeFrameText(a), "search reads every message") {
+	if !strings.Contains(placeFrameText(a), whisperOf(pageSearch)) {
 		t.Fatalf("the empty place did not say what it is for:\n%s", placeFrameText(a))
 	}
 	typeInto(t, a, "report")

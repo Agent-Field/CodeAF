@@ -11,6 +11,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/connect"
+	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
@@ -656,7 +658,7 @@ var settingUI = map[string]settingMeta{
 	// IT IS ONE OF SEVERAL DOORS ONTO ONE LADDER and it says so plainly, because
 	// a setting a person can reach many ways has to read the same in all of them:
 	// this row is where the INSTALL'S rung is written, and the nearer scopes that
-	// outrank it — a conversation's own rung above the message box
+	// outrank it — a conversation's own rung beside the model above the message box
 	// (effortchip.go), a task's (taskeffort.go), a standing item's
 	// (homeband_thinking.go), and the level dialled onto one model in `/model`
 	// (palette.go) — take the same chord or key over their own surfaces. A row
@@ -668,8 +670,8 @@ var settingUI = map[string]settingMeta{
 	config.KeyEffort: {
 		tab: tabProviders, label: "thinking", widget: widgetCycle,
 		about: "how hard the model thinks, unless something nearer the work says " +
-			"otherwise. " + effortKey + " moves the rung of whatever you stand on — the chip " +
-			"above the message box for one conversation, a task, or a standing item — and " +
+			"otherwise. " + effortKey + " moves the rung of whatever you stand on — the rung " +
+			"beside the model above the message box for one conversation, a task, or a standing item — and " +
 			"ctrl+t in /model dials one model. This row answers for everything nobody dialled.",
 	},
 	// It belongs on this tab and not under Session because it is a question
@@ -693,6 +695,16 @@ var settingUI = map[string]settingMeta{
 		tab: tabProviders, label: "speed guard", widget: widgetToggle,
 		about: "an answer that is slow to start is asked of the next-best machine as well, " +
 			"and you read whichever replies first. One extra call, under a tenth of spend.",
+	},
+	// AND THE OTHER HALF OF THE SAME QUESTION: the three rows above are about
+	// WHERE a request goes, this is about how much rides in front of it. It is
+	// on this tab and not under Session because the answer is a fact about the
+	// model — how much room it has — rather than about this conversation.
+	config.KeyPromptProfile: {
+		tab: tabProviders, label: "prompt profile", widget: widgetCycle,
+		about: "how much aforge tells the model before you type. auto reads the model's " +
+			"context window and goes lean under 32,000 tokens; lean and full say so yourself, " +
+			"for an endpoint that reports a window its model does not really have.",
 	},
 }
 
@@ -766,6 +778,7 @@ func modelsSectionOrder() []string {
 		config.LaneSettingKey(talkSlot),
 		config.KeyLaneGuard,
 		config.KeyRouting,
+		config.KeyPromptProfile,
 		config.KeyCrew,
 	}
 	for _, tier := range roles.Tiers {
@@ -837,6 +850,9 @@ type sheetItem struct {
 	// them: an item is an item, and only what DRAWS it and what ANSWERS it ask
 	// which kind this one is.
 	conn *connRow
+	// service is one connected model service on Providers. It draws through
+	// the settings row grammar while its value remains in model_sources.
+	service *modelServiceRow
 	// role is set on the rows of the roles section, on exactly those terms.
 	role *roleRow
 	// read is set on a row of the Spending tab that is a RECEIPT and not a
@@ -867,7 +883,9 @@ type sheet struct {
 	// conns is the door onto the accounts, for the Connections tab. It is the
 	// surface's own door (app.conns) and not a second one: two readings of "is
 	// this connected" is how a tab and a panel disagree about somebody's mail.
-	conns Connections
+	conns     Connections
+	modelRows func() []connect.Status
+	sources   modelsource.Set
 	// conn is what that tab remembers between builds (connectcaps.go).
 	conn connTab
 	rows []config.Setting
@@ -1136,6 +1154,8 @@ func (a *app) raiseSettings() {
 		registry:     a.registry(),
 		profileDir:   a.profileDir,
 		conns:        a.conns,
+		modelRows:    a.modelConnectionRows,
+		sources:      a.sources,
 		defaults:     settingDefaults(),
 		sessionModel: a.model,
 		today:        a.todayReading(),
@@ -1234,6 +1254,15 @@ func (s *sheet) build() {
 		for _, row := range s.tabRows() {
 			meta, _ := s.metaFor(row)
 			s.items = append(s.items, sheetItem{row: row, meta: meta})
+			if row.Key == config.KeyAPIKey {
+				services := modelServiceRows(s.profileDir, s.sources)
+				if len(services) > 0 {
+					s.items = append(s.items, sheetItem{head: "services"})
+					for _, service := range services {
+						s.items = append(s.items, sheetItem{service: service})
+					}
+				}
+			}
 			// THE ROLES SECTION HANGS OFF THE ROW IT WRITES. Every pin those rows
 			// set lands in "pinned roles" and nowhere else, so it is drawn
 			// directly under it: a person reading one is reading the other, and a
@@ -1859,6 +1888,13 @@ func (a *app) activate() tea.Cmd {
 	if item.conn != nil {
 		return a.connAct(item.conn)
 	}
+	if item.service != nil {
+		source, ok := a.modelSource(item.service.id)
+		if !ok {
+			return nil
+		}
+		return a.startModelConnect(modelConnectionStatus(source, true), true)
+	}
 	s.msg = ""
 	if item.role != nil {
 		// A ROLE IS A MODEL CHOICE, so it opens the picker the class rows open
@@ -1960,10 +1996,11 @@ func (a *app) activate() tea.Cmd {
 // would have to be kept saying the same thing about the same machines — and the
 // fold is where a person has already learnt to read them.
 //
-// IT ANSWERS FALSE WHEN THERE IS NOTHING TO OPEN. A session that has measured
-// no lane for this model has no fold ([picker.unfoldAt] refuses one), and the
-// row falls back to the walk between the only two answers that exist without a
-// measurement.
+// IT ANSWERS FALSE ONLY WHEN THE MODEL IS NOT ON THE LIST. A fold always has
+// its two answers ([picker.unfoldAt]), so a model nobody has measured opens
+// onto `auto` and `openrouter` here exactly as it does under /model; what is
+// left for the walk ([app.cycleLane]) is a model the catalog does not carry,
+// where there is no row to unfold at all.
 func (a *app) openLaneList() bool {
 	slot := laneSlotFor(a.model)
 	if slot == "" {
@@ -1983,10 +2020,10 @@ func (a *app) openLaneList() bool {
 	if chosen, ok := sel.pick.choice(); !ok || chosen.ID != a.model {
 		return false
 	}
+	// Opening walks in: the cursor lands on the lane in force ([picker.unfoldHere]).
 	if !sel.pick.unfoldHere() {
 		return false
 	}
-	sel.pick.cursorToPin()
 	a.sheet.sel = sel
 	return true
 }
@@ -1996,10 +2033,14 @@ func (a *app) openLaneList() bool {
 // that the panel, the picker and the `settings` tool all read one spelling
 // (config's [config.LaneRowWord]).
 //
+// IT IS THE FALLBACK, reached only when [app.openLaneList] has no row to open —
+// a model the catalog does not carry.
+//
 // THE PINNED RUNGS ARE SKIPPED WHEN THERE IS NO MACHINE TO NAME. On a session
 // that has measured nothing there is no honest lane to pin, so the walk is auto
 // ↔ openrouter and the two missing rungs are simply not there — which is the
-// emptiness law applied to a gesture rather than to a number.
+// emptiness law applied to a gesture rather than to a number, and the same two
+// answers the fold offers such a model.
 func (a *app) cycleLane(item sheetItem) {
 	slot := laneSlotFor(a.model)
 	name, pinned := config.LanePinned(a.profileDir, slot)
@@ -2298,7 +2339,6 @@ func (a *app) sheetFrame(width, height int) ([]string, []sheetHit, int, int) {
 		func(width, room int) []placeRow {
 			rows := make([]placeRow, 0, room)
 			rows = append(rows, placeRow{text: sheetTabBar(width, s.tab, pal), hit: sheetHit{kind: sheetHitTabs}})
-			rows = append(rows, placeRow{text: pal.dim(rule(width))})
 			rows = append(rows, placeRow{})
 			room -= len(rows)
 			if room < 1 {
@@ -2503,11 +2543,16 @@ func tabAtColumn(x, width, active int) (int, bool) {
 	return 0, false
 }
 
-// sheetTabBar is the one place this panel spends the accent: the tab you are
-// on. Everything else on the bar is dim, which is what makes the one word read
-// as a position rather than as a menu of five shouting words.
+// sheetTabBar is this panel's sections, with the one you are on filled. Every
+// other chip is dim, which is what makes the one word read as a position rather
+// than as a menu of nine shouting words.
 //
-// THE ACCENT NOW ARRIVES ON A BAND, and the band is why the chips are padded.
+// THE FILLED CHIP IS INK AND BOLD, NOT THE ACCENT. The accent on a place is the
+// live thing's alone (SCREEN 2a), and a section a person picked is a position,
+// not something happening — so the chip says it with the ground and the weight
+// the place's own tab bar uses (PLACES-AUDIT.md finding 11).
+//
+// THE CHIP ARRIVES ON A BAND, and the band is why the chips are padded.
 // Five words in a row with one of them brighter is a sentence with an emphasis
 // in it; five padded chips with one of them filled is a tab bar, and this panel
 // IS a tab bar — the same object the task strip is, drawn the same way, so that
@@ -2530,7 +2575,7 @@ func sheetTabBar(width, active int, pal palette) string {
 		title := settingTabs[i]
 		chip := tabPad + title + tabPad
 		if i == active {
-			line += pal.selected(pal.bold(pal.accent(chip)), tabChipCols(title))
+			line += pal.selected(pal.bold(pal.ink(chip)), tabChipCols(title))
 		} else {
 			line += pal.dim(chip)
 		}
@@ -2567,7 +2612,7 @@ func (s *sheet) listLines(width, room int, pal palette, hover int) ([]string, []
 		if s.onConnections() {
 			word = s.connEmptyWord()
 		}
-		put(pal.dim("  "+word), -1)
+		put(placeLead+pal.dim(word), -1)
 		return lines, owner
 	}
 	for i, item := range s.items {
@@ -2575,7 +2620,7 @@ func (s *sheet) listLines(width, room int, pal palette, hover int) ([]string, []
 			if len(lines) > 0 {
 				put("", -1)
 			}
-			put(pal.dim("  "+item.head), -1)
+			put(placeLead+placeHeading(item.head, pal), -1)
 			continue
 		}
 		// AN ACCOUNT IS A BLOCK AND A BLOCK HAS AIR OVER IT (connectcaps.go).
@@ -2686,6 +2731,9 @@ func (s *sheet) rowLines(item sheetItem, selected, hovered bool, width int, pal 
 func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, boxRows int, pal palette) []string {
 	if item.conn != nil {
 		return s.connRowLines(item.conn, selected, hovered, width, boxRows, pal)
+	}
+	if item.service != nil {
+		return overlayLines(item.service.name, item.service.value, selected, false, hovered, width, pal)
 	}
 	if item.role != nil {
 		return s.roleRowLines(item.role, selected, hovered, width, pal)
@@ -2850,10 +2898,15 @@ func (s *sheet) keysLine() string {
 		// THE LEGEND SAYS `→ lanes` ONLY WHERE `→` OPENS THEM — on a row that
 		// has a lane row behind it. Offering the key on the drawing slot would
 		// be the foot of the screen promising a gesture that does nothing.
-		if s.sel.pick.laneSlot != "" {
-			return "↑↓ move · → or tab lanes · enter choose · esc cancel · type to filter"
+		// And INSIDE the fold it says the way back out, for the reason /model's
+		// hint slot does ([picker.keysHint]): the keys are the row's.
+		if s.sel.pick.laneSlot == "" {
+			return "↑↓ move · enter choose · esc cancel · type to filter"
 		}
-		return "↑↓ move · enter choose · esc cancel · type to filter"
+		if _, inside := s.sel.pick.laneUnder(); inside {
+			return "↑↓ move · ← or tab back · enter choose · esc cancel · type to filter"
+		}
+		return "↑↓ move · → or tab lanes · enter choose · esc cancel · type to filter"
 	case s.onConnections():
 		return s.connKeysLine()
 	default:

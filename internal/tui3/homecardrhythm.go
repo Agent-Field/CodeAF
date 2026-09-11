@@ -130,21 +130,3 @@ func layCardBands(bands []cardBand, grouped bool) []string {
 	}
 	return out
 }
-
-// homeCardHeading is how the card says what is UNDER it — `it is stopped on
-// you`, `work`, `made for you`.
-//
-// THE SIGNPOSTS ARE ONE ROLE ABOVE THE FACTS. Every word under the title used to
-// be dim, the headings with them, so the only thing on the card the eye could
-// find was the title and everything below it was one grey field. A heading is
-// not a fact; it is the label on a group of them, and it wears [palette.muted] —
-// one reading rung over the dim body and nowhere near the ink of the title,
-// which stays the brightest text on the screen and the bridge to the highlighted
-// row across the gutter.
-//
-// WEIGHT IS MADE OF COLOUR AND NEVER OF DECORATION. There is no bold under the
-// title on this card, no underline anywhere on this surface, and no new hue: the
-// three roles are the three rungs the ramp already has.
-func homeCardHeading(word string, width int, pal palette) string {
-	return pal.muted(fit(word, width))
-}

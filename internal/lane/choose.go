@@ -577,6 +577,14 @@ func (c *chooser) Choose(req Request) Choice {
 			rate = candidate.Rate
 		}
 		felt := PerceivedSeconds(ttft/1000, rate, req.Visible, req.Hidden)
+		// AND THE WAIT IS PAID ONCE PER SEND, NOT ONCE PER ANSWER. A lane that
+		// answers one request in five is asked five times for one answer, and
+		// each of those asks is a round trip the person sits through before the
+		// hop to somewhere else; dividing by [Belief.Serving] is what puts a
+		// refusing pool behind a slower lane that actually answers. The
+		// availability belief is aged to now with the rest ([Ledger] ages
+		// timing; this is the same forgetting on the same clock).
+		felt /= servingAt(belief, req.Now)
 		perceived[candidate.ID] = felt
 		candidate.Score = scoreOf(candidate.Price, felt, lambda)
 		scored = append(scored, candidate)
@@ -594,12 +602,16 @@ func (c *chooser) Choose(req Request) Choice {
 		return scored[a].ID.Lane < scored[b].ID.Lane
 	})
 
-	// AND WHAT IS UNKNOWN GOES BEHIND WHAT IS KNOWN. A lane the sheet has never
-	// published a tool flag for is a candidate and not a favourite: it is ranked
-	// last among the survivors when the request carries tools, so the choice
-	// tries the machines we know will take the call first and still has
-	// somewhere to go when we know nothing at all (frontier.go's [toolsLast]).
-	scored = toolsLast(scored, req, aged)
+	// AND WHAT THE SHEET DOUBTS GOES BEHIND WHAT IT DOES NOT. A lane the sheet
+	// says will not take a tool call, or has published as half down or derated,
+	// is a candidate and not a favourite: it is ranked last among the survivors,
+	// so the choice tries the machines nothing is doubted about first and still
+	// has somewhere to go when they refuse. One draw in [probeInEvery] sends it
+	// first anyway, because a lane that is never asked can never prove the sheet
+	// wrong — which is the whole of frontier.go's THREE OF THE SHEET'S CLAIMS ARE
+	// PRIORS RATHER THAN GATES, and the draw comes from the same seeded sampler
+	// the score does, so one request's choice stays reproducible.
+	scored = sheetDoubtsLast(scored, req, aged, draws.Float64())
 
 	choice := Choice{Frontier: scored}
 	choice.Order = orderOf(scored, aged)
@@ -607,6 +619,7 @@ func (c *chooser) Choose(req Request) Choice {
 		return Choice{}
 	}
 	choice.Ignore = ignoredOf(scored, aged, choice.Order, lambda)
+	choice.Ignore = flooredInto(choice.Ignore, aged, choice.Order, lambda, req.Now)
 	// AND NOTHING ABOUT TIME. Where a rescue would go and when it would go
 	// there are [PlanFor]'s, built for every call out of the same frontier this
 	// carries — see the note on [Choice].
@@ -661,6 +674,32 @@ func orderOf(scored []Scored, aged map[ID]Belief) []string {
 // lane that starts three times slower and costs half as much is the RIGHT
 // answer, and putting it in `provider.ignore` would be this process refusing a
 // lane on an objective the request does not have.
+// flooredInto adds every lane surely under the service floor (frontier.go) to
+// the ignore list, under the same λ rule as ignoredOf: nobody waiting, nothing
+// vetoed. A lane the floor took out of the frontier is not in the order, and a
+// router with fallbacks on would otherwise still be free to land there.
+func flooredInto(ignore []string, aged map[ID]Belief, order []string, lambda float64, now time.Time) []string {
+	if lambda <= 0 {
+		return ignore
+	}
+	named := map[string]bool{}
+	for _, lane := range order {
+		named[lane] = true
+	}
+	for _, lane := range ignore {
+		named[lane] = true
+	}
+	var floored []string
+	for id, belief := range aged {
+		if named[id.Lane] || !underFloor(belief, now) {
+			continue
+		}
+		floored = append(floored, id.Lane)
+	}
+	sort.Strings(floored)
+	return append(ignore, floored...)
+}
+
 func ignoredOf(scored []Scored, aged map[ID]Belief, order []string, lambda float64) []string {
 	if lambda <= 0 {
 		return nil
@@ -706,6 +745,16 @@ func ignoredOf(scored []Scored, aged map[ID]Belief, order []string, lambda float
 // elsewhere and on purpose: the frontier prunes at the p75 ([quartileZ]) and
 // the hedge deadline is computed from the full predictive spread
 // ([predictive]), so nothing is lost here by asking a narrower question.
+// servingAt is [Belief.Serving] read at a moment: the availability posterior is
+// let go toward its prior for the time since the last outcome, so that a pool
+// refused ten minutes ago is mostly forgiven by the time it is asked about.
+func servingAt(belief Belief, now time.Time) float64 {
+	if belief.Availability.Known() && !belief.AvailabilityAt.IsZero() && now.After(belief.AvailabilityAt) {
+		belief.Availability = belief.Availability.Toward(availabilityPrior, now.Sub(belief.AvailabilityAt), AvailabilityHalfLife)
+	}
+	return belief.Serving()
+}
+
 func sample(posterior Posterior, draws *rand.Rand, width float64, measured bool) float64 {
 	if !posterior.Known() {
 		return 0

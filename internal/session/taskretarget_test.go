@@ -326,3 +326,69 @@ func TestRetargetTaskTakesDownTheToolUseRescuesOwnNote(t *testing.T) {
 		t.Fatalf("a repair round's line was taken down with the rescue's: %q", got)
 	}
 }
+
+// A PICK MADE WHILE THE GATE IS READING THE WORK IS THE NEXT RUN'S, AND THE ROW
+// KEEPS THE MODEL THAT ACTUALLY RAN.
+//
+// This is the defect the phase read exists for. A node stays TaskRunning across
+// its worker, the check and every repair round, and its worker stops reading the
+// moment [runTaskChild] returns — minutes before a checked node settles. Reading
+// the state alone, this door rewrote the frozen spec of work that was already
+// finished, so the row, the checkpoint and the landed card all named a model that
+// never ran a token of it while the bill named the one that did.
+//
+// It was measured: a node admitted on the worker tier with all nineteen of its
+// calls billed there, and a card claiming the install's low tier because a pick
+// landed during the check.
+func TestAModelPickedWhileTheCheckReadsBecomesTheNextRunsAndLeavesTheRowAlone(t *testing.T) {
+	agent, node, _, land := retargetAgent(t)
+	defer land()
+
+	// The check's own two facts, in the order the runner produces them: the
+	// worker's reading is over, and the node has entered the gate's phase.
+	node.openRoom().speaking(nil)
+	node.living(TaskPhaseChecking)
+
+	if err := agent.RetargetTask(node.id, "claude-sonnet-5"); err != nil {
+		t.Fatalf("RetargetTask during the check: %v", err)
+	}
+	notice := node.notice()
+	if notice.Model != "anthropic/claude-opus-5" {
+		t.Fatalf("the row names %q, want the model the work actually ran on", notice.Model)
+	}
+	if notice.NextModel != "anthropic/claude-sonnet-5" {
+		t.Fatalf("the pick was lost rather than kept for the next run: %q", notice.NextModel)
+	}
+	// AND THE SPEC ITSELF IS UNTOUCHED, which is the half a row cannot show: it is
+	// what the checkpoint writes and what a resumed session would draw.
+	node.graph.mu.Lock()
+	frozen := node.spec.model
+	node.graph.mu.Unlock()
+	if frozen != "anthropic/claude-opus-5" {
+		t.Fatalf("the frozen admitted id moved to %q", frozen)
+	}
+}
+
+// AND A WORKER THAT IS STILL READING IS STILL MOVED, which is the ordinary case
+// and the reason the read above is one condition rather than a refusal: the phase
+// answers "is there a turn left to take this", and while the node's own worker
+// holds it the answer is yes.
+func TestAModelPickedWhileTheWorkerReadsStillMovesTheWork(t *testing.T) {
+	agent, node, child, land := retargetAgent(t)
+	defer land()
+
+	node.living(TaskPhaseWorking)
+	if err := agent.RetargetTask(node.id, "claude-sonnet-5"); err != nil {
+		t.Fatalf("RetargetTask while the worker reads: %v", err)
+	}
+	notice := node.notice()
+	if notice.Model != "anthropic/claude-sonnet-5" {
+		t.Fatalf("the row names %q, want the model just picked", notice.Model)
+	}
+	if notice.NextModel != "" {
+		t.Fatalf("a pick that moved the live work also armed the next run: %q", notice.NextModel)
+	}
+	if got := child.Model(); got != "anthropic/claude-sonnet-5" {
+		t.Fatalf("the worker in the room is still on %q", got)
+	}
+}

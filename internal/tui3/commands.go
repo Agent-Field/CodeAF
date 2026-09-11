@@ -60,7 +60,7 @@ var commands = []command{
 	// (render.go's [app.identityParts]). It is worth saying because a surface
 	// with the mouse turned off (config's ui.mouse) does not have it, and this
 	// row is then the only one there is.
-	{name: "model", desc: "pick a model · or press its name in the status line"},
+	{name: "model", desc: "pick a model · or press its name above the message box"},
 	// `<slug>` is the whole of what this row offers a person scanning the list,
 	// and the three other shapes it takes — `@lane`, `auto`, a filter query —
 	// are NOT four more rows here. The list is how somebody finds a command,
@@ -84,6 +84,8 @@ var commands = []command{
 	{name: "resume", desc: "open an earlier conversation", alias: []string{"sessions"}},
 	{name: "compact", desc: "summarize the conversation now"},
 	{name: "stop", desc: "stop the open task or selected work · asks first"},
+	{name: "autonomy", desc: "how questions are handled while you are away"},
+	{name: "autonomy", args: "<kind> <ask|recommend DURATION|decide>", desc: "change one project's question rule"},
 	// A project-less conversation needs this once, while /compact is a daily
 	// command everywhere. Keep the one-shot anchor immediately below the eight
 	// always-visible rows so adding it does not hide /compact behind a scroll.
@@ -122,9 +124,10 @@ var commands = []command{
 	{name: "home", desc: "every project and conversation on this machine"},
 	// AND THE TWO PLACES THAT HAD NO TYPED DOOR, directly under the one that
 	// does. /home, /memory, /standing, /history and /settings each open a place
-	// from the box; search and spend were reachable only by `alt+6`, `alt+5`,
+	// from the box; search and spend were reachable only by their `alt+` digit,
 	// `tab`, the tab bar, or typing a word on home — every one of which has to be
-	// learned somewhere else first.
+	// learned somewhere else first. The digit on each row is read off the bar's
+	// order table ([placeChord]).
 	//
 	// /spend IS A PLACE AND NOT A READING, WHICH IS WHY IT MOVED. It used to be
 	// an alias of /cost, so the one word a person guesses for "what has this cost
@@ -134,8 +137,8 @@ var commands = []command{
 	// belongs to the bigger one. /cost keeps /usage and /tokens, and says on its
 	// own row which question it is answering, so nobody who typed either word
 	// lands nowhere.
-	{name: "search", desc: "everything said on this machine · alt+6"},
-	{name: "spend", desc: "what this machine has cost, by the day · alt+5"},
+	{name: "search", desc: "everything said on this machine · " + placeChord(pageSearch)},
+	{name: "spend", desc: "what this machine has cost, by the day · " + placeChord(pageSpend)},
 	// It sits AFTER /compact and before /help because those two are the pair a
 	// person reads together when a conversation has gone wrong: compacting is
 	// what you do when the turn was right and too long, rewinding is what you do
@@ -253,6 +256,24 @@ var commands = []command{
 	// occasionally regrets it, which is exactly where /memories sits too.
 	{name: "crew", desc: "the five models aforge uses on its own behalf, beside the one you talk to"},
 	{name: "crew", args: "<preset>", desc: "…set the five to frugal, balanced or max · /model stays"},
+	// AND HOW HARD THE ONE YOU TALK TO THINKS, under the two rows about WHICH
+	// models it thinks with, because that is the order the two questions arrive
+	// in: a person picks the model and then decides how much of it to spend.
+	//
+	// TWO ROWS FOR ONE COMMAND, the way /crew and /model have two: the bare form
+	// is the five rungs with what each one buys, which is how somebody chooses
+	// between words that all mean "harder"; a single row carrying <rung> would
+	// make that list unreachable, since [app.runMenu] puts a row that TAKES
+	// something into the draft instead of running it.
+	//
+	// It is the LADDER'S door and not its only one. The rung is on the seam
+	// beside the model, `ctrl+v` walks it and so does a press on it
+	// (effortchip.go) — this is the row for the person who wants to read the
+	// five before choosing, and the word people reach for is `thinking`, which
+	// is what the settings row calls the same ladder.
+	{name: "effort", desc: "how hard this conversation thinks · the five rungs, and what each buys",
+		alias: []string{"think", "thinking"}},
+	{name: "effort", args: "<rung>", desc: "…set it outright · ctrl+v walks it, or press it on the seam"},
 	{name: "task", args: "<brief>", desc: "start work you can walk away from", door: sendDoorTask},
 	{name: "task", args: "solo <brief>", desc: "…with one worker, and no sizing call before it", door: sendDoorTask},
 	// THE THIRD ROW IS GONE, AND ITS ABSENCE IS THE FEATURE. It typed

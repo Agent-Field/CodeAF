@@ -126,6 +126,11 @@ var settingReaders = map[string]string{
 	KeyDocumentEngine: "DocumentEngine",
 	KeyVisionModel:    "VisionModel",
 	KeyAttribution:    "Attribution",
+	// The prompt-profile row names the session field the word lands in, which
+	// is what the far side actually reads: cmd/aforge's applyV3Governance puts
+	// PromptProfileAt's answer there and internal/session's promptprofile.go
+	// resolves it against the pin and the window.
+	KeyPromptProfile: "PromptProfile",
 	// The v3 task column names its own accessor, which the surface reads at boot
 	// and writes back through SaveTaskColumn every time ctrl+g moves the column
 	// (internal/tui3's task.go).

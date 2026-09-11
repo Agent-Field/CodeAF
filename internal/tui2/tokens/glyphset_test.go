@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
-
-	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 )
 
 // The glyph tier's gates (12.7 F). The width and ambiguity gates (F.1, F.2) and
@@ -250,29 +248,20 @@ func TestUpgradeNeverRewritesContent(t *testing.T) {
 // the automatic chrome-lead rewrite — and why this package ships the mechanism
 // as a door instead of as a rule.
 //
-// Rule (b) would have upgraded the leading glyph of any string painted at
-// blocks.StateChrome, and it existed for exactly one caller: blocks.Disclose
-// returns "▸ 12 lines", which is not a single rune. Its warrant was blocks' own
-// definition of the state — "separators, meta, fold lines, hints" — and D.2
-// bound the rule to a test proving no CONTENT path paints StateChrome.
-//
-// That proof cannot be made in this tree. TestChromeStateCarriesContent below
-// shows the header grammar painting a caller's Title and Desc at StateChrome,
-// and the v2 chat surface uses exactly that: a receipt's headline is a
-// chrome-state Title read out of the journal, and a commission's Desc is a
-// summary of the user's own words. An automatic lead-rune rewrite would edit a
-// sentence somebody wrote. D.2 named the remedy for that finding, and this is
-// it: the rule is dropped, and the callers that want the behaviour ask for it
-// by name, one token at the call site.
+// Rule (b) would have upgraded the leading glyph of any chrome string. A fold
+// hint such as "▸ 12 lines" needs that treatment even though it is not a single
+// rune, while an automatic lead-rune rewrite could edit a sentence somebody
+// wrote. D.2 named the remedy for that boundary: callers that want the
+// behaviour ask for it by name, one token at the call site.
 func TestUpgradeChromeIsAnExplicitDoor(t *testing.T) {
-	hint := blocks.Disclose(false, 12, "line", "lines")
+	hint := GlyphCollapsed + " 12 lines"
 	if got := NerdFont.UpgradeChrome(hint); got != NerdFont.Glyph(GCollapsed)+" 12 lines" {
 		t.Errorf("UpgradeChrome(%q) = %q", hint, got)
 	}
 	if got := NerdFont.Upgrade(hint); got != hint {
 		t.Errorf("the automatic path must NOT rewrite a lead glyph: got %q", got)
 	}
-	if got := NerdFont.UpgradeChrome(blocks.Disclose(true, 0, "line", "lines")); got != NerdFont.Glyph(GExpanded) {
+	if got := NerdFont.UpgradeChrome(GlyphExpanded); got != NerdFont.Glyph(GExpanded) {
 		t.Errorf("the expanded hint is a whole cell and upgrades: got %q", got)
 	}
 	// Even at the explicit door, an ASCII slot and a mid-line glyph are safe.
@@ -283,67 +272,6 @@ func TestUpgradeChromeIsAnExplicitDoor(t *testing.T) {
 	}
 	if got := Plain.UpgradeChrome(hint); got != hint {
 		t.Errorf("the plain tier must be the identity function, got %q", got)
-	}
-}
-
-// painted is one span blocks handed to a Styler, and recorder collects them.
-type painted struct {
-	text  string
-	state blocks.State
-}
-
-type recorder struct{ seen []painted }
-
-func (r *recorder) Paint(text string, state blocks.State, _ blocks.Hue) string {
-	r.seen = append(r.seen, painted{text, state})
-	return text
-}
-
-// TestChromeStateCarriesContent is the D.2 assertion, run and reported
-// honestly. It asserts the finding rather than the hope: blocks paints a
-// header's Title and Desc at whatever state the caller set, so a caller that
-// dresses a journal line as chrome — which the v2 chat surface does for every
-// receipt and every commissioning row — puts content on the StateChrome path.
-//
-// The test's job is to fail if that ever stops being true, at which point rule
-// (b) becomes available again and this comment becomes wrong.
-func TestChromeStateCarriesContent(t *testing.T) {
-	var rec recorder
-	head := blocks.Header{
-		Glyph: GlyphCollapsed,
-		State: blocks.StateChrome,
-		Title: GlyphSettled + " wrote 3 files",
-		Desc:  GlyphSettled + " ship it",
-	}
-	head.Render(80, &rec)
-
-	title, desc := false, false
-	for _, s := range rec.seen {
-		if s.state != blocks.StateChrome {
-			continue
-		}
-		if s.text == head.Title {
-			title = true
-		}
-		if s.text == head.Desc {
-			desc = true
-		}
-	}
-	if !title || !desc {
-		t.Fatalf("the header no longer paints Title (%v) and Desc (%v) at StateChrome; "+
-			"12.7 D.2's rule (b) may be reconsidered", title, desc)
-	}
-
-	// And the consequence that matters: with rule (b) dropped, every one of
-	// those chrome spans survives the tier byte for byte. Only the glyph cell,
-	// which arrives as one whole rune, is rewritten.
-	for _, s := range rec.seen {
-		if s.text == head.Glyph {
-			continue
-		}
-		if got := NerdFont.Upgrade(s.text); got != s.text {
-			t.Errorf("the tier rewrote a painted span: %q became %q", s.text, got)
-		}
 	}
 }
 

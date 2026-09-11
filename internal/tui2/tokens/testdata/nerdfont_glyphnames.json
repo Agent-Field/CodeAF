@@ -68,8 +68,17 @@
  "nf-fa-exchange": {
   "code": "f0ec"
  },
- "nf-fa-file_text_o": {
+ "nf-fa-file_audio_o": {
+  "code": "f1c7"
+ },
+ "nf-fa-file_image_o": {
+  "code": "f1c5"
+ },
+ "nf-fa-file_text": {
   "code": "f15c"
+ },
+ "nf-fa-file_video_o": {
+  "code": "f1c8"
  },
  "nf-fa-flag": {
   "code": "f024"
@@ -88,6 +97,9 @@
  },
  "nf-fa-home": {
   "code": "f015"
+ },
+ "nf-fa-lightbulb_o": {
+  "code": "f0eb"
  },
  "nf-fa-long_arrow_right": {
   "code": "f178"

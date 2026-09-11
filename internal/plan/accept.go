@@ -199,7 +199,7 @@ func Acceptance(ctx context.Context, client Completer, request string) ([]Point,
 	if err != nil {
 		return nil, usage, fmt.Errorf("acceptance: %w", err)
 	}
-	provider.Report(ctx, provider.VerdictVerifiedSuccess)
+	provider.Report(ctx, provider.ReadingVerifiedSuccess)
 	return NormalizeAcceptance(request, decoded.Points), usage, nil
 }
 

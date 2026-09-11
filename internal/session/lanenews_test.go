@@ -122,18 +122,22 @@ func TestARescueThatFailsWithdrawsTheClaimItMade(t *testing.T) {
 
 // ── WHAT A SECOND IS WORTH ──────────────────────────────────────────────────
 
-// A TASK TURN IS WORTH A PERSON'S ATTENTION WHILE A PERSON IS HERE, and nothing
-// at all when they are not. Every task turn this build ever ran declared the
-// second — a fifth off the money for nearly four times the wait, which is not a
-// trade anybody chose (bench/lanelab/REPORT.md).
+// A TASK TURN IS WORTH A PERSON'S ATTENTION WHILE A PERSON IS HERE, and a
+// quarter of it when they are not. Every task turn this build once ran declared
+// the full second — a fifth off the money for nearly four times the wait, which
+// is not a trade anybody chose (bench/lanelab/REPORT.md) — and then none at all,
+// which routed every unwatched task on dollars alone into the two cheapest lanes
+// of deepseek-v4.1-flash, one answering 17% of the time
+// (docs/design/routing/ASSESSMENT-20260911.md). [lane.UnattendedValue] is the
+// floor between the two.
 func TestATaskTurnIsWorthSomethingOnlyWhileSomebodyIsWatching(t *testing.T) {
 	watched := &Agent{config: Config{InTask: true}}
 	alone := &Agent{config: Config{InTask: true}}
 	talk := &Agent{}
 
 	withNoWindowOpen(t, func() {
-		if got := alone.turnLambda(); got != 0 {
-			t.Fatalf("a task nobody is watching valued a second at %v", got)
+		if got := alone.turnLambda(); got != lane.UnattendedValue {
+			t.Fatalf("a task nobody is watching valued a second at %v, want the unattended floor %v", got, lane.UnattendedValue)
 		}
 		if got := talk.turnLambda(); got != lane.AttentionValue {
 			t.Fatalf("a conversation's turn valued a second at %v, want %v", got, lane.AttentionValue)

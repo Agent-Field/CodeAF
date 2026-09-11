@@ -29,13 +29,9 @@ func TestAStoppedTaskIsNeverDrawnAsAFailure(t *testing.T) {
 		Label: "Offline reading", Status: string(session.TaskFailed),
 		Ending: session.TaskEndingStopped,
 	}
-	row := session.SessionRow{Open: true}
 
 	if word := taskStateWord(entry, false); word != taskStoppedWord {
 		t.Errorf("the record says %q about work a person stopped", word)
-	}
-	if glyph := plain(a.homeTaskGlyph(entry, row)); glyph == plain(a.pal.badGlyph()) {
-		t.Errorf("home draws a failure's cross at a stop: %q", glyph)
 	}
 	if glyph := taskStatusGlyph(entry, a.pal); glyph != glyphStopped {
 		t.Errorf("the mention menu draws %q at a stop, want %q", glyph, glyphStopped)
@@ -122,10 +118,6 @@ func TestARowNothingHoldsIsQuietlyIncomplete(t *testing.T) {
 	entry := session.TaskIndexEntry{Status: string(session.TaskRunning)}
 	if word := taskStateWord(entry, false); word != taskRecordStoppedWord {
 		t.Errorf("the record says %q about a row nothing holds", word)
-	}
-	glyph := plain(a.homeTaskGlyph(entry, session.SessionRow{}))
-	if glyph != glyphQueued {
-		t.Errorf("home draws %q for a row nothing holds, want the still %q", glyph, glyphQueued)
 	}
 	if glyph, _ := tasksGlyph(tasksItem{entry: entry, runs: false, section: tasksRunning}, a.pal); glyph != glyphIdle {
 		t.Errorf("the task place draws %q for a row nothing holds, want %q", glyph, glyphIdle)

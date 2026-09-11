@@ -111,10 +111,7 @@ func compactToolHistory(messages []ai.Message, frozen int, source resultSource) 
 	if len(old) == 0 {
 		return messages
 	}
-	// The call each result answers, found once for the whole pass: [toolNameFor]
-	// walks back up the transcript per result, which is the same quadratic shape
-	// the running total below removes.
-	names := toolCallNames(messages[:newest])
+	calls := toolResultCalls(messages[:newest])
 	out := append([]ai.Message(nil), messages...)
 
 	// spent is the running weight of the old results in out, carried rather than
@@ -124,10 +121,11 @@ func compactToolHistory(messages []ai.Message, frozen int, source resultSource) 
 	for _, index := range old {
 		text := messageContentText(messages[index])
 		if !compactLeaveVerbatim(text) {
-			view := reducedResultView(names[messages[index].ToolCallID], text, source.of(messages[index]))
-			// A reduction that is not smaller is not a reduction: it would spend
-			// a rewrite, and the cold prefix behind it, to save nothing.
-			if len(view) < len(text) {
+			view := reducedResultView(toolResultName(calls[index]), text, source.of(messages[index]))
+			// A reduction that does not reclaim enough is not a reduction: it
+			// would spend a rewrite, and the cold prefix behind it, to save
+			// almost nothing. See [compactViewEarnsItsRewrite].
+			if compactViewEarnsItsRewrite(len(text), len(view)) {
 				out[index] = replaceToolText(messages[index], view)
 			}
 		}
@@ -151,10 +149,10 @@ func compactToolHistory(messages []ai.Message, frozen int, source resultSource) 
 		if compactLeaveVerbatim(original) {
 			continue
 		}
-		line := reducedOutcomeLine(names[messages[index].ToolCallID], original, source.of(messages[index]))
+		line := reducedOutcomeLine(toolResultName(calls[index]), original, source.of(messages[index]))
 		reduced := replaceToolText(out[index], line)
 		before, after := messageBytes(out[index]), messageBytes(reduced)
-		if after >= before {
+		if !compactViewEarnsItsRewrite(before, after) {
 			continue
 		}
 		out[index] = reduced
@@ -257,18 +255,13 @@ func (a *Agent) fullResultPointer(message ai.Message, place resultPlace) string 
 	return place.journal
 }
 
-// toolCallNames maps a call id to the tool that was asked for, over one walk of
-// the frozen region.
-func toolCallNames(messages []ai.Message) map[string]string {
-	names := make(map[string]string, 16)
-	for _, message := range messages {
-		for _, call := range message.ToolCalls {
-			if call.ID != "" {
-				names[call.ID] = call.Function.Name
-			}
-		}
+// toolResultName leaves an orphan result unnamed rather than borrowing another
+// batch's tool name.
+func toolResultName(call *ai.ToolCall) string {
+	if call == nil {
+		return ""
 	}
-	return names
+	return call.Function.Name
 }
 
 // reducedResultView is what a consumed result is sent as: a header naming the
@@ -283,8 +276,17 @@ func toolCallNames(messages []ai.Message) map[string]string {
 // The elided count is measured, not the size minus the two bounds: a rune
 // boundary moves both cuts, and a count that is nearly right is one a model
 // cannot decide from.
+//
+// THE JOB FOOTER IS NOT PART OF THE RESULT AND IS NOT CARRIED INTO THE VIEW.
+// The tail is the half of a long result that is worth keeping — a command's
+// verdict is at the end of it — and a footer appended after the fact
+// (jobfooter.go) sits exactly there, so a compacted build log ended in the
+// elapsed time of an unrelated background job instead of the line that said
+// whether it passed. The state of the jobs is fresh on the result the model is
+// reading NOW; a stale copy of it four turns back is not worth the tail it
+// takes.
 func reducedResultView(tool, text, source string) string {
-	trimmed := strings.TrimSpace(text)
+	trimmed := strings.TrimSpace(stripJobFooter(text))
 	head := compactHead(trimmed, compactHeadBytes)
 	tail := compactTail(trimmed, checkpointResultBytes)
 	elided := len(trimmed) - len(head) - len(tail)
@@ -374,6 +376,38 @@ func compactLeaveVerbatim(text string) bool {
 		return true
 	}
 	return len(text) <= compactViewBytes
+}
+
+// compactViewEarnsItsRewrite weighs a composed view against the result it would
+// replace, and is the second half of [compactLeaveVerbatim]'s question.
+//
+// A REWRITE IN THE MIDDLE OF THE TRANSCRIPT IS NOT FREE. [compactLeaveVerbatim]
+// bounds the RESULT — under [compactViewBytes] nothing is touched at all — but
+// what decides whether a rewrite PAYS is the reclaim, and the reclaim is the
+// result minus the head, minus the tail, and minus the pointer. The pointer is
+// the part nobody sized: a 934-byte result was replaced by an 843-byte view
+// whose `full:` clause was a ninety-character absolute path into a temporary
+// home. Ninety-one bytes saved; five thousand two hundred and sixty bytes of
+// conversation behind it re-billed at the uncached rate on that request and
+// every one after it until the next break. It was measured on this wave's own
+// branch and is written up with its numbers in
+// docs/design/prompt-diet/BENCH.md §1c.
+//
+// So a reclaim smaller than a [stubPrefixShare] share of what it disturbs is
+// declined and the result is left exactly as it is. That is stub.go's law, and
+// stub.go's constant is read from there rather than typed again. The two weigh
+// the share against different quantities — the stubbing pass holds the whole
+// transcript and measures the cold tail it is about to make, while this one is
+// composing a view a message at a time and has only the message in hand — and
+// what they share is the discipline: A SAVING SMALLER THAN A SHARE OF WHAT IT
+// TOUCHES IS A SAVING NOT WORTH HAVING.
+//
+// A result declined here is not lost and is not decided forever. It is looked at
+// again on the next request, and the pass that has to hold the digest budget
+// still reduces it to a line when the transcript's weight actually demands one.
+func compactViewEarnsItsRewrite(was, now int) bool {
+	reclaim := was - now
+	return reclaim > 0 && reclaim*stubPrefixShare >= was
 }
 
 func replaceToolText(message ai.Message, text string) ai.Message {

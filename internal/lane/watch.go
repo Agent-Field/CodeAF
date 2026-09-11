@@ -124,6 +124,17 @@ func PlanFor(choice Choice, pace Pace, role Role, now time.Time) control.Plan {
 		Gap:     pace.Gap,
 		Alts:    alternatives(choice, head),
 		Began:   now,
+		// ── AND THE SAME PLAN IS THE CALL'S ONE BUDGET ──────────────────────
+		//
+		// The deadline is the role's own patience ([Role.GiveUp]) counted from
+		// the moment the request went out, and the move log is empty and shared:
+		// every arm of this question writes into it, so two of them can never
+		// demand one machine. Both are here rather than in the transport because
+		// this is the ONE place a plan is built, and a second place that filled
+		// them in would be a second answer to "how long may this call take".
+		Deadline: now.Add(role.GiveUp()),
+		Role:     string(role),
+		Moves:    control.NewMoveLog(),
 	}
 }
 
@@ -402,24 +413,24 @@ func (w *Watch) sign(t time.Time) {
 // only while its measured rate keeps up. A hidden delta is the endpoint writing
 // where nobody can read, so it moves the phase and leaves the silence exactly
 // where it was.
-func (w *Watch) Token(n, visible int, t time.Time) Verdict {
+func (w *Watch) Token(n, visible int, t time.Time) Advice {
 	reading := control.Reading{At: t, Visible: visible - w.visible, Hidden: (n - w.tokens) - (visible - w.visible)}
 	w.tokens, w.visible = n, visible
-	return verdictOf(w.Read(reading))
+	return adviceOf(w.Read(reading))
 }
 
 // Silence records that nothing has arrived by t, and says whether that silence
 // has gone on long enough to act on.
-func (w *Watch) Silence(t time.Time) Verdict { return verdictOf(w.Quiet(t)) }
+func (w *Watch) Silence(t time.Time) Advice { return adviceOf(w.Quiet(t)) }
 
-// verdictOf is the older, narrower answer: a hedge or nothing. Everything the
+// adviceOf is the older, narrower answer: a hedge or nothing. Everything the
 // ladder gained since — an offer, a report, an escalation, a commitment — is
 // read off [Watch.Last] by the callers that know what to do with it.
-func verdictOf(act control.Act) Verdict {
+func adviceOf(act control.Act) Advice {
 	if act.Kind != control.Hedge {
-		return Verdict{}
+		return Advice{}
 	}
-	return Verdict{Hedge: true, Reason: act.Reason}
+	return Advice{Hedge: true, Reason: act.Reason}
 }
 
 // DeadlineAt is the next moment worth waking for, so a beat arms a timer rather

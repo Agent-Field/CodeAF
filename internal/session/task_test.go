@@ -724,7 +724,7 @@ func TestNonRepositoryRunsInPlace(t *testing.T) {
 	if tree.merge != mergeInPlace || tree.branch != "" {
 		t.Fatalf("tree = %+v, want inplace with no branch", tree)
 	}
-	if merge, _, _, _ := tree.comeHome("do the thing", nil); merge != mergeInPlace {
+	if merge, _, _, _ := tree.comeHome("do the thing", nil, false); merge != mergeInPlace {
 		t.Fatalf("comeHome = %q, want inplace", merge)
 	}
 }
@@ -743,7 +743,7 @@ func TestConflictingMergeKeepsTheBranch(t *testing.T) {
 	// Their branch has not moved, so the merge itself still gets to answer.
 	writeFile(t, filepath.Join(repo, "shared.txt"), "the person's line\n")
 
-	merge, detail, _, _ := tree.comeHome("edit the shared file", []string{"shared.txt"})
+	merge, detail, _, _ := tree.comeHome("edit the shared file", []string{"shared.txt"}, false)
 	if merge != mergeConflicted {
 		t.Fatalf("merge = %q (%s), want conflicted", merge, detail)
 	}
@@ -1549,7 +1549,7 @@ func TestDependentWaitsOnUnverifiedAndRunsWhenItIsAccepted(t *testing.T) {
 		t.Fatalf("an accepted node is %q, want done", state)
 	}
 	report := graph.node(first).notice().Report
-	if !strings.HasPrefix(report, "you looked at this yourself and took it as done") || !strings.Contains(report, "I read the diff myself") {
+	if !strings.HasPrefix(report, "you took this as done") || !strings.Contains(report, "I read the diff myself") {
 		t.Fatalf("report = %q, want the person's decision and their reason", report)
 	}
 	if started := ran.await(t); started.id != second {

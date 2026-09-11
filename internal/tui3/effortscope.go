@@ -135,7 +135,7 @@ func effortClause(rung effort.Rung) string {
 type effortMoved struct {
 	// where is the surface's own name for the scope, so a clause can ask whether
 	// the emphasis is ITS: a standing item's id for an item, and
-	// [effortScopeConversation] for the chip above the message box
+	// [effortScopeConversation] for the rung on the seam above the message box
 	// (effortchip.go). They cannot collide — the sentinel leads with a NUL no id
 	// can carry.
 	where string
@@ -146,11 +146,11 @@ type effortMoved struct {
 // can be, so a scope with a real id and this one can never be mistaken for one
 // another.
 //
-// THE CONVERSATION'S CHIP SHARES THE FIELD AND NOT THE TIMING. It records its
+// THE CONVERSATION'S RUNG SHARES THE FIELD AND NOT THE TIMING. It records its
 // move here so that only ONE rung on this window can be the newest fact — moving
-// a task's rung takes the emphasis off the chip and vice versa, which is the law
+// a task's rung takes the emphasis off the seam and vice versa, which is the law
 // [effortMoved] is written for — but the emphasis it then wears is its own: the
-// tray has one cell to say it in and says it with the selected ground for two
+// seam has one cell to say it in and says it with the selected ground for two
 // seconds ([app.effortFlashing]), where a card has a whole clause and lets it
 // fade down the reading ladder over the status line's ten.
 const effortScopeConversation = "\x00conversation"
@@ -184,21 +184,3 @@ func (a *app) effortInk(where string, pal palette) func(string) string {
 }
 
 // ── the install's own rung ──────────────────────────────────────────────────
-
-// effortProfile reports the profile this window writes settings into, and false
-// for a window that has none.
-//
-// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN. A surface with no profile
-// draws no rung at all, rather than drawing one it could not move.
-//
-// AND THE WINDOW WITH NO PROFILE IS THE HOSTED ONE, WHICH IS NOT THE ONE WITH AN
-// EMPTY PROFILE DIRECTORY. This used to answer false on an empty
-// [app.profileDir], which is what AFORGE_PROFILE_DIR being unset looks like —
-// so the install's own rung was drawn on the rare launch that exported it and
-// for nobody else (#322). The empty string has always meant this process's own
-// profile in the state root ([config.ProfilePath]), and that profile is exactly
-// the install whose rung this line states. A connection's is another machine's,
-// and it is the one asked nothing.
-func (a *app) effortProfile() (string, bool) {
-	return a.profileDir, !a.hosted()
-}
