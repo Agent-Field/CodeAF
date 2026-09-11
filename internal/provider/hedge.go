@@ -451,6 +451,12 @@ func (r *hedgeRace) startArm(index int, lane string, ladder []byte) {
 	}
 	arm := &hedgeArm{index: index, lane: lane, cancel: cancel, watch: watch}
 	armCtx = withStreamWatch(armCtx, arm.watch)
+	// AND THE ARM CARRIES THE QUESTION'S OWN BUDGET (dispatch.go). It is a COPY
+	// of the plan — its own machine, its own alternatives — over ONE deadline
+	// and ONE move log, both the race's: a rescue does not buy the question more
+	// time, and two arms deciding at the same instant cannot take one machine
+	// because they are writing into the same list.
+	armCtx = withCallPlan(armCtx, plan)
 	if lane != "" {
 		armCtx = withHedgeLane(armCtx, lane)
 	}

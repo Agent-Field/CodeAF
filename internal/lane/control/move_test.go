@@ -73,10 +73,10 @@ func TestNextWalksTheMachinesBeforeItChangesTheRequest(t *testing.T) {
 			order: []string{"machine A@0"},
 		},
 		{
-			name: "a request that names no machine at all is a set one wide",
-			plan: planOf("m", nil, nil, 5*time.Second),
+			name: "two machines, one of them named twice, are one set",
+			plan: planOf("m", []string{"A", "a", "B"}, nil, 0),
 			order: []string{
-				"machine @0", "wait @0",
+				"machine A@0", "machine B@0",
 			},
 		},
 		{
@@ -152,6 +152,38 @@ func TestNextNeverRepeatsAMove(t *testing.T) {
 		if waits == 1 && len(plan.Serving()) != 1 {
 			t.Fatalf("trial %d repeated a machine while %d were admissible", trial, len(plan.Serving()))
 		}
+	}
+}
+
+// TestAnOpenSetAlwaysHasAnotherMachineAndOnlyTheDeadlineStopsIt is the state
+// most calls in this build are in: nobody named the pool, so the router picks
+// and each body carries a longer exclusion list than the last. Reading that as
+// a set one machine wide would invent a pool this process cannot see, and would
+// stop the walk after one send.
+func TestAnOpenSetAlwaysHasAnotherMachineAndOnlyTheDeadlineStopsIt(t *testing.T) {
+	t.Parallel()
+	plan := planOf("m", nil, nil, 5*time.Second)
+	log := NewMoveLog()
+	for send := range 20 {
+		move := Next(plan, log.List())
+		if move.Kind != MoveMachine {
+			t.Fatalf("send %d: an open set answered %s", send, move.Kind)
+		}
+		if move.Lane != "" {
+			t.Fatalf("send %d: an open set named %q", send, move.Lane)
+		}
+		if !log.Add(move) {
+			t.Fatalf("send %d: an anonymous move was refused as a repeat", send)
+		}
+	}
+	if log.Count() != 20 {
+		t.Fatalf("the log holds %d of 20 open moves", log.Count())
+	}
+	// And the ONE thing that stops it is the deadline.
+	now := time.Date(2026, 9, 10, 23, 0, 0, 0, time.UTC)
+	plan.Deadline = now
+	if !plan.Spent(now) {
+		t.Fatal("an open walk with a spent deadline kept going")
 	}
 }
 

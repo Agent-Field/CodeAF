@@ -389,26 +389,30 @@ func (p Plan) Left(now time.Time) time.Duration {
 // serving is every machine this request may go to, best belief first: the head
 // of the choice, then the alternatives the frontier named.
 //
-// A PLAN THAT NAMES NOBODY HAS A SET ONE WIDE, and the empty name is what the
-// wire already means by it — "whatever the router picks". That matters to [Next]
-// rather than being a detail: a request with no opinion about machines has
-// nowhere else to go, so it is exactly the case the single legal repeat is for.
+// AN EMPTY SET IS AN OPEN SET AND NEVER A SET OF ONE. "This request may go
+// anywhere the router likes" is a real and common state — no preference was
+// carried, the chooser held fewer than two beliefs, the base is not a router —
+// and reading it as one machine wide would be this build inventing a pool it
+// cannot see. [Next] answers an open set with a machine move every time, and
+// what bounds the walk is the deadline, because nothing else honestly can.
 func (p Plan) serving() []string {
 	set := make([]string, 0, len(p.Alts)+1)
 	seen := map[string]bool{}
 	add := func(lane string) {
-		key := strings.ToLower(strings.TrimSpace(lane))
+		lane = strings.TrimSpace(lane)
+		if lane == "" {
+			return
+		}
+		key := strings.ToLower(lane)
 		if seen[key] {
 			return
 		}
 		seen[key] = true
-		set = append(set, strings.TrimSpace(lane))
+		set = append(set, lane)
 	}
 	add(p.Lane)
 	for _, alt := range p.Alts {
-		if strings.TrimSpace(alt.Lane) != "" {
-			add(alt.Lane)
-		}
+		add(alt.Lane)
 	}
 	return set
 }

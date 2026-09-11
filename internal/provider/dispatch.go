@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/lane/control"
 	"github.com/Agent-Field/aforge-v2/internal/trace"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -24,53 +26,31 @@ import (
 // loop that returns early does not leave a timer behind for the length of the
 // backoff it abandoned.
 
-// Retry policy for the outbound call.
+// ── THE DISPATCHER: ONE LOOP, ONE BUDGET, ONE OWNER ─────────────────────────
 //
-// One transient timeout on one node cost four of ten nodes in a real run: the
-// node failed and three dependents were blocked behind it. Nothing about that
-// was a planning or execution problem — the network hiccuped and a quarter of
-// the work was thrown away. A bounded retry here is the smallest thing that
-// makes a run survive its own infrastructure.
+// This is the one place in this build that decides what a failed call does
+// next, and the one place a request for a completion reaches the wire
+// (`TestOneDispatcherSendsForACompletion`).
 //
-// This is deliberately a stopgap. Real hardening — per-provider budgets, circuit
-// breaking, retry accounting — belongs in a client rewrite, not here.
+// WHAT IT REPLACED (docs/design/recovery/DESIGN.md §2 problem 1 and §4). Eleven
+// controllers on one request path each owned a budget none of the others could
+// see — three transport faults here, six or sixty paced sends here, two minutes
+// or ten of pacing here, eight free moves here, four arms in hedge.go, seven
+// rungs in endpoints.go, four attempts and two models in internal/session. Their
+// product is nobody's number, and the call census of 2026-09-10 measured what it
+// produced: chains of sixteen and seventeen identical sends to one machine,
+// running eleven minutes, and ending refused anyway.
+//
+// THERE IS NOW ONE BOUND AND IT IS A DEADLINE IN THE PERSON'S OWN TIME
+// ([control.Plan.Deadline], from `lane.Role.GiveUp` — ninety seconds for a
+// conversation's turn, four and a half minutes for a task node). What comes next
+// is [control.Next], a pure function whose order is the rule's order: another
+// machine, the same machine once after the comeback it named itself when it is
+// alone, a relaxed shape one rung at a time, none. Nothing under the plan owns a
+// retry count, and none of the six constants this block used to hold exists.
 const (
-	maxAttempts = 3
-	// rateLimitAttempts is the patience for 429s specifically: the provider
-	// pacing us is not a fault. Retry-After raises the wait rather than
-	// bounding it — it is the provider's floor, not its ceiling — so the
-	// ceiling is ours: maxProviderWait.
-	//
-	// IT IS THE PATIENCE OF A WATCHED CALL, and only that. A person is sitting
-	// in front of a conversation's turn, and six attempts is roughly where
-	// waiting stops being kinder than an error they can act on. A call made
-	// under [WithPatientRateLimits] — a task node's, where nobody is watching
-	// and a worktree of work is at stake — gets patientAttempts instead; see
-	// patience.go for why the two are different answers to the same 429.
-	rateLimitAttempts = 6
-	// patientAttempts is the ceiling on a patient call, and it exists because
-	// "waits it out however long that takes" was written as a loop with no exit
-	// but the context's. Sixty attempts against the per-wait cap below is an
-	// hour of pacing, so in practice patientPacingBudget is what ends a patient
-	// call and this is the arithmetic backstop for the degenerate case: a
-	// provider answering 429 with no delay at all, where the wall clock barely
-	// moves and only a count is finite.
-	patientAttempts = 60
-	// watchedPacingBudget and patientPacingBudget are the WALL CLOCK a call may
-	// spend held by pacing, measured from its first 429. A count of attempts
-	// does not bound time when the provider names the waits: six attempts each
-	// told to come back in a minute is five minutes of a person watching a
-	// cursor, which no number of attempts can express.
-	//
-	// Two minutes is past the point where a watched turn should have said
-	// something. Ten is the unwatched answer: a task node's work is worth
-	// waiting for, and a burst clears in seconds, but ten unbroken minutes of
-	// 429 is not a burst — it is an account that cannot serve this work now,
-	// and a node that says so beats a node that sits.
-	watchedPacingBudget = 2 * time.Minute
-	patientPacingBudget = 10 * time.Minute
-	baseBackoff         = 700 * time.Millisecond
-	maxErrorPeek        = 8 << 10
+	baseBackoff  = 700 * time.Millisecond
+	maxErrorPeek = 8 << 10
 	// maxBackoffShift caps the exponent, not the patience. A patient call may
 	// take its hundredth attempt, and `1 << 99` is not a long wait — it is an
 	// overflow, and an overflowed duration is a negative one. Seven doublings
@@ -78,18 +58,6 @@ const (
 	// wait lands anyway, so clamping here changes nothing about a bounded call
 	// and makes an unbounded one arithmetic rather than undefined.
 	maxBackoffShift = 8
-	// freeMoves is how many times one call may go straight to another machine
-	// with no wait at all before it starts paying the backoff again.
-	//
-	// A MOVE IS FREE BECAUSE IT IS A DIFFERENT REQUEST, and that argument holds
-	// for the first few and stops holding somewhere. A patient call has sixty
-	// attempts and a router can have seventeen machines behind one model; a walk
-	// with no bound would let a bad minute spend all of them as fast as the
-	// connection allows, which is the traffic an account-wide limit is made of.
-	// Eight is past the point where another machine is likely to be the answer —
-	// the census's escaping chains all escaped on their first real move — and it
-	// still leaves the ordinary walk of three or four entirely unpaid for.
-	freeMoves = 8
 	// maxProviderWait caps what a Retry-After may ask for. The header may be an
 	// HTTP date, and a provider that names tomorrow morning is asking a call to
 	// sleep for hours inside a run the user is watching. A minute is already
@@ -178,6 +146,92 @@ func (r *refusedHere) list() []string {
 	return append([]string(nil), r.names...)
 }
 
+// ── THE CALL'S ONE PLAN ─────────────────────────────────────────────────────
+
+type callPlanKey struct{}
+
+// dispatchNow is the clock the DEADLINE is read against, and it is deliberately
+// the waiting controller's rather than [Client.clock].
+//
+// A deadline is an account of how long a PERSON has been waiting, which is the
+// same argument [waitNow] already makes about the hazard: [Client.clock] is a
+// measurement seam that a test fills with a scripted list of instants, and a
+// deadline read off one would be this build deciding the shape of a wait nobody
+// was having. It is a var rather than a func so a scenario can state ninety
+// seconds without spending ninety of them; nothing in production replaces it.
+var dispatchNow = waitNow
+
+// withCallPlan puts one question's plan on the context so every send under it
+// reads the SAME budget — the same deadline, and the same list of what has been
+// tried. A race stamps it once and every arm inherits it, which is what makes
+// two arms unable to demand one machine.
+func withCallPlan(ctx context.Context, plan control.Plan) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, callPlanKey{}, plan)
+}
+
+// callPlanFrom is the plan this call is being made under, and whether anybody
+// built one.
+func callPlanFrom(ctx context.Context) (control.Plan, bool) {
+	if ctx == nil {
+		return control.Plan{}, false
+	}
+	plan, ok := ctx.Value(callPlanKey{}).(control.Plan)
+	return plan, ok
+}
+
+// dispatchPlan is the budget THIS send runs under.
+//
+// It is the question's plan where there is one — a race built it, every arm
+// shares its deadline and its moves — narrowed to what this particular request
+// may do: the machines it may go to ([requestSet], which honours a demand), the
+// relaxation rungs it actually has, and the model on it.
+//
+// AND A CALL NOBODY BUILT A PLAN FOR STILL GETS ONE. A non-streamed completion,
+// a document parse, a build with no controller at all: each is a question of its
+// own, and a question with no deadline is the state this whole wave exists to
+// delete. It is built through `lane.PlanFor`, which is the ONE place a plan is
+// built, so the deadline is the role's there as it is everywhere.
+func (c *Client) dispatchPlan(ctx context.Context, request *ai.Request, knobs callKnobs) control.Plan {
+	model := c.modelFor(request)
+	plan, held := callPlanFrom(ctx)
+	if !held {
+		plan = lanes.PlanFor(lanes.Choice{}, lanes.Pace{}, RoleFrom(ctx), dispatchNow())
+	}
+	plan.Model = model
+	// THE SET IS THE REQUEST'S OWN AND NOT THE CHOICE'S. A rescue's demand and a
+	// person's strict pin are both one machine wide however many the frontier
+	// named, and that is the whole of what makes the single legal repeat legal.
+	// An empty answer is an OPEN set — the router picks — which is a different
+	// state from a set of one and is read as one by [control.Next].
+	if set := requestSet(knobs); len(set) > 0 {
+		plan.Lane, plan.Alts = strings.TrimSpace(set[0]), nil
+		for _, lane := range set[1:] {
+			plan.Alts = append(plan.Alts, control.Alternative{Lane: strings.TrimSpace(lane)})
+		}
+	} else {
+		plan.Lane, plan.Alts = "", nil
+	}
+	// AND THE RUNGS ARE THIS REQUEST'S OWN. A rung for a field the request never
+	// carried is not a move, it is the same request sent twice — so a text-only
+	// call with no cap and no knob has no ladder at all, and [control.Next] must
+	// not offer it one (endpoints.go's [Client.relaxationPlan] is the authority
+	// and this reads it rather than counting rungs a second time).
+	plan.Shapes = nil
+	for _, step := range c.relaxationPlan(request, knobs, model) {
+		plan.Shapes = append(plan.Shapes, step.label)
+	}
+	if plan.Moves == nil {
+		plan.Moves = control.NewMoveLog()
+	}
+	if plan.Deadline.IsZero() {
+		plan.Deadline = dispatchNow().Add(RoleFrom(ctx).GiveUp())
+	}
+	return plan
+}
+
 // send performs one request with retries, and returns a response whose body has
 // not been read.
 //
@@ -214,9 +268,9 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		}
 	}()
 	// pacedSince is when this call FIRST drew a 429, and zero until it does. It
-	// is what the pacing budget is measured against, so a call that spent four
-	// minutes doing real work and then met one 429 has its full patience, and a
-	// call that has been held from the start does not.
+	// is what tells [PhasePaced] from [PhaseRetrying] — whose fault the wait is —
+	// and nothing else: the budget it used to be measured against is gone, and
+	// the deadline it is measured against now belongs to the plan.
 	var pacedSince time.Time
 	attempts := 0
 	var recoveryCtx context.Context
@@ -226,6 +280,9 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	// See the branch it governs below: a backoff is what we pay to ask the same
 	// machine again, and it is the only thing it is for.
 	moved := false
+	// move is what the plan says to do next, and it is empty on the first pass
+	// because the first send is not a recovery from anything.
+	var move control.Move
 	// The body this call is carrying, kept ONLY when somebody asked for it: the
 	// old bodies pin, which puts it on the line of the model-call log, or the
 	// debug record, which is where bodies are moving to (calllog.go). On every
@@ -233,16 +290,58 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	if knobs.trace != nil && (calllog.Bodies() || trace.For(ctx) != nil) {
 		knobs.trace.body = body
 	}
-	// Rate limits get more patience than faults: they are the provider
-	// pacing us, not failing, and abandoning work over pacing is the one
-	// outcome the concurrency doctrine forbids. A patient call takes that much
-	// further — a whole order of magnitude of it — and every other class of
-	// failure below keeps the short patience it always had. But EVERY call ends:
-	// patience that cannot be spent is a turn that can be held hostage by an
-	// account somebody else is saturating (outOfPatience).
+	// ── THE ONE BUDGET ──────────────────────────────────────────────────────
+	//
+	// Rate limits are not faults — they are the provider pacing us, and
+	// abandoning work over pacing is the one outcome the concurrency doctrine
+	// forbids — but that is now a statement about WHICH MOVE comes next and no
+	// longer about how many attempts of a private count are left. The plan is
+	// the whole of how long, [control.Next] the whole of what, and neither of
+	// them is a number this file holds.
+	plan := c.dispatchPlan(ctx, request, knobs)
+	total := len(plan.Serving())
+	// ── A WAIT WE ASKED FOR IS SPENT WHETHER OR NOT THE CLOCK MOVED ─────────
+	//
+	// [Client.wait] is a seam, and what a test usually fills it with is a
+	// function that returns at once: that is how a scenario states a
+	// two-minute backoff without spending two minutes. Under an attempt count
+	// that was harmless, because the count was what ended the call. Under a
+	// deadline it is not: a seam that makes waiting free makes the deadline
+	// unreachable, and the loop it bounds becomes the unbounded one this wave
+	// exists to delete.
+	//
+	// So the dispatcher charges itself for what it ASKED for. `owed` is the
+	// part of a wait the clock did not actually take, and it is added to the
+	// moment the deadline is read against. In production it is a rounding
+	// error; in a scenario it is the whole of the fiction, honestly kept.
+	var owed time.Duration
+	spentAt := func() time.Time { return dispatchNow().Add(owed) }
 	for attempt := 0; ; attempt++ {
-		if attempt > 0 && outOfPatience(patient, attempt, pacedSince) {
-			break
+		if attempt > 0 {
+			// AND THE DEADLINE IS ASKED FIRST, because it is the only thing that
+			// ends a call. `outOfPatience` used to answer here from two
+			// currencies nobody above could see — six attempts or two minutes
+			// for a watched call, sixty or ten for a patient one — and it is
+			// deleted with them.
+			if plan.Spent(spentAt()) {
+				break
+			}
+			// What the last refusal asked us to wait, which is the one input the
+			// move generator needs that changes between moves.
+			plan.Comeback = providerWait
+			move = control.Next(plan, plan.Moves.List())
+			if move.Kind == control.MoveNone {
+				break
+			}
+			// A SHAPE IS NOT THIS LOOP'S MOVE TO MAKE. The ladder that takes a
+			// field off the request is endpoints.go's and it is entered from
+			// above ([Client.sendRecovered]), because only the layer holding the
+			// refusal's own body can say which rung it earned. This loop hands
+			// the refusal back and that layer climbs.
+			if move.Kind == control.MoveShape {
+				break
+			}
+			plan.Moves.Add(move)
 		}
 		attempts++
 		// What the CALL has spent, for the row the completed answer writes at
@@ -260,12 +359,34 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			// The person is told all the same, in the ordinal, with no moment
 			// attached: there is nothing to count down to, because nothing is
 			// being waited for.
+			//
+			// AND THE ORDINAL'S DENOMINATOR IS REAL. It used to be the attempt
+			// ceiling — `2 of 6` where six was a constant about patience — so a
+			// walk of three machines read as though half of something was left.
+			// It is how many machines this request may actually go to
+			// ([control.Plan.Serving]), and a set nobody named draws nothing
+			// rather than a number it cannot stand behind.
 			now := c.clock()
 			notePhase(ctx, c.modelFor(request), PhaseRetrying,
-				ordinalOf(attempts, patienceOf(patient)), now, now, "")
+				ordinalOf(attempts, total), now, now, "")
 			providerWait = 0
 		} else if attempt > 0 && !reconnected {
+			// AND THE WAIT THE MACHINE ITSELF NAMED OUTRANKS OUR DOUBLING. A
+			// [control.MoveWait] is the one legal repeat there is — the same
+			// bytes to the same machine, because the set is one wide — and the
+			// comeback on it is what that machine asked for. Every other pass
+			// through here is a fault being re-asked, where nobody named a wait
+			// and the doubling is all there is.
+			if move.Kind == control.MoveWait && move.Wait > 0 {
+				providerWait = move.Wait
+			}
 			delay := backoffFor(attempt, providerWait)
+			// AND IT IS NEVER LONGER THAN WHAT IS LEFT OF THE CALL. A wait that
+			// outlives the deadline is a person watching a countdown to a moment
+			// this build has already decided not to reach.
+			if left := plan.Left(spentAt()); left > 0 && delay > left {
+				delay = left
+			}
 			// AND A PERSON IS TOLD HOW LONG, WHICH IS THE ONE FACT THIS LOOP
 			// HAD AND THREW AWAY. Until the phase clock, a conversation parked
 			// on a rate limit for two minutes said nothing at all: the only
@@ -287,13 +408,17 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			}
 			now := c.clock()
 			notePhase(ctx, c.modelFor(request), paced,
-				ordinalOf(attempts, patienceOf(patient)), now, now.Add(delay), "")
+				ordinalOf(attempts, total), now, now.Add(delay), "")
 			// Spent. It described one moment to come back at, and coming back
 			// is what we are doing; carrying it forward made a single 429 set
 			// the floor for every remaining attempt of the call.
 			providerWait = 0
+			waitBegan := dispatchNow()
 			if err := c.wait(ctx, delay); err != nil {
 				return nil, err
+			}
+			if took := dispatchNow().Sub(waitBegan); took < delay {
+				owed += delay - took
 			}
 		}
 		reconnected, moved = false, false
@@ -409,9 +534,13 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			if c.handBack(ctx, knobs, "", false) {
 				return nil, lastErr
 			}
-			if attempt >= maxAttempts-1 {
-				break
-			}
+			// AND NOTHING BREAKS OUT HERE ANY MORE. `attempt >= maxAttempts-1`
+			// was the private three-fault budget; the deadline and
+			// [control.Next] are asked at the top of the next pass, and they are
+			// the whole of what ends a call. A transport fault names nobody, so
+			// the move it earns is an ordinary one and it is paid for with the
+			// backoff above — which is what stops a dead resolver being asked at
+			// connection speed for the length of the deadline.
 			continue
 		}
 		rateLimited := response.StatusCode == http.StatusTooManyRequests
@@ -531,10 +660,13 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				providerWait = wait
 			}
 		}
-		// AND THE WALK IS NOT FREE FOREVER (see [freeMoves]). Past the eighth
-		// machine this call is no longer moving toward an answer, it is spending
-		// an account's allowance at connection speed.
-		moved = fresh && !spent && knobs.refused.count() <= freeMoves
+		// AND THE WALK IS FREE FOR AS LONG AS THE CALL HAS, which is what
+		// replaced `freeMoves`. Eight was a guess at where a walk stops being
+		// worth having — past that a bad minute could spend a seventeen-machine
+		// roster at connection speed, which is the traffic an account-wide limit
+		// is made of — and the honest answer was always the deadline: a walk
+		// cannot outrun it, so it cannot outrun it for free either.
+		moved = fresh && !spent
 		// ONE RECOVERY OWNER, ASKED ONCE. Two exits used to answer this — the
 		// walk's for a fault and the full demanded pool's for a 429 (#835) — and
 		// keeping them apart is how the same question came to have two answers
@@ -542,10 +674,10 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		if c.handBack(ctx, knobs, refusal.Lane, rateLimited) {
 			return nil, lastErr
 		}
-		// Non-rate-limit faults keep the original, shorter patience.
-		if !rateLimited && attempt >= maxAttempts-1 {
-			break
-		}
+		// AND THE SHORTER PATIENCE FOR A FAULT IS GONE WITH THE LONGER ONE FOR A
+		// 429. `!rateLimited && attempt >= maxAttempts-1` was the last of the
+		// six budgets this loop owned; the plan is asked at the top of the next
+		// pass and answers for both.
 	}
 	if lastErr == nil {
 		lastErr = errors.New("request failed")
@@ -656,28 +788,15 @@ func retryAfterIn(payload []byte) time.Duration {
 	return 0
 }
 
-// outOfPatience reports whether this call has spent everything it is willing to
-// spend on being paced, and it is the ONE PLACE either kind of call gives up on
-// a 429.
+// ── WHAT USED TO BE HERE ────────────────────────────────────────────────────
 //
-// Two currencies, because each bounds what the other cannot. Attempts bound a
-// provider that says "not yet" instantly and forever, where no amount of
-// retrying moves a clock. The wall clock bounds a provider that names its own
-// waits, where six attempts can be five minutes. A call is done when it runs
-// out of either.
-//
-// It says nothing about faults: a timeout or a 500 keeps the short patience it
-// always had, bounded by maxAttempts at the call site.
-func outOfPatience(patient bool, attempt int, pacedSince time.Time) bool {
-	attemptLimit, budget := rateLimitAttempts, watchedPacingBudget
-	if patient {
-		attemptLimit, budget = patientAttempts, patientPacingBudget
-	}
-	if attempt >= attemptLimit {
-		return true
-	}
-	return !pacedSince.IsZero() && time.Since(pacedSince) >= budget
-}
+// `outOfPatience` answered "has this call spent everything it is willing to
+// spend on being paced" from two private currencies — six attempts or two
+// minutes for a watched call, sixty or ten for a patient one — and `patienceOf`
+// turned one of them into the denominator a person read. Both are deleted.
+// [control.Plan.Spent] is the one place a call gives up, on one deadline in the
+// person's own time, and the ordinal's denominator is how many machines this
+// request may really go to.
 
 // backoffFor is how long to wait before one retry.
 //
@@ -772,18 +891,15 @@ func retryableStatus(status int) bool {
 // ordinalOf spells which of how many attempts this is, the way a person says
 // it: "2 of 6". An unknown total draws nothing rather than a bare number with
 // no scale beside it.
+//
+// AND A COUNT PAST ITS OWN TOTAL DRAWS NOTHING EITHER. "4 of 3" is not a scale,
+// it is arithmetic leaking, and it is reachable now that the total is how many
+// machines a request may go to rather than a constant nobody could exceed: a
+// transport fault names no machine, so it spends a pass of the loop without
+// spending one of the set.
 func ordinalOf(attempt, total int) string {
-	if attempt <= 0 || total <= 0 {
+	if attempt <= 0 || total <= 0 || attempt > total {
 		return ""
 	}
 	return strconv.Itoa(attempt) + " of " + strconv.Itoa(total)
-}
-
-// patienceOf is how many attempts this call is allowed, which is the only
-// figure the ordinal above can honestly be measured against.
-func patienceOf(patient bool) int {
-	if patient {
-		return patientAttempts
-	}
-	return rateLimitAttempts
 }

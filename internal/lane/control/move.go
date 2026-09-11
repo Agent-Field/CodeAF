@@ -100,7 +100,15 @@ func (k MoveKind) String() string {
 // sameAs reports whether two moves are the same act. The WAIT is deliberately
 // not part of the identity: how long a machine asked for is the machine's
 // answer to this call, not a property of the act of going back to it.
+//
+// AND A MOVE THAT NAMES NO MACHINE IS NEVER A REPEAT. It is the open set's move
+// (see [Next]): the router picks, and the body it picks from carries a longer
+// exclusion list every time, so "the same machine again" is precisely what it
+// cannot be. Calling two of them equal would stop an open walk after one send.
 func (m Move) sameAs(other Move) bool {
+	if m.Lane == "" || other.Lane == "" {
+		return false
+	}
 	return m.Kind == other.Kind && m.Shape == other.Shape &&
 		strings.EqualFold(m.Model, other.Model) && strings.EqualFold(m.Lane, other.Lane)
 }
@@ -187,6 +195,14 @@ func Next(plan Plan, history []Move) Move {
 	shape := shapeReached(history)
 	for {
 		candidates := plan.serving()
+		// 0. AN OPEN SET HAS ANOTHER MACHINE UNTIL THE DEADLINE SAYS OTHERWISE.
+		// Nobody named the pool, so the router picks — and each body carries a
+		// longer exclusion list than the last, which is what makes the next send
+		// a different request rather than the same one. There is nothing here to
+		// walk and nothing to run out of, so the deadline is the whole bound.
+		if len(candidates) == 0 {
+			return Move{Kind: MoveMachine, Model: plan.Model, Shape: shape}
+		}
 		// 1. ANOTHER MACHINE. The head of the choice first, then the frontier's
 		// own order, which is already best-belief-first.
 		for _, lane := range candidates {
