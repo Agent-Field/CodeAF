@@ -45,6 +45,15 @@ type StandingNotice struct {
 	// none, and the card should ask rather than state: "about every 2 minutes
 	// — you didn't say, so that's my guess. Right?"
 	Guessed bool
+	// Terms are the card's lines about WORK THAT RUNS, beyond when, where and
+	// what it costs: what one run does, the report file and who writes it, the
+	// folder it will be placed in, and the rules that reach that folder now —
+	// "report · reports/inbox-report.md — aforge publishes this file; the run
+	// never writes it". Each is one whole line, composed by the engine from the
+	// same readings the run will make ([Agent.standingTerms]), and a surface
+	// draws them verbatim, in order, the way it draws [StandingNotice.Options].
+	// Empty for a reminder, a watch that only says a line, and a rule.
+	Terms []string
 	// Options are the answers THIS card offers, from [StandingOptions].
 	//
 	// THE ENGINE SAYS WHICH CHIPS A CARD HAS, so the conversation's card, home's
@@ -117,8 +126,9 @@ type Standing struct {
 	// (internal/config's KeyStandingBackground).
 	//
 	// Nil means there is no timer on this host (a remote engine, a test, an
-	// operating system the package cannot arrange one for), and then nothing is
-	// installed and nothing is said.
+	// operating system the package cannot arrange one for). Then nothing is
+	// installed, and each thing set up that wakes says so in one dim line —
+	// checked only while a window is open, or by `aforge standing check`.
 	Watch standing.Watch
 	// DailyRailUSD is the one machine-wide allowance quoted on cards when the
 	// person named no per-item money. Zero means the allowance is unlimited, so

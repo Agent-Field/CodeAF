@@ -84,6 +84,11 @@ type standingCard struct {
 	// guessed says the model invented the cadence because the person gave none,
 	// so the when band ASKS instead of stating.
 	guessed bool
+	// terms are the engine's own lines about work that runs — what it does,
+	// its report and who writes it, its folder, the rules that reach it
+	// ([session.StandingNotice.Terms]). QUOTED, NEVER COMPOSED HERE: they are
+	// read off the same readings the run will make, which this surface cannot.
+	terms []string
 	// deadline is when the card stops asking, and zero when the engine is
 	// holding it open indefinitely. born is when it arrived, which the meter
 	// needs for the other end of its span.
@@ -799,8 +804,9 @@ func StandingCardRows(a *app, card *standingCard, width int, sel bool) []string 
 	return append(out, a.standFoot(card, width))
 }
 
-// standBands is the two bands that make this card a standing card rather than a
-// task card: when it wakes, and what it costs.
+// standBands is the bands that make this card a standing card rather than a
+// task card: when it wakes, where it reaches, the engine's terms for work that
+// runs, and what it costs.
 //
 // THE EMPTINESS LAW REACHES BOTH OF THEM. A notice that carried no words for
 // one of them draws no row for it — a band reading `when ·` and nothing else is
@@ -842,6 +848,15 @@ func (a *app) standBands(card *standingCard, width int) []string {
 	}
 	for _, line := range wrap(standWhereTag+where, width) {
 		out = append(out, a.pal.dim(line))
+	}
+	// AND WHAT WORK THAT RUNS AGREES TO, in the engine's words and order. A
+	// person saying yes to a report kept current is owed who writes the file
+	// and which rules will read it before it is published — the card is the
+	// only moment that is said before anything stands.
+	for _, term := range card.terms {
+		for _, line := range wrap(term, width) {
+			out = append(out, a.pal.dim(line))
+		}
 	}
 	// AND A RULE HAS NO COST BAND AT ALL. A hold never wakes, so it never runs a
 	// probe, never buys a judgment and never launches work ([standing.Item.Spends]
@@ -987,6 +1002,7 @@ func (a *app) standingCardFor(notice session.StandingNotice) *standingCard {
 		when:     strings.TrimSpace(notice.WhenWords),
 		cost:     strings.TrimSpace(notice.CostWords),
 		guessed:  notice.Guessed,
+		terms:    notice.Terms,
 		deadline: notice.Deadline,
 		born:     a.now(),
 	}

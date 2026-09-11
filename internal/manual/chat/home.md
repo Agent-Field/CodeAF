@@ -2338,8 +2338,9 @@ checks every 5 minutes, window or not · background checks under /settings
 ```
 
 That line is said **once, ever**, and it is the only thing ever said about it. If
-the install did not take it says so instead, with the reason, and points at the
-same row. The switch is `/settings` → **Workspace** → **background checks**;
+the install did not take it says so instead, with the reason and what checks things
+meanwhile, and points at the same row; on a machine with no timer at all each card
+that wakes says `no background checks on this machine` instead. The switch is `/settings` → **Workspace** → **background checks**;
 turning it off leaves everything standing and checks it only while a window is
 open (the keeping-an-eye page has the whole of it).
 

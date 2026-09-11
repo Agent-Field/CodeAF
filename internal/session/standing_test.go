@@ -31,6 +31,7 @@ type fakeStanding struct {
 	items   map[string]standing.Item
 	fail    error
 	next    int
+	logged  []string
 }
 
 func newFakeStanding(t *testing.T) *fakeStanding {
@@ -97,6 +98,11 @@ func (f *fakeStanding) FileExchange(id, directory, transcript string) (standing.
 	}
 	item.Origin.Exchange, item.Origin.Transcript = directory, transcript
 	return item, f.Save(item)
+}
+
+func (f *fakeStanding) Log(id, line string) error {
+	f.logged = append(f.logged, id+"  "+line)
+	return nil
 }
 
 func (f *fakeStanding) Get(id string) (standing.Item, error) {
@@ -855,6 +861,12 @@ func TestABackgroundInstallThatFailedSaysSo(t *testing.T) {
 	line := backgroundLine(events)
 	if !strings.HasPrefix(line, standingBackgroundFailed) || !strings.HasSuffix(line, standingBackgroundWhere) {
 		t.Fatalf("a failed install said %q", line)
+	}
+	// AND WHAT DOES CHECK IT MEANWHILE, since nothing does with the windows
+	// shut: the person is not left to find out that "could not install" meant
+	// "checked only while you are here".
+	if !strings.Contains(line, " · "+standingChecksHow+" · ") {
+		t.Fatalf("a failed install does not say how checks happen now: %q", line)
 	}
 	if strings.Contains(line, "\n") {
 		t.Fatalf("the reason came through in more than one line: %q", line)

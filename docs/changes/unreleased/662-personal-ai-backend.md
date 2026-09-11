@@ -31,6 +31,13 @@ invalidates:
   - "Report delimiters were matched anywhere: a `</report>` inside a code fence cut the report short, and an inline mention refused an undelimited answer. They are now whole lines outside fenced code blocks, a leading byte-order mark is ignored, and a closing tag glued to other words is not a closing line."
   - "Standing run folders were numbered from the highest folder on disk plus one and read newest-first by string order, so a reaped newest run's number was reissued and past run 9999 recovery read the wrong records. Numbers now come from a recorded per-item counter (`last-run`), new folders are six digits, and runs are ordered by number; older four-digit folders read unchanged."
   - "A session's and a project's inbox, and a session's answers file, were deleted the moment they were read, and a staged `*.draining` file left by a crash was never read again. Inbox notes now carry an id and are removed only once the conversation's journal records the fold; answers are removed after they are applied; staged files are re-read at the next open."
+  - "Ongoing work that keeps a report current could only be set up whole at the terminal; the chat's `stand` card could not name a report or a folder. A conversation now makes the same item after one card — the same instructions version, owner-published report, placement, rules check, receipts and withheld codes — and `aforge standing show` says `set up by: person, through the chat`."
+  - "The `stand` tool's work field was `does.brief`. It is `does.instructions`, the terminal's one spelling; a call still sending `does.brief` is refused with a line naming `does.instructions`. `does.report` and a top-level `placement` (a folder id) are new."
+  - "Chat-made work was placed in no folder. Work that runs now goes in the folder its conversation is placed in unless the call names one, and in none when the conversation is in none; the folder is bound after the yes and before the item is written, so no failure or crash leaves work running outside it. `aforge standing add --place` now binds in the same order; it used to create the item first and could leave it standing unplaced (`stands, but could not be placed`)."
+  - "The standing card for work that runs said only when, where and what it costs. It now also says what one run does, the report path and `aforge publishes this file; the run never writes it`, the folder, and the rules that reach it now, resolved as the run resolves them (`StandingNotice.Terms`, drawn verbatim by the chat surface)."
+  - "A report folder leading out of the project through a symbolic link was refused only at each publish. `aforge standing add|edit --report` and the card now refuse it at setup with `the report folder resolves outside the project`."
+  - "`aforge standing show` listed the rules reaching an item as if it had no conversation. It now reads them with the item's own conversation, as its runs do, and a terminal-made item's log records its placement (`placed in folder …`) as the chat's does."
+  - "On a host with no background timer nothing was said when something was set up, and a failed install did not say what checks things meanwhile. Both now say `checked only while an aforge window is open, or when you run aforge standing check`; the prompt no longer promises background checks unconditionally."
   - "A torn last line in a conversation's journal swallowed the next line written after it, and the journal was synced only on close. A torn tail is now moved to `transcript.jsonl.torn` on open, and the journal is synced at each turn's end and before a delivery settles. Standing documents, receipts and the run counter are written with a file and folder sync."
 ---
 
@@ -143,3 +150,14 @@ counter.
 model and `make demo-local-work` runs the same journey with a real model in a
 disposable `AFORGE_HOME`, failing on the first step that does not hold. No
 connector or account is used.
+
+The chat door wave makes the conversation a second door onto the same ongoing work
+the terminal sets up. The `stand` tool spells the work `does.instructions`, names a
+`does.report` and an optional `placement`; the card states what one run does, who
+writes the report, the folder and the rules that reach it before the yes, and the yes
+records `via: chat`, places the work and runs it through the unchanged publish path.
+A workspace method, `GoverningIfPlaced`, answers which folders would govern work not
+yet placed, from the same walk as `GoverningCollections`. `TestChatDoorJourney` drives
+a scripted conversation and a terminal-made twin through `bin/aforge standing check`
+and `show` to identical records; `TestRealChatDoorJourney` is the same road with a real
+model. `docs/design/workspace-foundation/grooming/BUILD-CHATDOOR.md` has the evidence.

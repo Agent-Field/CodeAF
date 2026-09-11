@@ -375,7 +375,7 @@ Right?"
 "Keep main green." "Whenever a PR opens, review it and leave a summary."
 "Whenever I push a branch, run the tests before I open the PR."
 
-A rule's firing is real work: a brief, run headless in this project, in a session
+A rule's firing is real work: its instructions, run headless in this project, in a session
 folder of its own with its own transcript and its own cost row. It runs under
 **the approval rules you have already banked in your profile** — not under a
 repository's own rules, because a checked-in file must not be able to widen what
@@ -389,14 +389,14 @@ One firing's work is bounded at **60 tool calls** unless the card said otherwise
 and by a quiet per-run backstop. Crossing either cuts the turn where it stands;
 whatever it already did stands with it.
 
-**And a firing that turns out to be wide can split itself.** If the brief you
-banked already names many separate items — "every night, bring the eleven
+**And a firing that turns out to be wide can split itself.** If the instructions you
+banked already name many separate items — "every night, bring the eleven
 adapters up to the new interface" — the firing starts as one worker that is
 allowed to hand the parts out under itself, exactly as a task you typed can (the
 tasks page, *a task that splits itself*). The same tests apply and none is
 skipped because nobody is watching: there has to be a lane free for the parts,
-and any width floor you turned on still counts. A brief that names nothing to
-count never gets the option, and a run that is refused simply carries on as one worker — unless the reading
+and any width floor you turned on still counts. Instructions that name nothing to
+count never get the option, and a run that is refused simply carries on as one worker — unless the reading
 finds that what is left is work only a person can do, which stops it and leaves the firing
 needing your look in the morning (the tasks page, *a task that landed needing your look
 without doing anything*). The firing
@@ -564,13 +564,16 @@ You are told, once, in one dim line under the card you just said yes to:
 checks every 5 minutes, window or not · background checks under /settings
 ```
 
-If the install did not take, the line says that instead, with the reason:
+If the install did not take, the line says that instead, with the reason and what does
+check your things meanwhile:
 
 ```
-could not install the background check · <what your machine said> · background checks under /settings
+could not install the background check · <what your machine said> · checked only while an aforge window is open, or when you run aforge standing check · background checks under /settings
 ```
 
-Either way it is said **once, ever**. The fact is written down beside your items
+On Linux that is usually a login with no user service manager to talk to — a headless
+box, a container, an ssh session — and the reason reads `systemctl` or `tell systemd
+about the timer`. Either way it is said **once, ever**. The fact is written down beside your items
 **before** your machine is touched, so an install that half-worked is still one
 you were told about rather than one you are told about again tomorrow.
 
@@ -580,7 +583,12 @@ skip it. Nothing runs when **you are not logged in**: it is a per-user timer,
 not a system service. And
 on any host that is neither macOS nor Linux there is no timer to install, so
 things are checked only while a window is open and the settings row is not there
-at all.
+at all. There, every reminder, watch or routine you set up says so under its card,
+each time — a rule never wakes and says nothing:
+
+```
+no background checks on this machine · checked only while an aforge window is open, or when you run aforge standing check
+```
 
 ## Do the background checks run before I set an API key — the walk happens, the judgment does not
 

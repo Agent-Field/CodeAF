@@ -242,11 +242,7 @@ func (a *Agent) standingBlockLocked() string {
 	}
 	// All holds are rendered, so the durable exposure records every effective
 	// condition. Appointments remain bounded optional background information.
-	for _, item := range items {
-		if item.When.Kind == standing.WhenHold && strings.TrimSpace(item.Prompt()) != "" {
-			a.governingRecords = append(a.governingRecords, item)
-		}
-	}
+	a.governingRecords = GoverningRules(items)
 	if len(a.governingRecords) > governingHoldLimit {
 		a.governingReadError = fmt.Sprintf("%d governing conditions exceed the limit of %d; narrow the governing scope before continuing", len(a.governingRecords), governingHoldLimit)
 		a.governingRecords = nil
