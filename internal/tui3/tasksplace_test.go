@@ -946,3 +946,55 @@ func TestTheTaskPageNamesTheConversationItCameOutOf(t *testing.T) {
 		t.Fatalf("the card reads\n%s\nand the row it opened from says the work came out of %q", body, "The Annual Toggle")
 	}
 }
+
+// A CONVERSATION THAT HAS SAID NOTHING IS CALLED BY THE WORD, NOT BY ITS ID
+// (#915). The launch's own first session has no title — the title role has had
+// nothing to name — so the only thing that distinguishes its row is the id, and
+// a table whose name column drew that id spent its one matching column on a
+// machine's word a person cannot pick their own conversation out from. The
+// row's Title is never empty here ([tasksConversationRows] fills it with
+// [homeName], whose title case has raised the id's first letter), so the
+// composer keys on the trimmed title equal to the row's own id, folded.
+func TestAConversationWithNoTitleIsCalledTheWordNotItsId(t *testing.T) {
+	loc := time.FixedZone("fixture", -4*60*60)
+	now := time.Date(2026, time.September, 11, 14, 25, 0, 0, loc)
+	id := "de9ea39e6f4c18c3"
+	transcript := "/private/tmp/htw/aforge-v2/" + id + "/transcript.jsonl"
+	// THE ROW AS THE PLACE ACTUALLY RECEIVES IT. A titleless session's
+	// [session.SessionRow.Title] starts as the stem — the raw id — and
+	// [tasksConversationRows] hands the composer [homeName]'s title case of it,
+	// so the composer sees the raised form. The Title here is the raw id the
+	// walk fills: what EqualFold must catch whichever casing arrives.
+	for _, title := range []string{id, "De9ea39e6f4c18c3", ""} {
+		untitled := session.SessionRow{
+			ID: id, Dir: "/private/tmp/htw/aforge-v2/" + id, Transcript: transcript,
+			Workspace: "/private/tmp/htw/aforge-v2", Project: "infra",
+			ProjectDir: "/private/tmp/htw", Open: true, Live: true, Title: title,
+		}
+		titled := session.SessionRow{
+			ID: "927d303242f9d00e", Dir: "/private/tmp/htw/infra/927d303242f9d00e",
+			Transcript: "/private/tmp/htw/infra/927d303242f9d00e/transcript.jsonl",
+			Workspace:  "/private/tmp/htw/infra", Project: "infra",
+			ProjectDir: "/private/tmp/htw", Open: true, Live: true,
+			Title: "The Certificate Rotation",
+		}
+		world := session.World{Projects: []session.Project{
+			{Name: "infra", Dir: "/private/tmp/htw", Sessions: []session.SessionRow{untitled, titled}},
+		}, Read: now}
+		reading := tasksOpen(readTasks(world, tasksMine{}, session.LastDays(now, 14), tasksSort{}, time.Time{}, now))
+		for _, width := range tasksWidths {
+			page := plain(strings.Join(reading.rows(width, newPalette(tokens.NoColor, false)), "\n"))
+			if !strings.Contains(page, "new conversation") {
+				t.Fatalf("at %d columns the titleless conversation (Title %q) is drawn nowhere as the word:\n%s",
+					width, title, page)
+			}
+			if strings.Contains(page, id) || strings.Contains(page, "De9ea39e6f4c18c3") ||
+				strings.Contains(page, "927d303242f9d00e") {
+				t.Fatalf("at %d columns a bare id is on the page:\n%s", width, page)
+			}
+			if !strings.Contains(page, "The Certificate Rotation") {
+				t.Fatalf("at %d columns the titled conversation lost its own name:\n%s", width, page)
+			}
+		}
+	}
+}
