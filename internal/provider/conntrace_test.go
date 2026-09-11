@@ -129,6 +129,22 @@ func TestTheSharedTransportStatesEveryValueItRelieson(t *testing.T) {
 	if shared.ExpectContinueTimeout != expectContinueTimeout {
 		t.Errorf("ExpectContinueTimeout = %v, want %v", shared.ExpectContinueTimeout, expectContinueTimeout)
 	}
+	if shared.HTTP2 == nil {
+		t.Fatal("no keep-alive: the far end closes an idle connection between six and seven minutes, and a pool that only waited out its own would hand a request a socket the router had already dropped")
+	}
+	if shared.HTTP2.SendPingTimeout != http2KeepAlive {
+		t.Errorf("SendPingTimeout = %v, want %v", shared.HTTP2.SendPingTimeout, http2KeepAlive)
+	}
+	if shared.HTTP2.PingTimeout != pingAnswerTimeout {
+		t.Errorf("PingTimeout = %v, want %v", shared.HTTP2.PingTimeout, pingAnswerTimeout)
+	}
+	// AT LEAST TWO PINGS MUST LAND INSIDE THE WINDOW THE MEASUREMENT PROVES,
+	// which is what makes one lost ping survivable and is the whole derivation
+	// of the period (transport.go's table). The pool's own timeout is the far
+	// end's measured figure, so the same inequality states both.
+	if http2KeepAlive*2 > idleConnTimeout {
+		t.Errorf("a keep-alive of %v inside a window of %v leaves fewer than two pings", http2KeepAlive, idleConnTimeout)
+	}
 	if shared.MaxIdleConnsPerHost != limiterCeiling {
 		t.Errorf("MaxIdleConnsPerHost = %d, want the limiter's ceiling %d", shared.MaxIdleConnsPerHost, limiterCeiling)
 	}
