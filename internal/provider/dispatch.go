@@ -759,6 +759,105 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	return nil, fmt.Errorf("after %d attempts: %w", attempts, lastErr)
 }
 
+// ── THE RUNG IS A MOVE LIKE ANY OTHER ───────────────────────────────────────
+
+// recoverFromRefusal climbs the relaxation ladder, narrating each rung, and ends
+// in an error a person can act on.
+//
+// IT ASKS [control.Next] FOR EACH RUNG AND WALKS NOTHING ITSELF. It used to be
+// endpoints.go's own `for _, step := range c.relaxationPlan(...)`, which is the
+// seventh of the eleven budgets docs/design/recovery/DESIGN.md §2 counts: a loop
+// with a private length, under a deadline that could not see it, beside a move
+// generator that already knew the rungs. The rungs are the plan's
+// ([control.Plan.Shapes], written from [Client.relaxationPlan], which is still
+// the one authority on which fields this body actually carries); which one comes
+// next, and whether one comes at all, is [control.Next]'s answer like every other
+// move; and the climb is recorded on the SAME move log the machine walk writes
+// into, so a rung and a machine are one history rather than two.
+//
+// THE REFUSAL IT ANSWERS IS ABOUT THE BYTES AND NOT ABOUT A MACHINE, which is
+// the one thing the generator cannot see for itself — see
+// [control.Plan.ShapeRefused].
+//
+// The first attempt has already happened and been refused — its body is `first`
+// — so every attempt this function makes is numbered from one as a RETRY, which
+// is what the line says.
+func (c *Client) recoverFromRefusal(
+	ctx context.Context,
+	request *ai.Request,
+	knobs callKnobs,
+	stream bool,
+	first []byte,
+) (*http.Response, error) {
+	model := c.modelFor(request)
+	// The rungs this body actually has, as DATA, from the one place that knows
+	// (endpoints.go). `steps` is what each rung takes off and what it is called;
+	// `plan.Shapes` is the same list as the generator reads it.
+	steps := c.relaxationPlan(request, knobs, model)
+	plan := c.dispatchPlan(ctx, request, knobs)
+	plan.ShapeRefused = true
+	total := len(steps)
+	if total == 0 {
+		return nil, c.refusalError(request, knobs, model, nil, 1, first)
+	}
+	last := first
+	stripped := make([]string, 0, total)
+	climbed := 0
+	for {
+		// AND THE DEADLINE IS ASKED FIRST, exactly as it is in [Client.send]: a
+		// rung is a whole request, and a ladder that climbed past the moment this
+		// build has already decided to stop at is the multiplication again.
+		if plan.Spent(dispatchNow()) {
+			break
+		}
+		move := control.Next(plan, plan.Moves.List())
+		if move.Kind != control.MoveShape {
+			break
+		}
+		plan.Moves.Add(move)
+		// The relaxations ACCUMULATE. Each rung is climbed on top of the last,
+		// because the refusal never says which field it objected to — a body that
+		// still carries the reasoning knob has not tested whether dropping the
+		// output cap was enough. The move names the rung REACHED, so the body is
+		// built from every rung up to it rather than from the newest one alone,
+		// which is also what makes a ladder resumed part-way honest.
+		rung := int(move.Shape)
+		if rung > total {
+			break
+		}
+		relaxed := knobs
+		for _, step := range steps[:rung] {
+			relaxed.relaxed |= step.bit
+		}
+		step := steps[rung-1]
+		// THE MEMO FOLLOWS THE SECOND REFUSAL. Reaching this rung means the
+		// endpoint-membership retry, when there was one, was refused under the
+		// original price ceiling too. That is evidence the ceiling must come off;
+		// the first refusal alone could have been caused by any membership field.
+		if step.bit == relaxPriceCeiling && c.velocity != nil {
+			c.velocity.refuseCeiling(model)
+		}
+		stripped = append(stripped, step.name)
+		climbed = rung
+		Emit(ctx, StreamNotice, fmt.Sprintf("Retry %d/%d: %s", rung, total, step.label))
+		// AND THE PHASE CLOCK CARRIES THE SAME RUNG, so the status line says
+		// "trying again · 2 of 6" while the notice above says which knob went.
+		// It is the same fact at two grains and it is stated once, here, from
+		// the same pair of numbers (phase.go).
+		notePhase(ctx, model, PhaseRetrying,
+			ordinalOf(rung, total), c.clock(), time.Time{}, "")
+		response, payload, err := c.attemptShaped(ctx, request, relaxed, stream)
+		if err != nil {
+			return nil, err
+		}
+		if response != nil {
+			return response, nil
+		}
+		last = payload
+	}
+	return nil, c.refusalError(request, knobs, model, stripped, climbed+1, last)
+}
+
 // demandedLane is the ONE machine this request may go to, and whether a person
 // is the one who said so.
 //
