@@ -438,6 +438,23 @@ A tool an MCP server serves that is marked read-only is governed by the account'
 "It changes something in their account in their name, and the person is asked before
 it goes."
 
+## Does it resend an email or a Slack message when nobody replies
+
+No. Each outgoing mail or Slack message goes out **once**. Silence is not treated as a
+failure worth retrying: a reply is yours to wait for, and a duplicate is one more thing
+nobody can take back. `gmail_send` and `slack_send` both carry that rule in the text
+aforge reads immediately before it calls one, so an unanswered message does not become a
+chase on its own.
+
+What you can ask for is a **follow-up**, and then it is a new message you approved: "chase
+that on Friday if there is no reply" becomes a standing order with a moment on it, and the
+approval question comes round again when it fires. See the keeping-an-eye page for how a
+moment or a rhythm is set up.
+
+If an outgoing call genuinely did not happen — the approval question was declined, or the
+account answered with an error — aforge says so in its reply rather than quietly trying
+again, and you decide what to do next.
+
 ## Where your keys are kept on disk
 
 Everything the accounts layer writes lives in your profile directory —

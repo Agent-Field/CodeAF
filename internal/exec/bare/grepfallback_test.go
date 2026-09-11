@@ -158,7 +158,7 @@ func TestGrepIsOnTheBeltWhicheverEngineIsHere(t *testing.T) {
 	if strings.Contains(grep.Description, "could not be downloaded") {
 		t.Fatalf("the description still promises a download: %q", grep.Description)
 	}
-	if _, present := ripgrepPath(); !present && grep.Description != grepFallbackDescription {
+	if _, present := ripgrepPath(); !present && grep.Description != grepFallbackDescription(DefaultCaps()) {
 		t.Fatalf("a machine without ripgrep describes grep as %q", grep.Description)
 	}
 }

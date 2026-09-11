@@ -1227,7 +1227,7 @@ the tree; a green check can stand in for the reader, while a red one is carried 
 Having no configured reader is an absence, not a failed call, and never runs checks on its
 own — see *Leaving it running on its own* in *starting aforge*.
 
-## Waiting on something is not carried on — it kept polling while it waited, it turned my wait into a task, why does it keep asking about a task that is still running
+## Waiting on something is not carried on — it kept polling while it waited, it turned my wait into a task, why does it say carry on, why does it say "carried on 3 times", why does it keep asking about a task that is still running
 
 **A reply that ends while something IT started is still running is never carried on.** A
 background command, a watch, a video or music render — while any of those is still going,

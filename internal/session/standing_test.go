@@ -1942,19 +1942,29 @@ func TestTheSteeringLineReadsAsNewsAndNotAsARequest(t *testing.T) {
 	if !strings.Contains(line, "Do not call stand again") {
 		t.Fatalf("the injected line does not forbid setting it up again: %q", line)
 	}
-	// The actual prompt must carry the same rule as the injected news. Standing
-	// instructions are composed from capability availability, so checking the raw
-	// template would miss the page the standing-capable agent actually receives.
+	// AND THE PAGE DOES NOT SAY IT A SECOND TIME. The rule used to be on both —
+	// here, under the news, and again in prompts/system.md's standing section —
+	// and the page's copy was bought on every request of every turn for a turn
+	// most sessions never have. A message that carries its own instruction needs
+	// no page explaining it, which is the WITH THE EVENT class of the prompt
+	// diet (docs/design/prompt-diet/DESIGN.md §2; lawregistry_test.go files this
+	// one as standing.news-is-not-a-request). So the assertion runs backwards:
+	// if the frame is back on the page, the byte the diet took out is back too.
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.System = ""
 		config.standingItems = &fakeStanding{}
 	})
 	page := systemTextOf(agent)
-	if !strings.Contains(page, standingNewsFrame) {
-		t.Fatalf("the rendered prompt never mentions %q", standingNewsFrame)
+	if strings.Contains(page, standingNewsFrame) {
+		t.Fatalf("%q is on the page as well as under the news it is about, which is one law paid for twice", standingNewsFrame)
 	}
-	if !strings.Contains(page, "never call `stand`\nagain for it") {
-		t.Fatal("the rendered prompt does not tell the model to leave a fired item alone")
+	if strings.Contains(page, "never call `stand`") {
+		t.Fatal("the page explains a fired item again; that sentence is standingNewsRule's, under the firing's own line")
+	}
+	// And what the page DOES still owe is the existence of the verb, so that a
+	// sentence worth leaving behind is recognised before anything fires.
+	if !strings.Contains(page, "SOMETHING TO LEAVE BEHIND") || !strings.Contains(page, "`stand`") {
+		t.Fatalf("the page no longer says a sentence can be left behind at all:\n%s", page)
 	}
 }
 
