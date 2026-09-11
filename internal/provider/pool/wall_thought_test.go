@@ -31,7 +31,9 @@ import (
 // and nothing here sleeps — the only clock is the wall's own.
 
 // thoughtWall is the wall these scenarios run under. Nothing waits it out except
-// a completion that is meant to reach it.
+// a completion that is meant to reach it. The answer ask runs under it too, and
+// cannot lose a race to it: the stub answers that ask before anything reads a
+// clock, and a completion that returns an answer is kept whatever its timer says.
 const thoughtWall = 20 * time.Millisecond
 
 // sent is one request the thinking model received.
@@ -39,6 +41,9 @@ type sent struct {
 	messages []ai.Message
 	options  int
 	effort   provider.Effort
+	// left is how long the completion had when it was sent — its context's own
+	// deadline, read at the door.
+	left time.Duration
 }
 
 // thinkingModel is the model from the incident: it thinks, out loud on the
@@ -47,6 +52,9 @@ type sent struct {
 // ask — and when it is empty the model thinks through that one too.
 type thinkingModel struct {
 	thought, begun, answer string
+	// forming, when set, is a tool call the model starts to write after its
+	// thought: the name, then its arguments as far as they get.
+	forming *provider.StreamEvent
 	// cancel, when set, is called once the thought is on the wire: the caller
 	// going away mid-thought, without anybody sleeping to arrange it.
 	cancel context.CancelFunc
@@ -62,7 +70,11 @@ func (m *thinkingModel) Model() string { return "thinking/model" }
 
 func (m *thinkingModel) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
 	m.mu.Lock()
-	m.asked = append(m.asked, sent{messages: messages, options: len(options), effort: provider.ReasoningEffortFrom(ctx)})
+	var left time.Duration
+	if deadline, ok := ctx.Deadline(); ok {
+		left = time.Until(deadline)
+	}
+	m.asked = append(m.asked, sent{messages: messages, options: len(options), effort: provider.ReasoningEffortFrom(ctx), left: left})
 	turn := len(m.asked)
 	if turn == 1 {
 		m.first = ctx
@@ -76,6 +88,9 @@ func (m *thinkingModel) CompleteWithMessages(ctx context.Context, messages []ai.
 	provider.EmitEvent(ctx, provider.StreamEvent{Kind: provider.StreamReasoning, Delta: m.thought})
 	if m.begun != "" {
 		provider.Emit(ctx, provider.StreamDelta, m.begun)
+	}
+	if m.forming != nil {
+		provider.EmitEvent(ctx, *m.forming)
 	}
 	if m.cancel != nil {
 		m.cancel()
@@ -268,6 +283,73 @@ func TestSomebodyWatchingIsToldTheAnswerIsBeingAskedFor(t *testing.T) {
 	}
 }
 
+// TestACallerWithLessTimeThanTheWallStillHasItsAnswerAsked is the deadline the
+// review found one layer up: a late round of a command whose rail has less time
+// left than a whole call. The first completion is given its share of what the
+// caller has — never the slot's full wall — so the wall, not the caller, is what
+// cuts it, and the answer ask runs in the time that is left.
+func TestACallerWithLessTimeThanTheWallStillHasItsAnswerAsked(t *testing.T) {
+	const rail = 80 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), rail)
+	defer cancel()
+	model := &thinkingModel{thought: "Settled.", answer: `{"points":[]}`}
+	client := Adopt(config.Config{}, model.Model(), model).WithCallWall(time.Hour)
+
+	response, err := client.CompleteWithMessages(ctx, planAsk())
+	if err != nil {
+		t.Fatalf("a call on a short rail lost its thought to the caller's deadline: %v", err)
+	}
+	if response.Text() != model.answer {
+		t.Fatalf("answer = %q, want the answer ask's", response.Text())
+	}
+	requests := model.requests()
+	if len(requests) != 2 {
+		t.Fatalf("the model was asked %d times, want the call and its answer ask", len(requests))
+	}
+	// The first completion had about half the rail and never the hour; the
+	// answer ask had what was left of it.
+	if first := requests[0].left; first <= 0 || first > rail/completionsPerCall {
+		t.Fatalf("the first completion had %s of an %s rail; it gets its share, so the answer ask still has one", first, rail)
+	}
+	if second := requests[1].left; second <= 0 || second > rail {
+		t.Fatalf("the answer ask had %s, want what was left of the %s rail", second, rail)
+	}
+}
+
+// TestAHalfSentCallTravelsAsWordsAndIsVoided keeps what a model had begun to
+// call. It is answer being written, so it is kept and asked from; it is not an
+// instruction, so it travels as words; and a surface that drew it forming is
+// told to throw it away before the answer ask's reply arrives.
+func TestAHalfSentCallTravelsAsWordsAndIsVoided(t *testing.T) {
+	var mu sync.Mutex
+	var kinds []provider.StreamEventKind
+	ctx := provider.WithStreamObserver(context.Background(), func(event provider.StreamEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		kinds = append(kinds, event.Kind)
+	})
+	model := &thinkingModel{
+		forming: &provider.StreamEvent{Kind: provider.StreamToolCallForming, Index: 0, Tool: "write", Delta: `{"path":"notes.md","con`},
+		answer:  "done",
+	}
+	client := Adopt(config.Config{}, model.Model(), model).WithCallWall(thoughtWall)
+	if _, err := client.CompleteWithMessages(ctx, planAsk()); err != nil {
+		t.Fatalf("a completion cut while calling a tool kept nothing: %v", err)
+	}
+	requests := model.requests()
+	if len(requests) != 2 {
+		t.Fatalf("the model was asked %d times, want the call and its answer ask", len(requests))
+	}
+	if got := textOf(requests[1].messages[len(planAsk())]); got != `I had begun calling write with: {"path":"notes.md","con` {
+		t.Fatalf("the begun call travelled as %q", got)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if kinds[len(kinds)-1] != provider.StreamReplaced {
+		t.Fatalf("a surface holding a half-drawn call was not told to void it: %v", kinds)
+	}
+}
+
 // ── the wall reaches the wire ────────────────────────────────────────────────
 
 // believedLedger believes one thing about one machine and nothing else.
@@ -334,5 +416,57 @@ func TestAWalledPlanningCallCarriesTheBudgetItsWallImplies(t *testing.T) {
 	// with the answer's share of it left over.
 	if budget != 47880 {
 		t.Fatalf("a walled planning call carried reasoning %#v, want a budget of 47,880 tokens", reasoning)
+	}
+}
+
+// TestTheBudgetFollowsTheTimeTheCallReallyHas is the same chain with a caller
+// whose deadline is shorter than the wall: the model is told the thinking that
+// fits the time it really has — its share of the caller's minute — and not the
+// slot's four minutes.
+func TestTheBudgetFollowsTheTimeTheCallReallyHas(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	const model, lane = "z-ai/glm-5.3", "Friendli"
+	lanes.Default().SetLedger(believedLedger{belief: lanes.Belief{
+		ID:   lanes.ID{Model: model, Lane: lane},
+		Rate: lanes.Posterior{X: math.Log(210), P: 0.01},
+	}})
+	t.Cleanup(func() { lanes.Default().SetLedger(nil) })
+	budget := make(chan float64, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		raw, _ := io.ReadAll(request.Body)
+		var body struct {
+			Reasoning struct {
+				MaxTokens float64 `json:"max_tokens"`
+			} `json:"reasoning"`
+		}
+		_ = json.Unmarshal(raw, &body)
+		budget <- body.Reasoning.MaxTokens
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"model":"z-ai/glm-5.3","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"{}"}}],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12}}`))
+	}))
+	defer server.Close()
+	adapter, err := provider.NewClient(provider.Config{
+		APIKey: "k", BaseURL: server.URL, Model: model,
+		ReasoningProfile: func(string) (provider.ReasoningProfile, bool) {
+			return provider.ReasoningProfile{Mandatory: true, Default: "max"}, true
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := Adopt(config.Config{}, model, adapter).WithCallWall(DefaultCallWall)
+
+	const rail = time.Minute
+	ctx, cancel := context.WithTimeout(provider.WithLaneChoice(context.Background(), lanes.Choice{Order: []string{lane}}), rail)
+	defer cancel()
+	if _, err := client.CompleteWithMessages(ctx, planAsk()); err != nil {
+		t.Fatal(err)
+	}
+	// share(max) × 210 tok/s × the half of the minute the first completion is
+	// given; the few microseconds spent getting here cost at most a token or two.
+	want := 0.95 * 210 * (rail / completionsPerCall).Seconds()
+	if got := <-budget; got > want || want-got > 5 {
+		t.Fatalf("a call with %s of rail was told a budget of %.0f tokens, want the %.0f its share of that rail holds",
+			rail, got, want)
 	}
 }

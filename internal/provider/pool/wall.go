@@ -41,12 +41,19 @@ import (
 // on looking alive.
 const DefaultCallWall = 4 * time.Minute
 
+// completionsPerCall is how many completions one walled call may make: the one
+// it was asked for, and — when that one reached its wall with thought on the
+// wire — the one ask for the answer the thought reached. It is the count
+// [LongestCall] multiplies and the count [walled.allowance] divides a short
+// caller's time by, so the rail above and the split below are one figure.
+const completionsPerCall = 2
+
 // LongestCall is the longest one call through a slot walled at [DefaultCallWall]
 // can honestly take: the completion it was asked for, cut at its wall, and the
 // one ask for the answer that completion's thought had reached, under a wall of
 // its own. It is exported for the reconciler's command rail, which is counted in
 // these (internal/resident's commandWall) so that the two figures cannot drift.
-const LongestCall = 2 * DefaultCallWall
+const LongestCall = completionsPerCall * DefaultCallWall
 
 // ErrCallWall is what a call that outlived its wall returns. It is an ordinary
 // provider failure by design: every caller on the structuring path already has
@@ -115,26 +122,50 @@ func (w walled) Model() string { return w.inner.Model() }
 // first completion ended by time rather than by anything about the request.
 func (w walled) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
 	thought := &kept{}
-	response, cut, err := w.completion(ctx, messages, options, thought)
+	first := w.allowance(ctx, completionsPerCall)
+	response, cut, err := w.completion(ctx, first, messages, options, thought)
 	if !cut {
 		return response, err
 	}
 	asked, ok := thought.answerAsk(messages)
 	if !ok {
-		return nil, fmt.Errorf("%w after %s", ErrCallWall, w.wall)
+		return nil, fmt.Errorf("%w after %s", ErrCallWall, first)
 	}
 	thought.tell(ctx)
 	// THINKING OFF IS PART OF THIS ASK'S CORRECTNESS, not an economy, so it is
 	// the required form: a seat's pinned effort must not put the model back into
 	// the deliberation it has just been stopped out of.
-	answer, _, err := w.completion(provider.WithRequiredReasoningEffort(ctx, provider.EffortOff), asked, options, nil)
+	answer, _, err := w.completion(provider.WithRequiredReasoningEffort(ctx, provider.EffortOff),
+		w.allowance(ctx, 1), asked, options, nil)
 	if err == nil || ctx.Err() != nil {
 		return answer, err
 	}
 	// The call died of time, and that is what the layer above is told whatever
 	// the answer ask then ran into: the watchdog's question is whether the work
 	// is worth another run, and it is exactly as worth one as it was before.
-	return nil, fmt.Errorf("%w after %s; asked for the answer it had reached: %v", ErrCallWall, w.wall, err)
+	return nil, fmt.Errorf("%w after %s; asked for the answer it had reached: %v", ErrCallWall, first, err)
+}
+
+// allowance is the wall one completion really runs under, and so the one the
+// model is told: the slot's own, or less when the caller's deadline says so.
+//
+// ONE DEADLINE, ONE DERIVATION. The completion's context is bounded by the
+// earlier of the two, so a budget read off the slot's wall alone would tell a
+// model four minutes of thinking inside the ninety seconds a late splice round
+// has left of its command — and the caller's deadline, arriving first, would be
+// a caller's cut, which asks nothing and keeps nothing. So the time a caller has
+// left is divided between the completions still to come in this call: the first
+// of [completionsPerCall] gets its share and the answer ask keeps the rest, which
+// is what makes the wall, and never the caller, the bound that cuts the first
+// one. The answer ask, the last completion, is given all that remains.
+func (w walled) allowance(ctx context.Context, completions int) time.Duration {
+	wall := w.wall
+	if deadline, ok := ctx.Deadline(); ok {
+		if share := time.Until(deadline) / time.Duration(completions); share < wall {
+			wall = share
+		}
+	}
+	return wall
 }
 
 // completion runs one completion under the wall and reports whether the wall is
@@ -143,13 +174,16 @@ func (w walled) CompleteWithMessages(ctx context.Context, messages []ai.Message,
 // inner call said about it, and only a completion that outlived the wall while
 // its caller was still waiting is cut.
 //
+// `wall` is the completion's own [walled.allowance], and it is both the deadline
+// and what the model is told: the two are one figure by construction.
+//
 // `into`, when there is one, keeps what the completion streams. It is set on the
 // first completion only: the answer ask is the last thing this wall will ask, so
 // there is nothing its stream could be kept for.
-func (w walled) completion(ctx context.Context, messages []ai.Message, options []ai.Option, into *kept) (*ai.Response, bool, error) {
-	callCtx, cancel := context.WithTimeout(ctx, w.wall)
+func (w walled) completion(ctx context.Context, wall time.Duration, messages []ai.Message, options []ai.Option, into *kept) (*ai.Response, bool, error) {
+	callCtx, cancel := context.WithTimeout(ctx, wall)
 	defer cancel()
-	callCtx = provider.WithThinkingWall(callCtx, w.wall)
+	callCtx = provider.WithThinkingWall(callCtx, wall)
 	if into != nil {
 		callCtx = provider.WithStreamObserver(callCtx, into.listen(ctx))
 		defer into.close()
@@ -172,7 +206,8 @@ func (w walled) completion(ctx context.Context, messages []ai.Message, options [
 // one place: the events that reached the observer while it was writing. This
 // listens to them as the caller would, forwards every one of them unchanged to
 // whoever the caller had listening, and keeps the two things an answer ask
-// needs: the thought, and any answer that had begun.
+// needs: the thought, and any answer that had begun — words, or tool calls the
+// model had started to write.
 //
 // It is written from the provider's read loop, on the goroutine of whichever arm
 // is speaking, and read by the wall once the completion has ended — so it is
@@ -190,11 +225,25 @@ type kept struct {
 	mu      sync.Mutex
 	thought strings.Builder
 	answer  strings.Builder
-	// shown says the caller's surface is holding text of this completion's
+	// calls are the tool calls the model had begun, by the index the wire gave
+	// them: what it was calling and the arguments as far as they had arrived. A
+	// call is answer being written (provider's forming event says so), so it is
+	// kept exactly as the words are and travels with them.
+	calls []begunCall
+	// shown says the caller's surface is holding something of this completion's
 	// answer — words, or a call it drew forming — which an answer ask has to
-	// void before its own arrives.
+	// void before its own arrives. It is true exactly when something of the
+	// answer is kept, so what is on the screen and what is asked from never
+	// disagree.
 	shown  bool
 	closed bool
+}
+
+// begunCall is one tool call as far as it had arrived when the wall came.
+type begunCall struct {
+	index     int
+	tool      string
+	arguments string
 }
 
 // listen is the observer the completion is sent with: it keeps, then forwards
@@ -224,13 +273,32 @@ func (k *kept) note(event provider.StreamEvent) {
 	case provider.StreamDelta:
 		k.answer.WriteString(event.Delta)
 		k.shown = true
-	case provider.StreamToolCallForming, provider.StreamToolCallReady:
+	case provider.StreamToolCallForming:
+		k.begin(event)
 		k.shown = true
 	case provider.StreamReplaced:
 		k.thought.Reset()
 		k.answer.Reset()
+		k.calls = nil
 		k.shown = false
 	}
+}
+
+// begin keeps one forming call's latest account of itself. A forming event's
+// Delta is the call's ACCUMULATED arguments, so the newest one for an index
+// replaces the one before it rather than adding to it; the name arrives on an
+// early fragment and is kept once said. Callers hold k.mu.
+func (k *kept) begin(event provider.StreamEvent) {
+	for at := range k.calls {
+		if k.calls[at].index == event.Index {
+			if event.Tool != "" {
+				k.calls[at].tool = event.Tool
+			}
+			k.calls[at].arguments = event.Delta
+			return
+		}
+	}
+	k.calls = append(k.calls, begunCall{index: event.Index, tool: event.Tool, arguments: event.Delta})
 }
 
 // close ends the completion's stream: nothing arriving after it is kept or
@@ -258,13 +326,20 @@ func (k *kept) close() {
 func (k *kept) answerAsk(messages []ai.Message) ([]ai.Message, bool) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
-	worked := strings.TrimSpace(k.thought.String())
-	if begun := strings.TrimSpace(k.answer.String()); begun != "" {
-		if worked != "" {
-			worked += "\n\n"
-		}
-		worked += begun
+	parts := []string{strings.TrimSpace(k.thought.String()), strings.TrimSpace(k.answer.String())}
+	for _, call := range k.calls {
+		// A half-sent call is NOT an instruction and is never replayed as one:
+		// it travels as words saying what had been begun, so the model can
+		// finish the thought it was acting on and make the call again whole.
+		parts = append(parts, fmt.Sprintf("I had begun calling %s with: %s", call.tool, call.arguments))
 	}
+	var said []string
+	for _, part := range parts {
+		if part != "" {
+			said = append(said, part)
+		}
+	}
+	worked := strings.Join(said, "\n\n")
 	if worked == "" {
 		return nil, false
 	}

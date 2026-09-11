@@ -1237,12 +1237,21 @@ time, and until #927 it did two things wrong.
   thinks only when asked is not asked. The budget rides the level the pass
   runs at anyway, and the call log names it `max within 4m0s` rather than by
   its count, so the thinking-duration belief keyed on that string stays one key.
+- **The wall told is the one that binds** (`walled.allowance`). A completion
+  runs under the slot's wall or its share of the caller's own deadline,
+  whichever is shorter, and that one figure is both what cuts it and what the
+  model is told. The first completion's share is half of what the caller has
+  left (`completionsPerCall`), so the answer ask always has the other half: a
+  late round of a command whose rail is nearly spent is cut by its wall, and
+  asked, rather than by the rail, and lost.
 - **The wall keeps what was thought** (`pool.walled`, `kept`). The partial is
   collected where it demonstrably exists — the stream events the completion
   raised while it was writing — by an observer that forwards every event
   unchanged to whoever the caller had listening. A completion that reaches its
   wall with thought or answer on the wire is asked ONCE more: the caller's
-  messages, the thought as the assistant's turn, and an answer ask, with
+  messages, the thought, any answer it had begun and any tool call it had
+  begun writing (as words, never as a call) as the assistant's turn, and an
+  answer ask, with
   thinking switched off (required, so a seat's pin cannot re-open it) and the
   request's own shape still on. Only when that ask also fails is the caller
   given `ErrCallWall`. A completion that wrote nothing is not asked again —
@@ -1269,7 +1278,20 @@ without a line of its own.
 sent from `walled.completion` alone, and that function carries the wall);
 `plan`'s `TestPlanningReachesAModelOnlyThroughTheClientItIsHanded` (planning
 and the compiler build no client of their own, so every planning call goes
-through the wall it was handed).
+through the wall it was handed). And the door itself:
+`cmd/aforge`'s `TestAPlanningModelThatThinksPastItsWallStillPlans` runs
+`aforge do --json` against a compiler that never stops thinking and asserts the
+budget on the first body, the thought on the second, a settled run and no
+`stopped answering`; its control asks once.
+
+### Still owed
+
+Issue #927's third fix: the grounding, spine and fan-out prompts state the depth
+the question warrants, in the same sentence that states the answer's shape. It
+is not here because it changes what every planning pass is told on every
+request, which is a change to the quality of plans and has to be measured
+against the planning bench before it lands, not argued into a fix for a wall.
+The wall's budget bounds the thinking; it does not choose it.
 
 ## What this deliberately does not do
 

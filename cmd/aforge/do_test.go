@@ -1267,9 +1267,19 @@ type scriptedBrain struct {
 	// comes back with the answer, and the second reading passes. It is the
 	// common case and the one the panel read as a doubted deliverable.
 	revisionCloses bool
+	// thinksPastTheWall makes the intent compiler the model from issue #927: it
+	// thinks out loud on the stream and never stops until its call is cut, and
+	// it answers only the answer ask that carries its thought back to it
+	// (do_wall_test.go).
+	thinksPastTheWall bool
+	// reasoning is what the endpoint published about the model's thinking
+	// pass. Nil is nothing published, which is every run not about thinking.
+	reasoning func(string) (provider.ReasoningProfile, bool)
 
 	mu     sync.Mutex
 	counts map[string]int
+	// compiles is every body the intent compiler was sent, in order.
+	compiles []string
 }
 
 func newScriptedBrain(t *testing.T) *scriptedBrain {
@@ -1311,7 +1321,7 @@ func (s *scriptedBrain) tally(name string) int {
 // every count this test reads.
 func (s *scriptedBrain) client(settings config.Config, model string) (*liveClient, error) {
 	panel, err := router.New(router.Panel{Models: []router.Spec{{Slug: model, Price: 0.01}}},
-		provider.Config{APIKey: "test-key", BaseURL: s.server.URL}, s.dir)
+		provider.Config{APIKey: "test-key", BaseURL: s.server.URL, ReasoningProfile: s.reasoning}, s.dir)
 	if err != nil {
 		return nil, err
 	}
@@ -1357,6 +1367,15 @@ func (s *scriptedBrain) serve(writer http.ResponseWriter, request *http.Request)
 		http.Error(writer, `{"error":{"message":"All providers have been ignored.","code":404}}`,
 			http.StatusNotFound)
 		return
+	}
+	if strings.Contains(body, "You are the intent compiler") {
+		s.mu.Lock()
+		s.compiles = append(s.compiles, body)
+		s.mu.Unlock()
+		if s.thinksPastTheWall && !strings.Contains(body, scriptedThought) {
+			s.thinkUntilCut(writer, request)
+			return
+		}
 	}
 	writer.Header().Set("Content-Type", "application/json")
 	fmt.Fprint(writer, s.reply(body))

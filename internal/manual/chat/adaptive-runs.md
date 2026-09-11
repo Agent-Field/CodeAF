@@ -940,8 +940,11 @@ minutes; *Why a two-hour run no longer gives a leaf only fifteen minutes* is the
 
 **Planning has a shorter wall of its own, and the model is told it.** Each planning call
 of `aforge do` — compiling the ask, grounding, the spine, the fan-out, the contracts — gets
-four minutes, and a model that thinks before answering is given a thinking budget worked out
-from those four minutes and how fast the machine serving it writes. A call still thinking
+four minutes, or its share of what the run has left when that is less, and a model that
+thinks before answering is given a thinking budget worked out from that time and how fast the
+machine serving it writes. No budget is sent for a machine aforge has not yet measured or
+read a speed for, nor to a provider that has refused one; those calls think as the model
+does by default, under the same wall. A call still thinking
 when its time ends is asked once more, with what it had worked out in front of it and its
 thinking switched off, for the answer that work reached. Only if that runs out of time too
 does planning stop, and a request that stops that way twice ends with `I couldn't get this

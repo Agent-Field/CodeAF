@@ -126,6 +126,11 @@ type brainOptions struct {
 	// newClient builds provider clients. Nil is the real one; a test scripts a
 	// provider through it and drives the same brain every other caller drives.
 	newClient func(config.Config, string) (*liveClient, error)
+	// callWall is how long one completion on the two structuring slots may run.
+	// Zero is pool.DefaultCallWall, which is every caller but a test: a test
+	// names a wall it can reach in a second rather than sitting out four
+	// minutes of a model that never stops thinking (issue #927).
+	callWall time.Duration
 }
 
 // remainingWall reads what the errand's own context still leaves.
@@ -289,8 +294,12 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// none of it has an honest duration measured in minutes. A leaf is the other
 	// kind of thing: an agent loop with the executor's own deadline over it, where
 	// a long silence is often just a long tool call.
-	chatClient.WithCallWall(pool.DefaultCallWall)
-	planClient.WithCallWall(pool.DefaultCallWall)
+	callWall := opts.callWall
+	if callWall <= 0 {
+		callWall = pool.DefaultCallWall
+	}
+	chatClient.WithCallWall(callWall)
+	planClient.WithCallWall(callWall)
 	// The positive stopping condition, installed once for every path that can
 	// grow a running job. It is asked last, after rounds, nodes and the daily
 	// rail have all passed, so on the common path it is never asked at all; the

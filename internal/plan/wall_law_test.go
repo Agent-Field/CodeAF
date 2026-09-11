@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io/fs"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -23,7 +24,23 @@ import (
 // own: no adapter constructed, and no package imported that constructs one.
 // Every model call they make is on the Completer they were given.
 func TestPlanningReachesAModelOnlyThroughTheClientItIsHanded(t *testing.T) {
-	files, err := filepath.Glob("*.go")
+	// THE WHOLE TREE, not the one directory: a pass moved into a package under
+	// this one is still planning, and a law that read only the top would lose
+	// it without anybody noticing.
+	var files []string
+	err := filepath.WalkDir(".", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		// testdata is not built, so nothing in it reaches a model.
+		if entry.IsDir() && entry.Name() == "testdata" {
+			return fs.SkipDir
+		}
+		if !entry.IsDir() && strings.HasSuffix(path, ".go") {
+			files = append(files, path)
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
