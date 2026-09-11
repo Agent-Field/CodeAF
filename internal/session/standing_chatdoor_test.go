@@ -459,3 +459,20 @@ func TestALinuxTimerThatWouldNotStartSaysSoAndLeavesNothing(t *testing.T) {
 		t.Fatalf("the timer reads installed=%v (%v) after a refused install", status.Installed, err)
 	}
 }
+
+// A WATCH SAYS WHEN IT WAKES EVEN WHEN THE MODEL SAID NOTHING. The first live
+// run of the chat door (2026-09-11) proposed a file watch with no when_words,
+// and its card and record said nothing about when it wakes; the terminal
+// always writes `when inbox/* changes`. The fallback is that one spelling, and
+// the model's own words still win.
+func TestAWatchWithNoWordsOfItsOwnSaysWhenItWakes(t *testing.T) {
+	d := newChatDoor(t, &scriptedCompleter{steps: []step{standCall("s1", inboxWork(map[string]any{"when_words": ""})), finalText("set up")}}, nil)
+	card, _ := d.proposeInbox(t, d.yes)
+	if card.WhenWords != "when inbox/* changes" || d.only(t).When.Words != standing.WatchWords("inbox/*") {
+		t.Fatalf("a watch with no words of its own says %q (item %q)", card.WhenWords, d.only(t).When.Words)
+	}
+	said := newChatDoor(t, &scriptedCompleter{steps: []step{standCall("s1", inboxWork(map[string]any{"when_words": "whenever something lands in my inbox"})), finalText("set up")}}, nil)
+	if card, _ := said.proposeInbox(t, said.yes); card.WhenWords != "whenever something lands in my inbox" {
+		t.Fatalf("the model's own words were replaced: %q", card.WhenWords)
+	}
+}
