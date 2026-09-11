@@ -1239,10 +1239,24 @@ func (a *Agent) announceTask(hub *eventHub, question *taskQuestion) {
 // state under the lock, and a held proposal keeps its wait registered. One
 // that was not held is forgotten here, under the same lock, so a late answer
 // finds nothing to answer.
+//
+// AND SILENCE IS ONLY SILENCE WHILE NOBODY HAS ANSWERED. [Agent.ResolveTask]
+// takes the wait off this map under this lock and then sends the answer, so a
+// proposal that is no longer registered is one somebody has ALREADY decided —
+// their answer is on its way to the wait, which will read it on the next turn
+// of its loop. Without this line the two are a coin toss: a select with the
+// answer and the clock both ready picks either, and a person's "no" seconds
+// before the deadline could be overruled by the countdown they beat. Seen three
+// times in ten runs of
+// [TestANoGivenWhileTheReplyArrivesBeatsTheClockThatFollows] under the race
+// detector.
 func (a *Agent) taskSilenceAdmits(id uint64, question *taskQuestion) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if question.held {
+		return false
+	}
+	if _, waiting := a.taskAnswers[id]; !waiting {
 		return false
 	}
 	delete(a.taskAnswers, id)
