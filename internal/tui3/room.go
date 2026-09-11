@@ -3513,14 +3513,14 @@ func (a *app) roomCall() *session.TaskCall {
 // model thinks, the ladder's own sentence — which model, which of how many — and
 // the request's facts after it ([app.callFields]).
 //
-//	✱ asking deepseek/deepseek-v4.1-flash · thinking 41s · ↓ 4,465 · deepinfra
+//	✳ asking deepseek/deepseek-v4.1-flash · 1 of 2 · thinking 41s · ↓ 4,465 · deepinfra
 //
 // THE MARK IS THE THOUGHT'S OWN SLOT while reasoning is what is arriving, which
-// is the one sign on this surface that means "the model is thinking"; any other
-// moment of the request — out with nothing back, parked, writing — wears the
-// wait mark the room's live row wears between calls ([app.compactWaitMark]).
-// Both come through the vocabulary's door, so a terminal on the plain floor
-// draws its own spelling of each.
+// is the one sign on this surface that means "the model is thinking", and it
+// comes through the vocabulary's door ([app.icon]) so each terminal draws its own
+// tier's spelling of it. Any other moment of the request — out with nothing
+// back, parked, writing — wears the wait mark the room's live row wears between
+// calls ([app.compactWaitMark]).
 //
 // THE SENTENCE LEADS AND IS KEPT WHOLE, and the facts after it shed from the
 // right (rowfit.go's first law): which model is being asked is what the row is
