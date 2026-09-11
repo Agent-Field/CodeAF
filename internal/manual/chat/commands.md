@@ -791,7 +791,7 @@ hits.
 nothing spent yet — this session has not sent a turn.
 ```
 
-## /budget — setting a limit from the message box
+## how do I set a limit without opening settings — /budget from the message box
 
 `/budget` (alias `/limits`) is the keyboard door onto the limits, and it writes through
 the same row the Spending tab writes through.
