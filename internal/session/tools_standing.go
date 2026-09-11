@@ -218,29 +218,45 @@ func (a *Agent) standingWatch() standing.Watch {
 	return a.config.Standing.Watch
 }
 
-// standDescription is what the model reads before it calls, and it is the
-// VERB'S MECHANICS AND NOTHING ELSE: what the tool is for, its neighbour, and
-// its ops.
+// standDescription is what the model reads before it calls, and most of it is
+// RECOGNITION rather than mechanics: the tool is useless unless the model
+// notices that an ordinary sentence was a standing one, and nothing else in
+// this build watches for those words.
 //
-// RECOGNITION LIVES ON THE PAGE, ONCE. The tool is useless unless the model
-// notices that an ordinary sentence was a standing one, and the reasoning for
-// that — the discharge test, what anchors a sentence to today's work, waking or
-// holding, and what to do when unsure — is prompts/system.md's `# Things that
-// keep working after this window` (beltfacts.go's [standingFacts]). That section
-// is composed from the SAME predicate this tool is built from ([Config.mayStand]),
-// so a model holding the verb always holds the section, and this string may
-// point at it. It used to carry all four at length as well, which was the
-// second copy of every one of them on every request of every turn: 13.5 KB for
-// one verb, the largest line in the interactive door's prefix, when the budget
-// test first weighed that door's real belt (prefixbudget_test.go).
-//
-// AND RECOGNITION IS A TEST, NOT A WORD LIST, wherever it lives. A bag of
-// trigger words — "whenever", "every", "from now on", "make sure" — caught
+// AND RECOGNITION IS A TEST, NOT A WORD LIST. This description used to hand the
+// model a bag of trigger words — "whenever", "every", "from now on", "make sure"
+// — and a bag of words is a matcher a model runs instead of thinking: it caught
 // "make sure this website you're building is 3 pages" and proposed a standing
 // order for an acceptance criterion, which is the worst failure this tool has,
 // because a card the person did not want teaches them to distrust every card
-// after it. The page carries the reasoning and nothing to pattern-match on.
-var standDescription = "Leave something working after this window closes — a reminder, a watch on the world, a rule, overnight work — or manage what already stands. The person never names this tool: `# Things that keep working after this window` says how to recognise one. The `watch` tool is NOT this: a watch is a job inside this conversation and stops the moment the window closes. op=list shows what stands here; pause, resume and stop take an id or the person's own words, and stop is permanent. op=change is the card's answer, never yours to call."
+// after it. So what it carries now is the reasoning — the discharge test, what
+// anchors a sentence to today's work, what separates a waking kind from a hold,
+// and what to do when the answer is genuinely unclear — with a handful of
+// canonical examples to calibrate it and nothing to pattern-match on.
+//
+// AND IT IS WRITTEN FOR DENSITY, BECAUSE THIS STRING IS BILLED ON EVERY REQUEST
+// OF EVERY TURN. The belt's schemas ride in front of each request the model
+// makes — dozens of them in one task — so a paragraph here is paid dozens of
+// times while this comment is free. So the reasoning stays and the repetition
+// went: the last paragraph used to walk every argument a second time, and every
+// one of those sentences is now said ONCE, in the schema field it governs.
+//
+// AND IT STAYS WHERE THE CALL IS MADE, WHICH WAS MEASURED (2026-09-11). A lane
+// moved all of this onto the page section built from the same predicate, so the
+// tool itself said only its ops; ten live chat-door journeys then passed 3 of
+// 10 against 8 of 8 for this text, because the conversation began doing the work
+// — it wrote the report file itself before proposing — in 7 of them and never
+// with this description. The recipe for exactly that sentence ("keep an eye on my
+// inbox folder and keep reports/inbox.md current" is file with does.kind task
+// and does.report) and "doing a standing sentence once instead of proposing it"
+// have to be in front of the model at the moment it chooses between the two.
+var standDescription = "Set up something that keeps working after this window is closed — a reminder, a watch on the world, a rule, or work that runs overnight — and manage the ones that already stand. THE PERSON NEVER NAMES THIS TOOL; you recognise it from what their sentence IS.\n\n" +
+	"THE DISCHARGE TEST decides it. Can this sentence be satisfied once and then forgotten? If it CAN, it is part of the work in front of you — an acceptance criterion, an instruction — and it does NOT stand, whatever words it is dressed in and even when it says \"make sure\": \"make sure this website you are building is 3 pages\" is discharged the moment the site has three pages. If it can NEVER be discharged — if work nobody has done yet could violate it tomorrow — it is standing: \"make sure the tests never break\".\n\n" +
+	"ANCHORING. A sentence about the artifact under construction RIGHT NOW binds the current work, whatever verbs it uses, and what anchors it is the GRAMMAR: a demonstrative pointing at the thing in front of you (\"this website you're building\"), or a present tense about work already under way (\"what you're doing\"). An \"always\", a \"never\" or an \"ensure\" inside such a sentence is EMPHASIS ON THIS WORK — a quality bar for the thing being built is acceptance, and acceptance is never a card.\n\n" +
+	"WAKING OR HOLDING. A standing sentence that names a moment, a rhythm or a condition gets the waking kind it names (\"remind me at 6\" is at, \"every Monday draft the update\" is every, \"tell me when CI goes red\" is probe, \"tonight run the suite\" is idle, \"keep an eye on my inbox folder and keep reports/inbox.md current\" is file with does.kind task and does.report). One that names none of them — a rule, a convention, a preference — is when.kind hold.\n\n" +
+	"UNSURE MEANS INSTRUCTION PLUS AN OFFER. When the discharge test is genuinely unclear, bind the sentence to the work in front of you AND offer the standing version in one line of prose at the end of your reply. NEVER a card on a guess: a card they did not want costs their trust in every card after it.\n\n" +
+	"Doing a standing sentence once instead of proposing it answers a request they did not make: \"run the tests\" is work you do now, \"run the tests whenever I push\" is one of these. The `watch` tool is the near neighbour that is NOT this: a watch is a job inside this conversation and stops the moment the window closes, so anything that has to keep looking after they walk away belongs here and never there.\n\n" +
+	"Nothing stands until the person says yes: the card waits for them with no clock on it, and a session nobody is watching cannot set one up at all. Money is not yours to negotiate — omit rails and cost_words unless they named a limit. op=list shows what already stands here; op=pause, op=resume and op=stop take an id or the person's own words, and stop is permanent. op=change is not yours to call — it is what the card answers when they want it different."
 
 // standSchemaJSON is the call's shape, and each description is ONE LINE SAYING
 // WHAT THE FIELD IS FOR, plus the law that governs it where there is one.
@@ -261,8 +277,8 @@ var standDescription = "Leave something working after this window closes — a r
 // only when the person named them.
 var standSchemaJSON = `{"type":"object","properties":{` +
 	`"folder_scope":{"type":"object","description":"A hold's folders, in place of altitude: existing collection ids they named, never inferred.","properties":{"collection_ids":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":32},"descendants":{"type":"boolean","description":"True only when they include subfolders."}},"required":["collection_ids"],"additionalProperties":false},` +
-	`"placement":{"type":"string","description":"does.kind task only: the id of an existing folder they named, whose rules then reach every run. Omitted, it goes where this conversation is placed, if anywhere."},` +
-	`"op":{"type":"string","enum":["propose","list","pause","resume","stop","change"]},` +
+	`"placement":{"type":"string","description":"Work that runs (does.kind task) only: the id of an existing folder to place it in, so that folder's rules reach every run. Send it only when they named a folder. Omitted, the work is placed where this conversation is placed, or in no folder."},` +
+	`"op":{"type":"string","enum":["propose","list","pause","resume","stop","change"],"description":"propose a new one, list what stands here, or pause, resume or stop one that does."},` +
 	`"words":{"type":"string","description":"THE PERSON'S OWN SENTENCE, verbatim, never a paraphrase: every card and row leads with it. On pause, resume and stop it may name the item instead of id."},` +
 	`"when":{"type":"object","description":"What wakes it; only its kind's fields are read.","properties":{` +
 	`"kind":{"type":"string","enum":["at","every","file","idle","probe","hold"],"description":"at: once, then it retires. every: a rhythm. file: a glob changing. idle: the machine quiet a while. probe: a look at the world judged against their words. hold: never wakes."},` +
@@ -282,10 +298,10 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"does":{"type":"object","description":"What a firing does. Every waking kind needs one; a hold takes none.","properties":{` +
 	`"kind":{"type":"string","enum":["say","task"],"description":"say: one line to the person, wherever they are. task: runs instructions unattended in a session of its own."},` +
 	`"say":{"type":"string","description":"The line; {{evidence}} becomes what the probe found."},` +
-	`"instructions":{"type":"string","description":"THE WORK one run does, written whole: nobody will be there to ask. With does.report, say what the report holds, never to write the file or make its folder. {{evidence}} as in say."},` +
-	`"report":{"type":"string","description":"Only when they asked for a file kept current: its path inside the project. Each run's final answer IS the report and aforge publishes it; the run never writes it. Never inside when.glob."},` +
+	`"instructions":{"type":"string","description":"THE WORK one run does, written whole: nobody will be there to ask. With does.report, say what the report holds and never to write the file or make its folder: its final answer is published. {{evidence}} as in say."},` +
+	`"report":{"type":"string","description":"Only when they asked for a file kept current: its path inside the project. Each run's final answer IS the report, and aforge publishes it there, replacing the last one; the run never writes it. Never inside what when.glob watches."},` +
 	`"acceptance":{"type":"string","description":"How anybody checks the work is done."},` +
-	`"model":{"type":"string","description":"Only a model they named."},` +
+	`"model":{"type":"string","description":"Model for the work, only when the person named one."},` +
 	`"max_steps":{"type":"integer","description":"Tool calls per run (default ` + strconv.Itoa(standingRunSteps) + `)."}` +
 	`},"additionalProperties":false},` +
 	`"rails":{"type":"object","description":"Only limits the person named, each quoted in cost_words. A hold takes only expires.","properties":{` +
