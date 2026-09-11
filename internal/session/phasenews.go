@@ -546,9 +546,17 @@ func (a *Agent) sayHeldPhaseAgain(stop chan struct{}) bool {
 // task node is a leaf, and which of the two leaf roles it is depends on the
 // only thing that changes what a second is worth — whether anybody is here to
 // read what it lands (see [Agent.turnLambda]).
+//
+// AN AGENT BUILT TO ANSWER FOR A CREW ROLE IS THAT ROLE, asked first: the
+// checker is InTask for the node's reason and is still a gate reading an answer
+// rather than a node doing work, so its calls are a judge's, from the same one
+// table an errand's are ([Config.crewRole], [errandRole]).
 func (a *Agent) laneRole() lane.Role {
 	if a == nil {
 		return lane.RoleUnknown
+	}
+	if role := a.config.crewRole; role != "" {
+		return errandRole(role)
 	}
 	if !a.config.InTask {
 		return lane.RoleTalk

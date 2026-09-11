@@ -123,7 +123,8 @@ package session
 //	                  — the state already says done
 //	refuted out       "incomplete — " and the plain gaps, every round of them
 //	nobody could say  the question the row is asking ([yourCallLead]) and what
-//	                  the checker said
+//	                  the checker said — led by "the check ran out of time" where
+//	                  the clock is what stopped it ([auditVerdict.ranOut])
 //
 // The reason is not squeamishness. The person did not ask for an audit; they
 // asked for a report on eleven companies. "REFUTED" tells them about the
@@ -411,9 +412,9 @@ const (
 	// takenAsItStandsLead and takenAsItStandsTail are what an UNATTENDED run's
 	// landing says when nobody could check the work
 	// (task_run.go's workTaskNode). Between them goes the checker's own account
-	// of what became of it — [checkerRanOut]'s sentence, most often — so the
-	// whole reads "taken as it stands: nobody could check it in 5m0s, and the run
-	// is unattended".
+	// of what became of it — [checkerStalled]'s sentence, most often — so the
+	// whole reads "taken as it stands: one call ran 30s without answering and was
+	// abandoned · the window closed before a second, and the run is unattended".
 	//
 	// THE TAIL IS THE HALF THAT MATTERS. A person coming back to this landing has
 	// to be able to tell it from work somebody looked at, and the reason it was
@@ -459,13 +460,13 @@ func yourCallLead(facts TaskFacts) string {
 // withYourCallLead puts that question in front of what is said under it, AND
 // DOES NOT SAY IT TWICE.
 //
-// Three of the checker's own sentences already open with the question, because
-// they were written when the lead was a different sentence entirely and each had
-// to carry its own subject: [checkerRanOut] says "nobody could check it in 5m0s",
-// [checkerAskedTwice] and [checkerWindowClosedAlone] both open "nobody could
-// check it". Where the account already opens with the question, THE ACCOUNT IS
-// THE LEAD — anything else is one sentence stuttering, which is what a lead and
-// an account written a year apart will always eventually do.
+// Several of the checker's own sentences already open with the question, because
+// each has to carry its own subject where it is quoted alone ([takenAsItStands]):
+// [checkerAskedTwice] opens "nobody could check it", and [checkerRanOut] and
+// [checkerWindowClosedAlone] open "the check ran out of time". Where the account
+// already opens with the question, THE ACCOUNT IS THE LEAD — anything else is one
+// sentence stuttering, which is what a lead and an account written a year apart
+// will always eventually do.
 func withYourCallLead(facts TaskFacts, said string) string {
 	if reason := taskAskOf(facts).Reason; !strings.HasPrefix(said, reason) {
 		return reason + yourCallDash + said
@@ -635,12 +636,24 @@ func (v auditVerdict) checkedSoFar() string {
 // lookOutcome is what the node nobody could judge says: it FINISHED, and it
 // needs eyes. The checker's own words follow, in plain form, because they are
 // the whole basis on which somebody is being asked to decide.
+//
+// A NON-ANSWER THE CLOCK DECIDED LEADS WITH THE CLOCK. Its account is a call's
+// own — `one call ran 30s without answering and was abandoned · the window closed
+// before a second` — and under [taskAskCheckReason] that read as a verdict on
+// the work when it is a fact about the checker ([auditVerdict.ranOut]). So it is
+// led by [taskAskTimeReason], and the question is then read off the account the
+// way every surface reads it off the landing: the row, the note and the card all
+// ask [taskAskOf] of this report, and it answers with the lead it opens with.
 func (v auditVerdict) lookOutcome(facts TaskFacts) string {
-	lines := plainLines(v.evidence)
-	if len(lines) == 0 {
-		return yourCallLead(facts) + "the checker never answered"
+	said := strings.Join(plainLines(v.evidence), "\n")
+	if said == "" {
+		said = "the checker never answered"
 	}
-	return withYourCallLead(facts, strings.Join(lines, "\n"))
+	if v.ranOut && !strings.HasPrefix(said, taskAskTimeReason) {
+		said = taskAskTimeReason + yourCallDash + said
+	}
+	facts.Report = said
+	return withYourCallLead(facts, said)
 }
 
 // takenAsItStands is [auditVerdict.lookOutcome]'s counterpart for a run with
@@ -648,8 +661,8 @@ func (v auditVerdict) lookOutcome(facts TaskFacts) string {
 // question (task_run.go's workTaskNode).
 //
 // THE CHECKER'S OWN FIRST LINE IS THE MIDDLE OF THE SENTENCE, which is what keeps
-// the figure honest: "nobody could check it in 5m0s" is [checkerRanOut]'s own
-// words, written where the window actually closed, and quoting them here rather
+// the figure honest: "one call ran 30s without answering" is [checkerStalled]'s
+// own words, written where the call was actually cut, and quoting them here rather
 // than re-deriving a duration is what stops the landing and the journal drifting
 // apart. Everything the checker said after that first line stands under it, as it
 // does on every other landing.
@@ -658,7 +671,7 @@ func takenAsItStands(v auditVerdict) string {
 	if len(lines) == 0 {
 		// A non-answer with nothing behind it says what is true and invents no
 		// reason for it — the emptiness law, on the one field there is.
-		return v.withAlreadyRed(takenAsItStandsLead + "nobody could check it" + takenAsItStandsTail)
+		return v.withAlreadyRed(takenAsItStandsLead + v.subject() + takenAsItStandsTail)
 	}
 	return v.withAlreadyRed(withReport(takenAsItStandsLead+lines[0]+takenAsItStandsTail, strings.Join(lines[1:], "\n")))
 }
@@ -685,6 +698,36 @@ type auditVerdict struct {
 	// was reached. Only finished roads render it; a finding or a request for a
 	// person's look keeps its attention on what is missing.
 	alreadyRed []string
+	// ranOut says a NON-ANSWER IS A FACT ABOUT TIME: the last call made was cut
+	// by its share of the window, or the window closed before a call could be
+	// made. It is set where the clock decided it and nowhere else
+	// ([auditVerdict.ranOutOfTime]), and it is what a landing leads with instead
+	// of [taskAskCheckReason] ([auditVerdict.lookOutcome]).
+	//
+	// IT IS THE DIFFERENCE BETWEEN TWO THINGS A PERSON DOES NEXT. "Nobody could
+	// check it" — a checker that would not start, a provider that failed, a reply
+	// that said neither word — is news about the work's standing. "The check ran
+	// out of time" is news about the checker alone: the work may well be right,
+	// as it was on every one of the five landings #941 measured, and the person
+	// reading the card is owed which of the two they are deciding on.
+	ranOut bool
+}
+
+// ranOutOfTime marks a non-answer the clock decided ([auditVerdict.ranOut]).
+func (v auditVerdict) ranOutOfTime() auditVerdict {
+	v.ranOut = true
+	return v
+}
+
+// subject is the clause a sentence that carries its own subject opens with:
+// [taskAskTimeReason] for a non-answer the clock decided, [taskAskCheckReason]
+// for every other. It is the landing's own lead, so an account that opens with
+// it IS the lead and nothing is put in front of it ([withYourCallLead]).
+func (v auditVerdict) subject() string {
+	if v.ranOut {
+		return taskAskTimeReason
+	}
+	return taskAskCheckReason
 }
 
 // report is how the verdict rides the node's Report: the word, an em dash, and
@@ -723,8 +766,13 @@ func (v auditVerdict) report() string {
 // answered without hanging and left nothing behind them. A call that WAS asked
 // and held its whole bound is said to have stalled, with the window's closing as
 // a clause on the end of it ([checkerStalled], [auditVerdict.andTheWindowClosed]).
+//
+// AND IT IS A SENTENCE ABOUT TIME, SO IT OPENS WITH THE TIME. It used to open
+// "nobody could check it", which put a checker that was never asked in the same
+// words as one that failed (#941): it carries [taskAskTimeReason] as its own
+// subject now, so the landing it leads is the landing a time-out gets.
 func checkerRanOut(window time.Duration) string {
-	return "nobody could check it in " + window.String()
+	return taskAskTimeReason + " before a call could be made — it had " + window.String()
 }
 
 // checkerStalled is what a person reads when ONE call was abandoned and the
@@ -768,7 +816,9 @@ const checkerWindowClosedTail = " · " + checkerWindowClosed
 // checkerWindowClosedAlone is the same fact with nothing beside it: one call
 // was made, it left no account of itself, and there was no time to ask again.
 // It carries the subject the tail borrows from the sentence it hangs off.
-const checkerWindowClosedAlone = "nobody could check it — " + checkerWindowClosed + " call could be made"
+// A window that closed is time running out, so it opens with the time's own
+// subject ([auditVerdict.ranOut]).
+const checkerWindowClosedAlone = taskAskTimeReason + yourCallDash + checkerWindowClosed + " call could be made"
 
 // ── the checking window, and one call inside it ─────────────────────────────
 
@@ -778,7 +828,7 @@ const checkerWindowClosedAlone = "nobody could check it — " + checkerWindowClo
 // this that is not about hung streams. Each attempt used to open a window of its
 // own, so the ladder's two attempts were bounded at ten minutes and the sentence
 // a person read afterwards named five ([checkerRanOut]). One window, cut into
-// shares, is what makes "nobody could check it in 5m0s" a true sentence.
+// shares, is what makes the figure in [checkerRanOut] a true sentence.
 //
 // AND IT IS A CLOCK READING RATHER THAN A CONTEXT because [Agent.auditOnce]'s
 // other question — was this node KILLED — is answered off the caller's own ctx,
@@ -910,12 +960,12 @@ func (v auditVerdict) andTheWindowClosed() auditVerdict {
 		// half a sentence on its own — and half a sentence about time running out
 		// is one a person takes for a deadline they missed ([checkerAskedTwice]
 		// is the same repair on the same family).
-		return noVerdict(checkerWindowClosedAlone, "")
+		return noVerdict(checkerWindowClosedAlone, "").ranOutOfTime()
 	}
 	evidence := append([]string{}, v.evidence...)
 	evidence[0] += checkerWindowClosedTail
 	v.evidence = evidence
-	return v
+	return v.ranOutOfTime()
 }
 
 func (v auditVerdict) onTheSecondTry() auditVerdict {
@@ -932,7 +982,14 @@ func (v auditVerdict) onTheSecondTry() auditVerdict {
 // miss it? Nobody was asked anything. Two checking calls were made and neither
 // said a word, which is [checkerRanOut]'s law applied to the one line in this
 // family that never got it: say who could not answer, and stop there.
-const checkerAskedTwice = "nobody could check it — asked twice, and neither call answered"
+//
+// ITS SUBJECT IS THE LAST CALL'S. Two calls that were cut by the clock open with
+// the time ([auditVerdict.subject]); every other pair opens with the question.
+// This constant is the second, spelled whole for the readers that quote it.
+const checkerAskedTwice = taskAskCheckReason + yourCallDash + askedTwice
+
+// askedTwice is the clause itself, with no subject of its own.
+const askedTwice = "asked twice, and neither call answered"
 
 // twice re-tells a non-verdict as the SECOND one it is. Whether the harness
 // asked once or asked again and got the same nothing is the difference between
@@ -944,12 +1001,14 @@ const checkerAskedTwice = "nobody could check it — asked twice, and neither ca
 // through here ([checkerWindowClosed]), so this sentence never claims an attempt
 // nobody made.
 func (v auditVerdict) twice() auditVerdict {
+	lead := v.subject() + yourCallDash + askedTwice
 	if len(v.evidence) == 0 {
-		return noVerdict(checkerAskedTwice, "")
+		v.evidence = []string{lead}
+		return v
 	}
 	evidence := make([]string, len(v.evidence))
 	copy(evidence, v.evidence)
-	evidence[0] = checkerAskedTwice + " — " + evidence[0]
+	evidence[0] = lead + yourCallDash + evidence[0]
 	v.evidence = evidence
 	return v
 }
@@ -1173,7 +1232,7 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	// The bound is read again after the build for the timeout itself, so a call
 	// that does go out is still measured against the time it actually has.
 	if _, worthAsking := pace.bound(a.now()); !worthAsking {
-		return noVerdict(checkerRanOut(pace.window), ""), false
+		return noVerdict(checkerRanOut(pace.window), "").ranOutOfTime(), false
 	}
 
 	auditor, err := a.newAuditAgent(ground.dir, node, door, on)
@@ -1200,9 +1259,14 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	// what is decided here is only how much of it one call may hold.
 	bound, worthAsking := pace.bound(a.now())
 	if !worthAsking {
-		return noVerdict(checkerRanOut(pace.window), ""), false
+		return noVerdict(checkerRanOut(pace.window), "").ranOutOfTime(), false
 	}
-	auditCtx, done := context.WithTimeout(ctx, bound)
+	// AND THE BOUND IS TOLD, NOT ONLY HELD. A window the checker is never shown
+	// is a stopwatch: a reasoning model asked to check twenty files thought
+	// through two thirty-second shares without a word (#941). Opened this way,
+	// every request the checker makes under it carries the time it has left, and
+	// the adapter's effort ladder sizes its thinking to fit (callwindow.go).
+	auditCtx, done := openCallWindow(ctx, bound, callWindow{})
 	defer done()
 
 	fmt.Fprintf(log, "audit: verifying against the acceptance\n")
@@ -1229,26 +1293,7 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	// it reads ctx itself. What is this function's story is the audit that ran
 	// out of its own window with the node still perfectly alive.
 	if auditCtx.Err() != nil && ctx.Err() == nil {
-		// AND THE TWO CLOCKS ARE TOLD APART, because they decide different things.
-		// A call cut while the window still has room leaves something to ask
-		// with, and the check is asked again inside what is left; a window that
-		// has closed is the whole of this node's checking over.
-		//
-		// WHAT NEITHER OF THEM CHANGES IS THE SENTENCE. A CALL THAT STALLED IS
-		// SAID TO HAVE STALLED, whichever clock ran out second: this one was
-		// asked, held the stream for its whole bound and answered nothing, and
-		// "nobody could check it in 5m0s" over the top of that is the harness
-		// telling a person nobody was asked. So the window's closing is a clause
-		// on the end of the call's own account, exactly as it is one rung up
-		// ([auditVerdict.andTheWindowClosed]), and [checkerRanOut] is left for
-		// the case it is true of: no call stalled, and the window simply ran out.
-		stalled := noVerdict(checkerStalled(bound), said)
-		if pace.left(a.now()) > 0 {
-			fmt.Fprintf(log, "audit: %s\n", checkerStalled(bound))
-			return stalled, true
-		}
-		fmt.Fprintf(log, "audit: %s%s\n", checkerStalled(bound), checkerWindowClosedTail)
-		return stalled.andTheWindowClosed(), false
+		return a.afterTheCut(ctx, auditor, pace, bound, said, log)
 	}
 	if failure != nil && strings.TrimSpace(said) == "" {
 		// NOTHING WAS DELIVERED. There is no reply to have parsed and no auditor
@@ -1260,50 +1305,128 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 
 	verdict := parseAuditVerdict(said)
 	// THE FIRST RUNG IS TAKEN HERE, INSIDE THE LANE IT BELONGS TO. A reply that
-	// did not parse is the one non-verdict with a live auditor behind it — it has
-	// read the diff, run the verification, and stopped a word short — so it is
-	// asked for the word before anybody pays for a second investigation. Every
-	// other way to get here (a provider error, an auditor that would not start, a
-	// deadline that expired) has already returned above, which is exactly the
-	// distinction the ladder is drawn on.
+	// did not parse is a non-verdict with a live auditor behind it — it has read
+	// the diff, run the verification, and stopped a word short — so it is asked
+	// for the word before anybody pays for a second investigation. The call cut
+	// by its share is the other one, and took the same rung above. A provider
+	// error and an auditor that would not start have nobody behind them to ask,
+	// and have already returned, which is exactly the distinction the ladder is
+	// drawn on.
 	if !verdict.answered && ctx.Err() == nil {
-		verdict = a.nudgeAudit(auditCtx, auditor, verdict, log)
+		if answer := a.askForTheWord(ctx, auditor, pace, log); answer.answered {
+			verdict = answer
+		}
 	}
 	fmt.Fprintf(log, "audit: %s\n", verdict.report())
 	return verdict, true
 }
 
-// nudgeAudit asks the SAME auditor, once, for the word it did not say.
+// afterTheCut is what a call the window cut leaves behind: the call's own
+// account, and whether there is room to ask again.
 //
-// It runs inside the CALL'S own bound rather than opening a window of its own:
-// the auditor has already done the reading, and a nudge that could outlive the
-// deadline would be a second audit wearing a cheap name. That bound is a share
-// of the node's window ([auditPace]) rather than the whole of it, which is what
-// leaves the fresh checker after it something to be asked with.
+// It is its own function because it is its own phase — the call is over, the
+// checker is still open, and what is decided here is only what the next rung
+// is: the same checker asked for its word, a fresh checker, or nothing because
+// the window has closed.
+func (a *Agent) afterTheCut(ctx context.Context, auditor *Agent, pace auditPace, bound time.Duration, said string, log io.Writer) (auditVerdict, bool) {
+	// AND THE TWO CLOCKS ARE TOLD APART, because they decide different things.
+	// A call cut while the window still has room leaves something to ask
+	// with, and the check is asked again inside what is left; a window that
+	// has closed is the whole of this node's checking over.
+	//
+	// WHAT NEITHER OF THEM CHANGES IS THE SENTENCE. A CALL THAT STALLED IS
+	// SAID TO HAVE STALLED, whichever clock ran out second: this one was asked,
+	// held the stream for its whole bound and answered nothing, and "ran out of
+	// time before a call could be made" over the top of that is the harness
+	// telling a person nobody was asked. So the window's closing is a clause on
+	// the end of the call's own account, exactly as it is one rung up
+	// ([auditVerdict.andTheWindowClosed]), and [checkerRanOut] is left for the
+	// case it is true of: no call stalled, and the window simply ran out.
+	stalled := noVerdict(checkerStalled(bound), said).ranOutOfTime()
+	if pace.left(a.now()) > 0 {
+		fmt.Fprintf(log, "audit: %s\n", checkerStalled(bound))
+		// A CUT CHECK KEEPS WHAT IT READ. A checker cut while it still had
+		// files open and commands run is a checker a word short of an answer,
+		// not one that never started, so it is asked for the word over what it
+		// has read before anybody is paid to read it all again
+		// ([Agent.askForTheWord]). One that was cut before it had read anything
+		// has nothing to be asked over, and goes to the fresh checker as before.
+		if len(lastToolReceipts(auditor, 1)) > 0 {
+			if answer := a.askForTheWord(ctx, auditor, pace, log); answer.answered {
+				fmt.Fprintf(log, "audit: %s\n", answer.report())
+				return answer, true
+			}
+		}
+		return stalled, true
+	}
+	fmt.Fprintf(log, "audit: %s%s\n", checkerStalled(bound), checkerWindowClosedTail)
+	return stalled.andTheWindowClosed(), false
+}
+
+// askForTheWord asks the SAME checker, once, for the word it did not say, over
+// everything it has already read.
 //
-// EVERY FAILURE KEEPS THE ORIGINAL NON-ANSWER. A nudge that errors, that is cut
-// off, or that comes back without the word again has taught us nothing new about
-// the work, and the caller's next rung — a fresh auditor — is the same rung it
-// was before this one existed. What it must never do is turn a nudge's own
-// silence into a finding.
-func (a *Agent) nudgeAudit(ctx context.Context, auditor *Agent, missed auditVerdict, log io.Writer) auditVerdict {
-	fmt.Fprintf(log, "audit: no verdict — asking the same auditor for the word\n")
-	events, err := auditor.Submit(ctx, auditNudge)
+// TWO ROADS REACH IT AND THEY ARE ONE SHAPE. A reply that did not parse is a
+// checker that read the diff, ran the verification and stopped a word short; a
+// call cut by its own share of the window is a checker that read the same
+// things and ran out of time before the word. Both have done the reading and
+// both are missing only the answer. A fresh checker put in front of either
+// would begin the whole investigation again from nothing inside what is left of
+// the window — which is how a check that had already read all twenty files of a
+// correct piece of work landed `your call` (#941).
+//
+// SO IT IS ASKED AS AN ANSWER AND NOT AS A SECOND INVESTIGATION. The transcript
+// it is asked over is the evidence, the one sentence it is sent ([auditNudge])
+// demands the contract and nothing that tells the checker which way to go, and
+// its thinking pass is switched off ([callWindow.answer] says why that costs the
+// answer nothing).
+//
+// IT IS A CALL OF ITS OWN INSIDE THE NODE'S WINDOW, bounded like every other
+// call there, by [auditPace.bound] read as it starts. It used to run inside the
+// bound of the call it followed, which a cut call has already spent; and a
+// window with too little left in it asks nothing rather than a question nobody
+// could answer in the time.
+//
+// EVERY FAILURE IS NO ANSWER AND NEVER A FINDING. A call that errors, is cut, or
+// comes back without the word has taught nothing new about the work, so the
+// caller keeps the account it already had, and the rung after this — a fresh
+// checker — is the rung it always was. Only what the checker said AFTER it was
+// asked is read ([saidSince]): an earlier line of its own that happened to open
+// with a verdict word is not an answer to a question it had not been put.
+func (a *Agent) askForTheWord(ctx context.Context, auditor *Agent, pace auditPace, log io.Writer) auditVerdict {
+	bound, worthAsking := pace.bound(a.now())
+	if !worthAsking {
+		return auditVerdict{}
+	}
+	asked, done := openCallWindow(ctx, bound, callWindow{answer: true})
+	defer done()
+	fmt.Fprintf(log, "audit: no verdict — asking the same checker for the word, over what it has read\n")
+	from := len(auditor.Transcript())
+	events, err := auditor.Submit(asked, auditNudge)
 	if err != nil {
-		return missed
+		return auditVerdict{}
 	}
 	for event := range events {
 		if event.Kind == EventToolBegin {
 			fmt.Fprintf(log, "audit · %s\n", event.Hint)
 		}
 	}
-	if ctx.Err() != nil {
-		return missed
+	if asked.Err() != nil {
+		return auditVerdict{}
 	}
-	if answer := parseAuditVerdict(lastSaid(auditor)); answer.answered {
-		return answer
+	return parseAuditVerdict(saidSince(auditor, from))
+}
+
+// saidSince is [lastSaid] over only the entries a checker's transcript gained
+// after `from`, and "" when it said nothing new.
+func saidSince(child *Agent, from int) string {
+	entries := child.Transcript()
+	for index := len(entries) - 1; index >= from && index >= 0; index-- {
+		if entry := entries[index]; entry.Role == "assistant" && strings.TrimSpace(entry.Text) != "" {
+			return entry.Text
+		}
 	}
-	return missed
+	return ""
 }
 
 // ── the repair loop ─────────────────────────────────────────────────────────
@@ -3032,6 +3155,13 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 		ApprovalPolicy: &approval.Policy{Default: approval.ActionAllow},
 		AskConsent:     false,
 		InTask:         true,
+		// AND ITS CALLS ARE A JUDGE'S, NOT A WORKER'S. InTask above is about
+		// who can be asked; what the router plans this agent's calls against is
+		// what the agent is FOR, and it is a gate reading an answer inside a
+		// window its caller set ([Config.crewRole]). Without this line the check
+		// was planned on a leaf's patience, which never acts on a silent machine
+		// inside a thirty-second share (#941).
+		crewRole: roles.RoleAuditor,
 		// The auditor is the node too, as far as anybody watching is concerned:
 		// it runs on the node's clock, in the node's worktree, and a card whose
 		// audit is parked on a provider's pacing is a card whose task is not

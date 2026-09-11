@@ -156,9 +156,11 @@ type TaskFacts struct {
 	Merge  string
 	Branch string
 	// Report is the landing's own account of itself (TaskNotice.Report), and it is
-	// read for exactly two things: which incomplete reason a fault or a check's
-	// finding gets ([TaskReasonOf]), and the gaps a held landing names. Nothing
-	// else here reads prose, and a node that has not landed has none.
+	// read for exactly three things: which incomplete reason a fault or a check's
+	// finding gets ([TaskReasonOf]), the gaps a held landing names, and whether a
+	// landing nobody could judge leads with the check running out of time
+	// ([taskCheckReason]). All three read a lead this package wrote as a constant;
+	// nothing else here reads prose, and a node that has not landed has none.
 	Report string
 	// Consent says the work HAS NOT BEEN AGREED TO YET: a proposal in front of
 	// somebody, before any of it runs. Countdown is how long the consent clock has
@@ -704,6 +706,15 @@ const (
 	taskAskCapTail           = " cap"
 	taskAskCapPlain          = "paused at the cap"
 
+	// taskAskTimeReason is the SECOND ROAD TO THE CHECK'S QUESTION, and the one a
+	// person must not read as news about their work: the check ran out of time
+	// before it could answer — a call cut by its share of the window, or a window
+	// that closed before a call could be made (task_audit.go's
+	// [auditVerdict.ranOut]). The question and its two answers are the check's,
+	// because nothing merges on a non-answer whatever caused it; only the reason
+	// differs, and it names the checker rather than the work (#941).
+	taskAskTimeReason = "the check ran out of time"
+
 	taskAskStartYes    = "start"
 	taskAskStartNo     = "don't"
 	taskAskApproveYes  = "approve"
@@ -869,10 +880,27 @@ func taskAskOf(facts TaskFacts) TaskAsk {
 		ask.Kind, ask.Reason = TaskAskHeld, taskHeldReason(facts.Report)
 		ask.Yes, ask.No = taskAskHeldYes, taskAskCheckNo
 	default:
-		ask.Kind, ask.Reason = TaskAskCheck, taskAskCheckReason
+		ask.Kind, ask.Reason = TaskAskCheck, taskCheckReason(facts.Report)
 		ask.Yes, ask.No = taskAskCheckYes, taskAskCheckNo
 	}
 	return ask
+}
+
+// taskCheckReason is WHICH OF THE CHECK'S TWO SENTENCES a landing nobody could
+// judge asks with: [taskAskTimeReason] where the landing leads with it, and
+// [taskAskCheckReason] everywhere else — which is also where a report that says
+// nothing lands, the emptiness law read the safe way round.
+//
+// It is read off the report's lead for [taskHeldReason]'s reason: the lead is a
+// constant the landing writes (task_audit.go's [auditVerdict.lookOutcome]) and
+// every surface already carries the report, so the row, the card, the note and
+// a record read back off the disk tomorrow all come to the same sentence with no
+// field of their own to disagree about.
+func taskCheckReason(report string) string {
+	if strings.HasPrefix(strings.TrimSpace(report), taskAskTimeReason) {
+		return taskAskTimeReason
+	}
+	return taskAskCheckReason
 }
 
 // taskDeciderOf reads who is holding the question, and an unrecorded owner is

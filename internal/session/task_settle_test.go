@@ -426,9 +426,20 @@ func TestASecondCallTheWindowRefusedIsNotSaidToHaveBeenAsked(t *testing.T) {
 	// checker's own sentences all open with the same words, so a report carrying
 	// two of them IS the defect — a person reading it is told twice that nobody
 	// could check the work, with a figure belonging to the other clause.
-	if said := strings.Count(notice.Report, taskAskCheckReason); said != 1 {
+	//
+	// AND IT IS THE CLOCK'S QUESTION, NOT THE WORK'S (#941). Every call here was
+	// cut by the window, so the landing leads with the check running out of time
+	// and never says nobody could check the work.
+	if lead := taskAskOf(notice.StatusFacts()).Reason; lead != taskAskTimeReason {
+		t.Fatalf("the landing asks %q, want %q (the clock was read %d times):\n%s",
+			lead, taskAskTimeReason, readings.Load(), notice.Report)
+	}
+	if said := strings.Count(notice.Report, taskAskTimeReason); said != 1 {
 		t.Fatalf("the report says %q %d times, want once (the clock was read %d times):\n%s",
-			taskAskCheckReason, said, readings.Load(), notice.Report)
+			taskAskTimeReason, said, readings.Load(), notice.Report)
+	}
+	if strings.Contains(notice.Report, taskAskCheckReason) {
+		t.Fatalf("a check the clock cut is read as one nobody could make:\n%s", notice.Report)
 	}
 	if strings.Contains(notice.Report, checkerRanOut(window)) {
 		t.Fatalf("the report quotes the window at a checker nobody asked:\n%s", notice.Report)
