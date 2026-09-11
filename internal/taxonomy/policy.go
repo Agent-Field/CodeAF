@@ -299,8 +299,16 @@ func transportReason(e Evidence) string {
 		return ReasonCut
 	case e.Wire:
 		return ReasonWire
-	case e.Upstream != "":
+	case e.Named():
 		return ReasonRefused
+	// AND AN UNNAMED PACE IS ITS OWN SHAPE. It used to fall through to
+	// [ReasonUnserved] — "the provider could not serve it" — which is the wrong
+	// claim twice over: the provider CAN serve it, and what a person reading the
+	// row needs to know is that nothing about this is theirs to act on and
+	// nothing about it is the model's fault. Its move is the wait it named and
+	// then another model, and no other shape has that pair.
+	case e.Status == 429:
+		return ReasonPaced
 	case e.Status > 0:
 		return ReasonUnserved
 	}
@@ -326,6 +334,7 @@ const (
 	ReasonCut          = "the reply stopped part-way"
 	ReasonWire         = "the connection did not hold"
 	ReasonRefused      = "the endpoint refused"
+	ReasonPaced        = "the account is being asked to slow down"
 	ReasonUnserved     = "the provider could not serve it"
 	ReasonUnreached    = "the request did not reach anybody"
 	ReasonWithdrawn    = "the model is no longer carried"
@@ -400,7 +409,7 @@ func (workPolicy) Class() Class { return Work }
 
 func (workPolicy) Decide(e Evidence, _ Limits) Verdict {
 	reason := "the work did not come back done"
-	if e.Status >= 400 && e.Upstream == "" {
+	if e.Status >= 400 && !e.Named() {
 		reason = "the request itself was refused"
 	}
 	return Verdict{Action: ActionReport, Reason: reason}

@@ -328,6 +328,8 @@ func transportWords(verdict taxonomy.Verdict) string {
 		return "the connection to the model dropped"
 	case taxonomy.ReasonRefused:
 		return "the model would not take the request"
+	case taxonomy.ReasonPaced:
+		return "we are being asked to slow down"
 	case taxonomy.ReasonUnserved:
 		return "the model could not be reached"
 	case taxonomy.ReasonWithdrawn:
@@ -370,6 +372,8 @@ func transportKeptWords(verdict taxonomy.Verdict) string {
 		return "the connection to the model kept dropping"
 	case taxonomy.ReasonRefused:
 		return "the model kept turning the request away"
+	case taxonomy.ReasonPaced:
+		return "we kept being asked to slow down"
 	case taxonomy.ReasonUnserved:
 		return "the model could not be reached"
 	case taxonomy.ReasonWithdrawn:
@@ -442,11 +446,36 @@ func (a *Agent) readOverflow(err error, model string, compacted bool) taxonomy.V
 // suspect, and moving the node to a dearer model to answer for somebody else's
 // bad minute is precisely the purchase this package exists to stop.
 //
-// It never returns true for anything the taxonomy calls transport, and it writes
+// It never BUYS a model for anything the taxonomy calls transport, and it writes
 // the reason where a person watching the run can read it.
-func (a *Agent) movesForFailure(node *TaskNode, runErr error, log io.Writer) bool {
+//
+// ── AND IT NEVER REFUSES ONE A PERSON NAMED ────────────────────────────────
+//
+// What this gate exists to stop is a PURCHASE: moving a node to the next, often
+// dearer, model in a chain to answer for somebody else's bad minute. A model
+// chosen in the node's own room is the opposite act — nothing is being bought
+// and nothing is being guessed, because the question "which model" was answered
+// by the person watching. So the pick is asked FIRST and there is no reading of
+// the class to reach.
+//
+// THAT IS NOT AN EXCEPTION BOLTED ONTO THE TRANSPORT RULE; it is the rule saying
+// what it is about. Written the other way round — classify, then let a pick past
+// a transport verdict — it would be two answers to "may this node move" that a
+// later wave could drift apart. It reads the SAME fact the move itself reads
+// ([TaskNode.standingModel]) against the SAME model the run used, so the gate
+// and the move cannot disagree about whether there is anywhere to go.
+//
+// The measured case is exactly this one: a step grinding on a machine answering
+// `temporarily rate-limited upstream` is a TRANSPORT failure however many times
+// it happens, so a person who picked another model over it was told the choice
+// was taken and then watched `staying on <the model they had just replaced>`.
+func (a *Agent) movesForFailure(node *TaskNode, ranOn string, runErr error, log io.Writer) bool {
 	if !terminalProviderFailure(runErr) {
 		return false
+	}
+	if standing := node.standingModel(); standing != "" && !strings.EqualFold(standing, ranOn) {
+		fmt.Fprintf(log, "the run ended on the connection rather than on the work: moving to %s, which you chose\n", standing)
+		return true
 	}
 	// THE WORKER UNDER THIS HAS ALREADY SPENT WHATEVER IT HAD, which is what the
 	// boundary is being told: a run that ended on the wire ended because its own
@@ -454,14 +483,14 @@ func (a *Agent) movesForFailure(node *TaskNode, runErr error, log io.Writer) boo
 	// of the first attempt of a ladder nobody is going to walk.
 	evidence := wireEvidence(runErr, 1)
 	evidence.OutOfTime = true
-	verdict := a.classify(evidence, node.runModel(), "")
+	verdict := a.classify(evidence, ranOn, "")
 	if verdict.Class == taxonomy.Transport {
 		// The wire failures are ALREADY on the node's tally: the worker that just
 		// died carried the same pointer and recorded every one of them as it went
 		// ([Agent.tallyFor], task_run.go). Counting them again here would be the
 		// owner and the worker keeping two versions of one number.
 		fmt.Fprintf(log, "the run ended on the connection rather than on the work — %s: staying on %s\n",
-			verdict.Reason, node.runModel())
+			verdict.Reason, ranOn)
 		return false
 	}
 	return true
@@ -536,8 +565,8 @@ func diedOnTheWire(err error) bool {
 
 // escalateNodeModel is the only caller of [Agent.nextNodeModel] in this package,
 // and the structural test says so.
-func (a *Agent) escalateNodeModel(node *TaskNode) (string, bool) {
-	return a.nextNodeModel(node)
+func (a *Agent) escalateNodeModel(node *TaskNode, ranOn string) (string, bool) {
+	return a.nextNodeModel(node, ranOn)
 }
 
 // failoverCheckerModel is where a CHECK goes when the model judging a node's

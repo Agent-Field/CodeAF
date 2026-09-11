@@ -330,6 +330,28 @@ type Plan struct {
 	// never climb. It is set by the one caller that holds such a refusal's own
 	// body (internal/provider's dispatch.go, [Client.recoverFromRefusal]).
 	ShapeRefused bool
+	// AccountRefused says the last refusal was about the ACCOUNT and not about
+	// the machine that relayed it: a router with a pool behind this model asked
+	// the whole key to slow down and named no pool while doing it. Every machine
+	// it could have picked is behind the same ceiling.
+	//
+	// IT IS [Plan.ShapeRefused]'S SIBLING AND THE SAME KIND OF FACT: something
+	// [Next] cannot see for itself, because the serving set of such a request is
+	// usually OPEN — nobody named a pool — and an open set has another machine in
+	// it forever ([Plan.serving]). That rule is sound only because each body
+	// carries a longer exclusion list than the last, and an account ceiling is
+	// exactly the refusal that gives the list nothing to grow by. Without this
+	// field the generator answered it with a machine move every time and the
+	// dispatcher sent the identical bytes again behind a doubling wait, for as
+	// long as the deadline lasted — ninety seconds of `waiting` on 2026-09-11
+	// with nothing whatever changing between the sends.
+	//
+	// A BASE WITH NO POOL BEHIND IT IS NOT THIS. An endpoint that paces us and
+	// has one machine is saying "come back later" and repeating really is all
+	// there is; what makes a pace an ACCOUNT'S is that a set exists and the
+	// refusal named none of it. The one caller that holds the refusal decides
+	// both halves (internal/provider's dispatch.go).
+	AccountRefused bool
 	// Role is who the call is being made for, spelled as `lane.Role` spells it.
 	// It is carried rather than looked up so the dispatcher, the hazard and the
 	// row all read the same word.

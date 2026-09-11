@@ -248,3 +248,61 @@ func TestANilMoveLogIsEmptyAndDecidesNothing(t *testing.T) {
 		t.Fatal("a nil log accepted a move")
 	}
 }
+
+// ── AN ACCOUNT'S OWN CEILING IS NOT AN OPEN SET ─────────────────────────────
+//
+// THE LAW: a walk of an open set is only a walk while the exclusion list is
+// growing. A ceiling over the whole key names no machine, so it adds nothing to
+// the next body, so the next body is the one that was just refused — which is
+// the same bytes to the same machine, the one thing the design forbids
+// (docs/design/recovery/DESIGN.md §3).
+//
+// THE MEASURED FAILURE this pins is exactly that: seven sends of identical
+// bytes behind a doubling wait, because [Next] answered every one of them with
+// a machine move it could not name.
+func TestAnAccountCeilingGetsOneComebackAndThenTheModel(t *testing.T) {
+	t.Parallel()
+	// THE SET HAS A HEAD, which is what gives the last assertion teeth: this
+	// build believes `A` is where the next request would go, and the wait must
+	// still name nobody, because nobody is who the account's ceiling was about.
+	plan := planOf("m", []string{"A", "B"}, nil, 3*time.Second)
+	plan.AccountRefused = true
+
+	made := walk(plan)
+	if len(made) != 1 {
+		t.Fatalf("a refusal nothing could be excluded from earned %d moves: %+v", len(made), made)
+	}
+	if made[0].Kind != MoveWait {
+		t.Fatalf("the one move was %s, want the comeback the refusal named", made[0].Kind)
+	}
+	if made[0].Wait != 3*time.Second {
+		t.Fatalf("the comeback was %s, want the three seconds the refusal asked for", made[0].Wait)
+	}
+	if made[0].Lane != "" {
+		t.Fatalf("the move named %q; nobody was named, which is the whole of why it is a wait", made[0].Lane)
+	}
+}
+
+// AND A CEILING THAT ASKED FOR NOTHING HAS NO MOVE AT ALL. It cannot be routed
+// around and it did not say when to come back, so the honest answer is the
+// model — which is [MoveNone], and the session's.
+func TestAnAccountCeilingWithNoComebackHasNowhereToGo(t *testing.T) {
+	t.Parallel()
+	plan := planOf("m", nil, nil, 0)
+	plan.AccountRefused = true
+	if move := Next(plan, nil); move.Kind != MoveNone {
+		t.Fatalf("a ceiling with nothing to exclude and no comeback answered %s", move.Kind)
+	}
+}
+
+// AND IT OUTRANKS THE LADDER TOO. No field of a request gets under a ceiling
+// over the whole key, so offering a rung would be a relaxation spent to be told
+// the identical thing.
+func TestAnAccountCeilingIsNotAnswerableByARelaxedShape(t *testing.T) {
+	t.Parallel()
+	plan := planOf("m", []string{"A", "B"}, []string{"removed reasoning", "removed tools"}, 0)
+	plan.AccountRefused = true
+	if move := Next(plan, nil); move.Kind != MoveNone {
+		t.Fatalf("a ceiling over the key was answered with %s", move.Kind)
+	}
+}
