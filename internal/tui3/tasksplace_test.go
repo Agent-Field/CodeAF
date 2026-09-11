@@ -58,7 +58,7 @@ func tasksFixture() (session.World, session.UsageWindow, time.Time) {
 
 func TestTheTasksPageGroupsByWhatYouDoNext(t *testing.T) {
 	world, win, now := tasksFixture()
-	reading := readTasks(world, tasksMine{}, win, now.Add(-time.Hour), now)
+	reading := readTasks(world, tasksMine{}, win, tasksSort{}, now.Add(-time.Hour), now)
 	rows := reading.rows(120, newPalette(tokens.NoColor, false))
 	page := strings.Join(rows, "\n")
 	wants := []string{tierYourCallWord, "waiting"}
@@ -139,7 +139,7 @@ func TestNoTasksRowIsHiddenBehindAFold(t *testing.T) {
 		}
 	}
 	reading := readTasks(session.World{Projects: []session.Project{{Sessions: []session.SessionRow{row}}}},
-		tasksMine{}, session.LastDays(now, 10), time.Time{}, now)
+		tasksMine{}, session.LastDays(now, 10), tasksSort{}, time.Time{}, now)
 	text := strings.Join(reading.rows(120, newPalette(tokens.NoColor, false)), "\n")
 	if strings.Contains(text, tokens.GlyphCollapsed) {
 		t.Fatalf("a section folded rows away behind a glyph no key opens:\n%s", text)
@@ -171,7 +171,7 @@ func TestTheTasksPageDrawsNoEmptySection(t *testing.T) {
 	world, win, now := tasksFixture()
 	world.Projects[0].Sessions[0].Tasks.Rows = world.Projects[0].Sessions[0].Tasks.Rows[:1]
 	world.Projects = world.Projects[:1]
-	page := strings.Join(readTasks(world, tasksMine{}, win, time.Time{}, now).rows(100, newPalette(tokens.NoColor, false)), "\n")
+	page := strings.Join(readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now).rows(100, newPalette(tokens.NoColor, false)), "\n")
 	if strings.Contains(page, "\nrunning\n") || strings.Contains(page, "\nfinished today\n") || strings.Contains(page, "\nearlier\n") {
 		t.Fatalf("an empty section drew a heading:\n%s", page)
 	}
@@ -179,7 +179,7 @@ func TestTheTasksPageDrawsNoEmptySection(t *testing.T) {
 
 func TestEveryTasksRowKeepsInsideItsCells(t *testing.T) {
 	world, win, now := tasksFixture()
-	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 	for _, width := range tasksWidths {
 		for i, row := range reading.rows(width, newPalette(tokens.TrueColor, false)) {
 			if got := ansi.StringWidth(row); got > width {
@@ -194,7 +194,7 @@ func TestEveryTasksRowKeepsInsideItsCells(t *testing.T) {
 // already keeps between its own two sections (margin.go).
 func TestTheTasksSectionsAreSeparatedByABlankLineAndNothingElse(t *testing.T) {
 	world, win, now := tasksFixture()
-	lines := readTasks(world, tasksMine{}, win, time.Time{}, now).lay(120)
+	lines := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now).lay(120)
 	if len(lines) == 0 {
 		t.Fatal("the fixture laid out nothing")
 	}
@@ -223,7 +223,7 @@ func TestTheTasksSectionsAreSeparatedByABlankLineAndNothingElse(t *testing.T) {
 
 func TestTheTasksCursorOnlyOpensTaskRows(t *testing.T) {
 	world, win, now := tasksFixture()
-	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 	pal := newPalette(tokens.NoColor, false)
 	lines := reading.lay(120)
 	rows := reading.rows(120, pal)
@@ -272,7 +272,7 @@ func TestOnePieceOfWorkIsDrawnOnceAcrossEveryAuthority(t *testing.T) {
 			Task: session.PresenceTask{ID: "3", Title: "Port the parser", State: string(session.TaskRunning)},
 		}},
 	}
-	reading := readTasks(world, mine, session.LastDays(now, 10), time.Time{}, now)
+	reading := readTasks(world, mine, session.LastDays(now, 10), tasksSort{}, time.Time{}, now)
 	if len(reading.items) != 1 {
 		t.Fatalf("three authorities produced %d rows, want 1: %+v", len(reading.items), reading.items)
 	}
@@ -311,7 +311,7 @@ func TestARowNobodyIsRunningSaysItIsIncomplete(t *testing.T) {
 		Status: string(session.TaskRunning), SessionID: "a-window-that-went",
 	}
 	reading := readTasks(session.World{}, tasksMine{rows: []tasksMineRow{{entry: stalled}}},
-		session.LastDays(now, 10), time.Time{}, now)
+		session.LastDays(now, 10), tasksSort{}, time.Time{}, now)
 	if len(reading.items) != 1 || reading.items[0].section != tasksEarlier {
 		t.Fatalf("a claim nobody is behind is filed as %+v", reading.items)
 	}
@@ -346,7 +346,7 @@ func TestTheEmptyTasksPlaceTeachesWithoutInventingRows(t *testing.T) {
 	if got := placeWhisperLines(pageTasks, 120, pal); len(got) != 2 || !strings.Contains(got[1], "/task") {
 		t.Fatalf("whisper rows = %#v", got)
 	}
-	empty := readTasks(session.World{}, tasksMine{}, session.UsageWindow{}, time.Time{}, time.Time{})
+	empty := readTasks(session.World{}, tasksMine{}, session.UsageWindow{}, tasksSort{}, time.Time{}, time.Time{})
 	for _, width := range tasksWidths {
 		if rows := empty.rows(width, pal); len(rows) != 0 {
 			t.Fatalf("an empty reading drew %#v at %d columns", rows, width)
@@ -402,7 +402,7 @@ func tasksFamilyFixture() (session.World, session.UsageWindow, time.Time) {
 // workers used to arrive as eight peers of everything else this machine ran.
 func TestTheTasksPageFoldsAFamilyShutAndOpensItOnDemand(t *testing.T) {
 	world, win, now := tasksFamilyFixture()
-	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 
 	shut := reading.lay(120)
 	work := func(lines []tasksLine) []tasksLine {
@@ -468,7 +468,7 @@ func TestAnUnattributedPageWithNoFamiliesDrawsNoFamilyColumn(t *testing.T) {
 			world.Projects[i].Sessions[j].Title = ""
 		}
 	}
-	for _, line := range readTasks(world, tasksMine{}, win, time.Time{}, now).lay(120) {
+	for _, line := range readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now).lay(120) {
 		if line.kind == tasksLineTask && line.kin != "" {
 			t.Fatalf("a page with no families drew the column: %q on %q", line.kin, line.item.entry.Label)
 		}
@@ -487,7 +487,7 @@ func TestARunningParentKeepsItsRefusedChildUnderIt(t *testing.T) {
 	rows[1].Outcome = "incomplete — the corrected diff stayed on the child branch"
 	world.Projects[0].Sessions[0].Open = true
 
-	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 	for _, item := range reading.items {
 		if tasksFamilyOf(item.entry) == tasksFamilyOf(rows[0]) && reading.tree().filed[tasksKeyOf(item.entry)] != tasksRunning {
 			t.Fatalf("family member %q was filed under %q, want running", item.entry.Label, tasksSectionWord(item.section))
@@ -532,7 +532,7 @@ func TestVisibleChildrenKeepTheirOwnSectionsWhenTheRootIsAbsent(t *testing.T) {
 	world.Projects[0].Sessions[0].Tasks.Rows[0].EndedAt = time.Time{}
 	world.Projects[0].Sessions[0].Open = true
 
-	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 	sections := map[string]tasksSection{}
 	for _, item := range reading.items {
 		sections[item.entry.ID] = item.section
@@ -613,7 +613,7 @@ func tasksDrawnRow(page, name string) string {
 // three rows in four still cut the name.
 func TestTheTaskNameIsWholeBeforeAnyFactGetsACell(t *testing.T) {
 	world, win, now := tasksPolishFixture()
-	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 	for _, width := range []int{60, 80, 120, 160} {
 		page := tasksPage(reading, width)
 		for _, item := range reading.items {
@@ -627,7 +627,7 @@ func TestTheTaskNameIsWholeBeforeAnyFactGetsACell(t *testing.T) {
 	// row, because a row that has already spent the one thing it was drawn to
 	// say may not spend cells on a figure as well.
 	item := reading.items[0]
-	narrow := plain(tasksRow(tasksLine{kind: tasksLineTask, item: item}, 30, now, newPalette(tokens.NoColor, false), false))
+	narrow := plain(tasksRow(tasksLine{kind: tasksLineTask, item: item}, 30, now, tasksSort{}, newPalette(tokens.NoColor, false), false))
 	if strings.Contains(narrow, "$") || strings.Contains(narrow, rowSep) {
 		t.Fatalf("a frame too narrow for the name alone drew\n  %s\nwant the cut name and no facts beside it", narrow)
 	}
@@ -639,7 +639,7 @@ func TestTheTaskNameIsWholeBeforeAnyFactGetsACell(t *testing.T) {
 // so the only separator on the row meant two different things.
 func TestTheFactsOnATaskRowAreJoinedByOneSeparator(t *testing.T) {
 	world, win, now := tasksPolishFixture()
-	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 	const name = "Put the annual toggle on the pricing page"
 	// AND THEY DEGRADE BY SPELLING RATHER THAN BY ENDING THE TAIL (law 2): what
 	// the work came to is `2 files · done` at its longest and `done` at its
@@ -676,7 +676,7 @@ func TestTheFactsOnATaskRowAreJoinedByOneSeparator(t *testing.T) {
 // which is a fact about conversations and not about work.
 func TestEachTasksSectionReadsNewestFirst(t *testing.T) {
 	world, win, now := tasksPolishFixture()
-	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 	want := []string{
 		"Port the picker onto the new list",
 		"Write the morning sweep down",
@@ -695,7 +695,7 @@ func TestEachTasksSectionReadsNewestFirst(t *testing.T) {
 	// AND A FAMILY MOVES AS ONE, placed by its root's own stamp with the workers
 	// under it in their own order.
 	fam, famWin, famNow := tasksFamilyFixture()
-	family := readTasks(fam, tasksMine{}, famWin, time.Time{}, famNow)
+	family := readTasks(fam, tasksMine{}, famWin, tasksSort{}, time.Time{}, famNow)
 	family.open = map[tasksKey]bool{{session: "room-a", id: "1"}: true}
 	var kin []string
 	for _, line := range family.lay(120) {
@@ -717,7 +717,7 @@ func TestAFilterThatMatchesNothingStillCountsThePlace(t *testing.T) {
 	a.clock = func() time.Time { return now }
 	a.raisePlace(pageTasks)
 	a.taskSheet.world = world
-	a.taskSheet.reading = readTasks(world, tasksMine{}, win, time.Time{}, now)
+	a.taskSheet.reading = readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 	a.taskSheet.query.setText("zzz")
 
 	r := a.tasksFiltered()
@@ -736,7 +736,7 @@ func TestAFilterThatMatchesNothingStillCountsThePlace(t *testing.T) {
 // with a preposition for a noun.
 func TestTheTasksHeadAndItsFoldsSayTheirFiguresInWords(t *testing.T) {
 	world, win, now := tasksPolishFixture()
-	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 	if got, want := reading.head(120, false), "tasks · 3 pieces of work · $0.72"; got != want {
 		t.Fatalf("the head reads\n  %s\nwant\n  %s", got, want)
 	}
@@ -766,7 +766,7 @@ func TestTheTasksHeadAndItsFoldsSayTheirFiguresInWords(t *testing.T) {
 	// `3 files holds 3 more` ran two claims together with a bare space, at the
 	// far right of the row, eleven cells from the edge where the eye does not go.
 	fam, famWin, famNow := tasksFamilyFixture()
-	shut := readTasks(fam, tasksMine{}, famWin, time.Time{}, famNow)
+	shut := readTasks(fam, tasksMine{}, famWin, tasksSort{}, time.Time{}, famNow)
 	row := tasksDrawnRow(tasksPage(shut, 120), "port the parser")
 	if !strings.Contains(row, "holds 3 more · ") {
 		t.Fatalf("the shut family's row reads\n  %s\nand its count must lead the tail: `… holds 3 more · <facts>`", row)
@@ -784,7 +784,7 @@ func TestARowNobodyIsRunningIsNotDatedNow(t *testing.T) {
 		Status: string(session.TaskRunning), SessionID: "a-window-that-went",
 	}
 	reading := readTasks(session.World{}, tasksMine{rows: []tasksMineRow{{entry: stalled}}},
-		session.LastDays(now, 10), time.Time{}, now)
+		session.LastDays(now, 10), tasksSort{}, time.Time{}, now)
 	row := tasksDrawnRow(tasksPage(reading, 120), "Rotate the wildcard certificate")
 	if !strings.HasSuffix(row, taskRecordStoppedWord) {
 		t.Fatalf("a row nobody is behind reads\n  %s\nand it should end on\n  … %s, with no age after it", row, taskRecordStoppedWord)
@@ -797,7 +797,7 @@ func TestARowNobodyIsRunningIsNotDatedNow(t *testing.T) {
 // being cut to make room for it.
 func TestAnOpenedFamilyNamesItsConversationOnce(t *testing.T) {
 	world, win, now := tasksFamilyFixture()
-	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 	reading.open = map[tasksKey]bool{{session: "room-a", id: "1"}: true}
 	page := tasksPage(reading, 120)
 	if got := strings.Count(page, "the split"); got != 1 {
@@ -880,7 +880,7 @@ func TestARunningUndatedRunStaysAtTheTopOfTodaysTasks(t *testing.T) {
 	}
 	reading := readTasks(session.World{}, tasksMine{rows: []tasksMineRow{
 		{entry: landed}, {entry: running, runs: true},
-	}}, window, time.Time{}, now)
+	}}, window, tasksSort{}, time.Time{}, now)
 	if len(reading.items) != 2 || reading.items[0].entry.ID != running.ID {
 		t.Fatalf("today's tasks are ordered %+v, want the live run before the older landing", reading.items)
 	}

@@ -41,7 +41,7 @@ func TestARowSaysItsStateWordOnce(t *testing.T) {
 		forbids: taskRecordStoppedWord + rowSep + taskRecordStoppedWord,
 	}} {
 		item := tasksItem{entry: tc.entry, runs: tc.runs}
-		row := plain(tasksRow(tasksLine{kind: tasksLineTask, item: item}, 120, now, newPalette(tokens.NoColor, false), false))
+		row := plain(tasksRow(tasksLine{kind: tasksLineTask, item: item}, 120, now, tasksSort{}, newPalette(tokens.NoColor, false), false))
 		word := taskStateWord(tc.entry, tc.runs)
 		if strings.Contains(row, tc.forbids) {
 			t.Fatalf("%s draws\n  %s\nand says %q twice", tc.why, row, word)
@@ -79,7 +79,7 @@ func TestAConversationRootWearsAFolderTagOnlyWhereItIsNews(t *testing.T) {
 	pal := newPalette(tokens.NoColor, false)
 	draw := func(chat tasksChat, folder string) string {
 		line := tasksLine{kind: tasksLineChat, chat: chat}
-		return plain(tasksChatRow(line, 100, now, folder, "/home/pat", pal, false))
+		return plain(tasksChatRow(line, 100, now, folder, "/home/pat", tasksSort{}, pal, false))
 	}
 	root := func(title, project, dir string) tasksChat {
 		return tasksChat{
@@ -119,7 +119,7 @@ func TestTheReadingKnowsTheFolderThisWindowIsSittingIn(t *testing.T) {
 			Project: "aforge", ProjectDir: "/home/pat/code/aforge", At: now.Add(-time.Hour),
 		}},
 	}}, Read: now}
-	r := readTasks(world, mine, session.LastDays(now, 14), time.Time{}, now)
+	r := readTasks(world, mine, session.LastDays(now, 14), tasksSort{}, time.Time{}, now)
 	if r.folder != "/home/pat/code/aforge" {
 		t.Fatalf("the reading thinks this window is in %q, want the folder its own conversation names", r.folder)
 	}
@@ -170,7 +170,7 @@ func TestTheStateWordIsTheLastThingARowGivesUp(t *testing.T) {
 	}} {
 		word := taskStateWord(tc.item.entry, tc.item.runs)
 		for _, width := range []int{120, 100, 90, 85, 80} {
-			row := plain(tasksRow(tasksLine{kind: tasksLineTask, item: tc.item}, width, now, pal, false))
+			row := plain(tasksRow(tasksLine{kind: tasksLineTask, item: tc.item}, width, now, tasksSort{}, pal, false))
 			if !strings.Contains(row, word) {
 				t.Fatalf("at %d columns %s reads\n  %s\nand has given up %q, which is the one thing the list is read for",
 					width, tc.why, strings.TrimRight(row, " "), word)

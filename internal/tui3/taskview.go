@@ -609,6 +609,11 @@ type taskSheetHitKind uint8
 const (
 	taskSheetHitNone taskSheetHitKind = iota
 	taskSheetHitRow
+	// taskSheetHitControl is the list's first row — the filter box and the two
+	// column labels ([tasksControlRow]). It is its own kind because a press on it
+	// is answered by WHICH CELL it landed in and not by a row index, which is the
+	// one gesture on this page that needs the column as well as the line.
+	taskSheetHitControl
 	// phone lane: taskSheetHitBar is the foot at [tierPhone], where the key
 	// legend becomes a `‹ back` band a thumb leaves by (taskphone.go).
 	taskSheetHitBar

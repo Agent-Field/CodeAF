@@ -306,6 +306,10 @@ func (p *tasksPlace) filtered(a *app) tasksReading {
 	// asked for).
 	r.order = p.order
 	needle := a.taskSheetFilter()
+	// AND SO IS WHAT IS IN THE BOX, because the box is a ROW of the list now
+	// ([tasksControlRow]) and a row cannot ask the surface anything. It is the
+	// untrimmed text, so a person who has typed a space sees the caret move.
+	r.query = p.query.String()
 	if needle == "" {
 		return r
 	}
@@ -742,6 +746,30 @@ func (a *app) taskSheetFold(open bool) bool {
 	return true
 }
 
+// taskSheetSortBy re-orders the page by one column, and it is THE ONE DOOR ONTO
+// THAT — the chord and the click both come here, so a label pressed twice and a
+// key cycled round to itself behave identically ([tasksSort.on] holds the rule).
+//
+// THE CURSOR STAYS ON THE ROW IT IS ON. Re-ordering moves rows under a person
+// who is reading one of them, and the cursor is a LINE; it is remembered by the
+// pair that identifies the work, exactly as it is across a rebuild
+// ([tasksPlace.regroup] states the law and the failure it exists to stop).
+func (a *app) taskSheetSortBy(key tasksSortKey) {
+	was, held := a.taskSheet.rowAt(a, a.taskSheet.cursor)
+	a.taskSheet.order = a.taskSheet.order.on(key)
+	a.taskSheet.top = 0
+	if held {
+		if line, found := a.taskSheet.lineOf(a, was); found {
+			a.taskSheet.cursor = a.tasksSettle(line)
+			a.taskSheet.top = 0
+			a.touch()
+			return
+		}
+	}
+	a.taskSheet.cursor = a.tasksSettle(0)
+	a.touch()
+}
+
 // taskSheetTyped is what every edit of the filter ends with: the list has
 // changed under the cursor, so the cursor goes back to the first row of it and
 // the window with it. A cursor left at row forty of a list that now has three is
@@ -849,6 +877,12 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.taskSheetMove(len(a.taskSheet.stops(a)))
 	case "enter":
 		return a.taskSheetEnter(), true
+	case tasksSortKeyChord:
+		a.taskSheetSortBy(a.taskSheet.order.key.next())
+	case tasksSortBackChord:
+		// THE SAME KEY AGAIN REVERSES ([tasksSort.on]), which is what a person
+		// means by this chord: not "the previous key" but "the other way round".
+		a.taskSheetSortBy(a.taskSheet.order.key)
 
 	// ── the filter's own edits, in the settings panel's spelling ──────────────
 	case "backspace":
@@ -1099,6 +1133,16 @@ func (a *app) taskSheetPress(x, y int) tea.Cmd {
 		a.taskSheetBarPress(x)
 		return nil
 	}
+	// A COLUMN LABEL IS PRESSED WHERE IT IS DRAWN. The control row resolves its
+	// own press against the SAME arithmetic the paint used ([tasksColumns], asked
+	// through [tasksControlHit]) — a pointer with its own idea of where a column
+	// sits is exactly how a click comes to sort by the wrong thing.
+	if hits[y].kind == taskSheetHitControl {
+		if key, ok := tasksControlHit(x-len(tasksBareLead), width-len(tasksBareLead), a.taskSheet.order); ok {
+			a.taskSheetSortBy(key)
+		}
+		return nil
+	}
 	if hits[y].kind != taskSheetHitRow {
 		return nil
 	}
@@ -1248,6 +1292,18 @@ func (p *tasksPlace) body(a *app, width, room int) []placeRow {
 		return rows
 	}
 	p.cursor = a.tasksSettle(p.cursor)
+	// THE CURSOR'S ROW GROWS A LINE WHERE THERE IS NO PANE, so the window has one
+	// row less to put the list in ([tasksReasonShowing] says why it asks the whole
+	// frame). It is reserved BEFORE the window is placed rather than squeezed in
+	// after: a line added afterwards would push the last row of the list off the
+	// frame, and the row it pushes off is sometimes the cursor's own.
+	grown := ""
+	if item, ok := r.at(lines, p.cursor); ok && tasksReasonShowing(a) {
+		grown = tasksReasonLine(item, width-len(tasksBareLead)-taskSheetPhoneIndent, a.pal)
+	}
+	if grown != "" && room > 1 {
+		room--
+	}
 	p.top = tasksTop(lines, p.cursor, p.top, room)
 
 	rows := make([]placeRow, 0, room)
@@ -1265,6 +1321,9 @@ func (p *tasksPlace) body(a *app, width, room int) []placeRow {
 			break
 		}
 		hit, lit := taskSheetHit{}, false
+		if lines[at].kind == tasksLineControl {
+			hit = taskSheetHit{kind: taskSheetHitControl}
+		}
 		if owner := lines[at].owner; owner >= 0 {
 			if r.picks(lines, owner) {
 				hit = taskSheetHit{kind: taskSheetHitRow, index: owner}
@@ -1282,6 +1341,17 @@ func (p *tasksPlace) body(a *app, width, room int) []placeRow {
 		}
 		rows = append(rows, placeRow{text: text, hit: hit})
 		bare = append(bare, !lit)
+		if grown == "" || at != p.cursor {
+			continue
+		}
+		// AND THE GROWN LINE BELONGS TO THE ROW ABOVE IT. It answers to the same
+		// press and it is never faded, because it is part of the row the cursor is
+		// standing on rather than a row of its own.
+		rows = append(rows, placeRow{
+			text: tasksBareLead + strings.Repeat(" ", taskSheetPhoneIndent) + grown,
+			hit:  hit,
+		})
+		bare = append(bare, false)
 	}
 	for i := range bare {
 		if !bare[i] {
@@ -1350,24 +1420,16 @@ func (p *tasksPlace) note(a *app, width int) []string {
 	if tally := r.tally(); tally != "" {
 		note = append(note, " "+a.pal.dim(fit(tally, width-2)))
 	}
-	if a.taskSheetFiltering() {
-		// WHAT WAS TYPED HAS TO BE ON SCREEN. A list that has lost rows for a
-		// reason a reader cannot see is a list that has lost them for no reason
-		// at all.
-		note = append(note, " "+a.pal.dim(fit(taskSheetFilterLine(a.taskSheetFilter(), len(r.items)+len(r.chats)), width-2)))
+	// THE FILTER IS NO LONGER SAID BACK HERE. This line used to carry `filter ·
+	// zzz` because the box a person was typing into was invisible, so the only
+	// place their own words could appear was UNDER the rows those words had just
+	// removed — a correction printed below the thing it was correcting. The box is
+	// the first row of the list now ([tasksControlRow]). What survives is the half
+	// the box cannot say: that the query has emptied the place.
+	if a.taskSheetFiltering() && len(r.items)+len(r.chats) == 0 {
+		note = append(note, " "+a.pal.dim(fit(taskSheetFilterNone, width-2)))
 	}
 	return note
-}
-
-// taskSheetFilterLine is what was typed, said back where a person is already
-// reading the tally — and, when the query has emptied the place, the one clause
-// that stops a blank list reading as a page that broke.
-func taskSheetFilterLine(needle string, kept int) string {
-	line := taskSheetFilterWord + needle
-	if kept == 0 {
-		line += taskSheetFilterNone
-	}
-	return line
 }
 
 // hint is SCREEN 1e's foot, assembled from the clauses that are TRUE of the row
@@ -1450,6 +1512,11 @@ func (p *tasksPlace) hint(a *app) string {
 	if a.taskSheetFiltering() {
 		parts = append(parts, tasksClearFilterWord)
 	}
+	// AND THE SORT, LAST, because it is the one clause that is true of the PAGE
+	// rather than of the row under the cursor — and because it names the key the
+	// page is on, which is the only thing about the order the control row does not
+	// already draw ([tasksControlRow] wears the arrow).
+	parts = append(parts, tasksSortHint(a.taskSheet.order))
 	return strings.Join(parts, railSep)
 }
 

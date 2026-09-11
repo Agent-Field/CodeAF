@@ -72,7 +72,7 @@ func tasksChatFixture() (session.World, session.UsageWindow, time.Time) {
 
 func tasksChatReading() tasksReading {
 	world, win, now := tasksChatFixture()
-	return readTasks(world, tasksMine{}, win, time.Time{}, now)
+	return readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 }
 
 // tasksChatApp is that fixture on a surface, with the freshness stamps pinned so
@@ -85,7 +85,7 @@ func tasksChatApp(t *testing.T) *app {
 	a.clock = func() time.Time { return now }
 	a.raisePlace(pageTasks)
 	a.taskSheet.world = world
-	a.taskSheet.reading = readTasks(world, tasksMine{}, win, time.Time{}, now)
+	a.taskSheet.reading = readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 	a.taskSheet.awayAt, a.taskSheet.mineAt = a.elsewhere().Read, a.railStamp
 	a.taskSheet.cursor = a.tasksSettle(0)
 	return a
@@ -341,7 +341,7 @@ func TestAConversationFoldRemembersBeingShut(t *testing.T) {
 	}
 	// AND IT IS STILL SHUT AFTER THE PAGE REBUILDS UNDER IT.
 	world, win, now := tasksChatFixture()
-	a.taskSheet.reading = readTasks(world, tasksMine{}, win, time.Time{}, now)
+	a.taskSheet.reading = readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 	if strings.Contains(tasksPage(a.tasksFiltered(), width), "rotate the certificate") {
 		t.Fatal("a rebuild opened a conversation somebody had shut")
 	}
@@ -373,7 +373,7 @@ func TestTheCursorKeepsAConversationAcrossARebuild(t *testing.T) {
 		SessionID: "room-a", ID: "9", Label: "size the corpus",
 		Status: string(session.TaskRunning),
 	})
-	a.taskSheet.reading = readTasks(world, tasksMine{}, win, time.Time{}, now)
+	a.taskSheet.reading = readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 
 	line, found := a.taskSheet.lineOf(a, was)
 	if !found {
@@ -437,7 +437,7 @@ func TestACircularRecordStillDrawsEveryRowOnce(t *testing.T) {
 	world := session.World{Projects: []session.Project{
 		{Name: "aforge", Sessions: []session.SessionRow{row}},
 	}, Read: now}
-	r := readTasks(world, tasksMine{}, session.LastDays(now, 7), time.Time{}, now)
+	r := readTasks(world, tasksMine{}, session.LastDays(now, 7), tasksSort{}, time.Time{}, now)
 	r.unfolded = true
 
 	if len(r.items) != 4 {
@@ -463,7 +463,7 @@ func TestAnOrphanedChildIsStillDrawn(t *testing.T) {
 	world := session.World{Projects: []session.Project{
 		{Name: "aforge", Sessions: []session.SessionRow{row}},
 	}, Read: now}
-	r := readTasks(world, tasksMine{}, session.LastDays(now, 7), time.Time{}, now)
+	r := readTasks(world, tasksMine{}, session.LastDays(now, 7), tasksSort{}, time.Time{}, now)
 
 	page := tasksPage(r, 120)
 	if !strings.Contains(page, "the worker whose run is gone") {
@@ -507,7 +507,7 @@ func TestWorkOutOfAnUnnamedConversationIsDrawnWithNoRowOverIt(t *testing.T) {
 	world := session.World{Projects: []session.Project{
 		{Name: "aforge", Sessions: []session.SessionRow{row}},
 	}, Read: now}
-	r := readTasks(world, tasksMine{}, session.LastDays(now, 7), time.Time{}, now)
+	r := readTasks(world, tasksMine{}, session.LastDays(now, 7), tasksSort{}, time.Time{}, now)
 
 	lines := r.lay(120)
 	for _, line := range lines {

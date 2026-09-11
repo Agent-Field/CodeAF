@@ -21,7 +21,7 @@ func TestTaskRecordReturnRevealsItsAncestors(t *testing.T) {
 	}
 	world := session.World{Projects: []session.Project{{Sessions: []session.SessionRow{row}}}}
 	a.taskSheet = tasksPlace{
-		reading: readTasks(world, tasksMine{}, session.LastDays(now, 14), time.Time{}, now),
+		reading: readTasks(world, tasksMine{}, session.LastDays(now, 14), tasksSort{}, time.Time{}, now),
 		awayAt:  a.elsewhere().Read, mineAt: a.railStamp,
 	}
 	for _, want := range row.Tasks.Rows[1:] {

@@ -284,3 +284,104 @@ func tasksControlHit(x, room int, by tasksSort) (tasksSortKey, bool) {
 	}
 	return 0, false
 }
+
+// ── the keys ────────────────────────────────────────────────────────────────
+
+// THE SORT KEYS ARE CHORDS AND NOT BARE LETTERS, and that is a deliberate
+// departure from the spec's own `s` / `S`.
+//
+// EVERY PRINTABLE KEY ON THIS PAGE IS THE FILTER (place_tasks.go's
+// [app.taskSheetKeyPress] says why: the frame is the page, so there is no draft
+// underneath for a keystroke to reach, and a record of four hundred tasks is
+// found by remembering a word of a title). A bare `s` would take the filter's
+// commonest letter away from it — `sweep`, `stop`, `site`, `session` — and the
+// list a person was trying to narrow would re-sort instead. The two cannot both
+// be bare, the filter box is the thing this wave put ON SCREEN, and the spec's
+// own frame draws the invitation to type into it.
+//
+// So the chord is alt, which is what this surface already spends on a place's
+// own verbs (`alt+.` the map, `alt+t` the roster, `alt+enter` a task), and the
+// pointer keeps the gesture the spec leads with: the column labels are pressed.
+const (
+	tasksSortKeyChord  = "alt+s"
+	tasksSortBackChord = "alt+shift+s"
+)
+
+// tasksSortHint is how the foot names them, in the hint slot's own grammar: the
+// key, then what it does.
+func tasksSortHint(by tasksSort) string {
+	return tasksSortKeyChord + " sort: " + by.key.word()
+}
+
+// ── the reason, off the row and under the cursor ────────────────────────────
+
+// THE REASON LEFT THE ROW AND IT HAS TO LAND SOMEWHERE.
+//
+// A table's rows are a name and two facts; why one piece of work ended as it did
+// is the record's, and the record is a pane beside the list on a frame wide
+// enough for one. Under that width there is no pane — and the task-states law
+// says a row may never read a bare `your call`, because the whole point of that
+// word is that somebody has to do something and the page owes them what.
+//
+// So the CURSOR'S row, and only the cursor's row, grows one dim line.
+
+// tasksReasonLine is that line: the row's state with its reason behind it, and —
+// for a landing that wrote one — the first sentence of what it came to.
+//
+// IT IS ONE LINE AND IT RETURNS A STRING. A wrapped answer would make the row's
+// HEIGHT depend on the length of its reason, so every row under the cursor would
+// move as the cursor walked, and the window that keeps a cursor's block whole
+// ([tasksTop]) would be chasing a number that changed with the row it was
+// measuring.
+func tasksReasonLine(item tasksItem, width int, pal palette) string {
+	said := strings.TrimSpace(item.status().RowWord())
+	if outcome := taskFirstSentence(item.entry.Outcome); outcome != "" && outcome != said {
+		said += rowSep + outcome
+	}
+	if said == "" {
+		return ""
+	}
+	return pal.dim(fit(said, width))
+}
+
+// taskFirstSentence is the opening sentence of what a landing wrote down, which
+// is as much of a report as a single line can honestly carry. A report with no
+// sentence end in it is taken whole and left to the fitter.
+func taskFirstSentence(report string) string {
+	report = strings.TrimSpace(strings.SplitN(strings.TrimSpace(report), "\n", 2)[0])
+	for at, r := range report {
+		if r != '.' && r != '!' && r != '?' {
+			continue
+		}
+		// A FULL STOP INSIDE A FILENAME IS NOT A SENTENCE END, which is the same
+		// judgement the step caption makes about the same characters: the stop has
+		// to be followed by a space or by nothing at all.
+		if at+1 >= len(report) {
+			break
+		}
+		if report[at+1] == ' ' {
+			return strings.TrimSpace(report[:at+1])
+		}
+	}
+	return report
+}
+
+// tasksReasonShowing reports whether the list should grow that line at all,
+// AND IT ASKS THE WHOLE FRAME RATHER THAN THE LIST'S OWN WIDTH.
+//
+// The difference is the whole of the trap. Once the record stands in a pane
+// beside the list, the list is drawn in the cells the pane leaves — 72 of 122 —
+// which is already under the width at which a pane appears. A predicate that
+// asked its own width would decide there is no pane on exactly the frames that
+// have one, and draw this line underneath the pane that already says it.
+func tasksReasonShowing(a *app) bool {
+	width, _ := a.size()
+	return layoutTier(width) != tierPhone && width < tasksPaneFloor
+}
+
+// tasksPaneFloor is the frame at which the record moves off the cursor's row and
+// into a pane of its own beside the list (#884). It is named here because this
+// is the file that has to know the answer today; the pane's own lane replaces
+// the body of [tasksReasonShowing] with its predicate and this constant goes
+// with it.
+const tasksPaneFloor = 110
