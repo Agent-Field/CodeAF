@@ -3026,13 +3026,16 @@ speed because the local outage was not time spent generating an answer.
 ## Why a small model gets a shorter page and fewer tools — the lean profile
 
 On a model with a small context window, aforge sends a smaller set of
-instructions and a smaller tool list. Nothing is turned off by a setting and
-nobody is asked to choose. Lean applies in exactly two cases, and nothing else:
+instructions and a smaller tool list. Nobody is asked to choose: the
+`prompt profile` row is `auto` out of the box and works it out. Lean applies in
+exactly three cases, and nothing else:
 
 - the model's context window is under 32,000 tokens — the figure the catalog or
   the endpoint reports, which is what a local runner like llama.cpp, ollama or
   LM Studio tells aforge about the model it has loaded; or
-- you put `AFORGE_PROMPT_PROFILE=lean` in front of the command.
+- the `prompt profile` row under `models` in `/settings` says `lean`; or
+- you put `AFORGE_PROMPT_PROFILE=lean` in front of the command, which pins it
+  for that one launch and holds the row read-only while it is set.
 
 Lean changes four things:
 
@@ -3059,9 +3062,10 @@ most of the room the model has to think in.
 
 ## Is an open-weight or local model given the lean profile? Does deepseek or glm get a shorter page?
 
-Only if its context window is under 32,000 tokens, or you pinned it. Nothing
-about a model's licence, its vendor, its name or which crew seat it sits in
-makes a session lean.
+Only if its context window is under 32,000 tokens, or you chose `lean` yourself
+on the `prompt profile` row or pinned it for the launch. Nothing about a model's
+licence, its vendor, its name or which crew seat it sits in makes a session
+lean.
 
 So an open-weight model with a large window is NOT lean. `deepseek-v4-flash` and
 `glm-5.3-flash` are served with 128,000 tokens of room, so they get the full
@@ -3074,9 +3078,34 @@ A model you run yourself usually is small, and it is recognised by the window it
 reports, not by its name: llama.cpp, ollama and LM Studio all tell aforge the
 window the loaded model was given.
 
+The `prompt profile` row and `AFORGE_PROMPT_PROFILE` both overrule the window,
+in the same three words. The next section says which wins.
+
+## The prompt profile setting — choosing lean or full yourself
+
+`/settings`, under `models`, has a row called `prompt profile`. It takes three
+words:
+
+- **`auto`** is the default and the shipped behaviour: the window decides, lean
+  under 32,000 tokens and full at or above it.
+- **`lean`** sends the shorter page and the shorter tool list whatever the model
+  reports.
+- **`full`** sends everything whatever the model reports.
+
+**A change lands the next time aforge starts.** The profile is settled once when
+a conversation opens, because it decides the page and the tool list every
+request in that conversation is sent with.
+
+**`AFORGE_PROMPT_PROFILE` still pins it for one launch, over the row.** Put
 `AFORGE_PROMPT_PROFILE=lean` or `AFORGE_PROMPT_PROFILE=full` in front of the
-command pins it either way: lean on a large window, full on a small one. It is
-there for measuring the two arms against each other, and for an endpoint that
-reports a window its loaded model does not really have. There is no settings row
-for the profile yet. Any other value is not a pin at all and the window decides
-as usual.
+command and that launch uses it; the settings row goes read-only for as long as
+the variable is set and says which variable owns it, exactly as every other
+pinned row does. `AFORGE_PROMPT_PROFILE=auto` puts the window back in charge for
+that launch. Any other value is not a pin at all: your row stands and, if it is
+`auto`, the window decides as usual.
+
+**When to touch it.** Almost never — the window is right almost every time. The
+case it is there for is an endpoint that reports a window its loaded model does
+not really have, which is where `lean` is you telling aforge the truth. `full`
+is the other direction: a small window you would rather spend on the whole tool
+list than on the conversation.
