@@ -1,6 +1,8 @@
 package tui3
 
 import (
+	tea "charm.land/bubbletea/v2"
+
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -111,10 +113,20 @@ func (a *app) questionNarrowRows(q questionShown, width int) []string {
 	out = append(out, a.pal.dim(strings.Repeat("─", width)))
 
 	bands := make([]questionBand, 0, len(q.question.Options)+1)
-	band := func(key, word string, at int) {
+	// WHERE THE KEYBOARD IS STANDING, ON THIS TIER TOO. `↑↓` walk this form's
+	// answers exactly as they walk the card's, and nothing was drawn for it: a
+	// person on a phone-width terminal moved a cursor they could not see and
+	// pressed `enter` on whichever row it had reached. The background under the
+	// hot row is the MOUSE's ([app.questionBandRow]) and says nothing on a
+	// screen nobody is hovering.
+	at := q.pick
+	if len(q.beat) > 0 {
+		at = q.beatAt
+	}
+	band := func(key, word string, i int) {
 		row := len(out)
-		out = append(out, a.questionBandRow(row, key, word, width))
-		bands = append(bands, questionBand{row: row, span: hudSpan{from: 0, to: width}, at: at})
+		out = append(out, a.questionBandRow(row, key, word, width, i == at))
+		bands = append(bands, questionBand{row: row, span: hudSpan{from: 0, to: width}, at: i})
 	}
 	if len(q.beat) > 0 {
 		// THE BEAT IS BANDS HERE TOO. The wide form replaces the answers row with
@@ -236,7 +248,7 @@ func (a *app) questionNarrowBody(body string, width int) []string {
 // consequence the card draws beside it is dropped here: a band is a target and
 // reads at a glance, and a word cut off mid-reach says less than a short one.
 func (a *app) questionBandWord(word, key string, width int) string {
-	if room := width - len(questionBandPad) - len("["+key+"] "); ansi.StringWidth(word) > room {
+	if room := width - len(questionBandPad) - len("  ") - len("["+key+"] "); ansi.StringWidth(word) > room {
 		return fit(word, room)
 	}
 	return word
@@ -246,8 +258,16 @@ func (a *app) questionBandWord(word, key string, width int) string {
 // then the word. Under the pointer it takes the background every pressable row
 // on this surface takes (hover.go) — which is an affordance for a mouse and a
 // no-op for a thumb, so the row says what it is in WORDS as well.
-func (a *app) questionBandRow(row int, key, word string, width int) string {
-	text := a.pal.ask(questionBandPad) + a.pal.askBold("["+questionKeySpelling(key)+"]") + a.pal.ask(" "+word)
+func (a *app) questionBandRow(row int, key, word string, width int, cursored bool) string {
+	// AND THE MARK IS THE CARD'S OWN, for the card's own reason: the band is a
+	// background colour, and a person on a plain screen — or reading a capture —
+	// was left to guess which row the arrows had reached ([app.questionCardRows]
+	// says the same thing where it draws this glyph).
+	mark := "  "
+	if cursored {
+		mark = a.icon(tokens.GCollapsed) + " "
+	}
+	text := a.pal.ask(questionBandPad) + a.pal.ask(mark) + a.pal.askBold("["+questionKeySpelling(key)+"]") + a.pal.ask(" "+word)
 	if a.hot.kind == hoverChoices && a.hot.index == row {
 		return a.pal.cursor(text, width)
 	}
@@ -281,17 +301,19 @@ func (a *app) questionNarrowFoot(q questionShown, width int) string {
 }
 
 // questionBandPress resolves a press on one of the sheet's bands, and reports
-// whether it took it.
-func (a *app) questionBandPress(head questionShown, x, y int) (bool, bool) {
+// whether it took it — with whatever the answer it took handed back, because an
+// answer is sent from a command now and a press that dropped it would be a tap
+// the engine never heard (offloop.go).
+func (a *app) questionBandPress(head questionShown, x, y int) (tea.Cmd, bool, bool) {
 	if len(a.questionBands) == 0 {
 		// NO BANDS IS NOT THE SHEET, and saying so is what keeps this from
 		// swallowing a press the wide form's own answers row is about to
 		// resolve ([app.questionPress] asks here first).
-		return false, false
+		return nil, false, false
 	}
 	mark, found := a.chromeAt(y)
 	if !found || mark.kind != chromeQuestion {
-		return false, false
+		return nil, false, false
 	}
 	for _, band := range a.questionBands {
 		if band.row != mark.index || !band.span.holds(x) {
@@ -301,13 +323,13 @@ func (a *app) questionBandPress(head questionShown, x, y int) (bool, bool) {
 		case band.at == questionBandBack:
 			a.setQuestionBeat(head, nil)
 		case len(head.beat) > 0:
-			a.questionPickShape(head, band.at)
+			return a.questionPickShape(head, band.at), true, true
 		default:
-			a.questionPick(head, band.at)
+			return a.questionPick(head, band.at), true, true
 		}
-		return true, true
+		return nil, true, true
 	}
-	return false, true
+	return nil, false, true
 }
 
 // plainText drops the bytes a terminal takes as orders rather than as text. It

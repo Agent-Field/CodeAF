@@ -373,7 +373,7 @@ func TestAPressThatMissesTheConnectAnswersFallsThrough(t *testing.T) {
 	agent, a, _ := connectApp(t)
 	drive(t, a, streamOf(a, askConnectEvent("c1", "google", "Google")))
 	connectSettled(t, a)
-	if a.questionPress(a.width-1, 0) {
+	if _, took := a.questionPress(a.width-1, 0); took {
 		t.Fatal("a press on a row the block never drew was taken by it")
 	}
 	if len(agent.resolved) != 0 {

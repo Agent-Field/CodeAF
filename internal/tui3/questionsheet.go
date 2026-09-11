@@ -627,9 +627,11 @@ func (a *app) questionSheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 	switch key {
 	case "up", "shift+tab":
+		a.aimSheet()
 		a.moveSheetCursor(-1)
 		return nil, true
 	case "down", "tab":
+		a.aimSheet()
 		a.moveSheetCursor(1)
 		return nil, true
 	}
@@ -642,9 +644,18 @@ func (a *app) questionSheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	switch key {
 	case questionEnterKey:
 		return a.openSheetRow()
-	case questionSendKey:
-		return a.sendSheet()
-	case questionAlikeKey:
+	case questionSendKey, questionAlikeKey:
+		// THE SHEET'S TWO VERBS ARE THE BOX'S UNTIL SOMEBODY AIMS AT THE SHEET,
+		// which is the block's law and is sharper here: `s` and `g` are about the
+		// WHOLE batch, so a letter taken from somebody starting a sentence sends
+		// a list they had not even walked (questionkeys.go's THE BOX KEEPS THE
+		// FIRST LETTER).
+		if !a.sheetHasTheHand() {
+			return nil, false
+		}
+		if key == questionSendKey {
+			return a.sendSheet()
+		}
 		return a.sameSheetAnswer()
 	}
 	// A DIGIT ANSWERS THE ROW THE CURSOR IS ON, which is ONE KEY GRAMMAR read
@@ -716,10 +727,6 @@ func (a *app) sendSheet() (tea.Cmd, bool) {
 	if len(answers) == 0 {
 		return nil, false
 	}
-	doors, ok := a.questionDoors()
-	if !ok {
-		return nil, false
-	}
 	// THE ANSWER IS THE RECORD, AND A BATCH IS NOT AN EXCEPTION TO IT. Every
 	// other way of answering on this surface leaves the dim line where the
 	// question was ([app.closeQuestion]); the sheet was resolving through the
@@ -732,16 +739,22 @@ func (a *app) sendSheet() (tea.Cmd, bool) {
 	for _, q := range a.questionBatch.questions {
 		asked[sheetRow{kind: q.Kind, id: q.ID, ref: q.Ref}] = q
 	}
-	cmds := make([]tea.Cmd, 0, len(answers))
+	// AND A SHEET IS THE LIST DOOR'S OWN CASE. `s` is one gesture over several
+	// questions, which is exactly what [app.answerQuestions] is: one command,
+	// the doors asked IN ORDER on one goroutine, each row's receipt written on
+	// the keystroke and each refusal coming back against its own row. It used to
+	// batch one [app.offLoop] per answer — as many goroutines as rows, in
+	// whatever order they happened to finish — beside a hand-rolled copy of the
+	// record and the reopen.
+	sending := make([]questionAnswer, 0, len(answers))
 	for _, answer := range answers {
-		one := answer
-		if q, ok := asked[sheetRow{kind: one.Kind, id: one.ID, ref: one.Ref}]; ok {
-			shown := questionShown{question: q}
-			a.recordQuestion(shown, one)
-			a.countQuestionYes(shown, one)
+		q, found := asked[sheetRow{kind: answer.Kind, id: answer.ID, ref: answer.Ref}]
+		if !found {
+			continue
 		}
-		cmds = append(cmds, func() tea.Msg { _ = doors.ResolveQuestion(one); return nil })
+		sending = append(sending, questionAnswer{q: questionShown{question: q}, answer: answer})
 	}
+	cmd := a.answerQuestions(sending)
 	a.questionBatch = nil
 	a.questionBatchFolded = false
 	if len(held) > 0 {
@@ -755,7 +768,7 @@ func (a *app) sendSheet() (tea.Cmd, bool) {
 		}
 	}
 	a.touch()
-	return tea.Batch(cmds...), true
+	return cmd, true
 }
 
 // sheetRow is one question's identity as both a [session.Question] and a
@@ -767,4 +780,28 @@ type sheetRow struct {
 	kind session.QuestionKind
 	id   uint64
 	ref  string
+}
+
+// aimSheet and sheetHasTheHand are questionkeys.go's THE BOX KEEPS THE FIRST
+// LETTER on the batch form. The hand is a TOKEN there, and the sheet's own two
+// verbs are about the whole batch rather than one row — so what the sheet asks
+// is whether the hand is on ANY row it is holding, and walking it aims at the
+// row the cursor lands on.
+func (a *app) aimSheet() {
+	if a.questionBatch == nil || a.questionBatch.cursor >= len(a.questionBatch.questions) || a.questionBatch.cursor < 0 {
+		return
+	}
+	a.aimQuestion(questionTokenOf(a.questionBatch.questions[a.questionBatch.cursor]))
+}
+
+func (a *app) sheetHasTheHand() bool {
+	if a.questionHand == "" || a.questionBatch == nil {
+		return false
+	}
+	for _, q := range a.questionBatch.questions {
+		if questionTokenOf(q) == a.questionHand {
+			return true
+		}
+	}
+	return false
 }

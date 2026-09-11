@@ -393,6 +393,17 @@ func unclocked(a *app, msgs []tea.Msg) []tea.Msg {
 // a test calls when it wants one command's messages and nothing else; [drive] is
 // the loop. The two share a driver, so a batch of waiters costs one budget here
 // as well.
+// spend runs one command the way the loop does and folds in everything it hands
+// back — the answer of a door among it (offloop.go). A test that pressed a key
+// and dropped its command would be a test in which nothing reached the engine.
+func spend(t *testing.T, a *app, cmd tea.Cmd) {
+	t.Helper()
+	if cmd == nil {
+		return
+	}
+	drive(t, a, runCmd(cmd)...)
+}
+
 func runCmd(cmd tea.Cmd) []tea.Msg {
 	started := time.Now()
 	defer func() { noteTopLevel(time.Since(started)) }()
@@ -500,6 +511,7 @@ var blockingCommands = []string{
 	"waitGuestQuestions",
 	"waitPilot",
 	"waitQuestion",
+	"waitRing",
 	"waitRoom",
 	"waitRun",
 	"waitSteerLane",

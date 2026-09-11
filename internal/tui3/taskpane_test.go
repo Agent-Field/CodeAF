@@ -210,9 +210,13 @@ func TestTheLandingsOwnLetterStillAnswersThroughTheOneDoor(t *testing.T) {
 	if !ok {
 		t.Fatal("no row under the cursor")
 	}
-	if _, took := a.taskRecordAnswer(item.entry, session.LandingYesKey); !took {
+	cmd, took := a.taskRecordAnswer(item.entry, session.LandingYesKey)
+	if !took {
 		t.Fatal("the landing's own letter was not taken")
 	}
+	// AND WHAT IT HANDED BACK IS RUN: an answer travels on the command a key
+	// returns and never from the loop (offloop.go).
+	spend(t, a, cmd)
 	if len(agent.answer) != 1 || agent.answer[0].FirstKey() != session.LandingYesKey {
 		t.Fatalf("the letter reached the door as %+v", agent.answer)
 	}
@@ -433,7 +437,7 @@ func TestAClickOnThePanesAcceptAnswersTheRow(t *testing.T) {
 	if row < 0 {
 		t.Fatalf("the pane drew no accept to click:\n%s", placeText(a))
 	}
-	a.taskSheetPress(at, row)
+	spend(t, a, a.taskSheetPress(at, row))
 	if len(agent.answer) != 1 || agent.answer[0].ID != 7 || agent.answer[0].FirstKey() != session.LandingYesKey {
 		t.Fatalf("the click reached the door as %+v", agent.answer)
 	}

@@ -139,12 +139,6 @@ func (n LaneNews) rescued() bool {
 	return n.Hedged && n.Winner != "" && !strings.EqualFold(n.Winner, n.Lane)
 }
 
-// laneNewsMsg wakes the loop so a frame is drawn for news that arrived from
-// somewhere other than a keystroke. It carries nothing — [PostLaneNews] has
-// already put the news on the desk — because a message that carried the news
-// would be a second copy of it, arriving after the first.
-type laneNewsMsg struct{}
-
 // laneSightings is the most of our own answers one lane's sparkline draws. Eight
 // because that is what fits in the tail of a row a person is scanning, and
 // because a sparkline longer than the eye takes in at once is a chart nobody is

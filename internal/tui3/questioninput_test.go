@@ -36,13 +36,13 @@ func TestBlanksDrawTheAskersSentenceWithItsHolesFilled(t *testing.T) {
 func TestTabWalksTheBlanksAndStopsAtTheEnd(t *testing.T) {
 	a, _ := standingInAQuestion(t, demoQuestionBlanks())
 	for range 5 {
-		tapNamed(a, tea.KeyTab, 0)
+		tapNamed(t, a, tea.KeyTab, 0)
 	}
 	if got := a.qroom.input.focus; got != 2 {
 		t.Errorf("tab should stop at the last hole, got %d", got)
 	}
 	for range 5 {
-		tapNamed(a, tea.KeyTab, tea.ModShift)
+		tapNamed(t, a, tea.KeyTab, tea.ModShift)
 	}
 	if got := a.qroom.input.focus; got != 0 {
 		t.Errorf("shift+tab should stop at the first hole, got %d", got)
@@ -74,11 +74,11 @@ func TestABlanksFootKeepsNextBlankAtAHundredColumns(t *testing.T) {
 func TestArrowsWalkAChoiceBlank(t *testing.T) {
 	a, _ := standingInAQuestion(t, demoQuestionBlanks())
 	a.qroom.input.focus = 2
-	tapNamed(a, tea.KeyRight, 0)
+	tapNamed(t, a, tea.KeyRight, 0)
 	if got := a.qroom.input.blanks[2].value; got != "yes" {
 		t.Errorf("the choice should have moved on, got %q", got)
 	}
-	tapNamed(a, tea.KeyRight, 0)
+	tapNamed(t, a, tea.KeyRight, 0)
 	if got := a.qroom.input.blanks[2].value; got != "yes" {
 		t.Errorf("a choice at its end should stay there, got %q", got)
 	}
@@ -103,9 +103,17 @@ func TestABlankSaysWhatItTakesAndWhyWhatIsInItWillNotDo(t *testing.T) {
 
 // AND THE HOLES COME BACK AS FIELDS, keyed by the label the asker gave them,
 // never as one sentence somebody has to parse.
+// roomEnter presses enter on the page and spends what it handed back: the
+// answer travels on a command now (offloop.go).
+func roomEnter(t *testing.T, a *app) {
+	t.Helper()
+	cmd, _ := a.questionRoomKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	spend(t, a, cmd)
+}
+
 func TestBlanksRideTheAnswerAsFields(t *testing.T) {
 	a, agent := standingInAQuestion(t, demoQuestionBlanks())
-	a.questionRoomKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	roomEnter(t, a)
 	if len(agent.answers) != 1 {
 		t.Fatalf("expected one answer, got %d", len(agent.answers))
 	}
@@ -118,14 +126,14 @@ func TestBlanksRideTheAnswerAsFields(t *testing.T) {
 // `space` TICKS AND `a` TAKES THE ASKER'S SUGGESTION.
 func TestAChecklistTicksAndTakesTheSuggestion(t *testing.T) {
 	a, _ := standingInAQuestion(t, demoQuestionChecklist())
-	tapNamed(a, tea.KeySpace, 0)
+	tapNamed(t, a, tea.KeySpace, 0)
 	if !a.qroom.input.ticks[0] {
 		t.Error("space should tick the focused row")
 	}
 	if drawn := pageText(a); !strings.Contains(drawn, tokens.GlyphSettled+" 1 rewrite the imports") {
 		t.Errorf("a ticked row should draw the tick:\n%s", drawn)
 	}
-	tap(a, "a")
+	tap(t, a, "a")
 	ticks := a.qroom.input.ticks
 	if !ticks[0] || !ticks[1] || ticks[2] || ticks[3] {
 		t.Errorf("the suggestion should be what the asker marked: %#v", ticks)
@@ -136,11 +144,11 @@ func TestAChecklistTicksAndTakesTheSuggestion(t *testing.T) {
 // two.
 func TestAChecklistComesBackAsSeveralKeys(t *testing.T) {
 	a, agent := standingInAQuestion(t, demoQuestionChecklist())
-	tap(a, "a")
+	tap(t, a, "a")
 	if foot := footText(a); !strings.Contains(foot, "1 rewrite the imports, 2 move the tests beside them") {
 		t.Errorf("the foot should list what is ticked:\n%s", foot)
 	}
-	a.questionRoomKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	roomEnter(t, a)
 	if len(agent.answers) != 1 {
 		t.Fatalf("expected one answer, got %d", len(agent.answers))
 	}
@@ -153,9 +161,9 @@ func TestAChecklistComesBackAsSeveralKeys(t *testing.T) {
 // the answer carries.
 func TestAChecklistCanBeOrdered(t *testing.T) {
 	a, _ := standingInAQuestion(t, demoQuestionChecklist())
-	tap(a, "a")
+	tap(t, a, "a")
 	a.qroom.input.focus = 1
-	tapNamed(a, tea.KeyUp, tea.ModShift)
+	tapNamed(t, a, tea.KeyUp, tea.ModShift)
 	if got := a.qroom.input.walk(); got[0] != 1 || got[1] != 0 {
 		t.Errorf("shift+up should lift the row past its neighbour: %#v", got)
 	}
@@ -169,14 +177,14 @@ func TestAChecklistCanBeOrdered(t *testing.T) {
 // that refused it collects a coin flip and records it as a preference.
 func TestAPairTakesTheThirdAnswerAndMovesOn(t *testing.T) {
 	a, _ := standingInAQuestion(t, demoQuestionPairs())
-	tap(a, "a")
+	tap(t, a, "a")
 	if got := a.qroom.input.pairs[0].answer; got != "a" {
 		t.Errorf("a should answer the first pair, got %q", got)
 	}
 	if got := a.qroom.input.focus; got != 1 {
 		t.Errorf("an answered pair should move on by itself, got %d", got)
 	}
-	tap(a, "=")
+	tap(t, a, "=")
 	if got := a.qroom.input.pairs[1].answer; got != questionSameKey {
 		t.Errorf("= should be the third answer, got %q", got)
 	}
@@ -187,12 +195,12 @@ func TestAPairTakesTheThirdAnswerAndMovesOn(t *testing.T) {
 // giving one of them a second key.
 func TestTheOneCollisionInTheGrammarIsResolvedByWhatIsOnScreen(t *testing.T) {
 	a, _ := standingInAQuestion(t, demoQuestionPairs())
-	tap(a, questionPairAKey)
+	tap(t, a, questionPairAKey)
 	if got := a.qroom.input.pairs[0].answer; got != "a" {
 		t.Errorf("on a pair, a is the first side, got %q", got)
 	}
 	b, _ := standingInAQuestion(t, demoQuestionChecklist())
-	tap(b, questionSuggestKey)
+	tap(t, b, questionSuggestKey)
 	if !b.qroom.input.ticks[0] {
 		t.Error("off a pair, a takes the suggestion")
 	}
@@ -202,10 +210,10 @@ func TestTheOneCollisionInTheGrammarIsResolvedByWhatIsOnScreen(t *testing.T) {
 // a record that said "a" would be unreadable the moment the question is gone.
 func TestPairsComeBackInTheWinningSidesOwnWords(t *testing.T) {
 	a, agent := standingInAQuestion(t, demoQuestionPairs())
-	tap(a, "a")
-	tap(a, "b")
-	tap(a, "=")
-	a.questionRoomKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	tap(t, a, "a")
+	tap(t, a, "b")
+	tap(t, a, "=")
+	roomEnter(t, a)
 	if len(agent.answers) != 1 {
 		t.Fatalf("expected one answer, got %d", len(agent.answers))
 	}
@@ -236,11 +244,11 @@ func TestTheDialSaysWhatTheSettingDoes(t *testing.T) {
 	if strings.Contains(drawn, "it will ") {
 		t.Errorf("the dial built a sentence around the asker's label:\n%s", drawn)
 	}
-	tapNamed(a, tea.KeyRight, 0)
+	tapNamed(t, a, tea.KeyRight, 0)
 	if drawn := pageText(a); !strings.Contains(drawn, "[just do it]") {
 		t.Errorf("→ should move the dial:\n%s", drawn)
 	}
-	tapNamed(a, tea.KeyRight, 0)
+	tapNamed(t, a, tea.KeyRight, 0)
 	if got := a.qroom.input.notch; got != 2 {
 		t.Errorf("a dial at its end should stay there, got %d", got)
 	}
@@ -265,8 +273,8 @@ func TestTheReaderTierGetsANumberRatherThanADial(t *testing.T) {
 // pointer field that tells "no dial" apart from "a dial left at zero".
 func TestTheDialRidesTheAnswerAsANumber(t *testing.T) {
 	a, agent := standingInAQuestion(t, demoQuestionDial())
-	tapNamed(a, tea.KeyRight, 0)
-	a.questionRoomKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	tapNamed(t, a, tea.KeyRight, 0)
+	roomEnter(t, a)
 	if len(agent.answers) != 1 {
 		t.Fatalf("expected one answer, got %d", len(agent.answers))
 	}
@@ -280,8 +288,8 @@ func TestTheDialRidesTheAnswerAsANumber(t *testing.T) {
 // different answers.
 func TestAQuestionWithNoDialLeavesTheFieldNil(t *testing.T) {
 	a, agent := standingInAQuestion(t, demoQuestionReading())
-	tap(a, "1")
-	a.questionRoomKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	tap(t, a, "1")
+	roomEnter(t, a)
 	if agent.answers[0].Dial != nil {
 		t.Error("a question with no dial must not record one")
 	}
@@ -300,7 +308,7 @@ func TestADiagramIsDrawnAsItWasWritten(t *testing.T) {
 // like a diff in a tool call — both are drawn from one table.
 func TestADiffBlockWearsTheDiffGlyphs(t *testing.T) {
 	a, _ := standingInAQuestion(t, demoQuestionLayout())
-	tap(a, "2")
+	tap(t, a, "2")
 	drawn := pageText(a)
 	if !strings.Contains(drawn, tokens.GlyphDiffAdd+" model  money") {
 		t.Errorf("an added line should wear the add glyph:\n%s", drawn)
