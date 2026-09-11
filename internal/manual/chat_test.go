@@ -2434,7 +2434,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 	}
 }
 
-func TestTheServicesPageNamesTheCustomListRequirementAndDisconnectConfirmation(t *testing.T) {
+func TestTheServicesPageNamesCustomListingDiscoveryAndDisconnectConfirmation(t *testing.T) {
 	page, ok := Chat().Page("services")
 	if !ok {
 		t.Fatal("services page is missing")
@@ -2444,8 +2444,9 @@ func TestTheServicesPageNamesTheCustomListRequirementAndDisconnectConfirmation(t
 		"the disconnected sentence first and then says",
 		"A direct-service row and status line draw no `via` at all and open no lane\nsheet",
 		"That written host name is the row's name everywhere",
-		"a **Something else** service must provide both the compatible chat path and\n`GET <base>/models`",
-		"a missing model list refuses the connection and saves nothing",
+		"a **Something else** service must provide the compatible chat path",
+		"tries `GET <base>/models` first",
+		"When that address is absent, aforge connects the service without inventing rows",
 	} {
 		if !strings.Contains(page, sentence) {
 			t.Errorf("services page does not state %q", sentence)

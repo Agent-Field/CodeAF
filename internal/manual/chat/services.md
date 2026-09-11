@@ -34,8 +34,15 @@ A key with the wrong shape is stopped before any call:
 `that is not the shape of a deepseek key — they start with sk-`. A refusal carries the service's own answer, cut at
 120 characters on a word boundary:
 `deepseek refused that key — Authentication Fails, Your api key is invalid`. No answer is different:
-`deepseek did not answer · nothing was saved`. Nothing is stored unless the service answers yes. A saved key lives in the
-profile `config.json`, owner-readable only.
+`deepseek did not answer · nothing was saved`. Aforge asks `GET <base>/models` first even when the vendor does not document
+that address; undocumented is not the same as absent. If it is absent, aforge uses the row's current one-token check where
+one is known, or believes the key until the first turn rather than guessing a billable model.
+
+A payment refusal proves the key authenticated, so the service is connected and stored. It says, for example,
+`z-ai accepted the key but the account cannot pay — Insufficient balance or no resource package. Please recharge.`
+Fix the balance or package on that account; its own words appear again on the first turn, which is not retried. A plain
+`429` with no payment explanation still means the service is busy and is waited out. Every saved key lives in the profile
+`config.json`, owner-readable only.
 
 ## What a service without a model list can and cannot do
 
@@ -43,9 +50,13 @@ A common reason for “why can't it make pictures any more?” is that the conve
 uses a service without a model list. The answer depends on that service's empty catalog,
 not on the picture tool itself.
 
-A service that accepts its key but publishes no model list says `deepseek is connected`
+A service whose model-list check proves absent says `deepseek is connected`
 with no count. Its picker group contains one dim row:
 `no list from this service · type a model id`. Type a model id to use one; aforge does not invent a catalog.
+
+The vendored list fact is only the expectation from the documentation survey. A service that was expected to have no list
+but answers the check gets the listed behaviour immediately: its model count, picker group and service-scoped cache all use
+the ids it returned, with no reconnect.
 
 An empty catalog also means aforge cannot know which picture-making, speech or video
 models that service offers. Those tools are off the belt for that service—absent rather
@@ -96,8 +107,9 @@ Ollama asks for no key. For LM Studio, vLLM, llama.cpp, or an Ollama address tha
 the usual one, choose **Something else**, then enter its base URL and any key that server
 requires.
 
-The connection check must be able to reach the local runner and read its model list.
-Once connected, its models appear under the service's heading in `/model`. A local
+The connection check asks the local runner for its model list first. When it answers,
+its models appear under the service's heading in `/model`; when that address is absent,
+the runner can still connect and its group asks for a model id. A local
 service has one lane, so there is nothing to choose between and that is not a fault.
 
 ## Something else — a proxy, a gateway, or your own endpoint
@@ -111,6 +123,7 @@ That written host name is the row's name everywhere. A refusal from a localhost 
 `localhost refused that key — …`, and a success says `localhost is connected · 2 models`;
 neither switches back to `custom`.
 
-In Phase 1 a **Something else** service must provide both the compatible chat path and
-`GET <base>/models`; a missing model list refuses the connection and saves nothing. The
-models from that required list fill its picker group. Direct calls record no cost in Phase 1 and have one lane.
+In Phase 1 a **Something else** service must provide the compatible chat path. Aforge
+tries `GET <base>/models` first; the models from an answered list fill its picker group.
+When that address is absent, aforge connects the service without inventing rows and the
+picker asks you to type a model id. Direct calls record no cost in Phase 1 and have one lane.

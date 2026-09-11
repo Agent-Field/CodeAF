@@ -24,14 +24,16 @@ type Request struct {
 
 // Server is a switchable fake direct model service.
 type Server struct {
-	mu          sync.Mutex
-	http        *httptest.Server
-	models      []string
-	requests    []Request
-	status      int
-	body        string
-	hang        time.Duration
-	listingless bool
+	mu               sync.Mutex
+	http             *httptest.Server
+	models           []string
+	requests         []Request
+	status           int
+	body             string
+	completionStatus int
+	completionBody   string
+	hang             time.Duration
+	listingless      bool
 }
 
 // New starts a service that publishes models and answers completions.
@@ -57,6 +59,14 @@ func (s *Server) Refuse(status int, body string) {
 	s.status, s.body, s.hang = status, body, 0
 }
 
+// RefuseCompletion leaves the listing healthy and refuses only generation.
+// It models an authenticated key whose account cannot fund a billable call.
+func (s *Server) RefuseCompletion(status int, body string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.completionStatus, s.completionBody = status, body
+}
+
 // Hang delays both routes long enough for a caller's timeout to fire.
 func (s *Server) Hang(delay time.Duration) {
 	s.mu.Lock()
@@ -69,6 +79,7 @@ func (s *Server) Healthy() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.hang, s.status, s.body = 0, 0, ""
+	s.completionStatus, s.completionBody = 0, ""
 }
 
 // Listingless makes only GET /models answer 404. Completions remain healthy,
@@ -94,6 +105,9 @@ func (s *Server) stage(request *http.Request) (int, string, time.Duration) {
 		Method: request.Method, Path: request.URL.Path, Host: request.Host,
 		Bearer: request.Header.Get("Authorization"), Body: body,
 	})
+	if request.Method == http.MethodPost && s.completionStatus != 0 {
+		return s.completionStatus, s.completionBody, s.hang
+	}
 	return s.status, s.body, s.hang
 }
 

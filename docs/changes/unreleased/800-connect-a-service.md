@@ -12,13 +12,15 @@ invalidates:
   - "A model catalog with no rows meant the built-in fallbacks. Those rows are the default service's ids, so a service that publishes no model list now gets an EMPTY catalog and `generate_image`, `speak`, `generate_music` and `generate_video` are off the belt there — absent, not broken."
   - "Nothing stopped a credential reaching `remote.Hello`. It is pinned to an allowlist of the fields somebody reviewed, so a new field fails the law until its reason is stated. A service's NAME stays legal: a spend row will carry one when pricing lands."
   - "A direct service books `Cost == 0`. That is correct in this phase rather than an invented rate — pricing, the vendored models.dev catalog, per-service tiers and coding plans are all Phase 2 and later."
+  - "The vendored service table treated an undocumented `/models` route as an absent one, so Z.ai spent a billable completion to check a valid key even though its live listing answered. Every connection now asks for the listing first; the documented fact is a hint, and what the service answers is persisted for its picker group and source-scoped caches."
+  - "A 402, or a payment-shaped 429, was called a refused key and retried as pacing. It now proves the key authenticated, connects the service, says the account cannot pay in the vendor's own words, and ends a turn after one request. A plain 429 remains pacing."
 ---
 
 Phase one of five. The noun on screen is **service** and the verb is **connect**;
 `source` is the internal word and stays in the code. Five services ship as data —
-DeepSeek, Z.ai, Moonshot, Ollama and "Something else" — and two of them publish no
-model list, which is why a connection is proved either by `GET /models` or by a
-one-token completion.
+DeepSeek, Z.ai, Moonshot, Ollama and "Something else". Every connection tries
+`GET /models` first because an undocumented route is not an absent one; only a
+proved absence falls back to a current one-token probe where the row safely names one.
 
 This pull request also carries four fixes that were open separately: the one client
 door (#750), the base-scoped catalog cache (#748), a bare id no longer matching a

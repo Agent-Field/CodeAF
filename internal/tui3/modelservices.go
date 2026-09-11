@@ -372,7 +372,7 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 	return func() tea.Msg {
 		outcome, err := config.ConnectService(ctx, dir, draft.row, draft.source, authors)
 		models := modelsFromListedIDs(outcome.ModelIDs)
-		if err == nil && outcome.Kind == modelsource.OutcomeConnected && draft.source.Listing == modelsource.ListingModels {
+		if err == nil && outcome.Kind == modelsource.OutcomeConnected && outcome.Listed {
 			// Resolve the row back through config after ConnectService writes it.
 			// That is the one door which owns key and address precedence; rebuilding
 			// a Connected here would create a second, subtly different account door.
@@ -478,12 +478,14 @@ func (a *app) adoptModelConnectResult(msg modelConnectResultMsg) {
 	service = strings.ToLower(service)
 	line := ""
 	switch msg.outcome.Kind {
-	case modelsource.OutcomeConnected:
+	case modelsource.OutcomeConnected, modelsource.OutcomeAccountCannotPay:
 		a.reloadModelSources()
 		if connected, ok := a.sources.ByID(msg.service); ok {
 			service = strings.ToLower(connected.Source.Written)
 		}
-		a.sourceModels[msg.service] = cleanModels(msg.models)
+		if msg.outcome.Kind == modelsource.OutcomeConnected {
+			a.sourceModels[msg.service] = cleanModels(msg.models)
+		}
 		line = serviceOutcomeWord(service, msg.outcome)
 	case modelsource.OutcomeCollides:
 		a.modelSuggestions[strings.ToLower(msg.service)] = msg.outcome.Suggestion
@@ -509,6 +511,12 @@ func serviceOutcomeWord(service string, outcome modelsource.Outcome) string {
 		return serviceConnectedWord(service, outcome)
 	case modelsource.OutcomeRefused:
 		line := service + " refused that key"
+		if said := truncateVendorWords(outcome.VendorSaid, 120); said != "" {
+			line += " — " + said
+		}
+		return line
+	case modelsource.OutcomeAccountCannotPay:
+		line := service + " accepted the key but the account cannot pay"
 		if said := truncateVendorWords(outcome.VendorSaid, 120); said != "" {
 			line += " — " + said
 		}

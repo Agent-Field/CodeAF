@@ -59,6 +59,36 @@ func TestVendoredRowsAreTheDecidedFive(t *testing.T) {
 	}
 }
 
+func TestVendoredListingHintsAndProbeModelsMatchTheProviderSurvey(t *testing.T) {
+	want := []struct {
+		id         string
+		listing    Listing
+		probeModel string
+	}{
+		{"deepseek", ListingModels, ""},
+		// Z.ai's listing was undocumented rather than absent. The connect door
+		// asks it first; glm-5.3-flash is the current cheap fallback, never the
+		// superseded glm-4.6 named by the original survey brief.
+		{"z-ai", ListingNone, "glm-5.3-flash"},
+		// The survey's old K2 preview is gone. With no unambiguous cheapest current
+		// Moonshot model, deferring proof is safer than spending on a guessed id.
+		{"moonshot", ListingNone, ""},
+		{"ollama", ListingModels, ""},
+		{"custom", ListingModels, ""},
+	}
+	rows := Vendored()
+	for index, expected := range want {
+		row := rows[index]
+		if row.ID != expected.id || row.Listing != expected.listing || row.ProbeModel != expected.probeModel {
+			t.Errorf("row %d = id %q listing %v probe %q, want %q %v %q",
+				index, row.ID, row.Listing, row.ProbeModel, expected.id, expected.listing, expected.probeModel)
+		}
+		if row.Probe.Method != "GET" || row.Probe.Address != "/models" {
+			t.Errorf("row %s does not try the listing first: %+v", row.ID, row.Probe)
+		}
+	}
+}
+
 func TestEveryVendoredProbeNamesTheSharedTimeout(t *testing.T) {
 	_, here, _, ok := runtime.Caller(0)
 	if !ok {

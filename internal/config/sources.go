@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/modelsource"
+	"github.com/Agent-Field/aforge-v2/internal/paymentrefusal"
 	"github.com/Agent-Field/aforge-v2/internal/trace"
 )
 
@@ -25,7 +26,10 @@ type PersistedSource struct {
 	Address string `json:"address,omitempty"`
 	Key     string `json:"key,omitempty"`
 	KeyEnv  string `json:"key_env,omitempty"`
-	Order   int    `json:"order"`
+	// Listed records what the service itself answered at connect time. Nil is an
+	// older row that still follows the vendored hint; false and true override it.
+	Listed *bool `json:"listed,omitempty"`
+	Order  int   `json:"order"`
 }
 
 // PersistedSources returns no services for every unreadable profile shape. A
@@ -119,6 +123,13 @@ func resolveSources(defaultKey, defaultBase string, rows []PersistedSource, keyA
 		if written := strings.TrimSpace(row.Written); written != "" {
 			source.Written = written
 		}
+		if row.Listed != nil {
+			if *row.Listed {
+				source.Listing = modelsource.ListingModels
+			} else {
+				source.Listing = modelsource.ListingNone
+			}
+		}
 		address := resolvedSourceAddress(row, source)
 		source.Address = address
 		connected = append(connected, modelsource.Connected{
@@ -176,16 +187,71 @@ func ConnectService(ctx context.Context, profileDir string, row PersistedSource,
 		return modelsource.Outcome{Kind: modelsource.OutcomeWrongShape}, nil
 	}
 	address := resolvedSourceAddress(row, src)
-	probe := src.Probe
-	if probe.Method == "" && probe.Address == "" {
+	listing := src.Probe
+	if listing.Method == "" && listing.Address == "" {
 		if err := persistConnectedSource(profileDir, row); err != nil {
 			return modelsource.Outcome{}, err
 		}
 		return modelsource.Outcome{Kind: modelsource.OutcomeConnected}, nil
 	}
+	status, body, answered := runServiceProbe(ctx, address, key, listing)
+	if !answered {
+		return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, nil
+	}
+	if acceptsStatus(listing.Accepts, status) {
+		outcome, ok := listedOutcome(body)
+		if !ok {
+			return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, nil
+		}
+		listed := true
+		row.Listed = &listed
+		if err := persistConnectedSource(profileDir, row); err != nil {
+			return modelsource.Outcome{}, err
+		}
+		return outcome, nil
+	}
+	if paymentrefusal.Matches(status, body) {
+		if err := persistConnectedSource(profileDir, row); err != nil {
+			return modelsource.Outcome{}, err
+		}
+		return modelsource.Outcome{Kind: modelsource.OutcomeAccountCannotPay, VendorSaid: withoutExactSecret(vendorWords(body), key)}, nil
+	}
+	if !listingIsAbsent(status) {
+		return modelsource.Outcome{Kind: modelsource.OutcomeRefused, VendorSaid: withoutExactSecret(vendorWords(body), key)}, nil
+	}
+
+	listed := false
+	row.Listed = &listed
+	fallback := src.FallbackProbe()
+	if fallback.Method == "" && fallback.Address == "" {
+		if err := persistConnectedSource(profileDir, row); err != nil {
+			return modelsource.Outcome{}, err
+		}
+		return modelsource.Outcome{Kind: modelsource.OutcomeConnected}, nil
+	}
+	status, body, answered = runServiceProbe(ctx, address, key, fallback)
+	if !answered {
+		return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, nil
+	}
+	if paymentrefusal.Matches(status, body) {
+		if err := persistConnectedSource(profileDir, row); err != nil {
+			return modelsource.Outcome{}, err
+		}
+		return modelsource.Outcome{Kind: modelsource.OutcomeAccountCannotPay, VendorSaid: withoutExactSecret(vendorWords(body), key)}, nil
+	}
+	if !acceptsStatus(fallback.Accepts, status) {
+		return modelsource.Outcome{Kind: modelsource.OutcomeRefused, VendorSaid: withoutExactSecret(vendorWords(body), key)}, nil
+	}
+	if err := persistConnectedSource(profileDir, row); err != nil {
+		return modelsource.Outcome{}, err
+	}
+	return modelsource.Outcome{Kind: modelsource.OutcomeConnected}, nil
+}
+
+func runServiceProbe(ctx context.Context, address, key string, probe modelsource.Probe) (int, []byte, bool) {
 	request, err := http.NewRequestWithContext(ctx, probe.Method, strings.TrimRight(address, "/")+probe.Address, bytes.NewBufferString(probe.Body))
 	if err != nil {
-		return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, nil
+		return 0, nil, false
 	}
 	request.Header.Set("Accept", "application/json")
 	if probe.Body != "" {
@@ -194,44 +260,41 @@ func ConnectService(ctx context.Context, profileDir string, row PersistedSource,
 	if key != "" {
 		request.Header.Set("Authorization", "Bearer "+key)
 	}
-	client := &http.Client{Timeout: probe.Timeout}
-	response, err := client.Do(request)
+	response, err := (&http.Client{Timeout: probe.Timeout}).Do(request)
 	if err != nil {
-		return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, nil
+		return 0, nil, false
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(response.Body, 4<<10))
 	if err != nil {
-		return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, nil
+		return 0, nil, false
 	}
-	if !acceptsStatus(probe.Accepts, response.StatusCode) {
-		return modelsource.Outcome{Kind: modelsource.OutcomeRefused, VendorSaid: withoutExactSecret(vendorWords(body), key)}, nil
+	return response.StatusCode, body, true
+}
+
+func listedOutcome(body []byte) (modelsource.Outcome, bool) {
+	var listing struct {
+		Data []json.RawMessage `json:"data"`
 	}
-	outcome := modelsource.Outcome{Kind: modelsource.OutcomeConnected}
-	if src.Listing == modelsource.ListingModels {
-		var listing struct {
-			Data []json.RawMessage `json:"data"`
+	if json.Unmarshal(body, &listing) != nil {
+		return modelsource.Outcome{}, false
+	}
+	outcome := modelsource.Outcome{Kind: modelsource.OutcomeConnected, Listed: true, Models: len(listing.Data)}
+	for _, raw := range listing.Data {
+		var item struct {
+			ID string `json:"id"`
 		}
-		if json.Unmarshal(body, &listing) != nil {
-			return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, nil
-		}
-		outcome.Listed = true
-		outcome.Models = len(listing.Data)
-		for _, raw := range listing.Data {
-			var item struct {
-				ID string `json:"id"`
-			}
-			if json.Unmarshal(raw, &item) == nil {
-				if id := strings.TrimSpace(item.ID); id != "" {
-					outcome.ModelIDs = append(outcome.ModelIDs, id)
-				}
+		if json.Unmarshal(raw, &item) == nil {
+			if id := strings.TrimSpace(item.ID); id != "" {
+				outcome.ModelIDs = append(outcome.ModelIDs, id)
 			}
 		}
 	}
-	if err := persistConnectedSource(profileDir, row); err != nil {
-		return modelsource.Outcome{}, err
-	}
-	return outcome, nil
+	return outcome, true
+}
+
+func listingIsAbsent(status int) bool {
+	return status == http.StatusNotFound || status == http.StatusMethodNotAllowed || status == http.StatusNotImplemented
 }
 
 func withoutExactSecret(words, secret string) string {
@@ -276,11 +339,18 @@ func collectVendorWords(value any, words *[]string) {
 	case map[string]any:
 		// JSON object order is not meaning. Prefer conventional human-readable
 		// fields before walking an unfamiliar vendor envelope deterministically.
+		wordCount := len(*words)
 		for _, key := range []string{"message", "detail", "error", "description"} {
 			if item, ok := typed[key]; ok {
 				collectVendorWords(item, words)
 				delete(typed, key)
 			}
+		}
+		// A conventional code is useful to classification, not to the sentence a
+		// person reads when the same object already carried the vendor's words.
+		// Payment classification reads the untouched body before this formatter.
+		if len(*words) > wordCount {
+			delete(typed, "code")
 		}
 		keys := make([]string, 0, len(typed))
 		for key := range typed {

@@ -3,6 +3,7 @@ package tui3
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"reflect"
 	"strings"
 	"testing"
@@ -32,6 +33,9 @@ func installModelServiceShelf(a *app, dir string) {
 		}
 		rows := surfaceModels(models.ModelsNow())
 		held[service.Source.ID] = append([]Model(nil), rows...)
+		if err := WriteModelCacheFor(service.Source.ID, service.Address, rows); err != nil {
+			return nil, err
+		}
 		return rows, nil
 	}
 }
@@ -163,6 +167,65 @@ func TestAConnectedServicesModelsAppearGroupedWithoutARestart(t *testing.T) {
 	}
 }
 
+func TestAnUndocumentedListingGetsAListingServicesPickerAndCacheImmediately(t *testing.T) {
+	server := sourcestub.New("glm-5.3", "glm-5.3-flash")
+	defer server.Close()
+	dir := t.TempDir()
+	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
+		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
+	installModelServiceShelf(a, dir)
+	source := modelsource.Vendored()[4]
+	source.Listing = modelsource.ListingNone
+	draft := modelConnectDraft{source: source, row: config.PersistedSource{
+		ID: "custom", Written: "localhost", Address: server.URL(), Key: "a-custom-key", Order: 1,
+	}}
+	msg := a.beginModelConnect(draft)().(modelConnectResultMsg)
+	a.adoptModelConnectResult(msg)
+
+	connected, ok := a.sources.ByID("custom")
+	if !ok || connected.Source.Listing != modelsource.ListingModels {
+		t.Fatalf("discovered listing did not become a listing service: %+v, found=%t", connected, ok)
+	}
+	list := a.modelList()
+	for _, want := range []string{"localhost/glm-5.3", "localhost/glm-5.3-flash"} {
+		found := false
+		for _, row := range list {
+			found = found || row.ID == want
+		}
+		if !found {
+			t.Fatalf("picker missed %q after discovery: %+v", want, list)
+		}
+	}
+	if cached := CachedModelsFor("custom", server.URL()); len(cached) != 2 {
+		t.Fatalf("discovered listing did not reach the picker cache: %+v", cached)
+	}
+}
+
+func TestAPaymentRefusalConnectsTheAuthenticatedAccount(t *testing.T) {
+	server := sourcestub.New()
+	defer server.Close()
+	server.Listingless()
+	server.RefuseCompletion(http.StatusTooManyRequests, `{"code":"1113","message":"Insufficient balance or no resource package. Please recharge."}`)
+	dir := t.TempDir()
+	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini",
+		modelsource.NewSet(testDefaultService("sk-default-1234567890")), []Model{{ID: "openai/gpt-4.1-mini"}})
+	source := modelsource.Vendored()[4]
+	source.Listing = modelsource.ListingNone
+	source.ProbeModel = "probe-model"
+	draft := modelConnectDraft{source: source, row: config.PersistedSource{
+		ID: "custom", Written: "localhost", Address: server.URL(), Key: "a-custom-key", Order: 1,
+	}}
+	msg := a.beginModelConnect(draft)().(modelConnectResultMsg)
+	a.adoptModelConnectResult(msg)
+
+	if _, ok := a.sources.ByID("custom"); !ok {
+		t.Fatal("the authenticated account was stored but did not become connected")
+	}
+	if got := noteSaying(t, a, "accepted the key"); got != "localhost accepted the key but the account cannot pay — Insufficient balance or no resource package. Please recharge." {
+		t.Fatalf("payment connection note = %q", got)
+	}
+}
+
 func drainModelServiceTurn(t *testing.T, agent *session.Agent, text string) {
 	t.Helper()
 	events, err := agent.Submit(t.Context(), text)
@@ -281,6 +344,7 @@ func TestTheModelServiceWordsAreExactAndVendorWordsStopAtAWordBoundary(t *testin
 		{modelsource.Outcome{Kind: modelsource.OutcomeConnected, Listed: true, Models: 6}, "deepseek is connected · 6 models"},
 		{modelsource.Outcome{Kind: modelsource.OutcomeConnected}, "deepseek is connected"},
 		{modelsource.Outcome{Kind: modelsource.OutcomeRefused, VendorSaid: "Authentication Fails, Your api key is invalid"}, "deepseek refused that key — Authentication Fails, Your api key is invalid"},
+		{modelsource.Outcome{Kind: modelsource.OutcomeAccountCannotPay, VendorSaid: "Insufficient balance or no resource package. Please recharge."}, "deepseek accepted the key but the account cannot pay — Insufficient balance or no resource package. Please recharge."},
 		{modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, "deepseek did not answer · nothing was saved"},
 		{modelsource.Outcome{Kind: modelsource.OutcomeWrongShape}, "that is not the shape of a deepseek key — they start with sk-"},
 		{modelsource.Outcome{Kind: modelsource.OutcomeCollides, Suggestion: "deepseek-direct"}, "deepseek is a model author on openrouter · connect this as deepseek-direct"},

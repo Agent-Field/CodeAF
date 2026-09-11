@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -142,6 +143,29 @@ func TestAListingProbeConnectsAndCountsModels(t *testing.T) {
 	}
 }
 
+func TestAListingWinsEvenWhenTheBillableProbeCannotBePaid(t *testing.T) {
+	t.Setenv("ZHIPU_API_KEY", "")
+	server := sourcestub.New("glm-5.3", "glm-5.3-flash")
+	defer server.Close()
+	server.RefuseCompletion(http.StatusTooManyRequests, `{"code":"1113","message":"Insufficient balance or no resource package. Please recharge."}`)
+	source := vendoredSource(t, "z-ai")
+	source.Address = server.URL()
+	row := PersistedSource{ID: source.ID, Written: source.Written, Key: "zai-key", Order: 1}
+	dir := t.TempDir()
+	outcome, err := ConnectService(context.Background(), dir, row, source, nil)
+	if err != nil || outcome.Kind != modelsource.OutcomeConnected || !outcome.Listed || outcome.Models != 2 {
+		t.Fatalf("connect = %+v, %v", outcome, err)
+	}
+	requests := server.Requests()
+	if len(requests) != 1 || requests[0].Method != http.MethodGet || len(outcome.ModelIDs) != 2 {
+		t.Fatalf("connection did not stop on the listing: outcome=%+v requests=%+v", outcome, requests)
+	}
+	rows := PersistedSources(dir)
+	if len(rows) != 1 || rows[0].Listed == nil || !*rows[0].Listed {
+		t.Fatalf("discovered listing was not persisted: %+v", rows)
+	}
+}
+
 func TestAListinglessProbeConnectsWithoutInventingACount(t *testing.T) {
 	t.Setenv("ZHIPU_API_KEY", "")
 	server := sourcestub.New()
@@ -155,8 +179,41 @@ func TestAListinglessProbeConnectsWithoutInventingACount(t *testing.T) {
 		t.Fatalf("connect = %+v, %v", outcome, err)
 	}
 	requests := server.Requests()
-	if len(requests) != 1 || requests[0].Method != "POST" || requests[0].Path != "/v1"+modelsource.ChatCompletionsPath || !strings.Contains(string(requests[0].Body), `"max_tokens":1`) {
+	if len(requests) != 2 || requests[0].Method != http.MethodGet || requests[0].Path != "/v1/models" ||
+		requests[1].Method != http.MethodPost || requests[1].Path != "/v1"+modelsource.ChatCompletionsPath ||
+		!strings.Contains(string(requests[1].Body), `"max_tokens":1`) || !strings.Contains(string(requests[1].Body), `"model":"glm-5.3-flash"`) {
 		t.Fatalf("requests = %+v", requests)
+	}
+}
+
+func TestAPaymentRefusalAcceptsTheKeyAndStoresTheAccount(t *testing.T) {
+	t.Setenv("ZHIPU_API_KEY", "")
+	server := sourcestub.New()
+	defer server.Close()
+	server.Listingless()
+	server.RefuseCompletion(http.StatusTooManyRequests, `{"code":"1113","message":"Insufficient balance or no resource package. Please recharge."}`)
+	source := vendoredSource(t, "z-ai")
+	source.Address = server.URL()
+	dir := t.TempDir()
+	outcome, err := ConnectService(context.Background(), dir, PersistedSource{
+		ID: source.ID, Written: source.Written, Key: "zai-key", Order: 1,
+	}, source, nil)
+	if err != nil || outcome.Kind != modelsource.OutcomeAccountCannotPay ||
+		outcome.VendorSaid != "Insufficient balance or no resource package. Please recharge." {
+		t.Fatalf("payment refusal = %+v, %v", outcome, err)
+	}
+	rows := PersistedSources(dir)
+	if len(rows) != 1 || rows[0].Key != "zai-key" || rows[0].Listed == nil || *rows[0].Listed {
+		t.Fatalf("authenticated account was not stored as listing-less: %+v", rows)
+	}
+}
+
+func TestVendorWordsDropsOnlyACodeThatRepeatsReadableWords(t *testing.T) {
+	if got := vendorWords([]byte(`{"code":"1113","message":"Please recharge."}`)); got != "Please recharge." {
+		t.Fatalf("readable refusal = %q", got)
+	}
+	if got := vendorWords([]byte(`{"code":"1000"}`)); got != "1000" {
+		t.Fatalf("code-only refusal = %q", got)
 	}
 }
 

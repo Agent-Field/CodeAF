@@ -21,13 +21,15 @@ const DefaultID = "openrouter"
 // ProbeTimeout is the watching-person ceiling shared by every vendored probe.
 const ProbeTimeout = 10 * time.Second
 
-// Listing says whether <base>/models exists on this service.
+// Listing is the vendored expectation for whether <base>/models exists on this
+// service. It is a hint, never proof: connect always asks the service first,
+// because silence in a documentation survey does not prove an endpoint absent.
 type Listing int
 
 const (
-	// ListingNone says the vendor publishes no model list.
+	// ListingNone says the survey found no documented model list.
 	ListingNone Listing = iota
-	// ListingModels says GET <base>/models answers with the models a key reaches.
+	// ListingModels says the survey found a documented model list.
 	ListingModels
 )
 
@@ -230,7 +232,7 @@ func Vendored() []Source {
 				{ID: "intl", Name: "International", Address: "https://api.z.ai/api/paas/v4"},
 				{ID: "cn", Name: "China", Address: "https://open.bigmodel.cn/api/paas/v4"},
 			},
-			Listing: ListingNone, ProbeModel: "glm-4.6", Probe: completionProbe("glm-4.6"),
+			Listing: ListingNone, ProbeModel: "glm-5.3-flash", Probe: listingProbe(),
 		},
 		{
 			ID: "moonshot", Written: "moonshot", Name: "Moonshot", KeyEnv: "MOONSHOT_API_KEY",
@@ -238,7 +240,7 @@ func Vendored() []Source {
 				{ID: "intl", Name: "International", Address: "https://api.moonshot.ai/v1"},
 				{ID: "cn", Name: "China", Address: "https://api.moonshot.cn/v1"},
 			},
-			Listing: ListingNone, ProbeModel: "kimi-k2-turbo-preview", Probe: completionProbe("kimi-k2-turbo-preview"),
+			Listing: ListingNone, Probe: listingProbe(),
 		},
 		{
 			ID: "ollama", Written: "ollama", Name: "Ollama",
@@ -262,6 +264,16 @@ func completionProbe(model string) Probe {
 		Accepts: []int{200},
 		Body:    fmt.Sprintf(`{"model":%q,"max_tokens":1,"messages":[{"role":"user","content":"hi"}]}`, model),
 	}
+}
+
+// FallbackProbe describes the one-token check used only after /models proves
+// absent. An empty ProbeModel deliberately means believe the key until its first
+// real call; guessing a current billable model is worse than deferring proof.
+func (s Source) FallbackProbe() Probe {
+	if strings.TrimSpace(s.ProbeModel) == "" {
+		return Probe{}
+	}
+	return completionProbe(s.ProbeModel)
 }
 
 // Collision says why a proposed Written may not be used, and what to use
@@ -294,6 +306,7 @@ type OutcomeKind int
 const (
 	OutcomeConnected OutcomeKind = iota
 	OutcomeRefused
+	OutcomeAccountCannotPay
 	OutcomeUnanswered
 	OutcomeWrongShape
 	OutcomeCollides
