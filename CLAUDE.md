@@ -24,15 +24,16 @@ carry vocabulary or assumptions between them.
 `dev` is the trunk and the default branch. Five rules, and they are here rather
 than only in `docs/rules/` because they are the ones that must never be looked up:
 
-- **Branch off `dev`, and open the pull request against `dev`.** Never against
-  `main`, which is parked fifteen hundred commits back at the released v0.1.0.
+- **Branch off `dev`, and open the pull request against `dev`.** `main` is the
+  release pointer, not a place feature work lands.
 - **Never push directly to `dev`, `staging` or `main`, and never force-push any
-  of the three.**
-- **`staging` moves by fast-forward onto a commit that is already on `dev`** —
-  `git push origin <sha>:staging`, never a merge. `main` is not in the pipeline
-  yet and nothing promotes to it.
-- **Nothing publishes by itself.** A release is a semver tag on a commit that is
-  on `staging`, cut by a person; the workflow refuses a tag that is anywhere else.
+  of the three.** Promotion is the deliberate fast-forward below.
+- **`staging` and `main` move by fast-forward onto tested `dev` history** —
+  `git push origin <sha>:staging`, then `git push origin <sha>:main`, never a merge.
+- **Pushes publish channel builds.** `dev` and `staging` publish their named
+  channels; `main` publishes an rc. A person cuts stable by dispatching `Release`
+  on `main`. The workflow refuses rc or stable commits not already on `staging`,
+  and staging commits not already on `dev`.
 - **Every pull request carries a change entry** in `docs/changes/unreleased/` —
   `make changelog-new PR=<n> KIND=<kind> SLUG=<slug>`, and the `check` job
   demands it.
