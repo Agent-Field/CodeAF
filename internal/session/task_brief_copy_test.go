@@ -265,7 +265,11 @@ func TestTheBriefStatesTheConversationsOwnFolderWhereverItIsNamed(t *testing.T) 
 		"/s/work/flow.md", "/s/work/flow.md is there", "", AdmissionContext{}, taskOrigin{}, own)
 	for _, want := range []string{
 		briefCopyHeading,
-		"This conversation's own folder, /s/work, is the one exception.",
+		// IT SAYS "AN EXCEPTION" AND NOT "THE ONE EXCEPTION" since #839, which
+		// gave the rule above it a second exception: another task's copy under
+		// this conversation's trees/. A document that counts its own exceptions
+		// wrongly is a document a worker is right to stop trusting.
+		"This conversation's own folder, /s/work, is an exception.",
 		"the same path under /s/trees/1/work",
 		briefMakeHeading + "\n\n/s/trees/1/work/flow.md",
 		briefDoneHeading + "\n\n/s/trees/1/work/flow.md is there",
@@ -292,7 +296,7 @@ func TestTheBriefStatesTheConversationsOwnFolderWhereverItIsNamed(t *testing.T) 
 	borrowed := newTaskCopy("/x/repo", "/s/trees/1", "")
 	plain := composeBrief(briefWhole, "fix /x/repo/internal/widget.go", "change /x/repo/internal/widget.go",
 		"", "", "", AdmissionContext{}, taskOrigin{}, borrowed)
-	if strings.Contains(plain, "is the one exception") {
+	if strings.Contains(plain, "is an exception") {
 		t.Fatalf("a borrowed session was told about a folder it does not have:\n%s", plain)
 	}
 	quiet := composeBrief(briefWhole, "make the widget say new", "change internal/widget.go",

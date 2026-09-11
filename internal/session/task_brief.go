@@ -575,6 +575,10 @@ func replaceWholePath(text, address, with string) string {
 // folders in the two roles they actually hold, and then what that makes true of
 // every address under them.
 //
+// AND IT SAYS "AN EXCEPTION" RATHER THAN "THE ONE EXCEPTION", because there is
+// now a second one below it and a document that counts its own exceptions
+// wrongly is a document a worker is right to stop trusting.
+//
 // AND THE CONVERSATION'S OWN FOLDER IS NAMED WHERE THERE IS ONE, because the
 // sentence in front of it would otherwise be FALSE about exactly one directory
 // on the machine: "a path that is not under the ground stands as written" was
@@ -604,7 +608,7 @@ func (c taskCopy) note(sections ...string) string {
 		"Every address below is written as its address in your copy. The person's own message is quoted as they typed it, so a path in it that begins " + c.ground +
 		" means the same path under " + c.dir + ". A path that is not under " + c.ground + " is somewhere else on the machine and stands as written."
 	if work := c.workInCopy(); work != "" {
-		note += "\n\nThis conversation's own folder, " + c.work + ", is the one exception. You cannot write there either, so an address under it is written below as the same path under " +
+		note += "\n\nThis conversation's own folder, " + c.work + ", is an exception. You cannot write there either, so an address under it is written below as the same path under " +
 			work + ", and what you leave there comes home with the rest of your work."
 	}
 	if c.trees != "" && namesGround(c.trees, sections...) {
