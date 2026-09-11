@@ -51,6 +51,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/leave"
+	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
@@ -749,7 +750,16 @@ type Options struct {
 	// answering, and this function goes on returning what it returned until
 	// the door has swapped in what that fetch brought back.
 	Models func() []Model
+	// ModelsForService is the process shelf's never-waiting reading for one
+	// connected service. Keeping it beside Models makes the picker read one
+	// shelf for every group instead of a surface-only map that a restart happens
+	// to refill.
+	ModelsForService func(modelsource.Connected) []Model
 
+	// Sources is the ordered set of places the model picker can read from. The
+	// default service is first. Empty preserves the old single-service picker;
+	// a local surface can rebuild the set from ProfileDir after a connection.
+	Sources modelsource.Set
 	// RefreshModels asks the router for today's list, on the key the open
 	// /model picker offers for it (modelrefresh.go's [refreshModelsKey]). It
 	// returns the whole list, when those rows left the router, and why not.
@@ -762,6 +772,10 @@ type Options struct {
 	// Nil is a door with no refresh behind it, and the capability is then
 	// ABSENT: the key does nothing and no line on the surface names it.
 	RefreshModels func(ctx context.Context) ([]Model, time.Time, error)
+	// RefreshModelsForService fetches one newly connected service into that same
+	// shelf. The connect command runs it off the event loop, just as ctrl+r runs
+	// RefreshModels, so opening /model never waits on the network.
+	RefreshModelsForService func(context.Context, modelsource.Connected, []Model) ([]Model, error)
 
 	// ProfileDir is the profile the settings panel reads and writes — the same
 	// directory internal/config resolves every other row out of. Empty is the
@@ -990,6 +1004,11 @@ type Options struct {
 	// nothing different: the profile is still the record. A test, and a door
 	// with no process behind it, are that surface.
 	ApplyAPIKey func(key string) error
+
+	// ApplyModelSources hands a freshly connected or disconnected service set
+	// to the process and its live conversations. Nil keeps the profile as the
+	// record and applies the change on the next launch.
+	ApplyModelSources func(modelsource.Set)
 
 	// ConnectOpenRouter starts the default model provider's browser connection.
 	// It is present only on a local interactive launch using aforge's built-in

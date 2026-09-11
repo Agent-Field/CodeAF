@@ -1597,12 +1597,12 @@ func unbracket(stage string) string {
 // A session with no client at all is the same answer for the other reason.
 func (a *Agent) markReaderAbsent() bool {
 	a.mu.Lock()
-	source, client, floor := a.config.RolesSource, a.client, ""
+	source, floor := a.config.RolesSource, ""
 	if a.config.OneModel {
 		floor = a.model
 	}
 	a.mu.Unlock()
-	if client != nil {
+	if a.hasClient() {
 		if _, err := roles.Ladder(roles.Source(source), roles.RoleMarkReader, floor); err == nil {
 			return false
 		}
@@ -4539,9 +4539,9 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 	// answer rather than the answer itself, so it is priced and drawn as the
 	// errand it is: a person is reading the turn this ends, and the clock over
 	// their answer is not this call's to move (internal/lane's roles.go).
-	response, err := a.client.CompleteWithMessages(
+	response, err := a.completeWithModel(
 		provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary), messages,
-		ai.WithModel(model))
+		model)
 	if err != nil || response == nil {
 		// AND THE FAULT IS CARRIED OUT OF HERE RATHER THAN SPELLED AS SILENCE. This
 		// rung answering "" used to be indistinguishable from a rung that answered

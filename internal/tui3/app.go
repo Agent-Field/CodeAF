@@ -14,6 +14,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/connect"
+	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -750,6 +751,14 @@ type (
 		service string
 		name    string
 		status  connect.Status
+		err     error
+	}
+	modelConnectResultMsg struct {
+		service string
+		name    string
+		written string
+		outcome modelsource.Outcome
+		models  []Model
 		err     error
 	}
 	// The two messages the default model provider's browser connection takes
@@ -1556,6 +1565,14 @@ type app struct {
 	connAsks  []connAsk
 	conns     Connections
 	connPanel connectPanel
+	// sources and sourceModels are the live model-service side of /connect.
+	// The default catalog still comes through models; only additional services
+	// live in sourceModels, keyed by their stable persisted id.
+	sources          modelsource.Set
+	modelCatalog     []modelsource.Source
+	sourceModels     map[string][]Model
+	modelDraft       *modelConnectDraft
+	modelSuggestions map[string]string
 	// harn is the subharness registry (Options.Harnesses) and harnPanel the
 	// list /harness opens over it (harnesspanel.go). A nil harn is a surface
 	// that cannot show harnesses and says so; nothing about the OFFER depends on
@@ -1904,14 +1921,16 @@ type app struct {
 	// opens rather than at boot — a lazily warmed catalog may have arrived in
 	// between, and it must never be waited for. Nil falls through to the cache
 	// and the built-ins (see [app.modelList]).
-	models func() []Model
+	models           func() []Model
+	modelsForService func(modelsource.Connected) []Model
 	// refreshModels is the door's fetch of today's list ([Options.
 	// RefreshModels]), nil where the door has none — which removes the key.
 	// modelsFetching is whether one is out, kept here rather than on the
 	// picker because closing the picker does not call the fetch back, and a
 	// list reopened while it is out must not start a second one.
-	refreshModels  func(ctx context.Context) ([]Model, time.Time, error)
-	modelsFetching bool
+	refreshModels       func(ctx context.Context) ([]Model, time.Time, error)
+	serviceModelRefresh func(context.Context, modelsource.Connected, []Model) ([]Model, error)
+	modelsFetching      bool
 
 	// sheet is the settings panel (settings.go): the FIRST fullscreen thing this
 	// surface drew, and the only overlay that is modal for the pointer as well
@@ -2411,7 +2430,8 @@ type app struct {
 	// launch — on the setup screen or in the settings row — so the running
 	// session's next request rides it ([Options.ApplyAPIKey]). Nil is a surface
 	// whose key lands on the next launch.
-	applyAPIKey func(key string) error
+	applyAPIKey       func(key string) error
+	applyModelSources func(modelsource.Set)
 	// routerConnect is the browser half of that same handover, available on
 	// a local interactive launch using the default provider. authSerial gives
 	// every attempt a name, so a listener that came up after esc can be closed
@@ -2521,7 +2541,10 @@ func newApp(ctx context.Context, opts Options) *app {
 		build:               strings.TrimSpace(opts.Build),
 		resumed:             opts.Resumed,
 		models:              opts.Models,
+		modelsForService:    opts.ModelsForService,
+		sources:             opts.Sources,
 		refreshModels:       opts.RefreshModels,
+		serviceModelRefresh: opts.RefreshModelsForService,
 		history:             opts.History,
 		draftFile:           opts.DraftFile,
 		artifacts:           opts.ArtifactsIndex,
@@ -2534,6 +2557,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		saveBashApproval:    opts.SaveBashApproval,
 		saveModel:           opts.SaveModel,
 		applyAPIKey:         opts.ApplyAPIKey,
+		applyModelSources:   opts.ApplyModelSources,
 		routerConnect:       opts.ConnectOpenRouter,
 		applyApprovals:      opts.ApplyApprovals,
 		recentSessions:      opts.RecentSessions,
@@ -2580,6 +2604,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		lastQuestionKey: time.Now(),
 		questionReach:   newQuestionDeliveryRule(),
 	}
+	a.prepareModelServices()
 	a.copy.mark = -1
 	// AND THE REDUCER IS BUILT WITH WHAT THIS PAGE IS, which is the whole of the
 	// difference between a chat's transcript and any other (feed.go states the
@@ -4257,6 +4282,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.adoptConnectResult(msg)
 		return a, nil
 
+	case modelConnectResultMsg:
+		a.adoptModelConnectResult(msg)
+		return a, nil
+
 	case openRouterFlowMsg:
 		return a, a.adoptOpenRouterFlow(msg)
 
@@ -5210,7 +5239,7 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		// arithmetic and the provider's sentence, one inside the other, with
 		// nothing in it that reads as an ending. [feed.failureNote] composes it
 		// from the tries this page watched go past.
-		a.note(a.failureNote(ev.Err))
+		a.note(a.failureNote(ev.Err, a.serviceWordFor(a.model)))
 		// A turn that failed still paid for the steps it took, and its cache
 		// reads are as real as a completed turn's.
 		a.cacheNote(ev.Usage)

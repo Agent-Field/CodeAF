@@ -561,11 +561,7 @@ func (a *Agent) failoverCheckerModel(model string) (string, bool) {
 	if a.config.OneModel {
 		return "", false
 	}
-	chain, ok := a.client.(modelChain)
-	if !ok {
-		return "", false
-	}
-	options := chain.FallbackModels(model)
+	options := a.fallbackModels(model)
 	if len(options) == 0 {
 		return "", false
 	}

@@ -1222,7 +1222,7 @@ func (a *app) roomEvent(ev session.Event) tea.Cmd {
 		// vocabulary read against that difference: an errand says `asking
 		// <model>` because the model changes, and a turn says `asking again`
 		// because it does not.
-		a.roomNote(a.room.failureNote(ev.Err))
+		a.roomNote(a.room.failureNote(ev.Err, a.serviceWordFor(a.roomNodeModel())))
 	}
 	a.touch()
 	return tea.Batch(after, waitRoom(room.lane, room.gen), a.wake())
@@ -2944,6 +2944,17 @@ func (a *app) roomKinWord(node *taskNode) string {
 // of them out of [app.tasks] would describe the wrong work and then let a key act
 // on it. The guest's node is built once from the row that was pressed and is
 // never in that map ([taskGuest.node]).
+// roomNodeModel is the id the OPEN ROOM'S NODE is answering on, for the seams
+// that need the service behind it rather than the name on screen. Empty when no
+// node is open, which every caller reads as "no service to name".
+func (a *app) roomNodeModel() string {
+	node := a.roomNode()
+	if node == nil {
+		return ""
+	}
+	return strings.TrimSpace(node.model)
+}
+
 func (a *app) roomNode() *taskNode {
 	if a.room == nil {
 		return nil

@@ -567,11 +567,12 @@ aforge needs a model to work with.
 export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.
 ```
 
-**`OPENROUTER_API_KEY` is not required** — it is the first of three places a key is looked
-for. The variable, then `OPENAI_API_KEY`, then the key kept in your profile, which is where
+**For the default service, `OPENROUTER_API_KEY` is not required** — it is the first of three places its key is looked
+for. The variable, then `OPENAI_API_KEY`, then the default-service key kept in your profile, which is where
 the one you pasted on the first run or typed into `/settings` lives. Any one of them is
 enough, so a machine set up in the chat runs `aforge do` with no variable set at all.
-`aforge doctor`'s first row says which one answered — `key set · OPENROUTER_API_KEY`, or
+Each directly connected service may instead name its own environment variable, which is
+stored with that service. `aforge doctor`'s first row still reports only which default-service key answered — `key set · OPENROUTER_API_KEY`, or
 `key set · /home/you/.aforge/config.json`, or `key none ·` and the two lines above.
 
 **These change state without spending**: `cache clean`, `rebuild`, `notebook

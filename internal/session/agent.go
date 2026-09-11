@@ -12,7 +12,9 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -44,51 +46,47 @@ const jobShutdownGrace = 2 * time.Second
 // network request: the client is constructed, the prompt rendered, and the
 // session file — if configured and present — replayed into the transcript.
 func New(config Config) (*Agent, error) {
-	client, err := provider.NewClient(provider.Config{
-		APIKey:  config.APIKey,
-		BaseURL: config.BaseURL,
-		Model:   config.Model,
-		Timeout: providerTimeout,
-		// The routing row, already resolved. It is handed down as a source
-		// rather than as a path so that nothing under here ever reads a settings
-		// file to decide how a request is routed.
-		Routing: provider.StaticRouting(config.Routing),
-		// The catalog gate on optional knobs, and the two answers to "what
-		// else could serve this?" when no endpoint will take the request at all
-		// (internal/provider's endpoints.go). All three are seams the surface
-		// resolves; a caller that hands over none of them keeps today's
-		// behaviour exactly — knobs travel only when explicit, and a refusal
-		// ends in the diagnosis rather than on another model.
-		SupportsParameter: config.SupportsParameter,
-		ReasoningProfile:  config.ReasoningProfile,
-		ModelPrice:        config.ModelPrice,
-		Fallbacks:         config.ModelFallbacks,
-		NearestModels:     config.NearestModels,
-	})
+	// The session keeps the service-qualified identity a person chose, with only
+	// the thinking level removed. The client keeps the bare wire slug. Folding
+	// both into settings.Model would make a later disconnect unable to tell
+	// which service this conversation was using.
+	launchModel := config.Model
+	config.Model, _ = roles.SplitEffort(config.Model)
+	client, err := newProviderClient(config, launchModel)
 	if err != nil {
 		return nil, err
 	}
-	// AND THE PROBE'S TRANSPORT IS WIRED HERE, at the one moment a real client
-	// exists and nothing has been sent through it (internal/provider's
-	// probe.go). It starts nothing: a prober with a transport still sends
-	// nothing until somebody starts typing, and everything about whether a probe
-	// is worth buying — is anybody waiting, has one been bought in the last
-	// twenty seconds, is the pool already pacing — is asked at that moment
-	// rather than here. A build against a base that is not a router refuses and
-	// the registry keeps the empty prober, which is the tested empty state.
-	//
-	// The gate is this session's own reading of "is anybody waiting on this
-	// model": a probe is bought for a person about to send something, and a
-	// process with no window open is a process where nobody is
-	// ([someoneIsWatching]).
-	provider.InstallLaneProber(client, func(string) bool { return someoneIsWatching() })
 	// AND THE OFFER DESK IS POINTED AT THE SIDE THAT HOLDS THE OPEN QUESTIONS,
 	// at the same moment and for the same reason: this is where a real transport
 	// exists. A pinned lane that goes quiet raises `coreweave is slow · switch to
 	// auto? (y)` on the phase channel; `y` comes back through this package, and
 	// without this line it would come back to nobody (phasenews.go).
 	SetOfferAnswerer(answerOffer(provider.AnswerOffer))
-	return newAgent(config, client)
+	agent, err := newAgent(config, client)
+	if err != nil {
+		return nil, err
+	}
+	agent.manageClient(config)
+	return agent, nil
+}
+
+// newChildAgent is the production door for another Agent inside this session.
+// Tests keep using newAgent with scripted completers; real workers share the
+// parent's account-keyed pool and resolve their own model before their first
+// request, rather than inheriting whichever adapter the parent last used.
+func (a *Agent) newChildAgent(config Config) (*Agent, error) {
+	client, account, pool, managed, err := a.childClient(config)
+	if err != nil {
+		return nil, err
+	}
+	child, err := newAgent(config, client)
+	if err != nil {
+		return nil, err
+	}
+	child.managedClient = managed
+	child.clientAccount = account
+	child.clientPool = pool
+	return child, nil
 }
 
 // newAgent is the seam New and the tests share: everything except which
@@ -366,25 +364,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// one place every request this agent makes passes through, so it is where
 	// the prompt-cache key is stamped. Wrapping earlier would have to read the
 	// key through the agent, which is a pointer cycle to save a line.
-	agent.client = sessionCompleter{
-		inner:    client,
-		cacheKey: agent.cacheKey,
-		// AND WHERE THE NODE'S PATIENCE IS STAMPED, for the reason the cache key
-		// is stamped here: this is the one place every request this agent makes
-		// passes through, and the adapter underneath is shared with the
-		// conversation that spawned the node (see [Agent.newTaskAgent], which
-		// hands the parent's own client down). A flag on the client would make
-		// the conversation patient too; a flag on the wrapper is a flag on this
-		// agent's calls and nobody else's.
-		patient: config.InTask,
-		pacing:  config.pacing,
-		// AND WHETHER THIS AGENT'S REPLIES ARE WATCHED FOR COMING APART
-		// (internal/provider's streamguard.go). The field is spelled as the OFF
-		// state so that a zero Config — every headless run, every test, every
-		// door that has not heard of the row — keeps the guard, which is the
-		// default the row itself has.
-		unguarded: config.ReplyGuardOff,
-	}
+	// The account door owns the field itself, while the construction facts stay
+	// here beside the lifecycle they describe.
+	agent.installSessionClient(client, config)
 	// AND THE WORK IS RECOVERED LAST, once this agent can actually run one. A
 	// resumed journal may have a task graph beside it — nodes that landed, a node
 	// that was still running when the process died, nodes waiting on them — and
@@ -520,6 +502,12 @@ func laneBeatModels(config Config) []string {
 	var models []string
 	seen := make(map[string]bool, 2)
 	for _, slot := range []string{config.Model, config.TaskModel} {
+		account := config.clientConfig(slot, 0)
+		if account.Direct {
+			// A direct service has one road. Its model belongs on no endpoints
+			// queue, even while another account in this process has a live beat.
+			continue
+		}
 		slot = lanes.LedgerModel(slot)
 		if slot == "" || seen[slot] {
 			continue
@@ -639,6 +627,9 @@ func (a *Agent) SetModel(model string) {
 	}
 	a.mu.Lock()
 	a.model = model
+	if !a.running {
+		a.rebindClientLocked(model)
+	}
 	if a.config.ContextWindowFor != nil {
 		if window := a.config.ContextWindowFor(model); window > 0 {
 			a.contextWindow.Store(int64(window))
@@ -654,6 +645,24 @@ func (a *Agent) SetModel(model string) {
 	// session's own state; this is about a fetch somebody else will do, and a
 	// lock held across a hand-off is a lock held for no reason.
 	a.noteLaneModel(model)
+}
+
+// SetSources replaces the live service set used by this conversation and by
+// every child it opens later. If the current model's account moved or was
+// removed, the retained provider client is replaced before another request can
+// use the old address or bearer. A running turn keeps the client it started on;
+// startTurnLocked performs the pending replacement for the next turn.
+func (a *Agent) SetSources(sources modelsource.Set) {
+	if a == nil || sources.Empty() {
+		return
+	}
+	a.mu.Lock()
+	a.config.Sources = sources
+	a.clientPool.setSources(sources)
+	if !a.running {
+		a.rebindClientLocked(a.model)
+	}
+	a.mu.Unlock()
 }
 
 // noteLaneModel tells the sheet beat about a model this session has moved to.
@@ -673,6 +682,12 @@ func (a *Agent) SetModel(model string) {
 // says nothing rather than starting a fetch nobody asked for.
 func (a *Agent) noteLaneModel(model string) {
 	if a == nil || !a.laneBeating {
+		return
+	}
+	a.mu.Lock()
+	configured := a.config.clientConfig(model, 0)
+	a.mu.Unlock()
+	if configured.Direct {
 		return
 	}
 	lanes.WantSheet(model)
@@ -701,12 +716,12 @@ func (a *Agent) SetAPIKey(key string) error {
 	// left the first model request on the empty bearer it opened with. Reach the
 	// same underlying client task children use, then update it before recording
 	// the key for workers spawned later.
-	if keyed, ok := unwrapCompleter(a.client).(interface{ SetAPIKey(string) error }); ok {
-		if err := keyed.SetAPIKey(key); err != nil {
-			return err
-		}
+	if err := a.setDefaultClientKey(key); err != nil {
+		return err
 	}
 	a.config.APIKey = key
+	a.config.Sources = a.config.Sources.WithDefaultKey(key)
+	a.clientAccount = accountFor(a.config, a.model)
 	return nil
 }
 
@@ -1503,6 +1518,7 @@ func (u userMessage) text() string { return messageContentText(u.message) }
 // it is about is already on the steering queue, and the loop's first drain
 // writes it (see [Agent.wakeLocked]).
 func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *eventStream, extra ...*eventStream) <-chan Event {
+	a.rebindClientLocked(a.model)
 	a.running = true
 	a.lastTurnTruncated = false
 	// AND ANOTHER WINDOW HEARS ABOUT IT NOW rather than at the next heartbeat

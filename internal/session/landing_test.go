@@ -417,8 +417,14 @@ func TestEveryAgentThisPackageBuildsSaysWhereItsDroppingsGo(t *testing.T) {
 			if !ok {
 				return true
 			}
-			name, ok := call.Fun.(*ast.Ident)
-			if !ok || name.Name != "newAgent" || len(call.Args) == 0 {
+			var name string
+			switch function := call.Fun.(type) {
+			case *ast.Ident:
+				name = function.Name
+			case *ast.SelectorExpr:
+				name = function.Sel.Name
+			}
+			if (name != "newAgent" && name != "newChildAgent") || len(call.Args) == 0 {
 				return true
 			}
 			// A caller handing over a whole Config — [New], which forwards the

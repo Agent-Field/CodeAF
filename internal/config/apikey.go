@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 )
 
 // KeyAPIKey is the profile field the provider key lives in. It predates the
@@ -25,14 +27,17 @@ const APIKeyEnv = "OPENROUTER_API_KEY"
 // with no shell environment, so the profile file is the only place a key can
 // survive to reach it.
 func PersistedAPIKey(profileDir string) string {
-	raw, err := os.ReadFile(BudgetConfigPath(profileDir))
+	values, err := readProfileConfig(profileDir)
 	if err != nil {
 		return ""
 	}
-	var values map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &values); err != nil {
-		return ""
-	}
+	return persistedAPIKeyFrom(values)
+}
+
+// persistedAPIKeyFrom is the file-free half of PersistedAPIKey. Load uses it
+// with the same profile snapshot that contains model_sources, so resolving the
+// default key and the service set is literally one read.
+func persistedAPIKeyFrom(values map[string]json.RawMessage) string {
 	encoded, ok := values[KeyAPIKey]
 	if !ok {
 		return ""
@@ -42,6 +47,10 @@ func PersistedAPIKey(profileDir string) string {
 		return ""
 	}
 	return strings.TrimSpace(key)
+}
+
+func apiKeyFrom(values map[string]json.RawMessage) string {
+	return strings.TrimSpace(firstNonEmpty(os.Getenv(APIKeyEnv), os.Getenv("OPENAI_API_KEY"), persistedAPIKeyFrom(values)))
 }
 
 // APIKeyAt is the key a session opened on this profile would talk with, in
@@ -68,11 +77,7 @@ func WriteAPIKey(profileDir, key string) error {
 // picked up a line break, which is the one thing worth refusing here rather
 // than discovering as a 401 on the first turn.
 func LooksLikeAPIKey(key string) bool {
-	key = strings.TrimSpace(key)
-	if !strings.HasPrefix(key, "sk-") || len(key) < 20 {
-		return false
-	}
-	return !strings.ContainsAny(key, " \t\r\n")
+	return modelsource.LooksLikeAPIKey(key)
 }
 
 // EnsurePersistedAPIKey copies the session's environment key into the profile

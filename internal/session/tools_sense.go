@@ -414,8 +414,8 @@ func (a *Agent) senseOneShot(ctx context.Context, model, prompt string, attachme
 	// It is an ERRAND and says so: the answer is a tool result rather than the
 	// room's reply, and the bill above already puts it in the session's pocket
 	// rather than the turn's (internal/lane's roles.go).
-	response, err := a.client.CompleteWithMessages(
-		provider.WithRole(ctx, lane.RoleAuxiliary), []ai.Message{message}, ai.WithModel(model))
+	response, err := a.completeWithModel(
+		provider.WithRole(ctx, lane.RoleAuxiliary), []ai.Message{message}, model)
 	if response != nil {
 		a.addAuxiliaryUsage(response, model, 1)
 	}

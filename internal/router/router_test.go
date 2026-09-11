@@ -146,6 +146,50 @@ func threeModels() Panel {
 	}}
 }
 
+func TestAPanelReachesTheServiceThatServesEachModel(t *testing.T) {
+	type seenRequest struct {
+		model string
+		key   string
+	}
+	seen := make(chan seenRequest, 1)
+	direct := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/chat/completions" {
+			http.NotFound(writer, request)
+			return
+		}
+		var body struct {
+			Model string `json:"model"`
+		}
+		_ = json.NewDecoder(request.Body).Decode(&body)
+		seen <- seenRequest{model: body.Model, key: request.Header.Get("Authorization")}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(writer, answer(body.Model, "done"))
+	}))
+	defer direct.Close()
+
+	panel := Panel{
+		Models: []Spec{{Slug: "default/model", Price: 1}, {Slug: "direct/model", Price: 1}},
+		ClientConfig: func(model string) provider.Config {
+			if model == "direct/model" {
+				return provider.Config{APIKey: "direct-key", BaseURL: direct.URL, Model: "model", HTTPClient: direct.Client()}
+			}
+			return provider.Config{APIKey: "default-key", BaseURL: "http://127.0.0.1:1", Model: model}
+		},
+	}
+	routed, err := NewPinned(panel, provider.Config{APIKey: "default-key", BaseURL: "http://127.0.0.1:1", Model: "default/model", HTTPClient: direct.Client()}, t.TempDir(), "direct/model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer routed.Close()
+	if _, err := routed.CompleteWithMessages(context.Background(), userMessages("hello")); err != nil {
+		t.Fatal(err)
+	}
+	request := <-seen
+	if request.model != "model" || request.key != "Bearer direct-key" {
+		t.Fatalf("direct request = %+v", request)
+	}
+}
+
 // TestPinnedOpenerKeepsLeafLearningAndEscalation covers the resident surface's
 // contract in one path: the picker wins the first attempt, the verdict reaches
 // the shape-keyed ledger, and the one retry still jumps to the panel ceiling.

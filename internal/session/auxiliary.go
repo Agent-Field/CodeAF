@@ -92,7 +92,7 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 	messages []ai.Message, accept func(*ai.Response, string) bool, options ...ai.Option,
 ) (*ai.Response, string, error) {
 	a.mu.Lock()
-	source, client := a.config.RolesSource, a.client
+	source := a.config.RolesSource
 	// ONE MODEL MEANS ONE MODEL AT EVERY RUNG. A crew-only caller passes an empty
 	// floor deliberately — it is a quality judgement about a profile that HAS a
 	// crew, and it refuses to let the running model mark its own work — but the
@@ -122,9 +122,6 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 	rungs, err := roles.Ladder(roles.Source(source), role, sessionDefault)
 	if err != nil {
 		return nil, "", err
-	}
-	if client == nil {
-		return nil, "", errNoCompleter
 	}
 	// EVERY ERRAND ARMS ITS CUT MONEY HERE. [Agent.callRole] is the one door all
 	// auxiliary provider calls pass through, including calls whose own deadline
@@ -278,8 +275,7 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 		served := &provider.ServedEndpoint{}
 		callCtx = provider.WithServedEndpoint(callCtx, served)
 		callCtx, releaseRung := errandRungContext(callCtx, len(rungs)-attempt-1)
-		response, callErr := client.CompleteWithMessages(callCtx, messages,
-			append(append([]ai.Option{}, options...), ai.WithModel(rung.Model))...)
+		response, callErr := a.completeWithModel(callCtx, messages, rung.Model, options...)
 		releaseRung()
 		if callErr == nil && response != nil {
 			// AND THE ERRAND WRITES ITS OWN CALL LINE, exactly as a step of the

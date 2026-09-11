@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
+	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/tui3"
 )
 
@@ -26,12 +29,109 @@ type v3ModelShelf struct {
 	// options is how the launch catalog was loaded, so a refresh asks the same
 	// router, with the same key, into the same cache file.
 	options catalog.Options
+	mu      sync.RWMutex
+	direct  map[string][]tui3.Model
 }
 
 func newV3ModelShelf(models *catalog.Catalog, options catalog.Options) *v3ModelShelf {
-	shelf := &v3ModelShelf{options: options}
+	shelf := &v3ModelShelf{options: options, direct: make(map[string][]tui3.Model)}
 	shelf.current.Store(models)
 	return shelf
+}
+
+// setSources keeps the shelf's connected-service compartments aligned with the
+// live profile. Existing compartments survive so a connection result already
+// fetched into the shelf is not thrown away; a cold process fills them from the
+// service-scoped picker cache without touching the network.
+func (s *v3ModelShelf) setSources(sources modelsource.Set) {
+	if s == nil || sources.Empty() {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	keep := make(map[string]bool)
+	for _, service := range sources.All()[1:] {
+		id := strings.ToLower(strings.TrimSpace(service.Source.ID))
+		keep[id] = true
+		if _, ok := s.direct[id]; !ok {
+			if service.Source.Listing == modelsource.ListingModels {
+				s.direct[id] = tui3.CachedModelsFor(service.Source.ID, service.Address)
+			} else {
+				s.direct[id] = nil
+			}
+		}
+	}
+	for id := range s.direct {
+		if !keep[id] {
+			delete(s.direct, id)
+		}
+	}
+}
+
+// modelsForService is the never-waiting half of the connected-service shelf
+// seam. The default keeps reading the atomic launch catalog; another service
+// reads only its own compartment.
+func (s *v3ModelShelf) modelsForService(service modelsource.Connected) []tui3.Model {
+	if s == nil {
+		return nil
+	}
+	if strings.EqualFold(strings.TrimSpace(service.Source.ID), modelsource.DefaultID) {
+		return v3Models(s)
+	}
+	if service.Source.Listing != modelsource.ListingModels {
+		return nil
+	}
+	id := strings.ToLower(strings.TrimSpace(service.Source.ID))
+	s.mu.RLock()
+	rows := append([]tui3.Model(nil), s.direct[id]...)
+	s.mu.RUnlock()
+	if len(rows) > 0 {
+		return rows
+	}
+	return tui3.CachedModelsFor(service.Source.ID, service.Address)
+}
+
+// refreshService fetches a newly connected service into the same shelf /model
+// reads and writes both service-scoped caches. It is the connected-service twin
+// of refresh; the caller runs it as a command away from the event loop.
+func (s *v3ModelShelf) refreshService(ctx context.Context, service modelsource.Connected, seed []tui3.Model) ([]tui3.Model, error) {
+	if s == nil {
+		return nil, errors.New("there is no model shelf")
+	}
+	options := s.options
+	options.Source = service.Source.ID
+	options.BaseURL = service.Address
+	options.APIKey = service.Key
+	if len(seed) > 0 {
+		minimal := make([]catalog.Model, 0, len(seed))
+		for _, model := range seed {
+			minimal = append(minimal, catalog.Model{ID: model.ID})
+		}
+		if err := catalog.Remember(options, minimal); err != nil {
+			return nil, err
+		}
+		id := strings.ToLower(strings.TrimSpace(service.Source.ID))
+		s.mu.Lock()
+		s.direct[id] = append([]tui3.Model(nil), seed...)
+		s.mu.Unlock()
+		if err := tui3.WriteModelCacheFor(service.Source.ID, service.Address, seed); err != nil {
+			return nil, err
+		}
+	}
+	fresh, err := catalog.Refresh(ctx, options)
+	if err != nil {
+		if len(seed) > 0 {
+			return append([]tui3.Model(nil), seed...), nil
+		}
+		return nil, v3FetchReason(err)
+	}
+	rows := v3Models(fresh)
+	id := strings.ToLower(strings.TrimSpace(service.Source.ID))
+	s.mu.Lock()
+	s.direct[id] = append([]tui3.Model(nil), rows...)
+	s.mu.Unlock()
+	_ = tui3.WriteModelCacheFor(service.Source.ID, service.Address, rows)
+	return rows, nil
 }
 
 // ModelsNow is the list on the shelf, answered without waiting — nil while a

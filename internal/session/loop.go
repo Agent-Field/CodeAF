@@ -1380,8 +1380,8 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			func(message ai.Message) string { return a.fullResultPointer(message, place) })
 		attemptCtx = provider.WithMessageReasoning(attemptCtx, carried)
 		attemptCtx, generation := a.beginGeneration(attemptCtx)
-		response, err := a.client.CompleteWithMessages(attemptCtx, messages,
-			ai.WithModel(model), ai.WithTools(a.beltDefinitions()))
+		response, err := a.completeWithModel(attemptCtx, messages, model,
+			ai.WithTools(a.beltDefinitions()))
 		cause := a.endGeneration(generation)
 		if errors.Is(cause, errSteerCut) {
 			return response, model, errSteerCut
@@ -1842,11 +1842,7 @@ func (a *Agent) nextFallback(ctx context.Context, origin string, hopped []string
 	if a.config.OneModel {
 		return "", false
 	}
-	chain, ok := a.client.(modelChain)
-	if !ok {
-		return "", false
-	}
-	options := chain.FallbackModels(origin)
+	options := a.fallbackModels(origin)
 	// AND THE CHAIN IS STILL BOUNDED BY ITS OWN LENGTH. A turn may move as many
 	// times as the chain is long and no further — the cap is the adapter's
 	// (internal/provider's maxFallbackModels) and is not re-decided here — so a

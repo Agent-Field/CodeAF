@@ -1197,7 +1197,7 @@ const laneAtSign = "@"
 // lane at all, [app.routingOff]), and over a connection, where the pin in force
 // is the far machine's and this process cannot see it.
 func (a *app) pinnedNow() string {
-	if a.hosted() || a.routingOff || a.model == "" {
+	if a.hosted() || a.routingOff || a.model == "" || a.modelIsDirect(a.model) {
 		return ""
 	}
 	return strings.ToLower(provider.PinnedFor(a.model))
@@ -1231,6 +1231,10 @@ func (a *app) modelWord() string { return a.modelWordAt("") }
 // a level lost the live rate from the right edge of the row.
 func (a *app) modelWordAt(level string) string {
 	model := modelBase(a.model)
+	if !a.sources.Empty() {
+		service, bare := a.sources.For(a.model)
+		model = service.Qualify(bare)
+	}
 	if model == "" {
 		return ""
 	}
@@ -1386,6 +1390,15 @@ func (a *app) roomLaneRider() string {
 // is the conversation's liveness, and a window onto a node must not go quiet
 // because the conversation it was launched from is idle.
 func (a *app) laneRiderFor(story laneStory, named, live string, timed, working bool) string {
+	// A DIRECTLY CONNECTED SERVICE HAS ONE ROAD, so there is no machine to name
+	// and the lane desk holds none for it. The sighting this would otherwise
+	// find is the DEFAULT service's, matched on the full model id the sheet row
+	// names — which is how an ollama row came to say `via akashml`. The seam and
+	// task room pass no full id, so the default service's rescue rider remains
+	// available there.
+	if a.modelIsDirect(named) {
+		return ""
+	}
 	now := a.now()
 	if story.hasRescue && now.Sub(story.rescue.At) <= servedWindow {
 		if line := rescueRider(story.rescue, working); line != "" {

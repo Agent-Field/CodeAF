@@ -339,6 +339,12 @@ func (r *hedgeRace) run(ctx context.Context, messages []ai.Message, options ...a
 				if IsConnectionUnavailable(result.err) {
 					return result.response, result.relearned, result.err
 				}
+				if refusal, ok := RefusalFrom(result.err); ok && refusal.AccountCannotPay() {
+					// EVERY LANE SHARES THIS ACCOUNT. Another arm can only repeat the
+					// same billable refusal, so return the vendor's answer and let the
+					// deferred race cancel stop every outstanding request.
+					return r.settle(result, seen)
+				}
 				// THE VOICE MOVES OFF A DEAD ARM. An arm that has failed will
 				// never speak again, and leaving it as the speaker holds every
 				// other arm's text unreplayed until one of them finishes —

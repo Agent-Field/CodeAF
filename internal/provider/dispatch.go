@@ -18,6 +18,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/lane/control"
+	"github.com/Agent-Field/aforge-v2/internal/paymentrefusal"
 	"github.com/Agent-Field/aforge-v2/internal/trace"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -561,7 +562,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			// connection speed for the length of the deadline.
 			continue
 		}
-		rateLimited := response.StatusCode == http.StatusTooManyRequests
+		potentialRateLimit := response.StatusCode == http.StatusTooManyRequests
 		// Error bodies can stall too. They are read below before a retry, so
 		// they need the same idle bound as successful streaming bodies.
 		if stream {
@@ -571,8 +572,24 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// because it is what tells the limiter how wide this 429's window is:
 		// one window, one halving (limiter.go).
 		var named time.Duration
-		if rateLimited {
+		if potentialRateLimit {
 			named = retryAfter(response)
+		}
+		var peek []byte
+		// A 429 IS CLASSIFIED BEFORE THE SHARED WINDOW IS NARROWED. Status alone
+		// cannot separate a busy queue from an authenticated account that cannot
+		// fund the request — both wear 429 — and only the queue is pacing. So the
+		// bounded prefix this loop reads anyway is read here instead of below, and
+		// an account that cannot pay narrows nothing and is told to come back at
+		// no time at all.
+		payment := false
+		if retryableStatus(response.StatusCode) {
+			peek, _ = io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
+			payment = paymentrefusal.Matches(response.StatusCode, peek)
+		}
+		rateLimited := potentialRateLimit && !payment
+		if !rateLimited {
+			named = 0
 		}
 		sharedLimiter.release(rateLimited, named)
 		// ── A REFUSAL THAT NAMED A MACHINE IS THAT MACHINE'S, AND THE OTHERS
@@ -595,7 +612,6 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// adapter can repair by itself — a knob it guessed wrong about reaches
 		// [Client.sendRepaired] a layer up, and walking it would spend a machine
 		// to discover a fact the memo already answers.
-		var peek []byte
 		// relayed says this pass is here because a machine NAMED ITSELF on a
 		// status that is not otherwise retryable. It is a flag of its own and not
 		// `peek != nil`, because every refusal below reads a peek.
@@ -715,6 +731,15 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			status: response.StatusCode, err: lastErr, responseBody: peek,
 			served: refusal.Lane, retryAfter: named,
 		})
+		// AND AN ACCOUNT THAT CANNOT PAY IS TERMINAL FOR THE WHOLE CALL. It is not
+		// one machine's fault and not a wait: every other endpoint and every other
+		// model on this account will say the same thing, so walking the roster
+		// would spend the deadline discovering one fact the refusal already
+		// carries. The reader above turns it into the one sentence a person can
+		// act on.
+		if payment {
+			return nil, lastErr
+		}
 		// ── "NOT YET" IS ANSWERED BY GOING SOMEWHERE ELSE ───────────────────
 		//
 		// THE OWNER'S RULING, 2026-09-10: a person must never work around a 429

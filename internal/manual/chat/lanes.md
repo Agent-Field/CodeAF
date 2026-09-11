@@ -140,8 +140,8 @@ onto the lane you pinned or onto `auto` when you have not, and the list scrolls 
 model and every lane are in view. `enter` pins the lane under the cursor — every request
 for that model goes there until you say otherwise — and `←` (or `tab`) walks back out.
 The hint slot says which: `→ lanes · enter switch · esc` on a model,
-`enter choose · ← back · esc` inside. The `openrouter` row means "no opinion from me —
-let the router balance it".
+`enter choose · ← back · esc` inside. On the default service, the `openrouter` row means
+"no opinion from me — let the router balance it".
 
 **A model nobody has measured still opens**, onto `auto` and `openrouter`, with one
 line where the machines would be:
@@ -628,6 +628,10 @@ not honoured there, and you know rather than guess.
 
 Neither question costs an extra call of its own, and pointing `AFORGE_BASE_URL`
 somewhere else asks the new address afresh about both.
+
+A directly connected service is simpler: it has one lane, so there is nothing to choose
+between and no lane sheet to open. That is not a fault. The service name carried by the
+model id is already the whole route.
 
 ## Turning lane routing off
 

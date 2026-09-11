@@ -608,7 +608,8 @@ the walk carries straight on to the next item, and nothing fires, because a firi
 needs a yes and nobody was able to say one. The item still records that it looked, so
 the count of what was examined is honest and the record of the pass carries one error.
 
-Set the key — `/settings` → **openrouter key**, or say "set up my api key" — and the
+Set the default key — `/settings` → **openrouter key**, say "set up my api key", or use
+the `models` group in `/connect` to add a service — and the
 next pass judges normally. Nothing has to be re-made and nothing was lost while there
 was no key.
 

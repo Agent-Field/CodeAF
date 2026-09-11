@@ -851,9 +851,11 @@ func LaneSheetCertain(base string) bool {
 // calls Refresh. Wiring the same base twice is harmless: the sheet keeps what
 // that base already answered, and forgets it only when the base itself moves.
 //
-// EVERY NON-EMPTY BASE IS WIRED. Whether there is an endpoints page at it is
-// the base's own to say, once, and the sheet remembers ([LaneSheetCertain]
-// says why the hostname is a hint here and not the decision).
+// EVERY NON-EMPTY ROUTER BASE IS WIRED. Whether there is an endpoints page at
+// it is the base's own to say, once, and the sheet remembers
+// ([LaneSheetCertain] says why the hostname is a hint here and not the
+// decision). A connected direct service never comes through this door because
+// it owns one road and must not repoint the default account's process sheet.
 func WireLaneSheet(base, key string) {
 	base = strings.TrimSpace(base)
 	if base == "" {
@@ -864,9 +866,10 @@ func WireLaneSheet(base, key string) {
 
 // wireLaneSheet points the live lane sheet at the router this client talks to.
 //
-// IT IS CALLED FROM THE CONSTRUCTOR AND FROM NOWHERE ELSE IN THIS PACKAGE. It
-// is still a write to a process-wide seam, and a write repeated per request
-// is a lock taken in front of somebody's first token for no gain.
+// IT IS CALLED FROM THE CONSTRUCTOR FOR THE DEFAULT ROUTER ACCOUNT AND FROM
+// NOWHERE ELSE IN THIS PACKAGE. It is still a write to a process-wide seam,
+// and a write repeated per request is a lock taken in front of somebody's
+// first token for no gain.
 //
 // A CLIENT BUILT WITHOUT A KEY STILL WIRES. `/models/{id}/endpoints` is a
 // public document, so a session that opens on the first-run screen and is
