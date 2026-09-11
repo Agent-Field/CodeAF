@@ -122,6 +122,8 @@ import (
 // halves glow independently, so a person sees WHICH way the traffic is going.
 // While a tool runs nothing moves, both halves rest dim, and that is the whole
 // reading of "waiting, not dead": the shimmer says alive, the figures say quiet.
+// AND ONLY GROWTH GLOWS: a figure that appears — a task page opened, a tab
+// taken up — stands at its value, dim, at once ([chaseFigure]).
 // A FIGURE THAT MOVES IS ALREADY SALIENT; the glow says only that it moved just
 // now, and it is gone again before it can compete with the sentence.
 //
@@ -275,7 +277,8 @@ func (c *tokenCol) reading(written, turn int) (up, down int) {
 // IT IS ALSO WHERE A MOVE IS TIMED AND A JUMP IS RECEIPTED, because it is the
 // one place that sees both the reading and the figure on the screen change.
 // A snapped pair marks nothing: a column that is not running draws nothing, and
-// the linear tier neither glows nor receipts.
+// the linear tier neither glows nor receipts. Nor does a figure arriving from
+// nothing ([chaseFigure]) — opening a page is not the work moving.
 func (c *tokenCol) tick(written, turn, slots int, snap bool, now time.Time) bool {
 	up, down := c.reading(written, turn)
 	if !snap {
@@ -287,16 +290,40 @@ func (c *tokenCol) tick(written, turn, slots int, snap bool, now time.Time) bool
 		c.shownUp, c.shownDown = up, down
 		return moved
 	}
-	nextUp, nextDown := easeInt(c.shownUp, up, slots), easeInt(c.shownDown, down, slots)
-	if nextUp != c.shownUp {
+	nextUp, upGrew := chaseFigure(c.shownUp, up, slots)
+	nextDown, downGrew := chaseFigure(c.shownDown, down, slots)
+	if upGrew {
 		c.upMoved = now
 	}
-	if nextDown != c.shownDown {
+	if downGrew {
 		c.downMoved = now
 	}
 	moved := nextUp != c.shownUp || nextDown != c.shownDown
 	c.shownUp, c.shownDown = nextUp, nextDown
 	return moved
+}
+
+// chaseFigure is one half's step toward its reading, and whether that step is
+// MOTION — the thing the glow is lit for.
+//
+// A FIGURE THAT WAS NOT ON THE SCREEN ARRIVES WHOLE AND UNLIT. Every page opens
+// its column at nothing ([tokenCol.open], a new room, a conversation taken up
+// from a tab), and its first reading is a figure that already existed before
+// anybody looked — the weight of a request, a task's tokens read off its
+// journal. Walking it up from zero and lighting it on the way was the surface
+// performing work that was not happening: the owner opened a task page, watched
+// `↑ 79.6k  ↓ 37.6k` count up and glow, switched away and back, watched it do
+// the same climb to the same figures, and read a page being redrawn as a task
+// being busy. It is [tokenCol.receiptOf]'s rule said for the walk and the glow
+// too: THE FIRST READING IS A FIGURE ARRIVING, NOT A FIGURE GROWING, and only
+// growth is drawn as growth. So from nothing the figure is simply there, and
+// the first thing that lights it is the first time it actually moves.
+func chaseFigure(shown, target, slots int) (next int, grew bool) {
+	if shown == 0 {
+		return target, false
+	}
+	next = easeInt(shown, target, slots)
+	return next, next != shown
 }
 
 // receiptOf notes a jump in ↑. ONLY A RISE FROM A KNOWN FIGURE IS A JUMP: the
