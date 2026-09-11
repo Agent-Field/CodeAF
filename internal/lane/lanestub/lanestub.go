@@ -704,10 +704,10 @@ type wireAsk struct {
 		Content json.RawMessage `json:"content"`
 	} `json:"messages"`
 	Provider *struct {
-		Sort     string   `json:"sort"`
-		Order    []string `json:"order"`
-		Only     []string `json:"only"`
-		Ignore   []string `json:"ignore"`
+		Sort   string   `json:"sort"`
+		Order  []string `json:"order"`
+		Only   []string `json:"only"`
+		Ignore []string `json:"ignore"`
 		// AllowFallbacks is nil when the request said nothing, which the
 		// router reads as true.
 		AllowFallbacks *bool `json:"allow_fallbacks"`

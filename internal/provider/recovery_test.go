@@ -304,7 +304,6 @@ func TestARescueOnAFullPoolGoesBackToTheRaceAtOnce(t *testing.T) {
 	}
 }
 
-
 // TestAPinOnAMachineTheAccountExcludesIsRetiredOnEveryModel is the account's
 // exclusion meeting a person's own strict pin. On model A the pin is refused,
 // retired and widened exactly as before — and the account learns the machine.
