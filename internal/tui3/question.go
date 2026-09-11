@@ -1078,16 +1078,13 @@ func (a *app) questionRows(width int) []string {
 		}
 		out = append(out, a.questionLineRows(head, width)...)
 	default:
-		// THE BANDS ARE COUNTED FROM THE TOP OF THE BLOCK, because that is what a
-		// press resolves against ([app.questionBandPress] compares them with the
-		// chrome's own row index) — and the receipts of already-answered
-		// questions stand above the panel.
-		base, first := len(out), len(a.questionBands)
-		panel := a.questionPanelRows(head, width)
-		for i := first; i < len(a.questionBands); i++ {
-			a.questionBands[i].row += base
-		}
-		out = append(out, panel...)
+		// THE PANEL'S BANDS ARE NOT SHIFTED HERE. They are counted from the top of
+		// the panel, [app.questionPanelRows] moves them past its own frame edge
+		// and head rows, and [app.shiftQuestionMarks] below moves them past the
+		// receipts — one hand each. This case shifted them by the receipts too
+		// for a while, which is the double-shift that put every target one row
+		// below the row a person aimed at.
+		out = append(out, a.questionPanelRows(head, width)...)
 	}
 	a.shiftQuestionMarks(base)
 	// AND A RATIFY LINE IS NEVER COUNTED HERE: nothing waits on it, so a queue

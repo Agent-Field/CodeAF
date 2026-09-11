@@ -190,9 +190,11 @@ func (a *app) changeAutonomy(words string) tea.Cmd {
 				a.noteBlock(strings.TrimSpace(err.Error()))
 				return nil
 			}
-			a.autonomyChanged()
 			a.noteBlock(string(kind) + " · " + autonomyRuleWord(rule) + " · for this project")
-			return nil
+			// AND THE READING IS TAKEN AGAIN, as a command of its own: the rule
+			// that now exists is what the NEXT question raised must wear on its
+			// clock, and a fold may not ask a door itself (offloop.go).
+			return a.autonomyChanged()
 		}
 	})
 }

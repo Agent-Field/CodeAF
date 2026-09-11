@@ -359,15 +359,22 @@ func TestTheAnswerLeavesTheEnginesOwnRecordWhereTheQuestionWas(t *testing.T) {
 		t.Fatalf("the receipt is not the record's own line:\n%q\nwanted %q", rows[0], want.Line())
 	}
 	// THE SETTLED MARK OPENS IT, and the row says what was decided, by whom and
-	// when — and nothing about changing it, because no key on this surface
-	// re-opens an answered question yet (owner ruling 2026-09-11, and the
-	// addendum's "do not offer the keys" until the revision door lands).
+	// when — and what is still possible about it, which is a key only because
+	// #954 built the door behind it. The key was taken OFF this row for a while,
+	// when it named a door that did not exist; it is back with the door and not
+	// before, which is the manual law said about a keyboard.
 	for _, said := range []string{tokens.Plain.Glyph(tokens.GSettled), "allow once", "you", "14:02"} {
 		if !strings.Contains(rows[0], said) {
 			t.Fatalf("the receipt does not say %q: %q", said, rows[0])
 		}
 	}
-	if strings.Contains(rows[0], questionCommentKey+" change") {
+	if strings.Contains(rows[0], "decided") {
+		t.Fatalf("the receipt still opens with the word `decided`: %q", rows[0])
+	}
+	// AND EVERY KEY IT NAMES HAS A DOOR. The two readings the receipt offers keys
+	// from are the two the keys themselves ask, so a row cannot name one the
+	// press would refuse.
+	if strings.Contains(rows[0], questionCommentKey+" change") && !questionCanChange(lab.a.questionRecords[0]) {
 		t.Fatalf("the receipt offers a key with no door behind it: %q", rows[0])
 	}
 }
