@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // ── THE TASKS PLACE ─────────────────────────────────────────────────────────
@@ -266,11 +267,9 @@ func TestTheTaskPageDrawsThisWindowsWorkBesideEveryOtherConversations(t *testing
 	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open on a session with work in it")
 	}
-	// Content assertions inspect expanded families; opening the page keeps them folded.
-	a.taskSheet.opened = make(map[tasksKey]bool)
-	for _, item := range a.taskSheet.reading.items {
-		a.taskSheet.opened[tasksKeyOf(item.entry)] = true
-	}
+	// Content assertions inspect expanded families AND the conversations standing
+	// over them; every fold on this page opens shut ([openTaskFolds]).
+	openTaskFolds(a)
 	text := taskSheetText(a)
 
 	// THIS WINDOW'S OWN LIVE WORK IS ON THE PAGE. An ordinary task writes no row
@@ -365,11 +364,9 @@ func TestTheTaskPageDoesNotRepeatWorkTheTreeIsAlreadyShowing(t *testing.T) {
 	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open")
 	}
-	// Content assertions inspect expanded families; opening the page keeps them folded.
-	a.taskSheet.opened = make(map[tasksKey]bool)
-	for _, item := range a.taskSheet.reading.items {
-		a.taskSheet.opened[tasksKeyOf(item.entry)] = true
-	}
+	// Content assertions inspect expanded families AND the conversations standing
+	// over them; every fold on this page opens shut ([openTaskFolds]).
+	openTaskFolds(a)
 	text := taskSheetText(a)
 	if n := strings.Count(text, "Write the tree"); n != 1 {
 		t.Fatalf("the running node is drawn %d times, want once:\n%s", n, text)
@@ -869,7 +866,9 @@ func TestTypingOnTheTaskPageFiltersBothSections(t *testing.T) {
 	for _, want := range []string{
 		taskSheetNowHead, "Ship the port",
 		"finished today", "Port the parser",
-		taskSheetFilterWord + "port",
+		// AND THE WORDS ARE ON THE CONTROL ROW, at the top of the list, where the
+		// typing lands — not echoed on a note line under the rows they changed.
+		a.pal.glyph(tokens.GFilter) + " port",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the filtered page is missing %q:\n%s", want, text)

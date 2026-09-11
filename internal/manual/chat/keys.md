@@ -1569,11 +1569,17 @@ family away): `esc` closes it — or clears the filter first, if one is being ty
 and `ctrl+.` closes it either way · `up`/`ctrl+p`, `down`/`ctrl+n` move, stepping
 over the `running` and `earlier` section words · `pgup`/`pgdown` move twelve · `home`/`end`
 first and last · `enter` opens the row · `backspace`, `ctrl+w` and `ctrl+u` edit the filter
-· **every other printable key, the space included, types into the filter**, which narrows
-every section at once and is shown at the foot as `filter · port`. `→` opens the row's
+· **`1` and `2` answer the row under the cursor, but only while the pane beside the list is
+drawing those two answers for it** — a frame at least 110 columns wide, over a task of this
+conversation's that is waiting on you; everywhere else a digit is typed · **every other
+printable key, the space included, types into the filter**, which narrows
+every section at once and is drawn on the **control row** at the top of the list, as
+`⌕ port`. `alt+s` sorts by the next column — age, name, state, files, cost — and
+`alt+shift+s` turns the column you are on round; a press on one of the two column labels at
+the right of that control row sorts by it. `→` opens the row's
 verbs, and this place has one: `s stop it`, over a task this conversation is holding that is
 still queued or running. Its foot is assembled from what is true of the row under the
-cursor — `enter open its room · → verbs: stop it · type to filter this list` over a task this
+cursor — `enter open its room · → verbs: stop it · alt+s sort · type to filter` over a task this
 window is running, `enter go inside it` on a task another conversation ran, which has no room to open,
 and one of three clauses on a task another aforge **window** is running:
 `enter go to that conversation` when this terminal is holding that conversation, which
@@ -1581,11 +1587,13 @@ switches to it standing in that task's room; `enter read it as it runs` when the
 running it and this window can join, which opens that task's own live transcript, read-only;
 and `enter where it is running` when nothing here can reach it, which opens the card that
 says which window has it — and
-`esc clear the filter` in place of `type to filter this list` while you are typing one. The
-clause names the list because the message box is on the same frame two rows above, and while
-this page is up your keystrokes go to the filter and not to that box. On a machine that has run **nothing at all**,
+`esc clear the filter` in place of `type to filter` while you are typing one — the one fact
+the control row itself cannot show is that esc now means the filter and not the page. On a machine that has run **nothing at all**,
 where the body is teaching what tasks are, the foot drops to `tab next place · esc` alone:
-there is no row to filter, none to open and no verb to press. Clicking a row acts on the first press; the wheel
+there is no row to filter, none to open and no verb to press. **Clicking a row moves the cursor
+to it and the pane follows; clicking the same row again opens it.** On a frame too narrow for
+the pane there is nothing for a first click to show, so one click opens as it always did. A
+click on one of the pane's own answers presses that answer and opens nothing. The wheel
 walks the cursor. The tasks pages describe what is on it.
 
 **Inside an old task's card** (`enter` on an `earlier` row): `esc` or `←` backs out to the
@@ -2178,9 +2186,10 @@ column actually drew. Their keyboard equivalents for standing are the commands t
 `+ /task` puts in the box. **No new key is added to the column by either of them.** `enter`
 on the `jobs` label toggles the section; `enter` on a job row opens that job's page.
 
-**Under 60 columns the roster page is a thumb's, not a keyboard's.** Its rows are two-line
-cards a tap opens, its foot is a `‹ back` bar in place of the key legend
-`enter open its room · type to filter this list`, and the strip that opens it is one full-width door
+**Under 60 columns the TASKS PAGE this column reaches is a thumb's, not a keyboard's** — the
+column itself is unchanged, and its own keys are the ones above. The page's rows become
+two-line cards a tap opens, its foot is a `‹ back` bar in place of the key legend
+`enter open its room · alt+s sort · type to filter`, and the strip that opens it is one full-width door
 (`▸ 3 tasks · 1 running`) rather than a row of chips. Mouse motion is ignored — a tap opens
 in one gesture. The tasks page describes the phone flow in full.
 
@@ -2392,7 +2401,9 @@ Only the left button acts. A press is resolved in this order:
    above it, and a click on the `⟲ rewind here` line does the rewind.
 1. The settings panel, the task page, home, the rewind timeline, the status deck, or the
    phone tool sheet — each takes **every** press inside its frame, padding included. On the
-   task page a press on a row opens it on the first press; a press on a section word or on
+   task page a press on a row puts the cursor there and the record pane beside the list
+   follows it, and a second press on the same row opens it — on a frame too narrow for that
+   pane one press opens, as it always did; a press on a section word or on
    empty padding does nothing. Inside an old task's record card, the head row and the foot
    go back to the list and its body is read. On standing, spend and search a press on a
    row opens it on the first press too; on memory it opens a line's card, or folds a

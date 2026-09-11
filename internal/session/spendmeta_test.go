@@ -19,7 +19,19 @@ import (
 // field existed gets one on the way back in.
 
 // stampedMeta is one session folder's identity file, read back off disk.
-func stampedMeta(t *testing.T, dir string) Meta {
+func stampedMeta(t *testing.T, agent *Agent, dir string) Meta {
+	t.Helper()
+	// THROUGH THE EXIT DOOR FIRST. The stamp is a deferred write (#876), and
+	// [Agent.SettleWrites]'s own doc asks this of every test that reads one of
+	// those files back: read without it, what is on disk is whatever the scheduler
+	// had got to, which on a loaded machine is nothing at all.
+	agent.SettleWrites()
+	return metaOnDisk(t, dir)
+}
+
+// metaOnDisk is the file as it stands, for a test with no session behind it and
+// so nothing owed — [SaveMeta] writes on the caller's own goroutine.
+func metaOnDisk(t *testing.T, dir string) Meta {
 	t.Helper()
 	meta, err := LoadMeta(dir)
 	if err != nil {
@@ -46,7 +58,7 @@ func TestEachTurnStampsWhatTheConversationHasSpentOnItsMeta(t *testing.T) {
 	})
 
 	collect(t, mustSubmit(t, agent, "what does this cost?"))
-	first := stampedMeta(t, dir)
+	first := stampedMeta(t, agent, dir)
 	if first.SpentUSD < 0.40 {
 		t.Fatalf("meta.json says the conversation spent %v, want at least the turn's 0.40", first.SpentUSD)
 	}
@@ -55,7 +67,7 @@ func TestEachTurnStampsWhatTheConversationHasSpentOnItsMeta(t *testing.T) {
 	}
 
 	collect(t, mustSubmit(t, agent, "and again?"))
-	second := stampedMeta(t, dir)
+	second := stampedMeta(t, agent, dir)
 	if second.SpentUSD < 0.80 {
 		t.Fatalf("after two turns meta.json says %v, want the running total (0.80)", second.SpentUSD)
 	}
@@ -85,7 +97,7 @@ func TestAConversationThatSpentNothingStampsNoFigure(t *testing.T) {
 	})
 	collect(t, mustSubmit(t, agent, "say something free"))
 
-	meta := stampedMeta(t, dir)
+	meta := stampedMeta(t, agent, dir)
 	if meta.SpentUSD != 0 || meta.Tokens != 0 {
 		t.Fatalf("a conversation that spent nothing stamped %v / %d tokens", meta.SpentUSD, meta.Tokens)
 	}
@@ -112,7 +124,7 @@ func TestAResumedConversationFoldsItsTranscriptIntoTheStampOnce(t *testing.T) {
 	})
 	_ = agent
 
-	meta := stampedMeta(t, dir)
+	meta := stampedMeta(t, agent, dir)
 	if meta.SpentUSD != 0.25 || meta.Tokens != 15 {
 		t.Fatalf("a resumed conversation stamped %v / %d tokens, want the transcript's 0.25 and 15",
 			meta.SpentUSD, meta.Tokens)
@@ -139,7 +151,7 @@ func TestOpeningAConversationThatAlreadyHasATotalRewritesNothing(t *testing.T) {
 	})
 	_ = agent
 
-	meta := stampedMeta(t, dir)
+	meta := stampedMeta(t, agent, dir)
 	if meta.SpentUSD != 9 || meta.Tokens != 99 {
 		t.Fatalf("opening a conversation overwrote its total with %v / %d", meta.SpentUSD, meta.Tokens)
 	}

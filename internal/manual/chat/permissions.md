@@ -363,9 +363,11 @@ never written from here. Because a repository that answers `tools.approval`
 replaces your whole row at launch, a preference banked here takes effect
 everywhere except inside that repository.
 
-After the write, the gate for the running session is rebuilt and pushed, so the
-new rule bites on the very next call rather than at the next launch. The row
-then says, literally:
+The new rule bites on the very next call rather than waiting for another launch.
+Under `--no-host`, the running session's gate is rebuilt from the profile at once.
+On a plain launch through this machine's engine, the rule is written and the engine
+rebuilds its running gate from that profile before the answer is applied, so the next
+matching call is allowed. The row then says, literally:
 
 ```
 always · saved — /permissions to change
@@ -485,6 +487,15 @@ transcript at all.
 **It can never approve something the rules above refuse**, and it never stands
 in for you on a call that acts in your name. It does not run on the early-start
 path.
+
+**It is the one thing aforge asks that really does hold the work up**, and it says
+so while it does. Everything else a turn asks on your behalf — the memory lookup,
+the judges, the reader of a long answer — runs beside your answer and can never
+delay it (*Screen*). This one decides whether the command runs at all, so there is
+nothing for it to run alongside. It answers in **ten seconds or not at all**, and
+for the whole of that the status line reads
+`checking whether this is safe to run`. Past ten seconds it falls through and you
+are asked, exactly as if it had said `ASK`.
 
 ## The floor nothing lifts: dangerous shell commands
 
@@ -820,10 +831,10 @@ re-read and the cursor holds its place, not its row.
 
 The receipt in the transcript is `dropped · <name>`.
 
-**Changes are live.** A drop takes effect on the very next call, not at the next
-launch. If the running gate could not be told, the receipt becomes
-`dropped · <name> · from the next session` — the panel never claims an effect it
-did not deliver.
+Under `--no-host`, a drop is live on the very next call. On a plain launch
+through this machine's engine there is no take-back door to the running gate,
+so the receipt is `dropped · <name> · from the next session`. The panel never
+claims an effect it did not deliver.
 
 `/new` and `/resume` open on the rules as they stand right now, not the ones the
 session launched with.

@@ -84,6 +84,28 @@ var tuiWords = map[string]tuiWord{
 	"roomKinSpawnedWord": {screen: "handed out: ", why: "the waiting parent's child summary is visible"},
 	"roomBackWord":       {screen: "esc/← main", why: "the task room offers its way back"},
 
+	// ── this machine's doors on the ordinary engine road ────────────────────
+	"connectFilterHint": {
+		screen: "filter · ↑↓ · enter connect · esc close",
+		why:    "the local connection catalog opened as its searchable panel",
+	},
+	"connectModelsGroup": {
+		screen: "models",
+		why:    "the connection panel includes model services rather than only account rows",
+	},
+	"connectUnavailableWord": {
+		screen: "connections are unavailable here",
+		why:    "the refusal that must be absent from an ordinary launch and remain available to the hosted seam",
+	},
+	"noHarnessWord": {
+		screen: "no harnesses are registered yet — build one in the conversation",
+		why:    "an empty local registry still opens and says what may arrive there",
+	},
+	"harnessUnavailableWord": {
+		screen: "harnesses are unavailable here",
+		why:    "the refusal that must be absent from an ordinary launch and remain available to the hosted seam",
+	},
+
 	// ── the bounded stop ─────────────────────────────────────────────────────
 	"stoppingWord": {
 		screen: "stopping",
@@ -503,6 +525,16 @@ var tuiWords = map[string]tuiWord{
 		screen: "enter go inside it",
 		why: "the roster's other door, over work no window is holding any more — it is the one that opens the " +
 			"record card, which is the mode `space` pages and the door home had to give the key back to",
+	},
+	"tasksPaneOpenWord": {
+		screen: "enter open",
+		why: "the verb line of the RECORD PANE beside the tasks list (taskpane.go), which is drawn on " +
+			"every frame 110 columns or wider — the suite runs at 120. It is the one clause of that line " +
+			"every row has, whatever state the model's work landed in, which is why the wait is on this " +
+			"and not on the two answers beside it. IT IS A PREFIX OF [tasksEnterRoomWord] " +
+			"(`enter open its room`), so it discriminates only where the foot is NOT offering a room — " +
+			"which is exactly where its own subtest waits for it: the window that reads the record back " +
+			"holds no node, its foot says `enter go inside it`, and that wait comes first",
 	},
 	"taskRoomFootWord": {
 		screen: "m puts it in your message · ↑↓ scroll",

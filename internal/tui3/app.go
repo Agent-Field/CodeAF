@@ -757,6 +757,7 @@ type (
 		service string
 		name    string
 		written string
+		keyEnv  string
 		outcome modelsource.Outcome
 		models  []Model
 		err     error
@@ -2370,6 +2371,10 @@ type app struct {
 	// construction — see host.go for the whole law.
 	host      string
 	localRoot string
+	// engineRoad distinguishes this machine's daemon from a hosted agent. The
+	// model-service receipt uses it to say whose environment resolves a named
+	// key; host cannot answer that because both roads carry a remote agent.
+	engineRoad bool
 	// owned says the workspace is this session's own work/ directory rather
 	// than a project somebody opened aforge inside of (Options.Owned). It is
 	// read by [app.placeWord] and [app.contextStart].
@@ -2543,6 +2548,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		standingRoot:        opts.StandingRoot,
 		leaveAnswer:         opts.Answer,
 		host:                host,
+		engineRoad:          opts.EngineRoad,
 		handedApproval:      strings.TrimSpace(opts.ApprovalMode),
 		bashBackgroundAfter: opts.BashBackgroundAfterSeconds,
 		owned:               opts.Owned,
@@ -3289,11 +3295,18 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.tasksLoaded(msg.rows, msg.known)
 
 	case taskTailMsg:
-		// One node's journal, read off the loop for the record card
-		// (taskrecord.go). A read that came back about a task the person has
-		// already walked away from is dropped there.
+		// One node's journal, read off the loop for the record card and for the
+		// pane beside the list (taskrecord.go, taskpane.go). A read that came back
+		// about a task the person has already walked away from is dropped by the
+		// card there; the pane keeps it, because walking back up is free.
 		a.taskTailRead(msg)
 		return a, nil
+
+	case taskPaneSettleMsg:
+		// The tasks place's cursor having stood still long enough to be worth
+		// reading a journal for (taskpane.go). A settle armed by an earlier move
+		// is dropped there, which is what keeps a held arrow free.
+		return a, a.taskPaneSettled(msg)
 
 	case draftSaveMsg:
 		return a, a.saveDraft(msg.file)
@@ -3426,8 +3439,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// an offset of its own, so the wheel walks the cursor — and a wheel that
 		// fell through from one of them would scroll a transcript nobody can see,
 		// which is what a person turning it over the standing list actually got.
-		if delta := placeWheelDelta(msg.Mouse().Button); delta != 0 && a.placeBodyWheel(delta) {
-			return a, nil
+		if delta := placeWheelDelta(msg.Mouse().Button); delta != 0 {
+			if cmd, took := a.placeBodyWheel(delta); took {
+				return a, cmd
+			}
 		}
 		// And the rewind timeline, on the same terms as all three: it is the whole
 		// screen, and its window follows its cursor rather than an offset of its

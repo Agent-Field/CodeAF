@@ -1587,6 +1587,17 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 		// the first cannot buy two names.
 		a.startTitleLocked()
 	}
+	// AND THE RECALL STARTS HERE TOO, beside the title and for a stronger version
+	// of the title's own reason (memory.go's [Agent.startRecallLocked]). The name
+	// is merely something nobody should wait for; the recall is something the
+	// person WAS waiting for — 4.3 seconds on the 2026-09-11 census, before their
+	// model had been asked anything at all — and starting it at the one place a
+	// turn begins is what puts the whole of the turn's own preparation on top of
+	// it instead of behind it.
+	//
+	// IT IS STARTED UNDER THIS LOCK for the title's reason as well: two Submits
+	// racing to be the first must not each buy a route.
+	a.startRecallLocked(turnCtx, hub, user.text())
 	// THEIR NEXT WORDS ARE WHAT CHANGED. A generation Interrupt minted waits
 	// here for the sentence that follows Esc, and that sentence is the one
 	// decision the leftover handlers and this turn's opening share.
@@ -2055,6 +2066,14 @@ func (a *Agent) Close() error {
 	// still sitting on the queue goes with this process and is said again by the
 	// next one ([durableDelivery]).
 	a.settleDeliveries()
+	// AND SO IS EVERY WRITE THIS SESSION STILL OWES A FILE behind a person's path
+	// — the meta.json stamp, the fix shelf's counters, the working copy of a folder
+	// referred but not yet cut. A deferred write's whole risk is a process that
+	// stops while one is owed, and this is the answer to it ([Agent.SettleWrites],
+	// placemeta.go). IT IS HERE AND NOT PAST THE LOCK BELOW: every write it waits
+	// on takes `a.mu` to read or replace what it is writing, so a call from inside
+	// the lock would wait forever on work waiting for this goroutine.
+	a.SettleWrites()
 	a.mu.Lock()
 	if a.closed {
 		// A SECOND CLOSE WAITS FOR THE FIRST, AND DOES NOT ANSWER OVER THE TOP
@@ -2233,6 +2252,17 @@ func (a *Agent) Close() error {
 	// first would drop exactly the lines a compacted resume has nowhere else to
 	// read (chatlog.go).
 	a.chatlog.close()
+
+	// AND THE DEFERRED WRITES ARE SETTLED A SECOND TIME, because the first one
+	// above could only settle what was owed BEFORE the close — and the close is
+	// itself a writer: a node stopped, a follow-up dropped, a place referred on
+	// the way out each owe one, and every one of those happened in the rounds
+	// between here and there. A write still owed when the process stops is the
+	// whole risk a deferred write carries ([Agent.SettleWrites], placemeta.go).
+	//
+	// IT IS SAFE HERE AND ONLY HERE: `a.mu` was released above, and everything
+	// this waits on takes that lock.
+	a.SettleWrites()
 
 	if file == nil {
 		return nil

@@ -339,7 +339,7 @@ func TestAQuickCarryOnAsksForNoNameAndTheFullRoadStillDoes(t *testing.T) {
 
 	// namesAsked drives one carry-on and answers every namer off the queue,
 	// counting them. It is the fixture's own aside rather than
-	// [answerTheNamerOffTheQueue] because the count IS the assertion, and it is
+	// [answerTheReadingsOffTheQueue] because the count IS the assertion, and it is
 	// installed after [checkpointAgent], which installs that one.
 	namesAsked := func(t *testing.T, steps []step) (*scriptedCompleter, *TaskNode, *int64) {
 		t.Helper()

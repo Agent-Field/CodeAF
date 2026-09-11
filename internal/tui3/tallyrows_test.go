@@ -50,7 +50,7 @@ func tasksHeadingRow(lines []tasksLine, word string) string {
 // rows the page is withholding, and opening the fold leaves it nothing to say.
 func TestTheTasksSectionHeadNamesOnlyWhatTheFoldHolds(t *testing.T) {
 	world, win, now := tasksFamilyFixture()
-	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 
 	held := len(reading.section(tasksToday))
 	lines := reading.lay(120)
@@ -72,7 +72,7 @@ func TestTheTasksSectionHeadNamesOnlyWhatTheFoldHolds(t *testing.T) {
 
 	// Open the fold: the rows catch up with the count and the clause goes,
 	// because there is nothing left for it to say.
-	reading.open = map[tasksKey]bool{{session: "room-a", id: "1"}: true}
+	reading.open = map[tasksKey]bool{tasksChatKey("room-a"): true, {session: "room-a", id: "1"}: true}
 	lines = reading.lay(120)
 	frame = strings.Join(reading.rows(120, palette{}), "\n")
 	if drawn := tasksWorkRows(lines); drawn != held {
@@ -90,7 +90,7 @@ func TestTheTasksSectionHeadNamesOnlyWhatTheFoldHolds(t *testing.T) {
 func TestTheSectionHeadCountsTheRowsItActuallyWithholds(t *testing.T) {
 	world, win, now := tasksFamilyFixture()
 	for _, open := range []bool{false, true} {
-		reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+		reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 		if open {
 			reading.open = map[tasksKey]bool{{session: "room-a", id: "1"}: true}
 		}
@@ -116,7 +116,7 @@ func TestTheSectionHeadCountsTheRowsItActuallyWithholds(t *testing.T) {
 // its word alone or the exact count of work its folds are withholding.
 func TestAMixedPageHeadsSectionsOnlyWithTheirFoldedRows(t *testing.T) {
 	world, win, now := tasksFixture()
-	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 	lines := reading.lay(120)
 	tree := reading.tree()
 	frame := strings.Join(reading.rows(120, palette{}), "\n")
@@ -151,7 +151,9 @@ func TestAMixedPageHeadsSectionsOnlyWithTheirFoldedRows(t *testing.T) {
 // A PAGE THAT FOLDS NOTHING SAYS NOTHING EXTRA, on the heading or on the foot.
 func TestASectionWithNothingFoldedAwaySaysNothingExtra(t *testing.T) {
 	world, win, now := tasksPolishFixture()
-	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+	// The page after `→`: what this is about is a page with NOTHING held back,
+	// and every conversation opens shut ([tasksReading.opens]).
+	reading := tasksOpen(readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now))
 	lines := reading.lay(120)
 	for _, line := range lines {
 		if line.kind == tasksLineWord && strings.Contains(line.text, " shown") {
@@ -172,7 +174,7 @@ func TestASectionWithNothingFoldedAwaySaysNothingExtra(t *testing.T) {
 // `… · 5 done today, 2 s…`, a figure with its end cut off.
 func TestTheTasksFootFitsTheNarrowestFrameWholeWithAFoldOnThePage(t *testing.T) {
 	world, win, now := tasksFamilyFixture()
-	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 	said := reading.tally()
 	for _, width := range []int{60, 80, 120, 160} {
 		if got := fit(said, width-2); got != said {
@@ -187,7 +189,7 @@ func TestTheTasksFootFitsTheNarrowestFrameWholeWithAFoldOnThePage(t *testing.T) 
 func TestTheTasksFootStillCountsEveryPieceByItsActualState(t *testing.T) {
 	now := time.Date(2026, time.September, 6, 13, 11, 0, 0, time.UTC)
 	world, win := tasksAskingWorld(now, true)
-	reading := readTasks(world, tasksMine{}, win, now.Add(-time.Hour), now)
+	reading := readTasks(world, tasksMine{}, win, tasksSort{}, now.Add(-time.Hour), now)
 	want := strings.Join([]string{
 		"1 " + tasksSectionWord(tasksNeeds),
 		"3 " + tasksSectionWord(tasksRunning),
@@ -223,7 +225,7 @@ func TestTheManualQuotesBothTasksOpeningHeadingsExactly(t *testing.T) {
 		})
 	}
 	chats[0].Tasks.Rows[0].Cost = 2.98
-	conversationReading := readTasks(session.World{Projects: []session.Project{{Sessions: chats}}}, tasksMine{}, win, time.Time{}, now)
+	conversationReading := readTasks(session.World{Projects: []session.Project{{Sessions: chats}}}, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 
 	flat := session.SessionRow{ID: "flat", Title: "flat work", At: now}
 	for i := 0; i < 148; i++ {
@@ -233,7 +235,7 @@ func TestTheManualQuotesBothTasksOpeningHeadingsExactly(t *testing.T) {
 		})
 	}
 	flat.Tasks.Rows[0].Cost = 34.10
-	flatReading := readTasks(session.World{Projects: []session.Project{{Sessions: []session.SessionRow{flat}}}}, tasksMine{}, win, time.Time{}, now)
+	flatReading := readTasks(session.World{Projects: []session.Project{{Sessions: []session.SessionRow{flat}}}}, tasksMine{}, win, tasksSort{}, time.Time{}, now)
 
 	for _, heading := range []string{conversationReading.head(200, false), flatReading.head(200, true)} {
 		if !manual.Chat().Mentions(heading) {

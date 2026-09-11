@@ -49,11 +49,12 @@ func TestTheTasksFootIsScreenOneEWordForWord(t *testing.T) {
 	if !ok || item.entry.Label != "Fix the nil-map crash" {
 		t.Fatalf("the cursor is not on this window's running task: %+v", item.entry)
 	}
-	// AND THE FILTER CLAUSE IS NOT ON IT ANY MORE. It was here to correct the box
-	// two rows below, which said `say what you want done` over a slot that only
-	// ever filtered; the box says the true sentence itself now
-	// ([placeTasks.resting]), and one screen may not name one thing twice.
-	const want = "enter open its room · → verbs: stop it"
+	// AND THE LAST TWO CLAUSES ARE THE PAGE'S OWN KEYS, which the ruling of
+	// 2026-09-11 asks for by name: the filter owns every printable key here, so
+	// sorting is a chord, and a chord nobody can find is a chord that does not
+	// exist. The filter is named beside it because nothing else on the frame says
+	// that a letter goes into the box on the control row rather than to the page.
+	const want = "enter open its room · → verbs: stop it · alt+s sort · type to filter"
 	if got := a.taskSheetKeysLine(); got != want {
 		t.Fatalf("the foot reads\n  %q\nwant\n  %q", got, want)
 	}
@@ -103,7 +104,7 @@ func TestTheTasksFootSaysOnlyWhatIsTrueOfTheRowUnderIt(t *testing.T) {
 	if !ok || item.entry.Title != "Port the parser" {
 		t.Fatalf("the walk did not reach the earlier conversation's row: %+v", item)
 	}
-	const want = "enter go inside it"
+	const want = "enter go inside it · alt+s sort · type to filter"
 	if got := a.taskSheetKeysLine(); got != want {
 		t.Fatalf("over work another conversation ran the foot reads\n  %q\nwant\n  %q", got, want)
 	}
@@ -209,9 +210,15 @@ func TestTheTasksFootNamesNoVerbWithoutTheEnginesDoor(t *testing.T) {
 	if verbs := a.taskSheet.verbs(a); len(verbs) != 0 {
 		t.Fatalf("a session with no cancel door offered %+v", verbs)
 	}
-	const want = "enter open its room · → what ran under it"
+	// The cursor's row is a family, and [openTaskPlaceWithRows] has opened it —
+	// so the fold clause is the `←` half. What this test is about is what is NOT
+	// here: no verb at all, on a session with no door onto stopping.
+	const want = "enter open its room · ← fold it back up · alt+s sort · type to filter"
 	if got := a.taskSheetKeysLine(); got != want {
 		t.Fatalf("the foot reads\n  %q\nwant\n  %q", got, want)
+	}
+	if strings.Contains(a.taskSheetKeysLine(), tasksVerbsWord) {
+		t.Fatalf("a session with no cancel door named a verb: %q", a.taskSheetKeysLine())
 	}
 }
 
@@ -255,8 +262,43 @@ func TestSOnTheTasksStripStopsThatTaskThroughTheEnginesDoor(t *testing.T) {
 // still need, and it is asked here once rather than in forty places.
 func openTaskPlaceWithRows(a *app) bool {
 	a.showPage(pageTasks)
+	// AND IT OPENS THE FOLDS, because these tests are about the ROWS.
+	//
+	// The place itself opens every conversation and every family SHUT (the owner's
+	// ruling, 2026-09-11 — [tasksReading.opens] states it and says why), so a test
+	// written to look at a piece of work would be looking at the root standing
+	// over it instead. A person reaches the same page with `→`; a test says so by
+	// calling this. The tests that are about the FOLDS ask for the place without
+	// it ([TestEveryConversationOpensShut] and its neighbours).
+	openTaskFolds(a)
 	if len(a.taskSheet.reading.items) > 0 {
 		a.taskSheetPointAt(a.taskSheet.reading.items[0].entry)
 	}
 	return a.at(pageTasks) && len(a.taskSheet.reading.items) > 0
+}
+
+// openTaskFolds opens every fold on the page, the way pressing `→` down the list
+// would — and it is remembered in the PLACE's own fold map rather than on the
+// reading, because a reading is replaced whole every few seconds
+// ([tasksPlace.regroup]) and a flag set on one would be gone by the next frame.
+func openTaskFolds(a *app) {
+	if a.taskSheet.opened == nil {
+		a.taskSheet.opened = map[tasksKey]bool{}
+	}
+	width, _ := a.size()
+	// Families nest, so opening one can reveal another; this walks until a pass
+	// finds nothing left shut. The depth is the record's own and is small.
+	for i := 0; i < tasksKinLevels+2; i++ {
+		r := a.tasksFiltered()
+		shut := false
+		for _, line := range r.lay(width) {
+			if line.folds && !line.open {
+				a.taskSheet.opened[line.family] = true
+				shut = true
+			}
+		}
+		if !shut {
+			return
+		}
+	}
 }

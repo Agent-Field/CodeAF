@@ -70,7 +70,7 @@ func TestARestoredTaskIsNeverDatedInTheFuture(t *testing.T) {
 	}
 
 	win := session.LastDays(a.now(), taskSheetDays)
-	reading := readTasks(session.World{}, a.taskSheetMine(), win, time.Time{}, a.now())
+	reading := readTasks(session.World{}, a.taskSheetMine(), win, tasksSort{}, time.Time{}, a.now())
 	on := false
 	for _, item := range reading.items {
 		if item.entry.ID == "11" {

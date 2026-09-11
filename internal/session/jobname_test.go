@@ -26,7 +26,7 @@ const jobNameAsk = `bash -lc "sleep 30"`
 
 // answerTheJobNamerOffTheQueue installs an aside that answers the job namer
 // without spending a scripted step, for the same reason
-// [answerTheNamerOffTheQueue] exists: the namer is not one of the turn's
+// [answerTheReadingsOffTheQueue] exists: the namer is not one of the turn's
 // rounds.
 func answerTheJobNamerOffTheQueue(completer *scriptedCompleter, name string) {
 	completer.aside = func(messages []ai.Message) (*ai.Response, bool) {

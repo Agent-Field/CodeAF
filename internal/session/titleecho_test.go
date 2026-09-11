@@ -140,7 +140,7 @@ func TestASessionNamedWithTheInstructionKeepsThePlaceholder(t *testing.T) {
 	}
 	// UNNAMED IS NOT A BLANK ROW. placemeta.go stamped the person's opening
 	// words on the folder at their first message, and nothing has replaced them.
-	if got := stampedMeta(t, dir).Title; got != "why is the tokenizer slow?" {
+	if got := metaOnDisk(t, dir).Title; got != "why is the tokenizer slow?" {
 		t.Fatalf("the folder's row says %q, want the person's opening words", got)
 	}
 }
@@ -243,7 +243,7 @@ func TestAStoredInstructionGivesTheFoldersRowItsPlaceholderBack(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SaveMeta: %v", err)
 	}
-	if got := stampedMeta(t, dir).Title; got != "why is the tokenizer slow?" {
+	if got := metaOnDisk(t, dir).Title; got != "why is the tokenizer slow?" {
 		t.Fatalf("the folder's row says %q, want the person's opening words back", got)
 	}
 	// AND NOTHING IS REWRITTEN: the heal is a reading rule, so the file still
@@ -259,7 +259,7 @@ func TestAStoredInstructionGivesTheFoldersRowItsPlaceholderBack(t *testing.T) {
 	if err := SaveMeta(dir, Meta{ID: "c95971eb", Title: "tokenizer speed"}); err != nil {
 		t.Fatalf("SaveMeta: %v", err)
 	}
-	if got := stampedMeta(t, dir).Title; got != "tokenizer speed" {
+	if got := metaOnDisk(t, dir).Title; got != "tokenizer speed" {
 		t.Fatalf("LoadMeta returned %q, want the name kept", got)
 	}
 }

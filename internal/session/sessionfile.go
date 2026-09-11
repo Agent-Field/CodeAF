@@ -177,6 +177,12 @@ type sessionEntry struct {
 	// file written before the line existed.
 	Took *journalTook `json:"took,omitempty"`
 
+	// Pace is ONE TURN'S DECOMPOSITION: how long the person waited to be sent
+	// anywhere, how long they then waited for a word, and the worst gap between a
+	// tool result and the next request. Absent from every line that is not one,
+	// and from every file written before it existed.
+	Pace *journalPace `json:"pace,omitempty"`
+
 	// Deliveries names the durable deliveries this line is the record of
 	// ([durableDelivery]): a landing's news, identified by session, task,
 	// attempt and ending. It is what lets a resumed session tell a landing it
@@ -866,6 +872,32 @@ type journalCaption struct {
 // DurationMS rather than a stamped interval, because the journal is not a clock
 // — it is a figure the surface already knew live (Event.Took) and must be able
 // to say again after a reopen. Zero is never written (see [sessionFile.appendTook]).
+// journalPace is ONE TURN'S SHAPE IN MILLISECONDS, written once, at the end.
+//
+// IT EXISTS BECAUSE THE LAST AUDIT HAD TO DERIVE IT. loop.go's law — the only
+// wait a person experiences is the main model generating — is a claim about two
+// numbers, and until this line neither of them was written anywhere: the call
+// census of 2026-09-11 reconstructed them by subtracting request stamps in
+// calls.jsonl, which is how a four-second gate in front of every message went
+// unnoticed for as long as it did. A law nobody can measure is a law that rots.
+//
+// SendMS is what this file is FOR: the person's message to the first request
+// leaving. FirstWordMS is what they actually waited for. StepGapMS is the worst
+// tool-result-to-next-request gap of the turn, which is the same law said about
+// the middle of a turn instead of the front of it.
+//
+// AND WHAT WAS RUNNING BESIDE IT. Aside names the readings that were in flight
+// while the work went on, so a reader can tell a fast turn that asked nothing
+// from a fast turn that asked several things concurrently — the difference
+// between the law being kept and the readings having been deleted.
+type journalPace struct {
+	SendMS      int64    `json:"sendMs"`
+	FirstWordMS int64    `json:"firstWordMs,omitempty"`
+	StepGapMS   int64    `json:"stepGapMs,omitempty"`
+	Steps       int      `json:"steps,omitempty"`
+	Aside       []string `json:"aside,omitempty"`
+}
+
 type journalTook struct {
 	CallID     string `json:"callId"`
 	DurationMS int64  `json:"durationMs"`
@@ -2839,6 +2871,18 @@ func (s *sessionFile) appendCall(call journalCall) {
 		return
 	}
 	s.writeLine(sessionEntry{Type: "call", Call: &call, Timestamp: stamp()})
+}
+
+// appendPace writes one turn's decomposition down (see [journalPace]).
+//
+// A TURN THAT NEVER REACHED THE WIRE WRITES NOTHING — the emptiness law, and the
+// honest reading: there is no send to time. The nil receiver writes nothing, as
+// everywhere in this file.
+func (s *sessionFile) appendPace(pace journalPace) {
+	if s == nil || pace.SendMS < 0 {
+		return
+	}
+	s.writeLine(sessionEntry{Type: "pace", Pace: &pace, Timestamp: stamp()})
 }
 
 // appendError writes ONE FAILED CALL down (see [journalError]).

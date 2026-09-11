@@ -198,6 +198,10 @@ type place interface {
 	window(a *app, key string) bool
 	// box is the composer this place types into — the shared one by default.
 	box(a *app) *editor
+	// boxOnBody reports that this place draws what is typed into its box in a row
+	// of its OWN body, so the foot draws the resting sentence and never the
+	// letters. It is false everywhere but tasks ([placeTasks.boxOnBody]).
+	boxOnBody() bool
 	// resting is WHAT THAT BOX SAYS WITH NOTHING TYPED IN IT, and "" takes the
 	// router's own sentence.
 	//
@@ -246,8 +250,13 @@ type place interface {
 	// hover is the pointer resting over a body row: the row is previewed and the
 	// cursor is left where it is.
 	hover(a *app, y int) bool
-	// wheel walks this place's cursor, by [placeWheelRows] rows a tick.
-	wheel(a *app, delta int) bool
+	// wheel walks this place's cursor, by [placeWheelRows] rows a tick, and
+	// answers whatever that move leaves to do — a command, exactly as [place.press]
+	// does. THE TWO GESTURES THAT MOVE A CURSOR SAY SO THE SAME WAY: this used to
+	// answer a bare bool, so a place with work to do about a cursor that moved could
+	// hear the keyboard and the pointer and not the wheel (taskpane.go's pane
+	// followed an arrow key and sat blank under a wheel).
+	wheel(a *app, delta int) (tea.Cmd, bool)
 }
 
 // placeBase is the defaults, so that a place file is only what is PARTICULAR to
@@ -291,7 +300,7 @@ func (placeBase) changed(a *app, since time.Time) int     { return 0 }
 func (placeBase) summary(a *app) string                   { return "" }
 func (placeBase) press(a *app, y int) (tea.Cmd, bool)     { return nil, false }
 func (placeBase) hover(a *app, y int) bool                { return false }
-func (placeBase) wheel(a *app, delta int) bool            { return false }
+func (placeBase) wheel(a *app, delta int) (tea.Cmd, bool) { return nil, false }
 func (placeBase) key(a *app, msg tea.KeyPressMsg) tea.Cmd { return nil }
 func (placeBase) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	return nil, false
@@ -302,6 +311,7 @@ func (placeBase) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // which is what makes a permanent bottom line a composer rather than seven boxes
 // that each forget ([app.compose]).
 func (placeBase) box(a *app) *editor { return &a.compose }
+func (placeBase) boxOnBody() bool    { return false }
 
 // ── THERE IS NO DEFAULT hint, AND THAT IS THE WHOLE POINT ───────────────────
 //
@@ -1173,7 +1183,7 @@ func placeFrameWithBar(a *app, width, height int,
 		// picker's own hint stands in while nothing is typed.
 		draftRows, draftCX, draftCY = draftBlock(&a.target.pick.filter, pal, width-2, 1,
 			a.target.pick.hintAt(width-2-ansi.StringWidth(prompt)), "")
-	case box != nil && !box.empty():
+	case box != nil && !box.empty() && !a.placeBoxOnBody():
 		draftRows, draftCX, draftCY = draftBlock(box, pal, width-2, homeDraftRows, "", "")
 	}
 	draftHeight := len(draftRows)
@@ -1601,6 +1611,12 @@ const (
 // goes to the filter ([placeTasks.box]), and the shared prompt was inviting an
 // instruction into a slot that could only ever narrow a list ([place.resting]
 // carries the whole of that story).
+// placeBoxOnBody is that hook asked of whichever place is standing.
+func (a *app) placeBoxOnBody() bool {
+	pl := a.showing()
+	return pl != nil && pl.boxOnBody()
+}
+
 func (a *app) placeRestWord() string {
 	if pl := a.showing(); pl != nil {
 		if said := strings.TrimSpace(pl.resting(a)); said != "" {
@@ -2101,9 +2117,12 @@ func (a *app) placeBodyHover(y int) bool {
 // does with it (app.go's wheel ladder). A place whose window follows its cursor
 // has no offset of its own to move, so a scroll and a selection are one gesture
 // here — the bargain the task page and home both already struck.
-func (a *app) placeBodyWheel(delta int) bool {
+func (a *app) placeBodyWheel(delta int) (tea.Cmd, bool) {
 	pl := a.showing()
-	return pl != nil && !a.composer.open && pl.wheel(a, delta)
+	if pl == nil || a.composer.open {
+		return nil, false
+	}
+	return pl.wheel(a, delta)
 }
 
 // nextPage is `tab`: the place after this one along the bar, and round again

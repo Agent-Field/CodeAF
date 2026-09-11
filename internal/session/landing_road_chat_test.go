@@ -76,7 +76,7 @@ func TestAnIdleChatsWakeCarriesTheChildsOwnAnswer(t *testing.T) {
 			return textResponse("the evidence page is up"), nil
 		},
 	}}
-	answerTheNamerOffTheQueue(completer)
+	answerTheReadingsOffTheQueue(completer)
 	agent, _ := newTestAgent(t, completer, nil)
 
 	landOnTheChat(t, agent, landing{
@@ -117,7 +117,7 @@ func TestALongChildAnswerReachesTheChatCutAndSaysSo(t *testing.T) {
 			return textResponse("read it"), nil
 		},
 	}}
-	answerTheNamerOffTheQueue(completer)
+	answerTheReadingsOffTheQueue(completer)
 	agent, _ := newTestAgent(t, completer, nil)
 
 	long := "HEAD-OF-THE-ANSWER " + strings.Repeat("evidence line. ", 600) + " TAIL-OF-THE-ANSWER"
@@ -163,7 +163,7 @@ func TestFourLandingsOnAnIdleChatAreFourSeparateAnswers(t *testing.T) {
 		return textResponse("that one is up"), nil
 	}
 	completer := &scriptedCompleter{steps: []step{answer, answer, answer, answer}}
-	answerTheNamerOffTheQueue(completer)
+	answerTheReadingsOffTheQueue(completer)
 	agent, _ := newTestAgent(t, completer, nil)
 
 	for _, title := range []string{"the evidence page", "the contact page", "the pricing page", "the about page"} {
@@ -205,7 +205,7 @@ func TestLandingsInsideAWokenTurnAreAnsweredByThatSameTurn(t *testing.T) {
 			return textResponse("all four are up"), nil
 		},
 	}}
-	answerTheNamerOffTheQueue(completer)
+	answerTheReadingsOffTheQueue(completer)
 	agent, _ := newTestAgent(t, completer, nil)
 
 	go landOnTheChat(t, agent, landing{title: "the evidence page", report: "put up the evidence page"})
@@ -245,7 +245,7 @@ func TestAChatsWakeForALandedTaskCarriesTheMergeOutcome(t *testing.T) {
 			return textResponse("it is on your branch"), nil
 		},
 	}}
-	answerTheNamerOffTheQueue(completer)
+	answerTheReadingsOffTheQueue(completer)
 	agent, _ := newTestAgent(t, completer, nil)
 
 	landOnTheChat(t, agent, landing{
@@ -283,7 +283,7 @@ func TestAChatsWakeForAYourCallLandingAsksForTheDecision(t *testing.T) {
 			return textResponse("I would take it"), nil
 		},
 	}}
-	answerTheNamerOffTheQueue(completer)
+	answerTheReadingsOffTheQueue(completer)
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.AskConsent = true
 		config.TaskSettle = string(TaskSettleAsk)

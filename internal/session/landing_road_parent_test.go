@@ -87,7 +87,7 @@ func TestAQuickChildsDoneNoteReachesTheParentWorkerAndBuysItARound(t *testing.T)
 			return textResponse("folded the reading in"), nil
 		},
 	}}
-	answerTheNamerOffTheQueue(completer)
+	answerTheReadingsOffTheQueue(completer)
 	nest := newNest(t, completer, nil)
 	parentAgent = nest.node
 	nest.graph.run = landsQuickChildren(&parentAgent, release,
@@ -163,7 +163,7 @@ func TestAQuickChildThatRanOutOfRoundsStillBuysTheParentARound(t *testing.T) {
 			return textResponse("it did not come back; I will read the file myself"), nil
 		},
 	}}
-	answerTheNamerOffTheQueue(completer)
+	answerTheReadingsOffTheQueue(completer)
 	nest := newNest(t, completer, nil)
 	parentAgent = nest.node
 	nest.graph.run = landsQuickChildren(&parentAgent, release,
@@ -287,7 +287,7 @@ func TestAChildLandingAfterItsParentSettledReachesTheConversation(t *testing.T) 
 // nobody is driving is COUNTED and queued and nothing else.
 func TestAChildsNoteQueuesOnTheParentWorkerWithoutStartingATurn(t *testing.T) {
 	completer := &scriptedCompleter{}
-	answerTheNamerOffTheQueue(completer)
+	answerTheReadingsOffTheQueue(completer)
 	nest := newNest(t, completer, nil)
 	nest.handOut(t, "read the law")
 	kid := nest.graph.children(nest.parent.id)[0]

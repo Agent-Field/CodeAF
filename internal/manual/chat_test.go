@@ -35,6 +35,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why can't it make pictures any more", "services"},
 		{"how do I remove a key", "services"},
 		{"can I use ollama", "services"},
+		{"I exported the model service key after the engine started", "services"},
+		{"why does /connect say connections are unavailable", "accounts"},
+		{"connect says unavailable on my own machine", "accounts"},
+		{"credentials.json is damaged but where are my models", "accounts"},
 		// The questions object (docs/design/questions/DESIGN.md), asked the
 		// six ways somebody meets it: the shapes, the clock, the record, the
 		// refusals, answering from elsewhere, and what is not built.
@@ -1794,6 +1798,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does taking stock mean", "screen"},
 		{"the status line went blank while it was still working", "screen"},
 		{"does a slow stage stop being shown", "screen"},
+		// AND WHAT RUNS BEFORE THE ANSWER, which is the question the pre-turn gate
+		// left a person no way to ask. `preparing saved context` used to be on the
+		// screen for a measured four seconds before the first token of every
+		// message; it is gone, the readings run beside the answer, and somebody who
+		// remembers the wait — or who is simply asking why a reply takes as long as
+		// it does to start — asks one of these.
+		{"what happens when I send a message", "screen"},
+		{"what runs before my answer", "screen"},
+		{"why is it slow before it starts answering", "screen"},
+		{"does anything run before the model is asked", "screen"},
+		{"what does checking whether this is safe to run mean", "screen"},
 		// THE ANSWER HIERARCHY (internal/tui3's hierarchy.go). A turn's narration
 		// now recedes into the work column at a quieter shade and only the block
 		// the turn ended on is drawn as the answer, so somebody looking at a reply
