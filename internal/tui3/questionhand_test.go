@@ -355,3 +355,101 @@ func TestTheNextQuestionDoesNotInheritTheHand(t *testing.T) {
 // half these tests on a different answer than the one they are about; the two
 // tests above are where the rule itself is held.
 func aimed(a *app) { a.aimQuestion() }
+
+// ── THE DOOR TAKES A LIST ───────────────────────────────────────────────────
+//
+// One frame can hold several questions — a step that asks for three permissions
+// at once is one thing to decide (lane P's grouped frame) — and the person
+// answering it makes one gesture. [app.answerQuestions] is that gesture: every
+// row settles on the keystroke, the doors are asked in order on ONE goroutine
+// off the loop, and a refusal comes back against its own row.
+
+// batchLab raises n questions and hands back the lab and what to answer them
+// with.
+func batchLab(t *testing.T, n int) (*questionLab, []questionAnswer) {
+	t.Helper()
+	lab := newQuestionLab(t)
+	all := make([]questionAnswer, 0, n)
+	for i := 0; i < n; i++ {
+		q := session.Question{
+			ID: uint64(9200 + i), Kind: session.QuestionConsent, Ask: session.AskPermission,
+			Head:  "run the migration step " + itoa(i+1) + "?",
+			Asker: session.Asker{Kind: session.AskerModel},
+			Options: []session.AnswerOption{
+				{Key: "1", Label: "allow once"},
+				{Key: "2", Label: "deny"},
+			},
+		}
+		lab.raise(q)
+		head := lab.a.questions[len(lab.a.questions)-1]
+		all = append(all, questionAnswer{q: head, answer: session.Answer{Key: "1", Picked: []string{"1"}}})
+	}
+	lab.tick(questionSettle * 2)
+	lab.rows()
+	return lab, all
+}
+
+func TestOneCommandCarriesEveryAnswerInTheFrame(t *testing.T) {
+	lab, all := batchLab(t, 3)
+	lab.spend(lab.a.answerQuestions(all))
+	if len(lab.answer) != 3 {
+		t.Fatalf("the door was told %d answers, want all three: %+v", len(lab.answer), lab.answer)
+	}
+	for i, answer := range lab.answer {
+		if want := uint64(9200 + i); answer.ID != want {
+			t.Fatalf("answer %d went to question %d, want %d", i, answer.ID, want)
+		}
+		if answer.Key != "1" {
+			t.Fatalf("answer %d sent %q", i, answer.Key)
+		}
+	}
+	// AND EVERY ROW SETTLED ON THE KEYSTROKE, before the door said anything.
+	if len(lab.a.questions) != 0 {
+		t.Fatalf("%d questions are still on the block", len(lab.a.questions))
+	}
+}
+
+// AND THE DOOR IS ASKED ONCE, OFF THE LOOP. Three answers are three calls on one
+// goroutine and one pass back, not three commands and three frames.
+func TestTheListIsOneTripOffTheLoop(t *testing.T) {
+	lab, all := batchLab(t, 3)
+	cmd := lab.a.answerQuestions(all)
+	if cmd == nil {
+		t.Fatal("the list handed back no command, so nothing would ever be sent")
+	}
+	if len(lab.answer) != 0 {
+		t.Fatalf("the door was asked from the update loop: %+v", lab.answer)
+	}
+	msgs := runCmd(cmd)
+	if len(msgs) != 1 {
+		t.Fatalf("the list became %d messages, want one door trip", len(msgs))
+	}
+	if len(lab.answer) != 3 {
+		t.Fatalf("one trip carried %d answers, want three", len(lab.answer))
+	}
+	drive(t, lab.a, msgs...)
+}
+
+// AND ONE REFUSAL AMONG SEVERAL SAYS NOTHING ABOUT THE REST: the answers that
+// were taken stay taken, and the one that was not comes back with the engine's
+// own sentence.
+func TestARefusalInAFrameOnlyPutsItsOwnQuestionBack(t *testing.T) {
+	lab, all := batchLab(t, 3)
+	lab.agent.answer = func(answer session.Answer) error {
+		lab.answer = append(lab.answer, answer)
+		if answer.ID == 9201 {
+			return errQuestionTest
+		}
+		return nil
+	}
+	lab.spend(lab.a.answerQuestions(all))
+	if len(lab.a.questions) != 1 {
+		t.Fatalf("the block holds %d questions, want only the refused one", len(lab.a.questions))
+	}
+	if got := lab.a.questions[0].question.ID; got != 9201 {
+		t.Fatalf("the block put back question %d, want the refused 9201", got)
+	}
+	if said := plain(lastNote(t, lab.a)); !strings.Contains(said, errQuestionTest.Error()) {
+		t.Fatalf("the engine's refusal never reached the person: %q", said)
+	}
+}

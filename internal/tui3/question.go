@@ -2425,6 +2425,133 @@ func questionDropClause(clauses []session.DecisionClause) ([]session.DecisionCla
 // the engine applied the key, this window was told the connection was gone,
 // and nothing on screen said so.
 func (a *app) answerQuestion(q questionShown, answer session.Answer) tea.Cmd {
+	return a.answerQuestions([]questionAnswer{{q: q, answer: answer}})
+}
+
+// questionAnswer is one question and the answer it is being given.
+type questionAnswer struct {
+	q      questionShown
+	answer session.Answer
+}
+
+// answerQuestions sends SEVERAL answers through the one door in ONE command,
+// and is the road [app.answerQuestion] takes for its single one — there is no
+// second answering path.
+//
+// IT TAKES A LIST BECAUSE ONE FRAME CAN HOLD SEVERAL QUESTIONS. A step that
+// asks for three permissions at once is drawn as one thing to decide (the
+// grouped frame, lane P), and the person answering it is making one gesture; a
+// loop of single answers would be as many round trips as there are rows, each
+// one a separate command, with the refusals arriving over several frames. Here
+// every row settles on the keystroke, the doors are asked in order on ONE
+// goroutine off the loop, and whatever was refused comes back on one pass with
+// its own sentence against its own row.
+//
+// THE ONE DOOR IS THE ENGINE'S ([session.Agent.ResolveQuestion]) for every
+// question the engine raised, and the question's own closure for the ones this
+// surface raised about itself. There is no third path and no place that knows
+// what "yes" means twice.
+//
+// A REFUSED ANSWER LEAVES THE QUESTION OPEN, AND SAYS SO. The engine's door
+// returns an error for an answer that names nothing and for a lane it does not
+// take; neither is a decision, so neither closes anything and neither writes a
+// receipt. Swallowing that sentence was the other half of the measured defect:
+// the engine applied the key, this window was told the connection was gone,
+// and nothing on screen said so.
+func (a *app) answerQuestions(all []questionAnswer) tea.Cmd {
+	if len(all) == 0 {
+		return nil
+	}
+	var cmds []tea.Cmd
+	var sending []questionAnswer
+	var door questionResolver
+	for _, one := range all {
+		q := one.q
+		answer := a.dressAnswer(q, one.answer)
+		if q.answered != nil {
+			// THE LANE'S OWN HAND, BEFORE THE DOOR. Whatever this PROGRAM does
+			// about an answer happens here — a rule written into the person's
+			// settings, the transcript row annotated with what was decided — and
+			// what comes back is the answer the engine is actually told, which is
+			// how a permission the surface has already written down stops a wider
+			// one being written beside it ([questionShown.answered]).
+			answer = q.answered(answer)
+		}
+		if q.local != nil {
+			cmds = append(cmds, q.local(answer))
+		} else {
+			if door == nil {
+				resolver, ok := a.agent.(questionResolver)
+				if !ok || resolver == nil {
+					// NOTHING IS SETTLED BY A WINDOW WITH NO DOOR. The row stays
+					// where it is rather than closing over an answer that reached
+					// nobody.
+					continue
+				}
+				door = resolver
+			}
+			// THE SENDING IS REMEMBERED BEFORE THE DOOR IS ASKED, AND THAT ORDER
+			// IS THE WHOLE POINT. The engine runs in its own process even on this
+			// machine, so this call crosses a wire: it applies the answer, emits
+			// [session.EventQuestionAnswered], and only then writes its reply
+			// back. The news of that settling comes down the questions lane
+			// looking exactly like somebody else's answer, and this stamp is what
+			// tells the two apart ([app.markQuestionSent]).
+			a.markQuestionSent(q.token(), answer.Keys())
+			sending = append(sending, questionAnswer{q: q, answer: answer})
+		}
+		if !session.AnswerResolves(answer) {
+			// AN ANSWER THAT DID NOT END THE QUESTION LEAVES IT ON THE BLOCK.
+			// Two answers on this surface send WORDS rather than settle anything
+			// — `tell it` steers a landed task, `change it` hands a finished
+			// design back to its designer — and the engine goes on holding the
+			// lane for both ([session.AnswerResolves] is the one reading). A
+			// block that cleared its rows and wrote a receipt here would tell a
+			// person a decision had been made while the thing that has to decide
+			// it went on waiting for them.
+			a.touch()
+			continue
+		}
+		a.closeQuestion(q, answer)
+	}
+	if len(sending) > 0 {
+		// AND THE DOOR IS ASKED FROM A COMMAND, NEVER FROM HERE (offloop.go).
+		// This runs inside Update, and a wire call made here is a window that
+		// cannot draw, cannot take a key, and cannot read the news its own
+		// answer caused — which deadlocked the reader against this loop and cost
+		// a person ten seconds per keystroke (doorbell.go has the measurement).
+		// The screen is settled above on this pass; the engine is told on the
+		// next goroutine; a refusal comes back and puts that question back.
+		cmds = append(cmds, a.offLoop(func() func(bool) tea.Cmd {
+			refused := make([]error, len(sending))
+			for i, one := range sending {
+				refused[i] = door.ResolveQuestion(one.answer)
+			}
+			return func(here bool) tea.Cmd {
+				if !here {
+					return nil
+				}
+				for i, err := range refused {
+					if err == nil {
+						continue
+					}
+					// A REFUSED ANSWER LEAVES ITS OWN QUESTION OPEN, AND SAYS SO,
+					// in the door's own words ([app.reopenQuestion]). One refusal
+					// among several says nothing about the rest: the answers that
+					// were taken stay taken.
+					a.reopenQuestion(sending[i].q, sending[i].answer, err)
+				}
+				return nil
+			}
+		}))
+	}
+	return tea.Batch(cmds...)
+}
+
+// dressAnswer puts on an answer everything the QUESTION knows and the key that
+// sent it does not: which question it is about, when, who by, and whatever the
+// shape's own holes were filled with.
+func (a *app) dressAnswer(q questionShown, answer session.Answer) session.Answer {
 	answer.Kind = q.question.Kind
 	answer.ID = q.question.ID
 	answer.Ref = q.question.Ref
@@ -2443,64 +2570,7 @@ func (a *app) answerQuestion(q questionShown, answer session.Answer) tea.Cmd {
 	if q.holes.kind != session.InputNone {
 		q.holes.fill(&answer)
 	}
-	if q.answered != nil {
-		// THE LANE'S OWN HAND, BEFORE THE DOOR. Whatever this PROGRAM does about
-		// an answer happens here — a rule written into the person's settings, the
-		// transcript row annotated with what was decided — and what comes back is
-		// the answer the engine is actually told, which is how a permission the
-		// surface has already written down stops a wider one being written beside
-		// it ([questionShown.answered]).
-		answer = q.answered(answer)
-	}
-	var cmd tea.Cmd
-	if q.local != nil {
-		cmd = q.local(answer)
-	} else {
-		door, ok := a.agent.(questionResolver)
-		if !ok || door == nil {
-			return nil
-		}
-		// THE SENDING IS REMEMBERED BEFORE THE DOOR IS ASKED, AND THAT ORDER IS
-		// THE WHOLE POINT. The engine runs in its own process even on this
-		// machine, so this call crosses a wire: it applies the answer, emits
-		// [session.EventQuestionAnswered], and only then writes its reply back.
-		// The news of that settling comes down the questions lane looking
-		// exactly like somebody else's answer, and this stamp is what tells the
-		// two apart ([app.markQuestionSent]).
-		a.markQuestionSent(q.token(), answer.Keys())
-		// AND THE DOOR IS ASKED FROM A COMMAND, NEVER FROM HERE (offloop.go).
-		// This runs inside Update, and a wire call made here is a window that
-		// cannot draw, cannot take a key, and cannot read the news its own
-		// answer caused — which deadlocked the reader against this loop and cost
-		// a person ten seconds per keystroke (doorbell.go has the measurement).
-		// The screen is settled below on this pass; the engine is told on the
-		// next goroutine; a refusal comes back and puts the question back.
-		cmd = tea.Batch(cmd, a.offLoop(func() func(bool) tea.Cmd {
-			err := door.ResolveQuestion(answer)
-			return func(here bool) tea.Cmd {
-				if err == nil || !here {
-					return nil
-				}
-				// A REFUSED ANSWER LEAVES THE QUESTION OPEN, AND SAYS SO, in
-				// the door's own words ([app.reopenQuestion]).
-				a.reopenQuestion(q, answer, err)
-				return nil
-			}
-		}))
-	}
-	if !session.AnswerResolves(answer) {
-		// AN ANSWER THAT DID NOT END THE QUESTION LEAVES IT ON THE BLOCK. Two
-		// answers on this surface send WORDS rather than settle anything — `tell
-		// it` steers a landed task, `change it` hands a finished design back to
-		// its designer — and the engine goes on holding the lane for both
-		// ([session.AnswerResolves] is the one reading). A block that cleared its
-		// rows and wrote a receipt here would tell a person a decision had been
-		// made while the thing that has to decide it went on waiting for them.
-		a.touch()
-		return cmd
-	}
-	a.closeQuestion(q, answer)
-	return cmd
+	return answer
 }
 
 // closeQuestion takes an answered question off the block, writes its receipt,
