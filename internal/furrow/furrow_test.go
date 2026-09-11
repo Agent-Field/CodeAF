@@ -819,8 +819,8 @@ func TestAttachOpensAFolderNobodyWatched(t *testing.T) {
 	// does.
 	t.Setenv("FURROW_FAKE", "")
 	Forget()
-	if workspace := Attach(ctx, root); workspace == nil {
-		t.Fatal("Attach did not open the folder it attached")
+	if workspace, err := Attach(ctx, root); workspace == nil {
+		t.Fatalf("Attach did not open the folder it attached: %v", err)
 	}
 }
 
@@ -870,7 +870,7 @@ esac
 		waiting.Add(1)
 		go func(at int) {
 			defer waiting.Done()
-			opened[at] = Attach(ctx, root)
+			opened[at], _ = Attach(ctx, root)
 		}(i)
 	}
 	waiting.Wait()
@@ -883,7 +883,86 @@ esac
 
 func TestAttachIsNilWithNoFurrowAtAll(t *testing.T) {
 	removeFake(t)
-	if workspace := Attach(context.Background(), t.TempDir()); workspace != nil {
+	workspace, err := Attach(context.Background(), t.TempDir())
+	if workspace != nil {
 		t.Fatal("Attach opened a workspace on a machine with no furrow")
+	}
+	if !errors.Is(err, ErrNotHere) {
+		t.Fatalf("Attach error = %v, want %v: nothing ran, so there is nothing else to say", err, ErrNotHere)
+	}
+	if Program() != "" {
+		t.Fatalf("Program() = %q on a machine with no furrow", Program())
+	}
+}
+
+// A FORK THAT HANGS IS CUT BY ITS BOUND. The harness forks a workspace in front
+// of a task's first model request (internal/session's groundladder.go), so a
+// furrow that never answers was a task that never started: every other call on
+// that road had a bound and this one had none. The fake replaces itself with a
+// sleep that would outlive the test, and the bound is shortened for it the way
+// [embedded] is swapped — so what is proven is that the call gives up, not that
+// a minute passes.
+func TestAForkThatHangsIsCut(t *testing.T) {
+	installFake(t, "")
+	ctx := context.Background()
+	workspace := Open(ctx, t.TempDir())
+	if workspace == nil {
+		t.Fatal("Open returned nil")
+	}
+	hanging := filepath.Join(t.TempDir(), Binary)
+	if err := os.WriteFile(hanging, []byte("#!/bin/sh\nexec sleep 30\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	workspace.binary = hanging
+	restore := wholeWorkspaceTimeout
+	wholeWorkspaceTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { wholeWorkspaceTimeout = restore })
+
+	began := time.Now()
+	if _, err := workspace.Fork(ctx, "ground", "/w/ground"); err == nil {
+		t.Fatal("a furrow that never answered was read as a fork")
+	}
+	if took := time.Since(began); took > 10*time.Second {
+		t.Fatalf("the fork took %s to give up; its bound did not cut it", took)
+	}
+}
+
+// AN ATTACH THAT COULD NOT BE MADE SAYS WHY, in furrow's own words. The caller
+// falls to its rung below either way; what changed is that the reason survives,
+// because a machine where every task paid for an attach that never worked was a
+// machine nobody could explain.
+func TestAnAttachThatFailedSaysWhy(t *testing.T) {
+	dir := t.TempDir()
+	carryNothing(t)
+	if err := os.WriteFile(filepath.Join(dir, Binary), []byte(`#!/bin/sh
+if [ "$1" = "--version" ]; then echo "furrow 0.1.0"; exit 0; fi
+shift 3
+case "$1" in
+status) echo "Error: this repository is not watched" >&2; exit 1 ;;
+watch) echo "Error: the store is over its budget" >&2; exit 1 ;;
+*) exit 2 ;;
+esac
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+"/usr/bin"+string(os.PathListSeparator)+"/bin")
+	t.Setenv(BinaryEnvVar, "")
+	Forget()
+	t.Cleanup(Forget)
+
+	workspace, err := Attach(context.Background(), t.TempDir())
+	if workspace != nil {
+		t.Fatal("a refused attach opened a workspace")
+	}
+	if err == nil || !strings.Contains(err.Error(), "the store is over its budget") {
+		t.Fatalf("Attach error = %v, want furrow's own sentence", err)
+	}
+	if errors.Is(err, ErrNotHere) {
+		t.Fatal("a furrow that ran and said no was reported as no furrow at all")
+	}
+	// And the program it ran is nameable, which is what a caller keys a memory of
+	// this refusal on.
+	if program := Program(); !strings.Contains(program, filepath.Join(dir, Binary)) {
+		t.Fatalf("Program() = %q, want the furrow on PATH", program)
 	}
 }

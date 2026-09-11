@@ -258,24 +258,29 @@ wrote — and your own copy of them is never touched.
 **When it cannot be done that way**, the task falls back to a copy made by git, and then
 what your `.gitignore` covers is the one thing it does not have. Two reasons:
 
-- furrow could not take that folder on this machine — the binary will not run, the folder
-  will not attach, the fork failed. Nothing is refused and nothing is reported: the copy is
-  simply made the other way.
+- furrow could not take that folder on this machine — it would not attach, the fork
+  failed, or either step took longer than its bound (attaching and forking each get a
+  minute, so the longest wait is about two). The task's log says so, with furrow's reason
+  and the cost: `a fork of the whole folder was tried and could not be made`. aforge then
+  **stops trying on that folder** — later tasks say `a fork of the whole folder was not
+  tried`, with that reason and when it last failed — until aforge or the furrow it carries
+  is updated. If it was your folder that changed (a hook removed, signing turned off),
+  delete its line from `~/.aforge/v3/universe-falls.json` and the next task tries again.
 - the folder is a **linked worktree** — its `.git` is a file naming another repository
   rather than a directory of its own. aforge never copies one of those whole, because a
   byte-exact copy would write the task's commits into the repository that file points at
   and move a checkout you are standing in.
 
-Everything else is the same either way: your uncommitted edits and your untracked files
-travel on both roads, the task works on `task/<title>-<6 hex>`, and its work comes home as
-a merge into your branch — unless the checkout is protected, detached, on another branch,
-or on a commit you moved after the cut, in which case the branch is kept and named for you
-instead. Commits from aforge's own landings do not count as you moving it.
+Everything else is the same either way: your uncommitted edits and untracked files travel
+on both roads, the task works on `task/<title>-<6 hex>`, and its work comes home as a merge
+into your branch — unless the checkout is protected, detached, on another branch, or on a
+commit you moved after the cut, in which case the branch is kept and named for you instead.
+Commits from aforge's own landings do not count as you moving it.
 
-**To see which one a task got,** open its page: the first line of its log says what world
-it worked in — `its world is a fork of <folder> as it stood, taken whole` for the whole
-copy, and `its world is a branch off <folder> as it stood, uncommitted work included` for
-the git one.
+**To see which one a task got,** open its page: the log says what world it worked in —
+`its world is a fork of <folder> as it stood, taken whole` for the whole copy, and `its
+world is a branch off <folder> as it stood, uncommitted work included` for the git one —
+and then `its world was made in <time>`.
 
 **Copying your folder whole writes one thing into it:** a `.furrow/` directory, which
 furrow keeps its own ids in. aforge adds that name to your repository's

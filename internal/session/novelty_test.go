@@ -143,7 +143,7 @@ func TestAResultWhoseOnlyNewLineIsItsClockTeachesNothing(t *testing.T) {
 // slightly differently, because the clock lives in the script and not in the
 // call. The counter file is under $HOME rather than in the node's worktree —
 // a node that dirtied its own tree every step would be making progress by the
-// only rule that cannot be argued with ([worktreeMoved]), and this test would be
+// only rule that cannot be argued with ([treeWatch]), and this test would be
 // measuring nothing.
 //
 // AND IT IS THE COUNTER'S OWN SENTENCE THAT IS ASSERTED. This used to read the
