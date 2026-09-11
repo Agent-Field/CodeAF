@@ -896,6 +896,17 @@ func taskAskOf(facts TaskFacts) TaskAsk {
 // every surface already carries the report, so the row, the card, the note and
 // a record read back off the disk tomorrow all come to the same sentence with no
 // field of their own to disagree about.
+//
+// THE INVARIANT THAT KEEPS THAT TRUE HAS TWO HALVES, and the second is the one
+// worth writing down. [auditVerdict.lookOutcome] is the only composer that puts
+// this lead on a report, and it puts it there whenever the clock decided
+// ([auditVerdict.ranOut]). The other composer of a non-answer, `takenAsItStands`,
+// leads with its own sentence — and it never reaches this reader, because the
+// landing it writes is the unattended run's TaskDone (task_run.go's
+// [Agent.landUnchecked]) and a done landing asks nobody anything. A third
+// composer, or a your-call road that did not go through lookOutcome, would read
+// here as "nobody could check it" whatever the clock did; checkwindow_test.go's
+// TestTheClockLeadIsWrittenOnceAndReadBack is where that is held.
 func taskCheckReason(report string) string {
 	if strings.HasPrefix(strings.TrimSpace(report), taskAskTimeReason) {
 		return taskAskTimeReason

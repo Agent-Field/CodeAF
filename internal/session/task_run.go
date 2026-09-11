@@ -6795,17 +6795,13 @@ func taskReport(child *Agent) string {
 // composes and what the auditor's verdict is parsed out of (task_audit.go) — a
 // verdict is four lines and an ordinary report is three, and cutting before the
 // parse would be the harness deciding a verdict was too long to read.
-func lastSaid(child *Agent) string {
-	entries := child.Transcript()
-	for index := len(entries) - 1; index >= 0; index-- {
-		entry := entries[index]
-		if entry.Role != "assistant" || strings.TrimSpace(entry.Text) == "" {
-			continue
-		}
-		return entry.Text
-	}
-	return ""
-}
+//
+// IT IS ONE READ WITH [saidSince], over the whole transcript instead of over its
+// tail. The two questions differ by a floor and by nothing else — "what did it
+// say" and "what did it say after it was asked again" — and written twice they
+// would be two answers to "what counts as having said something", which is the
+// one judgement a verdict is parsed out of.
+func lastSaid(child *Agent) string { return saidSince(child, 0) }
 
 // composeTaskReport keeps the ordinary three-line report small while carrying
 // a fenced block that begins there. A REPORT NEVER LEAVES AN OPENING FENCE

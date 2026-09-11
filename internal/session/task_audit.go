@@ -462,7 +462,7 @@ func yourCallLead(facts TaskFacts) string {
 //
 // Several of the checker's own sentences already open with the question, because
 // each has to carry its own subject where it is quoted alone ([takenAsItStands]):
-// [checkerAskedTwice] opens "nobody could check it", and [checkerRanOut] and
+// [auditVerdict.twice] opens "nobody could check it", and [checkerRanOut] and
 // [checkerWindowClosedAlone] open "the check ran out of time". Where the account
 // already opens with the question, THE ACCOUNT IS THE LEAD — anything else is one
 // sentence stuttering, which is what a lead and an account written a year apart
@@ -958,8 +958,8 @@ func (v auditVerdict) andTheWindowClosed() auditVerdict {
 		// WITH NOTHING BESIDE IT, THE CLAUSE NEEDS ITS SUBJECT BACK. "the window
 		// closed before a second" is a tail on a call's own account and reads as
 		// half a sentence on its own — and half a sentence about time running out
-		// is one a person takes for a deadline they missed ([checkerAskedTwice]
-		// is the same repair on the same family).
+		// is one a person takes for a deadline they missed ([askedTwice] is
+		// the same repair on the same family).
 		return noVerdict(checkerWindowClosedAlone, "").ranOutOfTime()
 	}
 	evidence := append([]string{}, v.evidence...)
@@ -973,22 +973,22 @@ func (v auditVerdict) onTheSecondTry() auditVerdict {
 	return v
 }
 
-// checkerAskedTwice is what a person reads when both calls were made and
-// neither came back, and IT NAMES WHO COULD NOT ANSWER.
+// askedTwice is what a person reads when both calls were made and neither came
+// back, and IT IS A CLAUSE WITH NO SUBJECT OF ITS OWN — [auditVerdict.twice]
+// puts one in front of it, and is the only place that composes this sentence.
 //
-// It used to read "asked twice and got no answer either time", which has no
-// subject in it at all — and a person reading an unattributed clause on their
+// It used to read "asked twice and got no answer either time", said whole, with
+// no subject in it at all — and a person reading an unattributed clause on their
 // own card reads it as being about themselves: asked twice, by whom, and did I
 // miss it? Nobody was asked anything. Two checking calls were made and neither
 // said a word, which is [checkerRanOut]'s law applied to the one line in this
 // family that never got it: say who could not answer, and stop there.
 //
-// ITS SUBJECT IS THE LAST CALL'S. Two calls that were cut by the clock open with
-// the time ([auditVerdict.subject]); every other pair opens with the question.
-// This constant is the second, spelled whole for the readers that quote it.
-const checkerAskedTwice = taskAskCheckReason + yourCallDash + askedTwice
-
-// askedTwice is the clause itself, with no subject of its own.
+// ITS SUBJECT IS THE LAST CALL'S, and that is why the whole sentence is not a
+// constant. Two calls the clock cut open with the time and every other pair
+// opens with the question ([auditVerdict.subject]), so a spelled-out pair would
+// be one of the two roads written twice — and the one that was spelled out was
+// read by nothing but its own tests.
 const askedTwice = "asked twice, and neither call answered"
 
 // twice re-tells a non-verdict as the SECOND one it is. Whether the harness
@@ -1165,8 +1165,8 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 //   - the second stalled as the window closed → the second's own stall account
 //   - the second could not be made (window already under the floor) → the
 //     FIRST attempt's account plus the window-closed clause — never
-//     [checkerAskedTwice] over [checkerRanOut], which would claim two calls
-//     when only one ran (#803)
+//     [askedTwice] over [checkerRanOut], which would claim two calls when only
+//     one ran (#803)
 //   - the second ran and also did not answer, with room left → [twice]
 func secondAuditOutcome(first, second auditVerdict, secondAgain bool, log io.Writer) auditVerdict {
 	if second.answered {
@@ -1417,8 +1417,9 @@ func (a *Agent) askForTheWord(ctx context.Context, auditor *Agent, pace auditPac
 	return parseAuditVerdict(saidSince(auditor, from))
 }
 
-// saidSince is [lastSaid] over only the entries a checker's transcript gained
-// after `from`, and "" when it said nothing new.
+// saidSince is the last thing a child said among the entries its transcript
+// gained after `from`, and "" when it said nothing new. [lastSaid] is this read
+// with no floor at all, which is what makes the two one read.
 func saidSince(child *Agent, from int) string {
 	entries := child.Transcript()
 	for index := len(entries) - 1; index >= from && index >= 0; index-- {

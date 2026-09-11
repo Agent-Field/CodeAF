@@ -3,12 +3,14 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"math"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -328,6 +330,97 @@ func TestACutCheckIsAskedForItsWordOverWhatItRead(t *testing.T) {
 	}
 }
 
+// A CHECK CUT WHILE ITS TOOL WAS STILL RUNNING IS ASKED OVER A TRANSCRIPT THE
+// PROVIDER WILL TAKE.
+//
+// The sibling above cuts BETWEEN rounds, which is the easy half: the reply is
+// text or nothing, and there is nothing half-written to leave behind. This one
+// cuts in the middle of a tool round, which is the case the ask road is actually
+// reached from — [Agent.afterTheCut] sends the same checker back whenever it
+// holds a tool receipt, and a tool receipt is exactly what a running tool is
+// about to become.
+//
+// THE TURN LOOP IS WHAT MAKES THAT SAFE, AND IT IS ONE LINE: a batch whose tools
+// were cut still records a tool message for every call it issued (loop.go, the
+// loop under `results := a.runToolsWarm`), so the transcript the second ask
+// rides has no assistant tool_call without its answer. The ONE exit that writes
+// nothing is `abandoned(ctx)` (loop.go's read of [abandoned]) — a turn the
+// session let go of because a person started another one — and a deadline is
+// never that. What is asserted here is the property rather than the line: every
+// call in the second ask's messages is paired, which is what a provider 400s on
+// when it is not true.
+func TestACheckCutMidToolIsAskedOverATranscriptThatPairs(t *testing.T) {
+	started := make(chan struct{})
+	said := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("verify-1", "verify", `{}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("VERIFIED — the check ran and the greeting is there"), nil
+		},
+	}}
+	checker, _ := newTestAgent(t, said, nil)
+	checker.tools = []bare.Tool{blockingTool("verify", started)}
+	parent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+
+	// THE CUT LANDS INSIDE THE TOOL because the tool never returns: the scripted
+	// reply is instant, the call starts at once, and the window is what ends the
+	// round. Nothing here sleeps — the bound IS the clock.
+	asked, done := openCallWindow(context.Background(), 300*time.Millisecond, callWindow{})
+	events, err := checker.Submit(asked, "check the work against the acceptance")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	for range events {
+	}
+	<-started
+	if asked.Err() == nil {
+		t.Fatal("the window did not cut the call; this test is about nothing")
+	}
+	done()
+
+	// The branch the production road takes: a checker holding a tool receipt is
+	// asked for its word rather than replaced ([Agent.afterTheCut]).
+	if len(lastToolReceipts(checker, 1)) == 0 {
+		t.Fatal("a checker cut in the middle of its tool round kept no receipt, so the ask road is never reached")
+	}
+
+	pace := newAuditPace(auditReadingDeadline, parent.now())
+	answer := parent.askForTheWord(context.Background(), checker, pace, io.Discard)
+	if !answer.answered || !answer.verified {
+		t.Fatalf("the ask after a mid-tool cut was not answered (answered %v, verified %v): %s",
+			answer.answered, answer.verified, answer.report())
+	}
+	second := said.request(1)
+	if len(second) == 0 {
+		t.Fatal("the second ask never left")
+	}
+	if last := messageText(second[len(second)-1]); !strings.Contains(last, auditNudge) {
+		t.Fatalf("the ask after the cut was not the demand for the word:\n%s", last)
+	}
+	// EVERY CALL IS ANSWERED IN THE MESSAGES THAT WENT OUT. A tool_call with no
+	// tool message under it is the 400 this whole road would die of.
+	answered := map[string]bool{}
+	for _, message := range second {
+		if strings.EqualFold(message.Role, "tool") {
+			answered[message.ToolCallID] = true
+		}
+	}
+	calls := 0
+	for _, message := range second {
+		for _, call := range message.ToolCalls {
+			calls++
+			if !answered[call.ID] {
+				t.Fatalf("the ask after a mid-tool cut carries call %q with no result under it; "+
+					"the transcript it rides is one a provider refuses", call.ID)
+			}
+		}
+	}
+	if calls == 0 {
+		t.Fatal("the second ask carries no call at all, so the cut tool round is not in front of the checker")
+	}
+}
+
 // A CHECK THE CLOCK CUT READS AS THE CLOCK, AND ONLY THAT ONE DOES.
 //
 // Both calls are cut before the checker has read anything, so there is nothing
@@ -415,6 +508,21 @@ func TestTheClockLeadIsWrittenOnceAndReadBack(t *testing.T) {
 	if twice := noVerdict(checkerStalled(29*time.Second), "").ranOutOfTime().twice(); !strings.HasPrefix(twice.evidence[0], taskAskTimeReason+yourCallDash+askedTwice) {
 		t.Fatalf("two cut calls read %q", twice.evidence[0])
 	}
+	// AND THE OTHER COMPOSER OF A NON-ANSWER NEVER WRITES THIS LEAD. An
+	// unattended run takes the work as it stands and lands it DONE
+	// (task_run.go's [Agent.landUnchecked]), so its prose is never read for the
+	// check's question — which is the whole reason reading the lead is safe.
+	// A road that landed takenAsItStands' words on a your-call node would ask
+	// "nobody could check it" over a clock that ran out, and this is where that
+	// is caught.
+	taken := takenAsItStands(noVerdict(checkerStalled(30*time.Second), "").ranOutOfTime())
+	if strings.HasPrefix(taken, taskAskTimeReason) || strings.HasPrefix(taken, taskAskCheckReason) {
+		t.Fatalf("the unattended landing opens with a your-call lead, which only lookOutcome writes:\n%s", taken)
+	}
+	if !strings.HasPrefix(taken, takenAsItStandsLead) {
+		t.Fatalf("the unattended landing opens with %q, want the take's own lead %q", taken, takenAsItStandsLead)
+	}
+
 	// THE CONTROL: a checker that could not start is not the clock.
 	failed := noVerdict("the checker could not start: no model", "").lookOutcome(TaskFacts{})
 	if !strings.HasPrefix(failed, taskAskCheckReason+yourCallDash) {

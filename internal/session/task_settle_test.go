@@ -444,7 +444,7 @@ func TestASecondCallTheWindowRefusedIsNotSaidToHaveBeenAsked(t *testing.T) {
 	if strings.Contains(notice.Report, checkerRanOut(window)) {
 		t.Fatalf("the report quotes the window at a checker nobody asked:\n%s", notice.Report)
 	}
-	if strings.Contains(notice.Report, checkerAskedTwice) {
+	if strings.Contains(notice.Report, askedTwice) {
 		t.Fatalf("the report says two calls were made and the window refused the second:\n%s", notice.Report)
 	}
 }

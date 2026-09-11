@@ -1932,7 +1932,8 @@ one of those files — or what was left of the work turned out to be something n
 do at all, which stops the task's worker and lands this way (*A task that landed needing
 your look without doing anything*). The task is neither done nor incomplete: nothing merges,
 the branch is kept, and nothing waiting on it fails. The reason beside the word is one of
-the six on the tasks page — `nobody could check it` or `the check ran out of time`, `the check did not pass it: <gaps>`,
+the six questions on the tasks page, and two of those questions have more than one sentence —
+`nobody could check it` or `the check ran out of time`, `the check did not pass it: <gaps>`,
 `conflicts with your branch: <files>`, `your branch changed the same files while it worked:
 <files>`, `design ready to approve`, `starts on your word`, `paused at the <amount> cap` —
 and each carries its own two answers.
