@@ -660,6 +660,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how long does sizing the work take", "how-tasks-run"},
 		{"what does briefing a worker mean", "how-tasks-run"},
 		{"it said briefing a worker and nothing appeared", "how-tasks-run"},
+		// And the request the reading is waiting on, now that it is drawn: asked
+		// by somebody looking at a figure beside the sizing word.
+		{"sizing the work says thinking and a down arrow number", "how-tasks-run"},
 		// The failure that happens BEFORE any of that: the folder itself would
 		// not freeze. It is asked with the sentence on screen, and the sentence
 		// belongs to the failure table rather than to the brief that did not
@@ -885,6 +888,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// they have never seen before. The header has a stage the page did not
 		// list until the sizing reading was drawn on it.
 		{"the task page header says sizing the work", "reading-a-task-page"},
+		{"my new task page shows asking a model thinking with a star", "reading-a-task-page"},
 		// WHAT A TASK'S PAGE SAYS ABOUT ITS OWN WORK, now that it says it: the
 		// figure at the end of a call's row, the line a cut attempt leaves
 		// behind, and the one dim line on the page that names a gate nobody

@@ -389,3 +389,111 @@ rungs can carve without touching the person's `.git` (the mirror rung can):
 `prepareTaskTreeForNode` taking a reserved id and a spec rather than a node, called
 from `askTask` beside `awaitTaskAnswer`, with the tree removed on a decline. Filed
 as #893 with that shape and its acceptance.
+
+## V — a request made on a node's behalf is seen while it runs
+
+### What was true
+
+A worker's request left three traces. `loop.go` took the node's pulse either side of it
+(`tasks/<id>.beat.json`: `requests`, `request_started`, `request_finished`). Its stream
+reached the room through the session's observer, so the room drew the thinking and the
+token column as they arrived. And the journal got a `call` line when it was over.
+
+A request made **on** the node's behalf, an errand through `Agent.callRole`, left one of
+those three. The reading that sizes the work, the memory recall a node's context
+assembly makes and the other side calls all run without their stream, because an errand
+is nobody's answer and must not type itself into the room. So for 219 seconds the pulse
+said `"requests": 0`, the journal held nothing, the rail said `sizing the work` and under
+it `asking deepseek/deepseek-…`, and the room said `nothing on this page yet — it fills
+in as the task works`. The ladder's rung was drawn (`sizingLine`, #101) and the call's
+own life was not: when it started, whether anything had come back, how much, from which
+machine.
+
+### What is true now
+
+**One watcher, bound to the node, on every request made under a context**
+(`internal/session/task_calltrail.go`, `callTrail`). internal/provider already counts
+each request's life where its stream is read, and hands it to whoever asks through the
+context seam `provider.WithCallProgress` (#868). The trail is the node's side of that
+seam, and it turns each moment into the three traces a worker's request already leaves:
+
+- **The pulse.** The request going out and coming back are `taskBeat.began` and
+  `taskBeat.ended`, the same two edges `loop.go` writes for a worker's request.
+- **The journal.** A new evidence-only line kind, `flight` (`journalFlight`, in
+  `sessionfile.go`), is written at both ends of every request on the node's own file.
+  The start line carries the role, the model and the arm. The end line adds the machine,
+  how the request ended, the milliseconds to the first token, the milliseconds overall,
+  and the stream's own counts of answer and reasoning. Like `call`, it is never money,
+  and the replay drops it.
+- **The phase.** The live request rides the phase notice the node already sends
+  (`TaskPhaseNotice.Call`, a `TaskCall`), beside the ladder's sentence in `Text`. The
+  rail, the room and a hosted window already fold that event whole, so all three draw it
+  from one event, and none of them can draw a request under a phase that has moved on.
+
+**Concurrency.** The provider calls the watcher synchronously from its read loop, and the
+watcher may do no work there. So `callTrail.heard` appends to the trail's own queue,
+under a mutex nothing else takes, and nudges the one goroutine the trail owns. That
+goroutine writes the pulse and the journal and sends the notices. The ladder's sentence
+(`callTrail.say`) goes on the same queue, so the sentence and the request are said in
+the order they happened. A climbing count replaces the queued count before it; an edge
+(out, first token, phase turn, ending) is never folded. `callTrail.end` drains the
+queue, writes a `cancelled` end for any arm still open (a rescue that lost its race and
+has not said so), and joins the goroutine. The caller ends the trail before it moves the
+node out of the phase. A report that arrives after the end is dropped at the door.
+
+**One arm on the row.** A hedged question has several requests out at once. The notice
+carries the one that has had the most back (`callTrail.leading`), because that is the
+request the person is waiting on. The journal keeps every arm.
+
+**The surface** (`internal/tui3/taskphase.go` `callFields`, `room.go` `roomCallRow`)
+draws a request as ranked facts after whatever leads the row:
+
+- **What it is doing**, in the provider's own words through one table
+  (`callPhaseWords`): `first word`, `paced`, `thinking` or `writing`.
+- **How long it has been out.** This is in tenths while nothing has come back and in
+  whole seconds after, as `phaseFields` spells a clock.
+- **↓**, thought and answer together (`TaskCall.Received`), through the column's own
+  spelling (`tokenDownWord`, now shared with a step's caption).
+- **The machine**, spelled by `phaseServing`.
+
+On the rail the facts ride the phase word's own row: `sizing the work · thinking 41s · ↓
+4,465 · deepinfra`, with the ladder sentence on the row under it. In the room the row is
+the ladder sentence led by the thought mark (`tokens.GThought`, through `app.icon`) while
+the model thinks, or the wait mark otherwise. It stands where the next thing will appear.
+On a page with no transcript it takes the place of `nothing on this page yet`, which was
+the page saying nothing was happening while something was.
+
+**Which path each figure takes.**
+
+| Where | Source |
+| --- | --- |
+| Local rail and room | `EventTaskPhase` on the standing task lane |
+| Hosted (`--host`) rail and room | the same event, which `internal/remote`'s task lane carries whole as JSON (`TaskCall` carries no error, so it survives the wire) |
+| Another conversation's work opened as a guest | Nothing. Its phase is not drawn today (`tookGuestNotice` ignores phases), and the journal's `flight` lines are the record it could read |
+| An outside reader | the pulse file |
+| An autopsy | the `flight` lines |
+
+The beat is not read by the surface, and it did not need to be.
+
+### What is not covered, and the seam each needs
+
+- **The memory recall at a node's context assembly** (the six-second `reflex` of the
+  measured start) is evaluated inside the child's constructor literal
+  (`task_run.go:6893`, `memoryBrief: a.memoryBlock(ctx, node.assembledBrief())`). That
+  is `newTaskAgentOn`, which lane S2 owns. The node's own agent, whose journal is the
+  node's journal, does not exist yet at that line, so there is no journal for a trail
+  to write to. Once the recall runs after the child exists (the shape S2 is changing),
+  it gets the same trail. The node's agent wraps the context passed to `memoryBlock` in
+  `trailCalls(node, TaskPhaseNotice{Phase: TaskPhaseWorking}, roles.RoleReflex).watching(ctx)`
+  and ends the trail when the block returns. The room and the pulse then draw the
+  recall. The rail draws a request only under a phase word, so it does not.
+- **The handover's brief** (`checkpoint.go:4690`, `callRole(ctx, roles.RoleHandoff, …)`)
+  happens before a node exists, so there is no node for a trail to bind to. It is drawn
+  as `briefing a worker · 15s` on the conversation's own phase clock (#101). A live count
+  there needs a conversation-side watcher that re-tells `PhaseBriefing` with the request's
+  phase and machine. That seam is in `checkpoint.go`, which this wave does not own.
+- **tok/s.** `provider.CallProgress` carries no rate. The rate the status line draws is
+  the stream watch's own, on `PhaseNews.Rate`. When the seam carries it, `callFields`
+  passes it to `phaseServing` and the machine reads `deepinfra 38 t/s`, as it does on the
+  status line. Deriving a rate here from the counts would be a second estimator of one
+  number.

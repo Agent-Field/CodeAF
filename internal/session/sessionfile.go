@@ -293,6 +293,11 @@ type sessionEntry struct {
 	// file written before it existed.
 	Division *journalDivision `json:"division,omitempty"`
 
+	// Flight is ONE END OF ONE REQUEST made on a node's behalf (see
+	// [journalFlight]). Absent from every line that is not one, and from every
+	// file written before it existed.
+	Flight *journalFlight `json:"flight,omitempty"`
+
 	// Principal is ONE MOMENT THE SESSION'S GOAL OWNER DECIDED SOMETHING
 	// (see [journalPrincipal]). Absent from every line that is not one, and from
 	// every file written before it existed — which is every attended session,
@@ -864,6 +869,48 @@ type journalCaption struct {
 type journalTook struct {
 	CallID     string `json:"callId"`
 	DurationMS int64  `json:"durationMs"`
+}
+
+// journalFlight is ONE REQUEST'S LIFE, written at its two ends: once when it
+// goes out and once when it comes back, whichever way it came back.
+//
+// ── THE HOLE IT FILLS ───────────────────────────────────────────────────────
+//
+// Task 5 of conversation de9eabcb10cc1e45, 2026-09-11. The reading that sized
+// the work ran for 219 seconds, wrote its first token at 11.5 and 4,465 tokens
+// of thought after that — and the node's own journal held NOTHING about it
+// until a `call` line landed at the end. The request that had been out for
+// three and a half minutes was reconstructed from the provider's own log, on
+// another machine, by matching timestamps. A call line is the bill, written
+// when there is a bill; a request that is cancelled writes none at all
+// (auxiliary.go), and none of them says when anything began.
+//
+// So a request made on a node's behalf writes this pair (task_calltrail.go),
+// and the journal says what the node was waiting on for as long as it waited:
+// a start with no end is a request still out — or one a killed process never
+// saw back, which is the same news [taskBeat] carries by its age.
+//
+// IT IS EVIDENCE AND NEVER SPEND, for [journalCall]'s reason: the money is on
+// the call line beside it, and a replay drops this line as it drops that one.
+// The counts are the stream's own running estimate, and that is why they are
+// named for what they are rather than for a bill.
+//
+// Phase is internal/provider's word for the end being written — `started` or
+// `ended` — and End is how an ended request ended ([provider.CallEnd]). The
+// figures are carried on the end alone, as MILLISECONDS FROM THE START, so the
+// line reads without the one before it; zero is never written, which is the
+// emptiness law on a request that never had a first token.
+type journalFlight struct {
+	Role         string `json:"role,omitempty"`
+	Model        string `json:"model,omitempty"`
+	Endpoint     string `json:"endpoint,omitempty"`
+	Attempt      int    `json:"attempt,omitempty"`
+	Phase        string `json:"phase"`
+	End          string `json:"end,omitempty"`
+	FirstTokenMS int64  `json:"firstTokenMs,omitempty"`
+	DurationMS   int64  `json:"durationMs,omitempty"`
+	Output       int    `json:"output,omitempty"`
+	Reasoning    int    `json:"reasoning,omitempty"`
 }
 
 // journalPartImage names the one non-text part a person's message can carry
@@ -1975,7 +2022,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// said before it was let go of is already in the transcript above it,
 			// and a resumed session must open on that rather than on a note about
 			// how the last one ended. The line is for whoever reads the file.
-		case "mark", "ceiling", "division", "carry", "failure":
+		case "mark", "ceiling", "division", "carry", "failure", "flight":
 			// DROPPED ON PURPOSE, for the reason a call line is: these are the
 			// RECORD of a decision the harness took mid-turn, and a decision is
 			// not a message and not money. Whatever the mark's reader cost is
@@ -1987,7 +2034,9 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// same kind of fact about the same moment: which rung of the brief
 			// ladder the worker opened on, which the spec in the graph already
 			// holds. A failure line is the boundary's reading of a call that
-			// already has its own error line above it.
+			// already has its own error line above it. A flight line is when a
+			// request went out and came back, which is a fact about the wait and
+			// nothing the conversation said.
 			// Replaying them would put machinery into somebody's conversation.
 		case "created":
 			// KEPT, and it is the ONE non-message line this replay carries
@@ -2861,6 +2910,16 @@ func (s *sessionFile) appendDivision(division journalDivision) {
 		return
 	}
 	s.writeLine(sessionEntry{Type: "division", Division: &division, Timestamp: stamp()})
+}
+
+// appendFlight writes down one end of one request (see [journalFlight]). An end
+// that names neither which end it is nor what was asked writes nothing, for
+// [sessionFile.appendMark]'s reason.
+func (s *sessionFile) appendFlight(flight journalFlight) {
+	if s == nil || strings.TrimSpace(flight.Phase) == "" || strings.TrimSpace(flight.Model) == "" {
+		return
+	}
+	s.writeLine(sessionEntry{Type: "flight", Flight: &flight, Timestamp: stamp()})
 }
 
 // appendPrincipal writes down one decision the session's goal owner made (see

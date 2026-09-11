@@ -29,9 +29,12 @@ package session
 //
 // IT IS WRITTEN AT EVERY PROVIDER CALL BOUNDARY, which is the cadence of the work
 // itself rather than a clock somebody chose: loop.go takes the pulse either side
-// of [Agent.completeWithRetry], the one line in this package where a request
-// actually goes out. There is no ticker, nothing to start and nothing to stop, so
-// a node that is genuinely wedged writes nothing new — which is the news.
+// of [Agent.completeWithRetry], the one line in this package where a worker's
+// request actually goes out, and the node's call trail takes it at the two ends
+// of every request made ON the node's behalf (task_calltrail.go) — the reading
+// that sizes the work, which ran for 219 seconds on 2026-09-11 over a pulse that
+// said `"requests": 0`. There is no ticker, nothing to start and nothing to stop,
+// so a node that is genuinely wedged writes nothing new — which is the news.
 //
 // ── A SIDECAR, NOT THE CHECKPOINT ──
 //
@@ -105,8 +108,9 @@ type taskBeatRow struct {
 	// only the last request.
 	Started time.Time `json:"started"`
 	// Requests is how many requests this node's agents have STARTED — the
-	// worker's, the checker's and every repair round's, because they are all the
-	// same node working. A count rather than a rate: a reader comparing two
+	// worker's, the checker's, every repair round's and every errand's made on
+	// the node's behalf (task_calltrail.go), because they are all the same node
+	// working. A count rather than a rate: a reader comparing two
 	// readings gets the rate, and a rate computed here would be this file having
 	// an opinion.
 	Requests int `json:"requests"`
@@ -167,7 +171,8 @@ func (b *taskBeat) arm() {
 }
 
 // began records that a request has gone out, and ended that one has come back.
-// They are the two edges loop.go takes either side of the wire.
+// They are the two edges loop.go takes either side of the wire, and the call
+// trail takes for a request the node's worker did not make itself.
 func (b *taskBeat) began() {
 	if b == nil {
 		return
