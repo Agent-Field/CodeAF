@@ -117,3 +117,43 @@ care. The note can go to a parent worker (`taskNoteReaders`), whose own drain mu
 mark it read. A delivery nobody takes (`releaseNote`) must give the ticket back.
 Regression shape: `TestAHandOverThatMissesATurnIsHeldForTheTurnThatReadsIt` with
 `AskConsent` off, and the landing admitted from inside the scripted request.
+
+## Round 4: the settle-policy road
+
+Lane `codex/personal-settle-race`, base `9f72babb2`. `handToModelOnAuto` now makes the
+press's own write (`TaskNode.handsOverLocked`, shared with `handOver`) and answers its
+ticket. `reportTaskNode` puts it on the landing note (`postTaskMessage` →
+`userMessage.handsOver`) and gives it back when no note carries it. That covers a refused
+duplicate, a delivery nobody takes (`releaseNote`), and a node that moved on. A node
+already handed over mints nothing, because a second ticket would strand the first.
+`handsUnsent`, `markHandOversRead` and `giveBackHandOvers` are unchanged. A parent
+worker drains the note with the same `drainSteering`, so its own request marks it read
+and its own floor hands it back.
+
+| Test (fails first) | Mutation → result |
+|---|---|
+| `TestALandingThatMissesATurnIsHeldForTheTurnThatReadsIt` | base product code → FAIL 50/50; policy mints no ticket → FAIL 3/3; note carries no ticket → FAIL 3/3 |
+| `TestAPiecesLandingIsHeldByTheWorkerThatReadsIt` | worker's drain does not mark → FAIL 3/3 (passes on base) |
+| `TestALandingNobodyTakesStaysWithThePerson` | base → FAIL; drop the give-back → FAIL 3/3 |
+| `TestALandingAnnouncedTwiceIsHandedOverOnce` | drop the `handed` guard → FAIL 3/3 |
+| `TestALetGoTurnsFloorLeavesALandingTheNextTurnRead` | base → FAIL; floor skips only unread → FAIL 3/3 |
+
+A drain that belongs to the live turn needs no new test: `drainSteering` refuses a
+let-go hub before it reads the queue, so the note's kind cannot matter
+(`TestALetGoTurnsDrainTakesNothingFromTheQueue`). A policy hold now has a reader stamp.
+
+**Lock discipline.** The ticket write is under `graph.mu` alone, in `handToModelOnAuto`,
+reached from `reportTaskNode` with no lock held. `settlePolicy`'s `a.mu` is released
+before `graph.mu` is taken. The note field is set on a local value before
+`deliverTo`. The read mark is where it was (after `a.mu` in `drainSteering`). The
+give-back is `reportTaskNode`'s deferred call, after delivery, with no lock held.
+
+**Behaviour that moved.** `d` on a card the policy already handed over is a second
+hand-over: `already handed to aforge`, nothing sent (it used to queue a second note).
+`TestHandingOneToTheModelLeavesTheNodeWhereItIs` now takes it back first.
+
+**Residue.** A piece landing after its parent worker's last request is given back at the
+worker's turn end, because a task never wakes. The runner's resume turn then reads the
+note while the person holds it, which is the same as base. Closing it needs the resume
+turn to count as "started" for `orphanedHandsLocked`, plus a give-back at `Close`.
+Race: the 25 hand-over and floor tests ran `-race -count=200`: 5000/5000 PASS, no data races.

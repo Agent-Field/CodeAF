@@ -776,15 +776,14 @@ type TaskNode struct {
 	// decision it was — a flag written afterwards would be a flag the update
 	// announcing the end raced past.
 	stopped bool
-	// handed is the receipt for THIS SESSION'S own hand-over press: the person
-	// asked aforge to decide this one card, and nothing has taken it back. A
-	// second press is refused on it (task_audit.go's [TaskNode.handOver]).
-	//
-	// IT IS NOT "THE MODEL IS DECIDING", and the difference is the whole of why it
-	// is its own fact. Under `task.settle = auto` — and in every headless run,
-	// where nobody is there to be asked — a landing marks the model as the decider
-	// by POLICY ([Agent.handToModelOnAuto]), which is not a press and carries no
-	// note. Refusing the press on that would refuse the first one.
+	// handed is the receipt for a hand-over THIS SESSION made and nothing has
+	// taken back: the person asked aforge to decide this one card, or — under
+	// `task.settle = auto`, and in every run nobody is watching — the landing
+	// itself handed it over by policy ([Agent.handToModelOnAuto]). Both are one
+	// write (task_audit.go's [TaskNode.handsOverLocked]) and both send a note
+	// carrying a ticket, so a press on a landing the policy handed over is a
+	// second hand-over and is refused on it exactly as a second press is
+	// ([TaskNode.handOver]).
 	//
 	// IT IS IN MEMORY AND NEVER ON THE RECORD, for [taskRecord.Decider]'s own
 	// reason: a hand-over lasts at most one turn — the floor takes it back at the
@@ -793,10 +792,10 @@ type TaskNode struct {
 	// It travels with the owner through [TaskNode.givesBackLocked], so a
 	// hand-back leaves no receipt behind.
 	handed bool
-	// handPress numbers the presses that have handed this node over, and it is
-	// the ticket each one's note carries (task_audit.go's [handOverTicket]).
+	// handPress numbers the hand-overs of this node, pressed or by policy, and it
+	// is the ticket each one's note carries (task_audit.go's [handOverTicket]).
 	// handReader is the number of the turn whose request carried the current
-	// press's note, and 0 while none has — it is on the steering queue, or drained
+	// hand-over's note, and 0 while none has — it is on the steering queue, or drained
 	// into the transcript at a turn's end with the next turn not yet asking. It is
 	// what keeps a turn's floor off a press that turn never read
 	// ([Agent.handBackUnsettled]). Both live in memory only, for [handed]'s reason.
@@ -3554,7 +3553,18 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 	// written under this session's settle policy, and a card drawn from the event
 	// above it that still said the question was the person's would be the two
 	// halves of one landing disagreeing about whose move it is.
-	a.handToModelOnAuto(node)
+	hands := a.handToModelOnAuto(node)
+	// AND A HAND-OVER TRAVELS ON THE NOTE OR COMES BACK. Every road below that puts
+	// no note in front of a reader — a duplicate refused, a delivery nobody took, a
+	// node that moved on before its news was composed — leaves a ticket no request
+	// will ever carry, and a question no turn will ever hand back. Given back here,
+	// with no lock held, after the landing's own update has gone out.
+	carried := false
+	defer func() {
+		if !carried {
+			a.giveBackHandOvers(hands)
+		}
+	}()
 	// The notice, the attempt it belongs to and the tag its result is judged by
 	// are read together, so a report composed here cannot be announced against a
 	// later life of the node ([TaskNode.claimNote], [TaskNode.resultOf]).
@@ -3596,7 +3606,7 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 		}
 		node.releaseNote(claim)
 	} else {
-		a.deliverTaskNote(node, attempt, tag, note)
+		carried = a.deliverTaskNote(node, attempt, tag, note, hands...)
 	}
 }
 
@@ -3610,7 +3620,12 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 // no agent left to read anything, and news with nowhere to go belongs in front
 // of the person rather than nowhere. Sending it to both would tell the person's
 // model that work it never commissioned has just finished.
-func (a *Agent) deliverTaskNote(node *TaskNode, attempt int, tag TaskReplyTag, note string) {
+//
+// hands are the settle policy's hand-over of this landing
+// ([Agent.handToModelOnAuto]), carried on the note to whichever reader takes it.
+// It answers whether a reader took it, and a caller that handed tickets in gives
+// them back when none did.
+func (a *Agent) deliverTaskNote(node *TaskNode, attempt int, tag TaskReplyTag, note string, hands ...handOverTicket) bool {
 	// SAID ONCE PER ENDING, PER LIFE OF THE WORK. The identity is the attempt and
 	// the state ([noteClaim]), so a repeated announcement of one landing buys no
 	// second model turn, a node that ends somewhere else later is news again, and
@@ -3618,19 +3633,21 @@ func (a *Agent) deliverTaskNote(node *TaskNode, attempt int, tag TaskReplyTag, n
 	// announced against the run happening now.
 	claim, claimed := node.claimNote(attempt)
 	if !claimed {
-		return
+		return false
 	}
 	// AND THE ANNOUNCEMENT IS NOT WRITTEN DOWN UNTIL SOMEBODY HAS IT. The note
 	// carries what settles it ([durableDelivery]): the recipient's own record is
 	// the acknowledgement, and until then this landing stays owed, so a session
 	// that closed with the note unread re-tells it on resume rather than losing
 	// it (task_store.go).
-	got := a.postTaskMessage(node, tag, note, []durableDelivery{node.settlesNote(claim)},
+	got := a.postTaskMessage(node, tag, note, hands, []durableDelivery{node.settlesNote(claim)},
 		func() { node.noteQueued(claim) })
 	if !got.accepted() {
 		// Nobody is left to read it, so the claim goes back and no mark is made.
 		node.releaseNote(claim)
+		return false
 	}
+	return true
 }
 
 // settlesNote is this landing's durable delivery: the id it travels under, and
@@ -3670,8 +3687,14 @@ func (n *TaskNode) settlesNote(claim noteClaim) durableDelivery {
 // under one lock ([Agent.handOverTaskNews]) because the waiter reads them as one
 // fact ([Agent.taskNewsStanding]). The checkpoint the mark owes the disk is
 // written by the caller, after the seam.
-func (a *Agent) postTaskMessage(node *TaskNode, tag TaskReplyTag, note string, durable []durableDelivery, mark func()) deliveryReceipt {
+//
+// AND THE NOTE CARRIES THE HAND-OVER, when there is one, to whichever reader
+// takes it: the conversation, or the parent node's own worker. Each drains it
+// with the same [Agent.drainSteering], so the reader's own request is what marks
+// it read and the reader's own floor is what hands it back.
+func (a *Agent) postTaskMessage(node *TaskNode, tag TaskReplyTag, note string, hands []handOverTicket, durable []durableDelivery, mark func()) deliveryReceipt {
 	message := wakeNote(note)
+	message.handsOver = hands
 	// THE TAG IS THE CALLER'S SNAPSHOT AND IS NOT RE-READ FROM THE NODE HERE.
 	// This delivery happens after a claim is won and a reader is found, and a
 	// node can be re-armed and revised in that gap: composing the tag here would
@@ -4046,16 +4069,30 @@ func taskMergeNote(notice TaskNotice) string {
 // AND IT IS ONLY EVER ABOUT THE ONE STATE THAT HAS A DECISION IN IT. A node that
 // landed done, incomplete or stopped is not waiting on anybody's word, and
 // writing an owner onto it would invent a question nobody is asking.
-func (a *Agent) handToModelOnAuto(node *TaskNode) {
+//
+// ── IT HANDS THE QUESTION OVER THE WAY A PRESS DOES, TICKET AND ALL ─────────
+//
+// The ticket rides the landing's note ([Agent.postTaskMessage]), so the question
+// is held until a request has carried that note, and the turn that read it is
+// the one whose end hands it back (task_audit.go's [handOverTicket]). Without
+// one, work that landed after a running turn's last request was handed back by
+// that turn's floor, which never read it, while the same end drained the note
+// and woke a turn told to settle the work. What this answers is owed a note or a
+// give-back, and [Agent.reportTaskNode] owes it.
+//
+// A NODE ALREADY HANDED OVER ANSWERS NOTHING. Its ticket belongs to the note that
+// carries it, and a second one would make that ticket stale, so nothing would
+// ever mark it read.
+func (a *Agent) handToModelOnAuto(node *TaskNode) []handOverTicket {
 	if node == nil || node.graph == nil || a.settlePolicy() != TaskSettleAuto {
-		return
+		return nil
 	}
 	node.graph.mu.Lock()
 	defer node.graph.mu.Unlock()
-	if node.state != TaskUnverified || node.merge == mergeConflicted || node.shifted {
-		return
+	if node.state != TaskUnverified || node.merge == mergeConflicted || node.shifted || node.handed {
+		return nil
 	}
-	node.decider = TaskAskOwnerModel
+	return []handOverTicket{{node: node, ticket: node.handsOverLocked()}}
 }
 
 // handBackUnsettled is the SECOND HALF OF THE AUTO-SETTLE FLOOR, and the law is
@@ -4594,7 +4631,7 @@ func (a *Agent) bubbleUnverifiedChildren(node *TaskNode) {
 	}
 	// It is not this node's landing being announced — that has already been said
 	// ([Agent.deliverTaskNote]) — so nothing is claimed or marked here.
-	a.postTaskMessage(node, node.resultTag(), readdressedLead(node, waiting), nil, nil)
+	a.postTaskMessage(node, node.resultTag(), readdressedLead(node, waiting), nil, nil, nil)
 }
 
 // park hands a RUNNING node's lane back while it waits on the work it handed

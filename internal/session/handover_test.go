@@ -352,6 +352,221 @@ func TestAPressDuringAPictureAnswerComesBackWhenItEnds(t *testing.T) {
 	}
 }
 
+// ── the settle-policy road ──────────────────────────────────────────────────
+//
+// With nobody watching, and under `task.settle = auto`, a landing is handed to
+// the model by POLICY ([Agent.handToModelOnAuto]), and its note carries a ticket
+// exactly as a press's does. These are the press's roads walked by a landing.
+
+// A LANDING THAT MISSES A TURN IS HELD FOR THE TURN THAT READS IT.
+//
+// The work lands while a turn's last request is already out, so its note waits
+// on the queue; the turn ends, and the end of it drains the note and wakes the
+// next turn to settle the work. The floor at that first end used to hand the
+// question straight back — the policy's hand-over had no ticket to say its note
+// was still unread — so the card drew its answers again while the next turn was
+// being told to settle the work.
+func TestALandingThatMissesATurnIsHeldForTheTurnThatReadsIt(t *testing.T) {
+	type reading struct {
+		decider TaskAskOwner
+		carried bool
+	}
+	var (
+		graph *TaskGraph
+		id    uint64
+	)
+	read := make(chan reading, 1)
+	completer := &scriptedCompleter{steps: []step{
+		// THE WORK LANDS WITH THIS TURN'S LAST REQUEST ALREADY OUT. The graph
+		// announces a landing before it closes `done`, so the note is on the queue
+		// before this request answers.
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			graph.admit(id, taskSpec{title: "Hidden rental digs", named: true, brief: "b", acceptance: "a"})
+			select {
+			case <-graph.node(id).done:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			return textResponse("Nothing else from me."), nil
+		},
+		// AND THIS IS THE TURN THAT READS IT: the node must still be the model's.
+		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			carried := false
+			for _, message := range messages {
+				carried = carried || strings.Contains(messageText(message), "Hidden rental digs")
+			}
+			read <- reading{graph.node(id).decidedBy(), carried}
+			return textResponse("I have looked at it."), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+	graph = stubbedGraph(agent, func(node *TaskNode) {
+		node.finish("UNVERIFIED — the auditor answered neither VERIFIED nor REFUTED", nil, "", "")
+		node.graph.complete(node, TaskUnverified)
+	})
+	id = graph.reserve()
+
+	ctx, cancel := deadline(10 * time.Second)
+	defer cancel()
+	events, err := agent.Submit(ctx, "tidy the notes")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+	var got reading
+	select {
+	case got = <-read:
+	case <-time.After(10 * time.Second):
+		t.Fatal("no turn ever read the landing")
+	}
+	if !got.carried {
+		t.Fatal("the turn after the landing did not carry its note")
+	}
+	if got.decider != TaskAskOwnerModel {
+		t.Fatalf("the turn reading the landing finds %q deciding, want the model", got.decider)
+	}
+	// AND THE FLOOR STILL HOLDS: the turn that read it and did not settle it hands
+	// it back when it ends, so the question is never held by nobody.
+	waitFor(t, "the reading turn's end to hand the landing back", func() bool {
+		return graph.node(id).decidedBy() == TaskAskOwnerPerson
+	})
+}
+
+// A PIECE'S LANDING IS READ BY THE WORKER THAT ASKED FOR IT. Its note goes to the
+// parent node's own agent ([Agent.taskNoteReaders]), so it is that agent's drain
+// that marks the ticket read and that agent's floor that hands it back. A ticket
+// the worker's drain never marked would be one no floor anywhere takes back.
+func TestAPiecesLandingIsHeldByTheWorkerThatReadsIt(t *testing.T) {
+	land := make(chan struct{})
+	var piece *TaskNode
+	read := make(chan TaskAskOwner, 1)
+	worker := &scriptedCompleter{steps: []step{
+		// The piece lands while the worker's first request is out, and the tool
+		// call makes a step boundary for its note to be carried at.
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			close(land)
+			select {
+			case <-piece.done:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			return toolResponse("call-1", "no_such_tool", "{}"), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			read <- piece.decidedBy()
+			return textResponse("I have looked at the piece."), nil
+		},
+	}}
+	nest := newNest(t, worker, func(node *TaskNode) {
+		if node.parent == 0 {
+			return
+		}
+		<-land
+		node.finish("UNVERIFIED — the auditor answered neither VERIFIED nor REFUTED", nil, "", "")
+		node.graph.complete(node, TaskUnverified)
+	})
+	piece = pieceUnder(t, nest.graph, nest.parent.id, "currency")
+
+	ctx, cancel := deadline(10 * time.Second)
+	defer cancel()
+	events, err := nest.node.Submit(ctx, "fold the pieces in")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+	select {
+	case owner := <-read:
+		if owner != TaskAskOwnerModel {
+			t.Fatalf("the worker reading the piece finds %q deciding, want the model", owner)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the worker never read the piece")
+	}
+	if owner := piece.decidedBy(); owner != TaskAskOwnerPerson {
+		t.Fatalf("the worker's turn read the piece and ended, and %q is still deciding", owner)
+	}
+}
+
+// A LANDING NOBODY TAKES COMES STRAIGHT BACK. Its note is refused by every reader
+// ([TaskNode.releaseNote]), so no turn is ever going to read the ticket, and a
+// question handed to nobody stays the person's.
+func TestALandingNobodyTakesStaysWithThePerson(t *testing.T) {
+	agent, _ := newTestAgent(t, parkedModel(nil), nil)
+	graph := stubbedGraph(agent, func(*TaskNode) {})
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "Hidden rental digs", named: true, brief: "b", acceptance: "a"})
+	node := graph.node(id)
+	if err := agent.Close(); err != nil {
+		t.Fatalf("closing: %v", err)
+	}
+
+	node.finish("UNVERIFIED — the auditor answered neither VERIFIED nor REFUTED", nil, "", "")
+	graph.complete(node, TaskUnverified)
+	if node.reported() {
+		t.Fatal("the landing's note was taken by a closed session")
+	}
+	if owner := node.decidedBy(); owner != TaskAskOwnerPerson {
+		t.Fatalf("a landing nobody can read stayed with %q, want the person", owner)
+	}
+}
+
+// ONE ENDING ANNOUNCED TWICE IS ONE HAND-OVER. The second announcement is refused
+// as a duplicate ([TaskNode.claimNote]), and the first note is still on the queue
+// with its ticket. A second ticket would make the first one stale — nothing would
+// ever mark it read — and then be given back with its refused note, handing the
+// question back to the person while the first note asks the model to settle it.
+func TestALandingAnnouncedTwiceIsHandedOverOnce(t *testing.T) {
+	entered := make(chan struct{}, 1)
+	agent, _ := newTestAgent(t, parkedModel(entered), nil)
+	// A turn parked in its request drains nothing, so the landing's note waits on
+	// the queue for its next step.
+	ctx, cancel := deadline(10 * time.Second)
+	defer cancel()
+	if _, err := agent.Submit(ctx, "tidy the notes"); err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	awaitParked(t, entered)
+	id := landUnverified(t, agent)
+	node := agent.taskNode(id)
+	queued := queuedPress(t, agent)
+
+	agent.reportTaskNode(node)
+	if owner := node.decidedBy(); owner != TaskAskOwnerModel {
+		t.Fatalf("announcing the landing again handed it to %q, want the model", owner)
+	}
+	agent.mu.Lock()
+	turn := agent.turnSeq
+	agent.mu.Unlock()
+	markHandOversRead([]handOverTicket{queued}, turn)
+	agent.handBackUnsettled(turn)
+	if owner := node.decidedBy(); owner != TaskAskOwnerPerson {
+		t.Fatalf("the turn that read the first note could not hand it back: %q is deciding", owner)
+	}
+}
+
+// AND A LET-GO TURN'S FLOOR LEAVES A LANDING THE NEXT TURN READ. The policy's
+// hand-over is stamped with the turn that read it, so the round-3 law holds
+// here too: a floor takes back only what its own turn read.
+func TestALetGoTurnsFloorLeavesALandingTheNextTurnRead(t *testing.T) {
+	entered := make(chan struct{}, 1)
+	agent, _ := newTestAgent(t, parkedModel(entered), nil)
+	landUnverified(t, agent)
+	awaitParked(t, entered)
+	agent.mu.Lock()
+	letGo := agent.turnSeq
+	agent.mu.Unlock()
+	if _, abandoned := agent.Abandon(AbandonStopTimeout); !abandoned {
+		t.Fatal("there was no turn to abandon")
+	}
+	id := landUnverified(t, agent)
+	awaitParked(t, entered)
+
+	agent.handBackUnsettled(letGo)
+	if owner := agent.taskNode(id).decidedBy(); owner != TaskAskOwnerModel {
+		t.Fatalf("the let-go turn's floor took the landing the next turn is reading: %q is deciding", owner)
+	}
+}
+
 // landUnverified lands one task as `your call` on a stubbed graph and answers its
 // id once the landing is fully settled.
 func landUnverified(t *testing.T, agent *Agent) uint64 {
