@@ -31,6 +31,9 @@ func stripWalkLab(t *testing.T) (*app, *stopFake) {
 	drive(t, a, streamEventMsg{gen: a.gen,
 		ev: update(9, "Count the tabs", session.TaskRunning, session.TaskNotice{})})
 	a.showPage(pageTasks)
+	// The two nodes above landed after the place was opened, so they are behind
+	// their conversation's fold — which opens shut ([openTaskFolds]).
+	openTaskFolds(a)
 	stops := a.taskSheet.stops(a)
 	if len(stops) < 3 {
 		t.Fatalf("the lab drew %d rows, want three that can be stopped", len(stops))

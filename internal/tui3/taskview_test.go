@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // ── THE TASKS PLACE ─────────────────────────────────────────────────────────
@@ -865,7 +866,9 @@ func TestTypingOnTheTaskPageFiltersBothSections(t *testing.T) {
 	for _, want := range []string{
 		taskSheetNowHead, "Ship the port",
 		"finished today", "Port the parser",
-		taskSheetFilterWord + "port",
+		// AND THE WORDS ARE ON THE CONTROL ROW, at the top of the list, where the
+		// typing lands — not echoed on a note line under the rows they changed.
+		a.pal.glyph(tokens.GFilter) + " port",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the filtered page is missing %q:\n%s", want, text)

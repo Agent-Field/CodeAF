@@ -281,11 +281,16 @@ const (
 	// and closes the place second ([app.taskSheetKeyPress]) — and the clause it
 	// replaces would be teaching a person to do the thing they are already doing.
 	tasksClearFilterWord = "esc clear the filter"
-	// taskSheetFilterWord opens the line that says what was typed, and
-	// taskSheetFilterNone is what that line adds when the query has taken every
-	// row off the page. A filtered page with nothing on it and nothing said is a
-	// page a person reads as broken.
-	taskSheetFilterWord = "filter · "
+	// taskSheetFilterNone is what the note line says when the query has taken
+	// every row off the page. A filtered page with nothing on it and nothing said
+	// is a page a person reads as broken.
+	//
+	// IT IS ALL THAT LINE SAYS NOW. It used to open `filter · <what was typed>`,
+	// because the box a person typed into was two rows below it and said nothing
+	// about narrowing anything — so their own words were echoed back UNDER the
+	// rows their keystrokes had just changed. The words are on the control row at
+	// the top of the list now ([tasksControlRow]), where the typing lands, and an
+	// echo under the list would be the frame saying one thing twice.
 	taskSheetFilterNone = " · nothing matches"
 	// taskSheetMoreHint is the line at the bottom of the ROSTER'S COLUMN that
 	// reaches this page (task.go's [app.railFootRows]). It is shaped like the two
