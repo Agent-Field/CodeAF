@@ -2010,6 +2010,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// report path that already held a file, and the chat's write refused.
 		{"change the instructions of my inbox watch from the chat", "standing-orders"},
 		{"edit what stands without stopping it", "standing-orders"},
+		{"move my watch to my Work folder instead of Personal", "standing-orders"},
 		{"the card says this file already exists and aforge will replace it", "standing-orders"},
 		{"why won't the chat write my report file", "standing-orders"},
 		{"after I said yes does it tell me back what I agreed to", "standing-orders"},

@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/aforge-v2/internal/workspace"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -323,17 +325,17 @@ func TestAFileThatChangedAfterTheCardIsNotAdopted(t *testing.T) {
 	}
 }
 
-// R1, WHAT AN EDIT DOES NOT DO IS REFUSED WITH THE ROAD THAT DOES IT. Moving work
-// is `collections place` and `unplace` at both doors; a second report on one
-// file is an edit of the first.
+// R1, WHAT AN EDIT CANNOT DO IS REFUSED WITH THE ROAD THAT DOES IT. A move to a
+// folder that is not there is refused as a proposal's placement is; a second
+// report on one file is an edit of the first.
 func TestAnEditAndASecondReportAreToldTheirRoads(t *testing.T) {
 	d := newChatDoor(t, &scriptedCompleter{steps: []step{standCall("s1", inboxWork(nil)), finalText("set up")}}, nil)
 	d.proposeInbox(t, d.yes)
 	item := d.only(t)
 	move, _ := json.Marshal(map[string]any{"op": "edit", "id": item.ID, "placement": "0123456789abcdef"})
 	text, failed, err := d.agent.standTool(context.Background(), move)
-	if err != nil || !failed || !strings.Contains(text, "collections place and unplace") || !strings.Contains(text, item.ID) {
-		t.Fatalf("a move by edit answered %q (failed %v, %v)", text, failed, err)
+	if err != nil || !failed || !strings.Contains(text, "folder not found: 0123456789abcdef") {
+		t.Fatalf("a move by edit to no folder answered %q (failed %v, %v)", text, failed, err)
 	}
 	text, failed, err = d.agent.standTool(context.Background(), json.RawMessage(inboxWork(map[string]any{"words": "keep my inbox digest in reports/inbox-report.md"})))
 	if err != nil || !failed || !strings.Contains(text, "is already the report of") || !strings.Contains(text, "op edit") {
@@ -447,27 +449,52 @@ func TestAnEditCardShowsAChangePastTheClip(t *testing.T) {
 	}
 }
 
-// TestAMoveByEditNamesTheFolderToTakeItOutOf is the live move run of
-// 2026-09-11 (W5-A, run 2): told only that `collections place and unplace`
-// move work, the model placed the notes watch in Work and left it in
-// Personal, so its runs kept both folders' rules. A move is two acts, and the
-// refusal now names the folder the work is in, with the unplace that takes it
-// out.
-func TestAMoveByEditNamesTheFolderToTakeItOutOf(t *testing.T) {
+// TestAMoveIsAnEditOfWhereItIsPlaced is the live move runs of 2026-09-11
+// (W5-A, runs 2 and 4): "move it to my Work folder instead of Personal" was
+// sent as an edit with placement, refused towards `collections place and
+// unplace`, and the model placed the notes watch in Work and left it in
+// Personal — twice, the second time told outright to unplace — so its runs
+// kept both folders' rules. The edit card now draws the move and the yes makes
+// it whole: in Work, out of Personal, the same item.
+func TestAMoveIsAnEditOfWhereItIsPlaced(t *testing.T) {
 	d := newChatDoor(t, nil, nil)
-	personal := d.folder(t, "Personal")
+	personal, work := d.folder(t, "Personal"), d.folder(t, "Work")
 	d.agent.client = &scriptedCompleter{steps: []step{standCall("s1", inboxWork(map[string]any{"placement": personal.ID})), finalText("set up")}}
 	d.proposeInbox(t, d.yes)
 	item := d.only(t)
 	move, _ := json.Marshal(map[string]any{"op": "edit", "id": item.ID, "placement": "Work"})
-	text, failed, err := d.agent.standTool(context.Background(), move)
-	if err != nil || !failed {
-		t.Fatalf("a move by edit answered %q (failed %v, %v)", text, failed, err)
+	d.agent.client = &scriptedCompleter{steps: []step{standCall("s2", string(move)), finalText("moved")}}
+	var card *StandingNotice
+	events := d.submitAnswering(t, "move it to my Work folder instead of Personal", func(event Event) {
+		card = event.Standing
+		d.yes(event)
+	})
+	if card == nil {
+		t.Fatalf("no card was drawn for the move; the tool said %q", toolOutput(t, events, "stand"))
 	}
-	for _, want := range []string{"Personal", personal.ID, "unplace"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("the refusal does not name %q: %q", want, text)
+	if !slices.Contains(card.Terms, "changes · folder"+standingChangesKept) || !slices.ContainsFunc(card.Terms, func(term string) bool {
+		return strings.HasPrefix(term, "folder · Personal") && strings.Contains(term, " → Work")
+	}) {
+		t.Fatalf("the card does not draw the move: %q", card.Terms)
+	}
+	if out := toolOutput(t, events, "stand"); !strings.HasPrefix(out, "moved "+item.ID+" to Work") {
+		t.Fatalf("the move answered %q", out)
+	}
+	governing, err := d.org.GoverningCollections(context.Background(), workspace.Ref{Kind: workspace.StandingKind, ID: item.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var direct []string
+	for _, folder := range governing {
+		if folder.Depth == 0 {
+			direct = append(direct, folder.Name)
 		}
+	}
+	if !slices.Equal(direct, []string{work.Name}) {
+		t.Fatalf("after the move the work is placed in %q, want only Work", direct)
+	}
+	if after := d.only(t); after.ID != item.ID || after.SpecRevision != item.SpecRevision {
+		t.Fatalf("a move revised or replaced the work: %+v", after)
 	}
 }
 

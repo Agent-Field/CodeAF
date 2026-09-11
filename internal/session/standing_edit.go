@@ -24,19 +24,29 @@ package session
 // the version the card was drawn from: a card answered after somebody else's
 // edit changes nothing and says so (the scale audit's L2).
 //
+// ── A MOVE IS AN EDIT OF WHERE IT IS PLACED ──
+//
+// "Move it to my Work folder" is sent as an edit with placement — the models'
+// own first reach in the live move case — and its card draws `folder · old →
+// new`. The yes places the work in the new folder and takes it out of the old,
+// through the same [workspace.Store.AddPlacement] and RemovePlacement that
+// `collections place` and `unplace` (and `aforge collections place|unplace`)
+// write. Told to do it in two calls, a model placed and never unplaced, and the
+// runs kept both folders' rules (2026-09-11).
+//
 // ── WHAT AN EDIT DOES NOT DO ──
 //
-// It does not move work to another folder (`collections place` and `unplace`
-// do, at both doors), widen or narrow how far a rule reaches, turn one kind of
-// work into another, or reword the person's own sentence, which every row
-// leads with: the words sent with an edit are the words of the change, and
-// they go in the item's log beside it.
+// It does not widen or narrow how far a rule reaches, turn one kind of work
+// into another, or reword the person's own sentence, which every row leads
+// with: the words sent with an edit are the words of the change, and they go
+// in the item's log beside it.
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -78,9 +88,6 @@ func (a *Agent) standEdit(ctx context.Context, parsed standArguments) (string, b
 	if problem != "" {
 		return problem, true, nil
 	}
-	if strings.TrimSpace(parsed.Placement) != "" {
-		return a.standingMoveRefusal(ctx, current), true, nil
-	}
 	parsed, limits, problem := standingNamedLimits(parsed)
 	if problem != "" {
 		return problem, true, nil
@@ -89,7 +96,16 @@ func (a *Agent) standEdit(ctx context.Context, parsed standArguments) (string, b
 	if problem != "" {
 		return problem, true, nil
 	}
-	changed := standing.SpecChanges(current, draft)
+	from := a.standingPlacedNow(ctx, current)
+	to, problem := a.standingMovedTo(ctx, parsed, draft, from)
+	if problem != "" {
+		return problem, true, nil
+	}
+	revising := standing.SpecChanges(current, draft)
+	changed := revising
+	if moving := !sameFolders(from, to); moving {
+		changed = append(changed[:len(changed):len(changed)], standingFolderChange)
+	}
 	if len(changed) == 0 {
 		return "nothing to change: send only what is different" + standingDroppedLine(limits), true, nil
 	}
@@ -97,7 +113,6 @@ func (a *Agent) standEdit(ctx context.Context, parsed standArguments) (string, b
 	if problem != "" {
 		return problem, true, nil
 	}
-	place := a.standingPlacedNow(ctx, current)
 	shownBefore, shownAfter := standingShownChange(current, draft)
 	notice := StandingNotice{
 		Item:      draft,
@@ -105,7 +120,7 @@ func (a *Agent) standEdit(ctx context.Context, parsed standArguments) (string, b
 		CostWords: standingChange(a.standingCostWords(current, standingKnownLimits(current, standingLimits{})),
 			a.standingCostWords(draft, standingKnownLimits(draft, limits))),
 		Guessed: parsed.Guessed,
-		Terms:   standingEditTerms(changed, a.standingWorkTerms(ctx, shownBefore, place, standingReportFile{}), a.standingWorkTerms(ctx, shownAfter, place, found)),
+		Terms:   standingEditTerms(changed, a.standingWorkTerms(ctx, shownBefore, from, standingReportFile{}), a.standingWorkTerms(ctx, shownAfter, to, found)),
 		// A CHANGE HAS NO `just once`: doing it once is not a smaller version of
 		// changing work that keeps running.
 		Options: standingEditOptions(draft),
@@ -124,30 +139,105 @@ func (a *Agent) standEdit(ctx context.Context, parsed standArguments) (string, b
 		}
 		return "nothing was changed: the person said no.", false, nil
 	}
+	revised, said, problem := a.standingRevise(store, current, draft, revising, parsed.Words)
+	if problem != "" {
+		return problem, true, nil
+	}
+	if !sameFolders(from, to) {
+		said = a.standingRefolder(ctx, store, revised, said, from, to)
+	}
+	// NO UPDATE ROW IS SENT. The surface draws four shapes of news and none of
+	// them is "changed" (tui3's standUpdateRow draws an unknown word as
+	// `stopped`), and a row that said the work stopped would be worse than the
+	// one line the model now writes.
+	return said + standingCardLines(notice) + a.standingAdopt(store, revised, found) +
+		standingDroppedLine(limits) + "\n" + StandingNextRun + "\n" + standingRevisedLine, false, nil
+}
+
+// standingFolderChange is the name a move gives the parts an edit changes, as
+// [standing.SpecChanges] names the rest.
+const standingFolderChange = "folder"
+
+// standingRevise is the store revision of an edit's yes, when it changes the
+// item's spec: the revised item and its receipt, or the refusal of a yes that
+// came too late. An edit that only moves the work revises nothing, and says so
+// in the move's own words.
+func (a *Agent) standingRevise(store standingStore, current, draft standing.Item, changed []string, words string) (standing.Item, string, string) {
+	if len(changed) == 0 {
+		return current, "", ""
+	}
 	revised, _, err := store.Revise(current.ID, current.SpecRevision, func(item *standing.Item) error {
 		item.When, item.Does, item.Rails, item.Brief, item.Grant = draft.When, draft.Does, draft.Rails, draft.Brief, draft.Grant
 		return nil
 	})
 	switch {
 	case errors.Is(err, standing.ErrConflict):
-		return "nothing was changed: it was changed elsewhere after the card was drawn — read it again with op list and send the edit again", true, nil
+		return current, "", "nothing was changed: it was changed elsewhere after the card was drawn — read it again with op list and send the edit again"
 	case err != nil:
-		return "nothing was changed: " + err.Error(), true, nil
+		return current, "", "nothing was changed: " + err.Error()
 	}
 	// The item's log, in the terminal's grammar ("revised at the terminal to
 	// version N: …"), with the person's own words for the change after it —
 	// unless those words are the item's own sentence, sent to name it.
 	logged := fmt.Sprintf("revised in the chat to version %d: %s", revised.SpecRevision, strings.Join(changed, ", "))
-	if words := strings.TrimSpace(parsed.Words); words != "" && words != current.Words {
+	if words = strings.TrimSpace(words); words != "" && words != current.Words {
 		logged += " — " + strconv.Quote(words)
 	}
 	_ = store.Log(revised.ID, logged)
-	// NO UPDATE ROW IS SENT. The surface draws four shapes of news and none of
-	// them is "changed" (tui3's standUpdateRow draws an unknown word as
-	// `stopped`), and a row that said the work stopped would be worse than the
-	// one line the model now writes.
-	return StandingRevised(revised, changed) + standingCardLines(notice) + a.standingAdopt(store, revised, found) +
-		standingDroppedLine(limits) + "\n" + StandingNextRun + "\n" + standingRevisedLine, false, nil
+	return revised, StandingRevised(revised, changed), ""
+}
+
+// standingMovedTo is where an edit moves work: the folder its placement
+// names, resolved and refused as a proposal's is, or where it is now.
+func (a *Agent) standingMovedTo(ctx context.Context, parsed standArguments, draft standing.Item, from standingPlacement) (standingPlacement, string) {
+	if strings.TrimSpace(parsed.Placement) == "" {
+		return from, ""
+	}
+	return a.standingPlacementFor(ctx, parsed, draft)
+}
+
+// standingRefolder places work in its new folders and takes it out of the ones it
+// leaves, after the yes and after any revision, and adds what happened to the
+// edit's receipt. It places before it unplaces, so a failure between the two
+// leaves the work under both folders' rules — never under none.
+func (a *Agent) standingRefolder(ctx context.Context, store standingStore, item standing.Item, said string, from, to standingPlacement) string {
+	moved := "moved " + item.ID + " to " + to.names()
+	if len(to.folders) == 0 {
+		moved = "moved " + item.ID + " out of " + from.names()
+	}
+	if said != "" {
+		moved = said + "\n" + moved
+	}
+	if err := a.placeInFolders(ctx, item.ID, standingPlacement{folders: foldersNotIn(to, from)}); err != nil {
+		return moved + " — not done: could not be placed in " + to.names() + ": " + oneLine(err.Error())
+	}
+	if len(to.folders) > 0 {
+		_ = store.Log(item.ID, "moved in the chat: "+to.logLine())
+	}
+	leaving := standingPlacement{folders: foldersNotIn(from, to)}
+	if err := a.unplaceFromFolders(ctx, item.ID, leaving); err != nil {
+		return moved + " — but it is still placed in " + leaving.names() + ": " + oneLine(err.Error())
+	}
+	if len(leaving.folders) > 0 {
+		_ = store.Log(item.ID, "unplaced in the chat from folder "+strings.Join(leaving.ids(), ", "))
+	}
+	return moved
+}
+
+// foldersNotIn is the folders of one placement that the other does not hold.
+func foldersNotIn(place, other standingPlacement) []workspace.Collection {
+	var out []workspace.Collection
+	for _, folder := range place.folders {
+		if !slices.Contains(other.ids(), folder.ID) {
+			out = append(out, folder)
+		}
+	}
+	return out
+}
+
+// sameFolders answers whether two placements hold the same folders.
+func sameFolders(a, b standingPlacement) bool {
+	return len(foldersNotIn(a, b)) == 0 && len(foldersNotIn(b, a)) == 0
 }
 
 // standingEdited is current with what the call changes applied, or the refusal
@@ -215,25 +305,6 @@ func standingEditRefusal(current standing.Item, parsed standArguments) string {
 		return "Invalid arguments: an edit keeps what the work is — " + standingKindOf(current) + " — so stop it and propose the other"
 	}
 	return ""
-}
-
-// standingMoveRefusal is an edit asked to move work: the road that moves it,
-// and the folders the work is in now.
-//
-// A MOVE IS TWO ACTS. Told only that `collections place and unplace` move
-// work, a model placed a watch in its new folder and left it in the old one,
-// so every run kept both folders' rules (the live move case, 2026-09-11).
-func (a *Agent) standingMoveRefusal(ctx context.Context, current standing.Item) string {
-	refusal := "Invalid arguments: an edit does not move work — collections place and unplace do, with ref {kind: standing, id: " + current.ID + "}, and the work, what it has read and its report stay"
-	place := a.standingPlacedNow(ctx, current)
-	if len(place.folders) == 0 {
-		return refusal
-	}
-	var folders []string
-	for _, folder := range place.folders {
-		folders = append(folders, folder.Name+" ("+folder.ID+")")
-	}
-	return refusal + ". It is placed in " + strings.Join(folders, ", ") + ": a move places it in the new folder and unplaces it from the one it leaves."
 }
 
 // standingKindOf is what an item is, as a refusal names it.
