@@ -3773,6 +3773,15 @@ func (a *Agent) postTaskMessage(node *TaskNode, tag TaskReplyTag, note, record s
 // in the same family, carried by the landing rather than by a turn, because
 // there is no worker left in there to have one.
 //
+// AND THE FOLD IS ONLY FOR NEWS THAT WOULD OTHERWISE LEAVE THE FAMILY. When
+// this agent is itself the parent's reader — a standing firing is the agent
+// standing in its own root node, and it reads that node's pieces as the graph's
+// home rather than from a seat (standing_run.go) — falling through to it IS the
+// family reading its own news, and a fold in front of it would take the report
+// away from the one reader waiting on it: the part marked reported, nothing
+// owed, no wake, and the firing parked forever on a generation nobody closes.
+// So the fold is asked only when the last reader in line is somebody else.
+//
 // A NODE WITH NO PARENT HAS ONE READER and the room is not consulted at all: it
 // was proposed here, and here is where its news is owed.
 func (a *Agent) taskNoteReaders(node *TaskNode) []mailbox {
@@ -3787,11 +3796,23 @@ func (a *Agent) taskNoteReaders(node *TaskNode) []mailbox {
 	// for a nil room — the parent has landed, has no agent left to read anything,
 	// and the person's conversation is the honest place for the news. The fold
 	// between them refuses on exactly the same fact, from the node's own side.
-	return []mailbox{
-		roomSeat{at: conversationOf(parent), room: parent.openRoom()},
-		landingFold{at: conversationOf(parent), node: parent},
-		a,
+	seat := roomSeat{at: conversationOf(parent), room: parent.openRoom()}
+	if a.standsIn(parent) {
+		return []mailbox{seat, a}
 	}
+	return []mailbox{seat, landingFold{at: conversationOf(parent), node: parent}, a}
+}
+
+// standsIn answers whether this agent is the one working as that node — the
+// graph it was built on and the id it was built for ([Config.taskID]) — which is
+// the fact that makes it that node's reader whether or not it sits in the room.
+func (a *Agent) standsIn(node *TaskNode) bool {
+	if a == nil || node == nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.config.tasker == node.graph && a.config.taskID == node.id
 }
 
 // taskNote is what the model reads when a node lands: the outcome, the report,

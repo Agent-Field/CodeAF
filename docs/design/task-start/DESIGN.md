@@ -324,7 +324,12 @@ already on its way carries it — one account of what this node's work came to, 
 family it belongs to. The fold refuses on exactly the fact the seat refuses on — the node
 has settled — so **only a parent that has already landed** sends its pieces to the
 person, which is the fallback as designed. Routing stays one ordered question
-(`deliverTo`); nothing branches on which road a message came by.
+(`deliverTo`); nothing branches on which road a message came by. **The fold is only
+for news that would otherwise leave the family:** when the delivering agent is itself
+the parent's reader (`Agent.standsIn` — a standing firing reads its root node's pieces
+as the graph's home, never from a seat), the list is the seat and that agent, with no
+fold between them. Folding there took the report from the one reader waiting on it and
+parked the firing forever (`TestADivisionUnderAFiringIsWaitedForAndBilledToTheRun`).
 
 Three properties make the fold a delivery rather than a string append, and each has a
 test (`task_latefold_test.go`):
