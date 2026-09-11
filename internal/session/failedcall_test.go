@@ -129,6 +129,10 @@ func TestACallThatAnsweredNothingIsAFailureAndIsNotReadForWhatRemains(t *testing
 	completer := &scriptedCompleter{steps: brokenSteps(checkpointMarkAt(2), &remainsAsks,
 		func(context.Context, []ai.Message) (*ai.Response, error) { return emptyResponse(), nil })}
 	agent := checkpointAgent(t, completer, func(config *Config) { config.SessionFile = path })
+	// AND THE RE-ASKING RUNS ON THE TEST'S CLOCK. An endpoint that answers
+	// nothing is asked again until the turn's give-up is gone — which is ninety
+	// seconds of a person's time and none of this test's ([onATestClock]).
+	onATestClock(t)
 	stubbedGraph(agent, func(node *TaskNode) {})
 
 	events, err := agent.Submit(context.Background(), "port the language server and get the golden tests passing")
