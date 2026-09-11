@@ -1834,8 +1834,8 @@ type Config struct {
 	// this node's own children.
 	taskID uint64
 	// taskDepth is how many tasks deep this agent sits: 0 in the conversation, 1
-	// in a task the conversation proposed, 2 in a sub-task of that one.
-	// taskDepthLimit is the floor, and an agent standing on it is handed no
+	// in a task the conversation proposed, 2 in a sub-task of that one, and so
+	// on. taskDepthLimit is the floor, and an agent standing on it is handed no
 	// propose_task at all (tools.go) — absent, not refusing.
 	taskDepth int
 

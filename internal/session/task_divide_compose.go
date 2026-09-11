@@ -181,6 +181,19 @@ func (f divisionFamily) partBrief(index int, scope string) string {
 	return strings.Join(sections, "\n\n")
 }
 
+// partOwnWords is [divisionFamily.partBrief] read backwards: the scope whoever
+// divided the work wrote for this part, with the family's context taken off the
+// front. A brief no division composed wears no heading and is its author's own
+// words whole. The LAST heading is the one read, because a part of a part carries
+// its parent's own heading inside the ground composed around it, and the scope
+// always comes last.
+func partOwnWords(brief string) string {
+	if at := strings.LastIndex(brief, divisionThisPart+"\n"); at >= 0 {
+		return brief[at+len(divisionThisPart)+1:]
+	}
+	return brief
+}
+
 // siblings is the sentence naming what somebody else owns right now, or an empty
 // string where this part has no siblings to name — which is the one-part
 // division no road admits, and is answered here rather than assumed.
