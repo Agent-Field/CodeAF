@@ -877,8 +877,6 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.taskSheetMove(len(a.taskSheet.stops(a)))
 	case "enter":
 		return a.taskSheetEnter(), true
-	case tasksSortKeyChord:
-		a.taskSheetSortBy(a.taskSheet.order.key.next())
 	case tasksSortBackChord:
 		// THE SAME KEY AGAIN REVERSES ([tasksSort.on]), which is what a person
 		// means by this chord: not "the previous key" but "the other way round".
@@ -1761,6 +1759,24 @@ func (placeTasks) box(a *app) *editor { return nil }
 // instruction, over a box that cannot take one. The words are the FOOT's, moved
 // into the slot they are about: one sentence, in the place a person is looking
 // when they wonder what typing here will do.
+// alt is `alt+s`: WHICH COLUMN THIS LIST IS ORDERED BY, one key at a time.
+//
+// IT IS HERE AND NOT IN [app.taskSheetKeyPress] BECAUSE THE ROUTER OWNS THE
+// CLASS. `alt+<letter>` means "change how THIS place is shown" on every place
+// (placekeys.go), and it SWALLOWS an undeclared letter rather than passing it
+// down — so an arm written in this place's own key switch would never be
+// reached. Which is also the argument for the binding: a sort IS a view, the
+// memory place already walks its shelves with the same chord, and the ruling of
+// 2026-09-11 settled that it cannot be a bare `s` because the filter here owns
+// every printable key.
+func (placeTasks) alt(a *app, letter rune) bool {
+	if letter != 's' {
+		return false
+	}
+	a.taskSheetSortBy(a.taskSheet.order.key.next())
+	return true
+}
+
 func (placeTasks) resting(a *app) string { return tasksTypeWord }
 
 // tasksFilterHint is the short spelling of that invitation. It is the control

@@ -1,0 +1,439 @@
+package tui3
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+)
+
+// tasksTableFixture is a record with something in every column: three
+// conversations, a family, money that ranges over two orders of magnitude, a row
+// that cost nothing anybody recorded, and one piece of work nobody could check.
+//
+// IT IS BUILT FOR THE SORT. Two of its conversations stand in the SAME section
+// so that the order of the roots is a claim about their totals rather than about
+// their headings, and the rows inside one of them have three different prices so
+// that descending is distinguishable from arriving.
+func tasksTableFixture() (session.World, session.UsageWindow, time.Time) {
+	loc := time.FixedZone("fixture", -4*60*60)
+	now := time.Date(2026, time.September, 11, 12, 0, 0, 0, loc)
+	ago := func(d time.Duration) time.Time { return now.Add(-d) }
+	work := func(room, id, label, status string, ended time.Time, files int, cost float64) session.TaskIndexEntry {
+		return session.TaskIndexEntry{
+			ID: id, Label: label, Title: label, SessionID: room, Status: status,
+			EndedAt: ended, FilesChanged: files, Cost: cost,
+		}
+	}
+	first := session.SessionRow{ID: "room-a", Title: "the pricing page", Project: "aforge", Open: true}
+	first.Tasks.Rows = []session.TaskIndexEntry{
+		work("room-a", "1", "put the annual toggle up", string(session.TaskDone), ago(time.Hour), 2, 1.50),
+		work("room-a", "2", "pages one two", string(session.TaskDone), ago(2*time.Hour), 1, .25),
+		work("room-a", "3", "check the copy", string(session.TaskUnverified), ago(3*time.Hour), 0, 0),
+	}
+	second := session.SessionRow{ID: "room-b", Title: "thor clips", Project: "media", Open: true}
+	second.Tasks.Rows = []session.TaskIndexEntry{
+		work("room-b", "1", "render the fight clip", string(session.TaskDone), ago(5*time.Hour), 12, .10),
+	}
+	third := session.SessionRow{ID: "room-c", Title: "the corpus sweep", Project: "aforge", Open: true}
+	third.Tasks.Rows = []session.TaskIndexEntry{
+		work("room-c", "1", "sweep the corpus", string(session.TaskDone), ago(4*time.Hour), 3, 4.20),
+		work("room-c", "2", "count the tokens", string(session.TaskDone), ago(6*time.Hour), 1, .60),
+	}
+	third.Tasks.Rows[1].Parent = "1"
+	world := session.World{Projects: []session.Project{
+		{Name: "aforge", Sessions: []session.SessionRow{first, third}},
+		{Name: "media", Sessions: []session.SessionRow{second}},
+	}, Read: now}
+	return world, session.LastDays(now, 7), now
+}
+
+// tasksTableApp is that record on the page, with the folds where the place puts
+// them and the cursor settled.
+func tasksTableApp(t *testing.T) *app {
+	t.Helper()
+	world, win, now := tasksTableFixture()
+	a := &app{pal: newPalette(tokens.NoColor, false)}
+	a.width, a.height = 122, 40
+	a.clock = func() time.Time { return now }
+	a.raisePlace(pageTasks)
+	a.taskSheet.world = world
+	a.taskSheet.reading = readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
+	a.taskSheet.awayAt, a.taskSheet.mineAt = a.elsewhere().Read, a.railStamp
+	a.taskSheet.cursor = a.tasksSettle(0)
+	return a
+}
+
+// tasksWorkLines is every row of WORK on the laid-out page, in the order it is
+// drawn — which is the order the sort is a claim about.
+func tasksWorkLines(lines []tasksLine) []tasksLine {
+	var out []tasksLine
+	for _, line := range lines {
+		if line.kind == tasksLineTask {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// ── the columns ─────────────────────────────────────────────────────────────
+
+// THE COLUMNS ARE FIXED AT NINETY CELLS AND OVER, AND THE STATE GOES FIRST UNDER
+// IT. spec.md §2: the fold, the mark, the name, `state` at twenty cells, the
+// sort key's own cells right-aligned, and one cell of air. Only the name flexes
+// (rowfit.go law 1), so the two figures a person is comparing down the page are
+// in the same cells on every row of one frame.
+func TestTheTasksTableHoldsItsColumnsToTheCellAtEveryWidth(t *testing.T) {
+	world, win, now := tasksTableFixture()
+	reading := tasksOpen(readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now))
+	for _, width := range []int{122, 100, 90} {
+		state, second, name := tasksColumns(width, tasksByAge)
+		if state != tasksStateCells || second != tasksKeyCells {
+			t.Fatalf("at %d cells the columns came out state=%d key=%d, want %d and %d",
+				width, state, second, tasksStateCells, tasksKeyCells)
+		}
+		if want := width - state - second - tasksColumnAir; name != want {
+			t.Fatalf("at %d cells the name took %d and the columns left %d", width, name, want)
+		}
+		// AND THE PAGE REALLY DRAWS THEM: every row of work says its state word.
+		for _, line := range tasksWorkLines(reading.lay(width)) {
+			row := plain(tasksRow(line, width, now, tasksSort{}, newPalette(tokens.NoColor, false), false))
+			if word := taskStateWord(line.item.entry, line.item.runs); !strings.Contains(row, word) {
+				t.Fatalf("at %d cells a row gave up its state:\n  %s", width, strings.TrimRight(row, " "))
+			}
+		}
+	}
+	// UNDER NINETY THE STATE COLUMN GOES AND THE KEY COLUMN STAYS. The state is
+	// the wider of the two and the one a narrow frame can put somewhere else —
+	// the cursor's own line grows it ([tasksReasonLine]) — while a figure has
+	// nowhere else on the page to be.
+	for _, width := range []int{89, 60} {
+		state, second, name := tasksColumns(width, tasksByAge)
+		if state != 0 {
+			t.Fatalf("at %d cells the state column is still %d cells wide", width, state)
+		}
+		if second != tasksKeyCells {
+			t.Fatalf("at %d cells the sort key's column came out %d cells", width, second)
+		}
+		if name != width-second-tasksColumnAir {
+			t.Fatalf("at %d cells the name took %d of the %d left to it", width, name, width-second-tasksColumnAir)
+		}
+	}
+}
+
+// THE STATE CELL IS NEVER BLANK ON A ROW OF WORK. It is the one thing this list
+// is read for, and a hole in that column is a row a person has to open to find
+// out whether it wants them.
+func TestEveryRowOfWorkSaysWhatItIs(t *testing.T) {
+	world, win, now := tasksTableFixture()
+	reading := tasksOpen(readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now))
+	for _, line := range tasksWorkLines(reading.lay(122)) {
+		if got := rowTail([]rowField{tasksStateField(line)}, tasksStateCells); strings.TrimSpace(got) == "" {
+			t.Fatalf("%q drew nothing in the state column", tasksLabel(line.item.entry))
+		}
+	}
+	// AND A SHUT ROOT'S CELL IS ITS COUNT, which is the question a shut fold
+	// raises: how much is behind this, and does any of it want me.
+	for _, line := range reading.lay(122) {
+		if line.kind != tasksLineChat {
+			continue
+		}
+		got := rowTail([]rowField{tasksChatStateField(line.chat)}, tasksStateCells)
+		if strings.TrimSpace(got) == "" {
+			t.Fatalf("the conversation %q drew nothing in the state column", line.chat.title)
+		}
+		if !strings.HasPrefix(strings.TrimSpace(got), itoa(line.chat.whole)+" ") {
+			t.Fatalf("the conversation %q says %q and it is holding %d pieces of work",
+				line.chat.title, strings.TrimSpace(got), line.chat.whole)
+		}
+	}
+}
+
+// A SHUT ROOT'S COUNT IS THE ROWS IT IS HIDING, at every depth of what is under
+// it. A root over one task with a worker beneath it saying `1 done` beside a
+// heading saying `2 folded away` is two numbers about the same rows.
+func TestAShutRootCountsEveryRowItHides(t *testing.T) {
+	world, win, now := tasksTableFixture()
+	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
+	lines := reading.lay(122)
+	if work := tasksWorkLines(lines); len(work) != 0 {
+		t.Fatalf("a fresh reading drew %d rows of work, and every conversation opens shut", len(work))
+	}
+	for _, line := range lines {
+		if line.kind != tasksLineChat {
+			continue
+		}
+		// Open this one alone and count what appeared.
+		one := reading
+		one.open = map[tasksKey]bool{line.family: true}
+		under := 0
+		for _, kid := range one.lay(122) {
+			if kid.kind == tasksLineTask && kid.item.entry.SessionID == line.chat.row.ID {
+				under++
+			}
+		}
+		// `→` opens one level; the families under it stay shut, and the count is
+		// still the whole of what the root is standing over.
+		deep := reading
+		deep.unfolded = true
+		whole := 0
+		for _, kid := range deep.lay(122) {
+			if kid.kind == tasksLineTask && kid.item.entry.SessionID == line.chat.row.ID {
+				whole++
+			}
+		}
+		if line.chat.whole != whole {
+			t.Fatalf("%q says it holds %d and opening it whole draws %d (one press draws %d)",
+				line.chat.title, line.chat.whole, whole, under)
+		}
+	}
+}
+
+// ── the sort ────────────────────────────────────────────────────────────────
+
+// SORTING BY COST ORDERS EVERY LEVEL OF THE TREE BY MONEY AND FLATTENS NONE OF
+// IT: the work inside a conversation descends, the conversations descend by
+// their totals inside their own section, a row nobody priced sinks to the bottom
+// of its group, the second column shows the money, and the label wears the
+// arrow. Asking for the same key again turns the whole thing round.
+func TestSortingByCostOrdersEveryLevelAndSaysSo(t *testing.T) {
+	world, win, now := tasksTableFixture()
+	by := tasksSort{key: tasksByCost}
+	reading := tasksOpen(readTasks(world, tasksMine{}, win, by, time.Time{}, now))
+
+	// INSIDE ONE CONVERSATION, DEAREST FIRST, AND THE UNPRICED ROW LAST.
+	inside := []string{}
+	for _, line := range tasksWorkLines(reading.lay(122)) {
+		if line.item.entry.SessionID == "room-a" {
+			inside = append(inside, tasksLabel(line.item.entry))
+		}
+	}
+	want := []string{"put the annual toggle up", "pages one two", "check the copy"}
+	if strings.Join(inside, " / ") != strings.Join(want, " / ") {
+		t.Fatalf("sorted by cost one conversation reads\n  %s\nwant\n  %s",
+			strings.Join(inside, " / "), strings.Join(want, " / "))
+	}
+
+	// AND THE CONVERSATIONS INSIDE ONE SECTION GO BY THEIR TOTALS. The sweep cost
+	// $4.80 altogether and the clips cost ten cents, and both finished today.
+	roots := []string{}
+	for _, line := range reading.lay(122) {
+		if line.kind == tasksLineChat && line.chat.state == tasksToday {
+			roots = append(roots, line.chat.title)
+		}
+	}
+	if strings.Join(roots, " / ") != "the corpus sweep / thor clips" {
+		t.Fatalf("the conversations of one section read %q, want the dearest first", strings.Join(roots, " / "))
+	}
+
+	// AND THE COLUMN SHOWS THE MONEY, in the money's own ink and nowhere else.
+	row := tasksDrawnRow(tasksPage(reading, 122), "put the annual toggle up")
+	if !strings.HasSuffix(row, "$1.50") {
+		t.Fatalf("a row sorted by cost ends on\n  %s\nand the column it is sorted by is the money", row)
+	}
+	blank := tasksDrawnRow(tasksPage(reading, 122), "check the copy")
+	if strings.Contains(blank, "$") {
+		t.Fatalf("a row nobody priced drew a figure:\n  %s", blank)
+	}
+
+	// AND THE LABEL WEARS THE ARROW.
+	_, second := tasksControlLabels(by)
+	if second != "cost "+tasksSortDown {
+		t.Fatalf("the sorted column's label reads %q", second)
+	}
+	if _, back := tasksControlLabels(by.on(tasksByCost)); back != "cost "+tasksSortUp {
+		t.Fatalf("the same key again leaves the label reading %q", back)
+	}
+
+	// AND THE SAME KEY AGAIN REVERSES THE WHOLE PAGE.
+	up := tasksOpen(readTasks(world, tasksMine{}, win, by.on(tasksByCost), time.Time{}, now))
+	back := []string{}
+	for _, line := range tasksWorkLines(up.lay(122)) {
+		if line.item.entry.SessionID == "room-a" {
+			back = append(back, tasksLabel(line.item.entry))
+		}
+	}
+	if strings.Join(back, " / ") != "pages one two / put the annual toggle up" &&
+		back[len(back)-1] != "check the copy" {
+		t.Fatalf("reversed, the conversation reads %q", strings.Join(back, " / "))
+	}
+	if back[len(back)-1] != "check the copy" {
+		t.Fatalf("reversed, the row nobody priced came off the bottom: %q", strings.Join(back, " / "))
+	}
+}
+
+// THE CHORD AND THE POINTER ARE ONE DOOR. `alt+s` walks the keys and a press on
+// a label names one; both go through [app.taskSheetSortBy], so a column clicked
+// twice and a key cycled round to itself behave the same way.
+//
+// IT IS A CHORD AND NOT `s` (the ruling of 2026-09-11). Every printable key on
+// this page goes into the filter, so a bare `s` would cost a person `sweep`,
+// `stop` and `site`.
+func TestAPressOnTheCostLabelSortsTheListByCost(t *testing.T) {
+	a := tasksTableApp(t)
+	if a.taskSheet.order.key != tasksByAge {
+		t.Fatalf("the page opens sorted by %q", a.taskSheet.order.key.word())
+	}
+	width, height := a.size()
+	lines, hits, _, _ := a.taskSheetFrame(width, height)
+	y := -1
+	for at, hit := range hits {
+		if hit.kind == taskSheetHitControl {
+			y = at
+			break
+		}
+	}
+	if y < 0 {
+		t.Fatalf("the control row answers no press:\n%s", strings.Join(lines, "\n"))
+	}
+	// The cell the `age` label is drawn in, asked of the hit map the way the row
+	// itself is laid out.
+	room := width - len(tasksBareLead)
+	stateCells, secondCells, nameCells := tasksColumns(room, a.taskSheet.order.key)
+	x := len(tasksBareLead) + nameCells + stateCells + secondCells - 1
+	a.taskSheetPress(x, y)
+	if a.taskSheet.order.key != tasksByAge {
+		t.Fatalf("a press on the age label sorted by %q", a.taskSheet.order.key.word())
+	}
+	if !a.taskSheet.order.back {
+		t.Fatal("a press on the column already sorted did not turn it round")
+	}
+	// AND THE STATE LABEL BESIDE IT IS ITS OWN COLUMN.
+	a.taskSheetPress(len(tasksBareLead)+nameCells, y)
+	if a.taskSheet.order.key != tasksByState {
+		t.Fatalf("a press on the state label sorted by %q", a.taskSheet.order.key.word())
+	}
+	// AND THE CHORD REACHES COST, which no label on an age-sorted page is
+	// standing over — the two doors are the same door.
+	for i := 0; i < int(tasksSortKeyCount)+1; i++ {
+		if a.taskSheet.order.key == tasksByCost {
+			break
+		}
+		drive(t, a, key(tasksSortKeyChord))
+	}
+	if a.taskSheet.order.key != tasksByCost {
+		t.Fatalf("%q never reached cost: it is on %q", tasksSortKeyChord, a.taskSheet.order.key.word())
+	}
+	if _, second := tasksControlLabels(a.taskSheet.order); second != "cost "+tasksSortDown {
+		t.Fatalf("sorted by cost the second label reads %q", second)
+	}
+	// AND THE OTHER CHORD TURNS THE COLUMN THE PAGE IS ON ROUND, rather than
+	// walking back a key: what a person means by shift here is "the other way",
+	// not "the previous column".
+	was := a.taskSheet.order
+	drive(t, a, key(tasksSortBackChord))
+	if now := a.taskSheet.order; now.key != was.key || now.back == was.back {
+		t.Fatalf("%q left the page sorted by %q back=%v, want cost the other way round",
+			tasksSortBackChord, now.key.word(), now.back)
+	}
+}
+
+// ── the folds ───────────────────────────────────────────────────────────────
+
+// EVERY CONVERSATION AND EVERY FAMILY OPENS SHUT (owner, 2026-09-11), `→` opens
+// one, and A TYPED FILTER OPENS EVERY CONVERSATION WITH A MATCHING ROW — then
+// gives the person their own folds back when it clears. A row that matched and
+// is sitting behind a fold is a row the query appears not to have found.
+func TestTheTasksPageOpensFoldedAndAFilterOpensWhatItMatched(t *testing.T) {
+	a := tasksTableApp(t)
+	width, _ := a.size()
+	page := tasksPageFolded(a.tasksFiltered(), width)
+	for _, name := range []string{"the pricing page", "thor clips", "the corpus sweep"} {
+		if !strings.Contains(page, name) {
+			t.Fatalf("a fresh page is missing the conversation %q:\n%s", name, page)
+		}
+	}
+	if work := tasksWorkLines(a.tasksFiltered().lay(width)); len(work) != 0 {
+		t.Fatalf("a fresh page drew %d rows of work under its roots:\n%s", len(work), page)
+	}
+
+	// `→` OPENS ONE, AND ONE ONLY.
+	tasksPointAtRoot(t, a, "the pricing page")
+	if !a.taskSheetFold(true) {
+		t.Fatal("`→` did nothing over a shut conversation")
+	}
+	page = tasksPageFolded(a.tasksFiltered(), width)
+	if !strings.Contains(page, "pages one two") {
+		t.Fatalf("`→` did not put the conversation's work on the page:\n%s", page)
+	}
+	if strings.Contains(page, "render the fight clip") {
+		t.Fatalf("`→` opened a conversation nobody was standing on:\n%s", page)
+	}
+	if !a.taskSheetFold(false) {
+		t.Fatal("`←` did nothing over the conversation it had just opened")
+	}
+
+	// A TYPED FILTER OPENS WHAT IT MATCHED.
+	a.taskSheet.query.setText("pages")
+	a.taskSheetTyped()
+	page = tasksPageFolded(a.tasksFiltered(), width)
+	if !strings.Contains(page, "pages one two") {
+		t.Fatalf("the filter left its own match behind a fold:\n%s", page)
+	}
+	if strings.Contains(page, "render the fight clip") || strings.Contains(page, "sweep the corpus") {
+		t.Fatalf("the filter kept work nothing matched:\n%s", page)
+	}
+
+	// AND CLEARING IT GIVES THE PERSON THEIR OWN FOLDS BACK.
+	a.taskSheet.query.setText("")
+	a.taskSheetTyped()
+	page = tasksPageFolded(a.tasksFiltered(), width)
+	if strings.Contains(page, "pages one two") {
+		t.Fatalf("the cleared filter left the conversation it opened standing open:\n%s", page)
+	}
+	if !strings.Contains(page, "the pricing page") {
+		t.Fatalf("the cleared filter took the conversation off the page:\n%s", page)
+	}
+}
+
+// tasksPointAtRoot parks the cursor on a conversation's own row, WITHOUT opening
+// anything — which is what the fold tests need and what [tasksPointAt] cannot
+// promise, because reaching a piece of work means opening the fold over it.
+func tasksPointAtRoot(t *testing.T, a *app, title string) int {
+	t.Helper()
+	width, _ := a.size()
+	for at, line := range a.tasksFiltered().lay(width) {
+		if line.kind == tasksLineChat && line.chat.title == title {
+			a.taskSheet.cursor = at
+			return at
+		}
+	}
+	t.Fatalf("no conversation on the page is called %q", title)
+	return -1
+}
+
+// ── the reason ──────────────────────────────────────────────────────────────
+
+// UNDER A HUNDRED AND TEN CELLS THE CURSOR'S ROW GROWS ONE DIM LINE, and the
+// line is the state and the reason joined the one way this codebase joins them
+// ([session.TaskStatus.RowWord]). The reason left the row when the row became a
+// table; a frame too narrow for the pane beside the list is where it has to go
+// instead, and it is one row of the page rather than twenty.
+func TestUnderTheePaneFloorTheCursorsRowGrowsItsReason(t *testing.T) {
+	world, win, now := tasksTableFixture()
+	reading := tasksOpen(readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now))
+	var unchecked tasksItem
+	for _, item := range reading.items {
+		if tasksLabel(item.entry) == "check the copy" {
+			unchecked = item
+		}
+	}
+	pal := newPalette(tokens.NoColor, false)
+	got := plain(tasksReasonLine(unchecked, 100, pal))
+	if want := unchecked.status().RowWord(); got != want {
+		t.Fatalf("the grown line reads\n  %q\nwant\n  %q", got, want)
+	}
+	if !strings.Contains(got, "your call") || !strings.Contains(got, "nobody could check it") {
+		t.Fatalf("the grown line over work nobody could check reads %q", got)
+	}
+	// AND IT IS DRAWN ONLY WHERE THERE IS NO PANE FOR IT.
+	a := tasksTableApp(t)
+	if a.width = tasksPaneFloor; tasksReasonShowing(a) {
+		t.Fatalf("at %d cells the list grows a line the pane beside it is already saying", a.width)
+	}
+	if a.width = tasksPaneFloor - 1; !tasksReasonShowing(a) {
+		t.Fatalf("at %d cells the reason is on no line of the frame at all", a.width)
+	}
+}
