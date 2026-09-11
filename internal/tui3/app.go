@@ -1691,6 +1691,10 @@ type app struct {
 	// is every local session — no segment, no notice, no waiting room — which is
 	// the same absence the seam above draws when the ambient side is off.
 	link LinkSeam
+	// newsSilenceSaid is whether this window has already said that its engine
+	// sends no status-line news (hostlink.go's [app.sayNewsSilence]). It is said
+	// once per window, because it is a fact about a machine and not about a turn.
+	newsSilenceSaid bool
 	// watchSpaces counts the run of spaces a WATCHER has typed, which is how the
 	// door home is reached from a register with no box on the frame
 	// (watching.go's [app.watchKey]). It is zero everywhere else.
@@ -5250,6 +5254,10 @@ func (a *app) settle() tea.Cmd {
 	// THE WHOLE TURN SETTLES, and not only the block the stream was last writing
 	// into ([app.settleTurn]).
 	a.settleTurn()
+	// AND AN ENGINE THAT SENT NO NEWS FOR A WHOLE ANSWER IS NAMED, once
+	// (hostlink.go's [app.sayNewsSilence]), so a status line with no provider
+	// and no rate on it is explained rather than left to look broken.
+	a.sayNewsSilence()
 	// A turn that streamed nothing but reasoning still ends with a block, and a
 	// block left open would keep a finished thought expanded over the next turn.
 	a.collapseThought()

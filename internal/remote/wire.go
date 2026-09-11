@@ -978,6 +978,25 @@ type Welcome struct {
 	// these doors sends no field, and a surface that believed it could attach
 	// would open a picker whose every row ends in an error.
 	Folders bool `json:"folders,omitempty"`
+
+	// News says this engine SENDS THE STATUS LINE'S NEWS — the "phase" and
+	// "lane" frames the live rate and the `via <machine>` rider are drawn from
+	// (news.go) — for the conversation this surface arrived in.
+	//
+	// IT MAKES AN ABSENCE KNOWABLE WITHOUT REFUSING ANYBODY. The news frames
+	// rode an existing version on purpose ([Version]'s note says why: a status
+	// line must not turn a live conversation away), which left a surface
+	// attached to an engine from before them drawing no rate and no machine and
+	// no way to say why — and a busy older engine on the same version is
+	// attached to rather than retired (cmd/aforge's clearStaleEngineHost). A
+	// surface reads this, or a news frame arriving, as the engine having the
+	// news; neither after a whole answer is an older engine, and the surface
+	// says so once ([Client.NewsSilent]).
+	//
+	// ABSENCE IS false, and it is not by itself proof of an old engine: every
+	// build between the news frames and this flag sends them without saying so,
+	// which is why a frame arriving counts as the same answer.
+	News bool `json:"news,omitempty"`
 }
 
 // Driver is who holds the keyboard on one conversation, as told to ONE surface.
@@ -1369,6 +1388,20 @@ type PhaseWire struct {
 	// means, so a surface talking to a build without it behaves exactly as it
 	// always did.
 	Subject string `json:"subject,omitempty"`
+	// Session is WHOSE news this is — the conversation, in the engine's own
+	// spelling ([session.Agent.NewsKey]) — and the name the surface files the
+	// conversation's own news under first (internal/tui3's newsDeskKeys).
+	//
+	// IT CROSSES BECAUSE THE MODEL IS NOT AN IDENTITY. Without it the surface
+	// filed the conversation's phases under the model id, and the model is
+	// exactly the thing that moves between an engine and a window: a pick made
+	// mid-turn, a stream-cut hop onto another model, a change made from another
+	// window. Each put the live rate and the machine under a name that window
+	// was not asking for.
+	//
+	// AN OLDER PEER SENDS NONE, and the surface files what it gets under the
+	// model alone, which is what it always did — so no version moves for it.
+	Session string `json:"session,omitempty"`
 	// Lane is the machine answering when one has named itself, and Rate how
 	// fast it is writing in tokens a second. Zero for both is "not measured",
 	// never "nothing" — the emptiness law, carried across the wire intact.
@@ -1429,6 +1462,10 @@ type LaneWire struct {
 	// conversation. It is spelled the same on both wire shapes because they are
 	// twins, and a surface keys both desks with one function.
 	Subject string `json:"subject,omitempty"`
+	// Session is whose sighting it is, for [PhaseWire.Session]'s reason and with
+	// its reading of absence: an older peer sends none, and the sighting is
+	// filed under its model as it always was.
+	Session string `json:"session,omitempty"`
 }
 
 type StreamRef struct {
