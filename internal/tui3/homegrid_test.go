@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 // ── THE GRID'S LAWS (docs/design/home-mission-control/DESIGN.md §1) ──────────
@@ -49,6 +51,22 @@ func TestAtEightyTheGridIsOneColumnInReadingOrder(t *testing.T) {
 			t.Fatalf("%q is at row %d cell %d, after row %d in one column:\n%s", word, row, col, last, frame)
 		}
 		last = row
+	}
+	// AND EVERY HEADING THAT KEPT ITS PLACE CARRIES ITS EXPLAINER BESIDE IT, on
+	// the heading's own row: the gloss is furniture of the heading, not a line of
+	// its own.
+	lines := strings.Split(frame, "\n")
+	for _, slot := range homePanelOrder {
+		if slot.explainer == "" {
+			continue
+		}
+		row, _ := homeRowOf(frame, slot.word+rowSep)
+		if row < 0 {
+			continue // a twenty-four-row frame squeezes its later panels off
+		}
+		if !strings.Contains(lines[row], rowSep+slot.explainer) {
+			t.Fatalf("%q does not carry %q on its own row:\n%s", slot.word, slot.explainer, frame)
+		}
 	}
 }
 
@@ -187,6 +205,45 @@ func TestTheSqueezeAtOneTwentyByTwentyFourKeepsNeedsAndRecent(t *testing.T) {
 	}
 	if len(strings.Split(frame, "\n")) != 24 {
 		t.Fatalf("the frame is not 24 rows")
+	}
+}
+
+// A HEADING'S EXPLAINER IS DRAWN ONE SHADE UNDER IT, AND IT GIVES WAY WHOLE.
+// Beside a heading with the room for it, the panel's gloss follows the heading's
+// own ink in the dim ink; where the column cannot hold the heading, the
+// separator and the gloss TOGETHER, the gloss is dropped and the heading is left
+// exactly as it read before explainers existed — never cut to make room for a
+// gloss. A heading with a right-hand clause measures its gloss against the room
+// the clause leaves rather than the whole column.
+func TestAHeadingExplainerIsDimAndGivesWayBeforeTheHeadingIsCut(t *testing.T) {
+	pal := newTestPalette()
+	cell := &homeCell{kind: cellHead, panel: panelProjects, title: "projects", note: "folders you've opened"}
+	tail := rowSep + cell.note
+	whole := ansi.StringWidth(cell.title) + ansi.StringWidth(tail)
+
+	// Room for all of it: the gloss is dim, and the heading keeps its own ink.
+	drawn := homeCellHead(cell, whole, pal, false)
+	if !strings.Contains(drawn, placeHeadingInk(pal)(cell.title)+pal.dim(tail)) {
+		t.Fatalf("the explainer is not painted dim after the heading's own ink:\n%q", drawn)
+	}
+	// One cell short of the whole: the gloss goes, and the heading is untouched.
+	if got := plain(homeCellHead(cell, whole-1, pal, false)); got != cell.title {
+		t.Fatalf("a column one cell short drew %q, want the heading alone", got)
+	}
+	// A column too narrow for even the heading cuts it, exactly as it always
+	// did — the gloss never turns that cut into something worse.
+	cut := plain(homeCellHead(cell, ansi.StringWidth(cell.title)-1, pal, false))
+	if !strings.Contains(cut, glyphMore) || strings.Contains(cut, cell.note) {
+		t.Fatalf("a too-narrow column drew %q, want the heading cut with no gloss", cut)
+	}
+	// A heading with a right-hand clause drops its gloss past the room the
+	// clause leaves, not the whole column.
+	clause := &homeCell{kind: cellHead, title: "spend", note: "spent today", right: "today $6.51 of $500"}
+	if !strings.Contains(plain(homeCellHead(clause, 39, pal, false)), clause.note) {
+		t.Fatalf("the gloss does not fit the room its right-hand clause leaves at 39 cells")
+	}
+	if got := plain(homeCellHead(clause, 38, pal, false)); strings.Contains(got, clause.note) {
+		t.Fatalf("the gloss was kept past the room its right-hand clause leaves: %q", got)
 	}
 }
 

@@ -147,7 +147,8 @@ func (h *homeView) marksPanel(at int) bool {
 var homeCellLeadBlank = strings.Repeat(" ", homeGridLead)
 
 // homeCellHead is a panel's heading: its word in the places' one heading ink
-// (placeprose.go's [placeHeadingInk]), its clause at the right margin dim.
+// (placeprose.go's [placeHeadingInk]), its explainer beside it dim, its clause at
+// the right margin dim.
 // HOME AND THE PLACES READ THEIR HEADINGS FROM ONE LINE, because `tab` from home
 // into a place crosses no seam only while a section word is the same furniture
 // on both sides of it.
@@ -157,11 +158,55 @@ var homeCellLeadBlank = strings.Repeat(" ", homeGridLead)
 // (docs/DESIGN-LANGUAGE.md, "the section holding the cursor marks its own
 // heading") — one heading per frame, following the keyboard only.
 func homeCellHead(cell *homeCell, width int, pal palette, marked bool) string {
-	text := switcherSides(width, cell.title, cell.right, placeHeadingInk(pal), homeCellMoneyInk(cell.money, pal))
+	left := homeCellHeadLeft(cell, width)
+	text := switcherSides(width, left, cell.right, homeCellHeadInk(left, cell.note, pal), homeCellMoneyInk(cell.money, pal))
 	if marked {
 		return pal.cursor(text, width)
 	}
 	return text
+}
+
+// homeCellHeadLeft is a heading's left side: its word, and its explainer beside
+// it where the two fit.
+//
+// THE EXPLAINER GIVES WAY WHOLE, AND IT NEVER CUTS THE HEADING. The heading is
+// the one word a person navigates by, so a gloss that pushed it into an ellipsis
+// would trade the name for the note. So the explainer is drawn only while the
+// heading, the separator and the explainer TOGETHER fit the room the heading's
+// right-hand clause leaves — and where they do not, the heading is exactly what
+// it read before explainers existed.
+func homeCellHeadLeft(cell *homeCell, width int) string {
+	room := width
+	if cell.right != "" {
+		if ansi.StringWidth(cell.right) >= width {
+			return cell.title
+		}
+		room -= ansi.StringWidth(cell.right) + 1
+	}
+	if cell.note != "" &&
+		ansi.StringWidth(cell.title)+ansi.StringWidth(rowSep)+ansi.StringWidth(cell.note) <= room {
+		return cell.title + rowSep + cell.note
+	}
+	return cell.title
+}
+
+// homeCellHeadInk paints a heading's left side: the heading ink for the word,
+// one shade lower for the explainer after it (docs/DESIGN-LANGUAGE.md — the
+// section word is one shade under the title, and its gloss one under that).
+// `left` is what [homeCellHeadLeft] returned, so its tail is the explainer only
+// where the explainer was kept; a heading that had to be cut keeps the one ink.
+func homeCellHeadInk(left, note string, pal palette) func(string) string {
+	heading := placeHeadingInk(pal)
+	tail := rowSep + note
+	if note == "" || !strings.HasSuffix(left, tail) {
+		return heading
+	}
+	return func(s string) string {
+		if !strings.HasSuffix(s, tail) {
+			return heading(s)
+		}
+		return heading(strings.TrimSuffix(s, tail)) + pal.dim(tail)
+	}
 }
 
 // homeCellMoneyInk is the heading clause's ink: dim, with the one figure in

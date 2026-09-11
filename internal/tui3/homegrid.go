@@ -117,6 +117,13 @@ type homePanelSlot struct {
 	panel homePanel
 	// word is the heading, exactly as it is drawn.
 	word string
+	// explainer is the dim clause the heading carries after its word — what the
+	// panel is for, in the fewest words that answer it. It is drawn in the note
+	// ink beside the heading and GIVES WAY WHOLE: a column too narrow to hold it
+	// beside the heading drops it rather than cutting the heading for it
+	// ([homeCellHead]). The spend panel has none, because its right-hand clause
+	// already says what the panel is for.
+	explainer string
 	// col2 and col3 are the column this panel stands in at two and at three
 	// columns. One column is every panel in table order.
 	col2, col3 int
@@ -154,15 +161,16 @@ type homePanelSlot struct {
 // growth budget (owner, 2026-09-10: a fifty-five-row terminal was two short
 // columns over thirty rows of air). Spend's budget is its rest: it never grows.
 // The head column is where a press on each heading goes; `projects` names no
-// place but itself, so its heading opens nothing.
+// place but itself, so its heading opens nothing. The explainer is the dim
+// clause every heading carries after its word — see [homePanelSlot.explainer].
 var homePanelOrder = []homePanelSlot{
-	{panel: needsPanel{homePanelBase{panelNeeds}}, word: "needs you", col2: 0, col3: 0, keep: 6, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
-	{panel: recentPanel{homePanelBase{panelRecent}}, word: "where you were", col2: 0, col3: 0, keep: 5, least: 4, rest: 5, most: 10, more: homeFindWord, head: pageSearch},
-	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", col2: 0, col3: 2, keep: 4, least: 3, rest: 5, most: 8, more: homeFindWord},
-	{panel: runningPanel{homePanelBase{panelRunning}}, word: "running", col2: 1, col3: 1, keep: 3, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
-	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", col2: 1, col3: 1, keep: 2, least: 3, rest: 4, most: 8, place: pageTasks, head: pageTasks},
+	{panel: needsPanel{homePanelBase{panelNeeds}}, word: "needs you", explainer: "questions & checks", col2: 0, col3: 0, keep: 6, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
+	{panel: recentPanel{homePanelBase{panelRecent}}, word: "where you were", explainer: "enter reopens one", col2: 0, col3: 0, keep: 5, least: 4, rest: 5, most: 10, more: homeFindWord, head: pageSearch},
+	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", explainer: "folders you've opened", col2: 0, col3: 2, keep: 4, least: 3, rest: 5, most: 8, more: homeFindWord},
+	{panel: runningPanel{homePanelBase{panelRunning}}, word: "running", explainer: "work you sent off", col2: 1, col3: 1, keep: 3, least: 4, rest: 4, most: 8, place: pageTasks, head: pageTasks},
+	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", explainer: "while you were gone", col2: 1, col3: 1, keep: 2, least: 3, rest: 4, most: 8, place: pageTasks, head: pageTasks},
 	{panel: spendPanel{homePanelBase{panelSpend}}, word: "spend", col2: 1, col3: 2, keep: 1, least: 3, rest: 3, most: 3, place: pageSpend, head: pageSpend},
-	{panel: nextPanel{homePanelBase{panelNext}}, word: "next up", col2: 1, col3: 1, keep: 0, least: 3, rest: 3, most: 5, place: pageStanding, head: pageStanding},
+	{panel: nextPanel{homePanelBase{panelNext}}, word: "next up", explainer: "reminders & routines", col2: 1, col3: 1, keep: 0, least: 3, rest: 3, most: 5, place: pageStanding, head: pageStanding},
 }
 
 // homeFindWord is what a fold says where the rest are reached by typing rather
@@ -779,7 +787,7 @@ func (p homeGridPanel) lines() []homeLine {
 	if p.read.said != "" {
 		head += rowSep + p.read.said
 	}
-	out := []homeLine{{kind: homeSwitchHead, cell: &homeCell{kind: cellHead, panel: id, title: head, right: p.read.right, money: p.read.money}}}
+	out := []homeLine{{kind: homeSwitchHead, cell: &homeCell{kind: cellHead, panel: id, title: head, note: p.slot.explainer, right: p.read.right, money: p.read.money}}}
 	if p.empty() {
 		for _, words := range p.whisper {
 			out = append(out, homeLine{kind: homeSwitchHead, cell: &homeCell{kind: cellWhisper, panel: id, title: words}})
