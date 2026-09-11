@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -58,10 +59,17 @@ func TestStoreRoundTrip(t *testing.T) {
 }
 
 func TestStoreFileIsPrivate(t *testing.T) {
-	directory := t.TempDir()
+	directory := filepath.Join(t.TempDir(), "profile")
 	s := newStore(directory)
 	if err := s.put("google", stored{Keys: &oauth2.Token{AccessToken: "a", RefreshToken: "r"}}); err != nil {
 		t.Fatalf("put: %v", err)
+	}
+	directoryInfo, err := os.Stat(directory)
+	if err != nil {
+		t.Fatalf("stat store directory: %v", err)
+	}
+	if mode := directoryInfo.Mode().Perm(); mode != 0o700 {
+		t.Errorf("directory mode: got %04o, want 0700", mode)
 	}
 	info, err := os.Stat(filepath.Join(directory, StoreFileName))
 	if err != nil {
@@ -69,6 +77,13 @@ func TestStoreFileIsPrivate(t *testing.T) {
 	}
 	if mode := info.Mode().Perm(); mode != 0o600 {
 		t.Errorf("file mode: got %04o, want 0600", mode)
+	}
+	lockInfo, err := os.Stat(filepath.Join(directory, StoreFileName+".lock"))
+	if err != nil {
+		t.Fatalf("stat sidecar lock: %v", err)
+	}
+	if mode := lockInfo.Mode().Perm(); mode != 0o600 {
+		t.Errorf("lock mode: got %04o, want 0600", mode)
 	}
 }
 
@@ -92,6 +107,49 @@ func TestStorePreservesOtherServices(t *testing.T) {
 	}
 	if entries["elsewhere"].Account != "me@elsewhere" {
 		t.Errorf("removing one service disturbed another: %+v", entries)
+	}
+}
+
+// TWO MANAGERS ARE TWO PROCESSES FOR THE STORE'S PURPOSE. Both must preserve
+// the other's row even when they reach the read-to-replace window together.
+func TestTwoStoresCannotLoseEachOthersWrites(t *testing.T) {
+	directory := t.TempDir()
+	first, second := newStore(directory), newStore(directory)
+	ready := make(chan struct{})
+	var (
+		arrived int
+		mu      sync.Mutex
+		once    sync.Once
+	)
+	hold := func() {
+		mu.Lock()
+		arrived++
+		if arrived == 2 {
+			once.Do(func() { close(ready) })
+		}
+		mu.Unlock()
+		select {
+		case <-ready:
+		case <-time.After(100 * time.Millisecond):
+			once.Do(func() { close(ready) })
+		}
+	}
+	first.afterLoad, second.afterLoad = hold, hold
+
+	errs := make(chan error, 2)
+	go func() { errs <- first.put("first", stored{Auth: AuthKey, Key: "one"}) }()
+	go func() { errs <- second.put("second", stored{Auth: AuthKey, Key: "two"}) }()
+	for range 2 {
+		if err := <-errs; err != nil {
+			t.Fatalf("competing store write: %v", err)
+		}
+	}
+	entries, err := first.load()
+	if err != nil {
+		t.Fatalf("read competing writes: %v", err)
+	}
+	if len(entries) != 2 || entries["first"].Key != "one" || entries["second"].Key != "two" {
+		t.Fatalf("competing stores lost a row: %+v", entries)
 	}
 }
 
@@ -130,12 +188,12 @@ func TestStoreLeavesNoTemporaryFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read dir: %v", err)
 	}
-	if len(entries) != 1 || entries[0].Name() != StoreFileName {
+	if len(entries) != 2 || entries[0].Name() != StoreFileName || entries[1].Name() != StoreFileName+".lock" {
 		names := make([]string, 0, len(entries))
 		for _, e := range entries {
 			names = append(names, e.Name())
 		}
-		t.Errorf("directory holds %v, want only %s", names, StoreFileName)
+		t.Errorf("directory holds %v, want %s and its lock", names, StoreFileName)
 	}
 }
 
