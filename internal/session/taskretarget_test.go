@@ -95,7 +95,7 @@ func TestRetargetTaskMovesARunningNodeAndEveryRowThatNamesIt(t *testing.T) {
 		t.Fatal("the lane opened on nothing")
 	}
 
-	if err := agent.RetargetTask(node.id, "anthropic/claude-sonnet-5"); err != nil {
+	if _, err := agent.RetargetTask(node.id, "anthropic/claude-sonnet-5"); err != nil {
 		t.Fatalf("RetargetTask on a running node: %v", err)
 	}
 	if got := node.model(); got != "anthropic/claude-sonnet-5" {
@@ -153,7 +153,7 @@ func TestRetargetTaskResolvesTheWordTheWayAdmissionDoes(t *testing.T) {
 		{"  CLAUDE-OPUS-4.8  ", "anthropic/claude-opus-4.8"},
 	} {
 		agent, node, child, land := retargetAgent(t)
-		if err := agent.RetargetTask(node.id, tc.word); err != nil {
+		if _, err := agent.RetargetTask(node.id, tc.word); err != nil {
 			t.Fatalf("RetargetTask(%q): %v", tc.word, err)
 		}
 		if got := node.model(); got != tc.want {
@@ -176,7 +176,7 @@ func TestRetargetTaskMovesNothingButTheNodeItNames(t *testing.T) {
 		title: "the other one", brief: "b", acceptance: "a", model: "openai/gpt-5",
 	})
 
-	if err := agent.RetargetTask(node.id, "claude-sonnet-5"); err != nil {
+	if _, err := agent.RetargetTask(node.id, "claude-sonnet-5"); err != nil {
 		t.Fatalf("RetargetTask: %v", err)
 	}
 	if got := agent.Model(); got != "test/model" {
@@ -203,7 +203,7 @@ func TestRetargetTaskSavesContinuationWithoutRewritingTheAttempt(t *testing.T) {
 	if before.Brief != "b" || before.Acceptance != "a" {
 		t.Fatal("task snapshot omitted its original contract")
 	}
-	if err := agent.RetargetTask(node.id, "claude-sonnet-5"); err != nil {
+	if _, err := agent.RetargetTask(node.id, "claude-sonnet-5"); err != nil {
 		t.Fatal(err)
 	}
 	if err := agent.SetTaskEffort(node.id, "high"); err != nil {
@@ -260,15 +260,15 @@ func TestRetargetTaskRefusesAnUnknownIdAndAnUnknownModel(t *testing.T) {
 	agent, node, _, land := retargetAgent(t)
 	defer land()
 
-	if err := agent.RetargetTask(node.id+7, "claude-sonnet-5"); err == nil {
+	if _, err := agent.RetargetTask(node.id+7, "claude-sonnet-5"); err == nil {
 		t.Fatal("RetargetTask invented a task")
 	} else if want := "no task"; !strings.Contains(err.Error(), want) {
 		t.Fatalf("the refusal reads %q, want one naming the missing id", err)
 	}
-	if err := agent.RetargetTask(node.id, "   "); err == nil {
+	if _, err := agent.RetargetTask(node.id, "   "); err == nil {
 		t.Fatal("RetargetTask accepted an empty model")
 	}
-	err := agent.RetargetTask(node.id, "opos-5")
+	_, err := agent.RetargetTask(node.id, "opos-5")
 	if err == nil {
 		t.Fatal("RetargetTask accepted a model this install does not have")
 	}
@@ -278,7 +278,7 @@ func TestRetargetTaskRefusesAnUnknownIdAndAnUnknownModel(t *testing.T) {
 	// A word that fits more than one model is a QUESTION, and this door has
 	// nobody to ask — so it comes back as the same refusal a too-vague proposal
 	// gets, naming the candidates.
-	if err := agent.RetargetTask(node.id, "opus"); err == nil {
+	if _, err := agent.RetargetTask(node.id, "opus"); err == nil {
 		t.Fatal("an ambiguous word was silently settled")
 	} else if !strings.Contains(err.Error(), "matches several models") {
 		t.Fatalf("the ambiguous refusal reads %q", err)
@@ -303,7 +303,7 @@ func TestRetargetTaskTakesDownTheToolUseRescuesOwnNote(t *testing.T) {
 	node.ran = "anthropic/claude-opus-5"
 	node.graph.mu.Unlock()
 
-	if err := agent.RetargetTask(node.id, "claude-sonnet-5"); err != nil {
+	if _, err := agent.RetargetTask(node.id, "claude-sonnet-5"); err != nil {
 		t.Fatalf("RetargetTask: %v", err)
 	}
 	notice := node.notice()
@@ -319,7 +319,7 @@ func TestRetargetTaskTakesDownTheToolUseRescuesOwnNote(t *testing.T) {
 	node.mend = "adding amp-labs to the report"
 	node.ran = "anthropic/claude-opus-5"
 	node.graph.mu.Unlock()
-	if err := agent.RetargetTask(node.id, "claude-opus-4.8"); err != nil {
+	if _, err := agent.RetargetTask(node.id, "claude-opus-4.8"); err != nil {
 		t.Fatalf("RetargetTask: %v", err)
 	}
 	if got := node.notice().Mending; got != "adding amp-labs to the report" {
@@ -349,7 +349,7 @@ func TestAModelPickedWhileTheCheckReadsBecomesTheNextRunsAndLeavesTheRowAlone(t 
 	node.openRoom().speaking(nil)
 	node.living(TaskPhaseChecking)
 
-	if err := agent.RetargetTask(node.id, "claude-sonnet-5"); err != nil {
+	if _, err := agent.RetargetTask(node.id, "claude-sonnet-5"); err != nil {
 		t.Fatalf("RetargetTask during the check: %v", err)
 	}
 	notice := node.notice()
@@ -378,7 +378,7 @@ func TestAModelPickedWhileTheWorkerReadsStillMovesTheWork(t *testing.T) {
 	defer land()
 
 	node.living(TaskPhaseWorking)
-	if err := agent.RetargetTask(node.id, "claude-sonnet-5"); err != nil {
+	if _, err := agent.RetargetTask(node.id, "claude-sonnet-5"); err != nil {
 		t.Fatalf("RetargetTask while the worker reads: %v", err)
 	}
 	notice := node.notice()

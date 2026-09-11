@@ -2358,7 +2358,7 @@ the new one.
 **Frozen against drift is not frozen against you.** The one deliberate way to move a
 running task off its id is to walk into that task's room and press the model's name at
 the bottom of the screen: the picker opens aimed at that task, and choosing moves that
-task from its next turn onward — the conversation and every other task are untouched. A
+task from its next request onward — the conversation and every other task are untouched. A
 task that has already landed is refused, in the words `task 7 is done, not running`. The
 tasks page has the whole of it under "Changing the model for one task while it is
 running".

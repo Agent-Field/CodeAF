@@ -57,12 +57,12 @@ If you have turned the mouse off (`ui.mouse`), only the command works.
 **The name you press is the model you move.** Out in the conversation that is the
 conversation's model. Inside a running task's room the status line at the very bottom
 names *that task's* model — `task <name>` — and pressing it opens the same picker aimed at that task alone,
-from its next turn onward — and the first time that step has to be rescued, it is rescued
-onto your pick. Nothing else moves: not the conversation, not any other task.
+from its next request onward — and the first time that step has to be rescued, it is
+rescued onto your pick. Nothing else moves: not the conversation, not any other task.
 See "Changing the model for one task while it is running" on the tasks page. Inside a
 task that has finished the name is still there to read and cannot be pressed.
 
-If the task's work is being checked when you press, there is no next turn left to move:
+If the task's work is being checked when you press, there is no request left to move:
 the pick is saved for the next run and the row keeps naming the model the work actually
 ran on. The room shows `next model <id>` while that choice is held.
 
@@ -77,6 +77,33 @@ the session learns that model's context window for compaction, a note appears re
 Over `--host`, the picker and its prices are this laptop's catalog, while the context
 window used for compaction comes from the far machine's catalog. The machine doing the
 work owns that execution limit even when the two catalog caches differ.
+
+## Can I switch models while it is replying — I changed the model in the middle of an answer, does it change now or wait?
+
+**Your word wins at the next request, within a second, and never at the next turn.**
+
+It depends on one thing only: whether the request in flight has given you anything yet.
+
+- **Nothing has come back.** It is still reaching a machine, waiting out a pace, walking
+  away from a refusal, or thinking where you cannot read. That request is **let go of at
+  once** and asked again on the model you chose. Nothing is lost, because nothing had
+  arrived — thinking that never reached the page is not kept in the conversation either
+  way.
+- **The reply is already arriving.** That reply **finishes on the model it started on**,
+  and everything the work asks for after it is on the new model. Killing a reply you are
+  reading would throw away words you have paid for and waited through.
+
+The same rule holds inside a task's room, where it matters most: a task step is one turn
+and can run for twenty minutes, so "the next turn" would mean your pick did nothing today.
+The room tells you which of the two you got — `switching now`, or `the next request takes
+it`. See "Changing the model for one task while it is running" on the tasks page.
+
+**What it does not do.** It does not stop the turn, and it does not throw away anything
+already in the conversation: a partial reply that had arrived stays where it is. It does
+not reach work that has already finished — a task being checked, or one that has landed,
+saves the pick for the next run instead. And a step that was moving down its own rescue
+chain starts that chain again from the model you named, so it never carries on walking
+away from your choice.
 
 ## Does aforge remember the model I picked, or does it go back to the default?
 
@@ -246,9 +273,15 @@ case the context window is left alone.
 In the conversation, `/model` changes the model you talk to. Inside an ordinary task, `/model` opens the picker for **that task only**, and
 `/model <slug>` changes that task. Clicking its model in the status line or
 **Task setup** opens the same picker. A filtered `/model` search keeps that
-same task scope. The change takes effect on the task's next turn; a response
-already in progress keeps its model. Other tasks and the conversation stay as
-before.
+same task scope. The change takes effect at the task's **next request**, which is
+within a second of your press and never a whole turn — a task step is one turn
+and can run for twenty minutes. If the request the step is inside has given you
+nothing yet — still reaching a machine, waiting out a pace, thinking where you
+cannot read — that request is let go of at once and asked again on the model you
+chose, and the room says `switching now`. If your answer is already arriving it
+finishes on the model it started on and everything after it is on the new one,
+and the room says `the next request takes it`. Other tasks and the conversation
+stay as before.
 
 For a completed, incomplete or `your call` ordinary task, the picker saves the
 model for when you continue. It does not restart work or change the completed

@@ -227,6 +227,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// The model-call log: the file every outbound call writes a line to.
 		// Both spellings people actually use — one asks for the file, the other
 		// asks what was on the wire.
+		// THE PERSON'S WORD ON A REQUEST ALREADY OUT. Somebody asking this has
+		// just pressed a model while something was running and wants to know
+		// whether they have to wait; they ask about "now", about "in the middle",
+		// and about the room's own two sentences.
+		{"can I change the model while it is replying", "models-and-cost"},
+		{"does switching the model take effect now or later", "models-and-cost"},
+		{"I changed the model in the middle of an answer", "models-and-cost"},
+		{"what does switching now mean", "models-and-cost"},
 		{"where are the logs", "models-and-cost"},
 		{"what did you send the model", "models-and-cost"},
 		// And the row that is short of a figure: the note names the number it

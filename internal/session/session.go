@@ -2594,6 +2594,19 @@ type Agent struct {
 	// (steer.go's [owedCut]). It is under mu because the readings beside a turn
 	// raise it from their own goroutines while the loop installs generations.
 	cutOwed owedCut
+	// spokenModel is THE MODEL THE PERSON HAS NAMED AND THE WORK HAS NOT YET
+	// TAKEN, and it is empty whenever nothing is owed (steer.go's
+	// [Agent.hearModelLocked]).
+	//
+	// It is a WORD AND NOT A COUNT for the reason the queue beside it is a queue
+	// of messages: what the turn owes is the model the person last named, and two
+	// picks a second apart are one pick as far as the next request is concerned.
+	// It is taken at the request boundary ([Agent.takeModelWord]) and cleared
+	// when a turn latches its model ([Agent.latchTheModel]), so a word said to a
+	// turn that ended before it could be taken cannot reach the turn after it —
+	// that turn starts on the same model anyway, because a.model is where the
+	// pick itself lives.
+	spokenModel string
 	// recall is the pre-turn memory routing STARTED BESIDE THE TITLE and never
 	// waited on (memory.go's [recallAside]). It is under mu because
 	// [Agent.startTurnLocked] writes it with the lock held and the turn's own

@@ -641,10 +641,12 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// instead of the previous turn's.
 	a.turnLane.reset()
 
-	// The model is latched for the whole turn. SetModel's contract is that a
-	// turn in flight finishes on the model it started on, and reading a.model
-	// per step broke it: a swap between two steps would send one model the
-	// transcript another model was mid-way through writing.
+	// The model is latched here and re-read at ONE other place: the request
+	// boundary, where the person's own word is taken (steer.go's THE PERSON'S
+	// WORD WINS). Everything between two requests rides the latched value, which
+	// is what stops a swap arriving mid-stream from sending one model the
+	// transcript another model was half-way through writing — and the boundary is
+	// what stops a person's pick waiting out a twenty-minute step.
 	//
 	// The effort rung is latched WITH it, in the same breath and for the same
 	// reason — and it is resolved for THIS model, so a swap mid-turn cannot
@@ -652,7 +654,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// the LADDER'S answer and not a field ([Agent.effortFor]): a rung set on the
 	// conversation, on the work, or on the install reaches this turn through the
 	// same call the dialled level does, which is what makes one resolver true.
-	model := a.Model()
+	model := a.latchTheModel()
 	rung := a.effortFor(model)
 	// AND THE SURFACE HEARS ABOUT A RESCUE WHILE IT IS STILL OUT, under the
 	// latched model for the latch's own reason (lanenews.go). The report is read
@@ -1399,6 +1401,17 @@ func (p *partialBuffer) reset() {
 	p.mu.Unlock()
 }
 
+// spoken reports whether anything a person could read has arrived for the
+// request being streamed now. It is the reading behind
+// [activeGeneration.productive] and it is a LENGTH and not a judgement: one
+// delta is enough, because one delta is already on their screen and in the
+// transcript this turn will keep.
+func (p *partialBuffer) spoken() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.text.Len() > 0
+}
+
 // take returns the buffered text and empties the buffer, so no text can be
 // recorded twice.
 func (p *partialBuffer) take() string {
@@ -1658,6 +1671,18 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 	// move costs when the failure itself asks for no wait ([nextMoveWait]).
 	var owed, unpaid time.Duration
 	spentAt := func() time.Time { return turnNow().Add(owed) }
+	// freshModel is A MODEL GETTING A WHOLE BUDGET OF ITS OWN, and it is a
+	// closure because two roads reach it: the rescue chain's hop below, and the
+	// person naming a model at the boundary. What the last model did says nothing
+	// about this one — both kinds of budget and both clocks start again — and the
+	// attempt counter is deliberately NOT reset here, because the two roads sit
+	// either side of this loop's own post-statement and want different numbers.
+	freshModel := func(next string) {
+		model = next
+		rung = a.effortFor(model)
+		cuts, rerouted = 0, false
+		deadline, owed, unpaid = turnNow().Add(a.giveUp()), 0, 0
+	}
 	attempt := 0
 	for ; ; attempt++ {
 		// AND IT IS ASKED AT THE TOP, because it is the only thing that ends this
@@ -1667,6 +1692,19 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// whole give-up on attempts that were cut and re-asked.
 		if !spentAt().Before(deadline) && attempt > 0 {
 			break
+		}
+		// ── THE PERSON'S WORD IS TAKEN HERE, AND NOWHERE ELSE ────────────────
+		//
+		// This is the request boundary the law in steer.go names: the one moment
+		// between two requests, reached within [lane.SpokenWithin] of the word
+		// because an unproductive request is cut the instant it is said. The chain
+		// starts again from the model they named — `origin` is what the fallbacks
+		// are read off, and a chain still walking away from the model they just
+		// moved off would spend their turn on the choice they had rejected.
+		if next, said := a.takeModelWord(); said && next != model {
+			origin, hopped = next, nil
+			freshModel(next)
+			attempt = 0
 		}
 		// Each attempt streams the reply from the beginning, so the buffer
 		// starts empty: an attempt that dies half-way through its text and an
@@ -1718,7 +1756,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		messages = a.compactToolHistory(messages, frozenToolHistory,
 			func(message ai.Message) string { return a.fullResultPointer(message, place) })
 		attemptCtx = provider.WithMessageReasoning(attemptCtx, carried)
-		attemptCtx, generation := a.beginGeneration(attemptCtx)
+		attemptCtx, generation := a.beginGeneration(attemptCtx, partial)
 		response, err := a.completeWithModel(attemptCtx, messages, model,
 			ai.WithTools(a.beltDefinitions()))
 		cause := a.endGeneration(generation)
@@ -1749,6 +1787,17 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// they saw. It happens at most once a turn ([recallAside]), and the
 		// provider's own prefix cache makes the second send the cheap one.
 		if errors.Is(cause, errRecallCut) {
+			continue
+		}
+		// AND SO IS THE PERSON'S OWN WORD, for the same reason and one more: they
+		// have read nothing of this request ([activeGeneration.productive] is what
+		// let it be cut at all), so there is no failure to report and nothing to
+		// apologise for. The boundary at the top of this loop takes the model they
+		// named and the request is assembled again on it. The RECORD still gets its
+		// line — money was spent reaching a machine that never answered, and an
+		// autopsy of a long step has to be able to see why the request ended.
+		if errors.Is(cause, errPersonCut) {
+			a.journalFailedCall(ctx, model, "", cause, attempt+1, a.requestEstimate())
 			continue
 		}
 		lastErr = err
@@ -1837,20 +1886,15 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			a.tellPhaseThen(provider.PhaseSwitchingModel, "", next, time.Now())
 			hub.send(Event{Kind: EventRetrying, Text: hopNotice(cut, verdict, next),
 				Retry: retryNews(model, spentOn(attempt, cuts, isCut), verdict, cut, next)})
-			model = next
-			rung = a.effortFor(model)
-			// A NEW MODEL GETS A WHOLE BUDGET OF ITS OWN — both kinds of it.
-			// What the last one did says nothing about this one, and a fallback
-			// that inherited a spent budget would be given up on before it had
-			// answered once. The attempt counter is put one BEHIND its first
-			// rung, because the loop's own post-statement is what advances it.
-			cuts, rerouted = 0, false
+			// A NEW MODEL GETS A WHOLE BUDGET OF ITS OWN — both kinds of it, and
+			// its own give-up. What the last one did says nothing about this one,
+			// and a fallback that inherited a spent budget would be given up on
+			// before it had answered once. It is [freshModel] above, which the
+			// person's own word at the boundary reaches through the same call.
+			freshModel(next)
+			// The attempt counter is put one BEHIND its first rung, because the
+			// loop's own post-statement is what advances it.
 			attempt = -1
-			// AND ITS OWN GIVE-UP, for the same reason: a fallback handed the
-			// remains of the deadline the model before it spent would be given
-			// up on before it had answered once. What the last model asked to
-			// wait goes with it.
-			deadline, owed, unpaid = turnNow().Add(a.giveUp()), 0, 0
 		}
 		// ── A SPENT DEADLINE IS A SPENT BUDGET, SAID IN THE ONE WORD THE
 		// BOUNDARY ALREADY UNDERSTANDS ─────────────────────────────────────

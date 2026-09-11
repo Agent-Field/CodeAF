@@ -137,12 +137,40 @@ const steerBashAge = 3 * time.Second
 
 var errSteerCut = errors.New("session: generation cut by steer")
 
-// activeGeneration is one provider attempt and its independent stop handle.
+// activeGeneration is one provider attempt, its independent stop handle, and
+// what it has produced so far.
 // The pointer is its identity: an attempt may finish while the next one starts,
 // and only the attempt that installed a handle is allowed to clear it.
 type activeGeneration struct {
 	ctx    context.Context
 	cancel context.CancelCauseFunc
+	// spoke is WHAT THIS REQUEST HAS PUT IN FRONT OF THE PERSON: the turn's own
+	// partial buffer, which the stream fills delta by delta and which the loop
+	// empties at the top of every attempt (loop.go). It is the buffer itself
+	// rather than a count taken off it, because a second reading of the same
+	// deltas is a second thing to keep in step — and this one is already the
+	// thing the transcript is built from, so "the person could use it" and "it
+	// is in here" are the same sentence.
+	spoke *partialBuffer
+}
+
+// productive reports whether this request has produced ANYTHING A PERSON COULD
+// USE, and it is the whole of what "unproductive" means in this package.
+//
+// IT IS A STATE AND NEVER A DURATION. A request parked on a provider's pacing
+// for thirteen minutes, one waiting on a machine that has said nothing, one
+// walking a refusal chain, and one whose model has been thinking where nobody
+// can read for three minutes are all the same thing to the person: they have
+// read nothing, so there is nothing of theirs to lose. The first visible token
+// is what changes that — it is in the transcript from the moment it arrives, and
+// cutting after it throws away an answer somebody is reading. Thought alone is
+// NOT usable and is deliberately not counted: a reasoning-only cut keeps nothing
+// at all ([Agent.keepSteeredPartial]), so there is nothing for it to throw away.
+//
+// A nil generation is nothing in flight, which is unproductive by the same
+// reading: there is no request to lose.
+func (g *activeGeneration) productive() bool {
+	return g != nil && g.spoke != nil && g.spoke.spoken()
 }
 
 // beginGeneration installs one attempt's stop handle, and SPENDS A CUT THAT
@@ -162,9 +190,9 @@ type activeGeneration struct {
 // that can tell a live attempt from one that returned a microsecond ago, and an
 // installer that cancelled its own handle instead would be the second answer to
 // "is there anything to cut" that door exists to prevent.
-func (a *Agent) beginGeneration(parent context.Context) (context.Context, *activeGeneration) {
+func (a *Agent) beginGeneration(parent context.Context, spoke *partialBuffer) (context.Context, *activeGeneration) {
 	ctx, cancel := context.WithCancelCause(parent)
-	active := &activeGeneration{ctx: ctx, cancel: cancel}
+	active := &activeGeneration{ctx: ctx, cancel: cancel, spoke: spoke}
 	a.mu.Lock()
 	a.generation = active
 	owed := a.cutOwed
@@ -213,6 +241,15 @@ func (a *Agent) endGeneration(active *activeGeneration) error {
 func (a *Agent) cutGeneration(cause error) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	return a.cutGenerationLocked(cause)
+}
+
+// cutGenerationLocked is the body of that door, for the callers that are already
+// holding a.mu because the decision they are making needs the lock anyway — a
+// steer settling its landing, a person's word reading whether the request has
+// spoken. IT IS THE ONLY PLACE IN THIS PACKAGE THAT CANCELS A GENERATION, and
+// generation_law_test.go fails the build on a second one.
+func (a *Agent) cutGenerationLocked(cause error) bool {
 	if a.generation == nil {
 		if !opensABoundary(cause) {
 			return false
@@ -295,6 +332,106 @@ type boundaryCut struct{ error }
 func opensABoundary(cause error) bool {
 	var boundary boundaryCut
 	return errors.As(cause, &boundary)
+
+// errPersonCut is the third of the person's own cuts, beside [errSteerCut]: a
+// model they have just named reaching a request that has produced nothing they
+// could use. The loop answers it by assembling the request again on the model
+// they named, at once and with nothing said about it — there is no failure here
+// and nothing was lost (loop.go).
+//
+// AND IT IS DELIBERATELY NOT A [boundaryCut]. The test that type states is
+// whether the cut's REASON rides anything but the cut itself, and this one does:
+// the model is written to [Agent.spokenModel] BEFORE the cut is raised
+// ([Agent.hearModelLocked]) and the request boundary takes it from there
+// ([Agent.takeModelWord]), exactly as a recall's block is in the transcript
+// before its cut. So a person's word that arrives between two requests needs no
+// cut at all — the request being assembled already carries it — and owing one
+// would cancel a request that was about to be right, which costs them a whole
+// send for no change.
+//
+// AND THE LANDING IS THE SECOND REASON, which is this cause's own. Owing the cut
+// would make [Agent.cutGeneration] answer `true` where nothing was cut, and that
+// answer is what the room says out loud: the person would read `switching now`
+// over a pick that is in fact riding the next request. A cut that reports itself
+// answered when it changed nothing is worse here than a cut that is dropped.
+var errPersonCut = errors.New("let go of because you chose another model")
+
+// ── THE PERSON'S WORD WINS, AND IT WINS AT THE REQUEST ──────────────────────
+//
+// THE LAW. A model a person names reaches the work within [lane.SpokenWithin].
+// If the request in flight has produced nothing they could use
+// ([activeGeneration.productive]) it is CUT and asked again on the model they
+// named; if their answer is already arriving, that answer finishes and the NEXT
+// request carries the new model. Never the next TURN: a task step is one turn
+// and can be twenty minutes long, and a person watching a step wait thirteen
+// minutes on a pace they cannot see is a person whose word did nothing.
+//
+// THE MEASURED FAILURE (2026-09-11, 14:40:10). A task step sat on `waiting ·
+// rate limited · 13m 37s`. The owner picked another model in the room and typed
+// `continue`; the room answered `its next turn takes it`, and the step was still
+// talking to the model they had moved off at 14:41:00. The pick was real and
+// landed on the agent — what was missing was anything to make the request in
+// flight let go of it.
+
+// ModelLanding is WHEN a model a person just named reaches the work, and it is
+// the only thing a surface has to know to say something true about the pick.
+type ModelLanding string
+
+const (
+	// ModelLandsNow is the request in flight let go of, because nothing of it had
+	// reached the person, and the same step asking again on the new model.
+	ModelLandsNow ModelLanding = "now"
+	// ModelLandsNextRequest is the answer already arriving being allowed to
+	// finish, with everything the work asks for after it on the new model. It is
+	// also what a pick lands as when no request is out at all.
+	ModelLandsNextRequest ModelLanding = "next-request"
+)
+
+// hearModelLocked is THE ONE DOOR a person's model reaches running work
+// through. It records the word for the request boundary to take and cuts the
+// request in flight when there is nothing of it to lose, and it answers which of
+// those two things happened so the surface can say it.
+//
+// a.mu is held: the productive reading and the cut have to be one decision, or a
+// first token arriving between them cuts an answer somebody had started reading.
+func (a *Agent) hearModelLocked(model string) ModelLanding {
+	if !a.running {
+		// NOTHING IS OWED WHEN NOTHING IS RUNNING. The next turn latches a.model,
+		// which this caller has already set, so a word left here would be a word
+		// the turn after would take a second time and re-ask on the model it is
+		// already talking to.
+		return ModelLandsNextRequest
+	}
+	a.spokenModel = model
+	if a.generation.productive() {
+		return ModelLandsNextRequest
+	}
+	if !a.cutGenerationLocked(errPersonCut) {
+		// A turn between two requests has nothing to cut and needs none: the word
+		// above is taken when it assembles the next one.
+		return ModelLandsNextRequest
+	}
+	return ModelLandsNow
+}
+
+// latchTheModel is the model a turn starts on, TAKING THE PERSON'S WORD WITH IT.
+// See the law above for why the word must not outlive the turn it was said to.
+func (a *Agent) latchTheModel() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.spokenModel = ""
+	return a.model
+}
+
+// takeModelWord is the request boundary asking whether the person has named a
+// model since the last one went out. It is the ONE read site of the word, and it
+// takes it: a word taken twice would restart a budget the step is spending.
+func (a *Agent) takeModelWord() (string, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	word := a.spokenModel
+	a.spokenModel = ""
+	return word, word != ""
 }
 
 // turnSteer is one steer as the AGENT holds it while it waits: the note the
@@ -384,9 +521,8 @@ func (a *Agent) Steer(words string) (<-chan Event, error) {
 	// handle is distinct from a.cancel, so the loop comes back to its boundary,
 	// records only what arrived, drains this steer and continues on the same
 	// stream. There is no call to Interrupt here and therefore no follow-up drop.
-	if a.generation != nil {
+	if a.cutGenerationLocked(errSteerCut) {
 		steer.note.Landing = "stopped the reply here"
-		a.generation.cancel(errSteerCut)
 	} else if landed, jobs := a.steerRunningBashLocked(words, a.inFlightBash.snapshot()); landed != "" {
 		steer.note.Landing = landed
 		if steerStopsBash(words) {

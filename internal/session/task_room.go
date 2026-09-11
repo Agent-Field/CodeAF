@@ -17,7 +17,7 @@ package session
 //   - [Agent.SteerTask] — the person's words into the child's steering lane,
 //     the same lane a background job's exit note rides (agent.go).
 //   - [Agent.RetargetTask] — the person's EXPLICIT pick of another model for
-//     this node, from its next turn on.
+//     this node, from its next request on.
 //   - [Agent.TaskJournal] — the path to the node's whole transcript on disk.
 //
 // ── LIVE AND HISTORY ARE TWO LANES, FOR DECISION 19's OWN REASON ──
@@ -683,27 +683,31 @@ func (a *Agent) spoken(text string, waiting bool, origin messageOrigin, directio
 // surface's own door never raises it: its picker offers concrete catalog ids, so
 // every word that reaches here from a room is already exactly one model.
 //
-// THE SWITCH LANDS ON THE NEXT TURN, and that is [Agent.SetModel]'s own contract
-// rather than a second mechanism: a turn in flight latched its model once at the
-// start (loop.go), so the call the node is making right now finishes on the model
-// it began on and the one after it is on the new one. That is the correct
-// behaviour and not a limitation — killing a request in flight to change models
-// would throw away work the person is paying for and has already waited for.
-func (a *Agent) RetargetTask(id uint64, model string) error {
+// THE SWITCH LANDS AT THE NEXT REQUEST, and that is [Agent.SetModel]'s own door
+// rather than a second mechanism: a step whose request has produced nothing the
+// person could use lets go of it and asks again on the new model at once, and a
+// step whose answer is already arriving finishes that answer and carries the new
+// model into everything it asks for after (steer.go's THE PERSON'S WORD WINS).
+// The answer says which of the two happened, so a surface can tell them.
+//
+// It is never the next TURN. A task step is one turn, and the measured failure
+// this door was changed for was a step thirteen minutes into a wait the person
+// could do nothing about.
+func (a *Agent) RetargetTask(id uint64, model string) (ModelLanding, error) {
 	model = strings.TrimSpace(model)
 	if model == "" {
-		return errors.New("no model to move to")
+		return ModelLandsNextRequest, errors.New("no model to move to")
 	}
 	node := a.taskNode(id)
 	if node == nil {
-		return fmt.Errorf("no task %d in this session", id)
+		return ModelLandsNextRequest, fmt.Errorf("no task %d in this session", id)
 	}
 	choice := a.resolveTaskModel(model)
 	switch {
 	case choice.problem != "":
-		return errors.New(choice.problem)
+		return ModelLandsNextRequest, errors.New(choice.problem)
 	case len(choice.options) > 0:
-		return errors.New(taskModelVague(model, choice.options))
+		return ModelLandsNextRequest, errors.New(taskModelVague(model, choice.options))
 	}
 	// THE CHECK HAS NO READER, SO A PICK IT CANNOT BE SHOWN IS THE NEXT RUN'S AND
 	// NOT THIS ONE'S. Read before the graph lock, because [TaskNode.lifeNow] takes
@@ -742,13 +746,13 @@ func (a *Agent) RetargetTask(id uint64, model string) error {
 	case node.state == TaskRunning, node.state == TaskDone, node.state == TaskFailed, node.state == TaskUnverified:
 		if node.kind == TaskKindHarness || node.kind == TaskKindSubharness {
 			node.graph.mu.Unlock()
-			return fmt.Errorf("task %d cannot be continued", id)
+			return ModelLandsNextRequest, fmt.Errorf("task %d cannot be continued", id)
 		}
 		node.nextModel = choice.model
 	default:
 		state := node.state
 		node.graph.mu.Unlock()
-		return fmt.Errorf("task %d is %s, not available for model changes", id, state)
+		return ModelLandsNextRequest, fmt.Errorf("task %d is %s, not available for model changes", id, state)
 	}
 	node.graph.mu.Unlock()
 	// The child is told directly as well as through the spec, because the two
@@ -764,8 +768,14 @@ func (a *Agent) RetargetTask(id uint64, model string) error {
 	// THE THIRD MOMENT — a worker whose reading is already over — never reaches
 	// here at all any more: it was the one case where a nil child meant the pick
 	// had nowhere to go, and it is answered above as the next run's model.
+	// AND THE PERSON IS TOLD WHICH OF THE TWO LANDINGS THEY GOT, because the two
+	// are different things to wait for and the room says so out loud. A node with
+	// no worker up yet lands on the next request by the same reading: the spec
+	// above is what the worker will be built from, and there is no request out to
+	// let go of.
+	landing := ModelLandsNextRequest
 	if child := node.openRoom().speaker(); live && child != nil {
-		child.SetModel(choice.model)
+		landing = child.setModel(choice.model)
 	}
 	// The checkpoint is what makes the pick survive the session, exactly as the
 	// admitted id does (task_store.go writes spec.model), and the update is what
@@ -773,7 +783,7 @@ func (a *Agent) RetargetTask(id uint64, model string) error {
 	// own status line, the card this node lands as.
 	node.graph.checkpoint()
 	a.emitTaskUpdate(node.notice())
-	return nil
+	return landing, nil
 }
 
 // WatchTask subscribes to one node's LIVE event stream: the child agent's own

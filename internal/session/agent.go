@@ -613,10 +613,19 @@ func (a *Agent) Model() string {
 	return a.model
 }
 
-// SetModel swaps the model for subsequent turns. A swap made while the agent is
-// working lands at the next Submit: runTurn latches the model once at the start
-// and every step and retry of that turn rides the latched value, so nothing a
-// person types mid-turn changes the model the turn in flight is talking to.
+// SetModel swaps the model, and A PERSON'S WORD WINS AT THE NEXT REQUEST.
+//
+// A swap made while the agent is working reaches the work through steer.go's one
+// door ([Agent.hearModelLocked], which states the law and the failure it was
+// measured against): the request in flight is cut and asked again on the new
+// model if nothing of it had reached the person, and otherwise the answer they
+// are reading finishes and the next request the work makes carries the new
+// model. It is never the next TURN — a task step is one turn and can run for
+// twenty minutes.
+//
+// Between two requests the latched value rides every step and retry, so a swap
+// arriving mid-stream cannot send one model the transcript another model was
+// half-way through writing (loop.go).
 //
 // THE TURN ITSELF MAY STILL MOVE, and this is the one thing that moves it. A
 // step whose stream is cut over and over spends a budget and then hops to the
@@ -632,15 +641,33 @@ func (a *Agent) Model() string {
 // this turn. [Agent.scrubBlindImagePartsLocked] states the whole rule and its
 // three deliberate limits — the journal is untouched, the swap is one-way, and a
 // model that CAN see is handed everything unchanged.
-func (a *Agent) SetModel(model string) {
+func (a *Agent) SetModel(model string) { a.setModel(model) }
+
+// setModel is SetModel with the answer to "when does this land", which the doors
+// inside this package that have somebody to tell need ([Agent.RetargetTask]) and
+// the exported one has nowhere to put. An empty model is no pick at all and
+// lands nothing.
+func (a *Agent) setModel(model string) ModelLanding {
 	model = strings.TrimSpace(model)
 	if model == "" {
-		return
+		return ModelLandsNextRequest
 	}
 	a.mu.Lock()
+	// A PICK THAT CHANGES NOTHING IS NOT A WORD. Re-choosing the model the
+	// session is already on is a person confirming, not redirecting, and letting
+	// it cut would spend their money reaching the same machine again for the same
+	// answer. What it is NOT able to see is a step that has walked down its own
+	// rescue chain and is being asked to come back — the pick on the session never
+	// moved, so there is nothing here to compare against; making a standing pick
+	// outrank the chain is #925's half of this subject, not this one's.
+	changed := a.model != model
 	a.model = model
 	if a.clientPool != nil {
 		a.clientPool.setSeat(model)
+	}
+	landing := ModelLandsNextRequest
+	if changed {
+		landing = a.hearModelLocked(model)
 	}
 	if !a.running {
 		a.rebindClientLocked(model)
@@ -660,6 +687,7 @@ func (a *Agent) SetModel(model string) {
 	// session's own state; this is about a fetch somebody else will do, and a
 	// lock held across a hand-off is a lock held for no reason.
 	a.noteLaneModel(model)
+	return landing
 }
 
 // SetSources replaces the live service set used by this conversation and by
