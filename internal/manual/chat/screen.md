@@ -2948,7 +2948,7 @@ session, with the filter, the cards and the mention. Home (`/home`, or space twi
 empty box) is the other place old work is listed. Running work belonging to *other*
 windows is not on the column at all, and never was; `/history` carries that too.
 
-The footer is up to three dim lines of counts — `3 running · 1 needs you`, `148 parked ·
+The footer is up to three dim lines of counts — `3 running · 1 needs you`, `148 waiting ·
 12 done` — then the standing count `◦ 2 standing orders` when anything stands over this
 project, and then up to three more dim lines, each of which is a button as well as a key:
 

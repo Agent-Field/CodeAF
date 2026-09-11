@@ -1956,16 +1956,19 @@ card both carry the sentence.
 Under the task rows, one dim `+ /task` row closes the section — press it and `/task ` is
 typed into your message box. Then a blank line, then the column's `standing` section.
 
-At the bottom, under both sections, up to three dim lines: `Σ $1.42 · 312k tok`,
-`3 running · 1 needs you`,
-`148 waiting · 12 done`. The `Σ` is the whole session's spend — it already contains every
-task in the column plus the conversation, so there is deliberately no per-task share. Zero
-figures are left out entirely, because zero means "nobody published a price", never "free".
+At the bottom, under the sections, up to three dim lines count the roster in its own words:
+`3 running · 1 needs you`, `148 waiting · 12 done`. Zero counts are left out entirely. The
+session's spend and tokens are on the status row instead; there is no `Σ` line here. When
+anything stands over this project, a separate `◦ 2 standing orders` line follows and opens
+`/standing`.
 
-Under those, always, one more door line. It reads `❯ ctrl+g hide` when no foreground
-command can be kept and only `❯ hide` while a command owns that key. Click either form
-and the column goes away. The `❯` is in ink and the words are dim, because the chevron
-is what the pointer presses and the words name only the keyboard action available now.
+Below those are up to three door lines: `ctrl+. earlier` or `ctrl+. view more` when the
+full-screen page holds something this column does not, `alt+w widen · click seam` when a
+wider column would stop cutting a title, and, always, the column's own way out. That last
+line reads `❯ ctrl+g hide` when no foreground command can be kept and only `❯ hide` while
+a command owns that key. Click either form and the column goes away. The `❯` is in ink and
+the words are dim, because the chevron is what the pointer presses and the words name only
+the keyboard action available now.
 
 **Work that is running never scrolls off it.** Families are already ordered so that
 anything running or waiting on you leads the column, and those rows are also *pinned*: when
