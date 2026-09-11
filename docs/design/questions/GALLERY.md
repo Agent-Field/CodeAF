@@ -19,6 +19,23 @@ A picture with **✗** on it is a screen that does NOT keep the contract. Those 
 the findings the suite is red on, and they are here for the same reason the rest
 are: what a lane owes next is easier to see than to describe.
 
+> **THESE PICTURES WERE TAKEN BEFORE THE OWNER'S RULINGS OF 2026-09-11 AND HAVE
+> NOT BEEN RE-TAKEN.** What moved: every question now hangs in the one frame
+> (`internal/tui3/frame.go`), the question's violet is retired and its amber is
+> on the three marks only, the keys stand in two tiers, the receipt opens with
+> `✓` rather than the word `decided`, a permission's pointer is placed by the
+> stakes, and a permission that offers more than one lifetime draws them under
+> its answers. The captions below still describe the moment each picture is of;
+> the drawing in them is a wave out of date. Re-taking them costs a live model
+> and about ninety minutes — the command is above.
+>
+> **Without a model:** `scripts/qv-drive.sh` opens this worktree's own binary in
+> a tmux session of its own, on a throwaway home, with one of
+> `internal/tui3/questiondemo.go`'s fixtures named in the environment, and saves
+> what the terminal drew — every view, at 120/96/56 columns, in both themes and
+> both glyph tiers. It is how the drawings above were checked on a real screen
+> the day they changed.
+
 ---
 
 ## The line

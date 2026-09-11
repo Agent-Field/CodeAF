@@ -483,22 +483,44 @@ func TestACardDrawsARowPerAnswerAndMarksTheAskersPick(t *testing.T) {
 // pointer stands when the asker named no pick, and it is the half of the
 // pointer that keeps it safe.
 //
-// Enter takes the answer the pointer is on, so on a gate the engine raised
-// BECAUSE a call could not be taken back — `rm -rf *` — a pointer that started
-// on the first answer would make `enter` mean `allow once`. Measured: it did.
+// Enter takes the answer the pointer is on, so on a gate over a call that
+// cannot be taken back — `rm -rf *`, a force-push — a pointer that started on
+// the first answer would make `enter` mean `allow once`. Measured: it did.
 // The lane already says which answer costs nothing ([session.AnswerOption.
-// Safe]) and that is the one the pointer opens on.
+// Safe]) and that is the one an irreversible gate opens on.
+//
+// AN ORDINARY GATE OPENS ON `allow once`, which is the other half of the owner's
+// ruling of 2026-09-11 and the half this test used to have backwards: every
+// permission opened on deny, including the ones over a command the rules had
+// merely not seen before, so the key a person presses to get on with their work
+// was the key that stopped it. THE STAKES DECIDE, and nothing else does.
 func TestEnterTakesThePickAndOtherwiseTheAnswerThatLosesNothing(t *testing.T) {
 	lab := newQuestionLab(t)
 	ask := consentAsk()
 	ask.Form = session.FormCard
+	ask.Stakes = session.StakesIrreversible
 	lab.raise(ask)
 	lab.tick(questionSettle)
 	if !lab.press("enter") {
 		t.Fatal("enter should take the answer the pointer is on")
 	}
 	if len(lab.answer) != 1 || lab.answer[0].FirstKey() != "3" {
-		t.Fatalf("enter on a gate with no pick should deny, not allow: %+v", lab.answer)
+		t.Fatalf("enter on an irreversible gate should deny, not allow: %+v", lab.answer)
+	}
+	lab.answer = nil
+
+	// And the same gate over a call that CAN be taken back allows.
+	ordinary := consentAsk()
+	ordinary.Form = session.FormCard
+	ordinary.ID = 71
+	lab.raise(ordinary)
+	lab.tick(questionSettle)
+	lab.rows()
+	if !lab.press("enter") {
+		t.Fatal("enter should take the answer the pointer is on")
+	}
+	if len(lab.answer) != 1 || lab.answer[0].FirstKey() != "1" {
+		t.Fatalf("enter on an ordinary gate should allow once: %+v", lab.answer)
 	}
 	lab.answer = nil
 	ask.Pick = &session.Pick{Key: "1", Reason: "the narrow answer"}

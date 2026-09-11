@@ -118,11 +118,16 @@ func TestNoQuestionIsDrawnOnTheStartPage(t *testing.T) {
 func TestAPressWhereAHiddenQuestionUsedToBeAnswersNothing(t *testing.T) {
 	lab := questionUnderStart(t, consentAsk())
 	_ = frame(lab.a)
-	if len(lab.a.questionSpans) == 0 {
-		t.Fatal("the visible question wrote no answer spans")
+	// A PERMISSION IS THE PANEL, so its targets are BANDS — a whole row each,
+	// counted from the top of the block (questionpanel.go). It was a row of
+	// spans when this test was written, and the fact being held is the same
+	// either way: the map moves with the draw.
+	if len(lab.a.questionBands) == 0 {
+		t.Fatal("the visible question wrote no answer targets")
 	}
-	x := lab.a.questionSpans[0].from
-	y := chromeRowY(t, lab.a, lab.a.questionSpanRow)
+	band := lab.a.questionBands[0]
+	x := band.span.from + 1
+	y := chromeRowY(t, lab.a, band.row)
 
 	drive(t, lab.a, key(newChatChord))
 	_ = frame(lab.a)
