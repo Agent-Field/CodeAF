@@ -63,7 +63,7 @@ func TestHandoffCarriesOnlyCurrentWholeRequestChecks(t *testing.T) {
 			if mode == "whole request" {
 				ground := t.TempDir()
 				writeCheckFile(t, ground, "verify.sh", "#!/bin/sh\nprintf VERIFIED", 0o755)
-				door := auditDoorFor(node, ground)
+				door := auditDoorFor(node, standingOn(ground))
 				if text, refused := typedAtTheChecker(t, checkerBash(t, door, ground), "sh ./verify.sh"); refused || text == "" {
 					t.Fatalf("carried declaration did not reach the real checker: %q", text)
 				}

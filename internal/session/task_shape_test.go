@@ -199,11 +199,11 @@ func TestAPastedIssuesBacktickedCommandNeverReachesTheDoorItStartedThrough(t *te
 	if node == nil {
 		t.Fatal("the pasted issue did not produce an admitted node")
 	}
-	door := auditDoorFor(node, tree)
+	door := auditDoorFor(node, standingOn(tree))
 	if len(door.checks) != 0 {
 		t.Fatalf("the admitted node inferred executable checks from prose: %q", door.checks)
 	}
-	declared := auditDoorFor(declaringNode("check.sh"), tree)
+	declared := auditDoorFor(declaringNode("check.sh"), standingOn(tree))
 	if len(declared.checks) != 1 || declared.checks[0] != "check.sh" {
 		t.Fatalf("the explicit verification contract lost its check: %q", declared.checks)
 	}

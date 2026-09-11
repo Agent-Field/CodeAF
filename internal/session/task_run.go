@@ -523,6 +523,14 @@ type TaskNode struct {
 	// ([Agent.ContinueTask]).
 	report  string
 	changed []string
+	// landed is the report THE LANDING ITSELF WROTE, and late is every piece of
+	// this node's own work that came home after its worker had stopped reading
+	// (task_latefold.go). They are two fields rather than one because the report
+	// above is composed out of both and is recomposed whenever either moves:
+	// a landing that overwrote the report would otherwise erase a part's result,
+	// and a fold that appended to it would be a second author of one sentence.
+	landed string
+	late   []string
 	// wrote is every path this node has written SO FAR, in the order it first
 	// wrote them and capped at [taskFilesLimit]. It is the LIVE half of changed,
 	// which does not exist until the node lands: a node writes for eleven minutes
@@ -2287,27 +2295,21 @@ func (n *TaskNode) instructionOn(tree taskTree) string {
 // precisely so the ground stays material it may only READ, and rewriting the
 // ground's addresses into that folder would point a worker at files that were
 // never put there.
+// AND THE FOLDERS ARE SPELLED ONE WAY, by the constructor rather than here: a
+// tree's fields are whatever resolved them, and [newTaskCopy] is where a folder
+// becomes the one spelling everything downstream reads. The conversation's own
+// folder and the folder its copies live in are read off the tree's own [Place],
+// so nothing has to be threaded to reach them — the first is empty for a
+// borrowed session, which keeps no work/ at all, and for the legacy layout,
+// whose tree carries the zero Place; the second is what binds a contract naming
+// an earlier tree of this conversation to this one rather than leaving it
+// pointing at somebody else's (#839).
+//
+// THE READING ITSELF IS [copyOnto]'S (task_brief.go), shared with the map a
+// declared check is bound through, because "is this directory a copy of that
+// ground" must have one answer for a worker and its checker alike.
 func taskCopyFor(tree taskTree) taskCopy {
-	switch tree.mode {
-	case TaskModeWorktree, TaskModeMirror:
-		// AND THE THREE FOLDERS ARE SPELLED ONE WAY, by the constructor rather
-		// than here: a tree's fields are whatever resolved them, and
-		// [newTaskCopy] is where a folder becomes the one spelling everything
-		// downstream reads.
-		//
-		// THE THIRD ONE IS THE CONVERSATION'S OWN, and the tree already carries
-		// the session it belongs to, so nothing has to be threaded to reach it.
-		// It is empty for a borrowed session, which keeps no work/ at all, and
-		// for the legacy layout, whose tree carries the zero Place — both of
-		// which are the same document this composed before.
-		//
-		// THE FOURTH IS WHERE ITS COPIES LIVE, from the same [Place.Trees] the
-		// copy was cut from, so a contract that names an earlier tree of this
-		// conversation is bound to this one rather than left pointing at
-		// somebody else's (#839).
-		return newTaskCopyOf(tree.ground, tree.dir, tree.place.Work(), tree.place.Trees())
-	}
-	return taskCopy{}
+	return copyOnto(tree.ground, tree.mode, tree.dir, tree.place)
 }
 
 // taskVerification is ONE READING of everything that decides what a node's
@@ -2634,7 +2636,12 @@ func (n *TaskNode) finish(report string, changed []string, branch, merge string)
 		}
 	}
 	n.graph.mu.Lock()
-	n.report = strings.TrimSpace(report)
+	// AND WHAT CAME HOME LATE IS STILL IN IT. The landing writes its own account
+	// and the composer puts the two together ([TaskNode.composeReportLocked]), so
+	// a part that landed while this node was being checked is not erased by the
+	// sentence that lands it.
+	n.landed = strings.TrimSpace(report)
+	n.composeReportLocked()
 	n.changed = changed
 	n.branch = branch
 	n.merge = merge
@@ -3722,6 +3729,18 @@ func (a *Agent) postTaskMessage(node *TaskNode, tag TaskReplyTag, note string, d
 	if !got.accepted() {
 		return got
 	}
+	// AND A FOLD HAS NO QUEUE AND NOBODY TO WAKE. The two writes a queued
+	// delivery owes are the mark and the release of whoever is parked on it; a
+	// note taken into the parent's own report ([landingFold]) has already been
+	// read by the only reader it will ever have, so what is left is the mark —
+	// made here, in the same order, so that a child taken this way is as reported
+	// as one taken onto a worker's queue.
+	if got.reader == nil {
+		if mark != nil {
+			mark()
+		}
+		return got
+	}
 	got.reader.handOverTaskNews(mark)
 	return got
 }
@@ -3730,6 +3749,15 @@ func (a *Agent) postTaskMessage(node *TaskNode, tag TaskReplyTag, note string, d
 // asked. The parent node's own worker comes first for the reason the header
 // above states — it is the only reader that can fold the piece back into the
 // whole — and the conversation is the fallback rather than a second delivery.
+//
+// AND THE PARENT ITSELF READS SECOND, while it is still open. Its worker stops
+// reading the moment its own reading is over, and the node then stays open
+// through its check and its landing, which on a checked node is minutes: a piece
+// that came home in that window used to fall straight past the family to the
+// person, so work this node handed out never reached the deliverable it was cut
+// from. The fold is what takes it instead (task_latefold.go) — the same piece,
+// in the same family, carried by the landing rather than by a turn, because
+// there is no worker left in there to have one.
 //
 // A NODE WITH NO PARENT HAS ONE READER and the room is not consulted at all: it
 // was proposed here, and here is where its news is owed.
@@ -3743,8 +3771,13 @@ func (a *Agent) taskNoteReaders(node *TaskNode) []mailbox {
 	}
 	// openRoom answers nil for a settled parent, and the seat answers "nobody"
 	// for a nil room — the parent has landed, has no agent left to read anything,
-	// and the person's conversation is the honest place for the news.
-	return []mailbox{roomSeat{at: conversationOf(parent), room: parent.openRoom()}, a}
+	// and the person's conversation is the honest place for the news. The fold
+	// between them refuses on exactly the same fact, from the node's own side.
+	return []mailbox{
+		roomSeat{at: conversationOf(parent), room: parent.openRoom()},
+		landingFold{at: conversationOf(parent), node: parent},
+		a,
+	}
 }
 
 // taskNote is what the model reads when a node lands: the outcome, the report,
@@ -5934,7 +5967,7 @@ func (a *Agent) taskProgress(ctx context.Context, node *TaskNode, dir string, ev
 	// check reads a running tree and decides whether the work is moving; it has
 	// no business with a wider hand than the judge that will grade the result,
 	// and no reason for a narrower one.
-	auditor, err := a.newAuditAgent(dir, node, auditDoorFor(node, dir), "")
+	auditor, err := a.newAuditAgent(dir, node, auditDoorFor(node, a.checkCopy(node, dir)), "")
 	if err != nil {
 		return false, "the progress check could not start: " + err.Error()
 	}

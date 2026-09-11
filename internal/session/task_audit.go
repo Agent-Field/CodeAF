@@ -1041,7 +1041,10 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// The baseline reads this same door. A retry that recomputed it could judge
 	// the same tree through a different door, and "the same question asked again"
 	// is the only thing a retry is allowed to be.
-	door := auditDoorFor(node, ground.dir)
+	// AND ITS CHECKS ARE THE COPY'S OWN. The contract's commands were written in
+	// the folder the work is about; this audit stands in a restore of it, so they
+	// are bound onto the copy they will be run in ([Agent.checkCopy], #886).
+	door := auditDoorFor(node, a.checkCopy(node, ground.dir))
 	checks := a.checkGroundFor(ctx, tree, ground, door, log)
 	// AND THE WINDOW IS OPENED ONCE, HERE, FOR THE WHOLE OF THIS NODE'S CHECKING.
 	// Both attempts below spend the same one ([auditPace]), so the figure a

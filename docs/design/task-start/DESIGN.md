@@ -257,3 +257,107 @@ tree another way.
 | --- | --- | --- | --- |
 | aforge-v2 clone, 5,706 files | 61.6 ms | 8.3 ms | 0 |
 | 50-file repository | 11.3 ms | 1.5 ms | 0 |
+
+## A task and its own work agree (lane L)
+
+Two beliefs held by the code were wrong in the same way: a task's copy of the world
+was treated as a detail of where the *worker* stands, rather than as the world the
+task's whole life happens in. A check ran against the person's folder, and a piece of
+the task's own work that came home a minute late was handed to the person instead of to
+the task.
+
+### A declared check is run against the task's own copy (#886)
+
+**What was true.** `taskCopy.bind` bound `work`, `deliverable`, `acceptance` and
+`expects` to the copy the worker was given (`composeBrief`, #566) and bound nothing
+else. `checks` went from `spec.checks` onto `TaskNode.Checks` untouched and reached
+`runOneCheck` as written. `runOneCheck` sets the command's working directory to the
+copy — and an absolute argument is not a working-directory question. So
+`grep -q rewritten /person/folder/report.txt`, which is exactly what
+`prompts/system.md` asks a parent standing in that folder to write, read the untouched
+original: it answered red, the checker spent minutes hunting for files its own check
+named (one call ran 2m29s and was abandoned), and correct work landed
+`your call · nobody could check it`. The same address made the **before**-reading read
+the person's folder too, so a check this work really had broken came back "red before
+this work and remains red" — a finding softened by an address. And a check whose first
+word was an absolute path into that folder named no file under the checker's feet, so
+`runnableHere` dropped it from the door in silence.
+
+**What is true now.** A check is bound onto **the copy it is run in**, through the same
+`taskCopy.bind` the brief's four fields go through, at the one place a check is turned
+into a door (`auditDoorFor` → `runnableChecks`). The copy is spelled as the directory
+the command will be run in — `.` — because a task's check is run in *several* copies of
+one ground: the clean restore of what would ship, the commit the task was cut from, and
+the worker's own tree for the progress reader. All of them stand at the root of a copy
+and all of them run the command there, so one spelling is true in all of them, and the
+before-reading, the landing reading and the checker's own shell can no longer disagree
+about which tree a check is about. The order in `runnableChecks` is shape, then bind,
+then "could this run here", which is what admits the ground's own script instead of
+dropping it. `copyOnto` is now the one reading of "is this directory a copy of that
+ground", shared by the worker's map (`taskCopyFor`) and the check's (`Agent.checkCopy`,
+read off the node's own record of where its work stands). A checker standing on the
+**ground itself** — the session's own reading after a task has landed — carries
+`standingOn`, the identity: the work is home, so the address the contract wrote names
+the place that now holds it. An address outside the ground is left as written, as
+before.
+
+### A piece that comes home late is folded into its parent's report
+
+**What was true.** The runner withdrew the parent's seat the instant the worker's
+reading was over (`childRun.foldParts`, and `runTaskChild`'s `defer room.speaking(nil)`
+for every other road out) — it must, or a line said into that room would be taken by
+somebody who will never read it (#273). But the node stays open through its check, its
+repair round and its landing, "which on a checked node is minutes away". A piece landing
+in that window found an empty seat and fell through to the **person's conversation**,
+the fallback written for a parent that has already landed. Nothing was lost from the
+person's screen and everything was lost from the family: the piece's result never
+reached the deliverable it was cut out of, and the parent's report said nothing about
+it. The dominant trigger is not a race — a parent stopped at its threshold leaves its
+pieces running, `stopChildren` cuts them, and every one of their landings arrives while
+the parent is still being checked. At twenty pieces over three levels (#874) that is
+ordinary work.
+
+**What is true now.** `taskNoteReaders` asks three readers in order: the parent's
+worker, then **the parent itself** (`landingFold`, `task_latefold.go`), then the
+conversation. The fold takes the piece's news into the parent's own report, so the
+landing already on its way carries it — one account of what this node's work came to,
+in the family it belongs to. The report is composed from two halves under the graph's
+lock (`TaskNode.composeReportLocked`): what the landing wrote (`landed`) and every piece
+folded since (`late`). Either half may move without erasing the other, so a landing
+cannot overwrite a folded piece and a fold cannot rewrite a landing. The fold refuses on
+exactly the fact the seat refuses on — the node has settled — so **only a parent that
+has already landed** sends its pieces to the person, which is the fallback as designed.
+A folded piece is marked reported like any other, so nothing is delivered twice.
+
+**What the fold does not do, stated rather than hidden.** It is not a turn: the worker's
+reading is over by definition, and starting a second one for a node whose check is
+running would pay a model to read a piece into a tree the checker is holding still. And
+the check does not see it — the checker is handed the worker's own last words
+(`checkerConclusion`), written before the piece came home, and is not asked again. A
+second audit of the same tree is the person paying twice for one question, and the
+piece's own check already answered for the piece. The manual says the same sentence.
+
+### The bar's four questions
+
+- **The one abstraction.** `taskCopy` as the map from the folder the work is *about*
+  onto a copy of it — now reached through one reading (`copyOnto`) by both the worker's
+  brief and the checker's door, with `bindCommand` for the one thing a command needs
+  that a document does not: to be true in whichever copy it is run in. Anything that
+  later has to run something declared in one world inside another world can use it.
+- **What was deleted.** `auditDoorFor`'s bare `ground string` parameter (a directory
+  with no account of what it was a copy of) and `taskCopyFor`'s own copy of the mode
+  switch. `TaskNode.report` stopped being a field two writers could overwrite: it is
+  now composed, in one function, from the halves that own it.
+- **The law tests.** `TestADeclaredCheckIsBoundToTheTaskOwnCopy` (the door's check
+  answers green on what would ship, red on the base, and the command as written still
+  fails — the defect itself), `TestChecksBindOnlyWhatTheGroundHolds` (outside the
+  ground, relative, sibling tree, and the identity for a checker standing on the
+  ground), `TestAGroundCheckThatNamesItsOwnScriptOpensTheDoor`,
+  `TestAChildLandingAfterItsParentStoppedReadingIsFoldedIntoItsReport` and
+  `TestAChildLandingAfterItsParentSettledReachesTheConversation`.
+- **What a reviewer might call a band-aid.** Spelling the copy as `.`. It is not a
+  trick for one call site: it is the only spelling of "the copy this is being run in"
+  that is true in all four places a task's check is run, and it is produced by the same
+  `bind` as every other address, from a map built out of the real directories. The
+  alternative — binding to one named directory — is correct for the checker and wrong
+  for the before-reading, which is how the "red before this work" softening got there.

@@ -1019,6 +1019,17 @@ where the branch went:
 - `it was stopped; its branch task/… was kept` (when it made nothing)
 - `it worked directly in the workspace: there was no repository to branch`
 
+**A piece that comes home after its task has stopped working is folded into that task's own
+report.** A task that hands pieces out is held open while they run and reads each one's
+result as it lands. That reading ends when the last piece it was waiting for is in — and the
+task itself is not over then: its check, its repair round and its landing are still ahead,
+which on a checked task is minutes. A piece landing in that window is added to the task's
+report, under the line *A piece this task handed out came home after its own work was over:*,
+so it reaches you inside that task's landing rather than as a separate answer about work you
+never asked for directly. The check does not see it: the checker is given the work's own
+account of itself, written before that piece came home, and it is not asked a second time.
+Only a piece that lands after its task has already landed is announced on its own.
+
 The task's own tool rows never enter the chat. They go to its journal and its room only.
 
 **To read a finished task's report again later**, open the task from `/history` — `ctrl+.`,
@@ -1481,6 +1492,19 @@ The commands its `bash` will accept come from two places:
   `pwd`, `wc`, `head`, `cat`. These print and cannot change what is being judged. They are
   not verification, so a checker holding only these can read your work but cannot exercise
   it.
+
+**A check is run against the task's own copy, whatever folder it names.** A brief is written
+in the folder the work is *about* — usually your checkout — so a check often names a file
+there by its full path, `grep -q rewritten /home/you/project/report.txt`. The task never
+wrote in that folder: it worked in a copy, and the check is run on a copy too. So every
+address in a check that stands at or under the folder the work is about is read **where the
+check is being run** — the clean copy of what the work would ship, and, for the
+before-and-after reading, the commit the work was cut from. An address that is somewhere
+else on the machine entirely is left exactly as it was written, and is read there.
+
+Before this, a check with a full path read your own folder while the work sat in a copy: it
+answered as though nothing had been done, the checker went hunting for files its own check
+had named, and correct work landed `your call · nobody could check it`.
 
 ## How a named check matches what the checker runs
 
