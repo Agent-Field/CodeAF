@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: a live wire below its promised pace is rescued out of the call's own budget, and every attempt is watched
+title: a wire below its promised pace is rescued out of the call's own budget, and every attempt is watched
 pr: 924
 surface: [chat, engine, docs]
 invalidates:
