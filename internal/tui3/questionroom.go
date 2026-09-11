@@ -1395,7 +1395,53 @@ func (a *app) questionMoveFocus(delta int) {
 		room.input.focus = at
 	}
 	room.focus = at
+	a.questionRoomShowFocus()
 	a.questionRoomTouched()
+}
+
+// questionRoomShowFocus KEEPS THE FOCUSED ANSWER IN VIEW, and it is the one
+// place this page's window is moved for anything other than the wheel.
+//
+// THE DEFECT IT CLOSES: `↓` walked the focus and nothing scrolled, so on a page
+// with an attachment at the top and an answer open — which is most pages worth
+// opening — the arrows walked down into rows below the fold and the screen did
+// not change. A person pressing an arrow and seeing nothing move reads it as a
+// key that does nothing.
+//
+// IT SCROLLS THE LEAST IT CAN, so a page that is already showing the row it
+// walked to does not jump: the row is brought just inside the top or the bottom
+// edge and no further, which is the reading position a person built by
+// scrolling being kept rather than re-anchored under them.
+func (a *app) questionRoomShowFocus() {
+	room := a.qroom
+	height := a.viewHeight()
+	if room == nil || height <= 0 {
+		return
+	}
+	// THE ROWS ARE ASKED FOR AFTER THE MOVE, because the map from row to answer
+	// is written by the drawing ([questionRoom.spots]) and the move may have
+	// opened or folded a section under it.
+	rows := a.questionRoomRows(a.bodyWidth())
+	first, last := -1, -1
+	for at, of := range room.spots {
+		if of != room.focus {
+			continue
+		}
+		if first < 0 {
+			first = at
+		}
+		last = at
+	}
+	if first < 0 {
+		return
+	}
+	switch {
+	case first < room.offset:
+		room.offset = first
+	case last >= room.offset+height:
+		room.offset = last - height + 1
+	}
+	room.offset = questionClamp(room.offset, 0, max(0, len(rows)-height))
 }
 
 // questionFoldFocus opens the answer the focus is on, or folds it.

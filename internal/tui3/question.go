@@ -861,10 +861,19 @@ func (a *app) questionRows(width int) []string {
 	}
 	a.markQuestionShown(head.token())
 	a.questionBands = nil
+	// WHERE THE ANSWERS ARE IS COUNTED FROM THE TOP OF THE BLOCK, and the forms
+	// below count from the top of themselves. The receipts above them are rows
+	// of the block too, so a click was resolved one row out for every receipt
+	// standing — press the answers row under a receipt and the press landed on
+	// the row above it, which on a card is an answer nobody aimed at.
+	// [app.shiftQuestionMarks] is where the two readings are made one.
+	base := len(out)
 	if a.questionNarrowed(head, width) {
 		// THE NARROW SHEET SAYS THE QUEUE COUNT ON ITS OWN FOOT, beside the
 		// clock, so it takes the rows whole (questionsheet.go).
-		return append(out, a.questionNarrowRows(head, width)...)
+		out = append(out, a.questionNarrowRows(head, width)...)
+		a.shiftQuestionMarks(base)
+		return out
 	}
 	switch a.questionForm(head.question) {
 	case formsRatify:
@@ -874,10 +883,29 @@ func (a *app) questionRows(width int) []string {
 	default:
 		out = append(out, a.questionLineRows(head, width)...)
 	}
+	a.shiftQuestionMarks(base)
 	if more := len(a.questionOpen()) - 1; more > 0 {
 		out = append(out, a.pal.dim(fit("  "+itoa(more)+" more", width)))
 	}
 	return out
+}
+
+// shiftQuestionMarks moves the marks one form wrote onto the block's own rows.
+//
+// A FORM DRAWS ITSELF AND KNOWS NOTHING ABOUT WHAT IS ABOVE IT — the receipts of
+// what was just answered — and the pointer and the click resolve against the
+// block ([app.chromeAt]). Rather than teach every form where it happens to be
+// standing, the one place that stacks them says so afterwards, once.
+func (a *app) shiftQuestionMarks(by int) {
+	if by == 0 {
+		return
+	}
+	if a.questionSpanRow >= 0 {
+		a.questionSpanRow += by
+	}
+	for i := range a.questionBands {
+		a.questionBands[i].row += by
+	}
 }
 
 // questionForm is which of the three forms this block draws one question in.

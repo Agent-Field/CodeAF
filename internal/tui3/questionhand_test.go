@@ -180,3 +180,80 @@ func TestTheSecondBeatWalksItsShapesAndEnterTakesTheOneUnderTheCursor(t *testing
 		t.Fatalf("enter banked %v, want the shape the cursor was on (%q)", saved.commands, want)
 	}
 }
+
+// THE PAGE KEEPS THE ANSWER IT WALKED TO IN VIEW. `↓` moved the focus and
+// nothing scrolled, so on a page with evidence at the top the arrows walked into
+// rows below the fold and the screen did not change.
+func TestThePageScrollsToTheAnswerTheArrowsWalkTo(t *testing.T) {
+	a := newTestApp(&fakeAgent{})
+	a.width, a.height = 92, 14
+	q := demoQuestionReading()
+	a.raiseQuestion(questionShown{question: q})
+	a.questionRows(a.width)
+	head, ok := a.questionHead()
+	if !ok {
+		t.Fatal("the question never reached the block")
+	}
+	a.openQuestionRoom(head)
+	a.qroom.shown = a.qroom.shown.Add(-time.Second)
+	// Open every answer so the page is taller than the window, which is the
+	// shape the defect needs and the shape a page worth opening has.
+	for range len(q.Options) {
+		a.questionMoveFocus(1)
+		a.qroom.open[a.qroom.focus] = true
+	}
+	rows := a.questionRoomRows(a.bodyWidth())
+	if len(rows) <= a.viewHeight() {
+		t.Skipf("the page fits the window (%d rows in %d), so there is nothing to scroll", len(rows), a.viewHeight())
+	}
+	a.questionMoveFocus(0)
+	offset := a.questionRoomOffsetFor(len(rows), a.viewHeight())
+	last := -1
+	for at, of := range a.qroom.spots {
+		if of == a.qroom.focus {
+			last = at
+		}
+	}
+	if last < offset || last >= offset+a.viewHeight() {
+		t.Fatalf("the focused answer is on row %d and the window shows %d..%d", last, offset, offset+a.viewHeight())
+	}
+}
+
+// WHERE THE ANSWERS ARE IS COUNTED FROM THE TOP OF THE BLOCK. The forms count
+// their rows from the top of themselves, and the receipts above them are the
+// block's rows too — so with a receipt standing, a click on the answers row
+// landed one row out, which on a card is an answer nobody aimed at.
+func TestTheAnswersRowIsWhereTheBlockSaysItIsWithAReceiptAboveIt(t *testing.T) {
+	lab := newQuestionLab(t)
+	// One decision already made, which is the row that used to shift everything
+	// under it.
+	done := consentAsk()
+	lab.a.questionRecords = append(lab.a.questionRecords, questionRecord{
+		record: session.DecisionRecord{
+			ID: done.ID, Kind: done.Kind, Ask: done.Ask, Head: done.Head,
+			Picked: []string{"1"}, By: session.DecidedByPerson, At: lab.at,
+		},
+		head: done.Head, at: lab.at,
+	})
+	second := consentAsk()
+	second.ID = 8
+	lab.raise(second)
+	lab.tick(questionSettle)
+	rows := questionPlainRows(lab.a.questionRows(lab.a.width))
+	if len(rows) < 2 {
+		t.Fatalf("the block drew %d rows", len(rows))
+	}
+	drawn := -1
+	for at, row := range rows {
+		if strings.Contains(row, "["+questionLaterKey+"]") {
+			drawn = at
+		}
+	}
+	if drawn < 0 {
+		t.Fatalf("no row of the block offers its keys:\n%s", strings.Join(rows, "\n"))
+	}
+	if lab.a.questionSpanRow != drawn {
+		t.Fatalf("the block says its answers are on row %d and they are drawn on row %d — every receipt above them is an off-by-one on the pointer and the click",
+			lab.a.questionSpanRow, drawn)
+	}
+}
