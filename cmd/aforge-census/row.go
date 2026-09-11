@@ -1,148 +1,33 @@
 package main
 
 import (
-	"bufio"
-	"encoding/json"
-	"fmt"
 	"math"
-	"os"
-	"sort"
 	"strings"
-	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/calllog"
+	"github.com/Agent-Field/aforge-v2/internal/callrows"
 )
 
-// row is one line of the log, decoded.
+// row is one line of the log with the census's own readings hung off it.
 //
-// IT EMBEDS THE RECORD THE WRITER WRITES rather than restating its fields, so
-// that a field added to internal/calllog is readable here the day it lands and
-// the two can never disagree about a name. What is added beside it is the one
-// thing an embedding cannot carry: a field this wave RENAMED, which ten days of
-// already-written rows still spell the old way.
-type row struct {
-	calllog.Record
-	// HazardCeilingLegacy is `deadline_ms` as builds before this wave wrote it.
-	// It was never a deadline — it is the moment the wait controller was going
-	// to think about a second request — and it is read here under its old name
-	// so a census run over a mixed log does not silently lose ten days of it.
-	HazardCeilingLegacy int64 `json:"deadline_ms,omitempty"`
+// THE DECODING IS NOT HERE. internal/callrows holds the one reader of this file
+// and the four facts every instrument needs from a line — was it the end of an
+// attempt, did it fail, was it a hedge's losing arm, what ceiling applied. What
+// is here is the census's own argument about those rows: which of six classes a
+// finish belongs to and whose fault it was, which is a judgement cmd/aforge-replay
+// makes differently about the same bytes and must not inherit by accident.
+type row struct{ callrows.Row }
 
-	// at is Time parsed, and zero when the row carried no readable stamp.
-	at time.Time
-	// raw is the line as it arrived, kept only long enough for the checks that
-	// are about the bytes rather than about the values — a float JSON has no
-	// spelling for reaches this program as a decode failure, not as a number.
-	raw string
-}
-
-// hazardCeiling is how long this attempt had before the wait controller would
-// have acted on its silence, whichever build wrote the row.
-func (r row) hazardCeiling() int64 {
-	if r.HazardCeilingMs > 0 {
-		return r.HazardCeilingMs
-	}
-	return r.HazardCeilingLegacy
-}
-
-// lost is a line that was written and could not be read back: a float JSON has
-// no spelling for took the whole object with it. It is kept as a row so the
-// checks can count it, and it is not an attempt — nothing about the call it was
-// about survived.
-func (r row) lost() bool { return r.raw != "" && r.Time == "" }
-
-// finished reports whether this row is the end of an attempt rather than its
-// beginning. A start row omits nothing and says so in one word; everything else
-// is an outcome (internal/calllog's PhaseStart).
-func (r row) finished() bool { return !r.lost() && r.Phase != calllog.PhaseStart }
-
-// failed reports whether this attempt produced no usable answer — which is NOT
-// the same as a status outside the 200s, and that is the whole point of the
-// census. A refusal delivered inside an opened 200 stream is a failure the
-// status column cannot see.
-func (r row) failed() bool {
-	return strings.TrimSpace(r.Error) != "" || (r.Status != 0 && r.Status != 200)
-}
-
-// exhaust reports whether this row is the losing arm of a hedge this build won.
-//
-// IT IS NOT A FAILURE AND COUNTING IT AS ONE MEASURES OUR OWN HEDGING POLICY.
-// The arm really was sent and really was cut off, so its row says `context
-// canceled` and reads exactly like a caller walking away: 1,204 of 3,906 bad
-// rows in the first census, the largest cause family in it, every one of them
-// the price of a race that ended with an answer.
-//
-// The sentence is read as well as the field because the rows already in the log
-// have only the sentence — internal/provider wrote the note for one wave while
-// this field was landing, and a census that could not read it would show the
-// finding disappearing on the day of the rebuild rather than on the day the
-// build changed.
-func (r row) exhaust() bool {
-	return r.Exhaust || strings.Contains(strings.ToLower(r.Note), "lost the race")
-}
-
-// readLog reads every line of a log into rows, skipping the ones that are not
-// JSON at all.
-//
-// A LINE THAT WILL NOT DECODE IS COUNTED AND NEVER FATAL. A log is appended to
-// by a live process; the last line of a file read while a call is landing can
-// be half a line, and a census that refused to run over it would be an
-// instrument nobody could use while the thing it measures is running.
+// readLog reads every line of a log into census rows, in time order.
 func readLog(path string) ([]row, error) {
-	file, err := os.Open(path)
+	read, err := callrows.Read(path)
 	if err != nil {
-		return nil, fmt.Errorf("read the call log: %w", err)
+		return nil, err
 	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	// A row carrying bodies (AFORGE_CALL_LOG_BODIES) is hundreds of kilobytes,
-	// and bufio's default 64 KiB would stop the scan at the first one.
-	scanner.Buffer(make([]byte, 0, 64<<10), 8<<20)
-	var rows []row
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-		var decoded row
-		if err := json.Unmarshal([]byte(line), &decoded); err != nil {
-			// The one decode failure that is a FINDING rather than a torn line
-			// is a float JSON cannot spell, which is exactly what the belief
-			// file has been choking on. It is kept as a row of its own so the
-			// surprising-checks section can count it.
-			if unspellable(line) {
-				rows = append(rows, row{raw: line})
-			}
-			continue
-		}
-		decoded.raw = line
-		if stamp, err := time.Parse(timeLayout, decoded.Time); err == nil {
-			decoded.at = stamp
-		}
-		rows = append(rows, decoded)
+	rows := make([]row, len(read))
+	for index, one := range read {
+		rows[index] = row{one}
 	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("read the call log: %w", err)
-	}
-	sort.SliceStable(rows, func(i, j int) bool { return rows[i].at.Before(rows[j].at) })
 	return rows, nil
-}
-
-// timeLayout is how internal/calllog spells Record.Time.
-const timeLayout = "2006-01-02T15:04:05.000Z07:00"
-
-// unspellable reports whether a line that would not decode carried a float JSON
-// has no spelling for. Go's decoder refuses the whole object on one of these,
-// so the row is lost — which is the defect internal/calllog's finite.go exists
-// to prevent and this census exists to notice if it ever comes back.
-func unspellable(line string) bool {
-	for _, token := range []string{":NaN", ":+Inf", ":-Inf", ":Inf", ": NaN", ": +Inf", ": -Inf"} {
-		if strings.Contains(line, token) {
-			return true
-		}
-	}
-	return false
 }
 
 // ── WHAT A FINISH WAS ───────────────────────────────────────────────────────
@@ -204,7 +89,7 @@ var refusalColumns = map[int]struct {
 func (r row) statusClass() statusClass {
 	failing := strings.TrimSpace(r.Error) != ""
 	switch {
-	case r.exhaust():
+	case r.Exhaust():
 		// READ BEFORE THE STATUS COLUMN, because there is nothing in the status
 		// column to read: a cancelled arm has no status, and every reading of
 		// this log before the field existed filed it under `transport`.
@@ -297,12 +182,12 @@ var wallPhrases = []string{
 // the reason internal/provider's velocity.go states as a law: a refusal is
 // acted on from what it says and never from where it was read.
 func (r row) cause() (causeFamily, bool) {
-	if !r.failed() {
+	if !r.Failed() {
 		return "", false
 	}
 	said := strings.ToLower(r.Error)
 	switch {
-	case r.exhaust():
+	case r.Exhaust():
 		return causeExhaust, true
 	case strings.Contains(said, "context canceled"):
 		return causeCanceled, true

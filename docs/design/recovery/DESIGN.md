@@ -425,3 +425,37 @@ beside this file as `census-20260910.md`.
 and 90 s `context deadline exceeded` rows are the CALLER's deadlines, not the
 stream wall, and the census now reports them as their own `caller deadline`
 family rather than folding them into the wall's count.
+
+### How a chooser change is judged
+
+**A change to the machine chooser is judged by `cmd/aforge-replay` (`make replay`),
+not by a screenshot.** The census above says what went wrong; this says what a
+different policy would have done instead. It walks the same `calls.jsonl` in time
+order, teaches each candidate exactly the sightings and refusals that had arrived
+by each moment, asks it which machine it would have demanded, and prices that
+answer against what the machine measurably did around that moment — the same
+`rolePatience.expected` quantity the chooser itself ranks by, read off the log
+instead of off a belief. The table is cut by role class, because a second of a
+watched answer and a second of an unattended errand are not the same second, and
+every candidate is scored on ONE common set of requests so that a policy cannot
+win by declining the hard half.
+
+Four candidates ship in it: `served` (what the router did), `current` (the chooser
+as it is on `dev`, which is the real one through `lane.Default` and never a copy),
+`quantile` (a decayed quantile of each machine's own answers, read at the role's
+risk quantile), and `current+Q` (the same `dev` chooser with a floor under how
+certain its filter may become). A new candidate is a `Policy` — three teaching
+methods and a demand — and needs nothing else in the tool changed.
+
+Three things about it are load-bearing and easy to get wrong in a rewrite. A
+machine is never priced from the very answer being scored, or the machine that
+served is judged against itself. Censored rows — a hedge's losing arm, a stream a
+guard cut, a caller who walked away — are counted and kept as a lower bound rather
+than dropped, because dropping them measures our own hedging policy. And the
+report prints its own error first: the one quantity that was both estimated from
+the window and observed on its own row, so a reader can see how large a regret has
+to be before it means anything. `make replay SINCE=…` narrows it to one afternoon
+when a change is about one incident.
+
+It replaced `internal/lane/replay_bench_test.go`, a build-tagged bench with no
+role, no common set, no leave-one-out and no test of its own.

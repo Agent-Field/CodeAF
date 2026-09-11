@@ -33,7 +33,7 @@ func TestTheCensusTellsAFailureInsideAnOpenedStreamFromASuccess(t *testing.T) {
 	}
 	counted := map[statusClass]int{}
 	for _, r := range rows {
-		if r.finished() {
+		if r.Finished() {
 			counted[r.statusClass()]++
 		}
 	}
@@ -237,7 +237,7 @@ func TestAnExhaustRowIsReadFromItsSentenceAsWellAsItsField(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !rows[0].exhaust() {
+	if !rows[0].Exhaust() {
 		t.Fatal("a row saying in words that it lost the race was read as a failure")
 	}
 	if family, _ := rows[0].cause(); family != causeExhaust {
@@ -287,8 +287,8 @@ func TestTheHazardCeilingIsReadUnderBothOfItsSpellings(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, r := range rows {
-		if r.hazardCeiling() != 10000 {
-			t.Errorf("row %s read its hazard ceiling as %d", r.ID, r.hazardCeiling())
+		if r.HazardCeiling() != 10000 {
+			t.Errorf("row %s read its hazard ceiling as %d", r.ID, r.HazardCeiling())
 		}
 	}
 }

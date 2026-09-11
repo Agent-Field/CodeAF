@@ -101,16 +101,19 @@ refuses it because no gate is absolute.
 
 ## Replay: the chooser is right when it is told the truth and allowed to act
 
-`internal/lane/replay_bench_test.go` (build tag `replay`) feeds every answered row of
-the log into a fresh ledger as a sighting, in order, and at every request asks the
-real chooser what it would send. The oracle is the lane with the lowest perceived
-wait, computed from that lane's own answers in the surrounding ±15 minutes. Regret is
-seconds of perceived wait above the oracle.
+The numbers below were produced by a build-tagged bench that has since been
+replaced by `cmd/aforge-replay` (`make replay`, DESIGN §8 of the recovery design).
+That bench fed every answered row of the log into a fresh ledger as a sighting, in
+order, and at every request asked the real chooser what it would send; the oracle
+was the lane with the lowest perceived wait, computed from that lane's own answers
+in the surrounding ±15 minutes, and regret was seconds of perceived wait above it.
+The committed tool measures the same quantity per ROLE rather than at a λ of 90
+everywhere, scores every candidate on one common set of requests, leaves a
+request's own answer out of the price of the machine that served it, and counts
+what is censored — so its figures are not comparable with these line for line.
 
 ```sh
-REPLAY_LOG=$HOME/.aforge/logs/calls.jsonl REPLAY_SINCE=2026-09-08 \
-  go test -tags replay -run '^TestReplayLog$' -count=1 -v ./internal/lane/
-REPLAY_FACTS=1 REPLAY_TASK_LAMBDA0=1 ...   # tasks at λ=0, facts and prices seeded from ~/.aforge/v3/lanes.json
+make replay SINCE=2026-09-08        # the committed instrument
 ```
 
 | deepseek-v4.1-flash, 913 requests | asked a lane that 429'd < 5 min ago | mean regret | median regret |
