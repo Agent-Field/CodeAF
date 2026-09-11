@@ -1371,8 +1371,12 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		}
 		// A CUT IS NEVER READ AS PROSE. It is a typed failure the guard raised
 		// about a stream that was served, so neither the overflow sentence nor
-		// the retryable-shape list has anything to say about it.
-		if !isCut {
+		// the retryable-shape list has anything to say about it — AND NEITHER IS
+		// A ROUTING REFUSAL, for the same reason: the transport has already said
+		// what it is ([provider.RoutingRefusal]), and its 404 matches no
+		// retryable pattern, which is how the measured turn of 2026-09-10 ended
+		// on a refusal the next attempt would have landed.
+		if !isCut && !provider.RoutingRefusal(err) {
 			errMsg := err.Error()
 			if isContextOverflow(errMsg) || !isRetryable(errMsg) {
 				return nil, model, err
