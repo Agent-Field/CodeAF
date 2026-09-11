@@ -842,9 +842,18 @@ type tasksChat struct {
 	row   session.SessionRow
 	title string
 	// kids is how many rows OPENING THIS ONE puts on the page, which is what the
-	// shut fold says out loud. Work nested under those is behind their own folds
-	// and is counted by the section's heading instead ([tasksSectionHead]).
+	// fold arithmetic is about: the rows immediately under it, each of which may
+	// be holding a family behind its own fold.
 	kids int
+	// whole is how many pieces of work are under it ALTOGETHER, at every depth,
+	// and it is what the row SAYS ([tasksChatStateField]).
+	//
+	// IT IS THE COUNT AND NOT THE KIDS BECAUSE IT IS A CLAIM ABOUT WHAT IS
+	// HIDDEN, not about what one key press reveals. A root over one task with
+	// four workers under it saying `1 done` beside a heading that says `5 folded
+	// away` is two numbers about the same rows, and the smaller one is the one a
+	// person reads as the size of the thing they are deciding whether to open.
+	whole int
 	// at is the newest thing in it THAT ANYBODY CAN DATE, and the zero time where
 	// nothing can be. It is deliberately not the stamp the conversation SORTS by:
 	// live work is dated `now` for ranking and says nothing at all about when
@@ -1122,7 +1131,7 @@ func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...ses
 		sort.SliceStable(g.roots, func(a, b int) bool {
 			return t.sort.key.less(t.rank[tasksKeyOf(g.roots[a].entry)], t.rank[tasksKeyOf(g.roots[b].entry)], t.sort.back)
 		})
-		g.chat.kids = len(g.roots)
+		g.chat.kids, g.chat.whole = len(g.roots), g.held
 		for _, root := range g.roots {
 			t.under(root, func(item tasksItem, _ int) { t.filed[tasksKeyOf(item.entry)] = g.section })
 		}

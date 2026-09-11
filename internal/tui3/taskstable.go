@@ -153,10 +153,10 @@ func tasksHoldsShort(kids int) string { return "holds " + itoa(kids) }
 // raises. `5 your call` is five rows and at least one of them wants somebody;
 // `9 done` is nine rows and nothing to do.
 func tasksChatStateField(chat tasksChat) rowField {
-	if chat.kids <= 0 || strings.TrimSpace(chat.word) == "" {
+	if chat.whole <= 0 || strings.TrimSpace(chat.word) == "" {
 		return rowSay()
 	}
-	return rowSay(itoa(chat.kids)+" "+chat.word, itoa(chat.kids))
+	return rowSay(itoa(chat.whole)+" "+chat.word, itoa(chat.whole))
 }
 
 // ── the row ─────────────────────────────────────────────────────────────────

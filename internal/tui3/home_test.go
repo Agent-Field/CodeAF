@@ -3530,10 +3530,11 @@ func TestSpaceInTheTaskRoomPagesTheCardAndDoesNotOpenHome(t *testing.T) {
 		ID: "1", Name: "port-the-thing", Label: "Port the thing", Title: "Port the thing",
 		Status: string(session.TaskDone), SessionID: "aaaa000000000001",
 	})
-	a, box := driveToPlace(t, lab, pageTasks)
-	if box == nil {
-		t.Fatal("the tasks place has no box to type into")
-	}
+	a, _ := driveToPlace(t, lab, pageTasks)
+	// THE FILTER IS NOT THE COMPOSER ANY MORE. [placeTasks.box] returns nil and
+	// the letters draw on the control row at the top of the list, so what a
+	// person typed is read off the place's own editor.
+	box := &a.taskSheet.query
 	// THE DOOR HAS TO EXIST FOR THIS TEST TO MEAN ANYTHING, the same insistence
 	// [TestTheDoorStaysShutOverTheMemoryCardEditor] makes and for its reason: a
 	// fixture whose door went dark would pass this however wrong the fix was.
@@ -3547,7 +3548,9 @@ func TestSpaceInTheTaskRoomPagesTheCardAndDoesNotOpenHome(t *testing.T) {
 	if got := box.String(); got != " " {
 		t.Fatalf("the first space did not land in the filter: %q", got)
 	}
-	drive(t, a, key("down"))  // the child task below its main chat
+	// `→` opens the conversation the work is under — every fold on this page
+	// opens shut now ([tasksReading.opens]) — and the cursor walks to the work.
+	tasksPointAt(t, a, "Port the thing")
 	drive(t, a, key("enter")) // into the room, over the roster
 	if !a.taskSheet.detailOn {
 		t.Fatalf("the record did not open; frame:\n%s", plain(frame(a)))

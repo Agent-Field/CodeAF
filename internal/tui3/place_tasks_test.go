@@ -49,11 +49,12 @@ func TestTheTasksFootIsScreenOneEWordForWord(t *testing.T) {
 	if !ok || item.entry.Label != "Fix the nil-map crash" {
 		t.Fatalf("the cursor is not on this window's running task: %+v", item.entry)
 	}
-	// AND THE FILTER CLAUSE IS NOT ON IT ANY MORE. It was here to correct the box
-	// two rows below, which said `say what you want done` over a slot that only
-	// ever filtered; the box says the true sentence itself now
-	// ([placeTasks.resting]), and one screen may not name one thing twice.
-	const want = "enter open its room · → verbs: stop it"
+	// AND THE LAST TWO CLAUSES ARE THE PAGE'S OWN KEYS, which the ruling of
+	// 2026-09-11 asks for by name: the filter owns every printable key here, so
+	// sorting is a chord, and a chord nobody can find is a chord that does not
+	// exist. The filter is named beside it because nothing else on the frame says
+	// that a letter goes into the box on the control row rather than to the page.
+	const want = "enter open its room · → verbs: stop it · alt+s sort: age · type to filter"
 	if got := a.taskSheetKeysLine(); got != want {
 		t.Fatalf("the foot reads\n  %q\nwant\n  %q", got, want)
 	}
@@ -103,7 +104,7 @@ func TestTheTasksFootSaysOnlyWhatIsTrueOfTheRowUnderIt(t *testing.T) {
 	if !ok || item.entry.Title != "Port the parser" {
 		t.Fatalf("the walk did not reach the earlier conversation's row: %+v", item)
 	}
-	const want = "enter go inside it"
+	const want = "enter go inside it · alt+s sort: age · type to filter"
 	if got := a.taskSheetKeysLine(); got != want {
 		t.Fatalf("over work another conversation ran the foot reads\n  %q\nwant\n  %q", got, want)
 	}
@@ -209,9 +210,15 @@ func TestTheTasksFootNamesNoVerbWithoutTheEnginesDoor(t *testing.T) {
 	if verbs := a.taskSheet.verbs(a); len(verbs) != 0 {
 		t.Fatalf("a session with no cancel door offered %+v", verbs)
 	}
-	const want = "enter open its room · → what ran under it"
+	// The cursor's row is a family, and [openTaskPlaceWithRows] has opened it —
+	// so the fold clause is the `←` half. What this test is about is what is NOT
+	// here: no verb at all, on a session with no door onto stopping.
+	const want = "enter open its room · ← fold it back up · alt+s sort: age · type to filter"
 	if got := a.taskSheetKeysLine(); got != want {
 		t.Fatalf("the foot reads\n  %q\nwant\n  %q", got, want)
+	}
+	if strings.Contains(a.taskSheetKeysLine(), tasksVerbsWord) {
+		t.Fatalf("a session with no cancel door named a verb: %q", a.taskSheetKeysLine())
 	}
 }
 

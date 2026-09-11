@@ -72,7 +72,7 @@ func TestTheTasksSectionHeadNamesOnlyWhatTheFoldHolds(t *testing.T) {
 
 	// Open the fold: the rows catch up with the count and the clause goes,
 	// because there is nothing left for it to say.
-	reading.open = map[tasksKey]bool{{session: "room-a", id: "1"}: true}
+	reading.open = map[tasksKey]bool{tasksChatKey("room-a"): true, {session: "room-a", id: "1"}: true}
 	lines = reading.lay(120)
 	frame = strings.Join(reading.rows(120, palette{}), "\n")
 	if drawn := tasksWorkRows(lines); drawn != held {
@@ -151,7 +151,9 @@ func TestAMixedPageHeadsSectionsOnlyWithTheirFoldedRows(t *testing.T) {
 // A PAGE THAT FOLDS NOTHING SAYS NOTHING EXTRA, on the heading or on the foot.
 func TestASectionWithNothingFoldedAwaySaysNothingExtra(t *testing.T) {
 	world, win, now := tasksPolishFixture()
-	reading := readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now)
+	// The page after `→`: what this is about is a page with NOTHING held back,
+	// and every conversation opens shut ([tasksReading.opens]).
+	reading := tasksOpen(readTasks(world, tasksMine{}, win, tasksSort{}, time.Time{}, now))
 	lines := reading.lay(120)
 	for _, line := range lines {
 		if line.kind == tasksLineWord && strings.Contains(line.text, " shown") {

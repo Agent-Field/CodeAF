@@ -1502,21 +1502,28 @@ func (p *tasksPlace) hint(a *app) string {
 		}
 		parts = append(parts, tasksVerbsWord+strings.Join(words, tasksVerbGap))
 	}
-	// AND THE FILTER IS NAMED ONCE, IN THE SLOT IT IS ABOUT. The foot used to
-	// carry `type to filter this list` at rest, because the box two rows under it
-	// was saying `say what you want done` and somebody had to correct it. The box
-	// says the true sentence itself now ([placeTasks.resting]), so repeating it
-	// here would be the frame naming one thing twice on one screen — the defect
-	// this page's own title row was removed for. What the foot keeps is the fact
-	// the box CANNOT show: that while a filter is on, esc means the filter.
+	// AND LAST, THE TWO THINGS THE KEYBOARD DOES TO THE WHOLE PAGE. They are last
+	// because every clause before them is about the row under the cursor and
+	// these two are about the page; they are here AT ALL because of the ruling of
+	// 2026-09-11, which is worth stating in full.
+	//
+	// THE FILTER OWNS EVERY PRINTABLE KEY ON THIS PAGE, so sorting cannot be `s`
+	// — a bare `s` would cost `sweep`, `stop` and `site` — and it is `alt+s`. A
+	// chord nobody can find is a chord that does not exist, so the foot names it
+	// and names the key it is on. And the other half has to be named beside it:
+	// the control row draws the box and the arrow, but nothing on the frame says
+	// that a letter goes INTO that box rather than to the page's own keys.
+	//
+	// WHILE A FILTER IS ON, THE SECOND CLAUSE IS THE ONE THAT MOVED — that esc
+	// now means the filter and not the page, which is the one fact the box
+	// itself cannot show — and inviting somebody to type a filter they have
+	// already typed would be the frame naming one thing twice on one screen.
+	parts = append(parts, tasksSortHint(a.taskSheet.order))
 	if a.taskSheetFiltering() {
 		parts = append(parts, tasksClearFilterWord)
+	} else {
+		parts = append(parts, tasksFilterHint)
 	}
-	// AND THE SORT, LAST, because it is the one clause that is true of the PAGE
-	// rather than of the row under the cursor — and because it names the key the
-	// page is on, which is the only thing about the order the control row does not
-	// already draw ([tasksControlRow] wears the arrow).
-	parts = append(parts, tasksSortHint(a.taskSheet.order), tasksFilterHint)
 	return strings.Join(parts, railSep)
 }
 
