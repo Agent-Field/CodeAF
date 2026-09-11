@@ -3,7 +3,6 @@ package main
 import (
 	"math"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/callrows"
@@ -89,17 +88,30 @@ func momentsOf(rows []callrows.Row, requests []asked, journal []seen) []moment {
 	return stream
 }
 
-// refusalWord is the short machine word an outcome carries for the log. It is a
-// TABLE and not a ladder: three statuses this build already names everywhere,
-// and anything else is simply a machine that did not answer.
+// refusalWords is the short machine word an outcome carries for the belief, by
+// the status that produced it.
+//
+// IT IS A TABLE AND NOT A CLASSIFIER, and the difference is a law in this tree
+// (internal/taxonomy's `TestOnlyTheTaxonomyTurnsAStatusIntoAMove`). A classifier
+// reads a live error and DECIDES — retry, hop, give the turn back. This reads a
+// JSON line off a finished day and hands internal/lane the same word its own
+// availability axis was fed at the time, so that a candidate replaying the log
+// learns what the live ledger learned and not something a second reading of the
+// status column invented.
+var refusalWords = map[int]string{
+	429: "rate",
+	404: "routing",
+	400: "shape",
+}
+
+// refusalWord reads the sentence's own status before the column's, for the
+// reason [callrows.SaidStatus] exists.
 func refusalWord(row callrows.Row) string {
-	switch {
-	case row.Status == 429 || strings.Contains(row.Error, "(429)"):
-		return "rate"
-	case row.Status == 404 || strings.Contains(row.Error, "(404)"):
-		return "routing"
-	case row.Status == 400:
-		return "shape"
+	if word, named := refusalWords[callrows.SaidStatus(row.Error)]; named {
+		return word
+	}
+	if word, named := refusalWords[row.Status]; named {
+		return word
 	}
 	return "refused"
 }

@@ -161,3 +161,33 @@ func Unspellable(line string) bool {
 	}
 	return false
 }
+
+// SaidStatus is the status a router's own sentence carries — `API error (429):
+// …` — and zero when it carries none.
+//
+// IT IS READ BECAUSE THE COLUMN CANNOT BE TRUSTED TO HOLD IT. A refusal
+// delivered inside an opened 200 stream has a 200 in its status column and a 429
+// in its words, and no upstream 5xx in ten days of this log ever reached the
+// column at all. internal/provider's velocity.go states the same rule as a law
+// for the live path: a refusal is acted on from what it SAYS and never from
+// where it was read.
+func SaidStatus(said string) int {
+	const marker = "api error ("
+	at := strings.Index(strings.ToLower(said), marker)
+	if at < 0 {
+		return 0
+	}
+	rest := said[at+len(marker):]
+	end := strings.IndexByte(rest, ')')
+	if end <= 0 || end > 3 {
+		return 0
+	}
+	status := 0
+	for _, digit := range rest[:end] {
+		if digit < '0' || digit > '9' {
+			return 0
+		}
+		status = status*10 + int(digit-'0')
+	}
+	return status
+}

@@ -205,7 +205,7 @@ func (r row) cause() (causeFamily, bool) {
 	// this comment's header states: a refusal that names a 429 inside an opened
 	// 200 is a 429, and the status column is where it was read rather than what
 	// it says.
-	if column, refused := refusalColumns[apiErrorStatus(said)]; refused {
+	if column, refused := refusalColumns[callrows.SaidStatus(said)]; refused {
 		return column.family, true
 	}
 	if column, refused := refusalColumns[r.Status]; refused {
@@ -214,7 +214,7 @@ func (r row) cause() (causeFamily, bool) {
 	switch {
 	case containsAny(said, networkPhrases):
 		return causeNetwork, true
-	case apiErrorStatus(said) >= 500:
+	case callrows.SaidStatus(said) >= 500:
 		return causeUpstream, true
 	case containsAny(said, wallPhrases):
 		return causeWall, true
@@ -223,31 +223,6 @@ func (r row) cause() (causeFamily, bool) {
 	default:
 		return causeUnread, true
 	}
-}
-
-// apiErrorStatus is the status a router's own sentence carries — `API error
-// (429): …` — and zero when it carries none. It is read from the sentence
-// because that is the only place a 502 ever appears: no upstream 5xx in ten
-// days of this log reached the status column.
-func apiErrorStatus(said string) int {
-	const marker = "api error ("
-	at := strings.Index(said, marker)
-	if at < 0 {
-		return 0
-	}
-	rest := said[at+len(marker):]
-	end := strings.IndexByte(rest, ')')
-	if end <= 0 || end > 3 {
-		return 0
-	}
-	status := 0
-	for _, digit := range rest[:end] {
-		if digit < '0' || digit > '9' {
-			return 0
-		}
-		status = status*10 + int(digit-'0')
-	}
-	return status
 }
 
 func containsAny(said string, phrases []string) bool {

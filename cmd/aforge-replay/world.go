@@ -200,49 +200,68 @@ func (w *world) machines(model string) []string {
 	return names
 }
 
-// around is what this machine was doing at a moment: every draw it made inside
-// the window, and the nearest one on each side when the window holds none.
-//
-// THE WINDOW IS A PREFERENCE AND NOT A WALL. A machine that answered twenty
-// minutes before a request and twenty minutes after it was plainly alive, and
-// refusing to price it at all would mean the table could only compare candidates
-// on the requests where every one of them happened to pick a busy machine — a
-// seventh of the log, chosen by the candidates themselves. So the window is
-// where the evidence is read from when there is any, the nearest answer either
-// side is what stands in when there is not, and how old that evidence was is
-// counted and printed (report.go's staleness line) so a reader can discount it.
+// inside is every draw this machine made within the window of a moment, refusals
+// and all. It is what the AVAILABILITY reading is taken over: how often this
+// machine was answering at the time, which is a fact about the window and not
+// about any one answer.
 //
 // exclude is the attempt being scored: its own row is never evidence about it.
-func (w *world) around(id lane.ID, at time.Time, exclude string) ([]draw, time.Duration) {
+func (w *world) inside(id lane.ID, at time.Time, exclude string) []draw {
 	all := w.draws[id]
 	first := sort.Search(len(all), func(i int) bool { return !all[i].at.Before(at.Add(-w.window)) })
 	last := sort.Search(len(all), func(i int) bool { return all[i].at.After(at.Add(w.window)) })
-	inside := make([]draw, 0, last-first)
+	kept := make([]draw, 0, last-first)
 	for _, one := range all[first:last] {
 		if one.id != "" && one.id == exclude {
 			continue
 		}
-		inside = append(inside, one)
+		kept = append(kept, one)
 	}
-	if len(inside) > 0 {
-		return inside, 0
-	}
-	var nearest []draw
+	return kept
+}
+
+// nearestAnswers is the closest ANSWERS this machine gave either side of a
+// moment, and how far away the nearest of them was.
+//
+// THE WINDOW IS A PREFERENCE AND NOT A WALL, for two reasons that are really one.
+// A machine that answered twenty minutes before a request and twenty after it was
+// plainly alive, and refusing to price it would leave the table comparing
+// candidates only on requests where every one of them happened to pick a busy
+// machine — a seventh of the log, chosen by the candidates themselves. AND A
+// MACHINE THAT ONLY REFUSED IN THE WINDOW IS THE CASE THAT MATTERS MOST: a paced
+// pool has no answer inside its own bad half-hour, and a reading that called it
+// "cannot say" instead of "you will be refused four times in five" would make the
+// eight identical requests to one full pool on 2026-09-11 14:39 invisible to this
+// instrument. So the SPEED comes from its nearest answer and the AVAILABILITY
+// from the window it was actually in, which is exactly the pair choose.go divides.
+func (w *world) nearestAnswers(id lane.ID, at time.Time, exclude string) ([]draw, time.Duration) {
+	all := w.draws[id]
+	first := sort.Search(len(all), func(i int) bool { return !all[i].at.Before(at) })
+	var found []draw
 	age := time.Duration(0)
-	for _, index := range []int{first - 1, last} {
-		if index < 0 || index >= len(all) || (all[index].id != "" && all[index].id == exclude) {
-			continue
+	for _, step := range []int{-1, 1} {
+		index := first
+		if step < 0 {
+			index = first - 1
 		}
-		far := gap(all[index].at, at)
-		if far > stopBelieving {
-			continue
-		}
-		nearest = append(nearest, all[index])
-		if age == 0 || far < age {
-			age = far
+		for index >= 0 && index < len(all) {
+			one := all[index]
+			index += step
+			if one.refused || one.ttft <= 0 || one.rate <= 0 || (one.id != "" && one.id == exclude) {
+				continue
+			}
+			far := gap(one.at, at)
+			if far > stopBelieving {
+				break
+			}
+			found = append(found, one)
+			if age == 0 || far < age {
+				age = far
+			}
+			break
 		}
 	}
-	return nearest, age
+	return found, age
 }
 
 // stopBelieving is how far from a moment an answer stops being evidence about
@@ -313,34 +332,63 @@ func (w *world) felt(id lane.ID, at time.Time, want shape, read bool, exclude st
 // feltWithAge is [world.felt] with the age of the evidence it used beside it,
 // which is what the report's staleness line counts.
 func (w *world) feltWithAge(id lane.ID, at time.Time, want shape, read bool, exclude string) (float64, time.Duration) {
-	draws, age := w.around(id, at, exclude)
-	if len(draws) == 0 {
+	window := w.inside(id, at, exclude)
+	answers := rateable(window)
+	age := time.Duration(0)
+	if len(answers) == 0 {
+		answers, age = w.nearestAnswers(id, at, exclude)
+	}
+	if len(answers) == 0 {
 		return math.Inf(1), 0
 	}
 	w.priced++
 	if age > 0 {
 		w.stale = append(w.stale, age)
 	}
-	var waits, rates []float64
-	answers := 0
-	for _, one := range draws {
-		if one.refused {
-			continue
-		}
-		answers++
-		if one.ttft > 0 {
-			waits = append(waits, one.ttft)
-		}
-		if one.rate > 0 {
-			rates = append(rates, one.rate)
-		}
-	}
-	if len(waits) == 0 || len(rates) == 0 {
-		return math.Inf(1), age
+	waits := make([]float64, 0, len(answers))
+	rates := make([]float64, 0, len(answers))
+	for _, one := range answers {
+		waits = append(waits, one.ttft)
+		rates = append(rates, one.rate)
 	}
 	ttft := quantile(waits, riskQuantile(read))
 	rate := quantile(rates, 0.5)
-	return lane.PerceivedSeconds(ttft/1000, rate, want.visible, want.hidden) / serving(answers, len(draws)), age
+	felt := lane.PerceivedSeconds(ttft/1000, rate, want.visible, want.hidden)
+	if len(window) > 0 {
+		felt /= serving(len(rateable(window))+refusedNone(window), len(window))
+	}
+	return felt, age
+}
+
+// rateable is the draws that measured both halves of an answer. A refusal
+// measured neither, and an answer of a handful of tokens rated the handshake.
+func rateable(draws []draw) []draw {
+	kept := make([]draw, 0, len(draws))
+	for _, one := range draws {
+		if !one.refused && one.ttft > 0 && one.rate > 0 {
+			kept = append(kept, one)
+		}
+	}
+	return kept
+}
+
+// refusedNone is how many of these draws were answers this program could not
+// RATE but which the machine nevertheless gave — an answer too short to time, a
+// stream cut before it had written enough.
+//
+// THEY COUNT TOWARD AVAILABILITY AND NOT TOWARD SPEED, which is the distinction
+// internal/lane draws in the same place: a machine that answered is a machine
+// that answered, whether or not the answer said anything about how fast it
+// writes. Folding them in with the refusals would price a machine that gives
+// many short answers as a machine that turns requests away.
+func refusedNone(draws []draw) int {
+	unrated := 0
+	for _, one := range draws {
+		if !one.refused && (one.ttft <= 0 || one.rate <= 0) {
+			unrated++
+		}
+	}
+	return unrated
 }
 
 // riskQuantile is where this role's expectation is taken, and it is the same
