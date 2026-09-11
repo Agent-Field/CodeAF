@@ -72,6 +72,34 @@ model that company serves. So the first request to a brand-new model is still
 routed, still has a clock on it, and asks for a fresh sheet in the background
 while it goes. You never wait for that fetch.
 
+## The machines your message may go to are asked for by name — and the provider may not go outside them
+
+When aforge has measured enough to have an opinion, it does not merely *rank* the
+machines it wants. It **names the set it will accept, and closes it**: the
+provider may not serve your message from a machine outside that set.
+
+The list used to be advice. The provider read it, weighed it against its own
+queues and prices, and was free to hand your message to somebody else — and often
+did. Over ten days of this build's own call record, the machine aforge asked for
+first served 29 requests in every 100; the machine a closed set names served 93.
+Everything aforge works out before sending — which machines can do the job at all,
+which are quick enough for how long this kind of work waits, what each one costs —
+was being spent on a list the provider could put aside.
+
+**What it costs, and it is a real cost.** A closed set can run out. If every
+machine in it is busy at once, your message is refused rather than handed to
+whoever happened to be free. What follows is a move, not an ending: the machine
+that refused comes off the set and the request goes straight to the next one in
+it, with no wait (`trying another machine · 2 of 3`); and when the last one has
+gone, the set comes off the request entirely, so the provider has its whole
+roster back for the one send that needs it.
+
+**A set of one is never made this way.** One machine named with nothing to fall
+back on is a pin — it is exactly what pinning a lane yourself sends — so aforge
+closes a set only when it has at least two machines it is happy with. With one,
+it ranks what it has and leaves the provider its usual freedom. Pinning a lane
+still means what it always did, and nothing here narrows a set you asked for.
+
 ## The machines one message may go to are decided once — why a retry walks the same set, and why something learned mid-answer waits for your next message
 
 Before the first byte of a request leaves, aforge decides which machines that
