@@ -1585,11 +1585,24 @@ gesture all the way to the state it leaves behind.
 
 Over `--host` the surface runs on the laptop and only the engine is far away
 (docs/REMOTE.md), so every question the surface asks its agent is a round trip
-down an ssh pipe with a ten-second deadline on it (internal/remote's
-`callDeadline`) — and every one of them is made from the update loop, which is
-the one goroutine that also decodes keys, resolves clicks and paints. A question
-asked while DRAWING is therefore a question asked thirty times a second, and one
-asked while resolving a POINTER is asked once per cell the pointer crosses.
+down an ssh pipe with a deadline on it — and every one of them is made from the
+update loop, which is the one goroutine that also decodes keys, resolves clicks
+and paints. A question asked while DRAWING is therefore a question asked thirty
+times a second, and one asked while resolving a POINTER is asked once per cell
+the pointer crosses.
+
+**The deadline is per call class** (internal/remote's `callclass.go`), and both
+windows are budgets for a terminal that has stopped repainting, because both
+kinds are asked from that one goroutine:
+
+| Class | Window | Why that one |
+| --- | --- | --- |
+| a getter — the model, the spending, a listing, a fetch | `callDeadline`, **10 s** | it is asked again on the very next frame, so giving up early costs one stale number |
+| a person's act — answering a card, taking the keyboard, interrupting | `actDeadline`, **30 s** (3 × `callDeadline`) | giving up early costs a DECISION: the engine takes the answer and this window is told it did not (#832) |
+
+Thirty seconds is the ceiling on both counts — it is the most a still terminal is
+worth — and the reason it is rarely reached is the other half of that fix: a
+getter no longer holds the engine's reader, so an act is not queued behind one.
 
 | Law | Where it is pinned |
 | --- | --- |
