@@ -105,7 +105,7 @@ close mark; Home, `+`, and the scroll arrows gain a pointer dot, and Chats chang
 tab you are already in does nothing while you are in the conversation itself, and takes you
 back out to it from a task page.
 
-## Many open conversation tabs — horizontal scrolling, overflow, and readable names
+## Many open conversation tabs — horizontal scrolling, overflow, readable names, the tab bar, and how to scroll the tab bar
 
 **The order never changes as you switch.** Tabs sit in the order this window first entered
 them, so the one you reached for a minute ago is still in the same place. At most 32 are
@@ -155,15 +155,13 @@ in that state.
 the conversation it was written for and comes back when you return to it, including on a
 door that had to close the conversation to leave it.
 
-**It stands down on a small frame** — under 12 columns wide, or on a terminal too short
-for a blank row above the message box — for the same reason the room header does. The
-rule under the tabs goes first, on a terminal shorter than twenty rows: it is a seam, and
-a seam is the cheapest thing on the frame to give up.
+## Why did my tabs disappear on a small terminal — how wide and tall the tab bar needs
 
-On frames at least 48 columns wide, a blank row above the tabs appears at 32 rows,
-one below at 36 rows, and one after task metadata at 40 rows. These separate steps
-keep the reading area from shrinking as the window grows. Smaller terminals collapse
-the vertical padding. Blank tab rows and gaps cannot activate the content beneath them.
+**The tab strip stands down below 12 columns or below 16 rows.** At 16 rows and taller,
+the conversation keeps the same four-row head as every place: the machine pulse, the tabs,
+a rule, and a blank. From 6 through 15 rows the whole head stands down, while the blank and
+rule above the message box remain. Below 6 rows those give way too, leaving the conversation,
+the box, and the status line. Blank rows cannot activate the content beneath them.
 
 **Home at the left opens the home page**, keeping your conversation and unsent words.
 It is separate from the tabs and breadcrumbs. Space twice on an empty composer still
