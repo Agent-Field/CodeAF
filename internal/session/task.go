@@ -34,10 +34,12 @@ package session
 //
 // This tool is on a NODE'S belt too, and the node's proposals join the
 // conversation's own graph under the node that made them (session.go's
-// Config.tasker). That is the fan-out law: a step with two or three genuinely
-// INDEPENDENT parts is faster as three nodes in three worktrees than as one
-// model doing them in order, and the coordination — reading the reports,
-// folding them into one deliverable — stays with the node that split the work.
+// Config.tasker). That is the fan-out law: a step with genuinely INDEPENDENT
+// parts is faster as one node per part, each in its own worktree, than as one
+// model doing them in order, because the whole then costs the longest part
+// rather than their sum however many parts there are. The coordination —
+// reading the reports, folding them into one deliverable — stays with the node
+// that split the work.
 // Work that is sequential, or that shares heavy context, is not split at all:
 // the parts would each pay for a worktree, an audit and a wait to save nothing.
 //
@@ -46,7 +48,8 @@ package session
 // capability that cannot work is left off the belt rather than made to refuse
 // (tools.go). The FAN cap is a REFUSAL the model reads and acts on
 // ([TaskGraph.claimChild]) — it has already been given its slots, and the answer
-// to a fourth part is to do it in its own hands.
+// to a part past them is to do it in its own hands. Why the two numbers are
+// what they are is written beside them (task_run.go).
 //
 // ── THE PROPOSAL IS THE CONSENT, AND IT HAS A CLOCK ──
 //
@@ -105,7 +108,7 @@ import (
 // returns at once, the fan-out a node may make, and the line about files another
 // window is already writing. It is short because it is expensive, never because
 // a rule was dropped — the rules all still stand, in one place each.
-var taskDescription = "Hand self-contained work to a task outside this conversation: work that would flood it or wants a clean context, never work needing back-and-forth. A WIDE CHANGE IS ONE PROPOSAL with `wide`, never several, and do not reach for a planner. The person may redirect or wave it off during a short countdown; silence starts it. The id returns at once; its report starts a turn here when it lands, so never wait or poll. A task may call this for genuinely independent parts of its own work, up to " + strconv.Itoa(taskFanLimit) + ", one level deep; sequential or context-sharing parts are faster in your own hands. Files another aforge window is already writing come back on their own line: nothing is blocked, so plan around them. If you will read the result yourself and carry on, and it does not need its own check or its own branch, use quick_task instead — it starts now and costs nothing to land."
+var taskDescription = "Hand self-contained work to a task outside this conversation: work that would flood it or wants a clean context, never work needing back-and-forth. A WIDE CHANGE IS ONE PROPOSAL with `wide`, never several, and do not reach for a planner. The person may redirect or wave it off during a short countdown; silence starts it. The id returns at once; its report starts a turn here when it lands, so never wait or poll. A task may call this for genuinely independent parts of its own work, up to " + strconv.Itoa(taskFanLimit) + " each, with tasks nested at most " + strconv.Itoa(taskDepthLimit) + " deep; sequential or context-sharing parts are faster in your own hands. Files another aforge window is already writing come back on their own line: nothing is blocked, so plan around them. If you will read the result yourself and carry on, and it does not need its own check or its own branch, use quick_task instead — it starts now and costs nothing to land."
 
 // taskSchemaJSON is the wire schema. depends_on is on it from the first day
 // even though a one-node graph can never fill it: the field is the edge, the
@@ -514,8 +517,15 @@ func (a *Agent) mayProposeTask() bool { return a.config.mayProposeTask() }
 // at construction, and the belt and the prompt must not disagree about whether
 // it can.
 func (c Config) mayFanOut() bool {
-	return c.InTask && c.tasker != nil && c.taskDepth < taskDepthLimit
+	return c.InTask && c.tasker != nil && fansOutAt(c.taskDepth)
 }
+
+// fansOutAt says whether a worker standing this many tasks deep may hand work
+// out, and it is the ONE reading of [taskDepthLimit]. The belt asks it of the
+// worker itself ([Config.mayFanOut]); the fan-out page asks it of the depth one
+// below, so a worker is told whether the pieces it hands out may split in turn
+// ([fanoutPage]) by the same line that will build their belts.
+func fansOutAt(depth int) bool { return depth < taskDepthLimit }
 
 // proposeTask is the tool's whole life: validate, ask, and admit.
 //

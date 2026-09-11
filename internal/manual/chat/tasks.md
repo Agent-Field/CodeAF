@@ -295,6 +295,9 @@ tasks of its own cuts them smaller still, because its own room is already spent.
 When a turn has independent pieces in front of it, aforge starts them in the same breath
 rather than in turn, keeps one piece for itself and gets on with it. You wait for the
 longest piece instead of the sum of them, and the rail shows every one of them running.
+That is the whole aim when work splits: the shortest wall time for the whole job, the way
+a team of workers would take it, so however many independent pieces there are, they all
+start together.
 
 What it will *not* do is watch them. Each landing arrives on its own and wakes the
 conversation, so once nothing is left that is independent of the work it handed out, the
@@ -307,14 +310,16 @@ quick task's items instead, and they stay in order.
 **Yes, under exactly the bounds every task is under.** A quick task's worker carries
 `quick_task` and `propose_task` on the same terms as any other worker.
 
-**Depth is two levels.** The conversation starts work; that work may start more; the third
-level may not. A worker at the floor has neither tool on its belt — `quick_task` is
-withheld there the same way `propose_task` is — so a child saying it cannot hand work out
-is describing a limit and not a choice.
+**Depth is 3 levels.** The conversation starts work; that work may start more; what it
+started may start more once again; the level below that may not. A worker at the floor
+has neither tool on its belt — `quick_task` is withheld there the same way `propose_task`
+is — so a child saying it cannot hand work out is describing a limit and not a choice.
 
-**Fan-out is five pieces per parent**, counting quick tasks and ordinary tasks together. A
-worker asking for a sixth is told it has handed out as many as one task may, and to do the
-rest itself.
+**Fan-out is 20 pieces per parent**, counting quick tasks and ordinary tasks together.
+That number stops a runaway; it does not ration breadth. How many actually run at once is
+`task.parallel` and how busy this machine is. A worker asking for one more is told
+`no: you have already handed out 20 pieces of this work, which is as many as one task
+may.` and to do the rest in its own hands.
 
 And a quick task takes a slot like anything else: if you have set `task.parallel`, quick
 tasks queue behind it with everything else.
@@ -4122,25 +4127,28 @@ Two hard bounds, and they behave differently on purpose.
 **Both bounds count quick tasks and ordinary ones together**, and `quick_task` is withheld
 at the floor exactly as `propose_task` is.
 
-**Depth: two levels.** The conversation proposes a task; that task may propose pieces; a
-piece may not. Neither `propose_task` nor `tasks` is on a second-level task's belt.
-`propose_task` creates children; `tasks` lets a task inspect and manage only its own
-children, not its parent, siblings, or unrelated tasks. Both tools share the depth gate.
-A child saying the `tasks` tool is unavailable is therefore describing a capability
-limit; it does not mean the model chose to avoid delegation.
+**Depth: 3 levels.** The conversation proposes a task; that task may propose pieces; a
+piece may propose pieces of its own share; a piece of a piece may not. Neither
+`propose_task` nor `tasks` is on a third-level task's belt. `propose_task` creates
+children; `tasks` lets a task inspect and manage only its own children, not its parent,
+siblings, or unrelated tasks. Both tools share the depth gate. A child saying the `tasks`
+tool is unavailable is therefore describing a capability limit; it does not mean the
+model chose to avoid delegation.
 
-**Fan-out: five pieces per task**, counting both ways a task hands work out — parts it saw in
-its brief and parts it found once it opened the material. A task that asks for a sixth gets
-its call answered with:
+**Fan-out: 20 pieces per task**, counting both ways a task hands work out — parts it saw in
+its brief and parts it found once it opened the material. A task that asks for one more
+gets its call answered with:
 
-> no: you have already handed out 5 pieces of this work, which is as many as one task may.
+> no: you have already handed out 20 pieces of this work, which is as many as one task may.
 > Do the rest in your own hands, or finish these and report what is left undone.
 
 It reads that as an instruction and does the rest itself.
 
-Neither bound is a setting. These are chosen limits on the cost of working copies,
-checks, and coordination. A three-level tree has not been benchmarked here; the depth
-cap is not evidence that deeper delegation cannot be useful.
+Neither bound is a setting, and neither decides how wide work goes. Twenty is there to stop
+a task that has lost the plot, not to ration breadth: when a job's parts are independent,
+the aim is the shortest wall time for the whole of it, so they are all handed out at once.
+Whether a task splits at all is its own reading of the material, and sequential work never
+splits.
 
 `task.parallel` still applies to the whole session: pieces queue behind it exactly as
 top-level tasks do.

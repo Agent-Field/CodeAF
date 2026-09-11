@@ -164,27 +164,38 @@ const (
 	// decomposition (task.go's fan-out law), and each answers a different way
 	// for it to run away.
 	//
-	// TWO LEVELS IS A CHOSEN BOUND AND NOT A MEASURED FLOOR. The shape it is cut
-	// for: the conversation grooms a piece of work, that node finds two or three
-	// genuinely independent parts inside it and hands them out, and a part of a
-	// part is usually a step — which belongs in the hands already holding it. The
-	// cost is what makes the bound cheap to keep: every level adds a worktree, an
-	// audit and a wait, and it adds them to work that is by then small, so a third
-	// level buys parallelism where there is least of it left to buy.
+	// NEITHER IS WHAT DECIDES HOW WIDE WORK GOES, and until 2026-09-11 both were
+	// written as though they were. Five children was a guess about decomposition
+	// ("more than that has not decomposed its work, it has shredded it") and two
+	// levels a guess about where a third stops paying, and nobody had measured
+	// either. What actually bounds how much runs at once is the machine and the
+	// work: the person's task.parallel holds a ready node until a slot frees,
+	// the admission governor holds one while the machine is already loaded
+	// (task_pressure.go, which weighs the machine once per frontier pass, so a
+	// batch that becomes ready together is admitted on one reading), and two
+	// parts that would write one file are refused (a division) or queued one
+	// behind the other (quick tasks' file claims), not counted. Whether a worker
+	// SHOULD split is the fan-out page's question (prompts/fanout.md) and the
+	// division road's evidence gate (task_divide.go), each asked of the material
+	// in front of it; a constant here cannot know the answer for work it has
+	// never seen. The owner's ruling is that breadth may be large where the work
+	// parallelises, because a node's parts cost the longest of them and not
+	// their sum.
 	//
-	// NOBODY HAS MEASURED A THREE-LEVEL TREE HERE, and this comment used to read
-	// as though somebody had. What is known is the cost per level above; what is
-	// not known is where the crossover actually falls, and it will not be one
-	// number for every kind of work. Raising the cap is a wave with a measurement
-	// in it, not a constant edit.
+	// SO THE FAN CAP IS A RUNAWAY STOP AND NOTHING ELSE. A node handing out more
+	// than twenty pieces has lost the plot rather than found the width, and it
+	// still has to fold every one of their reports into one deliverable. It is a
+	// REFUSAL the model can read ([TaskGraph.claimChild]), not a queue, so the
+	// answer to a twenty-first part is to do it in its own hands.
 	//
-	// FIVE CHILDREN, because a node handing out more than that has not
-	// decomposed its work, it has shredded it — and it still has to read every
-	// one of their reports and make one deliverable out of them. The cap is a
-	// REFUSAL the model can read (task.go), not a queue: the answer to "I have
-	// eight parts" is to do some of them, and the refusal says so.
-	taskDepthLimit = 2
-	taskFanLimit   = 5
+	// THREE LEVELS lets a part of a wide job fan once more: the conversation's
+	// task hands out its parts, and a part that opens its material and finds it
+	// wide in turn may split its own share rather than grinding through it. The
+	// floor is still absence and not refusal (task.go's [Config.mayFanOut]), and
+	// every level still costs a worktree, a check and a wait, which is why the
+	// pages that teach splitting say sequential work is never split.
+	taskDepthLimit = 3
+	taskFanLimit   = 20
 )
 
 // The three things a node can be waiting on, spelled once. They are the
@@ -286,7 +297,8 @@ type TaskNode struct {
 	admitBy *Agent
 	admitAt requestEpoch
 	// depth is how many tasks deep this node sits — 1 for the conversation's
-	// own, 2 for a sub-task — and it is what taskDepthLimit bounds.
+	// own, 2 for a sub-task, 3 for a sub-task's own part — and it is what
+	// taskDepthLimit bounds.
 	depth int
 	// owner is the agent that RUNS this node: the conversation for a root, and
 	// the PARENT NODE'S OWN AGENT for a sub-task. That is the whole of the
@@ -4843,6 +4855,13 @@ func (a *Agent) openTaskWorld(ctx context.Context, node *TaskNode, log io.Writer
 	if world := tree.world(); world != "" {
 		fmt.Fprintf(log, "its world is %s\n", world)
 	}
+	// AND HOW LONG IT TOOK, AND WHAT WAS TRIED ON THE WAY. The seconds between a
+	// task being admitted and its first request were fifteen on a laptop for
+	// weeks, spent on a fork that was thrown away every time, and nothing
+	// anywhere said so (groundfalls.go).
+	for _, line := range tree.climb {
+		fmt.Fprintf(log, "%s\n", line)
+	}
 	// AND WHAT THE WORLD COULD NOT BE, LOUDLY. A tree that fell short of what was
 	// promised about it says so here and again in the brief below, because a
 	// degradation nobody is told about is the shape this whole seam was written
@@ -6087,7 +6106,7 @@ func (n *TaskNode) reported() bool {
 // own working state was punished for exploring. When a hand is added to belt(),
 // it belongs here or it belongs to [savingTools], and one of the two is almost
 // always true; a hand that is neither is caught by the worktree anyway
-// ([worktreeMoved]) on any step where it actually left something behind.
+// ([treeWatch]) on any batch where it actually left something behind.
 //
 // What is deliberately ABSENT: every hand in [savingTools] (they are counted as
 // the file they saved, one branch up — except on a call that saved nothing,
@@ -6147,7 +6166,7 @@ var knowledgeTools = map[string]bool{
 // says nothing about which one this was — so a command whose output the node has
 // never read counts as the world answering a question it has never asked, and
 // the writing half of the same call is answered by the worktree, one caller up
-// ([worktreeMoved]), which asks it of every hand rather than of this one.
+// ([childRun.batchMoved]), which asks it of the batch rather than of this hand.
 //
 // It RECORDS AS IT ANSWERS, so the caller must ask it on every step and never
 // behind a short-circuit: a result that was already progress for some other
@@ -6197,7 +6216,7 @@ func couldHaveTaught(event Event) bool {
 // answers:
 //
 //   - it SAVED a file ([producedAFile], on a call that ended rather than failed);
-//   - it CHANGED THE WORKTREE ([worktreeMoved]), which is the backstop under
+//   - it CHANGED THE WORKTREE ([childRun.batchMoved]), which is the backstop under
 //     every hand nobody classified;
 //   - it TAUGHT the node something ([taughtSomething] → [progressLedger.read]),
 //     which is now three questions and not one — see the ledger for why.
@@ -6267,28 +6286,6 @@ func argField(args, field string) string {
 	return value
 }
 
-// worktreeMoved reports whether this step left the worktree different from how
-// the step before it left it, and records the new fingerprint either way.
-//
-// IT IS ASKED OF EVERY HAND AND NOT ONLY OF BASH, which is the backstop under
-// the two lists above: a hand nobody classified — a service call that saves a
-// report, a harness that writes itself, a tool added next month — is still
-// judged by the one thing that cannot be argued with, which is whether there is
-// something in the tree now that was not there a step ago. Without it a node
-// whose whole job was producing files could be killed for having produced them
-// with the wrong verb.
-//
-// A non-git directory answers "" forever — stable, so it never moves the
-// counter either way, and such a node is judged on novelty alone.
-func worktreeMoved(dir string, last *string) bool {
-	dirt := worktreeDirt(dir)
-	if dirt == *last {
-		return false
-	}
-	*last = dirt
-	return true
-}
-
 // worktreeDirt is the worktree's dirty fingerprint: the porcelain listing
 // hashed, so a step that creates, modifies or deletes a file reads as progress
 // while one that only inspects does not.
@@ -6302,8 +6299,18 @@ func worktreeMoved(dir string, last *string) bool {
 // under .aforge-v3 while the node works (jobs.go), and a tree that dirties
 // itself on a timer would make every step look like progress forever — the same
 // exclusion [stageTaskWork] makes for the same reason.
-func worktreeDirt(dir string) string {
-	out, err := exec.Command("git", "-C", dir, "status", "--porcelain",
+//
+// AND IT TAKES NO LOCK. A plain `git status` refreshes the index when it can,
+// which means taking the index lock — and this reading runs beside the worker,
+// whose own `git add` and `git commit` need that lock and would fail on finding
+// it held. `--no-optional-locks` is git's own flag for a reader that must not
+// get in a writer's way.
+func worktreeDirt(dir string) string { return worktreeDirtIn(context.Background(), dir) }
+
+// worktreeDirtIn is [worktreeDirt] under a context, for a reading somebody may
+// have to stop ([treeWatch.close]).
+func worktreeDirtIn(ctx context.Context, dir string) string {
+	out, err := exec.CommandContext(ctx, "git", "-C", dir, "--no-optional-locks", "status", "--porcelain",
 		"--untracked-files=all", "--", ".", ":(exclude)"+aforgeDroppings).Output()
 	if err != nil {
 		return ""
@@ -6336,7 +6343,7 @@ const aforgeDroppings = ".aforge-v3"
 // A call that saved something under a name it did NOT give — generate_image
 // with no path, which lands under a timestamped name of its own — is not
 // nameable from the arguments and is not listed here as a file. It is still
-// progress: the worktree noticed it ([worktreeMoved]). What it is NOT is
+// progress: the worktree noticed it ([treeWatch]). What it is NOT is
 // something that comes home on its own. Inside a node the unnamed picture lands
 // in the harness's own corner (landing.go's ImagesDir over a node's empty
 // Place), which is the one directory a landing never stages; a node whose
@@ -7379,6 +7386,11 @@ type taskTree struct {
 	// universe is the furrow fork's name, when a fork made this world, and it is
 	// the only handle furrow takes for dropping the record afterwards.
 	universe string
+	// climb is how the ladder got here, in the node's log's words: every rung
+	// that stood down or fell on the way and why, and how long the world took to
+	// make (groundladder.go's [groundClimb]). It is the log's alone and is never
+	// written into a checkpoint: a resumed node climbed nothing.
+	climb []string
 	// carry is THE PERSON'S OWN WORD that their untracked copies of the files
 	// this task wrote may be moved aside so the branch can land
 	// (groundcarry.go's [taskTree.carryUntrackedGround]). It is false on every

@@ -258,24 +258,29 @@ wrote — and your own copy of them is never touched.
 **When it cannot be done that way**, the task falls back to a copy made by git, and then
 what your `.gitignore` covers is the one thing it does not have. Two reasons:
 
-- furrow could not take that folder on this machine — the binary will not run, the folder
-  will not attach, the fork failed. Nothing is refused and nothing is reported: the copy is
-  simply made the other way.
+- furrow could not take that folder on this machine — it would not attach, the fork
+  failed, or either step took longer than its bound (attaching and forking each get a
+  minute, so the longest wait is about two). The task's log says so, with furrow's reason
+  and the cost: `a fork of the whole folder was tried and could not be made`. aforge then
+  **stops trying on that folder** — later tasks say `a fork of the whole folder was not
+  tried`, with that reason and when it last failed — until aforge or the furrow it carries
+  is updated. If it was your folder that changed (a hook removed, signing turned off),
+  delete its line from `~/.aforge/v3/universe-falls.json` and the next task tries again.
 - the folder is a **linked worktree** — its `.git` is a file naming another repository
   rather than a directory of its own. aforge never copies one of those whole, because a
   byte-exact copy would write the task's commits into the repository that file points at
   and move a checkout you are standing in.
 
-Everything else is the same either way: your uncommitted edits and your untracked files
-travel on both roads, the task works on `task/<title>-<6 hex>`, and its work comes home as
-a merge into your branch — unless the checkout is protected, detached, on another branch,
-or on a commit you moved after the cut, in which case the branch is kept and named for you
-instead. Commits from aforge's own landings do not count as you moving it.
+Everything else is the same either way: your uncommitted edits and untracked files travel
+on both roads, the task works on `task/<title>-<6 hex>`, and its work comes home as a merge
+into your branch — unless the checkout is protected, detached, on another branch, or on a
+commit you moved after the cut, in which case the branch is kept and named for you instead.
+Commits from aforge's own landings do not count as you moving it.
 
-**To see which one a task got,** open its page: the first line of its log says what world
-it worked in — `its world is a fork of <folder> as it stood, taken whole` for the whole
-copy, and `its world is a branch off <folder> as it stood, uncommitted work included` for
-the git one.
+**To see which one a task got,** open its page: the log says what world it worked in —
+`its world is a fork of <folder> as it stood, taken whole` for the whole copy, and `its
+world is a branch off <folder> as it stood, uncommitted work included` for the git one —
+and then `its world was made in <time>`.
 
 **Copying your folder whole writes one thing into it:** a `.furrow/` directory, which
 furrow keeps its own ids in. aforge adds that name to your repository's
@@ -629,14 +634,16 @@ that no transcript ever showed you is exactly what a task must not be able to ma
 **A piece is told it owns the piece.** Your message travels to every task and sub-task
 verbatim, and a task that was cut out of it opens on one line saying so: do what this brief
 and its `done when` name, and leave the rest of that message to whoever kept it — including
-handing work out, which a piece does not repeat. Your words still win about the piece it was
-given, and where its brief cannot be done without going against you, it says so in its report
-instead of quietly widening the job. A top-level task, with nobody between it and you, still
-reads your message as the whole of what was asked for.
+any handing out your message asks for, which a piece does not repeat. A piece whose own
+share turns out to have parts may still split that share. Your words still win about the
+piece it was given, and where its brief cannot be done without going against you, it says so
+in its report instead of quietly widening the job. A top-level task, with nobody between it
+and you, still reads your message as the whole of what was asked for.
 
 **It keeps `propose_task` and `tasks`, as a pair.** A task may hand pieces of its own work
-out when its brief holds parts that do not need each other — at most **5**, and a piece it
-hands out cannot hand out more — and `tasks` is how it then watches them. Inside a task
+out when its brief holds parts that do not need each other, at most **20** of them, and
+`tasks` is how it then watches them. Tasks nest at most **3** deep, so a piece it hands out
+may split its own share once more and a piece of that piece cannot. Inside a task
 both are scoped to its own family: `tasks` lists the pieces it handed out and refuses an id
 outside them with `No task "…" among the pieces you handed out.` Its brief is still its
 whole world; the project's history is not its to read. The tasks page has the whole of it,
