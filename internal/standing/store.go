@@ -147,6 +147,15 @@ func (s *Store) SetStatus(id string, status Status, reason string) (Item, error)
 		if item.Status == StatusRetired && status != StatusRetired {
 			return errors.New("a stopped item must be set up afresh")
 		}
+		// RESUME MEANS NOW. A file watch that was waiting out failed checks
+		// ([Ticker.noteFailure]) is looked at on the next pass, not after the
+		// rest of its wait: the person resuming it is the news it waited for.
+		if item.Status == StatusPaused && status == StatusActive {
+			item.FailedChecks = 0
+			if item.When.Kind == WhenFile {
+				item.NextDue = time.Time{}
+			}
+		}
 		item.Status = status
 		item.RetiredWhy = ""
 		if status == StatusRetired {

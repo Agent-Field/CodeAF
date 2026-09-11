@@ -4,6 +4,7 @@ package standing
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -46,4 +47,26 @@ func TestANamedPipeInAWatchedFolderDoesNotHangThePass(t *testing.T) {
 	if len(*shown) != 1 || !strings.Contains((*shown)[0], "not a regular file") {
 		t.Fatalf("the pipe was not named as not a regular file: %q", *shown)
 	}
+}
+
+// A LINK IN A RESOLVED TARGET'S PLACE IS REFUSED. The excerpt resolves links
+// once and opens what they resolved to without following another, so a link
+// swapped in after the check is not read.
+func TestAResolvedTargetIsOpenedWithoutFollowingALink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "thread.md")
+	writeFile(t, target, "a thread\n")
+	link := filepath.Join(dir, "link.md")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	if file, err := openRegular(link, noFollow); err == nil {
+		file.Close()
+		t.Fatal("a link was followed where a resolved file was expected")
+	}
+	file, err := openRegular(target, noFollow)
+	if err != nil {
+		t.Fatalf("the resolved file itself was refused: %v", err)
+	}
+	file.Close()
 }

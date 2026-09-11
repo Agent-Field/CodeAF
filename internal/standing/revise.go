@@ -64,6 +64,7 @@ func (s *Store) Revise(id string, expected uint64, change func(*Item) error) (It
 		}
 		schedule := !reflect.DeepEqual(current.When, draft.When)
 		line := current.Does.Say != draft.Does.Say
+		watched := current.When
 		current.Words = draft.Words
 		current.When = draft.When
 		current.Does = draft.Does
@@ -76,17 +77,14 @@ func (s *Store) Revise(id string, expected uint64, change func(*Item) error) (It
 			// A NEW CADENCE STARTS FROM NOW. The old rhythm's next moment
 			// belongs to a schedule the person has just replaced, and firing
 			// on it would be the old order speaking once more after it was
-			// changed. The fingerprint goes for the same reason, and a file
-			// watch takes its new pattern's baseline here, at the edit's yes
-			// ([Store.baseline]); so does the count of failed checks, which
-			// were checks of a waking that no longer exists.
+			// changed. So does the count of failed checks and the wait they
+			// earned, which were checks of a waking that no longer exists.
 			due, err := firstDue(*current, s.now())
 			if err != nil {
 				return err
 			}
 			current.NextDue = due
 			current.FailedChecks = 0
-			s.baseline(current, current.Fingerprint)
 		}
 		// A NEW WAKING OR A NEW LINE IS ASKED WHAT A NEW ITEM IS ASKED: whether
 		// its pattern can be read, whether its condition has anything to be
@@ -96,6 +94,13 @@ func (s *Store) Revise(id string, expected uint64, change func(*Item) error) (It
 			if err := current.CheckWatch(); err != nil {
 				return err
 			}
+		}
+		// A NEW PATTERN TAKES ITS BASELINE HERE, AT THE EDIT'S YES
+		// ([Store.baseline]). THE SAME PATTERN KEEPS ITS READING (L3): an edit
+		// of the condition alone, made because the judge kept failing, is not
+		// a request to forget the changes those failures were holding.
+		if schedule && (watched.Kind != WhenFile || current.When.Kind != WhenFile || watched.Glob != current.When.Glob) {
+			s.baseline(current)
 		}
 		current.SpecRevision = expected + 1
 		return nil

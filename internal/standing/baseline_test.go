@@ -108,3 +108,60 @@ func TestAWatchWithNoBaselineTakesOneQuietly(t *testing.T) {
 		t.Fatalf("the first pass kept no baseline: %q %q", back.LastCheckLine, back.Fingerprint)
 	}
 }
+
+// AN EDIT DURING A PASS KEEPS THE READING IT NAMES (wave 5 review, blocker 1).
+// The pass checks the item's revision once, before it walks; an edit after that
+// check takes a new baseline and names it; the pass then tidied away every
+// reading but its own and the one it started from — the one the item now names
+// included. The next pass could not load it, read the folder as changed in
+// unknown ways, and fired, billed, on a folder where nothing had changed. The
+// four steps are the reviewer's replication, in order.
+func TestAnEditDuringAPassKeepsTheReadingItNames(t *testing.T) {
+	now := time.Date(2026, 9, 11, 9, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+	made, workspace := supportWatch(t, store)
+	if err := os.MkdirAll(filepath.Join(workspace, "tickets"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(workspace, "tickets", "old.md"), "an old ticket\n")
+
+	// The in-flight pass has read the old pattern...
+	digest, _, files, err := fingerprint(workspace, "support/*", nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// ...the person edits what it watches...
+	if _, _, err := store.Revise(made.ID, made.SpecRevision, func(item *Item) error {
+		item.When.Glob = "tickets/*"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// ...and the pass keeps its reading and tidies the rest, as the pass does.
+	store.keepReading(made.ID, digest, files, true, made.Fingerprint)
+
+	later := now.Add(5 * time.Minute)
+	store.clock = held(later)
+	runner := &fakeRunner{}
+	if pass := mustTick(t, newTicker(store, runner, later)); pass.Fired != 0 {
+		t.Fatalf("a folder where nothing changed fired after an edit met a pass: %+v %q", pass, runner.said)
+	}
+}
+
+// A TOUCH BETWEEN THE YES AND THE FIRST PASS COUNTS AS A CHANGE. The baseline
+// states and never reads, so it has no contents to compare a rewrite with;
+// this pins that cost of an unread baseline, which the manual states.
+func TestATouchBeforeTheFirstPassCountsAsAChange(t *testing.T) {
+	now := time.Date(2026, 9, 11, 9, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+	_, workspace := supportWatch(t, store)
+	old := filepath.Join(workspace, "support", "old.md")
+	touched := time.Now().Add(time.Hour)
+	if err := os.Chtimes(old, touched, touched); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeRunner{}
+	if pass := mustTick(t, newTicker(store, runner, now)); pass.Said != 1 {
+		t.Fatalf("a touch in the gap was not counted, which the manual says it is: %+v", pass)
+	}
+}
