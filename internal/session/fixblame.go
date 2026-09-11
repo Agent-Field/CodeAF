@@ -46,8 +46,8 @@ package session
 //
 // [harnessRefusalOpeners] is the harness's own VOICE — the word every door in
 // this package opens with when it refuses, from the consent gate (consent.go's
-// [refusal]) to the checker's and the hand's reading-only bash (task_audit.go's
-// [refuseOutsideAllowlist], installed by fork.go too) to the dispatch that has
+// [refusal]) to the checker's reading-only bash (task_audit.go's
+// [refuseOutsideAllowlist]) to the dispatch that has
 // no such tool ([Agent.executeTool]). It is one word, owned here, and
 // fixblame_test.go pins the live doors against it so a reworded refusal fails a
 // test rather than quietly teaching the store nonsense.

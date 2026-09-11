@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // WORK COMING HOME IS AN EVENT, AND IT GETS A CARD.
@@ -120,29 +121,9 @@ type taskDone struct {
 	// open says the full context is showing, behind the same expand mechanic
 	// every other card on this surface is behind.
 	open bool
-	// decided is the receipt the card wears once its question has been answered
-	// from this surface, and it is empty for every card that was never asking
-	// (tasksettle.go). It is a STRING and not a bool because what the row says is
-	// what the person did — "you took this as done", "sent to be resolved" — and a
-	// card that recorded only that it had been answered would have to reconstruct
-	// the sentence from a state the engine has since moved past.
-	decided string
-	// trouble is the one dim line a card carries when an answer could NOT be
-	// spent and the question is therefore still standing — no checker to look
-	// again with, a working copy that has gone. It is separate from [decided]
-	// because the two are opposite facts about the same press: one says the
-	// question is over, the other says it is not (tasksettle.go).
-	trouble string
-	// chips are the pressable columns of the answers row, written by the layout
-	// that drew it and read by the pointer. They are recorded here for the reason
-	// the proposal's own choices are (task.go's spans): a hit-test that measured
-	// the row itself would be measuring a row this frame may not have drawn.
-	chips []settleChip
-	// gut is how many columns of the READING GUTTER are already in the chips
-	// above (gutter.go), for the reason the proposal's own spans carry one
-	// (task.go's [taskCard]). This card is the one that needs it most: it is
-	// drawn from three places at three indents — the plain card, a rollup, and a
-	// room's foot — and only the last of them nils the chips first.
+	// gut is how many columns of the READING GUTTER this card's rows already
+	// carry (gutter.go), for the reason the proposal's own spans carry one
+	// (task.go's [taskCard]).
 	gut int
 }
 
@@ -304,22 +285,24 @@ func (a *app) landedCard(node *taskNode) {
 // waiting on nothing, so no titles are looked up.
 func doneNodeFacts(node *taskNode) session.TaskFacts {
 	return session.TaskFacts{
-		State:     node.state,
-		Ending:    node.ending,
-		Life:      node.phase,
-		Kind:      node.kind,
-		Phase:     node.doing,
-		Gap:       node.mending,
-		Hold:      node.waiting,
-		Paused:    node.paused,
-		Stopped:   node.stopped,
-		Merge:     node.merge,
-		Branch:    node.branch,
-		Report:    strings.TrimSpace(node.report),
-		Held:      node.producedHeld,
-		Conflicts: node.conflicts,
-		Decider:   node.decider,
-		Liveness:  session.TaskLivenessHeld,
+		State:      node.state,
+		Ending:     node.ending,
+		Life:       node.phase,
+		Kind:       node.kind,
+		Phase:      node.doing,
+		Gap:        node.mending,
+		Hold:       node.waiting,
+		Paused:     node.paused,
+		Stopped:    node.stopped,
+		Merge:      node.merge,
+		Branch:     node.branch,
+		Report:     strings.TrimSpace(node.report),
+		Held:       node.producedHeld,
+		Conflicts:  node.conflicts,
+		Shifted:    node.shifted,
+		GroundHeld: node.groundHeld,
+		Decider:    node.decider,
+		Liveness:   session.TaskLivenessHeld,
 	}
 }
 
@@ -334,17 +317,18 @@ func doneNodeFacts(node *taskNode) session.TaskFacts {
 // one piece of work in the transcript, the older of them still saying somebody
 // else was deciding.
 //
-// It moves in ONE DIRECTION ONLY. A card whose chips are already the person's
-// cannot be handed away by a late notice, and a card that has been answered is
-// history — the head is never rewritten after landing.
+// AND IT IS EVERY RE-SETTLE OF A NODE THAT HAS NOT MOVED STATE, not only the
+// hand-back. A landing the model accepted whose merge was then REFUSED comes
+// back as a fresh notice for the same id in the same state, asking a different
+// question — `your folder already has files the task wrote` where it said
+// `nobody could check it` — and the card that stayed frozen in the first
+// landing's shape was the reason a person read a reason that was not the one
+// they were being asked about (#767). So the reading is replaced wherever the
+// state has not moved; a node that actually settled lands its own card below,
+// which is the design's own rule and the reason the head is never rewritten.
 func (a *app) handedBackCard(fresh *taskDone) bool {
 	card := a.doneCardFor(fresh.id)
-	if card == nil || card.decided != "" {
-		return false
-	}
-	if card.status.Ask.Owner != session.TaskAskOwnerModel ||
-		fresh.status.Ask.Owner != session.TaskAskOwnerPerson ||
-		card.status.State != fresh.status.State {
+	if card == nil || card.status.State != fresh.status.State {
 		return false
 	}
 	card.status = fresh.status
@@ -410,10 +394,6 @@ func (a *app) doneCluster(d deck, out []row, from, to, width int) []row {
 		for _, text := range a.doneRows(card, width, a.selected(i)) {
 			out = append(out, row{text: text, entry: i, hit: hitDone})
 		}
-		// AND THE DECISION UNDER THE FACTS, which is the order somebody reads in:
-		// what happened, what it came to, what is behind it, and only then the
-		// answers (tasksettle.go).
-		out = a.settleRows(out, card, i, width, 0)
 	}
 	return out
 }
@@ -439,12 +419,12 @@ func (a *app) doneRows(card *taskDone, width int, sel bool) []string {
 // doneHead is the row a person reads at a glance:
 //
 //	✓ ◆ Fix nil-map crash · done · 4m12s · 3 files (+42 −7)
-//	⊘ ▲ Mix audio · stopped · 2m03s · branch kept · task/mix
-//	✗ ▲ Port the parser · incomplete · 4m02s · 1 file · branch kept · task/parser
+//	■ ▲ Mix audio · stopped · 2m03s · branch kept · task/mix
+//	✕ ▲ Port the parser · incomplete · 4m02s · 1 file · branch kept · task/parser
 //	? ● Port the parser · your call · 6m40s · 2 files · branch kept · task/parser
 //
 // THE GLYPH IS THE TIER AND NOTHING ELSE, which is the whole of the design a
-// person is asked to learn: `?` is a question in front of them, `✓ ⊘ ✗` are
+// person is asked to learn: `?` is a question in front of them, `✓ ■ ✕` are
 // three ways of being over, and none of those three needs anything (the doc's
 // own table). Only the question takes the accent — an incomplete landing is dim
 // unless something actually broke, because most of them are work that ran out of
@@ -483,27 +463,28 @@ const doneTitleFloor = 8
 // different one on the roster: the reading answers it once for every surface now
 // ([session.ProjectTask]).
 func (a *app) doneMark(card *taskDone) string {
+	mark := a.tierMark(card.status)
 	if card.status.Tier == session.TaskTierYourCall {
 		// THE ONE ACCENT ON THE CARD. A question in front of somebody is the only
 		// thing on this surface that is waiting for them, and it is the same cell
-		// every other question here wears (styles.go's [glyphAsk]).
-		return a.pal.accent(glyphAsk)
+		// every other question here wears (tokens.GNeedsHuman).
+		return a.pal.accent(mark)
 	}
 	switch card.status.Presence {
 	case session.TaskPresenceStopped:
 		// A person's own stop is not a finding, so it is neither a tick nor a cross.
-		return a.pal.dim(a.linearMark(glyphStopped, glyphStoppedASCII))
+		return a.pal.dim(mark)
 	case session.TaskPresenceIncomplete:
 		// THE CROSS IS DIM UNLESS SOMETHING BROKE. Running out of steps, losing the
 		// wire and a check that named gaps are all work that did not finish, and
 		// colouring them as failures reports a fault nobody found
 		// ([session.TaskStatus.Fault] is the one field that says otherwise).
 		if card.status.Fault {
-			return a.pal.bad(a.linearMark(glyphBad, glyphBadASCII))
+			return a.pal.bad(mark)
 		}
-		return a.pal.dim(a.linearMark(glyphBad, glyphBadASCII))
+		return a.pal.dim(mark)
 	}
-	return a.pal.muted(a.linearMark(glyphDone, glyphDoneASCII))
+	return a.pal.muted(mark)
 }
 
 // doneTail is everything the head says after the name, in ONE FIXED ORDER: the
@@ -613,11 +594,20 @@ func doneFilesWord(files, added, removed int) string {
 // on the facts row ([app.doneFactsRow]), so nothing is lost and the expansion
 // opens on the thing the card was opened for.
 func (a *app) doneUnder(card *taskDone, width int) string {
-	// A QUESTION'S SECOND ROW IS ITS REASON, and it is drawn beside the answers
-	// that go with it (tasksettle.go) rather than here — one layout writes the
-	// reason, the chips and the columns a press is resolved against, so the three
-	// cannot fall out of step at a width where one of them was cut.
+	// A QUESTION'S SECOND ROW IS ITS REASON, AND IT IS THE ONE ACCENT ON THIS
+	// CARD besides its glyph: it is the half a person acts on, and the head one
+	// row above has already said everything else in dim.
+	//
+	// IT IS DRAWN WHETHER OR NOT ANYTHING CAN BE ANSWERED. The absence law is
+	// about CAPABILITIES — an answer with no door behind it is left off — and a
+	// reason is not one: `your call` with nothing under it is the card with no
+	// choices and no explanation, which is the defect the task-states wave exists
+	// to close. The ANSWERS are the landing question's, on the block above the
+	// box (tasksettle.go); what stands here is what is being asked.
 	if card.status.Tier == session.TaskTierYourCall {
+		if reason := strings.TrimSpace(card.status.Ask.Reason); reason != "" {
+			return a.pal.ask("  " + fit(reason, width-4))
+		}
 		return ""
 	}
 	// AND AN INCOMPLETE LANDING'S SECOND ROW IS WHY, dim, in the engine's own
@@ -876,6 +866,13 @@ func (a *app) doneDetail(card *taskDone, width int) []string {
 	if len(card.changed) > 0 {
 		say(wrap(doneChangedLabel+strings.Join(card.changed, " · "), room)...)
 	}
+	// AND THE DELIVERY ROWS ARE SILENT OVER WORK THAT HAD NO DELIVERY. A quick
+	// node runs in the folder the person is already in (session's TaskKindQuick):
+	// it publishes no branch, no merge word and usually no changed list, so all
+	// three rows fall away by themselves and the card is its answer and its
+	// facts. That is the emptiness law doing the work, and it is written down
+	// here because "no branch row" is exactly the sort of absence somebody later
+	// mistakes for a bug and fills in.
 	if card.branch != "" {
 		branch := card.branch
 		// THROUGH THE TABLE, NEVER THE TOKEN (task.go's [mergeScreenWords]): the
@@ -1098,7 +1095,7 @@ func (a *app) rollupRows(d deck, out []row, from, to, width int) []row {
 	last := -1
 	for i := from; i < to; i++ {
 		card := d.entries[i].done
-		if card == nil {
+		if card == nil || supersededIn(d, i, to) {
 			continue
 		}
 		last = i
@@ -1106,12 +1103,6 @@ func (a *app) rollupRows(d deck, out []row, from, to, width int) []row {
 		for _, text := range a.doneDetail(card, width-2) {
 			out = append(out, row{text: "  " + text, entry: i, hit: hitDone})
 		}
-		// A BATCH DOES NOT SWALLOW A QUESTION. A rollup exists to stop three
-		// landings saying the word "task" three times, and a node inside one that
-		// is waiting on a decision is the one thing in a batch that is not merely
-		// news — so its answers row is drawn on its own row, indented with the rest
-		// of the batch (tasksettle.go).
-		out = a.settleRows(out, card, i, width, 2)
 	}
 	if last >= 0 {
 		if card := d.entries[last].done; card != nil && !card.open {
@@ -1135,7 +1126,7 @@ func (a *app) rollupHead(d deck, from, to, width int) string {
 	var first, last time.Time
 	for i := from; i < to; i++ {
 		card := d.entries[i].done
-		if card == nil {
+		if card == nil || supersededIn(d, i, to) {
 			continue
 		}
 		count++
@@ -1149,7 +1140,7 @@ func (a *app) rollupHead(d deck, from, to, width int) string {
 			last = card.landed
 		}
 	}
-	mark, word := a.pal.muted(a.linearMark(glyphDone, glyphDoneASCII)), doneRollupWord
+	mark, word := a.pal.muted(a.icon(tokens.GSettled)), doneRollupWord
 	if loudest != nil {
 		// A MIXED BATCH IS NOT A DONE BATCH. The header wears its loudest child's
 		// own mark and stops saying "done", because the one thing a rollup must
@@ -1162,6 +1153,28 @@ func (a *app) rollupHead(d deck, from, to, width int) string {
 		head += a.pal.dim(" · " + taskSpanWord(last.Sub(first)))
 	}
 	return fitPainted(head, width)
+}
+
+// supersededIn reports whether the card at i lands again LATER IN THE SAME RUN:
+// the first landing of a node that asked `your call` and was then decided.
+//
+// A BATCH COUNTS WORK, NOT LANDINGS. A decision lands a node a second time, and
+// when the answer comes straight under the question both cards fall into one
+// run — which drew `? 3 tasks landed` over two tasks, the question mark standing
+// for a question already answered. So a folded batch reads each node by its
+// newest card and draws only that one, which is the card [app.doneEntryFor]
+// already names as saying where the work stands now.
+func supersededIn(d deck, i, to int) bool {
+	card := d.entries[i].done
+	if card == nil || card.id == 0 {
+		return false
+	}
+	for j := i + 1; j < to; j++ {
+		if next := d.entries[j].done; next != nil && next.id == card.id {
+			return true
+		}
+	}
+	return false
 }
 
 // doneLouder reports whether one card outranks another for the mark a folded

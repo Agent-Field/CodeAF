@@ -8,8 +8,6 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-
-	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 )
 
 // The parity golden (12.7 F.7): one sample line per surface, rendered in BOTH
@@ -37,18 +35,6 @@ const parityGolden = "testdata/glyph_parity.golden"
 // so the lines are composed here from the same API those packages hold, which
 // is the part under test anyway.
 func paritySurfaces(s *Styler) []struct{ name, line string } {
-	const width = 72
-
-	card := blocks.Header{
-		Glyph:    s.Glyph(GWorking),
-		GlyphHue: blocks.HueAlive,
-		State:    blocks.StateLive,
-		Title:    "navigate",
-		Desc:     "read src/navigate.rs",
-		Badges:   []blocks.Badge{blocks.CountBadge(s.Glyph(GNeedsHuman), 2, blocks.HueAttention)},
-		Meta:     []string{"12s", "$0.04"},
-	}
-
 	// The place line of 5.19, with the git segment. The folder and the branch
 	// are ASCII and identity slots, so they come through the explicit door —
 	// which is exactly the shape the placeline package will use.
@@ -58,36 +44,37 @@ func paritySurfaces(s *Styler) []struct{ name, line string } {
 
 	// The status line of 5.17: "K3 ▄ $8.65", with the model mark in front.
 	status := s.Glyph(GModel) + " K3 " + Gauge(0.5) + " " + s.Glyph(GSpend) + "8.65"
+	paint := func(text string, token Token) string { return s.PaintToken(text, token) }
 
 	return []struct{ name, line string }{
-		{"card line 1", card.Render(width, s)},
-		{"place line", s.Paint(place, blocks.StateChrome, blocks.HueNone)},
-		{"status line", s.Paint(status, blocks.StateChrome, blocks.HueNone)},
-		{"composer prompt (chat)", s.PaintGlyph(GPromptChat, blocks.StateSettled, blocks.HueNone) +
+		{"card line 1", paint(s.Glyph(GWorking), Cyan) + " " + paint("navigate", TextPrimary) +
+			"  " + paint("read src/navigate.rs", TextSecondary) + "  " +
+			paint(s.Glyph(GNeedsHuman)+" 2", Amber) + "  " + paint("12s  $0.04", TextTertiary)},
+		{"place line", paint(place, TextTertiary)},
+		{"status line", paint(status, TextTertiary)},
+		{"composer prompt (chat)", paint(s.Glyph(GPromptChat), TextPrimary) +
 			" what changed in navigate.rs"},
-		{"composer prompt (steer)", s.PaintGlyph(GPromptSteer, blocks.StateLive, blocks.HueAlive) +
+		{"composer prompt (steer)", paint(s.Glyph(GPromptSteer), Cyan) +
 			" keep the branch"},
-		{"fold hint", s.Paint(s.GlyphSet().UpgradeChrome(blocks.Disclose(false, 12, "line", "lines")),
-			blocks.StateChrome, blocks.HueNone)},
-		{"fold hint (expanded)", s.Paint(blocks.Disclose(true, 0, "line", "lines"), blocks.StateChrome, blocks.HueNone)},
-		{"cut row", blocks.CutRule(blocks.EndTruncatedByCap, 44, s)},
-		{"step dots", s.Paint(strings.Join([]string{
+		{"fold hint", paint(s.Glyph(GCollapsed)+" 12 lines", TextTertiary)},
+		{"fold hint (expanded)", paint(s.Glyph(GExpanded), TextTertiary)},
+		{"cut row", paint(strings.Repeat(s.Glyph(GTreeDash), 42)+" "+s.Glyph(GCut), TextTertiary)},
+		{"step dots", paint(strings.Join([]string{
 			s.Glyph(GStepDone), s.Glyph(GStepDone), s.Glyph(GStepRunning),
 			s.Glyph(GStepBlocked), s.Glyph(GStepPending),
-		}, "")+"  3/5", blocks.StateChrome, blocks.HueNone)},
-		{"queue and boost", s.Paint(strings.Repeat(s.Glyph(GQueuePill), 3)+" "+
-			s.Glyph(GBoosted)+" boosted"+sep+s.Glyph(GMissing), blocks.StateChrome, blocks.HueNone)},
-		{"scope breadcrumb", s.Paint(s.Glyph(GScopeUp)+" tasks"+sep+s.Glyph(GTruncated),
-			blocks.StateChrome, blocks.HueNone)},
+		}, "")+"  3/5", TextTertiary)},
+		{"queue and boost", paint(strings.Repeat(s.Glyph(GQueuePill), 3)+" "+
+			s.Glyph(GBoosted)+" boosted"+sep+s.Glyph(GMissing), TextTertiary)},
+		{"scope breadcrumb", paint(s.Glyph(GScopeUp)+" tasks"+sep+s.Glyph(GTruncated), TextTertiary)},
 		// The geometry slots that a reader most often expects to have changed:
 		// the prose marks and the static overflow ellipsis. This row exists to
 		// record a NON-change — both tiers must be byte-identical here — which
 		// is the half of the tier's contract the other rows cannot show.
-		{"prose and static overflow", s.Paint(s.Glyph(GProseQuote)+" "+s.Glyph(GProseBullet)+
+		{"prose and static overflow", paint(s.Glyph(GProseQuote)+" "+s.Glyph(GProseBullet)+
 			" a list item that ran out of column"+s.Glyph(GEllipsis)+"  "+
-			s.Glyph(GCodeGutter)+" fmt.Println", blocks.StateChrome, blocks.HueNone)},
-		{"settle row", s.Paint(s.Glyph(GSettled)+" done"+sep+s.Glyph(GDiffAdd)+"42"+
-			sep+s.Glyph(GDiffDel)+"7"+sep+s.Glyph(GFailed)+" one check", blocks.StateSettled, blocks.HueNone)},
+			s.Glyph(GCodeGutter)+" fmt.Println", TextTertiary)},
+		{"settle row", paint(s.Glyph(GSettled)+" done"+sep+s.Glyph(GDiffAdd)+"42"+
+			sep+s.Glyph(GDiffDel)+"7"+sep+s.Glyph(GFailed)+" one check", TextPrimary)},
 	}
 }
 

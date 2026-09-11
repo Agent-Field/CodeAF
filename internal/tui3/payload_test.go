@@ -241,7 +241,12 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 		{"drag to select · any key ends it", nil},
 		{"ctrl+c again to quit", []string{"ctrl+c"}},
 		{"esc interrupt", []string{"esc"}},
-		{"enter switch · esc", []string{"enter", "esc"}},
+		{pickerKeysSwitch, []string{"enter", "esc"}},
+		// The picker's slot follows its cursor (palette.go's [picker.keysHint]).
+		{pickerKeysModel, []string{"→", "enter", "esc"}},
+		{pickerKeysModelTab, []string{"tab", "enter", "esc"}},
+		{pickerKeysFold, []string{"enter", "←", "esc"}},
+		{pickerKeysFoldTab, []string{"enter", "tab", "esc"}},
 		{"↑↓ · enter apply · esc", []string{"↑↓", "enter", "esc"}},
 		{"enter open · esc", []string{"enter", "esc"}},
 		{"v select · a block · y yank · esc", []string{"v", "a", "y", "esc"}},
@@ -249,11 +254,12 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 		{"↑↓ recent · enter open", []string{"↑↓", "enter"}},
 		{"tab take · enter run · esc", []string{"tab", "enter", "esc"}},
 		{"enter answer · esc no", []string{"enter", "esc"}},
-		// `0 or esc, no` names two keys for one answer, and the comma after the
-		// second is punctuation rather than part of it. The line is built from
-		// the chips a card drew rather than written down (standing.go's
-		// [standHintFields]), so this asks for the full row's spelling of it.
-		{standAskHint(nil), []string{"1", "2", "3", "0", "esc"}},
+		// A standing card's answers under the errand pane's box, built from the
+		// question rather than written down (homeexchange.go's
+		// [exchangeAnswerWords]): the digits the card drew, then the key that
+		// asks for the box instead.
+		{"1 yes, set it up · 3 just once · 0 no · c change",
+			[]string{"1", "3", "0", "c"}},
 		{"1-3 shape · esc never mind", []string{"1-3", "esc"}},
 		{"y allow · n deny · a always", []string{"y", "n", "a"}},
 		{"↑↓ move · →← tree · enter open · alt+w wide · esc",

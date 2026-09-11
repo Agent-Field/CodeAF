@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"context"
 	"math"
 	"strconv"
 	"strings"
@@ -53,13 +54,20 @@ func laneBelief(model, name string, ttftMS, rate float64, spread float64, facts 
 
 // laneLab installs a ledger for the duration of one test and empties the desk
 // of anything a previous one posted.
+//
+// AND IT PUTS THE PIN IN FORCE BACK. A pin made here lands on the transport's
+// process-wide knob ([provider.RepinLane]), and the chrome writes that knob on
+// the model's name ([app.modelWord]) — so a pin this test left behind would be
+// every later test's seam reading `m@cloudflare`.
 func laneLab(t *testing.T, rows map[string][]lane.Belief) {
 	t.Helper()
 	forgetLanes()
 	lane.Default().SetLedger(&fakeLedger{rows: rows})
+	pin := provider.CurrentLanePin()
 	t.Cleanup(func() {
 		lane.Default().Reset()
 		forgetLanes()
+		provider.SetLanePin(pin)
 	})
 }
 
@@ -126,8 +134,8 @@ func TestArrowUnfoldsTheLanesTheLedgerBelievesIn(t *testing.T) {
 		}
 	}
 
-	// The why line explains the row under the cursor, and only that row.
-	drive(t, a, key("down"))
+	// The why line explains the row under the cursor, and only that row. `→`
+	// walked in onto `auto`, so the first machine is one row down.
 	drive(t, a, key("down"))
 	if got := plain(frame(a)); !strings.Contains(got, "cloudflare: first token 0.8s") ||
 		!strings.Contains(got, "from the sheet") {
@@ -216,27 +224,70 @@ func pickerVia(screen, id string) string {
 
 // ── 2. the emptiness law ────────────────────────────────────────────────────
 
-// A MODEL NOBODY HAS MEASURED DRAWS NOTHING AT ALL: no speed on the row, and no
-// fold to open. An invented figure here would be a router steering on a
-// measurement nobody took.
-func TestAnUnmeasuredModelDrawsNoSpeedAndDoesNotUnfold(t *testing.T) {
-	forgetLanes()
-	lane.Default().Reset()
+// wantingSheet is a sheet that remembers which models it was asked to fetch,
+// which is the whole of what the picker may do about a model it knows nothing
+// of: hand the name to the beat ([lane.WantSheet]) and fetch nothing itself.
+type wantingSheet struct{ wanted []string }
+
+func (s *wantingSheet) Rows(string) []lane.Row                { return nil }
+func (s *wantingSheet) Refresh(context.Context, string) error { return nil }
+func (s *wantingSheet) Wants(model string)                    { s.wanted = append(s.wanted, model) }
+
+// wantedCount is how many times one model has been handed to the beat. The
+// chooser knocks on the same door when it is asked about a model with no sheet
+// ([lane.WantSheet]'s comment), so a test counts knocks rather than expecting
+// exactly one.
+func wantedCount(s *wantingSheet, model string) int {
+	n := 0
+	for _, wanted := range s.wanted {
+		if wanted == model {
+			n++
+		}
+	}
+	return n
+}
+
+// A MODEL NOBODY HAS MEASURED DRAWS NO NUMBER — and `→` STILL OPENS IT, onto
+// the two answers that name no machine and one line in the machines' place.
+// The row promised a machine and the key that should show it used to do
+// nothing; now it shows what can honestly be chosen, and asks for the sheet.
+func TestAnUnmeasuredModelOpensOntoItsTwoAnswers(t *testing.T) {
+	laneLab(t, nil)
+	sheet := &wantingSheet{}
+	lane.Default().SetSheet(sheet)
 	a := laneApp(t)
+	a.width = 120
 	typeLine(t, a, "/model")
 
 	if note := modelNote(laneCatalog[0]); note != "1M" {
 		t.Fatalf("an unmeasured row says %q, want the window and nothing more", note)
 	}
+	asked := wantedCount(sheet, flash)
 	drive(t, a, key("right"))
-	if a.pick.unfold != "" {
-		t.Fatal("→ opened a fold over a model nothing is believed about")
+	if a.pick.unfold != flash {
+		t.Fatal("→ on a model nothing is believed about opened nothing")
 	}
 	screen := plain(frame(a))
-	for _, forbidden := range []string{"auto", "openrouter", "t/s", "▲"} {
-		if strings.Contains(screen, forbidden) {
-			t.Fatalf("an unmeasured picker draws %q:\n%s", forbidden, screen)
+	for _, want := range []string{"● auto", laneUnmeasured, "○ openrouter"} {
+		if !strings.Contains(screen, want) {
+			t.Fatalf("the unmeasured fold does not say %q:\n%s", want, screen)
 		}
+	}
+	for _, forbidden := range []string{"t/s", "▲", "%"} {
+		if strings.Contains(screen, forbidden) {
+			t.Fatalf("an unmeasured fold draws %q:\n%s", forbidden, screen)
+		}
+	}
+	if row, on := a.pick.laneUnder(); !on || row.lane != laneAutoAt {
+		t.Fatalf("→ did not walk in onto auto: %+v (on=%v)", row, on)
+	}
+	if wantedCount(sheet, flash) <= asked {
+		t.Fatalf("the unfold did not ask the beat for %s's sheet: %v", flash, sheet.wanted)
+	}
+	// And the two answers are real: enter on openrouter writes it.
+	drive(t, a, key("down"), key("enter"))
+	if got := config.LaneAt(a.profileDir, talkSlot); got != config.LaneOpenRouter {
+		t.Fatalf("enter on openrouter wrote %q", got)
 	}
 }
 
@@ -325,9 +376,8 @@ func TestEnterOnALanePinsItAndAutoTakesItBack(t *testing.T) {
 	laneLab(t, threeLanes())
 	a := laneApp(t)
 	typeLine(t, a, "/model")
-	drive(t, a, key("right"))
-	drive(t, a, key("down")) // the auto row
-	drive(t, a, key("down")) // the first lane
+	drive(t, a, key("right")) // walks in, onto the auto row
+	drive(t, a, key("down"))  // the first lane
 	drive(t, a, key("enter"))
 
 	if a.pick.open {
@@ -348,8 +398,8 @@ func TestEnterOnALanePinsItAndAutoTakesItBack(t *testing.T) {
 		t.Fatalf("the picker opened with pin %q", a.pick.pin)
 	}
 
-	drive(t, a, key("right"))
-	drive(t, a, key("down"))
+	drive(t, a, key("right")) // walks in, onto the pinned lane
+	drive(t, a, key("up"))
 	drive(t, a, key("enter")) // auto
 	if _, pinned := config.LanePinned(a.profileDir, talkSlot); pinned {
 		t.Fatal("enter on auto left a pin behind")
@@ -404,7 +454,7 @@ func TestPinningWritesOnTheProfilePathNobodySet(t *testing.T) {
 	a.profileDir = ""
 	typeLine(t, a, "/model")
 
-	drive(t, a, key("right"), key("down"), key("down"), key("enter"))
+	drive(t, a, key("right"), key("down"), key("enter"))
 	if name, pinned := config.LanePinned("", talkSlot); !pinned || name != "Cloudflare" {
 		t.Fatalf("the default profile holds %q (pinned=%v)", name, pinned)
 	}
@@ -419,7 +469,7 @@ func TestAHostedSurfacePinsNothing(t *testing.T) {
 	a.host = "blackmac"
 	typeLine(t, a, "/model")
 
-	drive(t, a, key("right"), key("down"), key("down"), key("enter"))
+	drive(t, a, key("right"), key("down"), key("enter"))
 	if _, pinned := config.LanePinned(a.profileDir, talkSlot); pinned {
 		t.Fatal("a hosted surface wrote a lane pin into this machine's profile")
 	}
@@ -512,15 +562,19 @@ func TestTheSettingsModelRowUnfoldsItsLanes(t *testing.T) {
 			t.Fatalf("the unfolded settings picker never said %q:\n%s", want, screen)
 		}
 	}
-	// AND THE FOOT SAYS THE KEY IS THERE, which is the only place this list
-	// explains itself.
-	if !strings.Contains(a.sheet.keysLine(), "tab lanes") {
-		t.Fatalf("the hint does not offer the fold: %q", a.sheet.keysLine())
+	// AND THE FOOT SAYS THE WAY BACK OUT, because `→` walked the cursor in and
+	// the keys the foot names are the row's.
+	if !strings.Contains(a.sheet.keysLine(), "← or tab back") {
+		t.Fatalf("the foot inside the fold reads %q", a.sheet.keysLine())
 	}
 	// `←` closes it again, from the start of an empty filter box.
 	drive(t, a, key("left"))
 	if a.sheet.sel.pick.unfold != "" {
 		t.Fatal("← left the lanes open")
+	}
+	// Back on the model's row, the foot offers the fold again.
+	if !strings.Contains(a.sheet.keysLine(), "→ or tab lanes") {
+		t.Fatalf("the foot on the model row reads %q", a.sheet.keysLine())
 	}
 }
 
@@ -531,7 +585,7 @@ func TestEnterOnALaneInTheSettingsPickerPins(t *testing.T) {
 	a, dir := laneSheet(t)
 
 	cursorTo(t, a, config.ModelSettingKey(talkSlot))
-	drive(t, a, key("enter"), key("right"), key("down"), key("down"))
+	drive(t, a, key("enter"), key("right"), key("down"))
 	row, on := a.sheet.sel.pick.laneUnder()
 	if !on || row.lane != 0 {
 		t.Fatalf("the cursor is not on the first machine: %+v (on=%v)", row, on)
@@ -569,7 +623,7 @@ func TestThePinnedRowSaysWhenTheBaseWillNotTakeTheChoice(t *testing.T) {
 	a, dir := laneSheet(t)
 
 	cursorTo(t, a, config.ModelSettingKey(talkSlot))
-	drive(t, a, key("enter"), key("right"), key("down"), key("down"), key("enter"))
+	drive(t, a, key("enter"), key("right"), key("down"), key("enter"))
 	if name, pinned := config.LanePinned(dir, talkSlot); !pinned || name != "Cloudflare" {
 		t.Fatalf("the profile holds %q (pinned=%v)", name, pinned)
 	}
@@ -621,24 +675,25 @@ func TestTheLaneRowOpensTheMachines(t *testing.T) {
 	}
 }
 
-// AND WITH NOTHING MEASURED IT WALKS, because auto and openrouter are honestly
-// the only two answers there are without a machine to name. The speed guard is
-// a plain on/off beside it either way.
-func TestTheLaneRowWalksWhenNothingIsMeasured(t *testing.T) {
+// AND WITH NOTHING MEASURED IT OPENS THE SAME FOLD, onto the only two answers
+// there are without a machine to name — the answers /model's `→` offers the
+// same model, so the two doors say one thing. The speed guard is a plain on/off
+// beside it either way.
+func TestTheLaneRowOpensTheTwoAnswersWhenNothingIsMeasured(t *testing.T) {
 	laneLab(t, nil)
 	a, dir := laneSheet(t)
 
 	cursorTo(t, a, config.LaneSettingKey(talkSlot))
 	drive(t, a, key("enter"))
-	if a.sheet.sel != nil {
-		t.Fatal("a session that has measured nothing opened a list of machines")
+	if a.sheet.sel == nil {
+		t.Fatal("the lane row opened nothing for a model nobody has measured")
 	}
+	if row, on := a.sheet.sel.pick.laneUnder(); !on || row.lane != laneAutoAt {
+		t.Fatalf("the list did not open on auto: %+v (on=%v)", row, on)
+	}
+	drive(t, a, key("down"), key("enter"))
 	if got := config.LaneAt(dir, talkSlot); got != config.LaneOpenRouter {
-		t.Fatalf("the first step of the walk wrote %q", got)
-	}
-	drive(t, a, key("enter"))
-	if got := config.LaneAt(dir, talkSlot); got != config.LaneAuto {
-		t.Fatalf("the walk did not come back to auto: %q", got)
+		t.Fatalf("enter on openrouter wrote %q", got)
 	}
 
 	// The speed guard is on until somebody says otherwise, and enter turns it.
@@ -652,9 +707,9 @@ func TestTheLaneRowWalksWhenNothingIsMeasured(t *testing.T) {
 	}
 }
 
-// A LEDGER THAT KNOWS NOTHING DRAWS NOTHING LANE-ISH ANYWHERE ON THIS PANEL:
-// no tail on the model row, no fold under it in the picker, and no `→ lanes`
-// in the hint offering a key that would do nothing.
+// A LEDGER THAT KNOWS NOTHING DRAWS NO LANE NUMBER ANYWHERE ON THIS PANEL: no
+// tail on the model row, and under it in the picker a fold with no machines in
+// it — the two answers and nothing measured.
 func TestTheSettingsPanelDrawsNoLanesWhenNothingIsKnown(t *testing.T) {
 	laneLab(t, nil)
 	a, _ := laneSheet(t)
@@ -669,8 +724,15 @@ func TestTheSettingsPanelDrawsNoLanesWhenNothingIsKnown(t *testing.T) {
 	if a.sheet.sel == nil {
 		t.Fatal("the model row opened no picker")
 	}
-	if a.sheet.sel.pick.unfold != "" {
-		t.Fatalf("→ unfolded %q on a ledger that believes nothing", a.sheet.sel.pick.unfold)
+	if got := a.sheet.sel.pick.unfold; got != flash {
+		t.Fatalf("→ in the settings picker left the fold at %q", got)
+	}
+	if n := len(a.sheet.sel.pick.lanes); n != 0 {
+		t.Fatalf("a ledger that believes nothing put %d machines in the fold", n)
+	}
+	screen := strings.Join(sheetLabels(a), "\n")
+	if !strings.Contains(screen, laneUnmeasured) {
+		t.Fatalf("the empty fold does not say why it is empty:\n%s", screen)
 	}
 }
 
@@ -765,9 +827,13 @@ func TestAHiddenRolesAnswerNeverTakesTheServedSegment(t *testing.T) {
 		t.Fatal("the talk turn's own answer drew nothing")
 	}
 
+	// AND IT DOES NOT BLANK IT EITHER. The errand's news used to REPLACE the
+	// answer's on the desk, and the rider — which draws no hidden role — then
+	// drew nothing at all: one more way `via` vanished after an answer. It is
+	// dropped at the door now, and the answer's sighting stands.
 	PostLaneNews(LaneNews{Model: flash, Lane: "CoreWeave", Role: lane.RoleAuxiliary, TTFT: 90 * time.Millisecond, Rate: 400})
-	if got := a.laneRider(); got != "" {
-		t.Fatalf("a naming errand took the status line: %q", got)
+	if got := a.laneRider(true); got != talk {
+		t.Fatalf("a naming errand moved the status line to %q, want the answer's %q", got, talk)
 	}
 }
 
@@ -947,7 +1013,7 @@ func TestARefusedLaneIsDrawnRefusedAndNotSlow(t *testing.T) {
 		Model: flash, Lane: "Cloudflare", Alt: "CoreWeave",
 		Role: lane.RoleTalk, Trying: true, Reason: provider.RescueRefused,
 	})
-	if got := a.laneRider(); got != " · refused · trying coreweave…" {
+	if got := a.laneRider(true); got != " · refused · trying coreweave…" {
 		t.Fatalf("a refusal in flight reads %q", got)
 	}
 
@@ -957,13 +1023,13 @@ func TestARefusedLaneIsDrawnRefusedAndNotSlow(t *testing.T) {
 		Model: flash, Lane: "Cloudflare", Alt: "CoreWeave",
 		Role: lane.RoleTalk, Trying: true, Reason: provider.RescueSlow,
 	})
-	if got := a.laneRider(); got != " · slow · trying coreweave…" {
+	if got := a.laneRider(true); got != " · slow · trying coreweave…" {
 		t.Fatalf("a slow lane reads %q", got)
 	}
 	// A rescue posted before anything classified it keeps the sentence it has
 	// always had.
 	PostLaneNews(LaneNews{Model: flash, Lane: "Cloudflare", Alt: "CoreWeave", Role: lane.RoleTalk, Trying: true})
-	if got := a.laneRider(); got != " · slow · trying coreweave…" {
+	if got := a.laneRider(true); got != " · slow · trying coreweave…" {
 		t.Fatalf("an unclassified rescue reads %q", got)
 	}
 }
@@ -981,7 +1047,7 @@ func TestTheTryingLineIsRetractedWhenTheRescueItNamedFails(t *testing.T) {
 		Model: flash, Lane: "Cloudflare", Alt: "CoreWeave",
 		Role: lane.RoleTalk, Trying: true, Reason: provider.RescueRefused,
 	})
-	if got := a.laneRider(); !strings.Contains(got, "trying coreweave…") {
+	if got := a.laneRider(true); !strings.Contains(got, "trying coreweave…") {
 		t.Fatalf("the claim was never made: %q", got)
 	}
 
@@ -989,7 +1055,7 @@ func TestTheTryingLineIsRetractedWhenTheRescueItNamedFails(t *testing.T) {
 		Model: flash, Lane: "Cloudflare", Alt: "CoreWeave",
 		Role: lane.RoleTalk, Failed: true, Reason: provider.RescueRefused,
 	})
-	got := a.laneRider()
+	got := a.laneRider(true)
 	if strings.Contains(got, "trying") {
 		t.Fatalf("a rescue that failed is still promised: %q", got)
 	}
@@ -1017,7 +1083,7 @@ func TestARetiredPinSaysWhereTheRequestsGoNow(t *testing.T) {
 		Role: lane.RoleTalk, Failed: true, Reason: provider.RescueRetired,
 	})
 	want := " · CoreWeave cannot serve this model; routing on auto for this model until you pin again"
-	if got := a.laneRider(); got != want {
+	if got := a.laneRider(true); got != want {
 		t.Fatalf("a retired pin reads %q, want %q", got, want)
 	}
 }

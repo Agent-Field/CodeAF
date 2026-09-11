@@ -214,9 +214,14 @@ func (a *app) toolRows(d deck, i int, last bool, width int) []row {
 	if forming {
 		bodyHit = hitNone
 	}
+	out = append(out, a.mediaRows(e, i, width-workIndentCols(width), a.pal.dim(stem))...)
 	body, more := a.toolBlock(e, room, layoutTier(width) == tierPhone)
 	for _, line := range body {
-		out = append(out, row{text: a.pal.dim(stem) + line, entry: i, hit: bodyHit})
+		lineHit := bodyHit
+		if picturesAFile(e.tool) && pictureOriginalRow(line) {
+			lineHit = hitPictureOriginal
+		}
+		out = append(out, row{text: a.pal.dim(stem) + line, entry: i, hit: lineHit})
 	}
 	if more > 0 {
 		out = append(out, a.moreRow(i, stem, more))
@@ -270,16 +275,6 @@ func (a *app) toolBlockRows(e *entry, room int, phone bool) (rows []string, more
 	// everybody wants — but at tierPhone it is bounded HARDER, because twelve
 	// rows nobody asked for is most of a phone frame ([previewPhoneWindow]).
 	if !e.open || phone {
-		// THE PICTURE IS THE OTHER BLOCK NOBODY ASKS FOR, and it hangs at the
-		// far end of the same argument. The live preview shows a change BEFORE
-		// it lands because that is the moment it is worth something; a picture
-		// shows AFTER, because that is the only moment it exists — and in both
-		// cases the row on its own cannot say the thing the person wants. It
-		// takes the tier's cap for the tier's reason (imagepreview.go's
-		// [app.pictureThumb]).
-		if picture, drawn := a.pictureThumb(e, room, previewCap(phone)); drawn {
-			return picture, 0, false
-		}
 		head, body, more := a.previewBody(e, room, previewCap(phone))
 		if head == "" {
 			return nil, 0, true
@@ -1143,14 +1138,14 @@ func (a *app) mark(e *entry) string {
 			// for the reason it takes it there: nothing is coming.
 			return a.pal.dim(a.linearMark(glyphIdle, glyphIdleASCII))
 		}
-		return a.formingInk(a.linearMark(glyphQueued, glyphQueuedASCII))
+		return a.formingInk(a.icon(tokens.GQueued))
 	case toolQueued:
 		// ASKED FOR, NOT STARTED. An empty circle, dim: the row exists because
 		// the model has finished asking, and a spinner here would be the surface
 		// animating work that has not begun.
-		return a.pal.dim(a.linearMark(glyphQueued, glyphQueuedASCII))
+		return a.pal.dim(a.icon(tokens.GQueued))
 	case toolConsent:
-		return a.pal.askBold(glyphAsk) // "?" is already the ASCII of itself
+		return a.pal.askBold(a.icon(tokens.GNeedsHuman))
 	default:
 		// A RESOLVED ROW IS OVER WHATEVER THE SESSION IS DOING. A room's lane
 		// closing settles the calls that were still in the air by stamping the end
@@ -1169,7 +1164,7 @@ func (a *app) mark(e *entry) string {
 		// read aloud hears that claim thirty times a second. A still `*` makes the
 		// same claim once.
 		if a.linear {
-			return a.pal.muted(glyphRunASCII)
+			return a.pal.muted(a.icon(tokens.GWorking))
 		}
 		return a.pal.muted(tokens.Spinner(a.paints / spinnerStep))
 	}

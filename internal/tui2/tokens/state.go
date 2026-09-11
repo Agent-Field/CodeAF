@@ -18,10 +18,8 @@ package tokens
 // Hue is the five-word colour vocabulary of 5.16. Everything not carrying a hue
 // is the three-tier grey ramp of 5.13.
 //
-// The ordinals are load-bearing: they match the [blocks.Hue] enum one for one so
-// the [Styler] seam converts with a numeric cast and no lookup table.
-// styler_test.go asserts the correspondence, so a drift on either side fails the
-// build's tests rather than mis-colouring a frame.
+// The ordinals keep the vocabulary compact and stable inside this package; the
+// composition rule below is the only door that interprets them.
 type Hue uint8
 
 const (
@@ -39,10 +37,9 @@ const (
 	// HueBroken (soft coral) means failed or cancelled.
 	HueBroken
 	// HueIdentity is the per-task pastel. It is NOT one colour: the actual
-	// pastel comes from the task seed through [IdentityFor], which is why a
-	// renderer holding a task id should call [Styler.PaintIdentity] rather than
-	// paint HueIdentity. Resolving it without a seed yields the first wheel
-	// entry, which is a deliberate, visible placeholder rather than a panic.
+	// pastel comes from an identity chosen from the eight-token wheel. Resolving
+	// it without a chosen identity yields the first wheel entry, which is a
+	// deliberate, visible placeholder rather than a panic.
 	HueIdentity
 	hueCount
 )
@@ -69,8 +66,6 @@ func (h Hue) String() string {
 
 // State is the liveness axis of 8.1.6: accent = live, plain = settled,
 // dim = chrome.
-//
-// Ordinals match [blocks.State]; see [Hue] for why that matters.
 type State uint8
 
 const (
@@ -140,8 +135,8 @@ func ResolveToken(h Hue, s State) Token {
 	case HueBroken:
 		return Coral
 	case HueIdentity:
-		// Without a seed there is no identity; the first wheel entry is a
-		// visible placeholder. Callers holding a task id use IdentityFor.
+		// Without a chosen identity there is no honest hue; the first wheel entry
+		// is a visible placeholder rather than a panic.
 		return Identity0
 	}
 	switch s {

@@ -29,6 +29,127 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		page     string
 	}{
 		{"what can you do", "what-i-can-do"},
+		{"can I use my own deepseek key", "services"},
+		{"how do I connect glm", "services"},
+		{"how do I add an api key for another provider", "services"},
+		{"why can't it make pictures any more", "services"},
+		{"how do I remove a key", "services"},
+		{"can I use ollama", "services"},
+		// The questions object (docs/design/questions/DESIGN.md), asked the
+		// six ways somebody meets it: the shapes, the clock, the record, the
+		// refusals, answering from elsewhere, and what is not built.
+		{"what kinds of questions does it ask me", "questions"},
+		{"does a question ever time out", "questions"},
+		{"where are my answers saved", "questions"},
+		{"why did it refuse to ask me something", "questions"},
+		{"can I answer a question from another window", "questions"},
+		{"it asked me the same thing twice", "questions"},
+		{"why did it not ask me", "questions"},
+		{"it went ahead by itself", "questions"},
+		{"make it ask me every time", "questions"},
+		{"it assumed something wrong", "questions"},
+		// The two marks a question can open with that are NOT the amber `?`, and
+		// the countdown that goes with one of them. Somebody meeting either has
+		// no name for it and describes the shape, so both are asked that way.
+		{"what is the squiggly line at the start of a card", "questions"},
+		{"why does a card say goes on in 9s", "questions"},
+		// And the receipt on a window too narrow for it, asked by somebody who
+		// has just noticed half of their own sentence is not on the line.
+		{"the decided line is missing what I typed", "questions"},
+		// The block (docs/design/questions/DESIGN.md, internal/tui3's
+		// question.go), asked the five ways somebody meets it: putting one off,
+		// finding it again, what happened when nobody pressed anything, taking
+		// an approval back, and making the asking stop.
+		{"how do I answer later", "questions"},
+		{"it asked me something and I pressed esc", "questions"},
+		{"why did it decide by itself", "questions"},
+		{"undo what I just approved", "questions"},
+		{"stop asking me about rm", "questions"},
+		// And the room form (lane S2): the page a question opens into, and the
+		// nine things a person does on it. Each one is asked in the words
+		// somebody would actually type rather than in the key's own name.
+		{"can I open a question up to read it properly", "questions"},
+		{"compare the options it gave me", "questions"},
+		{"how do I comment on one option", "questions"},
+		{"ask it something before I decide", "questions"},
+		{"how do I fill in the blanks it gave me", "questions"},
+		{"how do I pick several answers at once", "questions"},
+		{"it is asking me this or that over and over", "questions"},
+		{"can I just let it decide", "questions"},
+		{"stop asking me this kind of thing", "questions"},
+		{"none of the answers it offered are right", "questions"},
+		// Reach (docs/design/questions/DESIGN.md's PRESENCE-AWARE DELIVERY,
+		// BATCHED AT THE BOUNDARY, WITHDRAWN WITH A REASON and FIRST ANSWER
+		// WINS), asked the way somebody meets each of them: answering somewhere
+		// else, coming back to a window nobody was at, a pile of them arriving
+		// together, one vanishing, two windows racing, and the setting that
+		// governs the whole thing.
+		{"how do I answer from home", "questions"},
+		// The proof wave: four sentences somebody says at the screen when what
+		// the wave built does not reach them. Each is a limit the corpus now
+		// states rather than a thing they have to find out by pressing.
+		{"I pressed the key on the home row and nothing happened", "questions"},
+		{"why is there no question when I run aforge normally", "questions"},
+		{"it printed asked with nobody to ask", "questions"},
+		{"there is no undo on the line saying what it did", "questions"},
+		{"it asked while I was away", "questions"},
+		{"why did several questions arrive at once", "questions"},
+		{"answer a whole batch of questions at once", "questions"},
+		{"same answer for all of these", "questions"},
+		{"the question disappeared", "questions"},
+		{"a question vanished without me answering", "questions"},
+		{"the other window answered it", "questions"},
+		{"two windows answered at the same time", "questions"},
+		{"what does /autonomy do", "questions"},
+		{"stop it deciding things while I am away", "questions"},
+		{"why is there a countdown on this question", "questions"},
+		{"what does your rule mean on a question", "questions"},
+		{"can I answer a question over --host", "questions"},
+		{"the engine did not answer in time", "questions"},
+		{"the answer I pressed was refused", "questions"},
+		// The hole on a CARD rather than on a page, which is where the task
+		// proposal's model shortlist went. People ask about the arrows and about
+		// whether moving one is an answer.
+		{"what do the arrows do on the question above my box", "questions"},
+		{"does changing the hole answer the question", "questions"},
+		// AND THE APPROVAL QUESTION AS IT IS DRAWN NOW that it is that block
+		// (internal/tui3's consent.go), asked the four ways somebody meets the
+		// keys that moved: the digits, the key that used to deny, the shape of
+		// the question on a small screen, and the widening yes.
+		{"what key allows a command now", "permissions"},
+		{"I pressed esc on the allow question and nothing happened", "permissions"},
+		{"the allow question turned into a card on my narrow terminal", "permissions"},
+		{"what does always this command write down", "permissions"},
+		// AND THE MARK AFORGE LEAVES ON WORK IT DID FOR YOU, asked the five ways
+		// somebody meets it: reading their own git log, reading a pull request
+		// they did not write the last line of, looking up a name they have never
+		// seen, and wanting it gone.
+		{"why is there a co-author on my commit", "permissions"},
+		{"does aforge sign my commits", "permissions"},
+		{"who is agentfield-bot", "permissions"},
+		{"what is the drafted with line at the bottom of my pull request", "permissions"},
+		{"stop adding a co-author trailer to my commits", "permissions"},
+		{"does it sign every comment it leaves on my pull request", "permissions"},
+		{"what is the small drafted with line under its comment", "permissions"},
+		// AND THE TASK PROPOSAL AS IT IS DRAWN NOW that it is that block too
+		// (internal/tui3's task.go), asked the four ways somebody meets the
+		// keys that moved: the answers row that replaced the chips, the typed
+		// `no` that used to decline and now corrects, and the model shortlist,
+		// which is a hole in a sentence walked with the arrows rather than a
+		// row of chips answered with the digits.
+		{"how do I say no to a task it wants to start", "tasks"},
+		{"I typed no to the task and it started anyway", "tasks"},
+		{"where did the model chips on the proposal go", "tasks"},
+		{"change which model a task runs on before it starts", "tasks"},
+		// The wire (docs/design/questions/DESIGN.md, internal/remote's
+		// questionlane.go). Somebody who has just met a question that did not
+		// appear asks about the ROAD, in the words the road is spelled in on
+		// each of them, and about the page that reads another conversation.
+		{"do questions work over the session host", "questions"},
+		{"the question never appeared over --host", "questions"},
+		{"can I answer a question on another machine", "questions"},
+		{"a question was raised while nothing was attached", "questions"},
+		{"why can I not answer the question on this task page", "questions"},
 		{"how do I group chats", "collections"},
 		{"where do I file a task", "collections"},
 		// Lanes behind a base of the person's own: the question the hostname gate
@@ -78,6 +199,20 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// go round again and want the sentence that says what ended it.
 		{"why was my work picked up again", "adaptive-runs"},
 		{"whose model context window is used over host", "models-and-cost"},
+		// The lean profile, asked the two ways it is met: somebody on a local
+		// model wondering why the answer got worse, and somebody on an
+		// open-weight model wondering whether they are being given the small
+		// version. The second is the one the ruling of 2026-09-10 turned around.
+		{"why does my local model get fewer tools", "models-and-cost"},
+		{"when does aforge use the lean profile", "models-and-cost"},
+		{"is deepseek given a shorter page than claude", "models-and-cost"},
+		{"does an open weight model get the lean prompt", "models-and-cost"},
+		// And the row that chooses it by hand, asked the way somebody who has
+		// just seen it in /settings would ask, and the way somebody who wants
+		// the effect but not the word would.
+		{"what is the prompt profile setting", "models-and-cost"},
+		{"how do I make aforge send a shorter prompt", "models-and-cost"},
+		{"can I turn the lean profile on myself", "models-and-cost"},
 		{"can you read a pdf file", "what-i-can-do"},
 		{"can you search the web", "what-i-can-do"},
 		{"which search engine answered?", "what-i-can-do"},
@@ -170,6 +305,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what is the question mark on my tab", "screen"},
 		{"why does one of my tabs have a half circle on it", "screen"},
 		{"which tab is waiting on me", "screen"},
+		// AND THE TERMINAL'S OWN TAB, OUTSIDE THE FRAME, asked by somebody who
+		// saw it change — or saw the program's path there instead of a name.
+		{"what does the terminal tab say", "screen"},
+		{"why does my terminal title change", "screen"},
+		{"my terminal tab just shows the path to aforge", "screen"},
 		// And the tasks page's tree, asked by somebody looking at a page that is
 		// hiding rows from them on purpose.
 		{"where did the workers go on the task page", "tasks"},
@@ -191,6 +331,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// the one they came back for.
 		{"I opened aforge in a second terminal and it started a new conversation", "sessions-and-rewind"},
 		{"why did it start a new conversation", "sessions-and-rewind"},
+		{"aforge started a new conversation instead of the one that was running", "sessions-and-rewind"},
 		// And the same person's actual want, said the way they want it: not two
 		// windows on one chat, but this chat, here, now.
 		{"continue this chat in another terminal", "sessions-and-rewind"},
@@ -285,6 +426,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I connect my Slack workspace", "accounts"},
 		{"which services can you connect to", "accounts"},
 		{"can I run this on my dev box over ssh", "running-on-another-machine"},
+		{"can I make a hosted conversation think harder", "running-on-another-machine"},
 		{"why is the task roster empty over host", "running-on-another-machine"},
 		{"can I start a task on the other machine", "running-on-another-machine"},
 		{"task says no task door", "running-on-another-machine"},
@@ -304,6 +446,24 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what do the up and down arrows next to working mean", "screen"},
 		{"how many tokens is this turn using right now", "screen"},
 		{"do the token arrows show inside a task room", "screen"},
+		// The owner's own words for the gap, 2026-09-10: "at some times I don't see
+		// infra provider and tok/sec … maybe when I have follow up".
+		{"provider missing", "screen"},
+		{"tok/s not showing", "screen"},
+		{"no rate after a follow-up", "screen"},
+		{"sometimes I don't see the infra provider and tok/sec", "screen"},
+		{"why is via missing next to the model", "screen"},
+		{"no tok/s when I set a reasoning level", "screen"},
+		{"it says the engine is an older aforge so the provider and tok/s are not shown", "screen"},
+		// And the questions the 2026-09-10 column answers: ↑ became the size of
+		// the request instead of the summed bill, the side that moved lights
+		// up, a jump leaves a receipt, and a hosted task's page draws it too.
+		{"is it still working or is it stuck", "screen"},
+		{"the tokens are not moving", "screen"},
+		{"why did the number on the right light up", "screen"},
+		{"what is the +3.4k next to the up arrow", "screen"},
+		{"no token count inside a task", "screen"},
+		{"is the up arrow what I am billed for", "screen"},
 		{"my click does nothing on the server", "opening-files-from-that-machine"},
 		{"does export save to my laptop", "commands"},
 		{"which machine's settings are these", "commands"},
@@ -312,6 +472,20 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how many tasks can run at once", "tasks"},
 		{"how do I stop a running task", "tasks"},
 		{"how do I start a task", "tasks"},
+		// The stop verb the chat's own model grew (internal/session's
+		// tools_tasks.go). Both halves of it are asked: whether saying so works at
+		// all, and the shape somebody arrives in when it did not — the model
+		// reported a stop, and the work kept going, because before the verb
+		// existed all it could do was say "stop" into the task.
+		{"can I tell the chat to stop a task", "task-controls"},
+		{"I asked it to stop task 2 and it kept going", "task-controls"},
+		// The your-call doors, asked the four ways somebody arrives at them: the
+		// hand-over that did not take, the model's own account of why, the second
+		// press, and a merge round that died with the process it was running in.
+		{"I told aforge to decide and it still says your call", "task-controls"},
+		{"the model says the task graph expired", "task-controls"},
+		{"I pressed let aforge decide twice", "task-controls"},
+		{"I pressed resolve it and nothing happened", "task-controls"},
 		// The navigation wave: opening a task somebody else's conversation is
 		// running, what that page can and cannot say, and the two things about the
 		// tasks place a person meets before any of it — what the box does, and why
@@ -487,13 +661,6 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does my task say a tool was withdrawn", "how-tasks-run"},
 		{"my task says unknown tool bash", "how-tasks-run"},
 		{"why were the files my task saved called unverified", "how-tasks-run"},
-		// And the other half: a fork whose hands declared their files in full and
-		// were refused every single write.
-		{"how do I say which files each hand may write", "tasks"},
-		// And what a hand may reach for at all: it reads the caller's own
-		// instructions, so the question is asked as "which of these are mine".
-		{"what tools does a hand have", "tasks"},
-		{"why was my fork refused over its scope", "tasks"},
 		{"what does this conversation cost", "models-and-cost"},
 		// The same question in the two plainest ways somebody types it, which
 		// are both about the money and neither of which uses the word cost as a
@@ -546,6 +713,22 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"a card popped up offering to run a program", "subharnesses"},
 		{"how do I say no to the offer to run something", "subharnesses"},
 		{"what happens if I ignore the card it raised", "subharnesses"},
+		// The harness lane's two questions after they moved onto the block, asked
+		// in the words of somebody who learned the keys that are gone: enter no
+		// longer runs an offer, e no longer asks for a change, and the two chords
+		// pinned in a design's room do not exist.
+		{"how do I keep the harness design it just wrote", "saved-shapes-of-work"},
+		{"how do I ask for a design to be different", "saved-shapes-of-work"},
+		{"what key runs the harness it offered", "saved-shapes-of-work"},
+		{"how do I approve a design without leaving its room", "saved-shapes-of-work"},
+		{"what happened to ctrl+k and ctrl+x on a design", "saved-shapes-of-work"},
+		// The connect offer after it moved onto the block, asked by somebody who
+		// learned the keys that are gone and by somebody meeting the key box for
+		// the first time.
+		{"what key connects the account it is asking about", "accounts"},
+		{"enter does not connect the account any more", "accounts"},
+		{"where do I paste the key it is asking for", "accounts"},
+		{"how do I say not now to a key it wants", "accounts"},
 		{"how do I start aforge", "starting-aforge"},
 		{"why did it refuse to run git stash", "starting-aforge"},
 		{"it would not stash my changes on an unattended run", "starting-aforge"},
@@ -557,6 +740,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it stopped and said the same thing was still left", "starting-aforge"},
 		{"it kept repeating the same thing", "starting-aforge"},
 		{"why does it say carry on", "tasks"},
+		// AND THE SAME LOOP OVER WORK OF ITS OWN: one of two quick tasks landed,
+		// the reply that answered the landing was pushed on three times over the
+		// other, and the person met it as a reply that would not leave a running
+		// task alone.
+		{"it keeps asking about a task that is still running", "tasks"},
 		{"it said a file does not pass", "starting-aforge"},
 		{"a task waiting on one that did not finish", "starting-aforge"},
 		// AND THE THREE ENDINGS OF THE SAME RUN (#513), asked the ways somebody
@@ -819,6 +1007,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// and the worry that it will be sent as a message instead.
 		{"can I type /settings on home", "home"},
 		{"can I run a slash command from the home screen", "home"},
+		{"what will a slash command do on the home screen before I press enter", "home"},
+		{"does /compact open a conversation when I type it on home", "home"},
+		{"attach a file before starting a conversation", "home"},
+		{"how do I pick which folder my next conversation opens in", "home"},
 		{"typing /model on home starts a conversation instead of running it", "home"},
 		{"open another project from home", "home"},
 		{"enter does nothing on home", "home"},
@@ -830,12 +1022,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is my other conversation still running", "home"},
 		{"does my draft move when I switch", "home"},
 		// HOW MANY CAN BE OPEN AT ONCE, asked by somebody who remembers being
-		// refused at eight and by somebody who has never heard of the cap and
-		// simply wants to know where the ceiling is. There is no ceiling, and the
-		// page that answers is the one that says what an open conversation costs.
+		// refused at eight, by somebody who has never heard of the cap, and by
+		// somebody who watched a quiet one get let go of. Doors still never
+		// refuse another; past twelve a quiet conversation left alone may be
+		// let go of, and the page that answers is the one that says both.
 		{"how many conversations can I have open at once", "home"},
 		{"is there a limit on how many chats I can open", "home"},
 		{"why can I not open another conversation", "home"},
+		{"too many conversations open", "home"},
+		{"does aforge close old chats", "home"},
+		{"what does quiet a while mean", "home"},
+		{"what does let go mean on a conversation", "home"},
 		// WHAT A ROW SAYS WHEN ITS CONVERSATION IS ABOUT SOMEWHERE ELSE, and the
 		// search that finds it. The first is somebody reading a word off their
 		// own screen; the rest are somebody looking for a conversation they know
@@ -918,10 +1115,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where do I set what aforge may spend", "models-and-cost"},
 		{"how much money can a task spend of its own", "models-and-cost"},
 		{"why does the limit say no limit instead of $0", "models-and-cost"},
-		// Issue #168: a fork's hands were on the machine's day figure twice, and
-		// the person who notices is the one asking what their hands are costing.
-		{"does the money on the status line include what my hands are spending", "models-and-cost"},
-		{"is a hand's spend counted twice in my daily total", "models-and-cost"},
+		// Issue #168: work a conversation started was on the machine's day figure
+		// twice, and the person who notices is the one asking what their tasks
+		// are costing.
+		{"does the money on the status line include what my tasks are spending", "models-and-cost"},
+		{"is a task's spend counted twice in my daily total", "models-and-cost"},
 		{"how do I set a limit without opening settings", "commands"},
 		{"why won't you change my approval mode", "permissions"},
 		{"why won't permissions show the rules on the machine I used with host", "running-on-another-machine"},
@@ -1209,6 +1407,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// and the ones who meet it before it fires ask the question that names the
 		// old defect, which is why it stopped with the job half done.
 		{"the ask is not finished carrying on", "tasks"},
+		{"it carried on over a finished task with green checks", "tasks"},
+		{"it kept saying the ask was not finished over a done task", "tasks"},
 		{"my reply stopped halfway through what I asked for", "tasks"},
 		{"it said it would do the rest and then stopped", "tasks"},
 		{"why did it keep going without me after it finished answering", "tasks"},
@@ -1243,6 +1443,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// question asked before and after somebody notices the chips are gone.
 		{"it says aforge is deciding", "task-rooms-after-restart"},
 		{"how do I take a task back", "tasks"},
+		// And the third: closing aforge ends the turn it was deciding in, so the
+		// question is the person's again when they come back to it.
+		{"who decides a task after a restart", "task-rooms-after-restart"},
 		// The other end of the same impatience: not "decide for me" but "give me
 		// longer to speak up", which is a row in the settings panel and a page
 		// that has to name the right tab of it.
@@ -1325,11 +1528,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the parts all had the same done-condition and it would not split", "tasks"},
 		{"each part should only check its own files", "tasks"},
 		{"it refused the split because the parts share a check", "tasks"},
-		// Hands: the third weight, and the one a person meets as a line they did
-		// not ask for in the middle of their own answer. They ask in the words on
-		// the screen — "three hands on it" — or in the words for what they saw,
-		// which is one reply doing several things at once.
-		{"what does three hands on it mean", "tasks"},
+		// Several things at once: a person meets this as one reply doing several
+		// things, and what answers it is the task that hands its own parts out.
 		{"can you work on several parts of my answer at once", "tasks"},
 		// And the half of division a person meets from the other side: they walk
 		// into the parent's room, type, and the page does not move — because the
@@ -1410,6 +1610,40 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did commit become a task", "tasks"},
 		{"undo started a task", "tasks"},
 		{"fix this one line became a task", "tasks"},
+
+		// The quick task (docs/design/quick-task/DESIGN.md), asked the ten ways
+		// somebody meets it. Nobody types the word `quick_task`: they describe
+		// the shape of what they wanted or read the row back off the screen, so
+		// each probe is the sentence somebody actually says at the surface —
+		// the one that asks for the road, the one that reads the row, the one
+		// that reads the waiting line, and the four limits they run into.
+		{"can you do something quickly without making a branch", "tasks"},
+		{"start a small task in this folder", "tasks"},
+		{"do it here instead of on a branch", "tasks"},
+		{"is there a slash command for a quick task", "tasks"},
+		{"what does quick mean next to the task", "tasks"},
+		{"what does 2/4 mean on a task row", "tasks"},
+		{"why did it say waits for task 5", "tasks"},
+		{"why is one task waiting for another to finish with a file", "tasks"},
+		{"can I add a step to a running quick task", "tasks"},
+		{"how do I tick off an item myself", "tasks"},
+		{"I stopped a quick task and there is no branch", "tasks"},
+		{"the quick task left the file half written", "tasks"},
+		{"does a quick task get checked", "tasks"},
+		{"why did it make a quick task instead of a real one", "tasks"},
+		{"can a quick task start another quick task", "tasks"},
+		{"a quick task appeared under my task", "tasks"},
+		// The sixteenth wave, and every one of these is a real model choosing
+		// wrongly before the wording was fixed: a READ-ONLY survey that got a
+		// branch, a quick task cut at twenty files that ran out of rounds, and
+		// three independent pieces done one after another when they could have
+		// gone at once (docs/changes/unreleased).
+		{"I asked for a survey and it made a full task with a branch, why", "tasks"},
+		{"when do you use quick tasks instead of a task", "tasks"},
+		{"how many files should one quick task cover", "tasks"},
+		{"a quick task stopped saying out of rounds", "tasks"},
+		{"why did it start three quick tasks at once", "tasks"},
+		{"why did it stop instead of waiting for the quick tasks", "tasks"},
 		// And the other end of the same day: the task finished, and the reply
 		// that was delivering its work became a second task with none of the
 		// first one's staged files. Asked by somebody looking at the commit
@@ -1424,6 +1658,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// Somebody watching that happen asks about the half-answer, not about a
 		// judge — and they say the line back in its own words.
 		{"this has parts handing it to a task", "tasks"},
+		{"a quick task took over my answer", "tasks"},
+		{"why was there no copy of the folder", "tasks"},
 		{"why did it hand my answer to a team", "tasks"},
 		{"it started answering and then handed the work over", "tasks"},
 		{"why did my reply stop halfway and become a task", "tasks"},
@@ -1554,6 +1790,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the reply was full of tool markup and angle brackets", "models-and-cost"},
 		{"the model kept writing its own internal markup", "models-and-cost"},
 
+		// The 2026-09-10 incident, asked the ways a person describes what they
+		// saw: one 502 and three 429s inside seventy-five seconds ended a turn
+		// while a second model in the same session answered everything put to
+		// it. They ask about the status codes they saw, about the models they
+		// wrote down and were never asked, and about the turn that simply died.
+		{"I keep getting 429 and my turn just died", "models-and-cost"},
+		{"does a rate limit reach my fallback models", "models-and-cost"},
+		{"the model kept refusing and aforge moved to another one", "models-and-cost"},
+		{"why did my turn give up when another model was working fine", "models-and-cost"},
+		{"the request failed asking again over and over", "models-and-cost"},
+
 		// /model while a task runs: the task keeps its model, and the person
 		// who watched the old voice continue asks why.
 		{"I changed the model but my task is still on the old one", "models-and-cost"},
@@ -1579,6 +1826,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// somebody who has met a rung name in the settings row and wants to know
 		// what it costs them.
 		{"how do I make it think less", "models-and-cost"},
+		{"is there a command for the effort level", "models-and-cost"},
 		{"how do I make it think deeper", "models-and-cost"},
 		{"how do I get faster answers from the model", "models-and-cost"},
 		{"what does xhigh mean", "models-and-cost"},
@@ -1591,13 +1839,26 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what temperature do you use", "models-and-cost"},
 		{"can I change the sampling settings", "models-and-cost"},
 
-		// And the CONVERSATION's own rung, which is a chip and a chord rather
-		// than a setting — so it is asked about as a thing on the screen ("what
-		// is that symbol above the box") and as a key somebody pressed by
-		// accident, neither of which reaches a page about models and cost.
+		// And the CONVERSATION's own rung, which is a cell on the seam, a chord
+		// and a command rather than a setting — so it is asked about as a thing
+		// on the screen ("what is that symbol above the box") and as a key
+		// somebody pressed by accident, neither of which reaches a page about
+		// models and cost. The last three are the doors that landed with the
+		// move onto the seam: the command, the rung typed straight in, and the
+		// press somebody tried because the model beside it is pressable.
 		{"what is the chip above the message box", "keys"},
 		{"what does ctrl+v do", "keys"},
 		{"how do I make this one chat think harder", "keys"},
+		{"set effort to max", "keys"},
+		{"can I click the thinking level", "keys"},
+		// And the word the cell says before anybody has dialled anything, which
+		// is what a shipped install draws — asked first by somebody reading it
+		// off the screen for the first time, and then by somebody who dialled a
+		// rung and wants the shipped state back. The wheel cannot get there, so
+		// the second one is a question the manual has to answer or the person is
+		// stuck pressing a key.
+		{"what does auto mean next to the model", "keys"},
+		{"how do I put thinking back to auto", "keys"},
 
 		// The eleventh wave: the ambient side — the things a conversation leaves
 		// behind that keep working after the window is closed. Every one of
@@ -1660,6 +1921,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"continue this chat in another terminal", "home"},
 		{"move the conversation to this window", "home"},
 		{"it says open in another window", "home"},
+		// The self-collision wave: the owner's own two sentences on the day a
+		// plain launch was refused by the engine that was holding the
+		// conversation. The first is what the screen said; the second is what
+		// actually happened next.
+		{"I opened aforge and it said open in another window", "home"},
 		// The transfer wave: every state of a move, asked the way somebody
 		// staring at one asks it. The first is the report's own complaint —
 		// nothing appeared to happen — and the rest are the states that used to
@@ -1669,6 +1935,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"that window did not answer", "home"},
 		{"I pressed enter to move a chat and nothing happened", "home"},
 		{"how do I cancel moving a conversation here", "home"},
+		// And the card the first enter raises now, asked the two ways somebody
+		// meets it: they pressed enter twice and nothing moved, and they want
+		// the key that does move it.
+		{"I pressed enter twice on the held row and it did not move", "home"},
+		{"move this conversation here what do I press", "home"},
 		// And the resting row's own words, which is where somebody looking at
 		// `another window` starts: they are staring at a margin, not at a card.
 		{"the row says another window, how do I get it back", "home"},
@@ -1732,6 +2003,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// when a card is up and they do not want the thing.
 		{"how do I say no to a reminder from home", "home"},
 		{"how do I decline a standing card", "keeping-an-eye"},
+		// The wave that moved the standing card's answers onto the question
+		// block. `esc` on that card used to be the outright no and is *later*
+		// now, and the change chip became a key — both are what a person types
+		// when the hand they learned stops doing what it did.
+		{"I pressed esc on a reminder card and it did not say no", "keeping-an-eye"},
+		{"where did 2 change when or where go on the standing card", "keeping-an-eye"},
+		{"how do I change the time on a standing card", "keeping-an-eye"},
 		// The wave that gave the engine on the far machine its own ambient
 		// side. This is what a person asks before they rely on it.
 		{"do reminders work over --host", "keeping-an-eye"},
@@ -1824,6 +2102,27 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I know which column I am in", "home"},
 		{"why is one project name darker than the others", "home"},
 		{"which section is my cursor in on home", "home"},
+		// The mission-control wave (#783) made home seven panels. These are the
+		// questions somebody asks standing in front of it: what is running, what
+		// today cost, what happened while they were away, how to start somewhere
+		// else, why a panel is only a dim line, and where the arrows and the old
+		// card went — and the two things home says it cannot do yet.
+		{"what is running on this machine right now", "home"},
+		{"what is running right now", "home"},
+		{"how much did today cost", "home"},
+		{"what did it do while I was away", "home"},
+		{"what is the since you left panel", "home"},
+		{"start a chat in another folder", "home"},
+		{"why is the home screen empty", "home"},
+		{"what does the dim line under a panel heading mean", "home"},
+		{"how do I move between the columns on home", "home"},
+		{"why is the cursor on my previous chat when I open home", "home"},
+		{"why did home cut off panels on a small terminal", "home"},
+		{"what does 3 older tasks mean on home", "home"},
+		{"where did the card on home go", "home"},
+		{"where did standing and memory go from the tab bar", "home"},
+		{"can I stop another window task from home", "home"},
+		{"is there a something is wrong panel", "home"},
 		// The wave that stopped guessing at the terminal's background and asked
 		// it. Three of these are somebody checking whether the surface knows what
 		// it is sitting on — the first two before switching to a light terminal,
@@ -2010,6 +2309,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what happens to the keyboard when a window closes", "staying-on-that-machine"},
 		{"my window came back and now I cannot type", "when-the-connection-drops"},
 		{"it said a reading fell over once", "when-the-connection-drops"},
+		{"my task column went empty after it reconnected", "when-the-connection-drops"},
+		{"does the roster come back after a reconnect", "when-the-connection-drops"},
 		{"it says the keyboard is on another machine", "staying-on-that-machine"},
 
 		// THE MANUAL'S OWN DOOR. Until it had one the manual had exactly one
@@ -2058,6 +2359,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// The wait nothing can end, and the row that turns it off.
 		{"what does all lanes slow still waiting mean", "lanes"},
 		{"how do I turn off endpoint routing", "lanes"},
+		// The picker's lanes, asked by somebody who pressed the arrows and saw
+		// nothing move, and by somebody reading `@cloudflare` on the name
+		// (docs/design/lanes-picker/DESIGN.md).
+		{"how do I change the provider for a model", "lanes"},
+		{"which provider am I pinned to", "lanes"},
+		{"left and right arrows in the model picker do nothing", "lanes"},
+		{"what does the @ after the model name mean", "lanes"},
+		{"the model picker says no machine has been measured for this model yet", "lanes"},
 		{"how do I read the manual", "commands"},
 		{"is there a help page", "commands"},
 		{"show me the page about a command", "commands"},
@@ -2087,6 +2396,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// gate that would have caught the omission is
 		// TestTheChatManualMentionsEveryVerbTheCommandLineAnswersTo.
 		{"can I run this without the chat", "running-from-the-terminal"},
+		{"how do I update aforge to the latest version", "running-from-the-terminal"},
 		// The ending #593 added, in the words somebody meets it in: on the
 		// stderr line they have just read, on the word in `--json`, and on the
 		// exit code they are staring at with a perfectly good answer above it.
@@ -2131,6 +2441,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what happens to a running chat when I close its tab", "screen"},
 		{"what does keep running do", "screen"},
 		{"what is the difference between keep running and stop work", "screen"},
+		{"k doesn't do anything on the close tab card any more", "screen"},
+		{"how do I close a tab without stopping the work", "screen"},
+		// ctrl+r in /model (internal/tui3's modelrefresh.go), asked the ways
+		// somebody meets a list that is missing the model they just read about.
+		{"how do I refresh the model list", "commands"},
+		{"a new model came out but it is not in /model", "commands"},
+		{"the model list is out of date", "commands"},
+		{"how old is the model list", "commands"},
+		{"fetch the newest models", "commands"},
+		{"could not fetch the model list", "commands"},
+		{"I pressed 1 on the stop card and it did not stop", "keys"},
+		{"why does the stop card need enter as well as the number", "keys"},
 		{"where did my chat go after I closed its tab", "screen"},
 		{"how do I stop just this chat without touching the others", "screen"},
 	}
@@ -2153,6 +2475,26 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 				pages = append(pages, section.Page)
 			}
 			t.Errorf("%q should reach %s; it reached %v", ask.question, ask.page, pages)
+		}
+	}
+}
+
+func TestTheServicesPageNamesCustomListingDiscoveryAndDisconnectConfirmation(t *testing.T) {
+	page, ok := Chat().Page("services")
+	if !ok {
+		t.Fatal("services page is missing")
+	}
+	for _, sentence := range []string{
+		"enter again to disconnect",
+		"the disconnected sentence first and then says",
+		"A direct-service row and status line draw no `via` at all and open no lane\nsheet",
+		"That written host name is the row's name everywhere",
+		"a **Something else** service must provide the compatible chat path",
+		"tries `GET <base>/models` first",
+		"When that address is absent, aforge connects the service without inventing rows",
+	} {
+		if !strings.Contains(page, sentence) {
+			t.Errorf("services page does not state %q", sentence)
 		}
 	}
 }
@@ -2239,19 +2581,57 @@ func TestC14TheChatManualNamesEveryProtectedBranch(t *testing.T) {
 	}
 }
 
-// #334: a row of the model-call log may be short of a number JSON cannot spell,
-// and it says which one in its note. The page-level probe above is not enough
-// to hold that: the whole page is about calls and costs, so it reaches
-// models-and-cost with or without the sentence. This pins the sentence itself
-// to the section a person asking the question is actually handed.
+// #334, as it stands after the thinking-turn fix: a row of the model-call log
+// may be short of a figure, and the page has to say why a missing one is honest
+// rather than broken. The page-level probe above is not enough to hold that:
+// the whole page is about calls and costs, so it reaches models-and-cost with
+// or without the explanation. This pins the explanation itself to the section a
+// person asking the question is actually handed.
 func TestTheCallLogPageSaysWhyAFigureIsMissingFromARow(t *testing.T) {
-	const said = "cost_s was +Inf"
+	const said = "there is none to price on a call with nowhere else"
 	for _, section := range Chat().Search("why is cost_s missing on a call log row", DefaultResults) {
 		if section.Page == "models-and-cost" && strings.Contains(section.Body, said) {
 			return
 		}
 	}
 	t.Fatalf("the question does not reach a section that says %q; a row missing a figure reads as a broken row", said)
+}
+
+// A person whose reply vanished asks in their own words, and there is exactly
+// one page that can say who ended it. The pins are the two halves the fix owes
+// them: that a stop of their own is the only silent door, and that a thinking
+// model is not a silence at all.
+func TestTheVanishedReplyQuestionsReachTheAnswer(t *testing.T) {
+	for _, probe := range []struct {
+		asked string
+		page  string
+		says  string
+	}{
+		{"my reply just stopped with no error and no note", "models-and-cost", "ask again to pick it up"},
+		{"my answer disappeared when I opened the conversation in another window", "models-and-cost", "ask again to pick it up"},
+		{"it thought for two minutes and then said nothing", "lanes", "a ceiling on a still wire"},
+		{"is a model that is thinking treated as a stall", "lanes", "a ceiling on a still wire"},
+		// And the half the repair owes them: after a conversation moves, the
+		// question is asked again for them rather than by them.
+		{"do I have to type my question again after moving a conversation here", "models-and-cost", "asks your question again by itself"},
+		{"the reply stopped when this conversation moved", "models-and-cost", "asking again"},
+		{"why did the answer start again on its own when I moved the conversation", "home", "asks your question again for you"},
+		{"it said nobody was left watching but I was sitting right here", "models-and-cost", "still watching"},
+		{"which window did it think had gone", "models-and-cost", "names the window"},
+		{"the engine holding this conversation was stopped", "models-and-cost", "engine holding this conversation was stopped"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			if section.Page == probe.page && strings.Contains(section.Body, probe.says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach a section that says %q; a reply that vanished has nowhere to be explained",
+				probe.asked, probe.says)
+		}
+	}
 }
 
 // #161: a person asking about the bill for a cut reply must reach the receipt
@@ -2264,6 +2644,30 @@ func TestTheCutReplyCostQuestionReachesTheReceiptAnswer(t *testing.T) {
 		}
 	}
 	t.Fatalf("the cut-reply cost question does not reach the section that says %q", said)
+}
+
+// 2026-09-10: a task writing one large file was cut at its wall three times
+// while it streamed at full speed. The wall now asks whether a reply kept pace
+// before it cuts, and a person who watched a long write die, or who reads the
+// cut sentence on an error row, has to reach the section that says so — not the
+// silence clocks beside it.
+func TestALongWriteCutAtTheWallReachesThePaceAnswer(t *testing.T) {
+	for _, probe := range []struct{ asked, page, says string }{
+		{"why does writing a big file keep getting cut off", "what-i-can-do", "is **not** cut for taking a long time"},
+		{"the reply ran past 2m30s without finishing and was cut", "models-and-cost", "checks its speed before it cuts"},
+		{"a long reply that is still writing gets cut", "models-and-cost", "checks its speed before it cuts"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			if section.Page == probe.page && strings.Contains(section.Body, probe.says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach the %s section that says %q", probe.asked, probe.page, probe.says)
+		}
+	}
 }
 
 // #578: a ground never climbs out of the machine's scratch, so a workspace under

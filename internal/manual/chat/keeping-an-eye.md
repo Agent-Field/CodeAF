@@ -8,6 +8,25 @@ something behind that keeps working after this window is closed.
 The tool behind all of them is `stand`. You never type it; aforge recognises the
 words. Nothing is ever set up without a card you answer.
 
+## It asked while I was away
+
+**Ten minutes with nobody touching the keyboard** makes a window away — measured from the
+last key, not from which window is in front.
+
+After that, a question this project has a rule for may take its own recommended answer,
+and its receipt says `aforge, on your settings` decided it. Only a **reversible** question
+with a recommended answer can go that way. Everything else stays open: it is on home, the
+desktop notification says the conversation is `waiting on you`, and the terminal bell rings
+**once** — only for a question something is blocked on, and never twice for the same one.
+
+Two kinds never run on a clock however you set it up: **confirmation always asks**, because
+it is what is asked before something destructive, and **clarification never runs on a
+clock**, because the answer is something only you have.
+
+`/autonomy` shows and changes those rules, per project. A question that is about to be
+taken by one says `your rule` on its own row while the clock runs — there are no hidden
+rules.
+
 ## Remind me about something
 
 Say it the way you would say it to a person: "remind me at 6 to leave", "remind
@@ -126,15 +145,15 @@ leave" the whole content of the request is the **6** — doing it now says
 it there:
 
 ```
-│ [ 1 yes, set it up ]  [ 2 change when or where ]  [ 0 no ]
+?  wants to keep an eye on: remind me at 6 to leave
+     1  yes, set it up   it keeps happening until you stop it
+     0  no               nothing happens, now or later
 ```
 
-Two numbered chips, `1` and `2`, and `3` does nothing — on the card in the
-conversation, on the card in home's `ask here` pane, and on home's own answer
-row. The hint under the box says so too:
-`1 yes · 2 change when or where · 0 or esc, no`. The **way out is still drawn**:
-`0 no` is on every standing card there is, it is the one chip a narrow card never
-drops, and `esc` does the same thing beside it.
+Two answers, `1` and `0`, and `3` does nothing — on the question in the
+conversation, in home's `ask here` pane, and on home's own answer row. The hint
+under the box says so too: `1 yes, set it up · 0 no · esc later`. The **way out
+is still drawn**: `0 no` is on every standing card there is.
 
 Everything else keeps all three: a watch, a rule, a routine, overnight work.
 
@@ -202,6 +221,20 @@ as "in 1 minute — 23:11" lands at 23:11:11, and an end taken from the same wor
 lands at 23:11:00 — eleven seconds too early. That is why the refusal spells
 both stamps out to the second.
 
+**And the end has to outlive a check, not just the moment.** Nothing watches an
+item continuously: a check runs every five minutes, so an end that falls between
+the moment and the next check is found expired at the same instant it would have
+been found due. An end twenty-five seconds after a one-minute reminder is after
+the moment and still dead, and the second refusal says so:
+
+```
+Invalid arguments: rails.expires 21:05:00 -04:00 is less than one check after
+when.at 21:04:35 -04:00, so a check can find it out of time at the same moment
+it would have found it due. Checks are 5m0s apart. Put the end at least that far
+after the moment, or leave it out — a one-off retires as it fires and needs no
+end at all.
+```
+
 **A one-off reminder never needs an end.** It retires the moment it fires, and
 if nothing ever picks it up it stops being watched a day after its moment
 anyway.
@@ -233,68 +266,80 @@ yes nor a clear no, aforge treats it as a no and the log says
 
 As long as it takes. The card carries **no clock**: no countdown, no bar, and no
 moment when it answers on somebody's behalf. It waits until you press `1 yes,
-set it up`, `2 change when or where`, `0 no`, or — where the card offers it —
+set it up`, `0 no`, `c` to change it, or — where the card offers it —
 `3 just once`.
 
-A **one-off reminder's card has only two chips**; the next section says why. It
+`esc` **puts it off and does not answer it**. The question folds away so you can
+type, the work stays waiting on it, and the count beside the box goes on
+counting it. Press the chip beside that count to bring it back. That is a
+change: `esc` used to be the outright no on this card, and the outright no is
+`0 no` now — one visible answer rather than a key you had to know.
+
+A **one-off reminder's card has only two answers**; the next section says why. It
 still takes the decline.
 
 It does not have to be answered in that window either. A window sitting on this
-card says so on **home**, and the row there carries the same chips the card is
+card says so on **home**, and the row there carries the same answers the card is
 offering — `1 yes`, `3 once` and `0 not set up`, or `1 yes` and `0 not set up` on
 a one-off reminder — so the card can be **answered or declined** from the
 dashboard without opening the conversation (home's own page has the whole rule).
-`2 change when or where` stays here, where there is a box to say the new time or
+`c change when or where` stays here, where there is a box to say the new time or
 place into.
 
-## I don't understand these options — what each answer on the card does, and how to cancel
+## I don't understand these options — what each answer on the card does, how to change the time on a standing card, and how to cancel
 
-Every answer on the card says what will HAPPEN, and the dim line under the row spells the
-one you are on out in full, in this card's own words rather than a fixed sentence:
+The card in the conversation shows what is being proposed — your own words, when it would
+wake, where it reaches, what it costs. The **question sits above the message box**, where
+every decision on this screen is put, and every answer carries what it costs beside it:
 
 ```
-│ [ 1 yes, set it up ]  [ 2 change when or where ]  [ 3 just once ]  [ 0 no ]
-│ I'll keep doing this Mondays at 9am, for this project, until you stop it
+?  wants to keep an eye on: every Monday at 9, post the standup note from the git log
+     1  yes, set it up   it keeps happening until you stop it
+     3  just once        it happens now, and nothing is kept
+     0  no               nothing happens, now or later
+   [enter] take it · [c] change · [esc] later · [↑↓] choose
 ```
 
-- **`1 yes, set it up`** — it gets set up and starts happening. The line under it reads
-  back the exact schedule and reach from the bands above, and ends `until you stop it`.
-- **`2 change when or where`** — you want it, but not like that. The box below becomes a
-  place to say the **time or the place** instead — "make it 8", "only in this project",
-  "everywhere" — and `enter` sends your words back. Nothing is set up until a new card
-  comes with them in it.
+- **`1 yes, set it up`** — it gets set up and starts happening, and goes on until you stop
+  it. The `when ·` and `where ·` bands on the card above say when and how far.
+- **`c` change when or where** — you want it, but not like that. Press `c` and the box below
+  becomes a place to say the **time or the place** instead — "make it 8", "only in this
+  project", "everywhere" — and `enter` sends your words back. Nothing is set up until a new
+  card comes with them in it. (This was `2 change when or where` on the card's own row of
+  chips; `c` is the key every question on this screen uses to say "I will take one of these,
+  but not as it stands".)
 - **`3 just once`** — do the thing now, this once, and keep nothing. Some cards do not
   offer it; the section above says why.
 - **`0 no`** — **this is cancel**. Nothing is set up, nothing is run, and the card settles
-  as `not set up`. `esc` does exactly the same thing.
+  as `not set up`.
+- **`esc`** — later. Nothing is decided, the rows come off the screen so you can type, and
+  the question is still counted beside the box. It used to be the outright no here; it is
+  not any more.
 
-Walk the row with `←`/`→` and the line under it follows the answer you are on, so you can
-read what each one will do before you take it. The answer you are on is lifted and lit, and
-its digit takes it outright from wherever the cursor is. A click takes it too.
+Each answer is a row of its own and **a click anywhere along it takes that answer**. The
+digit takes it too.
 
-On a narrow window the words shorten to `yes`, `change`, `once` and `no` rather than any
-answer being dropped, and **the `no` is never the one that goes**.
+Answering leaves a line where the question was — `decided wants to keep an eye on: … → yes,
+set it up · you · 14:02` — and the card in the conversation settles with the answer and what
+it came to on its bottom edge: `yes, set it up · set up`.
 
 ## How do I decline a standing card or say no to a reminder — 0, esc, or the no on the card
 
-`0 no` is the way out, and it is one keystroke and **one visible chip** everywhere
+`0 no` is the way out, and it is one keystroke and **one visible answer** everywhere
 a card like this is drawn: in the conversation, on home's answer row, and in
 home's `ask here` pane. Nothing is created, nothing is run, and the card settles
 as `not set up`. On home's answer row the chip reads `0 not set up`, which is the
 same answer said as its outcome, because that row has no card under it to settle.
 
-In the conversation `esc` does the same thing and always has. The digit exists
-because the other two places cannot spare `esc`: on home it closes home, and in
-the `ask here` pane it hands the keyboard back to the list without answering
-anything — so before `0` there was no way at all to refuse a card from either of
-them, only to walk to the window or leave the question open.
+**`esc` is not the no.** It used to be, in the conversation, and it is *later*
+now: the question folds away, nothing is decided, and the count beside the box
+goes on counting it. That is the same thing `esc` does to every question this
+program asks, and it is why the no had to become something you can see and click.
 
-It is a `0` and not a `4` because the chips are numbered by where they sit —
-`1 yes`, `2 change when or where`, `3 just once` — so a fourth digit would move
-under your hand on a card that drew one chip fewer. `0` is off the end of that
-numbering, on every card, always the same answer. It is also the one chip a
-narrow card never drops: the answers shorten to `yes`, `change`, `once` and `no`
-before any of them goes.
+It is a `0` and not a `4` because the answers are numbered by where they sit —
+`1 yes`, `3 just once` — so a fourth digit would move under your hand on a card
+that drew one answer fewer. `0` is off the end of that numbering, on every card,
+always the same answer.
 
 That is the opposite of a task proposal's card, which does count down and starts
 the work on silence. A task is bounded work somebody is watching; a standing
@@ -563,7 +608,8 @@ the walk carries straight on to the next item, and nothing fires, because a firi
 needs a yes and nobody was able to say one. The item still records that it looked, so
 the count of what was examined is honest and the record of the pass carries one error.
 
-Set the key — `/settings` → **openrouter key**, or say "set up my api key" — and the
+Set the default key — `/settings` → **openrouter key**, say "set up my api key", or use
+the `models` group in `/connect` to add a service — and the
 next pass judges normally. Nothing has to be re-made and nothing was lost while there
 was no key.
 
@@ -601,6 +647,12 @@ row on home.** It comes up here, mid-reply, in well under a second. The row says
 `another window` when a terminal is sitting in it; either way one `enter` brings
 it here, and the terminal that had it steps back and says so. See
 *Continue a conversation from another terminal* on the home page.
+
+**A plain `aforge` in that folder sits straight down in it**, with nothing to press
+at all. A launch that names no conversation is asking for this folder's latest,
+and the engine hands back the one it is already holding — mid-reply, with its
+tasks still running. It never opens a second chat on top of one it holds, and
+never says `open in another window` about its own conversation.
 
 The engine lets go on its own when there is nothing left to hold: a conversation
 with no window, no turn and no waiting question is kept for half an hour and then
@@ -677,11 +729,13 @@ everything you set up from it:
   checks` row turns devbox's. Neither ever touches this machine.
 
 **Home and the standing place both work over a connection**, and both are about the far
-machine: home lists that machine's projects with each one's `◦` band under it, and the
+machine: home's panels are that machine's — its questions, its running work, its
+`next up` — and the
 standing place lists both what stands on this conversation and what stands anywhere else on
 that machine. `p` and `s` write to the far machine's store and the refusal, if the store
-refuses, is that store's own. The status line counts too — `◦ keeping an eye on 2` is about
-the workspace this window is on, which over `--host` is a path on the far machine.
+refuses, is that store's own. The count at the foot of the task column — and the
+same words under `watching` on `/status` — says `◦ 2 standing orders` about the
+workspace this window is on, which over `--host` is a path on the far machine.
 
 One live detail is still missing over a connection, and it says nothing rather than
 guessing:
@@ -760,8 +814,8 @@ never leaves a watch reading "checking now" for the rest of the week.
 
 Most passes are over in far less than a second, so the ordinary state of a
 healthy watch is `◦`. Seeing `◐` means you caught one working. On the status
-line the `keeping an eye on N` segment is still while nothing is running and
-turns while something is.
+line the `◦ N standing orders` segment is still while nothing is running and
+its mark turns while something is.
 
 ## Where is the record of a reminder I made from home
 
@@ -835,13 +889,15 @@ reasons, in the order worth checking:
   chat that set it up was closed, the line went to another chat of the same
   project that was open — including one in a different pane or a different
   terminal. It is never delivered into the `ask here` pane on home.
-- **Nothing was open when it fired**, so it is waiting: home shows the project
-  with `◆ N things since you left`, and the rows appear the moment you open a
-  conversation there.
+- **Nothing was open when it fired**, so it is waiting, and the rows appear the
+  moment you open a conversation in that project. Home's `since you left` panel names
+  the firing
+  — `fired 3 minutes ago — it told you` — and it does so for a one-off too, which
+  is over and off every list by the time you get back.
 - **It has not fired yet.** A window checks its items every five minutes, the
   first check five minutes after it opened, so a one-minute reminder can arrive
-  up to five minutes late. `/status` shows `keeping an eye on N` while something
-  stands.
+  up to five minutes late. The task column's foot (and `/status` under `watching`)
+  shows `◦ N standing orders` while something stands.
 - **The check found nothing to say.** A watch or a rule that looked and found
   nothing writes nothing at all — that is the design, not a fault. The item's own
   record on home says when it last ran.

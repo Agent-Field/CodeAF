@@ -104,8 +104,10 @@ const (
 	// in the person's own terms ([standing.Item.RetiredWhy] names this exact
 	// spelling as one of its cases).
 	homeStoppedWhy = "stopped by you"
-	// homeKeepingWord is the status line's segment, with the count after it.
-	homeKeepingWord = " keeping an eye on "
+	// homeKeepingWord is what follows the count at the foot of the task column:
+	// `◦ 2 standing orders`. It said `keeping an eye on 2` until 2026-09-09,
+	// which named nothing a person could type — the page it opens is /standing.
+	homeKeepingWord = " standing order"
 	// homeWatchLabel is /status's line, and the things it can say.
 	homeWatchLabel     = "keeping watch"
 	homeWatchInstalled = "installed"
@@ -214,27 +216,44 @@ func (h *homeView) standNews(item standing.Item) bool {
 // ── reading the store ───────────────────────────────────────────────────────
 
 // standItems is one project's band, read through the seam and put in triage
-// order. It answers nothing at all for a surface with the ambient side off,
-// which is what makes the band absent rather than empty.
-func (a *app) standItems(workspace string) []StandingItemView {
+// order — and, from the same read, WHAT WENT OFF AND STOOD DOWN since the person
+// last looked. It answers nothing at all for a surface with the ambient side
+// off, which is what makes the band absent rather than empty.
+//
+// THE TWO HALVES COME BACK TOGETHER BECAUSE THE STORE IS READ ONCE. The seam
+// walks a directory of documents ([app.readStandBands] states that law), and the
+// second half is a test on the very same documents the first half is throwing
+// away — so asking twice would be one directory walk per project spent on
+// deciding which items to ignore.
+func (a *app) standItems(workspace string) (views, fired []StandingItemView) {
 	if a.stands.Items == nil {
-		return nil
+		return nil, nil
 	}
 	workspace = strings.TrimSpace(workspace)
 	if workspace == "" {
-		return nil
+		return nil, nil
 	}
 	items := a.stands.Items(workspace)
 	if len(items) == 0 {
-		return nil
+		return nil, nil
 	}
-	views := make([]StandingItemView, 0, len(items))
+	views = make([]StandingItemView, 0, len(items))
 	for _, item := range items {
 		// A RETIRED ITEM IS NOT KEEPING AN EYE ON ANYTHING. It fired and went, or
 		// it was stopped; either way it is a thing that HAPPENED, and home is a
 		// glance at what is true now. The conversation that made it still holds
 		// the whole record.
 		if item.Status == standing.StatusRetired {
+			// BUT A THING THAT HAPPENED IS EXACTLY WHAT `since you left` IS ABOUT.
+			// A one-off — `remind me in 1 minute` — retires in the same pass that
+			// fires it (internal/standing's tick.go stamps LastFired and then sets
+			// the status), so by the time somebody opens home the item is gone from
+			// every band and the ledger, which walked only what still stands, drew
+			// nothing at all about a reminder that had just gone off. The firing is
+			// on the document; it is carried out of here for the ledger to say.
+			if standFiredSince(item, a.home.seen) {
+				fired = append(fired, StandingItemView{Item: item})
+			}
 			continue
 		}
 		mark, running := a.standRunning(item.ID)
@@ -246,7 +265,19 @@ func (a *app) standItems(workspace string) []StandingItemView {
 		})
 	}
 	standTriage(views)
-	return views
+	return views, fired
+}
+
+// standFiredSince reports whether a retired item went off inside the stretch of
+// time the `since you left` block is about.
+//
+// A ZERO STAMP ANSWERS NO, which is the first-look law ([homeView.seen]) paid
+// here rather than only where the block is built: with no origin to measure
+// from there is no "since", and a walk that carried every reminder this machine
+// ever fired into the reading would be handing the block a year of history for
+// it to throw away on the next line.
+func standFiredSince(item standing.Item, seen time.Time) bool {
+	return !seen.IsZero() && item.LastFired.After(seen)
 }
 
 // standRunning is the seam asked once, with a nil seam reading as "nothing is
@@ -818,9 +849,25 @@ func (a *app) keepingCount() (int, bool) {
 // the disk to redraw something that changes on the order of minutes".
 const keepEvery = homeEvery
 
-// keepingSegment is the status line's ambient segment for the standing side:
+// refreshKeepingCount drops the cached standing count so the next frame asks
+// the store again. It is the door a `stood` / `paused` / `stopped` update takes
+// ([app.standingUpdate], [app.errandUpdated]) rather than waiting out
+// [keepEvery] on a zero that was true a beat ago and is a lie now.
+func (a *app) refreshKeepingCount() {
+	a.keepAt = time.Time{}
+	a.standRailAt = time.Time{}
+}
+
+// keepingSegment is the standing side's own presence, drawn at the foot of the
+// task column and carried by /status and the phone sheet:
 //
-//	◦ keeping an eye on 2
+//	◦ 2 standing orders
+//
+// IT WAS A SEGMENT OF THE STATUS ROW until 2026-09-09, which is why it is built
+// as one and still reaches [app.telemetry] — the sheet and /status read that
+// list. The column draws it through [app.railStandingLine] (task.go). A `stood`
+// update drops the cached reading ([app.refreshKeepingCount]) so the count
+// arrives with the news rather than a beat later.
 //
 // NOTHING AT ALL WHEN THERE IS NOTHING, which is the emptiness law applied to a
 // whole segment and the same call [app.ambientSegment] makes about jobs: a line
@@ -840,7 +887,7 @@ func (a *app) keepingSegment() string {
 	if a.pal.ascii {
 		glyph = standWaitASCII
 	}
-	return glyph + homeKeepingWord + itoa(count)
+	return glyph + " " + itoa(count) + plural(homeKeepingWord, count)
 }
 
 // keepingWord is that segment as it is DRAWN: the same width, with the glyph
@@ -866,7 +913,7 @@ func (a *app) keepingWord() string {
 	if a.linear || a.pal.ascii {
 		glyph = glyphRunASCII
 	}
-	return glyph + homeKeepingWord + itoa(count)
+	return glyph + " " + itoa(count) + plural(homeKeepingWord, count)
 }
 
 // watchLine is /status's `keeping watch` fact, derived and never asserted.
@@ -1023,12 +1070,29 @@ func (a *app) readStandBands() {
 	// runs before every build of the list.
 	a.home.phone, a.home.standRoot = a.homePhone(), a.standingHome()
 	if a.stands.Items == nil {
-		a.home.items, a.home.bare = nil, nil
+		a.home.items, a.home.bare, a.home.fired = nil, nil, nil
 		return
 	}
-	bands := make(map[string][]StandingItemView, len(a.home.world.Projects))
-	known := make(map[string]bool, len(a.home.world.Projects))
-	for _, project := range a.home.world.Projects {
+	bands, known, fired := a.standBandsOf(a.home.world)
+	a.home.items = bands
+	bare, bareFired := a.readBareBands(bands, known)
+	a.home.bare, a.home.fired = bare, append(fired, bareFired...)
+}
+
+// standBandsOf is every project's items in one world, keyed by bucket
+// directory, with the real paths it asked about and the one-offs that fired and
+// retired on the way.
+//
+// IT TAKES THE WORLD AND NOT HOME'S VIEW OF IT, because home is not the only
+// reader: the pulse counts these bands inside a conversation, where no home is
+// open (pulsebeat.go).
+func (a *app) standBandsOf(world session.World) (bands map[string][]StandingItemView, known map[string]bool, fired []StandingItemView) {
+	if a.stands.Items == nil {
+		return nil, nil, nil
+	}
+	bands = make(map[string][]StandingItemView, len(world.Projects))
+	known = make(map[string]bool, len(world.Projects))
+	for _, project := range world.Projects {
 		// THE PROJECT'S REAL PATH IS THE KEY THE STORE ANSWERS TO
 		// ([standing.Item.Workspace] is the resolved workspace, never the bucket),
 		// and a project nothing ever recorded a path for has nothing to ask about.
@@ -1040,12 +1104,13 @@ func (a *app) readStandBands() {
 			continue
 		}
 		known[filepath.Clean(path)] = true
-		if views := a.standItems(path); len(views) > 0 {
+		views, gone := a.standItems(path)
+		if len(views) > 0 {
 			bands[project.Dir] = views
 		}
+		fired = append(fired, gone...)
 	}
-	a.home.items = bands
-	a.home.bare = a.readBareBands(bands, known)
+	return bands, known, fired
 }
 
 // readBareBands is the OTHER kind of project: a workspace this machine holds
@@ -1064,8 +1129,9 @@ func (a *app) readStandBands() {
 // item can be made from a window that never held a conversation there — the
 // home directory, which is where a machine-wide reminder's work runs
 // ([standing.Item.Workspace]), and the directory THIS window is standing in.
-func (a *app) readBareBands(bands map[string][]StandingItemView, known map[string]bool) []homeBare {
+func (a *app) readBareBands(bands map[string][]StandingItemView, known map[string]bool) ([]homeBare, []StandingItemView) {
 	var out []homeBare
+	var fired []StandingItemView
 	paths := []string{errandHomeDir(), strings.TrimSpace(a.workspace)}
 	if a.hosted() {
 		// The home directory belongs to the surface machine and is not a path the
@@ -1082,7 +1148,13 @@ func (a *app) readBareBands(bands map[string][]StandingItemView, known map[strin
 			continue
 		}
 		known[clean] = true
-		views := a.standItems(path)
+		views, gone := a.standItems(path)
+		// AND A WORKSPACE WITH NOTHING LEFT STANDING IN IT MAY STILL HAVE HAD
+		// SOMETHING HAPPEN. A one-off made from home fires and retires, which
+		// leaves this workspace with no band and no heading — and the firing is
+		// still what the person came back to read, so it is carried out before
+		// the empty band turns the walk around.
+		fired = append(fired, gone...)
 		if len(views) == 0 {
 			continue
 		}
@@ -1098,7 +1170,7 @@ func (a *app) readBareBands(bands map[string][]StandingItemView, known map[strin
 			at: standBareAt(views),
 		})
 	}
-	return out
+	return out, fired
 }
 
 // standBareName is what such a heading says: the workspace's last element, and

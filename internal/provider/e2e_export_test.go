@@ -39,3 +39,8 @@ func (c *Client) E2EVetoes(model string) []string {
 // E2ESaysTheSetWasEmptied reports whether a refusal body is the router saying an
 // ignore list removed every endpoint ([ignoredEverything]).
 func E2ESaysTheSetWasEmptied(body []byte) bool { return ignoredEverything(body) }
+
+// E2ESaysTheAccountExcluded reports whether a refusal body is the router saying
+// the ACCOUNT'S own settings removed every machine the request's set held
+// ([accountExcluded]).
+func E2ESaysTheAccountExcluded(body []byte) bool { return accountExcluded(body) }

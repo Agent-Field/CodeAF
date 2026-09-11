@@ -152,7 +152,7 @@ Task numbers belong to their conversation. A reading view of another conversatio
 finished task never shows or answers the current conversation's answers. Open its owning
 conversation to make a decision there.
 
-## I handed a review to the chat — why does it still need me?
+## It says aforge is deciding — I handed a review to the chat, why does it still need me?
 
 **`awaiting review` is gone from every row, and there is no such state.** The card said
 it, then the rail, the roster, the record page and this room's own header said it too —
@@ -161,22 +161,27 @@ task that says `your call`; what changes is **who is holding the question**, and
 says that rather than renaming the state. The room's header now reads the reading's own
 sentence, `your call · nobody could check it`, whoever is deciding it.
 
-After you press `[d] let aforge decide this one` — or when `task.settle` is `auto` — the
-card's reason row reads
+After you press `[d] you decide` — or when `task.settle` is `auto` — the row reads
 
 ```
-nobody could check it · aforge is deciding · [t] take it back
+nobody could check it · aforge is deciding
 ```
 
-so the card is never quiet and never chip-less without saying why. Pressing `t` hands the
-question back to you and draws the chips again; **it resolves nothing**, and anything
-aforge was going to say it may still say.
+so the row is never quiet without saying why, and **the answers stay drawn beside it**:
+answering one yourself is how you take the question back, and anything aforge was going to
+say it may still say.
 
 **And it comes back to you by itself.** A task never stays unowned past the end of a turn:
 if aforge's turn ends with the question still unanswered, the decision moves back to you
 and the card draws its chips, whether or not you noticed it had been handed over. Where
 aforge's last message asked you something about that task, those chips are the answer
 surface for that question — its words above, the chips below, one ask.
+
+**Closing aforge ends that turn too, so after a restart it is yours again.** Who was
+deciding is kept with the task, and a conversation reopened — tomorrow, or after a crash,
+or from another window — hands every question aforge was holding straight back to you: the
+row drops the `aforge is deciding` clause, because the turn it was going to be decided in is
+gone and nothing is going to finish that thought.
 
 **A conflict is never handed over at all.** Whatever `task.settle` says, a landing whose
 branch would not merge stays yours: aforge cannot merge by decree, and which of two

@@ -68,13 +68,13 @@ func absorbedLedger(node *TaskNode, changed []string) []string {
 // down. While the fold lived at the merge alone, an accepted mirror family laid
 // the parent's slice over the person's folder and dropped every part's file —
 // the same loss as before, one road further along.
-func landHome(node *TaskNode, tree taskTree, changed []string) ([]string, string, string, landingRefusal) {
+func landHome(node *TaskNode, tree taskTree, changed []string, sign bool) ([]string, string, string, landingRefusal) {
 	ledger := absorbedLedger(node, changed)
 	// AND WHY IT DID NOT COME HOME TRAVELS WITH THE OUTCOME. A landing that failed
 	// is answered by somebody, and whether asking them again could change anything
 	// is decided where the refusal happened, not read back out of the sentence
 	// afterwards (task_land_unsaved.go's [landingRefusal]).
-	merge, detail, clashing, why := tree.comeHome(node.title(), ledger)
+	merge, detail, clashing, why := tree.comeHome(node.title(), ledger, sign)
 	// AND THE NAMES ARE KEPT ON THE NODE, at the one moment they exist. git's index
 	// held them while the refused merge stood and was made to give them back before
 	// the merge was abandoned (groundcarry.go's [taskTree.refuseMerge]); a row drawn
@@ -96,7 +96,7 @@ func (a *Agent) landUnreadDirections(node *TaskNode, tree taskTree, changed []st
 		note = "this did not land: what it was checked against is no longer what this task is for. Its work is kept on its branch — continue this task to have it taken up"
 	}
 	fmt.Fprintf(log, "not landing: %s\n", note)
-	merge, kept := keepHome(node, tree, changed)
+	merge, kept := keepHome(node, tree, changed, a.signsGitWork())
 	node.finish(withReport(note, report), kept, tree.branch, merge)
 	return TaskUnverified
 }
@@ -107,8 +107,8 @@ func (a *Agent) landUnreadDirections(node *TaskNode, tree taskTree, changed []st
 // person is being offered has to hold the whole family's work ([keptWork] is
 // what commits it), and the list the node settles with is what a later accept
 // will land.
-func keepHome(node *TaskNode, tree taskTree, changed []string) (string, []string) {
-	return keptWork(tree, node.title(), absorbedLedger(node, changed))
+func keepHome(node *TaskNode, tree taskTree, changed []string, sign bool) (string, []string) {
+	return keptWork(tree, node.title(), absorbedLedger(node, changed), sign)
 }
 
 // landFinished is THE ONE ENDING FOR WORK THAT HOLDS, and it is one function
@@ -174,10 +174,10 @@ func (a *Agent) landFinished(ctx context.Context, node *TaskNode, tree taskTree,
 	// was when the node started — so it says nothing at all about a file another
 	// window has landed in since. That is the one question left before a merge,
 	// and taskground.go is where it is asked.
-	if shift := a.groundShift(node, changed); shift != "" {
-		return a.landShifted(node, tree, changed, withReport(head, tail), shift, log)
+	if shift, moved := a.groundShift(node, changed); shift != "" {
+		return a.landShifted(node, tree, changed, moved, withReport(head, tail), shift, log)
 	}
-	landed, merge, detail, _ := landHome(node, tree, changed)
+	landed, merge, detail, why := landHome(node, tree, changed, a.signsGitWork())
 	fmt.Fprintf(log, "merge: %s %s%s\n", merge, detail, note)
 	// AND THE ONE QUESTION EVERY ROAD ASKS OF THE OUTCOME: did the work get where
 	// the person can see it ([cameHome], task_land_unsaved.go)? A branch that
@@ -187,7 +187,7 @@ func (a *Agent) landFinished(ctx context.Context, node *TaskNode, tree taskTree,
 	// two apart. Testing for a conflict by hand is exactly how the second reason
 	// walked past all five of these roads (#255).
 	if !cameHome(merge) {
-		return a.landConflicted(ctx, node, tree, landed, withReport(head, tail), merge, detail, log)
+		return a.landConflicted(ctx, node, tree, landed, withReport(head, tail), merge, detail, why, log)
 	}
 	// THE WORK'S OWN ACCOUNT LEADS, AND WHAT IT WAS CHECKED ON STANDS UNDER IT.
 	// Everything downstream reads this report from the top: the settle card quotes

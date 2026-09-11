@@ -43,6 +43,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // homeWorkTasks is how many pieces of work the band shows before the rest fold.
@@ -224,7 +225,7 @@ func homeWorkUnderSaid(entry session.TaskIndexEntry, row session.SessionRow, wid
 		// at all. What follows the word is whatever that state actually knows:
 		// a running node says what it is doing, and a failed or unjudged one
 		// says what it came to.
-		lead := homeWorkGlyph(status, pal.ascii) + " " + word
+		lead := homeWorkGlyph(status, pal) + " " + word
 		detail := outcome
 		if !status.Settled() && status.Liveness == session.TaskLivenessHeld {
 			detail = strings.TrimSpace(entry.Activity)
@@ -276,36 +277,30 @@ func homeWorkUnderSaid(entry session.TaskIndexEntry, row session.SessionRow, wid
 // HOME'S OWN GLYPHS (home.go names them) rather than the task page's, because
 // this is home and a person reading the left column has already learnt these
 // four shapes on the rows beside it.
-func homeWorkGlyph(status session.TaskStatus, ascii bool) string {
+func homeWorkGlyph(status session.TaskStatus, pal palette) string {
 	switch status.Presence {
 	case session.TaskPresenceWorking, session.TaskPresenceWaiting, session.TaskPresenceFinishing:
-		if ascii {
+		if pal.ascii {
 			return homeLiveASCII
 		}
 		return homeLiveGlyph
 	case session.TaskPresenceNeedsLook:
-		if ascii {
+		if pal.ascii {
 			return homeAskASCII
 		}
 		return homeAskGlyph
 	case session.TaskPresenceIncomplete:
 		if status.Fault {
-			if ascii {
-				return glyphBadASCII
-			}
-			return glyphBad
+			return pal.glyph(tokens.GFailed)
 		}
-		if ascii {
+		if pal.ascii {
 			return homeStuckASCII
 		}
 		return homeStuckGlyph
 	case session.TaskPresenceStopped:
 		// A person's stop wears the mark it wears everywhere else and not the
-		// cross (task.go's [glyphStopped]).
-		if ascii {
-			return glyphStoppedASCII
-		}
-		return glyphStopped
+		// cross (tokens.GStopped).
+		return pal.glyph(tokens.GStopped)
 	}
 	return ""
 }

@@ -217,3 +217,33 @@ func TestEnvOverrides(t *testing.T) {
 		t.Fatalf("reserve = %d, want 100000", got)
 	}
 }
+
+// One result may be a tenth of the window and no more than the caller's own
+// default. The default is what pi's caps were measured against, so a frontier
+// model is sized exactly as it was before the share existed and only a smaller
+// one moves — the same additive shape the working-set clamp has.
+func TestToolResultBytesIsAShareOfTheWindowUnderTheCallersDefault(t *testing.T) {
+	const pi = 50 << 10
+	for _, window := range []int{128_000, 200_000, 1 << 20} {
+		if got := ToolResultBytes(window, pi); got != pi {
+			t.Errorf("a %d-token window was handed %d bytes of one result, want the %d default",
+				window, got, pi)
+		}
+	}
+	if got := ToolResultBytes(16_000, pi); got != 16_000*BytesPerToken/ToolResultWindowShare {
+		t.Errorf("a 16k window was handed %d bytes, want a tenth of its window", got)
+	}
+	// An unknown window spends nothing and the caller's named fallback carries.
+	if got := ToolResultBytes(0, pi); got != pi {
+		t.Errorf("an unknown window was handed %d bytes rather than the %d default", got, pi)
+	}
+	// The floor is arithmetic protection: below it a result is too small to
+	// carry a fragment worth reading, and the model would page forever.
+	if got := ToolResultBytes(2_000, pi); got != MinObservationBytes {
+		t.Errorf("a 2k window was handed %d bytes, want the %d floor", got, MinObservationBytes)
+	}
+	// And the floor may not raise a caller's own smaller default.
+	if got := ToolResultBytes(2_000, 1024); got != 1024 {
+		t.Errorf("a caller asking for 1024 bytes was handed %d", got)
+	}
+}

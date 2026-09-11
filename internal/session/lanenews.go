@@ -98,6 +98,33 @@ type LaneNews struct {
 	Role lane.Role
 
 	At time.Time
+
+	// Session is the conversation this answer belongs to, and it is EMPTY IN
+	// EVERY BUILD THAT NEEDS NO ANSWER: one process with one window has nothing
+	// to disambiguate. An engine that is a separate process from its surfaces
+	// (internal/enginehost) reads it to decide which connection this sighting
+	// belongs on — see [Agent.newsKey].
+	Session string
+
+	// Subject is WHAT THIS SIGHTING IS ABOUT, and it is [provider.PhaseNews.Subject]
+	// under this seam's own name — the same spelling on both, because they are
+	// twins and a surface that had to remember which of them called it what is
+	// a surface that will key one desk differently from the other.
+	//
+	// EMPTY MEANS THE CONVERSATION, and that is the whole of the compatibility
+	// story: every producer that names no subject is talking about the
+	// conversation, so absence behaves exactly as it did before the field
+	// existed. A node's own sighting names the node ([Agent.newsSubject]), so
+	// its room can say which machine answered IT rather than showing whichever
+	// answer on the same model id landed last.
+	Subject string
+
+	// Relayed says this news arrived over a connection from the engine that
+	// produced it, rather than off this process's own stream. It is
+	// [provider.PhaseNews.Relayed]'s twin and exists for its reason: a build
+	// that is both serving and watching must not forward what it just received
+	// back out of the door it came in.
+	Relayed bool
 }
 
 var (
@@ -179,6 +206,10 @@ func (a *Agent) tellLaneNews(model string, facts laneFacts, report *provider.Hed
 	}
 	news := laneNewsFrom(model, facts, report)
 	news.Role = a.laneRole()
+	news.Session = a.newsKey()
+	// AND WHAT THE SIGHTING IS ABOUT, beside whose it is: a node's answer names
+	// the node, so its room can say which machine served IT ([Agent.newsSubject]).
+	news.Subject = a.newsSubject()
 	postLaneNews(news)
 }
 
@@ -200,12 +231,14 @@ func (a *Agent) watchLaneRescue(model string, report *provider.HedgeReport) {
 func (a *Agent) laneRescueStarted(model string) func(provider.RescueNews) {
 	return func(news provider.RescueNews) {
 		postLaneNews(LaneNews{
-			Model:  model,
-			Alt:    news.Alt,
-			Reason: news.Reason,
-			Failed: news.Failed,
-			Trying: !news.Failed,
-			Role:   a.laneRole(),
+			Model:   model,
+			Alt:     news.Alt,
+			Reason:  news.Reason,
+			Failed:  news.Failed,
+			Trying:  !news.Failed,
+			Role:    a.laneRole(),
+			Session: a.newsKey(),
+			Subject: a.newsSubject(),
 		})
 	}
 }
@@ -254,17 +287,13 @@ func (a *Agent) Typing() {
 	if !provider.LaneGuardOn() {
 		return
 	}
-	prober, ok := a.client.(laneProber)
-	if !ok {
-		return
-	}
 	a.mu.Lock()
 	model, closed := a.model, a.closed
 	a.mu.Unlock()
 	if closed || strings.TrimSpace(model) == "" {
 		return
 	}
-	prober.ProbeLanes(a.probeContext(), model)
+	a.probeClientLanes(a.probeContext(), model)
 }
 
 // probeContext is the context a probe rides: the session's own, so that a

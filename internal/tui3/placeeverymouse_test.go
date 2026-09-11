@@ -1,9 +1,13 @@
 package tui3
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // ── THE POINTER, ASKED OF ALL SEVEN ─────────────────────────────────────────
@@ -137,35 +141,33 @@ func TestAMotionMessageMovesHomesCardWithoutMovingTheCursor(t *testing.T) {
 // promoted place placemouse_test.go's preview law does not reach — its rows are
 // its own hit kinds rather than body lines — and it is the longest list on the
 // surface, which is exactly where a pointer is worth having.
+//
+// THE LIGHT IS A GROUND AND A WEIGHT AND NO LONGER A MARK, so it is read off the
+// painted frame: the row under the pointer wears the cursor step, as the row
+// under the cursor does (placeprose.go's [placeBand]).
 func TestHoveringARowOfTheTasksPlaceLightsIt(t *testing.T) {
 	a := historyApp(t, 200)
 	a.width, a.height = 120, 30
+	a.pal = newPalette(tokens.ANSI256, false)
+	ground := a.pal.onPlaces().cursor("x", 1)
+	ground = ground[:strings.Index(ground, "x")]
 	_, hits, _, _ := a.taskSheetFrame(a.width, a.height)
-	lit := false
 	for y, hit := range hits {
 		if hit.kind != taskSheetHitRow || hit.index == a.taskSheet.cursor {
 			continue
 		}
 		cursor := a.taskSheet.cursor
-		before := placeFrameText(a)
 		drive(t, a, tea.MouseMotionMsg{X: 4, Y: y})
 		if a.taskSheet.cursor != cursor {
 			t.Fatalf("the pointer over row %d moved the cursor from %d to %d", y, cursor, a.taskSheet.cursor)
 		}
-		after := placeFrameText(a)
-		beforeLines, afterLines := splitLines(before), splitLines(after)
-		if y < len(beforeLines) && y < len(afterLines) && beforeLines[y] != afterLines[y] {
-			lit = true
-			break
+		painted, _, _ := a.frame()
+		if lines := splitLines(painted); y < len(lines) && strings.Contains(lines[y], ground) {
+			return
 		}
-		if before != after {
-			lit = true
-			break
-		}
+		t.Fatalf("row %d of the tasks place does not wear the cursor step under the pointer", y)
 	}
-	if !lit {
-		t.Fatal("no row of the tasks place lights under the pointer")
-	}
+	t.Fatal("the tasks place drew no row the pointer could stand on")
 }
 
 // ── the window moves, and not just the cursor ───────────────────────────────
@@ -180,8 +182,19 @@ func TestHoveringARowOfTheTasksPlaceLightsIt(t *testing.T) {
 // The tasks place is the one this matters most on: its tail fades with depth
 // (depthfade.go), which is a claim that there is more below — a claim a page
 // that could not scroll would be making falsely.
+//
+// HOME OWES THIS LAW NO LONGER. Its grid has no window: a panel's rows are
+// built for the room the frame has, a short frame squeezes and drops panels
+// rather than scrolling them, and what does not fit is behind the panel's own
+// `N more` fold (homegrid.go's [fitColumn], DESIGN §1 laws 5 and 9). So there
+// is no row below the frame for the cursor to walk onto, and the half of this
+// that home still owes — the cursor never walks off what was drawn — is
+// [TestWalkingPastTheWindowKeepsTheCursorOnTheFrame]'s.
 func TestWalkingPastTheWindowScrollsEveryPlacesList(t *testing.T) {
 	for _, place := range everyPlaceTable() {
+		if place.id == pageHome {
+			continue
+		}
 		t.Run(place.id.word(), func(t *testing.T) {
 			a := place.open(t)
 			// A SHORTER FRAME THAN THE LABS OPEN ON, because the law is only owed
@@ -251,4 +264,325 @@ func placeWindowOf(hits []int) (first, last, drawn int) {
 		drawn++
 	}
 	return first, last, drawn
+}
+
+// A CLICK ON A ROW IS `enter` ON IT, on every place with rows to open. There
+// were three click grammars — home and the tasks place opened the row, the other
+// four moved the cursor and did nothing more — so the same gesture on the same
+// shape of row meant two things depending on the room (PLACES-AUDIT.md finding
+// 6). One lab is clicked and a second is walked to the same row with the arrows
+// and entered; the two must land in the same place drawing the same frame.
+//
+// Home is one of them now: its first click used to select and its second open,
+// which was the one screen of seven that wanted two. Settings keeps select-then-
+// change, because its `enter` edits a value; memory's lines are the stated
+// exception and have their own test below.
+func TestAClickOnARowIsEnterOnEveryPlace(t *testing.T) {
+	// AND THE HIT MAP IS THE ONE THE FRAME DREW, so the law is asked twice: on
+	// the frame as the place opens, and on a squeezed frame whose window the
+	// arrows have scrolled — where a map computed apart from the draw would
+	// open the row above or below the one pressed.
+	frames := []struct {
+		name  string
+		shape func(t *testing.T, a *app)
+	}{
+		{"as opened", func(*testing.T, *app) {}},
+		{"squeezed and scrolled", func(t *testing.T, a *app) {
+			a.width, a.height = 60, 16
+			// THE FRAME IS DRAWN ONCE AT THE NEW SIZE BEFORE THE WALK, as the
+			// program draws after every message: home lays its lines out for the
+			// room it is drawn in, so a walk between a resize and a draw is a
+			// walk over the taller frame's lines, and "line 6" means two rows.
+			_ = placeFrameText(a)
+			for i := 0; i < 20; i++ {
+				drive(t, a, key("down"))
+			}
+		}},
+	}
+	for _, place := range everyPlaceTable() {
+		if place.id == pageSettings || place.id == pageMemory {
+			continue
+		}
+		for _, frame := range frames {
+			t.Run(place.id.word()+"/"+frame.name, func(t *testing.T) {
+				clicked := place.open(t)
+				frame.shape(t, clicked)
+				y, target := placeClickTarget(t, clicked, place)
+				keyed := place.open(t)
+				frame.shape(t, keyed)
+				for i := 0; i < 400 && place.cursor(keyed) != target; i++ {
+					if place.cursor(keyed) < target {
+						drive(t, keyed, key("down"))
+					} else {
+						drive(t, keyed, key("up"))
+					}
+				}
+				if place.cursor(keyed) != target {
+					t.Fatalf("the arrows never reached body line %d on the %s place", target, place.id.word())
+				}
+				drive(t, clicked, tea.MouseClickMsg{X: placeClickX(clicked), Y: y, Button: tea.MouseLeft})
+				drive(t, keyed, key("enter"))
+				if clicked.page != keyed.page {
+					t.Fatalf("a click on the %s place's row landed on %q and enter on it on %q",
+						place.id.word(), clicked.page.word(), keyed.page.word())
+				}
+				got, want := placeFrameText(clicked), placeFrameText(keyed)
+				// A DOOR THAT KEPT THE PLACE UP — a note instead of a room — is
+				// compared on the row it landed on and on the foot that answered,
+				// because two roads to one row may leave the window scrolled two
+				// ways: the arrows walked up to it, the click did not.
+				if clicked.page == place.id {
+					if place.cursor(clicked) != target {
+						t.Fatalf("the click on the %s place landed on body line %d, not %d",
+							place.id.word(), place.cursor(clicked), target)
+					}
+					got, want = placeFootText(got), placeFootText(want)
+				}
+				if got != want {
+					t.Fatalf("a click and enter on the same %s row drew two frames:\nclick:\n%s\nenter:\n%s",
+						place.id.word(), got, want)
+				}
+			})
+		}
+	}
+}
+
+// A CLICK NEVER SPENDS. Memory's `enter` on a line asks the model about it, so a
+// press on a line opens the line's card instead and the place stays — and a
+// press on its shelf folds it, which is that row's `enter`.
+func TestAClickOnAMemoryLineOpensItsCardAndAsksNothing(t *testing.T) {
+	var place everyPlace
+	for _, p := range everyPlaceTable() {
+		if p.id == pageMemory {
+			place = p
+		}
+	}
+	a := place.open(t)
+	hits := place.hits(a)
+	for y, at := range hits {
+		stop, ok := a.mem.reading.at(at)
+		if at < 0 || !ok || stop.line == nil {
+			continue
+		}
+		drive(t, a, tea.MouseClickMsg{X: 4, Y: y, Button: tea.MouseLeft})
+		if a.page != pageMemory {
+			t.Fatalf("a click on a memory line left the place for %q", a.page.word())
+		}
+		if a.mem.expanded != stop.line.ID {
+			t.Fatalf("a click on %q opened the card %q", stop.line.ID, a.mem.expanded)
+		}
+		// AND THE CARD IS NOT THE LIST: a second press over it lands on no row.
+		cursor := a.mem.cursor
+		drive(t, a, tea.MouseClickMsg{X: 4, Y: y + 1, Button: tea.MouseLeft})
+		if a.mem.cursor != cursor || a.mem.expanded != stop.line.ID {
+			t.Fatal("a press over the open card walked the list hidden under it")
+		}
+		return
+	}
+	t.Fatal("the memory lab drew no line to click")
+}
+
+// placeClickX is the column a click on a body row lands in: four cells in on
+// every place, and inside the cursor's own column on home's grid, where one
+// screen row holds a line of every column and the x says which
+// ([homeMark.cells]). The table's hit map for home is the cursor's column, so
+// this is the column the target was found in.
+func placeClickX(a *app) int {
+	if !a.at(pageHome) || !a.home.gridOn() {
+		return 4
+	}
+	col := a.home.columnOf(a.home.cursor)
+	if col < 0 || col >= len(a.home.gridX) {
+		return 4
+	}
+	return a.home.gridX[col] + homeGridLead
+}
+
+// placeClickTarget is a row of the frame a place drew that opens something and
+// that the cursor is not already on — the last such row, so the click has to
+// move the cursor to be right.
+func placeClickTarget(t *testing.T, a *app, place everyPlace) (y, target int) {
+	t.Helper()
+	stops := map[int]bool{}
+	for _, at := range a.showing().stops(a) {
+		stops[at] = true
+	}
+	y, target = -1, -1
+	for row, at := range place.hits(a) {
+		if at >= 0 && stops[at] && at != place.cursor(a) {
+			y, target = row, at
+		}
+	}
+	if y < 0 {
+		t.Fatalf("the %s place drew no row to click that the cursor is not on", place.id.word())
+	}
+	return y, target
+}
+
+// A FOLD LINE IS A HIT TARGET, AND A DOOR BOTH WAYS. `▸ 11 more` on a place's
+// own list opens the rest where they stand on one click, and the same line —
+// now `▾ 11 fewer`, wherever it has moved to — puts them back on the next. It
+// was drawn with the fold mark and answered nothing, which is a door painted on
+// a wall.
+func TestAClickOpensEveryPlacesFoldAndTheNextShutsIt(t *testing.T) {
+	for _, place := range everyPlaceTable() {
+		if place.id == pageHome || place.id == pageTasks || place.id == pageSettings {
+			continue
+		}
+		t.Run(place.id.word(), func(t *testing.T) {
+			a := place.open(t)
+			// A frame tall enough that a lab's fold is on it rather than below
+			// the window.
+			a.width, a.height = 120, 45
+			y := placeFoldRow(a, tokens.GlyphCollapsed)
+			if y < 0 {
+				t.Skipf("the %s lab draws no fold", place.id.word())
+			}
+			drive(t, a, tea.MouseClickMsg{X: 4, Y: y, Button: tea.MouseLeft})
+			if a.page != place.id {
+				t.Fatalf("a click on the %s place's fold left the place for %q", place.id.word(), a.page.word())
+			}
+			back := placeFoldRow(a, tokens.GlyphExpanded)
+			if back < 0 || !strings.Contains(placeFrameText(a), "fewer") {
+				t.Fatalf("a click on the %s place's fold did not open it:\n%s", place.id.word(), placeFrameText(a))
+			}
+			drive(t, a, tea.MouseClickMsg{X: 4, Y: back, Button: tea.MouseLeft})
+			if again := placeFoldRow(a, tokens.GlyphCollapsed); again != y || strings.Contains(placeFrameText(a), "fewer") {
+				t.Fatalf("the second click on the %s place's fold did not put the page back:\n%s",
+					place.id.word(), placeFrameText(a))
+			}
+		})
+	}
+}
+
+// placeFoldRow is the first frame row under the head whose words start with a
+// fold mark, and -1 for none.
+func placeFoldRow(a *app, mark string) int {
+	for y, line := range strings.Split(placeFrameText(a), "\n") {
+		if y >= placeHeadRows && strings.HasPrefix(strings.TrimSpace(line), mark+" ") {
+			return y
+		}
+	}
+	return -1
+}
+
+// placeFootText is the last rows of a frame — the rule, the box and the hint,
+// where a note a door left is drawn.
+func placeFootText(frame string) string {
+	lines := strings.Split(frame, "\n")
+	if len(lines) > 3 {
+		lines = lines[len(lines)-3:]
+	}
+	return strings.Join(lines, "\n")
+}
+
+// ── home's own doors, under the one grammar ─────────────────────────────────
+
+// A PANEL'S HEADING IS A DOOR INTO THE PLACE IT NAMES, on the grid at two
+// columns and at three: `needs you`, `running` and `since you left` open tasks,
+// `spend` opens spend, `next up` standing and `where you were` the typed search
+// — and `projects`, which names nothing but its own panel, opens nothing and
+// leaves home up. The heading is found by its WORDS on the painted frame and
+// never by the map the press reads, so a map that drifted from the paint fails
+// here rather than agreeing with itself.
+func TestAClickOnAHomeHeadingOpensThePlaceItNames(t *testing.T) {
+	for _, width := range []int{120, 180} {
+		for _, slot := range homePanelOrder {
+			t.Run(itoa(width)+"/"+slot.word, func(t *testing.T) {
+				a := newSwitchLab(t).open(width, 45)
+				x, y, ok := homeHeadingAt(a, slot.word)
+				if !ok {
+					t.Fatalf("the %q heading is not on the %d-column frame:\n%s", slot.word, width, homeText(a))
+				}
+				drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+				want := slot.head
+				if want == pageNone {
+					want = pageHome
+				}
+				if a.page != want {
+					t.Fatalf("a click on the %q heading landed on %q, want %q", slot.word, a.page.word(), want.word())
+				}
+			})
+		}
+	}
+}
+
+// homeHeadingAt is where a panel's heading word is painted: the row whose text
+// in one of the grid's columns starts with it. A row never starts at its
+// column's edge — its mark or its blank lead is there — so only a heading can.
+func homeHeadingAt(a *app, word string) (x, y int, ok bool) {
+	for y, line := range strings.Split(homeText(a), "\n") {
+		cells := []rune(line)
+		for _, start := range a.home.gridX {
+			if start < len(cells) && strings.HasPrefix(string(cells[start:]), word) {
+				return start, y, true
+			}
+		}
+	}
+	return 0, 0, false
+}
+
+// A FOLD THAT NAMES A PLACE IS `enter` ON ONE CLICK. Ten questions are more than
+// `needs you` holds, so its fold says `2 more · tasks` — and a press on it lands
+// where walking onto it and pressing enter does, not on a selection that waits
+// for a second press.
+func TestAClickOnAHomeFoldIsEnterOnIt(t *testing.T) {
+	open := func() *app {
+		lab := newSwitchLab(t)
+		for i := 0; i < 9; i++ {
+			lab.presence("-beta", "cccc00000000000"+string(rune('1'+i)), session.PresenceWaiting,
+				"question "+itoa(i), lab.now)
+		}
+		return lab.open(120, 45)
+	}
+	clicked, keyed := open(), open()
+	homeClickAt(t, clicked, homeFoldDoor(t, clicked, panelNeeds))
+	keyed.home.cursor = homeFoldDoor(t, keyed, panelNeeds)
+	drive(t, keyed, key("enter"))
+	if keyed.page != pageTasks {
+		t.Fatalf("enter on the fold of `needs you` landed on %q, want tasks", keyed.page.word())
+	}
+	if clicked.page != keyed.page {
+		t.Fatalf("a click on the fold of `needs you` landed on %q and enter on it on %q",
+			clicked.page.word(), keyed.page.word())
+	}
+}
+
+// homeFoldDoor is the line of one panel's fold, where the fold is a door.
+func homeFoldDoor(t *testing.T, a *app, panel homePanelID) int {
+	t.Helper()
+	for at, line := range a.home.lines {
+		if line.cell != nil && line.cell.kind == cellFold && line.cell.panel == panel && line.stop() {
+			return at
+		}
+	}
+	t.Fatalf("the panel draws no fold that is a door:\n%s", homeText(a))
+	return -1
+}
+
+// HOME AND THE PLACES PAINT A SECTION WORD IN ONE INK. Screen 2a paints section
+// headings dim and the accent budget paints them muted, and home and the places
+// had each spelled their choice; the ink is one line now (placeprose.go's
+// [placeHeadingInk]), so every heading on home opens with exactly the ink
+// [placeHeading] opens a place's section word with. The panel holding the
+// cursor wears the cursor's ground over its heading and is left out.
+func TestHomesHeadingsWearThePlacesHeadingInk(t *testing.T) {
+	a := newSwitchLab(t).open(120, 45)
+	a.pal = newTestPalette()
+	lines, _, _, _ := a.homeFrame(a.width, a.height)
+	frame := strings.Join(lines, "\n")
+	inked := placeHeading("x", a.pal.onPlaces())
+	open := inked[:strings.Index(inked, "x")]
+	if open == "" {
+		t.Fatal("the test palette paints a heading with no ink at all")
+	}
+	marked, _ := a.home.cursorPanel()
+	for _, slot := range homePanelOrder {
+		if slot.panel.id() == marked {
+			continue
+		}
+		if !strings.Contains(frame, open+slot.word) {
+			t.Fatalf("the %q heading is not painted in the places' heading ink", slot.word)
+		}
+	}
 }

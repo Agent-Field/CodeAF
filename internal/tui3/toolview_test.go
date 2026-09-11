@@ -466,7 +466,7 @@ func TestASuccessfulBashLineSaysNothingExtra(t *testing.T) {
 	if want := railLast + "bash go test ./internal/tui3"; line != want {
 		t.Fatalf("the line is %q, want exactly %q", line, want)
 	}
-	for _, forbidden := range []string{"✓", "✗", "exit", "·"} {
+	for _, forbidden := range []string{glyphDone, glyphBad, "exit", "·"} {
 		if strings.Contains(line, forbidden) {
 			t.Fatalf("a quiet success drew %q: %q", forbidden, line)
 		}

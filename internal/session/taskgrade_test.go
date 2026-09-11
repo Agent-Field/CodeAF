@@ -49,14 +49,14 @@ func newGradeNest(t *testing.T, client Completer) *gradeNest {
 
 // settle admits one node, tells it what the check said, and lands it — which is
 // the whole of a node's life as far as the store is concerned.
-func (n *gradeNest) settle(t *testing.T, title, model string, verdict provider.Verdict, repairs int, state TaskState) *TaskNode {
+func (n *gradeNest) settle(t *testing.T, title, model string, verdict provider.Reading, repairs int, state TaskState) *TaskNode {
 	t.Helper()
 	return n.settleWith(t, title, model, verdict, repairs, state, nil)
 }
 
 // settleWith is the same with one hand on the node's own bill and clock, which
 // a test that reads the record itself needs and no other test cares about.
-func (n *gradeNest) settleWith(t *testing.T, title, model string, verdict provider.Verdict, repairs int, state TaskState, prepare func(*TaskNode)) *TaskNode {
+func (n *gradeNest) settleWith(t *testing.T, title, model string, verdict provider.Reading, repairs int, state TaskState, prepare func(*TaskNode)) *TaskNode {
 	t.Helper()
 	id := n.graph.reserve()
 	n.graph.admit(id, taskSpec{title: title, named: true, brief: "b", acceptance: "a", model: model})
@@ -126,7 +126,7 @@ func findEntry(entries []router.Entry, model, kind string) (router.Entry, bool) 
 func TestASettledTaskShowsUpInTheRatingsAforgeModelsReads(t *testing.T) {
 	nest := newGradeNest(t, &scriptedCompleter{})
 
-	nest.settle(t, "tests for the rail", "cheap/model", provider.VerdictVerifiedSuccess, 1, TaskDone)
+	nest.settle(t, "tests for the rail", "cheap/model", provider.ReadingVerifiedSuccess, 1, TaskDone)
 
 	entries := nest.entries(t)
 	if len(entries) == 0 {
@@ -153,7 +153,7 @@ func TestTheGradedRecordCarriesTheModelKindOutcomeRetriesCostAndDuration(t *test
 
 	// A settled node's bill and its age are the graph's own facts, and the record
 	// must carry the graph's rather than take a second measurement of its own.
-	nest.settleWith(t, "the eleven adapters", "cheap/model", provider.VerdictSemanticFailure, 2, TaskFailed,
+	nest.settleWith(t, "the eleven adapters", "cheap/model", provider.ReadingSemanticFailure, 2, TaskFailed,
 		func(node *TaskNode) {
 			node.ending = TaskEndingRefused
 			node.cost = 0.42
@@ -187,7 +187,7 @@ func TestTheGradedRecordCarriesTheModelKindOutcomeRetriesCostAndDuration(t *test
 	if row.Retries != 2 {
 		t.Fatalf("the record says %d retries, want the 2 repair rounds the check spent", row.Retries)
 	}
-	if row.Verdict != provider.VerdictSemanticFailure {
+	if row.Verdict != provider.ReadingSemanticFailure {
 		t.Fatalf("the record carries the verdict %q, want the check's own answer", row.Verdict)
 	}
 	if row.Cost != 0.42 {
@@ -212,7 +212,7 @@ func TestANodeResolvedLaterCorrectsTheRowItAlreadyWrote(t *testing.T) {
 	if entries := nest.entries(t); len(entries) != 0 {
 		t.Fatalf("work nobody could check moved a rating: %v", entries)
 	}
-	node.checkSaid(provider.VerdictVerifiedSuccess, 0)
+	node.checkSaid(provider.ReadingVerifiedSuccess, 0)
 	nest.graph.resettle(node, TaskDone)
 
 	rows := nest.rows(t)
@@ -253,8 +253,8 @@ func TestGradingASettledNodeSpendsNoModelCall(t *testing.T) {
 	nest.graph.report = nil
 	nest.graph.mu.Unlock()
 
-	nest.settle(t, "tests for the rail", "cheap/model", provider.VerdictSemanticFailure, 1, TaskFailed)
-	nest.settle(t, "tests for the composer", "cheap/model", provider.VerdictVerifiedSuccess, 0, TaskDone)
+	nest.settle(t, "tests for the rail", "cheap/model", provider.ReadingSemanticFailure, 1, TaskFailed)
+	nest.settle(t, "tests for the composer", "cheap/model", provider.ReadingVerifiedSuccess, 0, TaskDone)
 	// The read side too: what the divider asks the store before it assigns a tier.
 	nest.graph.grades.saysCareful("cheap/model", taskKindOf("tests for the rail"))
 
@@ -324,7 +324,7 @@ func seedRejections(profile, model, title string, times int) {
 	for i := 0; i < times; i++ {
 		grades.keep(taskGradeRecord{
 			Model: model, Kind: taskKindOf(title), Outcome: "not accepted",
-			Verdict: provider.VerdictSemanticFailure, Session: "seed", Node: uint64(i + 1),
+			Verdict: provider.ReadingSemanticFailure, Session: "seed", Node: uint64(i + 1),
 		})
 	}
 }
@@ -379,7 +379,7 @@ func TestAKindThatKeepsHoldingStaysOnTheCheapTier(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		grades.keep(taskGradeRecord{
 			Model: "test/model", Kind: taskKindOf("tests for the rail"), Outcome: "landed",
-			Verdict: provider.VerdictVerifiedSuccess, Session: "seed", Node: uint64(i + 1),
+			Verdict: provider.ReadingVerifiedSuccess, Session: "seed", Node: uint64(i + 1),
 		})
 	}
 	nest := gradedDivideNest(t, profile)
@@ -518,7 +518,7 @@ func TestWithNoProfileTheLoopIsAbsentRatherThanBroken(t *testing.T) {
 		t.Fatal("a blank profile directory built a store")
 	}
 	var absent *taskGrades
-	absent.keep(taskGradeRecord{Model: "m", Kind: "k", Verdict: provider.VerdictVerifiedSuccess})
+	absent.keep(taskGradeRecord{Model: "m", Kind: "k", Verdict: provider.ReadingVerifiedSuccess})
 	if absent.saysCareful("m", "k") {
 		t.Fatal("a store nobody has says work needs the careful tier")
 	}

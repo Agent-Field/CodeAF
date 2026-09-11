@@ -6,15 +6,15 @@ import (
 
 // Wrapping styled text.
 //
-// blocks.Wrap wraps a string; prose has to wrap a SEQUENCE OF STYLED RUNS,
-// because a sentence can change style in the middle of a word — `**re**factor`
-// is one word and two styles, and breaking it at the style boundary would put a
-// line ending in "re" on screen. So the unit here is the word, a word is a
-// []piece, and the wrapper only ever looks at style to decide what the
-// separating space should be painted as.
+// Prose has to wrap a SEQUENCE OF STYLED RUNS because a sentence can change
+// style in the middle of a word — `**re**factor` is one word and two styles,
+// and breaking it at the style boundary would put a line ending in "re" on
+// screen. So the unit here is the word, a word is a []piece, and the wrapper
+// only ever looks at style to decide what the separating space should be
+// painted as.
 //
-// The algorithm is greedy, like blocks', for the same reason: greedy wrapping
-// is the only rule under which appending text cannot rewrite an earlier row,
+// The algorithm is greedy because that is the only rule under which appending
+// text cannot rewrite an earlier row,
 // which is what makes a streaming reply cheap to redraw. This package does not
 // stream today — it renders a whole document — but a wrapper that could not
 // stream would be the thing standing in the way when it does.

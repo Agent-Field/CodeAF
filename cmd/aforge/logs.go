@@ -402,7 +402,7 @@ func callLogLine(record calllog.Record, answered bool, now time.Time) string {
 		if answered {
 			outcome = "sent"
 		}
-		fields = append(fields, deadlineOf(record), outcome)
+		fields = append(fields, rescueAtOf(record), outcome)
 		return strings.Join(compactFields(fields), "  ")
 	}
 	fields = append(fields, arrowOf(record))
@@ -415,12 +415,43 @@ func callLogLine(record calllog.Record, answered bool, now time.Time) string {
 	if record.TTFTms > 0 {
 		fields = append(fields, "first token "+shortDuration(time.Duration(record.TTFTms)*time.Millisecond))
 	}
-	fields = append(fields, deadlineOf(record), record.Finish)
+	fields = append(fields, rescueAtOf(record), record.Finish)
 	if record.Error != "" {
 		fields = append(fields, record.Error)
 	}
 	if record.EmptyAtCeiling {
 		fields = append(fields, "empty at the ceiling")
+	}
+	// AND THE ROW NOBODY ON THE PATH WROTE says so. It is the one row on the
+	// line that is a defect in the record rather than a fact about a call, and a
+	// reader counting attempts has to be able to see which of them are these
+	// (internal/calllog's Ended).
+	if ended := strings.TrimSpace(record.Ended); ended != "" {
+		fields = append(fields, "closed: "+ended)
+	}
+	// WHAT ACTUALLY ENDED IT, beside what was planned. `rescue at` above is when
+	// a second machine was going to be considered and it ends nothing; this is
+	// the bound that really cut the attempt, and it is absent on the great
+	// majority of rows, which ended for reasons of their own.
+	if word := strings.TrimSpace(record.AppliedWord); word != "" {
+		cut := "cut: " + word
+		if record.AppliedMs > 0 {
+			cut += " at " + shortDuration(time.Duration(record.AppliedMs)*time.Millisecond)
+		}
+		fields = append(fields, cut)
+	}
+	// AND AN ARM THAT LOST A RACE IS NOT A FAILURE. Its error says `context
+	// canceled` like a call somebody walked away from, and without this word a
+	// reader of this line cannot tell the two apart.
+	if record.Exhaust {
+		fields = append(fields, "lost the race")
+	}
+	// WHAT THE PROVIDER ITSELF ASKED FOR. A refusal that named a comeback time
+	// is the only refusal this build may answer with the same bytes to the same
+	// machine, so the figure it named is the one thing a reader has to be able
+	// to check a repeated send against (internal/calllog's RetryAfterS).
+	if record.RetryAfterS > 0 {
+		fields = append(fields, "come back in "+shortDuration(time.Duration(record.RetryAfterS*float64(time.Second))))
 	}
 	// WHAT THE MONEY BOUGHT, IN BOTH HALVES. The record has carried
 	// prompt_tokens and completion_tokens since it was written; this line spent
@@ -475,15 +506,20 @@ func laneOf(record calllog.Record) string {
 	}
 }
 
-// deadlineOf is when a second request was going to be considered, from the
+// rescueAtOf is when a second request was going to be considered, from the
 // belief held at send time. It is on the line because a hedge that fired is
-// only half the story: the calls whose deadline was set and never reached are
-// what say the deadline was set in the right place.
-func deadlineOf(record calllog.Record) string {
-	if record.DeadlineMs <= 0 {
+// only half the story: the calls whose ceiling was set and never reached are
+// what say it was set in the right place.
+//
+// IT DOES NOT SAY "DEADLINE", and it used to. Nothing ends a call when this
+// moment passes — it is when a rescue starts being priced — so the word made
+// every healthy long call read as one that had run past its own bound
+// (internal/calllog's HazardCeilingMs says what that cost the census).
+func rescueAtOf(record calllog.Record) string {
+	if record.HazardCeilingMs <= 0 {
 		return ""
 	}
-	return "deadline " + shortDuration(time.Duration(record.DeadlineMs)*time.Millisecond)
+	return "rescue at " + shortDuration(time.Duration(record.HazardCeilingMs)*time.Millisecond)
 }
 
 // hedgeFields is what was done about a silence, and what it cost. Almost every

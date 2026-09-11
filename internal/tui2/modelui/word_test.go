@@ -37,7 +37,7 @@ func TestEffortReadsOnlyTheClosedSet(t *testing.T) {
 		{"openai/gpt-oss-120b:low", "low"},
 		{"openai/gpt-oss-120b:off", "off"},
 		// Everything else is a variant, not an effort. ":free" is the one that
-		// would put a lie on the chip if the set were open.
+		// would put a lie on the model row if the set were open.
 		{"meta/llama:free", ""},
 		{"meta/llama:online", ""},
 		{"anthropic/claude-sonnet-4", ""},

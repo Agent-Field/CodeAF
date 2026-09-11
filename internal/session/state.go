@@ -703,11 +703,18 @@ const trackDescription = "Record one piece of working state a compaction must no
 // is filling that field in, which is where a rule about the field belongs.
 const trackSchemaJSON = `{"type":"object","properties":{"text":{"type":"string","description":"The record, one short line"},"kind":{"type":"string","enum":["belief","progress"],"description":"belief = true now; progress = a subgoal opened, unfinished"},"evidence":{"type":"string","description":"What actually RAN, e.g. 'bash: go test ./...'; never what was only said or planned"},"status":{"type":"string","enum":["open","blocked"],"description":"Progress only: open (default), or blocked on something else"}},"required":["text","kind","evidence"],"additionalProperties":false}`
 
-const commitDescription = "Close one record by id: a progress item becomes done, a belief no longer true goes stale and leaves."
+// AND THESE TWO ARE PLAIN CONTRACT (2026-09-10, the prompt diet). `commit` said
+// "a belief no longer true goes stale and leaves", which is a figure of speech
+// where a description owes a fact: a committed belief is marked stale and stops
+// being rendered by `recall` ([workState.commit], and [stateStatus.closed]).
+// `recall` said "so call it for an id or after one for the state you kept",
+// which is a WHEN-TO-REACH rule and belongs to the page's routing table rather
+// than to eighteen descriptions each keeping their own copy.
+const commitDescription = "Close one record by id: a progress item becomes done, a belief becomes stale and leaves recall."
 
 const commitSchemaJSON = `{"type":"object","properties":{"id":{"type":"string","description":"The id track returned, e.g. 'p2'"}},"required":["id"],"additionalProperties":false}`
 
-const recallDescription = "Your working state: beliefs, open subgoals, recently finished ones, and the ids commit takes. Survives a compaction verbatim, so call it for an id or after one for the state you kept."
+const recallDescription = "Your working state: beliefs, open subgoals, recently finished ones, and the ids commit takes. It survives a compaction verbatim."
 
 const recallSchemaJSON = `{"type":"object","properties":{},"additionalProperties":false}`
 

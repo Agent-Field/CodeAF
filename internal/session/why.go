@@ -43,20 +43,13 @@ func (a *Agent) Why() string {
 	asked := clip(strings.TrimSpace(messageContentText(a.messages[start])), whyLimit)
 	turn := a.messages[start+1:]
 
-	// Results are keyed by call id rather than read positionally: a batch's
-	// results are journaled in call order (loop.go), but reading them by
-	// position would put the wrong verdict beside a call the moment that changes.
-	results := make(map[string]string, len(turn))
-	for _, message := range turn {
-		if message.Role == "tool" && message.ToolCallID != "" {
-			results[message.ToolCallID] = messageContentText(message)
-		}
-	}
+	results := toolResults(turn)
 
 	var actions []string
 	for _, message := range turn {
-		for _, call := range message.ToolCalls {
-			if phrase := whyPhrase(call, results[call.ID]); phrase != "" {
+		for callIndex := range message.ToolCalls {
+			call := &message.ToolCalls[callIndex]
+			if phrase := whyPhrase(*call, results[call]); phrase != "" {
 				actions = append(actions, phrase)
 			}
 		}
