@@ -50,9 +50,13 @@ import (
 // also an ordinary round number, and the law then failed an unrelated spend
 // receipt and an unrelated context length for spelling it. A law that cries
 // wolf is worse than one with a stated blind spot. It is also blind to a figure
-// written in hex or in some other underscore grouping. The manual's own prose is
-// markdown and out of an AST law's reach, so it has a law of its own below:
-// [TestTheManualSaysTheGrantTheLoopApplies].
+// written in hex or in some other underscore grouping, and to the manual's own
+// prose, which is markdown and out of an AST law's reach — internal/manual's
+// TestEveryFigureAChatPageQuotesComesFromTheCodeThatOwnsIt already owns that
+// half, checking the sentence adaptive-runs.md writes the grant into against
+// `aforge exec --token-budget`'s default. A second law for the same claim was
+// written here and deleted: two gates on one figure is the drift this file
+// exists to stop, wearing a test's clothes.
 func TestTheLeafGrantIsSpelledOnce(t *testing.T) {
 	root := repoRoot(t)
 	watched := map[string]bool{}
@@ -102,56 +106,6 @@ func TestTheLeafGrantIsSpelledOnce(t *testing.T) {
 			})
 		})
 	}
-}
-
-// THE MANUAL STATES THE GRANT TO A PERSON, SO A RECALIBRATION REWRITES IT.
-//
-// internal/manual/chat/adaptive-runs.md tells a reader, in words, that a
-// headless run "stops when the run has spent 150,000 tokens". That is a fifth
-// spelling of the figure and the only one a person reads without opening the
-// source, and it is the one spelling [TestTheLeafGrantIsSpelledOnce] cannot
-// reach: markdown has no integer literals for a Go AST to find. It is also the
-// spelling that matters most when it rots, because the running chat answers
-// "how long does it run for?" out of this corpus — the model has no other
-// account of this program — so a stale figure here is not a stale comment, it
-// is the product telling somebody something untrue.
-//
-// The law is the plain one: the page must carry the CURRENT figure, grouped the
-// way prose groups a large number. A lane that moves [DefaultLeafTokens] sees
-// this go red and rewrites the sentence in the same change, which is what the
-// manual law in CLAUDE.md asks of every person-visible change anyway.
-//
-// It names one page on purpose rather than accepting the figure anywhere in the
-// corpus: a sweep that updated some pages and not others would pass a
-// corpus-wide check while leaving the page a reader is actually sent to. If the
-// sentence moves to another page, this law goes red and whoever moved it edits
-// the path here — one line, and the law keeps meaning what it says.
-func TestTheManualSaysTheGrantTheLoopApplies(t *testing.T) {
-	const page = "internal/manual/chat/adaptive-runs.md"
-	path := filepath.Join(repoRoot(t), filepath.FromSlash(page))
-	text, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("cannot read %s, so this law cannot see what it tells a person: %v", page, err)
-	}
-	figure := proseSpelling(DefaultLeafTokens)
-	if !strings.Contains(string(text), figure) {
-		t.Errorf("%s does not say %s anywhere, and it is the page that tells a person when a headless run stops\n"+
-			"the grant is exec.DefaultLeafTokens = %d now; rewrite the sentence that names it, because the "+
-			"running chat answers questions about this program out of that page and nowhere else",
-			page, figure, DefaultLeafTokens)
-	}
-}
-
-// proseSpelling is an integer the way a sentence writes one: digits in groups of
-// three, separated by commas. The manual writes 150,000 rather than 150000
-// because it is prose, and a law about prose has to look for what prose says.
-func proseSpelling(value int) string {
-	digits := strconv.Itoa(value)
-	grouped := digits
-	for at := len(digits) - 3; at > 0; at -= 3 {
-		grouped = grouped[:at] + "," + grouped[at:]
-	}
-	return grouped
 }
 
 // leafGrantWatched is where a spelling of the grant is a door restating a
