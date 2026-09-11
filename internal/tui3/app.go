@@ -3360,6 +3360,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// THE CONTEXT CHOOSER OWNS THE WHEEL WHILE IT IS UP, and it owns it over
 		// the WHOLE screen: the conversation under a modal is not live, so a wheel
 		// turned over it must move nothing at all (contextmodal.go).
+		if cmd, took := a.pickModalWheel(msg.Mouse().X, msg.Mouse().Y,
+			placeWheelDelta(msg.Mouse().Button)); took {
+			return a, cmd
+		}
 		if cmd, took := a.contextModalWheel(msg.Mouse().X, msg.Mouse().Y,
 			placeWheelDelta(msg.Mouse().Button)); took {
 			return a, cmd
@@ -3556,10 +3560,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// (contextmodal.go's [app.contextModalPress], which takes every press
 		// while the sheet is up and acts only on the sheet's own targets).
 		if msg.Mouse().Button == tea.MouseLeft {
+			if cmd, took := a.pickModalPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
 			if cmd, took := a.contextModalPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
-		} else if a.contextModalShowing() {
+		} else if a.pickModalShowing() || a.contextModalShowing() {
 			return a, nil
 		}
 		if a.hopShowing() {
@@ -3882,7 +3889,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// started: the press it would close was taken by the sheet, and letting
 		// this one through would end a sweep of a transcript nobody swept
 		// (contextmodal.go).
-		if a.contextModalShowing() {
+		if a.pickModalShowing() || a.contextModalShowing() {
 			return a, nil
 		}
 		if a.hopShowing() {
@@ -3911,7 +3918,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// place: [app.hoverTarget] already answers for the whole screen while the
 		// sheet is up, and this branch is what keeps a drag started under it from
 		// sweeping a transcript that is not live (contextmodal.go).
-		if a.contextModalShowing() {
+		if a.pickModalShowing() || a.contextModalShowing() {
 			a.setHover(msg.Mouse().X, msg.Mouse().Y)
 			return a, nil
 		}

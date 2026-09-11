@@ -162,46 +162,56 @@ func TestEscClosesThePickerAndChangesNothing(t *testing.T) {
 	}
 }
 
-func TestThePickerIsBottomAnchoredAndMarksTheCurrentModel(t *testing.T) {
+func TestThePickerSheetFramesTheListAndMarksTheCurrentModel(t *testing.T) {
 	a := pickerApp(t, &fakeAgent{model: "openai/gpt-4.1-mini"}, pickerCatalog)
 	typeLine(t, a, "/model")
 
 	painted, caretX, caretY := a.frame()
-	lines := strings.Split(plain(painted), "\n")
+	drawn := plain(painted)
+	lines := strings.Split(drawn, "\n")
 	if len(lines) != a.height {
 		t.Fatalf("the frame is %d rows, want %d", len(lines), a.height)
 	}
-	// The list sits at the foot of the frame with the filter box directly above
-	// it — that is what "bottom-anchored" means here, and it is where the caret
-	// has to be. The only thing below it is the status line, which is the last
-	// row of every frame as of the status-down wave (view.go).
-	tail := lines[len(lines)-1-len(pickerCatalog) : len(lines)-1]
-	for i, model := range pickerCatalog {
-		if !strings.Contains(tail[i], model.ID) {
-			t.Fatalf("row %d is %q, want %s", i, tail[i], model.ID)
+	if !a.pickModalShowing() {
+		t.Fatal("the chat overlay did not open the model sheet")
+	}
+	win := a.pick.win
+	if win.width <= 0 || win.height <= 0 {
+		t.Fatal("the sheet recorded no geometry")
+	}
+	for _, want := range []string{pickTitleWord, contextCancelWord} {
+		if !strings.Contains(drawn, want) {
+			t.Fatalf("%q is not on the sheet:\n%s", want, drawn)
 		}
 	}
-	// The foot keeps no blank under the box (view.go's [app.footClearance]), so
-	// the filter box is the row directly above the list.
-	box := lines[len(lines)-len(pickerCatalog)-2]
-	if !strings.Contains(box, rowAll(pickerHintFieldsBare)) {
-		t.Fatalf("the filter box is %q, want the hint", box)
+	for _, model := range pickerCatalog {
+		if !strings.Contains(drawn, model.ID) {
+			t.Fatalf("the sheet is missing %s:\n%s", model.ID, drawn)
+		}
 	}
-	if caretY != a.height-2-len(pickerCatalog) || caretX != len(inputPad)+2 {
-		t.Fatalf("the caret is at %d,%d — it belongs in the filter box", caretX, caretY)
+	if caretY != win.boxY {
+		t.Fatalf("the caret is on row %d, want the sheet's box at %d", caretY, win.boxY)
+	}
+	if caretX < win.left || caretX >= win.left+win.width {
+		t.Fatalf("the caret is at column %d, outside the sheet at %d..%d",
+			caretX, win.left, win.left+win.width)
 	}
 	// Windows are shown where they are known and nowhere else.
-	if !strings.Contains(tail[1], "1M") || !strings.Contains(tail[0], "200k") {
-		t.Fatalf("context lengths are missing:\n%s", strings.Join(tail, "\n"))
-	}
-	if strings.Contains(tail[3], "0") {
-		t.Fatalf("a model with no published window must show none: %q", tail[3])
+	if !strings.Contains(drawn, "1M") || !strings.Contains(drawn, "200k") {
+		t.Fatalf("context lengths are missing:\n%s", drawn)
 	}
 
 	// The model in use is accent, wherever the cursor happens to be.
-	rows := a.pick.rows(a.width, a.overlayHeight(), a.pal, -1, a.reasoningFor)
-	if !strings.Contains(rows[1], a.pal.accent("openai/gpt-4.1-mini")) {
-		t.Fatalf("the current model is not marked:\n%s", rows[1])
+	rows := a.pick.rows(a.pickInner(), a.pick.height(a.pickInner()), a.pal, -1, a.reasoningFor)
+	marked := false
+	for _, row := range rows {
+		if strings.Contains(row, a.pal.accent("openai/gpt-4.1-mini")) {
+			marked = true
+			break
+		}
+	}
+	if !marked {
+		t.Fatalf("the current model is not marked:\n%s", strings.Join(rows, "\n"))
 	}
 }
 

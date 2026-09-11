@@ -346,9 +346,7 @@ func (a *app) pickModalPress(x, y int) (tea.Cmd, bool) {
 		return nil, true
 	}
 	if y == win.cancelY && win.cancel.holds(x) {
-		a.pick.close()
-		a.touch()
-		return nil, true
+		return a.closePickSheet(), true
 	}
 	if y == win.boxY && x >= win.boxX {
 		// THE BOX TAKES A PRESS THE WAY THE DRAFT DOES: the caret lands under the

@@ -537,6 +537,8 @@ func TestAReadPathLeadsAndItsRangeRecedes(t *testing.T) {
 // motionAt is a pointer moving to one screen row.
 func motionAt(y int) tea.MouseMotionMsg { return tea.MouseMotionMsg{Y: y} }
 
+func motionAtXY(x, y int) tea.MouseMotionMsg { return tea.MouseMotionMsg{X: x, Y: y} }
+
 // screenRowOf finds the screen line one visible conversation row was drawn on.
 func screenRowOf(t *testing.T, a *app, want func(row) bool) int {
 	t.Helper()
@@ -667,33 +669,39 @@ func TestHoverReachesTheChoicesAndThePickerRows(t *testing.T) {
 		t.Fatalf("the hovered choices have no hover background: %q", offer)
 	}
 
-	// And the model picker.
+	// And the model picker — a framed sheet, so the pointer is answered by the
+	// sheet's own hit map rather than by chromeOverlay marks (pickmodal.go).
 	picked := pickerApp(t, &fakeAgent{model: "openai/gpt-4.1-mini"}, pickerCatalog)
 	picked.pal = newPalette(tokens.ANSI256, false)
 	typeLine(t, picked, "/model")
-	_, marks, _, _ = picked.chrome(picked.width)
-	_, height = picked.size()
-	rowY := -1
-	for i, mark := range marks {
-		if mark.kind == chromeOverlay && mark.index == 2 {
-			rowY = height - len(marks) + i
-		}
+	_ = frame(picked) // paint so pick.win is recorded
+	win := picked.pick.win
+	if win.bodyRows < 2 {
+		t.Fatalf("the sheet body is %d rows, want at least 2", win.bodyRows)
 	}
-	if rowY < 0 {
-		t.Fatal("the picker rows have no chrome marks")
-	}
-	drive(t, picked, motionAt(rowY))
-	if !picked.hoveringOverlay(2) {
+	// Light the FIRST screen line of the list — not the cursor's model — so the
+	// hover band is the only ground on that row (lifecycle_test's own reason).
+	rowY := win.bodyY
+	drive(t, picked, motionAtXY(win.bodyX+2, rowY))
+	if !picked.hoveringOverlay(0) {
 		t.Fatalf("the picker row did not answer the pointer: %v", picked.hot)
 	}
-	list := picked.overlayRows(picked.width, picked.overlayHeight())
-	if !strings.Contains(list[2], background) {
-		t.Fatalf("the hovered picker row has no hover background: %q", list[2])
+	list := overlayBlock(picked)
+	if !strings.Contains(list[0], background) {
+		t.Fatalf("the hovered picker row has no hover background: %q", list[0])
 	}
 	for i, line := range list {
-		if i != 2 && strings.Contains(line, background) {
+		if i != 0 && i != 1 && strings.Contains(line, background) {
+			// A two-line phone row may light both halves of the same hit; anything
+			// past that is a neighbour.
 			t.Fatalf("row %d is hovered too: %q", i, line)
 		}
+	}
+	// On a wide frame the first model is one line; on a phone frame both halves
+	// of that row light. Either way the second model must stay dark.
+	if len(list) > 2 && strings.Contains(list[2], background) &&
+		!strings.Contains(plain(list[0]), plain(list[2])) {
+		t.Fatalf("a neighbour row lit under the pointer: %q", list[2])
 	}
 }
 

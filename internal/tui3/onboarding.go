@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -615,7 +617,11 @@ func (a *app) setupModelChoices() []Model {
 	}
 	find := strings.ToLower(strings.TrimSpace(a.setup.modelFind))
 	if find == "" {
-		return models
+		// WITH NOTHING TYPED, HABIT LEADS — the same `used lately` ordering the
+		// shared picker draws (pickerspend.go). First-run is still a thin list
+		// of five slots, but the models you have actually paid for sit at the
+		// top so the form and `/model` do not disagree about who you run.
+		return a.promoteSetupUsed(models)
 	}
 	out := make([]Model, 0, len(models))
 	for _, model := range models {
@@ -626,6 +632,46 @@ func (a *app) setupModelChoices() []Model {
 			out = append(out, model)
 		}
 	}
+	return out
+}
+
+// promoteSetupUsed puts fortnight spenders first on the first-run model list,
+// dearest first — the same habit signal `/model`'s `used lately` section uses.
+// A machine with no priced ledger returns the catalog unchanged (emptiness law).
+func (a *app) promoteSetupUsed(models []Model) []Model {
+	if len(models) < 2 {
+		return models
+	}
+	lines, ok := a.usageSince(session.LastDays(a.now(), pickerSpendDays).From)
+	if !ok || len(lines) == 0 {
+		return models
+	}
+	win := session.LastDays(a.now(), pickerSpendDays)
+	spend := map[string]float64{}
+	for _, line := range lines {
+		if !(line.USD > 0) || !win.Holds(session.UsageLineDay(line)) {
+			continue
+		}
+		key := spendModelKey(line.Model)
+		spend[key] += line.USD
+	}
+	if len(spend) == 0 {
+		return models
+	}
+	out := append([]Model(nil), models...)
+	sort.SliceStable(out, func(i, j int) bool {
+		left := spend[spendModelKey(out[i].ID)]
+		right := spend[spendModelKey(out[j].ID)]
+		switch {
+		case left > 0 && right <= 0:
+			return true
+		case left <= 0 && right > 0:
+			return false
+		case left != right:
+			return left > right
+		}
+		return false
+	})
 	return out
 }
 

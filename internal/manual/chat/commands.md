@@ -863,18 +863,21 @@ memories are dropped with `/forget`.
 
 ## /model — pick a model
 
-`/model` with nothing after it opens the model picker: a filter box in the input line's
-place with a short list of models under it. It is bottom-anchored, so the conversation
-shrinks above it and nothing pops up over what you were reading. Pressing the model's
-name on the legend line above the box opens the same picker.
+`/model` with nothing after it opens the model picker as a framed sheet over the
+conversation: title **choose model**, a filter box inside the sheet, the list under
+it, and **esc · cancel** on the foot. The conversation behind it stays visible but
+faded, and nothing underneath can be touched until you choose or cancel. Pressing the
+model's name on the legend line above the box opens the same sheet. Inside a task's
+room the sheet titles itself **choose task model**.
 
 `/model <slug>` switches straight to that slug: no list, no confirmation, and no check
 that the slug exists in any list. If the slug is in no known list, the context window is
 left alone.
 
 The list itself has two sections when this machine has run anything in the last
-fortnight: **`used lately`** above **`all models`**. Models you have actually run sit in
-the first; the rest stay in the second. A dim chip on a used row can read
+fortnight: **`used lately`** above **`all models`** (each heading can carry a count,
+like `used lately · 4`). Models you have actually run sit in the first; the rest stay
+in the second. A dim chip on a used row can read
 `this fortnight $12 · 2.1M` (money and tokens for that model on this machine); either
 half drops when absent, and a quiet model carries no chip.
 
@@ -892,14 +895,16 @@ Moving in the picker: type to filter; ↑ / ctrl+p and ↓ / ctrl+n move; pgup/p
 12; left, right, home, end, ctrl+u and ctrl+w edit the filter. **ctrl+t** walks the
 reasoning effort of the model under the cursor through
 `auto → low → medium → high → xhigh → max → auto`, which is the same walk a task's own
-thinking control takes. enter switches.
+thinking control takes. enter switches. A first click on a row moves the cursor; a
+second click on the same row confirms, the way the settings panel already does.
 
 **→ or tab on a model opens its lanes and walks the cursor into them**, onto the pinned
 lane or `auto`; enter pins, ← or tab walks back out. *Lanes → Pinning one lane yourself*
 has the rest.
 
-esc leaves and changes **nothing** — your half-typed draft, the model in use and the
-frame all come back as they were. The filter is forgotten when the picker closes.
+esc (or the foot's **esc · cancel**) leaves and changes **nothing** — your half-typed
+draft, the model in use and the frame all come back as they were. The filter is forgotten
+when the picker closes.
 
 The cursor opens on the model in use, which is also the marked row, so enter with nothing
 typed confirms rather than changes. Emptying the filter with ctrl+u puts it back there.
@@ -1454,7 +1459,8 @@ seat one.**
 /crew
 ```
 
-opens the six-seat reading, bottom-anchored like the model picker. From the top:
+opens the six-seat reading, bottom-anchored like the crew chooser always has been.
+From the top:
 
 ```
 the five models aforge uses on its own behalf — not the one you chat with

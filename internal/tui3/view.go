@@ -375,6 +375,17 @@ func (a *app) frameBody() (string, int, int) {
 			return strings.Join(lines, "\n"), caretX, caretY
 		}
 	}
+	// AND THE MODEL PICKER OVER THE WHOLE OF IT (pickmodal.go). Same covering
+	// shape as the context chooser below: the conversation is composed and then
+	// faded, so a person choosing a model can still see the message they were
+	// writing — and cannot touch it. It is asked before the context chooser
+	// because the two are never up together, and the model sheet is the one
+	// /model and the status word open.
+	if a.pickModalShowing() {
+		under, _, _ := a.chatFrameLines(width, height)
+		lines, caretX, caretY := a.pickModalOver(under, width, height)
+		return strings.Join(lines, "\n"), caretX, caretY
+	}
 	// AND THE CONTEXT CHOOSER OVER THE WHOLE OF IT (contextmodal.go). It is the
 	// LAST of these because it is the only one that keeps what is underneath on
 	// the screen: the conversation is composed exactly as it would have been and

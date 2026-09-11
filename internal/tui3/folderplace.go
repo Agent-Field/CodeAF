@@ -327,6 +327,11 @@ func (a *app) openContextPick(query string, folders bool) tea.Cmd {
 			return nil
 		}
 	}
+	// TWO COVERING SHEETS MUST NOT STACK (pickmodal.go). Closing the model
+	// sheet here is the twin of [app.openPicker] closing the folder sheet.
+	if a.pick.open {
+		a.pick.close()
+	}
 	// Home has its own composer. Reveal the conversation's browser without
 	// changing the unsent draft suspended underneath that page.
 	a.closeHome()

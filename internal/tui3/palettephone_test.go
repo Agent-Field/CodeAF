@@ -40,9 +40,18 @@ func phonePicker(t *testing.T, width int) *app {
 	return a
 }
 
-// overlayBlock is the open list as the frame draws it, in the rows the frame
-// reserved for it — the two numbers this whole slice has to keep in step.
+// overlayBlock is the open list as the frame draws it. The chat model sheet
+// frames its rows itself (pickmodal.go); every other overlay still lives in
+// the chrome slot answered by [app.overlayHeight].
 func overlayBlock(a *app) []string {
+	if a.pick.open {
+		hover := -1
+		if a.hot.kind == hoverOverlay {
+			hover = a.hot.index
+		}
+		n := a.pick.height(a.pickInner())
+		return a.pick.rows(a.pickInner(), n, a.pal, hover, a.reasoningFor)
+	}
 	return a.overlayRows(a.width, a.overlayHeight())
 }
 
@@ -159,20 +168,22 @@ func TestThePointerOverEitherLineLightsTheWholeRow(t *testing.T) {
 
 // ── the block ───────────────────────────────────────────────────────────────
 
-// THE LIST IS EXACTLY AS TALL AS IT SAID IT WOULD BE. The frame subtracts that
-// number from the conversation before the list is drawn ([app.overlayHeight]),
-// so a block that came back short would leave the frame short of the terminal.
+// THE LIST IS EXACTLY AS TALL AS IT SAID IT WOULD BE. The sheet hands that
+// number to [picker.rows] (pickmodal.go); a block that came back short would
+// leave dead air inside the frame.
 func TestThePhoneOverlayFillsTheRowsItReserved(t *testing.T) {
 	for _, width := range []int{phoneWidth, 52, 60, 80, 120} {
 		a := phonePicker(t, width)
-		if want, got := a.overlayHeight(), len(overlayBlock(a)); want != got {
+		want := a.pick.height(a.pickInner())
+		if got := len(overlayBlock(a)); want != got {
 			t.Fatalf("at %d columns the list reserved %d rows and drew %d", width, want, got)
 		}
 		// And the same once the cursor has walked to the bottom of the list.
 		for range phoneCatalog {
 			drive(t, a, key("down"))
 		}
-		if want, got := a.overlayHeight(), len(overlayBlock(a)); want != got {
+		want = a.pick.height(a.pickInner())
+		if got := len(overlayBlock(a)); want != got {
 			t.Fatalf("at %d columns, cursor at the end: reserved %d, drew %d", width, want, got)
 		}
 	}
@@ -239,20 +250,24 @@ func TestThePhoneCursorRowFitsWholeAtTheWindowEdge(t *testing.T) {
 
 // ── the other tiers ─────────────────────────────────────────────────────────
 
-// EVERY OTHER TIER DRAWS EXACTLY WHAT IT ALWAYS DREW. The wide, standard and
-// narrow frames are asserted against [overlayRow] itself — the one-line law,
-// unchanged — byte for byte, escape sequences included.
+// EVERY OTHER TIER DRAWS EXACTLY WHAT IT ALWAYS DREW. The wide and standard
+// frames are asserted against [overlayRow] itself — the one-line law, unchanged
+// — byte for byte, escape sequences included. The sheet lays the list out at
+// its own inner width (pickmodal.go), so that is the width the want uses. A
+// 60-column terminal leaves the sheet under the phone floor, where the two-line
+// law already owns the rows (tested above).
 func TestTheWiderTiersAreByteIdenticalToTheOneLineLaw(t *testing.T) {
-	for _, width := range []int{120, 80, 60} {
+	for _, width := range []int{120, 80} {
 		a := phonePicker(t, width)
+		inner := a.pickInner()
 		lines := overlayBlock(a)
 		if len(lines) != len(phoneCatalog) {
 			t.Fatalf("at %d columns the list is %d rows for %d models", width, len(lines), len(phoneCatalog))
 		}
 		for i, line := range lines {
 			model := a.pick.all[a.pick.hits[i]]
-			label, note := a.pick.rowText(model, a.reasoningFor(model.ID), width)
-			want := overlayRow(label, note, i == a.pick.cursor, model.ID == a.pick.current, false, width, a.pal)
+			label, note := a.pick.rowText(model, a.reasoningFor(model.ID), inner)
+			want := overlayRow(label, note, i == a.pick.cursor, model.ID == a.pick.current, false, inner, a.pal)
 			if line != want {
 				t.Fatalf("at %d columns row %d changed:\n got %q\nwant %q", width, i, line, want)
 			}

@@ -97,17 +97,25 @@ No share card, no "wrapped", no social sentence. A year with nothing spent is th
 empty reading (`every chat and task is priced here as it runs`) — not a hollow grid of
 zeros.
 
-### 5. `/model` — `used lately`, the fortnight chip, `/model used`
+### 5. `/model` — framed sheet, `used lately`, the fortnight chip, `/model used`
 
 **Every door that opens the picker** grows the same two additions: `/model`, the status
 line's model word, a task's model control, the Providers tab's **your model** row, and
 the media slots that reuse the component. One picker type; no door is special-cased into
 having less.
 
+The chat door (`/model`, the status model word, a task's model control) opens as a
+**framed sheet** over a faded conversation — title `choose model` (or `choose task
+model`), filter box inside the sheet, list underneath, `esc · cancel` on the foot —
+the same covering grammar as the context chooser. Settings, home and the composer still
+embed the same picker type in their own bodies.
+
 1. **`used lately`** — a section above `all models`, holding the models this machine has
    actually run in the recent window (the ledger's last fortnight of priced lines),
-   dearest or most-recent first. A machine that has run nothing yet draws no section —
-   not an empty heading. The rest of the catalog stays under **`all models`**.
+   dearest or most-recent first. Headings may carry a count (`used lately · 4`). A
+   machine that has run nothing yet draws no section — not an empty heading. The rest of
+   the catalog stays under **`all models`**. The section holding the cursor marks its
+   own heading with cursor-step ground.
 2. **The fortnight spend chip** — dim, on the right of a `used lately` row (and on a row
    under `all models` when that model has spend in the fortnight). Shape:
 

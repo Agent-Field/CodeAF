@@ -1353,7 +1353,16 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 	p.follow(overlayItems(n-p.headLines(), width))
 	for at := p.top; at < len(p.list) && fill.room(); at++ {
 		if group := p.groupBefore(at); group != "" {
-			if !fill.plain(pal.dim(fit("  "+group, width))) {
+			label := p.sectionLabel(group)
+			painted := pal.dim(fit("  "+label, width))
+			// THE SECTION HOLDING THE CURSOR MARKS ITS OWN HEADING — design
+			// language's section-holding law. The text stays dim; only the
+			// ground steps up, so a heading never steals the accent from the
+			// row under the pointer.
+			if p.sectionOwns(group, at) {
+				painted = pal.cursor(painted, width)
+			}
+			if !fill.plain(painted) {
 				break
 			}
 		}
@@ -1380,6 +1389,66 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 		}
 	}
 	return fill.done()
+}
+
+// sectionLabel is a group heading with an optional count — `used lately · 4` —
+// so a person scanning the sheet can tell habit from catalog at a glance. A
+// count of zero is never drawn (emptiness law); ordinary service groups stay
+// uncounted because their size is the filter's job, not a habit reading.
+func (p *picker) sectionLabel(group string) string {
+	switch group {
+	case pickerUsedSectionWord, pickerAllSectionWord:
+		if n := p.sectionCount(group); n > 0 {
+			return group + " · " + itoa(n)
+		}
+	}
+	return group
+}
+
+// sectionCount is how many list rows sit under a used-lately / all-models
+// heading right now. Folded lane rows are not counted — they belong to a model
+// already counted above them.
+func (p *picker) sectionCount(group string) int {
+	if p == nil || len(p.hits) == 0 {
+		return 0
+	}
+	n := 0
+	for _, hit := range p.hits {
+		model := p.all[hit]
+		if model.Unavailable || model.Group != "" {
+			continue
+		}
+		_, used := p.spendOf(model.ID)
+		switch group {
+		case pickerUsedSectionWord:
+			if used {
+				n++
+			}
+		case pickerAllSectionWord:
+			if !used {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// sectionOwns reports whether the cursor sits under the heading drawn before
+// list index `headingAt` with the given group word — so that heading alone
+// takes the cursor-step ground.
+func (p *picker) sectionOwns(group string, headingAt int) bool {
+	if p == nil || p.cursor < headingAt || headingAt < 0 || headingAt >= len(p.list) {
+		return false
+	}
+	if p.groupBefore(headingAt) != group {
+		return false
+	}
+	for at := headingAt + 1; at <= p.cursor && at < len(p.list); at++ {
+		if g := p.groupBefore(at); g != "" {
+			return false
+		}
+	}
+	return true
 }
 
 // pinnedLane is the MACHINE this conversation is held to, and empty for every
@@ -1784,6 +1853,12 @@ func (p *picker) keysHint() string {
 // any other, and every slot says which models may answer it (settings.go's
 // [filterFor]).
 func (a *app) openPicker() {
+	// TWO COVERING SHEETS MUST NOT STACK. The context chooser and this one each
+	// own the whole pointer map; leaving both open would leave one faded under
+	// the other with nowhere for its keys to go.
+	if a.folder.open {
+		a.folder.close()
+	}
 	a.pick.startFor(a.modelList(), a.model, chatModel)
 	// THE PIN IS A SNAPSHOT, exactly as the model in use is: it is what marks a
 	// row inside an open fold, and what the row in use says `via`, and neither
@@ -1820,6 +1895,9 @@ func (a *app) openPickerFiltered(query string) {
 // stated reason: the cursor sits on what you are on, so enter confirms rather
 // than changes. In here what you are on is what the task is running.
 func (a *app) openTaskPicker(id uint64) {
+	if a.folder.open {
+		a.folder.close()
+	}
 	current := ""
 	if node := a.tasks[id]; node != nil {
 		current = firstNonEmpty(node.nextModel, node.model)
@@ -2040,7 +2118,7 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) tea.Cmd {
 	var cmd tea.Cmd
 	switch msg.String() {
 	case "esc":
-		a.pick.close()
+		return a.closePickSheet()
 
 	case "enter":
 		chosen, ok := a.pick.choice()
@@ -2065,7 +2143,7 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) tea.Cmd {
 			}
 			a.applyLaneChoice(chosen.ID, row, lanes)
 			a.touch()
-			return nil
+			return tea.ClearScreen
 		}
 		if ok {
 			// One list, two subjects, decided where the list was opened: a node when
@@ -2077,6 +2155,8 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) tea.Cmd {
 				a.switchModel(chosen.ID, chosen.ContextLength)
 			}
 		}
+		a.touch()
+		return tea.ClearScreen
 
 	// The reasoning cycle sits above the filter's default branch on purpose: it
 	// is the one key here that is not about the list, and it changes the row
@@ -2100,6 +2180,17 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	a.touch()
 	return cmd
+}
+
+// closePickSheet is the one way out of the chat overlay's model sheet — esc,
+// the foot's cancel target, and a confirm. The sheet covers rather than
+// replaces, so the ordinary frame revealed after it closes often has rows
+// shorter than the sheet; a full repaint is what undraws the layer
+// (folderplace.go's [app.closeFolderSheet] states the same law for the twin).
+func (a *app) closePickSheet() tea.Cmd {
+	a.pick.close()
+	a.touch()
+	return tea.ClearScreen
 }
 
 // navigate is EVERY KEY THE PICKER OWNS that is not a decision: the walk, the
@@ -2212,7 +2303,10 @@ func (a *app) overlayHeight() int {
 	commands := false
 	switch {
 	case a.pick.open:
-		want = a.pick.height(width)
+		// THE CHAT OVERLAY IS A SHEET NOW (pickmodal.go), not bottom chrome.
+		// Its list lives inside the frame over a faded conversation; leaving it
+		// in this switch would draw a second list under the draft as well.
+		return 0
 	case a.crewPick.open:
 		want = a.crewPick.height()
 	case a.effPick.open:
@@ -2269,7 +2363,8 @@ func (a *app) overlayRows(width, n int) []string {
 	}
 	switch {
 	case a.pick.open:
-		return a.pick.rows(width, n, a.pal, hover, a.reasoningFor)
+		// Framed in pickmodal.go; nothing belongs in the chrome slot.
+		return nil
 	case a.crewPick.open:
 		return a.crewPick.rows(width, n, a.pal, hover, a)
 	case a.effPick.open:

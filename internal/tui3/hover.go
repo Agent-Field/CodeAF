@@ -401,6 +401,13 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	if a.pasteEdit.open {
 		return hoverAt{}
 	}
+	// THE MODEL SHEET ANSWERS FOR THE WHOLE SCREEN while it is up, and it is
+	// asked before every other target for the reason the context chooser is: it
+	// is a layer, not a row, and a conversation brightening under a modal would
+	// be the surface offering a door it has closed (pickmodal.go).
+	if at, ok := a.pickModalHover(x, y); ok {
+		return at
+	}
 	// THE CONTEXT CHOOSER ANSWERS FOR THE WHOLE SCREEN while it is up, and it is
 	// asked before every other target for the reason the switcher above is: it is
 	// a layer, not a row, and a conversation brightening under a modal would be

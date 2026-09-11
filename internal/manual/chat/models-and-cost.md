@@ -65,9 +65,11 @@ If the task's work is being checked when you press, there is no next turn left t
 the pick is saved for the next run and the row keeps naming the model the work actually
 ran on. The room shows `next model <id>` while that choice is held.
 
-The picker is a filter box in the input line's place with a short list of models under it.
-It is bottom-anchored: the conversation shrinks above it, so nothing pops up over what you
-were reading.
+The picker `/model` opens is a framed sheet over the conversation: title **choose
+model**, a filter box inside the sheet, the ranked list under it, and **esc · cancel**
+on the foot. The conversation behind it stays visible but faded. Settings, home and
+the composer embed the same list in their own bodies — one picker type, one ranking,
+one `used lately` section wherever you open it.
 
 Choosing a model does four things: the model is set on the session, the machine running
 the session learns that model's context window for compaction, a note appears reading
@@ -1973,16 +1975,20 @@ frame naming the window the arrows move.
 The model picker has two sections when this machine has priced any model call in the last
 fortnight:
 
-- **`used lately`** — the models you have actually run, drawn above the rest
+- **`used lately`** — the models you have actually run, drawn above the rest (the
+  heading can read `used lately · 4` when there are four)
 - **`all models`** — the full list the picker already showed
 
 A machine that has not run anything yet draws no `used lately` heading at all — not an
 empty block. The cursor still opens on the model in use. Typing still filters; hits in
-`used lately` stay above hits in `all models`.
+`used lately` stay above hits in `all models`. The section under the cursor marks its
+own heading with the same quiet ground the rest of the surface uses for a held section.
 
 **Every door opens the same picker**, so the sections appear wherever you got here:
-`/model`, the model word on the status line, a task's model control, the **your model**
-row on the Providers tab, and the media slots that reuse this list.
+`/model` (the framed **choose model** sheet), the model word on the status line, a
+task's model control, the **your model** row on the Providers tab, and the media slots
+that reuse this list. On first-run setup the thin model list still leads with the same
+habit order when nothing is typed.
 
 ## the fortnight spend chip on a model row — this fortnight $12 · 2.1M
 

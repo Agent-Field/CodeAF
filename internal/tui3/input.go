@@ -1518,14 +1518,9 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 	if a.rew.on {
 		return a.rewindBar(width), 0, 0
 	}
-	if a.pick.open {
-		// THE HINT IS FITTED BY THE FITTER AND NOT BY THE ELLIPSIS. The room is
-		// what [draftBlockWithTags] will compute for it — the width less the
-		// prompt, since the picker's box takes no lead — so the keys go whole,
-		// from the right, on a frame too narrow for all of them (rowfit.go).
-		return draftBlock(&a.pick.filter, a.pal, width, 1,
-			a.pick.hintAt(width-ansi.StringWidth(prompt)), "")
-	}
+	// THE MODEL SHEET OWNS ITS OWN FILTER BOX (pickmodal.go). Leaving a second
+	// box in the draft's place would be the old bottom-chrome gesture fighting
+	// the framed sheet drawn over it.
 	if a.at(pageMemory) {
 		if a.mem.edit != nil {
 			return draftBlock(a.mem.edit, a.pal, width, 1, memoryEditHint, "")

@@ -100,4 +100,10 @@ func TestUsedSectionHeading(t *testing.T) {
 	if got := p.groupBefore(0); got != pickerUsedSectionWord {
 		t.Fatalf("groupBefore(0) = %q, want %q", got, pickerUsedSectionWord)
 	}
+	if got := p.sectionLabel(pickerUsedSectionWord); got != pickerUsedSectionWord+" · 1" {
+		t.Fatalf("sectionLabel(used) = %q, want a count of one", got)
+	}
+	if got := p.sectionLabel(pickerAllSectionWord); got != pickerAllSectionWord+" · 1" {
+		t.Fatalf("sectionLabel(all) = %q, want a count of one", got)
+	}
 }
