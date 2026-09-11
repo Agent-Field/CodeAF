@@ -54,6 +54,11 @@ func TestTheLifetimeKeyCyclesAndTheAnswerCarriesIt(t *testing.T) {
 	// The settle guard is spent first: a key that lands before the frame has
 	// been on screen long enough was aimed at whatever was there before it.
 	lab.tick(questionSettle)
+	// AND THE HAND IS ON THE QUESTION BEFORE A LETTER IS. A press with nobody on
+	// the block belongs to the box — the law every printable key on this surface
+	// is held to — so the walk comes first, which is also how a person reaches
+	// this key: they are already looking at the answers.
+	lab.press("down")
 	lab.press(questionScopeKey)
 	if got := questionScopeNow(lab.a.questions[0]); got != session.ScopeProject {
 		t.Fatalf("one press reached %q, not `for this project`", got)
