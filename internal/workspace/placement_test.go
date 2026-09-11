@@ -275,13 +275,13 @@ func TestPlacedListsOnlyWhatIsPlacedDirectlyInTheFolder(t *testing.T) {
 	if err := s.Add(ctx, alpha.ID, filed); err != nil {
 		t.Fatal(err)
 	}
-	if got, more, err := s.Placed(ctx, alpha.ID, 0, 10); err != nil || more || !reflect.DeepEqual(got, []Ref{work}) {
+	if got, more, err := s.Placed(ctx, alpha.ID, PlacedWindow{Limit: 10}); err != nil || more || !reflect.DeepEqual(got, []Ref{work}) {
 		t.Fatalf("placed in Alpha: %+v, %v, %v", got, more, err)
 	}
-	if got, more, err := s.Placed(ctx, top.ID, 0, 10); err != nil || more || !reflect.DeepEqual(got, []Ref{{Kind: CollectionKind, ID: alpha.ID}}) {
+	if got, more, err := s.Placed(ctx, top.ID, PlacedWindow{Limit: 10}); err != nil || more || !reflect.DeepEqual(got, []Ref{{Kind: CollectionKind, ID: alpha.ID}}) {
 		t.Fatalf("placed in Company: %+v, %v, %v", got, more, err)
 	}
-	if _, _, err := s.Placed(ctx, "deadbeef", 0, 10); !errors.Is(err, ErrNotFound) {
+	if _, _, err := s.Placed(ctx, "deadbeef", PlacedWindow{Limit: 10}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("a missing folder answered %v", err)
 	}
 	// A WINDOW IS CUT IN KEY ORDER AND SAYS WHETHER MORE FOLLOWS. Five things
@@ -301,14 +301,25 @@ func TestPlacedListsOnlyWhatIsPlacedDirectlyInTheFolder(t *testing.T) {
 		want          []Ref
 		more          bool
 	}{{0, 2, all[:2], true}, {2, 2, all[2:4], true}, {4, 2, all[4:], false}, {9, 2, []Ref{}, false}, {0, 0, []Ref{}, true}} {
-		if got, more, err := s.Placed(ctx, beta.ID, w.offset, w.limit); err != nil || more != w.more || !reflect.DeepEqual(got, w.want) {
+		if got, more, err := s.Placed(ctx, beta.ID, PlacedWindow{Skip: w.offset, Limit: w.limit}); err != nil || more != w.more || !reflect.DeepEqual(got, w.want) {
 			t.Fatalf("the window %d+%d read %+v more=%v (%v), want %+v more=%v", w.offset, w.limit, got, more, err, w.want, w.more)
 		}
 	}
-	if _, _, err := s.Placed(ctx, beta.ID, -1, 2); !errors.Is(err, ErrInvalid) {
+	if _, _, err := s.Placed(ctx, beta.ID, PlacedWindow{Skip: -1, Limit: 2}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("a negative window answered %v", err)
 	}
-	rows, err := s.db.QueryContext(ctx, "EXPLAIN QUERY PLAN "+placedQuery, alpha.ID, 11, 0)
+	// A CURSOR STARTS STRICTLY AFTER THE KEY IT NAMES, and a placement written
+	// below it between two reads does not move the next page.
+	if got, more, err := s.Placed(ctx, beta.ID, PlacedWindow{After: all[1], Limit: 2}); err != nil || !more || !reflect.DeepEqual(got, all[2:4]) {
+		t.Fatalf("after %v read %+v more=%v (%v), want %+v", all[1], got, more, err, all[2:4])
+	}
+	if err := s.AddPlacement(ctx, beta.ID, Ref{Kind: StandingKind, ID: "item-0"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _, err := s.Placed(ctx, beta.ID, PlacedWindow{After: all[1], Limit: 2}); err != nil || !reflect.DeepEqual(got, all[2:4]) {
+		t.Fatalf("a placement below the cursor moved the page to %+v (%v)", got, err)
+	}
+	rows, err := s.db.QueryContext(ctx, "EXPLAIN QUERY PLAN "+placedQuery, alpha.ID, "standing", "f15796736d0826e5", "", 11, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +333,9 @@ func TestPlacedListsOnlyWhatIsPlacedDirectlyInTheFolder(t *testing.T) {
 		}
 		plan = append(plan, detail)
 	}
-	if len(plan) != 1 || !strings.HasPrefix(plan[0], "SEARCH placements USING ") || !strings.Contains(plan[0], "(collection_id=?)") {
+	// A range seek on the key from the cursor, and no sort (a sort would be a
+	// second plan row).
+	if len(plan) != 1 || !strings.HasPrefix(plan[0], "SEARCH placements USING ") || !strings.Contains(plan[0], "(collection_id=? AND (kind,ref_id,session_id)>(?,?,?))") {
 		t.Fatalf("the placed read's plan is %q", plan)
 	}
 }
