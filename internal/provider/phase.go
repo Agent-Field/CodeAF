@@ -409,6 +409,27 @@ func (p *phaseClock) enter(phase Phase, detail string) {
 	if p.phase == phase {
 		return
 	}
+	// AND THE WRITING MAY NOT TAKE THE WORD BACK FROM [PhaseBelowPace], because
+	// they are the same state and one of them is the true sentence about it.
+	//
+	// A stream below its pace IS writing — that is what makes it different from
+	// a silence — so the next token it produces arrives here and, without this,
+	// re-enters [PhaseWriting] and the judgement is gone. Measured while fixing
+	// #924: `answering slowly · nowhere faster` lasted exactly ONE token of the
+	// eighty-six seconds it was about, and the person went back to reading
+	// `writing` for the rest of it.
+	//
+	// IT LASTS AS LONG AS THE JUDGEMENT DOES, WHICH IS THIS ATTEMPT. The
+	// controller reports a below-pace wire once per controller and there is one
+	// controller per attempt ([streamWatch.attempt]), because nothing that
+	// happens inside an attempt makes "this wire is slow and there is nowhere
+	// faster" untrue. The next attempt opens on [PhaseConnecting] or
+	// [PhaseFirstWord] and clears it through this same door, as does a thought,
+	// a switch, a silence and the end of the answer — every phase except the one
+	// this stream was already in.
+	if p.phase == PhaseBelowPace && phase == PhaseWriting {
+		return
+	}
 	now := p.now()
 	p.phase, p.since, p.tokens = phase, now, 0
 	// A CONSEQUENCE BELONGS TO THE PHASE THAT EARNED IT. The hedge deadline is

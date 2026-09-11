@@ -33,9 +33,12 @@ import (
 //     alternative. A call with nowhere to go still has a ceiling, still reports
 //     and still writes down what it did.
 //  2. MANY ARMS, ONE PURSE. A question may become more than two requests. What
-//     bounds it is money — [lanes.Budget], asked before every arm — and
-//     [maxArms] as the absolute cap on one question, never a boolean that says
-//     a rescue has already been spent.
+//     bounds it is money — THIS CALL'S OWN ([control.Plan.SpendUSD], asked
+//     through [hedgeRace.affordsLocked] before every arm) — and [maxArms] as the
+//     absolute cap on one question, never a boolean that says a rescue has
+//     already been spent. It was a rolling process-wide allowance until
+//     2026-09-11 and that is the shape the purse must never take again: a count
+//     spread over twenty requests refuses by arrival order.
 //  3. THE PERSON HEARS ONE VOICE. Every arm streams, and one of them is ever
 //     the SPEAKER. The others' deltas are held, and are replayed only if one of
 //     them wins — after a plain notice, because text that was on the screen and
@@ -670,8 +673,11 @@ func (r *hedgeRace) act(from int, act control.Act) {
 		r.exhaust(from, act)
 		// A FIRST PROMPT STILL OWES THE DOOR even when no second arm can
 		// start. Saying nothing here is the 90s hang: the stream guard is
-		// the next thing that acts, and `/model` is never named.
+		// the next thing that acts, and `/model` is never named. The door is
+		// the NOTICE; the phase is [hedgeRace.theWait]'s either way, because a
+		// person reads the last word said and not the first.
 		if r.tellFirstPrompt("", quietWords(act.Silence), false) {
+			r.theWait(act)
 			return
 		}
 		r.tellTheWait(act)
@@ -710,9 +716,11 @@ func (r *hedgeRace) act(from int, act control.Act) {
 // written, because taking away the only machine there is would be worse than the
 // pace.
 //
-// AND THE PERSON IS TOLD. [PhaseBelowPace] is the word for a stream that is
-// writing too slowly to read with nowhere faster to send it, and it is said here
-// because this is the one place that knows both halves.
+// THE PERSON IS TOLD SOMEWHERE ELSE. [PhaseBelowPace] is the word for a stream
+// writing too slowly to read, and it is [hedgeRace.theWait]'s to say: this
+// function used to say it too and was then overwritten one statement later by
+// the phase [hedgeRace.tellTheWait] sets, so the person read the wrong sentence.
+// One mechanism per shape — the move is this function's, the word is not.
 func (r *hedgeRace) exhaust(from int, act control.Act) {
 	if r == nil || act.Reason != control.RateReason {
 		return
@@ -724,7 +732,6 @@ func (r *hedgeRace) exhaust(from int, act control.Act) {
 	if move := control.Next(r.plan, r.plan.Moves.List()); move.Kind == control.MoveMachine {
 		r.claimMove(served)
 	}
-	r.phase.belowPace("")
 }
 
 // armServed is the machine one arm's stream said was answering it, empty while
@@ -773,7 +780,31 @@ func (r *hedgeRace) affordsLocked(alt string) bool {
 	if r.plan.Purse == nil {
 		return true
 	}
-	return r.plan.Purse.Allows(r.estimateLocked(alt, r.expected), waitNow())
+	return r.plan.Purse.Allows(r.altPrice(alt), waitNow())
+}
+
+// altPrice is what THE PLAN says one more arm on this machine adds to the bill.
+//
+// IT IS THE NUMBER THE CONTROLLER ASKS THE PURSE WITH, and that is the whole
+// reason it is read off the plan rather than worked out again here.
+// [control.Alternative.Extra] is priced once, where the plan is built
+// (internal/lane's watch.go), from the frontier entry this race would send to;
+// [hazard.reachable] asks the purse with it before it decides whether there is a
+// move, and [hedgeRace.affordsLocked] asks the purse with it before the arm
+// leaves. One rail, one price, two readers — and two estimates for one bound is
+// how a rail and the decision in front of it come to disagree about what this
+// question can afford, which is the shape the deleted allowance had.
+//
+// A MACHINE THE PLAN NEVER NAMED HAS NO PRICE ON IT, and the frontier's own
+// estimate is the honest answer there rather than a refusal: that is the walk
+// past a refusal, which sends somewhere the controller was never offered.
+func (r *hedgeRace) altPrice(alt string) float64 {
+	for _, candidate := range r.plan.Alts {
+		if equalLane(candidate.Lane, alt) {
+			return candidate.Extra
+		}
+	}
+	return r.estimateLocked(alt, r.expected)
 }
 
 // hedge is another arm: paid for out of the call's own budget, to a machine
@@ -932,9 +963,13 @@ func (r *hedgeRace) tellFirstPrompt(alt, quiet string, rescuing bool) bool {
 		if strings.TrimSpace(alt) == "" {
 			r.phase.switching("/model", quiet)
 		}
-	} else {
-		r.phase.allSlow("")
 	}
+	// AND IT DOES NOT SAY THE WAIT'S OWN WORD. It used to set [PhaseAllSlow]
+	// here on the non-rescuing branch, which is the same word
+	// [hedgeRace.theWait] is about to choose and, whenever the wait was a live
+	// wire below its pace, the WRONG one — said second, so it is the one left on
+	// the screen. One decision, one place: this function owes the notice and the
+	// `/model` door, and the phase belongs to whoever knows why the wait exists.
 	if r.observer != nil {
 		r.observer(StreamEvent{Kind: StreamNotice, Delta: notice, Session: session})
 	}
@@ -1139,14 +1174,45 @@ func (r *hedgeRace) tellTheWait(act control.Act) {
 	already := r.reported
 	r.reported = true
 	r.mu.Unlock()
-	if already {
+	// THE ROW IS WRITTEN ONCE AND THE WORD IS NOT. What may not be repeated is
+	// the finish row's account of the FIRST thing that acted on this question —
+	// a second report overwriting it would lose the one the person waited
+	// through. The sentence on the screen is the opposite: it describes the wait
+	// that is happening NOW, so a wait whose character changes owes a new word.
+	// Behind the latch it was neither said again nor said at all, which is how a
+	// rate report that arrived after any earlier report left the person reading
+	// whatever the earlier one had said.
+	if !already {
+		r.report.note(func(report *HedgeReport) {
+			if report.action == "" {
+				report.action, report.silence, report.reason = actionWord(act.Kind), act.Silence, act.Reason
+			}
+		})
+	}
+	r.theWait(act)
+}
+
+// theWait is THE ONE PLACE THAT CHOOSES THE WORD for a wait nothing can be done
+// about, and there are two of them because there are two waits.
+//
+// A person reads the LAST thing said, not every thing said. Until 2026-09-11
+// this decision was made twice on one path — [hedgeRace.exhaust] said
+// [PhaseBelowPace] and then [hedgeRace.tellFirstPrompt] or [hedgeRace.tellTheWait]
+// said [PhaseAllSlow] over the top of it a statement later — so the sentence
+// left on the screen was `all lanes slow · still waiting` for a stream that was
+// visibly writing. That is the sentence [PhaseBelowPace] exists to replace, and
+// a test that scans every phase ever emitted cannot tell the two apart.
+//
+// THE REASON PICKS IT, because the reason is the difference. A rate report is a
+// wire that IS answering and answering too slowly to read, and there is text on
+// the screen to prove it; everything else that reaches here — a drift report, an
+// escalate, a silence with no lane left — is a wait with nothing arriving, which
+// is what `all lanes slow · still waiting` describes.
+func (r *hedgeRace) theWait(act control.Act) {
+	if act.Kind == control.Report && act.Reason == control.RateReason {
+		r.phase.belowPace("")
 		return
 	}
-	r.report.note(func(report *HedgeReport) {
-		if report.action == "" {
-			report.action, report.silence, report.reason = actionWord(act.Kind), act.Silence, act.Reason
-		}
-	})
 	r.phase.allSlow(r.waitWords(act))
 }
 
@@ -1503,9 +1569,12 @@ func (r *hedgeRace) emit(arm int, event StreamEvent) {
 //
 // IT READS THE SAME LANE THE WALK WILL CLAIM. A name in the frontier is not a
 // walk when the wire has since struck that lane, the arm cap is full, or the
-// purse will refuse its estimated cost. Affordable is only a reading here;
-// [hedgeRace.walk] still reserves the spend through [lanes.Budget.Allow] at the
-// moment it starts the arm.
+// purse will refuse its price. IT IS ONLY A READING, AND NOTHING RESERVES
+// ANYTHING. The purse asks and never spends ([lane.Spending]), so this reading
+// and the one [hedgeRace.walk] takes when it really starts the arm are the same
+// question asked twice at no cost — which is the single property the whole rail
+// now rests on, and the reason no question is ever charged for an arm it did
+// not send.
 //
 // THE WALK DELIBERATELY IGNORES r.refused. A refusal to fund a hedge against
 // slowness does not deny the rescue owed after a lane actually fails, which is

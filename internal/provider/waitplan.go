@@ -33,9 +33,10 @@ import (
 //
 // It is assembled here because this is the only place all of it is known at
 // once: the role, from the context; the belief, from the ledger; the lanes
-// worth going to, from the choice. None of it
-// is a decision — the plan says what is believed and what is allowed, and
-// `internal/lane/control` is the only thing that decides.
+// worth going to, from the choice; and what it may spend rescuing itself, from
+// the plan the role already carries. None of it is a decision — the plan says
+// what is believed and what is allowed, and `internal/lane/control` is the only
+// thing that decides.
 func (c *Client) planFor(ctx context.Context, choice lanes.Choice, model string, expected int) control.Plan {
 	now := waitNow()
 	// THE PLAN IS `internal/lane`'s ARITHMETIC AND IT IS BUILT THERE: the head

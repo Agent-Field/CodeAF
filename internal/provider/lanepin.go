@@ -15,11 +15,13 @@ import (
 // `lane.<slot>` row and the `lane.guard` row (internal/config's settings.go),
 // resolved once by the surface and handed down.
 //
-// IT IS A PROCESS-WIDE KNOB AND NOT A FIELD ON Config, for [SetHedgeBudget]'s
-// reason and one more. The reason it shares: the row is about a SESSION and not
-// about an adapter, and two clients in one process — the conversation's and a
-// tool loop's own — must not hold two different answers to "which machine did
-// they ask for". The reason of its own: the row is written WHILE THE PROCESS IS
+// IT IS A PROCESS-WIDE KNOB AND NOT A FIELD ON Config, for two reasons. The row
+// is about a SESSION and not about an adapter, and two clients in one process —
+// the conversation's and a tool loop's own — must not hold two different answers
+// to "which machine did they ask for". (The other process-wide knob this used to
+// cite, `SetHedgeBudget`, is deleted: what a call may spend rescuing itself is a
+// figure on its own plan now and not a switch anybody throws.) And the row is
+// written WHILE THE PROCESS IS
 // RUNNING, by the picker (internal/tui3's pinLane), and a pin that only took
 // effect at the next launch would be a promise this build did not keep. A
 // settings read per request would keep it too — at the cost of a disk read in

@@ -321,14 +321,28 @@ type Plan struct {
 	// unbounded. It is the second half of one budget: the deadline above bounds
 	// how long, and this bounds how much.
 	//
-	// IT IS DERIVED AND IT IS NOT A KNOB. A second of this call's wait is worth
-	// 1/λ dollars — [Plan.Lambda] is seconds per dollar, and it is the same
-	// conversion [hazard.cost] already makes when it prices an arm — and the
-	// longest wait this call can still have in front of it is its own patience.
-	// So the money it may spend buying that wait back is exactly what the wait is
-	// worth:
+	// IT IS DERIVED AND IT IS NOT A KNOB. The money a call may spend buying its
+	// wait back is what that wait is worth to whoever is waiting through it, and
+	// that is two factors: how long it may still be, and what one second of it is
+	// worth to them.
 	//
-	//	SpendUSD = GiveUp / λ
+	//	SpendUSD = GiveUp × (λ / AttentionValue) / AttentionValue
+	//
+	// [Plan.Lambda] is SECONDS PER DOLLAR — a dollar buys `AttentionValue`
+	// seconds of somebody's attention back — so the rate at the top of the scale
+	// is `1 / AttentionValue` dollars a second, and `λ / AttentionValue` is how
+	// much less this role's seconds are worth than that. A wait nobody is sitting
+	// through is worth a quarter of one somebody is, which is what
+	// `lane.UnattendedValue` says and all this reads off it.
+	//
+	// AND THE DISCOUNT MUST BE A MULTIPLIER, WHICH IS THE BUG IT WAS SHIPPED
+	// WITH. `GiveUp / λ` reads the same ratio upside down: the smaller λ of an
+	// unwatched call makes its seconds four times DEARER, so a conversation a
+	// person was reading got $1.00 to rescue itself and a background task node
+	// got $12.00 — the one rail in front of a rescue sized in the opposite order
+	// to who is waiting. `lane.spendable` carries the derivation and
+	// `lane.worth` is the arithmetic; the law that no watched second may be worth
+	// less than an unwatched one is beside them.
 	//
 	// Nothing else in this build states a per-call dollar ceiling, and a figure
 	// invented here would be a number nobody measured deciding what somebody's

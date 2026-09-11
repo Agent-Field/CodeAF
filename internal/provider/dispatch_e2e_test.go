@@ -176,9 +176,12 @@ func TestOneDeadlineBoundsEverything(t *testing.T) {
 // limits, and a healthy fourth the sheet doubts.
 //
 // WHAT IT ASSERTS IS WHAT THE PERSON GOT. Four sends, each machine asked once,
-// an answer, an ordinal they could count in, and NOT ONE router sentence on the
-// screen. On the binary this design was written against it was nine identical
-// sends to one machine over three minutes and then a turn that ended.
+// an answer, a `switching` line NAMING the machine it is walking to, and NOT ONE
+// router sentence on the screen. The ordinal belongs to the retry loop, which is
+// not what moved here: a walk between MACHINES says where it is going.
+//
+// On the binary this design was written against it was nine identical sends to
+// one machine over three minutes and then a turn that ended.
 func TestTheScreenshotScenarioAnswersThroughTheFourthMachine(t *testing.T) {
 	pool := &scriptedPool{
 		roster: []string{"DeepInfra", "Io Net", "Fireworks", "GMICloud"},

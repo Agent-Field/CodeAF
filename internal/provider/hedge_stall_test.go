@@ -144,10 +144,15 @@ func TestAWireBelowItsPaceWithNothingToSpendSaysSoAndIsSpent(t *testing.T) {
 	if got := rows[0].Refused; got != planCannotPay {
 		t.Fatalf("refused = %q, want %q — the rail that really refused", got, planCannotPay)
 	}
-	if _, ok := told.find(PhaseBelowPace); !ok {
+	// AND IT IS THE LAST WORD THAT IS ASSERTED, not one somewhere in the list.
+	// A phase said and then overwritten is a phase nobody read: this assertion
+	// was `told.find(PhaseBelowPace)` and it passed while [hedgeRace.exhaust]
+	// said `answering slowly` and the next statement said `all lanes slow` over
+	// the top of it. See [heard.settled].
+	if got := told.settled(); got != PhaseBelowPace {
 		for _, news := range told.all() {
 			t.Logf("PHASE %q detail=%q", news.Phase, news.Detail)
 		}
-		t.Fatal("a person watched an answer crawl and was never told it was crawling")
+		t.Fatalf("a person watching an answer crawl was left reading %q, want %q", got, PhaseBelowPace)
 	}
 }

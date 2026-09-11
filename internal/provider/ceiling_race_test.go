@@ -123,7 +123,7 @@ func TestARefusedCeilingClimbsTheLadderWhenThePurseFundsNoWalk(t *testing.T) {
 	}
 }
 
-// TestAWalkKeepsWalkingWhileTheModEL_HAS_ANOTHER_MACHINE is what the deleted
+// TestAWalkKeepsWalkingWhileTheModelHasAnotherMachine is what the deleted
 // purse used to hide.
 //
 // IT USED TO STOP AT ONE, AND THAT WAS A COUNT AND NOT A REASON. The walk was

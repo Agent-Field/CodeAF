@@ -600,7 +600,7 @@ func TestTheCallsOwnPatienceIsWhatItMaySpendRescuingItself(t *testing.T) {
 	now := time.Now()
 	for _, role := range []Role{RoleTalk, RoleLeafUnattended, RoleStanding} {
 		plan := PlanFor(Choice{}, Pace{}, role, now)
-		want := role.GiveUp().Seconds() / role.Lambda()
+		want := role.GiveUp().Seconds() * (role.Lambda() / AttentionValue) / AttentionValue
 		if math.Abs(plan.SpendUSD-want) > 1e-12 {
 			t.Fatalf("%s may spend $%.4f rescuing itself, want $%.4f", role, plan.SpendUSD, want)
 		}
@@ -613,6 +613,65 @@ func TestTheCallsOwnPatienceIsWhatItMaySpendRescuingItself(t *testing.T) {
 		if !plan.Purse.Allows(0.02, now) {
 			t.Fatalf("%s refused a two-cent rescue against a $%.4f allowance", role, plan.SpendUSD)
 		}
+	}
+}
+
+// TestNoWatchedSecondIsWorthLessThanAnUnwatchedOne is the ordering the shipped
+// derivation got backwards, and it is stated PER SECOND because that is where it
+// is true.
+//
+// WHAT WAS WRONG. `SpendUSD = GiveUp / λ` divided by a figure that is smaller
+// for a call nobody is watching, so an unwatched second came out four times
+// dearer than a watched one: `talk` was allowed $1.00 to rescue itself and
+// `leaf.unattended` $12.00, `standing` $24.00. The one rail in front of a rescue
+// was sized in the opposite order to who is waiting, which is the deleted
+// window's own defect — refusing the request that needed it — with the priority
+// reversed rather than removed.
+//
+// WHY THE LAW IS NOT "EVERY WATCHED ROLE AFFORDS MORE THAN EVERY UNWATCHED
+// ONE". Patience varies thirty-fold WITHIN each group — `recall` waits 18
+// seconds and `talk` ninety, `probe` 45 and `standing` nine minutes — so no
+// per-second price can make the totals order that way, and a price that did
+// would be saying a nine-minute wait is worth less than an eighteen-second one.
+// What a wait is worth is how long it is TIMES what a second of it is worth; the
+// second factor is the one exposure decides, and it is the one asserted here,
+// across every role in the table rather than the three that were noticed.
+func TestNoWatchedSecondIsWorthLessThanAnUnwatchedOne(t *testing.T) {
+	now := time.Now()
+	cheapestWatched, dearestUnwatched := math.Inf(1), 0.0
+	var cheapest, dearest Role
+	for role := range roles {
+		if !role.Known() {
+			continue
+		}
+		plan := PlanFor(Choice{}, Pace{}, role, now)
+		seconds := role.GiveUp().Seconds()
+		if seconds <= 0 {
+			t.Fatalf("%s gives up after no time at all", role)
+		}
+		perSecond := plan.SpendUSD / seconds
+		if role.Facts().Interactive {
+			if perSecond < cheapestWatched {
+				cheapestWatched, cheapest = perSecond, role
+			}
+			continue
+		}
+		if perSecond > dearestUnwatched {
+			dearestUnwatched, dearest = perSecond, role
+		}
+	}
+	if cheapestWatched < dearestUnwatched {
+		t.Fatalf("a second of %s (watched) is worth $%.6f and a second of %s (unwatched) $%.6f — the rail is sized in the opposite order to who is waiting",
+			cheapest, cheapestWatched, dearest, dearestUnwatched)
+	}
+	// AND THE PAIR THAT WAS MEASURED WRONG, named so a reader can see it: a
+	// conversation somebody is reading may never buy less of its own wait back
+	// than a task node nobody is sitting in front of.
+	talk := PlanFor(Choice{}, Pace{}, RoleTalk, now)
+	leaf := PlanFor(Choice{}, Pace{}, RoleLeafUnattended, now)
+	if talk.SpendUSD/RoleTalk.GiveUp().Seconds() < leaf.SpendUSD/RoleLeafUnattended.GiveUp().Seconds() {
+		t.Fatalf("talk values a second of its own wait at $%.6f and leaf.unattended at $%.6f",
+			talk.SpendUSD/RoleTalk.GiveUp().Seconds(), leaf.SpendUSD/RoleLeafUnattended.GiveUp().Seconds())
 	}
 }
 

@@ -787,7 +787,8 @@ func PlanFor(Choice, Pace, Role, time.Time) control.Plan
 func PaceOf(Belief) Pace
 func PaceFor(ID, time.Time) Pace
 func HeadOf(Choice) string
-func Spending(*Budget) control.Purse   // asks Affordable; the race counts at send
+func Spending(control.Plan) control.Purse // asks Plan.SpendUSD; asks and never spends
+func NoSpending() control.Purse           // the guard off: refuses everything
 func Thinks(model, rung string, now time.Time) control.Survival
 func NoteThought(model, rung string, took time.Duration, at time.Time)
 
@@ -1194,7 +1195,9 @@ for a change that can check every surface's reading of that event.
 
 - **It does not race every lane on every request.** Three to five arms is three
   to five times the bill for a p50 the hedge already captures at about 2%.
-  The purse is what bounds arms, and it is deliberately tight.
+  `maxArms` is what bounds arms, and since 2026-09-11 it is the ONLY thing that
+  counts them. The purse bounds MONEY, out of the call's own budget, and in
+  practice it refuses only an arm dearer than the whole wait it would buy back.
 - **It does not add a second escalation ladder.** `Escalate` hands the wait to
   the one that exists. A controller that changed a model would be answering a
   person's question with a model nobody chose for it.

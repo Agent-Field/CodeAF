@@ -53,6 +53,28 @@ func (h *heard) story() []Phase {
 	return out
 }
 
+// settled is the LAST phase a person was left reading, empty when nothing was
+// said at all.
+//
+// IT IS A DIFFERENT QUESTION FROM [heard.find], and the difference is the whole
+// point of having both. `find` answers "was this ever said", which a phase set
+// and then overwritten a microsecond later satisfies perfectly — that is exactly
+// how `answering slowly` passed a test while every person saw `all lanes slow`
+// (the 2026-09-11 review of #924). A claim about what somebody READ has to be a
+// claim about the last word.
+// The empty phase [phaseClock.done] ends every story with is not a sentence
+// anybody reads — it is the clock stopping — so the last WORD is the last
+// non-empty one.
+func (h *heard) settled() Phase {
+	story := h.story()
+	for i := len(story) - 1; i >= 0; i-- {
+		if story[i] != "" {
+			return story[i]
+		}
+	}
+	return ""
+}
+
 // find is the first news in a phase, and whether there was one.
 func (h *heard) find(phase Phase) (PhaseNews, bool) {
 	for _, news := range h.all() {
