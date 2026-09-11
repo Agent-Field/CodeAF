@@ -83,7 +83,6 @@ func (a *app) questionPanelRows(q questionShown, width int) []string {
 		title:     a.questionPanelTitle(q, width),
 		aside:     a.questionPanelAside(q, width),
 		keys:      a.questionKeyRow(q, questionKeysOnTier(keys, keyPrimary), frameEdgeRoom(width)),
-		keysAside: a.questionPanelClock(q, width),
 	}
 	out, _ := panel.draw(a.pal, width, rows)
 	// THE FRAME'S TOP EDGE IS A ROW, and every band the body recorded is one row
@@ -228,6 +227,24 @@ func (a *app) questionPanelContext(q questionShown, room int) []string {
 // are what the panel is for.
 const questionPanelReasonRows = 2
 
+// questionPanelTool is the name of the tool a permission is about, read off the
+// transcript's own row for the call so the panel and the row cannot name it two
+// ways. It is empty for every question that is not about a call.
+func (a *app) questionPanelTool(q questionShown) string {
+	if q.question.Subject.Kind != session.SubjectCall {
+		return ""
+	}
+	at := a.questionSubjectAt(q.question)
+	if at < 0 || at >= len(a.entries) || a.entries[at].kind != entryTool {
+		return strings.TrimSpace(q.question.Subject.Name)
+	}
+	name, _ := toolWords(a.entries[at].tool, a.entries[at].text)
+	if name = strings.TrimSpace(plainText(name)); name != "" {
+		return name
+	}
+	return strings.TrimSpace(q.question.Subject.Name)
+}
+
 // questionPanelCall is the command this question is about, where it is about
 // one: the transcript's own words for the row, so the panel and the row cannot
 // become two accounts of one call.
@@ -259,33 +276,40 @@ func (a *app) questionPanelTitle(q questionShown, width int) string {
 	return a.questionMarkFor(q.question) + " " + a.pal.ink(fit(head, max(frameEdgeRoom(width)-2, 1)))
 }
 
-// questionPanelAside is the top edge's right: who is asking.
+// questionPanelAside is the top edge's right: what is asking, and how the
+// silence is being held.
 //
-// THE CLOCK IS THE OTHER ASIDE AND IT IS ON THE BOTTOM EDGE, because the top
-// edge's aside never changes while a person reads and a countdown does — a
-// number ticking beside the head would pull the eye off the question itself.
+// A PERMISSION NAMES ITS TOOL THERE (consent pick B): the title says what it
+// wants in a person's words, and the tool's own name is the second fact beside
+// it. Anything else names who is asking, as a verb — `model asks`, not `model`.
+//
+// THE CLOCK IS AN ASIDE AND NEVER A KEY (hints pick A): it follows who is asking,
+// on the top edge, so the bottom edge carries only the keys that answer. It is
+// the first thing the edge gives up when it is narrow, because it is the last
+// words of the aside and the aside goes before the title does.
 func (a *app) questionPanelAside(q questionShown, width int) string {
-	who := questionAskerWord(q.question.Asker)
+	who := a.questionPanelTool(q)
 	if who == "" {
-		return ""
+		if asker := questionAskerWord(q.question.Asker); asker != "" {
+			who = asker + questionAsksWord
+		}
 	}
-	return a.pal.dim(who + questionAsksWord)
+	clock := a.questionClockWord(q)
+	switch {
+	case who != "" && clock != "":
+		return a.pal.dim(who + questionKeyGap + clock)
+	case clock != "":
+		return a.pal.dim(clock)
+	case who != "":
+		return a.pal.dim(who)
+	}
+	return ""
 }
 
 // questionAsksWord is what the top edge says after whoever is asking. It is a
 // verb rather than a label because the edge is the asking: `model asks`, not
 // `model`.
 const questionAsksWord = " asks"
-
-// questionPanelClock is the bottom edge's right: how the silence is being held,
-// in [app.questionClockWord]'s own words.
-func (a *app) questionPanelClock(q questionShown, width int) string {
-	word := a.questionClockWord(q)
-	if word == "" {
-		return ""
-	}
-	return a.pal.dim(word)
-}
 
 // questionPanelOption is one answer's rows: the row itself, and — only while the
 // pointer is on it — what the asker said about it.
@@ -298,13 +322,15 @@ func (a *app) questionPanelOption(q questionShown, at int, option session.Answer
 		word = key
 	}
 	say := strings.TrimSpace(option.Consequence)
-	// A CHECKLIST'S ROWS CARRY THEIR TICKS, and the tick is what the row is
-	// about: `space` lands on the row the pointer is on and a digit toggles it.
+	// A CHECKLIST'S ROWS CARRY THEIR TICKS in a cell of their own between the
+	// key and the word, so the digit that toggles a row is still on it and the
+	// pointer still says where `space` lands — the old card let a tick stand in
+	// the pointer's cell, and a ticked row the pointer was on showed neither.
+	tick := ""
 	if q.holes.kind == session.InputChecklist {
+		tick = questionTickBlank
 		if at < len(q.holes.ticks) && q.holes.ticks[at] {
-			key = a.icon(tokens.GSettled)
-		} else {
-			key = questionTickBlank
+			tick = a.icon(tokens.GSettled)
 		}
 		focused = at == q.holes.focus
 	}
@@ -319,7 +345,7 @@ func (a *app) questionPanelOption(q questionShown, at int, option session.Answer
 		// the surface having chosen.
 		aside = a.pal.dim(questionSafeWord)
 	}
-	rows := []string{a.questionPanelRow(q, key, word, say, aside, pad, room, focused)}
+	rows := a.questionPanelRow(q, key, tick, word, say, aside, pad, room, focused)
 	if !focused {
 		return rows
 	}
@@ -327,8 +353,9 @@ func (a *app) questionPanelOption(q questionShown, at int, option session.Answer
 	// is the asker's pick — why the asker would take it. Every answer's whole
 	// case on every row would be a panel taller than the conversation under it,
 	// and the pointer is the person saying which one they are weighing.
-	indent := questionPanelGap + strings.Repeat(" ", questionPanelLead(pad, room)-len(questionPanelGap))
-	for _, line := range a.questionPanelUnder(q, at, option, room-questionPanelLead(pad, room)) {
+	lead := questionPanelLead(q.question, room)
+	indent := questionPanelGap + strings.Repeat(" ", lead-len(questionPanelGap))
+	for _, line := range a.questionPanelUnder(q, at, option, room-lead) {
 		rows = append(rows, indent+line)
 	}
 	return rows
@@ -339,9 +366,14 @@ func (a *app) questionPanelOption(q questionShown, at int, option session.Answer
 const questionTickBlank = " "
 
 // questionPanelLead is how many cells stand in front of an answer's word: the
-// panel's own gap, the pointer's cell and its space, the key and two spaces.
-func questionPanelLead(pad, room int) int {
-	return min(len(questionPanelGap)+2+questionKeyCell+2, room/2)
+// panel's own gap, the pointer's cell and its space, the key and two spaces —
+// and on a checklist the tick's cell and its space after the key.
+func questionPanelLead(q session.Question, room int) int {
+	lead := len(questionPanelGap) + 2 + questionKeyCell + 2
+	if q.Input.Kind == session.InputChecklist {
+		lead += 2
+	}
+	return min(lead, room/2)
 }
 
 // questionKeyCell is how wide an answer's key is drawn. One, because the engine
@@ -351,23 +383,71 @@ const questionKeyCell = 1
 
 // questionPanelRow lays one answer out: the pointer, the key, the word in its
 // column, what taking it produces, and the aside at the right edge.
-func (a *app) questionPanelRow(q questionShown, key, word, say, aside string, pad, room int, focused bool) string {
+//
+// AN ANSWER IS NEVER CUT. A label too long for one row wraps onto rows that
+// stand in the word's own column, and every one of them presses the same answer
+// (questionPanelBody records a band per row) — a label cut at the panel's edge
+// is an answer a person cannot read before taking it.
+func (a *app) questionPanelRow(q questionShown, key, tick, word, say, aside string, pad, room int, focused bool) []string {
 	mark := "  "
 	if focused {
 		mark = a.pal.warnBold(a.icon(tokens.GPointer)) + " "
 	}
 	lead := questionPanelGap + mark + a.pal.data(key) + "  "
-	leadWidth := questionPanelLead(pad, room)
-	label := word
+	if tick != "" {
+		// The tick is one of the question's marks, so it wears the amber the
+		// pointer does; an unticked row keeps the cell blank so the words keep
+		// their column.
+		lead = questionPanelGap + mark + a.pal.data(key) + " " + a.pal.warnBold(tick) + " "
+	}
+	leadWidth := questionPanelLead(q.question, room)
+	asideWidth := 0
+	if aside != "" {
+		asideWidth = ansi.StringWidth(ansi.Strip(aside)) + 2
+	}
+	ground := func(line string, used int) string {
+		if !focused {
+			return line
+		}
+		// THE EMPHASIS LAW, AND NOTHING ELSE: the ground steps up to `selected`
+		// and the leading mark turns. No ring, no second colour, no bolding
+		// spreading across the row.
+		return a.pal.background(line, room+2*len(questionPanelGap), a.pal.ramp.selected)
+	}
+	indent := strings.Repeat(" ", leadWidth)
+	lines := wrap(word, max(room-leadWidth-asideWidth, 8))
+	if len(lines) == 0 {
+		lines = []string{""}
+	}
+	if len(lines) > 1 {
+		// THE WRAPPED SHAPE HAS NO CONSEQUENCE COLUMN to keep: the answer's own
+		// words already run the width of the panel, so what taking it produces
+		// follows them on rows of its own rather than in a column that would be
+		// four cells wide.
+		out := make([]string, 0, len(lines)+2)
+		for i, line := range lines {
+			row := indent + a.pal.ink(line)
+			if i == 0 {
+				row = lead + a.pal.ink(line)
+				if aside != "" {
+					row += strings.Repeat(" ", max(room-leadWidth-ansi.StringWidth(line)-asideWidth, 1)+2) + aside
+				}
+			}
+			out = append(out, ground(row, room))
+		}
+		if say != "" {
+			for _, line := range wrap(say, max(room-leadWidth, 8)) {
+				out = append(out, ground(indent+a.pal.dim(line), room))
+			}
+		}
+		return out
+	}
+	label := lines[0]
 	if w := ansi.StringWidth(label); w < pad {
 		label += strings.Repeat(" ", pad-w)
 	}
 	line := lead + a.pal.ink(label)
-	used := leadWidth + max(ansi.StringWidth(word), pad)
-	asideWidth := ansi.StringWidth(ansi.Strip(aside))
-	if aside != "" {
-		asideWidth += 2
-	}
+	used := leadWidth + max(ansi.StringWidth(lines[0]), pad)
 	if say != "" && used+2+asideWidth < room {
 		line += a.pal.dim("  " + fit(say, room-used-2-asideWidth))
 		used += 2 + min(ansi.StringWidth(say), room-used-2-asideWidth)
@@ -375,13 +455,7 @@ func (a *app) questionPanelRow(q questionShown, key, word, say, aside string, pa
 	if aside != "" && used+asideWidth <= room {
 		line += strings.Repeat(" ", room-used-asideWidth+2) + aside
 	}
-	if !focused {
-		return line
-	}
-	// THE EMPHASIS LAW, AND NOTHING ELSE: the ground steps up to `selected` and
-	// the leading mark turns. No ring, no second colour, no bolding spreading
-	// across the row.
-	return a.pal.background(line, room+2*len(questionPanelGap), a.pal.ramp.selected)
+	return []string{ground(line, room)}
 }
 
 // questionPanelUnder is what stands under the focused answer: its body in the
@@ -435,7 +509,7 @@ func questionPickCase(q session.Question, key string) string {
 func (a *app) questionPanelOther(q questionShown, pad, room int) []string {
 	at := questionOtherAt(q.question)
 	if q.pick != at {
-		return []string{a.questionPanelRow(q, itoa(at+1), questionPanelOtherWord, "", "", pad, room, false)}
+		return a.questionPanelRow(q, itoa(at+1), "", questionPanelOtherWord, "", "", pad, room, false)
 	}
 	// THE ROW IS THE BOX. There is no mode to enter and nothing hidden behind a
 	// letter: the pointer arriving here is what opens it, `enter` sends what is
@@ -448,7 +522,7 @@ func (a *app) questionPanelOther(q questionShown, pad, room int) []string {
 		caret = questionOtherCaretASCII
 	}
 	line := lead + a.pal.dim(a.icon(tokens.GPromptChat)+" ") +
-		a.pal.ink(fit(typed, max(room-questionPanelLead(pad, room)-4, 4))) + a.pal.accent(caret)
+		a.pal.ink(fit(typed, max(room-questionPanelLead(q.question, room)-4, 4))) + a.pal.accent(caret)
 	if with := questionOtherWith(q); with != "" {
 		line += a.pal.dim("  " + with)
 	}

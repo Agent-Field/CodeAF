@@ -187,6 +187,11 @@ const (
 	// the two can never be true at once ([needWalk] is the confirmation kind,
 	// which carries neither).
 	needMoves
+	// needCompare is a question whose answers have something to lay against
+	// each other: the asker's dimensions, or the `+`/`−` lines the fallback
+	// reads ([questionAxes]). THE EMPTINESS LAW: `x` on a question with nothing
+	// to compare would open a table with no rows in it.
+	needCompare
 )
 
 // The keys, by the name each is referred to by. They are constants rather than
@@ -266,6 +271,25 @@ const (
 // on it, and let the person type. Nothing is cancelled, so the word may not say
 // cancelled.
 var questionKeys = []questionVerb{
+	// THE WALK COMES FIRST, because every drawing the owner picked reads its
+	// keys in the order a hand uses them: choose, then take it, then put it
+	// off (docs/design/questions/picked — `↑↓ choose · enter take it · esc
+	// later`). It is given up early all the same; the order is not the rank.
+	//
+	// THE POINTER'S KEYS ARE SPELLED THE WAY THE FORM LAYS ITS ANSWERS OUT:
+	// across on a line, down on a card. Both pairs walk on both.
+	// Both are given up early: the arrows work whether or not the row names
+	// them, and the band on the pointed answer already says there is a
+	// pointer — a row that kept `choose` and lost the line form for it would
+	// have spent the small shape on its own legend.
+	{key: questionWalkKey, word: "choose", forms: formsLine | formsRatify, needs: needWalk, tier: keyPrimary, giveUp: 2},
+	// AND THE ROOM SPELLS ITS WALK DOWNWARDS BECAUSE ITS ANSWERS STAND IN A
+	// COLUMN OF SECTIONS. It said `←→ choose` and neither key moved anything on
+	// it — the pair that walks its sections is `↑↓`, and the side arrows there
+	// open a section and fold it (questionroom.go). A row that names the keys
+	// that do nothing is worse than a row that names none: the owner pressed
+	// them, 2026-09-10, and reported "no arrow or click".
+	{key: questionWalkDownKey, word: "choose", forms: formsCard | formsRoom, needs: needWalk, tier: keyPrimary, giveUp: 2},
 	{key: questionEnterKey, word: "take it", forms: formsBlock | formsRoom | formsSheet, needs: needPick, tier: keyPrimary, giveUp: 1},
 	// THE SHEET'S TWO SIT WHERE A PERSON REACHES FOR THEM — beside `enter`,
 	// because answering a batch is open-one, answer, send — and only `g` is ever
@@ -282,26 +306,12 @@ var questionKeys = []questionVerb{
 	// and `esc` are the only keys that are not typing.
 	{key: questionEnterKey, word: "send it", forms: formsCard, needs: needOther, tier: keyPrimary},
 	{key: questionBackKey, word: "back to the list", forms: formsCard, needs: needOther, tier: keyPrimary},
-	{key: questionOpenKey, word: "open it", forms: formsLine | formsCard, needs: needRoom, giveUp: 3},
+	{key: questionOpenKey, word: "open full", forms: formsLine | formsCard, needs: needRoom, giveUp: 3},
 	{key: questionCommentKey, word: "change", forms: formsBlock | formsRoom, needs: needWords, giveUp: 5},
-	{key: questionCompareKey, word: "compare", forms: formsRoom, giveUp: 4},
+	{key: questionCompareKey, word: "compare", forms: formsRoom, needs: needCompare, giveUp: 4},
 	{key: questionAskBackKey, word: "ask back", forms: formsCard | formsRoom, needs: needWords, giveUp: 4},
 	{key: questionDecideKey, word: "you decide", forms: formsCard | formsRoom, needs: needHands, giveUp: 4},
 	{key: questionDialKey, word: "decide these from now on", forms: formsCard | formsRoom, needs: needDial, giveUp: 7},
-	// THE POINTER'S KEYS ARE SPELLED THE WAY THE FORM LAYS ITS ANSWERS OUT:
-	// across on a line, down on a card. Both pairs walk on both.
-	// Both are given up early: the arrows work whether or not the row names
-	// them, and the band on the pointed answer already says there is a
-	// pointer — a row that kept `choose` and lost the line form for it would
-	// have spent the small shape on its own legend.
-	{key: questionWalkKey, word: "choose", forms: formsLine | formsRatify, needs: needWalk, tier: keyPrimary, giveUp: 2},
-	// AND THE ROOM SPELLS ITS WALK DOWNWARDS BECAUSE ITS ANSWERS STAND IN A
-	// COLUMN OF SECTIONS. It said `←→ choose` and neither key moved anything on
-	// it — the pair that walks its sections is `↑↓`, and the side arrows there
-	// open a section and fold it (questionroom.go). A row that names the keys
-	// that do nothing is worse than a row that names none: the owner pressed
-	// them, 2026-09-10, and reported "no arrow or click".
-	{key: questionWalkDownKey, word: "choose", forms: formsCard | formsRoom, needs: needWalk, tier: keyPrimary, giveUp: 2},
 	// THE RULE OFFER IS THE LAST THING GIVEN UP AFTER THE WAY OUT, because it
 	// is the only key here that is on the row ONCE: the third same-shaped yes
 	// happens once, and a row that dropped it to keep `[c] change` would have
@@ -627,6 +637,9 @@ func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 		return q.question.Input.Kind == session.InputPairs
 	case needOptions:
 		return len(q.question.Options) > 0
+	case needCompare:
+		axes, _ := questionAxes(q.question)
+		return len(axes) > 0
 	case needMoves:
 		// A CONFIRMATION'S ARROWS ARE ITS CURSOR AND NOTHING ELSE ([needWalk]),
 		// which is stop.go's law: the cursor starts on the answer that loses

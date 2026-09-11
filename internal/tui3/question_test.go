@@ -416,27 +416,43 @@ func TestACardDrawsARowPerAnswerAndMarksTheAskersPick(t *testing.T) {
 		Stakes: session.StakesCostly,
 	})
 	rows := questionPlainRows(lab.rows())
-	if len(rows) != 5 {
+	// THE FRAME'S OWN TWO ROWS ARE THE FIRST AND THE LAST, the head is written
+	// into the top edge with who is asking beside it, and the keys into the
+	// bottom edge — so the drawing is the head, the asker's sentence, a blank,
+	// a row per answer, the pick's case under the pointer, a blank, the keys,
+	// and the quieter keys under the frame.
+	if len(rows) != 9 {
 		t.Fatalf("the card took %d rows:\n%s", len(rows), lab.screen())
 	}
-	if !strings.Contains(rows[0], "wants to start a task: rewrite the packer") {
-		t.Fatalf("the head is not the first row: %q", rows[0])
+	if !strings.Contains(rows[0], "wants to start a task: rewrite the packer") || !strings.Contains(rows[0], product) {
+		t.Fatalf("the head and who is asking are not the top edge: %q", rows[0])
 	}
-	if !strings.Contains(rows[1], "it will run on its own branch") || !strings.Contains(rows[1], product) {
-		t.Fatalf("the attribution row is wrong: %q", rows[1])
+	if !strings.Contains(rows[1], "it will run on its own branch") {
+		t.Fatalf("the asker's sentence is not under the head: %q", rows[1])
 	}
-	mark := tokens.Plain.Glyph(tokens.GCollapsed)
-	if !strings.Contains(rows[2], mark) || !strings.Contains(rows[2], "start it") {
-		t.Fatalf("the asker's pick is not marked: %q", rows[2])
+	// THE POINTER OPENS ON THE ASKER'S PICK AND THE PICK IS SAID IN A WORD.
+	// They are two marks with two meanings — `▸` is where enter lands, `◆
+	// recommended` is what the asker would take — and on this question they
+	// are on one row because the person has not moved yet.
+	pointer, pick := tokens.Plain.Glyph(tokens.GPointer), tokens.Plain.Glyph(tokens.GRecommended)
+	if !strings.Contains(rows[3], pointer) || !strings.Contains(rows[3], "start it") ||
+		!strings.Contains(rows[3], pick+" "+questionRecommendedWord) {
+		t.Fatalf("the asker's pick is not marked: %q", rows[3])
 	}
-	if strings.Contains(rows[3], mark) {
-		t.Fatalf("a second answer carries the pick mark: %q", rows[3])
+	if !strings.Contains(rows[4], "it starts on its own unless you say otherwise") {
+		t.Fatalf("the pick's case is not under the pointed row: %q", rows[4])
 	}
-	if !strings.Contains(rows[3], "nothing runs") {
-		t.Fatalf("the consequence is missing: %q", rows[3])
+	if strings.Contains(rows[5], pointer) || strings.Contains(rows[5], pick) {
+		t.Fatalf("a second answer carries a mark of the first: %q", rows[5])
 	}
-	if !strings.Contains(rows[4], "[enter] take it") {
-		t.Fatalf("the answers row does not offer enter: %q", rows[4])
+	if !strings.Contains(rows[5], "nothing runs") {
+		t.Fatalf("the consequence is missing: %q", rows[5])
+	}
+	if !strings.Contains(rows[7], "enter take it") || !strings.Contains(rows[7], "esc later") {
+		t.Fatalf("the bottom edge does not carry the keys that answer: %q", rows[7])
+	}
+	if !strings.Contains(rows[8], "c change") || strings.Contains(rows[7], "c change") {
+		t.Fatalf("the quieter keys are not the tier under the frame: %q / %q", rows[7], rows[8])
 	}
 }
 
@@ -1068,20 +1084,24 @@ func TestAChecklistAskedForAsALineIsACardWithARowPerAnswer(t *testing.T) {
 	if !strings.Contains(screen, "Turner, Hokusai") {
 		t.Fatalf("the note under the first answer is not drawn:\n%s", screen)
 	}
-	if !strings.Contains(screen, "5  Impressionism") || !strings.Contains(screen, "Impressionism                    suggested") {
+	// THE PICK IS A WORD AT THE RIGHT EDGE OF ITS ROW in every view, and a
+	// checklist's rows carry their tick in a cell between the key and the word,
+	// so the digit that toggles a row is still on it.
+	if !strings.Contains(screen, "5   Impressionism") ||
+		!strings.Contains(screen, tokens.GlyphRecommended+" "+questionRecommendedWord) {
 		t.Fatalf("the asker's pick is not said on its row:\n%s", screen)
 	}
-	if !strings.Contains(screen, tokens.GlyphCollapsed+" 1  Landscapes") {
+	if !strings.Contains(screen, tokens.GlyphPointer+" 1   Landscapes") {
 		t.Fatalf("the pointer does not start on the first row:\n%s", screen)
 	}
-	if strings.Contains(screen, "take the pick") || !strings.Contains(screen, "[tab] next row") {
+	if strings.Contains(screen, "take the pick") || !strings.Contains(screen, "tab next row") {
 		t.Fatalf("the key row is wrong for a checklist:\n%s", screen)
 	}
 	if strings.Contains(screen, "…") {
 		t.Fatalf("an answer was cut instead of given its own row:\n%s", screen)
 	}
 	for i, label := range labels {
-		if !strings.Contains(screen, itoa(i+1)+"  "+label) {
+		if !strings.Contains(screen, itoa(i+1)+"   "+label) {
 			t.Fatalf("answer %d is not on a row of its own:\n%s", i+1, screen)
 		}
 	}
@@ -1099,24 +1119,24 @@ func TestAChecklistAskedForAsALineIsACardWithARowPerAnswer(t *testing.T) {
 	lab.press("3")
 	lab.press("7")
 	screen = lab.plain()
-	if !strings.Contains(screen, tokens.GlyphSettled+" 3  Still life") || !strings.Contains(screen, tokens.GlyphSettled+" 7  History") {
+	if !strings.Contains(screen, "3 "+tokens.GlyphSettled+" Still life") || !strings.Contains(screen, "7 "+tokens.GlyphSettled+" History") {
 		t.Fatalf("the ticked rows do not wear their ticks:\n%s", screen)
 	}
 	if !strings.Contains(screen, "send what is ticked") {
 		t.Fatalf("the key row does not say enter sends:\n%s", screen)
 	}
 	lab.press("3")
-	if screen = lab.plain(); strings.Contains(screen, tokens.GlyphSettled+" 3  Still life") {
+	if screen = lab.plain(); strings.Contains(screen, "3 "+tokens.GlyphSettled+" Still life") {
 		t.Fatalf("a second press did not untick the row:\n%s", screen)
 	}
 	// A digit leaves the pointer on its row, tab walks it on, and space ticks
 	// where it stands.
 	lab.press("tab")
-	if screen = lab.plain(); !strings.Contains(screen, tokens.GlyphCollapsed+" 4  Abstract") {
+	if screen = lab.plain(); !strings.Contains(screen, tokens.GlyphPointer+" 4   Abstract") {
 		t.Fatalf("tab did not walk the pointer to the next row:\n%s", screen)
 	}
 	lab.press("space")
-	if screen = lab.plain(); !strings.Contains(screen, tokens.GlyphSettled+" 4  Abstract") {
+	if screen = lab.plain(); !strings.Contains(screen, "4 "+tokens.GlyphSettled+" Abstract") {
 		t.Fatalf("space did not tick the pointed row:\n%s", screen)
 	}
 	lab.press("space")
@@ -1142,7 +1162,9 @@ func TestALongAnswerWrapsOntoRowsThatPressTheSameAnswer(t *testing.T) {
 		},
 	})
 	screen := lab.plain()
-	if strings.Contains(screen, "…") {
+	// The only ellipsis a panel is allowed is the `something else…` row, which
+	// is an answer that OPENS rather than one that was cut.
+	if strings.Contains(strings.ReplaceAll(screen, questionPanelOtherWord, ""), "…") {
 		t.Fatalf("an answer was cut:\n%s", screen)
 	}
 	for _, piece := range []string{"1  Keep the sqlite file", "derived table", "one file, slower starts", "2  Postgres"} {
@@ -1176,8 +1198,15 @@ func TestThreePlainAnswersStillDrawAsOneRow(t *testing.T) {
 		Reason: "nobody has read it", Stakes: session.StakesReversible,
 		Options: []session.AnswerOption{{Key: "1", Label: "publish it"}, {Key: "2", Label: "hold it"}, {Key: "3", Label: "ask Sam"}},
 	})
-	if screen := lab.plain(); !strings.Contains(screen, "[1] publish it · [2] hold it · [3] ask Sam") {
+	// NO BRACKETS ANYWHERE ON THIS SURFACE ANY MORE: a key is the payload hue
+	// and its word is dim, on the row exactly as on the panel's edges.
+	screen := lab.plain()
+	if !strings.Contains(screen, tokens.GlyphPointer+"1 publish it") ||
+		!strings.Contains(screen, "2 hold it") || !strings.Contains(screen, "3 ask Sam") {
 		t.Fatalf("three plain answers left the line:\n%s", screen)
+	}
+	if strings.Contains(screen, "[1]") {
+		t.Fatalf("the row still spells its keys in brackets:\n%s", screen)
 	}
 }
 
