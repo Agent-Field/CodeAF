@@ -199,6 +199,10 @@ func (a *app) taskSheetBody(width, room int) []placeRow {
 	pane := a.taskPaneRows(width-left-ansi.StringWidth(railSeam), room)
 	seam := a.pal.dim(railSeam)
 	out := make([]placeRow, 0, len(rows))
+	// THE PANE IS SPENT FROM ITS OWN TOP, not from the body's. The head takes a
+	// row of the frame and none of the pane, so a pane indexed by the body's row
+	// would have its title drawn under the head and lost.
+	next := 0
 	for at, row := range rows {
 		list, _ := row.hit.(taskSheetHit)
 		if a.taskSheet.top+at == 0 {
@@ -209,9 +213,10 @@ func (a *app) taskSheetBody(width, room int) []placeRow {
 			continue
 		}
 		text, hit := "", taskPaneHit{}
-		if at < len(pane) {
-			text, hit = pane[at].text, pane[at].hit
+		if next < len(pane) {
+			text, hit = pane[next].text, pane[next].hit
 		}
+		next++
 		out = append(out, placeRow{
 			text: taskPanePad(row.text, left) + seam + text,
 			hit:  taskSplitHit{list: list, pane: hit},
@@ -418,11 +423,13 @@ const (
 	// already said what is being counted.
 	taskPaneMoreWord = " more"
 	// taskPaneOpenWord is what `enter` does from the list: the whole record card,
-	// with this row's report scrollable under it.
-	taskPaneOpenWord = "enter open"
+	// with this row's report scrollable under it. It is the WORD alone, because
+	// the key in front of it is drawn from [taskPaneVerb.key] like every other
+	// clause on the line.
+	taskPaneOpenWord = "open"
 	// taskPaneChatWord is that same key over a CONVERSATION's row, where it opens
 	// the conversation rather than a record.
-	taskPaneChatWord = "enter open the chat"
+	taskPaneChatWord = "open the chat"
 	// taskPaneWorkWord counts what one conversation asked for, and the money
 	// under it is what the whole of that came to.
 	taskPaneWorkWord = " piece of work"
