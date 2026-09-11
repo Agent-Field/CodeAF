@@ -305,6 +305,34 @@ type Belief struct {
 	// (825 of 1,010 in the three days to 2026-09-10).
 	Availability   Beta
 	AvailabilityAt time.Time
+	// Spread is how much ONE first token from this lane has been SEEN to move
+	// around what is believed about it, in nats of log-spread — zero on a lane
+	// nothing has been measured of, where the sheet's published dispersion
+	// ([ledger.Draw]) is the answer instead.
+	//
+	// IT IS NOT [Posterior.P] AND THE DIFFERENCE IS THE WHOLE POINT, which is
+	// the law [SpreadFloor] already states: P is the variance of the ESTIMATE
+	// and shrinks toward nothing after a few dozen observations, while how
+	// variable ONE DRAW is never shrinks below the lane's own variability. A
+	// machine that answers in a second half the time and in a minute the other
+	// half has a median nothing is unsure about and a tail that is the whole of
+	// what a person pays, and nothing on this type could say so.
+	//
+	// It is measured with the same three floats and the same pooled-and-floored
+	// law a thinking duration is ([chains.widen], [chains.draw]), folded on the
+	// same lock and in the same call as the median it sits beside, and FORGOTTEN
+	// WITH THAT MEDIAN when a change point fires ([chains.note]) — the two are
+	// readings of one body of evidence, and an account that kept the old regime's
+	// variance would widen a machine for ever on a tail it no longer has.
+	//
+	// IT IS THE FIRST TOKEN'S DISPERSION AND NOT THE RATE'S, deliberately. A
+	// machine whose GENERATION rate swings is not held here at all: a rate that
+	// moves within a regime is what the posterior's own spread covers, and a rate
+	// that moves BETWEEN regimes — the 2026-09-11 ninefold collapse — is the
+	// change point's job, which is why the rate chain has an alarm on it and no
+	// dispersion account. Adding a second one would be two answers to "how fast
+	// does this machine write" with nothing deciding between them.
+	Spread float64
 }
 
 // Serving is the expected share of requests this lane answers: one when nothing

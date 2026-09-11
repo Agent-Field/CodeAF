@@ -49,7 +49,27 @@ func (c *Client) workloadFor(model string, knobs callKnobs, request *ai.Request)
 			hidden = int(math.Ceil(float64(hidden) / float64(count*charsPerToken)))
 		}
 	}
-	if knobs.intent == IntentBackground {
+	// WHETHER A PERSON READS THIS ANSWER IS A COLUMN IN THE ROLE TABLE, and it
+	// is not the same fact as whether one is waiting for it.
+	//
+	// THE MEASURED CASE (2026-09-11). A recall is `Interactive` — somebody is
+	// sitting in front of it, it is in front of a keypress — and `Visible:
+	// false`, because nobody reads a word of what it writes: it goes into a
+	// prompt. Read through the two-valued intent, every one of its tokens was
+	// counted as text a person is reading, and [lane.PerceivedSeconds] charges
+	// read text only for the part that arrives slower than somebody can read
+	// ([lane.ReadRate]). A machine writing at fifteen tokens a second was
+	// therefore priced at four seconds for four hundred tokens when the truth
+	// was twenty-six, and no chooser reading that number could ever refuse a
+	// slow writer for a call nobody reads.
+	//
+	// The intent stays the answer for a call site that named no role, because
+	// there the two-valued guess is genuinely all there is.
+	unread := knobs.intent == IntentBackground
+	if knobs.role.Known() {
+		unread = !knobs.role.Facts().Visible
+	}
+	if unread {
 		hidden, visible = hidden+visible, 0
 	}
 	// The request's real output cap bounds both billing and the length the

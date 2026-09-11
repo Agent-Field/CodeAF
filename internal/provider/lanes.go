@@ -198,7 +198,12 @@ func (c *Client) laneRequest(model string, knobs callKnobs, request *ai.Request,
 		ValueOfTime:  lambda,
 		QualityNeed:  quality,
 		Horizon:      horizon,
-		Now:          laneNow(),
+		// AND THE ROLE ITSELF, because how long this kind of call waits and
+		// whether anybody reads it are the chooser's whole policy about
+		// refusing a machine rather than merely ranking it last, and the role
+		// table is where both are declared.
+		Role: knobs.role,
+		Now:  laneNow(),
 	}
 }
 
@@ -359,6 +364,22 @@ func (c *Client) applyLaneChoice(prefs *providerPrefs, model string, knobs callK
 			prefs.MaxPrice = nil
 			return
 		}
+	}
+	// AND THE AFFINITY PIN YIELDS TO A REFUSAL, which is the one thing a warm
+	// prefix cannot buy its way past.
+	//
+	// THE MEASURED CASE IS WHY (2026-09-11 09:33). The cache pin latches onto
+	// whichever machine ANSWERED (affinity.go), and `provider.order` is advisory
+	// once `allow_fallbacks` is true — so one request that asked for one machine
+	// and was answered by another made that other machine the head of every
+	// order for the rest of the session, and the reflex tier's whole wait
+	// doubled. A saving on prefill cannot pay for a wait the role has already
+	// said it will not sit through; a machine in `choice.Ignore` is one the role
+	// refused on its own declared patience (internal/lane's beyondThePatience),
+	// and it goes on this body's `ignore` below rather than at the front of its
+	// order.
+	if pinned != "" && namesEndpoint(choice.Ignore, pinned) {
+		pinned = ""
 	}
 	if len(choice.Order) > 0 {
 		order := make([]string, 0, len(choice.Order)+1)

@@ -226,6 +226,222 @@ func doubted(belief Belief, req Request) bool {
 	return false
 }
 
+// ── WHAT A ROLE'S OWN COLUMNS SAY ABOUT CHOOSING A MACHINE ──────────────────
+//
+// THERE IS NO RULE IN THIS PACKAGE ABOUT ANY NAMED ROLE AND NO LIST OF MACHINES
+// ANYWHERE IN IT. Every policy below is derived from two columns the role table
+// already declares ([RoleFacts.Visible], [RoleFacts.Patience] through
+// [Role.Ceiling]) and from what has been MEASURED of a lane. A role added to the
+// table tomorrow gets the right behaviour with nobody editing this file, which
+// is the whole reason the columns exist; a rule spelled `if role == …` would be
+// a second table that disagrees with the first one within a month.
+//
+// THREE COLUMNS, THREE QUESTIONS, AND NO TWO OF THEM ARE THE SAME QUESTION:
+//
+//	is anybody         [RoleFacts.Interactive]. A call nobody waits on may be
+//	waiting?           sent to the machine we think is worst, to find out; a
+//	                   call in front of a keypress may not, because the whole
+//	                   of it is dead time. It is also what says whether being
+//	                   slower than the alternative is a REFUSAL or merely a
+//	                   ranking — with nobody waiting, cheap and slow is right.
+//	is it read?        [RoleFacts.Visible]. Somebody watches this stream
+//	                   arrive, so the cost they really pay is the TAIL — the
+//	                   request that took a minute, not the median that took
+//	                   three seconds, and a median cannot tell the two apart.
+//	how long is        [Role.Ceiling]. The moment we have already decided to
+//	the patience?      act on a silence. A machine believed to still be silent
+//	                   then is not a fallback, it is the fault.
+//
+// THE ONE READING IS [rolePatience.expected] AND EVERY POLICY IS DERIVED FROM IT. The
+// order, the veto, the refusal list and the tie-break are four uses of one
+// number, computed once per candidate, so that no two of them can come to
+// disagree about which machine is the fast one. The two measured cases this was
+// written from are both in it and neither is special-cased:
+//
+//	2026-09-11 09:33  the reflex tier's whole wait doubled on a machine nothing
+//	                  had ever measured, because `provider.order` is a RANKING
+//	                  the router may ignore once `allow_fallbacks` is true and
+//	                  only `provider.ignore` takes a machine off the table
+//	                  (#850) — so a veto has to reach `ignore`, not the order.
+//	2026-09-11 10:02  a task step served at two tokens a second took 219
+//	                  seconds while two machines on the same model were writing
+//	                  at ninety, and the person read a `cd` row as stuck for
+//	                  three and a half minutes. Its first token was healthy;
+//	                  only the whole wait says anything about it, which is why
+//	                  nothing here compares first tokens on their own.
+
+// patience is what one request's role declares about waiting, read once and
+// passed around rather than re-derived.
+type rolePatience struct {
+	// ceiling is [Role.Ceiling]: the moment something is done about a silence.
+	ceiling time.Duration
+	// waited is [RoleFacts.Interactive]: somebody is sitting in front of this.
+	waited bool
+	// read is [RoleFacts.Visible]: somebody watches this stream arrive.
+	read bool
+}
+
+// patienceFor reads a request's role columns.
+//
+// A REQUEST THAT NAMED NO ROLE HAS NO DEADLINE, AND THEREFORE REFUSES NOTHING.
+// [RoleUnknown]'s row is a sensible default for how a call BEHAVES — patient,
+// unwatched, exploring a little — and it is a bad answer to "what is this call
+// unwilling to wait for", because nobody said. Reading its thirty seconds as a
+// declared deadline would strike machines off the wire's table on behalf of
+// every call site in the tree that has not yet been taught to say what it is
+// for, which is a real refusal made out of a default nobody wrote down.
+//
+// So the ceiling is zero for an unnamed role and [beyondThePatience] refuses
+// nothing, while the two behavioural columns still read from [RoleUnknown]'s
+// row — those are about how this call is treated, not about what it will
+// refuse. It is the same reading internal/provider's workloadFor keeps at the
+// other end of the seam ([Role.Known] there too), so the two packages cannot
+// come to mean different things by "unknown".
+func patienceFor(req Request) rolePatience {
+	facts := req.Role.Facts()
+	said := rolePatience{waited: facts.Interactive, read: facts.Visible}
+	if req.Role.Known() {
+		said.ceiling = req.Role.Ceiling()
+	}
+	return said
+}
+
+// probes reports whether a request in this role may be spent settling a doubt
+// about a machine — which is every role nobody is waiting on, and no other.
+// See [sheetDoubtsLast].
+func (p rolePatience) probes() bool { return !p.waited }
+
+// riskZ is the standard normal deviate this role's expectation is taken at: how
+// unlucky a request has to be before its wait is the one that counts.
+//
+// IT IS DERIVED FROM WHO PAYS, NOT CHOSEN. A role nobody watches makes many
+// small calls whose SUM is what matters, and the estimator of a sum is a
+// median — the typical draw, z = 0. A role somebody watches pays each draw
+// separately and remembers the bad one: the person who waited a minute for a
+// machine that usually takes three seconds did not experience a three-second
+// machine. So its expectation is taken where an unlucky draw lands, which is
+// [z90] — the same ninetieth this package already measures every lane's
+// published dispersion at, so the two are one statement of risk and not two.
+func (p rolePatience) riskZ() float64 {
+	if p.read {
+		return z90
+	}
+	return 0
+}
+
+// oneDraw is how far ONE answer from this lane sits from its median, in nats —
+// what has been measured of it ([Belief.Spread]) and nothing at all where
+// nothing has been. A lane nobody has watched vary is not accused of varying.
+func oneDraw(belief Belief) float64 {
+	if belief.Spread <= 0 || !finite(belief.Spread) {
+		return 0
+	}
+	return belief.Spread
+}
+
+// expected is THE ONE READING: how long this request is expected to take to a
+// usable answer on this lane, in seconds. Every policy in this package that
+// compares two lanes, refuses one, or explains a choice is this number.
+//
+// ── THE DERIVATION, WHICH IS THE WHOLE OF IT ────────────────────────────────
+//
+// A lane's answer arrives in two parts and this process holds a posterior over
+// each: how long until it says its first word, and how fast it writes after
+// that. [PerceivedSeconds] already turns the pair into the seconds a person
+// actually waits — first token, plus every hidden token at its full rate,
+// plus the part of the visible text that arrives slower than anybody reads.
+// Three things are then folded into that same number and nothing else is:
+//
+//	the role's risk      the pair is read at [rolePatience.riskZ] rather than
+//	                     at the median, so the quantity is the wait this role
+//	                     is actually exposed to and not the wait it averages
+//	the lane's own       the quantile is taken over how far ONE ANSWER from
+//	spread               this lane sits from its median ([Belief.Spread]),
+//	                     measured, so a steady machine is widened by nothing
+//	                     and a machine that alternates between a second and a
+//	                     minute is widened by the minute
+//	how often it         the caller divides by [Belief.Serving], because a lane
+//	answers at all       that answers one request in five is asked five times
+//	                     for one answer and the person sits through all five
+//
+// THE VETO IS NOT A SECOND RULE. A machine is refused exactly when this number
+// is longer than the role's own declared patience ([beyondThePatience]) — "we
+// are not waiting that long" — and the ranking is this number sorted. There is
+// no ratio anywhere, no threshold anybody chose, and nothing that names a role
+// or a machine: a role added to the table tomorrow, or a machine seen for the
+// first time this minute, is handled by the same arithmetic.
+//
+// AND IT IS NEVER THE FIRST TOKEN ALONE, which is the half a reader is most
+// likely to assume. A machine can say its first word promptly and then write at
+// two tokens a second, which is a healthy first token and a four-minute answer;
+// the generation term is what says so, and it is why a first-token comparison
+// could not see the 2026-09-11 task step at all.
+//
+// ttft is in milliseconds and rate in tokens a second, as everywhere else here.
+func (p rolePatience) expected(belief Belief, req Request, ttft, rate float64) float64 {
+	if z := p.riskZ(); z != 0 {
+		if spread := oneDraw(belief); spread > 0 {
+			ttft = math.Exp(math.Log(ttft) + z*spread)
+		}
+	}
+	return PerceivedSeconds(ttft/1000, rate, req.Visible, req.Hidden)
+}
+
+// beyondThePatience is the set of lanes this role will not ask at all: the ones
+// whose [rolePatience.expected] time to a usable answer is longer than the role
+// itself waits before acting on a silence — AND NEVER ALL OF THEM.
+//
+// IT IS ONE COMPARISON AND THERE IS DELIBERATELY NOTHING ELSE HERE. Every
+// candidate's expectation was computed by one function from the same posteriors;
+// the role's deadline is declared once in the role table; a machine is refused
+// when the first exceeds the second. A reviewer who knows only that sentence can
+// predict this package's answer for a pool it has never seen.
+//
+// A SET THAT IS ENTIRELY REFUSED IS A MODEL WITH NO GOOD MACHINE, and the honest
+// answer there is the least bad one rather than no answer — [aboveServiceFloor]'s
+// law, kept here for the same reason: an empty frontier is "no opinion", which
+// sends the request out on the sort word to whichever of those same machines the
+// router picks, blind. The refusal is therefore self-limiting in exactly the way
+// a relative bound would have to be written to be: a machine stops being refused
+// the moment it is the best there is.
+//
+// waits holds each candidate's expectation, in the order the candidates are
+// given.
+//
+// A CANDIDATE WITH NO EXPECTATION IS NOT REFUSED, AND THE TEST FOR THAT IS THE
+// FINITENESS OF THE NUMBER. [PerceivedSeconds] answers +∞ for a machine whose
+// generation rate is not believed at all — "this lane never finishes", reported
+// as such rather than as a large figure somebody might then compare — and a
+// machine nothing has been measured of is exactly the shape that produces it: a
+// lane that has only ever answered short, or only ever been probed, has a
+// first-token belief and no rate belief, because [ledger.see] teaches the rate
+// only past [ratedFloor]. Refusing THAT is refusing a machine for want of
+// evidence rather than because of it, which is the very fault this whole change
+// exists to end — the veto list built from what we know while the router picks
+// from what exists. So it is ranked last on its infinity, as it always was, and
+// stays in the set where a hedge, a walk or a rescue can still reach it. It is
+// [ignoredOf]'s rule once more: we name the lanes we are SURE about, never the
+// ones we have been unlucky with.
+//
+// A role with no declared ceiling refuses nothing, which is the honest reading
+// of a call site that did not say what it was for; see [patienceFor].
+func beyondThePatience(candidates []Scored, waits []float64, p rolePatience) map[ID]bool {
+	if p.ceiling <= 0 {
+		return nil
+	}
+	deadline := p.ceiling.Seconds()
+	refused := map[ID]bool{}
+	for index, candidate := range candidates {
+		if wait := waits[index]; finite(wait) && wait > deadline {
+			refused[candidate.ID] = true
+		}
+	}
+	if len(refused) >= len(candidates) {
+		return nil
+	}
+	return refused
+}
+
 // sheetDoubtsLast moves every lane the sheet has something against behind every
 // lane it has nothing against, keeping the order otherwise — and lets one
 // request in [probeInEvery] send the best doubted lane first anyway.
@@ -248,12 +464,24 @@ func doubted(belief Belief, req Request) bool {
 // decoder could not use — `tool_json` — pushes the belief back down and confirms
 // the sheet was right.
 //
+// AND A PROBE NEVER RIDES A CALL SOMEBODY IS WAITING ON. Asking the machine we
+// think is worst, first, is one request spent to settle a doubt every request
+// after it profits from — a good bet on an errand and a bad one in front of a
+// keypress, where the whole of the call is dead time and the same doubt could be
+// settled by the next background pass for nothing. So the promotion is off for
+// every role [rolePatience.probes] refuses the draw to, which is a property of the
+// role and not a list of them. The demotion stays: ranking a doubted machine last costs nobody
+// anything.
+//
 // probe is the draw, in [0,1), and the caller supplies it because this file may
 // not read a clock or a random source of its own. Anything outside the unit
 // interval is nobody having drawn, and nothing is promoted.
 func sheetDoubtsLast(order []Scored, req Request, known map[ID]Belief, probe float64) []Scored {
 	if len(order) < 2 {
 		return order
+	}
+	if !patienceFor(req).probes() {
+		probe = -1
 	}
 	sure := make([]Scored, 0, len(order))
 	unsure := make([]Scored, 0, len(order))
