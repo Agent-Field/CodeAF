@@ -1,8 +1,10 @@
 # The chat door onto ongoing work
 
 2026-09-11. Lane `codex/personal-chatdoor` (Claude Code Opus on Spark), base
-`caa0c5bb7` on `codex/personal-ai-backend`. Source commits `b06934cf3`,
-`4ae907108`, `178dc0740`. Not merged; the coordinator merges after review.
+`caa0c5bb7` on `codex/personal-ai-backend`. Round 1: `b06934cf3`, `4ae907108`,
+`178dc0740`. Round 2 (after wave 4 and a ten-run measurement): merges `32779ccc6`
+and `ae12800ab`, then `a3b400036` and `3dd2eeb32` (see *Round 2* below). Not
+merged; the coordinator merges after review.
 
 ## Outcome
 
@@ -21,6 +23,22 @@ The `standing show` record matches a twin made at the terminal. It differs only 
 - its project folder;
 - the door (`through the chat` / `through the terminal`);
 - the moments.
+
+**The stored item is not byte-identical, and says so.** Beyond the id, the
+workspace, the times and the door, a chat-made item's JSON also carries:
+- `origin`: the conversation's id, transcript and turn, where a terminal item has
+  none;
+- `altitude: "project"`, where the terminal leaves it empty. Empty reads as
+  project (`standing.go`), so both reach the same work, but the spelling differs,
+  and a model that sends `altitude` can choose another reach.
+- `brief.title`, the row title the model wrote;
+- `adoption.proposal_id`, the card's id.
+
+`when.words` is the model's phrasing when it sends `when_words`, and the
+terminal's `when inbox/* changes` otherwise. The fields a run reads are
+identical: `schema`, `specRevision`, `when` (kind, glob), `does`, `rails` and
+`status`. Measured on the live items of round 1's measurement (kept homes under
+`/tmp/opus-localwork/chatdoor-live-runNN`).
 
 Nothing new runs anything. Wave 03 owns the pass, the runner, the publish
 decision and the rules check, and they are unchanged. The chat door only makes
@@ -159,9 +177,10 @@ defects:
   ended `waiting-on-person`.
 
   That refusal is the pre-existing wave-04 item 1 defect: a refused act inside
-  an unattended run parks it on the person. This wave does not fix it. The
-  `instructions` description now tells the model the run can only read and
-  that its final answer is published.
+  an unattended run parks it on the person. Wave 4 closed it with grant-shaped
+  belts. Round 1 told the model in the `instructions` description that "the run
+  can only read"; round 2 drops that claim, which was no longer the whole truth
+  once a run carries what its rules grant.
 
 **live2.** Passed. The card read `when · when inbox/* changes`, with the
 report, `folder · Launch, where this conversation is placed` and the rule
@@ -199,7 +218,14 @@ Total live spend: **$0.0194** over 27 calls ($0.0074 + $0.0093 + $0.0027).
 
 ## Validation
 
-`validation/chatdoor-validate.sh.txt` ran at `178dc0740` on a clean tracked
+**Round 2:** the same script ran at `3dd2eeb32`, with only this document
+modified, and passed **13/13, STATUS 0** (`validation/chatdoor-validate-r2.log`).
+Round 2 also ran the whole of `internal/session`, `internal/manual`,
+`internal/standing`, `internal/workspace`, `cmd/aforge` and untagged
+`internal/e2e`. Everything passed except the two upstream hand-over flakes in
+*Round 2*.
+
+**Round 1:** `validation/chatdoor-validate.sh.txt` ran at `178dc0740` on a clean tracked
 tree. The result is **13/13 PASS, STATUS 0**, in `validation/chatdoor-validate.log`:
 
 | Step | Result |
@@ -235,9 +261,131 @@ The steps cover:
 - wave 03's `TestLocalWorkJourney` and this lane's `TestChatDoorJourney`.
 
 The prompt and tool prefix is 47,942 of its 48,000-byte budget
-(`TestTheFixedPrefixStaysUnderItsBudget`). To pay for the schema's new words,
-one prompt paragraph that repeated the schema was removed and the background
-paragraph was compressed.
+(`TestTheFixedPrefixStaysUnderItsBudget`), before and after both merges. The
+budget's belt (`v3ShapedAgent`) has no standing store, so the `stand` schema is
+not in the measured prefix. What round 1 trimmed was the prompt itself: one
+paragraph that repeated the schema was removed, and the background paragraph
+this lane had grown was compressed.
+
+## Round 2 — after wave 4, and the ten-run measurement
+
+### Merges and conflict resolutions
+
+- **`32779ccc6`** merges wave 4 (`815f5d60c`). There were two textual
+  conflicts, resolved as the review prescribed:
+  - **`internal/session/governing.go`.** Wave 4's slice form wins
+    (`nearestPlaces` / `placementDepths`), and this lane's `nearestDepths` is
+    deleted. `standingRulesIfPlaced` now folds `GoverningIfPlaced` through
+    `nearestPlaces(nil, found)` and asks `ApplicableScope(…,
+    placementDepths(places))`. `standing_chatdoor_test.go:247` reads the
+    placement the same way.
+  - **`internal/session/standing_run.go`.** `reportTarget` resolves the deepest
+    existing folder with wave 4's `deepestExisting` (`readroot.go`).
+    `publishStandingReport` keeps one pre-`MkdirAll` check, through
+    `reportTarget`, instead of the two the textual merge would have left.
+- **`ae12800ab`** merges the feature branch's newer tip (`b6c964f9e`, t03b "one
+  record for direction"), which landed while this lane worked. It merged with
+  no conflicts.
+- **A regression of this lane's own, found by the full suite.**
+  `TestTheSectionWithSchedulingStillTeachesTheMechanics` pinned "BACKGROUND
+  CHECKS ARE ON AND NOBODY IS ASKED". `b06934cf3` made that sentence
+  conditional, and round 1's `-run`-filtered session step never selected the
+  test. It now pins the conditional mechanic. Round 2 ran the whole
+  `internal/session` package.
+- **Prefix:** 47,942 of 48,000 bytes before and after both merges and the seam
+  fixes. The `stand` schema is not in the measured belt (see *Validation*).
+
+### Seam fixes, each with its regression and an old-logic proof
+
+Every regression below FAILS with its fix reverted in place, and passes with it
+restored (8 of 8, recorded in the lane log).
+
+| Fix | Seam | Effect | Regression |
+| --- | --- | --- | --- |
+| A file the person named is asked about as the report (measurement cause B) | Tool-result refusal. `standingNamedReport` reads the person's verbatim `words`, never the model's instructions. `does.report` is now `*string`, so an omitted report and `""` are different answers. The new `standing.Item.Watches` is the pass's own matcher, so a watched file is never mistaken for the report. | `Invalid arguments: their sentence names reports/inbox-report.md — send does.report "reports/inbox-report.md" if each run keeps that file current, or does.report "" if the work only reads it`. The model retries. The refusal was chosen over a card question because it is the smaller seam: no new option, no tui3. | `TestAFileTheSentenceNamesIsAskedAboutAsTheReport`, `TestOnlyAFileOutsideTheWatchIsAskedAbout`, `TestAnItemWatchesWhatItsPassReads` (standing) |
+| Unasked spending limits (cause C) | Schema enforcement plus a card line. `standingNamedMoney` drops `per_run_usd` and `max_per_day` when there is no `cost_words`. `standingCostWords` writes the costs line from the item: any limit that differs from the quiet defaults, then the day's allowance. The stand result carries it as `costs: …`. | A limit nobody named never stands. One that was named leads the costs line: `up to $1.00 a run · at most 2 runs a day · shares the day's allowance`. | `TestLimitsThePersonDidNotNameAreDroppedAndTheCardSaysWhatBinds`. Two older pins were changed on purpose: `TestStandingPersonNamedRailsSurviveAndTheCardQuotesThem` now pins the item-written line, and the negative-limit test names its limit. |
+| `report · none` | Card line | Work that runs and keeps no file says `report · none — no file is kept current`. | `TestAFileTheSentenceNamesIsAskedAboutAsTheReport` (second half) |
+| "the run can only read" | Schema description | Removed; the reason that stays true is "its final answer is published". | description text (budget test unaffected) |
+| Inherited placement under collections' law (review) | `Agent.mayBindFolders`, shared with `collections place` | A delegated principal can bind no folder, named or inherited: `placing work in a folder needs the person's answer in a conversation — this conversation is placed in Launch`. A conversation in no folder is not refused. | `TestAStewardCannotBindTheConversationsFolderToWork` |
+| Two folders (review) | Card and log wording | `folder · Launch, Marketing, where this conversation is placed — their rules reach every run`; the log reads `placed in folders …; their rules reach this work`. | `TestWorkInTwoFoldersSaysBothAndIsPlacedInBoth` |
+| Hold-limit gate on the card (review) | Card line | More than `governingHoldLimit` (64) rules reaching the placement reads `rules · 65 reach this work, more than the 64 a run can carry — every run would stop until they are narrowed`. The conversation's own gate stops earlier when the conversation itself sits over the limit. | `TestACardSaysWhenItsRulesAreMoreThanARunCanCarry` |
+| Background line after the notice (review) | Result feedback | The model's result always carries what checks the item: `checks every 5 minutes, window or not · …` or `background checks are not running · …`. The person's row stays once-ever, the pinned design of `TestTheBackgroundLineIsSaidOnceEver`. | `TestTheModelHearsWhatChecksTheWorkAfterTheOneLine` |
+
+The manual pages (standing-orders, keeping-an-eye, home) carry the new lines,
+and three probes were added. The home card example's invented
+`about $0.02 a run` became the line the engine now writes.
+
+### Two live measurements, ten runs each
+
+The same driver ran both (`/tmp/opus-localwork/zz_chatdoor_measure_e2e_test.go`,
+untracked, removed after each), serially, on `deepseek/deepseek-v4-flash`.
+Round 1's analysis is in `validation/chatdoor-live10.md`, which is left
+untracked in the lane's worktree as that brief asked; its numbers are in the
+table below. Round 2's logs are `validation/chatdoor-live2-run01..10.log`.
+
+| Measure | Round 1 at `2495b6526` | Round 2 at `3dd2eeb32` |
+| --- | --- | --- |
+| The journey's own criteria (`TestRealChatDoorJourney`'s assertions) | **6/10** | **7/10** |
+| The twin identical, strict | 2/10 (1 raw + 1 driver artifact) | **2/10** (07, 09) |
+| The twin identical, driver's `acceptance` artifact removed | 2/10 | **4/10** (03, 07, 09, 10) |
+| Runs refused a command (`nobody to ask`) | 3 runs, 11 refusals | **0** |
+| Calls to an absent tool | — | 4 (06, 08, 10), none stopped a run |
+| `does.report` on the item | 9/10 | **10/10**. The new refusal fired in 01 and 04, and both retries were right. |
+| Unasked limits standing | 7/10 | **0/10**. 5 calls sent them, and all were dropped. |
+| `costs ·` empty on the card | 8/10 | **0/10** |
+| Spend | $0.0497, 103 calls | **$0.1085, 115 calls** |
+
+Round 2 costs about twice as much per run. Wave 4's per-rule check makes more
+judgement calls, and several runs landed on slower, dearer endpoints; the
+ledger does not separate the two.
+
+**Round 2's three failures stay failures:**
+- **Run 05. Model (chat), then a harness law working as designed.** Before
+  proposing anything, the conversation itself called `write` and created
+  `reports/inbox-report.md` as a placeholder. The first run's report was then
+  held: `reports/inbox-report.md is not what aforge last published there — it
+  was changed, or it was there before aforge wrote it` (`report-changed`,
+  `needs-you`). Wave 3's never-write-over-the-person law was right; the card
+  gave no warning. **Proposed seam:** preview that gate on the card and in the
+  result when the report path already holds a file aforge never published, the
+  same way the hold-limit gate is now previewed:
+  `report · reports/inbox-report.md — a file aforge did not write is there; the
+  first report will wait for you`.
+- **Run 06. Test.** A healthy run (one absent-tool call, then reads) on an
+  endpoint answering in 25–40 s a call was cut off when the driver's 3-minute cap on one
+  `aforge standing check` (`journey.run`) killed it. **Fix:** the driver should
+  give the pass the item's own deadline. This is test-side only.
+- **Run 08. Model (run).** It called absent `stat` and `bash`, carried on, and
+  ended its final answer with `</report>` and no opening line:
+  `unopened-report`, `failed`. **Proposed seam:** result feedback. Send a
+  malformed report envelope back to the run once (`your report has a closing
+  line but no opening line — reply again with the whole report between the
+  lines`), on the same one-correction road the rules check already uses.
+
+**Still keeping the twin from identity:**
+- `when.words` in the model's phrasing: 01 and 08. This is measurement cause D;
+  D1 was not in this round.
+- `max_steps: 20` sent unasked, which `standing add` cannot express: 02, 04 and
+  06. This is cause E; E1 was not in this round.
+- `acceptance`: 03, 06 and 10. This is the driver artifact; `standing add
+  --acceptance` exists, and the driver did not pass it.
+
+**A truthfulness slip that still happens.** Run 01's reply after the yes said
+"anything over $0.50 in a single run won't proceed". The $0.50 limit it had
+sent was dropped, and its result said `costs: shares the day's allowance`.
+**Proposed seam:** result feedback that names what was dropped (`the limits
+you sent were not kept — the person named none`), so the model has a fact to
+say instead of its own number.
+
+### Upstream flakes, reported and not fixed
+
+`TestHandingTheSameDecisionOverTwiceSaysItIsAlreadyHandedOver` and
+`TestHandingAYourCallToTheModelAndItsResolveAreOneRoad` (`tools_tasks_test.go`)
+each failed once in a full `internal/session` run. They reproduce under
+`-count=400 -cpu 1,2,8` on the untouched feature-branch head `b6c964f9e`, in a
+throwaway detached worktree since removed, with 29 and 8 failures in 1,200 runs.
+So they are a race in task hand-over, not this lane's, and a bug report for its
+owner.
 
 ## Decisions taken inside the brief
 
@@ -245,10 +393,12 @@ paragraph was compressed.
   directly (depth 0), at most 32. A conversation in no folder makes work in no
   folder, and the card says it can be placed later. Inherited ancestors are not
   copied as placements, because they reach the work through the walk.
-- **An explicit placement needs a person.** Under a steward, a named
-  `placement` is refused: `placing work in a folder needs the person's answer in
-  a conversation`. The default is allowed, because the conversation is already
-  there.
+- **A placement needs a person, whether named or inherited.** Round 1 let a
+  steward inherit the conversation's folders. The review ruled that every
+  binding goes through collections' law, so round 2 refuses both under a
+  delegated principal. The refusal is `placing work in a folder needs the
+  person's answer in a conversation`, with `— this conversation is placed in
+  <names>` when the folder was inherited.
 - **The no-timer line is said every time** something that wakes is set up, not
   once ever. The once-ever marker announces a switch thrown on the machine.
   This line is a fact about each item agreed to.
@@ -261,32 +411,32 @@ paragraph was compressed.
 Nothing is paused. Both the placement default and the card wording stay within
 what the brief stated.
 
-## Open finding for review
+## Open finding for review (round 1; answered in round 2)
 
 **The model does not always choose `does.report`.** On
-`deepseek/deepseek-v4-flash` it chose the field in 2 of 3 live runs. In the
-third it asked the run to write the file.
+`deepseek/deepseek-v4-flash` it chose the field in 2 of 3 live runs, and in 9 of
+10 in the measurement. Round 1 left this open. It said that reading the
+model's *instructions* for a path would be a band-aid.
 
-The door is correct for the call it gets. The card shows exactly what was sent,
-and the person can answer no or change it. But the goal is "the same item as
-the terminal", and that depends on the model's choice.
+Round 2 answers it at the tool-result seam, as the review directed. It reads
+the *person's own sentence* (`words`, verbatim), not the model's text. A file
+named there, when the call left `does.report` out, is refused before any card
+with both honest answers:
+- the path, if each run keeps that file current;
+- `""`, if the work only reads it.
 
-A structural fix needs one of:
-- **More words in the fixed prefix.** The prefix is at 47,942 of 48,000 bytes,
-  so the budget or the prompt needs a decision.
-- **A run that can say it may not write.** This is wave-04 item 1: a refused
-  act should come back to the run as a fact, not park it on the person.
-
-Reading the instructions for a file path would be a band-aid. It was not done.
+A file the watch itself reaches is never asked about (`standing.Item.Watches`).
+Wave 4's grant-shaped belts answered the other half: a run cannot reach for a
+tool it was not granted.
 
 ## Boundaries (stated, not hidden)
 
-- **Wave-04 item 1 is not fixed.** A run that tries a refused act (bash, write)
-  still parks on the person. This wave only stops the model's instructions from
-  asking for one. live2 shows the model may still write "Write the result to
-  …" in them.
-- **`costs ·` is empty when the model sends rails with no `cost_words`.** This
-  happened in live2, and it predates this lane.
+- **Wave-04 item 1 is fixed by wave 4, not here.** An unattended run now
+  carries only the tools its rules grant, so under the default rules there is
+  no `bash` or `write` to reach for. Round 2's measurement checks this live.
+- **An empty `costs ·` when the model sent rails without `cost_words`** was
+  true in round 1 and is fixed in round 2 (unnamed limits dropped, costs written
+  from the item).
 - **The chat is driven through the session's seams, not the TUI.** Both
   journeys run a real `session.Agent` in the test process, with the card
   answered through `ResolveStanding`. The card as drawn is proved by the tui3

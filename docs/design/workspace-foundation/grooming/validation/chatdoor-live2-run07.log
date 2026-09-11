@@ -1,0 +1,70 @@
+RUN 07 start 2026-09-11T05:44:18Z rev 3dd2eeb32
+=== RUN   TestMeasureChatDoorLive
+    zz_chatdoor_measure_e2e_test.go:104: LIVE CHAT said: Inbox is empty, no report exists yet. Let me set up a standing file watch that keeps itSet up. When anything changes in `inbox/`, aforge examines it and publishes the report to `reports/inbox-report.md`. Shares the daily allowance; runs only while a window is open or `aforge standing check` runs.
+    zz_chatdoor_measure_e2e_test.go:106: LIVE NEWS stood · 
+    zz_chatdoor_measure_e2e_test.go:106: LIVE NEWS background · no background checks on this machine · checked only while an aforge window is open, or when you run aforge standing check
+    zz_chatdoor_measure_e2e_test.go:129: LIVE CARD
+        when · when inbox/**/* changes
+        costs · shares the day's allowance
+        does · Examine the inbox/ directory. List every file and subdirectory in it with: file name, size, modification time. If there are emails or messages, summarise: se…
+        report · reports/inbox-report.md — aforge publishes this file; the run never writes it
+        folder · Launch, where this conversation is placed — its rules reach every run
+        rule · Inbox reports never quote email addresses or phone numbers; write [redacted] instead.
+    zz_chatdoor_measure_e2e_test.go:172: check: 2 checked
+    zz_chatdoor_measure_e2e_test.go:179: LIVE CHECK exit 0: 2 checked · 1 ran
+    zz_chatdoor_measure_e2e_test.go:181: LIVE SHOW:
+        7441364115a1f898  active  keep an eye on my inbox folder and keep reports/inbox-report.md current
+          wakes when inbox/**/* changes
+          workspace: /tmp/opus-localwork/chatdoor-live2-run07/project
+          instructions (version 1): Examine the inbox/ directory. List every file and subdirectory in it with: file name, size, modification time. If there are emails or messages, summarise: sende…
+          report: reports/inbox-report.md
+          set up by: person, through the chat
+          folder: 561fd04c8833ce5aa83db1c4c9e2c061 Launch (placed directly)
+          rule reaching it: c8fc88a4976e22e8 Inbox reports never quote email addresses or phone numbers; write [redacted] instead.
+          ran 1 time(s); last came to landed · spent $0.0037
+        runs, newest first:
+          000001  finished · landed · instructions v1 · Sep 11 01:44:51
+              woken: the files you are watching changed
+              added inbox/today.md
+              came to: report updated: reports/inbox-report.md — # Inbox Report **Generated:** 2026-09-11 01:44 EDT (Friday) --- **1 file, 0 subdirectories** in `/inbox/`. ## `today…
+              checked against 1 rule(s): 1 kept
+                rule c8fc88a4976e22e8 “Inbox reports never quote email addresses or phone numbers; write [redacted] instead.” (obligation): kept — the report says “2. **Action: Priya** — [redacted] to confirm venue. *(Email and phone redacted per standing order.)*”
+              cost $0.0037
+              published reports/inbox-report.md (733 bytes, sha256 f25e938a763f)
+              journal: /tmp/opus-localwork/chatdoor-live2-run07/home/v3/standing/7441364115a1f898/runs/000001/transcript.jsonl
+        log:
+          2026-09-11T01:44:48-04:00  set up in the chat
+          2026-09-11T01:44:48-04:00  placed in folder 561fd04c8833ce5aa83db1c4c9e2c061; its rules reach this work
+          2026-09-11T01:45:40-04:00  the files you are watching changed — landed: report updated: reports/inbox-report.md — # Inbox Report **Generated:** 2026-09-11 01:44 EDT (Friday)  ---  **1 file, 0 subdirectories** in `/inbox/`.  ## `today.md` — 148 bytes — 2026-09-11 01:…
+    zz_chatdoor_measure_e2e_test.go:204: LIVE REPORT:
+        # Inbox Report
+        **Generated:** 2026-09-11 01:44 EDT (Friday)
+        
+        ---
+        
+        **1 file, 0 subdirectories** in `/inbox/`.
+        
+        ## `today.md` — 148 bytes — 2026-09-11 01:44
+        
+        | Field | Detail |
+        |---|---|
+        | Sender | N/A (local note, no message header) |
+        | Date | 2026-09-11 |
+        | Subject | Launch decisions / open actions |
+        
+        **Gist:** Three items recorded:
+        1. **Decision** — launch moves to Friday.
+        2. **Action: Priya** — [redacted] to confirm venue. *(Email and phone redacted per standing order.)*
+        3. **Action: unowned** — press release has no owner yet.
+        
+        ---
+        
+        ## Items needing attention
+        
+        - **Venue confirmation** — assigned to Priya; no confirmation received yet.
+        - **Press release** — no owner assigned. Needs a volunteer or assignment.
+    zz_chatdoor_measure_e2e_test.go:92: MEASURE {"card":true,"item":"7441364115a1f898","whenKind":"file","glob":"inbox/**/*","whenWords":"when inbox/**/* changes","cardWhen":"when inbox/**/* changes","doesKind":"task","report":"reports/inbox-report.md","instructions":"Examine the inbox/ directory. List every file and subdirectory in it with: file name, size, modification time. If there are emails or messages, summarise: sender, subject, date, a one-line gist of the content. Follow the Launch standing order — never quote email addresses or phone numbers; write [redacted] instead. Output clean markdown: a heading for the state of the inbox, a table of contents if many entries, then an entry per item.","asksToWrite":false,"costWords":"shares the day's allowance","rails":"{\"perRunUsd\":5,\"maxPerDay\":10,\"expires\":\"0001-01-01T00:00:00Z\"}","terms":["does · Examine the inbox/ directory. List every file and subdirectory in it with: file name, size, modification time. If there are emails or messages, summarise: se…","report · reports/inbox-report.md — aforge publishes this file; the run never writes it","folder · Launch, where this conversation is placed — its rules reach every run","rule · Inbox reports never quote email addresses or phone numbers; write [redacted] instead."],"itemOK":true,"cardOK":true,"twinDiff":null,"twinShowOK":true,"checkExit":0,"runs":1,"outcome":"landed","withheld":"","ruleCheck":"kept","published":"reports/inbox-report.md","receiptOK":true,"rawContact":false,"showOK":true,"pass":true,"failed":null,"spend":"$0.0118 over 12 calls (this home's usage ledger)"}
+--- PASS: TestMeasureChatDoorLive (81.32s)
+PASS
+ok  	github.com/Agent-Field/aforge-v2/internal/e2e	81.336s
+exit=0 end 2026-09-11T05:45:40Z

@@ -1,0 +1,68 @@
+RUN 03 start 2026-09-11T05:32:57Z rev 3dd2eeb32
+=== RUN   TestMeasureChatDoorLive
+    zz_chatdoor_measure_e2e_test.go:104: LIVE CHAT said: 
+        
+        The user wants a file watcher on their inbox folder that keeps `reports/inbox-report.md` updated. Let me understand the setup:
+        
+        - They have an inbox folder to watch
+        - A report file at `reports/inbox-report.md` to keep current
+        - This is a standing `file` watch
+        
+        Let me check what exists first.
+        
+        The inbox folder exists but is empty, and the reports directory doesn't exist yet. This is a perfect fit for a `stand` with `when.kind: file` watching the inbox folder, running a task that reads the inbox and writes the report. However, I need to consider the standing condition about redacting email addresses and phone numbers — that applies to all work in this Launch folder.
+        
+        Let me set this up:
+        
+        Set: inbox watcher — when `inbox/**` changes, aforge reads the folder and publishes `reports/inbox-report.md` with content summaries, PII redacted. Shares the day's allowance (no per-run spend limit named).
+    zz_chatdoor_measure_e2e_test.go:106: LIVE NEWS stood · 
+    zz_chatdoor_measure_e2e_test.go:106: LIVE NEWS background · no background checks on this machine · checked only while an aforge window is open, or when you run aforge standing check
+    zz_chatdoor_measure_e2e_test.go:129: LIVE CARD
+        when · when inbox/** changes
+        costs · shares the day's allowance
+        does · Read the inbox/ directory. List every file with its name, size, modification time, and a short content summary (first 20 lines or first 500 bytes). Redact an…
+        report · reports/inbox-report.md — aforge publishes this file; the run never writes it
+        folder · Launch, where this conversation is placed — its rules reach every run
+        rule · Inbox reports never quote email addresses or phone numbers; write [redacted] instead.
+    zz_chatdoor_measure_e2e_test.go:158: TWIN does differs:
+         chat {"kind":"task","brief":"Read the inbox/ directory. List every file with its name, size, modification time, and a short content summary (first 20 lines or first 500 bytes). Redact any email addresses (replace with [redacted]) and phone numbers (replace with [redacted]). Write the report to reports/inbox-report.md. If inbox/ is empty, write 'Inbox is empty (last checked: YYYY-MM-DD HH:MM timezone)'.","acceptance":"reports/inbox-report.md exists and shows every file in the inbox/ folder with content summary, timestamps, and no leaked PII","report":"reports/inbox-report.md"}
+         term {"kind":"task","brief":"Read the inbox/ directory. List every file with its name, size, modification time, and a short content summary (first 20 lines or first 500 bytes). Redact any email addresses (replace with [redacted]) and phone numbers (replace with [redacted]). Write the report to reports/inbox-report.md. If inbox/ is empty, write 'Inbox is empty (last checked: YYYY-MM-DD HH:MM timezone)'.","report":"reports/inbox-report.md"}
+    zz_chatdoor_measure_e2e_test.go:172: check: 2 checked
+    zz_chatdoor_measure_e2e_test.go:179: LIVE CHECK exit 0: 2 checked · 1 ran
+    zz_chatdoor_measure_e2e_test.go:181: LIVE SHOW:
+        0313a6eacf2cd279  active  keep an eye on my inbox folder and keep reports/inbox-report.md current
+          wakes when inbox/** changes
+          workspace: /tmp/opus-localwork/chatdoor-live2-run03/project
+          instructions (version 1): Read the inbox/ directory. List every file with its name, size, modification time, and a short content summary (first 20 lines or first 500 bytes). Redact any e…
+          report: reports/inbox-report.md
+          set up by: person, through the chat
+          folder: 8c03a7b536e4b66230e700b712f6194d Launch (placed directly)
+          rule reaching it: 8ec395d9e3ca72f2 Inbox reports never quote email addresses or phone numbers; write [redacted] instead.
+          ran 1 time(s); last came to landed · spent $0.0035
+        runs, newest first:
+          000001  finished · landed · instructions v1 · Sep 11 01:33:32
+              woken: the files you are watching changed
+              added inbox/today.md
+              came to: report updated: reports/inbox-report.md — # Inbox Report — 2026-09-11 01:33 EDT | File | Size | Modified | Summary | |---|---|---|---| | `today.md` | 148 B …
+              checked against 1 rule(s): 1 kept
+                rule 8ec395d9e3ca72f2 “Inbox reports never quote email addresses or phone numbers; write [redacted] instead.” (obligation): kept — the report says “([redacted], [redacted])”
+              cost $0.0035
+              published reports/inbox-report.md (280 bytes, sha256 4cb02d44ccbf)
+              journal: /tmp/opus-localwork/chatdoor-live2-run03/home/v3/standing/0313a6eacf2cd279/runs/000001/transcript.jsonl
+        log:
+          2026-09-11T01:33:30-04:00  set up in the chat
+          2026-09-11T01:33:30-04:00  placed in folder 8c03a7b536e4b66230e700b712f6194d; its rules reach this work
+          2026-09-11T01:34:37-04:00  the files you are watching changed — landed: report updated: reports/inbox-report.md — # Inbox Report — 2026-09-11 01:33 EDT  | File | Size | Modified | Summary | |---|---|---|---| | `today.md` | 148 B | 2026-09-11 01:33 | Decision: launch m…
+    zz_chatdoor_measure_e2e_test.go:204: LIVE REPORT:
+        # Inbox Report — 2026-09-11 01:33 EDT
+        
+        | File | Size | Modified | Summary |
+        |---|---|---|---|
+        | `today.md` | 148 B | 2026-09-11 01:33 | Decision: launch moves to Friday. Request: Priya ([redacted], [redacted]) to confirm the venue. Request: nobody owns the press release yet. |
+    zz_chatdoor_measure_e2e_test.go:92: MEASURE {"card":true,"item":"0313a6eacf2cd279","whenKind":"file","glob":"inbox/**","whenWords":"when inbox/** changes","cardWhen":"when inbox/** changes","doesKind":"task","report":"reports/inbox-report.md","instructions":"Read the inbox/ directory. List every file with its name, size, modification time, and a short content summary (first 20 lines or first 500 bytes). Redact any email addresses (replace with [redacted]) and phone numbers (replace with [redacted]). Write the report to reports/inbox-report.md. If inbox/ is empty, write 'Inbox is empty (last checked: YYYY-MM-DD HH:MM timezone)'.","asksToWrite":true,"costWords":"shares the day's allowance","rails":"{\"perRunUsd\":5,\"maxPerDay\":10,\"expires\":\"0001-01-01T00:00:00Z\"}","terms":["does · Read the inbox/ directory. List every file with its name, size, modification time, and a short content summary (first 20 lines or first 500 bytes). Redact an…","report · reports/inbox-report.md — aforge publishes this file; the run never writes it","folder · Launch, where this conversation is placed — its rules reach every run","rule · Inbox reports never quote email addresses or phone numbers; write [redacted] instead."],"itemOK":true,"cardOK":true,"twinDiff":["does"],"twinShowOK":true,"checkExit":0,"runs":1,"outcome":"landed","withheld":"","ruleCheck":"kept","published":"reports/inbox-report.md","receiptOK":true,"rawContact":false,"showOK":true,"pass":false,"failed":["twin-json"],"spend":"$0.0091 over 12 calls (this home's usage ledger)"}
+    zz_chatdoor_measure_e2e_test.go:94: failed stages: [twin-json]
+--- FAIL: TestMeasureChatDoorLive (99.50s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/e2e	99.517s
+FAIL
+exit=1 end 2026-09-11T05:34:37Z
