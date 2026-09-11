@@ -218,16 +218,16 @@ const (
 // ([tasksSortKey.column]). Sorting by name puts the arrow on neither, because
 // neither column is the name — and that is honest rather than a gap: the control
 // row's left half is showing the filter, and the foot names the key.
-func tasksControlLabels(key tasksSortKey, back bool) (state, second string) {
+func tasksControlLabels(by tasksSort) (state, second string) {
 	arrow := tasksSortDown
-	if back {
+	if by.back {
 		arrow = tasksSortUp
 	}
-	state, second = tasksByState.word(), key.column().word()
-	if key == tasksByState {
+	state, second = tasksByState.word(), by.key.column().word()
+	switch {
+	case by.key == tasksByState:
 		return state + " " + arrow, second
-	}
-	if key == key.column() {
+	case by.key == by.key.column():
 		return state, second + " " + arrow
 	}
 	return state, second
@@ -235,37 +235,52 @@ func tasksControlLabels(key tasksSortKey, back bool) (state, second string) {
 
 // tasksControlRow is that line: the mark, then what has been typed or the dim
 // invitation to type it, and at the right the two labels.
-func tasksControlRow(query string, key tasksSortKey, back bool, room int, pal palette) string {
-	stateLabel, secondLabel := tasksControlLabels(key, back)
+func tasksControlRow(query string, by tasksSort, room int, pal palette) string {
+	stateLabel, secondLabel := tasksControlLabels(by)
 	mark := pal.glyph(tokens.GFilter)
-	lead := pal.dim(mark) + " "
-	box := pal.dim(tasksTypeWord)
+	// THE BOX IS LAID OUT WHERE THE NAMES ARE AND THE LABELS OVER THEIR OWN
+	// COLUMNS, both out of [tasksColumns] — so the label a person clicks and the
+	// cells it stands over are the same cells at every width, and the two lines
+	// cannot drift apart as the frame moves.
+	stateCells, secondCells, nameCells := tasksColumns(room, by.key)
+	boxCells := max(nameCells-ansi.StringWidth(mark)-1, 1)
+	// WHAT IS TYPED IS IN THE READING INK AND THE INVITATION IS DIM. A person has
+	// to be able to tell the words they typed from the words the box came with.
+	said, ink := fit(tasksTypeWord, boxCells), pal.dim
 	if query != "" {
-		box = pal.ink(query)
+		said, ink = fit(query, boxCells), pal.ink
 	}
-	// THE LABELS ARE FITTED TO THEIR OWN COLUMNS AND THE BOX TAKES THE REST, which
-	// is the row under it laid out with a label where its name goes — so the two
-	// lines cannot drift apart as the frame moves.
-	stateCells, secondCells, nameCells := tasksColumns(room, key)
-	boxCells := nameCells - ansi.StringWidth(mark) - 1
-	if boxCells < 1 {
-		boxCells = 1
-	}
-	said := fit(ansi.Strip(query), boxCells)
-	if query == "" {
-		said = fit(tasksTypeWord, boxCells)
-	}
-	_ = box
-	out := lead + pal.dim(said) + pad(boxCells-ansi.StringWidth(said))
-	if query != "" {
-		out = lead + pal.ink(said) + pad(boxCells-ansi.StringWidth(said))
-	}
+	out := pal.dim(mark) + " " + ink(said) + pad(boxCells-ansi.StringWidth(said))
 	if stateCells > 0 {
-		out += pal.dim(fit(stateLabel, stateCells)) + pad(stateCells-ansi.StringWidth(fit(stateLabel, stateCells)))
+		label := fit(stateLabel, stateCells)
+		out += pal.dim(label) + pad(stateCells-ansi.StringWidth(label))
 	}
 	if secondCells > 0 {
 		label := fit(secondLabel, secondCells)
 		out += pad(secondCells-ansi.StringWidth(label)) + pal.dim(label)
 	}
 	return out + pad(tasksColumnAir)
+}
+
+// tasksControlHit is which label one cell of the control row is under, and
+// whether it is under one at all.
+//
+// IT IS THE SAME ARITHMETIC THE PAINT USES ([tasksColumns]), asked from the other
+// end. The pointer resolving a press against its own idea of where a column sits
+// is exactly how a click comes to sort by the wrong thing, which is the argument
+// the frame and the hit map are one function for (place_tasks.go).
+//
+// `x` is the cell inside the ROW — the place's left edge already spent.
+func tasksControlHit(x, room int, by tasksSort) (tasksSortKey, bool) {
+	stateCells, secondCells, nameCells := tasksColumns(room, by.key)
+	switch {
+	case stateCells > 0 && x >= nameCells && x < nameCells+stateCells:
+		return tasksByState, true
+	case secondCells > 0 && x >= nameCells+stateCells && x < nameCells+stateCells+secondCells:
+		// THE SECOND LABEL NAMES THE COLUMN AND NOT THE KEY. Sorting by name puts
+		// the age in that column, so a click on it asks for the age — which is what
+		// the word under the pointer says.
+		return by.key.column(), true
+	}
+	return 0, false
 }
