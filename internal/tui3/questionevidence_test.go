@@ -274,3 +274,15 @@ func TestThePagesFootReplacesTheLegend(t *testing.T) {
 		t.Errorf("the frame draws %d chrome rows and the geometry charges %d", got, want)
 	}
 }
+
+// THE KEYS THE PAGE DID NOT DRAW ARE STILL THE SURFACE'S. The page takes the
+// keys it prints on its foot and nothing else — so `ctrl+g`, which stows the
+// task column, works while a question is open on the page, and the cells the
+// column gives back are what the split is measured in
+// ([app.questionRoomBeside] reads [app.bodyWidth]).
+func TestTheColumnsOwnKeyStillWorksWhileThePageIsUp(t *testing.T) {
+	a, _ := standingInAQuestionAt(t, demoQuestionReading(), 120, 40)
+	if _, took := tapNamed(a, 'g', tea.ModCtrl); took {
+		t.Fatal("the page took ctrl+g: a key it never printed is a key the surface under it owes")
+	}
+}

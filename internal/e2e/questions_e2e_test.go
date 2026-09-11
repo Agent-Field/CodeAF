@@ -462,8 +462,8 @@ func questionsBlocksUnderAnswers(t *testing.T) {
 	}
 
 	press(t, r, "o")
-	room := r.waitFor(20*time.Second, say(t, "questionRoomBackWord"), say(t, "questionRoomPickWord"))
-	screenSays(t, room, "HRV", "the room lists the answers")
+	room := r.waitFor(20*time.Second, say(t, "questionRoomWaitsWord"))
+	screenSays(t, room, "HRV", "the page lists the answers")
 	shot(t, r, "open")
 
 	press(t, r, "Enter")
@@ -522,13 +522,34 @@ func questionsRoom(t *testing.T) {
 	shot(t, r, "card")
 
 	press(t, r, "o")
-	room := r.waitFor(20*time.Second, say(t, "questionRoomBackWord"), say(t, "questionRoomPickWord"))
-	screenSays(t, room, "which store should the ledger sit on?", "the room's head")
+	room := r.waitFor(20*time.Second, say(t, "questionRoomWaitsWord"))
+	screenSays(t, room, "which store should the ledger sit on?", "the page's head")
 	screenSays(t, room, say(t, "questionRoomWaitsWord"), "the room says what is stopped on it")
 	screenSays(t, room, say(t, "questionRoomNoPickWord"), "the foot with nothing chosen yet")
 	screenSays(t, room, "what it would look like", "the attached block")
 	screenSays(t, room, say(t, "questionWouldSwitchWord"), "what would change the asker's mind")
 	shot(t, r, "open")
+
+	// TWO PANES, AND THE ARROWS MOVING BETWEEN THEM (owner ruling 2026-09-11,
+	// page pick A). The page splits where the BODY is a hundred cells or wider,
+	// and the task column is charged against that body — so this is the width
+	// the terminal has with the column stowed, which is what `ctrl+g` does.
+	// Below that width the page is one column and `→` is not offered, which is
+	// why the key is asserted only after the stow.
+	r.keys("C-g")
+	split := r.waitFor(15*time.Second, say(t, "questionPageDetailWord"))
+	screenSays(t, split, "postgres", "the answers keep the left of the split")
+	shot(t, r, "split")
+
+	press(t, r, "Right")
+	reading := r.waitFor(15*time.Second, say(t, "questionPageScrollWord"))
+	screenSays(t, reading, say(t, "questionWouldSwitchWord"),
+		"the arrows are the evidence pane's, and the evidence is still what they are on")
+	press(t, r, "Left")
+	back := r.waitFor(15*time.Second, say(t, "questionPageDetailWord"))
+	screenSilent(t, back, say(t, "questionPageScrollWord"),
+		"the arrows are the list's again, so the key that gives them back is not offered")
+	r.keys("C-g")
 
 	press(t, r, "x")
 	compare := r.waitFor(15*time.Second, say(t, "questionCompareOnlyWord"))
@@ -613,7 +634,7 @@ func questionsBlanks(t *testing.T) {
 	shot(t, r, "card")
 
 	press(t, r, "o")
-	room := r.waitFor(20*time.Second, say(t, "questionRoomBackWord"))
+	room := r.waitFor(20*time.Second, say(t, "questionRoomWaitsWord"))
 	// THE HOLES WEAR THEIR OWN NAMES. A form of unlabelled boxes is a form
 	// nobody can fill: the asker named each field and the page owes those names.
 	screenSays(t, room, "table", "the first hole's name")
@@ -650,7 +671,7 @@ func questionsChecklist(t *testing.T) {
 
 	awaitQuestion(t, r, "which checks should run before merge?", say(t, "questionOpenKeyWord"))
 	press(t, r, "o")
-	room := r.waitFor(20*time.Second, say(t, "questionRoomBackWord"), "unit tests")
+	room := r.waitFor(20*time.Second, say(t, "questionRoomWaitsWord"), "unit tests")
 	screenSays(t, room, say(t, "questionTickKeyWord"),
 		"the checklist's own key is on the row: a shape whose verb is dropped for width is a shape nobody can work")
 	shot(t, r, "open")
@@ -686,7 +707,7 @@ func questionsPairs(t *testing.T) {
 
 	awaitQuestion(t, r, "settle the two naming calls", say(t, "questionOpenKeyWord"))
 	press(t, r, "o")
-	room := r.waitFor(20*time.Second, say(t, "questionRoomBackWord"))
+	room := r.waitFor(20*time.Second, say(t, "questionRoomWaitsWord"))
 	screenSays(t, room, "the table", "the first pair's own name")
 	screenSays(t, room, "ledger", "the first side")
 	screenSays(t, room, "entries", "the second side")
@@ -712,7 +733,7 @@ func questionsDial(t *testing.T) {
 
 	awaitQuestion(t, r, "how hard should the retry loop try?", say(t, "questionOpenKeyWord"))
 	press(t, r, "o")
-	room := r.waitFor(20*time.Second, say(t, "questionRoomBackWord"))
+	room := r.waitFor(20*time.Second, say(t, "questionRoomWaitsWord"))
 	screenSays(t, room, say(t, "questionMoveItWord"), "the arrows move the dial rather than a cursor")
 	shot(t, r, "open")
 

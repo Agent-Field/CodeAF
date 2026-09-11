@@ -1009,7 +1009,13 @@ func (a *app) questionRows(width int) []string {
 		// A QUESTION PUT OFF FOLDS IN PLACE AND NOT TO THE FAR SIDE OF THE
 		// FRAME (owner ruling 2026-09-11, fold pick A): one titled rule where
 		// the panel was, saying what is waiting and how to open it again.
-		if folded, has := a.questionPutOff(); has && a.questionQuieted() {
+		//
+		// AND NOT UNDER THE PAGE THAT IS SHOWING IT. `o` folds the question it
+		// opens, so the block will not draw it a second time with keys of its
+		// own ([app.openQuestionRoom]). Its fold rule under the page would still be
+		// the same question drawn twice, with `space open` offering what is
+		// already open.
+		if folded, has := a.questionPutOff(); has && a.questionQuieted() && !a.questionPageShows(folded) {
 			out = append(out, a.questionFoldedRow(folded, width))
 		}
 		// THE SHEET STANDS DOWN FOR A QUESTION BEING READ, and this is the
