@@ -58,59 +58,118 @@ func (s *Store) readingPath(id, digest string) string {
 	return filepath.Join(s.readingsDir(id), digest+".json")
 }
 
-// keepReading writes this reading's manifest and removes every other manifest
-// except the ones named in keep — the reading the document still names, and
-// the one a run that did not finish was measured from ([Store.unreportedSince]).
-// Best effort: a manifest that could not be written costs the next firing its
-// change list ([Occurrence.ChangesUnknown]) and never the firing itself.
+// keepReading writes this reading's manifest and tidies away every other
+// manifest except the ones named in keep — the reading the pass started from,
+// and the one a run that did not finish was measured from
+// ([Store.unreportedSince]) — and the one the item's document names at the
+// moment of tidying ([Store.tidyReadings]). The pass treats it as best effort:
+// a manifest that could not be written costs the next firing its change list
+// ([Occurrence.ChangesUnknown]) and never the firing itself.
+func (s *Store) keepReading(id, digest string, files map[string]fileEntry, refresh bool, keep ...string) error {
+	if err := s.writeReading(id, digest, files, refresh); err != nil {
+		return err
+	}
+	s.tidyReadings(id, append(keep, digest)...)
+	return nil
+}
+
+// writeReading writes one reading's manifest under its digest.
 //
 // A MANIFEST ALREADY ON DISK IS REWRITTEN WHEN refresh SAYS ITS TIMES MOVED.
 // The digest names contents, so a touched file leaves it the same; rewriting
 // the manifest under it with the new times is what lets the next pass carry
 // the file's hash instead of reading the file again on every pass.
-func (s *Store) keepReading(id, digest string, files map[string]fileEntry, refresh bool, keep ...string) {
-	if checkID(id) != nil || digest == "" {
-		return
+func (s *Store) writeReading(id, digest string, files map[string]fileEntry, refresh bool) error {
+	if err := checkID(id); err != nil {
+		return err
 	}
-	dir := s.readingsDir(id)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return
+	if digest == "" {
+		return errors.New("a reading with no digest")
 	}
-	if _, err := os.Stat(s.readingPath(id, digest)); err != nil || refresh {
-		data, err := json.Marshal(files)
+	if err := os.MkdirAll(s.readingsDir(id), 0o700); err != nil {
+		return err
+	}
+	if _, err := os.Stat(s.readingPath(id, digest)); err == nil && !refresh {
+		return nil
+	}
+	data, err := json.Marshal(files)
+	if err != nil {
+		return err
+	}
+	return writeAtomic(s.readingPath(id, digest), data)
+}
+
+// tidyReadings removes every manifest but the ones named in keep and the one
+// the item's document names NOW.
+//
+// THE DOCUMENT IS READ UNDER ITS OWN LOCK, AT THE MOMENT OF DELETING (L2). A
+// pass decides what to keep when it starts; an edit that lands while it walks
+// takes a new baseline and names it ([Store.Revise]), under this same lock. A
+// tidy that trusted the pass's list deleted that baseline, and the next pass —
+// unable to load the reading its item named — read the folder as changed in
+// unknown ways and fired, billed, on a folder where nothing had changed (wave
+// 5 review). Read here, the reading the item names is never the one removed.
+func (s *Store) tidyReadings(id string, keep ...string) {
+	_ = s.underItemLock(id, func() error {
+		current, err := s.read(s.ItemPath(id))
 		if err != nil {
-			return
+			return err
 		}
-		if err := writeAtomic(s.readingPath(id, digest), data); err != nil {
-			return
+		keep = append(keep, current.Fingerprint)
+		entries, err := os.ReadDir(s.readingsDir(id))
+		if err != nil {
+			return err
 		}
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
+		for _, entry := range entries {
+			name := strings.TrimSuffix(entry.Name(), ".json")
+			if slices.Contains(keep, name) || !strings.HasSuffix(entry.Name(), ".json") {
+				continue
+			}
+			_ = os.Remove(filepath.Join(s.readingsDir(id), entry.Name()))
+		}
+		return nil
+	})
+}
+
+// baseline takes a file watch's first reading AT THE YES — [Store.Create], and
+// [Store.Revise] when the pattern it watches changes — and names it on the
+// item. Anything else leaves it naming no reading.
+//
+// A BASELINE TAKEN AT THE FIRST PASS SWALLOWED THE GAP (wave 5, ruling R10). The
+// first pass came up to five minutes after the yes, or whenever a window next
+// opened, and read everything it found as the baseline — so the ticket that
+// landed a minute after the person said "tell me when a ticket comes in" was
+// never told. Taken here, anything that changes after the yes is a change.
+//
+// IT STATS AND NEVER READS. The walk is the pass's own ([watched]), bounded by
+// [WatchLimit] entries and made once already by [Item.CheckWatch] a moment
+// before; no file's contents are read, so a yes costs at most ten thousand
+// stats however large the files are. The first pass fills in the hashes, and
+// the reading's times stand for contents until then — so a file saved again
+// unchanged in that gap counts as a change. Hashing at the yes would close
+// that, at the price of reading up to ten thousand files while a person waits
+// on a card.
+//
+// IT WRITES AND NEVER TIDIES: it runs under the item's lock, and the next pass
+// tidies what the item no longer names. A reading that cannot be taken or
+// written leaves the item with none, and its first pass takes the baseline as
+// it always did.
+func (s *Store) baseline(item *Item) {
+	item.Fingerprint = ""
+	if item.When.Kind != WhenFile {
 		return
 	}
-	for _, entry := range entries {
-		name := strings.TrimSuffix(entry.Name(), ".json")
-		if name == digest || slices.Contains(keep, name) || !strings.HasSuffix(entry.Name(), ".json") {
-			continue
-		}
-		_ = os.Remove(filepath.Join(dir, entry.Name()))
+	digest, _, files, err := fingerprint(item.Workspace, item.When.Glob, nil, false)
+	if err != nil || s.writeReading(item.ID, digest, files, true) != nil {
+		return
 	}
+	item.Fingerprint = digest
 }
 
-// changesSince compares the reading named previous with the files seen now.
-// The error is the honest answer when the previous reading is not on disk — an
-// item written before readings were kept, or a manifest that could not be
-// written — and the caller says the changes are unknown rather than "none".
-func (s *Store) changesSince(id, previous string, now map[string]fileEntry) ([]Change, error) {
-	before, err := s.reading(id, previous)
-	if err != nil {
-		return nil, err
-	}
-	return changesBetween(before, now), nil
-}
-
-// reading is the manifest kept under a digest.
+// reading is the manifest kept under a digest. The error is the honest answer
+// when that reading is not on disk — an item written before readings were
+// kept, or a manifest that could not be written — and a caller comparing
+// against it says the changes are unknown rather than "none".
 func (s *Store) reading(id, digest string) (map[string]fileEntry, error) {
 	if digest == "" {
 		return nil, errors.New("no previous reading")

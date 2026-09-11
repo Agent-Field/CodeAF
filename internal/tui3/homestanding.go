@@ -471,7 +471,7 @@ func standRollup(view StandingItemView, now time.Time) string {
 	case item.Status == standing.StatusPaused:
 		return homeItemPaused
 	}
-	words := strings.TrimSpace(item.When.Words)
+	words := item.When.CardWords()
 	switch item.When.Kind {
 	case standing.WhenHold:
 		// A RULE HAS NO TAIL TO REPORT, IT HAS A STATE. Nothing examines it and
@@ -651,7 +651,7 @@ func StandingItemCard(a *app, view StandingItemView, project, dir string, width,
 		// meant to feel and not look at (docs/AMBIENT.md Part 3).
 		state = append(state, pal.dim(fit(standRunMark(pal.ascii)+" "+standRunWord(view, now), width)))
 	}
-	if words := strings.TrimSpace(item.When.Words); words != "" {
+	if words := item.When.CardWords(); words != "" {
 		state = append(state, pal.dim(fit(words, width)))
 	}
 	for _, line := range standHistory(item, now) {
