@@ -292,7 +292,11 @@ func (a *app) deliverQuestion(q session.Question) tea.Cmd {
 		// and drawn by the same code that draws every other one.
 		if doors, ok := a.questionDoors(); ok {
 			answer := *out.Answer
-			cmds = append(cmds, func() tea.Msg { _ = doors.ResolveQuestion(answer); return nil })
+			// THROUGH THE ONE MECHANISM, OFF THE LOOP (offloop.go).
+			cmds = append(cmds, a.offLoop(func() func(bool) tea.Cmd {
+				_ = doors.ResolveQuestion(answer)
+				return nil
+			}))
 		}
 	}
 	if out.Pin != nil {

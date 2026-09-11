@@ -735,12 +735,24 @@ func (a *app) sendSheet() (tea.Cmd, bool) {
 	cmds := make([]tea.Cmd, 0, len(answers))
 	for _, answer := range answers {
 		one := answer
-		if q, ok := asked[sheetRow{kind: one.Kind, id: one.ID, ref: one.Ref}]; ok {
-			shown := questionShown{question: q}
+		shown := questionShown{question: asked[sheetRow{kind: one.Kind, id: one.ID, ref: one.Ref}]}
+		if shown.question.Kind != "" {
 			a.recordQuestion(shown, one)
 			a.countQuestionYes(shown, one)
 		}
-		cmds = append(cmds, func() tea.Msg { _ = doors.ResolveQuestion(one); return nil })
+		// THROUGH THE ONE MECHANISM, OFF THE LOOP (offloop.go). The sheet has
+		// already drawn each answer as taken; a door that refuses one says so
+		// through the same road every other refused answer takes.
+		cmds = append(cmds, a.offLoop(func() func(bool) tea.Cmd {
+			err := doors.ResolveQuestion(one)
+			return func(here bool) tea.Cmd {
+				if err == nil || !here {
+					return nil
+				}
+				a.reopenQuestion(shown, one, err)
+				return nil
+			}
+		}))
 	}
 	a.questionBatch = nil
 	a.questionBatchFolded = false

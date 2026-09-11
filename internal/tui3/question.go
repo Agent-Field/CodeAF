@@ -1714,23 +1714,22 @@ func (a *app) questionBeatKey(head questionShown, key string) (tea.Cmd, bool) {
 		return nil, true
 	}
 	if len(key) == 1 && key[0] >= '1' && key[0] <= '9' {
-		a.questionPickShape(head, int(key[0]-'1'))
-		return nil, true
+		return a.questionPickShape(head, int(key[0]-'1')), true
 	}
 	return nil, true
 }
 
 // questionPickShape banks the shape at this index and answers with the widening
 // answer it belongs to.
-func (a *app) questionPickShape(head questionShown, at int) {
+func (a *app) questionPickShape(head questionShown, at int) tea.Cmd {
 	if at < 0 || at >= len(head.beat) {
-		return
+		return nil
 	}
 	shape := head.beat[at]
 	a.setQuestionBeat(head, nil)
 	key := questionWideningKey(head.question)
 	if key == "" {
-		return
+		return nil
 	}
 	answer := session.Answer{
 		Key: key, Picked: []string{key}, Scope: questionScopeOf(head.question, key),
@@ -1740,7 +1739,7 @@ func (a *app) questionPickShape(head questionShown, at int) {
 		Comments: map[string]string{session.AnswerBanked: shape},
 	}
 	head.beat = nil
-	a.answerQuestion(head, answer)
+	return a.answerQuestion(head, answer)
 }
 
 // questionWideningKey is the key of the answer that grants more than the
@@ -2370,34 +2369,29 @@ func (a *app) answerQuestion(q questionShown, answer session.Answer) tea.Cmd {
 		// THE WHOLE POINT. The engine runs in its own process even on this
 		// machine, so this call crosses a wire: it applies the answer, emits
 		// [session.EventQuestionAnswered], and only then writes its reply back.
-		// A reply that never arrives — a deadline spent while the engine was
-		// busy, a pipe that went — leaves this window holding a question the
-		// engine has already settled, and the news of that settling then comes
-		// down the questions lane looking exactly like somebody else's answer.
-		// MEASURED, ON A REAL TERMINAL AND TO THE MILLISECOND. Six copies of the
-		// ordinary road's own e2e at once on 2026-09-10, and the one that failed
-		// logged this and nothing else:
-		//
-		//	19:41:57.279  sending token=ask:1 keys=[1] by=person
-		//	19:42:07.279  REFUSED  err=the connection to the engine is gone
-		//	19:42:07.280  the lane's news, with the question still open here
-		//
-		// Ten seconds to the millisecond is [remote.callDeadline], and the engine
-		// had applied the answer regardless — the model's next sentence was
-		// `They picked "delete it"`. The five that passed round-tripped in one
-		// millisecond. So the receipt said `decided … · another window ·` over a
-		// key pressed on that very screen, and it is the box being busy that
-		// decides which run it happens on.
+		// The news of that settling comes down the questions lane looking
+		// exactly like somebody else's answer, and this stamp is what tells the
+		// two apart ([app.markQuestionSent]).
 		a.markQuestionSent(q.token(), answer.Keys())
-		if err := door.ResolveQuestion(answer); err != nil {
-			// A REFUSED ACT IS SAID IN THE DOOR'S OWN WORDS. [app.note] is the
-			// same door every other refused act on this surface uses — rewind,
-			// autonomy, a connect, a permission — so a question does not grow
-			// a second composer. The words are the engine's; this surface does
-			// not invent a sentence around them.
-			a.note(err.Error())
-			return nil
-		}
+		// AND THE DOOR IS ASKED FROM A COMMAND, NEVER FROM HERE (offloop.go).
+		// This runs inside Update, and a wire call made here is a window that
+		// cannot draw, cannot take a key, and cannot read the news its own
+		// answer caused — which deadlocked the reader against this loop and cost
+		// a person ten seconds per keystroke (doorbell.go has the measurement).
+		// The screen is settled below on this pass; the engine is told on the
+		// next goroutine; a refusal comes back and puts the question back.
+		cmd = tea.Batch(cmd, a.offLoop(func() func(bool) tea.Cmd {
+			err := door.ResolveQuestion(answer)
+			return func(here bool) tea.Cmd {
+				if err == nil || !here {
+					return nil
+				}
+				// A REFUSED ANSWER LEAVES THE QUESTION OPEN, AND SAYS SO, in
+				// the door's own words ([app.reopenQuestion]).
+				a.reopenQuestion(q, answer, err)
+				return nil
+			}
+		}))
 	}
 	if !session.AnswerResolves(answer) {
 		// AN ANSWER THAT DID NOT END THE QUESTION LEAVES IT ON THE BLOCK. Two
@@ -2456,6 +2450,60 @@ func (a *app) closeQuestion(q questionShown, answer session.Answer) {
 	a.touch()
 }
 
+// reopenQuestion puts a question back after the engine refused the answer this
+// window had already drawn as taken.
+//
+// A REFUSED ANSWER LEAVES THE QUESTION OPEN, AND SAYS SO. The engine's door
+// refuses an answer that names nothing and a lane it does not take; neither is
+// a decision, so neither may leave a receipt or a settled row behind it. The
+// screen was settled on the keystroke (offloop.go says why), so putting it back
+// is three undoings and the door's own sentence:
+//
+//   - THE RECEIPT GOES, because it is an account of a decision that was not
+//     made, and a person reading the row above their box has no other way to
+//     know that.
+//   - THE YES IS UNCOUNTED, because the rule offer counts permissions a person
+//     actually granted, and an offer to make a rule out of a refused answer
+//     would be a rule nobody agreed to.
+//   - THE SENT STAMP IS KEPT, because a refusal and a deadline reach here by the
+//     same road: if the engine did apply it after all, the news that comes down
+//     the questions lane a moment later must still close this as YOURS rather
+//     than as another window's ([app.markQuestionSent]).
+//
+// AND IT COMES BACK WITH A FRESH SETTLE GUARD. It went off the screen on a
+// keystroke and is arriving again unannounced, which is the exact case the guard
+// is for ([questionSettle]): the next key belongs to the person's sentence, not
+// to a question that reappeared under their hands.
+func (a *app) reopenQuestion(q questionShown, answer session.Answer, err error) {
+	// THE WORDS ARE THE ENGINE'S. [app.note] is the same door every other
+	// refused act on this surface uses — rewind, autonomy, a connect, a
+	// permission — so a question does not grow a second composer.
+	a.note(strings.TrimSpace(err.Error()))
+	if a.questionIsOpen(q.token()) {
+		// An answer that never closed anything ([session.AnswerResolves] false):
+		// the question is still on the block and there is nothing to put back.
+		return
+	}
+	a.forgetQuestionRecord(q)
+	a.noteQuestionYes(q, answer, -1)
+	q.shown = time.Time{}
+	a.raiseQuestion(q)
+	a.markQuestionSent(q.token(), answer.Keys())
+	a.touch()
+}
+
+// forgetQuestionRecord takes back the newest receipt this window wrote for one
+// question.
+func (a *app) forgetQuestionRecord(q questionShown) {
+	for i := len(a.questionRecords) - 1; i >= 0; i-- {
+		record := a.questionRecords[i].record
+		if record.Kind == q.question.Kind && record.ID == q.question.ID && record.Ref == q.question.Ref {
+			a.questionRecords = append(a.questionRecords[:i], a.questionRecords[i+1:]...)
+			return
+		}
+	}
+}
+
 // recordQuestion writes the receipt from the question and the answer together,
 // exactly as the engine writes its own record from the same two things
 // (internal/session's decisionRecordOf) — so the line above the box and the
@@ -2491,6 +2539,14 @@ func (a *app) recordQuestion(q questionShown, answer session.Answer) {
 // says no three times has not formed a habit worth writing down, they have
 // answered three questions.
 func (a *app) countQuestionYes(q questionShown, answer session.Answer) {
+	a.noteQuestionYes(q, answer, 1)
+}
+
+// noteQuestionYes is that count in both directions: one more when a permission
+// is granted, one fewer when the engine refused the answer that granted it
+// ([app.reopenQuestion]). ONE FUNCTION FOR BOTH so the two readings of "is this
+// a yes worth counting" cannot drift apart.
+func (a *app) noteQuestionYes(q questionShown, answer session.Answer, by int) {
 	if q.question.Ask != session.AskPermission {
 		return
 	}
@@ -2501,7 +2557,10 @@ func (a *app) countQuestionYes(q questionShown, answer session.Answer) {
 	if a.questionYeses == nil {
 		a.questionYeses = map[string]int{}
 	}
-	a.questionYeses[questionShape(q.question)]++
+	shape := questionShape(q.question)
+	if a.questionYeses[shape] += by; a.questionYeses[shape] <= 0 {
+		delete(a.questionYeses, shape)
+	}
 }
 
 // foldQuestion is `esc`: LATER, and nothing is cancelled.
@@ -3226,11 +3285,10 @@ func (a *app) questionMakeRule(head questionShown) tea.Cmd {
 			scope = session.ScopeAlways
 		}
 	}
-	a.answerQuestion(head, session.Answer{
+	return a.answerQuestion(head, session.Answer{
 		Key: key, Picked: []string{key}, Scope: scope,
 		Why: "a rule, from the third time this was asked",
 	})
-	return nil
 }
 
 // questionUndo is `u` on a ratify line: take back what was already done.
@@ -3273,22 +3331,22 @@ func (a *app) questionDial(head questionShown) tea.Cmd {
 	// `decide these from now on` was a key that decided exactly one.
 	//
 	// AND THE RULE IS SAID OUT LOUD, because NEVER A HIDDEN RULE: the row that
-	// answers under it afterwards wears `· your rule`, and this line is the
-	// moment it was written.
-	if word := a.dialKind(head.question.Ask); word != "" {
-		a.note(word)
-	}
-	a.answerQuestion(head, session.Answer{
+	// answers under it afterwards wears `· your rule`, and [app.dialKind] says
+	// the moment it was written, on the frame after the engine took it.
+	return tea.Batch(a.dialKind(head.question.Ask), a.answerQuestion(head, session.Answer{
 		Key: key, Picked: []string{key}, Scope: session.ScopeProject,
 		Why: "decide these from now on",
-	})
-	return nil
+	}))
 }
 
-// dialKind writes this project's rule for one shape of question, and answers
-// with what to say about it — "" where there was nothing to write or the engine
-// refused it.
-func (a *app) dialKind(kind session.AskKind) string {
+// dialKind writes this project's rule for one shape of question and says out
+// loud what came of it.
+//
+// IT IS ASKED FROM A COMMAND (offloop.go): writing a rule is a call to the
+// engine's process, and the answer in front of the person is settled on the
+// keystroke rather than behind this. So the line about the rule lands on the
+// frame after the receipt, in the order the two things actually happened.
+func (a *app) dialKind(kind session.AskKind) tea.Cmd {
 	// IT ASKS FOR THE WRITE AND NOT FOR THE READ. `D` needs somewhere to keep
 	// the setting and nothing else; only `/autonomy` needs to read the rows
 	// back. Asking for both here would take the key away from a session that
@@ -3296,17 +3354,30 @@ func (a *app) dialKind(kind session.AskKind) string {
 	// [questionDialDoor]'s own comment exists to protect.
 	agent, ok := a.agent.(questionDialDoor)
 	if !ok || kind == "" {
-		return ""
+		return nil
 	}
-	if err := agent.SetAutonomy(kind, session.Policy{Kind: session.PolicyDecide}); err != nil {
-		// THE REFUSAL IS THE PERSON'S TO READ. The engine turns down a rule
-		// over a clarification and over anything destructive, and a key that
-		// silently did nothing would be a key that promised a rule and wrote
-		// none.
-		return err.Error()
-	}
-	a.autonomyChanged()
-	return questionShapeWord(kind) + " · " + autonomyDecideWord + questionDialFromNowWord
+	return a.offLoop(func() func(bool) tea.Cmd {
+		err := agent.SetAutonomy(kind, session.Policy{Kind: session.PolicyDecide})
+		return func(here bool) tea.Cmd {
+			if !here {
+				return nil
+			}
+			if err != nil {
+				// THE REFUSAL IS THE PERSON'S TO READ. The engine turns down a
+				// rule over a clarification and over anything destructive, and a
+				// key that silently did nothing would be a key that promised a
+				// rule and wrote none.
+				a.note(strings.TrimSpace(err.Error()))
+				return nil
+			}
+			a.autonomyChanged()
+			// AND THE RULE IS SAID OUT LOUD, because NEVER A HIDDEN RULE: the
+			// row that answers under it afterwards wears `· your rule`, and this
+			// is the moment it was written.
+			a.note(questionShapeWord(kind) + " · " + autonomyDecideWord + questionDialFromNowWord)
+			return nil
+		}
+	})
 }
 
 // questionDialFromNowWord is the tail of that line: where the rule reaches and
@@ -3340,17 +3411,17 @@ func (a *app) openQuestionRoom(head questionShown) tea.Cmd {
 // modal and a press falling through would expand a tool call while somebody was
 // denying one. Nothing here is modal, so a press that hits no answer falls
 // through to whatever is under it, exactly as a key does.
-func (a *app) questionPress(x, y int) bool {
+func (a *app) questionPress(x, y int) (tea.Cmd, bool) {
 	head, ok := a.questionHead()
 	if !ok || a.copy.on {
-		return false
+		return nil, false
 	}
-	if took, sheeted := a.questionBandPress(head, x, y); sheeted {
-		return took
+	if cmd, took, sheeted := a.questionBandPress(head, x, y); sheeted {
+		return cmd, took
 	}
 	mark, found := a.chromeAt(y)
 	if !found || mark.kind != chromeQuestion || mark.index != a.questionSpanRow {
-		return false
+		return nil, false
 	}
 	for _, span := range a.questionSpans {
 		if x < span.from || x >= span.to {
@@ -3360,13 +3431,11 @@ func (a *app) questionPress(x, y int) bool {
 			// THE BEAT'S SPANS ARE SHAPES AND NOT ANSWERS. They are drawn where
 			// the answers were, so a press there means whichever of the two is on
 			// screen — and reading it as an answer would bank the widest one.
-			a.questionPickShape(head, span.at)
-			return true
+			return a.questionPickShape(head, span.at), true
 		}
-		a.questionPick(head, span.at)
-		return true
+		return a.questionPick(head, span.at), true
 	}
-	return false
+	return nil, false
 }
 
 // questionMark is what the pointer is over on row i of the block.

@@ -17,6 +17,7 @@ import (
 // clock, so the settle guard and the policy line are decidable rather than
 // raced, and a scripted agent that records what the one door was handed.
 type questionLab struct {
+	t      *testing.T
 	a      *app
 	agent  *questionScript
 	at     time.Time
@@ -53,7 +54,7 @@ func newQuestionLab(t *testing.T) *questionLab {
 	t.Helper()
 	at := time.Date(2026, time.September, 9, 14, 2, 0, 0, time.UTC)
 	script := &questionScript{fakeAgent: &fakeAgent{}}
-	lab := &questionLab{agent: script, at: at}
+	lab := &questionLab{t: t, agent: script, at: at}
 	script.answer = func(answer session.Answer) error {
 		lab.answer = append(lab.answer, answer)
 		return nil
@@ -120,8 +121,23 @@ func questionPlainRows(rows []string) []string {
 }
 
 func (l *questionLab) press(key string) bool {
-	_, taken := l.a.questionKey(questionPressOf(key))
+	cmd, taken := l.a.questionKey(questionPressOf(key))
+	// AND WHAT THE KEY HANDED BACK IS RUN. The engine's door is asked from the
+	// command a key returns and never from the update loop (offloop.go), so a
+	// lab that dropped the command would be a lab in which no answer ever
+	// reached the engine.
+	l.spend(cmd)
 	return taken
+}
+
+// spend runs one command the way the loop would, including whatever it hands
+// back — the fold of a door's answer among it (offloop.go).
+func (l *questionLab) spend(cmd tea.Cmd) {
+	if cmd == nil {
+		return
+	}
+	l.t.Helper()
+	drive(l.t, l.a, runCmd(cmd)...)
 }
 
 // questionPressOf spells one key the way bubbletea hands it over, so a test
@@ -1321,8 +1337,8 @@ func TestTheTaskRecordPageDrawsTheLandingQuestionAndTakesItsKeys(t *testing.T) {
 	}
 	lab.a.taskSheet.detail.SessionID = "abc123"
 	lab.tick(time.Second)
-	lab.a.taskCardKey("right")
-	lab.a.taskCardKey("enter")
+	lab.spend(lab.a.taskCardKey("right"))
+	lab.spend(lab.a.taskCardKey("enter"))
 	if len(lab.answer) != 1 || lab.answer[0].Key != session.LandingNoKey {
 		t.Fatalf("enter did not take the pointed answer · %+v", lab.answer)
 	}

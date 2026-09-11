@@ -406,20 +406,26 @@ func (a *app) answerHere(question session.PresenceQuestion, key string) (tea.Cmd
 			// (consent.go's [app.answerWith]): the same receipt, the same record
 			// and the same annotated row as the same answer pressed in front of
 			// the question.
-			a.answerWith(action.Allow, action.Scope)
-			return nil, true
+			return a.answerWith(action.Allow, action.Scope), true
 		}
 		if a.agent != nil {
-			a.agent.ResolveConsentRemember(question.ID, action.Allow, action.Scope)
-			return nil, true
+			// FROM A COMMAND, NEVER FROM THE LOOP (offloop.go): home's band
+			// answers over the same wire the block's keys do.
+			agent := a.agent
+			return a.offLoop(func() func(bool) tea.Cmd {
+				agent.ResolveConsentRemember(question.ID, action.Allow, action.Scope)
+				return nil
+			}), true
 		}
 	case session.QuestionTask:
-		if a.answerTaskWith(question.ID, key) {
-			return nil, true
+		if cmd, took := a.answerTaskWith(question.ID, key); took {
+			return cmd, true
 		}
 		if agent, ok := a.tasker(); ok {
-			agent.ResolveTask(question.ID, action.Task)
-			return nil, true
+			return a.offLoop(func() func(bool) tea.Cmd {
+				agent.ResolveTask(question.ID, action.Task)
+				return nil
+			}), true
 		}
 	case session.QuestionStanding:
 		if card := a.stand; card != nil && card.id == question.ID && !card.settled() {
@@ -441,8 +447,10 @@ func (a *app) answerHere(question session.PresenceQuestion, key string) (tea.Cmd
 			}
 		}
 		if agent, ok := a.stander(); ok {
-			agent.ResolveStanding(question.ID, action.Standing)
-			return nil, true
+			return a.offLoop(func() func(bool) tea.Cmd {
+				agent.ResolveStanding(question.ID, action.Standing)
+				return nil
+			}), true
 		}
 	}
 	return nil, false
@@ -471,8 +479,17 @@ func (a *app) answerWholeQuestion(question session.PresenceQuestion, key string)
 		At: time.Now(), Kind: whole.Kind, ID: whole.ID, Ref: whole.Ref, Ask: whole.Ask,
 		Key: key, Picked: []string{key}, DecidedBy: session.DecidedByPerson,
 	}
-	if err := doors.ResolveQuestion(answer); err != nil {
-		return nil, false
-	}
-	return nil, true
+	// THE KEY IS TAKEN HERE AND THE DOOR IS ASKED FROM A COMMAND (offloop.go).
+	// A refusal is the engine's own sentence, said where home says everything
+	// else; there is no row on this page to put back, because the question was
+	// never drawn on it.
+	return a.offLoop(func() func(bool) tea.Cmd {
+		err := doors.ResolveQuestion(answer)
+		return func(here bool) tea.Cmd {
+			if err != nil && here {
+				a.note(strings.TrimSpace(err.Error()))
+			}
+			return nil
+		}
+	}), true
 }

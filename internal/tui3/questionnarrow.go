@@ -1,6 +1,8 @@
 package tui3
 
 import (
+	tea "charm.land/bubbletea/v2"
+
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -281,17 +283,19 @@ func (a *app) questionNarrowFoot(q questionShown, width int) string {
 }
 
 // questionBandPress resolves a press on one of the sheet's bands, and reports
-// whether it took it.
-func (a *app) questionBandPress(head questionShown, x, y int) (bool, bool) {
+// whether it took it — with whatever the answer it took handed back, because an
+// answer is sent from a command now and a press that dropped it would be a tap
+// the engine never heard (offloop.go).
+func (a *app) questionBandPress(head questionShown, x, y int) (tea.Cmd, bool, bool) {
 	if len(a.questionBands) == 0 {
 		// NO BANDS IS NOT THE SHEET, and saying so is what keeps this from
 		// swallowing a press the wide form's own answers row is about to
 		// resolve ([app.questionPress] asks here first).
-		return false, false
+		return nil, false, false
 	}
 	mark, found := a.chromeAt(y)
 	if !found || mark.kind != chromeQuestion {
-		return false, false
+		return nil, false, false
 	}
 	for _, band := range a.questionBands {
 		if band.row != mark.index || !band.span.holds(x) {
@@ -301,13 +305,13 @@ func (a *app) questionBandPress(head questionShown, x, y int) (bool, bool) {
 		case band.at == questionBandBack:
 			a.setQuestionBeat(head, nil)
 		case len(head.beat) > 0:
-			a.questionPickShape(head, band.at)
+			return a.questionPickShape(head, band.at), true, true
 		default:
-			a.questionPick(head, band.at)
+			return a.questionPick(head, band.at), true, true
 		}
-		return true, true
+		return nil, true, true
 	}
-	return false, true
+	return nil, false, true
 }
 
 // plainText drops the bytes a terminal takes as orders rather than as text. It

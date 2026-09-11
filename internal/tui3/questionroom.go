@@ -1097,14 +1097,27 @@ func (a *app) questionSetDial() tea.Cmd {
 		a.questionRoomTouched()
 		return nil
 	}
-	if err := door.SetAutonomy(room.head.question.Ask, session.Policy{Kind: session.PolicyDecide}); err != nil {
-		room.refused = strings.TrimSpace(err.Error())
-		a.questionRoomTouched()
-		return nil
-	}
-	room.refused = questionDecideKindDone
-	a.questionRoomTouched()
-	return nil
+	// THE RULE IS WRITTEN FROM A COMMAND (offloop.go) and the foot says what the
+	// engine said about it — which is the one thing here worth waiting to know,
+	// because the engine refuses a rule over a clarification and over anything
+	// destructive. What it does not do is hold the frame while it waits.
+	kind := room.head.question.Ask
+	return a.offLoop(func() func(bool) tea.Cmd {
+		err := door.SetAutonomy(kind, session.Policy{Kind: session.PolicyDecide})
+		return func(here bool) tea.Cmd {
+			if !here || a.qroom == nil || a.qroom != room {
+				return nil
+			}
+			if err != nil {
+				room.refused = strings.TrimSpace(err.Error())
+			} else {
+				room.refused = questionDecideKindDone
+				a.autonomyChanged()
+			}
+			a.questionRoomTouched()
+			return nil
+		}
+	})
 }
 
 // questionOfferKeys is which of the grammar's keys this question offers, and it
@@ -1590,11 +1603,26 @@ func (a *app) questionAnswer(answer session.Answer) tea.Cmd {
 	if answer.DecidedBy == "" {
 		answer.DecidedBy = session.DecidedByPerson
 	}
-	if err := door.ResolveQuestion(answer); err != nil {
-		room.refused = strings.TrimSpace(err.Error())
-		a.questionRoomTouched()
-		return nil
-	}
+	// THE SENDING IS REMEMBERED BEFORE THE DOOR IS ASKED, exactly as the block
+	// remembers it (question.go's [app.markQuestionSent]). Without it an answer
+	// given on this page and echoed back down the questions lane was read as
+	// somebody else's, and the receipt under the closing page said
+	// `another window` about a key pressed on this one.
+	a.markQuestionSent(room.head.token(), answer.Keys())
+	head := room.head
+	// AND THE DOOR IS ASKED FROM A COMMAND (offloop.go). The page settles here,
+	// on the keystroke; a refusal puts the question back on the block with the
+	// engine's own sentence, which is where it can be answered again.
+	sent := a.offLoop(func() func(bool) tea.Cmd {
+		err := door.ResolveQuestion(answer)
+		return func(here bool) tea.Cmd {
+			if err == nil || !here {
+				return nil
+			}
+			a.reopenQuestion(head, answer, err)
+			return nil
+		}
+	})
 	a.input.reset()
 	// THE ANSWER IS THE RECORD, AND THERE IS ONE RECORD.
 	//
@@ -1617,7 +1645,7 @@ func (a *app) questionAnswer(answer session.Answer) tea.Cmd {
 	// `another window` on its own receipt.
 	a.closeQuestion(room.head, answer)
 	a.closeQuestionRoom()
-	return nil
+	return sent
 }
 
 // questionNoDoorWord is what the foot says on a session that can draw a question

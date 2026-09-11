@@ -83,12 +83,14 @@ type PhaseNews = session.PhaseNews
 // nothing and the older readings underneath take over again.
 const phaseWindow = provider.PhaseWindow
 
-// phaseNewsMsg wakes the loop so a frame is drawn for a phase that changed
-// somewhere other than a keystroke. It carries nothing — [PostPhaseNews] has
-// already put the news on the desk — because a message that carried the news
-// would be a second copy of it, arriving after the first. It is the lane news's
-// own shape (lanes.go's [laneNewsMsg]) said again for the other seam.
-type phaseNewsMsg struct{}
+// newsMsg wakes the loop so a frame is drawn for news that arrived from
+// somewhere other than a keystroke — a phase that changed ([PostPhaseNews]) or a
+// sighting a finished answer left ([PostLaneNews]). It carries nothing, because
+// the news is already on the desk by the time it arrives and a message that
+// carried it would be a second copy, arriving after the first. It is ONE
+// message for both seams because both ask for the same thing, a frame, and one
+// frame answers any number of them (doorbell.go's coalescing).
+type newsMsg struct{}
 
 // newsDeskKeys is every name one piece of news is filed under on either of this
 // package's two desks — this file's phases and lanes.go's sightings.

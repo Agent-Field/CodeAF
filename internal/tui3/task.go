@@ -1538,18 +1538,20 @@ func (a *app) taskOption(id uint64, key string) (session.AnswerOption, bool) {
 // annotated card as the same key pressed in front of the question. The one
 // caller is home's errand band, where a person answers a question from the page
 // rather than from the conversation it was asked in (homeband_answer.go).
-func (a *app) answerTaskWith(id uint64, key string) bool {
+func (a *app) answerTaskWith(id uint64, key string) (tea.Cmd, bool) {
 	for _, open := range a.questions {
 		if open.question.Kind != session.QuestionTask || open.question.ID != id {
 			continue
 		}
 		if _, ok := open.question.Option(key); !ok {
-			return false
+			return nil, false
 		}
-		a.answerQuestion(open, session.Answer{Key: key, Picked: []string{key}})
-		return true
+		// THE ANSWER'S OWN SENDING RIDES BACK WITH IT. The door is asked from
+		// the command rather than from the loop (offloop.go), so a caller that
+		// dropped this would be a key the engine never heard.
+		return a.answerQuestion(open, session.Answer{Key: key, Picked: []string{key}}), true
 	}
-	return false
+	return nil, false
 }
 
 // holdTask is what a keystroke means to a clock that ANSWERS.

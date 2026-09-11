@@ -77,8 +77,12 @@ func footText(a *app) string {
 	return strings.Join(out, "\n")
 }
 
-func tap(a *app, key string) {
-	a.questionRoomKey(tea.KeyPressMsg{Code: keyCodeOf(key), Text: key})
+// tap presses one key on the page and spends what it handed back: an answer
+// travels on the command a key returns, never from the loop (offloop.go).
+func tap(t *testing.T, a *app, key string) {
+	t.Helper()
+	cmd, _ := a.questionRoomKey(tea.KeyPressMsg{Code: keyCodeOf(key), Text: key})
+	spend(t, a, cmd)
 }
 
 // keyCodeOf spells a one-character key the way bubbletea does, so a test presses
@@ -90,9 +94,13 @@ func keyCodeOf(key string) rune {
 	return 0
 }
 
-// tapNamed sends a key that has a name rather than a character.
-func tapNamed(a *app, code rune, mod tea.KeyMod) (tea.Cmd, bool) {
-	return a.questionRoomKey(tea.KeyPressMsg{Code: code, Mod: mod})
+// tapNamed sends a key that has a name rather than a character, and spends what
+// it handed back for [tap]'s reason.
+func tapNamed(t *testing.T, a *app, code rune, mod tea.KeyMod) (tea.Cmd, bool) {
+	t.Helper()
+	cmd, took := a.questionRoomKey(tea.KeyPressMsg{Code: code, Mod: mod})
+	spend(t, a, cmd)
+	return cmd, took
 }
 
 // THE FOUR ATTRIBUTION FACTS ARE ON THE PAGE. DESIGN.md names them together —
@@ -164,7 +172,7 @@ func TestThePageOpensOnThePickAndFoldsTheRest(t *testing.T) {
 // A DIGIT TAKES AN ANSWER AND OPENS IT, and the foot says what enter would send.
 func TestADigitTakesAnAnswerAndTheFootSaysWhatWouldBeSent(t *testing.T) {
 	a, _ := standingInAQuestion(t, demoQuestionReading())
-	tap(a, "2")
+	tap(t, a, "2")
 	if drawn := pageText(a); !strings.Contains(drawn, "One file in the repository") {
 		t.Errorf("picking an answer should open it:\n%s", drawn)
 	}
@@ -204,7 +212,7 @@ func TestTheFootOffersNoAnswerUntilThereIsOne(t *testing.T) {
 // the foot says the table is differences only.
 func TestCompareLaysTheAnswersOutAndSaysItIsDifferencesOnly(t *testing.T) {
 	a, _ := standingInAQuestion(t, demoQuestionReading())
-	tap(a, "x")
+	tap(t, a, "x")
 	drawn := pageText(a)
 	for _, want := range []string{"runs on", "backing up", "reporting", questionCompareOnly} {
 		if !strings.Contains(drawn, want) {
@@ -226,7 +234,7 @@ func TestCompareDropsAnAxisEveryAnswerAgreesOn(t *testing.T) {
 		q.Options[i].Dimensions = map[string]string{"runs on": "this machine", "backing up": q.Options[i].Key}
 	}
 	a, _ := standingInAQuestion(t, q)
-	tap(a, "x")
+	tap(t, a, "x")
 	drawn := pageText(a)
 	if strings.Contains(drawn, "runs on") {
 		t.Errorf("an axis every answer agrees on should be dropped:\n%s", drawn)
@@ -241,7 +249,7 @@ func TestCompareDropsAnAxisEveryAnswerAgreesOn(t *testing.T) {
 func TestCompareStacksOnANarrowPage(t *testing.T) {
 	a, _ := standingInAQuestion(t, demoQuestionReading())
 	a.width = 64
-	tap(a, "x")
+	tap(t, a, "x")
 	drawn := pageText(a)
 	// Stacked, every answer's own word is on a row of its own with its readings
 	// underneath, so the three answers appear on three separate lines.
@@ -273,7 +281,7 @@ func TestCompareFallsBackToTheConsequenceLines(t *testing.T) {
 		q.Options[i].Dimensions = nil
 	}
 	a, _ := standingInAQuestion(t, q)
-	tap(a, "x")
+	tap(t, a, "x")
 	drawn := pageText(a)
 	for _, want := range []string{questionGainWord, questionCostWord, "one place to back up"} {
 		if !strings.Contains(drawn, want) {
@@ -300,12 +308,12 @@ func TestAQuestionWithNothingToCompareDoesNotOfferCompare(t *testing.T) {
 // the composer's own prompt mark.
 func TestCommentLandsUnderTheAnswerItWasPressedOn(t *testing.T) {
 	a, _ := standingInAQuestion(t, demoQuestionReading())
-	tap(a, "c")
+	tap(t, a, "c")
 	if foot := footText(a); !strings.Contains(foot, questionCommentWord) {
 		t.Errorf("the foot should say the box is writing a comment:\n%s", foot)
 	}
 	a.input.setText("only if the reporting job keeps its own copy")
-	a.questionRoomKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	tapNamed(t, a, tea.KeyEnter, 0)
 	drawn := pageText(a)
 	if !strings.Contains(drawn, tokens.GlyphPromptChat+" only if the reporting job keeps its own copy") {
 		t.Errorf("the comment should be drawn under its answer:\n%s", drawn)
@@ -318,11 +326,11 @@ func TestCommentLandsUnderTheAnswerItWasPressedOn(t *testing.T) {
 // AND IT GOES INTO THE RECORD AS A NOTE ON A PART, never as the answer itself.
 func TestCommentsRideTheAnswerAsNotesOnParts(t *testing.T) {
 	a, agent := standingInAQuestion(t, demoQuestionReading())
-	tap(a, "c")
+	tap(t, a, "c")
 	a.input.setText("keep the sqlite file")
-	a.questionRoomKey(tea.KeyPressMsg{Code: tea.KeyEnter})
-	tap(a, "1")
-	a.questionRoomKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	tapNamed(t, a, tea.KeyEnter, 0)
+	tap(t, a, "1")
+	tapNamed(t, a, tea.KeyEnter, 0)
 	if len(agent.answers) != 1 {
 		t.Fatalf("expected one answer, got %d", len(agent.answers))
 	}
@@ -339,9 +347,9 @@ func TestCommentsRideTheAnswerAsNotesOnParts(t *testing.T) {
 // drawn in place under the row it was asked from.
 func TestAskBackSendsOneThingAndDrawsTheReplyInPlace(t *testing.T) {
 	a, _ := standingInAQuestion(t, demoQuestionReading())
-	tap(a, "?")
+	tap(t, a, "?")
 	a.input.setText("does the reporting job read it directly")
-	a.questionRoomKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	tapNamed(t, a, tea.KeyEnter, 0)
 	if a.qroom == nil {
 		t.Fatal("asking back must not close the question")
 	}
@@ -358,10 +366,10 @@ func TestAskBackSendsOneThingAndDrawsTheReplyInPlace(t *testing.T) {
 // ONE EXCHANGE PER ANSWER, and the refusal says so rather than doing nothing.
 func TestAskBackIsBoundedAtOnePerAnswerAndSaysSo(t *testing.T) {
 	a, _ := standingInAQuestion(t, demoQuestionReading())
-	tap(a, "?")
+	tap(t, a, "?")
 	a.input.setText("one")
-	a.questionRoomKey(tea.KeyPressMsg{Code: tea.KeyEnter})
-	tap(a, "?")
+	tapNamed(t, a, tea.KeyEnter, 0)
+	tap(t, a, "?")
 	if foot := footText(a); !strings.Contains(foot, questionAskedWord) {
 		t.Errorf("a second ask should say why it was refused:\n%s", foot)
 	}
@@ -370,13 +378,13 @@ func TestAskBackIsBoundedAtOnePerAnswerAndSaysSo(t *testing.T) {
 // AND THE EXCHANGE CLOSES WITH THE QUESTION AND LANDS IN THE RECORD.
 func TestTheExchangeRidesTheAnswer(t *testing.T) {
 	a, agent := standingInAQuestion(t, demoQuestionReading())
-	tap(a, "?")
+	tap(t, a, "?")
 	a.input.setText("does it read it directly")
-	a.questionRoomKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	tapNamed(t, a, tea.KeyEnter, 0)
 	a.entries = append(a.entries, entry{kind: entryAssistant, text: "it does"})
 	pageText(a)
-	tap(a, "1")
-	a.questionRoomKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	tap(t, a, "1")
+	tapNamed(t, a, tea.KeyEnter, 0)
 	if len(agent.answers) != 1 {
 		t.Fatalf("expected one answer, got %d", len(agent.answers))
 	}
@@ -390,7 +398,7 @@ func TestTheExchangeRidesTheAnswer(t *testing.T) {
 // sight-unseen is how a person finds out later that they agreed to something.
 func TestYouDecideShowsThePickAndReasonBeforeHandingOver(t *testing.T) {
 	a, agent := standingInAQuestion(t, demoQuestionReading())
-	tap(a, "d")
+	tap(t, a, "d")
 	foot := footText(a)
 	if !strings.Contains(foot, questionDecideWord+"1 postgres") {
 		t.Errorf("the first press should show what it would take:\n%s", foot)
@@ -401,7 +409,7 @@ func TestYouDecideShowsThePickAndReasonBeforeHandingOver(t *testing.T) {
 	if len(agent.answers) != 0 {
 		t.Fatalf("the first press must not answer anything: %#v", agent.answers)
 	}
-	tap(a, "d")
+	tap(t, a, "d")
 	if len(agent.answers) != 1 {
 		t.Fatalf("the second press should hand over, got %d answers", len(agent.answers))
 	}
@@ -414,9 +422,9 @@ func TestYouDecideShowsThePickAndReasonBeforeHandingOver(t *testing.T) {
 // safe to try.
 func TestAnyOtherKeyCancelsYouDecide(t *testing.T) {
 	a, agent := standingInAQuestion(t, demoQuestionReading())
-	tap(a, "d")
-	tap(a, "2")
-	tap(a, "d")
+	tap(t, a, "d")
+	tap(t, a, "2")
+	tap(t, a, "d")
 	if len(agent.answers) != 0 {
 		t.Fatalf("d after another key must ask again, not hand over: %#v", agent.answers)
 	}
@@ -426,12 +434,12 @@ func TestAnyOtherKeyCancelsYouDecide(t *testing.T) {
 // rather than as a pick.
 func TestReframeComesBackAsTheRealQuestion(t *testing.T) {
 	a, agent := standingInAQuestion(t, demoQuestionReading())
-	tap(a, "n")
+	tap(t, a, "n")
 	if foot := footText(a); !strings.Contains(foot, questionReframeWord) {
 		t.Errorf("the foot should say the box is writing the real question:\n%s", foot)
 	}
 	a.input.setText("whether the ledger belongs in this project at all")
-	a.questionRoomKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	tapNamed(t, a, tea.KeyEnter, 0)
 	if len(agent.answers) != 1 {
 		t.Fatalf("expected one answer, got %d", len(agent.answers))
 	}
@@ -451,12 +459,12 @@ func TestTheSettleGuardDropsAKeyThatWasAlreadyTravelling(t *testing.T) {
 	a := newTestApp(agent)
 	a.width, a.height = 92, 30
 	a.raiseQuestionRoom(questionShown{question: demoQuestionReading(), shown: a.now()})
-	tap(a, "2")
+	tap(t, a, "2")
 	if got := a.qroom.picked; len(got) != 0 {
 		t.Errorf("a key inside the settle window must be dropped, got %#v", got)
 	}
 	a.qroom.shown = a.qroom.shown.Add(-questionSettle)
-	tap(a, "2")
+	tap(t, a, "2")
 	if got := a.qroom.picked; len(got) != 1 || got[0] != "2" {
 		t.Errorf("a key after the settle window should be taken, got %#v", got)
 	}
@@ -466,8 +474,8 @@ func TestTheSettleGuardDropsAKeyThatWasAlreadyTravelling(t *testing.T) {
 // decided — DESIGN.md is explicit that the turn stays paused on it.
 func TestEscapeFoldsTheQuestionWithoutAnsweringIt(t *testing.T) {
 	a, agent := standingInAQuestion(t, demoQuestionReading())
-	tap(a, "1")
-	if _, took := tapNamed(a, tea.KeyEscape, 0); !took {
+	tap(t, a, "1")
+	if _, took := tapNamed(t, a, tea.KeyEscape, 0); !took {
 		t.Fatal("esc should be taken by the page")
 	}
 	if a.questionRoomOpen() {
@@ -482,15 +490,15 @@ func TestEscapeFoldsTheQuestionWithoutAnsweringIt(t *testing.T) {
 // and changed their mind is asking for the comment to go, not for the page.
 func TestEscapeLeavesTheCommentBeforeItLeavesThePage(t *testing.T) {
 	a, _ := standingInAQuestion(t, demoQuestionReading())
-	tap(a, "c")
-	tapNamed(a, tea.KeyEscape, 0)
+	tap(t, a, "c")
+	tapNamed(t, a, tea.KeyEscape, 0)
 	if !a.questionRoomOpen() {
 		t.Fatal("the first esc should only leave the comment")
 	}
 	if a.qroom.commenting != "" {
 		t.Error("the first esc should clear what the box is writing to")
 	}
-	tapNamed(a, tea.KeyEscape, 0)
+	tapNamed(t, a, tea.KeyEscape, 0)
 	if a.questionRoomOpen() {
 		t.Error("the second esc should fold the page")
 	}
@@ -514,12 +522,12 @@ func TestALetterIsALetterTheMomentThereIsASentence(t *testing.T) {
 // which is the half of an answer that carries their intent.
 func TestWordsTypedBesideThePickRideTheAnswer(t *testing.T) {
 	a, agent := standingInAQuestion(t, demoQuestionReading())
-	tap(a, "1")
+	tap(t, a, "1")
 	a.input.setText("but keep the sqlite file as the source of truth")
 	if foot := footText(a); !strings.Contains(foot, questionWithWord+"but keep the sqlite file") {
 		t.Errorf("the foot should show what would go with the pick:\n%s", foot)
 	}
-	a.questionRoomKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	tapNamed(t, a, tea.KeyEnter, 0)
 	if len(agent.answers) != 1 {
 		t.Fatalf("expected one answer, got %d", len(agent.answers))
 	}
@@ -536,8 +544,8 @@ func TestAWindowThatCannotResolveSaysSoRatherThanFailingSilently(t *testing.T) {
 	a.width, a.height = 92, 30
 	a.raiseQuestionRoom(questionShown{question: demoQuestionReading(), shown: a.now()})
 	a.qroom.shown = a.qroom.shown.Add(-time.Second)
-	tap(a, "1")
-	a.questionRoomKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	tap(t, a, "1")
+	tapNamed(t, a, tea.KeyEnter, 0)
 	if foot := footText(a); !strings.Contains(foot, "not answer it") {
 		t.Errorf("a window with no door should say so:\n%s", foot)
 	}
@@ -548,8 +556,8 @@ func TestAWindowThatCannotResolveSaysSoRatherThanFailingSilently(t *testing.T) {
 func TestAnEngineRefusalIsDrawnWhereTheFootWas(t *testing.T) {
 	a, agent := standingInAQuestion(t, demoQuestionReading())
 	agent.refuse = errQuestionTest
-	tap(a, "1")
-	a.questionRoomKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	tap(t, a, "1")
+	tapNamed(t, a, tea.KeyEnter, 0)
 	if foot := footText(a); !strings.Contains(foot, errQuestionTest.Error()) {
 		t.Errorf("the refusal should be on screen:\n%s", foot)
 	}
@@ -572,7 +580,7 @@ func TestEveryRowOfThePageFitsItsWidth(t *testing.T) {
 		a.width = width
 		for _, name := range []string{"", "x"} {
 			if name != "" {
-				tap(a, name)
+				tap(t, a, name)
 			}
 			for _, r := range a.questionRoomRows(width) {
 				if got := len([]rune(plain(r.text))); got > width {
@@ -594,8 +602,8 @@ func TestEveryRowOfThePageFitsItsWidth(t *testing.T) {
 func TestThePageLeavesTheConversationExactlyWhereItWas(t *testing.T) {
 	a, _ := standingInAQuestion(t, demoQuestionReading())
 	a.offset, a.stick = 7, false
-	tap(a, "2")
-	tapNamed(a, tea.KeyEscape, 0)
+	tap(t, a, "2")
+	tapNamed(t, a, tea.KeyEscape, 0)
 	if a.offset != 7 || a.stick {
 		t.Errorf("the conversation's own scroll must not move: offset %d stick %v", a.offset, a.stick)
 	}
@@ -608,7 +616,7 @@ func TestThePageSaysNoMachineryWords(t *testing.T) {
 	a, _ := standingInAQuestion(t, demoQuestionReading())
 	for _, key := range []string{"", "x", "c", "?", "d"} {
 		if key != "" {
-			tap(a, key)
+			tap(t, a, key)
 		}
 		drawn := strings.ToLower(pageText(a) + "\n" + footText(a))
 		for _, word := range banned {
@@ -626,7 +634,7 @@ func TestThePageSaysNoMachineryWords(t *testing.T) {
 func TestOnceTheBoxIsPointedAtAPartEveryLetterIsText(t *testing.T) {
 	for _, key := range []string{"c", "?", "n"} {
 		a, _ := standingInAQuestion(t, demoQuestionReading())
-		tap(a, key)
+		tap(t, a, key)
 		for _, letter := range []string{"o", "n", "l", "y", "x", "d"} {
 			if _, took := a.questionRoomKey(tea.KeyPressMsg{Code: []rune(letter)[0], Text: letter}); took {
 				t.Errorf("after %q the page took %q instead of letting it reach the box", key, letter)
@@ -665,14 +673,14 @@ func TestDecideThisKindShowsTheShapeAndAnswersNothing(t *testing.T) {
 	a.raiseQuestionRoom(questionShown{question: demoQuestionReading(), shown: a.now()})
 	a.qroom.shown = a.qroom.shown.Add(-time.Second)
 
-	tap(a, "D")
+	tap(t, a, "D")
 	if foot := footText(a); !strings.Contains(foot, questionAskWord(session.AskChoice)) {
 		t.Errorf("the first press should name the shape:\n%s", foot)
 	}
 	if len(agent.set) != 0 {
 		t.Fatalf("the first press must set nothing: %#v", agent.set)
 	}
-	tap(a, "D")
+	tap(t, a, "D")
 	if got := agent.set[session.AskChoice].Kind; got != session.PolicyDecide {
 		t.Errorf("the second press should set the shape, got %q", got)
 	}
@@ -702,14 +710,14 @@ func TestDecideThisKindIsNotOfferedWithNowhereToKeepIt(t *testing.T) {
 // one would be a page whose keys are invisible.
 func TestARefusalClearsOnTheNextKey(t *testing.T) {
 	a, _ := standingInAQuestion(t, demoQuestionReading())
-	tap(a, "?")
+	tap(t, a, "?")
 	a.input.setText("one thing")
-	a.questionRoomKey(tea.KeyPressMsg{Code: tea.KeyEnter})
-	tap(a, "?")
+	tapNamed(t, a, tea.KeyEnter, 0)
+	tap(t, a, "?")
 	if foot := footText(a); !strings.Contains(foot, questionAskedWord) {
 		t.Fatalf("expected the refusal:\n%s", foot)
 	}
-	tap(a, "2")
+	tap(t, a, "2")
 	if foot := footText(a); strings.Contains(foot, questionAskedWord) {
 		t.Errorf("the refusal should be gone after the next key:\n%s", foot)
 	}
@@ -740,8 +748,8 @@ func TestAnAnswerGivenOnThePageLeavesOneRecordAndItSaysYou(t *testing.T) {
 	a.openQuestionRoom(head)
 	a.qroom.shown = a.qroom.shown.Add(-time.Second)
 
-	tap(a, "2")
-	tap(a, "enter")
+	tap(t, a, "2")
+	tap(t, a, "enter")
 
 	if len(agent.answers) != 1 || agent.answers[0].FirstKey() != "2" {
 		t.Fatalf("the door was handed %+v", agent.answers)
@@ -780,8 +788,8 @@ func TestTheLanesNewsAboutAnAnswerGivenHereAddsNoSecondLine(t *testing.T) {
 	head, _ := a.questionHead()
 	a.openQuestionRoom(head)
 	a.qroom.shown = a.qroom.shown.Add(-time.Second)
-	tap(a, "2")
-	tap(a, "enter")
+	tap(t, a, "2")
+	tap(t, a, "enter")
 
 	answer := agent.answers[0]
 	a.questionFold(session.Event{
@@ -841,25 +849,25 @@ func TestTheArrowsWalkTheAnswersAndOpenAndFoldThem(t *testing.T) {
 	if a.qroom.focus != 0 {
 		t.Fatalf("the page should open on the pick, not on %d", a.qroom.focus)
 	}
-	tapNamed(a, tea.KeyDown, 0)
+	tapNamed(t, a, tea.KeyDown, 0)
 	if a.qroom.focus != 1 {
 		t.Errorf("down should walk to the second answer, got %d", a.qroom.focus)
 	}
 	if a.qroom.open[1] {
 		t.Errorf("walking to an answer must not open it")
 	}
-	tapNamed(a, tea.KeyRight, 0)
+	tapNamed(t, a, tea.KeyRight, 0)
 	if !a.qroom.open[1] {
 		t.Errorf("right should open the answer under the pointer")
 	}
 	if drawn := pageText(a); !strings.Contains(drawn, "One file in the repository") {
 		t.Errorf("the opened answer's body should be on the page:\n%s", drawn)
 	}
-	tapNamed(a, tea.KeyLeft, 0)
+	tapNamed(t, a, tea.KeyLeft, 0)
 	if a.qroom.open[1] {
 		t.Errorf("left should fold the answer under the pointer")
 	}
-	tapNamed(a, tea.KeyUp, 0)
+	tapNamed(t, a, tea.KeyUp, 0)
 	if a.qroom.focus != 0 {
 		t.Errorf("up should walk back, got %d", a.qroom.focus)
 	}
@@ -870,8 +878,8 @@ func TestTheArrowsWalkTheAnswersAndOpenAndFoldThem(t *testing.T) {
 // room, because the room opens standing on it.
 func TestEnterTakesTheAnswerThePointerIsOn(t *testing.T) {
 	a, agent := standingInAQuestion(t, demoQuestionReading())
-	tapNamed(a, tea.KeyDown, 0)
-	tapNamed(a, tea.KeyEnter, 0)
+	tapNamed(t, a, tea.KeyDown, 0)
+	tapNamed(t, a, tea.KeyEnter, 0)
 	if len(agent.answers) != 1 {
 		t.Fatalf("expected one answer, got %d", len(agent.answers))
 	}
@@ -880,7 +888,7 @@ func TestEnterTakesTheAnswerThePointerIsOn(t *testing.T) {
 	}
 
 	fresh, freshAgent := standingInAQuestion(t, demoQuestionReading())
-	tapNamed(fresh, tea.KeyEnter, 0)
+	tapNamed(t, fresh, tea.KeyEnter, 0)
 	if len(freshAgent.answers) != 1 || freshAgent.answers[0].Key != "1" {
 		t.Errorf("enter on a fresh page should still take the pick: %+v", freshAgent.answers)
 	}
@@ -893,7 +901,7 @@ func TestEnterTakesTheAnswerThePointerIsOn(t *testing.T) {
 func TestAClickOpensAnAnswerAndASecondClickTakesIt(t *testing.T) {
 	a, agent := standingInAQuestion(t, demoQuestionReading())
 	at := questionRoomOptionRow(t, a, 2)
-	a.press(4, questionRoomRowY(a, at))
+	spend(t, a, a.press(4, questionRoomRowY(a, at)))
 	if a.qroom == nil {
 		t.Fatalf("one click must not answer the question")
 	}
@@ -905,7 +913,7 @@ func TestAClickOpensAnAnswerAndASecondClickTakesIt(t *testing.T) {
 		t.Fatalf("one click must not answer the question: %+v", agent.answers)
 	}
 	at = questionRoomOptionRow(t, a, 2)
-	a.press(4, questionRoomRowY(a, at))
+	spend(t, a, a.press(4, questionRoomRowY(a, at)))
 	if len(agent.answers) != 1 {
 		t.Fatalf("a second click on the same answer should take it, got %d", len(agent.answers))
 	}

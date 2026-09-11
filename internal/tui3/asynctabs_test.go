@@ -472,9 +472,12 @@ func TestAPressOnAnAnswerAnswersTheCard(t *testing.T) {
 	if row < 0 {
 		t.Fatal("the frame drew no pressable row for the card")
 	}
-	if !a.questionPress(band.span.from, row) {
+	cmd, took := a.questionPress(band.span.from, row)
+	if !took {
 		t.Fatal("a press on the stop answer was not taken")
 	}
+	// The answer travels on the command the press hands back (offloop.go).
+	drive(t, a, runCmd(cmd)...)
 	if a.closingTab() {
 		t.Fatal("the press did not answer the card")
 	}
