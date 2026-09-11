@@ -519,10 +519,25 @@ func (a *Agent) deliverTaskDirection(node *TaskNode, text string, origin message
 			origin: fromRuntime, kind: msgNotice, note: briefNote(receiptLineFor(direction, source)),
 		})
 	}
+	// AND THE WORDS ARE HEARD, not merely written down. The line above is the
+	// RECORD — it reaches the worker when the worker next assembles a request —
+	// and until this call the record was the whole of it: a `continue` typed at a
+	// step thirteen minutes into a pace was drained when that request ended and
+	// not before, which is the other half of the owner's 14:40:10 evidence and
+	// the half that was still broken after the model half was fixed.
+	//
+	// IT IS THE SAME DOOR THE PICK GOES THROUGH (steer.go's [Agent.hearTheWord]),
+	// because it is the same rule: a person's word reaches the work within
+	// [lane.SpokenWithin], by letting go of a request that has put nothing in
+	// front of them and by waiting for the boundary when it has. Nothing here
+	// decides anything — the decision is one function, and this hands it the one
+	// thing it needs, which is that a word has been said.
+	landing := node.openRoom().speaker().hearTheWord(errSteerCut)
 	return SteerReceipt{
 		Waiting:   waiting,
 		Direction: direction,
 		Landing:   SteerDelivered(waiting),
+		Heard:     landing,
 	}, nil
 }
 

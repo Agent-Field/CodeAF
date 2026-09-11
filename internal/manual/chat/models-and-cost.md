@@ -84,14 +84,19 @@ work owns that execution limit even when the two catalog caches differ.
 
 It depends on one thing only: whether the request in flight has given you anything yet.
 
-- **Nothing has come back.** It is still reaching a machine, waiting out a pace, walking
-  away from a refusal, or thinking where you cannot read. That request is **let go of at
-  once** and asked again on the model you chose. Nothing is lost, because nothing had
-  arrived — thinking that never reached the page is not kept in the conversation either
-  way.
-- **The reply is already arriving.** That reply **finishes on the model it started on**,
-  and everything the work asks for after it is on the new model. Killing a reply you are
-  reading would throw away words you have paid for and waited through.
+- **Nothing has come back.** It is still reaching a machine, waiting out a pace, or
+  walking away from a refusal — the screen has your question on it and nothing else.
+  That request is **let go of at once** and asked again on the model you chose. Nothing
+  is lost, because nothing had arrived.
+- **Something has already come back.** That request **finishes on the model it started
+  on**, and everything the work asks for after it is on the new model. Killing a reply
+  you are reading would throw away words you have paid for and waited through.
+
+**Thinking counts as something coming back.** If the model is showing you its thinking —
+the `thought for …` line, or the thought itself open under `ctrl+e` — that is on your
+screen and it is not taken away from you, so your pick rides the next request rather
+than cutting this one. It is the same rule and the same reason: aforge never withdraws
+something you are looking at to obey you faster.
 
 The same rule holds inside a task's room, where it matters most: a task step is one turn
 and can run for twenty minutes, so "the next turn" would mean your pick did nothing today.
@@ -283,12 +288,12 @@ In the conversation, `/model` changes the model you talk to. Inside an ordinary 
 same task scope. The change takes effect at the task's **next request**, which is
 within a second of your press and never a whole turn — a task step is one turn
 and can run for twenty minutes. If the request the step is inside has given you
-nothing yet — still reaching a machine, waiting out a pace, thinking where you
-cannot read — that request is let go of at once and asked again on the model you
-chose, and the room says `switching now`. If your answer is already arriving it
-finishes on the model it started on and everything after it is on the new one,
-and the room says `the next request takes it`. Other tasks and the conversation
-stay as before.
+nothing yet — still reaching a machine, waiting out a pace, walking away from a
+refusal — that request is let go of at once and asked again on the model you
+chose, and the room says `switching now`. If anything has come back, including
+thinking you can see, it finishes on the model it started on and everything
+after it is on the new one, and the room says `the next request takes it`. Other
+tasks and the conversation stay as before.
 
 For a completed, incomplete or `your call` ordinary task, the picker saves the
 model for when you continue. It does not restart work or change the completed

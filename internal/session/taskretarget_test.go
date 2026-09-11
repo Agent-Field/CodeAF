@@ -25,10 +25,17 @@ import (
 // (task_run.go), and lands it when the test says so.
 func retargetAgent(t *testing.T) (*Agent, *TaskNode, *Agent, func()) {
 	t.Helper()
+	return retargetAgentWorking(t, &scriptedCompleter{})
+}
+
+// retargetAgentWorking is the same rig with the worker's own completer named, so
+// a fixture can put a REQUEST IN FLIGHT inside the room rather than only a node.
+func retargetAgentWorking(t *testing.T, inside *scriptedCompleter) (*Agent, *TaskNode, *Agent, func()) {
+	t.Helper()
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.TaskModels = func() []string { return testModels }
 	})
-	child, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+	child, _ := newTestAgent(t, inside, func(config *Config) {
 		config.Model = "anthropic/claude-opus-5"
 	})
 

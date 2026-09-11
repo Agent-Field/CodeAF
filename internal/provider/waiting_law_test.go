@@ -55,6 +55,39 @@ func waitingFunc(t *testing.T, file *ast.File, name string) *ast.FuncDecl {
 	return nil
 }
 
+// waitingCallsInFile is every function declared in this file that the given one
+// calls. It is how a law follows a door to the work it hands out without holding
+// a list of names, which would be behaviour derived from a name.
+func waitingCallsInFile(from *ast.FuncDecl, file *ast.File) []*ast.FuncDecl {
+	declared := map[string]*ast.FuncDecl{}
+	for _, decl := range file.Decls {
+		if fn, ok := decl.(*ast.FuncDecl); ok {
+			declared[fn.Name.Name] = fn
+		}
+	}
+	var road []*ast.FuncDecl
+	seen := map[string]bool{from.Name.Name: true}
+	ast.Inspect(from, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		name := ""
+		switch fun := call.Fun.(type) {
+		case *ast.Ident:
+			name = fun.Name
+		case *ast.SelectorExpr:
+			name = fun.Sel.Name
+		}
+		if fn, here := declared[name]; here && !seen[name] {
+			seen[name] = true
+			road = append(road, fn)
+		}
+		return true
+	})
+	return road
+}
+
 // waitingNames reports whether a node's subtree names an identifier.
 func waitingNames(node ast.Node, name string) bool {
 	found := false
@@ -264,11 +297,16 @@ func TestSetModelReachesTheBeat(t *testing.T) {
 	// exported name would have failed on a rename that changed nothing, and it
 	// still cannot be satisfied by a door that does nothing: the beat has to be
 	// named somewhere on the road the pick actually takes.
-	road := []*ast.FuncDecl{waitingFunc(t, agent, "SetModel")}
-	for _, handedTo := range []string{"setModel"} {
-		if waitingNames(road[0], handedTo) {
-			road = append(road, waitingFunc(t, agent, handedTo))
-		}
+	// AND THE ROAD IS FOLLOWED, NOT LISTED. A list of names here is behaviour
+	// derived from a name — a private half renamed reverts this to the one-function
+	// check it used to be, silently — so the road is read off the door's own body:
+	// every function in this file that the door calls is on it, whatever it is
+	// called. One hop is enough, because a door that hands the whole of its work
+	// two levels down is a door worth failing.
+	door := waitingFunc(t, agent, "SetModel")
+	road := []*ast.FuncDecl{door}
+	for _, handedTo := range waitingCallsInFile(door, agent) {
+		road = append(road, handedTo)
 	}
 	for _, fn := range road {
 		if waitingNames(fn, "laneBeat") || waitingNames(fn, "noteLaneModel") || waitingNames(fn, "startLaneBeat") {

@@ -287,3 +287,322 @@ func TestATurnWithNoChainStillMovesToAModelThePersonNamed(t *testing.T) {
 		t.Fatalf("the request after the ladder rode %q, want the model the person named", got)
 	}
 }
+
+// ── ONE READING OF "HAS ANYTHING REACHED THE PERSON" ────────────────────────
+//
+// There were two, five lines apart in the same stream observer, and they
+// disagreed about a thought: the recall's gate counted a reasoning delta and the
+// person's word did not. Visible thinking is drawn (#760 made a reasoning-only
+// turn something somebody watches), so a cut after it would take something off a
+// screen, and the door that said it would not was justified by a sentence the
+// code contradicted.
+
+// TestAThoughtOnTheScreenIsSomethingTheyHaveRead pins the half that was wrong: a
+// model they name while visible thinking is arriving rides the NEXT request, and
+// the thought is not taken off their screen.
+func TestAThoughtOnTheScreenIsSomethingTheyHaveRead(t *testing.T) {
+	thought := make(chan struct{}, 1)
+	release := make(chan struct{})
+	completer := &scriptedCompleter{steps: []step{
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			provider.Emit(ctx, provider.StreamReasoning, "weighing up two ways to do this")
+			select {
+			case thought <- struct{}{}:
+			default:
+			}
+			select {
+			case <-release:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			return toolResponseWithText("call-1", "ls", `{"path":"."}`,
+				"and here is the answer"), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("the step after is on the new model"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+
+	events := mustSubmit(t, agent, "think about this one")
+	select {
+	case <-thought:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the first request never streamed a thought")
+	}
+
+	agent.SetModel("test/second")
+	close(release)
+	collected := collect(t, events)
+
+	if got := completer.model(0); got != "test/model" {
+		t.Fatalf("the first request rode %q, want the model the turn started on", got)
+	}
+	if got := completer.model(1); got != "test/second" {
+		t.Fatalf("the step after rode %q, want the model the person named", got)
+	}
+	for _, event := range collected {
+		if event.Kind == EventRetrying {
+			t.Fatalf("a request whose thinking was on the screen was cut and reported "+
+				"as a move: %+v — visible thought is something they have read", event.Retry)
+		}
+	}
+}
+
+// TestTheOneReadingIsWhatBothDoorsAsk is the structural half of the same thing.
+// A build with two readings passes every behaviour fixture above and still has
+// the defect, because the defect is that the two can drift.
+func TestTheOneReadingIsWhatBothDoorsAsk(t *testing.T) {
+	reached := &reachedThePerson{}
+	generation := &activeGeneration{reached: reached}
+	aside := &recallAside{}
+	aside.watch(reached)
+
+	if generation.productive() {
+		t.Fatal("a request that has drawn nothing reported that it had")
+	}
+	reached.drew()
+	if !generation.productive() {
+		t.Fatal("the person's word does not see what the observer drew")
+	}
+	if !aside.reached.did() {
+		t.Fatal("the recall's gate and the person's word are reading two different facts, " +
+			"which is the defect this reading exists to make impossible")
+	}
+	reached.reset()
+	if generation.productive() || aside.reached.did() {
+		t.Fatal("the attempt boundary did not empty the reading for both doors")
+	}
+}
+
+// TestThePersonsCutTellsTheRoomTheAttemptIsVoid: the engine empties its four
+// buffers at the top of the next attempt, and the surface only learns that a
+// request it is drawing a clock for is gone if it is told. EventRetrying is that
+// one door, and this is a MOVE and says so — `Next` is what every surface reads
+// to tell a hop from a retry.
+func TestThePersonsCutTellsTheRoomTheAttemptIsVoid(t *testing.T) {
+	out := make(chan struct{}, 1)
+	completer := &scriptedCompleter{steps: []step{
+		waitingRequest(out),
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("answered on the model they asked for"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+
+	events := mustSubmit(t, agent, "what is the answer")
+	select {
+	case <-out:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the first request never went out")
+	}
+	agent.SetModel("test/second")
+	collected := collect(t, events)
+
+	var told *RetryNews
+	for _, event := range collected {
+		if event.Kind == EventRetrying && event.Retry != nil {
+			told = event.Retry
+		}
+	}
+	if told == nil {
+		t.Fatal("the room was never told the request it was drawing a clock for was let go of; " +
+			"the wait a person spoke to end would keep counting up")
+	}
+	if told.Next != "test/second" {
+		t.Fatalf("the withdrawal named %q as where the step is going, want the model they chose — "+
+			"an empty Next reads as `asking again` on every surface", told.Next)
+	}
+	if told.Attempts != 0 || told.Attempt != 0 {
+		t.Fatalf("a move a person made drew a count of somebody's patience: %+v", told)
+	}
+}
+
+// TestAPickOfTheModelTheStepIsAlreadyRidingSpendsNothing. The door used to
+// compare a pick against the SESSION's model, which is not the model a rescued
+// step is talking to — so picking the fallback the step was already on was read
+// as a change, cut a live request, and changed nothing.
+func TestAPickOfTheModelTheStepIsAlreadyRidingSpendsNothing(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	agent.mu.Lock()
+	agent.running = true
+	agent.riding = "test/fallback"
+	agent.mu.Unlock()
+
+	if landing := agent.setModel("test/fallback"); landing != ModelLandsNextRequest {
+		t.Fatalf("picking the model the step is already riding landed as %q; it is a person "+
+			"confirming, not redirecting, and a cut here spends a request for no change", landing)
+	}
+	if word, said := agent.takeModelWord(); said {
+		t.Fatalf("a pick that changes nothing left a word standing: %q", word)
+	}
+	// AND THE SESSION'S OWN MODEL IS STILL NEWS. The step rides the fallback; the
+	// model the session remembers is not what the work is talking to, so choosing
+	// it is a real redirection that the old reading called none.
+	agent.mu.Lock()
+	agent.riding = "test/fallback"
+	agent.mu.Unlock()
+	if landing := agent.setModel("test/model"); landing == ModelLandsNextRequest {
+		if word, said := agent.takeModelWord(); !said {
+			t.Fatalf("picking the session's model while the step rides a fallback left no word "+
+				"(landing %q, word %q): that is the pick the old comparison could not see",
+				landing, word)
+		}
+	}
+}
+
+// ── `CONTINUE` IS A PERSON'S WORD TOO, AND IT HAS THE SAME CLOCK ────────────
+//
+// The owner's 14:40:10 evidence is TWO acts: they picked a model AND typed
+// `continue`. A direction into a running room was enqueued and nothing else, so
+// it was drained when the request ended — which on that step was thirteen
+// minutes away. The record was always right; what was missing was the hearing.
+
+// TestALineTypedIntoARoomReachesTheStepInsideTheClock is the wire fact: the
+// worker's next request goes out inside [lanes.SpokenWithin] of the line, and it
+// carries the words.
+func TestALineTypedIntoARoomReachesTheStepInsideTheClock(t *testing.T) {
+	out := make(chan struct{}, 1)
+	carried := make(chan []ai.Message, 1)
+	inside := &scriptedCompleter{steps: []step{
+		waitingRequest(out),
+		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			select {
+			case carried <- messages:
+			default:
+			}
+			return textResponse("carrying on"), nil
+		},
+	}}
+	agent, node, child, land := retargetAgentWorking(t, inside)
+	defer land()
+
+	events := mustSubmit(t, child, "do the work")
+	select {
+	case <-out:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the worker's first request never went out")
+	}
+
+	spoken := time.Now()
+	receipt, err := agent.SteerTask(node.id, "continue")
+	if err != nil {
+		t.Fatalf("the room refused the line: %v", err)
+	}
+	if receipt.Heard != ModelLandsNow {
+		t.Fatalf("a line typed at a request that had produced nothing was heard as %q; "+
+			"the whole defect is that it waited for the request to end on its own", receipt.Heard)
+	}
+
+	var messages []ai.Message
+	select {
+	case messages = <-carried:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the worker never made another request; the line was written down and never heard")
+	}
+	if took := time.Since(spoken); took > 10*lanes.SpokenWithin {
+		t.Fatalf("a line typed into a room took %s to reach the wire; the law is %s",
+			took, lanes.SpokenWithin)
+	}
+	said := false
+	for _, message := range messages {
+		if strings.Contains(messageText(message), "continue") {
+			said = true
+		}
+	}
+	if !said {
+		t.Fatal("the request the cut bought did not carry the words that bought it")
+	}
+	collect(t, events)
+}
+
+// TestALineTypedWhileTheAnswerIsArrivingWaitsForTheBoundary is the other half of
+// the same rule, said about a direction: words on a screen are theirs.
+func TestALineTypedWhileTheAnswerIsArrivingWaitsForTheBoundary(t *testing.T) {
+	spoke := make(chan struct{}, 1)
+	release := make(chan struct{})
+	inside := &scriptedCompleter{steps: []step{
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			provider.Emit(ctx, provider.StreamDelta, "here is the first half")
+			select {
+			case spoke <- struct{}{}:
+			default:
+			}
+			select {
+			case <-release:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			return textResponse("here is the first half and the rest of it"), nil
+		},
+	}}
+	agent, node, child, land := retargetAgentWorking(t, inside)
+	defer land()
+
+	events := mustSubmit(t, child, "do the work")
+	select {
+	case <-spoke:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the worker's first request never streamed a word")
+	}
+
+	receipt, err := agent.SteerTask(node.id, "actually make it CSV")
+	if err != nil {
+		t.Fatalf("the room refused the line: %v", err)
+	}
+	if receipt.Heard != ModelLandsNextRequest {
+		t.Fatalf("a line typed while the answer was arriving was heard as %q, so a reply "+
+			"somebody was reading was thrown away", receipt.Heard)
+	}
+	close(release)
+	collect(t, events)
+	if !transcriptHas(child, "here is the first half and the rest of it") {
+		t.Fatal("the answer that was arriving was not kept whole")
+	}
+}
+
+// TestTheClockOnAPersonsWordIsTheOneTheManualPublishes is the number, not the
+// mechanism. Nothing here is timed — the cut fires on a state — but the pages
+// promise "within a second" and the fixtures above allow ten times that so they
+// cannot flake on a loaded box. This is the one that holds the published figure,
+// measured on the wire and read off [lanes.SpokenWithin] rather than written out
+// as a constant beside it.
+func TestTheClockOnAPersonsWordIsTheOneTheManualPublishes(t *testing.T) {
+	out := make(chan struct{}, 1)
+	wire := make(chan time.Time, 1)
+	completer := &scriptedCompleter{steps: []step{
+		waitingRequest(out),
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			select {
+			case wire <- time.Now():
+			default:
+			}
+			return textResponse("on the model they asked for"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+
+	events := mustSubmit(t, agent, "what is the answer")
+	select {
+	case <-out:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the first request never went out")
+	}
+
+	spoken := time.Now()
+	agent.SetModel("test/second")
+	var landed time.Time
+	select {
+	case landed = <-wire:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the word never reached the wire at all")
+	}
+	collect(t, events)
+
+	if took := landed.Sub(spoken); took > lanes.SpokenWithin {
+		t.Fatalf("a person's word took %s to reach the wire and the manual promises %s. "+
+			"Nothing between the word and the cut may wait: if something new belongs there, "+
+			"it belongs beside the work and not in front of it (loop.go's THE ONLY WAIT A "+
+			"PERSON EXPERIENCES).", took, lanes.SpokenWithin)
+	}
+}

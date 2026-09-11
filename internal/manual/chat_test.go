@@ -235,6 +235,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does switching the model take effect now or later", "models-and-cost"},
 		{"I changed the model in the middle of an answer", "models-and-cost"},
 		{"what does switching now mean", "models-and-cost"},
+		// AND WHETHER THE MODEL IS THE ONLY WORD THAT LANDS. Somebody watching a
+		// stuck step types `continue` before they think about the picker; the
+		// answer is that it is the same rule on the same clock, and it lives
+		// beside the model sentence because that is where they will be looking.
+		{"I typed continue into a task and nothing happened", "tasks"},
+		{"does typing into a running task reach it straight away", "tasks"},
+		// And the one the code's own comment used to get wrong: thinking on the
+		// screen is something you have read.
+		{"the model is showing its thinking, can I still switch", "models-and-cost"},
 		{"where are the logs", "models-and-cost"},
 		{"what did you send the model", "models-and-cost"},
 		// And the row that is short of a figure: the note names the number it

@@ -4372,16 +4372,17 @@ What that does, exactly:
   today. Which of two things happens depends only on whether the request the step is
   inside has given you anything yet:
   - **Nothing has come back** — it is still reaching a machine, waiting out a pace, or
-    thinking where you cannot read — and that request is **let go of at once** and asked
-    again on the model you chose. The room says `switching now`. Nothing is lost, because
-    nothing had arrived; thinking that never reached the page is not kept either way.
-  - **The answer is already arriving.** That answer finishes on the model it started on —
-    killing a reply you are reading would throw away work you have paid and waited for —
-    and everything the step asks for after it is on the new model. The room says `the next
-    request takes it`.
+    walking away from a refusal — and that request is **let go of at once** and asked
+    again on the model you chose. The room says `switching now`. Nothing is lost,
+    because nothing had arrived.
+  - **Something has already come back**, including thinking you can see. It finishes on
+    the model it started on — killing a reply you are reading would throw away work you
+    have paid and waited for — and everything the step asks for after it is on the new
+    model. The room says `the next request takes it`.
   Your word reaches the work within a second either way. A step already moving down its
   own rescue chain starts that chain again from the model you named, so it never keeps
   walking away from your choice.
+
 - **And nothing quietly takes it back.** When a task's model stops answering, aforge moves
   the work to another one rather than failing it — but if you have picked a model in this
   room, that pick is where it moves to, not the next name in aforge's own fallback list,
@@ -4418,6 +4419,30 @@ everything as it was.
 
 There is still no command, key or setting for this: the model's name in the room is the
 only door. `/model` always means the conversation.
+
+## I typed continue into a running task and nothing happened — does typing into a running task reach it straight away, my correction into a task's page was ignored, telling a task to carry on
+
+**It reaches it straight away, on the same clock as a model pick.** Anything you type
+into a running task's page — `continue`, a correction, a fact it is missing — lands by
+the same rule:
+
+- If the request the step is inside has **given you nothing** — still reaching a
+  machine, waiting out a pace, walking away from a refusal — that request is **let go of
+  at once** and the step's very next one carries your words. Within a second.
+- If **something has already come back**, including thinking you can see, that request
+  finishes first and your words ride the step after it. Nothing you were reading is
+  taken away to hear you sooner.
+
+**It did not use to.** Until 2026-09-11 a line typed into a room was written down
+perfectly and only read when the request it interrupted ended **on its own** — so
+somebody watching a step sit on `waiting · rate limited · 13m 37s` could type `continue`
+and be answered thirteen minutes later. The words were never lost; they were just not
+heard. If you typed `continue` more than once while that was happening, each line is a
+line and each one arrives.
+
+**What it is not.** It does not stop the task, and it does not restart it: the step
+carries on with your words added to what it knows. To stop the work, use `/stop` or the
+Stop task button — *Stopping a task* below.
 
 ## Why can't I change the model here — the model's name is not pressable
 

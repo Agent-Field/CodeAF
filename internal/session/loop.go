@@ -415,6 +415,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// It is the transcript's answer for an interrupted step, where no response
 	// ever comes back.
 	partial := &partialBuffer{}
+	// reached is THE reading of what this attempt has put in front of the person,
+	// written by the stream observer below and asked by every door that may
+	// re-ask the request — the recall's block, and the person's own word
+	// (steer.go's [reachedThePerson]). It lives here beside the buffers it is a
+	// fact about, and is emptied with them at the top of every attempt.
+	reached := &reachedThePerson{}
+	recall.watch(reached)
 	// Reasoning is accumulated beside, never inside, the partial answer. A
 	// completed step keeps it for continuation; an interrupted attempt drops it.
 	reasoning := &reasoningBuffer{}
@@ -470,12 +477,14 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// window, which are the two figures the ledger row's ttft_ms and tps
 			// are made of (usage_ledger.go's [laneWitness]).
 			a.turnLane.token(time.Now())
-			// AND THE READINGS BESIDE THE TURN ARE TOLD THE PERSON HAS STARTED
-			// READING. Past this instant an auxiliary answer may no longer re-ask
-			// the request, because re-asking would take words off a screen
-			// somebody is looking at; it lands on the next step instead
-			// (memory.go's [recallAside]). One atomic store per delta.
-			recall.sawToken()
+			// AND EVERY DOOR THAT MAY RE-ASK THIS REQUEST IS TOLD THE PERSON HAS
+			// STARTED READING. Past this instant a silent re-ask would take words
+			// off a screen somebody is looking at, so the recall lands on the next
+			// step instead (memory.go's [recallAside]) and the person's own word
+			// waits for the boundary rather than cutting (steer.go's
+			// [reachedThePerson], which is the ONE reading both of them ask). One
+			// atomic store per delta.
+			reached.drew()
 			pace.word(time.Now())
 			partial.write(event.Delta)
 			hub.send(Event{Kind: EventTextDelta, Text: event.Delta})
@@ -487,12 +496,18 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// thing the first-token wait measures and the thing the person stops
 			// waiting on. internal/provider's own watch counts them the same way.
 			a.turnLane.token(time.Now())
-			recall.sawToken()
 			pace.word(time.Now())
 			// Reasoning is NOT written to partial: it is the model's working, not
 			// its answer. The sidecar is recorded only after the response completes.
 			reasoning.write(event)
 			if event.Delta != "" {
+				// AND VISIBLE THINKING IS SOMETHING THE PERSON HAS READ. It is drawn
+				// (internal/tui3's feed, EventReasoning) and #760 made a
+				// reasoning-only turn a thing somebody watches, so the reading is
+				// told HERE, where the words actually leave for the page, and not
+				// on every reasoning event — a delta that says nothing draws
+				// nothing.
+				reached.drew()
 				hub.send(Event{Kind: EventReasoning, Text: event.Delta})
 			}
 		case provider.StreamNotice:
@@ -522,6 +537,10 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// are still arriving, and the answer rides as a row that the
 			// announcement below will replace.
 			if formed, speak := forming.note(event); speak {
+				// AND A ROW THAT IS SPOKEN IS ON THE PAGE, so it counts exactly as a
+				// word of the answer does: a request re-asked under it would leave
+				// the dead attempt's call sitting above the replacement's.
+				reached.drew()
 				hub.send(formed)
 			}
 		case provider.StreamToolCallReady:
@@ -835,7 +854,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// the person's wait to be sent anywhere ends and where a tool-result gap
 		// closes.
 		pace.sending(sentAt)
-		response, answered, err := a.completeWithRetryReasoning(ctx, hub, model, rung, partial, reasoning, warm, forming, frozenToolHistory)
+		response, answered, err := a.completeWithRetryReasoning(ctx, hub, model, rung, partial, reached, reasoning, warm, forming, frozenToolHistory)
 		a.config.beat.ended()
 		// THE MODEL THIS TURN IS ON CAN CHANGE UNDER IT. A step whose budget of
 		// cut streams ran out moves to the next model in the chain and says so,
@@ -1401,17 +1420,6 @@ func (p *partialBuffer) reset() {
 	p.mu.Unlock()
 }
 
-// spoken reports whether anything a person could read has arrived for the
-// request being streamed now. It is the reading behind
-// [activeGeneration.productive] and it is a LENGTH and not a judgement: one
-// delta is enough, because one delta is already on their screen and in the
-// transcript this turn will keep.
-func (p *partialBuffer) spoken() bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.text.Len() > 0
-}
-
 // take returns the buffered text and empties the buffer, so no text can be
 // recorded twice.
 func (p *partialBuffer) take() string {
@@ -1599,10 +1607,13 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 // is stamped when no level is set: an unstamped context is the one shape that
 // leaves the request byte-for-byte what it was.
 func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model string, rung effort.Rung, partial *partialBuffer, warm *warmBatch, forming *formingBatch) (*ai.Response, string, error) {
-	return a.completeWithRetryReasoning(ctx, hub, model, rung, partial, &reasoningBuffer{}, warm, forming, len(a.snapshot()))
+	// A reading of its own, because this entry has no stream observer feeding one:
+	// nothing is ever drawn under it, which is the true answer for a caller that
+	// streams to nobody.
+	return a.completeWithRetryReasoning(ctx, hub, model, rung, partial, &reachedThePerson{}, &reasoningBuffer{}, warm, forming, len(a.snapshot()))
 }
 
-func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, model string, rung effort.Rung, partial *partialBuffer, reasoning *reasoningBuffer, warm *warmBatch, forming *formingBatch, frozenToolHistory int) (*ai.Response, string, error) {
+func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, model string, rung effort.Rung, partial *partialBuffer, reached *reachedThePerson, reasoning *reasoningBuffer, warm *warmBatch, forming *formingBatch, frozenToolHistory int) (*ai.Response, string, error) {
 	// THIS CALL'S WORDS ARE A REPLY SOMEBODY READS, and it is the one place in
 	// this package that can say so: every request that goes out through here is
 	// the turn's own, and every gate, judge, title and memo is made from some
@@ -1683,6 +1694,10 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 	// either side of this loop's own post-statement and want different numbers.
 	freshModel := func(next string) {
 		model = next
+		// AND THE MODEL THE WORK IS ON IS PUBLISHED, because the door that decides
+		// whether a person's pick is news has to compare against THIS and not
+		// against the session's own model (steer.go's [Agent.rideModel]).
+		a.rideModel(next)
 		rung = a.effortFor(model)
 		cuts, rerouted = 0, false
 		deadline, owed, unpaid = turnNow().Add(a.giveUp()), 0, 0
@@ -1732,6 +1747,11 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// interrupt during the next one would otherwise record the two halves
 		// concatenated as one answer.
 		partial.reset()
+		// AND SO IS THE READING OF WHAT THE PERSON HAS IN FRONT OF THEM. It is the
+		// same fact about the same dead attempt as the four buffers around it, and
+		// it is what every door that may re-ask this request asks (steer.go's
+		// [reachedThePerson]).
+		reached.reset()
 		reasoning.begin(model)
 		// And so does the warm batch. A retry is a NEW response — its calls are
 		// its own, ids and all — so nothing the dead attempt started may be
@@ -1777,7 +1797,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		messages = a.compactToolHistory(messages, frozenToolHistory,
 			func(message ai.Message) string { return a.fullResultPointer(message, place) })
 		attemptCtx = provider.WithMessageReasoning(attemptCtx, carried)
-		attemptCtx, generation := a.beginGeneration(attemptCtx, partial)
+		attemptCtx, generation := a.beginGeneration(attemptCtx, reached)
 		response, err := a.completeWithModel(attemptCtx, messages, model,
 			ai.WithTools(a.beltDefinitions()))
 		cause := a.endGeneration(generation)
@@ -1818,7 +1838,28 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// line — money was spent reaching a machine that never answered, and an
 		// autopsy of a long step has to be able to see why the request ended.
 		if errors.Is(cause, errPersonCut) {
+			// AND THE ROW CARRIES NO DOOR, deliberately. A door on a failed call is
+			// this machine saying it stopped the TURN (sessionfile.go reads exactly
+			// that bit, and resume.go acts on it); this turn did not stop, it moved.
+			// What the row is for is the autopsy of a long step — money was spent
+			// reaching a machine that never answered — so it says why in words a
+			// person can read and leaves the shape of the conversation alone.
 			a.journalFailedCall(ctx, model, "", cause, attempt+1, a.requestEstimate())
+			// AND THE ROOM IS TOLD, THROUGH THE ONE DOOR THAT ALREADY MEANS THIS.
+			// EventRetrying is "the attempt you are watching is void": it withdraws
+			// what that attempt drew and restarts the wait clock the surface is
+			// counting up (internal/tui3's feed.retry and app.awaited). Saying
+			// nothing would leave the person's screen counting the dead request —
+			// the very `waiting · 13m 37s` line they spoke to get rid of.
+			//
+			// IT IS A MOVE AND IT SAYS SO. `Next` is what separates a hop from a
+			// retry for every surface (retrynews.go), and this is a hop the person
+			// made: the row reads as moving to the model they named, with no
+			// arithmetic, because the count belongs to a patience nobody spent.
+			said, _ := a.peekModelWord()
+			hub.send(Event{Kind: EventRetrying, Text: personCutNotice, Retry: &RetryNews{
+				Model: model, Next: said, Reason: personCutReason,
+			}})
 			continue
 		}
 		lastErr = err
@@ -1899,8 +1940,9 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// to try" with the model they had just chosen sitting unasked. It PEEKS —
 		// this line runs on every failure, including the ones that go on to ask the
 		// same model again, and a word taken by a move that never happened would be
-		// a word the person never got (steer.go's [Agent.modelWordStanding]).
-		haveFallback = haveFallback || a.modelWordStanding()
+		// a word the person never got (steer.go's [Agent.peekModelWord]).
+		standing, standingSaid := a.peekModelWord()
+		haveFallback = haveFallback || standingSaid
 		// The hop, bound to THIS attempt's facts — which model comes next, and
 		// whether the thing that failed was a cut. See the declaration above.
 		moveOn = func(verdict taxonomy.Verdict) {
@@ -1914,9 +1956,24 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			// sentence below names where the reply went and a hop that announced
 			// the ladder's next rung and was then overruled would have named a
 			// model the reply never reached.
+			// AND IT CANNOT BE EMPTY. The peek above is what told the boundary this
+			// step had anywhere to go, so when the ladder offered nothing the word
+			// standing then is the only reason this closure exists. Peek, take and
+			// this line all run on the turn's own goroutine, which is what makes
+			// "what I peeked is what I take" a fact rather than a hope; the fallback
+			// is that invariant written down rather than assumed, because a move
+			// announced to a model named `""` would say `moving to` and then nothing.
 			to, theirs := next, false
 			if word, said := a.takeModelWord(); said {
 				to, theirs = word, true
+			} else if to == "" && standing != "" {
+				to, theirs = standing, true
+			}
+			if to == "" {
+				// Nowhere to go after all — unreachable, because the boundary read
+				// `fallback` off the same two facts. Two lines to make an announcement
+				// of a move to nothing impossible rather than unlikely.
+				return
 			}
 			// AND THE STATUS LINE SAYS SO WHILE IT HAPPENS, by the one word that
 			// means a person's answer is changing hands
@@ -2333,6 +2390,16 @@ func normalizeHop(model string) string {
 // nobody has to decide anything, and the person is owed the fact that the reply
 // they were watching is being started over rather than an unexplained pause.
 const cutShortNotice = "the reply was cut short — asking again"
+
+// What a person reads when their own word is what let go of the request.
+// NOTHING FAILED HERE and the words may not suggest one did: they chose a model,
+// nothing of the request had reached them, and the step is asking again on
+// theirs. The reason is the half a surface composes its own row from
+// ([RetryNews.Reason]); the notice is the whole sentence for one that does not.
+const (
+	personCutReason = "you chose another model"
+	personCutNotice = "you chose another model — asking it instead"
+)
 
 // cutNotice is the dim line the person sees while the question is asked again.
 //

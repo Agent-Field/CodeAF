@@ -653,14 +653,21 @@ func (a *Agent) setModel(model string) ModelLanding {
 		return ModelLandsNextRequest
 	}
 	a.mu.Lock()
-	// A PICK THAT CHANGES NOTHING IS NOT A WORD. Re-choosing the model the
-	// session is already on is a person confirming, not redirecting, and letting
-	// it cut would spend their money reaching the same machine again for the same
-	// answer. What it is NOT able to see is a step that has walked down its own
-	// rescue chain and is being asked to come back — the pick on the session never
-	// moved, so there is nothing here to compare against; making a standing pick
-	// outrank the chain is #925's half of this subject, not this one's.
-	changed := a.model != model
+	// A PICK THAT CHANGES NOTHING IS NOT A WORD. Re-choosing the model the work is
+	// already talking to is a person confirming, not redirecting, and letting it
+	// cut would spend their money reaching the same machine again for the same
+	// answer.
+	//
+	// AND THE COMPARISON IS AGAINST THE MODEL THE WORK IS ON, never against the
+	// session's own. The two differ exactly when a step has been rescued onto a
+	// fallback, and that is the case where getting it wrong costs something both
+	// ways: a person picking the SESSION's model while the step rides a fallback
+	// is redirecting — real news the old reading called none — and a person
+	// picking the FALLBACK the step already rides is confirming, which the old
+	// reading called a change and paid a whole cut request for, under a room line
+	// that said `switching now` and a step that changed nothing (steer.go's
+	// [Agent.ridingNowLocked]).
+	changed := a.ridingNowLocked() != model
 	a.model = model
 	if a.clientPool != nil {
 		a.clientPool.setSeat(model)
@@ -1484,6 +1491,18 @@ type SteerReceipt struct {
 	Again bool
 	// Landing is the engine's own sentence for what happened, drawn verbatim.
 	Landing string
+	// Heard is WHEN the words reach the work, by the same reading a model pick
+	// gets ([ModelLanding], steer.go): [ModelLandsNow] when the request in flight
+	// had put nothing in front of anybody and was let go of, so the very next
+	// request carries this line; [ModelLandsNextRequest] when an answer was
+	// already arriving and is being allowed to finish, or when there was no
+	// request out at all.
+	//
+	// IT IS THE SAME TYPE AS THE PICK'S ON PURPOSE. A person's word is one rule
+	// with one clock, and a surface that had to learn a second vocabulary for
+	// `continue` would be a surface that could say two different things about one
+	// law.
+	Heard ModelLanding
 }
 
 // The sentences a receipt can carry, and there is no other.

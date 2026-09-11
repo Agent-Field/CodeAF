@@ -2607,6 +2607,14 @@ type Agent struct {
 	// that turn starts on the same model anyway, because a.model is where the
 	// pick itself lives.
 	spokenModel string
+	// riding is THE MODEL THE STEP IN FLIGHT IS ACTUALLY TALKING TO, which is not
+	// always [Agent.model]: a step rescued onto a fallback rides that fallback
+	// while the session's own model is untouched, because a rescue is not a
+	// choice anybody made. The ladder has always held it as a local; this is the
+	// same fact published, so the door that decides whether a pick is NEWS can
+	// compare against the model the work is on rather than the one the session
+	// remembers (steer.go's [Agent.rideModel]).
+	riding string
 	// recall is the pre-turn memory routing STARTED BESIDE THE TITLE and never
 	// waited on (memory.go's [recallAside]). It is under mu because
 	// [Agent.startTurnLocked] writes it with the lock held and the turn's own
