@@ -95,6 +95,14 @@ When in doubt, ASK. Answer with the single word and nothing else.`
 // looks hung to the person watching it.
 const guardianAnswerWindow = 10 * time.Second
 
+// guardianPhaseWho is what the status line says while the stand-in is deciding.
+//
+// IT NAMES THE QUESTION AND NOT THE MACHINERY. `guardian` is a word from this
+// file and means nothing to somebody watching a command not start; what they
+// want to know is why nothing is happening and what is being decided, so the
+// line reads `checking whether this is safe to run` in the surface's own shape.
+const guardianPhaseWho = "whether this is safe to run"
+
 func (a *Agent) guardianAllows(ctx context.Context, hub *eventHub, call ai.ToolCall, decision approval.Decision) bool {
 	if !a.config.Guardian {
 		return false
@@ -131,6 +139,31 @@ func (a *Agent) guardianAllows(ctx context.Context, hub *eventHub, call ai.ToolC
 	// falls through below exactly as a refusal does, and the person is asked.
 	judgeCtx, done := context.WithTimeout(ctx, guardianAnswerWindow)
 	defer done()
+
+	// AND THE PERSON IS TOLD WHAT THIS SILENCE IS, because it is the one wait in a
+	// turn that genuinely has to come FIRST.
+	//
+	// loop.go's law is that the only wait a person experiences is the main model
+	// generating: every other reading runs beside the work and may only interrupt
+	// it. THIS IS THE ONE NAMED EXCEPTION IN THE BUILD, and the reason is that
+	// there is nothing to run beside it and nothing it could be applied to
+	// afterwards — it decides whether the tool RUNS, so a verdict that arrived
+	// after the command had already executed would not be a safety gate, it would
+	// be a receipt. It keeps its ten seconds.
+	//
+	// WHAT IT OWES INSTEAD IS A WORD, and until now it had none: the batch parks,
+	// the status line says the tool is running, and up to ten seconds pass with a
+	// model being asked a question the person can neither see nor answer. A wait
+	// that is real is reported (docs/design/waiting/DESIGN.md), and this one is as
+	// real as any. It comes off on every way out, which is what the defer is for.
+	//
+	// AND IT IS SAID OVER THE TOP OF THE BATCH'S OWN WORD RATHER THAN INSTEAD OF
+	// IT. This gate is asked once per call INSIDE a tool batch that has already
+	// said `running <tool>`, and the phase is one slot — so ending this one
+	// plainly would take the batch's word down with it and leave the line blank
+	// for however long the batch had left ([Agent.interruptPhase], phasenews.go).
+	restorePhase := a.interruptPhase(provider.PhaseChecking, guardianPhaseWho, time.Now())
+	defer restorePhase()
 
 	// WithoutStream for the reason the title and the compaction summary use it:
 	// this is bookkeeping about the conversation, not something anybody said, and

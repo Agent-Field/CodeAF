@@ -488,6 +488,15 @@ transcript at all.
 in for you on a call that acts in your name. It does not run on the early-start
 path.
 
+**It is the one thing aforge asks that really does hold the work up**, and it says
+so while it does. Everything else a turn asks on your behalf — the memory lookup,
+the judges, the reader of a long answer — runs beside your answer and can never
+delay it (*Screen*). This one decides whether the command runs at all, so there is
+nothing for it to run alongside. It answers in **ten seconds or not at all**, and
+for the whole of that the status line reads
+`checking whether this is safe to run`. Past ten seconds it falls through and you
+are asked, exactly as if it had said `ASK`.
+
 ## The floor nothing lifts: dangerous shell commands
 
 A short table of shell shapes is asked about **whichever way your settings are

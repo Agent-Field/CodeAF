@@ -458,7 +458,7 @@ const (
 // past-the-end answer would then be read as a sketch and as a brief.
 const checkpointSlack = checkpointMarks + 3
 
-// answerTheNamerOffTheQueue installs the aside every handover fixture needs
+// answerTheReadingsOffTheQueue installs the aside every handover fixture needs
 // ([scriptedCompleter.aside]).
 //
 // THE NAMER IS NOT ONE OF THE TURN'S ROUNDS, so it must not spend one of the
@@ -478,17 +478,73 @@ const checkpointSlack = checkpointMarks + 3
 // person's own words, which is what every assertion on these pages was written
 // against.
 //
+// A TEST THAT IS ABOUT THE DRAWING'S OWN REQUEST OPTS BACK OUT with
+// [answerOnlyTheNamerOffTheQueue], for the reason the namers are not defaulted in
+// agent_test.go: a reading answered off the queue is a reading that test can no
+// longer see.
+//
 // A completer that is not scripted has no queue to protect and is left alone.
-func answerTheNamerOffTheQueue(completer Completer) {
+func answerTheReadingsOffTheQueue(completer Completer) {
 	scripted, ok := completer.(*scriptedCompleter)
 	if !ok {
 		return
 	}
 	scripted.aside = func(messages []ai.Message) (*ai.Response, bool) {
-		if !isNameCall(messages) {
+		if isNameCall(messages) {
+			return textResponse(""), true
+		}
+		// AND THE MARK'S DRAWING, for the namer's reason and since the same day.
+		// It is a READING BESIDE THE WORK now (sidecar.go): it is started at the
+		// boundary that crosses a mark and the turn goes straight on to its next
+		// request, so the two land on this fixture in whatever order the scheduler
+		// picks. Left on the positional queue it took whichever step the turn was
+		// about to ride — which is #392 exactly, one mechanism along.
+		//
+		// THE ANSWER COMES OUT OF THE SCRIPT ITSELF AND SPENDS NO STEP. Every
+		// generator in this file answers the drawing identically from every one of
+		// its steps ([grindingSteps], [stoppingSteps]), so asking the first step
+		// what it would have drawn is the same answer the queue would have given,
+		// taken without consuming anything. A generator that does NOT answer the
+		// drawing hands back a tool call, and this falls through to the queue so
+		// that fixture behaves exactly as it always did.
+		//
+		// IT RUNS UNDER THE COMPLETER'S OWN LOCK — [scriptedCompleter.CompleteWithMessages]
+		// consults the aside holding `mu`, before the queue is touched — so it reads
+		// the script without taking the lock again. Taking it was a self-deadlock:
+		// the mark's reading froze on its first drawing with the lock held, and every
+		// request the turn made after it froze behind that, which is what hung the
+		// whole handover family on #871's first CI run.
+		//
+		// AND THE STEP IS ASKED WITH A CONTEXT THAT IS ALREADY OVER. A generator
+		// that answers the drawing by its shape never looks at the context; a step
+		// written to WAIT on its request's context would otherwise wait here forever,
+		// under that same lock. Over, it answers at once with an error and this falls
+		// through to the queue, exactly as a step that answers with a tool call does.
+		if !askedForSketch(messages) || len(scripted.steps) == 0 {
 			return nil, false
 		}
-		return textResponse(""), true
+		over, cancel := context.WithCancel(context.Background())
+		cancel()
+		drawn, err := scripted.steps[0](over, messages)
+		if err != nil || drawn == nil || len(drawn.ToolCalls()) > 0 {
+			return nil, false
+		}
+		return drawn, true
+	}
+}
+
+// answerOnlyTheNamerOffTheQueue is [answerTheReadingsOffTheQueue] WITHOUT the
+// drawing, and it is how a test that asserts on the drawing's own request gets it
+// back on the positional queue where it can be read.
+//
+// It is safe exactly where the drawing is not racing a turn — a test that calls
+// [Agent.readMark] itself has no turn to race.
+func answerOnlyTheNamerOffTheQueue(scripted *scriptedCompleter) {
+	scripted.aside = func(messages []ai.Message) (*ai.Response, bool) {
+		if isNameCall(messages) {
+			return textResponse(""), true
+		}
+		return nil, false
 	}
 }
 
@@ -537,7 +593,7 @@ func checkpointWritingAgent(t *testing.T, completer Completer, mutate ...func(*C
 // read by. Everything else is [newTestAgent]'s.
 func checkpointAgent(t *testing.T, completer Completer, mutate ...func(*Config)) *Agent {
 	t.Helper()
-	answerTheNamerOffTheQueue(completer)
+	answerTheReadingsOffTheQueue(completer)
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.AskConsent = true
 		config.RolesSource = tierSettings(map[string]string{
@@ -642,10 +698,19 @@ func finalAnswer(text string) step {
 }
 
 // marksRead is how many times the sidecar was actually asked.
+//
+// IT COUNTS BOTH LANES. The drawing is answered off the queue now
+// ([answerTheReadingsOffTheQueue]), so a fixture that only looked at the
+// positional requests would report a mechanism that never fired.
 func marksRead(completer *scriptedCompleter) int {
 	read := 0
 	for index := range completer.requests() {
 		if askedForSketch(completer.request(index)) {
+			read++
+		}
+	}
+	for _, asked := range completer.asideRequestsSeen() {
+		if askedForSketch(asked) {
 			read++
 		}
 	}
@@ -819,7 +884,9 @@ func TestTheSidecarIsAskedOncePerMarkAndNotBetween(t *testing.T) {
 	// Every round up to one short of the second mark: the first mark fires, the
 	// second does not.
 	rounds := checkpointMarkAt(2) - 1
-	steps := append(grindingSteps(rounds+1, checkpointChainSketch, ""), finalAnswer("done"))
+	// The drawing is answered off the queue and spends no step
+	// ([answerTheReadingsOffTheQueue]), so the script is exactly the rounds.
+	steps := append(grindingSteps(rounds, checkpointChainSketch, ""), finalAnswer("done"))
 	completer := &scriptedCompleter{steps: steps}
 	agent := checkpointAgent(t, completer)
 	stubbedGraph(agent, func(node *TaskNode) {})
@@ -849,9 +916,10 @@ func TestASplitSketchAtTheFirstMarkHandsTheTurnOver(t *testing.T) {
 	const asked = "work through the four things I listed and report back"
 	const dowry = "Finish the four pieces\nwhat is left, and everything this turn already found out"
 
-	// Well past the first mark and well short of the second, so what fires here
-	// can only be the first.
-	completer := &scriptedCompleter{steps: writingGrindSteps(checkpointMarkAt(1)+6, checkpointSplitSketch, dowry)}
+	// Well past the first mark and one short of the second, so what fires here can
+	// only be the first and the script cannot run out from under a drawing that
+	// lands a round or two late on a loaded machine.
+	completer := &scriptedCompleter{steps: writingGrindSteps(checkpointMarkAt(2)-1, checkpointSplitSketch, dowry)}
 	agent := checkpointWritingAgent(t, completer, func(config *Config) { config.Divide = true })
 	ran := make(ranNodes, 2)
 	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
@@ -867,13 +935,21 @@ func TestASplitSketchAtTheFirstMarkHandsTheTurnOver(t *testing.T) {
 	if count := admitted(graph); count != 1 {
 		t.Fatalf("%d tasks were admitted at the first mark, want exactly one", count)
 	}
-	// AND IT STOPPED AT THE MARK. The script had six rounds left in it, and the
-	// ceiling stands three times further along. The slack past the mark is the
-	// calls the handover itself makes: the sketch, the draft, and the mastermind
-	// that writes the brief out of it.
-	if completer.requests() > checkpointMarkAt(1)+4 {
-		t.Errorf("the turn made %d requests past a first mark standing at %d rounds",
-			completer.requests(), checkpointMarkAt(1))
+	// AND IT WAS THE FIRST MARK THAT MOVED IT, which is what the request count is
+	// here to say: the turn never reached the SECOND rung, so the handover above
+	// belongs to the first one and to nothing else.
+	//
+	// THE BOUND IS THE NEXT RUNG AND NOT A HANDFUL OF CALLS, and that is a
+	// consequence of this wave rather than slack for its own sake. The drawing is
+	// no longer a wait in front of the work (checkpoint.go's [markAside]): it is
+	// started at the boundary that crosses the mark and spent at the next boundary
+	// it has landed by, so how many steps a turn rides between the two is a fact
+	// about the machine the test is running on. Counting them would be asserting
+	// the scheduler. What does not vary is the rung.
+	if completer.requests() >= checkpointMarkAt(2) {
+		t.Errorf("the turn made %d requests and reached the second mark at %d; the handover "+
+			"was supposed to be the first one, standing at %d",
+			completer.requests(), checkpointMarkAt(2), checkpointMarkAt(1))
 	}
 	// THE LINE, EXACTLY.
 	if !saidSomething(noticeTexts(collected), checkpointSplitNote) {
@@ -1359,7 +1435,7 @@ func TestADowryOfMachineMarkupIsRefusedAndNeverBecomesTheName(t *testing.T) {
 	}
 	// AND THE LINE THE PERSON READS IS ABOUT THEIR WORK. The namer runs AHEAD of
 	// this line now, on purpose (#333), and the fixture answers it with no name
-	// ([answerTheNamerOffTheQueue]) — so what is left to read here is the
+	// ([answerTheReadingsOffTheQueue]) — so what is left to read here is the
 	// told-after line as the road itself draws it, off the person's own sentence.
 	notice := routeNotice(collected)
 	if notice == "" {
@@ -1825,6 +1901,10 @@ func TestTheMarkReaderIsSentTheDigestAndNotTheTranscript(t *testing.T) {
 		},
 	}}
 	agent := checkpointAgent(t, completer)
+	// THIS TEST IS ABOUT THE DRAWING'S OWN REQUEST, so the drawing goes back on the
+	// queue where the assertions below can read it. There is no turn here to race
+	// it — [Agent.readMark] is called directly.
+	answerOnlyTheNamerOffTheQueue(completer)
 	// The result immediately follows the assistant batch that requested it.
 	workedTurn(agent, "read the four modules and fix what is broken", 1)
 	agent.mu.Lock()

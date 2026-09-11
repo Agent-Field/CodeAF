@@ -336,7 +336,7 @@ func TestAConversationHoldingNothingStillHandsTheWholeDrawingOver(t *testing.T) 
 // so a test that reads the journal back can name its own file.
 func custodyAgent(t *testing.T, completer Completer, mutate ...func(*Config)) *Agent {
 	t.Helper()
-	answerTheNamerOffTheQueue(completer)
+	answerTheReadingsOffTheQueue(completer)
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.AskConsent = true
 		config.Divide = true

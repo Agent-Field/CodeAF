@@ -277,25 +277,62 @@ const Hysteresis = 250 * time.Millisecond
 
 // roles is the table. THERE ARE NO NUMBERS OUTSIDE IT.
 //
-// THE PATIENCE COLUMN WAS RE-MEASURED ON 2026-09-10 AND IS UNCHANGED. Each
-// multiplier is a percentile of the first token its own roles really see, and
-// all four land where they should: talk's 1 is ten seconds against a watched
-// turn's ninetieth at 8.4s; the unattended 3 is thirty seconds against a task
-// node's ninety-seventh (its ninety-fifth is 17.3s and its ninety-ninth 58.2s);
-// standing and judge's 6 is sixty seconds, just past that ninety-ninth; and the
-// probe's 0.5 is five seconds against a reflex's ninety-eighth (ninetieth
-// 0.9s, ninety-ninth 7.2s). Nobody watches an unattended call, so the cost of
-// waiting on one is zero and the cost of acting is money — which is why the
-// patient roles act at the ninety-seventh and the watched one at the ninetieth.
+// THE PATIENCE COLUMN WAS RE-MEASURED ON 2026-09-10. Each multiplier is a
+// percentile of the first token its own roles really see: talk's 1 is ten seconds
+// against a watched turn's ninetieth at 8.4s; the unattended 3 is thirty seconds
+// against a task node's ninety-seventh (its ninety-fifth is 17.3s and its
+// ninety-ninth 58.2s); standing's 6 is sixty seconds, just past that
+// ninety-ninth; and the probe's 0.5 is five seconds against a reflex's
+// ninety-eighth (ninetieth 0.9s, ninety-ninth 7.2s). Nobody watches an
+// unattended call, so the cost of waiting on one is zero and the cost of acting
+// is money — which is why the patient roles act at the ninety-seventh and the
+// watched one at the ninetieth.
+//
+// TWO OF THEM MOVED ON 2026-09-11, AND BOTH MOVED FOR ONE REASON: A CEILING
+// OUTSIDE ITS OWN CALLER'S WINDOW CAN NEVER FIRE.
+//
+//   - RECALL, 1 → 0.2. Its caller (internal/reflex's Route) bounded the whole
+//     routing pass at this role's CEILING, which made the two numbers the same
+//     number: the hazard controller was told to act on silence at exactly the
+//     instant the call was killed, so a recall on a slow machine was never once
+//     moved to a fast one. The 2026-09-11 census measured the consequence —
+//     sixteen recalls, mean 4.3s, max 10.7s, served by DekaLLM at a median of
+//     5.5s and Io Net at 4.3s while DeepInfra answered the same role in 1.7s.
+//     THE QUANTITY IS THE EARLIEST MOMENT AT WHICH SILENCE STOPS BEING NORMAL
+//     FOR THIS ROLE: above the fastest measured machine's median answer, so a
+//     healthy one is never cut mid-answer, and below the slow ones', so a slow
+//     one is always moved off. That interval is (1.7s, 4.3s) and two seconds is
+//     its low end — the soonest this can act without acting on a machine that is
+//     working. The give-up that scales with it is eighteen seconds, and the
+//     caller now reads THAT as its window so the rescue has somewhere to land.
+//   - JUDGE, 6 → 1. Sixty seconds was outside every window its callers set, so
+//     the same thing was true: nothing was ever moved off a silent judge machine,
+//     and the 2026-09-11 census has four mark readings dying at 30,001–30,002 ms
+//     having decided nothing.
+//     THE QUANTITY IS THE SAME ONE RECALL'S IS, read against a caller's window
+//     rather than a machine's median: the ceiling must be LATE ENOUGH that a
+//     healthy machine is never abandoned mid-answer — above the measured first
+//     token, 8.4s at the ninetieth — and EARLY ENOUGH that a second machine can
+//     still answer one inside the window the caller allows: that window less the
+//     same 8.4s. The tightest window that constrains it is the pre-turn route
+//     read's twenty seconds, so the interval is (8.4s, 11.6s), and ten seconds is
+//     in it and is [VisiblePatience] itself, so the ceiling needs no figure of its
+//     own. The give-up that scales with it is ninety seconds, above every
+//     caller's own bound, which is what a give-up is for.
+//     THE GUARDIAN'S TEN SECONDS IS NOT ONE OF THOSE WINDOWS, and the reason is
+//     the reason it is the one named exception everywhere else in this wave: when
+//     it goes quiet the fall-through is to ASK THE PERSON, which is a better
+//     answer than a second machine's guess and costs nothing. There is nothing a
+//     rescue could buy inside that window, so it does not bound this column.
 var roles = map[Role]RoleFacts{
 	RoleTalk:           {Interactive: true, QualityNeed: 0.9, Horizon: 50, Visible: true, Streams: true, Verb: "writing", Patience: 1},
 	RoleLeafAttached:   {Interactive: true, QualityNeed: 0.9, Horizon: 50, Visible: true, Streams: true, Verb: "writing", Patience: 1},
 	RoleLeafUnattended: {Interactive: false, QualityNeed: 0.9, Horizon: 50, Visible: false, Streams: true, Verb: "writing", Patience: 3},
 	RoleStanding:       {Interactive: false, QualityNeed: 0.9, Horizon: 20, Visible: false, Streams: true, Verb: "writing", Patience: 6},
-	RoleRecall:         {Interactive: true, Critical: true, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 1},
+	RoleRecall:         {Interactive: true, Critical: true, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 0.2},
 	RoleMemory:         {Interactive: false, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 3},
 	RoleAuxiliary:      {Interactive: false, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 3},
-	RoleJudge:          {Interactive: false, Critical: true, QualityNeed: 0.95, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 6},
+	RoleJudge:          {Interactive: false, Critical: true, QualityNeed: 0.95, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 1},
 	RoleDesign:         {Interactive: false, Critical: true, QualityNeed: 0.9, Horizon: 20, Visible: false, Streams: true, Verb: "writing", Patience: 6},
 	RoleProbe:          {Interactive: false, Horizon: 1, Visible: false, Streams: true, Verb: "writing", Patience: 0.5},
 	// A hand's question: somebody IS waiting (the tool row is open in front of
