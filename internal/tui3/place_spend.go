@@ -53,10 +53,11 @@ type spendPage struct {
 	// group and sort are the Models / Days lens controls (`g`, `c` / `t`).
 	group spendGroup
 	sort  spendSort
-	// priorWin and priorLens remember the Days view a day-drill left, so esc
-	// returns there instead of leaving the place (spendlens.go).
+	// priorWin, priorLens and priorDay remember the Days view a day-drill left,
+	// so esc returns there with the cursor on the day you opened (spendlens.go).
 	priorWin  session.UsageWindow
 	priorLens spendLens
+	priorDay  time.Time
 	drilled   bool
 	// reading is the answer the body is drawn from: derived, immutable, and
 	// rebuilt only when the lines, the window or the names actually changed.
@@ -429,6 +430,21 @@ func (a *app) moveSpend(delta int) {
 	a.spend.cursor = doors[moveCursor(at, delta, len(doors))]
 }
 
+// focusSpendDay puts the cursor on the Days-lens row for day, or leaves it
+// alone when that day is not on the page. Esc after a drill uses this so the
+// person lands back on the day they opened rather than on the loudest day.
+func (a *app) focusSpendDay(day time.Time) {
+	if day.IsZero() {
+		return
+	}
+	for i, stop := range a.spend.stops {
+		if stop.ok && !stop.day.At.IsZero() && sameSpendBucket(stop.day.At, day, session.GrainDay) {
+			a.spend.cursor = i
+			return
+		}
+	}
+}
+
 // ── the keys ────────────────────────────────────────────────────────────────
 
 // spendKey is every key on this place. The router is read first and claims the
@@ -442,9 +458,14 @@ func (a *app) spendKey(msg tea.KeyPressMsg) tea.Cmd {
 		if a.spend.drilled {
 			a.spend.win = a.spend.priorWin
 			a.spend.lens = a.spend.priorLens
+			day := a.spend.priorDay
 			a.spend.drilled = false
-			a.spend.woke = false
+			a.spend.priorDay = time.Time{}
+			a.spend.woke = true // keep the person's cursor; do not re-centre
 			a.rebuildSpend()
+			if !day.IsZero() {
+				a.focusSpendDay(day)
+			}
 			a.touch()
 			return nil
 		}
@@ -602,9 +623,13 @@ func (a *app) openSpendRow() (tea.Cmd, bool) {
 	}
 	// A DAYS-LENS ROW DRILLS INTO THAT DAY: the window becomes the day, the lens
 	// returns to Rhythm, and the models/subjects under it are that day's bill.
-	if stop.day.USD > 0 && !stop.day.At.IsZero() {
+	// Quiet days still drill — a day with nothing priced is still a named window
+	// (emptiness draws no figure; the door stays) so enter never lands on a blank
+	// refuse (docs/design/spend-lenses/DESIGN.md §2).
+	if !stop.day.At.IsZero() {
 		a.spend.priorWin = a.spend.win
 		a.spend.priorLens = a.spend.lens
+		a.spend.priorDay = stop.day.At
 		a.spend.drilled = true
 		day := session.UsageWindow{From: stop.day.At, To: stop.day.At, Grain: session.GrainDay}
 		a.spend.win = day.Normalized()
@@ -816,13 +841,16 @@ func (placeSpend) hint(a *app) string {
 	// over a whisper with nothing behind it, which advertised a key that moved
 	// nothing a person could see.
 	if a.spend.held || !a.spend.reading.empty() {
-		parts = append(parts, a.spend.lens.word()+" · "+spendLensWord)
+		// THE LENS WORD LIVES ON THE HEAD ROW (paintLens). The foot only names
+		// the cycle keys, so the asker's word is said once — never as a second
+		// tab strip on the foot as well (docs/design/spend-lenses/DESIGN.md).
+		parts = append(parts, spendLensWord)
 		if a.spend.lens == spendLensModels {
 			parts = append(parts, spendGroupKeyWord, spendSortKeyWord)
 		}
 		if a.spend.lens == spendLensDays {
 			parts = append(parts, spendSortKeyWord)
-			if stop := a.spendStopAt(a.spend.cursor); stop.day.USD > 0 {
+			if stop := a.spendStopAt(a.spend.cursor); !stop.day.At.IsZero() {
 				parts = append(parts, "enter opens that day")
 			}
 		}

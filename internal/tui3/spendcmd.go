@@ -44,19 +44,25 @@ func (a *app) runSpendCommand(rest string) tea.Cmd {
 		if days < 1 {
 			days = 14
 		}
+		// showPage opens the place and reseeds the window; the hint is applied
+		// AFTER that so `/spend 7d` is not wiped by the default fortnight.
+		cmd := a.showPage(pageSpend)
 		a.spend.win = session.LastDays(a.now(), days)
 		a.spend.lens = spendLensRhythm
 		a.spend.woke = false
-		cmd := a.showPage(pageSpend)
 		a.rebuildSpend()
 		return cmd
 	case "month", "monthly":
-		win := session.LastDays(a.now(), 30)
-		win.Grain = session.GrainMonth
-		a.spend.win = win.Normalized()
+		// THE CURRENT CALENDAR MONTH, not "the last thirty days". DESIGN.md's
+		// `/spend month` door is a named month window. UsageWindow's To is the
+		// bucket's FIRST moment (Holds covers the rest of the month), so one
+		// GrainMonth bucket starting on the 1st is this month whole.
+		cmd := a.showPage(pageSpend)
+		now := a.now().Local()
+		start := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+		a.spend.win = session.UsageWindow{From: start, To: start, Grain: session.GrainMonth}.Normalized()
 		a.spend.lens = spendLensRhythm
 		a.spend.woke = false
-		cmd := a.showPage(pageSpend)
 		a.rebuildSpend()
 		return cmd
 	}

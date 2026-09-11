@@ -124,6 +124,134 @@ func TestDaysLensEnterDrillsToRhythm(t *testing.T) {
 	}
 }
 
+// ESC AFTER A DAY DRILL RETURNS TO DAYS ON THAT DAY. The window and lens come
+// back, and the cursor lands on the day that was opened — not on the loudest
+// day of the restored window.
+func TestDaysLensEscReturnsToTheDay(t *testing.T) {
+	a := spendLab(t, spendFixture())
+	a.setSpendLens(spendLensDays)
+	dayAt := -1
+	var day session.DaySpend
+	for i, stop := range a.spend.stops {
+		if stop.ok && stop.day.USD > 0 && !stop.day.At.IsZero() {
+			dayAt = i
+			day = stop.day
+			break
+		}
+	}
+	if dayAt < 0 {
+		t.Fatal("no priced day door")
+	}
+	a.spend.cursor = dayAt
+	if _, ok := a.openSpendRow(); !ok {
+		t.Fatal("drill failed")
+	}
+	drive(t, a, key("esc"))
+	if a.spend.lens != spendLensDays {
+		t.Fatalf("esc left the lens on %s, want days", a.spend.lens.word())
+	}
+	if a.spend.drilled {
+		t.Fatal("esc left the drill flag set")
+	}
+	stop := a.spendStopAt(a.spend.cursor)
+	if !stop.ok || stop.day.At.IsZero() || !sameSpendBucket(stop.day.At, day.At, session.GrainDay) {
+		t.Fatalf("cursor is on %#v, want the day %v", stop.day, day.At)
+	}
+}
+
+// A QUIET DAY IS STILL A DOOR. Emptiness draws no figure; enter still drills
+// into that day's rhythm window.
+func TestQuietDayStillDrills(t *testing.T) {
+	a := spendLab(t, spendFixture())
+	a.setSpendLens(spendLensDays)
+	quietAt := -1
+	var quiet session.DaySpend
+	for i, stop := range a.spend.stops {
+		if stop.ok && !stop.day.At.IsZero() && !(stop.day.USD > 0) {
+			quietAt = i
+			quiet = stop.day
+			break
+		}
+	}
+	if quietAt < 0 {
+		t.Fatalf("the days lens has no quiet day:\n%s", placeFrameText(a))
+	}
+	a.spend.cursor = quietAt
+	if _, ok := a.openSpendRow(); !ok {
+		t.Fatal("enter on a quiet day opened nothing")
+	}
+	if a.spend.lens != spendLensRhythm {
+		t.Fatalf("after the quiet drill the lens is %s", a.spend.lens.word())
+	}
+	if !a.spend.win.From.Equal(quiet.At) {
+		t.Fatalf("window is %v, want quiet day %v", a.spend.win.From, quiet.At)
+	}
+}
+
+// THE HEAD ROW NAMES THE LENS. Foot keys stay `[ ] lenses` without repeating
+// the asker's word — said once, on the head.
+func TestSpendLensNamedOnTheHead(t *testing.T) {
+	a := spendLab(t, spendFixture())
+	for _, lens := range []spendLens{spendLensRhythm, spendLensModels, spendLensDays, spendLensYear} {
+		a.setSpendLens(lens)
+		rows, _ := a.spend.reading.paintLens(lens, spendGroupModel, spendSortCost, 120, newPalette(tokens.NoColor, false), nil)
+		if len(rows) < 2 {
+			t.Fatalf("%s painted %d rows", lens.word(), len(rows))
+		}
+		head := plain(rows[1])
+		if !strings.Contains(head, lens.word()+" · ") {
+			t.Fatalf("%s head does not name the lens: %q", lens.word(), head)
+		}
+		foot := (placeSpend{}).hint(a)
+		if strings.Contains(foot, lens.word()+" · "+spendLensWord) {
+			t.Fatalf("%s foot still repeats the lens word: %q", lens.word(), foot)
+		}
+		if !strings.Contains(foot, spendLensWord) {
+			t.Fatalf("%s foot dropped the cycle keys: %q", lens.word(), foot)
+		}
+	}
+}
+
+// `/spend month` IS THE CURRENT CALENDAR MONTH, not the last thirty days.
+func TestSpendMonthIsTheCalendarMonth(t *testing.T) {
+	a := spendLab(t, spendFixture())
+	now := a.now().Local()
+	a.runSpendCommand("month")
+	win := a.spend.win
+	if win.Grain != session.GrainMonth {
+		t.Fatalf("grain is %q, want month", win.Grain)
+	}
+	if win.From.Year() != now.Year() || win.From.Month() != now.Month() || win.From.Day() != 1 {
+		t.Fatalf("month window starts %v, want the 1st of %v", win.From, now.Month())
+	}
+	if !win.From.Equal(win.To) {
+		t.Fatalf("a one-month window has From≠To: %v–%v", win.From, win.To)
+	}
+	if win.Buckets() != 1 {
+		t.Fatalf("month window has %d buckets, want 1", win.Buckets())
+	}
+	// Holds covers the whole calendar month even though To is the 1st.
+	mid := time.Date(now.Year(), now.Month(), 15, 12, 0, 0, 0, now.Location())
+	if !win.Holds(mid) {
+		t.Fatalf("month window does not hold mid-month %v", mid)
+	}
+}
+
+// AN UNKNOWN `/spend` ARG IS ONE REFUSE LINE, and the place is not opened as a
+// second editor.
+func TestSpendUnknownArgRefuses(t *testing.T) {
+	a := spendLab(t, spendFixture())
+	page := a.page
+	a.runSpendCommand("opus")
+	if a.page != page {
+		t.Fatalf("unknown /spend opened %v", a.page)
+	}
+	got := lastNote(t, a)
+	if !strings.Contains(got, "usage: /spend") {
+		t.Fatalf("refuse did not name the accepted args: %q", got)
+	}
+}
+
 // THE YEAR LENS DRAWS A HEATMAP OR NAMES ITS ACTIVE DAYS. A multi-day fixture
 // must leave either the "active days" fact or the cell glyphs on the body —
 // never an empty year that looks like an empty machine.

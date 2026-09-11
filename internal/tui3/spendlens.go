@@ -176,9 +176,35 @@ func (r spendReading) paintLens(lens spendLens, group spendGroup, sort spendSort
 }
 
 // paintRhythm is the original spend body, renamed so the lens switch has one
-// word for "what this place used to be".
+// word for "what this place used to be". The head still names `rhythm` so the
+// four lenses share one grammar for "which reading is up".
 func (r spendReading) paintRhythm(width int, pal palette, lit func(int) bool) ([]string, []spendStop) {
-	return r.paint(width, pal, lit)
+	rows, stops := r.paint(width, pal, lit)
+	if len(rows) < 2 {
+		return rows, stops
+	}
+	// Row 1 is the window head in [spendReading.paint]. Replace it with the
+	// lens-named form so Rhythm matches Models / Days / Year.
+	rows[1] = r.windowHeaderRowFor(spendLensRhythm, width, pal)
+	return rows, stops
+}
+
+// windowHeaderRowFor is [spendReading.windowHeaderRow] with the active lens
+// named once on the left — `models · 14 days came to $2.05 · …` — which is the
+// head-row spelling DESIGN.md requires.
+func (r spendReading) windowHeaderRowFor(lens spendLens, width int, pal palette) string {
+	head := r.headWords(width)
+	painted := r.paintedHead(width, pal)
+	word := lens.word()
+	if word != "" {
+		head = word + " · " + head
+		if painted == "" {
+			painted = placeHeading(head, pal)
+		} else {
+			painted = pal.dim(word+" · ") + painted
+		}
+	}
+	return placeHeadRow(width, head, painted, r.window, pal)
 }
 
 func (r spendReading) paintModelsLens(group spendGroup, sort spendSort, width int, pal palette, lit func(int) bool) ([]string, []spendStop) {
@@ -190,7 +216,7 @@ func (r spendReading) paintModelsLens(group spendGroup, sort spendSort, width in
 	var out []string
 	rails := len(out)
 	out = append(out, placeLead+r.railsRowIn(inner, placeFactInk(on(rails), pal)))
-	out = append(out, r.windowHeaderRow(width, pal))
+	out = append(out, r.windowHeaderRowFor(spendLensModels, width, pal))
 	caption := spendModelsLensWord + " · by " + group.word() + " · " + sort.word()
 	out = appendPlaceSection(out, placeLead+placeHeading(fit(caption, inner), pal))
 	rows := r.modelsLensRows(group, sort)
@@ -381,15 +407,15 @@ func (r spendReading) paintDaysLens(sort spendSort, width int, pal palette, lit 
 	var out []string
 	rails := len(out)
 	out = append(out, placeLead+r.railsRowIn(inner, placeFactInk(on(rails), pal)))
-	out = append(out, r.windowHeaderRow(width, pal))
+	out = append(out, r.windowHeaderRowFor(spendLensDays, width, pal))
 	out = appendPlaceSection(out, placeLead+placeHeading(fit(spendDaysLensWord+" · "+sort.word(), inner), pal))
 	days := append([]session.DaySpend(nil), r.days...)
 	sortDaysLens(days, sort)
 	doors := map[int]session.DaySpend{}
 	for _, day := range days {
-		if !(day.USD > 0) {
-			continue
-		}
+		// QUIET DAYS STAY ON THE LIST. UsageByDay already fills empty buckets;
+		// skipping them here would compress the fortnight and leave enter with
+		// nowhere to land on a named quiet day (DESIGN.md §2).
 		at := len(out)
 		doors[at] = day
 		out = append(out, placeLead+spendDayRow(day, inner, on(at), pal))
@@ -424,7 +450,7 @@ func (r spendReading) paintYearLens(width int, pal palette, lit func(int) bool) 
 	var out []string
 	rails := len(out)
 	out = append(out, placeLead+r.railsRowIn(inner, placeFactInk(on(rails), pal)))
-	out = append(out, r.windowHeaderRow(width, pal))
+	out = append(out, r.windowHeaderRowFor(spendLensYear, width, pal))
 	out = appendPlaceSection(out, placeLead+placeHeading(fit(spendYearLensWord, inner), pal))
 
 	year := yearWindow(r.now)
@@ -473,10 +499,20 @@ func (r spendReading) yearFacts(days []session.DaySpend) []string {
 	if hour, ok := session.PeakHour(r.source); ok {
 		facts = append(facts, fmt.Sprintf("peak hour %s", hourWord(hour)))
 	}
-	if len(r.models) > 0 && r.models[0].Model != "" {
-		facts = append(facts, "favorite · "+r.modelName(r.models[0].Model))
+	// FAVORITE IS THE YEAR'S DEAREST MODEL, not the fortnight window's. The Year
+	// lens asks about the year; handing it r.models would answer a different
+	// question whenever the window and the year disagreed.
+	year := yearWindow(r.now)
+	var yearPriced []session.UsageLine
+	for _, line := range r.yearLines() {
+		if line.USD > 0 && year.Holds(session.UsageLineDay(line)) {
+			yearPriced = append(yearPriced, line)
+		}
 	}
-	if r.totals.USD > 0 {
+	if models := session.UsageByModel(yearPriced); len(models) > 0 && models[0].Model != "" {
+		facts = append(facts, "favorite · "+r.modelName(models[0].Model))
+	}
+	if r.totals.USD > 0 || active > 0 {
 		// Prefer the year total when we have year days; otherwise the window.
 		total := 0.0
 		for _, day := range days {
