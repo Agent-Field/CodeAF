@@ -109,11 +109,11 @@ func (a *Agent) publishLandingQuestion(notice TaskNotice) {
 		a.emitQuestion(EventQuestionWithdrawn, stale, nil)
 	}
 	a.landingAsking(notice.ID, q.Kind)
-	// Bank without deferring the forget: settle and answer own retirement
-	// ([Agent.retireLandingQuestion], [Agent.claimQuestion]). A deferred forget
-	// would race the graph's next move.
-	_ = a.rememberQuestion(q)
-	a.emitQuestion(EventQuestion, q, nil)
+	// Raised through the one door (question.go's [Agent.raiseQuestion]) and the
+	// let-go DROPPED: settle and answer own this question's retirement
+	// ([Agent.retireLandingQuestion], [Agent.claimQuestion]), and a deferred
+	// let-go would race the graph's next move.
+	_ = a.raiseQuestion(q, nil)
 }
 
 // retireLandingQuestion takes a settled node's question back.

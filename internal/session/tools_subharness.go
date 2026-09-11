@@ -377,8 +377,12 @@ func (a *Agent) askSubharnessCard(ctx context.Context, card SubharnessCard) (sub
 	// is emitted from the same defer that forgets the offer and by nothing else
 	// ([Agent.forgetSubharnessOffer]).
 	defer a.forgetSubharnessOffer(id)
-
-	a.emitHarness(raised)
+	// AND THE QUESTION ITSELF IS RAISED THROUGH THE ONE DOOR, with the card as
+	// its announcement (question.go's [Agent.raiseQuestion]): the intake card
+	// existed on the questions lane only as something [Agent.OpenQuestions]
+	// derived when a surface subscribed, so no window was ever told it had been
+	// answered or had come down.
+	defer a.raiseQuestion(a.subharnessOfferQuestion(id, raised), func() { a.emitHarness(raised) })()
 
 	timer := time.NewTimer(subharnessCardWindow)
 	defer timer.Stop()

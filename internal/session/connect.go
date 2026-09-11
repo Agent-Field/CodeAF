@@ -267,6 +267,14 @@ func (a *Agent) service(id string) (connectStatus, bool) {
 type connectAsk struct {
 	answers  chan connectAnswer
 	needsKey bool
+	// name is the account in the words a person owns it by, and secret says what
+	// it wants is a CREDENTIAL. Both are kept because the question is built from
+	// them twice — when it is raised, and whenever [Agent.OpenQuestions] reads
+	// the lane — and a second reading that said "connect your account?" over a
+	// box drawn in the clear would replace the first on screen (question.go's
+	// [ConnectQuestion] takes both).
+	name   string
+	secret bool
 }
 
 // connectAnswer is what a person said. Approved with no key is a yes to an
@@ -352,7 +360,12 @@ func (a *Agent) askConnect(ctx context.Context, service connectStatus) (connectA
 	}
 	a.connectSeq++
 	id := "connect-" + strconv.FormatUint(a.connectSeq, 10)
-	ask := connectAsk{answers: make(chan connectAnswer, 1), needsKey: service.keyed() || service.asks()}
+	ask := connectAsk{
+		answers:  make(chan connectAnswer, 1),
+		needsKey: service.keyed() || service.asks(),
+		name:     strings.TrimSpace(service.Name),
+		secret:   service.keyed(),
+	}
 	if a.connectAsks == nil {
 		a.connectAsks = make(map[string]connectAsk, 1)
 	}
@@ -368,13 +381,22 @@ func (a *Agent) askConnect(ctx context.Context, service connectStatus) (connectA
 		return connectAnswer{}, errNobodyWatching
 	}
 
-	hub.send(Event{
-		Kind:        EventConnectAsk,
-		ConnectID:   id,
-		Service:     service.ID,
-		ServiceName: service.Name,
-		NeedsKey:    ask.needsKey,
+	// THE OFFER IS RAISED THROUGH THE ONE DOOR, with the lane's own event as its
+	// announcement (question.go's [Agent.raiseQuestion]). Before that this lane
+	// spoke only to the window holding the turn: the question existed on the
+	// questions lane solely as something [Agent.OpenQuestions] derived at
+	// subscription time, so a second window learned of it by replay and was
+	// never told it had been answered or withdrawn.
+	letGo := a.raiseQuestion(a.connectQuestion(id, ask), func() {
+		hub.send(Event{
+			Kind:        EventConnectAsk,
+			ConnectID:   id,
+			Service:     service.ID,
+			ServiceName: service.Name,
+			NeedsKey:    ask.needsKey,
+		})
 	})
+	defer letGo()
 
 	timer := time.NewTimer(connectAskTimeout)
 	defer timer.Stop()

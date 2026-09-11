@@ -285,52 +285,63 @@ func TestTheRecordTheModelCarriesIsBoundedAndSaysWhatItLeftOnDisk(t *testing.T) 
 	}
 }
 
-// THE RECORD IS READ FROM DISK ONCE PER CHANGE, NOT ONCE PER REBUILD OF
-// message[0]. Seven things rebuild that message and none of them is a decision;
-// each one used to open decisions.jsonl and unmarshal every line of it.
-func TestTheRecordIsNotReReadWhenNothingHasDecided(t *testing.T) {
-	agent, dir := questionSession(t, "rrrr1111rrrr1111", nil)
+// ANSWERING A QUESTION DOES NOT MOVE message[0], WHICH IS WHAT ANSWERING USED
+// TO COST. The record was rewritten into the system prompt the moment an answer
+// was applied — every `ask` and every `allow once` — and one changed byte there
+// re-prices the whole conversation at the uncached rate on the very next
+// request.
+func TestAnsweringLeavesTheSystemPromptByteForByte(t *testing.T) {
+	agent, _ := questionSession(t, "rrrr1111rrrr1111", nil)
+	agent.mu.Lock()
+	agent.refreshSystemLocked()
+	before := messageText(agent.messages[0])
+	agent.mu.Unlock()
+
 	agent.recordDecision(DecisionRecord{Head: "the first", Picked: []string{"yes"}, By: DecidedByPerson})
+	agent.recordDecision(DecisionRecord{Head: "needs your ok to run bash", Picked: []string{"1"}, By: DecidedByPerson})
 
 	agent.mu.Lock()
 	agent.refreshSystemLocked()
-	if agent.recordKey == "" {
-		t.Fatal("the record was rendered with no key to hold it against")
+	after := messageText(agent.messages[0])
+	held := agent.recordText
+	agent.mu.Unlock()
+	if after != before {
+		t.Fatalf("answering rewrote message[0]:\nbefore:\n%s\nafter:\n%s", before, after)
 	}
-	// Poisoning the held text is the only proof that stays true: if the file is
-	// read again the sentinel cannot survive, and if it is not, it must.
-	agent.recordText = "the record\n- a sentinel nothing on disk says"
+	// AND THE RECORD ITSELF IS CURRENT, rendered off the lock as the file moved.
+	if !strings.Contains(held, "the first") || !strings.Contains(held, "needs your ok to run bash") {
+		t.Fatalf("the record was not brought up to date beside the prompt:\n%s", held)
+	}
+}
+
+// AND IT RIDES ALONG THE NEXT TIME THE PROMPT IS REBUILT FOR SOME OTHER REASON —
+// a folder attached, a standing order agreed — which is a moment the prefix is
+// being paid for anyway.
+func TestTheRecordRidesTheNextRebuildOfTheSystemPrompt(t *testing.T) {
+	agent, _ := questionSession(t, "rrrr2222rrrr2222", nil)
+	agent.mu.Lock()
+	agent.refreshSystemLocked()
+	agent.mu.Unlock()
+	agent.recordDecision(DecisionRecord{Head: "which storage shape", Picked: []string{"1"}, By: DecidedByPerson})
+
+	agent.mu.Lock()
+	agent.standingText = "\n\nstanding orders\n- keep the tests green"
 	agent.refreshSystemLocked()
 	carried := messageText(agent.messages[0])
 	agent.mu.Unlock()
-	if !strings.Contains(carried, "a sentinel nothing on disk says") {
-		t.Fatalf("message[0] was rebuilt by re-reading the file:\n%s", carried)
+	if !strings.Contains(carried, "which storage shape") {
+		t.Fatalf("the record never reached message[0] on a rebuild that moved it:\n%s", carried)
 	}
 
-	// AND A DECISION MADE ANYWHERE — this window or another one — moves the file
-	// and is picked up, because the key is the file's own size and time.
-	line, err := json.Marshal(DecisionRecord{Head: "another window decided", Picked: []string{"no"}, By: DecidedByWindow})
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	file, err := os.OpenFile(DecisionsPath(dir), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		t.Fatalf("open the record: %v", err)
-	}
-	if _, err := file.Write(append(line, '\n')); err != nil {
-		t.Fatalf("append to the record: %v", err)
-	}
-	_ = file.Close()
-
+	// AND A REBUILD THAT MOVED NOTHING AHEAD OF THE RECORD STILL RENDERS BYTE FOR
+	// BYTE, which is the law the whole snapshot exists for.
+	agent.recordDecision(DecisionRecord{Head: "and one more", Picked: []string{"2"}, By: DecidedByPerson})
 	agent.mu.Lock()
 	agent.refreshSystemLocked()
-	carried = messageText(agent.messages[0])
+	again := messageText(agent.messages[0])
 	agent.mu.Unlock()
-	if strings.Contains(carried, "a sentinel nothing on disk says") {
-		t.Fatalf("the record went stale behind another window's decision:\n%s", carried)
-	}
-	if !strings.Contains(carried, "another window decided") {
-		t.Fatalf("the other window's decision never reached message[0]:\n%s", carried)
+	if again != carried {
+		t.Fatalf("a second decision moved message[0]:\n%s\n%s", carried, again)
 	}
 }
 
@@ -596,6 +607,12 @@ func TestTheCapIsCountedAgainstOnePieceOfWorkAndNotTheSession(t *testing.T) {
 			Reason:  "the shape of the work depends on it",
 			Subject: about, Stakes: StakesReversible,
 			Options: []AnswerOption{{Key: "1", Label: "one"}, {Key: "2", Label: "two"}},
+			// AND THE WORK IS REALLY STOPPED ON IT, which is what the cap
+			// counts ([Question.Waiting]) and what the lane's own builder
+			// carries ([Agent.subharnessAskQuestion]). A question by hand that
+			// said nothing was waiting on it would be asking the cap to hold a
+			// slot against attention nobody is being asked for.
+			Blocking: Blocking{Tasks: []string{about.Name}},
 		})
 		return err
 	}
