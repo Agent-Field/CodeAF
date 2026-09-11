@@ -374,7 +374,7 @@ func (n *TaskNode) armedByJudgement() bool {
 // did exactly that on 2026-08-28: three minutes of provider silence spent the
 // task's one adjudication, and the retry with better evidence met the counter
 // alone). So the right is taken here, before the call, and refunded by
-// [Agent.divideOnce] when no answer of any kind came back. What keeps the
+// [settleDivisionRefusal] when no answer of any kind came back. What keeps the
 // refund from becoming an unbounded run of attempts is the ladder itself: an
 // adjudication's fall-through rung is the session's own model
 // ([Agent.callRole]), which is alive by construction, so a review that cannot
@@ -654,6 +654,35 @@ const (
 	// refusal leaves one worker carrying on, and this one stops a worker being
 	// spent at all ([Agent.landNeedsPerson]).
 	divisionRefusedNobody = "refused:nobody"
+	// divisionDropped is a reading that came back with something to hand over
+	// and found nobody to hand it to: the worker it ran beside had said its last
+	// word, or had handed work out of its own accord first (task_divide_sketch.go).
+	// It is NOT A REFUSAL and is a word of its own for that reason — nothing was
+	// found wrong with the parts, and a bench counting it beside `review` would
+	// be reading a worker that was quick as a reviewer that said no. Error says
+	// which of the two it was.
+	divisionDropped = "dropped"
+)
+
+// divisionAsker is who put a division to the road, and whether that asker is
+// WAITING on the answer.
+//
+// THE SECOND HALF IS A PROPERTY AND NOT A NAME, because it is what decides how
+// the reading is drawn. A worker that called `divide_work` is sitting inside its
+// own tool call until the answer comes back, so the reading is the node's life
+// for as long as it lasts and the row says so ([Agent.sizingWait]). The drawing a
+// node was handed is weighed BESIDE a worker that is already at work
+// (task_divide_sketch.go), and there the worker's own call is what the row is
+// about — a phase word over it would be the row explaining a wait nobody is in.
+type divisionAsker struct {
+	// name is the word the journal keeps ([journalDivision.Source]).
+	name  string
+	waits bool
+}
+
+var (
+	askedByWorker = divisionAsker{name: divisionByWorker, waits: true}
+	askedBeside   = divisionAsker{name: divisionBySketch, waits: false}
 )
 
 // divideWork is the tool's whole life, and it is a WRAPPER because the life is
@@ -667,43 +696,90 @@ const (
 // carrying on, and an error would end its turn over a question it was entitled
 // to ask.
 func (a *Agent) divideWork(ctx context.Context, args json.RawMessage) (string, bool, error) {
-	// THE WORKER'S OWN ASK HAS NO USE FOR THE THIRD ANSWER, and that is a fact
-	// about when it is asked rather than an omission. A human-only finding stops a
-	// worker being STARTED (task_divide_sketch.go); this caller is a worker already
-	// mid-turn, whose money is already being spent, and the honest thing to do with
-	// it is tell it — which [divisionNeedsPerson] does, in the answer.
-	answer, _, malformed := a.divideOnce(ctx, args, divisionByWorker)
-	return answer, malformed, nil
+	// THE WORKER'S OWN ASK HAS NO USE FOR THE PERSON'S JOB AS A VALUE, and that is
+	// a fact about who is asking rather than an omission. The worker is inside its
+	// own tool call, whose answer is the one thing it is certain to read, so a
+	// human-only finding is TOLD to it — [divisionNeedsPerson] says stop and hand it
+	// back, in the answer. The reading beside a worker that never asked has no
+	// answer to put it in, and stops the worker instead (task_divide_sketch.go).
+	division := a.weighDivision(ctx, args, askedByWorker)
+	if division.admissible() {
+		a.admitDivision(&division)
+	}
+	a.recordDivision(division)
+	return division.said, division.malformed, nil
 }
 
-// divideOnce reads the request, puts it to the two gates, and — if both say yes —
-// admits the parts on the nesting road. It answers what the asker is told, THE
-// PERSON'S OWN JOB where the reviewer said there is one, and whether what it read
-// was malformed.
+// weighedDivision is one division that has been put to every gate and to the
+// reading, and not yet admitted: the record it will leave, and either the parts
+// to admit or what its asker is told instead.
 //
-// THE SECOND ANSWER IS EMPTY ON EVERY ROAD BUT ONE. It carries the reviewer's own
-// sentence when it said that what is left cannot be done by any worker
-// ([divideReview.Nobody]), and it is the only thing on this road that can stop a
-// worker being started at all — which is why it is a value handed back to the
-// caller rather than a decision taken here: this function does not know whether
-// its asker is a worker already running or a node that has not begun
-// (task_divide_sketch.go).
-//
-// AND IT WRITES DOWN WHAT IT DECIDED, once, on every road out. The line is the
-// last thing this function does whatever happened, which is why it is a deferred
-// write over one record rather than a call at each ending: five endings and five
-// call sites is four chances to add a sixth ending and forget (sessionfile.go's
-// [journalDivision] carries what the record is for).
-func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source string) (string, string, bool) {
-	parent := a.config.taskID
-	line := journalDivision{TaskID: parent, Source: source}
-	// repaired is what the harness lifted off the parts on the way through, and
-	// it is declared up here because the rule that fills it is asked at two
-	// separate moments and the word it writes on the record goes on at the end
+// IT IS A VALUE BETWEEN TWO STEPS BECAUSE THE TWO STEPS HAPPEN AT DIFFERENT
+// MOMENTS ON ONE OF THE ROADS. A worker that calls the verb weighs and admits in
+// one breath, inside its own tool call. The drawing a node was handed is weighed
+// BESIDE a worker that is already at work, and admitted only if that worker is
+// still reading when the answer comes back (task_divide_sketch.go) — so the
+// weighing has to be able to finish, and the admission to be decided, by two
+// different pieces of code without a second copy of either.
+type weighedDivision struct {
+	// line is the record, filled in by both steps and written ONCE by whoever
+	// ends the division ([Agent.recordDivision]).
+	line journalDivision
+	// said is what the asker is told when the division ended before admission,
+	// and the receipt once it has been admitted. Empty is "ready to admit".
+	said string
+	// person is the reader's own sentence where it found that what is left is
+	// not work for any worker, and empty on every other road.
+	person    string
+	malformed bool
+	// parts are what will be admitted: the reader's settled parts, with any check
+	// the family shares already lifted off them.
+	parts []dividePart
+	// repaired is what the harness lifted off the parts on the way through
 	// (task_divide_scope.go). It is empty on every division that needed no
 	// repair, which is every division a worker got right either time.
-	var repaired []string
-	defer func() { a.file.appendDivision(line) }()
+	repaired []string
+}
+
+// admissible reports whether this division came through everything and has
+// parts waiting to be admitted.
+func (d weighedDivision) admissible() bool {
+	return d.said == "" && d.person == "" && len(d.parts) > 0
+}
+
+// drop writes down a division that was weighed and never admitted because
+// nobody was there to hand it to ([divisionDropped]).
+func (d *weighedDivision) drop(why string) {
+	d.line.Decision, d.line.Error = divisionDropped, why
+}
+
+// recordDivision writes the one line a division leaves, ONCE, whichever road it
+// ended on. Both enders call it as their last act, so a sixth ending added later
+// has one line to remember rather than a write to invent (sessionfile.go's
+// [journalDivision] carries what the record is for).
+func (a *Agent) recordDivision(division weighedDivision) {
+	a.file.appendDivision(division.line)
+}
+
+// weighDivision reads the request, puts it to the gates and — where they have
+// left anything standing — to the reading, and answers the division ready to
+// admit or ended.
+//
+// THE PERSON'S OWN JOB IS EMPTY ON EVERY ROAD BUT ONE. It carries the reviewer's
+// own sentence when it said that what is left cannot be done by any worker
+// ([divideReview.Nobody]), and it is a value handed back rather than a decision
+// taken here, because what it does depends on who asked: a worker inside its own
+// tool call is told, and a worker that never asked is stopped
+// (task_divide_sketch.go).
+//
+// IT JOURNALS NOTHING. The record is filled in as the division goes and written
+// by whoever ends it ([Agent.recordDivision]), because on the road where the
+// weighing and the admission are two moments apart the last word on the line is
+// not this function's to write.
+func (a *Agent) weighDivision(ctx context.Context, args json.RawMessage, asker divisionAsker) weighedDivision {
+	parent := a.config.taskID
+	division := weighedDivision{line: journalDivision{TaskID: parent, Source: asker.name}}
+	line := &division.line
 
 	parsed, problem := parseDivideArguments(args)
 	for _, part := range parsed.Parts {
@@ -711,10 +787,17 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	}
 	if problem != "" {
 		line.Decision = divisionRefusedMalformed
-		return problem, "", true
+		division.said, division.malformed = problem, true
+		return division
 	}
 	line.Requested = len(parsed.Parts)
 	graph := a.graph()
+	// ended is every road out of this function but the last, spelled once.
+	ended := func(decision, said string) weighedDivision {
+		line.Decision = decision
+		division.said = said
+		return division
+	}
 
 	// GATE ONE: THE EVIDENCE. What the worker SAW has to name enough separate
 	// items for the parts to beat one worker doing them in order
@@ -764,8 +847,7 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	// default.
 	thin := !splitgate.Judge(parsed.Evidence, nil).Keep
 	if thin && !node.armedByJudgement() {
-		line.Decision = divisionRefusedFloor
-		return divisionTooNarrow(parsed.Evidence), "", false
+		return ended(divisionRefusedFloor, divisionTooNarrow(parsed.Evidence))
 	}
 	// GATE TWO: THE FREE HANDS, AND IT IS THE LANES ONLY.
 	//
@@ -788,8 +870,7 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	// So the parts are admitted, the frontier holds them, and the receipt says
 	// so ([divisionDone]).
 	if graph.freeHands() <= 0 {
-		line.Decision = divisionRefusedLane
-		return divisionNoLane(len(parsed.Parts), graph.laneLimit()), "", false
+		return ended(divisionRefusedLane, divisionNoLane(len(parsed.Parts), graph.laneLimit()))
 	}
 
 	// GATE THREE: NO TWO PARTS MAY OWN THE SAME PATH, and it is HERE because it
@@ -804,8 +885,7 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	// reviewer may rewrite a brief into an overlap the worker never wrote. Two
 	// askings, one rule, one function.
 	if said := a.scopeRefusal(parsed.Parts, scopeSpentNothing); said != "" {
-		line.Decision = divisionRefusedScope
-		return said, "", false
+		return ended(divisionRefusedScope, said)
 	}
 
 	// AND THE SAME MOMENT ASKS THE SECOND ADMISSION RULE: NO CHECK MAY BE
@@ -825,12 +905,11 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	// — so the word is put back at the end, on the one path that got there.
 	said, lifted, shared := a.sharedCheckAnswer(node, parsed.Parts, scopeSpentNothing)
 	if said != "" {
-		line.Decision = divisionRefusedShared
 		line.Shared = shared
-		return said, "", false
+		return ended(divisionRefusedShared, said)
 	}
 	parsed.Parts = lifted
-	repaired = append(repaired, shared...)
+	division.repaired = append(division.repaired, shared...)
 
 	// AND THEN THE PLAN IS READ, ONCE, BY THE TIER THAT THINKS. It comes after
 	// both gates because it is the only step here that costs money: a division
@@ -855,51 +934,19 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	// silence is not the answer the bound was bought for
 	// ([TaskNode.takeTiebreak]).
 	if thin && !node.takeTiebreak() {
-		line.Decision = divisionRefusedFloor
-		return divisionTooNarrow(parsed.Evidence), "", false
+		return ended(divisionRefusedFloor, divisionTooNarrow(parsed.Evidence))
 	}
-	// AND THE CARD SAYS THE READING IS HAPPENING, for the whole of it.
-	//
-	// This is the one step of a division that a person WAITS THROUGH. Everything
-	// above is arithmetic on text and everything below is admission, and both are
-	// instant; this is a full call to the tier that thinks, measured at thirteen
-	// seconds and bounded by the role's own tier ([Agent.callRoleChecked]) —
-	// during which the node's row drew what it draws between two tool calls,
-	// which is a clock. On the road
-	// where the harness submits a drawing before the worker's first request
-	// (task_divide_sketch.go) that is a task card that has just appeared and has
-	// nothing on it at all, and the run this was measured on read as a task that
-	// had started and then hung.
-	//
-	// IT RIDES THE PHASE THE CHECK AND A REPAIR ROUND RIDE ([Agent.enterPhase]),
-	// on the same event and into the same pulse file, so the card, the rail row,
-	// the room header and the home row all say it without any of them learning a
-	// new lane.
-	//
-	// AND IT IS SETTLED ON THE LINE THAT ENDS THE READING rather than deferred to
-	// the end of this function. What follows is the admission, which is the node's
-	// own work again and takes no time a person can see — leaving the sizing word
-	// standing over it would be the row explaining a moment that had passed.
-	//
-	// AND IT SAYS WHAT THE READING IS DOING WHILE IT DOES IT. The phase word on
-	// its own was the whole of the measured failure's visible half: three minutes
-	// and twenty seconds of "sizing the work" over a row that was doing nothing a
-	// person could see, while two models were asked in turn and neither answered.
-	// [Agent.sizingSaid] puts the errand's own ladder under that word — which
-	// model, which of how many, and what happened to the last one — on the same
-	// event and the same field the check's finding already rides
-	// (internal/tui3's taskphase.go draws it and needed no change).
-	sizing := a.sizingSaid(node)
-	settle := a.enterPhase(node, taskBeatSizing, 0, 0, "")
-	parts, refusal := a.reviewDivision(withErrandWatch(ctx, sizing.tell), node, parsed, thin)
-	sizing.ended(refusal)
-	settle()
+	// AND THEN THE READING, said on the row for as long as its asker waits on it
+	// ([Agent.sizingWait]) and nowhere else.
+	watched, settle := a.sizingWait(ctx, node, asker)
+	parts, refusal := a.reviewDivision(watched, node, parsed, thin)
+	settle(refusal)
 	if refusal.refused() {
 		// THE REVIEWER SAID NO, and what that costs the task is a decision of its
 		// own ([settleDivisionRefusal]) — the record, the tiebreak, and whether the
 		// answer is about the division or about the work.
-		said, person := settleDivisionRefusal(node, refusal, thin, &line)
-		return said, person, false
+		division.said, division.person = settleDivisionRefusal(node, refusal, thin, line)
+		return division
 	}
 	// AND A READING THAT NEVER HAPPENED IS WRITTEN DOWN AS ONE.
 	//
@@ -930,46 +977,55 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	// time this line runs, and [scopeSpentTheRead] is that sentence told
 	// honestly.
 	if said := a.scopeRefusal(parsed.Parts, scopeSpentTheRead); said != "" {
-		line.Decision = divisionRefusedScope
-		return said, "", false
+		return ended(divisionRefusedScope, said)
 	}
 	said, lifted, shared = a.sharedCheckAnswer(node, parsed.Parts, scopeSpentTheRead)
 	if said != "" {
-		line.Decision = divisionRefusedShared
 		line.Shared = shared
-		return said, "", false
+		return ended(divisionRefusedShared, said)
 	}
-	parsed.Parts = lifted
-	repaired = append(repaired, shared...)
+	division.parts = lifted
+	division.repaired = append(division.repaired, shared...)
+	return division
+}
 
-	// AND THE PARTS COME INTO EXISTENCE, which is ONE operation and not a
-	// sequence this function holds the bookkeeping for (task_divide_wip.go's
-	// [Agent.startTheParts]). The free hands are claimed, the family's world is
-	// frozen onto its own branch, and every part is admitted carrying that
-	// commit — in that order, because [TaskGraph.admit] puts a node on the
-	// frontier and the frontier STARTS it, so a world frozen after the first
-	// admission is a world the first part may already have raced past. Every road
-	// out of it gives the hands back and writes its own decision on the record.
-	//
-	// WHOSE WORK IT IS is settled there too: the parts are registered under this
-	// node, one level deeper, owned by this agent — so their worktrees branch off
-	// this one's and come home into it — and each of them opens on the sentence
-	// the person typed, inherited through [Agent.taskRequest] because there is
-	// nobody in a worktree to type a new one.
-	ids, titles, refused := a.startTheParts(node, parsed.Parts, &line)
+// admitDivision brings a weighed division's parts into existence under this
+// node, and answers what the asker is told: the receipt, or the one refusal left
+// that only admission can make.
+//
+// AND THE PARTS COME INTO EXISTENCE, which is ONE operation and not a sequence
+// this function holds the bookkeeping for (task_divide_wip.go's
+// [Agent.startTheParts]). The free hands are claimed, the family's world is
+// frozen onto its own branch, and every part is admitted carrying that commit —
+// in that order, because [TaskGraph.admit] puts a node on the frontier and the
+// frontier STARTS it, so a world frozen after the first admission is a world the
+// first part may already have raced past. Every road out of it gives the hands
+// back and writes its own decision on the record.
+//
+// WHOSE WORK IT IS is settled there too: the parts are registered under this
+// node, one level deeper, owned by this agent — so their worktrees branch off
+// this one's and come home into it — and each of them opens on the sentence the
+// person typed, inherited through [Agent.taskRequest] because there is nobody in
+// a worktree to type a new one.
+func (a *Agent) admitDivision(division *weighedDivision) string {
+	graph := a.graph()
+	node := graph.node(a.config.taskID)
+	ids, titles, refused := a.startTheParts(node, division.parts, &division.line)
 	if refused != "" {
-		return refused, "", false
+		division.said = refused
+		return refused
 	}
 	// AND THE RECORD SAYS THE HARNESS REPAIRED THIS ONE. It is written HERE and
 	// not where the lifting happened because [Agent.startTheParts] settles
 	// `admitted` on its own way through, and a word written above it would be
 	// silently replaced. The parts really were admitted — `Admitted` counts them
 	// — and what this says is HOW they came to stand up.
-	if len(repaired) > 0 {
-		line.Decision = divisionRepairedShared
-		line.Shared = repaired
+	if len(division.repaired) > 0 {
+		division.line.Decision = divisionRepairedShared
+		division.line.Shared = division.repaired
 	}
-	return divisionDone(ids, titles, graph.machineHolds(ids)), "", false
+	division.said = divisionDone(ids, titles, graph.machineHolds(ids))
+	return division.said
 }
 
 // personsOwnJob is the reviewer's reason with the record's own prefix taken back
@@ -987,9 +1043,9 @@ func personsOwnJob(why string) string {
 // road, the person's own job.
 //
 // IT WRITES ITS DECISION ONTO THE CALLER'S RECORD AND JOURNALS NOTHING ITSELF.
-// A division is ONE line in the journal, appended once by [Agent.divideOnce]'s
-// own deferred write, and a refusal that appended a second would turn the
-// one-write law that function states in its own comment quietly into five.
+// A division is ONE line in the journal, appended once by whoever ends it
+// ([Agent.recordDivision]), and a refusal that appended a second would turn that
+// one-write law quietly into five.
 //
 // A REVIEWER THAT NEVER ANSWERED ON THE ADJUDICATING PATH IS TOLD TO
 // THE WORKER AS EXACTLY THAT — nothing was decided, ask once more
@@ -1126,6 +1182,44 @@ type sizingLine struct {
 	owed string
 }
 
+// sizingWait says the division's reading on the node's row for as long as its
+// asker is WAITING on it, and answers the context the reading is to be made on and
+// the one call that ends what it said.
+//
+// THIS IS THE ONE STEP OF A DIVISION A WORKER CAN WAIT THROUGH. Everything before
+// it is arithmetic on text and everything after it is admission, and both are
+// instant; this is a full call to the tier that thinks, bounded by the role's own
+// tier ([Agent.callRoleChecked]). A worker that called `divide_work` sits inside
+// its own tool call for all of it, and the row would draw a clock and nothing
+// else — so the reading rides the phase the check and a repair round ride
+// ([Agent.enterPhase]), on the same event and into the same pulse file, and
+// [Agent.sizingSaid] puts the errand's own ladder under the word: which model,
+// which of how many, and what happened to the last one.
+//
+// AND IT SAYS NOTHING WHERE NOBODY IS WAITING. It used to say the word on every
+// division, and the road that measured worst was the one where nobody should have
+// been waiting at all: a drawing weighed BEFORE the worker's first request, which
+// held a brand new card on "sizing the work" for three and a half minutes while
+// the worker it was about sat unstarted. That drawing is weighed beside a worker
+// that is already at work now (task_divide_sketch.go), and a phase word over that
+// worker's own calls would be the row explaining a wait nobody is in.
+//
+// IT IS SETTLED ON THE LINE THAT ENDS THE READING, and never deferred to the end
+// of the division: what follows is admission, which takes no time a person can
+// see, and the sizing word left standing over it would be the row explaining a
+// moment that had passed.
+func (a *Agent) sizingWait(ctx context.Context, node *TaskNode, asker divisionAsker) (context.Context, func(divisionRefusal)) {
+	if !asker.waits {
+		return ctx, func(divisionRefusal) {}
+	}
+	sizing := a.sizingSaid(node)
+	settle := a.enterPhase(node, taskBeatSizing, 0, 0, "")
+	return withErrandWatch(ctx, sizing.tell), func(refusal divisionRefusal) {
+		sizing.ended(refusal)
+		settle()
+	}
+}
+
 // sizingSaid is the teller for one node's reading. It is a value and not a
 // package function because the two halves of a sentence have to meet somewhere.
 func (a *Agent) sizingSaid(node *TaskNode) *sizingLine {
@@ -1157,7 +1251,7 @@ func (s *sizingLine) tell(news errandNews) {
 }
 
 // ended is the reading finishing, whichever way it went, and it is the ONE road
-// out so that [Agent.divideOnce] does not carry a branch about a row.
+// out so that [Agent.weighDivision] does not carry a branch about a row.
 //
 // It says something on exactly one of them: the fail-open road, where the
 // reading could not be had at all and the parts go out as the worker drew them.
@@ -1371,7 +1465,7 @@ func (a *Agent) reviewDivision(ctx context.Context, parent *TaskNode, parsed div
 	// reached and a reviewer that answered nonsense both refuse as undecided,
 	// and the journal must be able to tell them apart from a counter that
 	// simply said no (bench autopsy of a live cell could not). The prefix
-	// matters: [Agent.divideOnce] reads a `why` that does not begin with
+	// matters: [settleDivisionRefusal] reads a `why` that does not begin with
 	// "refused" as no-answer and refunds the tiebreak on it.
 	//
 	// AND NOTHING THAT COMES THROUGH HERE IS EVER A HUMAN-ONLY FINDING. A review

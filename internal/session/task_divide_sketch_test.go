@@ -99,7 +99,7 @@ func TestASketchWithPartsIsHandedOutWithoutTheWorkerAsking(t *testing.T) {
 		"A is the flaking auth test, B is the http client major version, C is the release notes for 2.4")),
 		0, reviewer, nil)
 
-	said, _ := nest.node.divideFromSketch(context.Background())
+	said, _, _ := weighBeside(t, nest.node)
 
 	kids := nest.graph.children(nest.parent.id)
 	if len(kids) != 3 {
@@ -136,7 +136,7 @@ func TestTheHarnessSubmittedDivisionIsReadByTheSameReviewer(t *testing.T) {
 		"A is the flaking auth test, B is the release notes for 2.4")),
 		0, reviewer, nil)
 
-	nest.node.divideFromSketch(context.Background())
+	weighBeside(t, nest.node)
 
 	if reviewer.reads() != 1 {
 		t.Fatalf("the drawing was read by the reviewer %d times, want once", reviewer.reads())
@@ -171,7 +171,7 @@ func TestEveryPartOfADrawnDivisionCarriesADoneConditionAndItsSiblingsScopes(t *t
 		"A is the flaking auth test, B is the http client major version, C is the release notes for 2.4")),
 		0, &scriptedCompleter{}, nil)
 
-	nest.node.divideFromSketch(context.Background())
+	weighBeside(t, nest.node)
 
 	kids := nest.graph.children(nest.parent.id)
 	if len(kids) != 3 {
@@ -214,7 +214,7 @@ func TestAReviewerThatRefusesTheDrawingLeavesOneWorker(t *testing.T) {
 		"A is the flaking auth test, B is the release notes for 2.4")),
 		0, reviewer, nil)
 
-	if said, _ := nest.node.divideFromSketch(context.Background()); said != "" {
+	if said, _, _ := weighBeside(t, nest.node); said != "" {
 		t.Fatalf("the worker was told %q about a division nobody admitted", said)
 	}
 	if kids := nest.graph.children(nest.parent.id); len(kids) != 0 {
@@ -243,7 +243,7 @@ func TestAnAdmittedDivisionSaysWhoAskedAndHowManyPartsExist(t *testing.T) {
 		"A is the auth test, B is the http client, C is the release notes")),
 		0, &scriptedCompleter{}, nil)
 
-	nest.node.divideFromSketch(context.Background())
+	weighBeside(t, nest.node)
 
 	divisions := journaledDivisions(t, nest.journal)
 	if len(divisions) != 1 {
@@ -280,7 +280,7 @@ func TestASketchOfOneJobHandsNothingOut(t *testing.T) {
 			nest := newDivideNestFrom(t, drawnSpec(batchSketch(shape, "A is the parser, B is the tests, C is the docs")),
 				0, reviewer, nil)
 
-			if said, _ := nest.node.divideFromSketch(context.Background()); said != "" {
+			if said, _, _ := weighBeside(t, nest.node); said != "" {
 				t.Fatalf("a chain was handed out: %q", said)
 			}
 			if kids := nest.graph.children(nest.parent.id); len(kids) != 0 {
@@ -308,7 +308,7 @@ func TestAnUnarmedTaskIsNeverDividedForByTheHarness(t *testing.T) {
 		t.Fatalf("this work was armed by %q, and the test needs work nobody armed", nest.parent.armedBy())
 	}
 
-	if said, _ := nest.node.divideFromSketch(context.Background()); said != "" {
+	if said, _, _ := weighBeside(t, nest.node); said != "" {
 		t.Fatalf("unarmed work was divided for: %q", said)
 	}
 	if kids := nest.graph.children(nest.parent.id); len(kids) != 0 {
@@ -324,10 +324,10 @@ func TestTheDrawingIsPutOnceAndNeverTwice(t *testing.T) {
 		"A is the auth test, B is the release notes")),
 		0, &scriptedCompleter{}, nil)
 
-	if said, _ := nest.node.divideFromSketch(context.Background()); said == "" {
+	if said, _, _ := weighBeside(t, nest.node); said == "" {
 		t.Fatal("the first ask handed nothing out")
 	}
-	if said, _ := nest.node.divideFromSketch(context.Background()); said != "" {
+	if said, _, _ := weighBeside(t, nest.node); said != "" {
 		t.Fatalf("the drawing was put a second time: %q", said)
 	}
 	if kids := nest.graph.children(nest.parent.id); len(kids) != 2 {
@@ -344,7 +344,7 @@ func TestABracketedFirstStageHandsOutItsPartsAndKeepsTheStepBehindThem(t *testin
 		"A is the auth test, B is the http client, C is the release notes, D is running the whole suite once")),
 		0, &scriptedCompleter{}, nil)
 
-	said, _ := nest.node.divideFromSketch(context.Background())
+	said, _, _ := weighBeside(t, nest.node)
 
 	if kids := nest.graph.children(nest.parent.id); len(kids) != 3 {
 		t.Fatalf("the bracketed stage bore %d parts, want its 3", len(kids))
@@ -363,7 +363,7 @@ func TestADrawnDivisionNobodyCanPickUpIsRefusedLikeAnyOther(t *testing.T) {
 		"A is the auth test, B is the release notes")),
 		1, &scriptedCompleter{}, nil)
 
-	if said, _ := nest.node.divideFromSketch(context.Background()); said != "" {
+	if said, _, _ := weighBeside(t, nest.node); said != "" {
 		t.Fatalf("a session that runs one task at a time handed parts out: %q", said)
 	}
 	if kids := nest.graph.children(nest.parent.id); len(kids) != 0 {
@@ -430,29 +430,57 @@ func TestTheEvidencePutToTheGatesIsTheAccountTheReaderJudged(t *testing.T) {
 	}
 }
 
-// ── the seam: before the worker's first request ─────────────────────────────
+// ── the seam: beside the worker's first request ─────────────────────────────
 
-// THE PARTS EXIST BEFORE THE WORKER IS ASKED ANYTHING — and while they are still
-// out, the worker is asked NOTHING AT ALL. That is the whole timing requirement,
-// and it is the difference between a node that coordinates from the start and one
-// that grinds through the work alone and discovers its parts never happened.
+// weighBeside runs the drawing a worker's node was admitted with through the
+// reading beside that worker, and waits for the reading to finish ON ITS OWN —
+// never cancelled, which is what [sizingBeside.end] does — so a test reads what
+// the worker would have been handed: the receipt on its queue, the person's job
+// it was stopped for, and whether it was stopped at all. The worker must be
+// sitting in its node's room, which is what every fixture here arranges.
+func weighBeside(t *testing.T, worker *Agent) (receipt, person string, stopped bool) {
+	t.Helper()
+	node := worker.graph().node(worker.config.taskID)
+	sizing := worker.sizeBeside(context.Background(), node.openRoom(), func() { stopped = true })
+	if sizing == nil {
+		return "", "", false
+	}
+	<-sizing.reading.done
+	return sizing.receipt, sizing.person, stopped
+}
+
+// queuedFor is everything waiting on a worker's queue for its next request.
+func queuedFor(worker *Agent) string {
+	worker.mu.Lock()
+	defer worker.mu.Unlock()
+	var queued strings.Builder
+	for _, note := range worker.steering {
+		queued.WriteString(note.text())
+		queued.WriteString("\n")
+	}
+	return queued.String()
+}
+
+// THE WORKER'S FIRST REQUEST GOES OUT BEFORE THE DRAWING HAS BEEN WEIGHED, and the
+// parts reach it while it works. That is the whole timing requirement of this
+// road now, and it is the opposite of what it used to be: the reading stood in
+// front of the first request, and on the measured node it stood there for two
+// hundred and nineteen seconds.
 //
-// The second half of it was bought later and at a price. A node whose whole brief
-// was handed out before it started, and which was then opened on that brief
-// anyway, spent the window its parts were working in answering a question about
-// work it no longer had — thirty-one requests on a five second cadence, ending in
-// the no-progress counter killing the one node that could have integrated them
-// (task_park_test.go). So the brief is HELD: the parts run, the node is parked,
-// and the turn the last report starts is the first turn there ever is.
+// THE ORDER IS MADE BY THE TEST, NOT OBSERVED BY IT. The reviewer here will not
+// answer until the worker has been asked something, so a harness that still held
+// the first request behind the reading would never get either — and the bound on
+// the wait below is what fails it, rather than a timestamp that could be read
+// either way.
 //
 // It is asserted from the OUTSIDE — a real node run by the real runner — because
-// there is no honest way to test an ordering from inside the function that owns
-// it: what the worker's very first request carries is the fact.
-func TestThePartsAreHandedOutBeforeTheWorkersFirstRequest(t *testing.T) {
+// what a worker's requests carry is the fact, and there is no honest way to test
+// an ordering from inside the function that owns it.
+func TestTheWorkersFirstRequestGoesOutBeforeTheDrawingIsWeighed(t *testing.T) {
 	repo := newGoModuleRepo(t)
 	t.Setenv("HOME", t.TempDir())
 
-	completer := &firstAskCompleter{}
+	completer := newBesideCompleter(sketchReviewer("the auth test", "the http client", "the release notes").answer)
 	session, _ := newTestAgent(t, completer, func(config *Config) {
 		config.Workspace = repo
 		config.Divide = true
@@ -462,16 +490,27 @@ func TestThePartsAreHandedOutBeforeTheWorkersFirstRequest(t *testing.T) {
 		config.TaskRepairRounds = 0
 	})
 	graph := session.graph()
-	// ONLY THE PARENT RUNS FOR REAL. Its parts are what this test counts, and
-	// three more workers in three more worktrees would be measuring the frontier
-	// rather than the seam. THEY ARE DELIBERATELY LEFT UNSTARTED, which is also
-	// half of what is being shown: the parent does not finish while its parts are
-	// outstanding, so this test never waits for it to.
+	// ONLY THE PARENT RUNS FOR REAL. Its parts are counted as they are started and
+	// then left alone, so that the worker is still parked on them when the test
+	// reports them in by hand below.
+	var startedMu sync.Mutex
+	started := 0
+	partsOut := make(chan struct{})
 	graph.run = func(node *TaskNode) {
 		if node.parent == 0 {
 			graph.runOwned(node)
+			return
+		}
+		startedMu.Lock()
+		defer startedMu.Unlock()
+		if started++; started == 3 {
+			close(partsOut)
 		}
 	}
+	// THE WORKER'S FIRST ANSWER WAITS FOR THE PARTS, so the receipt is on its
+	// queue by the time its turn ends — the ordinary case of a reading that lands
+	// while the worker is still at work.
+	completer.hold = partsOut
 
 	id := graph.reserve()
 	spec := drawnSpec(countedSketch("A | B | C",
@@ -479,103 +518,297 @@ func TestThePartsAreHandedOutBeforeTheWorkersFirstRequest(t *testing.T) {
 	spec.model = "test/model"
 	graph.admit(id, spec)
 
-	// The parts are drawn and admitted before anything is asked, and the worker is
-	// then left alone: no request goes out while they are outstanding.
-	var kids []*TaskNode
-	for waited := 0; waited < 100 && len(kids) != 3; waited++ {
-		time.Sleep(50 * time.Millisecond)
-		kids = graph.children(id)
-	}
-	if len(kids) != 3 {
-		t.Fatalf("the node has %d parts under it, want the 3 its drawing named", len(kids))
-	}
-	time.Sleep(300 * time.Millisecond)
-	if asked := completer.firstAsk(); asked != "" {
-		t.Fatalf("the worker was asked %q while all three of its parts were still out, want it left parked", asked)
-	}
-	// AND THE NODE IS STILL OPEN, holding itself for reports that have not come:
-	// the parent-stays law, reached by the same tail loop a mid-run division
-	// reaches (task_run.go's [runTaskChild]).
-	parent := graph.node(id)
-	if parent.stateNow().settled() {
-		t.Fatalf("the divided work landed %s with its parts still outstanding", parent.stateNow())
-	}
-	if !parent.waitingOnItsPieces() {
-		t.Fatal("the divided work is not parked on its parts")
-	}
-
-	// The parts report. NOW the worker is asked, once, and that one request holds
-	// both halves: the person's own words and the receipt for the parts.
-	for _, kid := range kids {
-		kid.finish(kid.title()+" is done", nil, "", "")
-		graph.complete(kid, TaskDone)
-	}
-	first := ""
-	for waited := 0; waited < 200 && first == ""; waited++ {
-		time.Sleep(50 * time.Millisecond)
-		first = completer.firstAsk()
-	}
-	if first == "" {
-		t.Fatal("the worker was never asked anything, even once every part had reported")
-	}
-	if !strings.Contains(first, "split into 3 parts:") {
-		t.Fatalf("the worker's FIRST request does not know its parts exist: %q", first)
+	first := completer.request(t, 0)
+	if strings.Contains(first, divisionHandedOutBeside) {
+		t.Fatalf("the worker's FIRST request already knew its parts, so it waited for the reading: %q", first)
 	}
 	if !strings.Contains(first, briefAskHeading) {
 		t.Fatalf("the worker's first request lost the person's own words: %q", first)
 	}
+	select {
+	case <-partsOut:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the drawing's parts were never handed out")
+	}
+	if at, verdict := completer.firstAskedAt(), completer.verdictAt(); at == 0 || verdict == 0 || at > verdict {
+		t.Fatalf("the worker was asked at step %d and the reading answered at step %d: the first request must go first", at, verdict)
+	}
+
+	// THE PARENT STAYS AND COORDINATES: parked on its parts, open, and not asked
+	// anything more until they report.
+	parent := graph.node(id)
+	kids := graph.children(id)
+	if len(kids) != 3 {
+		t.Fatalf("the node has %d parts under it, want the 3 its drawing named", len(kids))
+	}
+	for _, kid := range kids {
+		kid.finish(kid.title()+" is done", nil, "", "")
+		graph.complete(kid, TaskDone)
+	}
+	// AND THE REQUEST THEIR REPORTS START CARRIES THE RECEIPT IT WAS QUEUED, in
+	// the words a worker that asked for the division would have read.
+	second := completer.request(t, 1)
+	if !strings.Contains(second, divisionHandedOutBeside) || !strings.Contains(second, "split into 3 parts:") {
+		t.Fatalf("the worker never read the receipt for its parts: %q", second)
+	}
+	select {
+	case <-parent.done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the divided work never landed after its parts reported")
+	}
 }
 
-// firstAskCompleter keeps the first thing the node's worker was ever asked, and
-// answers everything with one word so the run ends at once.
-type firstAskCompleter struct {
-	mu    sync.Mutex
-	first string
+// AND WORK ONLY A PERSON CAN DO STOPS THE WORKER THAT IS ALREADY AT IT. The
+// reading comes back while the worker's first request is still out; the request
+// is cut, and the node lands on the person with the reader's own sentence rather
+// than running on to the check. The worker here never answers on its own — only
+// the stop can end its request — so a harness that let it carry on would never
+// land the node at all.
+func TestWorkNoWorkerCanDoStopsARunningWorkerAndLandsOnThePerson(t *testing.T) {
+	repo := newGoModuleRepo(t)
+	t.Setenv("HOME", t.TempDir())
+
+	completer := newBesideCompleter(`{"refuse": true, "nobody": true, "why": ` + strconv.Quote(measuredHumanOnlyFinding) + `}`)
+	completer.hold = make(chan struct{})
+	session, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.Divide = true
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+		config.TaskAudit = false
+		config.TaskRepairRounds = 0
+	})
+	graph := session.graph()
+	id := graph.reserve()
+	spec := drawnSpec(countedSketch("(A | B) > C",
+		"A is approving PR #1018, B is approving PR #1019, C is the merge queue merging both"))
+	spec.model = "test/model"
+	graph.admit(id, spec)
+
+	node := graph.node(id)
+	select {
+	case <-node.done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the worker was never stopped for work only a person can do")
+	}
+	if first := completer.request(t, 0); first == "" {
+		t.Fatal("the worker was never started, so this proves nothing about stopping one")
+	}
+	if state := node.stateNow(); state != TaskUnverified {
+		t.Fatalf("the node landed %s, want it waiting on the person", state)
+	}
+	report, _, _, _ := node.leavings()
+	if !strings.Contains(report, "an approving review GitHub will only accept from a human") {
+		t.Fatalf("the person was handed %q, and not what the reader found", report)
+	}
+	if kids := graph.children(id); len(kids) != 0 {
+		t.Fatalf("%d parts were admitted for work no worker can do", len(kids))
+	}
 }
 
-func (c *firstAskCompleter) CompleteWithMessages(_ context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+// besideCompleter is a worker and a reviewer sharing one completer, with the one
+// ordering this road is about made explicit: the reviewer does not answer until
+// the worker has been asked something.
+type besideCompleter struct {
+	review string
+	// hold, when set, is what the worker's first answer waits for.
+	hold <-chan struct{}
+
+	mu       sync.Mutex
+	step     int
+	asked    []string
+	firstAt  int
+	answerAt int
+	firstIn  chan struct{}
+	arrived  chan struct{}
+}
+
+func newBesideCompleter(review string) *besideCompleter {
+	return &besideCompleter{review: review, firstIn: make(chan struct{}), arrived: make(chan struct{}, 16)}
+}
+
+func (c *besideCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
 	system := ""
 	if len(messages) > 0 {
 		system = messageText(messages[0])
 	}
-	// THE ERRANDS ARE NOT THE WORKER. A namer and the division's own reviewer are
-	// side-calls this session makes about the work; what is under test is the first
-	// thing the WORKER was asked, and a filter that missed them would answer with
-	// the review's question.
-	if system != titleSystem && system != taskNameSystem && system != divideReviewBrief {
-		var asked strings.Builder
-		for _, message := range messages {
-			if message.Role == "user" {
-				asked.WriteString(messageText(message))
-				asked.WriteString("\n")
-			}
+	switch system {
+	case titleSystem, taskNameSystem:
+		return textResponse("a name"), nil
+	case divideReviewBrief:
+		select {
+		case <-c.firstIn:
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		}
 		c.mu.Lock()
-		if c.first == "" {
-			c.first = asked.String()
-		}
+		c.step++
+		c.answerAt = c.step
 		c.mu.Unlock()
+		return textResponse(c.review), nil
+	}
+	var asked strings.Builder
+	for _, message := range messages {
+		if message.Role == "user" {
+			asked.WriteString(messageText(message))
+			asked.WriteString("\n")
+		}
+	}
+	c.mu.Lock()
+	c.step++
+	c.asked = append(c.asked, asked.String())
+	firstAsk := len(c.asked) == 1
+	if firstAsk {
+		c.firstAt = c.step
+	}
+	c.mu.Unlock()
+	c.arrived <- struct{}{}
+	if firstAsk {
+		close(c.firstIn)
+		if c.hold != nil {
+			select {
+			case <-c.hold:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
 	}
 	return textResponse("Done."), nil
 }
 
-func (c *firstAskCompleter) firstAsk() string {
+// request waits for the worker's nth request and answers what it carried.
+func (c *besideCompleter) request(t *testing.T, n int) string {
+	t.Helper()
+	for {
+		c.mu.Lock()
+		if len(c.asked) > n {
+			asked := c.asked[n]
+			c.mu.Unlock()
+			return asked
+		}
+		c.mu.Unlock()
+		select {
+		case <-c.arrived:
+		case <-time.After(30 * time.Second):
+			t.Fatalf("the worker was never asked a request %d", n+1)
+		}
+	}
+}
+
+func (c *besideCompleter) firstAskedAt() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.first
+	return c.firstAt
+}
+
+func (c *besideCompleter) verdictAt() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.answerAt
+}
+
+// AND A READING THAT LANDS AFTER THE WORKER HAS SAID ITS LAST WORD IS DROPPED.
+// Parts admitted under a worker that will never read again would be parts nobody
+// folds; the reading sees the worker gone from its room and writes down that it
+// had nobody to hand its answer to.
+func TestADrawingWeighedAfterTheWorkerFinishedHandsNothingOut(t *testing.T) {
+	nest := newDivideNestFrom(t, drawnSpec(countedSketch("A | B | C",
+		"A is the auth test, B is the http client, C is the release notes")),
+		0, &scriptedCompleter{}, nil)
+	// The runner withdraws the worker at its last read (task_child_run.go).
+	nest.parent.openRoom().speaking(nil)
+
+	receipt, person, stopped := weighBeside(t, nest.node)
+
+	if receipt != "" || person != "" || stopped {
+		t.Fatalf("a finished worker was handed %q / %q (stopped %v)", receipt, person, stopped)
+	}
+	if kids := nest.graph.children(nest.parent.id); len(kids) != 0 {
+		t.Fatalf("%d parts were admitted under a worker that will never fold them", len(kids))
+	}
+	if queued := queuedFor(nest.node); queued != "" {
+		t.Fatalf("a finished worker had %q queued for a request it will never make", queued)
+	}
+	divisions := journaledDivisions(t, nest.journal)
+	if len(divisions) != 1 || divisions[0].Decision != divisionDropped {
+		t.Fatalf("the journal reads %+v, want the reading written down as dropped", divisions)
+	}
+}
+
+// AND ONE THE WORKER HAS ALREADY ANSWERED BY HANDING WORK OUT ITSELF IS DROPPED
+// TOO: two divisions of one piece of work are two answers to one question. The
+// worker hands its piece out WHILE the drawing is being read, which is the only
+// moment the two can cross — a node with parts before the reading starts is never
+// read at all ([Agent.sizeBeside]).
+func TestADrawingWeighedAfterTheWorkerHandedWorkOutIsDropped(t *testing.T) {
+	var nest *divideNest
+	reviewer := &crossingReviewer{review: sketchReviewer("the auth test", "the release notes"), before: func() {
+		id := nest.graph.reserve()
+		nest.graph.admit(id, taskSpec{title: "a piece the worker handed out itself", request: personSentence,
+			brief: "b", acceptance: "a", parent: nest.parent.id, depth: 2, owner: nest.node})
+	}}
+	nest = newDivideNestFrom(t, drawnSpec(countedSketch("A | B",
+		"A is the auth test, B is the release notes")), 0, reviewer, nil)
+
+	receipt, _, _ := weighBeside(t, nest.node)
+
+	if receipt != "" {
+		t.Fatalf("the drawing was handed out on top of the worker's own piece: %q", receipt)
+	}
+	if kids := nest.graph.children(nest.parent.id); len(kids) != 1 {
+		t.Fatalf("the node has %d pieces, want the one the worker handed out itself", len(kids))
+	}
+	divisions := journaledDivisions(t, nest.journal)
+	if len(divisions) != 1 || divisions[0].Decision != divisionDropped || divisions[0].Source != divisionBySketch {
+		t.Fatalf("the journal reads %+v, want the drawing written down as dropped", divisions)
+	}
+}
+
+// crossingReviewer is a reviewer with one thing that happens while it reads.
+type crossingReviewer struct {
+	review *divideReviewer
+	before func()
+	once   sync.Once
+}
+
+func (r *crossingReviewer) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	if len(messages) > 0 && messageText(messages[0]) == divideReviewBrief {
+		r.once.Do(r.before)
+	}
+	return r.review.CompleteWithMessages(ctx, messages, options...)
+}
+
+// AND THE ROW SAYS NOTHING ABOUT A READING NOBODY IS WAITING ON. The worker is at
+// its own work, and "sizing the work" over it would be the row explaining a wait
+// nobody is in; the worker's own `divide_work` still draws the word, because
+// there the worker IS waiting (task_phase_test.go).
+func TestAReadingBesideTheWorkerMovesNoPhase(t *testing.T) {
+	nest := newDivideNestFrom(t, drawnSpec(countedSketch("A | B",
+		"A is the auth test, B is the release notes")),
+		0, sketchReviewer("the auth test", "the release notes"), nil)
+
+	if receipt, _, _ := weighBeside(t, nest.node); receipt == "" {
+		t.Fatal("the drawing handed nothing out, so this proves nothing about the row")
+	}
+	if life := nest.parent.lifeNow(); life != "" {
+		t.Fatalf("the node's life moved to %q for a reading nobody was waiting on", life)
+	}
 }
 
 // ── the manual knows ────────────────────────────────────────────────────────
 
-func TestTheManualSaysAHandedOverTurnStartsAlreadyDivided(t *testing.T) {
+func TestTheManualSaysAHandedOverTurnIsDividedWhileItsWorkerWorks(t *testing.T) {
 	page, err := os.ReadFile(filepath.Join("..", "manual", "chat", "tasks.md"))
 	if err != nil {
 		t.Fatalf("reading the manual page: %v", err)
 	}
-	for _, want := range []string{"already divided", "one worker"} {
+	for _, want := range []string{"while its worker is already at work", "one worker"} {
 		if !strings.Contains(string(page), want) {
 			t.Fatalf("the manual never says %q about a turn handed over with parts in it", want)
 		}
+	}
+	if strings.Contains(string(page), "starts already divided") {
+		t.Fatal("the manual still says a handed-over task starts already divided: the reading runs beside its worker now")
 	}
 }
 
@@ -638,13 +871,16 @@ func TestACautiousRefusalStillLeavesOneWorkerToDoTheWork(t *testing.T) {
 			nest := newDivideNestFrom(t, drawnSpec(batchSketch("A | B",
 				"A is the auth test, B is the release notes")), 0, reviewer, nil)
 
-			said, person := nest.node.divideFromSketch(context.Background())
+			said, person, stopped := weighBeside(t, nest.node)
 
 			if person != "" {
 				t.Fatalf("a refusal that only said %q parked the work on a person: %q", test.why, person)
 			}
-			if said != "" {
-				t.Fatalf("a refused division told the worker %q, want it to start as it always did", said)
+			if said != "" || stopped {
+				t.Fatalf("a refused division told the worker %q (stopped %v), want it left at its work", said, stopped)
+			}
+			if queued := queuedFor(nest.node); queued != "" {
+				t.Fatalf("a refused division queued %q for a worker that never asked", queued)
 			}
 			if kids := nest.graph.children(nest.parent.id); len(kids) != 0 {
 				t.Fatalf("a refused division still bore %d parts", len(kids))
@@ -657,21 +893,22 @@ func TestACautiousRefusalStillLeavesOneWorkerToDoTheWork(t *testing.T) {
 	}
 }
 
-// AND THE MEASURED SHAPE STOPS BEFORE A WORKER IS STARTED. The reviewer's own
-// sentence comes back out, no parts are admitted, and the record says which
-// finding this was — because a task sitting on a person is not the same fact as
-// a division a mastermind read as one job.
-func TestWorkNoWorkerCanDoIsHandedBackInsteadOfStarted(t *testing.T) {
+// AND THE MEASURED SHAPE STOPS THE WORKER. The reviewer's own sentence comes back
+// out, the worker it ran beside is stopped — the one answer that interrupts a
+// started worker — no parts are admitted, and the record says which finding this
+// was, because a task sitting on a person is not the same fact as a division a
+// mastermind read as one job.
+func TestWorkNoWorkerCanDoStopsTheWorkerAndIsHandedBack(t *testing.T) {
 	reviewer := &divideReviewer{answer: `{"refuse": true, "nobody": true, "why": ` +
 		strconv.Quote(measuredHumanOnlyFinding) + `}`}
 	nest := newDivideNestFrom(t, drawnSpec(batchSketch("(A | B) > C",
 		"A is approving PR #1018, B is approving PR #1019, C is the merge queue merging both")),
 		0, reviewer, nil)
 
-	said, person := nest.node.divideFromSketch(context.Background())
+	said, person, stopped := weighBeside(t, nest.node)
 
-	if person == "" {
-		t.Fatal("the reader said no worker could do this and the node was started anyway")
+	if person == "" || !stopped {
+		t.Fatalf("the reader said no worker could do this and the worker was left going (stopped %v)", stopped)
 	}
 	// THE READER'S OWN WORDS, because the difference between "somebody has to
 	// approve this" and "somebody has to give you an account" is the whole of

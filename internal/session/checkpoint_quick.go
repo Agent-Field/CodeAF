@@ -48,7 +48,7 @@ package session
 // AND [taskSpec.drawn] IS LEFT ZERO. The parts are the items of ONE worker
 // working through them in order; carrying the drawing as well would put the same
 // parts to `divide_work` and hand them out a second time
-// (task_divide_sketch.go's [Agent.divideFromSketch]).
+// (task_divide_sketch.go's [Agent.sizeBeside]).
 
 import (
 	"context"
