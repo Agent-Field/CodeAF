@@ -1174,6 +1174,12 @@ func (a *app) questionLineRows(q questionShown, width int) []string {
 	if reason := strings.TrimSpace(q.question.Reason); reason != "" && a.questionSubjectAt(q.question) < 0 {
 		out = append(out, a.pal.dim(fit("  "+reason, width)))
 	}
+	// AND WHILE THE BOX IS WRITING TO THE QUESTION, that row says what the box
+	// means now instead of naming keys that are letters and type.
+	if q.writing != "" {
+		out = append(out, a.pal.dim(fit("  "+a.questionWritingRow(q), width)))
+		return out
+	}
 	if keys := a.questionRowKeys(q, width); keys != "" {
 		out = append(out, keys)
 	}
@@ -3081,16 +3087,13 @@ func (a *app) questionWriting() bool {
 // question: what the box means now, which answer the words go with, and the
 // way back. It replaces the keys, because the keys are letters and every
 // letter types while this row is up.
+// IT IS `?` ALONE NOW. `c` used to point the box here too, and the owner's
+// ruling of 2026-09-11 (your own answer, pick A) gave changing an answer a row
+// of its own on the panel instead — so the one thing left that writes to a
+// question through the composer is asking the asker back, where there is no
+// answer to attach the words to.
 func (a *app) questionWritingRow(q questionShown) string {
-	if q.writing == questionAskBackKey {
-		return questionAskBackKeyWord + questionWritingGap + "the question stays open" + questionWritingGap + "esc back"
-	}
-	with := ""
-	if questionChangeCarriesThePointer(q.question) && q.pick >= 0 && q.pick < len(q.question.Options) {
-		key := strings.TrimSpace(q.question.Options[q.pick].Key)
-		with = questionWritingGap + "it goes with [" + key + "] " + questionAnswerWord(q.question.Options[q.pick], key, true)
-	}
-	return questionCommentKeyWord + with + questionWritingGap + "esc back"
+	return questionAskBackKeyWord + questionWritingGap + "the question stays open" + questionWritingGap + "esc back"
 }
 
 // questionChangeCarriesThePointer says whether the words `c` sends travel

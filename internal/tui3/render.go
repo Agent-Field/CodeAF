@@ -4019,7 +4019,13 @@ func (a *app) hintWord() string {
 		// beat (question.go): the numbers bank a shape and esc puts the question
 		// back exactly as it was.
 		return "1-3 shape · esc never mind"
-	case a.asking() || a.awaitingDecision():
+	case (a.asking() || a.awaitingDecision()) && a.questionHint() != "":
+		// IT IS A CASE WITH A CONDITION because a question that draws its own
+		// keys says nothing here (hints pick A, 2026-09-11), and a slot that
+		// returned an empty string from this rung would have spent the row: the
+		// note under it — "this question has been waiting 4 hours" — is the
+		// sentence that rung is for.
+		//
 		// THE KEYS THE BLOCK ACTUALLY DRAWS, read off the question itself. This
 		// line said "a allow · t always" for a year after the answers took their
 		// own first letters, so the hint under the box named `a` as allow while

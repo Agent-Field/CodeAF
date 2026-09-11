@@ -247,9 +247,13 @@ func TestAHeldQuestionIsDrawnAsTheCardItWouldHaveBeen(t *testing.T) {
 	if !a.asking() {
 		t.Fatal("a question that waited four hours is not being asked")
 	}
-	a.width = 80
+	// A TALLER TERMINAL THAN THE TEST DEFAULT, because the panel a permission
+	// gets is eight rows and the note about the wait is written into the feed
+	// ABOVE it (hostlink.go says why it is a line of its own): on a short window
+	// the newest rows win and the note is the oldest thing on screen.
+	a.width, a.height = 80, 40
 	got := plain(frame(a))
-	for _, want := range []string{"rm -rf build", "allow? [1] allow once", "[3] deny"} {
+	for _, want := range []string{"rm -rf build", "1  allow once", "3  deny"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("the held card is missing %q:\n%s", want, got)
 		}

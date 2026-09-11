@@ -283,7 +283,7 @@ func TestClosingAWorkingTabAsksBeforeAnythingMoves(t *testing.T) {
 	}
 	// AND esc IS `cancel` ON ITS OWN ROW, because the dismiss key on this
 	// surface takes questions away and must not also let a tab go.
-	if !strings.Contains(said, "[esc] cancel") {
+	if !strings.Contains(said, "esc cancel") {
 		t.Fatalf("the card does not name what esc gives:\n%s", said)
 	}
 }

@@ -309,7 +309,11 @@ var questionKeys = []questionVerb{
 	{key: questionOpenKey, word: "open full", forms: formsLine | formsCard, needs: needRoom, giveUp: 3},
 	{key: questionCommentKey, word: "change", forms: formsBlock | formsRoom, needs: needWords, giveUp: 5},
 	{key: questionCompareKey, word: "compare", forms: formsRoom, needs: needCompare, giveUp: 4},
-	{key: questionAskBackKey, word: "ask back", forms: formsCard | formsRoom, needs: needWords, giveUp: 4},
+	// `?` IS ON THE ROW AS WELL AS THE PANEL. Asking the asker back is a way of
+	// answering any question that takes words, and a question drawn as one row is
+	// still a question somebody may not understand — the row gave `c change` and
+	// withheld `? ask back`, which is half a door.
+	{key: questionAskBackKey, word: "ask back", forms: formsLine | formsCard | formsRoom, needs: needWords, giveUp: 4},
 	{key: questionDecideKey, word: "you decide", forms: formsCard | formsRoom, needs: needHands, giveUp: 4},
 	{key: questionDialKey, word: "decide these from now on", forms: formsCard | formsRoom, needs: needDial, giveUp: 7},
 	// THE RULE OFFER IS THE LAST THING GIVEN UP AFTER THE WAY OUT, because it

@@ -80,25 +80,34 @@ func (a *app) questionPanelRows(q questionShown, width int) []string {
 		return a.questionPanelBeat(q, width, inner)
 	}
 	first := len(a.questionBands)
-	rows := a.questionPanelBody(q, inner)
+	title, headRows := a.questionPanelHead(q, width, inner)
+	rows := append(headRows, a.questionPanelBody(q, inner)...)
 	keys := a.questionAnswerKeys(q, formsCard)
+	keyRow := a.questionKeyRow(q, questionKeysOnTier(keys, keyPrimary), frameEdgeRoom(width))
+	if q.writing != "" {
+		// THE EDGE SAYS WHAT THE BOX MEANS while the composer is pointed at the
+		// question ([app.questionWritingRow]): every letter types, so an edge
+		// naming letters would be naming keys that do something else.
+		keyRow = a.pal.dim(fit(a.questionWritingRow(q), frameEdgeRoom(width)))
+	}
 	panel := framed{
-		title:     a.questionPanelTitle(q, width),
-		aside:     a.questionPanelAside(q, width),
-		keys:      a.questionKeyRow(q, questionKeysOnTier(keys, keyPrimary), frameEdgeRoom(width)),
+		title: title,
+		aside: a.questionPanelAside(q, width),
+		keys:  keyRow,
 	}
 	out, _ := panel.draw(a.pal, width, rows)
-	// THE FRAME'S TOP EDGE IS A ROW, and every band the body recorded is one row
-	// further down the block for it. The bands are what a press resolves
-	// against, so they are shifted here rather than guessed at by the body.
+	// THE FRAME'S TOP EDGE IS A ROW, and so is every row the head took when it
+	// would not fit into that edge: each of them puts the body one row further
+	// down the block. The bands are what a press resolves against, so they are
+	// shifted here rather than guessed at by the body.
 	for i := first; i < len(a.questionBands); i++ {
-		a.questionBands[i].row++
+		a.questionBands[i].row += 1 + len(headRows)
 	}
 	// AND THE SECOND TIER STANDS UNDER THE FRAME, dim, in the same grammar. It
 	// is not written into the bottom edge because the edge is for the keys that
 	// ANSWER: a row that mixed `esc later` with `D decide these from now on` was
 	// the owner's "no hierarchy in the hints".
-	if second := a.questionPanelSecond(q, keys, width); second != "" {
+	if second := a.questionPanelSecond(q, keys, width); second != "" && q.writing == "" {
 		out = append(out, second)
 	}
 	return out
@@ -120,13 +129,14 @@ func (a *app) questionPanelBeat(q questionShown, width, inner int) []string {
 		a.questionSpans[i].from++
 		a.questionSpans[i].to++
 	}
+	title, headRows := a.questionPanelHead(q, width, inner)
 	panel := framed{
-		title: a.questionPanelTitle(q, width),
+		title: title,
 		aside: a.questionPanelAside(q, width),
 		keys: a.pal.data("1–"+itoa(len(q.beat))) + a.pal.dim(" shape") +
 			a.pal.dim(questionKeyGap) + a.pal.data(questionLaterKey) + a.pal.dim(" "+questionBeatBack),
 	}
-	out, _ := panel.draw(a.pal, width, []string{"", row, ""})
+	out, _ := panel.draw(a.pal, width, append(headRows, "", row, ""))
 	return out
 }
 
@@ -299,10 +309,29 @@ func (a *app) questionPanelCall(q questionShown) string {
 	return strings.TrimSpace(plainText(command))
 }
 
-// questionPanelTitle is the top edge's words: the question's mark and its head.
-func (a *app) questionPanelTitle(q questionShown, width int) string {
+// questionPanelHead is the question's head: the top edge's words where the edge
+// has room for them, and the panel's own first rows where it has not.
+//
+// A QUESTION'S HEAD IS NEVER CUT. The frame gives up its aside and then cuts its
+// title, which is right for a chooser's folder name and wrong for the sentence
+// a person is being asked — `Move this conversation her…` is a question nobody
+// can answer. So a head too long for the edge stands in the body, wrapped, with
+// the mark left in the edge saying what the object is.
+func (a *app) questionPanelHead(q questionShown, width, inner int) (string, []string) {
+	mark := a.questionMarkFor(q.question)
 	head := strings.TrimSpace(q.question.Head)
-	return a.questionMarkFor(q.question) + " " + a.pal.ink(fit(head, max(frameEdgeRoom(width)-2, 1)))
+	if head == "" {
+		return mark, nil
+	}
+	if ansi.StringWidth(head) <= max(frameEdgeRoom(width)-2, 1) {
+		return mark + " " + a.pal.ink(head), nil
+	}
+	room := max(inner-2*len(questionPanelGap), 8)
+	rows := make([]string, 0, 3)
+	for _, line := range wrap(head, room) {
+		rows = append(rows, questionPanelGap+a.pal.ink(line))
+	}
+	return mark, rows
 }
 
 // questionPanelAside is the top edge's right: what is asking, and how the
@@ -477,14 +506,31 @@ func (a *app) questionPanelRow(q questionShown, key, tick, word, say, aside stri
 	}
 	line := lead + a.pal.ink(label)
 	used := leadWidth + max(ansi.StringWidth(lines[0]), pad)
-	if say != "" && used+2+asideWidth < room {
-		line += a.pal.dim("  " + fit(say, room-used-2-asideWidth))
-		used += 2 + min(ansi.StringWidth(say), room-used-2-asideWidth)
+	// WHAT AN ANSWER COSTS IS NEVER DROPPED, only moved: it stands beside the
+	// word where there is room for it and under the word where there is not.
+	// A narrow card that kept the labels and lost every consequence was a card
+	// that hid the difference between its answers (measured on home's
+	// fifty-column card, where `move it here` lost what moving costs).
+	under := ""
+	if say != "" {
+		if room-used-2-asideWidth >= questionPanelSayFloor {
+			line += a.pal.dim("  " + fit(say, room-used-2-asideWidth))
+			used += 2 + min(ansi.StringWidth(say), room-used-2-asideWidth)
+		} else {
+			under = say
+		}
 	}
 	if aside != "" && used+asideWidth <= room {
 		line += strings.Repeat(" ", room-used-asideWidth+2) + aside
 	}
-	return []string{ground(line, room)}
+	out := []string{ground(line, room)}
+	if under == "" {
+		return out
+	}
+	for _, row := range wrap(under, max(room-leadWidth, 8)) {
+		out = append(out, ground(indent+a.pal.dim(row), room))
+	}
+	return out
 }
 
 // questionPanelUnder is what stands under the focused answer: its body in the
@@ -504,6 +550,11 @@ func (a *app) questionPanelUnder(q questionShown, at int, option session.AnswerO
 	}
 	return out
 }
+
+// questionPanelSayFloor is the narrowest a consequence may be drawn beside its
+// answer. Below it the words are a stub with an ellipsis on the end, which says
+// less than the same words on the row underneath.
+const questionPanelSayFloor = 12
 
 // questionPanelBodyRows is how many rows an answer's own words may take under
 // the pointer. Two: a note is a note and not the page, and `o open full` holds

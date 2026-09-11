@@ -731,8 +731,9 @@ func TestAnAssumptionsCardWearsItsOwnMarkAndItsOwnClock(t *testing.T) {
 func TestAQuestionThatIsWaitingKeepsTheAttentionMark(t *testing.T) {
 	lab := newQuestionLab(t)
 	lab.raise(consentAsk())
+	// The mark is written into the frame's top edge, where the head is.
 	head := questionPlainRows(lab.rows())[0]
-	if !strings.HasPrefix(head, tokens.Plain.Glyph(tokens.GNeedsHuman)+" ") {
+	if !strings.Contains(head, tokens.Plain.Glyph(tokens.GNeedsHuman)+" allow this?") {
 		t.Fatalf("a permission lost the attention mark: %q", head)
 	}
 }
@@ -775,7 +776,7 @@ func TestOneQuestionIsOneQuestionAndTheRestAreCounted(t *testing.T) {
 	if !strings.Contains(got, "2 more") {
 		t.Fatalf("the queue count is missing:\n%s", got)
 	}
-	if strings.Count(got, "[esc] later") != 1 {
+	if strings.Count(got, "esc later") != 1 {
 		t.Fatalf("more than one question is being drawn:\n%s", got)
 	}
 }
@@ -1364,7 +1365,8 @@ func TestTheTaskRecordPageDrawsTheLandingQuestionAndTakesItsKeys(t *testing.T) {
 	width, height := lab.a.size()
 	lines, _, _, _ := lab.a.taskCardFrame(width, height)
 	screen := ansi.Strip(strings.Join(lines, "\n"))
-	for _, want := range []string{"tier-B subs landed", "nobody could check it", "[a] accept · [n] not right · [s] tell it", "←→ choose · enter take it"} {
+	for _, want := range []string{"tier-B subs landed", "nobody could check it",
+		"a  accept", "n  not right", "s  tell it", "←→ choose · enter take it"} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("the record page is missing %q:\n%s", want, screen)
 		}
@@ -1372,7 +1374,7 @@ func TestTheTaskRecordPageDrawsTheLandingQuestionAndTakesItsKeys(t *testing.T) {
 	// Another session's task wearing the same number draws no question.
 	lab.a.taskSheet.detail.SessionID = "zzz999"
 	lines, _, _, _ = lab.a.taskCardFrame(width, height)
-	if strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "[a] accept") {
+	if strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "a  accept") {
 		t.Fatal("another session's task borrowed this one's question")
 	}
 	lab.a.taskSheet.detail.SessionID = "abc123"
@@ -1407,19 +1409,34 @@ func TestChangeAndAskBackTurnTheRowIntoAPromptAndEnterSendsTheWords(t *testing.T
 	aimed(lab.a)
 	lab.press("c")
 	screen := lab.plain()
-	if !strings.Contains(screen, "change: say what you want different, then enter · it goes with [2] Adaptive · esc back") {
+	// `c` IS A SHORTCUT TO THE `something else…` ROW and that row IS the box
+	// (owner ruling 2026-09-11, your-own-answer pick A). There is no hidden
+	// mode and no sentence explaining one: the pointer is on the row, the row
+	// says which answer the words will travel with, and the keys that mean
+	// anything while it is open are the only ones the edge names.
+	if !strings.Contains(screen, questionOtherWithWord+"2 Adaptive") {
 		t.Fatalf("c did not turn the row into a prompt:\n%s", screen)
 	}
-	if strings.Contains(screen, "[d] you decide") {
+	if !strings.Contains(screen, "enter send it") || !strings.Contains(screen, "↑ back to the list") {
+		t.Fatalf("the row's own two keys are not on the edge:\n%s", screen)
+	}
+	if strings.Contains(screen, "d you decide") {
 		t.Fatalf("the keys are still offered while the box is writing:\n%s", screen)
 	}
-	if lab.press("d") {
-		t.Fatal("a letter was taken as a verb while the box is writing")
+	// A LETTER IS A LETTER ON THIS ROW: `d` types a `d` rather than handing the
+	// decision back, which is what "the row is the box" has to mean for every
+	// key that is also a verb somewhere else.
+	if !lab.press("d") {
+		t.Fatal("a letter did not reach the row's own box")
 	}
 	if len(lab.answer) != 0 {
 		t.Fatalf("a letter answered: %+v", lab.answer)
 	}
-	lab.a.input.setText("keep the sensors optional")
+	open := lab.a.questionHeld(lab.a.questions[0].token())
+	if open == nil {
+		t.Fatal("the question is not open any more")
+	}
+	open.other.words.setText("keep the sensors optional")
 	lab.press("enter")
 	if len(lab.answer) != 1 || lab.answer[0].Key != "2" || lab.answer[0].Change != "keep the sensors optional" {
 		t.Fatalf("enter did not send the words with the pointed answer · %+v", lab.answer)
@@ -1443,7 +1460,7 @@ func TestChangeAndAskBackTurnTheRowIntoAPromptAndEnterSendsTheWords(t *testing.T
 		t.Fatalf("? did not turn the row into a prompt:\n%s", screen)
 	}
 	lab.press("esc")
-	if screen = lab.plain(); !strings.Contains(screen, "[enter] take it") || strings.Contains(screen, "ask back: type") {
+	if screen = lab.plain(); !strings.Contains(screen, "enter take it") || strings.Contains(screen, "ask back: type") {
 		t.Fatalf("esc did not point the box back at the conversation:\n%s", screen)
 	}
 	if len(lab.a.questions) != 1 {
