@@ -922,6 +922,10 @@ type hostSeams struct {
 	// Follow is the turns started by another window on this conversation, so a
 	// window that is not typing is still a window onto the work.
 	Follow func() <-chan remote.Following
+	// NewsSilent says the far engine has sent none of the status line's news —
+	// no provider, no live rate — and has not said it would
+	// ([remote.Client.NewsSilent]).
+	NewsSilent func() bool
 }
 
 func newHostSeams(client *remote.Client) hostSeams {
@@ -939,7 +943,7 @@ func newHostSeams(client *remote.Client) hostSeams {
 			return client.HeldQuestions()
 		},
 		Driving: client.Driver, DrivingChanged: client.DriverChanged, Take: client.Take,
-		Follow: client.Follow,
+		Follow: client.Follow, NewsSilent: client.NewsSilent,
 	}
 }
 

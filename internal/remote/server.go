@@ -5,20 +5,27 @@ package remote
 // into the workspace and assembled an agent exactly the way `aforge chat` does.
 //
 // The shape is one reader and one writer, and everything else follows from it.
-// Calls arrive in the order the surface made them and are answered in that same
-// order, because a surface that sets a model and then submits a message means
-// those two things in that order and nothing here may reorder them. The one
-// exception is a turn's events, which arrive on a channel the session owns and
-// are pumped by a goroutine of their own — that is the whole reason Submit
-// answers with a stream id instead of a transcript.
+// Calls that open a stream or change the conversation's shape still arrive and
+// are answered in the order the surface made them, on this goroutine
+// ([classify] is the one predicate). A surface that sets a model and then
+// submits a message means those two things in that order and nothing here may
+// reorder them. The one exception is a turn's events, which arrive on a
+// channel the session owns and are pumped by a goroutine of their own — that
+// is the whole reason Submit answers with a stream id instead of a transcript.
 //
-// ORDER IS WORTH MORE THAN OVERLAP, and the one call that pays for it is
-// Compact: it is the only method that does the work itself rather than starting
-// it, so a compaction pass holds the reader for as long as the summarizer takes
-// and the calls behind it wait. Handing it a goroutine would buy a live status
-// line during a compaction and cost the guarantee that a /model followed by a
-// message is a message on the new model — a bad trade, and a bug nobody would
-// reproduce twice.
+// GETTERS AND SMALL ACTS RUN OFF THIS GOROUTINE. A listing that held the
+// reader used to queue a person's keystroke behind it until [callDeadline]
+// fired and the surface declared the connection gone, while the engine went
+// on to apply the key. That is the defect: a person's act is not queued
+// behind an unrelated getter.
+//
+// ORDER IS WORTH MORE THAN OVERLAP for the calls that stay here, and the one
+// that pays for it is Compact: it is the only method that does the work itself
+// rather than starting it, so a compaction pass holds the reader for as long
+// as the summarizer takes and the ordered calls behind it wait. Handing Compact
+// a goroutine would buy a live status line during a compaction and cost the
+// guarantee that a /model followed by a message is a message on the new model
+// — a bad trade, and a bug nobody would reproduce twice.
 //
 // ── VERSION 2: THE CONVERSATION IS NOT THE CONNECTION ────────────────────────
 //
@@ -381,8 +388,9 @@ type Session struct {
 	held  *heldSet
 
 	// surfaces is everybody attached right now. Events fan out to all of them;
-	// calls arrive from each independently and are serialized at the agent by
-	// the same one-call-at-a-time reader every connection has.
+	// calls arrive from each independently. Stream-opening and shape-changing
+	// calls stay serialized on that connection's reader ([classify]); getters
+	// and small acts run off it so a keystroke cannot wait behind a listing.
 	surfaces map[*server]struct{}
 	pumps    sync.WaitGroup
 
@@ -426,6 +434,9 @@ type Session struct {
 	// race to the writers, so the surface keeps the highest number it has seen
 	// and drops anything older (wire.go's [FactsPush]).
 	factsRev uint64
+	// weighOwed says a tool batch has ended and the facts have not been stated
+	// since its results joined the conversation ([weighsAgain]).
+	weighOwed bool
 
 	// closed is the conversation deliberately ended — [MethodClose], or the
 	// pipe dying on an engine whose life this pipe was.
@@ -433,7 +444,31 @@ type Session struct {
 	// empty is when the last surface left, and zero while somebody is here. It
 	// is what an idle policy measures (internal/enginehost).
 	empty time.Time
+	// acted is when a window last made a call. A stalled road tears the pipe
+	// under a window that has not gone anywhere, and this is the reading that
+	// keeps that gap from looking like an empty room. Zero is a conversation
+	// nobody has called into.
+	acted time.Time
+	// lastWatch is the last surface name that acted or left, so a stop the
+	// unattended door takes can say which window it believed had gone. It is a
+	// label, never an identity, and empty when nobody was ever here.
+	lastWatch string
 }
+
+// watchGrace is how long a window goes on counting as somebody watching after
+// its last call. THE GAP IT COVERS IS A STALLED CALL PLUS THE REDIAL AFTER IT,
+// so the span is derived from [callDeadline] and never retyped: one deadline
+// for the call that did not come back, and one for the link that has not been
+// dialled again yet.
+const watchGrace = 2 * callDeadline
+
+// WatchFor is that grace as [Session.watchedLocked] applies it, and it is
+// [watchGrace] everywhere the product runs. It is a var for the reason
+// internal/enginehost's sessionIdle is one: a test asking what the IDLE POLICY
+// decides is not asking about a stalled road, and it must be able to take this
+// span out of the question rather than wait it out. Nothing in the product
+// writes it.
+var WatchFor = watchGrace
 
 // NewSession wraps an opened engine as a conversation. Persistent says the
 // engine outlives its connections, which is the fact [Welcome.Persistent]
@@ -514,8 +549,9 @@ func (sess *Session) Ended() bool {
 }
 
 // IdleSince is when this conversation went quiet, and the zero time when it has
-// not. Four things make it busy: a surface attached, a turn still streaming, a
-// question waiting to be answered, and WORK THE CONVERSATION HANDED OFF.
+// not. Five things make it busy: a surface attached, a turn still streaming, a
+// question waiting to be answered, WORK THE CONVERSATION HANDED OFF, and a
+// window that acted inside [watchGrace].
 //
 // The fourth was missing and it had a clock on it. A task, an adaptive run and a
 // background job outlive the turn that started them; the turn ends, its ring is
@@ -555,10 +591,32 @@ func (sess *Session) IdleSince() time.Time {
 
 // idleSinceLocked is the half of the reading this package can answer itself.
 func (sess *Session) idleSinceLocked() time.Time {
-	if len(sess.surfaces) > 0 || len(sess.rings) > 0 || sess.held.outstanding() > 0 {
+	if sess.watchedLocked() || len(sess.rings) > 0 || sess.held.outstanding() > 0 {
 		return time.Time{}
 	}
 	return sess.empty
+}
+
+// watchedLocked is somebody being in the room, and it is the one reading the
+// unattended sentence may be said on.
+//
+// A SURFACE ATTACHED IS THE OBVIOUS HALF. The other half is a window that
+// ACTED inside [WatchFor] and whose pipe has since gone quiet, because that is
+// what a stalled call does to a window nobody has left: the road takes ten
+// seconds to give up, the link is torn, the redial has not landed, and for that
+// gap a person sitting in front of the conversation looks to this package
+// exactly like an empty room. Reading it as one is how a reply was stopped
+// under somebody who had just pressed a key in it (#833).
+//
+// IT IS DELIBERATELY NOT THE IDLE READING. A turn still streaming with nobody
+// in front of it is busy AND unwatched, and the two questions have different
+// answers there — [Session.idleSinceLocked] asks whether the conversation is
+// doing anything, and this asks whether anybody is there to be told about it.
+func (sess *Session) watchedLocked() bool {
+	if len(sess.surfaces) > 0 {
+		return true
+	}
+	return WatchFor > 0 && !sess.acted.IsZero() && time.Since(sess.acted) <= WatchFor
 }
 
 // workingNow asks a conversation whether anything it started is still going.
@@ -583,12 +641,44 @@ func workingNow(agent WrappedAgent) bool {
 // conversation survive" is whether this ran. It is idempotent because every
 // road out of a connection may call it and a host may call it again on the way
 // down.
+// AND THE DOOR IS READ FROM PRESENCE, because this is the road the whole
+// machine takes when it goes away — internal/enginehost's shutdown, which is
+// `aforge engine --stop`, a signal, and a stale build letting go. A window
+// still in the room means the engine went out from under somebody, and that is
+// not the unattended door however the host was asked. An empty room is.
 func (sess *Session) Close() error {
+	sess.mu.Lock()
+	door, name := session.StopByEngineStopped, ""
+	if !sess.watchedLocked() {
+		door, name = session.StopByRetired, sess.lastWatch
+	}
+	sess.mu.Unlock()
+	return sess.closeFor(door, name)
+}
+
+// closeFor is [Session.Close] for a road that already knows which door it is,
+// and it is the one place the closed flag is won so that no two endings can
+// both interrupt the turn.
+func (sess *Session) closeFor(door session.StopDoor, name string) error {
 	sess.mu.Lock()
 	agent, already := sess.agent, sess.closed
 	sess.closed = true
 	sess.mu.Unlock()
-	return sess.shutDown(agent, already)
+	return sess.shutDown(agent, already, door, name)
+}
+
+// closeLeaving is a person's own goodbye: [MethodClose] said the conversation
+// is over, which is leaving it, not retiring it for want of a watcher.
+func (sess *Session) closeLeaving() error {
+	return sess.closeFor(session.StopByLeaving, sess.lastWatched())
+}
+
+// lastWatched is the window this conversation last saw, as a label and never as
+// an identity. Empty is a conversation nobody was ever in.
+func (sess *Session) lastWatched() string {
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	return sess.lastWatch
 }
 
 // RetireIfIdle ends this conversation if it has been idle for longer than the
@@ -622,15 +712,16 @@ func (sess *Session) RetireIfIdle(olderThan time.Duration) bool {
 		return false
 	}
 	agent, already := sess.agent, sess.closed
+	name := sess.lastWatch
 	sess.closed = true
 	sess.mu.Unlock()
-	_ = sess.shutDown(agent, already)
+	_ = sess.shutDown(agent, already, session.StopByRetired, name)
 	return true
 }
 
 // shutDown is what ending a conversation does once the caller has won the
 // closed flag: every lane left, the turn interrupted, the journal flushed.
-func (sess *Session) shutDown(agent WrappedAgent, already bool) error {
+func (sess *Session) shutDown(agent WrappedAgent, already bool, door session.StopDoor, name string) error {
 	// The rails are left BEFORE the agent is, so no lane is still delivering off
 	// a conversation that is being flushed and shut (tasklane.go), and version
 	// 11's subscription goes the same way (standinglane.go).
@@ -649,7 +740,17 @@ func (sess *Session) shutDown(agent WrappedAgent, already bool) error {
 	if agent == nil || already {
 		return nil
 	}
-	agent.InterruptFor(session.StopByRetired)
+	// THE DOOR IS THE ONE THIS ENDING CAME THROUGH, not a single sentence
+	// shared by every road out. A named interrupt is preferred when the
+	// agent can carry the window; a scripted engine that cannot still
+	// hears the door.
+	if named, ok := agent.(interface {
+		InterruptNamed(session.StopDoor, string)
+	}); ok {
+		named.InterruptNamed(door, name)
+	} else {
+		agent.InterruptFor(door)
+	}
 	return agent.Close()
 }
 
@@ -852,6 +953,14 @@ func (sess *Session) attach(s *server, hello Hello) error {
 	// says which questions THIS surface is owed and the number is how a card
 	// names the surfaces that have already drawn it (held.go).
 	s.name = machineLabel(hello.Surface)
+	// THE ARRIVAL IS AN ACT. A window that has just been welcomed is
+	// watching, and a pipe that tears on the way in — or a getter that
+	// no longer crosses the wire — must not read as nobody having been
+	// here. Every later call renews the same clock from dispatch.
+	sess.acted = time.Now()
+	if s.name != "" {
+		sess.lastWatch = s.name
+	}
 	sess.arrivals++
 	s.arrived = sess.arrivals
 	// Attached counts the OTHERS, so it is read before this one is added
@@ -908,6 +1017,9 @@ func (sess *Session) detach(s *server) {
 	sess.dropLanes(s)
 	sess.dropNewsFeed(s)
 	sess.mu.Lock()
+	if s.name != "" {
+		sess.lastWatch = s.name
+	}
 	delete(sess.surfaces, s)
 	// THE KEYBOARD IS NEVER LEFT ON A WINDOW THAT HAS GONE. It goes to the
 	// newest surface still here, so the last window standing can always type
@@ -1012,6 +1124,10 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// engine without a dial from a conversation whose dial is off.
 		Effort:     effortKnown(sess.agent),
 		TaskSettle: taskSettleKnown(sess.agent),
+		// Whether this conversation's news reaches the surface at all, asked the
+		// way the newsroom files it ([Session.fileNews]): an engine that cannot
+		// name its conversation fans nothing out, and says so here.
+		News: newsKeyOf(sess.agent) != "",
 	}
 }
 
@@ -1081,6 +1197,36 @@ func factsMoved(kind session.EventKind) bool {
 		session.EventHarnessDesignRevising, session.EventOrchestratePause, session.EventOrchestrateFuel,
 		session.EventSubharnessAsk, session.EventSubharnessProposal, session.EventSubharnessProposalOff:
 		return true
+	}
+	return false
+}
+
+// weighsAgainLocked says whether this event is the first word of the request
+// that follows a tool batch, which is when what the conversation weighs is
+// stated again (the facts' ContextTokens).
+//
+// THE END OF A BATCH IS STATED ALREADY AND IS ONE STEP EARLY FOR THE WEIGHT. The
+// facts go out on every tool end ([factsMoved]) — the step's usage is banked by
+// then — but the session records the batch's RESULTS into the conversation only
+// after the last end has been published (internal/session's loop), so a reading
+// taken there weighs the conversation without the results that are about to be
+// sent. A surface drawing the weight of the request in flight — the chat's live
+// token column — saw a big file read join the conversation one whole step late.
+// The next request is the first moment the results are certainly in, and its
+// first word is the first event this pump sees from it.
+func (sess *Session) weighsAgainLocked(kind session.EventKind) bool {
+	switch kind {
+	case session.EventToolEnd, session.EventToolFailed:
+		sess.weighOwed = true
+	case session.EventTurnDone, session.EventError:
+		// The turn's own end states the facts whole, results and all.
+		sess.weighOwed = false
+	case session.EventTextDelta, session.EventReasoning, session.EventThinking,
+		session.EventToolForming, session.EventToolAnnounced:
+		if sess.weighOwed {
+			sess.weighOwed = false
+			return true
+		}
 	}
 	return false
 }
@@ -1220,6 +1366,7 @@ func (sess *Session) emit(id, generation uint64, event session.Event) {
 	if pending, ok := sess.agent.(interface{ PendingConnect() []string }); ok {
 		sess.held.settleConnect(pending.PendingConnect())
 	}
+	weighs := sess.weighsAgainLocked(event.Kind)
 	sess.mu.Unlock()
 
 	// THE FACTS GO FIRST, AHEAD OF THE EVENT THAT MOVED THEM. A surface settles
@@ -1228,7 +1375,7 @@ func (sess *Session) emit(id, generation uint64, event session.Event) {
 	// late and the status line would report the turn before this one. The agent
 	// has already sealed the turn by the time this event reaches the pump, so
 	// the reading taken here is the finished one.
-	if factsMoved(event.Kind) {
+	if factsMoved(event.Kind) || weighs {
 		sess.announce()
 	}
 
@@ -1373,9 +1520,13 @@ type server struct {
 	joined string
 
 	// pending is the stream a call has just opened and dispatch has not yet let
-	// speak. It is one slot rather than a queue because one reader makes one
-	// call at a time.
+	// speak. It is one slot rather than a queue because only an ordered call
+	// opens a stream, and those stay on the reader, one at a time ([classify]).
 	pending *pending
+	// side is every getter or small act this connection has handed off the
+	// reader. The serve loop waits for it before leave, so a listing still
+	// running does not write into a session that has already been closed.
+	side sync.WaitGroup
 	// Observers leave with the view, independently of the durable turn pump.
 	observersMu sync.Mutex
 	observers   map[uint64]*taskFeed
@@ -1400,6 +1551,7 @@ func (s *server) serve(in io.Reader) (err error) {
 			err = guard.Note("remote/engine", recovered)
 			s.fatal(err.Error())
 		}
+		s.side.Wait()
 		s.stopObservers()
 		s.leave()
 	}()
@@ -1427,7 +1579,15 @@ func (s *server) serve(in io.Reader) (err error) {
 			s.fatal(err.Error())
 			return err
 		}
-		s.dispatch(frame)
+		if staysOnReader(frame.Method) {
+			s.dispatch(frame)
+		} else {
+			s.side.Add(1)
+			go func(call Frame) {
+				defer s.side.Done()
+				s.dispatch(call)
+			}(frame)
+		}
 		if s.detached {
 			// THE SURFACE SAID IT WAS GOING, and said so before it went, which
 			// is the fact version 1 could not express. The turn keeps running;
@@ -1480,8 +1640,17 @@ func (s *server) leave() {
 		return
 	}
 	sess.detach(s)
-	if s.goodbye || !sess.persistent {
-		_ = sess.Close()
+	if s.goodbye {
+		_ = sess.closeLeaving()
+		return
+	}
+	if !sess.persistent {
+		// AND THIS ONE IS THE UNATTENDED DOOR BY CONSTRUCTION, whatever the
+		// grace above would say: the pipe that just tore WAS this
+		// conversation's whole life, so nothing is ever going to attach to it
+		// again and there is no window left to come back. It names the one it
+		// had, which is the last thing anybody reading the journal can use.
+		_ = sess.closeFor(session.StopByRetired, sess.lastWatched())
 	}
 }
 
@@ -1624,6 +1793,11 @@ func readCall(line []byte) (Frame, error) {
 // method returns nothing: a surface waiting on a result it will never get is a
 // surface that has stopped, and "it worked" is a fact worth a line.
 func (s *server) dispatch(call Frame) {
+	// PRESENCE IS RENEWED BY THE ACT ITSELF. A stalled call tears this
+	// pipe under a window that has not gone anywhere; recording the call
+	// here — the one funnel every keystroke takes — is what keeps that
+	// gap from reading as an empty room.
+	s.noteAct()
 	payload, err := s.invoke(call)
 	result := Frame{Kind: "result", ID: call.ID, Payload: payload}
 	if err != nil {
@@ -1631,7 +1805,27 @@ func (s *server) dispatch(call Frame) {
 	}
 	_ = s.send(result)
 	// And only now does a turn opened by that call begin to speak.
-	s.release()
+	// GETTERS AND SMALL ACTS NEVER OPEN A STREAM, so they must not touch
+	// pending: two of them running at once would race the one slot, and one
+	// of them could steal a stream an ordered call had just named.
+	if staysOnReader(call.Method) {
+		s.release()
+	}
+}
+
+// noteAct records that this window just made a call, which is the fact
+// [Session.idleSinceLocked] reads as still being watched.
+func (s *server) noteAct() {
+	sess := s.session
+	if sess == nil {
+		return
+	}
+	sess.mu.Lock()
+	sess.acted = time.Now()
+	if s.name != "" {
+		sess.lastWatch = s.name
+	}
+	sess.mu.Unlock()
 }
 
 func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
@@ -2094,7 +2288,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		// done a moment earlier and with somebody still listening for the
 		// failure.
 		s.goodbye = true
-		return nil, agent.Close()
+		return nil, sess.closeLeaving()
 
 	case MethodDetach:
 		// THE ONE METHOD WHOSE VALUE IS THE DIFFERENCE BETWEEN IT AND SILENCE.

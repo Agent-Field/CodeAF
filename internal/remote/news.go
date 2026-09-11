@@ -398,6 +398,7 @@ func phaseWireOf(news session.PhaseNews) PhaseWire {
 		Model:   news.Model,
 		Role:    string(news.Role),
 		Subject: news.Subject,
+		Session: news.Session,
 		Lane:    news.Lane,
 		Door:    news.Door,
 		Rate:    news.Rate,
@@ -426,6 +427,7 @@ func phaseNewsOf(wire PhaseWire, at time.Time) session.PhaseNews {
 		Model:   wire.Model,
 		Role:    lane.Role(wire.Role),
 		Subject: wire.Subject,
+		Session: wire.Session,
 		Lane:    wire.Lane,
 		Door:    wire.Door,
 		Rate:    wire.Rate,
@@ -459,6 +461,9 @@ func laneWireOf(news session.LaneNews) LaneWire {
 		// answer lands on the conversation's row on the far surface
 		// ([PhaseWire.Subject] states the whole of why).
 		Subject: news.Subject,
+		// AND WHOSE IT WAS, which the surface files the conversation's own
+		// sighting under first ([PhaseWire.Session]).
+		Session: news.Session,
 	}
 }
 
@@ -478,6 +483,7 @@ func laneNewsOf(wire LaneWire, at time.Time) session.LaneNews {
 		Failed:  wire.Failed,
 		Role:    lane.Role(wire.Role),
 		Subject: wire.Subject,
+		Session: wire.Session,
 		At:      at,
 		Relayed: true,
 	}
@@ -494,6 +500,7 @@ func laneNewsOf(wire LaneWire, at time.Time) session.LaneNews {
 // repaint off it, and reading a clock never waits for an update loop to catch
 // up.
 func (c *Client) phaseFrame(payload json.RawMessage) {
+	c.newsHeard.Store(true)
 	var wire PhaseWire
 	if err := json.Unmarshal(payload, &wire); err != nil {
 		return
@@ -503,11 +510,31 @@ func (c *Client) phaseFrame(payload json.RawMessage) {
 
 // laneNewsFrame is its twin for the sighting a finished far answer left behind.
 func (c *Client) laneNewsFrame(payload json.RawMessage) {
+	c.newsHeard.Store(true)
 	var wire LaneWire
 	if err := json.Unmarshal(payload, &wire); err != nil {
 		return
 	}
 	session.TellLane(laneNewsOf(wire, time.Now()))
+}
+
+// NewsSilent reports whether the engine at the far end has given no sign that
+// it sends the status line's news: its welcome did not say so ([Welcome.News])
+// and not one "phase" or "lane" frame has arrived on this connection.
+//
+// IT IS A READING, NOT A VERDICT, and the surface asks it only once a whole
+// answer has come back. An engine with the news posts a phase on every request
+// it makes, so an answer that arrived with none beside it came from an engine
+// built before the frames existed — the one case where the live rate and the
+// machine are missing for a reason nothing on the screen would otherwise name.
+//
+// It answers from two fields already held, with nothing on the wire behind it,
+// because the surface may ask it on the update loop.
+func (c *Client) NewsSilent() bool {
+	if c == nil || c.newsHeard.Load() {
+		return false
+	}
+	return !c.Welcome().News
 }
 
 // laneOfferDoor is an engine that can answer a standing lane offer

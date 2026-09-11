@@ -386,7 +386,7 @@ func TestPanelStateLivesWhereTheProfileDoes(t *testing.T) {
 		t.Fatal(err)
 	}
 	panel := client.(*router.Router)
-	panel.Ledger().Observe("a/one", provider.ClassPlanSpine, 0, provider.VerdictVerifiedSuccess)
+	panel.Ledger().Observe("a/one", provider.ClassPlanSpine, 0, provider.ReadingVerifiedSuccess)
 	if err := panel.Close(); err != nil {
 		t.Fatal(err)
 	}

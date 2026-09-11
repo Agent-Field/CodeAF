@@ -179,6 +179,21 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 	// guard was happy with. That is the difference between a reserve and the even
 	// split it replaces.
 	errandCtx, endErrand := context.WithTimeout(ctx, patience)
+	// AND THE ERRAND SAYS WHAT IT IS FOR, ON EVERY ROW IT WRITES.
+	//
+	// The model-call log names a call by its tag, and a tag is either set here
+	// or derived from a routing slot the planning packages open — and this
+	// package opens none. So every errand this session makes, from every one of
+	// the ten callers below, landed in the log with no tag at all: 2,309 of the
+	// 2,839 untagged finishes in the ten days to 2026-09-10, and with them the
+	// answer to "what was this build spending deepseek-v4-flash on all night"
+	// (docs/design/recovery/census-20260910.md §8, finding 9).
+	//
+	// THE ROLE IS THE TAG, because the role is what the errand IS — naming a
+	// conversation, judging a route, writing a caption — and it is the same word
+	// internal/lane's roles.go and the journal's own call line already use, so
+	// three records of one call agree about what to call it.
+	errandCtx = provider.WithCallTag(errandCtx, string(role))
 	defer endErrand()
 	tell := errandWatchFrom(ctx)
 
@@ -470,16 +485,24 @@ const errandTriesPerRung = 1
 // second charge for the same refusal — and wrong for "that model is down", which
 // arrives as a sentence nothing can classify and is the exact case the ladder was
 // built for (taskname_test.go's fall-through). A class that catches both cannot
-// be the gate, so the doomed request is recognised by the EVIDENCE, narrowly: a
-// 4xx with no upstream on it. Every other work verdict falls through one rung, as
-// this file's header has always said it does.
+// be the gate, so the doomed request is recognised by the EVIDENCE, narrowly: the
+// router reading our own bytes and saying no. Every other work verdict falls
+// through one rung, as this file's header has always said it does.
+//
+// AND IT READS THE EVIDENCE RATHER THAN A STATUS (#854, the last entry on that
+// change's `seamsOwed`). This spelled `Status >= 400 && Status < 500 && Upstream
+// == ""` by hand, which was a FOURTH rule about what a 4xx means beside the three
+// the one classifier had just folded into one — and a fourth rule is the defect
+// that design closed. [taxonomy.Evidence.OurBytes] is exactly that sentence,
+// decided once at the refusal door, and [taxonomy.Evidence.Overflow] is beside it
+// because an errand cannot compact: a request that did not fit will not fit the
+// rung below either.
 func errandWalksOn(verdict taxonomy.Verdict, evidence taxonomy.Evidence, fallback bool) bool {
 	if verdict.Class == taxonomy.Transport {
 		return verdict.Action == taxonomy.ActionHop ||
 			(verdict.Action == taxonomy.ActionRetry && fallback)
 	}
-	return !(evidence.Status >= 400 && evidence.Status < 500 &&
-		strings.TrimSpace(evidence.Upstream) == "")
+	return !evidence.OurBytes && !evidence.Overflow
 }
 
 // ── telling somebody what the errand is doing ───────────────────────────────

@@ -90,14 +90,44 @@ func TestTheBoundaryReadsARoutingRefusalAsTheWire(t *testing.T) {
 	if verdict := taxonomy.Classify(wireEvidence(measuredPolicyRefusal(), 1), limits); verdict.Class != taxonomy.Transport || !verdict.Retries() {
 		t.Fatalf("a routing refusal read as %s, want transport and a retry", verdict)
 	}
+	// AND THE UNMARKED ONE IS THE REQUEST'S OWN SHAPE. It used to be read as
+	// [taxonomy.Work] — the same word a job that could not be done gets — which
+	// is what let a turn end saying "the request itself was refused" about
+	// somebody's conversation. Our own bytes are a SHAPE: nothing was learned
+	// about the work, nothing about the model, and the move is a different
+	// request. The distinction is what a person reads in the failure row.
 	unmarked := measuredPolicyRefusal()
 	unmarked.Routing = false
-	if verdict := taxonomy.Classify(wireEvidence(unmarked, 1), limits); verdict.Class != taxonomy.Work {
-		t.Fatalf("an unmarked 404 read as %s, want the request's own", verdict)
+	verdict := taxonomy.Classify(wireEvidence(unmarked, 1), limits)
+	if verdict.Class != taxonomy.Shape || verdict.Action != taxonomy.ActionReshape {
+		t.Fatalf("an unmarked 404 read as %s, want the request's own shape", verdict)
 	}
+	if !verdict.EndsTurn() {
+		t.Fatalf("our own bytes did not end the request: %s", verdict)
+	}
+	// AND A SPENT LADDER IS A BUDGET THAT IS GONE, NOT A JUDGEMENT.
+	//
+	// It read as [taxonomy.Work] until 2026-09-10 — the same word a job that
+	// could not be done gets — so a turn ended with the router's own sentence on
+	// screen while a chain the person had configured sat unasked. Nothing about
+	// the work was learned here: what was established is that no SHAPE of this
+	// request will be served, which leaves exactly one move, and the move belongs
+	// to the caller ([taxonomy.Evidence.Spent]).
 	spent := &provider.RefusalError{Model: "m", Refusal: measuredPolicyRefusal(), Attempts: 3}
-	if verdict := taxonomy.Classify(wireEvidence(spent, 1), limits); verdict.Class != taxonomy.Work {
-		t.Fatalf("a spent ladder read as %s, want the work's diagnosis", verdict)
+	evidence := wireEvidence(spent, 1)
+	if !evidence.Spent {
+		t.Fatal("a spent ladder did not say so on its evidence")
+	}
+	evidence.FallbackAvailable = true
+	if verdict := taxonomy.Classify(evidence, limits); verdict.Class != taxonomy.Transport || !verdict.Hops() {
+		t.Fatalf("a spent ladder read as %s, want the wire and the next model", verdict)
+	}
+	// AND WITH NOWHERE LEFT TO GO IT ENDS THE REQUEST — never the tier, and never
+	// as a finding about the work.
+	evidence.FallbackAvailable = false
+	ended := taxonomy.Classify(evidence, limits)
+	if ended.Class != taxonomy.Transport || ended.Action != taxonomy.ActionGiveUp {
+		t.Fatalf("a spent ladder with no chain read as %s, want giving up on the request", ended)
 	}
 }
 

@@ -857,6 +857,30 @@ func (a *Agent) TaskJournal(id uint64) string {
 	return path
 }
 
+// TaskContextTokens is what one node's worker weighs right now — the request it
+// has in flight, the figure a node's page draws as ↑ — or zero when nobody is
+// working the node: an unknown id, a node that has not started or has ended,
+// or the moment between one hand and the next.
+//
+// IT ASKS THE WORKER IN THE ROOM, whoever that is: the same [taskRoom.speaker]
+// the node's live spend is read from ([TaskNode.spend]), so a repair round or a
+// design thread standing in the room is the one whose weight is drawn, because
+// it is the one sending. The graph lock is let go before the worker is asked,
+// for the spend's reason: the worker's answer is a lock of its own.
+func (a *Agent) TaskContextTokens(id uint64) int {
+	node := a.taskNode(id)
+	if node == nil {
+		return 0
+	}
+	node.graph.mu.Lock()
+	room := node.room
+	node.graph.mu.Unlock()
+	if child := room.speaker(); child != nil {
+		return child.ContextTokens()
+	}
+	return 0
+}
+
 // taskNode finds one admitted node, without BUILDING a graph that a question
 // about tasks does not need: a session that never groomed one answers every
 // door in this file with "no such task", which is the truth.

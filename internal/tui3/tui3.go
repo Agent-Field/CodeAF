@@ -1299,8 +1299,12 @@ func Run(ctx context.Context, opts Options) error {
 			Role:   news.Role,
 			// AND WHAT THE SIGHTING IS ABOUT, without which every node's answer
 			// lands on the conversation's row: the desk keys on this
-			// (lanes.go's [PostLaneNews], phase.go's [newsDeskKey]).
+			// (lanes.go's [PostLaneNews], phase.go's [newsDeskKeys]).
 			Subject: news.Subject,
+			// AND WHOSE IT IS, which is the name the conversation's own sighting
+			// is filed under first — so a model that moved between the engine
+			// and this window cannot hide which machine answered.
+			Session: news.Session,
 			At:      news.At,
 		})
 		// A status line that has changed is a frame that has to be drawn, and

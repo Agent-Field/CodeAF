@@ -439,3 +439,104 @@ func waitForNews(t *testing.T, what string, done func() bool) {
 	}
 	t.Fatalf("timed out waiting for %s", what)
 }
+
+// ── whose news it is, and an engine that sends none ─────────────────────────
+
+// THE CONVERSATION'S NAME CROSSES ON EVERY PIECE OF NEWS, and the surface files
+// the conversation's own news under it (internal/tui3's newsDeskKeys). Without
+// it the surface could only file by model id, and the model is exactly what
+// moves between an engine and a window mid-turn — a pick, a fallback hop, a
+// change made from another window — which put the rate and the machine under a
+// name the window was not asking for.
+func TestTheConversationsNameCrossesOnBothKindsOfNews(t *testing.T) {
+	at := time.Date(2026, 9, 10, 9, 0, 0, 0, time.UTC)
+	phase := phaseWireOf(session.PhaseNews{
+		Phase: provider.PhaseWriting, Model: "deepseek/deepseek-v4-flash", Role: lane.RoleTalk,
+		Lane: "deepseek", Rate: 41, Session: "conversation-one", At: at,
+	})
+	if phase.Session != "conversation-one" {
+		t.Fatalf("the phase crossed naming conversation %q, want conversation-one", phase.Session)
+	}
+	if back := phaseNewsOf(phase, at); back.Session != "conversation-one" {
+		t.Fatalf("the phase landed naming conversation %q, want conversation-one", back.Session)
+	}
+	sighting := laneWireOf(session.LaneNews{
+		Model: "deepseek/deepseek-v4-flash", Lane: "deepseek", Role: lane.RoleTalk, Session: "conversation-one",
+	})
+	if sighting.Session != "conversation-one" {
+		t.Fatalf("the sighting crossed naming conversation %q, want conversation-one", sighting.Session)
+	}
+	if back := laneNewsOf(sighting, at); back.Session != "conversation-one" {
+		t.Fatalf("the sighting landed naming conversation %q, want conversation-one", back.Session)
+	}
+}
+
+// AND AN OLDER ENGINE'S FRAME, WHICH NAMES NO CONVERSATION, STILL LANDS — with
+// no name on it, which the surface files under the model as it always did.
+// Nothing about this refuses a peer; the version does not move for it.
+func TestAnOlderEnginesNewsFrameLandsWithNoConversationOnIt(t *testing.T) {
+	phases := heardPhases(t)
+	lanes := heardLanes(t)
+	c := &Client{}
+	// The shape an engine from before this field writes: no "session" key.
+	c.phaseFrame(json.RawMessage(`{"phase":"writing","model":"a/b","role":"talk","lane":"friendli","rate":38}`))
+	c.laneNewsFrame(json.RawMessage(`{"model":"a/b","lane":"friendli","role":"talk"}`))
+	if got := phases(); len(got) != 1 || got[0].Session != "" || got[0].Lane != "friendli" {
+		t.Fatalf("an older engine's phase landed as %+v, want friendli with no conversation named", got)
+	}
+	if got := lanes(); len(got) != 1 || got[0].Session != "" || got[0].Lane != "friendli" {
+		t.Fatalf("an older engine's sighting landed as %+v, want friendli with no conversation named", got)
+	}
+}
+
+// AN ENGINE THAT SENDS NO NEWS IS KNOWABLE, and it is known two ways: the
+// welcome says it sends it, or a news frame arrives. Neither is an engine from
+// before the frames crossed — the one case where the provider and the live rate
+// are missing from the surface for a reason nothing on the screen would name.
+func TestAClientKnowsWhetherItsEngineSendsTheNews(t *testing.T) {
+	heardPhases(t)
+	silent := &Client{}
+	if !silent.NewsSilent() {
+		t.Fatal("an engine that neither said it sends news nor sent any reads as sending it")
+	}
+	// A build between the frames and the flag: says nothing, sends them.
+	silent.phaseFrame(json.RawMessage(`{"phase":"writing","model":"a/b","role":"talk"}`))
+	if silent.NewsSilent() {
+		t.Fatal("an engine that has sent a phase still reads as sending no news")
+	}
+
+	sighted := &Client{}
+	sighted.laneNewsFrame(json.RawMessage(`{"model":"a/b","lane":"friendli","role":"talk"}`))
+	if sighted.NewsSilent() {
+		t.Fatal("an engine that has sent a sighting still reads as sending no news")
+	}
+
+	told := &Client{welcome: Welcome{News: true}}
+	if told.NewsSilent() {
+		t.Fatal("an engine whose welcome said it sends news reads as sending none")
+	}
+}
+
+// AND AN ENGINE SAYS SO AT THE DOOR exactly when its newsroom can place this
+// conversation's news — the same question [Session.fileNews] asks.
+func TestTheWelcomeSaysWhetherThisConversationsNewsWillCross(t *testing.T) {
+	named := newsSession(t, &newsAgent{fakeAgent: &fakeAgent{}, key: "conversation-one"})
+	here := dialSession(t, named)
+	var welcome Welcome
+	if err := json.Unmarshal(here.hello(Hello{Version: Version, Surface: "macbook"}).Payload, &welcome); err != nil {
+		t.Fatalf("the welcome did not parse: %v", err)
+	}
+	if !welcome.News {
+		t.Fatal("an engine that files this conversation's news did not say it sends it")
+	}
+
+	unnamed := newsSession(t, &fakeAgent{})
+	there := dialSession(t, unnamed)
+	welcome = Welcome{}
+	if err := json.Unmarshal(there.hello(Hello{Version: Version, Surface: "studio"}).Payload, &welcome); err != nil {
+		t.Fatalf("the welcome did not parse: %v", err)
+	}
+	if welcome.News {
+		t.Fatal("an engine that cannot name its conversation claimed to send its news")
+	}
+}

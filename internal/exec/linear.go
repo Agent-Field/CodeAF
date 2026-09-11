@@ -1522,29 +1522,29 @@ func (l *Linear) land(
 // A timeout is a provider fact rather than an ability one, so a deadline stop
 // grades nothing. Everything else is a way of not finishing inside what the
 // leaf was given, and that is precisely what a rating measures.
-func verdictFor(outcome *Outcome) provider.Verdict {
+func verdictFor(outcome *Outcome) provider.Reading {
 	if outcome.Verdict != "" {
 		return outcome.Verdict
 	}
 	switch outcome.Stop {
 	case StopBudget:
-		return provider.VerdictBudgetStop
+		return provider.ReadingBudgetStop
 	case StopTurnCap:
-		return provider.VerdictTurnCap
+		return provider.ReadingTurnCap
 	case StopPromote:
-		return provider.VerdictUnverifiedSuccess
+		return provider.ReadingUnverifiedSuccess
 	case StopSplit:
 		// A leaf that handed its budget back because it had found several jobs
 		// inside one did not fail to converge — it declined to converge on the
 		// wrong thing. Grading it as a budget stop would teach the ruler that
 		// this worker could not do the work, from the one run where it read the
 		// work correctly.
-		return provider.VerdictUnverifiedSuccess
+		return provider.ReadingUnverifiedSuccess
 	case StopPaused, StopCancelled:
 		// User-directed stops say nothing about model capability.
-		return provider.VerdictUnverifiedSuccess
+		return provider.ReadingUnverifiedSuccess
 	case StopEmpty:
-		return provider.VerdictEmptyResponse
+		return provider.ReadingEmptyResponse
 	case StopOverrun:
 		// Graded exactly as a budget stop, because it is the same finding
 		// arriving earlier: this worker did not converge inside what work of
@@ -1556,14 +1556,14 @@ func verdictFor(outcome *Outcome) provider.Verdict {
 		// as a budget stop — the same finding the ruler recalibrates from —
 		// because the mechanism is a tail-risk bound on a runaway, not a
 		// judgment that the work was wrong.
-		return provider.VerdictBudgetStop
+		return provider.ReadingBudgetStop
 	case StopToolTimeouts:
 		// The leaf had money, turns and clock left and spent them re-running a
 		// command it had already learned does not return. Graded as a budget stop
 		// because that failure to converge is exactly what a rating measures.
-		return provider.VerdictBudgetStop
+		return provider.ReadingBudgetStop
 	case StopError, StopDeadline:
-		return provider.VerdictProviderFailure
+		return provider.ReadingProviderFailure
 	}
 	// A landing the leaf was ordered into is not the ending it chose. Stop says
 	// it finished cleanly, which is true — it complied with the order — but the
@@ -1571,12 +1571,12 @@ func verdictFor(outcome *Outcome) provider.Verdict {
 	// rating measures. Only the budget grades: a deadline is a fact about the
 	// clock rather than about ability, exactly as the StopDeadline arm above.
 	if outcome.Exhausted == StopBudget || outcome.Exhausted == StopOverrun || outcome.Exhausted == StopNoProgress {
-		return provider.VerdictBudgetStop
+		return provider.ReadingBudgetStop
 	}
 	if strings.TrimSpace(outcome.Text) == "" {
-		return provider.VerdictEmptyResponse
+		return provider.ReadingEmptyResponse
 	}
-	return provider.VerdictUnverifiedSuccess
+	return provider.ReadingUnverifiedSuccess
 }
 
 const (

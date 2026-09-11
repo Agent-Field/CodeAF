@@ -49,13 +49,25 @@ import (
 // delivered and never move the cursor. A client must not go quiet because the
 // far end declined to count.
 //
-// EVERY CALL HAS A DEADLINE. The surface asks half of these questions from its
-// update loop — Model, Usage, ContextTokens, Title — and an update loop that
-// blocks is a terminal that has stopped repainting. A pipe whose far end died
-// without closing (a laptop that slept, a network that went away) would hang
-// there forever, so a call that has waited [callDeadline] gives up and says the
-// connection is gone. That is a true sentence: a round trip to a healthy engine
-// is milliseconds, and one that has taken ten seconds is not coming back.
+// EVERY CALL HAS ONE DEADLINE, AND IT IS SHORT BECAUSE OF WHERE IT IS ASKED
+// FROM. The surface asks these from its update loop — Model, Usage,
+// ContextTokens, Title, and a person's keystroke on a question too — and an
+// update loop that blocks is a terminal that has stopped repainting. That is
+// true of an act as much as of a getter, which is why an act does not get a
+// longer window than a getter and why callclass.go states the measurement that
+// settled it. A pipe whose far end died without closing (a laptop that slept, a
+// network that went away) would hang there forever, so a call that has waited
+// [callDeadline] gives up.
+//
+// AND GIVING UP IS NOT THE CONNECTION DYING, WHICH IS THE HALF THIS FILE USED
+// TO GET WRONG. A deadline that ran out answered with [Client.gone] — "the
+// connection to <machine> is gone — run the same command to pick the
+// conversation back up" — about a link that was carrying that turn's events at
+// that very moment. It buried nothing (only the reader ever calls [Client.bury],
+// on a pipe that actually failed), so the sentence was the whole of the damage,
+// and it was enough: the surface believed it, and the person read that their
+// keystroke had missed an engine that had already applied it. A timeout now says
+// [lateCallTail] instead, and [Client.gone] is kept for a pipe that broke.
 //
 // NO GETTER MEASURES ANYTHING EXTRA. Every getter is one frame out and one
 // frame back. [Client.Ping] is the explicit exception: one empty call on the
@@ -133,6 +145,11 @@ type Client struct {
 	// seq mints call ids. The engine mints stream ids, so the two spaces never
 	// collide even though both are uint64.
 	seq atomic.Uint64
+
+	// newsHeard is set the first time a "phase" or "lane" frame arrives, and it
+	// is half of how [Client.NewsSilent] answers: an engine that has sent one
+	// has the news whether or not its welcome said so ([Welcome.News]).
+	newsHeard atomic.Bool
 
 	// calls is every call waiting for its result, and streams every open turn.
 	// Both are guarded by mu. Observers are independent view subscriptions;
@@ -842,8 +859,11 @@ func (c *Client) deliver(frame Frame) {
 	c.mu.Unlock()
 	if !ok {
 		// A result for a call that has already given up (its deadline passed).
-		// Dropping it is right: the caller has been told the connection is gone
-		// and nobody is holding the other end of that channel.
+		// Dropping it is right: the caller has been told this call was late and
+		// nobody is holding the other end of that channel. Arriving at all is
+		// the evidence that the sentence was the honest one — the far end was
+		// working the whole time, which is why it no longer says the connection
+		// has gone ([Client.late]).
 		return
 	}
 	if frame.Error != "" {
@@ -934,7 +954,7 @@ func (c *Client) bury(cause error) {
 	c.buryLanes()
 }
 
-// call is one round trip: a frame out, a result back, or the deadline.
+// call is one round trip: a frame out, a result back, or the class's deadline.
 func (c *Client) call(ctx context.Context, method string, args any) (json.RawMessage, error) {
 	return c.callWithin(ctx, method, args, callDeadline)
 }
@@ -1024,10 +1044,34 @@ func (c *Client) callAnswered(ctx context.Context, method string, args any, dead
 		return nil, false, ctx.Err()
 	case <-timer.C:
 		// AND THE DEADLINE IS THE UNKNOWN ITSELF. The engine may be working on
-		// this call right now; what ran out is this end's patience.
+		// this call right now; what ran out is this end's patience. A live
+		// connection is not declared gone for that — [Client.late] is the
+		// honest sentence, and the rest of the room stays up.
 		c.forget(id)
-		return nil, false, c.gone(errors.New("no answer"))
+		return nil, false, c.late()
 	}
+}
+
+// late is what a deadline says on a connection that is still here.
+//
+// THE CONNECTION IS NOT GONE, AND SAYING SO WAS THE MEASURED DEFECT. The engine
+// had applied the keystroke and the model's next sentence was already on screen
+// when this window told the person their link had died. A pipe that actually
+// broke still takes [Client.gone]; a redial in flight still says it is
+// reconnecting; and a client the reader has already buried keeps the reader's
+// own reason, because that one IS the connection being gone.
+func (c *Client) late() error {
+	c.mu.Lock()
+	dead := c.dead
+	roaming := c.reconnecting
+	c.mu.Unlock()
+	if dead != nil {
+		return dead
+	}
+	if roaming {
+		return errors.New(c.roamingRefusal())
+	}
+	return errors.New(c.where() + lateCallTail)
 }
 
 // forget drops a call nobody is waiting for any more.

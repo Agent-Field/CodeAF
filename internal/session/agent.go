@@ -1849,7 +1849,7 @@ func (a *Agent) dropFollowUpsLocked() {
 // it into the transcript (the person typed it, so it is part of the record) —
 // and that drain starts nothing, so it cannot resurrect anything. Both queues
 // are empty once the interrupted turn has finished.
-func (a *Agent) Interrupt() { a.interruptFor(StopByPerson) }
+func (a *Agent) Interrupt() { a.interruptNamed(StopByPerson, "") }
 
 // InterruptFor is the same door for machinery that is not a person: a window
 // taking the conversation over, a tab closing, a hosted session being retired.
@@ -1859,9 +1859,16 @@ func (a *Agent) Interrupt() { a.interruptFor(StopByPerson) }
 // cut — and the only difference is the word the cancelled context
 // carries, which is what decides whether the person is owed a sentence about a
 // reply that never arrived (stopcause.go).
-func (a *Agent) InterruptFor(door StopDoor) { a.interruptFor(door) }
+func (a *Agent) InterruptFor(door StopDoor) { a.interruptNamed(door, "") }
 
-func (a *Agent) interruptFor(door StopDoor) {
+// InterruptNamed is the same stop with the window the door believed had
+// gone, when the door has one to name. The name is a label and nothing
+// else — never an identity — and empty is a stop that does not know.
+func (a *Agent) InterruptNamed(door StopDoor, name string) {
+	a.interruptNamed(door, name)
+}
+
+func (a *Agent) interruptNamed(door StopDoor, name string) {
 	// ONE GENERATION FOR THIS STOP, minted before the turn context dies so a
 	// leftover handler that has not yet entered callRole shares the same
 	// "what changed" decision as the redirect that follows (interrupt_fan.go).
@@ -1881,7 +1888,7 @@ func (a *Agent) interruptFor(door StopDoor) {
 	a.stopSteerGraceLocked()
 	a.mu.Unlock()
 	if cancel != nil {
-		cancel(stopFor(door))
+		cancel(stopAs(door, name))
 	}
 }
 

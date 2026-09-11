@@ -1,11 +1,13 @@
 package provider
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/paymentrefusal"
+	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -75,15 +77,28 @@ const (
 	// refusalPayment is an authenticated account that cannot fund the request.
 	// It is terminal for the whole account, not a wait and not one lane's fault.
 	refusalPayment
+	// refusalPlanPaused is a fixed-price window that will become usable again.
+	// It is neither ordinary pacing nor terminal account failure, and it must
+	// never earn an endpoint walk or a model hop.
+	refusalPlanPaused
+	// refusalNoPlan is a bound plan door that this key or model cannot use. It is
+	// a fact about the door, not about one endpoint behind it.
+	refusalNoPlan
 )
 
 // laneRefusal is one refusal as every reader of it needs it.
 //
-// FOUR FIELDS AND NO MORE, because four is what the four readers want between
-// them: what happened, which machine it is about, whether that machine is
-// finished for this model, and whether any machine was asked at all. A field a
-// reader has to interpret would be this classification happening a second time
-// somewhere else.
+// ONE FIELD PER READER AND NO MORE: what happened, which machine it is about,
+// whether that machine is finished for this model, whether any machine was asked
+// at all, whose list emptied the set, and whether the MODEL is still carried. A
+// field a reader has to interpret would be this classification happening a
+// second time somewhere else.
+//
+// NONE OF THEM IS A DECISION, which is the line this wave drew. This object says
+// what the wire said; what to DO about it is one function in one package
+// ([taxonomy.Classify]), reached from the marks [markRefusal] leaves on the
+// error. The ledger's own three answers — pace, strike, nothing — are the
+// exception and stay here, because they are writes rather than moves.
 type laneRefusal struct {
 	Kind refusalKind
 	// Lane is the machine the refusal is ABOUT, empty when it is about none.
@@ -118,6 +133,17 @@ type laneRefusal struct {
 	// (internal/lane's account.go) rather than on the per-model serving set. It
 	// is only ever true beside Unasked: the machine was never asked.
 	Account bool
+	// Withdrawn says THE ROUTER NO LONGER CARRIES THIS MODEL — the sheet has no
+	// row for it and the router answered for itself. It implicates no machine at
+	// all, so the ledger does nothing with it; it is on this object because this
+	// object is where every structural reading of a refusal is taken, and the
+	// verdict downstream needs it to hop at once rather than spend a transport
+	// budget on three more identical 404s ([Client.withdrawnModel], #838).
+	Withdrawn bool
+	// Reset is the vendor's stated reset value for a paused plan window. It is
+	// carried from the one classification so the dispatcher and surface never
+	// have to parse the refusal a second time.
+	Reset string
 }
 
 // struck reports whether there is a lane here for the ledger to WRITE OFF — a
@@ -214,20 +240,36 @@ func nameServed(err error, served string) error {
 	return err
 }
 
-// markRouting stamps the classifier's answer onto the error a caller will read,
-// so that "the router emptied the set" travels as a fact rather than being
-// re-derived from a sentence three packages away ([APIError.Routing]).
+// markRefusal stamps the classifier's STRUCTURAL ANSWERS onto the error a caller
+// will read, so that what this transport worked out travels as typed facts
+// rather than being re-derived from a sentence three packages away.
 //
 // It runs inside the refusal door beside [nameServed], for the same reason:
 // every refusal a caller can see passes that door once, on either transport,
 // and a mark written anywhere else would be a second place that decides it.
-func markRouting(err error, refusal laneRefusal) {
-	if refusal.Kind != refusalRouting {
+//
+// THREE MARKS, AND ONE VERDICT DOWNSTREAM READS ALL OF THEM. `Routing` says a
+// list emptied the set, `Account` says whose list it was, and `Withdrawn` says
+// the model itself is gone — and internal/taxonomy turns the three into one
+// action ([taxonomy.Classify]). Until this wave the same three facts were read
+// by three unrelated rules that each grew their own exceptions: taxonomy's
+// `classOf`, this file's `refusalKind`, and internal/session's
+// `providerCouldNotServe`. Marking them here is what let the other two go.
+func markRefusal(err error, refusal laneRefusal) {
+	marked, ok := RefusalFrom(err)
+	if !ok {
 		return
 	}
-	if marked, ok := RefusalFrom(err); ok {
+	if refusal.Kind == refusalRouting {
 		marked.Routing = true
+		marked.Account = refusal.Account
 	}
+	if refusal.Withdrawn {
+		marked.Withdrawn = true
+	}
+	marked.Payment = refusal.Kind == refusalPayment
+	marked.PlanPaused = refusal.Kind == refusalPlanPaused
+	marked.PlanUnavailable = refusal.Kind == refusalNoPlan
 }
 
 // refusalObject is THE classifier. Everything this process does about a refusal
@@ -256,9 +298,16 @@ func (c *Client) laneRefusalFor(model, demanded string, err error) laneRefusal {
 	if !ok {
 		return laneRefusal{}
 	}
-	if paymentrefusal.Matches(refusal.Status, []byte(refusal.Body)) {
+	body := []byte(refusal.Body)
+	switch paymentrefusal.Classify(refusal.Status, body) {
+	case paymentrefusal.Payment:
 		return laneRefusal{Kind: refusalPayment, Terminal: true}
+	case paymentrefusal.WindowExhausted:
+		return laneRefusal{Kind: refusalPlanPaused, Reset: paymentrefusal.ResetAt(body)}
+	case paymentrefusal.NoPlan:
+		return laneRefusal{Kind: refusalNoPlan, Terminal: true}
 	}
+	demanded = strings.TrimSpace(demanded)
 	if refusal.Status == http.StatusTooManyRequests {
 		// A 429 IS PACING RATHER THAN A VERDICT ON THE REQUEST, and that half is
 		// unchanged: the lane is held for the wait the provider itself named
@@ -271,7 +320,18 @@ func (c *Client) laneRefusalFor(model, demanded string, err error) laneRefusal {
 		// reads. This used to return nothing at all, which was right for the
 		// account-wide case below and wrong for every 429 that named its pool:
 		// see [Client.refuseLane] for the ninety-three seconds it cost.
-		return laneRefusal{Kind: refusalPaced, Lane: strings.TrimSpace(refusal.Provider)}
+		//
+		// AND A POOL THAT NAMED NOBODY IS THE MACHINE WE DEMANDED, when the
+		// request demanded exactly one. The ledger is keyed on WHO SERVED
+		// (docs/design/recovery/DESIGN.md §3 clause 4), and the honest order of
+		// answers to that is: the wire's own name, else the one machine this
+		// request permitted, else nothing. A demand of one machine is the whole
+		// serving set, so there is no other machine the queue could have been.
+		pool := strings.TrimSpace(refusal.Provider)
+		if pool == "" {
+			pool = demanded
+		}
+		return laneRefusal{Kind: refusalPaced, Lane: pool}
 	}
 	// THE UPSTREAM'S OWN REFUSAL IS READ FIRST, because a named provider is the
 	// router telling us it found something to try and that something said no —
@@ -280,10 +340,21 @@ func (c *Client) laneRefusalFor(model, demanded string, err error) laneRefusal {
 	if refusal.FromUpstream() {
 		return laneRefusal{Kind: refusalUpstream, Lane: refusal.Provider}
 	}
-	if !c.routingRefusal(model, refusal.Status, []byte(refusal.Body)) {
+	// A MODEL THE ROUTER HAS PUT DOWN IS ASKED BEFORE AN EMPTIED SET, because
+	// the two arrive wearing the same 404 and very often the same sentence, and
+	// only one of them has a machine anywhere behind it. Nothing is struck and
+	// nothing is paced — there is no lane in this refusal — and what the mark
+	// buys is downstream: the verdict hops the model at once instead of paying
+	// the whole transport budget for three more identical refusals (#838).
+	if c.withdrawnModel(model, refusal.Status, body) {
+		// AND IT IS REMEMBERED, so the next turn hops before it sends rather than
+		// paying the whole shape ladder to be told the same thing (withdrawn.go).
+		c.withdrawn.noteWithdrawn(model)
+		return laneRefusal{Withdrawn: true}
+	}
+	if !c.routingRefusal(model, refusal.Status, body) {
 		return laneRefusal{}
 	}
-	demanded = strings.TrimSpace(demanded)
 	// A REFUSAL ABOUT A LIST IMPLICATES NO MACHINE — the second half of the law
 	// [velocityLedger.keepTheSetServable] enforces on the way out, standing here
 	// on the way back. This sentence says a list emptied the set, so the demanded
@@ -303,7 +374,6 @@ func (c *Client) laneRefusalFor(model, demanded string, err error) laneRefusal {
 	// struck for one model and demanded again on the next (the 2026-09-10 race).
 	// It is Unasked like any other list, and it is ALSO a fact about every model,
 	// which is what Account carries to the ledger.
-	body := []byte(refusal.Body)
 	return laneRefusal{
 		Kind:     refusalRouting,
 		Lane:     demanded,
@@ -371,4 +441,93 @@ func (c *Client) refuseServing(model string, refusal laneRefusal) {
 		return
 	}
 	lanes.RefuseServing(laneModel(model), refusal.Lane)
+}
+
+// ── THE ONE EXTRACTOR ───────────────────────────────────────────────────────
+
+// Evidence reads one failed request into the vocabulary the response boundary
+// reasons in, and DECIDES NOTHING.
+//
+// ── WHY IT IS HERE AND NOT AT THE CALL SITE ─────────────────────────────────
+//
+// A 404 used to be classified by three unrelated rules: internal/taxonomy's
+// `classOf`, this file's `refusalKind`, and internal/session's
+// `providerCouldNotServe`. Each was correct about the half it had been told,
+// each grew a special case every time a wave met a new shape — #835 added
+// `Evidence.Routing` to work around a fourth — and the class that mattered most
+// fell through all of them: an account's privacy setting reached a person as
+// `the request itself was refused`, with two other machines idle.
+//
+// So the split is the other way round now. THIS TRANSPORT KNOWS FACTS and says
+// them: what status it wore, who refused, whether a list emptied the set, whose
+// list it was, whether the model is still carried, whether the request fitted.
+// ONE FUNCTION TURNS FACTS INTO A MOVE ([taxonomy.Classify]), and it is the only
+// place in the build that may. A law test holds the line
+// (internal/provider/classifier_law_test.go).
+//
+// The facts themselves were all decided at the refusal door, once, on the way
+// past ([markRefusal], [apiError]); nothing is re-read from a sentence here.
+// What is NOT on this evidence is everything the transport cannot see — whether
+// a stream guard cut, how many attempts this model has had, whether the caller
+// has another model — and those are the caller's to add before it classifies.
+func Evidence(err error) taxonomy.Evidence {
+	evidence := taxonomy.Evidence{}
+	if err == nil {
+		return evidence
+	}
+	refusal, ok := RefusalFrom(err)
+	if !ok {
+		// A FAILURE THAT CARRIES NO REFUSAL STILL HAS ONE SHAPE WORTH READING.
+		// Not every overflow arrives as an [APIError] — an SDK that wraps its own
+		// body read hands back a sentence — and "the request did not fit" is the
+		// one shape whose answer is an ACTION rather than an ending, so losing it
+		// costs a person a turn that could have been compacted. It is the hint
+		// arm of [overflowRefusal] and nothing else is read from the prose.
+		evidence.Overflow = overflowRefusal(0, "", err.Error())
+		return evidence
+	}
+	evidence.Status = refusal.Status
+	evidence.Upstream = strings.TrimSpace(refusal.Provider)
+	evidence.Overflow = refusal.Overflow
+	// A SPENT LADDER IS NOT SOMEWHERE LEFT TO GO, which is [RoutingRefusal]'s own
+	// rule and is asked through it rather than beside it: [RefusalError] wraps
+	// the router's last refusal after the whole ladder has been climbed, and
+	// reading THAT as an emptied set would send the caller round it again to be
+	// told the same thing.
+	evidence.Routing = RoutingRefusal(err)
+	// AND A SPENT LADDER IS A BUDGET RATHER THAN A CLASS. [RoutingRefusal] answers
+	// false for one on purpose — there is no machine and no shape left HERE — and
+	// that is a different sentence from "nothing was learned", which is what the
+	// boundary needs. Both are true at once and each is said once.
+	var ladder *RefusalError
+	evidence.Spent = errors.As(err, &ladder)
+	evidence.Account = evidence.Routing && refusal.Account
+	evidence.Withdrawn = refusal.Withdrawn
+	evidence.PlanPaused = refusal.PlanPaused
+	evidence.Unserved = accountUnserved(refusal.Status) || refusal.Payment || refusal.PlanUnavailable
+	// OUR OWN BYTES ARE WHAT IS LEFT OVER, and the transport is the only layer
+	// that can say so: it is the 4xx that named no upstream, is not a list, is
+	// not an absent model and is not a key — which is [APIError.OurRequest]'s
+	// whole argument, asked here once.
+	evidence.OurBytes = !evidence.Withdrawn && !evidence.Unserved && refusal.OurRequest()
+	return evidence
+}
+
+// accountUnserved reports the three generic statuses that mean THE ACCOUNT
+// could not be served: no key, a key without permission, a balance that ran
+// out. The vendor-specific payment and no-plan facts join it in [Evidence]
+// through the marks from [markRefusal].
+//
+// IT IS THE ONE STATUS COMPARISON LEFT IN THIS BUILD OUTSIDE internal/taxonomy,
+// and it is here rather than at a reader for exactly that reason: the law test
+// forbids a call site choosing an action from a status, and the only way to keep
+// that promise is for the transport to name the shape once. 402 is on it for
+// completeness — the router answers a spent balance with one — and 429 is not,
+// because pacing is a queue rather than an account.
+func accountUnserved(status int) bool {
+	switch status {
+	case http.StatusUnauthorized, http.StatusPaymentRequired, http.StatusForbidden:
+		return true
+	}
+	return false
 }

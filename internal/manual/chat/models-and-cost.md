@@ -1239,15 +1239,18 @@ that endpoint is avoided on every request after it, so the next attempt queues s
 else. And the wait itself is capped at a minute however long the provider asked for, so a
 provider naming tomorrow morning does not park your turn.
 
-**When that patience runs out, aforge tries the next model in your `fallback models` row**
-rather than handing you the refusal. It says so on the same line a refusal uses:
+**When that patience runs out, the refusal goes back to your turn**, which spends its own
+four tries and then moves to the next model in your `fallback models` row — the next
+section is what that looks like.
 
-```
-Retry 1/1: Falling back to openai/gpt-5-mini
-```
+There used to be a second, quieter move here: the call itself would switch models and say
+`Retry 1/1: Falling back to openai/gpt-5-mini`. That is gone. **Your model is changed in
+exactly one place now**, by the turn, out loud, and the line you read for it is the one in
+the next section. Two things moving one model meant a turn could pay for the same fallback
+twice and skip another entirely, and one of them carried the old model's pinned machine
+across to the new model, which the router then refused.
 
-With no chain to move to, you get the provider's own words and the status, which is what
-this did before:
+With no chain to move to, you get the provider's own words and the status:
 
 ```
 error: after 6 attempts: API error (429): rate limit exceeded
@@ -1300,6 +1303,36 @@ that was tried rather than advising a move you have already made:
 ```
 error: the model kept turning the request away: deepseek/deepseek-v4.1-flash was asked four times, and openai/gpt-5-mini could not finish it either. /model to pick another one yourself
 ```
+
+## A model with no machines, a key that was not accepted, a conversation too long — what aforge says instead of the router's error
+
+**You never read the router's own sentence about a failed turn.** `API error (404): 0
+endpoints out of 1 requested are available matching your guardrail restrictions and data
+policy` is a true thing to write in a log and a useless thing to hand somebody whose reply
+just stopped: it names machinery you have no access to, about a decision you did not make.
+So every ending is said in words about your conversation, with the provider's own text kept
+on the record for an autopsy.
+
+These are the sentences and what each one means.
+
+| what you read | what happened | what aforge does |
+| --- | --- | --- |
+| `that model is not being served any more` | the router has no machines behind that model id at all | moves to your next fallback model at once, with no tries wasted |
+| `your key was not accepted for this model` | a key that is missing, not permitted for this model, or out of balance | stops and tells you — no machine, shape or model changes this |
+| `this conversation got too long for the model` | the transcript is past the model's window | shortens the conversation once and asks the same question again |
+| `this conversation is too long for the model even after shortening it` | it still did not fit | stops; start a new conversation, or `/model` to one with a bigger window |
+| `the request could not be sent as it was` | the router read the request itself and refused it | the request was already retried with its optional parts taken off; nothing else will help |
+| `nothing came back from the model — asking again` | a reply arrived with no words and no tool call | asks again on the same budget as any other failure |
+
+**A model with no machines costs you nothing to discover twice.** The first turn that meets
+one moves on and aforge remembers it for as long as the program is running, so every later
+turn skips it before a single request goes out and never offers it as a fallback. An answer
+from that model clears the memory again — a model with no machines this afternoon often has
+some next week, and nothing is written to disk.
+
+**The overflow move fires whatever your compaction setting is.** That setting governs the
+automatic pass that keeps a long conversation trimmed; this is the recovery from a request
+a provider has already refused, and it runs either way.
 
 **Two things stop the move, and both make it absent rather than broken.** `--one-model`
 settles every call this run makes onto the model you named, so nothing is ever asked of
@@ -1426,7 +1459,8 @@ for it, and each door has its own sentence:
 | the conversation was closed or left under the turn | `the reply stopped when this conversation was left — ask again to pick it up` |
 | your stop took too long and was let go of | `the reply was let go of after the stop took too long` |
 | you stopped all the work in the conversation | `everything running here was stopped, the reply with it` |
-| nobody was left watching a conversation on another machine | `nobody was left watching this conversation, so the reply stopped — ask again to pick it up` |
+| nobody was left watching a conversation on another machine | `nobody was left watching this conversation, so the reply stopped — ask again to pick it up`. Only the unattended door says this. If the engine knew which window it thought had gone, the sentence names it: `nobody was left watching this conversation from studio, so the reply stopped — ask again to pick it up` |
+| the engine holding this conversation was stopped | `the engine holding this conversation was stopped, so the reply stopped — ask again to pick it up` |
 
 **You do not have to type your question again when a conversation moved.** If the
 reply had said *nothing at all* when another window took the conversation — which
@@ -1449,8 +1483,9 @@ so nothing is run a second time. This only ever fires on the one shape the
 conversation's own file ends in: your words, and then aforge stopping the turn
 that was answering them with nothing said. A turn **you** stopped is never asked
 again, and neither is one that ended any other way — a conversation you left, a
-window that closed, a session on another machine nobody was watching. Those keep
-their sentence and wait for you.
+window that closed, an engine that was stopped while you were still in it, or a
+session on another machine nobody was watching. Those keep their sentence and
+wait for you.
 
 Whatever the door, the ending is also written into the conversation's own file
 as a failed call naming the door — for whoever reads the file afterwards, not
@@ -1470,6 +1505,14 @@ Before 2026-09-09 none of this existed. A turn whose reply was taken away ended
 with no answer, no error, no note and an idle status line, and there was no way
 — on the screen, in the transcript, or in the log — to tell your own stop from a
 second window taking the conversation over.
+
+## It said nobody was left watching but I was sitting right here — the reply stopped, bash cancelled, which window did it think had gone, the engine was stopped
+
+`nobody was left watching this conversation, so the reply stopped — ask again to pick it up` is only what you read when the conversation was let go of because nobody was watching it. A goodbye of your own says `the reply stopped when this conversation was left — ask again to pick it up`. An engine stopped on somebody's word while a window is still in the room says `the engine holding this conversation was stopped, so the reply stopped — ask again to pick it up`.
+
+A window that just did something — pressed a key, answered a card — is still watching, even if its link dropped for a few seconds. That gap is a stalled call and the redial after it, not an empty room, and the reply is not stopped for want of a watcher.
+
+When the unattended door does take a stop, it names the window it believed had gone: `nobody was left watching this conversation from studio, so the reply stopped — ask again to pick it up`. Without a name the sentence is the one above, unchanged.
 
 ## Why did my task not move to a stronger model — trouble with the connection never buys a dearer model
 
@@ -2608,8 +2651,10 @@ as before, and a word this grammar does not know is simply a word to search for.
 
 Beside your model on the line above the message box, `via <name>` is the lane that
 actually answered, and it is a fact rather than a decision: it is the name that came back
-on the answer. It goes quiet when no answer has been timed in the last ten minutes, and
-at no other moment.
+on the answer. While an answer is being written it names the machine writing it, as soon
+as that machine has named itself — so the first answer of a conversation carries it too.
+It goes quiet only when nothing is being written and no answer has come back in the last
+ten minutes.
 
 **It is drawn whoever served, the vendor's own machines included.** `glm-5.3-flash · via
 z-ai` is not a line saying the same thing twice: the model is spelled there as its
@@ -2658,7 +2703,9 @@ provider.only preference permits only: coreweave` — the same spot reads
 `refused · trying nextbit…`. That machine is then finished for this model: it is not asked
 again, and it leaves the set aforge chooses from for thirty minutes. If the
 machine the answer moved to refuses as well, the promise is withdrawn rather than left on
-the screen, and the row reads `nextbit refused`.
+the screen, and the row reads `nextbit refused`. If the second lane fails for any other
+reason, or the turn is stopped while it is out, the promise comes off too and the row goes
+back to naming the machine that answered last.
 
 If the second lane wins, the line reads `via coreweave · rescued` for that answer once the
 request has finished, and goes back to normal on the next one.
@@ -3021,13 +3068,16 @@ speed because the local outage was not time spent generating an answer.
 ## Why a small model gets a shorter page and fewer tools — the lean profile
 
 On a model with a small context window, aforge sends a smaller set of
-instructions and a smaller tool list. Nothing is turned off by a setting and
-nobody is asked to choose. Lean applies in exactly two cases, and nothing else:
+instructions and a smaller tool list. Nobody is asked to choose: the
+`prompt profile` row is `auto` out of the box and works it out. Lean applies in
+exactly three cases, and nothing else:
 
 - the model's context window is under 32,000 tokens — the figure the catalog or
   the endpoint reports, which is what a local runner like llama.cpp, ollama or
   LM Studio tells aforge about the model it has loaded; or
-- you put `AFORGE_PROMPT_PROFILE=lean` in front of the command.
+- the `prompt profile` row under `models` in `/settings` says `lean`; or
+- you put `AFORGE_PROMPT_PROFILE=lean` in front of the command, which pins it
+  for that one launch and holds the row read-only while it is set.
 
 Lean changes four things:
 
@@ -3054,9 +3104,10 @@ most of the room the model has to think in.
 
 ## Is an open-weight or local model given the lean profile? Does deepseek or glm get a shorter page?
 
-Only if its context window is under 32,000 tokens, or you pinned it. Nothing
-about a model's licence, its vendor, its name or which crew seat it sits in
-makes a session lean.
+Only if its context window is under 32,000 tokens, or you chose `lean` yourself
+on the `prompt profile` row or pinned it for the launch. Nothing about a model's
+licence, its vendor, its name or which crew seat it sits in makes a session
+lean.
 
 So an open-weight model with a large window is NOT lean. `deepseek-v4-flash` and
 `glm-5.3-flash` are served with 128,000 tokens of room, so they get the full
@@ -3069,9 +3120,34 @@ A model you run yourself usually is small, and it is recognised by the window it
 reports, not by its name: llama.cpp, ollama and LM Studio all tell aforge the
 window the loaded model was given.
 
+The `prompt profile` row and `AFORGE_PROMPT_PROFILE` both overrule the window,
+in the same three words. The next section says which wins.
+
+## The prompt profile setting — choosing lean or full yourself
+
+`/settings`, under `models`, has a row called `prompt profile`. It takes three
+words:
+
+- **`auto`** is the default and the shipped behaviour: the window decides, lean
+  under 32,000 tokens and full at or above it.
+- **`lean`** sends the shorter page and the shorter tool list whatever the model
+  reports.
+- **`full`** sends everything whatever the model reports.
+
+**A change lands the next time aforge starts.** The profile is settled once when
+a conversation opens, because it decides the page and the tool list every
+request in that conversation is sent with.
+
+**`AFORGE_PROMPT_PROFILE` still pins it for one launch, over the row.** Put
 `AFORGE_PROMPT_PROFILE=lean` or `AFORGE_PROMPT_PROFILE=full` in front of the
-command pins it either way: lean on a large window, full on a small one. It is
-there for measuring the two arms against each other, and for an endpoint that
-reports a window its loaded model does not really have. There is no settings row
-for the profile yet. Any other value is not a pin at all and the window decides
-as usual.
+command and that launch uses it; the settings row goes read-only for as long as
+the variable is set and says which variable owns it, exactly as every other
+pinned row does. `AFORGE_PROMPT_PROFILE=auto` puts the window back in charge for
+that launch. Any other value is not a pin at all: your row stands and, if it is
+`auto`, the window decides as usual.
+
+**When to touch it.** Almost never — the window is right almost every time. The
+case it is there for is an endpoint that reports a window its loaded model does
+not really have, which is where `lean` is you telling aforge the truth. `full`
+is the other direction: a small window you would rather spend on the whole tool
+list than on the conversation.

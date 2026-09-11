@@ -243,8 +243,16 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  # PUBLISH SAYS always() FOR THE SAME REASON build DOES. GitHub skips a job
+  # whose dependency chain contains a skipped job unless the job's own condition
+  # says otherwise, and the chain here always contains one: `test` is skipped on
+  # every dev build by design. The first live run on 2026-09-11 (dev, ef36c3770)
+  # proved it — prepare and build green, eight minutes of binaries uploaded, and
+  # publish skipped without a word, so no dev release existed. The two explicit
+  # results below are the whole gate: a red build still publishes nothing.
   publish:
     needs: [prepare, build]
+    if: always() && needs.prepare.result == 'success' && needs.build.result == 'success'
     permissions:
       contents: write
     runs-on: ubuntu-latest

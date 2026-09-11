@@ -594,12 +594,16 @@ func (c *chooser) Choose(req Request) Choice {
 		return scored[a].ID.Lane < scored[b].ID.Lane
 	})
 
-	// AND WHAT IS UNKNOWN GOES BEHIND WHAT IS KNOWN. A lane the sheet has never
-	// published a tool flag for is a candidate and not a favourite: it is ranked
-	// last among the survivors when the request carries tools, so the choice
-	// tries the machines we know will take the call first and still has
-	// somewhere to go when we know nothing at all (frontier.go's [toolsLast]).
-	scored = toolsLast(scored, req, aged)
+	// AND WHAT THE SHEET DOUBTS GOES BEHIND WHAT IT DOES NOT. A lane the sheet
+	// says will not take a tool call, or has published as half down or derated,
+	// is a candidate and not a favourite: it is ranked last among the survivors,
+	// so the choice tries the machines nothing is doubted about first and still
+	// has somewhere to go when they refuse. One draw in [probeInEvery] sends it
+	// first anyway, because a lane that is never asked can never prove the sheet
+	// wrong — which is the whole of frontier.go's THREE OF THE SHEET'S CLAIMS ARE
+	// PRIORS RATHER THAN GATES, and the draw comes from the same seeded sampler
+	// the score does, so one request's choice stays reproducible.
+	scored = sheetDoubtsLast(scored, req, aged, draws.Float64())
 
 	choice := Choice{Frontier: scored}
 	choice.Order = orderOf(scored, aged)

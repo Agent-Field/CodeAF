@@ -678,8 +678,11 @@ is a claim about now and who is attribution.
 (`glm-5.3-flash · via z-ai`). It was hidden in that case until 2026-09-09, on the
 argument that the id already said it — but the model is spelled here as its basename,
 so the vendor half of the address is not on the screen at all, and a rider that came and
-went with the endpoint read as a lost sighting. It goes quiet only when no endpoint has
-been timed in the last ten minutes.
+went with the endpoint read as a lost sighting. It names the machine writing the answer
+in flight as soon as that machine has named itself, the one that answered last after
+that, and goes quiet only when nothing is being written and no answer has come back in
+the last ten minutes. "Provider missing or tok/s not showing" below lists every reason
+either one is absent.
 
 **When the line is too narrow, it says less rather than cutting.** The left end gives
 things up in this order, and each step is a shorter *true* sentence:
@@ -855,6 +858,34 @@ your original request. Several finished tasks answered by one turn make several 
 arrival order. A reply to something you just typed has no task line, and a task with no
 recorded request shows its name without an empty quote. These lines return with the reply
 after `/resume`; the finished-task strip above the input is unchanged.
+
+## Provider missing or tok/s not showing — why via or the rate is not there, no rate after a follow-up
+
+`via <machine>` on the line above the message box and the live `38 tok/s` at the right
+edge of the status row are what the machine running the conversation reports as it
+works. When one is missing, it is one of these, and each is on purpose:
+
+- **Nothing is being written right now.** The rate is drawn only while the answer is
+  being thought or written and its first few tokens have arrived. Waiting for the first
+  word, a retry, a tool running, or idle: no rate — the phase words, or nothing.
+- **The working line is showing.** While the line under the conversation carries the
+  phase words, the right edge does not repeat them.
+- **Nothing has answered for ten minutes and nothing is being written.** `via` names the
+  machine writing the answer as soon as it has named itself, then the one that answered
+  last, for ten minutes.
+- **A note saying** `this conversation's engine is an older aforge, so the provider and
+  tok/s are not shown — they come back once it picks up this build`. The session host
+  holding the conversation predates these readings crossing to your window. It is said
+  once, after an answer. A host on an older build retires as soon as it is holding
+  nothing, and the next one runs this build.
+
+**What no longer hides them**, since 2026-09-10: a reasoning level set on the model
+(`/model`, `--reasoning`); a vendor serving its own model (`deepseek/…` answered by
+DeepSeek reads `via deepseek`); the first answer of a conversation, or a follow-up after
+a quiet stretch; a rescue to another machine that failed or was cut short; and a model
+changed while a turn was running, a fallback onto another model, or a model changed from
+another window. Inside a task's page the same readings are the task's own — see the task
+page's status line.
 
 ## The status line at the bottom — the numbers, grouped, and the state word
 
@@ -1310,7 +1341,8 @@ three:
 Row 1 is **what this is** (the session name, or the workspace place if it has not named
 itself) against **what it has cost** (spend, and the context percent only — the
 fraction is what the sheet is for), with a `▸` on the end. Row 2 is **what is
-answering** (the model basename, no rider) against **what is still moving**
+answering** (the model basename, no rider, with the reasoning level spelled on when one
+is set — `kimi-k3:high`) against **what is still moving**
 (`⏺ N running`, `N jobs`, then the state word). Identity left, telemetry right, the gap
 as the only separator, same as the wide row.
 
@@ -1952,88 +1984,114 @@ Between calls the separate waiting dot moves; its response clock starts with
 the request, not with the preceding tool. Task pages never borrow this clock
 from the main conversation.
 
-## The two figures on the right while it works — the up arrow and down arrow, upload and download tokens, how many tokens is it using right now, is anything actually happening
+## What do the up and down arrows mean — the two figures on the right while it works, upload and download tokens, how many tokens is it using right now
 
 While a turn is running, the right edge of the working block carries two figures:
 
 ```
-▸ Working · ctrl+e                                        ↑ 63.6k  ↓ 12
+▸ Working · ctrl+e                                   +3.4k ↑ 63.6k  ↓ 2,531
   reading 2 files in internal/tui3
-· running go test ./internal/session · 41s               ↑ 78.2k  ↓ 486
+· running go test ./internal/session · 41s                 ↑ 67k  ↓ 2,531
 ```
 
-`↑` is what this turn has **sent** to the model, and `↓` is what has **come
-back** from it, both in tokens. Between them they answer the question the
-shimmer cannot: not "is this alive" but "is anything moving, and how fast". A
-`↓` climbing steadily is a model writing; a `↓` that has stopped is a stream
-that has gone quiet, and the line beside it will say so within ten seconds.
+`↑` is **the size of what is being sent right now** — the whole request the
+model is handed on its next step: the instructions, every message so far, and
+everything the tools have handed back. It grows when a step's usage comes back
+and again when a tool's output joins the conversation, because the next request
+carries it. `↓` is
+what has **come back** during this turn: the model's prose, its reasoning, and
+the arguments of the calls it writes — a file body a `write` is streaming counts
+while it streams. Both are in tokens.
 
-**They count up rather than jumping.** Both figures walk toward each new reading
-over a couple of tenths of a second — the same ease as the reply writing itself
-in. The books behind them stay exact; only what is painted is in motion.
+**Every token under ten thousand is visible.** A figure below 10,000 is spelled
+whole — `2,531`, not `2.5k` — so it moves with each token rather than once a
+hundred. From 10,000 up it reads `63.6k`.
+
+**They count up rather than jumping.** Both walk toward each new reading over a
+couple of tenths of a second, the same ease as the reply writing itself in.
 
 **They belong to this turn and they leave with it.** They open at nothing when
-you send a message and they are gone the moment the answer settles, because they
-are a sign that something is moving rather than a total. The session's running
-totals stay on the status line, where they never go away.
+you send a message and are gone the moment the answer settles. What the session
+has spent stays on the status line; `/cost` and `/status` print the exact books.
 
-**Only one row carries them.** The row that stands for the whole turn — the
-compact block's newest line, or `▾ working · ctrl+e` once you have opened the
-work — is the one with both figures on it. A step that has finished carries
-nothing.
+**Only one row carries them** — the compact block's newest line, or
+`▾ working · ctrl+e` once you have opened the work. A step that has finished
+carries nothing. A turn that was split (a correction you typed into it, or a
+step kept out of the compact view because a call failed) still draws them once,
+on the working block where the work is now.
+
+## Is it still working — tokens not moving, the figures light up, what the column does while a tool runs
+
+**The side that has just moved lights up.** When `↓` moves, its figure brightens
+to the reading ink and its arrow one step, then fades back to dim over about a
+second and a third; `↑` does the same on its own when the request grows. So a
+lit `↓` is the model writing now, and a lit `↑` is something just joining what it
+will be sent.
+
+**Both dim and still means nothing is arriving.** While a tool runs — a test
+suite, a long command — nothing is being written and nothing sent, so both
+figures rest dim. That is waiting, not stalled: the step's own clock keeps
+counting beside the tool, and a stream that has gone quiet is named on the line
+within ten seconds.
+
+**A jump in `↑` leaves a receipt.** When the request grows by a lump — a large
+file read joining the conversation — a faint `+3.4k` stands just left of `↑` for
+about a second and a half, then goes, so you can see how much joined without
+subtracting.
+
+**On a narrow terminal** the words win: the receipt goes first, then `↑`, and
+`↓` last, because `↓` is the figure that says something is arriving.
+
+**On a screen-reader or plain terminal** the arrows are spelled `^` and `v`,
+nothing eases, nothing lights up and there is no receipt: the exact figure is
+drawn each time. A sixteen-colour or `NO_COLOR` terminal draws the figures
+without the glow, because it has no fading ink to decay through.
+
+**At rest they are quiet on purpose** — the same dim grey as the step clock and
+`189 lines`, the arrow fainter still. The words on the row are what it is for.
 
 **An opened step shows its own `↓`.** Press `ctrl+e` and each running step's
-caption carries what the model wrote inside it, after its clock: `2s · ↓ 486`.
-There is no `↑` on a step: one request carries the whole conversation rather
-than the step it happens to be in, so a share of it per step would be arithmetic
-nobody performed.
+caption carries what the model wrote inside it, after its clock: `2s · ↓ 486`,
+counting the arguments of the calls it made. There is no `↑` on a step: one
+request carries the whole conversation, not the step it happens to be in.
 
-**A figure nobody has earned yet is not drawn.** Before anything comes back
-there is no `↓`, not a zero. On a narrow terminal the words win and the figures
-are dropped — `↑` first, because `↓` is the one that says something is arriving.
+## No token count inside a task — do the up and down figures show on a task's page, tokens in a task room
 
-**On a screen-reader or plain terminal** the arrows are spelled `^` and `v` and
-nothing eases: the exact figure is drawn each time.
+Yes. A task's page (opened from the task column) draws the same column on the
+task's own live work — never the conversation's figures.
 
-**They are quiet on purpose.** The figures wear the same dim grey as every other
-fact at the right edge of a row — the step clock, `189 lines`, `⠋ 2s / 30s` — and
-the arrow is fainter still. A number that moves does not also need to be bright;
-the words on the row are what it is for.
+- `↑` is **the task's newest request**: one request, never a sum of its steps.
+- `↓` is what the task has written: the steps its page has heard, plus what is
+  arriving on the page since.
 
-**A turn that was split** — a correction you typed into it, or a step kept out of
-the compact view because a call in it failed — keeps the thing that split it
-standing where it happened, with the working block under it. There is one
-working door per turn: a run above the split that holds nothing but the model's
-reasoning draws no `▸ Work · ctrl+e` of its own, because two of those on one page
-read as the same turn running twice. That reasoning is behind the ordinary
-`⠿ thought for 1s · ctrl+e` row instead, the same row a finished turn draws. The
-figures ride the working block, the one where the work is now.
+**A task running through this machine's engine** — the ordinary case, a plain
+`aforge` in a project — has no live lane to its page, so the page reads both
+figures off the task's own record, which it re-reads several times a second:
+`↑` is the newest request as it was sent, and `↓` adds each request's output as
+it lands. The page reads the end of that record, so on a task that has run a
+long time `↓` starts from what that window holds and counts up from there.
 
-## Do the up and down token figures show inside a task room — tokens on a task's own page
-
-Yes. A task's page (a room, opened from the task column) draws the same column on
-its own live work, counted from the task's own lane: `↑` and `↓` are what THAT
-task has sent and received, summed over the steps its page has heard, never the
-conversation's figures. A room opened on a task that was already running shows
-`↓` from the moment the task writes anything and `↑` from its next finished step
-— the page cannot know what it did not hear, so it draws nothing rather than a
-guess. The column leaves when the task finishes, as it does in the conversation.
+A room opened on a task that was already running shows `↑` from the newest
+request in its record and `↓` from the moment the task writes anything. The
+column leaves when the task finishes.
+The price and the token count on the task's row in the task column move at each
+step that spends, not only when the task changes state.
 
 A run's read-only transcript inside an adaptive run's page draws no column: it
-is a journal being read back, not work being watched.
+is a record being read back, not work being watched.
 
 ## How exact are the up and down token figures — is the upload figure what I am billed for
 
-`↓` is the provider's own count as soon as a step reports one. In between, while
-the model is still writing, it is estimated from the text already on your screen
-at about four bytes to the token — the same estimate aforge uses everywhere else
-it has to guess — and the exact figure takes over the moment it lands.
+**`↑` is not the bill.** It is the size of one request — the provider's own count
+of the last one, or the conversation's estimate of itself once it has grown past
+that (a tool result that has not been sent yet). What you pay for input is every
+request added together, which on a long turn is several times `↑`.
 
-`↑` is the same shape the other way round: the tokens this turn has actually
-been billed for, and, before the first step of the turn has reported anything,
-the weight of the conversation being sent. It steps up rather than climbing
-smoothly, because that is what really happens — a request goes out whole each
-time a tool result joins the conversation.
+**`↓` is the provider's own count** of the turn's output as each step reports it,
+**plus** an estimate of what has arrived on your screen since — about four bytes
+to the token, the same estimate aforge uses everywhere it has to guess. So it
+keeps moving after a count lands instead of standing still until the page
+catches up, and the next count takes over when it arrives.
 
 Neither figure changes what you are charged, and neither is what `/cost` prints.
 `/cost` and `/status` print the exact books.

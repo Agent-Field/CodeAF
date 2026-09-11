@@ -42,7 +42,7 @@ func roomModelApp(t *testing.T, model string) (*app, *roomFake) {
 }
 
 // statusText is the status line as a reader sees it, drawn through the frame's
-// own door (view.go's [app.statusRow]) so the reasoning splice is on it.
+// own door (view.go's [app.statusRow]).
 func statusText(a *app) string {
 	return plain(strings.Join(a.statusRow(a.width), "\n"))
 }
@@ -135,8 +135,8 @@ func TestANodeWithNoPublishedModelNamesNoModelAtAll(t *testing.T) {
 
 // THE DIAL IS THE CONVERSATION'S. The reasoning level rides the conversation's
 // own model wherever that is written — the seam's word builds it (foot.go's
-// [app.seamIdentity]) and the phone deck's row is lent it (view.go's
-// [app.statusRow]) — and a task model must never wear it: a knob the person
+// [app.seamIdentity]) and the phone deck's chip asks for it (statusdeck.go's
+// [app.deckModelRow]) — and a task model must never wear it: a knob the person
 // turned for this session, printed on a node that was never run with it, is a
 // fact invented on screen.
 func TestATaskModelNeverWearsTheConversationsReasoningSuffix(t *testing.T) {

@@ -1687,6 +1687,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		scanned    int
 		spent      Usage
 		created    []fileChange
+		requests   RequestBooks
 	)
 	// The picture index is built as the messages are, because this is the one
 	// pass that holds both halves at once: the reference the journal wrote and
@@ -1931,12 +1932,19 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 				spent.Turns += used.Calls
 			}
 		case "call":
-			// DROPPED ON PURPOSE, and this arm exists to say so rather than to
-			// leave it to the switch falling off the end. A call line is the
-			// SHAPE of one request — who served it, how much of its prompt was
-			// warm — and every dollar on it is already counted in the seal that
-			// closed its turn. Folding it in here would bill the session twice
-			// for the same money.
+			// NEVER BILLED, and this arm exists to say so rather than to leave it
+			// to the switch falling off the end. A call line is the SHAPE of one
+			// request — who served it, how much of its prompt was warm — and every
+			// dollar on it is already counted in the seal that closed its turn.
+			// Folding it into `spent` would bill the session twice for the same
+			// money.
+			//
+			// IT IS READ FOR ITS SHAPE, which is what it was written for: the
+			// size of each request and what came back from it, for a page that
+			// watches this work with no lane to it ([RequestBooks]).
+			if entry.Call != nil {
+				requests.observe(*entry.Call)
+			}
 		case "error":
 			// DROPPED ON PURPOSE, for the reason a call line is, and one of its
 			// own: a failed call cost nothing to bill and put nothing in the
@@ -2052,6 +2060,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		tooks:          tooks,
 		usage:          spent,
 		created:        created,
+		requests:       requests,
 		existed:        lines > 0,
 	}, nil
 }
@@ -2189,6 +2198,9 @@ func legacyCompactionNote(summary string) string {
 // should not have to count positions to know which bool is which.
 type replayedSession struct {
 	messages []ai.Message
+	// requests is what the file's request lines said, read beside the rebuild
+	// for a page watching the work with no lane to it ([RequestBooks]).
+	requests RequestBooks
 	// reasoning is aligned with messages. Legacy lines and rewritten messages
 	// carry zero entries, which means they serialize exactly as before.
 	reasoning []provider.MessageReasoning

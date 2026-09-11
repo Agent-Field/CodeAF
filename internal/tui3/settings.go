@@ -692,6 +692,16 @@ var settingUI = map[string]settingMeta{
 		about: "an answer that is slow to start is asked of the next-best machine as well, " +
 			"and you read whichever replies first. One extra call, under a tenth of spend.",
 	},
+	// AND THE OTHER HALF OF THE SAME QUESTION: the three rows above are about
+	// WHERE a request goes, this is about how much rides in front of it. It is
+	// on this tab and not under Session because the answer is a fact about the
+	// model — how much room it has — rather than about this conversation.
+	config.KeyPromptProfile: {
+		tab: tabProviders, label: "prompt profile", widget: widgetCycle,
+		about: "how much aforge tells the model before you type. auto reads the model's " +
+			"context window and goes lean under 32,000 tokens; lean and full say so yourself, " +
+			"for an endpoint that reports a window its model does not really have.",
+	},
 }
 
 func init() {
@@ -764,6 +774,7 @@ func modelsSectionOrder() []string {
 		config.LaneSettingKey(talkSlot),
 		config.KeyLaneGuard,
 		config.KeyRouting,
+		config.KeyPromptProfile,
 		config.KeyCrew,
 	}
 	for _, tier := range roles.Tiers {

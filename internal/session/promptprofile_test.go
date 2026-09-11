@@ -134,6 +134,54 @@ func TestTheEnvironmentPinDecidesBothWays(t *testing.T) {
 	}
 }
 
+// THE SETTINGS ROW OUTRANKS THE WINDOW AND LOSES TO THE PIN, which is the whole
+// of the ladder in one test (internal/config's KeyPromptProfile row).
+func TestTheSettingsRowOutranksTheWindowAndLosesToThePin(t *testing.T) {
+	t.Setenv(promptProfileEnv, "")
+
+	roomy := windowConfig(t, 128_000)
+	roomy.PromptProfile = configpkg.PromptProfileLean
+	if got := roomy.promptProfile(); !got.lean() {
+		t.Errorf("a lean row on a 128,000-token window resolved to %s", got)
+	}
+	small := windowConfig(t, 8_192)
+	small.PromptProfile = configpkg.PromptProfileFull
+	if got := small.promptProfile(); got.lean() {
+		t.Errorf("a full row on an 8,192-token window resolved to %s", got)
+	}
+
+	// AND THE PIN IS FOR ONE LAUNCH, so it wins over the row a person keeps.
+	t.Setenv(promptProfileEnv, "full")
+	if got := roomy.promptProfile(); got.lean() {
+		t.Errorf("the pin lost to the row: %s", got)
+	}
+}
+
+// AND `auto` DECIDES NOTHING, BYTE FOR BYTE. The default word, the empty string
+// a door that has never heard of the row hands over, and a word that is not one
+// of the three all leave the window to answer, and all render the same page.
+func TestTheAutoRowRendersExactlyWhatNoRowRenders(t *testing.T) {
+	t.Setenv(promptProfileEnv, "")
+	at := time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)
+	workspace, profileDir := t.TempDir(), t.TempDir()
+
+	pageFor := func(word string, window int) string {
+		t.Helper()
+		return renderSystemAt(Config{
+			Workspace: workspace, Model: "test/model", ContextWindow: window,
+			ProfileDir: profileDir, PromptProfile: word,
+		}, at)
+	}
+	for _, window := range []int{128_000, 8_192} {
+		settled := pageFor("", window)
+		for _, word := range []string{configpkg.PromptProfileAuto, "AUTO", " ", "leaner"} {
+			if pageFor(word, window) != settled {
+				t.Errorf("%q on a %d-token window rendered a different page from no row at all", word, window)
+			}
+		}
+	}
+}
+
 // AND IT IS SETTLED ONCE, at construction, into the config every later reader
 // reads (agent.go's newAgent).
 func TestTheProfileIsSettledOnceAtConstruction(t *testing.T) {
