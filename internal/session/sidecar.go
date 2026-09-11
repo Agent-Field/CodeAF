@@ -49,7 +49,10 @@ package session
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
+
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 )
 
 // sidecar is one reading running beside the work. T is whatever the reading
@@ -157,4 +160,103 @@ func (s *sidecar[T]) end() {
 		return
 	}
 	s.stop()
+}
+
+// ── AND THE OTHER HALF: TELLING SOMEBODY WITHOUT WAITING FOR THEM ───────────
+//
+// [readBeside] keeps the WORK from waiting on a reading. A desk keeps the work
+// from waiting on a LISTENER, which is the same law read from the other end and
+// was a measured hole in it: every phase this package posts — and every phase
+// the transport posts, which arrives by this same door (phasenews.go's
+// [forwardPhase]) — was handed to the surface's reader ON THE CALLING
+// GOROUTINE, and internal/tui3's reader asks Bubble Tea for a frame through an
+// UNBUFFERED channel. So the last act of every model call, `phase.done()`, paid
+// a whole Update-and-View cycle before the engine goroutine got its own call
+// back. On every call, not only a cancelled one. `postPhaseNews` and
+// `postLaneNews` both said in their own doc comments that they never block on a
+// slow reader, and both of them did.
+//
+// THE LAW IS: THE PRODUCER LEAVES THE NEWS AND WALKS AWAY. internal/provider's
+// phase.go already names the division — "the one live reader hands the news to
+// a desk and asks for a frame" — and this is the desk. A listener is told on the
+// desk's own goroutine, IN THE ORDER IT WAS TOLD, and at most one such goroutine
+// is alive per desk at a time: it is started by the telling that finds the desk
+// empty and it returns when the desk is empty again.
+//
+// NOTHING IS COALESCED AND NOTHING IS DROPPED. A phase is a state and a
+// latest-wins slot would serve it, but lane news is a LEDGER and dropping one of
+// those loses a request nobody can count again — so the queue is honest and the
+// bound on it is the listener's own appetite. A listener that never returns
+// holds one goroutine and a growing slice, which is a listener that is broken in
+// a way this package cannot fix and must not hide.
+
+// desk is somewhere to leave news for a listener who may be slow.
+//
+// The zero value is a working desk, which is what lets the two news doors each
+// declare one as a package variable and never build it.
+type desk struct {
+	mu      sync.Mutex
+	queue   []func()
+	handing bool
+	// idle is made on demand by [desk.settled] and closed when the queue runs
+	// out, so a desk nobody is waiting on allocates nothing.
+	idle chan struct{}
+}
+
+// tell leaves one telling on the desk and returns at once.
+func (d *desk) tell(hand func()) {
+	if d == nil || hand == nil {
+		return
+	}
+	d.mu.Lock()
+	d.queue = append(d.queue, hand)
+	start := !d.handing
+	d.handing = true
+	d.mu.Unlock()
+	if start {
+		guard.Go("news desk", d.hand)
+	}
+}
+
+// hand works through the desk until there is nothing on it. It is the whole of
+// the desk's goroutine, and the empty desk is the only way out, so the flag it
+// clears there is what makes the next [desk.tell] start a fresh one.
+func (d *desk) hand() {
+	for {
+		d.mu.Lock()
+		if len(d.queue) == 0 {
+			d.handing = false
+			if d.idle != nil {
+				close(d.idle)
+				d.idle = nil
+			}
+			d.mu.Unlock()
+			return
+		}
+		next := d.queue[0]
+		d.queue = d.queue[1:]
+		d.mu.Unlock()
+		next()
+	}
+}
+
+// settled waits until everything the desk has been told has been handed on. A
+// listener's log is the only thing that can see the difference between a desk
+// and a straight call, so this is how a test reads one without racing it; the
+// running product never waits here, which is the entire point of the desk.
+func (d *desk) settled() {
+	if d == nil {
+		return
+	}
+	d.mu.Lock()
+	if !d.handing {
+		d.mu.Unlock()
+		return
+	}
+	if d.idle == nil {
+		d.idle = make(chan struct{})
+	}
+	wait := d.idle
+	d.mu.Unlock()
+	<-wait
 }

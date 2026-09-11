@@ -192,3 +192,74 @@ func TestThereIsOneDoorForAReadingBesideTheWork(t *testing.T) {
 		t.Fatalf("%d declarations of readBeside, want exactly one (sidecar.go)", doors)
 	}
 }
+
+// ── AND THE SAME LAW READ FROM THE OTHER END ────────────────────────────────
+
+// A LISTENER IS TOLD FROM A DESK, NEVER DOWN THE TELLER'S OWN STACK.
+//
+// [readBeside] above keeps the work from waiting on a reading; this keeps it
+// from waiting on a LISTENER. Both news doors in this package (phasenews.go,
+// lanenews.go) resolve the registered reader into a local called `reader` and
+// then hand it on, and for as long as that hand-on was a straight call the last
+// act of every model call waited out a whole Bubble Tea draw on the engine's own
+// goroutine — because internal/tui3's reader asks for a frame down an unbuffered
+// channel. So: a `reader(…)` call in this package is only ever an argument to a
+// desk's [desk.tell].
+//
+// THE RULE IS THE NAME. `reader` is what both doors already call the thing they
+// resolved, so a third door written in the same voice is on this law the day it
+// lands, and one written in a different voice has to say why.
+func TestAListenerIsAlwaysToldFromADesk(t *testing.T) {
+	set := token.NewFileSet()
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatalf("reading the package: %v", err)
+	}
+	told := 0
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(set, filepath.Join(".", name), nil, parser.SkipObjectResolution)
+		if err != nil {
+			t.Fatalf("parsing %s: %v", name, err)
+		}
+		desks := tellRanges(file)
+		ast.Inspect(file, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			ident, ok := call.Fun.(*ast.Ident)
+			if !ok || ident.Name != "reader" {
+				return true
+			}
+			told++
+			if !insideSpan(desks, call.Pos()) {
+				t.Errorf("%s: the registered listener is called down the teller's own stack — "+
+					"hand it to a desk instead (sidecar.go's [desk.tell])", set.Position(call.Pos()))
+			}
+			return true
+		})
+	}
+	if told == 0 {
+		t.Fatal("no listener is told anywhere in this package, so this law guards nothing")
+	}
+}
+
+// tellRanges is every span of source that is an argument to a desk's `tell`.
+func tellRanges(file *ast.File) [][2]token.Pos {
+	var spans [][2]token.Pos
+	ast.Inspect(file, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if selector, ok := call.Fun.(*ast.SelectorExpr); ok && selector.Sel.Name == "tell" {
+			spans = append(spans, [2]token.Pos{call.Pos(), call.End()})
+		}
+		return true
+	})
+	return spans
+}

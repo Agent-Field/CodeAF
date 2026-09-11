@@ -287,6 +287,13 @@ func (a *Agent) AnswerLaneOffer(yes bool) bool {
 	return answerer.AnswerOffer(offer.ask, yes)
 }
 
+// phaseDesk is where a phase is left for the surface. IT IS THE WHOLE OF WHY
+// THE SENTENCE BELOW IS TRUE — it used to be a straight call, and the surface's
+// reader asks Bubble Tea for a frame down an unbuffered channel, so the last act
+// of every model call waited out a whole draw on the engine's own goroutine
+// (sidecar.go's desk, and loop.go's law).
+var phaseDesk desk
+
 // postPhaseNews tells whoever is listening. It never blocks on a slow reader
 // and never panics on an absent one, for the reason [postLaneNews] does not: a
 // measurement must not be able to break the turn it measured.
@@ -303,7 +310,10 @@ func postPhaseNews(news PhaseNews) {
 	if news.Since.IsZero() {
 		news.Since = news.At
 	}
-	reader(news)
+	// THE READER IS THE ONE THAT WAS THERE WHEN THE NEWS HAPPENED, resolved
+	// here and carried to the desk, so a surface closing down never sees a
+	// moment that belongs to its successor.
+	phaseDesk.tell(func() { reader(news) })
 }
 
 // ── THE BEAT: A STAGE THAT IS STILL RUNNING IS STILL DRAWN ──────────────────

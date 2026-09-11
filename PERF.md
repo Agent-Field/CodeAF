@@ -2316,6 +2316,20 @@ step in flight (`errMarkCut`) so the boundary it is spent at arrives at once.
 Measured 2026-09-11: 8.1 s between a tool result and the next step, deciding
 nothing.
 
+The law is also true read from the other end: **nothing the turn tells may hold
+it up either.** `postPhaseNews` and `postLaneNews` both claimed in their own doc
+comments never to block on a slow reader, and both called the reader down the
+teller's own stack — so `phase.done()`, the last act of every model call, paid a
+whole Bubble Tea Update-and-View cycle on the engine's goroutine, because
+`internal/tui3` asks for its frame through an unbuffered channel. News is left on
+a `desk` now (`internal/session/sidecar.go`): one goroutine per desk at a time,
+started by the telling that finds it empty and returning when it is empty again,
+order kept, **nothing coalesced and nothing dropped** — a phase is a state and
+would survive a latest-wins slot, but lane news is a ledger and a dropped row is a
+request nobody can count again. `TestASlowListenerNeverHoldsTheTurnThatIsTellingIt`
+stages a listener as slow as every other auxiliary and asserts the same two
+figures; `TestAListenerIsAlwaysToldFromADesk` is the structural half.
+
 The two end-of-turn readers are raced against each other rather than taken in
 series, and both now carry a window: `askRouteJudge` at `routeRaceWindow` (20 s)
 and `confirmRouteWork` at `routeRaceConfirmWindow` (30 s). They inherited the low

@@ -44,6 +44,15 @@ package session
 // instead is a phase word for the whole of it, because a wait that is real is
 // reported (docs/design/waiting/DESIGN.md).
 //
+// THE LAW IS ALSO TRUE READ FROM THE OTHER END: NOTHING THE TURN *TELLS* MAY
+// HOLD IT UP EITHER. A reading is something a turn asks for; a phase is
+// something it says, and for as long as saying one was a straight call into the
+// surface's reader, the last act of every model call waited out a whole Bubble
+// Tea draw on this goroutine — because internal/tui3 asks for its frame down an
+// unbuffered channel. News is left on a desk now and the teller walks away
+// (sidecar.go's [desk], phasenews.go, lanenews.go), which is the same law with
+// the producer and the consumer swapped.
+//
 // AND THE END OF A TURN IS A DIFFERENT WAIT FROM THIS ONE. Once the model has
 // stopped writing there is no work left to run beside, so the two readers that
 // decide whether the answer finished the ask and whether it should have been work

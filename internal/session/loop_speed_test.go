@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -428,4 +429,60 @@ func TestAMarksReadingRidesBesideTheStepAndCutsItOnIndependentParts(t *testing.T
 		t.Fatal("the mark's reader was never asked")
 	}
 	started.await(t)
+}
+
+// ── AND THE LAW READ FROM THE OTHER END ─────────────────────────────────────
+
+// A SLOW LISTENER NEVER HOLDS THE ENGINE'S OWN GOROUTINE.
+//
+// The readings above are things the turn asks FOR. This is the thing the turn
+// TELLS: every phase it posts went straight down the caller's own stack into the
+// surface's reader, and internal/tui3's reader asks Bubble Tea for a frame
+// through an unbuffered channel — so the last act of every model call,
+// `phase.done()`, paid a whole Update-and-View cycle before the engine goroutine
+// got its call back. On every call, not only a cancelled one.
+//
+// The listener here takes as long as every other auxiliary in this file, and the
+// two figures the law is about are the same two. It passes because the news is
+// left on a desk (sidecar.go) rather than carried.
+func TestASlowListenerNeverHoldsTheTurnThatIsTellingIt(t *testing.T) {
+	// The listener is released the instant the test ends, so a desk still working
+	// through a backlog never outlives the thing it was describing.
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	var told int64
+	previous := OnPhaseNews(func(PhaseNews) {
+		atomic.AddInt64(&told, 1)
+		select {
+		case <-release:
+		case <-time.After(paceSlowReading):
+		}
+	})
+	t.Cleanup(func() { OnPhaseNews(previous) })
+
+	rounds := 3
+	completer := &paceCompleter{
+		steps: paceRounds(rounds, "all done"),
+		route: `{"inject":[],"cmd":null}`,
+	}
+	agent, _, journal := paceAgent(t, completer)
+
+	collect(t, mustSubmit(t, agent, "read three files and tell me what is in them"))
+
+	pace := pacedTurn(t, journal)
+	if pace.SendMS > paceLawBudget.Milliseconds() {
+		t.Fatalf("the person waited %dms to be sent anywhere while a listener was slow, "+
+			"want at most %dms — a phase was posted down the turn's own stack",
+			pace.SendMS, paceLawBudget.Milliseconds())
+	}
+	if pace.StepGapMS > paceLawBudget.Milliseconds() {
+		t.Fatalf("a tool result waited %dms for the next request while a listener was slow, "+
+			"want at most %dms — a phase was posted down the turn's own stack",
+			pace.StepGapMS, paceLawBudget.Milliseconds())
+	}
+	// AND THE LISTENER REALLY WAS TOLD. A turn that posted nothing would pass this
+	// law by saying nothing, which is the other way to break the status line.
+	if atomic.LoadInt64(&told) == 0 {
+		t.Fatal("the listener was never told a phase — the law was not tested")
+	}
 }
