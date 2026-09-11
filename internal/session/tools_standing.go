@@ -242,14 +242,17 @@ func (a *Agent) standingWatch() standing.Watch {
 // one of those sentences is now said ONCE, in the schema field it governs.
 //
 // AND IT STAYS WHERE THE CALL IS MADE, WHICH WAS MEASURED (2026-09-11). A lane
-// moved all of this onto the page section built from the same predicate, so the
-// tool itself said only its ops; ten live chat-door journeys then passed 3 of
-// 10 against 8 of 8 for this text, because the conversation began doing the work
-// — it wrote the report file itself before proposing — in 7 of them and never
-// with this description. The recipe for exactly that sentence ("keep an eye on my
-// inbox folder and keep reports/inbox.md current" is file with does.kind task
-// and does.report) and "doing a standing sentence once instead of proposing it"
-// have to be in front of the model at the moment it chooses between the two.
+// moved recognition onto the page section built from the same predicate and cut
+// the schema below to one line a field. Ten live chat-door journeys per text
+// then passed 3, 4 and 7 of 10 against 10 of 10 for this text, because the
+// conversation began doing the work — writing the report file itself before
+// proposing — in 7, 6 and 2 of them and never with this text. The recipe for
+// exactly that sentence ("keep an eye on my inbox folder and keep
+// reports/inbox.md current" is file with does.kind task and does.report) and
+// "doing a standing sentence once instead of proposing it" have to be in front
+// of the model at the moment it chooses between the two, and so both this string
+// and [standSchemaJSON] are the measured text, byte for byte
+// (prefixbudget_test.go's ledger has the table).
 var standDescription = "Set up something that keeps working after this window is closed — a reminder, a watch on the world, a rule, or work that runs overnight — and manage the ones that already stand. THE PERSON NEVER NAMES THIS TOOL; you recognise it from what their sentence IS.\n\n" +
 	"THE DISCHARGE TEST decides it. Can this sentence be satisfied once and then forgotten? If it CAN, it is part of the work in front of you — an acceptance criterion, an instruction — and it does NOT stand, whatever words it is dressed in and even when it says \"make sure\": \"make sure this website you are building is 3 pages\" is discharged the moment the site has three pages. If it can NEVER be discharged — if work nobody has done yet could violate it tomorrow — it is standing: \"make sure the tests never break\".\n\n" +
 	"ANCHORING. A sentence about the artifact under construction RIGHT NOW binds the current work, whatever verbs it uses, and what anchors it is the GRAMMAR: a demonstrative pointing at the thing in front of you (\"this website you're building\"), or a present tense about work already under way (\"what you're doing\"). An \"always\", a \"never\" or an \"ensure\" inside such a sentence is EMPHASIS ON THIS WORK — a quality bar for the thing being built is acceptance, and acceptance is never a card.\n\n" +
@@ -258,64 +261,47 @@ var standDescription = "Set up something that keeps working after this window is
 	"Doing a standing sentence once instead of proposing it answers a request they did not make: \"run the tests\" is work you do now, \"run the tests whenever I push\" is one of these. The `watch` tool is the near neighbour that is NOT this: a watch is a job inside this conversation and stops the moment the window closes, so anything that has to keep looking after they walk away belongs here and never there.\n\n" +
 	"Nothing stands until the person says yes: the card waits for them with no clock on it, and a session nobody is watching cannot set one up at all. Money is not yours to negotiate — omit rails and cost_words unless they named a limit. op=list shows what already stands here; op=pause, op=resume and op=stop take an id or the person's own words, and stop is permanent. op=change is not yours to call — it is what the card answers when they want it different."
 
-// standSchemaJSON is the call's shape, and each description is ONE LINE SAYING
-// WHAT THE FIELD IS FOR, plus the law that governs it where there is one.
-//
-// THREE KINDS OF SENTENCE WERE TAKEN OUT OF IT (2026-09-11), and each still has
-// exactly one home. What the page's standing section already teaches — hold's
-// meaning, when.at against when.in, the passed-moment recomputation — is said
-// there. What a refusal teaches at the moment it applies — a moment already
-// gone, an expiry before the first firing or inside one check of it, a does on
-// a hold, at and in together — is said by the refusal, which carries the clock
-// and the figures the schema could only describe ([standingPassed],
-// [standingRetires], [standingOutlivedByACheck]). And what only a person asks —
-// where a `say` lands when the window is shut, why an end a minute after a
-// one-minute reminder is refused — is the manual's keeping-an-eye page, which
-// the `manual` tool reaches. What stays is every rule the model must hold before
-// it calls: the person's sentence verbatim, the one spelling `instructions`, a
-// report the run never writes, and limits, reach, placement, grant and model
-// only when the person named them.
 var standSchemaJSON = `{"type":"object","properties":{` +
-	`"folder_scope":{"type":"object","description":"A hold's folders, in place of altitude: existing collection ids they named, never inferred.","properties":{"collection_ids":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":32},"descendants":{"type":"boolean","description":"True only when they include subfolders."}},"required":["collection_ids"],"additionalProperties":false},` +
+	`"folder_scope":{"type":"object","description":"Explicit folder scope for a hold only; replaces altitude. Use existing collection IDs, never infer from shortcuts. Requires a person's answer to the proposal.","properties":{"collection_ids":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":32},"descendants":{"type":"boolean","description":"True only when the person includes subfolders."}},"required":["collection_ids"],"additionalProperties":false},` +
 	`"placement":{"type":"string","description":"Work that runs (does.kind task) only: the id of an existing folder to place it in, so that folder's rules reach every run. Send it only when they named a folder. Omitted, the work is placed where this conversation is placed, or in no folder."},` +
 	`"op":{"type":"string","enum":["propose","list","pause","resume","stop","change"],"description":"propose a new one, list what stands here, or pause, resume or stop one that does."},` +
-	`"words":{"type":"string","description":"THE PERSON'S OWN SENTENCE, verbatim, never a paraphrase: every card and row leads with it. On pause, resume and stop it may name the item instead of id."},` +
-	`"when":{"type":"object","description":"What wakes it; only its kind's fields are read.","properties":{` +
-	`"kind":{"type":"string","enum":["at","every","file","idle","probe","hold"],"description":"at: once, then it retires. every: a rhythm. file: a glob changing. idle: the machine quiet a while. probe: a look at the world judged against their words. hold: never wakes."},` +
-	`"at":{"type":"string","description":"Local RFC3339 moment (\"2026-08-20T18:00:00+01:00\"), worked out from Now, never from a shell clock."},` +
-	`"in":{"type":"string","description":"Go duration from the instant you call (\"2m\", \"1h30m\"); the result names the moment it landed on."},` +
-	`"every":{"type":"string","description":"Five-field cron (\"0 9 * * 1\") or a Go duration of a minute or more."},` +
-	`"glob":{"type":"string","description":"Relative to the project: * stays in one folder, a ** segment reaches every folder below (inbox/**/*.md)."},` +
-	`"idle_for":{"type":"string","description":"Go duration (\"45m\")."},` +
-	`"probe":{"type":"object","description":"EXACTLY ONE of command, or tool with args.","properties":{` +
-	`"command":{"type":"string","description":"Shell command run in the project; the judgment reads its output."},` +
-	`"tool":{"type":"string","description":"A tool on your belt instead, a connected account's included."},` +
-	`"args":{"type":"object"}` +
+	`"words":{"type":"string","description":"THE PERSON'S OWN SENTENCE, verbatim, never a paraphrase: every card, row and note leads with it. On pause, resume and stop it names an item instead of its id."},` +
+	`"when":{"type":"object","description":"What wakes it. Only the fields this kind names are read.","properties":{` +
+	`"kind":{"type":"string","enum":["at","every","file","idle","probe","hold"],"description":"at: once at a moment, then it retires. every: a rhythm. file: a glob changing. idle: the machine quiet a while. probe: a look at the world judged against the person's words. hold: NEVER WAKES and so can never spend — the kind for a rule, a convention or a preference, a sentence with no moment, rhythm or condition in it; it rides automatically into the world of every conversation and task it reaches, which is how it is kept."},` +
+	`"at":{"type":"string","description":"The one moment of an at, a local RFC3339 stamp (\"2026-08-20T18:00:00+01:00\"). Work it out from the Now line in your instructions; NEVER shell out to read a clock. A moment ALREADY PASSED is refused, and the refusal says the time now — recompute from that, not from the Now line you already used. For a relative moment send in."},` +
+	`"in":{"type":"string","description":"An at's moment as a distance from RIGHT NOW: a Go duration (\"2m\", \"1h30m\"). aforge resolves it at the instant you call and answers with the moment it landed on. Send at or in, never both."},` +
+	`"every":{"type":"string","description":"An every's rhythm: a five-field cron line (\"0 9 * * 1\") or a Go duration of at least a minute (\"20m\", \"2h\")."},` +
+	`"glob":{"type":"string","description":"A file watch's pattern, relative to the project. * stays inside one folder; a whole ** segment reaches every folder below it (inbox/**/*.md)."},` +
+	`"idle_for":{"type":"string","description":"How quiet the machine must have been for an idle item: a Go duration (\"45m\")."},` +
+	`"probe":{"type":"object","description":"One look at the world: EXACTLY ONE of a shell command or a belt tool with arguments.","properties":{` +
+	`"command":{"type":"string","description":"A shell command run in the project, whose output the judgment reads."},` +
+	`"tool":{"type":"string","description":"A tool on your belt to call instead, including one a connected account brought."},` +
+	`"args":{"type":"object","description":"That tool's arguments."}` +
 	`},"additionalProperties":false},` +
-	`"probe_every":{"type":"string","description":"Go duration; defaults to the check interval."},` +
-	`"hint":{"type":"string","description":"What a yes looks like in the probe's output: \"yes when any run on main shows conclusion=failure\"."}` +
+	`"probe_every":{"type":"string","description":"How often to take that look, a Go duration. Defaults to how often anything is checked."},` +
+	`"hint":{"type":"string","description":"What a yes looks like, for the cheap judgment that reads the probe's output: \"yes when any run on main shows conclusion=failure\"."}` +
 	`},"additionalProperties":false},` +
-	`"does":{"type":"object","description":"What a firing does. Every waking kind needs one; a hold takes none.","properties":{` +
-	`"kind":{"type":"string","enum":["say","task"],"description":"say: one line to the person, wherever they are. task: runs instructions unattended in a session of its own."},` +
-	`"say":{"type":"string","description":"The line; {{evidence}} becomes what the probe found."},` +
-	`"instructions":{"type":"string","description":"THE WORK one run does, written whole: nobody will be there to ask. With does.report, say what the report holds and never to write the file or make its folder: its final answer is published. {{evidence}} as in say."},` +
+	`"does":{"type":"object","description":"What a firing does. Every waking kind needs one; a hold takes NONE, and sending one with a hold is refused.","properties":{` +
+	`"kind":{"type":"string","enum":["say","task"],"description":"say delivers one line to the person: into this conversation when it is open, else whichever conversation of this project they are in, else waiting on home and in the next one they open. task runs its instructions in a session of its own, unattended, with a cost row."},` +
+	`"say":{"type":"string","description":"The line to deliver. {{evidence}} in it is replaced by what the probe found."},` +
+	`"instructions":{"type":"string","description":"THE WORK one run does, written whole: nobody will be there to ask. With does.report, say what the report holds and never to write the file or make its folder: its final answer is published. {{evidence}} is replaced by what the probe found."},` +
 	`"report":{"type":"string","description":"Only when they asked for a file kept current: its path inside the project. Each run's final answer IS the report, and aforge publishes it there, replacing the last one; the run never writes it. Never inside what when.glob watches."},` +
 	`"acceptance":{"type":"string","description":"How anybody checks the work is done."},` +
 	`"model":{"type":"string","description":"Model for the work, only when the person named one."},` +
-	`"max_steps":{"type":"integer","description":"Tool calls per run (default ` + strconv.Itoa(standingRunSteps) + `)."}` +
+	`"max_steps":{"type":"integer","description":"Tool calls one firing's work may take (default ` + strconv.Itoa(standingRunSteps) + `)."}` +
 	`},"additionalProperties":false},` +
-	`"rails":{"type":"object","description":"Only limits the person named, each quoted in cost_words. A hold takes only expires.","properties":{` +
-	`"per_run_usd":{"type":"number","description":"Most one firing may spend (default ` + strconv.FormatFloat(standDefaultPerRunUSD, 'f', 2, 64) + `)."},` +
-	`"max_per_day":{"type":"integer","description":"Firings in one local day (default ` + strconv.Itoa(standDefaultMaxPerDay) + `)."},` +
-	`"expires":{"type":"string","description":"Local RFC3339 moment it retires; omit for never. A one-off needs none."}` +
+	`"rails":{"type":"object","description":"Optional quiet backstops. Name money only when the person did; otherwise the card quotes the machine-wide daily allowance. A hold takes none — it never wakes, so it never spends. Only expires means anything on one.","properties":{` +
+	`"per_run_usd":{"type":"number","description":"The most one firing may spend, judgment included. Send only when they named a per-run limit; otherwise it quietly defaults to ` + strconv.FormatFloat(standDefaultPerRunUSD, 'f', 2, 64) + `."},` +
+	`"max_per_day":{"type":"integer","description":"Firings allowed in one local day. Send only when they named a count; otherwise it quietly defaults to ` + strconv.Itoa(standDefaultMaxPerDay) + `."},` +
+	`"expires":{"type":"string","description":"Local RFC3339 stamp after which it retires. Omit for never. A stamp already gone is refused, as when.at is — and so is one less than one check (` + standing.Interval.String() + `) after the item's OWN first firing, which would retire it before it ever ran: checks are that far apart and a check asks about the end before it asks what is due, so an end a minute after a one-minute reminder is found expired at the moment it would have been found due. A one-off needs no end at all, since it retires the moment it fires."}` +
 	`},"additionalProperties":false},` +
-	`"when_words":{"type":"string","description":"The cadence said back plainly (\"Mondays at 9am\"), never cron: the card quotes it."},` +
-	`"cost_words":{"type":"string","description":"A limit they named — money, or how many runs — in their words: \"no more than 3 a day\". A rail sent without it is dropped; omit when they named none."},` +
-	`"guessed":{"type":"boolean","description":"True when YOU invented the cadence; the card then asks."},` +
-	`"altitude":{"type":"string","enum":["conversation","project","machine"],"description":"conversation: this chat. project: every conversation and task here. machine: everything on this computer. Only from their scope words: \"just this chat\" is conversation, \"everywhere\" and \"all my projects\" are machine; omit otherwise."},` +
-	`"title":{"type":"string","description":"Three or four words for a narrow row (\"weekly update\")."},` +
-	`"grant":{"type":"string","description":"Only when they said it: what acting on this may do unasked, in their words (\"open a pull request but never merge it\"). Without it, it may only tell them."},` +
-	`"id":{"type":"string"}` +
+	`"when_words":{"type":"string","description":"The cadence said back plainly — \"Mondays at 9am\". The card quotes this and never the spec, so never cron."},` +
+	`"cost_words":{"type":"string","description":"When the person named a limit — money, or how many runs — quote it in their words: \"at most a dollar a run\", \"no more than 3 a day\". A rail sent without it is dropped. Omit when they named none; aforge quotes the shared allowance."},` +
+	`"guessed":{"type":"boolean","description":"True when YOU invented the cadence because they gave none. The card then asks rather than states."},` +
+	`"altitude":{"type":"string","enum":["conversation","project","machine"],"description":"HOW FAR IT REACHES, and the card always names it. conversation: this chat alone, dying with it. project: every conversation and task here. machine: everything they do on this computer. THEIR OWN SCOPE WORDS CHOOSE IT — \"just this chat\" is conversation, \"everywhere\" and \"all my projects\" are machine. Omit it when they said nothing about scope: widening it on your own judgment decides on their behalf."},` +
+	`"title":{"type":"string","description":"Three or four words for a row too narrow for their sentence — \"weekly update\". Their sentence still leads every screen."},` +
+	`"grant":{"type":"string","description":"One sentence, in their words, for what acting on this may do without asking — \"open a pull request but never merge it\". Send it only when they said something like it; with none, it may only tell them things."},` +
+	`"id":{"type":"string","description":"Which item pause, resume and stop are about. Their own words work too."}` +
 	`},"required":["op"],"additionalProperties":false}`
 
 // standArguments is the wire form.
