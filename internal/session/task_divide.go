@@ -503,10 +503,27 @@ func (a *Agent) armDivision(spec taskSpec) string {
 	if spec.wide {
 		return armedWide
 	}
-	if a.judgedDivisible(spec.request) || a.judgedDivisible(spec.brief) {
+	// A PIECE'S WIDTH IS READ FROM ITS OWN WORDS, NEVER ITS FAMILY'S. A piece
+	// inherits the person's sentence ([taskSpec.request]), and a division's part
+	// opens on its parent's brief composed around its own scope
+	// ([divisionFamily.partBrief]); both describe the whole job, which is what
+	// the parent already divided. Read as the piece's own, they armed every part
+	// of every division by its parent's count of items, which was inert only
+	// while the tree stopped at depth two and no part had the verb to use it.
+	// So the judge's yes arms only the work it was asked about, a root, and the
+	// count reads the scope the piece was handed and nothing composed around it.
+	if spec.parent == 0 && (a.judgedDivisible(spec.request) || a.judgedDivisible(spec.brief)) {
 		return armedJudged
 	}
-	if enumeratesWidth(spec.title, spec.brief, spec.acceptance) {
+	// ONLY A PIECE'S BRIEF CAN HAVE BEEN COMPOSED, so only a piece's is cut back
+	// to its own scope. A root's brief is whatever its proposer wrote, and one
+	// that happens to carry the part heading (a proposal copied out of a part's
+	// room) is still all its own.
+	own := spec.brief
+	if spec.parent != 0 {
+		own = partOwnWords(spec.brief)
+	}
+	if enumeratesWidth(spec.title, own, spec.acceptance) {
 		return armedCounted
 	}
 	return ""
