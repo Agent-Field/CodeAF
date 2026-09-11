@@ -5,20 +5,27 @@ package remote
 // into the workspace and assembled an agent exactly the way `aforge chat` does.
 //
 // The shape is one reader and one writer, and everything else follows from it.
-// Calls arrive in the order the surface made them and are answered in that same
-// order, because a surface that sets a model and then submits a message means
-// those two things in that order and nothing here may reorder them. The one
-// exception is a turn's events, which arrive on a channel the session owns and
-// are pumped by a goroutine of their own — that is the whole reason Submit
-// answers with a stream id instead of a transcript.
+// Calls that open a stream or change the conversation's shape still arrive and
+// are answered in the order the surface made them, on this goroutine
+// ([classify] is the one predicate). A surface that sets a model and then
+// submits a message means those two things in that order and nothing here may
+// reorder them. The one exception is a turn's events, which arrive on a
+// channel the session owns and are pumped by a goroutine of their own — that
+// is the whole reason Submit answers with a stream id instead of a transcript.
 //
-// ORDER IS WORTH MORE THAN OVERLAP, and the one call that pays for it is
-// Compact: it is the only method that does the work itself rather than starting
-// it, so a compaction pass holds the reader for as long as the summarizer takes
-// and the calls behind it wait. Handing it a goroutine would buy a live status
-// line during a compaction and cost the guarantee that a /model followed by a
-// message is a message on the new model — a bad trade, and a bug nobody would
-// reproduce twice.
+// GETTERS AND SMALL ACTS RUN OFF THIS GOROUTINE. A listing that held the
+// reader used to queue a person's keystroke behind it until [callDeadline]
+// fired and the surface declared the connection gone, while the engine went
+// on to apply the key. That is the defect: a person's act is not queued
+// behind an unrelated getter.
+//
+// ORDER IS WORTH MORE THAN OVERLAP for the calls that stay here, and the one
+// that pays for it is Compact: it is the only method that does the work itself
+// rather than starting it, so a compaction pass holds the reader for as long
+// as the summarizer takes and the ordered calls behind it wait. Handing Compact
+// a goroutine would buy a live status line during a compaction and cost the
+// guarantee that a /model followed by a message is a message on the new model
+// — a bad trade, and a bug nobody would reproduce twice.
 //
 // ── VERSION 2: THE CONVERSATION IS NOT THE CONNECTION ────────────────────────
 //
@@ -381,8 +388,9 @@ type Session struct {
 	held  *heldSet
 
 	// surfaces is everybody attached right now. Events fan out to all of them;
-	// calls arrive from each independently and are serialized at the agent by
-	// the same one-call-at-a-time reader every connection has.
+	// calls arrive from each independently. Stream-opening and shape-changing
+	// calls stay serialized on that connection's reader ([classify]); getters
+	// and small acts run off it so a keystroke cannot wait behind a listing.
 	surfaces map[*server]struct{}
 	pumps    sync.WaitGroup
 
@@ -1373,9 +1381,13 @@ type server struct {
 	joined string
 
 	// pending is the stream a call has just opened and dispatch has not yet let
-	// speak. It is one slot rather than a queue because one reader makes one
-	// call at a time.
+	// speak. It is one slot rather than a queue because only an ordered call
+	// opens a stream, and those stay on the reader, one at a time ([classify]).
 	pending *pending
+	// side is every getter or small act this connection has handed off the
+	// reader. The serve loop waits for it before leave, so a listing still
+	// running does not write into a session that has already been closed.
+	side sync.WaitGroup
 	// Observers leave with the view, independently of the durable turn pump.
 	observersMu sync.Mutex
 	observers   map[uint64]*taskFeed
@@ -1400,6 +1412,7 @@ func (s *server) serve(in io.Reader) (err error) {
 			err = guard.Note("remote/engine", recovered)
 			s.fatal(err.Error())
 		}
+		s.side.Wait()
 		s.stopObservers()
 		s.leave()
 	}()
@@ -1427,7 +1440,15 @@ func (s *server) serve(in io.Reader) (err error) {
 			s.fatal(err.Error())
 			return err
 		}
-		s.dispatch(frame)
+		if staysOnReader(frame.Method) {
+			s.dispatch(frame)
+		} else {
+			s.side.Add(1)
+			go func(call Frame) {
+				defer s.side.Done()
+				s.dispatch(call)
+			}(frame)
+		}
 		if s.detached {
 			// THE SURFACE SAID IT WAS GOING, and said so before it went, which
 			// is the fact version 1 could not express. The turn keeps running;
@@ -1631,7 +1652,12 @@ func (s *server) dispatch(call Frame) {
 	}
 	_ = s.send(result)
 	// And only now does a turn opened by that call begin to speak.
-	s.release()
+	// GETTERS AND SMALL ACTS NEVER OPEN A STREAM, so they must not touch
+	// pending: two of them running at once would race the one slot, and one
+	// of them could steal a stream an ordered call had just named.
+	if staysOnReader(call.Method) {
+		s.release()
+	}
 }
 
 func (s *server) invoke(call Frame) (out json.RawMessage, err error) {

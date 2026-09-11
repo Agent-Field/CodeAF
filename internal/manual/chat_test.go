@@ -99,6 +99,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is there a countdown on this question", "questions"},
 		{"what does your rule mean on a question", "questions"},
 		{"can I answer a question over --host", "questions"},
+		{"the engine did not answer in time", "questions"},
+		{"the answer I pressed was refused", "questions"},
 		// The hole on a CARD rather than on a page, which is where the task
 		// proposal's model shortlist went. People ask about the arrows and about
 		// whether moving one is an answer.
