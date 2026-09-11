@@ -2875,8 +2875,10 @@ wisp · /Users/ada/code/wisp
 
 ## Searching the task page: type to filter, find an old task by name, why does the tasks box say type to filter this list, my cursor jumped to another task while I was reading
 
-**Just type.** On the task page every printable key — letters, digits and the space —
-builds a filter, and both sections narrow against it as you go. The message box at the foot
+**Just type.** On the task page every printable key — letters, the space, and digits
+everywhere they are not an answer — builds a filter, and both sections narrow against it as
+you go. The two exceptions are `1` and `2` over a row the record pane beside the list is
+drawing answers for, which answer it: see *Answer a task from the list*. The message box at the foot
 of this place says so itself: it rests on `type to filter this list` rather than the
 `say what you want done` every other place shows, because there is nothing to send from here
 and a box inviting an instruction over a slot that only filters was the one thing on the
@@ -2933,7 +2935,7 @@ too — see *I started a task over ssh and the sidebar stayed empty* above.
 | `enter` | open the main chat, task room, or record card named by this row |
 | `→` | open the family under this row, where it has one; a second `→` on an open family opens the row's verbs |
 | `←` | fold that conversation or family back up |
-| any printable key | type into the filter |
+| any printable key | type into the filter — except `1` and `2` over a row the pane is offering those two answers for, which answer it |
 | `backspace` `ctrl+w` `ctrl+u` | edit the filter |
 | `esc` | clear the filter, or close the page when there is none |
 | `ctrl+.` | close the page |
@@ -2957,9 +2959,11 @@ going to get:
   engine offers one, or opens a card explaining which window holds it. The foot names
   the available door.
 
-Clicking a row's title does what `enter` on it does, on the **first** press — the page opens things,
-it does not change them. The row under the pointer takes the hover step. The wheel walks the
-cursor.
+Clicking a row's title puts the cursor on it and the record pane beside the list becomes that
+row; clicking the **same row again** opens it — the page opens things, it does not change them.
+On a frame too narrow for the pane there is nothing for a first click to show, so one click
+opens as it always did. A click on one of the pane's own answers presses that answer and opens
+nothing. The row under the pointer takes the hover step. The wheel walks the cursor.
 
 ## Main chats and their subtasks — the conversation tree, folds, holds 3 more, what the +3 under a row means
 
@@ -4934,7 +4938,8 @@ header or its arrow control.
 Type to filter; every section narrows at once, and a section the query empties is not drawn.
 **The message box at the foot of this place says `type to filter this list`**, not `say what
 you want done` — on the tasks place there is no message to send and every printable key goes
-to the filter, so the box says what typing into it actually does. Every other place keeps the
+to the filter, so the box says what typing into it actually does. The one exception is `1` and
+`2` over a row the pane is offering those two answers for, which answer it. Every other place keeps the
 shared prompt. `↑` and `↓` move among conversation and task rows and skip the head sentence, the blank lines
 and the section words. `enter` on a main chat opens that conversation. On a task it opens its **room** when this conversation
 is holding, and otherwise goes **inside** it — the record card. Rows another window is running
@@ -4948,11 +4953,92 @@ that identifies the work, not by which line it was on, so a task landing while y
 reading cannot move what `enter` is about to open. If the row you were on leaves the page
 entirely, the cursor parks on the nearest row that is still there.
 
+**On a frame 110 columns or wider the body splits** and the right of it is the cursor row's
+record — what it did, what it cost, where it left the work and what can be done about it. It is
+described in *Preview a task without opening it*, below. The page's own head sentence, with the
+time-window control on it, keeps the whole frame above the rule.
+
 `shift+←` and `shift+→` move the time window backward and forward. `shift+↑` zooms from
 days to weeks and then months; `shift+↓` zooms back in. The window is re-grouped from the
 reading already in hand — nothing goes back to disk for it. On a phone the bottom line
 remains the pressable `‹ back` bar. An empty place teaches what tasks are instead of drawing
 empty headings, and says no count beside that prose.
+
+## Preview a task without opening it — the record beside the list, seeing what a task did, and answering a task from the list with 1 and 2
+
+On a terminal **110 columns or wider** the tasks place splits: the list keeps the left, a dim
+rule divides it, and the right is the record of whatever row the cursor is on. Nothing is
+opened and nothing is lost — walking down with `↑` and `↓` changes what the pane shows, and the
+list stays exactly where it was.
+
+```
+ ▾ Clever Bet Prediction Model using Stochastic Processes          9h   │ Upgraded model v2: vector skills, BOCPD
+   ? Upgraded model v2: vector skills, BOC… your call               1d  │ ? your call · nobody could check it
+   ■ Fit and backtest OU skill model on Li… stopped                 1d  │
+                                                                        │ 5 files · $0.47 · deepseek-v4-flash · 1d ago
+                                                                        │ branch task/upgraded-model-v2 · in a worktree
+                                                                        │
+                                                                        │ Added vector skill ratings, BOCPD change-point
+                                                                        │ detection and a tail-noise model.
+                                                                        │
+                                                                        │ model/skills.py
+                                                                        │ model/bocpd.py
+                                                                        │ 4 more
+                                                                        │
+                                                                        │ 1 accept   2 not right   enter open
+```
+
+What the pane says, in this order, with every line that has nothing behind it left out
+entirely rather than drawn as a zero or a blank:
+
+- the task's **title**;
+- its **state and the reason**, with the same mark the row wears — `your call · nobody could
+  check it`, `stopped`, `done`;
+- one line of **figures**: how many files it wrote, what it cost, which model ran it, and how
+  long ago it landed;
+- the **branch** it was left on, and the word for the copy of your repository the work
+  happened in — `branch task/pages-one-two · in a worktree`;
+- the **first paragraph** of what the task said at the end;
+- up to **five file paths**, then `N more` counted against the honest total;
+- the **verb line**.
+
+**The report is read when the cursor stops, not while it moves.** Holding `↓` through twenty
+rows reads nothing at all; the file is opened once the cursor has been still for a moment, and
+what has been read is kept, so walking back up costs nothing. Until it arrives that part of the
+pane is simply empty — there is no spinner and no `loading`, and nothing on the page ever waits
+for a disk.
+
+**The pane is the record card at a narrower width**, so the two never disagree. `enter` still
+opens the whole card, where the report is complete and scrolls; `esc` comes back to the list
+with the pane showing the same row.
+
+**On a conversation's own row the pane is the conversation**: its title, `3 pieces of work ·
+$9.30`, the first few rows under it in the order the page files them, and `enter open the chat`.
+
+**Under 110 columns there is no pane and no rule.** The place is the list alone, and each row
+carries what it always carried at the right of its own line. Under 60 columns the rows are
+two-line cards, as they have always been.
+
+## Answer a task from the list — accept or reject a finished task with 1 and 2 without opening it
+
+Where the row under the cursor is a task of **this conversation's** that is waiting on you, the
+pane's last line leads with the two answers:
+
+```
+ 1 accept   2 not right   enter open
+```
+
+The words are the task's own — a landing whose merge was refused says `1 resolve it   2 drop
+it` — and they are the same words the card and the block above your message box offer, because
+all three read one question. Press `1` or `2` and the answer goes to the same place it would
+from the card; the letters `a` and `n` still answer it there, and the digit is simply the name
+that fits on one line. Clicking the word does the same thing.
+
+**Where there is no answer to give, no answers are drawn.** A task another conversation ran is
+asking its question in *that* window, and this one cannot answer for it — so the verb line is
+`enter open` alone, and `1` and `2` are typed into the filter like any other character. That
+is also what happens on a frame too narrow for the pane: nothing on screen names the digits, so
+nothing takes them.
 
 ## The foot of the tasks place, and the one verb on its row strip
 

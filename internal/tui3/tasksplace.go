@@ -543,18 +543,7 @@ func (r tasksReading) lay(width int) []tasksLine {
 	add := func(kind tasksLineKind, text string) {
 		lines = append(lines, tasksLine{kind: kind, text: text, owner: -1})
 	}
-	// THE WINDOW EDGE IS NAMED ONCE PER FRAME, and which half of the line names
-	// it depends on whether the control fits. A frame with room for
-	// `shift+← aug 12 – aug 25 →` has the span between the arrows, where SCREEN
-	// 3d puts it — the control and the reading at once — so the sentence drops
-	// its `since` clause; a frame too narrow for the control keeps the clause,
-	// because a head line that named neither would leave the four arrow keys
-	// moving something nothing on the frame reports.
-	head := r.head(width, false)
-	if arrows, _ := placeWindowFits(width, head, r.win); !arrows {
-		head = r.head(width, true)
-	}
-	add(tasksLineWord, head)
+	add(tasksLineWord, r.headLine(width))
 	phone := layoutTier(width) == tierPhone
 
 	// work draws one piece of work and, while its fold is open, everything under
@@ -648,6 +637,39 @@ func (r tasksReading) lay(width int) []tasksLine {
 		}
 	}
 	return lines
+}
+
+// headLine is the page's opening sentence at one width: what is held, and the
+// window control where the frame has room to draw it.
+//
+// THE WINDOW EDGE IS NAMED ONCE PER FRAME, and which half of the line names it
+// depends on whether the control fits. A frame with room for `shift+← aug 12 –
+// aug 25 →` has the span between the arrows, where SCREEN 3d puts it — the
+// control and the reading at once — so the sentence drops its `since` clause; a
+// frame too narrow for the control keeps the clause, because a head line that
+// named neither would leave the four arrow keys moving something nothing on the
+// frame reports.
+//
+// IT IS A FUNCTION BECAUSE THE HEAD IS NOT ALWAYS DRAWN IN THE LIST'S OWN
+// WIDTH. Where the frame splits, the list is laid out in the cells left of the
+// seam and this one sentence keeps the whole frame (taskpane.go says why), so
+// the layout and the split have to spell it the one way.
+func (r tasksReading) headLine(width int) string {
+	head := r.head(width, false)
+	if arrows, _ := placeWindowFits(width, head, r.win); !arrows {
+		head = r.head(width, true)
+	}
+	return head
+}
+
+// headRow is that same sentence PAINTED, at a width the layout may not be using.
+//
+// It goes through [tasksReading.paint] rather than spelling the head arm a second
+// time, so the split frame's head and the list's own head are one row built one
+// way — the head carries the window control and a second painter would be a
+// second chance for the control to be drawn where it is not bound.
+func (r tasksReading) headRow(width int, pal palette) string {
+	return r.paint([]tasksLine{{kind: tasksLineWord, text: r.headLine(width), owner: -1}}, 0, width, pal, false)
 }
 
 // tasksKin is the family column in front of one row: one step of indent for

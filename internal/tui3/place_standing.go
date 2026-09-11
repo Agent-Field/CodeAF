@@ -941,10 +941,10 @@ func (placeStanding) hover(a *app, y int) bool {
 	return placeHoverMoved(&a.orders.hover, next, a)
 }
 
-func (placeStanding) wheel(a *app, delta int) bool {
+func (placeStanding) wheel(a *app, delta int) (tea.Cmd, bool) {
 	a.orders.move(delta)
 	a.touch()
-	return true
+	return nil, true
 }
 
 // key is this place's own reading of a key the router did not take
