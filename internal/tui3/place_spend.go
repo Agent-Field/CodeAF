@@ -720,10 +720,10 @@ func (placeSpend) hover(a *app, y int) bool {
 	return placeHoverMoved(&a.spend.hover, next, a)
 }
 
-func (placeSpend) wheel(a *app, delta int) bool {
+func (placeSpend) wheel(a *app, delta int) (tea.Cmd, bool) {
 	a.moveSpend(delta)
 	a.touch()
-	return true
+	return nil, true
 }
 
 // key is this place's own reading of a key the router did not take

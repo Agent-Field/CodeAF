@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -199,6 +200,15 @@ func (h taskCardHit) back() bool { return h == taskCardHitHead || h == taskCardH
 type taskTailMsg struct {
 	path string
 	tail string
+	// key is the ROW the read was asked about — the pair internal/session says
+	// identifies one piece of work ([tasksKey]). It is here because the card is
+	// no longer the only reader: the pane beside the list caches one report per
+	// row and a path alone cannot key that cache, since two conversations may
+	// name the same journal after a replay (taskpane.go).
+	key tasksKey
+	// at is the landing the read was about, so a row that has landed AGAIN since
+	// can be told from the one this answer describes ([app.taskPaneKept]).
+	at time.Time
 	// kept says the journal is still on the disk of the machine that ran the
 	// work, and unread that the machine could not be asked at all
 	// ([tasksPlace.tail] holds the three sentences these pick between).
@@ -301,9 +311,15 @@ func taskSameRecord(a, b session.TaskIndexEntry) bool {
 // machine, is not read at all: there is nothing to open, and the card says so
 // where the report would have gone.
 func (a *app) readTaskTail(entry session.TaskIndexEntry) tea.Cmd {
-	path := taskURIPath(entry.TranscriptURI)
+	path, key := taskURIPath(entry.TranscriptURI), tasksKeyOf(entry)
 	if path == "" {
-		a.taskSheet.tailRead = true
+		// THE READ THAT NEVER HAPPENS IS STILL AN ANSWER, and both readers are
+		// told it: the card so its report slot stops waiting, the pane so it does
+		// not ask the same silent row again on every cursor move (taskpane.go).
+		if a.taskSheet.detailOn {
+			a.taskSheet.tailRead = true
+		}
+		a.taskPaneKeep(key, entry.EndedAt, "")
 		return nil
 	}
 	// OVER A CONNECTION THE JOURNAL IS ON THE OTHER MACHINE, so the reading is
@@ -317,9 +333,9 @@ func (a *app) readTaskTail(entry session.TaskIndexEntry) tea.Cmd {
 		return func() tea.Msg {
 			record, err := read(entry.TranscriptURI, 0)
 			if err != nil {
-				return taskTailMsg{path: path, unread: true}
+				return taskTailMsg{path: path, key: key, at: entry.EndedAt, unread: true}
 			}
-			return taskTailMsg{path: path, tail: record.Report, kept: record.Kept}
+			return taskTailMsg{path: path, key: key, at: entry.EndedAt, tail: record.Report, kept: record.Kept}
 		}
 	}
 	// AND A HOSTED SURFACE WITH NO SEAM ASKS NOBODY. It is the safety net rather
@@ -328,17 +344,33 @@ func (a *app) readTaskTail(entry session.TaskIndexEntry) tea.Cmd {
 	// is a read of THIS laptop's disk at a path on somebody else's. It is the
 	// same net [app.worldOf] keeps over the walk, for the same reason.
 	if a.hosted() {
-		return func() tea.Msg { return taskTailMsg{path: path, unread: true} }
+		return func() tea.Msg { return taskTailMsg{path: path, key: key, at: entry.EndedAt, unread: true} }
 	}
 	return func() tea.Msg {
 		record := session.ReadTaskRecord(entry.TranscriptURI, 0)
-		return taskTailMsg{path: path, tail: record.Report, kept: record.Kept}
+		return taskTailMsg{path: path, key: key, at: entry.EndedAt, tail: record.Report, kept: record.Kept}
 	}
 }
 
 // taskTailRead folds one journal read into the card, and drops a read that is
 // about a task the person has already walked away from.
 func (a *app) taskTailRead(msg taskTailMsg) {
+	// THE PANE KEEPS EVERY READ THAT HAPPENED, WHATEVER THE CARD IS DOING. One
+	// journal is read once and two readers spend it: the card, which is showing
+	// this row right now, and the pane's cache, which is what stops a person
+	// walking back up the list paying for the same file twice (taskpane.go).
+	//
+	// A MACHINE THAT COULD NOT BE ASKED IS NOT AN ANSWER ABOUT THE ROW. `unread`
+	// is a fact about the LINK — an ssh pipe that did not answer, a hosted surface
+	// whose door was never wired — and keeping it would file "this row had nothing
+	// to say" against a journal nobody has read yet, permanently: the pane would
+	// never ask again for the life of the place, and one dropped packet would
+	// leave a row reportless with nothing on screen saying why. So it is not kept,
+	// and arriving on the row again asks again. The card says the honest sentence
+	// in the meantime ([app.taskCardTailRows]).
+	if !msg.unread {
+		a.taskPaneKeep(msg.key, msg.at, msg.tail)
+	}
 	if !a.taskSheet.detailOn || taskURIPath(a.taskSheet.detail.TranscriptURI) != msg.path {
 		return
 	}
@@ -373,13 +405,12 @@ func taskURIPath(uri string) string { return session.TaskRecordPath(uri) }
 // [app.taskSheetKeyPress], which is where this page's whole claim on the
 // keyboard lives.
 func (a *app) taskCardKey(key string) tea.Cmd {
-	if q, ok := a.taskRecordLanding(a.taskSheet.detail); ok {
+	entry := a.taskSheet.detail
+	if q, ok := a.taskRecordLanding(entry); ok {
 		// THE QUESTION IS ANSWERED WHERE ITS EVIDENCE IS. The block owns the
 		// landing and its keys ([app.questionOptionKey]); this page only
-		// carries them, so `a`/`n`/`s`, the pointer's `←→` and `enter` reach
-		// the same door the conversation's block reaches. `s tell it` opens
-		// the node's room, which lives over the conversation, so the sheet is
-		// put down first.
+		// carries them, so the pointer's `←→` and `enter` reach the same door
+		// the conversation's block reaches.
 		switch key {
 		case "left", "right":
 			cmd, _ := a.questionOptionKey(q, key)
@@ -388,16 +419,13 @@ func (a *app) taskCardKey(key string) tea.Cmd {
 			cmd, _ := a.questionEnter(q, false)
 			return cmd
 		}
-		for _, option := range q.question.Options {
-			if strings.TrimSpace(option.Key) != key {
-				continue
-			}
-			if key == session.LandingTellKey {
-				a.closeTaskSheet()
-			}
-			cmd, _ := a.questionOptionKey(q, key)
-			return cmd
-		}
+	}
+	// AND THE ANSWERS THEMSELVES GO THROUGH THE ONE DOOR THE LIST ALSO USES.
+	// This card and the pane beside the list draw the same answers about the same
+	// row, so a second loop over the question's options here would be a second
+	// chance for the two to disagree about what `1` means ([app.taskRecordAnswer]).
+	if cmd, took := a.taskRecordAnswer(entry, key); took {
+		return cmd
 	}
 	switch key {
 	case "esc", "left":
@@ -676,16 +704,226 @@ func (a *app) taskRecordLandingRows(q questionShown, width int) []string {
 	return rows
 }
 
+// ── what the record says, once, for every width that says it ────────────────
+//
+// THE CARD IS NOT THE ONLY THING THAT DRAWS A RECORD ANY MORE. The pane beside
+// the tasks list is the same account of the same piece of work at forty-odd
+// cells instead of a hundred and twenty (taskpane.go), and the two would have
+// drifted within a wave if each had built its own rows: that is exactly how this
+// surface once came to have four names for one state. So everything BOTH of them
+// say is spelled here, once, and each of them chooses which of these to draw and
+// how much room to give it.
+
+// taskRecordWords is what one piece of work is CALLED on a page that has room
+// for a title — the groomed title, falling back to the row's own cut label.
+//
+// IT IS NOT [tasksLabel]. That one is the LIST's spelling and is always the cut
+// one, because a list is a column of names a person matches against; a page
+// about one task starts from the whole sentence and cuts it to its own width.
+func taskRecordWords(entry session.TaskIndexEntry) string {
+	if words := strings.TrimSpace(entry.Title); words != "" {
+		return words
+	}
+	return strings.TrimSpace(entry.Label)
+}
+
+// taskRecordBranch is the branch a piece of work was left on, and "" where the
+// record names a directory instead or names nothing at all.
+//
+// A BRANCH IS NEVER A DOOR — it is a name inside a repository rather than a
+// place on a disk — which is why it is a string here and not a path, and why
+// neither reader of it links it ([app.taskCardWhereRows] says the same from the
+// card's end).
+func taskRecordBranch(entry session.TaskIndexEntry) string {
+	uri := strings.TrimSpace(entry.ArtifactURI)
+	if uri == "" || taskURIPath(uri) != "" {
+		return ""
+	}
+	return strings.TrimPrefix(uri, "git:")
+}
+
+// taskRecordParagraph is the FIRST paragraph of a node's report: everything down
+// to the first blank line.
+//
+// THE PANE HAS ROOM FOR A PARAGRAPH AND THE CARD HAS ROOM FOR THE REPORT, which
+// is the whole of the difference between them — the card scrolls and a preview
+// does not. It is deliberately not [session.TaskIndexEntry.Outcome], which is
+// the first SENTENCE and is already the row's own tail: a preview that repeated
+// the row would have spent a third of the frame saying it twice.
+func taskRecordParagraph(report string) string {
+	for _, para := range strings.Split(strings.TrimSpace(report), "\n\n") {
+		if para = strings.TrimSpace(para); para != "" {
+			return para
+		}
+	}
+	return ""
+}
+
+// taskRecordBands joins the bands of a record into rows, with ONE blank between
+// the bands that survive and none at all around the ones that did not.
+//
+// WHITESPACE IS HOW THIS SURFACE SEPARATES BLOCKS (home.go's [homeBands] keeps
+// the same bargain), and the emptiness law is what decides which bands there
+// are: a node that spent nothing has no money, a node that wrote nothing has no
+// files, and neither of them takes a blank line for the band it does not have.
+func taskRecordBands(bands [][]string) []string {
+	var out []string
+	for _, band := range bands {
+		if len(band) == 0 {
+			continue
+		}
+		if len(out) > 0 {
+			out = append(out, "")
+		}
+		out = append(out, band...)
+	}
+	return out
+}
+
+// ── the answers, once, for the card and for the list ────────────────────────
+
+// taskRecordVerb is one answer a your-call row offers: the digit a person
+// presses on a verb line, the key that actually answers the question, and the
+// word beside it.
+type taskRecordVerb struct {
+	digit string
+	key   string
+	word  string
+}
+
+// taskRecordVerbs is the answers ONE ROW of the record offers on a single line.
+// It is the one table that says both what that line spells and what each clause
+// presses, so the drawing and the keyboard cannot disagree.
+//
+// THE DIGIT IS THE ANSWER'S POSITION ON THE QUESTION'S OWN ANSWERS ROW. That is
+// the shape [app.questionAnswerParts] already falls back to for an option
+// carrying no key of its own — it spells `itoa(i+1)` there — and the only
+// difference here is that these options DO carry keys: the landing's answers wear
+// LETTERS because docs/design/task-states/DESIGN.md fixed `a`, `n` and `s` on that
+// card (session's answers.go states the law). So the position is a SECOND name
+// beside the letter rather than a stand-in for a missing one, and the letters are
+// untouched.
+//
+// AND NO DIGIT IS HANDED OUT THAT COULD COLLIDE WITH AN OPTION'S OWN KEY. Four
+// other question kinds are answered by digits (`AnswerOptions` spells them so),
+// and although none of them can reach this card today — [app.taskRecordLanding]
+// matches only the landing and the conflict — a question whose own keys were
+// digits would otherwise have two meanings for one keystroke. A row that carries
+// its own digits is left alone here and answered by them.
+//
+// IT STOPS AFTER THE ANSWERS THE ROW'S OWN ASK NAMES. [session.TaskAsk] carries
+// exactly the yes and the no, and [session.landingOptions] writes those two words
+// into the first two answers in that order; the third — `tell it` — puts the
+// message box on the node's room rather than answering anything, and a preview
+// that named it would be offering a journey to somebody who is reading.
+func taskRecordVerbs(q questionShown, ask session.TaskAsk) []taskRecordVerb {
+	named := 0
+	for _, word := range []string{ask.Yes, ask.No} {
+		if strings.TrimSpace(word) != "" {
+			named++
+		}
+	}
+	out := make([]taskRecordVerb, 0, named)
+	for at, option := range q.question.Options {
+		if len(out) >= named {
+			break
+		}
+		key, word := strings.TrimSpace(option.Key), strings.TrimSpace(option.Label)
+		if key == "" || word == "" {
+			continue
+		}
+		digit := itoa(at + 1)
+		if taskRecordSpellsDigits(q.question.Options) {
+			digit = key
+		}
+		out = append(out, taskRecordVerb{digit: digit, key: key, word: word})
+	}
+	return out
+}
+
+// taskRecordSpellsDigits reports that a question's answers already wear digits of
+// their own, in which case the verb line draws those rather than minting a second
+// set over the top of them.
+func taskRecordSpellsDigits(options []session.AnswerOption) bool {
+	for _, option := range options {
+		key := strings.TrimSpace(option.Key)
+		if len(key) != 1 || key[0] < '0' || key[0] > '9' {
+			return false
+		}
+	}
+	return len(options) > 0
+}
+
+// taskRecordAsk is the question one row of the record is asking in the person's
+// own verbs, and the zero value on every row that is asking nothing
+// ([session.TaskStatus.Ask] is filled in only on the your-call tier).
+func (a *app) taskRecordAsk(entry session.TaskIndexEntry) session.TaskAsk {
+	return taskEntryStatus(entry, a.recordRuns(&entry)).Ask
+}
+
+// taskRecordAnswer is THE door a key that names an answer goes through, and it
+// is reached from the card ([app.taskCardKey]) and from the list's own digits
+// (taskpane.go). It reports whether the key named one.
+//
+// ONE DOOR AND NOT TWO. Both surfaces draw the same answers about the same row,
+// and a second walk of the question's options beside the list would be a second
+// chance for `1` to mean two things — which is the drift [taskRecordVerbs] is the
+// single table against.
+//
+// A ROW THIS WINDOW HOLDS NO QUESTION FOR TAKES NOTHING. The landing lives on the
+// block above the conversation that ran it ([app.taskRecordLanding] says why the
+// session has to match), so work another conversation ran has no answer road from
+// here — and a capability that cannot work is absent rather than broken: the verb
+// line does not draw the chips either.
+func (a *app) taskRecordAnswer(entry session.TaskIndexEntry, key string) (tea.Cmd, bool) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return nil, false
+	}
+	q, ok := a.taskRecordLanding(entry)
+	if !ok {
+		return nil, false
+	}
+	// THE OPTION'S OWN KEY IS ASKED FIRST, AND THAT ORDER IS THE SAFETY. A digit
+	// here is a POSITION, and a question whose answers already wear digits would
+	// have two meanings for one keystroke — `3` as this row's third answer and `3`
+	// as the answer spelled `[3]`. Asked in this order the option's own spelling
+	// always wins, and [taskRecordVerbs] hands out no digit that could collide
+	// with one.
+	press := ""
+	for _, option := range q.question.Options {
+		if strings.TrimSpace(option.Key) == key {
+			press = key
+			break
+		}
+	}
+	if press == "" {
+		for _, verb := range taskRecordVerbs(q, a.taskRecordAsk(entry)) {
+			if verb.digit == key {
+				press = verb.key
+				break
+			}
+		}
+	}
+	if press == "" {
+		return nil, false
+	}
+	if press == session.LandingTellKey {
+		// `s tell it` opens the node's ROOM, which lives over the conversation, so
+		// the sheet is put down before the question is answered.
+		a.closeTaskSheet()
+	}
+	cmd, _ := a.questionOptionKey(q, press)
+	return cmd, true
+}
+
 // taskCardTitleLine is the head — what this task was called on the left, and how
 // to get back to the list on the right — AND whether it had room for that right
 // corner at all. The frame asks for both in one call so the head and the foot
 // cannot disagree about who is naming `esc back` on this frame
 // ([taskCardFootKeys]).
 func (a *app) taskCardTitleLine(width int, entry session.TaskIndexEntry) (string, bool) {
-	words := strings.TrimSpace(entry.Title)
-	if words == "" {
-		words = strings.TrimSpace(entry.Label)
-	}
+	words := taskRecordWords(entry)
 	right := taskCardBackWord + " "
 	room := width - ansi.StringWidth(right) - 1
 	if room < 1 {
@@ -763,17 +1001,7 @@ func (a *app) taskCardBody(entry session.TaskIndexEntry, width int) []string {
 	bands = append(bands, a.taskCardWhereRows(entry, width))
 	bands = append(bands, a.taskCardTailRows(entry, width))
 
-	var out []string
-	for _, band := range bands {
-		if len(band) == 0 {
-			continue
-		}
-		if len(out) > 0 {
-			out = append(out, "")
-		}
-		out = append(out, band...)
-	}
-	return out
+	return taskRecordBands(bands)
 }
 
 // taskCardAwayRows is the recovery band: where the work IS, and the one thing
@@ -935,7 +1163,7 @@ func (a *app) taskCardWhereRows(entry session.TaskIndexEntry, width int) []strin
 			artifactPath = filepath.Clean(path)
 			where(taskCardGroundWord(entry), path)
 		} else {
-			label(taskCardBranchWord, strings.TrimPrefix(uri, "git:"), "")
+			label(taskCardBranchWord, taskRecordBranch(entry), "")
 		}
 	}
 	if path := strings.TrimSpace(entry.Where); path != "" && (artifactPath == "" || filepath.Clean(path) != artifactPath) {

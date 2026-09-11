@@ -76,7 +76,7 @@ func pressFarCard(t *testing.T, a *app) {
 	_, hits, _, _ := a.taskSheetFrame(width, height)
 	row := -1
 	for y, hit := range hits {
-		if _, worker := a.tasksFiltered().at(a.tasksFiltered().lay(width), hit.index); hit.kind == taskSheetHitRow && worker {
+		if _, worker := a.tasksFiltered().at(a.tasksFiltered().lay(a.taskSheetListWidth()), hit.index); hit.kind == taskSheetHitRow && worker {
 			row = y
 			break
 		}
@@ -84,7 +84,14 @@ func pressFarCard(t *testing.T, a *app) {
 	if row < 0 {
 		t.Fatalf("the tasks place drew no row of the far machine's work:\n%s", placeText(a))
 	}
+	// TWICE, BECAUSE A FRAME WITH A PANE ON IT PREVIEWS BEFORE IT OPENS: the first
+	// press puts the cursor on the row and the pane beside the list becomes that
+	// row's record, and the second press is what opens the card (taskpane.go).
+	// Where there is no pane the first press opens and the second is not made.
 	cmd := a.taskSheetPress(2, row)
+	if !a.taskSheet.detailOn {
+		cmd = a.taskSheetPress(2, row)
+	}
 	if !a.taskSheet.detailOn {
 		t.Fatalf("a press on a far task row opened nothing:\n%s", placeText(a))
 	}

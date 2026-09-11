@@ -7,6 +7,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -136,6 +137,13 @@ var demoTasks = []demoTask{
 			},
 			FilesChanged: 4, Cost: 0.52, Model: "anthropic/claude-opus-4.1", Tokens: 77_500,
 			DurationMS: 12 * 60 * 1000,
+			// AND IT IS THE ONE ROW THAT SAYS WHERE THE WORK WENT. Nothing in this
+			// fixture carried a branch or a rung, so the record card's `branch` row
+			// and the pane's ground word — the line that tells a person whether their
+			// own files were edited — had never been drawn on the demo either.
+			ArtifactURI: "git:task/cut-every-list-to-the-row-fitter",
+			Rung:        session.GroundRungSnapshot,
+			Mode:        session.TaskModeWorktree,
 		},
 	},
 	{
@@ -258,7 +266,14 @@ func writeTaskIndex(projects map[string]*demoProject, ids map[string]string, now
 			entry.Label = demoTaskLabel(entry.Title)
 		}
 		entry.SessionID = id
-		entry.TranscriptURI = filepath.Join(project.bucket, id, "transcript.jsonl")
+		// IT IS A `file://` URI AND NOT A PATH, which is what the product writes and
+		// the only thing its readers accept: [session.TaskRecordPath] answers ""
+		// for anything without that scheme, so every card and every pane on this
+		// fixture drew a row that named no journal and said nothing the node said.
+		// The demo looked like a machine whose transcripts had all been deleted.
+		entry.TranscriptURI = (&url.URL{
+			Scheme: "file", Path: filepath.Join(project.bucket, id, "transcript.jsonl"),
+		}).String()
 		if task.ago > 0 {
 			entry.EndedAt = now.Add(-task.ago)
 		}
