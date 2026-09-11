@@ -115,15 +115,15 @@ func TestAffordableTurnsDidNotFallWhenTheWindowGrew(t *testing.T) {
 	// The harness as it was: the window the spend ceiling used to buy, billed
 	// the way the ceiling used to bill — every re-sent token at full weight,
 	// because nothing was reading the cached share.
-	const legacyWindow = defaultLeafTokens / 6
-	before := turnsAffordable(legacyWindow, defaultLeafTokens, false)
+	const legacyWindow = DefaultLeafTokens / 6
+	before := turnsAffordable(legacyWindow, DefaultLeafTokens, false)
 	if before < 8 {
 		t.Fatalf("the baseline arithmetic is wrong: %d turns, expected the low teens", before)
 	}
 
 	// The harness as it is: the window the default grant is calibrated against,
 	// billed with the cached share weighted down to what it actually costs.
-	after := turnsAffordable(calibratedWindow(), defaultLeafTokens, true)
+	after := turnsAffordable(calibratedWindow(), DefaultLeafTokens, true)
 	if after < before {
 		t.Fatalf("growing the observation window cost the leaf turns: %d before, %d after — "+
 			"a leaf that cannot finish inside one budget is bought out in extension nodes",
@@ -148,18 +148,18 @@ func TestAffordableTurnsDidNotFallWhenTheWindowGrew(t *testing.T) {
 // the default one buys, and if that multiple ever runs away the sizing has
 // stopped being proportional and this fails.
 func TestALargerWindowCostsAProportionallyLargerGrant(t *testing.T) {
-	want := turnsAffordable(calibratedWindow(), defaultLeafTokens, true)
+	want := turnsAffordable(calibratedWindow(), DefaultLeafTokens, true)
 
 	for _, context := range []int{200_000, 1 << 20} {
 		window := observationWindow(context)
 		// The grant that buys the same number of turns at this window. Doubling
 		// rather than solving: what is being asserted is the order of magnitude,
 		// and the exact figure is the caller's to pick anyway.
-		grant := defaultLeafTokens
-		for grant < 4096*defaultLeafTokens && turnsAffordable(window, grant, true) < want {
+		grant := DefaultLeafTokens
+		for grant < 4096*DefaultLeafTokens && turnsAffordable(window, grant, true) < want {
 			grant *= 2
 		}
-		multiple := grant / defaultLeafTokens
+		multiple := grant / DefaultLeafTokens
 		if turnsAffordable(window, grant, true) < want {
 			t.Fatalf("a %d-token model's %d-byte window never affords %d turns", context, window, want)
 		}
@@ -186,11 +186,11 @@ func TestOneTurnDoesNotCrossTheWrapUpThreshold(t *testing.T) {
 	turn := steadyTurn(calibratedWindow(), false)
 	outcome.Usage.PromptTokens = turn.prompt
 	outcome.Usage.CompletionTokens = turn.completion
-	if used := budgetUsed(outcome, defaultLeafTokens, 0); used > wrapUpAt {
+	if used := budgetUsed(outcome, DefaultLeafTokens, 0); used > wrapUpAt {
 		t.Fatalf("a single cold turn reads %.2f used of a %d ceiling, past the %.2f wrap-up mark",
-			used, defaultLeafTokens, wrapUpAt)
+			used, DefaultLeafTokens, wrapUpAt)
 	}
-	if exhausted(outcome, defaultLeafTokens) {
+	if exhausted(outcome, DefaultLeafTokens) {
 		t.Fatal("a single cold turn exhausted the leaf")
 	}
 }
@@ -379,7 +379,7 @@ func TestTheLandingAllowanceIsSizedFromTheGrant(t *testing.T) {
 // it takes.
 func TestACacheDiscountedRunawayLandsOnItsMoney(t *testing.T) {
 	client := &warmRunaway{window: calibratedWindow(), hitPercent: 98}
-	linear := NewLinear(client, workspace(t), nil, maxTurnBackstop, defaultLeafTokens, time.Hour)
+	linear := NewLinear(client, workspace(t), nil, maxTurnBackstop, DefaultLeafTokens, time.Hour)
 	outcome, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "work"})
 	if err != nil {
 		t.Fatal(err)
@@ -405,9 +405,9 @@ func TestACacheDiscountedRunawayLandsOnItsMoney(t *testing.T) {
 	// gives after crossing.
 	turn := warmTurn(calibratedWindow(), 98)
 	slack := (landingTurns + 1) * spentOfTurn(turn)
-	if spent(outcome) > defaultLeafTokens+slack {
+	if spent(outcome) > DefaultLeafTokens+slack {
 		t.Fatalf("billed spend %d overran the %d grant by more than the %d its landing reserve costs",
-			spent(outcome), defaultLeafTokens, slack)
+			spent(outcome), DefaultLeafTokens, slack)
 	}
 
 	// AND IT ENDED FAR SHORT OF THE AUDIT'S OWN CASES. The traces this test was
@@ -423,7 +423,7 @@ func TestACacheDiscountedRunawayLandsOnItsMoney(t *testing.T) {
 	// have bought this leaf several times the work it just did.
 	costOnly := 0
 	usage := &Outcome{}
-	for costOnly < 10_000 && spent(usage) < defaultLeafTokens {
+	for costOnly < 10_000 && spent(usage) < DefaultLeafTokens {
 		turn := warmTurn(calibratedWindow(), 98)
 		usage.Usage.PromptTokens += turn.prompt
 		usage.Usage.CachedTokens += turn.cached
@@ -442,11 +442,11 @@ func TestACacheDiscountedRunawayLandsOnItsMoney(t *testing.T) {
 // and at zero caching nothing changes at all, because cost still binds first.
 func TestTheRawBoundHoldsAtEveryHitRate(t *testing.T) {
 	window := calibratedWindow()
-	cold := turnsUntilExhausted(defaultLeafTokens, func(int) turnBilling {
+	cold := turnsUntilExhausted(DefaultLeafTokens, func(int) turnBilling {
 		return warmTurn(window, 0)
 	})
 	for _, hit := range []int{0, 50, 90, 95, 98, 100} {
-		turns := turnsUntilExhausted(defaultLeafTokens, func(turn int) turnBilling {
+		turns := turnsUntilExhausted(DefaultLeafTokens, func(turn int) turnBilling {
 			if turn == 0 {
 				return warmTurn(window, 0)
 			}
@@ -472,36 +472,36 @@ func TestTheRawBoundHoldsAtEveryHitRate(t *testing.T) {
 // circling is worth. The measurement that demoted it is in meter.go against
 // reuseCeiling, and the two are the same quantity.
 func TestTheRawBoundWarnsAndOnlyTheCostCeilingLands(t *testing.T) {
-	cold := &Outcome{Usage: Usage{PromptTokens: defaultLeafTokens - 1, CompletionTokens: 0}}
-	if exhausted(cold, defaultLeafTokens) {
+	cold := &Outcome{Usage: Usage{PromptTokens: DefaultLeafTokens - 1, CompletionTokens: 0}}
+	if exhausted(cold, DefaultLeafTokens) {
 		t.Fatal("a leaf one token short of its ceiling was called exhausted")
 	}
 	cold.Usage.CompletionTokens = 1
-	if !exhausted(cold, defaultLeafTokens) {
+	if !exhausted(cold, DefaultLeafTokens) {
 		t.Fatal("a leaf at its cost ceiling was not called exhausted")
 	}
 	// The same tokens, now reported as cache reads: cheap enough that cost says
 	// keep going, plentiful enough that the raw bound says land.
 	warm := &Outcome{Usage: Usage{
-		PromptTokens:     rawCeiling(defaultLeafTokens),
-		CachedTokens:     rawCeiling(defaultLeafTokens),
+		PromptTokens:     rawCeiling(DefaultLeafTokens),
+		CachedTokens:     rawCeiling(DefaultLeafTokens),
 		CompletionTokens: 0,
 	}}
-	if spent(warm) >= defaultLeafTokens {
-		t.Fatalf("the discount stopped discounting: %d of %d", spent(warm), defaultLeafTokens)
+	if spent(warm) >= DefaultLeafTokens {
+		t.Fatalf("the discount stopped discounting: %d of %d", spent(warm), DefaultLeafTokens)
 	}
 	// AND IT IS NOT LANDED FOR IT. The raw ceiling was a stop until ink s9 of
 	// 2026-08-29 showed what a Σ-of-prompt bound actually measures — turns ×
 	// mean-context, which climbs identically for a leaf doing hard work and one
 	// circling. It is a warning now. See PERF.md, "A leaf's bounds".
-	if exhausted(warm, defaultLeafTokens) {
+	if exhausted(warm, DefaultLeafTokens) {
 		t.Fatalf("a leaf inside its %d-token grant was landed at %d raw tokens; the money is the only meter that lands work",
-			defaultLeafTokens, rawSpent(warm))
+			DefaultLeafTokens, rawSpent(warm))
 	}
 	// And the wrap-up warning reaches it, on the bound it is actually near.
-	if budgetUsed(warm, defaultLeafTokens, 0) <= wrapUpAt {
+	if budgetUsed(warm, DefaultLeafTokens, 0) <= wrapUpAt {
 		t.Fatalf("a leaf at its raw bound reads %.2f used, under the %.2f wrap-up mark",
-			budgetUsed(warm, defaultLeafTokens, 0), wrapUpAt)
+			budgetUsed(warm, DefaultLeafTokens, 0), wrapUpAt)
 	}
 }
 
@@ -526,16 +526,16 @@ func TestTheTurnBackstopIsCalibratedToTheMeasuredSpread(t *testing.T) {
 
 // The backstop is a backstop: it is the loop's own, and no caller may raise it.
 func TestTheTurnBackstopCannotBeRaisedByACaller(t *testing.T) {
-	if got := NewLinear(nil, nil, nil, 1000, defaultLeafTokens, time.Minute).maxTurns; got != maxTurnBackstop {
+	if got := NewLinear(nil, nil, nil, 1000, DefaultLeafTokens, time.Minute).maxTurns; got != maxTurnBackstop {
 		t.Fatalf("a caller asking for 1000 turns got %d, want the %d backstop", got, maxTurnBackstop)
 	}
-	if got := NewLinear(nil, nil, nil, 0, defaultLeafTokens, time.Minute).maxTurns; got != maxTurnBackstop {
+	if got := NewLinear(nil, nil, nil, 0, DefaultLeafTokens, time.Minute).maxTurns; got != maxTurnBackstop {
 		t.Fatalf("an unset turn count got %d, want the %d backstop", got, maxTurnBackstop)
 	}
-	if got := NewLinear(nil, nil, nil, 200, defaultLeafTokens, time.Minute).maxTurns; got != 200 {
+	if got := NewLinear(nil, nil, nil, 200, DefaultLeafTokens, time.Minute).maxTurns; got != 200 {
 		t.Fatalf("a caller asking for 200 turns under the backstop got %d", got)
 	}
-	if got := NewLinear(nil, nil, nil, 4, defaultLeafTokens, time.Minute).maxTurns; got != 4 {
+	if got := NewLinear(nil, nil, nil, 4, DefaultLeafTokens, time.Minute).maxTurns; got != 4 {
 		t.Fatalf("a caller asking for a tighter 4 turns got %d", got)
 	}
 }
@@ -561,7 +561,7 @@ func spentOfTurn(turn turnBilling) int {
 // on the one figure an autopsy of a runaway leaf is made of.
 func TestTheExhaustionMeterIsReadWhenTheLeafActuallyStops(t *testing.T) {
 	client := &warmRunaway{window: calibratedWindow(), hitPercent: 98}
-	linear := NewLinear(client, workspace(t), nil, maxTurnBackstop, defaultLeafTokens, time.Hour)
+	linear := NewLinear(client, workspace(t), nil, maxTurnBackstop, DefaultLeafTokens, time.Hour)
 	outcome, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "work"})
 	if err != nil {
 		t.Fatal(err)
