@@ -1,0 +1,4 @@
+CO-ROUTINE c
+  SCAN n CONSTANT ROWS
+SCAN c
+SEARCH k USING COVERING INDEX sqlite_autoindex_direction_links_1 (record_id=? AND revision=? AND link_kind=?)

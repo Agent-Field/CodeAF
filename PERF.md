@@ -2317,3 +2317,68 @@ standing text and immutable shared-context revision references. The inspection
 tool returns at most 40 rows and approximately 24,000 encoded row bytes per page; oversized detail
 is omitted with its source line retained. This wave's compilation and checks run
 on Spark only; local editing/formatting is not performance acceptance.
+
+## The direction resolver's cost
+
+`direction.Resolve` (`internal/direction/resolve.go`) answers "what governs this
+work" on every turn in every door, so **its cost must not grow with the lifetime
+number of direction records.** It reads one snapshot. It walks placements upward
+from the subject over at most **256** edges (`MaxClosureEdges`), and a subject past
+that is stopped with `ErrClosureTooLarge`. It then seeks the derived `direction_live`
+index once per probed place and reads bodies only for what it returns: at most
+**64** governing records and **64 KiB** of their wording (`MaxGoverning`,
+`MaxGoverningBytes`; past either, `ErrGoverningTooLarge` names the heaviest target),
+**20** proposals (`MaxPending`) and a page of **50** findings (`MaxInformational`).
+A delivered record's newest legacy name is one backwards seek of
+`direction_legacy_record (record_id, revision)`, however often it was re-imported.
+
+The two paged lanes never read a whole place. At each place and reach, proposals
+and findings are read newest first from `direction_live_newest` and cut at a
+window — `MaxPending + 1` proposals, `offset + limit + 1` findings — so a place
+that has collected a thousand costs what one with a page does. Only the merged
+windows, at most places × 2 × window rows, are grouped and sorted in a temp
+B-tree; nothing sorts every matched row. The governing lane is still read whole
+at each place, because it is admitted whole or not at all. A deep informational
+page costs its offset: the `Informational` door pages by offset, and no chat path
+asks for more than the first page.
+
+The gate counts work, not time:
+
+- **At most 10 statements per resolve** (`maxResolveStatements`), over the whole
+  load model. `TestResolvingTheLoadModelSendsABoundedNumberOfStatements` enforces it.
+- **No plan scans a table that grows.** The statements are the ones a resolve of the
+  load model actually sends, captured by name (each carries a `/* name */` prefix),
+  plus the write path's hot lookups spelled by the variables the write path uses.
+  Each is planned against the load model and against an empty store without
+  statistics. The plans are checked in under `internal/direction/testdata/explain`,
+  and a checked-in plan no statement sends any more fails too.
+  `TestTheResolversPlansSeekAndNeverScanAGrowingTable` enforces all of it. After a
+  reviewed plan change, regenerate the goldens with `-args -update-explain`.
+- **No paged lane reads a whole place.** The pending and informational windows read
+  the index in page order with no sort inside a window, and only the governing
+  lane seeks a place by its key prefix alone. `TestAPagedLaneNeverReadsAWholePlace`
+  enforces it, and `TestAPendingPageReadsOnlyWhatItCanShow` checks that 300
+  proposals at one folder read 21.
+
+The load model is 50,000 records (10,000 live), a 2,000-folder DAG with two
+parents per folder, 100,000 placements and 20,000 chats. Every live governing rule
+was imported and re-imported 20 times (65,000 legacy mappings in all), so
+provenance is read against real import history. Its clock is fixed, so the pending
+window selects the same proposals on any day. The wall-clock number is measured,
+never gated:
+
+```sh
+AFORGE_DIRECTION_MEASURE=1 go test -run TestMeasureResolveLatency -v ./internal/direction/
+```
+
+On Spark (2026-09-10, three runs, with the import history and the windowed paged
+lanes), each of 1,000 random subjects paid its own store open, resolve and close:
+- **p99 was 10.5–11.0 ms** and p50 5.7 ms;
+- the resolve alone had a p99 of 8.9–9.2 ms.
+
+A full `Verify` of the same store takes about 1.0–1.1 s, because it reads every current
+record. That is why it is not run on every open; each resolve instead checks what
+it delivers against the records (a live row that is not its record's current
+revision is `ErrDrift`), at one seek per delivered record.
+
+The design's budget is 50 ms at p99, and its hard requirement is sub-second.
