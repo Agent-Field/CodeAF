@@ -2404,9 +2404,14 @@ type app struct {
 	// not need to be told what they are looking at.
 	focused   bool
 	seenFocus bool
-	// lastQuestionKey is the last proof somebody was at this keyboard. Question
+	// lastQuestionKey is the last proof somebody was AT THIS WINDOW. Question
 	// delivery alone reads it, against awayAfter, so every arrival agrees on
 	// when this window became unattended.
+	//
+	// EVERY SIGN OF A PERSON COUNTS, not only a keystroke ([app.sawAPerson]).
+	// It read keypresses alone, so a window somebody was scrolling with a mouse,
+	// or had just clicked back into, was "away" — and away used to mean a
+	// question nobody could see (questiondelivery.go).
 	lastQuestionKey time.Time
 	// questionReach is PRESENCE-AWARE DELIVERY and BATCHED AT THE BOUNDARY in
 	// the ONE place both are decided (questiondelivery.go). It holds the quiet
@@ -3127,7 +3132,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.quit()
 
 	case tea.KeyPressMsg:
-		a.lastQuestionKey = time.Now()
+		a.sawAPerson()
 		// THE DOOR DISARMS ON ANY KEY BUT ITS OWN, and it is done HERE rather
 		// than at the top of [app.key] — where the pointer handover is — because
 		// this is the only line every keypress passes through. The stop
@@ -3210,6 +3215,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, tea.Batch(flushed, a.key(msg), a.takeRoomPump())
 
 	case tea.FocusMsg:
+		// A WINDOW BEING COME BACK TO IS A PERSON ARRIVING AT IT, which is the
+		// one moment an unattended window stops being unattended without a key
+		// being pressed ([app.sawAPerson]).
+		a.sawAPerson()
 		// The terminal reports focus (View asks for it in view.go), so the
 		// notification has something honest to gate on — see notify.go.
 		a.focused, a.seenFocus = true, true
@@ -3569,6 +3578,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseClickMsg:
+		a.sawAPerson()
 		// AND IT OWNS THE PRESS, on the same terms and for a sharper reason: a
 		// press that fell through a modal would switch a tab, open a tool call or
 		// answer a question behind a sheet somebody is looking at
@@ -3927,6 +3937,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseMotionMsg:
+		a.sawAPerson()
 		// AND THE CHOOSER OWNS MOTION TOO, ahead of the sweep and ahead of every
 		// place: [app.hoverTarget] already answers for the whole screen while the
 		// sheet is up, and this branch is what keeps a drag started under it from
@@ -5981,6 +5992,16 @@ func (a *app) now() time.Time {
 	}
 	return time.Now()
 }
+
+// sawAPerson stamps the moment this window last had evidence of somebody at it.
+//
+// IT IS ONE FUNCTION FOR ALL FOUR SIGNS — a key, a click, the pointer moving,
+// the window being focused — because they answer one question
+// (questiondelivery.go's [app.questionPresenceNow]) and four stamps written in
+// four places is four chances for one of them to be forgotten. It is deliberately
+// NOT a repaint or a turn's event: a screen drawing itself is not a person
+// reading it, and that is the whole of what "away" means.
+func (a *app) sawAPerson() { a.lastQuestionKey = time.Now() }
 
 // touch says the rows no longer match the entries, and the next frame rebuilds
 // them. Deltas deliberately do NOT call it — see [app.paint].

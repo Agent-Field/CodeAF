@@ -159,7 +159,18 @@ func (d *questionDeliveryRule) deliver(q session.Question, step string, presence
 		if answer, ok := dialAnswer(q, now); ok {
 			return questionDelivery{Answer: &answer}
 		}
-		out := questionDelivery{Note: questionWaitingLine(q), Phone: true}
+		// AWAY ADDS REACH AND TAKES NOTHING AWAY. It used to REPLACE the pin
+		// with a note and a bell, which meant a question raised while nobody was
+		// at the keyboard was never put on the block at all: the note is drawn
+		// only on a place, the chip counted nothing, so `alt+a` refused, and
+		// nothing re-delivered it when the person came back. A turn that ran for
+		// ten minutes and ended in a question left a screen with the work
+		// stopped and nothing on it to work — which is exactly what the owner
+		// met ("I come back to a chat and the question has been asked").
+		//
+		// So the pin is the same pin every other presence gets, and the phone
+		// and the bell are what AWAY adds on top of it.
+		out := questionDelivery{Pin: &q, Note: questionWaitingLine(q), Phone: true}
 		if q.Blocking.Blocks() && !d.rung[questionToken(q)] {
 			d.rung[questionToken(q)] = true
 			out.Bell = true

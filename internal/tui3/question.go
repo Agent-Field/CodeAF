@@ -190,6 +190,12 @@ type questionShown struct {
 	// answered by its digit or by the asker's own pick, so there is no cursor
 	// to move and none is drawn.
 	pick int
+	// beatAt is where the cursor stands on the SECOND BEAT — the shapes offered
+	// after `always` ([app.questionWiden]). The beat is a row of answers like
+	// any other, so it has a cursor like any other: before this it drew none and
+	// swallowed every arrow, which is a row a person could see, could not move,
+	// and could only answer by guessing which digit was which.
+	beatAt int
 	// writing says the box below is writing to THIS question rather than to
 	// the conversation: [questionCommentKey] after `c` (the words go with the
 	// pointed answer as [session.Answer.Change]) or [questionAskBackKey] after
@@ -670,6 +676,7 @@ func (a *app) withdrawQuestion(q session.Question, reason string) {
 	}
 	a.questions = kept
 	delete(a.questionFolded, token)
+	a.closeQuestionPage(token)
 	if !found {
 		// A question this surface never drew leaves no line. The sentence is
 		// there to explain a row somebody was looking at; printed under nothing
@@ -1649,7 +1656,22 @@ func (a *app) questionBeatRow(q questionShown, form questionForms, row, width in
 	if ansi.StringWidth("  "+line) > width {
 		return a.pal.ask(fit("  "+line, width))
 	}
-	return a.questionPaint(q, parts, "", form, -1)
+	// THE CURSOR IS ON THE SHAPE THE ARROWS LEFT IT ON. One shape is two parts
+	// (the chip and its words) with two more between neighbours, which is what
+	// [questionBeatPart] reads; a row drawn with no cursor is the row this beat
+	// used to draw while eating every arrow aimed at it.
+	return a.questionPaint(q, parts, "", form, questionBeatPart(q.beatAt))
+}
+
+// questionBeatPart is which part of the beat's row one shape's chip is, so the
+// cursor and the row are laid out by one reading rather than two:
+// [app.questionBeatRow] appends a chip and its words per shape and a two-part
+// separator between neighbours.
+func questionBeatPart(at int) int {
+	if at < 0 {
+		return -1
+	}
+	return 1 + 4*at
 }
 
 // questionBeatShapeWord is how one shape reads on the beat. The last one is the
@@ -1700,6 +1722,13 @@ func (a *app) setQuestionBeat(head questionShown, shapes []string) {
 			continue
 		}
 		a.questions[i].beat = shapes
+		// THE CURSOR OPENS ON THE SHAPE THAT GRANTS LEAST, which is the last of
+		// them: the shapes run from the widest pattern to the line itself
+		// ([questionBeatShapeWord] says the last one is the line). It is the same
+		// law that opens a hands-only question's pointer on the answer that
+		// changes nothing ([questionPointerStart]) — a person who walks nowhere
+		// and presses enter grants the least this beat can grant.
+		a.questions[i].beatAt = max(0, len(shapes)-1)
 		a.touch()
 		return
 	}
@@ -1721,10 +1750,35 @@ func (a *app) questionBeatKey(head questionShown, key string) (tea.Cmd, bool) {
 		a.setQuestionBeat(head, nil)
 		return nil, true
 	}
+	// THE SHAPES ARE WALKED AND TAKEN LIKE ANY OTHER ANSWERS, and they STOP at
+	// the ends rather than wrapping — this surface's law about a row of chips
+	// (subharness.go's [app.moveSubharnessAnswer] says why: a cursor that
+	// reappeared at the far end puts the widest shape under a key pressed to
+	// reach the narrowest).
+	switch key {
+	case "up", "left", "shift+tab":
+		a.moveQuestionBeat(head, head.beatAt-1)
+		return nil, true
+	case "down", "right", questionBlankKey:
+		a.moveQuestionBeat(head, head.beatAt+1)
+		return nil, true
+	case questionEnterKey:
+		return a.questionPickShape(head, head.beatAt), true
+	}
 	if len(key) == 1 && key[0] >= '1' && key[0] <= '9' {
 		return a.questionPickShape(head, int(key[0]-'1')), true
 	}
 	return nil, true
+}
+
+// moveQuestionBeat walks the beat's cursor, clamped to the shapes there are.
+func (a *app) moveQuestionBeat(head questionShown, to int) {
+	open := a.questionHeld(head.token())
+	if open == nil || to < 0 || to >= len(open.beat) {
+		return
+	}
+	open.beatAt = to
+	a.touch()
 }
 
 // questionPickShape banks the shape at this index and answers with the widening
@@ -2453,6 +2507,12 @@ func (a *app) closeQuestion(q questionShown, answer session.Answer) {
 	}
 	a.questions = kept
 	delete(a.questionFolded, token)
+	// AND THE PAGE OVER IT GOES TOO (questionroom.go). A question settled
+	// anywhere — here, in another window, by the dial — leaves a full page that
+	// nothing closes, and that page goes on eating ↑↓ and enter for a decision
+	// that has already been made. A page is a way of READING one question; when
+	// there is no question there is no page.
+	a.closeQuestionPage(token)
 	a.recordQuestion(q, answer)
 	a.countQuestionYes(q, answer)
 	a.touch()
@@ -2647,7 +2707,14 @@ func (a *app) questionKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	head, ok := a.questionHead()
 	if !ok {
 		// WHAT IS DRAWN IS WHAT TAKES THE KEY. With nothing on the block the
-		// sheet has the rows, so the sheet has the keyboard (questionsheet.go).
+		// sheet has the rows, so the sheet has the keyboard (questionsheet.go)
+		// — and the same off-frame guard stands in front of it, because a sheet
+		// behind a place or a page is as invisible as a block behind one. It
+		// had none of its own: ↑↓, tab and the digits were being taken from
+		// behind whatever the person was actually looking at.
+		if a.questionOffFrame() {
+			return nil, false
+		}
 		return a.questionSheetKey(msg)
 	}
 	// THE START PAGE TAKES EVERY KEY BEFORE THE CONVERSATION BEHIND IT. Unlike
@@ -3012,6 +3079,20 @@ func (a *app) questionOptionKey(head questionShown, key string) (tea.Cmd, bool) 
 	return nil, false
 }
 
+// focusQuestionTick moves a checklist's cursor, and it moves ONE cursor.
+//
+// A CHECKLIST HAD TWO. `↑`/`↓` walked [questionShown.pick] while `space`, `tab`
+// and the digits acted on [questionInput.focus], and the card drew a pointer for
+// each — so the mark a person moved was not the row the next key ticked. They
+// are one value now: whichever of the two a renderer reads, it is reading the
+// same row, and the arrows reach here rather than [app.questionOptionKey]
+// because on a checklist there is nothing else for them to walk.
+func (a *app) focusQuestionTick(open *questionShown, at int) {
+	open.holes.focus = at
+	open.pick = at
+	a.touch()
+}
+
 // moveQuestionPick walks the cursor on the one form that has one.
 func (a *app) moveQuestionPick(head questionShown, to int) {
 	if open := a.questionHeld(head.token()); open != nil {
@@ -3085,10 +3166,10 @@ func (a *app) questionTickKey(head questionShown, key string) (tea.Cmd, bool) {
 		if in.focus < len(in.ticks) {
 			in.ticks[in.focus] = !in.ticks[in.focus]
 		}
-	case questionBlankKey:
-		in.focus = questionStep(in.focus, 1, in.count())
-	case "shift+tab":
-		in.focus = questionStep(in.focus, -1, in.count())
+	case questionBlankKey, "down":
+		a.focusQuestionTick(open, questionStep(in.focus, 1, in.count()))
+	case "shift+tab", "up":
+		a.focusQuestionTick(open, questionStep(in.focus, -1, in.count()))
 	case questionEnterKey:
 		// THE ANSWER IS THE TICKED KEYS IN THE ORDER THE ROWS STAND, which is
 		// the page's own reading of a checklist (questionroom.go) made here.
@@ -3110,8 +3191,7 @@ func (a *app) questionTickKey(head questionShown, key string) (tea.Cmd, bool) {
 				continue
 			}
 			in.ticks[at] = !in.ticks[at]
-			in.focus = at
-			a.touch()
+			a.focusQuestionTick(open, at)
 			return nil, true
 		}
 		return nil, false

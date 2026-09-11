@@ -418,6 +418,22 @@ func (a *app) closeQuestionRoom() {
 	a.touch()
 }
 
+// closeQuestionPage closes the page when it is open OVER THIS QUESTION, and
+// leaves it alone otherwise.
+//
+// IT IS THE ONE DOOR FOR "THIS QUESTION IS OVER" (question.go's
+// [app.closeQuestion] and [app.withdrawQuestion] both call it), because the two
+// ways a question ends are the two ways a page is left standing on a decision
+// that has been made: answered here or in another window, and withdrawn by the
+// asker. Either way the rows underneath are gone, so a page still drawing them
+// is a page answering for a question nobody is waiting on.
+func (a *app) closeQuestionPage(token string) {
+	if a.qroom == nil || a.qroom.head.token() != token {
+		return
+	}
+	a.closeQuestionRoom()
+}
+
 // questionDefaultScope is the scope the foot starts on: the narrowest one the
 // question offered, which is always `once` where it offered any.
 //
