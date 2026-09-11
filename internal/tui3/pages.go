@@ -1835,6 +1835,51 @@ func hintFit(hint string, room int) string {
 	return fit(line, room)
 }
 
+// hintFitBeside is [hintFit]'s ladder for the one line that carries a note
+// beside the hint — the foot [app.placeMsgLine] assembles when a place has
+// something to say while one of its rows is selected. THE DOOR FIRST AND THE
+// NOTE BEHIND IT, and the clauses between them are the ones that go: the note
+// is a fact about the row's work and the door is the row's own key, so neither
+// may be dropped for a page clause — fold, verbs, filter, even the way out.
+// The giving-way starts at the clause AFTER the door and works forward, so the
+// way out is the last of them to leave, exactly as [hintFit] keeps it longest
+// everywhere else.
+//
+// THE NOTE IS ONE SENTENCE AND NOT A CLAUSE LIST. A question's note arrives
+// assembled (`allow rm -rf build? · waiting in this conversation · alt+a`),
+// and it can arrive already opening with the separator — a question with no
+// head leaves the rail's own ` · ` at the front — so the join strips a leading
+// one rather than adding a second: [railSep] is the one joiner down this whole
+// column, and a doubled ` · · ` is a line lying about its own shape. The note's
+// own clauses are never dropped one by one, because the note is the thing the
+// person is being told and a note that lost its `alt+a` would be a question
+// with no way left to reach it.
+//
+// A FRAME TOO NARROW FOR THE DOOR AND THE NOTE ALONE is the one case left, and
+// it is [hintFit]'s own last resort: the pair is cut, because there is nothing
+// left to drop that would help.
+func hintFitBeside(hint, note string, room int) string {
+	if room <= 0 {
+		return ""
+	}
+	// A leading run of the separator's own characters is stripped and nothing
+	// else: every note that begins with its own first word keeps it.
+	note = strings.TrimLeft(strings.TrimSpace(note), " ·")
+	if note == "" {
+		return hintFit(hint, room)
+	}
+	parts := strings.Split(hint, railSep)
+	joined := func() string { return strings.Join(parts, railSep) + railSep + note }
+	for len(parts) > 1 && ansi.StringWidth(joined()) > room {
+		// THE CLAUSE AFTER THE DOOR GOES FIRST: parts[1] is removed and everything
+		// behind it shifts down, so the fold, the verbs and the filter give way
+		// before the way out does — and the door at parts[0] is never the clause
+		// this removes, which is the whole difference from [hintFit]'s own ladder.
+		parts = append(parts[:1], parts[2:]...)
+	}
+	return fit(joined(), room)
+}
+
 // noteFit is [hintFit]'s twin FOR A STATEMENT INSTEAD OF A KEY SHEET, and the
 // one thing that differs is which end of the line is protected.
 //
@@ -1906,9 +1951,15 @@ func hintDropClause(line string) (string, bool) {
 // looking for the same three cells.
 const sentenceDash = " — "
 
-// placeMsgLine is the one refusal line this place has to say, drawn instead of
-// the hint. It replaces rather than stacks, being one field: pressing a door
-// twice says the same thing once.
+// placeMsgLine is the line a place says when it has something to say, drawn
+// beside the hint rather than over it. IT REPLACED THE HINT ONCE, and that
+// displacement is what #840 measured: a task that raised a question while its
+// row was selected took `enter open its room` off the foot entirely, because the
+// question's where-to-answer note arrived on the one line the door hint lived
+// on. A question is a fact ABOUT the row's work and not about the keyboard, so
+// the row's own door stays first and the note rides behind it; the clauses
+// between them are the ones that go, dropped by [hintFit] rather than cut by a
+// slice.
 //
 // DIM, AND NOT THE FAULT COLOUR. Every refusal these places have is a fact about
 // a door — that conversation is open somewhere, that project is not this one —
@@ -1932,9 +1983,15 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 	// AND IT IS CUT BY DROPPING CLAUSES, NEVER BY SLICING ONE. A refusal is a
 	// sentence rather than a key list, but it is the same promise: home's own
 	// foot reached sixty columns as `open in another window — enter again to
-	// move it here (it …`, naming a key and then eating it. [hintFit] is the one
-	// fitter every foot on this surface goes through.
-	return " " + a.pal.dim(a.pathLink(path, hintFit(msg, width-2))), true
+	// move it here (it …`, naming a key and then eating it. [hintFitBeside] is
+	// [hintFit]'s ladder carrying this line's own law — the door first, the note
+	// behind it, and the clauses between them the ones that go.
+	//
+	// AND IT IS PAINTED AS THE HINT IT NOW IS. The note rides on the hint's own
+	// line, so its keys are read by the same grammar ([paintHint]) rather than
+	// dimmed flat, and the door's clause keeps the colour every other key on
+	// this surface wears.
+	return " " + a.pathLink(path, paintHint(hintFitBeside(a.placeHint(), msg, width-2), a.pal, a.pal.dim)), true
 }
 
 // ── opening a place ─────────────────────────────────────────────────────────
