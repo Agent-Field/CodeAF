@@ -327,6 +327,10 @@ func newSheet() *sheet {
 // every other base is wired exactly the same way and learns what it is from
 // what it answers.
 func WireSheet(base, key string, fetch Fetcher, known bool) bool {
+	// THE MOMENT A PROCESS SAYS WHICH ROUTER IT TALKS TO IS THE MOMENT IT
+	// LEARNS WHAT ITS ACCOUNT WILL NOT REACH there (account.go), whatever sheet
+	// a build installed: the exclusions are about the account, not the sheet.
+	LoadAccountExclusions()
 	own, ok := Default().Sheet().(*sheet)
 	if !ok {
 		return false
@@ -816,18 +820,27 @@ func Serves(model, lane string) bool {
 	if name == "" {
 		return true
 	}
+	// AND A MACHINE THE ACCOUNT ITSELF EXCLUDES SERVES NO MODEL AT ALL
+	// (account.go). It is asked first because it is the wider fact: the
+	// router drops that machine before it reads which model was asked for.
+	if AccountExcludes(name) {
+		return false
+	}
 	refusedLanes.RLock()
 	until, refused := refusedLanes.until[LedgerModel(model)][name]
 	refusedLanes.RUnlock()
 	return !refused || !time.Now().Before(until)
 }
 
-// ForgetRefusals empties the negative half. It is for tests, which must not
-// inherit another test's refusals.
+// ForgetRefusals empties the negative half, the account's exclusions with it.
+// It is for tests, which must not inherit another test's refusals; the file
+// the exclusions sleep in is left alone, as [ForgetAccountExclusionsInMemory]
+// says why.
 func ForgetRefusals() {
 	refusedLanes.Lock()
-	defer refusedLanes.Unlock()
 	refusedLanes.until = nil
+	refusedLanes.Unlock()
+	ForgetAccountExclusionsInMemory()
 }
 
 // WantSheet asks the beat to fetch one model's sheet once, at once. It returns

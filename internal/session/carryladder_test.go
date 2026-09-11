@@ -215,8 +215,13 @@ func TestAnErrandCutByItsCallersDeadlineIsStillWrittenDown(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	agent := checkpointAgent(t, &deadCompleter{}, func(config *Config) { config.SessionFile = path })
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+	// A DEADLINE, AND SPELLED AS ONE. The handoff window is a
+	// [context.WithTimeout] (checkpoint.go), and since a CANCELLED errand leaves
+	// no row at all — the caller walked away, which is not news
+	// (TestACancelledErrandWritesNoFailure) — a cancel standing in for the
+	// deadline here would be staging the opposite case.
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
 	if _, _, err := agent.callRole(ctx, roles.RoleHandoff, "", []ai.Message{
 		textMessage("user", "write the brief"),
 	}); err == nil {

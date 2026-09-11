@@ -451,6 +451,18 @@ func (c *Client) laneChoiceFor(knobs callKnobs, model string, request *ai.Reques
 	if retired {
 		named = ""
 	}
+	// AND A STRICT PIN ON A MACHINE THE ACCOUNT ITSELF EXCLUDES IS RETIRED FOR
+	// THIS MODEL BEFORE IT IS SENT (internal/lane's account.go). The router has
+	// already said, about another model, that this account cannot reach that
+	// machine for any model; demanding it here would buy the identical 404 to
+	// be told so again. It is retired exactly as a refused pin is — the row on
+	// disk untouched, the person told once in the retirement's own sentence —
+	// and a borrowable pin needs nothing, because it is only a preference the
+	// router skips by itself.
+	if named != "" && !pin.Borrow && lanes.AccountExcludes(named) {
+		retirePin(named, model)
+		named = ""
+	}
 	if named != "" && !pin.Borrow {
 		// The candidate set survives and the ranking does not: see above.
 		return lanes.Choice{Only: []string{named}, Frontier: choice.Frontier}, true

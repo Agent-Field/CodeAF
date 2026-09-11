@@ -128,6 +128,11 @@ func wireEvidence(err error, attempt int) taxonomy.Evidence {
 		// string` actually appear, which is the difference between a model that
 		// cannot hold a tool and one endpoint in a pool mangling the stream.
 		evidence.Malformed = malformedArguments(refusal.Raw) || malformedArguments(refusal.Message)
+		// AND WHETHER THE ROUTER EMPTIED ITS OWN SET is the transport's answer,
+		// read here and never re-derived: a 404 naming nobody is our own bytes
+		// OR a list and a setting that left the router nothing to ask, and only
+		// the refusal door could tell those apart ([provider.RoutingRefusal]).
+		evidence.Routing = provider.RoutingRefusal(err)
 	}
 	if _, ok := provider.CutFrom(err); ok {
 		evidence.Cut = true

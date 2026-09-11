@@ -347,3 +347,29 @@ func TestAnUnclassifiableFailureIsHandedBackRatherThanDropped(t *testing.T) {
 		t.Fatalf("a class with no policy answered %s", verdict)
 	}
 }
+
+// A ROUTING REFUSAL IS THE WIRE, AND OUR OWN BYTES ARE STILL THE WORK.
+//
+// The router's 404 when a list or an account setting emptied its endpoint set
+// names no upstream, exactly as a request it rejected on its own bytes names
+// none. The transport tells them apart at its refusal door and says so in
+// Evidence.Routing; this is the reading of that one fact. The 2026-09-10 turn
+// ended on the left-hand reading of the right-hand refusal.
+func TestARoutingRefusalIsTransportAndAMalformedRequestIsWork(t *testing.T) {
+	limits := Limits{}.Floored()
+	routing := Classify(Evidence{Status: 404, Routing: true, Attempt: 1}, limits)
+	if routing.Class != Transport || !routing.Retries() || !routing.Rotate {
+		t.Fatalf("a routing refusal read as %s, want transport, retried somewhere else", routing)
+	}
+	if routing.EndsTurn() {
+		t.Fatal("a routing refusal ended the turn")
+	}
+	spent := Classify(Evidence{Status: 404, Routing: true, Attempt: limits.TransportAttempts, FallbackAvailable: true}, limits)
+	if spent.Class != Transport || !spent.Hops() {
+		t.Fatalf("a routing refusal with the budget spent read as %s, want a hop to the next model", spent)
+	}
+	ours := Classify(Evidence{Status: 400, Attempt: 1}, limits)
+	if ours.Class != Work || ours.Action != ActionReport {
+		t.Fatalf("a 400 about our own bytes read as %s, want the work's report", ours)
+	}
+}

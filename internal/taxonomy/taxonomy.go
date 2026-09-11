@@ -142,8 +142,23 @@ type Evidence struct {
 	// Upstream is the provider the router NAMED as the one that refused, empty
 	// when the router refused on its own account. The emptiness is the fact: a
 	// 4xx that named nobody is our own bytes being read and rejected, and every
-	// endpoint alive will say the same thing about the same request.
+	// endpoint alive will say the same thing about the same request — UNLESS
+	// Routing says otherwise.
 	Upstream string
+
+	// Routing says the ROUTER emptied the endpoint set for this request — a
+	// list, an account setting, a price ceiling or a demand left it nothing to
+	// ask — so another machine or another model can serve the same bytes. The
+	// transport decided it at its refusal door (internal/provider's
+	// [provider.RoutingRefusal]) and it is carried here as a fact, never
+	// re-read from the sentence.
+	//
+	// IT IS THE ONE 4xx NAMING NOBODY THAT IS NOT OUR OWN BYTES, and before
+	// this field existed it was indistinguishable from one: the measured turn of
+	// 2026-09-10 ended on `the request itself was refused` for a 404 that an
+	// account's privacy setting had produced, and the same words sent again a
+	// minute later were answered.
+	Routing bool
 
 	// Message is the failure's own sentence, for the journal line's `reason`
 	// when nothing more specific applies.
@@ -346,8 +361,10 @@ func Classify(e Evidence, l Limits) Verdict {
 //  3. Then the status. 5xx and 429 are the wire by definition. A 4xx that NAMED
 //     an upstream is that upstream's refusal and another endpoint may serve it,
 //     so it is transport too — this is the shape the measured 400s arrived in.
-//     A 4xx that named NOBODY is the router reading our own bytes and saying no,
-//     which no endpoint and no model will fix: that is work.
+//     So is a ROUTING refusal: the router emptied its endpoint set on a list or
+//     a setting, nobody was asked, and somewhere else can serve it. A 4xx that
+//     named nobody and is not that is the router reading our own bytes and
+//     saying no, which no endpoint and no model will fix: that is work.
 //  4. Only then, a finding: a check that read the finished work and named gaps,
 //     with the wire ruled out above. Whether that finding BUYS anything is the
 //     capability policy's question and not this one.
@@ -365,6 +382,8 @@ func classOf(e Evidence) Class {
 	case e.Status == 429:
 		return Transport
 	case e.Status >= 400 && strings.TrimSpace(e.Upstream) != "":
+		return Transport
+	case e.Status >= 400 && e.Routing:
 		return Transport
 	case e.Status >= 400:
 		return Work

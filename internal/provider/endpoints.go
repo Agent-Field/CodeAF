@@ -165,6 +165,58 @@ func ignoredEverything(body []byte) bool {
 	return strings.Contains(strings.ToLower(string(body)), "all providers have been ignored")
 }
 
+// accountExcluded is the router reporting that the ACCOUNT'S OWN SETTINGS
+// removed every machine the request's set held — the paid-model-training switch,
+// an account-wide guardrail — before any of them was asked. It is the same class
+// of fact as [ignoredEverything] (a list emptied the set; no machine answered)
+// and it is one the router states on every model, which is why it is kept for
+// every model (internal/lane's account.go).
+//
+// IT IS DECIDED BY STRUCTURE FIRST (docs/design/failsafe/FAILSAFE.md rule 1).
+// The live router's body carries `error.metadata.ineligibility_reasons`, one
+// object per reason a machine was removed, and a reason that is the account's
+// is one the person can CHANGE — it carries the `configure_url` of the setting
+// that did it, and its machine word ends `-by-account`. A body whose every reason
+// is such a reason is an account exclusion whatever its sentence says. The
+// sentence's `(account settings)` survives as the hint for a body that arrives
+// without metadata, and has no other authority.
+func accountExcluded(body []byte) bool {
+	var decoded struct {
+		Error struct {
+			Message  string `json:"message"`
+			Metadata struct {
+				Reasons []struct {
+					Reason       string `json:"reason"`
+					ConfigureURL string `json:"configure_url"`
+				} `json:"ineligibility_reasons"`
+			} `json:"metadata"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(body, &decoded) != nil {
+		return false
+	}
+	if reasons := decoded.Error.Metadata.Reasons; len(reasons) > 0 {
+		for _, reason := range reasons {
+			configurable := strings.TrimSpace(reason.ConfigureURL) != ""
+			byAccount := strings.HasSuffix(strings.ToLower(strings.TrimSpace(reason.Reason)), "-by-account")
+			if !configurable && !byAccount {
+				return false
+			}
+		}
+		return true
+	}
+	return strings.Contains(strings.ToLower(decoded.Error.Message), "(account settings)")
+}
+
+// listEmptied is the one question both of the above answer: did a LIST — this
+// process's vetoes, the account's ignored providers, the account's own
+// guardrails — empty the set before any machine was asked? A refusal that says
+// so implicates no machine it names, and the ledger reads it as
+// [laneRefusal.Unasked].
+func listEmptied(body []byte) bool {
+	return ignoredEverything(body) || accountExcluded(body)
+}
+
 func endpointRefusalPhrase(payload []byte) bool {
 	text := strings.ToLower(string(payload))
 	for _, phrase := range endpointRefusalPhrases {

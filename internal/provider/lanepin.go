@@ -108,8 +108,18 @@ func SetLanePin(pin LanePin) {
 // compared rows here would answer a person who had just re-pinned coreweave
 // with silence, and go on routing their model on auto — which is the sentence
 // on their screen made into a lie.
+//
+// AND IT FORGETS WHAT THE ACCOUNT WAS BELIEVED TO EXCLUDE about that machine
+// (internal/lane's account.go), for the same reason and before the lock is
+// taken — a neighbouring package is never called under this file's lock. A
+// person who has just re-chosen the machine the router said their account
+// cannot reach may have changed the setting, and the next request is how to
+// find out.
 func RepinLane(pin LanePin) {
 	pin.Lane = strings.TrimSpace(pin.Lane)
+	if pin.Lane != "" {
+		lanes.ClearAccountExclusion(pin.Lane)
+	}
 	lanePinMu.Lock()
 	defer lanePinMu.Unlock()
 	retiredPins = map[string]struct{}{}
