@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/workspace"
 )
 
 // ErrDrift reports that the derived live index disagrees with the revisions
@@ -185,7 +187,7 @@ func (s *Store) Rebuild(ctx context.Context) error {
 // Verify compares the live index with what the revisions say it must hold and
 // reports ErrDrift with the number of rows that differ.
 func (s *Store) Verify(ctx context.Context) error {
-	return s.ws.ReadSnapshot(ctx, func(tx *sql.Tx) error {
+	return workspace.ReadSnapshot(ctx, s.ws, func(tx *sql.Tx) error {
 		want, err := expectedLive(ctx, tx)
 		if err != nil {
 			return err

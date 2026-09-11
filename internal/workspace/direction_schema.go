@@ -19,10 +19,15 @@ import (
 // resolver range-scans, which is what keeps a resolve independent of the
 // lifetime number of records (L6).
 //
-// One index departs from the design's sketch: direction_legacy_record is on
-// (record_id, revision), not record_id alone, so a record's newest legacy
-// name is one backwards seek however often it was re-imported (review of
-// dc9251859, blocker 6). Version 4 had shipped in no build when it changed.
+// Two indexes depart from the design's sketch, and version 4 had shipped in no
+// build when either changed. direction_legacy_record is on (record_id,
+// revision), not record_id alone, so a record's newest legacy name is one
+// backwards seek however often it was re-imported (review of dc9251859,
+// blocker 6). direction_live_newest is new: it holds each place's rows of one
+// lane and reach newest first, so a paged lane — pending proposals, the
+// informational page — reads a window of each place in page order and stops,
+// rather than reading and sorting every row the place ever collected (review
+// of 4e0c13013).
 const directionSchema = `
 CREATE TABLE direction_records (
  seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,6 +90,7 @@ CREATE TABLE direction_live (
  PRIMARY KEY(target_kind, ref_id, session_id, lane, record_id)
 ) WITHOUT ROWID;
 CREATE INDEX direction_live_record ON direction_live(record_id);
+CREATE INDEX direction_live_newest ON direction_live(target_kind, ref_id, session_id, lane, reach, written_at DESC, record_id);
 `
 
 // verifyDirectionSchema reads every version 4 table with every column the
@@ -122,13 +128,15 @@ func (s *Store) EnsureDirection() error { return s.initialize(schemaVersion) }
 // records in this store because the resolver must read placements and
 // direction in one snapshot, and a second database file cannot give it one. A
 // law in internal/direction pins them to that package, so nothing else writes
-// this store around the doors that validate it.
+// this store around the doors that validate it. They are functions, not
+// methods, so no interface can rename them and no type that embeds a Store
+// inherits them: every use names one of these two objects.
 //
 // ReadSnapshot runs fn in one deferred read transaction: under WAL it sees one
 // consistent state of every table and never takes the writer, so a per-turn
 // read cannot make a peer's commit wait. The transaction is always rolled back;
 // fn cannot write through it.
-func (s *Store) ReadSnapshot(ctx context.Context, fn func(*sql.Tx) error) error {
+func ReadSnapshot(ctx context.Context, s *Store, fn func(*sql.Tx) error) error {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return err
@@ -140,7 +148,7 @@ func (s *Store) ReadSnapshot(ctx context.Context, fn func(*sql.Tx) error) error 
 // WriteImmediate runs fn in one BEGIN IMMEDIATE transaction and commits only
 // if fn returns nil. Holding the writer from the first read makes every
 // read-then-write inside fn a fenced one (L1): no peer can commit between them.
-func (s *Store) WriteImmediate(ctx context.Context, fn func(*sql.Tx) error) error {
+func WriteImmediate(ctx context.Context, s *Store, fn func(*sql.Tx) error) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err

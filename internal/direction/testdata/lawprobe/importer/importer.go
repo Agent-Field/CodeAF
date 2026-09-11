@@ -10,5 +10,5 @@ import (
 
 // Migrate imports one item.
 func Migrate(ctx context.Context, s *direction.Store) (direction.ImportResult, error) {
-	return s.Import(ctx, direction.ImportRun{ID: "r", Mode: "apply", Binary: "x"}, direction.ImportItem{})
+	return direction.Import(ctx, s, direction.ImportRun{ID: "r", Mode: "apply", Binary: "x"}, direction.ImportItem{})
 }

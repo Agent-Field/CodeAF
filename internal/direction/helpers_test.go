@@ -8,6 +8,8 @@ import (
 	"sort"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/workspace"
 )
 
 // sqlTx keeps test signatures short.
@@ -80,7 +82,7 @@ func musts(t *testing.T) func(Revision, error) Revision {
 func liveOf(t *testing.T, s *Store) []liveRow {
 	t.Helper()
 	var rows []liveRow
-	err := s.ws.ReadSnapshot(context.Background(), func(tx *sql.Tx) error {
+	err := workspace.ReadSnapshot(context.Background(), s.ws, func(tx *sql.Tx) error {
 		var err error
 		rows, err = storedLive(context.Background(), tx)
 		return err

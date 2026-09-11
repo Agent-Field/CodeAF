@@ -142,7 +142,7 @@ func buildLoadModel(path string) (*loadModelFixture, error) {
 	for i := 0; i < loadChats; i++ {
 		chats = append(chats, fmt.Sprintf("chat-%05d", i))
 	}
-	err = s.ws.WriteImmediate(ctx, func(tx *sql.Tx) error {
+	err = workspace.WriteImmediate(ctx, s.ws, func(tx *sql.Tx) error {
 		exec := func(query string) (*sql.Stmt, error) { return tx.PrepareContext(ctx, query) }
 		folderStmt, err := exec("INSERT INTO collections(id,name) VALUES (?,?)")
 		if err != nil {
@@ -449,7 +449,7 @@ func TestResolvingTheLoadModelSendsABoundedNumberOfStatements(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = s.ws.ReadSnapshot(ctx, func(tx *sql.Tx) error {
+		err = workspace.ReadSnapshot(ctx, s.ws, func(tx *sql.Tx) error {
 			counter := &countingQuerier{q: tx}
 			eff, err := resolveIn(ctx, counter, subj, s.now().UTC())
 			statements = append(statements, counter.count)
@@ -521,9 +521,10 @@ func spread(xs []int) string {
 // ── EXPLAIN goldens ─────────────────────────────────────────────────────────
 
 // scanAllowed is what a plan may scan: the short key lists the queries drive
-// from, and the recursive walk's own queue. Anything else — above all
+// from (w and h are the page windows' places and reaches), and the recursive
+// walk's own queue. Anything else — above all
 // direction_live and placements — is a scan of a table that grows (L10).
-var scanAllowed = regexp.MustCompile(`^SCAN (q|c|x|keys|up|u|(\d+ )?CONSTANT ROWS?)$`)
+var scanAllowed = regexp.MustCompile(`^SCAN (q|c|x|w|h|keys|up|u|(\d+ )?CONSTANT ROWS?)$`)
 
 // A statement's name is the comment named() puts first.
 var statementName = regexp.MustCompile(`^/\* ([a-z-]+) \*/ `)
@@ -580,7 +581,7 @@ func sentByAResolve(t *testing.T, s *Store, subjects []Subject) []plannedQuery {
 			t.Fatal(err)
 		}
 		rec := &recordingQuerier{}
-		err = s.ws.ReadSnapshot(ctx, func(tx *sql.Tx) error {
+		err = workspace.ReadSnapshot(ctx, s.ws, func(tx *sql.Tx) error {
 			rec.q = tx
 			_, err := resolveIn(ctx, rec, subj, loadNow)
 			return err
@@ -619,7 +620,7 @@ func explain(t *testing.T, s *Store, pq plannedQuery) []string {
 	t.Helper()
 	ctx := context.Background()
 	var lines []string
-	err := s.ws.ReadSnapshot(ctx, func(tx *sql.Tx) error {
+	err := workspace.ReadSnapshot(ctx, s.ws, func(tx *sql.Tx) error {
 		type step struct {
 			id, parent int
 			detail     string
@@ -776,5 +777,52 @@ func TestMeasureResolveLatency(t *testing.T) {
 	_ = s.Close()
 	if p99 > 50*time.Millisecond {
 		t.Errorf("p99 %v is over the design's 50 ms budget", p99)
+	}
+}
+
+// wholePlace is a seek of direction_live by its key prefix alone: it reads
+// every live row at a place in the lane.
+var wholePlace = regexp.MustCompile(`SEARCH l USING PRIMARY KEY \(target_kind=\? AND ref_id=\? AND session_id=\? AND lane=\?\)$`)
+
+// A PAGED LANE NEVER READS A WHOLE PLACE. The informational page and the
+// pending lane read each place's newest rows through an index in page order
+// and stop at the window, so the rows they read and sort are bounded by the
+// page, not by how many rows the place has ever collected. The one read of a
+// whole place is the governing lane's, admitted whole or not at all.
+func TestAPagedLaneNeverReadsAWholePlace(t *testing.T) {
+	s := openTest(t)
+	everywhere := []placeKey{{TargetEverywhere, Everywhere, ""}}
+	windows := []Target{{Kind: TargetConversation, Ref: "w", Reach: Direct}, {Kind: TargetCollection, Ref: "f", Reach: Subtree}}
+	for _, c := range []struct {
+		pq    plannedQuery
+		whole int
+	}{
+		{plannedQuery{"informational", informationalQuery(1, 1),
+			informationalArgs([]workspace.Ref{chat("w")}, everywhere, 0, 10)}, 0},
+		{plannedQuery{"candidates", candidateQuery(1, len(windows)),
+			append(append(keyArgs(everywhere), windowArgs(windows)...), stamp(loadNow), pendingWindow)}, 1},
+	} {
+		plan := explain(t, s, c.pq)
+		whole, ordered, window := 0, false, -1
+		for _, line := range plan {
+			detail := strings.TrimSpace(line)
+			depth := len(line) - len(strings.TrimLeft(line, " "))
+			if window >= 0 && depth <= window {
+				window = -1
+			}
+			switch {
+			case strings.HasPrefix(detail, "CORRELATED LIST SUBQUERY"):
+				window = depth
+			case window >= 0 && strings.Contains(detail, "TEMP B-TREE"):
+				t.Errorf("%s sorts inside a window: %q", c.pq.name, detail)
+			case window >= 0:
+				ordered = ordered || strings.HasPrefix(detail, "SEARCH n USING COVERING INDEX direction_live_newest")
+			case wholePlace.MatchString(detail):
+				whole++
+			}
+		}
+		if whole != c.whole || !ordered {
+			t.Errorf("%s reads %d whole places (want %d), windows in index order %v:\n%s", c.pq.name, whole, c.whole, ordered, strings.Join(plan, "\n"))
+		}
 	}
 }

@@ -7,6 +7,8 @@ import (
 	"math/rand"
 	"reflect"
 	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/workspace"
 )
 
 // The live index holds one row per target of every current revision in a live
@@ -60,7 +62,7 @@ func TestVerifyCatchesADanglingCurrentPointer(t *testing.T) {
 	s := openTest(t)
 	must := musts(t)
 	r := must(s.Accept(ctx, must(s.Propose(ctx, rule("formal tone", chatTarget("w")), AsPerson(card(t, "p")))).Fence(), card(t, "c")))
-	if err := s.ws.WriteImmediate(ctx, func(tx *sqlTx) error {
+	if err := workspace.WriteImmediate(ctx, s.ws, func(tx *sqlTx) error {
 		if _, err := tx.ExecContext(ctx, "UPDATE direction_records SET revision=99 WHERE id=?", r.ID); err != nil {
 			return err
 		}

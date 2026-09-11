@@ -65,13 +65,14 @@ type ImportRevision struct {
 
 // ImportItem is one source document.
 //
-// ID, when set, keeps an identity the old store already gave out AND its
-// revision numbers: Revisions[i] is revision i+1, each with its own
+// ID keeps an identity the old store already gave out AND its revision
+// numbers, and is set exactly when the source is shared context (design §3.4):
+// it is the context's own id, Revisions[i] is revision i+1, each with its own
 // WrittenAt, so a receipt citing (id, revision) reads what the old store's
 // revision said. A later import of the same document must agree with every
-// revision it repeats, and appends only the ones after them. Without ID the
-// record is new, and a changed document appends its current state as one
-// revision (design §3.2).
+// revision it repeats, and appends only the ones after them. A hold or a
+// memory has no ID: its record is new, and a changed document appends its
+// current state as one revision (design §3.2).
 type ImportItem struct {
 	Legacy    Legacy
 	ID        string
@@ -116,7 +117,12 @@ type ImportResult struct {
 // that disagrees with what was imported, is refused with ErrConflict. Every
 // revision is written by author class migration with the old store's own
 // evidence; nothing here mints a person.
-func (s *Store) Import(ctx context.Context, run ImportRun, item ImportItem) (ImportResult, error) {
+//
+// IMPORT IS A FUNCTION, NOT A METHOD, so no interface or type-parameter
+// constraint can stand in for it under another name: every call names this
+// object, and the law holding it to reviewed sites (receipt_law_test.go) sees
+// every one.
+func Import(ctx context.Context, s *Store, run ImportRun, item ImportItem) (ImportResult, error) {
 	if err := run.validate(); err != nil {
 		return ImportResult{}, err
 	}
@@ -431,8 +437,19 @@ func (i ImportItem) validate() ([]int, error) {
 	if !ok {
 		return nil, invalid("a legacy version is non-negative counters joined by \"/\", not %q", i.Legacy.Version)
 	}
-	if i.ID != "" && !isRecordID(i.ID) {
-		return nil, invalid("a kept identity is a record id")
+	// SHARED CONTEXT KEEPS ITS IDENTITY AND NOTHING ELSE DOES (design §3.4),
+	// so the store decides which path an item takes, not whether this call
+	// remembered the id. A context re-imported without it would take the
+	// unnumbered path and append its newest revision under the next number,
+	// which is not what the old store's revision of that number said.
+	if keeps := i.Legacy.Store == LegacyContexts; keeps != (i.ID != "") {
+		if keeps {
+			return nil, invalid("a shared-context import keeps its identity: ID is the context's id")
+		}
+		return nil, invalid("a %s import is given a new identity; only shared context keeps its own", i.Legacy.Store)
+	}
+	if i.ID != "" && (i.ID != i.Legacy.ID || !isRecordID(i.ID)) {
+		return nil, invalid("a kept identity is the context's own record id, %q", i.Legacy.ID)
 	}
 	if len(i.Revisions) == 0 {
 		return nil, invalid("an import carries at least one revision")
@@ -456,8 +473,8 @@ const maxCounts = 4096
 
 // FinishImportRun records that a run ended, with its report and counts: a
 // JSON object of at most maxCounts bytes. The row is kept forever with the
-// report it names (design §1.7).
-func (s *Store) FinishImportRun(ctx context.Context, id, reportSHA256, counts string) error {
+// report it names (design §1.7). It is a function for the reason Import is.
+func FinishImportRun(ctx context.Context, s *Store, id, reportSHA256, counts string) error {
 	if !workspace.ValidLine(id, maxRef) {
 		return invalid("an import run is named")
 	}

@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/workspace"
 )
 
 // THE DIRECTION TABLES HOLD DIRECTION AND NOTHING ELSE (design §5). Execution
@@ -38,7 +40,7 @@ func TestTheDirectionTablesHoldOnlyTheDesignedColumns(t *testing.T) {
 	ctx := context.Background()
 	s := openTest(t)
 	var tables []string
-	err := s.ws.ReadSnapshot(ctx, func(tx *sql.Tx) error {
+	err := workspace.ReadSnapshot(ctx, s.ws, func(tx *sql.Tx) error {
 		names, err := collect(ctx, tx, "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'direction%' ORDER BY name", nil,
 			func(row scanner) (string, error) { var n string; return n, row.Scan(&n) })
 		tables = names

@@ -23,7 +23,7 @@ type writeTx struct {
 }
 
 func (s *Store) write(ctx context.Context, fn func(*writeTx) error) error {
-	return s.ws.WriteImmediate(ctx, func(tx *sql.Tx) error {
+	return workspace.WriteImmediate(ctx, s.ws, func(tx *sql.Tx) error {
 		return fn(&writeTx{ctx: ctx, tx: tx, at: s.now().UTC()})
 	})
 }
@@ -125,7 +125,7 @@ func (w *writeTx) checkReferences(r Revision, prev *Revision) error {
 		if l.To == r.ID {
 			return invalid("a record does not link to itself")
 		}
-		if _, err := pointer(w.ctx, w.tx, l.To); err != nil {
+		if err := w.checkLinkTarget(r, l); err != nil {
 			return err
 		}
 	}
@@ -150,6 +150,28 @@ func (w *writeTx) checkReferences(r Revision, prev *Revision) error {
 		if err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// checkLinkTarget reads the record a link names. PRECEDENCE BELONGS TO THE
+// PERSON (R4): an import copies an overrides or conflicts_with link only onto
+// a record whose current revision an import wrote — and since an import never
+// writes after another writer, one no one else has written. A record the
+// person has written is theirs to rank.
+func (w *writeTx) checkLinkTarget(r Revision, l Link) error {
+	revision, err := pointer(w.ctx, w.tx, l.To)
+	if err != nil || r.Author.Class != AuthorMigration || (l.Kind != Overrides && l.Kind != ConflictsWith) {
+		return err
+	}
+	var by AuthorClass
+	if err := w.tx.QueryRowContext(w.ctx, "SELECT author_class FROM direction_revisions WHERE record_id=? AND revision=?",
+		l.To, revision).Scan(&by); err != nil {
+		return err
+	}
+	if by != AuthorMigration {
+		return fmt.Errorf("%w: %s revision %d was written by %s; an import does not rank a record it did not write (%s)",
+			ErrTransition, l.To, revision, by, l.Kind)
 	}
 	return nil
 }
@@ -300,8 +322,9 @@ func (s *Store) Reject(ctx context.Context, f Fence, r PersonReceipt) (Revision,
 	}, nil)
 }
 
-// Withdraw stops an accepted record from applying, with the person's reason,
-// and keeps its history. A withdrawn record comes back only through Accept.
+// Withdraw stops an accepted record from applying, or retires a finding, with
+// the person's reason, and keeps its history. A withdrawn rule or decision
+// comes back only through Accept; a withdrawn finding stays withdrawn.
 func (s *Store) Withdraw(ctx context.Context, f Fence, reason string, r PersonReceipt) (Revision, error) {
 	if !workspace.ValidLine(reason, maxReason) {
 		return Revision{}, invalid("a withdrawal says why in at most %d bytes", maxReason)

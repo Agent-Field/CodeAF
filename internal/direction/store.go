@@ -53,7 +53,7 @@ func (s *Store) Close() error { return s.ws.Close() }
 // Current returns a record's current revision, whatever its state.
 func (s *Store) Current(ctx context.Context, id string) (Revision, error) {
 	var rev Revision
-	err := s.ws.ReadSnapshot(ctx, func(tx *sql.Tx) error {
+	err := workspace.ReadSnapshot(ctx, s.ws, func(tx *sql.Tx) error {
 		var err error
 		rev, err = current(ctx, tx, id)
 		return err
@@ -65,7 +65,7 @@ func (s *Store) Current(ctx context.Context, id string) (Revision, error) {
 // cited (id, revision) saw.
 func (s *Store) At(ctx context.Context, id string, revision int) (Revision, error) {
 	var rev Revision
-	err := s.ws.ReadSnapshot(ctx, func(tx *sql.Tx) error {
+	err := workspace.ReadSnapshot(ctx, s.ws, func(tx *sql.Tx) error {
 		var err error
 		rev, err = load(ctx, tx, id, revision)
 		return err

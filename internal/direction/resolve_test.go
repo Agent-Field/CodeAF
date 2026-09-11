@@ -371,8 +371,8 @@ func TestAnInformationalPageIsCutInTheStore(t *testing.T) {
 	}
 	subj := Subject{Refs: []workspace.Ref{chat("w")}, Phase: PhaseChat}
 	var rows int
-	if err := w.s.ws.ReadSnapshot(w.ctx, func(tx *sqlTx) error {
-		args := []any{"conversation", "w", "", string(TargetEverywhere), Everywhere, "", 11, 20}
+	if err := workspace.ReadSnapshot(w.ctx, w.s.ws, func(tx *sqlTx) error {
+		args := informationalArgs(subj.Refs, []placeKey{{TargetEverywhere, Everywhere, ""}}, 20, 10)
 		got, err := collect(w.ctx, tx, informationalQuery(1, 1), args, func(r scanner) (int, error) { return 1, nil })
 		rows = len(got)
 		return err
@@ -390,6 +390,63 @@ func TestAnInformationalPageIsCutInTheStore(t *testing.T) {
 		if a, b := page.Items[i-1].Rev, page.Items[i].Rev; a.WrittenAt.Before(b.WrittenAt) {
 			t.Fatalf("the page is not newest first: %s before %s", a.WrittenAt, b.WrittenAt)
 		}
+	}
+}
+
+// A PENDING PAGE READS ONLY WHAT IT CAN SHOW. Three hundred proposals sit on
+// the subject's folder; a resolve shows twenty and says there are more, and
+// the read behind it takes at most one more than the page from each place.
+func TestAPendingPageReadsOnlyWhatItCanShow(t *testing.T) {
+	w := newWorld(t)
+	launch := w.folder("Launch")
+	w.place(launch, chat("w"))
+	for i := 0; i < 300; i++ {
+		musts(t)(w.s.Propose(w.ctx, rule(fmt.Sprint("proposal ", i), folderTarget(launch, Direct)), model))
+	}
+	subj := Subject{Refs: []workspace.Ref{chat("w")}, Phase: PhaseChat}
+	pending := 0
+	if err := workspace.ReadSnapshot(w.ctx, w.s.ws, func(tx *sqlTx) error {
+		c, err := readClosure(w.ctx, tx, subj.Refs)
+		if err != nil {
+			return err
+		}
+		cands, _, err := readCandidates(w.ctx, tx, subj, c, w.s.now())
+		for _, cand := range cands {
+			if cand.lane == LanePending {
+				pending++
+			}
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if pending > MaxPending+1 {
+		t.Fatalf("the pending read took %d proposals to show %d", pending, MaxPending)
+	}
+	if eff := w.resolve(chat("w")); len(eff.Pending) != MaxPending || !eff.PendingMore {
+		t.Fatalf("pending page %d, more %v", len(eff.Pending), eff.PendingMore)
+	}
+}
+
+// A FULL PENDING WINDOW SAYS THERE MAY BE MORE. Exclusions are weighed after
+// the window is read, so a proposal that excludes the subject still takes a
+// slot; when that happens in a full window, a proposal past it may reach, and
+// the page says so rather than claiming to be complete.
+func TestAFullPendingWindowSaysThereMayBeMore(t *testing.T) {
+	w := newWorld(t)
+	launch := w.folder("Launch")
+	w.place(launch, chat("w"))
+	for i := 0; i < MaxPending; i++ {
+		musts(t)(w.s.Propose(w.ctx, rule(fmt.Sprint("proposal ", i), folderTarget(launch, Direct)), model))
+	}
+	if eff := w.resolve(chat("w")); len(eff.Pending) != MaxPending || eff.PendingMore {
+		t.Fatalf("a page's worth: %d pending, more %v", len(eff.Pending), eff.PendingMore)
+	}
+	d := rule("not in this chat", folderTarget(launch, Direct))
+	d.Exclusions = []Exclusion{{Kind: TargetConversation, Ref: "w"}}
+	musts(t)(w.s.Propose(w.ctx, d, AsPerson(card(t, "proposed"))))
+	if eff := w.resolve(chat("w")); len(eff.Pending) != MaxPending || !eff.PendingMore {
+		t.Fatalf("a full window with an excluded proposal: %d pending, more %v", len(eff.Pending), eff.PendingMore)
 	}
 }
 
@@ -411,7 +468,7 @@ func TestR11ALegacyWorkspaceMatchesImportedRecordsByCleanedPath(t *testing.T) {
 			Target{Kind: TargetLegacyWorkspace, Ref: "/work/launch"}), State: Accepted,
 			Receipt: Receipt{Actor: ActorLegacyPerson, Door: DoorCard, Ref: "proposal-1"}}},
 	}
-	res, err := w.s.Import(w.ctx, ImportRun{ID: "run", Mode: "apply", Binary: "test"}, item)
+	res, err := Import(w.ctx, w.s, ImportRun{ID: "run", Mode: "apply", Binary: "test"}, item)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -558,12 +615,12 @@ func TestTheNewestLegacyNameIsReadWithOneSeekPerRecord(t *testing.T) {
 	var res ImportResult
 	for v := 1; v <= 20; v++ {
 		var err error
-		if res, err = w.s.Import(w.ctx, importRun, holdItem("hold-1", fmt.Sprint(v), fmt.Sprintf("at most $%d a night", 100+v))); err != nil {
+		if res, err = Import(w.ctx, w.s, importRun, holdItem("hold-1", fmt.Sprint(v), fmt.Sprintf("at most $%d a night", 100+v))); err != nil {
 			t.Fatal(err)
 		}
 	}
 	var rows int
-	if err := w.s.ws.ReadSnapshot(w.ctx, func(tx *sqlTx) error {
+	if err := workspace.ReadSnapshot(w.ctx, w.s.ws, func(tx *sqlTx) error {
 		got, err := collect(w.ctx, tx, legacyQuery(1), []any{res.Record}, func(r scanner) (int, error) { return 1, nil })
 		rows = len(got)
 		return err
@@ -608,7 +665,7 @@ func TestMutualOverridesAreAnUnresolvedConflict(t *testing.T) {
 func TestAResolveRefusesALiveRowThatIsNotTheCurrentRevision(t *testing.T) {
 	w := newWorld(t)
 	r := w.accept(rule("formal tone", chatTarget("w")))
-	if err := w.s.ws.WriteImmediate(w.ctx, func(tx *sqlTx) error {
+	if err := workspace.WriteImmediate(w.ctx, w.s.ws, func(tx *sqlTx) error {
 		_, err := tx.ExecContext(w.ctx, "UPDATE direction_records SET revision=1 WHERE id=?", r.ID)
 		return err
 	}); err != nil {
