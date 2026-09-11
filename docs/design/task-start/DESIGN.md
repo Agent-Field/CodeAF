@@ -722,3 +722,89 @@ piece's own check already answered for the piece. The manual says the same sente
   `bind` as every other address, from a map built out of the real directories. The
   alternative — binding to one named directory — is correct for the checker and wrong
   for the before-reading, which is how the "red before this work" softening got there.
+
+## The typed `/task` door stops waiting (#936)
+
+*The measurement this section starts from: every `/task <brief>` stood in a forming
+block for twenty-eight seconds on a thinking model — `sizing it up…` for the sizing
+judge's three-second window, then `shaping the brief…` for the shaper's twenty-five —
+and both windows ran out and returned nothing, so the work then started on the person's
+sentence anyway.*
+
+### What was true
+
+The typed door waited on two model calls in series before the node existed:
+
+- **The sizing judge, in the surface.** tui3 called `JudgeDecomposable` (remote:
+  `Task.Judge`) and held the command under `sizing it up…` for its answer. A yes
+  armed the node to divide (`rememberDivisible`); a timeout was a silent no.
+- **The shaper, in the door.** `StartTask` called `shapeBrief` under
+  `taskShapeWindow`, streamed the brief into a preview line under the forming block
+  (`WithBriefWatch`), named and placed the node from the shaper's `title` and
+  `where`, and on a timeout admitted the person's words with the note
+  `brief kept as you wrote it`.
+
+S2 had already moved memory and the drawing's division reading beside the worker. The
+person's own door was the one road still in front of it.
+
+### What is true now
+
+`StartTask` asks no model. It admits the node at once on the person's sentence and the
+canned done-condition, with two flags on the spec saying what is still to be read
+(`taskSpec.unshaped`, `taskSpec.unsized`), and returns in milliseconds. Both readings
+run **beside the node's first worker**, through the same `besideWork` S2 introduced, and
+are started in `workTaskNode` next to `sizeBeside`, after the worker's opening is
+composed — so the first request always goes out on the person's words and waits on
+neither reading.
+
+**Width** is one more source for the division road that S2 built, not a second road.
+`proposalBeside` has two sources: the drawing (as before) and, for an unsized node, the
+judge's parts (`judgedDivision`), asked with `askedByJudge`. That asker carries
+`breadth`, which lets the parts past the floor gate the way an armed node's own
+division gets past it; the parts are then weighed by `weighDivision` and handed to the
+worker by `deliverBeside` as the same receipt #883 delivers. **Arming is not touched**:
+`spec.armed` stays frozen at admission, because the belt and the system prompt read it
+when the worker is built, and arming a running worker would make the prompt and the
+belt disagree. `solo` (typed, or the standing `single`) is the one thing that turns the
+judge off.
+
+**The brief** arrives as a steer. `shapeBeside` asks the shaper beside the worker and
+hands the written brief to the worker's room as a note through the mailbox
+(`deliverTo`, `roomSeat`), opening `YOUR BRIEF IS WRITTEN OUT NOW`. The node's contract
+(`spec.brief`, `spec.acceptance`, the assembled brief) is written only when the note is
+settled into the worker's record (`durableDelivery.settled` → `writeBrief`), so the
+checker is never judged against a contract the worker did not see. A brief that lands
+after the worker's last step is not written, and the work stands on the person's words.
+There is still one brief format: the shaped brief replaces the person's sentence in the
+same assembled shape every node has.
+
+**The name** is the namer's, asked at admission the way it is for every unnamed node;
+the mechanical cut of the person's opening words stands until it answers. **The ground**
+is the ladder's, which reads the paths in the person's own sentence.
+
+### What was deleted
+
+`JudgeDecomposable`, `Task.Judge` and its call class, `taskCallDeadline`,
+`rememberDivisible` at the door, `TaskShapeFallbackNote`, `BriefWatch` /
+`WithBriefWatch` and the forming block's preview, window and walk, the surface's
+`sizing it up…` phase and `the work looks wide` note, the shaper's `title` and `where`
+fields (in `prompts/shape.md` too), and `taskName`. The remote wire moves to version 16.
+
+### The bar's four questions
+
+- **The one abstraction.** `besideWork`, reused: every reading that must not stand in
+  front of a worker is started beside it, bound to its context and joined. The typed
+  door is its third user after memory and the drawing. `divisionAsker.breadth` is the
+  one new field, and any future source of parts that already judged width can use it.
+- **What was deleted.** The list above: one surface wait, one remote door, one
+  streaming preview and its machinery, and two ignored prompt fields.
+- **The law tests.** `TestThePersonsTaskDoorAsksNoModel` (`go/ast`: `StartTask`'s body
+  calls no model-asking function); `TestTheWorkersFirstRequestGoesOutBeforeTheShaperOrTheJudgeAnswers`
+  (the judge never answers, the shaper is held, the worker's first request lands first);
+  `TestAWideTaskStartsItsWorkerFirstAndTheJudgesPartsArriveAsTheReceipt` (the control);
+  `TestABriefIsWrittenOnlyWhenTheWorkerReadsIt`; and the existing
+  `TestEveryReadingBesideTheWorkHasAJoin`.
+- **What a reviewer might call a band-aid.** Starting the task on the person's raw
+  sentence. It is not a fallback: it is the only brief that exists at the moment the
+  work can begin, it is the authority the shaped brief quotes verbatim, and the shaped
+  contract replaces it through the same assembled shape rather than a second format.

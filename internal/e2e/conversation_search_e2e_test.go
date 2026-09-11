@@ -150,7 +150,7 @@ func TestConversationSearchInsideLiveTask(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
 	defer cancel()
 	started := time.Now()
-	id, _, _, err := agent.StartTask(ctx, "Look up our earlier copper rollout decision. In your final answer, quote the approval phrase verbatim, identify the stored speaker role, and cite the conversation ID and its opaque source reference. Read the original conversation as evidence; do not guess.")
+	id, _, _, err := agent.StartTask(ctx, "Look up our earlier copper rollout decision. In your final answer, quote the approval phrase verbatim, identify the stored speaker role, and cite the conversation ID and its opaque source reference. Read the original conversation as evidence; do not guess.", true)
 	if err != nil {
 		t.Fatal(err)
 	}

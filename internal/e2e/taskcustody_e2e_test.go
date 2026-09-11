@@ -194,10 +194,11 @@ func runCustody(t *testing.T, w *world, attempt int) *custodyRun {
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
 
-	// THE TWO PIECES, THROUGH THE DOOR `/task` OPENS. Held at the frontier by the
-	// memory floor, so each of these is a shaper call and nothing else.
+	// THE TWO PIECES, THROUGH THE DOOR `/task solo` OPENS. Held at the frontier by
+	// the memory floor, so each of these is an admission and nothing else: the
+	// brief is written beside a worker, and a node that is held has none yet.
 	for _, brief := range []string{custodyFirstPiece, custodySecondPiece} {
-		id, title, _, err := agent.StartTask(ctx, brief)
+		id, title, _, err := agent.StartTask(ctx, brief, true)
 		if err != nil {
 			t.Fatalf("hand out %q: %v", brief, err)
 		}

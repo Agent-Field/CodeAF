@@ -2,13 +2,12 @@ package remote
 
 import "time"
 
-// These are the three task-command questions whose answers belong to the
-// engine machine. The surface sends intent; shaping, admission and spending
+// These are the task-command questions whose answers belong to the engine
+// machine. The surface sends intent; sizing, shaping, admission and spending
 // remain with the session agent that owns the conversation.
 const (
 	MethodTaskStart     = "Task.Start"
 	MethodPlannerStart  = "Task.StartPlanner"
-	MethodTaskJudge     = "Task.Judge"
 	MethodTaskRoom      = "Task.Room"
 	MethodTaskSteer     = "Task.Steer"
 	MethodTaskStop      = "Task.Stop"
@@ -148,9 +147,13 @@ type TaskStopped struct {
 	Line string `json:"line,omitempty"`
 }
 
-// TaskStartArgs carries the person's brief without interpreting it locally.
+// TaskStartArgs carries the person's brief without interpreting it locally, and
+// whether they said the work is one worker's ([session.Agent.StartTask]'s solo):
+// that is the one thing the surface knows and the engine cannot, because the
+// word and the standing answer are both read on the surface's side.
 type TaskStartArgs struct {
 	Brief string `json:"brief"`
+	Solo  bool   `json:"solo,omitempty"`
 }
 
 // PlannerStartArgs also carries the sizing hint used by the adaptive form.
@@ -160,8 +163,8 @@ type PlannerStartArgs struct {
 }
 
 // TaskStarted is the receipt the existing single-task note draws. Note is the
-// engine's fallback line — "brief kept as you wrote it" — carried to the surface
-// only when the engine's shaper was invoked and came back cut; empty otherwise.
+// engine's one line about where the work stands when the ground ladder moved it
+// (internal/session's taskstands.go), and empty on every ordinary start.
 type TaskStarted struct {
 	ID    uint64 `json:"id,omitempty"`
 	Title string `json:"title,omitempty"`
@@ -172,13 +175,6 @@ type TaskStarted struct {
 type PlannerStarted struct {
 	ID    string `json:"id,omitempty"`
 	Title string `json:"title,omitempty"`
-}
-
-// TaskJudged carries the bounded sizing answer back to the command.
-type TaskJudged struct {
-	Parallel bool     `json:"parallel,omitempty"`
-	Parts    []string `json:"parts,omitempty"`
-	Why      string   `json:"why,omitempty"`
 }
 
 // TaskPending is the open proposals, oldest id first — [session.Agent.PendingTasks]

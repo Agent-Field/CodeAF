@@ -172,7 +172,6 @@ func TestWhatIsDoneUnderTheHandoverLockIsBounded(t *testing.T) {
 		"children":            "a read of the graph under its own lock",
 		"admitDivision":       "the claim, the family freeze and the admits: local work and git on the node's own copy, no model and no person",
 		"withReport":          "string joining",
-		"afterParts":          "a read of the drawing in hand",
 		"enqueueNote":         "one write to the steering queue",
 		"briefNote":           "a value built in memory",
 	}

@@ -451,6 +451,25 @@ type taskSpec struct {
 	// it ever ran comes back as one worker, which is what a task whose reviewer
 	// refused already is. Neither is a loss worth a second way to spawn work.
 	drawn drawnDivision
+	// unshaped says THE BRIEF IS THE PERSON'S SENTENCE STANDING IN for the one
+	// the shaper has not written yet, and it is set by exactly one door: a
+	// person's own `/task` ([Agent.StartTask]). The shaper is asked beside the
+	// node's first worker and the flag is cleared by the one write that replaces
+	// the stand-in ([TaskNode.writeBrief], task_shape.go). Every other door
+	// admits a brief somebody already wrote and leaves it false.
+	unshaped bool
+	// unsized says NOBODY HAS READ THIS REQUEST FOR WIDTH, and the sizing judge
+	// is to read it beside the node's first worker rather than in front of it
+	// (task_divide_sketch.go's [Agent.proposalBeside]). The same one door sets
+	// it, unless the person said the work is one worker's — `/task solo`, or a
+	// standing answer of `single` — and it is spent the moment the judge is
+	// asked, so a node is read for width once whatever happens to it after.
+	//
+	// NEITHER FLAG IS IN THE CHECKPOINT, for [taskSpec.drawn]'s reason: a node
+	// restored after its first worker ran has had both readings already, and a
+	// node restored before it comes back as one worker on the person's own
+	// words, which is what either reading failing always meant.
+	unsized bool
 }
 
 // taskOrigin is the pointer a worker is handed so it can find the person's

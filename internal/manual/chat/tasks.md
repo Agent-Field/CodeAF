@@ -17,20 +17,15 @@ model's window onto work that is running or already landed is its `tasks` tool; 
 also the door it uses to steer a task or to settle one, when you say so in conversation.
 
 You can also start one directly with `/task <brief>`. **You are never asked a question by
-that form.** It shows `sizing it up…` while a small judge reads your words for width, and
-then one worker starts either way. If the judge found more than one job in there, one dim
-line goes into the transcript —
+that form, and nothing is waited for in front of it**: the task exists the moment you press
+enter and one worker starts on your own words. A small judge reads those words for width
+**beside** that worker. If it finds more than one job in them, the parts are weighed the
+way any division is and, where they hold up, handed to other workers while the first keeps
+going — they appear on the roster as rows of their own, and the worker is told what was
+handed out. That is *When a task turns out to be too wide for one worker*, below. A no, a
+timeout or an unreadable answer changes nothing: one worker is what is already running.
 
-```
-the work looks wide · one worker starts, and it can split as it goes
-```
-
-— and that worker is allowed to hand the parts out later, once it has opened the material
-and seen how many there really are. That is *When a task turns out to be too wide for one
-worker*, below. A no, a timeout or an unreadable answer starts the same one worker in
-silence, with no line about width, after `sizing it up…` disappears.
-
-`/task solo <brief>` skips the judge and starts one worker.
+`/task solo <brief>` starts one worker and asks the judge nothing.
 
 **There is no `/task adaptive` any more.** `/task` cannot open an adaptive run, and the
 word picks nothing. Type it and your brief is kept exactly as you typed it — the word is
@@ -41,9 +36,10 @@ ordinary worker, and one dim line says so:
 /task adaptive retired · the word stays in your brief, and the work starts as one worker that can split as it goes
 ```
 
-**Every `/task` has its brief shaped before the work starts.** Your words are kept word for
-word and a fuller brief is written around them — the constraints this kind of work needs,
-what was decided on your behalf, and what done means. It is the next section.
+**Every `/task` has its brief written beside its worker.** Your words are kept word for word
+and a fuller brief is written around them — the constraints this kind of work needs, what
+was decided on your behalf, and what done means — and it reaches the worker a few steps in.
+It is the next section.
 
 Every task carries a title, a short summary, the brief, and a done-condition — the command
 that must pass, the behaviour that must hold, the output that must appear. The original brief and
@@ -96,7 +92,8 @@ the files, if it changed any.
 ## How a quick task starts — there is no /quick command, aforge starts one itself
 
 **You cannot type a quick task into being.** There is no `/quick` command and `/task`
-never makes one: `/task` is the ordinary road, with its sizing call and its shaped brief.
+never makes one: `/task` is the ordinary road, with its width read and its brief written
+beside its worker.
 A quick task is started by the model, with its `quick_task` tool, when it judges that the
 work in front of it is that shape — most often when you have asked for several small
 things that can go at once.
@@ -366,63 +363,48 @@ into the conversation, and its note is what you read.
 
 ## Why my task's brief is longer than what I typed — the brief is shaped
 
-A task you start with `/task` does not go out as the sentence you typed. Between the
-command and the work, one model call reads your words and writes the brief the worker is
-actually given: your request quoted word for word, then the things a worker alone with the
-job needs settled — what kind of work this is, who the output is for and what makes it good
-to them, the ways this particular kind of work goes wrong and the conditions that forbid
-them, anything ambiguous decided one way with the assumption stated. It also writes a
-separate done-condition that somebody other than the worker could check.
+A task you start with `/task` does not stay the sentence you typed. **Beside its worker** —
+never in front of it — one model call reads your words and writes the brief the work is
+held to: your request quoted word for word, then the things a worker alone with the job
+needs settled — what kind of work this is, who the output is for and what makes it good to
+them, the ways this particular kind of work goes wrong and the conditions that forbid them,
+anything ambiguous decided one way with the assumption stated. It also writes a separate
+done-condition that somebody other than the worker could check.
 
-So the brief in the task's room really is longer than what you typed, and **the room is
-showing you the truth** — that is the brief the worker read. Nothing shorter was sent and
-nothing was kept back.
+**The worker starts on your own sentence**, and the written brief reaches it a few steps in,
+as one message opening `YOUR BRIEF IS WRITTEN OUT NOW` that carries the whole document in
+the same layout it opened on. From the moment the worker reads that message, the brief and
+its done-condition are what the work is judged by, and the task's room shows them. Nothing
+shorter was sent and nothing was kept back.
 
-`shaping the brief…` is the line on screen while that call runs, and it is **alive**: it
-carries the same spinning braille mark and the same climbing clock a running tool call and
-a running compaction carry, so it reads as `⠙ shaping the brief… · 6s`. The clock is
-dropped under a second. The line disappears the moment the task starts. It waits up to 25
-seconds.
+**Is it stuck on shaping the brief?** A typed `/task` no longer shows `shaping the brief…`
+at all: nothing waits for the brief, so there is no wait to watch. It used to — up to 25
+seconds with a spinner and a clock, before the task even existed. If you see
+`shaping the brief…` now, it is on a task you approved from a proposal card, in the moment
+before that task appears on the roster.
 
-A still line here would mean something is wrong. If the mark is not turning, aforge is not
-waiting on the shaper — look for the task's own row on the roster instead.
-
-**You can watch the brief being written.** One dim row under the phase row carries the
-newest words as they arrive — the model's own reasoning in italics while it is still
-thinking, then your brief upright once it starts writing one — and `→` with an empty box
-(or a click on that row) opens it into the last six lines. It is a preview of the wait and nothing is kept from it — the
-whole block disappears when the task starts. The commands page has it in full, under *Can I
-see the brief while it is being written*.
-
-**If shaping cannot run, your words go as-is.** No model resolved for it, a timeout, an
-answer that was not readable — the task starts with exactly your sentence and the plain
-done-condition `Complete the brief and report the result and checks run.`, which is what
-`/task` did before shaping existed. It is never a reason for your task to be refused, held
-up, or lost.
+**If the brief cannot be written, your words go as they are.** No model resolved for it,
+no answer inside the 25 seconds the call is given, an answer that was not readable, or a brief that arrived
+after the worker had already finished — the work stands on exactly your sentence and the
+plain done-condition `Complete the brief and report the result and checks run.`, and
+nothing is printed about it. It is never a reason for your task to be refused, held up,
+or lost.
 
 The call is billed the way aforge's other calls-you-did-not-type are: to the session, not to
 a turn. It runs on the `shaper` role, which follows the careful-work model.
 
 ## Why my task says brief kept as you wrote it — the line under a started task, my brief was not shaped
 
-`brief kept as you wrote it` is one dim line aforge prints under `single task 12 started ·
-…` when the shaping call was made and did not come back. It says exactly what it says: the
-worker was handed the sentence you typed, word for word, with the plain done-condition
-`Complete the brief and report the result and checks run.` and no shaped document around it.
+**It does not any more.** `brief kept as you wrote it` was one dim line an older aforge
+printed under `single task 12 started · …` when the shaping call, which then ran before the
+task, was cut. Nothing waits on that call now, so there is nothing for such a line to
+report at the moment the task starts.
 
-It is not an error, and no part of your request was dropped. The task is running, it has
-its name, and it sits on the roster like every other one. What it does not have is the
-longer document described under *Why my task's brief is longer than what I typed* — so the
-room shows your own sentence, and a worker alone with a short brief settles fewer of the
-things a shaped brief would have settled in advance. If you were relying on that pass to
-spell out the format or the done-condition, say it yourself and start the work again.
-
-You see the line only when a shaper genuinely ran and was cut — the 25-second wait ran out,
-or the call failed. The other ways shaping does not happen stay silent, because in those
-no call was made that could be cut: a `shaper` role with no model resolved for it, and an
-answer that came back whole but could not be parsed, both admit the task on your words and
-say no such line. **An ordinary start is silent here**, which is how you can trust the line
-when it does appear.
+A brief that is never written leaves the work on your own sentence with the plain
+done-condition, and the task runs, is named and sits on the roster like every other one.
+The task's room shows which it has: the longer document, or your sentence alone. If you
+were relying on that pass to spell out the format or the done-condition, say it yourself —
+in the task's room, while it runs, or in the brief you start it with.
 
 ## Does aforge change my task, or rewrite what I asked for?
 
@@ -452,15 +434,11 @@ The name on the roster is written by a model, not cut out of your sentence.
 The roster draws **three words**, and the first three words of a typed sentence are almost
 never the useful ones — "can you have…", "please look into…", "read /Users/…". Every task
 would be named after the way you cleared your throat, or after a path you pasted, and a
-column of them would be unreadable. So the same call that shapes the brief also names the
-work: it has just read the job closely enough to brief a worker about it, and it answers
-with a short lowercase name for the thing that will exist when the job is done —
-`frieren pdf summary`, `nil-map crash fix`. That part costs nothing extra: it is one more
-field in an answer aforge was already paying for and already waiting on.
+column of them would be unreadable.
 
 **Where nothing named it, a small call does.** Some work reaches the roster with no name at
-all — only the sentence it was started from: a `/task` whose shaping could not run, work
-that started on its own after a words-only turn, an adaptive run's own row. That title is
+all — only the sentence it was started from: every `/task`, work that started on its own
+after a words-only turn, an adaptive run's own row. That title is
 handed to the cheap `taskname` role, which reads the work and answers with two or three lowercase words.
 Empty replies, instruction echoes and placeholders such as `nothing to name` are refused.
 The next configured naming model may answer within the same time limit; if it cannot,
@@ -469,9 +447,10 @@ is named again from its saved brief when you reopen the conversation; the work i
 is not rerun.
 
 **Work a model already named is left alone.** A task the conversation proposed with
-`propose_task` carries the name the model wrote as an argument to that tool; a `/task` whose
-shaping ran carries the shaper's. Neither is renamed — a second call to disagree with a name
-aforge itself just wrote would be a bill for nothing. A title that is already two or three
+`propose_task` carries the name the model wrote as an argument to that tool, and it is not
+renamed — a second call to disagree with a name aforge itself just wrote would be a bill
+for nothing. The model that writes a `/task`'s brief does not name it: the task already has
+its name by then, a few seconds after it started. A title that is already two or three
 words with no file path in it is left alone for the same reason.
 
 **The work does not wait for the name.** The task is admitted, checkpointed and started
@@ -509,9 +488,9 @@ because its row is read as a design and not as a task.
 decides is only what is paid to find out how wide the work is. `/settings` → Session →
 **starting a task**, or the `task.start` row:
 
-- **sized** — the default. The sizing call reads your brief, one worker starts either way,
-  and a brief with independent parts in it starts a worker that is allowed to split itself
-  once it has opened the material.
+- **sized** — the default. One worker starts at once and the sizing call reads your brief
+  **beside** it; where it finds independent parts in your words, they are weighed and
+  handed to other workers while the first keeps going. Nothing waits for the call.
 - **single** — one worker, and the sizing call is not made at all. Nothing is spent reading
   your brief for width, and nothing is said about it.
 
@@ -4175,10 +4154,12 @@ and the parts simply **wait** — the same wait any queued task does, drawn as
 `waiting · machine busy` — and they start themselves as soon as the machine clears. The
 worker is told so in its receipt and has nothing to come back for.
 
-**You may have been warned it could happen.** A `/task <brief>` whose sizing call found more
-than one job in your words writes one dim line before the work starts —
-`the work looks wide · one worker starts, and it can split as it goes` — and that line is
-what this section is about. It promises nothing: the tests below still have to pass.
+**A `/task` can be split for its worker, too.** The sizing call reads a `/task <brief>` for
+width beside its first worker, and where it finds more than one job in your words, those
+parts are put through the same tests below — the worker does not have to find them again.
+Nothing is printed before the work starts; the parts arriving as rows of their own, and the
+worker's transcript saying what was handed out, is how you learn it happened. A no from the
+call changes nothing.
 
 **And this is what I do with a wide change too.** When I hand work off myself rather than
 you typing `/task`, `propose_task` carries a `wide` flag, and I set it whenever the work

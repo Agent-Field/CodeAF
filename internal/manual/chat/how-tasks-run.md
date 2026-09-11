@@ -2,25 +2,21 @@
 
 ## What happens when I type /task — the forming line is stuck, the task spinner is not moving, nothing happens after /task
 
-`/task <brief>` first raises one forming block at the transcript tail. Its dim `▏ `
-hairline joins the word `task`, your verbatim quoted brief, and the live phase. The phase
-begins as `sizing it up…` for the plain sized form and advances in place to
-`shaping the brief…`; `/task solo` and the preset `single` road skip straight to
-shaping. The spinner and count-up keep moving on the same frame clock as the
-other live rows — the block starts that clock itself, so it turns even when the
-conversation is otherwise idle, which is every time you type `/task`. In the plain-text
-tier the mark is a still `*` on purpose and only the clock climbs. When the start
-succeeds, the block is replaced in that same frame by
-the normal started-task row and the task appears on its rail. When it fails, the block is
-replaced by the error sentence. The hairline never remains on settled work.
+`/task <brief>` raises no forming block: nothing is waited for in front of it. The task
+exists as soon as you press enter — the ordinary started-task row appears and the task is
+on its rail — and its brief is written and its width read beside its first worker. It used
+to show `sizing it up…` and then `shaping the brief…` for as long as half a minute first;
+if you see a forming line now, it is the one below.
 
-The same block appears when you say yes to a task the model proposed on its card:
-approving is followed by the same short pause while the brief is prepared, so the block
-rises with the task's name on it — unquoted, because the name is aforge's word rather
-than something you typed — and it collapses the moment the task appears on the rail.
-Saying no, or redirecting the proposal, raises nothing. One forming look for both ways a
-task begins; only the card, which asks before the model spends your money, is particular
-to the proposed one.
+**The forming block belongs to a proposal you said yes to.** Approving a task the model
+proposed on its card is followed by a short pause before the task exists, and one dim block
+rises at the transcript tail with a `▏ ` hairline: the word `task`, the task's name —
+unquoted, because the name is aforge's word rather than something you typed — and a
+spinning mark with a climbing clock. The spinner and count-up keep moving on the same frame
+clock as the other live rows — the block starts that clock itself, so it turns even when
+the conversation is otherwise idle. In the plain-text tier the mark is a still `*` on
+purpose and only the clock climbs. It collapses the moment the task appears on the rail.
+Saying no, or redirecting the proposal, raises nothing.
 
 ## Which folder does a task work in — I opened aforge in my home folder, can a task work in a different repo, why did my task work in the wrong project
 
@@ -2943,8 +2939,10 @@ restored from a checkpoint written before this existed has no verbatim part at a
 **For a `/task` the THE WORK part is your brief after shaping**, not a model's paraphrase of
 a conversation: your sentence with the constraints and decisions written around it, from the
 pass described on the *work that runs on its own* page under *Why my task's brief is longer
-than what I typed*. Where shaping could not run, the two parts are the same sentence and it
-is printed once — under your own heading, with no THE WORK at all.
+than what I typed*. That pass runs beside the worker, so the worker opens on your sentence
+alone — printed once, under your own heading, with no THE WORK at all — and is handed the
+document with both parts when the brief is written. Where it is never written, your
+sentence is the whole of it.
 
 Long messages are cut at 6000 bytes and the cut is marked with `…`, so a task that was
 handed a shortened version of what you said can see that it was. The brief then names the

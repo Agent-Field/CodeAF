@@ -37,10 +37,12 @@ import "strings"
 // may make a live tag plain by pressing backspace immediately after it, and its
 // chip leaves on that first press without deleting a letter.
 //
-// THE TWO TAG DOORS BOTH END AT A PERSON-VISIBLE DECISION. /standing raises its
-// ratification card and /task opens its sizing choice; pasted text cannot turn a
-// tinted word into silent work or spent money. This safety fact is why the chip
-// may honestly promise that enter will act on a tag.
+// THE TWO TAG DOORS BOTH END WHERE A PERSON CAN SEE THEM. /standing raises its
+// ratification card, and /task starts its work in the open — a started row and a
+// task on the roster, one worker that can be stopped (issue #936 took the wait in
+// front of it away, not the row). Pasted text cannot turn a tinted word into
+// silent work, because the chip says what enter will do before enter is pressed,
+// which is why it may honestly promise that enter will act on a tag.
 
 type sendDoor uint8
 
