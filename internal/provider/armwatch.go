@@ -57,6 +57,40 @@ type streamWatch struct {
 	acted   control.Act
 	silence time.Duration
 	fault   bool
+	// applied is THE BOUND THAT ACTUALLY ENDED THIS ATTEMPT and appliedWord is
+	// what to call it, both zero on an attempt no bound ended.
+	//
+	// THEY EXIST BECAUSE `deadline_ms` IS FICTION. [streamWatch.armed] above is
+	// the hazard's FIRST deadline — when this arm was going to start thinking
+	// about a second machine — and the log has been recording it under a name
+	// that reads as "when this call was going to be ended". The census of
+	// 2026-09-10 measured what that costs: 2,720 of 11,841 finished attempts
+	// ran more than twice their recorded `deadline_ms`, the field reads 10,000
+	// on 7,937 rows, and the worst row is `deadline_ms 10000` against `ms
+	// 937777`. Six hundred rows cut by a bound set OUTSIDE this package were
+	// read by that census as the stream wall cutting live streams, which the
+	// wall never did.
+	//
+	// SO THE TWO FACTS ARE SEPARATE FIELDS AND THE ROW MAY CARRY BOTH: what was
+	// planned, and what happened. This pair is filled in by the guard when one
+	// of its bounds fires ([stallWatch] through [streamWatch.boundApplied]) and
+	// is left empty by every attempt that ended for any other reason — an
+	// answer, a refusal, the caller leaving — because an empty here is the
+	// honest reading of "no bound of ours ended this".
+	applied     time.Duration
+	appliedWord string
+	// lost says this arm was cancelled because another arm answered first.
+	//
+	// IT IS THE DIFFERENCE BETWEEN EXHAUST AND FAILURE. A losing arm's request
+	// really was made and really was cut off, so it writes an end row like
+	// every other attempt — and that row says `context canceled`, which every
+	// reading of the log has counted as a failure. It is 1,204 of 3,906 bad
+	// rows in the 2026-09-10 census, the single largest "cause family" in it,
+	// and not one of them is a thing that went wrong: they are the price of a
+	// race this build chose to run and won. A census that counts them as
+	// failures is measuring its own hedging policy and calling it provider
+	// health.
+	lost bool
 	// Recovery suspends the controller; recovered calls cannot teach lane timing.
 	recovering bool
 	recovered  bool
@@ -351,6 +385,43 @@ func (w *streamWatch) lane() string {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.served
+}
+
+// boundApplied records the bound that ended this attempt, from the guard that
+// fired it. It is the honest half of the pair [streamWatch.armed] is the
+// planned half of, and it is written once: the first bound to fire is the one
+// that ended the stream and a second could only be a timer unwinding behind it.
+//
+// A CUT IS THE ONLY THING THAT KNOWS ITS OWN FIGURE. [StreamCut.Waited] is the
+// constant the timer was actually set to, role band and lane derivation
+// included, and [CutReason.word] is the ledger's name for it — so the two
+// fields are taken from the cut rather than recomputed here, and a row can be
+// checked against the decision it records.
+func (w *streamWatch) boundApplied(cut *StreamCut) {
+	if w == nil || cut == nil {
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.appliedWord != "" {
+		return
+	}
+	w.applied, w.appliedWord = cut.Waited, cut.Reason.word()
+}
+
+// lostRace marks this arm as the exhaust of a race another arm won, so its end
+// row is not read as a failure. See [streamWatch.lost].
+//
+// IT IS CALLED FROM THE CANCEL SITE and from nowhere else: the race is the only
+// thing that knows an arm was cut off rather than failed, and this layer is the
+// only thing the row is composed from.
+func (w *streamWatch) lostRace() {
+	if w == nil {
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.lost = true
 }
 
 // written is how many tokens this arm delivered.

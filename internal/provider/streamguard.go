@@ -296,6 +296,11 @@ var (
 	stallWallMeasured  = streamWallMeasuredFloor
 	stallWallCeiling   = streamWallCeiling
 	stallGapLumpTokens = streamGapLumpTokens
+	// stallGapFloor is [LagGap], the least any DERIVED gap may be, and it is
+	// here for the same reason as the six above: the arithmetic of [gapFor] is
+	// stated in seconds and a test proving that a gap NARROWS to a lane's own
+	// rate would otherwise have to sit through fifteen of them.
+	stallGapFloor = LagGap
 )
 
 // ── THE BOUNDS BELONG TO THE ROLE, AND THEY SIT ABOVE THE CONTROLLER ────────
@@ -366,7 +371,7 @@ type stallBounds struct {
 func boundsFor(role lanes.Role) stallBounds {
 	patience := stallPatience(role)
 	gap := stretch(stallGapBound, patience)
-	floor := transportHeadroom * role.Ceiling()
+	floor := transportHeadroom * stallCeiling(role)
 	// A FLOOR MAY NOT OUTRANK THE BOUND IT STANDS UNDER. In the shipped figures
 	// it never comes close — the flat gap is four and a half ceilings and the
 	// floor is two — and this line is what keeps the seam a seam: a test proving
@@ -394,6 +399,17 @@ func (b stallBounds) narrow(gap time.Duration) time.Duration {
 func stretch(bound time.Duration, patience float64) time.Duration {
 	return time.Duration(float64(bound) * patience)
 }
+
+// stallCeiling is the controller's time-to-action for a role, and it is
+// [lane.Role.Ceiling] and nothing else.
+//
+// IT IS A VARIABLE FOR THE SAME REASON THE THREE BOUNDS ARE: the seam. The floor
+// under every bound here is [transportHeadroom] ceilings, so a test that
+// shortens the transport to milliseconds and leaves this at ten seconds is a
+// test whose floor has quietly swallowed every figure it set — and the one law
+// that then cannot be proven at all is the one that matters most, that a gap
+// NARROWS onto the lane's own measured rate. Production reads the table.
+var stallCeiling = func(role lanes.Role) time.Duration { return role.Ceiling() }
 
 // stallPatience is the role's multiplier, READ BACK OFF ITS CEILING rather than
 // out of the facts table, so that a bound and the ceiling it has to clear can
@@ -460,8 +476,8 @@ func gapFor(rate float64) time.Duration {
 		return stallGapBound
 	}
 	gap := time.Duration(float64(stallGapLumpTokens) / rate * float64(time.Second))
-	if gap < LagGap {
-		gap = LagGap
+	if gap < stallGapFloor {
+		gap = stallGapFloor
 	}
 	if gap > stallGapBound {
 		gap = stallGapBound
@@ -754,6 +770,12 @@ type stallWatch struct {
 	// reason exactly: a bound that could be moved repeatedly by chunks would
 	// not be a bound.
 	regapped bool
+	// arm is this request's place in the wait report, nil on a call with no
+	// controller. It exists for ONE fact travelling ONE way: when a bound here
+	// ends a stream, the row has to be able to say WHICH bound, and this layer
+	// is the only thing that knows. See [streamWatch.applied] for what the row
+	// was saying instead and what that cost the census.
+	arm *streamWatch
 }
 
 // newStallWatch starts both clocks: the silence timer, and the wall.
@@ -769,7 +791,7 @@ type stallWatch struct {
 // re-stating it). A call that named none reads as [lane.RoleUnknown], a hidden
 // background errand, which waits longer rather than less.
 func newStallWatch(ctx context.Context, cancel context.CancelFunc, wall time.Duration, pace float64) *stallWatch {
-	watch := &stallWatch{cancel: cancel, clock: time.Now, bounds: boundsFor(RoleFrom(ctx))}
+	watch := &stallWatch{cancel: cancel, clock: time.Now, bounds: boundsFor(RoleFrom(ctx)), arm: streamWatchFrom(ctx)}
 	watch.born = watch.clock()
 	watch.quietSince = watch.born
 	watch.walled, watch.period, watch.pace = wall, wall, pace
@@ -872,6 +894,7 @@ func (w *stallWatch) regap(gap time.Duration) {
 // The cancel runs outside the lock, for [stallWatch.fire]'s reason.
 func (w *stallWatch) overran() {
 	if cancel := w.overrunVerdict(); cancel != nil {
+		w.arm.boundApplied(w.cut())
 		cancel()
 	}
 }
@@ -990,6 +1013,10 @@ func (w *stallWatch) alive() {
 // return can slip past (internal/guard's lockdefer_test.go states the law).
 func (w *stallWatch) fire() {
 	if cancel := w.verdict(); cancel != nil {
+		// THE ROW LEARNS WHICH BOUND ENDED IT, before the cancel unwinds the
+		// request and the attempt is recorded. Outside the lock, for the same
+		// reason the cancel is.
+		w.arm.boundApplied(w.cut())
 		cancel()
 	}
 }
