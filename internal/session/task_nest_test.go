@@ -342,7 +342,7 @@ func TestAParentIsReEnteredWithItsPiecesReport(t *testing.T) {
 		t.Fatalf("the model was asked %d times, want a turn for the piece's report", got)
 	}
 	last := userTextIn(completer.request(completer.requests() - 1))
-	for _, want := range []string{"the law is in section four", "finished"} {
+	for _, want := range []string{"the law is in section four", "done"} {
 		if !strings.Contains(last, want) {
 			t.Fatalf("the report the parent was re-entered with reads %q, want %q in it", last, want)
 		}
@@ -986,7 +986,7 @@ func TestAnAcceptedFamilyLandsEveryGenerationsWork(t *testing.T) {
 	// nothing to lay anywhere — and the ledger it settles with is still the
 	// whole of the subtree under it.
 	partTree := taskTree{dir: tree.dir, ground: tree.dir, merge: mergeInPlace, mode: TaskModeFolder}
-	partLedger, merge, _, _ := landHome(part, partTree, []string{"part.md"})
+	partLedger, merge, _, _ := landHome(part, partTree, []string{"part.md"}, false)
 	part.finish("wrote the note", partLedger, "", merge)
 	graph.complete(part, TaskDone)
 
@@ -995,8 +995,8 @@ func TestAnAcceptedFamilyLandsEveryGenerationsWork(t *testing.T) {
 	}
 
 	// AND THE FAMILY LANDS NEEDING A LOOK, which merges nothing at all.
-	kept, keptLedger := keepHome(family, tree, []string{"notes.md"})
-	family.finish(needsLookLead+"nobody could judge this", keptLedger, "", kept)
+	kept, keptLedger := keepHome(family, tree, []string{"notes.md"}, false)
+	family.finish(yourCallLead(TaskFacts{Merge: kept})+"nobody could judge this", keptLedger, "", kept)
 	graph.complete(family, TaskUnverified)
 	if _, err := os.Stat(filepath.Join(ground, "part.md")); !os.IsNotExist(err) {
 		t.Fatal("work that was never accepted was laid over the person's folder")

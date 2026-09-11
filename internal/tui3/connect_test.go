@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -56,6 +57,12 @@ func (c *connectAgent) ResolveConnectKey(id string, key string) {
 
 func (c *connectAgent) NoteConnected(service, account string) {
 	c.noted = append(c.noted, connectAnswer{id: service, account: account})
+}
+
+// ONE DOOR, which is where every answer on the block goes
+// ([session.Agent.ResolveQuestion]).
+func (c *connectAgent) ResolveQuestion(answer session.Answer) error {
+	return resolveThroughLanes(c, answer)
 }
 
 // fakeConnections is the door onto the accounts, scripted.
@@ -186,41 +193,50 @@ func askConnectEvent(id, service, name string) session.Event {
 	}
 }
 
-// connectBlock is the offer block as a reader sees it, laid out at the frame's
-// width.
+// connectBlock is the question block as a reader sees it, laid out at the
+// frame's width. The offer has no block of its own any more — it is a card on
+// the one every question is drawn by (question.go).
 func connectBlock(a *app) []string {
-	out := make([]string, 0, 4)
-	for _, line := range a.connectAskRows(a.width) {
+	out := make([]string, 0, 6)
+	for _, line := range a.questionRows(a.width) {
 		out = append(out, plain(line))
 	}
 	return out
 }
 
+// connectSettled puts the offer past the settle guard, which is where a person
+// is before their first key: drawn, and [questionSettle] gone by (question.go's
+// THE SETTLE GUARD). The DRAW is what stamps a question as seen, so the stamp is
+// walked back rather than the clock forward.
+func connectSettled(t *testing.T, a *app) {
+	t.Helper()
+	_ = a.questionRows(a.width)
+	for i := range a.questions {
+		a.questions[i].shown = a.questions[i].shown.Add(-questionSettle - time.Millisecond)
+	}
+}
+
 // ── 1. the offer ────────────────────────────────────────────────────────────
 
-// THE BLOCK SAYS THREE THINGS AND STOPS: which account, who wants it, and the
-// two keys. No scopes, no provider machinery, no third answer.
+// THE CARD SAYS THREE THINGS AND STOPS: which account, why it is being asked,
+// and the two answers. No scopes, no provider machinery, no third answer.
 func TestTheConnectOfferNamesTheAccountAndTwoAnswers(t *testing.T) {
 	_, a, _ := connectApp(t)
 	drive(t, a, streamOf(a, askConnectEvent("c1", "google", "Google")))
 
-	rows := connectBlock(a)
-	if len(rows) != 3 {
-		t.Fatalf("the offer is %d rows, want three:\n%s", len(rows), strings.Join(rows, "\n"))
+	joined := strings.Join(connectBlock(a), "\n")
+	if !strings.Contains(joined, "connect your Google account?") {
+		t.Fatalf("the head does not name the account:\n%s", joined)
 	}
-	if !strings.Contains(rows[0], "Google") {
-		t.Fatalf("the heading does not name the account: %q", rows[0])
+	if !strings.Contains(joined, session.ConnectAskReason) {
+		t.Fatalf("the card never says why it is asking:\n%s", joined)
 	}
-	joined := strings.Join(rows, "\n")
-	if !strings.Contains(joined, "wants to connect your Google account") {
-		t.Fatalf("the block never says what it is asking for:\n%s", joined)
-	}
-	for _, want := range []string{"[enter]", "connect", "[esc]", "not now"} {
-		if !strings.Contains(rows[connectOfferRow], want) {
-			t.Fatalf("the offer is missing %q: %q", want, rows[connectOfferRow])
+	for _, want := range []string{"1  connect", "2  not now"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("the card is missing %q:\n%s", want, joined)
 		}
 	}
-	// NO MACHINERY, ANYWHERE ON THE BLOCK. These are the words a person should
+	// NO MACHINERY, ANYWHERE ON THE CARD. These are the words a person should
 	// never have to read to connect their own account.
 	for _, banned := range []string{"OAuth", "oauth", "token", "scope", "URL", "redirect"} {
 		if strings.Contains(joined, banned) {
@@ -229,22 +245,27 @@ func TestTheConnectOfferNamesTheAccountAndTwoAnswers(t *testing.T) {
 	}
 	// And the block is counted the way it is drawn: a frame whose geometry
 	// disagreed with its layout puts the caret a row off the box.
-	if got := a.connectAskHeight(); got != len(rows) {
-		t.Fatalf("the block is %d rows and counts itself as %d", len(rows), got)
+	if got, rows := a.questionHeight(), len(connectBlock(a)); got != rows {
+		t.Fatalf("the block is %d rows and counts itself as %d", rows, got)
 	}
 }
 
-// ENTER APPROVES, ESC DECLINES, and the answer goes back to the session with the
-// token it came with. y and n are read silently beside them.
+// THE DIGITS ANSWER, and the answer goes back to the session with the token it
+// came with.
+//
+// `enter`, `y` and `n` USED TO ANSWER IT AND DO NOT ANY MORE, and `esc` used to
+// be the outright no. One grammar for every question: the number beside the
+// answer takes it, and `esc` means *later*.
 func TestTheConnectOfferIsAnsweredByOneKey(t *testing.T) {
 	for _, test := range []struct {
 		key     string
 		approve bool
 	}{
-		{"enter", true}, {"y", true}, {"esc", false}, {"n", false},
+		{"1", true}, {"2", false},
 	} {
 		agent, a, _ := connectApp(t)
 		drive(t, a, streamOf(a, askConnectEvent("c1", "google", "Google")))
+		connectSettled(t, a)
 		drive(t, a, key(test.key))
 
 		if a.asksConnect() {
@@ -259,26 +280,53 @@ func TestTheConnectOfferIsAnsweredByOneKey(t *testing.T) {
 	}
 }
 
+// AND `esc` IS LATER RATHER THAN A NO. Nothing is decided, the session is told
+// nothing, and the chip goes on counting it.
+func TestEscOnTheConnectOfferDecidesNothing(t *testing.T) {
+	agent, a, _ := connectApp(t)
+	drive(t, a, streamOf(a, askConnectEvent("c1", "google", "Google")))
+	connectSettled(t, a)
+	drive(t, a, key("esc"))
+	if len(agent.resolved) != 0 {
+		t.Fatalf("esc answered the offer: %+v", agent.resolved)
+	}
+	if !a.asksConnect() {
+		t.Fatal("esc took the offer away instead of putting it off")
+	}
+	if a.questionCount() != 1 {
+		t.Fatalf("the chip counts %d questions after one was put off", a.questionCount())
+	}
+}
+
 // A DECLINE RECORDS NOTHING. Nothing happened, and a line saying "you said not
 // now" would be the surface keeping a note about a thing it did not do.
 func TestDecliningTheConnectOfferWritesNothingDown(t *testing.T) {
 	_, a, _ := connectApp(t)
 	before := len(a.entries)
 	drive(t, a, streamOf(a, askConnectEvent("c1", "google", "Google")))
-	drive(t, a, key("esc"))
+	connectSettled(t, a)
+	drive(t, a, key("2"))
 	if len(a.entries) != before {
 		t.Fatalf("declining wrote %d rows into the transcript", len(a.entries)-before)
 	}
 }
 
-// THE OFFER OWNS THE KEYBOARD while it is up, exactly as the approval question
-// does: a key that is not an answer types nothing.
-func TestTheConnectOfferSuspendsTheDraft(t *testing.T) {
+// THE OFFER LEAVES THE DRAFT ALONE, which is the opposite of what it used to do.
+//
+// It owned the keyboard: every key that was not one of its two answers typed
+// nothing at all. The block is NOT MODAL (question.go), so the letters are the
+// person's — and the moment there are words in the box the digits are theirs
+// too, which is this surface's own law about letters.
+func TestTheConnectOfferLeavesTheDraftAlone(t *testing.T) {
 	_, a, _ := connectApp(t)
 	drive(t, a, streamOf(a, askConnectEvent("c1", "google", "Google")))
+	connectSettled(t, a)
 	drive(t, a, key("h"), key("i"))
-	if got := a.input.String(); got != "" {
-		t.Fatalf("the draft took %q while an offer was up", got)
+	if got := a.input.String(); got != "hi" {
+		t.Fatalf("the draft took %q while an offer was up, want \"hi\"", got)
+	}
+	if !a.asksConnect() {
+		t.Fatal("typing answered the offer")
 	}
 }
 
@@ -293,68 +341,62 @@ func TestConnectOffersQueue(t *testing.T) {
 		t.Fatalf("the queue behind the offer is not on screen:\n%s",
 			strings.Join(connectBlock(a), "\n"))
 	}
-	drive(t, a, key("enter"))
-	if got := connectBlock(a); !strings.Contains(got[0], "Slack") {
-		t.Fatalf("the second offer did not come forward: %q", got[0])
+	connectSettled(t, a)
+	drive(t, a, key("1"))
+	connectSettled(t, a)
+	if got := strings.Join(connectBlock(a), "\n"); !strings.Contains(got, "Slack") {
+		t.Fatalf("the second offer did not come forward:\n%s", got)
 	}
-	if strings.Contains(strings.Join(connectBlock(a), "\n"), "more") {
-		t.Fatal("the last offer still claims something is behind it")
-	}
-	drive(t, a, key("esc"))
+	drive(t, a, key("2"))
 	if len(agent.resolved) != 2 || agent.resolved[0].id != "c1" || agent.resolved[1].id != "c2" {
 		t.Fatalf("the queue was answered as %+v, want c1 then c2", agent.resolved)
 	}
 }
 
-// THE POINTER ANSWERS IT TOO, and the word is part of the target: a press on
-// "connect" is the press on "[enter]" beside it.
+// THE POINTER ANSWERS IT TOO, and the whole answer row is the target.
 func TestTheConnectOfferIsAnsweredByThePointer(t *testing.T) {
 	agent, a, _ := connectApp(t)
 	drive(t, a, streamOf(a, askConnectEvent("c1", "google", "Google")))
+	connectSettled(t, a)
 
-	y := connectOfferY(t, a)
-	// The offer's own spans, resolved from the layout that drew them.
-	if len(a.connTaps) != 2 {
-		t.Fatalf("the offer recorded %d targets, want two", len(a.connTaps))
-	}
-	yes := a.connTaps[0]
-	if !yes.approve {
-		t.Fatal("the first target on the offer is not the yes")
-	}
-	// A column inside the WORD, not on the chip: the whole answer is the target.
-	if !a.connectPress(yes.span.to-1, y) {
-		t.Fatal("a press on the offer was not taken")
-	}
+	y := connectAnswerY(t, a, "1  connect")
+	drive(t, a, tea.MouseClickMsg{X: 4, Y: y, Button: tea.MouseLeft})
 	if len(agent.resolved) != 1 || !agent.resolved[0].approve {
 		t.Fatalf("the press answered %+v, want an approval", agent.resolved)
 	}
 }
 
-// A PRESS THAT MISSES BOTH ANSWERS IS STILL SWALLOWED: the block is a thing the
-// session is waiting on, and a press falling through it would act on the
-// transcript underneath.
-func TestTheConnectOfferSwallowsEveryPressOnIt(t *testing.T) {
+// AND A PRESS THAT MISSES EVERY ANSWER FALLS THROUGH, which is the block's
+// not-modal law said to the pointer. It used to be swallowed, because the block
+// underneath it owned the frame while it was up.
+func TestAPressThatMissesTheConnectAnswersFallsThrough(t *testing.T) {
 	agent, a, _ := connectApp(t)
 	drive(t, a, streamOf(a, askConnectEvent("c1", "google", "Google")))
-	if !a.connectPress(a.width-1, connectOfferY(t, a)) {
-		t.Fatal("a press in the block's empty columns fell through")
+	connectSettled(t, a)
+	if a.questionPress(a.width-1, 0) {
+		t.Fatal("a press on a row the block never drew was taken by it")
 	}
 	if len(agent.resolved) != 0 {
 		t.Fatalf("a press on nothing answered the offer: %+v", agent.resolved)
 	}
 }
 
-// connectOfferY is the screen row the offer is drawn on, derived the way
-// [app.chromeAt] derives it backwards.
-func connectOfferY(t *testing.T, a *app) int {
+// connectAnswerY is the screen row one of the offer's answers is drawn on,
+// derived the way [app.chromeAt] derives it backwards so the test and the
+// surface cannot disagree about where the row is.
+func connectAnswerY(t *testing.T, a *app, want string) int {
 	t.Helper()
+	rows := a.questionRows(a.width)
 	_, marks, _, _ := a.chrome(a.width)
 	for at, mark := range marks {
-		if mark.kind == chromeConnectAsk {
+		if mark.kind != chromeQuestion || mark.index >= len(rows) {
+			continue
+		}
+		if strings.Contains(plain(rows[mark.index]), want) {
 			return at + a.height - len(marks)
 		}
 	}
-	t.Fatal("no row of the frame is marked as the connect offer")
+	t.Fatalf("no row of the frame draws %q", want)
 	return -1
 }
 

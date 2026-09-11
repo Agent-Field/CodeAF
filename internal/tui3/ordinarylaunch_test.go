@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -116,20 +115,23 @@ func TestTheSetupOpensOnAnOrdinaryLaunchWithNoKey(t *testing.T) {
 			if !strings.Contains(screen, "setting up") {
 				t.Fatalf("the setup's own title is not on the screen:\n%s", screen)
 			}
+			if !strings.Contains(screen, "default service") {
+				t.Fatalf("the OpenRouter connection was not scoped to the default service:\n%s", screen)
+			}
 		})
 	}
 }
 
 // AND IT ASKS ONLY WHAT IS MISSING, on the ordinary launch too. A key in the
-// shell drops the provider step and leaves the two first-run preferences — the
-// law [TestAKeyInTheShellSkipsTheKeyStepSilently] states over a named profile,
+// shell drops the provider step and leaves the controls screen — the law
+// [TestAKeyInTheShellSkipsTheKeyStepSilently] states over a named profile,
 // asked here of the launch nearly everybody actually takes.
 func TestAKeyInTheShellDropsTheProviderStepOnAnOrdinaryLaunch(t *testing.T) {
 	a := ordinaryLaunch(t, Options{Setup: true, ConnectOpenRouter: ordinaryConnect}, func() {
 		t.Setenv(config.APIKeyEnv, "sk-or-v1-from-the-shell-0123456789")
 	})
-	if !a.setup.open || len(a.setup.steps) != 2 || a.setup.steps[0] != setupCrew {
-		t.Fatalf("with the key in the shell only the crew and the ceiling are asked, got open=%v steps=%v",
+	if !a.setup.open || len(a.setup.steps) != 1 || a.setup.steps[0] != setupControls {
+		t.Fatalf("with the key in the shell only the controls are asked, got open=%v steps=%v",
 			a.setup.open, a.setup.steps)
 	}
 	if screen := ordinaryScreen(a); strings.Contains(screen, "connect openrouter") {
@@ -170,42 +172,6 @@ func TestAHostedWindowIsAskedNothingOnAnOrdinaryLaunch(t *testing.T) {
 }
 
 // ── 2. the install's own rung ───────────────────────────────────────────────
-
-// THE INSTALL'S EFFORT RUNG IS READ ON AN ORDINARY LAUNCH.
-//
-// The card's facts line states the rung work started from it would think at
-// (place_home.go's [app.homeCardFacts], SCREEN 1d). It reached the profile
-// through a guard that answered "no profile" on the ordinary launch, so the
-// clause was drawn on the rare launch that exported AFORGE_PROFILE_DIR and for
-// nobody else.
-func TestTheInstallsRungIsReadOnAnOrdinaryLaunch(t *testing.T) {
-	a := ordinaryLaunch(t, Options{}, nil)
-	dir, ok := a.effortProfile()
-	if !ok {
-		t.Fatal("an ordinary launch was told it has no profile to read a rung from")
-	}
-	if dir != a.profileDir {
-		t.Fatalf("effortProfile answered %q for a window whose profile is %q", dir, a.profileDir)
-	}
-	if got := effortClause(config.DefaultEffortAt(dir)); got != "" {
-		t.Fatalf("the install's rung reads %q on an ordinary launch, want the shipped rung", got)
-	}
-	// AND A ROW MOVED IN THAT PROFILE IS THE ROW READ BACK, which is the whole
-	// point of resolving the path rather than guarding on its emptiness.
-	writeOrdinaryRow(t, config.KeyEffort, effort.Low.String())
-	if got := effortClause(config.DefaultEffortAt(dir)); got != effortClauseWord+effort.Low.String() {
-		t.Fatalf("the rung a person set reads %q on the launch they set it from", got)
-	}
-}
-
-// AND THE HOSTED WINDOW STATES NO RUNG. The install whose rung that clause names
-// is the one the work runs on, and over --host that is the other machine's.
-func TestAHostedWindowStatesNoInstallRung(t *testing.T) {
-	a := ordinaryLaunch(t, Options{Host: "devbox"}, nil)
-	if _, ok := a.effortProfile(); ok {
-		t.Fatal("a connection offered to state this laptop's rung for somebody else's machine")
-	}
-}
 
 // ── 3. the approval posture, which is a safety claim ────────────────────────
 

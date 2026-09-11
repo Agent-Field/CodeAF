@@ -43,26 +43,25 @@ func memoryPlaceText(r memoryReading, width int) string {
 	return strings.Join(r.rows(width, newPalette(tokens.NoColor, false)), "\n")
 }
 
-func TestTheMemoryPlaceTeachesUntilThereIsEnoughToRead(t *testing.T) {
+// THE HEAD ROW IS THERE FROM THE FIRST LINE ON. The page used to teach in three
+// paragraphs until it held eight lines and then swap them for this row in one
+// frame (PLACES-AUDIT.md finding 4); a small page and a large one are headed
+// the same way now.
+func TestTheMemoryPlaceIsHeadedByItsCountFromTheFirstLine(t *testing.T) {
 	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
 	small := store.MemoryShelves{Held: 4, LetGo: 1, Total: 5, Shelves: []store.MemoryShelf{{
 		Scope: store.MemoryScopeUser, Held: 4, LetGo: 1, ByType: map[string]int{store.MemoryFact: 5},
 	}}}
 	text := memoryPlaceText(readMemory(small, nil, "", now), 200)
-	for _, sentence := range memoryTeaching {
-		if !strings.Contains(text, sentence) {
-			t.Fatalf("the small place omitted %q:\n%s", sentence, text)
-		}
-	}
-	if !strings.Contains(text, "4 held · 1 let go · nothing here is a setting, all of it is editable") {
-		t.Fatalf("the small place omitted its footer:\n%s", text)
+	if !strings.Contains(text, "4 held · 1 shelf · 1 let go") || !strings.Contains(text, "type to filter") {
+		t.Fatalf("the small place is not headed by its count:\n%s", text)
 	}
 	large := memoryPlaceText(readMemory(memoryPlaceFixture(now), nil, "", now), 200)
 	// THE HEAD COUNTS THE TWO WAYS A MEMORY STOPS BEING HELD APART, in the same
 	// words the rows wear ([memoryLetGoWord], [memoryReplacedWord]): one was
 	// asked for, the other happened on its own.
-	if strings.Contains(large, memoryTeaching[0]) || !strings.Contains(large, "8 held · 3 shelves · 1 let go · 1 replaced") || !strings.Contains(large, "type to filter") {
-		t.Fatalf("the large place did not replace teaching with its header:\n%s", large)
+	if !strings.Contains(large, "8 held · 3 shelves · 1 let go · 1 replaced") || !strings.Contains(large, "type to filter") {
+		t.Fatalf("the large place is not headed by its count:\n%s", large)
 	}
 }
 
@@ -228,23 +227,13 @@ func TestMemoryCountsObeyTheEmptinessLaw(t *testing.T) {
 	}
 }
 
-// A MACHINE THAT HAS REMEMBERED NOTHING MEETS THE TEACHING AND NOTHING ELSE.
-//
-// There is no second empty state to draw: memory switched off never reaches a
-// body, because the door refuses to open the place and says [memoryOffNote] on
-// the transcript instead. So an empty reading is three sentences, one footer,
-// and no heading over an absence.
-func TestAnEmptyMemoryPlaceIsTheTeachingAndNoFurniture(t *testing.T) {
+// A MACHINE THAT HAS REMEMBERED NOTHING HAS AN EMPTY READING, and the place
+// draws its heading and whisper over it ([placeWhisper]) — never a shelf
+// heading over an absence, and never the reading's own prose.
+func TestAnEmptyMemoryReadingDrawsNoFurniture(t *testing.T) {
 	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
-	text := memoryPlaceText(readMemory(store.MemoryShelves{}, nil, "", now), 120)
-	for _, sentence := range memoryTeaching {
-		if !strings.Contains(text, sentence) {
-			t.Fatalf("the empty place did not teach %q:\n%s", sentence, text)
-		}
-	}
-	for _, furniture := range []string{"shelves · biggest first", memoryOffNote} {
-		if strings.Contains(text, furniture) {
-			t.Fatalf("the empty place drew %q:\n%s", furniture, text)
-		}
+	r := readMemory(store.MemoryShelves{}, nil, "", now)
+	if !r.bare() || len(r.rows(120, newPalette(tokens.NoColor, false))) != 0 {
+		t.Fatalf("an empty reading drew rows of its own:\n%s", memoryPlaceText(r, 120))
 	}
 }

@@ -59,7 +59,10 @@ func TestTheCompositeStandsWhenTheModelSaidNothing(t *testing.T) {
 	es := captionFixture()
 	es = append(es[:1], es[2:]...)
 	got := captionsOf(es, 0)
-	if len(got) != 1 || got[0].text != "reading 2 files in internal/tui3" || got[0].source != captionMade {
+	// The fixture's reads have both come back, so the composed floor is in the
+	// past (caption.go's [captionPast]); what this test is about is that there
+	// IS a composed floor when the model narrated nothing.
+	if len(got) != 1 || got[0].text != "read 2 files in internal/tui3" || got[0].source != captionMade {
 		t.Fatalf("composite = %#v", got)
 	}
 }
@@ -89,7 +92,11 @@ func TestThinkingNeverBecomesACaption(t *testing.T) {
 		strings.Contains(got[0].text, "I should") {
 		t.Fatalf("thinking leaked into the step title: %#v", got[0])
 	}
-	if got[0].source != captionMade || got[0].text != "listing github issues" {
+	// The call carries `toolOK`, so the batch has CLOSED, and a floor caption
+	// about a batch that has closed is spelled in the past (caption.go's
+	// [captionPast]). The step is still the tool floor, which is what this test
+	// is about; the tense is asserted on its own in failurerow_test.go.
+	if got[0].source != captionMade || got[0].text != "listed github issues" {
 		t.Fatalf("want a tool floor step, got %#v", got[0])
 	}
 }
@@ -136,7 +143,7 @@ func TestACaptionIsOneShortSentence(t *testing.T) {
 func TestANarrowCaptionWrapsWithoutEllipsis(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	c := caption{text: "listing open github issues for quality", start: 1, calls: 2, began: time.Unix(100, 0), ended: time.Unix(102, 0)}
-	rows := a.captionRows(c, false, false, 28)
+	rows := a.captionRows(c, false, false, 28, a.conversation())
 	if len(rows) < 2 {
 		t.Fatalf("expected a wrap on a narrow frame, got %d rows: %#v", len(rows), rows)
 	}
@@ -160,15 +167,15 @@ func TestExpandingACaptionStopsItsShimmerAndStartsTheRowSpinners(t *testing.T) {
 	c := caption{text: "checking the fold", start: 1, calls: 2, began: time.Unix(100, 0)}
 	a.clock = func() time.Time { return time.Unix(104, 0) }
 	captionTimeAt(a, 0)
-	closed := a.captionRow(c, true, false, 80).text
+	closed := a.captionRow(c, true, false, 80, a.conversation()).text
 	captionTimeAt(a, shimmerPeriod/4)
-	if next := a.captionRow(c, true, false, 80).text; next == closed {
+	if next := a.captionRow(c, true, false, 80, a.conversation()).text; next == closed {
 		t.Fatal("collapsed live caption did not shimmer")
 	}
 	captionTimeAt(a, 0)
-	open := a.captionRow(c, true, true, 80).text
+	open := a.captionRow(c, true, true, 80, a.conversation()).text
 	captionTimeAt(a, shimmerPeriod/4)
-	if next := a.captionRow(c, true, true, 80).text; next != open {
+	if next := a.captionRow(c, true, true, 80, a.conversation()).text; next != open {
 		t.Fatal("expanded caption kept shimmering")
 	}
 }
@@ -219,7 +226,10 @@ func TestALiveTurnKeepsPastCaptionsShutAndTheFrontierOpen(t *testing.T) {
 	// they have — the past steps shut, the step still running open.
 	showLiveWork(t, a)
 	page := strings.Join(plainRows(a), "\n")
-	if !strings.Contains(page, "reading 2 files") {
+	// PAST STEP, PAST TENSE. Both of this batch's reads have come back, so its
+	// floor caption reads `read 2 files` — the step still running below it keeps
+	// the present, which is the contrast this test is named for.
+	if !strings.Contains(page, "read 2 files") {
 		t.Fatalf("past caption missing:\n%s", page)
 	}
 	if !strings.Contains(page, "editing") {

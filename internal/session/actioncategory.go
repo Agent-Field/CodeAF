@@ -246,15 +246,17 @@ func ActionCategoryForTool(tool string) ActionCategory {
 		return ActionTransfer
 
 	// Saying something to a person.
-	case "slack_send", "gmail_send", "speak":
+	case "slack_send", "gmail_send", "speak", "ask":
 		return ActionCommunicate
 
 	// Work handed out, or this mind copied to run beside itself.
-	case "propose_task", "divide_work", "fork", "workspace_fork", "stand":
+	case "propose_task", "quick_task", "divide_work", "workspace_fork", "stand":
 		return ActionCoordinate
 
-	// Keeping the account of the work rather than doing it.
-	case "track", "commit", "recall":
+	// Keeping the account of the work rather than doing it. `items` is a quick
+	// task ticking its own list (task_quick.go): nothing about the work moves,
+	// and what changes is the row saying where it has got to.
+	case "track", "items", "commit", "recall":
 		return ActionPlan
 
 	// Standing by for something outside this turn.

@@ -65,18 +65,6 @@ func endingWord(ending session.TaskEnding) string {
 	return ""
 }
 
-// endingKept is the sentence a failed node whose branch was kept wears — the
-// reason, then the half that says what to do about it. It is [taskStoppedKept]
-// for a stop and for every node that gave no reason, so a rail talking to an
-// older engine reads exactly as it did.
-func endingKept(ending session.TaskEnding) string {
-	word := endingWord(ending)
-	if word == "" || word == taskStoppedWord {
-		return taskStoppedKept
-	}
-	return word + " — " + taskBranchKept
-}
-
 // halted says this ending is the middle kind of news: the run did not finish,
 // nothing was found wrong with the work, and a person can pick it up from its
 // branch — the wire, a threshold, a loop, another task's copy, a rule the worker
@@ -90,13 +78,15 @@ func halted(ending session.TaskEnding) bool {
 	return false
 }
 
-// glyphHalted is the cell for a halted node. It is the ? of "needs your look"
-// with the question taken out: the machine has stopped and the next move is a
-// person's, but nothing is being asked — it is being pointed at. It is not
-// [glyphBad], for the reason [glyphStopped] is not: a cross is a finding, and
-// nobody found anything wrong with work the connection dropped out from under.
-// The same cell in both glyph tiers, because ! is already a character a screen
-// with no Unicode has.
+// glyphHalted is the cell a halted node USED TO WEAR on this surface, and the
+// landing card is the last thing still drawing it.
+//
+// EVERY ROW OF WORK HAS STOPPED. The question a row answers has three answers
+// and `!` was a fourth cell for one of them, which left a person deciding
+// whether it was louder than the `✗` beside it; work that did not finish is
+// `✗`, dim unless something actually broke (tasktier.go's [tierGlyph], and
+// docs/design/task-states/DESIGN.md). The same cell in both glyph tiers,
+// because ! is already a character a screen with no Unicode has.
 const glyphHalted = "!"
 
 // refused says the task reached a check and the check did not accept its claim.

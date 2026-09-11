@@ -672,6 +672,12 @@ func (a *app) rewindSheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if editorMotion(&a.rewSheet.query, msg.String()) {
 		return nil, true
 	}
+	// AND ctrl+z TAKES BACK WHAT WAS TYPED, in every box on this surface and not
+	// only in the message one (editundo.go).
+	if editorUndo(&a.rewSheet.query, msg.String()) {
+		a.rewindSheetTyped()
+		return nil, true
+	}
 	if editorWordKill(&a.rewSheet.query, msg.String()) {
 		a.rewindSheetTyped()
 		return nil, true

@@ -458,10 +458,14 @@ func TestTheManualSaysAStoppedWorkerGetsItsOwnRowAndNoLongerDeniesIt(t *testing.
 		t.Fatal("the how-tasks-run page is missing from the chat corpus")
 	}
 	for _, want := range []string{
-		// The row, in the words tui3 draws it in.
-		"would not write its notes down — branch kept",
-		// The landing note, in the words taskNote writes it in.
-		"task 7 would not write its notes down: <title>",
+		// The row, in the words tui3 draws it in. THE ROW LOST ITS BRANCH CLAUSE
+		// AND ITS `!` with the task-states wave: the tier word leads, the reason
+		// rides beside it, and `branch kept` is a fact of its own rather than a
+		// suffix welded onto the sentence (docs/design/task-states/DESIGN.md).
+		"incomplete · would not write its notes down",
+		// The landing note, in the words taskNote writes it in — the tier word
+		// first, then the title, then the reason ([TaskReasonOf]).
+		"task 7 incomplete: <title> · would not write its notes down",
 		// The graded record's own word.
 		"says it was `stopped`",
 		// And the loop's line, still verbatim.

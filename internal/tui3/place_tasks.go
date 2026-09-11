@@ -786,6 +786,12 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if editorMotion(&a.taskSheet.query, key) {
 		return nil, true
 	}
+	// AND ctrl+z TAKES BACK WHAT WAS TYPED, in every box on this surface and not
+	// only in the message one (editundo.go).
+	if editorUndo(&a.taskSheet.query, key) {
+		a.taskSheetTyped()
+		return nil, true
+	}
 	if editorWordKill(&a.taskSheet.query, key) {
 		a.taskSheetTyped()
 		return nil, true
@@ -1163,24 +1169,20 @@ func (p *tasksPlace) body(a *app, width, room int) []placeRow {
 	r := a.tasksFiltered()
 	lines := r.lay(width)
 	if len(lines) == 0 {
-		// THE TEACHING PROSE IS THE ONLY THING AN EMPTY PLACE DRAWS, and it is
-		// drawn INSTEAD of a count rather than beside one — the emptiness law
-		// forbids the pair on one frame ([tasksPlace.note] keeps the other half).
+		// AN EMPTY PLACE DRAWS ITS HEADING AND ITS WHISPER, and no count beside
+		// them — the emptiness law forbids the pair on one frame
+		// ([tasksPlace.note] keeps the other half, placeprose.go's [placeWhisper]
+		// the words).
 		//
 		// A QUERY THAT MATCHED NOTHING IS NOT AN EMPTY PLACE. There IS work here;
 		// the words a person typed are hiding it, and teaching them what tasks are
 		// would be answering a question nobody asked. What that frame says is on
 		// the note line — `filter · zzz · nothing matches` — and the body stays
 		// blank under it.
-		rows := make([]placeRow, 0, room)
 		if p.reading.held == 0 {
-			for _, line := range tasksTeach(a.pal) {
-				if len(rows) >= room {
-					break
-				}
-				rows = append(rows, placeRow{text: " " + line})
-			}
+			return placeWhisperRows(pageTasks, width, room, a.pal)
 		}
+		rows := make([]placeRow, 0, room)
 		for len(rows) < room {
 			rows = append(rows, placeRow{})
 		}
@@ -1203,35 +1205,21 @@ func (p *tasksPlace) body(a *app, width, room int) []placeRow {
 			more = true
 			break
 		}
-		hit, lead, lit := taskSheetHit{}, tasksBareLead, false
+		hit, lit := taskSheetHit{}, false
 		if owner := lines[at].owner; owner >= 0 {
 			if r.picks(lines, owner) {
 				hit = taskSheetHit{kind: taskSheetHitRow, index: owner}
-				oncursor := owner == p.cursor
-				hovered := a.hot.kind == hoverTaskSheet && a.hot.index == owner
-				lit = oncursor || hovered
-				// THE TWO CELLS IN FRONT OF EVERY ROW ARE THE LEAD, and on the row a
-				// person is on they carry the mark in the accent — `›` where the
-				// keyboard is and `·` where the pointer is, the same two marks every
-				// other list on this surface leads with ([overlayLead]). Only the
-				// FIRST line of a card takes it: the line under it is the same row
-				// continued, and a second mark would read as a second row.
-				if lines[at].kind == tasksLineTask || lines[at].kind == tasksLineChat {
-					switch {
-					case oncursor:
-						lead = a.pal.accent("› ")
-					case hovered:
-						lead = a.pal.accent("· ")
-					}
-				}
+				// THE KEYBOARD AND THE POINTER ARE ONE FACT ARRIVED AT BY TWO HANDS,
+				// and the row says it the one way every place does: the band, and
+				// the subject bold inside it — no accent mark in the lead, which was
+				// a second accent on a screen whose one accent is the live thing
+				// (placeprose.go's THE FIVE-LEVEL SCALE).
+				lit = owner == p.cursor || (a.hot.kind == hoverTaskSheet && a.hot.index == owner)
 			}
 		}
-		text := r.paint(lines, at, width, a.pal, lead)
-		// NOTHING ON THIS PAGE IS OPEN, so nothing on it wears the selected step.
-		// The keyboard cursor and the pointer are the same fact arrived at by two
-		// hands and THE GROUND LADDER gives them ONE rung.
+		text := r.paint(lines, at, width, a.pal, lit)
 		if lit {
-			text = a.pal.cursor(text, width)
+			text = placeBand(text, width, a.pal)
 		}
 		rows = append(rows, placeRow{text: text, hit: hit})
 		bare = append(bare, !lit)
@@ -1649,14 +1637,8 @@ func (placeTasks) ownFrame(a *app, width, height int) ([]string, []placeHit, int
 // press, hover and wheel are this place's own: it resolves the pointer against
 // the hit map its frame wrote ([app.taskSheetPress]) rather than against a body
 // line, because a row of this list can be two screen lines tall at [tierPhone].
-func (placeTasks) press(a *app, y int) bool {
-	width, height := a.size()
-	_, hits, _, _ := a.taskSheetFrame(width, height)
-	if y >= 0 && y < len(hits) && hits[y].kind == taskSheetHitRow {
-		a.taskSheet.cursor = hits[y].index
-		a.touch()
-	}
-	return true
+func (placeTasks) press(a *app, y int) (tea.Cmd, bool) {
+	return a.taskSheetPress(0, y), true
 }
 
 func (placeTasks) hover(a *app, y int) bool {

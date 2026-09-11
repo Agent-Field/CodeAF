@@ -10,7 +10,7 @@ package tui3
 //
 // THE ROWS ARE THE LEFT COLUMN'S OWN ROWS AGAIN. [standGlyph] and
 // [standRollup] are what home's item row is made of (homestanding.go), so an
-// item wearing `▲ needs your look` on the left cannot wear a cadence on the
+// item wearing `▲ your call` on the left cannot wear a cadence on the
 // right. The glyph and the rollup are one claim made twice and it is made in
 // one place.
 //

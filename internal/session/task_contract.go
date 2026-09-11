@@ -64,6 +64,19 @@ const TaskKindHarness TaskKind = "harness"
 // — the row, the room, the id, the stop — it has for free.
 const TaskKindSubharness TaskKind = "subharness"
 
+// TaskKindQuick is a task that runs WHERE ITS CALLER WORKS (task_quick.go): the
+// caller's own workspace, no worktree, no branch, no merge, no check and no
+// landing card. Its last message is its result, and the row goes `done`.
+//
+// IT IS THE KIND WITH NOTHING UNDER IT, and that is what a surface has to know
+// about it. Every other kind of node has something a card can point at — a
+// branch coming home, a page waiting on a yes, a program's typed output — and
+// this one has an answer and, when it wrote, the files it wrote. A card that
+// promised "the branch it wrote on is kept" over a quick node would be pointing
+// at work that does not exist, which is exactly what [TaskKind] exists to
+// prevent.
+const TaskKindQuick TaskKind = "quick"
+
 // TaskKindJob is a piece of BACKGROUND WORK this session started that is not an
 // agent at all (jobrow.go): a command running under `bash background:true`, a
 // foreground command that reached its bound and was promoted (promote.go), a
@@ -123,6 +136,12 @@ func TaskKindWord(kind TaskKind) string {
 		return "making a saved shape"
 	case TaskKindJob:
 		return "background job"
+	case TaskKindQuick:
+		// AND THIS ONE IS THE PERSON'S OWN WORD ALREADY. `quick` is what the tool
+		// is called, what the manual calls it and what somebody says out loud when
+		// they ask for one, so there is no translation to make — which is the
+		// happy case this function is written for rather than an exception to it.
+		return quickWord
 	}
 	return ""
 }
@@ -348,6 +367,8 @@ func settleOrAsk(word string) TaskSettle {
 // the top half, an update the bottom, and no surface reads a field its kind
 // did not set.
 type TaskNotice struct {
+	// Thinking is the effective setup, including a saved continuation choice.
+	Thinking string
 	// ID is the proposal's token: a surface hands it back to
 	// [Agent.ResolveTask]. On updates it names the node the update is about.
 	ID uint64
@@ -570,23 +591,63 @@ type TaskNotice struct {
 	// gave up going in circles, a check that did not accept the work, and not one
 	// person pressing stop.
 	Ending TaskEnding
+	// Conflicts names the files that CLASH, on a landing whose branch would not
+	// fasten onto the person's — read out of the index while the refused merge
+	// still held them (task_run.go's [conflictSentence] writes the sentence from
+	// the same list). It is empty on every landing that did not conflict, and
+	// empty on one where git would not say which files it was about, which is the
+	// emptiness law and not a claim that nothing clashed.
+	Conflicts []string
+	// Shifted says THE GROUND MOVED rather than the merge failing: the branch
+	// would have fastened, and the person's own branch changed the same files
+	// while this node worked (taskground.go, task_run.go's [Agent.landShifted]).
+	// The question is the conflict's question either way — two versions of these
+	// files, which survives — and this is the fact that decides which of the two
+	// sentences a row reads, so that nothing has to tell them apart by their
+	// prose.
+	Shifted bool
+	// GroundHeld says the landing was refused by THE PERSON'S OWN UNTRACKED COPIES
+	// of the files this task wrote, sitting in the folder the branch merges into
+	// (groundcarry.go). It is the third road to the conflict's one question, and
+	// it is the road whose `resolve it` carries those copies aside rather than
+	// spending a merge round: a file git is not watching is on no branch, so
+	// there is nothing for a round to merge.
+	GroundHeld bool
+	// Decider is WHO HOLDS THIS NODE'S DECISION right now ([TaskAskOwner]). It is
+	// the person on every ordinary landing; `task.settle = auto` and a person
+	// pressing "let aforge decide this one" ([Agent.HandUnverifiedToModel]) are the
+	// two things that make it the model, and neither of them makes it the model for
+	// long — the floor hands it back when the model's turn ends (agent.go).
+	//
+	// A CONFLICT IS NEVER THE MODEL'S, whatever the policy says: it cannot merge by
+	// decree (task_run.go's [Agent.handToModelOnAuto]).
+	Decider TaskAskOwner
 	// Checked is WHAT THE CHECK SAID about this node's work, and "" on a node no
 	// check ever read. It is narrower than State on purpose: a node taken as it
 	// stands, one landed with the check switched off and one a person accepted
 	// are all done and none of them was judged (taskgrade.go's
 	// [TaskNode.checkSaid]).
-	Checked provider.Verdict
+	Checked provider.Reading
 	// Model is the model this node runs on: the one the proposal named, the
 	// configured task model, or the conversation's own (taskmodel.go). It is on
 	// the proposal AND on every update, because it is a fact about the work that
 	// outlives the question — a card that lands twenty minutes later still says
 	// whose hands did it.
 	Model string
+	// NextModel is a saved continuation choice; Model still names the last attempt.
+	NextModel string
 	// CostUSD is what this node's own agent has spent, live while it runs and
 	// frozen once it lands. Zero means nobody published a price — an unpriced
 	// model, or a node that has not started — and it is NOT the same claim as
 	// "it cost nothing", so a surface draws no figure at all for it.
 	CostUSD float64
+	// Tokens is what this node has burned, input plus output, read the same
+	// way as CostUSD: what its folded hands spent, plus the worker still in the
+	// room ([TaskNode.burned]). It is the one figure a surface with no lane to
+	// the worker — a window on another machine — can draw a node's tokens from.
+	// Zero is "nobody counted", and absent from rows that did not carry it (the
+	// roster replay, a row from a build before it existed).
+	Tokens int
 }
 
 // TaskAnswer is the surface's reply to a proposal. Approved with an empty
@@ -625,8 +686,8 @@ const (
 	//
 	// IT IS A LIFE OF THE NODE AND NOT A STEP OF A TOOL CALL, which is why it
 	// belongs on this list beside the other three. The reading is a full call to
-	// the tier that thinks — measured at thirteen seconds, and bounded at
-	// [divideReviewPatience] — and it happens twice in a node's life where the
+	// the tier that thinks — measured at thirteen seconds, and bounded by the
+	// role's own tier — and it happens twice in a node's life where the
 	// harness submits a drawing on the worker's behalf before its first request
 	// (task_divide_sketch.go): a card that has just appeared, with a clock going
 	// up and nothing else on it, for as long as the reading lasts.

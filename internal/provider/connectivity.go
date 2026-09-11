@@ -24,25 +24,18 @@ const (
 	connectionRecoveryWindow = 2 * time.Minute
 	connectionProbeTimeout   = 2 * time.Second
 	connectionProbeInterval  = time.Second
-	// connectionRetryPasses bounds how many times ONE request may be sent again
-	// after a reachability check answered. It is the arithmetic backstop and not
-	// the policy: connectionRecoveryWindow is what ends a real outage, and the
-	// growing pause below is what a portal meets. It exists for the degenerate
-	// case the window cannot bound — an origin that answers a check in microseconds
-	// while refusing every send, where the wall clock barely moves and only a count
-	// is finite. Twelve passes of backoffFor already exceed the window, so this
-	// changes nothing about an ordinary recovery.
-	connectionRetryPasses = 12
 )
 
-// connectionRetry is one call's whole recovery: the bounded window it may spend
-// and how many times it has come back for another send. It is a value on the
-// caller's stack because the bound belongs to the CALL — two conversations
-// losing the same router share the probe, never the patience.
+// connectionRetry is one media call's recovery state. Completion calls keep
+// this state inside the one dispatcher, where [control.Plan.Deadline] is their
+// only budget; media has no plan or completion ladder and keeps the caller's
+// shorter deadline or [connectionRecoveryWindow]. The pass count chooses a
+// backoff rung and never ends the call.
 type connectionRetry struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	passes int
+	owed   time.Duration
 }
 
 func (r *connectionRetry) release() {
@@ -66,12 +59,11 @@ func IsConnectionUnavailable(err error) bool {
 	return errors.As(err, &unavailable)
 }
 
-// recoverBeforeSend waits for the origin on behalf of one send that failed
-// before it left, and reports whether the caller may try again. A nil error
-// means send; anything else is this call's ending. A DNS or dial failure
+// recoverBeforeSend waits for the origin on behalf of one media send that
+// failed before it left, and reports whether the caller may try again. A nil
+// error means send; anything else is this call's ending. A DNS or dial failure
 // precedes accepted generation, so what is waited for is the ORIGIN and never
-// another provider behind that same origin, and the whole of it stays bounded
-// even while connectivity keeps flapping.
+// another provider behind that same origin.
 //
 // THE PAUSE IS THE WHOLE POINT. A check that answers while the send keeps
 // failing — a captive portal, a transparent proxy — is a fault and not a
@@ -83,10 +75,12 @@ func (c *Client) recoverBeforeSend(ctx context.Context, recovery *connectionRetr
 	if recovery.ctx == nil {
 		recovery.ctx, recovery.cancel = context.WithTimeout(ctx, connectionRecoveryWindow)
 	}
-	recovery.passes++
-	if recovery.passes > connectionRetryPasses {
+	deadline, bounded := recovery.ctx.Deadline()
+	spentAt := func() time.Time { return time.Now().Add(recovery.owed) }
+	if bounded && !spentAt().Before(deadline) {
 		return &ConnectionUnavailableError{}
 	}
+	recovery.passes++
 	if _, err := c.waitConnection(recovery.ctx, model, target, true); err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -97,7 +91,18 @@ func (c *Client) recoverBeforeSend(ctx context.Context, recovery *connectionRetr
 		return err
 	}
 	if recovery.passes > 1 {
-		if err := c.wait(recovery.ctx, backoffFor(recovery.passes-1, 0)); err != nil {
+		delay := backoffFor(recovery.passes-1, 0)
+		if bounded {
+			left := deadline.Sub(spentAt())
+			if left <= 0 {
+				return &ConnectionUnavailableError{}
+			}
+			if delay > left {
+				delay = left
+			}
+		}
+		began := time.Now()
+		if err := c.wait(recovery.ctx, delay); err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
@@ -105,6 +110,12 @@ func (c *Client) recoverBeforeSend(ctx context.Context, recovery *connectionRetr
 				return &ConnectionUnavailableError{}
 			}
 			return err
+		}
+		if took := time.Since(began); took < delay {
+			recovery.owed += delay - took
+		}
+		if bounded && !spentAt().Before(deadline) {
+			return &ConnectionUnavailableError{}
 		}
 	}
 	return nil
@@ -183,9 +194,18 @@ func (c *Client) waitConnection(ctx context.Context, model, target string, start
 	watch := streamWatchFrom(ctx)
 	watch.pauseConnection()
 	defer watch.resumeConnection()
+	// THE DEADLINE ON THIS WAIT IS REAL AND WAS BEING THROWN AWAY. A connection
+	// wait ends on its own at [connectionRecoveryWindow] past the moment it
+	// started, with a [ConnectionUnavailableError] the ladder above will not
+	// spend another window on — so there IS a moment at which this build acts,
+	// and a countdown drawn to it is a countdown that means something. It used
+	// to post a zero here, which the emptiness law correctly draws as nothing,
+	// and the person watching a dead Wi-Fi was told the wait was real but never
+	// how long this build would give it.
+	until := w.since.Add(connectionRecoveryWindow)
 	announce := func() {
 		if watch.speaking() {
-			notePhase(ctx, model, PhaseConnectionLost, "", w.since, time.Time{}, "")
+			notePhase(ctx, model, PhaseConnectionLost, "", w.since, until, "")
 		}
 	}
 	announce()

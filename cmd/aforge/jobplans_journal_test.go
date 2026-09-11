@@ -23,7 +23,7 @@ func finishedLeafOutcome() *exec.Outcome {
 			Cost:             1.25,
 		},
 		Stop:    exec.StopDone,
-		Verdict: provider.VerdictVerifiedSuccess,
+		Verdict: provider.ReadingVerifiedSuccess,
 		Account: &exec.Account{
 			Files:  []exec.FileChange{{Path: "answer.txt", Change: exec.ChangeAdded, Added: 3}},
 			Checks: []exec.Check{{Command: "go test ./...", Passed: true}},
@@ -200,13 +200,13 @@ func TestTheDurableRowStillOverrulesTheJournaledEnding(t *testing.T) {
 		Checked string
 		Cost    float64
 		Turns   int
-		Verdict provider.Verdict
+		Verdict provider.Reading
 	}{restoredFirst.Checked, restoredFirst.Cost, restoredFirst.Turns, restoredFirst.Verdict}
 	wantMeasurements := struct {
 		Checked string
 		Cost    float64
 		Turns   int
-		Verdict provider.Verdict
+		Verdict provider.Reading
 	}{outcome.Account.Summary(), outcome.Usage.Cost, outcome.Turns, outcome.Verdict}
 	if !reflect.DeepEqual(gotMeasurements, wantMeasurements) {
 		t.Errorf("first measurements = %#v, want the journal's %#v", gotMeasurements, wantMeasurements)

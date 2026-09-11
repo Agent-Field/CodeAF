@@ -61,11 +61,11 @@ const (
 // number is set by the DEADLINE rather than by the frame cap.
 //
 // [frameCap] is 64MB and would allow far more than this. What would not allow
-// it is client.go's [callDeadline]: every call on this wire has ten seconds to
-// answer, and a fetch that has not crossed in ten seconds is reported to the
-// person as a connection that has gone — which would be a lie about a link that
-// is working and merely slow. Sixteen megabytes clears a modest link inside
-// that window; a ceiling much above it would be a limit the connection failed
+// it is the getter's [callDeadline]: a fetch is a read, so it has that window,
+// and a fetch that has not crossed in time now says the engine did not answer
+// rather than that the link is dead — which would be a lie about a connection
+// that is working and merely slow. Sixteen megabytes clears a modest link
+// inside that window; a ceiling much above it would be a limit the call failed
 // before the number did.
 const maxFetchBytes = 16 << 20
 
@@ -328,9 +328,9 @@ func (s *server) fetchFile(call Frame) (json.RawMessage, error) {
 // listDirMax is the most rows one listing carries, and the ceiling is on the
 // FRAME rather than on the person. A directory holding a hundred thousand
 // generated files is an ordinary thing on a machine that has been working, and
-// a listing of it would be megabytes of JSON crossing a call that has ten
-// seconds to answer (client.go's callDeadline) for a screen that draws a page
-// at a time. What is cut is the TAIL, and [DirListing.Truncated] says so —
+// a listing of it would be megabytes of JSON crossing a getter that has
+// [callDeadline] to answer for a screen that draws a page at a time. What is
+// cut is the TAIL, and [DirListing.Truncated] says so —
 // a listing that quietly stopped early would be this engine lying about that
 // machine's disk, which is the one thing a browse view may never do.
 //

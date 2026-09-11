@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -26,11 +28,16 @@ import (
 // adaptiveCompletionTimeout). That is the right bound for a person's turn and a
 // ridiculous one for eight words of title: a session with a wedged errand held a
 // provider slot and a goroutine for a quarter of an hour, and the person waiting
-// for their own turn behind it was told nothing. So every call here carries the
+// for their own turn behind it was told nothing. So every errand carries the
 // bound of its role's TIER ([roles.PatienceFor]) — derived, never a table of
 // per-role seconds — and a caller that knows its own call is tighter still says
 // so and wins, because the nearer of two deadlines on one context is the one in
 // force.
+//
+// THAT BOUND IS THE ERRAND'S AND NOT EACH RUNG'S. See [Agent.callRoleChecked]
+// for the whole of why, and for what does bound one rung: the same stream guard
+// the turn runs under, which cuts silence and leaves an answer that is being
+// written alone.
 //
 // AND WHAT HAPPENS WHEN THE MODEL CANNOT ANSWER AT ALL. The errand used to be
 // abandoned: a role pinned to a small model that is down, or a tier naming a
@@ -76,8 +83,16 @@ func (a *Agent) callRole(
 	messages []ai.Message,
 	options ...ai.Option,
 ) (*ai.Response, string, error) {
+	return a.callRoleChecked(ctx, role, sessionDefault, messages, nil, options...)
+}
+
+// callRoleChecked lets naming refuse an unusable answer before the next rung
+// is abandoned. The check accounts for rejected replies, because those still cost.
+func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDefault string,
+	messages []ai.Message, accept func(*ai.Response, string) bool, options ...ai.Option,
+) (*ai.Response, string, error) {
 	a.mu.Lock()
-	source, client := a.config.RolesSource, a.client
+	source := a.config.RolesSource
 	// ONE MODEL MEANS ONE MODEL AT EVERY RUNG. A crew-only caller passes an empty
 	// floor deliberately — it is a quality judgement about a profile that HAS a
 	// crew, and it refuses to let the running model mark its own work — but the
@@ -108,9 +123,6 @@ func (a *Agent) callRole(
 	if err != nil {
 		return nil, "", err
 	}
-	if client == nil {
-		return nil, "", errNoCompleter
-	}
 	// EVERY ERRAND ARMS ITS CUT MONEY HERE. [Agent.callRole] is the one door all
 	// auxiliary provider calls pass through, including calls whose own deadline
 	// is not derived from a turn; arming ten callers separately would leave the
@@ -120,14 +132,99 @@ func (a *Agent) callRole(
 		rungs = rungs[:roleFallThroughs+1]
 	}
 	patience := roles.PatienceFor(role)
+	// THE PATIENCE IS THE ERRAND'S AND NOT EACH RUNG'S, and that is the whole of
+	// what changed here on 2026-09-10.
+	//
+	// It used to be divided evenly — `what is left / rungs still to come`, armed
+	// as a hard [context.WithTimeout] on the call. A WALL CLOCK CANNOT TELL A
+	// RUNG THAT IS SILENT FROM A RUNG THAT IS ANSWERING, so it killed both.
+	// Measured on task 1 of conversation 57d51779f63ac603: the division review's
+	// three minutes became ninety seconds a rung, the first rung wrote its first
+	// token in one second and was still writing at ninety when it was cut, the
+	// second did the same, and the parts were admitted with nobody having read
+	// them — after three minutes and twenty seconds in which the person watching
+	// saw one word.
+	//
+	// WHAT BOUNDS ONE RUNG NOW IS THE GUARD THE TURN ALREADY RUNS UNDER. Every
+	// completion this process makes is served over the event stream whether or
+	// not anybody is reading it (internal/provider's [Client.CompleteWithMessages]
+	// — the fail-safe that armed only when a person was looking was decoration,
+	// and stopped being one). So a rung that goes quiet is cut by streamguard.go's
+	// first-delta and mid-stream bounds in tens of seconds, and a rung that is
+	// writing is bounded by the wall its lane's own measured history earns it,
+	// which re-arms for as long as the stream keeps pace (#786). An errand
+	// inherits both for nothing.
+	//
+	// AND THAT IS ALSO WHY THE SPLIT IS NO LONGER NEEDED. It was written for
+	// 2026-08-28, where a mastermind endpoint sat silent for a review's entire
+	// three minutes and the fall-through rung — whose floor is the model
+	// answering the person's own turns, alive by construction — was never asked.
+	// The guard ends that rung in tens of seconds now, so the rung below is
+	// reached with nearly the whole budget still on the clock, which is more time
+	// than an even share ever gave it.
+	//
+	// So the tier's patience bounds the ERRAND, once. Every rung runs on whatever
+	// is left of it, and a caller with a nearer deadline of its own still wins,
+	// because [context.WithTimeout] keeps the nearer of the two.
+	//
+	// EXCEPT FOR WHAT THE RUNGS BELOW ARE OWED, which is [errandReserve] and is
+	// the one piece of the old arithmetic worth keeping. The guard cuts a rung
+	// that is not working — but there is one shape it cannot see, a gateway that
+	// takes `stream: true` and answers a whole completion in one piece
+	// (internal/provider's [Client.completionInOnePiece] arms no stall watch), and
+	// a wedged endpoint behind one of those would eat the whole errand and leave
+	// the ladder's floor unasked. A fifth held back is enough that the floor —
+	// the model already answering the person's own turns — is always reachable,
+	// and far enough above the guard's own wall that it never cuts a stream the
+	// guard was happy with. That is the difference between a reserve and the even
+	// split it replaces.
+	errandCtx, endErrand := context.WithTimeout(ctx, patience)
+	// AND THE ERRAND SAYS WHAT IT IS FOR, ON EVERY ROW IT WRITES.
+	//
+	// The model-call log names a call by its tag, and a tag is either set here
+	// or derived from a routing slot the planning packages open — and this
+	// package opens none. So every errand this session makes, from every one of
+	// the ten callers below, landed in the log with no tag at all: 2,309 of the
+	// 2,839 untagged finishes in the ten days to 2026-09-10, and with them the
+	// answer to "what was this build spending deepseek-v4-flash on all night"
+	// (docs/design/recovery/census-20260910.md §8, finding 9).
+	//
+	// THE ROLE IS THE TAG, because the role is what the errand IS — naming a
+	// conversation, judging a route, writing a caption — and it is the same word
+	// internal/lane's roles.go and the journal's own call line already use, so
+	// three records of one call agree about what to call it.
+	errandCtx = provider.WithCallTag(errandCtx, string(role))
+	defer endErrand()
+	tell := errandWatchFrom(ctx)
 
 	var lastErr error
-	// The rung's index is the ATTEMPT number on a failed call's journal row: an
-	// errand that walked its whole ladder wrote one row per rung, and the number
-	// is what tells a reader they were one errand rather than three.
+	// The rung's index is what tells a reader that an errand which walked its
+	// whole ladder was ONE errand and not three.
+	//
+	// ── ONE REQUEST PER RUNG, AND NO COUNT ANYWHERE ─────────────────────────
+	//
+	// There was an inner loop here, `for tries := 1; tries <= errandTriesPerRung`
+	// with the constant pinned at one — a budget of one, walked as a loop, which
+	// is a shape that reads as though somebody could raise it and is the last
+	// count in this file (docs/design/recovery/DESIGN.md §7). What bounds an
+	// errand is `patience` above, a DEADLINE on the whole ladder, and what bounds
+	// one rung is the reserve the rungs below it are owed
+	// ([errandRungContext]). The rung below is a better move than another try —
+	// a different model, on a different lane, reached at once with no backoff to
+	// pay — and nobody typed this call, so a ladder that spent a turn's patience
+	// per rung on a title would turn one bad minute at a provider into several
+	// charges and several waits for an answer nobody asked for.
 	for attempt, rung := range rungs {
+		// AND THE CALLER THAT HAS SOMEBODY WATCHING IS TOLD, before the wait
+		// rather than after it. A person looking at a task being sized has one
+		// phase word and nothing under it; which model is being asked, and
+		// which of how many, is the difference between a wait and a hang.
+		tell(errandNews{Model: rung.Model, Rung: attempt + 1, Rungs: len(rungs)})
 		// WithoutStream because nobody asked for this call: left on the turn's
-		// stream it would type itself into the room in the model's voice.
+		// stream it would type itself into the room in the model's voice. It
+		// takes the OBSERVER off and not the transport — the request is still
+		// served as a stream and still guarded as one, which is the sentence
+		// above about what bounds a rung.
 		//
 		// And IntentBackground for the other half of the same sentence. Nobody
 		// asked for it and nobody is waiting on it, so the fastest endpoint is
@@ -147,7 +244,7 @@ func (a *Agent) callRole(
 		// because `provider.sort` is still built from it, and it is now a
 		// reading of the role rather than a second opinion about it.
 		callCtx := provider.WithRole(
-			provider.WithRoutingIntent(provider.WithoutStream(ctx), provider.IntentBackground),
+			provider.WithRoutingIntent(provider.WithoutStream(errandCtx), provider.IntentBackground),
 			errandRole(role))
 		// AN ERRAND ASKS THE LADDER LIKE EVERYTHING ELSE, and the ladder's
 		// answer for it is nothing (internal/effort's RoleErrand): naming a
@@ -173,31 +270,13 @@ func (a *Agent) callRole(
 		// AND A SLOT FOR WHOEVER ANSWERS, so the errand's own call line can name
 		// the endpoint the way a turn's does. An errand routes by price, which
 		// means it is exactly the kind of request whose server cannot be guessed
-		// from the model name.
+		// from the model name. It is made fresh per attempt: a retry served by
+		// somebody else must not be billed to the endpoint that failed.
 		served := &provider.ServedEndpoint{}
 		callCtx = provider.WithServedEndpoint(callCtx, served)
-		// A CALLER'S DEADLINE IS SHARED ACROSS THE LADDER, never handed whole to
-		// the first rung. A caller that bounds its errand tighter than the
-		// tier's patience used to bound only the CONTEXT — each rung still got
-		// the full patience — so one wedged endpoint on rung one ate the whole
-		// budget, `ctx.Err()` below ended the errand, and the fall-through rung
-		// (whose floor is the session's own model, alive by construction) was
-		// never asked. That is how a division review died on 2026-08-28: the
-		// mastermind's endpoint sat silent for the review's entire three
-		// minutes, and the one model that answers every other request in the
-		// session was never tried. Each rung now gets an equal share of what
-		// remains, capped by the tier's patience, so the last rung always has
-		// time on the clock as long as the caller gave the errand any at all.
-		perRung := patience
-		if deadline, ok := ctx.Deadline(); ok {
-			if share := time.Until(deadline) / time.Duration(len(rungs)-attempt); share < perRung {
-				perRung = share
-			}
-		}
-		callCtx, cancel := context.WithTimeout(callCtx, perRung)
-		response, callErr := client.CompleteWithMessages(callCtx, messages,
-			append(append([]ai.Option{}, options...), ai.WithModel(rung.Model))...)
-		cancel()
+		callCtx, releaseRung := errandRungContext(callCtx, len(rungs)-attempt-1)
+		response, callErr := a.completeWithModel(callCtx, messages, rung.Model, options...)
+		releaseRung()
 		if callErr == nil && response != nil {
 			// AND THE ERRAND WRITES ITS OWN CALL LINE, exactly as a step of the
 			// turn does (loop.go's [Agent.addUsage]). Without it the journal's
@@ -207,11 +286,37 @@ func (a *Agent) callRole(
 			// mastermind. See [journalCall] for why that is a record worth
 			// nothing and why the role rides the line.
 			a.journalRoleCall(response, role, rung.Model, served.Name())
-			return response, rung.Model, nil
+			if accept == nil || accept(response, rung.Model) {
+				return response, rung.Model, nil
+			}
+			// AN ANSWER THE CALLER CANNOT USE IS NOT A TRANSPORT FAILURE and is
+			// never asked for again from the same rung: the endpoint did its job
+			// and the model said something unusable, which asking again on the
+			// same model is the least likely thing to change. The ladder moves.
+			lastErr = errInvalidName
+			tell(errandNews{Model: rung.Model, Rung: attempt + 1, Rungs: len(rungs),
+				Failed: true, Why: errandUnusableWords})
+			if ctx.Err() != nil {
+				return nil, rung.Model, ctx.Err()
+			}
+			continue
 		}
 		lastErr = callErr
 		if lastErr == nil {
 			lastErr = errEmptyAnswer
+		}
+		// A CANCELLED ERRAND IS NOT A FAILED ONE, and it leaves no row. When a
+		// turn ends, the captions and titles it started die with `context
+		// canceled`, and each was journaled as an error and then read by the
+		// boundary as `class: work, the work did not come back done` — a
+		// failure in every autopsy for an errand nobody was waiting on any more
+		// (the 2026-09-10 transcript carries one per turn). The turn loop has
+		// never journaled a request its own context cancelled (loop.go); an
+		// errand keeps the same rule. A DEADLINE is still a failure and still
+		// written, below: that is the caller running out of patience, which is
+		// news, where a cancel is the caller walking away.
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return nil, rung.Model, ctx.Err()
 		}
 		// AND THE ERRAND'S FAILURE IS WRITTEN DOWN TOO, on the same row shape a
 		// step of the turn writes (loop.go's [Agent.journalFailedCall]). An
@@ -235,22 +340,199 @@ func (a *Agent) callRole(
 		// AND THE BOUNDARY READS IT, on the same row shape and for the same
 		// reason the turn's own failures are read: an errand cut by a deadline
 		// and an errand refused by an upstream are two different pieces of news
-		// and the file could not tell them apart. The verdict is not acted on —
-		// the rung below IS the retry this ladder has, and one rung is the whole
-		// of an errand's patience (see the header) — but a transport failure
-		// dropped without a class is a failure nobody can count
+		// and the file could not tell them apart
 		// (taxonomy_boundary.go's [Agent.readErrandFailure]).
-		a.readErrandFailure(lastErr, role, rung.Model, attempt+1)
-		// The person's own interrupt, or the caller's deadline, ends the errand
-		// where it stands. Walking a ladder on a context that is already over is
-		// two more requests that cannot land — and the caller is handed the
-		// context's own error, so it can tell "nobody answered in time" from "the
-		// provider refused" without reading the row this just wrote.
+		//
+		// AND NOW THE LADDER ACTS ON WHAT IT SAYS. It used to be read and
+		// dropped — the rung below was the only retry an errand had, whatever
+		// the failure was — which meant an endpoint under strain spent a rung
+		// that a two-second pause would have got an answer out of, and an errand
+		// with one rung left had no move at all. [errandAsksAgain] is where the
+		// verdict is turned into this ladder's two moves.
+		// AND IT IS ASKED AS A LADDER. `fallback` is the fact the boundary cannot
+		// know and the whole difference between moving on and giving up: this
+		// errand has a rung below, whose floor is the model already answering the
+		// person's own turns. It is what turns a spent transport budget into
+		// [taxonomy.ActionHop] rather than [taxonomy.ActionGiveUp].
+		// AND THE BOUNDARY IS TOLD THIS RUNG IS SPENT. One request is the
+		// whole of a rung, so by the time its failure is read there is
+		// nothing left to ask of THIS model — which is what turns the
+		// verdict into the hop the ladder below is for.
+		verdict, evidence := a.readErrandFailure(lastErr, role, rung.Model,
+			transportLadder{attempt: 1, outOfTime: true, fallback: attempt+1 < len(rungs)})
+		tell(errandNews{Model: rung.Model, Rung: attempt + 1, Rungs: len(rungs),
+			Failed: true, Why: errandFailureWords(lastErr)})
+		// The person's own interrupt ends the errand where it stands, and the
+		// caller is handed the context's own error so it can tell "nobody
+		// answered in time" from "the provider refused" without reading the row
+		// this just wrote.
 		if ctx.Err() != nil {
 			return nil, rung.Model, ctx.Err()
 		}
+		// AND SO DOES THE ERRAND'S OWN PATIENCE, for the same reason: walking a
+		// ladder on a budget that is already spent is more requests that cannot
+		// land.
+		if errandCtx.Err() != nil {
+			return nil, rung.Model, errandCtx.Err()
+		}
+		if !errandWalksOn(verdict, evidence, attempt+1 < len(rungs)) {
+			return nil, rung.Model, lastErr
+		}
 	}
 	return nil, "", lastErr
+}
+
+// errandReserve is the fraction of what is left of an errand that is held back
+// for EACH rung still below the one being asked. A fifth: enough that the floor
+// is always reachable, small enough that it is never the thing that ends a rung
+// which is answering.
+//
+// IT IS NOT THE OLD EVEN SPLIT. That divided the whole budget by the rungs
+// remaining and handed the first one half of it, which is why a stream still
+// writing at ninety seconds of its hundred and eighty died. This hands the first
+// rung four fifths and keeps a fifth for the floor.
+const errandReserve = 5
+
+// errandRungContext bounds one rung at what it may spend: everything left except
+// what the `below` rungs under it are owed.
+//
+// A rung with nothing under it is handed the errand's own context unchanged,
+// which is the ordinary case and pays nothing.
+func errandRungContext(ctx context.Context, below int) (context.Context, context.CancelFunc) {
+	deadline, ok := ctx.Deadline()
+	if below <= 0 || !ok {
+		return ctx, func() {}
+	}
+	left := time.Until(deadline)
+	owed := time.Duration(below) * (left / errandReserve)
+	if owed <= 0 || owed >= left {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, left-owed)
+}
+
+// errandNews is one moment of an errand's ladder, for a caller that has somebody
+// watching and owes them a sentence about the wait.
+//
+// IT CARRIES FACTS AND ONE PLAIN-WORDS HALF, never a finished sentence. What a
+// person reads is composed by the caller — the line under a task's phase word
+// reads nothing like anything a title errand would ever say — and a sentence
+// written here would be this file having an opinion about a surface it cannot
+// see.
+type errandNews struct {
+	// Model is the rung being asked, Rung is its 1-based place on the ladder,
+	// and Rungs how many rungs there are.
+	Model string
+	Rung  int
+	Rungs int
+	// Failed says this news is that the request above came to nothing, and Why
+	// is what to tell somebody about it in their own words.
+	Failed bool
+	Why    string
+}
+
+// The two things that go wrong with a rung, in the words a person reads.
+//
+// TWO SENTENCES AND NO MORE. Somebody watching their work be sized wants to know
+// whether the model is slow or gone; the provider's own sentence is a payload
+// and belongs in the journal row [Agent.callRoleChecked] already writes.
+const (
+	errandLateWords      = "did not answer in time"
+	errandUnreachedWords = "could not be reached"
+	errandUnusableWords  = "answered with nothing usable"
+)
+
+// errandFailureWords is why one rung came to nothing, for a person.
+func errandFailureWords(err error) string {
+	if err == nil {
+		return ""
+	}
+	if _, cut := provider.CutFrom(err); cut || errors.Is(err, context.DeadlineExceeded) {
+		return errandLateWords
+	}
+	return errandUnreachedWords
+}
+
+// errandWalksOn reads one failed rung's verdict the way a LADDER has to read it,
+// which is not the question a caller with one model asks of the same verdict.
+//
+// [taxonomy.ActionHop] IS THE ANSWER THIS FUNCTION EXISTS FOR: a transport
+// budget spent with somewhere left to go. That "somewhere" is the fact only this
+// file has — a rung below, whose floor is the model already answering the
+// person's own turns — and it reaches the boundary as [transportLadder]'s
+// `fallback`, which is what makes the hop reachable at all.
+// [taxonomy.ActionGiveUp] is the same news with nowhere left, and it ends the
+// errand.
+//
+// AND [taxonomy.ActionRetry] IS READ AGAINST THE ERRAND'S OWN PATIENCE RATHER
+// THAN THE MODEL'S. It means the MODEL has not run out of anything, which is the
+// right answer for a turn and the wrong one for an errand: one request is the
+// whole of a rung here, so by the time a rung's failure is read this rung has
+// nothing left. So a retry with a rung below is this ladder's hop, taken at once
+// and without the backoff:
+// asking a different model is what "ask again" means here, and it is more than
+// [taxonomy.Verdict.Rotate] was asking for. With no rung below it is the end.
+// (Honouring it as a SAME-RUNG retry was measured on 2026-09-10 and is not
+// available until the transport budget can be the caller's: it fires on the
+// first failure, and the pauses timed out the naming job and two turns a person
+// waits through.)
+//
+// AND ONE FAILURE THE TAXONOMY CANNOT DECIDE ON ITS OWN. Everything it cannot
+// place lands in [taxonomy.Work] — which is right for a 4XX THAT NAMED NOBODY,
+// the router reading our own bytes and saying no, where the rung below is a
+// second charge for the same refusal — and wrong for "that model is down", which
+// arrives as a sentence nothing can classify and is the exact case the ladder was
+// built for (taskname_test.go's fall-through). A class that catches both cannot
+// be the gate, so the doomed request is recognised by the EVIDENCE, narrowly: the
+// router reading our own bytes and saying no. Every other work verdict falls
+// through one rung, as this file's header has always said it does.
+//
+// AND IT READS THE EVIDENCE RATHER THAN A STATUS (#854, the last entry on that
+// change's `seamsOwed`). This spelled `Status >= 400 && Status < 500 && Upstream
+// == ""` by hand, which was a FOURTH rule about what a 4xx means beside the three
+// the one classifier had just folded into one — and a fourth rule is the defect
+// that design closed. [taxonomy.Evidence.OurBytes] is exactly that sentence,
+// decided once at the refusal door, and [taxonomy.Evidence.Overflow] is beside it
+// because an errand cannot compact: a request that did not fit will not fit the
+// rung below either.
+func errandWalksOn(verdict taxonomy.Verdict, evidence taxonomy.Evidence, fallback bool) bool {
+	if verdict.Class == taxonomy.Transport {
+		return verdict.Action == taxonomy.ActionHop ||
+			(verdict.Action == taxonomy.ActionRetry && fallback)
+	}
+	return !evidence.OurBytes && !evidence.Overflow
+}
+
+// ── telling somebody what the errand is doing ───────────────────────────────
+
+type errandWatchKey struct{}
+
+// withErrandWatch asks the ladder to say what it is doing, rung by rung, to a
+// caller that has somebody waiting on the answer.
+//
+// IT IS A CONTEXT VALUE AND NOT AN ARGUMENT because one caller in ten wants it.
+// [Agent.callRole] is the door every errand in this package passes through, and
+// widening its signature for the division review would put an ignored nil at
+// every other site — which is how a seam stops being read.
+//
+// THE WATCHER IS CALLED ON THE ERRAND'S OWN GOROUTINE, in order, before each
+// request and after each failure. It must be as trivial as a stream observer is:
+// anything that blocks here blocks the errand.
+func withErrandWatch(ctx context.Context, tell func(errandNews)) context.Context {
+	if tell == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, errandWatchKey{}, tell)
+}
+
+// errandWatchFrom is the watcher on this context, and a hand that does nothing
+// on every errand nobody is watching — which is nearly all of them.
+func errandWatchFrom(ctx context.Context) func(errandNews) {
+	tell, _ := ctx.Value(errandWatchKey{}).(func(errandNews))
+	if tell == nil {
+		return func(errandNews) {}
+	}
+	return tell
 }
 
 // journalRoleCall writes ONE errand's own accounting down, on the same line

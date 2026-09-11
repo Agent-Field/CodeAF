@@ -48,8 +48,7 @@ var wakeRoads = map[string]string{
 	"steerNote": "the constructor itself; a line the PERSON typed into a running node, " +
 		"which is the one wake that is already a person's own sentence",
 	"enqueueSteering": "the generic lane. Its callers own the addressing: a landing goes through " +
-		"[Agent.deliverTaskNote] below, a standing firing is the person's own armed words, " +
-		"a fork's hand reports to the model that forked it",
+		"[Agent.deliverTaskNote] below, a standing firing is the person's own armed words",
 	"spoken": "the person's own line, said into a node (task_room.go). The other speaker on " +
 		"this road is another agent in this session, and it is addressed to the node's own " +
 		"runner rather than to anybody out there ([relayNote])",

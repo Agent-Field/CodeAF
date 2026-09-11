@@ -118,7 +118,7 @@ type homeTickMsg struct{ gen int }
 
 // homeTick schedules the next reading.
 func homeTick(gen int) tea.Cmd {
-	return tea.Tick(homeEvery, func(time.Time) tea.Msg { return homeTickMsg{gen: gen} })
+	return surfaceTick(homeEvery, func(time.Time) tea.Msg { return homeTickMsg{gen: gen} })
 }
 
 // homeBeat is the beat, arriving. A beat that finds home closed re-arms
@@ -130,10 +130,15 @@ func (a *app) homeBeat(gen int) tea.Cmd {
 		return nil
 	}
 	a.refreshHome()
+	// AND THE ROW A MOVE LEFT BEHIND IS AIMED AT AGAIN, because the reading above
+	// has just put the cursor back on this window's own conversation and the row
+	// somebody was told to press enter on is the one that matters this minute
+	// (takeover.go's [app.pointMovedRow]).
+	a.pointMovedRow()
 	// THE BEAT REBUILDS THE LIST AND THE CURSOR FOLLOWS ITS CONVERSATION
 	// ([homeView.build]), so the row the card is about may be a row nothing has
 	// read for. It is an arrival like a key (homecardread.go).
-	asked := a.refreshHomeCard(a.now())
+	asked := tea.Batch(a.refreshHomeCard(a.now()), a.refreshGridReadings(a.now()), a.askEngines())
 	// A task starting in another window arrives on this beat, and the spinner it
 	// earns needs the fast clock — woken here because this is the only moment
 	// home learns anything ([app.homeAnimating]; paint keeps it turning and lets
@@ -224,15 +229,21 @@ const homeGutter = 4
 // vocabulary: it is the difference between "this is running" and "this is what
 // the machine is doing at this instant", which is the distinction the one-spinner
 // law exists to draw.
+// AND `✕` FOR A CONVERSATION LEFT MID-WAY, which is the one mark this block
+// changed when the surface moved onto the shared vocabulary. It used to be `◌`,
+// a shape that existed nowhere else and that a person had to be taught; work
+// that did not finish is `✕` on the card, on the rail, on the roster and on the
+// task page, dim rather than loud unless something actually broke, and this
+// screen says the same thing with the same cell.
 const (
-	homeAskGlyph   = "?"
-	homeLiveGlyph  = "◐"
-	homeStuckGlyph = "◌"
-	homeIdleGlyph  = "○"
+	homeAskGlyph   = tokens.GlyphNeedsHuman
+	homeLiveGlyph  = tokens.GlyphWorking
+	homeStuckGlyph = tokens.GlyphFailed
+	homeIdleGlyph  = tokens.GlyphQueued
 
 	homeAskASCII   = "!"
 	homeLiveASCII  = "*"
-	homeStuckASCII = "o"
+	homeStuckASCII = "x"
 	homeIdleASCII  = "-"
 )
 
@@ -331,6 +342,15 @@ const (
 	// left for the name it is about.
 	homeHeldWord  = "open in another window"
 	homeHeldShort = "another window"
+	// homeEngineWord is what the detail column says instead when the journal is
+	// held by this machine's ENGINE rather than by a window (internal/enginehost).
+	//
+	// A HOST-HELD ROW IS NOT IN ANOTHER WINDOW AND SAYING SO WAS THE DEFECT. The
+	// engine keeps a conversation running with every terminal shut — that is what
+	// the engine road buys — so a row somebody ctrl-c'd an hour ago, still working
+	// four tasks, was drawn as a window to go and find. There is no such window.
+	// The engine is where it is, and enter opens it here.
+	homeEngineWord = "open in the engine"
 	// homeLandedWord trails a count on a quiet row whose work finished since
 	// home was last closed — `2 landed · 3h` — and homeFreshWord is the dim
 	// caption the detail column hangs over those rows. Both are the delta the
@@ -463,17 +483,11 @@ type homeLine struct {
 	// note is the phone inbox's `since you left` row — one thing that happened
 	// while you were away — and is nil on every other line (homephone.go).
 	note *homePhoneNote
-	// sw is the reading's own line, for every row of the resting switcher, and
-	// nil on every line built any other way — a match under a query, an errand,
-	// the phone's inbox (place_home.go).
-	//
-	// IT IS WHAT PAINTS THE ROW AND NOT WHAT THE ROW IS. The kind is still
-	// [homeSession] or [homeItem], so every door on this screen goes on working
-	// unchanged; this pointer is how the row knows to be drawn as one flat ranked
-	// line — mark, name, project tag, note, age — rather than as a row under a
-	// project heading. It points INTO [homeView.reading], which is replaced whole
-	// with the lines it fills, so the two can never be a rebuild apart.
-	sw *switcherLine
+	// cell is the words a row of the resting GRID is painted from, and nil on
+	// every line built any other way (homegrid.go). It is what paints the row
+	// and not what the row is: a conversation on a panel is still a
+	// [homeSession] line, so every door on this screen reaches it.
+	cell *homeCell
 	// task is the ONE PIECE OF WORK a row was named after, and nil on every row
 	// that stands for a conversation as a whole. The `needs you` strip's landed
 	// rows are the ones that carry it today (homeattention.go's [attentionTask]):
@@ -603,6 +617,16 @@ type homeView struct {
 	// beside the world rather than folded into it because the world is a
 	// reading of the projects root and these are not in it.
 	bare []homeBare
+	// fired is what is NOT in [homeView.items] and belongs on the screen anyway:
+	// standing things that went off and stood down since the look stamp, taken
+	// from the same reading (homestanding.go's [app.standItems]).
+	//
+	// A ONE-OFF RETIRES IN THE PASS THAT FIRES IT, so it is never in a band and
+	// never on the list — and the `since you left` block, which is the one place
+	// on this screen whose whole subject is what happened while nobody was
+	// looking, could not see the commonest thing that happens while nobody is
+	// looking. The bands say what is true now; this says what went.
+	fired []StandingItemView
 	// itemsOpen is the bands somebody opened by hand, by the same key. It is a
 	// second map and not a flag beside [homeView.expanded] because they are two
 	// folds over two different things, and a person who opened the watches
@@ -627,6 +651,10 @@ type homeView struct {
 	// where [homeView.bucket] is the broad one, and the two are kept apart
 	// because the questions they answer are.
 	here string
+	// launch is the FOLDER this window is working in — the workspace the foot
+	// names — which the projects panel draws as its first row whether or not
+	// anybody has spoken there yet (homepanel_projects.go).
+	launch string
 	// gone is which project folders were NOT on the disk when the world was last
 	// read, keyed by the path [homeWhere] answers for a row. A path this map has
 	// never heard of is not gone: the map is filled from the world and only ever
@@ -675,12 +703,19 @@ type homeView struct {
 	msg     string
 	msgPath string
 
-	// armed is the transcript of the row whose SECOND enter moves a conversation
-	// out of the window that is holding it (takeover.go). One enter arms it and
-	// says what the next one will do and what it costs; anything that moves the
+	// armed is the transcript of the row whose enter has RAISED THE QUESTION
+	// about moving a conversation out of the window that is holding it
+	// (takeover.go). It is the row's state and nothing more: what is asked, and
+	// what answers it, is the card in `ask` below. Anything that moves the
 	// cursor, esc, and any rebuild that loses the row all clear it, because an
 	// arming a person cannot see is a keystroke with a memory.
 	armed string
+
+	// ask is the ONE question home is holding about a row on its own list, or
+	// nil (homeconfirm.go). It is not on the block: home takes the frame whole,
+	// so the block's rows are not on screen here, and a card home raised about a
+	// row on home is not a thing to meet after walking away from home.
+	ask *questionShown
 
 	// tier is which of home's three shapes this frame has room for — the list
 	// alone, the list and a card, or the zones in a column of their own beside
@@ -692,27 +727,15 @@ type homeView struct {
 	tier homeTier
 	// room is how many rows THIS FRAME gave the column, settled by the draw
 	// before the column is built exactly as [homeView.tier] is
-	// (place_home.go's [placeHome.body]). The list is capped by it — as many
-	// rows as the frame can hold, never fewer than [switcherShown] — and a
-	// column that never asked was a home that drew eight conversations on a
-	// fifty-row terminal and left twenty-eight rows blank under them.
+	// (place_home.go's [placeHome.body]). The grid lays its panels out against
+	// it (homegrid.go's [homeGridLayout]) — squeezing a short frame and growing
+	// a tall one — and a column that never asked was a home that drew eight
+	// conversations on a fifty-row terminal and left twenty-eight rows blank.
 	//
 	// ZERO IS "NOBODY HAS DRAWN A FRAME YET", not a column of no rows: a
 	// reading built before the first draw is the reading this surface made
 	// before the height was ever in scope.
 	room int
-	// reading is the resting list as switcher.go read it — the ledger, the
-	// ranked rows, the fold — and every line of [homeView.lines] built from it
-	// points into this (place_home.go). It is replaced whole with those lines,
-	// which is what makes the pointers safe.
-	reading switcherReading
-	// grouped is `alt+g` and hideQuiet is `alt+q`, seeded from the app's own two
-	// flags when the screen opens so that the view a person chose survives
-	// closing home; moreOpen is the one fold at the foot of the list standing
-	// open, and it dies with the screen as every other fold here does.
-	grouped   bool
-	hideQuiet bool
-	moreOpen  bool
 	// ledger is what the `since you left` block was told about memory, taken with
 	// the world rather than at the draw ([app.readSwitchLedger]).
 	ledger switcherLedgerInput
@@ -760,26 +783,34 @@ type homeView struct {
 	// instead of the door.
 	cardHover string
 	repos     map[string]homeRepoReading
-	// machine is the MEMO of what this machine has to say about ITSELF — the
-	// reading the pulse line at the top of every place draws, taken at most once
-	// per [homeEvery] (homemachine.go's [app.machineFactsAt]) — and machineAt
-	// when it was taken.
-	//
-	// IT IS A MEMO AND NOT A SOURCE, and the difference is the whole of issue
-	// #525. Every figure in it is read from the MACHINE — the usage ledger, the
-	// person's own daily row — so closing home costs the next place one more
-	// reading and never a different answer. It used to be read from what this
-	// screen was holding, which made the day's spend on the top line a function
-	// of which rooms you had walked through: `$1.85` on home, `$0.37` on tasks.
-	// A memo may die with the screen; a fact about the machine may not.
-	machine   machineFacts
-	machineAt time.Time
 	// week is what the standing ledger says about the last seven days, by item
 	// id, and weekAt when it was read. ONE READING SERVES EVERY CARD on the
 	// screen (homestanding.go's [app.standWeek]): the ledger is a file per day,
 	// and a card asking per item would open the same week once per row.
 	week   map[string]standing.Spend
 	weekAt time.Time
+
+	// The resting grid's own state (homegrid.go). cols is how many columns this
+	// frame has room for, settled by the draw before the lines are built exactly
+	// as [homeView.room] is; grid is the shape the last build laid the lines out
+	// in; tilde is what `~` abbreviates in a project's path. gridX and gridMarks
+	// are the pointer's half, written by the draw: where each column starts, and
+	// for each screen row which line every column drew there. gridWidth is the frame
+	// width the lines were laid out for, settled beside cols, because a whisper
+	// wraps at its column's width and so how many rows it takes is the width's
+	// answer too.
+	cols      int
+	gridWidth int
+	spend     homeSpendReading
+	grid      homeGrid
+	tilde     string
+	gridX     []int
+	gridMarks []homeMark
+
+	// made is the last reading of the files made since the look stamp, which
+	// `since you left` draws a line each for (homepanel_left.go's
+	// [app.madeSince]); it is kept so a quiet beat costs a stat and no parse.
+	made homeMadeIndex
 }
 
 // say replaces the refusal on screen, together with the directory it names.
@@ -837,62 +868,20 @@ func (a *app) raiseHome() tea.Cmd {
 	a.closeLists()
 	a.dismissWelcome()
 	world, known := a.readWorldKnown()
-	a.home = homeView{
-		why:    a.homeWhyEmpty(),
-		world:  world,
-		known:  known,
-		far:    a.hosted(),
-		seen:   session.LastLook(a.looksRoot()),
-		bucket: homeBucketOf(a.file),
-		here:   homeSessionDirOf(a.file),
-		// AND THE CONVERSATION THIS WINDOW HAS ASKED FOR, if there is one.
-		// Raising home builds a fresh [homeView], and a claim that survived
-		// somebody walking to another page and back must survive with it —
-		// otherwise the row goes quiet the moment they return to look at it
-		// (takeovervoice.go).
-		claim:     a.takeover.file,
-		tier:      a.homeTierNow(),
-		hover:     -1,
-		last:      map[string]session.Summary{},
-		news:      map[string]homeNewsCache{},
-		expanded:  map[string]bool{},
-		itemsOpen: map[string]bool{},
-		// AND THE TWO VIEWS THE PERSON LAST CHOSE. `alt+g` and `alt+q` outlive
-		// this screen and nothing else does, which is why they are seeded from
-		// the app rather than kept here (place_home.go).
-		grouped:   a.switchGrouped,
-		hideQuiet: a.switchQuiet,
-		// AND THE ERRANDS ARE STILL HERE. They belong to the window, not to the
-		// screen, so opening home again finds every one that was still going —
-		// with its row, its tail and its pane exactly as they were left
-		// (homeexchange.go).
-		exchanges: a.exchanges,
-		// AND WHAT THE NEXT MESSAGE IS ALREADY CARRYING. The tray belongs to the
-		// person rather than to the screen (attach.go), so a picture attached in
-		// the conversation is a picture home's box is holding the moment it opens
-		// — and it is the reason this screen can be "typed into" with nothing
-		// typed at all ([homeView.carrying]).
-		carrying: len(a.chips) > 0,
-	}
-	a.readStandBands()
-	// AND WHAT MEMORY HAS TO SAY FOR ITSELF, on the same reading of the same
-	// beat (place_home.go's [app.readSwitchLedger]).
-	a.readSwitchLedger()
-	a.readPlaceSummaries()
-	// AND THE FILES CONVERSATIONS HAVE MADE, as ONE reading for the whole screen
-	// rather than one per card (homeband_deliverables.go). It is taken here, with
-	// the other readings, because that index is a file and a card is a draw.
-	a.readHomeArtifacts()
-	// THE FOLDERS ARE STATTED WITH THE WORLD AND NEVER SEPARATELY, and after the
-	// bands, because a project home knows only through a watch is one of the
-	// projects this has to answer for ([homeView.readGone]).
-	a.home.readGone()
-	a.home.build()
+	// THE SAME VIEW THE GREETING BUILDS, BY THE SAME CONSTRUCTOR, AND THE SAME
+	// READINGS: [app.newHomeView] and [app.furnishHome] are the one list of each,
+	// and this road adds only what a door has that a greeting does not — the
+	// cursor's memory of where this window was before.
+	a.home = a.newHomeView(world, known)
+	a.furnishHome()
 	a.home.openAt(a.file)
+	// AND THE CURSOR STANDS ON THE CONVERSATION BEFORE THIS ONE, where this
+	// window has one (homegrid.go's [app.homePreselect]).
+	a.homePreselect()
 	// AND THE CARD'S OWN READINGS ARE TAKEN AT THE ARRIVAL, never in the draw
 	// (homecardread.go). The repository among them is a command, so it is asked
 	// for rather than waited on and comes back as a message.
-	asked := a.refreshHomeCard(time.Now())
+	asked := tea.Batch(a.refreshHomeCard(time.Now()), a.refreshGridReadings(time.Now()))
 	a.touch()
 	// THE PAINT CLOCK JOINS THE SLOW TICK when a row on the column is running:
 	// the spinner and the count-up are claims about this instant, and a still
@@ -986,11 +975,15 @@ func (a *app) landHome() {
 	// AND THE ROUTER IS TOLD WHERE THIS WINDOW IS STANDING. This is the one door
 	// that does not go through [app.showPage], because it runs inside [newApp]
 	// before bubbletea exists and the room it is raising is already furnished by
-	// the four lines below ([app.raisePlace] states the whole exception).
+	// the two lines below ([app.raisePlace] states the whole exception).
 	a.raisePlace(pageHome)
-	a.readStandBands()
-	a.home.readGone()
-	a.home.build()
+	// AND EVERY READING THE DOOR TAKES, TAKEN HERE TOO ([app.furnishHome]). The
+	// greeting used to take two of them — the bands and the folders — and the
+	// first frame drew the spend panel empty and the head with no money until the
+	// beat three seconds later took the rest. The whole list is some forty
+	// milliseconds on a fortnight's ledger, and a person launching this program
+	// is owed the same screen the door would have shown them.
+	a.furnishHome()
 	// AND THE CURSOR OPENS ON THE CONVERSATION THIS WINDOW IS HOLDING, which is
 	// the greeting's own law said one way further ([homeView.openAt]): the
 	// selection is on screen from the first frame, and esc still means what it
@@ -1196,6 +1189,7 @@ func (a *app) dropHome() {
 // both roads get.
 func (a *app) newHomeView(world session.World, known bool) homeView {
 	return homeView{
+		why:   a.homeWhyEmpty(),
 		world: world,
 		known: known,
 		far:   a.hosted(),
@@ -1203,25 +1197,91 @@ func (a *app) newHomeView(world session.World, known bool) homeView {
 		// WHERE THIS WINDOW IS STANDING, broad and exact. The bucket decides
 		// whether a row's door can open at all; the session is the one row that
 		// wears `here` instead of an age (place_home.go).
-		bucket:    homeBucketOf(a.file),
-		here:      homeSessionDirOf(a.file),
+		bucket: homeBucketOf(a.file),
+		here:   homeSessionDirOf(a.file),
+		launch: a.workspace,
+		// AND THE CONVERSATION THIS WINDOW HAS ASKED FOR, if there is one.
+		// Raising home builds a fresh [homeView], and a claim that survived
+		// somebody walking to another page and back must survive with it —
+		// otherwise the row goes quiet the moment they return to look at it
+		// (takeovervoice.go). A launch has asked for nothing yet, so the greeting
+		// reads it as empty, which is the same field saying the same thing.
+		claim:     a.takeover.file,
 		tier:      a.homeTierNow(),
+		cols:      a.homeColsNow(),
+		gridWidth: a.homeGridWidthNow(),
+		tilde:     a.tilde,
 		hover:     -1,
 		last:      map[string]session.Summary{},
 		news:      map[string]homeNewsCache{},
 		expanded:  map[string]bool{},
 		itemsOpen: map[string]bool{},
-		// AND THE TWO VIEWS THE PERSON LAST CHOSE. `alt+g` and `alt+q` outlive
-		// this screen and nothing else does, which is why they are seeded from
-		// the app rather than kept here (place_home.go).
-		grouped:   a.switchGrouped,
-		hideQuiet: a.switchQuiet,
 		// AND THE ERRANDS ARE STILL HERE. They belong to the window, not to the
 		// screen, so opening home again finds every one that was still going —
 		// with its row, its tail and its pane exactly as they were left
 		// (homeexchange.go).
 		exchanges: a.exchanges,
+		// AND WHAT THE NEXT MESSAGE IS ALREADY CARRYING. The tray belongs to the
+		// person rather than to the screen (attach.go), so a picture attached in
+		// the conversation is a picture home's box is holding the moment it opens
+		// — and it is the reason this screen can be "typed into" with nothing
+		// typed at all ([homeView.carrying]).
+		carrying: len(a.chips) > 0,
 	}
+}
+
+// furnishHome takes EVERY reading the screen is drawn from, over the world the
+// view already holds, and builds the lines. It is one function because there
+// are three roads onto this screen — the greeting ([app.landHome]), the door
+// ([app.raiseHome]) and the beat ([app.refreshHome]) — and each used to carry
+// its own list of readings.
+//
+// THREE LISTS DRIFT, AND THEY DID. The greeting's list had the bands and the
+// folders and nothing else, so the very first home a person saw drew the spend
+// panel as its placeholder line and the head with no money at all, and both
+// filled in three seconds later when the beat took the readings the greeting
+// had not. Nothing was slow: the ledger is a twenty-millisecond read, and it
+// was simply not asked for on that road. So there is one list, and a reading
+// added to it is a reading every road takes.
+//
+// Order matters in two places and nowhere else: the bands come first because
+// the machine's counts are taken over them, and the folders are statted after
+// the bands because a project home knows only through a watch is one of the
+// projects this has to answer for ([homeView.readGone]).
+func (a *app) furnishHome() {
+	// THE BANDS ARE READ WITH THE WORLD AND NEVER SEPARATELY. An item's row and
+	// the conversation rows above it are one triage order, and two readings taken
+	// a beat apart would sort a firing item against a world that had not heard of
+	// it yet.
+	a.readStandBands()
+	// AND WHAT MEMORY HAS TO SAY FOR ITSELF, on the same reading of the same
+	// beat (place_home.go's [app.readSwitchLedger]).
+	a.readSwitchLedger()
+	// AND WHAT EACH PLACE HOLDS, because the typed drop-up offers places beside
+	// conversations and a row built while somebody is typing may not go to a
+	// seam for its own margin (homeplaces.go).
+	a.readPlaceSummaries()
+	// AND WHAT THE MACHINE SPENT, for the spend panel (homepanel_spend.go).
+	a.readHomeSpend()
+	// AND THE DELIVERABLES INDEX, which costs ONE os.Stat on a beat where nothing
+	// has been written and re-reads the file only when something has
+	// (homeband_deliverables.go). It is taken here, with the other readings,
+	// because that index is a file and a card is a draw.
+	a.readHomeArtifacts()
+	// AND WHAT THE MACHINE SAYS ABOUT ITSELF IS READ WITH THE WORLD TOO: the
+	// pulse line's money and counts are derived from these bands, and a reading
+	// taken on its own clock would be a top line describing a machine the column
+	// below it had already moved past (homemachine.go's [app.readMachine]).
+	// Home's own line leaves the counts out; the next frame out of home draws
+	// them, and draws these.
+	a.readMachine(a.now(), a.home.world.Sessions(), a.home.items)
+	// AND THE FOLDERS ARE STATTED WITH THE WORLD AND NEVER SEPARATELY. A
+	// repository deleted in another terminal while home is up shows up here on
+	// the next beat, and never sooner and never oftener ([homeView.gone]).
+	a.home.readGone()
+	// [homeView.build] is the one that keeps the cursor on its conversation, so
+	// on the beat this is a rescan and a rebuild and nothing else.
+	a.home.build()
 }
 
 // placesRoot is where the projects live. The field is the test's door and
@@ -1309,34 +1369,10 @@ func (a *app) refreshHome() {
 		return
 	}
 	a.home.world, a.home.known = a.readWorldKnown()
-	// THE BANDS ARE READ WITH THE WORLD AND NEVER SEPARATELY. An item's row and
-	// the conversation rows above it are one triage order, and two readings taken
-	// a beat apart would sort a firing item against a world that had not heard of
-	// it yet.
-	a.readStandBands()
-	a.readSwitchLedger()
-	// AND THE DELIVERABLES INDEX, which costs ONE os.Stat on a beat where nothing
-	// has been written and re-reads the file only when something has
-	// (homeband_deliverables.go). A resting screen used to re-parse the whole
-	// index every three seconds, per row it had ever drawn a card for.
-	a.readHomeArtifacts()
-	// AND WHAT EACH PLACE HOLDS, on the same beat, because the typed drop-up
-	// offers places beside conversations and a row built while somebody is
-	// typing may not go to a seam for its own margin (homeplaces.go).
-	a.readPlaceSummaries()
-	// AND WHAT THE MACHINE SAYS ABOUT ITSELF IS READ WITH THE WORLD TOO, for the
-	// reason above it: the pulse line's counts are derived from these bands, and
-	// a reading taken on its own clock would be a top line describing a machine
-	// the column below it had already moved past (homemachine.go's
-	// [app.machineFactsAt] takes it again on the next paint).
-	a.home.machineAt = time.Time{}
-	// AND THE FOLDERS ARE RE-STATTED ON THIS BEAT AND ONLY ON IT. A repository
-	// deleted in another terminal while home is up shows up here, three seconds
-	// later, and never sooner and never oftener ([homeView.gone]).
-	a.home.readGone()
-	// [homeView.build] is the one that keeps the cursor on its conversation, so
-	// this is a rescan and a rebuild and nothing else.
-	a.home.build()
+	// AND EVERY READING THE SCREEN IS DRAWN FROM, the same list the door and the
+	// greeting take ([app.furnishHome]); on the beat it is a rescan and a
+	// rebuild and nothing else.
+	a.furnishHome()
 	a.touch()
 }
 
@@ -1406,6 +1442,19 @@ func (h *homeView) build() {
 		// Either way the cursor is where it belongs: [homeView.pointSame] put it
 		// back on the row that was chosen, and the followers below are about a
 		// list nobody is filtering.
+		return
+	}
+	// ON THE GRID THE ROW IS FOLLOWED BY WHAT IT IS AND BY THE PANEL IT IS IN
+	// (homegrid.go's [homeView.pointGrid]), because every kind of row on it —
+	// a project, a spend line, a fold door — is a stop, and the four followers
+	// below each know one kind.
+	if h.gridOn() {
+		if hadLine && h.pointGrid(previousLine) {
+			return
+		}
+		if previous.Transcript != "" {
+			h.point(previous.Transcript)
+		}
 		return
 	}
 	if previousExchange != nil {
@@ -1662,17 +1711,6 @@ func (h *homeView) buildWorld() {
 	h.lines = append(h.lines, homeLine{kind: homeAction})
 }
 
-// homeEmptyLines is [homeEmptyWord] as the rows of the places column: the
-// sentence split at its dash, one clause to a row.
-//
-// A NARROW COLUMN IS NARROWER THAN THE SENTENCE. At [tierPhone] the column is
-// under forty cells and the sentence is fifty; a sentence fitted to it would end
-// in `this f…`, and a screen whose only words are cut off is the broken page this
-// row exists to not be. Two short dim rows read as one sentence, and the constant
-// stays the one place the words are spelled — the manual quotes it whole, and so
-// does the phone tier ([app.homePhoneList]).
-func homeEmptyLines() []string { return strings.SplitN(homeEmptyWord, " — ", 2) }
-
 // homeHit is one project and the conversations of it that survived the box.
 // score is the best rank any of those rows scored, and zero for every project
 // while nothing is typed.
@@ -1904,7 +1942,8 @@ func (h *homeView) searching() bool { return !h.box.empty() || h.carrying }
 // gets its case here in the same change that gives it its case in
 // [homeLine.stop].
 //
-// The identity is whatever the row is ABOUT — a conversation is its transcript,
+// The identity is whatever the row is ABOUT — a conversation is its transcript
+// (and on the grid, which of its pieces of work the row names: [homeCell.key]),
 // a project or a fold is its directory, a place or a `since you left` line is
 // its place word, a command is its entry in the one command table
 // (homeslash.go), an errand is the live exchange itself. The two rows that
@@ -1916,10 +1955,10 @@ func (l homeLine) sameRow(other homeLine) bool {
 	}
 	switch l.kind {
 	case homeSession:
-		return l.row.Transcript != "" && l.row.Transcript == other.row.Transcript
+		return l.row.Transcript != "" && l.row.Transcript == other.row.Transcript && l.cellKey() == other.cellKey()
 	case homeItem:
 		return l.item.ID != "" && l.item.ID == other.item.ID
-	case homeQuiet, homeItemFold, homeProject:
+	case homeQuiet, homeItemFold, homeProject, homeProjectRow:
 		return l.dir != "" && l.dir == other.dir
 	case homeExchangeRow:
 		return l.ex != nil && l.ex == other.ex
@@ -1932,7 +1971,7 @@ func (l homeLine) sameRow(other homeLine) bool {
 	// the switcher's and the phone's own rows (place_home.go, homephone.go).
 	case homeLedger, homePhoneNews, homePhoneMore:
 		return l.project != "" && l.project == other.project && l.dir == other.dir
-	case homeAction, homeAskHere, homeSwitchFold:
+	case homeAction, homeAskHere:
 		return true
 	}
 	return false
@@ -2228,7 +2267,7 @@ func (h *homeView) itemLine(project session.Project, view StandingItemView) home
 func (l homeLine) stop() bool {
 	switch l.kind {
 	case homeSession, homeQuiet, homeAction, homeItem, homeItemFold, homeAskHere,
-		homeProject, homeExchangeRow:
+		homeProject, homeExchangeRow, homeProjectRow:
 		return true
 	// the router's lane: an offered place is a door like every other door on this
 	// column (homeplaces.go), and an offered command is one too (homeslash.go).
@@ -2237,10 +2276,9 @@ func (l homeLine) stop() bool {
 	// phone lane: the inbox's own two stops (homephone.go).
 	case homePhoneNews, homePhoneMore:
 		return true
-	// the switcher's own two: a `since you left` line is a door into the place
-	// that owns it, and the fold at the foot is a door over the rows it is
-	// hiding. Its headings are not, for [homeHeading]'s reason (place_home.go).
-	case homeLedger, homeSwitchFold:
+	// the switcher's own: a `since you left` line is a door into the place that
+	// owns it. Its headings are not, for [homeHeading]'s reason (place_home.go).
+	case homeLedger:
 		return true
 	}
 	return false
@@ -2251,6 +2289,14 @@ func (l homeLine) stop() bool {
 // than wrapping, for the reason every list here does ([moveCursor]).
 func (h *homeView) move(delta int) {
 	if delta == 0 || len(h.lines) == 0 {
+		return
+	}
+	// ON THE GRID THE WALK STAYS IN ITS COLUMN (homegrid.go's [homeView.gridMove]):
+	// the lines are laid out column by column, and a walk off the foot of one
+	// column into the top of the next would be the cursor jumping across the
+	// screen on a key that means "the row below".
+	if h.gridOn() {
+		h.gridMove(delta)
 		return
 	}
 	step := 1
@@ -2298,6 +2344,11 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 	h := &a.home
+	// A KEY IS THE PERSON TAKING THE CURSOR BACK. Home aims at the row a move
+	// left behind on every beat until this happens, and a screen that went on
+	// dragging the cursor after somebody pressed an arrow would be arguing with
+	// them (takeover.go's [app.pointMovedRow]).
+	a.movedFrom = ""
 	// phone lane: a sheet over the inbox holds the keyboard (homesheet.go).
 	if cmd, took := a.homeSheetKeyFirst(msg); took {
 		return cmd
@@ -2345,12 +2396,25 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	defer a.touch()
 	h.say("", "")
-	// ANYTHING BUT A SECOND ENTER DISARMS A HELD ROW. The arming is a promise
-	// made by the sentence on the foot line, and that sentence has just been
-	// cleared — an arming a person can no longer see is a keystroke with a
-	// memory, and the keystroke it changes the meaning of is the one that ends
-	// another window (takeover.go).
-	if msg.String() != "enter" {
+	// THE CARD HOME RAISED TAKES ITS OWN KEYS FIRST (homeconfirm.go). It is the
+	// question block's card and its router, so `1`/`2` move the cursor, `←→`
+	// walk it, `enter` takes what it is on, and `esc` is the answer that loses
+	// nothing — and none of those may reach the list underneath while a question
+	// this window asked is on the screen.
+	if cmd, took := a.homeAskKey(msg); took {
+		// AND THE FOOT FOLLOWS THE CARD. `h.say("", "")` above cleared it because
+		// what is on the foot is about the key just pressed; on a frame with no
+		// card the foot IS the question, so a key that moved its cursor has to
+		// leave the question where it was rather than clearing it off the screen.
+		a.sayHomeAsk()
+		return cmd
+	}
+	// ANYTHING THAT MOVES THE CURSOR TAKES THE QUESTION DOWN. The card is drawn
+	// in the band beside the row it is about, so a question left standing over
+	// another row would be a card asking about a conversation nobody is looking
+	// at — and its `enter` would move the wrong one (takeover.go).
+	if a.home.ask != nil {
+		a.dropHomeAsk()
 		h.armed = ""
 	}
 	// AND A WAIT THAT IS STILL RUNNING SAYS SO AGAIN. The line above is cleared
@@ -2359,6 +2423,7 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	if word := a.takeoverLine(); word != "" {
 		h.say(word, "")
 	}
+	a.sayHomeAsk()
 	// AND THE ROUTER'S OWN LINE COMES DOWN WITH HOME'S. A refusal that put a
 	// person back here is about the key they just pressed; the next key is a new
 	// question, and a sentence that outlived it would be an answer to nothing
@@ -2388,6 +2453,12 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	if editorMotion(&h.box, msg.String()) {
 		return nil
 	}
+	// AND ctrl+z TAKES BACK WHAT WAS TYPED, in every box on this surface and not
+	// only in the message one (editundo.go).
+	if editorUndo(&h.box, msg.String()) {
+		h.build()
+		return nil
+	}
 	if editorWordKill(&h.box, msg.String()) {
 		h.build()
 		return nil
@@ -2409,6 +2480,9 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	// the row itself, and a key the screen is visibly advertising may take the
 	// press.
 	if h.box.empty() {
+		if cmd, took := a.homeGridAnswer(msg.String()); took {
+			return cmd
+		}
 		if cmd, took := a.answerKey(msg.String()); took {
 			return cmd
 		}
@@ -2490,21 +2564,29 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "ctrl+t":
 		// A FRESH CONVERSATION IN THE ROW'S OWN FOLDER, on enter's law: a row
 		// from somewhere else starts one THERE and puts the conversation in
-		// front into the keeper (keeper.go's [app.startBeside]). A half-typed
-		// message stays a message: [app.homeStart] carries it into the fresh
-		// conversation here, and for a folder the keeper cannot carry it into,
-		// the key refuses rather than quietly throwing the sentence away.
+		// front into the keeper (keeper.go's [app.startBeside]).
+		//
+		// IT IS `enter` FOR THE ROW UNDER THE CURSOR NOW, and the refusal it used
+		// to answer a typed sentence with is gone. `clear or send your message
+		// first · ctrl+t starts fresh in <path>` was the surface asking a person
+		// to choose between a target and a sentence, on a screen whose whole job
+		// is to carry both — and `enter` carries both, because the row the cursor
+		// is on IS the target (homedraft.go). So this key pins that row's folder
+		// and takes enter's own road.
 		if line, ok := h.previewLine(); ok && line.kind == homeSession {
 			if where := homeWhere(line); where != "" && where != a.workspace {
 				if !homeFolderThere(where) {
 					h.say(homeGoneWord+" · "+where, "")
 					return nil
 				}
-				if !h.box.empty() {
-					h.say("clear or send your message first · ctrl+t starts fresh in "+where, "")
-					return nil
+				// A ROW MAY RECORD A NAME WHERE IT RECORDED NO PATH ([homeWhere]),
+				// and a pin is an ADDRESS or it is nothing — pages.go's
+				// [scopeAddress] states that law about the reading this pin
+				// replaces. The list's own resolver answers the name.
+				if resolved := h.typedPlace(where); resolved != "" {
+					where = resolved
 				}
-				return a.homeStart(where)
+				a.target.where = where
 			}
 			return a.homeStart(strings.TrimSpace(h.box.String()))
 		}
@@ -2515,8 +2597,11 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 			h.say("folders on the other machine do not open here", "")
 			return nil
 		}
-		if line, ok := h.previewLine(); ok && line.kind == homeSession {
-			path := strings.TrimSpace(line.row.Workspace)
+		// A PROJECT ROW OPENS ITS FOLDER TOO, because on a two-column grid its
+		// `→` crosses to the right-hand column and this chord is the way to the
+		// strip's `open folder` there (homegrid.go's [app.homeCrossChord]).
+		if line, ok := h.previewLine(); ok && (line.kind == homeSession || line.kind == homeProjectRow) {
+			path := homeRowFolder(line)
 			if path == "" || processOpener(path) != nil {
 				h.say("could not open "+path, "")
 				return nil
@@ -2596,8 +2681,16 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "ctrl+x":
 		// AND CTRL+X STOPS A STANDING ITEM FOR GOOD, the stronger form of the
 		// key above it on this list and on the item card's own legend.
-		if line, ok := h.previewLine(); ok && line.kind == homeItem {
+		line, ok := h.previewLine()
+		if ok && line.kind == homeItem {
 			return a.homeItemWrite(line, standing.StatusRetired)
+		}
+		// AND IT STOPS A PIECE OF WORK THIS WINDOW HOLDS, through the stop card,
+		// which asks first — the same verb the row's strip offers
+		// (homepanel_running.go's [app.runningVerbs]), reached where `→` crosses
+		// columns instead of opening the strip.
+		if verbs := a.runningVerbs(line); ok && len(verbs) > 0 {
+			return verbs[0].do()
 		}
 		return nil
 
@@ -2660,18 +2753,12 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 			h.foldProject(line.dir, true)
 			return nil
 		}
-		// AND THE SWITCHER'S OWN FOLD, which is the same gesture at the scale of
-		// the whole list (place_home.go).
-		if line, ok := h.focusedLine(); ok && line.kind == homeSwitchFold && line.folded {
-			h.foldSwitch(true)
-			return nil
-		}
 		// AND THE SAME ARROW ONE SCALE FURTHER: over a card, → opens every
 		// band the card is folding, and ← below folds them all back
 		// (homebands.go's [app.setAllBandFolds]). It took over from the `m`
 		// that used to do this, because m belongs to the box now — and only
 		// with nothing typed, since in a draft the arrows are the caret's.
-		if h.box.empty() {
+		if h.box.empty() && !h.gridOn() {
 			if subject, ok := a.homeSubject(); ok && !a.allBandFoldsOpen(subject) {
 				a.setAllBandFolds(subject, true)
 				return nil
@@ -2682,17 +2769,11 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "left":
 		// A CARD'S OPEN BANDS FOLD FIRST, one layer at a time on esc's own
 		// law: ← folds what → opened before it folds anything on the list.
-		if h.box.empty() {
+		if h.box.empty() && !h.gridOn() {
 			if subject, ok := a.homeSubject(); ok && a.anyBandFoldOpen(subject) {
 				a.setAllBandFolds(subject, false)
 				return nil
 			}
-		}
-		// AND THE SWITCHER'S OWN FOLD CLOSES BACK, the other half of the gesture
-		// `→` opens it with (place_home.go).
-		if line, ok := h.focusedLine(); ok && line.kind == homeSwitchFold && !line.folded {
-			h.foldSwitch(false)
-			return nil
 		}
 		if line, ok := h.focusedLine(); ok && (line.kind == homeQuiet || line.kind == homeSession) && h.expanded[line.dir] {
 			h.fold(line.dir, false)
@@ -2865,7 +2946,7 @@ func (h *homeView) buildFor() {
 		h.buildWorld()
 		return
 	}
-	h.buildSwitch()
+	h.buildGrid()
 }
 
 // homeEnter is the one decision this surface makes, and it makes a different
@@ -2983,9 +3064,9 @@ func (a *app) homeEnter() tea.Cmd {
 		// design: you learn a place exists on the day it has something to tell
 		// you, and enter takes you to it.
 		return a.homeLedgerEnter(line)
-	case homeSwitchFold:
-		h.foldSwitch(line.folded)
-		return nil
+	case homeProjectRow:
+		// A PROJECT ON THE GRID STARTS A CONVERSATION THERE (homepanel_projects.go).
+		return a.homeProjectEnter(line)
 	case homeItem:
 		// THE DOOR AN ITEM OFFERS IS ITS PROVENANCE and not itself: "why did I
 		// get this?" opens the conversation that asked for it
@@ -3034,17 +3115,64 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 		// wastes a keystroke and a second of somebody's attention on a raw error.
 		//
 		// AND ON THIS MACHINE IT IS NOT THE END OF THE ROAD. The conversation
-		// can be MOVED here — asked for, let go of when the other window's reply
-		// ends, and then opened by the ordinary door below (takeover.go). Over
-		// --host it is: the holder is a window on this laptop and the journal is
-		// on the far machine, so there is nobody to ask.
+		// comes here — instantly where an engine holds it, and by asking the
+		// window that does where one does not ([app.homeHeldEnter]). Over --host
+		// it is the end: the holder is a window on this laptop and the journal is
+		// on the far machine, so there is nobody to ask and nothing to attach to.
 		if !a.hosted() {
-			return a.homeTakeoverEnter(line)
+			return a.homeHeldEnter(line)
 		}
 		h.say(sessionBusyWord, "")
 		return nil
 	}
 	return a.homeOpenDoor(line)
+}
+
+// homeHeldEnter is enter on a row somebody else is holding, and it is where the
+// two roads part.
+//
+// AN ENGINE-HELD CONVERSATION IS SIMPLY OPENED, WITH NO CEREMONY AT ALL. The
+// engine owns the journal and holds the session; the ordinary door asks it for
+// that session and gets it back mid-turn, in well under a second, with the work
+// still moving (internal/enginehost's Host.open — "THE WHOLE PRODUCT IS THIS
+// LINE"). Nothing is taken from anybody: the window that had it is told by the
+// engine and steps back on its own ([app.movedAway]), and the way back is this
+// same keystroke from the other side. A confirmation would be asking somebody to
+// agree to something that costs one enter to undo.
+//
+// AND THE OLD ROAD IS WHAT IS LEFT WHEN THAT FAILS. A window with no engine
+// behind it holds the journal in its own process, and the only thing anybody can
+// do is ask ([app.homeTakeoverEnter]). Two answers land here: no engine
+// answering at all, and an engine that answered and then refused the journal —
+// which is exactly a bare window holding the lock in a workspace that also has
+// an engine. The refusal is read rather than guessed at, because between the
+// question and the open a window can appear.
+func (a *app) homeHeldEnter(line homeLine) tea.Cmd {
+	if !a.engineHolds(homeWhere(line)) {
+		return a.homeTakeoverEnter(line)
+	}
+	cmd, refusal := a.homeWalkIn(line)
+	if refusal == sessionBusyWord {
+		return a.homeTakeoverEnter(line)
+	}
+	if refusal != "" {
+		a.home.say(refusal, "")
+		return nil
+	}
+	return cmd
+}
+
+// engineHolds is [Options.EngineAnswers] asked about one project, and false for
+// every window that has no engine road.
+//
+// IT IS ASKED ON A KEYSTROKE AND NEVER ON A FRAME, which is the same law
+// [app.homeHeldNow] keeps about the flock beside it: this is a connect to a
+// socket, and a row's LABEL may not cost one.
+func (a *app) engineHolds(workspace string) bool {
+	if a.engineAnswers == nil || a.open == nil || strings.TrimSpace(workspace) == "" {
+		return false
+	}
+	return a.engineAnswers(workspace)
 }
 
 // homeOpenDoor is the ORDINARY open, from the folder check onward, and it is on
@@ -3053,7 +3181,24 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 // spellings of "open the row" is two answers to whether a folder that vanished
 // is checked, and the second road is the one where the most time has passed.
 func (a *app) homeOpenDoor(line homeLine) tea.Cmd {
-	h := &a.home
+	cmd, refusal := a.homeWalkIn(line)
+	if refusal != "" {
+		// HOME TAKES THE REFUSAL ITSELF rather than letting it be said in the
+		// conversation. A refusal on this screen belongs to this screen: notes
+		// stack in a transcript, and pressing enter twice on a locked row is
+		// exactly how somebody would find that out.
+		a.home.say(refusal, "")
+		return nil
+	}
+	return cmd
+}
+
+// homeWalkIn is that same door with its refusal HANDED BACK rather than said,
+// because one caller has somewhere else to go with it: a held row whose engine
+// turned out not to be holding the conversation after all falls to the asking
+// road, and reading the refusal is the only way to tell those apart
+// ([app.homeHeldEnter]).
+func (a *app) homeWalkIn(line homeLine) (tea.Cmd, string) {
 	where := homeWhere(line)
 	if !homeFolderThere(where) {
 		// ONE os.Stat, ON THE KEYSTROKE, in the same place the flock probe puts
@@ -3062,23 +3207,17 @@ func (a *app) homeOpenDoor(line homeLine) tea.Cmd {
 		// standing in the folder. It stops being free the moment enter opens
 		// somebody else's: an agent whose tool root does not exist fails every
 		// bash and every relative path in a way nothing on screen explains.
-		h.say(homeGoneWord+" · "+where, "")
-		return nil
+		return nil, homeGoneWord + " · " + where
 	}
 	// AND THE CONVERSATION THIS WINDOW WAS IN GOES ON RUNNING. It is detached
 	// rather than closed and put in the keeper, which is the whole of what makes
 	// home a switcher rather than a list of places to go to in another terminal.
 	cmd, refusal := a.openBeside(where, line.row.Transcript)
 	if refusal != "" {
-		// HOME TAKES THE REFUSAL ITSELF rather than letting it be said in the
-		// conversation. A refusal on this screen belongs to this screen: notes
-		// stack in a transcript, and pressing enter twice on a locked row is
-		// exactly how somebody would find that out.
-		h.say(refusal, "")
-		return nil
+		return nil, refusal
 	}
 	a.closeHome()
-	return tea.Batch(cmd, a.homeLandOnTask(line))
+	return tea.Batch(cmd, a.homeLandOnTask(line)), ""
 }
 
 // homeLandOnTask is the SECOND HALF of a door whose row was named after one
@@ -3264,31 +3403,33 @@ func (a *app) homeStart(text string) tea.Cmd {
 			return nil
 		}
 		a.closeHome()
+		// AND THE PINNED MODEL COMES WITH IT. A path typed into the box is still
+		// a conversation started from home, and the rule above the box said what
+		// it would answer on (homedraft.go).
+		a.applyTargetModel()
 		// AND THE FIRST MESSAGE IS NOT SENT FOR THEM. What was typed named a
 		// place and not a sentence, so there is nothing to send — the pictures
 		// and the files are on the new conversation's tray, in front of the
 		// person, waiting for the words they were dropped to go with.
 		return cmd
 	}
-	a.closeHome()
-	// THE TRAY COMES TOO, and it comes through [app.renew] rather than around it:
-	// the conversation being left hands its chips to the aside and the renew hands
-	// them back, on the law that the draft goes with the PERSON (detach.go).
-	renewed, started := a.renew()
-	// THE SENTENCE IS ONLY SENT INTO A CONVERSATION THE RENEW ACTUALLY OPENED,
-	// which is what remains of this door's repair now that the keeper refuses
-	// nothing. Home used to close itself, ask for a conversation, and submit
-	// whether or not one came back — so a refusal met after the close sent the
-	// words into whatever was already on screen. There is no cap to be refused
-	// by any more, but a door can still fail (a session folder that cannot be
-	// made), and the bool is what tells the two apart.
-	if !started {
-		// The door itself failed — a session folder that could not be made — and
-		// [app.renew] has said so where a person is now standing. The sentence
-		// goes into the box in front of them rather than into a conversation it
-		// was not meant for: it is still theirs to send, and this door has always
-		// promised the words go with the PERSON.
-		a.input.setText(text)
+	// AND EVERYTHING ELSE OPENS AT THE TARGET (homedraft.go). This is the half of
+	// the repair a person actually feels: the rule above the box says `→ new
+	// conversation in ~/src/parser`, and until this wave `enter` opened one in
+	// THIS WINDOW'S workspace and ignored it. The row under the cursor and the
+	// key disagreed about where a sentence went, which is exactly the drift the
+	// scope chip existed to end and could not, because nothing read it.
+	started, opened := a.homeOpenAtTarget()
+	if !opened {
+		// A door that failed has already said so where the person is standing —
+		// [app.renew] into home's own line, [app.startBeside]'s refusal onto it.
+		// Where the screen went with it, the sentence goes into the box in front
+		// of them rather than into a conversation it was not meant for: it is
+		// still theirs to send, and this door has always promised the words go
+		// with the PERSON.
+		if !a.at(pageHome) {
+			a.input.setText(text)
+		}
 		return nil
 	}
 	// A FULL TRAY IS A MESSAGE, which is input.go's law about enter said at the
@@ -3296,9 +3437,74 @@ func (a *app) homeStart(text string) tea.Cmd {
 	// is not an empty message, and the door that carries the pictures is the
 	// tray's own (attach.go's [app.submitImages]).
 	if len(a.chips) > 0 {
-		return tea.Batch(renewed, a.submitImages(text))
+		return tea.Batch(started, a.submitImages(text))
 	}
-	return tea.Batch(renewed, a.submit(text))
+	if strings.TrimSpace(text) == "" {
+		return started
+	}
+	return tea.Batch(started, a.submit(text))
+}
+
+// homeOpenAtTarget is the ONE DOOR onto a conversation started from home: the
+// folder on the rule, the model on the rule, and home closing behind you. It
+// sends nothing — what to send is the caller's question, and there are three
+// callers with three answers ([app.homeStart] sends the sentence, `ctrl+t`
+// sends whatever was typed, and homeslash.go's gate sends a command).
+//
+// TWO ROADS, AND WHICH ONE IS THE TARGET'S OWN ANSWER. A target somewhere other
+// than this window's workspace is [app.startBeside] — a fresh conversation
+// THERE, with the one in front stepped aside into the keeper. The window's own
+// workspace is [app.renew], which additionally TAKES THE PLACE of the
+// conversation behind home when that one is fresh and empty, and that is the
+// behaviour a person has had since before home had a target.
+//
+// THE FOLDER PIN IS SPENT HERE AND THE MODEL PIN IS NOT (homedraft.go's owner
+// ruling). It is spent on the way OUT rather than on the way in, so a door that
+// refused leaves the pin a person set exactly where they set it.
+func (a *app) homeOpenAtTarget() (tea.Cmd, bool) {
+	where := strings.TrimSpace(a.targetWhere())
+	if where != "" && where != strings.TrimSpace(a.workspace) {
+		// THE TRAY GOES WITH THE PERSON, and carrying it means taking it OUT of
+		// the conversation being stepped aside from before the aside is stowed —
+		// the law the typed-path branch above states in full.
+		carried := a.chips
+		a.chips = nil
+		cmd, refusal := a.startBeside(where)
+		a.chips = carried
+		if refusal != "" {
+			a.home.say(refusal, "")
+			return nil, false
+		}
+		a.spendTargetWhere()
+		a.closeHome()
+		a.applyTargetModel()
+		return cmd, true
+	}
+	a.closeHome()
+	// THE TRAY COMES TOO, and it comes through [app.renew] rather than around it:
+	// the conversation being left hands its chips to the aside and the renew hands
+	// them back, on the law that the draft goes with the PERSON (detach.go).
+	renewed, started := a.renew()
+	if !started {
+		return nil, false
+	}
+	a.spendTargetWhere()
+	a.applyTargetModel()
+	return renewed, true
+}
+
+// applyTargetModel puts the pinned model onto the conversation that has just
+// opened, and does nothing at all where nobody pinned one.
+//
+// IT IS CALLED AFTER THE ATTACH AND NEVER BEFORE IT. [app.startBeside] and
+// [app.renew] both swap the agent synchronously, so `a.model` here is the new
+// conversation's — which is what makes "pinned, and different from what this
+// would have used anyway" the honest test ([app.targetModelPinned]).
+func (a *app) applyTargetModel() {
+	if !a.targetModelPinned() {
+		return
+	}
+	a.switchModel(strings.TrimSpace(a.target.model), 0)
 }
 
 // homeDroppedLine is the enter net over home's own box, and it reports whether
@@ -3658,11 +3864,9 @@ func (a *app) homeDoorPress(x, y int) (tea.Cmd, bool) {
 // first thing it answers.
 //
 // A press in the right pane while an exchange is up belongs to the exchange
-// (homeexchange.go's [app.exchangePress]); everything else belongs to the left
-// column, where the first click puts the cursor on a row and the second opens
-// it. That two-step is the settings panel's and it is here for its reason — a
-// single click that switched conversations would make a mis-aimed pointer close
-// somebody's session.
+// (homeexchange.go's [app.exchangePress]); everything else belongs to the
+// list, where a press on a row is `enter` on it and a press on a panel's
+// heading opens the place the heading names.
 //
 // AND A CLICK ON A ROW SELECTS IT, WHICH MEANS TAKING THE KEYBOARD. It used to
 // move the cursor and leave the hand in the pane, so the row lit up and then the
@@ -3706,26 +3910,23 @@ func (a *app) homePress(x, y int) tea.Cmd {
 	// found by its own text rather than by counting rows: the card is assembled
 	// band by band and drops whole bands on a short frame, and a row number
 	// computed against it would be a second answer to where things ended up.
-	if left, right := homeColumns(width); right > 0 && x >= left+homeGutter && y < len(lines) {
+	if left, right := homeColumns(width); right > 0 && !a.home.gridOn() && x >= left+homeGutter && y < len(lines) {
 		if fold, ok := a.bandFoldAt(ansi.Strip(lines[y])); ok {
 			a.toggleBandFold(fold.band, fold.subject)
 			a.touch()
 			return nil
 		}
-		// AND A ROW THAT NAMES A PIECE OF WORK OPENS IT, which is the other thing
-		// the card draws that a person can aim at (place_home.go's [app.cardTaskAt]
-		// says why it is the paint that recorded the row). It is the record card
-		// the phone's tap and the tasks place's enter both open, so one gesture
-		// means one thing wherever it is made.
-		if entry, ok := a.cardTaskAt(ansi.Strip(lines[y])); ok {
-			a.touch()
-			return a.openTaskRecord(&entry)
-		}
 	}
 	if row, column, ok := a.homePane(x, y); ok {
 		return a.exchangePress(column, row)
 	}
-	at := hits[y]
+	// A PANEL'S HEADING IS A DOOR INTO THE PLACE IT NAMES (homegrid.go's
+	// [app.homeHeadPress]). It is read before the rows because a heading is no
+	// stop, so the row map below has nothing to say about it.
+	if cmd, took := a.homeHeadPress(x, y); took {
+		return cmd
+	}
+	at := a.homeHitAt(x, y, hits)
 	if at < 0 || at >= len(a.home.lines) || !a.home.lines[at].stop() {
 		return nil
 	}
@@ -3733,49 +3934,39 @@ func (a *app) homePress(x, y int) tea.Cmd {
 	// out to be. It is done before the row is acted on so that a fold, an open
 	// and a plain selection all leave the hand in the same place.
 	a.homeTakeList()
-	// A FOLDED TAIL OPENS ON ONE CLICK. The two-step below is there so a
-	// mis-aimed pointer cannot switch somebody's conversation; unfolding a
-	// project costs nothing and undoes itself, so making a person click it
-	// twice would be ceremony guarding against no risk.
-	if a.home.lines[at].kind == homeQuiet {
-		a.home.cursor = at
-		a.home.picked = true
-		a.home.fold(a.home.lines[at].dir, a.home.lines[at].folded)
-		a.touch()
-		return nil
-	}
-	if a.home.lines[at].kind == homeItemFold {
-		a.home.cursor = at
-		a.home.picked = true
-		a.home.foldItems(a.home.lines[at].dir, a.home.lines[at].folded)
-		a.touch()
-		return nil
-	}
-	if a.home.lines[at].kind == homeProject {
-		a.home.cursor = at
-		a.home.picked = true
-		a.home.foldProject(a.home.lines[at].dir, a.home.lines[at].folded)
-		a.touch()
-		return nil
-	}
-	// the switcher's own fold over everything the list is not drawing, which is
-	// the same gesture at the scale of the whole list (place_home.go).
-	if a.home.lines[at].kind == homeSwitchFold {
-		a.home.cursor = at
-		a.home.picked = true
-		a.home.foldSwitch(a.home.lines[at].folded)
-		a.touch()
-		return nil
-	}
-	if a.home.cursor == at {
-		return a.homeEnter()
-	}
 	a.home.cursor = at
 	if a.home.lines[at].kind != homeAction {
 		a.home.picked = true
 	}
 	a.touch()
-	return nil
+	// A CLICK ON A ROW IS `enter` ON IT, the one grammar every place keeps
+	// (pages.go's [place.press]): the pointer resting is the preview, and the
+	// press is the choice. It used to take two — the first to select, the
+	// second to open — against a mis-aimed pointer switching somebody's
+	// conversation; `esc` puts them straight back, and one screen that wanted
+	// two clicks among six that want one was the gesture a person could not
+	// trust.
+	//
+	// A CLICK NEVER SPENDS. The rows whose `enter` sends words to a model lose
+	// only the second half: the press lands the cursor, and the key does the
+	// rest ([homeClickSpends]).
+	if homeClickSpends(a.home.lines[at]) {
+		return nil
+	}
+	return a.homeEnter()
+}
+
+// homeClickSpends reports the rows of home whose `enter` would start a paid
+// turn on a person's behalf: the typed line itself, `ask here`, and a command
+// — which may be one that asks the model something. A press lands on them and
+// stops there, for [place.press]'s reason: a click that starts a paid turn is a
+// gesture nobody can take back.
+func homeClickSpends(line homeLine) bool {
+	switch line.kind {
+	case homeAction, homeAskHere, homeCommand:
+		return true
+	}
+	return false
 }
 
 // homeTakeList hands the keyboard to the left column, leaving whatever is in
@@ -3839,7 +4030,9 @@ func (a *app) homePane(x, y int) (row, column int, ok bool) {
 // it back beside the list with everything in it.
 func (a *app) homeStacked() (*homeExchange, bool) {
 	width, _ := a.size()
-	if _, right := homeColumns(width); right > 0 {
+	// THE GRID HAS NO PANE COLUMN AT ANY WIDTH, so an errand holding the keyboard
+	// stacks over it the way it always has on a narrow frame (homegrid.go).
+	if _, right := homeColumns(width); right > 0 && !a.home.gridOn() {
 		return nil, false
 	}
 	ex := a.paneExchange()
@@ -3899,8 +4092,8 @@ func (a *app) homeHover(x, y int) tea.Cmd {
 	// change under the very pointer that came to read it. The gutter counts as
 	// the pane's side, exactly as it does for a press ([app.homePane]).
 	left, right := homeColumns(width)
-	if !inPane && (right <= 0 || x < left) && y >= 0 && y < len(hits) {
-		at := hits[y]
+	if !inPane && (a.home.gridOn() || right <= 0 || x < left) && y >= 0 && y < len(hits) {
+		at := a.homeHitAt(x, y, hits)
 		if at >= 0 && at < len(a.home.lines) && a.home.lines[at].stop() {
 			a.home.hover = at
 		}
@@ -3970,6 +4163,13 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 		// placemouse.go's [app.placeBoxPress]). Emptying it here is the same
 		// answer the clamp gives a box it cut off: no rows, no press.
 		a.boxRow, a.boxRows = 0, 0
+		// AND THE RULE'S DOORS GO WITH IT. The phone tier draws the target as a
+		// label and never as two pressable segments — there is no `alt` on a
+		// phone and nothing to press it with — so a span left standing from the
+		// wide frame would be a press answered by a door this frame never drew
+		// (homedraft.go, placemouse.go's [app.placeTargetPress]).
+		a.targetRow = -1
+		a.targetFolderSpan, a.targetModelSpan = hudSpan{}, hudSpan{}
 		return a.homePhoneFrame(width, height)
 	}
 	// EVERYTHING ABOVE AND BELOW THE BODY BELONGS TO THE ROUTER NOW (pages.go).
@@ -3992,6 +4192,10 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 		rows[i], panes[i] = mark.line, mark.pane
 	}
 	a.home.pane = panes
+	a.home.gridMarks = nil
+	if a.home.gridOn() {
+		a.home.gridMarks = marks
+	}
 	// AND THE FRAME IS KEPT, because the pointer resolves against what is ON THE
 	// SCREEN and this is it ([app.homeHover]). It is the same reasoning the hit
 	// maps above are written down for, one step further: the maps say which row
@@ -4020,6 +4224,16 @@ type homePainted struct {
 type homeMark struct {
 	line int
 	pane int
+	// grid says the row is the resting grid's, where one screen row holds a line
+	// of EVERY column and the x of the press says which (homecell.go's
+	// [homeGridZip]); cells is those lines, -1 where a column drew nothing.
+	grid  bool
+	cells [homeGridMaxCols]int
+	// heads is the panel heading each column drew on this row, -1 where it drew
+	// none. A heading is no stop — the cursor never rests on it — but it is a
+	// door the pointer can press ([app.homeHeadPress]), so it is kept apart
+	// from cells, which every reader takes to mean "a row the cursor can reach".
+	heads [homeGridMaxCols]int
 }
 
 // homeDrawn is one screen line, the column line it belongs to, and — while an
@@ -4227,36 +4441,6 @@ func (a *app) homeRows(top, end, width, room int, pal palette) []homeDrawn {
 // homeLine draws one line of the left column.
 func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 	h := &a.home
-	// THE SWITCHER PAINTS ITS OWN ROWS (place_home.go). Every line the resting
-	// list is made of carries the reading's own line, and the reading is what
-	// knows the shape: the state mark in the first cell, the name, the project as
-	// a tag, the note, and `here` or an age at the right margin. One painter for
-	// the whole list is what keeps a heading, a ledger line and a conversation on
-	// one grid.
-	if line.sw != nil {
-		sw := *line.sw
-		if sw.row != nil && sw.row.kind == switcherConversation {
-			row := *sw.row
-			row.session = a.homeTrue(row.session)
-			row.needs = row.session.NeedsPerson()
-			row.moving = !row.needs && (row.session.Tasks.Running > 0 || row.session.Live && row.session.Presence.State == session.PresenceWorking)
-			row.note = switcherConversationNote(row.session, h.seen)
-			if row.moving && row.note == "" {
-				row.note = tabSignalWord(tabWorking)
-			}
-			sw.row = &row
-		}
-		return h.reading.paint(sw, width, pal, switcherPaint{
-			sel: at == h.cursor, hover: at == h.hover,
-			// AND THE TWO THINGS THE READING CANNOT KNOW: which heading the cursor
-			// is standing under (homesection.go), and which single row this frame
-			// gave the spinner to (homespinner.go).
-			head: h.sectionInk(at, pal), spin: a.homeSpinCell(at),
-			// AND HOW THIS TERMINAL SPELLS A CHORD, for the section line's own two
-			// keys (chords.go).
-			chords: a.chords,
-		})
-	}
 	switch line.kind {
 	case homeBlank:
 		return ""
@@ -4741,10 +4925,7 @@ func (a *app) homeRowGlyph(row session.SessionRow, spins bool) string {
 		return a.homeSpinGlyph()
 	}
 	if row.Tasks.Running == 0 && row.Tasks.Incomplete == 0 && a.homeFresh(row) > 0 {
-		if a.pal.ascii {
-			return glyphDoneASCII
-		}
-		return glyphDone
+		return a.icon(tokens.GSettled)
 	}
 	return homeGlyph(row, a.pal.ascii)
 }
@@ -4910,14 +5091,6 @@ func (a *app) homeCardRows(width, room int, pal palette) []string {
 		// not on any more.
 		return nil
 	}
-	if line.sw != nil {
-		// THE SWITCHER'S CARD IS FIVE BANDS AND IT ACTS (SCREEN 1d,
-		// place_home.go). It is only ever drawn past [homeCardMin], where the
-		// width is genuinely spare, so it may not be a second reading of the row
-		// beside it — every band on it either asks something answerable here or
-		// points at a place.
-		return a.homeSwitchCard(line, width, room, pal)
-	}
 	row := line.row
 
 	// The bands, in order, each already painted. The first is the identity and
@@ -5021,7 +5194,15 @@ func (a *app) homeHolding(row session.SessionRow) string {
 	case a.holding(row.Transcript):
 		word = "open here"
 	case row.Open || row.Live:
+		// WHICH KIND OF HOLDER IT IS COMES FROM THE LAST ASK AND NEVER FROM THIS
+		// FRAME. The engine is asked over a socket, which is a keystroke's cost
+		// and not a label's ([app.homeHeld] states that law), so home asks about
+		// the held rows on its own beat and this reads the answer
+		// ([app.engineHeld]).
 		word = homeHeldWord
+		if a.engineHeld(row) {
+			word = homeEngineWord
+		}
 	default:
 		return ""
 	}
@@ -5032,91 +5213,6 @@ func (a *app) homeHolding(row session.SessionRow) string {
 		word += " · " + doing
 	}
 	return word
-}
-
-// homeTaskWord is what one row of the index is called on screen, and it says
-// `running` only where the count in [session.TaskRollup] said so — the two are
-// the same judgement and it is made once, in session's world.go, not twice.
-//
-// A task takes its row when it starts and the index is append-only, so a
-// machine that lost power leaves rows saying `running` for as long as the file
-// exists. What settles it is the conversation itself: a live one names the nodes
-// it has out, and a row it does not name is work that was under way when the
-// window went — `incomplete`, the same word the interrupted-task outcome uses,
-// and not a claim that something is happening.
-//
-// THE WORDS THEMSELVES ARE NOT THIS FILE'S. They are [taskStateWord]
-// (taskview.go), which the task page's own record rows and the record card both
-// answer through — one vocabulary, so a task called `needs your look` on this
-// screen is not called something else on the next one. What belongs to home is
-// the LIVENESS QUESTION: this screen judges a row against the conversation that
-// wrote it, and the task page judges it against the windows that are open.
-func homeTaskWord(entry session.TaskIndexEntry, row session.SessionRow) string {
-	return taskStateWord(entry, row.Runs(entry))
-}
-
-// homeTaskGlyph is a task's state in one painted cell, and it is the rail's own
-// vocabulary ([app.taskStateMark], task.go) asked home's liveness question: a
-// row spins only when [session.SessionRow.Runs] vouches that the session still
-// has the node out, exactly as the counts and the old state words did. So:
-//
-//	⠋ (accent)  running this instant — the spinner, home's one moving part
-//	◌ (dim)     queued, or left mid-way by a window that went — nothing turns
-//	✗ (bad)     failed;  ? (warn)  finished and needs your look
-//	✓ (muted)   landed — and ACCENT when it landed since you last looked
-//
-// The one departure from the task surfaces: a queued node and an incomplete one
-// share the empty circle here, where the task card and roster use ! for
-// incomplete. Both are "started and not turning", the left column already makes
-// the same choice ([homeStuckGlyph]), and a third home mark would be a state a
-// person has to be taught.
-func (a *app) homeTaskGlyph(entry session.TaskIndexEntry, row session.SessionRow) string {
-	pal := a.pal
-	status := taskEntryStatus(entry, row.Runs(entry))
-	switch status.Presence {
-	case session.TaskPresenceWorking, session.TaskPresenceWaiting, session.TaskPresenceFinishing:
-		if a.linear {
-			return pal.accent(glyphRunASCII)
-		}
-		return pal.accent(tokens.Spinner(a.paints / spinnerStep))
-	case session.TaskPresenceIncomplete:
-		// A row nothing holds any more is "started and not turning", which is the
-		// empty circle and not the steer mark: nothing was found wrong with work a
-		// window walked away from.
-		if status.Liveness == session.TaskLivenessUnclaimed {
-			if pal.ascii {
-				return pal.dim(glyphQueuedASCII)
-			}
-			return pal.dim(glyphQueued)
-		}
-		if !status.Fault {
-			if pal.ascii {
-				return pal.warn(homeStuckASCII)
-			}
-			return pal.warn(homeStuckGlyph)
-		}
-		return pal.bad(pal.badGlyph())
-	case session.TaskPresenceStopped:
-		if pal.ascii {
-			return pal.dim(glyphStoppedASCII)
-		}
-		return pal.dim(glyphStopped)
-	case session.TaskPresenceNeedsLook:
-		return pal.warn(glyphUnverified)
-	case session.TaskPresenceQueued:
-		if pal.ascii {
-			return pal.dim(glyphQueuedASCII)
-		}
-		return pal.dim(glyphQueued)
-	}
-	mark := glyphDone
-	if pal.ascii {
-		mark = glyphDoneASCII
-	}
-	if a.homeEntryFresh(row, entry) {
-		return pal.accent(mark)
-	}
-	return pal.muted(mark)
 }
 
 // homeFilesTouched is how many files this conversation's work wrote, summed
@@ -5140,6 +5236,13 @@ func homeFilesTouched(row session.SessionRow) int {
 // this is deliberately not. Every other row says what ITS keys do and takes the
 // router's two on the end.
 func (a *app) homeHint() string {
+	// AND THE MODEL LIST OVER THE TARGET NAMES ITS OWN THREE KEYS AND NOTHING
+	// ELSE. It has the whole keyboard while it is up (homedraft.go), so the
+	// router's tail would be two keys that do nothing — which is the one state
+	// this surface may never be in.
+	if a.targetPickShowing() {
+		return targetPickWord
+	}
 	hint := a.homeHintWords()
 	if hint == homeFootWord {
 		return homeRestHint
@@ -5153,12 +5256,6 @@ func (a *app) homeHint() string {
 // is SCREEN 3a's whole clause. The foot does not say it: `alt+.` draws the map
 // that does ([placeMapWords]), and the resting foot is four keys exactly.
 const homeVerbsWord = "→ verbs"
-
-// homeVerbsHang is how far the second row of the verbs list hangs in: exactly
-// under the first word, which is the width of the lead the first row carries.
-// It is derived from that lead rather than typed beside it, so the two can
-// never disagree.
-var homeVerbsHang = ansi.StringWidth(homeVerbsWord + ": ")
 
 // homeHintWords is that line before the tier's own key is put on it.
 func (a *app) homeHintWords() string {
@@ -5195,17 +5292,24 @@ func (a *app) homeHintWords() string {
 		// true of a "/" line — the words can be asked about as words — so the
 		// clause that changes is the one that stopped being true.
 		//
-		// AND THE ORDER IS THE DROP ORDER. This sentence is a hundred and fourteen
-		// cells with the router's two keys on it, so a hundred-column frame cannot
-		// hold all of it and [hintFit] drops the clause nearest the way out —
-		// `↑ pick a match` — first. That is the right one to lose: ↑↓ walking a
-		// list is the key the resting foot already names (`↑↓ pick`) and the map
-		// names again, while `ctrl+enter` is a chord no other surface spells. A
-		// wide frame still says all three.
+		// `ask here` IS ↑ AND NOT A CHORD ANY MORE. `ctrl+enter` is still bound
+		// (above) and is no longer advertised: most terminals cannot send it at
+		// all, and `alt+enter` — the spelling that survives everywhere — belongs
+		// to the task layer on every place (placekeys.go). What every terminal
+		// CAN do is press the arrow key, and the row is already there: `? ask
+		// here: "…"` sits directly above `+ start a new conversation: "…"` with
+		// the cursor resting on the latter (homeexchange.go), so one ↑ is the ask
+		// and two is the first match. A foot that went on naming a chord a hand
+		// cannot send was the screen advertising a key that does not exist.
+		//
+		// AND THE ORDER IS THE DROP ORDER. [hintFit] drops the clause nearest the
+		// way out — `↑↑ pick a match` — first, which is the right one to lose:
+		// ↑↓ walking a list is the key the resting foot already names (`↑↓ pick`)
+		// and the map names again. A wide frame still says all three.
 		if a.home.runLabel(strings.TrimSpace(a.home.box.String())) != "" {
-			return "enter runs this command · ctrl+enter ask here · ↑ pick a match · esc clear"
+			return "enter runs this command · ↑ ask here · ↑↑ pick a match · esc clear"
 		}
-		return "enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · esc clear"
+		return "enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · esc clear"
 	case line.kind == homeQuiet && line.folded:
 		return "enter or → show them · esc close"
 	case line.kind == homeQuiet:
@@ -5222,20 +5326,24 @@ func (a *app) homeHintWords() string {
 		// THE ROW SAYS WHERE IT GOES, so the hint says what the key does with it
 		// and never repeats the name (place_home.go).
 		return "enter opens the place this happened in · esc close"
-	case line.kind == homeSwitchFold && line.folded:
-		return "enter or → show them · esc close"
-	case line.kind == homeSwitchFold:
-		return "enter or ← fold them away · esc close"
 	case line.kind == homeItem:
 		// THE KEYS THE CARD BESIDE IT ALREADY NAMES, said once more where the
 		// hand is. One vocabulary, two places (homestanding.go's
-		// [homeItemActions]).
+		// [homeItemActions]) — except on a grid row whose `→` crosses columns,
+		// where the strip is not one arrow away and its chord is named instead.
+		if chord := a.homeCrossChord(line); chord != "" {
+			return homeItemEnterWord + " · " + chord + " · esc close"
+		}
 		return homeItemActions + " · esc close"
 	case a.home.searching():
 		return "enter open · ↓ back to starting a new conversation · esc clear"
 	}
 	// AT REST THE FOOT IS THE PROMISE THE BOX MAKES, and [app.homeHint] turns it
-	// into the design's whole sentence. Every other row said its own thing above.
+	// into the design's whole sentence. Every other row said its own thing above,
+	// and a row whose verbs `→` cannot reach adds the one chord that can.
+	if chord := a.homeCrossChord(line); chord != "" {
+		return homeFootWord + " · " + chord
+	}
 	return homeFootWord
 }
 

@@ -115,7 +115,7 @@ func TestMediaConnectionRecoveryNamesTheRequestedModel(t *testing.T) {
 	}
 }
 
-func TestConnectionRecoveryBacksOffAndBoundsChatRequests(t *testing.T) {
+func TestConnectionRecoveryBacksOffInsideTheDispatcherDeadline(t *testing.T) {
 	var posts atomic.Int32
 	client, err := NewClient(Config{APIKey: "k", BaseURL: "https://router.test/api/v1", Model: "test/model",
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
@@ -132,7 +132,8 @@ func TestConnectionRecoveryBacksOffAndBoundsChatRequests(t *testing.T) {
 		return nil
 	}
 
-	_, err = client.CompleteWithMessages(context.Background(), userMessages("hello"))
+	plan := control.Plan{Deadline: time.Now().Add(20 * time.Second), Moves: control.NewMoveLog()}
+	_, err = client.CompleteWithMessages(withCallPlan(context.Background(), plan), userMessages("hello"))
 	if !IsConnectionUnavailable(err) {
 		t.Fatalf("recovery error = %v, want connection unavailable", err)
 	}
@@ -255,18 +256,21 @@ func TestConnectionRecoveryPauseHonorsCallerCancellation(t *testing.T) {
 
 func assertBoundedConnectionPauses(t *testing.T, posts int, delays []time.Duration) {
 	t.Helper()
-	if posts > connectionRetryPasses+1 || posts >= 100 {
+	if posts < 2 || posts >= 100 {
 		t.Fatalf("connection recovery sent %d requests", posts)
 	}
-	// The initial send and first recovered pass have no recovery pause. The
-	// final send meets the arithmetic bound before another pause is started.
-	if got, want := len(delays), posts-2; got != want {
+	// The initial send and first recovered pass have no pause. Every failure
+	// after that asks for one; the final, deadline-clamped pause spends what is
+	// left and therefore has no send after it.
+	if got, want := len(delays), posts-1; got != want {
 		t.Fatalf("recovery pauses = %d, want %d for %d sends", got, want, posts)
 	}
 	if len(delays) < 2 {
 		t.Fatalf("recovery pauses = %v, want a growing ladder", delays)
 	}
-	for i := 1; i < len(delays); i++ {
+	// The last wait may be shorter because it is clamped to the deadline. Every
+	// full rung before it grows to the ordinary provider-wait cap.
+	for i := 1; i < len(delays)-1; i++ {
 		if delays[i] < delays[i-1] {
 			t.Fatalf("recovery pauses did not grow: %v", delays)
 		}

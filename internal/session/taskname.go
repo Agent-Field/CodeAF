@@ -283,7 +283,7 @@ func (n *nameAhead) release() {
 // is the machine's own filing.
 func taskNameNeeded(title string) bool {
 	title = strings.TrimSpace(title)
-	if title == "" {
+	if title == "" || unusableName(title) {
 		return true
 	}
 	if strings.ContainsAny(title, "/\\") {
@@ -319,10 +319,10 @@ func (a *Agent) taskName(ctx context.Context, subject string) string {
 // admission has a row already drawn under it ([taskNameAheadWindow]).
 func (a *Agent) taskNameWithin(ctx context.Context, subject string, window time.Duration) string {
 	a.mu.Lock()
-	model, closed, client := a.model, a.closed, a.client
+	model, closed := a.model, a.closed
 	source := a.config.RolesSource
 	a.mu.Unlock()
-	if closed || client == nil {
+	if closed || !a.hasClient() {
 		return ""
 	}
 	// IT CARRIES ITS OWN DEADLINE for the shaper's reason: the provider's client
@@ -349,10 +349,16 @@ func (a *Agent) taskNameWithin(ctx context.Context, subject string, window time.
 	// both were this harness deciding how somebody else's model answers a
 	// question; the clips above are what keep this call small, and the prompt is
 	// what keeps the answer to three words.
-	response, named, callErr := a.callRole(ctx, roles.RoleTaskName, floor,
+	response, named, callErr := a.callRoleChecked(ctx, roles.RoleTaskName, floor,
 		[]ai.Message{
 			textMessage("system", taskNameSystem),
 			textMessage("user", subject+"\n\n"+taskNamePrompt),
+		}, func(response *ai.Response, named string) bool {
+			if cleanTaskName(response.Text()) != "" {
+				return true
+			}
+			a.addDetachedUsageAs(response, named, 1, auxRoleTaskName)
+			return false
 		})
 	if callErr != nil || response == nil {
 		return ""
@@ -378,7 +384,7 @@ func (a *Agent) taskNameWithin(ctx context.Context, subject string, window time.
 // like that can be true of both namers at once.
 func cleanTaskName(raw string) string {
 	name := firstWordsOf(cleanTitle(raw), TaskNameWords)
-	if name == "" || taskNameNeeded(name) {
+	if name == "" || unusableName(name) || taskNameNeeded(name) {
 		return ""
 	}
 	return name

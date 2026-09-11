@@ -21,11 +21,13 @@ import (
 // circle is the whole set and that every step of it lands.
 
 // TAB WALKS THE WHOLE CIRCLE AND EVERY ROOM ON IT OPENS. On a surface with no
-// brain, no store and nothing run, all seven still take the frame.
+// brain, no store and nothing run, all four still take the frame — and the three
+// off the bar, reached by their digits, take it too.
 func TestTabWalksEveryPlaceAndEachOneOpens(t *testing.T) {
 	a := placeApp(t)
+	ring := barPages(pageHome, false)
 	seen := map[page]bool{a.page: true}
-	for range len(pages()) {
+	for range len(ring) {
 		was := a.page
 		drive(t, a, key("tab"))
 		if a.page == was {
@@ -36,11 +38,22 @@ func TestTabWalksEveryPlaceAndEachOneOpens(t *testing.T) {
 		}
 		seen[a.page] = true
 	}
-	if len(seen) != len(pages()) {
-		t.Fatalf("tab visited %d of the %d places: %v", len(seen), len(pages()), seen)
+	if len(seen) != len(ring) {
+		t.Fatalf("tab visited %d of the %d places on the bar: %v", len(seen), len(ring), seen)
 	}
 	if a.page != pageHome {
 		t.Fatalf("the circle came back to %q rather than home", a.page.word())
+	}
+	for _, id := range pages()[placeBarPlaces:] {
+		drive(t, a, key(placeChord(id)))
+		if a.page != id || !a.pageShowing() {
+			t.Fatalf("%s left the router on %q with the frame %v", placeChord(id), a.page.word(), a.pageShowing())
+		}
+		// AND tab FROM A ROOM OFF THE BAR GOES ON ROUND THE BAR, to home.
+		drive(t, a, key("tab"))
+		if a.page != pageHome {
+			t.Fatalf("tab from %s landed on %q rather than home", id.word(), a.page.word())
+		}
 	}
 }
 
@@ -62,20 +75,20 @@ func TestShiftTabWalksTheCircleBack(t *testing.T) {
 // NO PLACE REFUSES, AND MEMORY IS THE ONE THAT REFUSED LAST. This surface has
 // no brain and no store, which used to be the state that shut the room and wrote
 // `memory is off` into a transcript nobody could see under the screen drawn over
-// it. It opens now, on the three sentences that say what memory is for, with
-// that same line said once under them where it can be read.
+// it. It opens now, on its heading and its whisper, with that same line said
+// once on the note where it can be read.
 func TestThePlaceWithNoStoreOpensAndSaysSoOnTheFrame(t *testing.T) {
 	a := placeApp(t)
 	if a.memoryReady() {
 		t.Skip("this surface has memories to show, so there is nothing to say about a missing store")
 	}
-	drive(t, a, key("alt+4"))
+	drive(t, a, key(placeChord(pageMemory)))
 	if a.page != pageMemory || !a.at(pageMemory) {
-		t.Fatalf("alt+4 left the router on %q", a.page.word())
+		t.Fatalf("%s left the router on %q", placeChord(pageMemory), a.page.word())
 	}
 	screen := placeFrameText(a)
-	if !strings.Contains(screen, memoryTeaching[0]) {
-		t.Fatalf("the place with no store teaches nothing:\n%s", screen)
+	if !strings.Contains(screen, whisperOf(pageMemory)) {
+		t.Fatalf("the place with no store does not say what arrives here:\n%s", screen)
 	}
 	if !strings.Contains(screen, memoryOffNote) {
 		t.Fatalf("the place with no store does not say so:\n%s", screen)
@@ -168,7 +181,7 @@ func TestTheLaunchHomeMarksTheConversationYouAreIn(t *testing.T) {
 	}
 	found := false
 	for _, line := range a.home.lines {
-		if line.sw != nil && line.sw.row != nil && line.sw.row.here {
+		if line.cell != nil && line.cell.row != nil && line.cell.row.here {
 			found = true
 		}
 	}

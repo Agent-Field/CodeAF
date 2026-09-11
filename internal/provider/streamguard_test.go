@@ -651,12 +651,24 @@ func shortenStallBounds(t *testing.T, first, gap time.Duration) func() {
 func shortenStallBoundsCapped(t *testing.T, first, gap, buffered time.Duration) func() {
 	t.Helper()
 	oldFirst, oldGap, oldBuffered := stallFirstBound, stallGapBound, stallBufferedBound
-	oldPatience := stallPatience
+	oldPatience, oldCeiling := stallPatience, stallCeiling
 	stallFirstBound, stallGapBound, stallBufferedBound = first, gap, buffered
 	stallPatience = func(lanes.Role) float64 { return 1 }
+	// AND THE CEILING COMES DOWN WITH THEM. The floor under every bound is
+	// [transportHeadroom] ceilings, so a shortened transport left beside a
+	// ten-second ceiling has a twenty-second floor standing over figures stated
+	// in milliseconds — which is [stallBounds.floor] silently substituting
+	// itself for everything this helper set, and in particular making the
+	// derivation [stallWatch.regap] performs unobservable.
+	// A QUARTER OF THE GAP, because that is roughly the shipped ratio: the flat
+	// mid-stream bound is forty-five seconds and a watched role's ceiling is
+	// ten, so the floor stands at a bit under half the bound. Scaling the two
+	// together is what keeps a shortened transport a faithful model of the real
+	// one rather than a different machine that happens to run faster.
+	stallCeiling = func(lanes.Role) time.Duration { return gap / 4 }
 	return func() {
 		stallFirstBound, stallGapBound, stallBufferedBound = oldFirst, oldGap, oldBuffered
-		stallPatience = oldPatience
+		stallPatience, stallCeiling = oldPatience, oldCeiling
 	}
 }
 
@@ -711,14 +723,21 @@ func streamAgainstCtx(ctx context.Context, t *testing.T, base string, observed *
 
 // ── the wall ────────────────────────────────────────────────────────────────
 
-// TestAStreamThatNeverStopsIsCutAtTheWall is the whole of the missing bound.
+// TestAStreamThatNeverStopsIsCutAtTheCeiling is the whole of the missing bound.
 // The endpoint writes a token, and another, and another, forever: every silence
 // bound in this file is reset by each one, the streaming client has no total
 // deadline (retry.go's clientFor), and before the wall existed nothing in this
 // process ended such a request. The cut also carries the three facts the journal
 // row needs — who served, how long, how much arrived.
-func TestAStreamThatNeverStopsIsCutAtTheWall(t *testing.T) {
-	defer shortenWall(t, 150*time.Millisecond, time.Second)()
+//
+// IT IS CUT AT THE CEILING AND NOT AT ITS FIRST WALL, because it keeps pace the
+// whole time and a wall that fires on a stream keeping pace re-arms
+// ([stallWatch.keptPace]). The ceiling is the one bound no evidence moves, so
+// the stream is cut there however well it is writing, and the sentence names
+// the ceiling because that is the figure the timer was last set to.
+func TestAStreamThatNeverStopsIsCutAtTheCeiling(t *testing.T) {
+	const ceiling = 600 * time.Millisecond
+	defer shortenWall(t, 150*time.Millisecond, ceiling)()
 
 	stop := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -743,7 +762,10 @@ func TestAStreamThatNeverStopsIsCutAtTheWall(t *testing.T) {
 	}))
 	defer func() { close(stop); server.Close() }()
 
-	_, err := streamAgainst(t, server.URL, nil)
+	// THE DEGENERATION GUARD IS OFF because the text is one phrase repeated on
+	// purpose: this test is about the wall, and a repetition that runs to the
+	// ceiling is soup the guard would rightly cut first.
+	_, err := streamAgainstCtx(WithoutBabbleGuard(context.Background()), t, server.URL, nil)
 	cut, ok := CutFrom(err)
 	if !ok {
 		t.Fatalf("err = %v, want a stream cut", err)
@@ -751,8 +773,11 @@ func TestAStreamThatNeverStopsIsCutAtTheWall(t *testing.T) {
 	if cut.Reason != CutOverrun {
 		t.Fatalf("reason = %d, want CutOverrun: the stream was never quiet", cut.Reason)
 	}
-	if cut.Waited != 150*time.Millisecond {
-		t.Fatalf("waited = %s, want the wall that fired", cut.Waited)
+	if cut.Waited != ceiling {
+		t.Fatalf("waited = %s, want the ceiling %s: a stream keeping pace is re-armed until it", cut.Waited, ceiling)
+	}
+	if cut.Ran < ceiling {
+		t.Fatalf("ran = %s, want the stream to have run to the ceiling %s", cut.Ran, ceiling)
 	}
 	if !strings.Contains(cut.Error(), "without finishing") {
 		t.Fatalf("sentence = %q", cut.Error())
@@ -922,7 +947,9 @@ func TestAWallCutStrikesTheLaneAndTheNextRequestRoutesAround(t *testing.T) {
 	client.velocity = newVelocityLedger()
 	client.velocity.brisk(model, "quicksilver")
 
-	ctx := WithStreamObserver(context.Background(), func(StreamEvent) {})
+	// The guard is off for [TestAStreamThatNeverStopsIsCutAtTheCeiling]'s
+	// reason: the repeated phrase is the fixture, and the wall is the subject.
+	ctx := WithStreamObserver(WithoutBabbleGuard(context.Background()), func(StreamEvent) {})
 	_, err = client.CompleteWithMessages(ctx, userMessages("hello"))
 	cut, ok := CutFrom(err)
 	if !ok || cut.Reason != CutOverrun {
@@ -957,5 +984,197 @@ func shortenWall(t *testing.T, floor, ceiling time.Duration) func() {
 	stallWallFloor, stallWallMeasured, stallWallCeiling = floor, floor, ceiling
 	return func() {
 		stallWallFloor, stallWallMeasured, stallWallCeiling = oldFloor, oldMeasured, oldCeiling
+	}
+}
+
+// ── A STREAM PRODUCING TOKENS IS NOT CUT FOR ELAPSED TIME ───────────────────
+//
+// The recovery design's one law from the census (`docs/design/recovery/
+// DESIGN.md` §5): silence is bounded relative to the lane's own measured rate,
+// and the only DURATION bound a producing stream may meet is the twenty-minute
+// absolute ceiling from #786.
+//
+// WHAT THE CENSUS GOT RIGHT AND WHAT IT GOT WRONG, because the correction is
+// what these tests are for. 869 rows read `decode stream: context deadline
+// exceeded` with `ms` at exactly 90,000 and 60,000, and 780 of them had already
+// taken a first token — a live stream, guillotined, and the largest single
+// error class in ten days. The census attributed it to the stream wall. It is
+// not the wall and it is not in this package at all: `clientFor` already sets
+// no total deadline on a streamed request, `attemptContext` gives a stream a
+// cancel and never a timeout, and every bound in this file announces itself as
+// a [StreamCut] with its own sentence rather than as a context error. Those
+// rows carry a deadline set by the CALLER, at two and three times a role's
+// ceiling. So what this package owes is not another removal — it is a proof
+// that the removal holds, and an honest record of which bound really fired
+// ([streamWatch.applied]).
+
+// TestNoFixedDurationEverBoundsAProducingStream is the guillotine stated as a
+// law about this package's own transport, so the 2026-08 fix cannot be undone
+// by somebody restoring a "sensible" timeout.
+//
+// A COMPLETION IS BOUNDED IN TOTAL AND A STREAM IS NOT, and the asymmetry is the
+// whole point: a completion's body IS the answer arriving in one piece, so a
+// total deadline is a real statement about a wedged call; a stream's body is the
+// answer arriving over time, so the same deadline is a stopwatch on how much the
+// model chose to write.
+func TestNoFixedDurationEverBoundsAProducingStream(t *testing.T) {
+	client, err := NewClient(Config{APIKey: "k", BaseURL: "http://example.invalid", Model: "sim/model", Timeout: time.Minute})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	if streamed := client.clientFor("sim/model", true, 40_000); streamed.Timeout != 0 {
+		t.Fatalf("a streamed request carries a total deadline of %s — that is the guillotine, and 780 live streams "+
+			"were cut by one like it. A stream is bounded by silence (streamguard.go) and by nothing else.", streamed.Timeout)
+	}
+	whole := client.clientFor("sim/model", false, 40_000)
+	if whole.Timeout <= 0 {
+		t.Fatal("a completion carries no total deadline — an answer that arrives in one piece has no silence to measure, " +
+			"so a wedged one would never end")
+	}
+}
+
+// TestADripAtItsLanesPaceOutlivesEveryDurationBound is the drip the brief asks
+// for, at the scale a test can run: a stream delivering at its lane's own rate
+// for many multiples of the wall it was armed with, which is never cut.
+//
+// It is the same shape as the 2026-09-10 measurement in this file's header — a
+// single `write` call streaming at pace for far longer than the lane's history
+// had earned — run long enough that a fixed duration bound of ANY size short of
+// the ceiling would have fired several times over.
+func TestADripAtItsLanesPaceOutlivesEveryDurationBound(t *testing.T) {
+	const wall = 200 * time.Millisecond
+	defer shortenWall(t, wall, time.Minute)()
+	// Forty bytes — ten tokens — every twenty-five milliseconds is this lane's
+	// own four hundred a second, and ten walls of it.
+	piece := strings.Repeat("a", 40)
+	server := httptest.NewServer(writeCallStream("steady", piece, 25*time.Millisecond, 10*wall))
+	defer server.Close()
+	client := steadyClient(t, server.URL)
+
+	ctx := WithStreamObserver(context.Background(), func(StreamEvent) {})
+	began := time.Now()
+	response, err := client.CompleteWithMessages(ctx, userMessages("write the page"))
+	if err != nil {
+		t.Fatalf("a stream delivering at its lane's own pace was cut after %s: %v", time.Since(began), err)
+	}
+	if ran := time.Since(began); ran < 10*wall {
+		t.Fatalf("the stream ran %s, want past ten walls of %s — the test proved nothing", ran, wall)
+	}
+	calls := response.Choices[0].Message.ToolCalls
+	if len(calls) != 1 || !strings.HasSuffix(calls[0].Function.Arguments, piece+`"}`) {
+		t.Fatalf("the long reply did not land whole: %+v", calls)
+	}
+}
+
+// TestASilentStreamIsCutAtItsLanesOwnGapAndNotTheFlatOne is the other half of
+// the law, and the half that makes the first half safe: bounding silence by the
+// lane's rate is only patience if it is also strictness.
+//
+// The lane here writes twenty-three thousand tokens a second, so [gapFor] says
+// the biggest honest lump it could be assembling takes a seventh of the flat
+// bound. A stream that names it, writes, and then goes quiet for a quarter of
+// the flat bound is cut — at the DERIVED figure, with the flat one nowhere near
+// elapsed, which is what tells a rate-relative bound from a short constant.
+func TestASilentStreamIsCutAtItsLanesOwnGapAndNotTheFlatOne(t *testing.T) {
+	const flat = 600 * time.Millisecond
+	defer shortenStallBounds(t, flat, flat)()
+	oldFloor := stallGapFloor
+	stallGapFloor = time.Millisecond
+	defer func() { stallGapFloor = oldFloor }()
+
+	// Twenty-three thousand three hundred and thirty-three tokens a second puts
+	// the derived gap at a hundred and fifty milliseconds.
+	const rate = float64(streamGapLumpTokens) / 0.15
+	const tokens = streamGapLumpTokens * 20 / 3
+	if got := gapFor(rate); got > flat/3 {
+		t.Fatalf("the derived gap for %.0f tok/s is %s, not comfortably inside the flat %s — the test is not asking its question", rate, got, flat)
+	}
+
+	server := httptest.NewServer(quietAfterNaming("fast", 4*flat))
+	defer server.Close()
+	client, err := NewClient(Config{APIKey: "k", BaseURL: server.URL, Model: "sim/model"})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	client.velocity = newVelocityLedger()
+	client.velocity.observe("sim/model", "fast", 10*time.Millisecond, tokens, time.Second, 0)
+
+	began := time.Now()
+	_, err = client.CompleteWithMessages(WithStreamObserver(context.Background(), func(StreamEvent) {}), userMessages("write"))
+	ran := time.Since(began)
+	cut, ok := CutFrom(err)
+	if !ok {
+		t.Fatalf("a stream that went quiet past its lane's own gap was not cut: err=%v after %s", err, ran)
+	}
+	if cut.Reason != CutStalled {
+		t.Fatalf("the cut says %q, want a stream that started writing and stopped", cut.Reason.word())
+	}
+	if ran >= flat {
+		t.Fatalf("the cut came after %s, which is the flat bound of %s rather than the lane's own gap — "+
+			"the bound is not rate-relative", ran, flat)
+	}
+	// AND IT NAMES THE FIGURE IT WAS SET TO, which is the other half of the
+	// law: the sentence a person reads has to be the wait they watched.
+	if cut.Waited >= flat {
+		t.Fatalf("the cut says it waited %s, want the derived gap rather than the flat %s", cut.Waited, flat)
+	}
+}
+
+// quietAfterNaming opens a stream, names its lane, writes one fragment of a
+// tool call, and then says nothing at all until it is cancelled or `lasting`
+// has passed. It is the silence the mid-stream bound exists for, as opposed to
+// the drip [writeCallStream] produces.
+func quietAfterNaming(lane string, lasting time.Duration) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		flush := func(frame string) {
+			fmt.Fprint(w, "data: "+frame+"\n\n")
+			w.(http.Flusher).Flush()
+		}
+		flush(`{"id":"one","provider":"` + lane + `","choices":[{"index":0,"delta":{"tool_calls":` +
+			`[{"index":0,"id":"call_1","type":"function","function":{"name":"write","arguments":"{\"content\":\"a"}}]}}]}`)
+		// A SECOND FRAGMENT, so the quiet that follows is a MID-STREAM quiet.
+		// The lane is named on the first chunk and the bound narrows onto it
+		// there; the bound being narrowed is the one between two tokens, and a
+		// stream with only one token has not reached it yet.
+		time.Sleep(10 * time.Millisecond)
+		flush(`{"id":"one","provider":"` + lane + `","choices":[{"index":0,"delta":{"tool_calls":` +
+			`[{"index":0,"function":{"arguments":"bcd"}}]}}]}`)
+		select {
+		case <-r.Context().Done():
+		case <-time.After(lasting):
+		}
+	}
+}
+
+// TestTheBufferedCapIsNotTheRolesToStretch is the number that let four streams
+// sit on one machine for six and seven minutes on 2026-09-10.
+//
+// The first two silence bounds are PATIENCE and scaling them by whose errand it
+// is is right. The buffered cap is not patience: it is a measured ceiling on
+// what an ENDPOINT may do — the longest a machine assembling an answer
+// server-side has ever legitimately taken while keeping the line warm — and a
+// machine does not earn the right to babble for longer because nobody is
+// watching. Stretched, it was seven and a half minutes for a task node and
+// fifteen for a standing pass, which is exactly the colon trickler this file's
+// header says the cap exists to stop.
+func TestTheBufferedCapIsNotTheRolesToStretch(t *testing.T) {
+	talk := boundsFor(lanes.RoleTalk)
+	for _, role := range []lanes.Role{lanes.RoleTalk, lanes.RoleLeafUnattended, lanes.RoleStanding, lanes.RoleJudge} {
+		bounds := boundsFor(role)
+		if bounds.buffered != talk.buffered {
+			t.Errorf("role %q may go quiet behind keepalives for %s against a watched turn's %s — "+
+				"the cap is a fact about endpoints, not about who is waiting", role, bounds.buffered, talk.buffered)
+		}
+		// AND THE OTHER TWO STILL SCALE, or this test would be pinning the
+		// wrong thing: patience really is the role's.
+		if role.Facts().Patience > 1 && bounds.first <= talk.first {
+			t.Errorf("role %q waits %s for a first token against a watched turn's %s — patience stopped scaling",
+				role, bounds.first, talk.first)
+		}
+	}
+	if got := boundsFor(lanes.RoleStanding).buffered; got != bufferedQuietBound {
+		t.Errorf("the most patient role's buffered cap is %s, want the flat %s", got, bufferedQuietBound)
 	}
 }

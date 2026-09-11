@@ -370,6 +370,11 @@ const (
 	// that it had failed.
 	checkpointResultBytes = 400
 
+	// One completed write input travels beside its outcome. A path and a byte
+	// count cannot establish what was written. Larger inputs are explicitly
+	// omitted, and this evidence competes within the existing digest budget.
+	checkpointWriteArgumentBytes = 4 * checkpointResultBytes
+
 	// checkpointSaidBytes is how much of the turn's last words the reader is
 	// shown. It is the one part of the digest that is the model's own account of
 	// where it has got to, and a paragraph of it is the whole of what a reader
@@ -393,14 +398,14 @@ const (
 // answer about the emptiness.
 const (
 	checkpointDigestAsked = "WHAT WAS ASKED"
-	checkpointDigestDone  = "WHAT HAS BEEN DONE SO FAR, ONE LINE PER STEP"
+	checkpointDigestDone  = "TOOLS CALLED, ONE LINE PER STEP"
 	// checkpointDigestFound heads the results, and its heading SAYS THE ORDER
 	// because the order is not the one a reader would assume. The newest call is
 	// printed first, so a reader that runs out of attention has spent it on the
 	// evidence in front of the turn rather than on the evidence behind it — and
 	// the same order is what the fitting drops from, oldest end first.
 	checkpointDigestFound   = "WHAT CAME BACK, NEWEST FIRST"
-	checkpointDigestWritten = "WHAT HAS BEEN WRITTEN OR CHANGED"
+	checkpointDigestWritten = "WRITE OR EDIT ATTEMPTS (CHECK THE RESULTS)"
 	// checkpointDigestMoved heads ONE LINE: when the work last changed, and what
 	// has come back since (novelty.go's [workClock]). It is the fact a reader of
 	// a ledger cannot get from the ledger — ninety lines of activity look the
@@ -462,6 +467,20 @@ const checkpointResultArrow = " → "
 // accept work that a worker in its own copy cannot see, let alone accept. The
 // exclusion is stated in the ask, and the fold that reads it back is
 // [checkpointSketch.handsBack].
+//
+// AND IT SAYS THAT WHAT IS DONE IS NOT WHAT IS LEFT, which is a repair rather
+// than a tidiness. WHAT COMES BACK FROM HERE BECOMES THE FIRST PARAGRAPH OF THE
+// BRIEF, under the words "WHAT IS LEFT, AS PARTS" ([checkpointSketch.head]) — so
+// a reader that drew work the turn above it had ALREADY FINISHED handed the next
+// pair of hands a louder, earlier instruction to do it again, while the evidence
+// section further down that same document correctly said it was done and pointed
+// at what came back (admission.go). Measured 2026-09-10: a worker opened on
+// exactly that brief and spent its first minutes re-reading what the parent had
+// read and re-deriving what the handoff had already stated. The contradiction
+// cannot be repaired downstream, because by the time the two halves are in one
+// document they already disagree — so the reader that draws the line is the one
+// that has to be told, and the writer of the prose half is told the same thing in
+// the same change ([checkpointHandoffWriteAsk]).
 const checkpointSketchAsk = "[checkpoint] Above is what was asked and what has been done towards it. " +
 	"In one line, sketch what remains of the ask as parts and arrows: " +
 	"independent parts separated by ' | ', ordered steps joined by ' > '. " +
@@ -469,7 +488,9 @@ const checkpointSketchAsk = "[checkpoint] Above is what was asked and what has b
 	"Nothing else on that line. Then one sentence saying what each letter is. " +
 	"If nothing remains, that line is '(done)'. " +
 	"Work you have already handed out is not a part: if all that remains is waiting on it, " +
-	"reviewing what comes back or accepting it, that line is '(waiting)'."
+	"reviewing what comes back or accepting it, that line is '(waiting)'. " +
+	"Work that is already done is not a part either: what the account above shows finished is not " +
+	"what remains, and drawing it sends somebody to do it a second time."
 
 // checkpointSplitNote is the ONE line a person reads when a mark's sketch says
 // the work in front of it has parts.
@@ -612,10 +633,22 @@ const (
 // IT IS ASKED FOR PROSE AND NOT FOR HEADINGS. The reader of this document is a
 // worker opening on it cold, and a brief with four shouted headings over four
 // empty sections is a form somebody filled in.
+//
+// AND IT SAYS WHERE THE LINE BETWEEN THE FIRST TWO OF THE FOUR FALLS, because
+// the whole value of asking for both is lost when a thing lands on the wrong
+// side of it. The four things are ordered "what is left" then "what is already
+// known", and a writer that put a finished reading under the first has not
+// merely been untidy — it has written the instruction the worker obeys, ahead of
+// and louder than the evidence section that says the same reading is done
+// (admission.go). This is [checkpointSketchAsk]'s clause said in the third
+// person, landed in the same change and measured from the same run: a worker
+// opened on such a brief and spent its first minutes redoing finished work.
 const checkpointHandoffWriteAsk = "[write the handoff] The work above is being handed to somebody who will finish it, and they " +
 	"cannot see any of this — not the conversation, not the tool results, not the draft. Write their instruction " +
 	"and nothing else: what is left to do, what is already known that they would otherwise have to find out " +
-	"again, what has been ruled out, and how anybody could tell when it is done. Finish against the person's own " +
+	"again, what has been ruled out, and how anybody could tell when it is done. Nothing that is already done goes " +
+	"under what is left to do: what has already been read, run or found out is what they already know, and putting " +
+	"it under what is left sends them to do it again. Finish against the person's own " +
 	"words at the top, never against whatever the draft happens to be holding. Do not greet them, do not " +
 	"describe this conversation, and do not repeat yourself."
 
@@ -633,7 +666,14 @@ const checkpointHandoffWriteAsk = "[write the handoff] The work above is being h
 // AND IT NAMES NOTHING ABOUT THE KIND OF WORK, by the law [checkpointSketchAsk]
 // is held to.
 const checkpointRemainsAsk = "[still asked] Above is what the person asked for and what has been done towards it. " +
-	"The model working on it has just stopped. In one line, say what of the ASK is still not done. " +
+	"The model working on it has just stopped. This is a bounded account, not a fresh inspection of the files. " +
+	"Submitted write/edit arguments show intended changes; their tool results say whether they succeeded. " +
+	"Compare the requested deliverable and its explicit value/type constraints with those inputs and results before deciding. " +
+	"A successful write confirms only that bytes were written; it does not prove their contents meet the request. " +
+	"Tool failures and exact data mismatches outweigh an assistant claim of success. " +
+	"Abbreviated or omitted content is unknown, not evidence of a defect. " +
+	"Ground any claimed defect in the evidence shown; if a necessary check is missing, name that check instead of inventing its result. " +
+	"In one line, say what of the ASK is still not done. " +
 	"If everything they asked for is done, answer with the single line " + checkpointNothingLeft +
 	" and write nothing else at all. Otherwise write that one line and nothing else: no preamble, " +
 	"no list, no question."
@@ -727,9 +767,130 @@ func checkpointCarriedOnNote(observed []string) string {
 // next request, and anything reading a request's last message to tell the ask
 // apart from the answer read the continuation as the question. Two lanes, two
 // markers.
-const checkpointCarryOnLead = "[carry on] You stopped, but what was asked is not finished. " +
-	"Somebody reading the work against the request says this is what is left. " +
-	"Carry on with it, and do not summarise what you have already done:\n"
+// checkpointLoadNudgeNote is the one line a person reads when a turn is sent
+// back for loading a tool it never used. It is in the register of the other
+// carry-on notes: an observation, a middle dot, what happens next.
+const checkpointLoadNudgeNote = "it loaded a tool and stopped before using it · asking it to go on"
+
+// checkpointAskNudgeNote is the line a person reads when a turn is sent back
+// for an `ask` the gate refused and the model never made again.
+const checkpointAskNudgeNote = "its question was refused and it stopped without asking again · asking it to go on"
+
+// checkpointAskNudgeLead is that continuation, carrying the refusal itself so
+// the model has the fix in front of it rather than in its history.
+func checkpointAskNudgeLead(refusal string) string {
+	return "[carry on] Your `ask` this turn was refused — " + strings.TrimSpace(refusal) + " — and the person saw no question. " +
+		"Ask again in this same turn with that fixed, or say in one line why you no longer need to."
+}
+
+// askRefusedAndNotRetried reads the transcript for the shape
+// [checkpointAskNudgeLead] answers: the newest `ask` of THIS turn came back
+// refused ([askRefusedLead]) and no `ask` was made after it. The walk is the
+// one [loadedAndNeverUsed] makes — backward, through a synthetic continuation,
+// stopping at the person's own message — and it returns the refusal's own
+// words, without the lead.
+func askRefusedAndNotRetried(messages []ai.Message) (string, bool) {
+	for i := len(messages) - 1; i >= 0; i-- {
+		message := messages[i]
+		switch message.Role {
+		case "user":
+			if strings.HasPrefix(partsText(message), "[carry on] ") {
+				continue
+			}
+			return "", false
+		case "assistant":
+			for _, call := range message.ToolCalls {
+				if strings.TrimSpace(call.Function.Name) != "ask" {
+					continue
+				}
+				id := strings.TrimSpace(call.ID)
+				for j := i + 1; j < len(messages); j++ {
+					if messages[j].Role != "tool" || strings.TrimSpace(messages[j].ToolCallID) != id {
+						continue
+					}
+					answer := strings.TrimSpace(partsText(messages[j]))
+					if !strings.HasPrefix(answer, askRefusedLead) {
+						return "", false
+					}
+					return strings.TrimPrefix(answer, askRefusedLead), true
+				}
+				return "", false
+			}
+		}
+	}
+	return "", false
+}
+
+// checkpointLoadNudgeLead is the synthetic continuation itself, and it names
+// the tools by the names the load answered with, so a model that has forgotten
+// what it fetched is told rather than left to search its own history.
+func checkpointLoadNudgeLead(names []string) string {
+	quoted := make([]string, 0, len(names))
+	for _, name := range names {
+		quoted = append(quoted, "`"+name+"`")
+	}
+	return "[carry on] You loaded " + strings.Join(quoted, ", ") + " this turn and then stopped without calling it. " +
+		"It is in your tool list now: call it in this same turn, or say in one line why you no longer need it."
+}
+
+// loadedAndNeverUsed reads the transcript for the shape [Agent.checkpointReopen]
+// sends back: the newest tool call of THIS turn was a `load_capability` that
+// answered `Loaded: …`, and nothing was called after it.
+//
+// THE WALK IS BACKWARD AND STOPS AT THE PERSON'S OWN MESSAGE, so a load an
+// earlier turn made and used cannot be mistaken for this turn's. A synthetic
+// continuation is a user-role message too and is walked THROUGH, because the
+// turn it re-opened is still this turn. What the load armed is read off the
+// load's own answer — the line `load_capability` wrote — rather than off the
+// group name, because the group is a word and the answer is the fact.
+func loadedAndNeverUsed(messages []ai.Message) ([]string, bool) {
+	for i := len(messages) - 1; i >= 0; i-- {
+		message := messages[i]
+		switch message.Role {
+		case "user":
+			if strings.HasPrefix(partsText(message), "[carry on] ") {
+				continue
+			}
+			return nil, false
+		case "assistant":
+			if len(message.ToolCalls) == 0 {
+				continue
+			}
+			if len(message.ToolCalls) != 1 || strings.TrimSpace(message.ToolCalls[0].Function.Name) != loadCapabilityToolName {
+				return nil, false
+			}
+			id := strings.TrimSpace(message.ToolCalls[0].ID)
+			for j := i + 1; j < len(messages); j++ {
+				if messages[j].Role != "tool" || strings.TrimSpace(messages[j].ToolCallID) != id {
+					continue
+				}
+				answer := strings.TrimSpace(partsText(messages[j]))
+				if !strings.HasPrefix(answer, loadedLead) {
+					return nil, false
+				}
+				names := strings.Split(strings.TrimSpace(strings.SplitN(strings.TrimPrefix(answer, loadedLead), ".", 2)[0]), ", ")
+				return names, len(names) > 0 && names[0] != ""
+			}
+			return nil, false
+		}
+	}
+	return nil, false
+}
+
+// partsText is a message's text parts joined, which is the only reading a
+// transcript walk needs of it.
+func partsText(message ai.Message) string {
+	var text strings.Builder
+	for _, part := range message.Content {
+		text.WriteString(part.Text)
+	}
+	return text.String()
+}
+
+const checkpointCarryOnLead = "[carry on] A reader of a bounded account of the work raised the observation below. " +
+	"Check it against the actual current work and the person's request before changing anything. " +
+	"Fix any confirmed gap. If the observation is mistaken or already satisfied, preserve the correct work, " +
+	"explain the evidence briefly, and finish; do not invent a change to satisfy the observation.\n"
 
 // ── the meter ───────────────────────────────────────────────────────────────
 
@@ -754,6 +915,12 @@ type checkpointMeter struct {
 	// fact about ONE answer. A counter that remembered yesterday's carry-ons
 	// would refuse to carry on a conversation that had never asked for it.
 	carriedOn int
+	// loadNudged says this turn has already been sent back once for stopping
+	// right after a `load_capability` it never used, or an `ask` that was
+	// refused and never made again ([Agent.checkpointReopen],
+	// [loadedAndNeverUsed], [askRefusedAndNotRetried]). ONCE: a model that ignores the nudge too is a model
+	// that has decided, and a second nudge would be an argument.
+	loadNudged bool
 	// claimedDone is the REQUEST a completion claim has already been believed
 	// about, and empty on a turn that has made none ([Agent.handOverRunningTurn]).
 	//
@@ -907,14 +1074,12 @@ func roundWasWatching(calls []ai.ToolCall) bool {
 // establishes itself, on every provider, and it is also the unit the measured
 // failure was measured in: ninety-odd tool rounds.
 //
-// A ROUND IS ONE BATCH AND NOT ONE CALL, AND A FORK BURST IS ONE BATCH. This
-// counts what it counts because the meter measures THE PERSON'S WAITING, and a
-// batch is one wait however many calls are inside it — that is why eight reads
-// asked for in one breath cost one round. A `fork` (fork.go) is the sharpest
-// case of the same fact: one call, in one batch, with two to four whole agents
-// working inside it, and the person waits once. So a lane tempted to count calls
-// here would silently price a burst at four times what the person actually
-// waited, and would move work off a conversation for having been parallel.
+// A ROUND IS ONE BATCH AND NOT ONE CALL. This counts what it counts because the
+// meter measures THE PERSON'S WAITING, and a batch is one wait however many
+// calls are inside it — that is why eight reads asked for in one breath cost one
+// round. So a lane tempted to count calls here would silently price a burst at
+// several times what the person actually waited, and would move work off a
+// conversation for having been parallel.
 func (m *checkpointMeter) round(worked bool) int {
 	if m == nil {
 		return 0
@@ -1432,12 +1597,12 @@ func unbracket(stage string) string {
 // A session with no client at all is the same answer for the other reason.
 func (a *Agent) markReaderAbsent() bool {
 	a.mu.Lock()
-	source, client, floor := a.config.RolesSource, a.client, ""
+	source, floor := a.config.RolesSource, ""
 	if a.config.OneModel {
 		floor = a.model
 	}
 	a.mu.Unlock()
-	if client != nil {
+	if a.hasClient() {
 		if _, err := roles.Ladder(roles.Source(source), roles.RoleMarkReader, floor); err == nil {
 			return false
 		}
@@ -1770,12 +1935,43 @@ const (
 // other three for the same reason they are spelled apart from each other: a bench
 // reading the file has to tell a turn the clock moved from a turn the counters
 // moved, and it can only do that if the row says so.
+//
+// AND THE CARRY-ON ROAD IS A FIFTH, which is not a handover at all and writes a
+// row for the same reason the other four do. It is the one seam that can end a
+// turn WITHOUT reading it ([Agent.checkpointReopen]'s gates), and a refusal
+// nobody can find afterwards is exactly what #567 was: two runs that behaved
+// completely differently leaving identical journals. A row with this seam on it
+// therefore never says `moved` — nothing was handed anywhere — it says which
+// ending the road stood down for.
 const (
 	checkpointSeamMark    = "mark"
 	checkpointSeamWrite   = "write"
 	checkpointSeamCeiling = "ceiling"
 	checkpointSeamWall    = "wall"
+	checkpointSeamCarry   = "carry-on"
 )
+
+// journalCarryOnAwaited writes down the one ending the carry-on road takes on
+// its own account: the turn is left alone because a task this conversation
+// started has not come back yet (turnhandoff.go's
+// [Agent.turnIsWaitingOnItsOwnTasks]).
+//
+// IT BORROWS THE HANDOVER'S OWN WORD, `dropped:awaiting-own-work`, because it is
+// the same fact about the same conversation — the obligation is still OPEN and
+// the wake that was always coming is what brings the result back — and a bench
+// counting waits should not have to know which road noticed. Seam is what tells
+// the two apart, and the reason names the node rather than a job.
+func (a *Agent) journalCarryOnAwaited(rounds int, node uint64) {
+	a.file.appendCeiling(journalCeiling{
+		Rounds:   rounds,
+		Seam:     checkpointSeamCarry,
+		Decision: checkpointCeilingAwaiting,
+		// TaskID is deliberately not set: it names a node this row ADMITTED, and
+		// this row admits nothing (sessionfile.go's [journalCeiling]). The id
+		// rides in the reason, the way the delivery seam's does.
+		Reason: fmt.Sprintf("awaiting task %d", node),
+	})
+}
 
 // ── the carry ladder ────────────────────────────────────────────────────────
 //
@@ -1810,6 +2006,17 @@ const (
 	carryRungHandoff = "handoff"
 	carryRungDraft   = "draft"
 	carryRungAsk     = "ask"
+
+	// AND ONE ROAD WALKS NO LADDER AT ALL, so it names itself on the ceiling row
+	// rather than naming a rung it never tried. A write-free turn whose drawing
+	// came back with parts is handed over as a QUICK NODE, and the drawing is the
+	// brief: its parts are the node's items, in order, and there is nothing for a
+	// second model to write out of them (checkpoint_quick.go). Nothing was
+	// skipped and nothing failed — there was nothing to ask for — so `skipped`
+	// and `empty` would both be a rung reporting on a call this road does not
+	// make. A bench reading the file tells this road from every other by this
+	// word alone.
+	carryRungQuick = "quick"
 
 	// What one rung DID. `written` is words somebody could work from;
 	// `degenerate` is words that were not words, or words that had stopped
@@ -2157,27 +2364,35 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 	// writer's call is the work moving, a result is lines that were or were not
 	// new (novelty.go).
 	lines := newLineNovelty()
-	// The step each call took, by id, so a result that arrives after a later
-	// batch's write is not counted against it.
-	at := make(map[string]int)
-	// The line each call wrote, by id, so its result can be printed under the same
-	// words the ledger used and a reader can match the two.
-	calls := make(map[string]string)
-	for _, message := range messages {
-		for _, call := range message.ToolCalls {
+	// Steps and labels belong to call occurrences. An orphan or duplicate
+	// result must not borrow a prior batch's label or advance its work clock.
+	at := make(map[*ai.ToolCall]int)
+	calls := make(map[*ai.ToolCall]string)
+	paired := toolResultCalls(messages)
+	writeResult, writeStep := -1, 0
+	var writeInput string
+	for messageIndex, message := range messages {
+		for callIndex := range message.ToolCalls {
+			call := &message.ToolCalls[callIndex]
 			name := strings.TrimSpace(call.Function.Name)
 			if name == "" {
 				continue
 			}
 			line := name
-			if argument := checkpointArgument(call.Function.Arguments); argument != "" {
+			argument := checkpointArgument(call.Function.Arguments)
+			if checkpointWriters[name] {
+				if path := checkpointArgumentNamed(call.Function.Arguments, "path"); path != "" {
+					argument = clip(path, checkpointLedgerBytes)
+				}
+			}
+			if argument != "" {
 				line += " " + argument
 			}
 			ledger = append(ledger, line)
 			moved.step()
 			if id := strings.TrimSpace(call.ID); id != "" {
-				calls[id] = line
-				at[id] = moved.steps
+				calls[call] = line
+				at[call] = moved.steps
 			}
 			if !checkpointWriters[name] {
 				continue
@@ -2199,8 +2414,8 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 		if message.Role != "tool" {
 			continue
 		}
-		id := strings.TrimSpace(message.ToolCallID)
-		line, known := calls[id]
+		call := paired[messageIndex]
+		line, known := calls[call]
 		if !known {
 			continue
 		}
@@ -2208,13 +2423,24 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 		for _, part := range message.Content {
 			came.WriteString(part.Text)
 		}
-		if at[id] > moved.changedAt {
+		if at[call] > moved.changedAt {
 			fresh, weighed := lines.measure(line, stripJobFooter(came.String()))
 			moved.read(fresh, weighed)
 		}
 		if tail := checkpointResultTail(came.String()); tail != "" {
 			results = append(results, line+checkpointResultArrow+tail)
+			if checkpointWriters[call.Function.Name] && at[call] > writeStep {
+				writeResult, writeStep = len(results)-1, at[call]
+				if len(call.Function.Arguments) <= checkpointWriteArgumentBytes {
+					writeInput = "\nsubmitted arguments: " + call.Function.Arguments
+				} else {
+					writeInput = fmt.Sprintf("\nsubmitted arguments omitted (%d bytes); inspect the current file before judging its contents", len(call.Function.Arguments))
+				}
+			}
 		}
+	}
+	if writeResult >= 0 {
+		results[writeResult] += writeInput
 	}
 	return ledger, written, results, moved
 }
@@ -2255,12 +2481,13 @@ var checkpointWriters = map[string]bool{"write": true, "edit": true}
 // and IT KNOWS NO TOOL'S NAME FOR ANYTHING.
 //
 // IT USED TO BE A LIST OF KEYS — command, query, pattern, path, url — and the
-// list was measured being the wrong shape of rule. `fork` (fork.go) takes
-// `parts`, so a turn that had already fanned out twice was drawn in the digest as
-// two bare lines reading `fork`, and the reader sketched serial work over the top
-// of a turn that was demonstrably already parallel. A list of anticipated keys is
-// a list that is wrong about every verb added after it was written, silently, in
-// the one document a second mind reads the turn out of.
+// list was measured being the wrong shape of rule. A verb that fans work out
+// takes none of those keys, so a turn that had already fanned out twice was
+// drawn in the digest as two bare lines carrying the verb's name and nothing
+// else, and the reader sketched serial work over the top of a turn that was
+// demonstrably already parallel. A list of anticipated keys is a list that is
+// wrong about every verb added after it was written, silently, in the one
+// document a second mind reads the turn out of.
 //
 // SO IT READS THE ARGUMENTS AS THEY CAME AND TAKES THE FIRST THING THAT SAYS
 // ANYTHING: the first string, or the first array rendered as its elements. Wire
@@ -2671,6 +2898,37 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 		return false, false
 	}
 	said := response.Text()
+	// A TURN THAT LOADED A TOOL AND STOPPED WITHOUT USING IT IS SENT BACK ONCE,
+	// AND THIS COSTS NO READER. It stands ahead of every gate below because it is
+	// not a reading of the work at all: it is the harness finishing something it
+	// started. `load_capability` answers "Continue in this same turn", the model
+	// answers with a plan — "Let me make the question." — and the turn ends with
+	// the question never asked, the picture never made, the setting never read.
+	// Measured on 2026-09-10 with the person's own words, on a model that loaded
+	// `ask` and then wrote 416 tokens of intention and no call. It is read
+	// structurally off the transcript ([loadedAndNeverUsed]), never off what was
+	// said, and a turn whose last words asked the person something is left alone
+	// as everywhere else in this file. It applies to a typed turn as much as a
+	// woken one, which is why it sits ABOVE [Agent.checkpoints]: the price gate
+	// is about spending a reader, and nothing is spent here.
+	if meter != nil && ctx.Err() == nil && !meter.loadNudged && !endsAskingThePerson(said) {
+		if names, ok := loadedAndNeverUsed(a.snapshot()); ok {
+			meter.loadNudged = true
+			hub.send(Event{Kind: EventNotice, Text: checkpointLoadNudgeNote})
+			a.record(textMessage("user", checkpointLoadNudgeLead(names)))
+			return true, false
+		}
+		// THE SAME SHAPE ONE RUNG LATER: the question was asked, the gate
+		// refused it, and the turn ended telling the person to answer a
+		// question that was never drawn. Read off the tool's own answer
+		// ([askRefusedLead]), once a turn under the same flag.
+		if refusal, ok := askRefusedAndNotRetried(a.snapshot()); ok {
+			meter.loadNudged = true
+			hub.send(Event{Kind: EventNotice, Text: checkpointAskNudgeNote})
+			a.record(textMessage("user", checkpointAskNudgeLead(refusal)))
+			return true, false
+		}
+	}
 	if !a.checkpoints(ctx, user) {
 		return false, false
 	}
@@ -2691,8 +2949,8 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	// person's answer — and re-opening it would be the harness answering
 	// something addressed to somebody else. A turn that ends while a job this
 	// conversation started is still running is in the same position: a process
-	// job, a render and a hand each queue their exit as an OWED note that starts
-	// a turn by itself the moment it lands ([Agent.enqueueJobNote]), so the
+	// job and a render each queue their exit as an OWED note that starts a turn
+	// by itself the moment it lands ([Agent.enqueueJobNote]), so the
 	// continuation the reader would buy already exists and is already on its way.
 	//
 	// A WATCH IS INCLUDED AND IT WAKES TOO, which is the half this gate was
@@ -2722,6 +2980,37 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	if a.turnHandedItsAskOff() {
 		return false, false
 	}
+	// AND A TURN THAT ENDED WITH WORK OF ITS OWN STILL RUNNING IS WAITING, NOT
+	// STOPPED SHORT.
+	//
+	// The gate above is qualified to the turn that made the handoff, and a turn
+	// STARTED BY ONE PIECE LANDING while another is still out falls straight
+	// through it: nobody typed it, the epoch is new, and the reader is armed by
+	// the wake rule below. Measured on 2026-09-10 — a chat with two quick tasks
+	// out answered the first one's landing, and the road then re-opened that
+	// answer three times over the second, each time to be told it was still
+	// running (turnhandoff.go's [Agent.turnIsWaitingOnItsOwnTasks], which is
+	// where the person's own veto is stated).
+	//
+	// IT IS ASKED BEFORE THE READER IS PAID, unlike the cap below, because there
+	// is nothing here for a reading to change: the piece is out, its landing
+	// wakes this conversation with the report in front of it, and that turn is
+	// read for what remains at wake prices.
+	if node, waiting := a.turnIsWaitingOnItsOwnTasks(); waiting {
+		a.journalCarryOnAwaited(meter.rounds, node)
+		return false, false
+	}
+	// AND A TURN THAT IS REPORTING A SETTLED, CHECKED TASK IS FINISHED.
+	//
+	// The live gate above covers work still out. This is the landing's half
+	// (#468): the task came home done, its own checks passed, and the end-of-turn
+	// reader — looking at a digest of the transcript, not the tree — said the ask
+	// was unfinished. The turn was carried on three times and then told the person
+	// the work was not finished, over a card that already showed it done.
+	// turnhandoff.go is the fact; this is where it stops the reader being spent.
+	if a.turnSettledItsAsk() {
+		return false, false
+	}
 	// A WOKEN TURN OUTRANKS THE PRICE, WHICH IS THE WHOLE OF WHAT THE MEASURED RUN
 	// STILL GOT WRONG.
 	//
@@ -2740,8 +3029,9 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	// work, and the cell settled idle with seven and a half of its ten hours
 	// unspent on the best clean seed of the run. A WOKEN TURN IS READ FOR WHAT
 	// REMAINS WHATEVER IT COST ([Agent.wakeLocked] sets the bit); it is owed an
-	// answer by definition, and [endsAskingThePerson] and [turnBroke] above are
-	// the only two endings that still stop the reader from being spent on one.
+	// answer by definition, and [endsAskingThePerson], [turnBroke] and a landing
+	// that already came home with its check green ([turnSettledItsAsk]) are the
+	// endings that still stop the reader from being spent on one.
 	//
 	// THE PRICE GATE, AND THE EXPOSURE THAT OUTRANKS IT, FOR EVERY OTHER TURN.
 	//
@@ -2799,6 +3089,17 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	// cap that fired before the reader would have to guess that the ask was still
 	// unfinished, and would say so out loud on the turn where the model had
 	// finally finished it.
+	// AND THE WAIT IS READ AGAIN AT THE MOMENT THE ANSWER IS ACTED ON, for
+	// [Agent.stillGranted]'s reason: a reading taken a model call ago is
+	// evidence about a conversation that may have moved since, and the reader
+	// walks a digest and can re-run this session's declared checks before it
+	// answers. A gap named while a piece of this conversation's own work is out
+	// is dropped exactly as it would have been a call earlier — same word, same
+	// row — rather than being believed because it arrived late.
+	if node, waiting := a.turnIsWaitingOnItsOwnTasks(); waiting {
+		a.journalCarryOnAwaited(meter.rounds, node)
+		return false, false
+	}
 	if meter.carriedOn >= checkpointCarryOnCap {
 		hub.send(Event{Kind: EventNotice, Text: checkpointCarriedOnNote(decision.Observed)})
 		return false, false
@@ -3504,6 +3805,18 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// for a task nobody starts (taskname.go's [nameAhead]).
 	ahead := a.nameAhead(asked)
 	defer ahead.release()
+	// AND A TURN THAT ONLY READ GOES SOMEWHERE ELSE ENTIRELY, on a road that
+	// writes no brief because the drawing already is one (checkpoint_quick.go).
+	//
+	// IT IS DECIDED HERE, AFTER EVERY ENDING AND BEFORE EVERY MODEL CALL. After,
+	// because a turn that is finishing, awaiting or overruled must not be moved
+	// at all and the kind of node it would have moved to changes none of that.
+	// Before, because the two calls below are the whole of what this road exists
+	// to skip: a worktree nobody opens and a ninety-second writer producing a
+	// paragraph the items say better.
+	if quick := a.quickFromDrawing(read, asked); quick != nil {
+		return a.handOverAsQuick(ctx, hub, turn, started, model, verdict, asked, quick, ahead)
+	}
 	// AND THE BRIEF IS WRITTEN BY SOMEBODY WHO DID NOT SPEND THE TURN.
 	//
 	// THE DRAFT IS THE FINDINGS AND THE WRITER IS THE JUDGEMENT, which is the split
@@ -3673,11 +3986,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 		// for the reason in a ladder that may not even have one.
 		return checkpointHandover{decision: checkpointCeilingHeldWork, reason: carryHeldWork}
 	}
-	// A check for the whole request does not become permission to repeat it in
-	// only one remainder. Checks for retained work are not assigned to this child.
-	if len(read.held) > 0 || strings.TrimSpace(read.ownRemainder) != "" {
-		verdict.Checks = nil
-	}
+	verdict = a.handoffChecks(verdict, asked, request, read)
 	// AND THE DRAWING TRAVELS WITH THE WORK, which is the whole of what changed
 	// after the parts stopped being only a paragraph.
 	//
@@ -3746,7 +4055,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// closing remark of a finished answer. The person's sentence is the one thing
 	// on this road nobody writes, so it is the one thing that cannot come back as
 	// machinery — and the namer improves it a second later anyway (taskname.go).
-	said, id := a.launchRouteTask(hub, verdict, asked, drawn, ahead)
+	said, id := a.launchRouteTask(hub, verdict, asked, drawn, ahead, nil)
 
 	// THE GAP IS SPENT, because the person has just been interrupted by a task and
 	// does not care which of the moments noticed. routeJudgeGap exists so that work
@@ -3801,6 +4110,26 @@ type checkpointHandover struct {
 	// carries one where an autopsy grepping the word would otherwise be left
 	// looking (sessionfile.go's [journalCeiling]).
 	reason string
+}
+
+// handoffChecks carries an existing declaration only when this handoff still
+// represents the whole request it was declared for. A remainder inherits no
+// whole-request checks, and a routing declaration keeps its own validity rules.
+func (a *Agent) handoffChecks(verdict routeVerdict, asked, request string, read checkpointRead) routeVerdict {
+	if len(read.held) > 0 || strings.TrimSpace(read.ownRemainder) != "" {
+		verdict.Checks = nil
+		return verdict
+	}
+	if len(verdict.Checks) > 0 || request == "" || asked != request {
+		return verdict
+	}
+	steward := a.steward()
+	if steward == nil || steward.Ask() != request {
+		return verdict
+	}
+	verdict.Checks = steward.declaredChecks()
+	verdict.checksRequest = request
+	return verdict
 }
 
 // endTurnUnderSteward puts a HANDOVER to the session's goal owner, and ends the
@@ -4210,9 +4539,9 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 	// answer rather than the answer itself, so it is priced and drawn as the
 	// errand it is: a person is reading the turn this ends, and the clock over
 	// their answer is not this call's to move (internal/lane's roles.go).
-	response, err := a.client.CompleteWithMessages(
+	response, err := a.completeWithModel(
 		provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary), messages,
-		ai.WithModel(model))
+		model)
 	if err != nil || response == nil {
 		// AND THE FAULT IS CARRIED OUT OF HERE RATHER THAN SPELLED AS SILENCE. This
 		// rung answering "" used to be indistinguishable from a rung that answered

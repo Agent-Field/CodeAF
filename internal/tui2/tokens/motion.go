@@ -18,11 +18,6 @@ import "time"
 // PERIOD, and a sentence saying where it is legal. A frame list with no period
 // is a spinner somebody will drive at whatever rate their surface happens to
 // repaint at, which is the failure this file ends.
-//
-// blocks/clock.go carries the driving half — [blocks.Clock] latches one instant
-// per frame so every live glyph on screen is phase-locked — and spells these
-// same numbers as twins, because the edge runs tokens → blocks and the engine
-// may not import the vocabulary. motion_test.go pins the twins equal.
 
 // MotionInterval is THE house animation step: every animated cell in the
 // product advances on this grid and no surface may pick its own.
@@ -37,7 +32,7 @@ import "time"
 // glyph rather than as one turning thing. 120ms puts the full braille rotation
 // at [SpinnerPeriod] = 1.2s, which is the calm end of the legible band.
 //
-// It is also the grid the phase-lock is built on: [blocks.Clock.Frame] is
+// It is also the grid the phase-lock is built on: a frame is
 // floor(now/interval) % frames, so two rows given the same latched instant show
 // the same frame, and a repaint landing inside one step produces byte-identical
 // rows and therefore zero dirty rows (8.1.3). A second interval anywhere in the
@@ -77,9 +72,8 @@ const SpinnerPeriod = time.Duration(len(SpinnerFrames)) * MotionInterval
 // whole design: a growing and shrinking dot reads as breathing, while four
 // distinct glyphs read as a second spinner, and 11 already spent its spinner.
 // The cycle is written out rather than mirrored in code (·, •, ●, • rather than
-// three frames walked forward and back) because the eased dwell in
-// [blocks.Pulse] indexes a flat list, and a list that says exactly what is
-// drawn is a list a designer can read.
+// three frames walked forward and back) because the eased dwell indexes a flat
+// list, and a list that says exactly what is drawn is a list a designer can read.
 //
 // BYTE COLLISIONS, DELIBERATE: `·` is also [GlyphSeparator] and
 // [GlyphProseBullet]; `●` is also [GlyphStepDone]. The glyph lane ruled the
@@ -115,8 +109,8 @@ const (
 // 0.6 dwells roughly 2.5× longer mid-cycle than at the edges. It is what makes
 // the dot BREATHE rather than count — a flat four-frame cycle at any period is
 // a clock, and the thing being said here is "someone is thinking", not "3.6
-// seconds have passed". The easing function and its monotonicity live at
-// [blocks.Pulse.Index].
+// seconds have passed". The value remains part of the table so its meaning is
+// readable beside the frames it shapes.
 const PulseEase = 0.6
 
 // CaretMotion names 11's third motion so the table is complete, and records
@@ -191,10 +185,7 @@ func Motions() []Motion {
 // as `int(fraction * 5)` cannot be read by a designer, cannot be quoted in 18,
 // and cannot be changed without re-deriving what the old numbers were.
 //
-// It is deliberately NOT where the amber rule lives. The gauge's HEIGHT is a
-// linear reading of how full the window is; its COLOUR is a judgement about
-// whether a human needs to act, and that judgement is dual (a percentage AND an
-// absolute token count) because a 1M-window model at 75% still has more
-// headroom than a 200k model has in total. See [ContextWarnFraction],
-// [ContextWarnPoint] and [ContextToken].
+// It deliberately makes no colour judgement. The gauge's HEIGHT is a linear
+// reading of how full the window is; whether a human needs to act belongs to
+// the surface that has the window's current policy.
 var GaugeThresholds = [len(GaugeCells)]float64{0, 0.2, 0.4, 0.6, 0.8}

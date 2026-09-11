@@ -51,6 +51,7 @@ func TestProjectTaskPresence(t *testing.T) {
 		facts:    TaskFacts{State: TaskRunning, Kind: TaskKindHarness, Phase: HarnessPhaseAsking},
 		presence: TaskPresenceNeedsLook,
 		on:       TaskWaitPerson,
+		reason:   "design ready to approve",
 		wants:    true,
 	}, {
 		name:     "another kind's phase is prose, not a state",
@@ -62,6 +63,7 @@ func TestProjectTaskPresence(t *testing.T) {
 		facts:    TaskFacts{State: TaskUnverified},
 		presence: TaskPresenceNeedsLook,
 		on:       TaskWaitPerson,
+		reason:   "nobody could check it",
 		wants:    true,
 	}, {
 		name:     "a person's stop is a stop and not a failure",
@@ -80,32 +82,38 @@ func TestProjectTaskPresence(t *testing.T) {
 		facts:    TaskFacts{State: TaskFailed, Ending: TaskEndingWire},
 		presence: TaskPresenceIncomplete,
 		on:       TaskWaitPerson,
+		reason:   "lost the connection",
 	}, {
 		name:     "a provider refusal says nothing about the work",
 		facts:    TaskFacts{State: TaskFailed, Ending: TaskEndingUpstream},
 		presence: TaskPresenceIncomplete,
 		on:       TaskWaitPerson,
+		reason:   "the model provider refused it",
 	}, {
 		name:     "a check that named gaps is unfinished work",
 		facts:    TaskFacts{State: TaskFailed, Ending: TaskEndingRefused},
 		presence: TaskPresenceIncomplete,
 		on:       TaskWaitPerson,
+		reason:   "would not take a step it was asked to",
 	}, {
 		name:     "a brief whose world moved never started",
 		facts:    TaskFacts{State: TaskFailed, Ending: TaskEndingStale},
 		presence: TaskPresenceIncomplete,
 		on:       TaskWaitPerson,
+		reason:   "its brief went stale",
 	}, {
 		name:     "an error is the fault",
 		facts:    TaskFacts{State: TaskFailed, Ending: TaskEndingError},
 		presence: TaskPresenceIncomplete,
 		on:       TaskWaitPerson,
+		reason:   "a fault",
 		fault:    true,
 	}, {
 		name:     "an older row with no ending keeps the fault it always wore",
 		facts:    TaskFacts{State: TaskFailed},
 		presence: TaskPresenceIncomplete,
 		on:       TaskWaitPerson,
+		reason:   "a fault",
 		fault:    true,
 	}, {
 		name:     "done is done",

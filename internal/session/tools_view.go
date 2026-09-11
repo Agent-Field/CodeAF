@@ -166,7 +166,7 @@ func (a *Agent) viewImage(ctx context.Context, path, question, known string) (st
 	look, stopLooking := context.WithTimeout(
 		provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary), viewLookWindow)
 	defer stopLooking()
-	response, err := a.client.CompleteWithMessages(look, []ai.Message{{
+	response, err := a.completeWithModel(look, []ai.Message{{
 		Role: "user",
 		Content: []ai.ContentPart{
 			{Type: "text", Text: question},
@@ -174,7 +174,7 @@ func (a *Agent) viewImage(ctx context.Context, path, question, known string) (st
 				URL: "data:" + mediaType + ";base64," + base64.StdEncoding.EncodeToString(data),
 			}},
 		},
-	}}, ai.WithModel(seer))
+	}}, seer)
 	// Accounted BEFORE the answer is judged, and folded into the SESSION total
 	// rather than the turn's ([Agent.addAuxiliaryUsage]): the look was paid for
 	// whether or not it said anything useful, and no turn of the person's ran on

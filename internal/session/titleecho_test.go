@@ -145,28 +145,35 @@ func TestASessionNamedWithTheInstructionKeepsThePlaceholder(t *testing.T) {
 	}
 }
 
-// A REFUSED NAME COSTS ONE CALL AND NOT TWO. ONE CALL, ONCE is the law in
-// title.go's header, and the attempt is marked before the call is made.
-func TestARefusedNameIsNotRetriedWithinTheSession(t *testing.T) {
+// Invalid replies have a bounded LADDER, and later turns do not reset it.
+//
+// WHAT BOUNDS IT IS [titleWindow] AND NOT A COUNT (`titleAttempts`, deleted —
+// docs/design/recovery/DESIGN.md §7). The asks are the window divided by the
+// doubling wait in front of each of them: nothing, then 1s, 2s, 4s … so the
+// eighth would be asked 127 seconds in, past the two minutes, and seven are
+// asked. The clock is the test's ([onATestClock]), so none of that is spent.
+func TestARefusedNameHasBoundedRetriesWithinTheSession(t *testing.T) {
+	onATestTitleClock(t)
 	completer := naming(&scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("first"), nil },
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("second"), nil },
 	}}, namerReply{title: titlePrompt})
 	agent, _ := titleAgent(t, completer, nil)
-
 	collect(t, mustSubmit(t, agent, "why is the tokenizer slow?"))
-	completer.waitAsks(t, 1, "the namer never ran")
+	agent.titleJobs.Wait()
 	collect(t, mustSubmit(t, agent, "and the parser?"))
-
-	// A REFUSED ANSWER IS NOT THE WIRE, so the ladder does not ask again — and
-	// the second turn does not start a second naming either.
-	if got := completer.asks(); got != 1 {
-		t.Fatalf("the namer was asked %d times, want 1", got)
+	if got := completer.asks(); got != titleAsksInAWindow {
+		t.Fatalf("asks = %d, want %d", got, titleAsksInAWindow)
 	}
 	if got := agent.Title(); got != "" {
 		t.Fatalf("Title() = %q", got)
 	}
 }
+
+// titleAsksInAWindow is how many asks fit in [titleWindow] at the doubling wait
+// [nextTitleWait] pays: 0s, 1s, 2s, 4s, 8s, 16s, 32s is seven asks by 63
+// seconds, and the eighth would be asked at 127, past the two minutes.
+const titleAsksInAWindow = 7
 
 // ── the ones already on disk ────────────────────────────────────────────────
 
