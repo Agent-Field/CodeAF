@@ -1585,11 +1585,28 @@ gesture all the way to the state it leaves behind.
 
 Over `--host` the surface runs on the laptop and only the engine is far away
 (docs/REMOTE.md), so every question the surface asks its agent is a round trip
-down an ssh pipe with a ten-second deadline on it (internal/remote's
-`callDeadline`) — and every one of them is made from the update loop, which is
-the one goroutine that also decodes keys, resolves clicks and paints. A question
-asked while DRAWING is therefore a question asked thirty times a second, and one
-asked while resolving a POINTER is asked once per cell the pointer crosses.
+down an ssh pipe with a deadline on it — and every one of them is made from the
+update loop, which is the one goroutine that also decodes keys, resolves clicks
+and paints. A question asked while DRAWING is therefore a question asked thirty
+times a second, and one asked while resolving a POINTER is asked once per cell
+the pointer crosses.
+
+**The deadline is `callDeadline`, ten seconds, for every call**, and it is one
+number rather than one per kind for a reason worth writing down, because the
+obvious change was made and taken back out (#846). A person's keystroke on a
+question is a call too — internal/tui3's `answerQuestion` asks its door straight
+from Update rather than from a command — so a longer window for an act would be
+a longer time the terminal can sit without drawing. Measured on the Spark:
+eighteen copies of the questions e2e, six at a time, and with a thirty-second
+act window two of them took 53 seconds where every other copy took 22, both
+losing the receipt because nothing repainted. Twelve copies of the parent commit
+produced none over 33 seconds.
+
+What makes ten seconds safe for an act is not the clock. It is that the engine's
+reader no longer serializes it behind a getter (internal/remote's
+`callclass.go`), that a deadline reached on a live link now says `<machine> did
+not answer in time` rather than claiming the connection is gone, and that the
+receipt stamped before the door closes as yours when the engine's news arrives.
 
 | Law | Where it is pinned |
 | --- | --- |
