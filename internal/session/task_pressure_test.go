@@ -76,7 +76,10 @@ func settle(graph *TaskGraph, id uint64) {
 	graph.complete(node, TaskDone)
 }
 
-// fanGraph is a governed graph over a stated machine with a scripted runner.
+// fanGraph is a governed graph over a stated machine with a scripted runner,
+// ALONE IN A PROCESS OF ITS OWN: it takes a fresh lane account, so the only
+// lanes the governor's count knows about are the ones this test starts, and
+// nothing another test left running is in it (task_pressure.go's [laneAccount]).
 //
 // ITS POLL NEVER FIRES INSIDE A TEST. The poll is the product's wake-up for a
 // machine that got quieter by itself, and here every pass is one the test
@@ -84,7 +87,16 @@ func settle(graph *TaskGraph, id uint64) {
 // author of the same pass.
 func fanGraph(t *testing.T, machine *fakeMachine) (*TaskGraph, *noticeLog) {
 	t.Helper()
+	return fanGraphIn(t, machine, newLaneAccount())
+}
+
+// fanGraphIn is the same graph in a process a test names, so that two graphs
+// can share one — two conversations in one aforge, which is the whole scene
+// issue #907 is about.
+func fanGraphIn(t *testing.T, machine *fakeMachine, process *laneAccount) (*TaskGraph, *noticeLog) {
+	t.Helper()
 	graph := newTaskGraph()
+	graph.lanes = process
 	log := &noticeLog{}
 	runner := &fanRunner{started: make(chan uint64, 4*fanWidth)}
 	graph.report = log.record
