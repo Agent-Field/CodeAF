@@ -42,25 +42,17 @@ type seen struct {
 // and names the unexported envelope for itself. That is the whole of the coupling
 // and it is one struct; the alternative was an export door on a package another
 // lane owns, for a shape nothing in the product reads back.
+// AND IT NAMES ONLY THE PUBLISHED ROW. The journal's other kind of line is a
+// sighting, and this reader drops every one of them on purpose: `calls.jsonl`
+// already carries the same answers, with the shape and the tag the pricing needs,
+// so folding both files in would teach every candidate one answer twice and make
+// each of them look twice as sure as it was. What the journal is read for is the
+// one thing the call log cannot say — what the ledger had already PUBLISHED, and
+// with how much weight behind it.
 type entry struct {
-	At     time.Time  `json:"at"`
-	Row    *lane.Row  `json:"row,omitempty"`
-	Weight float64    `json:"k,omitempty"`
-	Sight  *sightJSON `json:"sight,omitempty"`
-}
-
-// sightJSON is a sighting as the journal spells it. [lane.Sighting] carries no
-// JSON tags, so the field names are the Go ones.
-type sightJSON struct {
-	ID           lane.ID
-	TTFT         time.Duration
-	Gen          time.Duration
-	Gap          time.Duration
-	Tokens       int
-	PromptTokens int
-	CachedTokens int
-	Probe        bool
-	At           time.Time
+	At     time.Time `json:"at"`
+	Row    *lane.Row `json:"row,omitempty"`
+	Weight float64   `json:"k,omitempty"`
 }
 
 // readJournal reads every public row the journal kept, in time order. A missing

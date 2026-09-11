@@ -130,9 +130,11 @@ func howGoodTheEstimateIs(out io.Writer, requests []asked, measured *world, look
 	fmt.Fprintf(out, "| median error | p75 | p90 |\n|---|---|---|\n| %.0f%% | %.0f%% | %.0f%% |\n\n",
 		100*quantile(errors, 0.5), 100*quantile(errors, 0.75), 100*quantile(errors, 0.9))
 	if measured.priced > 0 && len(measured.stale) > 0 {
-		fmt.Fprintf(out, "**%s of prices were made from evidence outside the window**, because the machine answered nothing inside it; the nearest answer either side stood in, a median of %s away. A window is a preference here and not a wall — see `world.around` — because refusing to price those would leave the table comparing candidates only on the requests all of them happened to pick a busy machine for.\n\n",
+		fmt.Fprintf(out, "**%s of prices were made from evidence outside the window**, because the machine answered nothing inside it; the nearest answer either side stood in, a median of %s away. A window is a preference here and not a wall — see `world.nearestAnswers` — because refusing to price those would leave the table comparing candidates only on the requests all of them happened to pick a busy machine for.\n\n",
 			share(len(measured.stale), measured.priced), plainlyAge(measured.stale))
 	}
+	fmt.Fprintln(out, "**It is a floor on the error and not the error.** The only machine whose answer was also observed is the one that served, which by definition answered at that moment; every price in the table below is for a machine that did not, on evidence that is by construction thinner. The staleness line above is what bounds how much thinner.")
+	fmt.Fprintln(out)
 	fmt.Fprintf(out, "A regret smaller than the median error is noise. Read the table for differences that are several times it, and widen or narrow `-window` (now %s) to see whether a finding survives.\n\n", plainly(look.window))
 }
 
@@ -140,6 +142,8 @@ func theTable(out io.Writer, bills map[string]map[string]*tally) {
 	fmt.Fprintln(out, "## Regret")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Regret is the seconds a person or a task waited beyond the best machine available at that moment, for that role, on that model — the same quantity the chooser itself ranks by (`rolePatience.expected`), read off the log instead of off a belief. The oracle's own regret is zero by construction and is the row nobody can beat.")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "**Every row is scored over the same requests, and that set is the intersection of all of them.** A candidate that gave no opinion, or whose demand the world could not price, takes that request out of the set for everybody — which is the only way four policies can be compared at all, and also the reason the `scored` column is a fraction of the log rather than the whole of it. The `no opinion` and `unpriced` columns say who narrowed it. Dropping a candidate from a run therefore moves every other row: the widest-declining candidate is the one setting the size of the comparison.")
 	fmt.Fprintln(out)
 	for _, class := range classes {
 		fmt.Fprintf(out, "### %s\n\n", class)

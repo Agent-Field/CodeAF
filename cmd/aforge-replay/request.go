@@ -2,6 +2,7 @@ package main
 
 import (
 	"math"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/callrows"
@@ -204,7 +205,7 @@ func measuredFelt(end callrows.Row, role lane.Role) float64 {
 // and internal/lane's chooser is steered by a [lane.Role], and the two
 // vocabularies are joined nowhere a reader of the file can reach. So the join is
 // made here, by one rule and one small table, and it is the first thing to
-// delete when the role reaches the row (see the report's seam).
+// delete when the role reaches the row (#928, which carries the acceptance).
 //
 // THE RULE IS THAT AN ERRAND'S TAG IS ALREADY ITS ROLE. Every side call of a
 // turn is tagged with its own role word — internal/session's auxiliary.go writes
@@ -223,6 +224,17 @@ func roleOf(tag string) lane.Role {
 	if role := lane.Role(tag); role.Known() {
 		return role
 	}
+	// A TAG MAY CARRY WHAT IT WAS ABOUT AFTER THE WORD FOR WHAT IT IS.
+	// internal/session's toolCallTag writes `tool:<the tool's name>`, so the
+	// role is the part before the colon. This is ONE RULE about the shape of a
+	// tag and not a row per tool: a tool added to the belt tomorrow writes a tag
+	// nobody can enumerate, and reading only up to the colon is what keeps it
+	// from being an anonymous background errand.
+	if word, _, qualified := strings.Cut(tag, ":"); qualified {
+		if role := lane.Role(word); role.Known() {
+			return role
+		}
+	}
 	if role, named := callSiteRoles[tag]; named {
 		return role
 	}
@@ -233,6 +245,15 @@ func roleOf(tag string) lane.Role {
 // with the role that place declares beside it. IT IS DATA AND NOT A LADDER: each
 // row is one call site, named, and a tag added to the build joins the table
 // rather than growing a condition.
+//
+// IT IS COMPLETE, AND A LAW READS THE TREE TO KEEP IT SO
+// (`TestEveryTagTheBuildWritesResolvesToARoleSomebodyDeclared`). Every tag this
+// build can write is reachable from source: the string literals handed to
+// `provider.WithCallTag`, the errand names `cmd/aforge`'s errandContext passes,
+// and — because internal/session/auxiliary.go writes `string(role)` — every
+// [roles.Role] constant there is. A word missing from here reads as a background
+// errand, which is quiet, plausible and moves every number in the table, so the
+// law fails the build rather than the report going quietly wrong.
 var callSiteRoles = map[string]lane.Role{
 	// internal/session/loop.go's laneRole: a conversation's own turn is talk.
 	"turn": lane.RoleTalk,
@@ -253,11 +274,50 @@ var callSiteRoles = map[string]lane.Role{
 	// internal/head/compiler.go: the resident's compiler, a craft pass.
 	"compile": lane.RoleDesign,
 	// internal/revision and internal/plan: gates reading finished work.
-	"gate":       lane.RoleJudge,
-	"satisfied":  lane.RoleJudge,
-	"delivery":   lane.RoleJudge,
-	"markreader": lane.RoleJudge,
-	"router":     lane.RoleJudge,
+	"gate":      lane.RoleJudge,
+	"satisfied": lane.RoleJudge,
+	"delivery":  lane.RoleJudge,
+
+	// cmd/aforge's errandContext names each of the resident's side errands with
+	// its own word and declares the role beside it in the same call. The role
+	// here is the one that call site passes, read off the argument.
+	"quorum":       lane.RoleJudge,
+	"sentinel":     lane.RoleJudge,
+	"craft-repair": lane.RoleDesign,
+	"craft-params": lane.RoleDesign,
+	"reflect":      lane.RoleAuxiliary,
+
+	// internal/session/auxiliary.go tags every errand with `string(role)`, so
+	// the whole of internal/roles' vocabulary reaches the log as a tag. The
+	// reading below is that package's own — internal/session's errandRole, which
+	// is the function this join stands in for on the other side of the seam: the
+	// two judging errands and the two remembering ones are named, the three that
+	// design are named, and an errand is AUXILIARY otherwise, because a side call
+	// of a turn made without the turn's stream is what an errand is.
+	"router":        lane.RoleJudge,
+	"routerconfirm": lane.RoleJudge,
+	"markreader":    lane.RoleJudge,
+	"guardian":      lane.RoleJudge,
+	"auditor":       lane.RoleJudge,
+	"consolidate":   lane.RoleMemory,
+	"planner":       lane.RoleDesign,
+	"designer":      lane.RoleDesign,
+	"division":      lane.RoleDesign,
+	"title":         lane.RoleAuxiliary,
+	"compaction":    lane.RoleAuxiliary,
+	"vision":        lane.RoleAuxiliary,
+	"imagegen":      lane.RoleAuxiliary,
+	"worker":        lane.RoleAuxiliary,
+	"speech":        lane.RoleAuxiliary,
+	"video":         lane.RoleAuxiliary,
+	"handoff":       lane.RoleAuxiliary,
+	"taskname":      lane.RoleAuxiliary,
+	"jobname":       lane.RoleAuxiliary,
+	"caption":       lane.RoleAuxiliary,
+	"shaper":        lane.RoleAuxiliary,
+	"intake":        lane.RoleAuxiliary,
+	"careful":       lane.RoleAuxiliary,
+	"distill":       lane.RoleAuxiliary,
 }
 
 // requestOf turns a replayed request into the one a chooser is asked.

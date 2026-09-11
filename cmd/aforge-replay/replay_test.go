@@ -2,11 +2,21 @@ package main
 
 import (
 	"bytes"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/printer"
+	"go/token"
+	"io/fs"
 	"math"
+	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	"github.com/Agent-Field/aforge-v2/internal/callrows"
 	"github.com/Agent-Field/aforge-v2/internal/lane"
 )
@@ -187,15 +197,25 @@ func TestARefusalIsCreditedToTheMachineItsOwnSentenceNames(t *testing.T) {
 }
 
 func TestEveryTagTheBuildWritesResolvesToARoleSomebodyDeclared(t *testing.T) {
-	// The one join this tool makes for itself. A tag that fell out of the table
-	// silently becomes a background errand, which would move every number in the
-	// watched half of the report without failing anything.
-	for tag, want := range callSiteRoles {
-		if got := roleOf(tag); got != want {
-			t.Errorf("tag %q resolved to role %q, want %q", tag, got, want)
+	// THE ONE JOIN THIS TOOL MAKES FOR ITSELF, AND THE ONLY ONE OF ITS LAWS THAT
+	// HAS TO READ THE TREE. A tag missing from `callSiteRoles` does not fail
+	// anything at run time: it reads as [lane.RoleUnknown], which is a patient,
+	// unwatched background errand, so a word added to the build tomorrow would
+	// quietly move every number in the watched half of the report and produce a
+	// table that still looks right. So this walks the sources for the tags the
+	// build can actually write and fails on one nothing here names.
+	//
+	// It is the stopgap until `calllog.Record` carries the role itself (#928);
+	// until then, this law is what keeps the stopgap true.
+	for tag, want := range tagsTheBuildWrites(t) {
+		got := roleOf(tag)
+		if got == lane.RoleUnknown {
+			t.Errorf("the build writes the tag %q (%s) and nothing here names it, so every call "+
+				"made under it is priced as an unwatched background errand", tag, want)
+			continue
 		}
-		if !want.Known() {
-			t.Errorf("tag %q names role %q, which is not in internal/lane's role table", tag, want)
+		if !got.Known() {
+			t.Errorf("tag %q resolved to %q, which is not in internal/lane's role table", tag, got)
 		}
 	}
 	// And the rule the table stands beside: an errand tagged with its own role
@@ -211,6 +231,174 @@ func TestEveryTagTheBuildWritesResolvesToARoleSomebodyDeclared(t *testing.T) {
 	if got := roleOf("a tag nobody has written down"); got != lane.RoleUnknown {
 		t.Errorf("an unrecognised tag resolved to %q; it must read as a background errand", got)
 	}
+}
+
+// derivedTags are the tag arguments in the tree that are not a string literal,
+// spelled exactly as the source spells them, with what each one can produce.
+//
+// A CALL SITE WHOSE TAG THIS WALK CANNOT READ IS A FAILURE AND NOT A SKIP. The
+// alternative — collecting the literals and ignoring everything else — is a law
+// that passes forever the moment somebody builds a tag out of a variable, which
+// is exactly how the log came to carry 2,309 untagged rows in the first place.
+var derivedTags = map[string]func(yield func(tag, where string)){
+	// internal/session/auxiliary.go: every errand is tagged with its own role
+	// word, so the whole of internal/roles' vocabulary reaches the log.
+	"string(role)": func(yield func(tag, where string)) {
+		for _, word := range roleWords() {
+			yield(word, "an internal/roles constant, written by internal/session/auxiliary.go")
+		}
+	},
+	// internal/session/toolask.go: a tool's own call carries the tool's name
+	// after the role word, and no walk can enumerate the belt.
+	"toolCallTag(question.tool)": func(yield func(tag, where string)) {
+		yield("tool", "internal/session/toolask.go, a call with no tool named")
+		yield("tool:a_tool_nobody_has_added_yet", "internal/session/toolask.go, qualified by the tool")
+	},
+	// cmd/aforge/chat.go's errandContext passes the errand's own name straight
+	// through; its call sites are walked for the literals they hand it.
+	"task": func(yield func(tag, where string)) {},
+}
+
+// tagsTheBuildWrites reads the module's sources for every tag that can reach
+// `calllog.Record.Tag`, and says where each came from.
+func tagsTheBuildWrites(t *testing.T) map[string]string {
+	t.Helper()
+	found := map[string]string{}
+	walkBuildSources(t, func(path string, file *ast.File) {
+		ast.Inspect(file, func(node ast.Node) bool {
+			call, isCall := node.(*ast.CallExpr)
+			if !isCall {
+				return true
+			}
+			switch callName(call.Fun) {
+			case "WithCallTag", "provider.WithCallTag":
+				if len(call.Args) < 2 {
+					return true
+				}
+				if word, literal := stringLiteral(call.Args[1]); literal {
+					found[word] = path
+					return true
+				}
+				spelling := source(t, call.Args[1])
+				derived, known := derivedTags[spelling]
+				if !known {
+					t.Errorf("%s writes a call tag spelled %q, which this law cannot read; "+
+						"add it to derivedTags with what it can produce", path, spelling)
+					return true
+				}
+				derived(func(tag, where string) { found[tag] = where })
+			case "errandContext":
+				// func errandContext(ctx, settings, task string, role lane.Role)
+				if len(call.Args) < 3 {
+					return true
+				}
+				if word, literal := stringLiteral(call.Args[2]); literal {
+					found[word] = path
+				}
+			}
+			return true
+		})
+	})
+	if len(found) < len(callSiteRoles) {
+		t.Fatalf("the walk found only %d tags for a table of %d rows; it is reading the wrong tree", len(found), len(callSiteRoles))
+	}
+	return found
+}
+
+// roleWords reads internal/roles for the role vocabulary itself, because that
+// package's constants ARE tags the moment auxiliary.go writes one.
+func roleWords() []string {
+	var words []string
+	set := token.NewFileSet()
+	file, err := parser.ParseFile(set, filepath.Join(moduleRoot, "internal", "roles", "roles.go"), nil, 0)
+	if err != nil {
+		panic("reading internal/roles: " + err.Error())
+	}
+	ast.Inspect(file, func(node ast.Node) bool {
+		spec, isValue := node.(*ast.ValueSpec)
+		if !isValue || len(spec.Values) != 1 {
+			return true
+		}
+		if kind, isIdent := spec.Type.(*ast.Ident); !isIdent || kind.Name != "Role" {
+			return true
+		}
+		if word, literal := stringLiteral(spec.Values[0]); literal && word != "" {
+			words = append(words, word)
+		}
+		return true
+	})
+	return words
+}
+
+// moduleRoot is this package's place in the tree, which is two directories up.
+const moduleRoot = "../.."
+
+// walkBuildSources hands every Go file the build compiles to the visitor. Test
+// files are skipped for the reason every other law in this tree skips them: a
+// fixture is allowed to name things the product does not.
+func walkBuildSources(t *testing.T, visit func(path string, file *ast.File)) {
+	t.Helper()
+	set := token.NewFileSet()
+	err := filepath.WalkDir(moduleRoot, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			switch entry.Name() {
+			case ".git", "testdata", "node_modules", "vendor", "bin":
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		file, err := parser.ParseFile(set, path, nil, 0)
+		if err != nil {
+			return nil
+		}
+		visit(filepath.ToSlash(strings.TrimPrefix(path, moduleRoot+"/")), file)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walking the tree: %v", err)
+	}
+}
+
+// callName renders a function expression as the source spells it, so that both
+// `WithCallTag` and `provider.WithCallTag` are recognisable without resolving
+// imports.
+func callName(fun ast.Expr) string {
+	switch shape := fun.(type) {
+	case *ast.Ident:
+		return shape.Name
+	case *ast.SelectorExpr:
+		if pkg, isIdent := shape.X.(*ast.Ident); isIdent {
+			return pkg.Name + "." + shape.Sel.Name
+		}
+	}
+	return ""
+}
+
+func stringLiteral(expr ast.Expr) (string, bool) {
+	lit, isLit := expr.(*ast.BasicLit)
+	if !isLit || lit.Kind != token.STRING {
+		return "", false
+	}
+	word, err := strconv.Unquote(lit.Value)
+	if err != nil {
+		return "", false
+	}
+	return word, true
+}
+
+func source(t *testing.T, expr ast.Expr) string {
+	t.Helper()
+	var out bytes.Buffer
+	if err := printer.Fprint(&out, token.NewFileSet(), expr); err != nil {
+		t.Fatalf("printing an expression: %v", err)
+	}
+	return out.String()
 }
 
 func TestTheClassesAreExactlyWhatTheRoleTableCanProduce(t *testing.T) {
@@ -237,8 +425,8 @@ func TestTheHalfLifeFallsBackToTheBeliefsOwnWhenNothingMoves(t *testing.T) {
 	// Nothing in the fixture drifts, so the variogram never reaches halfway and
 	// the honest answer is the forgetting internal/lane already uses rather than
 	// a figure invented to fill the hole.
-	if got := changeHalfLife(measured); got <= 0 {
-		t.Errorf("the measured half-life is %v; it may never be zero", got)
+	if got := changeHalfLife(measured); got != lane.HalfLife {
+		t.Errorf("the measured half-life is %v; with nothing drifting it must be internal/lane's own %v", got, lane.HalfLife)
 	}
 	if got := processNoise(measured); got != 0 {
 		t.Errorf("the fixture spans one day, so no day-to-day variance can be measured; got %.4f", got)
@@ -307,25 +495,88 @@ func TestAPolicyIsNeverTaughtAnAnswerItCouldNotHaveHadYet(t *testing.T) {
 		t.Fatalf("reading the fixture: %v", err)
 	}
 	requests, _ := requestsOf(rows)
-	stream := momentsOf(rows, requests, nil)
 	// THE ORDER IS THE WHOLE OF AN OFFLINE EVALUATION'S HONESTY. A stream that
 	// handed a candidate an answer before the request that produced it would
 	// flatter every policy that is good at hindsight, which is all of them.
-	var last time.Time
-	for _, one := range stream {
-		if one.at.Before(last) {
-			t.Fatalf("the stream goes backwards at %s", one.at)
-		}
-		last = one.at
+	//
+	// So the property is read FROM WHERE A POLICY STANDS — what it had been
+	// taught by the time it was asked, through pass() itself — and never off the
+	// sorted slice, whose order is its own answer to the question.
+	if complaint := hindsight(momentsOf(rows, requests, nil), requests); complaint != "" {
+		t.Errorf("over the fixture, %s", complaint)
 	}
-	for index, one := range stream {
-		if one.saw == nil {
+
+	// And the case the sort alone decides: an answer landing in the same
+	// millisecond a request goes out. The request is what the chooser was asked
+	// and the answer is somebody else's call finishing, so the ask is walked
+	// first — which today holds only because momentsOf appends the requests
+	// before the rows and the sort is stable. That is a fact about one line.
+	at := time.Date(2026, 9, 11, 14, 27, 50, 0, time.UTC)
+	tie := []callrows.Row{{
+		Record: calllog.Record{
+			Model: "a/model", Served: "Steady", Tag: "turn",
+			TTFTms: 200, Millis: 1200, CompletionTokens: 100,
+		},
+		At: at,
+	}}
+	asks := []asked{{
+		index: 0, id: "the request being made", at: at,
+		model: "a/model", role: lane.RoleTalk, want: talkShape,
+	}}
+	stream := momentsOf(tie, asks, nil)
+	if len(stream) < 2 || stream[0].ask == nil {
+		t.Fatalf("at one stamp the stream does not put the request first: %d moments, first ask %v", len(stream), stream[0].ask)
+	}
+	if complaint := hindsight(stream, asks); complaint != "" {
+		t.Errorf("at an equal stamp, %s", complaint)
+	}
+	// THE SAME CHECK OVER THE ORDER THIS BUILD IS CAREFUL NOT TO PRODUCE MUST
+	// FAIL, or nothing above proves anything: a check that cannot go red is a
+	// comment with a test's name on it.
+	wrong := append([]moment(nil), stream...)
+	sort.SliceStable(wrong, func(i, j int) bool { return wrong[i].ask == nil && wrong[j].ask != nil })
+	if complaint := hindsight(wrong, asks); complaint == "" {
+		t.Error("a stream that teaches the answer before the request it answers passes this law, so the law checks nothing")
+	}
+}
+
+// taughtWhen is a candidate that demands nothing and only remembers WHEN: for
+// every request it is asked about it records the stamp of the most recent thing
+// it had been taught by the time the question arrived.
+type taughtWhen struct {
+	latest time.Time
+	when   map[int]time.Time
+}
+
+func (t *taughtWhen) Name() string { return "when" }
+
+func (t *taughtWhen) learn(at time.Time) {
+	if at.After(t.latest) {
+		t.latest = at
+	}
+}
+
+func (t *taughtWhen) Saw(one lane.Sighting, _ string) { t.learn(one.At) }
+func (t *taughtWhen) Judged(one lane.Outcome)         { t.learn(one.At) }
+func (t *taughtWhen) Published(lane.Row, float64)     {}
+
+func (t *taughtWhen) Demand(one asked) string {
+	t.when[one.index] = t.latest
+	return ""
+}
+
+// hindsight walks a stream the way a real candidate does and names the first
+// request that was answered already knowing something it could not have known.
+func hindsight(stream []moment, requests []asked) string {
+	recorder := &taughtWhen{when: map[int]time.Time{}}
+	pass(recorder, stream, len(requests))
+	for _, one := range requests {
+		taught, asked := recorder.when[one.index], one.at
+		if taught.IsZero() || taught.Before(asked) {
 			continue
 		}
-		for _, before := range stream[:index] {
-			if before.ask != nil && before.ask.id != "" && one.saw.At.Before(before.ask.at) {
-				t.Fatalf("a sighting from %s was folded in after a request made at %s", one.saw.At, before.ask.at)
-			}
-		}
+		return fmt.Sprintf("the request at %s was answered already taught an answer stamped %s",
+			asked.Format(callrows.TimeLayout), taught.Format(callrows.TimeLayout))
 	}
+	return ""
 }

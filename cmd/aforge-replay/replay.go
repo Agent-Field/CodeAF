@@ -227,7 +227,7 @@ func bill(requests []asked, said map[string]answers, measured *world, look setti
 				common = false
 			}
 			if light != nil {
-				if spotted := light.at[spot{at: one.at, model: one.model}]; spotted != nil {
+				if spotted := light.at[one.index]; spotted != nil {
 					spotted.demands[name] = shown{machine: demand, felt: cost}
 				}
 			}
@@ -263,6 +263,7 @@ func bill(requests []asked, said map[string]answers, measured *world, look setti
 // that really answered was furthest from the best one available, which is the
 // definition that FOUND those three in the first place.
 type worst struct {
+	index    int
 	at       time.Time
 	model    string
 	class    string
@@ -284,15 +285,17 @@ type shown struct {
 }
 
 // spotlight is the handful of moments every candidate is shown at, indexed by
-// the moment itself so that a pass can fill its own column in as it walks past.
+// THE REQUEST ITSELF so that a pass can fill its own column in as it walks past.
+//
+// The index is the key and a timestamp is not, because a timestamp is not
+// unique in this log and is not unique in exactly the shape this table exists to
+// show: a hedge fans several arms at one model in one millisecond, and the pool
+// incidents are a handful of requests inside a few seconds. Keyed on the moment,
+// two requests collide and one candidate's row would describe a request the
+// heading does not, priced against a different answer shape.
 type spotlight struct {
 	worst []*worst
-	at    map[spot]*worst
-}
-
-type spot struct {
-	at    time.Time
-	model string
+	at    map[int]*worst
 }
 
 // spotlightOf picks the requests where what actually served was furthest from
@@ -323,7 +326,8 @@ func spotlightOf(requests []asked, measured *world, look settings, most int) *sp
 			continue
 		}
 		best[key] = &worst{
-			at: one.at, model: one.model, class: one.class(), role: one.role,
+			index: one.index,
+			at:    one.at, model: one.model, class: one.class(), role: one.role,
 			machine: one.machine, asked: one.demanded, regret: felt - bestFelt,
 			best: bestMachine, bestAt: bestFelt, servedAt: felt,
 			demands: map[string]shown{},
@@ -342,9 +346,9 @@ func spotlightOf(requests []asked, measured *world, look settings, most int) *sp
 	if len(ranked) > most {
 		ranked = ranked[:most]
 	}
-	light := &spotlight{worst: ranked, at: map[spot]*worst{}}
+	light := &spotlight{worst: ranked, at: map[int]*worst{}}
 	for _, one := range ranked {
-		light.at[spot{at: one.at, model: one.model}] = one
+		light.at[one.index] = one
 	}
 	return light
 }

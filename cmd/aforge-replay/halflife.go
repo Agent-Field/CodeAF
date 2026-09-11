@@ -84,9 +84,20 @@ func changeHalfLife(measured *world) time.Duration {
 // minute to just over two hours. It is a ladder of DATA and not of cases — each
 // rung is a lag, the rungs have no names, and the answer is whichever rung the
 // measurement lands on.
+//
+// BOTH ENDS ARE TIED TO SOMETHING RATHER THAN CHOSEN. The bottom rung is half a
+// minute because a shorter one reads the same answer twice — a model call takes
+// tens of seconds, so two draws closer together than that are usually one hedge
+// or one retry, and their agreement is a fact about our own fan-out and not
+// about how fast a machine drifts. The top is the horizon past which this
+// instrument stops believing evidence at all — `stopBelieving`, which is
+// `forgotten × lane.HalfLife` and the tree's own hundred minutes — with one
+// doubling of headroom, so the ladder can see the variogram flatten rather than
+// running out exactly where the answer would be. A half-life the ladder could
+// only report beyond that is one nothing downstream would act on anyway.
 func lagLadder() []time.Duration {
 	ladder := make([]time.Duration, 0, 9)
-	for lag := 30 * time.Second; lag <= 128*time.Minute; lag *= 2 {
+	for lag := 30 * time.Second; lag <= 2*stopBelieving; lag *= 2 {
 		ladder = append(ladder, lag)
 	}
 	return ladder

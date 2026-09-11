@@ -172,7 +172,20 @@ func (f floored) Beliefs(model string) []lane.Belief {
 // widen raises a belief's two timing variances to the floor, and touches
 // nothing else. A posterior that believes NOTHING is left alone: P at zero is
 // this package's signal for "no belief here" ([lane.Posterior.Known]), and
-// floorng it would turn every unseen machine into a confidently-held opinion.
+// flooring it would turn every unseen machine into a confidently-held opinion.
+//
+// ONE MEASURED FIGURE FLOORS BOTH SERIES, AND IT IS MEASURED ON THE RATE.
+// [processNoise] takes the day-to-day spread of a machine's median WRITING RATE,
+// for the reason [changeHalfLife] reads the same series: a first-token wait
+// carries the length of the prompt behind it, so its day-to-day spread is partly
+// a spread in what this build was asking rather than in what the machine was
+// doing, and a floor derived from it would be a floor on our own prompts. Both
+// posteriors live in the log domain, so the figure is in the right units for
+// both; what it is NOT is separately derived for the first-token axis, and the
+// consequence belongs beside the finding — `current+Q`'s result is a result
+// about a rate-derived floor spent on two axes, and a TTFT floor measured its
+// own way could move it. The cheap honest floor is the one that is measured,
+// rather than a second one invented to fill the shape.
 func (f floored) widen(belief lane.Belief) lane.Belief {
 	belief.TTFT = raise(belief.TTFT, f.floor)
 	belief.Rate = raise(belief.Rate, f.floor)
