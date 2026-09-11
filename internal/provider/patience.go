@@ -89,6 +89,11 @@ func patientRateLimits(ctx context.Context) bool {
 // The notice is called from the sending goroutine, synchronously, so it must
 // not work: the one live implementation sets a field and announces, which is
 // the budget it has.
+//
+// ITS SIBLING IS [WithCallProgress] (callprogress.go), which carries the other
+// half of a call's life — it went out, it is writing, it ended — under the very
+// same law about doing no work. This one is about the wait BEFORE the request
+// reaches a machine; that one begins where this one ends.
 func WithPacingNotice(ctx context.Context, notice func(bool)) context.Context {
 	if notice == nil {
 		return ctx

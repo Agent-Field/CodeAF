@@ -134,6 +134,28 @@ type Request struct {
 	// five-hundred-call swarm should explore early, and Thompson sampling on
 	// its own is blind to the difference.
 	Horizon int
+	// Role is WHO this call is being made for, carried whole rather than
+	// flattened into the two or three numbers a chooser happens to want today.
+	//
+	// IT IS THE ONE PLACE A POLICY ABOUT WAITING MAY COME FROM. The role table
+	// (roles.go) already declares how long this kind of call waits and whether
+	// anybody reads its stream, and those two columns are the whole of what
+	// separates a preference from a veto and a median from a tail
+	// ([patience]). Copying a column into a field here would be a second table
+	// to keep in step with the first; naming a role in a condition would be a
+	// third. A role added to the table gets the right behaviour with nothing in
+	// this package edited.
+	//
+	// EMPTY IS A CALL SITE THAT DID NOT SAY, AND IT REFUSES NOTHING. The two
+	// behavioural columns read from [RoleUnknown]'s row — how a call nobody
+	// described is treated, which the table has always answered — but the
+	// DEADLINE is left at zero rather than borrowed from it, because a deadline
+	// is a refusal and a refusal made out of a default nobody wrote down is a
+	// machine struck off the wire's table on behalf of a call site that never
+	// said anything. So an unnamed call is ranked by the same expectation as
+	// everybody else and vetoes no machine at all, which is exactly what every
+	// call did before this field existed. See [patienceFor].
+	Role Role
 	// Now is the moment the request is being made. See the note on the type.
 	Now time.Time
 	// Typical, when set, ranks on posterior means and does not sample.
