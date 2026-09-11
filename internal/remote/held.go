@@ -124,10 +124,13 @@ func (h *heldSet) raise(event EventWire, stream uint64, drawn []uint64) {
 	}
 }
 
-// answered drops a question because its resolve-door was called. It is keyed
-// rather than searched so that answering a consent card cannot take down a
-// harness offer that happens to share an id — two lanes, two counters
-// (session.Event's ID field states that law).
+// answered drops one card. It is keyed rather than searched so that dropping a
+// consent card cannot take down a harness offer that happens to share an id —
+// two lanes, two counters (session.Event's ID field states that law).
+//
+// ITS ONLY CALLER IS [heldSet.keepOnly], and that is the point: a card leaves
+// this room because the engine no longer has its question open, never because
+// some door on the wire remembered to say so.
 func (h *heldSet) answered(kind string, id uint64, text string) {
 	key := heldKey{kind: kind, id: id, text: text}
 	if _, found := h.items[key]; !found {
@@ -142,17 +145,37 @@ func (h *heldSet) answered(kind string, id uint64, text string) {
 	}
 }
 
-// settleConnect drops connect cards whose engine-side wait has ended without
-// an answer. The event stream crosses this after the ask settles; retaining a
-// card past that point would hand the next surface a key with no lock behind it.
-func (h *heldSet) settleConnect(pending []string) {
-	live := make(map[string]bool, len(pending))
-	for _, id := range pending {
-		live[id] = true
-	}
+// keepOnly drops every card the engine no longer has a question open for, and
+// it is THE ONLY THING THAT EVER EMPTIES THIS ROOM.
+//
+// A DOOR-KEYED CLEAR MISSES EVERY NEW DOOR, which is the defect class this
+// replaced. Each resolve-door on the wire used to take its own card down — a
+// line in MethodConsent, one in MethodStandingResolve, one in MethodConnectKey —
+// so the day the surface started answering every lane through the ONE door
+// [MethodQuestionResolve] (the questions wave), nothing dropped anything. The
+// owner answered a standing proposal, the engine recorded it once, and the same
+// card came back on every attach: a tab switch, a conversation switch, a second
+// window — each a new arrival number, each handed the answered card again by
+// [heldSet.waitingFor], with [heldSet.outstanding] still counting it so the
+// conversation read `waiting · your call` and home counted it in `want you`
+// (2026-09-11, reported by the owner).
+//
+// So the room is reconciled against the QUESTION'S OWN LIFE instead
+// ([session.Agent.OpenQuestions] is the whole of it — raised through one door,
+// answered or withdrawn through one door), and there is nothing left for a new
+// resolve-door to forget to call. It also subsumes what settleConnect did by
+// hand: a connect ask whose five-minute wait ran out is a question the engine
+// no longer has open, and so is one that was answered.
+//
+// IT IS NOT A PURE MIRROR OF THAT LIST and cannot become one. What a surface is
+// handed on arrival is the lane's own FRAME — the EventConsentRequest, the
+// EventStandingProposal the card is drawn from — which the question object does
+// not carry. This room keeps the frames; the engine says which of them still
+// stand.
+func (h *heldSet) keepOnly(open map[heldKey]bool) {
 	for _, key := range append([]heldKey(nil), h.order...) {
-		if key.kind == HeldConnect && !live[key.text] {
-			h.answered(HeldConnect, 0, key.text)
+		if !open[key] {
+			h.answered(key.kind, key.id, key.text)
 		}
 	}
 }
@@ -188,6 +211,42 @@ func (h *heldSet) outstanding() int { return len(h.items) }
 func (h *heldSet) forget() {
 	h.order = nil
 	h.items = map[heldKey]*heldItem{}
+}
+
+// heldKeyOfQuestion is the same key read off a [session.Question] rather than
+// off the event that announced it, which is what lets [heldSet.keepOnly]
+// compare this room against the engine's own list of what is still open.
+//
+// THE TWO SPELLINGS MUST AGREE, and they are written beside each other for that
+// reason: a kind read one way here and another way there would prune a card
+// that is still standing — a question a person can see and no longer answer.
+func heldKeyOfQuestion(q session.Question) (heldKey, bool) {
+	switch q.Kind {
+	case session.QuestionConsent:
+		if q.ID == 0 {
+			return heldKey{}, false
+		}
+		return heldKey{kind: HeldConsent, id: q.ID}, true
+
+	case session.QuestionStanding:
+		if q.ID == 0 {
+			return heldKey{}, false
+		}
+		return heldKey{kind: HeldStanding, id: q.ID}, true
+
+	case session.QuestionHarness:
+		if q.ID == 0 {
+			return heldKey{}, false
+		}
+		return heldKey{kind: HeldHarness, id: q.ID}, true
+
+	case session.QuestionConnect:
+		if q.Ref == "" {
+			return heldKey{}, false
+		}
+		return heldKey{kind: HeldConnect, text: q.Ref}, true
+	}
+	return heldKey{}, false
 }
 
 // heldKeyOf says which resolve-door answers an event, and whether any does.

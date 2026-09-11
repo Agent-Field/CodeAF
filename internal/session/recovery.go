@@ -3,12 +3,16 @@ package session
 // Revert-then-refix: the change ledger and the explicit recovery move it can
 // support.
 //
-// The loop detector (looped.go) used to open the recovery question below on its
+// The loop detector (looped.go) used to open a recovery QUESTION here on its
 // third signal. It no longer does: past two notes the turn ends through the
 // checkpoint hand-off, and a shape that cannot be handed over ends with its work
-// left as-is. The ledger remains the source of file provenance for the session's
-// created-file accounting, while the revert helpers remain explicit operations
-// and are never spent automatically by the loop detector.
+// left as-is. THE QUESTION ITSELF IS GONE WITH IT (2026-09-11). It had no caller
+// left, and what it left behind was a lane nothing could draw: it borrowed the
+// consent gate's wait with an empty question, so it banked no words, spoke on no
+// questions lane, and wrote no record — a shape [Agent.raiseQuestion] now makes
+// impossible to raise. The ledger remains the source of file provenance for the
+// session's created-file accounting, and the revert helpers remain explicit
+// operations that are never spent automatically.
 //
 // PMCoder (https://arxiv.org/abs/2608.06811) names the move: on a deterministic
 // stuck signal, RESTORE THE EDITED FILES AND RE-FIX FROM A CLEAN BASE. The model
@@ -19,10 +23,10 @@ package session
 //
 // ── WHO DECIDES ──
 //
-// The person, always, through an explicit recovery question. This is
-// destructive: it deletes files and throws away edits, so the loop detector's
-// structural threshold is not permission to run it. Nothing here runs on a
-// timer, in a task node, or in a headless session.
+// The person, always, through an explicit act. This is destructive: it deletes
+// files and throws away edits, so the loop detector's structural threshold is
+// not permission to run it. Nothing here runs on a timer, in a task node, or in
+// a headless session.
 //
 // ── WHAT IT CAN PUT BACK, AND WHAT IT SAYS INSTEAD ──
 //
@@ -61,7 +65,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -412,45 +415,6 @@ func (a *Agent) mutatingPath(call ai.ToolCall) (string, string, bool) {
 	return path, path, true
 }
 
-// ── the answer ──────────────────────────────────────────────────────────────
-
-// RecoveryChoice is one answer to the stuck question. It is the third option a
-// bool cannot carry: a person looking at a turn that has repeated itself three
-// times has three sensible things to say, and two of them are not "yes".
-type RecoveryChoice string
-
-const (
-	// RecoveryRevert restores what this turn changed and tells the model to
-	// re-attempt from the clean base.
-	RecoveryRevert RecoveryChoice = "revert"
-	// RecoveryContinue vouches for the approach: the model keeps going, having
-	// been asked to say what it expects to be different.
-	RecoveryContinue RecoveryChoice = "continue"
-	// RecoveryStop ends the attempt: the model says what it found, what is
-	// blocking it, and what it needs.
-	RecoveryStop RecoveryChoice = "stop"
-)
-
-// ResolveRecovery answers one explicit recovery question with all three options
-// available. The loop detector no longer opens one automatically.
-//
-// A surface that has only yes and no answers with [Agent.ResolveConsent] and the
-// mapping in [Agent.askAboutLoop] applies: yes takes the offer the question
-// made, no stops. This is the wider door, for a surface that draws three keys.
-//
-// An id nobody is waiting on is ignored, exactly as ResolveConsent's is.
-func (a *Agent) ResolveRecovery(id uint64, choice RecoveryChoice) {
-	switch choice {
-	case RecoveryRevert, RecoveryContinue, RecoveryStop:
-	default:
-		// An unknown answer is read as the narrowest one, for the reason an
-		// unknown consent scope is: a typo must never widen what happens, and
-		// "stop and explain" is the answer that changes nothing on disk.
-		choice = RecoveryStop
-	}
-	a.deliverConsent(id, consentAnswer{allow: choice == RecoveryRevert, choice: choice})
-}
-
 // ── the offer ───────────────────────────────────────────────────────────────
 
 // recoveryOffer is the revert as it will be put to the person: what would be
@@ -464,96 +428,12 @@ type recoveryOffer struct {
 // files this turn touched" is an offer of nothing dressed as a choice.
 func (o recoveryOffer) available() bool { return len(o.changes) > 0 }
 
-// rule is the question's own words, in the slot the approval policy's wording
-// usually occupies (looped.go's loopRule).
-func (o recoveryOffer) rule(n nudge) string {
-	if !o.available() {
-		return loopRule(n)
-	}
-	return fmt.Sprintf("%s — revert the %s this turn touched and retry from clean?",
-		loopRule(n), countedFiles(len(o.changes)))
-}
-
-func countedFiles(n int) string {
-	if n == 1 {
-		return "1 file"
-	}
-	return fmt.Sprintf("%d files", n)
-}
-
 // offerFor is what a revert would do right now.
 func (ep *episode) offerFor() recoveryOffer {
 	if ep == nil {
 		return recoveryOffer{}
 	}
 	return recoveryOffer{changes: ep.changes.list()}
-}
-
-// ── the escalation ──────────────────────────────────────────────────────────
-
-// askAboutLoop is the explicit recovery question retained for callers that
-// already chose that destructive road. The loop detector no longer calls it.
-//
-// TWO OF THE THREE ANSWERS ARE NOTES, and that is deliberate: this machinery
-// observes a turn, it does not drive one. Only the revert acts, and only because
-// somebody said so about a named set of files.
-//
-// THE BINARY MAPPING. A surface with yes and no keys (internal/tui3 today) says
-// yes to THE QUESTION AS ASKED — which is the revert when one was offered, and
-// "carry on" when none was, because that is what the sentence the person read
-// said. No is stop in both cases. A surface that draws a third key calls
-// [Agent.ResolveRecovery] and says exactly which of the three it means.
-//
-// An interrupt or a turn that ends while the question is open leaves nothing
-// behind — the same thing an unanswered consent request already does.
-func (a *Agent) askAboutLoop(ctx context.Context, hub *eventHub, ep *episode, looping nudge) {
-	offer := ep.offerFor()
-	// The question NEVER writes a consent memo. "Don't ask me again" is an answer
-	// about a TOOL, and this question is not about a tool: a person answering
-	// "yes, and stop asking" to a stuck prompt would otherwise have silently
-	// approved every later call to whatever the model happened to be repeating.
-	answer, err := a.askAnswer(ctx, hub, looping.call, approval.Decision{
-		Action: approval.ActionPrompt,
-		Rule:   offer.rule(looping),
-		// AND NO LINE FOR ANOTHER WINDOW: this question is about a turn and has
-		// three answers, and the three chips home would draw under a one-line
-		// gloss are the consent gate's two (taskpresence.go's PresenceQuestion).
-	}, false, "")
-	if err != nil {
-		return
-	}
-
-	choice := answer.choice
-	if choice == "" {
-		// A binary surface answered. Yes means the offer the question made.
-		switch {
-		case answer.allow && offer.available():
-			choice = RecoveryRevert
-		case answer.allow:
-			choice = RecoveryContinue
-		default:
-			choice = RecoveryStop
-		}
-	}
-	if choice == RecoveryRevert && !offer.available() {
-		// Nothing to put back — a surface asking for a revert of nothing gets the
-		// honest version rather than a note claiming files were restored.
-		choice = RecoveryContinue
-	}
-
-	// All three ride the AMBIENT lane (agent.go): they are instructions to the
-	// turn that is already running, not news anybody is waiting to hear about.
-	switch choice {
-	case RecoveryRevert:
-		a.enqueueAmbientNote(a.revertNote(offer))
-	case RecoveryContinue:
-		a.enqueueAmbientNote("[stuck] I asked the person about this repetition and they said to carry on. " +
-			"Keep going, but say what you expect to be different this time.")
-	default:
-		a.enqueueAmbientNote("[stuck] I asked the person about this repetition and they said no. " +
-			"Stop repeating " + looping.tool + ": say what you have found, what is blocking you, " +
-			"and what you need from them.")
-	}
 }
 
 // revertNote performs the revert and writes what happened, as the model reads

@@ -658,21 +658,21 @@ func (a *Agent) presenceAskingOptions(kind QuestionKind, id uint64, text string,
 	}
 }
 
-// presenceAskingWhole is [Agent.presenceAskingOptions] for a lane that can
-// describe its question COMPLETELY (question.go's [Question]).
+// presenceAskingWhole is [Agent.raiseQuestion] with the question's row on the
+// presence desk beside it, for a lane that home and every other window may
+// answer from the doorstep.
 //
 // It banks the same short form every older reader expects — the kind, the id,
-// one line and the answers — and the whole object beside it, and it banks the
-// question's WORDS where [Agent.OpenQuestions] reads them. The three go up and
-// come down together, because a lane that stopped waiting has stopped asking,
-// and a window still drawing the question would be offering a key the session
-// would drop.
-func (a *Agent) presenceAskingWhole(q Question) func() {
-	forgetWords := a.rememberQuestion(q)
+// one line and the answers — and the whole object beside it, and then raises the
+// question through the one door. The two go up and come down together, because a
+// lane that stopped waiting has stopped asking, and a window still drawing the
+// question would be offering a key the session would drop.
+func (a *Agent) presenceAskingWhole(q Question, announce func()) func() {
 	forgetDesk := a.presenceAskingQuestion(q)
+	letGo := a.raiseQuestion(q, announce)
 	return func() {
 		forgetDesk()
-		forgetWords()
+		letGo()
 	}
 }
 
@@ -1068,6 +1068,20 @@ func (a *Agent) presenceAsk() PresenceQuestion {
 	defer desk.mu.Unlock()
 	for _, ask := range desk.asks {
 		if ask.question.Kind == QuestionTask && automatic[ask.question.ID] {
+			continue
+		}
+		// A QUESTION NOTHING WAITS ON IS NOT ON THE WAITING DESK, on the ONE
+		// reading [askedOfThePerson.anyLocked] takes ([Question.Waiting]).
+		//
+		// This desk answers with its OLDEST row, and the row it answers with is
+		// the line every other window draws beside `waiting on you` and the
+		// question a key press there answers. A ratify or a question somebody
+		// asked back on keeps its row until it is answered — correctly, because
+		// it is still answerable — so a standing ratify beside a bash approval
+		// put the RATIFY's sentence on home under `waiting on you`, and pressing
+		// the key answered the ratify (2026-09-11). The row a person is told
+		// they are needed for has to be one that is actually waiting for them.
+		if full := ask.question.Full; full != nil && !full.Waiting() {
 			continue
 		}
 		return ask.question

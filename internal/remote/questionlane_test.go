@@ -10,6 +10,7 @@ package remote
 
 import (
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -68,7 +69,37 @@ func (a *askingAgent) ResolveQuestion(answer session.Answer) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.answered = append(a.answered, answer)
+	// AND AN ANSWERED QUESTION STOPS BEING OPEN, which is what a real engine
+	// does ([session.Agent.ResolveQuestion] claims the words before it touches
+	// the lane) and the fact the waiting room is now reconciled against.
+	kept := a.open[:0]
+	for _, standing := range a.open {
+		if standing.Kind == answer.Kind && standing.Token() == answerToken(answer) {
+			continue
+		}
+		kept = append(kept, standing)
+	}
+	a.open = kept
 	return nil
+}
+
+// answerToken is the answer's own id as one string, matching
+// [session.Question.Token].
+func answerToken(answer session.Answer) string {
+	if ref := strings.TrimSpace(answer.Ref); ref != "" {
+		return ref
+	}
+	return strconv.FormatUint(answer.ID, 10)
+}
+
+// OpenQuestions is every question this engine still has open, which is the
+// optional door [Session.dropSettledLocked] asks so the waiting room empties
+// from a question's own life rather than from a resolve-door remembering to say
+// so (held.go's [heldSet.keepOnly]).
+func (a *askingAgent) OpenQuestions() []session.Question {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]session.Question(nil), a.open...)
 }
 
 // raise puts one event on every open lane, with NO TURN RUNNING — which is the

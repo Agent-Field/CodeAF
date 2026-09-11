@@ -611,7 +611,7 @@ func (sess *Session) IdleSince() time.Time {
 
 // idleSinceLocked is the half of the reading this package can answer itself.
 func (sess *Session) idleSinceLocked() time.Time {
-	if sess.watchedLocked() || len(sess.rings) > 0 || sess.held.outstanding() > 0 {
+	if sess.watchedLocked() || len(sess.rings) > 0 || sess.heldOutstandingLocked() > 0 {
 		return time.Time{}
 	}
 	return sess.empty
@@ -1126,7 +1126,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		ProfileDir:                 sess.engine.ProfileDir,
 		PlacesRoot:                 sess.engine.PlacesRoot,
 		Live:                       sess.liveLocked(),
-		Held:                       sess.held.waitingFor(s.arrived),
+		Held:                       sess.heldWaitingLocked(s.arrived),
 		Persistent:                 sess.persistent,
 		Launch:                     sess.engine.Launch,
 		Facts:                      sess.factsLocked(),
@@ -1380,12 +1380,6 @@ func (sess *Session) emit(id, generation uint64, event session.Event) {
 			drawn = append(drawn, surface.arrived)
 		}
 		sess.held.raise(wire, id, drawn)
-	}
-	// A connect ask removes itself when its five-minute wait settles. That
-	// settling emits the next event, so reconcile here while the session lock is
-	// already held and do not leave a dead card keeping the host alive forever.
-	if pending, ok := sess.agent.(interface{ PendingConnect() []string }); ok {
-		sess.held.settleConnect(pending.PendingConnect())
 	}
 	weighs := sess.weighsAgainLocked(event.Kind)
 	sess.mu.Unlock()
@@ -2385,7 +2379,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 
 	case MethodHeldQuestions:
 		sess.mu.Lock()
-		waiting := sess.held.waitingFor(s.arrived)
+		waiting := sess.heldWaitingLocked(s.arrived)
 		sess.mu.Unlock()
 		return json.Marshal(waiting)
 
@@ -2465,7 +2459,6 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, err
 		}
 		agent.ResolveConsent(args.ID, args.Allow)
-		s.answered(HeldConsent, args.ID, "")
 		return nil, nil
 
 	case MethodConsentRemember:
@@ -2483,7 +2476,6 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			}
 		}
 		agent.ResolveConsentRemember(args.ID, args.Allow, args.Scope)
-		s.answered(HeldConsent, args.ID, "")
 		return nil, nil
 
 	case MethodStandingResolve:
@@ -2492,7 +2484,6 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, err
 		}
 		agent.ResolveStanding(args.ID, args.Answer)
-		s.answered(HeldStanding, args.ID, "")
 		return nil, nil
 
 	case MethodHarness:
@@ -2501,7 +2492,6 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, err
 		}
 		agent.ResolveHarness(args.ID, args.Run, args.Model)
-		s.answered(HeldHarness, args.ID, "")
 		return nil, nil
 
 	case MethodConnect:
@@ -2510,7 +2500,6 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, err
 		}
 		agent.ResolveConnect(args.ID, args.Approve)
-		s.answered(HeldConnect, 0, args.ID)
 		return nil, nil
 
 	case MethodConnectKey:
@@ -2519,7 +2508,6 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, err
 		}
 		agent.ResolveConnectKey(args.ID, args.Key)
-		s.answered(HeldConnect, 0, args.ID)
 		return nil, nil
 
 	case MethodNoteConnected:
@@ -2691,14 +2679,57 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	return nil, fmt.Errorf("engine: no such method %q", call.Method)
 }
 
-// answered drops a held question because its resolve-door was just called. It
-// runs whether or not that question was ever held: the set is keyed, so
-// answering something nobody was holding is a lookup that finds nothing.
-func (s *server) answered(kind string, id uint64, text string) {
-	sess := s.session
-	sess.mu.Lock()
-	defer sess.mu.Unlock()
-	sess.held.answered(kind, id, text)
+// dropSettledLocked reconciles the waiting room against the engine's own list of
+// what is still open, and it is the ONE thing that empties that room.
+//
+// IT REPLACED A LINE IN EVERY RESOLVE-DOOR. Each door on this wire used to take
+// its own card down, which held for exactly as long as every lane had a door of
+// its own: the day the surface started answering every lane through
+// [MethodQuestionResolve], no door dropped anything and an answered standing
+// card came back on every attach (held.go's [heldSet.keepOnly] tells the whole
+// story). A question's life is stated in one place now, so this asks THAT.
+//
+// THE OPTIONAL-DOOR PATTERN, as everything else in this file does it: an engine
+// that cannot list its open questions keeps whatever it was holding rather than
+// losing it, which is the safe half of the mistake.
+//
+// The caller holds sess.mu, and this reaches into the agent under it — the same
+// hold [Session.welcomeLocked] already takes to ask it for its model and title.
+func (sess *Session) dropSettledLocked() {
+	if sess.agent == nil {
+		return
+	}
+	door, ok := sess.agent.(interface {
+		OpenQuestions() []session.Question
+	})
+	if !ok {
+		return
+	}
+	open := make(map[heldKey]bool, 4)
+	for _, question := range door.OpenQuestions() {
+		if key, is := heldKeyOfQuestion(question); is {
+			open[key] = true
+		}
+	}
+	sess.held.keepOnly(open)
+}
+
+// heldOutstandingLocked is how many questions are really unanswered — the room
+// reconciled first, so the number cannot outlive the questions it counts. It is
+// what the idle policy reads: a card nobody has answered is a turn that has
+// stopped, and a card that answered one is a persistent engine kept alive
+// forever. The caller holds sess.mu.
+func (sess *Session) heldOutstandingLocked() int {
+	sess.dropSettledLocked()
+	return sess.held.outstanding()
+}
+
+// heldWaitingLocked is what this surface has not been sent yet, AFTER the room
+// has been reconciled — so a welcome and a MethodHeldQuestions call can never
+// hand over a question the engine already settled. The caller holds sess.mu.
+func (sess *Session) heldWaitingLocked(arrived uint64) []HeldQuestion {
+	sess.dropSettledLocked()
+	return sess.held.waitingFor(arrived)
 }
 
 // arg decodes a call's payload. An absent payload decodes as the zero value,

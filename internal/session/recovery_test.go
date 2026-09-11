@@ -318,35 +318,26 @@ func TestRevertNeverTouchesAnythingOutsideTheWorkspace(t *testing.T) {
 
 // ── the offer and the three answers ─────────────────────────────────────────
 
-// With nothing changed there is no move to offer, and the question is the one
-// it always was.
+// With nothing changed there is no move to offer.
 func TestTheOfferIsSilentWhenTheTurnChangedNothing(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	episode := agent.newEpisode()
-	looping := nudge{tool: "grep", count: 3}
 
-	offer := episode.offerFor()
-	if offer.available() {
+	if episode.offerFor().available() {
 		t.Fatal("a turn that changed nothing offered a revert")
-	}
-	if offer.rule(looping) != loopRule(looping) {
-		t.Fatalf("rule = %q, want the plain stuck wording", offer.rule(looping))
 	}
 }
 
-// With files touched, the question says exactly what would be undone.
+// With files touched, the offer names exactly what would be undone.
 func TestTheOfferNamesHowManyFilesWouldBeReverted(t *testing.T) {
 	agent, workspace := newTestAgent(t, &scriptedCompleter{}, nil)
 	episode := agent.newEpisode()
 	touchThrough(t, episode, workspace, revertWriteCall("c1", "a.md"), "one\n")
 	touchThrough(t, episode, workspace, revertWriteCall("c2", "b.md"), "two\n")
 
-	rule := episode.offerFor().rule(nudge{tool: "write", count: 3})
-	if !strings.HasPrefix(rule, "stuck: the same write call 3 times") {
-		t.Fatalf("the offer lost the stuck wording: %q", rule)
-	}
-	if !strings.Contains(rule, "revert the 2 files this turn touched and retry from clean?") {
-		t.Fatalf("the offer does not say what it would do: %q", rule)
+	note := agent.revertNote(episode.offerFor())
+	if !strings.Contains(note, "a.md") || !strings.Contains(note, "b.md") {
+		t.Fatalf("the revert does not say what it put back: %q", note)
 	}
 }
 

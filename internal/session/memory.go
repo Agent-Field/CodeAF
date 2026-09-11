@@ -54,7 +54,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1333,6 +1332,18 @@ func (a *Agent) memoryTools() []bare.Tool {
 // conversation until they remove it, so it moves once per deliberate act and
 // otherwise renders byte for byte (placescontext.go).
 //
+// THE DECISION RECORD IS A SNAPSHOT AND NOT A LIVE READING, and that is the one
+// thing in this block that does not move when the thing behind it does. A
+// question answered — every `ask`, and every `allow once` on a tool — used to
+// rewrite this message the moment the answer was applied, which bought a cold
+// prefix over the whole conversation for a line the model already had: the
+// answer's own tool result is in front of it either way, and what the record is
+// FOR is the gate that refuses the same question twice ([Question.Check] reads
+// the file, not this). So the section is re-read only when message[0] is being
+// rebuilt for some OTHER reason — a folder attached, a standing order agreed,
+// the clock brought forward — all of which re-price the prefix anyway, and every
+// decision made since rides in the transcript where it happened.
+//
 // WHAT LIVES HERE IS WHAT MOVES ONLY ON A DELIBERATE ACT, and that is the whole
 // rule. message[0] sits in front of every message there is, so one changed byte
 // in it re-prices the entire transcript at the uncached rate — five times the
@@ -1368,47 +1379,48 @@ func (a *Agent) refreshSystemLocked() {
 	if len(a.messages) == 0 {
 		return
 	}
-	record := a.recordSectionLocked()
+	// THE SNAPSHOT IS TAKEN WHEN THE REST OF THE MESSAGE MOVES, and only then.
+	// Everything ahead of the record is what a deliberate act rewrites; when one
+	// of those has moved, this message is being re-priced whatever the record
+	// says, so it is the moment to take the record as it now stands. When
+	// nothing ahead of it moved — a turn opening, a memory set routed — the
+	// record it already carries goes back out byte for byte.
+	if !a.recordRead {
+		// THE SESSION'S OWN RECORD IS READ ONCE, on the first rebuild — which is
+		// the conversation opening, before anything is asked. Every later reading
+		// is written by the one thing that changes the file, off this lock
+		// ([Agent.takeRecord]); this session's engine is the only writer of it,
+		// because every window's answer crosses the wire to this process
+		// (question.go's [Agent.ResolveQuestion] is the one door).
+		a.recordRead = true
+		a.recordText = DecisionsSection(a.Decisions())
+	}
+	head := a.system + a.placesText + a.standingText
+	if head != a.systemHead {
+		a.systemHead = head
+		a.recordShown = a.recordText
+	}
+	record := a.recordShown
 	if record != "" {
 		record = "\n\n" + record + "\n"
 	}
-	a.messages[0] = textMessage("system", a.system+a.placesText+a.standingText+record)
+	a.messages[0] = textMessage("system", head+record)
 }
 
-// recordSectionLocked is [DecisionsSection] over this session's own record, held
-// against the file it was rendered from.
+// takeRecord re-renders the decision section from the file, off every lock this
+// package holds while a person is waiting.
 //
-// EVERY REBUILD OF message[0] USED TO RE-READ decisions.jsonl. There are seven
-// callers of [Agent.refreshSystemLocked] and they fire on things that have
-// nothing to do with decisions — a folder attached, a standing order changed, a
-// turn's memory set routed — and each one opened the file, scanned it, and
-// unmarshalled every line of it to produce a string that changes only when a
-// question is answered. The record is answered from the last rendering unless
-// the file has moved.
-//
-// THE KEY IS THE FILE'S OWN STATE, not a flag this session sets when it writes.
-// A decision made in ANOTHER window lands in the same file (question.go's
-// DecidedByWindow), and a cache keyed on this session's own writes would carry a
-// record that was out of date in exactly the case the record exists for. A
-// record only ever grows by appending, so its size and its modification time
-// both move with it.
-//
-// A session with no folder has no record and nothing to stat, and renders
-// nothing every time — which is what [Agent.Decisions] answers for it anyway.
-func (a *Agent) recordSectionLocked() string {
-	dir := strings.TrimSpace(a.config.Place.Dir)
-	if dir == "" {
-		return ""
-	}
-	key := ""
-	if info, err := os.Stat(DecisionsPath(dir)); err == nil {
-		key = strconv.FormatInt(info.Size(), 10) + "@" + strconv.FormatInt(info.ModTime().UnixNano(), 10)
-	}
-	if key != "" && key == a.recordKey {
-		return a.recordText
-	}
-	a.recordKey, a.recordText = key, DecisionsSection(a.Decisions())
-	return a.recordText
+// IT IS CALLED BY THE ONE THING THAT CHANGES THE FILE (question.go's
+// [Agent.recordDecision]) and by the session opening, which are the two moments
+// the record can have moved. The read and the render happen with a.mu released
+// because the file grows with the conversation and the lock is the one an
+// interrupt has to be able to take; what is held under the lock is the finished
+// string.
+func (a *Agent) takeRecord() {
+	text := DecisionsSection(a.Decisions())
+	a.mu.Lock()
+	a.recordText = text
+	a.mu.Unlock()
 }
 
 // refreshCardLocked holds the state card's new text for the note that carries

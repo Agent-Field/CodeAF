@@ -47,8 +47,8 @@ under a hand already moving would otherwise be answered by a keystroke aimed at
 the sentence you were typing.
 
 `[2]` is only drawn, and only acts, when the question is one that can bank an
-answer. The recovery lane borrows the same question without it, and there the
-widening answer is absent and its key does nothing.
+answer. Every approval question is about a TOOL and can, so every one of them
+offers it.
 
 **It does not have to be answered in this window.** A conversation stopped on
 this question says so on **home**, with the same three answers on the row —

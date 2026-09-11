@@ -373,6 +373,10 @@ func (ep *episode) decisionBegins() {
 	if ep == nil || ep.agent == nil {
 		return
 	}
+	// AND THE STEP IS COUNTED, which is what lets two questions raised by one
+	// tool batch know they are neighbours (question.go's [Question.Batch]). It is
+	// stamped here because this is the one place a step begins.
+	ep.agent.stepSeq.Add(1)
 	ep.agent.mu.Lock()
 	ep.seenThrough = len(ep.agent.messages)
 	// AND THE PERSON'S MESSAGE THIS REQUEST IS ANSWERING, read under the lock

@@ -27,6 +27,35 @@ func driverOf(l *link) Driver {
 	return decode[Driver](l.t, frame.Payload)
 }
 
+// driverSaying is the note that says the keyboard is on `machine`, past any note
+// about a moment that has already passed.
+//
+// A WINDOW CAN BE TOLD IT DRIVES AFTER IT HAS STOPPED DRIVING, and that is the
+// engine's own ordering rather than a fault. The room is told who drives AFTER
+// the arriving window's welcome has been written — [server.attached] says why it
+// cannot be before, and it is that connection's own writer — so a SECOND window
+// that arrives in that gap is told it holds the keyboard by the FIRST window's
+// announcement. The note is true about the instant it names and is corrected by
+// the next frame, and per-connection ordering keeps the correction behind it.
+//
+// So a test that read "the next driver frame" was reading a coin flip: about one
+// run in twenty alone, and reliably at -count=400. It is what failed `touched
+// packages` on both #910 and #914 on 2026-09-11. What these tests are about is
+// where the keyboard ENDED UP, so that is what they wait for.
+func driverSaying(l *link, machine string) Driver {
+	l.t.Helper()
+	for {
+		frame := l.await(func(f Frame) bool { return f.Kind == "driver" })
+		note := decode[Driver](l.t, frame.Payload)
+		if note.Machine == machine {
+			return note
+		}
+		if !note.Yours {
+			l.t.Fatalf("the keyboard was said to be on %q, want %q", note.Machine, machine)
+		}
+	}
+}
+
 // ── who drives ──────────────────────────────────────────────────────────────
 
 // The first window in an empty room has the keyboard, and nobody has to ask.
@@ -155,12 +184,9 @@ func TestTakingTheKeyboardBackMovesItAndTellsTheOtherWindow(t *testing.T) {
 	desk.ok(2, MethodSubmit, SubmitArgs{Text: "go"})
 	// ...and the window that had it is now the watcher, told by a frame rather
 	// than by discovering it on its next keystroke.
-	told := driverOf(away)
+	told := driverSaying(away, "macbook")
 	if told.Yours {
 		t.Fatalf("both windows believe they hold the keyboard")
-	}
-	if told.Machine != "macbook" {
-		t.Fatalf("the new watcher was told the keyboard is on %q, want macbook", told.Machine)
 	}
 	if result := away.call(3, MethodSubmit, SubmitArgs{Text: "no"}); result.Error == "" {
 		t.Fatalf("the new watcher was allowed to type")

@@ -60,6 +60,13 @@ listed.
 
 ## The two ways to sign in: Google and Slack in a browser, or a pasted key
 
+**Your key is never written down.** The box you paste it into is masked, and what
+you type goes to the thing that asked for it and nowhere else: the account's own
+store. The line the conversation keeps in `decisions.jsonl` says an account was
+connected, when, and that it was you — it does not carry the key, and neither
+does anything the model is sent, anything another window is told, or anything
+written to a log.
+
 **In a browser.** aforge starts a loopback listener and gives you an address to
 visit; it never opens a browser for you and never logs a key. The loopback addresses
 tried, in order, are `127.0.0.1:8765`, `127.0.0.1:18765`, then any free port. When

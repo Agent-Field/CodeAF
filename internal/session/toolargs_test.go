@@ -474,7 +474,12 @@ func TestNoToolDecodesItsOwnArgumentsWithEncodingJSON(t *testing.T) {
 // ordinary answer; declaring either an integer would refuse the value the tool
 // itself reaches for.
 func TestNoWholeNumberArgumentIsDeclaredANumber(t *testing.T) {
-	fractional := map[string]bool{"per_run_usd": true, "level": true, "fade": true}
+	// `ask`'s dial is the third kind of fractional argument: a RANGE rather than
+	// a count. [Dial] is float64 at both ends and in the middle because the thing
+	// on the dial is a quantity the asker chose — a share, a threshold, a rate —
+	// and declaring its ends whole would refuse "0 to 1, default 0.3" outright.
+	fractional := map[string]bool{"per_run_usd": true, "level": true, "fade": true,
+		"min": true, "max": true, "default": true}
 	for _, path := range toolArgumentSources(t) {
 		body, err := os.ReadFile(path)
 		if err != nil {

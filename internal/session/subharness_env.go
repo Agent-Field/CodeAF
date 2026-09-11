@@ -499,20 +499,28 @@ func (e *subharnessEnv) Ask(ctx context.Context, question string, opts exec.AskO
 	// surface — home, another window, the phone — could so much as say the
 	// question of. It is taken off the register by the same defer that takes the
 	// channel off ([Agent.forgetSubharnessAsk]).
-	e.agent.subharnessAsks[id] = &subharnessQuestion{
+	asking := &subharnessQuestion{
 		replies:  replies,
 		question: question,
 		name:     e.manifest.Name,
 		asked:    time.Now(),
 	}
+	e.agent.subharnessAsks[id] = asking
 	e.agent.mu.Unlock()
 	defer e.agent.forgetSubharnessAsk(id)
 
 	e.needsALook()
 	defer e.working()
-	if e.room != nil {
-		e.room.publish(Event{Kind: EventSubharnessAsk, ID: id, Text: question, Args: string(input)})
-	}
+	// AND IT IS RAISED THROUGH THE ONE DOOR, with the room's own row as its
+	// announcement (question.go's [Agent.raiseQuestion]). The run's question
+	// reached the questions lane only through a replay before this, so a window
+	// that drew it had nothing that would ever close it — the answer and the
+	// withdrawal both speak now.
+	defer e.agent.raiseQuestion(e.agent.subharnessAskQuestion(id, *asking), func() {
+		if e.room != nil {
+			e.room.publish(Event{Kind: EventSubharnessAsk, ID: id, Text: question, Args: string(input)})
+		}
+	})()
 
 	select {
 	case reply := <-replies:

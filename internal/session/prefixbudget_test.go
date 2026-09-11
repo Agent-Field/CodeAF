@@ -371,6 +371,23 @@ const fixedPrefixBudget = 48_000
 // percent over what it measured on landing — room for a few moves of that size,
 // and not room for a paragraph.
 //
+// AND `ask` GREW AGAIN, WHICH THE HEADROOM ABSORBED AND THIS LINE SAYS OUT LOUD
+// (2026-09-11, the questions wave). The schema's enums are now written from the
+// Go constants rather than typed out beside them — so `pick.confidence` offers
+// the three words the code actually reads, `input.blanks` and `input.dial` carry
+// their shapes, and `subject.kind` carries `order`. That is four vocabularies and
+// two objects the model could not see before, and it cost bytes: 3,844 → 4,235.
+// 137 of them were won back the way the last pass won its 433, by deleting prose
+// that says a field's own name back at the model (`"Comparison axis values, one
+// short text per axis"`, `"What it holds before they type"`, `"kind blanks only"`)
+// — leaving the schema at 4,098 and the lean prefix at 31,035 against the 31,500
+// here, about 465 bytes of room.
+//
+// THAT IS THE HEADROOM DOING ITS JOB AND NOT A LICENCE. The paragraph above says
+// what it is for: a few moves of a couple of hundred bytes, so a shared page can
+// still move. A wave that needs more than this is a wave that takes something
+// out first.
+//
 // THEREAFTER IT ONLY EVER RATCHETS DOWN, in the ledger discipline the full
 // budget above is kept under: a lane that takes bytes out lowers it in the same
 // commit, and nothing ever raises it again.

@@ -1027,10 +1027,10 @@ func (a *Agent) openTask(ctx context.Context, id uint64, spec taskSpec, elsewher
 	// the line and two chips could not say so, and a person who left it alone
 	// was told nothing about what leaving it alone would do.
 	proposed := a.proposalAsk(id, question.notice)
-	forget := a.presenceAskingWhole(proposed)
-	a.announceTask(hub, question)
-	// AFTER the card that carries the brief, on EventQuestion's own ordering law.
-	a.emitQuestion(EventQuestion, proposed, nil)
+	// The card that carries the brief is the lane's own announcement, and the
+	// question goes out after it on EventQuestion's own ordering law
+	// ([Agent.raiseQuestion] keeps it, so no lane emits the raise itself).
+	forget := a.presenceAskingWhole(proposed, func() { a.announceTask(hub, question) })
 	wait := &taskWait{
 		agent: a, id: id, question: question, proposed: proposed,
 		settled:   make(chan taskSettled, 1),

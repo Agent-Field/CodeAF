@@ -1730,6 +1730,17 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 				// their transcript and silence, which is what they asked for.
 			}
 			a.mu.Unlock()
+			// AND NO QUESTION OF THE MODEL'S OWN OUTLIVES THE TURN THAT RAISED
+			// IT UNLESS IT SAID IT WOULD. It is [Agent.handBackUnsettled]'s law
+			// one lane over: a ratify nobody answered and a question somebody
+			// asked back on and never returned to have no wait of their own to
+			// end, so without this they stood on the desk and against the cap
+			// for the rest of the session, about a turn that finished
+			// (tools_ask.go's [Agent.retireTurnQuestions]). It is AFTER the
+			// unlock because withdrawing takes a.mu, and after the disowned-turn
+			// return above because a turn that was abandoned has had every one
+			// of these acts done for it already.
+			a.retireTurnQuestions()
 		}()
 		// A faulted turn must end its streams with a reason rather than take
 		// the process down: the person is holding a live channel.

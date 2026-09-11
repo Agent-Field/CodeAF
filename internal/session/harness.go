@@ -452,7 +452,13 @@ func (a *Agent) askHarness(ctx context.Context, hub *eventHub, match harnessRout
 	a.harnessAsks[id] = harnessAsk{answers: answers}
 	a.mu.Unlock()
 
-	hub.send(Event{
+	// THE OFFER IS RAISED THROUGH THE ONE DOOR, with the card as its
+	// announcement (question.go's [Agent.raiseQuestion]): the question is the
+	// same object [Agent.OpenQuestions] used to derive at subscription time, and
+	// now it is banked when it is asked — so a second window hears the raise,
+	// the answer and the withdrawal rather than only what a replay happened to
+	// catch.
+	offer := Event{
 		Kind: EventHarnessOffer,
 		ID:   id,
 		Text: match.Entry.Name,
@@ -463,7 +469,8 @@ func (a *Agent) askHarness(ctx context.Context, hub *eventHub, match harnessRout
 		// on — or why the word they used named nothing.
 		Model:     match.Model,
 		ModelNote: match.ModelNote,
-	})
+	}
+	defer a.raiseQuestion(a.harnessQuestion(id, offer), func() { hub.send(offer) })()
 
 	select {
 	case answer := <-answers:
