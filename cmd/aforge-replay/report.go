@@ -65,7 +65,14 @@ func whatWasRead(out io.Writer, look settings, rows []callrows.Row, requests []a
 	fmt.Fprintf(out, "- `%s` — %s lines, %s to %s\n", look.log, count(len(rows)), stamp(first), stamp(last))
 	fmt.Fprintf(out, "- %s finished attempts: %s answers, %s refusals, %s cut off\n",
 		count(measured.clean+measured.refusals+measured.censored), count(measured.clean), count(measured.refusals), count(measured.censored))
+	guessed := 0
+	for _, one := range requests {
+		if one.guessed {
+			guessed++
+		}
+	}
 	fmt.Fprintf(out, "- %s replayable requests; %s starts had no row under them and were skipped\n", count(len(requests)), count(unpaired))
+	fmt.Fprintf(out, "- %s of those never got an answer at all, so the work they asked for is this role's typical answer on this model rather than a measurement\n", count(guessed))
 	switch {
 	case look.journalMissing:
 		fmt.Fprintf(out, "- no sightings journal at `%s` — every candidate starts cold\n", look.journal)

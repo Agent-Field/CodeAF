@@ -50,10 +50,7 @@ func momentsOf(rows []callrows.Row, requests []asked, journal []seen) []moment {
 		}
 		id := lane.ID{Model: lane.BareModel(row.Model), Lane: machine}
 		one := drawOf(row)
-		class := "unattended"
-		if roleOf(row.Tag).Visible() {
-			class = "watched"
-		}
+		class := classOf(roleOf(row.Tag))
 		if one.refused {
 			outcome := lane.Outcome{ID: id, Refused: true, Reason: refusalWord(row), At: row.At}
 			stream = append(stream, moment{at: row.At, judged: &outcome})

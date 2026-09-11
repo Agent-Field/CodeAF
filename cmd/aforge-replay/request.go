@@ -52,6 +52,51 @@ type asked struct {
 	// is the estimator's own error, measured on the same log, and the report
 	// prints it before it prints anything anybody might act on.
 	ownFelt float64
+	// guessed marks a request whose own answer never arrived, so its work is the
+	// typical work of its role on its model rather than a measurement. The report
+	// counts them.
+	guessed bool
+}
+
+// shapeKey is what a typical answer length is a property of: the model, and
+// whether anybody was reading it.
+type shapeKey struct {
+	model string
+	class string
+}
+
+// typicalShapes is the median answer this build gets from each model in each
+// role class, in tokens, so that a request whose answer never arrived can be
+// priced for the work it asked for rather than for none.
+//
+// IT IS A MEDIAN OVER THE LOG'S OWN ANSWERS and not a figure chosen here: the
+// completion and reasoning tokens of every clean row of that model and class.
+func typicalShapes(rows []callrows.Row) map[shapeKey]shape {
+	answers := map[shapeKey][]float64{}
+	thinking := map[shapeKey][]float64{}
+	for _, row := range rows {
+		if !row.Finished() || row.Model == "" || row.CompletionTokens <= 0 || row.Failed() {
+			continue
+		}
+		key := shapeKey{model: lane.BareModel(row.Model), class: classOf(roleOf(row.Tag))}
+		answers[key] = append(answers[key], float64(row.CompletionTokens))
+		thinking[key] = append(thinking[key], float64(row.ReasoningTokens))
+	}
+	typical := make(map[shapeKey]shape, len(answers))
+	for key, lengths := range answers {
+		answer := int(quantile(lengths, 0.5))
+		reasoning := int(quantile(thinking[key], 0.5))
+		if key.class == "watched" {
+			visible := answer - reasoning
+			if visible < 0 {
+				visible = 0
+			}
+			typical[key] = shape{visible: visible, hidden: reasoning}
+			continue
+		}
+		typical[key] = shape{hidden: answer}
+	}
+	return typical
 }
 
 // requestsOf pairs the log's start and end rows into replayable requests.
@@ -69,6 +114,7 @@ func requestsOf(rows []callrows.Row) (requests []asked, unpaired int) {
 			ends[row.ID] = row
 		}
 	}
+	typical := typicalShapes(rows)
 	for _, row := range rows {
 		if row.Finished() || row.Lost() || row.Model == "" {
 			continue
@@ -79,13 +125,26 @@ func requestsOf(rows []callrows.Row) (requests []asked, unpaired int) {
 			continue
 		}
 		role := roleOf(row.Tag)
+		want, guessed := shapeOf(end, role), false
+		if want.visible+want.hidden == 0 {
+			// AN ANSWER THAT NEVER ARRIVED STILL ASKED FOR SOMETHING. A refused
+			// request carries no completion tokens, so reading its work as zero
+			// prices every machine at its first token alone and makes the one case
+			// this instrument matters most for — a paced pool refusing the same
+			// errand eight times in forty seconds — rank below a slow but healthy
+			// answer. What it asked for is unknown and not nothing, so the honest
+			// stand-in is what this role typically asks of this model, measured
+			// from the log's own answers.
+			want, guessed = typical[shapeKey{model: lane.BareModel(row.Model), class: classOf(role)}], true
+		}
 		requests = append(requests, asked{
 			index:    len(requests),
 			id:       row.ID,
 			at:       row.At,
 			model:    lane.BareModel(row.Model),
 			role:     role,
-			want:     shapeOf(end, role),
+			want:     want,
+			guessed:  guessed,
 			demanded: row.Lane,
 			machine:  answered(end),
 			prompt:   end.PromptTokens,
@@ -230,8 +289,11 @@ func (a asked) request() lane.Request {
 // because that column is already what decides whether the tail or the median is
 // the number that matters ([rolePatience.riskZ]), and a second spelling of the
 // same split would be a second thing to keep in step.
-func (a asked) class() string {
-	if a.role.Visible() {
+func (a asked) class() string { return classOf(a.role) }
+
+// classOf is the split itself, read from the role table and from nothing else.
+func classOf(role lane.Role) string {
+	if role.Visible() {
 		return "watched"
 	}
 	return "unattended"
