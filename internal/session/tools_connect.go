@@ -388,6 +388,10 @@ func (a *Agent) armService(ctx context.Context, service connectStatus, account, 
 		return connected + ", and the person has turned off everything it can do. " +
 			"Do the work without it and say so plainly; asking again will not change their answer."
 	}
+	// AND WORK WITH NOBODY TO ASK GETS ONLY WHAT IT IS GRANTED ([Agent.grantedOnly]).
+	if tools = a.grantedOnly(tools); len(tools) == 0 {
+		return connected + ungrantedFamily
+	}
 	armed, err := a.armFamily(tools)
 	if err != nil {
 		return connected + ", but its tools could not be loaded: " + err.Error()

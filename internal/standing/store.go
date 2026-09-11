@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/filelock"
@@ -608,18 +609,29 @@ func writeAtomic(path string, data []byte) error {
 	return syncDir(filepath.Dir(path))
 }
 
-// syncDir makes a rename inside dir durable. A filesystem that cannot sync a
-// folder (some refuse to open one for it) has nothing more to offer, and the
-// rename itself stands.
+// syncDir makes a rename inside dir durable, and answers whether it did.
+//
+// A FAILED SYNC IS A FAILED WRITE (the third review, B4). It used to be read as
+// success whatever it said, so a run counter could come back from a power cut
+// older than the folders it numbered — the exact thing the counter's own sync
+// exists to prevent. An I/O error is returned now, and the caller's write
+// fails with it. A filesystem that cannot sync a folder at all answers the
+// call as unsupported, and has nothing more to offer: the rename stands.
 func syncDir(dir string) error {
 	folder, err := os.Open(dir)
 	if err != nil {
-		return nil
+		return err
 	}
 	defer folder.Close()
-	_ = folder.Sync()
+	if err := syncFolder(folder); err != nil && !errors.Is(err, syscall.EINVAL) && !errors.Is(err, syscall.ENOTSUP) {
+		return err
+	}
 	return nil
 }
+
+// syncFolder is the one call that syncs a folder. It is a variable so a test
+// can make the disk refuse.
+var syncFolder = func(folder *os.File) error { return folder.Sync() }
 
 // newID is 16 random hex characters, the same shape and the same reasoning as a
 // session id: enough to name every item a machine will ever hold with nobody

@@ -177,7 +177,6 @@ var beltShapes = []beltShape{{
 	},
 }}
 
-
 // systemTextOf is what an agent's message[0] is rebuilt from
 // ([Agent.refreshSystemLocked]), read under the lock that guards it.
 func systemTextOf(a *Agent) string {

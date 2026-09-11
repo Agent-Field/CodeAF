@@ -266,22 +266,100 @@ func (s *Store) Occurrences(id string, limit int) ([]Occurrence, error) {
 	return out, nil
 }
 
+// publicationsFile is where an item keeps the receipt of the last report it
+// published to each path, beside its runs/ folder ([Store.KeepPublication]).
+const publicationsFile = "published.json"
+
+// publicationWindow is how many of an item's newest runs [Store.LastPublication]
+// reads when the item keeps no receipt for the path — the same window the pass
+// looks back through for a finished occurrence ([Store.finishedOccurrence]).
+const publicationWindow = 64
+
+// KeepPublication records receipt as the last report this item published to
+// its path. The runner calls it the moment the report is placed, and it is
+// what [Store.LastPublication] answers from.
+//
+// IT TAKES NO LOCK, and needs none: an item's reports are placed by the one
+// firing a pass runs for it at a time, under the pass's own lock, so this file
+// has one writer. It is replaced whole ([writeAtomic]), so a reader sees the
+// receipts before the write or after it.
+func (s *Store) KeepPublication(id string, receipt Publication) error {
+	if err := checkID(id); err != nil {
+		return err
+	}
+	kept, err := s.keptPublications(id)
+	if err != nil {
+		return err
+	}
+	if kept == nil {
+		kept = map[string]Publication{}
+	}
+	kept[filepath.Clean(receipt.Path)] = receipt
+	data, err := json.MarshalIndent(kept, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(s.ItemDir(id), 0o700); err != nil {
+		return err
+	}
+	return writeAtomic(filepath.Join(s.ItemDir(id), publicationsFile), append(data, '\n'))
+}
+
+// keptPublications reads the item's receipts, nil when it keeps none.
+func (s *Store) keptPublications(id string) (map[string]Publication, error) {
+	raw, err := os.ReadFile(filepath.Join(s.ItemDir(id), publicationsFile))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var kept map[string]Publication
+	if err := json.Unmarshal(raw, &kept); err != nil {
+		return nil, fmt.Errorf("standing: the publication receipts of %s are unreadable: %w", id, err)
+	}
+	return kept, nil
+}
+
 // LastPublication answers the receipt of the report this item last published
-// to path, newest first across its runs, or nil when it has published none
-// there. It is what a publication is compared against before it replaces the
-// file (internal/session's publishStandingReport).
+// to path, or nil when it has published none there. It is what a publication
+// is compared against before it replaces the file (internal/session's
+// publishStandingReport).
+//
+// IT READS ONE FILE, NOT THE ITEM'S HISTORY (the third review, B5). It used to
+// read every run record the item had ever kept, newest first, until one named
+// the path — a search that grew by one record with every firing, for as long as
+// the item stood. The receipt is kept where it is made ([Store.KeepPublication])
+// and read back here. An item whose receipt predates that file is looked for in
+// its newest [publicationWindow] runs, found by number from the item's own run
+// counter rather than by listing the folder; a receipt older than that is not
+// found, and the file it describes is then treated as one aforge never wrote —
+// held, never written over.
 func (s *Store) LastPublication(id, path string) (*Publication, error) {
 	if err := checkID(id); err != nil {
 		return nil, ErrNotFound
 	}
-	names, err := runFolders(s.RunsDir(id))
+	kept, err := s.keptPublications(id)
 	if err != nil {
 		return nil, err
 	}
-	for _, name := range names {
-		record, err := ReadOccurrence(filepath.Join(s.RunsDir(id), name))
-		if err == nil && record.Published != nil && filepath.Clean(record.Published.Path) == filepath.Clean(path) {
-			return record.Published, nil
+	if receipt, ok := kept[filepath.Clean(path)]; ok {
+		return &receipt, nil
+	}
+	last, err := s.lastMinted(id)
+	if err != nil {
+		return nil, err
+	}
+	for n := last; n > 0 && n > last-publicationWindow; n-- {
+		for _, name := range []string{RunName(n), fmt.Sprintf("%04d", n)} {
+			record, err := ReadOccurrence(filepath.Join(s.RunsDir(id), name))
+			if err != nil {
+				continue
+			}
+			if record.Published != nil && filepath.Clean(record.Published.Path) == filepath.Clean(path) {
+				return record.Published, nil
+			}
+			break
 		}
 	}
 	return nil, nil
