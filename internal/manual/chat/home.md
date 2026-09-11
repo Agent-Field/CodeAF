@@ -17,12 +17,17 @@ answering one question you would ask walking up to a colleague's desk:
  ? Clever Bet Prediction Model              6h     npm run dev · pricing-site · a background job
    the 2024 season only, or all three?  enter
                                                  since you left · 12h
- where you were                                    Spark Fleet Ssh Audit · 2 hosts up, 1 not
-   Understanding Hash Tables                here   made apartments-minto-street.md
-   explain open addressing vs chaining
-   Understanding Bloom Filters               11h   spend                    today $0.14 of $20
-   Locate Recent Sandbox Task       infra     1d     ▁▂▁▃▅▂▁▁▇▃▂▅▂▁  14 days $34.10 · loudest mon $9.20
-   70 more · type to find one                      opus 63%  ·  3 chats and 1 task today
+ to check · 3       finished, nobody has checked it  Spark Fleet Ssh Audit · 2 hosts up, 1 not
+   tier-B subs                      3 files · 1d    made apartments-minto-street.md
+   built the tier-B flow   a accept   n not right
+   package release radar                      1d  spend                    today $0.14 of $20
+   1 more · 15 older · tasks                         ▁▂▁▃▅▂▁▁▇▃▂▅▂▁  14 days $34.10 · loudest mon $9.20
+                                                  opus 63%  ·  3 chats and 1 task today
+ where you were
+   Understanding Hash Tables                here  next up
+   explain open addressing vs chaining              the 6am repo watch                in 20h
+   Understanding Bloom Filters               11h
+   70 more · type to find one
 
  projects                                        next up
    ~/aforge-v2      12 chats · 1 running  master     the 6am repo watch                in 20h
@@ -50,7 +55,7 @@ from 170, where `projects` and `spend` take the third.
 
 | Panel | What a row is | `enter` on a row | Dim line when it holds nothing |
 | --- | --- | --- | --- |
-| `needs you` | a question waiting on a person, anywhere | opens where it was asked | `questions from any chat or task land here · a digit answers them` |
+| `needs you` | a question waiting on a person, anywhere, and under them the `to check` group of work that landed | opens where it was asked | `questions from any chat or task land here · a digit answers them` |
 | `where you were` | a conversation | opens it | `your conversations · what you type below starts one` |
 | `projects` | a folder with conversations | starts a new chat there | never empty — the folder this window opened in is always a row |
 | `running` | a task, a background job, a watch firing | brings its conversation here | `work you send off with /task runs here on its own` |
@@ -66,39 +71,88 @@ while a number still draws nothing at zero — never `$0.00`, never `0 tasks`.
 
 ## What needs me — the needs you panel, the ? rows at the top of home
 
-**The top of the left column, and its rows wear the amber `?`.** A row is there when
+**The top of the left column.** The panel holds **two groups**: the questions that have
+stopped something, then the work that landed and has not been checked.
+
+**The first group is the questions, and only they wear the amber `?`.** A row is there when
 something has stopped and cannot go on without you, from any project:
 
 - a conversation stopped on a question — a command to approve, a task to approve, a card
   about something standing;
-- a task the record marks as `your call` — work nobody could check reads
-  `landed unchecked · enter to look`, and `enter` opens the conversation on the task's
-  record, where its two answers are;
 - a reminder, watch or rule that stopped and wants an answer.
 
-Each row is **two lines**: the title with **how long it has waited** at the right, and under
-it what it is asking, in the question's own words. The longest wait is at the top. The
-heading counts the rows: `needs you · 2`.
+Each is **two lines**: the title with **how long it has waited** at the right, and under it
+what it is asking, in the question's own words. **The longest wait is at the top**, and the
+heading counts these rows and no others: `needs you · 2`. A frame where nothing is stopped
+draws the heading with no number at all.
 
 **A permission question is repeated exactly and nothing is added to it.** The session that
 is stopped writes one sentence — `needs your ok to run ` and the tool's name — and the row
 is that sentence, whole. A question with a paragraph shows only its first line.
 
-**Only a task's call ages.** A `your call` is a row for two days after it landed; after that
-the panel's last line counts it instead — `3 older · tasks` — and `enter` there opens the
-tasks place, where every one of them still is. A question a conversation is stopped on, and
-a watch that needs somebody, never age off home.
+**A question stands above every landing**, however old the landing is: a stopped
+conversation is costing you something and a landing is not.
 
 Four rows show, eight in a tall window, then `N more · tasks`. Amber is spent on the `?`
 mark and on nothing else; a machine with nothing waiting has no accent on it at all.
 
-## Answer from home — a digit answers the top question from anywhere
+## to check — the group of landings nobody has checked
 
-**The top question that has answers draws them on its own row** — `1 allow once  2 always
-3 deny`, three at most, then `enter` — and **a digit answers it from anywhere on home**,
+**`to check` is every task whose call is yours: work that finished, where nobody could say
+whether it is right.** It is a dim line inside the `needs you` panel — `to check · 8` at the
+left, and at the right the one clause that says what the group is:
+
+```
+ to check · 8                                    finished, nobody has checked it
+   tier-B subs                                                       3 files · 1d
+   package release radar                                                      1d
+```
+
+The line is drawn only while the group has rows, and the rows are **newest first** — the
+opposite of the questions above them, because nothing here is waiting and the freshest
+landing is the one still in your head.
+
+**A landing is one line at rest**: its name, its file count and how long ago. A landing
+with no files to its name draws nothing where the count would be, never `0 files`.
+
+**The row under the cursor grows a second line** — the first sentence of what the work came
+to, and its two answers at the right:
+
+```
+   tier-B subs                                                       3 files · 1d
+   built the tier-B subscription flow          a accept   n not right
+```
+
+The two words are the task's own (`accept`/`not right` for work nobody could check,
+`resolve it`/`drop it` for a branch that would not fasten) and the two keys are
+**`a` and `n`, the same keys the landing card and the task's record take** — so what you
+learn here works everywhere else. `enter` opens the conversation on the task's record.
+
+**A landing wears no mark.** The `?` means something has stopped and will not move; this
+work has already finished.
+
+**Only a landing ages.** A `your call` is a row for two days after it landed; after that the
+panel's last line counts it instead — `3 older · tasks` — and `enter` there opens the tasks
+place, where every one of them still is. A question a conversation is stopped on, and a
+watch that needs somebody, never age off home.
+
+**A landing on `to check` is not repeated by `since you left`.** It goes back to that panel
+as an ordinary line once it has been answered or has aged out of the group.
+
+**On a short frame the whole group folds to one line before any question gives way** —
+`8 to check · tasks`, which opens the tasks place.
+
+## Answer from home — a digit answers the question that is drawing its answers
+
+**Exactly one row of the frame draws its answers** — `1 allow once  2 always  3 deny`,
+three at most, then `enter` — and **the key answers that row from anywhere on home**,
 wherever the cursor is. Every other row says `enter` instead, so one `1` is never on the
 screen twice with two meanings. The answers are that question's own, on its own keys:
 there is no home-specific `y`/`n` translation anywhere on this screen.
+
+**Which row is it?** The row under the cursor when that row can take an answer, and the top
+answerable row otherwise. So a digit works on a frame you have not walked, and once you have
+walked onto a landing in `to check` its `a`/`n` are the keys that are live.
 
 Every kind of question can be answered this way: the whole question is in the file home
 reads, and the answer goes back through the one door that knows which part of the engine
@@ -118,9 +172,10 @@ With something typed in the box a digit is a character going into it, never an a
 ## What opens when I press a landed row on home — I clicked a needs you row and it opened the chat
 
 **A task's row opens its conversation with the task's record in front.** `enter` on a
-`your call` row in `needs you` opens the conversation that ran the work, on the task's
-record, where the question and its two answers are — whatever project it belongs to, with
-the conversation you were in left running behind it.
+`to check` row opens the conversation that ran the work, on the task's record, where the
+question, its whole report and its two answers are — whatever project it belongs to, with
+the conversation you were in left running behind it. You do not have to open it to answer:
+`a` and `n` on the row itself send the same two answers.
 
 A conversation's own question opens that conversation, where the question is waiting above
 the box. Work that landed also reaches home through **the `since you left` panel**: a line
@@ -142,6 +197,10 @@ Three ways to settle it, and they are the same door:
   whatever that row is asking (`accept`/`not right`, `resolve it`/`drop it`), plus
   `[s] tell it`, which opens the task's page rather than answering, and a dimmer
   `[d] let aforge decide this one`;
+- **home** — walk onto its row in `to check` and press `a` or `n`. The conversation applies
+  it on its own beat; if it is not running, the answer waits on its doorstep and is applied
+  the next time that conversation runs, and the row says
+  `answered · waiting for it to pick that up` meanwhile;
 - **the task's room** — enter on its roster row opens it, and the same chips stand at the
   foot of the page; `a`, `n`, `s` and `d` over an empty box answer it with nothing
   selected;
@@ -370,7 +429,7 @@ instead, **the foot names the chord that still reaches them** — `ctrl+o open f
 `ctrl+e pause` on a standing order — and the rest are on their chords too: `ctrl+y` copy
 path, `ctrl+e` put away. `ctrl+o` on a `projects` row opens that project's folder.
 
-A digit answers the top question in `needs you` wherever you are standing. `enter` acts on
+A digit answers the one row of `needs you` drawing its answers, wherever you are standing. `enter` acts on
 the row under the cursor. `alt+.` draws the map.
 
 ## Why is the needs you heading highlighted, why is one project name darker than the others
